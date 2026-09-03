@@ -19,9 +19,10 @@ nothing to see.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import timedelta
-from typing import TYPE_CHECKING, Generic, TypeVar
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Any, Final, Generic, TypeVar
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -34,18 +35,105 @@ JobT = TypeVar("JobT", bound="BaseJobModel")
 """The concrete job model the panel reads."""
 
 
+_MODELLED_SCHEDULE_KEYS: Final[frozenset[str]] = frozenset(
+    {"cron", "cron_offset", "interval", "time"},
+)
+"""Schedule keys :class:`TaskTrigger` models as named fields.
+
+The keys TaskIQ itself reads off a schedule entry are listed in
+``taskiq/schedule_sources/label_based.py``; the rest of them
+(``labels``, ``schedule_id``, ``args``, ``kwargs``) describe *what* is
+sent rather than *when*, so they reach :attr:`TaskTrigger.extra` instead
+of a column. ``tests/test_schedule_projection_guard.py`` fails when
+TaskIQ grows a key this set neither models nor exempts.
+"""
+
+
+def _format_offset(value: str | timedelta | None) -> str | None:
+    """Return ``value`` as the offset text a panel row shows.
+
+    Args:
+        value (str | timedelta | None): A ``"±HH:MM"`` offset, an IANA
+            key, a :class:`~datetime.timedelta`, or ``None``.
+
+    Returns:
+        str | None: ``"±HH:MM"`` for a timedelta, the string unchanged
+        for a key, or ``None`` when no offset was declared.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, timedelta):
+        return str(value)
+    total: int = int(value.total_seconds())
+    sign: str = "-" if total < 0 else "+"
+    hours, remainder = divmod(abs(total), 3600)
+    return f"{sign}{hours:02d}:{remainder // 60:02d}"
+
+
+@dataclass(frozen=True, slots=True)
+class TaskTrigger:
+    """One declared trigger of a registered task.
+
+    A task may declare several, and a trigger is not always a cron: TaskIQ
+    accepts ``cron``, ``interval`` and ``time`` (one-shot) entries in the
+    same list. Projecting that list onto a fixed pair of columns has lost
+    a declaration three times in this panel's history, so the row carries
+    the triggers as the registry declares them.
+
+    Attributes:
+        cron (str | None): The cron expression, for a cron trigger.
+        cron_offset (str | timedelta | None): The timezone the expression
+            is anchored to. A cron expression without one reads as
+            complete while meaning UTC, which is why it is shown rather
+            than dropped.
+        interval_seconds (float | None): The interval in seconds, for an
+            interval trigger.
+        run_at (datetime | None): The instant, for a one-shot ``time``
+            trigger.
+        extra (Mapping[str, Any]): Any other key on the entry, kept so a
+            key TaskIQ adds later is reachable rather than silently
+            dropped. Excluded from equality, and not rendered.
+    """
+
+    cron: str | None = None
+    cron_offset: str | timedelta | None = None
+    interval_seconds: float | None = None
+    run_at: datetime | None = None
+    extra: Mapping[str, Any] = field(default_factory=dict, compare=False)
+
+    @property
+    def cron_offset_label(self) -> str | None:
+        """The offset as display text.
+
+        Returns:
+            str | None: ``"±HH:MM"`` for a fixed offset, the IANA key for
+            a named zone, or ``None`` when the trigger declares none.
+        """
+        return _format_offset(self.cron_offset)
+
+
 @dataclass(frozen=True, slots=True)
 class ScheduledTask:
     """One registered task, as the schedule source will read it.
 
+    :attr:`triggers` is the whole declaration; the flat fields summarize
+    the first trigger of each kind, so a caller that only needs "the
+    cron" keeps reading one attribute.
+
     Attributes:
         name (str): The registered task name.
-        cron (str | None): The cron expression, when the task declares
-            one.
-        interval_seconds (float | None): The interval in seconds, when the
-            task declares one instead of a cron.
+        cron (str | None): The first cron expression the task declares.
+        interval_seconds (float | None): The first interval in seconds the
+            task declares.
         retry_on_error (bool): Whether the task opts into retries.
         max_retries (int | None): The attempt cap, when the task set one.
+        cron_offset (str | timedelta | None): The timezone paired with
+            :attr:`cron`. Without it the expression reads as complete
+            while meaning UTC.
+        run_at (datetime | None): The instant, when the task declares a
+            one-shot ``time`` trigger.
+        triggers (tuple[TaskTrigger, ...]): Every declared trigger, in
+            registry order. Empty for an on-demand task.
     """
 
     name: str
@@ -53,15 +141,65 @@ class ScheduledTask:
     interval_seconds: float | None
     retry_on_error: bool
     max_retries: int | None
+    cron_offset: str | timedelta | None = None
+    run_at: datetime | None = None
+    triggers: tuple[TaskTrigger, ...] = ()
 
     @property
     def is_scheduled(self) -> bool:
         """Whether the task runs on its own, rather than on demand.
 
         Returns:
-            bool: ``True`` when the task declares a cron or an interval.
+            bool: ``True`` when the task declares any trigger — a cron, an
+            interval, or a one-shot instant.
         """
-        return self.cron is not None or self.interval_seconds is not None
+        return bool(self.triggers) or any(
+            value is not None
+            for value in (self.cron, self.interval_seconds, self.run_at)
+        )
+
+    @property
+    def cron_offset_label(self) -> str | None:
+        """The offset paired with :attr:`cron`, as display text.
+
+        Returns:
+            str | None: ``"±HH:MM"`` for a fixed offset, the IANA key for
+            a named zone, or ``None`` when none was declared.
+        """
+        return _format_offset(self.cron_offset)
+
+
+def _trigger_from_entry(entry: Mapping[str, Any]) -> TaskTrigger:
+    """Return the :class:`TaskTrigger` one registry entry declares.
+
+    Args:
+        entry (Mapping[str, Any]): One entry of a task's ``schedule``
+            label, carrying one of ``cron``, ``interval`` or ``time``.
+
+    Returns:
+        TaskTrigger: The trigger, with every key this class does not
+        model kept in :attr:`TaskTrigger.extra`.
+    """
+    interval: Any = entry.get("interval")
+    interval_seconds: float | None = None
+    if isinstance(interval, timedelta):
+        interval_seconds = interval.total_seconds()
+    elif isinstance(interval, (int, float)):
+        interval_seconds = float(interval)
+
+    cron: Any = entry.get("cron")
+    run_at: Any = entry.get("time")
+    return TaskTrigger(
+        cron=str(cron) if cron is not None else None,
+        cron_offset=entry.get("cron_offset"),
+        interval_seconds=interval_seconds,
+        run_at=run_at if isinstance(run_at, datetime) else None,
+        extra={
+            key: value
+            for key, value in entry.items()
+            if key not in _MODELLED_SCHEDULE_KEYS
+        },
+    )
 
 
 class TaskPanelService(Generic[JobT]):
@@ -139,6 +277,14 @@ class TaskPanelService(Generic[JobT]):
         sweeping candidate minutes on every render — up to ~44k iterations
         for a monthly cron — or taking a new dependency for one column.
 
+        Every declared trigger reaches the row. Reading a chosen pair of
+        keys off the registry has dropped a declaration three times here
+        — an interval shown as ``on demand``, a one-shot ``time`` doing
+        the same, and a ``cron_offset`` that made the panel state an
+        hour three hours off what fires — so :attr:`ScheduledTask.triggers`
+        carries the entries as declared and the flat fields summarize
+        them.
+
         Returns:
             list[ScheduledTask]: Scheduled tasks first, then on-demand
             ones, each group by name. Empty when no queue was given.
@@ -149,23 +295,35 @@ class TaskPanelService(Generic[JobT]):
 
         rows: list[ScheduledTask] = []
         for info in task_inventory(self._queue):
-            cron: str | None = None
-            interval_seconds: float | None = None
-            for entry in info.schedule:
-                if entry.get("cron") is not None:
-                    cron = str(entry["cron"])
-                interval = entry.get("interval")
-                if isinstance(interval, timedelta):
-                    interval_seconds = interval.total_seconds()
-                elif isinstance(interval, (int, float)):
-                    interval_seconds = float(interval)
+            triggers: tuple[TaskTrigger, ...] = tuple(
+                _trigger_from_entry(entry) for entry in info.schedule
+            )
+            cron_trigger: TaskTrigger | None = next(
+                (item for item in triggers if item.cron is not None),
+                None,
+            )
             rows.append(
                 ScheduledTask(
                     name=info.name,
-                    cron=cron,
-                    interval_seconds=interval_seconds,
+                    cron=cron_trigger.cron if cron_trigger is not None else None,
+                    interval_seconds=next(
+                        (
+                            item.interval_seconds
+                            for item in triggers
+                            if item.interval_seconds is not None
+                        ),
+                        None,
+                    ),
                     retry_on_error=info.retry_on_error,
                     max_retries=info.max_retries,
+                    cron_offset=(
+                        cron_trigger.cron_offset if cron_trigger is not None else None
+                    ),
+                    run_at=next(
+                        (item.run_at for item in triggers if item.run_at is not None),
+                        None,
+                    ),
+                    triggers=triggers,
                 )
             )
         return sorted(rows, key=lambda row: (not row.is_scheduled, row.name))

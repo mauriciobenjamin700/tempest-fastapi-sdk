@@ -74,8 +74,7 @@
       <thead>
         <tr>
           <th>Task</th>
-          <th>Cron</th>
-          <th>Interval</th>
+          <th>Schedule</th>
           <th>Retries</th>
         </tr>
       </thead>
@@ -83,8 +82,21 @@
         {% for task in schedule %}
         <tr>
           <td>{{ task.name }}</td>
-          <td>{% if task.cron %}<code>{{ task.cron }}</code>{% else %}—{% endif %}</td>
-          <td>{% if task.interval_seconds %}every {{ task.interval_seconds | int }}s{% elif not task.is_scheduled %}on demand{% else %}—{% endif %}</td>
+          <td>
+            {%- if task.triggers %}
+            {%- for trigger in task.triggers %}
+            <div class="tempest-admin-tasks__trigger">
+              {%- if trigger.cron %}<code>{{ trigger.cron }}</code>
+              {%- if trigger.cron_offset_label %} <span class="tempest-admin-tasks__offset">{{ trigger.cron_offset_label }}</span>{% endif %}
+              {%- elif trigger.interval_seconds %}every {{ trigger.interval_seconds | int }}s
+              {%- elif trigger.run_at %}once at {{ trigger.run_at }}
+              {%- else %}—
+              {%- endif %}
+            </div>
+            {%- endfor %}
+            {%- else %}on demand
+            {%- endif %}
+          </td>
           <td>
             {% if task.retry_on_error %}
               up to {{ task.max_retries if task.max_retries is not none else "default" }}

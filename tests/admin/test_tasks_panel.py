@@ -10,12 +10,13 @@ no screen.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from taskiq import InMemoryBroker
 
 from tempest_fastapi_sdk import (
     AdminSite,
@@ -24,8 +25,18 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
     make_admin_router,
 )
-from tempest_fastapi_sdk.admin import ScheduledTask, TaskPanelService
-from tempest_fastapi_sdk.tasks import JobStatus, JobStore, make_job_model
+from tempest_fastapi_sdk.admin import (
+    ScheduledTask,
+    TaskPanelService,
+    TaskTrigger,
+)
+from tempest_fastapi_sdk.tasks import (
+    CronOffset,
+    JobStatus,
+    JobStore,
+    TaskQueue,
+    make_job_model,
+)
 
 SECRET = "x" * 48
 
@@ -344,3 +355,150 @@ class TestAccess:
             response = await client.get("/admin/tasks", follow_redirects=False)
         assert response.status_code == 303
         assert response.headers["location"] == "/admin/login"
+
+
+def _real_queue() -> TaskQueue:
+    """Register one task of every trigger shape on a real broker.
+
+    The fixtures above hand the panel a fake whose ``schedule`` dicts are
+    written by the test. That cannot catch a key the decorator spells
+    differently from what the panel reads — which is how the offset was
+    lost — so this queue goes through ``@tq.cron`` / ``@tq.task`` and lets
+    the registry produce the labels.
+
+    Returns:
+        TaskQueue: The queue, with five tasks registered.
+    """
+    tq: TaskQueue = TaskQueue(InMemoryBroker())
+
+    @tq.cron("0 2 * * *", cron_offset=CronOffset.BRASILIA, name="backup")
+    async def backup() -> None:
+        return None
+
+    @tq.cron("0 4 * * *", name="digest")
+    async def digest() -> None:
+        return None
+
+    @tq.task(
+        name="one_shot",
+        schedule=[{"time": datetime(2026, 1, 1, 12, tzinfo=timezone.utc)}],
+    )
+    async def one_shot() -> None:
+        return None
+
+    @tq.task(
+        name="twice_daily",
+        schedule=[{"cron": "0 6 * * *"}, {"cron": "0 18 * * *"}],
+    )
+    async def twice_daily() -> None:
+        return None
+
+    @tq.task(name="ad_hoc")
+    async def ad_hoc() -> None:
+        return None
+
+    return tq
+
+
+def _row(panel: TaskPanelService[Any], name: str) -> ScheduledTask:
+    """Return one row of the schedule by task name.
+
+    Args:
+        panel (TaskPanelService[Any]): The panel to read.
+        name (str): The registered task name.
+
+    Returns:
+        ScheduledTask: The matching row.
+    """
+    return next(row for row in panel.schedule() if row.name == name)
+
+
+class TestEveryDeclaredTriggerReachesTheRow:
+    """What the registry declares is what the row carries.
+
+    Reading a chosen pair of keys off the registry dropped a declaration
+    three times: an interval read as ``on demand`` (v0.268.0), a one-shot
+    ``time`` doing the same, and a ``cron_offset`` that left the panel
+    stating an hour three hours off what fires.
+    """
+
+    def test_the_declared_offset_reaches_the_row(self) -> None:
+        panel: TaskPanelService[Any] = TaskPanelService(queue=_real_queue())
+        row = _row(panel, "backup")
+        assert row.cron == "0 2 * * *"
+        assert row.cron_offset == timedelta(hours=-3)
+        assert row.cron_offset_label == "-03:00"
+        assert row.triggers[0].cron_offset_label == "-03:00"
+
+    def test_a_task_without_an_offset_is_unchanged(self) -> None:
+        panel: TaskPanelService[Any] = TaskPanelService(queue=_real_queue())
+        row = _row(panel, "digest")
+        assert row.cron == "0 4 * * *"
+        assert row.cron_offset is None
+        assert row.cron_offset_label is None
+
+    def test_a_one_shot_trigger_is_scheduled_not_on_demand(self) -> None:
+        panel: TaskPanelService[Any] = TaskPanelService(queue=_real_queue())
+        row = _row(panel, "one_shot")
+        assert row.is_scheduled is True
+        assert row.run_at == datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
+
+    def test_two_crons_are_two_triggers(self) -> None:
+        panel: TaskPanelService[Any] = TaskPanelService(queue=_real_queue())
+        row = _row(panel, "twice_daily")
+        assert [trigger.cron for trigger in row.triggers] == [
+            "0 6 * * *",
+            "0 18 * * *",
+        ]
+
+    def test_an_on_demand_task_declares_no_trigger(self) -> None:
+        panel: TaskPanelService[Any] = TaskPanelService(queue=_real_queue())
+        row = _row(panel, "ad_hoc")
+        assert row.triggers == ()
+        assert row.is_scheduled is False
+
+
+class TestOffsetLabel:
+    """The offset renders as text a reader can act on."""
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (timedelta(hours=-3), "-03:00"),
+            (timedelta(0), "+00:00"),
+            (timedelta(hours=5, minutes=45), "+05:45"),
+            (timedelta(hours=-3, minutes=-30), "-03:30"),
+            ("America/Sao_Paulo", "America/Sao_Paulo"),
+            (None, None),
+        ],
+    )
+    def test_offset_formats(
+        self,
+        value: str | timedelta | None,
+        expected: str | None,
+    ) -> None:
+        assert TaskTrigger(cron="0 2 * * *", cron_offset=value).cron_offset_label == (
+            expected
+        )
+
+
+class TestSchedulePageShowsTheOffset:
+    """The screen states the timezone, not only the bare expression.
+
+    A cron expression without its offset reads as complete, so nothing
+    invites the reader to check — which is what made this worse than a
+    missing column.
+    """
+
+    async def test_the_expression_and_the_offset_both_render(
+        self, db: AsyncDatabaseManager
+    ) -> None:
+        app = await _app(db, TaskPanelService(queue=_real_queue()))
+        async with _client(app) as client:
+            await _login(client)
+            response = await client.get("/admin/tasks")
+        assert response.status_code == 200, response.text
+        assert "0 2 * * *" in response.text
+        assert "-03:00" in response.text
+        assert "0 18 * * *" in response.text
+        assert "once at 2026-01-01 12:00:00+00:00" in response.text
