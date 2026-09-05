@@ -19,6 +19,7 @@ from tempest_fastapi_sdk.vision.schemas import (
     BoundingBoxSchema,
     ClassificationSchema,
     ClassProbabilitySchema,
+    DetectClassifySchema,
     DetectionSchema,
     SegmentationSchema,
 )
@@ -26,6 +27,7 @@ from tempest_fastapi_sdk.vision.schemas import (
 if TYPE_CHECKING:
     from ort_vision_sdk import (
         ClassificationResults,
+        DetectClassifyResults,
         DetectionResults,
         SegmentationResults,
     )
@@ -92,6 +94,57 @@ def to_classification_schema(results: ClassificationResults) -> ClassificationSc
     )
 
 
+def to_detect_classify_schemas(
+    results: DetectClassifyResults,
+) -> list[DetectClassifySchema]:
+    """Map a fused detect-classify result to a list of schemas.
+
+    Each detection carries its own second-stage verdict, so this returns
+    one entry per detected object with ``classification`` filled in.
+
+    ``DetectionResult.classification`` is a ``ClassificationResult`` — the
+    **singular** type, whose fields are ``class_id`` / ``class_name`` /
+    ``confidence``. The plural ``ClassificationResults`` that
+    :func:`to_classification_schema` reads spells the same three
+    ``cls`` / ``name`` / ``conf``, which is why the two mappers do not share
+    a helper.
+
+    Args:
+        results (DetectClassifyResults): One element of
+            ``DetectClassify.predict``'s return list.
+
+    Returns:
+        list[DetectClassifySchema]: One entry per detected object (``[]``
+        when nothing was detected).
+    """
+    return [
+        DetectClassifySchema(
+            class_id=d.class_id,
+            class_name=d.class_name,
+            confidence=d.confidence,
+            box=_box(d.bbox),
+            classification=(
+                None
+                if d.classification is None
+                else ClassificationSchema(
+                    class_id=d.classification.class_id,
+                    class_name=d.classification.class_name,
+                    confidence=d.classification.confidence,
+                    probabilities=[
+                        ClassProbabilitySchema(
+                            class_id=p.class_id,
+                            class_name=p.class_name,
+                            probability=p.probability,
+                        )
+                        for p in d.classification.probabilities
+                    ],
+                )
+            ),
+        )
+        for d in results.detections
+    ]
+
+
 def to_segmentation_schemas(results: SegmentationResults) -> list[SegmentationSchema]:
     """Map a segmenter result to a list of :class:`SegmentationSchema`.
 
@@ -118,6 +171,7 @@ def to_segmentation_schemas(results: SegmentationResults) -> list[SegmentationSc
 
 __all__: list[str] = [
     "to_classification_schema",
+    "to_detect_classify_schemas",
     "to_detection_schemas",
     "to_segmentation_schemas",
 ]

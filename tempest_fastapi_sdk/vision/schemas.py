@@ -48,6 +48,36 @@ class DetectionSchema(BaseSchema):
     box: BoundingBoxSchema = Field(description="Object bounding box.")
 
 
+class DetectClassifySchema(BaseSchema):
+    """A detected object plus the second-stage classification of its crop.
+
+    The two stages have **unrelated label spaces**: a detector that finds
+    ``sheep`` may feed a classifier that answers ``famacha_3``, and the two
+    share no class ids. That is why the classifier's verdict is nested
+    rather than flattened onto this object — ``class_id`` here is always
+    the detector's, and ``classification.class_id`` is always the
+    classifier's.
+
+    Attributes:
+        class_id (int): Detector class index.
+        class_name (str): Detector label.
+        confidence (float): Detection score in ``[0, 1]``.
+        box (BoundingBoxSchema): Object bounding box.
+        classification (ClassificationSchema | None): The classifier's
+            verdict on this object's crop, or ``None`` when the pipeline
+            produced no second stage for it.
+    """
+
+    class_id: int = Field(description="Detector class index.")
+    class_name: str = Field(description="Detector label.")
+    confidence: float = Field(description="Detection score in [0, 1].")
+    box: BoundingBoxSchema = Field(description="Object bounding box.")
+    classification: ClassificationSchema | None = Field(
+        default=None,
+        description="Second-stage classification of this object's crop.",
+    )
+
+
 class ClassProbabilitySchema(BaseSchema):
     """One class score from a classifier's ranked output.
 
@@ -106,6 +136,7 @@ __all__: list[str] = [
     "BoundingBoxSchema",
     "ClassProbabilitySchema",
     "ClassificationSchema",
+    "DetectClassifySchema",
     "DetectionSchema",
     "SegmentationSchema",
 ]

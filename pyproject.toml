@@ -230,6 +230,9 @@ modelops = [
     "psutil>=7.2.2",
     "nvidia-ml-py>=13.610.43",
 ]
+modelops-compose = [
+    "ort-vision-sdk[compose]>=0.8.0",
+]
 modelops-onnx = [
     "onnx>=1.22.0",
     "onnxruntime>=1.29.0",
@@ -290,7 +293,7 @@ all = [
     "opentelemetry-instrumentation-fastapi>=0.65b0",
     "opentelemetry-instrumentation-sqlalchemy>=0.65b0",
     "opentelemetry-instrumentation-httpx>=0.65b0",
-    "ort-vision-sdk>=0.8.0",
+    "ort-vision-sdk[compose]>=0.8.0",
     "tempestweb>=0.127.0",
     "chromadb>=1.5.9",
     "pyyaml>=6.0.3",

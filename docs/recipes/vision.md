@@ -110,6 +110,82 @@ async def segment(file: UploadFile) -> list[SegmentationSchema]:
     return to_segmentation_schemas(results)
 ```
 
+## Detecção + classificação num grafo só
+
+Às vezes o rótulo que interessa não é *o que* está na imagem, mas *qual é
+o estado* de cada coisa encontrada: um detector acha cada ovelha, e um
+classificador julga a mucosa de cada uma. Rodar os dois estágios como dois
+modelos custa uma ida e volta por objeto detectado.
+
+`DetectClassify` roda um `.onnx` que já tem os dois estágios fundidos —
+uma inferência, quantos objetos houver:
+
+```python
+from fastapi import FastAPI, UploadFile
+
+from tempest_fastapi_sdk.vision import (
+    DetectClassify,
+    DetectClassifySchema,
+    to_detect_classify_schemas,
+)
+
+app: FastAPI = FastAPI()
+pipeline: DetectClassify = DetectClassify("fused.onnx")
+
+
+@app.post("/triage")
+async def triage(file: UploadFile) -> list[DetectClassifySchema]:
+    """Detect every animal and classify the crop of each one.
+
+    Args:
+        file (UploadFile): The uploaded image.
+
+    Returns:
+        list[DetectClassifySchema]: One entry per detected object, each
+            carrying the second-stage verdict.
+    """
+    results = (await pipeline.async_predict(await file.read()))[0]
+    return to_detect_classify_schemas(results)
+```
+
+A resposta aninha o segundo estágio dentro de cada detecção:
+
+```json
+[
+  {
+    "class_id": 18,
+    "class_name": "sheep",
+    "confidence": 0.94,
+    "box": {"x1": 12.0, "y1": 40.0, "x2": 210.0, "y2": 300.0},
+    "classification": {
+      "class_id": 3,
+      "class_name": "famacha_3",
+      "confidence": 0.77,
+      "probabilities": [
+        {"class_id": 3, "class_name": "famacha_3", "probability": 0.77},
+        {"class_id": 2, "class_name": "famacha_2", "probability": 0.21}
+      ]
+    }
+  }
+]
+```
+
+!!! warning "Os dois `class_id` não são comparáveis"
+    Detector e classificador têm espaços de rótulo **independentes**: o
+    `18` de `sheep` e o `3` de `famacha_3` não têm relação nenhuma. Por
+    isso o veredito do classificador vem aninhado em `classification`, e
+    não achatado ao lado — achatar faria os dois ids parecerem da mesma
+    escala.
+
+    `classification` é `null` quando o pipeline não produziu segundo
+    estágio para aquele objeto.
+
+!!! tip "Rodar é `[vision]`; fundir é `[modelops-compose]`"
+    O `.onnx` fundido é um artefato de build. Servir ele **não** puxa
+    `onnx` — só `[vision]`, como o resto desta página. Quem monta o
+    arquivo é `fuse_detect_classify`, na receita
+    [Modelops](modelops.md#fundir-detector-e-classificador).
+
 ## Inputs aceitos + execução
 
 `async_predict` aceita os mesmos inputs do `ort-vision-sdk`: caminho,

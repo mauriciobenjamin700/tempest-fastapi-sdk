@@ -49,6 +49,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[mfa]` | `pyotp` | `TOTPHelper` + MFA/2FA (TOTP) endpoints on the bundled auth flow |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |
 | `[modelops]` | `psutil`, `nvidia-ml-py` | benchmark any callable: latency, RAM, GPU and energy (`benchmark`, `NvmlPowerSampler`, `RaplEnergySampler`) |
+| `[modelops-compose]` | `ort-vision-sdk[compose]` | fuse a detector and a classifier into one `.onnx`: `fuse_detect_classify`. Running the fused graph is `[vision]` (`DetectClassify`), which pulls no `onnx` |
 | `[modelops-onnx]` | `onnx`, `onnxruntime` | static analysis, ONNX benchmarking, `.onnx` → `.ort`, graph optimization and quantization — of raw graphs (`analyze_onnx`, `benchmark_onnx`, `export_onnx_to_ort`, `quantize_onnx_dynamic`) and of transformers exports (`optimize_hf_onnx`, `quantize_hf_onnx`) |
 | `[modelops-sklearn]` | `skl2onnx` | export scikit-learn models to ONNX for the edge: `export_sklearn_to_onnx`, `verify_sklearn_onnx`, `edge_bundle` |
 | `[otel]` | `opentelemetry-sdk`, OTLP exporter + FastAPI/SQLAlchemy/httpx instrumentations | OpenTelemetry instrumentation via `setup_tracing` |

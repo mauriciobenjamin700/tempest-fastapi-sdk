@@ -1470,6 +1470,56 @@ kernel for the conversion.
     it. It runs arbitrary code from the remote repository on your machine —
     only enable it for a repository you audited.
 
+## Fusing a detector and a classifier
+
+The rest of this page is the life cycle of **one** model. Composing
+**two** is a different job, and the one this step covers: a detector at
+640 finding the objects, a classifier at 224 judging each crop, and a
+single `.onnx` that runs both.
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.modelops import fuse_detect_classify
+
+fused: Path = Path("dist/fused.onnx")
+fuse_detect_classify(
+    "detector.onnx",
+    "classifier.onnx",
+    fused,
+    conf_threshold=0.25,
+    max_detections=20,
+)
+```
+
+Serving the resulting file is the
+[Computer vision](vision.md#detection-classification-in-one-graph)
+recipe, with `DetectClassify`.
+
+!!! info "Why `onnx.compose.merge_models` does not do this"
+    Between the two stages sits a **dynamic** crop: how many boxes there
+    are, and where, is known only once the detector has run. Two graphs do
+    not concatenate across that. The bridge is `RoiAlign`, and assembling
+    it is exactly what `fuse_detect_classify` does.
+
+!!! note "Two extras, because they are two machines"
+    Fusing needs `[modelops-compose]` (which brings `onnx`); serving the
+    fused graph needs only `[vision]`. The production service never
+    imports `onnx`.
+
+    ```bash
+    uv add "tempest-fastapi-sdk[modelops-compose]"   # on the build machine
+    uv add "tempest-fastapi-sdk[vision]"             # in the service
+    ```
+
+!!! tip "It is a re-export, not a wrapper"
+    `fuse_detect_classify` is `ort-vision-sdk`'s own symbol, re-exported
+    lazily — touching the name imports the library and raises an
+    `ImportError` naming the extra when it is missing. The function takes
+    **18** keyword arguments; a wrapper restating them would drift from
+    upstream the first time one is added, so the signature you call is
+    theirs.
+
 ## Shipping to the edge: `.onnx` to `.ort`
 
 `.ort` is ONNX Runtime's own serialized format. It matters on mobile and

@@ -1464,6 +1464,55 @@ não tem kernel de CPU pra conversão.
     exigem. Ela roda código arbitrário do repositório remoto na sua máquina —
     só ligue para um repositório que você auditou.
 
+## Fundir detector e classificador
+
+O resto desta página é o ciclo de vida de **um** modelo. Compor **dois** é
+outro trabalho, e o que este passo cobre: um detector a 640 achando os
+objetos, um classificador a 224 julgando cada recorte, e um `.onnx` só que
+roda os dois.
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.modelops import fuse_detect_classify
+
+fused: Path = Path("dist/fused.onnx")
+fuse_detect_classify(
+    "detector.onnx",
+    "classifier.onnx",
+    fused,
+    conf_threshold=0.25,
+    max_detections=20,
+)
+```
+
+Servir o arquivo resultante é a receita
+[Visão computacional](vision.md#deteccao-classificacao-num-grafo-so),
+com `DetectClassify`.
+
+!!! info "Por que `onnx.compose.merge_models` não resolve"
+    Entre os dois estágios existe um recorte **dinâmico**: quantas caixas
+    há, e onde, só se sabe depois que o detector rodou. Dois grafos não se
+    concatenam através disso. A ponte é `RoiAlign`, e montá-la é
+    exatamente o que `fuse_detect_classify` faz.
+
+!!! note "Dois extras, porque são duas máquinas"
+    Fundir precisa de `[modelops-compose]` (que traz `onnx`); servir o
+    grafo fundido precisa só de `[vision]`. O serviço em produção nunca
+    importa `onnx`.
+
+    ```bash
+    uv add "tempest-fastapi-sdk[modelops-compose]"   # na máquina de build
+    uv add "tempest-fastapi-sdk[vision]"             # no serviço
+    ```
+
+!!! tip "É re-export, não wrapper"
+    `fuse_detect_classify` é o símbolo do `ort-vision-sdk`, re-exportado
+    lazy — tocar o nome importa a lib e levanta um `ImportError` nomeando
+    o extra quando ela falta. A função tem **18** argumentos nomeados; um
+    wrapper que os repetisse driftaria do upstream no primeiro que fosse
+    adicionado, então a assinatura que você chama é a de lá.
+
 ## Levar pro edge: `.onnx` para `.ort`
 
 `.ort` é o formato serializado do próprio ONNX Runtime. Importa em mobile e

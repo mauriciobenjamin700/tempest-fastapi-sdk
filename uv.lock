@@ -4825,6 +4825,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b3/16/6395a966d0391ba62cc957ce9e10f7e3176df22b29848c33a459ce115cc0/ort_vision_sdk-0.8.0-py3-none-any.whl", hash = "sha256:1e005a5c10083482a0ab47b94b83215f2376145ce103be3bbf886df0cd73d70a", size = 93765, upload-time = "2026-08-08T15:09:52.643Z" },
 ]
 
+[package.optional-dependencies]
+compose = [
+    { name = "onnx" },
+]
+
 [[package]]
 name = "overrides"
 version = "7.7.0"
@@ -6783,7 +6788,7 @@ all = [
     { name = "opentelemetry-instrumentation-httpx" },
     { name = "opentelemetry-instrumentation-sqlalchemy" },
     { name = "opentelemetry-sdk" },
-    { name = "ort-vision-sdk" },
+    { name = "ort-vision-sdk", extra = ["compose"] },
     { name = "prometheus-client" },
     { name = "psutil" },
     { name = "pyjwt" },
@@ -6895,6 +6900,9 @@ minio = [
 modelops = [
     { name = "nvidia-ml-py" },
     { name = "psutil" },
+]
+modelops-compose = [
+    { name = "ort-vision-sdk", extra = ["compose"] },
 ]
 modelops-onnx = [
     { name = "onnx" },
@@ -7099,8 +7107,9 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-sqlalchemy", marker = "extra == 'otel'", specifier = ">=0.65b0" },
     { name = "opentelemetry-sdk", marker = "extra == 'all'", specifier = ">=1.44.0" },
     { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.44.0" },
-    { name = "ort-vision-sdk", marker = "extra == 'all'", specifier = ">=0.8.0" },
     { name = "ort-vision-sdk", marker = "extra == 'vision'", specifier = ">=0.8.0" },
+    { name = "ort-vision-sdk", extras = ["compose"], marker = "extra == 'all'", specifier = ">=0.8.0" },
+    { name = "ort-vision-sdk", extras = ["compose"], marker = "extra == 'modelops-compose'", specifier = ">=0.8.0" },
     { name = "pgvector", marker = "extra == 'genai-rag'", specifier = ">=0.5.0" },
     { name = "pillow", marker = "extra == 'faces'", specifier = ">=12.3.0" },
     { name = "pillow", marker = "extra == 'genai-image'", specifier = ">=12.3.0" },
@@ -7160,7 +7169,7 @@ requires-dist = [
     { name = "websockets", marker = "extra == 'all'", specifier = ">=17.1" },
     { name = "websockets", marker = "extra == 'websocket'", specifier = ">=17.1" },
 ]
-provides-extras = ["auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "tasks-redis", "admin", "admin-sql", "minio", "http", "openapi", "prometheus", "mfa", "webauthn", "firebase", "pdf", "pdf-read", "spreadsheet", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-diarization", "faces", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
+provides-extras = ["auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "tasks-redis", "admin", "admin-sql", "minio", "http", "openapi", "prometheus", "mfa", "webauthn", "firebase", "pdf", "pdf-read", "spreadsheet", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-diarization", "faces", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-compose", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
 
 [package.metadata.requires-dev]
 dev = [

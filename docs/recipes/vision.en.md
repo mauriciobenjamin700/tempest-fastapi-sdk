@@ -111,6 +111,82 @@ async def segment(file: UploadFile) -> list[SegmentationSchema]:
     return to_segmentation_schemas(results)
 ```
 
+## Detection + classification in one graph
+
+Sometimes the label that matters is not *what* is in the image but *what
+state* each found thing is in: a detector finds each sheep, and a
+classifier judges the mucosa of each one. Running the two stages as two
+models costs a round trip per detected object.
+
+`DetectClassify` runs an `.onnx` that already has both stages fused — one
+inference, however many objects there are:
+
+```python
+from fastapi import FastAPI, UploadFile
+
+from tempest_fastapi_sdk.vision import (
+    DetectClassify,
+    DetectClassifySchema,
+    to_detect_classify_schemas,
+)
+
+app: FastAPI = FastAPI()
+pipeline: DetectClassify = DetectClassify("fused.onnx")
+
+
+@app.post("/triage")
+async def triage(file: UploadFile) -> list[DetectClassifySchema]:
+    """Detect every animal and classify the crop of each one.
+
+    Args:
+        file (UploadFile): The uploaded image.
+
+    Returns:
+        list[DetectClassifySchema]: One entry per detected object, each
+            carrying the second-stage verdict.
+    """
+    results = (await pipeline.async_predict(await file.read()))[0]
+    return to_detect_classify_schemas(results)
+```
+
+The response nests the second stage inside each detection:
+
+```json
+[
+  {
+    "class_id": 18,
+    "class_name": "sheep",
+    "confidence": 0.94,
+    "box": {"x1": 12.0, "y1": 40.0, "x2": 210.0, "y2": 300.0},
+    "classification": {
+      "class_id": 3,
+      "class_name": "famacha_3",
+      "confidence": 0.77,
+      "probabilities": [
+        {"class_id": 3, "class_name": "famacha_3", "probability": 0.77},
+        {"class_id": 2, "class_name": "famacha_2", "probability": 0.21}
+      ]
+    }
+  }
+]
+```
+
+!!! warning "The two `class_id` values are not comparable"
+    Detector and classifier have **independent** label spaces: `sheep`'s
+    `18` and `famacha_3`'s `3` have nothing to do with each other. That is
+    why the classifier's verdict is nested under `classification` rather
+    than flattened alongside — flattening would make the two ids look like
+    the same scale.
+
+    `classification` is `null` when the pipeline produced no second stage
+    for that object.
+
+!!! tip "Running is `[vision]`; fusing is `[modelops-compose]`"
+    The fused `.onnx` is a build artifact. Serving it pulls **no** `onnx`
+    — just `[vision]`, like the rest of this page. The file itself is
+    built by `fuse_detect_classify`, in the
+    [Modelops](modelops.md#fusing-a-detector-and-a-classifier) recipe.
+
 ## Accepted inputs + execution
 
 `async_predict` accepts the same inputs as `ort-vision-sdk`: a path,

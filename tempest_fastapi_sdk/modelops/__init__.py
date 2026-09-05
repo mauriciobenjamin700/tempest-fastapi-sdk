@@ -41,6 +41,8 @@ directory. Both run on ``onnxruntime``'s own transformers tooling, so nothing
 here constrains your ``transformers`` version.
 """
 
+from typing import TYPE_CHECKING, Any
+
 from tempest_fastapi_sdk.modelops.bench import (
     DEFAULT_REPETITIONS as DEFAULT_REPETITIONS,
 )
@@ -278,6 +280,39 @@ from tempest_fastapi_sdk.modelops.static import (
     default_providers as default_providers,
 )
 
+if TYPE_CHECKING:
+    from tempest_fastapi_sdk.modelops.compose import (
+        fuse_detect_classify as fuse_detect_classify,
+    )
+
+_LAZY_EXPORTS: frozenset[str] = frozenset({"fuse_detect_classify"})
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily resolve the graph-composition surface.
+
+    Kept out of the eager imports above because it is the only part of
+    :mod:`modelops` whose dependency (``onnx``, via
+    ``ort-vision-sdk[compose]``) is not already required by
+    ``[modelops-onnx]``.
+
+    Args:
+        name (str): The attribute requested.
+
+    Returns:
+        Any: The :mod:`tempest_fastapi_sdk.modelops.compose` symbol when
+        ``name`` is one of :data:`_LAZY_EXPORTS`.
+
+    Raises:
+        AttributeError: For any other attribute name.
+    """
+    if name in _LAZY_EXPORTS:
+        from tempest_fastapi_sdk.modelops import compose
+
+        return getattr(compose, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__: list[str] = [
     "BASELINE_FILENAME",
     "BINARY_TREE_FIXED_IN_ONNXRUNTIME",
@@ -376,6 +411,7 @@ __all__: list[str] = [
     "export_sklearn_to_compact",
     "export_sklearn_to_onnx",
     "export_torch_to_onnx",
+    "fuse_detect_classify",
     "load_edge_package",
     "load_sklearn_artifact",
     "make_prediction_router",

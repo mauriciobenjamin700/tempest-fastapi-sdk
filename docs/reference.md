@@ -5,7 +5,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 !!! info "Cobertura verificada, não prometida"
     `tests/test_reference_coverage.py` renderiza esta página e compara os âncoras emitidos com o `__all__` de cada módulo público, então um símbolo novo que não chegue aqui quebra o `make check`.
 
-    Três grupos ficam de fora **de propósito**, cada um com o motivo registrado no allowlist do teste: os aliases BR pré-0.76 sem sufixo `Field` (`CPF`, `CNPJ`, `CEP`, `CPFOrCNPJ`, `PhoneBR`) e `AsyncBrokerManager`, todos **deprecados** — documentá-los convidaria ao uso; e `Classifier` / `Detector` / `Segmenter`, que são reexports do `ort-vision-sdk` e pertencem à documentação daquele projeto.
+    Três grupos ficam de fora **de propósito**, cada um com o motivo registrado no allowlist do teste: os aliases BR pré-0.76 sem sufixo `Field` (`CPF`, `CNPJ`, `CEP`, `CPFOrCNPJ`, `PhoneBR`) e `AsyncBrokerManager`, todos **deprecados** — documentá-los convidaria ao uso; e `Classifier` / `Detector` / `Segmenter` / `DetectClassify` / `DetectClassifyResults` / `fuse_detect_classify`, que são reexports do `ort-vision-sdk` e pertencem à documentação daquele projeto. Os schemas e mappers que o SDK escreve em volta deles — `DetectClassifySchema`, `to_detect_classify_schemas` — são nossos e estão documentados aqui.
 
 !!! tip "Buscando"
     Use a barra de busca no topo da página (ou pressione `/`) para pular para um símbolo pelo nome. O índice full-text inclui as docstrings, então buscas como "soft delete" ou "request id" caem na classe certa.

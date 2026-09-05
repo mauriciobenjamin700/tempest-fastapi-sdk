@@ -49,6 +49,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[mfa]` | `pyotp` | `TOTPHelper` + endpoints MFA/2FA (TOTP) do fluxo bundled de auth |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |
 | `[modelops]` | `psutil`, `nvidia-ml-py` | benchmark de qualquer callable: latência, RAM, GPU e energia (`benchmark`, `NvmlPowerSampler`, `RaplEnergySampler`) |
+| `[modelops-compose]` | `ort-vision-sdk[compose]` | fundir um detector e um classificador num único `.onnx`: `fuse_detect_classify`. Rodar o grafo fundido é `[vision]` (`DetectClassify`), que não puxa `onnx` |
 | `[modelops-onnx]` | `onnx`, `onnxruntime` | análise estática, benchmark ONNX, `.onnx` → `.ort`, otimização de grafo e quantização — de grafos crus (`analyze_onnx`, `benchmark_onnx`, `export_onnx_to_ort`, `quantize_onnx_dynamic`) e de exports transformers (`optimize_hf_onnx`, `quantize_hf_onnx`) |
 | `[modelops-sklearn]` | `skl2onnx` | exportar modelos scikit-learn para ONNX (borda): `export_sklearn_to_onnx`, `verify_sklearn_onnx`, `edge_bundle` |
 | `[otel]` | `opentelemetry-sdk`, exporter OTLP + instrumentações FastAPI/SQLAlchemy/httpx | instrumentação OpenTelemetry via `setup_tracing` |

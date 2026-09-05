@@ -29,6 +29,9 @@ from tempest_fastapi_sdk.vision.mapping import (
     to_classification_schema as to_classification_schema,
 )
 from tempest_fastapi_sdk.vision.mapping import (
+    to_detect_classify_schemas as to_detect_classify_schemas,
+)
+from tempest_fastapi_sdk.vision.mapping import (
     to_detection_schemas as to_detection_schemas,
 )
 from tempest_fastapi_sdk.vision.mapping import (
@@ -45,6 +48,9 @@ from tempest_fastapi_sdk.vision.schemas import (
     ClassProbabilitySchema as ClassProbabilitySchema,
 )
 from tempest_fastapi_sdk.vision.schemas import (
+    DetectClassifySchema as DetectClassifySchema,
+)
+from tempest_fastapi_sdk.vision.schemas import (
     DetectionSchema as DetectionSchema,
 )
 from tempest_fastapi_sdk.vision.schemas import (
@@ -56,13 +62,27 @@ if TYPE_CHECKING:
         Classifier as Classifier,
     )
     from ort_vision_sdk import (
+        DetectClassify as DetectClassify,
+    )
+    from ort_vision_sdk import (
+        DetectClassifyResults as DetectClassifyResults,
+    )
+    from ort_vision_sdk import (
         Detector as Detector,
     )
     from ort_vision_sdk import (
         Segmenter as Segmenter,
     )
 
-_LAZY_EXPORTS: frozenset[str] = frozenset({"Classifier", "Detector", "Segmenter"})
+_LAZY_EXPORTS: frozenset[str] = frozenset(
+    {
+        "Classifier",
+        "DetectClassify",
+        "DetectClassifyResults",
+        "Detector",
+        "Segmenter",
+    }
+)
 
 
 def __getattr__(name: str) -> Any:
@@ -72,8 +92,8 @@ def __getattr__(name: str) -> Any:
         name (str): The attribute requested.
 
     Returns:
-        Any: The ``ort_vision_sdk`` class when ``name`` is one of
-        ``Classifier`` / ``Detector`` / ``Segmenter``.
+        Any: The ``ort_vision_sdk`` symbol when ``name`` is one of
+        :data:`_LAZY_EXPORTS`.
 
     Raises:
         ImportError: When the ``[vision]`` extra is not installed.
@@ -96,12 +116,16 @@ __all__: list[str] = [
     "ClassProbabilitySchema",
     "ClassificationSchema",
     "Classifier",
+    "DetectClassify",
+    "DetectClassifyResults",
+    "DetectClassifySchema",
     "DetectionSchema",
     "Detector",
     "SegmentationSchema",
     "Segmenter",
     "make_vision_router",
     "to_classification_schema",
+    "to_detect_classify_schemas",
     "to_detection_schemas",
     "to_segmentation_schemas",
 ]

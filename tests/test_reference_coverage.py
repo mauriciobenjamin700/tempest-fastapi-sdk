@@ -52,6 +52,15 @@ ALLOWED_ABSENT: dict[str, str] = {
     "PhoneBR": "deprecated pre-0.76 alias of PhoneBRField",
     "AsyncBrokerManager": "deprecated alias of AsyncQueueManager (v0.94.0 rename)",
     "Classifier": "re-export of an ort-vision-sdk class; documented by that project",
+    "DetectClassify": (
+        "re-export of an ort-vision-sdk class; documented by that project"
+    ),
+    "DetectClassifyResults": (
+        "re-export of an ort-vision-sdk class; documented by that project"
+    ),
+    "fuse_detect_classify": (
+        "lazy re-export of ort_vision_sdk.compose; documented by that project"
+    ),
     "Detector": "re-export of an ort-vision-sdk class; documented by that project",
     "Segmenter": "re-export of an ort-vision-sdk class; documented by that project",
     "__version__": "module attribute, not part of the callable API surface",
