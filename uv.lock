@@ -6464,6 +6464,8 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/bc/67/dbcb4928a9d3269f32582ad590b25edc80ff862f52a0854a07688e2c9cf4/sherpa_onnx-1.13.7-cp313-cp313-win32.whl", hash = "sha256:68183b11eda2a866231b9e9aaa35b77222918edef5848a4ff6add6d89f523f6d", size = 1963507, upload-time = "2026-09-01T06:32:41.708Z" },
     { url = "https://files.pythonhosted.org/packages/e9/cf/29c88ff25004b8ab6e6f93cd3a27cc259ab7dcb82b6a842e166b5ca85311/sherpa_onnx-1.13.7-cp313-cp313-win_amd64.whl", hash = "sha256:9fb46a9b0844b2636b099dfa5ef26513fa0b91df28cd710a97d1cda2c9344fec", size = 2282759, upload-time = "2026-09-01T06:43:39.262Z" },
     { url = "https://files.pythonhosted.org/packages/ef/e8/20ced5f876271bbaf2e3bbe2a884265a4e31e382433ec6a3975e8ef0d082/sherpa_onnx-1.13.7-cp313-cp313-win_arm64.whl", hash = "sha256:c2e9c56d453bc804592d65834504e376a4fa90488adba042becf5213cf226328", size = 2241664, upload-time = "2026-09-01T05:56:22.598Z" },
+    { url = "https://files.pythonhosted.org/packages/28/45/33e7fa218836035bf7ceda9035a3aaf1b34c5e31241015a72d970eea512e/sherpa_onnx-1.13.7-cp314-cp314-android_24_arm64_v8a.whl", hash = "sha256:2053956c4575b6ce4621f54ff0af6fae595d7df10691032c79d271b089988ff5", size = 2355187, upload-time = "2026-09-04T14:54:04.717Z" },
+    { url = "https://files.pythonhosted.org/packages/74/17/b99ccbb0fdb4cb1e4dedef03ec4b8ecbbd909b5d687f7407105dd28aabf7/sherpa_onnx-1.13.7-cp314-cp314-android_24_x86_64.whl", hash = "sha256:26293b1db9a2772f69bd286cfe37551d0bd0437c1f1382e98cfe7d0c4435d331", size = 2577480, upload-time = "2026-09-05T16:43:39.794Z" },
     { url = "https://files.pythonhosted.org/packages/0e/03/c9b41e31bb4ccb64b31618eca1ab857331a9a6285a3ae31697b348556cd3/sherpa_onnx-1.13.7-cp314-cp314-linux_armv7l.whl", hash = "sha256:026917d88fde36d5d86661e4a61c968dd741f43a96773ad742da13bffd030471", size = 12002502, upload-time = "2026-09-01T07:18:23.944Z" },
     { url = "https://files.pythonhosted.org/packages/80/22/e98d505f561c4cf354e5d411d78f6037f23a311fd782836b741f3061a3a4/sherpa_onnx-1.13.7-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:aa04b2ecf7563f86e8a34e3e2666fc0b480618ccca11c6d629dcb31323c1d041", size = 4446936, upload-time = "2026-09-01T07:03:40.145Z" },
     { url = "https://files.pythonhosted.org/packages/47/8a/f7596357d11117c31b2c044a65669e67225d4b0436ebe8df05f8e6835386/sherpa_onnx-1.13.7-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:3f58d2c3ece36b908cfb070ebe1b23c7bfaadd78a0ce205b412349c53375a4dd", size = 2343524, upload-time = "2026-09-01T06:20:31.814Z" },
@@ -6480,6 +6482,8 @@ name = "sherpa-onnx-core"
 version = "1.13.7"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
+    { url = "https://files.pythonhosted.org/packages/37/ce/16f5cebe925b2e7b08821ed966969382b2bc37a918de2ad402e8ab8a6eae/sherpa_onnx_core-1.13.7-py3-none-android_24_arm64_v8a.whl", hash = "sha256:e11c2dca5526ff473bd5cf94f40da7ff7075ec4c44f3464cc1bceffdc6f5e487", size = 9710257, upload-time = "2026-09-04T14:54:00.278Z" },
+    { url = "https://files.pythonhosted.org/packages/8a/6f/e1aef05ee2010dffb389fcbdc96fe849c8dab1996f7b6ec7abfafde40b95/sherpa_onnx_core-1.13.7-py3-none-android_24_x86_64.whl", hash = "sha256:e1e6333ecde50c69b8a43feff6eedf1033ec2a3fe58009506572bd717fc78e42", size = 10863620, upload-time = "2026-09-05T16:43:44.314Z" },
     { url = "https://files.pythonhosted.org/packages/d0/04/0348c408b99ab5bd490f70cfb5e40eb90c1ad269a17380400f9f345bd530/sherpa_onnx_core-1.13.7-py3-none-macosx_10_15_universal2.whl", hash = "sha256:d0131f93e8fabca773701e28301d81dff4f7445ba59e280fca319c585bac850a", size = 20329436, upload-time = "2026-09-01T05:33:47.588Z" },
     { url = "https://files.pythonhosted.org/packages/ca/08/49bcf63aa98d8d94cc234398d7670447b3562796662f88dc3f28e43a2f80/sherpa_onnx_core-1.13.7-py3-none-macosx_10_15_x86_64.whl", hash = "sha256:c53a930543f3a0f1063956fd3d01081acd6cb66f46c9b1f544b4393d6cbc1893", size = 10835919, upload-time = "2026-09-01T05:04:07.52Z" },
     { url = "https://files.pythonhosted.org/packages/26/0b/e03cdda14781c32f1f84b86c8307884a1a0afe89c563def821a9a2b466e1/sherpa_onnx_core-1.13.7-py3-none-macosx_11_0_arm64.whl", hash = "sha256:b191e79d4952199bd11ce05c5b29c5efb08ed43a5d96839202e8ab603ab96278", size = 9523627, upload-time = "2026-09-01T05:13:35.625Z" },
@@ -6732,7 +6736,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.284.0"
+version = "0.285.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
