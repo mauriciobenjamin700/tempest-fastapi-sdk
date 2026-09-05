@@ -41,7 +41,12 @@ class TestFuseDetectClassify:
     """The re-export resolves to upstream, not to a local restatement."""
 
     def test_resolves_to_upstream(self) -> None:
-        """A wrapper here would drift from an eighteen-argument signature."""
+        """A wrapper here would drift from a signature that keeps changing.
+
+        Measured: 18 keyword arguments at ``ort-vision-sdk`` 0.8.0, 19 at
+        0.9.0. Asserting a count here would encode the drift instead of
+        catching it, so this pins the identity of the object instead.
+        """
         assert modelops.fuse_detect_classify.__module__.startswith("ort_vision_sdk")
 
     def test_signature_is_upstreams_own(self) -> None:

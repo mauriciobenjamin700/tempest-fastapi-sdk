@@ -1515,10 +1515,12 @@ recipe, with `DetectClassify`.
 !!! tip "It is a re-export, not a wrapper"
     `fuse_detect_classify` is `ort-vision-sdk`'s own symbol, re-exported
     lazily — touching the name imports the library and raises an
-    `ImportError` naming the extra when it is missing. The function takes
-    **18** keyword arguments; a wrapper restating them would drift from
-    upstream the first time one is added, so the signature you call is
-    theirs.
+    `ImportError` naming the extra when it is missing. Its keyword
+    arguments are **not a fixed set**: measured, 18 at `ort-vision-sdk`
+    0.8.0 (the floor we declare) and 19 at 0.9.0, `normalization` having
+    been added in between. A wrapper written against the floor would have
+    silently dropped that argument for anyone on the newer release — so
+    the signature you call is always theirs.
 
 ## Shipping to the edge: `.onnx` to `.ort`
 

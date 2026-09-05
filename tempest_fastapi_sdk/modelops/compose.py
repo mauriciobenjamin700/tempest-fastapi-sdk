@@ -27,9 +27,16 @@ The bridge that closes it is ``RoiAlign``, which is what
 The implementation is `ort-vision-sdk
 <https://pypi.org/project/ort-vision-sdk/>`_, re-exported **lazily**:
 touching the name imports it and raises an ``ImportError`` naming the
-extra when it is missing. It is re-exported rather than wrapped on
-purpose — the function takes eighteen keyword arguments, and a wrapper
-that restated them would drift from upstream the first time one is added.
+extra when it is missing.
+
+**It is re-exported rather than wrapped, and the reason is measurable.**
+The function's keyword arguments are not a fixed set: at
+``ort-vision-sdk`` 0.8.0 — the floor this SDK declares — there are 18,
+and at 0.9.0 there are 19, ``normalization`` having been added in
+between. A facade written against the floor would have silently dropped
+that argument for every consumer who installed the newer release, and
+nothing would have reported it. Re-exporting means the signature you
+call is always upstream's own.
 """
 
 from __future__ import annotations

@@ -1509,9 +1509,12 @@ com `DetectClassify`.
 !!! tip "É re-export, não wrapper"
     `fuse_detect_classify` é o símbolo do `ort-vision-sdk`, re-exportado
     lazy — tocar o nome importa a lib e levanta um `ImportError` nomeando
-    o extra quando ela falta. A função tem **18** argumentos nomeados; um
-    wrapper que os repetisse driftaria do upstream no primeiro que fosse
-    adicionado, então a assinatura que você chama é a de lá.
+    o extra quando ela falta. A lista de argumentos nomeados **não é
+    fixa**: medido, são 18 no `ort-vision-sdk` 0.8.0 (o piso que
+    declaramos) e 19 na 0.9.0, com `normalization` entrando no meio. Um
+    wrapper escrito contra o piso teria engolido esse argumento em
+    silêncio para quem instalasse a versão nova — por isso a assinatura
+    que você chama é sempre a de lá.
 
 ## Levar pro edge: `.onnx` para `.ort`
 

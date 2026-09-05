@@ -47,6 +47,50 @@ Duas regras que saem daqui:
   `GITHUB_ACTIONS`; é a mesma família, e o primeiro conserto não
   generalizou.
 
+## Medir no lock não é medir no piso, de novo (v0.286.0)
+
+A regra já estava no `CLAUDE.md` desde a v0.243.0/v0.244.0, e mordeu
+mesmo assim — porque desta vez o número parecia trivial demais para
+merecer uma segunda medição.
+
+Ao justificar por que `fuse_detect_classify` é re-export e não wrapper,
+escrevi que a função tem **18 argumentos nomeados**. Medido no `.venv` do
+worktree, verdade. Medido numa venv limpa instalando a wheel construída:
+
+```console
+$ ./ort080/bin/python -c "...len(signature(f).parameters)"
+ort-vision-sdk 0.8.0 -> 18 parametros
+$ ./composecheck/bin/python -c "...len(signature(f).parameters)"
+ort-vision-sdk 0.9.0 -> 19 parametros
+```
+
+`normalization` entrou entre as duas. O lock do worktree resolvia 0.8.0;
+o consumidor que instala hoje pega 0.9.0.
+
+**A ironia é o conteúdo da lição.** A frase errada era a justificativa
+para não escrever wrapper — e o argumento estava certo *por um motivo
+mais forte do que eu tinha escrito*. Um wrapper contra 0.8.0 teria
+engolido `normalization` em silêncio para todo mundo na 0.9.0. Eu tratei
+a contagem como propriedade estável da função, que é exatamente a
+suposição que o desenho recusa.
+
+Duas consequências práticas:
+
+- **Contagem de superfície de terceiro é taxa, não propriedade.** Vai com
+  a versão junto, ou não vai. `18` sozinho é uma afirmação sem escopo;
+  `18 na 0.8.0, 19 na 0.9.0` é a informação de verdade, e explica melhor
+  o desenho.
+- **Teste não deve fixar a contagem.** `test_signature_is_upstreams_own`
+  compara `inspect.signature(nosso) == inspect.signature(upstream)`, que
+  passa nas duas versões e falharia num wrapper. Um `assert len(...) ==
+  18` teria codificado o drift em vez de pegá-lo.
+
+E o método que achou: **`make check` não acha isto**, porque roda no
+`.venv` do worktree. Quem achou foi instalar a wheel construída numa venv
+vazia, que é o passo que a regra de release já manda fazer *depois* do
+push. Fazê-lo antes custa um minuto e pega a classe inteira — foi o mesmo
+passo que o gate de release já manda fazer para empacotamento.
+
 ## O mesmo nome de argumento, dois comportamentos (v0.286.0)
 
 `exempt_paths` existia em cinco middlewares. Era **igualdade** em três

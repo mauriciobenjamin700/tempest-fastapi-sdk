@@ -93,9 +93,15 @@ dizer duas coisas.
   exatamente `onnx>=1.16.0`, e `ort-vision-sdk` não tem upper bound
   nenhum.
 
-  `fuse_detect_classify` é **re-export lazy**, não wrapper: a função tem
-  18 argumentos nomeados, e um wrapper que os repetisse driftaria do
-  upstream no primeiro que fosse adicionado.
+  `fuse_detect_classify` é **re-export lazy**, não wrapper, e a razão foi
+  medida: a lista de argumentos nomeados **não é fixa**. São 18 no
+  `ort-vision-sdk` 0.8.0 — o piso que declaramos — e 19 na 0.9.0, que é
+  o que uma instalação nova resolve; `normalization` entrou entre as
+  duas. Um wrapper escrito contra o piso teria engolido esse argumento
+  em silêncio, e nenhum teste reportaria.
+
+  Achado pela instalação limpa da wheel, não pelo lock: no `.venv` do
+  worktree a resolução dava 0.8.0 e a contagem fechava em 18.
 
 - **A anotação `x-mp-sdk-coverage` do Mercado Pago entra como terceira
   opinião.** (`#259`) `spec3.sdk.yaml` — a variante anotada do documento
