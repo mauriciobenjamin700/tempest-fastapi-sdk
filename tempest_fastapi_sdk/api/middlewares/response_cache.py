@@ -44,6 +44,8 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
+from tempest_fastapi_sdk.api.middlewares._exempt import PathExemption
+from tempest_fastapi_sdk.api.middlewares._streaming import is_unbounded_stream
 from tempest_fastapi_sdk.api.middlewares.idempotency import CachedResponse
 
 _ETAG_HEADER = "etag"
@@ -301,6 +303,7 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
         cacheable_status: tuple[int, ...] = (200,),
         vary: tuple[str, ...] = (),
         exempt_paths: tuple[str, ...] = (),
+        exempt_prefixes: tuple[str, ...] = (),
         cacheable: Callable[[Request], bool] | None = None,
         cache_credentialed: bool = False,
     ) -> None:
@@ -329,6 +332,9 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
                 and emitted as ``Vary``.
             exempt_paths (tuple[str, ...]): Exact paths that bypass the
                 middleware.
+            exempt_prefixes (tuple[str, ...]): Path **prefixes** that bypass
+                the middleware. ``("/api/sse",)`` covers ``/api/sse/stream``.
+                Matching is textual, so it also covers ``/api/sse-legacy``.
             cacheable (Callable[[Request], bool] | None): Optional predicate;
                 when it returns ``False`` the request bypasses caching.
             cache_credentialed (bool): Whether a request carrying an
@@ -358,7 +364,9 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
         self._methods = frozenset(methods)
         self._cacheable_status = frozenset(cacheable_status)
         self._vary = tuple(vary)
-        self._exempt = frozenset(exempt_paths)
+        self._exempt: PathExemption = PathExemption(
+            paths=exempt_paths, prefixes=exempt_prefixes
+        )
         self._cacheable = cacheable
         self._cache_credentialed = cache_credentialed
 
@@ -426,7 +434,9 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
             Response: A ``304`` when the ETag matches, the cached body on a
                 hit, otherwise the handler's own response.
         """
-        if request.method not in self._methods or request.url.path in self._exempt:
+        if request.method not in self._methods or self._exempt.matches(
+            request.url.path
+        ):
             return await call_next(request)
         if self._cacheable is not None and not self._cacheable(request):
             return await call_next(request)
@@ -459,6 +469,8 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
         if response.status_code not in self._cacheable_status or _skip_caching(
             response
         ):
+            return response
+        if is_unbounded_stream(response):
             return response
 
         body = await _drain(response)

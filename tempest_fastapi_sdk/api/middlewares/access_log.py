@@ -44,6 +44,7 @@ from collections.abc import Callable
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from tempest_fastapi_sdk.api.middlewares._exempt import PathExemption
 from tempest_fastapi_sdk.core.context import get_request_id
 from tempest_fastapi_sdk.utils.client_ip import get_client_ip_from_scope
 
@@ -94,6 +95,7 @@ class AccessLogMiddleware:
         logger_name: str = "tempest.access",
         level: int = logging.INFO,
         exempt_paths: tuple[str, ...] = (),
+        exempt_prefixes: tuple[str, ...] = (),
         redact: Callable[[str], str] | None = None,
         trusted_ip_header: str | None = None,
         request_id_header: str = "X-Request-ID",
@@ -108,14 +110,20 @@ class AccessLogMiddleware:
                 its logging.
             level (int): Level for responses below ``500``. Server errors
                 are always logged at ``logging.ERROR``.
-            exempt_paths (tuple[str, ...]): Path **prefixes** that produce
-                no line at all. The case this exists for is a streaming
-                endpoint: an SSE connection held open for an hour would
-                otherwise be logged once, on close, as a request that took
-                an hour — and those live under a prefix
-                (``("/api/sse",)`` covers ``/api/sse/stream``), which is
-                why this matches by prefix where
-                :class:`RateLimitMiddleware` matches exactly.
+            exempt_paths (tuple[str, ...]): Exact paths that produce no
+                line at all.
+            exempt_prefixes (tuple[str, ...]): Path **prefixes** that bypass
+                the middleware. ``("/api/sse",)`` covers ``/api/sse/stream``.
+                Matching is textual, so it also covers
+                ``/api/sse-legacy``. The case this exists for is a
+                streaming endpoint: an SSE connection held open for an hour
+                would otherwise be logged once, on close, as a request that
+                took an hour, and those live under a prefix.
+
+                Until 0.286.0 ``exempt_paths`` matched by prefix here and by
+                equality in the other four middlewares. It is equality
+                everywhere now; a prefix exemption moves to
+                ``exempt_prefixes``.
             redact (Callable[[str], str] | None): Applied to the path and
                 to the query string, separately, before either reaches the
                 record. ``None`` redacts nothing. Use it whenever a secret
@@ -137,7 +145,9 @@ class AccessLogMiddleware:
         self.app: ASGIApp = app
         self.logger: logging.Logger = logging.getLogger(logger_name)
         self.level: int = level
-        self._exempt: tuple[str, ...] = exempt_paths
+        self._exempt: PathExemption = PathExemption(
+            paths=exempt_paths, prefixes=exempt_prefixes
+        )
         self._redact: Callable[[str], str] | None = redact
         self._trusted_ip_header: str | None = trusted_ip_header
         self._request_id_header: bytes = request_id_header.lower().encode("latin-1")
@@ -234,7 +244,7 @@ class AccessLogMiddleware:
             return
 
         path: str = scope.get("path", "")
-        if any(path.startswith(prefix) for prefix in self._exempt):
+        if self._exempt.matches(path):
             await self.app(scope, receive, send)
             return
 

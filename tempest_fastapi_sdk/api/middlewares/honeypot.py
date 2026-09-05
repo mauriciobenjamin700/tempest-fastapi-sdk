@@ -31,6 +31,7 @@ from typing import Protocol, runtime_checkable
 
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from tempest_fastapi_sdk.api.middlewares._exempt import PathExemption
 from tempest_fastapi_sdk.utils.client_ip import get_client_ip_from_scope
 
 logger = logging.getLogger(__name__)
@@ -334,6 +335,7 @@ class HoneypotBanMiddleware:
         ban_seconds: int = 86_400,
         trusted_ip_header: str | None = None,
         exempt_paths: tuple[str, ...] = (),
+        exempt_prefixes: tuple[str, ...] = (),
         status_code: int = 403,
     ) -> None:
         """Initialize.
@@ -353,9 +355,16 @@ class HoneypotBanMiddleware:
                 the client IP (e.g. ``"x-real-ip"``). ``None`` uses the
                 transport peer. Never point this at a bare
                 ``X-Forwarded-For``.
-            exempt_paths (tuple[str, ...]): Path prefixes checked before
-                the patterns, for the service that legitimately serves
-                something the curated list flags.
+            exempt_paths (tuple[str, ...]): Exact paths checked before the
+                patterns, for the service that legitimately serves something
+                the curated list flags.
+            exempt_prefixes (tuple[str, ...]): Path **prefixes** that bypass
+                the middleware. ``("/api/sse",)`` covers ``/api/sse/stream``.
+                Matching is textual, so it also covers ``/api/sse-legacy``.
+
+                Until 0.286.0 ``exempt_paths`` matched by prefix here. It is
+                equality now; a prefix exemption moves to
+                ``exempt_prefixes``.
             status_code (int): Status returned to a banned or offending
                 caller.
         """
@@ -364,7 +373,9 @@ class HoneypotBanMiddleware:
         self.patterns: tuple[re.Pattern[str], ...] = patterns
         self.ban_seconds: int = ban_seconds
         self._trusted_ip_header: str | None = trusted_ip_header
-        self._exempt: tuple[str, ...] = exempt_paths
+        self._exempt: PathExemption = PathExemption(
+            paths=exempt_paths, prefixes=exempt_prefixes
+        )
         self._status_code: int = status_code
 
     def matches(self, target: str) -> bool:
@@ -463,7 +474,7 @@ class HoneypotBanMiddleware:
             return
 
         path: str = scope.get("path", "")
-        if any(path.startswith(prefix) for prefix in self._exempt):
+        if self._exempt.matches(path):
             await self.app(scope, receive, send)
             return
 

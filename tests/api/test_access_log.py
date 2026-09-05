@@ -152,8 +152,13 @@ class TestAccessLogExemptions:
         self,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """``("/stream",)`` covers ``/stream/events``."""
-        app = build_app(exempt_paths=("/stream",))
+        """``exempt_prefixes=("/stream",)`` covers ``/stream/events``.
+
+        Until 0.286.0 this was spelled ``exempt_paths``, which matched by
+        prefix here and by equality in four sibling middlewares. The
+        prefix meaning kept its behaviour and got its own name.
+        """
+        app = build_app(exempt_prefixes=("/stream",))
         with (
             caplog.at_level(logging.INFO, logger=LOGGER_NAME),
             TestClient(app) as client,

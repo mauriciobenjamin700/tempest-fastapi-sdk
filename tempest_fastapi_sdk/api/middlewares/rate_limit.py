@@ -37,6 +37,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
+from tempest_fastapi_sdk.api.middlewares._exempt import PathExemption
 from tempest_fastapi_sdk.api.middlewares.quota import (
     MemoryQuotaStore,
     QuotaStore,
@@ -566,6 +567,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         policy: RateLimitPolicy | None = None,
         quota_store: QuotaStore | None = None,
         exempt_paths: tuple[str, ...] = (),
+        exempt_prefixes: tuple[str, ...] = (),
         retry_after_header: bool = True,
         limit_headers: bool = True,
         error_message: str = "Too many requests",
@@ -606,8 +608,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 pass
                 :class:`~tempest_fastapi_sdk.api.middlewares.quota.RedisQuotaStore`
                 for multi-replica deploys. Ignored without ``policy``.
-            exempt_paths (tuple[str, ...]): Paths to skip entirely
+            exempt_paths (tuple[str, ...]): Exact paths to skip entirely
                 (e.g. ``("/health/liveness", "/health/readiness")``).
+            exempt_prefixes (tuple[str, ...]): Path **prefixes** that bypass
+                the middleware. ``("/api/sse",)`` covers ``/api/sse/stream``.
+                Matching is textual, so it also covers
+                ``/api/sse-legacy``. Prefer ``exempt_paths`` here: an
+                exemption is a hole in the rate limit, and a prefix
+                makes a hole larger than the route you meant to name.
             retry_after_header (bool): Whether to add a
                 ``Retry-After`` header on 429 responses.
             limit_headers (bool): Whether to advertise the limit with
@@ -654,7 +662,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._policy: RateLimitPolicy | None = policy
         self._store: RateLimitStore = store or MemoryRateLimitStore()
         self._quota_store: QuotaStore = quota_store or MemoryQuotaStore()
-        self._exempt: frozenset[str] = frozenset(exempt_paths)
+        self._exempt: PathExemption = PathExemption(
+            paths=exempt_paths, prefixes=exempt_prefixes
+        )
         self._retry_after_header: bool = retry_after_header
         self._limit_headers: bool = limit_headers
         self._error_message: str = error_message
@@ -675,7 +685,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             Response: The downstream response, or a 429 when the limit
             is exceeded.
         """
-        if request.url.path in self._exempt:
+        if self._exempt.matches(request.url.path):
             exempt_response: Response = await call_next(request)
             return exempt_response
 

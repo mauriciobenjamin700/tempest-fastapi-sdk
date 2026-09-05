@@ -56,6 +56,8 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
+from tempest_fastapi_sdk.api.middlewares._streaming import is_unbounded_stream
+
 
 class _RedisLike(Protocol):
     """Minimal async-Redis surface used by :class:`RedisIdempotencyStore`.
@@ -487,6 +489,8 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
             )
 
         response = await call_next(request)
+        if is_unbounded_stream(response):
+            return response
 
         body_chunks: list[bytes] = []
         async for chunk in response.body_iterator:  # type: ignore[attr-defined]

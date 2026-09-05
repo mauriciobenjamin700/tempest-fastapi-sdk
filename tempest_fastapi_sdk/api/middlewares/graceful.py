@@ -58,6 +58,8 @@ from typing import TYPE_CHECKING, Any
 
 from starlette.responses import JSONResponse
 
+from tempest_fastapi_sdk.api.middlewares._exempt import PathExemption
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
 
@@ -88,6 +90,7 @@ class GracefulShutdownMiddleware:
         drain_timeout: float = 30.0,
         retry_after: int = 5,
         exempt_paths: Sequence[str] = (),
+        exempt_prefixes: Sequence[str] = (),
     ) -> None:
         """Initialize the helper.
 
@@ -96,14 +99,20 @@ class GracefulShutdownMiddleware:
                 requests in :meth:`wait_drained`. Defaults to ``30.0``.
             retry_after (int): ``Retry-After`` seconds advertised on the
                 503 served while draining. Defaults to ``5``.
-            exempt_paths (Sequence[str]): Paths that keep being served
-                during drain. Usually unnecessary — letting health
+            exempt_paths (Sequence[str]): Exact paths that keep being
+                served during drain. Usually unnecessary — letting health
                 endpoints return 503 is what makes a load balancer
                 deregister the instance. Defaults to none.
+            exempt_prefixes (Sequence[str]): Path **prefixes** that keep
+                being served during drain. ``("/api/sse",)`` covers
+                ``/api/sse/stream``. Matching is textual, so it also covers
+                ``/api/sse-legacy``.
         """
         self.drain_timeout: float = drain_timeout
         self.retry_after: int = retry_after
-        self._exempt: frozenset[str] = frozenset(exempt_paths)
+        self._exempt: PathExemption = PathExemption(
+            paths=exempt_paths, prefixes=exempt_prefixes
+        )
         self._in_flight: int = 0
         self._draining: bool = False
         self._idle: asyncio.Event = asyncio.Event()
@@ -146,7 +155,7 @@ class GracefulShutdownMiddleware:
             Response: The downstream response, or a ``503`` while
             draining.
         """
-        if self._draining and request.url.path not in self._exempt:
+        if self._draining and not self._exempt.matches(request.url.path):
             return JSONResponse(
                 {"detail": "Server is shutting down."},
                 status_code=503,

@@ -963,6 +963,69 @@ Só métodos seguros (`GET`/`HEAD`) e respostas de sucesso (`200` por padrão) s
 !!! tip "Chave de cache"
     A chave é `método|path|query` mais os headers listados em `vary=`. Passe `cacheable=<predicado>` pra excluir requisições específicas, ou `exempt_paths=(...)` pra pular paths exatos. O store espelha o do idempotency (memória ou Redis com client cru), então compõe com o mesmo Redis do serviço.
 
+### Stream nunca é drenado (e `exempt_paths` é igualdade)
+
+Cachear significa **ler o corpo até o fim** para hashear e guardar. Num
+`text/event-stream` o corpo só acaba quando o cliente desconecta, então
+até a v0.285.0 uma rota SSE atrás deste middleware nunca respondia: a
+requisição pendurava até o `proxy_read_timeout` do nginx e virava `504`.
+
+Desde a v0.286.0 o middleware **passa o stream adiante intacto**. Não há
+o que configurar: uma resposta com `Content-Type: text/event-stream`, ou
+sem `Content-Length`, não é cacheada nem ganha `ETag`.
+
+!!! warning "O mesmo valia para `IdempotencyMiddleware`"
+    Ele drena o corpo para poder reproduzir a resposta num retry, e não
+    tinha lista de isenção nenhuma. Um `POST` que devolve stream — como o
+    `/generate/stream` do `make_genai_router` — pendurava do mesmo jeito
+    quando o cliente mandava `Idempotency-Key`. Também passa adiante
+    agora: um stream não é reproduzível a partir de store nenhum.
+
+**`exempt_paths` mudou de significado em dois middlewares.** Ele era
+igualdade em `ResponseCacheMiddleware`, `RateLimitMiddleware` e
+`GracefulShutdownMiddleware`, e prefixo em `AccessLogMiddleware` e
+`HoneypotBanMiddleware` — o mesmo nome de argumento, dois comportamentos.
+Um serviço que isentava sua rota SSE dos dois passava a **mesma tupla**
+para os dois e ganhava isenção num e nada no outro.
+
+Agora `exempt_paths` é **igualdade nos cinco**, e prefixo tem nome
+próprio:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import AccessLogMiddleware, ResponseCacheMiddleware
+
+
+def create_app() -> FastAPI:
+    """Build an app whose SSE subtree is exempt from both middlewares."""
+    app: FastAPI = FastAPI()
+    app.add_middleware(
+        ResponseCacheMiddleware,
+        ttl_seconds=30,
+        exempt_paths=("/health/liveness",),      # este path, e só ele
+        exempt_prefixes=("/api/sse",),           # e tudo sob /api/sse
+    )
+    app.add_middleware(
+        AccessLogMiddleware,
+        exempt_prefixes=("/api/sse",),           # antes: exempt_paths
+    )
+    return app
+```
+
+!!! danger "Migração: `exempt_paths` de prefixo vira `exempt_prefixes`"
+    Só `AccessLogMiddleware` e `HoneypotBanMiddleware` mudam de
+    comportamento. Se você passava `exempt_paths=("/api/sse",)` a um
+    deles contando que cobrisse `/api/sse/stream`, **renomeie para
+    `exempt_prefixes`** — caso contrário a isenção deixa de valer para as
+    rotas filhas.
+
+    O alargamento contrário — tornar tudo prefixo — foi recusado de
+    propósito: em `RateLimitMiddleware` uma isenção é um **buraco no rate
+    limit**, e `exempt_paths=("/health",)` viraria isenção de
+    `/health-admin` também, sem ninguém pedir.
+
+
 ### Requisição autenticada não divide entrada de cache
 
 Repare no que a chave **não** tem: quem pediu. Se `GET /api/me` de duas pessoas cai na mesma chave, a primeira resposta guardada é servida pra segunda — e pra qualquer anônimo que peça o mesmo path.

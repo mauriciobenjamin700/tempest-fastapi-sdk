@@ -171,8 +171,13 @@ class TestHoneypotBanning:
             assert client.get("/.env").status_code == 404
 
     def test_exempt_prefix_wins_over_the_pattern(self) -> None:
-        """The service that legitimately serves a flagged path opts out."""
-        app = build_app(MemoryBanStore(), exempt_paths=("/wp-admin",))
+        """The service that legitimately serves a flagged path opts out.
+
+        Spelled ``exempt_prefixes`` since 0.286.0: ``exempt_paths`` is
+        equality in every middleware now, and ``/wp-admin`` must cover
+        ``/wp-admin/``.
+        """
+        app = build_app(MemoryBanStore(), exempt_prefixes=("/wp-admin",))
         with TestClient(app) as client:
             assert client.get("/wp-admin/").status_code == 200
             assert client.get("/api/users").status_code == 200
