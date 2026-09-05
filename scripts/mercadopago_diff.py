@@ -50,13 +50,20 @@ import io
 import re
 import sys
 import tarfile
+import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import yaml
-from mercadopago_overlay import PROBE_DATE, PROBED_OPERATIONS
+from mercadopago_overlay import (
+    PROBE_DATE,
+    PROBED_OPERATIONS,
+    SDK_COVERAGE_DISAGREEMENTS,
+    SDK_COVERAGE_URL,
+    normalise,
+)
 from mercadopago_overlay import apply as apply_overlay
 
 REPO_ROOT: Path = Path(__file__).resolve().parent.parent
@@ -83,6 +90,22 @@ HTTP_METHODS: frozenset[str] = frozenset(
 )
 """Keys under a path item that denote an operation."""
 
+READ_TIMEOUT_SECONDS: float = 30.0
+"""Deadline for each fetch, so an unreachable host names itself.
+
+This script reads three things over the network — PyPI metadata, the SDK
+sdist and the provider's annotated spec — and without a deadline a host
+that never answers turns the whole check into silence.
+
+**The deadline is not a guarantee.** ``urlopen``'s timeout is a socket
+timeout, and a sandboxed network can delay the connection somewhere it
+does not reach. Measured on one such host, ``socket.create_connection``
+with ``timeout=8`` returned successfully after **32.1 s**, and ``curl``
+answered the same URL in 0.5 s. On a host like that this check is slow
+rather than fast-failing, and running it is a deliberate act with network
+access — nothing else in the gate needs one.
+"""
+
 
 def _read(url: str) -> bytes:
     """Fetch a URL with an identifying ``User-Agent``.
@@ -92,10 +115,20 @@ def _read(url: str) -> bytes:
 
     Returns:
         bytes: The response body.
+
+    Raises:
+        SystemExit: When the fetch fails or exceeds
+            :data:`READ_TIMEOUT_SECONDS`, with the URL that did not answer.
     """
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request) as response:
-        payload: bytes = response.read()
+    try:
+        with urllib.request.urlopen(request, timeout=READ_TIMEOUT_SECONDS) as response:
+            payload: bytes = response.read()
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise SystemExit(
+            f"could not read {url}: {exc}. This check needs network access; "
+            "nothing else in the gate does."
+        ) from exc
     return payload
 
 
@@ -248,6 +281,79 @@ def vendored_inventory(document: dict[str, Any]) -> set[tuple[str, str]]:
     return found
 
 
+def sdk_coverage_inventory(
+    document: dict[str, Any],
+) -> tuple[set[tuple[str, str]], int]:
+    """Read ``x-mp-sdk-coverage`` out of the provider's annotated spec.
+
+    Args:
+        document (dict[str, Any]): The parsed ``spec3.sdk.yaml``.
+
+    Returns:
+        tuple[set[tuple[str, str]], int]: The operations whose annotation
+        lists ``python``, and how many operations carry the annotation at
+        all.
+    """
+    covered: set[tuple[str, str]] = set()
+    annotated = 0
+    for path, item in (document.get("paths") or {}).items():
+        for method, operation in item.items():
+            if method.lower() not in HTTP_METHODS:
+                continue
+            languages = operation.get("x-mp-sdk-coverage")
+            if languages is None:
+                continue
+            annotated += 1
+            if "python" in languages:
+                covered.add(normalise(method, path))
+    return covered, annotated
+
+
+def report_sdk_coverage(official: set[tuple[str, str]]) -> None:
+    """Print how the provider's annotation compares with its own SDK.
+
+    The annotation is the provider's statement of intent; ``official`` is
+    what the shipped package actually calls. Only the drift against
+    :data:`SDK_COVERAGE_DISAGREEMENTS` is news — the recorded disagreements
+    are expected, and a change in that set is the thing worth a human.
+
+    Args:
+        official (set[tuple[str, str]]): The normalised call sites read out
+            of the provider's Python SDK.
+    """
+    document = yaml.safe_load(_read(SDK_COVERAGE_URL))
+    covered, annotated = sdk_coverage_inventory(document)
+    normalised_official = {normalise(method, path) for method, path in official}
+
+    print(
+        f"\nprovider annotation  spec3.sdk.yaml | {annotated} operations "
+        f"annotated, {len(covered)} list python"
+    )
+    print(f"  agreeing with the SDK source: {len(covered & normalised_official)}")
+
+    disagreements = sorted(covered - normalised_official)
+    print(
+        f"\n  the annotation claims python, the SDK does not call "
+        f"({len(disagreements)}):"
+    )
+    for method, path in disagreements:
+        recorded = SDK_COVERAGE_DISAGREEMENTS.get((method, path))
+        note = recorded if recorded is not None else "NEW — not recorded in the overlay"
+        print(f"    {method:6} {path:44} {note}")
+
+    vanished = sorted(set(SDK_COVERAGE_DISAGREEMENTS) - (covered - normalised_official))
+    if vanished:
+        print(f"\n  recorded disagreements that are gone ({len(vanished)}):")
+        for method, path in vanished:
+            print(f"    {method:6} {path}")
+        print("    The provider corrected these; drop them from the overlay.")
+    print(
+        "\n  The annotation is the provider's intent, the sdist is the code"
+        "\n  that ships. Where they disagree the code wins — an integration"
+        "\n  runs against what is implemented."
+    )
+
+
 def main() -> int:
     """Report the two-way difference and how to check a suspicious path.
 
@@ -296,6 +402,7 @@ def main() -> int:
         "\n  to answer the question — these stay unverified, and each one is"
         "\n  marked in its own generated docstring."
     )
+    report_sdk_coverage(official)
     return 0
 
 

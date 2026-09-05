@@ -151,6 +151,71 @@ _FREE_OBJECT: dict[str, Any] = {"type": "object", "additionalProperties": True}
 """A body or response nobody here has observed, rendered ``dict[str, Any]``."""
 
 
+SDK_COVERAGE_URL: str = (
+    "https://raw.githubusercontent.com/mercadopago/openapi/main/spec3.sdk.yaml"
+)
+"""The provider's second spec variant, annotated per operation.
+
+``spec3.yaml`` — the document :mod:`regen_mercado_pago` vendors — carries no
+statement about which official SDK implements what. ``spec3.sdk.yaml`` does,
+as ``x-mp-sdk-coverage`` on every operation::
+
+    x-mp-sdk-coverage: ['php', 'nodejs', 'java', 'python', 'ruby', 'dotnet', 'go']
+
+That is machine-readable, from the provider, about the exact question
+:data:`OFFICIAL_SDK_CALLS` answers by hand.
+"""
+
+SDK_COVERAGE_DATE: str = "2026-09-05"
+"""When the cross-check below was measured."""
+
+SDK_COVERAGE_TOTALS: dict[str, int] = {
+    "annotated": 142,
+    "python": 44,
+    "ours": 65,
+    "agreeing": 39,
+}
+"""What the two inventories look like side by side, on :data:`SDK_COVERAGE_DATE`.
+
+All 142 operations in the document are annotated, 44 of them list
+``python``; :data:`OFFICIAL_SDK_CALLS` holds 65 call sites read from the
+sdist; 39 appear in both.
+"""
+
+SDK_COVERAGE_DISAGREEMENTS: dict[tuple[str, str], str] = {
+    ("DELETE", "/v1/customers/{}/delete"): "no such call in mercadopago 3.5.0",
+    ("GET", "/preapproval/export"): "no such call in mercadopago 3.5.0",
+    ("GET", "/v1/payment_methods/installments"): "no such call in mercadopago 3.5.0",
+    ("PUT", "/v1/chargebacks/{}"): "chargeback.py calls only search and get",
+    ("PUT", "/v1/payments/{}/cancellations"): "no such call in mercadopago 3.5.0",
+}
+"""Operations the annotation claims for python that the python SDK does not call.
+
+**This is why the annotation is a third opinion, not a replacement.** The
+tempting reading of ``x-mp-sdk-coverage`` is that it retires the hand-read
+:data:`OFFICIAL_SDK_CALLS`. Measured on :data:`SDK_COVERAGE_DATE` against
+``mercadopago`` :data:`OFFICIAL_SDK_VERSION` — which is also the latest
+release on PyPI, so this is not a stale-pin artefact — five of the 44
+operations it marks ``python`` have no call site in the SDK's source at
+all::
+
+    $ grep -rn 'chargebacks' mercadopago-3.5.0/mercadopago/resources/*.py
+    chargeback.py:30:  self._get(uri="/v1/chargebacks/search", ...)
+    chargeback.py:43:  self._get(uri="/v1/chargebacks/" + self._path_param(...))
+
+No ``PUT``. The other four spell nothing in the package.
+
+So the annotation is evidence about **the provider's intent**, and the
+sdist is evidence about **the code that ships**. Where they disagree the
+code wins, for the same reason the SDK beats ``spec3.yaml`` elsewhere in
+this module: an integration runs against what is implemented.
+
+``make mercadopago-diff`` re-measures this and reports any entry that has
+since appeared or disappeared, so a provider correction shows up as drift
+rather than as silence.
+"""
+
+
 PROBE_DATE: str = "2026-08-28"
 """When :data:`PROBED_OPERATIONS` was observed."""
 
@@ -710,6 +775,10 @@ __all__: list[str] = [
     "PATH_CORRECTIONS",
     "PROBED_OPERATIONS",
     "PROBE_DATE",
+    "SDK_COVERAGE_DATE",
+    "SDK_COVERAGE_DISAGREEMENTS",
+    "SDK_COVERAGE_TOTALS",
+    "SDK_COVERAGE_URL",
     "UNVERIFIED_NOTE",
     "AddedOperation",
     "DeadOperation",
