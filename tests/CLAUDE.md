@@ -40,7 +40,7 @@ Todos rodam dentro do `make check`.
 | `test_version_agreement` | `pyproject.toml` e `__version__` concordam | `uv.lock`, que `uv run` conserta em disco antes de qualquer teste ler |
 | `test_lock_version_guard` | versão **commitada** em `uv.lock` bate com a do `pyproject.toml`, lida por `git show HEAD:` | commit que ainda não existe (drift aparece na próxima execução) |
 | `test_testclient_httpx2_guard` | dev group deste repo **e** do template do `tempest new` pinam `httpx2`, sem o qual `fastapi.testclient` importa avisando um `UserWarning` que derruba quem roda `filterwarnings = ["error"]` | outro projeto que copie o template antes deste bump |
-| `test_sdist_payload` | entrada com ponto na raiz do **sdist** é allowlist com motivo — o sdist leva o repo inteiro menos um `exclude`, então diretório que uma ferramenta deixa na raiz shippa até alguém notar (`.claude/` custou 33,7 kB, `.playwright-mcp/` custou 60 kB e shippou até a 0.284.0) | arquivo não-dotted na raiz |
+| `test_sdist_payload` | entrada com ponto na raiz do **sdist** é allowlist com motivo — o sdist leva o repo inteiro menos um `exclude`, então diretório que uma ferramenta deixa na raiz shippa até alguém notar (`.claude/` custou 12 938 bytes, `.playwright-mcp/` custou 2 623 bytes e shippou até a 0.284.0) | arquivo não-dotted na raiz |
 | `test_wheel_payload` | payload não-`.py` da wheel é exatamente a allowlist | — |
 
 Marcadores de escape: `# docs-guard: skip` (fragmento não-parseável de

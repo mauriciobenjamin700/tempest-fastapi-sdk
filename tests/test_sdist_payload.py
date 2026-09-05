@@ -9,11 +9,12 @@ notices.
 
 Nobody noticed twice:
 
-* ``.claude/`` added 33.7 kB of skill, agent and settings files to the
-  tarball; the fix was an ``exclude`` entry, recorded in ``pyproject.toml``.
-* ``.playwright-mcp/`` added 60 kB of console logs and page snapshots from
-  a single browser-validation session in 2026-08-01, and shipped inside
-  every sdist from then through 0.284.0.
+* ``.claude/`` added 12,938 bytes across 4 skill, agent and settings files
+  to the tarball; the fix was an ``exclude`` entry, recorded in
+  ``pyproject.toml``.
+* ``.playwright-mcp/`` added 2,623 bytes across 14 console-log and
+  page-snapshot files from a single browser-validation session in
+  2026-08-01, and shipped inside every sdist from then through 0.284.0.
 
 Both are the same defect, one release apart, and the first fix did not
 prevent the second because it named a directory instead of stating the

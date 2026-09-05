@@ -123,8 +123,8 @@ Key points:
 ### Every 4xx inside the envelope
 
 The 422 was the most visible gap, not the only one. The other four
-client-error paths **do reach this SDK's handler** — measured, all six of
-them — and answered Starlette's bare body, with no `code` and in English,
+client-error categories **do reach this SDK's handler** — six cases, each
+measured in the table below — and answered Starlette's bare body, with no `code` and in English,
 even in a service with a configured `MessageCatalog`:
 
 | Path | Before | With `envelope_client_errors=True` |
@@ -185,7 +185,7 @@ def create_app() -> FastAPI:
 
 !!! note "`HTTP_<status>` for a status the SDK does not model"
     The status-to-`code` mapping is **declared**, not derived: measured,
-    eight `AppException` subclasses carry a 401 code and three a 404, so
+    thirteen `AppException` subclasses carry a 401 code and four a 404, so
     there is no status to read a single code off.
 
     A status outside the mapping answers `HTTP_<status>` and keeps the

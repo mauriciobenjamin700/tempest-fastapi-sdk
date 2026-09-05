@@ -121,7 +121,7 @@ _STATUS_ERROR_CODES: Final[Mapping[int, str]] = {
 """Envelope ``code`` for a raw ``HTTPException`` of each status.
 
 **Declared, not derived.** The SDK has several exception classes per
-status — measured, eight carry a 401 code and three a 404 — so there is
+status — measured, thirteen carry a 401 code and four a 404 — so there is
 no status the mapping could read a single code off. A status absent here
 answers ``HTTP_<status>``, which keeps the response parseable by ``code``
 even where the SDK never modelled the status. 400 and 405 are in that

@@ -54,8 +54,8 @@ ferramenta deixa na raiz shippa para o PyPI. Aconteceu duas vezes:
 
 | Artefato | Custo no tarball | Conserto |
 | --- | --- | --- |
-| `.claude/` | 33,7 kB de skill, agent e settings | `exclude = [".claude"]` |
-| `.playwright-mcp/` | 60 kB de console log e page snapshot, de **uma** sessão | `.gitignore` + `git rm -r --cached` |
+| `.claude/` | 12 938 bytes em 4 arquivos de skill, agent e settings | `exclude = [".claude"]` |
+| `.playwright-mcp/` | 2 623 bytes em 14 arquivos de console log e page snapshot, de **uma** sessão | `.gitignore` + `git rm -r --cached` |
 
 O segundo shippou em todo sdist até a 0.284.0, medido no tarball
 publicado. O primeiro conserto **nomeou um diretório**; por isso não
@@ -71,6 +71,39 @@ Detalhe medido, não deduzido: é o **`.gitignore`** que o hatchling lê para
 montar o sdist. Comentando a regra e reconstruindo, os 14 arquivos voltam
 ao tarball; com ela, zero. `exclude` no `pyproject.toml` é o segundo
 mecanismo, não o único.
+
+### Medir com o instrumento errado é medir errado (v0.285.0)
+
+As duas linhas da tabela acima shipparam com o número errado — `60 kB` e
+`33,7 kB` — e o defeito **não** foi deduzir em vez de medir. Foi medir com
+`du -sh`, que reporta espaço **ocupado em disco**, arredondando cada
+arquivo para o bloco de 4 kB do filesystem. Com 14 arquivos de poucas
+centenas de bytes, isso infla o número 23x:
+
+```console
+$ du -sb .playwright-mcp   # bytes de verdade
+2623    .playwright-mcp
+$ du -sh .playwright-mcp   # blocos de 4 kB, 14 arquivos
+60K     .playwright-mcp
+```
+
+O que interessa num tarball é o byte, não o bloco: o `.tar.gz` não leva o
+padding do filesystem junto. O `60 kB` se espalhou por cinco arquivos
+(`CHANGELOG.md`, `LESSONS.md`, `tests/CLAUDE.md`,
+`tests/test_sdist_payload.py`, `.gitignore`) e pelo assunto do commit,
+porque cada um copiou o vizinho em vez de repetir a medição.
+
+A regra do repo — *toda afirmação sobre comportamento é medida* — passa
+por cima deste caso, e é o buraco que ele expõe: **o comando rodou, a
+saída foi lida, e a frase saiu errada mesmo assim.** A pergunta na revisão
+de prosa não é só *qual comando produziu isso?*, é também **o comando
+mede a grandeza que a frase afirma?** Tamanho em tarball é `du -sb` ou a
+soma de `%s`; `du -sh` responde outra pergunta.
+
+Corolário barato: quando um número aparece em mais de um arquivo, ele tem
+**uma** origem. Ao corrigi-lo, `grep` o valor no repositório inteiro — o
+`33,7 kB` do `.claude/` estava errado pelo mesmo motivo, na mesma tabela,
+e ninguém tinha olhado porque a linha não era a que estava sendo editada.
 
 ## O teste fixava o rótulo e o runtime morria no primeiro tick (v0.284.0)
 

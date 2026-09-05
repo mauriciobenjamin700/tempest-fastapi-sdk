@@ -122,9 +122,9 @@ Pontos-chave:
 
 ### Todo 4xx dentro do envelope
 
-O 422 era o furo mais visível, não o único. Os outros quatro caminhos de erro
-de cliente **passam pelo handler do SDK** — medido, todos os seis — e
-respondiam o corpo nu do Starlette, sem `code` e em inglês, mesmo num serviço
+O 422 era o furo mais visível, não o único. As outras quatro categorias de
+erro de cliente **passam pelo handler do SDK** — seis casos, todos medidos
+na tabela abaixo — e respondiam o corpo nu do Starlette, sem `code` e em inglês, mesmo num serviço
 com `MessageCatalog` configurado:
 
 | Caminho | Antes | Com `envelope_client_errors=True` |
@@ -182,8 +182,8 @@ def create_app() -> FastAPI:
     Só o outro.
 
 !!! note "`HTTP_<status>` para status que o SDK não modela"
-    O mapa status→`code` é **declarado**, não derivado: medido, oito classes
-    de `AppException` carregam um code de 401 e três de 404, então não há
+    O mapa status→`code` é **declarado**, não derivado: medido, treze classes
+    de `AppException` carregam um code de 401 e quatro de 404, então não há
     status de onde ler um code único.
 
     Status fora do mapa responde `HTTP_<status>` e mantém a phrase do

@@ -31,7 +31,7 @@ site/
 # Playwright MCP writes here during the mandatory browser validation of a
 # visual change, and drops a <name>.png in the repo root. Committed once by
 # accident, 14 files from 2026-08-01 shipped inside every sdist since --
-# measured, 60 kB of console logs and page snapshots in the published
-# tarball. tests/test_sdist_payload.py is the guard.
+# measured, 2,623 bytes of console logs and page snapshots in the
+# published tarball. tests/test_sdist_payload.py is the guard.
 .playwright-mcp/
 /*.png

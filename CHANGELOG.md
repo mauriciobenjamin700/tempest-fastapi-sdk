@@ -16,14 +16,15 @@ que apareceu ao consertá-las.
   envelope.** A 0.284.0 cobriu o 422 e deixou o resto. Medido, com catálogo
   instalado e `Accept-Language: pt-BR`, e espionando o handler que o SDK
   registra: `HTTPException` 4xx cru, o 401 do `HTTPBearer`, rota inexistente e
-  método errado **todos** passam por ele — são seis caminhos, não quatro como a
-  0.284.0 relatou — e respondiam o corpo nu do Starlette, sem `code` e em
-  inglês.
+  método errado **todos** passam por ele — quatro categorias, seis casos
+  medidos na tabela abaixo — e respondiam o corpo nu do Starlette, sem `code`
+  e em inglês.
 
   | Caminho | Antes | Agora |
   | --- | --- | --- |
   | `HTTPException(404, "pedido 42 não existe")` | `{"detail": "pedido 42 não existe"}` | mesma mensagem **+** `code: NOT_FOUND` |
   | `HTTPException(403)` | `{"detail": "Forbidden"}` | `Acesso negado` + `code: FORBIDDEN` |
+  | `HTTPException(409)` | `{"detail": "Conflict"}` | `Conflito de recurso` + `code: CONFLICT` |
   | `Depends(HTTPBearer())` sem token | `{"detail": "Not authenticated"}` | mesma mensagem **+** `code: UNAUTHORIZED` |
   | rota inexistente | `{"detail": "Not Found"}` | `Recurso não encontrado` + `code: NOT_FOUND` |
   | método errado | `{"detail": "Method Not Allowed"}` | mesma mensagem + `code: HTTP_405` |
@@ -33,8 +34,8 @@ que apareceu ao consertá-las.
   são distinguíveis, e trocar a mensagem específica pelo genérico do catálogo
   destruiria a mais informativa das duas.
 
-  O mapa status→`code` é **declarado**, não derivado: medido, oito classes de
-  `AppException` carregam code de 401 e três de 404. Status fora do mapa
+  O mapa status→`code` é **declarado**, não derivado: medido, treze classes de
+  `AppException` carregam code de 401 e quatro de 404. Status fora do mapa
   responde `HTTP_<status>` e mantém a phrase — 400 e 405 estão nesse grupo.
 
   Dois flags e não um renomeado: `envelope_client_errors` é o superconjunto
@@ -44,13 +45,15 @@ que apareceu ao consertá-las.
 
 ### Fixed
 
-- **60 kB de artefato de validação em browser saem do sdist.**
+- **Artefato de validação em browser sai do sdist.**
   `.playwright-mcp/` estava rastreado: 14 arquivos de console e page snapshot
-  de 2026-08-01. Medido no tarball publicado da 0.284.0, `tar -tzf | grep -c
-  playwright` → `14`. O wheel nunca os levou; o sdist leva o repo inteiro menos
+  de 2026-08-01. Medido no tarball publicado da 0.284.0: `tar -tzf | grep -c
+  playwright` → `14`, somando 2 623 bytes. Os mesmos 14 arquivos e os mesmos
+  2 623 bytes estão nos sdists da 0.250.0 e da 0.270.0. O wheel nunca os levou; o sdist leva o repo inteiro menos
   um `exclude`, e o `exclude` nomeava só `.claude`.
 
-  Mesma classe do defeito que o `.claude/` já tinha causado (33,7 kB). Aquele
+  Mesma classe do defeito que o `.claude/` já tinha causado (12 938 bytes em
+  4 arquivos, no sdist da 0.235.0). Aquele
   conserto nomeou um diretório em vez de enunciar a regra, então não preveniu
   este — daí o guard novo (abaixo) enunciar a regra.
 
