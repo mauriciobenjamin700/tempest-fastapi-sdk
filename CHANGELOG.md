@@ -5,6 +5,128 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.286.0] — 2026-09-05
+
+Três issues do consumidor. A do meio começou como um bug de cache e acabou
+sendo dois middlewares, cinco assinaturas e um nome de argumento que queria
+dizer duas coisas.
+
+### Fixed
+
+- **Middleware que drena o corpo não pendura mais um stream.**
+  (`#269`) `ResponseCacheMiddleware` calculava o ETag lendo
+  `body_iterator` até o fim. Num `text/event-stream` o corpo só acaba
+  quando o cliente desconecta, então o middleware nunca voltava, nenhum
+  header chegava ao proxy, e a rota respondia `504` no
+  `proxy_read_timeout`. Derrubou o stream de notificação inteiro da
+  `alofans-api`.
+
+  **O relato cobria metade.** `IdempotencyMiddleware` drena igual, para
+  poder reproduzir a resposta num retry, e **não tinha lista de isenção
+  nenhuma** — então nem o workaround existia. Reproduzido em processo,
+  com `asyncio.wait_for`:
+
+  | Middleware | Antes | Agora |
+  | --- | --- | --- |
+  | `ResponseCacheMiddleware` em `GET /api/sse/stream` | `TimeoutError` | responde, sem `ETag` |
+  | `IdempotencyMiddleware` em `POST /generate/stream` com `Idempotency-Key` | `TimeoutError` | responde, sem armazenar |
+
+  Os dois caminhos são rotas que **o próprio SDK monta**:
+  `make_chat_router` serve `GET /conversations/{id}/stream`, e
+  `make_genai_router` serve `POST /generate/stream`.
+
+  **A correção óbvia não funcionaria.** `_StreamingResponse`, que é o que
+  `BaseHTTPMiddleware` entrega ao `dispatch`, não carrega `media_type` —
+  medido no caminho ASGI real, starlette 1.6.0, ele é `None` para **toda**
+  resposta, SSE inclusive. Um teste escrito como
+  `response.media_type == "text/event-stream"` é um ramo que nunca roda.
+  O sinal que existe é o header `Content-Type`, mais a ausência de
+  `Content-Length`.
+
+### Changed
+
+- **`exempt_paths` é igualdade nos cinco middlewares que o aceitam.**
+  (`#269`) Era igualdade em `ResponseCacheMiddleware`, `RateLimitMiddleware`
+  e `GracefulShutdownMiddleware`, e **prefixo** em `AccessLogMiddleware` e
+  `HoneypotBanMiddleware`. Mesmo nome de argumento, dois comportamentos —
+  e a divergência estava documentada num arquivo só, invisível dos outros
+  quatro. Um serviço que isentava sua rota SSE dos dois passava a mesma
+  tupla para ambos e ganhava isenção num e silêncio no outro.
+
+  Prefixo agora tem nome próprio, `exempt_prefixes`, disponível nos cinco.
+  A implementação é uma só (`PathExemption`), e um guard estrutural recusa
+  um sexto middleware que reimplemente a checagem por conta própria.
+
+  **Alargar tudo para prefixo foi recusado de propósito:** em
+  `RateLimitMiddleware` uma isenção é um buraco no rate limit, e
+  `exempt_paths=("/health",)` passaria a isentar `/health-admin` também.
+  Estreitar falha para o lado seguro; alargar não.
+
+  !!! danger "Migração"
+      Só `AccessLogMiddleware` e `HoneypotBanMiddleware` mudam. Quem
+      passava `exempt_paths=("/api/sse",)` a um deles contando com
+      `/api/sse/stream` renomeia para `exempt_prefixes`.
+
+### Added
+
+- **`fuse_detect_classify` e `DetectClassify`.** (`#268`) Um detector a
+  640 e um classificador a 224, fundidos num `.onnx` só. Entre os
+  estágios existe um recorte **dinâmico**, então
+  `onnx.compose.merge_models` sozinho não fecha — a ponte é `RoiAlign`.
+
+  **São duas superfícies, não uma, e ficam em dois lugares:**
+
+  | Símbolo | Onde | Extra | Quando |
+  | --- | --- | --- | --- |
+  | `fuse_detect_classify` | `tempest_fastapi_sdk.modelops` | `[modelops-compose]` | build |
+  | `DetectClassify`, `DetectClassifyResults`, `DetectClassifySchema`, `to_detect_classify_schemas` | `tempest_fastapi_sdk.vision` | `[vision]` | runtime |
+
+  Medido contra `ort-vision-sdk` 0.8.0 — o piso que declaramos —
+  instalado **sem** o extra `[compose]`: `DetectClassify` importa, e
+  `ort_vision_sdk.compose` levanta `ImportError: No module named 'onnx'`.
+  É essa divisão que põe os dois atrás de extras diferentes: o serviço em
+  produção nunca importa `onnx`.
+
+  Nada novo entra na resolução de ninguém. O SDK já declarava
+  `ort-vision-sdk>=0.8.0` no `[vision]` e `onnx>=1.22.0` no
+  `[modelops-onnx]`; o extra `[compose]` do upstream acrescenta
+  exatamente `onnx>=1.16.0`, e `ort-vision-sdk` não tem upper bound
+  nenhum.
+
+  `fuse_detect_classify` é **re-export lazy**, não wrapper: a função tem
+  18 argumentos nomeados, e um wrapper que os repetisse driftaria do
+  upstream no primeiro que fosse adicionado.
+
+- **A anotação `x-mp-sdk-coverage` do Mercado Pago entra como terceira
+  opinião.** (`#259`) `spec3.sdk.yaml` — a variante anotada do documento
+  do provedor — marca, por operação, quais SDKs oficiais a implementam.
+  Medido em 2026-09-05: **142 operações anotadas, 44 listando `python`**,
+  contra as 65 chamadas que `OFFICIAL_SDK_CALLS` guarda lidas à mão do
+  sdist; **39 coincidem**.
+
+  **E não pode substituir a lista lida à mão**, que era a proposta. Cinco
+  das 44 operações que a anotação marca `python` não têm ponto de chamada
+  nenhum em `mercadopago` 3.5.0 — que é o release **mais recente** no
+  PyPI, então não é artefato de pin velho:
+
+  ```text
+  DELETE /v1/customers/{}/delete
+  GET    /preapproval/export
+  GET    /v1/payment_methods/installments
+  PUT    /v1/chargebacks/{}
+  PUT    /v1/payments/{}/cancellations
+  ```
+
+  O caso legível é o do chargeback: `chargeback.py` chama
+  `GET /v1/chargebacks/search` e `GET /v1/chargebacks/{id}`, e nenhum
+  `PUT`. A anotação é evidência sobre a **intenção** do provedor; o sdist
+  é evidência sobre o **código que ships**. Onde discordam, o código
+  ganha — mesma regra que já valia contra o `spec3.yaml`.
+
+  As cinco ficam registradas em `SDK_COVERAGE_DISAGREEMENTS`, com motivo,
+  e `make mercadopago-diff` reporta tanto uma entrada nova quanto uma que
+  o provedor tenha corrigido.
+
 ## [0.285.0] — 2026-09-05
 
 As duas pendências que a 0.284.0 deixou registradas, mais um defeito num guard

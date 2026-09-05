@@ -1843,3 +1843,42 @@ achados sob `FORCE_COLOR`, com 230 dos 233 casos passando por vacuidade.
 Fora de escopo, registrado: o SDK não tem exceção para 400 nem para 405,
 então esses dois status respondem `HTTP_<status>` sem tradução. Criar as
 classes é decisão separada.
+
+## Issues do consumidor, v0.286.0 (2026-09-05)
+
+Três issues, e a primeira cresceu ao ser medida.
+
+1. **Stream não é drenado** (#269) — `is_unbounded_stream` em
+   `api/middlewares/_streaming.py`, ligado em `ResponseCacheMiddleware`
+   **e** em `IdempotencyMiddleware`. A issue relatava só o primeiro; o
+   segundo drena sem lista de isenção nenhuma e pendurava
+   `POST /generate/stream` com `Idempotency-Key`. Guards:
+   `tests/api/test_streaming_passthrough.py`, cada um provado disparando
+   com `TimeoutError` quando a checagem é removida.
+
+2. **`exempt_paths` converge para igualdade** (#269, segunda metade) —
+   `PathExemption` em `api/middlewares/_exempt.py`, usada pelos cinco
+   middlewares que aceitam isenção; `exempt_prefixes` é o nome novo do
+   casamento por prefixo. Muda `AccessLogMiddleware` e
+   `HoneypotBanMiddleware`, que eram prefixo. Guard:
+   `tests/api/test_middleware_exempt_semantics.py`, incluindo o
+   estrutural que recusa um sexto middleware com implementação própria.
+
+3. **Composição de grafo** (#268) — `fuse_detect_classify` em
+   `modelops` (`[modelops-compose]`), `DetectClassify` +
+   `DetectClassifySchema` + `to_detect_classify_schemas` em `vision`
+   (`[vision]`). Os dois são re-export lazy do `ort-vision-sdk`; nada
+   novo entra na resolução, porque o SDK já declarava
+   `ort-vision-sdk>=0.8.0` e `onnx>=1.22.0`.
+
+4. **`x-mp-sdk-coverage` cruzado** (#259) — `SDK_COVERAGE_*` em
+   `scripts/mercadopago_overlay.py` e `report_sdk_coverage` no
+   `mercadopago_diff`. **Não substituiu** `OFFICIAL_SDK_CALLS`, que era a
+   proposta: 5 das 44 operações que a anotação marca `python` não são
+   chamadas pelo SDK 3.5.0 do provedor. Guard offline:
+   `tests/integrations/payment/mercado_pago/test_sdk_coverage.py`.
+
+Fora de escopo, registrado: `IdempotencyMiddleware` continua sem
+`exempt_paths`/`exempt_prefixes`. A guarda de stream removeu a razão que
+tinha para precisar de uma, e adicionar os dois argumentos lá é decisão
+separada — seriam seis middlewares na convenção, não cinco.

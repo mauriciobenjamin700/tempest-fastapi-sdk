@@ -47,6 +47,66 @@ Duas regras que saem daqui:
   `GITHUB_ACTIONS`; é a mesma família, e o primeiro conserto não
   generalizou.
 
+## O mesmo nome de argumento, dois comportamentos (v0.286.0)
+
+`exempt_paths` existia em cinco middlewares. Era **igualdade** em três
+(`ResponseCacheMiddleware`, `RateLimitMiddleware`,
+`GracefulShutdownMiddleware`) e **prefixo** em dois (`AccessLogMiddleware`,
+`HoneypotBanMiddleware`).
+
+A divergência era **deliberada e documentada** — no docstring do
+`AccessLogMiddleware`:
+
+> ``which is why this matches by prefix where
+> :class:`RateLimitMiddleware` matches exactly.``
+
+Uma frase, num arquivo, explicando uma decisão que os outros quatro
+arquivos não mencionam. Quem lia o `response_cache.py` não tinha como
+saber que existia. A issue que chegou do consumidor viu **dois** dos
+cinco.
+
+O custo real: a `alofans-api` passou a mesma tupla `("/api/sse",)` para os
+dois middlewares, isentando a rota de log e **não** de cache. O path real
+era `/api/sse/stream`. E como a falha do cache era *drenar um stream que
+não acaba*, o preço não foi um cache ruim — foi `504` no produto inteiro.
+
+**A lição não é "escolha um".** É que documentar uma inconsistência no
+lugar onde ela é a exceção não informa ninguém: o leitor está no outro
+arquivo. Ou o comportamento converge, ou os nomes divergem.
+
+**E a direção da convergência não é simétrica.** Alargar tudo para prefixo
+era a proposta da issue, e teria feito `exempt_paths=("/health",)` no
+`RateLimitMiddleware` isentar `/health-admin` — um buraco no rate limit que
+ninguém pediu. Isenção é uma exceção de segurança: estreitar falha para o
+lado seguro (mais log, mais checagem), alargar não. Por isso
+`exempt_paths` virou igualdade nos cinco e prefixo ganhou nome próprio.
+
+Guard: `tests/api/test_middleware_exempt_semantics.py`, incluindo o
+estrutural — todo middleware que aceita isenção tem de rotear por
+`PathExemption`, então um sexto não consegue reintroduzir um significado
+privado.
+
+### O corolário: a correção óbvia não rodava
+
+O caminho de conserto que a issue propunha para o dreno era
+`response.media_type == "text/event-stream"`. Medido no caminho ASGI real,
+starlette 1.6.0: `BaseHTTPMiddleware` **reconstrói** a resposta a partir
+das mensagens ASGI, e o `_StreamingResponse` que chega ao `dispatch` não
+carrega `media_type` — é `None` para toda resposta.
+
+```text
+GET /sse   -> _StreamingResponse  media_type=None
+              content-type='text/event-stream; charset=utf-8'  content-length=None
+GET /json  -> _StreamingResponse  media_type=None
+              content-type='application/json'                  content-length='11'
+```
+
+O que torna isso perigoso é que `sse_response(...)` inspecionado **direto**
+reporta `media_type='text/event-stream'`. Um teste de unidade sobre o
+objeto do handler passa; o ramo nunca roda em produção. O objeto que o
+handler devolve não é o objeto que o middleware recebe — e essa distinção
+não aparece em nenhum type hint.
+
 ## Nomear o diretório não é enunciar a regra (v0.285.0)
 
 O sdist é o repositório inteiro menos um `exclude`, então tudo que uma
