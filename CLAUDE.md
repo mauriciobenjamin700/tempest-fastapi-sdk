@@ -128,8 +128,23 @@ mexer neles. Todos rodam dentro do `make check`.
   gente declara, meça lá **e** na versão atual; divergirem significa que o
   piso está errado (era o caso) ou que a frase precisa nomear a versão.
   Antes de abrir issue upstream, ler o CHANGELOG da dependência na versão
-  que o nosso piso alcança. Sem guard —
-  [`LESSONS.md`](LESSONS.md#medir-no-lock-não-é-medir-no-piso-v02430-v02440).
+  que o nosso piso alcança.
+
+  **Reincidiu na v0.286.0, e o gatilho foi o número parecer trivial.**
+  "A função tem 18 argumentos nomeados" era verdade no `.venv` do
+  worktree (`ort-vision-sdk` 0.8.0) e falsa para quem instala hoje (0.9.0,
+  19 argumentos). Contagem de superfície de terceiro é **taxa, não
+  propriedade**: vai com a versão junto, ou não vai. E teste não fixa a
+  contagem — compara a assinatura com a do upstream, que passa nas duas
+  versões e ainda falha num wrapper.
+
+  Ainda sem guard, mas com um **passo mecânico que pega a classe**:
+  instalar a wheel construída numa venv vazia
+  (`uv venv x && VIRTUAL_ENV=x uv pip install "dist/*.whl[extra]"`) antes
+  da tag. O `make check` não pega, porque roda no `.venv` do worktree; o
+  gate de release já manda fazer isso **depois** do push, e um minuto
+  antes dele custa menos que uma release re-cortada —
+  [`LESSONS.md`](LESSONS.md#medir-no-lock-não-é-medir-no-piso-de-novo-v02860).
 - **Render depois de escrita que pode falhar recarrega o que lê** (v0.240.0).
   O `rollback` expira **todo** o identity map, não a linha rejeitada, e ler
   coluna expirada em contexto async é `MissingGreenlet`. `expire_on_commit`
