@@ -25,16 +25,19 @@ whose document is public: nobody else can re-derive it. It is stored as
 YAML for the same reason the others are — a readable diff is the whole
 point of checking it in.
 
-Two constructs the generator cannot model, both reported by it and both
-harmless here:
+Three operations answer a success body that is not JSON:
 
 * ``GET /metrics`` answers ``text/plain`` (Prometheus exposition).
 * ``GET /session/qr/image`` answers ``image/png``.
+* ``GET /message/{messageId}/media`` answers ``application/octet-stream``.
 
-Only ``application/json`` is modelled, so both methods are typed
-``-> None``. The QR image is reachable as JSON from ``GET /session/qr``,
-which returns the same pairing code as a string; the PNG endpoint is a
-browser convenience.
+Each is typed ``-> bytes`` and handed over undecoded. They used to be
+typed ``-> None``, on the reasoning that the payload was reachable some
+other way — the QR image duplicates ``GET /session/qr``, and metrics are
+a scrape target. That reasoning never covered the third: the gateway
+fetches media while the message is still in memory and WhatsApp will not
+serve it again, so the endpoint is the only route to those bytes and the
+generated client dropped them on the floor.
 """
 
 from __future__ import annotations
@@ -73,7 +76,7 @@ DEFAULT_SPEC_URL: str = "http://127.0.0.1:3000/openapi.json"
 SPEC_URL_ENV: str = "ZAP_OPENAPI_URL"
 """Environment variable overriding :data:`DEFAULT_SPEC_URL`."""
 
-SPEC_SHA256: str = "f230a37c88fc78de2134543cc0f5ba62ea6e08d8e1053695e475db968f1605b8"
+SPEC_SHA256: str = "4da5062eee171704913305a54095e5a0192e2631e72a2934a62f83e40e0e0637"
 """Hex sha256 of the vendored file, printed by ``--fetch`` to be pasted here.
 
 Empty means unpinned. Unlike the OpenPix digest this cannot be checked

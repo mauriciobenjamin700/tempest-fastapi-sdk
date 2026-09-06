@@ -773,7 +773,12 @@ class TestOperations:
         assert [p.name for p in spec.client.operations[0].path_parameters] == ["id"]
 
     def test_non_json_body_is_reported(self) -> None:
-        """A form-encoded body is not modelled, and says so."""
+        """A body with no call shape is not modelled, and says so.
+
+        Multipart used to be the example here. It stopped being one once
+        the generator learnt to split it into ``files`` and ``data``, so
+        the case now uses a media type that genuinely has no shape.
+        """
         document = {
             "openapi": "3.1.0",
             "info": {"title": "T", "version": "1"},
@@ -781,9 +786,7 @@ class TestOperations:
                 "/upload": {
                     "post": {
                         "operationId": "upload",
-                        "requestBody": {
-                            "content": {"multipart/form-data": {"schema": {}}}
-                        },
+                        "requestBody": {"content": {"application/xml": {"schema": {}}}},
                         "responses": {},
                     }
                 }
@@ -791,7 +794,7 @@ class TestOperations:
         }
         spec = parse_spec(document, client_name="t")
         assert spec.client.operations[0].body_annotation is None
-        assert any("multipart/form-data" in note for note in spec.unsupported)
+        assert any("application/xml" in note for note in spec.unsupported)
 
 
 class TestEmptyDocument:

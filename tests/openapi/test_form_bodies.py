@@ -160,13 +160,43 @@ class TestEncodingSelection:
 
 
 class TestUnsupportedMediaTypes:
-    def test_multipart_is_still_reported_as_a_gap(self) -> None:
-        """File uploads need a different call shape, so they stay unmodelled."""
+    def test_multipart_is_modelled_as_arguments(self) -> None:
+        """File uploads are a different call shape, and now have one.
+
+        This pinned the opposite until multipart support landed: the body
+        was reported as a gap and the method was emitted without it, so
+        every call it could make was rejected for missing fields.
+        """
         document = _document()
         document["paths"]["/v1/charges"]["post"]["requestBody"]["content"] = {
-            "multipart/form-data": {"schema": {"type": "object"}}
+            "multipart/form-data": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "note": {"type": "string"},
+                        "receipt": {"type": "string", "format": "binary"},
+                    },
+                    "required": ["receipt"],
+                }
+            }
         }
 
         spec = parse_spec(document, client_name="mixed")
 
-        assert any("multipart/form-data" in note for note in spec.unsupported)
+        assert not any("multipart/form-data" in note for note in spec.unsupported)
+        operation = spec.client.operations[0]
+        assert operation.body_annotation is None
+        assert operation.body_encoding == "multipart"
+        assert [p.name for p in operation.file_parameters] == ["receipt"]
+        assert [p.name for p in operation.form_parameters] == ["note"]
+
+    def test_a_media_type_with_no_call_shape_is_still_a_gap(self) -> None:
+        """The marker still fires for a body the generator cannot express."""
+        document = _document()
+        document["paths"]["/v1/charges"]["post"]["requestBody"]["content"] = {
+            "application/xml": {"schema": {"type": "object"}}
+        }
+
+        spec = parse_spec(document, client_name="mixed")
+
+        assert any("application/xml" in note for note in spec.unsupported)

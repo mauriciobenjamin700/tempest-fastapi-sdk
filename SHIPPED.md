@@ -1886,7 +1886,7 @@ separada — seriam seis middlewares na convenção, não cinco.
 ## Integração de mensageria, v0.287.0 (2026-09-06)
 
 Namespace novo `integrations/messaging/`, primeiro provedor `zap` — o
-gateway de WhatsApp da casa. 20 schemas, 18 operações, gerado de
+gateway de WhatsApp da casa. 28 schemas, 27 operações, gerado de
 `vendor/zap-openapi.yaml` por `scripts/regen_zap.py` e commitado, com
 drift test em `tests/integrations/messaging/zap/`.
 
@@ -1897,16 +1897,21 @@ onde o gateway estiver, então `make zap-fetch` lê de `ZAP_OPENAPI_URL`
 o `SPEC_SHA256` registra de quais bytes este checkout gerou — não quais
 bytes um provedor serve.
 
-Junto veio um conserto no gerador: ele escolhia entre dois corpos de
-sucesso em silêncio (`tests/openapi/test_divergent_success.py`).
+Junto vieram dois consertos no gerador. Ele escolhia entre dois corpos de
+sucesso em silêncio (`tests/openapi/test_divergent_success.py`); e
+descartava corpo de sucesso que não fosse JSON, tipando o método `-> None`
+depois de já ter feito a request. Esse segundo shippou em três integrações
+— 10 métodos ao todo, entre PDF e XML de fatura do OpenPix, quatro
+relatórios do Mercado Pago e as três rotas não-JSON da zap — e agora chega
+como `bytes` sem decodificar (`tests/openapi/test_raw_responses.py`).
 
 Fora de escopo, registrado — três coisas que o gateway ainda não declara,
 e por isso o pacote não modela:
 
 1. **O webhook de status.** É a metade que diz se a mensagem chegou; a
    spec o descreve em prosa e não declara `webhooks` nem `callbacks`.
-2. **`Retry-After` no `429`.** Cinco operações declaram `429` e nenhuma
-   resposta do documento declara header nenhum.
+2. **`Retry-After` no `429`.** Dezesseis operações declaram `429` e
+   nenhuma resposta do documento declara header nenhum.
 3. **Corpo de `/health` e `/ready`.** Medido, os dois respondem JSON com
    estado operacional real; a spec declara as duas sem content, então o
    client as tipa `-> None`.

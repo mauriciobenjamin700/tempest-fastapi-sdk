@@ -148,6 +148,172 @@ components:
       - to
       - media
       - fileName
+    SendImageBase64Request:
+      type: object
+      properties:
+        to:
+          type: string
+          pattern: ^\d{10,15}$
+        replyTo:
+          type: string
+          minLength: 1
+          maxLength: 128
+        data:
+          type: string
+          minLength: 1
+          maxLength: 14000000
+          description: File contents, base64-encoded. A `data:` URL prefix is accepted.
+        caption:
+          type: string
+          maxLength: 4096
+      required:
+      - to
+      - data
+    SendVideoBase64Request:
+      type: object
+      properties:
+        to:
+          type: string
+          pattern: ^\d{10,15}$
+        replyTo:
+          type: string
+          minLength: 1
+          maxLength: 128
+        data:
+          type: string
+          minLength: 1
+          maxLength: 14000000
+          description: File contents, base64-encoded. A `data:` URL prefix is accepted.
+        caption:
+          type: string
+          maxLength: 4096
+      required:
+      - to
+      - data
+    SendAudioBase64Request:
+      type: object
+      properties:
+        to:
+          type: string
+          pattern: ^\d{10,15}$
+        replyTo:
+          type: string
+          minLength: 1
+          maxLength: 128
+        data:
+          type: string
+          minLength: 1
+          maxLength: 14000000
+          description: File contents, base64-encoded. A `data:` URL prefix is accepted.
+      required:
+      - to
+      - data
+    SendDocumentBase64Request:
+      type: object
+      properties:
+        to:
+          type: string
+          pattern: ^\d{10,15}$
+        replyTo:
+          type: string
+          minLength: 1
+          maxLength: 128
+        data:
+          type: string
+          minLength: 1
+          maxLength: 14000000
+          description: File contents, base64-encoded. A `data:` URL prefix is accepted.
+        fileName:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: ^[^\\/\x00]+$
+      required:
+      - to
+      - data
+      - fileName
+    UploadImageForm:
+      type: object
+      properties:
+        to:
+          type: string
+          pattern: ^\d{10,15}$
+          description: Recipient phone number, digits only
+        file:
+          type: string
+          format: binary
+          description: The file itself — the form's only file part
+        caption:
+          type: string
+          maxLength: 4096
+        replyTo:
+          type: string
+          maxLength: 128
+          description: Message id being replied to, quoted above this one
+      required:
+      - to
+      - file
+    UploadVideoForm:
+      type: object
+      properties:
+        to:
+          type: string
+          pattern: ^\d{10,15}$
+          description: Recipient phone number, digits only
+        file:
+          type: string
+          format: binary
+          description: The file itself — the form's only file part
+        caption:
+          type: string
+          maxLength: 4096
+        replyTo:
+          type: string
+          maxLength: 128
+          description: Message id being replied to, quoted above this one
+      required:
+      - to
+      - file
+    UploadAudioForm:
+      type: object
+      properties:
+        to:
+          type: string
+          pattern: ^\d{10,15}$
+          description: Recipient phone number, digits only
+        file:
+          type: string
+          format: binary
+          description: The file itself — the form's only file part
+        replyTo:
+          type: string
+          maxLength: 128
+          description: Message id being replied to, quoted above this one
+      required:
+      - to
+      - file
+    UploadDocumentForm:
+      type: object
+      properties:
+        to:
+          type: string
+          pattern: ^\d{10,15}$
+          description: Recipient phone number, digits only
+        file:
+          type: string
+          format: binary
+          description: The file itself — the form's only file part
+        fileName:
+          type: string
+          maxLength: 255
+          description: Name the recipient sees. Falls back to the uploaded part's own file name.
+        replyTo:
+          type: string
+          maxLength: 128
+          description: Message id being replied to, quoted above this one
+      required:
+      - to
+      - file
     ReactionRequest:
       type: object
       properties:
@@ -219,7 +385,6 @@ components:
           - delivered
           - read
           - failed
-          - null
         deduped:
           type: boolean
       required:
@@ -371,6 +536,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /message/send-image:
     post:
       operationId: sendImage
@@ -445,6 +616,12 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Rate limit exceeded for this consumer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error
           content:
             application/json:
               schema:
@@ -526,6 +703,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /message/send-audio:
     post:
       operationId: sendAudio
@@ -599,6 +782,12 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Rate limit exceeded for this consumer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error
           content:
             application/json:
               schema:
@@ -682,6 +871,738 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/upload-image:
+    post:
+      operationId: uploadImage
+      summary: Upload an image and enqueue it
+      description: 'The file travels in the request, so nothing has to be publicly reachable first — this
+        is the route to use when the media exists only on the caller''s disk.
+
+
+        Capped at `MEDIA_MAX_BYTES` (16MB by default), enforced while the body streams: an oversized upload
+        is cut off mid-flight rather than buffered in full and refused afterwards.'
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          maxLength: 255
+          description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+            Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+            was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+            retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+            a second message. The key is scoped to your consumer, and stays claimed for as long as the
+            row exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+            This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        required: false
+        description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+          Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+          was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+          retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+          a second message. The key is scoped to your consumer, and stays claimed for as long as the row
+          exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+          This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        name: idempotency-key
+        in: header
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadImageForm'
+      responses:
+        '202':
+          description: Accepted and enqueued. The file is stored and the outbox row references it; status
+            transitions arrive on the consumer webhook.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: File exceeds `MEDIA_MAX_BYTES`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          description: Body is not multipart/form-data with a file part
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for this consumer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/upload-video:
+    post:
+      operationId: uploadVideo
+      summary: Upload a video and enqueue it
+      description: 'The file travels in the request, so nothing has to be publicly reachable first — this
+        is the route to use when the media exists only on the caller''s disk.
+
+
+        Capped at `MEDIA_MAX_BYTES` (16MB by default), enforced while the body streams: an oversized upload
+        is cut off mid-flight rather than buffered in full and refused afterwards.'
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          maxLength: 255
+          description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+            Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+            was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+            retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+            a second message. The key is scoped to your consumer, and stays claimed for as long as the
+            row exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+            This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        required: false
+        description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+          Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+          was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+          retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+          a second message. The key is scoped to your consumer, and stays claimed for as long as the row
+          exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+          This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        name: idempotency-key
+        in: header
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadVideoForm'
+      responses:
+        '202':
+          description: Accepted and enqueued. The file is stored and the outbox row references it; status
+            transitions arrive on the consumer webhook.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: File exceeds `MEDIA_MAX_BYTES`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          description: Body is not multipart/form-data with a file part
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for this consumer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/upload-audio:
+    post:
+      operationId: uploadAudio
+      summary: Upload an audio file and enqueue it
+      description: 'The file travels in the request, so nothing has to be publicly reachable first — this
+        is the route to use when the media exists only on the caller''s disk.
+
+
+        Capped at `MEDIA_MAX_BYTES` (16MB by default), enforced while the body streams: an oversized upload
+        is cut off mid-flight rather than buffered in full and refused afterwards.'
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          maxLength: 255
+          description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+            Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+            was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+            retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+            a second message. The key is scoped to your consumer, and stays claimed for as long as the
+            row exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+            This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        required: false
+        description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+          Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+          was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+          retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+          a second message. The key is scoped to your consumer, and stays claimed for as long as the row
+          exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+          This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        name: idempotency-key
+        in: header
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadAudioForm'
+      responses:
+        '202':
+          description: Accepted and enqueued. The file is stored and the outbox row references it; status
+            transitions arrive on the consumer webhook.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: File exceeds `MEDIA_MAX_BYTES`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          description: Body is not multipart/form-data with a file part
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for this consumer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/upload-document:
+    post:
+      operationId: uploadDocument
+      summary: Upload a document and enqueue it
+      description: 'The file travels in the request, so nothing has to be publicly reachable first — this
+        is the route to use when the media exists only on the caller''s disk.
+
+
+        Capped at `MEDIA_MAX_BYTES` (16MB by default), enforced while the body streams: an oversized upload
+        is cut off mid-flight rather than buffered in full and refused afterwards.'
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          maxLength: 255
+          description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+            Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+            was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+            retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+            a second message. The key is scoped to your consumer, and stays claimed for as long as the
+            row exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+            This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        required: false
+        description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+          Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+          was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+          retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+          a second message. The key is scoped to your consumer, and stays claimed for as long as the row
+          exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+          This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        name: idempotency-key
+        in: header
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadDocumentForm'
+      responses:
+        '202':
+          description: Accepted and enqueued. The file is stored and the outbox row references it; status
+            transitions arrive on the consumer webhook.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: File exceeds `MEDIA_MAX_BYTES`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          description: Body is not multipart/form-data with a file part
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for this consumer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/send-image-base64:
+    post:
+      operationId: sendImageBase64
+      summary: Enqueue an image sent as base64
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          maxLength: 255
+          description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+            Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+            was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+            retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+            a second message. The key is scoped to your consumer, and stays claimed for as long as the
+            row exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+            This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        required: false
+        description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+          Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+          was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+          retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+          a second message. The key is scoped to your consumer, and stays claimed for as long as the row
+          exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+          This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        name: idempotency-key
+        in: header
+      requestBody:
+        content:
+          application/json:
+            example:
+              to: '5511999999999'
+              data: iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGP6DwABBQECz6AuzQAAAABJRU5ErkJggg==
+              caption: Sua nota fiscal
+            schema:
+              $ref: '#/components/schemas/SendImageBase64Request'
+      responses:
+        '202':
+          description: 'Accepted and enqueued. The message is dispatched asynchronously; status transitions
+            arrive on the consumer webhook.
+
+
+            A gateway running without persistence (`DATABASE_URL` unset) sends inline instead of enqueueing,
+            and answers this same status and body with `id` and `status` null — there is no outbox row
+            to name or to report a status for. It is the only case where they are null, and the reason
+            the fields are nullable.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: File exceeds `MEDIA_MAX_BYTES`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for this consumer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/send-video-base64:
+    post:
+      operationId: sendVideoBase64
+      summary: Enqueue a video sent as base64
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          maxLength: 255
+          description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+            Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+            was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+            retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+            a second message. The key is scoped to your consumer, and stays claimed for as long as the
+            row exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+            This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        required: false
+        description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+          Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+          was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+          retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+          a second message. The key is scoped to your consumer, and stays claimed for as long as the row
+          exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+          This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        name: idempotency-key
+        in: header
+      requestBody:
+        content:
+          application/json:
+            example:
+              to: '5511999999999'
+              data: AAAAIGZ0eXBpc29tAAACAGlzb21pc28y
+            schema:
+              $ref: '#/components/schemas/SendVideoBase64Request'
+      responses:
+        '202':
+          description: 'Accepted and enqueued. The message is dispatched asynchronously; status transitions
+            arrive on the consumer webhook.
+
+
+            A gateway running without persistence (`DATABASE_URL` unset) sends inline instead of enqueueing,
+            and answers this same status and body with `id` and `status` null — there is no outbox row
+            to name or to report a status for. It is the only case where they are null, and the reason
+            the fields are nullable.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: File exceeds `MEDIA_MAX_BYTES`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for this consumer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/send-audio-base64:
+    post:
+      operationId: sendAudioBase64
+      summary: Enqueue an audio file sent as base64
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          maxLength: 255
+          description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+            Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+            was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+            retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+            a second message. The key is scoped to your consumer, and stays claimed for as long as the
+            row exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+            This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        required: false
+        description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+          Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+          was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+          retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+          a second message. The key is scoped to your consumer, and stays claimed for as long as the row
+          exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+          This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        name: idempotency-key
+        in: header
+      requestBody:
+        content:
+          application/json:
+            example:
+              to: '5511999999999'
+              data: T2dnUwACAAAAAAAAAAA=
+            schema:
+              $ref: '#/components/schemas/SendAudioBase64Request'
+      responses:
+        '202':
+          description: 'Accepted and enqueued. The message is dispatched asynchronously; status transitions
+            arrive on the consumer webhook.
+
+
+            A gateway running without persistence (`DATABASE_URL` unset) sends inline instead of enqueueing,
+            and answers this same status and body with `id` and `status` null — there is no outbox row
+            to name or to report a status for. It is the only case where they are null, and the reason
+            the fields are nullable.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: File exceeds `MEDIA_MAX_BYTES`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for this consumer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/send-document-base64:
+    post:
+      operationId: sendDocumentBase64
+      summary: Enqueue a document sent as base64
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          maxLength: 255
+          description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+            Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+            was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+            retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+            a second message. The key is scoped to your consumer, and stays claimed for as long as the
+            row exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+            This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        required: false
+        description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+          Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+          was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+          retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+          a second message. The key is scoped to your consumer, and stays claimed for as long as the row
+          exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+          This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        name: idempotency-key
+        in: header
+      requestBody:
+        content:
+          application/json:
+            example:
+              to: '5511999999999'
+              data: JVBERi0xLjQKJcfsj6IK
+              fileName: contrato.pdf
+            schema:
+              $ref: '#/components/schemas/SendDocumentBase64Request'
+      responses:
+        '202':
+          description: 'Accepted and enqueued. The message is dispatched asynchronously; status transitions
+            arrive on the consumer webhook.
+
+
+            A gateway running without persistence (`DATABASE_URL` unset) sends inline instead of enqueueing,
+            and answers this same status and body with `id` and `status` null — there is no outbox row
+            to name or to report a status for. It is the only case where they are null, and the reason
+            the fields are nullable.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: File exceeds `MEDIA_MAX_BYTES`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for this consumer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /message/check-number/{number}:
     get:
       operationId: checkNumber
@@ -712,6 +1633,12 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error
           content:
             application/json:
               schema:
@@ -783,6 +1710,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for this consumer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /message/typing:
     post:
       operationId: setTyping
@@ -813,6 +1752,12 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for this consumer
           content:
             application/json:
               schema:
@@ -853,6 +1798,12 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for this consumer
           content:
             application/json:
               schema:
@@ -903,6 +1854,71 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Persistence is disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/{messageId}/media:
+    get:
+      operationId: getMessageMedia
+      summary: Media bytes of a stored message
+      description: 'Addressed by the WhatsApp message id — the same id the inbound webhook delivers as
+        `messageId`, and the one its `mediaUrl` points at.
+
+
+        Media is fetched while the message is still in memory and never re-downloadable from WhatsApp
+        afterwards, so a message whose download failed or exceeded `MEDIA_MAX_BYTES` is stored with a
+        media type and no file, and answers `404` here.
+
+
+        The response `Content-Type` is the media''s own (`image/jpeg`, `video/mp4`, …), not `application/octet-stream`.'
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          maxLength: 128
+          description: The WhatsApp message id (`messageId` in the webhook)
+        required: true
+        description: The WhatsApp message id (`messageId` in the webhook)
+        name: messageId
+        in: path
+      responses:
+        '200':
+          description: The media bytes
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No media stored for this message
           content:
             application/json:
               schema:

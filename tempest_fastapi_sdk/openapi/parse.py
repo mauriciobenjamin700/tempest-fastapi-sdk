@@ -1061,9 +1061,21 @@ class _Parser:
             body_annotation, body_required, body_encoding = self._build_body(
                 operation, owner=to_pascal(name)
             )
-            response_annotation, success_status = self._build_response(
-                operation, owner=to_pascal(name)
-            )
+            if body_encoding == "multipart":
+                parameters = (
+                    *parameters,
+                    *self._build_multipart_parameters(
+                        operation,
+                        owner=to_pascal(name),
+                        taken={p.name for p in parameters},
+                    ),
+                )
+            (
+                response_annotation,
+                success_status,
+                response_encoding,
+                response_media_types,
+            ) = self._build_response(operation, owner=to_pascal(name))
 
         summary = _clean_text(operation.get("summary")) or _clean_text(
             operation.get("description")
@@ -1091,6 +1103,8 @@ class _Parser:
             body_required=body_required,
             body_encoding=body_encoding,
             response_annotation=response_annotation,
+            response_encoding=response_encoding,
+            response_media_types=response_media_types,
             success_status=success_status,
             error_statuses=self._error_statuses(operation),
             unsupported=tuple(gaps),
@@ -1271,14 +1285,20 @@ class _Parser:
 
         Returns:
             tuple[str | None, bool, str]: Annotation (``None`` when the
-            operation takes no modelled body), required flag, and
-            ``"json"`` or ``"form"``.
+            operation takes no modelled body, which includes a multipart
+            body — its fields become parameters instead), required flag,
+            and ``"json"``, ``"form"`` or ``"multipart"``.
 
         JSON wins when the operation offers both, since it is the richer
         encoding. Form is not a fallback for "we could not model it": it is
         the only encoding some APIs accept — every write in Stripe's API is
         ``application/x-www-form-urlencoded`` — and treating it as JSON
         produced a client whose every write failed.
+
+        ``multipart/form-data`` is a different call shape rather than a
+        different body object: the file parts go to ``files`` and the
+        scalars to ``data``. It reports no annotation here and the fields
+        arrive through :meth:`_build_multipart_parameters`.
         """
         body = operation.get("requestBody")
         if not isinstance(body, dict):
@@ -1292,11 +1312,14 @@ class _Parser:
         if schema is None:
             schema = _form_content_schema(content)
             encoding = "form"
+        if schema is None and _multipart_content_schema(content) is not None:
+            return None, bool(resolved.get("required", False)), "multipart"
         if schema is None:
             self.note(
                 f"request body of {owner} uses "
-                f"{', '.join(sorted(content))} — only application/json and "
-                f"application/x-www-form-urlencoded are modelled"
+                f"{', '.join(sorted(content))} — only application/json, "
+                f"application/x-www-form-urlencoded and multipart/form-data "
+                f"are modelled"
             )
             return None, True, "json"
         hint = f"{owner}Body"
@@ -1305,6 +1328,80 @@ class _Parser:
         )
         self.body_annotations.append(annotation)
         return annotation, bool(resolved.get("required", False)), encoding
+
+    def _build_multipart_parameters(
+        self,
+        operation: Mapping[str, Any],
+        *,
+        owner: str,
+        taken: set[str],
+    ) -> tuple[ParameterIR, ...]:
+        """Flatten a ``multipart/form-data`` body into parameters.
+
+        Args:
+            operation (Mapping[str, Any]): The operation object.
+            owner (str): PascalCase name used to hint inline schemas.
+            taken (set[str]): Argument names already used by the path,
+                query and header parameters, so a form field named ``to``
+                cannot shadow a query parameter of the same name.
+
+        Returns:
+            tuple[ParameterIR, ...]: One parameter per property, each
+            located ``"file"`` when the specification marks it
+            ``format: binary`` and ``"form"`` otherwise. Empty when the
+            operation has no multipart body.
+
+        The fields are flattened rather than wrapped in a model because
+        the file parts and the scalars leave on different arguments of the
+        request — ``files`` and ``data``. A model carrying both would have
+        to be taken apart again at the call site, and would offer a second
+        way to spell a call that already has one.
+        """
+        body = operation.get("requestBody")
+        if not isinstance(body, dict):
+            return ()
+        resolved = deref(self.document, body)
+        content = resolved.get("content")
+        if not isinstance(content, dict):
+            return ()
+        schema = _multipart_content_schema(content)
+        if schema is None:
+            return ()
+        schema = deref(self.document, schema)
+        properties = schema.get("properties")
+        if not isinstance(properties, dict):
+            return ()
+        required = {
+            str(name)
+            for name in (schema.get("required") or [])
+            if isinstance(name, str)
+        }
+        used = set(taken)
+        parameters: list[ParameterIR] = []
+        for wire_name, raw in properties.items():
+            if not isinstance(raw, dict):
+                continue
+            field = deref(self.document, raw)
+            with self.capture() as gaps:
+                annotation = self.render_type(
+                    field, hint=f"{owner}{to_pascal(str(wire_name))}"
+                )
+            is_file = field.get("format") == "binary"
+            is_required = str(wire_name) in required
+            if not is_required and not annotation.endswith("| None"):
+                annotation = f"{annotation} | None"
+            parameters.append(
+                ParameterIR(
+                    name=unique(field_name(str(wire_name)), used),
+                    wire_name=str(wire_name),
+                    location="file" if is_file else "form",
+                    annotation=annotation,
+                    required=is_required,
+                    description=_clean_text(field.get("description")),
+                    unsupported=tuple(gaps),
+                )
+            )
+        return tuple(parameters)
 
     def _name_body_union(self, annotation: str, *, hint: str) -> str:
         """Give a request body that renders as a union a name of its own.
@@ -1343,35 +1440,50 @@ class _Parser:
         operation: Mapping[str, Any],
         *,
         owner: str,
-    ) -> tuple[str | None, str]:
-        """Return the success response annotation and its status code."""
+    ) -> tuple[str | None, str, str, tuple[str, ...]]:
+        """Return the success response annotation, status and encoding.
+
+        Args:
+            operation (Mapping[str, Any]): The operation object.
+            owner (str): The operation's PascalCase name, used to hint
+                generated type names and to name the operation in notes.
+
+        Returns:
+            tuple[str | None, str, str, tuple[str, ...]]: The response
+            annotation (``None`` when the operation answers no body), the
+            success status code, the encoding (``"json"`` or ``"raw"``)
+            and, for ``"raw"``, the declared media types.
+
+        A success status carrying a body the generator cannot parse as
+        JSON is handed over as ``bytes`` rather than dropped. Dropping it
+        made the method a round trip that returns nothing: the zap
+        gateway's ``GET /message/{messageId}/media`` is the only way to
+        read media that WhatsApp will not serve again, and the generated
+        client discarded it.
+        """
         responses = operation.get("responses")
         if not isinstance(responses, dict):
-            return None, "200"
+            return None, "200", "json", ()
         success = sorted(
             code for code in responses if str(code).isdigit() and 200 <= int(code) < 300
         )
         if not success:
-            return None, "200"
+            return None, "200", "json", ()
         status = str(success[0])
         self._note_divergent_success(operation, responses, success, owner, status)
         entry = responses[status]
         if not isinstance(entry, dict):
-            return None, status
+            return None, status, "json", ()
         resolved = deref(self.document, entry)
         content = resolved.get("content")
         if not isinstance(content, dict) or not content:
-            return None, status
+            return None, status, "json", ()
         schema = _json_content_schema(content)
         if schema is None:
-            self.note(
-                f"response of {owner} uses {', '.join(sorted(content))} — "
-                f"only application/json is modelled"
-            )
-            return None, status
+            return "bytes", status, "raw", tuple(sorted(str(key) for key in content))
         annotation = self.render_type(schema, hint=f"{owner}Response")
         self.response_annotations.append(annotation)
-        return annotation, status
+        return annotation, status, "json", ()
 
     def _note_divergent_success(
         self,
@@ -1510,6 +1622,23 @@ def _json_content_schema(content: Mapping[str, Any]) -> Mapping[str, Any] | None
             return schema
         return {}
     return None
+
+
+def _multipart_content_schema(content: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """Return the ``multipart/form-data`` schema from a ``content`` mapping.
+
+    Args:
+        content (Mapping[str, Any]): An OpenAPI ``content`` object.
+
+    Returns:
+        Mapping[str, Any] | None: The schema under ``multipart/form-data``,
+        or ``None`` when the operation does not offer it.
+    """
+    entry = content.get("multipart/form-data")
+    if not isinstance(entry, dict):
+        return None
+    schema = entry.get("schema")
+    return schema if isinstance(schema, dict) else {}
 
 
 def _form_content_schema(content: Mapping[str, Any]) -> Mapping[str, Any] | None:

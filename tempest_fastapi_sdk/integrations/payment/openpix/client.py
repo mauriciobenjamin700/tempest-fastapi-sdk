@@ -82,6 +82,7 @@ from .schemas import (
     DeleteWebhookResponse,
     DuplicateAccountResponse,
     FilePayload,
+    FilePurpose,
     FundsRecovery,
     FundsRecoveryPayload,
     GetAccountLimitsResponse,
@@ -343,12 +344,12 @@ class OpenPixClient:
         """Get a list of Accounts.
 
         Args:
-            email (str | None): You can use the email to filter accounts Omitted from
+            email (str | None): You can use the email to filter accounts. Omitted from
                 the query when None.
-            skip (int | None): Number of items to skip for pagination Omitted from the
+            skip (int | None): Number of items to skip for pagination. Omitted from the
                 query when None.
-            limit (int | None): Maximum number of items to return Omitted from the query
-                when None.
+            limit (int | None): Maximum number of items to return. Omitted from the
+                query when None.
 
         Returns:
             ListAccountsResponse: The 200 response body, validated.
@@ -1031,9 +1032,9 @@ class OpenPixClient:
             end (datetime | None): The end value. Omitted from the query when None.
             status (ChargeStatus | None): The status value. Omitted from the query when
                 None.
-            customer (str | None): Customer Correlation ID Omitted from the query when
+            customer (str | None): Customer Correlation ID. Omitted from the query when
                 None.
-            subscription (str | None): Subscription Correlation ID Omitted from the
+            subscription (str | None): Subscription Correlation ID. Omitted from the
                 query when None.
 
         Returns:
@@ -1090,8 +1091,8 @@ class OpenPixClient:
         Args:
             body (ChargePayload): The request body.
             return_existing (bool | None): Make the endpoint idempotent, will return an
-                existent charge if already has a one with the correlationID Omitted from
-                the query when None.
+                existent charge if already has a one with the correlationID. Omitted
+                from the query when None.
 
         Returns:
             CreateChargeResponse: The 200 response body, validated.
@@ -1496,9 +1497,13 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(UploadDisputeEvidenceResponse, response.json())
 
-    # openapi: unsupported — request body of UploadFile uses multipart/form-data — only
-    #   application/json and application/x-www-form-urlencoded are modelled
-    async def upload_file(self) -> FilePayload:
+    async def upload_file(
+        self,
+        *,
+        file: bytes,
+        purpose: FilePurpose,
+        correlation_id: str | None = None,
+    ) -> FilePayload:
         """Upload a file.
 
         Uploads a file and returns its metadata with a pre-signed download URL. The file
@@ -1516,6 +1521,15 @@ class OpenPixClient:
         The `url` in the response is temporary and expires at `urlExpiresAt`; ask for
         the file again to get a fresh one.
 
+        Args:
+            file (bytes): The file itself. Its content type must be one of
+                `application/pdf`, `image/png`, `image/jpeg` or `image/webp`, and its
+                leading bytes must match the declared content type.
+            purpose (FilePurpose): What the file will be used for
+            correlation_id (str | None): Your own identifier for this upload. Reusing it
+                for the same purpose returns the file stored on the first call. Defaults
+                to a generated UUID. Omitted from the form body when None.
+
         Returns:
             FilePayload: The 200 response body, validated.
 
@@ -1524,9 +1538,17 @@ class OpenPixClient:
                 400, 401, 403, 413, 415, 502.
         """
         path = "/api/v1/files"
+        data: dict[str, Any] = {}
+        data["purpose"] = _param(purpose)
+        if correlation_id is not None:
+            data["correlationID"] = _param(correlation_id)
+        files: dict[str, Any] = {}
+        files["file"] = file
         response = await self._client.request(
             "POST",
             path,
+            data=data,
+            files=files,
         )
         response.raise_for_status()
         return _validate(FilePayload, response.json())
@@ -1963,19 +1985,18 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(CancelInvoiceResponse, response.json())
 
-    # openapi: unsupported — response of GetInvoicePdf uses application/pdf — only
-    #   application/json is modelled
     async def get_invoice_pdf(
         self,
         correlation_id: str,
-    ) -> None:
+    ) -> bytes:
         """Get invoice PDF document.
 
         Args:
             correlation_id (str): The correlationID value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            bytes: The 200 response body, undecoded — the operation answers
+                application/pdf, which is handed over as bytes rather than parsed.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1987,21 +2008,20 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return None
+        return response.content
 
-    # openapi: unsupported — response of GetInvoiceXml uses application/xml — only
-    #   application/json is modelled
     async def get_invoice_xml(
         self,
         correlation_id: str,
-    ) -> None:
+    ) -> bytes:
         """Get invoice XML document.
 
         Args:
             correlation_id (str): The correlationID value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            bytes: The 200 response body, undecoded — the operation answers
+                application/xml, which is handed over as bytes rather than parsed.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2013,7 +2033,7 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return None
+        return response.content
 
     async def create_kyc_validation(
         self,
@@ -2529,7 +2549,7 @@ class OpenPixClient:
         Args:
             skip (int | None): The skip value. Omitted from the query when None.
             limit (int | None): The limit value. Omitted from the query when None.
-            company_bank_account (str | None): Filter logs by company bank account ID
+            company_bank_account (str | None): Filter logs by company bank account ID.
                 Omitted from the query when None.
 
         Returns:
@@ -2567,7 +2587,7 @@ class OpenPixClient:
             pix_key (str): The Pix key to delete
 
         Returns:
-            None: Nothing — the operation answers 204 with no JSON body.
+            None: Nothing — the operation answers 204 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2654,10 +2674,10 @@ class OpenPixClient:
         """Get a list of PSPs (Payment Service Providers).
 
         Args:
-            ispb (str | None): Filter PSPs by ISPB code Omitted from the query when
+            ispb (str | None): Filter PSPs by ISPB code. Omitted from the query when
                 None.
-            name (str | None): Filter PSPs by name Omitted from the query when None.
-            compe (str | None): Filter PSPs by COMPE code Omitted from the query when
+            name (str | None): Filter PSPs by name. Omitted from the query when None.
+            compe (str | None): Filter PSPs by COMPE code. Omitted from the query when
                 None.
 
         Returns:
@@ -2780,13 +2800,11 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(DeleteStaticQrCodeResponse, response.json())
 
-    # openapi: unsupported — response of GetReceipt uses application/pdf — only
-    #   application/json is modelled
     async def get_receipt(
         self,
         receipt_type: GetReceiptReceiptType,
         end_to_end_id: str,
-    ) -> None:
+    ) -> bytes:
         """Get a PDF document related to a payment transaction formatted as a receipt by
         type (pix-in, pix-out or pix-refund).
 
@@ -2796,7 +2814,8 @@ class OpenPixClient:
             end_to_end_id (str): The EndToEndId from the payment transaction to export.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            bytes: The 200 response body, undecoded — the operation answers
+                application/pdf, which is handed over as bytes rather than parsed.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2810,7 +2829,7 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return None
+        return response.content
 
     async def list_refunds(self) -> ListRefundsResponse:
         """Get a list of refunds.
@@ -2980,7 +2999,7 @@ class OpenPixClient:
             correlation_id (str): The idempotency key sent on create.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -3101,7 +3120,7 @@ class OpenPixClient:
             payout_id (str): The `payoutId` returned by the create call.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -3617,13 +3636,13 @@ class OpenPixClient:
 
         Args:
             id (str): Pix key registered to the subaccount
-            skip (int | None): Number of entries to skip for pagination Omitted from the
+            skip (int | None): Number of entries to skip for pagination. Omitted from
+                the query when None.
+            limit (int | None): Maximum number of entries to return. Omitted from the
                 query when None.
-            limit (int | None): Maximum number of entries to return Omitted from the
-                query when None.
-            start (datetime | None): Start date for filtering entries (ISO 8601 format)
+            start (datetime | None): Start date for filtering entries (ISO 8601 format).
                 Omitted from the query when None.
-            end (datetime | None): End date for filtering entries (ISO 8601 format)
+            end (datetime | None): End date for filtering entries (ISO 8601 format).
                 Omitted from the query when None.
 
         Returns:
@@ -3844,19 +3863,19 @@ class OpenPixClient:
             end (datetime | None): The end value. Omitted from the query when None.
             charge (str | None): You can use the charge ID or correlation ID or
                 transaction ID of charge to get a list of transactions related of this
-                transaction Omitted from the query when None.
+                transaction. Omitted from the query when None.
             pix_qr_code (str | None): You can use the QrCode static ID or correlation ID
                 or identifier field of QrCode static to get a list of QrCode related of
-                this transaction Omitted from the query when None.
+                this transaction. Omitted from the query when None.
             withdrawal (str | None): You can use the ID or EndToEndId of a withdrawal
-                transaction to get all transactions related to the withdrawal Omitted
+                transaction to get all transactions related to the withdrawal. Omitted
                 from the query when None.
             has_webhook (bool | None): Filter transactions by webhook delivery status.
                 Use true to get only transactions that had a successful webhook delivery
                 (HTTP 200), or false to get transactions without successful webhook
                 delivery. Omitted from the query when None.
-            type (ListTransactionsType | None): Filter transactions by type Omitted from
-                the query when None.
+            type (ListTransactionsType | None): Filter transactions by type. Omitted
+                from the query when None.
 
         Returns:
             ListTransactionsResponse: The 200 response body, validated.
@@ -3962,7 +3981,7 @@ class OpenPixClient:
         """Get a list of webhooks.
 
         Args:
-            url (str | None): You can use the url to filter all webhooks Omitted from
+            url (str | None): You can use the url to filter all webhooks. Omitted from
                 the query when None.
 
         Returns:
@@ -4124,7 +4143,7 @@ class OpenPixClient:
                 1024. Omitted from the query when None.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents

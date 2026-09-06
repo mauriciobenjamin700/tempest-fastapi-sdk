@@ -160,8 +160,11 @@ class ParameterIR:
     Attributes:
         name (str): The Python argument name.
         wire_name (str): The name to send on the wire.
-        location (Literal["path", "query", "header"]): Where the value
-            goes.
+        location (Literal["path", "query", "header", "form", "file"]):
+            Where the value goes. ``"form"`` and ``"file"`` are the two
+            halves of a ``multipart/form-data`` body: scalar fields ride
+            in ``data``, parts the specification marks
+            ``format: binary`` ride in ``files``.
         annotation (str): Rendered type annotation.
         required (bool): Whether the specification marks it required.
             Path parameters are always required.
@@ -175,7 +178,7 @@ class ParameterIR:
 
     name: str
     wire_name: str
-    location: Literal["path", "query", "header"]
+    location: Literal["path", "query", "header", "form", "file"]
     annotation: str
     required: bool
     description: str | None = None
@@ -206,6 +209,17 @@ class OperationIR:
             whose every write is form-encoded.
         response_annotation (str | None): Type of the success response, or
             ``None`` when the operation returns no content.
+        response_encoding (str): How the success body is read off the
+            wire — ``"json"`` for a JSON media type, ``"raw"`` for a body
+            the generator hands over undecoded as ``bytes``. A response
+            that is not JSON used to be dropped: the method issued the
+            request, checked the status and returned ``None``, so the
+            only endpoint serving a payload was unreachable through the
+            client that was generated for it.
+        response_media_types (tuple[str, ...]): The media types the
+            specification declares for the success status. Populated only
+            for ``"raw"``, where the caller has to know what the bytes
+            are to do anything with them.
         success_status (str): The documented success status code, used in
             the docstring.
         error_statuses (tuple[tuple[str, str], ...]): ``(status,
@@ -227,6 +241,8 @@ class OperationIR:
     body_required: bool = True
     body_encoding: str = "json"
     response_annotation: str | None = None
+    response_encoding: str = "json"
+    response_media_types: tuple[str, ...] = ()
     success_status: str = "200"
     error_statuses: tuple[tuple[str, str], ...] = ()
     unsupported: tuple[str, ...] = ()
@@ -266,6 +282,31 @@ class OperationIR:
         which is worse than sending none.
         """
         return tuple(p for p in self.parameters if p.location == "header")
+
+    @property
+    def form_parameters(self) -> tuple[ParameterIR, ...]:
+        """Scalar fields of a ``multipart/form-data`` body.
+
+        Returns:
+            tuple[ParameterIR, ...]: The matching parameters, in declaration
+                order.
+        """
+        return tuple(p for p in self.parameters if p.location == "form")
+
+    @property
+    def file_parameters(self) -> tuple[ParameterIR, ...]:
+        """File parts of a ``multipart/form-data`` body.
+
+        Returns:
+            tuple[ParameterIR, ...]: The matching parameters, in declaration
+                order.
+
+        Typed ``bytes`` rather than a file object on purpose: the client
+        retries, and a retry re-sends the same arguments. A stream is
+        already exhausted by then, so attempt two would upload a truncated
+        body and the server would accept it.
+        """
+        return tuple(p for p in self.parameters if p.location == "file")
 
 
 @dataclass(frozen=True, slots=True)

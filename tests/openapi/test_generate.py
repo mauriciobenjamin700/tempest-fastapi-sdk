@@ -779,8 +779,14 @@ def _unsupported_document() -> dict[str, Any]:
 
     Returns:
         dict[str, Any]: The OpenAPI document — a `not` schema and an
-        `items`-less array (both field-level), a non-JSON request body and
-        an undeclared path placeholder (both operation-level).
+        `items`-less array (both field-level), a request body in a media
+        type with no call shape and an undeclared path placeholder (both
+        operation-level).
+
+        The body was ``multipart/form-data`` until the generator learnt to
+        split that into ``files`` and ``data``. It is ``application/xml``
+        now, which keeps the marker mechanism under test without pinning a
+        gap that has since been closed.
     """
     return {
         "openapi": "3.0.3",
@@ -791,9 +797,7 @@ def _unsupported_document() -> dict[str, Any]:
                     "operationId": "createThing",
                     "summary": "Create a thing.",
                     "requestBody": {
-                        "content": {
-                            "multipart/form-data": {"schema": {"type": "object"}}
-                        }
+                        "content": {"application/xml": {"schema": {"type": "object"}}}
                     },
                     "responses": {"204": {"description": "ok"}},
                 }
@@ -870,7 +874,7 @@ class TestUnsupportedMarker:
         client = (generated / "client.py").read_text(encoding="utf-8")
         head = client[: client.index("async def create_thing")]
         assert head.count("# openapi: unsupported") == 2
-        assert "multipart/form-data" in head
+        assert "application/xml" in head
         assert "generated as a required str" in head
 
     def test_marked_output_still_passes_ruff(self, generated: Path) -> None:

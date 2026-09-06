@@ -26,7 +26,6 @@ class AcceptedResponseStatus(BaseStrEnum):
     DELIVERED = "delivered"
     READ = "read"
     FAILED = "failed"
-    NONE = None
 
 
 class HistoryMessageDirection(BaseStrEnum):
@@ -180,6 +179,32 @@ class ReadRequest(BaseSchema):
     )
 
 
+class SendAudioBase64Request(BaseSchema):
+    """Schema generated for SendAudioBase64Request.
+
+    Attributes:
+        to (str): Undocumented in the spec.
+        reply_to (str | None): Undocumented in the spec.
+        data (str): File contents, base64-encoded. A `data:` URL prefix is accepted.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    to: str = Field(pattern="^\\d{10,15}$")
+    reply_to: str | None = Field(
+        validation_alias="replyTo",
+        serialization_alias="replyTo",
+        min_length=1,
+        max_length=128,
+        default=None,
+    )
+    data: str = Field(
+        description="File contents, base64-encoded. A `data:` URL prefix is accepted.",
+        min_length=1,
+        max_length=14000000,
+    )
+
+
 class SendAudioRequest(BaseSchema):
     """Schema generated for SendAudioRequest.
 
@@ -200,6 +225,40 @@ class SendAudioRequest(BaseSchema):
         default=None,
     )
     media: str = Field(min_length=1, max_length=8192)
+
+
+class SendDocumentBase64Request(BaseSchema):
+    """Schema generated for SendDocumentBase64Request.
+
+    Attributes:
+        to (str): Undocumented in the spec.
+        reply_to (str | None): Undocumented in the spec.
+        data (str): File contents, base64-encoded. A `data:` URL prefix is accepted.
+        file_name (str): Undocumented in the spec.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    to: str = Field(pattern="^\\d{10,15}$")
+    reply_to: str | None = Field(
+        validation_alias="replyTo",
+        serialization_alias="replyTo",
+        min_length=1,
+        max_length=128,
+        default=None,
+    )
+    data: str = Field(
+        description="File contents, base64-encoded. A `data:` URL prefix is accepted.",
+        min_length=1,
+        max_length=14000000,
+    )
+    file_name: str = Field(
+        validation_alias="fileName",
+        serialization_alias="fileName",
+        min_length=1,
+        max_length=255,
+        pattern="^[^\\\\/\\x00]+$",
+    )
 
 
 class SendDocumentRequest(BaseSchema):
@@ -230,6 +289,34 @@ class SendDocumentRequest(BaseSchema):
         max_length=255,
         pattern="^[^\\\\/\\x00]+$",
     )
+
+
+class SendImageBase64Request(BaseSchema):
+    """Schema generated for SendImageBase64Request.
+
+    Attributes:
+        to (str): Undocumented in the spec.
+        reply_to (str | None): Undocumented in the spec.
+        data (str): File contents, base64-encoded. A `data:` URL prefix is accepted.
+        caption (str | None): Undocumented in the spec.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    to: str = Field(pattern="^\\d{10,15}$")
+    reply_to: str | None = Field(
+        validation_alias="replyTo",
+        serialization_alias="replyTo",
+        min_length=1,
+        max_length=128,
+        default=None,
+    )
+    data: str = Field(
+        description="File contents, base64-encoded. A `data:` URL prefix is accepted.",
+        min_length=1,
+        max_length=14000000,
+    )
+    caption: str | None = Field(max_length=4096, default=None)
 
 
 class SendImageRequest(BaseSchema):
@@ -276,6 +363,34 @@ class SendTextRequest(BaseSchema):
         default=None,
     )
     text: str = Field(min_length=1, max_length=4096)
+
+
+class SendVideoBase64Request(BaseSchema):
+    """Schema generated for SendVideoBase64Request.
+
+    Attributes:
+        to (str): Undocumented in the spec.
+        reply_to (str | None): Undocumented in the spec.
+        data (str): File contents, base64-encoded. A `data:` URL prefix is accepted.
+        caption (str | None): Undocumented in the spec.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    to: str = Field(pattern="^\\d{10,15}$")
+    reply_to: str | None = Field(
+        validation_alias="replyTo",
+        serialization_alias="replyTo",
+        min_length=1,
+        max_length=128,
+        default=None,
+    )
+    data: str = Field(
+        description="File contents, base64-encoded. A `data:` URL prefix is accepted.",
+        min_length=1,
+        max_length=14000000,
+    )
+    caption: str | None = Field(max_length=4096, default=None)
 
 
 class SendVideoRequest(BaseSchema):
@@ -344,6 +459,121 @@ class TypingRequest(BaseSchema):
     state: TypingRequestState
 
 
+class UploadAudioForm(BaseSchema):
+    """Schema generated for UploadAudioForm.
+
+    Attributes:
+        to (str): Recipient phone number, digits only
+        file (bytes): The file itself — the form's only file part
+        reply_to (str | None): Message id being replied to, quoted above this one
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    to: str = Field(
+        description="Recipient phone number, digits only",
+        pattern="^\\d{10,15}$",
+    )
+    file: bytes = Field(description="The file itself — the form's only file part")
+    reply_to: str | None = Field(
+        validation_alias="replyTo",
+        serialization_alias="replyTo",
+        description="Message id being replied to, quoted above this one",
+        max_length=128,
+        default=None,
+    )
+
+
+class UploadDocumentForm(BaseSchema):
+    """Schema generated for UploadDocumentForm.
+
+    Attributes:
+        to (str): Recipient phone number, digits only
+        file (bytes): The file itself — the form's only file part
+        file_name (str | None): Name the recipient sees. Falls back to the uploaded
+            part's own file name.
+        reply_to (str | None): Message id being replied to, quoted above this one
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    to: str = Field(
+        description="Recipient phone number, digits only",
+        pattern="^\\d{10,15}$",
+    )
+    file: bytes = Field(description="The file itself — the form's only file part")
+    file_name: str | None = Field(
+        validation_alias="fileName",
+        serialization_alias="fileName",
+        description=(
+            "Name the recipient sees. Falls back to the uploaded part's own file name."
+        ),
+        max_length=255,
+        default=None,
+    )
+    reply_to: str | None = Field(
+        validation_alias="replyTo",
+        serialization_alias="replyTo",
+        description="Message id being replied to, quoted above this one",
+        max_length=128,
+        default=None,
+    )
+
+
+class UploadImageForm(BaseSchema):
+    """Schema generated for UploadImageForm.
+
+    Attributes:
+        to (str): Recipient phone number, digits only
+        file (bytes): The file itself — the form's only file part
+        caption (str | None): Undocumented in the spec.
+        reply_to (str | None): Message id being replied to, quoted above this one
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    to: str = Field(
+        description="Recipient phone number, digits only",
+        pattern="^\\d{10,15}$",
+    )
+    file: bytes = Field(description="The file itself — the form's only file part")
+    caption: str | None = Field(max_length=4096, default=None)
+    reply_to: str | None = Field(
+        validation_alias="replyTo",
+        serialization_alias="replyTo",
+        description="Message id being replied to, quoted above this one",
+        max_length=128,
+        default=None,
+    )
+
+
+class UploadVideoForm(BaseSchema):
+    """Schema generated for UploadVideoForm.
+
+    Attributes:
+        to (str): Recipient phone number, digits only
+        file (bytes): The file itself — the form's only file part
+        caption (str | None): Undocumented in the spec.
+        reply_to (str | None): Message id being replied to, quoted above this one
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    to: str = Field(
+        description="Recipient phone number, digits only",
+        pattern="^\\d{10,15}$",
+    )
+    file: bytes = Field(description="The file itself — the form's only file part")
+    caption: str | None = Field(max_length=4096, default=None)
+    reply_to: str | None = Field(
+        validation_alias="replyTo",
+        serialization_alias="replyTo",
+        description="Message id being replied to, quoted above this one",
+        max_length=128,
+        default=None,
+    )
+
+
 class HistoryResponse(BaseSchema):
     """Schema generated for HistoryResponse.
 
@@ -369,14 +599,22 @@ __all__: list[str] = [
     "QrResponse",
     "ReactionRequest",
     "ReadRequest",
+    "SendAudioBase64Request",
     "SendAudioRequest",
+    "SendDocumentBase64Request",
     "SendDocumentRequest",
+    "SendImageBase64Request",
     "SendImageRequest",
     "SendTextRequest",
+    "SendVideoBase64Request",
     "SendVideoRequest",
     "SessionStartResponse",
     "SessionStatusResponse",
     "SessionStatusResponseStatus",
     "TypingRequest",
     "TypingRequestState",
+    "UploadAudioForm",
+    "UploadDocumentForm",
+    "UploadImageForm",
+    "UploadVideoForm",
 ]

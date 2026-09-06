@@ -50,6 +50,9 @@ def _signature_lines(operation: OperationIR) -> list[str]:
         if not operation.body_required and not annotation.endswith("| None"):
             annotation = f"{annotation} | None"
         keyword_only.append(f"body: {annotation}{default}")
+    for parameter in (*operation.file_parameters, *operation.form_parameters):
+        default = "" if parameter.required else " = None"
+        keyword_only.append(f"{parameter.name}: {parameter.annotation}{default}")
     for parameter in operation.query_parameters:
         default = "" if parameter.required else " = None"
         keyword_only.append(f"{parameter.name}: {parameter.annotation}{default}")
@@ -135,6 +138,8 @@ def _render_docstring(operation: OperationIR, opening: str) -> list[str]:
                     f"body ({operation.body_annotation}): ",
                 )
             )
+        for parameter in (*operation.file_parameters, *operation.form_parameters):
+            lines.extend(_parameter_doc(parameter))
         for parameter in operation.query_parameters:
             lines.extend(_parameter_doc(parameter))
         for parameter in operation.header_parameters:
@@ -145,9 +150,20 @@ def _render_docstring(operation: OperationIR, opening: str) -> list[str]:
         lines.extend(
             _wrap(
                 f"Nothing — the operation answers {operation.success_status} "
-                f"with no JSON body.",
+                f"with no body.",
                 "            ",
                 "None: ",
+            )
+        )
+    elif operation.response_encoding == "raw":
+        declared = ", ".join(operation.response_media_types)
+        lines.extend(
+            _wrap(
+                f"The {operation.success_status} response body, undecoded — "
+                f"the operation answers {declared}, which is handed over as "
+                f"bytes rather than parsed.",
+                "            ",
+                "bytes: ",
             )
         )
     else:
@@ -211,8 +227,13 @@ def _parameter_doc(parameter: ParameterIR) -> list[str]:
     """
     description = parameter.description or f"The {parameter.wire_name} value."
     if not parameter.required:
-        where = "request headers" if parameter.location == "header" else "query"
-        description = f"{description} Omitted from the {where} when None."
+        where = {
+            "header": "request headers",
+            "form": "form body",
+            "file": "form body",
+        }.get(parameter.location, "query")
+        separator = "" if description.rstrip().endswith(".") else "."
+        description = f"{description}{separator} Omitted from the {where} when None."
     return _wrap(
         description,
         "            ",
@@ -298,6 +319,36 @@ def _body_lines(operation: OperationIR) -> list[str]:
         else:
             call_arguments.append("json=payload")
 
+    if operation.form_parameters:
+        lines.append("        data: dict[str, Any] = {}")
+        for parameter in operation.form_parameters:
+            key = _string_literal(parameter.wire_name)
+            if parameter.required:
+                lines.append(f"        data[{key}] = _param({parameter.name})")
+            else:
+                lines.extend(
+                    [
+                        f"        if {parameter.name} is not None:",
+                        f"            data[{key}] = _param({parameter.name})",
+                    ]
+                )
+        call_arguments.append("data=data")
+
+    if operation.file_parameters:
+        lines.append("        files: dict[str, Any] = {}")
+        for parameter in operation.file_parameters:
+            key = _string_literal(parameter.wire_name)
+            if parameter.required:
+                lines.append(f"        files[{key}] = {parameter.name}")
+            else:
+                lines.extend(
+                    [
+                        f"        if {parameter.name} is not None:",
+                        f"            files[{key}] = {parameter.name}",
+                    ]
+                )
+        call_arguments.append("files=files")
+
     lines.append("        response = await self._client.request(")
     for argument in call_arguments:
         lines.append(f"            {argument},")
@@ -306,6 +357,8 @@ def _body_lines(operation: OperationIR) -> list[str]:
 
     if operation.response_annotation is None:
         lines.append("        return None")
+    elif operation.response_encoding == "raw":
+        lines.append("        return response.content")
     else:
         lines.extend(_validate_lines(operation.response_annotation))
     return lines

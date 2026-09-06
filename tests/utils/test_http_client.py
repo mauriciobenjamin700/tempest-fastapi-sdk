@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+
 import httpx
 import pytest
 
@@ -270,3 +272,134 @@ class TestRetryPolicy:
             backoff_max_seconds=2.0,
         )
         assert p.sleep_for(10) == pytest.approx(2.0)
+
+
+class TestBinaryBodies:
+    """``content`` and ``files`` reach the wire, and gate the retries."""
+
+    async def test_files_and_data_are_sent_as_multipart(self) -> None:
+        seen: dict[str, bytes | str] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["type"] = request.headers.get("content-type", "")
+            seen["body"] = request.content
+            return httpx.Response(202, json={"ok": True})
+
+        client = HTTPClient(base_url="http://api.test", failure_threshold=0)
+        client._client = httpx.AsyncClient(
+            base_url="http://api.test", transport=_mock_transport(handler)
+        )
+        try:
+            await client.request(
+                "POST",
+                "/upload",
+                data={"to": "5511999999999"},
+                files={"file": b"\x89PNG\r\n\x1a\n"},
+            )
+        finally:
+            await client.aclose()
+
+        assert str(seen["type"]).startswith("multipart/form-data; boundary=")
+        assert b"5511999999999" in seen["body"]
+        assert b"\x89PNG\r\n\x1a\n" in seen["body"]
+
+    async def test_content_is_sent_raw(self) -> None:
+        seen: dict[str, bytes] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["body"] = request.content
+            return httpx.Response(200)
+
+        client = HTTPClient(base_url="http://api.test", failure_threshold=0)
+        client._client = httpx.AsyncClient(
+            base_url="http://api.test", transport=_mock_transport(handler)
+        )
+        try:
+            await client.request("POST", "/raw", content=b"\x00\x01\x02")
+        finally:
+            await client.aclose()
+
+        assert seen["body"] == b"\x00\x01\x02"
+
+    async def test_bytes_file_part_still_retries(self) -> None:
+        statuses = iter([503, 503, 202])
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            return httpx.Response(next(statuses))
+
+        client = HTTPClient(
+            base_url="http://api.test",
+            retry_policy=RetryPolicy(max_attempts=3, backoff_initial_seconds=0.001),
+            failure_threshold=0,
+        )
+        client._client = httpx.AsyncClient(
+            base_url="http://api.test", transport=_mock_transport(handler)
+        )
+        try:
+            response = await client.request(
+                "POST", "/upload", files={"file": b"payload"}
+            )
+        finally:
+            await client.aclose()
+
+        assert response.status_code == 202
+        assert calls["n"] == 3
+
+    async def test_stream_file_part_is_not_retried(self) -> None:
+        """A drained stream would upload a truncated body on attempt two.
+
+        The server cannot tell that from a short file, so the request is
+        sent once and its 503 handed back instead.
+        """
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            return httpx.Response(503)
+
+        client = HTTPClient(
+            base_url="http://api.test",
+            retry_policy=RetryPolicy(max_attempts=3, backoff_initial_seconds=0.001),
+            failure_threshold=0,
+        )
+        client._client = httpx.AsyncClient(
+            base_url="http://api.test", transport=_mock_transport(handler)
+        )
+        try:
+            response = await client.request(
+                "POST", "/upload", files={"file": io.BytesIO(b"payload")}
+            )
+        finally:
+            await client.aclose()
+
+        assert response.status_code == 503
+        assert calls["n"] == 1
+
+    async def test_named_file_tuple_is_inspected_inside(self) -> None:
+        """The httpx ``(filename, payload)`` shape hides the payload."""
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            return httpx.Response(503)
+
+        client = HTTPClient(
+            base_url="http://api.test",
+            retry_policy=RetryPolicy(max_attempts=3, backoff_initial_seconds=0.001),
+            failure_threshold=0,
+        )
+        client._client = httpx.AsyncClient(
+            base_url="http://api.test", transport=_mock_transport(handler)
+        )
+        try:
+            await client.request(
+                "POST",
+                "/upload",
+                files={"file": ("a.png", io.BytesIO(b"payload"), "image/png")},
+            )
+        finally:
+            await client.aclose()
+
+        assert calls["n"] == 1

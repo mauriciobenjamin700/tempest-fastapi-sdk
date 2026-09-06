@@ -516,7 +516,7 @@ class MercadoPagoClient:
             body (CreateQrIntegratorConfigBody): The request body.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -553,7 +553,7 @@ class MercadoPagoClient:
             body (dict[str, Any]): The request body.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -593,7 +593,7 @@ class MercadoPagoClient:
             body (dict[str, Any]): The request body.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -631,7 +631,7 @@ class MercadoPagoClient:
             body (ConfirmCashoutQrBody): The request body.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -662,7 +662,7 @@ class MercadoPagoClient:
             external_pos_id (str): The external_pos_id value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -697,7 +697,7 @@ class MercadoPagoClient:
             external_pos_id (str): The external_pos_id value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -737,7 +737,7 @@ class MercadoPagoClient:
             body (dict[str, Any]): The request body.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -915,7 +915,7 @@ class MercadoPagoClient:
             body (UpdateMerchantOrderBody): The request body.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -952,7 +952,7 @@ class MercadoPagoClient:
             body (dict[str, Any]): The request body.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -986,7 +986,7 @@ class MercadoPagoClient:
             external_id (str): The external_id value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1102,7 +1102,7 @@ class MercadoPagoClient:
             paymentintentid (str): The paymentintentid value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1168,7 +1168,7 @@ class MercadoPagoClient:
             refundintentid (str): The refundintentid value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1197,7 +1197,7 @@ class MercadoPagoClient:
             paymentintentid (str): The paymentintentid value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1380,7 +1380,7 @@ class MercadoPagoClient:
             id (str): POS identifier to delete
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1490,7 +1490,7 @@ class MercadoPagoClient:
             body (UploadShippingEvidenceBody): The request body.
 
         Returns:
-            None: Nothing — the operation answers 201 with no JSON body.
+            None: Nothing — the operation answers 201 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1521,7 +1521,7 @@ class MercadoPagoClient:
             claim_id (int): The claim_id value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1556,7 +1556,7 @@ class MercadoPagoClient:
                 query when None.
 
         Returns:
-            None: Nothing — the operation answers 201 with no JSON body.
+            None: Nothing — the operation answers 201 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1576,11 +1576,11 @@ class MercadoPagoClient:
         response.raise_for_status()
         return None
 
-    # openapi: unsupported — request body of AttachClaimFile uses multipart/form-data —
-    #   only application/json and application/x-www-form-urlencoded are modelled
     async def attach_claim_file(
         self,
         claim_id: int,
+        *,
+        file: bytes,
     ) -> AttachClaimFileResponse:
         """Attach a file to a claim message.
 
@@ -1592,6 +1592,7 @@ class MercadoPagoClient:
 
         Args:
             claim_id (int): The claim_id value.
+            file (bytes): File to attach (JPEG, PNG, or PDF, max 10 MB)
 
         Returns:
             AttachClaimFileResponse: The 201 response body, validated.
@@ -1601,9 +1602,12 @@ class MercadoPagoClient:
                 400, 401.
         """
         path = f"/post-purchase/v1/claims/{_path_param(claim_id)}/attachments"
+        files: dict[str, Any] = {}
+        files["file"] = file
         response = await self._client.request(
             "POST",
             path,
+            files=files,
         )
         response.raise_for_status()
         return _validate(AttachClaimFileResponse, response.json())
@@ -1637,13 +1641,11 @@ class MercadoPagoClient:
         response.raise_for_status()
         return _validate(GetClaimFileResponse, response.json())
 
-    # openapi: unsupported — response of DownloadClaimFile uses application/octet-stream
-    #   — only application/json is modelled
     async def download_claim_file(
         self,
         claim_id: int,
         file_name: str,
-    ) -> None:
+    ) -> bytes:
         """Download an attached file.
 
         Args:
@@ -1651,7 +1653,9 @@ class MercadoPagoClient:
             file_name (str): The fileName value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            bytes: The 200 response body, undecoded — the operation answers
+                application/octet-stream, which is handed over as bytes rather than
+                parsed.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1666,7 +1670,7 @@ class MercadoPagoClient:
             path,
         )
         response.raise_for_status()
-        return None
+        return response.content
 
     async def get_claim_evidence(
         self,
@@ -1793,8 +1797,6 @@ class MercadoPagoClient:
         response.raise_for_status()
         return _validate(Subscription, response.json())
 
-    # openapi: unsupported — response of ExportSubscriptions uses text/csv — only
-    #   application/json is modelled
     async def export_subscriptions(
         self,
         *,
@@ -1802,7 +1804,7 @@ class MercadoPagoClient:
         preapproval_plan_id: str | None = None,
         status: SubscriptionRequestStatus | None = None,
         sort: ExportSubscriptionsSort | None = None,
-    ) -> None:
+    ) -> bytes:
         """Export subscriptions.
 
         Exports a list of subscriptions for a collector as a downloadable file. Filter
@@ -1810,7 +1812,7 @@ class MercadoPagoClient:
 
         Args:
             collector_id (int): Collector (seller) user ID
-            preapproval_plan_id (str | None): Filter by plan ID Omitted from the query
+            preapproval_plan_id (str | None): Filter by plan ID. Omitted from the query
                 when None.
             status (SubscriptionRequestStatus | None): The status value. Omitted from
                 the query when None.
@@ -1818,7 +1820,8 @@ class MercadoPagoClient:
                 query when None.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            bytes: The 200 response body, undecoded — the operation answers text/csv,
+                which is handed over as bytes rather than parsed.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1839,7 +1842,7 @@ class MercadoPagoClient:
             params=params,
         )
         response.raise_for_status()
-        return None
+        return response.content
 
     async def search_subscriptions(
         self,
@@ -2178,7 +2181,7 @@ class MercadoPagoClient:
             action_id (str): The action_id value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2231,7 +2234,7 @@ class MercadoPagoClient:
             body (UpdateTerminalOperationModeBody): The request body.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2284,7 +2287,7 @@ class MercadoPagoClient:
             user_id (int): The user_id value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2314,7 +2317,7 @@ class MercadoPagoClient:
             body (CreateStoreBody): The request body.
 
         Returns:
-            None: Nothing — the operation answers 201 with no JSON body.
+            None: Nothing — the operation answers 201 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2340,7 +2343,7 @@ class MercadoPagoClient:
 
         Args:
             user_id (int): The user_id value.
-            external_id (str | None): Filter by your external store ID Omitted from the
+            external_id (str | None): Filter by your external store ID. Omitted from the
                 query when None.
 
         Returns:
@@ -2411,7 +2414,7 @@ class MercadoPagoClient:
             id (str): The id value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2584,7 +2587,7 @@ class MercadoPagoClient:
         this operation, so nothing here confirms the API routes it. See issue #227.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2605,7 +2608,7 @@ class MercadoPagoClient:
         this operation, so nothing here confirms the API routes it. See issue #227.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2680,12 +2683,10 @@ class MercadoPagoClient:
         response.raise_for_status()
         return _validate(ReportTask, response.json())
 
-    # openapi: unsupported — response of DownloadReleaseReport uses text/csv — only
-    #   application/json is modelled
     async def download_release_report(
         self,
         file_name: str,
-    ) -> None:
+    ) -> bytes:
         """Download a releases report file.
 
         Downloads the generated report CSV file by filename.
@@ -2694,7 +2695,8 @@ class MercadoPagoClient:
             file_name (str): The file_name value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            bytes: The 200 response body, undecoded — the operation answers text/csv,
+                which is handed over as bytes rather than parsed.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2706,7 +2708,7 @@ class MercadoPagoClient:
             path,
         )
         response.raise_for_status()
-        return None
+        return response.content
 
     async def get_settlement_report(self) -> ReportListResult:
         """Get settlements report list.
@@ -2866,7 +2868,7 @@ class MercadoPagoClient:
         this operation, so nothing here confirms the API routes it. See issue #227.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2887,7 +2889,7 @@ class MercadoPagoClient:
         this operation, so nothing here confirms the API routes it. See issue #227.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2960,19 +2962,18 @@ class MercadoPagoClient:
         response.raise_for_status()
         return _validate(ReportTask, response.json())
 
-    # openapi: unsupported — response of DownloadSettlementReport uses text/csv — only
-    #   application/json is modelled
     async def download_settlement_report(
         self,
         file_name: str,
-    ) -> None:
+    ) -> bytes:
         """Download a settlements report file.
 
         Args:
             file_name (str): The file_name value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            bytes: The 200 response body, undecoded — the operation answers text/csv,
+                which is handed over as bytes rather than parsed.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2984,7 +2985,7 @@ class MercadoPagoClient:
             path,
         )
         response.raise_for_status()
-        return None
+        return response.content
 
     async def create_advanced_payment(
         self,
@@ -3422,7 +3423,7 @@ class MercadoPagoClient:
             body (UpdateChargebackBody): The request body.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -3644,7 +3645,7 @@ class MercadoPagoClient:
             address_id (str): The address_id value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -4266,7 +4267,7 @@ class MercadoPagoClient:
             transaction_id (str): The transaction_id value.
 
         Returns:
-            None: Nothing — the operation answers 204 with no JSON body.
+            None: Nothing — the operation answers 204 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -4324,7 +4325,7 @@ class MercadoPagoClient:
             issuer_id (str | None): The issuer_id value. Omitted from the query when
                 None.
             bin (str | None): First 6 digits of the card (BIN) for more accurate
-                installment pricing Omitted from the query when None.
+                installment pricing. Omitted from the query when None.
 
         Returns:
             list[GetInstallmentsResponseItem]: The 200 response body, validated.
@@ -4675,7 +4676,7 @@ class MercadoPagoClient:
             body (CreatePayoutBody): The request body.
 
         Returns:
-            None: Nothing — the operation answers 201 with no JSON body.
+            None: Nothing — the operation answers 201 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -4703,7 +4704,7 @@ class MercadoPagoClient:
             payout_id (str): The payout_id value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -4734,7 +4735,7 @@ class MercadoPagoClient:
             transaction_id (str): The transaction_id value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -4769,7 +4770,7 @@ class MercadoPagoClient:
             body (ProcessTransactionIntentBody): The request body.
 
         Returns:
-            None: Nothing — the operation answers 201 with no JSON body.
+            None: Nothing — the operation answers 201 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -4797,7 +4798,7 @@ class MercadoPagoClient:
             id (str): The id value.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -4922,7 +4923,7 @@ class MercadoPagoClient:
                 request headers when None.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents

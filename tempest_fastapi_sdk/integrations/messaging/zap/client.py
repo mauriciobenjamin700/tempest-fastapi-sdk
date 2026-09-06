@@ -26,10 +26,14 @@ from .schemas import (
     QrResponse,
     ReactionRequest,
     ReadRequest,
+    SendAudioBase64Request,
     SendAudioRequest,
+    SendDocumentBase64Request,
     SendDocumentRequest,
+    SendImageBase64Request,
     SendImageRequest,
     SendTextRequest,
+    SendVideoBase64Request,
     SendVideoRequest,
     SessionStartResponse,
     SessionStatusResponse,
@@ -164,7 +168,7 @@ class ZapClient:
         into the outbox. Use /ready to gate traffic.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -192,7 +196,7 @@ class ZapClient:
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401.
+                400, 401, 500.
         """
         path = f"/message/check-number/{_path_param(number)}"
         response = await self._client.request(
@@ -223,7 +227,7 @@ class ZapClient:
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401, 503.
+                400, 401, 500, 503.
         """
         path = f"/message/history/{_path_param(chat)}"
         params: dict[str, Any] = {}
@@ -266,7 +270,7 @@ class ZapClient:
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401.
+                400, 401, 429, 500.
         """
         path = "/message/react"
         headers: dict[str, str] = {}
@@ -296,11 +300,11 @@ class ZapClient:
             body (ReadRequest): The request body. Optional.
 
         Returns:
-            None: Nothing — the operation answers 204 with no JSON body.
+            None: Nothing — the operation answers 204 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401, 503.
+                400, 401, 429, 503.
         """
         path = "/message/read"
         payload = None if body is None else _dump(body)
@@ -338,9 +342,51 @@ class ZapClient:
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401, 429.
+                400, 401, 429, 500.
         """
         path = "/message/send-audio"
+        headers: dict[str, str] = {}
+        if idempotency_key is not None:
+            headers["idempotency-key"] = str(idempotency_key)
+        payload = None if body is None else _dump(body)
+        response = await self._client.request(
+            "POST",
+            path,
+            headers=headers,
+            json=payload,
+        )
+        response.raise_for_status()
+        return _validate(AcceptedResponse, response.json())
+
+    async def send_audio_base64(
+        self,
+        *,
+        body: SendAudioBase64Request | None = None,
+        idempotency_key: str | None = None,
+    ) -> AcceptedResponse:
+        """Enqueue an audio file sent as base64.
+
+        Args:
+            body (SendAudioBase64Request): The request body. Optional.
+            idempotency_key (str | None): Optional. Guards against a retry becoming a
+                duplicate message.  Because the send is asynchronous, a lost `202`
+                leaves you unable to tell whether the message was enqueued. Send a fresh
+                key (a UUID) with each new message, and reuse that same key when
+                retrying it: the second call returns the original row with `deduped:
+                true` instead of enqueueing a second message. The key is scoped to your
+                consumer, and stays claimed for as long as the row exists — so reusing
+                an old key for a *new* message answers `deduped: true` and sends
+                nothing.  This header does not authenticate. Auth is `x-api-key`
+                (Authorize, top right). Omitted from the request headers when None.
+
+        Returns:
+            AcceptedResponse: The 202 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 413, 429, 500.
+        """
+        path = "/message/send-audio-base64"
         headers: dict[str, str] = {}
         if idempotency_key is not None:
             headers["idempotency-key"] = str(idempotency_key)
@@ -380,9 +426,51 @@ class ZapClient:
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401, 429.
+                400, 401, 429, 500.
         """
         path = "/message/send-document"
+        headers: dict[str, str] = {}
+        if idempotency_key is not None:
+            headers["idempotency-key"] = str(idempotency_key)
+        payload = None if body is None else _dump(body)
+        response = await self._client.request(
+            "POST",
+            path,
+            headers=headers,
+            json=payload,
+        )
+        response.raise_for_status()
+        return _validate(AcceptedResponse, response.json())
+
+    async def send_document_base64(
+        self,
+        *,
+        body: SendDocumentBase64Request | None = None,
+        idempotency_key: str | None = None,
+    ) -> AcceptedResponse:
+        """Enqueue a document sent as base64.
+
+        Args:
+            body (SendDocumentBase64Request): The request body. Optional.
+            idempotency_key (str | None): Optional. Guards against a retry becoming a
+                duplicate message.  Because the send is asynchronous, a lost `202`
+                leaves you unable to tell whether the message was enqueued. Send a fresh
+                key (a UUID) with each new message, and reuse that same key when
+                retrying it: the second call returns the original row with `deduped:
+                true` instead of enqueueing a second message. The key is scoped to your
+                consumer, and stays claimed for as long as the row exists — so reusing
+                an old key for a *new* message answers `deduped: true` and sends
+                nothing.  This header does not authenticate. Auth is `x-api-key`
+                (Authorize, top right). Omitted from the request headers when None.
+
+        Returns:
+            AcceptedResponse: The 202 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 413, 429, 500.
+        """
+        path = "/message/send-document-base64"
         headers: dict[str, str] = {}
         if idempotency_key is not None:
             headers["idempotency-key"] = str(idempotency_key)
@@ -422,9 +510,51 @@ class ZapClient:
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401, 429.
+                400, 401, 429, 500.
         """
         path = "/message/send-image"
+        headers: dict[str, str] = {}
+        if idempotency_key is not None:
+            headers["idempotency-key"] = str(idempotency_key)
+        payload = None if body is None else _dump(body)
+        response = await self._client.request(
+            "POST",
+            path,
+            headers=headers,
+            json=payload,
+        )
+        response.raise_for_status()
+        return _validate(AcceptedResponse, response.json())
+
+    async def send_image_base64(
+        self,
+        *,
+        body: SendImageBase64Request | None = None,
+        idempotency_key: str | None = None,
+    ) -> AcceptedResponse:
+        """Enqueue an image sent as base64.
+
+        Args:
+            body (SendImageBase64Request): The request body. Optional.
+            idempotency_key (str | None): Optional. Guards against a retry becoming a
+                duplicate message.  Because the send is asynchronous, a lost `202`
+                leaves you unable to tell whether the message was enqueued. Send a fresh
+                key (a UUID) with each new message, and reuse that same key when
+                retrying it: the second call returns the original row with `deduped:
+                true` instead of enqueueing a second message. The key is scoped to your
+                consumer, and stays claimed for as long as the row exists — so reusing
+                an old key for a *new* message answers `deduped: true` and sends
+                nothing.  This header does not authenticate. Auth is `x-api-key`
+                (Authorize, top right). Omitted from the request headers when None.
+
+        Returns:
+            AcceptedResponse: The 202 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 413, 429, 500.
+        """
+        path = "/message/send-image-base64"
         headers: dict[str, str] = {}
         if idempotency_key is not None:
             headers["idempotency-key"] = str(idempotency_key)
@@ -464,7 +594,7 @@ class ZapClient:
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401, 429.
+                400, 401, 429, 500.
         """
         path = "/message/send-text"
         headers: dict[str, str] = {}
@@ -506,9 +636,51 @@ class ZapClient:
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401, 429.
+                400, 401, 429, 500.
         """
         path = "/message/send-video"
+        headers: dict[str, str] = {}
+        if idempotency_key is not None:
+            headers["idempotency-key"] = str(idempotency_key)
+        payload = None if body is None else _dump(body)
+        response = await self._client.request(
+            "POST",
+            path,
+            headers=headers,
+            json=payload,
+        )
+        response.raise_for_status()
+        return _validate(AcceptedResponse, response.json())
+
+    async def send_video_base64(
+        self,
+        *,
+        body: SendVideoBase64Request | None = None,
+        idempotency_key: str | None = None,
+    ) -> AcceptedResponse:
+        """Enqueue a video sent as base64.
+
+        Args:
+            body (SendVideoBase64Request): The request body. Optional.
+            idempotency_key (str | None): Optional. Guards against a retry becoming a
+                duplicate message.  Because the send is asynchronous, a lost `202`
+                leaves you unable to tell whether the message was enqueued. Send a fresh
+                key (a UUID) with each new message, and reuse that same key when
+                retrying it: the second call returns the original row with `deduped:
+                true` instead of enqueueing a second message. The key is scoped to your
+                consumer, and stays claimed for as long as the row exists — so reusing
+                an old key for a *new* message answers `deduped: true` and sends
+                nothing.  This header does not authenticate. Auth is `x-api-key`
+                (Authorize, top right). Omitted from the request headers when None.
+
+        Returns:
+            AcceptedResponse: The 202 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 413, 429, 500.
+        """
+        path = "/message/send-video-base64"
         headers: dict[str, str] = {}
         if idempotency_key is not None:
             headers["idempotency-key"] = str(idempotency_key)
@@ -538,11 +710,11 @@ class ZapClient:
             body (TypingRequest): The request body. Optional.
 
         Returns:
-            None: Nothing — the operation answers 204 with no JSON body.
+            None: Nothing — the operation answers 204 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401, 503.
+                400, 401, 429, 503.
         """
         path = "/message/typing"
         payload = None if body is None else _dump(body)
@@ -554,13 +726,304 @@ class ZapClient:
         response.raise_for_status()
         return None
 
-    # openapi: unsupported — response of Metrics uses text/plain — only application/json
-    #   is modelled
-    async def metrics(self) -> None:
+    async def upload_audio(
+        self,
+        *,
+        file: bytes,
+        to: str,
+        reply_to: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> AcceptedResponse:
+        """Upload an audio file and enqueue it.
+
+        The file travels in the request, so nothing has to be publicly reachable first —
+        this is the route to use when the media exists only on the caller's disk.
+
+        Capped at `MEDIA_MAX_BYTES` (16MB by default), enforced while the body streams:
+        an oversized upload is cut off mid-flight rather than buffered in full and
+        refused afterwards.
+
+        Args:
+            file (bytes): The file itself — the form's only file part
+            to (str): Recipient phone number, digits only
+            reply_to (str | None): Message id being replied to, quoted above this one.
+                Omitted from the form body when None.
+            idempotency_key (str | None): Optional. Guards against a retry becoming a
+                duplicate message.  Because the send is asynchronous, a lost `202`
+                leaves you unable to tell whether the message was enqueued. Send a fresh
+                key (a UUID) with each new message, and reuse that same key when
+                retrying it: the second call returns the original row with `deduped:
+                true` instead of enqueueing a second message. The key is scoped to your
+                consumer, and stays claimed for as long as the row exists — so reusing
+                an old key for a *new* message answers `deduped: true` and sends
+                nothing.  This header does not authenticate. Auth is `x-api-key`
+                (Authorize, top right). Omitted from the request headers when None.
+
+        Returns:
+            AcceptedResponse: The 202 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 413, 415, 429, 500.
+        """
+        path = "/message/upload-audio"
+        headers: dict[str, str] = {}
+        if idempotency_key is not None:
+            headers["idempotency-key"] = str(idempotency_key)
+        data: dict[str, Any] = {}
+        data["to"] = _param(to)
+        if reply_to is not None:
+            data["replyTo"] = _param(reply_to)
+        files: dict[str, Any] = {}
+        files["file"] = file
+        response = await self._client.request(
+            "POST",
+            path,
+            headers=headers,
+            data=data,
+            files=files,
+        )
+        response.raise_for_status()
+        return _validate(AcceptedResponse, response.json())
+
+    async def upload_document(
+        self,
+        *,
+        file: bytes,
+        to: str,
+        file_name: str | None = None,
+        reply_to: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> AcceptedResponse:
+        """Upload a document and enqueue it.
+
+        The file travels in the request, so nothing has to be publicly reachable first —
+        this is the route to use when the media exists only on the caller's disk.
+
+        Capped at `MEDIA_MAX_BYTES` (16MB by default), enforced while the body streams:
+        an oversized upload is cut off mid-flight rather than buffered in full and
+        refused afterwards.
+
+        Args:
+            file (bytes): The file itself — the form's only file part
+            to (str): Recipient phone number, digits only
+            file_name (str | None): Name the recipient sees. Falls back to the uploaded
+                part's own file name. Omitted from the form body when None.
+            reply_to (str | None): Message id being replied to, quoted above this one.
+                Omitted from the form body when None.
+            idempotency_key (str | None): Optional. Guards against a retry becoming a
+                duplicate message.  Because the send is asynchronous, a lost `202`
+                leaves you unable to tell whether the message was enqueued. Send a fresh
+                key (a UUID) with each new message, and reuse that same key when
+                retrying it: the second call returns the original row with `deduped:
+                true` instead of enqueueing a second message. The key is scoped to your
+                consumer, and stays claimed for as long as the row exists — so reusing
+                an old key for a *new* message answers `deduped: true` and sends
+                nothing.  This header does not authenticate. Auth is `x-api-key`
+                (Authorize, top right). Omitted from the request headers when None.
+
+        Returns:
+            AcceptedResponse: The 202 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 413, 415, 429, 500.
+        """
+        path = "/message/upload-document"
+        headers: dict[str, str] = {}
+        if idempotency_key is not None:
+            headers["idempotency-key"] = str(idempotency_key)
+        data: dict[str, Any] = {}
+        data["to"] = _param(to)
+        if file_name is not None:
+            data["fileName"] = _param(file_name)
+        if reply_to is not None:
+            data["replyTo"] = _param(reply_to)
+        files: dict[str, Any] = {}
+        files["file"] = file
+        response = await self._client.request(
+            "POST",
+            path,
+            headers=headers,
+            data=data,
+            files=files,
+        )
+        response.raise_for_status()
+        return _validate(AcceptedResponse, response.json())
+
+    async def upload_image(
+        self,
+        *,
+        file: bytes,
+        to: str,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> AcceptedResponse:
+        """Upload an image and enqueue it.
+
+        The file travels in the request, so nothing has to be publicly reachable first —
+        this is the route to use when the media exists only on the caller's disk.
+
+        Capped at `MEDIA_MAX_BYTES` (16MB by default), enforced while the body streams:
+        an oversized upload is cut off mid-flight rather than buffered in full and
+        refused afterwards.
+
+        Args:
+            file (bytes): The file itself — the form's only file part
+            to (str): Recipient phone number, digits only
+            caption (str | None): The caption value. Omitted from the form body when
+                None.
+            reply_to (str | None): Message id being replied to, quoted above this one.
+                Omitted from the form body when None.
+            idempotency_key (str | None): Optional. Guards against a retry becoming a
+                duplicate message.  Because the send is asynchronous, a lost `202`
+                leaves you unable to tell whether the message was enqueued. Send a fresh
+                key (a UUID) with each new message, and reuse that same key when
+                retrying it: the second call returns the original row with `deduped:
+                true` instead of enqueueing a second message. The key is scoped to your
+                consumer, and stays claimed for as long as the row exists — so reusing
+                an old key for a *new* message answers `deduped: true` and sends
+                nothing.  This header does not authenticate. Auth is `x-api-key`
+                (Authorize, top right). Omitted from the request headers when None.
+
+        Returns:
+            AcceptedResponse: The 202 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 413, 415, 429, 500.
+        """
+        path = "/message/upload-image"
+        headers: dict[str, str] = {}
+        if idempotency_key is not None:
+            headers["idempotency-key"] = str(idempotency_key)
+        data: dict[str, Any] = {}
+        data["to"] = _param(to)
+        if caption is not None:
+            data["caption"] = _param(caption)
+        if reply_to is not None:
+            data["replyTo"] = _param(reply_to)
+        files: dict[str, Any] = {}
+        files["file"] = file
+        response = await self._client.request(
+            "POST",
+            path,
+            headers=headers,
+            data=data,
+            files=files,
+        )
+        response.raise_for_status()
+        return _validate(AcceptedResponse, response.json())
+
+    async def upload_video(
+        self,
+        *,
+        file: bytes,
+        to: str,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> AcceptedResponse:
+        """Upload a video and enqueue it.
+
+        The file travels in the request, so nothing has to be publicly reachable first —
+        this is the route to use when the media exists only on the caller's disk.
+
+        Capped at `MEDIA_MAX_BYTES` (16MB by default), enforced while the body streams:
+        an oversized upload is cut off mid-flight rather than buffered in full and
+        refused afterwards.
+
+        Args:
+            file (bytes): The file itself — the form's only file part
+            to (str): Recipient phone number, digits only
+            caption (str | None): The caption value. Omitted from the form body when
+                None.
+            reply_to (str | None): Message id being replied to, quoted above this one.
+                Omitted from the form body when None.
+            idempotency_key (str | None): Optional. Guards against a retry becoming a
+                duplicate message.  Because the send is asynchronous, a lost `202`
+                leaves you unable to tell whether the message was enqueued. Send a fresh
+                key (a UUID) with each new message, and reuse that same key when
+                retrying it: the second call returns the original row with `deduped:
+                true` instead of enqueueing a second message. The key is scoped to your
+                consumer, and stays claimed for as long as the row exists — so reusing
+                an old key for a *new* message answers `deduped: true` and sends
+                nothing.  This header does not authenticate. Auth is `x-api-key`
+                (Authorize, top right). Omitted from the request headers when None.
+
+        Returns:
+            AcceptedResponse: The 202 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 413, 415, 429, 500.
+        """
+        path = "/message/upload-video"
+        headers: dict[str, str] = {}
+        if idempotency_key is not None:
+            headers["idempotency-key"] = str(idempotency_key)
+        data: dict[str, Any] = {}
+        data["to"] = _param(to)
+        if caption is not None:
+            data["caption"] = _param(caption)
+        if reply_to is not None:
+            data["replyTo"] = _param(reply_to)
+        files: dict[str, Any] = {}
+        files["file"] = file
+        response = await self._client.request(
+            "POST",
+            path,
+            headers=headers,
+            data=data,
+            files=files,
+        )
+        response.raise_for_status()
+        return _validate(AcceptedResponse, response.json())
+
+    async def get_message_media(
+        self,
+        message_id: str,
+    ) -> bytes:
+        """Media bytes of a stored message.
+
+        Addressed by the WhatsApp message id — the same id the inbound webhook delivers
+        as `messageId`, and the one its `mediaUrl` points at.
+
+        Media is fetched while the message is still in memory and never re-downloadable
+        from WhatsApp afterwards, so a message whose download failed or exceeded
+        `MEDIA_MAX_BYTES` is stored with a media type and no file, and answers `404`
+        here.
+
+        The response `Content-Type` is the media's own (`image/jpeg`, `video/mp4`, …),
+        not `application/octet-stream`.
+
+        Args:
+            message_id (str): The WhatsApp message id (`messageId` in the webhook)
+
+        Returns:
+            bytes: The 200 response body, undecoded — the operation answers
+                application/octet-stream, which is handed over as bytes rather than
+                parsed.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 404, 503.
+        """
+        path = f"/message/{_path_param(message_id)}/media"
+        response = await self._client.request(
+            "GET",
+            path,
+        )
+        response.raise_for_status()
+        return response.content
+
+    async def metrics(self) -> bytes:
         """Prometheus metrics (text exposition format).
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            bytes: The 200 response body, undecoded — the operation answers text/plain,
+                which is handed over as bytes rather than parsed.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -572,13 +1035,13 @@ class ZapClient:
             path,
         )
         response.raise_for_status()
-        return None
+        return response.content
 
     async def ready(self) -> None:
         """Readiness probe — 503 until the WhatsApp session is connected.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            None: Nothing — the operation answers 200 with no body.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -631,16 +1094,15 @@ class ZapClient:
         response.raise_for_status()
         return _validate(QrResponse, response.json())
 
-    # openapi: unsupported — response of GetSessionQrImage uses image/png — only
-    #   application/json is modelled
-    async def get_session_qr_image(self) -> None:
+    async def get_session_qr_image(self) -> bytes:
         """The pairing QR as a PNG.
 
         Served `image/png` with `Cache-Control: no-store`. Behind the same API key as
         everything else — the pairing code is never public.
 
         Returns:
-            None: Nothing — the operation answers 200 with no JSON body.
+            bytes: The 200 response body, undecoded — the operation answers image/png,
+                which is handed over as bytes rather than parsed.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -652,7 +1114,7 @@ class ZapClient:
             path,
         )
         response.raise_for_status()
-        return None
+        return response.content
 
     async def start_session(self) -> SessionStartResponse:
         """Start the WhatsApp connection.

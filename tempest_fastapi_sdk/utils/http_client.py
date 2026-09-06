@@ -45,6 +45,53 @@ REQUEST_ID_HEADER: str = "X-Request-ID"
 """Outbound header carrying the inbound correlation id."""
 
 
+def _is_replayable_payload(value: Any) -> bool:
+    """Report whether one body payload survives being sent twice.
+
+    Args:
+        value (Any): A body argument, or one file part of a multipart
+            body.
+
+    Returns:
+        bool: ``True`` when re-sending it produces the same bytes.
+
+    ``bytes``, ``bytearray``, ``memoryview`` and ``str`` can be handed to
+    httpx as many times as the retry loop needs. A file object or a
+    generator cannot: it is consumed on the first attempt.
+    """
+    return value is None or isinstance(value, bytes | bytearray | memoryview | str)
+
+
+def _body_is_replayable(content: Any, files: Any) -> bool:
+    """Report whether a request may be retried without corrupting its body.
+
+    Args:
+        content (Any): The ``content`` argument of the request.
+        files (Any): The ``files`` argument of the request.
+
+    Returns:
+        bool: ``True`` when every payload can be re-sent unchanged.
+
+    ``json`` and ``data`` are not consulted: httpx re-serializes them
+    from the object on every attempt, so they replay by construction.
+    A file part is inspected inside its tuple, because the httpx shapes
+    put the payload second (``(filename, payload)``) or second of three
+    (``(filename, payload, content_type)``).
+    """
+    if not _is_replayable_payload(content):
+        return False
+    if files is None:
+        return True
+    parts = files.items() if isinstance(files, Mapping) else files
+    for part in parts:
+        payload = part[1] if isinstance(part, tuple | list) and len(part) >= 2 else part
+        if isinstance(payload, tuple | list):
+            payload = payload[1] if len(payload) >= 2 else payload[0]
+        if not _is_replayable_payload(payload):
+            return False
+    return True
+
+
 class CircuitOpenError(Exception):
     """Raised when the circuit-breaker rejects a call.
 
@@ -236,6 +283,8 @@ class HTTPClient:
         params: Mapping[str, Any] | None = None,
         json: Any = None,
         data: Any = None,
+        content: Any = None,
+        files: Any = None,
         headers: Mapping[str, str] | None = None,
         timeout: float | None = None,
     ) -> httpx.Response:
@@ -246,8 +295,18 @@ class HTTPClient:
             url (str): Absolute URL or path relative to ``base_url``.
             params (Mapping[str, Any] | None): Query-string params.
             json (Any): JSON-serializable body. Mutually exclusive
-                with ``data``.
-            data (Any): Form body. Mutually exclusive with ``json``.
+                with ``data``, ``content`` and ``files``.
+            data (Any): Form fields. Alone it is sent
+                ``application/x-www-form-urlencoded``; alongside
+                ``files`` it becomes the scalar half of the multipart
+                body.
+            content (Any): Raw body — ``bytes``, ``str``, or an
+                iterable of chunks — for a media type that is neither
+                JSON nor a form.
+            files (Any): Multipart file parts, in any shape httpx
+                accepts: ``{name: bytes}``, ``{name: (filename,
+                bytes)}``, or ``{name: (filename, bytes,
+                content_type)}``.
             headers (Mapping[str, str] | None): Per-request headers
                 merged on top of ``default_headers`` + propagated
                 ``X-Request-ID``.
@@ -267,15 +326,25 @@ class HTTPClient:
             The trailing raise is defensive only: the retry loop either
             returns a response or raises, so it should never be
             reached.
+
+            **A body that cannot be replayed is not retried.** Retrying
+            re-sends the same arguments, and a stream handed to
+            ``content`` or ``files`` is already drained by then, so
+            attempt two would upload a truncated body that the server
+            has no way to tell from a short file. Pass ``bytes`` to keep
+            the retries.
         """
         assert _httpx_mod is not None, "guarded by __init__"
         host = self._host_of(url)
         await self._breaker_check(host)
 
         merged_headers = self._build_headers(headers)
+        max_attempts = (
+            self.retry_policy.max_attempts if _body_is_replayable(content, files) else 1
+        )
         last_exc: BaseException | None = None
         last_response: httpx.Response | None = None
-        for attempt in range(1, self.retry_policy.max_attempts + 1):
+        for attempt in range(1, max_attempts + 1):
             try:
                 response = await self._client.request(
                     method,
@@ -283,12 +352,14 @@ class HTTPClient:
                     params=params,
                     json=json,
                     data=data,
+                    content=content,
+                    files=files,
                     headers=merged_headers,
                     timeout=timeout if timeout is not None else self.timeout,
                 )
             except (_httpx_mod.ConnectError, _httpx_mod.ReadTimeout) as exc:
                 last_exc = exc
-                if attempt == self.retry_policy.max_attempts:
+                if attempt == max_attempts:
                     await self._breaker_record(host, failed=True)
                     raise
                 await asyncio.sleep(self.retry_policy.sleep_for(attempt))
@@ -296,7 +367,7 @@ class HTTPClient:
 
             if response.status_code in self.retry_policy.retry_statuses:
                 last_response = response
-                if attempt == self.retry_policy.max_attempts:
+                if attempt == max_attempts:
                     await self._breaker_record(host, failed=True)
                     return response
                 await asyncio.sleep(self.retry_policy.sleep_for(attempt))
@@ -386,6 +457,8 @@ class HTTPClient:
         params: Mapping[str, Any] | None = None,
         json: Any = None,
         data: Any = None,
+        content: Any = None,
+        files: Any = None,
         headers: Mapping[str, str] | None = None,
         timeout: float | None = None,
     ) -> AsyncIterator[str]:
@@ -425,8 +498,11 @@ class HTTPClient:
         await self._breaker_check(host)
         merged_headers = self._build_headers(headers)
         per_timeout = timeout if timeout is not None else self.timeout
+        max_attempts = (
+            self.retry_policy.max_attempts if _body_is_replayable(content, files) else 1
+        )
 
-        for attempt in range(1, self.retry_policy.max_attempts + 1):
+        for attempt in range(1, max_attempts + 1):
             retry_status = False
             try:
                 async with self._client.stream(
@@ -435,10 +511,12 @@ class HTTPClient:
                     params=params,
                     json=json,
                     data=data,
+                    content=content,
+                    files=files,
                     headers=merged_headers,
                     timeout=per_timeout,
                 ) as response:
-                    is_last = attempt == self.retry_policy.max_attempts
+                    is_last = attempt == max_attempts
                     if (
                         response.status_code in self.retry_policy.retry_statuses
                         and not is_last
@@ -451,7 +529,7 @@ class HTTPClient:
                             yield line
                         return
             except (_httpx_mod.ConnectError, _httpx_mod.ReadTimeout):
-                if attempt == self.retry_policy.max_attempts:
+                if attempt == max_attempts:
                     await self._breaker_record(host, failed=True)
                     raise
                 await asyncio.sleep(self.retry_policy.sleep_for(attempt))

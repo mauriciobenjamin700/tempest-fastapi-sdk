@@ -12,7 +12,7 @@ Uma integração nova, e um defeito no gerador que ela expôs antes de existir.
 ### Added
 
 - **`integrations/messaging/zap` — o gateway de WhatsApp da casa.**
-  20 schemas e 18 operações, gerados de `vendor/zap-openapi.yaml` por
+  28 schemas e 27 operações, gerados de `vendor/zap-openapi.yaml` por
   `scripts/regen_zap.py` e commitados, atrás do namespace novo
   `integrations/messaging/`.
 
@@ -38,7 +38,7 @@ Uma integração nova, e um defeito no gerador que ela expôs antes de existir.
   um envio responde `202` com a linha enfileirada, e o `status` caminha
   `queued → sending → sent → delivered → read` (ou `failed`) no webhook de
   status do gateway. Esse webhook é descrito em prosa e **não** tem bloco
-  `webhooks` nem `callbacks` no documento — medido, 18 operações e zero
+  `webhooks` nem `callbacks` no documento — medido, 27 operações e zero
   `callbacks` —, então não há o que gerar e o pacote não o modela.
 
   Exercitado contra o gateway rodando, só nas rotas sem efeito colateral:
@@ -52,10 +52,9 @@ Uma integração nova, e um defeito no gerador que ela expôs antes de existir.
   Nenhuma mensagem foi enviada: a própria doc do gateway avisa que um
   `POST` manda WhatsApp real para pessoa real.
 
-  Duas rotas ficam `-> None` de propósito: `metrics` responde `text/plain`
-  e `get_session_qr_image` responde `image/png`, e o gerador modela só
-  `application/json` — ele reporta as duas. O código de pareamento é
-  alcançável como JSON por `get_session_qr`.
+  Três rotas respondem um corpo que não é JSON — `get_message_media`
+  (`application/octet-stream`), `get_session_qr_image` (`image/png`) e
+  `metrics` (`text/plain`) — e chegam tipadas `-> bytes`, sem decodificar.
 
   `make zap-regen` regenera offline; `make zap-fetch` relê o documento de
   `ZAP_OPENAPI_URL` (default `http://127.0.0.1:3000`). **Não existe URL
@@ -65,6 +64,78 @@ Uma integração nova, e um defeito no gerador que ela expôs antes de existir.
   `tests/integrations/messaging/zap/test_generated_drift.py`.
 
 ### Fixed
+
+- **Corpo `multipart/form-data` gerava um método sem corpo nenhum.**
+  O gerador modelava JSON e `application/x-www-form-urlencoded`, e
+  reportava multipart como não suportado. Reportar não bastava: o método
+  saía **assim mesmo**, sem argumento de corpo algum. Ele type-checkava,
+  aparecia no autocomplete, e toda chamada que conseguia fazer era um
+  `400` — as quatro rotas de upload da zap exigem `to` e `file`, e o
+  `upload_image` gerado não mandava nenhum dos dois.
+
+  Multipart não é outro objeto de corpo, é outra call shape: os parts que
+  a spec marca `format: binary` saem em `files`, os escalares em `data`.
+  Os campos agora são achatados em argumentos nomeados em vez de embrulhados
+  num modelo que a call site teria de desmontar de novo:
+
+  ```python
+  accepted = await client.upload_image(
+      file=Path("nota.png").read_bytes(),
+      to="5511999999999",
+      caption="sua nota",
+  )
+  ```
+
+  Desbloqueou 6 métodos: as 4 rotas de upload da zap, mais um do OpenPix e
+  um do Mercado Pago que estavam no mesmo estado. Guard:
+  `tests/openapi/test_multipart_bodies.py`, provado disparando com o ramo
+  de multipart removido do parser — 6 dos 8 casos falham.
+
+- **`HTTPClient` não sabia enviar corpo binário.**
+  `request()` e `stream()` aceitavam só `json` e `data`, então nenhum
+  cliente gerado podia fazer upload nem mandar um corpo bruto. Ganharam
+  `files` (multipart, em qualquer das formas que o httpx aceita) e
+  `content` (bytes crus).
+
+  **Corpo que não pode ser reenviado não é mais repetido.** O retry
+  reemite os mesmos argumentos, e um stream em `content` ou `files` já foi
+  drenado na primeira tentativa — a segunda subiria um corpo truncado que o
+  servidor não distingue de um arquivo curto. Passando `bytes`, os retries
+  continuam; passando um stream, a requisição vai uma vez só. `json` e
+  `data` não entram na conta: o httpx os re-serializa a cada tentativa.
+
+- **Corpo de sucesso que não é JSON era descartado, não entregue.**
+  O gerador modela `application/json` e mais nada. Todo o resto tomava a
+  mesma saída de um corpo vazio: o método saía tipado `-> None`, fazia a
+  request, checava o status e devolvia nada. Não é lacuna de tipagem — é um
+  método que gasta um round trip e joga o payload fora.
+
+  Agora esse corpo é entregue como `bytes`, sem decodificar. A
+  especificação não carrega charset, e adivinhar um corrompe em silêncio;
+  `bytes` é lossless e o caller decodifica com o que sabe.
+
+  Shippou em três integrações ao mesmo tempo. **10 métodos** deixam de
+  perder o corpo:
+
+  | Integração | Métodos |
+  | --- | --- |
+  | OpenPix | `get_invoice_pdf`, `get_invoice_xml`, `get_receipt` |
+  | Mercado Pago | `download_claim_file`, `export_subscriptions`, `download_release_report`, `download_settlement_report` |
+  | zap | `get_message_media`, `get_session_qr_image`, `metrics` |
+
+  Sobreviveu tanto tempo porque cada caso tinha outra rota para os mesmos
+  bytes — o QR duplica `get_session_qr`, as métricas são alvo de scrape —,
+  e a docstring do próprio gerador se apoiava nisso para chamar o
+  comportamento de inofensivo. `GET /message/{messageId}/media` não tem
+  outra rota: o gateway baixa a mídia enquanto a mensagem está em memória e
+  o WhatsApp não a serve de novo.
+
+  Um `204` de verdade continua `-> None`. A linha `Returns:` do caminho sem
+  corpo dizia "answers 200 with no JSON body" tanto para ele quanto para o
+  PNG, o que era falso na metade dos casos; agora o caminho vazio diz "no
+  body" e o caminho raw nomeia os media types declarados. Guard:
+  `tests/openapi/test_raw_responses.py`, provado disparando com o retorno
+  do parser revertido — 5 dos 11 casos falham.
 
 - **O gerador escolhia entre dois corpos de sucesso em silêncio.**
   Um método de client devolve uma anotação, então só um status 2xx pode ser
