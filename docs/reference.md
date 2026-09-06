@@ -592,6 +592,36 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 
 ::: tempest_fastapi_sdk.integrations.payment.adapters.openpix.OpenPixPixProvider
 
+## WhatsApp (zap-api)
+
+### `tempest_fastapi_sdk.integrations.messaging.zap`
+
+O cliente e os schemas são gerados de `vendor/zap-openapi.yaml` por
+`scripts/regen_zap.py`. Os schemas resolvem de forma lazy, então importar
+o namespace não constrói nenhum modelo.
+
+::: tempest_fastapi_sdk.integrations.messaging.zap.client.ZapClient
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.AcceptedResponse
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.AcceptedResponseStatus
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.SendTextRequest
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.SendImageRequest
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.SendVideoRequest
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.SendAudioRequest
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.SendDocumentRequest
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.ReactionRequest
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.ReadRequest
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.TypingRequest
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.TypingRequestState
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.CheckNumberResponse
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.HistoryResponse
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.HistoryMessage
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.HistoryMessageDirection
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.QrResponse
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.SessionStartResponse
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.SessionStatusResponse
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.SessionStatusResponseStatus
+::: tempest_fastapi_sdk.integrations.messaging.zap.schemas.ErrorResponse
+
 ## Mercado Pago
 
 ### `tempest_fastapi_sdk.integrations.payment.mercado_pago`

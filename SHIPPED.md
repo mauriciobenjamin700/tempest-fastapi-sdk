@@ -1882,3 +1882,34 @@ Fora de escopo, registrado: `IdempotencyMiddleware` continua sem
 `exempt_paths`/`exempt_prefixes`. A guarda de stream removeu a razão que
 tinha para precisar de uma, e adicionar os dois argumentos lá é decisão
 separada — seriam seis middlewares na convenção, não cinco.
+
+## Integração de mensageria, v0.287.0 (2026-09-06)
+
+Namespace novo `integrations/messaging/`, primeiro provedor `zap` — o
+gateway de WhatsApp da casa. 16 schemas, 18 operações, gerado de
+`vendor/zap-openapi.yaml` por `scripts/regen_zap.py` e commitado, com
+drift test em `tests/integrations/messaging/zap/`.
+
+Diferente do OpenPix e do Mercado Pago em um ponto estrutural: **não há
+URL pública canônica** para a especificação. Ela é nossa e é servida de
+onde o gateway estiver, então `make zap-fetch` lê de `ZAP_OPENAPI_URL`
+(default `http://127.0.0.1:3000`), o arquivo vendorizado é a autoridade, e
+o `SPEC_SHA256` registra de quais bytes este checkout gerou — não quais
+bytes um provedor serve.
+
+Junto veio um conserto no gerador: ele escolhia entre dois corpos de
+sucesso em silêncio (`tests/openapi/test_divergent_success.py`).
+
+Fora de escopo, registrado — três coisas que o gateway ainda não declara,
+e por isso o pacote não modela:
+
+1. **O webhook de status.** É a metade que diz se a mensagem chegou; a
+   spec o descreve em prosa e não declara `webhooks` nem `callbacks`.
+2. **`Retry-After` no `429`.** Cinco operações declaram `429` e nenhuma
+   resposta do documento declara header nenhum.
+3. **Corpo de `/health` e `/ready`.** Medido, os dois respondem JSON com
+   estado operacional real; a spec declara as duas sem content, então o
+   client as tipa `-> None`.
+
+Cada uma é uma linha na spec do gateway, e nenhuma exige mudança aqui —
+`make zap-regen` passa a expor assim que forem declaradas.

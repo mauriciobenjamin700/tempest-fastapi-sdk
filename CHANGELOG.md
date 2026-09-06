@@ -5,6 +5,97 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.287.0] — 2026-09-06
+
+Uma integração nova, e um defeito no gerador que ela expôs antes de existir.
+
+### Added
+
+- **`integrations/messaging/zap` — o gateway de WhatsApp da casa.**
+  16 schemas e 18 operações, gerados de `vendor/zap-openapi.yaml` por
+  `scripts/regen_zap.py` e commitados, atrás do namespace novo
+  `integrations/messaging/`.
+
+  ```python
+  from tempest_fastapi_sdk import HTTPClient
+  from tempest_fastapi_sdk.integrations.messaging.zap import (
+      SendTextRequest,
+      ZapClient,
+  )
+
+  http: HTTPClient = HTTPClient(
+      base_url="http://127.0.0.1:3000",
+      default_headers={"x-api-key": "<sua chave>"},
+  )
+  client: ZapClient = ZapClient(http)
+  accepted = await client.send_text(
+      body=SendTextRequest(to="5511999999999", text="oi"),
+      idempotency_key="4f1c…",
+  )
+  ```
+
+  **Enviar não é entregar**, e isso muda o desenho do serviço que consome:
+  um envio responde `202` com a linha enfileirada, e o `status` caminha
+  `queued → sending → sent → delivered → read` (ou `failed`) no webhook de
+  status do gateway. Esse webhook é descrito em prosa e **não** tem bloco
+  `webhooks` nem `callbacks` no documento — medido, 18 operações e zero
+  `callbacks` —, então não há o que gerar e o pacote não o modela.
+
+  Exercitado contra o gateway rodando, só nas rotas sem efeito colateral:
+
+  | Chamada | Resposta |
+  | --- | --- |
+  | `health()` | `None` (200) |
+  | `ready()` | `HTTP 503` com o corpo de prontidão |
+  | `get_session_status()` sem chave | `HTTP 401 {"error": "Invalid or missing API key"}` |
+
+  Nenhuma mensagem foi enviada: a própria doc do gateway avisa que um
+  `POST` manda WhatsApp real para pessoa real.
+
+  Duas rotas ficam `-> None` de propósito: `metrics` responde `text/plain`
+  e `get_session_qr_image` responde `image/png`, e o gerador modela só
+  `application/json` — ele reporta as duas. O código de pareamento é
+  alcançável como JSON por `get_session_qr`.
+
+  `make zap-regen` regenera offline; `make zap-fetch` relê o documento de
+  `ZAP_OPENAPI_URL` (default `http://127.0.0.1:3000`). **Não existe URL
+  pública canônica** para esta especificação — ela é nossa —, então o
+  arquivo vendorizado é a autoridade e o `SPEC_SHA256` registra de quais
+  bytes este checkout gerou. Guard:
+  `tests/integrations/messaging/zap/test_generated_drift.py`.
+
+### Fixed
+
+- **O gerador escolhia entre dois corpos de sucesso em silêncio.**
+  Um método de client devolve uma anotação, então só um status 2xx pode ser
+  modelado, e `_build_response` escolhe o menor. Isso é de graça quando os
+  outros carregam a mesma forma, e não é quando não carregam: o caller
+  recebe um método anotado para um corpo que a API pode nunca mandar.
+
+  Até aqui a escolha era **calada**. O gerador avisava sobre resposta que
+  não conseguia modelar de jeito nenhum (`text/plain`, `image/png`) e
+  calava sobre uma que modelava errado.
+
+  Achado gerando o client da `zap-api` numa versão do documento em que as 6
+  rotas de envio declaravam `200` com `{"success", "to"}` e `202` com
+  `{"id", "status", "deduped"}`. Reproduzido:
+
+  ```text
+  corpo do 200 -> OK
+  corpo do 202 -> ValidationError, 2 validation errors for SentResponse
+  ```
+
+  As formas são comparadas com a prosa removida (`description`, `example`,
+  `examples`, `title`), porque specs divergem no texto onde a estrutura é
+  idêntica. Medido nas duas specs que o SDK já ships — 125 operações do
+  OpenPix e 143 do Mercado Pago — a nota dispara **zero** vezes; as
+  operações delas que declaram `200` e `201` diferem só na redação de um
+  `description` aninhado.
+
+  Nenhuma integração entregue muda de forma: a escolha do menor 2xx
+  continua a mesma, só deixou de ser calada. Guard:
+  `tests/openapi/test_divergent_success.py`.
+
 ## [0.286.0] — 2026-09-05
 
 Três issues do consumidor. A do meio começou como um bug de cache e acabou

@@ -198,6 +198,7 @@ plugins:
               - Web Push: recipes/webpush.md
               - WebAuthn / passkeys: recipes/webauthn.md
               - WebSocket router: recipes/websocket.md
+              - WhatsApp (zap-api): recipes/zap.md
             - Reference: reference.md
             - Learning projects:
               - learning/index.md
@@ -235,6 +236,7 @@ plugins:
             Tempo real: Real-time
             "Frontend tempestweb + SDK": "tempestweb frontend + SDK"
             WebSocket router: WebSocket router
+            "WhatsApp (zap-api)": "WhatsApp (zap-api)"
             Fila e Tarefas: Queue & Tasks
             Outbox transacional: Transactional outbox
             Email transacional: Transactional email
@@ -478,6 +480,7 @@ nav:
       - Web Push: recipes/webpush.md
       - WebAuthn / passkeys: recipes/webauthn.md
       - WebSocket router: recipes/websocket.md
+      - "WhatsApp (zap-api)": recipes/zap.md
   - Referência: reference.md
   - Projetos de aprendizado:
       - learning/index.md
