@@ -7,7 +7,7 @@ PACKAGE := tempest_fastapi_sdk
 PYTHON_VERSION := 3.11
 
 .DEFAULT_GOAL := help
-.PHONY: help install sync clean openpix-regen mercadopago-regen mercadopago-fetch stripe-regen stripe-fetch test test-model test-gpu cov lint fix fmt fmt-check type check ci build smoke release tag version docs docs-serve docs-build
+.PHONY: help install sync clean openpix-regen mercadopago-regen mercadopago-fetch stripe-regen stripe-fetch zap-regen zap-fetch test test-model test-gpu cov lint fix fmt fmt-check type check ci build smoke release tag version docs docs-serve docs-build
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -72,6 +72,12 @@ openpix-fetch: ## Refresh vendor/openpix-openapi.json from Woovi's published spe
 
 openpix-diff: ## Report the distance between the vendored spec and the published one (network)
 	uv run python scripts/openpix_diff.py
+
+zap-regen: ## Regenerate the zap-api schemas + client from vendor/zap-openapi.yaml
+	uv run python scripts/regen_zap.py
+
+zap-fetch: ## Refresh vendor/zap-openapi.yaml from a running gateway (ZAP_OPENAPI_URL, default 127.0.0.1:3000)
+	uv run python scripts/regen_zap.py --fetch
 
 mercadopago-regen: ## Regenerate the vendored Mercado Pago schemas + client from vendor/mercadopago-openapi.yaml
 	uv run python scripts/regen_mercado_pago.py

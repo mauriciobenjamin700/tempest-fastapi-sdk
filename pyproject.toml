@@ -462,6 +462,7 @@ ignore = [
 # TYPE_CHECKING star import, which is exactly what F405 reports.
 "tempest_fastapi_sdk/integrations/payment/openpix/__init__.py" = ["F405"]
 "tempest_fastapi_sdk/integrations/payment/mercado_pago/__init__.py" = ["F405"]
+"tempest_fastapi_sdk/integrations/messaging/zap/__init__.py" = ["F405"]
 
 [tool.ruff.format]
 quote-style = "double"

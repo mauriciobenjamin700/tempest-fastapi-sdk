@@ -1,0 +1,1083 @@
+openapi: 3.0.0
+info:
+  title: zap-api
+  version: 1.0.0
+  description: "WhatsApp gateway. Sends are asynchronous: a `202` means the message was durably enqueued,\
+    \ not that WhatsApp has it — delivery is reported on the consumer's status webhook.\n\n## Authentication\n\
+    \n**Every endpoint below requires the `x-api-key` header.** On this page it is not a form field: click\
+    \ **Authorize** at the top right, paste your key, and it is attached to every request from then on\
+    \ (it survives a reload).\n\nA `401 Invalid or missing API key` almost always means that step was\
+    \ skipped. No other header authenticates — in particular `Idempotency-Key` does not: it controls retry\
+    \ behaviour, nothing else.\n\n## Why POST has no Try it out\n\nOnly `GET` is executable here, on purpose:\
+    \ a `POST` on this page would send a real WhatsApp message to a real person, and a documentation page\
+    \ is the wrong place to discover that. Copy the request instead:\n\n```bash\ncurl -X POST http://127.0.0.1:3000/message/send-text\
+    \ \\\n  -H \"x-api-key: $API_KEY\" \\\n  -H \"Idempotency-Key: $(uuidgen)\" \\\n  -H \"Content-Type:\
+    \ application/json\" \\\n  -d '{\"to\":\"5511999999999\",\"text\":\"Oi\"}'\n```\n\nReal-time inbound\
+    \ messages arrive over the WebSocket at `/ws`, which OpenAPI cannot describe; see the README for its\
+    \ frame protocol."
+servers:
+- url: /
+  description: This gateway
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: Per-consumer API key. Header only — there is no query-parameter fallback.
+  schemas:
+    HistoryMessage:
+      type: object
+      properties:
+        messageId:
+          type: string
+        direction:
+          type: string
+          enum:
+          - incoming
+          - outgoing
+        text:
+          type: string
+          nullable: true
+        mediaType:
+          type: string
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+      required:
+      - messageId
+      - direction
+      - text
+      - mediaType
+      - timestamp
+    SendTextRequest:
+      type: object
+      properties:
+        to:
+          type: string
+          pattern: ^\d{10,15}$
+        replyTo:
+          type: string
+          minLength: 1
+          maxLength: 128
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4096
+      required:
+      - to
+      - text
+    SendImageRequest:
+      type: object
+      properties:
+        to:
+          type: string
+          pattern: ^\d{10,15}$
+        replyTo:
+          type: string
+          minLength: 1
+          maxLength: 128
+        media:
+          type: string
+          minLength: 1
+          maxLength: 8192
+        caption:
+          type: string
+          maxLength: 4096
+      required:
+      - to
+      - media
+    SendVideoRequest:
+      type: object
+      properties:
+        to:
+          type: string
+          pattern: ^\d{10,15}$
+        replyTo:
+          type: string
+          minLength: 1
+          maxLength: 128
+        media:
+          type: string
+          minLength: 1
+          maxLength: 8192
+        caption:
+          type: string
+          maxLength: 4096
+      required:
+      - to
+      - media
+    SendAudioRequest:
+      type: object
+      properties:
+        to:
+          type: string
+          pattern: ^\d{10,15}$
+        replyTo:
+          type: string
+          minLength: 1
+          maxLength: 128
+        media:
+          type: string
+          minLength: 1
+          maxLength: 8192
+      required:
+      - to
+      - media
+    SendDocumentRequest:
+      type: object
+      properties:
+        to:
+          type: string
+          pattern: ^\d{10,15}$
+        replyTo:
+          type: string
+          minLength: 1
+          maxLength: 128
+        media:
+          type: string
+          minLength: 1
+          maxLength: 8192
+        fileName:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: ^[^\\/\x00]+$
+      required:
+      - to
+      - media
+      - fileName
+    ReactionRequest:
+      type: object
+      properties:
+        to:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^\d{10,15}(@s\.whatsapp\.net)?$
+        messageId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        emoji:
+          type: string
+          maxLength: 16
+      required:
+      - to
+      - messageId
+      - emoji
+    TypingRequest:
+      type: object
+      properties:
+        to:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^\d{10,15}(@s\.whatsapp\.net)?$
+        state:
+          type: string
+          enum:
+          - composing
+          - recording
+          - paused
+      required:
+      - to
+      - state
+    ReadRequest:
+      type: object
+      properties:
+        to:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^\d{10,15}(@s\.whatsapp\.net)?$
+        messageIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+          minItems: 1
+          maxItems: 100
+      required:
+      - to
+      - messageIds
+    AcceptedResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+          enum:
+          - queued
+          - sending
+          - sent
+          - delivered
+          - read
+          - failed
+          - null
+        deduped:
+          type: boolean
+      required:
+      - id
+      - status
+      - deduped
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+    SessionStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - disconnected
+          - connecting
+          - connected
+      required:
+      - status
+    SessionStartResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - disconnected
+          - connecting
+          - connected
+        qr:
+          type: string
+          nullable: true
+      required:
+      - status
+      - qr
+    QrResponse:
+      type: object
+      properties:
+        qr:
+          type: string
+      required:
+      - qr
+    CheckNumberResponse:
+      type: object
+      properties:
+        number:
+          type: string
+        exists:
+          type: boolean
+        jid:
+          type: string
+          nullable: true
+      required:
+      - number
+      - exists
+      - jid
+    HistoryResponse:
+      type: object
+      properties:
+        chat:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoryMessage'
+      required:
+      - chat
+      - messages
+  parameters: {}
+paths:
+  /message/send-text:
+    post:
+      operationId: sendText
+      summary: Enqueue a text message
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          maxLength: 255
+          description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+            Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+            was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+            retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+            a second message. The key is scoped to your consumer, and stays claimed for as long as the
+            row exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+            This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        required: false
+        description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+          Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+          was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+          retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+          a second message. The key is scoped to your consumer, and stays claimed for as long as the row
+          exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+          This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        name: idempotency-key
+        in: header
+      requestBody:
+        content:
+          application/json:
+            example:
+              to: '5511999999999'
+              text: Seu pedido saiu para entrega.
+            schema:
+              $ref: '#/components/schemas/SendTextRequest'
+      responses:
+        '202':
+          description: 'Accepted and enqueued. The message is dispatched asynchronously; status transitions
+            arrive on the consumer webhook.
+
+
+            A gateway running without persistence (`DATABASE_URL` unset) sends inline instead of enqueueing,
+            and answers this same status and body with `id` and `status` null — there is no outbox row
+            to name or to report a status for. It is the only case where they are null, and the reason
+            the fields are nullable.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for this consumer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/send-image:
+    post:
+      operationId: sendImage
+      summary: Enqueue an image message
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          maxLength: 255
+          description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+            Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+            was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+            retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+            a second message. The key is scoped to your consumer, and stays claimed for as long as the
+            row exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+            This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        required: false
+        description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+          Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+          was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+          retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+          a second message. The key is scoped to your consumer, and stays claimed for as long as the row
+          exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+          This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        name: idempotency-key
+        in: header
+      requestBody:
+        content:
+          application/json:
+            example:
+              to: '5511999999999'
+              media: https://example.com/nota-fiscal.png
+              caption: Sua nota fiscal
+            schema:
+              $ref: '#/components/schemas/SendImageRequest'
+      responses:
+        '202':
+          description: 'Accepted and enqueued. The message is dispatched asynchronously; status transitions
+            arrive on the consumer webhook.
+
+
+            A gateway running without persistence (`DATABASE_URL` unset) sends inline instead of enqueueing,
+            and answers this same status and body with `id` and `status` null — there is no outbox row
+            to name or to report a status for. It is the only case where they are null, and the reason
+            the fields are nullable.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for this consumer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/send-video:
+    post:
+      operationId: sendVideo
+      summary: Enqueue a video message
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          maxLength: 255
+          description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+            Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+            was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+            retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+            a second message. The key is scoped to your consumer, and stays claimed for as long as the
+            row exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+            This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        required: false
+        description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+          Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+          was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+          retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+          a second message. The key is scoped to your consumer, and stays claimed for as long as the row
+          exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+          This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        name: idempotency-key
+        in: header
+      requestBody:
+        content:
+          application/json:
+            example:
+              to: '5511999999999'
+              media: https://example.com/tutorial.mp4
+            schema:
+              $ref: '#/components/schemas/SendVideoRequest'
+      responses:
+        '202':
+          description: 'Accepted and enqueued. The message is dispatched asynchronously; status transitions
+            arrive on the consumer webhook.
+
+
+            A gateway running without persistence (`DATABASE_URL` unset) sends inline instead of enqueueing,
+            and answers this same status and body with `id` and `status` null — there is no outbox row
+            to name or to report a status for. It is the only case where they are null, and the reason
+            the fields are nullable.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for this consumer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/send-audio:
+    post:
+      operationId: sendAudio
+      summary: Enqueue an audio message
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          maxLength: 255
+          description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+            Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+            was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+            retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+            a second message. The key is scoped to your consumer, and stays claimed for as long as the
+            row exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+            This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        required: false
+        description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+          Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+          was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+          retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+          a second message. The key is scoped to your consumer, and stays claimed for as long as the row
+          exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+          This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        name: idempotency-key
+        in: header
+      requestBody:
+        content:
+          application/json:
+            example:
+              to: '5511999999999'
+              media: https://example.com/recado.ogg
+            schema:
+              $ref: '#/components/schemas/SendAudioRequest'
+      responses:
+        '202':
+          description: 'Accepted and enqueued. The message is dispatched asynchronously; status transitions
+            arrive on the consumer webhook.
+
+
+            A gateway running without persistence (`DATABASE_URL` unset) sends inline instead of enqueueing,
+            and answers this same status and body with `id` and `status` null — there is no outbox row
+            to name or to report a status for. It is the only case where they are null, and the reason
+            the fields are nullable.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for this consumer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/send-document:
+    post:
+      operationId: sendDocument
+      summary: Enqueue a document message
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          maxLength: 255
+          description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+            Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+            was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+            retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+            a second message. The key is scoped to your consumer, and stays claimed for as long as the
+            row exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+            This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        required: false
+        description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+          Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+          was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+          retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+          a second message. The key is scoped to your consumer, and stays claimed for as long as the row
+          exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+          This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        name: idempotency-key
+        in: header
+      requestBody:
+        content:
+          application/json:
+            example:
+              to: '5511999999999'
+              media: https://example.com/contrato.pdf
+              fileName: contrato.pdf
+              replyTo: 3EB0C2F1A9D4E5B6C7
+            schema:
+              $ref: '#/components/schemas/SendDocumentRequest'
+      responses:
+        '202':
+          description: 'Accepted and enqueued. The message is dispatched asynchronously; status transitions
+            arrive on the consumer webhook.
+
+
+            A gateway running without persistence (`DATABASE_URL` unset) sends inline instead of enqueueing,
+            and answers this same status and body with `id` and `status` null — there is no outbox row
+            to name or to report a status for. It is the only case where they are null, and the reason
+            the fields are nullable.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for this consumer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/check-number/{number}:
+    get:
+      operationId: checkNumber
+      summary: Check whether a number is registered on WhatsApp
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          pattern: ^\d{10,15}$
+        required: true
+        name: number
+        in: path
+      responses:
+        '200':
+          description: Lookup result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckNumberResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/react:
+    post:
+      operationId: react
+      summary: Enqueue an emoji reaction to a message
+      description: Goes through the outbox like any other send. An empty `emoji` removes a reaction previously
+        sent.
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          maxLength: 255
+          description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+            Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+            was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+            retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+            a second message. The key is scoped to your consumer, and stays claimed for as long as the
+            row exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+            This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        required: false
+        description: 'Optional. Guards against a retry becoming a duplicate message.
+
+
+          Because the send is asynchronous, a lost `202` leaves you unable to tell whether the message
+          was enqueued. Send a fresh key (a UUID) with each new message, and reuse that same key when
+          retrying it: the second call returns the original row with `deduped: true` instead of enqueueing
+          a second message. The key is scoped to your consumer, and stays claimed for as long as the row
+          exists — so reusing an old key for a *new* message answers `deduped: true` and sends nothing.
+
+
+          This header does not authenticate. Auth is `x-api-key` (Authorize, top right).'
+        name: idempotency-key
+        in: header
+      requestBody:
+        content:
+          application/json:
+            example:
+              to: '5511999999999'
+              messageId: 3EB0C2F1A9D4E5B6C7
+              emoji: 👍
+            schema:
+              $ref: '#/components/schemas/ReactionRequest'
+      responses:
+        '202':
+          description: Accepted and enqueued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/typing:
+    post:
+      operationId: setTyping
+      summary: Publish a typing / recording indicator, or clear it
+      description: 'Sent straight to WhatsApp rather than through the outbox: presence is ephemeral, and
+        an indicator replayed after a restart would misreport what the sender is doing. WhatsApp expires
+        it on its own, so a caller that dies mid-thought stops showing as typing with no cleanup call.'
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      requestBody:
+        content:
+          application/json:
+            example:
+              to: 5511999999999@s.whatsapp.net
+              state: composing
+            schema:
+              $ref: '#/components/schemas/TypingRequest'
+      responses:
+        '204':
+          description: Presence published
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: WhatsApp session is not connected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/read:
+    post:
+      operationId: markRead
+      summary: Mark inbound messages as read (blue ticks)
+      description: Visible to the other side, so it is an explicit call rather than something the gateway
+        does on delivery. Bypasses the outbox for the same reason as presence.
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      requestBody:
+        content:
+          application/json:
+            example:
+              to: 5511999999999@s.whatsapp.net
+              messageIds:
+              - 3EB0C2F1A9D4E5B6C7
+            schema:
+              $ref: '#/components/schemas/ReadRequest'
+      responses:
+        '204':
+          description: Marked as read
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: WhatsApp session is not connected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /message/history/{chat}:
+    get:
+      operationId: getHistory
+      summary: Stored conversation with a number, newest first
+      description: Lets a bot rebuild context without keeping its own copy of the history. Accepts either
+        the digits or the full JID the inbound webhook delivers. The raw Baileys envelope is never exposed.
+      tags:
+      - Messages
+      security:
+      - apiKey: []
+      parameters:
+      - schema:
+          type: string
+          description: Phone digits, or the JID from the inbound webhook
+        required: true
+        description: Phone digits, or the JID from the inbound webhook
+        name: chat
+        in: path
+      - schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+        required: false
+        name: limit
+        in: query
+      responses:
+        '200':
+          description: The stored conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Persistence is disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /session/status:
+    get:
+      operationId: getSessionStatus
+      summary: Current WhatsApp session status
+      tags:
+      - Session
+      security:
+      - apiKey: []
+      responses:
+        '200':
+          description: The session status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionStatusResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /session/start:
+    post:
+      operationId: startSession
+      summary: Start the WhatsApp connection
+      description: 'Idempotent: calling it while already connected returns the current status. `qr` is
+        the authenticated URL of the pairing image, not the code itself.'
+      tags:
+      - Session
+      security:
+      - apiKey: []
+      responses:
+        '200':
+          description: Connection started (or already running)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionStartResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /session/qr:
+    get:
+      operationId: getSessionQr
+      summary: Authenticated URL of the current pairing QR
+      tags:
+      - Session
+      security:
+      - apiKey: []
+      responses:
+        '200':
+          description: The QR URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QrResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No QR available (already connected, or none generated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /session/qr/image:
+    get:
+      operationId: getSessionQrImage
+      summary: The pairing QR as a PNG
+      description: 'Served `image/png` with `Cache-Control: no-store`. Behind the same API key as everything
+        else — the pairing code is never public.'
+      tags:
+      - Session
+      security:
+      - apiKey: []
+      responses:
+        '200':
+          description: The QR image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No QR available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /session/disconnect:
+    delete:
+      operationId: disconnectSession
+      summary: Log out and invalidate the session
+      description: 'A deliberate logout: the reconnect loop does not undo it. Pairing again requires a
+        new QR scan.'
+      tags:
+      - Session
+      security:
+      - apiKey: []
+      responses:
+        '200':
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionStatusResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /health:
+    get:
+      operationId: health
+      summary: Liveness probe — always 200 while the process is up
+      description: 'Answers 200 even while WhatsApp is disconnected: the gateway still accepts sends into
+        the outbox. Use /ready to gate traffic.'
+      tags:
+      - Meta
+      responses:
+        '200':
+          description: The process is alive
+  /ready:
+    get:
+      operationId: ready
+      summary: Readiness probe — 503 until the WhatsApp session is connected
+      tags:
+      - Meta
+      responses:
+        '200':
+          description: Session connected
+        '503':
+          description: Session not connected yet
+  /metrics:
+    get:
+      operationId: metrics
+      summary: Prometheus metrics (text exposition format)
+      tags:
+      - Meta
+      responses:
+        '200':
+          description: Metrics, in the Prometheus text exposition format
+          content:
+            text/plain:
+              schema:
+                type: string
+tags:
+- name: Messages
+  description: 'Sending, reacting, and the signals a conversational bot needs: presence, read receipts
+    and stored history.'
+- name: Session
+  description: Pairing and the lifecycle of the single WhatsApp connection this gateway holds.
+- name: Meta
+  description: Unauthenticated probes. `/health` is liveness and stays 200 while WhatsApp is down; `/ready`
+    is what a load balancer should watch.
