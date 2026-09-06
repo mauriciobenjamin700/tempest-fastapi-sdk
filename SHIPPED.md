@@ -1886,7 +1886,7 @@ separada — seriam seis middlewares na convenção, não cinco.
 ## Integração de mensageria, v0.287.0 (2026-09-06)
 
 Namespace novo `integrations/messaging/`, primeiro provedor `zap` — o
-gateway de WhatsApp da casa. 16 schemas, 18 operações, gerado de
+gateway de WhatsApp da casa. 20 schemas, 18 operações, gerado de
 `vendor/zap-openapi.yaml` por `scripts/regen_zap.py` e commitado, com
 drift test em `tests/integrations/messaging/zap/`.
 

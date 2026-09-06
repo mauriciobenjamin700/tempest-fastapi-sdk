@@ -1,7 +1,7 @@
 # WhatsApp pela zap-api
 
 O `zap-api` é o gateway de WhatsApp da casa. O SDK ships o cliente inteiro
-dele — 16 schemas e 18 operações — gerado da especificação OpenAPI e
+dele — 20 schemas e 18 operações — gerado da especificação OpenAPI e
 commitado, então você importa e usa, sem rodar codegen no seu serviço.
 
 ```python
@@ -115,11 +115,23 @@ print(qr.qr)   # o código de pareamento como string
 ```
 
 !!! note "`health` e `ready` também devolvem `None`"
-    Medido em 2026-09-06, os dois respondem JSON de verdade — `health`
-    devolve `{"status", "session", "ready", "reconnectAttempts", "queue"}`
-    e `ready` devolve o mesmo sem o `status`. A especificação declara as
-    duas **sem content**, então o corpo não chega ao cliente tipado.
-    Declarar o schema no gateway faz `make zap-regen` passar a expô-lo.
+    A especificação declara as duas **sem content**, então o corpo não
+    chega ao cliente tipado. Só que elas respondem JSON de verdade —
+    medido em 2026-09-06 contra um gateway rodando:
+
+    ```console
+    $ curl -s http://127.0.0.1:3000/health
+    {"status":"ok","session":"disconnected","ready":false,
+     "reconnectAttempts":0,"queue":{"queued":0,"oldestQueuedSeconds":null}}
+    $ curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ready
+    503
+    ```
+
+    O `/ready` devolve o mesmo objeto sem o `status`. **Nada no repositório
+    reproduz isto**: o gateway é externo, e não há fixture nem cassette
+    aqui — o comando acima é a evidência, e ele precisa de um gateway no
+    ar. Declarar o schema no gateway faz `make zap-regen` passar a expô-lo,
+    e aí passa a ser verificável offline como o resto.
 
 ## Regenerar
 

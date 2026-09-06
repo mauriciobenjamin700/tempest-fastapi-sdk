@@ -6,7 +6,7 @@ rather than edited — plus whatever the specification leaves out.
 
 Available:
 
-- **`zap`** — the in-house WhatsApp gateway. 16 schemas, 18 operations, a
+- **`zap`** — the in-house WhatsApp gateway. 20 schemas, 18 operations, a
   typed client over :class:`~tempest_fastapi_sdk.utils.HTTPClient`.
 
 .. code-block:: python

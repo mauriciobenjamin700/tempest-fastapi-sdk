@@ -138,6 +138,14 @@ mexer neles. Todos rodam dentro do `make check`.
   contagem — compara a assinatura com a do upstream, que passa nas duas
   versões e ainda falha num wrapper.
 
+  **E conte com a definição que o repositório já usa.** Na v0.287.0
+  escrevi "16 schemas" para a `zap` lendo `components.schemas` do
+  documento; o README conta `len(spec.schemas)`, que inclui os enums que o
+  gerador emite — por isso o OpenPix aparece como **686** e não como os
+  153 componentes que a spec dele declara. Pela régua do repo a `zap` tem
+  **20**. O número não estava deduzido, estava medido com outra definição,
+  e o leitor que compara dois provedores não tem como saber qual foi usada.
+
   Ainda sem guard, mas com um **passo mecânico que pega a classe**:
   instalar a wheel construída numa venv vazia
   (`uv venv x && VIRTUAL_ENV=x uv pip install "dist/*.whl[extra]"`) antes

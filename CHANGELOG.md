@@ -12,7 +12,7 @@ Uma integração nova, e um defeito no gerador que ela expôs antes de existir.
 ### Added
 
 - **`integrations/messaging/zap` — o gateway de WhatsApp da casa.**
-  16 schemas e 18 operações, gerados de `vendor/zap-openapi.yaml` por
+  20 schemas e 18 operações, gerados de `vendor/zap-openapi.yaml` por
   `scripts/regen_zap.py` e commitados, atrás do namespace novo
   `integrations/messaging/`.
 

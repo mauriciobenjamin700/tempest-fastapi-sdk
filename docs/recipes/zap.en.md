@@ -1,7 +1,7 @@
 # WhatsApp through zap-api
 
 `zap-api` is the in-house WhatsApp gateway. The SDK ships its whole client
-— 16 schemas and 18 operations — generated from the OpenAPI specification
+— 20 schemas and 18 operations — generated from the OpenAPI specification
 and checked in, so you import it and use it without running codegen in your
 own service.
 
@@ -116,11 +116,24 @@ print(qr.qr)   # the pairing code as a string
 ```
 
 !!! note "`health` and `ready` also return `None`"
-    Measured 2026-09-06, both answer real JSON — `health` returns
-    `{"status", "session", "ready", "reconnectAttempts", "queue"}` and
-    `ready` returns the same without `status`. The specification declares
-    both with **no content**, so the body never reaches the typed client.
-    Declaring the schema on the gateway makes `make zap-regen` expose it.
+    The specification declares both with **no content**, so the body never
+    reaches the typed client. They do answer real JSON, though — measured
+    2026-09-06 against a running gateway:
+
+    ```console
+    $ curl -s http://127.0.0.1:3000/health
+    {"status":"ok","session":"disconnected","ready":false,
+     "reconnectAttempts":0,"queue":{"queued":0,"oldestQueuedSeconds":null}}
+    $ curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ready
+    503
+    ```
+
+    `/ready` returns the same object without `status`. **Nothing in the
+    repository reproduces this**: the gateway is external, and there is no
+    fixture or cassette here — the command above is the evidence, and it
+    needs a gateway running. Declaring the schema on the gateway makes
+    `make zap-regen` expose it, and then it becomes offline-verifiable like
+    everything else.
 
 ## Regenerating
 
