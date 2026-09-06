@@ -197,6 +197,7 @@ plugins:
               - Versioned artifacts (models): recipes/artifact-registry.md
               - Web Push: recipes/webpush.md
               - WebAuthn / passkeys: recipes/webauthn.md
+              - WebSocket client (AsyncAPI): recipes/asyncapi-client.md
               - WebSocket router: recipes/websocket.md
               - WhatsApp (zap-api): recipes/zap.md
             - Reference: reference.md
@@ -261,6 +262,7 @@ plugins:
             Métricas: Metrics
             "Erros no OpenAPI (Swagger)": "Errors in OpenAPI (Swagger)"
             "Cliente de integração (OpenAPI)": "Integration client (OpenAPI)"
+            "Cliente de WebSocket (AsyncAPI)": "WebSocket client (AsyncAPI)"
             "SPA React no FastAPI": "React SPA inside FastAPI"
             Painel admin: Admin site
             Testes: Testing
@@ -407,6 +409,7 @@ nav:
       - "Chat (conversas + mensagens)": recipes/chat.md
       - CLI: recipes/cli.md
       - "Cliente de integração (OpenAPI)": recipes/openapi-client.md
+      - "Cliente de WebSocket (AsyncAPI)": recipes/asyncapi-client.md
       - "Colunas de enum (seguras nos dois bancos)": recipes/enum-columns.md
       - "Comentários + avaliações": recipes/reviews.md
       - "Console SQL no admin": recipes/admin-sql-console.md

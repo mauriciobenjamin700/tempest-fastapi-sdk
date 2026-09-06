@@ -11,6 +11,52 @@ Uma integração nova, e um defeito no gerador que ela expôs antes de existir.
 
 ### Added
 
+- **`asyncapi/` — cliente de WebSocket gerado de um documento AsyncAPI 3.0.**
+  O contraparte do `openapi/` para a superfície que o OpenAPI não descreve:
+  conexão que fica aberta, mensagem nos dois sentidos, servidor que fala sem
+  ninguém pedir. Rota de socket virava um parágrafo de prosa, e prosa não
+  gera cliente.
+
+  ```bash
+  uv run tempest asyncapi-client http://127.0.0.1:3000/asyncapi.json \
+      --name zap --out src/integrations/zap_ws
+  ```
+
+  Saem `schemas.py`, `stream.py` e o barrel. Os frames viram **duas uniões
+  tagueadas** — o que o cliente envia e o que recebe — então `match` sobre a
+  de entrada é exaustivo, e frame novo no documento vira erro de tipo em vez
+  de um `else` silencioso. Cada variante é reconhecida pelo discriminante que
+  o documento declara (`enum` de um valor só, que é como um literal
+  renderiza); tag desconhecida levanta com a tag e o corpo, em vez de um erro
+  de validação listando todas as variantes.
+
+  **A direção é invertida uma vez, no parser.** O `action` do AsyncAPI é
+  relativo a quem publicou o documento, o publicador é o servidor, e o que se
+  gera é o cliente — então `receive` lá é `outbound` aqui. Errar o sinal é
+  invisível: o cliente compila, passa no type-check e manda o que deveria
+  escutar. Por isso o loader **recusa** documento sem
+  `x-tempest-perspective`, em vez de assumir o caso comum. Documento do
+  `tempest-express-sdk` 0.32.0 carrega o campo.
+
+  Reuso maior do que o desenho previa: AsyncAPI guarda os payloads em
+  `components.schemas`, no mesmo lugar que o OpenAPI e no mesmo dialeto, então
+  o parser de schemas e o `emit_schemas` inteiro servem sem alteração. O
+  cliente gerado usa `websockets`, que o extra `[websocket]` já declara —
+  nenhuma dependência nova.
+
+  Primeira integração: `integrations/messaging/zap_ws`, gerada de
+  `vendor/zap-asyncapi.yaml` por `scripts/regen_zap_ws.py`, com `SPEC_SHA256`
+  pinado e drift test. Exercitada contra o gateway rodando: conecta, assina,
+  recebe o `ack`, e recusa no cliente uma sala que o `pattern` do documento
+  não aceita — o frame inválido não chega à rede.
+
+  Guards: `tests/asyncapi/` (30, com o pacote gerado dirigido contra um
+  servidor WebSocket em processo) e
+  `tests/integrations/messaging/zap_ws/test_generated_drift.py` (10). Provado
+  disparando com o sinal da direção invertido no parser — 8 dos 30 falham,
+  incluindo os quatro que atravessam a rede. Receita: "Cliente de
+  WebSocket (AsyncAPI)".
+
 - **`integrations/messaging/zap` — o gateway de WhatsApp da casa.**
   28 schemas e 27 operações, gerados de `vendor/zap-openapi.yaml` por
   `scripts/regen_zap.py` e commitados, atrás do namespace novo

@@ -681,6 +681,22 @@ o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.openapi.ir.ParameterIR
 ::: tempest_fastapi_sdk.openapi.loader.parse_header_options
 ::: tempest_fastapi_sdk.openapi.generate.suggest_client_class
+
+### `tempest_fastapi_sdk.asyncapi`
+
+::: tempest_fastapi_sdk.asyncapi.generate.generate_stream
+::: tempest_fastapi_sdk.asyncapi.generate.StreamGenerationResult
+::: tempest_fastapi_sdk.asyncapi.loader.load_asyncapi_spec
+::: tempest_fastapi_sdk.asyncapi.loader.check_version
+::: tempest_fastapi_sdk.asyncapi.loader.check_perspective
+::: tempest_fastapi_sdk.asyncapi.parse.parse_asyncapi
+::: tempest_fastapi_sdk.asyncapi.emit_stream.emit_stream
+::: tempest_fastapi_sdk.asyncapi.ir.AsyncApiIR
+::: tempest_fastapi_sdk.asyncapi.ir.StreamIR
+::: tempest_fastapi_sdk.asyncapi.ir.ChannelIR
+::: tempest_fastapi_sdk.asyncapi.ir.MessageIR
+::: tempest_fastapi_sdk.asyncapi.ir.OperationIR
+
 ::: tempest_fastapi_sdk.api.middlewares.RequestIDMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.IdempotencyMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.MemoryIdempotencyStore

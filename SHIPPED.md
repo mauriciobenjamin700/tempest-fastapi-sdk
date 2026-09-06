@@ -1885,6 +1885,24 @@ separada — seriam seis middlewares na convenção, não cinco.
 
 ## Integração de mensageria, v0.287.0 (2026-09-06)
 
+### AsyncAPI: cliente de WebSocket gerado
+
+`tempest_fastapi_sdk/asyncapi/` lê um documento AsyncAPI 3.0 e emite um
+cliente de socket tipado — o contraparte do `openapi/` para a superfície que
+o OpenAPI não descreve. Comando: `tempest asyncapi-client`. Frames em duas
+uniões tagueadas (envia / recebe), despacho por discriminante, e `websockets`
+do extra `[websocket]` já existente — nenhuma dependência nova.
+
+A direção é invertida uma vez, no parser: o `action` do AsyncAPI é do ponto de
+vista de quem publicou o documento. O loader recusa documento sem
+`x-tempest-perspective`, porque uma inversão errada é invisível — o cliente
+compila e manda o que deveria escutar.
+
+Primeira integração gerada: `integrations/messaging/zap_ws`, de
+`vendor/zap-asyncapi.yaml`, com drift test. O documento vem do
+`tempest-express-sdk` 0.32.0, que ganhou o `createAsyncApiRegistry` para
+emiti-lo.
+
 Namespace novo `integrations/messaging/`, primeiro provedor `zap` — o
 gateway de WhatsApp da casa. 28 schemas, 27 operações, gerado de
 `vendor/zap-openapi.yaml` por `scripts/regen_zap.py` e commitado, com

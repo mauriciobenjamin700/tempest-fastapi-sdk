@@ -1,0 +1,242 @@
+asyncapi: 3.0.0
+x-tempest-perspective: server
+info:
+  title: zap-api WebSocket
+  version: 1.0.0
+  description: Realtime half of the WhatsApp gateway. Authentication is the `x-api-key` header on the
+    upgrade, the same credential the HTTP routes take.
+servers:
+  local:
+    host: 127.0.0.1:3000
+    protocol: ws
+    pathname: /ws
+defaultContentType: application/json
+channels:
+  socket:
+    address: /ws
+    title: Realtime connection
+    description: 'One connection per client. WebSocket has no virtual channels, so rooms are a concept
+      of the frames below, not of the transport: a client subscribes to a `remoteJid` (or to `*`) and
+      receives the messages fanned out to it.'
+    messages:
+      SubscribeFrame:
+        $ref: '#/components/messages/SubscribeFrame'
+      UnsubscribeFrame:
+        $ref: '#/components/messages/UnsubscribeFrame'
+      SendFrame:
+        $ref: '#/components/messages/SendFrame'
+      AckFrame:
+        $ref: '#/components/messages/AckFrame'
+      ErrorFrame:
+        $ref: '#/components/messages/ErrorFrame'
+      ServerMessageFrame:
+        $ref: '#/components/messages/ServerMessageFrame'
+    bindings:
+      ws:
+        bindingVersion: 0.1.0
+        method: GET
+        headers:
+          type: object
+          properties:
+            x-api-key:
+              type: string
+              description: Consumer API key. Same credential the HTTP routes take.
+          required:
+          - x-api-key
+operations:
+  clientFrames:
+    action: receive
+    channel:
+      $ref: '#/channels/socket'
+    summary: Frames the client sends
+    messages:
+    - $ref: '#/channels/socket/messages/SubscribeFrame'
+    - $ref: '#/channels/socket/messages/UnsubscribeFrame'
+    - $ref: '#/channels/socket/messages/SendFrame'
+  serverFrames:
+    action: send
+    channel:
+      $ref: '#/channels/socket'
+    summary: Frames the server sends
+    messages:
+    - $ref: '#/channels/socket/messages/AckFrame'
+    - $ref: '#/channels/socket/messages/ErrorFrame'
+    - $ref: '#/channels/socket/messages/ServerMessageFrame'
+components:
+  messages:
+    SubscribeFrame:
+      name: SubscribeFrame
+      contentType: application/json
+      summary: Join a room
+      description: '`room` is a bare phone number, a JID, or `*` for every message.'
+      payload:
+        $ref: '#/components/schemas/SubscribeFrame'
+    UnsubscribeFrame:
+      name: UnsubscribeFrame
+      contentType: application/json
+      summary: Leave a room
+      payload:
+        $ref: '#/components/schemas/UnsubscribeFrame'
+    SendFrame:
+      name: SendFrame
+      contentType: application/json
+      summary: Send a text message
+      description: '`room` carries the recipient here, and `*` is rejected: it is a subscription target,
+        not an address.'
+      payload:
+        $ref: '#/components/schemas/SendFrame'
+    AckFrame:
+      name: AckFrame
+      contentType: application/json
+      summary: A client frame was accepted
+      description: '`accepted` answers a `send` and means the message was enqueued — delivery arrives
+        later as a `message` frame.'
+      payload:
+        $ref: '#/components/schemas/AckFrame'
+    ErrorFrame:
+      name: ErrorFrame
+      contentType: application/json
+      summary: A client frame was rejected
+      payload:
+        $ref: '#/components/schemas/ErrorFrame'
+    ServerMessageFrame:
+      name: ServerMessageFrame
+      contentType: application/json
+      summary: A WhatsApp message, inbound or outbound
+      description: Fanned out to every socket subscribed to the message's `remoteJid` and to the wildcard
+        room. `direction` tells the two apart.
+      payload:
+        $ref: '#/components/schemas/ServerMessageFrame'
+  schemas:
+    SubscribeFrame:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+          - subscribe
+        room:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^(\*|\d{10,15}|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+)$
+      required:
+      - action
+      - room
+    UnsubscribeFrame:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+          - unsubscribe
+        room:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^(\*|\d{10,15}|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+)$
+      required:
+      - action
+      - room
+    SendFrame:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+          - send
+        room:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^(\d{10,15}|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+)$
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4096
+      required:
+      - action
+      - room
+      - text
+    AckFrame:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - ack
+        event:
+          type: string
+          enum:
+          - subscribed
+          - unsubscribed
+          - accepted
+        room:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^(\*|\d{10,15}|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+)$
+      required:
+      - type
+      - event
+      - room
+    ErrorFrame:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - error
+        message:
+          type: string
+          minLength: 1
+      required:
+      - type
+      - message
+    ServerMessageFrame:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - message
+        payload:
+          type: object
+          properties:
+            remoteJid:
+              type: string
+            messageId:
+              type: string
+            direction:
+              type: string
+              enum:
+              - incoming
+              - outgoing
+            text:
+              type:
+              - string
+              - 'null'
+            mediaType:
+              type:
+              - string
+              - 'null'
+            timestamp:
+              type: string
+          required:
+          - remoteJid
+          - messageId
+          - direction
+          - text
+          - mediaType
+          - timestamp
+      required:
+      - type
+      - payload
+    socketHeaders:
+      type: object
+      properties:
+        x-api-key:
+          type: string
+          description: Consumer API key. Same credential the HTTP routes take.
+      required:
+      - x-api-key

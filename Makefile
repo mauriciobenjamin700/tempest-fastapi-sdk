@@ -7,7 +7,7 @@ PACKAGE := tempest_fastapi_sdk
 PYTHON_VERSION := 3.11
 
 .DEFAULT_GOAL := help
-.PHONY: help install sync clean openpix-regen mercadopago-regen mercadopago-fetch stripe-regen stripe-fetch zap-regen zap-fetch test test-model test-gpu cov lint fix fmt fmt-check type check ci build smoke release tag version docs docs-serve docs-build
+.PHONY: help install sync clean openpix-regen mercadopago-regen mercadopago-fetch stripe-regen stripe-fetch zap-regen zap-fetch zap-ws-regen zap-ws-fetch test test-model test-gpu cov lint fix fmt fmt-check type check ci build smoke release tag version docs docs-serve docs-build
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -78,6 +78,12 @@ zap-regen: ## Regenerate the zap-api schemas + client from vendor/zap-openapi.ya
 
 zap-fetch: ## Refresh vendor/zap-openapi.yaml from a running gateway (ZAP_OPENAPI_URL, default 127.0.0.1:3000)
 	uv run python scripts/regen_zap.py --fetch
+
+zap-ws-regen: ## Regenerate the zap-api WebSocket client from vendor/zap-asyncapi.yaml
+	uv run python scripts/regen_zap_ws.py
+
+zap-ws-fetch: ## Refresh vendor/zap-asyncapi.yaml from a running gateway (ZAP_ASYNCAPI_URL, default 127.0.0.1:3000)
+	uv run python scripts/regen_zap_ws.py --fetch
 
 mercadopago-regen: ## Regenerate the vendored Mercado Pago schemas + client from vendor/mercadopago-openapi.yaml
 	uv run python scripts/regen_mercado_pago.py

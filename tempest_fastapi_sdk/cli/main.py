@@ -902,6 +902,95 @@ def openapi_client_cmd(
         raise typer.Exit(1)
 
 
+@app.command("asyncapi-client")
+def asyncapi_client_cmd(
+    spec: Annotated[
+        str,
+        typer.Argument(
+            help="URL or path of the AsyncAPI 3 document to generate from.",
+        ),
+    ],
+    name: Annotated[
+        str,
+        typer.Option(
+            "--name",
+            "-n",
+            help="Integration name — becomes the client class prefix.",
+        ),
+    ],
+    out: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            "-o",
+            help="Output directory for the generated package.",
+        ),
+    ],
+    headers: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--header",
+            "-H",
+            help="Header sent when fetching the document, as 'Name: value'. "
+            "Repeatable — use it for a document behind authentication.",
+        ),
+    ] = None,
+    no_format: Annotated[
+        bool,
+        typer.Option(
+            "--no-format",
+            help="Skip the `ruff format` + `ruff check --fix` pass over the "
+            "generated files.",
+        ),
+    ] = False,
+) -> None:
+    """Generate a typed WebSocket client from an AsyncAPI 3 document.
+
+    The counterpart of ``openapi-client`` for the surface OpenAPI cannot
+    describe: a connection that stays open, carries messages both ways, and
+    lets the server speak first. Writes ``schemas.py`` with one class per
+    payload, ``stream.py`` with the client, and a barrel re-exporting both.
+
+    Frames are split into two tagged unions — what the client sends and what
+    it receives — so a caller matching on the inbound one gets exhaustiveness
+    from the type-checker.
+
+    The document must declare ``x-tempest-perspective``. AsyncAPI's ``action``
+    is relative to whoever published the document, a client is the other end
+    and inverts every one of them, and a wrong inversion is invisible: the
+    generated client still compiles and still type-checks, it just sends what
+    it should be listening for. Documents produced by ``tempest-express-sdk``
+    carry the field.
+    """
+    from tempest_fastapi_sdk.asyncapi.generate import generate_stream
+    from tempest_fastapi_sdk.openapi.loader import SpecError, parse_header_options
+
+    try:
+        result = generate_stream(
+            spec,
+            out=out.expanduser().resolve(),
+            name=name,
+            headers=parse_header_options(list(headers or [])),
+            run_format=not no_format,
+        )
+    except SpecError as exc:
+        typer.secho(f"error: {exc}", fg="red", err=True)
+        raise typer.Exit(2) from exc
+
+    for path in result.written:
+        typer.secho(f"  + {path}", fg="green")
+
+    typer.echo(f"{result.schema_count} schema(s), {result.message_count} frame(s).")
+    if result.unsupported:
+        typer.secho(
+            f"{len(result.unsupported)} construct(s) could not be modelled as "
+            f"written — each line says what was generated instead:",
+            fg="yellow",
+        )
+        for note in result.unsupported:
+            typer.secho(f"  - {note}", fg="yellow")
+
+
 def _apply_error_fixes(
     findings: list[Any],
     targets: list[Path],
