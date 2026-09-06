@@ -3,7 +3,9 @@
 Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https://mkdocstrings.github.io/). Todo símbolo exportado no `__all__` de `tempest_fastapi_sdk` e dos seus submódulos públicos está documentado aqui — com assinatura completa, parâmetros, tipo de retorno, exceções levantadas e link para o código-fonte.
 
 !!! info "Cobertura verificada, não prometida"
-    `tests/test_reference_coverage.py` renderiza esta página e compara os âncoras emitidos com o `__all__` de cada módulo público, então um símbolo novo que não chegue aqui quebra o `make check`.
+    `tests/test_reference_coverage.py` renderiza esta página e compara os âncoras emitidos com o `__all__` de cada módulo listado em `PUBLIC_MODULES`, então um símbolo novo nesses módulos que não chegue aqui quebra o `make check`.
+
+    **`tempest_fastapi_sdk.integrations.*` fica fora dessa lista**, e por isso fora da verificação: as integrações são código gerado de uma especificação de terceiro, com centenas de símbolos por provedor (686 só no OpenPix), e o que garante que elas não driftam é o drift test de cada uma, não esta página. Os módulos de integração documentados aqui estão porque alguém os escreveu à mão.
 
     Três grupos ficam de fora **de propósito**, cada um com o motivo registrado no allowlist do teste: os aliases BR pré-0.76 sem sufixo `Field` (`CPF`, `CNPJ`, `CEP`, `CPFOrCNPJ`, `PhoneBR`) e `AsyncBrokerManager`, todos **deprecados** — documentá-los convidaria ao uso; e `Classifier` / `Detector` / `Segmenter` / `DetectClassify` / `DetectClassifyResults` / `fuse_detect_classify`, que são reexports do `ort-vision-sdk` e pertencem à documentação daquele projeto. Os schemas e mappers que o SDK escreve em volta deles — `DetectClassifySchema`, `to_detect_classify_schemas` — são nossos e estão documentados aqui.
 

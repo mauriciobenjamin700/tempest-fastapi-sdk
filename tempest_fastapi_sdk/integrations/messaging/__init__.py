@@ -6,8 +6,11 @@ rather than edited — plus whatever the specification leaves out.
 
 Available:
 
-- **`zap`** — the in-house WhatsApp gateway. 20 schemas, 18 operations, a
-  typed client over :class:`~tempest_fastapi_sdk.utils.HTTPClient`.
+- **`zap`** — the in-house WhatsApp gateway over HTTP. 28 schemas, 27
+  operations, a typed client over
+  :class:`~tempest_fastapi_sdk.utils.HTTPClient`.
+- **`zap_ws`** — the same gateway's WebSocket, generated from its AsyncAPI
+  document. Six frames in two tagged unions, over ``websockets``.
 
 .. code-block:: python
 

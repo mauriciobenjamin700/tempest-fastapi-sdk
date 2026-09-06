@@ -562,7 +562,7 @@ come back here to plug in each capability as you need it.
 | **[WebAuthn / passkeys »](webauthn.md)** | `WebAuthnService`, `make_web_authn_credential_model`, registration + passwordless login, memory/Redis challenge store |
 | **[WebSocket client (AsyncAPI) »](asyncapi-client.md)** | `tempest asyncapi-client` — a typed socket client from an AsyncAPI 3 document |
 | **[WebSocket router »](websocket.md)** | `WebSocketHub`, `make_websocket_router`, `broadcast` / `send_to`, heartbeat, bearer auth |
-| **[WhatsApp (zap-api) »](zap.md)** | `ZapClient` over the in-house gateway — 18 generated operations, asynchronous send (`202` + enqueued row), one `idempotency_key` per message, session and pairing QR |
+| **[WhatsApp (zap-api) »](zap.md)** | `ZapClient` over the in-house gateway — 27 generated operations, asynchronous send (`202` + enqueued row), one `idempotency_key` per message, session and pairing QR |
 
 ## Complete examples
 

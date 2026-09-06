@@ -561,7 +561,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Web Push »](webpush.md)** | `WebPushDispatcher`, schemas VAPID, broadcast com poda |
 | **[WebAuthn / passkeys »](webauthn.md)** | `WebAuthnService`, `make_web_authn_credential_model`, registro + login sem senha, store de desafios em memória/Redis |
 | **[WebSocket router »](websocket.md)** | `WebSocketHub`, `make_websocket_router`, `broadcast` / `send_to`, heartbeat, auth via bearer |
-| **[WhatsApp (zap-api) »](zap.md)** | `ZapClient` sobre o gateway da casa — 18 operações geradas, envio assíncrono (`202` + linha enfileirada), `idempotency_key` por mensagem, sessão e QR de pareamento |
+| **[WhatsApp (zap-api) »](zap.md)** | `ZapClient` sobre o gateway da casa — 27 operações geradas, envio assíncrono (`202` + linha enfileirada), `idempotency_key` por mensagem, sessão e QR de pareamento |
 
 ## Exemplos completos
 

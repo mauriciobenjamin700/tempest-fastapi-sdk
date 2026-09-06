@@ -142,8 +142,9 @@ mexer neles. Todos rodam dentro do `make check`.
   escrevi "16 schemas" para a `zap` lendo `components.schemas` do
   documento; o README conta `len(spec.schemas)`, que inclui os enums que o
   gerador emite — por isso o OpenPix aparece como **686** e não como os
-  153 componentes que a spec dele declara. Pela régua do repo a `zap` tem
-  **20**. O número não estava deduzido, estava medido com outra definição,
+  153 componentes que a spec dele declara. Pela régua do repo a `zap` tinha
+  **20** no dia (hoje **28**, depois que o gateway ganhou os envios base64 e
+  os uploads). O número não estava deduzido, estava medido com outra definição,
   e o leitor que compara dois provedores não tem como saber qual foi usada.
 
   Ainda sem guard, mas com um **passo mecânico que pega a classe**:
