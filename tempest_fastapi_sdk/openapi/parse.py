@@ -14,6 +14,7 @@ documented gap.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -1353,6 +1354,7 @@ class _Parser:
         if not success:
             return None, "200"
         status = str(success[0])
+        self._note_divergent_success(operation, responses, success, owner, status)
         entry = responses[status]
         if not isinstance(entry, dict):
             return None, status
@@ -1370,6 +1372,59 @@ class _Parser:
         annotation = self.render_type(schema, hint=f"{owner}Response")
         self.response_annotations.append(annotation)
         return annotation, status
+
+    def _note_divergent_success(
+        self,
+        operation: Mapping[str, Any],
+        responses: Mapping[str, Any],
+        success: Sequence[str],
+        owner: str,
+        chosen: str,
+    ) -> None:
+        """Record that several 2xx statuses carry **different** bodies.
+
+        A client method returns one type, so only one success status can be
+        modelled, and the lowest is chosen. When the others carry the same
+        shape that is free — an operation answering ``200`` or ``201`` with
+        one object loses nothing. When they carry different shapes it is not
+        free: the caller gets a method annotated for a body the API may
+        never send, and validating the real one raises at request time.
+
+        Shapes are compared with prose stripped, because ``description`` and
+        ``example`` differ between statuses in specifications where the
+        structure does not — both OpenPix operations that declare ``200``
+        and ``201`` are that case, and flagging them would be noise.
+
+        Args:
+            operation (Mapping[str, Any]): The operation object.
+            responses (Mapping[str, Any]): Its ``responses`` block.
+            success (Sequence[str]): The 2xx status codes it declares.
+            owner (str): Name used to identify the operation in the note.
+            chosen (str): The status the generator modelled.
+        """
+        if len(success) < 2:
+            return
+        shapes: dict[str, str] = {}
+        for code in success:
+            entry = responses[code]
+            if not isinstance(entry, dict):
+                continue
+            content = deref(self.document, entry).get("content")
+            if not isinstance(content, dict):
+                continue
+            schema = _json_content_schema(content)
+            if schema is not None:
+                shapes[str(code)] = json.dumps(
+                    _without_prose(schema), sort_keys=True, default=str
+                )
+        if len(set(shapes.values())) < 2:
+            return
+        others = ", ".join(code for code in sorted(shapes) if code != chosen)
+        self.note(
+            f"{owner} declares {len(shapes)} success statuses with different "
+            f"bodies — only {chosen} is modelled, and a {others} response "
+            f"will not validate against it"
+        )
 
     def _error_statuses(
         self,
@@ -1390,6 +1445,32 @@ class _Parser:
                 description = _clean_text(entry.get("description")) or ""
             collected.append((text, description.splitlines()[0] if description else ""))
         return tuple(collected)
+
+
+def _without_prose(node: Any) -> Any:
+    """Return ``node`` with documentation-only keys removed, recursively.
+
+    Args:
+        node (Any): Any part of a JSON Schema.
+
+    Returns:
+        Any: The same structure without ``description`` / ``example`` /
+        ``examples`` / ``title``, so two schemas can be compared for shape
+        rather than for wording.
+    """
+    if isinstance(node, dict):
+        return {
+            key: _without_prose(value)
+            for key, value in node.items()
+            if key not in _PROSE_KEYS
+        }
+    if isinstance(node, list):
+        return [_without_prose(item) for item in node]
+    return node
+
+
+_PROSE_KEYS: frozenset[str] = frozenset({"description", "example", "examples", "title"})
+"""Schema keys that carry wording, never shape."""
 
 
 def _is_aliasable(annotation: str) -> bool:
