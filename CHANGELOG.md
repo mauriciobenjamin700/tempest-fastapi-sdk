@@ -5,6 +5,42 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.288.0] — 2026-09-07
+
+Um heartbeat que era invisível na docstring e um evento no fio.
+
+### Fixed
+
+- **`ServerSentEvent.encode` não escreve mais `data:` num frame de controle**
+  ([#270](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/270)).
+  O encoder emitia a linha de dados sempre, inclusive no frame que só carrega
+  `comment` — então o batimento ocioso do `EventStream` saía como
+  `: keepalive\ndata: \n\n` e chegava ao cliente como um **evento real** no
+  nome default `message`, a cada 15 s numa conexão saudável.
+
+  `data:` vazio não é inerte, e é aí que a dedução errou: o parser do
+  navegador guarda o valor vazio **mais um line feed**, o passo de despacho
+  tira o feed e entrega `""` como `message`. Medido no Chromium sobre
+  `EventSource`: três frames `: keepalive\ndata: \n\n` dispararam
+  `onmessage` três vezes com `data === ""`; três frames `: keepalive\n\n`
+  dispararam zero.
+
+  Agora um frame **sem payload e sem `event`** que carrega `comment`, `id` ou
+  `retry` sai sem linha de dados — `: keepalive\n\n`, `id: 5\n\n`,
+  `retry: 3000\n\n` —, que é a semântica do spec para os três: comentário é
+  ignorado, `id` só arma o `Last-Event-ID`, `retry` só ajusta a reconexão.
+  Frame que **nomeia** um `event` mantém a linha mesmo com corpo vazio
+  (`event: NOTIFY\ndata: \n\n`), porque aí despachar é a intenção; e
+  `ServerSentEvent()` cru continua despachando, então nada que já funcionava
+  muda de forma.
+
+  A docstring do próprio SDK afirmava a correção em dois lugares ("which the
+  browser never surfaces to JavaScript"), e um teste **fixava o byte errado**
+  com a justificativa deduzida do spec — o passo de despacho ignora buffer de
+  dados vazio, e o buffer não estava vazio. Guard: `TestControlFrames` em
+  `tests/sse/test_event_stream.py`, byte a byte, com o par do evento nomeado
+  para a correção não virar regressão.
+
 ## [0.287.0] — 2026-09-06
 
 Uma integração nova, e um defeito no gerador que ela expôs antes de existir.

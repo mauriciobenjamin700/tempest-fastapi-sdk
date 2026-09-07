@@ -5,6 +5,76 @@ existe: o defeito que shippou, o comando que mediu, o número que apareceu.
 Consulte quando a regra parecer exagerada — ela quase sempre é a cicatriz
 de algo que passou por revisão manual e escapou.
 
+## O teste fixou o byte errado com a justificativa deduzida do spec (v0.288.0)
+
+`ServerSentEvent.encode` escrevia uma linha `data:` em **todo** frame,
+inclusive no que só carrega `comment`. O batimento ocioso do `EventStream`
+saía assim:
+
+```
+: keepalive
+data:
+
+```
+
+E chegava ao browser como um evento real no nome default `message`, a cada
+15 s (`gaps: [15, 18, 15]` segundos, medido com timestamp no cliente do
+`alofans-api`, SDK 0.284.0).
+
+Três coisas apontavam para a correção e nenhuma pegou o defeito:
+
+- a docstring do `EventStream` afirmava, em dois lugares, "which the browser
+  never surfaces to JavaScript";
+- a receita `docs/recipes/sse.md` afirmava "**invisível** ao `EventSource`:
+  não dispara listener nenhum";
+- e um teste **fixava o byte errado** — `assert frame == b": keepalive\ndata:
+  \n\n"` — com a justificativa escrita na docstring dele: *"a `data:` final
+  é vazia, e o spec SSE não despacha nada quando o buffer de dados está
+  vazio"*.
+
+A frase do spec existe, e é essa mesma:
+
+> If the data buffer is an empty string, set the data buffer and the event
+> type buffer to the empty string and return.
+
+O erro está um passo antes, na regra de campo:
+
+> If the field name is "data": Append the field value to the data buffer, then
+> append a single U+000A LINE FEED (LF) character to the data buffer.
+
+Ou seja: `data: ` deixa o buffer valendo `"\n"`, **não** `""`. O passo de
+despacho não retorna cedo; ele tira o line feed final e entrega `""` como um
+evento `message`. A dedução casou a conclusão com a frase certa do documento
+errado.
+
+Medido antes de escrever a correção, com dois endpoints servindo os bytes
+crus e uma página que conta `onmessage` em Chromium via `EventSource`:
+
+| Frame | `onmessage` em 3 frames |
+| --- | --- |
+| `: keepalive\ndata: \n\n` | **3**, com `data === ""` |
+| `: keepalive\n\n` | **0** |
+
+O que isto acrescenta às regras que já existiam:
+
+- **Teste byte a byte não é guard se o byte veio de dedução.** Este era o
+  formato mais forte disponível (igualdade exata sobre o que o browser lê) e
+  ainda assim fixou o defeito, porque a expectativa nunca atravessou um
+  browser. A regra "propriedade que atravessa processo é testada atravessando"
+  vale para o *valor esperado* do assert, não só para o caminho de execução.
+- **Docstring que descreve o comportamento de outro programa é afirmação
+  medida ou não é nada.** "The browser never surfaces this" fala do Chromium,
+  não do nosso código; nenhuma leitura do nosso código pode produzi-la.
+- **Citação de spec precisa do passo anterior.** Recortar a cláusula que
+  confirma a conclusão e não checar o que alimenta a variável dela é a forma
+  que sobrevive à revisão — a citação está correta, o encadeamento não.
+
+Guard: `TestControlFrames` em `tests/sse/test_event_stream.py`, byte a byte
+nos três frames de controle (`comment`, `id`, `retry`), com o par do evento
+nomeado com corpo vazio (`event: NOTIFY\ndata: \n\n`) e o
+`ServerSentEvent()` cru para a correção não virar regressão no que já
+despachava.
+
 ## O guard verde que não checava nada, e o teste que o pegou (v0.285.0)
 
 `tests/test_docs_type_guard.py` roda o mypy sobre todo bloco de código da

@@ -171,6 +171,20 @@ load-balancers não cortarem a conexão. Por default o batimento é um
 **comentário** SSE (`: keepalive`), **invisível** ao `EventSource`: não
 dispara listener nenhum, só mantém o socket vivo. `None` desliga o heartbeat.
 
+!!! note "Frame de controle não leva linha `data:`"
+    Frame sem payload e sem `event` — só `comment`, `id` ou `retry` — sai do
+    encoder **sem** linha `data:`. Isso importa porque `data:` vazio não é
+    inerte: o parser do navegador guarda o valor vazio mais um line feed, o
+    passo de despacho tira o feed e entrega `""` como um evento `message`.
+    Medido no Chromium: três frames `: keepalive\ndata: \n\n` disparam
+    `onmessage` três vezes com `data === ""`; três frames `: keepalive\n\n`
+    disparam zero. Frame que **nomeia** um `event` mantém a linha mesmo com
+    corpo vazio, porque aí o despacho é a intenção.
+
+    Corrigido na **0.288.0** ([#270](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/270)).
+    Em versão anterior, o workaround do lado do cliente é escutar por nome
+    (`addEventListener`) e descartar o nome default `message`.
+
 ### Batimento visível: `heartbeat_event`
 
 Comentário mantém o TCP vivo, que é o propósito — mas um cliente que usa o

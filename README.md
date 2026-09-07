@@ -2672,7 +2672,7 @@ const es = new EventSource("/events");
 es.addEventListener("counter", (e) => console.log("got", JSON.parse(e.data)));
 ```
 
-`heartbeat_seconds` emits a `: keepalive` SSE comment when idle so load-balancers don't close long-lived connections. `ServerSentEvent.data` accepts strings, bytes or any JSON-serializable Python object — non-strings are JSON-encoded automatically. Pass `retry=` to hint the browser at the reconnect delay (milliseconds).
+`heartbeat_seconds` emits a `: keepalive` SSE comment when idle so load-balancers don't close long-lived connections; a frame carrying only `comment`, `id` or `retry` gets no `data:` line, so it never fires `onmessage` (an empty `data:` does — measured in Chromium). `ServerSentEvent.data` accepts strings, bytes or any JSON-serializable Python object — non-strings are JSON-encoded automatically. Pass `retry=` to hint the browser at the reconnect delay (milliseconds).
 
 The queue is **bounded** (`max_queue`, default `1000`): a slow client can't grow memory without limit. `overflow` picks the eviction policy — `"drop_oldest"` (default), `"drop_newest"`, or `"block"` (real backpressure); `EventStream.dropped_events` counts the discards. For broadcast, `SSEBroker.response(channel)` bundles `register` + `sse_response` + `unregister`-on-disconnect in one call. Authenticating an `EventSource` (which can't send an `Authorization` header): prefer a session cookie (`make_jwt_user_dependency(..., cookie_name="access_token")` + `withCredentials`); for cookieless clients pass a short-lived access token in the query string with `query_param="access_token"` (over TLS, scrubbed from logs). See the [SSE recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/sse/) for the full guide.
 

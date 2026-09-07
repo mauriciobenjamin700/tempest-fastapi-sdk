@@ -46,6 +46,51 @@ class TestServerSentEvent:
         assert encoded.startswith(": keepalive\n")
 
 
+class TestControlFrames:
+    """A frame with no payload and no event name writes no ``data:`` line.
+
+    Every assertion here is byte-exact because the wire bytes are what
+    the browser parses, and the defect these pin down was invisible to
+    substring assertions: ``": keepalive" in encoded`` passed while the
+    frame dispatched a ``message`` event on every heartbeat. Measured in
+    Chromium over ``EventSource``: three ``: keepalive\\ndata: \\n\\n``
+    frames fired ``onmessage`` three times with ``data === ""``, three
+    ``: keepalive\\n\\n`` frames fired it zero times.
+    """
+
+    def test_comment_only_frame_has_no_data_line(self) -> None:
+        assert ServerSentEvent(comment="keepalive").encode() == ": keepalive\n\n"
+
+    def test_explicit_empty_data_does_not_resurrect_the_line(self) -> None:
+        frame = ServerSentEvent(comment="keepalive", data="").encode()
+        assert frame == ": keepalive\n\n"
+
+    def test_retry_only_frame_has_no_data_line(self) -> None:
+        assert ServerSentEvent(retry=3000).encode() == "retry: 3000\n\n"
+
+    def test_id_only_frame_has_no_data_line(self) -> None:
+        assert ServerSentEvent(id="5").encode() == "id: 5\n\n"
+
+    def test_named_event_keeps_its_empty_data_line(self) -> None:
+        """The pair that stops the fix from becoming a regression.
+
+        A named event with an empty body is meant to dispatch, so its
+        ``data:`` line survives even though the payload is empty.
+        """
+        frame = ServerSentEvent(data="", event="NOTIFY").encode()
+        assert frame == "event: NOTIFY\ndata: \n\n"
+
+    def test_bare_event_keeps_its_data_line(self) -> None:
+        """``ServerSentEvent()`` sets no control field, so it dispatches."""
+        assert ServerSentEvent().encode() == "data: \n\n"
+
+    def test_none_payload_is_json_null_not_emptiness(self) -> None:
+        assert ServerSentEvent(data=None).encode() == "data: null\n\n"
+
+    def test_comment_with_payload_keeps_both(self) -> None:
+        assert ServerSentEvent(comment="c", data="x").encode() == ": c\ndata: x\n\n"
+
+
 class TestEventStream:
     async def test_publish_and_close(self) -> None:
         stream = EventStream(heartbeat_seconds=None)
@@ -230,16 +275,21 @@ async def test_event_stream_response_helper() -> None:
 
 class TestHeartbeatEvent:
     async def test_default_beat_is_a_comment(self) -> None:
-        """The default frame carries no dispatchable data, by construction.
+        """The default frame carries no data line at all.
 
-        It encodes as ``: keepalive\\ndata: \\n\\n``: the trailing
-        ``data:`` is empty, and the SSE spec dispatches nothing when the
-        data buffer is empty, so the browser never fires ``onmessage``.
-        That invisibility is the whole reason ``heartbeat_event`` exists.
+        Byte-exact on purpose: an empty ``data:`` line is not inert. The
+        field parser appends the empty value plus a line feed, so the
+        data buffer holds ``"\\n"`` rather than the empty string, and the
+        dispatch step strips the feed and delivers ``""`` as a
+        ``message`` event. Measured in Chromium over ``EventSource``:
+        three ``: keepalive\\ndata: \\n\\n`` frames fired ``onmessage``
+        three times with ``data === ""``; three ``: keepalive\\n\\n``
+        frames fired it zero times. That invisibility is the whole
+        reason ``heartbeat_event`` exists.
         """
         stream = EventStream(heartbeat_seconds=0.05)
         frame = await asyncio.wait_for(stream.stream().__anext__(), 1.0)
-        assert frame == b": keepalive\ndata: \n\n"
+        assert frame == b": keepalive\n\n"
 
     async def test_static_event_replaces_the_comment(self) -> None:
         """A comment never fires onmessage; a real event does."""

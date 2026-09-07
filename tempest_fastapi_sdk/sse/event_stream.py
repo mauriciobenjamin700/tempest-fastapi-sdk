@@ -88,6 +88,22 @@ class ServerSentEvent:
     def encode(self) -> str:
         """Render the event as the wire-format string.
 
+        A frame that carries no payload and no ``event`` name, but does
+        carry ``comment``, ``id`` or ``retry``, is a **control frame**:
+        it gets no ``data:`` line at all. That line is what makes the
+        browser dispatch, even when it looks empty — ``data: `` parses to
+        a data buffer holding a single line feed, and the dispatch step
+        strips that feed and delivers the empty string as a ``message``
+        event. Writing it therefore turned the idle ``: keepalive``
+        heartbeat into an event that every consumer listening on
+        ``onmessage`` received as business data. Measured in Chromium
+        over ``EventSource``: ``: keepalive\\ndata: \\n\\n`` fires
+        ``onmessage``, ``: keepalive\\n\\n`` fires nothing.
+
+        A frame that names an ``event`` keeps its ``data:`` line when the
+        payload is empty, because a named event with an empty body is
+        meant to dispatch; so does a bare ``ServerSentEvent()``.
+
         Returns:
             str: The encoded event, including the trailing blank line
             that marks frame boundaries.
@@ -110,8 +126,18 @@ class ServerSentEvent:
         else:
             payload = json.dumps(self.data, default=str)
 
-        for chunk in payload.splitlines() or [""]:
-            lines.append(f"data: {chunk}")
+        is_control_frame: bool = (
+            payload == ""
+            and self.event is None
+            and (
+                self.comment is not None
+                or self.id is not None
+                or self.retry is not None
+            )
+        )
+        if not is_control_frame:
+            for chunk in payload.splitlines() or [""]:
+                lines.append(f"data: {chunk}")
         return "\n".join(lines) + "\n\n"
 
 

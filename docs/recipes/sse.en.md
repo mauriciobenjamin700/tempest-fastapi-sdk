@@ -172,6 +172,21 @@ don't cut the connection. By default that beat is an SSE **comment**
 (`: keepalive`), **invisible** to `EventSource`: it fires no listener, it
 just keeps the socket alive. `None` disables the heartbeat.
 
+!!! note "A control frame carries no `data:` line"
+    A frame with no payload and no `event` — only `comment`, `id` or `retry`
+    — leaves the encoder **without** a `data:` line. That matters because an
+    empty `data:` is not inert: the browser's field parser stores the empty
+    value plus a line feed, the dispatch step strips the feed, and `""` is
+    delivered as a `message` event. Measured in Chromium: three
+    `: keepalive\ndata: \n\n` frames fire `onmessage` three times with
+    `data === ""`; three `: keepalive\n\n` frames fire it zero times. A frame
+    that **names** an `event` keeps the line even with an empty body, because
+    there dispatching is the intent.
+
+    Fixed in **0.288.0** ([#270](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/270)).
+    On an earlier version, the client-side workaround is to subscribe by name
+    (`addEventListener`) and drop the default `message` name.
+
 ### A visible beat: `heartbeat_event`
 
 A comment keeps the TCP connection alive, which is the point — but a client
