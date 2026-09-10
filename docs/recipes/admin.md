@@ -703,6 +703,71 @@ campo, não uma string salva no lugar). FK vira `<select>` (ou
 autocomplete, via `autocomplete_fields`), e `upload_fields` vira input de
 arquivo.
 
+## Fuso do operador (`display_timezone=`)
+
+Uma coluna `TIMESTAMP(timezone=True)` guarda **instante**, e o form do
+admin renderiza `<input type="datetime-local">`, que **não carrega
+offset nenhum**. Sem dizer em que fuso a caixa é lida, o painel vira um
+editor de coluna crua: a submissão chega sem `tzinfo`, e quem decide o
+que ela significa passa a ser o driver — com asyncpg, o `TZ` do
+processo. Num container em UTC o operador em Teresina digita `20:00` e
+a linha fica com `20:00Z`, três horas à frente
+([medido no consumidor](https://github.com/And-All/alofans-api/issues/114)).
+
+Declare o fuso e as três telas passam a concordar:
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import EventModel
+
+
+site.register(
+    AdminModel(
+        model=EventModel,
+        list_display=[EventModel.name, EventModel.date],
+        display_timezone="America/Sao_Paulo",
+    ),
+)
+```
+
+O que muda, e só isso:
+
+- **Listagem e detail** convertem cada `datetime` para o fuso e mostram
+  o offset junto (`2026-06-15 20:00:00-03:00`), então a tela nunca é
+  ambígua.
+- **Form** pré-preenche a caixa com a hora local (`2026-06-15T20:00`) e
+  escreve `Timezone: America/Sao_Paulo — stored as UTC.` embaixo, porque
+  o `datetime-local` não tem onde dizer isso sozinho.
+- **Submit** lê o valor como hora de parede **naquele** fuso e grava em
+  UTC. Valor que já chega com offset é respeitado, não sobrescrito.
+
+!!! warning "Converter só na escrita é pior que não converter"
+    A meia-correção passa em todo teste sobre gravar e ainda assim
+    move a linha: o form mostra a hora UTC, o operador salva sem tocar
+    em nada, e o valor exibido é relido como hora local. Cada save de
+    um formulário intocado empurra a linha três horas. É por isso que
+    as duas pontas mudam juntas, e por isso o teste que fixa a regra é
+    um `POST` real de um form que ninguém editou.
+
+!!! tip "Declare uma vez no `AdminSite`"
+    O fuso é do painel, não de uma tabela: `AdminSite(display_timezone=...)`
+    vale para todo model registrado depois, e um `AdminModel` que declara o
+    seu próprio continua com ele.
+
+!!! info "O export continua em UTC"
+    CSV e JSON alimentam máquina. Um timestamp que muda de significado
+    entre a tela e o arquivo é pior que um que sempre significa a mesma
+    coisa, então a conversão fica nas telas que uma pessoa lê.
+
+!!! tip "O fuso é validado onde é declarado"
+    `display_timezone="America/Sao_Paolo"` (com o typo) levanta
+    `ValueError` na construção do `AdminModel`, não no request que
+    renderiza o form. Fuso resolvido tarde já custou caro aqui: a
+    string de offset do cron morria dentro do loop do scheduler,
+    calada.
+
 ## Lenses — visões salvas (`lenses=`)
 
 Uma lens é um preset nomeado de filtros + ordenação, mostrado como aba
@@ -1059,3 +1124,5 @@ dashboard, list, detail, forms) sem tocar em CSS. Para customização total,
   admin pode tudo.
 - `AdminTheme` cobre a aparência por campo tipado; `can_import=True` abre o
   import CSV com pré-visualização antes de gravar.
+- `display_timezone=` é o que transforma o campo de datetime em widget:
+  a tela lê e escreve no fuso do operador, a coluna continua em UTC.

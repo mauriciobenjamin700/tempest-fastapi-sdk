@@ -721,6 +721,71 @@ error, not a string stored in its place). A FK becomes a `<select>` (or
 autocomplete, via `autocomplete_fields`), and `upload_fields` become file
 inputs.
 
+## Operator timezone (`display_timezone=`)
+
+A `TIMESTAMP(timezone=True)` column stores an **instant**, and the admin
+form renders `<input type="datetime-local">`, which carries **no offset
+at all**. Without saying which zone the box is read in, the panel is a
+raw column editor: the submission arrives with no `tzinfo`, and what it
+means is then the driver's call — with asyncpg, the process `TZ`. In a
+container running UTC an operator in Brazil types `20:00` and the row
+keeps `20:00Z`, three hours ahead
+([measured in the consumer](https://github.com/And-All/alofans-api/issues/114)).
+
+Declare the zone and the three views start agreeing:
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import EventModel
+
+
+site.register(
+    AdminModel(
+        model=EventModel,
+        list_display=[EventModel.name, EventModel.date],
+        display_timezone="America/Sao_Paulo",
+    ),
+)
+```
+
+What changes, and nothing else:
+
+- **List and detail** convert every `datetime` to the zone and print the
+  offset with it (`2026-06-15 20:00:00-03:00`), so the screen is never
+  ambiguous.
+- **The form** pre-fills the box with the local hour
+  (`2026-06-15T20:00`) and writes `Timezone: America/Sao_Paulo — stored
+  as UTC.` underneath, because `datetime-local` has nowhere to say it.
+- **The submission** is read as wall-clock time in that zone and stored
+  in UTC. A value that already carries an offset is honored, not
+  overridden.
+
+!!! warning "Converting only on write is worse than not converting"
+    The half-fix passes every test about writing and still moves the
+    row: the form shows the UTC hour, the operator saves without
+    touching anything, and the displayed value is re-read as local
+    time. Every save of an untouched form pushes the row three hours.
+    That is why both ends change together, and why the test that pins
+    the rule is a real `POST` of a form nobody edited.
+
+!!! tip "Declare it once on the `AdminSite`"
+    The zone belongs to the panel, not to one table:
+    `AdminSite(display_timezone=...)` applies to every model registered
+    after it, and an `AdminModel` that declares its own keeps it.
+
+!!! info "The export stays in UTC"
+    CSV and JSON feed machines. A timestamp that changes meaning between
+    the screen and the file is worse than one that always means the same
+    thing, so the conversion lives in the views a person reads.
+
+!!! tip "The zone is validated where it is declared"
+    `display_timezone="America/Sao_Paolo"` (with the typo) raises
+    `ValueError` when the `AdminModel` is built, not in the request that
+    renders the form. A timezone resolved late has cost us before: the
+    cron's offset string died inside the scheduler loop, silently.
+
 ## Lenses — saved views (`lenses=`)
 
 A lens is a named preset of filters + ordering, shown as a tab above the
@@ -1079,3 +1144,5 @@ control, `custom_css_url`.
   who reaches the admin can do everything.
 - `AdminTheme` covers the look through typed fields; `can_import=True` opens CSV
   import with a preview before anything is written.
+- `display_timezone=` is what turns the datetime field into a widget: the
+  screen reads and writes in the operator's zone, the column stays UTC.

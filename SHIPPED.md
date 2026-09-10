@@ -1936,3 +1936,29 @@ e por isso o pacote não modela:
 
 Cada uma é uma linha na spec do gateway, e nenhuma exige mudança aqui —
 `make zap-regen` passa a expor assim que forem declaradas.
+
+## Fuso do painel admin, v0.289.0 (2026-09-10)
+
+### `AdminModel(display_timezone=...)` — o datetime vira widget
+
+A coluna guarda instante e o form renderiza `<input type="datetime-local">`,
+que não carrega offset. Sem declarar o fuso, o painel é editor de coluna
+crua: medido aqui, `parse_submission` devolve o valor sem `tzinfo`; medido no
+consumidor contra Postgres, o asyncpg resolve esse naive no `TZ` do processo,
+então num container UTC o operador digita 20:00 e a linha guarda `20:00Z`
+([And-All/alofans-api#114](https://github.com/And-All/alofans-api/issues/114)).
+
+Com `display_timezone="America/Sao_Paulo"`, listagem e detail convertem e
+mostram o offset, o form pré-preenche a hora local com um hint nomeando a
+zona, e o submit grava em UTC. Export CSV/JSON fica em UTC de propósito.
+
+As duas pontas mudam juntas porque converter só na escrita move a linha a
+cada save de formulário intocado — o guard é um `POST` real
+(`tests/admin/test_display_timezone.py`), verificado por mutação nos dois
+lados. Fuso inválido levanta `ValueError` na construção, não no request.
+
+`AdminSite(display_timezone=...)` declara o mesmo fuso para todo model
+registrado depois; o model que traz o seu próprio continua com ele.
+
+Consumidor: `alofans-api`, cujo `EventModel.date` era editável no painel sem
+nada dizer em que fuso a caixa era lida.

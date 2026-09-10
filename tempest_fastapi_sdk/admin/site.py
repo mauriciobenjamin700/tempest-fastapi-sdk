@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from types import ModuleType
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from tempest_fastapi_sdk.admin.config import AdminModel
 from tempest_fastapi_sdk.admin.dashboard import MetricCard
@@ -50,6 +51,7 @@ class AdminSite:
         site_url: str | None = None,
         theme: AdminTheme | None = None,
         dashboard_cards: Sequence[MetricCard] = (),
+        display_timezone: str | None = None,
     ) -> None:
         """Initialize the site.
 
@@ -67,6 +69,19 @@ class AdminSite:
             theme (AdminTheme | None): Typed appearance overrides.
                 ``None`` (default) uses a stock :class:`AdminTheme`,
                 leaving the look identical to earlier versions.
+            dashboard_cards (Sequence[MetricCard]): Business-metric
+                cards rendered on the dashboard.
+            display_timezone (str | None): IANA zone every registered
+                model inherits for its datetime columns — the zone the
+                operator reads and types in. A model that declares its
+                own keeps it. ``None`` (default) leaves everything in
+                UTC. The zone belongs to the panel rather than to any
+                one table, which is why it is settable here instead of
+                being repeated on every :class:`AdminModel`.
+
+        Raises:
+            ValueError: When ``display_timezone`` is not a zone the
+                host's tz database knows.
         """
         self.title: str = title
         self.brand: str | None = brand
@@ -74,6 +89,16 @@ class AdminSite:
         self.site_url: str | None = site_url
         self.theme: AdminTheme = theme or AdminTheme()
         self.dashboard_cards: list[MetricCard] = list(dashboard_cards)
+        self.display_timezone: str | None = display_timezone
+        self.display_tzinfo: ZoneInfo | None = None
+        if display_timezone is not None:
+            try:
+                self.display_tzinfo = ZoneInfo(display_timezone)
+            except (ZoneInfoNotFoundError, ValueError) as exc:
+                raise ValueError(
+                    f"AdminSite `display_timezone` {display_timezone!r} is not "
+                    "a zone this host's tz database knows",
+                ) from exc
         self._registry: dict[str, AdminModel[Any]] = {}
 
     @property
@@ -99,10 +124,17 @@ class AdminSite:
             AdminModel[Any]: The same instance (so the call can be
             chained or assigned).
 
+        A model that declares no ``display_timezone`` of its own
+        inherits the site's, so the panel reads and writes datetimes in
+        one zone without every registration repeating it.
+
         Raises:
             ValueError: When another admin is already registered under
                 the same slug.
         """
+        if admin.display_timezone is None and self.display_timezone is not None:
+            admin.display_timezone = self.display_timezone
+            admin.display_tzinfo = self.display_tzinfo
         slug = admin.get_slug()
         if slug in self._registry:
             existing = self._registry[slug]

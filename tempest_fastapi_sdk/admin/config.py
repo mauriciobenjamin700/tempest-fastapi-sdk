@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import InstrumentedAttribute
@@ -268,10 +269,32 @@ class AdminModel(Generic[ModelT]):
         lenses (Sequence[Lens]): Named saved list-view presets (Nova-style
             lenses) rendered as tabs above the list; each applies its
             filters + ordering via ``?lens=<slug>``.
+        display_timezone (str | None): IANA name of the timezone the
+            operator reads and types datetimes in (for example
+            ``"America/Sao_Paulo"``). ``None`` — the default — keeps
+            every datetime in UTC, which is what the columns store.
+
+            Set it and the panel becomes a real widget instead of a raw
+            column editor: the list, the detail view and the edit form
+            render each datetime converted to that zone, and a value
+            typed into the form is read as wall-clock **there** and
+            stored back in UTC. Without it a `TIMESTAMP(timezone=True)`
+            column round-trips through an ``<input type="datetime-local">``
+            that carries no offset at all, so an operator in Brazil types
+            the local hour and the row keeps it as if it were UTC — three
+            hours off, with nothing in the page saying which zone the box
+            meant.
+
+            Only the human-facing views convert. The CSV/JSON export
+            keeps UTC on purpose: it feeds machines, and a timestamp that
+            silently changes meaning between the screen and the file is
+            worse than one that always means the same thing.
 
     Raises:
         TypeError: When ``model`` is not a subclass of :class:`BaseModel`,
             or when a field reference cannot be resolved to a column key.
+        ValueError: When ``display_timezone`` is not a zone the host's
+            tz database knows.
     """
 
     def __init__(
@@ -299,6 +322,7 @@ class AdminModel(Generic[ModelT]):
         autocomplete_fields: Sequence[FieldRef] = (),
         inlines: Sequence[Inline] = (),
         lenses: Sequence[Lens] = (),
+        display_timezone: str | None = None,
     ) -> None:
         """Build and validate the configuration. See class docstring."""
         if not isinstance(model, type) or not issubclass(model, BaseModel):
@@ -349,6 +373,16 @@ class AdminModel(Generic[ModelT]):
         self.autocomplete_fields: list[str] = _normalize_fields(autocomplete_fields)
         self.inlines: list[Inline] = list(inlines)
         self.lenses: list[Lens] = list(lenses)
+        self.display_timezone: str | None = display_timezone
+        self.display_tzinfo: ZoneInfo | None = None
+        if display_timezone is not None:
+            try:
+                self.display_tzinfo = ZoneInfo(display_timezone)
+            except (ZoneInfoNotFoundError, ValueError) as exc:
+                raise ValueError(
+                    f"AdminModel `display_timezone` {display_timezone!r} is not "
+                    "a zone this host's tz database knows",
+                ) from exc
 
     def get_lens(self, slug: str) -> Lens | None:
         """Return the registered lens whose slug matches, or ``None``.

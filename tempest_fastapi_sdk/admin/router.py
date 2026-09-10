@@ -8,7 +8,7 @@ import json
 import logging
 import secrets
 from collections.abc import Callable
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, tzinfo
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -46,6 +46,7 @@ from tempest_fastapi_sdk.admin.forms import (
     fk_label,
     inline_editable_names,
     parse_submission,
+    to_display_timezone,
 )
 from tempest_fastapi_sdk.admin.permissions import AdminAccessPolicy, AdminPermission
 from tempest_fastapi_sdk.admin.session import (
@@ -1258,7 +1259,7 @@ def make_admin_router(
 
         columns = admin.resolved_list_display()
         rows = [
-            _RowView(instance, columns, admin.identity_field)
+            _RowView(instance, columns, admin.identity_field, admin.display_tzinfo)
             for instance in result["items"]
         ]
 
@@ -1811,7 +1812,10 @@ def make_admin_router(
         for column in columns:
             if column == "hashed_password" or column in _AUDIT_FIELDS:
                 continue
-            raw_value = getattr(instance, column, None)
+            raw_value = _localized(
+                getattr(instance, column, None),
+                admin.display_tzinfo,
+            )
             col = model_columns.get(column)
             if col is not None and isinstance(col.type, JSON) and raw_value is not None:
                 raw_value = json.dumps(
@@ -1827,8 +1831,14 @@ def make_admin_router(
             return auth_backend.display_name(actor) if actor is not None else str(uid)
 
         audit = {
-            "created_at": getattr(instance, "created_at", None),
-            "updated_at": getattr(instance, "updated_at", None),
+            "created_at": _localized(
+                getattr(instance, "created_at", None),
+                admin.display_tzinfo,
+            ),
+            "updated_at": _localized(
+                getattr(instance, "updated_at", None),
+                admin.display_tzinfo,
+            ),
             "created_by": await _actor(getattr(instance, "created_by", None)),
             "updated_by": await _actor(getattr(instance, "updated_by", None)),
             "has_actors": "created_by" in columns or "updated_by" in columns,
@@ -2597,20 +2607,46 @@ class _RowView:
     ``values`` mapping keyed by column name.
     """
 
-    def __init__(self, instance: Any, columns: list[str], identity_field: str) -> None:
+    def __init__(
+        self,
+        instance: Any,
+        columns: list[str],
+        identity_field: str,
+        timezone: tzinfo | None = None,
+    ) -> None:
         """Initialize the view.
 
         Args:
             instance (Any): The ORM row.
             columns (list[str]): Columns to expose.
             identity_field (str): Column to read for the row identity.
+            timezone (tzinfo | None): When the admin declares a
+                ``display_timezone``, every datetime cell is converted
+                to it. The list would otherwise print the stored UTC
+                hour beside a form that reads and writes local time,
+                which is the same row described two ways.
         """
         self.instance: Any = instance
         self.identity: Any = getattr(instance, identity_field, None)
         self.pk: Any = getattr(instance, "id", None)
         self.values: dict[str, Any] = {
-            col: getattr(instance, col, None) for col in columns
+            col: _localized(getattr(instance, col, None), timezone) for col in columns
         }
+
+
+def _localized(value: Any, timezone: tzinfo | None) -> Any:
+    """Convert a datetime to ``timezone``, leaving anything else alone.
+
+    Args:
+        value (Any): The cell value.
+        timezone (tzinfo | None): Target zone, or ``None`` to keep UTC.
+
+    Returns:
+        Any: The converted datetime, or ``value`` untouched.
+    """
+    if timezone is None or not isinstance(value, datetime):
+        return value
+    return to_display_timezone(value, timezone)
 
 
 def _resolve_filters_and_order(

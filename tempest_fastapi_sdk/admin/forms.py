@@ -48,6 +48,12 @@ class FormField:
             router (needs the prefix + slug).
         display_label (str): For the ``autocomplete`` widget, the label
             of the currently-selected row shown in the search box.
+        timezone (str | None): For a ``datetime`` widget on an admin
+            with a ``display_timezone``, the zone the box is read in.
+            The template shows it next to the label, because
+            ``<input type="datetime-local">`` carries no offset and the
+            operator has no other way to know which zone the value
+            means.
     """
 
     name: str
@@ -59,6 +65,7 @@ class FormField:
     step: str | None = None
     options: list[tuple[str, str]] = field(default_factory=list)
     error: str | None = None
+    timezone: str | None = None
     autocomplete_url: str | None = None
     display_label: str = ""
 
@@ -215,6 +222,46 @@ def inline_editable_names(admin: AdminModel[Any]) -> list[str]:
     return [name for name in admin.editable_field_names() if name not in skip]
 
 
+def to_display_timezone(value: _dt.datetime, zone: _dt.tzinfo) -> _dt.datetime:
+    """Express a stored datetime in the operator's zone.
+
+    A naive value is read as UTC first, because that is what a
+    ``TIMESTAMP(timezone=True)`` column stores — and what SQLAlchemy
+    hands back naive on SQLite even when the column is declared aware.
+
+    Args:
+        value (datetime): The stored value.
+        zone (tzinfo): The zone to express it in.
+
+    Returns:
+        datetime: An aware datetime in ``zone``, the same instant.
+    """
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=_dt.UTC)
+    return value.astimezone(zone)
+
+
+def from_display_timezone(value: _dt.datetime, zone: _dt.tzinfo) -> _dt.datetime:
+    """Read a datetime the operator typed and return it in UTC.
+
+    A value with no offset is what ``<input type="datetime-local">``
+    submits, and it means wall-clock time in ``zone`` — that is the
+    whole point of declaring the zone. A value that *does* carry an
+    offset already names its instant, so the zone is not applied to it;
+    it is only converted.
+
+    Args:
+        value (datetime): The submitted value.
+        zone (tzinfo): The zone a naive value is read in.
+
+    Returns:
+        datetime: An aware datetime in UTC.
+    """
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=zone)
+    return value.astimezone(_dt.UTC)
+
+
 def build_form_fields(
     admin: AdminModel[Any],
     *,
@@ -297,6 +344,8 @@ def build_form_fields(
             elif current is None:
                 value = ""
             elif widget == "datetime" and isinstance(current, _dt.datetime):
+                if admin.display_tzinfo is not None:
+                    current = to_display_timezone(current, admin.display_tzinfo)
                 value = current.isoformat()[:16]
             elif widget == "date" and isinstance(current, _dt.date):
                 value = current.isoformat()[:10]
@@ -320,6 +369,7 @@ def build_form_fields(
                 step=step,
                 options=options,
                 error=errors.get(name),
+                timezone=(admin.display_timezone if widget == "datetime" else None),
             )
         )
     return fields
@@ -401,9 +451,17 @@ def parse_submission(
                 errors[name] = f"Invalid JSON for {_label(name)}."
             continue
         try:
-            data[name] = _coerce_scalar(py, str(raw))
+            coerced = _coerce_scalar(py, str(raw))
         except (ValueError, TypeError, KeyError):
             errors[name] = f"Invalid value for {_label(name)}."
+            continue
+        if (
+            widget == "datetime"
+            and admin.display_tzinfo is not None
+            and isinstance(coerced, _dt.datetime)
+        ):
+            coerced = from_display_timezone(coerced, admin.display_tzinfo)
+        data[name] = coerced
     return data, errors
 
 
@@ -448,6 +506,8 @@ __all__: list[str] = [
     "build_form_fields",
     "fk_fields",
     "fk_label",
+    "from_display_timezone",
     "inline_editable_names",
     "parse_submission",
+    "to_display_timezone",
 ]

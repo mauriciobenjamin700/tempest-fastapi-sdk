@@ -5,6 +5,56 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.289.0] — 2026-09-10
+
+O campo de datetime do admin vira widget: lê e escreve no fuso do operador.
+
+### Added
+
+- **`AdminModel(display_timezone=...)`** — o painel passa a declarar em que
+  fuso o operador lê e digita datetime, e as três telas concordam: listagem e
+  detail convertem cada valor e mostram o offset junto
+  (`2026-06-15 20:00:00-03:00`), o form pré-preenche a caixa com a hora local
+  e escreve `Timezone: <zona> — stored as UTC.` embaixo dela, e o submit lê o
+  valor como hora de parede naquele fuso e grava em UTC. Default `None`:
+  nada converte, que é o comportamento de sempre.
+
+  Sem isso o painel é um editor de coluna crua. O
+  `<input type="datetime-local">` **não carrega offset**: medido nesta suíte,
+  `parse_submission` devolve `datetime(2026, 6, 15, 20, 0)` sem `tzinfo` para
+  a caixa preenchida com `2026-06-15T20:00`
+  (`test_without_a_zone_the_submission_stays_naive`). O que acontece com esse
+  naive depois é do driver — no consumidor que motivou a mudança, medido em
+  homolog contra Postgres, o asyncpg o resolve no `TZ` do processo, então num
+  container em UTC o operador em Teresina digita 20:00 e a linha guarda
+  `20:00Z`, três horas à frente do evento
+  ([And-All/alofans-api#114](https://github.com/And-All/alofans-api/issues/114)).
+  A página, em ambos os casos, não nomeava fuso nenhum.
+
+  A conversão fica nas duas pontas de propósito. Converter só na escrita passa
+  em todo teste sobre gravar e ainda assim move a linha: o form mostra a hora
+  UTC, o operador salva sem editar nada, e o valor exibido é relido como hora
+  local — cada save de um formulário intocado empurra a linha três horas. O
+  guard é um `POST` real de um form que ninguém editou
+  (`tests/admin/test_display_timezone.py::TestTheRenderedPanel::test_saving_the_form_keeps_the_instant`),
+  verificado por mutação: remover a conversão de qualquer um dos dois lados
+  derruba três testes.
+
+  Fuso desconhecido levanta `ValueError` na construção do `AdminModel`, não no
+  request que renderiza o form — a lição do `cron_offset` da v0.284.0, cuja
+  string morria dentro do loop do scheduler.
+
+  O export CSV/JSON continua em UTC: alimenta máquina, e timestamp que muda de
+  significado entre a tela e o arquivo é pior que um que sempre significa a
+  mesma coisa.
+
+  **`AdminSite(display_timezone=...)`** declara o mesmo fuso para todo model
+  registrado depois — o fuso é do painel, não de uma tabela —, e um
+  `AdminModel` que traz o seu próprio continua com ele.
+
+  Novos helpers públicos em `tempest_fastapi_sdk.admin.forms`:
+  `to_display_timezone` e `from_display_timezone`.
+
 ## [0.288.0] — 2026-09-07
 
 Um heartbeat que era invisível na docstring e um evento no fio.

@@ -39,6 +39,7 @@
         <input type="number" name="{{ f.name }}" value="{{ f.value }}" {% if f.step %}step="{{ f.step }}"{% endif %} {% if f.required %}required{% endif %}>
         {% elif f.widget == 'datetime' %}
         <input type="datetime-local" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
+        {% if f.timezone %}<small class="tempest-admin-form__hint">Timezone: {{ f.timezone }} — stored as UTC.</small>{% endif %}
         {% elif f.widget == 'date' %}
         <input type="date" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
         {% elif f.widget == 'autocomplete' %}
