@@ -55,6 +55,9 @@
                  class="tempest-admin-ac__value" {% if f.required %}required{% endif %}>
           <ul id="ac-results-{{ f.name }}" class="tempest-admin-ac__results"></ul>
         </div>
+        {% elif f.widget == 'password' %}
+        <input type="password" name="{{ f.name }}" value="" autocomplete="new-password" {% if f.required %}required{% endif %}>
+        {% if mode == 'edit' %}<small class="tempest-admin-form__hint">Leave blank to keep the current password.</small>{% endif %}
         {% elif f.widget == 'file' %}
         <input type="file" name="{{ f.name }}" {% if f.required %}required{% endif %}>
         {% if f.value %}<small class="tempest-admin-form__hint">Current: {{ f.value }} — choose a file to replace.</small>{% endif %}

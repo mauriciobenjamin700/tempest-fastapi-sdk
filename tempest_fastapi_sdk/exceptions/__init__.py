@@ -105,6 +105,9 @@ from tempest_fastapi_sdk.exceptions.upload import (
 from tempest_fastapi_sdk.exceptions.validation import (
     ValidationException as ValidationException,
 )
+from tempest_fastapi_sdk.exceptions.value_errors import (
+    ValidationValueError as ValidationValueError,
+)
 
 __all__: list[str] = [
     "DEFAULT_CONFLICT_TEMPLATE",
@@ -138,6 +141,7 @@ __all__: list[str] = [
     "TooManyRequestsException",
     "UnauthorizedException",
     "ValidationException",
+    "ValidationValueError",
     "conflict_exception",
     "default_message_catalog",
     "not_found_exception",

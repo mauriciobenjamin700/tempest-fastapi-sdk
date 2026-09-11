@@ -74,8 +74,24 @@ class AppException(HTTPException):
         {
             "detail": "<message>",
             "code": "<code>",
-            "details": {"<any>": "<context>"}
+            "details": {"<any>": "<context>"},
+            "field": "<input name>"
         }
+
+    ``field`` names the input the failure is about, and is emitted
+    **only** when the exception declares one. A 422 already answers this
+    through ``loc``; a 409 or a 401 over the same input did not, so the
+    client re-derived the mapping at the call site ("a ``CONFLICT`` in
+    the signup form means the e-mail, because that form has only one
+    possible conflict"). The key stays absent rather than ``null``, so
+    ``"field" in body`` keeps meaning *there is a culprit input*.
+
+    Security:
+        Leave ``field`` unset on invalid credentials. Naming ``email``
+        there confirms the address exists, and naming ``password``
+        confirms the same by omission — it turns the response into an
+        account-enumeration oracle, which is the whole reason the
+        message is generic.
 
     Class attributes (defaults the constructor falls back to):
         status_code (int): HTTP status code.
@@ -85,6 +101,9 @@ class AppException(HTTPException):
             payload, used **only** to build the OpenAPI example — never
             read at runtime. Declare it when the exception attaches
             context worth showing to a frontend developer.
+        field (str | None): Name of the input this failure is about,
+            emitted at the top of the envelope. ``None`` (the default)
+            keeps the key out of the body entirely.
 
     Instance attributes:
         status_code (int): The status code attached to this instance.
@@ -100,6 +119,8 @@ class AppException(HTTPException):
             falls back to ``code`` at resolution time.
         message_params (dict[str, Any]): Values interpolated into the
             localized template via :meth:`str.format`.
+        field (str | None): The input this instance blames, falling back
+            to the class-level default.
 
     Localization:
         When :func:`register_exception_handlers` is given a ``catalog``,
@@ -113,6 +134,7 @@ class AppException(HTTPException):
     message: str = "Internal server error"
     code: str = "INTERNAL_SERVER_ERROR"
     message_key: str | None = None
+    field: str | None = None
     details_example: ClassVar[dict[str, Any]] = {}
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -170,6 +192,7 @@ class AppException(HTTPException):
         headers: dict[str, str] | None = None,
         message_key: str | None = None,
         message_params: dict[str, Any] | None = None,
+        field: str | None = None,
     ) -> None:
         """Initialize the exception.
 
@@ -190,6 +213,12 @@ class AppException(HTTPException):
                 resolution time, to ``code`` when both are ``None``).
             message_params (dict[str, Any] | None): Values interpolated
                 into the localized message template.
+            field (str | None): Name of the input this failure is about
+                — the form control a client should highlight. Defaults
+                to the class-level ``field``. Left ``None``, the key is
+                absent from the response body. Never name a field on an
+                invalid-credentials failure: it leaks which half of the
+                pair was right.
         """
         cls = type(self)
         self.code: str = code if code is not None else cls.code
@@ -197,6 +226,7 @@ class AppException(HTTPException):
             message_key if message_key is not None else cls.message_key
         )
         self.message_params: dict[str, Any] = message_params or {}
+        self.field: str | None = field if field is not None else cls.field
         effective_status: int = (
             status_code if status_code is not None else cls.status_code
         )

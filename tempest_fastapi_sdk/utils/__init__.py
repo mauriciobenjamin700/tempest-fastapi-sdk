@@ -199,7 +199,14 @@ from tempest_fastapi_sdk.utils.opaque_token import (
 from tempest_fastapi_sdk.utils.password import (
     DEFAULT_GENERATED_PASSWORD_LENGTH as DEFAULT_GENERATED_PASSWORD_LENGTH,
 )
+from tempest_fastapi_sdk.utils.password import PasswordPolicy as PasswordPolicy
+from tempest_fastapi_sdk.utils.password import (
+    PasswordPolicyViolation as PasswordPolicyViolation,
+)
 from tempest_fastapi_sdk.utils.password import PasswordUtils as PasswordUtils
+from tempest_fastapi_sdk.utils.password import (
+    check_password_policy as check_password_policy,
+)
 from tempest_fastapi_sdk.utils.password import (
     generate_password as generate_password,
 )
@@ -414,6 +421,8 @@ __all__: list[str] = [
     "NonEmptyStrField",
     "NonNegativeFloatField",
     "NonNegativeIntField",
+    "PasswordPolicy",
+    "PasswordPolicyViolation",
     "PasswordUtils",
     "PercentField",
     "PhoneBR",
@@ -443,6 +452,7 @@ __all__: list[str] = [
     "UploadUtils",
     "async_retry",
     "build_content_disposition",
+    "check_password_policy",
     "cities_by_uf",
     "city_choices",
     "detect_pix_key_type",

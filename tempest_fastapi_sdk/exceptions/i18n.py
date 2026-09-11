@@ -376,6 +376,50 @@ using it would reach the client with literal braces —
 param is missing. The Portuguese here says ``caractere(s)`` instead.
 """
 
+_SDK_VALUE_ERROR_MESSAGES: dict[str, dict[str, str]] = {
+    "pt-BR": {
+        "INVALID_CEP": "CEP inválido",
+        "INVALID_CNPJ": "CNPJ inválido",
+        "INVALID_CPF": "CPF inválido",
+        "INVALID_CPF_CNPJ": "CPF ou CNPJ inválido",
+        "INVALID_MOBILE_PHONE_BR": "Número de celular brasileiro inválido",
+        "INVALID_PHONE_BR": "Telefone brasileiro inválido",
+        "INVALID_PIX_KEY": "Chave PIX inválida",
+        "INVALID_UF": "UF inválida: {value}",
+        "UNKNOWN_CITY": "Cidade {city} não encontrada na UF {uf}",
+    },
+    "en-US": {
+        "INVALID_CEP": "Invalid postal code (CEP)",
+        "INVALID_CNPJ": "Invalid CNPJ",
+        "INVALID_CPF": "Invalid CPF",
+        "INVALID_CPF_CNPJ": "Invalid CPF or CNPJ",
+        "INVALID_MOBILE_PHONE_BR": "Invalid Brazilian mobile number",
+        "INVALID_PHONE_BR": "Invalid Brazilian phone number",
+        "INVALID_PIX_KEY": "Invalid PIX key",
+        "INVALID_UF": "Invalid federative unit: {value}",
+        "UNKNOWN_CITY": "City {city} not found in {uf}",
+    },
+}
+"""Messages for the codes the SDK's own BR validators raise.
+
+Every one of these reaches pydantic as the single error type
+``value_error``, with the phrase the validator wrote in
+``ctx["error"]`` — so ``VALIDATION.value_error`` rendered
+``Valor inválido: invalid CPF/CNPJ``, half of it in English, in an app
+whose users read Portuguese. A consumer could not repair that without
+matching substrings of this SDK's English text.
+
+:class:`~tempest_fastapi_sdk.ValidationValueError` carries a ``code``
+instead, and the validation handler resolves it here. English is carried
+too — unlike the pydantic table above, where upstream's own ``msg`` is
+already the English message. Here it is not: pydantic renders
+``Value error, invalid CPF/CNPJ``, prefixed and lowercase, measured on
+pydantic 2.13.5.
+
+Keys are ``UPPER_SNAKE`` and pydantic's error types are ``lower_snake``,
+so both live under ``VALIDATION.`` without colliding.
+"""
+
 _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
     "pt-BR": {
         "INTERNAL_SERVER_ERROR": "Erro interno do servidor",
@@ -468,6 +512,14 @@ _BUILTIN_TRANSLATIONS["pt-BR"].update(
         for error_type, message in _PYDANTIC_ERROR_TYPES_PT_BR.items()
     },
 )
+
+for _locale, _messages in _SDK_VALUE_ERROR_MESSAGES.items():
+    _BUILTIN_TRANSLATIONS[_locale].update(
+        {
+            f"{VALIDATION_KEY_PREFIX}{code}": message
+            for code, message in _messages.items()
+        },
+    )
 
 
 def default_message_catalog() -> MessageCatalog:

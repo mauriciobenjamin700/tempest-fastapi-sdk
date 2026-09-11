@@ -1665,6 +1665,22 @@ async def list_users(
     baixo, `cursor_paginate` usa `encode_cursor`/`decode_cursor` e uma
     comparação de tupla `(order_by, id)` estável no Postgres.
 
+!!! info "O valor do cursor volta com o tipo da coluna"
+    O cursor é JSON, então um `datetime` sai da página 1 como string ISO.
+    Antes de montar o `WHERE`, `cursor_paginate` reidrata o valor no tipo
+    Python da coluna (`datetime`, `date`, `time`, `UUID`, `Decimal`, enum).
+    Sem isso, o PostgreSQL recusava a comparação inteira na **segunda**
+    página:
+
+    ```text
+    operator does not exist: timestamp with time zone < character varying
+    ```
+
+    E o SQLite não reclamava — comparava as duas strings e devolvia uma
+    página **errada**: medido, o passeio de 7 linhas em páginas de 3
+    repetia `r02` e perdia `r05`. Coluna de texto continua intocada; um
+    `TypeDecorator` que não declara `python_type` também.
+
 !!! tip "Para sincronização offline-first, há um terceiro modo"
     `changes_since` + `SyncPaginationSchema` fazem paginação de delta
     (rows alteradas desde uma marca d'água). Veja

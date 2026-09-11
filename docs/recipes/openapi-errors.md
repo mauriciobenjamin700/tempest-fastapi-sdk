@@ -142,6 +142,59 @@ class CategoryInUseException(ConflictException):
     tipagem total do projeto pede, é o que silencia o `RUF012` do ruff
     ("mutable default value for class attribute").
 
+### O input culpado: `field`
+
+Um **422** já diz qual input falhou, pelo `loc`. Um **409** ou um **401**
+sobre o mesmo input não dizia — e o cliente acabava re-derivando o mapeamento
+no call site: *"`CONFLICT` no formulário de cadastro significa o e-mail,
+porque esse formulário só tem um conflito possível"*. É conhecimento que quem
+levanta a exception tem e quem chama estava adivinhando.
+
+Desde a **v0.290.0**, `AppException` modela isso:
+
+```python
+# src/core/exceptions.py
+from typing import Any, ClassVar
+
+from tempest_fastapi_sdk import ConflictException
+
+
+class EmailTakenException(ConflictException):
+    """E-mail já cadastrado."""
+
+    code: str = "EMAIL_TAKEN"
+    message: str = "Este e-mail já está cadastrado."
+    field: str | None = "email"
+    details_example: ClassVar[dict[str, Any]] = {"email": "ana@example.com"}
+```
+
+O envelope ganha a chave, e só ela muda:
+
+```json
+{
+  "detail": "Este e-mail já está cadastrado.",
+  "code": "EMAIL_TAKEN",
+  "details": {},
+  "field": "email"
+}
+```
+
+Também dá para nomeá-lo no raise site, quando o campo depende do caso —
+`raise ValidationException("CPF não confere.", field="cpf_cnpj")`. Como o
+`code`, a forma do corpo da classe é a introspectável: é a que
+`error_responses()` lê para escrever o exemplo do OpenAPI.
+
+!!! info "Ausente, nunca `null`"
+    A chave só aparece quando a exception nomeia um campo. `"field" in body`
+    continua significando *há um input culpado* — emitir `null` obrigaria todo
+    cliente a um caso especial.
+
+!!! danger "Credencial inválida não nomeia campo"
+    Nomear `email` num 401 de login confirma que o endereço existe; nomear
+    `password` confirma o mesmo por omissão. Vira oráculo de enumeração de
+    conta — que é justamente o motivo da mensagem de login ser genérica.
+    Deixe `field` sem declarar nesse caminho.
+
 ### O aviso que pega o defeito silencioso
 
 Desde a **v0.160.0**, uma subclasse que não declara `code` próprio e por isso

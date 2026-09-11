@@ -277,6 +277,27 @@ With the flag on, `POST /login` with a short `password` answers:
     catalog does not know falls back the same way — it degrades to English,
     never to blank.
 
+!!! info "The SDK's BR validators localize the whole phrase"
+    Pydantic files **everything** a field validator raises under the single
+    type `value_error`, with the exception in `ctx["error"]`. Since the
+    catalog localizes by type, `CPFOrCNPJField`, `PhoneBRField`, `UFField`,
+    postal codes and PIX keys arrived half-translated:
+
+    ```text
+    Valor inválido: invalid CPF/CNPJ
+    ```
+
+    As of **v0.290.0** those validators raise `ValidationValueError`, which
+    carries a **code** (`INVALID_CPF_CNPJ`, `INVALID_CEP`, `INVALID_UF`, …)
+    resolved as `VALIDATION.<code>` in both languages — `CPF ou CNPJ
+    inválido` in pt-BR, `Invalid CPF or CNPJ` in en-US. English *is* carried
+    here, unlike the pydantic table: upstream's `msg` for this case is
+    `Value error, invalid CPF/CNPJ`, prefixed and lowercase.
+
+    Your own validators are unaffected: a plain `ValueError` still falls back
+    to `VALIDATION.value_error`, and `ValidationValueError` subclasses
+    `ValueError`, so every `except ValueError` keeps catching it.
+
 !!! warning "Turning the flag on changes the body, so it is opt-in"
     A frontend doing `body.detail.map(...)` and a client generated from the
     OpenAPI schema both model the 422 as an array. That is why the default

@@ -276,6 +276,28 @@ Com o flag ligado, `POST /login` com `password` curta responde:
     não conhece também cai no `msg` — degrada para inglês, nunca para
     branco.
 
+!!! info "Os validadores BR do SDK localizam a frase inteira"
+    O pydantic arquiva **tudo** que um validador de campo levanta sob o tipo
+    único `value_error`, com a exceção em `ctx["error"]`. Como o catálogo
+    localiza por tipo, `CPFOrCNPJField`, `PhoneBRField`, `UFField`, CEP e
+    chave PIX chegavam pela metade:
+
+    ```text
+    Valor inválido: invalid CPF/CNPJ
+    ```
+
+    Desde a **v0.290.0** esses validadores levantam `ValidationValueError`,
+    que carrega um **código** (`INVALID_CPF_CNPJ`, `INVALID_CEP`,
+    `INVALID_UF`, …) resolvido como `VALIDATION.<código>` nas duas línguas —
+    `CPF ou CNPJ inválido` em pt-BR, `Invalid CPF or CNPJ` em en-US. Aqui o
+    inglês **é** carregado, ao contrário da tabela do pydantic: o `msg` do
+    upstream para esse caso é `Value error, invalid CPF/CNPJ`, prefixado e em
+    minúscula.
+
+    O seu validador não muda: um `ValueError` comum continua caindo em
+    `VALIDATION.value_error`, e `ValidationValueError` é subclasse de
+    `ValueError`, então todo `except ValueError` segue pegando.
+
 !!! warning "Ligar o flag muda o corpo, então é opt-in"
     Frontend que faz `body.detail.map(...)` e cliente gerado do OpenAPI
     modelam o 422 como array. Por isso o default é `False`, e ligar é uma

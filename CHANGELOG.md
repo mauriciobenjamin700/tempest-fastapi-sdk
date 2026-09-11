@@ -5,6 +5,117 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.290.0] — 2026-09-11
+
+A segunda página do cursor, o campo culpado no envelope, a frase em inglês no
+422 em português, e o painel que não conseguia criar um usuário.
+
+### Fixed
+
+- **`cursor_paginate` reidrata o valor do cursor no tipo da coluna**
+  ([#274](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/274)).
+  `encode_cursor` serializa por `json.dumps(default=str)`, então um `datetime`
+  saía da página 1 como string ISO e entrava no `WHERE` como texto. No
+  PostgreSQL a **segunda** página respondia 500:
+
+  ```text
+  operator does not exist: timestamp with time zone < character varying
+  ```
+
+  O SQLite escondia o defeito porque compara os dois sem reclamar — e o que
+  ele devolvia estava **errado**, não só destipado: medido nesta suíte, um
+  passeio de 7 linhas em páginas de 3 ordenado por `created_at` repetia `r02`
+  e perdia `r05` com o código anterior
+  (`tests/db/test_cursor_types.py::TestCursorWalkStillWorks`). O valor agora
+  vira `datetime`, `date`, `time`, `UUID`, `Decimal` ou membro de enum antes
+  da comparação, seguindo `column.type.python_type`; coluna de texto e
+  `TypeDecorator` que não declara `python_type` ficam intocados. Para
+  `datetime` o naive/aware acompanha a coluna, porque o `timestamptz` do
+  PostgreSQL recusa naive sob sessão fora de UTC.
+
+  Envelopar o bind com `type_=column.type` **não** resolveria: o tipo do
+  SQLAlchemy marca o parâmetro, não converte o valor, e o asyncpg então recusa
+  uma `str` onde espera `datetime`. O guard compila a query no dialeto do
+  asyncpg e falha no `::VARCHAR` (roda no `make check`, sem servidor); um
+  segundo guard, sob o marcador `docker`, percorre as páginas contra um
+  PostgreSQL de verdade.
+
+### Added
+
+- **`AppException.field` — o envelope diz qual input é o culpado**
+  ([#271](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/271)).
+  O 422 já respondia isso pelo `loc`; um 409 ou um 401 **sobre o mesmo input**
+  não tinha onde dizer, e o cliente re-derivava o mapeamento no call site
+  ("`CONFLICT` nesse formulário significa o e-mail, porque é o único conflito
+  possível"). Agora a exceção declara `field = "email"` no corpo da classe
+  (introspectável, como o `code`) ou recebe `field=` no raise site, e o
+  handler emite a chave.
+
+  Emitida **só** quando não é `None`, nunca como `null`: `"field" in body`
+  continua significando *há um input culpado*, sem caso especial no cliente.
+  `error_responses()` copia o valor para o exemplo do OpenAPI e
+  `ErrorResponseSchema` declara a chave como opcional.
+
+  Credencial inválida continua sem nomear campo, de propósito — nomear
+  `email` ali confirma que o endereço existe e nomear `password` confirma o
+  mesmo por omissão, o que é um oráculo de enumeração de conta. Está na
+  docstring, na receita e num teste.
+
+- **`ValidationValueError` — os validadores BR localizam a frase inteira**
+  ([#272](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/272)).
+  O pydantic arquiva tudo que um validador de campo levanta sob o tipo único
+  `value_error`, e o catálogo localiza por tipo — então `CPFOrCNPJField`,
+  `PhoneBRField`, `UFField`, CEP e chave PIX chegavam ao usuário final como
+  `Valor inválido: invalid CPF/CNPJ`, metade em cada idioma. O consumidor não
+  tinha como consertar: a única chave que os casos compartilhavam era
+  `VALIDATION.value_error`, então traduzir significava casar **substrings** das
+  frases em inglês do SDK.
+
+  Os dez sites do SDK passam a levantar `ValidationValueError`, que carrega um
+  código — `INVALID_CPF`, `INVALID_CNPJ`, `INVALID_CPF_CNPJ`, `INVALID_CEP`,
+  `INVALID_PHONE_BR`, `INVALID_MOBILE_PHONE_BR`, `INVALID_PIX_KEY`,
+  `INVALID_UF`, `UNKNOWN_CITY` — resolvido como `VALIDATION.<código>` nas duas
+  línguas do catálogo embutido. Aqui o inglês **é** carregado, ao contrário da
+  tabela do pydantic, porque o `msg` do upstream neste caso é
+  `Value error, invalid CPF/CNPJ` (medido no pydantic 2.13.5): prefixado e em
+  minúscula.
+
+  Compatível nas duas pontas: `str(exc)` continua sendo a frase em inglês de
+  antes, a classe é subclasse de `ValueError` (todo `except ValueError` segue
+  pegando), e um `ValueError` comum de um validador do consumidor continua
+  caindo em `VALIDATION.value_error`.
+
+- **`AdminModel(password_fields=...)` — criar usuário pelo painel**
+  ([#275](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/275)).
+  Nenhum modelo que herda `BaseUserModel` podia ser criado pelo admin:
+  `editable_field_names` exclui `hashed_password` (ninguém digita um digest
+  bcrypt num `<input type="text">`), a coluna é `NOT NULL`, e o insert
+  respondia 400 com `Conflict creating <Model>` — que o operador lê como
+  e-mail duplicado. O contorno de todo consumidor era `can_create=False` mais
+  um comentário.
+
+  A caixa agora aceita texto puro e o save grava o hash, pelo `set_password`
+  do próprio modelo quando ele existe (senão `PasswordUtils`). O rótulo perde
+  o prefixo `hashed_` — validado em browser real, `hashed_password` renderiza
+  como **Password**, porque "Hashed Password" descreve a coluna e contradiz o
+  que a caixa aceita. No create o
+  campo é obrigatório enquanto a coluna for `NOT NULL`; no edit, vazio
+  significa *não mexer* e preenchido rotaciona, com o digest nunca
+  pré-preenchendo o input. A coluna fica fora do `list_display` — mesmo
+  declarado à mão —, do detail e do export CSV/JSON.
+
+  A política de senha é aplicada e devolve erro **no campo**, não
+  `ConflictException`: `PasswordPolicy` e `check_password_policy` são novos
+  símbolos públicos, extraídos de `UserAuthService._enforce_password_policy`
+  (que passou a usá-los, sem mudança de mensagem nem de `details`).
+  `PasswordPolicy.from_settings(settings)` lê os três `AUTH_PASSWORD_*` do
+  `Settings` do serviço, então o painel aplica a mesma regra que o `signup`.
+
+  `password_fields` com `can_import=True` levanta `ValueError` na construção
+  do `AdminModel`: hashear plaintext vindo de arquivo é decisão separada, e o
+  importador postaria toda linha sem senha nenhuma — falhar no boot é melhor
+  que falhar linha a linha em produção.
+
 ## [0.289.0] — 2026-09-10
 
 O campo de datetime do admin vira widget: lê e escreve no fuso do operador.

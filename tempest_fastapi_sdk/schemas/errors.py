@@ -37,6 +37,10 @@ class ErrorResponseSchema(BaseSchema):
         details (dict[str, Any]): Structured context about the failure
             (which id was missing, which field conflicted). Empty when
             the exception attached none.
+        field (str | None): Name of the input the failure is about, when
+            the exception names one. Absent from the body — not
+            ``null`` — when there is no culprit input, so
+            ``"field" in body`` is the check a client makes.
     """
 
     detail: str = Field(
@@ -65,6 +69,18 @@ class ErrorResponseSchema(BaseSchema):
         ),
         examples=[{}, {"service_id": "123e4567-e89b-12d3-a456-426614174000"}],
         default_factory=dict,
+    )
+    field: str | None = Field(
+        title="Field",
+        description=(
+            "Name of the input this failure is about — the form control "
+            "to highlight. Present only when the failure blames one "
+            "input; a body without the key means there is none. "
+            "Deliberately absent on invalid credentials, where naming "
+            "it would confirm which half of the pair was correct."
+        ),
+        examples=["email", "cpf_cnpj"],
+        default=None,
     )
 
 

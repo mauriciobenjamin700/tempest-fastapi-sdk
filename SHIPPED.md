@@ -1962,3 +1962,52 @@ registrado depois; o model que traz o seu próprio continua com ele.
 
 Consumidor: `alofans-api`, cujo `EventModel.date` era editável no painel sem
 nada dizer em que fuso a caixa era lida.
+
+## Quatro issues de consumidor, v0.290.0 (2026-09-11)
+
+### `cursor_paginate` reidrata o valor do cursor (#274)
+
+O cursor é JSON, então o `datetime` da página 1 voltava como string e o
+PostgreSQL recusava a comparação inteira na segunda página
+(`timestamp with time zone < character varying`). O SQLite não recusava —
+paginava errado em silêncio: medido, 7 linhas em páginas de 3 repetiam `r02`
+e perdiam `r05`. O valor agora vira o `python_type` da coluna antes do
+`WHERE`. Guard mecânico compila no dialeto do asyncpg (roda no `make check`);
+guard `docker` percorre as páginas num PostgreSQL real.
+
+Consumidor: `tempest-zap`, que tinha reimplementado ~50 linhas de keyset
+próprio para contornar.
+
+### `AppException.field` (#271)
+
+O envelope passa a nomear o input culpado num 4xx que não é 422, emitido só
+quando existe — nunca `null`. Declarado no corpo da classe (introspectável,
+como o `code`) ou no raise site. Credencial inválida continua sem nomear
+campo: seria oráculo de enumeração de conta.
+
+Consumidor: `alofans-api`, que mantinha um handler local só para injetar a
+chave com `json.loads` + `JSONResponse` nova.
+
+### `ValidationValueError` (#272)
+
+Os dez `raise ValueError` dos validadores BR carregam código
+(`INVALID_CPF_CNPJ`, `INVALID_UF`, …) e o handler de validação resolve
+`VALIDATION.<código>` em pt-BR e en-US. Antes o 422 em português trazia a
+frase do SDK em inglês dentro do template, e o consumidor só conseguia
+traduzir casando substring.
+
+Consumidor: `alofans-api`, cujo `_PT_BR_VALUE_ERRORS` casava substring
+ordenada por prefixo mais longo.
+
+### `AdminModel(password_fields=...)` (#275)
+
+Nenhuma subclasse de `BaseUserModel` podia ser criada pelo painel: o form
+omitia `hashed_password`, o insert violava o `NOT NULL` e o operador lia
+`Conflict creating <Model>`. A caixa agora aceita plaintext e o save hasheia
+pelo `set_password` do modelo; no edit, vazio preserva. `PasswordPolicy` e
+`check_password_policy` viraram superfície pública (extraídos do
+`UserAuthService`), então o painel aplica a mesma política do `signup`.
+`password_fields` com `can_import=True` é recusado na construção.
+
+Consumidor: `famachapp-api`, que contornava com `can_create=False` e um
+endpoint próprio de provisionamento.

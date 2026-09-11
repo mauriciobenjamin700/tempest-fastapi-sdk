@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from tempest_fastapi_sdk.exceptions.value_errors import ValidationValueError
 from tempest_fastapi_sdk.geo.schemas import Coordinate
 from tempest_fastapi_sdk.utils import UF, normalize_uf
 
@@ -73,7 +74,11 @@ def uf_centroid(uf: UF | str) -> Coordinate:
     """
     normalized = normalize_uf(uf) if not isinstance(uf, UF) else uf.value
     if normalized is None:
-        raise ValueError(f"invalid UF: {uf!r}")
+        raise ValidationValueError(
+            "INVALID_UF",
+            f"invalid UF: {uf!r}",
+            params={"value": uf},
+        )
     return UF_CENTROIDS[UF(normalized)]
 
 

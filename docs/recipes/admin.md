@@ -703,6 +703,62 @@ campo, não uma string salva no lugar). FK vira `<select>` (ou
 autocomplete, via `autocomplete_fields`), e `upload_fields` vira input de
 arquivo.
 
+## Senha no form (`password_fields=`)
+
+Um modelo que herda `BaseUserModel` **não podia ser criado pelo painel**.
+O form não mostra `hashed_password` (ninguém digita um digest bcrypt num
+`<input type="text">`), a coluna é `NOT NULL`, e o insert respondia um 400
+com `Conflict creating <Model>` — mensagem que o operador lê como "e-mail
+já cadastrado".
+
+`password_fields=` fecha o caminho: a caixa aceita texto puro e o save
+grava o hash.
+
+```python
+# src/admin.py
+from tempest_fastapi_sdk import AdminModel, AdminSite, PasswordPolicy
+
+from src.db.models import LocalUserModel
+
+site = AdminSite(title="Painel")
+site.register(
+    AdminModel(
+        LocalUserModel,
+        password_fields=[LocalUserModel.hashed_password],
+        password_policy=PasswordPolicy(min_length=12, require_complexity=True),
+        list_display=[LocalUserModel.name, LocalUserModel.email],
+    ),
+)
+```
+
+O que muda, campo a campo:
+
+- **Create:** `<input type="password" autocomplete="new-password">`,
+  obrigatório enquanto a coluna for `NOT NULL`. O valor passa por
+  `check_password_policy` e, reprovando, vira erro **no campo** — não mais
+  um `ConflictException`. O rótulo perde o prefixo `hashed_`
+  (`hashed_password` → **Password**): a caixa recebe texto puro, e chamá-la
+  de "Hashed Password" descreveria a coluna, não o que se digita.
+- **Edit:** a caixa nasce vazia e vazio significa *não mexer*. Preenchida,
+  rotaciona o hash. O digest **nunca** pré-popula o input.
+- **Hash:** usa o `set_password` do próprio modelo quando existe (é o que
+  `BaseUserModel` ships, e onde um projeto troca o algoritmo); senão,
+  `PasswordUtils`.
+- **Nunca aparece:** fora do `list_display` (mesmo declarado à mão), fora
+  do detail e fora do export CSV/JSON.
+
+!!! warning "`password_fields` não combina com `can_import=True`"
+    Hashear uma coluna de texto puro vinda de arquivo é outra decisão, e o
+    importador postaria linha nenhuma com senha. A combinação levanta
+    `ValueError` na construção do `AdminModel` — no boot, não em produção.
+
+!!! tip "A política vem das suas settings"
+    `PasswordPolicy.from_settings(settings)` lê `AUTH_PASSWORD_MIN_LENGTH`,
+    `AUTH_PASSWORD_MAX_BYTES` e `AUTH_PASSWORD_REQUIRE_COMPLEXITY` do
+    `Settings` que você já compõe de `AuthSettings` — assim o painel aplica
+    a mesma regra que o `signup`. Sem argumento, valem os defaults do
+    `AuthSettings`.
+
 ## Fuso do operador (`display_timezone=`)
 
 Uma coluna `TIMESTAMP(timezone=True)` guarda **instante**, e o form do

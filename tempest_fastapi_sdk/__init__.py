@@ -1001,6 +1001,9 @@ from tempest_fastapi_sdk.exceptions import (
     ValidationException as ValidationException,
 )
 from tempest_fastapi_sdk.exceptions import (
+    ValidationValueError as ValidationValueError,
+)
+from tempest_fastapi_sdk.exceptions import (
     conflict_exception as conflict_exception,
 )
 from tempest_fastapi_sdk.exceptions import (
@@ -1415,6 +1418,12 @@ from tempest_fastapi_sdk.utils import (
     NonNegativeIntField as NonNegativeIntField,
 )
 from tempest_fastapi_sdk.utils import (
+    PasswordPolicy as PasswordPolicy,
+)
+from tempest_fastapi_sdk.utils import (
+    PasswordPolicyViolation as PasswordPolicyViolation,
+)
+from tempest_fastapi_sdk.utils import (
     PasswordUtils as PasswordUtils,
 )
 from tempest_fastapi_sdk.utils import (
@@ -1500,6 +1509,9 @@ from tempest_fastapi_sdk.utils import (
 )
 from tempest_fastapi_sdk.utils import (
     build_content_disposition as build_content_disposition,
+)
+from tempest_fastapi_sdk.utils import (
+    check_password_policy as check_password_policy,
 )
 from tempest_fastapi_sdk.utils import (
     cities_by_uf as cities_by_uf,
@@ -1679,7 +1691,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
 )
 
-__version__: str = "0.289.0"
+__version__: str = "0.290.0"
 
 from tempest_fastapi_sdk.api import (
     OAuthAudienceVerifier as OAuthAudienceVerifier,
@@ -2038,6 +2050,8 @@ __all__: list[str] = [
     "OutboxStatus",
     "OverflowPolicy",
     "PasswordChangeSchema",
+    "PasswordPolicy",
+    "PasswordPolicyViolation",
     "PasswordResetConfirmSchema",
     "PasswordResetRequestSchema",
     "PasswordResetResponseSchema",
@@ -2156,6 +2170,7 @@ __all__: list[str] = [
     "UserTokenPurpose",
     "ValidationException",
     "ValidationExceptionHandler",
+    "ValidationValueError",
     "WSEnvelope",
     "WebAuthnAuthenticateBeginSchema",
     "WebAuthnAuthenticateCompleteSchema",
@@ -2191,6 +2206,7 @@ __all__: list[str] = [
     "build_content_disposition",
     "build_manifest_entries",
     "build_pagination_link_header",
+    "check_password_policy",
     "check_permission",
     "cities_by_uf",
     "city_choices",
