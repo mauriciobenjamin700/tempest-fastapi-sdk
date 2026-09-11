@@ -30,6 +30,8 @@ from typing import Annotated, Final, TypedDict
 
 from pydantic import AfterValidator, BaseModel, BeforeValidator, Field
 
+from tempest_fastapi_sdk.exceptions.value_errors import ValidationValueError
+
 
 class UF(StrEnum):
     """The 27 Brazilian federative units, keyed by their acronym."""
@@ -251,7 +253,11 @@ def normalize_uf(value: str) -> UF:
     """
     candidate = value.strip().upper()
     if candidate not in UF.__members__:
-        raise ValueError(f"invalid UF: {value!r}")
+        raise ValidationValueError(
+            "INVALID_UF",
+            f"invalid UF: {value!r}",
+            params={"value": value},
+        )
     return UF(candidate)
 
 
@@ -404,7 +410,11 @@ def normalize_city(uf: str | UF, city: str) -> str:
     key = uf if isinstance(uf, UF) else normalize_uf(uf)
     canonical = _city_index(key).get(_strip_accents(city))
     if canonical is None:
-        raise ValueError(f"unknown city {city!r} for UF {key.value!r}")
+        raise ValidationValueError(
+            "UNKNOWN_CITY",
+            f"unknown city {city!r} for UF {key.value!r}",
+            params={"city": city, "uf": key.value},
+        )
     return canonical
 
 

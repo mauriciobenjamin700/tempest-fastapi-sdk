@@ -7,14 +7,141 @@ first instantiation instead. :func:`generate_password` needs nothing
 but the standard library and works either way.
 """
 
+from __future__ import annotations
+
 import secrets
 import string
+from dataclasses import dataclass
 from typing import Any
 
 try:
     import bcrypt as _bcrypt
 except ImportError:  # pragma: no cover - guarded by extras
     _bcrypt: Any = None  # type: ignore[no-redef]
+
+
+@dataclass(frozen=True)
+class PasswordPolicy:
+    """The length + complexity rules a plaintext password must satisfy.
+
+    The same three numbers ``AuthSettings`` declares
+    (``AUTH_PASSWORD_MIN_LENGTH``, ``AUTH_PASSWORD_MAX_BYTES``,
+    ``AUTH_PASSWORD_REQUIRE_COMPLEXITY``), in a value object any caller
+    can build — so a surface that takes a password but has no settings
+    object of its own (the admin panel's password field) enforces the
+    project's real rules instead of inventing its own.
+
+    Build it from your settings with :meth:`from_settings`; the defaults
+    here mirror the ``AuthSettings`` field defaults.
+
+    Attributes:
+        min_length (int): Minimum length in characters.
+        max_bytes (int): Maximum length in UTF-8 **bytes** — the unit
+            bcrypt counts.
+        require_complexity (bool): Require one lowercase, one uppercase,
+            one digit and one non-alphanumeric character, and raise the
+            effective length floor to at least 8.
+    """
+
+    min_length: int = 12
+    max_bytes: int = 72
+    require_complexity: bool = False
+
+    @classmethod
+    def from_settings(cls, settings: Any) -> PasswordPolicy:
+        """Read the policy off an ``AuthSettings``-shaped object.
+
+        Args:
+            settings (Any): Any object carrying the three
+                ``AUTH_PASSWORD_*`` attributes — typically the service's
+                own ``Settings`` composed from ``AuthSettings``.
+
+        Returns:
+            PasswordPolicy: The policy those settings describe.
+        """
+        return cls(
+            min_length=int(settings.AUTH_PASSWORD_MIN_LENGTH),
+            max_bytes=int(settings.AUTH_PASSWORD_MAX_BYTES),
+            require_complexity=bool(settings.AUTH_PASSWORD_REQUIRE_COMPLEXITY),
+        )
+
+
+@dataclass(frozen=True)
+class PasswordPolicyViolation:
+    """Why a password was rejected, in a form both callers can render.
+
+    Attributes:
+        message (str): Human-readable reason.
+        details (dict[str, Any]): Structured context — the bound that
+            was crossed, or the character classes that were missing.
+    """
+
+    message: str
+    details: dict[str, Any]
+
+
+def check_password_policy(
+    password: str,
+    policy: PasswordPolicy | None = None,
+) -> PasswordPolicyViolation | None:
+    """Check a plaintext password against a policy.
+
+    Returns the violation instead of raising, so a form can put the
+    message next to the field while a service turns the same value into
+    a ``ValidationException``. That split is the reason this lives here
+    and not inside the auth service: the rule was private to
+    ``UserAuthService``, so every other surface that accepts a password
+    — the admin panel's create form, a provisioning script — either
+    skipped it or wrote its own.
+
+    Args:
+        password (str): The plaintext to check.
+        policy (PasswordPolicy | None): The rules to apply. ``None``
+            uses the ``AuthSettings`` defaults.
+
+    Returns:
+        PasswordPolicyViolation | None: The first violation found, or
+        ``None`` when the password is acceptable.
+    """
+    policy = policy or PasswordPolicy()
+    floor = policy.min_length
+    if policy.require_complexity:
+        floor = max(floor, 8)
+    if len(password) < floor:
+        return PasswordPolicyViolation(
+            message=f"password must be at least {floor} characters",
+            details={"min_length": floor},
+        )
+    encoded_length = len(password.encode("utf-8"))
+    if encoded_length > policy.max_bytes:
+        return PasswordPolicyViolation(
+            message=f"password must be at most {policy.max_bytes} bytes",
+            details={
+                "max_bytes": policy.max_bytes,
+                "length_bytes": encoded_length,
+            },
+        )
+    if not policy.require_complexity:
+        return None
+    missing: list[str] = []
+    if not any(c.islower() for c in password):
+        missing.append("lowercase")
+    if not any(c.isupper() for c in password):
+        missing.append("uppercase")
+    if not any(c.isdigit() for c in password):
+        missing.append("digit")
+    if not any(not c.isalnum() for c in password):
+        missing.append("special")
+    if missing:
+        return PasswordPolicyViolation(
+            message=(
+                "password must contain at least one "
+                + ", ".join(missing)
+                + " character"
+            ),
+            details={"missing_classes": missing},
+        )
+    return None
 
 
 class PasswordUtils:
@@ -190,6 +317,9 @@ def generate_password(
 
 __all__: list[str] = [
     "DEFAULT_GENERATED_PASSWORD_LENGTH",
+    "PasswordPolicy",
+    "PasswordPolicyViolation",
     "PasswordUtils",
+    "check_password_policy",
     "generate_password",
 ]

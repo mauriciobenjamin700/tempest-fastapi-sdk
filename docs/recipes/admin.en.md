@@ -721,6 +721,63 @@ error, not a string stored in its place). A FK becomes a `<select>` (or
 autocomplete, via `autocomplete_fields`), and `upload_fields` become file
 inputs.
 
+## Password in the form (`password_fields=`)
+
+A model inheriting `BaseUserModel` **could not be created through the
+panel**. The form does not show `hashed_password` (nobody types a bcrypt
+digest into an `<input type="text">`), the column is `NOT NULL`, and the
+insert answered a 400 reading `Conflict creating <Model>` — which an
+operator reads as "e-mail already taken".
+
+`password_fields=` closes the loop: the box takes plaintext and the save
+stores the hash.
+
+```python
+# src/admin.py
+from tempest_fastapi_sdk import AdminModel, AdminSite, PasswordPolicy
+
+from src.db.models import LocalUserModel
+
+site = AdminSite(title="Panel")
+site.register(
+    AdminModel(
+        LocalUserModel,
+        password_fields=[LocalUserModel.hashed_password],
+        password_policy=PasswordPolicy(min_length=12, require_complexity=True),
+        list_display=[LocalUserModel.name, LocalUserModel.email],
+    ),
+)
+```
+
+What changes, field by field:
+
+- **Create:** `<input type="password" autocomplete="new-password">`,
+  required while the column is `NOT NULL`. The value goes through
+  `check_password_policy` and, when rejected, becomes an error **on the
+  field** — no longer a `ConflictException`. The label drops the `hashed_`
+  prefix (`hashed_password` → **Password**): the box takes plaintext, and
+  calling it "Hashed Password" would describe the column, not what you type.
+- **Edit:** the box starts empty, and empty means *leave it alone*. Filled
+  in, it rotates the hash. The digest **never** pre-fills the input.
+- **Hashing:** uses the model's own `set_password` when it has one (that is
+  what `BaseUserModel` ships, and where a project swaps the algorithm);
+  otherwise `PasswordUtils`.
+- **Never shown:** out of `list_display` (even a hand-declared one), out of
+  the detail view and out of the CSV/JSON export.
+
+!!! warning "`password_fields` does not combine with `can_import=True`"
+    Hashing a plaintext column read from a file is a separate decision, and
+    the importer would post every row with no password at all. The
+    combination raises `ValueError` when the `AdminModel` is built — at
+    boot, not in production.
+
+!!! tip "The policy comes from your settings"
+    `PasswordPolicy.from_settings(settings)` reads
+    `AUTH_PASSWORD_MIN_LENGTH`, `AUTH_PASSWORD_MAX_BYTES` and
+    `AUTH_PASSWORD_REQUIRE_COMPLEXITY` off the `Settings` you already
+    compose from `AuthSettings` — so the panel enforces the same rule as
+    `signup`. With no argument, the `AuthSettings` defaults apply.
+
 ## Operator timezone (`display_timezone=`)
 
 A `TIMESTAMP(timezone=True)` column stores an **instant**, and the admin

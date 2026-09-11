@@ -69,7 +69,12 @@ from tempest_fastapi_sdk.utils.opaque_token import (
     generate_opaque_token,
     hash_opaque_token,
 )
-from tempest_fastapi_sdk.utils.password import PasswordUtils, generate_password
+from tempest_fastapi_sdk.utils.password import (
+    PasswordPolicy,
+    PasswordUtils,
+    check_password_policy,
+    generate_password,
+)
 from tempest_fastapi_sdk.utils.token_types import (
     ACCESS_TOKEN_TYPE,
     MFA_TOKEN_TYPE,
@@ -1920,44 +1925,14 @@ class UserAuthService:
                 long for the hasher, or — under complexity mode —
                 missing a required character class.
         """
-        require_complexity = self.auth_settings.AUTH_PASSWORD_REQUIRE_COMPLEXITY
-        floor = self.auth_settings.AUTH_PASSWORD_MIN_LENGTH
-        if require_complexity:
-            floor = max(floor, 8)
-        if len(password) < floor:
+        violation = check_password_policy(
+            password,
+            PasswordPolicy.from_settings(self.auth_settings),
+        )
+        if violation is not None:
             raise ValidationException(
-                message=f"password must be at least {floor} characters",
-                details={"min_length": floor},
-            )
-        ceiling = self.auth_settings.AUTH_PASSWORD_MAX_BYTES
-        encoded_length = len(password.encode("utf-8"))
-        if encoded_length > ceiling:
-            raise ValidationException(
-                message=f"password must be at most {ceiling} bytes",
-                details={
-                    "max_bytes": ceiling,
-                    "length_bytes": encoded_length,
-                },
-            )
-        if not require_complexity:
-            return
-        missing: list[str] = []
-        if not any(c.islower() for c in password):
-            missing.append("lowercase")
-        if not any(c.isupper() for c in password):
-            missing.append("uppercase")
-        if not any(c.isdigit() for c in password):
-            missing.append("digit")
-        if not any(not c.isalnum() for c in password):
-            missing.append("special")
-        if missing:
-            raise ValidationException(
-                message=(
-                    "password must contain at least one "
-                    + ", ".join(missing)
-                    + " character"
-                ),
-                details={"missing_classes": missing},
+                message=violation.message,
+                details=violation.details,
             )
 
     async def _issue_token(

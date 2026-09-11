@@ -41,10 +41,12 @@ from tempest_fastapi_sdk.admin.dashboard import (
 )
 from tempest_fastapi_sdk.admin.forms import (
     FormField,
+    apply_password_fields,
     build_form_fields,
     fk_fields,
     fk_label,
     inline_editable_names,
+    parse_password_submission,
     parse_submission,
     to_display_timezone,
 )
@@ -1607,10 +1609,17 @@ def make_admin_router(
         form = await request.form()
         data, errors = parse_submission(admin, form)
         errors.update(await _save_uploads(admin, form, data, creating=True))
+        passwords, password_errors = parse_password_submission(
+            admin,
+            form,
+            creating=True,
+        )
+        errors.update(password_errors)
         form_error: str | None = None
         if not errors:
             repository = admin.build_repository(db_session)
             instance = admin.model(**data)
+            apply_password_fields(admin, instance, passwords)
             _stamp_audit(instance, auth_backend.principal_id(principal), creating=True)
             try:
                 saved = await repository.add(instance)
@@ -1799,7 +1808,8 @@ def make_admin_router(
 
         Notes:
             Two column groups are held back from the field list:
-            ``hashed_password`` is never shown, and the audit/timestamp
+            ``hashed_password`` — and every column named in
+            ``password_fields`` — is never shown, and the audit/timestamp
             columns move to the dedicated audit panel further down the page.
             ``JSON`` columns are pretty-printed, mirroring what the edit
             form's JSON widget does, so the two views read the same.
@@ -1809,8 +1819,9 @@ def make_admin_router(
         model_columns = sa_inspect(admin.model).columns
         json_columns: set[str] = set()
         fields: list[tuple[str, Any]] = []
+        hidden_columns = {"hashed_password", *admin.password_fields}
         for column in columns:
-            if column == "hashed_password" or column in _AUDIT_FIELDS:
+            if column in hidden_columns or column in _AUDIT_FIELDS:
                 continue
             raw_value = _localized(
                 getattr(instance, column, None),
@@ -2158,10 +2169,17 @@ def make_admin_router(
         form = await request.form()
         data, errors = parse_submission(admin, form)
         errors.update(await _save_uploads(admin, form, data, creating=False))
+        passwords, password_errors = parse_password_submission(
+            admin,
+            form,
+            creating=False,
+        )
+        errors.update(password_errors)
         form_error: str | None = None
         if not errors:
             for key, value in data.items():
                 setattr(instance, key, value)
+            apply_password_fields(admin, instance, passwords)
             _stamp_audit(instance, auth_backend.principal_id(principal), creating=False)
             try:
                 await repository.update(instance)

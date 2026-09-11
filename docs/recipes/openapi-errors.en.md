@@ -143,6 +143,59 @@ class CategoryInUseException(ConflictException):
     full-typing rule asks for, that is what silences ruff's `RUF012` ("mutable
     default value for class attribute").
 
+### The culprit input: `field`
+
+A **422** already says which input failed, through `loc`. A **409** or a
+**401** about the same input did not — so the client re-derived the mapping at
+the call site: *"a `CONFLICT` in the signup form means the e-mail, because that
+form has only one possible conflict"*. That is knowledge the raiser has and the
+caller was guessing.
+
+As of **v0.290.0**, `AppException` models it:
+
+```python
+# src/core/exceptions.py
+from typing import Any, ClassVar
+
+from tempest_fastapi_sdk import ConflictException
+
+
+class EmailTakenException(ConflictException):
+    """E-mail already registered."""
+
+    code: str = "EMAIL_TAKEN"
+    message: str = "This e-mail is already registered."
+    field: str | None = "email"
+    details_example: ClassVar[dict[str, Any]] = {"email": "ana@example.com"}
+```
+
+The envelope gains the key, and nothing else changes:
+
+```json
+{
+  "detail": "This e-mail is already registered.",
+  "code": "EMAIL_TAKEN",
+  "details": {},
+  "field": "email"
+}
+```
+
+You can also name it at the raise site when the field depends on the case —
+`raise ValidationException("CPF does not match.", field="cpf_cnpj")`. Like
+`code`, the class-body form is the introspectable one: it is what
+`error_responses()` reads to write the OpenAPI example.
+
+!!! info "Absent, never `null`"
+    The key shows up only when the exception names a field. `"field" in body`
+    keeps meaning *there is a culprit input* — emitting `null` would force
+    every client into a special case.
+
+!!! danger "Invalid credentials name no field"
+    Naming `email` on a login 401 confirms the address exists; naming
+    `password` confirms the same by omission. That is an account-enumeration
+    oracle — the very reason the login message is generic. Leave `field`
+    undeclared on that path.
+
 ### The warning that catches the silent defect
 
 As of **v0.160.0**, a subclass that declares no `code` of its own — and therefore

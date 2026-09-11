@@ -25,7 +25,7 @@ class TestErrorResponseSchema:
     def test_json_schema_documents_every_field(self) -> None:
         """Swagger/ReDoc render a description per field."""
         schema = ErrorResponseSchema.model_json_schema()
-        assert set(schema["properties"]) == {"detail", "code", "details"}
+        assert set(schema["properties"]) == {"detail", "code", "details", "field"}
         assert schema["required"] == ["detail", "code"]
         assert all(
             "description" in prop and "title" in prop

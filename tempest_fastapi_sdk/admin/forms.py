@@ -19,6 +19,16 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import JSON
 from sqlalchemy import inspect as sa_inspect
 
+from tempest_fastapi_sdk.utils.password import PasswordUtils, check_password_policy
+
+_DEFAULT_PASSWORD_COLUMN: str = "hashed_password"
+"""The column ``BaseUserModel.set_password`` writes.
+
+``set_password`` hashes into this specific attribute, so it is only the
+right setter for this column; a second password column on the same model
+is hashed directly instead.
+"""
+
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
 
@@ -35,7 +45,8 @@ class FormField:
         name (str): Column key (form field name).
         label (str): Human-readable label.
         widget (str): One of ``text`` / ``textarea`` / ``number`` /
-            ``checkbox`` / ``datetime`` / ``date`` / ``select`` / ``file``.
+            ``checkbox`` / ``datetime`` / ``date`` / ``select`` /
+            ``file`` / ``password``.
         value (Any): Value to pre-fill (string for most widgets).
         required (bool): Whether the field is mandatory.
         checked (bool): Checkbox state (``checkbox`` widget only).
@@ -80,6 +91,23 @@ def _label(name: str) -> str:
         str: Title-cased label.
     """
     return name.replace("_", " ").strip().title()
+
+
+def _password_label(name: str) -> str:
+    """Label a password box by what the operator types, not by the column.
+
+    ``hashed_password`` humanizes to ``Hashed Password``, which describes
+    what the column stores and contradicts what the box takes — the field
+    accepts plaintext. The stored/typed distinction is exactly the one
+    this widget exists to hide, so the label drops the ``hashed_`` prefix.
+
+    Args:
+        name (str): The column key.
+
+    Returns:
+        str: The label to render.
+    """
+    return _label(name.removeprefix("hashed_"))
 
 
 def _python_type(column: Column[Any]) -> type:
@@ -208,9 +236,9 @@ def fk_label(admin: AdminModel[Any], instance: Any) -> str:
 def inline_editable_names(admin: AdminModel[Any]) -> list[str]:
     """Return the editable fields safe to render in an inline formset.
 
-    Drops upload and autocomplete fields — those need a file input or an
-    HTMX search box that don't belong in a compact inline row, so they
-    stay on the child's own full form.
+    Drops upload, autocomplete and password fields — those need a file
+    input, an HTMX search box or a hashing step on save that don't belong
+    in a compact inline row, so they stay on the child's own full form.
 
     Args:
         admin (AdminModel[Any]): The child admin configuration.
@@ -218,7 +246,11 @@ def inline_editable_names(admin: AdminModel[Any]) -> list[str]:
     Returns:
         list[str]: The editable field names minus upload/autocomplete.
     """
-    skip = set(admin.upload_fields) | set(admin.autocomplete_fields)
+    skip = (
+        set(admin.upload_fields)
+        | set(admin.autocomplete_fields)
+        | set(admin.password_fields)
+    )
     return [name for name in admin.editable_field_names() if name not in skip]
 
 
@@ -300,6 +332,12 @@ def build_form_fields(
         value for a file input — so the stored key is surfaced as a
         read-only hint instead, and an existing file never forces the user
         to re-upload to save the form.
+
+        Password fields are never pre-filled either, not even with the
+        stored digest, and they are required only on create: an empty box
+        on edit means *leave the password alone*, which is the only
+        behaviour that lets an operator fix a typo in an e-mail without
+        knowing (or resetting) the password.
     """
     columns = sa_inspect(admin.model).columns
     errors = errors or {}
@@ -312,6 +350,7 @@ def build_form_fields(
         if column is None:
             continue
         py = _python_type(column)
+        label = _label(name)
         widget, step, options = _widget_for(column, py)
         is_autocomplete = name in admin.autocomplete_fields
         if is_autocomplete:
@@ -323,11 +362,19 @@ def build_form_fields(
         is_upload = name in admin.upload_fields
         if is_upload:
             widget = "file"
+        is_password = name in admin.password_fields
+        if is_password:
+            widget = "password"
+            label = _password_label(name)
         required = not _is_optional(column)
+        if is_password:
+            required = instance is None and not column.nullable
 
         value: Any = ""
         checked = False
-        if is_upload:
+        if is_password:
+            value = ""
+        elif is_upload:
             current = None if instance is None else getattr(instance, name, None)
             value = current or ""
             if current:
@@ -361,7 +408,7 @@ def build_form_fields(
         fields.append(
             FormField(
                 name=name,
-                label=_label(name),
+                label=label,
                 widget=widget,
                 value=value,
                 required=required,
@@ -415,6 +462,11 @@ def parse_submission(
         Upload fields are skipped here. They carry an ``UploadFile`` rather
         than a scalar, and the router saves the file and injects the
         resulting key into ``data`` separately.
+
+        Password fields are skipped for the same reason: what the operator
+        typed is plaintext and what the column stores is a digest, so
+        :func:`parse_password_submission` reads them and
+        :func:`apply_password_fields` writes them onto the instance.
     """
     columns = sa_inspect(admin.model).columns
     data: dict[str, Any] = {}
@@ -425,7 +477,7 @@ def parse_submission(
         column = columns.get(name)
         if column is None:
             continue
-        if name in admin.upload_fields:
+        if name in admin.upload_fields or name in admin.password_fields:
             continue
         py = _python_type(column)
         widget, _step, _options = _widget_for(column, py)
@@ -463,6 +515,91 @@ def parse_submission(
             coerced = from_display_timezone(coerced, admin.display_tzinfo)
         data[name] = coerced
     return data, errors
+
+
+def parse_password_submission(
+    admin: AdminModel[Any],
+    form: Mapping[str, Any],
+    *,
+    creating: bool,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Read the plaintext typed into each password field.
+
+    Kept apart from :func:`parse_submission` because the value never
+    reaches the column as typed: what the form carries is plaintext and
+    what the column stores is a digest, so the router hashes it onto the
+    instance through :func:`apply_password_fields`.
+
+    Blank means two different things by mode, and that asymmetry is the
+    whole feature: on create a required column has to be filled, while
+    on edit blank means *do not touch the stored hash*.
+
+    Args:
+        admin (AdminModel[Any]): The admin configuration.
+        form (Mapping[str, Any]): The posted form data.
+        creating (bool): Whether this is the create form.
+
+    Returns:
+        tuple[dict[str, str], dict[str, str]]: ``(values, errors)``
+        where ``values`` maps field name → plaintext for the fields that
+        were filled and validated, and ``errors`` maps field name →
+        message for the ones that were not.
+    """
+    columns = sa_inspect(admin.model).columns
+    values: dict[str, str] = {}
+    errors: dict[str, str] = {}
+    for name in admin.password_fields:
+        column = columns.get(name)
+        if column is None:
+            continue
+        raw = form.get(name)
+        plain = raw.strip() if isinstance(raw, str) else ""
+        if not plain:
+            if creating and not column.nullable:
+                errors[name] = "This field is required."
+            continue
+        violation = check_password_policy(plain, admin.password_policy)
+        if violation is not None:
+            errors[name] = violation.message
+            continue
+        values[name] = plain
+    return values, errors
+
+
+def apply_password_fields(
+    admin: AdminModel[Any],
+    instance: Any,
+    values: Mapping[str, str],
+) -> None:
+    """Hash each submitted plaintext onto the instance.
+
+    Prefers the model's own ``set_password`` — which is what
+    :class:`~tempest_fastapi_sdk.BaseUserModel` ships and where a project
+    that overrides the hashing algorithm puts it — and falls back to
+    :class:`~tempest_fastapi_sdk.PasswordUtils` for a model that declares
+    a password column without one.
+
+    Args:
+        admin (AdminModel[Any]): The admin configuration.
+        instance (Any): The row being created or edited.
+        values (Mapping[str, str]): ``{field: plaintext}`` from
+            :func:`parse_password_submission`.
+
+    Raises:
+        ImportError: When the model has no ``set_password`` and the
+            ``[auth]`` extra (bcrypt) is not installed.
+    """
+    if not values:
+        return
+    setter = getattr(instance, "set_password", None)
+    hasher: PasswordUtils | None = None
+    for name, plain in values.items():
+        if callable(setter) and name == _DEFAULT_PASSWORD_COLUMN:
+            setter(plain)
+            continue
+        if hasher is None:
+            hasher = PasswordUtils()
+        setattr(instance, name, hasher.hash(plain))
 
 
 def _coerce_scalar(py: type, raw: str) -> Any:

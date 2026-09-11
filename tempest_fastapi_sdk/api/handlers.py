@@ -24,6 +24,7 @@ from tempest_fastapi_sdk.exceptions.i18n import (
     VALIDATION_KEY_PREFIX,
     MessageCatalog,
 )
+from tempest_fastapi_sdk.exceptions.value_errors import ValidationValueError
 
 logger = logging.getLogger("tempest_fastapi_sdk.api.handlers")
 
@@ -40,6 +41,56 @@ ServerErrorCallback = Callable[[Request, Exception], Awaitable[None]]
 Runs as a Starlette ``BackgroundTask``, so it never delays or alters the
 response the client receives.
 """
+
+
+def _localize_error(
+    error: Mapping[str, Any],
+    error_type: str,
+    catalog: MessageCatalog,
+    locale: str,
+) -> str | None:
+    """Localize one pydantic error, preferring the SDK's own code.
+
+    Pydantic files everything a field validator raises under the single
+    type ``value_error``, so the catalog had one key for all of them and
+    the useful half of the message — the phrase the validator wrote —
+    stayed in English inside the localized template. A
+    :class:`~tempest_fastapi_sdk.ValidationValueError` names a code, and
+    the code is what gets resolved here.
+
+    The fallback chain is what keeps a consumer's own validators working
+    unchanged: an unknown code falls back to ``VALIDATION.value_error``,
+    and a plain ``ValueError`` never leaves that path in the first
+    place.
+
+    Args:
+        error (Mapping[str, Any]): One entry of ``exc.errors()``.
+        error_type (str): The pydantic error type of that entry.
+        catalog (MessageCatalog): The catalog to resolve against.
+        locale (str): The negotiated locale.
+
+    Returns:
+        str | None: The localized message, or ``None`` when neither key
+        is in the catalog — the caller then keeps pydantic's ``msg``.
+    """
+    context = error.get("ctx")
+    params: Mapping[str, Any] | None = context
+    inner = context.get("error") if isinstance(context, Mapping) else None
+    if isinstance(inner, ValidationValueError):
+        if inner.params:
+            params = {**(context or {}), **inner.params}
+        localized = catalog.resolve(
+            f"{VALIDATION_KEY_PREFIX}{inner.code}",
+            locale,
+            params,
+        )
+        if localized is not None:
+            return localized
+    return catalog.resolve(
+        f"{VALIDATION_KEY_PREFIX}{error_type}",
+        locale,
+        context,
+    )
 
 
 def _notify_after_response(
@@ -195,6 +246,12 @@ def make_app_exception_handler(
     A missing translation falls back to the exception's literal
     ``detail``, so partial catalogs never blank out a message.
 
+    An exception that declares a ``field`` adds it to the envelope, so a
+    409 or a 401 about one input says which one. The key is omitted
+    (never ``null``) when there is no culprit input, which is also the
+    correct answer for invalid credentials — naming the field there
+    turns the response into an account-enumeration oracle.
+
     Args:
         log_level (int): Level used **only** for 5xx ``AppException``
             records (the 4xx path always logs at ``INFO`` regardless,
@@ -288,13 +345,16 @@ def make_app_exception_handler(
             )
             if localized is not None:
                 detail = localized
+        content: dict[str, Any] = {
+            "detail": detail,
+            "code": exc.code,
+            "details": exc.details,
+        }
+        if exc.field is not None:
+            content["field"] = exc.field
         return JSONResponse(
             status_code=exc.status_code,
-            content={
-                "detail": detail,
-                "code": exc.code,
-                "details": exc.details,
-            },
+            content=content,
             headers=exc.headers,
             background=(
                 _notify_after_response(on_server_error, request, exc, log)
@@ -686,11 +746,7 @@ def make_validation_exception_handler(
             error_type = str(error.get("type", ""))
             message = str(error.get("msg", ""))
             if catalog is not None:
-                localized = catalog.resolve(
-                    f"{VALIDATION_KEY_PREFIX}{error_type}",
-                    locale,
-                    error.get("ctx"),
-                )
+                localized = _localize_error(error, error_type, catalog, locale)
                 if localized is not None:
                     message = localized
             errors.append(

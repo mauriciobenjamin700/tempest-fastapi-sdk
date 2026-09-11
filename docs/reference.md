@@ -372,6 +372,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.unauthorized.UnauthorizedException
 ::: tempest_fastapi_sdk.exceptions.forbidden.ForbiddenException
 ::: tempest_fastapi_sdk.exceptions.validation.ValidationException
+::: tempest_fastapi_sdk.exceptions.value_errors.ValidationValueError
 ::: tempest_fastapi_sdk.exceptions.too_many_requests.TooManyRequestsException
 ::: tempest_fastapi_sdk.exceptions.jwt.InvalidTokenException
 ::: tempest_fastapi_sdk.exceptions.jwt.ExpiredTokenException
@@ -1086,6 +1087,9 @@ o namespace não constrói nenhum modelo.
 ### `tempest_fastapi_sdk.utils`
 
 ::: tempest_fastapi_sdk.utils.password.PasswordUtils
+::: tempest_fastapi_sdk.utils.password.PasswordPolicy
+::: tempest_fastapi_sdk.utils.password.PasswordPolicyViolation
+::: tempest_fastapi_sdk.utils.password.check_password_policy
 ::: tempest_fastapi_sdk.utils.password.generate_password
 ::: tempest_fastapi_sdk.utils.password.DEFAULT_GENERATED_PASSWORD_LENGTH
 ::: tempest_fastapi_sdk.utils.jwt.JWTUtils

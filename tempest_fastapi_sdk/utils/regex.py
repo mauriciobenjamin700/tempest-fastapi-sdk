@@ -25,6 +25,7 @@ from typing import Annotated, Final
 from pydantic import AfterValidator, BaseModel, Field
 
 from tempest_fastapi_sdk.core import BaseStrEnum
+from tempest_fastapi_sdk.exceptions.value_errors import ValidationValueError
 
 CPF_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$",
@@ -222,7 +223,7 @@ def normalize_cpf(value: str) -> str:
         ValueError: If ``value`` is not a valid CPF.
     """
     if not is_valid_cpf(value):
-        raise ValueError("invalid CPF")
+        raise ValidationValueError("INVALID_CPF", "invalid CPF")
     return only_digits(value)
 
 
@@ -239,7 +240,7 @@ def normalize_cnpj(value: str) -> str:
         ValueError: If ``value`` is not a valid CNPJ.
     """
     if not is_valid_cnpj(value):
-        raise ValueError("invalid CNPJ")
+        raise ValidationValueError("INVALID_CNPJ", "invalid CNPJ")
     return only_digits(value)
 
 
@@ -256,7 +257,7 @@ def normalize_cpf_cnpj(value: str) -> str:
         ValueError: If ``value`` is not a valid CPF nor CNPJ.
     """
     if not is_valid_cpf_cnpj(value):
-        raise ValueError("invalid CPF/CNPJ")
+        raise ValidationValueError("INVALID_CPF_CNPJ", "invalid CPF/CNPJ")
     return only_digits(value)
 
 
@@ -273,7 +274,7 @@ def normalize_cep(value: str) -> str:
         ValueError: If ``value`` is not a valid CEP.
     """
     if not is_valid_cep(value):
-        raise ValueError("invalid CEP")
+        raise ValidationValueError("INVALID_CEP", "invalid CEP")
     return only_digits(value)
 
 
@@ -290,7 +291,7 @@ def normalize_phone_br(value: str) -> str:
         ValueError: If ``value`` does not look like a BR phone.
     """
     if not is_valid_phone_br(value):
-        raise ValueError("invalid BR phone")
+        raise ValidationValueError("INVALID_PHONE_BR", "invalid BR phone")
     return only_digits(value)
 
 
@@ -403,7 +404,10 @@ def normalize_mobile_phone_br(value: str) -> str:
     """
     parsed = parse_phone_br(value)
     if parsed is None or not parsed.is_mobile:
-        raise ValueError("invalid BR mobile phone")
+        raise ValidationValueError(
+            "INVALID_MOBILE_PHONE_BR",
+            "invalid BR mobile phone",
+        )
     return f"{parsed.area_code}{parsed.number}"
 
 
@@ -502,7 +506,7 @@ def normalize_pix_key(value: str) -> str:
     """
     key_type = detect_pix_key_type(value)
     if key_type is None:
-        raise ValueError("invalid PIX key")
+        raise ValidationValueError("INVALID_PIX_KEY", "invalid PIX key")
     candidate = value.strip()
     if key_type in (PixKeyType.CPF, PixKeyType.CNPJ):
         return only_digits(candidate)

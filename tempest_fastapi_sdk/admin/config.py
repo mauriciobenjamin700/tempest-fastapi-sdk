@@ -19,6 +19,7 @@ from tempest_fastapi_sdk.admin.actions import (
 from tempest_fastapi_sdk.db.audit import BaseAuditLogModel
 from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.db.repository import BaseRepository
+from tempest_fastapi_sdk.utils.password import PasswordPolicy
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -323,6 +324,8 @@ class AdminModel(Generic[ModelT]):
         inlines: Sequence[Inline] = (),
         lenses: Sequence[Lens] = (),
         display_timezone: str | None = None,
+        password_fields: Sequence[FieldRef] = (),
+        password_policy: PasswordPolicy | None = None,
     ) -> None:
         """Build and validate the configuration. See class docstring."""
         if not isinstance(model, type) or not issubclass(model, BaseModel):
@@ -373,6 +376,23 @@ class AdminModel(Generic[ModelT]):
         self.autocomplete_fields: list[str] = _normalize_fields(autocomplete_fields)
         self.inlines: list[Inline] = list(inlines)
         self.lenses: list[Lens] = list(lenses)
+        self.password_fields: list[str] = _normalize_fields(password_fields)
+        self.password_policy: PasswordPolicy = password_policy or PasswordPolicy()
+        known = set(self.column_names())
+        unknown = [name for name in self.password_fields if name not in known]
+        if unknown:
+            raise ValueError(
+                f"AdminModel `password_fields` names columns {model.__name__} "
+                f"does not have: {', '.join(sorted(unknown))}",
+            )
+        if self.password_fields and self.can_import:
+            raise ValueError(
+                "AdminModel cannot combine `password_fields` with "
+                "`can_import=True`: hashing a plaintext column read from a "
+                "file is a separate decision, and the importer would post "
+                "rows with no password at all. Import without the password "
+                "column and set it per row, or set can_import=False.",
+            )
         self.display_timezone: str | None = display_timezone
         self.display_tzinfo: ZoneInfo | None = None
         if display_timezone is not None:
@@ -441,14 +461,17 @@ class AdminModel(Generic[ModelT]):
         """Return the effective ``list_display`` column list.
 
         Defaults to every column except ``hashed_password`` when
-        unconfigured.
+        unconfigured. A column named in ``password_fields`` is dropped
+        even from an explicit ``list_display`` — this list also feeds the
+        CSV/JSON export, and a digest has no business in either.
 
         Returns:
             list[str]: The list of columns to render.
         """
+        hidden = {"hashed_password", *self.password_fields}
         if self.list_display is not None:
-            return list(self.list_display)
-        return [name for name in self.column_names() if name not in {"hashed_password"}]
+            return [name for name in self.list_display if name not in hidden]
+        return [name for name in self.column_names() if name not in hidden]
 
     def editable_field_names(self) -> list[str]:
         """Return the columns a create/edit form should expose.
@@ -458,15 +481,25 @@ class AdminModel(Generic[ModelT]):
         column listed in ``readonly_fields`` — none of which a user
         edits directly through the generic admin form.
 
+        A column named in ``password_fields`` is the exception: it comes
+        back in, rendered as a password box that takes plaintext and is
+        hashed on save. Without it no ``BaseUserModel`` subclass could
+        be created through the panel at all — the form omitted the
+        column, the insert hit the ``NOT NULL`` and the operator read
+        ``Conflict creating <Model>``.
+
         Returns:
             list[str]: Editable column keys in declaration order.
         """
-        skip = set(self.readonly_fields) | {
-            "id",
-            "created_at",
-            "updated_at",
-            "hashed_password",
-        }
+        skip = (
+            set(self.readonly_fields)
+            | {
+                "id",
+                "created_at",
+                "updated_at",
+                "hashed_password",
+            }
+        ) - set(self.password_fields)
         return [name for name in self.column_names() if name not in skip]
 
     def build_repository(self, session: AsyncSession) -> BaseRepository[ModelT]:

@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
-from datetime import date, datetime
+from datetime import date, datetime, time
+from decimal import Decimal
+from enum import Enum
 from typing import Any, Generic, List, NoReturn, TypeVar, cast
 from uuid import UUID
 
@@ -51,11 +53,91 @@ from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.exceptions.conflict import ConflictException
 from tempest_fastapi_sdk.exceptions.not_found import NotFoundException
 from tempest_fastapi_sdk.exceptions.validation import ValidationException
-from tempest_fastapi_sdk.utils.datetime import utcnow
+from tempest_fastapi_sdk.utils.datetime import to_utc, utcnow
 
 logger = logging.getLogger(__name__)
 
 ModelType = TypeVar("ModelType", bound=BaseModel)
+
+
+def _coerce_cursor_value(column: Any, value: Any) -> Any:
+    """Rehydrate a decoded cursor value into the column's Python type.
+
+    :func:`~tempest_fastapi_sdk.encode_cursor` serializes through
+    ``json.dumps(default=str)``, so a ``datetime`` leaves as an ISO
+    string, a ``UUID`` as its hex form and a ``Decimal`` as digits. On
+    SQLite the string comes back and compares fine (dynamic typing, and
+    the ISO layout even sorts correctly), which is why the defect never
+    reached the suite. PostgreSQL types the bind parameter and refuses
+    the comparison outright::
+
+        operator does not exist: timestamp with time zone < character varying
+
+    so the second page of any cursor-paginated query ordered by a
+    non-textual column answered 500. Passing the string through
+    ``bindparam(type_=column.type)`` does not help either: the SQLAlchemy
+    type marks the parameter, it does not parse the value, and asyncpg
+    then rejects a ``str`` where it expects a ``datetime``. The
+    conversion has to happen in Python, here.
+
+    Only strings are converted, and only when the column's Python type
+    is something else — a text column keeps its value untouched, and so
+    does an ``int`` or ``bool`` that survived the JSON round-trip as
+    itself. A column type that declines to name a Python type (custom
+    ``TypeDecorator``) is left alone rather than guessed at.
+
+    Naive/aware for ``datetime`` follows the column: a ``timezone=True``
+    column gets a UTC-aware value (PostgreSQL ``timestamptz`` rejects
+    naive input under a non-UTC session), a naive column gets the offset
+    stripped after normalizing to UTC.
+
+    Args:
+        column (Any): The mapped column the value is compared against.
+        value (Any): The decoded cursor value.
+
+    Returns:
+        Any: The value in the column's Python type, or the value
+        unchanged when no conversion applies.
+
+    Raises:
+        ValueError: When the string does not parse into the column's
+            Python type — a tampered or truncated cursor.
+    """
+    if not isinstance(value, str):
+        return value
+
+    try:
+        python_type = column.type.python_type
+    except (AttributeError, NotImplementedError):
+        return value
+
+    if python_type is str or isinstance(value, python_type):
+        return value
+
+    try:
+        if python_type is datetime:
+            parsed = datetime.fromisoformat(value)
+            if getattr(column.type, "timezone", False):
+                return to_utc(parsed)
+            return to_utc(parsed).replace(tzinfo=None)
+        if python_type is date:
+            return date.fromisoformat(value)
+        if python_type is time:
+            return time.fromisoformat(value)
+        if python_type is UUID:
+            return UUID(value)
+        if python_type is Decimal:
+            return Decimal(value)
+        if python_type is bool:
+            return value.lower() in {"true", "1", "t", "yes"}
+        if isinstance(python_type, type) and issubclass(python_type, Enum):
+            return python_type(value)
+        if python_type in {int, float}:
+            return python_type(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid cursor value") from exc
+
+    return value
 
 
 class BaseRepository(Generic[ModelType]):
@@ -1291,7 +1373,11 @@ class BaseRepository(Generic[ModelType]):
         is stable under concurrent inserts and scales without a
         ``COUNT(*)``. The cursor encodes the last row's
         ``(order_by_value, id)`` so the next page can continue
-        precisely past it.
+        precisely past it. The encoded value is JSON, so it comes back
+        as a string for every non-JSON type; it is rehydrated into the
+        column's Python type (``datetime``, ``date``, ``time``,
+        ``UUID``, ``Decimal``, ``Enum``) before the comparison is built,
+        which is what keeps the predicate valid on PostgreSQL.
 
         Args:
             filters (dict[str, Any] | None): Filter conditions.
@@ -1333,13 +1419,10 @@ class BaseRepository(Generic[ModelType]):
 
         if cursor is not None:
             payload = decode_cursor(cursor)
-            last_value = payload.get("value")
-            last_id_raw = payload.get("id")
+            last_value = _coerce_cursor_value(column, payload.get("value"))
             try:
-                last_id = (
-                    UUID(last_id_raw) if isinstance(last_id_raw, str) else last_id_raw
-                )
-            except (ValueError, AttributeError) as exc:
+                last_id = _coerce_cursor_value(self.model.id, payload.get("id"))
+            except ValueError as exc:
                 raise ValueError("Invalid cursor id") from exc
             if ascending:
                 query = query.where(

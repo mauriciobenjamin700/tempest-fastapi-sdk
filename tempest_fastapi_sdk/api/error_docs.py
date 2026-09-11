@@ -289,13 +289,16 @@ def error_responses(
             if code not in codes:
                 codes.append(code)
             key = code if code not in examples else f"{code} ({exception.__name__})"
+            value: dict[str, Any] = {
+                "detail": _detail_of(exception, catalog, locale),
+                "code": code,
+                "details": dict(exception.details_example),
+            }
+            if exception.field is not None:
+                value["field"] = exception.field
             examples[key] = {
                 "summary": _summary_of(exception),
-                "value": {
-                    "detail": _detail_of(exception, catalog, locale),
-                    "code": code,
-                    "details": dict(exception.details_example),
-                },
+                "value": value,
             }
         responses[status_code] = {
             "model": ErrorResponseSchema,
