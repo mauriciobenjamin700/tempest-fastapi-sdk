@@ -61,6 +61,7 @@ produces a service that looks unlike every other Tempest service.
 ### 1. Schema (`src/schemas/`)
 
 ```python
+# src/schemas/product.py
 from tempest_fastapi_sdk import BaseResponseSchema, BaseSchema
 
 
@@ -80,26 +81,47 @@ class ProductResponseSchema(BaseResponseSchema):
 
 ### 2. Model (`src/db/models/`)
 
+Add the table name to `src/db/configs/names.py` first — it is the single
+source of truth, and the model reads it from there:
+
 ```python
+# src/db/configs/names.py
+PRODUCT_TABLE_NAME = "products"
+```
+
+```python
+# src/db/models/product.py
 from sqlalchemy.orm import Mapped, mapped_column
 from tempest_fastapi_sdk import BaseModel
+
+from src.db.configs import PRODUCT_TABLE_NAME
 
 
 class ProductModel(BaseModel):
     """Products table."""
 
-    __tablename__ = "products"
+    __tablename__ = PRODUCT_TABLE_NAME
 
     name: Mapped[str] = mapped_column(index=True)
     price_cents: Mapped[int] = mapped_column(default=0)
 ```
 
+Re-export the constant from `src/db/configs/__init__.py` so models
+import it at package level.
+
 `BaseModel` already provides `id`, `created_at` and `updated_at` — never
 redeclare them.
+
+A foreign key spells the same symbol rather than the string again:
+`ForeignKey(f"{PRODUCT_TABLE_NAME}.id")`. SQLAlchemy resolves that
+target only when it configures the mappers, so a rename that misses one
+side fails at startup — or inside a migration pointing at a table that
+no longer exists — instead of where it was typed.
 
 ### 3. Repository (`src/db/repositories/`)
 
 ```python
+# src/db/repositories/product.py
 from sqlalchemy.ext.asyncio import AsyncSession
 from tempest_fastapi_sdk import BaseRepository
 
@@ -149,6 +171,7 @@ cannot express.**
 ### 4. Service (`src/services/`)
 
 ```python
+# src/services/product.py
 from tempest_fastapi_sdk import BaseService
 
 from src.core.exceptions import ProductNameTakenError
@@ -186,6 +209,7 @@ belongs in it; add a new method for a use case the base does not cover.
 ### 5. Controller (`src/controllers/`)
 
 ```python
+# src/controllers/product.py
 from tempest_fastapi_sdk import BaseController
 
 from src.schemas import ProductCreateSchema, ProductResponseSchema
@@ -214,6 +238,7 @@ keeps the import graph identical across services.
 ### 6. Dependency provider (`src/api/dependencies/controllers.py`)
 
 ```python
+# src/api/dependencies/controllers.py
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -240,6 +265,7 @@ def get_product_controller(
 ### 7. Router (`src/api/routers/`)
 
 ```python
+# src/api/routers/product.py
 from fastapi import APIRouter, Depends, status
 
 from src.api.dependencies.controllers import get_product_controller
@@ -276,6 +302,7 @@ The SDK's exception hierarchy is registered on the app by
 envelope, the status code and the OpenAPI entry come for free.
 
 ```python
+# src/core/exceptions.py
 from tempest_fastapi_sdk import ConflictException, NotFoundException
 
 

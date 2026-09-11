@@ -362,6 +362,9 @@ from tempest_fastapi_sdk.utils.token_types import (
 )
 from tempest_fastapi_sdk.utils.totp import TOTPHelper as TOTPHelper
 from tempest_fastapi_sdk.utils.upload import (
+    SNIFFABLE_MIMETYPES as SNIFFABLE_MIMETYPES,
+)
+from tempest_fastapi_sdk.utils.upload import (
     UploadUtils as UploadUtils,
 )
 from tempest_fastapi_sdk.utils.upload import (
@@ -384,6 +387,7 @@ __all__: list[str] = [
     "PHONE_BR_PATTERN",
     "REFRESH_TOKEN_TYPE",
     "REQUEST_ID_HEADER",
+    "SNIFFABLE_MIMETYPES",
     "UF",
     "AttemptThrottle",
     "BulkEmailReport",

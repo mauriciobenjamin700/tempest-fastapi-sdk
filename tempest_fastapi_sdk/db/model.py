@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, ClassVar
 from uuid import UUID, uuid4
 
-from sqlalchemy import TIMESTAMP, Boolean, MetaData, Uuid, func
+from sqlalchemy import Boolean, MetaData, Uuid, func
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import (
@@ -15,6 +15,7 @@ from sqlalchemy.orm import (
     mapped_column,
 )
 
+from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.db.enums import TempestEnum
 from tempest_fastapi_sdk.utils.datetime import utcnow
 from tempest_fastapi_sdk.utils.dict import modify_dict
@@ -102,7 +103,7 @@ class BaseModel(AsyncAttrs, DeclarativeBase):
         doc="Soft-delete flag. True means the record is active.",
     )
     created_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=False,
         default=utcnow,
         server_default=func.now(),
@@ -115,7 +116,7 @@ class BaseModel(AsyncAttrs, DeclarativeBase):
         ),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=False,
         default=utcnow,
         onupdate=utcnow,

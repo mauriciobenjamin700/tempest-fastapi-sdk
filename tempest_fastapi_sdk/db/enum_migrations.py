@@ -53,6 +53,7 @@ from alembic.autogenerate.api import AutogenContext
 from alembic.operations import MigrateOperation, Operations
 from alembic.operations.ops import MigrationScript, UpgradeOps
 
+from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.db.model import NAMING_CONVENTION
 from tempest_fastapi_sdk.db.search import POSTGRESQL_DIALECT
 
@@ -483,14 +484,23 @@ def render_enum_types(
     obj: Any,
     autogen_context: AutogenContext,
 ) -> str | bool:
-    """Render an enum column type as a self-contained ``sa.Enum``.
+    """Render an SDK column type as a self-contained SQLAlchemy type.
 
-    Alembic's default renders a :class:`TempestEnum` as a dotted path
-    into this package, which the generated migration never imports —
-    the file raises ``NameError`` the first time it runs. Rendering to
-    ``sa.Enum`` with the members spelled out avoids the import *and*
-    freezes the members as they were when the migration was written,
-    which is what a migration is supposed to record.
+    Alembic's default renders a type it does not know as a dotted path
+    into this package — ``tempest_fastapi_sdk.db.…`` — which the
+    generated migration never imports, so the file raises ``NameError``
+    (or ``F821`` under lint) the first time it runs. Two SDK types hit
+    that path:
+
+    * :class:`TempestEnum` renders as ``sa.Enum`` with the members
+      spelled out, which avoids the import **and** freezes the members
+      as they were when the migration was written — what a migration is
+      supposed to record.
+    * :class:`~tempest_fastapi_sdk.UtcDateTime` renders as
+      ``sa.TIMESTAMP(timezone=True)``, the exact DDL it emits. The
+      Python-side normalization it adds is a runtime behaviour of the
+      model, not of the schema, so a migration has no reason to carry
+      it.
 
     Wire it into ``env.py`` as ``render_item=render_enum_types``.
 
@@ -504,7 +514,11 @@ def render_enum_types(
         str | bool: The rendered expression, or ``False`` to let Alembic
         render the object its own way.
     """
-    if type_ != "type" or not isinstance(obj, sa.Enum):
+    if type_ != "type":
+        return False
+    if isinstance(obj, UtcDateTime):
+        return "sa.TIMESTAMP(timezone=True)"
+    if not isinstance(obj, sa.Enum):
         return False
     values = ", ".join(repr(value) for value in obj.enums)
     parts = [values] if values else []

@@ -1,0 +1,13 @@
+"""Database configuration shared by the models — table names.
+
+Re-exports the names so a model imports from the package
+(``from src.db.configs import USER_TABLE_NAME``) instead of reaching
+into the module, keeping imports at package level like the rest of the
+project.
+"""
+
+from src.db.configs.names import USER_TABLE_NAME
+
+__all__: list[str] = [
+    "USER_TABLE_NAME",
+]

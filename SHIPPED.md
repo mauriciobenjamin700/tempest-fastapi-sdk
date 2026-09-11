@@ -2011,3 +2011,73 @@ pelo `set_password` do modelo; no edit, vazio preserva. `PasswordPolicy` e
 
 Consumidor: `famachapp-api`, que contornava com `can_create=False` e um
 endpoint próprio de provisionamento.
+
+## O chat vira mensageiro, v0.291.0 (2026-09-11)
+
+### As nove peças que faltavam (#273)
+
+O SDK entregava três tabelas com sete colunas somadas, e quem precisava
+de um mensageiro reimplementava tudo em volta — o `tempest-zap` ficou com
+10 tabelas, 7 repositories, 4 services e 4 routers sobre o que o SDK
+nomeava. Agora o módulo cobre reply com stub, recibo por marca d'água,
+idempotência de envio, anexo em tabela própria, revogar limpando o body,
+reação única por pessoa, preferências por participante, grupo com papéis
+e `history_from`, e mensagem de sistema com payload estruturado.
+
+O que vale registrar não é a lista, é o conjunto de decisões que o
+módulo passa a tomar uma vez só: watermark em vez de linha por leitor
+(200 linhas no total, não por mensagem), `UniqueConstraint(message_id,
+user_id)` estreita em vez de larga, `body` limpo de verdade no revoke,
+stub de citação que morre com o pai, `client_id` por `(sender_id,
+client_id)`, conversa direta idempotente por par, e `message_id` de
+anexo **nullable** porque upload e post são duas chamadas.
+
+Referência de desenho: `tempest-zap` (`~/projects/my/tools/tempest-zap`),
+que tinha os nove implementados e testados sobre o SDK.
+
+### `UtcDateTime` — o naive do SQLite parava aqui
+
+Medido: mesma linha, mesmo processo, `created_at` aware após o commit e
+**naive** após o SELECT no SQLite; `datetime.now(UTC) - row.created_at`
+levanta `TypeError`. O PostgreSQL sempre devolveu aware — por isso o
+split era invisível, e cada serviço tinha que lembrar do `to_utc` em cada
+fronteira de leitura. As 19 colunas do SDK passam pelo tipo novo, com
+DDL idêntico nos dois dialetos (sem migration).
+
+Duas armadilhas do `TypeDecorator` que o guard fixa: `python_type`
+levanta `NotImplementedError` se não for declarado (o widget de datetime
+do admin cairia para texto), e `impl = TIMESTAMP` (a classe) faz
+`impl_instance.timezone` responder `False` num tipo que é sempre aware —
+tem que ser a instância.
+
+### Upload: assinatura desconhecida ≠ contradição
+
+`verify_magic_bytes=True` recusava tudo sem assinatura, e texto não tem
+assinatura — um chat não conseguia anexar `.csv`.
+`require_known_signature=False` recusa só a contradição, com
+`SNIFFABLE_MIMETYPES` decidindo qual é qual. E `hasher=` fecha a outra
+ponta: o `content_validator` vê só o primeiro chunk, então acumular
+SHA-256 nele grava o digest do primeiro chunk parecendo o do arquivo.
+
+### Enum em schema é `str`-based, e agora tem guard
+
+`use_enum_values=True` guarda o **valor**. Com `StrEnum` só o `is`
+falha; com `Enum` comum **até `==` falha** — as duas formas passam no
+type-checker e nunca entram no branch. `tests/test_enum_schema_guard.py`
+varre os schemas do pacote e recusa enum não-`str`.
+
+### O scaffold traz `src/db/configs/names.py`
+
+A convenção já estava na página de arquitetura — marcada como opcional —
+e o projeto nascia sem o arquivo, então cada serviço reinventava ou
+escrevia o nome da tabela duas vezes (no `__tablename__` e na string de
+cada FK). O `tempest new` passa a escrever o módulo (só strings, sem
+import do projeto, para nunca entrar num ciclo), o `UserModel` gerado lê
+`USER_TABLE_NAME`, e a receita de sete passos do `CLAUDE.md` do projeto
+começa por adicionar o nome ali.
+
+Efeito colateral que valeu mais que a feature: os blocos da receita
+passaram a declarar o caminho do arquivo na primeira linha, porque o
+teste que materializa o `CLAUDE.md` os localizava **por posição** —
+acrescentar um passo reescrevia em silêncio o arquivo errado no projeto
+sob teste.

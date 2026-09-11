@@ -15,6 +15,31 @@ class BaseSchema(BaseModel):
     enum values, strip whitespace from strings, and validate
     assignments after construction.
 
+    Enum fields:
+        ``use_enum_values=True`` means a field annotated with an enum
+        holds the **value**, not the member — so identity comparison
+        never matches, and equality only survives when the enum is
+        ``str``-based. Measured on this suite::
+
+            class Kind(StrEnum):  # or BaseStrEnum
+                GROUP = "group"
+
+            S(kind=Kind.GROUP).kind is Kind.GROUP   # False
+            S(kind=Kind.GROUP).kind == Kind.GROUP   # True
+
+            class Plain(Enum):
+                GROUP = "group"
+
+            S(kind=Plain.GROUP).kind == Plain.GROUP  # False
+
+        Both failures type-check, run without error and simply never
+        enter the branch, which is the worst shape a comparison can
+        take. So: annotate schema fields with
+        :class:`~tempest_fastapi_sdk.BaseStrEnum` (or another
+        ``str``-based enum) and compare with ``==`` / ``in``, never
+        ``is``. ``tests/test_enum_schema_guard.py`` fails when a schema
+        in this package annotates a field with a non-``str`` enum.
+
     Attributes:
         model_config (ConfigDict): The Pydantic configuration.
     """

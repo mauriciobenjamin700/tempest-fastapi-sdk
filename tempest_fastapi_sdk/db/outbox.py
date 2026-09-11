@@ -39,9 +39,10 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from sqlalchemy import JSON, TIMESTAMP, Integer, String, Text, select
+from sqlalchemy import JSON, Integer, String, Text, select
 from sqlalchemy.orm import Mapped, mapped_column
 
+from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.utils.datetime import utcnow
 
@@ -129,14 +130,14 @@ class BaseOutboxModel(BaseModel):
         doc="Attempt budget before the row is marked FAILED.",
     )
     available_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=False,
         default=utcnow,
         index=True,
         doc="Earliest time the relay may pick this row (retry backoff).",
     )
     sent_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=True,
         default=None,
         doc="When the event was published, or NULL while unpublished.",

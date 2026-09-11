@@ -13,9 +13,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import TIMESTAMP, Boolean, String
+from sqlalchemy import Boolean, String
 from sqlalchemy.orm import Mapped, mapped_column
 
+from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.utils.password import PasswordUtils
 
@@ -82,7 +83,7 @@ class BaseUserModel(BaseModel):
         doc="Whether the user can access the admin site.",
     )
     last_login_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=True,
         default=None,
         doc="Timestamp of the user's most recent successful login.",

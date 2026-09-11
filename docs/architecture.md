@@ -64,7 +64,7 @@ O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[Mode
     ├── schemas/                     # DTOs de request/response Pydantic v2
     ├── core/                        # settings.py + constants + exceptions + logging
     ├── db/ (opcional)
-    │   ├── configs/names.py         # nomes das tabelas, fonte única (opcional)
+    │   ├── configs/names.py         # nomes das tabelas, fonte única
     │   ├── models/                  # modelos ORM SQLAlchemy
     │   └── repositories/            # camada de acesso a dados
     ├── ui/ (opcional)               # camada de interface — só com o extra [ssr]
@@ -77,10 +77,17 @@ O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[Mode
     └── tasks/ (opcional)            # tarefas em background TaskIQ
 ```
 
-!!! tip "`db/configs/names.py` é opcional, mas evita uma classe de erro"
+!!! tip "`db/configs/names.py` evita uma classe de erro"
     Guardar o nome de cada tabela numa constante faz o `__tablename__` e
     a string da `ForeignKey` saírem do mesmo símbolo — renomear vira uma
-    linha, em vez de uma caça a strings espalhadas. Ver
+    linha, em vez de uma caça a strings espalhadas. Errar uma ponta não
+    falha na hora: o SQLAlchemy só resolve o alvo da FK ao montar os
+    mapeamentos, então o erro chega na subida da aplicação, ou dentro de
+    uma migração apontando para tabela que não existe mais.
+
+    Desde a **v0.291.0** o `tempest new` já escreve o arquivo com o nome
+    da tabela de usuário, e o `CLAUDE.md` do projeto ensina a receita a
+    partir dele. Ver
     [Banco de dados › Centralizando os nomes das tabelas](recipes/database.md#centralizando-os-nomes-das-tabelas).
 
 !!! warning "Regras inegociáveis"

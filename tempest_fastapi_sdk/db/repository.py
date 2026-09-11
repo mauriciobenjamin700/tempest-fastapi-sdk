@@ -60,6 +60,39 @@ logger = logging.getLogger(__name__)
 ModelType = TypeVar("ModelType", bound=BaseModel)
 
 
+def _wants_timezone(column_type: Any) -> bool:
+    """Return whether a column type stores an aware ``datetime``.
+
+    ``TIMESTAMP`` answers through its own ``timezone`` flag, but a
+    ``TypeDecorator`` — :class:`~tempest_fastapi_sdk.UtcDateTime`, or a
+    project's own — carries the flag on the type it wraps, so reading
+    the attribute off the outer type alone answers ``False`` for a
+    column that is in fact aware. The wrapped type is read through
+    ``impl_instance``, not ``impl``: the latter is the *class* on a
+    decorator that declares ``impl = TIMESTAMP``, and a class has no
+    ``timezone`` flag to find.
+
+    Args:
+        column_type (Any): The column's SQLAlchemy type.
+
+    Returns:
+        bool: ``True`` when values of this column carry a timezone.
+    """
+    seen: set[int] = set()
+    current = column_type
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        flag = getattr(current, "timezone", None)
+        if flag is not None:
+            return bool(flag)
+        current = getattr(current, "impl_instance", None) or getattr(
+            current,
+            "impl",
+            None,
+        )
+    return False
+
+
 def _coerce_cursor_value(column: Any, value: Any) -> Any:
     """Rehydrate a decoded cursor value into the column's Python type.
 
@@ -117,7 +150,7 @@ def _coerce_cursor_value(column: Any, value: Any) -> Any:
     try:
         if python_type is datetime:
             parsed = datetime.fromisoformat(value)
-            if getattr(column.type, "timezone", False):
+            if _wants_timezone(column.type):
                 return to_utc(parsed)
             return to_utc(parsed).replace(tzinfo=None)
         if python_type is date:

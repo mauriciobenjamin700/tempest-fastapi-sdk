@@ -1,0 +1,28 @@
+"""Table names for this project — the single source of truth.
+
+Every name shows up in at least two places: the ``__tablename__`` of the
+model and the string inside every ``ForeignKey`` that points at it.
+Keeping them here makes both sides come from the same symbol, so
+renaming a table is a one-line change and the editor's "find usages"
+answers who depends on it.
+
+Missing a foreign key while renaming does **not** fail on the spot:
+SQLAlchemy resolves the target only when it configures the mappers, so
+the error arrives at application startup — or inside a migration
+pointing at a table that no longer exists.
+
+This module imports nothing from the project, on purpose. It is only
+strings, which is what guarantees it can never take part in an import
+cycle: the models import from here, and nothing is imported back.
+
+The user table is the one plural name here. ``USER`` is a reserved word
+in standard SQL: SQLAlchemy quotes the identifier and the application
+works, but a ``SELECT * FROM user`` typed by hand in ``psql`` would
+return the database user instead of the table, with no error at all.
+"""
+
+USER_TABLE_NAME = "users"
+
+__all__: list[str] = [
+    "USER_TABLE_NAME",
+]

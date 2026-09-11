@@ -148,6 +148,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.signals.on_signal
 ::: tempest_fastapi_sdk.db.tenant.TenantScopedRepository
 ::: tempest_fastapi_sdk.db.mixins.SoftDeleteMixin
+::: tempest_fastapi_sdk.db.datetime_type.UtcDateTime
 ::: tempest_fastapi_sdk.db.mixins.AuditMixin
 ::: tempest_fastapi_sdk.db.mixins.MFAMixin
 ::: tempest_fastapi_sdk.db.mixins.NameMixin
@@ -1097,6 +1098,7 @@ o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.totp.TOTPHelper
 ::: tempest_fastapi_sdk.utils.email.EmailUtils
 ::: tempest_fastapi_sdk.utils.upload.UploadUtils
+::: tempest_fastapi_sdk.utils.upload.SNIFFABLE_MIMETYPES
 ::: tempest_fastapi_sdk.utils.download.DownloadUtils
 ::: tempest_fastapi_sdk.utils.file_store.FileStoreUtils
 ::: tempest_fastapi_sdk.utils.metrics.MetricsUtils

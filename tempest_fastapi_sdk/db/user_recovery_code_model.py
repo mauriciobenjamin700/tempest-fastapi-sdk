@@ -19,9 +19,10 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import TIMESTAMP, String
+from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
 
+from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.db.model import BaseModel
 
 
@@ -57,7 +58,7 @@ class BaseUserRecoveryCodeModel(BaseModel):
         doc="SHA-256 hex digest of the plaintext recovery code.",
     )
     used_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=True,
         default=None,
         doc=(
