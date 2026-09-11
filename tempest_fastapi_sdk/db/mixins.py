@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import TIMESTAMP, String, Uuid
+from sqlalchemy import String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
+from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.utils.datetime import utcnow
 
 
@@ -30,7 +31,7 @@ class SoftDeleteMixin:
     """
 
     deleted_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=True,
         default=None,
         doc=(
@@ -149,7 +150,7 @@ class MFAMixin:
         ),
     )
     totp_enabled_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=True,
         default=None,
         doc=(

@@ -41,6 +41,7 @@ from tempest_fastapi_sdk.db.connection import (
 from tempest_fastapi_sdk.db.connection import (
     shared_memory_url as shared_memory_url,
 )
+from tempest_fastapi_sdk.db.datetime_type import UtcDateTime as UtcDateTime
 from tempest_fastapi_sdk.db.device_token_model import (
     BaseDeviceTokenModel as BaseDeviceTokenModel,
 )
@@ -231,6 +232,7 @@ __all__: list[str] = [
     "TokenMatch",
     "UnsupportedBackupBackendError",
     "UserTokenPurpose",
+    "UtcDateTime",
     "WhereClause",
     "backfill_non_nullable_defaults",
     "clear_signals",

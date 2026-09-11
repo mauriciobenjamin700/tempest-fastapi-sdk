@@ -35,9 +35,10 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import TIMESTAMP, ForeignKey, String, Uuid
+from sqlalchemy import ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
+from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.db.model import BaseModel
 
 
@@ -95,18 +96,18 @@ class BaseUserRefreshTokenModel(BaseModel):
         doc="Rotation lineage — reuse detection / logout act on the family.",
     )
     expires_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=False,
         doc="UTC timestamp the token expires at.",
     )
     used_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=True,
         default=None,
         doc="UTC timestamp the token was rotated (single-use).",
     )
     revoked_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=True,
         default=None,
         doc="UTC timestamp the token was revoked (logout / reuse kill).",

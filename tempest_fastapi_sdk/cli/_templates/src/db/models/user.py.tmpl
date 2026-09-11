@@ -8,15 +8,22 @@ service grows.
 
 The class is imported by ``src.db.models.__init__`` so Alembic's
 ``--autogenerate`` picks it up via ``BaseModel.metadata``.
+
+The table name comes from ``src.db.configs`` rather than a literal, so
+the ``__tablename__`` here and every
+``ForeignKey(f"{USER_TABLE_NAME}.id")`` elsewhere read the same symbol — renaming the table is then one line
+instead of a grep.
 """
 
 from __future__ import annotations
 
 from tempest_fastapi_sdk import BaseUserModel
 
+from src.db.configs import USER_TABLE_NAME
+
 
 class UserModel(BaseUserModel):
-    """Concrete user row mapped to the ``users`` table.
+    """Concrete user row mapped to the users table.
 
     Inherits every column from :class:`BaseUserModel`: ``id``,
     ``email``, ``hashed_password``, ``is_admin``, ``last_login_at``,
@@ -24,7 +31,7 @@ class UserModel(BaseUserModel):
     (``is_active``, ``created_at``, ``updated_at``).
     """
 
-    __tablename__ = "users"
+    __tablename__ = USER_TABLE_NAME
 
 
 __all__: list[str] = [

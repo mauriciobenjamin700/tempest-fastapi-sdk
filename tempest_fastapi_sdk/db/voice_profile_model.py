@@ -26,9 +26,10 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import TIMESTAMP, Integer, LargeBinary, String
+from sqlalchemy import Integer, LargeBinary, String
 from sqlalchemy.orm import Mapped, mapped_column
 
+from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.db.model import BaseModel
 
 
@@ -95,7 +96,7 @@ class BaseVoiceProfileModel(BaseModel):
         doc="Embedding model that produced this vector.",
     )
     consent_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=False,
         doc="When the person consented to voice biometrics.",
     )
@@ -105,7 +106,7 @@ class BaseVoiceProfileModel(BaseModel):
         doc="Policy version, document id or ticket evidencing the consent.",
     )
     last_matched_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=True,
         default=None,
         doc="Last time this profile matched a voice.",

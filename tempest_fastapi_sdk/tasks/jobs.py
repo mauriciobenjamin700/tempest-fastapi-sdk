@@ -50,7 +50,6 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     JSON,
-    TIMESTAMP,
     CursorResult,
     Float,
     Integer,
@@ -63,6 +62,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.utils.datetime import utcnow
 
@@ -263,13 +263,13 @@ class BaseJobModel(BaseModel):
         doc="Claim budget before reclaim_stale gives up on the job.",
     )
     started_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=True,
         default=None,
         doc="When the current attempt was claimed.",
     )
     finished_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=True,
         default=None,
         doc="When the job reached a terminal status.",

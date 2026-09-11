@@ -5,6 +5,149 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.291.0] — 2026-09-11
+
+O módulo de chat vira mensageiro, e as quatro armadilhas que o
+consumidor achou pelo caminho viram superfície.
+
+### Added
+
+- **O módulo `chat` cobre o que uma thread entre pessoas precisa**
+  ([#273](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/273)).
+  O que o SDK entregava eram três tabelas com sete colunas somadas, e o
+  consumidor que precisava de um mensageiro reimplementava a camada
+  inteira em volta delas — o `tempest-zap` ficou com 10 tabelas, 7
+  repositories, 4 services e 4 routers sobre o que o SDK nomeava.
+
+  Entram, nas tabelas abstratas: `kind`, `client_id`, `reply_to_id`,
+  `forwarded_from_id`, `forward_score`, `edited_at`, `revoked_at` e
+  `payload` na mensagem; `role`, `joined_at`, `left_at`, `history_from`,
+  `muted_until`, `is_pinned`, `is_archived`, `last_read_at`,
+  `last_read_message_id` e `last_delivered_at` no participante; `kind`,
+  `description`, `avatar_path`, `created_by`, `last_message_at` e
+  `last_message_id` na conversa. Mais duas tabelas novas,
+  `BaseMessageAttachmentModel` e `BaseMessageReactionModel`, e os enums
+  `ConversationKind`, `ParticipantRole`, `MessageKind` e `SystemEvent`.
+
+  O `ChatService` ganhou `post_message` com `client_id` / `reply_to_id` /
+  `attachment_ids`, `edit_message`, `revoke_message`, `react`,
+  `unreact`, `forward`, `mark_read`, `mark_delivered`, `receipt_counts`,
+  `add_participants`, `remove_participant`, `leave`, `set_role`,
+  `update_conversation` e `set_preferences`; o `make_chat_router` expõe
+  todos, com a guarda de participante que agora trata quem **saiu** como
+  não-participante.
+
+  O que a superfície decide, e por que não deve ser decidido de novo em
+  cada serviço:
+
+  - **recibo é marca d'água no participante.** Uma linha por mensagem
+    por leitor é O(mensagens × participantes): num grupo de 200 pessoas
+    são 200 linhas por mensagem, e marcar a thread como lida é um bulk
+    insert. A marca d'água são 200 linhas no total e um `UPDATE`, e
+    `receipt_counts` deriva "quem leu" de
+    `last_read_at >= message.created_at`.
+  - **uma reação por pessoa**, substituída ao reagir de novo. É a
+    `UniqueConstraint(message_id, user_id)`; a constraint larga é o que
+    transforma double-tap em duas reações.
+  - **apagar para todos limpa o `body`** e mantém a linha, para a thread
+    guardar a forma e as respostas continuarem tendo o que citar. As
+    chaves de storage órfãs saem no retorno, porque o SDK não é dono do
+    bucket.
+  - **o stub da citação morre com a mensagem citada.** Sem o campo
+    `revoked` o texto apagado vaza pelo quote de quem respondeu — a
+    mensagem some da thread e continua legível dentro de cada resposta.
+  - **`client_id` torna o reenvio idempotente**, com unicidade por
+    `(sender_id, client_id)`: o retry devolve a linha gravada em vez de
+    postar a segunda.
+  - **conversa direta é idempotente por par.** Duas threads entre as
+    mesmas duas pessoas é um estado que o usuário não conserta pela UI, e
+    é o que acontece quando dois clientes abrem o mesmo chat ao mesmo
+    tempo. Sem `kind` declarado, até duas pessoas vira `DIRECT` e mais
+    que isso vira `GROUP` — o comportamento anterior continua válido.
+  - **`message_id` do anexo é nullable**, que é o desenho do upload em
+    duas etapas: a linha nasce quando os bytes chegam e a mensagem que a
+    reivindica pode não existir por mais um minuto. `NOT NULL` ali faz
+    todo upload falhar com erro de integridade.
+  - **quem entra num grupo não herda o backlog** (`history_from`
+    carimbado na entrada, `share_history=True` para entregar), e quem sai
+    mantém a linha com `left_at`, senão mensagem antiga perde o nome do
+    remetente.
+
+  Uma página de histórico custa um número **fixo** de queries, não um por
+  mensagem: anexos, reações e as mensagens citadas saem em um `IN` cada.
+  Medido numa página de 20 mensagens, resolvendo linha a linha eram 42
+  statements; em lote são 4, e continua 4 quando a página cresce.
+
+- **`UtcDateTime` — todo timestamp do SDK volta timezone-aware.** Medido
+  nesta suíte, mesma linha e mesmo processo: logo após o `commit()` o
+  default do Python deixa `created_at` aware, e o `SELECT` seguinte, no
+  SQLite, devolve a **mesma coluna naive** — então
+  `datetime.now(UTC) - row.created_at` levanta
+  `TypeError: can't subtract offset-naive and offset-aware datetimes`. O
+  PostgreSQL sempre devolveu aware, e é isso que tornava a divergência
+  invisível: código escrito contra um engine quebra no outro, nunca nos
+  dois. As 19 colunas de timestamp do SDK passam a usar o tipo novo; o
+  DDL emitido é idêntico nos dois dialetos (`TIMESTAMP WITH TIME ZONE` no
+  PostgreSQL, `TIMESTAMP` no SQLite), então não há migration para o
+  consumidor.
+
+  O `render_item` do Alembic passa a renderizar a coluna como
+  `sa.TIMESTAMP(timezone=True)`. Sem isso o autogenerate escrevia
+  `tempest_fastapi_sdk.db.datetime_type.UtcDateTime(timezone=True)` num
+  arquivo que nunca importa o pacote — medido, o `tempest db squash`
+  reportou `F821 Undefined name \`tempest_fastapi_sdk\`` na migration
+  gerada. É a mesma armadilha que o `TempestEnum` já tinha, e o mesmo
+  hook resolve as duas.
+
+  O tipo declara `python_type` explicitamente, porque `TypeDecorator`
+  levanta `NotImplementedError` ali — e quem pergunta antes de decidir
+  como tratar a coluna degrada em silêncio: o form do admin cairia para
+  input de texto num datetime, e a coerção de cursor deixaria a string
+  ISO sem converter. Pelo mesmo motivo o `impl` é declarado como
+  **instância** (`TIMESTAMP(timezone=True)`), não como a classe: com a
+  classe, `impl_instance.timezone` responde `False` para um tipo que é
+  sempre aware.
+
+- **`UploadUtils(require_known_signature=False)`.** Com
+  `verify_magic_bytes=True`, assinatura desconhecida era recusada — e
+  `.txt` / `.csv` não têm assinatura nenhuma, então um chat não
+  conseguia anexar texto. O modo novo recusa só quando a assinatura
+  **contradiz** o tipo declarado: `image/jpeg` sem assinatura de JPEG
+  continua sendo recusado, porque `image/jpeg` está no conjunto novo
+  `SNIFFABLE_MIMETYPES`.
+
+- **`UploadUtils.save(..., hasher=...)`.** O `content_validator` vê só o
+  primeiro chunk — a doc dizia isso, mas não dizia que por isso ele é
+  **inútil para checksum**: um SHA-256 acumulado lá dentro digere o
+  primeiro chunk e parece um digest do arquivo. O `hasher` recebe todos
+  os chunks enquanto o arquivo passa, sem segunda leitura do objeto.
+
+### Changed
+
+- **`tempest new` escreve `src/db/configs/names.py`.** A convenção já
+  estava documentada na página de arquitetura como opcional, e o projeto
+  nascia sem o arquivo — então cada serviço ou a reinventava ou escrevia
+  `__tablename__ = "users"` e a string da FK duas vezes. O scaffold passa
+  a trazer o módulo (só strings, sem import do projeto, para nunca entrar
+  num ciclo), o `UserModel` gerado lê `USER_TABLE_NAME` de lá, e a receita
+  de sete passos do `CLAUDE.md` do projeto começa por adicionar o nome
+  ali.
+
+  Cada bloco de código dessa receita passa a declarar o caminho do
+  arquivo na primeira linha (`# src/db/models/product.py`). O teste que
+  materializa a receita localizava os blocos **por posição**, então
+  acrescentar um passo reescrevia silenciosamente o arquivo errado no
+  projeto sob teste; agora ele lê o cabeçalho.
+
+- **`BaseSchema` documenta o que `use_enum_values=True` faz com enum**, e
+  um guard passa a varrer os schemas do pacote
+  (`tests/test_enum_schema_guard.py`). O campo guarda o **valor**, não o
+  membro: com `StrEnum` a igualdade sobrevive e só o `is` falha, mas com
+  `Enum` comum **até `==` é `False`** — medido nos dois casos. As duas
+  formas passam no type-checker, rodam sem erro e simplesmente nunca
+  entram no branch. Por isso todo enum de schema no SDK é
+  `BaseStrEnum`, e o guard recusa um que não seja.
+
 ## [0.290.0] — 2026-09-11
 
 A segunda página do cursor, o campo culpado no envelope, a frase em inglês no

@@ -17,9 +17,10 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from sqlalchemy import TIMESTAMP, ForeignKey, String
+from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
+from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.db.model import BaseModel
 
 
@@ -100,12 +101,12 @@ class BaseUserTokenModel(BaseModel):
         doc="What the token authorizes (UserTokenPurpose value).",
     )
     expires_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=False,
         doc="UTC timestamp the token expires at.",
     )
     used_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=True,
         default=None,
         doc="UTC timestamp the token was redeemed (one-shot).",

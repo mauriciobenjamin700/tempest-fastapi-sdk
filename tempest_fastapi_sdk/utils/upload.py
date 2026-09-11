@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -41,6 +41,19 @@ _MAGIC_SIGNATURES: tuple[tuple[bytes, str], ...] = (
     (b"BM", "image/bmp"),
     (b"%PDF-", "application/pdf"),
 )
+
+SNIFFABLE_MIMETYPES: frozenset[str] = frozenset(
+    {mime for _signature, mime in _MAGIC_SIGNATURES} | {"image/webp"},
+)
+"""The MIME types :func:`sniff_mime` can recognize from the bytes.
+
+A type outside this set carries no signature to check — plain text, CSV,
+JSON, most office and archive formats — so "no signature found" says
+nothing about it. Membership is what lets
+``require_known_signature=False`` tell a contradiction (declared
+``image/jpeg``, no JPEG signature) apart from an unverifiable upload
+(declared ``text/csv``, and text has no magic bytes).
+"""
 
 # MIME aliases treated as equivalent when comparing a sniffed type
 # against the declared ``Content-Type`` (no ``allowed_mimetypes`` set).
@@ -117,6 +130,12 @@ class UploadUtils:
             extension check.
         allowed_mimetypes (set[str] | None): Whitelist of MIME types
             (lowercase). ``None`` disables the MIME check.
+        require_known_signature (bool): With ``verify_magic_bytes`` on,
+            whether an upload whose signature is unrecognized is
+            rejected. ``True`` (the default, and the behaviour before
+            this option existed) rejects it; ``False`` rejects only a
+            **contradiction** — the declared type is one
+            :func:`sniff_mime` knows and the bytes do not carry it.
         verify_magic_bytes (bool): When ``True``, the first bytes of
             every upload are sniffed (:func:`sniff_mime`) and the
             detected type must be consistent with the declared type /
@@ -135,6 +154,7 @@ class UploadUtils:
         allowed_extensions: set[str] | None = None,
         allowed_mimetypes: set[str] | None = None,
         verify_magic_bytes: bool = False,
+        require_known_signature: bool = True,
         chunk_size: int = 1024 * 1024,
     ) -> None:
         """Initialize with a local directory, a MinIO client, or a backend.
@@ -164,6 +184,17 @@ class UploadUtils:
                 upload and reject content that does not match its
                 declared type / the allow-list. See the class
                 attribute docs for the caveat. Default ``False``.
+            require_known_signature (bool): Whether an upload whose
+                signature :func:`sniff_mime` does not recognize is
+                rejected. Only consulted when ``verify_magic_bytes`` is
+                on. ``True`` is the historical behaviour and the safe
+                default for an image-only allow-list; ``False`` is what
+                a general file store wants, because plain text, CSV and
+                JSON carry no signature at all and would otherwise be
+                refused outright. With ``False`` a contradiction is
+                still refused: declaring ``image/jpeg`` and sending
+                bytes with no JPEG signature fails, because
+                ``image/jpeg`` is in :data:`SNIFFABLE_MIMETYPES`.
             chunk_size (int): Stream read chunk in bytes. Defaults to
                 1 MiB; raise to trade memory for fewer syscalls.
 
@@ -207,6 +238,7 @@ class UploadUtils:
             else None
         )
         self.verify_magic_bytes: bool = verify_magic_bytes
+        self.require_known_signature: bool = require_known_signature
         self._chunk_size: int = chunk_size
 
     def validate(self, file: UploadFile) -> None:
@@ -280,13 +312,15 @@ class UploadUtils:
         detected = sniff_mime(prefix)
         declared = _canonical_mime((file.content_type or "").lower())
         if detected is None:
-            raise InvalidFileTypeException(
-                details={
-                    "reason": "unrecognized file signature; declared content"
-                    " type cannot be verified against the file's bytes",
-                    "declared": declared,
-                },
-            )
+            if self.require_known_signature or declared in SNIFFABLE_MIMETYPES:
+                raise InvalidFileTypeException(
+                    details={
+                        "reason": "unrecognized file signature; declared content"
+                        " type cannot be verified against the file's bytes",
+                        "declared": declared,
+                    },
+                )
+            return
 
         if self.allowed_mimetypes is not None:
             if detected not in self.allowed_mimetypes:
@@ -315,6 +349,7 @@ class UploadUtils:
         filename: str | None = None,
         keep_original_name: bool = False,
         content_validator: Callable[[bytes], bool] | None = None,
+        hasher: Any | None = None,
     ) -> Path:
         """Validate and persist ``file`` to the configured backend.
 
@@ -342,6 +377,18 @@ class UploadUtils:
                 partial object) before any further bytes are written —
                 e.g. ``lambda b: sniff_mime(b) in {"image/png"}``.
 
+                It sees **only that first chunk**, which is what makes
+                rejecting early cheap — and what makes it useless for
+                anything that must read the whole file. Accumulating a
+                SHA-256 inside it digests the first chunk and nothing
+                else, and the result looks like a valid digest of the
+                upload. Pass ``hasher`` for that.
+            hasher (Any | None): A ``hashlib`` object fed **every** chunk
+                as the file streams past, so the caller can read
+                ``hasher.hexdigest()`` after ``save`` returns without a
+                second pass over the stored object. Left ``None``,
+                nothing is hashed.
+
         Returns:
             Path: ``Path(storage_key)`` — the key to read the file back
             (``downloads.download(str(result))``). Call ``str(result)``
@@ -368,6 +415,7 @@ class UploadUtils:
             subdir=subdir,
             resolved_name=resolved_name,
             content_validator=content_validator,
+            hasher=hasher,
         )
 
     async def _save_via_storage(
@@ -378,6 +426,7 @@ class UploadUtils:
         subdir: str,
         resolved_name: str,
         content_validator: Callable[[bytes], bool] | None,
+        hasher: Any | None = None,
     ) -> Path:
         """Validate + persist through an :class:`UploadStorage` backend.
 
@@ -393,6 +442,8 @@ class UploadUtils:
                 :meth:`_resolve_filename`.
             content_validator (Callable[[bytes], bool] | None): Caller
                 predicate forwarded to :meth:`_verify_content`.
+            hasher (Any | None): ``hashlib`` object fed every chunk, or
+                ``None``.
 
         Returns:
             Path: ``Path(storage_key)`` so the return type stays
@@ -413,6 +464,8 @@ class UploadUtils:
                 if not first_chunk_verified:
                     first_chunk_verified = True
                     self._verify_content(chunk, file, content_validator)
+                if hasher is not None:
+                    hasher.update(chunk)
                 yield chunk
 
         await storage.write_stream(
@@ -492,6 +545,7 @@ class UploadUtils:
         filename: str | None = None,
         keep_original_name: bool = False,
         content_validator: Callable[[bytes], bool] | None = None,
+        hasher: Any | None = None,
     ) -> Path:
         """Save a new object and delete the one it replaces.
 
@@ -530,6 +584,7 @@ class UploadUtils:
             filename=filename,
             keep_original_name=keep_original_name,
             content_validator=content_validator,
+            hasher=hasher,
         )
         if old_key and str(old_key) != str(new_key):
             await self.delete(old_key)
@@ -537,6 +592,7 @@ class UploadUtils:
 
 
 __all__: list[str] = [
+    "SNIFFABLE_MIMETYPES",
     "UploadUtils",
     "sniff_mime",
 ]

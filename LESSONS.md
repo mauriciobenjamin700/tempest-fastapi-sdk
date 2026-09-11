@@ -5,6 +5,45 @@ existe: o defeito que shippou, o comando que mediu, o número que apareceu.
 Consulte quando a regra parecer exagerada — ela quase sempre é a cicatriz
 de algo que passou por revisão manual e escapou.
 
+## Trocar o tipo da coluna quebrou o codegen da migration (v0.291.0)
+
+`UtcDateTime` era um `TypeDecorator` sobre `TIMESTAMP(timezone=True)`,
+com DDL **idêntico** ao que as 19 colunas do SDK já emitiam. Nenhuma
+migration nova, nenhum diff de schema — e mesmo assim o
+`tempest db squash` do consumidor passou a gerar arquivo quebrado:
+
+```text
+F821 Undefined name `tempest_fastapi_sdk`
+  --> alembic/versions/2026_09_11_1819-ff7333e931d1_init.py:37:13
+   |
+37 |             tempest_fastapi_sdk.db.datetime_type.UtcDateTime(timezone=True),
+```
+
+O Alembic renderiza **todo tipo que não conhece** como caminho pontilhado
+para o pacote que o define, e o arquivo gerado nunca importa esse pacote.
+O `TempestEnum` já tinha exatamente essa cicatriz, e o hook que a curou
+(`render_item=render_enum_types`) estava a uma linha de cobrir a segunda:
+renderizar `sa.TIMESTAMP(timezone=True)`, que é o DDL real. A
+normalização em Python é comportamento do model, não do schema — uma
+migration não tem por que carregá-la.
+
+Três coisas para levar:
+
+1. **DDL idêntico não significa codegen idêntico.** A pergunta "isso
+   exige migration?" foi respondida certo (não exige) e mesmo assim o
+   consumidor quebrou, porque o autogenerate lê o *objeto Python*, não o
+   DDL.
+2. **Quem achou foi um teste de outra área.** A classe `TestDbSquash`, em
+   `tests/cli/test_db.py`, roda o squash de verdade e passa o ruff no
+   arquivo gerado — não havia
+   nada sobre datetime nele. Teste que exercita o caminho completo pega o
+   que o teste da unidade não tem como ver.
+3. **A cicatriz antiga já nomeava a classe do defeito.** A docstring de
+   `render_enum_types` descrevia o problema em geral ("caminho pontilhado
+   que a migration nunca importa") e ainda assim o tipo novo nasceu sem
+   passar por ela. Ao adicionar um tipo de coluna próprio, procure o hook
+   antes de procurar o sintoma.
+
 ## O teste fixou o byte errado com a justificativa deduzida do spec (v0.288.0)
 
 `ServerSentEvent.encode` escrevia uma linha `data:` em **todo** frame,

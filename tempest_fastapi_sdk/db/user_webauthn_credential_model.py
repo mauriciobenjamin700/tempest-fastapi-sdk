@@ -17,9 +17,10 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import TIMESTAMP, Boolean, Integer, LargeBinary, String
+from sqlalchemy import Boolean, Integer, LargeBinary, String
 from sqlalchemy.orm import Mapped, mapped_column
 
+from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.db.model import BaseModel
 
 
@@ -110,7 +111,7 @@ class BaseWebAuthnCredentialModel(BaseModel):
         doc="Whether the authenticator reported the credential as backed up.",
     )
     last_used_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True),
+        UtcDateTime,
         nullable=True,
         default=None,
         doc="Timestamp of the last successful assertion.",

@@ -147,10 +147,20 @@ def test_generated_base_page_is_the_inheritance_point(scaffolded: Path) -> None:
 def _write_domain_from_claude_md(project: Path) -> None:
     """Materialise the ``CLAUDE.md`` example into the scaffolded project.
 
-    The seven numbered code blocks are written to the exact paths the
-    document names, plus the re-exports it demands and the domain
-    exceptions from its error section. Nothing is edited on the way in —
-    an example that no longer works fails the test that follows.
+    Every recipe block is written to the path its own first line names
+    (``# src/db/models/product.py``), plus the re-exports the document
+    demands and the domain exceptions from its error section. Nothing is
+    edited on the way in — an example that no longer works fails the
+    test that follows.
+
+    Blocks are located by that header rather than by position: indexing
+    them made adding one block to the recipe break every later mapping,
+    silently writing the wrong file into the project under test.
+
+    ``src/db/configs/names.py`` is the one block the document asks you to
+    **extend**, not to write — the file already holds the user table's
+    name — so it is applied as an edit, together with the re-export the
+    recipe demands next to it.
 
     Args:
         project (Path): The scaffolded project root.
@@ -163,7 +173,16 @@ def _write_domain_from_claude_md(project: Path) -> None:
             re.DOTALL,
         )
     ]
-    listing = blocks[8]
+    by_path: dict[str, str] = {}
+    for block in blocks:
+        first = block.strip().splitlines()[0]
+        if first.startswith("# src/"):
+            by_path[first.removeprefix("# ").strip()] = block
+    listing = next(
+        block
+        for block in blocks
+        if 'tags=["products"])' in block and "BasePagination" in block
+    )
     pagination_imports = "".join(
         line + "\n"
         for line in listing.split("router: APIRouter", 1)[0].splitlines()
@@ -171,20 +190,47 @@ def _write_domain_from_claude_md(project: Path) -> None:
     )
     router_source = (
         pagination_imports
-        + blocks[6]
+        + by_path["src/api/routers/product.py"]
         + "\n"
         + listing.split('tags=["products"])', 1)[1]
     )
 
-    for relative, code in {
-        "src/schemas/product.py": blocks[0],
-        "src/db/models/product.py": blocks[1],
-        "src/db/repositories/product.py": blocks[2],
-        "src/services/product.py": blocks[3],
-        "src/controllers/product.py": blocks[4],
-        "src/api/dependencies/controllers.py": blocks[5],
-        "src/api/routers/product.py": router_source,
-    }.items():
+    names = project / "src" / "db" / "configs" / "names.py"
+    names.write_text(
+        names.read_text(encoding="utf-8").replace(
+            '__all__: list[str] = [\n    "USER_TABLE_NAME",\n]',
+            'PRODUCT_TABLE_NAME = "products"\n\n'
+            "__all__: list[str] = [\n"
+            '    "PRODUCT_TABLE_NAME",\n'
+            '    "USER_TABLE_NAME",\n'
+            "]",
+        ),
+        encoding="utf-8",
+    )
+    configs_init = project / "src" / "db" / "configs" / "__init__.py"
+    configs_init.write_text(
+        configs_init.read_text(encoding="utf-8")
+        .replace(
+            "from src.db.configs.names import USER_TABLE_NAME",
+            "from src.db.configs.names import PRODUCT_TABLE_NAME, USER_TABLE_NAME",
+        )
+        .replace(
+            '__all__: list[str] = [\n    "USER_TABLE_NAME",\n]',
+            "__all__: list[str] = [\n"
+            '    "PRODUCT_TABLE_NAME",\n'
+            '    "USER_TABLE_NAME",\n'
+            "]",
+        ),
+        encoding="utf-8",
+    )
+
+    written = {
+        path: code
+        for path, code in by_path.items()
+        if path not in {"src/api/routers/product.py", "src/db/configs/names.py"}
+    }
+    written["src/api/routers/product.py"] = router_source
+    for relative, code in written.items():
         destination = project.joinpath(*relative.split("/"))
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(code, encoding="utf-8")
@@ -236,7 +282,7 @@ def _write_domain_from_claude_md(project: Path) -> None:
             "    NotFoundException,\n"
             ")",
         )
-        + blocks[7].replace(
+        + by_path["src/core/exceptions.py"].replace(
             "from tempest_fastapi_sdk import ConflictException, NotFoundException\n",
             "",
         ),
@@ -312,3 +358,39 @@ def test_claude_md_pagination_block_matches_the_sdk_envelope(
     assert set(body) == {"items", "total", "page", "page_size", "pages"}
     assert len(body["items"]) == 2
     assert body["page_size"] == 2
+
+
+def test_table_names_come_from_one_symbol(scaffolded: Path) -> None:
+    """``__tablename__`` reads the constant, not a literal.
+
+    A table name shows up in at least two places — the model's
+    ``__tablename__`` and the string inside every ``ForeignKey`` that
+    points at it — and SQLAlchemy resolves the FK target only when it
+    configures the mappers. So a rename that misses one side fails at
+    application startup, or inside a migration pointing at a table that
+    no longer exists, rather than where it was typed.
+    """
+    from src.db.configs import USER_TABLE_NAME  # type: ignore[import-not-found]
+    from src.db.models import UserModel  # type: ignore[import-not-found]
+
+    assert UserModel.__tablename__ is USER_TABLE_NAME
+    assert UserModel.__table__.name == "users"
+
+    source = (scaffolded / "src" / "db" / "models" / "user.py").read_text()
+    assert "__tablename__ = USER_TABLE_NAME" in source
+    assert '__tablename__ = "users"' not in source
+
+
+def test_the_names_module_imports_nothing_from_the_project(
+    scaffolded: Path,
+) -> None:
+    """It is only strings, which is what keeps it out of import cycles.
+
+    The models import from here; nothing is imported back. An import of
+    the project inside this module would put it in the cycle the layout
+    exists to avoid.
+    """
+    source = (scaffolded / "src" / "db" / "configs" / "names.py").read_text()
+
+    assert "import" not in source.split('"""')[-1]
+    assert "USER_TABLE_NAME" in source

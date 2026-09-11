@@ -64,7 +64,7 @@ The repository **MUST** be a [`BaseRepository[ModelType]`][tempest_fastapi_sdk.B
     ├── schemas/                     # Pydantic v2 request/response DTOs
     ├── core/                        # settings.py + constants + exceptions + logging
     ├── db/ (optional)
-    │   ├── configs/names.py         # table names, single source (optional)
+    │   ├── configs/names.py         # table names, single source
     │   ├── models/                  # SQLAlchemy ORM models
     │   └── repositories/            # Data access layer
     ├── ui/ (optional)               # interface layer — only with the [ssr] extra
@@ -77,10 +77,17 @@ The repository **MUST** be a [`BaseRepository[ModelType]`][tempest_fastapi_sdk.B
     └── tasks/ (optional)            # TaskIQ background tasks
 ```
 
-!!! tip "`db/configs/names.py` is optional, but rules out a class of error"
+!!! tip "`db/configs/names.py` rules out a class of error"
     Holding each table name in a constant makes `__tablename__` and the
     `ForeignKey` string come from the same symbol — renaming becomes one
-    line instead of a hunt for scattered strings. See
+    line instead of a hunt for scattered strings. Missing one side does
+    not fail on the spot: SQLAlchemy resolves the FK target only when it
+    configures the mappers, so the error arrives at application startup,
+    or inside a migration pointing at a table that no longer exists.
+
+    As of **v0.291.0** `tempest new` writes the file with the user
+    table's name already in it, and the project's `CLAUDE.md` teaches the
+    recipe from there. See
     [Database › Centralizing table names](recipes/database.md#centralizing-table-names).
 
 !!! warning "Rules that are not negotiable"
