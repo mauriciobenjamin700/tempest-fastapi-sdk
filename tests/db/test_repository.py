@@ -460,11 +460,22 @@ class TestComparisonOperators:
         result = await sync_repo.list(filters={"value__ne": 2})
         assert sorted(r.value for r in result) == [1, 3]
 
-    async def test_none_value_skips_operator(
+    async def test_none_value_skips_operator_but_says_so(
         self, sync_repo: SyncItemRepository
     ) -> None:
+        """``None`` has no reading for ``gt``, so the key is dropped — loudly.
+
+        Dropping it widens the query to every row, which is the shape
+        that made the old blanket ``None`` handling expensive, so the
+        one case that still drops has to announce itself.
+        """
+        from tempest_fastapi_sdk import DroppedFilterWarning
+
         await sync_repo.add_all([SyncItem(name=f"i{n}", value=n) for n in (1, 2, 3)])
-        result = await sync_repo.list(filters={"value__gt": None})
+
+        with pytest.warns(DroppedFilterWarning, match="value__gt"):
+            result = await sync_repo.list(filters={"value__gt": None})
+
         assert len(result) == 3
 
     async def test_unknown_op_suffix_is_ignored(

@@ -72,6 +72,9 @@ from tempest_fastapi_sdk.db.explain import ExplainDetail as ExplainDetail
 from tempest_fastapi_sdk.db.explain import ExplainReport as ExplainReport
 from tempest_fastapi_sdk.db.explain import QueryPlan as QueryPlan
 from tempest_fastapi_sdk.db.explain import explain_queries as explain_queries
+from tempest_fastapi_sdk.db.expressions import (
+    DroppedFilterWarning as DroppedFilterWarning,
+)
 from tempest_fastapi_sdk.db.expressions import F as F
 from tempest_fastapi_sdk.db.expressions import Q as Q
 from tempest_fastapi_sdk.db.expressions import WhereClause as WhereClause
@@ -205,6 +208,7 @@ __all__: list[str] = [
     "ColumnRef",
     "DatabaseBackup",
     "DestructiveMigrationError",
+    "DroppedFilterWarning",
     "EnumColumnRef",
     "EnumTypeState",
     "ExplainDetail",

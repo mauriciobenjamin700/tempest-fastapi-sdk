@@ -2081,3 +2081,23 @@ passaram a declarar o caminho do arquivo na primeira linha, porque o
 teste que materializa o `CLAUDE.md` os localizava **por posição** —
 acrescentar um passo reescrevia em silêncio o arquivo errado no projeto
 sob teste.
+
+## O filtro `None` vira `IS NULL`, v0.292.0 (2026-09-12)
+
+`{"col": None}` descartava a chave: o filtro sumia e a query devolvia
+tudo. Falha silenciosa na direção de **mais** linhas — a direção em que
+ninguém olha. No consumidor, `{"left_at": None}` casava quem já tinha
+saído do grupo, e o fan-out de WebSocket seguia entregando mensagem a
+essas pessoas.
+
+Corrigido em `build_filter_condition`, que o `Q` também usa (tinha o
+mesmo descarte). Onde `None` não tem leitura — `__gt`, `__in`,
+`__between` — segue descartando, agora com `DroppedFilterWarning`
+nomeando a chave; `start_in`/`end_in` seguem silenciosos de propósito,
+porque ali `None` é "sem limite".
+
+O que mais importa registrar: **a doc do SDK já ensinava o uso que o
+código descartava**. A receita mandava esconder soft-deleted passando
+`deleted_at=None` e, trinta linhas depois, escrevia query crua "porque
+`_apply_filters` pula `None`". Duas frases contraditórias na mesma
+página, e a errada era a que o leitor copiava.

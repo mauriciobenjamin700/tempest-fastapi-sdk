@@ -1080,8 +1080,9 @@ Operadores de sufixo `campo__op` disponíveis (no `Q` **e** no dict):
 ## 4. Filtros por convenção
 
 Todos os métodos que recebem `filters: dict[str, Any]` passam pelo mesmo
-motor. Um valor `None` **sempre pula** a condição (filtro ausente ≠
-`WHERE col IS NULL`). As convenções:
+motor. Um valor `None` significa **`IS NULL`**, como em qualquer ORM:
+`{"deleted_at": None}` casa as linhas que nunca foram apagadas. As
+convenções:
 
 | Chave / valor | SQL gerado | Exemplo |
 | --- | --- | --- |
@@ -1191,12 +1192,28 @@ asyncio.run(main())
 ```
 
 O front chama `?category_id__in=1&category_id__in=2&price__between=10&price__between=20`
-e o FastAPI monta o schema via `Depends()`. Um `None` some (filtro ausente),
-então o cliente manda só os campos que quer.
+e o FastAPI monta o schema via `Depends()`. O `get_conditions()` do schema
+remove os campos não preenchidos **antes** de montar o dict
+(`to_dict(exclude_none=True)`), então o cliente manda só os campos que quer
+e um `None` do schema nunca chega ao repositório como `IS NULL`.
 
-**Recap:** um dict, convenções previsíveis, `None` pula. Strings em `name`
-viram busca ILIKE; sufixos `__op` dão comparações precisas; `None` nunca
-vira `IS NULL`. Toda paginação herda esses operadores só declarando o campo.
+!!! warning "`None` mudou de significado na v0.292.0"
+    Antes, um `None` no dict **descartava a chave** — o filtro sumia e a
+    query devolvia *tudo*. Era o modo de falha mais caro possível: falha
+    silenciosa, na direção de **mais** linhas. Medido num consumidor,
+    `{"left_at": None}` (a grafia óbvia de "ainda é membro") casava também
+    quem tinha saído, e o fan-out de WebSocket construído a partir disso
+    continuava entregando as mensagens do grupo a essas pessoas.
+
+    Quem montava o dict à mão com chaves opcionais e contava com o
+    descarte precisa passar a omitir a chave — ou usar
+    `get_conditions()`, que já faz isso. Onde `None` não tem leitura
+    nenhuma (`__gt`, `__between`, `__in`), a condição continua sendo
+    descartada, agora com um `DroppedFilterWarning` nomeando a chave.
+
+**Recap:** um dict, convenções previsíveis, `None` é `IS NULL`. Strings em
+`name` viram busca ILIKE; sufixos `__op` dão comparações precisas.
+Toda paginação herda esses operadores só declarando o campo.
 
 ---
 
@@ -1360,11 +1377,8 @@ usuário atual está em escopo:
 # src/services/user.py
 from uuid import UUID
 
-from sqlalchemy import select
-
 from tempest_fastapi_sdk import BaseService
 
-from src.db.models import UserModel
 from src.db.repositories import UserRepository
 from src.schemas import UserResponse, UserUpdateSchema
 
@@ -1375,17 +1389,10 @@ class UserService(BaseService[UserRepository, UserResponse]):
     async def list_alive(self) -> list[UserResponse]:
         """Return only rows where ``deleted_at IS NULL``.
 
-        ``_apply_filters`` skips ``None`` by design (filtro ausente !=
-        ``IS NULL``), so the ``IS NULL`` clause must be issued as a raw
-        SQLAlchemy query bound to the same session.
-
         Returns:
             list[UserResponse]: The alive users.
         """
-        result = await self.repository.session.execute(
-            select(UserModel).where(UserModel.deleted_at.is_(None))
-        )
-        instances = result.scalars().all()
+        instances = await self.repository.list(filters={"deleted_at": None})
         return [self.repository.map_to_response(i) for i in instances]
 
     async def update(
