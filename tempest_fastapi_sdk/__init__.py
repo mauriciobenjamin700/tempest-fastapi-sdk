@@ -785,6 +785,9 @@ from tempest_fastapi_sdk.db import (
     DestructiveMigrationError as DestructiveMigrationError,
 )
 from tempest_fastapi_sdk.db import (
+    DroppedFilterWarning as DroppedFilterWarning,
+)
+from tempest_fastapi_sdk.db import (
     EnumColumnRef as EnumColumnRef,
 )
 from tempest_fastapi_sdk.db import (
@@ -1920,6 +1923,7 @@ __all__: list[str] = [
     "DeviceService",
     "DiskMetrics",
     "DownloadUtils",
+    "DroppedFilterWarning",
     "EmailChangeConfirmSchema",
     "EmailChangeRequestSchema",
     "EmailChangeResponseSchema",

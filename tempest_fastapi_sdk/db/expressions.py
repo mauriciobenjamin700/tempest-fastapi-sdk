@@ -30,6 +30,7 @@ works for any model the repository is bound to.
 from __future__ import annotations
 
 import operator
+import warnings
 from collections.abc import Callable, Iterable, Mapping
 from datetime import date
 from typing import Any, cast
@@ -45,6 +46,27 @@ COMPARISON_OPS: dict[str, Callable[[Any, Any], Any]] = {
     "lte": operator.le,
     "ne": operator.ne,
 }
+
+
+class DroppedFilterWarning(UserWarning):
+    """Warns that a filter key was ignored instead of applied.
+
+    Raised when a ``None`` reaches an operator that cannot express it —
+    ``{"price__gt": None}``, ``{"id__in": None}`` — so the condition is
+    dropped and the query answers with **more** rows than the caller
+    asked for. That silent widening is the shape the old ``None``
+    handling had everywhere, and it is expensive precisely because the
+    result still looks plausible.
+
+    Silence it per-project when a dict is deliberately built with
+    optional keys::
+
+        import warnings
+
+        from tempest_fastapi_sdk import DroppedFilterWarning
+
+        warnings.filterwarnings("ignore", category=DroppedFilterWarning)
+    """
 
 
 def escape_like(value: str) -> str:
@@ -170,6 +192,8 @@ def build_filter_condition(
       ``isnull`` (``IS NULL`` when truthy, ``IS NOT NULL`` when falsy),
       ``contains`` / ``icontains`` / ``startswith`` / ``endswith``
       (case-insensitive ``ILIKE`` substring / prefix / suffix, escaped).
+    * ``None`` on a bare column → ``col IS NULL``; on ``__ne`` →
+      ``col IS NOT NULL``.
     * ``name`` (string) → case-insensitive ``ILIKE %value%``.
     * ``bool`` → ``.is_(value)``.
     * ``date`` → ``func.date(column) == value`` whole-day match.
@@ -177,9 +201,23 @@ def build_filter_condition(
       ``range`` / generator / ``dict`` view) → ``.in_(value)``.
     * otherwise → equality.
 
-    A ``None`` value (except ``isnull``, whose value is a bool), an
-    unknown column, or an unknown operator yields ``None`` (the caller
+    An unknown column or an unknown operator yields ``None`` (the caller
     skips the condition).
+
+    ``None`` used to be dropped the same way, which was the wrong
+    default in the worst direction: ``{"left_at": None}`` — the obvious
+    spelling of "still a member" — silently matched **every** row, so
+    the query returned *more* than asked for. Measured in a consumer,
+    that meant someone who had left a group kept receiving its
+    messages. A filter that errs toward fewer rows shows up as an empty
+    screen on the first manual test; this one shows up as data nobody
+    looks at twice.
+
+    ``None`` now means ``IS NULL``, as in any ORM. Where it has no
+    reading at all — ``__gt``, ``__between``, ``__in`` and friends — the
+    condition is still dropped, but with a
+    :class:`DroppedFilterWarning` naming the key, because silence is
+    what made the original defect expensive.
 
     Args:
         model (type[Any]): The model class the field belongs to.
@@ -190,9 +228,9 @@ def build_filter_condition(
         ColumnElement[bool] | None: The condition, or ``None`` to skip.
 
     Notes:
-        ``isnull`` is handled before the "a ``None`` value skips the
-        filter" rule, because it legitimately carries a boolean that may be
-        ``False``.
+        ``isnull`` is handled first, because it legitimately carries a
+        boolean that may be ``False`` — and ``{"col__isnull": False}``
+        must stay ``IS NOT NULL`` rather than being read as "no filter".
     """
     if "__" in field and field.rpartition("__")[2] == "isnull":
         base = field.rpartition("__")[0]
@@ -204,14 +242,24 @@ def build_filter_condition(
             column.is_(None) if value else column.isnot(None),
         )
 
-    if value is None:
-        return None
-
     condition: Any
     if "__" in field:
         base, _, op = field.rpartition("__")
         op_column = getattr(model, base, None)
         if op_column is None:
+            return None
+        if value is None:
+            if op == "ne":
+                return cast("ColumnElement[bool]", op_column.isnot(None))
+            warnings.warn(
+                f"filter {field!r} was given None, which has no meaning for "
+                f"the {op!r} operator, so the condition is dropped and the "
+                f"query returns MORE rows than intended. Use "
+                f"{{'{base}__isnull': True}} to match NULL, or leave the key "
+                f"out.",
+                DroppedFilterWarning,
+                stacklevel=3,
+            )
             return None
         condition = _suffix_condition(op_column, op, value)
         if condition is None:
@@ -220,6 +268,8 @@ def build_filter_condition(
         column = getattr(model, field, None)
         if column is None:
             return None
+        if value is None:
+            return cast("ColumnElement[bool]", column.is_(None))
         if field == "name" and isinstance(value, str):
             condition = column.ilike(f"%{escape_like(value)}%", escape="\\")
         elif isinstance(value, bool):

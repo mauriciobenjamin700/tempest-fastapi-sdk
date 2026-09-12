@@ -5,6 +5,34 @@ existe: o defeito que shippou, o comando que mediu, o número que apareceu.
 Consulte quando a regra parecer exagerada — ela quase sempre é a cicatriz
 de algo que passou por revisão manual e escapou.
 
+## A doc ensinava o que o código descartava (v0.292.0)
+
+`_apply_filters` descartava qualquer valor `None`, e a receita de banco
+do próprio SDK dizia, na seção de soft delete:
+
+> Esconda linhas soft-deleted passando `deleted_at=None`.
+
+Isso **nunca funcionou**. Trinta linhas adiante, na mesma página, o
+exemplo `list_alive` escrevia a query crua com a justificativa correta —
+"`_apply_filters` pula `None`". Duas frases contraditórias na mesma
+página, e a que o leitor copia é a curta.
+
+O defeito de código foi consertado (`None` agora é `IS NULL`), mas a
+lição é sobre a prosa:
+
+1. **Contradição interna é sinal barato e ninguém procura.** As duas
+   frases estavam a trinta linhas uma da outra, versionadas juntas,
+   revisadas juntas. `grep` do símbolo (`deleted_at=None`) numa página
+   teria achado as duas em um segundo.
+2. **Uma justificativa técnica dentro de um exemplo é uma afirmação
+   sobre o comportamento** — e, como toda afirmação, precisa ser medida
+   ou sair. A docstring de `list_alive` estava certa sobre o código e
+   errada sobre a recomendação ao lado.
+3. **O modo de falha decide a urgência.** Um filtro que erra para menos
+   vira tela vazia no primeiro teste manual; um que erra para mais vira
+   dado a mais que parece plausível em toda tela. Ao escolher o
+   comportamento de um caso ambíguo, prefira o que falha visível.
+
 ## Trocar o tipo da coluna quebrou o codegen da migration (v0.291.0)
 
 `UtcDateTime` era um `TypeDecorator` sobre `TIMESTAMP(timezone=True)`,

@@ -1081,8 +1081,9 @@ Available `field__op` suffix operators (in `Q` **and** the dict):
 ## 4. Convention-based filters
 
 Every method that takes `filters: dict[str, Any]` goes through the same
-engine. A `None` value **always skips** the condition (a missing filter ≠
-`WHERE col IS NULL`). The conventions:
+engine. A `None` value means **`IS NULL`**, as in any ORM:
+`{"deleted_at": None}` matches the rows that were never deleted. The
+conventions:
 
 | Key / value | Generated SQL | Example |
 | --- | --- | --- |
@@ -1193,13 +1194,30 @@ asyncio.run(main())
 ```
 
 The frontend calls `?category_id__in=1&category_id__in=2&price__between=10&price__between=20`
-and FastAPI builds the schema via `Depends()`. A `None` drops out (absent
-filter), so the client sends only the fields it wants.
+and FastAPI builds the schema via `Depends()`. The schema's
+`get_conditions()` drops the fields that were not filled **before** the
+dict is built (`to_dict(exclude_none=True)`), so the client sends only
+the fields it wants and a `None` from the schema never reaches the
+repository as `IS NULL`.
 
-**Recap:** one dict, predictable conventions, `None` skips. Strings on
-`name` become ILIKE searches; `__op` suffixes give precise comparisons;
-`None` never becomes `IS NULL`. Every paginated listing inherits these
-operators just by declaring the field.
+!!! warning "`None` changed meaning in v0.292.0"
+    It used to **drop the key** — the filter vanished and the query
+    returned *everything*. That is the most expensive failure shape
+    available: silent, and in the direction of **more** rows. Measured
+    in a consumer, `{"left_at": None}` (the obvious spelling of "still a
+    member") also matched people who had left, and the WebSocket
+    fan-out built from it kept delivering the group's messages to them.
+
+    If you built the dict by hand with optional keys and relied on the
+    drop, leave the key out instead — or use `get_conditions()`, which
+    already does. Where `None` has no reading at all (`__gt`,
+    `__between`, `__in`), the condition is still dropped, now with a
+    `DroppedFilterWarning` naming the key.
+
+**Recap:** one dict, predictable conventions, `None` is `IS NULL`.
+Strings on `name` become ILIKE searches; `__op` suffixes give precise
+comparisons. Every paginated listing inherits these operators just by
+declaring the field.
 
 ---
 
@@ -1362,11 +1380,8 @@ where the current user is in scope:
 # src/services/user.py
 from uuid import UUID
 
-from sqlalchemy import select
-
 from tempest_fastapi_sdk import BaseService
 
-from src.db.models import UserModel
 from src.db.repositories import UserRepository
 from src.schemas import UserResponse, UserUpdateSchema
 
@@ -1377,17 +1392,10 @@ class UserService(BaseService[UserRepository, UserResponse]):
     async def list_alive(self) -> list[UserResponse]:
         """Return only rows where ``deleted_at IS NULL``.
 
-        ``_apply_filters`` skips ``None`` by design (a missing filter !=
-        ``IS NULL``), so the ``IS NULL`` clause must be issued as a raw
-        SQLAlchemy query bound to the same session.
-
         Returns:
             list[UserResponse]: The alive users.
         """
-        result = await self.repository.session.execute(
-            select(UserModel).where(UserModel.deleted_at.is_(None))
-        )
-        instances = result.scalars().all()
+        instances = await self.repository.list(filters={"deleted_at": None})
         return [self.repository.map_to_response(i) for i in instances]
 
     async def update(

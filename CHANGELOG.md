@@ -5,6 +5,62 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.292.0] — 2026-09-12
+
+`{"col": None}` deixa de sumir e passa a significar `IS NULL`.
+
+### Fixed
+
+- **Filtro `None` gerava `IS NULL`, não o descarte da chave**
+  ([#276](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/276)).
+  `BaseRepository.list({"left_at": None})` — e `count`, `exists`,
+  `paginate`, `delete_many`, tudo que passa por `_apply_filters` —
+  **descartava a chave**. O filtro sumia e a query devolvia todas as
+  linhas.
+
+  O modo de falha é o mais caro que existe: silencioso e na direção de
+  **mais** resultado. Um filtro que errasse para menos apareceria como
+  tela vazia no primeiro teste manual; esse aparece como dado a mais, que
+  é exatamente onde ninguém olha duas vezes. Medido no consumidor que
+  abriu a issue, `{"left_at": None}` — a grafia óbvia de "ainda é
+  membro" — casava também quem tinha saído do grupo, e o fan-out de
+  WebSocket construído a partir dela **continuava entregando as
+  mensagens do grupo a essas pessoas**. Sair não parava a entrega.
+
+  Agora `None` numa coluna simples é `col IS NULL`, e em `__ne` é
+  `col IS NOT NULL`. A correção fica em `build_filter_condition`, que o
+  `Q` também usa — `Q(left_at=None)` tinha o mesmo descarte silencioso.
+
+  Onde `None` não tem leitura nenhuma (`__gt`, `__gte`, `__lt`, `__lte`,
+  `__between`, `__in`, `__like`, …) a condição continua sendo descartada,
+  porque não há com o que comparar — mas agora emite
+  **`DroppedFilterWarning`** nomeando a chave e apontando
+  `{"col__isnull": True}`. O par `start_in` / `end_in` é a exceção
+  deliberada: são as duas pontas de uma faixa, então `None` ali continua
+  significando "sem limite deste lado", em silêncio.
+
+  **A própria documentação do SDK já ensinava o uso que o código
+  descartava.** A receita de banco mandava "esconder linhas
+  soft-deleted passando `deleted_at=None`" e, trinta linhas adiante,
+  escrevia a query crua num exemplo porque "`_apply_filters` pula
+  `None`". Quem seguiu a primeira frase listou linha apagada. As duas
+  passagens foram corrigidas, e o exemplo voltou a caber em uma linha.
+
+### Migração
+
+Quem montava o dict à mão com chaves opcionais e **contava com o
+descarte** precisa omitir a chave:
+
+```python
+filters: dict[str, Any] = {"user_id": user_id}
+if status is not None:
+    filters["status"] = status
+```
+
+O caminho canônico do SDK não muda: `get_conditions()` chama
+`to_dict(exclude_none=True)`, então um campo não preenchido do schema de
+filtro nunca chegou — e continua não chegando — ao repositório.
+
 ## [0.291.0] — 2026-09-11
 
 O módulo de chat vira mensageiro, e as quatro armadilhas que o

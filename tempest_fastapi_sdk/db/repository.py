@@ -207,8 +207,14 @@ class BaseRepository(Generic[ModelType]):
       ``contains`` / ``icontains`` / ``startswith`` / ``endswith`` (escaped
       ``ILIKE``). Comparison suffixes are timestamp-precise, unlike
       ``start_in`` / ``end_in`` (whole-day); this is what delta-sync queries
-      filter on. A ``None`` value skips the condition, like every other
-      filter.
+      filter on. A ``None`` value on one of these suffixes has nothing to
+      compare against, so the condition is dropped **with a**
+      :class:`~tempest_fastapi_sdk.DroppedFilterWarning`.
+    * ``None`` on a bare column → ``col IS NULL``
+      (``{"deleted_at": None}`` matches what was never deleted), and on
+      ``__ne`` → ``col IS NOT NULL``. It used to be dropped, which
+      silently widened the query to every row — see
+      :func:`~tempest_fastapi_sdk.build_filter_condition`.
 
     All error messages can be customized per repository instance via
     the constructor kwargs (``not_found_message``,
@@ -568,6 +574,12 @@ class BaseRepository(Generic[ModelType]):
         :func:`build_filter_condition`; the ``start_in`` / ``end_in``
         whole-day range keys are dict-only sugar handled here.
 
+        A ``None`` value means ``IS NULL`` on a bare column, so
+        ``{"deleted_at": None}`` matches the rows that were never
+        deleted. The exception is the ``start_in`` / ``end_in`` pair,
+        where ``None`` keeps meaning "no bound on this side" — they are
+        the two ends of a range, not a value to match.
+
         Args:
             query: The SQLAlchemy ``Select``, ``Delete`` or
                 ``Update`` to mutate.
@@ -577,7 +589,7 @@ class BaseRepository(Generic[ModelType]):
             The same query with the additional ``WHERE`` clauses.
         """
         for field, value in filters.items():
-            if value is None:
+            if field in ("start_in", "end_in") and value is None:
                 continue
 
             if field in ("start_in", "end_in") and isinstance(value, date):
