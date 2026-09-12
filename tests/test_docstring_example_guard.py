@@ -128,7 +128,8 @@ class TestTheGuardFires:
         module.write_text(
             '"""Coalesce concurrent calls.\n\n'
             "    Example:\n\n"
-            "        >>> async def embed_batch(texts: list[str]) -> list[list[float]]:\n"
+            "        >>> async def embed_batch(texts: list[str])"
+            " -> list[list[float]]:\n"
             "        ...     return await embedder._embed_many(texts)\n"
             '"""\n',
             encoding="utf-8",
@@ -147,7 +148,8 @@ class TestTheGuardFires:
         module.write_text(
             '"""Coalesce concurrent calls.\n\n'
             "    Example:\n\n"
-            "        >>> async def embed_batch(texts: list[str]) -> list[list[float]]:\n"
+            "        >>> async def embed_batch(texts: list[str])"
+            " -> list[list[float]]:\n"
             "        ...     return await embedder.embed(texts)\n"
             '"""\n',
             encoding="utf-8",
