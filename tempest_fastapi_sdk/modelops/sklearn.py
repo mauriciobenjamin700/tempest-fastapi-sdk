@@ -471,10 +471,11 @@ That comparison also **relocates the defect**. It was previously recorded
 here as a ``skl2onnx`` conversion bug; since the converter, scikit-learn
 and ``onnx`` were byte-identical across the two runs, the graph was
 always right and the fault was in ``onnxruntime``'s ``ai.onnx.ml``
-TreeEnsemble evaluation. The SDK's floor moved to ``onnxruntime>=1.28``
-so a normal install cannot hit it; the runtime is still checked at call
-time, because a floor only binds the resolver and an environment assembled
-around it would otherwise fail silently.
+TreeEnsemble evaluation. The SDK's declared floor is
+``onnxruntime>=1.29.0``, above this one, so a normal install cannot hit
+it; the runtime is still checked at call time, because a floor only binds
+the resolver and an environment assembled around it would otherwise fail
+silently.
 """
 
 

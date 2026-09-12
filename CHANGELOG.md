@@ -5,6 +5,48 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.292.2] — 2026-09-12
+
+Duas docstrings que a auditoria de prosa pegou, e o guard que faltava
+para a classe delas. Nenhum comportamento muda.
+
+### Fixed
+
+- **O exemplo de `BatchScheduler` levantava `TypeError`.** A docstring
+  mandava `return await embedder._embed_many(texts)`. O método é privado
+  **e síncrono**, e o scheduler faz `await handler(batch)`, então o
+  snippet documentado quebra na primeira chamada:
+  `TypeError: object list can't be used in 'await' expression`. Agora usa
+  o `embed` público, que já é coroutine, e a docstring diz por que o
+  privado não serve.
+
+  O mesmo `emb._embed_many` passado ao `BatchScheduler` **já tinha sido
+  corrigido na v0.257.0**, entre os 162 achados da primeira passada do
+  `test_docs_type_guard` sobre 1999 blocos de código. Ele sobreviveu em
+  dois lugares que aquele guard não lê: esta docstring e um bullet de
+  prosa escrito com crases em vez de cerca — corrigido no commit de docs
+  anterior a esta release.
+
+- **O piso do `onnxruntime` estava desatualizado em `sklearn.py`.** A
+  docstring dizia "The SDK's floor moved to `onnxruntime>=1.28`"; o
+  `pyproject.toml` declara `>=1.29.0` nos três extras desde o bump em
+  lote. A constante `BINARY_TREE_FIXED_IN_ONNXRUNTIME = (1, 28)` e a
+  mensagem de aviso continuam intactas e corretas — 1.28.0 é onde o
+  defeito do upstream foi corrigido, e é outra afirmação que a de piso.
+
+### Added
+
+- **`tests/test_docstring_example_guard.py`** — nenhuma linha `>>>` de
+  docstring chama atributo privado do pacote. É a régua estreita que
+  teria pegado o defeito acima: os guards de exemplo deste repo leem
+  bloco markdown cercado, e a referência de API renderiza **docstring**,
+  então o leitor que copia de lá estava fora de cobertura. Hoje há 139
+  docstrings com exemplo `>>>` no pacote e zero violações. Quatro testes
+  fixam o guard: a forma que shippou falha, a forma corrigida passa, a
+  prosa que apenas **cita** o nome privado não dispara (a própria
+  correção a contém) e `docstring-guard: skip` isenta uma linha
+  deliberada.
+
 ## [0.292.1] — 2026-09-12
 
 A v0.292.0 corrigiu o código e deixou **quatro** passagens ensinando o
