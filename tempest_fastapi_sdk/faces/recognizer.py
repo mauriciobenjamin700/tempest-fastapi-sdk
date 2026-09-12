@@ -4,12 +4,18 @@
 embed. It loads lazily and runs inference in a worker thread, matching
 the rest of the SDK's model wrappers.
 
-Measured separation on the default model pack, using a six-person group
-photo: the same face across a re-encoded, rescaled, rotated and mirrored
-crop scored **0.904-0.960**, while every pair of different people topped
-out at **0.225**. That gap is wide enough that the threshold is not a
-delicate choice — which is the opposite of the speaker-diarization case
-and worth knowing when reusing intuitions between the two.
+Measured separation on the default model pack, reproducible with
+``scripts/face_separation.py``: across six generated portraits, the same
+face under five transformations (re-encode, rescale, rotate, mirror,
+tight crop) scored **0.898-0.991** over ``n=30`` comparisons, while all
+``n=15`` pairs of different people topped out at **0.285**. That gap is
+wide enough that the threshold is not a delicate choice — the opposite of
+the speaker-diarization case, and worth knowing when reusing intuitions
+between the two.
+
+Those portraits are frontal, evenly lit and unoccluded, so the margin
+above is the easy end of the range; small, turned or poorly lit faces
+score lower.
 """
 
 from __future__ import annotations
@@ -34,9 +40,9 @@ if TYPE_CHECKING:
 DEFAULT_MATCH_THRESHOLD: float = 0.45
 """Cosine similarity above which two faces are called the same person.
 
-Measured on the default pack: same person 0.904-0.960, different people
-at most 0.225. This sits in the middle of a 0.68-wide gap, so it is a
-safe default rather than a tuned one.
+Measured on the default pack: same person 0.898-0.991 (``n=30``),
+different people at most 0.285 (``n=15``). This sits in the middle of a
+0.614-wide gap, so it is a safe default rather than a tuned one.
 
 **Raise it for anything that grants access.** The measurement is on
 cooperative, front-facing photos; the error that matters there is

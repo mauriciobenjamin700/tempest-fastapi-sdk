@@ -66,12 +66,17 @@ LIGHT_PACK: FaceModelPack = FaceModelPack(
 )
 """The default pack: SCRFD-500M detection plus MobileFaceNet recognition.
 
-Measured against the large pack on a six-face group photo: same detection
-count, 15 ms versus 54 ms, and a separation that is materially the same —
-the same person across transformed crops scored 0.904-0.960 against
-0.920-0.971, while different people topped out at 0.225 against 0.208.
-Twelve times smaller for a 0.02 shift in either bound is not a trade
-worth refusing.
+Measured against the large pack with ``scripts/face_separation.py``, over
+six generated portraits: same person 0.898-0.991 against 0.932-0.992, and
+different people at most 0.285 against 0.231 — a gap of 0.614 against
+0.701. Detection ran at 23 ms per image against 178 ms on the machine that
+took the numbers, so read the ratio rather than the absolute times.
+
+Twelve times smaller, seven times faster, for a gap that stays wide enough
+to leave the 0.45 threshold uncontested. The large pack earns its size
+where the margin narrows: on a tight 112x112 crop it found one face fewer
+than this one (``n=29`` against ``n=30``), which is the kind of case its
+heavier detector exists for.
 """
 
 LARGE_PACK: FaceModelPack = FaceModelPack(
@@ -84,10 +89,12 @@ LARGE_PACK: FaceModelPack = FaceModelPack(
 )
 """SCRFD-10G plus a ResNet50 recognizer.
 
-Slightly tighter separation than :data:`LIGHT_PACK` at twelve times the
-size and roughly three times the detection latency. Worth it when faces
-are small, poorly lit or partially turned — the cases where the margin
-matters — and not otherwise.
+Tighter separation than :data:`LIGHT_PACK` — a 0.701 gap against 0.614,
+measured by ``scripts/face_separation.py`` — at twelve times the size and
+roughly eight times the detection latency on the machine that took the
+numbers. Worth it when faces are small, poorly lit or partially turned:
+the cases where the margin matters, and where the lighter detector starts
+missing faces the heavier one still finds.
 """
 
 PACKS: Mapping[str, FaceModelPack] = {

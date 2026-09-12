@@ -5,6 +5,60 @@ existe: o defeito que shippou, o comando que mediu, o número que apareceu.
 Consulte quando a regra parecer exagerada — ela quase sempre é a cicatriz
 de algo que passou por revisão manual e escapou.
 
+## O número que ninguém pode reproduzir não é medição (v0.292.3)
+
+Três lugares deste repositório relatavam a separação do reconhecimento
+facial, nominalmente "a mesma medição", com três séries diferentes:
+0,877/0,180 na receita, 0,904-0,960/0,225 no `recognizer.py`, e
+0,920-0,971/0,208 mais "15 ms versus 54 ms" no `models.py`. As listas de
+transformações também divergiam.
+
+Não dava para dizer qual estava certa, porque **a foto de grupo por trás
+de todas elas nunca entrou no repositório**. Uma medição cuja entrada mora
+no disco de quem mediu não é verificável por ninguém — nem pelo próprio
+autor, seis meses depois. Ela tem a forma de evidência e a função de
+folclore.
+
+A saída não foi escolher uma das três: foi tornar a medição possível.
+`scripts/face_separation.py` gera as seis faces com `sdxl-turbo` em seeds
+fixas, mede os dois packs e imprime as duas pontas. Entrada versionada,
+saída reproduzível, e de quebra nenhuma biometria de pessoa real
+distribuída no pacote. O custo entra declarado na prosa — retrato gerado é
+o extremo fácil da faixa.
+
+**A regra que faltava:** ao afirmar um número medido, pergunte onde mora a
+entrada. Se a resposta não for "no repositório", o número não é
+reproduzível e a frase precisa ou da entrada junto, ou de um gerador
+versionado, ou de uma declaração explícita de que é um caso privado.
+
+### E o número reproduzível ainda pode ter a causa errada
+
+A mesma varredura mediu a outra afirmação: "0 itens com a instrução
+concatenada, 20 com ela no turno `system`". O documento também não estava
+versionado, então reconstruí um equivalente — 24.086 caracteres, 20 itens
+plantados — e a primeira medição não reproduziu nada parecido: **os dois
+modos falhavam igual**.
+
+Só que a explicação não era "a doc está errada". Era `num_ctx`. O Ollama
+trunca em 4096 tokens por default, **em silêncio**, e 24 mil caracteres
+não cabem:
+
+| `num_ctx` | em `system` | concatenada |
+| --- | --- | --- |
+| 4096 | 0, 6, 5 | erro, 2, 1 |
+| 16384 | 20, 20, 20 | 20, 20, 20 |
+
+Com a janela certa, as duas formas acertam tudo. A afirmação original
+tinha capturado um efeito **real** — sob truncamento, a instrução no turno
+`system` sobrevive porque não disputa espaço com o documento — e o
+atribuído à causa errada, comparando dois regimes como se fosse um.
+
+Duas lições em cima disso. Uma: medir uma variável exige fixar as outras,
+e "o default da dependência" é uma variável, não uma constante. Outra: a
+primeira reprodução que discorda da doc é uma **pergunta**, não um
+veredito — aqui, três iterações separaram "a doc está errada" de "a doc
+descreve o regime truncado sem dizer que é o regime truncado".
+
 ## O guard lia a cerca, e a referência de API renderiza a docstring (v0.292.2)
 
 A v0.257.0 rodou o `test_docs_type_guard` pela primeira vez — mypy sobre

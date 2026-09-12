@@ -1471,12 +1471,33 @@ asyncio.run(main())
 enforces JSON-schema-valid output natively) and parses the reply — **this is
 the recommended structured route, no extra library**.
 
-!!! warning "A long instruction goes in `system=`, not glued to the document"
-    Pass it as `generate_structured(document, Schema, system="...")`. An
-    instruction concatenated above a long document is ignored: measured
-    against `gpt-oss:20b` reading a 24k-character tender, **0 items**
-    extracted with the instruction in the same turn and **20 items** with
-    it in its own system turn.
+!!! warning "A long document needs `num_ctx` before anything else"
+    Ollama's context window defaults to **4096 tokens**, and whatever does
+    not fit is truncated silently — the extraction comes back with a few
+    items, or none, and no error at all. Measured against `gpt-oss:20b`
+    (Ollama 0.30.11) over a 24,086-character tender with 20 planted items,
+    three runs per configuration:
+
+    | `num_ctx` | instruction in `system` | instruction concatenated |
+    | --- | --- | --- |
+    | 4096 (default) | 0, 6, 5 items | error, 2, 1 items |
+    | 16384 | **20, 20, 20** | **20, 20, 20** |
+
+    With the window sized for the document, both shapes get everything.
+    With the default window both degrade — the instruction in a `system`
+    turn degrades less, because it is not competing for room with the
+    document being truncated, and that is why the separation is still
+    worth it:
+
+    ```python
+    await generator.generate_structured(
+        document, Schema, system="...", num_ctx=16384
+    )
+    ```
+
+    Size `num_ctx` by the document (a rough rule: one token per ~3
+    characters, plus room for the schema and the answer), and keep the
+    instruction in `system=`.
 
 ??? info "Why the call goes to `/api/chat` and not `/api/generate`"
     On a reasoning (harmony) model such as `gpt-oss`, `/api/generate`
