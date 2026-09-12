@@ -1945,7 +1945,7 @@ lifespan transforma queries lentas em linhas de log acionáveis, com
   request.
 - `BaseRepository` serve instanciado para CRUD puro e subclassificado quando
   aparece query própria; filtro é um dict com convenção previsível, e `None`
-  pula em vez de virar `IS NULL` por acidente.
+  numa coluna simples é `IS NULL`.
 - Operação em lote tem duas famílias: a que devolve instância (`add_all`,
   `update_many`) e a que não devolve, mas é uma ida ao banco.
 - Mixin entra quando o domínio pede: soft-delete e auditoria custam coluna e

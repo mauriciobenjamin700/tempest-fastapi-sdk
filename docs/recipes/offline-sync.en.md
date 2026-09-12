@@ -272,8 +272,11 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-Operators: `gt`, `gte`, `lt`, `lte`, `ne`. A `None` value skips the condition,
-like any other filter.
+Operators: `gt`, `gte`, `lt`, `lte`, `ne`. On `ne`, a `None` value becomes
+`col IS NOT NULL`. On the other four `None` has no reading at all, so the
+condition is dropped — with a `DroppedFilterWarning` naming the key, so the
+filter does not vanish in silence and hand the query more rows than you
+asked for.
 
 !!! note "Different from `start_in` / `end_in`"
     `start_in` / `end_in` filter by **whole day** over `created_at`. The `__gt`

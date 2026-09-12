@@ -4303,7 +4303,16 @@ The dict passed to `get` / `list` / `paginate` / `count` / `exists` / `delete_ma
 | `{"col": date(2024, 1, 1)}` (date value) | `date(col) = '2024-01-01'` |
 | `{"start_in": date(...)}` | `date(date_col_or_created_at) >= ...` |
 | `{"end_in": date(...)}` | `date(date_col_or_created_at) <= ...` |
-| `{"col": None}` | filter is skipped (omit-when-None semantics) |
+| `{"col": None}` | `col IS NULL` |
+| `{"col__ne": None}` | `col IS NOT NULL` |
+| `{"col__isnull": True}` / `False` | `col IS NULL` / `col IS NOT NULL` |
+
+Where `None` has no reading at all — `__gt`, `__between`, `__in` and
+friends — the condition is dropped and a `DroppedFilterWarning` names the
+key, because a filter that silently matches *more* rows is the expensive
+kind. The `start_in` / `end_in` pair is the deliberate exception: they are
+the two ends of a range, so `None` there keeps meaning "no bound on this
+side", in silence.
 
 Pass the dict from `BasePaginationFilterSchema.get_conditions()` for query-string-driven filters.
 
