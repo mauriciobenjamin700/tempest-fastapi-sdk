@@ -63,6 +63,18 @@ aquela release corrigiu. Nenhum comportamento muda aqui.
 
 ### Tests
 
+- **`test_agent_docs_guard` recusava a citação `arquivo:linha`.** O
+  guard confere que todo caminho entre crases existe no disco, e tratava
+  `docs/recipes/database.md:1948` como nome de arquivo — que de fato não
+  existe. `file_path:line_number` é a forma que o `CLAUDE.md` raiz pede
+  para citar uma passagem, então o guard obrigava a doc a ser menos
+  precisa justamente onde a precisão importa: a lição desta release fala
+  de uma frase específica numa página de duas mil linhas. Agora o sufixo
+  `:linha` (e `:início-fim`) é removido antes do lookup, e só o arquivo
+  precisa existir. Dois testes fixam os dois lados: um caminho morto
+  **com** sufixo continua sendo reportado, com a citação como escrita, e
+  um arquivo real com sufixo passa.
+
 - **O silêncio de `start_in` / `end_in` virou asserção.** O teste da
   v0.292.0 checava que o par com `None` devolve todas as linhas, não
   que ele faz isso **sem avisar** — e "in silence" é exatamente o que o
