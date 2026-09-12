@@ -1946,7 +1946,7 @@ lifespan turns slow queries into actionable log lines, with optional
   request.
 - `BaseRepository` works instantiated for plain CRUD and subclassed once real
   queries appear; a filter is a dict with predictable conventions, and `None`
-  skips instead of turning into an accidental `IS NULL`.
+  on a bare column is `IS NULL`.
 - Bulk work comes in two families: the one that hands the instances back
   (`add_all`, `update_many`) and the one that does not, but is a single trip to
   the database.

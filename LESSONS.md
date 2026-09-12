@@ -5,6 +5,103 @@ existe: o defeito que shippou, o comando que mediu, o número que apareceu.
 Consulte quando a regra parecer exagerada — ela quase sempre é a cicatriz
 de algo que passou por revisão manual e escapou.
 
+## A correção da prosa parou onde o grep parou (v0.292.1)
+
+A v0.292.0 corrigiu o código, corrigiu a receita de banco nas duas
+línguas — e deixou a tabela "Filter dict conventions" do `README.md`
+dizendo ``| `{"col": None}` | filter is skipped (omit-when-None
+semantics) |``. O README é o que o PyPI renderiza, então a página mais
+lida do pacote ficou a única ensinando o comportamento removido, numa
+release cujo próprio CHANGELOG reclama de doc que ensina o que o
+código descarta.
+
+Junto veio a docstring de `Q.resolve`, imediatamente acima do laço que
+chama `build_filter_condition`: afirmava o descarte que aquela mesma
+release tinha tirado. `TestQTree` já fixava o comportamento certo, ou
+seja, **a docstring vinha sendo contradita por um teste verde** — o que
+mostra o limite do que a suíte cobre: nenhum guard lê prosa, nem a que
+está encostada no código que ele testa.
+
+O método que teria pego: ao corrigir uma afirmação de comportamento,
+`grep` o **assunto** no repositório inteiro, não o arquivo em que ele
+apareceu. O eco é a lição da v0.263.0 — corrigir onde doeu não é
+corrigir a regra.
+
+### E o grep do assunto também para, se for grep da redação
+
+A primeira varredura desta release achou duas passagens e declarou o
+repositório limpo. Havia uma terceira:
+`docs/recipes/offline-sync.md:275` e `.en.md:275` fechavam a seção de
+operadores com "um valor `None` ignora a condição, igual a qualquer
+outro filtro" — errado em duas dimensões, porque `__ne` com `None`
+virou `IS NOT NULL` e os outros quatro passaram a avisar.
+
+Ela escapou porque o grep procurou a **redação** que o README usava
+(`filter is skipped`, `omit-when-None`), e esta passagem é uma
+paráfrase que não contém nenhuma das duas. Quem a achou foi o
+`docs-prose-auditor`, lendo por significado.
+
+O corolário prático: para prosa, `grep` de string é busca por
+*sinônimo conhecido*, e sinônimo desconhecido é justamente o que
+escapa. A varredura de uma afirmação de comportamento tem duas
+passadas de naturezas diferentes — uma mecânica pelo símbolo
+(`__ne`, `None`, o nome da função) e uma semântica que lê as páginas
+onde o símbolo aparece. A mecânica sozinha mede o que você já sabe
+dizer.
+
+### E a quarta estava no Recap da página já corrigida
+
+Rodada a passada mecânica pelo símbolo, apareceu uma quarta:
+`docs/recipes/database.md:1948` e `.en.md:1949` fechavam com "filtro é
+um dict com convenção previsível, e `None` pula em vez de virar
+`IS NULL` por acidente" — na página cujas linhas 1083, 1198 e 1210 a
+v0.292.0 tinha corrigido para o oposto. A contradição interna da
+v0.292.0 nunca foi resolvida; ela foi **movida** do corpo para o
+resumo, oitocentas linhas abaixo, nas duas línguas.
+
+Duas coisas que isso ensina, além da anterior:
+
+1. **O Recap é onde a correção morre.** Ele reafirma o que a página
+   acabou de ensinar, com outras palavras e sem os símbolos que o grep
+   procura — e por ser resumo, é o trecho que o leitor apressado lê.
+   Toda correção de comportamento numa receita deve terminar relendo o
+   `## Recap` daquela página.
+2. **O sinal estava no primeiro `grep` e passou batido.** A linha
+   `database.en.md:1949: skips instead of turning into an accidental
+   IS NULL` saiu na primeira varredura desta release, no meio de vinte
+   outras linhas que estavam certas, e foi lida como mais uma
+   confirmação. Grep amplo produz resultado que parece confirmação;
+   ler `IS NULL` num grep de `IS NULL` não diz nada sobre a frase estar
+   certa. O que decide é a leitura da frase inteira, e o custo de pular
+   isso é uma release a mais.
+
+### O corolário: nem toda assimetria é defeito
+
+A mesma auditoria reportou um segundo "defeito": `build_filter_condition`
+está no `__all__` de `expressions.py` e não é re-exportado em
+`db/__init__.py` nem no topo, enquanto `Q` e `DroppedFilterWarning`, do
+mesmo módulo, são. Parecia violação da regra das duas formas.
+
+Medido antes de consertado, e a conclusão inverteu:
+
+- **251 símbolos em 71 módulos** estão nessa mesma situação
+  (`openapi/naming.py` tem 11, `queue/topology.py` tem 12). Uma
+  "violação" com 251 ocorrências é uma convenção, não um defeito.
+- A régua certa não é o `__all__` do submódulo, é **o import que a doc
+  ensina**. Extraídos e resolvidos todos os imports de
+  `tempest_fastapi_sdk` escritos em bloco de código de `README.md`,
+  `CLAUDE.md` e `docs/**`: **3974 conferidos, 0 quebrados** (os 2 hits
+  são `tempest_fastapi_sdk.foo.bar`, o exemplo fictício do próprio
+  `CLAUDE.md`). Ninguém que segue a doc bate em `ImportError`.
+- O guard que eu ia escrever **já existia**: `test_docs_examples_compile.py`
+  checa "import only names the SDK actually exports". A medição deu
+  zero porque a regra já estava mecanizada.
+
+A regra das duas formas fala de `__init__.py`; `expressions.py` não é
+um. Antes de propor re-export "por consistência", conte quantos
+símbolos estão no mesmo padrão e pergunte que import a doc ensina — a
+resposta muda de defeito para convenção.
+
 ## A doc ensinava o que o código descartava (v0.292.0)
 
 `_apply_filters` descartava qualquer valor `None`, e a receita de banco

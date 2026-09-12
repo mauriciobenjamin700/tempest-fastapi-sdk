@@ -5,6 +5,83 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.292.1] — 2026-09-12
+
+A v0.292.0 corrigiu o código e deixou **quatro** passagens ensinando o
+comportamento que ela removeu — uma delas o Recap da própria página que
+aquela release corrigiu. Nenhum comportamento muda aqui.
+
+### Fixed
+
+- **`Q.resolve` documentava o descarte que a v0.292.0 tinha acabado de
+  tirar.** A docstring dizia que "conditions with a `None` value or an
+  unknown column are skipped (matching the repository's dict-filter
+  behavior)" — a frase estava imediatamente acima do laço que chama
+  `build_filter_condition`, ou seja, acima do código que passou a
+  devolver `IS NULL`. `TestQTree` já fixava o comportamento certo desde
+  a v0.292.0, então a docstring vinha sendo contradita por um teste
+  verde. Agora descreve o que a função faz: `None` numa coluna simples
+  é `IS NULL`, em `__ne` é `IS NOT NULL`, e o que continua sendo pulado
+  é coluna desconhecida, operador desconhecido e `None` num operador
+  que não o expressa — este último com `DroppedFilterWarning`.
+
+- **A tabela "Filter dict conventions" do `README.md` ensinava o
+  defeito.** A linha era ``| `{"col": None}` | filter is skipped
+  (omit-when-None semantics) |``. O CHANGELOG da v0.292.0 registra que
+  "a própria documentação do SDK já ensinava o uso que o código
+  descartava" e corrigiu a receita de banco nas duas línguas — o README,
+  que é o que o PyPI renderiza, ficou para trás com a mesma frase.
+  Agora a tabela traz `IS NULL`, `IS NOT NULL` e as duas pontas de
+  `__isnull`, seguidas da nota sobre `DroppedFilterWarning` e da
+  exceção deliberada do par `start_in` / `end_in`.
+
+  As quatro linhas novas foram medidas antes de escritas, contra o
+  pacote instalado: `{"col": None}` → `rows.left_at IS NULL`,
+  `{"col__ne": None}` → `IS NOT NULL`, `{"col__isnull": True}` /
+  `False` → `IS NULL` / `IS NOT NULL`; e `__gt`, `__between`, `__in` e
+  `__lte` com `None` devolvem nenhuma condição, cada um com um
+  `DroppedFilterWarning`.
+
+- **A receita de offline-sync dizia que `__ne` com `None` ignora a
+  condição.** `docs/recipes/offline-sync.md` e `.en.md`, na mesma linha
+  nas duas línguas, fechavam a seção de operadores com "um valor `None`
+  ignora a condição, igual a qualquer outro filtro". Errado em duas
+  dimensões desde a v0.292.0: `{"col__ne": None}` é `col IS NOT NULL`,
+  não um descarte; e `gt` / `gte` / `lt` / `lte` continuam descartando,
+  só que agora com `DroppedFilterWarning`, que a página não mencionava.
+  A frase escapou da varredura da v0.292.0 e da primeira desta release
+  porque as duas procuraram a redação do README (`filter is skipped`,
+  `omit-when-None`) — esta é uma paráfrase, sem nenhuma das duas.
+
+- **O Recap da receita de banco dizia o contrário do corpo da página.**
+  `docs/recipes/database.md` e `.en.md` fecham com "filtro é um dict com
+  convenção previsível, e `None` pula em vez de virar `IS NULL` por
+  acidente" — na página cujas linhas 1083, 1198 e 1210 a v0.292.0 já
+  havia corrigido para dizer que `None` **é** `IS NULL`. A contradição
+  ficou dentro do mesmo arquivo, a oitocentas linhas de distância, nas
+  duas línguas.
+
+### Tests
+
+- **`test_agent_docs_guard` recusava a citação `arquivo:linha`.** O
+  guard confere que todo caminho entre crases existe no disco, e tratava
+  `docs/recipes/database.md:1948` como nome de arquivo — que de fato não
+  existe. `file_path:line_number` é a forma que o `CLAUDE.md` raiz pede
+  para citar uma passagem, então o guard obrigava a doc a ser menos
+  precisa justamente onde a precisão importa: a lição desta release fala
+  de uma frase específica numa página de duas mil linhas. Agora o sufixo
+  `:linha` (e `:início-fim`) é removido antes do lookup, e só o arquivo
+  precisa existir. Dois testes fixam os dois lados: um caminho morto
+  **com** sufixo continua sendo reportado, com a citação como escrita, e
+  um arquivo real com sufixo passa.
+
+- **O silêncio de `start_in` / `end_in` virou asserção.** O teste da
+  v0.292.0 checava que o par com `None` devolve todas as linhas, não
+  que ele faz isso **sem avisar** — e "in silence" é exatamente o que o
+  README passou a afirmar. `test_none_bound_says_nothing` fixa a lista
+  de warnings como vazia; trocada a chave por `left_at__gt`, que avisa,
+  o teste falha, então a asserção não é vacuosa.
+
 ## [0.292.0] — 2026-09-12
 
 `{"col": None}` deixa de sumir e passa a significar `IS NULL`.

@@ -435,9 +435,16 @@ class Q:
     def resolve(self, model: type[Any]) -> ColumnElement[bool] | None:
         """Resolve the tree to a SQLAlchemy clause against ``model``.
 
-        Conditions with a ``None`` value or an unknown column are
-        skipped (matching the repository's dict-filter behavior). A
-        node that resolves to nothing returns ``None``.
+        Every condition goes through :func:`build_filter_condition`, so
+        a ``Q`` tree reads exactly like the repository's filter dict:
+        ``None`` on a bare column is ``col IS NULL`` and on ``__ne`` is
+        ``col IS NOT NULL``.
+
+        What is skipped is an unknown column, an unknown operator, and
+        a ``None`` given to an operator that cannot express it
+        (``__gt``, ``__between``, ``__in`` and friends) — the last of
+        those emits :class:`DroppedFilterWarning` naming the key. A
+        node whose conditions all resolve to nothing returns ``None``.
 
         Args:
             model (type[Any]): The model class to bind columns to.

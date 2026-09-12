@@ -43,6 +43,8 @@ _MAKE_RE = re.compile(r"`make ([a-z][a-z-]*)")
 _EXTERNAL = ("http://", "https://", "mailto:")
 _PATH_PREFIXES = ("tests/", "scripts/", "docs/", "tempest_fastapi_sdk/", ".github/")
 _PLACEHOLDER = ("<", ">", "*", "{", "}", "?", "…", "$")
+_LINE_SUFFIX_RE = re.compile(r":\d+(?:-\d+)?$")
+"""A ``file.md:12`` / ``file.py:12-30`` citation suffix, stripped before lookup."""
 
 
 def _agent_docs() -> list[pathlib.Path]:
@@ -147,11 +149,18 @@ def _missing_paths(path: pathlib.Path) -> list[str]:
     Placeholders (``docs/<page>.md``) and globs (``*.tmpl``) are skipped: they
     describe a shape rather than a file.
 
+    A ``:line`` or ``:start-end`` suffix is stripped before the file is looked
+    up. ``file_path:line_number`` is how this repository cites a passage — the
+    root ``CLAUDE.md`` asks for it, and citing the page without the line makes
+    the reader scan eight hundred lines for the sentence under discussion. Only
+    the file has to exist; the guard says nothing about the line still being
+    the right one.
+
     Args:
         path (pathlib.Path): The Markdown file to scan.
 
     Returns:
-        list[str]: Quoted paths with nothing behind them.
+        list[str]: Quoted paths with nothing behind them, as written.
     """
     missing: list[str] = []
     for token in _CODE_RE.findall(path.read_text("utf-8")):
@@ -160,7 +169,7 @@ def _missing_paths(path: pathlib.Path) -> list[str]:
             continue
         if any(char in candidate for char in _PLACEHOLDER):
             continue
-        if not (ROOT / candidate).exists():
+        if not (ROOT / _LINE_SUFFIX_RE.sub("", candidate)).exists():
             missing.append(candidate)
     return missing
 
@@ -319,6 +328,48 @@ class TestTheGuardFires:
             "utf-8",
         )
         assert _missing_paths(page) == ["tests/test_nonexistent_guard.py"]
+
+    def test_missing_path_with_a_line_suffix_is_still_reported(
+        self,
+        tmp_path: pathlib.Path,
+    ) -> None:
+        """Stripping ``:line`` must not let a dead path through.
+
+        The suffix was allowed so a lesson can cite the sentence it is
+        about. Relaxing a check is the moment it can go vacuous, so the
+        dead file has to keep failing with the suffix attached — and the
+        report keeps the citation as written, not the trimmed path.
+
+        Args:
+            tmp_path (pathlib.Path): Pytest temporary directory.
+        """
+        page = tmp_path / "CLAUDE.md"
+        page.write_text(
+            "O defeito está em `docs/recipes/nao-existe.md:275`.\n",
+            "utf-8",
+        )
+        assert _missing_paths(page) == ["docs/recipes/nao-existe.md:275"]
+
+    def test_live_path_with_a_line_suffix_is_accepted(
+        self,
+        tmp_path: pathlib.Path,
+    ) -> None:
+        """A real file cited with a line number passes.
+
+        This is the shape that made the guard fail on ``LESSONS.md``: the
+        quoted token was a citation, not a path, and the file behind it
+        had existed all along.
+
+        Args:
+            tmp_path (pathlib.Path): Pytest temporary directory.
+        """
+        page = tmp_path / "CLAUDE.md"
+        page.write_text(
+            "Ver `tests/test_agent_docs_guard.py:1` e "
+            "`docs/recipes/database.md:1948-1949`.\n",
+            "utf-8",
+        )
+        assert _missing_paths(page) == []
 
     def test_unknown_make_target_is_reported(self, tmp_path: pathlib.Path) -> None:
         """A ``make`` target the Makefile does not declare is reported.

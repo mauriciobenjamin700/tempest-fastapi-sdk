@@ -13,6 +13,7 @@ messages to them.
 
 from __future__ import annotations
 
+import warnings
 from datetime import UTC, datetime
 
 import pytest
@@ -178,3 +179,22 @@ class TestRangeSugarKeepsItsMeaning:
         rows = await repo.list(filters={"start_in": None, "end_in": None})
 
         assert len(rows) == 2
+
+    async def test_none_bound_says_nothing(
+        self,
+        repo: BaseRepository[Membership],
+    ) -> None:
+        """The exception is deliberate, so it does not warn.
+
+        Every other operator that cannot read ``None`` warns, which is
+        what makes the silence here a claim worth pinning: the README
+        documents the pair as the one place where ``None`` keeps
+        meaning "no bound on this side", quietly. Without this, the
+        warning could grow to cover the pair and only the prose would
+        disagree.
+        """
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            await repo.list(filters={"start_in": None, "end_in": None})
+
+        assert [type(entry.message).__name__ for entry in caught] == []
