@@ -1470,12 +1470,32 @@ O `OllamaGenerator` manda o schema no campo `format` do daemon (o Ollama
 garante JSON schema-válido nativamente) e faz o parse na saída — **é a
 rota estruturada recomendada, sem biblioteca extra**.
 
-!!! warning "Instrução longa vai em `system=`, não colada no documento"
-    Passe a instrução em `generate_structured(documento, Schema,
-    system="...")`. Instrução concatenada acima de um documento longo é
-    ignorada: medido contra `gpt-oss:20b` lendo um edital de 24 mil
-    caracteres, **0 itens** extraídos com a instrução no mesmo turno e
-    **20 itens** com ela no turno `system`.
+!!! warning "Documento longo pede `num_ctx`, antes de qualquer outra coisa"
+    A janela de contexto do Ollama tem default **4096 tokens**, e o que
+    não cabe é truncado em silêncio — a extração devolve alguns itens, ou
+    nenhum, sem erro nenhum. Medido contra `gpt-oss:20b` (Ollama 0.30.11)
+    sobre um edital de 24.086 caracteres com 20 itens plantados, três
+    execuções por configuração:
+
+    | `num_ctx` | instrução em `system` | instrução concatenada |
+    | --- | --- | --- |
+    | 4096 (default) | 0, 6, 5 itens | erro, 2, 1 itens |
+    | 16384 | **20, 20, 20** | **20, 20, 20** |
+
+    Com a janela dimensionada para o documento, as duas formas acertam
+    tudo. Com a janela default, as duas degradam — a instrução no turno
+    `system` degrada menos, porque não disputa espaço com o documento que
+    está sendo truncado, e é por isso que a separação ainda vale a pena:
+
+    ```python
+    await generator.generate_structured(
+        documento, Schema, system="...", num_ctx=16384
+    )
+    ```
+
+    Dimensione `num_ctx` pelo documento (uma regra grosseira: 1 token por
+    ~3 caracteres, com folga para o schema e a resposta), e prefira a
+    instrução em `system=`.
 
 ??? info "Por que a chamada vai em `/api/chat` e não em `/api/generate`"
     Num modelo de raciocínio (harmony, como o `gpt-oss`), o

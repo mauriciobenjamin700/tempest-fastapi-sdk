@@ -5,6 +5,63 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.292.3] — 2026-09-12
+
+Três números que a documentação afirmava sem que ninguém pudesse
+reproduzi-los. Dois foram medidos e corrigidos; um deles trocou de causa.
+Nenhum comportamento muda.
+
+### Fixed
+
+- **A separação de faces era relatada com dois números diferentes, e
+  nenhum reproduzível.** `docs/recipes/faces.md` dizia mesma-pessoa mínimo
+  0,877 e diferentes máx 0,180; `faces/recognizer.py` dizia 0,904-0,960
+  contra 0,225; `faces/models.py` comparava os packs com uma terceira
+  série (0,920-0,971 / 0,208 / "15 ms versus 54 ms"). As listas de
+  transformações também divergiam, e a foto de grupo por trás de qualquer
+  uma nunca foi versionada — então escolher entre elas seria um cara ou
+  coroa vestido de correção.
+
+  Os três passam a citar a **mesma** medição, agora reproduzível por
+  `scripts/face_separation.py`: seis retratos gerados por `sdxl-turbo` em
+  seeds fixas (1000 a 1005), a mesma face sob cinco transformações
+  (`n=30`) contra os 15 pares de faces diferentes. No pack padrão,
+  **0,898-0,991** contra **máx 0,285**, folga **0,614**; no `buffalo_l`,
+  0,932-0,992 contra 0,231, folga 0,701. Detecção a 23 ms contra 178 ms
+  por imagem na máquina que tirou os números.
+
+  Faces geradas em vez de fotografadas por dois motivos: não distribui
+  biometria de pessoa real, e coloca a **entrada** da medição dentro do
+  repositório. O custo entra na prosa: retrato gerado é frontal e bem
+  iluminado, ou seja, o extremo fácil da faixa — e o `buffalo_l` perdeu um
+  rosto no recorte apertado (`n=29` contra `n=30`), que é exatamente o
+  caso para o qual o detector pesado existe.
+
+- **A recomendação de `system=` creditava à separação um efeito que é de
+  truncamento.** A receita afirmava "0 itens com a instrução concatenada,
+  20 com ela no turno `system`". Medido contra `gpt-oss:20b` (Ollama
+  0.30.11) sobre um edital de 24.086 caracteres com 20 itens plantados,
+  três execuções por configuração:
+
+  | `num_ctx` | em `system` | concatenada |
+  | --- | --- | --- |
+  | 4096 (default) | 0, 6, 5 | erro, 2, 1 |
+  | 16384 | 20, 20, 20 | 20, 20, 20 |
+
+  Com a janela dimensionada para o documento, **as duas formas acertam os
+  20**. O que decide é `num_ctx`, cujo default de 4096 tokens trunca em
+  silêncio. A instrução em `system` degrada menos sob truncamento, porque
+  não disputa espaço com o documento — a recomendação continua de pé, mas
+  é a metade menor da história. A receita e a docstring de
+  `chat_structured` passam a dizer isso, com a tabela acima.
+
+### Added
+
+- **`scripts/face_separation.py`** — mede a separação do reconhecimento
+  facial sobre um conjunto que o repositório contém, para os dois packs.
+  Primeira execução baixa `sdxl-turbo` e o pack; as seguintes reusam o
+  cache.
+
 ## [0.292.2] — 2026-09-12
 
 Duas docstrings que a auditoria de prosa pegou, e o guard que faltava

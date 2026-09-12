@@ -90,18 +90,34 @@ resposta ruim, é um perfil permanentemente errado.
 
 ### A folga medida
 
-Sobre uma foto de grupo com seis pessoas, no pack padrão:
+Rode você mesmo: `uv run python scripts/face_separation.py`. O script gera
+seis retratos com `sdxl-turbo` em seeds fixas (1000 a 1005) e mede as duas
+pontas — a mesma face sob cinco transformações, e os 15 pares de faces
+diferentes. As faces são geradas, e não fotografadas, por dois motivos:
+não distribui biometria de pessoa real, e coloca a **entrada** da medição
+dentro do repositório em vez de no disco de alguém.
+
+No pack padrão (`buffalo_s`), `n=30` comparações positivas e `n=15`
+negativas:
 
 | comparação | similaridade |
 | --- | --- |
-| mesma pessoa (recorte re-encodado em jpeg q40) | 0,962 |
-| mesma pessoa (rotacionada 8°) | 0,952 |
-| mesma pessoa (recorte apertado 112×112) | 0,877 |
-| **pessoas diferentes (15 pares)** | **máx 0,180** |
+| mesma pessoa (re-encode jpeg q40) | 0,974–0,990 |
+| mesma pessoa (reescalada 50%) | 0,968–0,991 |
+| mesma pessoa (rotacionada 8°) | 0,948–0,984 |
+| mesma pessoa (espelhada) | 0,938–0,971 |
+| mesma pessoa (recorte apertado 112×112) | 0,898–0,974 |
+| **pessoas diferentes (15 pares)** | **máx 0,285** |
 
-O limiar padrão é **0,45**, no meio de uma folga de quase 0,7. Não é
-escolha delicada — o oposto do caso da diarização de voz, e vale saber ao
-transportar intuições entre os dois.
+O limiar padrão é **0,45**, com folga de **0,614** entre o pior positivo e
+o melhor negativo. Não é escolha delicada — o oposto do caso da diarização
+de voz, e vale saber ao transportar intuições entre os dois.
+
+!!! warning "Este é o extremo fácil da faixa"
+    Retrato gerado é frontal, bem iluminado e sem oclusão. Face pequena,
+    virada ou mal iluminada pontua mais baixo, e é exatamente aí que o
+    limiar deixa de ser escolha livre — é para esse caso que existe o
+    `buffalo_l`.
 
 !!! warning "Suba o limiar para conceder acesso"
     A medição é em fotos cooperativas, de frente. Onde o reconhecimento
@@ -174,7 +190,8 @@ alinhado não falha: perde acurácia em silêncio.
 - `FaceRecognizer.recognize()` detecta e embute; `detect()` só detecta e não
   toca em biometria; `embed_face()` é a forma de cadastro e recusa entrada
   ruim.
-- Folga medida: 0,877–0,962 mesma pessoa contra máx 0,180 entre diferentes.
+- Folga medida (`scripts/face_separation.py`, pack padrão): 0,898–0,991
+  mesma pessoa (n=30) contra máx 0,285 entre diferentes (n=15).
   Limiar padrão 0,45; suba para conceder acesso.
 - Pack padrão de 16 MB por medição, não por acaso.
 - Sem biblioteca de sistema, sem opencv, sem torch.

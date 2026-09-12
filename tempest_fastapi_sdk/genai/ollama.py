@@ -483,12 +483,17 @@ class OllamaGenerator(_OllamaClientMixin):
         """Generate a chat reply constrained to a Pydantic ``schema``.
 
         The messages list is what makes a system instruction separable
-        from the payload being read, and that separation is measurable:
-        extracting fields from a long document with everything
-        concatenated into one prompt, the model starts answering *with*
-        passages of the document; with the instruction isolated in a
-        ``system`` turn, the schema is respected. It is the same reason
-        the chat API exists.
+        from the payload being read. That separation helps, but it is the
+        smaller half of the story: the first thing a long document needs
+        is a context window that fits it. Ollama defaults ``num_ctx`` to
+        4096 tokens and truncates the rest silently, and under truncation
+        both shapes degrade — the concatenated one worse, because the
+        instruction competes for room with the document. Measured over a
+        24,086-character document with 20 extractable items, three runs
+        each: at ``num_ctx=4096`` the system turn returned 0, 6 and 5
+        items against 1 and 2 (and one empty reply) concatenated; at
+        ``num_ctx=16384`` both returned all 20, every run. Size the window
+        first, then keep the instruction in its own turn.
 
         ``format`` is posted at the **top level** of the request body,
         which is where the daemon reads it. Sending it inside ``options``

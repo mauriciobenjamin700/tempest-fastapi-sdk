@@ -90,24 +90,35 @@ answer, it is a permanently wrong profile.
 
 ### The measured margin
 
-On a six-person group photo, with the default pack:
+Run it yourself: `uv run python scripts/face_separation.py`. The script
+generates six portraits with `sdxl-turbo` at fixed seeds (1000 to 1005) and
+measures both ends — the same face under five transformations, and the 15
+pairs of different faces. The faces are generated rather than photographed
+for two reasons: it ships nobody's real biometrics, and it puts the
+measurement's **input** in the repository instead of on somebody's disk.
+
+With the default pack (`buffalo_s`), `n=30` positive comparisons and `n=15`
+negative:
 
 | comparison | similarity |
 | --- | --- |
-| same person (crop re-encoded at jpeg q40) | 0.962 |
-| same person (rotated 8°) | 0.952 |
-| same person (tight 112×112 crop) | 0.877 |
-| **different people (15 pairs)** | **max 0.180** |
+| same person (re-encoded jpeg q40) | 0.974-0.990 |
+| same person (rescaled 50%) | 0.968-0.991 |
+| same person (rotated 8°) | 0.948-0.984 |
+| same person (mirrored) | 0.938-0.971 |
+| same person (tight 112×112 crop) | 0.898-0.974 |
+| **different people (15 pairs)** | **max 0.285** |
 
-The default threshold is **0.45**, in the middle of a gap of nearly 0.7. It
-is not a delicate choice — the opposite of the speaker-diarization case, and
-worth knowing when carrying intuitions between the two.
+The default threshold is **0.45**, with a **0.614** gap between the worst
+positive and the best negative. It is not a delicate choice — the opposite
+of the speaker-diarization case, and worth knowing when carrying intuitions
+between the two.
 
-!!! warning "Raise it for anything that grants access"
-    The measurement is on cooperative, front-facing photos. Where
-    recognition unlocks something, the expensive error stops being "did not
-    recognise" and becomes "recognised the wrong person" — and there a
-    stricter threshold trades that for asking somebody to try again.
+!!! warning "This is the easy end of the range"
+    A generated portrait is frontal, evenly lit and unoccluded. A face that
+    is small, turned or badly lit scores lower, and that is exactly where
+    the threshold stops being a free choice — which is what `buffalo_l` is
+    for.
 
 ## Choosing a model pack
 
@@ -174,8 +185,9 @@ fail: it loses accuracy silently.
 - `FaceRecognizer.recognize()` detects and embeds; `detect()` only detects
   and touches no biometrics; `embed_face()` is the enrolment shape and
   refuses bad input.
-- Measured margin: 0.877–0.962 same person against max 0.180 for different
-  ones. Default threshold 0.45; raise it to grant access.
+- Measured margin (`scripts/face_separation.py`, default pack): 0.898-0.991
+  same person (n=30) against max 0.285 for different ones (n=15). Default
+  threshold 0.45; raise it to grant access.
 - The 16 MB default pack is a measurement, not an accident.
 - No system libraries, no opencv, no torch.
 - A face vector is **sensitive biometric data** — storing it has
