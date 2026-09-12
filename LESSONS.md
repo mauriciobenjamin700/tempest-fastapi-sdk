@@ -5,6 +5,39 @@ existe: o defeito que shippou, o comando que mediu, o número que apareceu.
 Consulte quando a regra parecer exagerada — ela quase sempre é a cicatriz
 de algo que passou por revisão manual e escapou.
 
+## O guard lia a cerca, e a referência de API renderiza a docstring (v0.292.2)
+
+A v0.257.0 rodou o `test_docs_type_guard` pela primeira vez — mypy sobre
+**1999 blocos** de código em 226 arquivos — e colheu 162 achados. Um
+deles era `emb._embed_many` passado ao `BatchScheduler`: método privado
+e **síncrono**, num scheduler que faz `await handler(batch)`.
+
+Três releases depois, a mesma chamada seguia em dois lugares:
+
+1. **A docstring do próprio `BatchScheduler`**, que é o que a página de
+   referência renderiza via `mkdocstrings`.
+2. **Um bullet de prosa** em `genai-examples.md`, escrito com crases em
+   vez de cerca.
+
+O guard leu os 1999 blocos cercados e nenhum dos dois. Quem copiasse da
+referência de API recebia
+`TypeError: object list can't be used in 'await' expression` na primeira
+chamada.
+
+A lição não é "o guard falhou" — ele fez exatamente o que diz fazer. É
+que **a superfície que o leitor lê é maior que a superfície que o guard
+lê**, e a diferença é invisível: as duas renderizam igual no site. Ao
+escrever um guard de exemplo, escreva junto de onde ele **não** olha; e
+ao corrigir um exemplo, procure a mesma chamada nas três formas em que
+este repo a escreve — bloco cercado, docstring e crase inline.
+
+O guard novo (`tests/test_docstring_example_guard.py`) fecha a fatia
+barata e sem falso positivo: linha `>>>` de docstring não chama atributo
+privado. 139 docstrings com exemplo, zero violações depois da correção.
+Tipar exemplo de docstring é outro trabalho, bem maior — eles nomeiam
+variáveis livres (`embedder`) que só a prosa define, então nenhum checker
+resolve o snippet isolado.
+
 ## A correção da prosa parou onde o grep parou (v0.292.1)
 
 A v0.292.0 corrigiu o código, corrigiu a receita de banco nas duas

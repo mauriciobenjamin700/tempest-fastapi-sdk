@@ -25,6 +25,7 @@ Todos rodam dentro do `make check`.
 | `test_docs_method_guard` | atributo lido de instância construída no exemplo existe na classe | tipo de argumento; nome reatribuído; atributo de atributo |
 | `test_docs_type_guard` | mypy (config deste repo) sobre todo bloco parseável, filtrado a `arg-type`, `call-arg`, `name-defined`, `used-before-def` e `attr-defined` de classe que o bloco importa da família | prosa; linha com `...` de elisão; `attr-defined` de classe que a página só excerta ou que o Alembic registra em runtime |
 | `test_reference_coverage` | símbolo público tem stub em `docs/reference.md` | — |
+| `test_docstring_example_guard` | linha `>>>` de docstring chamando atributo privado do pacote — o ponto cego dos guards de bloco markdown, que não leem docstring | prosa que só **cita** o nome privado; tipo e nome livre do exemplo (`embedder`), que nenhum checker resolve ali |
 | `test_kwargs_guard` | função lê chave do **próprio** `**kwargs` | splat em callable que absorve a chave |
 | `test_reexport_guard` | `from x import Y as Y` + `__all__` em `__init__.py` | — |
 | `test_vacuous_guard` | teste afirma cruzar processo/réplica e não cruza | — |

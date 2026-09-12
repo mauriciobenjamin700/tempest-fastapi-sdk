@@ -28,10 +28,15 @@ class BatchScheduler(Generic[ItemT, ResultT]):
     since the first queued item, then calls ``handler(batch)`` once and
     hands each caller its matching result by position.
 
+    The handler is awaited, so it must be a coroutine function taking the
+    whole batch. :meth:`Embedder.embed` is that shape already; its
+    private ``_embed_many`` is not — it is synchronous, and awaiting it
+    raises ``TypeError: object list can't be used in 'await' expression``.
+
     Example:
 
         >>> async def embed_batch(texts: list[str]) -> list[list[float]]:
-        ...     return await embedder._embed_many(texts)
+        ...     return await embedder.embed(texts)
         >>> sched = BatchScheduler(embed_batch, max_batch=32, max_wait_ms=10)
         >>> vec = await sched.submit("hello")   # coalesced with concurrent calls
         >>> await sched.aclose()
