@@ -12,7 +12,7 @@ Use o **#1** em produção sempre. Adicione o **#2** quando precisar inspecionar
 Instale com `[prometheus]` (puxa `prometheus-client`). O middleware mede toda request; o router serve o endpoint de scrape.
 
 ```bash
-uv add "tempest-fastapi-sdk[prometheus]>=0.89.0"
+uv add "tempest-fastapi-sdk[prometheus]>=0.151.1"
 ```
 
 ```python

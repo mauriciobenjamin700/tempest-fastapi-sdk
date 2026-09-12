@@ -665,9 +665,9 @@ which reads the same file in the browser.
     smoothly regardless. Measured with `skl2onnx` 1.20.0, `sklearn` 1.9.0
     and `onnx` 1.22.0 held fixed and only the runtime moving, the culprit
     was clear: **`onnxruntime`**, not the converter. Error of 1.0 against
-    `predict_proba` on 1.27.0, 9.5e-08 on 1.28.0. The SDK requires
-    `onnxruntime>=1.28`, and the export still warns if it finds an older
-    runtime force-installed.
+    `predict_proba` on 1.27.0, 9.5e-08 on 1.28.0. The SDK's floor is
+    `onnxruntime>=1.29.0` — above the 1.28.0 that fixed the defect — and
+    the export still warns if it finds an older runtime force-installed.
 
 ## What is actually worth optimising (measured)
 

@@ -45,7 +45,7 @@ Requires:
 - `[email]` (aiosmtplib + Jinja2 + email-validator) — optional; when missing, the link lands in the response body instead of an email.
 
 ```bash
-uv add "tempest-fastapi-sdk[auth,email]>=0.89.0"
+uv add "tempest-fastapi-sdk[auth,email]>=0.151.1"
 ```
 
 ```python

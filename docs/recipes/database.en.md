@@ -1763,9 +1763,12 @@ prefix orders files chronologically and makes merge conflicts obvious.
 
 !!! check "Migrations come out lint-clean"
     The `alembic.ini` that `init()` writes includes `[post_write_hooks]`
-    that runs `ruff check --fix` then `ruff format` on every revision.
-    Without it, Alembic's files fail `tempest lint` (`W291` on the empty
-    `Revises:`, `E501` on long `sa.Column(...)` lines). The hooks use
+    that runs `ruff format` and **then** `ruff check --fix` on every
+    revision. Without it, Alembic's files fail `tempest lint` (`W291` on
+    the empty `Revises:`, `E501` on long `sa.Column(...)` lines) — which
+    is why the formatter goes first: it is the one that wraps the long
+    line and strips the trailing space, so running the linter first would
+    report errors the next hook is about to fix. The hooks use
     **your** project's `ruff` config. Requires `ruff` on `PATH` — already
     a dev dependency in every `tempest new` scaffold.
 

@@ -2,7 +2,7 @@
 
 `AuditMixin` guarda **quem** mexeu por último (`created_by` / `updated_by`) e o `BaseModel` guarda **quando** (`created_at` / `updated_at`). Nenhum dos dois guarda o **histórico** das mudanças. O audit trail adiciona um log append-only: uma linha por create / update / delete, com o ator, a ação e um diff antes/depois das colunas alteradas.
 
-A linha de auditoria é gravada na **mesma transação** da mudança (reusa a maquinaria do outbox), então uma entrada de auditoria nunca referencia uma mudança que foi revertida.
+A linha de auditoria é gravada na **mesma transação** da mudança — `add_audited` / `update_audited` adicionam a linha de auditoria e a linha de negócio e commitam as duas juntas, o mesmo padrão que o outbox usa —, então uma entrada de auditoria nunca referencia uma mudança que foi revertida.
 
 ## A tabela de auditoria
 

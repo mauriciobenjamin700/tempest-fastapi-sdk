@@ -140,8 +140,12 @@ async def transcribe(file: UploadFile) -> dict[str, object]:
 
 ## Escala e economia
 
-- **Batch**: envolva `embedder._embed_many` num `BatchScheduler` pra
-  coalescer embeddings concorrentes num forward pass só.
+- **Batch**: envolva `await embedder.embed(texts)` num `BatchScheduler`
+  pra coalescer embeddings concorrentes num forward pass só — a receita
+  completa está em [GenAI](recipes/genai.md). Use o `embed` público, e
+  não o `_embed_many`: além de privado, ele é síncrono, então o
+  `BatchScheduler`, que faz `await handler(batch)`, levantaria
+  `TypeError`.
 - **Compartilhar modelos**: `ModelRegistry(max_models=2)` reusa modelos
   carregados entre call sites e descarrega o LRU.
 - **Liberar VRAM**: `idle_unload_seconds` + `gen.unload_if_idle()` num

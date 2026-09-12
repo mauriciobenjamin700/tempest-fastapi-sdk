@@ -1760,9 +1760,12 @@ de data ordena cronologicamente e torna conflitos de merge óbvios.
 
 !!! check "Migrações já saem lint-clean"
     O `alembic.ini` que o `init()` escreve inclui `[post_write_hooks]` que
-    roda `ruff check --fix` e depois `ruff format` em cada revisão. Sem
-    isso, os arquivos do Alembic falham no `tempest lint` (`W291` no
-    `Revises:` vazio, `E501` em `sa.Column(...)` longas). Os hooks usam a
+    roda `ruff format` e **depois** `ruff check --fix` em cada revisão.
+    Sem isso, os arquivos do Alembic falham no `tempest lint` (`W291` no
+    `Revises:` vazio, `E501` em `sa.Column(...)` longas) — e é por isso
+    que o formatter vem primeiro: ele é quem quebra a linha longa e tira
+    o espaço à direita, então rodar o linter antes reportaria erros que
+    o hook seguinte ia consertar. Os hooks usam a
     config de `ruff` do **seu** projeto. Requer `ruff` no `PATH` — já é
     dependência de dev em todo scaffold `tempest new`.
 

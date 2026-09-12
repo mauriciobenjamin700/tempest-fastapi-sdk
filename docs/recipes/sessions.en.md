@@ -253,7 +253,7 @@ async def handler(request: Request) -> dict:
 - **Native CSRF via SameSite**: `SESSION_COOKIE_SAMESITE=lax` (default) blocks cross-site POSTs. Pair with [`CSRFMiddleware`](security.en.md) for GET-state-changing endpoints and form submissions.
 - **HttpOnly + Secure**: `SESSION_COOKIE_HTTPONLY=True` + `SESSION_COOKIE_SECURE=True` by default. JavaScript cannot read (anti-XSS); the browser does not send over HTTP.
 - **Sliding TTL with floor**: `SESSION_SLIDING=True` (default) refreshes on every hit, but `created_at` stays put — you can force an absolute logout after N days via a job that prunes rows where `created_at < now - 30d`.
-- **Anti-enumeration**: `/auth/session/login` rejects wrong-email and wrong-password with the **same** `UnauthorizedException` and approximately the same timing (bcrypt always runs).
+- **Anti-enumeration (partial — read the timing note)**: `/auth/session/login` rejects an unknown e-mail and a wrong password with the **same** `UnauthorizedException` and the same message, so the *response* does not tell the two apart. The **timing** does: `authenticate()` raises as soon as the query finds no user, before it calls the password verifier, so an attempt against a non-existent account never pays the bcrypt cost — measured on this machine, ~153 ms per verification. Anyone timing the response separates "no such account" from "wrong password". If timing enumeration is in your threat model, rate-limit attempts per IP/identifier in front of the endpoint; the response body alone does not close that channel.
 - **Instant revocation**: `revoke_all(user_id)` on password change / suspected compromise → logout on every device on the next request.
 
 ---

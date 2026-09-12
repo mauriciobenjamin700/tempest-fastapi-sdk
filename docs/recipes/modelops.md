@@ -659,9 +659,9 @@ que lê o mesmo arquivo no navegador.
     grafo rodava liso mesmo assim. Medindo com `skl2onnx` 1.20.0,
     `sklearn` 1.9.0 e `onnx` 1.22.0 fixos, movendo só o runtime, o culpado
     ficou claro: **`onnxruntime`**, não o conversor. Erro de 1.0 contra
-    `predict_proba` na 1.27.0, 9.5e-08 na 1.28.0. O SDK exige
-    `onnxruntime>=1.28`, e o export ainda avisa se encontrar um runtime
-    antigo instalado à força.
+    `predict_proba` na 1.27.0, 9.5e-08 na 1.28.0. O piso do SDK é
+    `onnxruntime>=1.29.0` — acima da 1.28.0 que corrigiu o defeito —, e o
+    export ainda avisa se encontrar um runtime antigo instalado à força.
 
 ## O que otimizar de verdade (medido)
 

@@ -255,7 +255,7 @@ async def handler(request: Request) -> dict:
 - **CSRF nativo via SameSite**: `SESSION_COOKIE_SAMESITE=lax` (default) bloqueia POST cross-site. Combine com [`CSRFMiddleware`](security.md) pra GET-state-changing endpoints e form-submission.
 - **HttpOnly + Secure**: `SESSION_COOKIE_HTTPONLY=True` + `SESSION_COOKIE_SECURE=True` por default. JavaScript não lê (anti-XSS); browser não envia em HTTP.
 - **Sliding TTL com floor**: `SESSION_SLIDING=True` (default) refresh a cada hit, mas `created_at` permanece — você pode forçar logout absoluto após N dias via job que limpa rows com `created_at < now - 30d`.
-- **Anti-enumeração**: `/auth/session/login` rejeita email-errado e senha-errada com o **mesmo** `UnauthorizedException` + mesmo timing approximado (bcrypt sempre roda).
+- **Anti-enumeração (parcial — leia o timing)**: `/auth/session/login` rejeita e-mail inexistente e senha errada com o **mesmo** `UnauthorizedException` e a mesma mensagem, então a *resposta* não distingue os dois casos. O **tempo** distingue: `authenticate()` levanta assim que a query não acha o usuário, antes de chamar o verificador de senha, então a tentativa contra conta inexistente não paga o custo do bcrypt — medido nesta máquina, ~153 ms por verificação. Quem cronometra a resposta separa "conta não existe" de "senha errada". Se enumeração por timing está no seu modelo de ameaça, limite a taxa de tentativas por IP/identificador antes do endpoint; o corpo da resposta sozinho não fecha esse canal.
 - **Revogação instantânea**: `revoke_all(user_id)` no password-change / suspeita de compromisso → logout em todos os dispositivos no próximo request.
 
 ---

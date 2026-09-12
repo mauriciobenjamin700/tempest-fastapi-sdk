@@ -35,7 +35,7 @@ O fluxo tem dois momentos:
 Requer o extra `[mfa]` (instala `pyotp`), por cima de `[auth]`:
 
 ```bash
-uv add "tempest-fastapi-sdk[auth,mfa]>=0.89.0"
+uv add "tempest-fastapi-sdk[auth,mfa]>=0.151.1"
 ```
 
 ### Colunas via `MFAMixin`

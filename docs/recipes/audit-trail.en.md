@@ -6,9 +6,10 @@
 adds an append-only log: one row per create / update / delete, with the
 actor, the action and a before/after diff of the changed columns.
 
-The audit row is written in the **same transaction** as the change
-(reusing the outbox machinery), so an audit entry can never reference a
-change that was rolled back.
+The audit row is written in the **same transaction** as the change —
+`add_audited` / `update_audited` add the audit row and the business row
+and commit them together, the same pattern the outbox uses — so an audit
+entry can never reference a change that was rolled back.
 
 ## The audit table
 
