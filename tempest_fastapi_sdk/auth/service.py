@@ -20,7 +20,7 @@ the rest of the SDK so the same code runs against any
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select, update
@@ -85,6 +85,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Coroutine
     from typing import Any
 
+    from sqlalchemy import CursorResult
+
     from tempest_fastapi_sdk.api.oauth import OAuthUser
     from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
     from tempest_fastapi_sdk.db.user_model import BaseUserModel
@@ -99,6 +101,55 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
     from tempest_fastapi_sdk.utils.email import EmailUtils
+
+
+async def revoke_user_refresh_tokens(
+    session: AsyncSession,
+    refresh_token_model: type[BaseUserRefreshTokenModel],
+    *,
+    user_id: UUID,
+) -> int:
+    """Revoke every still-active refresh token one user owns.
+
+    "Log out everywhere", addressed by user id rather than by a
+    presented token — the shape an administrator needs. Rotating a
+    credential out of band (an operator resetting a password from the
+    CLI, a support agent locking a compromised account) leaves every
+    already-issued refresh token exchangeable until its natural expiry,
+    which is exactly the window the reset exists to close, and
+    :meth:`UserAuthService.revoke_refresh_token` cannot close it because
+    it starts from a token the operator does not have.
+
+    Rows already carrying a ``revoked_at`` are left untouched, so the
+    returned count is the number of sessions this call actually killed
+    and calling twice reports ``0`` the second time.
+
+    The update is flushed, never committed — the caller owns the
+    transaction, so the revocation lands or rolls back together with
+    whatever else it is changing (the new password hash, typically).
+
+    Args:
+        session (AsyncSession): Active SQLAlchemy session.
+        refresh_token_model (type[BaseUserRefreshTokenModel]): The
+            project's concrete refresh-token table.
+        user_id (UUID): Owner whose sessions are being killed.
+
+    Returns:
+        int: How many refresh-token rows were revoked.
+    """
+    result = cast(
+        "CursorResult[Any]",
+        await session.execute(
+            update(refresh_token_model)
+            .where(
+                refresh_token_model.user_id == user_id,
+                refresh_token_model.revoked_at.is_(None),
+            )
+            .values(revoked_at=utcnow())
+        ),
+    )
+    await session.flush()
+    return int(result.rowcount or 0)
 
 
 class UserAuthService:
@@ -1451,14 +1502,45 @@ class UserAuthService:
         if record is None:
             return
         if all_sessions:
-            await session.execute(
-                update(model)
-                .where(model.user_id == record.user_id, model.revoked_at.is_(None))
-                .values(revoked_at=utcnow())
+            await revoke_user_refresh_tokens(
+                session,
+                model,
+                user_id=record.user_id,
             )
-            await session.flush()
         else:
             await self._revoke_family(session, record.family_id)
+
+    async def revoke_user_sessions(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: UUID,
+    ) -> int:
+        """Revoke every active refresh token of a user, by id.
+
+        The administrative counterpart of :meth:`revoke_refresh_token`:
+        logout-everywhere for a user whose token nobody holds — the
+        account an operator just reset the password of, or one being
+        locked after a report. Wraps
+        :func:`revoke_user_refresh_tokens` with the service's configured
+        table so the caller needs no model reference of its own.
+
+        Returns ``0`` when ``refresh_token_model`` is not wired, since
+        stateless JWT refresh tokens carry no server-side row to flip;
+        those keep working until they expire.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session. The
+                update is flushed (the caller owns the commit).
+            user_id (UUID): Owner whose sessions are being killed.
+
+        Returns:
+            int: How many refresh-token rows were revoked.
+        """
+        model = self.refresh_token_model
+        if model is None:
+            return 0
+        return await revoke_user_refresh_tokens(session, model, user_id=user_id)
 
     async def _issue_refresh_record(
         self,
@@ -2614,4 +2696,5 @@ __all__: list[str] = [
     "EmailVerificationToken",
     "PasswordResetToken",
     "UserAuthService",
+    "revoke_user_refresh_tokens",
 ]

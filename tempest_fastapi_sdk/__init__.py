@@ -592,6 +592,9 @@ from tempest_fastapi_sdk.auth import (
     resolve_locale as resolve_locale,
 )
 from tempest_fastapi_sdk.auth import (
+    revoke_user_refresh_tokens as revoke_user_refresh_tokens,
+)
+from tempest_fastapi_sdk.auth import (
     stamp_locale as stamp_locale,
 )
 from tempest_fastapi_sdk.authz import (
@@ -2364,6 +2367,7 @@ __all__: list[str] = [
     "require_x_token",
     "requires",
     "resolve_locale",
+    "revoke_user_refresh_tokens",
     "run_checks",
     "run_server",
     "run_system_checks",

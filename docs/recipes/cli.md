@@ -509,6 +509,17 @@ tempest user create --email ana@example.com --password senha-forte-12 \
 tempest user promote --email ana@example.com    # vira admin
 tempest user revoke  --email ana@example.com    # volta a ser comum
 
+# Troca a senha de um usuário existente (pede a senha duas vezes)
+# e derruba as sessões dele junto
+tempest user set-password --email ana@example.com
+
+# Tabela de refresh token fora do caminho scaffoldado
+tempest user set-password --email ana@example.com \
+    --refresh-token-model myapp.models:UserRefreshTokenModel
+
+# Troca a senha e deixa as sessões vivas (opt-out explícito)
+tempest user set-password --email ana@example.com --keep-sessions
+
 # Lista
 tempest user list                                # todos
 tempest user list --admin                        # só admins
@@ -548,6 +559,84 @@ tempest user list --admin                        # só admins
     criar admin sem TTY.
 
 `tempest user promote` / `tempest user revoke` localizam o usuário por email (case-insensitive) e só alternam `is_admin`. Quando nenhum usuário casa com o email, saem com código 1 e a mensagem `no user found`.
+
+#### Trocando a senha — `tempest user set-password`
+
+É o lado do operador do fluxo de reset: a conta pra quem não dá pra mandar link, o primeiro admin trancado fora de um ambiente novo, a credencial rotacionada depois de um incidente. Localiza por email (case-insensitive), hasheia com o `set_password` do próprio model — o mesmo hash que o login verifica — e sai com código 1 e `no user found` quando ninguém casa.
+
+```bash
+tempest user set-password --email ana@example.com
+# Password:
+# Confirm:
+# Password updated for ana@example.com (id=6f0c...)
+# Revoked 2 active refresh token(s).
+```
+
+!!! check "Trocar a senha derruba as sessões — por padrão"
+    Trocar o hash, sozinho, não encerra sessão nenhuma: um access token
+    já emitido continua válido até expirar, e um refresh token guardado
+    no banco continua trocável por um novo — exatamente a janela que o
+    reset existe pra fechar. Por isso a revogação **não é uma flag que
+    você precisa lembrar**: o comando resolve
+    `src.db.models:UserRefreshTokenModel` (o nome que o `tempest new`
+    scaffolda) e revoga os refresh tokens do usuário **na mesma
+    transação** que grava o hash novo.
+
+    - Tabela em outro lugar? `--refresh-token-model myapp.models:UserRefreshTokenModel`.
+      Spec que você digitou e não resolve é erro com código 2 — nunca
+      degrada em silêncio pra "não revoguei nada".
+    - Não quer revogar? `--keep-sessions`, que é recusado com código 2
+      se vier junto de `--refresh-token-model` (as duas flags se
+      contradizem).
+    - Projeto que nunca ligou a tabela opt-in de refresh token não tem o
+      que revogar, e o comando diz isso em `stderr`:
+      `note: no refresh-token model at 'src.db.models:UserRefreshTokenModel', so no session was revoked. Pass --refresh-token-model if yours lives elsewhere.`
+
+    A contagem é de sessões que **esta** execução matou — linha já
+    revogada não é recontada, então rodar de novo imprime
+    `Revoked 0 active refresh token(s).`
+
+!!! tip "O mesmo, de dentro do código"
+    `await service.revoke_user_sessions(session, user_id=user.id)` é o
+    par administrativo do `revoke_refresh_token`: logout-everywhere
+    endereçado por id, pra quando você não tem o token em mãos (um
+    endpoint de "desconectar tudo", um agente de suporte trancando conta
+    comprometida). Devolve quantas linhas revogou, e `0` quando o
+    projeto não usa `refresh_token_model` — JWT stateless não tem linha
+    pra derrubar.
+
+    ```python
+    from uuid import UUID
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from tempest_fastapi_sdk import UserAuthService
+
+
+    async def force_logout(
+        user_id: UUID,
+        session: AsyncSession,
+        service: UserAuthService,
+    ) -> int:
+        """Revoga todas as sessões de um usuário. Retorna quantas caíram."""
+        killed = await service.revoke_user_sessions(session, user_id=user_id)
+        await session.commit()
+        return killed
+    ```
+
+!!! info "A política de senha é a do seu projeto, não a da CLI"
+    `create` e `set-password` validam o plaintext com
+    `check_password_policy` contra os três campos `AUTH_PASSWORD_*` do
+    `src.core.settings` do projeto — e contra os defaults do
+    `PasswordPolicy` (mínimo 12 caracteres, máximo 72 **bytes**) quando o
+    projeto não compõe `AuthSettings`. É a mesma régua do `signup` e do
+    painel admin, então a senha que a CLI aceita é sempre uma que o dono
+    da conta consegue usar pra logar.
+
+    O teto é medido em **bytes UTF-8**, a unidade que o bcrypt conta: 40
+    caracteres acentuados são 80 bytes e saem com código 2 e
+    `error: password must be at most 72 bytes.` — antes de qualquer
+    escrita no banco.
 
 Resolução do `DATABASE_URL` igual ao `tempest db` (env var > instância de settings > `.env` > `alembic.ini`).
 

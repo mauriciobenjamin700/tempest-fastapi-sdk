@@ -32,7 +32,8 @@ import typer
 if TYPE_CHECKING:
     from sqlalchemy import Column
 
-    from tempest_fastapi_sdk import BaseUserModel
+    from tempest_fastapi_sdk import BaseUserModel, BaseUserRefreshTokenModel
+    from tempest_fastapi_sdk.utils.password import PasswordPolicy
 
 _OWN_FLAG_COLUMNS: dict[str, str] = {
     "email": "--email",
@@ -63,6 +64,33 @@ def _stdin_is_interactive() -> bool:
     return sys.stdin.isatty()
 
 
+def _load_project_settings() -> Any | None:
+    """Import the project's ``settings`` object, or ``None`` when absent.
+
+    The scaffolded layout puts it at ``src/core/settings.py``; the file
+    is probed before the import so a directory that simply is not a
+    Tempest project reads as "nothing to load" rather than as a broken
+    one. ``sys.path`` gains the working directory first, so the import
+    resolves against the project the operator is standing in.
+
+    Errors are deliberately **not** swallowed here: a settings module
+    that exists and raises means something different to every caller —
+    fatal when the database URL has no other source, ignorable when only
+    the password policy was being read — so each one decides.
+
+    Returns:
+        Any | None: The project's ``settings`` object, or ``None`` when
+        there is no ``src/core/settings.py`` to import.
+    """
+    cwd = Path.cwd()
+    if not (cwd / "src" / "core" / "settings.py").is_file():
+        return None
+    sys.path.insert(0, str(cwd))
+    from src.core.settings import settings  # type: ignore[import-not-found]
+
+    return settings
+
+
 def _resolve_database_url() -> str:
     """Pull the active DB URL from env / settings / fail loudly.
 
@@ -75,28 +103,70 @@ def _resolve_database_url() -> str:
     env = os.environ.get("DATABASE_URL")
     if env:
         return env
-    cwd = Path.cwd()
-    if (cwd / "src" / "core" / "settings.py").is_file():
-        sys.path.insert(0, str(cwd))
-        try:
-            from src.core.settings import settings  # type: ignore[import-not-found]
-
-            url = getattr(settings, "DATABASE_URL", None)
-            if isinstance(url, str) and url:
-                return url
-        except Exception as exc:
-            typer.echo(
-                f"error: could not load src.core.settings ({exc}). "
-                f"Run inside the project root or set DATABASE_URL.",
-                err=True,
-            )
-            raise typer.Exit(2) from exc
+    try:
+        settings = _load_project_settings()
+    except Exception as exc:
+        typer.echo(
+            f"error: could not load src.core.settings ({exc}). "
+            f"Run inside the project root or set DATABASE_URL.",
+            err=True,
+        )
+        raise typer.Exit(2) from exc
+    if settings is not None:
+        url = getattr(settings, "DATABASE_URL", None)
+        if isinstance(url, str) and url:
+            return url
     typer.echo(
         "error: DATABASE_URL not set and src/core/settings.py not found. "
         "Run inside the project root or export DATABASE_URL.",
         err=True,
     )
     raise typer.Exit(2)
+
+
+def _import_symbol(dotted: str, option: str) -> Any:
+    """Import ``"module.path:ClassName"`` from the project root.
+
+    The parse / import / ``getattr`` half of every ``--*-model`` option,
+    shared so each loader below only owns the type check that is
+    actually its own. ``sys.path`` gains the working directory first, so
+    a spec like ``src.db.models:UserModel`` resolves against the project
+    the operator is standing in rather than the installed SDK.
+
+    Args:
+        dotted (str): The ``"module.path:ClassName"`` spec.
+        option (str): The CLI flag the spec came from, named back to the
+            operator in every error message.
+
+    Returns:
+        Any: Whatever the module binds under that name — the caller
+        checks the type.
+
+    Raises:
+        typer.Exit: With code 2 when the spec is malformed, the module
+            cannot be imported, or the attribute is missing.
+    """
+    module_path, _, class_name = dotted.partition(":")
+    if not module_path or not class_name:
+        typer.echo(
+            f"error: {option} must be 'module.path:ClassName', got {dotted!r}",
+            err=True,
+        )
+        raise typer.Exit(2)
+    sys.path.insert(0, str(Path.cwd()))
+    try:
+        module = importlib.import_module(module_path)
+    except ImportError as exc:
+        typer.echo(f"error: cannot import {module_path!r}: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    try:
+        return getattr(module, class_name)
+    except AttributeError as exc:
+        typer.echo(
+            f"error: {module_path!r} has no attribute {class_name!r}",
+            err=True,
+        )
+        raise typer.Exit(2) from exc
 
 
 def _load_user_model(dotted: str) -> type[BaseUserModel]:
@@ -115,27 +185,7 @@ def _load_user_model(dotted: str) -> type[BaseUserModel]:
     """
     from tempest_fastapi_sdk import BaseUserModel as _BaseUserModel
 
-    module_path, _, class_name = dotted.partition(":")
-    if not module_path or not class_name:
-        typer.echo(
-            f"error: --model must be 'module.path:ClassName', got {dotted!r}",
-            err=True,
-        )
-        raise typer.Exit(2)
-    sys.path.insert(0, str(Path.cwd()))
-    try:
-        module = importlib.import_module(module_path)
-    except ImportError as exc:
-        typer.echo(f"error: cannot import {module_path!r}: {exc}", err=True)
-        raise typer.Exit(2) from exc
-    try:
-        model = getattr(module, class_name)
-    except AttributeError as exc:
-        typer.echo(
-            f"error: {module_path!r} has no attribute {class_name!r}",
-            err=True,
-        )
-        raise typer.Exit(2) from exc
+    model = _import_symbol(dotted, "--model")
     if not isinstance(model, type) or not issubclass(model, _BaseUserModel):
         typer.echo(
             f"error: {dotted} is not a BaseUserModel subclass.",
@@ -143,6 +193,181 @@ def _load_user_model(dotted: str) -> type[BaseUserModel]:
         )
         raise typer.Exit(2)
     return model
+
+
+_DEFAULT_REFRESH_TOKEN_MODEL: str = "src.db.models:UserRefreshTokenModel"
+"""Dotted spec ``set-password`` tries when ``--refresh-token-model`` is omitted.
+
+The name ``tempest new`` scaffolds. Revoking the user's sessions is the
+behaviour a password reset is supposed to have, so it has to be what
+happens when the operator types nothing — a flag that must be
+remembered to be secure is one that will be forgotten. Projects that
+never wired the opt-in refresh table simply have nothing at this path,
+which is why the lookup is allowed to come back empty instead of
+failing.
+"""
+
+
+def _load_refresh_token_model(dotted: str) -> type[BaseUserRefreshTokenModel]:
+    """Import the project's concrete refresh-token model via dotted spec.
+
+    Args:
+        dotted (str): ``"module.path:ClassName"`` for the concrete
+            :class:`BaseUserRefreshTokenModel` subclass — the table the
+            project passes as ``refresh_token_model=`` to
+            :class:`~tempest_fastapi_sdk.UserAuthService`.
+
+    Returns:
+        type[BaseUserRefreshTokenModel]: The concrete model class.
+
+    Raises:
+        typer.Exit: When the import fails or the class is not a
+            :class:`BaseUserRefreshTokenModel` subclass.
+    """
+    from tempest_fastapi_sdk import (
+        BaseUserRefreshTokenModel as _BaseUserRefreshTokenModel,
+    )
+
+    model = _import_symbol(dotted, "--refresh-token-model")
+    if not isinstance(model, type) or not issubclass(
+        model,
+        _BaseUserRefreshTokenModel,
+    ):
+        typer.echo(
+            f"error: {dotted} is not a BaseUserRefreshTokenModel subclass.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    return model
+
+
+def _find_default_refresh_token_model() -> type[BaseUserRefreshTokenModel] | None:
+    """Import :data:`_DEFAULT_REFRESH_TOKEN_MODEL`, or return ``None``.
+
+    The tolerant sibling of :func:`_load_refresh_token_model`: a spec the
+    operator typed is a promise the CLI must keep or refuse, but the
+    conventional path is a guess, and a project that never opted into
+    DB-backed refresh tokens has no such module. Every failure — absent
+    module, absent attribute, wrong base — reads the same here, and the
+    caller says out loud that no session was revoked.
+
+    Returns:
+        type[BaseUserRefreshTokenModel] | None: The scaffolded
+        refresh-token model, or ``None`` when the project has none.
+    """
+    from tempest_fastapi_sdk import (
+        BaseUserRefreshTokenModel as _BaseUserRefreshTokenModel,
+    )
+
+    module_path, _, class_name = _DEFAULT_REFRESH_TOKEN_MODEL.partition(":")
+    sys.path.insert(0, str(Path.cwd()))
+    try:
+        module = importlib.import_module(module_path)
+    except ImportError:
+        return None
+    model = getattr(module, class_name, None)
+    if not isinstance(model, type) or not issubclass(
+        model,
+        _BaseUserRefreshTokenModel,
+    ):
+        return None
+    return model
+
+
+_POLICY_SETTINGS_FIELDS: tuple[str, ...] = (
+    "AUTH_PASSWORD_MIN_LENGTH",
+    "AUTH_PASSWORD_MAX_BYTES",
+    "AUTH_PASSWORD_REQUIRE_COMPLEXITY",
+)
+"""The three ``AuthSettings`` fields :class:`PasswordPolicy` is built from.
+
+Checked one by one before calling ``PasswordPolicy.from_settings``: a
+project composes only the mixins it uses, so a ``Settings`` without
+``AuthSettings`` is ordinary, not broken, and must fall back to the
+defaults rather than raise ``AttributeError`` at the operator.
+"""
+
+
+def _resolve_password_policy() -> PasswordPolicy:
+    """Read the project's password policy, or fall back to the defaults.
+
+    The CLI writes to the same column ``signup`` and the admin panel
+    write to, so it has to accept exactly the same passwords they do.
+    Hard-coding a floor here is how the three drift: a value the CLI
+    seeds is then rejected the first time its owner tries to change it.
+
+    Reads ``src.core.settings:settings`` when the scaffolded layout is
+    present and it carries the ``AUTH_PASSWORD_*`` fields; anything else
+    — no project on disk, a ``Settings`` that never composed
+    ``AuthSettings``, an import that blows up — yields the
+    :class:`PasswordPolicy` defaults, which mirror the ``AuthSettings``
+    field defaults.
+
+    Returns:
+        PasswordPolicy: The rules a plaintext password must satisfy.
+    """
+    from tempest_fastapi_sdk.utils.password import PasswordPolicy as _PasswordPolicy
+
+    try:
+        settings = _load_project_settings()
+    except Exception:
+        return _PasswordPolicy()
+    if settings is None:
+        return _PasswordPolicy()
+    if not all(hasattr(settings, name) for name in _POLICY_SETTINGS_FIELDS):
+        return _PasswordPolicy()
+    return _PasswordPolicy.from_settings(settings)
+
+
+def _validate_password(password: str) -> None:
+    """Reject a plaintext the project's password policy refuses.
+
+    Runs before anything touches the database, so a password bcrypt
+    cannot hash (over 72 UTF-8 bytes) exits with a message naming the
+    bound instead of surfacing the ``ValueError`` from
+    ``PasswordUtils.hash`` as a traceback.
+
+    Args:
+        password (str): The plaintext to check.
+
+    Raises:
+        typer.Exit: With code 2 when the policy rejects it.
+    """
+    from tempest_fastapi_sdk.utils.password import check_password_policy
+
+    violation = check_password_policy(password, _resolve_password_policy())
+    if violation is not None:
+        typer.echo(f"error: {violation.message}.", err=True)
+        raise typer.Exit(2)
+
+
+def _read_password(password: str | None) -> str:
+    """Return a validated plaintext, prompting twice when none was given.
+
+    Omitting ``--password`` keeps the secret out of shell history and
+    out of the process list, so the prompt is the recommended path and
+    the confirmation catches the typo that would otherwise lock the
+    account out.
+
+    Args:
+        password (str | None): The value of ``--password``, or ``None``
+            to read it from the terminal.
+
+    Returns:
+        str: The plaintext, already checked against the policy.
+
+    Raises:
+        typer.Exit: With code 2 when the two prompts disagree or the
+            policy rejects the password.
+    """
+    if not password:
+        password = getpass("Password: ")
+        confirm = getpass("Confirm: ")
+        if password != confirm:
+            typer.echo("error: passwords do not match.", err=True)
+            raise typer.Exit(2)
+    _validate_password(password)
+    return password
 
 
 async def _create_user(
@@ -236,6 +461,64 @@ async def _set_user_admin(
             await session.commit()
             await session.refresh(user)
             return str(user.id)
+    finally:
+        await db.disconnect()
+
+
+async def _set_user_password(
+    database_url: str,
+    user_model: type[BaseUserModel],
+    *,
+    email: str,
+    password: str,
+    refresh_token_model: type[BaseUserRefreshTokenModel] | None,
+) -> tuple[str, int] | None:
+    """Re-hash one user's password, found by email, and kill its sessions.
+
+    The revocation runs inside the same transaction as the new hash, so
+    the two land together: a commit that wrote the password but not the
+    revocation would leave every stolen refresh token exchangeable
+    against an account whose owner believes it was just secured.
+
+    Args:
+        database_url (str): The resolved database URL.
+        user_model (type[BaseUserModel]): The concrete user model.
+        email (str): Email of the user to update (normalized to lower).
+        password (str): The new plaintext, hashed before the update.
+        refresh_token_model (type[BaseUserRefreshTokenModel] | None):
+            The project's concrete refresh-token table, or ``None`` to
+            leave existing sessions alone.
+
+    Returns:
+        tuple[str, int] | None: The user's id and how many refresh
+        tokens were revoked, or ``None`` when no user matches the email.
+    """
+    from sqlalchemy import select
+
+    from tempest_fastapi_sdk import AsyncDatabaseManager
+    from tempest_fastapi_sdk.auth.service import revoke_user_refresh_tokens
+
+    db = AsyncDatabaseManager(database_url)
+    await db.connect()
+    try:
+        async with db.get_session_context() as session:
+            result = await session.execute(
+                select(user_model).where(user_model.email == email.lower()),
+            )
+            user = result.scalar_one_or_none()
+            if user is None:
+                return None
+            user.set_password(password)
+            revoked = 0
+            if refresh_token_model is not None:
+                revoked = await revoke_user_refresh_tokens(
+                    session,
+                    refresh_token_model,
+                    user_id=user.id,
+                )
+            await session.commit()
+            await session.refresh(user)
+            return str(user.id), revoked
     finally:
         await db.disconnect()
 
@@ -550,6 +833,12 @@ def user_create(
         often) exits with code 1 and the database's own message, instead
         of a traceback.
 
+        The password is checked against the project's own policy — the
+        three ``AUTH_PASSWORD_*`` fields of ``src.core.settings``, or the
+        ``PasswordPolicy`` defaults when the project does not compose
+        ``AuthSettings`` — so a seeded account is never one its owner
+        cannot log in to change.
+
         A ``UserModel`` that adds a ``NOT NULL`` column with no default
         cannot be seeded from ``--email``/``--password``/``--admin``
         alone. Pass each one as ``--set <column>=<value>``; on a terminal
@@ -557,15 +846,7 @@ def user_create(
         run exits with code 2 naming them instead of letting the database
         reject the insert.
     """
-    if not password:
-        password = getpass("Password: ")
-        confirm = getpass("Confirm: ")
-        if password != confirm:
-            typer.echo("error: passwords do not match.", err=True)
-            raise typer.Exit(2)
-    if len(password) < 8:
-        typer.echo("error: password must be at least 8 characters.", err=True)
-        raise typer.Exit(2)
+    password = _read_password(password)
 
     if is_admin is None:
         if _stdin_is_interactive():
@@ -628,6 +909,126 @@ def user_list(
         flags = "+admin" if admin else "      "
         status = "active" if active else "inactive"
         typer.echo(f"{uid}  {email}  {flags}  {status}")
+
+
+@user_app.command("set-password")
+def user_set_password(
+    email: str = typer.Option(
+        ...,
+        "--email",
+        "-e",
+        help="Email of the existing user whose password is being replaced.",
+    ),
+    password: str | None = typer.Option(
+        None,
+        "--password",
+        "-p",
+        help=(
+            "New password. Omit to read it interactively (avoids leaving "
+            "the secret in shell history)."
+        ),
+    ),
+    model: str = typer.Option(
+        "src.db.models:UserModel",
+        "--model",
+        help="Dotted spec for the concrete UserModel.",
+    ),
+    refresh_token_model: str | None = typer.Option(
+        None,
+        "--refresh-token-model",
+        help=(
+            "Dotted spec for the concrete refresh-token model. Omitted, "
+            f"{_DEFAULT_REFRESH_TOKEN_MODEL!r} is tried, so the user's "
+            "sessions are revoked along with the password whenever the "
+            "project has that table."
+        ),
+    ),
+    keep_sessions: bool = typer.Option(
+        False,
+        "--keep-sessions",
+        help=(
+            "Do not revoke anything: every refresh token the user holds "
+            "stays exchangeable after the password changes."
+        ),
+    ),
+) -> None:
+    """Replace an existing user's password, found by email.
+
+    The operator-side half of the reset flow: the account nobody can
+    mail a link to, the first admin locked out of a fresh environment,
+    the credential rotated after a report. The new plaintext is hashed
+    with the model's own ``set_password``, so it is the same hash the
+    login endpoint verifies.
+
+    Notes:
+        The password is checked against the project's own policy before
+        anything is written, exactly like ``create``. Every dotted spec
+        is resolved before the prompt, so a typo in ``--model`` costs one
+        error message rather than a password typed twice into a command
+        that was never going to run.
+
+        Changing the hash does not, by itself, end a session — an access
+        token already issued stays valid until it expires, and a
+        DB-backed refresh token can still be exchanged for a fresh one.
+        So the user's refresh tokens are revoked **by default**, in the
+        same transaction that writes the hash: the command resolves
+        ``--refresh-token-model``, falling back to
+        ``src.db.models:UserRefreshTokenModel``. Every path says which
+        of the two happened, so a run that left sessions alive is never
+        silent about it.
+
+    Raises:
+        typer.Exit: With code 1 when no user matches the email, or code
+            2 when the password is rejected, the two flags contradict
+            each other, or a dotted spec cannot be resolved.
+    """
+    if keep_sessions and refresh_token_model:
+        typer.echo(
+            "error: --keep-sessions and --refresh-token-model contradict "
+            "each other. Pass one or neither.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    database_url = _resolve_database_url()
+    user_model = _load_user_model(model)
+    token_model: type[BaseUserRefreshTokenModel] | None = None
+    if not keep_sessions:
+        token_model = (
+            _load_refresh_token_model(refresh_token_model)
+            if refresh_token_model
+            else _find_default_refresh_token_model()
+        )
+    password = _read_password(password)
+    outcome = asyncio.run(
+        _set_user_password(
+            database_url,
+            user_model,
+            email=email,
+            password=password,
+            refresh_token_model=token_model,
+        )
+    )
+    if outcome is None:
+        typer.echo(f"error: no user found with email {email!r}.", err=True)
+        raise typer.Exit(1)
+    user_id, revoked = outcome
+    typer.echo(f"Password updated for {email.lower()} (id={user_id})")
+    if token_model is not None:
+        typer.echo(f"Revoked {revoked} active refresh token(s).")
+        return
+    if keep_sessions:
+        typer.echo(
+            "note: --keep-sessions given, so every refresh token the user "
+            "holds is still exchangeable.",
+            err=True,
+        )
+        return
+    typer.echo(
+        f"note: no refresh-token model at {_DEFAULT_REFRESH_TOKEN_MODEL!r}, "
+        "so no session was revoked. Pass --refresh-token-model if yours "
+        "lives elsewhere.",
+        err=True,
+    )
 
 
 def _run_set_admin(email: str, model: str, *, is_admin: bool) -> None:

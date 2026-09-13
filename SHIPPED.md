@@ -1690,11 +1690,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   environment has nothing; and a failed import reports its cause on stderr
   instead of vanishing into `except Exception: return None`),
   `tempest user create [--admin] [--set col=value] / list / promote /
-  revoke` (**`--set` (v0.240.0)** seeds the columns a concrete
-  `UserModel` adds: validated against the mapped columns, converted to
-  the column type, `email`/`hashed_password`/`is_admin` refused in
-  favor of their own flags; a required column with no default is
-  prompted for on a TTY and is an exit-2 error without one),
+  revoke / set-password` (**`--set` (v0.240.0)** seeds the columns a
+  concrete `UserModel` adds: validated against the mapped columns,
+  converted to the column type, `email`/`hashed_password`/`is_admin`
+  refused in favor of their own flags; a required column with no default
+  is prompted for on a TTY and is an exit-2 error without one;
+  **`set-password` (v0.293.0)** replaces an existing user's password and
+  revokes their DB-backed refresh tokens in the same transaction by
+  default, and both it and `create` validate the plaintext with
+  `check_password_policy` against the project's own `AUTH_PASSWORD_*`
+  settings),
   `tempest secrets rotate`,
   `tempest model analyze/bench/optimize/quantize/export-ort/hardware/
   pull/cache-list/cache-rm`,
@@ -2101,3 +2106,31 @@ código descartava**. A receita mandava esconder soft-deleted passando
 `deleted_at=None` e, trinta linhas depois, escrevia query crua "porque
 `_apply_filters` pula `None`". Duas frases contraditórias na mesma
 página, e a errada era a que o leitor copiava.
+
+## A CLI aprende a trocar senha, v0.293.0 (2026-09-13)
+
+`tempest user` sabia criar e promover, não sabia trocar senha: a saída
+era `UPDATE` manual com hash calculado à mão, ou apagar e recriar a
+conta. Agora é `tempest user set-password --email <e>`.
+
+O que a feature ensinou, e que vale mais que ela: **um reset de senha
+que não derruba sessão não é um reset**. Access token já emitido vale
+até expirar, refresh token no banco continua trocável — a janela exata
+que o reset existe pra fechar. Fazer disso uma flag opcional seria
+escrever o `!!! danger` que o `CLAUDE.md` chama de superfície faltando,
+então a revogação virou o **default**: o comando resolve
+`src.db.models:UserRefreshTokenModel` sozinho, `--keep-sessions` é o
+opt-out explícito, e todo caminho diz em qual dos dois caiu.
+
+Faltava também o verbo por trás disso. `revoke_refresh_token` só sabia
+partir de um token apresentado, que é precisamente o que um operador não
+tem — daí `revoke_user_refresh_tokens(session, model, *, user_id)` e
+`UserAuthService.revoke_user_sessions(session, *, user_id)`, que
+`revoke_refresh_token(all_sessions=True)` agora também usa.
+
+Dois defeitos apareceram no caminho, ambos na validação que a CLI tinha
+escrito à mão (`len(password) < 8`): senha acima de 72 bytes saía como
+`ValueError` cru do bcrypt em vez de mensagem, e o floor de 8 aceitava
+senha que o `signup` recusava — conta semeada cujo dono não conseguia
+trocar a senha depois. Os dois somem ao trocar o `if` por
+`check_password_policy`, que é a régua que o resto do SDK já usava.
