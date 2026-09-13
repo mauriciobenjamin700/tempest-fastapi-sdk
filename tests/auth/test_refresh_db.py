@@ -247,6 +247,82 @@ class TestRefreshDBService:
             with pytest.raises(InvalidTokenException):
                 await service.refresh_tokens(session, refresh_token=token)
 
+    async def test_revoke_user_sessions_by_id(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        """Logout-everywhere addressed by user id, holding no token."""
+        service = _service()
+        user = await _make_user(
+            session=session, service=service, email="revoke-by-id@a.com"
+        )
+        _a, refresh_a = await service.issue_token_pair(session, user)
+        _b, refresh_b = await service.issue_token_pair(session, user)
+        await session.commit()
+
+        killed = await service.revoke_user_sessions(session, user_id=user.id)
+        await session.commit()
+
+        assert killed == 2
+        for token in (refresh_a, refresh_b):
+            with pytest.raises(InvalidTokenException):
+                await service.refresh_tokens(session, refresh_token=token)
+
+    async def test_revoke_user_sessions_counts_only_live_rows(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        """A second call reports ``0`` — the count is sessions killed."""
+        service = _service()
+        user = await _make_user(
+            session=session, service=service, email="revoke-twice@a.com"
+        )
+        await service.issue_token_pair(session, user)
+        await session.commit()
+
+        assert await service.revoke_user_sessions(session, user_id=user.id) == 1
+        await session.commit()
+        assert await service.revoke_user_sessions(session, user_id=user.id) == 0
+
+    async def test_revoke_user_sessions_spares_other_users(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service()
+        target = await _make_user(
+            session=session, service=service, email="target@a.com"
+        )
+        bystander = await _make_user(
+            session=session, service=service, email="bystander@a.com"
+        )
+        await service.issue_token_pair(session, target)
+        _access, kept = await service.issue_token_pair(session, bystander)
+        await session.commit()
+
+        assert await service.revoke_user_sessions(session, user_id=target.id) == 1
+        await session.commit()
+
+        assert await service.refresh_tokens(session, refresh_token=kept)
+
+    async def test_revoke_user_sessions_without_the_table_returns_zero(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        """Stateless JWT refresh tokens carry no row to flip."""
+        auth = AuthSettings(AUTH_AUTO_ACTIVATE=True)
+        jwt = JWTSettings(JWT_SECRET="x" * 32)
+        stateless = UserAuthService(
+            user_model=_RefreshDBUser,
+            token_model=_RefreshDBUserToken,  # type: ignore[arg-type]
+            auth_settings=auth,
+            jwt_settings=jwt,
+            email=None,
+        )
+        user = await _make_user(
+            session=session, service=stateless, email="stateless@a.com"
+        )
+        assert await stateless.revoke_user_sessions(session, user_id=user.id) == 0
+
     async def test_revoke_unknown_token_is_noop(
         self,
         session: AsyncSession,

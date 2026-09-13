@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import sys
-import textwrap
 import types
 from collections.abc import Iterator
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from pathlib import Path
 from typing import ClassVar
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import (
@@ -24,12 +23,21 @@ from sqlalchemy import (
     String,
     Time,
     Uuid,
+    func,
+    insert,
+    select,
 )
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import Mapped, mapped_column
 from typer.testing import CliRunner
 
-from tempest_fastapi_sdk import BaseModel, BaseStrEnum, BaseUserModel
+from tempest_fastapi_sdk import (
+    BaseModel,
+    BaseStrEnum,
+    BaseUserModel,
+    PasswordUtils,
+    make_user_refresh_token_model,
+)
 from tempest_fastapi_sdk.cli.main import app
 from tempest_fastapi_sdk.db.enums import TempestEnum
 
@@ -66,10 +74,19 @@ class _CLIRichUserModel(BaseUserModel):
     )
 
 
+_CLIRefreshTokenModel = make_user_refresh_token_model(
+    user_table="cli_users",
+    tablename="cli_user_refresh_tokens",
+    class_name="_CLIRefreshTokenModel",
+)
+"""Concrete refresh-token table for the ``set-password`` revocation tests."""
+
+
 # Make the models importable via the dotted spec used by the tests.
 _module = types.ModuleType("cli_user_model")
 _module._CLIUserModel = _CLIUserModel  # type: ignore[attr-defined]
 _module._CLIRichUserModel = _CLIRichUserModel  # type: ignore[attr-defined]
+_module._CLIRefreshTokenModel = _CLIRefreshTokenModel  # type: ignore[attr-defined]
 sys.modules["cli_user_model"] = _module
 
 
@@ -147,7 +164,7 @@ class TestUserCreate:
             ],
         )
         assert result.exit_code == 2
-        assert "at least 8" in (result.stdout + result.stderr)
+        assert "at least 12" in (result.stdout + result.stderr)
 
     def test_invalid_model_spec_rejected(self, project_db: str) -> None:
         result = runner.invoke(
@@ -788,17 +805,532 @@ class TestUserList:
         assert "ana@example.com" not in result.stdout
 
 
-def _seed_settings_module(target: Path, database_url: str) -> None:
-    """Write a minimal ``src/core/settings.py`` for resolver tests."""
+def _seed_settings_module(
+    target: Path,
+    database_url: str,
+    *,
+    min_length: int | None = None,
+) -> None:
+    """Write a minimal ``src/core/settings.py`` for resolver tests.
+
+    Args:
+        target (Path): The fake project root.
+        database_url (str): Value for the ``DATABASE_URL`` attribute.
+        min_length (int | None): When given, the module also carries the
+            three ``AUTH_PASSWORD_*`` fields, so the CLI reads a real
+            policy instead of falling back to the defaults.
+    """
     (target / "src" / "core").mkdir(parents=True, exist_ok=True)
     (target / "src" / "core" / "__init__.py").write_text("", encoding="utf-8")
     (target / "src" / "__init__.py").write_text("", encoding="utf-8")
+    fields = [f'DATABASE_URL="{database_url}"']
+    if min_length is not None:
+        fields += [
+            f"AUTH_PASSWORD_MIN_LENGTH={min_length}",
+            "AUTH_PASSWORD_MAX_BYTES=72",
+            "AUTH_PASSWORD_REQUIRE_COMPLEXITY=False",
+        ]
     (target / "src" / "core" / "settings.py").write_text(
-        textwrap.dedent(
-            f"""
-            from types import SimpleNamespace
-            settings = SimpleNamespace(DATABASE_URL="{database_url}")
-            """
-        ).strip(),
+        "from types import SimpleNamespace\n"
+        f"settings = SimpleNamespace({', '.join(fields)})\n",
         encoding="utf-8",
     )
+
+
+def _read_hash(database_url: str, email: str) -> str:
+    """Return the stored ``hashed_password`` of one user, by email."""
+    import asyncio
+
+    async def _fetch() -> str:
+        engine = create_async_engine(database_url)
+        try:
+            async with engine.connect() as conn:
+                result = await conn.execute(
+                    select(_CLIUserModel.hashed_password).where(
+                        _CLIUserModel.email == email,
+                    ),
+                )
+                return str(result.scalar_one())
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(_fetch())
+
+
+def _seed_refresh_tokens(
+    database_url: str,
+    email: str,
+    *,
+    active: int,
+    revoked: int = 0,
+) -> None:
+    """Insert refresh-token rows for one user — some already revoked.
+
+    The revoked ones exist so the count the CLI prints can be shown to
+    be the number of sessions this run actually killed, not the number
+    of rows the user owns.
+    """
+    import asyncio
+
+    async def _insert() -> None:
+        engine = create_async_engine(database_url)
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(BaseModel.metadata.create_all)
+                user_id = (
+                    await conn.execute(
+                        select(_CLIUserModel.id).where(
+                            _CLIUserModel.email == email,
+                        ),
+                    )
+                ).scalar_one()
+                expires = datetime(2099, 1, 1, tzinfo=UTC)
+                rows = [
+                    {
+                        "user_id": user_id,
+                        "token_hash": f"hash-active-{index}",
+                        "family_id": uuid4(),
+                        "expires_at": expires,
+                        "used_at": None,
+                        "revoked_at": None,
+                    }
+                    for index in range(active)
+                ]
+                rows += [
+                    {
+                        "user_id": user_id,
+                        "token_hash": f"hash-revoked-{index}",
+                        "family_id": uuid4(),
+                        "expires_at": expires,
+                        "used_at": None,
+                        "revoked_at": datetime(2020, 1, 1, tzinfo=UTC),
+                    }
+                    for index in range(revoked)
+                ]
+                await conn.execute(insert(_CLIRefreshTokenModel), rows)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(_insert())
+
+
+def _count_active_refresh_tokens(database_url: str) -> int:
+    """Return how many refresh-token rows still have ``revoked_at IS NULL``."""
+    import asyncio
+
+    async def _count() -> int:
+        engine = create_async_engine(database_url)
+        try:
+            async with engine.connect() as conn:
+                result = await conn.execute(
+                    select(func.count())
+                    .select_from(_CLIRefreshTokenModel)
+                    .where(_CLIRefreshTokenModel.revoked_at.is_(None)),
+                )
+                return int(result.scalar_one())
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(_count())
+
+
+def _forget_project_modules() -> None:
+    """Drop the fake project packages so the next test re-imports its own."""
+    for name in list(sys.modules):
+        if name == "src" or name.startswith("src."):
+            del sys.modules[name]
+
+
+def _seed_models_module(target: Path) -> None:
+    """Write a ``src/db/models.py`` under the scaffolded names.
+
+    Re-exports the test models rather than declaring new ones: a second
+    concrete table on the same ``BaseModel.metadata`` would collide, and
+    what is under test is the dotted path the CLI falls back to, not the
+    mapping behind it.
+    """
+    (target / "src" / "db").mkdir(parents=True, exist_ok=True)
+    (target / "src" / "__init__.py").write_text("", encoding="utf-8")
+    (target / "src" / "db" / "__init__.py").write_text("", encoding="utf-8")
+    (target / "src" / "db" / "models.py").write_text(
+        "from cli_user_model import _CLIUserModel as UserModel\n"
+        "from cli_user_model import (\n"
+        "    _CLIRefreshTokenModel as UserRefreshTokenModel,\n"
+        ")\n",
+        encoding="utf-8",
+    )
+    _forget_project_modules()
+
+
+class TestUserSetPassword:
+    """``tempest user set-password`` — the operator-side reset."""
+
+    def _create(self, email: str, password: str = "secret-pass-12") -> None:
+        runner.invoke(
+            app,
+            [
+                "user",
+                "create",
+                "--email",
+                email,
+                "--password",
+                password,
+                "--no-admin",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+
+    def test_replaces_the_stored_hash(self, project_db: str) -> None:
+        self._create("ana@example.com")
+        before = _read_hash(project_db, "ana@example.com")
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "set-password",
+                "--email",
+                "ana@example.com",
+                "--password",
+                "brand-new-pass-42",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "Password updated for ana@example.com" in result.stdout
+        after = _read_hash(project_db, "ana@example.com")
+        assert after != before
+        utils = PasswordUtils()
+        assert utils.verify("brand-new-pass-42", after)
+        assert not utils.verify("secret-pass-12", after)
+
+    def test_unknown_email_exits_1(self, project_db: str) -> None:
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "set-password",
+                "--email",
+                "ghost@example.com",
+                "--password",
+                "brand-new-pass-42",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "no user found" in (result.stdout + result.stderr)
+
+    def test_is_case_insensitive(self, project_db: str) -> None:
+        self._create("mixed@example.com")
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "set-password",
+                "--email",
+                "MIXED@example.com",
+                "--password",
+                "brand-new-pass-42",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert PasswordUtils().verify(
+            "brand-new-pass-42",
+            _read_hash(project_db, "mixed@example.com"),
+        )
+
+    def test_short_password_rejected_before_touching_the_row(
+        self,
+        project_db: str,
+    ) -> None:
+        self._create("ana@example.com")
+        before = _read_hash(project_db, "ana@example.com")
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "set-password",
+                "--email",
+                "ana@example.com",
+                "--password",
+                "short",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 2
+        assert "at least 12" in (result.stdout + result.stderr)
+        assert _read_hash(project_db, "ana@example.com") == before
+
+    def test_project_without_the_table_says_nothing_was_revoked(
+        self,
+        project_db: str,
+    ) -> None:
+        """No ``src.db.models`` to fall back to — and the run says so."""
+        self._create("ana@example.com")
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "set-password",
+                "--email",
+                "ana@example.com",
+                "--password",
+                "brand-new-pass-42",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "no refresh-token model at" in (result.stdout + result.stderr)
+
+    def test_scaffolded_table_is_found_without_the_flag(
+        self,
+        project_db: str,
+        tmp_path: Path,
+    ) -> None:
+        """Revoking is the default: the conventional path is tried first."""
+        self._create("ana@example.com")
+        _seed_refresh_tokens(project_db, "ana@example.com", active=2)
+        _seed_models_module(tmp_path)
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "set-password",
+                "--email",
+                "ana@example.com",
+                "--password",
+                "brand-new-pass-42",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        _forget_project_modules()
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "Revoked 2 active refresh token(s)." in result.stdout
+        assert _count_active_refresh_tokens(project_db) == 0
+
+    def test_keep_sessions_opts_out_loudly(
+        self,
+        project_db: str,
+        tmp_path: Path,
+    ) -> None:
+        self._create("ana@example.com")
+        _seed_refresh_tokens(project_db, "ana@example.com", active=2)
+        _seed_models_module(tmp_path)
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "set-password",
+                "--email",
+                "ana@example.com",
+                "--password",
+                "brand-new-pass-42",
+                "--keep-sessions",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        _forget_project_modules()
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "--keep-sessions given" in (result.stdout + result.stderr)
+        assert _count_active_refresh_tokens(project_db) == 2
+
+    def test_keep_sessions_with_an_explicit_model_is_refused(
+        self,
+        project_db: str,
+    ) -> None:
+        self._create("ana@example.com")
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "set-password",
+                "--email",
+                "ana@example.com",
+                "--password",
+                "brand-new-pass-42",
+                "--keep-sessions",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+                "--refresh-token-model",
+                "cli_user_model:_CLIRefreshTokenModel",
+            ],
+        )
+        assert result.exit_code == 2
+        assert "contradict" in (result.stdout + result.stderr)
+
+    def test_revokes_only_the_still_active_refresh_tokens(
+        self,
+        project_db: str,
+    ) -> None:
+        self._create("ana@example.com")
+        _seed_refresh_tokens(project_db, "ana@example.com", active=2, revoked=1)
+        assert _count_active_refresh_tokens(project_db) == 2
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "set-password",
+                "--email",
+                "ana@example.com",
+                "--password",
+                "brand-new-pass-42",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+                "--refresh-token-model",
+                "cli_user_model:_CLIRefreshTokenModel",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "Revoked 2 active refresh token(s)." in result.stdout
+        assert "existing sessions were left alone" not in (
+            result.stdout + result.stderr
+        )
+        assert _count_active_refresh_tokens(project_db) == 0
+
+    def test_second_run_revokes_nothing(self, project_db: str) -> None:
+        self._create("ana@example.com")
+        _seed_refresh_tokens(project_db, "ana@example.com", active=2)
+        args = [
+            "user",
+            "set-password",
+            "--email",
+            "ana@example.com",
+            "--password",
+            "brand-new-pass-42",
+            "--model",
+            "cli_user_model:_CLIUserModel",
+            "--refresh-token-model",
+            "cli_user_model:_CLIRefreshTokenModel",
+        ]
+        runner.invoke(app, args)
+        result = runner.invoke(app, args)
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "Revoked 0 active refresh token(s)." in result.stdout
+
+    def test_refresh_token_model_must_be_the_right_base(
+        self,
+        project_db: str,
+    ) -> None:
+        self._create("ana@example.com")
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "set-password",
+                "--email",
+                "ana@example.com",
+                "--password",
+                "brand-new-pass-42",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+                "--refresh-token-model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 2
+        assert "BaseUserRefreshTokenModel subclass" in (result.stdout + result.stderr)
+
+
+class TestPasswordPolicy:
+    """The floor both ``create`` and ``set-password`` enforce."""
+
+    def test_over_72_bytes_is_a_message_not_a_traceback(
+        self,
+        project_db: str,
+    ) -> None:
+        """bcrypt refuses over 72 UTF-8 bytes; the CLI must say so first.
+
+        Before the policy check ran, ``PasswordUtils.hash`` raised
+        ``ValueError('password cannot be longer than 72 bytes, ...')``
+        straight out of the command.
+        """
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "create",
+                "--email",
+                "long@example.com",
+                "--password",
+                "a" * 80,
+                "--no-admin",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 2
+        assert result.exception is None or isinstance(
+            result.exception,
+            SystemExit,
+        )
+        assert "at most 72 bytes" in (result.stdout + result.stderr)
+
+    def test_multibyte_password_is_measured_in_bytes(
+        self,
+        project_db: str,
+    ) -> None:
+        """40 accented characters are 80 UTF-8 bytes — the unit bcrypt counts."""
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "create",
+                "--email",
+                "accented@example.com",
+                "--password",
+                "á" * 40,
+                "--no-admin",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 2
+        assert "at most 72 bytes" in (result.stdout + result.stderr)
+
+    def test_project_settings_raise_the_floor(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``AUTH_PASSWORD_MIN_LENGTH`` from the project wins over the default."""
+        import asyncio
+
+        monkeypatch.chdir(tmp_path)
+        url = f"sqlite+aiosqlite:///{tmp_path / 'app.db'}"
+        monkeypatch.setenv("DATABASE_URL", url)
+
+        async def _create_schema() -> None:
+            engine = create_async_engine(url)
+            async with engine.begin() as conn:
+                await conn.run_sync(BaseModel.metadata.create_all)
+            await engine.dispose()
+
+        asyncio.run(_create_schema())
+        _seed_settings_module(tmp_path, url, min_length=20)
+        _forget_project_modules()
+
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "create",
+                "--email",
+                "ana@example.com",
+                "--password",
+                "sixteen-chars-ok",
+                "--no-admin",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        _forget_project_modules()
+        assert result.exit_code == 2
+        assert "at least 20" in (result.stdout + result.stderr)

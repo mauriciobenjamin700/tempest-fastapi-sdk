@@ -3923,14 +3923,20 @@ Seeds or lists users via the project's concrete `UserModel` (default `src.db.mod
 tempest user create --email ana@example.com --password strong-pass-12 --no-admin
 tempest user create --email admin@local --password admin-pass-12 --admin
 tempest user create --email admin@local --admin       # prompt for password
-tempest user create --email x@y --password p --model myapp.models.user:User
+tempest user create --email x@y --password strong-pass-12 --model myapp.models:User
 tempest user promote --email ana@example.com          # grant /admin access (is_admin=True)
 tempest user revoke  --email ana@example.com          # revoke it (is_admin=False)
+tempest user set-password --email ana@example.com     # prompt, hash, revoke sessions
+tempest user set-password --email ana@example.com --keep-sessions
 tempest user list                                     # everyone
 tempest user list --admin                             # admins only
 ```
 
 When `tempest user create` runs in an interactive terminal **without** `--admin`/`--no-admin`, it asks `Should this user be an administrator? [y/N]`. Non-interactive runs (CI, pipes) skip the prompt and create a regular user. `promote` / `revoke` look the user up by email (case-insensitive) and exit `1` with `no user found` when nothing matches.
+
+`tempest user set-password` replaces an existing user's password, hashing with the model's own `set_password`. Because changing the hash does not end a session on its own, it also revokes the user's DB-backed refresh tokens **in the same transaction** — resolving `src.db.models:UserRefreshTokenModel` by default, `--refresh-token-model` for a table elsewhere, `--keep-sessions` to opt out. Every path reports which of the two happened. From code, the same revocation is `await service.revoke_user_sessions(session, user_id=user.id)`.
+
+Both `create` and `set-password` validate the plaintext with `check_password_policy` against the project's `AUTH_PASSWORD_*` settings (or the `PasswordPolicy` defaults: 12 characters minimum, 72 **bytes** maximum — the unit bcrypt counts), so the CLI accepts exactly the passwords `signup` and the admin panel accept.
 
 #### Generate artifacts in an existing project — `tempest generate`
 

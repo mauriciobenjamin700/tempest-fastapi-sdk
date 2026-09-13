@@ -81,6 +81,7 @@ class TestFullHelpOnError:
         # The ``user`` group help (its subcommands) is rendered.
         assert "create" in out
         assert "promote" in out
+        assert "set-password" in out
         assert "Error:" in out
 
     def test_quality_gate_exit_code_still_propagates(self) -> None:

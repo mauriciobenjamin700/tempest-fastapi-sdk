@@ -511,6 +511,17 @@ tempest user create --email ana@example.com --password strong-pass-12 \
 tempest user promote --email ana@example.com    # becomes admin
 tempest user revoke  --email ana@example.com    # back to a regular account
 
+# Replace an existing user's password (prompts twice) and revoke
+# their sessions along with it
+tempest user set-password --email ana@example.com
+
+# Refresh-token table outside the scaffolded path
+tempest user set-password --email ana@example.com \
+    --refresh-token-model myapp.models:UserRefreshTokenModel
+
+# Replace the password and leave the sessions alive (explicit opt-out)
+tempest user set-password --email ana@example.com --keep-sessions
+
 # List
 tempest user list                                # everyone
 tempest user list --admin                        # admins only
@@ -551,6 +562,84 @@ tempest user list --admin                        # admins only
     without a TTY.
 
 `tempest user promote` / `tempest user revoke` find the user by email (case-insensitive) and only flip `is_admin`. When no user matches the email they exit with code 1 and a `no user found` message.
+
+#### Changing a password — `tempest user set-password`
+
+The operator's half of the reset flow: the account nobody can mail a link to, the first admin locked out of a fresh environment, the credential rotated after a report. It finds the user by email (case-insensitive), hashes the new plaintext with the model's own `set_password` — the very hash the login endpoint verifies — and exits with code 1 and `no user found` when nobody matches.
+
+```bash
+tempest user set-password --email ana@example.com
+# Password:
+# Confirm:
+# Password updated for ana@example.com (id=6f0c...)
+# Revoked 2 active refresh token(s).
+```
+
+!!! check "Changing the password revokes the sessions — by default"
+    Changing the hash does not, on its own, end any session: an access
+    token already issued stays valid until it expires, and a DB-backed
+    refresh token can still be exchanged for a fresh one — exactly the
+    window the reset exists to close. So the revocation is **not a flag
+    you have to remember**: the command resolves
+    `src.db.models:UserRefreshTokenModel` (the name `tempest new`
+    scaffolds) and revokes the user's refresh tokens **in the same
+    transaction** that writes the new hash.
+
+    - Table somewhere else? `--refresh-token-model myapp.models:UserRefreshTokenModel`.
+      A spec you typed that does not resolve is an exit-code-2 error — it
+      never degrades silently into "revoked nothing".
+    - Do not want the revocation? `--keep-sessions`, which is refused
+      with code 2 when it comes together with `--refresh-token-model`
+      (the two flags contradict each other).
+    - A project that never wired the opt-in refresh-token table has
+      nothing to revoke, and the command says so on `stderr`:
+      `note: no refresh-token model at 'src.db.models:UserRefreshTokenModel', so no session was revoked. Pass --refresh-token-model if yours lives elsewhere.`
+
+    The count is of the sessions **this** run killed — an already
+    revoked row is not counted again, so running it twice prints
+    `Revoked 0 active refresh token(s).`
+
+!!! tip "The same thing, from code"
+    `await service.revoke_user_sessions(session, user_id=user.id)` is the
+    administrative counterpart of `revoke_refresh_token`:
+    logout-everywhere addressed by id, for when you do not hold the token
+    (a "sign out everywhere" endpoint, a support agent locking a
+    compromised account). It returns how many rows it revoked, and `0`
+    when the project does not use `refresh_token_model` — stateless JWTs
+    carry no row to flip.
+
+    ```python
+    from uuid import UUID
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from tempest_fastapi_sdk import UserAuthService
+
+
+    async def force_logout(
+        user_id: UUID,
+        session: AsyncSession,
+        service: UserAuthService,
+    ) -> int:
+        """Revoke every session of a user. Returns how many fell."""
+        killed = await service.revoke_user_sessions(session, user_id=user_id)
+        await session.commit()
+        return killed
+    ```
+
+!!! info "The password policy is your project's, not the CLI's"
+    `create` and `set-password` both check the plaintext with
+    `check_password_policy` against the three `AUTH_PASSWORD_*` fields of
+    the project's `src.core.settings` — and against the `PasswordPolicy`
+    defaults (minimum 12 characters, maximum 72 **bytes**) when the
+    project does not compose `AuthSettings`. It is the same ruler
+    `signup` and the admin panel use, so a password the CLI accepts is
+    always one the account owner can log in with.
+
+    The ceiling is measured in **UTF-8 bytes**, the unit bcrypt counts:
+    40 accented characters are 80 bytes and exit with code 2 and
+    `error: password must be at most 72 bytes.` — before anything is
+    written to the database.
 
 ``DATABASE_URL`` resolves the same way as ``tempest db`` (env var > settings > alembic.ini).
 

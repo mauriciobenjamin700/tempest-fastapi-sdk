@@ -5,6 +5,75 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.293.0] — 2026-09-13
+
+A CLI sabia criar usuário e sabia promovê-lo, mas não sabia trocar a senha
+dele — e a política que ela aplicava não era a do projeto.
+
+### Added
+
+- **`tempest user set-password --email <e>`.** Troca a senha de um usuário
+  existente, localizado por email (case-insensitive), hasheando com o
+  `set_password` do próprio model — o mesmo hash que o login verifica. Sai
+  com código 1 e `no user found` quando ninguém casa. Sem o comando, a
+  única saída era `UPDATE` manual com o hash calculado à mão, ou apagar e
+  recriar a conta.
+
+  **A revogação de sessão é o default, não uma flag.** Trocar o hash não
+  encerra sessão nenhuma: access token já emitido vale até expirar e
+  refresh token guardado no banco continua trocável — a janela que o reset
+  existe pra fechar. Então o comando resolve
+  `src.db.models:UserRefreshTokenModel` (o nome que o `tempest new`
+  scaffolda) e revoga os refresh tokens do usuário **na mesma transação**
+  que grava o hash novo. `--refresh-token-model` aponta uma tabela em
+  outro lugar (spec digitada que não resolve é erro com código 2, nunca
+  degrada em "não revoguei nada"); `--keep-sessions` opta por fora, e é
+  recusado com código 2 se vier junto de `--refresh-token-model`. Projeto
+  sem a tabela opt-in ouve, em `stderr`,
+  `note: no refresh-token model at 'src.db.models:UserRefreshTokenModel', so no session was revoked. Pass --refresh-token-model if yours lives elsewhere.`
+  A contagem impressa é de sessões que **aquela** execução matou: linha já
+  revogada não é recontada, então a segunda rodada imprime
+  `Revoked 0 active refresh token(s).`
+
+- **`revoke_user_refresh_tokens(session, model, *, user_id)` e
+  `UserAuthService.revoke_user_sessions(session, *, user_id)`.** O par
+  administrativo do `revoke_refresh_token`: logout-everywhere endereçado
+  por id, pra quem não tem o token em mãos — um endpoint de "desconectar
+  tudo", um agente de suporte trancando conta comprometida, e a CLI acima.
+  Devolvem quantas linhas revogaram; o método devolve `0` quando o serviço
+  não tem `refresh_token_model` (JWT stateless não tem linha pra
+  derrubar). `revoke_refresh_token(all_sessions=True)` passou a chamar a
+  mesma função em vez de repetir o `UPDATE`.
+
+### Changed
+
+- **`tempest user create` passou a validar a senha com a política do
+  projeto.** Antes o floor era um `len(password) < 8` escrito na CLI;
+  agora é `check_password_policy` contra os três campos
+  `AUTH_PASSWORD_*` do `src.core.settings` do projeto, com os defaults do
+  `PasswordPolicy` (`AuthSettings()` medido: mínimo **12** caracteres,
+  máximo **72 bytes**, complexidade desligada) quando o projeto não compõe
+  `AuthSettings`. É a mesma régua do `signup` e do painel admin.
+
+  **É mudança de comportamento:** senha de 8 a 11 caracteres que a CLI
+  aceitava agora sai com código 2 e
+  `error: password must be at least 12 characters.` — que é a senha que o
+  `signup` já recusava, ou seja, uma conta que a CLI semeava e cujo dono
+  não conseguia trocar a senha depois.
+
+### Fixed
+
+- **Senha acima de 72 bytes virava traceback em vez de mensagem.** Medido
+  antes da correção, `tempest user create --email long@example.com
+  --password $(python -c 'print("a"*80)')` saía com
+  `ValueError('password cannot be longer than 72 bytes, truncate manually
+  if necessary (e.g. my_password[:72])')` vindo direto do
+  `PasswordUtils.hash`, sem tratamento. A política roda antes de qualquer
+  escrita e sai com código 2 e
+  `error: password must be at most 72 bytes.` O teto é medido em bytes
+  UTF-8, a unidade que o bcrypt conta: 40 caracteres acentuados são 80
+  bytes e caem no mesmo erro.
+
 ## [0.292.3] — 2026-09-12
 
 Três números que a documentação afirmava sem que ninguém pudesse

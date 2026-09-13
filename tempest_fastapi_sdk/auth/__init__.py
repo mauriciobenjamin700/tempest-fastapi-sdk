@@ -156,6 +156,9 @@ from tempest_fastapi_sdk.auth.schemas import (
     WebAuthnRegisterCompleteSchema as WebAuthnRegisterCompleteSchema,
 )
 from tempest_fastapi_sdk.auth.service import UserAuthService as UserAuthService
+from tempest_fastapi_sdk.auth.service import (
+    revoke_user_refresh_tokens as revoke_user_refresh_tokens,
+)
 from tempest_fastapi_sdk.auth.token_delivery import (
     AuthCookieConfig as AuthCookieConfig,
 )
@@ -249,5 +252,6 @@ __all__: list[str] = [
     "require_admin",
     "require_authenticated",
     "resolve_locale",
+    "revoke_user_refresh_tokens",
     "stamp_locale",
 ]
