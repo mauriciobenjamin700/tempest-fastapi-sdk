@@ -1703,7 +1703,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
 )
 
-__version__: str = "0.292.3"
+__version__: str = "0.293.0"
 
 from tempest_fastapi_sdk.api import (
     OAuthAudienceVerifier as OAuthAudienceVerifier,
