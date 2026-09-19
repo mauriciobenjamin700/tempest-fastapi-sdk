@@ -13,13 +13,11 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
-import sys
-from pathlib import Path
 from typing import Any
 
 import typer
 
-from tempest_fastapi_sdk.cli.project import CODE_ROOTS
+from tempest_fastapi_sdk.cli.project import CODE_ROOTS, ensure_project_on_path
 
 agents_app: typer.Typer = typer.Typer(
     name="agents",
@@ -50,10 +48,7 @@ def _load_agent(spec: str) -> Any:
             attempt; the SDK scaffolds no agents layer, so the
             conventional path really is a guess here.
     """
-    root = Path.cwd()
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-
+    ensure_project_on_path()
     candidates = [spec] if spec else [f"{name}.agents:agent" for name in CODE_ROOTS]
     notes: list[str] = []
     for candidate in candidates:

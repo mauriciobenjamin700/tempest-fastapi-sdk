@@ -133,6 +133,7 @@ sessão ou bucket era `redis-cli`, script descartável ou SQL na mão.
   lugares scaffoldados, reportando **cada** tentativa com a causa),
   instância de settings por tipo sob `src`/`app`, e URL de Redis
   (`--redis-url` > `REDIS_URL` > settings).
+
 ## [0.294.0] — 2026-09-19
 
 Um assistente local que roda dentro do WSL precisa agir na máquina que o

@@ -26,6 +26,7 @@ import typer
 
 from tempest_fastapi_sdk.cli.project import (
     CODE_ROOTS,
+    ensure_project_on_path,
     load_project_settings,
 )
 
@@ -196,14 +197,10 @@ def shell_command(
         typer.Exit: Exit code 2 when a database connection was expected
             but the URL resolves to nothing.
     """
-    from pathlib import Path
 
     from sqlalchemy import select, text
 
-    root = Path.cwd()
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-
+    root = ensure_project_on_path()
     settings = load_project_settings(root)
     namespace: dict[str, Any] = {
         "settings": settings,

@@ -207,3 +207,37 @@ class TestTasks:
         result = runner.invoke(app, ["tasks", "list"])
         assert result.exit_code == 2
         assert "no TaskQueue found" in result.stderr
+
+
+class TestStalePathResolution:
+    """The failure that only appeared with the whole suite running.
+
+    A command that imports ``<root>.x`` has to put the project root on
+    ``sys.path`` **before its first import**, not before the import it
+    cares about. Another project's directory left on the path made
+    ``src`` resolve there, the package object got cached under that
+    name, and the later insert changed nothing: ``tempest tasks list``
+    reported ``No module named 'src.tasks'`` with the file plainly in
+    place.
+    """
+
+    def test_another_projects_path_entry_does_not_win(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        other = tmp_path / "other"
+        (other / "src" / "core").mkdir(parents=True)
+        (other / "src" / "__init__.py").write_text("", encoding="utf-8")
+        (other / "src" / "core" / "__init__.py").write_text("", encoding="utf-8")
+        sys.path.insert(0, str(other))
+
+        project = tmp_path / "project"
+        (project / "src").mkdir(parents=True)
+        (project / "src" / "__init__.py").write_text("", encoding="utf-8")
+        (project / "src" / "tasks.py").write_text(_TASKS_MODULE, encoding="utf-8")
+        monkeypatch.chdir(project)
+
+        result = runner.invoke(app, ["tasks", "list"])
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "src.tasks:send_welcome" in result.stdout

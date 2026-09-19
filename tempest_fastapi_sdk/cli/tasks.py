@@ -15,7 +15,7 @@ from typing import Any
 
 import typer
 
-from tempest_fastapi_sdk.cli.project import CODE_ROOTS
+from tempest_fastapi_sdk.cli.project import CODE_ROOTS, ensure_project_on_path
 
 tasks_app: typer.Typer = typer.Typer(
     name="tasks",
@@ -48,13 +48,8 @@ def _load_queue(spec: str) -> Any:
             tried.
     """
     import importlib
-    import sys
-    from pathlib import Path
 
-    root = Path.cwd()
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-
+    ensure_project_on_path()
     candidates = [spec] if spec else [f"{name}.tasks:tq" for name in CODE_ROOTS]
     notes: list[str] = []
     for candidate in candidates:
@@ -83,6 +78,7 @@ def _import_job_modules() -> None:
     """
     import importlib
 
+    ensure_project_on_path()
     for root in CODE_ROOTS:
         for suffix in _JOB_MODULES:
             try:

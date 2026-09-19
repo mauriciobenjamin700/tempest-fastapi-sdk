@@ -41,6 +41,34 @@ _SETTINGS_ATTRS: tuple[str, ...] = ("settings", "config")
 """Instance names tried before scanning the settings module by type."""
 
 
+def ensure_project_on_path(project_root: Path | None = None) -> Path:
+    """Put the project root at the front of ``sys.path``.
+
+    Every command that imports ``<root>.something`` has to do this
+    **before its first import**, not before the import it cares about:
+    once ``src`` resolves to some other directory, the package object is
+    cached under that name and a later ``sys.path`` insert changes
+    nothing. The symptom is a submodule that "does not exist" while its
+    file is plainly there.
+
+    The entry is moved to the front rather than appended, because an
+    earlier entry from another project would keep winning.
+
+    Args:
+        project_root (Path | None): Root to import from. Defaults to the
+            current working directory.
+
+    Returns:
+        Path: The resolved root that was put on the path.
+    """
+    root = (project_root or Path.cwd()).resolve()
+    entry = str(root)
+    while entry in sys.path:
+        sys.path.remove(entry)
+    sys.path.insert(0, entry)
+    return root
+
+
 def _import_object(spec: str) -> Any:
     """Import ``module:attr`` and return the attribute.
 
@@ -108,8 +136,7 @@ def load_project_app(spec: str | None, project_root: Path | None = None) -> Fast
             candidate resolves. Every attempt's cause is printed on
             stderr first.
     """
-    root = (project_root or Path.cwd()).resolve()
-    sys.path.insert(0, str(root))
+    root = ensure_project_on_path(project_root)
 
     if spec:
         try:
@@ -216,12 +243,10 @@ def load_project_settings(project_root: Path | None = None) -> Any | None:
         one. An import that raises is reported on stderr and treated as
         absent, because every caller of this has a fallback.
     """
-    root = (project_root or Path.cwd()).resolve()
+    root = ensure_project_on_path(project_root)
     for code_root in CODE_ROOTS:
         if not (root / code_root / "core" / "settings.py").is_file():
             continue
-        if str(root) not in sys.path:
-            sys.path.insert(0, str(root))
         dotted = f"{code_root}.core.settings"
         try:
             module = importlib.import_module(dotted)
@@ -266,8 +291,7 @@ def resolve_app_spec(
     """
     from fastapi import FastAPI
 
-    root = (project_root or Path.cwd()).resolve()
-    sys.path.insert(0, str(root))
+    root = ensure_project_on_path(project_root)
     candidates = [spec] if spec else _candidates(root)
     notes: list[str] = []
     for candidate in candidates:
@@ -332,6 +356,7 @@ def resolve_redis_url(explicit: str | None, project_root: Path | None = None) ->
 
 __all__: list[str] = [
     "CODE_ROOTS",
+    "ensure_project_on_path",
     "load_project_app",
     "load_project_settings",
     "resolve_app_spec",
