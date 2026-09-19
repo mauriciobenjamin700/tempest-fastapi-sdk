@@ -3879,6 +3879,16 @@ tempest check                                   # lint + fmt-check + type + test
 
 Every command returns the underlying tool's exit code, so `tempest check` is safe to wire into CI (`tempest check || exit 1`) or pre-commit hooks. When neither the executable nor `uv` is on `PATH`, the wrapper prints `error: '<tool>' is not on PATH and 'uv' is unavailable` and exits with `127` instead of failing silently.
 
+#### Diagnostics — `tempest doctor`
+
+```bash
+tempest doctor                                        # one line per dependency, real connections
+tempest doctor --json                                 # for deployment health checks
+tempest doctor --timeout 2                            # tighten each network probe
+```
+
+`check-config` reads the settings; `doctor` connects. It probes the database, Redis, RabbitMQ, SMTP and MinIO, folds in the static check registry, and exits `1` when anything failed. A capability the project never configured reads `skip`, never `ok` — and a mixin default (`SMTP_HOST=localhost`, `MINIO_ENDPOINT=localhost:9000`) counts as unconfigured, compared against `model_fields[field].default` the way `check_secrets` does it.
+
 #### Run and inspect — `tempest serve` / `tempest shell`
 
 ```bash

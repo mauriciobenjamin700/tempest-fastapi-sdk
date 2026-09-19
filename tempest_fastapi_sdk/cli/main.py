@@ -17,6 +17,7 @@ from tempest_fastapi_sdk.cli.cache import cache_app
 from tempest_fastapi_sdk.cli.commands import mount_project_commands
 from tempest_fastapi_sdk.cli.config import load_project_commands
 from tempest_fastapi_sdk.cli.db import db_app
+from tempest_fastapi_sdk.cli.doctor import doctor_command
 from tempest_fastapi_sdk.cli.flags import flags_app
 from tempest_fastapi_sdk.cli.model import model_app
 from tempest_fastapi_sdk.cli.openapi_export import openapi_export_command
@@ -173,6 +174,7 @@ app.command("routes")(routes_command)
 app.command("openapi-export")(openapi_export_command)
 app.command("serve")(serve_command)
 app.command("shell")(shell_command)
+app.command("doctor")(doctor_command)
 
 # The quality gate lives in `tempest-cli`, a framework-agnostic package.
 # Registering it here is what keeps `tempest check` and `tempest-cli check`

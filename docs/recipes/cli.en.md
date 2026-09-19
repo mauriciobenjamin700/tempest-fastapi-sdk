@@ -992,6 +992,48 @@ tempest model hardware
 as a CI step. A missing extra exits 2 with the install line, never a
 traceback. Details in [Modelops](modelops.md).
 
+### Diagnostics — `tempest doctor`
+
+`check-config` reads the settings and reasons about them; it never opens a
+socket. That is the right trade for a fast gate and the wrong one for "why
+does the service not come up", where the answer is almost always a dependency
+that is down, unreachable from this host, or holding credentials nobody
+updated.
+
+```bash
+tempest doctor
+tempest doctor --json            # for scripts / deployment health checks
+tempest doctor --timeout 2       # tighten the wait on each network probe
+```
+
+```text
+OK    python         3.11.12 (/srv/app/.venv/bin/python)
+OK    sdk            tempest-fastapi-sdk 0.293.0
+OK    settings       Settings
+OK    database       postgresql+asyncpg://app:***@db:5432/app
+FAIL  redis          ConnectionError: Error 111 connecting to cache:6379
+SKIP  rabbitmq       no RABBITMQ_URL
+SKIP  smtp           SMTP_HOST is still the mixin default
+SKIP  minio          the [minio] extra is not installed
+OK    config checks  no error (2 warning(s))
+```
+
+Every line is a **real connection**, not a deduction. It exits 1 when any
+check fails, so it works as a deployment smoke test.
+
+!!! warning "`skip` is not `ok`, on purpose"
+    A capability the project never configured reads `skip`. A green line for a
+    Redis nobody set up is the kind of reassurance that costs an outage.
+
+    The mixin default counts as unconfigured: `EmailSettings` ships
+    `SMTP_HOST=localhost` and `MinIOSettings` ships
+    `MINIO_ENDPOINT=localhost:9000`, so a service composing the mixin without
+    using the capability would look configured. The comparison is against
+    `model_fields[field].default` — the same ruler `check_secrets` uses.
+
+The last line runs the static check registry (the one behind `check-config`),
+so one command answers both halves of "is this deployment sane".
+
 ### Routes — `tempest routes`
 
 Lists the URLs the application **actually** serves.

@@ -992,6 +992,49 @@ utilizáveis como passo de CI. Extra ausente sai com código 2 e a linha de
 instalação, nunca com traceback. Detalhes em
 [Modelops](modelops.md).
 
+### Diagnóstico — `tempest doctor`
+
+O `check-config` lê as settings e raciocina sobre elas; não abre socket
+nenhum. Isso é a troca certa para um gate rápido e a errada para "por que o
+serviço não sobe", cuja resposta quase sempre é uma dependência fora do ar,
+inalcançável deste host, ou com credencial que ninguém atualizou.
+
+```bash
+tempest doctor
+tempest doctor --json            # pra script / healthcheck de deploy
+tempest doctor --timeout 2       # aperta a espera de cada sonda de rede
+```
+
+```text
+OK    python         3.11.12 (/srv/app/.venv/bin/python)
+OK    sdk            tempest-fastapi-sdk 0.293.0
+OK    settings       Settings
+OK    database       postgresql+asyncpg://app:***@db:5432/app
+FAIL  redis          ConnectionError: Error 111 connecting to cache:6379
+SKIP  rabbitmq       no RABBITMQ_URL
+SKIP  smtp           SMTP_HOST is still the mixin default
+SKIP  minio          the [minio] extra is not installed
+OK    config checks  no error (2 warning(s))
+```
+
+Cada linha é uma **conexão de verdade**, não uma dedução. Sai com código 1
+quando qualquer checagem falha, então serve de smoke test de deploy.
+
+!!! warning "`skip` não é `ok`, de propósito"
+    Capacidade que o projeto não configurou aparece como `skip`. Linha verde
+    para um Redis que nunca foi montado é o tipo de tranquilidade que custa um
+    incidente.
+
+    O default do mixin conta como "não configurado": o `EmailSettings` nasce
+    com `SMTP_HOST=localhost` e o `MinIOSettings` com
+    `MINIO_ENDPOINT=localhost:9000`, então o serviço que compõe o mixin sem
+    usar a capacidade pareceria configurado. A comparação é contra
+    `model_fields[campo].default` — a mesma régua do `check_secrets`.
+
+A última linha roda o registry de checagens estáticas (o mesmo do
+`check-config`), então um comando responde as duas metades de "esse deploy
+está sadio".
+
 ### Rotas — `tempest routes`
 
 Lista as URLs que a aplicação **de fato** serve.
