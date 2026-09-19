@@ -905,6 +905,65 @@ ponto não-comprimido de 65 bytes, ambos em base64url sem padding.
   desloga usuário, o outro derruba subscrição de push.
 - Todo arquivo que esses comandos escrevem sai `0600`.
 
+### Feature flags — `tempest flags`
+
+Flag existe para ser movida sem deploy. Com o backend Redis, essa mudança
+morava num `redis-cli HSET feature_flags <nome> 1` — o tipo de comando que
+sai com um dígito errado na hora errada.
+
+```bash
+tempest flags list                       # tudo que o backend guarda
+tempest flags enable new-checkout        # liga para todo processo que lê esse backend
+tempest flags disable new-checkout
+tempest flags get new-checkout           # estado guardado
+tempest flags list --key ff:staging      # outro hash, outro ambiente
+```
+
+```text
+new-checkout  on
+legacy-upload off
+```
+
+Os quatro falam pelo `RedisFeatureFlagBackend`, então o valor que o serviço
+lê e o que a CLI escreve passam pelo mesmo código de codificação.
+
+!!! note "`off` e `unset` são respostas diferentes"
+    `get` sai com **1** quando a flag não existe no backend (`unset`), e com
+    **0** quando ela existe valendo `off`. A diferença importa: flag não
+    definida resolve para o *default* que o chamador passou no código; flag
+    em `off` sobrescreve esse default.
+
+A URL sai de `--redis-url` > `REDIS_URL` > settings do projeto. Redis fora do
+ar sai com código 2 carregando a mensagem do driver — "connection refused"
+diz o que consertar, "ocorreu um erro" não.
+
+### Cache — `tempest cache`
+
+```bash
+tempest cache ping                       # PONG, ou código 1
+tempest cache stats                      # versão, chaves, memória, hit ratio
+tempest cache flush --namespace orders   # invalida o que o @cached registrou
+tempest cache flush --tag user:42
+tempest cache flush --key "cache:orders:list:abc"
+tempest cache flush --all --yes          # FLUSHDB
+```
+
+As opções direcionadas passam pelo `CacheInvalidator` — o mesmo código que o
+serviço chama —, então as chaves apagadas aqui são as que o `@cached`
+escreveu lá. Passe o mesmo `--key-prefix` que os decorators usam, senão os
+registries não batem.
+
+!!! danger "`--all` é `FLUSHDB`, não 'limpar o cache'"
+    Apaga **toda** chave do banco selecionado: sessão, contador de rate limit
+    e feature flag junto, quando dividem o mesmo Redis. Por isso exige
+    `--yes`. Na dúvida, invalide por namespace.
+
+!!! info "O hit ratio é do servidor, não da sua aplicação"
+    `keyspace_hits` / `keyspace_misses` são contadores do Redis desde o último
+    restart, somando todos os clientes. O Redis não atribui hit a chamador —
+    o número responde "esse servidor está sendo útil", não "meu endpoint X
+    está".
+
 ### Modelos — `tempest model`
 
 Análise, benchmark, conversão e quantização de modelos ONNX. Precisa do

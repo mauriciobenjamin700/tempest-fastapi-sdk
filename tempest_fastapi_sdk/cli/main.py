@@ -13,9 +13,11 @@ from typer.core import TyperGroup
 
 from tempest_fastapi_sdk.cli import generate as generate_module
 from tempest_fastapi_sdk.cli import new as new_module
+from tempest_fastapi_sdk.cli.cache import cache_app
 from tempest_fastapi_sdk.cli.commands import mount_project_commands
 from tempest_fastapi_sdk.cli.config import load_project_commands
 from tempest_fastapi_sdk.cli.db import db_app
+from tempest_fastapi_sdk.cli.flags import flags_app
 from tempest_fastapi_sdk.cli.model import model_app
 from tempest_fastapi_sdk.cli.openapi_export import openapi_export_command
 from tempest_fastapi_sdk.cli.pdf import pdf_app
@@ -156,6 +158,8 @@ app: typer.Typer = typer.Typer(
 app.add_typer(db_app, name="db")
 app.add_typer(user_app, name="user")
 app.add_typer(secrets_app, name="secrets")
+app.add_typer(flags_app, name="flags")
+app.add_typer(cache_app, name="cache")
 app.add_typer(model_app, name="model")
 app.add_typer(pdf_app, name="pdf")
 app.add_typer(voice_app, name="voice")

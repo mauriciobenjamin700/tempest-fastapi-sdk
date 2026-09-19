@@ -907,6 +907,64 @@ key is the 65-byte uncompressed point, both base64url without padding.
   users out, the other drops push subscriptions.
 - Every file these commands write ends up `0600`.
 
+### Feature flags — `tempest flags`
+
+A flag exists to be moved without a deploy. With the Redis backend that move
+lived in `redis-cli HSET feature_flags <name> 1` — the kind of command that
+gets a digit wrong at the wrong hour.
+
+```bash
+tempest flags list                       # everything the backend holds
+tempest flags enable new-checkout        # on for every process reading it
+tempest flags disable new-checkout
+tempest flags get new-checkout           # the stored value
+tempest flags list --key ff:staging      # another hash, another environment
+```
+
+```text
+new-checkout  on
+legacy-upload off
+```
+
+All four speak through `RedisFeatureFlagBackend`, so the value the service
+reads and the value the CLI writes go through the same encoding code.
+
+!!! note "`off` and `unset` are different answers"
+    `get` exits **1** when the backend holds no value (`unset`) and **0** when
+    it holds `off`. The difference matters: an unset flag resolves to the
+    *default* the caller passed in code, while `off` overrides that default.
+
+The URL comes from `--redis-url` > `REDIS_URL` > the project's settings. A
+Redis that is down exits 2 carrying the driver's own message — "connection
+refused" names the fix, "an error occurred" does not.
+
+### Cache — `tempest cache`
+
+```bash
+tempest cache ping                       # PONG, or exit 1
+tempest cache stats                      # version, keys, memory, hit ratio
+tempest cache flush --namespace orders   # invalidate what @cached registered
+tempest cache flush --tag user:42
+tempest cache flush --key "cache:orders:list:abc"
+tempest cache flush --all --yes          # FLUSHDB
+```
+
+The targeted options go through `CacheInvalidator` — the same code the
+service calls — so the keys deleted here are the keys `@cached` wrote there.
+Pass the same `--key-prefix` those decorators use, or the registries will not
+line up.
+
+!!! danger "`--all` is `FLUSHDB`, not 'clear the cache'"
+    It deletes **every** key in the selected database: sessions, rate-limit
+    counters and feature flags included, when they share the Redis. That is
+    why it demands `--yes`. When in doubt, invalidate by namespace.
+
+!!! info "The hit ratio is the server's, not your application's"
+    `keyspace_hits` / `keyspace_misses` are Redis counters since the last
+    restart, summed across every client. Redis does not attribute a hit to a
+    caller — the number answers "is this server earning its keep", not "is my
+    endpoint X".
+
 ### Models — `tempest model`
 
 Analyze, benchmark, convert and quantize ONNX models. Needs the

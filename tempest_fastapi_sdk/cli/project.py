@@ -292,10 +292,49 @@ def resolve_app_spec(
     raise typer.Exit(2)
 
 
+def resolve_redis_url(explicit: str | None, project_root: Path | None = None) -> str:
+    """Pick the Redis URL the way the service would.
+
+    Order: the flag, ``REDIS_URL`` on the environment, then the
+    project's settings. The settings default (``redis://localhost:6379``)
+    counts, because a service that composes ``RedisSettings`` without
+    setting the variable really does talk to that host.
+
+    Args:
+        explicit (str | None): Value passed on the command line.
+        project_root (Path | None): Project root to import settings
+            from. Defaults to the current working directory.
+
+    Returns:
+        str: The resolved URL.
+
+    Raises:
+        typer.Exit: Exit code 2 when no source carries one.
+    """
+    import os
+
+    if explicit:
+        return explicit
+    env = os.environ.get("REDIS_URL")
+    if env:
+        return env
+    settings = load_project_settings(project_root)
+    candidate = getattr(settings, "REDIS_URL", None)
+    if isinstance(candidate, str) and candidate:
+        return candidate
+    typer.echo(
+        "error: no Redis URL. Pass --redis-url, set REDIS_URL, or compose "
+        "RedisSettings into the project's settings.",
+        err=True,
+    )
+    raise typer.Exit(2)
+
+
 __all__: list[str] = [
     "CODE_ROOTS",
     "load_project_app",
     "load_project_settings",
     "resolve_app_spec",
+    "resolve_redis_url",
     "settings_instances",
 ]

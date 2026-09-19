@@ -3938,6 +3938,20 @@ tempest secrets vapid --subject mailto:ops@example.com  # Web Push key pair
 
 `tempest secrets init` treats a key as unset when it is missing, empty, or still carries the `change-me` placeholder `tempest new` writes — the values `tempest check-config` reports as `security.W001` / `security.W004` — and keeps every configured key, so it is safe to re-run. `tempest secrets vapid` writes `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` in the shape `WebPushSettings` and `pywebpush` read (32-byte scalar, 65-byte uncompressed point, base64url), and refuses to overwrite an existing pair without `--force`, because replacing it invalidates every active browser subscription.
 
+#### Feature flags and cache — `tempest flags` / `tempest cache`
+
+```bash
+tempest flags list                                    # everything the Redis backend holds
+tempest flags enable new-checkout                     # on, for every process reading it
+tempest flags get new-checkout                        # exit 1 when unset, 0 when stored
+tempest cache ping                                    # PONG, or exit 1
+tempest cache stats                                   # version, keys, memory, hit ratio
+tempest cache flush --namespace orders                # invalidate what @cached registered
+tempest cache flush --all --yes                       # FLUSHDB (deletes non-cache keys too)
+```
+
+Both resolve the URL from `--redis-url` > `REDIS_URL` > the project's settings, and both speak through the SDK's own classes — `RedisFeatureFlagBackend` and `CacheInvalidator` — so the CLI writes what the service reads. `flags get` separates `unset` (exit 1, the service falls back to the caller's default) from a stored `off` (exit 0). `cache flush --all` is `FLUSHDB` and needs `--yes`, because sessions, rate-limit counters and flags usually share that database.
+
 #### Users — `tempest user`
 
 Seeds or lists users via the project's concrete `UserModel` (default `src.db.models:UserModel`). Bootstraps the first admin row so `/admin` login works without manual SQL.
