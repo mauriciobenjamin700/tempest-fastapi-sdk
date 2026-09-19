@@ -727,6 +727,51 @@ tempest user set-password --email ana@example.com
 
 Resolução do `DATABASE_URL` igual ao `tempest db` (env var > instância de settings > `.env` > `alembic.ini`).
 
+#### Inspecionar, desativar e apagar
+
+O `list` responde "quem existe". As quatro abaixo respondem o resto.
+
+```bash
+# A linha inteira desse usuário, incluindo as colunas que o SEU model adiciona
+tempest user show --email ana@example.com
+tempest user show --email ana@example.com --json
+
+# Desliga o acesso (reversível) e derruba as sessões junto
+tempest user deactivate --email ana@example.com
+tempest user activate --email ana@example.com
+
+# Sessões (refresh tokens) desse usuário
+tempest user sessions --email ana@example.com
+tempest user sessions --email ana@example.com --revoke
+
+# Apaga a linha (irreversível)
+tempest user delete --email ana@example.com --yes
+```
+
+`show` **redige o `hashed_password`**: nenhuma pergunta que esse comando
+responde precisa do hash, e imprimi-lo coloca uma credencial no scrollback
+do terminal e no log do CI.
+
+!!! warning "`deactivate` revoga sessão, e não é opcional"
+    Virar `is_active=False` não encerra nada sozinho: o refresh token que já
+    foi emitido continua trocável, e a conta que você acabou de desligar
+    continua rendendo access token novo. Por isso a revogação roda na **mesma
+    transação** que o flag — a mesma regra que o `set-password` segue.
+
+`sessions` sem `--revoke` lista uma linha por token (id, família, criação,
+expiração, estado). Usuário sem sessão imprime tabela vazia e sai com 0 —
+"não está logado em lugar nenhum" é resposta, não erro. A contagem do
+`--revoke` é de sessões que **aquela execução** matou, então rodar duas
+vezes imprime `Revoked 0` na segunda.
+
+!!! danger "`delete` é irreversível, e leva os tokens junto"
+    A tabela de refresh token scaffoldada tem `ForeignKey` sem
+    `ON DELETE CASCADE`, então apagar o usuário com token vivo falharia com
+    erro de integridade citando uma constraint em vez da causa. O comando
+    apaga os tokens na mesma transação. Fora de um terminal interativo,
+    `--yes` é obrigatório. Quando a intenção é "essa pessoa não deve mais
+    entrar", o comando certo é `deactivate`.
+
 ### Segredos — `tempest secrets`
 
 Quatro comandos, ordenados por quanto mexem no seu `.env`:

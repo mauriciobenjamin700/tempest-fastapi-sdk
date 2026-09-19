@@ -728,6 +728,51 @@ tempest user set-password --email ana@example.com
 
 ``DATABASE_URL`` resolves the same way as ``tempest db`` (env var > settings > alembic.ini).
 
+#### Inspect, deactivate and delete
+
+`list` answers "who exists". The four below answer the rest.
+
+```bash
+# The whole row, including the columns YOUR model adds
+tempest user show --email ana@example.com
+tempest user show --email ana@example.com --json
+
+# Turn access off (reversible) and drop the sessions with it
+tempest user deactivate --email ana@example.com
+tempest user activate --email ana@example.com
+
+# That user's sessions (refresh tokens)
+tempest user sessions --email ana@example.com
+tempest user sessions --email ana@example.com --revoke
+
+# Delete the row (irreversible)
+tempest user delete --email ana@example.com --yes
+```
+
+`show` **redacts `hashed_password`**: no question this command answers needs
+the hash, and printing it puts a credential in terminal scrollback and in CI
+logs.
+
+!!! warning "`deactivate` revokes sessions, and that is not optional"
+    Flipping `is_active=False` ends nothing on its own: a refresh token
+    already issued stays exchangeable, and the account you just turned off
+    keeps minting fresh access tokens. So the revocation runs in the **same
+    transaction** as the flag — the rule `set-password` already follows.
+
+`sessions` without `--revoke` prints one line per token (id, family, created,
+expires, state). A user with no session prints an empty table and exits 0 —
+"not logged in anywhere" is an answer, not a failure. The `--revoke` count is
+the number of sessions **that run** killed, so a second run prints
+`Revoked 0`.
+
+!!! danger "`delete` is irreversible, and takes the tokens with it"
+    The scaffolded refresh-token table carries a `ForeignKey` with no
+    `ON DELETE CASCADE`, so deleting a user with a live token would fail with
+    an integrity error naming a constraint rather than the cause. The command
+    removes the tokens in the same transaction. Outside an interactive
+    terminal, `--yes` is required. When what you mean is "this person should
+    not be able to log in any more", the command is `deactivate`.
+
 ### Secrets — `tempest secrets`
 
 Four commands, ordered by how much they touch your `.env`:

@@ -3953,7 +3953,15 @@ tempest user set-password --email ana@example.com     # prompt, hash, revoke ses
 tempest user set-password --email ana@example.com --keep-sessions
 tempest user list                                     # everyone
 tempest user list --admin                             # admins only
+tempest user show --email ana@example.com             # the whole row (hash redacted)
+tempest user deactivate --email ana@example.com       # is_active=False + revoke sessions
+tempest user activate --email ana@example.com         # back on
+tempest user sessions --email ana@example.com         # list refresh tokens
+tempest user sessions --email ana@example.com --revoke
+tempest user delete --email ana@example.com --yes     # irreversible, removes the tokens too
 ```
+
+`show` redacts `hashed_password` — no question it answers needs the hash, and printing one puts a credential in terminal scrollback and CI logs. `deactivate` revokes the user's refresh tokens in the same transaction as the flag, because `is_active=False` on its own leaves an issued token exchangeable. `sessions` lists one line per token and exits `0` on a user with none; `--revoke` reports how many *that run* killed. `delete` deletes the refresh-token rows first (the scaffolded FK has no `ON DELETE CASCADE`) and requires `--yes` outside a TTY.
 
 When `tempest user create` runs in an interactive terminal **without** `--admin`/`--no-admin`, it asks `Should this user be an administrator? [y/N]`. Non-interactive runs (CI, pipes) skip the prompt and create a regular user. `promote` / `revoke` look the user up by email (case-insensitive) and exit `1` with `no user found` when nothing matches.
 
