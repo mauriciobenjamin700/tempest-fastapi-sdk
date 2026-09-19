@@ -642,13 +642,88 @@ Resolução do `DATABASE_URL` igual ao `tempest db` (env var > instância de set
 
 ### Segredos — `tempest secrets`
 
-Gera e rotaciona os segredos da aplicação (`JWT_SECRET` / `TOKEN_SECRET` por padrão), reescrevendo as linhas correspondentes no `.env` **no lugar** — fazendo backup do arquivo antigo antes — e deixando as outras linhas intactas.
+Quatro comandos, ordenados por quanto mexem no seu `.env`:
+
+| Comando | Escreve no `.env`? | Quando usar |
+| --- | --- | --- |
+| `generate` | nunca | pegar um valor pra colar num secret manager |
+| `init` | só o que está vazio ou placeholder | logo depois do `tempest new` |
+| `rotate` | sempre, com backup | o segredo vazou ou envelheceu |
+| `vapid` | par de chaves Web Push | ligar notificação no browser |
+
+#### Gerar um valor avulso — `tempest secrets generate`
+
+Não toca em arquivo nenhum: imprime e pronto.
+
+```bash
+# Um segredo, valor cru
+tempest secrets generate
+
+# Três de uma vez
+tempest secrets generate --count 3
+
+# Rotulado, pronto pra colar num .env ou num painel de deploy
+tempest secrets generate --keys JWT_SECRET,TOKEN_SECRET
+
+# JSON, pra pipar num secret manager
+tempest secrets generate --keys JWT_SECRET --json
+```
+
+Saída do terceiro:
+
+```text
+JWT_SECRET=0m3Z1s-Xh9JqQ0h7bqkcJr8nVQ2H0wV1Yk9dxUqx8Ck
+TOKEN_SECRET=Yp2KjVvJf0nJ2s5B3d1r9xU8mCq0w6Q7aZtE4sLbNvA
+```
+
+!!! tip
+    `--count` e `--keys` dizem a mesma coisa (quantos segredos sair), então
+    passar os dois é erro de uso, não um deles vencendo em silêncio.
+
+#### Preencher o `.env` recém-criado — `tempest secrets init`
+
+O `tempest new` escreve `JWT_SECRET=change-me-change-me-change-me-32` e
+`TOKEN_SECRET=` vazio — exatamente os dois casos que o
+`tempest check-config` reporta como `security.W001` / `security.W004`.
+O `init` troca só esses:
+
+```bash
+tempest secrets init
+```
+
+```text
+set JWT_SECRET (was placeholder)
+set TOKEN_SECRET (was empty)
+```
+
+Chave que já tem valor de verdade é **mantida**, então rodar de novo não
+faz nada:
+
+```text
+kept JWT_SECRET (already set)
+kept TOKEN_SECRET (already set)
+Nothing to do.
+```
+
+Isso é o que separa o `init` do `rotate`: o `init` é seguro de rodar em
+qualquer momento — inclusive num script de setup — porque nunca destrói
+segredo em uso. Pra substituir valor real, é opt-in explícito, e aí ele faz
+backup antes:
+
+```bash
+tempest secrets init --force
+```
+
+#### Rotacionar — `tempest secrets rotate`
+
+Gera e reescreve as linhas correspondentes no `.env` **no lugar** — fazendo
+backup do arquivo antigo antes — e deixa as outras linhas intactas.
 
 ```bash
 # Rotaciona JWT_SECRET e TOKEN_SECRET no .env (gera .env.bak)
 tempest secrets rotate
 
-# Só imprime os novos valores (não escreve nada) — pra pipar num secret manager
+# Só imprime os novos valores (não escreve nada)
 tempest secrets rotate --print
 
 # Chaves e arquivo customizados
@@ -660,6 +735,43 @@ tempest secrets rotate --length 64 --no-backup
 
 !!! warning
     Rotacionar `JWT_SECRET` invalida todo token assinado com o valor antigo: usuários são deslogados e links de reset/ativação pendentes param de funcionar. Rotacione numa janela de manutenção e reinicie o serviço pra carregar os novos valores.
+
+#### Chaves Web Push — `tempest secrets vapid`
+
+Web Push não usa string aleatória: usa um par de chaves P-256. O browser
+assina a subscrição com a pública e o servidor assina cada push com a
+privada, então os dois valores nascem juntos e não saem do `generate`.
+
+```bash
+# Escreve VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY no .env
+tempest secrets vapid
+
+# Com o contato que vai no claim `sub` do JWT VAPID
+tempest secrets vapid --subject mailto:ops@example.com
+
+# Só imprime
+tempest secrets vapid --print
+```
+
+São exatamente os campos que o `WebPushSettings` lê, no formato que o
+`pywebpush` lê de volta: privada é o escalar de 32 bytes e pública é o
+ponto não-comprimido de 65 bytes, ambos em base64url sem padding.
+
+!!! danger
+    Trocar um par que já existe **invalida toda subscrição ativa**: o browser
+    que subscreveu com a chave pública antiga não aceita push assinado com a
+    nova, e cada cliente precisa subscrever de novo. Por isso o comando se
+    recusa a sobrescrever sem `--force`.
+
+#### Recap
+
+- `generate` imprime, `init` preenche o que falta, `rotate` troca tudo,
+  `vapid` gera o par do Web Push.
+- `init` é idempotente e nunca perde segredo em uso — é o comando do
+  primeiro dia do projeto.
+- `rotate` e `vapid --force` são destrutivos de formas diferentes: um
+  desloga usuário, o outro derruba subscrição de push.
+- Todo arquivo que esses comandos escrevem sai `0600`.
 
 ### Modelos — `tempest model`
 
