@@ -465,6 +465,35 @@ tempest db restore snap.dump --yes      # restaura (pg_restore --clean --if-exis
 
 **Recap:** `backup` tira um snapshot (formato pela extensão no Postgres, cópia no SQLite); `restore --yes` traz de volta, limpando o destino por padrão.
 
+#### Detectar drift de model — `tempest db check`
+
+O `tempest db revision --autogenerate` grava um diff quando você pede. Nada
+percebe quando alguém edita um model e **esquece** de pedir — até o deploy
+que precisava da coluna.
+
+```bash
+tempest db check
+```
+
+Sem drift:
+
+```text
+No drift: the models match the migration tree.
+```
+
+Com drift, ele nomeia as operações que uma revision conteria e sai com
+código 1:
+
+```text
+error: New upgrade operations detected: [('add_column', ...'colour'...)]
+       Run `tempest db revision -m "<message>"` to record them.
+```
+
+!!! tip "É um passo de CI"
+    Rode depois do `tempest db upgrade` no pipeline. A comparação precisa do
+    banco em `head` — quando ele está atrás, o Alembic diz isso e a mensagem
+    passa direto, sem virar "drift".
+
 #### Popular o banco — `tempest db seed`
 
 Roda um callable de seed do projeto dentro de uma sessão gerenciada (commit no sucesso, rollback no erro). O callable recebe uma `AsyncSession` posicional e pode ser sync ou async; o que ele insere é decisão sua — o SDK só cuida do ciclo de vida da sessão. Por padrão importa `src.db.seeds:seed`.
@@ -801,6 +830,54 @@ utilizáveis como passo de CI. Extra ausente sai com código 2 e a linha de
 instalação, nunca com traceback. Detalhes em
 [Modelops](modelops.md).
 
+### Rotas — `tempest routes`
+
+Lista as URLs que a aplicação **de fato** serve.
+
+```bash
+tempest routes
+```
+
+```text
+METHOD  PATH                    NAME          SCHEMA  GUARDS
+GET     /api/items/{item_id}    read_item     yes     require_admin
+POST    /api/items/             create_item   yes     require_admin
+GET     /health                 health        yes     -
+GET     /painel                 painel        no      -
+```
+
+Quatro coisas nessa tabela que uma leitura de código não te dá de graça:
+
+- **Router montado aparece.** Desde o FastAPI 0.141.1, o `include_router`
+  guarda uma entrada `_IncludedRouter` em vez de achatar as rotas na
+  aplicação — então `{r.path for r in app.routes}` não contém **nenhum**
+  path do router incluído. O comando lê a mesma expansão que o gerador de
+  OpenAPI percorre.
+- **Prefixo já resolvido.** O path é o do router mais o de cada
+  `include_router` acima dele.
+- **Rota fora do schema também aparece**, com `SCHEMA=no` — página HTML e
+  endpoint interno servem tráfego, e é justamente o que uma resposta tirada
+  do `openapi.json` esconde.
+- **`GUARDS` mostra a dependência herdada do include**, não só a declarada
+  na rota. É como se confere que o `Depends(require_admin)` do
+  `include_router` alcançou tudo que devia.
+
+Filtros e formato:
+
+```bash
+tempest routes --match /api/orders        # só paths com esse trecho
+tempest routes --method post,delete       # só esses métodos
+tempest routes --all                      # inclui /docs, /redoc, /openapi.json
+tempest routes --json                     # array JSON, pra script
+tempest routes --app src.server:app       # app fora dos lugares convencionais
+```
+
+Sem `--app`, o comando procura o app em `src.server:app`,
+`src.api.app:create_app`, `main:app` (e os mesmos sob `app/`). Quando nada
+resolve, ele **lista o que tentou e por quê** antes de sair com código 2.
+`--match` que não casa com nada sai com código 1, pra typo em script falhar
+em vez de parecer aplicação sem rota.
+
 ### Erros documentados no OpenAPI — `tempest openapi-errors`
 
 Compara, por rota, as `AppException` que o fluxo pode levantar com o que a rota
@@ -890,6 +967,48 @@ Detalhes, cobertura de OpenAPI e limitações na receita
 [Cliente de integração (OpenAPI) »](openapi-client.md).
 
 ---
+
+### Exportar o contrato — `tempest openapi-export`
+
+O `openapi-client` consome a spec de outra pessoa; este escreve a **sua**.
+
+```bash
+# Documento no stdout
+tempest openapi-export
+
+# Arquivo (JSON por padrão)
+tempest openapi-export --out contracts/openapi.json
+
+# YAML (precisa do extra [openapi])
+tempest openapi-export --out contracts/openapi.yaml --yaml
+```
+
+Duas coisas saem disso. A primeira é alimentar um gerador — o próprio
+`tempest openapi-client`, um gerador de cliente TypeScript, um mock server —
+**sem subir o serviço**. A segunda é commitar o documento e transformar
+mudança de contrato em algo que o revisor vê:
+
+```bash
+tempest openapi-export --out contracts/openapi.json --check
+```
+
+```text
+error: contracts/openapi.json is out of date:
+  + DELETE /api/items/{item_id}
+  - GET /api/legacy
+  ~ /api/items/{item_id} changed
+Run 'tempest openapi-export --out <file>' to refresh it.
+```
+
+Código 1 quando difere, 0 quando está em dia. Operação que entrou e que saiu
+vêm primeiro porque são as que quebram consumidor; mudança dentro de uma
+operação vira `~ <path> changed`. "A spec mudou" não é mensagem revisável —
+por isso o comando nomeia o que se moveu.
+
+!!! tip "No CI"
+    Rode `--check` no mesmo job que roda os testes. O dia em que alguém
+    muda um status code, um campo obrigatório ou um path, o PR fica
+    vermelho com a linha exata, em vez de o cliente descobrir em produção.
 
 ### Descrição de PR com IA — `tempest pr-prompt`
 

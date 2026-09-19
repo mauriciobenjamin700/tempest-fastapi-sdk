@@ -467,6 +467,34 @@ tempest db restore snap.dump --yes      # restore (pg_restore --clean --if-exist
 
 **Recap:** `backup` takes a snapshot (format by extension on Postgres, file copy on SQLite); `restore --yes` brings it back, cleaning the target by default.
 
+#### Catch model drift — `tempest db check`
+
+`tempest db revision --autogenerate` records a diff when you ask for one.
+Nothing notices when somebody edits a model and **forgets** to ask — until
+the deploy that needed the column.
+
+```bash
+tempest db check
+```
+
+No drift:
+
+```text
+No drift: the models match the migration tree.
+```
+
+With drift, it names the operations a revision would contain and exits 1:
+
+```text
+error: New upgrade operations detected: [('add_column', ...'colour'...)]
+       Run `tempest db revision -m "<message>"` to record them.
+```
+
+!!! tip "This is a CI step"
+    Run it after `tempest db upgrade` in the pipeline. The comparison needs
+    the database at `head` — when it is behind, Alembic says so and the
+    message is passed through instead of being reported as drift.
+
 #### Seed the database — `tempest db seed`
 
 Runs a project seed callable inside a managed session (commit on success, rollback on error). The callable takes a positional `AsyncSession` and may be sync or async; what it inserts is up to you — the SDK only wires the session lifecycle. Defaults to importing `src.db.seeds:seed`.
@@ -804,6 +832,54 @@ tempest model hardware
 as a CI step. A missing extra exits 2 with the install line, never a
 traceback. Details in [Modelops](modelops.md).
 
+### Routes — `tempest routes`
+
+Lists the URLs the application **actually** serves.
+
+```bash
+tempest routes
+```
+
+```text
+METHOD  PATH                    NAME          SCHEMA  GUARDS
+GET     /api/items/{item_id}    read_item     yes     require_admin
+POST    /api/items/             create_item   yes     require_admin
+GET     /health                 health        yes     -
+GET     /painel                 painel        no      -
+```
+
+Four things in that table reading the code does not hand you:
+
+- **A mounted router shows up.** Since FastAPI 0.141.1, `include_router`
+  keeps an `_IncludedRouter` entry instead of flattening the routes onto the
+  application — so `{r.path for r in app.routes}` contains **none** of the
+  included router's paths. The command reads the same expansion the OpenAPI
+  generator walks.
+- **Prefixes already resolved.** The path is the router's plus every
+  `include_router` above it.
+- **Routes outside the schema are listed too**, with `SCHEMA=no` — an HTML
+  page and an internal endpoint serve traffic, and they are exactly what an
+  answer taken from `openapi.json` hides.
+- **`GUARDS` shows the dependency inherited from the include**, not only the
+  one declared on the route. That is how you confirm the
+  `Depends(require_admin)` on `include_router` reached everything it should.
+
+Filters and format:
+
+```bash
+tempest routes --match /api/orders        # only paths containing this
+tempest routes --method post,delete       # only these methods
+tempest routes --all                      # include /docs, /redoc, /openapi.json
+tempest routes --json                     # JSON array, for scripting
+tempest routes --app src.server:app       # app outside the conventional spots
+```
+
+Without `--app`, the command probes `src.server:app`,
+`src.api.app:create_app`, `main:app` (and the same under `app/`). When
+nothing resolves it **lists what it tried and why** before exiting 2. A
+`--match` that matches nothing exits 1, so a typo in a script fails instead
+of reading as an application with no routes.
+
 ### Errors documented in OpenAPI — `tempest openapi-errors`
 
 Compares, per route, the `AppException`s the flow can raise against what the
@@ -895,6 +971,48 @@ Details, OpenAPI coverage and limitations in the
 [Integration client (OpenAPI) »](openapi-client.md) recipe.
 
 ---
+
+### Export the contract — `tempest openapi-export`
+
+`openapi-client` consumes somebody else's spec; this one writes **yours**.
+
+```bash
+# Document on stdout
+tempest openapi-export
+
+# To a file (JSON by default)
+tempest openapi-export --out contracts/openapi.json
+
+# YAML (needs the [openapi] extra)
+tempest openapi-export --out contracts/openapi.yaml --yaml
+```
+
+Two things come out of that. The first is feeding a generator — `tempest
+openapi-client` itself, a TypeScript client generator, a mock server —
+**without booting the service**. The second is committing the document, which
+turns a contract change into something the reviewer sees:
+
+```bash
+tempest openapi-export --out contracts/openapi.json --check
+```
+
+```text
+error: contracts/openapi.json is out of date:
+  + DELETE /api/items/{item_id}
+  - GET /api/legacy
+  ~ /api/items/{item_id} changed
+Run 'tempest openapi-export --out <file>' to refresh it.
+```
+
+Exit 1 when it differs, 0 when it is current. Operations added and removed
+come first because those are the ones that break consumers; a change inside
+an operation reads as `~ <path> changed`. "The spec changed" is not a
+reviewable message — which is why the command names what moved.
+
+!!! tip "In CI"
+    Run `--check` in the same job as the tests. The day somebody changes a
+    status code, a required field or a path, the PR goes red with the exact
+    line instead of the client finding out in production.
 
 ### PR description with AI — `tempest pr-prompt`
 

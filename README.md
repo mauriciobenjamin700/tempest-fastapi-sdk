@@ -3891,6 +3891,7 @@ tempest db upgrade                               # alembic upgrade head
 tempest db upgrade <rev>                         # upgrade to a specific revision
 tempest db downgrade                             # roll back one step
 tempest db current                               # print the applied revision
+tempest db check                                 # exit 1 when models drifted from the tree
 tempest db history -v                            # revisions newest → oldest, verbose
 tempest db stamp head                            # mark the DB without running migrations
 tempest db squash -m "init" --yes                # collapse history into 1 migration
@@ -3908,14 +3909,22 @@ tempest db seed --seed src.db.fixtures:demo      # custom seed callable
 
 #### Secrets — `tempest secrets`
 
-Generates and rotates application secrets (`JWT_SECRET` / `TOKEN_SECRET` by default), rewriting the matching `.env` lines in place after a `.env.bak` backup; `--print` writes nothing and emits the values to stdout.
+Four commands, ordered by how much they touch your `.env`: `generate` never writes, `init` fills only what is unset, `rotate` always replaces, and `vapid` mints the Web Push key pair.
 
 ```bash
+tempest secrets generate                              # one value on stdout, nothing written
+tempest secrets generate --count 3                    # three of them
+tempest secrets generate --keys JWT_SECRET --json     # JSON, for a secret manager
+tempest secrets init                                  # fill the keys `tempest new` left unset
+tempest secrets init --force                          # replace real values too (backs up first)
 tempest secrets rotate                                # rotate JWT_SECRET + TOKEN_SECRET in .env
 tempest secrets rotate --print                        # just print, write nothing
 tempest secrets rotate --keys JWT_SECRET,SESSION_SECRET --env .env.prod
 tempest secrets rotate --length 64 --no-backup
+tempest secrets vapid --subject mailto:ops@example.com  # Web Push key pair
 ```
+
+`tempest secrets init` treats a key as unset when it is missing, empty, or still carries the `change-me` placeholder `tempest new` writes — the values `tempest check-config` reports as `security.W001` / `security.W004` — and keeps every configured key, so it is safe to re-run. `tempest secrets vapid` writes `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` in the shape `WebPushSettings` and `pywebpush` read (32-byte scalar, 65-byte uncompressed point, base64url), and refuses to overwrite an existing pair without `--force`, because replacing it invalidates every active browser subscription.
 
 #### Users — `tempest user`
 
@@ -3939,6 +3948,18 @@ When `tempest user create` runs in an interactive terminal **without** `--admin`
 `tempest user set-password` replaces an existing user's password, hashing with the model's own `set_password`. Because changing the hash does not end a session on its own, it also revokes the user's DB-backed refresh tokens **in the same transaction** — resolving `src.db.models:UserRefreshTokenModel` by default, `--refresh-token-model` for a table elsewhere, `--keep-sessions` to opt out. Every path reports which of the two happened. From code, the same revocation is `await service.revoke_user_sessions(session, user_id=user.id)`.
 
 Both `create` and `set-password` validate the plaintext with `check_password_policy` against the project's `AUTH_PASSWORD_*` settings (or the `PasswordPolicy` defaults: 12 characters minimum, 72 **bytes** maximum — the unit bcrypt counts), so the CLI accepts exactly the passwords `signup` and the admin panel accept.
+
+#### Routes and contract — `tempest routes` / `tempest openapi-export`
+
+```bash
+tempest routes                                        # every route, mounted routers included
+tempest routes --match /api/orders --method post      # filtered
+tempest routes --json                                 # machine-readable
+tempest openapi-export --out contracts/openapi.json   # write this service's own spec
+tempest openapi-export --out contracts/openapi.json --check   # exit 1 when it drifted
+```
+
+`tempest routes` reads the effective paths from FastAPI's own route expansion, so a router mounted with `include_router` is listed (a comprehension over `app.routes` lists none of its paths since FastAPI 0.141.1), and routes kept out of the schema — HTML pages, internal endpoints — are listed with `SCHEMA=no` next to the dependencies guarding them. `tempest openapi-export` writes the document `openapi-client` (or any other generator) consumes without booting the service; `--check` compares it against the committed file and names the operations that moved, which is the CI guard against an undeclared contract change. Both take `--app module:attr` when the app does not sit at one of the scaffolded locations.
 
 #### Generate artifacts in an existing project — `tempest generate`
 
