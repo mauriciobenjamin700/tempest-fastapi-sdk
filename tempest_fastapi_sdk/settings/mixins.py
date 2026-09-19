@@ -2640,6 +2640,96 @@ class MercadoPagoSettings(BaseAppSettings):
         }
 
 
+class HostBridgeSettings(BaseAppSettings):
+    """Host control configuration, consumed by ``HostBridge``.
+
+    Compose it into a service's settings and splat
+    :meth:`hostbridge_kwargs` into
+    :class:`~tempest_fastapi_sdk.hostbridge.HostBridgeConfig`.
+
+    Each attribute below is also the name of the environment variable that
+    sets it (matched case-sensitively, no prefix).
+
+    ``HOST_ALLOWED_BASE_PATHS`` has no permissive default on purpose. The
+    surface it guards reads the host's disk and, with the write side
+    enabled, runs commands as the host user — a bridge that allows
+    everything because nobody configured it is the failure worth designing
+    against. Empty denies every path.
+
+    Attributes:
+        HOST_ALLOWED_BASE_PATHS (list[str]): Directories the file surface may
+            reach. Default: ``[]``, which denies everything.
+        HOST_POWERSHELL_BINARY (str): PowerShell executable.
+            Default: ``"powershell.exe"``.
+        HOST_CMD_BINARY (str): ``cmd`` executable. Default: ``"cmd.exe"``.
+        HOST_COMMAND_TIMEOUT (int): Seconds a command may run when the caller
+            names no timeout. Default: ``30``.
+        HOST_MAX_FILE_READ_BYTES (int): Ceiling for a single read.
+            Default: ``10485760`` (10 MiB).
+    """
+
+    HOST_ALLOWED_BASE_PATHS: list[str] = Field(
+        default_factory=list,
+        title="Allowed base paths",
+        description=(
+            "Directories the host file surface may reach. A resolved path "
+            "outside every one of them is refused. Empty denies everything."
+        ),
+        examples=[[], ["/mnt/c/Users/me/Documents"], ["/mnt/c", "/mnt/d"]],
+    )
+    HOST_POWERSHELL_BINARY: str = Field(
+        default="powershell.exe",
+        title="PowerShell binary",
+        description=(
+            "Executable used for PowerShell commands. ``powershell.exe`` "
+            "reaches the Windows host from WSL; ``pwsh`` is PowerShell Core."
+        ),
+        examples=["powershell.exe", "pwsh"],
+    )
+    HOST_CMD_BINARY: str = Field(
+        default="cmd.exe",
+        title="cmd binary",
+        description="Executable used for ``cmd`` commands.",
+        examples=["cmd.exe"],
+    )
+    HOST_COMMAND_TIMEOUT: int = Field(
+        default=30,
+        ge=1,
+        title="Default command timeout",
+        description=(
+            "Seconds a host command may run when the caller names no "
+            "timeout of its own. The process is killed when it is reached."
+        ),
+        examples=[30, 120],
+    )
+    HOST_MAX_FILE_READ_BYTES: int = Field(
+        default=10 * 1024 * 1024,
+        ge=1,
+        title="Maximum file read size",
+        description=(
+            "Ceiling for a single text or PDF read, in bytes. This is a "
+            "text reader — the cap is what keeps one request from pinning "
+            "the process's memory."
+        ),
+        examples=[10 * 1024 * 1024, 1024 * 1024],
+    )
+
+    def hostbridge_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto :class:`HostBridgeConfig` kwargs.
+
+        Returns:
+            dict[str, Any]: Keyword arguments ready to splat into
+            ``HostBridgeConfig(**settings.hostbridge_kwargs())``.
+        """
+        return {
+            "allowed_base_paths": tuple(self.HOST_ALLOWED_BASE_PATHS),
+            "powershell_binary": self.HOST_POWERSHELL_BINARY,
+            "cmd_binary": self.HOST_CMD_BINARY,
+            "default_command_timeout": self.HOST_COMMAND_TIMEOUT,
+            "max_file_read_bytes": self.HOST_MAX_FILE_READ_BYTES,
+        }
+
+
 __all__: list[str] = [
     "AuthSettings",
     "CORSSettings",
@@ -2647,6 +2737,7 @@ __all__: list[str] = [
     "EmailSettings",
     "FirebaseSettings",
     "GenAISettings",
+    "HostBridgeSettings",
     "JWTSettings",
     "LogSettings",
     "MercadoPagoSettings",

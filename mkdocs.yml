@@ -139,6 +139,7 @@ plugins:
               - "Firebase auth (ID token)": recipes/firebase-auth.md
               - Forms from Pydantic schemas: recipes/ui-forms.md
               - Geolocation (distance + time): recipes/geo.md
+              - "Host control (files, commands, power)": recipes/hostbridge.md
               - HTTP client (outbound): recipes/http-client.md
               - HTTP layer: recipes/http.md
               - Idempotency: recipes/idempotency.md
@@ -413,6 +414,7 @@ nav:
       - "Colunas de enum (seguras nos dois bancos)": recipes/enum-columns.md
       - "Comentários + avaliações": recipes/reviews.md
       - "Console SQL no admin": recipes/admin-sql-console.md
+      - "Controle do host (arquivos, comandos, energia)": recipes/hostbridge.md
       - "CSS tipado (StyleSheet e tokens)": recipes/ui-css.md
       - "Deploy seguro (migrations + shutdown)": recipes/deploy-safety.md
       - Downloads: recipes/downloads.md

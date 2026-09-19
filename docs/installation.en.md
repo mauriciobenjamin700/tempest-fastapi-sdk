@@ -29,6 +29,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[genai-vlm]` | `pillow`, `torchvision` | Local vision-language model: describe an image, answer a question about one |
 | `[openapi]` | `pyyaml` | Read a YAML OpenAPI spec for `tempest openapi-client` / `tempest openapi-errors` |
 | `[pdf-read]` | `pypdf` | **Read** PDFs (extract text/pages); `[pdf]` is for **generating** them |
+| `[pdf-layout]` | `pdfplumber` | Read PDFs **with layout and tables** (columns recovered, tables as grids); slower than `[pdf-read]` |
 | `[spreadsheet]` | `openpyxl` | `.xlsx` spreadsheets: typed reading, writing and bulk import |
 | `[websocket]` | `websockets` | Protocol driver for `make_websocket_router` — without it the handshake 404s |
 | `[email]` | `aiosmtplib`, `jinja2`, `email-validator` | `EmailUtils` (with `render_template` + Jinja2 templates) |

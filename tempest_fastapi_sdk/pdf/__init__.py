@@ -60,6 +60,12 @@ from tempest_fastapi_sdk.pdf.formatting import format_date_long as format_date_l
 from tempest_fastapi_sdk.pdf.formatting import format_document as format_document
 from tempest_fastapi_sdk.pdf.formatting import format_quantity as format_quantity
 from tempest_fastapi_sdk.pdf.formatting import valor_por_extenso as valor_por_extenso
+from tempest_fastapi_sdk.pdf.pages import PdfDecryptError as PdfDecryptError
+from tempest_fastapi_sdk.pdf.pages import PdfExtractError as PdfExtractError
+from tempest_fastapi_sdk.pdf.pages import PdfExtractor as PdfExtractor
+from tempest_fastapi_sdk.pdf.pages import PdfPage as PdfPage
+from tempest_fastapi_sdk.pdf.pages import PdfPagesResult as PdfPagesResult
+from tempest_fastapi_sdk.pdf.pages import read_pdf_pages as read_pdf_pages
 from tempest_fastapi_sdk.pdf.reader import (
     DEFAULT_PAGE_MARKER as DEFAULT_PAGE_MARKER,
 )
@@ -120,7 +126,12 @@ __all__: list[str] = [
     "LineItem",
     "PageText",
     "Party",
+    "PdfDecryptError",
     "PdfDocument",
+    "PdfExtractError",
+    "PdfExtractor",
+    "PdfPage",
+    "PdfPagesResult",
     "PdfRenderer",
     "QuoteDocument",
     "ReceiptDocument",
@@ -140,6 +151,7 @@ __all__: list[str] = [
     "format_document",
     "format_quantity",
     "make_pdf_router",
+    "read_pdf_pages",
     "safe_filename",
     "valor_por_extenso",
 ]

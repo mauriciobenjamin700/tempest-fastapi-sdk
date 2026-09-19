@@ -18,13 +18,15 @@ from __future__ import annotations
 import importlib
 import inspect
 import pkgutil
+from types import ModuleType
 
 import pytest
 
-import tempest_fastapi_sdk.exceptions as exceptions_pkg
+import tempest_fastapi_sdk
 from tempest_fastapi_sdk import AppException
 from tempest_fastapi_sdk.exceptions.i18n import (
     _BUILTIN_TRANSLATIONS,
+    _MESSAGE_KEYS_WITHOUT_A_CODE,
     VALIDATION_KEY_PREFIX,
     MessageCatalog,
     default_message_catalog,
@@ -49,21 +51,47 @@ def _code_keys(table: dict[str, str]) -> set[str]:
     return {key for key in table if not key.startswith(VALIDATION_KEY_PREFIX)}
 
 
+def _iter_modules() -> list[ModuleType]:
+    """Import every importable module of the package.
+
+    A module whose optional extra is missing is skipped rather than
+    failed: the guard is about translations, not about the install.
+
+    Returns:
+        list[ModuleType]: The modules that imported cleanly.
+    """
+    modules: list[ModuleType] = [tempest_fastapi_sdk]
+    for info in pkgutil.walk_packages(
+        tempest_fastapi_sdk.__path__,
+        prefix="tempest_fastapi_sdk.",
+    ):
+        try:
+            modules.append(importlib.import_module(info.name))
+        except Exception:
+            continue
+    return modules
+
+
 def _codes_with_an_exception() -> dict[str, str]:
     """Map every ``code`` the SDK can raise to the class that carries it.
 
+    The whole package is walked, not just ``tempest_fastapi_sdk.exceptions``:
+    a feature package that declares its own envelope exceptions next to the
+    code that raises them — ``hostbridge``, ``pdf`` — needs its codes
+    translated exactly as much, and scanning one package let those pass.
+
     Returns:
         dict[str, str]: ``{code: class name}`` for every concrete
-        :class:`AppException` subclass in ``tempest_fastapi_sdk.exceptions``.
+        :class:`AppException` subclass the package defines.
     """
     found: dict[str, str] = {}
-    for module_info in pkgutil.iter_modules(exceptions_pkg.__path__):
-        module = importlib.import_module(
-            f"tempest_fastapi_sdk.exceptions.{module_info.name}",
-        )
+    for module in _iter_modules():
         for _, obj in inspect.getmembers(module, inspect.isclass):
-            if issubclass(obj, AppException) and getattr(obj, "code", None):
-                found[obj.code] = obj.__name__
+            if not issubclass(obj, AppException) or not getattr(obj, "code", None):
+                continue
+            if not obj.__module__.startswith("tempest_fastapi_sdk."):
+                continue
+            found[obj.code] = obj.__name__
     return found
 
 
@@ -87,9 +115,11 @@ def test_no_translation_without_an_exception() -> None:
     """A stale key is a rename nobody finished.
 
     Harmless at runtime, but it makes the count meaningless and hides
-    the code the rename should have introduced.
+    the code the rename should have introduced. A key that is a
+    ``message_key`` rather than a ``code`` is declared in
+    :data:`_MESSAGE_KEYS_WITHOUT_A_CODE` and exempt.
     """
-    codes = set(_codes_with_an_exception())
+    codes = set(_codes_with_an_exception()) | _MESSAGE_KEYS_WITHOUT_A_CODE
 
     for locale, table in _BUILTIN_TRANSLATIONS.items():
         orphans = sorted(_code_keys(table) - codes)

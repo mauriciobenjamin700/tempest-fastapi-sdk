@@ -18,6 +18,9 @@ from tempest_fastapi_sdk.settings.mixins import DatabaseSettings as DatabaseSett
 from tempest_fastapi_sdk.settings.mixins import EmailSettings as EmailSettings
 from tempest_fastapi_sdk.settings.mixins import FirebaseSettings as FirebaseSettings
 from tempest_fastapi_sdk.settings.mixins import GenAISettings as GenAISettings
+from tempest_fastapi_sdk.settings.mixins import (
+    HostBridgeSettings as HostBridgeSettings,
+)
 from tempest_fastapi_sdk.settings.mixins import JWTSettings as JWTSettings
 from tempest_fastapi_sdk.settings.mixins import LogSettings as LogSettings
 from tempest_fastapi_sdk.settings.mixins import (
@@ -46,6 +49,7 @@ __all__: list[str] = [
     "EmailSettings",
     "FirebaseSettings",
     "GenAISettings",
+    "HostBridgeSettings",
     "JWTSettings",
     "LogSettings",
     "MercadoPagoSettings",

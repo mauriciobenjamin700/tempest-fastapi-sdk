@@ -5,6 +5,65 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.294.0] — 2026-09-19
+
+Um assistente local que roda dentro do WSL precisa agir na máquina que o
+hospeda — ler um arquivo em `C:\`, rodar PowerShell, desligar o computador.
+Isso vinha sendo um serviço separado, reescrito em cada projeto que precisava
+dele, com a parte perigosa (sandbox de caminho, auth, gate do lado
+destrutivo) reescrita junto.
+
+### Added
+
+- **`tempest_fastapi_sdk.hostbridge` — controle do host, sem extra nenhum.**
+  `HostBridge` cobre energia (`shutdown`/`restart`/`abort_shutdown`/`lock`/
+  `logoff`), identidade (`host_info`), arquivos (`read_text`/`write_text`/
+  `list_dir`/`delete`), PDF (`read_pdf`), comando arbitrário (`run_command`)
+  e o seletor nativo (`pick_file`). Tudo async, com o que toca disco ou
+  processo fora do event loop. Configuração é `HostBridgeConfig` — um value
+  object congelado — ou `HostBridgeSettings` vindo do ambiente, via
+  `hostbridge_kwargs()`.
+
+  **As duas decisões de segurança são estruturais, não avisos na doc.**
+  `allowed_base_paths` começa **vazio**, negando todo caminho até alguém
+  configurar, e o caminho é **resolvido antes de ser checado** — checar antes
+  de resolver deixa `.../../../etc/passwd` passar por começar dentro de uma
+  base permitida. `make_hostbridge_router` **exige** a lista de dependências
+  de auth na assinatura e recusa uma vazia, e o lado que escreve (comando,
+  escrita, remoção, energia) só é montado com `destructive=True`.
+
+  Onde não existe host para alcançar — container Linux puro, nem
+  `powershell.exe` nem `wslpath` — a chamada levanta `HostUnavailableError`
+  (503, `HOST_UNAVAILABLE`) em vez de uma falha genérica, então o chamador
+  degrada em vez de reportar que a ação falhou. Cada código
+  (`HOST_INVALID_PATH`, `HOST_FILE_NOT_FOUND`, `HOST_FILE_TOO_LARGE`,
+  `HOST_FILE_DECODE_FAILED`, `HOST_COMMAND_FAILED`, `HOST_COMMAND_TIMEOUT`,
+  `HOST_UNAVAILABLE`) ships frase PT-BR e en-US no `default_message_catalog`.
+
+- **`read_pdf_pages` + o extra `[pdf-layout]`.** O leitor que já existia
+  (`extract_pdf_text` / `extract_pdf_pages`, `[pdf-read]`) entrega prosa; um
+  documento com colunas sai intercalado linha a linha e uma tabela sai como
+  fluxo de células. `PdfExtractor.LAYOUT` roda `pdfplumber`, que recupera a
+  grade em `PdfPage.tables`, e o novo caminho aceita senha, distinguindo
+  documento cifrado (`PDF_DECRYPT_FAILED`) de arquivo corrompido
+  (`PDF_EXTRACT_FAILED`). Continua sem OCR: página escaneada volta com
+  `text=""` — a entrada `n` é sempre a página `n` — em vez de sumir.
+
+- **`HostBridgeSettings`**, mais um mixin de settings, com
+  `HOST_ALLOWED_BASE_PATHS`, `HOST_POWERSHELL_BINARY`, `HOST_CMD_BINARY`,
+  `HOST_COMMAND_TIMEOUT` e `HOST_MAX_FILE_READ_BYTES`.
+
+### Fixed
+
+- **Senha errada num PDF lido com `[pdf-layout]` dizia "arquivo
+  ilegível".** O `pdfplumber` embrulha todo erro de parse num único
+  `PdfminerException` construído a partir do original, então o
+  `except PDFPasswordIncorrect` nunca disparava e o caso — que o chamador
+  resolve digitando a senha certa — saía como `PDF_EXTRACT_FAILED`,
+  mandando quem lê procurar um documento quebrado que não existia. A cadeia
+  (argumentos, `__cause__`, `__context__`) agora é percorrida atrás da falha
+  de senha real.
+
 ## [0.293.0] — 2026-09-13
 
 A CLI sabia criar usuário e sabia promovê-lo, mas não sabia trocar a senha
