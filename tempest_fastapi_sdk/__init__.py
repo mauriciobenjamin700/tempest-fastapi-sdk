@@ -1200,6 +1200,8 @@ from tempest_fastapi_sdk.settings import (
 )
 from tempest_fastapi_sdk.settings import (
     GenAISettings as GenAISettings,
+)
+from tempest_fastapi_sdk.settings import (
     HostBridgeSettings as HostBridgeSettings,
 )
 from tempest_fastapi_sdk.settings import (
@@ -1968,7 +1970,6 @@ __all__: list[str] = [
     "ForbiddenException",
     "GPUMetrics",
     "GenAISettings",
-    "HostBridgeSettings",
     "GitHubOAuthClient",
     "GoogleOAuthClient",
     "GracefulShutdownMiddleware",
@@ -1980,6 +1981,7 @@ __all__: list[str] = [
     "HealthCheck",
     "HexColorField",
     "HoneypotBanMiddleware",
+    "HostBridgeSettings",
     "IdempotencyMiddleware",
     "IdempotencyStore",
     "InheritedErrorCodeWarning",

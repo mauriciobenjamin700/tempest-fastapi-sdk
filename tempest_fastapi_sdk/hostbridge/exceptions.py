@@ -8,7 +8,6 @@ standard ``{detail, code, details}`` shape with no extra wiring. Every
 having to build prose it cannot translate.
 """
 
-
 from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.exceptions.not_found import NotFoundException
 from tempest_fastapi_sdk.exceptions.upload import FileTooLargeException

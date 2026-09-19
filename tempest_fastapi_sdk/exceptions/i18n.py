@@ -509,9 +509,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "PDF_DECRYPT_FAILED": "PDF protegido por senha — informe a senha correta",
         "PDF_EXTRACT_FAILED": "Não foi possível extrair o conteúdo do PDF",
         "PDF_PAGE_EXTRACT_FAILED": "Não foi possível extrair a página {page} do PDF",
-        "PDF_ASSET_REFUSED": (
-            "O documento referenciou um recurso que não é permitido"
-        ),
+        "PDF_ASSET_REFUSED": ("O documento referenciou um recurso que não é permitido"),
         "PDF_TEMPLATE_NOT_FOUND": "Template não encontrado",
         "OAUTH_ERROR": "O provedor de identidade respondeu com um erro",
         "FIREBASE_TOKEN_MISSING": "Autenticação necessária",
@@ -522,9 +520,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "FIREBASE_UNAVAILABLE": (
             "Não foi possível alcançar o serviço de certificados do Firebase"
         ),
-        "VOICE_CONSENT_REQUIRED": (
-            "O cadastro de voz exige consentimento gravado"
-        ),
+        "VOICE_CONSENT_REQUIRED": ("O cadastro de voz exige consentimento gravado"),
     },
     "en-US": {
         "INTERNAL_SERVER_ERROR": "Internal server error",
@@ -585,9 +581,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "PDF_DECRYPT_FAILED": "PDF is password protected — provide the password",
         "PDF_EXTRACT_FAILED": "Could not extract the PDF's content",
         "PDF_PAGE_EXTRACT_FAILED": "Could not extract page {page} of the PDF",
-        "PDF_ASSET_REFUSED": (
-            "The document referenced an asset that is not allowed"
-        ),
+        "PDF_ASSET_REFUSED": ("The document referenced an asset that is not allowed"),
         "PDF_TEMPLATE_NOT_FOUND": "Template not found",
         "OAUTH_ERROR": "The identity provider answered with an error",
         "FIREBASE_TOKEN_MISSING": "Authentication required",
@@ -595,9 +589,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "FIREBASE_TOKEN_EXPIRED": "Firebase ID token expired",
         "FIREBASE_TOKEN_REVOKED": "Firebase ID token revoked",
         "FIREBASE_USER_DISABLED": "The Firebase account is disabled",
-        "FIREBASE_UNAVAILABLE": (
-            "Could not reach the Firebase certificate endpoint"
-        ),
+        "FIREBASE_UNAVAILABLE": ("Could not reach the Firebase certificate endpoint"),
         "VOICE_CONSENT_REQUIRED": "Voice enrolment requires recorded consent",
     },
 }
