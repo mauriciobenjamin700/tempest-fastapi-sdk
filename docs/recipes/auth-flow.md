@@ -48,23 +48,17 @@ Requer:
 uv add "tempest-fastapi-sdk[auth,email]>=0.151.1"
 ```
 
+São dois arquivos, e a ordem entre eles importa. Os objetos compartilhados
+— conexão, e-mail, service — moram em `src/api/dependencies/`; o
+`src/api/app.py` **importa** de lá e só monta a aplicação:
+
 ```python
-# src/api/app.py
+# src/api/dependencies/resources.py
 
-from fastapi import FastAPI
-
-from tempest_fastapi_sdk import (
-    AsyncDatabaseManager,
-    EmailUtils,
-    UserAuthService,
-    make_auth_router,
-)
+from tempest_fastapi_sdk import AsyncDatabaseManager, EmailUtils, UserAuthService
 
 from src.core.settings import settings
 from src.db.models import UserModel, UserTokenModel
-
-app = FastAPI()
-
 
 db = AsyncDatabaseManager(settings.DATABASE_URL)
 
@@ -87,6 +81,18 @@ auth_service = UserAuthService(
     jwt_settings=settings,    # mistura JWTSettings
     email=emails,             # ou None — controla envio real vs link no body
 )
+```
+
+```python
+# src/api/app.py
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import make_auth_router
+
+from src.api.dependencies.resources import auth_service, db
+
+app = FastAPI()
 
 app.include_router(
     make_auth_router(
@@ -95,6 +101,15 @@ app.include_router(
     ),
 )
 ```
+
+!!! warning "O service não pode morar no `app.py`"
+    É tentador criar o `UserAuthService` ao lado do `app` e importá-lo de
+    volta nas dependencies — e é um ciclo de import: `app.py` importa os
+    routers, os routers importam `dependencies/`, e esse importaria `app.py`
+    de novo. O erro sai longe da causa (`ImportError: cannot import name
+    'auth_service' from partially initialized module`), então a direção fica
+    fixa desde o começo: **dependencies não importa `app`**. É também o que
+    deixa o service testável sem subir a aplicação.
 
 !!! tip "TL;DR de quatro objetos"
     `AsyncDatabaseManager` → conexão. `EmailUtils` → SMTP + Jinja2. `UserAuthService` → regras de negócio (5 métodos). `make_auth_router` → cola tudo em 5 endpoints HTTP.
@@ -1461,7 +1476,7 @@ O service já tem `user_model`, `JWTUtils` e a sessão — então não precisa e
 
 ```python
 # src/api/dependencies/auth.py
-from src.api.app import auth_service
+from src.api.dependencies.resources import auth_service
 
 get_current_user = auth_service.current_user_dependency()
 get_current_user_or_none = auth_service.current_user_dependency(soft=True)
@@ -1482,7 +1497,7 @@ get_current_user_or_none = auth_service.current_user_dependency(soft=True)
 
     ```python
     # src/api/dependencies/auth.py
-    from src.api.app import auth_service
+    from src.api.dependencies.resources import auth_service
 
     get_current_user = auth_service.current_user_dependency(
         cookie_name="access_token",
@@ -1503,7 +1518,7 @@ get_current_user_or_none = auth_service.current_user_dependency(soft=True)
 
     from tempest_fastapi_sdk import JWTUtils, make_jwt_user_dependency
 
-    from src.api.app import db
+    from src.api.dependencies.resources import db
     from src.core.settings import settings
     from src.db.models import UserModel
     from src.db.repositories import UserRepository
