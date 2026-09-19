@@ -3948,6 +3948,17 @@ tempest secrets vapid --subject mailto:ops@example.com  # Web Push key pair
 
 `tempest secrets init` treats a key as unset when it is missing, empty, or still carries the `change-me` placeholder `tempest new` writes — the values `tempest check-config` reports as `security.W001` / `security.W004` — and keeps every configured key, so it is safe to re-run. `tempest secrets vapid` writes `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` in the shape `WebPushSettings` and `pywebpush` read (32-byte scalar, 65-byte uncompressed point, base64url), and refuses to overwrite an existing pair without `--force`, because replacing it invalidates every active browser subscription.
 
+#### Integrations and agents — `tempest integrations` / `tempest agents`
+
+```bash
+tempest integrations list                             # bundled clients + credential state
+tempest integrations verify openpix                   # one real authenticated read
+tempest agents tools --agent src.agents:agent         # tools, with no model call
+tempest agents run "summarise the report" --agent src.agents:agent --trace
+```
+
+`integrations verify` builds the client from `settings.<provider>_kwargs()` and calls the cheapest authenticated read each API offers (OpenPix `GET /company`, Mercado Pago `GET /users/me`) — a guard asserts those methods still exist on the generated clients and take no argument, so an upstream rename fails a test rather than an operator's terminal. `agents tools` spends no token; `agents run` exits `1` when the run was cut short by its budget, because a truncated run still returns text and treating it as an answer is the mistake worth refusing.
+
 #### Queue and tasks — `tempest queue` / `tempest tasks`
 
 ```bash

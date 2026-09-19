@@ -1223,6 +1223,57 @@ Details in the [Permission guards (`@requires`) »](permission-guards.md) recipe
 
 ---
 
+### Integrations — `tempest integrations`
+
+```bash
+tempest integrations list                    # what ships + the credential state here
+tempest integrations verify openpix          # one real authenticated call
+tempest integrations verify mercado-pago
+tempest integrations verify zap --base-url http://localhost:3000
+```
+
+```text
+openpix       tempest_fastapi_sdk.integrations.payment.openpix:OpenPixClient
+              OPENPIX_APP_ID set
+mercado-pago  tempest_fastapi_sdk.integrations.payment.mercado_pago:MercadoPagoClient
+              needs MercadoPagoSettings
+```
+
+`verify` builds the client with `HTTPClient(**settings.<provider>_kwargs())`
+and makes **the cheapest authenticated read** each API offers: OpenPix's
+`GET /company` and Mercado Pago's `GET /users/me` — neither moves money nor
+creates a record. A bad credential exits 1 carrying the provider's refusal.
+
+!!! note "That endpoint is a hand-kept table — with a guard"
+    Choosing "the cheapest call" per provider is a human decision, and
+    generated endpoint names change. A test asserts each named method still
+    exists on the generated client **and** takes no required argument, so an
+    upstream rename breaks a test instead of the terminal of whoever is
+    on call.
+
+A provider the SDK ships no settings mixin for (zap, stripe) needs
+`--base-url`: the SDK does not know where your instance lives.
+
+### Agents — `tempest agents`
+
+```bash
+tempest agents tools --agent src.agents:agent     # which tools it holds
+tempest agents run "summarise the report" --agent src.agents:agent --trace
+```
+
+`tools` calls no model — no token is spent, and it works with a backend that
+has no credentials configured. It is the quick answer to "does this agent
+configuration actually see the tool I just registered?".
+
+!!! warning "The exit code follows `succeeded`, not 'raised nothing'"
+    A run cut short by its budget (steps or seconds) **still returns text**.
+    Treating that text as an answer is the mistake this command refuses to
+    make for you: `run` exits 1 and prints the stop reason (`max_steps`,
+    `max_seconds`) on `stderr`, with the output on `stdout` either way.
+
+There is no scaffolded `agents` layer, so `--agent` is nearly always needed —
+and the command says so rather than pretending a convention exists.
+
 ### Integration client — `tempest openapi-client`
 
 Generates Pydantic schemas + a typed HTTP client from a third party's OpenAPI

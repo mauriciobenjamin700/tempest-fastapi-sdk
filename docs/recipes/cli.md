@@ -1220,6 +1220,59 @@ Detalhes na receita [Guards de permissão (`@requires`) »](permission-guards.md
 
 ---
 
+### Integrações — `tempest integrations`
+
+```bash
+tempest integrations list                    # o que o SDK ships + estado da credencial aqui
+tempest integrations verify openpix          # uma chamada autenticada de verdade
+tempest integrations verify mercado-pago
+tempest integrations verify zap --base-url http://localhost:3000
+```
+
+```text
+openpix       tempest_fastapi_sdk.integrations.payment.openpix:OpenPixClient
+              OPENPIX_APP_ID set
+mercado-pago  tempest_fastapi_sdk.integrations.payment.mercado_pago:MercadoPagoClient
+              needs MercadoPagoSettings
+```
+
+O `verify` monta o cliente com `HTTPClient(**settings.<provedor>_kwargs())` e
+faz **a leitura autenticada mais barata** que cada API oferece: `GET /company`
+na OpenPix e `GET /users/me` no Mercado Pago — nenhuma das duas move dinheiro
+nem cria registro. Credencial errada sai com código 1 carregando a recusa do
+provedor.
+
+!!! note "Esse endpoint é tabela mantida à mão — com guard"
+    Escolher "a chamada mais barata" de cada provedor é decisão humana, e
+    nome de endpoint gerado muda. Um teste assere que cada método nomeado
+    ainda existe no cliente gerado **e** que não exige argumento, então
+    renomeação upstream quebra um teste em vez do terminal de quem está de
+    plantão.
+
+Provedor sem mixin de settings no SDK (zap, stripe) precisa de `--base-url`:
+o SDK não sabe onde a instância mora.
+
+### Agentes — `tempest agents`
+
+```bash
+tempest agents tools --agent src.agents:agent     # que ferramentas ele tem
+tempest agents run "resuma o relatório" --agent src.agents:agent --trace
+```
+
+`tools` não chama modelo nenhum — nenhum token é gasto, e funciona com
+backend sem credencial configurada. É a resposta rápida para "essa
+configuração de agente enxerga mesmo a ferramenta que acabei de registrar?".
+
+!!! warning "O código de saída segue `succeeded`, não 'não levantou exceção'"
+    Run cortado pelo orçamento (passos ou tempo) **ainda devolve texto**.
+    Tratar esse texto como resposta é o erro que o comando se recusa a
+    cometer por você: `run` sai com 1 e imprime o motivo da parada
+    (`max_steps`, `max_seconds`) no `stderr`, com a saída no `stdout` do
+    mesmo jeito.
+
+Não existe layer `agents` scaffoldada, então `--agent` é praticamente sempre
+necessário — o comando diz isso em vez de fingir uma convenção.
+
 ### Cliente de integração — `tempest openapi-client`
 
 Gera schemas Pydantic + um cliente HTTP tipado a partir da especificação OpenAPI
