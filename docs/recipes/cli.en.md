@@ -282,6 +282,63 @@ uv run python main.py                           # serves on the configured HOST:
 uv run pytest                                   # the bundled smoke test
 ```
 
+### Run the service — `tempest serve`
+
+```bash
+tempest serve                              # host/port/reload from the settings
+tempest serve --reload                     # turn reload on for this run
+tempest serve --host 0.0.0.0 --port 9000   # override
+tempest serve --workers 4                  # several processes (no reload)
+tempest serve --app src.api.app:create_app # app outside the conventional spots
+```
+
+The scaffolded `main.py` already boots uvicorn programmatically; this command
+is for the project that does not have that file yet, or for overriding host
+and port without editing `.env`. Resolution is `run_server`'s: flag > the
+project's settings > the SDK default (`127.0.0.1`, `8000`, no reload).
+
+!!! note "uvicorn gets the *string*, never the object"
+    The reloader re-imports the target in the child process. Handing it the
+    already-imported instance works — and silently turns `--reload` into
+    nothing. So the command imports the candidate once to validate it, and
+    passes `"src.server:app"` along.
+
+`--reload` together with `--workers` exits 2: uvicorn cannot honour both.
+And `--no-reload` really does turn it off, even with `SERVER_RELOAD=true` in
+`.env` — the flag has three states (on, off, "you decide").
+
+### Interactive console — `tempest shell`
+
+A REPL with the project already loaded, so "how many orders does this user
+have?" does not cost a throwaway script.
+
+```bash
+tempest shell
+```
+
+```text
+tempest shell — Python 3.11.12, top-level await enabled
+available: WidgetModel, db, select, session, settings, text
+session: open on sqlite+aiosqlite:///./app.db
+>>> rows = await session.execute(select(WidgetModel))
+>>> rows.scalars().all()
+[<WidgetModel id=...>]
+```
+
+What the prompt holds: `settings` (the project's instance), every mapped
+model **the project defines** (the SDK's `BaseModel` stays out — a query
+against the base class is never what you meant), `select`, `text`, the
+`AsyncDatabaseManager` as `db`, and an already-open `session`.
+
+!!! info "Top-level `await`, on purpose"
+    The console compiles with `ast.PyCF_ALLOW_TOP_LEVEL_AWAIT` and runs the
+    coroutine **on the same loop** the session was opened on. Exposing a
+    `run(coro)` helper would look equivalent and is not: a session driven
+    from a second loop raises `MissingGreenlet` at the first lazy load.
+
+`--no-db` starts without connecting — useful when the database is down and
+you only want to inspect settings and models.
+
 ### Database — `tempest db`
 
 Alembic wrapper backed by ``AlembicHelper`` — your project's ``alembic.ini`` + ``env.py`` stay the source of truth.

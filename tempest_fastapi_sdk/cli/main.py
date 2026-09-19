@@ -21,6 +21,8 @@ from tempest_fastapi_sdk.cli.openapi_export import openapi_export_command
 from tempest_fastapi_sdk.cli.pdf import pdf_app
 from tempest_fastapi_sdk.cli.routes import routes_command
 from tempest_fastapi_sdk.cli.secrets import secrets_app
+from tempest_fastapi_sdk.cli.serve import serve_command
+from tempest_fastapi_sdk.cli.shell import shell_command
 from tempest_fastapi_sdk.cli.user import user_app
 from tempest_fastapi_sdk.cli.voice import voice_app
 
@@ -165,6 +167,8 @@ app.add_typer(voice_app, name="voice")
 # `openapi-client`).
 app.command("routes")(routes_command)
 app.command("openapi-export")(openapi_export_command)
+app.command("serve")(serve_command)
+app.command("shell")(shell_command)
 
 # The quality gate lives in `tempest-cli`, a framework-agnostic package.
 # Registering it here is what keeps `tempest check` and `tempest-cli check`

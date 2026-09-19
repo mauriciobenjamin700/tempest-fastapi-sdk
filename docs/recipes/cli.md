@@ -281,6 +281,64 @@ uv run python main.py                           # serve no HOST:PORT configurado
 uv run pytest                                   # o smoke test embutido
 ```
 
+### Subir o serviço — `tempest serve`
+
+```bash
+tempest serve                              # host/port/reload vindos das settings
+tempest serve --reload                     # liga o reload nesta execução
+tempest serve --host 0.0.0.0 --port 9000   # sobrescreve
+tempest serve --workers 4                  # múltiplos processos (sem reload)
+tempest serve --app src.api.app:create_app # app fora dos lugares convencionais
+```
+
+O `main.py` scaffoldado já sobe o uvicorn programaticamente; este comando
+serve para o projeto que ainda não tem esse arquivo, ou para quando você
+quer sobrescrever host/porta sem editar `.env`. A resolução é a mesma do
+`run_server`: flag > settings do projeto > default do SDK
+(`127.0.0.1`, `8000`, sem reload).
+
+!!! note "O uvicorn recebe a *string*, nunca o objeto"
+    O reloader reimporta o alvo no processo filho. Entregar a instância já
+    importada funciona — e transforma `--reload` em nada, em silêncio. Por
+    isso o comando importa o candidato uma vez só para validar, e passa
+    adiante `"src.server:app"`.
+
+`--reload` e `--workers` juntos saem com código 2: o uvicorn não honra os
+dois. E `--no-reload` **desliga** de verdade, mesmo com `SERVER_RELOAD=true`
+no `.env` — a flag tem três estados (ligado, desligado, "decida você").
+
+### Console interativo — `tempest shell`
+
+Um REPL com o projeto já carregado, para não escrever script descartável
+toda vez que a pergunta é "quantos pedidos esse usuário tem?".
+
+```bash
+tempest shell
+```
+
+```text
+tempest shell — Python 3.11.12, top-level await enabled
+available: WidgetModel, db, select, session, settings, text
+session: open on sqlite+aiosqlite:///./app.db
+>>> rows = await session.execute(select(WidgetModel))
+>>> rows.scalars().all()
+[<WidgetModel id=...>]
+```
+
+O que está no prompt: `settings` (a instância do projeto), cada model
+mapeado **que o projeto define** (a `BaseModel` do SDK fica de fora — query
+na classe base nunca é o que você quis dizer), `select`, `text`, o
+`AsyncDatabaseManager` como `db` e uma `session` já aberta.
+
+!!! info "`await` no nível de cima, de propósito"
+    O console compila com `ast.PyCF_ALLOW_TOP_LEVEL_AWAIT` e roda a corrotina
+    **no mesmo loop** em que a sessão foi aberta. Expor um helper
+    `run(coro)` pareceria equivalente e não é: sessão dirigida de um segundo
+    loop levanta `MissingGreenlet` no primeiro lazy load.
+
+`--no-db` começa sem conectar — útil quando o banco está fora do ar e você
+só quer inspecionar settings e models.
+
 ### Banco de dados — `tempest db`
 
 Wrapper Alembic. Usa o `AlembicHelper` por trás, então a configuração (`alembic.ini` + `env.py`) continua sendo a fonte da verdade.

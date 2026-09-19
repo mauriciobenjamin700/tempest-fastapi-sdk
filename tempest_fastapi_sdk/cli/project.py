@@ -37,6 +37,9 @@ _CANDIDATE_SUFFIXES: tuple[str, ...] = (
 _ROOTLESS_CANDIDATES: tuple[str, ...] = ("main:app",)
 """Import specs tried outside a code root (a single-module service)."""
 
+_SETTINGS_ATTRS: tuple[str, ...] = ("settings", "config")
+"""Instance names tried before scanning the settings module by type."""
+
 
 def _import_object(spec: str) -> Any:
     """Import ``module:attr`` and return the attribute.
@@ -165,7 +168,134 @@ def _candidates(root: Path) -> list[str]:
     return specs
 
 
+def settings_instances(module: object) -> list[Any]:
+    """List the settings instances a project module exposes.
+
+    The preferred names come first so a module holding more than one
+    instance resolves predictably; the remainder is whatever else on the
+    module is a ``BaseSettings`` instance, in definition order. The
+    instance's *type* is the real test — its *name* is a convention no
+    service signed up for.
+
+    Args:
+        module (object): The imported ``core.settings`` module.
+
+    Returns:
+        list[Any]: Candidate instances, best first. Empty when the
+        module exposes none.
+    """
+    from pydantic_settings import BaseSettings
+
+    members: dict[str, Any] = vars(module)
+    found: list[Any] = []
+    seen: set[int] = set()
+    for name in _SETTINGS_ATTRS:
+        value = members.get(name)
+        if isinstance(value, BaseSettings):
+            found.append(value)
+            seen.add(id(value))
+    for name, value in members.items():
+        if name.startswith("__") or id(value) in seen:
+            continue
+        if isinstance(value, BaseSettings):
+            found.append(value)
+            seen.add(id(value))
+    return found
+
+
+def load_project_settings(project_root: Path | None = None) -> Any | None:
+    """Import the project's settings instance, or ``None`` when absent.
+
+    Args:
+        project_root (Path | None): Project root to import from.
+            Defaults to the current working directory.
+
+    Returns:
+        Any | None: The first settings instance found under
+        ``<root>/core/settings.py``, or ``None`` when no code root has
+        one. An import that raises is reported on stderr and treated as
+        absent, because every caller of this has a fallback.
+    """
+    root = (project_root or Path.cwd()).resolve()
+    for code_root in CODE_ROOTS:
+        if not (root / code_root / "core" / "settings.py").is_file():
+            continue
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        dotted = f"{code_root}.core.settings"
+        try:
+            module = importlib.import_module(dotted)
+        except Exception as exc:
+            typer.echo(f"note: importing {dotted} failed: {exc!r}", err=True)
+            continue
+        instances = settings_instances(module)
+        if instances:
+            return instances[0]
+        typer.echo(
+            f"note: {dotted} imported, but exposes no "
+            "pydantic_settings.BaseSettings instance.",
+            err=True,
+        )
+    return None
+
+
+def resolve_app_spec(
+    spec: str | None,
+    project_root: Path | None = None,
+) -> tuple[str, bool]:
+    """Resolve the import string uvicorn should be given.
+
+    ``serve`` needs the *string*, not the object: uvicorn re-imports it
+    in the worker process, which is what makes ``--reload`` work at all.
+    The candidate is still imported once here, so a typo fails before
+    the server starts rather than inside the reloader.
+
+    Args:
+        spec (str | None): Explicit ``module:attr`` spec, or ``None`` to
+            probe the scaffolded locations.
+        project_root (Path | None): Project root to import from.
+            Defaults to the current working directory.
+
+    Returns:
+        tuple[str, bool]: The import string and whether it names a
+        factory (which uvicorn needs told).
+
+    Raises:
+        typer.Exit: Exit code 2 when nothing resolves, after reporting
+            every attempt's cause.
+    """
+    from fastapi import FastAPI
+
+    root = (project_root or Path.cwd()).resolve()
+    sys.path.insert(0, str(root))
+    candidates = [spec] if spec else _candidates(root)
+    notes: list[str] = []
+    for candidate in candidates:
+        try:
+            resolved = _import_object(candidate)
+        except (ImportError, AttributeError, ValueError) as exc:
+            notes.append(f"  {candidate}: {exc}")
+            continue
+        if isinstance(resolved, FastAPI):
+            return (candidate, False)
+        if callable(resolved) and isinstance(resolved(), FastAPI):
+            return (candidate, True)
+        notes.append(f"  {candidate}: not a FastAPI app")
+
+    for note in notes:
+        typer.echo(note, err=True)
+    typer.echo(
+        "error: no FastAPI app found. Pass --app 'module:attr' (the same "
+        "string you give uvicorn), or run inside the project root.",
+        err=True,
+    )
+    raise typer.Exit(2)
+
+
 __all__: list[str] = [
     "CODE_ROOTS",
     "load_project_app",
+    "load_project_settings",
+    "resolve_app_spec",
+    "settings_instances",
 ]

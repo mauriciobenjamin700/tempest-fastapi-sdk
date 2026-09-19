@@ -3879,6 +3879,18 @@ tempest check                                   # lint + fmt-check + type + test
 
 Every command returns the underlying tool's exit code, so `tempest check` is safe to wire into CI (`tempest check || exit 1`) or pre-commit hooks. When neither the executable nor `uv` is on `PATH`, the wrapper prints `error: '<tool>' is not on PATH and 'uv' is unavailable` and exits with `127` instead of failing silently.
 
+#### Run and inspect — `tempest serve` / `tempest shell`
+
+```bash
+tempest serve                                         # host/port/reload from the project's settings
+tempest serve --reload --port 9000                    # override for this run
+tempest serve --workers 4                             # several processes (refused with --reload)
+tempest shell                                         # async REPL: settings, models, open session
+tempest shell --no-db                                 # skip the database connection
+```
+
+`tempest serve` hands uvicorn the import *string* (`src.server:app`), which is what keeps `--reload` working, and resolves host/port/reload the way `run_server` does: flag > project settings > SDK default. `tempest shell` opens a console with `settings`, every mapped model the project defines, `select`, `text` and an already-open `session`; it compiles with `ast.PyCF_ALLOW_TOP_LEVEL_AWAIT` and runs coroutines on the loop that session belongs to, so `await session.execute(...)` works at the prompt instead of raising `MissingGreenlet`.
+
 #### Database — `tempest db`
 
 Alembic wrapper backed by `AlembicHelper`. Reads `DATABASE_URL` from `--database-url` > env var > `src.core.settings.settings.DATABASE_URL` > `alembic.ini`.
