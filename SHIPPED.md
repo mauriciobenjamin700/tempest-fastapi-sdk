@@ -1700,10 +1700,35 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   default, and both it and `create` validate the plaintext with
   `check_password_policy` against the project's own `AUTH_PASSWORD_*`
   settings),
-  `tempest secrets rotate`,
+  `tempest secrets generate/init/rotate/vapid` (**v0.294.0**: `generate`
+  prints without writing, `init` fills only missing/empty/`change-me`
+  keys and is idempotent, `vapid` mints the Web Push P-256 pair and
+  refuses to replace one without `--force`),
   `tempest model analyze/bench/optimize/quantize/export-ort/hardware/
   pull/cache-list/cache-rm`,
   `tempest pdf list/schema/render`,
+  **Operating an existing service (v0.294.0)** — `tempest routes` (every
+  effective route, mounted routers expanded via
+  `fastapi.routing.iter_route_contexts`, schema-excluded routes listed
+  with their guards), `tempest openapi-export [--check]` (this service's
+  own document; `--check` names the operations added/removed/changed),
+  `tempest db check` (Alembic autogenerate drift, exit 1),
+  `tempest serve` / `tempest shell` (uvicorn with the project's
+  resolution; async REPL with settings, the project's own models and an
+  open session, top-level `await` on that session's loop),
+  `tempest doctor` (real connections to database/Redis/RabbitMQ/SMTP/
+  MinIO plus the check registry; unconfigured reads `skip`, and a mixin
+  default counts as unconfigured),
+  `tempest user show/activate/deactivate/sessions/delete` (hash
+  redacted; deactivate and delete take the refresh tokens with them),
+  `tempest flags list/get/enable/disable` (`unset` is exit 1, distinct
+  from a stored `off`), `tempest cache ping/stats/flush`
+  (`--all` is FLUSHDB and demands `--yes`), `tempest email test`,
+  `tempest storage check/ls/put/get/presign/rm` (presign reports which
+  host it signed for), `tempest queue publish/handlers`,
+  `tempest tasks list/run`, `tempest integrations list/verify`
+  (cheapest authenticated read per provider, with a guard on the table),
+  `tempest agents tools/run` (exit follows `AgentRun.succeeded`),
   plus quality gates (`lint`, `fix`, `format`, `fmt-check`, `type`,
   `test`, `check`), `openapi-errors`, `openapi-client`, `permissions`.
   **`tempest pr-prompt` (v0.210.0)** — builds the prompt that makes an AI

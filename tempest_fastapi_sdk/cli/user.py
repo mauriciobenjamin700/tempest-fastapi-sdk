@@ -550,6 +550,260 @@ async def _list_users(
         await db.disconnect()
 
 
+async def _fetch_user(
+    database_url: str,
+    user_model: type[BaseUserModel],
+    *,
+    email: str,
+) -> dict[str, Any] | None:
+    """Read one user's whole row, found by email.
+
+    The row is materialized into a plain dict inside the session: the
+    ORM instance expires at commit, and reading a column off it after
+    the session closes raises ``MissingGreenlet`` in async context.
+
+    Args:
+        database_url (str): The resolved database URL.
+        user_model (type[BaseUserModel]): The concrete user model.
+        email (str): Email to look up (normalized to lower).
+
+    Returns:
+        dict[str, Any] | None: ``column -> value`` for every mapped
+        column, or ``None`` when no user matches.
+    """
+    from sqlalchemy import select
+
+    from tempest_fastapi_sdk import AsyncDatabaseManager
+
+    db = AsyncDatabaseManager(database_url)
+    await db.connect()
+    try:
+        async with db.get_session_context() as session:
+            result = await session.execute(
+                select(user_model).where(user_model.email == email.lower()),
+            )
+            user = result.scalar_one_or_none()
+            if user is None:
+                return None
+            return {name: getattr(user, name) for name in _mapped_columns(user_model)}
+    finally:
+        await db.disconnect()
+
+
+async def _set_user_active(
+    database_url: str,
+    user_model: type[BaseUserModel],
+    *,
+    email: str,
+    is_active: bool,
+    refresh_token_model: type[BaseUserRefreshTokenModel] | None,
+) -> tuple[str, int] | None:
+    """Flip ``is_active`` for one user, found by email.
+
+    Deactivating revokes the user's refresh tokens in the same
+    transaction. Leaving them alive would let a stolen token keep
+    minting access tokens for an account the operator just turned off —
+    the same window ``set-password`` closes.
+
+    Args:
+        database_url (str): The resolved database URL.
+        user_model (type[BaseUserModel]): The concrete user model.
+        email (str): Email of the user to update (normalized to lower).
+        is_active (bool): The new ``is_active`` value.
+        refresh_token_model (type[BaseUserRefreshTokenModel] | None):
+            The project's refresh-token table, or ``None`` when it has
+            none.
+
+    Returns:
+        tuple[str, int] | None: The user's id and how many refresh
+        tokens were revoked, or ``None`` when no user matches.
+    """
+    from sqlalchemy import select
+
+    from tempest_fastapi_sdk import AsyncDatabaseManager
+    from tempest_fastapi_sdk.auth.service import revoke_user_refresh_tokens
+
+    db = AsyncDatabaseManager(database_url)
+    await db.connect()
+    try:
+        async with db.get_session_context() as session:
+            result = await session.execute(
+                select(user_model).where(user_model.email == email.lower()),
+            )
+            user = result.scalar_one_or_none()
+            if user is None:
+                return None
+            user.is_active = is_active
+            revoked = 0
+            if not is_active and refresh_token_model is not None:
+                revoked = await revoke_user_refresh_tokens(
+                    session,
+                    refresh_token_model,
+                    user_id=user.id,
+                )
+            await session.commit()
+            await session.refresh(user)
+            return str(user.id), revoked
+    finally:
+        await db.disconnect()
+
+
+async def _delete_user(
+    database_url: str,
+    user_model: type[BaseUserModel],
+    *,
+    email: str,
+    refresh_token_model: type[BaseUserRefreshTokenModel] | None,
+) -> str | None:
+    """Delete one user row, found by email.
+
+    The user's refresh tokens are deleted first, in the same
+    transaction: the scaffolded token table carries a plain
+    ``ForeignKey`` with no ``ON DELETE CASCADE``, so deleting the user
+    while a token still points at it fails with an integrity error that
+    names a constraint rather than the cause.
+
+    Args:
+        database_url (str): The resolved database URL.
+        user_model (type[BaseUserModel]): The concrete user model.
+        email (str): Email of the user to delete (normalized to lower).
+        refresh_token_model (type[BaseUserRefreshTokenModel] | None):
+            The project's refresh-token table, or ``None`` when it has
+            none.
+
+    Returns:
+        str | None: The deleted user's id, or ``None`` when no user
+        matches.
+    """
+    from sqlalchemy import delete, select
+
+    from tempest_fastapi_sdk import AsyncDatabaseManager
+
+    db = AsyncDatabaseManager(database_url)
+    await db.connect()
+    try:
+        async with db.get_session_context() as session:
+            result = await session.execute(
+                select(user_model).where(user_model.email == email.lower()),
+            )
+            user = result.scalar_one_or_none()
+            if user is None:
+                return None
+            user_id = str(user.id)
+            if refresh_token_model is not None:
+                await session.execute(
+                    delete(refresh_token_model).where(
+                        refresh_token_model.user_id == user.id,
+                    ),
+                )
+            await session.delete(user)
+            await session.commit()
+            return user_id
+    finally:
+        await db.disconnect()
+
+
+async def _revoke_sessions(
+    database_url: str,
+    user_model: type[BaseUserModel],
+    refresh_token_model: type[BaseUserRefreshTokenModel],
+    *,
+    email: str,
+) -> int | None:
+    """Revoke every live refresh token of one user, found by email.
+
+    Args:
+        database_url (str): The resolved database URL.
+        user_model (type[BaseUserModel]): The concrete user model.
+        refresh_token_model (type[BaseUserRefreshTokenModel]): The
+            project's refresh-token table.
+        email (str): Email of the user to log out.
+
+    Returns:
+        int | None: How many tokens this call revoked — a row already
+        revoked is not counted again — or ``None`` when no user matches.
+    """
+    from sqlalchemy import select
+
+    from tempest_fastapi_sdk import AsyncDatabaseManager
+    from tempest_fastapi_sdk.auth.service import revoke_user_refresh_tokens
+
+    db = AsyncDatabaseManager(database_url)
+    await db.connect()
+    try:
+        async with db.get_session_context() as session:
+            found = await session.execute(
+                select(user_model).where(user_model.email == email.lower()),
+            )
+            user = found.scalar_one_or_none()
+            if user is None:
+                return None
+            revoked = await revoke_user_refresh_tokens(
+                session,
+                refresh_token_model,
+                user_id=user.id,
+            )
+            await session.commit()
+            return revoked
+    finally:
+        await db.disconnect()
+
+
+async def _list_user_sessions(
+    database_url: str,
+    user_model: type[BaseUserModel],
+    refresh_token_model: type[BaseUserRefreshTokenModel],
+    *,
+    email: str,
+) -> list[dict[str, Any]] | None:
+    """List the refresh tokens issued to one user.
+
+    Args:
+        database_url (str): The resolved database URL.
+        user_model (type[BaseUserModel]): The concrete user model.
+        refresh_token_model (type[BaseUserRefreshTokenModel]): The
+            project's refresh-token table.
+        email (str): Email of the user to inspect.
+
+    Returns:
+        list[dict[str, Any]] | None: One entry per token, newest first,
+        or ``None`` when no user matches the email. An empty list is a
+        user with no session, which is a result, not an error.
+    """
+    from sqlalchemy import select
+
+    from tempest_fastapi_sdk import AsyncDatabaseManager
+
+    db = AsyncDatabaseManager(database_url)
+    await db.connect()
+    try:
+        async with db.get_session_context() as session:
+            found = await session.execute(
+                select(user_model).where(user_model.email == email.lower()),
+            )
+            user = found.scalar_one_or_none()
+            if user is None:
+                return None
+            rows = await session.execute(
+                select(refresh_token_model)
+                .where(refresh_token_model.user_id == user.id)
+                .order_by(refresh_token_model.created_at.desc()),
+            )
+            return [
+                {
+                    "id": str(token.id),
+                    "family_id": str(token.family_id),
+                    "created_at": token.created_at,
+                    "expires_at": token.expires_at,
+                    "revoked_at": token.revoked_at,
+                    "used_at": token.used_at,
+                }
+                for token in rows.scalars().all()
+            ]
+    finally:
+        await db.disconnect()
+
+
 def _mapped_columns(user_model: type[BaseUserModel]) -> dict[str, Column[Any]]:
     """Map every mapped column name of ``user_model`` to its column.
 
@@ -1029,6 +1283,322 @@ def user_set_password(
         "lives elsewhere.",
         err=True,
     )
+
+
+def _resolve_refresh_token_model(
+    spec: str,
+) -> type[BaseUserRefreshTokenModel] | None:
+    """Resolve the refresh-token model from a spec or the convention.
+
+    Args:
+        spec (str): The ``--refresh-token-model`` value, empty when the
+            operator did not type one.
+
+    Returns:
+        type[BaseUserRefreshTokenModel] | None: The model, or ``None``
+        when the project has none at the conventional path.
+
+    Raises:
+        typer.Exit: Code 2 when a typed spec does not resolve — a spec
+            the operator wrote is a promise, not a guess.
+    """
+    if spec:
+        return _load_refresh_token_model(spec)
+    return _find_default_refresh_token_model()
+
+
+@user_app.command("show")
+def user_show(
+    email: str = typer.Option(
+        ...,
+        "--email",
+        "-e",
+        help="Email of the user to print.",
+    ),
+    model: str = typer.Option(
+        "src.db.models:UserModel",
+        "--model",
+        help="Dotted spec for the concrete UserModel.",
+    ),
+    as_json: bool = typer.Option(
+        False,
+        "--json",
+        help="Print the row as a JSON object instead of aligned pairs.",
+    ),
+) -> None:
+    """Print every mapped column of one user, found by email.
+
+    ``list`` answers "who exists"; this answers "what does this row
+    actually hold", including the columns a concrete ``UserModel``
+    added. ``hashed_password`` is redacted — printing it puts a
+    credential in the terminal scrollback and in CI logs, and no
+    question this command answers needs it.
+
+    Raises:
+        typer.Exit: Code 1 when no user matches the email.
+    """
+    database_url = _resolve_database_url()
+    user_model = _load_user_model(model)
+    row = asyncio.run(_fetch_user(database_url, user_model, email=email))
+    if row is None:
+        typer.echo(f"error: no user found with email {email!r}.", err=True)
+        raise typer.Exit(1)
+
+    printable = {
+        name: "(redacted)" if name == "hashed_password" else value
+        for name, value in row.items()
+    }
+    if as_json:
+        typer.echo(json.dumps(printable, indent=2, default=str))
+        return
+    width = max(len(name) for name in printable)
+    for name, value in printable.items():
+        typer.echo(f"{name.ljust(width)}  {value}")
+
+
+def _run_set_active(
+    email: str,
+    model: str,
+    refresh_token_model_spec: str,
+    *,
+    is_active: bool,
+) -> None:
+    """Resolve resources, flip ``is_active`` and report the outcome.
+
+    Args:
+        email (str): Email of the user to update.
+        model (str): Dotted spec for the concrete UserModel.
+        refresh_token_model_spec (str): Dotted spec for the
+            refresh-token model, empty to use the convention.
+        is_active (bool): The new ``is_active`` value.
+
+    Raises:
+        typer.Exit: Code 1 when no user matches the email.
+    """
+    database_url = _resolve_database_url()
+    user_model = _load_user_model(model)
+    token_model = (
+        None
+        if is_active
+        else _resolve_refresh_token_model(
+            refresh_token_model_spec,
+        )
+    )
+    outcome = asyncio.run(
+        _set_user_active(
+            database_url,
+            user_model,
+            email=email,
+            is_active=is_active,
+            refresh_token_model=token_model,
+        )
+    )
+    if outcome is None:
+        typer.echo(f"error: no user found with email {email!r}.", err=True)
+        raise typer.Exit(1)
+    user_id, revoked = outcome
+    verb = "Activated" if is_active else "Deactivated"
+    typer.echo(f"{verb} {email.lower()} (id={user_id})")
+    if is_active:
+        return
+    if token_model is None:
+        typer.echo(
+            f"note: no refresh-token model at '{_DEFAULT_REFRESH_TOKEN_MODEL}', "
+            "so no session was revoked. Pass --refresh-token-model if yours "
+            "lives elsewhere.",
+            err=True,
+        )
+        return
+    typer.echo(f"Revoked {revoked} active refresh token(s).")
+
+
+@user_app.command("activate")
+def user_activate(
+    email: str = typer.Option(
+        ...,
+        "--email",
+        "-e",
+        help="Email of the user to re-enable.",
+    ),
+    model: str = typer.Option(
+        "src.db.models:UserModel",
+        "--model",
+        help="Dotted spec for the concrete UserModel.",
+    ),
+) -> None:
+    """Set ``is_active=True`` for an existing user."""
+    _run_set_active(email, model, "", is_active=True)
+
+
+@user_app.command("deactivate")
+def user_deactivate(
+    email: str = typer.Option(
+        ...,
+        "--email",
+        "-e",
+        help="Email of the user to disable.",
+    ),
+    model: str = typer.Option(
+        "src.db.models:UserModel",
+        "--model",
+        help="Dotted spec for the concrete UserModel.",
+    ),
+    refresh_token_model: str = typer.Option(
+        "",
+        "--refresh-token-model",
+        help=(
+            "Dotted spec for the refresh-token table. Defaults to "
+            "'src.db.models:UserRefreshTokenModel' when it exists."
+        ),
+    ),
+) -> None:
+    """Set ``is_active=False`` and revoke the user's sessions.
+
+    Deactivating without revoking leaves a stolen refresh token
+    exchangeable against an account the operator just turned off, so the
+    revocation runs in the same transaction rather than behind a flag.
+    """
+    _run_set_active(email, model, refresh_token_model, is_active=False)
+
+
+@user_app.command("delete")
+def user_delete(
+    email: str = typer.Option(
+        ...,
+        "--email",
+        "-e",
+        help="Email of the user to delete.",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Confirm the deletion. Required outside an interactive terminal.",
+    ),
+    model: str = typer.Option(
+        "src.db.models:UserModel",
+        "--model",
+        help="Dotted spec for the concrete UserModel.",
+    ),
+    refresh_token_model: str = typer.Option(
+        "",
+        "--refresh-token-model",
+        help=(
+            "Dotted spec for the refresh-token table whose rows are removed "
+            "with the user. Defaults to the scaffolded one when it exists."
+        ),
+    ),
+) -> None:
+    """Delete one user row, found by email.
+
+    This is irreversible and takes the user's refresh tokens with it.
+    ``tempest user deactivate`` is the reversible answer to "this person
+    should not be able to log in", and is usually the one you want.
+
+    Raises:
+        typer.Exit: Code 1 when no user matches the email or the
+            deletion is not confirmed; code 2 when a typed
+            ``--refresh-token-model`` does not resolve.
+    """
+    if not yes:
+        if not _stdin_is_interactive():
+            typer.echo(
+                "error: deleting a user is irreversible. Pass --yes to confirm.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        if not typer.confirm(f"Delete {email.lower()} permanently?"):
+            typer.echo("Aborted.", err=True)
+            raise typer.Exit(1)
+
+    database_url = _resolve_database_url()
+    user_model = _load_user_model(model)
+    token_model = _resolve_refresh_token_model(refresh_token_model)
+    user_id = asyncio.run(
+        _delete_user(
+            database_url,
+            user_model,
+            email=email,
+            refresh_token_model=token_model,
+        )
+    )
+    if user_id is None:
+        typer.echo(f"error: no user found with email {email!r}.", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"Deleted {email.lower()} (id={user_id})")
+
+
+@user_app.command("sessions")
+def user_sessions(
+    email: str = typer.Option(
+        ...,
+        "--email",
+        "-e",
+        help="Email of the user whose sessions to inspect.",
+    ),
+    revoke: bool = typer.Option(
+        False,
+        "--revoke",
+        help="Revoke every active refresh token instead of listing them.",
+    ),
+    model: str = typer.Option(
+        "src.db.models:UserModel",
+        "--model",
+        help="Dotted spec for the concrete UserModel.",
+    ),
+    refresh_token_model: str = typer.Option(
+        "",
+        "--refresh-token-model",
+        help=(
+            "Dotted spec for the refresh-token table. Defaults to "
+            "'src.db.models:UserRefreshTokenModel'."
+        ),
+    ),
+) -> None:
+    """List (or revoke) the DB-backed sessions of one user.
+
+    A user with no session prints an empty table and exits 0 — "this
+    account is not logged in anywhere" is an answer, not a failure.
+
+    Raises:
+        typer.Exit: Code 1 when no user matches the email; code 2 when
+            the project exposes no refresh-token table, since there is
+            then nothing this command could be reporting on.
+    """
+    database_url = _resolve_database_url()
+    user_model = _load_user_model(model)
+    token_model = _resolve_refresh_token_model(refresh_token_model)
+    if token_model is None:
+        typer.echo(
+            f"error: no refresh-token model at '{_DEFAULT_REFRESH_TOKEN_MODEL}'. "
+            "Pass --refresh-token-model if yours lives elsewhere.",
+            err=True,
+        )
+        raise typer.Exit(2)
+
+    if revoke:
+        revoked = asyncio.run(
+            _revoke_sessions(database_url, user_model, token_model, email=email)
+        )
+        if revoked is None:
+            typer.echo(f"error: no user found with email {email!r}.", err=True)
+            raise typer.Exit(1)
+        typer.echo(f"Revoked {revoked} active refresh token(s).")
+        return
+
+    rows = asyncio.run(
+        _list_user_sessions(database_url, user_model, token_model, email=email)
+    )
+    if rows is None:
+        typer.echo(f"error: no user found with email {email!r}.", err=True)
+        raise typer.Exit(1)
+    typer.echo("ID  FAMILY  CREATED  EXPIRES  STATE")
+    for row in rows:
+        state = "revoked" if row["revoked_at"] else "active"
+        typer.echo(
+            f"{row['id']}  {row['family_id']}  {row['created_at']}  "
+            f"{row['expires_at']}  {state}"
+        )
 
 
 def _run_set_admin(email: str, model: str, *, is_admin: bool) -> None:

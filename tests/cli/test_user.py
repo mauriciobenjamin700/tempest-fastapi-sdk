@@ -1334,3 +1334,374 @@ class TestPasswordPolicy:
         _forget_project_modules()
         assert result.exit_code == 2
         assert "at least 20" in (result.stdout + result.stderr)
+
+
+def _create_user(database_url: str, email: str) -> None:
+    """Create one regular user through the CLI.
+
+    Args:
+        database_url (str): Unused, kept so the call site reads as a
+            step in the same fixture-driven flow as its neighbours.
+        email (str): Email of the user to create.
+    """
+    result = runner.invoke(
+        app,
+        [
+            "user",
+            "create",
+            "--email",
+            email,
+            "--password",
+            "strong-pass-12",
+            "--no-admin",
+            "--model",
+            "cli_user_model:_CLIUserModel",
+        ],
+    )
+    assert result.exit_code == 0, result.stdout + result.stderr
+
+
+class TestUserShow:
+    def test_prints_every_mapped_column(self, project_db: str) -> None:
+        _create_user(project_db, "ana@example.com")
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "show",
+                "--email",
+                "ana@example.com",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "ana@example.com" in result.stdout
+        assert "is_admin" in result.stdout
+        assert "created_at" in result.stdout
+
+    def test_hash_is_redacted(self, project_db: str) -> None:
+        """A credential in terminal scrollback is a leak the command can avoid."""
+        _create_user(project_db, "ana@example.com")
+        stored = _read_hash(project_db, "ana@example.com")
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "show",
+                "--email",
+                "ana@example.com",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert "(redacted)" in result.stdout
+        assert stored not in result.stdout
+
+    def test_json_output(self, project_db: str) -> None:
+        import json
+
+        _create_user(project_db, "ana@example.com")
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "show",
+                "--email",
+                "ana@example.com",
+                "--json",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        payload = json.loads(result.stdout)
+        assert payload["email"] == "ana@example.com"
+        assert payload["hashed_password"] == "(redacted)"
+
+    def test_unknown_email_exits_one(self, project_db: str) -> None:
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "show",
+                "--email",
+                "nobody@example.com",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "no user found" in result.stderr
+
+
+class TestUserActivateDeactivate:
+    def test_deactivate_flips_the_flag(self, project_db: str) -> None:
+        _create_user(project_db, "ana@example.com")
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "deactivate",
+                "--email",
+                "ana@example.com",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+                "--refresh-token-model",
+                "cli_user_model:_CLIRefreshTokenModel",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+
+        listing = runner.invoke(
+            app,
+            ["user", "list", "--model", "cli_user_model:_CLIUserModel"],
+        )
+        assert "inactive" in listing.stdout
+
+    def test_deactivate_revokes_sessions(self, project_db: str) -> None:
+        """A live refresh token outlives the flag unless it is revoked too."""
+        _create_user(project_db, "ana@example.com")
+        _seed_refresh_tokens(project_db, "ana@example.com", active=2, revoked=1)
+
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "deactivate",
+                "--email",
+                "ana@example.com",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+                "--refresh-token-model",
+                "cli_user_model:_CLIRefreshTokenModel",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "Revoked 2 active refresh token(s)." in result.stdout
+        assert _count_active_refresh_tokens(project_db) == 0
+
+    def test_activate_restores_the_flag(self, project_db: str) -> None:
+        _create_user(project_db, "ana@example.com")
+        runner.invoke(
+            app,
+            [
+                "user",
+                "deactivate",
+                "--email",
+                "ana@example.com",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+                "--refresh-token-model",
+                "cli_user_model:_CLIRefreshTokenModel",
+            ],
+        )
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "activate",
+                "--email",
+                "ana@example.com",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "Activated" in result.stdout
+
+    def test_unknown_email_exits_one(self, project_db: str) -> None:
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "deactivate",
+                "--email",
+                "nobody@example.com",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+                "--refresh-token-model",
+                "cli_user_model:_CLIRefreshTokenModel",
+            ],
+        )
+        assert result.exit_code == 1
+
+
+class TestUserDelete:
+    def test_refuses_without_confirmation_off_a_tty(self, project_db: str) -> None:
+        _create_user(project_db, "ana@example.com")
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "delete",
+                "--email",
+                "ana@example.com",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "--yes" in result.stderr
+
+        listing = runner.invoke(
+            app,
+            ["user", "list", "--model", "cli_user_model:_CLIUserModel"],
+        )
+        assert "ana@example.com" in listing.stdout
+
+    def test_deletes_the_row(self, project_db: str) -> None:
+        _create_user(project_db, "ana@example.com")
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "delete",
+                "--email",
+                "ana@example.com",
+                "--yes",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+
+        listing = runner.invoke(
+            app,
+            ["user", "list", "--model", "cli_user_model:_CLIUserModel"],
+        )
+        assert "ana@example.com" not in listing.stdout
+
+    def test_takes_the_refresh_tokens_with_it(self, project_db: str) -> None:
+        """The scaffolded FK has no ON DELETE CASCADE, so the rows must go first."""
+        _create_user(project_db, "ana@example.com")
+        _seed_refresh_tokens(project_db, "ana@example.com", active=2)
+
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "delete",
+                "--email",
+                "ana@example.com",
+                "--yes",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+                "--refresh-token-model",
+                "cli_user_model:_CLIRefreshTokenModel",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert _count_active_refresh_tokens(project_db) == 0
+
+    def test_unknown_email_exits_one(self, project_db: str) -> None:
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "delete",
+                "--email",
+                "nobody@example.com",
+                "--yes",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 1
+
+
+class TestUserSessions:
+    def test_lists_the_tokens(self, project_db: str) -> None:
+        _create_user(project_db, "ana@example.com")
+        _seed_refresh_tokens(project_db, "ana@example.com", active=2, revoked=1)
+
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "sessions",
+                "--email",
+                "ana@example.com",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+                "--refresh-token-model",
+                "cli_user_model:_CLIRefreshTokenModel",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        rows = [line for line in result.stdout.splitlines()[1:] if line.strip()]
+        assert len(rows) == 3
+        assert sum(1 for row in rows if row.endswith("revoked")) == 1
+
+    def test_no_session_is_not_an_error(self, project_db: str) -> None:
+        """'Not logged in anywhere' is an answer, so it exits 0 with no rows."""
+        _create_user(project_db, "ana@example.com")
+
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "sessions",
+                "--email",
+                "ana@example.com",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+                "--refresh-token-model",
+                "cli_user_model:_CLIRefreshTokenModel",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert [line for line in result.stdout.splitlines()[1:] if line.strip()] == []
+
+    def test_revoke_counts_only_what_it_killed(self, project_db: str) -> None:
+        _create_user(project_db, "ana@example.com")
+        _seed_refresh_tokens(project_db, "ana@example.com", active=2, revoked=1)
+
+        first = runner.invoke(
+            app,
+            [
+                "user",
+                "sessions",
+                "--email",
+                "ana@example.com",
+                "--revoke",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+                "--refresh-token-model",
+                "cli_user_model:_CLIRefreshTokenModel",
+            ],
+        )
+        assert first.exit_code == 0, first.stdout + first.stderr
+        assert "Revoked 2 active refresh token(s)." in first.stdout
+
+        second = runner.invoke(
+            app,
+            [
+                "user",
+                "sessions",
+                "--email",
+                "ana@example.com",
+                "--revoke",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+                "--refresh-token-model",
+                "cli_user_model:_CLIRefreshTokenModel",
+            ],
+        )
+        assert "Revoked 0 active refresh token(s)." in second.stdout
+
+    def test_missing_token_model_exits_two(self, project_db: str) -> None:
+        _forget_project_modules()
+        _create_user(project_db, "ana@example.com")
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "sessions",
+                "--email",
+                "ana@example.com",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 2
+        assert "no refresh-token model" in result.stderr

@@ -5,6 +5,135 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.295.0] — 2026-09-19
+
+A CLI sabia **criar** serviço e rodar os gates. Não sabia **operar** o
+serviço que já existe: nada listava as rotas servidas, nada exportava o
+contrato, nada conectava nas dependências, e mexer em flag, cache, fila,
+sessão ou bucket era `redis-cli`, script descartável ou SQL na mão.
+
+### Added
+
+- **`tempest secrets generate|init|vapid`.** O grupo só sabia
+  `rotate`. `generate` imprime N segredos (crus, `KEY=value` com
+  `--keys`, ou JSON) e **não escreve arquivo nenhum** — é o que se pipa
+  num secret manager; `--count` junto de `--keys` é erro de uso, porque
+  os dois dizem a mesma coisa. `init` preenche só as chaves ausentes,
+  vazias ou ainda com o placeholder `change-me-change-me-change-me-32`
+  que o `tempest new` escreve (os valores que o `check_secrets` reporta
+  como `security.W001`/`W004`), mantém toda chave já configurada e
+  portanto é idempotente; `--force` substitui valor real e faz backup
+  antes. `vapid` gera o par P-256 do Web Push no formato que o
+  `WebPushSettings` e o `pywebpush` leem — escalar de 32 bytes e ponto
+  não-comprimido de 65, base64url sem padding — e **recusa sobrescrever
+  um par existente sem `--force`**, porque trocar o par invalida toda
+  subscrição ativa de browser. O formato não foi deduzido: a chave
+  privada é lida de volta por `py_vapid.Vapid02` e assina um header no
+  teste.
+
+- **`tempest routes`.** Lista toda rota efetiva, com router montado
+  expandido. Lê `fastapi.routing.iter_route_contexts` — a mesma
+  expansão que o gerador de OpenAPI percorre — porque desde o FastAPI
+  0.141.1 o `include_router` guarda uma entrada `_IncludedRouter` e uma
+  compreensão sobre `app.routes` não lista **nenhum** path do router
+  incluído. Rota fora do schema aparece com `SCHEMA=no`, e a coluna
+  `GUARDS` nomeia as dependências herdadas do `include_router`, não só
+  as declaradas na rota.
+
+- **`tempest openapi-export [--check]`.** Escreve o documento OpenAPI do
+  próprio serviço (JSON, ou YAML com o extra `[openapi]`) sem subir
+  nada. `--check` compara com o arquivo commitado e **nomeia** o que
+  mudou (`+ DELETE /x`, `- GET /y`, `~ /z changed`), saindo 1 — "a spec
+  mudou" não é mensagem revisável.
+
+- **`tempest db check`.** Roda a comparação de autogenerate do Alembic e
+  sai 1 listando as operações que uma revision conteria. O
+  `revision --autogenerate` grava o diff quando alguém pede; nada
+  percebia quando ninguém pediu.
+
+- **`tempest serve` e `tempest shell`.** O `serve` entrega ao uvicorn a
+  **string** de import, nunca o objeto — o reloader reimporta no
+  processo filho, e passar a instância transforma `--reload` em nada, em
+  silêncio. `--reload` tem três estados, então `--no-reload` desliga de
+  verdade um `SERVER_RELOAD=true`; junto de `--workers` sai 2. O `shell`
+  abre um REPL com `settings`, cada model mapeado **que o projeto
+  define** (a `BaseModel` do SDK fica de fora), `select`, `text` e uma
+  `session` aberta; compila com `ast.PyCF_ALLOW_TOP_LEVEL_AWAIT` e roda
+  a corrotina **no loop em que a sessão foi aberta** — um helper
+  `run(coro)` pareceria equivalente e levantaria `MissingGreenlet` no
+  primeiro lazy load.
+
+- **`tempest doctor`.** O `check-config` lê as settings e não abre
+  socket; este conecta de verdade em banco, Redis, RabbitMQ, SMTP e
+  MinIO, dobra o registry de checagens estáticas e sai 1 em qualquer
+  falha, servindo de smoke test de deploy. Capacidade não configurada
+  aparece como `skip`, **nunca** `ok` — e default de mixin conta como
+  não configurado (`SMTP_HOST=localhost`, `MINIO_ENDPOINT=localhost:9000`),
+  comparado contra `model_fields[campo].default`, a régua do
+  `check_secrets`.
+
+- **`tempest user show|activate|deactivate|sessions|delete`.** O `show`
+  imprime toda coluna mapeada com o `hashed_password` redigido.
+  `deactivate` revoga os refresh tokens **na mesma transação** que o
+  flag, porque `is_active=False` sozinho não encerra nada. `sessions`
+  lista (ou revoga com `--revoke`, contando só o que aquela execução
+  matou); usuário sem sessão sai 0. `delete` apaga os refresh tokens
+  antes da linha do usuário — a FK scaffoldada não tem
+  `ON DELETE CASCADE`, então a ordem óbvia falharia citando uma
+  constraint em vez da causa — e exige `--yes` fora de um TTY.
+
+- **`tempest flags` e `tempest cache`.** `flags list/get/enable/disable`
+  falam pelo `RedisFeatureFlagBackend`; `get` separa `unset` (código 1,
+  o serviço cai no default do chamador) de um `off` guardado (código 0).
+  `cache ping/stats/flush` usa o `CacheInvalidator` nas opções
+  direcionadas; `--all` é `FLUSHDB` e exige `--yes`, porque o banco
+  costuma guardar também sessão, contador de rate limit e as flags
+  acima.
+
+- **`tempest email test` e `tempest storage`.** O `email test` manda uma
+  mensagem por `EmailUtils(**settings.email_kwargs())` e, na recusa, sai
+  1 com a resposta do servidor mais a linha que lembra o par que mais
+  custa tempo: 587 quer STARTTLS (`SMTP_USE_TLS`), 465 quer TLS
+  implícito (`SMTP_USE_SSL`). O `storage check/ls/put/get/presign/rm`
+  dirige o `AsyncMinIOClient(**settings.minio_kwargs())`, endpoint
+  público incluído — o `presign` diz no `stderr` para qual host assinou,
+  porque URL assinada contra `minio:9000` é válida e inútil no browser.
+
+- **`tempest queue` e `tempest tasks`.** `queue publish` conecta,
+  publica e **fecha**, nessa ordem, num processo só; `queue handlers`
+  lista os canais consumidos, importando os módulos de handler antes,
+  porque subscriber só existe no broker depois do import. `tasks list`
+  imprime o nome que o TaskIQ registra (`<módulo>:<função>`), que não é
+  o nome no arquivo e é o que o `run` recebe; `tasks run` **enfileira**,
+  e diz isso — quem executa é o worker.
+
+- **`tempest integrations list|verify`.** `list` mostra os clientes que
+  o SDK ships e se este projeto tem a credencial; `verify` faz a leitura
+  autenticada mais barata de cada provedor (OpenPix `GET /company`,
+  Mercado Pago `GET /users/me`), que não move dinheiro nem cria
+  registro. Como isso é tabela mantida à mão sobre cliente gerado, um
+  guard assere que cada método nomeado ainda existe e não exige
+  argumento — ele já pagou por si: o campo é `MERCADOPAGO_ACCESS_TOKEN`,
+  não `MERCADO_PAGO_ACCESS_TOKEN`.
+
+- **`tempest agents tools|run`.** `tools` lista as ferramentas sem
+  chamar modelo nenhum (zero token, funciona sem credencial de backend).
+  `run` segue `AgentRun.succeeded` no código de saída, não "não levantou
+  exceção": run cortado pelo orçamento ainda devolve texto, e tratar
+  esse texto como resposta é o erro que o comando se recusa a cometer
+  pelo chamador.
+
+### Changed
+
+- `tempest secrets rotate` passou a usar o mesmo helper de backup dos
+  comandos novos; comportamento inalterado (backup antes de reescrever,
+  `0600` no arquivo e no `.bak`).
+- `tempest_fastapi_sdk/cli/project.py` centraliza a resolução de
+  projeto usada pelos comandos novos: app FastAPI (por spec ou pelos
+  lugares scaffoldados, reportando **cada** tentativa com a causa),
+  instância de settings por tipo sob `src`/`app`, e URL de Redis
+  (`--redis-url` > `REDIS_URL` > settings).
+
 ## [0.294.0] — 2026-09-19
 
 Um assistente local que roda dentro do WSL precisa agir na máquina que o

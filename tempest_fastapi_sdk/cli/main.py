@@ -13,12 +13,25 @@ from typer.core import TyperGroup
 
 from tempest_fastapi_sdk.cli import generate as generate_module
 from tempest_fastapi_sdk.cli import new as new_module
+from tempest_fastapi_sdk.cli.agents import agents_app
+from tempest_fastapi_sdk.cli.cache import cache_app
 from tempest_fastapi_sdk.cli.commands import mount_project_commands
 from tempest_fastapi_sdk.cli.config import load_project_commands
 from tempest_fastapi_sdk.cli.db import db_app
+from tempest_fastapi_sdk.cli.doctor import doctor_command
+from tempest_fastapi_sdk.cli.email import email_app
+from tempest_fastapi_sdk.cli.flags import flags_app
+from tempest_fastapi_sdk.cli.integrations import integrations_app
 from tempest_fastapi_sdk.cli.model import model_app
+from tempest_fastapi_sdk.cli.openapi_export import openapi_export_command
 from tempest_fastapi_sdk.cli.pdf import pdf_app
+from tempest_fastapi_sdk.cli.queue import queue_app
+from tempest_fastapi_sdk.cli.routes import routes_command
 from tempest_fastapi_sdk.cli.secrets import secrets_app
+from tempest_fastapi_sdk.cli.serve import serve_command
+from tempest_fastapi_sdk.cli.shell import shell_command
+from tempest_fastapi_sdk.cli.storage import storage_app
+from tempest_fastapi_sdk.cli.tasks import tasks_app
 from tempest_fastapi_sdk.cli.user import user_app
 from tempest_fastapi_sdk.cli.voice import voice_app
 
@@ -152,9 +165,28 @@ app: typer.Typer = typer.Typer(
 app.add_typer(db_app, name="db")
 app.add_typer(user_app, name="user")
 app.add_typer(secrets_app, name="secrets")
+app.add_typer(flags_app, name="flags")
+app.add_typer(cache_app, name="cache")
+app.add_typer(email_app, name="email")
+app.add_typer(storage_app, name="storage")
+app.add_typer(queue_app, name="queue")
+app.add_typer(tasks_app, name="tasks")
+app.add_typer(integrations_app, name="integrations")
+app.add_typer(agents_app, name="agents")
 app.add_typer(model_app, name="model")
 app.add_typer(pdf_app, name="pdf")
 app.add_typer(voice_app, name="voice")
+
+# Commands that inspect a live application live in their own modules so
+# importing this one stays cheap; registering them here keeps them on the
+# root help next to the static counterparts they complement
+# (`routes` next to `permissions`, `openapi-export` next to
+# `openapi-client`).
+app.command("routes")(routes_command)
+app.command("openapi-export")(openapi_export_command)
+app.command("serve")(serve_command)
+app.command("shell")(shell_command)
+app.command("doctor")(doctor_command)
 
 # The quality gate lives in `tempest-cli`, a framework-agnostic package.
 # Registering it here is what keeps `tempest check` and `tempest-cli check`

@@ -3879,6 +3879,28 @@ tempest check                                   # lint + fmt-check + type + test
 
 Every command returns the underlying tool's exit code, so `tempest check` is safe to wire into CI (`tempest check || exit 1`) or pre-commit hooks. When neither the executable nor `uv` is on `PATH`, the wrapper prints `error: '<tool>' is not on PATH and 'uv' is unavailable` and exits with `127` instead of failing silently.
 
+#### Diagnostics — `tempest doctor`
+
+```bash
+tempest doctor                                        # one line per dependency, real connections
+tempest doctor --json                                 # for deployment health checks
+tempest doctor --timeout 2                            # tighten each network probe
+```
+
+`check-config` reads the settings; `doctor` connects. It probes the database, Redis, RabbitMQ, SMTP and MinIO, folds in the static check registry, and exits `1` when anything failed. A capability the project never configured reads `skip`, never `ok` — and a mixin default (`SMTP_HOST=localhost`, `MINIO_ENDPOINT=localhost:9000`) counts as unconfigured, compared against `model_fields[field].default` the way `check_secrets` does it.
+
+#### Run and inspect — `tempest serve` / `tempest shell`
+
+```bash
+tempest serve                                         # host/port/reload from the project's settings
+tempest serve --reload --port 9000                    # override for this run
+tempest serve --workers 4                             # several processes (refused with --reload)
+tempest shell                                         # async REPL: settings, models, open session
+tempest shell --no-db                                 # skip the database connection
+```
+
+`tempest serve` hands uvicorn the import *string* (`src.server:app`), which is what keeps `--reload` working, and resolves host/port/reload the way `run_server` does: flag > project settings > SDK default. `tempest shell` opens a console with `settings`, every mapped model the project defines, `select`, `text` and an already-open `session`; it compiles with `ast.PyCF_ALLOW_TOP_LEVEL_AWAIT` and runs coroutines on the loop that session belongs to, so `await session.execute(...)` works at the prompt instead of raising `MissingGreenlet`.
+
 #### Database — `tempest db`
 
 Alembic wrapper backed by `AlembicHelper`. Reads `DATABASE_URL` from `--database-url` > env var > `src.core.settings.settings.DATABASE_URL` > `alembic.ini`.
@@ -3891,6 +3913,7 @@ tempest db upgrade                               # alembic upgrade head
 tempest db upgrade <rev>                         # upgrade to a specific revision
 tempest db downgrade                             # roll back one step
 tempest db current                               # print the applied revision
+tempest db check                                 # exit 1 when models drifted from the tree
 tempest db history -v                            # revisions newest → oldest, verbose
 tempest db stamp head                            # mark the DB without running migrations
 tempest db squash -m "init" --yes                # collapse history into 1 migration
@@ -3908,14 +3931,70 @@ tempest db seed --seed src.db.fixtures:demo      # custom seed callable
 
 #### Secrets — `tempest secrets`
 
-Generates and rotates application secrets (`JWT_SECRET` / `TOKEN_SECRET` by default), rewriting the matching `.env` lines in place after a `.env.bak` backup; `--print` writes nothing and emits the values to stdout.
+Four commands, ordered by how much they touch your `.env`: `generate` never writes, `init` fills only what is unset, `rotate` always replaces, and `vapid` mints the Web Push key pair.
 
 ```bash
+tempest secrets generate                              # one value on stdout, nothing written
+tempest secrets generate --count 3                    # three of them
+tempest secrets generate --keys JWT_SECRET --json     # JSON, for a secret manager
+tempest secrets init                                  # fill the keys `tempest new` left unset
+tempest secrets init --force                          # replace real values too (backs up first)
 tempest secrets rotate                                # rotate JWT_SECRET + TOKEN_SECRET in .env
 tempest secrets rotate --print                        # just print, write nothing
 tempest secrets rotate --keys JWT_SECRET,SESSION_SECRET --env .env.prod
 tempest secrets rotate --length 64 --no-backup
+tempest secrets vapid --subject mailto:ops@example.com  # Web Push key pair
 ```
+
+`tempest secrets init` treats a key as unset when it is missing, empty, or still carries the `change-me` placeholder `tempest new` writes — the values `tempest check-config` reports as `security.W001` / `security.W004` — and keeps every configured key, so it is safe to re-run. `tempest secrets vapid` writes `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` in the shape `WebPushSettings` and `pywebpush` read (32-byte scalar, 65-byte uncompressed point, base64url), and refuses to overwrite an existing pair without `--force`, because replacing it invalidates every active browser subscription.
+
+#### Integrations and agents — `tempest integrations` / `tempest agents`
+
+```bash
+tempest integrations list                             # bundled clients + credential state
+tempest integrations verify openpix                   # one real authenticated read
+tempest agents tools --agent src.agents:agent         # tools, with no model call
+tempest agents run "summarise the report" --agent src.agents:agent --trace
+```
+
+`integrations verify` builds the client from `settings.<provider>_kwargs()` and calls the cheapest authenticated read each API offers (OpenPix `GET /company`, Mercado Pago `GET /users/me`) — a guard asserts those methods still exist on the generated clients and take no argument, so an upstream rename fails a test rather than an operator's terminal. `agents tools` spends no token; `agents run` exits `1` when the run was cut short by its budget, because a truncated run still returns text and treating it as an answer is the mistake worth refusing.
+
+#### Queue and tasks — `tempest queue` / `tempest tasks`
+
+```bash
+tempest queue publish orders.paid '{"order_id": 7}' --json
+tempest queue handlers                                # channels this service consumes
+tempest tasks list                                    # registered task names
+tempest tasks run src.tasks:send_welcome --arg ana@example.com --kwarg retries=2
+```
+
+`queue publish` connects, publishes and closes in one process, so the message is flushed before the command returns. `tasks list` imports the job modules first — a task exists on the broker only once its module has been imported — and prints the name TaskIQ registers (`<module>:<function>`), which is the name `run` takes. `run` enqueues; the worker executes, so success means the message was accepted, not that the job passed. Both default to the scaffolded `<root>.queue:broker` and `<root>.tasks:tq`.
+
+#### Email and object store — `tempest email` / `tempest storage`
+
+```bash
+tempest email test --to you@example.com               # send through the project's SMTP settings
+tempest storage check                                 # endpoint reachable, bucket present
+tempest storage ls reports/                           # keys under a prefix
+tempest storage put ./note.pdf --key notes/2026-09.pdf
+tempest storage presign notes/2026-09.pdf --expires 900
+```
+
+`email test` builds `EmailUtils(**settings.email_kwargs())`, so a message that arrives came through the same path the app uses; a refusal exits `1` with the server's reply and a reminder that port 587 wants `SMTP_USE_TLS` (STARTTLS) while 465 wants `SMTP_USE_SSL`. `storage` uses `AsyncMinIOClient(**settings.minio_kwargs())`, including the public endpoint — `presign` reports on stderr which host it signed for, because a URL signed against `minio:9000` is valid and unusable from a browser.
+
+#### Feature flags and cache — `tempest flags` / `tempest cache`
+
+```bash
+tempest flags list                                    # everything the Redis backend holds
+tempest flags enable new-checkout                     # on, for every process reading it
+tempest flags get new-checkout                        # exit 1 when unset, 0 when stored
+tempest cache ping                                    # PONG, or exit 1
+tempest cache stats                                   # version, keys, memory, hit ratio
+tempest cache flush --namespace orders                # invalidate what @cached registered
+tempest cache flush --all --yes                       # FLUSHDB (deletes non-cache keys too)
+```
+
+Both resolve the URL from `--redis-url` > `REDIS_URL` > the project's settings, and both speak through the SDK's own classes — `RedisFeatureFlagBackend` and `CacheInvalidator` — so the CLI writes what the service reads. `flags get` separates `unset` (exit 1, the service falls back to the caller's default) from a stored `off` (exit 0). `cache flush --all` is `FLUSHDB` and needs `--yes`, because sessions, rate-limit counters and flags usually share that database.
 
 #### Users — `tempest user`
 
@@ -3932,13 +4011,33 @@ tempest user set-password --email ana@example.com     # prompt, hash, revoke ses
 tempest user set-password --email ana@example.com --keep-sessions
 tempest user list                                     # everyone
 tempest user list --admin                             # admins only
+tempest user show --email ana@example.com             # the whole row (hash redacted)
+tempest user deactivate --email ana@example.com       # is_active=False + revoke sessions
+tempest user activate --email ana@example.com         # back on
+tempest user sessions --email ana@example.com         # list refresh tokens
+tempest user sessions --email ana@example.com --revoke
+tempest user delete --email ana@example.com --yes     # irreversible, removes the tokens too
 ```
+
+`show` redacts `hashed_password` — no question it answers needs the hash, and printing one puts a credential in terminal scrollback and CI logs. `deactivate` revokes the user's refresh tokens in the same transaction as the flag, because `is_active=False` on its own leaves an issued token exchangeable. `sessions` lists one line per token and exits `0` on a user with none; `--revoke` reports how many *that run* killed. `delete` deletes the refresh-token rows first (the scaffolded FK has no `ON DELETE CASCADE`) and requires `--yes` outside a TTY.
 
 When `tempest user create` runs in an interactive terminal **without** `--admin`/`--no-admin`, it asks `Should this user be an administrator? [y/N]`. Non-interactive runs (CI, pipes) skip the prompt and create a regular user. `promote` / `revoke` look the user up by email (case-insensitive) and exit `1` with `no user found` when nothing matches.
 
 `tempest user set-password` replaces an existing user's password, hashing with the model's own `set_password`. Because changing the hash does not end a session on its own, it also revokes the user's DB-backed refresh tokens **in the same transaction** — resolving `src.db.models:UserRefreshTokenModel` by default, `--refresh-token-model` for a table elsewhere, `--keep-sessions` to opt out. Every path reports which of the two happened. From code, the same revocation is `await service.revoke_user_sessions(session, user_id=user.id)`.
 
 Both `create` and `set-password` validate the plaintext with `check_password_policy` against the project's `AUTH_PASSWORD_*` settings (or the `PasswordPolicy` defaults: 12 characters minimum, 72 **bytes** maximum — the unit bcrypt counts), so the CLI accepts exactly the passwords `signup` and the admin panel accept.
+
+#### Routes and contract — `tempest routes` / `tempest openapi-export`
+
+```bash
+tempest routes                                        # every route, mounted routers included
+tempest routes --match /api/orders --method post      # filtered
+tempest routes --json                                 # machine-readable
+tempest openapi-export --out contracts/openapi.json   # write this service's own spec
+tempest openapi-export --out contracts/openapi.json --check   # exit 1 when it drifted
+```
+
+`tempest routes` reads the effective paths from FastAPI's own route expansion, so a router mounted with `include_router` is listed (a comprehension over `app.routes` lists none of its paths since FastAPI 0.141.1), and routes kept out of the schema — HTML pages, internal endpoints — are listed with `SCHEMA=no` next to the dependencies guarding them. `tempest openapi-export` writes the document `openapi-client` (or any other generator) consumes without booting the service; `--check` compares it against the committed file and names the operations that moved, which is the CI guard against an undeclared contract change. Both take `--app module:attr` when the app does not sit at one of the scaffolded locations.
 
 #### Generate artifacts in an existing project — `tempest generate`
 

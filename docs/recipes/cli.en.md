@@ -282,6 +282,63 @@ uv run python main.py                           # serves on the configured HOST:
 uv run pytest                                   # the bundled smoke test
 ```
 
+### Run the service — `tempest serve`
+
+```bash
+tempest serve                              # host/port/reload from the settings
+tempest serve --reload                     # turn reload on for this run
+tempest serve --host 0.0.0.0 --port 9000   # override
+tempest serve --workers 4                  # several processes (no reload)
+tempest serve --app src.api.app:create_app # app outside the conventional spots
+```
+
+The scaffolded `main.py` already boots uvicorn programmatically; this command
+is for the project that does not have that file yet, or for overriding host
+and port without editing `.env`. Resolution is `run_server`'s: flag > the
+project's settings > the SDK default (`127.0.0.1`, `8000`, no reload).
+
+!!! note "uvicorn gets the *string*, never the object"
+    The reloader re-imports the target in the child process. Handing it the
+    already-imported instance works — and silently turns `--reload` into
+    nothing. So the command imports the candidate once to validate it, and
+    passes `"src.server:app"` along.
+
+`--reload` together with `--workers` exits 2: uvicorn cannot honour both.
+And `--no-reload` really does turn it off, even with `SERVER_RELOAD=true` in
+`.env` — the flag has three states (on, off, "you decide").
+
+### Interactive console — `tempest shell`
+
+A REPL with the project already loaded, so "how many orders does this user
+have?" does not cost a throwaway script.
+
+```bash
+tempest shell
+```
+
+```text
+tempest shell — Python 3.11.12, top-level await enabled
+available: WidgetModel, db, select, session, settings, text
+session: open on sqlite+aiosqlite:///./app.db
+>>> rows = await session.execute(select(WidgetModel))
+>>> rows.scalars().all()
+[<WidgetModel id=...>]
+```
+
+What the prompt holds: `settings` (the project's instance), every mapped
+model **the project defines** (the SDK's `BaseModel` stays out — a query
+against the base class is never what you meant), `select`, `text`, the
+`AsyncDatabaseManager` as `db`, and an already-open `session`.
+
+!!! info "Top-level `await`, on purpose"
+    The console compiles with `ast.PyCF_ALLOW_TOP_LEVEL_AWAIT` and runs the
+    coroutine **on the same loop** the session was opened on. Exposing a
+    `run(coro)` helper would look equivalent and is not: a session driven
+    from a second loop raises `MissingGreenlet` at the first lazy load.
+
+`--no-db` starts without connecting — useful when the database is down and
+you only want to inspect settings and models.
+
 ### Database — `tempest db`
 
 Alembic wrapper backed by ``AlembicHelper`` — your project's ``alembic.ini`` + ``env.py`` stay the source of truth.
@@ -467,6 +524,34 @@ tempest db restore snap.dump --yes      # restore (pg_restore --clean --if-exist
 
 **Recap:** `backup` takes a snapshot (format by extension on Postgres, file copy on SQLite); `restore --yes` brings it back, cleaning the target by default.
 
+#### Catch model drift — `tempest db check`
+
+`tempest db revision --autogenerate` records a diff when you ask for one.
+Nothing notices when somebody edits a model and **forgets** to ask — until
+the deploy that needed the column.
+
+```bash
+tempest db check
+```
+
+No drift:
+
+```text
+No drift: the models match the migration tree.
+```
+
+With drift, it names the operations a revision would contain and exits 1:
+
+```text
+error: New upgrade operations detected: [('add_column', ...'colour'...)]
+       Run `tempest db revision -m "<message>"` to record them.
+```
+
+!!! tip "This is a CI step"
+    Run it after `tempest db upgrade` in the pipeline. The comparison needs
+    the database at `head` — when it is behind, Alembic says so and the
+    message is passed through instead of being reported as drift.
+
 #### Seed the database — `tempest db seed`
 
 Runs a project seed callable inside a managed session (commit on success, rollback on error). The callable takes a positional `AsyncSession` and may be sync or async; what it inserts is up to you — the SDK only wires the session lifecycle. Defaults to importing `src.db.seeds:seed`.
@@ -643,15 +728,134 @@ tempest user set-password --email ana@example.com
 
 ``DATABASE_URL`` resolves the same way as ``tempest db`` (env var > settings > alembic.ini).
 
+#### Inspect, deactivate and delete
+
+`list` answers "who exists". The four below answer the rest.
+
+```bash
+# The whole row, including the columns YOUR model adds
+tempest user show --email ana@example.com
+tempest user show --email ana@example.com --json
+
+# Turn access off (reversible) and drop the sessions with it
+tempest user deactivate --email ana@example.com
+tempest user activate --email ana@example.com
+
+# That user's sessions (refresh tokens)
+tempest user sessions --email ana@example.com
+tempest user sessions --email ana@example.com --revoke
+
+# Delete the row (irreversible)
+tempest user delete --email ana@example.com --yes
+```
+
+`show` **redacts `hashed_password`**: no question this command answers needs
+the hash, and printing it puts a credential in terminal scrollback and in CI
+logs.
+
+!!! warning "`deactivate` revokes sessions, and that is not optional"
+    Flipping `is_active=False` ends nothing on its own: a refresh token
+    already issued stays exchangeable, and the account you just turned off
+    keeps minting fresh access tokens. So the revocation runs in the **same
+    transaction** as the flag — the rule `set-password` already follows.
+
+`sessions` without `--revoke` prints one line per token (id, family, created,
+expires, state). A user with no session prints an empty table and exits 0 —
+"not logged in anywhere" is an answer, not a failure. The `--revoke` count is
+the number of sessions **that run** killed, so a second run prints
+`Revoked 0`.
+
+!!! danger "`delete` is irreversible, and takes the tokens with it"
+    The scaffolded refresh-token table carries a `ForeignKey` with no
+    `ON DELETE CASCADE`, so deleting a user with a live token would fail with
+    an integrity error naming a constraint rather than the cause. The command
+    removes the tokens in the same transaction. Outside an interactive
+    terminal, `--yes` is required. When what you mean is "this person should
+    not be able to log in any more", the command is `deactivate`.
+
 ### Secrets — `tempest secrets`
 
-Generate and rotate application secrets (`JWT_SECRET` / `TOKEN_SECRET` by default), rewriting the matching `.env` lines **in place** — backing up the old file first — and leaving every other line untouched.
+Four commands, ordered by how much they touch your `.env`:
+
+| Command | Writes to `.env`? | When to use it |
+| --- | --- | --- |
+| `generate` | never | grab a value to paste into a secret manager |
+| `init` | only what is empty or a placeholder | right after `tempest new` |
+| `rotate` | always, with a backup | the secret leaked or went stale |
+| `vapid` | the Web Push key pair | turn on browser notifications |
+
+#### Generate a loose value — `tempest secrets generate`
+
+Touches no file at all: it prints and stops.
+
+```bash
+# One secret, bare value
+tempest secrets generate
+
+# Three at once
+tempest secrets generate --count 3
+
+# Labelled, ready to paste into a .env or a deploy form
+tempest secrets generate --keys JWT_SECRET,TOKEN_SECRET
+
+# JSON, to pipe into a secret manager
+tempest secrets generate --keys JWT_SECRET --json
+```
+
+Output of the third one:
+
+```text
+JWT_SECRET=0m3Z1s-Xh9JqQ0h7bqkcJr8nVQ2H0wV1Yk9dxUqx8Ck
+TOKEN_SECRET=Yp2KjVvJf0nJ2s5B3d1r9xU8mCq0w6Q7aZtE4sLbNvA
+```
+
+!!! tip
+    `--count` and `--keys` say the same thing (how many secrets come out), so
+    passing both is a usage error rather than one of them silently winning.
+
+#### Fill a freshly scaffolded `.env` — `tempest secrets init`
+
+`tempest new` writes `JWT_SECRET=change-me-change-me-change-me-32` and an
+empty `TOKEN_SECRET=` — exactly the two cases `tempest check-config`
+reports as `security.W001` / `security.W004`. `init` replaces only those:
+
+```bash
+tempest secrets init
+```
+
+```text
+set JWT_SECRET (was placeholder)
+set TOKEN_SECRET (was empty)
+```
+
+A key that already holds a real value is **kept**, so running it again does
+nothing:
+
+```text
+kept JWT_SECRET (already set)
+kept TOKEN_SECRET (already set)
+Nothing to do.
+```
+
+That is what separates `init` from `rotate`: `init` is safe to run at any
+moment — including from a setup script — because it never destroys a secret
+in use. Replacing a real value is explicit opt-in, and then it backs the
+file up first:
+
+```bash
+tempest secrets init --force
+```
+
+#### Rotate — `tempest secrets rotate`
+
+Generates and rewrites the matching `.env` lines **in place** — backing up
+the old file first — and leaves every other line untouched.
 
 ```bash
 # Rotate JWT_SECRET and TOKEN_SECRET in .env (writes .env.bak)
 tempest secrets rotate
 
-# Just print the new values (writes nothing) — pipe into a secret manager
+# Just print the new values (writes nothing)
 tempest secrets rotate --print
 
 # Custom keys and file
@@ -663,6 +867,179 @@ tempest secrets rotate --length 64 --no-backup
 
 !!! warning
     Rotating `JWT_SECRET` invalidates every token signed with the old value: users are logged out and pending reset/activation links stop working. Rotate during a maintenance window and restart the service to load the new values.
+
+#### Web Push keys — `tempest secrets vapid`
+
+Web Push does not use a random string: it uses a P-256 key pair. The browser
+subscribes with the public key and the server signs every push with the
+private one, so the two values are born together and cannot come out of
+`generate`.
+
+```bash
+# Writes VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY into .env
+tempest secrets vapid
+
+# With the contact carried in the VAPID JWT's `sub` claim
+tempest secrets vapid --subject mailto:ops@example.com
+
+# Print only
+tempest secrets vapid --print
+```
+
+These are exactly the fields `WebPushSettings` reads, in the shape
+`pywebpush` reads back: the private key is the 32-byte scalar and the public
+key is the 65-byte uncompressed point, both base64url without padding.
+
+!!! danger
+    Replacing a pair that already exists **invalidates every active
+    subscription**: a browser that subscribed with the old public key will not
+    accept a push signed with the new private one, and each client has to
+    subscribe again. That is why the command refuses to overwrite without
+    `--force`.
+
+#### Recap
+
+- `generate` prints, `init` fills what is missing, `rotate` replaces
+  everything, `vapid` mints the Web Push pair.
+- `init` is idempotent and never loses a secret in use — it is the command
+  for a project's first day.
+- `rotate` and `vapid --force` are destructive in different ways: one logs
+  users out, the other drops push subscriptions.
+- Every file these commands write ends up `0600`.
+
+### Queue and tasks — `tempest queue` / `tempest tasks`
+
+```bash
+# Publish a message through the project's broker
+tempest queue publish orders.paid '{"order_id": 7}' --json
+tempest queue handlers                     # channels this service consumes
+
+# Background tasks
+tempest tasks list                         # registered names
+tempest tasks run src.tasks:send_welcome --arg ana@example.com --kwarg retries=2
+```
+
+`publish` connects, publishes and **closes** — in that order, in one
+process. Closing is the step a throwaway script forgets, and it is the one
+that flushes the publish before the command returns.
+
+!!! tip "A task's name is not its function's name"
+    TaskIQ registers under `<module>:<function>` (`src.tasks:send_welcome`),
+    so the name `run` takes is not the one in the source file. `list` is what
+    tells you which is which — and it imports `<root>.tasks.jobs` first,
+    because a task exists on the broker only after the module declaring it
+    has been imported.
+
+`tasks run` **enqueues**; it does not execute. The worker runs the job, so a
+command that returns successfully means the message was accepted, not that
+the job succeeded.
+
+Without `--broker` / `--queue`, both probe `<root>.queue:broker` and
+`<root>.tasks:tq` — the names `tempest generate --src` writes. When nothing
+resolves, every attempt is listed with its cause before exit 2.
+
+### Email — `tempest email test`
+
+The pair that costs the most time in SMTP setup is STARTTLS (port 587,
+`SMTP_USE_TLS`) against implicit TLS (port 465, `SMTP_USE_SSL`), and the only
+honest way to learn which one a server wants is to connect and send.
+
+```bash
+tempest email test --to you@example.com
+tempest email test --to you@example.com --subject "deploy ok" --body "..."
+tempest email test --to you@example.com --html      # exercises the multipart path
+```
+
+It builds the client with `EmailUtils(**settings.email_kwargs())` — the same
+construction the service performs — so a message that arrives here arrives
+from the app. A refusal exits 1 carrying the server's own reply, plus the
+line that recalls the TLS pair.
+
+A project that composes no `EmailSettings` exits 2 saying so: composing only
+the mixins you use is ordinary, not broken.
+
+### Object store — `tempest storage`
+
+```bash
+tempest storage check                       # does the endpoint answer? bucket there?
+tempest storage ls                          # keys in the default bucket
+tempest storage ls reports/ --flat          # only the immediate level
+tempest storage put ./note.pdf --key notes/2026-09.pdf
+tempest storage get notes/2026-09.pdf --out ./downloaded.pdf
+tempest storage presign notes/2026-09.pdf --expires 900
+tempest storage rm notes/2026-09.pdf
+```
+
+Everything goes through `AsyncMinIOClient(**settings.minio_kwargs())`, so the
+endpoint, credentials, region and — the one that matters most — the **public
+endpoint** used to sign URLs are the service's own.
+
+!!! warning "A URL signed with the internal endpoint is valid and useless"
+    Signing against `minio:9000` produces a correct URL your user's browser
+    cannot resolve. Set `MINIO_PUBLIC_ENDPOINT`; `presign` prints on `stderr`
+    which host it signed for, precisely so that mistake surfaces before the
+    URL reaches a client.
+
+An empty bucket lists nothing and exits 0 — "no object" is a result, not a
+failure, the same convention the SDK's repositories follow.
+
+### Feature flags — `tempest flags`
+
+A flag exists to be moved without a deploy. With the Redis backend that move
+lived in `redis-cli HSET feature_flags <name> 1` — the kind of command that
+gets a digit wrong at the wrong hour.
+
+```bash
+tempest flags list                       # everything the backend holds
+tempest flags enable new-checkout        # on for every process reading it
+tempest flags disable new-checkout
+tempest flags get new-checkout           # the stored value
+tempest flags list --key ff:staging      # another hash, another environment
+```
+
+```text
+new-checkout  on
+legacy-upload off
+```
+
+All four speak through `RedisFeatureFlagBackend`, so the value the service
+reads and the value the CLI writes go through the same encoding code.
+
+!!! note "`off` and `unset` are different answers"
+    `get` exits **1** when the backend holds no value (`unset`) and **0** when
+    it holds `off`. The difference matters: an unset flag resolves to the
+    *default* the caller passed in code, while `off` overrides that default.
+
+The URL comes from `--redis-url` > `REDIS_URL` > the project's settings. A
+Redis that is down exits 2 carrying the driver's own message — "connection
+refused" names the fix, "an error occurred" does not.
+
+### Cache — `tempest cache`
+
+```bash
+tempest cache ping                       # PONG, or exit 1
+tempest cache stats                      # version, keys, memory, hit ratio
+tempest cache flush --namespace orders   # invalidate what @cached registered
+tempest cache flush --tag user:42
+tempest cache flush --key "cache:orders:list:abc"
+tempest cache flush --all --yes          # FLUSHDB
+```
+
+The targeted options go through `CacheInvalidator` — the same code the
+service calls — so the keys deleted here are the keys `@cached` wrote there.
+Pass the same `--key-prefix` those decorators use, or the registries will not
+line up.
+
+!!! danger "`--all` is `FLUSHDB`, not 'clear the cache'"
+    It deletes **every** key in the selected database: sessions, rate-limit
+    counters and feature flags included, when they share the Redis. That is
+    why it demands `--yes`. When in doubt, invalidate by namespace.
+
+!!! info "The hit ratio is the server's, not your application's"
+    `keyspace_hits` / `keyspace_misses` are Redis counters since the last
+    restart, summed across every client. Redis does not attribute a hit to a
+    caller — the number answers "is this server earning its keep", not "is my
+    endpoint X".
 
 ### Models — `tempest model`
 
@@ -690,6 +1067,96 @@ tempest model hardware
 `analyze`, `bench` and `hardware` accept `--json`, which makes them usable
 as a CI step. A missing extra exits 2 with the install line, never a
 traceback. Details in [Modelops](modelops.md).
+
+### Diagnostics — `tempest doctor`
+
+`check-config` reads the settings and reasons about them; it never opens a
+socket. That is the right trade for a fast gate and the wrong one for "why
+does the service not come up", where the answer is almost always a dependency
+that is down, unreachable from this host, or holding credentials nobody
+updated.
+
+```bash
+tempest doctor
+tempest doctor --json            # for scripts / deployment health checks
+tempest doctor --timeout 2       # tighten the wait on each network probe
+```
+
+```text
+OK    python         3.11.12 (/srv/app/.venv/bin/python)
+OK    sdk            tempest-fastapi-sdk 0.293.0
+OK    settings       Settings
+OK    database       postgresql+asyncpg://app:***@db:5432/app
+FAIL  redis          ConnectionError: Error 111 connecting to cache:6379
+SKIP  rabbitmq       no RABBITMQ_URL
+SKIP  smtp           SMTP_HOST is still the mixin default
+SKIP  minio          the [minio] extra is not installed
+OK    config checks  no error (2 warning(s))
+```
+
+Every line is a **real connection**, not a deduction. It exits 1 when any
+check fails, so it works as a deployment smoke test.
+
+!!! warning "`skip` is not `ok`, on purpose"
+    A capability the project never configured reads `skip`. A green line for a
+    Redis nobody set up is the kind of reassurance that costs an outage.
+
+    The mixin default counts as unconfigured: `EmailSettings` ships
+    `SMTP_HOST=localhost` and `MinIOSettings` ships
+    `MINIO_ENDPOINT=localhost:9000`, so a service composing the mixin without
+    using the capability would look configured. The comparison is against
+    `model_fields[field].default` — the same ruler `check_secrets` uses.
+
+The last line runs the static check registry (the one behind `check-config`),
+so one command answers both halves of "is this deployment sane".
+
+### Routes — `tempest routes`
+
+Lists the URLs the application **actually** serves.
+
+```bash
+tempest routes
+```
+
+```text
+METHOD  PATH                    NAME          SCHEMA  GUARDS
+GET     /api/items/{item_id}    read_item     yes     require_admin
+POST    /api/items/             create_item   yes     require_admin
+GET     /health                 health        yes     -
+GET     /painel                 painel        no      -
+```
+
+Four things in that table reading the code does not hand you:
+
+- **A mounted router shows up.** Since FastAPI 0.141.1, `include_router`
+  keeps an `_IncludedRouter` entry instead of flattening the routes onto the
+  application — so `{r.path for r in app.routes}` contains **none** of the
+  included router's paths. The command reads the same expansion the OpenAPI
+  generator walks.
+- **Prefixes already resolved.** The path is the router's plus every
+  `include_router` above it.
+- **Routes outside the schema are listed too**, with `SCHEMA=no` — an HTML
+  page and an internal endpoint serve traffic, and they are exactly what an
+  answer taken from `openapi.json` hides.
+- **`GUARDS` shows the dependency inherited from the include**, not only the
+  one declared on the route. That is how you confirm the
+  `Depends(require_admin)` on `include_router` reached everything it should.
+
+Filters and format:
+
+```bash
+tempest routes --match /api/orders        # only paths containing this
+tempest routes --method post,delete       # only these methods
+tempest routes --all                      # include /docs, /redoc, /openapi.json
+tempest routes --json                     # JSON array, for scripting
+tempest routes --app src.server:app       # app outside the conventional spots
+```
+
+Without `--app`, the command probes `src.server:app`,
+`src.api.app:create_app`, `main:app` (and the same under `app/`). When
+nothing resolves it **lists what it tried and why** before exiting 2. A
+`--match` that matches nothing exits 1, so a typo in a script fails instead
+of reading as an application with no routes.
 
 ### Errors documented in OpenAPI — `tempest openapi-errors`
 
@@ -756,6 +1223,57 @@ Details in the [Permission guards (`@requires`) »](permission-guards.md) recipe
 
 ---
 
+### Integrations — `tempest integrations`
+
+```bash
+tempest integrations list                    # what ships + the credential state here
+tempest integrations verify openpix          # one real authenticated call
+tempest integrations verify mercado-pago
+tempest integrations verify zap --base-url http://localhost:3000
+```
+
+```text
+openpix       tempest_fastapi_sdk.integrations.payment.openpix:OpenPixClient
+              OPENPIX_APP_ID set
+mercado-pago  tempest_fastapi_sdk.integrations.payment.mercado_pago:MercadoPagoClient
+              needs MercadoPagoSettings
+```
+
+`verify` builds the client with `HTTPClient(**settings.<provider>_kwargs())`
+and makes **the cheapest authenticated read** each API offers: OpenPix's
+`GET /company` and Mercado Pago's `GET /users/me` — neither moves money nor
+creates a record. A bad credential exits 1 carrying the provider's refusal.
+
+!!! note "That endpoint is a hand-kept table — with a guard"
+    Choosing "the cheapest call" per provider is a human decision, and
+    generated endpoint names change. A test asserts each named method still
+    exists on the generated client **and** takes no required argument, so an
+    upstream rename breaks a test instead of the terminal of whoever is
+    on call.
+
+A provider the SDK ships no settings mixin for (zap, stripe) needs
+`--base-url`: the SDK does not know where your instance lives.
+
+### Agents — `tempest agents`
+
+```bash
+tempest agents tools --agent src.agents:agent     # which tools it holds
+tempest agents run "summarise the report" --agent src.agents:agent --trace
+```
+
+`tools` calls no model — no token is spent, and it works with a backend that
+has no credentials configured. It is the quick answer to "does this agent
+configuration actually see the tool I just registered?".
+
+!!! warning "The exit code follows `succeeded`, not 'raised nothing'"
+    A run cut short by its budget (steps or seconds) **still returns text**.
+    Treating that text as an answer is the mistake this command refuses to
+    make for you: `run` exits 1 and prints the stop reason (`max_steps`,
+    `max_seconds`) on `stderr`, with the output on `stdout` either way.
+
+There is no scaffolded `agents` layer, so `--agent` is nearly always needed —
+and the command says so rather than pretending a convention exists.
+
 ### Integration client — `tempest openapi-client`
 
 Generates Pydantic schemas + a typed HTTP client from a third party's OpenAPI
@@ -782,6 +1300,48 @@ Details, OpenAPI coverage and limitations in the
 [Integration client (OpenAPI) »](openapi-client.md) recipe.
 
 ---
+
+### Export the contract — `tempest openapi-export`
+
+`openapi-client` consumes somebody else's spec; this one writes **yours**.
+
+```bash
+# Document on stdout
+tempest openapi-export
+
+# To a file (JSON by default)
+tempest openapi-export --out contracts/openapi.json
+
+# YAML (needs the [openapi] extra)
+tempest openapi-export --out contracts/openapi.yaml --yaml
+```
+
+Two things come out of that. The first is feeding a generator — `tempest
+openapi-client` itself, a TypeScript client generator, a mock server —
+**without booting the service**. The second is committing the document, which
+turns a contract change into something the reviewer sees:
+
+```bash
+tempest openapi-export --out contracts/openapi.json --check
+```
+
+```text
+error: contracts/openapi.json is out of date:
+  + DELETE /api/items/{item_id}
+  - GET /api/legacy
+  ~ /api/items/{item_id} changed
+Run 'tempest openapi-export --out <file>' to refresh it.
+```
+
+Exit 1 when it differs, 0 when it is current. Operations added and removed
+come first because those are the ones that break consumers; a change inside
+an operation reads as `~ <path> changed`. "The spec changed" is not a
+reviewable message — which is why the command names what moved.
+
+!!! tip "In CI"
+    Run `--check` in the same job as the tests. The day somebody changes a
+    status code, a required field or a path, the PR goes red with the exact
+    line instead of the client finding out in production.
 
 ### PR description with AI — `tempest pr-prompt`
 
