@@ -29,6 +29,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[genai-vlm]` | `pillow`, `torchvision` | modelo de visão-linguagem local: descrever imagem, responder pergunta sobre imagem |
 | `[openapi]` | `pyyaml` | ler spec OpenAPI em YAML para `tempest openapi-client` / `tempest openapi-errors` |
 | `[pdf-read]` | `pypdf` | **ler** PDF (extrair texto/páginas); o `[pdf]` é para **gerar** |
+| `[pdf-layout]` | `pdfplumber` | ler PDF **com layout e tabelas** (coluna recuperada, tabela como grade); mais lento que o `[pdf-read]` |
 | `[spreadsheet]` | `openpyxl` | planilhas `.xlsx`: leitura tipada, escrita e import em massa |
 | `[websocket]` | `websockets` | Driver de protocolo do `make_websocket_router` — sem ele o handshake devolve 404 |
 | `[email]` | `aiosmtplib`, `jinja2`, `email-validator` | `EmailUtils` (com `render_template` + templates Jinja2) |

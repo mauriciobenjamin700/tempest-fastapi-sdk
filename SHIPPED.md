@@ -2134,3 +2134,31 @@ escrito à mão (`len(password) < 8`): senha acima de 72 bytes saía como
 senha que o `signup` recusava — conta semeada cujo dono não conseguia
 trocar a senha depois. Os dois somem ao trocar o `if` por
 `check_password_policy`, que é a régua que o resto do SDK já usava.
+
+
+## O host vira superfície do SDK, v0.294.0 (2026-09-19)
+
+O assistente local já sabia controlar a máquina — só que por fora, como um
+serviço FastAPI separado que cada projeto reescrevia: sandbox de caminho,
+auth por `X-Token`, tradução WSL ↔ Windows, leitura de PDF. Isso agora é
+`tempest_fastapi_sdk.hostbridge`, sem extra nenhum para sistema, arquivos e
+comandos.
+
+O que a migração ensinou vale mais que o módulo: **as duas regras de
+segurança que a doc do serviço pedia ao leitor viraram assinatura**. O
+`allowed_base_paths` começa vazio (vazio nega tudo, em vez de um default
+permissivo que ninguém revisita) e `make_hostbridge_router` recebe as
+dependências de auth como argumento obrigatório, recusando lista vazia — um
+router que lê o disco e roda PowerShell não pode depender de o consumidor ter
+lido o `!!! danger`. O lado destrutivo é opt-in por `destructive=True`.
+
+A terceira lição é sobre falhar com precisão: num host sem `powershell.exe`
+nem `wslpath`, a resposta é `HOST_UNAVAILABLE` (503) e não um erro genérico,
+porque "esta máquina não tem host para controlar" e "a ação falhou" levam o
+chamador a caminhos diferentes.
+
+Junto veio `read_pdf_pages` e o extra `[pdf-layout]`: `pdfplumber` recupera
+coluna e tabela que o `[pdf-read]` entrega intercaladas, e o caminho com
+senha distingue documento cifrado de arquivo corrompido — o que só ficou
+verdade depois de descobrir que o `pdfplumber` embrulha `PDFPasswordIncorrect`
+num `PdfminerException`, fazendo o `except` específico nunca disparar.

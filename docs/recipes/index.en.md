@@ -502,6 +502,7 @@ come back here to plug in each capability as you need it.
 | **[Firebase auth (ID token) »](firebase-auth.md)** | `FirebaseAuth`, `FirebaseIdentity`, `FirebaseUserResolver` — verify the ID token a mobile app sends, idempotent initialization, one `code` per failure, `[firebase]` extra |
 | **[Forms from Pydantic schemas »](ui-forms.md)** | `form_for` / `form_spec_for` / `render_form`, `parse_form` + `FormResult` (per-field errors, input preserved), type-to-control mapping, `json_schema_extra={"ui": ...}`, `form_stylesheet` |
 | **[Geolocation (distance + travel time) »](geo.md)** | `haversine_km`, `estimate_travel`, `OSRMBackend`, `NominatimBackend`, `GeoPointMixin` / `GeoRepositoryMixin` |
+| **[Host control (files, commands, power) »](hostbridge.md)** | `HostBridge` + `HostBridgeConfig` / `HostBridgeSettings` (power, files, PDFs, commands, native picker), `make_hostbridge_router` with required auth and an opt-in destructive side, sandboxed WSL/Windows paths |
 | **[HTTP client (outbound) »](http-client.md)** | `HTTPClient` — typed httpx with retry/backoff, circuit-breaker, X-Request-ID; `RetryPolicy`, `CircuitOpenError` |
 | **[HTTP layer »](http.md)** | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware` (429 in the SDK error envelope), `make_health_router`, JWT / role / permission dependencies, webhook signature verifier, pagination Link headers, tool-spec router |
 | **[Idempotency »](idempotency.md)** | `IdempotencyMiddleware`, `MemoryIdempotencyStore` / `IdempotencyStore` (Redis) — safe replay of POST/PUT/PATCH/DELETE |

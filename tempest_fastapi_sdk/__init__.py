@@ -1200,6 +1200,7 @@ from tempest_fastapi_sdk.settings import (
 )
 from tempest_fastapi_sdk.settings import (
     GenAISettings as GenAISettings,
+    HostBridgeSettings as HostBridgeSettings,
 )
 from tempest_fastapi_sdk.settings import (
     JWTSettings as JWTSettings,
@@ -1703,7 +1704,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
 )
 
-__version__: str = "0.293.0"
+__version__: str = "0.294.0"
 
 from tempest_fastapi_sdk.api import (
     OAuthAudienceVerifier as OAuthAudienceVerifier,
@@ -1967,6 +1968,7 @@ __all__: list[str] = [
     "ForbiddenException",
     "GPUMetrics",
     "GenAISettings",
+    "HostBridgeSettings",
     "GitHubOAuthClient",
     "GoogleOAuthClient",
     "GracefulShutdownMiddleware",

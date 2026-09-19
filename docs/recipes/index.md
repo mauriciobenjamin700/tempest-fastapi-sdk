@@ -497,6 +497,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Colunas de enum (seguras nos dois bancos) »](enum-columns.md)** | `Mapped[MeuEnum]` guardando o `value`, `ENUM` nativo no PostgreSQL e `CHECK` no SQLite, `enum_column()`, `op.replace_enum` + `sync_enum_types` para a migration que o autogenerate não vê |
 | **[Comentários + avaliações »](reviews.md)** | `ReviewService`, `make_reviews_router`, notas 0–5 estrelas com agregação, comentários encadeados |
 | **[Console SQL no admin »](admin-sql-console.md)** | `SqlShellService` + `SqlShellPolicy` (capacidades, tabelas permitidas/negadas, teto de linhas, `require_where`), análise real via `sqlglot`, auditoria de toda tentativa, página opt-in no admin |
+| **[Controle do host (arquivos, comandos, energia) »](hostbridge.md)** | `HostBridge` + `HostBridgeConfig` / `HostBridgeSettings` (energia, arquivos, PDF, comandos, seletor nativo), `make_hostbridge_router` com auth obrigatória e lado destrutivo opt-in, caminhos WSL/Windows com sandbox |
 | **[CSS tipado (StyleSheet e tokens) »](ui-css.md)** | `StyleSheet` / `Rule` / `Media`, `ThemeTokens` (tokens do `tempest_core` como CSS variables, claro e escuro), `make_css_router` com ETag/304, `app_stylesheet`, `cls()` que rejeita classe inexistente |
 | **[Deploy seguro »](deploy-safety.md)** | `AlembicHelper.safe_upgrade` (barra DROPs), `GracefulShutdownMiddleware` |
 | **[Downloads »](downloads.md)** | `DownloadUtils` — `file_response`, `stream`, `build_content_disposition`, anti path-traversal |

@@ -189,6 +189,27 @@ class MessageCatalog:
         return MessageCatalog(merged)
 
 
+_MESSAGE_KEYS_WITHOUT_A_CODE: frozenset[str] = frozenset(
+    {
+        "HOST_PATH_TRANSLATION_FAILED",
+        "HOST_WSLPATH_MISSING",
+        "PDF_PAGE_EXTRACT_FAILED",
+    }
+)
+"""Keys a raise site passes as ``message_key``, not as an exception ``code``.
+
+One code often needs more than one sentence: ``HOST_INVALID_PATH`` covers
+both "outside the allowed bases" and "the path could not be translated at
+all", and clients still branch on the single code. The specific sentence
+travels as ``message_key``, so these keys have no exception class of their
+own — and ``tests/test_i18n_coverage_guard.py``, which fails on a key no
+exception raises, needs them declared here rather than guessed.
+
+Adding a key here is a claim that some raise site passes it. Nothing else
+grants the exemption.
+"""
+
+
 VALIDATION_KEY_PREFIX: str = "VALIDATION."
 """Namespace for the request-validation messages in the catalog.
 
@@ -465,6 +486,45 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "OAUTH_TOKEN_REJECTED": (
             "O provedor de identidade recusou o token apresentado"
         ),
+        "HOST_INVALID_PATH": (
+            "O caminho '{path}' está fora dos diretórios liberados no host"
+        ),
+        "HOST_PATH_TRANSLATION_FAILED": (
+            "Não foi possível converter o caminho informado no host"
+        ),
+        "HOST_FILE_NOT_FOUND": "Não foi encontrado '{path}' no host",
+        "HOST_FILE_TOO_LARGE": (
+            "'{path}' tem {size} bytes e excede o limite de {limit} bytes"
+        ),
+        "HOST_FILE_DECODE_FAILED": (
+            "'{path}' não é texto legível na codificação '{encoding}' — use "
+            "a leitura de PDF para PDFs, ou informe a codificação correta"
+        ),
+        "HOST_COMMAND_FAILED": "O comando no host falhou — confira a saída de erro",
+        "HOST_COMMAND_TIMEOUT": "O comando no host passou do limite de {seconds}s",
+        "HOST_UNAVAILABLE": ("O controle do host não está disponível neste ambiente"),
+        "HOST_WSLPATH_MISSING": (
+            "Este processo não roda sob WSL: o 'wslpath' não foi encontrado"
+        ),
+        "PDF_DECRYPT_FAILED": "PDF protegido por senha — informe a senha correta",
+        "PDF_EXTRACT_FAILED": "Não foi possível extrair o conteúdo do PDF",
+        "PDF_PAGE_EXTRACT_FAILED": "Não foi possível extrair a página {page} do PDF",
+        "PDF_ASSET_REFUSED": (
+            "O documento referenciou um recurso que não é permitido"
+        ),
+        "PDF_TEMPLATE_NOT_FOUND": "Template não encontrado",
+        "OAUTH_ERROR": "O provedor de identidade respondeu com um erro",
+        "FIREBASE_TOKEN_MISSING": "Autenticação necessária",
+        "FIREBASE_TOKEN_INVALID": "Token do Firebase inválido",
+        "FIREBASE_TOKEN_EXPIRED": "O token do Firebase expirou",
+        "FIREBASE_TOKEN_REVOKED": "O token do Firebase foi revogado",
+        "FIREBASE_USER_DISABLED": "A conta no Firebase está desativada",
+        "FIREBASE_UNAVAILABLE": (
+            "Não foi possível alcançar o serviço de certificados do Firebase"
+        ),
+        "VOICE_CONSENT_REQUIRED": (
+            "O cadastro de voz exige consentimento gravado"
+        ),
     },
     "en-US": {
         "INTERNAL_SERVER_ERROR": "Internal server error",
@@ -502,6 +562,43 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
             "The presented token was issued to a different application"
         ),
         "OAUTH_TOKEN_REJECTED": ("The identity provider rejected the presented token"),
+        "HOST_INVALID_PATH": (
+            "Path '{path}' is outside the host's allowed directories"
+        ),
+        "HOST_PATH_TRANSLATION_FAILED": (
+            "The given path could not be translated on the host"
+        ),
+        "HOST_FILE_NOT_FOUND": "'{path}' was not found on the host",
+        "HOST_FILE_TOO_LARGE": (
+            "'{path}' is {size} bytes, over the limit of {limit} bytes"
+        ),
+        "HOST_FILE_DECODE_FAILED": (
+            "'{path}' is not readable as text with encoding '{encoding}' — "
+            "use the PDF reader for PDFs, or pass the file's real encoding"
+        ),
+        "HOST_COMMAND_FAILED": "The host command failed — check its error output",
+        "HOST_COMMAND_TIMEOUT": "The host command exceeded the {seconds}s timeout",
+        "HOST_UNAVAILABLE": "Host control is not available in this environment",
+        "HOST_WSLPATH_MISSING": (
+            "This process is not running under WSL: 'wslpath' was not found"
+        ),
+        "PDF_DECRYPT_FAILED": "PDF is password protected — provide the password",
+        "PDF_EXTRACT_FAILED": "Could not extract the PDF's content",
+        "PDF_PAGE_EXTRACT_FAILED": "Could not extract page {page} of the PDF",
+        "PDF_ASSET_REFUSED": (
+            "The document referenced an asset that is not allowed"
+        ),
+        "PDF_TEMPLATE_NOT_FOUND": "Template not found",
+        "OAUTH_ERROR": "The identity provider answered with an error",
+        "FIREBASE_TOKEN_MISSING": "Authentication required",
+        "FIREBASE_TOKEN_INVALID": "Invalid Firebase ID token",
+        "FIREBASE_TOKEN_EXPIRED": "Firebase ID token expired",
+        "FIREBASE_TOKEN_REVOKED": "Firebase ID token revoked",
+        "FIREBASE_USER_DISABLED": "The Firebase account is disabled",
+        "FIREBASE_UNAVAILABLE": (
+            "Could not reach the Firebase certificate endpoint"
+        ),
+        "VOICE_CONSENT_REQUIRED": "Voice enrolment requires recorded consent",
     },
 }
 

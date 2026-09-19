@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.293.0"
+version = "0.294.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -128,6 +128,13 @@ pdf = [
 ]
 pdf-read = [
     "pypdf>=6.16.2",
+]
+pdf-layout = [
+    # Layout-aware extraction: columns recovered, tables recovered as grids.
+    # Separate from [pdf-read] because it is markedly slower and pulls
+    # pdfminer.six, and a service that only needs a document's prose should
+    # not carry either.
+    "pdfplumber>=0.11.7",
 ]
 spreadsheet = [
     "openpyxl>=3.1.5",
@@ -284,6 +291,7 @@ all = [
     "fido2>=2.2.1",
     "weasyprint>=69.0",
     "pypdf>=6.16.2",
+    "pdfplumber>=0.11.7",
     "openpyxl>=3.1.5",
     "email-validator>=2.3.0",
     "aiosqlite>=0.22.1",

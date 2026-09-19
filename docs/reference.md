@@ -245,6 +245,12 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.pdf.reader.DEFAULT_PAGE_MARKER
 ::: tempest_fastapi_sdk.pdf.reader.DEFAULT_TRUNCATION_NOTICE
 ::: tempest_fastapi_sdk.pdf.reader.DEFAULT_PARTIAL_PAGE_NOTICE
+::: tempest_fastapi_sdk.pdf.pages.read_pdf_pages
+::: tempest_fastapi_sdk.pdf.pages.PdfExtractor
+::: tempest_fastapi_sdk.pdf.pages.PdfPage
+::: tempest_fastapi_sdk.pdf.pages.PdfPagesResult
+::: tempest_fastapi_sdk.pdf.pages.PdfDecryptError
+::: tempest_fastapi_sdk.pdf.pages.PdfExtractError
 
 ---
 
@@ -482,6 +488,23 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.geo.routing.DEFAULT_MODE_PROFILES
 ::: tempest_fastapi_sdk.geo.geocoding.DEFAULT_NOMINATIM_BASE_URL
 ::: tempest_fastapi_sdk.geo.br.UF_CENTROIDS
+---
+
+## Host (controle da máquina)
+
+### `tempest_fastapi_sdk.hostbridge`
+
+::: tempest_fastapi_sdk.hostbridge
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+::: tempest_fastapi_sdk.hostbridge.config.DEFAULT_COMMAND_TIMEOUT
+::: tempest_fastapi_sdk.hostbridge.config.DEFAULT_MAX_FILE_READ_BYTES
+
 ---
 
 ## Modelops
