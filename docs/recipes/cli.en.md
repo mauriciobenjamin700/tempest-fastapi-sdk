@@ -907,6 +907,37 @@ key is the 65-byte uncompressed point, both base64url without padding.
   users out, the other drops push subscriptions.
 - Every file these commands write ends up `0600`.
 
+### Queue and tasks — `tempest queue` / `tempest tasks`
+
+```bash
+# Publish a message through the project's broker
+tempest queue publish orders.paid '{"order_id": 7}' --json
+tempest queue handlers                     # channels this service consumes
+
+# Background tasks
+tempest tasks list                         # registered names
+tempest tasks run src.tasks:send_welcome --arg ana@example.com --kwarg retries=2
+```
+
+`publish` connects, publishes and **closes** — in that order, in one
+process. Closing is the step a throwaway script forgets, and it is the one
+that flushes the publish before the command returns.
+
+!!! tip "A task's name is not its function's name"
+    TaskIQ registers under `<module>:<function>` (`src.tasks:send_welcome`),
+    so the name `run` takes is not the one in the source file. `list` is what
+    tells you which is which — and it imports `<root>.tasks.jobs` first,
+    because a task exists on the broker only after the module declaring it
+    has been imported.
+
+`tasks run` **enqueues**; it does not execute. The worker runs the job, so a
+command that returns successfully means the message was accepted, not that
+the job succeeded.
+
+Without `--broker` / `--queue`, both probe `<root>.queue:broker` and
+`<root>.tasks:tq` — the names `tempest generate --src` writes. When nothing
+resolves, every attempt is listed with its cause before exit 2.
+
 ### Email — `tempest email test`
 
 The pair that costs the most time in SMTP setup is STARTTLS (port 587,

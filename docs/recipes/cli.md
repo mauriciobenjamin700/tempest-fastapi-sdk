@@ -905,6 +905,35 @@ ponto não-comprimido de 65 bytes, ambos em base64url sem padding.
   desloga usuário, o outro derruba subscrição de push.
 - Todo arquivo que esses comandos escrevem sai `0600`.
 
+### Fila e tasks — `tempest queue` / `tempest tasks`
+
+```bash
+# Publica uma mensagem pelo broker do projeto
+tempest queue publish orders.paid '{"order_id": 7}' --json
+tempest queue handlers                     # canais que este serviço consome
+
+# Tasks de fundo
+tempest tasks list                         # nomes registrados
+tempest tasks run src.tasks:send_welcome --arg ana@example.com --kwarg retries=2
+```
+
+O `publish` conecta, publica e **fecha** — nessa ordem, num processo só.
+Fechar é o passo que o script descartável esquece, e é ele que garante o
+flush da publicação antes do comando retornar.
+
+!!! tip "O nome da task não é o nome da função"
+    O TaskIQ registra sob `<módulo>:<função>` (`src.tasks:send_welcome`), então
+    o nome que o `run` recebe não é o que está no arquivo. O `list` é o que diz
+    qual é qual — e ele importa `<root>.tasks.jobs` antes de listar, porque
+    task só existe no broker depois que o módulo que a declara foi importado.
+
+`tasks run` **enfileira**, não executa: quem roda é o worker. Comando que
+retorna com sucesso significa "a mensagem foi aceita", não "o job deu certo".
+
+Sem `--broker` / `--queue`, os dois procuram `<root>.queue:broker` e
+`<root>.tasks:tq` — os nomes que o `tempest generate --src` escreve. Quando
+nada resolve, cada tentativa é listada com a causa antes do código 2.
+
 ### E-mail — `tempest email test`
 
 O par que mais custa tempo em configuração de SMTP é STARTTLS (porta 587,

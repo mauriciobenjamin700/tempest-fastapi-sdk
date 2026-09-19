@@ -3948,6 +3948,17 @@ tempest secrets vapid --subject mailto:ops@example.com  # Web Push key pair
 
 `tempest secrets init` treats a key as unset when it is missing, empty, or still carries the `change-me` placeholder `tempest new` writes — the values `tempest check-config` reports as `security.W001` / `security.W004` — and keeps every configured key, so it is safe to re-run. `tempest secrets vapid` writes `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` in the shape `WebPushSettings` and `pywebpush` read (32-byte scalar, 65-byte uncompressed point, base64url), and refuses to overwrite an existing pair without `--force`, because replacing it invalidates every active browser subscription.
 
+#### Queue and tasks — `tempest queue` / `tempest tasks`
+
+```bash
+tempest queue publish orders.paid '{"order_id": 7}' --json
+tempest queue handlers                                # channels this service consumes
+tempest tasks list                                    # registered task names
+tempest tasks run src.tasks:send_welcome --arg ana@example.com --kwarg retries=2
+```
+
+`queue publish` connects, publishes and closes in one process, so the message is flushed before the command returns. `tasks list` imports the job modules first — a task exists on the broker only once its module has been imported — and prints the name TaskIQ registers (`<module>:<function>`), which is the name `run` takes. `run` enqueues; the worker executes, so success means the message was accepted, not that the job passed. Both default to the scaffolded `<root>.queue:broker` and `<root>.tasks:tq`.
+
 #### Email and object store — `tempest email` / `tempest storage`
 
 ```bash

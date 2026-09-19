@@ -23,11 +23,13 @@ from tempest_fastapi_sdk.cli.flags import flags_app
 from tempest_fastapi_sdk.cli.model import model_app
 from tempest_fastapi_sdk.cli.openapi_export import openapi_export_command
 from tempest_fastapi_sdk.cli.pdf import pdf_app
+from tempest_fastapi_sdk.cli.queue import queue_app
 from tempest_fastapi_sdk.cli.routes import routes_command
 from tempest_fastapi_sdk.cli.secrets import secrets_app
 from tempest_fastapi_sdk.cli.serve import serve_command
 from tempest_fastapi_sdk.cli.shell import shell_command
 from tempest_fastapi_sdk.cli.storage import storage_app
+from tempest_fastapi_sdk.cli.tasks import tasks_app
 from tempest_fastapi_sdk.cli.user import user_app
 from tempest_fastapi_sdk.cli.voice import voice_app
 
@@ -165,6 +167,8 @@ app.add_typer(flags_app, name="flags")
 app.add_typer(cache_app, name="cache")
 app.add_typer(email_app, name="email")
 app.add_typer(storage_app, name="storage")
+app.add_typer(queue_app, name="queue")
+app.add_typer(tasks_app, name="tasks")
 app.add_typer(model_app, name="model")
 app.add_typer(pdf_app, name="pdf")
 app.add_typer(voice_app, name="voice")
