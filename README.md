@@ -3948,6 +3948,18 @@ tempest secrets vapid --subject mailto:ops@example.com  # Web Push key pair
 
 `tempest secrets init` treats a key as unset when it is missing, empty, or still carries the `change-me` placeholder `tempest new` writes — the values `tempest check-config` reports as `security.W001` / `security.W004` — and keeps every configured key, so it is safe to re-run. `tempest secrets vapid` writes `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` in the shape `WebPushSettings` and `pywebpush` read (32-byte scalar, 65-byte uncompressed point, base64url), and refuses to overwrite an existing pair without `--force`, because replacing it invalidates every active browser subscription.
 
+#### Email and object store — `tempest email` / `tempest storage`
+
+```bash
+tempest email test --to you@example.com               # send through the project's SMTP settings
+tempest storage check                                 # endpoint reachable, bucket present
+tempest storage ls reports/                           # keys under a prefix
+tempest storage put ./note.pdf --key notes/2026-09.pdf
+tempest storage presign notes/2026-09.pdf --expires 900
+```
+
+`email test` builds `EmailUtils(**settings.email_kwargs())`, so a message that arrives came through the same path the app uses; a refusal exits `1` with the server's reply and a reminder that port 587 wants `SMTP_USE_TLS` (STARTTLS) while 465 wants `SMTP_USE_SSL`. `storage` uses `AsyncMinIOClient(**settings.minio_kwargs())`, including the public endpoint — `presign` reports on stderr which host it signed for, because a URL signed against `minio:9000` is valid and unusable from a browser.
+
 #### Feature flags and cache — `tempest flags` / `tempest cache`
 
 ```bash

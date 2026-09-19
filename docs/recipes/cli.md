@@ -905,6 +905,51 @@ ponto não-comprimido de 65 bytes, ambos em base64url sem padding.
   desloga usuário, o outro derruba subscrição de push.
 - Todo arquivo que esses comandos escrevem sai `0600`.
 
+### E-mail — `tempest email test`
+
+O par que mais custa tempo em configuração de SMTP é STARTTLS (porta 587,
+`SMTP_USE_TLS`) contra TLS implícito (porta 465, `SMTP_USE_SSL`), e o único
+jeito honesto de saber qual o servidor quer é conectar e mandar.
+
+```bash
+tempest email test --to voce@example.com
+tempest email test --to voce@example.com --subject "deploy ok" --body "..."
+tempest email test --to voce@example.com --html      # exercita o caminho multipart
+```
+
+Monta o cliente com `EmailUtils(**settings.email_kwargs())` — a mesma
+construção que o serviço faz —, então mensagem que chega aqui chega pela
+app. Recusa do servidor sai com código 1 carregando a resposta dele, mais a
+linha que lembra o par TLS.
+
+Projeto que não compõe `EmailSettings` sai com código 2 dizendo isso: compor
+só os mixins que se usa é o normal, não defeito.
+
+### Object store — `tempest storage`
+
+```bash
+tempest storage check                       # endpoint responde? bucket existe?
+tempest storage ls                          # chaves do bucket default
+tempest storage ls relatorios/ --flat       # só o nível imediato
+tempest storage put ./nota.pdf --key notas/2026-09.pdf
+tempest storage get notas/2026-09.pdf --out ./baixado.pdf
+tempest storage presign notas/2026-09.pdf --expires 900
+tempest storage rm notas/2026-09.pdf
+```
+
+Tudo passa pelo `AsyncMinIOClient(**settings.minio_kwargs())`, então
+endpoint, credencial, região e — o que mais importa — o **endpoint público**
+usado para assinar URL são os do serviço.
+
+!!! warning "URL assinada com o endpoint interno é válida e inútil"
+    Assinar contra `minio:9000` produz uma URL correta que o browser do
+    usuário não resolve. Configure `MINIO_PUBLIC_ENDPOINT`; o `presign`
+    imprime, no `stderr`, para qual host ele assinou, justamente para esse
+    erro aparecer antes de ir para o cliente.
+
+Bucket vazio lista nada e sai com 0 — "nenhum objeto" é resultado, não falha,
+a mesma convenção dos repositories do SDK.
+
 ### Feature flags — `tempest flags`
 
 Flag existe para ser movida sem deploy. Com o backend Redis, essa mudança

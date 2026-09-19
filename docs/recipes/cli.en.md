@@ -907,6 +907,51 @@ key is the 65-byte uncompressed point, both base64url without padding.
   users out, the other drops push subscriptions.
 - Every file these commands write ends up `0600`.
 
+### Email — `tempest email test`
+
+The pair that costs the most time in SMTP setup is STARTTLS (port 587,
+`SMTP_USE_TLS`) against implicit TLS (port 465, `SMTP_USE_SSL`), and the only
+honest way to learn which one a server wants is to connect and send.
+
+```bash
+tempest email test --to you@example.com
+tempest email test --to you@example.com --subject "deploy ok" --body "..."
+tempest email test --to you@example.com --html      # exercises the multipart path
+```
+
+It builds the client with `EmailUtils(**settings.email_kwargs())` — the same
+construction the service performs — so a message that arrives here arrives
+from the app. A refusal exits 1 carrying the server's own reply, plus the
+line that recalls the TLS pair.
+
+A project that composes no `EmailSettings` exits 2 saying so: composing only
+the mixins you use is ordinary, not broken.
+
+### Object store — `tempest storage`
+
+```bash
+tempest storage check                       # does the endpoint answer? bucket there?
+tempest storage ls                          # keys in the default bucket
+tempest storage ls reports/ --flat          # only the immediate level
+tempest storage put ./note.pdf --key notes/2026-09.pdf
+tempest storage get notes/2026-09.pdf --out ./downloaded.pdf
+tempest storage presign notes/2026-09.pdf --expires 900
+tempest storage rm notes/2026-09.pdf
+```
+
+Everything goes through `AsyncMinIOClient(**settings.minio_kwargs())`, so the
+endpoint, credentials, region and — the one that matters most — the **public
+endpoint** used to sign URLs are the service's own.
+
+!!! warning "A URL signed with the internal endpoint is valid and useless"
+    Signing against `minio:9000` produces a correct URL your user's browser
+    cannot resolve. Set `MINIO_PUBLIC_ENDPOINT`; `presign` prints on `stderr`
+    which host it signed for, precisely so that mistake surfaces before the
+    URL reaches a client.
+
+An empty bucket lists nothing and exits 0 — "no object" is a result, not a
+failure, the same convention the SDK's repositories follow.
+
 ### Feature flags — `tempest flags`
 
 A flag exists to be moved without a deploy. With the Redis backend that move
