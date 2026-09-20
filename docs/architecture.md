@@ -124,6 +124,15 @@ existe). Detalhes em
 [Formulários a partir de schemas Pydantic](recipes/ui-forms.md) e
 [CSS tipado](recipes/ui-css.md).
 
+!!! tip "E quando o frontend é um app, não uma página"
+    A camada `ui` renderiza HTML **no servidor**. Quando a tela precisa de
+    estado no cliente — uma SPA — o caminho continua sendo Python: o
+    **[tempestweb](recipes/tempestweb-frontend.md)** escreve a interface e
+    compila para WASM (ou roda em server-mode), e o SDK serve o build com
+    `make_web_app_router` / `build_web_app`, na mesma origem da API. As duas
+    opções convivem: [Fullstack web](fullstack-web.md) compara quando usar
+    cada uma.
+
 ## Ciclo de vida da requisição
 
 ```mermaid

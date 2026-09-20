@@ -123,6 +123,15 @@ Details in [UI layer](recipes/ui.md),
 [Forms from Pydantic schemas](recipes/ui-forms.md) and
 [Typed CSS](recipes/ui-css.md).
 
+!!! tip "And when the frontend is an app, not a page"
+    The `ui` layer renders HTML **on the server**. When the screen needs
+    client-side state — a SPA — the path is still Python:
+    **[tempestweb](recipes/tempestweb-frontend.md)** writes the interface
+    and compiles it to WASM (or runs it in server-mode), and the SDK serves
+    the build through `make_web_app_router` / `build_web_app`, on the same
+    origin as the API. The two live together:
+    [Fullstack web](fullstack-web.md) compares when to use which.
+
 ## Request lifecycle
 
 ```mermaid
