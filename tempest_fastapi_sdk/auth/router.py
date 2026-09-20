@@ -63,6 +63,8 @@ from tempest_fastapi_sdk.auth.locale import (
 )
 from tempest_fastapi_sdk.auth.page_renderer import render_auth_page
 from tempest_fastapi_sdk.auth.schemas import (
+    ActivationRequestSchema,
+    ActivationResendResponseSchema,
     ActivationResponseSchema,
     AuthUserSchema,
     EmailChangeConfirmSchema,
@@ -662,6 +664,35 @@ def make_auth_router(
             access_token=access,
             refresh_token=refresh,
         )
+
+    @router.post(
+        "/activation/request",
+        response_model=ActivationResendResponseSchema,
+        status_code=status.HTTP_202_ACCEPTED,
+        summary="Re-send the activation link (no credentials needed)",
+        description=(
+            "Issue a fresh activation link for an account that never "
+            "activated — the signup email bounced, went to spam, or the "
+            "tab was closed.\n\n"
+            "**No authentication**, by necessity: logging in is refused "
+            "while the account is inactive, so a route behind a bearer "
+            "token could not help the person it exists for.\n\n"
+            "**Always returns 202** with the same generic message for an "
+            "unknown address, an already-active account and a genuine "
+            "re-send, so probing it cannot enumerate accounts. An active "
+            "account is not re-mailed: the link would authorize nothing."
+        ),
+    )
+    async def activation_request(
+        payload: ActivationRequestSchema,
+        session: AsyncSession = session_dep,
+    ) -> ActivationResendResponseSchema:
+        token = await service.request_activation(session, email=payload.email)
+        await session.commit()
+        message = "If the email matches a pending account, a link was sent."
+        if token is None:
+            return ActivationResendResponseSchema(message=message, activation_url=None)
+        return ActivationResendResponseSchema(message=message, activation_url=token.url)
 
     @router.post(
         "/password-reset/request",

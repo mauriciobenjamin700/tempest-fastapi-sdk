@@ -10,6 +10,7 @@ Desde v0.31.0 o SDK fornece o ciclo completo de conta local — signup com email
     | Quero… | Está logado? | Seção | Endpoints |
     | --- | --- | --- | --- |
     | Criar conta + ativar por e-mail | — | [Setup](#setup-minimo) | `signup` → `activate/{token}` |
+    | **O e-mail de ativação não chegou** | ❌ não | **[Reenviar a ativação](#reenviar-a-ativacao)** | `activation/request` → `activate/{token}` |
     | Entrar | — | [Endpoints](#endpoints) | `login` |
     | **Esqueci minha senha** | ❌ não | **[Recuperação de senha](#recuperacao-de-senha)** | `password-reset/request` → `password-reset/confirm` |
     | Trocar minha senha | ✅ sim | [Trocar senha logado](#trocar-a-senha-logado) | `password-change` |
@@ -168,6 +169,7 @@ uv run tempest db upgrade
 |--------|------|---------------|---------------|
 | POST | `/auth/signup` | `SignupSchema` → `SignupResponseSchema` | Cria user. Não montado quando `AUTH_SIGNUP_ENABLED=false` (v0.272.0+). Emite e-mail (modos A/B) **ou** devolve link no body (modo C). Se `AUTH_AUTO_ACTIVATE=True`, user nasce ativo e JWT pair volta direto (modo D). |
 | POST | `/auth/activate/{token}` | — → `ActivationResponseSchema` | Consome token + `is_active=True` + emite JWT pair. |
+| POST | `/auth/activation/request` *(v0.296.0+)* | `ActivationRequestSchema` → `ActivationResendResponseSchema` | **Não autenticado.** Reemite o link de ativação de uma conta que nunca ativou. Sempre 202 + corpo genérico. |
 | POST | `/auth/login` | `LoginSchema` → `LoginResponseSchema` | Email + senha → JWT pair. Erros genéricos (não enumera contas). |
 | GET | `/auth/me` *(v0.198.0+)* | — → `AuthUserSchema` | **Autenticado.** Devolve a conta dona do bearer token. Nunca serializa o hash da senha: o handler entrega o modelo inteiro e o `response_model` filtra. Troque o schema por um seu com `me_response_model=` pra expor colunas próprias. |
 | POST | `/auth/password-reset/request` | `PasswordResetRequestSchema` → `PasswordResetResponseSchema` | Sempre HTTP 202 + corpo genérico. Link via e-mail (A/B) ou no body (C). |
@@ -400,6 +402,56 @@ ninguém escrever schema à mão.
 colunas, dentro da transação do insert. Nada mais precisa sair do SDK para o
 seu serviço.
 
+
+## Reenviar a ativação
+
+O e-mail de ativação sai **uma vez**, no `signup`. Quando ele não chega —
+filtro de spam, relay que devolveu, aba fechada antes de clicar — a conta
+fica sem saída:
+
+- `signup` de novo responde **409**, o e-mail já está na tabela;
+- `login` responde **401**, porque `is_active` ainda é `False`;
+- `email-verify/request` existe para exatamente esse caso, mas exige
+  **bearer token** — que só sai de um login bem-sucedido.
+
+Isso é um beco sem saída que só o acesso ao banco resolvia.
+`POST /auth/activation/request` é a saída, e ela **não pede credencial
+nenhuma** por necessidade:
+
+```bash
+curl -X POST localhost:8000/auth/activation/request \
+  -H "Content-Type: application/json" \
+  -d '{"email": "ana@example.com"}'
+```
+
+```json
+{
+  "message": "If the email matches a pending account, a link was sent.",
+  "activation_url": "http://localhost:3000/activate?token=..."
+}
+```
+
+O `activation_url` só aparece quando você mesmo entrega o link —
+`AUTH_RETURN_TOKEN_IN_RESPONSE=True` ou `EmailUtils` não configurado. Em
+produção ele vem `null` e o link viaja por e-mail, no idioma que o
+[i18n](#idioma-dos-e-mails-e-paginas-i18n) resolver.
+
+!!! info "202 sempre, com a mesma frase"
+    Endereço desconhecido, conta **já ativa** e reenvio de verdade
+    respondem o mesmo status e o mesmo corpo. É o mesmo cuidado
+    anti-enumeração do `password-reset/request`: quem sondar a rota não
+    descobre quais e-mails têm conta aqui.
+
+!!! warning "Conta já ativa não recebe e-mail"
+    Reemitir para quem já ativou mandaria um link que não autoriza nada — e
+    contaria a um estranho que aquele endereço tem conta. Por isso o caminho
+    para de silenciosamente.
+
+O token novo segue as mesmas regras do original: TTL de
+`AUTH_ACTIVATION_TTL_SECONDS` e, com `AUTH_SINGLE_ACTIVE_TOKEN=True` (o
+default), o pedido anterior é queimado — só o link mais recente funciona.
+
+---
 
 ## Recuperação de senha
 

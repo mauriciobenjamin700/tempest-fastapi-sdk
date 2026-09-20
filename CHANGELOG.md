@@ -5,6 +5,35 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.296.0] — 2026-09-19
+
+O e-mail de ativação sai uma vez. Quando ele não chega, a conta ficava sem
+saída nenhuma que não fosse `UPDATE` no banco.
+
+### Added
+
+- **`POST /auth/activation/request` — reenvio do link de ativação, sem
+  credencial.** Cadastro feito, e-mail perdido no filtro de spam: `signup`
+  de novo responde 409 (e-mail já na tabela), `login` responde 401 (a conta
+  é inativa) e `email-verify/request` — cuja própria descrição se oferece
+  para esse caso — exige bearer token, que só sai de um login que não
+  acontece. A rota nova é o caminho de volta, e **não pede autenticação por
+  necessidade**, não por descuido.
+
+  `UserAuthService.request_activation(session, *, email)` é o verbo por
+  trás dela. Endereço desconhecido, conta **já ativa** e reenvio legítimo
+  respondem o mesmo 202 com a mesma frase — a disciplina anti-enumeração
+  que o `password-reset/request` já tinha. Conta ativa não é remetida: o
+  link não autorizaria nada e o e-mail contaria a um estranho que aquele
+  endereço tem conta aqui. O token novo respeita
+  `AUTH_ACTIVATION_TTL_SECONDS` e, sob `AUTH_SINGLE_ACTIVE_TOKEN` (default),
+  queima o anterior.
+
+  Schemas `ActivationRequestSchema` e `ActivationResendResponseSchema`
+  exportados no topo. `tests/auth/test_activation_resend.py` fixa o
+  caminho inteiro — signup → login 401 → reenvio → ativação → login 200 —
+  e a indistinguibilidade das três respostas.
+
 ## [0.295.0] — 2026-09-19
 
 A CLI sabia **criar** serviço e rodar os gates. Não sabia **operar** o

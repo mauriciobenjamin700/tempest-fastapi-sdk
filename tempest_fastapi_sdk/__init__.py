@@ -415,6 +415,12 @@ from tempest_fastapi_sdk.auth import (
     SUPPORTED_LOCALES as SUPPORTED_LOCALES,
 )
 from tempest_fastapi_sdk.auth import (
+    ActivationRequestSchema as ActivationRequestSchema,
+)
+from tempest_fastapi_sdk.auth import (
+    ActivationResendResponseSchema as ActivationResendResponseSchema,
+)
+from tempest_fastapi_sdk.auth import (
     ActivationResponseSchema as ActivationResponseSchema,
 )
 from tempest_fastapi_sdk.auth import (
@@ -1706,7 +1712,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
 )
 
-__version__: str = "0.295.0"
+__version__: str = "0.296.0"
 
 from tempest_fastapi_sdk.api import (
     OAuthAudienceVerifier as OAuthAudienceVerifier,
@@ -1842,6 +1848,8 @@ __all__: list[str] = [
     "UF",
     "VALIDATION_ERROR_CODE",
     "AccessLogMiddleware",
+    "ActivationRequestSchema",
+    "ActivationResendResponseSchema",
     "ActivationResponseSchema",
     "ActivationToken",
     "AdminAccessPolicy",

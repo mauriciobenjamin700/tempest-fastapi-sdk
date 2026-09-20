@@ -360,6 +360,68 @@ class UserAuthService:
         await session.refresh(user)
         return user
 
+    async def request_activation(
+        self,
+        session: AsyncSession,
+        *,
+        email: str,
+    ) -> ActivationToken | None:
+        """Re-issue the activation link for an account that never activated.
+
+        The signup email is sent once. When it does not arrive — a typo in
+        a spam filter, a bounced relay, a closed tab — the account is
+        stuck: signing up again conflicts on the email, logging in is
+        refused because the user is inactive, and
+        :meth:`request_email_verification` needs a bearer token that only a
+        successful login hands out. This is the way back in, and it needs
+        no credentials by design.
+
+        Nothing is leaked about the address. An unknown email, an already
+        active account and a genuine re-send are indistinguishable to the
+        caller: all three return ``None`` unless the token is meant to be
+        surfaced, and the route answers ``202`` either way. An active
+        account is deliberately *not* re-activated or re-mailed — the link
+        would authorize nothing and the mail would only tell a stranger
+        that the address has an account here.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            email (str): Account email, matched case-insensitively.
+
+        Returns:
+            ActivationToken | None: The token bundle when the caller
+            surfaces the link (``AUTH_RETURN_TOKEN_IN_RESPONSE``, or no
+            ``EmailUtils`` wired) and the account was indeed pending;
+            ``None`` otherwise.
+        """
+        normalized = email.strip().lower()
+        user_result = await session.execute(
+            select(self.user_model).where(
+                self.user_model.email == normalized,
+            )
+        )
+        user: BaseUserModel | None = user_result.scalar_one_or_none()
+        if user is None or user.is_active:
+            return None
+
+        activation = await self._issue_token(
+            session,
+            user_id=user.id,
+            purpose=UserTokenPurpose.ACTIVATION,
+            ttl_seconds=self.auth_settings.AUTH_ACTIVATION_TTL_SECONDS,
+            url_template=self.auth_settings.AUTH_ACTIVATION_URL_TEMPLATE,
+        )
+        await self._maybe_send_activation_email(user, activation)
+
+        if self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE or self.email is None:
+            return ActivationToken(
+                user_id=user.id,
+                token=activation[0],
+                url=activation[1],
+                expires_at=activation[2],
+            )
+        return None
+
     # ------------------------------------------------------------------
     # Login
     # ------------------------------------------------------------------

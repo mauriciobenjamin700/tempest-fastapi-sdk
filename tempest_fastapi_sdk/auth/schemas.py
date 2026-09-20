@@ -157,6 +157,50 @@ class SignupResponseSchema(BaseSchema):
     )
 
 
+class ActivationRequestSchema(BaseSchema):
+    """Request body for ``POST /auth/activation/request``.
+
+    The endpoint always answers ``202`` with the same generic message —
+    for an unknown address, for an account that is already active, and
+    for a genuine re-send alike — so probing it cannot enumerate
+    accounts.
+
+    Attributes:
+        email (EmailStr): Email of the account whose activation link
+            never arrived.
+    """
+
+    email: EmailStr = Field(
+        ...,
+        description="Email of the account waiting for activation.",
+        examples=["user@example.com"],
+    )
+
+
+class ActivationResendResponseSchema(BaseSchema):
+    """Response body for ``POST /auth/activation/request``.
+
+    Attributes:
+        message (str): Generic sentence, identical in every case.
+        activation_url (str | None): The ready-to-use link, set only
+            when the caller surfaces it — ``AUTH_RETURN_TOKEN_IN_RESPONSE``
+            or no ``EmailUtils`` wired — **and** the account was really
+            pending. ``None`` otherwise, including when the link was
+            emailed.
+    """
+
+    message: str = Field(
+        ...,
+        description="Generic confirmation, identical whatever the outcome.",
+        examples=["If the email matches a pending account, a link was sent."],
+    )
+    activation_url: str | None = Field(
+        default=None,
+        description="Activation link, when the caller surfaces it instead of emailing.",
+        examples=[None, "https://app.example.com/activate/abc123"],
+    )
+
+
 class ActivationResponseSchema(BaseSchema):
     """Response body for ``POST /auth/activate/{token}``.
 
@@ -1292,6 +1336,8 @@ class OAuthTokenLoginSchema(BaseSchema):
 
 
 __all__: list[str] = [
+    "ActivationRequestSchema",
+    "ActivationResendResponseSchema",
     "ActivationResponseSchema",
     "ActivationToken",
     "AuthUserSchema",
