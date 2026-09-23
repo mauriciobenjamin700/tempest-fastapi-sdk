@@ -104,7 +104,7 @@ Desde a v0.25.0 o scaffold gera um `docker-compose.yaml` com **apenas** os servi
 | (sempre) | `postgres:18-alpine` | 5432 |
 | `[cache]` | `redis:8-alpine` | 6379 |
 | `[queue]` / `[tasks]` | `rabbitmq:4-management-alpine` | 5672 (AMQP) + 15672 (UI) |
-| `[minio]` | `minio/minio` + bootstrap mc | 9000 (API) + 9001 (Console) |
+| `[minio]` | `quay.io/minio/minio` + bootstrap mc | 9000 (API) + 9001 (Console) |
 | `[email]` | `mailhog/mailhog` | 1025 (SMTP) + 8025 (UI) |
 
 Exemplo — projeto que usa cache + uploads em S3 + emails:
