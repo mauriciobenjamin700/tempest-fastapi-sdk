@@ -427,6 +427,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   missing `exp`; 401 `OAUTH_TOKEN_AUDIENCE_MISMATCH` for another client's
   `aud`/`azp`. Measured against Keycloak 26.3.5: `"aud": "account"` +
   `"azp": "<client>"`, accepted. New extra `[oidc]` (PyJWT + `cryptography`).
+- **RFC 7662 introspection on `OIDCProvider` (v0.297.0)** —
+  `introspection_url=` sends `POST token=` with `client_secret_post`. The
+  recipe used to point `tokeninfo_url` (a `GET ?access_token=`) at
+  Keycloak's `/token/introspect`, which answers **405** to a `GET`
+  (measured, Keycloak 26.3), so every token was refused. A 4xx from the
+  endpoint answers 502 `OAUTH_ERROR`, not 401: the refused credential is
+  the service's. `tokeninfo_url` + `introspection_url` together raise.
 - **`generate_password` guarantees the policy by construction (v0.273.0)** —
   the OAuth callback creates accounts and `hashed_password` stays `NOT NULL`,
   so a password has to be minted. Drawing from a flat alphabet does not work:

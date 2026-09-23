@@ -51,6 +51,29 @@ era **a qual status cada falha corresponde** (issue #288).
   `[auth,http]`, o construtor levanta `ImportError` nomeando o `[oidc]`. O
   `[all]` já trazia os dois pacotes.
 
+### Fixed
+
+- **A introspection do Keycloak recusava todo token.** A receita mandava
+  apontar o `tokeninfo_url` do `OIDCProvider` para
+  `.../token/introspect`, mas o `tokeninfo_url` é chamado como
+  `GET ?access_token=`. A RFC 7662 pede `POST` com autenticação do
+  client. Medido num Keycloak 26.3: o `GET` responde **405** e a rota
+  devolvia 401 `OAUTH_TOKEN_REJECTED` para o token válido.
+  `OIDCProvider(introspection_url=...)` faz o `POST token=` com
+  `client_id`/`client_secret` no corpo (o `client_secret_post` da troca
+  do código). Contra o mesmo Keycloak:
+  - token vivo do nosso client: aceito;
+  - token lixo (`200 {"active": false}`): 401 `OAUTH_TOKEN_REJECTED`;
+  - token de outro client: 401 `OAUTH_TOKEN_AUDIENCE_MISMATCH`;
+  - secret errada (o Keycloak responde 401): **502** `OAUTH_ERROR`, porque
+    a credencial errada é a do serviço, não a de quem chamou;
+  - porta fechada: 502 `OAUTH_PROVIDER_UNAVAILABLE`.
+
+  Passar `tokeninfo_url` e `introspection_url` juntos levanta `ValueError`.
+  A mensagem de `OAUTH_PROVIDER_UNAVAILABLE` ficou genérica ("o provedor de
+  identidade não respondeu"), porque agora cobre as duas chamadas;
+  `details.reason` diz qual falhou.
+
 ### Changed
 
 - A regra de audiência (`aud`/`azp`/`client_id` contra `client_id` +
