@@ -316,7 +316,7 @@ The registered client is what answers the question, through
 | --- | --- |
 | `GoogleOAuthClient` | `GET https://oauth2.googleapis.com/tokeninfo`, comparing `aud` and `azp` |
 | `GitHubOAuthClient` | `POST /applications/{client_id}/token` with `client_id:client_secret` as Basic auth — 200 only for a token this app issued, 404 for anybody else's |
-| `OIDCProvider` | Offline, through the `OIDCTokenVerifier` you pass as `token_verifier=` ([below](#verifying-the-realm-token-offline-oidctokenverifier-v02970)); or the introspection endpoint (RFC 7662) you pass as `tokeninfo_url=`; with neither, the route refuses |
+| `OIDCProvider` | Offline, through the `OIDCTokenVerifier` you pass as `token_verifier=` ([below](#verifying-the-realm-token-offline-oidctokenverifier-v02970)); or the introspection endpoint (RFC 7662) you pass as `introspection_url=`; or a Google-shaped tokeninfo in `tokeninfo_url=`; with none, the route refuses |
 | Your own client | Implement `verify_token_audience`; without the method the route refuses |
 
 !!! warning "A mobile app has one `client_id` per platform"
@@ -367,10 +367,29 @@ keycloak = OIDCProvider(
     authorize_url="https://id.example.com/realms/app/protocol/openid-connect/auth",
     token_url="https://id.example.com/realms/app/protocol/openid-connect/token",
     userinfo_url="https://id.example.com/realms/app/protocol/openid-connect/userinfo",
-    tokeninfo_url="https://id.example.com/realms/app/protocol/openid-connect/token/introspect",
+    introspection_url="https://id.example.com/realms/app/protocol/openid-connect/token/introspect",
     provider_name="keycloak",
 )
 ```
+
+!!! warning "`introspection_url`, not `tokeninfo_url`"
+    Both ask the same question in different shapes. `tokeninfo_url` calls
+    `GET <url>?access_token=<token>`, Google's shape. `introspection_url`
+    does what RFC 7662 asks: `POST token=<token>` authenticating the client
+    with `client_id` and `client_secret` in the body, the same
+    `client_secret_post` the code exchange uses.
+
+    Measured on Keycloak 26.3: the `/token/introspect` endpoint answers
+    **405** to the `GET` — with `tokeninfo_url` pointing at it, **every**
+    token is refused with 401. Passing both at once raises `ValueError`.
+
+    | The endpoint answers | The route answers |
+    | --- | --- |
+    | `active: true` with `azp` of one of your client ids | goes on to the login |
+    | `active` other than `true` | **401** `OAUTH_TOKEN_REJECTED` |
+    | `active: true` with another client's `azp` | **401** `OAUTH_TOKEN_AUDIENCE_MISMATCH` |
+    | 4xx (Keycloak answers **401** to a wrong `client_secret`) | **502** `OAUTH_ERROR`: the wrong credential is the service's, not the caller's |
+    | Down, 5xx or a body that is not JSON | **502** `OAUTH_PROVIDER_UNAVAILABLE` |
 
 !!! info "Refusing is the correct behavior, not a limitation"
     A provider that cannot report a token's audience makes the route answer
@@ -787,8 +806,8 @@ What the callback answers, by cause:
 | **422** | `OAUTH_EMAIL_MISSING` | The provider returned no email |
 | **422** | `OAUTH_CODE_MISSING` | The callback carried neither a `code` nor an `error` |
 | **501** | `OAUTH_AUDIENCE_UNVERIFIABLE` | *(token-in-hand)* The registered client cannot check the token's audience |
-| **502** | `OAUTH_ERROR` | The provider refused the exchange or the userinfo call |
-| **502** | `OAUTH_PROVIDER_UNAVAILABLE` | *(`token_verifier=`)* The realm's JWK Set could not be read — the one 502 where retrying makes sense |
+| **502** | `OAUTH_ERROR` | The provider refused the exchange, the userinfo call, or the client credential on introspection |
+| **502** | `OAUTH_PROVIDER_UNAVAILABLE` | *(`token_verifier=` / `introspection_url=`)* The realm's JWK Set or introspection endpoint could not be read — the one 502 where retrying makes sense |
 
 !!! tip "Branch on `code`, never on the message *(v0.274.0+)*"
     The two **409**s are the pair that matters most, and they arrived
