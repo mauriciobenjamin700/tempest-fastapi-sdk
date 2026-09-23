@@ -44,7 +44,8 @@ fetch` — sem status, sem `code`, sem `X-Request-ID`. O scaffold do
   que já montou a pilha** (já serviu requisição ou subiu). Antes a
   chamada tardia registrava handlers que o Starlette nunca lia; agora
   falha em vez de parecer funcionar, e falha antes de registrar qualquer
-  handler, então a aplicação recusada fica intocada. Chamar duas vezes instala a camada
+  handler, então a aplicação recusada fica intocada. Chamar duas vezes
+  instala a camada
   uma vez só, com o handler da segunda chamada.
 - A exceção **continua sendo re-levantada** depois do envelope, como o
   `ServerErrorMiddleware` já fazia: o servidor ASGI segue logando, e um
