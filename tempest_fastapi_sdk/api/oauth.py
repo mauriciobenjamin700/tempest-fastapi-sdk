@@ -8,7 +8,9 @@ Three concrete clients out of the box:
   fetched from ``GET /user`` instead of an ``id_token``).
 - ``OIDCProvider`` — generic discovery-driven OIDC client; works
   with any conformant IdP (Auth0, Keycloak, Okta, Microsoft Entra,
-  Cognito).
+  Cognito). Pass it an
+  :class:`~tempest_fastapi_sdk.api.oidc_verifier.OIDCTokenVerifier` to
+  check realm-signed tokens offline instead of asking the IdP.
 
 The clients **only** cover the OAuth2 dance — generating an
 authorize URL, exchanging the code for tokens, fetching the user.
@@ -22,9 +24,9 @@ from __future__ import annotations
 
 import base64
 import secrets
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from urllib.parse import urlencode
 
 from tempest_fastapi_sdk.exceptions.base import AppException
@@ -35,12 +37,88 @@ from tempest_fastapi_sdk.exceptions.oauth import (
 )
 from tempest_fastapi_sdk.utils.http_client import HTTPClient
 
+if TYPE_CHECKING:
+    from tempest_fastapi_sdk.api.oidc_verifier import OIDCTokenVerifier
+
 
 class OAuthError(AppException):
     """Raised when an OAuth exchange fails — wraps the IdP message."""
 
     code: str = "OAUTH_ERROR"
     status_code: int = 502
+
+
+class OAuthProviderUnavailableException(OAuthError):  # noqa: N818
+    """Raised when the IdP's signing key set cannot be read.
+
+    The one failure of offline token verification that is **not** the
+    caller's fault: the realm is unreachable, answered with an error
+    status, or served something that is not a usable JWK Set. It answers
+    502 because retrying later can succeed — unlike a token signed by a
+    key nobody published, which is refused with
+    :class:`~tempest_fastapi_sdk.exceptions.oauth.OAuthTokenRejectedException`
+    (401) since retrying the same value can never work.
+
+    Subclasses :class:`OAuthError`, so ``except OAuthError`` keeps
+    catching every provider-side failure.
+    """
+
+    code: str = "OAUTH_PROVIDER_UNAVAILABLE"
+    message: str = "The identity provider's signing keys could not be read"
+
+
+def _assert_audience(
+    payload: Mapping[str, Any],
+    *,
+    accepted: Iterable[str],
+    details: dict[str, Any],
+) -> None:
+    """Compare the audience claims in ``payload`` with our client ids.
+
+    Reads ``aud``, ``azp`` and ``client_id`` together and accepts when
+    any of them is one of ``accepted``. The three spellings cover
+    Google's tokeninfo, RFC 7662 introspection and a Keycloak access
+    token between them — the last one puts the resource it addresses in
+    ``aud`` (usually ``"account"``) and names the client in ``azp``, so
+    comparing ``aud`` alone would refuse every legitimate token.
+
+    Shared by the tokeninfo path of the provider clients and by
+    :class:`~tempest_fastapi_sdk.api.oidc_verifier.OIDCTokenVerifier`,
+    so both refuse under exactly the same rule.
+
+    Args:
+        payload (Mapping[str, Any]): The introspection response or the
+            verified token claims.
+        accepted (Iterable[str]): The client ids this application
+            answers to. Empty strings are ignored.
+        details (dict[str, Any]): Context attached to the raised
+            exception.
+
+    Raises:
+        OAuthAudienceUnverifiableException: When no client id is
+            configured at all. There is nothing to compare against,
+            and comparing against the empty string would refuse every
+            token — or, worse, match a provider that echoes an empty
+            claim. A client built for ``fetch_user`` alone lands here,
+            which is the correct answer: wire the ids before opening
+            the token-in-hand route.
+        OAuthTokenAudienceMismatchException: When none of the audience
+            claims is one of ours.
+    """
+    accepted_ids = {value for value in accepted if value}
+    if not accepted_ids:
+        raise OAuthAudienceUnverifiableException(
+            details={**details, "reason": "no client id"},
+        )
+    audiences: set[str] = set()
+    for key in ("aud", "azp", "client_id"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            audiences.update(str(item) for item in value)
+        elif value:
+            audiences.add(str(value))
+    if not audiences & accepted_ids:
+        raise OAuthTokenAudienceMismatchException(details=details)
 
 
 def _as_bool(value: Any) -> bool | None:
@@ -468,46 +546,11 @@ class _BaseOAuthClient:
             raise OAuthTokenRejectedException(
                 details={"provider": self.provider_name},
             )
-        self._assert_audience(payload)
-
-    def _assert_audience(self, payload: dict[str, Any]) -> None:
-        """Compare the audience claims in ``payload`` with our client ids.
-
-        Accepted are :attr:`client_id` and :attr:`extra_audiences` — the
-        latter being the same application's other platform client ids,
-        which is how a token minted by the Android or iOS app passes
-        while a token minted by somebody else's app does not.
-
-        Args:
-            payload (dict[str, Any]): The introspection response.
-
-        Raises:
-            OAuthAudienceUnverifiableException: When no client id is
-                configured at all. There is nothing to compare against,
-                and comparing against the empty string would refuse
-                every token — or, worse, match a provider that echoes
-                an empty claim. A client built for ``fetch_user`` alone
-                lands here, which is the correct answer: wire the ids
-                before opening the token-in-hand route.
-            OAuthTokenAudienceMismatchException: When none of the
-                audience claims is one of ours.
-        """
-        accepted = {value for value in (self.client_id, *self.extra_audiences) if value}
-        if not accepted:
-            raise OAuthAudienceUnverifiableException(
-                details={"provider": self.provider_name, "reason": "no client id"},
-            )
-        audiences: set[str] = set()
-        for key in ("aud", "azp", "client_id"):
-            value = payload.get(key)
-            if isinstance(value, list):
-                audiences.update(str(item) for item in value)
-            elif value:
-                audiences.add(str(value))
-        if not audiences & accepted:
-            raise OAuthTokenAudienceMismatchException(
-                details={"provider": self.provider_name},
-            )
+        _assert_audience(
+            payload,
+            accepted=(self.client_id, *self.extra_audiences),
+            details={"provider": self.provider_name},
+        )
 
     async def fetch_user(self, tokens: OAuthTokens) -> OAuthUser:
         """Resolve the access token to a normalized :class:`OAuthUser`.
@@ -713,6 +756,12 @@ class OIDCProvider(_BaseOAuthClient):
     or fetch them once at boot from the IdP's discovery document
     at ``${issuer}/.well-known/openid-configuration`` and pass the
     URLs in. Default scopes: ``openid email profile``.
+
+    With a ``token_verifier``, the access token is checked **offline**
+    against the realm's published signing keys: the audience check and
+    the identity both come from the verified claims, and neither
+    ``tokeninfo_url`` nor ``userinfo_url`` is called. Without one, the
+    provider asks the IdP, exactly as before.
     """
 
     def __init__(
@@ -729,6 +778,7 @@ class OIDCProvider(_BaseOAuthClient):
         scopes: list[str] | None = None,
         http_client: HTTPClient | None = None,
         extra_audiences: Sequence[str] = (),
+        token_verifier: OIDCTokenVerifier | None = None,
     ) -> None:
         """Initialize.
 
@@ -754,7 +804,14 @@ class OIDCProvider(_BaseOAuthClient):
             extra_audiences (Sequence[str]): Other client ids of the
                 same application whose tokens the token-in-hand route
                 accepts.
+            token_verifier (OIDCTokenVerifier | None): Offline verifier
+                for the realm's signed access tokens. When set,
+                :meth:`verify_token_audience` and :meth:`fetch_user`
+                read the verified claims instead of calling
+                ``tokeninfo_url`` / ``userinfo_url``. ``None`` keeps the
+                round-trip behavior.
         """
+        self._token_verifier: OIDCTokenVerifier | None = token_verifier
         self._authorize_url: str = authorize_url
         self._token_url: str = token_url
         self._userinfo_url: str | None = userinfo_url
@@ -811,6 +868,84 @@ class OIDCProvider(_BaseOAuthClient):
         """
         return self._tokeninfo_url
 
+    async def _verified_claims(
+        self,
+        tokens: OAuthTokens,
+        verifier: OIDCTokenVerifier,
+    ) -> dict[str, Any]:
+        """Verify the access token offline and return its claims.
+
+        Args:
+            tokens (OAuthTokens): The bundle to verify.
+            verifier (OIDCTokenVerifier): The configured verifier.
+
+        Returns:
+            dict[str, Any]: The verified claims.
+        """
+        return await verifier.verify(
+            tokens.access_token,
+            accepted_audiences=(self.client_id, *self.extra_audiences),
+        )
+
+    async def verify_token_audience(self, tokens: OAuthTokens) -> None:
+        """Refuse a token minted for another application, or forged.
+
+        With a ``token_verifier`` the token's signature, ``iss``,
+        ``exp`` and audience are checked offline against the realm's
+        signing keys. Without one, the IdP's ``tokeninfo_url`` is asked,
+        as in :meth:`_BaseOAuthClient.verify_token_audience`.
+
+        Args:
+            tokens (OAuthTokens): The bundle the caller presented.
+
+        Raises:
+            OAuthTokenRejectedException: When the token is malformed,
+                signed by an unknown key, expired or from another
+                issuer — or when the IdP refuses it.
+            OAuthTokenAudienceMismatchException: When the token was
+                issued to a different client.
+            OAuthProviderUnavailableException: When the realm's signing
+                keys cannot be read.
+            OAuthAudienceUnverifiableException: When neither a verifier
+                nor a ``tokeninfo_url`` is configured.
+        """
+        if self._token_verifier is None:
+            await super().verify_token_audience(tokens)
+            return
+        await self._verified_claims(tokens, self._token_verifier)
+
+    async def fetch_user(self, tokens: OAuthTokens) -> OAuthUser:
+        """Resolve the access token to a normalized :class:`OAuthUser`.
+
+        With a ``token_verifier`` the identity is read from the verified
+        access-token claims with no round-trip to the IdP. The token is
+        verified again here rather than trusted from an earlier call —
+        the signing key is cached, so the second check costs no request.
+        The claims only carry ``email`` / ``name`` when the realm puts
+        them in the access token.
+
+        Args:
+            tokens (OAuthTokens): The bundle to resolve.
+
+        Returns:
+            OAuthUser: Normalized identity.
+
+        Raises:
+            OAuthTokenRejectedException: When offline verification
+                refuses the token.
+            OAuthTokenAudienceMismatchException: When the token was
+                issued to a different client.
+            OAuthProviderUnavailableException: When the realm's signing
+                keys cannot be read.
+            OAuthError: When the userinfo endpoint rejects the token
+                (no verifier configured).
+        """
+        if self._token_verifier is None:
+            return await super().fetch_user(tokens)
+        return self._parse_user(
+            await self._verified_claims(tokens, self._token_verifier)
+        )
+
     def _parse_user(self, payload: dict[str, Any]) -> OAuthUser:
         return OAuthUser(
             provider=self.provider_name,
@@ -828,6 +963,7 @@ __all__: list[str] = [
     "GoogleOAuthClient",
     "OAuthClient",
     "OAuthError",
+    "OAuthProviderUnavailableException",
     "OAuthTokens",
     "OAuthUser",
     "OIDCProvider",

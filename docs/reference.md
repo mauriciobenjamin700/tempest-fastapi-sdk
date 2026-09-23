@@ -775,6 +775,9 @@ o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.api.oauth.OAuthUser
 ::: tempest_fastapi_sdk.api.oauth.OAuthTokens
 ::: tempest_fastapi_sdk.api.oauth.OAuthError
+::: tempest_fastapi_sdk.api.oauth.OAuthProviderUnavailableException
+::: tempest_fastapi_sdk.api.oidc_verifier.OIDCTokenVerifier
+::: tempest_fastapi_sdk.api.oidc_verifier.ALWAYS_REQUIRED_CLAIMS
 ::: tempest_fastapi_sdk.api.oauth.generate_oauth_state
 ::: tempest_fastapi_sdk.api.oauth.OAuthClient
 ::: tempest_fastapi_sdk.api.middlewares.cors.apply_cors
