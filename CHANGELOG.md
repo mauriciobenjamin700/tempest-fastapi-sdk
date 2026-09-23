@@ -95,9 +95,9 @@ saída nenhuma que não fosse `UPDATE` no banco.
   - porta fechada: 502 `OAUTH_PROVIDER_UNAVAILABLE`.
 
   Passar `tokeninfo_url` e `introspection_url` juntos levanta `ValueError`.
-  A mensagem de `OAUTH_PROVIDER_UNAVAILABLE` ficou genérica ("o provedor de
-  identidade não respondeu"), porque agora cobre as duas chamadas;
-  `details.reason` diz qual falhou.
+  A mensagem de `OAUTH_PROVIDER_UNAVAILABLE` ficou genérica ("Não foi
+  possível falar com o provedor de identidade"), porque agora cobre as duas
+  chamadas; `details.reason` diz qual falhou.
 
 ### Changed
 
