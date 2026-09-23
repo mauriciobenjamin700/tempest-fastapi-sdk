@@ -17,18 +17,26 @@ file gives the developer a one-command path to a real Postgres
 when they need it.
 
 The image tags are pinned to versions known to work with the SDK
-at release time. Bumping any of them should go through the smoke
-suite first.
+at release time — bump intentionally, not by accident. Bumping any
+of them should go through the smoke suite first.
+
+The MinIO images are pulled from ``quay.io``, not Docker Hub. MinIO
+deleted ``minio/minio`` and ``minio/mc`` from Docker Hub on
+2026-09-11, so the unqualified names fail at ``docker compose pull``
+with ``pull access denied``. The same release tags are still served
+by ``quay.io/minio/*`` as multi-arch manifest lists. This is a
+stopgap: the upstream repository is archived, so these images get
+no security fixes, and the registry can be withdrawn the same way.
+The replacement is an S3-compatible image we publish ourselves.
 """
 
 from __future__ import annotations
 
-# Pinned image tags — bump intentionally, not by accident.
 POSTGRES_IMAGE: str = "postgres:18-alpine"
 REDIS_IMAGE: str = "redis:8-alpine"
 RABBITMQ_IMAGE: str = "rabbitmq:4-management-alpine"
-MINIO_IMAGE: str = "minio/minio:RELEASE.2024-12-13T22-19-12Z"
-MINIO_MC_IMAGE: str = "minio/mc:RELEASE.2024-11-21T17-21-54Z"
+MINIO_IMAGE: str = "quay.io/minio/minio:RELEASE.2024-12-13T22-19-12Z"
+MINIO_MC_IMAGE: str = "quay.io/minio/mc:RELEASE.2024-11-21T17-21-54Z"
 MAILHOG_IMAGE: str = "mailhog/mailhog:v1.0.1"
 
 

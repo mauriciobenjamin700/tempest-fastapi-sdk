@@ -31,6 +31,15 @@ fetch` — sem status, sem `code`, sem `X-Request-ID`. O scaffold do
   exceção levantada por um middleware, que a camada interna não vê.
   Medido no Starlette 0.46.0 (o piso que `fastapi>=0.141.1` aceita) e no
   1.6.0.
+- **O compose do `[minio]` volta a subir.** A MinIO apagou `minio/minio`
+  e `minio/mc` do Docker Hub em 2026-09-11, então todo
+  `tempest new --extras minio` e `tempest generate --docker` gerava um
+  compose que falhava no `docker compose pull` com `pull access denied`.
+  As duas imagens agora vêm de `quay.io/minio/*`, com as mesmas tags
+  (manifest list multi-arch, `curl` do healthcheck presente). É stopgap:
+  o repositório upstream está arquivado e não recebe correção de
+  segurança. Compose já gerado precisa trocar o prefixo à mão ou rodar
+  `tempest generate --docker --force` de novo.
 
 ### Added
 

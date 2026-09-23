@@ -78,6 +78,27 @@ class TestGenerateDocker:
         compose = (tmp_path / "docker-compose.yaml").read_text()
         assert "minio/minio:RELEASE" in compose
 
+    def test_minio_images_are_pulled_from_quay(self, tmp_path: Path) -> None:
+        """Pin the registry of both MinIO images to ``quay.io``.
+
+        MinIO deleted ``minio/minio`` and ``minio/mc`` from Docker Hub on
+        2026-09-11, so an unqualified image name fails at pull time. A
+        revert to the Docker Hub name would still pass every other test
+        here, which only look at the tag.
+        """
+        _seed_project(tmp_path, name="svc", extras="minio")
+        runner.invoke(app, ["generate", "--docker", "--path", str(tmp_path)])
+        compose = (tmp_path / "docker-compose.yaml").read_text()
+        images = [
+            line.split("image:", 1)[1].strip()
+            for line in compose.splitlines()
+            if line.strip().startswith("image:") and "minio" in line
+        ]
+        assert images == [
+            "quay.io/minio/minio:RELEASE.2024-12-13T22-19-12Z",
+            "quay.io/minio/mc:RELEASE.2024-11-21T17-21-54Z",
+        ]
+
     def test_refuses_overwrite_without_force(self, tmp_path: Path) -> None:
         _seed_project(tmp_path, name="svc", extras="auth")
         (tmp_path / "docker-compose.yaml").write_text("hand-edited", encoding="utf-8")
