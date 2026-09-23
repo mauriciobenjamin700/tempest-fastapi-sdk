@@ -682,7 +682,7 @@ keycloak: OIDCProvider = OIDCProvider(
 )
 ```
 
-Instale o extra: `pip install "tempest-fastapi-sdk[oidc,http]"`. O `[oidc]`
+Instale o extra: `pip install "tempest-fastapi-sdk[oidc]"`. O `[oidc]`
 traz o PyJWT **com** `cryptography`, que o PyJWT exige para RS256 e chaves EC;
 só com o `[auth]` o construtor levanta `ImportError` nomeando o `[oidc]`.
 

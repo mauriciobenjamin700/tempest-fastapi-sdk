@@ -511,5 +511,7 @@ class TestTheExtraIsRequired:
 
         monkeypatch.setattr(oidc_verifier, "_has_crypto", False)
 
-        with pytest.raises(ImportError, match=r"\[oidc\]"):
+        with pytest.raises(
+            ImportError, match=r'pip install "tempest-fastapi-sdk\[oidc\]"'
+        ):
             OIDCTokenVerifier(ISSUER, JWKS_URL, http_client=HTTPClient())

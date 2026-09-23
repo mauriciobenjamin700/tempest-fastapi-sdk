@@ -5,6 +5,21 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.297.1] — 2026-09-23
+
+### Fixed
+
+- **A instrução de instalação do `OIDCTokenVerifier` pedia um extra que não
+  acrescenta nada.** O `ImportError` do construtor, a receita de OAuth, a
+  tabela de extras do README e a de instalação mandavam instalar
+  `[oidc,http]` ou usar o `[oidc]` "junto com `[http]`". O `[http]` traz só
+  `httpx>=0.28.1`, que o pacote base já declara com o mesmo piso. Medido
+  numa venv vazia com a 0.297.0 do PyPI e **só** `[oidc]`: o caminho
+  inteiro — busca do JWK Set pelo `HTTPClient` default contra um servidor
+  local e verificação de um token RS256 — passou. A mensagem agora diz
+  `pip install "tempest-fastapi-sdk[oidc]"`, e o teste fixa a instrução
+  exata em vez de só o nome do extra.
+
 ## [0.297.0] — 2026-09-23
 
 O `OIDCProvider` resolvia a identidade pelo `userinfo` e a audiência pelo
@@ -146,8 +161,7 @@ fetch` — sem status, sem `code`, sem `X-Request-ID`. O scaffold do
   chamada tardia registrava handlers que o Starlette nunca lia; agora
   falha em vez de parecer funcionar, e falha antes de registrar qualquer
   handler, então a aplicação recusada fica intocada. Chamar duas vezes
-  instala a camada
-  uma vez só, com o handler da segunda chamada.
+  instala a camada uma vez só, com o handler da segunda chamada.
 - A exceção **continua sendo re-levantada** depois do envelope, como o
   `ServerErrorMiddleware` já fazia: o servidor ASGI segue logando, e um
   `TestClient` com o default `raise_server_exceptions=True` segue
