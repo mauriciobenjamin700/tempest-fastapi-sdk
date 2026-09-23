@@ -50,6 +50,12 @@ fetch` — sem status, sem `code`, sem `X-Request-ID`. O scaffold do
   `TestClient` com o default `raise_server_exceptions=True` segue
   levantando no teste do consumidor. Falha depois de a resposta começar
   (stream quebrado no meio) é re-levantada sem segunda resposta.
+- **Stream quebrado no meio passa a chegar ao `on_server_error`.** O
+  callback vai como `BackgroundTask` da resposta de erro, e uma resposta
+  que nunca é enviada nunca roda a background: medido antes, a falha era
+  logada e o `on_server_error` não disparava nenhuma vez. Agora a camada
+  interna roda a background da resposta que o handler construiu, e o
+  callback dispara uma vez, com o log também uma vez.
 
 ## [0.295.0] — 2026-09-19
 

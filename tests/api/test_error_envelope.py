@@ -237,6 +237,12 @@ class TestEachFailureIsHandledOnce:
         unhandled = [r for r in caplog.records if "Unhandled exception" in r.message]
         assert len(unhandled) == 1
 
+    def test_a_mid_stream_failure_reaches_on_server_error_once(self) -> None:
+        calls: list[str] = []
+        with pytest.raises(RuntimeError):
+            TestClient(self._app(calls)).get("/stream")
+        assert calls == ["mid-stream"]
+
     def test_the_error_is_logged_once(self, caplog: pytest.LogCaptureFixture) -> None:
         client = TestClient(self._app([]), raise_server_exceptions=False)
         with caplog.at_level("ERROR", logger="tempest_fastapi_sdk.api.handlers"):

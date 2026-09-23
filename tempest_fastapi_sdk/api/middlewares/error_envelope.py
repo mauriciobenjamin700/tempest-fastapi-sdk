@@ -78,8 +78,14 @@ class ErrorEnvelopeMiddleware:
 
     When the failure happens after the response already started (a
     stream that breaks mid-body), the status is already on the wire and a
-    second response cannot be sent, so the exception is re-raised
-    untouched.
+    second response cannot be sent. The handler still runs, so the
+    failure is logged, and the ``background`` task of the response it
+    builds runs here — that is where
+    :func:`~tempest_fastapi_sdk.register_exception_handlers` attaches
+    ``on_server_error``, and a response that is never sent never runs its
+    background. The exception is then flagged and re-raised. Before this,
+    measured, a broken stream was logged but never reached
+    ``on_server_error``.
 
     :func:`~tempest_fastapi_sdk.register_exception_handlers` installs this
     layer itself, as the innermost user middleware, so its position does
@@ -113,8 +119,9 @@ class ErrorEnvelopeMiddleware:
 
         Raises:
             Exception: The exception the downstream app raised, always,
-                after the envelope was sent (or untouched, when the
-                response had already started).
+                after the envelope was sent — or, when the response had
+                already started, after the handler logged it and its
+                background task ran.
         """
         if scope["type"] != "http":
             await self.app(scope, receive, send)
@@ -131,10 +138,12 @@ class ErrorEnvelopeMiddleware:
         try:
             await self.app(scope, receive, _send)
         except Exception as exc:
-            if started:
-                raise
             response = await self.handler(Request(scope, receive), exc)
-            await response(scope, receive, send)
+            if started:
+                if response.background is not None:
+                    await response.background()
+            else:
+                await response(scope, receive, send)
             setattr(exc, _ENVELOPED_FLAG, True)
             raise
 

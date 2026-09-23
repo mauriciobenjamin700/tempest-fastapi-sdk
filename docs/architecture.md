@@ -222,7 +222,7 @@ True
 !!! note "O que continua igual"
     - A camada **não decide CORS**. Uma origem fora da lista continua sem o header, também no 500.
     - Depois de enviar o envelope, a exceção é **re-levantada**, como o Starlette já fazia: o servidor ASGI continua logando, e um `TestClient` com o default `raise_server_exceptions=True` continua levantando no seu teste.
-    - Uma falha depois que a resposta começou (stream quebrado no meio) é re-levantada sem segunda resposta, porque o status já foi para a rede.
+    - Uma falha depois que a resposta começou (stream quebrado no meio) é re-levantada sem segunda resposta, porque o status já foi para a rede. Ela é logada e chega ao `on_server_error` uma vez, como o 500 comum.
     - `register_exception_handlers` precisa rodar **antes** de a aplicação subir; depois disso a pilha está montada e ele levanta `RuntimeError`.
 
 ## Para onde ir agora

@@ -221,7 +221,7 @@ True
 !!! note "What stays the same"
     - The layer **does not decide CORS**. An origin outside the allow-list still gets no header, on the 500 too.
     - After sending the envelope the exception is **re-raised**, as Starlette already did: the ASGI server still logs it, and a `TestClient` with the default `raise_server_exceptions=True` still raises it in your test.
-    - A failure after the response started (a stream that breaks mid-body) is re-raised with no second response, because the status is already on the wire.
+    - A failure after the response started (a stream that breaks mid-body) is re-raised with no second response, because the status is already on the wire. It is logged and reaches `on_server_error` once, like a plain 500.
     - `register_exception_handlers` must run **before** the application starts; after that the stack is built and it raises `RuntimeError`.
 
 ## Where to go next
