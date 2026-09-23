@@ -513,7 +513,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "PDF_TEMPLATE_NOT_FOUND": "Template não encontrado",
         "OAUTH_ERROR": "O provedor de identidade respondeu com um erro",
         "OAUTH_PROVIDER_UNAVAILABLE": (
-            "Não foi possível ler as chaves de assinatura do provedor de identidade"
+            "Não foi possível falar com o provedor de identidade"
         ),
         "FIREBASE_TOKEN_MISSING": "Autenticação necessária",
         "FIREBASE_TOKEN_INVALID": "Token do Firebase inválido",
@@ -587,9 +587,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "PDF_ASSET_REFUSED": ("The document referenced an asset that is not allowed"),
         "PDF_TEMPLATE_NOT_FOUND": "Template not found",
         "OAUTH_ERROR": "The identity provider answered with an error",
-        "OAUTH_PROVIDER_UNAVAILABLE": (
-            "The identity provider's signing keys could not be read"
-        ),
+        "OAUTH_PROVIDER_UNAVAILABLE": ("The identity provider could not be reached"),
         "FIREBASE_TOKEN_MISSING": "Authentication required",
         "FIREBASE_TOKEN_INVALID": "Invalid Firebase ID token",
         "FIREBASE_TOKEN_EXPIRED": "Firebase ID token expired",

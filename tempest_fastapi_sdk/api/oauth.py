@@ -35,7 +35,12 @@ from tempest_fastapi_sdk.exceptions.oauth import (
     OAuthTokenAudienceMismatchException,
     OAuthTokenRejectedException,
 )
-from tempest_fastapi_sdk.utils.http_client import HTTPClient
+from tempest_fastapi_sdk.utils.http_client import CircuitOpenError, HTTPClient
+
+try:
+    import httpx as _httpx
+except ImportError:  # pragma: no cover - guarded by [http] extra
+    _httpx: Any = None  # type: ignore[no-redef]
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.api.oidc_verifier import OIDCTokenVerifier
@@ -49,11 +54,12 @@ class OAuthError(AppException):
 
 
 class OAuthProviderUnavailableException(OAuthError):  # noqa: N818
-    """Raised when the IdP's signing key set cannot be read.
+    """Raised when the IdP cannot answer whether a token is valid.
 
-    The one failure of offline token verification that is **not** the
-    caller's fault: the realm is unreachable, answered with an error
-    status, or served something that is not a usable JWK Set. It answers
+    The failure of token verification that is **not** the caller's
+    fault: the realm is unreachable, answered with an error status, or
+    served something that is not a usable JWK Set or introspection
+    response. ``details["reason"]`` names which call failed. It answers
     502 because retrying later can succeed — unlike a token signed by a
     key nobody published, which is refused with
     :class:`~tempest_fastapi_sdk.exceptions.oauth.OAuthTokenRejectedException`
@@ -64,7 +70,7 @@ class OAuthProviderUnavailableException(OAuthError):  # noqa: N818
     """
 
     code: str = "OAUTH_PROVIDER_UNAVAILABLE"
-    message: str = "The identity provider's signing keys could not be read"
+    message: str = "The identity provider could not be reached"
 
 
 def _assert_audience(
@@ -484,8 +490,11 @@ class _BaseOAuthClient:
 
         ``None`` — the default — means this client cannot answer the
         question, and the token-in-hand route refuses rather than
-        guessing. Point it at the provider's tokeninfo / RFC 7662
-        introspection endpoint to enable that route.
+        guessing. It is called as ``GET <url>?access_token=<token>``,
+        the shape of Google's tokeninfo — **not** RFC 7662
+        introspection, which is a ``POST`` that authenticates the
+        client; :class:`OIDCProvider` takes that one as
+        ``introspection_url``.
 
         Returns:
             str | None: The configured endpoint, or ``None``.
@@ -774,6 +783,7 @@ class OIDCProvider(_BaseOAuthClient):
         token_url: str,
         userinfo_url: str | None = None,
         tokeninfo_url: str | None = None,
+        introspection_url: str | None = None,
         provider_name: str = "oidc",
         scopes: list[str] | None = None,
         http_client: HTTPClient | None = None,
@@ -792,9 +802,20 @@ class OIDCProvider(_BaseOAuthClient):
                 ``None`` requires you to override
                 :meth:`_parse_user` to read claims from the
                 ``id_token``.
-            tokeninfo_url (str | None): IdP's token-introspection
-                endpoint (RFC 7662), used to check which application a
-                presented token was issued to. ``None`` leaves
+            tokeninfo_url (str | None): A tokeninfo endpoint called as
+                ``GET <url>?access_token=<token>`` (Google's shape), used
+                to check which application a presented token was issued
+                to. **Not** for RFC 7662 introspection: measured on
+                Keycloak 26.3, that ``GET`` answers ``405`` and every
+                token is refused — use ``introspection_url``.
+            introspection_url (str | None): The IdP's RFC 7662
+                introspection endpoint (Keycloak:
+                ``<issuer>/protocol/openid-connect/token/introspect``).
+                Called as ``POST token=<token>`` authenticated with
+                ``client_id`` / ``client_secret`` in the form body, the
+                same ``client_secret_post`` the code exchange uses.
+                ``None`` of this, ``tokeninfo_url`` and
+                ``token_verifier`` leaves
                 ``POST /auth/oauth/{provider}/token`` refusing for this
                 provider — the redirect flow is unaffected.
             provider_name (str): Key embedded in
@@ -810,7 +831,18 @@ class OIDCProvider(_BaseOAuthClient):
                 read the verified claims instead of calling
                 ``tokeninfo_url`` / ``userinfo_url``. ``None`` keeps the
                 round-trip behavior.
+
+        Raises:
+            ValueError: When both ``tokeninfo_url`` and
+                ``introspection_url`` are given: they are two ways to
+                ask the same question, and silently preferring one would
+                hide a misconfiguration.
         """
+        if tokeninfo_url is not None and introspection_url is not None:
+            raise ValueError(
+                "pass tokeninfo_url or introspection_url, not both",
+            )
+        self._introspection_url: str | None = introspection_url
         self._token_verifier: OIDCTokenVerifier | None = token_verifier
         self._authorize_url: str = authorize_url
         self._token_url: str = token_url
@@ -868,6 +900,101 @@ class OIDCProvider(_BaseOAuthClient):
         """
         return self._tokeninfo_url
 
+    @property
+    def introspection_url(self) -> str | None:
+        """The IdP's RFC 7662 introspection endpoint, when one was wired.
+
+        Returns:
+            str | None: The endpoint URL, or ``None``.
+        """
+        return self._introspection_url
+
+    def _unavailable(self, reason: str) -> OAuthProviderUnavailableException:
+        """Build the 502 for an introspection endpoint that did not answer.
+
+        Args:
+            reason (str): Which part of the call failed.
+
+        Returns:
+            OAuthProviderUnavailableException: The exception to raise.
+        """
+        return OAuthProviderUnavailableException(
+            details={"provider": self.provider_name, "reason": reason},
+        )
+
+    async def _introspect(self, tokens: OAuthTokens, url: str) -> None:
+        """Ask the RFC 7662 introspection endpoint about the token.
+
+        Measured against Keycloak 26.3: an unknown or garbage token
+        answers ``200 {"active": false}``, a wrong client secret
+        answers ``401``, and a live token answers ``active: true`` with
+        ``aud: "account"`` and ``azp`` naming the client — so the
+        audience check reads ``azp`` too.
+
+        The status taxonomy follows whose fault the failure is:
+
+        * ``active`` other than ``true`` →
+          :class:`OAuthTokenRejectedException` (401). RFC 7662 makes
+          ``active`` required, so a missing one is not trusted.
+        * Transport error, open circuit, 5xx, or a body that is not a
+          JSON object → :class:`OAuthProviderUnavailableException`
+          (502); retrying later can work.
+        * Any other 4xx → :class:`OAuthError` (502). The introspection
+          endpoint refused **our** client credentials or request, and a
+          401 to the caller would blame them for our configuration.
+
+        Args:
+            tokens (OAuthTokens): The bundle the caller presented.
+            url (str): The introspection endpoint.
+
+        Raises:
+            OAuthTokenRejectedException: When the token is not active.
+            OAuthTokenAudienceMismatchException: When the token was
+                issued to another client.
+            OAuthProviderUnavailableException: When the endpoint cannot
+                be reached or answers 5xx / non-JSON.
+            OAuthError: When the endpoint refuses our client.
+        """
+        assert _httpx is not None, "guarded by HTTPClient"
+        try:
+            response = await self._http.post(
+                url,
+                data={
+                    "token": tokens.access_token,
+                    "token_type_hint": "access_token",
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                },
+                headers={"Accept": "application/json"},
+            )
+        except (_httpx.HTTPError, CircuitOpenError) as error:
+            raise self._unavailable("unreachable") from error
+        if response.status_code >= 500:
+            raise self._unavailable(f"status {response.status_code}")
+        if response.status_code >= 400:
+            raise OAuthError(
+                message=(f"introspection refused the client ({response.status_code})"),
+                details={
+                    "provider": self.provider_name,
+                    "status": response.status_code,
+                },
+            )
+        try:
+            payload: Any = response.json()
+        except ValueError as error:
+            raise self._unavailable("not json") from error
+        if not isinstance(payload, dict):
+            raise self._unavailable("not an introspection response")
+        if payload.get("active") is not True:
+            raise OAuthTokenRejectedException(
+                details={"provider": self.provider_name, "reason": "inactive"},
+            )
+        _assert_audience(
+            payload,
+            accepted=(self.client_id, *self.extra_audiences),
+            details={"provider": self.provider_name},
+        )
+
     async def _verified_claims(
         self,
         tokens: OAuthTokens,
@@ -892,8 +1019,10 @@ class OIDCProvider(_BaseOAuthClient):
 
         With a ``token_verifier`` the token's signature, ``iss``,
         ``exp`` and audience are checked offline against the realm's
-        signing keys. Without one, the IdP's ``tokeninfo_url`` is asked,
-        as in :meth:`_BaseOAuthClient.verify_token_audience`.
+        signing keys. Without one, an ``introspection_url`` is asked by
+        RFC 7662 ``POST`` (see :meth:`_introspect`), and without that the
+        ``tokeninfo_url`` is asked by ``GET``, as in
+        :meth:`_BaseOAuthClient.verify_token_audience`.
 
         Args:
             tokens (OAuthTokens): The bundle the caller presented.
@@ -905,14 +1034,19 @@ class OIDCProvider(_BaseOAuthClient):
             OAuthTokenAudienceMismatchException: When the token was
                 issued to a different client.
             OAuthProviderUnavailableException: When the realm's signing
-                keys cannot be read.
-            OAuthAudienceUnverifiableException: When neither a verifier
-                nor a ``tokeninfo_url`` is configured.
+                keys or its introspection endpoint cannot be read.
+            OAuthError: When the introspection endpoint refuses our
+                client credentials.
+            OAuthAudienceUnverifiableException: When no verifier,
+                ``introspection_url`` or ``tokeninfo_url`` is configured.
         """
-        if self._token_verifier is None:
-            await super().verify_token_audience(tokens)
+        if self._token_verifier is not None:
+            await self._verified_claims(tokens, self._token_verifier)
             return
-        await self._verified_claims(tokens, self._token_verifier)
+        if self._introspection_url is not None:
+            await self._introspect(tokens, self._introspection_url)
+            return
+        await super().verify_token_audience(tokens)
 
     async def fetch_user(self, tokens: OAuthTokens) -> OAuthUser:
         """Resolve the access token to a normalized :class:`OAuthUser`.
