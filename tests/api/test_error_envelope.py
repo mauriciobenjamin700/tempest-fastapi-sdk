@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.websockets import WebSocket
 
 from tempest_fastapi_sdk import (
@@ -156,8 +157,52 @@ class TestRegistration:
     def test_registering_on_a_started_app_raises(self) -> None:
         app = _routes(FastAPI())
         TestClient(app).get("/ok")
+        before = dict(app.exception_handlers)
+        middleware_before = list(app.user_middleware)
         with pytest.raises(RuntimeError, match="before the application starts"):
             register_exception_handlers(app)
+        assert app.exception_handlers == before
+        assert app.user_middleware == middleware_before
+
+    def test_a_middleware_failure_still_reaches_the_catch_all(self) -> None:
+        class Failing:
+            """A pure ASGI middleware that raises before calling the app."""
+
+            def __init__(self, app: ASGIApp) -> None:
+                """Wrap ``app``.
+
+                Args:
+                    app (ASGIApp): The downstream app.
+                """
+                self.app: ASGIApp = app
+
+            async def __call__(
+                self,
+                scope: Scope,
+                receive: Receive,
+                send: Send,
+            ) -> None:
+                """Raise on every HTTP request.
+
+                Args:
+                    scope (Scope): The ASGI scope.
+                    receive (Receive): The receive channel.
+                    send (Send): The send channel.
+
+                Raises:
+                    RuntimeError: Always, for HTTP.
+                """
+                if scope["type"] == "http":
+                    raise RuntimeError("middleware failed")
+                await self.app(scope, receive, send)
+
+        app = _routes(FastAPI())
+        register_exception_handlers(app)
+        app.add_middleware(Failing)
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.get("/ok")
+        assert response.status_code == 500
+        assert response.json()["code"] == "INTERNAL_SERVER_ERROR"
 
 
 class TestMiddlewareStandalone:
