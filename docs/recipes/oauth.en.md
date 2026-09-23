@@ -316,7 +316,7 @@ The registered client is what answers the question, through
 | --- | --- |
 | `GoogleOAuthClient` | `GET https://oauth2.googleapis.com/tokeninfo`, comparing `aud` and `azp` |
 | `GitHubOAuthClient` | `POST /applications/{client_id}/token` with `client_id:client_secret` as Basic auth — 200 only for a token this app issued, 404 for anybody else's |
-| `OIDCProvider` | The introspection endpoint (RFC 7662) you pass as `tokeninfo_url=`; without it the route refuses |
+| `OIDCProvider` | Offline, through the `OIDCTokenVerifier` you pass as `token_verifier=` ([below](#verifying-the-realm-token-offline-oidctokenverifier-v02970)); or the introspection endpoint (RFC 7662) you pass as `introspection_url=`; or a Google-shaped tokeninfo in `tokeninfo_url=`; with none, the route refuses |
 | Your own client | Implement `verify_token_audience`; without the method the route refuses |
 
 !!! warning "A mobile app has one `client_id` per platform"
@@ -367,10 +367,29 @@ keycloak = OIDCProvider(
     authorize_url="https://id.example.com/realms/app/protocol/openid-connect/auth",
     token_url="https://id.example.com/realms/app/protocol/openid-connect/token",
     userinfo_url="https://id.example.com/realms/app/protocol/openid-connect/userinfo",
-    tokeninfo_url="https://id.example.com/realms/app/protocol/openid-connect/token/introspect",
+    introspection_url="https://id.example.com/realms/app/protocol/openid-connect/token/introspect",
     provider_name="keycloak",
 )
 ```
+
+!!! warning "`introspection_url`, not `tokeninfo_url`"
+    Both ask the same question in different shapes. `tokeninfo_url` calls
+    `GET <url>?access_token=<token>`, Google's shape. `introspection_url`
+    does what RFC 7662 asks: `POST token=<token>` authenticating the client
+    with `client_id` and `client_secret` in the body, the same
+    `client_secret_post` the code exchange uses.
+
+    Measured on Keycloak 26.3: the `/token/introspect` endpoint answers
+    **405** to the `GET` — with `tokeninfo_url` pointing at it, **every**
+    token is refused with 401. Passing both at once raises `ValueError`.
+
+    | The endpoint answers | The route answers |
+    | --- | --- |
+    | `active: true` with `azp` of one of your client ids | goes on to the login |
+    | `active` other than `true` | **401** `OAUTH_TOKEN_REJECTED` |
+    | `active: true` with another client's `azp` | **401** `OAUTH_TOKEN_AUDIENCE_MISMATCH` |
+    | 4xx (Keycloak answers **401** to a wrong `client_secret`) | **502** `OAUTH_ERROR`: the wrong credential is the service's, not the caller's |
+    | Down, 5xx or a body that is not JSON | **502** `OAUTH_PROVIDER_UNAVAILABLE` |
 
 !!! info "Refusing is the correct behavior, not a limitation"
     A provider that cannot report a token's audience makes the route answer
@@ -629,6 +648,110 @@ Without `userinfo_url`, `fetch_user` raises `NotImplementedError`: the profile
 then has to come from the `id_token`, and you override `_parse_user` in a
 subclass.
 
+### Verifying the realm token offline: `OIDCTokenVerifier` *(v0.297.0+)*
+
+A Keycloak realm (and Auth0, Okta, Entra …) **signs** its access tokens with a
+private key and publishes the public half as a JWK Set. Checking the token
+against that set answers "this realm minted it, for us, and it is still valid"
+with no request per login — neither `tokeninfo_url` nor `userinfo_url`.
+
+The cryptography is the easy part. What every service got wrong writing it by
+hand was the **taxonomy**: which failure is a bad credential (401, retrying is
+pointless) and which is the realm being down (502, retrying later makes sense).
+`OIDCTokenVerifier` pins that mapping, and `OIDCProvider` uses it when you pass
+`token_verifier=`:
+
+```python
+# src/api/dependencies/resources.py
+
+from tempest_fastapi_sdk import HTTPClient, OIDCProvider, OIDCTokenVerifier
+
+ISSUER: str = "https://id.example.com/realms/app"
+
+http: HTTPClient = HTTPClient(timeout=10.0)
+
+verifier: OIDCTokenVerifier = OIDCTokenVerifier(
+    ISSUER,
+    f"{ISSUER}/protocol/openid-connect/certs",
+    algorithms=("RS256",),
+    http_client=http,
+)
+
+keycloak: OIDCProvider = OIDCProvider(
+    client_id="mobile-app",
+    client_secret="",
+    redirect_uri="https://api.example.com/auth/oauth/keycloak/callback",
+    authorize_url=f"{ISSUER}/protocol/openid-connect/auth",
+    token_url=f"{ISSUER}/protocol/openid-connect/token",
+    provider_name="keycloak",
+    http_client=http,
+    token_verifier=verifier,
+)
+```
+
+Install the extra: `pip install "tempest-fastapi-sdk[oidc,http]"`. `[oidc]`
+brings PyJWT **with** `cryptography`, which PyJWT needs for RS256 and EC keys;
+with `[auth]` alone the constructor raises `ImportError` naming `[oidc]`.
+
+Piece by piece:
+
+- **`issuer`** is compared with the `iss` claim, exactly as it appears in the
+  token (for Keycloak, `https://<host>/realms/<realm>`).
+- **The second argument** is the `jwks_uri` from the *discovery document*.
+  Keys with `use: "enc"` are dropped — Keycloak 26.3.5 publishes an
+  encryption `RSA-OAEP` key next to the `RS256` signing one, and it must never
+  verify a signature.
+- **`algorithms`** is a **closed** list. The token header belongs to the
+  attacker, so `alg` is never read from it: `none` and `HS256` (using the RSA
+  public key as an HMAC secret) are refused **before** any key lookup, and
+  `none` is dropped even if you list it.
+- **`exp`, `iss` and `sub` are always required**, even when
+  `required_claims=` leaves them out. PyJWT only checks `exp` **when it is
+  present** — a token without `exp` would be an eternal session.
+- **With `token_verifier=`**, `verify_token_audience` and `fetch_user` read the
+  verified claims: no call to `tokeninfo_url` or `userinfo_url`. `fetch_user`
+  verifies again instead of trusting the earlier call; the key is cached, so
+  that costs no request.
+
+!!! info "Why the audience is not PyJWT's `verify_aud`"
+    Keycloak puts the resource the token addresses in `aud` and names the
+    client in `azp`. On a freshly created Keycloak 26.3.5 realm, the access
+    token of a `mobile-app` client came out with `"aud": "account"` and
+    `"azp": "mobile-app"` — `verify_aud` would refuse every legitimate token.
+    The verifier turns `verify_aud` off and checks `aud`, `azp` and
+    `client_id` **together** against `client_id` + `extra_audiences`, the same
+    rule as the `tokeninfo_url` path. A token whose `azp` is another client
+    answers **401** `OAUTH_TOKEN_AUDIENCE_MISMATCH`.
+
+The error contract, situation by situation:
+
+| Situation | Exception | Status |
+| --- | --- | --- |
+| JWK Set unreachable, non-2xx, non-JSON or without a signing key | `OAuthProviderUnavailableException` | **502** `OAUTH_PROVIDER_UNAVAILABLE` |
+| `kid` absent from the JWK Set that was read | `OAuthTokenRejectedException` | **401** `OAUTH_TOKEN_REJECTED` |
+| Malformed token / not a JWT (`"x"`) | `OAuthTokenRejectedException` | **401** `OAUTH_TOKEN_REJECTED` |
+| `alg` outside the list, `none` included | `OAuthTokenRejectedException` | **401** `OAUTH_TOKEN_REJECTED` |
+| Bad signature, `iss` or `exp`; required claim missing | `OAuthTokenRejectedException` | **401** `OAUTH_TOKEN_REJECTED` |
+| `aud`/`azp` of another application | `OAuthTokenAudienceMismatchException` | **401** `OAUTH_TOKEN_AUDIENCE_MISMATCH` |
+
+The 502 is the **only** case where the client should retry. A `kid` the realm
+never published is not an outage — the realm answered, the token names a key
+nobody published — and answering 502 there tells the client to retry forever
+a token that will never verify.
+
+!!! tip "Cache and cooldown: a forged `kid` does not become IdP traffic"
+    The JWK Set is fetched once and trusted for `lifespan` (default **300s**).
+    An unknown `kid` triggers at most **one** refresh per
+    `min_refresh_interval` (default **60s**); inside that window the refusal
+    comes straight from the cache, and concurrent requests wait on the same
+    fetch instead of each starting their own. That is why the SDK does not use
+    `PyJWKClient`: measured on PyJWT 2.13.0, five forged `kid`s
+    cost five JWK Set fetches, one per `kid`. It also fetches with blocking
+    I/O; here the fetch goes through the async `HTTPClient` you injected.
+
+    While the realm is down, the failure is remembered during the cooldown too:
+    retrying does not hammer the IdP, and keeps answering 502.
+
 ## Reusing your `HTTPClient`
 
 Without `http_client=`, each client builds a dedicated one (10s timeout, breaker
@@ -683,7 +806,8 @@ What the callback answers, by cause:
 | **422** | `OAUTH_EMAIL_MISSING` | The provider returned no email |
 | **422** | `OAUTH_CODE_MISSING` | The callback carried neither a `code` nor an `error` |
 | **501** | `OAUTH_AUDIENCE_UNVERIFIABLE` | *(token-in-hand)* The registered client cannot check the token's audience |
-| **502** | `OAUTH_ERROR` | The provider refused the exchange or the userinfo call |
+| **502** | `OAUTH_ERROR` | The provider refused the exchange, the userinfo call, or the client credential on introspection |
+| **502** | `OAUTH_PROVIDER_UNAVAILABLE` | *(`token_verifier=` / `introspection_url=`)* The realm's JWK Set or introspection endpoint could not be read — the one 502 where retrying makes sense |
 
 !!! tip "Branch on `code`, never on the message *(v0.274.0+)*"
     The two **409**s are the pair that matters most, and they arrived
@@ -763,6 +887,11 @@ Google for a `refresh_token`.
 - A native client uses `POST /auth/oauth/{provider}/token` with the token in
   the body — and the token's audience is checked **before** any read,
   because `userinfo` says whose token it is, never who it was issued for.
+- An OIDC realm that signs its tokens (Keycloak) verifies **offline** with
+  `OIDCProvider(token_verifier=OIDCTokenVerifier(...))`: closed `alg` list,
+  `exp` required, `aud`+`azp` read together, JWK Set cached with a cooldown —
+  and each failure with the right status (401 bad credential, 502 only when
+  the realm is down).
 - A provider with no email gets a 422, not an invented address; a provider with
   no name gets `"Você"` / `"You"` depending on the locale.
 - The full local flow (signup, activation, reset) is in the

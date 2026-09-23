@@ -232,6 +232,9 @@ from tempest_fastapi_sdk.api.oauth import (
     OAuthError as OAuthError,
 )
 from tempest_fastapi_sdk.api.oauth import (
+    OAuthProviderUnavailableException as OAuthProviderUnavailableException,
+)
+from tempest_fastapi_sdk.api.oauth import (
     OAuthTokens as OAuthTokens,
 )
 from tempest_fastapi_sdk.api.oauth import (
@@ -242,6 +245,9 @@ from tempest_fastapi_sdk.api.oauth import (
 )
 from tempest_fastapi_sdk.api.oauth import (
     generate_oauth_state as generate_oauth_state,
+)
+from tempest_fastapi_sdk.api.oidc_verifier import (
+    OIDCTokenVerifier as OIDCTokenVerifier,
 )
 from tempest_fastapi_sdk.api.routers import (
     DEFAULT_LATENCY_BUCKETS as DEFAULT_LATENCY_BUCKETS,
@@ -361,9 +367,11 @@ __all__: list[str] = [
     "OAuthAudienceVerifier",
     "OAuthClient",
     "OAuthError",
+    "OAuthProviderUnavailableException",
     "OAuthTokens",
     "OAuthUser",
     "OIDCProvider",
+    "OIDCTokenVerifier",
     "PlanRateLimitPolicy",
     "PrometheusMiddleware",
     "QuotaResult",

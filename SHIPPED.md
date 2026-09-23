@@ -410,6 +410,30 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (`None` is not a yes — GitHub's `GET /user` never says), and the identity
   keyed on `(provider, subject)`. Account creation defaults to inheriting
   `AUTH_SIGNUP_ENABLED`, so the v0.272.0 kill-switch closes this door too.
+- **Offline verification of OIDC realm tokens (v0.297.0)** — issue #288.
+  `OIDCTokenVerifier(issuer, jwks_url, algorithms=("RS256",), ...)` plugs
+  into `OIDCProvider(token_verifier=...)`, which then reads the audience and
+  the identity from the verified claims with no `tokeninfo_url` /
+  `userinfo_url` round-trip. The JWK Set is fetched through the injected
+  async `HTTPClient` and cached (`lifespan` 300s, `min_refresh_interval`
+  60s, concurrent misses share one fetch); `PyJWKClient` is not used because
+  it refetches once per unknown `kid` (measured: five forged `kid`s, five
+  fetches, PyJWT 2.13.0) and fetches with blocking `urlopen`. The error
+  taxonomy is the deliverable, one test class per row: 502
+  `OAUTH_PROVIDER_UNAVAILABLE` (new `OAuthProviderUnavailableException`)
+  only when the key set cannot be read; 401 `OAUTH_TOKEN_REJECTED` for an
+  unknown `kid`, a non-JWT, an `alg` outside the closed list (`none`
+  included, refused before any fetch), a bad signature/`iss`/`exp` or a
+  missing `exp`; 401 `OAUTH_TOKEN_AUDIENCE_MISMATCH` for another client's
+  `aud`/`azp`. Measured against Keycloak 26.3.5: `"aud": "account"` +
+  `"azp": "<client>"`, accepted. New extra `[oidc]` (PyJWT + `cryptography`).
+- **RFC 7662 introspection on `OIDCProvider` (v0.297.0)** —
+  `introspection_url=` sends `POST token=` with `client_secret_post`. The
+  recipe used to point `tokeninfo_url` (a `GET ?access_token=`) at
+  Keycloak's `/token/introspect`, which answers **405** to a `GET`
+  (measured, Keycloak 26.3), so every token was refused. A 4xx from the
+  endpoint answers 502 `OAUTH_ERROR`, not 401: the refused credential is
+  the service's. `tokeninfo_url` + `introspection_url` together raise.
 - **`generate_password` guarantees the policy by construction (v0.273.0)** —
   the OAuth callback creates accounts and `hashed_password` stays `NOT NULL`,
   so a password has to be minted. Drawing from a flat alphabet does not work:

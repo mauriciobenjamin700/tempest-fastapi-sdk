@@ -5,6 +5,82 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.297.0] — 2026-09-22
+
+O `OIDCProvider` resolvia a identidade pelo `userinfo` e a audiência pelo
+`tokeninfo_url`: duas idas ao IdP por login, e nenhuma verificação da
+assinatura do token. O serviço que queria verificar offline um token de
+realm Keycloak escrevia isso à mão — e o que errava não era a criptografia,
+era **a qual status cada falha corresponde** (issue #288).
+
+### Added
+
+- **`OIDCTokenVerifier`** (`tempest_fastapi_sdk.api.oidc_verifier`) —
+  verificação offline de access token assinado por realm OIDC. Busca o JWK
+  Set pelo `HTTPClient` async injetado, faz o parse com
+  `jwt.PyJWKSet.from_dict` e guarda as chaves em memória por `lifespan`
+  (default 300s). Um `kid` desconhecido dispara no máximo **uma**
+  atualização por `min_refresh_interval` (default 60s), e requisições
+  simultâneas esperam a mesma busca. O `PyJWKClient` ficou de fora de
+  propósito: medido no PyJWT 2.13.0 contra o JWK Set de um Keycloak
+  26.3.5, cinco `kid` forjados custaram cinco buscas, e a busca dele é
+  `urllib.request.urlopen`, bloqueante. Lista de `alg` fechada (`none` é
+  removido mesmo se listado; `HS256` e `none` são recusados antes de
+  qualquer busca), `exp`/`iss`/`sub` sempre obrigatórios — o PyJWT só
+  confere `exp` quando presente, e um token sem ele verificava —, chaves
+  `use: "enc"` descartadas, e audiência conferida sobre `aud` + `azp` +
+  `client_id` juntos.
+- **`OIDCProvider(token_verifier=...)`.** Com o verificador,
+  `verify_token_audience` e `fetch_user` leem os claims verificados, sem
+  chamar `tokeninfo_url` nem `userinfo_url`. Default `None` mantém o
+  comportamento anterior. Medido contra um Keycloak 26.3.5 real (realm e
+  client `mobile-app` recém-criados, grant `password`): o access token saiu
+  com `"aud": "account"` e `"azp": "mobile-app"`, verificou com uma única
+  busca do JWK Set, e `fetch_user` devolveu e-mail, `email_verified=True` e
+  nome dos claims.
+- **`OAuthProviderUnavailableException`** — subclasse de `OAuthError`,
+  **502** `OAUTH_PROVIDER_UNAVAILABLE`, com tradução PT-BR e EN. É o único
+  caso do verificador em que repetir faz sentido: JWK Set inalcançável,
+  não-2xx, não-JSON ou sem chave de assinatura. `kid` ausente do conjunto
+  lido, token que não é JWT, `alg` fora da lista, assinatura/`iss`/`exp`
+  inválidos respondem **401** `OAUTH_TOKEN_REJECTED`; `aud`/`azp` de outro
+  client, **401** `OAUTH_TOKEN_AUDIENCE_MISMATCH`.
+- **Extra `[oidc]`** — `pyjwt>=2.13.0` + `cryptography>=50.0.1`, que o PyJWT
+  exige para RS256/EC. Numa venv vazia com a wheel e `[oidc,http]`, um token
+  RS256 verificou com PyJWT 2.14.0 e com o piso 2.13.0; só com
+  `[auth,http]`, o construtor levanta `ImportError` nomeando o `[oidc]`. O
+  `[all]` já trazia os dois pacotes.
+
+### Fixed
+
+- **A introspection do Keycloak recusava todo token.** A receita mandava
+  apontar o `tokeninfo_url` do `OIDCProvider` para
+  `.../token/introspect`, mas o `tokeninfo_url` é chamado como
+  `GET ?access_token=`. A RFC 7662 pede `POST` com autenticação do
+  client. Medido num Keycloak 26.3: o `GET` responde **405** e a rota
+  devolvia 401 `OAUTH_TOKEN_REJECTED` para o token válido.
+  `OIDCProvider(introspection_url=...)` faz o `POST token=` com
+  `client_id`/`client_secret` no corpo (o `client_secret_post` da troca
+  do código). Contra o mesmo Keycloak:
+  - token vivo do nosso client: aceito;
+  - token lixo (`200 {"active": false}`): 401 `OAUTH_TOKEN_REJECTED`;
+  - token de outro client: 401 `OAUTH_TOKEN_AUDIENCE_MISMATCH`;
+  - secret errada (o Keycloak responde 401): **502** `OAUTH_ERROR`, porque
+    a credencial errada é a do serviço, não a de quem chamou;
+  - porta fechada: 502 `OAUTH_PROVIDER_UNAVAILABLE`.
+
+  Passar `tokeninfo_url` e `introspection_url` juntos levanta `ValueError`.
+  A mensagem de `OAUTH_PROVIDER_UNAVAILABLE` ficou genérica ("o provedor de
+  identidade não respondeu"), porque agora cobre as duas chamadas;
+  `details.reason` diz qual falhou.
+
+### Changed
+
+- A regra de audiência (`aud`/`azp`/`client_id` contra `client_id` +
+  `extra_audiences`) virou uma função de módulo usada pelo caminho de
+  `tokeninfo_url` e pelo verificador — a mesma regra nos dois, sem cópia.
+  O método privado `_BaseOAuthClient._assert_audience` saiu.
+
 ## [0.296.0] — 2026-09-22
 
 O `500` de uma exceção não tratada saía **fora** do `CORSMiddleware`. O
