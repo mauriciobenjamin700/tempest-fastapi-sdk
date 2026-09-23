@@ -726,6 +726,7 @@ o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.asyncapi.ir.OperationIR
 
 ::: tempest_fastapi_sdk.api.middlewares.RequestIDMiddleware
+::: tempest_fastapi_sdk.api.middlewares.error_envelope.ErrorEnvelopeMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.IdempotencyMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.MemoryIdempotencyStore
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.RedisIdempotencyStore

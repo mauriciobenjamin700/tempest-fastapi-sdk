@@ -22,6 +22,12 @@ from tempest_fastapi_sdk.api.middlewares.csrf import (
 from tempest_fastapi_sdk.api.middlewares.csrf import (
     make_csrf_token_dependency as make_csrf_token_dependency,
 )
+from tempest_fastapi_sdk.api.middlewares.error_envelope import (
+    ErrorEnvelopeHandler as ErrorEnvelopeHandler,
+)
+from tempest_fastapi_sdk.api.middlewares.error_envelope import (
+    ErrorEnvelopeMiddleware as ErrorEnvelopeMiddleware,
+)
 from tempest_fastapi_sdk.api.middlewares.graceful import (
     GracefulShutdownMiddleware as GracefulShutdownMiddleware,
 )
@@ -147,6 +153,8 @@ __all__: list[str] = [
     "BodySizeLimitMiddleware",
     "CSRFMiddleware",
     "CachedResponse",
+    "ErrorEnvelopeHandler",
+    "ErrorEnvelopeMiddleware",
     "FailOpenRateLimitStore",
     "GracefulShutdownMiddleware",
     "HoneypotBanMiddleware",
