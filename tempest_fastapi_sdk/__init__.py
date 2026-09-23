@@ -127,6 +127,9 @@ from tempest_fastapi_sdk.api import (
     CSRFMiddleware as CSRFMiddleware,
 )
 from tempest_fastapi_sdk.api import (
+    ErrorEnvelopeMiddleware as ErrorEnvelopeMiddleware,
+)
+from tempest_fastapi_sdk.api import (
     FailOpenRateLimitStore as FailOpenRateLimitStore,
 )
 from tempest_fastapi_sdk.api import (
@@ -1941,6 +1944,7 @@ __all__: list[str] = [
     "EnumColumnRef",
     "EnumTypeState",
     "EnvFeatureFlagBackend",
+    "ErrorEnvelopeMiddleware",
     "ErrorResponseSchema",
     "EventStream",
     "ExpiredTokenException",
