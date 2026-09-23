@@ -898,7 +898,8 @@ def register_exception_handlers(
     Raises:
         RuntimeError: If ``app`` already built its middleware stack
             (it served a request or started), where a new layer can no
-            longer be added.
+            longer be added. Checked before anything is registered, so a
+            refused call leaves ``app`` untouched.
 
     Notes:
         Calling this twice installs the envelope layer once; the second
@@ -911,6 +912,11 @@ def register_exception_handlers(
         therefore safe: the narrowing is exactly what the registration key
         guarantees.
     """
+    if app.middleware_stack is not None:
+        raise RuntimeError(
+            "register_exception_handlers() must run before the application "
+            "starts: its middleware stack is already built",
+        )
     app.add_exception_handler(
         AppException,
         make_app_exception_handler(  # type: ignore[arg-type]
@@ -933,11 +939,6 @@ def register_exception_handlers(
             envelope_client_errors=envelope_client_errors,
         ),
     )
-    if app.middleware_stack is not None:
-        raise RuntimeError(
-            "register_exception_handlers() must run before the application "
-            "starts: its middleware stack is already built",
-        )
     unhandled_handler: UnhandledExceptionHandler = make_unhandled_exception_handler(
         log_traceback=log_traceback,
         include_traceback=include_traceback,
