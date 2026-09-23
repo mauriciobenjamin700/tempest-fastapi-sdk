@@ -424,6 +424,12 @@ from tempest_fastapi_sdk.auth import (
     SUPPORTED_LOCALES as SUPPORTED_LOCALES,
 )
 from tempest_fastapi_sdk.auth import (
+    ActivationRequestSchema as ActivationRequestSchema,
+)
+from tempest_fastapi_sdk.auth import (
+    ActivationResendResponseSchema as ActivationResendResponseSchema,
+)
+from tempest_fastapi_sdk.auth import (
     ActivationResponseSchema as ActivationResponseSchema,
 )
 from tempest_fastapi_sdk.auth import (
@@ -1851,6 +1857,8 @@ __all__: list[str] = [
     "UF",
     "VALIDATION_ERROR_CODE",
     "AccessLogMiddleware",
+    "ActivationRequestSchema",
+    "ActivationResendResponseSchema",
     "ActivationResponseSchema",
     "ActivationToken",
     "AdminAccessPolicy",

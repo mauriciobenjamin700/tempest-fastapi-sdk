@@ -835,6 +835,8 @@ o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.auth.schemas.LoginSchema
 ::: tempest_fastapi_sdk.auth.schemas.LoginResponseSchema
 ::: tempest_fastapi_sdk.auth.schemas.ActivationResponseSchema
+::: tempest_fastapi_sdk.auth.schemas.ActivationRequestSchema
+::: tempest_fastapi_sdk.auth.schemas.ActivationResendResponseSchema
 ::: tempest_fastapi_sdk.auth.schemas.PasswordResetRequestSchema
 ::: tempest_fastapi_sdk.auth.schemas.PasswordResetResponseSchema
 ::: tempest_fastapi_sdk.auth.schemas.PasswordResetConfirmSchema

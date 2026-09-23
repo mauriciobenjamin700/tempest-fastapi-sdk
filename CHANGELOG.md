@@ -5,13 +5,16 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.297.0] — 2026-09-22
+## [0.297.0] — 2026-09-23
 
 O `OIDCProvider` resolvia a identidade pelo `userinfo` e a audiência pelo
 `tokeninfo_url`: duas idas ao IdP por login, e nenhuma verificação da
 assinatura do token. O serviço que queria verificar offline um token de
 realm Keycloak escrevia isso à mão — e o que errava não era a criptografia,
 era **a qual status cada falha corresponde** (issue #288).
+
+O e-mail de ativação sai uma vez. Quando ele não chega, a conta ficava sem
+saída nenhuma que não fosse `UPDATE` no banco.
 
 ### Added
 
@@ -50,6 +53,28 @@ era **a qual status cada falha corresponde** (issue #288).
   RS256 verificou com PyJWT 2.14.0 e com o piso 2.13.0; só com
   `[auth,http]`, o construtor levanta `ImportError` nomeando o `[oidc]`. O
   `[all]` já trazia os dois pacotes.
+
+- **`POST /auth/activation/request` — reenvio do link de ativação, sem
+  credencial.** Cadastro feito, e-mail perdido no filtro de spam: `signup`
+  de novo responde 409 (e-mail já na tabela), `login` responde 401 (a conta
+  é inativa) e `email-verify/request` — cuja própria descrição se oferece
+  para esse caso — exige bearer token, que só sai de um login que não
+  acontece. A rota nova é o caminho de volta, e **não pede autenticação por
+  necessidade**, não por descuido.
+
+  `UserAuthService.request_activation(session, *, email)` é o verbo por
+  trás dela. Endereço desconhecido, conta **já ativa** e reenvio legítimo
+  respondem o mesmo 202 com a mesma frase — a disciplina anti-enumeração
+  que o `password-reset/request` já tinha. Conta ativa não é remetida: o
+  link não autorizaria nada e o e-mail contaria a um estranho que aquele
+  endereço tem conta aqui. O token novo respeita
+  `AUTH_ACTIVATION_TTL_SECONDS` e, sob `AUTH_SINGLE_ACTIVE_TOKEN` (default),
+  queima o anterior.
+
+  Schemas `ActivationRequestSchema` e `ActivationResendResponseSchema`
+  exportados no topo. `tests/auth/test_activation_resend.py` fixa o
+  caminho inteiro — signup → login 401 → reenvio → ativação → login 200 —
+  e a indistinguibilidade das três respostas.
 
 ### Fixed
 

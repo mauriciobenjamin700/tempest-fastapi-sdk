@@ -2227,3 +2227,24 @@ registro e corrigir o template. Ordem que o consumidor precisa acertar é
 ordem que um dia ele inverte sem teste falhando. `append` em
 `user_middleware` deixa a camada no fundo **qualquer que seja a ordem**,
 então a regra deixou de existir em vez de ganhar um aviso.
+
+## A conta que não dava para destravar, v0.297.0 (2026-09-23)
+
+O fluxo de cadastro mandava o link de ativação **uma vez** e não tinha
+segunda chance. Quem não recebeu o e-mail batia em três portas fechadas:
+`signup` conflitava no endereço, `login` recusava a conta inativa, e
+`email-verify/request` — a rota cuja descrição diz "útil quando o e-mail de
+ativação se perdeu" — pedia um bearer token que só um login bem-sucedido
+entrega. Sem acesso ao banco, a conta ficava morta.
+
+`POST /auth/activation/request` fecha o ciclo, e a lição é a forma: **uma
+rota de recuperação não pode exigir a credencial que o usuário não tem**.
+Era um caso de autenticação exigida no lugar errado, o mesmo tipo de defeito
+que o `CLAUDE.md` chama de superfície faltando quando aparece como aviso na
+doc.
+
+O segundo cuidado é o de sempre nessas rotas: as três respostas possíveis —
+endereço desconhecido, conta já ativa, reenvio real — são indistinguíveis
+(202, mesma frase, `activation_url` nulo quando o link vai por e-mail).
+Reemitir para conta já ativa seria pior que inútil: o link não autoriza
+nada e o e-mail confirma a existência da conta para quem sondar.

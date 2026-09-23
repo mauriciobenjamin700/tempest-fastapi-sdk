@@ -79,6 +79,12 @@ from tempest_fastapi_sdk.auth.locale import stamp_locale as stamp_locale
 from tempest_fastapi_sdk.auth.router import SignupHook as SignupHook
 from tempest_fastapi_sdk.auth.router import make_auth_router as make_auth_router
 from tempest_fastapi_sdk.auth.schemas import (
+    ActivationRequestSchema as ActivationRequestSchema,
+)
+from tempest_fastapi_sdk.auth.schemas import (
+    ActivationResendResponseSchema as ActivationResendResponseSchema,
+)
+from tempest_fastapi_sdk.auth.schemas import (
     ActivationResponseSchema as ActivationResponseSchema,
 )
 from tempest_fastapi_sdk.auth.schemas import ActivationToken as ActivationToken
@@ -186,6 +192,8 @@ __all__: list[str] = [
     "DEFAULT_FIREBASE_APP_NAME",
     "LOCALE_QUERY_PARAM",
     "SUPPORTED_LOCALES",
+    "ActivationRequestSchema",
+    "ActivationResendResponseSchema",
     "ActivationResponseSchema",
     "ActivationToken",
     "AuthCookieConfig",

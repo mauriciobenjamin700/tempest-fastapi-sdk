@@ -10,6 +10,7 @@ Since v0.31.0 the SDK ships the full local-account lifecycle — email + passwor
     | I want to… | Logged in? | Section | Endpoints |
     | --- | --- | --- | --- |
     | Create account + activate by email | — | [Setup](#minimum-setup) | `signup` → `activate/{token}` |
+    | **The activation email never arrived** | ❌ no | **[Re-send the activation](#re-send-the-activation)** | `activation/request` → `activate/{token}` |
     | Log in | — | [Endpoints](#endpoints) | `login` |
     | **I forgot my password** | ❌ no | **[Password recovery](#password-recovery)** | `password-reset/request` → `password-reset/confirm` |
     | Change my password | ✅ yes | [Change password logged in](#change-your-password-logged-in) | `password-change` |
@@ -169,6 +170,7 @@ uv run tempest db upgrade
 |--------|------|---------------|----------|
 | POST | `/auth/signup` | `SignupSchema` → `SignupResponseSchema` | Creates user. Not mounted when `AUTH_SIGNUP_ENABLED=false` (v0.272.0+). Emits email (modes A/B) **or** returns the link in the body (mode C). With `AUTH_AUTO_ACTIVATE=True`, the user is born active and the JWT pair returns immediately (mode D). |
 | POST | `/auth/activate/{token}` | — → `ActivationResponseSchema` | Consumes token + sets `is_active=True` + issues JWT pair. |
+| POST | `/auth/activation/request` *(v0.297.0+)* | `ActivationRequestSchema` → `ActivationResendResponseSchema` | **Unauthenticated.** Re-issues the activation link for an account that never activated. Always 202 + generic body. |
 | POST | `/auth/login` | `LoginSchema` → `LoginResponseSchema` | Email + password → JWT pair. Generic errors (no account enumeration). |
 | GET | `/auth/me` *(v0.198.0+)* | — → `AuthUserSchema` | **Authenticated.** Returns the account owning the bearer token. Never serializes the password hash: the handler returns the whole model and the `response_model` filters. Swap in your own schema with `me_response_model=` to expose extra columns. |
 | POST | `/auth/password-reset/request` | `PasswordResetRequestSchema` → `PasswordResetResponseSchema` | Always HTTP 202 + generic body. Link via email (A/B) or body (C). |
@@ -404,6 +406,56 @@ without anyone hand-writing a schema.
 visible in OpenAPI. `on_signup` is where its fields become columns, inside the
 insert's transaction. Nothing else has to leave the SDK for your service.
 
+
+## Re-send the activation
+
+The activation email goes out **once**, at `signup`. When it does not
+arrive — a spam filter, a bounced relay, a tab closed before the click —
+the account has no way forward:
+
+- signing up again answers **409**, the email is already on file;
+- logging in answers **401**, because `is_active` is still `False`;
+- `email-verify/request` exists for exactly this case, but it requires a
+  **bearer token** — which only a successful login hands out.
+
+That is a dead end nothing but database access could open.
+`POST /auth/activation/request` is the way out, and it asks for **no
+credentials at all**, by necessity:
+
+```bash
+curl -X POST localhost:8000/auth/activation/request \
+  -H "Content-Type: application/json" \
+  -d '{"email": "ana@example.com"}'
+```
+
+```json
+{
+  "message": "If the email matches a pending account, a link was sent.",
+  "activation_url": "http://localhost:3000/activate?token=..."
+}
+```
+
+`activation_url` shows up only when you deliver the link yourself —
+`AUTH_RETURN_TOKEN_IN_RESPONSE=True`, or no `EmailUtils` wired. In
+production it comes back `null` and the link travels by email, in whatever
+language [i18n](#email-and-page-language-i18n) resolves.
+
+!!! info "Always 202, always the same sentence"
+    An unknown address, an **already active** account and a real re-send
+    answer with the same status and the same body. It is the same
+    anti-enumeration care as `password-reset/request`: probing the route
+    tells nobody which emails have an account here.
+
+!!! warning "An active account is not emailed"
+    Re-issuing for someone who already activated would send a link that
+    authorizes nothing — and would tell a stranger that the address has an
+    account. So the path stops there, quietly.
+
+The new token follows the original's rules: it lives for
+`AUTH_ACTIVATION_TTL_SECONDS` and, with `AUTH_SINGLE_ACTIVE_TOKEN=True`
+(the default), the previous request is burned — only the newest link works.
+
+---
 
 ## Password recovery
 
