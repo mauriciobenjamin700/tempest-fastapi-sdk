@@ -142,7 +142,7 @@ class OIDCTokenVerifier:
             raise ImportError(
                 "OIDCTokenVerifier requires the [oidc] extra "
                 "(PyJWT with cryptography). Install with "
-                '`pip install "tempest-fastapi-sdk[oidc,http]"`.'
+                '`pip install "tempest-fastapi-sdk[oidc]"`.'
             )
         accepted = tuple(alg for alg in algorithms if alg.lower() != "none")
         if not accepted:

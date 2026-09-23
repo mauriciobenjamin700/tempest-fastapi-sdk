@@ -118,7 +118,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[admin-sql]` | `sqlglot` | Admin SQL console — `SqlShellService` + `SqlShellPolicy` (capabilities, allowed/denied tables, row cap, `require_where`, statement timeout) with real statement parsing, every attempt audited. Opt-in; the policy narrows and explains, the database GRANTs enforce |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `ObjectStat`, `PutObjectItem`, `MinIOSettings` |
 | `[http]` | `httpx` | `HTTPClient`, `RetryPolicy`, `CircuitOpenError`, OAuth2 / OIDC providers |
-| `[oidc]` | `PyJWT`, `cryptography` | `OIDCTokenVerifier` — offline verification of realm-signed access tokens (JWKS cached, refresh cooldown, one error `code` per failure); plug into `OIDCProvider(token_verifier=...)`. Pair with `[http]` |
+| `[oidc]` | `PyJWT`, `cryptography` | `OIDCTokenVerifier` — offline verification of realm-signed access tokens (JWKS cached, refresh cooldown, one error `code` per failure); plug into `OIDCProvider(token_verifier=...)` |
 | `[openapi]` | `pyyaml` | YAML support for `tempest openapi-client` (a JSON spec needs no extra) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry`, `BusinessMetrics` |
 | `[mfa]` | `pyotp` | `TOTPHelper` + MFA/2FA endpoints on the bundled auth flow |

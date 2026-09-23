@@ -53,7 +53,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[modelops-compose]` | `ort-vision-sdk[compose]` | fundir um detector e um classificador num único `.onnx`: `fuse_detect_classify`. Rodar o grafo fundido é `[vision]` (`DetectClassify`), que não puxa `onnx` |
 | `[modelops-onnx]` | `onnx`, `onnxruntime` | análise estática, benchmark ONNX, `.onnx` → `.ort`, otimização de grafo e quantização — de grafos crus (`analyze_onnx`, `benchmark_onnx`, `export_onnx_to_ort`, `quantize_onnx_dynamic`) e de exports transformers (`optimize_hf_onnx`, `quantize_hf_onnx`) |
 | `[modelops-sklearn]` | `skl2onnx` | exportar modelos scikit-learn para ONNX (borda): `export_sklearn_to_onnx`, `verify_sklearn_onnx`, `edge_bundle` |
-| `[oidc]` | `PyJWT`, `cryptography` | verificação offline de access token de realm OIDC (Keycloak, Auth0, Okta …): `OIDCTokenVerifier`, e `OIDCProvider(token_verifier=...)` no login social. Use junto com `[http]` |
+| `[oidc]` | `PyJWT`, `cryptography` | verificação offline de access token de realm OIDC (Keycloak, Auth0, Okta …): `OIDCTokenVerifier`, e `OIDCProvider(token_verifier=...)` no login social |
 | `[otel]` | `opentelemetry-sdk`, exporter OTLP + instrumentações FastAPI/SQLAlchemy/httpx | instrumentação OpenTelemetry via `setup_tracing` |
 | `[pdf]` | `weasyprint`, `jinja2` | geração de PDF a partir de templates HTML: `PdfRenderer`, cinco documentos prontos com schema tipado, `make_pdf_router`, `tempest pdf`. **Exige Pango + fontconfig no sistema** — veja a receita |
 | `[postgres]` | `asyncpg` | driver async PostgreSQL para URLs `postgresql+asyncpg://` (produção) |
