@@ -169,7 +169,7 @@ uv run tempest db upgrade
 |--------|------|---------------|---------------|
 | POST | `/auth/signup` | `SignupSchema` → `SignupResponseSchema` | Cria user. Não montado quando `AUTH_SIGNUP_ENABLED=false` (v0.272.0+). Emite e-mail (modos A/B) **ou** devolve link no body (modo C). Se `AUTH_AUTO_ACTIVATE=True`, user nasce ativo e JWT pair volta direto (modo D). |
 | POST | `/auth/activate/{token}` | — → `ActivationResponseSchema` | Consome token + `is_active=True` + emite JWT pair. |
-| POST | `/auth/activation/request` *(v0.296.0+)* | `ActivationRequestSchema` → `ActivationResendResponseSchema` | **Não autenticado.** Reemite o link de ativação de uma conta que nunca ativou. Sempre 202 + corpo genérico. |
+| POST | `/auth/activation/request` *(v0.297.0+)* | `ActivationRequestSchema` → `ActivationResendResponseSchema` | **Não autenticado.** Reemite o link de ativação de uma conta que nunca ativou. Sempre 202 + corpo genérico. |
 | POST | `/auth/login` | `LoginSchema` → `LoginResponseSchema` | Email + senha → JWT pair. Erros genéricos (não enumera contas). |
 | GET | `/auth/me` *(v0.198.0+)* | — → `AuthUserSchema` | **Autenticado.** Devolve a conta dona do bearer token. Nunca serializa o hash da senha: o handler entrega o modelo inteiro e o `response_model` filtra. Troque o schema por um seu com `me_response_model=` pra expor colunas próprias. |
 | POST | `/auth/password-reset/request` | `PasswordResetRequestSchema` → `PasswordResetResponseSchema` | Sempre HTTP 202 + corpo genérico. Link via e-mail (A/B) ou no body (C). |

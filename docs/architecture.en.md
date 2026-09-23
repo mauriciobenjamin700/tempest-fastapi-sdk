@@ -123,6 +123,15 @@ Details in [UI layer](recipes/ui.md),
 [Forms from Pydantic schemas](recipes/ui-forms.md) and
 [Typed CSS](recipes/ui-css.md).
 
+!!! tip "And when the frontend is an app, not a page"
+    The `ui` layer renders HTML **on the server**. When the screen needs
+    client-side state — a SPA — the path is still Python:
+    **[tempestweb](recipes/tempestweb-frontend.md)** writes the interface
+    and compiles it to WASM (or runs it in server-mode), and the SDK serves
+    the build through `make_web_app_router` / `build_web_app`, on the same
+    origin as the API. The two live together:
+    [Fullstack web](fullstack-web.md) compares when to use which.
+
 ## Request lifecycle
 
 ```mermaid
@@ -170,6 +179,50 @@ The SDK ships [`AppException`][tempest_fastapi_sdk.AppException] + [`register_ex
 ```
 
 The frontend branches on `code` (stable, machine-readable), never on the (potentially translated) `detail`.
+
+### The 500 goes through CORS too
+
+An exception no handler catches becomes a `500` with `code: "INTERNAL_SERVER_ERROR"`. Starlette runs the `Exception` handler inside `ServerErrorMiddleware`, the **outermost** layer of the stack, so on its own that envelope would leave without passing through `CORSMiddleware`: with no `Access-Control-Allow-Origin` the browser discards the response and `fetch` rejects with `TypeError: Failed to fetch` — no status, no `code`, no `X-Request-ID`.
+
+That is why `register_exception_handlers` also installs [`ErrorEnvelopeMiddleware`][tempest_fastapi_sdk.ErrorEnvelopeMiddleware] as the **innermost** middleware. From there the 500 passes through every middleware you added, and the order of the calls stops mattering:
+
+```python
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from tempest_fastapi_sdk import (
+    RequestIDMiddleware,
+    apply_cors,
+    register_exception_handlers,
+)
+
+app: FastAPI = FastAPI()
+app.add_middleware(RequestIDMiddleware)
+apply_cors(app, origins=["https://front.example"])
+register_exception_handlers(app)
+
+
+@app.get("/boom")
+async def boom() -> None:
+    raise RuntimeError("unhandled failure")
+
+
+client: TestClient = TestClient(app, raise_server_exceptions=False)
+response = client.get("/boom", headers={"Origin": "https://front.example"})
+print(response.status_code, response.headers["access-control-allow-origin"])
+print(response.json()["details"]["request_id"] == response.headers["x-request-id"])
+```
+
+```text
+500 https://front.example
+True
+```
+
+!!! note "What stays the same"
+    - The layer **does not decide CORS**. An origin outside the allow-list still gets no header, on the 500 too.
+    - After sending the envelope the exception is **re-raised**, as Starlette already did: the ASGI server still logs it, and a `TestClient` with the default `raise_server_exceptions=True` still raises it in your test.
+    - A failure after the response started (a stream that breaks mid-body) is re-raised with no second response, because the status is already on the wire. It is logged and reaches `on_server_error` once, like a plain 500.
+    - `register_exception_handlers` must run **before** the application starts; after that the stack is built and it raises `RuntimeError`.
 
 ## Where to go next
 

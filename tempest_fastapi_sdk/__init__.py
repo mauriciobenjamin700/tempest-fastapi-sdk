@@ -127,6 +127,9 @@ from tempest_fastapi_sdk.api import (
     CSRFMiddleware as CSRFMiddleware,
 )
 from tempest_fastapi_sdk.api import (
+    ErrorEnvelopeMiddleware as ErrorEnvelopeMiddleware,
+)
+from tempest_fastapi_sdk.api import (
     FailOpenRateLimitStore as FailOpenRateLimitStore,
 )
 from tempest_fastapi_sdk.api import (
@@ -175,6 +178,9 @@ from tempest_fastapi_sdk.api import (
     OAuthError as OAuthError,
 )
 from tempest_fastapi_sdk.api import (
+    OAuthProviderUnavailableException as OAuthProviderUnavailableException,
+)
+from tempest_fastapi_sdk.api import (
     OAuthTokens as OAuthTokens,
 )
 from tempest_fastapi_sdk.api import (
@@ -182,6 +188,9 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.api import (
     OIDCProvider as OIDCProvider,
+)
+from tempest_fastapi_sdk.api import (
+    OIDCTokenVerifier as OIDCTokenVerifier,
 )
 from tempest_fastapi_sdk.api import (
     PlanRateLimitPolicy as PlanRateLimitPolicy,
@@ -1949,6 +1958,7 @@ __all__: list[str] = [
     "EnumColumnRef",
     "EnumTypeState",
     "EnvFeatureFlagBackend",
+    "ErrorEnvelopeMiddleware",
     "ErrorResponseSchema",
     "EventStream",
     "ExpiredTokenException",
@@ -2059,6 +2069,7 @@ __all__: list[str] = [
     "OAuthError",
     "OAuthProviderDeniedException",
     "OAuthProviderNotConfiguredException",
+    "OAuthProviderUnavailableException",
     "OAuthRegistrationDisabledException",
     "OAuthSettings",
     "OAuthStateMismatchException",
@@ -2069,6 +2080,7 @@ __all__: list[str] = [
     "OAuthUnlinkSchema",
     "OAuthUser",
     "OIDCProvider",
+    "OIDCTokenVerifier",
     "ObjectStat",
     "OpenPixSettings",
     "OrderRef",

@@ -24,12 +24,18 @@ are the two that would go quiet if the check were dropped.
 
 from __future__ import annotations
 
+import json
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
+import httpx
+import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from jwt.algorithms import RSAAlgorithm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -40,10 +46,14 @@ from sqlalchemy.ext.asyncio import (
 from tempest_fastapi_sdk import (
     BaseModel,
     BaseUserModel,
+    HTTPClient,
     NameMixin,
     OAuthTokenAudienceMismatchException,
     OAuthTokens,
     OAuthUser,
+    OIDCProvider,
+    OIDCTokenVerifier,
+    RetryPolicy,
     TokenDelivery,
     UserAuthService,
     make_auth_router,
@@ -466,3 +476,171 @@ class TestTheTokenNeverRidesInTheUrl:
             )
 
         assert response.status_code == 422
+
+
+_REALM: str = "https://id.test/realms/app"
+_REALM_CERTS: str = f"{_REALM}/protocol/openid-connect/certs"
+
+
+class _Realm:
+    """A signing key plus a transport that serves its JWK Set.
+
+    Attributes:
+        key (rsa.RSAPrivateKey): The realm's signing key.
+        seen (list[str]): URLs the transport was asked for.
+        down (bool): When ``True`` the transport refuses to connect.
+    """
+
+    def __init__(self) -> None:
+        """Generate the key and publish it as ``k1``."""
+        self.key: rsa.RSAPrivateKey = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+        )
+        entry: dict[str, Any] = json.loads(RSAAlgorithm.to_jwk(self.key.public_key()))
+        entry.update(kid="k1", alg="RS256", use="sig")
+        self._entry: dict[str, Any] = entry
+        self.seen: list[str] = []
+        self.down: bool = False
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        """Answer one request with the key set, or refuse when down.
+
+        Args:
+            request (httpx.Request): The outbound request.
+
+        Returns:
+            httpx.Response: The JWK Set.
+
+        Raises:
+            httpx.ConnectError: When :attr:`down` is set.
+        """
+        self.seen.append(str(request.url))
+        if self.down:
+            raise httpx.ConnectError("connection refused", request=request)
+        return httpx.Response(200, json={"keys": [self._entry]})
+
+    def token(self, **overrides: Any) -> str:
+        """Sign a Keycloak-shaped access token (``aud="account"``).
+
+        Args:
+            **overrides (Any): Claim overrides.
+
+        Returns:
+            str: The compact JWT.
+        """
+        now = int(time.time())
+        claims: dict[str, Any] = {
+            "iss": _REALM,
+            "sub": "kc-user-1",
+            "aud": "account",
+            "azp": "mobile-app",
+            "exp": now + 300,
+            "email": "ana@example.com",
+            "email_verified": True,
+            "name": "Ana Souza",
+        }
+        claims.update(overrides)
+        return jwt.encode(claims, self.key, algorithm="RS256", headers={"kid": "k1"})
+
+    def provider(self) -> OIDCProvider:
+        """Build an ``OIDCProvider`` that verifies offline against this realm.
+
+        No ``tokeninfo_url`` and no ``userinfo_url``: the key set is the
+        only thing the provider can fetch.
+
+        Returns:
+            OIDCProvider: The provider, registered as ``google`` by ``_app``.
+        """
+        http = HTTPClient(
+            failure_threshold=0,
+            retry_policy=RetryPolicy(max_attempts=1),
+            transport=httpx.MockTransport(self.handle),
+        )
+        return OIDCProvider(
+            client_id="mobile-app",
+            client_secret="",
+            redirect_uri="https://api.test/auth/oauth/google/callback",
+            authorize_url=f"{_REALM}/protocol/openid-connect/auth",
+            token_url=f"{_REALM}/protocol/openid-connect/token",
+            provider_name="google",
+            http_client=http,
+            token_verifier=OIDCTokenVerifier(_REALM, _REALM_CERTS, http_client=http),
+        )
+
+
+class TestARealmTokenIsVerifiedOffline:
+    """A real ``OIDCProvider`` with an ``OIDCTokenVerifier``, end to end."""
+
+    async def test_a_valid_token_logs_in_with_one_key_set_fetch(
+        self, session: AsyncSession
+    ) -> None:
+        realm = _Realm()
+        app = _app(session, realm.provider())
+
+        async with _http(app) as client:
+            response = await client.post(
+                "/auth/oauth/google/token",
+                json={"access_token": realm.token()},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["access_token"]
+        assert realm.seen == [_REALM_CERTS]
+        assert await _count_users(session) == 1
+
+    @pytest.mark.parametrize(
+        ("kind", "status", "code"),
+        [
+            ("not-a-jwt", 401, "OAUTH_TOKEN_REJECTED"),
+            ("foreign-azp", 401, "OAUTH_TOKEN_AUDIENCE_MISMATCH"),
+            ("expired", 401, "OAUTH_TOKEN_REJECTED"),
+            ("unknown-kid", 401, "OAUTH_TOKEN_REJECTED"),
+        ],
+    )
+    async def test_each_refusal_reaches_the_client_with_its_status(
+        self,
+        session: AsyncSession,
+        kind: str,
+        status: int,
+        code: str,
+    ) -> None:
+        realm = _Realm()
+        app = _app(session, realm.provider())
+        tokens: dict[str, str] = {
+            "not-a-jwt": "x",
+            "foreign-azp": realm.token(azp="someone-else"),
+            "expired": realm.token(exp=int(time.time()) - 60),
+            "unknown-kid": jwt.encode(
+                {"iss": _REALM, "sub": "x", "exp": int(time.time()) + 60},
+                _Realm().key,
+                algorithm="RS256",
+                headers={"kid": "xx"},
+            ),
+        }
+        token = tokens[kind]
+
+        async with _http(app) as client:
+            response = await client.post(
+                "/auth/oauth/google/token",
+                json={"access_token": token},
+            )
+
+        assert response.status_code == status
+        assert response.json()["code"] == code
+        assert await _count_users(session) == 0
+
+    async def test_an_unreachable_realm_is_a_502(self, session: AsyncSession) -> None:
+        realm = _Realm()
+        realm.down = True
+        app = _app(session, realm.provider())
+
+        async with _http(app) as client:
+            response = await client.post(
+                "/auth/oauth/google/token",
+                json={"access_token": realm.token()},
+            )
+
+        assert response.status_code == 502
+        assert response.json()["code"] == "OAUTH_PROVIDER_UNAVAILABLE"
+        assert await _count_users(session) == 0

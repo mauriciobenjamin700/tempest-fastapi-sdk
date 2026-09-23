@@ -313,7 +313,7 @@ Quem responde a pergunta é o client registrado, por
 | --- | --- |
 | `GoogleOAuthClient` | `GET https://oauth2.googleapis.com/tokeninfo`, comparando `aud` e `azp` |
 | `GitHubOAuthClient` | `POST /applications/{client_id}/token` com o par `client_id:client_secret` em Basic — 200 só para token do próprio app, 404 para o de qualquer outro |
-| `OIDCProvider` | O endpoint de introspection (RFC 7662) que você passar em `tokeninfo_url=`; sem ele, a rota recusa |
+| `OIDCProvider` | Offline, pelo `OIDCTokenVerifier` que você passar em `token_verifier=` ([abaixo](#verificar-o-token-do-realm-offline-oidctokenverifier-v02970)); ou o endpoint de introspection (RFC 7662) que você passar em `introspection_url=`; ou um tokeninfo no formato do Google em `tokeninfo_url=`; sem nenhum, a rota recusa |
 | Client próprio | Implemente `verify_token_audience`; sem o método, a rota recusa |
 
 !!! warning "App mobile tem um `client_id` por plataforma"
@@ -363,10 +363,29 @@ keycloak = OIDCProvider(
     authorize_url="https://id.exemplo.com/realms/app/protocol/openid-connect/auth",
     token_url="https://id.exemplo.com/realms/app/protocol/openid-connect/token",
     userinfo_url="https://id.exemplo.com/realms/app/protocol/openid-connect/userinfo",
-    tokeninfo_url="https://id.exemplo.com/realms/app/protocol/openid-connect/token/introspect",
+    introspection_url="https://id.exemplo.com/realms/app/protocol/openid-connect/token/introspect",
     provider_name="keycloak",
 )
 ```
+
+!!! warning "`introspection_url`, não `tokeninfo_url`"
+    Os dois perguntam a mesma coisa em formatos diferentes. O `tokeninfo_url`
+    chama `GET <url>?access_token=<token>`, o formato do Google. O
+    `introspection_url` faz o que a RFC 7662 pede: `POST token=<token>`
+    autenticando o client com `client_id` e `client_secret` no corpo, o mesmo
+    `client_secret_post` da troca do código.
+
+    Medido num Keycloak 26.3: o endpoint `/token/introspect` responde **405**
+    ao `GET` — com `tokeninfo_url` apontando para ele, **todo** token é
+    recusado com 401. Passar os dois ao mesmo tempo levanta `ValueError`.
+
+    | O endpoint responde | A rota responde |
+    | --- | --- |
+    | `active: true` com `azp` de um dos seus client ids | segue para o login |
+    | `active` diferente de `true` | **401** `OAUTH_TOKEN_REJECTED` |
+    | `active: true` com `azp` de outro client | **401** `OAUTH_TOKEN_AUDIENCE_MISMATCH` |
+    | 4xx (o Keycloak dá **401** a um `client_secret` errado) | **502** `OAUTH_ERROR`: a credencial errada é a do serviço, não a de quem chamou |
+    | Fora do ar, 5xx ou corpo que não é JSON | **502** `OAUTH_PROVIDER_UNAVAILABLE` |
 
 !!! info "Recusar é o comportamento correto, não uma limitação"
     Um provedor que não sabe dizer a audiência do token faz a rota responder
@@ -622,6 +641,110 @@ Sem `userinfo_url`, `fetch_user` levanta `NotImplementedError`: nesse caso o
 perfil tem que sair do `id_token`, e você sobrescreve `_parse_user` numa
 subclasse.
 
+### Verificar o token do realm offline: `OIDCTokenVerifier` *(v0.297.0+)*
+
+Um realm Keycloak (e Auth0, Okta, Entra …) **assina** o access token com uma
+chave privada e publica a metade pública num JWK Set. Conferir o token contra
+esse conjunto responde "foi este realm que emitiu, para nós, e ainda vale" sem
+nenhuma requisição por login — nem `tokeninfo_url`, nem `userinfo_url`.
+
+A criptografia é a parte fácil. O que cada serviço errava ao escrever isso à
+mão era a **taxonomia**: qual falha é credencial ruim (401, não adianta repetir)
+e qual é o realm fora do ar (502, repetir depois faz sentido). O
+`OIDCTokenVerifier` fixa esse mapeamento, e o `OIDCProvider` o usa quando você
+passa `token_verifier=`:
+
+```python
+# src/api/dependencies/resources.py
+
+from tempest_fastapi_sdk import HTTPClient, OIDCProvider, OIDCTokenVerifier
+
+ISSUER: str = "https://id.exemplo.com/realms/app"
+
+http: HTTPClient = HTTPClient(timeout=10.0)
+
+verifier: OIDCTokenVerifier = OIDCTokenVerifier(
+    ISSUER,
+    f"{ISSUER}/protocol/openid-connect/certs",
+    algorithms=("RS256",),
+    http_client=http,
+)
+
+keycloak: OIDCProvider = OIDCProvider(
+    client_id="mobile-app",
+    client_secret="",
+    redirect_uri="https://api.exemplo.com/auth/oauth/keycloak/callback",
+    authorize_url=f"{ISSUER}/protocol/openid-connect/auth",
+    token_url=f"{ISSUER}/protocol/openid-connect/token",
+    provider_name="keycloak",
+    http_client=http,
+    token_verifier=verifier,
+)
+```
+
+Instale o extra: `pip install "tempest-fastapi-sdk[oidc,http]"`. O `[oidc]`
+traz o PyJWT **com** `cryptography`, que o PyJWT exige para RS256 e chaves EC;
+só com o `[auth]` o construtor levanta `ImportError` nomeando o `[oidc]`.
+
+Pedaço por pedaço:
+
+- **`issuer`** é comparado com o claim `iss`, exatamente como aparece no token
+  (no Keycloak, `https://<host>/realms/<realm>`).
+- **O segundo argumento** é o `jwks_uri` do *discovery document*. As chaves
+  com `use: "enc"` são descartadas — o Keycloak 26.3.5 publica uma `RSA-OAEP`
+  de cifragem ao lado da `RS256` de assinatura, e ela nunca deve validar
+  assinatura.
+- **`algorithms`** é uma lista **fechada**. O header do token é do atacante,
+  então `alg` nunca é lido dele: `none` e `HS256` (usar a chave pública RSA
+  como segredo HMAC) são recusados **antes** de qualquer busca de chave, e
+  `none` é removido mesmo que você o liste.
+- **`exp`, `iss` e `sub` são sempre obrigatórios**, mesmo que
+  `required_claims=` os omita. O PyJWT só confere `exp` **quando ele está
+  presente** — um token sem `exp` seria uma sessão eterna.
+- **Com `token_verifier=`**, `verify_token_audience` e `fetch_user` leem os
+  claims verificados: nenhuma chamada a `tokeninfo_url` ou `userinfo_url`. O
+  `fetch_user` verifica de novo em vez de confiar na chamada anterior; a chave
+  está em cache, então isso não custa requisição.
+
+!!! info "Por que a audiência não é o `verify_aud` do PyJWT"
+    O Keycloak põe em `aud` o recurso que o token endereça e nomeia o client
+    em `azp`. Num realm recém-criado no Keycloak 26.3.5, o access token de um
+    client `mobile-app` saiu com `"aud": "account"` e `"azp": "mobile-app"` —
+    o `verify_aud` recusaria todo token legítimo. O verificador desliga o
+    `verify_aud` e confere `aud`, `azp` e `client_id` **juntos** contra
+    `client_id` + `extra_audiences`, a mesma regra do caminho por
+    `tokeninfo_url`. Um token com `azp` de outro client responde **401**
+    `OAUTH_TOKEN_AUDIENCE_MISMATCH`.
+
+O contrato de erro, situação por situação:
+
+| Situação | Exceção | Status |
+| --- | --- | --- |
+| JWK Set inalcançável, resposta não-2xx, não-JSON ou sem chave de assinatura | `OAuthProviderUnavailableException` | **502** `OAUTH_PROVIDER_UNAVAILABLE` |
+| `kid` ausente do JWK Set lido | `OAuthTokenRejectedException` | **401** `OAUTH_TOKEN_REJECTED` |
+| Token malformado / não é JWT (`"x"`) | `OAuthTokenRejectedException` | **401** `OAUTH_TOKEN_REJECTED` |
+| `alg` fora da lista, inclusive `none` | `OAuthTokenRejectedException` | **401** `OAUTH_TOKEN_REJECTED` |
+| Assinatura, `iss` ou `exp` inválidos; claim obrigatório faltando | `OAuthTokenRejectedException` | **401** `OAUTH_TOKEN_REJECTED` |
+| `aud`/`azp` de outra aplicação | `OAuthTokenAudienceMismatchException` | **401** `OAUTH_TOKEN_AUDIENCE_MISMATCH` |
+
+O 502 é o **único** caso em que o cliente deve repetir. Um `kid` que o realm
+não publicou não é indisponibilidade — o realm respondeu, o token é que nomeia
+uma chave que ninguém publicou —, e responder 502 ali manda o cliente repetir
+para sempre um token que nunca vai verificar.
+
+!!! tip "Cache e cooldown: `kid` forjado não vira tráfego no IdP"
+    O JWK Set é buscado uma vez e vale por `lifespan` (default **300s**). Um
+    `kid` desconhecido dispara no máximo **uma** atualização por
+    `min_refresh_interval` (default **60s**); dentro dessa janela, a recusa sai
+    direto do cache, e requisições simultâneas esperam a mesma busca em vez de
+    cada uma abrir a sua. É por isso que o SDK não usa o `PyJWKClient`: medido
+    no PyJWT 2.13.0, cinco `kid` forjados custaram cinco buscas do
+    JWK Set, uma por `kid`. E ele busca com I/O bloqueante; aqui a busca passa
+    pelo `HTTPClient` async que você injetou.
+
+    Enquanto o realm está fora, a falha também é lembrada durante o cooldown:
+    repetir não martela o IdP, e continua respondendo 502.
+
 ## Reusando o seu `HTTPClient`
 
 Sem `http_client=`, cada client constrói um dedicado (timeout 10s, breaker
@@ -676,7 +799,8 @@ O que o callback — e o token-in-hand — respondem, por causa:
 | **422** | `OAUTH_EMAIL_MISSING` | Provedor não devolveu e-mail |
 | **422** | `OAUTH_CODE_MISSING` | Callback sem `code` e sem `error` |
 | **501** | `OAUTH_AUDIENCE_UNVERIFIABLE` | *(token-in-hand)* O client registrado não sabe conferir a audiência do token |
-| **502** | `OAUTH_ERROR` | O provedor recusou a troca ou o userinfo |
+| **502** | `OAUTH_ERROR` | O provedor recusou a troca, o userinfo, ou a credencial do client na introspection |
+| **502** | `OAUTH_PROVIDER_UNAVAILABLE` | *(`token_verifier=` / `introspection_url=`)* Não deu para ler o JWK Set ou a introspection do realm — o único 502 em que repetir faz sentido |
 
 !!! tip "Ramifique no `code`, nunca na mensagem *(v0.274.0+)*"
     Os dois **409** são o par que mais importa, e chegavam idênticos antes da
@@ -756,6 +880,10 @@ um `refresh_token` ao Google.
 - Cliente nativo usa `POST /auth/oauth/{provider}/token` com o token no corpo —
   e a audiência do token é conferida **antes** de qualquer leitura, porque
   `userinfo` diz de quem é o token, nunca para quem ele foi emitido.
+- Realm OIDC que assina o token (Keycloak) verifica **offline** com
+  `OIDCProvider(token_verifier=OIDCTokenVerifier(...))`: lista de `alg` fechada,
+  `exp` obrigatório, `aud`+`azp` lidos juntos, JWK Set em cache com cooldown —
+  e cada falha com o status certo (401 credencial, 502 só realm fora do ar).
 - Provedor sem e-mail recebe 422, não um endereço inventado; provedor sem nome
   recebe `"Você"` / `"You"` conforme o locale.
 - Fluxo local completo (signup, ativação, reset) está na

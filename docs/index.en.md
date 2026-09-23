@@ -90,6 +90,10 @@ uv run pytest
 
     Linear, from scratch: builds the whole *Users* feature step by step.
 
+-   **[Frontend in Python »](recipes/tempestweb-frontend.md)**
+
+    The UI is Python too: **tempestweb** writes the screen (WASM in the browser, or server-mode) and the SDK serves the compiled build through `make_web_app_router` / `build_web_app`, on the same origin as the API. For server-rendered pages, the `ui` layer from the `[ssr]` extra.
+
 -   **[Recipes »](recipes/index.md)**
 
     The heart of the docs: the **SDK tour** (one minimal example per block), the index of **86 recipes**, the **complete examples** (Pix checkout, marketplace, admin, fullstack web, GenAI) and **typed SSR**.

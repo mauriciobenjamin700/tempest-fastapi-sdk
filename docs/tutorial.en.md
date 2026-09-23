@@ -841,4 +841,5 @@ You wired the **Users** feature end to end, one layer at a time, each backed by 
 - **[Testing »](recipes/testing.en.md)** — test the feature with `pytest` + in-memory SQLite.
 - **[Server entry point »](recipes/http.en.md)** — middleware, CORS, health, tool-spec and `run_server`.
 - **[Security »](recipes/security.en.md)** — harden the service (rate limit, CSRF, idempotency, body-size limits).
+- **[Frontend in Python »](recipes/tempestweb-frontend.en.md)** — give this API a screen without writing JavaScript: **tempestweb** consumes the same schemas through a typed HTTP client, and the SDK serves the compiled build on the same origin.
 

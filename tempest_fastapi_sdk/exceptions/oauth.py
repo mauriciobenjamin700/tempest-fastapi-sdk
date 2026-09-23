@@ -204,8 +204,9 @@ class OAuthAudienceUnverifiableException(AppException):
     weakening it.
 
     It is a wiring fault, not a caller mistake — hence 501 and not 4xx.
-    Fix it by pointing the client at the provider's token-introspection
-    endpoint (``tokeninfo_url``), or by overriding
+    Fix it by giving :class:`~tempest_fastapi_sdk.OIDCProvider` a
+    ``token_verifier`` or an RFC 7662 ``introspection_url``, pointing a
+    client at a Google-shaped ``tokeninfo_url``, or by overriding
     ``verify_token_audience`` with whatever the provider does offer.
     """
 

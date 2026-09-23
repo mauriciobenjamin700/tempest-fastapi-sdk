@@ -840,3 +840,4 @@ Você conectou a feature **Users** de ponta a ponta, uma camada por vez, cada um
 - **[Testes »](recipes/testing.md)** — teste a feature com `pytest` + SQLite in-memory.
 - **[Ponto de entrada do servidor »](recipes/http.md)** — middleware, CORS, health, tool-spec e `run_server`.
 - **[Segurança »](recipes/security.md)** — endureça o serviço (rate limit, CSRF, idempotência, limites de corpo).
+- **[Frontend em Python »](recipes/tempestweb-frontend.md)** — dê uma tela a essa API sem escrever JavaScript: o **tempestweb** consome os mesmos schemas com um cliente HTTP tipado, e o SDK serve o build compilado na mesma origem.

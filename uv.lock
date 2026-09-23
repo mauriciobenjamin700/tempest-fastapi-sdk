@@ -6972,6 +6972,10 @@ modelops-onnx = [
 modelops-sklearn = [
     { name = "skl2onnx" },
 ]
+oidc = [
+    { name = "cryptography" },
+    { name = "pyjwt" },
+]
 openapi = [
     { name = "pyyaml" },
 ]
@@ -7120,6 +7124,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.5.0" },
     { name = "coqui-tts", marker = "extra == 'genai-audio'", specifier = ">=0.27.5" },
     { name = "cryptography", marker = "extra == 'all'", specifier = ">=50.0.1" },
+    { name = "cryptography", marker = "extra == 'oidc'", specifier = ">=50.0.1" },
     { name = "cryptography", marker = "extra == 'webpush'", specifier = ">=50.0.1" },
     { name = "diffusers", marker = "extra == 'genai-image'", specifier = ">=0.39.0" },
     { name = "email-validator", specifier = ">=2.3.0" },
@@ -7189,6 +7194,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.15.0" },
     { name = "pyjwt", marker = "extra == 'all'", specifier = ">=2.13.0" },
     { name = "pyjwt", marker = "extra == 'auth'", specifier = ">=2.13.0" },
+    { name = "pyjwt", marker = "extra == 'oidc'", specifier = ">=2.13.0" },
     { name = "pymupdf", marker = "extra == 'genai-rag'", specifier = ">=1.28.2" },
     { name = "pyotp", marker = "extra == 'all'", specifier = ">=2.10.0" },
     { name = "pyotp", marker = "extra == 'mfa'", specifier = ">=2.10.0" },
@@ -7235,7 +7241,7 @@ requires-dist = [
     { name = "websockets", marker = "extra == 'all'", specifier = ">=17.1" },
     { name = "websockets", marker = "extra == 'websocket'", specifier = ">=17.1" },
 ]
-provides-extras = ["auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "tasks-redis", "admin", "admin-sql", "minio", "http", "openapi", "prometheus", "mfa", "webauthn", "firebase", "pdf", "pdf-read", "pdf-layout", "spreadsheet", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-diarization", "faces", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-compose", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
+provides-extras = ["auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "tasks-redis", "admin", "admin-sql", "minio", "http", "oidc", "openapi", "prometheus", "mfa", "webauthn", "firebase", "pdf", "pdf-read", "pdf-layout", "spreadsheet", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-diarization", "faces", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-compose", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
 
 [package.metadata.requires-dev]
 dev = [
