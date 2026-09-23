@@ -58,6 +58,60 @@ era **a qual status cada falha corresponde** (issue #288).
   `tokeninfo_url` e pelo verificador — a mesma regra nos dois, sem cópia.
   O método privado `_BaseOAuthClient._assert_audience` saiu.
 
+## [0.296.0] — 2026-09-22
+
+O `500` de uma exceção não tratada saía **fora** do `CORSMiddleware`. O
+navegador descartava a resposta, e o front via só `TypeError: Failed to
+fetch` — sem status, sem `code`, sem `X-Request-ID`. O scaffold do
+`tempest new` gerava exatamente essa pilha (#287).
+
+### Fixed
+
+- **O envelope de 500 passa pela pilha de middleware.** O Starlette
+  executa o handler de `Exception` no `ServerErrorMiddleware`, a camada
+  mais externa, então o envelope nunca voltava por `CORSMiddleware` nem
+  por `RequestIDMiddleware`. Medido antes da correção, com `RequestID` +
+  `apply_cors` + `register_exception_handlers` na ordem do template: `500`
+  sem `Access-Control-Allow-Origin`, sem `X-Request-ID` e com `details: {}`.
+  Agora `register_exception_handlers` instala também o
+  `ErrorEnvelopeMiddleware` como o middleware de usuário **mais interno**
+  (`append` em `user_middleware`, enquanto `add_middleware` sempre insere
+  no índice 0), e o mesmo `500` sai com o header de CORS, com o
+  `X-Request-ID` e com `details.request_id` igual ao header — **em
+  qualquer ordem** das três chamadas, e por isso o template não precisou
+  mudar. A camada não decide CORS: origem fora da allowlist continua sem
+  header no 500. O handler de `Exception` continua registrado para a
+  exceção levantada por um middleware, que a camada interna não vê.
+  Medido no Starlette 0.46.0 (o piso que `fastapi>=0.141.1` aceita) e no
+  1.6.0.
+
+### Added
+
+- **`ErrorEnvelopeMiddleware`** (e o alias `ErrorEnvelopeHandler`, em
+  `tempest_fastapi_sdk.api.middlewares`), para quem monta a pilha à mão
+  com um handler próprio.
+
+### Changed
+
+- **`register_exception_handlers` levanta `RuntimeError` numa aplicação
+  que já montou a pilha** (já serviu requisição ou subiu). Antes a
+  chamada tardia registrava handlers que o Starlette nunca lia; agora
+  falha em vez de parecer funcionar, e falha antes de registrar qualquer
+  handler, então a aplicação recusada fica intocada. Chamar duas vezes
+  instala a camada
+  uma vez só, com o handler da segunda chamada.
+- A exceção **continua sendo re-levantada** depois do envelope, como o
+  `ServerErrorMiddleware` já fazia: o servidor ASGI segue logando, e um
+  `TestClient` com o default `raise_server_exceptions=True` segue
+  levantando no teste do consumidor. Falha depois de a resposta começar
+  (stream quebrado no meio) é re-levantada sem segunda resposta.
+- **Stream quebrado no meio passa a chegar ao `on_server_error`.** O
+  callback vai como `BackgroundTask` da resposta de erro, e uma resposta
+  que nunca é enviada nunca roda a background: medido antes, a falha era
+  logada e o `on_server_error` não disparava nenhuma vez. Agora a camada
+  interna roda a background da resposta que o handler construiu, e o
+  callback dispara uma vez, com o log também uma vez.
+
 ## [0.295.0] — 2026-09-19
 
 A CLI sabia **criar** serviço e rodar os gates. Não sabia **operar** o

@@ -181,6 +181,50 @@ O SDK traz [`AppException`][tempest_fastapi_sdk.AppException] + [`register_excep
 
 O frontend ramifica no `code` (estável, legível por máquina), nunca no `detail` (que pode estar traduzido).
 
+### O 500 também passa pelo CORS
+
+Uma exceção que nenhum handler trata vira `500` com `code: "INTERNAL_SERVER_ERROR"`. O Starlette executa o handler de `Exception` no `ServerErrorMiddleware`, a camada **mais externa** da pilha, então sozinho esse envelope sairia sem passar pelo `CORSMiddleware`: sem `Access-Control-Allow-Origin`, o navegador descarta a resposta e o `fetch` rejeita com `TypeError: Failed to fetch`, sem status, sem `code` e sem `X-Request-ID`.
+
+Por isso o `register_exception_handlers` instala também o [`ErrorEnvelopeMiddleware`][tempest_fastapi_sdk.ErrorEnvelopeMiddleware] como o middleware **mais interno**. Dali o 500 passa por todo middleware que você adicionou, e a ordem das chamadas deixa de importar:
+
+```python
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from tempest_fastapi_sdk import (
+    RequestIDMiddleware,
+    apply_cors,
+    register_exception_handlers,
+)
+
+app: FastAPI = FastAPI()
+app.add_middleware(RequestIDMiddleware)
+apply_cors(app, origins=["https://front.example"])
+register_exception_handlers(app)
+
+
+@app.get("/boom")
+async def boom() -> None:
+    raise RuntimeError("falha não tratada")
+
+
+client: TestClient = TestClient(app, raise_server_exceptions=False)
+response = client.get("/boom", headers={"Origin": "https://front.example"})
+print(response.status_code, response.headers["access-control-allow-origin"])
+print(response.json()["details"]["request_id"] == response.headers["x-request-id"])
+```
+
+```text
+500 https://front.example
+True
+```
+
+!!! note "O que continua igual"
+    - A camada **não decide CORS**. Uma origem fora da lista continua sem o header, também no 500.
+    - Depois de enviar o envelope, a exceção é **re-levantada**, como o Starlette já fazia: o servidor ASGI continua logando, e um `TestClient` com o default `raise_server_exceptions=True` continua levantando no seu teste.
+    - Uma falha depois que a resposta começou (stream quebrado no meio) é re-levantada sem segunda resposta, porque o status já foi para a rede. Ela é logada e chega ao `on_server_error` uma vez, como o 500 comum.
+    - `register_exception_handlers` precisa rodar **antes** de a aplicação subir; depois disso a pilha está montada e ele levanta `RuntimeError`.
+
 ## Para onde ir agora
 
 | Você quer… | Leia |
