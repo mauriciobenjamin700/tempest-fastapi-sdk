@@ -14,8 +14,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.background import BackgroundTask
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware import Middleware
 
 from tempest_fastapi_sdk.api.error_docs import describe_validation_envelope
+from tempest_fastapi_sdk.api.middlewares.error_envelope import (
+    ErrorEnvelopeMiddleware,
+    _skip_enveloped,
+)
 from tempest_fastapi_sdk.core.context import get_request_id
 from tempest_fastapi_sdk.core.logging import HTTP_500_MARKER
 from tempest_fastapi_sdk.exceptions.base import AppException
@@ -825,6 +830,22 @@ def register_exception_handlers(
       string ``"Internal Server Error"`` with no log entry beyond
       the access line, leaving operators blind to real failures.
 
+    The catch-all is also installed as
+    :class:`~tempest_fastapi_sdk.ErrorEnvelopeMiddleware`, appended as the
+    **innermost** user middleware. Starlette runs the ``Exception``
+    handler inside ``ServerErrorMiddleware``, outside every middleware
+    the app added, so on its own the 500 envelope never passes through
+    ``CORSMiddleware``: it leaves without ``Access-Control-Allow-Origin``
+    and without ``X-Request-ID``, the browser discards it, and ``fetch``
+    rejects with ``TypeError: Failed to fetch``. From the innermost slot
+    every middleware decorates the 500 as it decorates a 200, whatever
+    order ``add_middleware``, :func:`~tempest_fastapi_sdk.apply_cors` and
+    this function are called in — ``add_middleware`` always inserts
+    outside it. The handler stays registered for an exception raised by
+    a middleware itself, which the innermost layer cannot see, and skips
+    the exception the layer already answered, so each 500 is logged and
+    reported to ``on_server_error`` once.
+
     Args:
         app (FastAPI): The FastAPI application to wire.
         log_traceback (bool): Whether the 5xx handlers attach the
@@ -874,7 +895,16 @@ def register_exception_handlers(
             framework's own status phrase is localized. See
             :func:`make_http_exception_handler`.
 
+    Raises:
+        RuntimeError: If ``app`` already built its middleware stack
+            (it served a request or started), where a new layer can no
+            longer be added. Checked before anything is registered, so a
+            refused call leaves ``app`` untouched.
+
     Notes:
+        Calling this twice installs the envelope layer once; the second
+        call replaces the handler it renders with.
+
         Starlette types ``add_exception_handler`` to accept only callables
         keyed by the broad ``Exception``, while these handlers narrow their
         second argument to ``AppException`` / ``StarletteHTTPException`` for
@@ -882,6 +912,11 @@ def register_exception_handlers(
         therefore safe: the narrowing is exactly what the registration key
         guarantees.
     """
+    if app.middleware_stack is not None:
+        raise RuntimeError(
+            "register_exception_handlers() must run before the application "
+            "starts: its middleware stack is already built",
+        )
     app.add_exception_handler(
         AppException,
         make_app_exception_handler(  # type: ignore[arg-type]
@@ -904,15 +939,20 @@ def register_exception_handlers(
             envelope_client_errors=envelope_client_errors,
         ),
     )
-    app.add_exception_handler(
-        Exception,
-        make_unhandled_exception_handler(
-            log_traceback=log_traceback,
-            include_traceback=include_traceback,
-            log_level=log_level,
-            logger=logger,
-            on_server_error=on_server_error,
-        ),
+    unhandled_handler: UnhandledExceptionHandler = make_unhandled_exception_handler(
+        log_traceback=log_traceback,
+        include_traceback=include_traceback,
+        log_level=log_level,
+        logger=logger,
+        on_server_error=on_server_error,
+    )
+    app.add_exception_handler(Exception, _skip_enveloped(unhandled_handler))
+    envelope_layer: object = ErrorEnvelopeMiddleware
+    app.user_middleware[:] = [
+        entry for entry in app.user_middleware if entry.cls is not envelope_layer
+    ]
+    app.user_middleware.append(
+        Middleware(ErrorEnvelopeMiddleware, handler=unhandled_handler),
     )
     if envelope_validation_errors or envelope_client_errors:
         app.add_exception_handler(

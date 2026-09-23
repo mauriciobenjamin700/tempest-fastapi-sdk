@@ -53,6 +53,10 @@ def _doc_files() -> list[pathlib.Path]:
     Covers the area-scoped ``CLAUDE.md`` files, ``LESSONS.md`` and the
     ``.claude/`` skill and agent definitions too — an example that moved out of
     the root file keeps the same obligation to match a real signature.
+
+    ``.claude/worktrees/`` is skipped: a ``git worktree`` there is another
+    checkout of the repository, on another branch, and its docs describe
+    symbols this checkout may not have yet.
     """
     files = [
         _ROOT / "CLAUDE.md",
@@ -62,7 +66,11 @@ def _doc_files() -> list[pathlib.Path]:
         _ROOT / "tempest_fastapi_sdk" / "integrations" / "CLAUDE.md",
     ]
     files.extend(sorted((_ROOT / "docs").rglob("*.md")))
-    files.extend(sorted((_ROOT / ".claude").rglob("*.md")))
+    files.extend(
+        path
+        for path in sorted((_ROOT / ".claude").rglob("*.md"))
+        if "worktrees" not in path.relative_to(_ROOT).parts
+    )
     return [f for f in files if f.exists()]
 
 

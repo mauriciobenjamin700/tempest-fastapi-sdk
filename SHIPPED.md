@@ -2211,3 +2211,19 @@ coluna e tabela que o `[pdf-read]` entrega intercaladas, e o caminho com
 senha distingue documento cifrado de arquivo corrompido — o que só ficou
 verdade depois de descobrir que o `pdfplumber` embrulha `PDFPasswordIncorrect`
 num `PdfminerException`, fazendo o `except` específico nunca disparar.
+
+## O 500 volta a passar pelo CORS, v0.296.0 (2026-09-22)
+
+`register_exception_handlers` instala o `ErrorEnvelopeMiddleware` como o
+middleware de usuário mais interno (#287). O handler de `Exception` do
+Starlette mora no `ServerErrorMiddleware`, fora de toda a pilha, e o
+envelope de 500 saía sem `Access-Control-Allow-Origin`: o navegador
+descartava, e o front via `Failed to fetch` num login que já estava em
+produção — escondendo a causa real por horas, porque todo `curl` mostrava
+as camadas funcionando.
+
+A lição é a mesma do OAuth: o issue propunha documentar a ordem certa de
+registro e corrigir o template. Ordem que o consumidor precisa acertar é
+ordem que um dia ele inverte sem teste falhando. `append` em
+`user_middleware` deixa a camada no fundo **qualquer que seja a ordem**,
+então a regra deixou de existir em vez de ganhar um aviso.

@@ -127,6 +127,9 @@ from tempest_fastapi_sdk.api import (
     CSRFMiddleware as CSRFMiddleware,
 )
 from tempest_fastapi_sdk.api import (
+    ErrorEnvelopeMiddleware as ErrorEnvelopeMiddleware,
+)
+from tempest_fastapi_sdk.api import (
     FailOpenRateLimitStore as FailOpenRateLimitStore,
 )
 from tempest_fastapi_sdk.api import (
@@ -1712,7 +1715,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
 )
 
-__version__: str = "0.295.0"
+__version__: str = "0.296.0"
 
 from tempest_fastapi_sdk.api import (
     OAuthAudienceVerifier as OAuthAudienceVerifier,
@@ -1947,6 +1950,7 @@ __all__: list[str] = [
     "EnumColumnRef",
     "EnumTypeState",
     "EnvFeatureFlagBackend",
+    "ErrorEnvelopeMiddleware",
     "ErrorResponseSchema",
     "EventStream",
     "ExpiredTokenException",
