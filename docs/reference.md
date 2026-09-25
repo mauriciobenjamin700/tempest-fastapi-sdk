@@ -380,6 +380,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.unauthorized.UnauthorizedException
 ::: tempest_fastapi_sdk.exceptions.forbidden.ForbiddenException
 ::: tempest_fastapi_sdk.exceptions.validation.ValidationException
+::: tempest_fastapi_sdk.exceptions.validation.OrderByNotAllowedException
+::: tempest_fastapi_sdk.exceptions.validation.PageSizeTooLargeException
 ::: tempest_fastapi_sdk.exceptions.value_errors.ValidationValueError
 ::: tempest_fastapi_sdk.exceptions.too_many_requests.TooManyRequestsException
 ::: tempest_fastapi_sdk.exceptions.jwt.InvalidTokenException
@@ -488,6 +490,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.geo.routing.DEFAULT_MODE_PROFILES
 ::: tempest_fastapi_sdk.geo.geocoding.DEFAULT_NOMINATIM_BASE_URL
 ::: tempest_fastapi_sdk.geo.br.UF_CENTROIDS
+::: tempest_fastapi_sdk.geo.br.CEP_PATTERN
 ---
 
 ## Host (controle da máquina)
@@ -964,6 +967,8 @@ o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.schemas.base.BaseSchema
 ::: tempest_fastapi_sdk.schemas.response.BaseResponseSchema
+::: tempest_fastapi_sdk.schemas.pagination.DEFAULT_MAX_PAGE_SIZE
+::: tempest_fastapi_sdk.schemas.pagination.DEFAULT_MAX_CURSOR_LIMIT
 ::: tempest_fastapi_sdk.schemas.pagination.BasePaginationFilterSchema
 ::: tempest_fastapi_sdk.schemas.pagination.BasePaginationSchema
 ::: tempest_fastapi_sdk.schemas.pagination.CursorPaginationFilterSchema

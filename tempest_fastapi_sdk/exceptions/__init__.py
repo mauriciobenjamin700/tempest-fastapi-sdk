@@ -103,6 +103,12 @@ from tempest_fastapi_sdk.exceptions.upload import (
     InvalidFileTypeException as InvalidFileTypeException,
 )
 from tempest_fastapi_sdk.exceptions.validation import (
+    OrderByNotAllowedException as OrderByNotAllowedException,
+)
+from tempest_fastapi_sdk.exceptions.validation import (
+    PageSizeTooLargeException as PageSizeTooLargeException,
+)
+from tempest_fastapi_sdk.exceptions.validation import (
     ValidationException as ValidationException,
 )
 from tempest_fastapi_sdk.exceptions.value_errors import (
@@ -138,6 +144,8 @@ __all__: list[str] = [
     "OAuthStateMismatchException",
     "OAuthTokenAudienceMismatchException",
     "OAuthTokenRejectedException",
+    "OrderByNotAllowedException",
+    "PageSizeTooLargeException",
     "TooManyRequestsException",
     "UnauthorizedException",
     "ValidationException",

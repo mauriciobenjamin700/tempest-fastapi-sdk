@@ -2248,3 +2248,20 @@ endereço desconhecido, conta já ativa, reenvio real — são indistinguíveis
 (202, mesma frase, `activation_url` nulo quando o link vai por e-mail).
 Reemitir para conta já ativa seria pior que inútil: o link não autoriza
 nada e o e-mail confirma a existência da conta para quem sondar.
+
+## O oráculo de ordenação e a lista que o denunciava, v0.298.0 (2026-09-24)
+
+`order_by` chegava de query param como `str` livre e o repository aceitava
+qualquer coluna mapeada — e, quando recusava, publicava todas elas em
+`details["allowed"]`. Uma listagem pública virava ranking por saldo e busca
+binária sobre o CPF alheio, e o 422 entregava o mapa do que tentar
+(issue #295, ponte local no `alofans-api`). `orderable_columns` e
+`max_page_size` moram no filtro (validado na entrada) e no `BaseRepository`
+(segunda linha); a recusa nunca lista o mapper. A lição é a de sempre: a
+ponte do consumidor era regra de segurança escrita à mão em cada serviço.
+
+Junto subiram `GeoRepositoryMixin.paginate_nearby` (raio, sort, `COUNT` e
+página em SQL, sem PostGIS, cada item `NearbyMatch(row, distance_km)`) e
+`resolve_br_coordinate`/`extract_cep` (CEP → endereço → centroide da UF),
+que o mesmo consumidor mantinha em ~200 linhas locais.
+

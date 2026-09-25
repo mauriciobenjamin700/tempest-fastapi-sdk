@@ -1550,10 +1550,12 @@ filtrada, então joins custom ainda reportam total correto. Quando
 !!! warning "`order_by` é validado contra as colunas do model"
     Ele chega direto de um query param (`BasePaginationFilterSchema` declara um
     `str`), então é entrada não confiável. `paginate` e `cursor_paginate`
-    resolvem o nome pelo mapper e levantam `ValidationException` (**422**)
-    quando não é coluna mapeada — inclusive pra atributo que existe na classe
-    mas não é coluna, como `metadata`. Antes disso um nome desconhecido virava
-    `AttributeError`, ou seja, **500** numa request que era só inválida.
+    resolvem o nome pelo mapper e levantam `OrderByNotAllowedException`
+    (**422**, subclasse de `ValidationException`) quando não é coluna mapeada —
+    inclusive pra atributo que existe na classe mas não é coluna, como
+    `metadata`. A recusa **nunca** lista as colunas do model: desde a 0.298.0
+    `details["allowed"]` só aparece quando você declarou `orderable_columns`,
+    e aí contém só esse conjunto. Ver a seção seguinte.
 
 !!! tip "Encaminhe o schema sem desempacotar à mão"
     O par `get_conditions()` / `get_pagination_conditions()` cobre os dois
@@ -1572,6 +1574,165 @@ filtrada, então joins custom ainda reportam total correto. Quando
 
     `CursorPaginationFilterSchema` tem o mesmo par (com `cursor` / `limit`
     no lugar de `page` / `page_size`).
+
+### Quais colunas ordenam, e quantas linhas cabem numa página
+
+Validar que `order_by` é uma coluna não basta numa listagem pública.
+**Ordenar é um oráculo**: `?order_by=wallet` ranqueia todo mundo por saldo, e
+quem controla a própria linha (grava o próprio `email`, o próprio CPF)
+descobre o valor da linha vizinha por busca binária sobre a posição em que a
+sua cai. E sem teto em `page_size`, um request lê a tabela inteira.
+
+Declare as duas coisas no filtro da listagem:
+
+```python
+from typing import Annotated
+
+from fastapi import FastAPI, Query
+from tempest_fastapi_sdk import BasePaginationFilterSchema, register_exception_handlers
+
+
+class ProducerFilterSchema(BasePaginationFilterSchema):
+    """Filtro da listagem pública de produtores."""
+
+    orderable_columns = frozenset({"created_at", "name"})
+    max_page_size = 50
+
+
+app = FastAPI()
+register_exception_handlers(app)
+
+
+@app.get("/producers")
+def list_producers(
+    filters: Annotated[ProducerFilterSchema, Query()],
+) -> dict[str, int | str | None]:
+    """Echo the validated pagination keys."""
+    return {"page_size": filters.page_size, "order_by": filters.order_by}
+```
+
+Pedaço por pedaço:
+
+- **`orderable_columns`** é um `ClassVar[frozenset[str] | None]`. Com o
+  conjunto declarado, qualquer outro valor vira `OrderByNotAllowedException`
+  já na validação do schema, antes de chegar ao repository:
+
+    ```json
+    {
+      "detail": "Cannot order by this field",
+      "code": "ORDER_BY_NOT_ALLOWED",
+      "details": {"order_by": "hashed_password", "allowed": ["created_at", "name"]},
+      "field": "order_by"
+    }
+    ```
+
+    `details["allowed"]` é **só** o conjunto declarado, ordenado. O default é
+    `None`, que aceita qualquer valor e deixa a checagem para o repository —
+    o comportamento de antes. `order_by` vazio (`?order_by=`) significa
+    ausente e vira `None`, nunca 422.
+
+- **`max_page_size`** é o teto inclusivo de `page_size`. O default da base é
+  `DEFAULT_MAX_PAGE_SIZE` (**100**); declarar na subclasse reescreve o `le=`
+  do campo, então a recusa é o `less_than_equal` do próprio pydantic e o
+  OpenAPI publica `maximum: 50` no parâmetro — com `Depends()` e com
+  `Annotated[..., Query()]`. `None` remove o teto.
+
+!!! warning "O teto de 100 é novo na 0.298.0"
+    Até a 0.297.x `page_size` só tinha `ge=1`. Cliente que pedia
+    `page_size=500` passa a levar 422 — declare `max_page_size` com o valor
+    que a listagem realmente precisa (ou `None`) em vez de redeclarar o
+    campo.
+
+A segunda linha é o repository, para quem chega lá sem passar pelo schema
+(script, painel, outra rota). Os mesmos nomes existem em `BaseRepository`,
+como atributo de classe **ou** argumento do construtor (o construtor vence):
+
+```python
+import asyncio
+from typing import ClassVar
+
+from sqlalchemy import Integer, String
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import Mapped, mapped_column
+from tempest_fastapi_sdk import (
+    BaseModel,
+    BaseRepository,
+    OrderByNotAllowedException,
+    PageSizeTooLargeException,
+)
+
+
+class ProducerModel(BaseModel):
+    __tablename__ = "producers_order_demo"
+
+    name: Mapped[str] = mapped_column(String(80))
+    wallet: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ProducerRepository(BaseRepository[ProducerModel]):
+    orderable_columns: ClassVar[frozenset[str] | None] = frozenset(
+        {"created_at", "name"},
+    )
+    max_page_size: ClassVar[int | None] = 50
+
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(session, model=ProducerModel)
+
+
+async def main() -> None:
+    """Run this example."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(ProducerModel.metadata.create_all)
+    async with AsyncSession(engine) as session:
+        repo = ProducerRepository(session)
+        await repo.paginate(order_by="name", page_size=50)
+        try:
+            await repo.paginate(order_by="wallet")
+        except OrderByNotAllowedException as exc:
+            print(exc.details)
+        try:
+            await repo.paginate(page_size=51)
+        except PageSizeTooLargeException as exc:
+            print(exc.code, exc.details)
+    await engine.dispose()
+
+
+asyncio.run(main())
+```
+
+Saída:
+
+```text
+{'order_by': 'wallet', 'allowed': ['created_at', 'name']}
+PAGE_SIZE_TOO_LARGE {'page_size': 51, 'max_page_size': 50}
+```
+
+- Sem `orderable_columns` no repository, qualquer coluna mapeada ainda ordena
+  — mas a recusa de um nome que não é coluna sai com `details` só com
+  `{"order_by": ...}`, sem a chave `allowed`.
+- Nome declarado que não é coluna do model levanta `ValueError` na
+  construção do repository: um typo na declaração recusaria, em todo
+  request, exatamente a coluna que você queria liberar.
+- `max_page_size` do repository tem default `None` (sem teto), porque
+  chamadores internos como o export do painel `/admin` paginam aos milhares.
+  Declarado, vale para `paginate`, `cursor_paginate` (sobre `limit`) e
+  `GeoRepositoryMixin.paginate_nearby`.
+
+!!! tip "O conjunto do repository vale para todo caminho"
+    `orderable_columns` no repository governa `paginate`, `cursor_paginate` e
+    `changes_since` — inclua a coluna de watermark (`updated_at`) se usar
+    sync. E o painel `/admin` ordena pelo mesmo repository: se ele usa esta
+    classe via `repository_class`, a ordenação por coluna fora do conjunto
+    passa a ser recusada lá também.
+
+`CursorPaginationFilterSchema` tem o mesmo `orderable_columns`, e
+`max_limit` (default `DEFAULT_MAX_CURSOR_LIMIT`, **500** — o `le=500` que o
+campo sempre teve) no papel de `max_page_size`.
+
+**Recap:** declare `orderable_columns` e `max_page_size` no filtro de toda
+listagem pública; o 422 lista só o que você declarou. No repository, os
+mesmos nomes são a segunda linha.
 
 ### Cursor — quando a tabela é grande
 

@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Generic, List, NoReturn, TypeVar, cast
+from typing import Any, ClassVar, Generic, List, NoReturn, TypeVar, cast
 from uuid import UUID
 
 from sqlalchemy import (
@@ -52,7 +52,10 @@ from tempest_fastapi_sdk.db.transaction import in_transaction, savepoint, transa
 from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.exceptions.conflict import ConflictException
 from tempest_fastapi_sdk.exceptions.not_found import NotFoundException
-from tempest_fastapi_sdk.exceptions.validation import ValidationException
+from tempest_fastapi_sdk.exceptions.validation import (
+    OrderByNotAllowedException,
+    PageSizeTooLargeException,
+)
 from tempest_fastapi_sdk.utils.datetime import to_utc, utcnow
 
 logger = logging.getLogger(__name__)
@@ -180,8 +183,20 @@ class BaseRepository(Generic[ModelType]):
     model=UserModel)``) or subclass when adding custom queries — the
     subclass forwards ``model`` / ``not_found_exception`` to
     ``super().__init__`` instead of declaring class attributes. The
-    constructor signature is the contract; there are no magic class
-    attributes to override.
+    constructor signature is the contract. The two exceptions are the
+    pagination guards ``orderable_columns`` and ``max_page_size``, which a
+    subclass may declare as class attributes (mirroring the filter
+    schema, where the same names live) **or** pass to the constructor —
+    the constructor wins.
+
+    Sorting is an oracle when ``order_by`` comes from a query parameter:
+    ordering users by ``wallet`` ranks every row by balance, and a caller
+    who controls their own row extracts another row's value by binary
+    search over where theirs lands. Declaring ``orderable_columns`` makes
+    every other column a 422 (:class:`OrderByNotAllowedException`,
+    ``details["allowed"]`` listing only the declared set). Left ``None``,
+    any mapped column still sorts — the historical behavior — but the
+    refusal no longer publishes the mapper's column list.
 
     The default filter logic supports equality on every column plus
     the following conventions:
@@ -249,7 +264,18 @@ class BaseRepository(Generic[ModelType]):
         bulk_update_conflict_exception (type[AppException]): Same, for
             ``update_many`` / ``bulk_update``.
         session (AsyncSession): The async database session.
+        orderable_columns (ClassVar[frozenset[str] | None]): Class-level
+            default for the columns ``order_by`` may name in
+            :meth:`paginate`, :meth:`cursor_paginate` and
+            :meth:`changes_since`. ``None`` accepts any mapped column.
+        max_page_size (ClassVar[int | None]): Class-level default ceiling
+            on ``page_size`` (and the cursor ``limit``). ``None`` — the
+            default, because internal callers such as the admin export
+            page by the thousand — applies no ceiling.
     """
+
+    orderable_columns: ClassVar[frozenset[str] | None] = None
+    max_page_size: ClassVar[int | None] = None
 
     def __init__(
         self,
@@ -269,6 +295,8 @@ class BaseRepository(Generic[ModelType]):
         bulk_update_conflict_message: str | None = None,
         audit_model: type[BaseAuditLogModel] | None = None,
         autocommit: bool = True,
+        orderable_columns: Iterable[str] | None = None,
+        max_page_size: int | None = None,
     ) -> None:
         """Initialize the repository.
 
@@ -345,10 +373,21 @@ class BaseRepository(Generic[ModelType]):
                 repository belongs to a caller-owned unit of work. It
                 does **not** disable :meth:`commit` — an explicit call
                 still commits.
+            orderable_columns (Iterable[str] | None): The columns
+                ``order_by`` may name on this instance. ``None`` falls back
+                to the class attribute of the same name.
+            max_page_size (int | None): Inclusive ceiling on
+                ``page_size`` / ``limit`` for this instance. ``None``
+                falls back to the class attribute of the same name.
 
         Raises:
             TypeError: When ``model`` is not a subclass of
                 :class:`BaseModel`.
+            ValueError: When the effective ``orderable_columns`` names
+                something that is not a mapped column of ``model`` — a
+                declaration typo would otherwise refuse the column the
+                listing meant to allow, on every request — or when the
+                effective ``max_page_size`` is below 1.
         """
         if not isinstance(model, type) or not issubclass(model, BaseModel):
             raise TypeError(
@@ -385,6 +424,25 @@ class BaseRepository(Generic[ModelType]):
         )
         self._audit_model: type[BaseAuditLogModel] | None = audit_model
         self.autocommit: bool = autocommit
+        declared = (
+            frozenset(orderable_columns)
+            if orderable_columns is not None
+            else type(self).orderable_columns
+        )
+        if declared is not None:
+            unknown = declared - set(inspect(model).columns.keys())
+            if unknown:
+                raise ValueError(
+                    f"orderable_columns names columns {name!r} does not map: "
+                    f"{sorted(unknown)}",
+                )
+        self._orderable_columns: frozenset[str] | None = declared
+        ceiling = (
+            max_page_size if max_page_size is not None else type(self).max_page_size
+        )
+        if ceiling is not None and ceiling < 1:
+            raise ValueError("max_page_size must be at least 1")
+        self._max_page_size: int | None = ceiling
 
     async def _commit(self) -> None:
         """End a write method, committing only when this repository owns it.
@@ -747,7 +805,7 @@ class BaseRepository(Generic[ModelType]):
         )
 
     def _resolve_order_column(self, order_by: str) -> Any:
-        """Resolve ``order_by`` to a real column on the model.
+        """Resolve ``order_by`` to a real, orderable column on the model.
 
         ``order_by`` reaches the repository straight from a query parameter
         (:class:`~tempest_fastapi_sdk.BasePaginationFilterSchema` declares it
@@ -758,8 +816,11 @@ class BaseRepository(Generic[ModelType]):
         ``AttributeError`` one frame later on ``.desc()``. Both surfaced as an
         HTTP 500 on a request that is merely wrong.
 
-        Resolution goes through the mapper's column set, so only mapped
-        columns are orderable and anything else is a 422.
+        Resolution goes through the mapper's column set and, when declared,
+        through ``orderable_columns``. The refusal never lists the mapper:
+        with a declared set, ``details["allowed"]`` is that set; without
+        one, ``allowed`` is omitted, because the full column list
+        (``hashed_password`` included) is the map of what to try next.
 
         Args:
             order_by (str): The column name requested by the caller.
@@ -768,19 +829,30 @@ class BaseRepository(Generic[ModelType]):
             Any: The ``InstrumentedAttribute`` to order by.
 
         Raises:
-            ValidationException: When ``order_by`` is not a mapped column.
+            OrderByNotAllowedException: When ``order_by`` is not a mapped
+                column, or is outside the declared ``orderable_columns``.
         """
-        mapper = inspect(self.model)
-        if order_by in mapper.columns:
+        allowed = self._orderable_columns
+        mapped = order_by in inspect(self.model).columns
+        if mapped and (allowed is None or order_by in allowed):
             column: Any = getattr(self.model, order_by)
             return column
-        raise ValidationException(
-            message=f"{self.model.__name__!r} has no column {order_by!r}",
-            details={
-                "order_by": order_by,
-                "allowed": sorted(mapper.columns.keys()),
-            },
-        )
+        raise OrderByNotAllowedException(order_by, allowed=allowed)
+
+    def _check_page_size(self, page_size: int) -> None:
+        """Refuse a page size above this repository's ceiling.
+
+        Args:
+            page_size (int): The requested ``page_size`` or cursor
+                ``limit``.
+
+        Raises:
+            PageSizeTooLargeException: When ``max_page_size`` is set and
+                ``page_size`` exceeds it.
+        """
+        ceiling = self._max_page_size
+        if ceiling is not None and page_size > ceiling:
+            raise PageSizeTooLargeException(page_size, max_page_size=ceiling)
 
     def _relationship_options(self, with_: list[str]) -> list[Any]:
         """Build eager-load loader options for the given relationship paths.
@@ -1364,10 +1436,15 @@ class BaseRepository(Generic[ModelType]):
             across field by field.
 
         Raises:
-            ValidationException: When ``order_by`` names something that is
-                not a mapped column. It arrives from a query parameter, so
-                a bad value answers 422 rather than crashing the request.
+            OrderByNotAllowedException: When ``order_by`` names something
+                that is not a mapped column, or is outside
+                ``orderable_columns``. It arrives from a query parameter,
+                so a bad value answers 422 rather than crashing the
+                request.
+            PageSizeTooLargeException: When ``max_page_size`` is set and
+                ``page_size`` exceeds it.
         """
+        self._check_page_size(page_size)
         if query is None:
             query = select(self.model)
 
@@ -1445,9 +1522,12 @@ class BaseRepository(Generic[ModelType]):
             ``has_more`` and ``limit``.
 
         Raises:
-            ValidationException: When ``order_by`` is not a mapped column
-                on the model — it comes from a query parameter, so a bad
-                value is a 422 and not a server error.
+            OrderByNotAllowedException: When ``order_by`` is not a mapped
+                column on the model, or is outside ``orderable_columns`` —
+                it comes from a query parameter, so a bad value is a 422
+                and not a server error.
+            PageSizeTooLargeException: When ``max_page_size`` is set and
+                ``limit`` exceeds it.
             ValueError: When ``cursor`` is malformed.
         """
         from tempest_fastapi_sdk.schemas.pagination import (
@@ -1455,6 +1535,7 @@ class BaseRepository(Generic[ModelType]):
             encode_cursor,
         )
 
+        self._check_page_size(limit)
         column = self._resolve_order_column(order_by)
 
         if query is None:
@@ -1569,8 +1650,12 @@ class BaseRepository(Generic[ModelType]):
             query started, to be persisted as the next ``since``.
 
         Raises:
-            ValidationException: When ``order_by`` is not a mapped column
-                on the model.
+            OrderByNotAllowedException: When ``order_by`` is not a mapped
+                column on the model, or is outside ``orderable_columns`` —
+                declare the watermark column there when you declare the
+                set.
+            PageSizeTooLargeException: When ``max_page_size`` is set and
+                ``limit`` exceeds it.
             ValueError: When ``cursor`` is malformed.
         """
         server_time = utcnow()
