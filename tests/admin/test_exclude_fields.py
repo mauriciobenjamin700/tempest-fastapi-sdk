@@ -13,6 +13,7 @@ import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from typing import ClassVar
 from uuid import UUID
 
 import pytest
@@ -35,7 +36,7 @@ from tempest_fastapi_sdk import (
     make_admin_router,
 )
 from tempest_fastapi_sdk.admin.forms import fk_label
-from tempest_fastapi_sdk.db.audit import snapshot_model
+from tempest_fastapi_sdk.db.audit import AUDIT_REDACTED, snapshot_model
 
 
 class ExcludeUser(BaseUserModel):
@@ -47,6 +48,9 @@ class ExcludeUser(BaseUserModel):
 
 class PushDevice(BaseModel):
     __tablename__ = "admin_exclude_devices"
+    __audit_redact__: ClassVar[frozenset[str]] = frozenset(
+        {"name", "endpoint", "p256dh", "auth"}
+    )
 
     name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     platform: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -286,6 +290,14 @@ class TestConstruction:
         assert "push_token" not in admin.editable_field_names()
         assert "hashed_password" in admin.editable_field_names()
 
+    def test_audited_model_must_redact_the_column(self) -> None:
+        with pytest.raises(ValueError, match=r"ExcludeUser.__audit_redact__"):
+            AdminModel(
+                model=ExcludeUser,
+                exclude_fields=[ExcludeUser.totp_secret],
+                audit_model=PushDeviceAuditLog,
+            )
+
     def test_fk_label_skips_a_hidden_display_attribute(self) -> None:
         device = PushDevice(name="Pixel", platform="web")
 
@@ -388,3 +400,30 @@ class TestSurfaces:
         async with panel.db.get_session_context() as session:
             stored = (await session.execute(select(ApiKey.secret))).scalar_one()
         assert stored is None
+
+
+class TestAuditStorage:
+    """The audit table itself, not only the timeline that reads it."""
+
+    async def test_rows_store_the_marker_not_the_value(self, panel: Panel) -> None:
+        async with panel.db.get_session_context() as session:
+            entries = (
+                (
+                    await session.execute(
+                        select(PushDeviceAuditLog).order_by(
+                            PushDeviceAuditLog.created_at
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+        assert [entry.action for entry in entries] == ["create", "update"]
+        created, updated = entries
+        assert created.changes["after"]["endpoint"] == AUDIT_REDACTED
+        assert created.changes["after"]["platform"] == "web"
+        assert updated.changes == {
+            "endpoint": {"before": AUDIT_REDACTED, "after": AUDIT_REDACTED}
+        }
+        _assert_hidden(repr([entry.changes for entry in entries]))

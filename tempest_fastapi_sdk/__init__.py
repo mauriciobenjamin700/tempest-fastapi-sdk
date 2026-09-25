@@ -740,7 +740,13 @@ from tempest_fastapi_sdk.core import (
     typed as typed,
 )
 from tempest_fastapi_sdk.db import (
+    AUDIT_REDACTED as AUDIT_REDACTED,
+)
+from tempest_fastapi_sdk.db import (
     BASE_COLUMN_ORDER as BASE_COLUMN_ORDER,
+)
+from tempest_fastapi_sdk.db import (
+    DEFAULT_AUDIT_REDACT as DEFAULT_AUDIT_REDACT,
 )
 from tempest_fastapi_sdk.db import (
     ENUM_TYPE_SUFFIX as ENUM_TYPE_SUFFIX,
@@ -899,6 +905,9 @@ from tempest_fastapi_sdk.db import (
     WhereClause as WhereClause,
 )
 from tempest_fastapi_sdk.db import (
+    audit_redacted_columns as audit_redacted_columns,
+)
+from tempest_fastapi_sdk.db import (
     backfill_non_nullable_defaults as backfill_non_nullable_defaults,
 )
 from tempest_fastapi_sdk.db import (
@@ -969,6 +978,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     parse_integrity_error as parse_integrity_error,
+)
+from tempest_fastapi_sdk.db import (
+    redact_snapshot as redact_snapshot,
 )
 from tempest_fastapi_sdk.db import (
     render_enum_types as render_enum_types,
@@ -1840,6 +1852,7 @@ from tempest_fastapi_sdk.utils import (
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
+    "AUDIT_REDACTED",
     "AUTH_DEFAULT_DISPLAY_NAME",
     "BASE_COLUMN_ORDER",
     "CENT",
@@ -1853,6 +1866,7 @@ __all__: list[str] = [
     "CSRF_COOKIE_NAME",
     "CSRF_HEADER_NAME",
     "DEFAULT_ASSET_CACHE_CONTROL",
+    "DEFAULT_AUDIT_REDACT",
     "DEFAULT_AUTH_LOCALE",
     "DEFAULT_DOCUMENT_CACHE_CONTROL",
     "DEFAULT_EXCLUDED_PREFIXES",
@@ -2275,6 +2289,7 @@ __all__: list[str] = [
     "apply_auth_cookies",
     "apply_cors",
     "async_retry",
+    "audit_redacted_columns",
     "backfill_non_nullable_defaults",
     "build_content_disposition",
     "build_manifest_entries",
@@ -2411,6 +2426,7 @@ __all__: list[str] = [
     "quantize_money",
     "raises",
     "redact_database_errors",
+    "redact_snapshot",
     "region_choices",
     "register_check",
     "register_exception_handlers",

@@ -1,7 +1,7 @@
 """Tests for the per-entity audit trail."""
 
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 import pytest_asyncio
@@ -9,12 +9,15 @@ from sqlalchemy import String, select
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk.db import (
+    AUDIT_REDACTED,
     AsyncDatabaseManager,
     AuditAction,
     BaseAuditLogModel,
     BaseModel,
     BaseRepository,
+    audit_redacted_columns,
     diff_snapshots,
+    redact_snapshot,
     snapshot_model,
 )
 
@@ -198,3 +201,74 @@ async def test_audit_without_model_raises(
         repo = _UnauditedRepository(session)
         with pytest.raises(RuntimeError, match="without an audit_model"):
             await repo.add_audited(_GadgetModel(name="x"))
+
+
+class _CredentialModel(BaseModel):
+    __tablename__ = "_test_audit_credential"
+    __audit_redact__: ClassVar[frozenset[str]] = frozenset({"totp_secret"})
+
+    hashed_password: Mapped[str] = mapped_column(String(128), default="")
+    totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    label: Mapped[str] = mapped_column(String(32), default="")
+
+
+class _TypoModel(BaseModel):
+    __tablename__ = "_test_audit_typo"
+    __audit_redact__: ClassVar[frozenset[str]] = frozenset({"totp_secert"})
+
+    totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class TestAuditRedaction:
+    """``__audit_redact__`` keeps a credential's value out of the audit table."""
+
+    def test_declared_and_default_columns(self) -> None:
+        assert audit_redacted_columns(_CredentialModel) == {
+            "totp_secret",
+            "hashed_password",
+        }
+
+    def test_default_applies_only_where_the_column_exists(self) -> None:
+        assert audit_redacted_columns(_GadgetModel) == frozenset()
+
+    def test_typo_raises(self) -> None:
+        with pytest.raises(ValueError, match="totp_secert"):
+            audit_redacted_columns(_TypoModel)
+
+    def test_create_and_delete_store_the_marker(self) -> None:
+        row = _CredentialModel(hashed_password="$2b$digest", totp_secret="JBSWY3DP")
+
+        created = _AuditLogModel.for_create(row).changes["after"]
+        deleted = _AuditLogModel.for_delete(row).changes["before"]
+
+        for snapshot in (created, deleted):
+            assert snapshot["totp_secret"] == AUDIT_REDACTED
+            assert snapshot["hashed_password"] == AUDIT_REDACTED
+
+    def test_none_stays_none(self) -> None:
+        row = _CredentialModel(hashed_password="$2b$digest", totp_secret=None)
+
+        assert _AuditLogModel.for_create(row).changes["after"]["totp_secret"] is None
+
+    def test_update_records_the_rotation_without_values(self) -> None:
+        row = _CredentialModel(hashed_password="h", totp_secret="OLD", label="a")
+        before = snapshot_model(row)
+        row.totp_secret = "NEW"
+        row.label = "b"
+
+        changes = _AuditLogModel.for_update(row, before).changes
+
+        assert changes["totp_secret"] == {
+            "before": AUDIT_REDACTED,
+            "after": AUDIT_REDACTED,
+        }
+        assert changes["label"] == {"before": "a", "after": "b"}
+
+    def test_redact_snapshot_returns_a_new_dict(self) -> None:
+        raw = {"totp_secret": "X", "label": "a"}
+
+        assert redact_snapshot(_CredentialModel, raw) == {
+            "totp_secret": AUDIT_REDACTED,
+            "label": "a",
+        }
+        assert raw["totp_secret"] == "X"

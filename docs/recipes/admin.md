@@ -817,6 +817,43 @@ boot, em vez de renderizar o segredo:
   <Model>`. É o caso da assinatura de push acima, por isso o
   `can_create=False`.
 
+### E a tabela de auditoria?
+
+Esconder a linha do tempo não basta: com `audit_model=`, o `add_audited` /
+`update_audited` gravariam o valor na própria tabela de auditoria, legível
+por query ou pelo console SQL do painel. Por isso o `AdminModel` com
+`audit_model=` **recusa** uma coluna excluída que o model não declare em
+`__audit_redact__`:
+
+```python
+# src/db/models.py
+from typing import ClassVar
+
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseModel
+
+
+class WebPushSubscriptionModel(BaseModel):
+    """Assinatura de Web Push de um aparelho."""
+
+    __audit_redact__: ClassVar[frozenset[str]] = frozenset(
+        {"endpoint", "p256dh", "auth"}
+    )
+
+    platform: Mapped[str] = mapped_column(String(16))
+    endpoint: Mapped[str] = mapped_column(String(512))
+    p256dh: Mapped[str] = mapped_column(String(128))
+    auth: Mapped[str] = mapped_column(String(64))
+```
+
+A entrada de auditoria grava `"[redacted]"` no lugar do valor. No update, o
+diff é calculado sobre os valores reais antes da troca, então rotacionar a
+chave ainda aparece — `{"before": "[redacted]", "after": "[redacted]"}` —, e
+`None` continua `None`, para "não definido" seguir distinguível de
+"definido". `hashed_password` é redigido sempre, declarado ou não.
+
 !!! note "`can_import=True` continua permitido"
     Ao contrário de `password_fields`, não há decisão escondida no import: a
     coluna excluída simplesmente não é importável, como não é editável.

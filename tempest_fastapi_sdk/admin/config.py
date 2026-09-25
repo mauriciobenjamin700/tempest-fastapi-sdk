@@ -16,7 +16,7 @@ from tempest_fastapi_sdk.admin.actions import (
     AdminAction,
     resolve_admin_action,
 )
-from tempest_fastapi_sdk.db.audit import BaseAuditLogModel
+from tempest_fastapi_sdk.db.audit import BaseAuditLogModel, audit_redacted_columns
 from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.db.repository import BaseRepository
 from tempest_fastapi_sdk.utils.password import PasswordPolicy
@@ -306,6 +306,13 @@ class AdminModel(Generic[ModelT]):
             headers, the parent's inline table and the audit timeline's
             before/after rows — through :meth:`hidden_field_names`.
 
+            Hiding the timeline's rows is not enough on its own: the audit
+            table itself would still hold the value. With ``audit_model``
+            set, every excluded column must also be listed in the model's
+            ``__audit_redact__``, which makes the audit **write**
+            :data:`~tempest_fastapi_sdk.db.audit.AUDIT_REDACTED` in its
+            place — construction raises otherwise.
+
             Checked at construction, so a contradiction fails at import
             time instead of rendering the secret anyway: a name that is
             not a column, or one that another option also names
@@ -442,8 +449,10 @@ class AdminModel(Generic[ModelT]):
 
         Raises:
             ValueError: When a name is not a column, when another option
-                also names an excluded column, or when ``can_create`` is on
-                and an excluded column is ``NOT NULL`` without a default.
+                also names an excluded column, when ``audit_model`` is set
+                and the model's ``__audit_redact__`` omits an excluded
+                column, or when ``can_create`` is on and an excluded column
+                is ``NOT NULL`` without a default.
         """
         if not self.exclude_fields:
             return
@@ -479,6 +488,16 @@ class AdminModel(Generic[ModelT]):
                     f"AdminModel `exclude_fields` hides {', '.join(clash)}, "
                     f"which `{option}` on {name} also names. Drop it from one "
                     "of the two.",
+                )
+        if self.audit_model is not None:
+            unredacted = sorted(excluded - audit_redacted_columns(self.model))
+            if unredacted:
+                raise ValueError(
+                    f"AdminModel `exclude_fields` hides {', '.join(unredacted)} "
+                    f"on a model audited into {self.audit_model.__name__}, which "
+                    "would still store the value. List the columns in "
+                    f"{name}.__audit_redact__ so the audit records the change "
+                    "without it.",
                 )
         if not self.can_create:
             return

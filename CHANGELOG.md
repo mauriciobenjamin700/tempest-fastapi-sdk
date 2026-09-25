@@ -29,6 +29,15 @@ porque o `DETAIL` do Postgres cita a linha (issue #296), e o painel
   `upload_fields`, `autocomplete_fields`, `password_fields`,
   `identity_field`, `ordering`, `Lens`) e coluna `NOT NULL` sem default com
   `can_create=True` levantam `ValueError`.
+- **`BaseModel.__audit_redact__`** (`ClassVar[frozenset[str]]`) +
+  `AUDIT_REDACTED`, `DEFAULT_AUDIT_REDACT`, `audit_redacted_columns` e
+  `redact_snapshot` (`tempest_fastapi_sdk.db.audit`, re-exportados). As
+  entradas `for_create`/`for_update`/`for_delete` gravam `"[redacted]"` no
+  lugar do valor das colunas listadas (e de `hashed_password`, sempre); no
+  update o diff sai dos valores crus, então a rotação continua registrada.
+  Nome que não é coluna levanta `ValueError`. `AdminModel` com
+  `audit_model=` recusa `exclude_fields` fora do `__audit_redact__` do
+  model — esconder a linha do tempo não tirava o valor da tabela.
 - **`AdminModel.hidden_field_names()`**: o conjunto único
   (`hashed_password` + `password_fields` + `exclude_fields`) que toda
   superfície de leitura do painel filtra.
@@ -53,9 +62,10 @@ porque o `DETAIL` do Postgres cita a linha (issue #296), e o painel
 ### Fixed
 
 - **A linha do tempo de auditoria do admin não mostra mais
-  `hashed_password` nem `password_fields`.** O snapshot do
-  `BaseAuditLogModel` guarda toda coluna, e o detail renderizava o
+  `hashed_password` nem `password_fields`.** O detail renderizava o
   antes/depois do digest; agora filtra por `hidden_field_names()`.
+- **A tabela de auditoria não grava mais o digest de `hashed_password`.**
+  Entradas novas trazem `"[redacted]"`; as já gravadas não são reescritas.
 - **O log de 5xx não carrega mais o `DETAIL` do Postgres.** Medido contra
   Postgres 16 com `hide_parameters=True`: antes, o `exception` do
   `JSONFormatter` terminava em `DETAIL:  Key (cpf)=(123.456.789-00) already

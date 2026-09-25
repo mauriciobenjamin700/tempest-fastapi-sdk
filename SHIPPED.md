@@ -2295,7 +2295,10 @@ Coluna que o painel nunca mostra nem aceita, para credencial que não é
 senha. Sai de toda superfície por `hidden_field_names()`: lista, detail,
 form, import, export, sort, inline do pai, linha do tempo de auditoria e
 rótulo de FK. Contradição com outra opção, coluna inexistente e `NOT NULL`
-sem default com `can_create=True` levantam na construção.
+sem default com `can_create=True` levantam na construção. Com
+`audit_model=`, a coluna precisa estar em `BaseModel.__audit_redact__`,
+que faz a própria tabela de auditoria gravar `"[redacted]"` (o
+`hashed_password` sempre) — esconder só a leitura deixava o valor lá.
 
 Consumidor: `alofans-api`, que mantinha `SecretSafeAdminModel` +
 `SECRET_COLUMNS` sobrescrevendo `column_names()`.

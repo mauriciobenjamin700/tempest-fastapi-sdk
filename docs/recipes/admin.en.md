@@ -836,6 +836,43 @@ built, at boot, instead of rendering the secret:
   creating <Model>`. That is the push subscription above, hence
   `can_create=False`.
 
+### And the audit table?
+
+Hiding the timeline is not enough: with `audit_model=`, `add_audited` /
+`update_audited` would write the value into the audit table itself, readable
+by query or through the panel's SQL console. That is why an `AdminModel`
+with `audit_model=` **refuses** an excluded column the model does not list in
+`__audit_redact__`:
+
+```python
+# src/db/models.py
+from typing import ClassVar
+
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseModel
+
+
+class WebPushSubscriptionModel(BaseModel):
+    """A device's Web Push subscription."""
+
+    __audit_redact__: ClassVar[frozenset[str]] = frozenset(
+        {"endpoint", "p256dh", "auth"}
+    )
+
+    platform: Mapped[str] = mapped_column(String(16))
+    endpoint: Mapped[str] = mapped_column(String(512))
+    p256dh: Mapped[str] = mapped_column(String(128))
+    auth: Mapped[str] = mapped_column(String(64))
+```
+
+The audit entry writes `"[redacted]"` in place of the value. On update the
+diff is computed on the real values before the swap, so rotating the key
+still shows — `{"before": "[redacted]", "after": "[redacted]"}` —, and
+`None` stays `None`, so "not set" remains distinguishable from "set".
+`hashed_password` is always redacted, declared or not.
+
 !!! note "`can_import=True` is still allowed"
     Unlike `password_fields`, there is no hidden decision in the import: the
     excluded column is simply not importable, just as it is not editable.

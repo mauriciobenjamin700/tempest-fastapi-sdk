@@ -169,6 +169,10 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.audit.AuditAction
 ::: tempest_fastapi_sdk.db.audit.snapshot_model
 ::: tempest_fastapi_sdk.db.audit.diff_snapshots
+::: tempest_fastapi_sdk.db.audit.audit_redacted_columns
+::: tempest_fastapi_sdk.db.audit.redact_snapshot
+::: tempest_fastapi_sdk.db.audit.AUDIT_REDACTED
+::: tempest_fastapi_sdk.db.audit.DEFAULT_AUDIT_REDACT
 ::: tempest_fastapi_sdk.db.migrations.DestructiveMigrationError
 ::: tempest_fastapi_sdk.db.migrations.AmbiguousBaseRevisionError
 ::: tempest_fastapi_sdk.db.migrations.SchemaSyncOutcome
