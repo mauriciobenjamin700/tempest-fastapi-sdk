@@ -5,6 +5,38 @@ existe: o defeito que shippou, o comando que mediu, o número que apareceu.
 Consulte quando a regra parecer exagerada — ela quase sempre é a cicatriz
 de algo que passou por revisão manual e escapou.
 
+## O cancel que a dependência engoliu segurou o CI por 2h20 (v0.299.0)
+
+O job de Python 3.11 do PR #301 ficou 2h20 em "Run tests" até
+`force-cancel`; 3.12 e 3.13 do mesmo commit passaram em ~20 min. O
+palpite na hora foi "os testes de genai são pesados" — o log dizia outra
+coisa: `tests/genai` inteiro levou 30s (14:43:01 → 14:43:31), e a última
+linha antes do silêncio foi `tests/tasks/test_scheduler.py`. O arquivo
+seguinte, `test_scheduler_lease.py`, nunca terminou.
+
+Isolado, o arquivo passou 15/15; `tests/tasks` preso a um núcleo, 5/5. A
+reprodução veio de um probe que abre e fecha o `lifespan` com lease em
+instantes aleatórios: em 3.11 o exit ficava preso a cada ~20 runs, em
+3.12 zero em 200. A causa é do CPython 3.11: `asyncio.wait_for` devolve o
+resultado quando o futuro interno completa no mesmo tick do cancel de
+fora, e o `fakeredis` espera cada resposta por ele. Instrumentado, o
+`redis.asyncio.lock.Lock.do_extend` retornou com a task em
+`cancelling()` 156 vezes em 1000 runs.
+
+O defeito do SDK era depender do `CancelledError` chegar: o supervisor
+do lease continuava renovando, e o `lifespan` esperava por ele para
+sempre. Um segundo defeito morava junto: o `suppress(CancelledError)` em
+volta do `await supervisor` engolia também o cancel do **próprio**
+shutdown — medido, o `wait_for(timeout=5)` em volta do exit retornava
+normal em 5,0s, sem `TimeoutError`.
+
+Três correções, uma por camada: o loop checa `current_task().cancelling()`
+a cada volta; o exit só absorve o cancel do supervisor; e o CI ganhou
+`timeout-minutes: 45` no job e `pytest-timeout` (`timeout = 300`), porque
+um hang tem que virar falha em minutos. O teste que reproduz o hang usa um
+lock que engole só o **primeiro** cancel — engolir todos fazia o código
+antigo pendurar a suíte em vez de falhar nela.
+
 ## O número que ninguém pode reproduzir não é medição (v0.292.3)
 
 Três lugares deste repositório relatavam a separação do reconhecimento

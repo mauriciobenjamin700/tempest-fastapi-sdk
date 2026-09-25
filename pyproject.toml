@@ -416,6 +416,7 @@ dev = [
     "chromadb>=1.5.9",
     "lupa>=2.8",
     "zxing-cpp>=3.1.1",
+    "pytest-timeout>=2.4.0",
 ]
 docs = [
     "mkdocs>=1.6.1",
@@ -632,6 +633,7 @@ addopts = [
     "-m",
     "not model and not gpu and not docker",
 ]
+timeout = 300
 filterwarnings = [
     "error::starlette.exceptions.StarletteDeprecationWarning",
 ]
