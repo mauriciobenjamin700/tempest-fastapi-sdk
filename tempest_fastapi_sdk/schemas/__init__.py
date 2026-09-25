@@ -12,6 +12,12 @@ from tempest_fastapi_sdk.schemas.logs import (
     LogFilesClearedSchema as LogFilesClearedSchema,
 )
 from tempest_fastapi_sdk.schemas.pagination import (
+    DEFAULT_MAX_CURSOR_LIMIT as DEFAULT_MAX_CURSOR_LIMIT,
+)
+from tempest_fastapi_sdk.schemas.pagination import (
+    DEFAULT_MAX_PAGE_SIZE as DEFAULT_MAX_PAGE_SIZE,
+)
+from tempest_fastapi_sdk.schemas.pagination import (
     BasePaginationFilterSchema as BasePaginationFilterSchema,
 )
 from tempest_fastapi_sdk.schemas.pagination import (
@@ -46,6 +52,8 @@ from tempest_fastapi_sdk.schemas.response import (
 )
 
 __all__: list[str] = [
+    "DEFAULT_MAX_CURSOR_LIMIT",
+    "DEFAULT_MAX_PAGE_SIZE",
     "BasePaginationFilterSchema",
     "BasePaginationSchema",
     "BaseResponseSchema",

@@ -5,6 +5,76 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.298.0] — 2026-09-24
+
+`order_by` era `str` livre e o `BaseRepository` aceitava qualquer coluna
+mapeada: numa listagem pública isso é um **oráculo de ordenação** — ordenar
+por `wallet` ranqueia a base por saldo, e quem controla a própria linha
+extrai o valor da vizinha por busca binária. A recusa ainda publicava
+`details["allowed"]` com **toda** coluna do model, `hashed_password`
+inclusive, e `page_size` não tinha teto (issue #295). Duas outras pontes do
+`alofans-api` sobem junto: a paginação por raio, que o consumidor fazia em
+memória, e a resolução de coordenada de endereço brasileiro.
+
+### Added
+
+- **`orderable_columns` e `max_page_size`** em `BasePaginationFilterSchema`
+  (`ClassVar`). Com o conjunto declarado, `order_by` fora dele levanta
+  `OrderByNotAllowedException` já na validação do schema (422,
+  `code="ORDER_BY_NOT_ALLOWED"`, `field="order_by"`, `details` com
+  `order_by` e `allowed` — só o conjunto declarado, ordenado). Declarar
+  `max_page_size` numa subclasse reescreve o `le=` de `page_size`, então a
+  recusa é o `less_than_equal` do pydantic e o OpenAPI publica `maximum` no
+  parâmetro — medido com `Depends()` e com `Annotated[..., Query()]`. `None`
+  remove o teto. `CursorPaginationFilterSchema` ganha `orderable_columns` e
+  `max_limit` (default `DEFAULT_MAX_CURSOR_LIMIT` = 500, o `le=500` de
+  sempre).
+- **`BaseRepository.orderable_columns` / `max_page_size`**, como atributo de
+  classe ou argumento do construtor (o construtor vence) — a segunda linha
+  para quem chega sem o schema. Valem para `paginate`, `cursor_paginate`,
+  `changes_since` e `paginate_nearby`. Nome declarado que não é coluna
+  mapeada levanta `ValueError` na construção. `max_page_size` do repository
+  tem default `None`: o export do painel `/admin` pagina 5000 linhas por
+  default.
+- **`PageSizeTooLargeException`** (422, `PAGE_SIZE_TOO_LARGE`,
+  `field="page_size"`, `details` com `page_size` e `max_page_size`) e
+  **`OrderByNotAllowedException`**, as duas subclasses de
+  `ValidationException`, com tradução PT-BR e EN no catálogo.
+- **`DEFAULT_MAX_PAGE_SIZE`** (100) e **`DEFAULT_MAX_CURSOR_LIMIT`** (500).
+- **`GeoRepositoryMixin.paginate_nearby`** — raio, ordenação por distância,
+  `COUNT` e `OFFSET`/`LIMIT` no banco, devolvendo o envelope de paginação do
+  SDK com cada item um **`NearbyMatch(row, distance_km)`** (tupla nomeada).
+  Linha com latitude ou longitude `NULL` não entra; empate desempata por
+  `id`; `extra_filters`, `where` e `query` se somam ao raio. Rodado contra
+  SQLite 3.47.1 e contra `postgres:16-alpine` sem PostGIS
+  (`tests/geo/test_db_postgres_live.py`, `make test-docker`).
+- **`haversine_distance_sql(latitude, longitude, center)`** — a distância
+  como expressão SQL, só com `sin`/`cos`/`asin`/`sqrt`. O termo é limitado a
+  `[0, 1]` com `CASE`: em pares antípodas aleatórios ele saiu
+  `1.0000000000000002` em cerca de 4% de 2 000 000 sorteios no PostgreSQL 16
+  (e também no SQLite), e `asin` acima de 1 é `NULL` no SQLite e
+  `ERROR: input is out of range` no PostgreSQL.
+- **`extract_cep(*texts)`** e **`CEP_PATTERN`** — o primeiro CEP escrito em
+  texto livre, normalizado para `00000-000`.
+- **`resolve_br_coordinate(*, geocoder, uf, address, city, complement,
+  country)`** — CEP → endereço completo → centroide da UF. `geocoder=None`
+  vai direto ao centroide; exceção do geocoder é logada em `WARNING` e a
+  cadeia segue; UF desconhecida devolve `None`. Retry fica no geocoder
+  injetado.
+
+### Changed
+
+- **A recusa de `order_by` do repository não lista mais as colunas do
+  model.** Sem `orderable_columns`, `details` é só `{"order_by": ...}`; com
+  ele, `allowed` é o conjunto declarado. O `code` passou de
+  `VALIDATION_ERROR` para `ORDER_BY_NOT_ALLOWED` — `except
+  ValidationException` continua pegando.
+- **`page_size` tem teto de 100 por default** em `BasePaginationFilterSchema`
+  e `CompactPaginationFilterSchema`. Cliente que pedia mais passa a levar
+  422; declare `max_page_size` (ou `None`) na subclasse.
+- **`order_by` vazio vira `None`** em `BasePaginationFilterSchema` (antes
+  chegava ao repository e respondia 422).
+
 ## [0.297.1] — 2026-09-23
 
 ### Fixed

@@ -8,6 +8,11 @@ Two conveniences for Brazilian services:
 * :func:`cep_to_coordinate` — resolve a Brazilian postal code (CEP) to a
   coordinate through any injected
   :class:`~tempest_fastapi_sdk.geo.GeocodingBackend` (e.g. Nominatim).
+* :func:`extract_cep` — find the first CEP written inside free-text
+  address fields.
+* :func:`resolve_br_coordinate` — the best point for a Brazilian address,
+  falling back CEP → full address → state centroid, never raising on a
+  geocoder failure.
 
 City-level centroids are intentionally not shipped — they need a
 municipality coordinate dataset the SDK does not bundle; geocode the city
@@ -16,6 +21,8 @@ name via a :class:`GeocodingBackend` when you need that precision.
 
 from __future__ import annotations
 
+import logging
+import re
 from typing import TYPE_CHECKING
 
 from tempest_fastapi_sdk.exceptions.value_errors import ValidationValueError
@@ -24,6 +31,16 @@ from tempest_fastapi_sdk.utils import UF, normalize_uf
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.geo.geocoding import GeocodingBackend
+
+_logger: logging.Logger = logging.getLogger(__name__)
+
+CEP_PATTERN: re.Pattern[str] = re.compile(r"\b(\d{5})-?(\d{3})\b")
+"""A CEP written anywhere in free text, with or without the dash.
+
+Word boundaries on both ends keep it from matching eight digits inside a
+longer run (a phone number, a document number): ``"123456789"`` does not
+match, ``"CEP 01310-100, sala 4"`` does.
+"""
 
 # Approximate geographic centre of each Brazilian federative unit
 # (decimal degrees, WGS84). Coarse by design — a state-level pin, not a
@@ -107,8 +124,137 @@ async def cep_to_coordinate(
     return result.coordinate if result is not None else None
 
 
+def extract_cep(*texts: str | None) -> str | None:
+    """Return the first CEP written in the given texts, normalized.
+
+    Built for address data typed into a single free-text field — the
+    postal code sits somewhere inside ``"Av. Paulista, 1578 - 01310-200"``
+    and no column holds it. Texts are scanned in the order given, so pass
+    the most trustworthy field first.
+
+    Args:
+        *texts (str | None): The texts to scan; ``None`` and empty strings
+            are skipped.
+
+    Returns:
+        str | None: The CEP as ``"00000-000"``, or ``None`` when no text
+        carries one. Only the shape is checked — whether the CEP exists is
+        a question for a geocoder.
+    """
+    for text in texts:
+        if not text:
+            continue
+        match = CEP_PATTERN.search(text)
+        if match is not None:
+            return f"{match.group(1)}-{match.group(2)}"
+    return None
+
+
+async def resolve_br_coordinate(
+    *,
+    geocoder: GeocodingBackend | None,
+    uf: UF | str,
+    address: str | None = None,
+    city: str | None = None,
+    complement: str | None = None,
+    country: str = "Brasil",
+) -> Coordinate | None:
+    """Resolve the best known point for a Brazilian address.
+
+    Tries three sources, most precise first, and returns the first that
+    answers:
+
+    1. the **CEP** found in ``address`` or ``complement`` (see
+       :func:`extract_cep`), through :func:`cep_to_coordinate`;
+    2. the **full address** — ``"address, city, UF, country"`` with the
+       empty parts left out — geocoded as one query (skipped when both
+       ``address`` and ``city`` are empty);
+    3. the **state centroid** (:func:`uf_centroid`), offline, which always
+       answers for a valid UF.
+
+    A geocoder failure is not an error here: any exception from
+    ``geocoder.geocode`` is logged at ``WARNING`` (with the traceback) and
+    the chain moves to the next step, so the worst outcome is the state
+    centroid. Retrying belongs **on the geocoder you inject** — wrap its
+    ``geocode`` with :func:`~tempest_fastapi_sdk.async_retry` — because this
+    function only sees the failure after your retries are spent.
+
+    Args:
+        geocoder (GeocodingBackend | None): The backend for steps 1 and 2.
+            ``None`` skips straight to the state centroid — the offline
+            path, for tests and for deployments without geocoding.
+        uf (UF | str): The state, as a member or a sigla
+            (case-insensitive).
+        address (str | None): The street address, free text.
+        city (str | None): The city name.
+        complement (str | None): Extra address text, scanned for a CEP
+            after ``address`` but not sent in the address query.
+        country (str): Country appended to both geocoding queries.
+
+    Returns:
+        Coordinate | None: The resolved point, or ``None`` when nothing
+        matched and ``uf`` is not a valid federative unit.
+    """
+    state = _uf_or_none(uf)
+    sigla = state.value if state is not None else None
+    if geocoder is not None:
+        cep = extract_cep(address, complement)
+        if cep is not None:
+            try:
+                point = await cep_to_coordinate(
+                    cep,
+                    geocoder=geocoder,
+                    country=country,
+                )
+            except Exception:
+                _logger.warning(
+                    "CEP geocoding failed, trying the full address",
+                    exc_info=True,
+                )
+            else:
+                if point is not None:
+                    return point
+        if address or city:
+            parts = [address, city, sigla, country]
+            try:
+                result = await geocoder.geocode(
+                    ", ".join(part for part in parts if part),
+                )
+            except Exception:
+                _logger.warning(
+                    "Address geocoding failed, falling back to the UF centroid",
+                    exc_info=True,
+                )
+            else:
+                if result is not None:
+                    return result.coordinate
+    if state is None:
+        return None
+    return UF_CENTROIDS[state]
+
+
+def _uf_or_none(uf: UF | str) -> UF | None:
+    """Return the federative unit ``uf`` names, or ``None`` when it names none.
+
+    Args:
+        uf (UF | str): A member or a sigla (case-insensitive).
+
+    Returns:
+        UF | None: The member, or ``None`` for an unknown sigla.
+    """
+    if isinstance(uf, UF):
+        return uf
+    try:
+        return normalize_uf(uf)
+    except ValueError:
+        return None
+
+
 __all__: list[str] = [
+    "CEP_PATTERN",
     "UF_CENTROIDS",
     "cep_to_coordinate",
+    "extract_cep",
+    "resolve_br_coordinate",
     "uf_centroid",
 ]

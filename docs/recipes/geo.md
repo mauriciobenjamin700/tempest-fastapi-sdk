@@ -397,6 +397,144 @@ async def nearby_stores(repo: StoreRepository, center: Coordinate) -> list[Store
     `ST_DWithin` / `ST_Distance` — sem dependência Python extra, mesma
     assinatura.
 
+## Paginação por raio no banco (`paginate_nearby`)
+
+O `nearby` carrega a bounding box inteira e ordena em Python — ótimo para
+"as 20 lojas mais perto", ruim para uma **listagem paginada**: página 3 de
+uma busca por raio significaria trazer tudo e fatiar em memória. O
+`paginate_nearby` deixa tudo no banco: a distância Haversine vira uma
+**expressão SQL** (`haversine_distance_sql`), o raio vira `WHERE` sobre ela
+(atrás do pré-filtro de bounding box, que o índice cobre), e ordenação,
+`COUNT` e `OFFSET`/`LIMIT` rodam lá. Sem PostGIS — funciona em PostgreSQL
+puro e em SQLite.
+
+```python
+import asyncio
+
+from sqlalchemy import Float, String
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import Mapped, mapped_column
+from tempest_fastapi_sdk import BaseModel, BaseRepository
+from tempest_fastapi_sdk.geo import Coordinate, GeoRepositoryMixin
+
+
+class EventModel(BaseModel):
+    __tablename__ = "events_nearby_demo"
+
+    name: Mapped[str] = mapped_column(String(80))
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class EventRepository(GeoRepositoryMixin, BaseRepository[EventModel]):
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(session, model=EventModel)
+
+
+async def main() -> None:
+    """Run this example."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(EventModel.metadata.create_all)
+    async with AsyncSession(engine) as session:
+        repo = EventRepository(session)
+        await repo.add_all(
+            [
+                EventModel(name="Sé", latitude=-23.5505, longitude=-46.6333),
+                EventModel(name="Paulista", latitude=-23.5614, longitude=-46.6559),
+                EventModel(name="Santos", latitude=-23.9608, longitude=-46.3336),
+                EventModel(name="Rio", latitude=-22.9068, longitude=-43.1729),
+                EventModel(name="Sem pino", latitude=None, longitude=None),
+            ],
+        )
+        center = Coordinate(latitude=-23.5505, longitude=-46.6333)
+        page = await repo.paginate_nearby(center, 100.0, page=1, page_size=2)
+        for event, distance_km in page["items"]:
+            print(f"{event.name}: {distance_km:.1f} km")
+        print(page["total"], page["pages"])
+    await engine.dispose()
+
+
+asyncio.run(main())
+```
+
+Saída:
+
+```text
+Sé: 0.0 km
+Paulista: 2.6 km
+3 2
+```
+
+Pedaço por pedaço:
+
+- O retorno é o **envelope de paginação do SDK** (`items`, `total`, `page`,
+  `page_size`, `pages`) — a mesma forma do `paginate`. Cada item é um
+  `NearbyMatch`, uma tupla nomeada `(row, distance_km)`: desempacota no `for`
+  ou lê por nome (`match.row`, `match.distance_km`). A distância é a que o
+  banco calculou e usou para ordenar, então nunca discorda da ordem.
+- Linha com latitude ou longitude `NULL` não entra ("Sem pino" ficou de
+  fora). Empate de distância desempata por `id`, então as páginas são
+  estáveis.
+- `extra_filters=` (o vocabulário do `paginate`), `where=` (um `Q`) e
+  `query=` (um `select` próprio cuja primeira entidade é o model) se somam ao
+  raio. `latitude_field=`/`longitude_field=` apontam para colunas com outro
+  nome; nome que não é coluna mapeada levanta `ValueError`.
+- `page_size` respeita o `max_page_size` do repository, quando declarado
+  (`PageSizeTooLargeException`). Ver
+  [Paginação](database.md#quais-colunas-ordenam-e-quantas-linhas-cabem-numa-pagina).
+
+Para devolver isso numa rota, mapeie cada par para o schema de resposta e
+reaproveite os metadados do envelope:
+
+```python
+from typing import Any
+
+from pydantic import Field
+from tempest_fastapi_sdk import BasePaginationSchema, BaseSchema
+
+
+class EventNearbyResponse(BaseSchema):
+    """Evento com a distância até o ponto buscado."""
+
+    name: str = Field(description="Nome do evento.")
+    distance_km: float = Field(description="Distância em km.")
+
+
+def to_response(page: dict[str, Any]) -> BasePaginationSchema[EventNearbyResponse]:
+    """Map a paginate_nearby result to the API envelope."""
+    return BasePaginationSchema[EventNearbyResponse](
+        items=[
+            EventNearbyResponse(name=row.name, distance_km=distance_km)
+            for row, distance_km in page["items"]
+        ],
+        total=page["total"],
+        page=page["page"],
+        page_size=page["page_size"],
+        pages=page["pages"],
+    )
+```
+
+!!! info "Detalhes técnicos: a expressão e o clamp"
+    `haversine_distance_sql(lat, lng, center)` usa só `sin`, `cos`, `asin`,
+    `sqrt` e aritmética — graus viram radianos multiplicando por uma
+    constante, então nem `radians()` é exigido. O SQLite precisa ter as
+    funções matemáticas compiladas (`SQLITE_ENABLE_MATH_FUNCTIONS`, 3.35+).
+    Confira o seu com `SELECT sin(1), asin(1), sqrt(4)` — o SQLite 3.47.1 do
+    CPython 3.13.3 que o `uv` instala (python-build-standalone) responde.
+
+    O termo do Haversine passa de 1 por erro de ponto flutuante: em pares
+    antípodas aleatórios saiu `1.0000000000000002` em cerca de 4% de
+    2 000 000 sorteios, no PostgreSQL 16 e no SQLite. `sqrt` arredonda esse
+    valor de volta para `1.0`, mas `asin` acima de 1 é `NULL` no SQLite e
+    `ERROR: input is out of range` no PostgreSQL — por isso o termo é
+    limitado a `[0, 1]` com um `CASE` antes, e o resultado não depende
+    desse arredondamento.
+
+!!! warning "Antimeridiano"
+    Como no `nearby`, a bounding box é limitada em ±180 de longitude: um
+    círculo que cruza o antimeridiano perde o outro lado.
+
 ## Geocoding (endereço ↔ coordenada)
 
 `NominatimBackend` resolve endereço → coordenada (e reverso) via
@@ -527,7 +665,7 @@ area = polygon_area_km2(poligono_da_zona)
 percorrido = path_length_km(pontos_do_gps)
 ```
 
-## Brasil: centroide por UF e CEP → coordenada
+## Brasil: centroide por UF, CEP e endereço → coordenada
 
 ```python
 import asyncio
@@ -550,13 +688,107 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+### Endereço em texto livre: `resolve_br_coordinate`
+
+Cadastro brasileiro costuma guardar o endereço num campo só, com o CEP em
+algum lugar do meio (`"Av. Paulista, 1578 - 01310-200"`). O
+`resolve_br_coordinate` tenta três fontes, da mais precisa para a mais
+grossa, e devolve a primeira que responde:
+
+1. o **CEP** achado em `address` ou `complement` (`extract_cep`), via
+   `cep_to_coordinate`;
+2. o **endereço completo** — `"endereço, cidade, UF, Brasil"`, sem as
+   partes vazias — geocodificado;
+3. o **centroide da UF** (`uf_centroid`), offline.
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.geo import extract_cep, resolve_br_coordinate
+
+print(extract_cep("Av. Frei Serafim, 2280", "CEP 64001020, sala 4"))
+
+
+async def main() -> None:
+    """Run this example."""
+    point = await resolve_br_coordinate(
+        geocoder=None,
+        uf="pi",
+        address="Av. Frei Serafim, 2280",
+        city="Teresina",
+    )
+    print(point)
+    print(await resolve_br_coordinate(geocoder=None, uf="ZZ"))
+
+
+asyncio.run(main())
+```
+
+Saída:
+
+```text
+64001-020
+latitude=-7.4 longitude=-42.5
+None
+```
+
+- `geocoder=None` pula direto para o centroide — o caminho offline, para
+  teste e para deploy sem geocoding. UF desconhecida devolve `None`.
+- **Falha do geocoder nunca sobe.** Qualquer exceção de `geocode` é logada
+  em `WARNING` (com traceback) e a cadeia segue para o próximo passo; o
+  pior desfecho é o centroide do estado.
+- **Retry é do geocoder que você injeta.** A função só vê a falha depois que
+  as suas tentativas acabaram, então embrulhe o `geocode`:
+
+```python
+import httpx
+from tempest_fastapi_sdk import RetryPolicy, async_retry
+from tempest_fastapi_sdk.geo import (
+    Coordinate,
+    GeocodeResult,
+    GeocodingBackend,
+    NominatimBackend,
+)
+
+
+class RetryingGeocoder:
+    """Geocoder que retenta erro de transporte antes de desistir."""
+
+    def __init__(self, inner: GeocodingBackend) -> None:
+        self._inner = inner
+
+    @async_retry(RetryPolicy(max_attempts=3), (httpx.HTTPError,))
+    async def geocode(self, query: str) -> GeocodeResult | None:
+        """Forward to the wrapped backend, retrying transport errors."""
+        return await self._inner.geocode(query)
+
+    async def reverse(self, coordinate: Coordinate) -> GeocodeResult | None:
+        """Forward reverse geocoding unchanged."""
+        return await self._inner.reverse(coordinate)
+
+
+geocoder = RetryingGeocoder(
+    NominatimBackend(
+        http_client=httpx.AsyncClient(timeout=10.0),
+        user_agent="meu-servico/1.0 (ops@example.com)",
+    ),
+)
+```
+
+!!! warning "Nominatim público fora do caminho da request"
+    A instância pública limita em ~1 req/s e exige `User-Agent` próprio.
+    Resolva a coordenada em background (depois de gravar o registro), não
+    no request do usuário.
+
 ## Recap
 
 - `haversine_km(a, b)` — distância great-circle, pura, sempre disponível.
 - `bounding_box` / `within_radius` / `nearest` — proximidade offline; `key=` pra objetos seus.
 - `GeoPointMixin` + `GeoRepositoryMixin.nearby` — busca por raio no banco (PostGIS via `PostGISRepositoryMixin`).
+- `GeoRepositoryMixin.paginate_nearby` — raio, ordenação, `COUNT` e página no SQL, sem PostGIS; cada item é `NearbyMatch(row, distance_km)`.
 - `NominatimBackend` — geocoding endereço↔coordenada, grátis, `httpx` injetado.
 - `OSRMBackend.matrix` / `route(with_geometry=True)` — matriz N×M e linha da rota; `encode_polyline`/`decode_polyline`.
 - `destination_point` / `initial_bearing` / `point_in_polygon` / `polygon_area_km2` / `path_length_km` — geometria offline.
 - `uf_centroid` / `cep_to_coordinate` — atalhos Brasil.
+- `extract_cep` / `resolve_br_coordinate` — CEP de texto livre e a cadeia CEP → endereço → centroide da UF, sem levantar em falha do geocoder.
 - `estimate_travel` / `OSRMBackend.route` — distância + tempo (`heuristic`/`osrm`); modos carro/moto/ônibus/bici/pedestre.

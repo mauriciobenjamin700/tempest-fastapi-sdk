@@ -1016,6 +1016,12 @@ from tempest_fastapi_sdk.exceptions import (
     NotFoundException as NotFoundException,
 )
 from tempest_fastapi_sdk.exceptions import (
+    OrderByNotAllowedException as OrderByNotAllowedException,
+)
+from tempest_fastapi_sdk.exceptions import (
+    PageSizeTooLargeException as PageSizeTooLargeException,
+)
+from tempest_fastapi_sdk.exceptions import (
     TooManyRequestsException as TooManyRequestsException,
 )
 from tempest_fastapi_sdk.exceptions import (
@@ -1101,6 +1107,12 @@ from tempest_fastapi_sdk.push import (
 )
 from tempest_fastapi_sdk.push import (
     make_push_router as make_push_router,
+)
+from tempest_fastapi_sdk.schemas import (
+    DEFAULT_MAX_CURSOR_LIMIT as DEFAULT_MAX_CURSOR_LIMIT,
+)
+from tempest_fastapi_sdk.schemas import (
+    DEFAULT_MAX_PAGE_SIZE as DEFAULT_MAX_PAGE_SIZE,
 )
 from tempest_fastapi_sdk.schemas import (
     BasePaginationFilterSchema as BasePaginationFilterSchema,
@@ -1836,6 +1848,8 @@ __all__: list[str] = [
     "DEFAULT_LOCALE",
     "DEFAULT_LOG_BACKUP_COUNT",
     "DEFAULT_LOG_MAX_BYTES",
+    "DEFAULT_MAX_CURSOR_LIMIT",
+    "DEFAULT_MAX_PAGE_SIZE",
     "DEFAULT_MAX_RECORDS_PER_FILE",
     "DEFAULT_SPA_CONTENT_SECURITY_POLICY",
     "DEFAULT_SPA_SECURITY_HEADERS",
@@ -2083,10 +2097,12 @@ __all__: list[str] = [
     "OIDCTokenVerifier",
     "ObjectStat",
     "OpenPixSettings",
+    "OrderByNotAllowedException",
     "OrderRef",
     "OutboxRelay",
     "OutboxStatus",
     "OverflowPolicy",
+    "PageSizeTooLargeException",
     "PasswordChangeSchema",
     "PasswordPolicy",
     "PasswordPolicyViolation",

@@ -588,7 +588,8 @@ class TestOrderByValidation:
         with pytest.raises(ValidationException) as exc:
             await repo.paginate(order_by="ghost_column")
         assert exc.value.details["order_by"] == "ghost_column"
-        assert "name" in exc.value.details["allowed"]
+        assert exc.value.code == "ORDER_BY_NOT_ALLOWED"
+        assert "allowed" not in exc.value.details
 
     async def test_non_column_class_attribute_raises_validation(
         self, repo: ProductRepository
