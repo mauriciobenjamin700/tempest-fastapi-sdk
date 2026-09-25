@@ -109,9 +109,9 @@ class Inline:
         """Return the child model's admin slug (its table name).
 
         Returns:
-            str: The ``__tablename__`` used to look the child admin up.
+            str: The table name used to look the child admin up.
         """
-        return str(self.model.__tablename__)
+        return self.model.get_table_name()
 
     def get_label(self) -> str:
         """Return the section heading for this inline.
@@ -554,13 +554,13 @@ class AdminModel(Generic[ModelT]):
     def get_slug(self) -> str:
         """Return the URL slug under which the model is exposed.
 
-        Defaults to ``__tablename__`` so admin URLs and DB tables
-        stay in sync.
+        The model's :meth:`~tempest_fastapi_sdk.BaseModel.get_table_name`,
+        so admin URLs and DB tables stay in sync.
 
         Returns:
             str: The slug.
         """
-        return self.model.__tablename__
+        return self.model.get_table_name()
 
     def column_names(self) -> list[str]:
         """Return every mapped column name on :attr:`model`.

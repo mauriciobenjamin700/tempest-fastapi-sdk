@@ -7,15 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.299.0] — 2026-09-25
 
-Três pontes do `alofans-api` sobem para o SDK. O 500 de um
+Quatro pontes do `alofans-api` sobem para o SDK. O 500 de um
 `IntegrityError` não tratado escrevia no log o valor que o cliente mandou,
 porque o `DETAIL` do Postgres cita a linha (issue #296); o painel
 `/admin` não tinha como esconder uma credencial que não é senha (issue
-#297); e o `VoucherDocument` deixava a codificação do QR para cada serviço,
-que calibrava às cegas um quadro que é do template (issue #300).
+#297); o `VoucherDocument` deixava a codificação do QR para cada serviço,
+que calibrava às cegas um quadro que é do template (issue #300); e o nome
+da tabela de um model só se lia pelo dunder (issue #304).
 
 ### Added
 
+- **`BaseModel.get_table_name()`** (issue #304): classmethod que devolve o
+  nome da tabela mapeada, lido de `inspect(cls).local_table` e não do
+  `__tablename__` — cobre o nome derivado, o `__tablename__` explícito, o
+  model declarado com `__table__ = Table(...)` e a herança de tabela única
+  (a subclasse responde a tabela do pai). Tipado `str` (medido com
+  basedpyright). Model abstrato levanta `NoInspectionAvailable`; model
+  mapeado sobre join/subquery, `TypeError`.
+- **`AdminSite.get` / `require` / `unregister` aceitam a classe do model**
+  além da string do slug. `AdminModel.get_slug`, `Inline.get_slug` e o
+  `discover_models` passam a usar `get_table_name()`.
 - **`VoucherDocument(qr_content=...)`** (issue #300): o texto (URL de
   verificação, Pix BR Code) que o SDK codifica como QR, uma vez, na
   validação — conteúdo longo demais para qualquer versão é

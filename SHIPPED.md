@@ -2274,7 +2274,7 @@ página em SQL, sem PostGIS, cada item `NearbyMatch(row, distance_km)`) e
 que o mesmo consumidor mantinha em ~200 linhas locais.
 
 
-## Três pontes do `alofans-api`, v0.299.0 (2026-09-25)
+## Quatro pontes do `alofans-api`, v0.299.0 (2026-09-25)
 
 ### O `DETAIL` do Postgres fora do log (#296)
 
@@ -2313,3 +2313,12 @@ aceitando imagem pronta, exclusivo com `qr_content`.
 
 Consumidor: `alofans-api` (#174), que mantinha `segno` no `pyproject`,
 `src/utils/qr.py` e três constantes.
+
+### `BaseModel.get_table_name()` (#304)
+
+O nome da tabela mapeada, lido do mapper e não do dunder: cobre nome
+derivado, `__tablename__` explícito, `__table__ = Table(...)` e herança de
+tabela única. `AdminSite.get`/`require`/`unregister` aceitam a classe.
+
+Consumidor: `alofans-api`, com 9 acessos a `.__tablename__` em `src/` e
+`tests/`.

@@ -274,6 +274,34 @@ not yet persisted (`id is None`) fall back to Python identity.
     defense against mass-assignment on sensitive columns (`id`, `role`,
     `is_active`).
 
+### The table name — `get_table_name()`
+
+A dict key, a panel lookup, a test assertion: when you need the table name,
+ask the model, not the dunder:
+
+```python
+from tempest_fastapi_sdk import AdminModel, AdminSite, BaseModel
+
+
+class OrderItemModel(BaseModel):
+    """An order line."""
+
+
+print(OrderItemModel.get_table_name())  # order_item
+
+site = AdminSite(title="Panel")
+site.register(AdminModel(model=OrderItemModel))
+admin = site.get(OrderItemModel)
+```
+
+`get_table_name()` reads the table the mapper built, not `__tablename__`:
+it answers the name derived from the class, an explicit `__tablename__`, and
+also a model declared with `__table__ = Table(...)`, which has no
+`__tablename__` at all. Under single-table inheritance a subclass answers its
+parent's table, where its rows live. The return type is `str` for the type
+checker, and `AdminSite.get` / `require` / `unregister` take the class itself
+in place of the string.
+
 **Recap:** inherit `BaseModel`, declare only your domain columns, and the
 SDK delivers id/timestamps/soft-delete, deterministic constraint names and
 serialization helpers.
