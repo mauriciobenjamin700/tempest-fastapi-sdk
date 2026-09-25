@@ -14,6 +14,7 @@ from sqlalchemy.orm import (
     declared_attr,
     mapped_column,
 )
+from sqlalchemy.sql.selectable import NamedFromClause
 
 from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.db.enums import TempestEnum
@@ -154,6 +155,48 @@ class BaseModel(AsyncAttrs, DeclarativeBase):
         """
         name = cls.__name__.removesuffix("Model")
         return to_snake_case(name) if name else to_snake_case(cls.__name__)
+
+    @classmethod
+    def get_table_name(cls) -> str:
+        """Return the name of the table this model is mapped to.
+
+        Reads the mapped table, not ``__tablename__``: that is a
+        declarative directive the mapper resolves, absent on a model
+        declared with ``__table__ = Table(...)``, and typed by
+        type-checkers as the directive rather than as ``str``. The mapped
+        table's name is the value the database sees in every case — the
+        name derived from the class, an explicit ``__tablename__``, or an
+        explicit ``__table__``. Under single-table inheritance a subclass
+        answers its parent's table, which is where its rows live.
+
+        A classmethod rather than a property, because the common use is on
+        the class (a dict key, the admin registry, a test), and chaining
+        ``@classmethod`` with ``@property`` was removed in Python 3.13.
+
+        Example:
+
+            >>> from tempest_fastapi_sdk import BaseModel
+            >>> class OrderItemModel(BaseModel):
+            ...     pass
+            >>> OrderItemModel.get_table_name()
+            'order_item'
+
+        Returns:
+            str: The table name.
+
+        Raises:
+            sqlalchemy.exc.NoInspectionAvailable: When called on an
+                abstract model, which is not mapped at all.
+            TypeError: When the model is mapped onto an unnamed
+                selectable (a join or a subquery) rather than a table.
+        """
+        table = inspect(cls).local_table
+        if not isinstance(table, NamedFromClause):
+            raise TypeError(
+                f"{cls.__name__} is mapped onto {type(table).__name__}, which "
+                "has no table name",
+            )
+        return table.name
 
     def __repr__(self) -> str:
         """Render the row as ``ClassName(col=value, ...)``.

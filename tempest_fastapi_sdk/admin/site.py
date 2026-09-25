@@ -16,6 +16,18 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.db.model import BaseModel
 
 
+def _slug_of(target: str | type[BaseModel]) -> str:
+    """Resolve an admin lookup key to its slug.
+
+    Args:
+        target (str | type[BaseModel]): A slug, or a model class.
+
+    Returns:
+        str: ``target`` itself, or the model's table name.
+    """
+    return target if isinstance(target, str) else target.get_table_name()
+
+
 class AdminSite:
     """Holds the set of :class:`AdminModel` configurations to expose.
 
@@ -146,33 +158,41 @@ class AdminSite:
         self._registry[slug] = admin
         return admin
 
-    def unregister(self, slug: str) -> None:
+    def unregister(self, slug: str | type[BaseModel]) -> None:
         """Remove a previously registered admin.
 
         Args:
-            slug (str): The slug to drop.
+            slug (str | type[BaseModel]): The slug to drop, or the model
+                class, whose table name is the slug.
 
         Raises:
             KeyError: When no admin is registered under ``slug``.
         """
-        del self._registry[slug]
+        del self._registry[_slug_of(slug)]
 
-    def get(self, slug: str) -> AdminModel[Any] | None:
+    def get(self, slug: str | type[BaseModel]) -> AdminModel[Any] | None:
         """Return the admin registered under ``slug``, or ``None``.
 
+        Example::
+
+            site.get(UserModel)
+            site.get("user")
+
         Args:
-            slug (str): The admin slug.
+            slug (str | type[BaseModel]): The admin slug, or the model
+                class, whose table name is the slug.
 
         Returns:
             AdminModel[Any] | None: The configuration instance.
         """
-        return self._registry.get(slug)
+        return self._registry.get(_slug_of(slug))
 
-    def require(self, slug: str) -> AdminModel[Any]:
+    def require(self, slug: str | type[BaseModel]) -> AdminModel[Any]:
         """Return the admin registered under ``slug`` or raise.
 
         Args:
-            slug (str): The admin slug.
+            slug (str | type[BaseModel]): The admin slug, or the model
+                class, whose table name is the slug.
 
         Returns:
             AdminModel[Any]: The configuration instance.
@@ -180,9 +200,10 @@ class AdminSite:
         Raises:
             KeyError: When no admin matches the slug.
         """
-        admin = self.get(slug)
+        key = _slug_of(slug)
+        admin = self._registry.get(key)
         if admin is None:
-            raise KeyError(f"No admin registered for slug {slug!r}")
+            raise KeyError(f"No admin registered for slug {key!r}")
         return admin
 
     @property

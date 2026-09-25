@@ -116,7 +116,7 @@ def discover_models(
         for _name, obj in _inspect.getmembers(module, _inspect.isclass):
             if not _is_concrete_model(obj):
                 continue
-            tablename: str = obj.__tablename__
+            tablename: str = obj.get_table_name()
             if obj in excluded or obj.__name__ in excluded or tablename in excluded:
                 continue
             found.setdefault(tablename, obj)

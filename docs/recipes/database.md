@@ -275,6 +275,34 @@ Linhas ainda não persistidas (`id is None`) caem para identidade Python.
     é a defesa contra mass-assignment em colunas sensíveis (`id`, `role`,
     `is_active`).
 
+### O nome da tabela — `get_table_name()`
+
+Chave de dict, lookup no painel, assert de teste: quando você precisa do
+nome da tabela, peça ao model, não ao dunder:
+
+```python
+from tempest_fastapi_sdk import AdminModel, AdminSite, BaseModel
+
+
+class OrderItemModel(BaseModel):
+    """Item de um pedido."""
+
+
+print(OrderItemModel.get_table_name())  # order_item
+
+site = AdminSite(title="Painel")
+site.register(AdminModel(model=OrderItemModel))
+admin = site.get(OrderItemModel)
+```
+
+`get_table_name()` lê a tabela que o mapper construiu, não o
+`__tablename__`: responde o nome derivado da classe, o `__tablename__`
+explícito e também o model declarado com `__table__ = Table(...)`, que
+não tem `__tablename__` nenhum. Numa herança de tabela única, a subclasse
+responde a tabela do pai, onde as linhas dela moram. O retorno é `str` para
+o type-checker, e `AdminSite.get` / `require` / `unregister` aceitam a
+própria classe no lugar da string.
+
 **Recap:** herde `BaseModel`, declare só as colunas do seu domínio, e o
 SDK entrega id/timestamps/soft-delete, nomes de constraint determinísticos
 e helpers de serialização.
