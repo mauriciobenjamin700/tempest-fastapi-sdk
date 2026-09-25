@@ -79,10 +79,16 @@ from tempest_fastapi_sdk.db.expressions import F as F
 from tempest_fastapi_sdk.db.expressions import Q as Q
 from tempest_fastapi_sdk.db.expressions import WhereClause as WhereClause
 from tempest_fastapi_sdk.db.integrity import (
+    WITHHELD_NOTICE as WITHHELD_NOTICE,
+)
+from tempest_fastapi_sdk.db.integrity import (
     IntegrityFailure as IntegrityFailure,
 )
 from tempest_fastapi_sdk.db.integrity import (
     IntegrityViolation as IntegrityViolation,
+)
+from tempest_fastapi_sdk.db.integrity import (
+    describe_database_error as describe_database_error,
 )
 from tempest_fastapi_sdk.db.integrity import (
     parse_integrity_error as parse_integrity_error,
@@ -186,6 +192,7 @@ __all__: list[str] = [
     "BASE_COLUMN_ORDER",
     "ENUM_TYPE_SUFFIX",
     "NAMING_CONVENTION",
+    "WITHHELD_NOTICE",
     "AlembicHelper",
     "AmbiguousBaseRevisionError",
     "AsyncDatabaseManager",
@@ -242,6 +249,7 @@ __all__: list[str] = [
     "clear_signals",
     "compose_hooks",
     "connect",
+    "describe_database_error",
     "diff_snapshots",
     "disconnect",
     "enable_sqlite_savepoints",

@@ -13,9 +13,8 @@ porque o `DETAIL` do Postgres cita a linha (issue #296).
 
 ### Added
 
-- **`redact_database_errors`**, `RedactedError`, `ExceptionRedactor` e
-  `WITHHELD_NOTICE` (`tempest_fastapi_sdk.api.redaction`, re-exportados no
-  topo). A função devolve o mesmo objeto quando a cadeia não tem
+- **`redact_database_errors`**, `RedactedError` e `ExceptionRedactor`
+  (`tempest_fastapi_sdk.api.redaction`, re-exportados no topo). A função devolve o mesmo objeto quando a cadeia não tem
   `sqlalchemy.exc.DBAPIError`; quando tem, devolve uma cópia de
   `RedactedError` que mantém todo frame e troca o texto do erro de banco
   por `unique violation; constraint=...; columns=...; driver=...;
@@ -24,6 +23,9 @@ porque o `DETAIL` do Postgres cita a linha (issue #296).
   SQL também (um `text()` com f-string carrega o literal), e a exceção do
   driver sai da cadeia. Percorre `__cause__`, `__context__` e membros de
   `ExceptionGroup`, termina em cadeia cíclica e nunca muta o original.
+- **`describe_database_error`** e **`WITHHELD_NOTICE`**
+  (`tempest_fastapi_sdk.db.integrity`, re-exportados no topo): o resumo em
+  uma linha, público para o `except IntegrityError` do serviço.
 - **`redact_exception=`** em `register_exception_handlers`,
   `make_unhandled_exception_handler`, `make_app_exception_handler` e
   `make_http_exception_handler`. Default `redact_database_errors`; `None`
@@ -38,6 +40,10 @@ porque o `DETAIL` do Postgres cita a linha (issue #296).
   catch-all, para `AppException` 5xx levantada `from` o erro de banco e
   para `HTTPException` 5xx. A resposta e o que `on_server_error` recebe não
   mudam.
+- **O `warning` de conflito do `BaseRepository` também.** Os dez caminhos
+  que convertem `IntegrityError` em `ConflictException` (`add`, `add_all`,
+  `update`, `save_with_outbox`, as variantes `_audited`, ...) logavam
+  `exc.orig`, com o `DETAIL`; agora logam `describe_database_error(exc)`.
 
 ## [0.298.0] — 2026-09-24
 

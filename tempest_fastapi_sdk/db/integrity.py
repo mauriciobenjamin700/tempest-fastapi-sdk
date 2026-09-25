@@ -51,7 +51,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Final
+
+from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from tempest_fastapi_sdk.core.enums import BaseStrEnum
 
@@ -295,8 +297,80 @@ def parse_integrity_error(error: BaseException) -> IntegrityFailure:
     return IntegrityFailure(message=message)
 
 
+WITHHELD_NOTICE: Final[str] = "database message withheld from the log"
+"""Suffix of every redacted database line.
+
+Says outright that the server's text was dropped, so an operator reading
+the traceback does not mistake the summary for the whole message.
+"""
+
+
+def dotted_type_name(error: BaseException) -> str:
+    """Return the name the traceback module would print for ``error``.
+
+    Args:
+        error (BaseException): The exception to name.
+
+    Returns:
+        str: ``module.QualName``, or the bare qualified name for a
+        builtin.
+    """
+    kind = type(error)
+    if kind.__module__ in ("builtins", "__main__"):
+        return kind.__qualname__
+    return f"{kind.__module__}.{kind.__qualname__}"
+
+
+def describe_database_error(error: DBAPIError) -> str:
+    """Summarize a database error without the server's text.
+
+    What the SDK logs in place of ``str(error)``: the 5xx handlers through
+    :func:`~tempest_fastapi_sdk.redact_database_errors`, and
+    :class:`~tempest_fastapi_sdk.BaseRepository` when it turns an
+    ``IntegrityError`` into a ``409``. Postgres's text quotes the row —
+    ``DETAIL:  Key (cpf)=(123.456.789-00) already exists.`` — so the value
+    the client sent would reach ``warning.log`` on every duplicate.
+
+    An integrity error keeps what :func:`parse_integrity_error` reads out
+    of it — the kind, the constraint, the table and the columns, which
+    are schema names — and drops the ``DETAIL`` line, which is data.
+    Every other ``DBAPIError`` keeps only the driver's exception type:
+    a ``DataError`` quotes the rejected input too (``invalid input for
+    query argument $1: 'abc'``), so no server text is safe by category.
+
+    The SQL statement goes too. What the ORM emits carries placeholders,
+    but a statement built with ``text()`` and an f-string carries the
+    literal, and the constraint plus the frames already say which write
+    failed.
+
+    Args:
+        error (DBAPIError): The error to summarize.
+
+    Returns:
+        str: One line naming what failed and stating the omission.
+    """
+    parts: list[str] = []
+    if isinstance(error, IntegrityError):
+        failure = parse_integrity_error(error)
+        if failure.kind is not IntegrityViolation.UNKNOWN:
+            parts.append(f"{failure.kind.value} violation")
+        if failure.constraint:
+            parts.append(f"constraint={failure.constraint}")
+        if failure.table:
+            parts.append(f"table={failure.table}")
+        if failure.columns:
+            parts.append(f"columns={','.join(failure.columns)}")
+    if error.orig is not None:
+        parts.append(f"driver={dotted_type_name(error.orig)}")
+    parts.append(WITHHELD_NOTICE)
+    return "; ".join(parts)
+
+
 __all__: list[str] = [
+    "WITHHELD_NOTICE",
     "IntegrityFailure",
     "IntegrityViolation",
+    "describe_database_error",
+    "dotted_type_name",
     "parse_integrity_error",
 ]

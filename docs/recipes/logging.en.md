@@ -354,6 +354,12 @@ Both outputs above were captured from a real Postgres 16, with the SDK's
 A 500 with no database error in its chain logs exactly as before: the
 function returns the same object.
 
+The **handled** path had the same leak: turning the `IntegrityError` into a
+`409`, `BaseRepository` wrote a `warning` with the driver's text. It now
+writes `IntegrityError on User.add: unique violation; constraint=...;
+columns=...`, built by `describe_database_error` — the same function behind
+the summary above, public for your own `except IntegrityError`.
+
 ```python
 from fastapi import FastAPI
 

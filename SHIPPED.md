@@ -342,7 +342,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   as a `RedactedError` summary (kind, constraint, table, columns, driver
   type), because Postgres's `DETAIL` quotes the value the client sent and
   `hide_parameters=True` does not remove it. Frames kept; response and
-  `on_server_error` untouched; `redact_exception=None` opts out.
+  `on_server_error` untouched; `redact_exception=None` opts out. The same
+  summary (`describe_database_error`) replaces `exc.orig` in the ten
+  `BaseRepository` conflict warnings.
 - **Error i18n** — the built-in `MessageCatalog` covers **every** exception
   code the SDK can raise, in `pt-BR` and `en-US` (v0.280.0: the thirteen
   `OAUTH_*` codes were missing and fell back to the exception's English

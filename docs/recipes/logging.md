@@ -349,6 +349,13 @@ As duas saídas acima foram capturadas de um Postgres 16 real, com o
 Um 500 sem erro de banco na cadeia loga exatamente como antes: a função
 devolve o mesmo objeto.
 
+O caminho **tratado** tinha o mesmo vazamento: ao converter o
+`IntegrityError` em `409`, o `BaseRepository` escrevia um `warning` com o
+texto do driver. Hoje ele escreve `IntegrityError on User.add: unique
+violation; constraint=...; columns=...`, montado por
+`describe_database_error` — a mesma função que dá o resumo acima, pública
+para o seu próprio `except IntegrityError`.
+
 ```python
 from fastapi import FastAPI
 

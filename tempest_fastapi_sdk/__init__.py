@@ -109,9 +109,6 @@ from tempest_fastapi_sdk.api import (
     VALIDATION_ERROR_CODE as VALIDATION_ERROR_CODE,
 )
 from tempest_fastapi_sdk.api import (
-    WITHHELD_NOTICE as WITHHELD_NOTICE,
-)
-from tempest_fastapi_sdk.api import (
     AccessLogMiddleware as AccessLogMiddleware,
 )
 from tempest_fastapi_sdk.api import (
@@ -752,6 +749,9 @@ from tempest_fastapi_sdk.db import (
     NAMING_CONVENTION as NAMING_CONVENTION,
 )
 from tempest_fastapi_sdk.db import (
+    WITHHELD_NOTICE as WITHHELD_NOTICE,
+)
+from tempest_fastapi_sdk.db import (
     AlembicHelper as AlembicHelper,
 )
 from tempest_fastapi_sdk.db import (
@@ -903,6 +903,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     compose_hooks as compose_hooks,
+)
+from tempest_fastapi_sdk.db import (
+    describe_database_error as describe_database_error,
 )
 from tempest_fastapi_sdk.db import (
     diff_snapshots as diff_snapshots,
@@ -2294,6 +2297,7 @@ __all__: list[str] = [
     "default_display_name",
     "default_message_catalog",
     "default_registry",
+    "describe_database_error",
     "describe_validation_envelope",
     "detect_pix_key_type",
     "diff_snapshots",

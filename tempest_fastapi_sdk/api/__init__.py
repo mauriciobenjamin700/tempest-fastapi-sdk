@@ -250,9 +250,6 @@ from tempest_fastapi_sdk.api.oidc_verifier import (
     OIDCTokenVerifier as OIDCTokenVerifier,
 )
 from tempest_fastapi_sdk.api.redaction import (
-    WITHHELD_NOTICE as WITHHELD_NOTICE,
-)
-from tempest_fastapi_sdk.api.redaction import (
     ExceptionRedactor as ExceptionRedactor,
 )
 from tempest_fastapi_sdk.api.redaction import (
@@ -354,7 +351,6 @@ __all__: list[str] = [
     "IDEMPOTENCY_HEADER",
     "RAISES_ATTRIBUTE",
     "VALIDATION_ERROR_CODE",
-    "WITHHELD_NOTICE",
     "AccessLogMiddleware",
     "BanStore",
     "BodySizeLimitMiddleware",

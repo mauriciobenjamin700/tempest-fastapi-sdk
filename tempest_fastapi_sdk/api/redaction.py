@@ -27,11 +27,13 @@ log record points at.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Final
 
-from sqlalchemy.exc import DBAPIError, IntegrityError
+from sqlalchemy.exc import DBAPIError
 
-from tempest_fastapi_sdk.db.integrity import IntegrityViolation, parse_integrity_error
+from tempest_fastapi_sdk.db.integrity import (
+    describe_database_error,
+    dotted_type_name,
+)
 
 ExceptionRedactor = Callable[[BaseException], BaseException]
 """Map the exception a handler caught to the one its log record carries.
@@ -40,13 +42,6 @@ Receives the original exception and returns what goes into ``exc_info``:
 the same object when there is nothing to hide, or a stand-in whose text
 is safe to write to disk. Must not raise and must not mutate its
 argument — the original is still the one ``on_server_error`` receives.
-"""
-
-WITHHELD_NOTICE: Final[str] = "database message withheld from the log"
-"""Suffix of every redacted database line.
-
-Says outright that the server's text was dropped, so an operator reading
-the traceback does not mistake the summary for the whole message.
 """
 
 
@@ -74,60 +69,6 @@ class RedactedError(Exception):
         """
         super().__init__(f"{original_type}: {text}" if text else original_type)
         self.original_type: str = original_type
-
-
-def _dotted_name(error: BaseException) -> str:
-    """Return the name the traceback module would print for ``error``.
-
-    Args:
-        error (BaseException): The exception to name.
-
-    Returns:
-        str: ``module.QualName``, or the bare qualified name for a
-        builtin.
-    """
-    kind = type(error)
-    if kind.__module__ in ("builtins", "__main__"):
-        return kind.__qualname__
-    return f"{kind.__module__}.{kind.__qualname__}"
-
-
-def _describe_database_error(error: DBAPIError) -> str:
-    """Summarize a database error without the server's text.
-
-    An integrity error keeps what :func:`parse_integrity_error` reads out
-    of it — the kind, the constraint, the table and the columns, which
-    are schema names — and drops the ``DETAIL`` line, which is data.
-    Every other ``DBAPIError`` keeps only the driver's exception type:
-    a ``DataError`` quotes the rejected input too (``invalid input for
-    query argument $1: 'abc'``), so no server text is safe by category.
-
-    The SQL statement goes too. What the ORM emits carries placeholders,
-    but a statement built with ``text()`` and an f-string carries the
-    literal, and the constraint plus the frames already say which write
-    failed.
-
-    Args:
-        error (DBAPIError): The error to summarize.
-
-    Returns:
-        str: One line naming what failed and stating the omission.
-    """
-    parts: list[str] = []
-    if isinstance(error, IntegrityError):
-        failure = parse_integrity_error(error)
-        if failure.kind is not IntegrityViolation.UNKNOWN:
-            parts.append(f"{failure.kind.value} violation")
-        if failure.constraint:
-            parts.append(f"constraint={failure.constraint}")
-        if failure.table:
-            parts.append(f"table={failure.table}")
-        if failure.columns:
-            parts.append(f"columns={','.join(failure.columns)}")
-    if error.orig is not None:
-        parts.append(f"driver={_dotted_name(error.orig)}")
-    parts.append(WITHHELD_NOTICE)
-    return "; ".join(parts)
 
 
 def _links(error: BaseException) -> list[BaseException]:
@@ -196,7 +137,7 @@ def _rebuild(error: BaseException, memo: dict[int, BaseException]) -> BaseExcept
         return known
     copy: BaseException
     if isinstance(error, DBAPIError):
-        copy = RedactedError(_dotted_name(error), _describe_database_error(error))
+        copy = RedactedError(dotted_type_name(error), describe_database_error(error))
         memo[id(error)] = copy
         copy.__suppress_context__ = True
         return copy.with_traceback(error.__traceback__)
@@ -207,11 +148,11 @@ def _rebuild(error: BaseException, memo: dict[int, BaseException]) -> BaseExcept
             members.append(
                 rebuilt
                 if isinstance(rebuilt, Exception)
-                else RedactedError(_dotted_name(member), str(member))
+                else RedactedError(dotted_type_name(member), str(member))
             )
-        copy = ExceptionGroup(f"{_dotted_name(error)}: {error.message}", members)
+        copy = ExceptionGroup(f"{dotted_type_name(error)}: {error.message}", members)
     else:
-        copy = RedactedError(_dotted_name(error), str(error))
+        copy = RedactedError(dotted_type_name(error), str(error))
     memo[id(error)] = copy
     copy.__suppress_context__ = error.__suppress_context__
     if error.__cause__ is not None:
@@ -231,7 +172,7 @@ def redact_database_errors(error: BaseException) -> BaseException:
     the chain is rebuilt from :class:`RedactedError` links that keep
     every frame and replace the database error's text with a summary —
     for an ``IntegrityError``, ``unique violation; constraint=...;
-    columns=...`` — ending in :data:`WITHHELD_NOTICE`.
+    columns=...`` — ending in :data:`~tempest_fastapi_sdk.WITHHELD_NOTICE`.
 
     What is lost, on purpose: the driver's exception (asyncpg's
     ``UniqueViolationError`` and SQLAlchemy's adapter around it), whose
@@ -258,7 +199,6 @@ def redact_database_errors(error: BaseException) -> BaseException:
 
 
 __all__: list[str] = [
-    "WITHHELD_NOTICE",
     "ExceptionRedactor",
     "RedactedError",
     "redact_database_errors",

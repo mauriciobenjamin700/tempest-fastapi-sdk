@@ -34,6 +34,7 @@ from tempest_fastapi_sdk.db.expressions import (
     WhereClause,
     build_filter_condition,
 )
+from tempest_fastapi_sdk.db.integrity import describe_database_error
 from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.db.search import (
     ColumnRef,
@@ -1705,7 +1706,9 @@ class BaseRepository(Generic[ModelType]):
         except IntegrityError as exc:
             await self._rollback_after_failure()
             logger.warning(
-                "IntegrityError on %s.add: %s", self.model.__name__, exc.orig
+                "IntegrityError on %s.add: %s",
+                self.model.__name__,
+                describe_database_error(exc),
             )
             raise self.create_conflict_exception(
                 message=self._create_conflict_message,
@@ -1739,7 +1742,9 @@ class BaseRepository(Generic[ModelType]):
         except IntegrityError as exc:
             await self._rollback_after_failure()
             logger.warning(
-                "IntegrityError on %s.add_all: %s", self.model.__name__, exc.orig
+                "IntegrityError on %s.add_all: %s",
+                self.model.__name__,
+                describe_database_error(exc),
             )
             raise self.bulk_create_conflict_exception(
                 message=self._bulk_create_conflict_message,
@@ -1786,7 +1791,7 @@ class BaseRepository(Generic[ModelType]):
             logger.warning(
                 "IntegrityError on %s.save_with_outbox: %s",
                 self.model.__name__,
-                exc.orig,
+                describe_database_error(exc),
             )
             raise self.create_conflict_exception(
                 message=self._create_conflict_message,
@@ -1852,7 +1857,7 @@ class BaseRepository(Generic[ModelType]):
             logger.warning(
                 "IntegrityError on %s.add_audited: %s",
                 self.model.__name__,
-                exc.orig,
+                describe_database_error(exc),
             )
             raise self.create_conflict_exception(
                 message=self._create_conflict_message,
@@ -1905,7 +1910,7 @@ class BaseRepository(Generic[ModelType]):
             logger.warning(
                 "IntegrityError on %s.update_audited: %s",
                 self.model.__name__,
-                exc.orig,
+                describe_database_error(exc),
             )
             raise self.update_conflict_exception(
                 message=self._update_conflict_message,
@@ -1969,7 +1974,9 @@ class BaseRepository(Generic[ModelType]):
         except IntegrityError as exc:
             await self._rollback_after_failure()
             logger.warning(
-                "IntegrityError on %s.update: %s", self.model.__name__, exc.orig
+                "IntegrityError on %s.update: %s",
+                self.model.__name__,
+                describe_database_error(exc),
             )
             raise self.update_conflict_exception(
                 message=self._update_conflict_message,
@@ -2002,7 +2009,7 @@ class BaseRepository(Generic[ModelType]):
             logger.warning(
                 "IntegrityError on %s.update_many: %s",
                 self.model.__name__,
-                exc.orig,
+                describe_database_error(exc),
             )
             raise self.bulk_update_conflict_exception(
                 message=self._bulk_update_conflict_message,
@@ -2061,7 +2068,7 @@ class BaseRepository(Generic[ModelType]):
             logger.warning(
                 "IntegrityError on %s.bulk_update: %s",
                 self.model.__name__,
-                exc.orig,
+                describe_database_error(exc),
             )
             raise self.bulk_update_conflict_exception(
                 message=self._bulk_update_conflict_message,
@@ -2105,7 +2112,7 @@ class BaseRepository(Generic[ModelType]):
             logger.warning(
                 "IntegrityError on %s.bulk_create_values: %s",
                 self.model.__name__,
-                exc.orig,
+                describe_database_error(exc),
             )
             raise self.bulk_create_conflict_exception(
                 message=self._bulk_create_conflict_message,
@@ -2191,7 +2198,7 @@ class BaseRepository(Generic[ModelType]):
             logger.warning(
                 "IntegrityError on %s.bulk_upsert: %s",
                 self.model.__name__,
-                exc.orig,
+                describe_database_error(exc),
             )
             raise self.bulk_create_conflict_exception(
                 message=self._bulk_create_conflict_message,

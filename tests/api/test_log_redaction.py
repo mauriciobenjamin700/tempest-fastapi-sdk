@@ -15,12 +15,19 @@ import traceback
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+from sqlalchemy import String
 from sqlalchemy.exc import DataError, IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
     WITHHELD_NOTICE,
     AppException,
+    BaseModel,
+    BaseRepository,
+    ConflictException,
     RedactedError,
+    describe_database_error,
     redact_database_errors,
     register_exception_handlers,
 )
@@ -184,6 +191,15 @@ class TestRedactDatabaseErrors:
             f"sqlalchemy.exc.DataError: driver={DRIVER}; {WITHHELD_NOTICE}"
         )
 
+    def test_describe_matches_the_redacted_text(self) -> None:
+        error = _integrity_error()
+
+        redacted = redact_database_errors(error)
+
+        assert str(redacted) == (
+            f"sqlalchemy.exc.IntegrityError: {describe_database_error(error)}"
+        )
+
     def test_statement_with_a_literal_is_not_logged(self) -> None:
         driver = DriverUniqueViolationError(PG_UNIQUE)
         error = IntegrityError(f"INSERT INTO p (cpf) VALUES ('{SECRET}')", {}, driver)
@@ -281,4 +297,37 @@ class TestHandlersRedact:
 
         text = _logged(caplog)
         assert "RuntimeError: custom" in text
+        assert SECRET not in text
+
+
+class Gadget(BaseModel):
+    __tablename__ = "gadget_for_log_redaction_test"
+
+    cpf: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+
+
+class TestRepositoryConflictLog:
+    """The handled path: ``BaseRepository`` turns the error into a 409."""
+
+    async def test_conflict_warning_has_no_value(
+        self,
+        session: AsyncSession,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        repository = BaseRepository(session, model=Gadget)
+
+        async def fail() -> None:
+            raise _integrity_error()
+
+        monkeypatch.setattr(repository, "_commit", fail)
+        with (
+            caplog.at_level(logging.WARNING, logger="tempest_fastapi_sdk.db"),
+            pytest.raises(ConflictException),
+        ):
+            await repository.add(Gadget(cpf=SECRET))
+
+        text = _logged(caplog)
+        assert "IntegrityError on Gadget.add" in text
+        assert "constraint=p_cpf_key; columns=cpf" in text
         assert SECRET not in text
