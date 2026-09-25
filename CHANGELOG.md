@@ -93,10 +93,28 @@ da tabela de um model só se lia pelo dunder (issue #304).
 - **`voucher.html`** declara `image-rendering: pixelated` no QR: o
   WeasyPrint passa a gravar `/Interpolate false` (antes, `true`, que pede
   ao visualizador para suavizar a imagem).
+- **CI**: `timeout-minutes: 45` no job e `pytest-timeout` (`timeout = 300`
+  por teste, grupo `dev`), para um hang falhar em minutos em vez de segurar
+  o runner.
 - **`zxing-cpp`** entra no grupo `dev` como decoder independente dos
   testes do QR. Não é dependência de runtime.
 
 ### Fixed
+
+- **O `lifespan(scheduler=True)` não pendura mais no shutdown.** O
+  supervisor do lease só saía pelo `CancelledError`, e uma dependência
+  pode engoli-lo — no CPython 3.11 o `asyncio.wait_for` devolve o
+  resultado quando o futuro interno completa no mesmo tick do cancel, e o
+  `fakeredis` espera cada resposta por ele. O supervisor continuava
+  renovando e o exit esperava para sempre (o job 3.11 do CI ficou 2h20
+  parado em `test_scheduler_lease.py`). Agora o loop checa
+  `current_task().cancelling()` a cada volta: medido em 3.11, 1000
+  ciclos de lifespan com 156 cancels engolidos pela dependência e zero
+  travamentos.
+- **O cancel do próprio shutdown não é mais engolido.** O
+  `suppress(CancelledError)` em volta do `await supervisor` absorvia
+  também um cancel dirigido a quem roda o exit (um shutdown com prazo, um
+  `wait_for`), que então retornava como se tivesse terminado.
 
 - **A linha do tempo de auditoria do admin não mostra mais
   `hashed_password` nem `password_fields`.** O detail renderizava o

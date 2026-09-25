@@ -323,3 +323,89 @@ class TestOnlyOneReplicaSchedules:
         with pytest.raises(ValueError, match="needs a lease"):
             async with queue.lifespan(scheduler=True):
                 pass
+
+
+class CancelSwallowingLock:
+    """A lease whose ``renew`` swallows the cancel, as a dependency can.
+
+    Stands in for ``fakeredis`` on CPython 3.11, where ``asyncio.wait_for``
+    returns the result when the inner future completes in the same tick
+    as the outer cancel. The swallow here is deterministic, and happens
+    once — as the race does: the first cancelled renew returns ``True``,
+    later ones raise. Swallowing every cancel would make the pre-fix code
+    hang the test run instead of failing it.
+
+    Attributes:
+        swallowed (int): How many cancels ``renew`` absorbed.
+    """
+
+    def __init__(self) -> None:
+        """Start with no cancel absorbed."""
+        self.swallowed: int = 0
+
+    async def acquire(self) -> bool:
+        """Take the lease.
+
+        Returns:
+            bool: Always ``True``.
+        """
+        return True
+
+    async def renew(self) -> bool:
+        """Wait, and absorb the first cancel that arrives.
+
+        Returns:
+            bool: Always ``True``.
+        """
+        try:
+            await asyncio.sleep(0.05)
+        except asyncio.CancelledError:
+            if self.swallowed:
+                raise
+            self.swallowed += 1
+        return True
+
+    async def release(self) -> None:
+        """Give the lease up."""
+
+
+class TestShutdownSurvivesASwallowedCancel:
+    """The CI hang: a dependency ate the supervisor's ``CancelledError``."""
+
+    @pytest.mark.asyncio
+    async def test_lifespan_exit_finishes(self) -> None:
+        lock = CancelSwallowingLock()
+        queue = CountingQueue(InMemoryBroker())
+        context = queue.lifespan(
+            scheduler=True,
+            scheduler_lock=lock,
+            lease_ttl_seconds=0.03,
+        )
+        await context.__aenter__()
+        await asyncio.sleep(0.02)
+
+        exit_task = asyncio.create_task(context.__aexit__(None, None, None))
+        done, _ = await asyncio.wait({exit_task}, timeout=2)
+
+        assert exit_task in done, "the lifespan exit hung on the supervisor"
+        assert lock.swallowed == 1
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_exit_is_not_reported_as_finished(self) -> None:
+        """``suppress(CancelledError)`` used to absorb the caller's own cancel."""
+        queue = CountingQueue(InMemoryBroker())
+        context = queue.lifespan(
+            scheduler=True,
+            scheduler_lock=CancelSwallowingLock(),
+            lease_ttl_seconds=0.03,
+        )
+        await context.__aenter__()
+        await asyncio.sleep(0.02)
+
+        exit_task = asyncio.create_task(context.__aexit__(None, None, None))
+        await asyncio.sleep(0)
+        exit_task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await exit_task
+        assert queue.is_connected is False

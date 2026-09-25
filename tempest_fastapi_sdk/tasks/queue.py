@@ -21,7 +21,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from datetime import timedelta
 from typing import (
     TYPE_CHECKING,
@@ -1193,15 +1193,31 @@ class TaskQueue:
         stands down. Losing the lease stops the loop before the next
         tick, because the point is that two loops never overlap.
 
+        Every iteration checks whether this task has been asked to stop,
+        instead of trusting the ``CancelledError`` to arrive. A dependency
+        can swallow it: on CPython 3.11, ``asyncio.wait_for`` returns the
+        result when the inner future completes in the same tick as the
+        outer cancel (fixed in 3.12), and ``fakeredis`` waits for every
+        reply through it. Measured, the swallowed cancel left this loop
+        renewing forever and :meth:`lifespan` waiting on it — the CI job
+        that hung for two hours on ``test_scheduler_lease.py``.
+
         Args:
             lock (SchedulerLock): The lease to hold.
             poll_seconds (float): Interval between renew attempts, and
                 between take-over attempts while standing by. Must be
                 well under the lease TTL.
+
+        Raises:
+            asyncio.CancelledError: When cancelled, after the loop is
+                stopped and the lease released.
         """
         loop_task: asyncio.Task[None] | None = None
+        current = asyncio.current_task()
         try:
             while True:
+                if current is not None and current.cancelling():
+                    raise asyncio.CancelledError
                 if loop_task is None:
                     if await lock.acquire():
                         loop_task = await self.start_scheduler()
@@ -1299,11 +1315,11 @@ class TaskQueue:
                     )
             yield self
         finally:
-            if supervisor is not None:
-                supervisor.cancel()
-                with suppress(asyncio.CancelledError):
-                    await supervisor
-            await self.disconnect()
+            try:
+                if supervisor is not None:
+                    await _stop_supervisor(supervisor)
+            finally:
+                await self.disconnect()
 
     @property
     def is_connected(self) -> bool:
@@ -1321,6 +1337,31 @@ class TaskQueue:
             bool: ``True`` while the broker is started.
         """
         return self._started
+
+
+async def _stop_supervisor(supervisor: asyncio.Task[None]) -> None:
+    """Cancel the lease supervisor and wait for it to stand down.
+
+    The supervisor's own ``CancelledError`` is expected and absorbed. A
+    cancel aimed at the task running this — a shutdown with a deadline,
+    an ``asyncio.wait_for`` around the lifespan exit — is not: absorbing
+    it with a blanket ``suppress(CancelledError)`` made the exit report
+    success after the caller had given up on it.
+
+    Args:
+        supervisor (asyncio.Task[None]): The task running
+            ``_run_scheduler_under_lease``.
+
+    Raises:
+        asyncio.CancelledError: When the caller itself was cancelled.
+    """
+    supervisor.cancel()
+    try:
+        await supervisor
+    except asyncio.CancelledError:
+        current = asyncio.current_task()
+        if current is not None and current.cancelling():
+            raise
 
 
 __all__: list[str] = [
