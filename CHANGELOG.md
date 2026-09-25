@@ -5,6 +5,79 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.299.0] — 2026-09-25
+
+Três pontes do `alofans-api` sobem para o SDK. O 500 de um
+`IntegrityError` não tratado escrevia no log o valor que o cliente mandou,
+porque o `DETAIL` do Postgres cita a linha (issue #296), e o painel
+`/admin` não tinha como esconder uma credencial que não é senha (issue
+#297).
+
+### Added
+
+- **`AdminModel(exclude_fields=...)`** (issue #297): coluna que o painel
+  nunca mostra nem aceita — para credencial que não é senha
+  (`endpoint`/`p256dh`/`auth` de Web Push, `push_token`, `totp_secret`).
+  `readonly_fields` trancava o input e **mostrava** o valor no detail. A
+  coluna sai da listagem, do detail, do form de create/edit (o `POST` que
+  manda o campo é ignorado), do import e do export CSV/JSON, do cabeçalho
+  ordenável, da tabela de inline do pai (mesmo com o `Inline` nomeando a
+  coluna no próprio `list_display`), das linhas da linha do tempo de
+  auditoria e do rótulo de FK (`fk_label`). Validado na construção:
+  coluna inexistente, coluna que outra opção também nomeia
+  (`list_display`, `list_filter`, `search_fields`, `readonly_fields`,
+  `upload_fields`, `autocomplete_fields`, `password_fields`,
+  `identity_field`, `ordering`, `Lens`) e coluna `NOT NULL` sem default com
+  `can_create=True` levantam `ValueError`.
+- **`BaseModel.__audit_redact__`** (`ClassVar[frozenset[str]]`) +
+  `AUDIT_REDACTED`, `DEFAULT_AUDIT_REDACT`, `audit_redacted_columns` e
+  `redact_snapshot` (`tempest_fastapi_sdk.db.audit`, re-exportados). As
+  entradas `for_create`/`for_update`/`for_delete` gravam `"[redacted]"` no
+  lugar do valor das colunas listadas (e de `hashed_password`, sempre); no
+  update o diff sai dos valores crus, então a rotação continua registrada.
+  Nome que não é coluna levanta `ValueError`. `AdminModel` com
+  `audit_model=` recusa `exclude_fields` fora do `__audit_redact__` do
+  model — esconder a linha do tempo não tirava o valor da tabela.
+- **`AdminModel.hidden_field_names()`**: o conjunto único
+  (`hashed_password` + `password_fields` + `exclude_fields`) que toda
+  superfície de leitura do painel filtra.
+- **`redact_database_errors`**, `RedactedError` e `ExceptionRedactor`
+  (`tempest_fastapi_sdk.api.redaction`, re-exportados no topo). A função devolve o mesmo objeto quando a cadeia não tem
+  `sqlalchemy.exc.DBAPIError`; quando tem, devolve uma cópia de
+  `RedactedError` que mantém todo frame e troca o texto do erro de banco
+  por `unique violation; constraint=...; columns=...; driver=...;
+  database message withheld from the log`. O texto do servidor sai para
+  todo `DBAPIError` (um `DataError` cita a entrada recusada), o statement
+  SQL também (um `text()` com f-string carrega o literal), e a exceção do
+  driver sai da cadeia. Percorre `__cause__`, `__context__` e membros de
+  `ExceptionGroup`, termina em cadeia cíclica e nunca muta o original.
+- **`describe_database_error`** e **`WITHHELD_NOTICE`**
+  (`tempest_fastapi_sdk.db.integrity`, re-exportados no topo): o resumo em
+  uma linha, público para o `except IntegrityError` do serviço.
+- **`redact_exception=`** em `register_exception_handlers`,
+  `make_unhandled_exception_handler`, `make_app_exception_handler` e
+  `make_http_exception_handler`. Default `redact_database_errors`; `None`
+  loga a exceção como levantada.
+
+### Fixed
+
+- **A linha do tempo de auditoria do admin não mostra mais
+  `hashed_password` nem `password_fields`.** O detail renderizava o
+  antes/depois do digest; agora filtra por `hidden_field_names()`.
+- **A tabela de auditoria não grava mais o digest de `hashed_password`.**
+  Entradas novas trazem `"[redacted]"`; as já gravadas não são reescritas.
+- **O log de 5xx não carrega mais o `DETAIL` do Postgres.** Medido contra
+  Postgres 16 com `hide_parameters=True`: antes, o `exception` do
+  `JSONFormatter` terminava em `DETAIL:  Key (cpf)=(123.456.789-00) already
+  exists.`; agora termina no resumo acima, sem o valor. Vale para o
+  catch-all, para `AppException` 5xx levantada `from` o erro de banco e
+  para `HTTPException` 5xx. A resposta e o que `on_server_error` recebe não
+  mudam.
+- **O `warning` de conflito do `BaseRepository` também.** Os dez caminhos
+  que convertem `IntegrityError` em `ConflictException` (`add`, `add_all`,
+  `update`, `save_with_outbox`, as variantes `_audited`, ...) logavam
+  `exc.orig`, com o `DETAIL`; agora logam `describe_database_error(exc)`.
+
 ## [0.298.0] — 2026-09-24
 
 `order_by` era `str` livre e o `BaseRepository` aceitava qualquer coluna

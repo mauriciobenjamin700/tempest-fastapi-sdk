@@ -778,6 +778,105 @@ What changes, field by field:
     compose from `AuthSettings` — so the panel enforces the same rule as
     `signup`. With no argument, the `AuthSettings` defaults apply.
 
+## A column that never shows (`exclude_fields=`)
+
+Not every credential is a password. A Web Push subscription stores
+`endpoint`, `p256dh` and `auth` — whoever holds the three can push to that
+device —, and a user stores a `push_token` and a `totp_secret`.
+`readonly_fields` does not help: it locks the input and still **shows** the
+value in the detail view, to every admin.
+
+`exclude_fields=` takes the column out of the whole panel:
+
+```python
+# src/admin.py
+from tempest_fastapi_sdk import AdminModel, AdminSite
+
+from src.db.models import LocalUserModel, WebPushSubscriptionModel
+
+site = AdminSite(title="Panel")
+site.register(
+    AdminModel(
+        LocalUserModel,
+        exclude_fields=[LocalUserModel.totp_secret, LocalUserModel.push_token],
+    ),
+)
+site.register(
+    AdminModel(
+        WebPushSubscriptionModel,
+        exclude_fields=[
+            WebPushSubscriptionModel.endpoint,
+            WebPushSubscriptionModel.p256dh,
+            WebPushSubscriptionModel.auth,
+        ],
+        can_create=False,
+    ),
+)
+```
+
+The column leaves **every** surface at once: the list, the detail view, the
+create and edit forms (a `POST` that sends the field by hand is ignored), the
+CSV import, the CSV/JSON export, the sortable header (`?sort=endpoint` is ignored and the
+default ordering applies), the inline table on the parent's detail —
+even when the `Inline` names the column in its own `list_display` —, the
+before/after rows of the audit timeline, and the label another model's FK
+`<select>` shows. All of them read the same set, `hidden_field_names()`,
+which is `hashed_password` + `password_fields` + `exclude_fields`.
+
+A configuration that contradicts itself fails when the `AdminModel` is
+built, at boot, instead of rendering the secret:
+
+- a name that is not a column of the model;
+- an excluded column another option also names: `list_display`,
+  `list_filter`, `search_fields`, `readonly_fields`, `upload_fields`,
+  `autocomplete_fields`, `password_fields`, `identity_field`, `ordering` or
+  a `Lens` (`filters` or `order_by`);
+- a `NOT NULL` column with no default excluded while `can_create=True` —
+  the form could never fill it, and every create would end in `Conflict
+  creating <Model>`. That is the push subscription above, hence
+  `can_create=False`.
+
+### And the audit table?
+
+Hiding the timeline is not enough: with `audit_model=`, `add_audited` /
+`update_audited` would write the value into the audit table itself, readable
+by query or through the panel's SQL console. That is why an `AdminModel`
+with `audit_model=` **refuses** an excluded column the model does not list in
+`__audit_redact__`:
+
+```python
+# src/db/models.py
+from typing import ClassVar
+
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseModel
+
+
+class WebPushSubscriptionModel(BaseModel):
+    """A device's Web Push subscription."""
+
+    __audit_redact__: ClassVar[frozenset[str]] = frozenset(
+        {"endpoint", "p256dh", "auth"}
+    )
+
+    platform: Mapped[str] = mapped_column(String(16))
+    endpoint: Mapped[str] = mapped_column(String(512))
+    p256dh: Mapped[str] = mapped_column(String(128))
+    auth: Mapped[str] = mapped_column(String(64))
+```
+
+The audit entry writes `"[redacted]"` in place of the value. On update the
+diff is computed on the real values before the swap, so rotating the key
+still shows — `{"before": "[redacted]", "after": "[redacted]"}` —, and
+`None` stays `None`, so "not set" remains distinguishable from "set".
+`hashed_password` is always redacted, declared or not.
+
+!!! note "`can_import=True` is still allowed"
+    Unlike `password_fields`, there is no hidden decision in the import: the
+    excluded column is simply not importable, just as it is not editable.
+
 ## Operator timezone (`display_timezone=`)
 
 A `TIMESTAMP(timezone=True)` column stores an **instant**, and the admin
@@ -1201,5 +1300,7 @@ control, `custom_css_url`.
   who reaches the admin can do everything.
 - `AdminTheme` covers the look through typed fields; `can_import=True` opens CSV
   import with a preview before anything is written.
+- `exclude_fields=` takes a credential that is not a password off every
+  surface of the panel; `readonly_fields` only locks the write.
 - `display_timezone=` is what turns the datetime field into a widget: the
   screen reads and writes in the operator's zone, the column stays UTC.

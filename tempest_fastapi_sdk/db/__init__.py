@@ -15,9 +15,15 @@ from tempest_fastapi_sdk.db.alembic_hooks import compose_hooks as compose_hooks
 from tempest_fastapi_sdk.db.alembic_hooks import (
     reorder_base_columns_first as reorder_base_columns_first,
 )
+from tempest_fastapi_sdk.db.audit import AUDIT_REDACTED as AUDIT_REDACTED
+from tempest_fastapi_sdk.db.audit import DEFAULT_AUDIT_REDACT as DEFAULT_AUDIT_REDACT
 from tempest_fastapi_sdk.db.audit import AuditAction as AuditAction
 from tempest_fastapi_sdk.db.audit import BaseAuditLogModel as BaseAuditLogModel
+from tempest_fastapi_sdk.db.audit import (
+    audit_redacted_columns as audit_redacted_columns,
+)
 from tempest_fastapi_sdk.db.audit import diff_snapshots as diff_snapshots
+from tempest_fastapi_sdk.db.audit import redact_snapshot as redact_snapshot
 from tempest_fastapi_sdk.db.audit import snapshot_model as snapshot_model
 from tempest_fastapi_sdk.db.backup import (
     BackupToolMissingError as BackupToolMissingError,
@@ -79,10 +85,16 @@ from tempest_fastapi_sdk.db.expressions import F as F
 from tempest_fastapi_sdk.db.expressions import Q as Q
 from tempest_fastapi_sdk.db.expressions import WhereClause as WhereClause
 from tempest_fastapi_sdk.db.integrity import (
+    WITHHELD_NOTICE as WITHHELD_NOTICE,
+)
+from tempest_fastapi_sdk.db.integrity import (
     IntegrityFailure as IntegrityFailure,
 )
 from tempest_fastapi_sdk.db.integrity import (
     IntegrityViolation as IntegrityViolation,
+)
+from tempest_fastapi_sdk.db.integrity import (
+    describe_database_error as describe_database_error,
 )
 from tempest_fastapi_sdk.db.integrity import (
     parse_integrity_error as parse_integrity_error,
@@ -183,9 +195,12 @@ from tempest_fastapi_sdk.db.webpush_subscription_model import (
 )
 
 __all__: list[str] = [
+    "AUDIT_REDACTED",
     "BASE_COLUMN_ORDER",
+    "DEFAULT_AUDIT_REDACT",
     "ENUM_TYPE_SUFFIX",
     "NAMING_CONVENTION",
+    "WITHHELD_NOTICE",
     "AlembicHelper",
     "AmbiguousBaseRevisionError",
     "AsyncDatabaseManager",
@@ -238,10 +253,12 @@ __all__: list[str] = [
     "UserTokenPurpose",
     "UtcDateTime",
     "WhereClause",
+    "audit_redacted_columns",
     "backfill_non_nullable_defaults",
     "clear_signals",
     "compose_hooks",
     "connect",
+    "describe_database_error",
     "diff_snapshots",
     "disconnect",
     "enable_sqlite_savepoints",
@@ -265,6 +282,7 @@ __all__: list[str] = [
     "make_web_push_subscription_model",
     "on_signal",
     "parse_integrity_error",
+    "redact_snapshot",
     "render_enum_types",
     "reorder_base_columns_first",
     "savepoint",

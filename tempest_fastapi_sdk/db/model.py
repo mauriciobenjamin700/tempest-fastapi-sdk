@@ -74,6 +74,19 @@ class BaseModel(AsyncAttrs, DeclarativeBase):
 
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
+    __audit_redact__: ClassVar[frozenset[str]] = frozenset()
+    """Columns the audit trail records as changed but never by value.
+
+    Read by :class:`~tempest_fastapi_sdk.db.audit.BaseAuditLogModel`'s
+    ``for_create`` / ``for_update`` / ``for_delete``, which write
+    :data:`~tempest_fastapi_sdk.db.audit.AUDIT_REDACTED` in place of the
+    value — for a credential like ``totp_secret`` or a push subscription's
+    ``auth``. ``hashed_password`` is always redacted, declared or not. A
+    name that is not a mapped column raises ``ValueError`` at the first
+    audited write, and at ``AdminModel`` construction when the admin
+    declares ``audit_model=``.
+    """
+
     type_annotation_map: ClassVar[dict[Any, Any]] = {
         enum.Enum: TempestEnum(),
     }

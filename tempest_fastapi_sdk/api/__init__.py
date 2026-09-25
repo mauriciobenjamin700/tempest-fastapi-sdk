@@ -249,6 +249,15 @@ from tempest_fastapi_sdk.api.oauth import (
 from tempest_fastapi_sdk.api.oidc_verifier import (
     OIDCTokenVerifier as OIDCTokenVerifier,
 )
+from tempest_fastapi_sdk.api.redaction import (
+    ExceptionRedactor as ExceptionRedactor,
+)
+from tempest_fastapi_sdk.api.redaction import (
+    RedactedError as RedactedError,
+)
+from tempest_fastapi_sdk.api.redaction import (
+    redact_database_errors as redact_database_errors,
+)
 from tempest_fastapi_sdk.api.routers import (
     DEFAULT_LATENCY_BUCKETS as DEFAULT_LATENCY_BUCKETS,
 )
@@ -349,6 +358,7 @@ __all__: list[str] = [
     "CSRFMiddleware",
     "CachedResponse",
     "ErrorEnvelopeMiddleware",
+    "ExceptionRedactor",
     "FailOpenRateLimitStore",
     "GitHubOAuthClient",
     "GoogleOAuthClient",
@@ -383,6 +393,7 @@ __all__: list[str] = [
     "RateLimitResult",
     "RateLimitRule",
     "RateLimitStore",
+    "RedactedError",
     "RedisBanStore",
     "RedisIdempotencyStore",
     "RedisQuotaStore",
@@ -431,6 +442,7 @@ __all__: list[str] = [
     "plan_by_header",
     "plan_by_jwt_claim",
     "raises",
+    "redact_database_errors",
     "register_exception_handlers",
     "render_entries_json",
     "render_entries_markdown",

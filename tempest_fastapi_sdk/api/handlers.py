@@ -21,6 +21,10 @@ from tempest_fastapi_sdk.api.middlewares.error_envelope import (
     ErrorEnvelopeMiddleware,
     _skip_enveloped,
 )
+from tempest_fastapi_sdk.api.redaction import (
+    ExceptionRedactor,
+    redact_database_errors,
+)
 from tempest_fastapi_sdk.core.context import get_request_id
 from tempest_fastapi_sdk.core.logging import HTTP_500_MARKER
 from tempest_fastapi_sdk.exceptions.base import AppException
@@ -228,6 +232,23 @@ def _detail_is_the_framework_default(exc: StarletteHTTPException) -> bool:
     return str(exc.detail) == phrase
 
 
+def _logged(
+    exc: BaseException,
+    redact_exception: ExceptionRedactor | None,
+) -> BaseException:
+    """Return what a 5xx log record carries in ``exc_info``.
+
+    Args:
+        exc (BaseException): The exception the handler caught.
+        redact_exception (ExceptionRedactor | None): The configured
+            redactor, or ``None`` to log ``exc`` as raised.
+
+    Returns:
+        BaseException: ``exc`` or the redactor's stand-in for it.
+    """
+    return exc if redact_exception is None else redact_exception(exc)
+
+
 def make_app_exception_handler(
     *,
     log_level: int = logging.INFO,
@@ -235,6 +256,7 @@ def make_app_exception_handler(
     default_locale: str = DEFAULT_LOCALE,
     logger: logging.Logger | None = None,
     on_server_error: ServerErrorCallback | None = None,
+    redact_exception: ExceptionRedactor | None = redact_database_errors,
 ) -> AppExceptionHandler:
     """Build the handler for :class:`AppException` subclasses.
 
@@ -293,6 +315,15 @@ def make_app_exception_handler(
             A failure inside it is logged and swallowed — a notifier
             that raises propagates up the ASGI stack and replaces the
             original exception in whatever the server logs.
+        redact_exception (ExceptionRedactor | None): Maps the caught
+            exception to the one the 5xx log record carries in
+            ``exc_info``. Defaults to
+            :func:`~tempest_fastapi_sdk.redact_database_errors`, which
+            replaces a ``sqlalchemy.exc.DBAPIError`` anywhere in the chain
+            with a summary: the Postgres ``DETAIL`` line quotes the value
+            the client sent, and ``hide_parameters=True`` does not remove
+            it. ``None`` logs the exception as raised. The response and
+            ``on_server_error`` always receive the original.
 
     Returns:
         AppExceptionHandler: An async ``(request, exc) -> JSONResponse``
@@ -334,7 +365,7 @@ def make_app_exception_handler(
             request.method,
             request.url.path,
             exc.detail,
-            exc_info=exc if is_server_error else None,
+            exc_info=_logged(exc, redact_exception) if is_server_error else None,
             extra=extra,
         )
         detail = exc.detail
@@ -400,6 +431,7 @@ def make_unhandled_exception_handler(
     log_level: int = logging.ERROR,
     logger: logging.Logger | None = None,
     on_server_error: ServerErrorCallback | None = None,
+    redact_exception: ExceptionRedactor | None = redact_database_errors,
 ) -> UnhandledExceptionHandler:
     """Build the catch-all handler for non-:class:`AppException` errors.
 
@@ -459,6 +491,15 @@ def make_unhandled_exception_handler(
             A failure inside it is logged and swallowed — a notifier
             that raises propagates up the ASGI stack and replaces the
             original exception in whatever the server logs.
+        redact_exception (ExceptionRedactor | None): Maps the caught
+            exception to the one the 5xx log record carries in
+            ``exc_info``. Defaults to
+            :func:`~tempest_fastapi_sdk.redact_database_errors`, which
+            replaces a ``sqlalchemy.exc.DBAPIError`` anywhere in the chain
+            with a summary: the Postgres ``DETAIL`` line quotes the value
+            the client sent, and ``hide_parameters=True`` does not remove
+            it. ``None`` logs the exception as raised. The response and
+            ``on_server_error`` always receive the original.
 
     Returns:
         UnhandledExceptionHandler: An async
@@ -479,7 +520,7 @@ def make_unhandled_exception_handler(
             "Unhandled exception during %s %s",
             request.method,
             request.url.path,
-            exc_info=exc if log_traceback else None,
+            exc_info=_logged(exc, redact_exception) if log_traceback else None,
             extra={
                 "request_id": request_id,
                 "path": request.url.path,
@@ -513,6 +554,7 @@ def make_http_exception_handler(
     catalog: MessageCatalog | None = None,
     default_locale: str = DEFAULT_LOCALE,
     envelope_client_errors: bool = False,
+    redact_exception: ExceptionRedactor | None = redact_database_errors,
 ) -> HTTPExceptionHandler:
     """Build the handler for raw :class:`starlette.exceptions.HTTPException`.
 
@@ -580,6 +622,15 @@ def make_http_exception_handler(
             A failure inside it is logged and swallowed — a notifier
             that raises propagates up the ASGI stack and replaces the
             original exception in whatever the server logs.
+        redact_exception (ExceptionRedactor | None): Maps the caught
+            exception to the one the 5xx log record carries in
+            ``exc_info``. Defaults to
+            :func:`~tempest_fastapi_sdk.redact_database_errors`, which
+            replaces a ``sqlalchemy.exc.DBAPIError`` anywhere in the chain
+            with a summary: the Postgres ``DETAIL`` line quotes the value
+            the client sent, and ``hide_parameters=True`` does not remove
+            it. ``None`` logs the exception as raised. The response and
+            ``on_server_error`` always receive the original.
 
     Returns:
         HTTPExceptionHandler: An async
@@ -611,7 +662,7 @@ def make_http_exception_handler(
                 request.method,
                 request.url.path,
                 exc.detail,
-                exc_info=exc if log_traceback else None,
+                exc_info=_logged(exc, redact_exception) if log_traceback else None,
                 extra={
                     "request_id": request_id,
                     "path": request.url.path,
@@ -811,6 +862,7 @@ def register_exception_handlers(
     on_server_error: ServerErrorCallback | None = None,
     envelope_validation_errors: bool = False,
     envelope_client_errors: bool = False,
+    redact_exception: ExceptionRedactor | None = redact_database_errors,
 ) -> None:
     """Register the SDK's exception handlers on a FastAPI app.
 
@@ -894,6 +946,15 @@ def register_exception_handlers(
             A ``detail`` the caller wrote is **preserved**; only the
             framework's own status phrase is localized. See
             :func:`make_http_exception_handler`.
+        redact_exception (ExceptionRedactor | None): Maps the caught
+            exception to the one the 5xx log records of all three handlers carries in
+            ``exc_info``. Defaults to
+            :func:`~tempest_fastapi_sdk.redact_database_errors`, which
+            replaces a ``sqlalchemy.exc.DBAPIError`` anywhere in the chain
+            with a summary: the Postgres ``DETAIL`` line quotes the value
+            the client sent, and ``hide_parameters=True`` does not remove
+            it. ``None`` logs the exception as raised. The response and
+            ``on_server_error`` always receive the original.
 
     Raises:
         RuntimeError: If ``app`` already built its middleware stack
@@ -925,6 +986,7 @@ def register_exception_handlers(
             default_locale=default_locale,
             logger=logger,
             on_server_error=on_server_error,
+            redact_exception=redact_exception,
         ),
     )
     app.add_exception_handler(
@@ -937,6 +999,7 @@ def register_exception_handlers(
             catalog=catalog,
             default_locale=default_locale,
             envelope_client_errors=envelope_client_errors,
+            redact_exception=redact_exception,
         ),
     )
     unhandled_handler: UnhandledExceptionHandler = make_unhandled_exception_handler(
@@ -945,6 +1008,7 @@ def register_exception_handlers(
         log_level=log_level,
         logger=logger,
         on_server_error=on_server_error,
+        redact_exception=redact_exception,
     )
     app.add_exception_handler(Exception, _skip_enveloped(unhandled_handler))
     envelope_layer: object = ErrorEnvelopeMiddleware

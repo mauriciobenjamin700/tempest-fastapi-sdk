@@ -21,13 +21,17 @@ Pieces:
   convention), like :class:`~tempest_fastapi_sdk.db.outbox.BaseOutboxModel`.
 * :func:`snapshot_model` / :func:`diff_snapshots` — turn a model into a
   JSON-able dict and diff two snapshots.
+* :func:`audit_redacted_columns` / :func:`redact_snapshot` — what the
+  entry factories apply before a snapshot is persisted, so a column the
+  model lists in ``__audit_redact__`` is recorded as changed, never by
+  value.
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any
+from typing import Any, Final
 from uuid import UUID, uuid4
 
 from sqlalchemy import JSON, String
@@ -81,6 +85,67 @@ def snapshot_model(instance: BaseModel) -> dict[str, Any]:
     return {
         column.key: _jsonable(getattr(instance, column.key))
         for column in mapper.columns
+    }
+
+
+AUDIT_REDACTED: Final[str] = "[redacted]"
+"""What an audit entry stores in place of a redacted column's value.
+
+A constant rather than a digest on purpose: a short hash of a
+low-entropy secret is brute-forced offline, and a full one still says
+whether two rows share a value. ``None`` stays ``None``, so the entry
+still tells "not set" from "set".
+"""
+
+DEFAULT_AUDIT_REDACT: Final[frozenset[str]] = frozenset({"hashed_password"})
+"""Columns redacted on every model that has them, declared or not."""
+
+
+def audit_redacted_columns(model: type[BaseModel]) -> frozenset[str]:
+    """Return the columns of ``model`` whose values the audit never stores.
+
+    ``model.__audit_redact__`` plus :data:`DEFAULT_AUDIT_REDACT`, the
+    latter only where the model has the column.
+
+    Args:
+        model (type[BaseModel]): The audited model class.
+
+    Returns:
+        frozenset[str]: The redacted column keys.
+
+    Raises:
+        ValueError: When ``__audit_redact__`` names a column the model
+            does not map — a typo there would store the secret silently.
+    """
+    columns = {column.key for column in inspect(model).columns}
+    declared = frozenset(model.__audit_redact__)
+    unknown = sorted(declared - columns)
+    if unknown:
+        raise ValueError(
+            f"{model.__name__}.__audit_redact__ names columns the model does "
+            f"not have: {', '.join(unknown)}",
+        )
+    return declared | (DEFAULT_AUDIT_REDACT & columns)
+
+
+def redact_snapshot(
+    model: type[BaseModel],
+    snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    """Return ``snapshot`` with every redacted column's value replaced.
+
+    Args:
+        model (type[BaseModel]): The model the snapshot was taken from.
+        snapshot (dict[str, Any]): A :func:`snapshot_model` result.
+
+    Returns:
+        dict[str, Any]: A new dict; a redacted column holding a value
+        reads :data:`AUDIT_REDACTED`, one holding ``None`` stays ``None``.
+    """
+    redacted = audit_redacted_columns(model)
+    return {
+        key: AUDIT_REDACTED if key in redacted and value is not None else value
+        for key, value in snapshot.items()
     }
 
 
@@ -227,7 +292,9 @@ class BaseAuditLogModel(BaseModel):
             entity=type(instance).__name__,
             entity_id=str(getattr(instance, "id", "")),
             action=AuditAction.CREATE,
-            changes={"after": snapshot_model(instance)},
+            changes={
+                "after": redact_snapshot(type(instance), snapshot_model(instance))
+            },
             actor=actor,
             context=context,
         )
@@ -243,6 +310,11 @@ class BaseAuditLogModel(BaseModel):
     ) -> BaseAuditLogModel:
         """Build an ``update`` entry diffing ``before`` against the row now.
 
+        The diff is computed on the raw snapshots and redacted afterwards,
+        so rotating a secret listed in ``__audit_redact__`` still yields
+        ``{"before": "[redacted]", "after": "[redacted]"}`` — the change
+        is recorded, the values are not.
+
         Args:
             instance (BaseModel): The instance after mutation.
             before (dict[str, Any]): A snapshot taken *before* the change
@@ -253,11 +325,24 @@ class BaseAuditLogModel(BaseModel):
         Returns:
             BaseAuditLogModel: The audit row with the changed-field diff.
         """
+        diff = diff_snapshots(before, snapshot_model(instance))
+        redacted = audit_redacted_columns(type(instance))
+        changes = {
+            key: (
+                {
+                    side: AUDIT_REDACTED if value is not None else None
+                    for side, value in delta.items()
+                }
+                if key in redacted
+                else delta
+            )
+            for key, delta in diff.items()
+        }
         return cls.new_entry(
             entity=type(instance).__name__,
             entity_id=str(getattr(instance, "id", "")),
             action=AuditAction.UPDATE,
-            changes=diff_snapshots(before, snapshot_model(instance)),
+            changes=changes,
             actor=actor,
             context=context,
         )
@@ -284,15 +369,21 @@ class BaseAuditLogModel(BaseModel):
             entity=type(instance).__name__,
             entity_id=str(getattr(instance, "id", "")),
             action=AuditAction.DELETE,
-            changes={"before": snapshot_model(instance)},
+            changes={
+                "before": redact_snapshot(type(instance), snapshot_model(instance))
+            },
             actor=actor,
             context=context,
         )
 
 
 __all__: list[str] = [
+    "AUDIT_REDACTED",
+    "DEFAULT_AUDIT_REDACT",
     "AuditAction",
     "BaseAuditLogModel",
+    "audit_redacted_columns",
     "diff_snapshots",
+    "redact_snapshot",
     "snapshot_model",
 ]

@@ -130,6 +130,9 @@ from tempest_fastapi_sdk.api import (
     ErrorEnvelopeMiddleware as ErrorEnvelopeMiddleware,
 )
 from tempest_fastapi_sdk.api import (
+    ExceptionRedactor as ExceptionRedactor,
+)
+from tempest_fastapi_sdk.api import (
     FailOpenRateLimitStore as FailOpenRateLimitStore,
 )
 from tempest_fastapi_sdk.api import (
@@ -221,6 +224,9 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.api import (
     RateLimitStore as RateLimitStore,
+)
+from tempest_fastapi_sdk.api import (
+    RedactedError as RedactedError,
 )
 from tempest_fastapi_sdk.api import (
     RedisBanStore as RedisBanStore,
@@ -368,6 +374,9 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.api import (
     raises as raises,
+)
+from tempest_fastapi_sdk.api import (
+    redact_database_errors as redact_database_errors,
 )
 from tempest_fastapi_sdk.api import (
     register_exception_handlers as register_exception_handlers,
@@ -731,13 +740,22 @@ from tempest_fastapi_sdk.core import (
     typed as typed,
 )
 from tempest_fastapi_sdk.db import (
+    AUDIT_REDACTED as AUDIT_REDACTED,
+)
+from tempest_fastapi_sdk.db import (
     BASE_COLUMN_ORDER as BASE_COLUMN_ORDER,
+)
+from tempest_fastapi_sdk.db import (
+    DEFAULT_AUDIT_REDACT as DEFAULT_AUDIT_REDACT,
 )
 from tempest_fastapi_sdk.db import (
     ENUM_TYPE_SUFFIX as ENUM_TYPE_SUFFIX,
 )
 from tempest_fastapi_sdk.db import (
     NAMING_CONVENTION as NAMING_CONVENTION,
+)
+from tempest_fastapi_sdk.db import (
+    WITHHELD_NOTICE as WITHHELD_NOTICE,
 )
 from tempest_fastapi_sdk.db import (
     AlembicHelper as AlembicHelper,
@@ -887,10 +905,16 @@ from tempest_fastapi_sdk.db import (
     WhereClause as WhereClause,
 )
 from tempest_fastapi_sdk.db import (
+    audit_redacted_columns as audit_redacted_columns,
+)
+from tempest_fastapi_sdk.db import (
     backfill_non_nullable_defaults as backfill_non_nullable_defaults,
 )
 from tempest_fastapi_sdk.db import (
     compose_hooks as compose_hooks,
+)
+from tempest_fastapi_sdk.db import (
+    describe_database_error as describe_database_error,
 )
 from tempest_fastapi_sdk.db import (
     diff_snapshots as diff_snapshots,
@@ -954,6 +978,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     parse_integrity_error as parse_integrity_error,
+)
+from tempest_fastapi_sdk.db import (
+    redact_snapshot as redact_snapshot,
 )
 from tempest_fastapi_sdk.db import (
     render_enum_types as render_enum_types,
@@ -1825,6 +1852,7 @@ from tempest_fastapi_sdk.utils import (
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
+    "AUDIT_REDACTED",
     "AUTH_DEFAULT_DISPLAY_NAME",
     "BASE_COLUMN_ORDER",
     "CENT",
@@ -1838,6 +1866,7 @@ __all__: list[str] = [
     "CSRF_COOKIE_NAME",
     "CSRF_HEADER_NAME",
     "DEFAULT_ASSET_CACHE_CONTROL",
+    "DEFAULT_AUDIT_REDACT",
     "DEFAULT_AUTH_LOCALE",
     "DEFAULT_DOCUMENT_CACHE_CONTROL",
     "DEFAULT_EXCLUDED_PREFIXES",
@@ -1870,6 +1899,7 @@ __all__: list[str] = [
     "SUPPORTED_LOCALES",
     "UF",
     "VALIDATION_ERROR_CODE",
+    "WITHHELD_NOTICE",
     "AccessLogMiddleware",
     "ActivationRequestSchema",
     "ActivationResendResponseSchema",
@@ -1975,6 +2005,7 @@ __all__: list[str] = [
     "ErrorEnvelopeMiddleware",
     "ErrorResponseSchema",
     "EventStream",
+    "ExceptionRedactor",
     "ExpiredTokenException",
     "ExplainDetail",
     "ExplainReport",
@@ -2149,6 +2180,7 @@ __all__: list[str] = [
     "RateLimitStore",
     "RatingField",
     "RatioField",
+    "RedactedError",
     "RedisBanStore",
     "RedisFeatureFlagBackend",
     "RedisIdempotencyStore",
@@ -2257,6 +2289,7 @@ __all__: list[str] = [
     "apply_auth_cookies",
     "apply_cors",
     "async_retry",
+    "audit_redacted_columns",
     "backfill_non_nullable_defaults",
     "build_content_disposition",
     "build_manifest_entries",
@@ -2279,6 +2312,7 @@ __all__: list[str] = [
     "default_display_name",
     "default_message_catalog",
     "default_registry",
+    "describe_database_error",
     "describe_validation_envelope",
     "detect_pix_key_type",
     "diff_snapshots",
@@ -2391,6 +2425,8 @@ __all__: list[str] = [
     "plan_by_jwt_claim",
     "quantize_money",
     "raises",
+    "redact_database_errors",
+    "redact_snapshot",
     "region_choices",
     "register_check",
     "register_exception_handlers",

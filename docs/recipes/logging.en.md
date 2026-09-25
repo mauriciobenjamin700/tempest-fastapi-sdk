@@ -309,6 +309,98 @@ traceback rides along whenever one is being handled.
     The default stays `False`, so existing call sites do not change output.
 
 
+## The database quotes the value — `redact_database_errors`
+
+An `IntegrityError` nobody handled reaches the catch-all, and the traceback
+that goes to the log ends in the exception's `str()`. On Postgres that text
+is the server's sentence, and it **quotes the row**:
+
+```text
+sqlalchemy.exc.IntegrityError: (sqlalchemy.dialects.postgresql.asyncpg.IntegrityError) <class 'asyncpg.exceptions.UniqueViolationError'>: duplicate key value violates unique constraint "p_cpf_key"
+DETAIL:  Key (cpf)=(123.456.789-00) already exists.
+[SQL: INSERT INTO p (cpf) VALUES ($1)]
+[SQL parameters hidden due to hide_parameters=True]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+```
+
+Look at the parameters line: `hide_parameters=True` was on. It removes
+the parameter block SQLAlchemy appends, but the `DETAIL` line is the
+server's text, relayed by the driver, and it stays. The CPF the client sent
+went to `error.log`, `500.log`, `GET /logs` and the `/admin/logs` panel.
+
+That is why the three 5xx handlers apply `redact_database_errors` before
+they log, by default. With the same error, the last line of the traceback
+becomes:
+
+```text
+tempest_fastapi_sdk.api.redaction.RedactedError: sqlalchemy.exc.IntegrityError: unique violation; constraint=p_cpf_key; columns=cpf; driver=sqlalchemy.dialects.postgresql.asyncpg.AsyncAdapt_asyncpg_dbapi.IntegrityError; database message withheld from the log
+```
+
+Both outputs above were captured from a real Postgres 16, with the SDK's
+`JSONFormatter`.
+
+- **The frames stay.** Every `File ..., line ...` is the original error's;
+  only the database error's text changes.
+- **The schema names stay.** Constraint, table and columns come from
+  `parse_integrity_error` — they are DDL names, not data.
+- **The server's text goes entirely**, for every `DBAPIError`, not only
+  `IntegrityError`: a `DataError` quotes the rejected input too. The SQL
+  statement goes with it, because a `text()` built with an f-string carries
+  the literal.
+- **Nothing but the log changes.** The response is the same 500 envelope,
+  and `on_server_error` receives the original exception — the Sentry you
+  plug in there still sees everything, and what it keeps is your call.
+
+A 500 with no database error in its chain logs exactly as before: the
+function returns the same object.
+
+The **handled** path had the same leak: turning the `IntegrityError` into a
+`409`, `BaseRepository` wrote a `warning` with the driver's text. It now
+writes `IntegrityError on User.add: unique violation; constraint=...;
+columns=...`, built by `describe_database_error` — the same function behind
+the summary above, public for your own `except IntegrityError`.
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import register_exception_handlers
+
+app: FastAPI = FastAPI()
+
+register_exception_handlers(app)
+```
+
+That is all: the default already protects you. To log the raw exception —
+locally, reading `DETAIL` on purpose — pass `redact_exception=None`. For a
+policy of your own, pass any `(BaseException) -> BaseException` callable:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import redact_database_errors, register_exception_handlers
+
+
+class PaymentGatewayError(Exception):
+    """Gateway error whose message carries the card number."""
+
+
+def redact(error: BaseException) -> BaseException:
+    """Hide the gateway on top of the database."""
+    if isinstance(error, PaymentGatewayError):
+        return RuntimeError("payment gateway failed; message withheld")
+    return redact_database_errors(error)
+
+
+app: FastAPI = FastAPI()
+
+register_exception_handlers(app, redact_exception=redact)
+```
+
+!!! note "What the summary leaves out"
+    The driver's exception (asyncpg's `UniqueViolationError`, and SQLAlchemy's
+    adapter around it) leaves the chain, because its text is the same server
+    sentence. Its type stays in the summary, as `driver=...`.
+
 ## `exc_info` on every level, and the name `LogRecord` will not give up
 
 `debug`, `info`, `warning`, `error` and `critical` all take `exc_info` as a
@@ -655,6 +747,9 @@ would start attributing requests to whatever address they picked. See
   that is what separates structured logging from pretty logging.
 - `make_logs_router` mounts a paginated `GET /logs` over those files, newest
   first, so you can read them without shell access to the container.
+- A 5xx traceback does not carry the database's text: `redact_database_errors`
+  swaps the `DETAIL` line that quotes the value for constraint and columns,
+  and `on_server_error` still receives the original exception.
 - Every level takes `exc_info` (`bool` or `"auto"`); a structured field that
   collides with a `LogRecord` attribute is refused at the call, with
   `TypeError`.

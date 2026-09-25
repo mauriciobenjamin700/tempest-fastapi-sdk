@@ -18,6 +18,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import time
+import traceback
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
@@ -26,7 +27,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from tempest_fastapi_sdk import IntegrityViolation, parse_integrity_error
+from tempest_fastapi_sdk import (
+    IntegrityViolation,
+    parse_integrity_error,
+    redact_database_errors,
+)
 
 DDL_POSTGRES: tuple[str, ...] = (
     "DROP TABLE IF EXISTS orders, users CASCADE",
@@ -296,3 +301,28 @@ class TestPostgresLive(_SharedAssertions):
         failure = parse_integrity_error(await _violate(engine, DUPLICATE))
 
         assert failure.constraint == "users_email_key"
+
+    async def test_redaction_drops_the_detail_value(self, engine: AsyncEngine) -> None:
+        """The value Postgres quotes in ``DETAIL`` never reaches the log.
+
+        Bound as a parameter, the way the ORM sends it, and with
+        ``hide_parameters`` left at its default: the premise assertion
+        shows the server's sentence carries the value on its own.
+        """
+        try:
+            async with engine.begin() as connection:
+                await connection.execute(
+                    text("INSERT INTO users (email, age) VALUES (:email, 30)"),
+                    {"email": "a@x.com"},
+                )
+        except IntegrityError as error:
+            raw = "".join(traceback.format_exception(error))
+            redacted = "".join(
+                traceback.format_exception(redact_database_errors(error)),
+            )
+        else:
+            raise AssertionError("insert did not violate the unique email")
+
+        assert "Key (email)=(a@x.com)" in raw
+        assert "a@x.com" not in redacted
+        assert "constraint=users_email_key; columns=email" in redacted

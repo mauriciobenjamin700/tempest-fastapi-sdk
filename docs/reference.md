@@ -100,6 +100,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.handlers.make_app_exception_handler
 ::: tempest_fastapi_sdk.api.handlers.make_http_exception_handler
 ::: tempest_fastapi_sdk.api.handlers.make_unhandled_exception_handler
+::: tempest_fastapi_sdk.api.redaction.redact_database_errors
+::: tempest_fastapi_sdk.api.redaction.RedactedError
+::: tempest_fastapi_sdk.api.redaction.ExceptionRedactor
 ::: tempest_fastapi_sdk.api.error_docs.error_responses
 ::: tempest_fastapi_sdk.api.error_docs.raises
 ::: tempest_fastapi_sdk.api.error_docs.TempestAPIRouter
@@ -138,6 +141,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.user_oauth_account_model.make_user_oauth_account_model
 ::: tempest_fastapi_sdk.db.repository.BaseRepository
 ::: tempest_fastapi_sdk.db.integrity.parse_integrity_error
+::: tempest_fastapi_sdk.db.integrity.describe_database_error
+::: tempest_fastapi_sdk.db.integrity.WITHHELD_NOTICE
 ::: tempest_fastapi_sdk.db.integrity.IntegrityFailure
 ::: tempest_fastapi_sdk.db.integrity.IntegrityViolation
 ::: tempest_fastapi_sdk.db.expressions.F
@@ -164,6 +169,10 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.audit.AuditAction
 ::: tempest_fastapi_sdk.db.audit.snapshot_model
 ::: tempest_fastapi_sdk.db.audit.diff_snapshots
+::: tempest_fastapi_sdk.db.audit.audit_redacted_columns
+::: tempest_fastapi_sdk.db.audit.redact_snapshot
+::: tempest_fastapi_sdk.db.audit.AUDIT_REDACTED
+::: tempest_fastapi_sdk.db.audit.DEFAULT_AUDIT_REDACT
 ::: tempest_fastapi_sdk.db.migrations.DestructiveMigrationError
 ::: tempest_fastapi_sdk.db.migrations.AmbiguousBaseRevisionError
 ::: tempest_fastapi_sdk.db.migrations.SchemaSyncOutcome

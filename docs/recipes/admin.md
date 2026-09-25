@@ -759,6 +759,105 @@ O que muda, campo a campo:
     a mesma regra que o `signup`. Sem argumento, valem os defaults do
     `AuthSettings`.
 
+## Coluna que nunca aparece (`exclude_fields=`)
+
+Nem toda credencial é senha. A assinatura de Web Push guarda `endpoint`,
+`p256dh` e `auth` — quem tem os três manda push para aquele aparelho —, o
+usuário guarda um `push_token` e um `totp_secret`. `readonly_fields` não
+resolve: ele tranca o input e **mostra** o valor no detail, para qualquer
+admin.
+
+`exclude_fields=` tira a coluna do painel inteiro:
+
+```python
+# src/admin.py
+from tempest_fastapi_sdk import AdminModel, AdminSite
+
+from src.db.models import LocalUserModel, WebPushSubscriptionModel
+
+site = AdminSite(title="Painel")
+site.register(
+    AdminModel(
+        LocalUserModel,
+        exclude_fields=[LocalUserModel.totp_secret, LocalUserModel.push_token],
+    ),
+)
+site.register(
+    AdminModel(
+        WebPushSubscriptionModel,
+        exclude_fields=[
+            WebPushSubscriptionModel.endpoint,
+            WebPushSubscriptionModel.p256dh,
+            WebPushSubscriptionModel.auth,
+        ],
+        can_create=False,
+    ),
+)
+```
+
+A coluna sai de **toda** superfície de uma vez: listagem, detail, form de
+create e edit (um `POST` que mande o campo à mão é ignorado), import CSV,
+export CSV/JSON, cabeçalho ordenável (`?sort=endpoint` é ignorado e vale a ordenação
+default), a tabela de inline no detail do pai — mesmo que o `Inline`
+declare a coluna no próprio `list_display` —, as linhas de antes/depois da
+linha do tempo de auditoria, e o rótulo que o `<select>` de FK de outro
+model mostra. Todas leem o mesmo conjunto, `hidden_field_names()`, que é
+`hashed_password` + `password_fields` + `exclude_fields`.
+
+A configuração que se contradiz falha na construção do `AdminModel`, no
+boot, em vez de renderizar o segredo:
+
+- nome que não é coluna do model;
+- coluna excluída que outra opção também nomeia: `list_display`,
+  `list_filter`, `search_fields`, `readonly_fields`, `upload_fields`,
+  `autocomplete_fields`, `password_fields`, `identity_field`, `ordering` ou
+  um `Lens` (`filters` ou `order_by`);
+- coluna `NOT NULL` sem default excluída com `can_create=True` — o form
+  nunca a preencheria, e todo create acabaria em `Conflict creating
+  <Model>`. É o caso da assinatura de push acima, por isso o
+  `can_create=False`.
+
+### E a tabela de auditoria?
+
+Esconder a linha do tempo não basta: com `audit_model=`, o `add_audited` /
+`update_audited` gravariam o valor na própria tabela de auditoria, legível
+por query ou pelo console SQL do painel. Por isso o `AdminModel` com
+`audit_model=` **recusa** uma coluna excluída que o model não declare em
+`__audit_redact__`:
+
+```python
+# src/db/models.py
+from typing import ClassVar
+
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseModel
+
+
+class WebPushSubscriptionModel(BaseModel):
+    """Assinatura de Web Push de um aparelho."""
+
+    __audit_redact__: ClassVar[frozenset[str]] = frozenset(
+        {"endpoint", "p256dh", "auth"}
+    )
+
+    platform: Mapped[str] = mapped_column(String(16))
+    endpoint: Mapped[str] = mapped_column(String(512))
+    p256dh: Mapped[str] = mapped_column(String(128))
+    auth: Mapped[str] = mapped_column(String(64))
+```
+
+A entrada de auditoria grava `"[redacted]"` no lugar do valor. No update, o
+diff é calculado sobre os valores reais antes da troca, então rotacionar a
+chave ainda aparece — `{"before": "[redacted]", "after": "[redacted]"}` —, e
+`None` continua `None`, para "não definido" seguir distinguível de
+"definido". `hashed_password` é redigido sempre, declarado ou não.
+
+!!! note "`can_import=True` continua permitido"
+    Ao contrário de `password_fields`, não há decisão escondida no import: a
+    coluna excluída simplesmente não é importável, como não é editável.
+
 ## Fuso do operador (`display_timezone=`)
 
 Uma coluna `TIMESTAMP(timezone=True)` guarda **instante**, e o form do
@@ -1180,5 +1279,7 @@ dashboard, list, detail, forms) sem tocar em CSS. Para customização total,
   admin pode tudo.
 - `AdminTheme` cobre a aparência por campo tipado; `can_import=True` abre o
   import CSV com pré-visualização antes de gravar.
+- `exclude_fields=` tira a credencial que não é senha de toda superfície
+  do painel; `readonly_fields` só tranca a escrita.
 - `display_timezone=` é o que transforma o campo de datetime em widget:
   a tela lê e escreve no fuso do operador, a coluna continua em UTC.
