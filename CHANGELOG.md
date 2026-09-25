@@ -5,6 +5,40 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.299.0] — 2026-09-25
+
+Três pontes do `alofans-api` sobem para o SDK. O 500 de um
+`IntegrityError` não tratado escrevia no log o valor que o cliente mandou,
+porque o `DETAIL` do Postgres cita a linha (issue #296).
+
+### Added
+
+- **`redact_database_errors`**, `RedactedError`, `ExceptionRedactor` e
+  `WITHHELD_NOTICE` (`tempest_fastapi_sdk.api.redaction`, re-exportados no
+  topo). A função devolve o mesmo objeto quando a cadeia não tem
+  `sqlalchemy.exc.DBAPIError`; quando tem, devolve uma cópia de
+  `RedactedError` que mantém todo frame e troca o texto do erro de banco
+  por `unique violation; constraint=...; columns=...; driver=...;
+  database message withheld from the log`. O texto do servidor sai para
+  todo `DBAPIError` (um `DataError` cita a entrada recusada), o statement
+  SQL também (um `text()` com f-string carrega o literal), e a exceção do
+  driver sai da cadeia. Percorre `__cause__`, `__context__` e membros de
+  `ExceptionGroup`, termina em cadeia cíclica e nunca muta o original.
+- **`redact_exception=`** em `register_exception_handlers`,
+  `make_unhandled_exception_handler`, `make_app_exception_handler` e
+  `make_http_exception_handler`. Default `redact_database_errors`; `None`
+  loga a exceção como levantada.
+
+### Fixed
+
+- **O log de 5xx não carrega mais o `DETAIL` do Postgres.** Medido contra
+  Postgres 16 com `hide_parameters=True`: antes, o `exception` do
+  `JSONFormatter` terminava em `DETAIL:  Key (cpf)=(123.456.789-00) already
+  exists.`; agora termina no resumo acima, sem o valor. Vale para o
+  catch-all, para `AppException` 5xx levantada `from` o erro de banco e
+  para `HTTPException` 5xx. A resposta e o que `on_server_error` recebe não
+  mudam.
+
 ## [0.298.0] — 2026-09-24
 
 `order_by` era `str` livre e o `BaseRepository` aceitava qualquer coluna

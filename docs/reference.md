@@ -100,6 +100,10 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.handlers.make_app_exception_handler
 ::: tempest_fastapi_sdk.api.handlers.make_http_exception_handler
 ::: tempest_fastapi_sdk.api.handlers.make_unhandled_exception_handler
+::: tempest_fastapi_sdk.api.redaction.redact_database_errors
+::: tempest_fastapi_sdk.api.redaction.RedactedError
+::: tempest_fastapi_sdk.api.redaction.ExceptionRedactor
+::: tempest_fastapi_sdk.api.redaction.WITHHELD_NOTICE
 ::: tempest_fastapi_sdk.api.error_docs.error_responses
 ::: tempest_fastapi_sdk.api.error_docs.raises
 ::: tempest_fastapi_sdk.api.error_docs.TempestAPIRouter

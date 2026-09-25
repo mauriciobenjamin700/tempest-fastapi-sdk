@@ -305,6 +305,92 @@ traceback vai junto sempre que houver um sendo tratado.
     O default segue `False`, então call site existente não muda de saída.
 
 
+## O banco cita o valor — `redact_database_errors`
+
+Um `IntegrityError` que ninguém tratou chega ao catch-all, e o traceback que
+vai para o log termina no `str()` da exceção. No Postgres, esse texto é a
+frase do servidor, e ela **cita a linha**:
+
+```text
+sqlalchemy.exc.IntegrityError: (sqlalchemy.dialects.postgresql.asyncpg.IntegrityError) <class 'asyncpg.exceptions.UniqueViolationError'>: duplicate key value violates unique constraint "p_cpf_key"
+DETAIL:  Key (cpf)=(123.456.789-00) already exists.
+[SQL: INSERT INTO p (cpf) VALUES ($1)]
+[SQL parameters hidden due to hide_parameters=True]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+```
+
+Repare na linha dos parâmetros: `hide_parameters=True` estava ligado. Ele tira o
+bloco de parâmetros que o SQLAlchemy anexa, mas o `DETAIL` é texto do
+servidor, repassado pelo driver, e fica. O CPF que o cliente mandou ia para o
+`error.log`, o `500.log`, o `GET /logs` e o painel `/admin/logs`.
+
+Por isso os três handlers de 5xx aplicam `redact_database_errors` antes de
+logar, por default. Com o mesmo erro, a última linha do traceback vira:
+
+```text
+tempest_fastapi_sdk.api.redaction.RedactedError: sqlalchemy.exc.IntegrityError: unique violation; constraint=p_cpf_key; columns=cpf; driver=sqlalchemy.dialects.postgresql.asyncpg.AsyncAdapt_asyncpg_dbapi.IntegrityError; database message withheld from the log
+```
+
+As duas saídas acima foram capturadas de um Postgres 16 real, com o
+`JSONFormatter` do SDK.
+
+- **Os frames ficam.** Todo `File ..., line ...` é o do erro original; só o
+  texto do erro de banco muda.
+- **Os nomes de schema ficam.** Constraint, tabela e colunas vêm do
+  `parse_integrity_error` — são nomes do DDL, não dado.
+- **O texto do servidor sai inteiro**, para todo `DBAPIError`, não só
+  `IntegrityError`: um `DataError` também cita a entrada recusada. O
+  statement SQL sai junto, porque um `text()` montado com f-string carrega
+  o literal.
+- **Nada além do log muda.** A resposta é o mesmo envelope 500, e o
+  `on_server_error` recebe a exceção original — o Sentry que você pluga ali
+  continua vendo tudo, e decidir o que ele guarda é escolha sua.
+
+Um 500 sem erro de banco na cadeia loga exatamente como antes: a função
+devolve o mesmo objeto.
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import register_exception_handlers
+
+app: FastAPI = FastAPI()
+
+register_exception_handlers(app)
+```
+
+É só isso: o default já protege. Para logar a exceção crua — num ambiente
+local, lendo o `DETAIL` de propósito —, passe `redact_exception=None`. Para
+uma política própria, passe qualquer callable
+`(BaseException) -> BaseException`:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import redact_database_errors, register_exception_handlers
+
+
+class PaymentGatewayError(Exception):
+    """Erro do gateway, cuja mensagem carrega o número do cartão."""
+
+
+def redact(error: BaseException) -> BaseException:
+    """Esconde o gateway além do banco."""
+    if isinstance(error, PaymentGatewayError):
+        return RuntimeError("payment gateway failed; message withheld")
+    return redact_database_errors(error)
+
+
+app: FastAPI = FastAPI()
+
+register_exception_handlers(app, redact_exception=redact)
+```
+
+!!! note "O que o resumo não diz"
+    A exceção do driver (o `UniqueViolationError` do asyncpg, e o adapter do
+    SQLAlchemy em volta dele) sai da cadeia, porque o texto dela é a mesma
+    frase do servidor. O tipo dela continua no resumo, como `driver=...`.
+
 ## `exc_info` em todos os níveis, e o nome que o `LogRecord` não cede
 
 `debug`, `info`, `warning`, `error` e `critical` aceitam `exc_info` como
@@ -651,5 +737,8 @@ atacante — e o log passaria a atribuir requests ao endereço que ele quis. Vej
   um `grep` — é isso que separa log estruturado de log bonito.
 - `make_logs_router` monta `GET /logs` paginado sobre esses arquivos, mais
   recentes primeiro, para ler sem acesso ao disco do container.
+- O traceback de um 5xx não carrega o texto do banco: `redact_database_errors`
+  troca o `DETAIL` que cita o valor por constraint e colunas, e o
+  `on_server_error` segue recebendo a exceção original.
 - Todo nível aceita `exc_info` (`bool` ou `"auto"`); campo estruturado que
   colide com atributo do `LogRecord` é recusado na chamada, com `TypeError`.

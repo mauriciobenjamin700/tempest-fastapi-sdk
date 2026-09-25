@@ -109,6 +109,9 @@ from tempest_fastapi_sdk.api import (
     VALIDATION_ERROR_CODE as VALIDATION_ERROR_CODE,
 )
 from tempest_fastapi_sdk.api import (
+    WITHHELD_NOTICE as WITHHELD_NOTICE,
+)
+from tempest_fastapi_sdk.api import (
     AccessLogMiddleware as AccessLogMiddleware,
 )
 from tempest_fastapi_sdk.api import (
@@ -128,6 +131,9 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.api import (
     ErrorEnvelopeMiddleware as ErrorEnvelopeMiddleware,
+)
+from tempest_fastapi_sdk.api import (
+    ExceptionRedactor as ExceptionRedactor,
 )
 from tempest_fastapi_sdk.api import (
     FailOpenRateLimitStore as FailOpenRateLimitStore,
@@ -221,6 +227,9 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.api import (
     RateLimitStore as RateLimitStore,
+)
+from tempest_fastapi_sdk.api import (
+    RedactedError as RedactedError,
 )
 from tempest_fastapi_sdk.api import (
     RedisBanStore as RedisBanStore,
@@ -368,6 +377,9 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.api import (
     raises as raises,
+)
+from tempest_fastapi_sdk.api import (
+    redact_database_errors as redact_database_errors,
 )
 from tempest_fastapi_sdk.api import (
     register_exception_handlers as register_exception_handlers,
@@ -1870,6 +1882,7 @@ __all__: list[str] = [
     "SUPPORTED_LOCALES",
     "UF",
     "VALIDATION_ERROR_CODE",
+    "WITHHELD_NOTICE",
     "AccessLogMiddleware",
     "ActivationRequestSchema",
     "ActivationResendResponseSchema",
@@ -1975,6 +1988,7 @@ __all__: list[str] = [
     "ErrorEnvelopeMiddleware",
     "ErrorResponseSchema",
     "EventStream",
+    "ExceptionRedactor",
     "ExpiredTokenException",
     "ExplainDetail",
     "ExplainReport",
@@ -2149,6 +2163,7 @@ __all__: list[str] = [
     "RateLimitStore",
     "RatingField",
     "RatioField",
+    "RedactedError",
     "RedisBanStore",
     "RedisFeatureFlagBackend",
     "RedisIdempotencyStore",
@@ -2391,6 +2406,7 @@ __all__: list[str] = [
     "plan_by_jwt_claim",
     "quantize_money",
     "raises",
+    "redact_database_errors",
     "region_choices",
     "register_check",
     "register_exception_handlers",
