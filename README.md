@@ -122,7 +122,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[openapi]` | `pyyaml` | YAML support for `tempest openapi-client` (a JSON spec needs no extra) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry`, `BusinessMetrics` |
 | `[mfa]` | `pyotp` | `TOTPHelper` + MFA/2FA endpoints on the bundled auth flow |
-| `[pdf]` | `weasyprint`, `jinja2` | PDF generation from HTML templates — `PdfRenderer`, five bundled typed documents (receipt/quote/report/contract/voucher), `make_pdf_router`, `tempest pdf`. Needs Pango + fontconfig on the system |
+| `[pdf]` | `weasyprint`, `jinja2`, `segno` | PDF generation from HTML templates — `PdfRenderer`, five bundled typed documents (receipt/quote/report/contract/voucher), `make_pdf_router`, `tempest pdf`. Needs Pango + fontconfig on the system |
 | `[pdf-read]` | `pypdf` | Reading the text layer back out of a PDF — `extract_pdf_text` / `extract_pdf_pages`, page markers, honest truncation. Separate from `[pdf]` so a service that only reads carries no WeasyPrint and no system libraries |
 | `[pdf-layout]` | `pdfplumber` | Layout-aware reading — columns recovered instead of interleaved, tables recovered as grids, encrypted files opened with a password. Separate from `[pdf-read]` because it is markedly slower and pulls `pdfminer.six` |
 | `[spreadsheet]` | `openpyxl` | `.xlsx` generation — `SheetWriter` (row cursor, column specs, themed rows), `SheetStyle`, `BR_*` number formats pinned to pt-BR, `new_workbook` / `workbook_to_bytes` |

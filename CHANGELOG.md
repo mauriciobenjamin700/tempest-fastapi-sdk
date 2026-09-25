@@ -9,12 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Três pontes do `alofans-api` sobem para o SDK. O 500 de um
 `IntegrityError` não tratado escrevia no log o valor que o cliente mandou,
-porque o `DETAIL` do Postgres cita a linha (issue #296), e o painel
+porque o `DETAIL` do Postgres cita a linha (issue #296); o painel
 `/admin` não tinha como esconder uma credencial que não é senha (issue
-#297).
+#297); e o `VoucherDocument` deixava a codificação do QR para cada serviço,
+que calibrava às cegas um quadro que é do template (issue #300).
 
 ### Added
 
+- **`VoucherDocument(qr_content=...)`** (issue #300): o texto (URL de
+  verificação, Pix BR Code) que o SDK codifica como QR, uma vez, na
+  validação — conteúdo longo demais para qualquer versão é
+  `ValidationError`, não falha no render. `qr_content` e `qr_data_uri`
+  juntos levantam `ValidationError`; `qr_data_uri` continua aceito sozinho.
+  A imagem vive num atributo privado exposto por `qr_image`, então
+  `model_dump()` valida de novo.
+- **`tempest_fastapi_sdk.pdf.qr_data_uri(content, *, error, scale,
+  border)`** e as constantes `QR_ERROR_CORRECTION` (`"h"`), `QR_SCALE`
+  (`8`) e `QR_BORDER` (`2`), calibradas para o quadro de `26mm` do
+  `voucher.html`. Medido com `segno` 1.6.6: um Pix BR Code de 197
+  caracteres sai na versão 15, módulo de `0,32mm`, e renderizado pelo
+  WeasyPrint e rasterizado a 100 dpi decodifica no `zxing-cpp`.
+- **`segno>=1.6.6` no extra `[pdf]`** (e no `[all]`): Python puro, sem
+  dependência de runtime e sem upper bound.
 - **`AdminModel(exclude_fields=...)`** (issue #297): coluna que o painel
   nunca mostra nem aceita — para credencial que não é senha
   (`endpoint`/`p256dh`/`auth` de Web Push, `push_token`, `totp_secret`).
@@ -42,8 +58,8 @@ porque o `DETAIL` do Postgres cita a linha (issue #296), e o painel
   (`hashed_password` + `password_fields` + `exclude_fields`) que toda
   superfície de leitura do painel filtra.
 - **`redact_database_errors`**, `RedactedError` e `ExceptionRedactor`
-  (`tempest_fastapi_sdk.api.redaction`, re-exportados no topo). A função devolve o mesmo objeto quando a cadeia não tem
-  `sqlalchemy.exc.DBAPIError`; quando tem, devolve uma cópia de
+  (`tempest_fastapi_sdk.api.redaction`, re-exportados no topo). A função
+  devolve o mesmo objeto quando a cadeia não tem `sqlalchemy.exc.DBAPIError`; quando tem, devolve uma cópia de
   `RedactedError` que mantém todo frame e troca o texto do erro de banco
   por `unique violation; constraint=...; columns=...; driver=...;
   database message withheld from the log`. O texto do servidor sai para
@@ -58,6 +74,14 @@ porque o `DETAIL` do Postgres cita a linha (issue #296), e o painel
   `make_unhandled_exception_handler`, `make_app_exception_handler` e
   `make_http_exception_handler`. Default `redact_database_errors`; `None`
   loga a exceção como levantada.
+
+### Changed
+
+- **`voucher.html`** declara `image-rendering: pixelated` no QR: o
+  WeasyPrint passa a gravar `/Interpolate false` (antes, `true`, que pede
+  ao visualizador para suavizar a imagem).
+- **`zxing-cpp`** entra no grupo `dev` como decoder independente dos
+  testes do QR. Não é dependência de runtime.
 
 ### Fixed
 

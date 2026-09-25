@@ -129,6 +129,7 @@ firebase = [
 pdf = [
     "weasyprint>=69.0",
     "jinja2>=3.1.6",
+    "segno>=1.6.6",
 ]
 pdf-read = [
     "pypdf>=6.16.2",
@@ -294,6 +295,7 @@ all = [
     "pyotp>=2.10.0",
     "fido2>=2.2.1",
     "weasyprint>=69.0",
+    "segno>=1.6.6",
     "pypdf>=6.16.2",
     "pdfplumber>=0.11.7",
     "openpyxl>=3.1.5",
@@ -413,6 +415,7 @@ dev = [
     "tempestweb>=0.127.0",
     "chromadb>=1.5.9",
     "lupa>=2.8",
+    "zxing-cpp>=3.1.1",
 ]
 docs = [
     "mkdocs>=1.6.1",

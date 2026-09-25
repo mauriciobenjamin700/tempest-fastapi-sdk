@@ -4,6 +4,10 @@
   A short receipt or label. The header block of _base.html is replaced by
   a compact one — a logo bar sized for A4 looks wrong on something meant
   to be torn off or stuck to a box.
+
+  The .qr box is what QR_ERROR_CORRECTION / QR_SCALE / QR_BORDER in
+  pdf/qr.py are calibrated against: change its size or the padding around
+  it and re-run tests/pdf/test_qr.py, which decodes the rendered page.
 #}
 {% block header %}{% endblock %}
 
@@ -30,6 +34,7 @@
   .voucher .qr {
     width: 26mm;
     height: 26mm;
+    image-rendering: pixelated;
   }
   .voucher .fields {
     margin-top: 4mm;
@@ -65,8 +70,8 @@
       <div class="muted small">{{ doc.subtitle }}</div>
       {% endif %}
     </div>
-    {% if doc.qr_data_uri %}
-    <img class="qr" src="{{ doc.qr_data_uri }}" alt="">
+    {% if doc.qr_image %}
+    <img class="qr" src="{{ doc.qr_image }}" alt="">
     {% endif %}
   </div>
 

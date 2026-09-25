@@ -18,8 +18,9 @@ from __future__ import annotations
 from datetime import date
 from typing import ClassVar
 
-from pydantic import Field, computed_field, model_validator
+from pydantic import Field, PrivateAttr, computed_field, model_validator
 
+from tempest_fastapi_sdk.pdf.qr import qr_data_uri
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 from tempest_fastapi_sdk.utils.fields import NonEmptyStrField
 
@@ -536,9 +537,15 @@ class VoucherDocument(PdfDocument):
         heading (str): Large text at the top.
         subtitle (str | None): Line under it.
         fields (dict[str, str]): Label/value pairs, printed in order.
-        qr_data_uri (str | None): QR code as a ``data:`` URI. The SDK
-            does not generate it — any encoder does, and pulling one in
-            for a single image is not a trade worth making.
+        qr_content (str | None): Text to encode as the QR code — a
+            verification URL, a Pix BR Code. Encoded by
+            :func:`~tempest_fastapi_sdk.pdf.qr_data_uri` with the defaults
+            calibrated for this template's ``26mm`` box, once, while the
+            document validates: a payload too long for any QR version
+            fails there, as a validation error, not at render.
+        qr_data_uri (str | None): QR code already encoded, as a ``data:``
+            URI — for a caller that needs its own encoder or settings.
+            Mutually exclusive with ``qr_content``.
         note (str | None): Small print at the foot.
         height (str): CSS height of the printed area.
     """
@@ -562,13 +569,23 @@ class VoucherDocument(PdfDocument):
         description="Label/value pairs, printed in insertion order.",
         examples=[{"Valor": "R$ 150,00", "Destinatário": "Acme LTDA"}],
     )
+    qr_content: str | None = Field(
+        default=None,
+        min_length=1,
+        title="Conteúdo do QR code",
+        description=(
+            "Text the SDK encodes as the QR code, with error correction H and "
+            "a margin calibrated for the voucher. Exclusive with qr_data_uri."
+        ),
+        examples=["https://example.com/v/8f3a", None],
+    )
     qr_data_uri: str | None = Field(
         default=None,
         pattern=r"^data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+$",
         title="QR code (data URI)",
         description=(
-            "Embedded QR image. Produce it with any encoder — ``segno`` "
-            "writes a data URI in two lines."
+            "QR image already encoded, for a caller with its own encoder. "
+            "Prefer qr_content. Exclusive with it."
         ),
         examples=["data:image/png;base64,iVBORw0KGgo=", None],
     )
@@ -584,6 +601,44 @@ class VoucherDocument(PdfDocument):
         description="CSS height. Half of A4 by default, so two fit a sheet.",
         examples=["99mm", "148mm", "70mm"],
     )
+
+    _qr_image: str | None = PrivateAttr(default=None)
+
+    @model_validator(mode="after")
+    def _encode_qr(self) -> VoucherDocument:
+        """Encode ``qr_content``, refusing it alongside ``qr_data_uri``.
+
+        The image lives in a private attribute, not in ``qr_data_uri``:
+        written there, a ``model_dump()`` would carry both fields and
+        validating it again would fail this very check.
+
+        Returns:
+            VoucherDocument: ``self``.
+
+        Raises:
+            ValueError: When both fields are set, or the content is too
+                long for any QR version.
+        """
+        if self.qr_content is not None and self.qr_data_uri is not None:
+            raise ValueError(
+                "Pass qr_content or qr_data_uri, not both: qr_content is "
+                "encoded by the SDK and qr_data_uri is an image already "
+                "encoded.",
+            )
+        if self.qr_content is not None:
+            self._qr_image = qr_data_uri(self.qr_content)
+        else:
+            self._qr_image = self.qr_data_uri
+        return self
+
+    @property
+    def qr_image(self) -> str | None:
+        """Return the ``data:`` URI the template embeds, if any.
+
+        Returns:
+            str | None: The encoded ``qr_content``, or ``qr_data_uri``.
+        """
+        return self._qr_image
 
 
 class ContractDocument(PdfDocument):

@@ -2302,3 +2302,14 @@ que faz a própria tabela de auditoria gravar `"[redacted]"` (o
 
 Consumidor: `alofans-api`, que mantinha `SecretSafeAdminModel` +
 `SECRET_COLUMNS` sobrescrevendo `column_names()`.
+
+### `VoucherDocument(qr_content=...)` (#300)
+
+O voucher codifica o próprio QR (`segno`, agora no `[pdf]`), com correção
+H, escala 8 e margem 2 calibradas para o quadro de `26mm` do template —
+`tests/pdf/test_qr.py` decodifica a página renderizada. `qr_data_uri(...)`
+fica público para outra calibração, e o campo `qr_data_uri` continua
+aceitando imagem pronta, exclusivo com `qr_content`.
+
+Consumidor: `alofans-api` (#174), que mantinha `segno` no `pyproject`,
+`src/utils/qr.py` e três constantes.
