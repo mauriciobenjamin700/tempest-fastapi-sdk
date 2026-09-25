@@ -108,6 +108,21 @@ class TestVoucherQrContent:
         assert again.qr_image == document.qr_image
         assert "qr_image" not in document.model_dump()
 
+    def test_model_copy_re_encodes(self) -> None:
+        """``model_copy`` runs no validator; the image must follow anyway."""
+        template = VoucherDocument(heading="INGRESSO", qr_content=URL)
+
+        copies = [
+            template.model_copy(update={"qr_content": f"{URL}?seat={seat}"})
+            for seat in (1, 2)
+        ]
+
+        assert [_decode_png(c.qr_image or "") for c in copies] == [
+            [f"{URL}?seat=1"],
+            [f"{URL}?seat=2"],
+        ]
+        assert _decode_png(template.qr_image or "") == [URL]
+
     def test_no_qr_by_default(self) -> None:
         assert VoucherDocument(heading="X").qr_image is None
 

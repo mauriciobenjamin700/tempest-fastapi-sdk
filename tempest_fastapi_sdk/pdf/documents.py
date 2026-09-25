@@ -602,15 +602,17 @@ class VoucherDocument(PdfDocument):
         examples=["99mm", "148mm", "70mm"],
     )
 
-    _qr_image: str | None = PrivateAttr(default=None)
+    _qr_encoded: tuple[str, str] | None = PrivateAttr(default=None)
 
     @model_validator(mode="after")
     def _encode_qr(self) -> VoucherDocument:
-        """Encode ``qr_content``, refusing it alongside ``qr_data_uri``.
+        """Refuse ``qr_content`` alongside ``qr_data_uri``, and encode it.
 
-        The image lives in a private attribute, not in ``qr_data_uri``:
-        written there, a ``model_dump()`` would carry both fields and
-        validating it again would fail this very check.
+        Encoding here is what turns a payload too long for any QR version
+        into a validation error instead of a failure halfway through the
+        render. The image lives in a private attribute, not in
+        ``qr_data_uri``: written there, a ``model_dump()`` would carry both
+        fields and validating it again would fail this very check.
 
         Returns:
             VoucherDocument: ``self``.
@@ -625,20 +627,31 @@ class VoucherDocument(PdfDocument):
                 "encoded by the SDK and qr_data_uri is an image already "
                 "encoded.",
             )
-        if self.qr_content is not None:
-            self._qr_image = qr_data_uri(self.qr_content)
-        else:
-            self._qr_image = self.qr_data_uri
+        _ = self.qr_image
         return self
 
     @property
     def qr_image(self) -> str | None:
         """Return the ``data:`` URI the template embeds, if any.
 
+        The encoding is cached together with the content it came from, and
+        reused only while ``qr_content`` still matches. ``model_copy(update=
+        {"qr_content": ...})`` runs no validator, so a cache keyed on
+        nothing would keep printing the template's old QR on every copy —
+        the natural way to issue a batch of tickets from one document.
+
         Returns:
             str | None: The encoded ``qr_content``, or ``qr_data_uri``.
         """
-        return self._qr_image
+        content = self.qr_content
+        if content is None:
+            return self.qr_data_uri
+        cached = self._qr_encoded
+        if cached is not None and cached[0] == content:
+            return cached[1]
+        image = qr_data_uri(content)
+        self._qr_encoded = (content, image)
+        return image
 
 
 class ContractDocument(PdfDocument):

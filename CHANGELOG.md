@@ -22,7 +22,9 @@ que calibrava às cegas um quadro que é do template (issue #300).
   `ValidationError`, não falha no render. `qr_content` e `qr_data_uri`
   juntos levantam `ValidationError`; `qr_data_uri` continua aceito sozinho.
   A imagem vive num atributo privado exposto por `qr_image`, então
-  `model_dump()` valida de novo.
+  `model_dump()` valida de novo, e o cache é chaveado pelo conteúdo:
+  `model_copy(update={"qr_content": ...})`, que não roda validator,
+  recodifica em vez de imprimir o QR do documento de origem.
 - **`tempest_fastapi_sdk.pdf.qr_data_uri(content, *, error, scale,
   border)`** e as constantes `QR_ERROR_CORRECTION` (`"h"`), `QR_SCALE`
   (`8`) e `QR_BORDER` (`2`), calibradas para o quadro de `26mm` do
