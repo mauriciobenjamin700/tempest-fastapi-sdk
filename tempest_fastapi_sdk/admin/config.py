@@ -290,6 +290,33 @@ class AdminModel(Generic[ModelT]):
             keeps UTC on purpose: it feeds machines, and a timestamp that
             silently changes meaning between the screen and the file is
             worse than one that always means the same thing.
+        password_fields (Sequence[FieldRef]): Columns that take a
+            plaintext password in the form and store its hash.
+        password_policy (PasswordPolicy | None): Policy the plaintext
+            must pass. ``None`` uses :class:`PasswordPolicy` defaults.
+        exclude_fields (Sequence[FieldRef]): Columns the panel never
+            shows or accepts — for a credential that is not a password,
+            like a push subscription's ``endpoint`` / ``p256dh`` /
+            ``auth``, a device ``push_token`` or a ``totp_secret``.
+
+            ``readonly_fields`` does not cover that case: it locks the
+            input and still **prints** the value in the detail view. An
+            excluded column leaves every surface at once — list, detail,
+            create/edit form, CSV import, CSV/JSON export, sortable
+            headers, the parent's inline table and the audit timeline's
+            before/after rows — through :meth:`hidden_field_names`.
+
+            Checked at construction, so a contradiction fails at import
+            time instead of rendering the secret anyway: a name that is
+            not a column, or one that another option also names
+            (``list_display``, ``list_filter``, ``search_fields``,
+            ``readonly_fields``, ``upload_fields``,
+            ``autocomplete_fields``, ``password_fields``,
+            ``identity_field``, ``ordering``, a lens's ``filters`` or
+            ``order_by``), raises ``ValueError``. So does excluding a
+            ``NOT NULL`` column with no default while ``can_create`` is
+            on: the form could never fill it, and every create would end
+            in ``Conflict creating <Model>``.
 
     Raises:
         TypeError: When ``model`` is not a subclass of :class:`BaseModel`,
@@ -326,6 +353,7 @@ class AdminModel(Generic[ModelT]):
         display_timezone: str | None = None,
         password_fields: Sequence[FieldRef] = (),
         password_policy: PasswordPolicy | None = None,
+        exclude_fields: Sequence[FieldRef] = (),
     ) -> None:
         """Build and validate the configuration. See class docstring."""
         if not isinstance(model, type) or not issubclass(model, BaseModel):
@@ -393,6 +421,8 @@ class AdminModel(Generic[ModelT]):
                 "rows with no password at all. Import without the password "
                 "column and set it per row, or set can_import=False.",
             )
+        self.exclude_fields: list[str] = _normalize_fields(exclude_fields)
+        self._check_exclude_fields(known)
         self.display_timezone: str | None = display_timezone
         self.display_tzinfo: ZoneInfo | None = None
         if display_timezone is not None:
@@ -403,6 +433,70 @@ class AdminModel(Generic[ModelT]):
                     f"AdminModel `display_timezone` {display_timezone!r} is not "
                     "a zone this host's tz database knows",
                 ) from exc
+
+    def _check_exclude_fields(self, known: set[str]) -> None:
+        """Refuse an ``exclude_fields`` the rest of the config contradicts.
+
+        Args:
+            known (set[str]): Every mapped column name on the model.
+
+        Raises:
+            ValueError: When a name is not a column, when another option
+                also names an excluded column, or when ``can_create`` is on
+                and an excluded column is ``NOT NULL`` without a default.
+        """
+        if not self.exclude_fields:
+            return
+        name = self.model.__name__
+        unknown = [field for field in self.exclude_fields if field not in known]
+        if unknown:
+            raise ValueError(
+                f"AdminModel `exclude_fields` names columns {name} does not "
+                f"have: {', '.join(sorted(unknown))}",
+            )
+        excluded = set(self.exclude_fields)
+        lens_fields: list[str] = []
+        for lens in self.lenses:
+            lens_fields.extend(key.split("__", 1)[0] for key in lens.filters)
+            if lens.order_by:
+                lens_fields.append(lens.order_by.removeprefix("-"))
+        named: dict[str, list[str]] = {
+            "list_display": self.list_display or [],
+            "list_filter": self.list_filter,
+            "search_fields": self.search_fields,
+            "readonly_fields": self.readonly_fields,
+            "upload_fields": self.upload_fields,
+            "autocomplete_fields": self.autocomplete_fields,
+            "password_fields": self.password_fields,
+            "identity_field": [self.identity_field],
+            "ordering": [self.order_key] if self.order_key else [],
+            "lenses": lens_fields,
+        }
+        for option, fields in named.items():
+            clash = sorted(excluded.intersection(fields))
+            if clash:
+                raise ValueError(
+                    f"AdminModel `exclude_fields` hides {', '.join(clash)}, "
+                    f"which `{option}` on {name} also names. Drop it from one "
+                    "of the two.",
+                )
+        if not self.can_create:
+            return
+        columns = inspect(self.model).columns
+        required = sorted(
+            field
+            for field in self.exclude_fields
+            if not columns[field].nullable
+            and columns[field].default is None
+            and columns[field].server_default is None
+        )
+        if required:
+            raise ValueError(
+                f"AdminModel `exclude_fields` hides {', '.join(required)}, "
+                f"which {name} requires (NOT NULL, no default): the create "
+                "form could never fill it. Set can_create=False, or give the "
+                "column a default.",
+            )
 
     def get_lens(self, slug: str) -> Lens | None:
         """Return the registered lens whose slug matches, or ``None``.
@@ -457,10 +551,24 @@ class AdminModel(Generic[ModelT]):
         """
         return [attr.key for attr in inspect(self.model).mapper.column_attrs]
 
+    def hidden_field_names(self) -> set[str]:
+        """Return the columns no read surface of the panel may show.
+
+        ``hashed_password``, every ``password_fields`` column and every
+        ``exclude_fields`` column. The list, the export, the detail view,
+        the sortable headers, a parent's inline table and the audit
+        timeline all filter through this one set, so hiding a column is
+        one decision and not one per template.
+
+        Returns:
+            set[str]: The hidden column names.
+        """
+        return {"hashed_password", *self.password_fields, *self.exclude_fields}
+
     def resolved_list_display(self) -> list[str]:
         """Return the effective ``list_display`` column list.
 
-        Defaults to every column except ``hashed_password`` when
+        Defaults to every column except :meth:`hidden_field_names` when
         unconfigured. A column named in ``password_fields`` is dropped
         even from an explicit ``list_display`` — this list also feeds the
         CSV/JSON export, and a digest has no business in either.
@@ -468,7 +576,7 @@ class AdminModel(Generic[ModelT]):
         Returns:
             list[str]: The list of columns to render.
         """
-        hidden = {"hashed_password", *self.password_fields}
+        hidden = self.hidden_field_names()
         if self.list_display is not None:
             return [name for name in self.list_display if name not in hidden]
         return [name for name in self.column_names() if name not in hidden]
@@ -478,8 +586,8 @@ class AdminModel(Generic[ModelT]):
 
         Excludes the primary key, the audit timestamps
         (``created_at`` / ``updated_at``), the password hash, and any
-        column listed in ``readonly_fields`` — none of which a user
-        edits directly through the generic admin form.
+        column listed in ``readonly_fields`` or ``exclude_fields`` — none
+        of which a user edits directly through the generic admin form.
 
         A column named in ``password_fields`` is the exception: it comes
         back in, rendered as a password box that takes plaintext and is
@@ -492,14 +600,17 @@ class AdminModel(Generic[ModelT]):
             list[str]: Editable column keys in declaration order.
         """
         skip = (
-            set(self.readonly_fields)
-            | {
-                "id",
-                "created_at",
-                "updated_at",
-                "hashed_password",
-            }
-        ) - set(self.password_fields)
+            (
+                set(self.readonly_fields)
+                | {
+                    "id",
+                    "created_at",
+                    "updated_at",
+                    "hashed_password",
+                }
+            )
+            - set(self.password_fields)
+        ) | set(self.exclude_fields)
         return [name for name in self.column_names() if name not in skip]
 
     def build_repository(self, session: AsyncSession) -> BaseRepository[ModelT]:

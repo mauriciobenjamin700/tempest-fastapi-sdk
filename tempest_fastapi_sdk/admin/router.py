@@ -1808,8 +1808,10 @@ def make_admin_router(
 
         Notes:
             Two column groups are held back from the field list:
-            ``hashed_password`` — and every column named in
-            ``password_fields`` — is never shown, and the audit/timestamp
+            :meth:`AdminModel.hidden_field_names` (``hashed_password``,
+            ``password_fields``, ``exclude_fields``) is never shown — not
+            in the fields and not in the audit timeline's before/after
+            rows — and the audit/timestamp
             columns move to the dedicated audit panel further down the page.
             ``JSON`` columns are pretty-printed, mirroring what the edit
             form's JSON widget does, so the two views read the same.
@@ -1819,7 +1821,7 @@ def make_admin_router(
         model_columns = sa_inspect(admin.model).columns
         json_columns: set[str] = set()
         fields: list[tuple[str, Any]] = []
-        hidden_columns = {"hashed_password", *admin.password_fields}
+        hidden_columns = admin.hidden_field_names()
         for column in columns:
             if column in hidden_columns or column in _AUDIT_FIELDS:
                 continue
@@ -1872,7 +1874,13 @@ def make_admin_router(
                         "action": entry.action,
                         "at": entry.created_at,
                         "actor": await _actor(entry.actor) or entry.actor,
-                        "changes": _format_audit_changes(entry.action, entry.changes),
+                        "changes": [
+                            row
+                            for row in _format_audit_changes(
+                                entry.action, entry.changes
+                            )
+                            if row["field"] not in hidden_columns
+                        ],
                         "context": entry.context,
                     }
                 )
@@ -1970,6 +1978,9 @@ def make_admin_router(
                 display = child_admin.resolved_list_display()
             else:
                 display = list(sa_inspect(inline.model).columns.keys())
+            if child_admin is not None:
+                child_hidden = child_admin.hidden_field_names()
+                display = [name for name in display if name not in child_hidden]
 
             editable = (
                 inline.editable

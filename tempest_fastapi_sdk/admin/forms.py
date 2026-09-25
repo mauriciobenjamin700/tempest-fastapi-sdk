@@ -213,7 +213,11 @@ def fk_label(admin: AdminModel[Any], instance: Any) -> str:
     """Build a human label for a referenced row (Django ``__str__`` analog).
 
     Prefers the referenced admin's first search field, then a common
-    display attribute, then the primary key.
+    display attribute, then the primary key. A display attribute the
+    referenced admin hides (:meth:`AdminModel.hidden_field_names`) is
+    skipped: the label is rendered in *another* model's form and select,
+    where the referenced admin's ``exclude_fields`` would not otherwise
+    reach.
 
     Args:
         admin (AdminModel[Any]): The referenced model's admin config.
@@ -226,7 +230,10 @@ def fk_label(admin: AdminModel[Any], instance: Any) -> str:
         value = getattr(instance, fname, None)
         if value:
             return str(value)
+    hidden = admin.hidden_field_names()
     for attr in ("name", "title", "email", "label"):
+        if attr in hidden:
+            continue
         value = getattr(instance, attr, None)
         if value:
             return str(value)

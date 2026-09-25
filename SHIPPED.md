@@ -2273,3 +2273,29 @@ página em SQL, sem PostGIS, cada item `NearbyMatch(row, distance_km)`) e
 `resolve_br_coordinate`/`extract_cep` (CEP → endereço → centroide da UF),
 que o mesmo consumidor mantinha em ~200 linhas locais.
 
+
+## Três pontes do `alofans-api`, v0.299.0 (2026-09-25)
+
+### O `DETAIL` do Postgres fora do log (#296)
+
+`redact_database_errors` é o `redact_exception` default dos três handlers de
+5xx: `DBAPIError` em qualquer ponto da cadeia vira um `RedactedError` com
+tipo, constraint, tabela, colunas e o tipo do driver, e o texto do servidor
+sai — ele cita o valor que o cliente mandou, e `hide_parameters=True` não o
+remove (medido contra Postgres 16). Os dez `warning` de conflito do
+`BaseRepository` usam o mesmo resumo (`describe_database_error`). Resposta e
+`on_server_error` recebem a exceção original.
+
+Consumidor: `alofans-api`, cujo `describe_exception` cobria os caminhos
+conhecidos e não alcançava o 500 não tratado.
+
+### `AdminModel(exclude_fields=...)` (#297)
+
+Coluna que o painel nunca mostra nem aceita, para credencial que não é
+senha. Sai de toda superfície por `hidden_field_names()`: lista, detail,
+form, import, export, sort, inline do pai, linha do tempo de auditoria e
+rótulo de FK. Contradição com outra opção, coluna inexistente e `NOT NULL`
+sem default com `can_create=True` levantam na construção.
+
+Consumidor: `alofans-api`, que mantinha `SecretSafeAdminModel` +
+`SECRET_COLUMNS` sobrescrevendo `column_names()`.

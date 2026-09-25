@@ -9,10 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Três pontes do `alofans-api` sobem para o SDK. O 500 de um
 `IntegrityError` não tratado escrevia no log o valor que o cliente mandou,
-porque o `DETAIL` do Postgres cita a linha (issue #296).
+porque o `DETAIL` do Postgres cita a linha (issue #296), e o painel
+`/admin` não tinha como esconder uma credencial que não é senha (issue
+#297).
 
 ### Added
 
+- **`AdminModel(exclude_fields=...)`** (issue #297): coluna que o painel
+  nunca mostra nem aceita — para credencial que não é senha
+  (`endpoint`/`p256dh`/`auth` de Web Push, `push_token`, `totp_secret`).
+  `readonly_fields` trancava o input e **mostrava** o valor no detail. A
+  coluna sai da listagem, do detail, do form de create/edit (o `POST` que
+  manda o campo é ignorado), do import e do export CSV/JSON, do cabeçalho
+  ordenável, da tabela de inline do pai (mesmo com o `Inline` nomeando a
+  coluna no próprio `list_display`), das linhas da linha do tempo de
+  auditoria e do rótulo de FK (`fk_label`). Validado na construção:
+  coluna inexistente, coluna que outra opção também nomeia
+  (`list_display`, `list_filter`, `search_fields`, `readonly_fields`,
+  `upload_fields`, `autocomplete_fields`, `password_fields`,
+  `identity_field`, `ordering`, `Lens`) e coluna `NOT NULL` sem default com
+  `can_create=True` levantam `ValueError`.
+- **`AdminModel.hidden_field_names()`**: o conjunto único
+  (`hashed_password` + `password_fields` + `exclude_fields`) que toda
+  superfície de leitura do painel filtra.
 - **`redact_database_errors`**, `RedactedError` e `ExceptionRedactor`
   (`tempest_fastapi_sdk.api.redaction`, re-exportados no topo). A função devolve o mesmo objeto quando a cadeia não tem
   `sqlalchemy.exc.DBAPIError`; quando tem, devolve uma cópia de
@@ -33,6 +52,10 @@ porque o `DETAIL` do Postgres cita a linha (issue #296).
 
 ### Fixed
 
+- **A linha do tempo de auditoria do admin não mostra mais
+  `hashed_password` nem `password_fields`.** O snapshot do
+  `BaseAuditLogModel` guarda toda coluna, e o detail renderizava o
+  antes/depois do digest; agora filtra por `hidden_field_names()`.
 - **O log de 5xx não carrega mais o `DETAIL` do Postgres.** Medido contra
   Postgres 16 com `hide_parameters=True`: antes, o `exception` do
   `JSONFormatter` terminava em `DETAIL:  Key (cpf)=(123.456.789-00) already
