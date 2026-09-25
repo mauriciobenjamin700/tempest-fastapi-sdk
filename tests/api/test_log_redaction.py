@@ -169,6 +169,17 @@ class TestRedactDatabaseErrors:
         assert "ValueError: other" in text
         assert "unique violation" in text
 
+    def test_base_exception_group_member_is_rebuilt(self) -> None:
+        """``ExceptionGroup`` refuses a ``KeyboardInterrupt`` member."""
+        group = BaseExceptionGroup(
+            "batch", [_integrity_error(), KeyboardInterrupt("stop")]
+        )
+
+        text = _formatted(redact_database_errors(group))
+
+        assert SECRET not in text
+        assert "KeyboardInterrupt: stop" in text
+
     def test_cycle_terminates(self) -> None:
         first = RuntimeError("first")
         second = _integrity_error()

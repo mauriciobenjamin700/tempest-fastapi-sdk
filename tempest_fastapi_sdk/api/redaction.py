@@ -113,7 +113,7 @@ def _holds_database_error(error: BaseException) -> bool:
     return False
 
 
-def _rebuild(error: BaseException, memo: dict[int, BaseException]) -> BaseException:
+def _rebuild(error: BaseException, memo: dict[int, Exception]) -> Exception:
     """Build the safe-to-log copy of one link and everything it reaches.
 
     A ``DBAPIError`` becomes a :class:`RedactedError` carrying the
@@ -123,33 +123,34 @@ def _rebuild(error: BaseException, memo: dict[int, BaseException]) -> BaseExcept
     can point at the redacted copy — the original is never mutated.
     An exception group is rebuilt as a group, member by member.
 
+    Every copy is an ``Exception`` — a :class:`RedactedError` or an
+    ``ExceptionGroup`` of them — even when the original is a bare
+    ``BaseException`` such as ``KeyboardInterrupt``. That is what lets a
+    ``BaseExceptionGroup`` holding one be rebuilt as an ``ExceptionGroup``,
+    which refuses non-``Exception`` members.
+
     Args:
         error (BaseException): The link to copy.
-        memo (dict[int, BaseException]): Copies already built, by the
+        memo (dict[int, Exception]): Copies already built, by the
             original's ``id``, which is what keeps a cyclic chain from
             recursing forever.
 
     Returns:
-        BaseException: The copy, with the original's frames.
+        Exception: The copy, with the original's frames.
     """
     known = memo.get(id(error))
     if known is not None:
         return known
-    copy: BaseException
+    copy: Exception
     if isinstance(error, DBAPIError):
         copy = RedactedError(dotted_type_name(error), describe_database_error(error))
         memo[id(error)] = copy
         copy.__suppress_context__ = True
         return copy.with_traceback(error.__traceback__)
     if isinstance(error, BaseExceptionGroup):
-        members: list[Exception] = []
-        for member in error.exceptions:
-            rebuilt = _rebuild(member, memo)
-            members.append(
-                rebuilt
-                if isinstance(rebuilt, Exception)
-                else RedactedError(dotted_type_name(member), str(member))
-            )
+        members: list[Exception] = [
+            _rebuild(member, memo) for member in error.exceptions
+        ]
         copy = ExceptionGroup(f"{dotted_type_name(error)}: {error.message}", members)
     else:
         copy = RedactedError(dotted_type_name(error), str(error))
