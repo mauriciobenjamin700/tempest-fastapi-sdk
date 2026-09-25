@@ -151,6 +151,62 @@ runs past one page:
     Reports are routinely assembled from partial data, and dropping the whole
     document over one absent cell helps nobody.
 
+### Voucher: the QR code comes from here
+
+Ticket, Pix charge, parcel label: a voucher almost always carries a QR code.
+Pass the **text** and the SDK encodes it:
+
+```python
+from tempest_fastapi_sdk.pdf import VoucherDocument
+
+ticket = VoucherDocument(
+    heading="TICKET",
+    subtitle="Saturday show · 8 pm",
+    fields={"Section": "Floor", "Holder": "Ana Souza"},
+    qr_content="https://example.com/v/8f3a2c1d",
+    note="Show this QR code at the door.",
+)
+
+print(ticket.qr_image is not None)  # True
+```
+
+You do not pick error correction, scale or margin — the `26mm` box the image
+lands in belongs to the SDK's template, so the calibration lives next to it:
+
+- **Error correction H** (recovers 30 % of the symbol). A voucher is printed,
+  folded and scanned off a crease. A 197-character Pix BR Code comes out at
+  version 15, with `0.32mm` modules, and rendered by WeasyPrint and
+  rasterized at 100 dpi it still decodes.
+- **A 2-module margin** inside the image. The standard asks for 4; the rest
+  comes from the voucher's own white space, instead of shrinking every
+  module.
+- **`image-rendering: pixelated`** in the template, which makes WeasyPrint
+  write `/Interpolate false`: without it the PDF asks the viewer to smooth
+  the image.
+
+Content too long for any QR version fails at **validation**, as a
+`ValidationError`, not halfway through rendering.
+
+Need another calibration, or an encoder of your own? `qr_data_uri(...)` is
+public, with the same defaults as keyword-only arguments, and the document's
+`qr_data_uri` field takes the finished image:
+
+```python
+from tempest_fastapi_sdk.pdf import VoucherDocument, qr_data_uri
+
+label = VoucherDocument(
+    heading="PARCEL 3/5",
+    qr_data_uri=qr_data_uri("ORD-2026-0042/3", error="m"),
+)
+```
+
+Both together raise `ValidationError`: one is text for the SDK to encode, the
+other an image already encoded, and there is no right answer to which wins.
+
+!!! note "`segno` ships in the `[pdf]` extra"
+    Pure Python, no runtime dependency and no upper bound — it caps nobody's
+    lock. It is imported at the first encode.
+
 ## Serving over HTTP
 
 ```python
@@ -560,6 +616,8 @@ shown, with no sign that a half is missing. Override the sentence with
   missing field fails validation.
 - The report paginates properly: repeating header, `página X de Y`, grand total
   on the last page only.
+- The voucher encodes its own QR code with `qr_content=`, calibrated for the
+  template's box; `qr_data_uri(...)` stays public for another calibration.
 - `make_pdf_router` serves it over HTTP; `dependencies=` is where auth and rate
   limiting go.
 - `tempest pdf render --html` is the fast loop for adjusting a template.

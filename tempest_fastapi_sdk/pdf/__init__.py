@@ -66,6 +66,11 @@ from tempest_fastapi_sdk.pdf.pages import PdfExtractor as PdfExtractor
 from tempest_fastapi_sdk.pdf.pages import PdfPage as PdfPage
 from tempest_fastapi_sdk.pdf.pages import PdfPagesResult as PdfPagesResult
 from tempest_fastapi_sdk.pdf.pages import read_pdf_pages as read_pdf_pages
+from tempest_fastapi_sdk.pdf.qr import QR_BORDER as QR_BORDER
+from tempest_fastapi_sdk.pdf.qr import QR_ERROR_CORRECTION as QR_ERROR_CORRECTION
+from tempest_fastapi_sdk.pdf.qr import QR_SCALE as QR_SCALE
+from tempest_fastapi_sdk.pdf.qr import QrErrorLevel as QrErrorLevel
+from tempest_fastapi_sdk.pdf.qr import qr_data_uri as qr_data_uri
 from tempest_fastapi_sdk.pdf.reader import (
     DEFAULT_PAGE_MARKER as DEFAULT_PAGE_MARKER,
 )
@@ -116,6 +121,9 @@ __all__: list[str] = [
     "MAX_EXTENSO_CENTS",
     "MONTHS_PT_BR",
     "PDF_MEDIA_TYPE",
+    "QR_BORDER",
+    "QR_ERROR_CORRECTION",
+    "QR_SCALE",
     "AssetPolicy",
     "AssetRefused",
     "Branding",
@@ -133,6 +141,7 @@ __all__: list[str] = [
     "PdfPage",
     "PdfPagesResult",
     "PdfRenderer",
+    "QrErrorLevel",
     "QuoteDocument",
     "ReceiptDocument",
     "ReportColumn",
@@ -151,6 +160,7 @@ __all__: list[str] = [
     "format_document",
     "format_quantity",
     "make_pdf_router",
+    "qr_data_uri",
     "read_pdf_pages",
     "safe_filename",
     "valor_por_extenso",

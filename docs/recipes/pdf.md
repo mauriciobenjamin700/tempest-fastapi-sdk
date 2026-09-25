@@ -152,6 +152,62 @@ de uma página:
     falhar. Relatório é montado de dado parcial com frequência, e derrubar o
     documento inteiro por uma célula ausente não ajuda ninguém.
 
+### Comprovante: o QR code sai daqui
+
+Ingresso, cobrança Pix, etiqueta de volume: o voucher quase sempre carrega um
+QR code. Passe o **texto** e o SDK codifica:
+
+```python
+from tempest_fastapi_sdk.pdf import VoucherDocument
+
+ingresso = VoucherDocument(
+    heading="INGRESSO",
+    subtitle="Show de sábado · 20h",
+    fields={"Setor": "Pista", "Portador": "Ana Souza"},
+    qr_content="https://example.com/v/8f3a2c1d",
+    note="Apresente este QR code na entrada.",
+)
+
+print(ingresso.qr_image is not None)  # True
+```
+
+Você não escolhe correção de erro, escala nem margem — quem é dono do quadro
+de `26mm` onde a imagem cai é o template do SDK, então a calibração mora ao
+lado dele:
+
+- **Correção de erro H** (recupera 30 % do símbolo). Voucher é impresso,
+  dobrado e lido de cima de um vinco. Um Pix BR Code de 197 caracteres sai na
+  versão 15, com módulo de `0,32mm`, e renderizado pelo WeasyPrint e
+  rasterizado a 100 dpi ainda decodifica.
+- **Margem de 2 módulos** dentro da imagem. O padrão pede 4; o resto vem do
+  branco do próprio voucher, em vez de encolher cada módulo.
+- **`image-rendering: pixelated`** no template, que faz o WeasyPrint gravar
+  `/Interpolate false`: sem ele o PDF pede ao visualizador para suavizar a
+  imagem.
+
+Um conteúdo longo demais para qualquer versão de QR falha na **validação**,
+como `ValidationError`, e não no meio da renderização.
+
+Precisa de outra calibração, ou de um encoder seu? `qr_data_uri(...)` é
+público, com os mesmos defaults como keyword-only, e o campo
+`qr_data_uri` do documento aceita a imagem pronta:
+
+```python
+from tempest_fastapi_sdk.pdf import VoucherDocument, qr_data_uri
+
+etiqueta = VoucherDocument(
+    heading="VOLUME 3/5",
+    qr_data_uri=qr_data_uri("PED-2026-0042/3", error="m"),
+)
+```
+
+Os dois juntos levantam `ValidationError`: um é texto para o SDK codificar, o
+outro é imagem já codificada, e não há resposta certa para qual vence.
+
+!!! note "`segno` vem no extra `[pdf]`"
+    Python puro, sem dependência de runtime e sem upper bound — não prende o
+    lock de ninguém. É importado na primeira codificação.
+
 ## Servindo por HTTP
 
 ```python
@@ -559,6 +615,8 @@ sinal de que existe outra metade. Sobrescreva a frase com
   campo faltando falha na validação.
 - Relatório pagina de verdade: cabeçalho repetido, `página X de Y`, total geral
   só na última página.
+- O voucher codifica o próprio QR code com `qr_content=`, calibrado para o
+  quadro do template; `qr_data_uri(...)` fica público para outra calibração.
 - `make_pdf_router` serve por HTTP; `dependencies=` é onde entram auth e rate
   limit.
 - `tempest pdf render --html` é o laço rápido para ajustar template.

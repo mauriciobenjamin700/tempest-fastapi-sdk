@@ -55,7 +55,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[modelops-sklearn]` | `skl2onnx` | export scikit-learn models to ONNX for the edge: `export_sklearn_to_onnx`, `verify_sklearn_onnx`, `edge_bundle` |
 | `[oidc]` | `PyJWT`, `cryptography` | offline verification of OIDC realm access tokens (Keycloak, Auth0, Okta …): `OIDCTokenVerifier`, and `OIDCProvider(token_verifier=...)` for social login |
 | `[otel]` | `opentelemetry-sdk`, OTLP exporter + FastAPI/SQLAlchemy/httpx instrumentations | OpenTelemetry instrumentation via `setup_tracing` |
-| `[pdf]` | `weasyprint`, `jinja2` | PDF generation from HTML templates: `PdfRenderer`, five bundled typed documents, `make_pdf_router`, `tempest pdf`. **Needs Pango + fontconfig on the system** — see the recipe |
+| `[pdf]` | `weasyprint`, `jinja2`, `segno` | PDF generation from HTML templates: `PdfRenderer`, five bundled typed documents, `make_pdf_router`, `tempest pdf`. **Needs Pango + fontconfig on the system** — see the recipe |
 | `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
 | `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` |

@@ -235,6 +235,11 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.pdf.documents.Signatory
 ::: tempest_fastapi_sdk.pdf.documents.ReportColumn
 ::: tempest_fastapi_sdk.pdf.documents.BUNDLED_DOCUMENTS
+::: tempest_fastapi_sdk.pdf.qr.qr_data_uri
+::: tempest_fastapi_sdk.pdf.qr.QrErrorLevel
+::: tempest_fastapi_sdk.pdf.qr.QR_ERROR_CORRECTION
+::: tempest_fastapi_sdk.pdf.qr.QR_SCALE
+::: tempest_fastapi_sdk.pdf.qr.QR_BORDER
 ::: tempest_fastapi_sdk.pdf.formatting.format_cents
 ::: tempest_fastapi_sdk.pdf.formatting.format_date
 ::: tempest_fastapi_sdk.pdf.formatting.format_date_long
