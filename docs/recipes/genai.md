@@ -2261,6 +2261,62 @@ app.include_router(
     `sse_response` do SDK — cliente com `EventSource` recebe os tokens ao
     vivo.
 
+#### Limites por request: `GenAIRequestLimits`
+
+Todo endpoint de IA transforma tamanho de request em tempo de GPU ou
+memória. Por isso o router confere o request contra um
+`GenAIRequestLimits` **antes** de chamar o modelo, e responde `422`
+quando algum teto estoura:
+
+| Campo | Default | Onde vale |
+| --- | --- | --- |
+| `max_prompt_chars` | `32_000` | prompt do `/generate`, soma das mensagens do `/chat`, query do `/rag`, cada texto do `/embed`, prompt e negative prompt do `/image` |
+| `max_chat_messages` | `100` | mensagens por `/chat` |
+| `max_new_tokens` | `4096` | `config.max_new_tokens` enviado pelo cliente |
+| `max_embed_texts` | `256` | textos por `/embed` |
+| `max_top_k` | `50` | `top_k` do `/rag` (que também exige `>= 1` no schema) |
+| `max_tts_chars` | `5_000` | texto do `/tts` |
+| `max_image_side` | `2048` | `config.width` / `config.height` do `/image` |
+| `max_image_steps` | `100` | `config.steps` do `/image` |
+| `max_upload_bytes` | 25 MiB | upload do `/transcribe`, lido em blocos |
+
+Os defaults servem um deploy self-hosted pequeno. Para mudar, passe a sua
+instância:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import register_exception_handlers
+from tempest_fastapi_sdk.genai import GenAIRequestLimits, TextGenerator, make_genai_router
+
+app: FastAPI = FastAPI()
+register_exception_handlers(app)
+app.include_router(
+    make_genai_router(
+        text_generator=TextGenerator("Qwen/Qwen2.5-7B-Instruct"),
+        limits=GenAIRequestLimits(max_prompt_chars=8_000, max_new_tokens=1024),
+    ),
+)
+```
+
+Com o `register_exception_handlers`, o corpo do `422` diz qual campo
+estourou e qual é o teto:
+
+```text
+POST /api/genai/generate {"prompt": "hi", "config": {"max_new_tokens": 1000000000}}
+422 {"detail": "max_new_tokens exceeds the limit of 4096", "code": "VALIDATION_ERROR",
+     "details": {"field": "max_new_tokens", "limit": 4096}}
+```
+
+!!! note "`max_new_tokens` ausente passa"
+    O teto vale para o valor que o **cliente** manda. Request sem
+    `max_new_tokens` cai no default do gerador, que quem escolheu foi você.
+
+!!! warning "`/image` devolve uma imagem, então pede uma"
+    O corpo da resposta é a imagem, então `config.num_images` acima de `1`
+    recebe `422` — antes a rota gerava o lote inteiro na GPU e devolvia só a
+    primeira. Para lote, use o `ImageGenerator` direto.
+
 ### `RedisEmbeddingCache` — cache compartilhado entre workers
 
 `Embedder` aceita cache síncrono (`InMemoryEmbeddingCache`) **ou**
