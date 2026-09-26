@@ -6981,6 +6981,8 @@ minio = [
     { name = "minio" },
 ]
 modelops = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "nvidia-ml-py" },
     { name = "psutil" },
 ]
@@ -7181,6 +7183,7 @@ requires-dist = [
     { name = "minio", marker = "extra == 'minio'", specifier = ">=7.2.20" },
     { name = "numpy", marker = "extra == 'faces'", specifier = ">=2.4.6" },
     { name = "numpy", marker = "extra == 'genai-diarization'", specifier = ">=2.4.6" },
+    { name = "numpy", marker = "extra == 'modelops'", specifier = ">=2.4.6" },
     { name = "nvidia-ml-py", marker = "extra == 'all'", specifier = ">=13.610.43" },
     { name = "nvidia-ml-py", marker = "extra == 'metrics'", specifier = ">=13.610.43" },
     { name = "nvidia-ml-py", marker = "extra == 'modelops'", specifier = ">=13.610.43" },

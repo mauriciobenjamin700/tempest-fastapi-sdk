@@ -108,6 +108,151 @@ exceção de ferramenta.
   `AgentContext.unique_artifact_name`/`claim_artifact_name`,
   `InMemoryAgentRunSink.get(run_id)`, `OwnerDependency` e o keyword
   `Agent(expose_tool_errors=...)`.
+O `chat` tratava o id de uma mensagem como capability: toda rota que
+recebe só `/messages/{id}` carregava a linha pelo id e seguia, sem olhar
+a conversa dela. O `/stream` segurava uma sessão de banco pela vida da
+conexão e continuava entregando depois que a pessoa saía, e o histórico
+aceitava `page_size=0`.
+
+### Security
+
+- **`react` / `unreact` exigem enxergar a mensagem.** Antes, qualquer
+  usuário autenticado que soubesse um id recebia `200` com a
+  `MessageResponseSchema` inteira (body, anexos, `storage_key`), e a
+  reação era gravada e publicada no SSE de uma conversa em que ele nunca
+  esteve. Agora o usuário precisa ser participante ativo da conversa da
+  mensagem, e a mensagem não pode ser anterior ao `history_from` dele.
+  Fora disso a resposta é o not-found do próprio repositório — mesma
+  classe, mesma mensagem, corpo HTTP idêntico ao de um id inexistente —,
+  para o id não virar oráculo de existência.
+- **`forward` confere a original.** O encaminhamento copiava body,
+  payload e as linhas de anexo de qualquer mensagem para uma conversa do
+  chamador; agora é leitura da original e segue a mesma regra.
+- **`edit_message` / `revoke_message` exigem participação ativa**, além de
+  ser o remetente: quem saiu da conversa não reescreve nem apaga mais o
+  que disse lá. Quem não enxerga a mensagem recebe `404`, não o `403`
+  "only the sender", que confirmava a existência.
+- **Responder citando mensagem anterior ao `history_from`** é `404`: o
+  stub da citação carregava o trecho do backlog que o recém-chegado não
+  recebeu.
+- **O `/stream` fecha quando a participação acaba.** `leave` e
+  `remove_participant` publicam `participant.removed`
+  (`PARTICIPANT_REMOVED_EVENT`, com o `ParticipantResponseSchema` de quem
+  saiu); o stream de quem ele nomeia entrega o evento e termina, e a
+  reconexão leva `403`. Saída feita fora do `ChatService` é pega pela
+  releitura da participação a cada `membership_recheck_seconds`
+  (`MEMBERSHIP_RECHECK_SECONDS`, `30.0`; `None` desliga), numa sessão
+  curta.
+
+### Fixed
+
+- **O `/stream` não segura mais sessão de banco.** O endpoint recebia o
+  serviço por `Depends`, e a sessão com `yield` ficava aberta — conexão
+  do pool emprestada, transação começada — enquanto o cliente estivesse
+  conectado: N abas ociosas esgotavam o pool. A checagem de participante
+  agora roda numa sessão própria, fechada antes do primeiro byte (medido
+  com um contador de sessões abertas: `1` antes, `0` depois, com o
+  stream aberto).
+- **`revoke_message` só devolve chave que ninguém mais referencia.**
+  Encaminhar aponta a cópia para a mesma `storage_key`, então revogar a
+  original mandava o chamador apagar o arquivo que a cópia ainda
+  renderizava. A chave sai agora na revogação que remove a última linha
+  de anexo que a cita (como `storage_key` ou `thumbnail_key`).
+- **Paginação do histórico.** `page_size=0` era `500`
+  (`ZeroDivisionError`), `page_size=-1` virava `LIMIT -1` — que o SQLite
+  lê como "sem limite": 25 de 25 mensagens numa página — e `page=0`
+  respondia `200`. O router exige `page >= 1` e
+  `1 <= page_size <= max_page_size` (`422` fora disso), e
+  `ChatService.list_messages` levanta `ValidationException` para os
+  mesmos valores.
+
+### Added
+
+- **`make_chat_router(max_page_size=..., membership_recheck_seconds=...)`**,
+  keyword-only, com defaults `MESSAGES_PAGE_SIZE_MAX` (`100`) e
+  `MEMBERSHIP_RECHECK_SECONDS` (`30.0`).
+- **Tetos nos schemas**, `422` quando passados: `body` de postar e editar
+  (`MESSAGE_BODY_MAX_LENGTH`, 65 536 caracteres), `attachment_ids`
+  (`MESSAGE_ATTACHMENTS_MAX`, 32), `ForwardSchema.conversation_ids`
+  (`FORWARD_TARGETS_MAX`, 20), `participant_ids` (`PARTICIPANT_IDS_MAX`,
+  256), e `title` / `description` no tamanho da coluna (255 / 512), que o
+  schema não conferia.
+
+### Changed
+
+- Quem não enxerga a mensagem recebe `404` em `PATCH`/`DELETE
+  /messages/{id}` onde antes recebia `403`; o remetente que ainda é
+  participante continua recebendo `403` para mensagem alheia.
+
+A linha de anexo continua sem registrar quem fez o upload: qualquer
+participante com o id de um anexo não reivindicado pode prendê-lo à
+própria mensagem. Corrigir exige coluna nova e migração no banco do
+consumidor, então fica para uma release que a anuncie.
+Seis defeitos de fronteira de confiança no GenAI. O `ContentExtractor`
+seguia redirect para qualquer lugar — um `302` para
+`http://169.254.169.254/latest/meta-data/` era buscado e o texto extraído
+(reproduzido com `httpx.MockTransport`); o `AIChatPipeline.stream()` não
+moderava a resposta que o `respond()` moderava e a docstring prometia; o
+`make_ai_chat_router` aceitava `role: "system"` no `history` e tirava o
+`user_id` do corpo, então quem soubesse o id de outra pessoa recebia os
+`memory_hits` dela; e o `RuleModerator` nunca casava `"$hit"` nem `"c++"` e
+caía com espaço de largura zero ou letra fullwidth.
+
+### Security
+
+- **`ContentExtractor.extract` bloqueia SSRF por padrão.** Só `http`/`https`;
+  o host (IP literal ou todo endereço que o hostname resolve) precisa ser
+  público — loopback, privado, link-local (o endpoint de metadata incluso),
+  CGNAT, reservado e multicast são recusados, e IPv4 mapeado em IPv6
+  (`::ffff:127.0.0.1`) é julgado pelo IPv4 que carrega;
+  redirect é seguido à mão com a mesma checagem em cada salto, até
+  `max_redirects=` (default 5); o corpo é lido em stream e a busca desiste
+  passando de `max_response_bytes=` (default 5 MiB). Recusa volta
+  `failed=True`, como toda falha. `allow_private_networks=True` desliga só a
+  checagem de endereço, para intranet; `resolver=` injeta o DNS. Limite
+  declarado: checagem e conexão resolvem o DNS separadamente, então DNS
+  rebinding não é coberto.
+- **`make_ai_chat_router` não confia no corpo.** `AIChatTurnSchema.role` é
+  `Literal["user", "assistant"]` (um turno `system` responde `422`); o
+  `AIChatRequestSchema` perdeu o campo `user_id` — o dono da memória vem do
+  novo `current_user_id=` (dependência FastAPI), e `dependencies=` aplica
+  auth/rate limit a toda rota. Pipeline com `memory=` sem
+  `current_user_id=` levanta `ValueError` na montagem.
+- **`AIChatPipeline.stream()` modera a resposta.** Novo
+  `stream_moderation=` no construtor: `"incremental"` (default) checa o
+  texto acumulado antes de mandar cada pedaço e troca o resto por
+  `blocked_message` na primeira flag — pedaço já enviado não volta, mas o
+  que completa o termo nunca sai; `"buffered"` gera tudo, modera uma vez e
+  manda inteiro ou bloqueia. Resposta bloqueada não é indexada.
+- **O `history` passa pelo moderador**, em `respond` e `stream`, como a
+  mensagem nova.
+- **`RuleModerator` normaliza antes de casar**: NFKC, remove caracteres de
+  categoria `Cf` (largura zero, bidi) e casefold, nos termos e no texto; a
+  fronteira de palavra virou lookaround (`(?<!\w)…(?!\w)`), então termo com
+  pontuação na borda casa. Homóglifo de outro alfabeto continua fora.
+
+### Changed
+
+- **`respond`/`stream` aceitam `user_id=None`**, que pula a memória do turno
+  (nem busca, nem indexa) — é o que o router passa sem `current_user_id`.
+- **O `trafilatura` roda em `asyncio.to_thread`** no `ContentExtractor`, fora
+  do event loop.
+
+### Fixed
+
+- **Falha de indexação na memória é logada** (`WARNING` com traceback no
+  logger `tempest_fastapi_sdk.genai.pipeline`) em vez de engolida em
+  silêncio; a resposta continua saindo.
+
+### Migração
+
+- Cliente HTTP que manda `user_id` no corpo não quebra — o campo é ignorado.
+- Pipeline com `memory=` montado no router precisa de
+  `make_ai_chat_router(pipeline, current_user_id=...)`.
+- `history` com `role` fora de `user`/`assistant` passa a responder `422`.
+- `ContentExtractor` apontado para a intranet precisa de
+  `allow_private_networks=True`; página acima de 5 MiB precisa de
+  `max_response_bytes=` maior.
 Os routers de IA não tinham limite de request nenhum. O `/generate`
 aceitava um prompt de 2 MB com `max_new_tokens=10**9`, o `/embed` aceitava
 100 000 textos, o `/image` validava `width=100000` e

@@ -351,3 +351,117 @@ class TestRegistrySource:
         await source.sync(predictor)
         assert predictor.info.is_classifier is False
         assert source.current_version == "v3"
+
+
+def _double_input_model(path: Path) -> Path:
+    """Write a graph that loads but refuses the float32 rows it will be fed.
+
+    Its input is ``tensor(double)``, so the session builds fine and every
+    float32 inference fails — the shape of a rollout that parses but cannot
+    answer.
+
+    Args:
+        path (Path): Where to write the model.
+
+    Returns:
+        Path: The written file.
+    """
+    import onnx
+    from onnx import TensorProto, helper
+
+    graph = helper.make_graph(
+        [helper.make_node("Identity", ["input"], ["variable"])],
+        "double",
+        [helper.make_tensor_value_info("input", TensorProto.DOUBLE, ["batch", 4])],
+        [helper.make_tensor_value_info("variable", TensorProto.DOUBLE, ["batch", 4])],
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+    model.ir_version = 10
+    onnx.save(model, str(path))
+    return path
+
+
+class _SwapOnEnter:
+    """A lock that swaps the predictor's model the moment it is taken.
+
+    Reproduces a :meth:`OnnxPredictor.reload` landing between the width
+    check and the session read, deterministically.
+
+    Attributes:
+        target (OnnxPredictor): The predictor being raced.
+        replacement (OnnxPredictor): Whose session and info get swapped in.
+    """
+
+    def __init__(self, target: OnnxPredictor, replacement: OnnxPredictor) -> None:
+        """Store both predictors.
+
+        Args:
+            target (OnnxPredictor): The predictor being raced.
+            replacement (OnnxPredictor): The model swapped in.
+        """
+        self.target = target
+        self.replacement = replacement
+        self._swapped = False
+
+    def __enter__(self) -> None:
+        """Swap the target's model once, as a concurrent reload would."""
+        if not self._swapped:
+            self._swapped = True
+            self.target._session = self.replacement._session
+            self.target._info = self.replacement._info
+
+    def __exit__(self, *exc: object) -> None:
+        """Release nothing.
+
+        Args:
+            *exc (object): The exception triple, ignored.
+        """
+
+
+class TestReloadConsistency:
+    def test_a_reload_mid_call_is_a_width_error_not_a_runtime_error(
+        self,
+        classifier_path: Path,
+        tmp_path: Path,
+    ) -> None:
+        """The width was checked against one model and run against another."""
+        from sklearn.linear_model import LinearRegression
+
+        narrow_features = [[0.0, 1.0, 2.0], [1.0, 2.0, 3.0]]
+        narrow = LinearRegression().fit(narrow_features, [0.0, 1.0])
+        export = export_sklearn_to_onnx(
+            narrow,
+            narrow_features,
+            tmp_path / "narrow.onnx",
+        )
+        predictor = OnnxPredictor(classifier_path)
+        predictor._lock = _SwapOnEnter(  # type: ignore[assignment]
+            predictor,
+            OnnxPredictor(export.path),
+        )
+        with pytest.raises(ValueError, match="expects 3 features"):
+            predictor.predict([[0.1, 0.2, 0.3, 0.4]])
+
+    def test_a_model_that_fails_warm_up_is_not_swapped_in(
+        self,
+        classifier_path: Path,
+        tmp_path: Path,
+    ) -> None:
+        """Warm-up used to run after the swap and swallow the failure."""
+        broken = _double_input_model(tmp_path / "double.onnx")
+        predictor = OnnxPredictor(classifier_path)
+        with pytest.raises(RuntimeError, match="warm-up"):
+            predictor.reload(broken)
+        assert predictor.path == classifier_path
+        assert predictor.info.is_classifier is True
+        assert predictor.predict([[0.1, 0.2, 0.3, 0.4]]).n_rows == 1
+
+    def test_reload_without_warm_up_swaps_even_an_unrunnable_model(
+        self,
+        classifier_path: Path,
+        tmp_path: Path,
+    ) -> None:
+        broken = _double_input_model(tmp_path / "double.onnx")
+        predictor = OnnxPredictor(classifier_path)
+        predictor.reload(broken, warmup=False)
+        assert predictor.path == broken

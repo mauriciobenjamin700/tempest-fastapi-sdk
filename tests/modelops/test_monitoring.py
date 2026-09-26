@@ -10,11 +10,14 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tempest_fastapi_sdk.modelops.monitoring import (
+    MAX_TRACKED_LABELS,
     MIN_ROWS_FOR_DRIFT,
+    OTHER_LABEL,
     PSI_MODERATE,
     PSI_SIGNIFICANT,
     DriftVerdict,
     FeatureBaseline,
+    FeatureBins,
     PredictionMonitor,
     baseline_from_samples,
     population_stability_index,
@@ -378,3 +381,104 @@ class TestPrometheusMetrics:
         metrics.observe_report(monitor.report())
 
         assert registry.get_sample_value("test_small_input_drift_psi") == 0.0
+
+
+class TestBoundedLabelMemory:
+    def test_a_regressor_does_not_grow_one_key_per_value(self) -> None:
+        """50 000 distinct outputs used to become 50 000 dictionary keys."""
+        monitor = PredictionMonitor()
+        values = [float(index) + 0.5 for index in range(50_000)]
+        monitor.observe(_normal(1, 30), _prediction(values))
+        distribution = monitor.report().predictions
+        assert len(distribution.shares) <= MAX_TRACKED_LABELS + 1
+        assert distribution.shares[OTHER_LABEL] > 0.99
+        assert distribution.n_rows == 50_000
+        assert distribution.minimum == 0.5
+        assert distribution.maximum == 49_999.5
+
+    def test_the_cap_is_configurable(self) -> None:
+        monitor = PredictionMonitor(max_labels=2)
+        monitor.observe(_normal(1, 31), _prediction(["a", "b", "c", "d", "a"]))
+        shares = monitor.report().predictions.shares
+        assert shares == {"a": 0.4, "b": 0.2, OTHER_LABEL: 0.4}
+
+    def test_baseline_classes_always_keep_their_own_bucket(self) -> None:
+        """Traffic that fills the cap first must not evict a known class."""
+        baseline = baseline_from_samples(
+            _normal(200, 32),
+            labels=numpy.array(["x", "y"] * 100),
+        )
+        monitor = PredictionMonitor(baseline=baseline, max_labels=1)
+        monitor.observe(_normal(4, 33), _prediction(["noise", "more", "x", "y"]))
+        shares = monitor.report().predictions.shares
+        assert shares == {"noise": 0.25, OTHER_LABEL: 0.25, "x": 0.25, "y": 0.25}
+
+    def test_a_non_positive_cap_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="max_labels"):
+            PredictionMonitor(max_labels=0)
+
+
+class TestLabelKeysAreCanonical:
+    def test_float_baseline_labels_match_integer_live_labels(self) -> None:
+        """'0.0' against '0' used to score PSI 26 on identical traffic."""
+        baseline = baseline_from_samples(
+            _normal(2000, 40),
+            labels=numpy.array([0.0, 1.0] * 1000),
+        )
+        monitor = PredictionMonitor(baseline=baseline, window_rows=10_000)
+        monitor.observe(_normal(1000, 41), _prediction([0, 1] * 500))
+        distribution = monitor.report().predictions
+        assert distribution.baseline_shares == {"0": 0.5, "1": 0.5}
+        assert distribution.psi < 1e-9
+        assert distribution.verdict == DriftVerdict.STABLE
+
+    def test_a_baseline_saved_with_float_keys_still_compares(self) -> None:
+        """Baselines written before the fix carry '0.0' keys on disk."""
+        stored = FeatureBaseline(
+            n_samples=2,
+            label_proportions={"0.0": 0.5, "1.0": 0.5},
+        )
+        monitor = PredictionMonitor(baseline=stored, window_rows=10_000)
+        monitor.observe([[0.0]] * 200, _prediction([0, 1] * 100))
+        distribution = monitor.report().predictions
+        assert distribution.psi < 1e-9
+        assert distribution.verdict == DriftVerdict.STABLE
+
+    def test_numpy_scalars_and_python_numbers_share_a_key(self) -> None:
+        monitor = PredictionMonitor()
+        monitor.observe(
+            _normal(1, 42),
+            _prediction([numpy.int64(1), numpy.float32(1.0), 1, 1.0, True]),
+        )
+        assert monitor.report().predictions.shares == {"1": 0.8, "True": 0.2}
+
+    def test_string_labels_are_left_alone(self) -> None:
+        monitor = PredictionMonitor()
+        monitor.observe(_normal(1, 43), _prediction(["01", "1", "setosa"]))
+        assert set(monitor.report().predictions.shares) == {"01", "1", "setosa"}
+
+
+class TestNumpyExtra:
+    def test_numpy_ships_with_the_modelops_extra(self) -> None:
+        """The monitor needs numpy, and [modelops] did not declare it."""
+        import tomllib
+
+        pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+        extras = tomllib.loads(pyproject.read_text())["project"][
+            "optional-dependencies"
+        ]
+        assert any(dep.startswith("numpy") for dep in extras["modelops"])
+
+    def test_a_missing_numpy_names_the_extra(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import sys
+
+        monkeypatch.setitem(sys.modules, "numpy", None)
+        with pytest.raises(ImportError, match=r"\[modelops\]"):
+            baseline_from_samples([[1.0, 2.0]])
+        with pytest.raises(ImportError, match=r"\[modelops\]"):
+            PredictionMonitor(
+                baseline=FeatureBaseline(features=[FeatureBins(name="0")]),
+            )

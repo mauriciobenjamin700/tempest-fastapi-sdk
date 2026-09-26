@@ -24,9 +24,14 @@ Input drift with a stable output distribution usually means a harmless
 covariate shift. A shifted output with stable inputs usually means the model
 is extrapolating. Both shifted means retraining, not tuning.
 
-Memory is bounded and constant. Rows are counted into baseline bins as they
-arrive and thrown away — nothing accumulates a copy of the traffic, which is
-what makes this safe to run on a device with 512 MB of RAM.
+Memory is bounded and independent of traffic. Rows are counted into baseline
+bins as they arrive and thrown away, predicted labels are counted into at
+most :data:`MAX_TRACKED_LABELS` buckets (plus the baseline's own classes and
+one :data:`OTHER_LABEL` overflow), and latencies live in a fixed ring —
+nothing accumulates a copy of the traffic, which is what makes this safe to
+run on a device with 512 MB of RAM. A regressor, whose every output is a
+distinct value, fills the label cap and then counts into the overflow bucket;
+its signal is in the mean and the extremes, which are three numbers.
 
     from tempest_fastapi_sdk.modelops import PredictionMonitor, baseline_from_samples
 
@@ -44,6 +49,8 @@ Prometheus is optional: the report is a plain schema, and
 from __future__ import annotations
 
 import math
+import numbers
+import re
 import threading
 from collections import deque
 from typing import TYPE_CHECKING, Any
@@ -115,12 +122,109 @@ would turn one unseen value into an unbounded score. This floor caps the
 contribution of an empty bin instead.
 """
 
+MAX_TRACKED_LABELS: int = 64
+"""Distinct predicted labels counted individually per monitor.
+
+The class-share section exists for classifiers, whose label set is small and
+fixed; 64 is far past any class count the serving path here targets. A
+regressor produces a new label per row, and without a cap each one became a
+dictionary key — 50 000 distinct outputs made a 50 000-key map and a
+report of 889 270 bytes of JSON (measured; 65 keys and 1 350 bytes
+with the cap). Past the cap, new labels count into
+:data:`OTHER_LABEL`. Classes named in the baseline always keep their own
+bucket, whatever order traffic arrives in, so the output PSI never loses a
+known class to the overflow.
+"""
+
+OTHER_LABEL: str = "__other__"
+"""Share key that absorbs labels beyond :data:`MAX_TRACKED_LABELS`."""
+
+_INTEGRAL_FLOAT_TEXT: re.Pattern[str] = re.compile(r"[+-]?\d+\.0*")
+"""A label written as a float with no fractional part, such as ``"1.0"``.
+
+Baselines saved before labels were canonicalised carry keys like this, and
+they must still compare against the ``"1"`` live traffic produces.
+"""
+
+_EXTRA_HINT: str = (
+    "Model monitoring requires numpy, shipped by the optional [modelops] "
+    "extra. Install with: pip install tempest-fastapi-sdk[modelops]"
+)
+
 _LATENCY_WINDOW: int = 512
 """Recent latencies kept for percentiles.
 
 A fixed ring, so the memory cost does not grow with uptime. Percentiles
 describe recent behaviour, which is the question being asked on a device.
 """
+
+
+def _require_numpy() -> Any:
+    """Import ``numpy`` or raise an error naming the extra that ships it.
+
+    Returns:
+        Any: The ``numpy`` module.
+
+    Raises:
+        ImportError: When numpy is unavailable.
+    """
+    try:
+        import numpy
+    except ImportError as exc:
+        raise ImportError(_EXTRA_HINT) from exc
+    return numpy
+
+
+def _label_key(label: Any) -> str:
+    """Return the share key for one label, identical on both sides of a PSI.
+
+    ``str()`` alone is not canonical: a baseline built from float targets
+    produced ``"0.0"`` while an integer classifier answered ``0``, and the
+    two identical distributions scored PSI 26.24 — ``significant``. Numbers
+    are keyed by value instead: integral ones in integer form (``0``,
+    ``0.0``, ``numpy.int64(0)`` and ``numpy.float32(0.0)`` all become
+    ``"0"``), others by ``repr(float(value))``. Booleans stay ``"True"`` /
+    ``"False"``. A string is kept as written, except a float spelling of an
+    integer (``"1.0"``), which is what baselines saved before this change
+    hold.
+
+    Args:
+        label (Any): A predicted label, or a baseline key.
+
+    Returns:
+        str: The canonical key.
+    """
+    if isinstance(label, str):
+        if _INTEGRAL_FLOAT_TEXT.fullmatch(label):
+            return str(int(float(label)))
+        return label
+    if isinstance(label, bool) or type(label).__name__ in {"bool", "bool_"}:
+        return str(bool(label))
+    if isinstance(label, numbers.Integral):
+        return str(int(label))
+    try:
+        value = float(label)
+    except (TypeError, ValueError):
+        return str(label)
+    if math.isfinite(value) and value.is_integer():
+        return str(int(value))
+    return repr(value)
+
+
+def _canonical_shares(shares: dict[str, float]) -> dict[str, float]:
+    """Re-key a share map by :func:`_label_key`, merging keys that collide.
+
+    Args:
+        shares (dict[str, float]): Shares keyed as they were stored.
+
+    Returns:
+        dict[str, float]: The same shares under canonical keys.
+    """
+    merged: dict[str, float] = {}
+    for key, share in shares.items():
+        canonical = _label_key(key)
+        merged[canonical] = merged.get(canonical, 0.0) + share
+    return merged
 
 
 class DriftVerdict(BaseStrEnum):
@@ -480,10 +584,11 @@ def baseline_from_samples(
         baseline class shares when labels were given.
 
     Raises:
+        ImportError: When numpy (the ``[modelops]`` extra) is missing.
         ValueError: When ``features`` is not 2-D, or is empty — a baseline
             from no rows would silently mark everything as drifted.
     """
-    import numpy
+    numpy = _require_numpy()
 
     columns = names
     if columns is None:
@@ -510,10 +615,11 @@ def baseline_from_samples(
         total = int(flat.size)
         if total:
             values, counts = numpy.unique(flat, return_counts=True)
-            label_proportions = {
-                str(value): float(count) / total
-                for value, count in zip(values, counts, strict=True)
-            }
+            for value, count in zip(values.tolist(), counts.tolist(), strict=True):
+                key = _label_key(value)
+                label_proportions[key] = (
+                    label_proportions.get(key, 0.0) + float(count) / total
+                )
 
     return FeatureBaseline(
         features=feature_bins,
@@ -636,9 +742,11 @@ class PredictionMonitor:
         'stable'
 
     Rows are counted into the baseline's bins and discarded, so memory is
-    ``n_features x n_bins`` counters regardless of traffic — no copy of the
-    requests is retained, which also means no feature values are held in
-    memory to leak into a log or a crash dump.
+    ``n_features x n_bins`` counters, at most ``max_labels`` label buckets
+    plus the baseline's classes and :data:`OTHER_LABEL`, and a fixed latency
+    ring — regardless of traffic. No copy of the requests is retained, which
+    also means no feature values are held in memory to leak into a log or a
+    crash dump.
 
     Drift is measured per window (:data:`DEFAULT_WINDOW_ROWS`). When a
     window fills, its report becomes the last complete measurement and the
@@ -655,6 +763,8 @@ class PredictionMonitor:
         baseline (FeatureBaseline | None): The training-time reference.
         window_rows (int): Rows per drift window.
         model_version (str | None): Stamped onto every report.
+        max_labels (int): Distinct labels counted individually beyond the
+            baseline's classes.
     """
 
     def __init__(
@@ -663,6 +773,7 @@ class PredictionMonitor:
         baseline: FeatureBaseline | None = None,
         window_rows: int = DEFAULT_WINDOW_ROWS,
         model_version: str | None = None,
+        max_labels: int = MAX_TRACKED_LABELS,
     ) -> None:
         """Configure the monitor.
 
@@ -672,10 +783,25 @@ class PredictionMonitor:
                 not computed.
             window_rows (int): Rows before the drift counters reset.
             model_version (str | None): Version stamped onto reports.
+            max_labels (int): Distinct labels counted individually beyond
+                the baseline's own classes; the rest count into
+                :data:`OTHER_LABEL`. See :data:`MAX_TRACKED_LABELS`.
+
+        Raises:
+            ValueError: When ``max_labels`` is not positive.
+            ImportError: When a baseline with features is given and numpy
+                (the ``[modelops]`` extra) is missing.
         """
+        if max_labels < 1:
+            raise ValueError(f"max_labels must be positive, got {max_labels}")
         self.baseline = baseline
         self.window_rows = window_rows
         self.model_version = model_version
+        self.max_labels = max_labels
+        self._baseline_shares: dict[str, float] = (
+            _canonical_shares(baseline.label_proportions) if baseline else {}
+        )
+        self._untracked_slots = max_labels
         self._lock = threading.Lock()
         self._latencies: deque[float] = deque(maxlen=_LATENCY_WINDOW)
         self._n_calls = 0
@@ -711,7 +837,7 @@ class PredictionMonitor:
             self._counts = None
             return
 
-        import numpy
+        numpy = _require_numpy()
 
         widest = max(len(feature.edges) for feature in self.baseline.features)
         self._bins_per_feature = widest + 1
@@ -760,11 +886,22 @@ class PredictionMonitor:
         whether the labels turned out to be numeric and unbounded, so the
         monitor does not need to be told which kind of model it is watching.
 
+        Labels are keyed by :func:`_label_key`, the same canonical form the
+        baseline uses. A label the monitor has not seen takes a bucket of its
+        own while fewer than ``max_labels`` are in use — the baseline's
+        classes do not count against that, and always keep theirs — and
+        otherwise counts into :data:`OTHER_LABEL`.
+
         Args:
             labels (Sequence[Any]): Predicted labels or values.
         """
         for label in labels:
-            key = str(label)
+            key = _label_key(label)
+            if key not in self._label_counts and key not in self._baseline_shares:
+                if self._untracked_slots > 0:
+                    self._untracked_slots -= 1
+                else:
+                    key = OTHER_LABEL
             self._label_counts[key] = self._label_counts.get(key, 0) + 1
             try:
                 value = float(label)
@@ -793,7 +930,7 @@ class PredictionMonitor:
         Args:
             features (Any): The predicted rows.
         """
-        import numpy
+        numpy = _require_numpy()
 
         assert self.baseline is not None
         if self._counts is None or self._edges is None:
@@ -915,7 +1052,7 @@ class PredictionMonitor:
             return PredictionDistribution()
 
         shares = {key: count / total for key, count in self._label_counts.items()}
-        baseline_shares = dict(self.baseline.label_proportions) if self.baseline else {}
+        baseline_shares = dict(self._baseline_shares)
         psi = 0.0
         verdict = DriftVerdict.INSUFFICIENT_DATA
         if baseline_shares:
@@ -952,6 +1089,7 @@ class PredictionMonitor:
             self._n_rows = 0
             self._seconds = 0.0
             self._label_counts = {}
+            self._untracked_slots = self.max_labels
             self._value_sum = 0.0
             self._value_min = None
             self._value_max = None
@@ -1076,7 +1214,9 @@ class PredictionMetrics:
 __all__: list[str] = [
     "DEFAULT_BINS",
     "DEFAULT_WINDOW_ROWS",
+    "MAX_TRACKED_LABELS",
     "MIN_ROWS_FOR_DRIFT",
+    "OTHER_LABEL",
     "PSI_MODERATE",
     "PSI_SIGNIFICANT",
     "DriftReport",

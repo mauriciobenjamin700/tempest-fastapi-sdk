@@ -33,13 +33,14 @@ tables, the ``chat/`` domain, nothing at all).
 from __future__ import annotations
 
 import base64
-from collections.abc import AsyncIterator, Awaitable, Callable
+import logging
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, get_args
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import Field
 
 from tempest_fastapi_sdk.genai.rag.chroma import MemoryHit
@@ -55,6 +56,21 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.genai.moderation import ModerationBackend
     from tempest_fastapi_sdk.genai.rag import ChatMemory, WebSearch
     from tempest_fastapi_sdk.genai.text import TextBackend
+
+_LOGGER: logging.Logger = logging.getLogger(__name__)
+
+StreamModeration = Literal["incremental", "buffered"]
+"""How :meth:`AIChatPipeline.stream` screens the reply when a moderator is set.
+
+* ``"incremental"`` — every piece is checked (together with everything
+  generated before it) **before** it is sent; the first flagged check stops
+  the stream and sends ``blocked_message``. Pieces already sent stay sent.
+* ``"buffered"`` — the whole reply is generated and checked first, then
+  sent as a single piece; nothing reaches the client before the verdict.
+"""
+
+HistoryRole = Literal["user", "assistant"]
+"""Roles a request body may use for a prior turn in the AI-chat router."""
 
 
 @dataclass
@@ -159,6 +175,7 @@ class AIChatPipeline:
         max_context_tokens: int | None = None,
         moderator: ModerationBackend | None = None,
         blocked_message: str = "Sorry, I can't help with that request.",
+        stream_moderation: StreamModeration = "incremental",
     ) -> None:
         """Configure the pipeline.
 
@@ -178,11 +195,29 @@ class AIChatPipeline:
                 message list; oldest turns are dropped to fit (needs
                 ``tokenizer``).
             moderator (ModerationBackend | None): Screens the user input
-                before generating and the reply after; a flagged turn is
-                answered with ``blocked_message`` instead. ``None`` disables.
+                **and every ``history`` turn** before generating, and the
+                reply after — in :meth:`respond` and in :meth:`stream`
+                (see ``stream_moderation``). A flagged turn is answered
+                with ``blocked_message`` instead. ``None`` disables.
             blocked_message (str): The reply returned when moderation flags
                 the input or the generated output.
+            stream_moderation (StreamModeration): How :meth:`stream`
+                screens the reply — ``"incremental"`` (default) checks the
+                accumulated text before sending each piece, so pieces keep
+                flowing but a flagged reply is cut where it tripped;
+                ``"buffered"`` checks the whole reply before sending
+                anything, trading streaming for zero leakage. Ignored
+                without a ``moderator``.
+
+        Raises:
+            ValueError: When ``stream_moderation`` is not one of the
+                :data:`StreamModeration` values.
         """
+        if stream_moderation not in get_args(StreamModeration):
+            raise ValueError(
+                f"stream_moderation must be one of {get_args(StreamModeration)}, "
+                f"got {stream_moderation!r}",
+            )
         self.generator = generator
         self.memory = memory
         self.web_search = web_search
@@ -194,11 +229,52 @@ class AIChatPipeline:
         self.max_context_tokens = max_context_tokens
         self.moderator = moderator
         self.blocked_message = blocked_message
+        self.stream_moderation: StreamModeration = stream_moderation
+
+    async def _is_flagged(self, text: str) -> bool:
+        """Return whether the configured moderator flags ``text``.
+
+        Args:
+            text (str): The text to screen.
+
+        Returns:
+            bool: ``False`` when no moderator is configured.
+        """
+        if self.moderator is None:
+            return False
+        return (await self.moderator.check(text)).flagged
+
+    async def _input_flagged(
+        self,
+        content: str,
+        history: list[dict[str, Any]] | None,
+    ) -> bool:
+        """Screen the new message and every prior turn's content.
+
+        ``history`` is caller-supplied — through the router, it is whatever
+        the client sent — so a turn the client wrote under the
+        ``assistant`` role is screened like the message itself.
+
+        Args:
+            content (str): The user's message.
+            history (list[dict[str, Any]] | None): Prior turns.
+
+        Returns:
+            bool: ``True`` when any of them is flagged.
+        """
+        if self.moderator is None:
+            return False
+        if await self._is_flagged(content):
+            return True
+        for turn in history or []:
+            if await self._is_flagged(str(turn.get("content", ""))):
+                return True
+        return False
 
     async def respond(
         self,
         *,
-        user_id: str | UUID,
+        user_id: str | UUID | None,
         chat_id: str | UUID,
         content: str,
         history: list[dict[str, Any]] | None = None,
@@ -212,14 +288,21 @@ class AIChatPipeline:
         builds the message list, generates a reply (running the tool loop
         when tools + a tool-capable backend are present), optionally
         synthesizes audio, and indexes both sides of the turn into memory
-        (best-effort — indexing failures never break the response).
+        (best-effort — indexing failures are logged, never raised).
 
         Args:
-            user_id (str | UUID): Owner of the conversation.
+            user_id (str | UUID | None): Owner of the conversation — the
+                key memory is recalled and indexed under. ``None`` skips
+                memory for this turn (no recall, no indexing), which is what
+                an unauthenticated caller gets: never recall under an id the
+                caller merely claimed.
             chat_id (str | UUID): The active chat.
             content (str): The user's message.
             history (list[dict[str, Any]] | None): Prior turns, each
-                ``{"role": ..., "content": ...}``. Defaults to empty.
+                ``{"role": ..., "content": ...}``. Defaults to empty. Passed
+                to the backend as-is (any role), so only hand it roles you
+                trust; the router restricts them to ``user``/``assistant``.
+                Screened by the moderator like ``content``.
             images (list[str] | None): Base64 images for a multimodal
                 model; placed on the user message when truthy.
             use_web_search (bool): Augment the prompt with web context.
@@ -230,7 +313,7 @@ class AIChatPipeline:
             AIChatResult: The reply plus any sources, memory hits, tool
             names and audio produced.
         """
-        if self.moderator is not None and (await self.moderator.check(content)).flagged:
+        if await self._input_flagged(content, history):
             return AIChatResult(reply=self.blocked_message)
 
         messages, hits, sources = await self._prepare(
@@ -249,7 +332,7 @@ class AIChatPipeline:
         else:
             reply = await self.generator.chat(messages)
 
-        if self.moderator is not None and (await self.moderator.check(reply)).flagged:
+        if await self._is_flagged(reply):
             return AIChatResult(
                 reply=self.blocked_message, memory_hits=hits, sources=sources
             )
@@ -277,7 +360,7 @@ class AIChatPipeline:
     async def stream(
         self,
         *,
-        user_id: str | UUID,
+        user_id: str | UUID | None,
         chat_id: str | UUID,
         content: str,
         history: list[dict[str, Any]] | None = None,
@@ -294,8 +377,28 @@ class AIChatPipeline:
         itself stream the intermediate tool-call steps. The final answer is
         indexed into memory after the stream completes (best-effort).
 
+        With a ``moderator``, the input and history are screened first
+        (a flagged input yields only ``blocked_message``), and the reply is
+        screened per ``stream_moderation``:
+
+        * ``"incremental"`` — before each piece is yielded, the text
+          generated so far, including that piece, is checked. The first
+          flagged check stops generation and yields ``blocked_message`` as
+          the last piece. Pieces yielded before it **cannot be recalled**:
+          the client keeps them. What the check guarantees is that the
+          piece which makes the text flaggable is never sent — with
+          :class:`~tempest_fastapi_sdk.genai.RuleModerator`, a block-listed
+          term is never emitted whole, though a prefix of it may be.
+        * ``"buffered"`` — the reply is generated in full and checked once;
+          the client receives either the whole reply as one piece or
+          ``blocked_message``, and nothing before the verdict.
+
+        A blocked reply is not indexed into memory, matching
+        :meth:`respond`.
+
         Args:
-            user_id (str | UUID): Owner of the conversation.
+            user_id (str | UUID | None): Owner of the conversation;
+                ``None`` skips memory recall and indexing.
             chat_id (str | UUID): The active chat.
             content (str): The user's message.
             history (list[dict[str, Any]] | None): Prior turns.
@@ -305,9 +408,10 @@ class AIChatPipeline:
             use_web_search (bool): Augment the prompt with web context.
 
         Yields:
-            str: Text pieces of the reply as the backend produces them.
+            str: Text pieces of the reply as the backend produces them, or
+            ``blocked_message`` when moderation flags the turn.
         """
-        if self.moderator is not None and (await self.moderator.check(content)).flagged:
+        if await self._input_flagged(content, history):
             yield self.blocked_message
             return
 
@@ -325,22 +429,42 @@ class AIChatPipeline:
             await self._run_tool_loop(messages)
 
         prompt = _flatten_messages(messages)
-        collected: list[str] = []
-        async for piece in self.generator.stream(prompt):
-            collected.append(piece)
-            yield piece
+        pieces = self.generator.stream(prompt)
+        reply = ""
+        try:
+            if self.moderator is not None and self.stream_moderation == "buffered":
+                async for piece in pieces:
+                    reply += piece
+                if await self._is_flagged(reply):
+                    yield self.blocked_message
+                    return
+                if reply:
+                    yield reply
+            else:
+                async for piece in pieces:
+                    reply += piece
+                    if await self._is_flagged(reply):
+                        yield self.blocked_message
+                        return
+                    yield piece
+        finally:
+            aclose: Callable[[], Awaitable[None]] | None = getattr(
+                pieces, "aclose", None
+            )
+            if aclose is not None:
+                await aclose()
 
         await self._index_turn(
             user_id=user_id,
             chat_id=chat_id,
             content=content,
-            reply="".join(collected),
+            reply=reply,
         )
 
     async def _prepare(
         self,
         *,
-        user_id: str | UUID,
+        user_id: str | UUID | None,
         chat_id: str | UUID,
         content: str,
         history: list[dict[str, Any]] | None,
@@ -350,7 +474,8 @@ class AIChatPipeline:
         """Recall memory, optionally augment, and build the message list.
 
         Args:
-            user_id (str | UUID): Owner of the conversation.
+            user_id (str | UUID | None): Owner of the conversation;
+                ``None`` skips recall.
             chat_id (str | UUID): The active chat (excluded from recall).
             content (str): The user's message.
             history (list[dict[str, Any]] | None): Prior turns.
@@ -364,7 +489,7 @@ class AIChatPipeline:
         turns = history or []
 
         hits: list[MemoryHit] = []
-        if self.memory is not None:
+        if self.memory is not None and user_id is not None:
             hits = await self.memory.search(
                 user_id=user_id,
                 query=content,
@@ -488,7 +613,7 @@ class AIChatPipeline:
     async def _index_turn(
         self,
         *,
-        user_id: str | UUID,
+        user_id: str | UUID | None,
         chat_id: str | UUID,
         content: str,
         reply: str,
@@ -496,16 +621,18 @@ class AIChatPipeline:
         """Index both sides of the turn into memory (best-effort).
 
         Computes ``created_at`` here (never at import time) and gives each
-        turn a fresh id. Any embedding/store failure is swallowed so
-        indexing can never break the response.
+        turn a fresh id. An embedding/store failure is logged as a warning
+        on the ``tempest_fastapi_sdk.genai.pipeline`` logger, with the
+        traceback, and does not break the response.
 
         Args:
-            user_id (str | UUID): Owner of the conversation.
+            user_id (str | UUID | None): Owner of the conversation;
+                ``None`` skips indexing.
             chat_id (str | UUID): The active chat.
             content (str): The user's message.
             reply (str): The assistant's reply.
         """
-        if self.memory is None:
+        if self.memory is None or user_id is None:
             return
         created_at = datetime.now(UTC)
         for role, text in (("user", content), ("assistant", reply)):
@@ -519,7 +646,12 @@ class AIChatPipeline:
                     created_at=created_at,
                 )
             except Exception:
-                continue
+                _LOGGER.warning(
+                    "AIChatPipeline: failed to index the %s turn of chat %s",
+                    role,
+                    chat_id,
+                    exc_info=True,
+                )
 
 
 def _flatten_messages(messages: list[dict[str, Any]]) -> str:
@@ -547,30 +679,36 @@ class AIChatTurnSchema(BaseSchema):
     """One prior chat turn in an :class:`AIChatRequestSchema`.
 
     Attributes:
-        role (str): The speaker role (``"user"`` / ``"assistant"`` /
-            ``"system"``).
+        role (HistoryRole): The speaker role — ``"user"`` or
+            ``"assistant"`` only. A client-supplied ``"system"`` (or
+            ``"tool"``) turn would sit in the prompt with the authority of
+            the server's own system prompt, so the body is refused with
+            ``422`` instead.
         content (str): The message text.
     """
 
-    role: str
+    role: HistoryRole
     content: str
 
 
 class AIChatRequestSchema(BaseSchema):
     """Request body for the AI-chat router endpoints.
 
+    There is no ``user_id`` field: the owner of the conversation comes from
+    the router's ``current_user_id`` dependency, never from the body (a
+    ``user_id`` sent by an older client is ignored).
+
     Attributes:
-        user_id (str): Owner of the conversation.
         chat_id (str): The active chat.
         content (str): The user's message.
         history (list[AIChatTurnSchema]): Prior turns (caller-supplied;
-            the pipeline is stateless).
+            the pipeline is stateless). Screened by the pipeline's
+            moderator like ``content``.
         images (list[str]): Base64 images for a multimodal model.
         use_web_search (bool): Augment the prompt with web context.
         speak (bool): Synthesize the reply to audio (``/chat`` only).
     """
 
-    user_id: str
     chat_id: str
     content: str
     history: list[AIChatTurnSchema] = Field(default_factory=list)
@@ -579,11 +717,38 @@ class AIChatRequestSchema(BaseSchema):
     speak: bool = False
 
 
+async def _anonymous_caller() -> None:
+    """Resolve the caller when the router has no ``current_user_id``.
+
+    Returns:
+        None: Always — the pipeline then skips memory for the turn.
+    """
+    return None
+
+
+def _as_owner(value: Any) -> str | UUID | None:
+    """Coerce what a ``current_user_id`` dependency returned to an owner key.
+
+    Args:
+        value (Any): The dependency's return value (a ``UUID``, a string,
+            an integer id, or ``None`` for an anonymous caller).
+
+    Returns:
+        str | UUID | None: ``None`` and ``UUID`` unchanged, anything else as
+        its string form.
+    """
+    if value is None or isinstance(value, UUID):
+        return value
+    return str(value)
+
+
 def make_ai_chat_router(
     pipeline: AIChatPipeline,
     *,
     prefix: str = "/api/ai-chat",
     tags: list[str] | None = None,
+    current_user_id: Callable[..., Any] | None = None,
+    dependencies: Sequence[Any] | None = None,
 ) -> APIRouter:
     """Mount an :class:`AIChatPipeline` on HTTP endpoints.
 
@@ -597,31 +762,60 @@ def make_ai_chat_router(
 
     The router is stateless: ``history`` rides in on each request body and
     the caller persists it however they like (see the module docstring on
-    why the ``chat/`` domain is intentionally not wired). Add auth by
-    including the router under an authenticated parent.
+    why the ``chat/`` domain is intentionally not wired). The body is
+    untrusted: history roles are limited to ``user``/``assistant``, and the
+    conversation owner — the key memory is recalled and indexed under —
+    comes from ``current_user_id``, never from the body.
 
     Args:
         pipeline (AIChatPipeline): The configured pipeline to expose.
         prefix (str): URL prefix. Defaults to ``"/api/ai-chat"``.
         tags (list[str] | None): OpenAPI tags. Defaults to ``["ai-chat"]``.
+        current_user_id (Callable[..., Any] | None): FastAPI dependency
+            resolving the authenticated caller's user id. **Required** when
+            the pipeline has a ``memory``: recalling under an id taken from
+            the request would hand one user's past messages to anyone who
+            names them. Without it, turns run with no memory owner.
+        dependencies (Sequence[Any] | None): Applied to every route —
+            where authentication and rate limiting go.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
+
+    Raises:
+        ValueError: When the pipeline has a ``memory`` and no
+            ``current_user_id`` was given.
     """
-    router = APIRouter(prefix=prefix, tags=list(tags or ["ai-chat"]))
+    if pipeline.memory is not None and current_user_id is None:
+        raise ValueError(
+            "make_ai_chat_router: a pipeline with memory= needs "
+            "current_user_id=: taking the user id from the request would let "
+            "a caller recall somebody else's memory",
+        )
+
+    router = APIRouter(
+        prefix=prefix,
+        tags=list(tags or ["ai-chat"]),
+        dependencies=list(dependencies or []),
+    )
+    user_dep: Any = Depends(current_user_id or _anonymous_caller)
 
     @router.post("/chat", response_model=AIChatResult)
-    async def chat(body: AIChatRequestSchema) -> AIChatResult:
+    async def chat(
+        body: AIChatRequestSchema,
+        user_id: Any = user_dep,
+    ) -> AIChatResult:
         """Produce a full grounded reply for one chat turn.
 
         Args:
             body (AIChatRequestSchema): The turn request.
+            user_id (Any): The caller, resolved by ``current_user_id``.
 
         Returns:
             AIChatResult: The reply and everything produced with it.
         """
         return await pipeline.respond(
-            user_id=body.user_id,
+            user_id=_as_owner(user_id),
             chat_id=body.chat_id,
             content=body.content,
             history=[turn.model_dump() for turn in body.history],
@@ -631,20 +825,25 @@ def make_ai_chat_router(
         )
 
     @router.post("/chat/stream")
-    async def chat_stream(body: AIChatRequestSchema) -> StreamingResponse:
+    async def chat_stream(
+        body: AIChatRequestSchema,
+        user_id: Any = user_dep,
+    ) -> StreamingResponse:
         """Stream the reply token-by-token over SSE.
 
         Args:
             body (AIChatRequestSchema): The turn request.
+            user_id (Any): The caller, resolved by ``current_user_id``.
 
         Returns:
             StreamingResponse: A ``text/event-stream`` of token events,
             ending with a ``done`` event.
         """
+        owner = _as_owner(user_id)
 
         async def _events() -> AsyncIterator[bytes]:
             async for piece in pipeline.stream(
-                user_id=body.user_id,
+                user_id=owner,
                 chat_id=body.chat_id,
                 content=body.content,
                 history=[turn.model_dump() for turn in body.history],
@@ -664,6 +863,8 @@ __all__: list[str] = [
     "AIChatRequestSchema",
     "AIChatResult",
     "AIChatTurnSchema",
+    "HistoryRole",
+    "StreamModeration",
     "Tool",
     "make_ai_chat_router",
 ]

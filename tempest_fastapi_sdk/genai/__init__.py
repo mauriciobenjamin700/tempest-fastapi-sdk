@@ -104,6 +104,7 @@ from tempest_fastapi_sdk.genai.openai_compat import (
 )
 from tempest_fastapi_sdk.genai.pipeline import AIChatPipeline as AIChatPipeline
 from tempest_fastapi_sdk.genai.pipeline import AIChatResult as AIChatResult
+from tempest_fastapi_sdk.genai.pipeline import StreamModeration as StreamModeration
 from tempest_fastapi_sdk.genai.pipeline import Tool as Tool
 from tempest_fastapi_sdk.genai.pipeline import (
     make_ai_chat_router as make_ai_chat_router,
@@ -248,6 +249,7 @@ __all__: list[str] = [
     "RuleModerator",
     "ServiceUsage",
     "SpeechToTextModel",
+    "StreamModeration",
     "StructuredFormatError",
     "StructuredTextBackend",
     "SubjectUsage",

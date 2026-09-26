@@ -130,8 +130,12 @@ from tempest_fastapi_sdk.modelops.monitoring import (
     DEFAULT_WINDOW_ROWS as DEFAULT_WINDOW_ROWS,
 )
 from tempest_fastapi_sdk.modelops.monitoring import (
+    MAX_TRACKED_LABELS as MAX_TRACKED_LABELS,
+)
+from tempest_fastapi_sdk.modelops.monitoring import (
     MIN_ROWS_FOR_DRIFT as MIN_ROWS_FOR_DRIFT,
 )
+from tempest_fastapi_sdk.modelops.monitoring import OTHER_LABEL as OTHER_LABEL
 from tempest_fastapi_sdk.modelops.monitoring import PSI_MODERATE as PSI_MODERATE
 from tempest_fastapi_sdk.modelops.monitoring import (
     PSI_SIGNIFICANT as PSI_SIGNIFICANT,
@@ -190,6 +194,9 @@ from tempest_fastapi_sdk.modelops.ranking import (
 )
 from tempest_fastapi_sdk.modelops.ranking import pareto_points as pareto_points
 from tempest_fastapi_sdk.modelops.ranking import rank as rank
+from tempest_fastapi_sdk.modelops.router import (
+    DEFAULT_MAX_PREDICT_ROWS as DEFAULT_MAX_PREDICT_ROWS,
+)
 from tempest_fastapi_sdk.modelops.router import (
     PredictRequestSchema as PredictRequestSchema,
 )
@@ -321,6 +328,7 @@ __all__: list[str] = [
     "DEFAULT_BINS",
     "DEFAULT_COST_WEIGHTS",
     "DEFAULT_INTRA_OP_THREADS",
+    "DEFAULT_MAX_PREDICT_ROWS",
     "DEFAULT_OPSET",
     "DEFAULT_REPETITIONS",
     "DEFAULT_SAMPLE_INTERVAL_S",
@@ -328,8 +336,10 @@ __all__: list[str] = [
     "DEFAULT_WINDOW_ROWS",
     "MANIFEST_FILENAME",
     "MANIFEST_SCHEMA_VERSION",
+    "MAX_TRACKED_LABELS",
     "MIN_ROWS_FOR_DRIFT",
     "ORT_CONFIG_SUFFIXES",
+    "OTHER_LABEL",
     "PSI_MODERATE",
     "PSI_SIGNIFICANT",
     "RAPL_ROOT",
