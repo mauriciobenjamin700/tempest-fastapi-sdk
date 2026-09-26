@@ -1548,10 +1548,27 @@ dropped.
     off only the address check (scheme, redirect bound and body cap still
     apply). Turn it on only when the URLs do not come from an attacker.
 
-    The address check and the connection do two separate DNS lookups, so a
-    hostname whose answer changes between them (DNS rebinding) is not
-    covered. If that matters in your environment, enforce the same rule at
-    egress (proxy or firewall).
+    The connection goes to the address that passed the check, not to a
+    second lookup of the name: each hop's URL carries the validated IP,
+    while the `Host` header and the TLS name (SNI, through httpx's
+    `sni_hostname` extension) keep the hostname. A DNS answer that changes
+    between the check and the connection (DNS rebinding) never reaches the
+    connection, and HTTPS still validates the certificate against the
+    hostname — a certificate issued for another name is refused.
+
+    The httpx pool keys connections by IP, so two hostnames on the same IP
+    (common behind a CDN) could share a TLS session negotiated for one of
+    them. When an HTTPS response arrives on a connection opened for another
+    hostname, the body is not read, the connection is closed and the hop is
+    retried on a fresh connection, up to 3 times. The request line and
+    headers had already gone out on that connection; what is discarded is
+    the response.
+
+    Behind an HTTP proxy the tunnel is opened to the IP and httpcore 1.0.9
+    does not send the SNI, so HTTPS fetches come back `failed=True`
+    (`certificate verify failed: IP address mismatch`). In that setup the
+    proxy resolves DNS, and the egress rule belongs there:
+    `allow_private_networks=True` turns pinning off along with the check.
 
 ### Read PDFs (knowledge base)
 
