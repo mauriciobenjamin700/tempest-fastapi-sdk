@@ -61,6 +61,30 @@ bump, sem CHANGELOG, sem tag — commit `docs: <subject>` direto na `main`
 `make check` completo é desnecessário porque nenhum Python mudou. Edição de
 docstring que muda assinatura ou comportamento **não** é docs-only.
 
+## PR com a CI verde é mergeado
+
+**Não peça confirmação para mergear.** PR deste repo — aberto por você ou por
+agente — que tem todos os checks `pass` (`Python 3.11`, `3.12`, `3.13`) e está
+`mergeable` é mergeado na hora com `gh pr merge <n> --merge` (merge commit, o
+padrão do histórico). Esta seção é a autorização durável; não a trate como
+algo que precisa ser renovado a cada PR.
+
+- **Verde é todo check `pass`.** Check vermelho não se mergeia por "o teste que
+  falhou não é deste PR": reexecute o job
+  (`gh api -X POST repos/<owner>/<repo>/actions/jobs/<id>/rerun`), mergeie
+  depois do verde e abra issue para o intermitente (foi assim com o
+  `test_scheduler_lease` no #309 → #322).
+- **Vários PRs paralelos: um por vez.** Cada merge move o `main`; o próximo é
+  atualizado com o `main` novo antes do merge. Conflito só em `CHANGELOG.md` /
+  `SHIPPED.md` (entradas paralelas em `[Unreleased]`) se resolve concatenando;
+  conflito em código se resolve à mão e roda lint + mypy + os testes da área
+  antes do push.
+- **`mergeable` fica `null` por alguns segundos depois do push**, e o
+  `gh pr merge` recusa nesse intervalo. Faça polling em
+  `gh api repos/<owner>/<repo>/pulls/<n> --jq .mergeable` até `true`.
+- **Merge não é release.** Nada de bump nem tag no merge; a versão sai depois,
+  por `/release`.
+
 ## Toda afirmação sobre comportamento é medida, não deduzida
 
 Se doc, CHANGELOG ou docstring afirma o que o software **faz**, essa frase
