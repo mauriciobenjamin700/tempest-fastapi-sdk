@@ -19,6 +19,7 @@ from tempest_fastapi_sdk.genai.rag import (
     chunk_text,
 )
 from tempest_fastapi_sdk.genai.schemas import HardwareInfo
+from tests.genai.conftest import public_resolver
 
 
 def _cpu() -> HardwareInfo:
@@ -109,7 +110,7 @@ class TestRetrieveOneShot:
 
         client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         search = WebSearch(SearxngBackend("http://s", http_client=client))
-        extractor = ContentExtractor(http_client=client)
+        extractor = ContentExtractor(http_client=client, resolver=public_resolver)
         context = await search.retrieve("q", extractor=extractor)
         await client.aclose()
         assert context.count("FULL BODY") == 2
@@ -123,7 +124,7 @@ class TestExtractMany:
             return httpx.Response(500)
 
         client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-        extractor = ContentExtractor(http_client=client)
+        extractor = ContentExtractor(http_client=client, resolver=public_resolver)
         results = await extractor.extract_many(
             ["http://x/ok", "http://x/bad"], concurrency=2
         )
