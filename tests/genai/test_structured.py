@@ -84,3 +84,73 @@ class TestOllamaStructured:
         assert captured["url"] == "http://127.0.0.1:11434/api/chat"
         body = captured["body"]
         assert body["format"] == Person.model_json_schema()  # type: ignore[index]
+
+
+class _CountingTokenizer:
+    """A tiny tokenizer that counts how often the vocabulary is decoded.
+
+    Attributes:
+        decodes (int): Number of ``decode`` calls so far.
+        size (int): Vocabulary size reported by ``len``.
+    """
+
+    eos_token_id: int = 0
+
+    def __init__(self, size: int = 8) -> None:
+        """Build the tokenizer.
+
+        Args:
+            size (int): Vocabulary size.
+        """
+        self.all_special_ids: list[int] = [0]
+        self.decodes = 0
+        self.size = size
+
+    def __len__(self) -> int:
+        """Return the vocabulary size."""
+        return self.size
+
+    def encode(self, text: str) -> list[int]:
+        """Encode ``text`` as one id per character (modulo the vocabulary)."""
+        return [1 + (ord(c) % (self.size - 1)) for c in text]
+
+    def decode(self, ids: list[int]) -> str:
+        """Decode ids to one letter each, counting the call."""
+        self.decodes += 1
+        return "".join(chr(ord("a") + (i % 26)) for i in ids)
+
+
+class TestTokenizerDataCache:
+    """The vocabulary index is built once per tokenizer, not once per call."""
+
+    def test_second_call_reuses_the_index(self) -> None:
+        """Every call used to re-decode the whole vocabulary."""
+        pytest.importorskip("lmformatenforcer")
+        from tempest_fastapi_sdk.genai.structured import _token_enforcer_tokenizer_data
+
+        tokenizer = _CountingTokenizer()
+        first = _token_enforcer_tokenizer_data(tokenizer)
+        after_first = tokenizer.decodes
+        second = _token_enforcer_tokenizer_data(tokenizer)
+        assert after_first > 0
+        assert tokenizer.decodes == after_first
+        assert second is first
+
+    def test_grown_vocabulary_rebuilds(self) -> None:
+        """``add_tokens`` changes ``len(tokenizer)``; the stale index is dropped."""
+        pytest.importorskip("lmformatenforcer")
+        from tempest_fastapi_sdk.genai.structured import _token_enforcer_tokenizer_data
+
+        tokenizer = _CountingTokenizer()
+        first = _token_enforcer_tokenizer_data(tokenizer)
+        tokenizer.size = 10
+        assert _token_enforcer_tokenizer_data(tokenizer) is not first
+
+    def test_distinct_tokenizers_do_not_share(self) -> None:
+        """Two tokenizer objects get two indexes."""
+        pytest.importorskip("lmformatenforcer")
+        from tempest_fastapi_sdk.genai.structured import _token_enforcer_tokenizer_data
+
+        a = _token_enforcer_tokenizer_data(_CountingTokenizer())
+        b = _token_enforcer_tokenizer_data(_CountingTokenizer())
+        assert a is not b

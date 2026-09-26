@@ -348,3 +348,55 @@ class TestTokenUsage:
     def test_none_payload_is_none(self) -> None:
         """No usage object means no usage, not a zeroed one."""
         assert TokenUsage.from_payload(None) is None
+
+
+class TestHuggingFaceOnlyFields:
+    """``GenerationConfig`` fields the wire format does not define."""
+
+    async def test_hf_only_fields_are_not_forwarded(self) -> None:
+        """``top_k`` / ``repetition_penalty`` / ``do_sample`` made OpenAI 400."""
+        rec = _Recorder()
+        config = GenerationConfig(
+            temperature=0.5,
+            top_k=40,
+            repetition_penalty=1.1,
+            do_sample=True,
+        )
+        await _generator(rec).generate("oi", config=config)
+        assert "top_k" not in rec.body
+        assert "repetition_penalty" not in rec.body
+        assert "do_sample" not in rec.body
+        assert rec.body["temperature"] == 0.5
+
+    async def test_greedy_becomes_zero_temperature(self) -> None:
+        """``do_sample=False`` has a wire equivalent: ``temperature=0``."""
+        rec = _Recorder()
+        await _generator(rec).generate("oi", do_sample=False)
+        assert rec.body["temperature"] == 0.0
+        assert "do_sample" not in rec.body
+
+    async def test_explicit_temperature_wins_over_greedy(self) -> None:
+        """An explicit temperature is never overwritten by the greedy mapping."""
+        rec = _Recorder()
+        await _generator(rec).generate("oi", do_sample=False, temperature=0.3)
+        assert rec.body["temperature"] == 0.3
+
+    async def test_forward_params_opts_a_provider_in(self) -> None:
+        """A provider that accepts ``top_k`` (vLLM) gets it when named."""
+        rec = _Recorder()
+        gen = _generator(rec, forward_params=["top_k"])
+        await gen.generate("oi", config=GenerationConfig(top_k=40, do_sample=True))
+        assert rec.body["top_k"] == 40
+        assert "do_sample" not in rec.body
+
+
+class TestReservedKeys:
+    """A keyword cannot replace a field the class computes."""
+
+    @pytest.mark.parametrize("key", ["model", "messages", "stream"])
+    async def test_reserved_keyword_raises(self, key: str) -> None:
+        """``generate(prompt, model="gpt-4")`` used to redirect the call."""
+        rec = _Recorder()
+        with pytest.raises(TypeError, match=key):
+            await _generator(rec).generate("oi", **{key: "x"})
+        assert rec.requests == []

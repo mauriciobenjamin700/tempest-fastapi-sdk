@@ -141,3 +141,83 @@ class TestModelRegistry:
         reg.evict_all()
         assert len(reg) == 0
         assert f.unloaded is True
+
+
+class TestBatchSchedulerFailurePaths:
+    """Every handler outcome resolves every caller; the worker survives."""
+
+    async def test_handler_cancelled_error_does_not_hang_submit(self) -> None:
+        """A handler raising ``CancelledError`` used to leave ``submit`` hanging."""
+        calls = {"n": 0}
+
+        async def handler(batch: list[int]) -> list[int]:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise asyncio.CancelledError
+            return [x * 2 for x in batch]
+
+        sched: BatchScheduler[int, int] = BatchScheduler(handler, max_wait_ms=1)
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(sched.submit(1), timeout=1.0)
+        assert await asyncio.wait_for(sched.submit(2), timeout=1.0) == 4
+        await sched.aclose()
+
+    async def test_non_sized_result_fails_callers_and_worker_survives(self) -> None:
+        """``None`` from the handler raised ``TypeError`` outside the try.
+
+        The worker died on ``len(None)`` and the callers never resolved.
+        """
+        calls = {"n": 0}
+
+        async def handler(batch: list[int]) -> list[int]:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return None  # type: ignore[return-value]
+            return [x + 1 for x in batch]
+
+        sched: BatchScheduler[int, int] = BatchScheduler(handler, max_wait_ms=1)
+        with pytest.raises(RuntimeError, match="NoneType"):
+            await asyncio.wait_for(sched.submit(1), timeout=1.0)
+        assert await asyncio.wait_for(sched.submit(1), timeout=1.0) == 2
+        await sched.aclose()
+
+    async def test_worker_cancellation_cancels_queued_callers(self) -> None:
+        """Cancelling the worker cancels the batch and everything queued."""
+        started = asyncio.Event()
+
+        async def handler(batch: list[int]) -> list[int]:
+            started.set()
+            await asyncio.sleep(10)
+            return batch
+
+        sched: BatchScheduler[int, int] = BatchScheduler(
+            handler, max_batch=1, max_wait_ms=1
+        )
+        first = asyncio.ensure_future(sched.submit(1))
+        await started.wait()
+        second = asyncio.ensure_future(sched.submit(2))
+        await asyncio.sleep(0)
+        assert sched._worker is not None
+        sched._worker.cancel()
+        results = await asyncio.wait_for(
+            asyncio.gather(first, second, return_exceptions=True),
+            timeout=1.0,
+        )
+        assert all(isinstance(r, asyncio.CancelledError) for r in results)
+
+    async def test_cancel_while_forming_a_batch_cancels_the_caller(self) -> None:
+        """A worker cancelled while waiting for more items resolves its batch."""
+
+        async def handler(batch: list[int]) -> list[int]:
+            return batch
+
+        sched: BatchScheduler[int, int] = BatchScheduler(
+            handler, max_batch=8, max_wait_ms=5000
+        )
+        pending = asyncio.ensure_future(sched.submit(1))
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert sched._worker is not None
+        sched._worker.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(pending, timeout=1.0)

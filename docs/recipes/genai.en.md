@@ -313,6 +313,18 @@ gen = OpenAICompatGenerator(
     off is cheaper and safer, not a quality loss, when you only want the
     result.
 
+!!! info "HuggingFace-only fields stay off the wire"
+    `do_sample`, `top_k` and `repetition_penalty` exist on `GenerationConfig`
+    but not in the OpenAI format, and a strict provider refuses the body (an
+    audit reported `400` from OpenAI; the tests here use a mock transport).
+    So they are **dropped**; `do_sample=False` without an explicit
+    `temperature` becomes `temperature=0`. A provider that accepts those
+    names (vLLM's server documents `top_k` and `repetition_penalty`) is
+    opted in with `forward_params=["top_k", "repetition_penalty"]`. And
+    `model`, `messages` and `stream` cannot arrive as a generation keyword —
+    `generate("hi", model="other")` raises `TypeError` instead of
+    redirecting the call.
+
 ## Ollama backend
 
 `TextGenerator` loads HuggingFace weights with `torch` on your hardware —
@@ -376,6 +388,20 @@ optional.
     `repetition_penalty`→`repeat_penalty`, and `temperature`/`top_p`/`top_k`/
     `seed`/`stop` pass through. `do_sample=False` becomes `temperature=0`
     (greedy generation).
+
+!!! warning "A daemon error raises `OllamaError`"
+    Ollama reports some failures (model not pulled, a runner that crashed
+    mid-way) as an `{"error": "..."}` body — on a `200` or as one line of the
+    NDJSON stream. `generate`, `chat`, `embed` and the structured variants
+    raise `OllamaError` (with `.model` and `.detail`) instead of returning
+    `""`, and `stream` raises on the error line instead of ending as if it
+    had finished — pieces already yielded stay yielded.
+
+`chat` follows `generate` on cache and metrics: with `generation_cache=`, a
+repeated deterministic call skips the daemon, and with `metrics=` it is
+recorded under the `chat` operation with Ollama's token counts. The `chat`
+key is scoped apart from `generate`, so a prompt equal to the serialized
+messages never collides.
 
 ### Embeddings via Ollama + RAG
 
@@ -905,6 +931,9 @@ asyncio.run(main())
 
 `cache` is any object with `get(key)->list|None` and `set(key, val)` —
 pass a wrapper over `AsyncRedisManager` to share across workers.
+`InMemoryEmbeddingCache` is an LRU of 1024 vectors by default
+(`max_entries=`; `None` removes the bound), so a long-lived worker does not
+grow forever.
 `device`/`dtype`/`unload`/`unload_if_idle` work as on `TextGenerator`.
 
 For semantic search, use `normalize=True` (unit vectors) + the
@@ -1005,6 +1034,13 @@ asyncio.run(main())
 It forms a batch once `max_batch` items are queued **or** `max_wait_ms`
 has elapsed since the first — whichever comes first. A handler error
 propagates to every caller in that batch.
+
+Every path resolves every caller: a handler that returns something without
+a length (`None`, a generator) or the wrong number of results fails the
+batch with `RuntimeError` and the worker moves on; a `CancelledError` the
+handler raised itself cancels only that batch; and cancelling the worker
+cancels the batch in flight **and** everything still queued — no `submit`
+waits forever.
 
 ### Share loaded models
 
@@ -2087,7 +2123,8 @@ async def dashboard() -> tuple[UsageTotals, list[ServiceUsage], list[SubjectUsag
 
 `GenAIMetrics` bundles the counters + histogram every inference service ends up
 reimplementing — requests, latency and tokens in/out, labelled by model and
-operation. It reuses `prometheus-client` (the `[prometheus]` extra) and takes an
+operation, with requests + latency also labelled by outcome (`status="ok"` or
+`"error"`). It reuses `prometheus-client` (the `[prometheus]` extra) and takes an
 explicit `registry` (composes with the SDK's `PrometheusMiddleware` /
 `/metrics`). It is **opt-in**:
 
@@ -2107,6 +2144,14 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+!!! warning "The `status` label is new"
+    Before, a call that raised counted as an ordinary request — a failing
+    backend read as healthy traffic. `genai_requests_total` and
+    `genai_request_seconds` now carry `status`; a `{model, op}` selector
+    still matches, but a query comparing the whole series (or
+    `get_sample_value` with the exact label set) must sum by `status` or
+    filter `status="ok"`.
 
 `OllamaGenerator`, `TextGenerator` and `Embedder` accept `metrics=` and record
 request + latency (Ollama also reads `prompt_eval_count` / `eval_count` from the
@@ -2205,8 +2250,10 @@ fit = truncate_messages(
 
 `count_message_tokens(messages, tokenizer, per_message_overhead=4)` sums the
 chat cost; `truncate_messages` keeps `system` messages (moved to the front) and
-the most recent turn, dropping older ones until it fits. Both work over any
-tokenizer with `encode(text) -> sequence` (`AutoTokenizer` qualifies).
+the most recent turn, dropping older ones until it fits. An `assistant` turn
+with `tool_calls` and the `tool` turns answering it are dropped **together** —
+the history never starts with a tool result whose call was cut. Both work over
+any tokenizer with `encode(text) -> sequence` (`AutoTokenizer` qualifies).
 ### Generation cache (prompt → completion)
 
 **Deterministic** generations (greedy, or `temperature=0`) always produce the
@@ -2236,10 +2283,18 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`InMemoryGenerationCache` is process-local; `RedisGenerationCache` (the
+`InMemoryGenerationCache` is process-local and an LRU of 1024 completions by
+default (`max_entries=`; `None` removes the bound); `RedisGenerationCache` (the
 `[cache]` extra) shares across workers — the generator awaits the sync-or-async
-cache at one call site. Same on `TextGenerator` (`generation_cache=...`).
-Invalidate by dropping the key (or via a Redis TTL).
+cache at one call site. Same on `TextGenerator` (`generation_cache=...`) and on
+both backends' `chat`. Invalidate by dropping the key (or via a Redis TTL).
+
+The key separates the call shape (`chat` never answers a `generate` whose
+prompt is the JSON of the same messages) and, on `TextGenerator`, the weight
+identity: `revision` and `quantization` are part of the key, so two instances
+of one `model_id` loaded differently never read each other's cache. A
+`generate` with neither `revision` nor `quantization` keeps its previous key,
+so an already-warm Redis stays warm.
 ### Vision (local multimodal VLM)
 
 `VisionTextGenerator` is the multimodal sibling of `TextGenerator`: it loads an

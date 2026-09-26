@@ -94,6 +94,7 @@ from tempest_fastapi_sdk.genai.ollama import (
     DEFAULT_OLLAMA_URL as DEFAULT_OLLAMA_URL,
 )
 from tempest_fastapi_sdk.genai.ollama import OllamaEmbedder as OllamaEmbedder
+from tempest_fastapi_sdk.genai.ollama import OllamaError as OllamaError
 from tempest_fastapi_sdk.genai.ollama import OllamaGenerator as OllamaGenerator
 from tempest_fastapi_sdk.genai.onnx_embed import OnnxEmbedder as OnnxEmbedder
 from tempest_fastapi_sdk.genai.openai_compat import (
@@ -240,6 +241,7 @@ __all__: list[str] = [
     "ModerationBackend",
     "ModerationResult",
     "OllamaEmbedder",
+    "OllamaError",
     "OllamaGenerator",
     "OnnxEmbedder",
     "OpenAICompatGenerator",

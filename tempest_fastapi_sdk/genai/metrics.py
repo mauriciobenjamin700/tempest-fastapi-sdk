@@ -2,11 +2,12 @@
 
 `GenAIMetrics` bundles the counters and histogram every inference service ends
 up reimplementing — request count, latency, and tokens in/out — labelled by
-model and operation. It reuses ``prometheus-client`` (the ``[prometheus]``
-extra) and accepts an explicit registry so it composes with the SDK's existing
-``PrometheusMiddleware`` / ``/metrics`` endpoint. It is **opt-in**: nothing is
-recorded unless you construct one and either call :meth:`GenAIMetrics.track`
-around a call or pass ``metrics=`` to a generator.
+model and operation, with the request count and latency also labelled by
+outcome (``status="ok"`` / ``"error"``). It reuses ``prometheus-client`` (the
+``[prometheus]`` extra) and accepts an explicit registry so it composes with the
+SDK's existing ``PrometheusMiddleware`` / ``/metrics`` endpoint. It is
+**opt-in**: nothing is recorded unless you construct one and either call
+:meth:`GenAIMetrics.track` around a call or pass ``metrics=`` to a generator.
 """
 
 from __future__ import annotations
@@ -63,13 +64,13 @@ class GenAIMetrics:
         self._requests = prometheus.Counter(
             f"{namespace}_requests_total",
             "Total genai inference requests.",
-            ["model", "op"],
+            ["model", "op", "status"],
             **kwargs,
         )
         self._latency = prometheus.Histogram(
             f"{namespace}_request_seconds",
             "genai inference request latency in seconds.",
-            ["model", "op"],
+            ["model", "op", "status"],
             **kwargs,
         )
         self._tokens_in = prometheus.Counter(
@@ -145,8 +146,9 @@ class GenAIMetrics:
         *,
         tokens_in: int | None = None,
         tokens_out: int | None = None,
+        status: str = "ok",
     ) -> None:
-        """Record one completed inference.
+        """Record one finished inference.
 
         Args:
             model (str): The model id label.
@@ -154,9 +156,15 @@ class GenAIMetrics:
             duration_seconds (float): Wall-clock duration.
             tokens_in (int | None): Input tokens, when known.
             tokens_out (int | None): Output tokens, when known.
+            status (str): The outcome label — ``"ok"`` for a call that
+                returned, ``"error"`` for one that raised. Without it a
+                failing backend reads as healthy traffic on the request
+                counter.
         """
-        self._requests.labels(model=model, op=op).inc()
-        self._latency.labels(model=model, op=op).observe(duration_seconds)
+        self._requests.labels(model=model, op=op, status=status).inc()
+        self._latency.labels(model=model, op=op, status=status).observe(
+            duration_seconds
+        )
         self.record_tokens(model, tokens_in=tokens_in, tokens_out=tokens_out)
 
     def record_tokens(
@@ -228,13 +236,25 @@ class _Span:
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
-        """Record the elapsed time and any token counts set on the span."""
+        """Record the elapsed time, the outcome and any token counts.
+
+        A block that raised (including a cancellation) is recorded with
+        ``status="error"``; one that returned with ``status="ok"``. The
+        exception itself is never swallowed.
+
+        Args:
+            exc_type (type[BaseException] | None): The exception type, when
+                the block raised.
+            exc (BaseException | None): The exception, when the block raised.
+            tb (TracebackType | None): Its traceback.
+        """
         self._metrics.record(
             self._model,
             self._op,
             time.monotonic() - self._start,
             tokens_in=self.tokens_in,
             tokens_out=self.tokens_out,
+            status="ok" if exc_type is None else "error",
         )
 
 

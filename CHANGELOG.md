@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Auditoria dos backends de genai e do stream do `HTTPClient`: um timeout no
+meio do stream reenviava o POST e repetia o texto já entregue, o Ollama
+devolvia `""` para um corpo de erro, o cliente OpenAI mandava campos que o
+formato OpenAI não define, os caches em memória cresciam sem limite e o
+`BatchScheduler` podia deixar um `submit` esperando para sempre.
+
+### Fixed
+
+- **`HTTPClient.stream` não reemite depois da primeira linha.** O `except
+  ReadTimeout` envolvia o `yield`, então um timeout entre dois chunks
+  refazia o POST e o chamador recebia `["Hello ", "Hello ", "world"]` de
+  dois POSTs. O retry agora cobre só a abertura, como a docstring já
+  prometia; depois da primeira linha a falha propaga.
+- **`OllamaGenerator` / `OllamaEmbedder` levantam `OllamaError`** para um
+  corpo `{"error": "..."}` — `generate` num `200 {"error": "boom"}`
+  devolvia `""`, e uma linha de erro no stream terminava a geração em
+  silêncio (o router emitia `done`). Vale para `generate`, `chat`,
+  `generate_structured`, `chat_structured`, `chat_with_tools`, `stream` e
+  `embed`.
+- **`OpenAICompatGenerator` não manda campo só do HuggingFace.**
+  `do_sample`, `top_k` e `repetition_penalty` iam crus no corpo; agora são
+  descartados (`do_sample=False` sem `temperature` vira `temperature=0`), e
+  `model` / `messages` / `stream` passados como keyword levantam
+  `TypeError` em vez de sobrescrever o corpo, como a docstring de `_body`
+  já afirmava.
+- **Chave do cache de geração separa operação e identidade dos pesos.**
+  `generate(json.dumps(msgs))` e `chat(msgs)` caíam na mesma chave; e dois
+  `TextGenerator` do mesmo `model_id` em `revision` ou `quantization`
+  diferente liam o cache um do outro. `make_generation_key` /
+  `cached_generate` ganham `operation=` e `identity=` (keyword-only); um
+  `generate` sem nenhum dos dois mantém o digest anterior, então um Redis
+  quente continua quente.
+- **`BatchScheduler` resolve todo future em todo caminho.** Handler que
+  levantava `CancelledError` deixava o `submit` pendurado; handler que
+  devolvia valor sem `len` (`None`) matava o worker com `TypeError` fora do
+  `try`. Agora o lote falha com `RuntimeError` e o worker segue; o
+  `CancelledError` do próprio handler cancela só o lote; cancelar o worker
+  cancela o lote e a fila.
+- **`build_prefix_allowed_tokens_fn` não refaz o índice do vocabulário a
+  cada chamada.** O `TokenEnforcerTokenizerData` fica em cache por
+  tokenizer (`WeakKeyDictionary`, refeito se `len(tokenizer)` mudar).
+  Medido no tokenizer do `Qwen/Qwen2.5-0.5B-Instruct` (151 665 ids): 2,1 s
+  de CPU na primeira chamada, 0,03 s nas seguintes, com os mesmos tokens
+  permitidos.
+- **`truncate_messages` não separa `tool_calls` dos resultados.** Um turno
+  `assistant` com `tool_calls` e os turnos `tool` que o respondem saem
+  juntos, então o histórico nunca começa com um resultado órfão.
+
+### Added
+
+- **`OllamaError`** (`tempest_fastapi_sdk.genai`), com `.model` e `.detail`.
+- **`InMemoryGenerationCache(max_entries=1024)`** e
+  **`InMemoryEmbeddingCache(max_entries=1024)`**: os dois viram LRU (a
+  leitura conta como uso); `None` desliga o limite. Antes, 1001 prompts
+  deixavam 1001 entradas.
+- **`OpenAICompatGenerator(forward_params=...)`**: nomes do HuggingFace que
+  o provedor aceita como estão (o servidor do vLLM documenta `top_k` e
+  `repetition_penalty`).
+- **`OllamaGenerator.chat` com cache e métricas**, como o
+  `TextGenerator.chat`: cacheia chamada determinística (chave `chat`) e
+  registra `op="chat"` com os tokens do Ollama.
+
+### Changed
+
+- **`GenAIMetrics`: rótulo `status` (`"ok"` / `"error"`) em
+  `genai_requests_total` e `genai_request_seconds`.** Antes uma chamada que
+  levantava contava como sucesso. O nome das métricas não muda, mas o
+  conjunto de rótulos sim: seletor `{model, op}` continua casando, porém
+  cada série vira duas — query que compara a série inteira, ou
+  `get_sample_value` com o conjunto exato de rótulos, precisa somar por
+  `status` ou filtrar `status="ok"`. `GenAIMetrics.record` ganha
+  `status=` keyword-only (default `"ok"`).
 Auditoria de RAG, memória de chat, hub e diarização. O defeito de raiz era a
 chave do chunk: `source#index` (e `source::index` no Chroma) não é única,
 porque o `chunk_text` recomeça o `index` em 0 a cada chamada — dois lotes da
