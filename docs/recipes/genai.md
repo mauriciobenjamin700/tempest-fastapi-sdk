@@ -1524,10 +1524,26 @@ silenciosamente.
     desliga só a checagem de endereço (esquema, limite de redirect e de
     corpo continuam). Ligue apenas quando as URLs não vêm de quem ataca.
 
-    A checagem de endereço e a conexão fazem duas resoluções de DNS
-    separadas, então um hostname cuja resposta muda entre elas (DNS
-    rebinding) não fica coberto. Se isso importa no seu ambiente, force a
-    mesma regra no egress (proxy ou firewall).
+    A conexão vai para o endereço que passou na checagem, não para uma
+    segunda resolução do nome: a URL de cada salto leva o IP validado, e o
+    header `Host` e o nome TLS (SNI, pela extensão `sni_hostname` do httpx)
+    continuam com o hostname. Um DNS que troca a resposta entre a checagem e
+    a conexão (DNS rebinding) não alcança a conexão, e o HTTPS continua
+    validando o certificado contra o hostname — um certificado emitido para
+    outro nome é recusado.
+
+    O pool do httpx indexa conexão por IP, então dois hostnames no mesmo IP
+    (comum atrás de CDN) poderiam dividir uma sessão TLS negociada para um
+    deles. Quando uma resposta HTTPS chega numa conexão aberta para outro
+    hostname, o corpo não é lido, a conexão é fechada e o salto é refeito
+    numa conexão nova, até 3 vezes. A linha de request e os headers já
+    tinham ido para aquela conexão; o que se descarta é a resposta.
+
+    Atrás de proxy HTTP o túnel é aberto para o IP e o httpcore 1.0.9 não
+    manda o SNI, então busca HTTPS volta `failed=True`
+    (`certificate verify failed: IP address mismatch`). Nesse cenário quem
+    resolve o DNS é o proxy, e é nele que a regra de egress deve morar:
+    `allow_private_networks=True` desliga a fixação junto com a checagem.
 
 ### Ler PDFs (base de conhecimento)
 

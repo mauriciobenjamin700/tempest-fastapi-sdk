@@ -680,7 +680,8 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `RuleModerator` normalizes (NFKC, `Cf` stripped, casefold) and matches
   punctuation-edged terms, and `ContentExtractor` refuses private/non-http
   destinations on every redirect hop with a body cap
-  (`allow_private_networks=` opt-out);
+  (`allow_private_networks=` opt-out), connecting to the validated IP with
+  `Host` + TLS SNI kept on the hostname, so DNS rebinding is closed (#315);
   metrics+cache on `TextGenerator`/`Embedder` (v0.153); **OTel spans**
   (`genai_span`) — ambient tracing on `generate`/`chat`/`embed`/RAG reusing the
   `setup_tracing` `TracerProvider` (GenAI semconv; no-op without `[otel]`)

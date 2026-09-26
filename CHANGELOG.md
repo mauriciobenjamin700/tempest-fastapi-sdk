@@ -539,6 +539,38 @@ Os tetos default estão abaixo; quem precisa de mais passa
   e `torch.cuda`, chamadas síncronas que travavam todo request concorrente.
   Agora roda em `asyncio.to_thread`.
 
+O guard de SSRF do `ContentExtractor` (entregue no #309) validava uma
+resolução de DNS e conectava usando outra. Cada salto agora conecta no IP
+que passou na checagem.
+
+### Security
+
+- **`ContentExtractor.extract` fecha o DNS rebinding (#315).** O guard de SSRF
+  resolvia o host, validava e deixava o `httpx` resolver de novo na conexão;
+  um DNS que respondia IP público na checagem e `127.0.0.1` na conexão
+  alcançava o endereço privado (reproduzido com um resolver fake atrás do
+  `AsyncHTTPTransport` real: a conexão ia para `127.0.0.1`). Agora cada salto,
+  redirect incluso, conecta no IP validado: a URL leva o IP, e o header
+  `Host` e a extensão `sni_hostname` mantêm o hostname, então o HTTPS segue
+  validando o certificado contra o nome (medido com servidor TLS local:
+  certificado do nome aceito, de outro nome recusado). O `resolver=` passa a
+  ser chamado uma vez por salto, e o primeiro endereço que ele devolve é o
+  conectado.
+- **Conexão do pool aberta para outro hostname no mesmo IP não é
+  reaproveitada em HTTPS.** Como o pool indexa por IP, a resposta que chega
+  numa sessão TLS negociada para outro nome é descartada sem ler o corpo (o
+  que fecha a conexão) e o salto é refeito numa conexão nova, até
+  `MAX_TLS_NAME_RETRIES` (3) vezes.
+
+### Changed
+
+- **HTTPS por proxy HTTP volta `failed=True` no `ContentExtractor`.** O
+  httpcore 1.0.9 abre o túnel para o IP fixado e não manda o SNI, então a
+  verificação do certificado falha (`IP address mismatch`, medido com proxy
+  CONNECT local). Atrás de proxy quem resolve o DNS é o proxy;
+  `allow_private_networks=True` desliga a fixação junto com a checagem de
+  endereço.
+
 ## [0.299.0] — 2026-09-25
 
 Quatro pontes do `alofans-api` sobem para o SDK. O 500 de um
