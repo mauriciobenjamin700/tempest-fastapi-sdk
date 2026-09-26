@@ -10,6 +10,10 @@ when the dense score is lukewarm.
 BM25 comes from ``rank-bm25`` (pure Python, the ``[genai-rag]`` extra); the
 in-memory sparse index is rebuilt on each :meth:`HybridRetriever.index` call
 and suits corpora up to a few tens of thousands of chunks.
+
+Indexing is per source: a batch replaces every chunk previously indexed for
+the sources it names, so re-indexing an edited document never leaves the old
+version (or a stale tail of it) in either half.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.genai.rag.fusion import reciprocal_rank_fusion
 from tempest_fastapi_sdk.genai.rag.retriever import Retriever, SupportsEmbed
+from tempest_fastapi_sdk.genai.rag.schemas import _chunk_identity
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.genai.rag.schemas import Chunk
@@ -38,11 +43,6 @@ def _tokenize(text: str) -> list[str]:
         list[str]: Lowercased ``\\w+`` tokens.
     """
     return _TOKEN_RE.findall(text.lower())
-
-
-def _chunk_key(chunk: Chunk) -> str:
-    """Return a stable fusion key for ``chunk`` (``source#index``)."""
-    return f"{chunk.source}#{chunk.index}"
 
 
 def _require_bm25() -> Any:
@@ -66,6 +66,14 @@ def _require_bm25() -> Any:
 
 class HybridRetriever:
     """Dense + BM25 retrieval fused with Reciprocal Rank Fusion.
+
+    Chunks are identified by ``(source, index, text)``, and each
+    :meth:`index` call replaces whatever was indexed before for the sources
+    in the batch — so index every chunk of a source in one call. The SDK's
+    stores (:class:`InMemoryVectorStore`, :class:`PgVectorStore`,
+    :class:`ChromaVectorStore`) apply the same replacement on the dense side;
+    a third-party store that only appends still returns the replaced rows,
+    and those are dropped here before fusion (they only cost candidate slots).
 
     Example:
 
@@ -102,40 +110,75 @@ class HybridRetriever:
         """
         self.retriever = Retriever(embedder, store)
         self.k_rrf = k_rrf
-        self._chunks: list[Chunk] = []
-        self._by_key: dict[str, Chunk] = {}
+        self._chunks: dict[str, Chunk] = {}
+        self._tokens: dict[str, list[str]] = {}
+        self._keys: list[str] = []
         self._bm25: Any = None
 
     async def index(self, chunks: Sequence[Chunk]) -> int:
         """Index ``chunks`` into both the dense store and the BM25 index.
 
+        Every chunk previously indexed for a source that appears in
+        ``chunks`` is replaced, in the sparse index here and — for the SDK's
+        stores — in the dense store too. Identical chunks (same source,
+        index and text) are kept once.
+
         Args:
-            chunks (Sequence[Chunk]): Chunks to index.
+            chunks (Sequence[Chunk]): Chunks to index — pass every chunk of a
+                source in the same call.
 
         Returns:
-            int: The number of chunks indexed.
+            int: The number of chunks received.
         """
         if not chunks:
             return 0
-        await self.retriever.index(chunks)
-        self._chunks.extend(chunks)
-        for chunk in chunks:
-            self._by_key[_chunk_key(chunk)] = chunk
         bm25_cls = _require_bm25()
-        self._bm25 = bm25_cls([_tokenize(chunk.text) for chunk in self._chunks])
+        await self.retriever.index(chunks)
+        sources = {chunk.source for chunk in chunks}
+        for key in [k for k, c in self._chunks.items() if c.source in sources]:
+            del self._chunks[key]
+            del self._tokens[key]
+        for chunk in chunks:
+            key = _chunk_identity(chunk)
+            self._chunks[key] = chunk
+            self._tokens[key] = _tokenize(chunk.text)
+        self._keys = list(self._chunks)
+        self._bm25 = (
+            bm25_cls([self._tokens[key] for key in self._keys]) if self._keys else None
+        )
         return len(chunks)
 
     def _bm25_ranking(self, query: str, top_k: int) -> list[str]:
-        """Return the top-``top_k`` chunk keys by BM25 score (best first)."""
+        """Return the top-``top_k`` chunk keys by BM25 score (best first).
+
+        Only chunks sharing at least one token with the query are ranked. A
+        chunk with no overlap scores 0, and a list of zeros sorted "by score"
+        is just insertion order — fed to RRF it would add a rank signal that
+        means nothing and can invert the dense ranking. Overlap is tested on
+        tokens rather than on ``score > 0`` because BM25 scores a match
+        negative when the term is in most documents of a tiny corpus.
+
+        Args:
+            query (str): The query text.
+            top_k (int): How many keys to return at most.
+
+        Returns:
+            list[str]: Chunk identities, best BM25 score first.
+        """
         if self._bm25 is None:
             return []
-        scores = self._bm25.get_scores(_tokenize(query))
-        ranked = sorted(
-            range(len(self._chunks)),
-            key=lambda i: scores[i],
-            reverse=True,
-        )
-        return [_chunk_key(self._chunks[i]) for i in ranked[:top_k]]
+        tokens = _tokenize(query)
+        query_tokens = set(tokens)
+        if not query_tokens:
+            return []
+        scores = self._bm25.get_scores(tokens)
+        matching = [
+            i
+            for i, key in enumerate(self._keys)
+            if not query_tokens.isdisjoint(self._tokens[key])
+        ]
+        matching.sort(key=lambda i: scores[i], reverse=True)
+        return [self._keys[i] for i in matching[:top_k]]
 
     async def search(
         self,
@@ -159,10 +202,14 @@ class HybridRetriever:
         if top_k <= 0:
             return []
         dense = await self.retriever.search(query, top_k=candidates)
-        dense_keys = [_chunk_key(chunk) for chunk in dense]
+        dense_keys = [
+            key
+            for key in (_chunk_identity(chunk) for chunk in dense)
+            if key in self._chunks
+        ]
         sparse_keys = self._bm25_ranking(query, candidates)
         fused = reciprocal_rank_fusion([dense_keys, sparse_keys], k=self.k_rrf)
-        return [self._by_key[key] for key in fused[:top_k] if key in self._by_key]
+        return [self._chunks[key] for key in fused[:top_k]]
 
     async def retrieve(
         self,

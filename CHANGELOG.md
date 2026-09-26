@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Auditoria de RAG, memória de chat, hub e diarização. O defeito de raiz era a
+chave do chunk: `source#index` (e `source::index` no Chroma) não é única,
+porque o `chunk_text` recomeça o `index` em 0 a cada chamada — dois lotes da
+mesma fonte se sobrescreviam em silêncio.
+
+### Changed
+
+- **Todo store do SDK e o `HybridRetriever` substituem por fonte.**
+  `InMemoryVectorStore.add`, `PgVectorStore.add`, `ChromaVectorStore.add` e
+  `HybridRetriever.index` apagam o que já estava indexado para as `source`s do
+  lote e gravam o lote; reindexar um documento editado não deixa a versão
+  antiga nem uma cauda dela. Passe todos os chunks de uma fonte na mesma
+  chamada. Chunks idênticos (mesmo `source`, `index` e `text`) no lote são
+  gravados uma vez.
+- **`ChromaVectorStore`** passa a usar como id o SHA-256 de
+  `(source, index, text)`. Linhas gravadas com o id antigo (`source::index`)
+  são removidas na primeira reindexação da fonte, porque a limpeza filtra
+  pelo metadado `source`. O upsert vem antes da limpeza: sem transação no
+  Chroma, um upsert que falha deixa a versão anterior, não uma fonte vazia.
+- **`ChatMemory`** grava o `created_at` convertido para UTC e um
+  `created_at_ts` (segundos epoch) no metadado.
+
+### Fixed
+
+- **`HybridRetriever` devolvia texto de outro chunk.** Dois `index()` da
+  mesma fonte sobrescreviam o mapa por chave enquanto o BM25 guardava os
+  dois lotes, então `search("alpha")` voltava textos de `beta`, e reindexar
+  duplicava o corpus esparso. A chave agora é `(source, index, text)`, e
+  linhas que um `VectorStore` de terceiro (só-acrescenta) ainda devolve são
+  descartadas antes da fusão.
+- **`ChromaVectorStore.add` perdia linhas em silêncio**: dois chunks com
+  mesmo `source` e `index` e textos diferentes no mesmo lote viravam um só; o
+  mesmo chunk duas vezes no lote levantava `DuplicateIDError` no Chroma real.
+- **BM25 sem sobreposição invertia o ranking denso.** Sem termo em comum
+  todos os scores são 0, e a lista "ordenada" era a ordem de inserção, somada
+  no RRF. Só entram na fusão os chunks que compartilham ao menos um token com
+  a query (teste por token, não `score > 0`, porque o BM25 dá score negativo
+  a termo presente na maioria dos documentos de um corpus pequeno).
+- **`reciprocal_rank_fusion` contava um id repetido na mesma lista mais de
+  uma vez**; agora só a primeira (melhor) posição conta, e as repetições
+  continuam ocupando posição.
+- **`ChatMemory.search` pedia exatamente `top_k` ao Chroma** e reordenava só
+  esses, então uma mensagem recente fora do top-K cru nunca subia — a
+  promessa da classe. Novo `candidate_multiplier` (keyword-only, padrão `4`,
+  `ValueError` abaixo de 1): o Chroma é consultado por
+  `top_k * candidate_multiplier` e o re-rank escolhe `top_k`.
+- **A cota do `ChatMemory` despejava a mensagem errada entre fusos**:
+  ordenava as strings ISO, que põem `10:00+05:00` depois de `08:00+00:00`.
+  Ordena pelo instante UTC (`created_at_ts`, com fallback para o ISO das
+  linhas antigas). A contagem lê só os ids; o metadado só é buscado quando a
+  cota estoura.
+- **`download_model(check_disk=True)` somava o repositório inteiro**,
+  ignorando `allow_patterns`/`ignore_patterns` e o cache: um repo de 28 GB
+  filtrado para 14 GB de safetensors, com 20 GB livres, recusava com
+  "needs ~30.8 GB". Agora conta só os arquivos que os padrões selecionam
+  (pela `huggingface_hub.utils.filter_repo_objects`, a mesma do
+  `snapshot_download`) e que ainda não estão no cache para a revisão — o
+  mesmo caso pede ~15,4 GB. `model_disk_bytes` ganha `allow_patterns` e
+  `ignore_patterns` keyword-only.
+- **Os modelos de diarização não eram verificados**: `SEGMENTATION_MODEL` e
+  `EMBEDDING_MODEL` tinham `sha256=""`, e o `ensure_models` pulava a
+  checagem que a docstring prometia. Os digests estão fixados (medidos com
+  `curl -L` + `sha256sum` sobre os assets do release do k2-fsa; o GitHub não
+  publica digest para eles), e o download usa timeout de socket de 60 s — o
+  `urlopen` sem timeout travava o primeiro `load()` para sempre numa conexão
+  muda.
+
+### Security
+
+- **`PgVectorStore` valida o nome da tabela**, que é interpolado em DDL e DML:
+  fora de `nome` ou `schema.nome` sem aspas (`[A-Za-z_][A-Za-z0-9_]*`, até 63
+  caracteres cada) é `ValueError` no construtor, assim como `dim` que não seja
+  inteiro positivo. O store também cria um índice B-tree em `source`, grava o
+  lote num `executemany` e ganhou um teste contra `pgvector/pgvector:pg16`
+  (`make test-docker`).
 Auditoria do `tempest_fastapi_sdk.agents`. Os tetos do `AgentBudget` só
 eram conferidos no topo do laço, então uma ferramenta que dormia 3 s com
 `max_seconds=0.5` rodava os 3 s, e uma volta pedindo 50 chamadas com

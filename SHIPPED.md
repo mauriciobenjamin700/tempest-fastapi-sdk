@@ -619,6 +619,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   per-user quota, `recall()` returns scored `MemoryHit`s over any
   `SupportsEmbed`. Uses `PersistentClient` (embedded, no HTTP server), so the
   `chromadb` server advisory PYSEC-2026-311 is not reachable through the SDK.
+  **Chunk identity + re-index (Unreleased):** every SDK store and
+  `HybridRetriever` key a chunk by `(source, index, text)` and `add`/`index`
+  **replace** the batch's sources (`source#index` collided because
+  `chunk_text` restarts at 0); `PgVectorStore` validates the table
+  identifier, indexes `source` and inserts in one `executemany`;
+  `ChatMemory(candidate_multiplier=4)` over-fetches before the recency
+  re-rank and evicts by UTC instant (`created_at_ts`).
   **Audio (v0.102, `[genai-audio]` = faster-whisper + coqui-tts + the Coqui
   runtime — torch, torchaudio, torchcodec, `transformers<5`, declared since
   v0.252.0 because coqui-tts hides all four behind its own extras; XTTS v2 is
@@ -748,7 +755,8 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `ConversationTranscriber` (junta com o `SpeechToText` existente por
   sobreposição de tempo), `DiarizedTranscription`/`SpeakerTurn` com
   `transcript()` e `by_speaker()`, `ensure_models()` (46 MB, fora do wheel,
-  honra `TEMPEST_VOICE_MODEL_DIR`). **sherpa-onnx e não pyannote**: 1
+  honra `TEMPEST_VOICE_MODEL_DIR`; SHA-256 dos dois modelos fixado e
+  timeout de socket de 60 s no download desde o Unreleased). **sherpa-onnx e não pyannote**: 1
   dependência contra 21 (torch/lightning/matplotlib/otel/SDK pago) e modelos
   abertos contra pipeline gated no HuggingFace; RTF 0,125 em CPU. Transcreve a
   gravação **uma vez** e atribui depois — trecho que atravessa troca de falante
@@ -770,7 +778,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   metadata, no download), `download_model` (`allow`/`ignore` globs →
   `ModelSnapshot`; refuses with `OSError` when free space < estimate x1.1),
   `list_cached_models`/`cache_size_bytes`/`remove_cached_model` (by sha or ref
-  name, `dry_run`, `0` for absent = no-op). All 5 transformers loaders
+  name, `dry_run`, `0` for absent = no-op). The disk check counts only the
+  files the globs select (via `huggingface_hub.utils.filter_repo_objects`)
+  minus those already cached for the revision (Unreleased);
+  `model_disk_bytes` takes the same `allow_patterns`/`ignore_patterns`. All 5 transformers loaders
   (`TextGenerator`/`Embedder`/`VisionTextGenerator`/`ClassifierModerator`/
   `Reranker`) take `revision=`/`local_files_only=`/`trust_remote_code=`;
   `SpeechToText` maps onto faster-whisper's `download_root`/`use_auth_token`
