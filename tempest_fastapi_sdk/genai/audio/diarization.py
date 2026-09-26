@@ -131,9 +131,13 @@ class DiarizationModel:
         url (str): Where to fetch it.
         member (str): File inside the archive, or the file name itself
             when the download is not an archive.
-        sha256 (str): Digest of the downloaded file. Checked on every
-            fetch — a model swapped upstream would otherwise change the
-            service's behavior with nothing in the diff.
+        sha256 (str): SHA-256 of the resolved model file — the archive
+            ``member`` after extraction, not the archive. Checked by
+            :func:`ensure_models` every time it resolves the file, fresh
+            download or cache hit, so a model swapped upstream (or a
+            corrupted cache) raises instead of changing the service's
+            behavior with nothing in the diff. An empty string skips the
+            check; the two shipped models are pinned.
     """
 
     name: str
@@ -149,12 +153,18 @@ SEGMENTATION_MODEL: DiarizationModel = DiarizationModel(
         "speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2"
     ),
     member="sherpa-onnx-pyannote-segmentation-3-0/model.onnx",
-    sha256="",
+    sha256="220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079",
 )
 """Segmentation model — finds where speech is and where turns change.
 
 An ONNX export of ``pyannote/segmentation-3.0`` published by k2-fsa,
 which is what lets this run without the gated HuggingFace pipeline.
+
+The digest is of ``model.onnx`` (5 992 913 bytes) extracted from the
+release asset (6 958 444 bytes; the archive itself hashes to
+``24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488``),
+measured with ``curl -L`` + ``sha256sum`` on 2026-09-26. GitHub publishes
+no digest for these assets, so the pin records what was served that day.
 """
 
 EMBEDDING_MODEL: DiarizationModel = DiarizationModel(
@@ -165,7 +175,7 @@ EMBEDDING_MODEL: DiarizationModel = DiarizationModel(
         "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
     ),
     member="3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
-    sha256="",
+    sha256="1a331345f04805badbb495c775a6ddffcdd1a732567d5ec8b3d5749e3c7a5e4b",
 )
 """Speaker embedding model — turns a voice into a 512-dimension vector.
 
@@ -173,6 +183,20 @@ Trained on Mandarin but speaker embeddings are largely
 language-independent: the model encodes vocal tract characteristics, not
 words. Verified on the reference recording, where it separated four
 speakers cleanly.
+
+The digest is of the release asset as served (39 593 761 bytes), measured
+with ``curl -L`` + ``sha256sum`` on 2026-09-26; GitHub publishes no digest
+for it.
+"""
+
+_DOWNLOAD_TIMEOUT_SECONDS: float = 60.0
+"""Socket timeout for each model download, in seconds.
+
+Passed to ``urllib.request.urlopen``, so it bounds the connect and every
+individual read — a connection that goes silent for this long raises
+``TimeoutError`` (an ``OSError``) instead of hanging :func:`ensure_models`,
+and with it the diarizer's first load, forever. It is not a cap on the
+total transfer time: a slow but steady download still completes.
 """
 
 
@@ -197,19 +221,23 @@ def _download(url: str, destination: Path) -> None:
     """Fetch ``url`` into ``destination`` atomically.
 
     Downloads to a sibling temporary file and renames, so an interrupted
-    fetch never leaves a half-written model that loads and misbehaves.
+    fetch never leaves a half-written model that loads and misbehaves. The
+    connection uses ``_DOWNLOAD_TIMEOUT_SECONDS``.
 
     Args:
         url (str): Source URL.
         destination (Path): Final path.
 
     Raises:
-        OSError: When the download fails.
+        OSError: When the download fails or stalls past the timeout.
     """
     destination.parent.mkdir(parents=True, exist_ok=True)
     partial = destination.with_suffix(destination.suffix + ".partial")
     _LOGGER.info("downloading voice model from %s", url)
-    with urllib.request.urlopen(url) as response, partial.open("wb") as handle:
+    with (
+        urllib.request.urlopen(url, timeout=_DOWNLOAD_TIMEOUT_SECONDS) as response,
+        partial.open("wb") as handle,
+    ):
         while chunk := response.read(1 << 20):
             handle.write(chunk)
     partial.replace(destination)

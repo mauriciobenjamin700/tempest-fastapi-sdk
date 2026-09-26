@@ -16,6 +16,7 @@ import asyncio
 import inspect
 import json
 import math
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
@@ -134,19 +135,50 @@ class AsyncEmbeddingCache(Protocol):
         ...
 
 
+_DEFAULT_MAX_ENTRIES: int = 1024
+
+
 class InMemoryEmbeddingCache:
-    """A trivial in-process embedding cache backed by a dict.
+    """An in-process LRU embedding cache.
 
     Fine for a single process; for multi-worker reuse, pass a Redis-backed
-    object satisfying :class:`EmbeddingCache` instead.
+    object satisfying :class:`EmbeddingCache` instead. Bounded by
+    ``max_entries``: once full, storing a new key evicts the
+    least-recently-used vector (a read counts as a use), so a long-lived
+    worker that embeds an open-ended stream of texts does not grow forever.
+
+    Attributes:
+        max_entries (int | None): Capacity before eviction, or ``None`` for
+            an unbounded store.
     """
 
-    def __init__(self) -> None:
-        """Initialize an empty cache."""
-        self._store: dict[str, list[float]] = {}
+    def __init__(self, *, max_entries: int | None = _DEFAULT_MAX_ENTRIES) -> None:
+        """Initialize an empty cache.
+
+        Args:
+            max_entries (int | None): Maximum number of vectors kept.
+                ``None`` disables eviction (the pre-bound behaviour).
+
+        Raises:
+            ValueError: When ``max_entries`` is lower than 1.
+        """
+        if max_entries is not None and max_entries < 1:
+            raise ValueError("max_entries must be >= 1 or None")
+        self.max_entries: int | None = max_entries
+        self._store: OrderedDict[str, list[float]] = OrderedDict()
+
+    def __len__(self) -> int:
+        """Return the number of cached vectors.
+
+        Returns:
+            int: How many entries the store currently holds.
+        """
+        return len(self._store)
 
     def get(self, key: str) -> list[float] | None:
         """Return the cached vector for ``key`` or ``None``.
+
+        A hit marks the entry as most recently used.
 
         Args:
             key (str): Cache key for the embedded text.
@@ -154,16 +186,23 @@ class InMemoryEmbeddingCache:
         Returns:
             list[float] | None: The cached vector, or ``None`` on a miss.
         """
-        return self._store.get(key)
+        value = self._store.get(key)
+        if value is not None:
+            self._store.move_to_end(key)
+        return value
 
     def set(self, key: str, value: list[float]) -> None:
-        """Store ``value`` under ``key``.
+        """Store ``value`` under ``key``, evicting the LRU entry when full.
 
         Args:
             key (str): Cache key for the embedded text.
             value (list[float]): The vector to store.
         """
         self._store[key] = value
+        self._store.move_to_end(key)
+        if self.max_entries is not None:
+            while len(self._store) > self.max_entries:
+                self._store.popitem(last=False)
 
 
 class RedisEmbeddingCache:

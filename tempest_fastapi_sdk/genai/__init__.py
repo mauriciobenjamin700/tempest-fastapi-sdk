@@ -94,6 +94,7 @@ from tempest_fastapi_sdk.genai.ollama import (
     DEFAULT_OLLAMA_URL as DEFAULT_OLLAMA_URL,
 )
 from tempest_fastapi_sdk.genai.ollama import OllamaEmbedder as OllamaEmbedder
+from tempest_fastapi_sdk.genai.ollama import OllamaError as OllamaError
 from tempest_fastapi_sdk.genai.ollama import OllamaGenerator as OllamaGenerator
 from tempest_fastapi_sdk.genai.onnx_embed import OnnxEmbedder as OnnxEmbedder
 from tempest_fastapi_sdk.genai.openai_compat import (
@@ -104,6 +105,7 @@ from tempest_fastapi_sdk.genai.openai_compat import (
 )
 from tempest_fastapi_sdk.genai.pipeline import AIChatPipeline as AIChatPipeline
 from tempest_fastapi_sdk.genai.pipeline import AIChatResult as AIChatResult
+from tempest_fastapi_sdk.genai.pipeline import StreamModeration as StreamModeration
 from tempest_fastapi_sdk.genai.pipeline import Tool as Tool
 from tempest_fastapi_sdk.genai.pipeline import (
     make_ai_chat_router as make_ai_chat_router,
@@ -112,6 +114,9 @@ from tempest_fastapi_sdk.genai.registry import ModelRegistry as ModelRegistry
 from tempest_fastapi_sdk.genai.router import make_genai_router as make_genai_router
 from tempest_fastapi_sdk.genai.schemas import (
     CapacityReport as CapacityReport,
+)
+from tempest_fastapi_sdk.genai.schemas import (
+    GenAIRequestLimits as GenAIRequestLimits,
 )
 from tempest_fastapi_sdk.genai.schemas import (
     GeneratedImage as GeneratedImage,
@@ -216,6 +221,7 @@ __all__: list[str] = [
     "EmbeddingModel",
     "GPUInfo",
     "GenAIMetrics",
+    "GenAIRequestLimits",
     "GeneratedImage",
     "GenerationCache",
     "GenerationConfig",
@@ -235,6 +241,7 @@ __all__: list[str] = [
     "ModerationBackend",
     "ModerationResult",
     "OllamaEmbedder",
+    "OllamaError",
     "OllamaGenerator",
     "OnnxEmbedder",
     "OpenAICompatGenerator",
@@ -244,6 +251,7 @@ __all__: list[str] = [
     "RuleModerator",
     "ServiceUsage",
     "SpeechToTextModel",
+    "StreamModeration",
     "StructuredFormatError",
     "StructuredTextBackend",
     "SubjectUsage",

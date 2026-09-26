@@ -80,6 +80,464 @@ attribute 'decode'`.
 - A docstring do `ModelRegistry` diz o limite que sobra: um handle guardado
   depois da evicção recarrega fora do `max_models` — chame `get()` por
   request em vez de segurar o objeto.
+Auditoria dos backends de genai e do stream do `HTTPClient`: um timeout no
+meio do stream reenviava o POST e repetia o texto já entregue, o Ollama
+devolvia `""` para um corpo de erro, o cliente OpenAI mandava campos que o
+formato OpenAI não define, os caches em memória cresciam sem limite e o
+`BatchScheduler` podia deixar um `submit` esperando para sempre.
+
+### Fixed
+
+- **`HTTPClient.stream` não reemite depois da primeira linha.** O `except
+  ReadTimeout` envolvia o `yield`, então um timeout entre dois chunks
+  refazia o POST e o chamador recebia `["Hello ", "Hello ", "world"]` de
+  dois POSTs. O retry agora cobre só a abertura, como a docstring já
+  prometia; depois da primeira linha a falha propaga.
+- **`OllamaGenerator` / `OllamaEmbedder` levantam `OllamaError`** para um
+  corpo `{"error": "..."}` — `generate` num `200 {"error": "boom"}`
+  devolvia `""`, e uma linha de erro no stream terminava a geração em
+  silêncio (o router emitia `done`). Vale para `generate`, `chat`,
+  `generate_structured`, `chat_structured`, `chat_with_tools`, `stream` e
+  `embed`.
+- **`OpenAICompatGenerator` não manda campo só do HuggingFace.**
+  `do_sample`, `top_k` e `repetition_penalty` iam crus no corpo; agora são
+  descartados (`do_sample=False` sem `temperature` vira `temperature=0`), e
+  `model` / `messages` / `stream` passados como keyword levantam
+  `TypeError` em vez de sobrescrever o corpo, como a docstring de `_body`
+  já afirmava.
+- **Chave do cache de geração separa operação e identidade dos pesos.**
+  `generate(json.dumps(msgs))` e `chat(msgs)` caíam na mesma chave; e dois
+  `TextGenerator` do mesmo `model_id` em `revision` ou `quantization`
+  diferente liam o cache um do outro. `make_generation_key` /
+  `cached_generate` ganham `operation=` e `identity=` (keyword-only); um
+  `generate` sem nenhum dos dois mantém o digest anterior, então um Redis
+  quente continua quente.
+- **`BatchScheduler` resolve todo future em todo caminho.** Handler que
+  levantava `CancelledError` deixava o `submit` pendurado; handler que
+  devolvia valor sem `len` (`None`) matava o worker com `TypeError` fora do
+  `try`. Agora o lote falha com `RuntimeError` e o worker segue; o
+  `CancelledError` do próprio handler cancela só o lote; cancelar o worker
+  cancela o lote e a fila.
+- **`build_prefix_allowed_tokens_fn` não refaz o índice do vocabulário a
+  cada chamada.** O `TokenEnforcerTokenizerData` fica em cache por
+  tokenizer (`WeakKeyDictionary`, refeito se `len(tokenizer)` mudar).
+  Medido no tokenizer do `Qwen/Qwen2.5-0.5B-Instruct` (151 665 ids): 2,1 s
+  de CPU na primeira chamada, 0,03 s nas seguintes, com os mesmos tokens
+  permitidos.
+- **`truncate_messages` não separa `tool_calls` dos resultados.** Um turno
+  `assistant` com `tool_calls` e os turnos `tool` que o respondem saem
+  juntos, então o histórico nunca começa com um resultado órfão.
+
+### Added
+
+- **`OllamaError`** (`tempest_fastapi_sdk.genai`), com `.model` e `.detail`.
+- **`InMemoryGenerationCache(max_entries=1024)`** e
+  **`InMemoryEmbeddingCache(max_entries=1024)`**: os dois viram LRU (a
+  leitura conta como uso); `None` desliga o limite. Antes, 1001 prompts
+  deixavam 1001 entradas.
+- **`OpenAICompatGenerator(forward_params=...)`**: nomes do HuggingFace que
+  o provedor aceita como estão (o servidor do vLLM documenta `top_k` e
+  `repetition_penalty`).
+- **`OllamaGenerator.chat` com cache e métricas**, como o
+  `TextGenerator.chat`: cacheia chamada determinística (chave `chat`) e
+  registra `op="chat"` com os tokens do Ollama.
+
+### Changed
+
+- **`GenAIMetrics`: rótulo `status` (`"ok"` / `"error"`) em
+  `genai_requests_total` e `genai_request_seconds`.** Antes uma chamada que
+  levantava contava como sucesso. O nome das métricas não muda, mas o
+  conjunto de rótulos sim: seletor `{model, op}` continua casando, porém
+  cada série vira duas — query que compara a série inteira, ou
+  `get_sample_value` com o conjunto exato de rótulos, precisa somar por
+  `status` ou filtrar `status="ok"`. `GenAIMetrics.record` ganha
+  `status=` keyword-only (default `"ok"`).
+Auditoria de RAG, memória de chat, hub e diarização. O defeito de raiz era a
+chave do chunk: `source#index` (e `source::index` no Chroma) não é única,
+porque o `chunk_text` recomeça o `index` em 0 a cada chamada — dois lotes da
+mesma fonte se sobrescreviam em silêncio.
+
+### Changed
+
+- **Todo store do SDK e o `HybridRetriever` substituem por fonte.**
+  `InMemoryVectorStore.add`, `PgVectorStore.add`, `ChromaVectorStore.add` e
+  `HybridRetriever.index` apagam o que já estava indexado para as `source`s do
+  lote e gravam o lote; reindexar um documento editado não deixa a versão
+  antiga nem uma cauda dela. Passe todos os chunks de uma fonte na mesma
+  chamada. Chunks idênticos (mesmo `source`, `index` e `text`) no lote são
+  gravados uma vez.
+- **`ChromaVectorStore`** passa a usar como id o SHA-256 de
+  `(source, index, text)`. Linhas gravadas com o id antigo (`source::index`)
+  são removidas na primeira reindexação da fonte, porque a limpeza filtra
+  pelo metadado `source`. O upsert vem antes da limpeza: sem transação no
+  Chroma, um upsert que falha deixa a versão anterior, não uma fonte vazia.
+- **`ChatMemory`** grava o `created_at` convertido para UTC e um
+  `created_at_ts` (segundos epoch) no metadado.
+
+### Fixed
+
+- **`HybridRetriever` devolvia texto de outro chunk.** Dois `index()` da
+  mesma fonte sobrescreviam o mapa por chave enquanto o BM25 guardava os
+  dois lotes, então `search("alpha")` voltava textos de `beta`, e reindexar
+  duplicava o corpus esparso. A chave agora é `(source, index, text)`, e
+  linhas que um `VectorStore` de terceiro (só-acrescenta) ainda devolve são
+  descartadas antes da fusão.
+- **`ChromaVectorStore.add` perdia linhas em silêncio**: dois chunks com
+  mesmo `source` e `index` e textos diferentes no mesmo lote viravam um só; o
+  mesmo chunk duas vezes no lote levantava `DuplicateIDError` no Chroma real.
+- **BM25 sem sobreposição invertia o ranking denso.** Sem termo em comum
+  todos os scores são 0, e a lista "ordenada" era a ordem de inserção, somada
+  no RRF. Só entram na fusão os chunks que compartilham ao menos um token com
+  a query (teste por token, não `score > 0`, porque o BM25 dá score negativo
+  a termo presente na maioria dos documentos de um corpus pequeno).
+- **`reciprocal_rank_fusion` contava um id repetido na mesma lista mais de
+  uma vez**; agora só a primeira (melhor) posição conta, e as repetições
+  continuam ocupando posição.
+- **`ChatMemory.search` pedia exatamente `top_k` ao Chroma** e reordenava só
+  esses, então uma mensagem recente fora do top-K cru nunca subia — a
+  promessa da classe. Novo `candidate_multiplier` (keyword-only, padrão `4`,
+  `ValueError` abaixo de 1): o Chroma é consultado por
+  `top_k * candidate_multiplier` e o re-rank escolhe `top_k`.
+- **A cota do `ChatMemory` despejava a mensagem errada entre fusos**:
+  ordenava as strings ISO, que põem `10:00+05:00` depois de `08:00+00:00`.
+  Ordena pelo instante UTC (`created_at_ts`, com fallback para o ISO das
+  linhas antigas). A contagem lê só os ids; o metadado só é buscado quando a
+  cota estoura.
+- **`download_model(check_disk=True)` somava o repositório inteiro**,
+  ignorando `allow_patterns`/`ignore_patterns` e o cache: um repo de 28 GB
+  filtrado para 14 GB de safetensors, com 20 GB livres, recusava com
+  "needs ~30.8 GB". Agora conta só os arquivos que os padrões selecionam
+  (pela `huggingface_hub.utils.filter_repo_objects`, a mesma do
+  `snapshot_download`) e que ainda não estão no cache para a revisão — o
+  mesmo caso pede ~15,4 GB. `model_disk_bytes` ganha `allow_patterns` e
+  `ignore_patterns` keyword-only.
+- **Os modelos de diarização não eram verificados**: `SEGMENTATION_MODEL` e
+  `EMBEDDING_MODEL` tinham `sha256=""`, e o `ensure_models` pulava a
+  checagem que a docstring prometia. Os digests estão fixados (medidos com
+  `curl -L` + `sha256sum` sobre os assets do release do k2-fsa; o GitHub não
+  publica digest para eles), e o download usa timeout de socket de 60 s — o
+  `urlopen` sem timeout travava o primeiro `load()` para sempre numa conexão
+  muda.
+
+### Security
+
+- **`PgVectorStore` valida o nome da tabela**, que é interpolado em DDL e DML:
+  fora de `nome` ou `schema.nome` sem aspas (`[A-Za-z_][A-Za-z0-9_]*`, até 63
+  caracteres cada) é `ValueError` no construtor, assim como `dim` que não seja
+  inteiro positivo. O store também cria um índice B-tree em `source`, grava o
+  lote num `executemany` e ganhou um teste contra `pgvector/pgvector:pg16`
+  (`make test-docker`).
+Auditoria do `tempest_fastapi_sdk.agents`. Os tetos do `AgentBudget` só
+eram conferidos no topo do laço, então uma ferramenta que dormia 3 s com
+`max_seconds=0.5` rodava os 3 s, e uma volta pedindo 50 chamadas com
+`max_steps=5, max_tool_calls=2` executava as 50. O router HTTP endereçava
+execuções pela posição no histórico e mostrava as execuções de todo mundo a
+todo mundo; o traço servido por ele carregava o texto cru de qualquer
+exceção de ferramenta.
+
+### Security
+
+- **Execuções do router têm dono.** `make_agent_router(..., owner=dep)`
+  recebe uma dependência FastAPI que devolve quem chama; cada execução é
+  marcada (`AgentRun.owner`, `AgentContext.owner`, herdado pela
+  delegação), `GET /runs` lista só as de quem chama e o artefato de outra
+  pessoa responde `404`, igual a uma execução inexistente. Sem `owner=` o
+  comportamento continua o de antes (todo mundo vê tudo), agora documentado
+  como aceitável só com um único principal.
+- **Exceção inesperada de ferramenta não vaza mais pelo traço.** O modelo
+  continua lendo o texto inteiro, mas o `AgentStep.error` — o que o router,
+  o SSE e o `DbAgentRunSink` expõem — guarda só o tipo
+  (`RuntimeError: the tool failed (details withheld)`), e a exceção vai
+  para o log `tempest_fastapi_sdk.agents.agent`. Medido com um DSN com senha
+  na mensagem: a senha não aparece em `run.model_dump_json()` nem na
+  resposta de `POST /run`. `AgentToolError` continua gravado como escrito;
+  `Agent(expose_tool_errors=True)` volta ao texto inteiro.
+- **Moderador que levanta falha fechado.** Antes a exceção derrubava o
+  `run()`; agora a execução termina `BLOCKED` com
+  `blocked: moderation unavailable (<Tipo>)`.
+- **A resposta estruturada passa pela moderação.** O `output` de uma
+  execução encerrada pelo `final_answer` é o JSON da resposta, e é ele que o
+  moderador confere; `run_structured` só devolve `data` de execução
+  `COMPLETED`.
+
+### Fixed
+
+- **`max_seconds` corta a chamada travada.** Chamada de modelo roda sob
+  `asyncio.timeout` do tempo restante; chamada de ferramenta, sob esse tempo
+  mais uma folga de 0,25 s dividida por `depth + 1`, para o sub-agente —
+  que vigia o mesmo prazo — parar sozinho e devolver o traço antes de o pai
+  cortar. Medido: ferramenta de 3 s com `max_seconds=0.5` termina em 0,75 s,
+  `stop_reason=timeout`. Uma `TimeoutError` levantada pela própria
+  ferramenta continua sendo erro comum de ferramenta.
+- **Os tetos valem dentro de uma volta.** `max_steps`, `max_tool_calls` e o
+  prazo são conferidos antes de **cada** chamada; medido: 50 chamadas com
+  `max_steps=5, max_tool_calls=2` executam 2 e param em `max_tool_calls`.
+- **`arguments` como string JSON** (formato OpenAI de vLLM/TGI) é lido; JSON
+  inválido ou que não é objeto vira erro de ferramenta em vez de `{}`
+  silencioso.
+- **Mensagem `role: tool` leva `tool_call_id` e `name`** quando a chamada
+  trouxe `id`; sem `id` o formato fica igual ao de antes.
+- **`final_answer` encerra a execução** — o modelo não é consultado de novo,
+  como a receita já dizia. Resposta que não valida vira erro de ferramenta
+  legível (`invalid answer for final_answer: headline: Field required`).
+- **`run_structured` não perde as skills.** O agente é copiado
+  (`copy.copy`) em vez de reconstruído com um subconjunto dos argumentos; o
+  `load_skill` anunciava ferramentas que a cópia não tinha.
+- **Skill carregada não vaza entre pai e filho.** O controle saiu do `state`
+  compartilhado para `AgentContext.opened_skills`, por contexto; a resposta
+  estruturada, para `AgentContext.answer`.
+- **Router:** execução endereçada pelo `run_id` estável
+  (`/runs/{run_id}/artifacts/{name}`), e `{name:path}` serve artefato de
+  sub-agente (`illustrator/bike.png` dava `404`).
+- **`agent_tool`** passa ao filho o nome do agente que delegou em
+  `context.parent` (antes, o avô ou `"agent"`).
+- **`refine`** aprova só com a resposta inteira igual a `APPROVED` (antes,
+  `startswith`) e só de worker que terminou; tentativa cortada nem vai ao
+  crítico.
+- **`run_until`** mantém o prazo herdado do `context` quando ele é mais
+  cedo; a passada de extração do `run_structured` herda o prazo da execução
+  e o moderador do agente.
+- **`schema_of`** não entra em recursão infinita com model
+  auto-referente: a referência cíclica fica `$ref` e só essas definições
+  ficam em `$defs`.
+- **`RedisFactStore`** não junta mais `None`, `""` e `"_"` no mesmo hash.
+  `None` e subjects comuns mantêm a chave de antes (dado existente
+  continua acessível); `""`, `"_"` e o que começa com `~:s:` vão para
+  `"{prefix}:~:s:<percent-encoded>"`. Fato gravado antes sob `subject=""`
+  ou `subject="_"` está na chave antiga `"{prefix}:_"`.
+- **Artefato não é sobrescrito.** Nome já ocupado por um retorno de
+  ferramenta vira `<nome>-1.<ext>` (o texto para o modelo avisa); nas
+  ferramentas prontas, nome escolhido pelo modelo que já existe é recusado
+  com `AgentToolError`, e o nome padrão pula os ocupados.
+- **`AgentRun.tool_calls`** inclui as delegações (`StepKind.AGENT`).
+
+### Changed
+
+- **`ChatBackend` / `ToolCallingBackend`** descrevem só o que o `Agent`
+  faz: parâmetros posicionais (`/`), sem `**kwargs` obrigatório e mensagens
+  `list[dict[str, Any]]`. Entram em `THIRD_PARTY_CLIENT_PROTOCOLS` do
+  `test_protocol_shape_guard`.
+- **Rota de artefato mudou de `/runs/{index}/...` para `/runs/{run_id}/...`**;
+  `POST /run` devolve `run_id` e o evento `done` do SSE passa a carregar
+  `{"run_id": ...}` (antes vazio).
+
+### Added
+
+- `ToolResult.final`, `AgentRun.run_id`, `AgentRun.owner`,
+  `AgentContext.agent`/`run_id`/`owner`/`opened_skills`/`answer`,
+  `AgentContext.unique_artifact_name`/`claim_artifact_name`,
+  `InMemoryAgentRunSink.get(run_id)`, `OwnerDependency` e o keyword
+  `Agent(expose_tool_errors=...)`.
+O `chat` tratava o id de uma mensagem como capability: toda rota que
+recebe só `/messages/{id}` carregava a linha pelo id e seguia, sem olhar
+a conversa dela. O `/stream` segurava uma sessão de banco pela vida da
+conexão e continuava entregando depois que a pessoa saía, e o histórico
+aceitava `page_size=0`.
+
+### Security
+
+- **`react` / `unreact` exigem enxergar a mensagem.** Antes, qualquer
+  usuário autenticado que soubesse um id recebia `200` com a
+  `MessageResponseSchema` inteira (body, anexos, `storage_key`), e a
+  reação era gravada e publicada no SSE de uma conversa em que ele nunca
+  esteve. Agora o usuário precisa ser participante ativo da conversa da
+  mensagem, e a mensagem não pode ser anterior ao `history_from` dele.
+  Fora disso a resposta é o not-found do próprio repositório — mesma
+  classe, mesma mensagem, corpo HTTP idêntico ao de um id inexistente —,
+  para o id não virar oráculo de existência.
+- **`forward` confere a original.** O encaminhamento copiava body,
+  payload e as linhas de anexo de qualquer mensagem para uma conversa do
+  chamador; agora é leitura da original e segue a mesma regra.
+- **`edit_message` / `revoke_message` exigem participação ativa**, além de
+  ser o remetente: quem saiu da conversa não reescreve nem apaga mais o
+  que disse lá. Quem não enxerga a mensagem recebe `404`, não o `403`
+  "only the sender", que confirmava a existência.
+- **Responder citando mensagem anterior ao `history_from`** é `404`: o
+  stub da citação carregava o trecho do backlog que o recém-chegado não
+  recebeu.
+- **O `/stream` fecha quando a participação acaba.** `leave` e
+  `remove_participant` publicam `participant.removed`
+  (`PARTICIPANT_REMOVED_EVENT`, com o `ParticipantResponseSchema` de quem
+  saiu); o stream de quem ele nomeia entrega o evento e termina, e a
+  reconexão leva `403`. Saída feita fora do `ChatService` é pega pela
+  releitura da participação a cada `membership_recheck_seconds`
+  (`MEMBERSHIP_RECHECK_SECONDS`, `30.0`; `None` desliga), numa sessão
+  curta.
+
+### Fixed
+
+- **O `/stream` não segura mais sessão de banco.** O endpoint recebia o
+  serviço por `Depends`, e a sessão com `yield` ficava aberta — conexão
+  do pool emprestada, transação começada — enquanto o cliente estivesse
+  conectado: N abas ociosas esgotavam o pool. A checagem de participante
+  agora roda numa sessão própria, fechada antes do primeiro byte (medido
+  com um contador de sessões abertas: `1` antes, `0` depois, com o
+  stream aberto).
+- **`revoke_message` só devolve chave que ninguém mais referencia.**
+  Encaminhar aponta a cópia para a mesma `storage_key`, então revogar a
+  original mandava o chamador apagar o arquivo que a cópia ainda
+  renderizava. A chave sai agora na revogação que remove a última linha
+  de anexo que a cita (como `storage_key` ou `thumbnail_key`).
+- **Paginação do histórico.** `page_size=0` era `500`
+  (`ZeroDivisionError`), `page_size=-1` virava `LIMIT -1` — que o SQLite
+  lê como "sem limite": 25 de 25 mensagens numa página — e `page=0`
+  respondia `200`. O router exige `page >= 1` e
+  `1 <= page_size <= max_page_size` (`422` fora disso), e
+  `ChatService.list_messages` levanta `ValidationException` para os
+  mesmos valores.
+
+### Added
+
+- **`make_chat_router(max_page_size=..., membership_recheck_seconds=...)`**,
+  keyword-only, com defaults `MESSAGES_PAGE_SIZE_MAX` (`100`) e
+  `MEMBERSHIP_RECHECK_SECONDS` (`30.0`).
+- **Tetos nos schemas**, `422` quando passados: `body` de postar e editar
+  (`MESSAGE_BODY_MAX_LENGTH`, 65 536 caracteres), `attachment_ids`
+  (`MESSAGE_ATTACHMENTS_MAX`, 32), `ForwardSchema.conversation_ids`
+  (`FORWARD_TARGETS_MAX`, 20), `participant_ids` (`PARTICIPANT_IDS_MAX`,
+  256), e `title` / `description` no tamanho da coluna (255 / 512), que o
+  schema não conferia.
+
+### Changed
+
+- Quem não enxerga a mensagem recebe `404` em `PATCH`/`DELETE
+  /messages/{id}` onde antes recebia `403`; o remetente que ainda é
+  participante continua recebendo `403` para mensagem alheia.
+
+A linha de anexo continua sem registrar quem fez o upload: qualquer
+participante com o id de um anexo não reivindicado pode prendê-lo à
+própria mensagem. Corrigir exige coluna nova e migração no banco do
+consumidor, então fica para uma release que a anuncie.
+Seis defeitos de fronteira de confiança no GenAI. O `ContentExtractor`
+seguia redirect para qualquer lugar — um `302` para
+`http://169.254.169.254/latest/meta-data/` era buscado e o texto extraído
+(reproduzido com `httpx.MockTransport`); o `AIChatPipeline.stream()` não
+moderava a resposta que o `respond()` moderava e a docstring prometia; o
+`make_ai_chat_router` aceitava `role: "system"` no `history` e tirava o
+`user_id` do corpo, então quem soubesse o id de outra pessoa recebia os
+`memory_hits` dela; e o `RuleModerator` nunca casava `"$hit"` nem `"c++"` e
+caía com espaço de largura zero ou letra fullwidth.
+
+### Security
+
+- **`ContentExtractor.extract` bloqueia SSRF por padrão.** Só `http`/`https`;
+  o host (IP literal ou todo endereço que o hostname resolve) precisa ser
+  público — loopback, privado, link-local (o endpoint de metadata incluso),
+  CGNAT, reservado e multicast são recusados, e IPv4 mapeado em IPv6
+  (`::ffff:127.0.0.1`) é julgado pelo IPv4 que carrega;
+  redirect é seguido à mão com a mesma checagem em cada salto, até
+  `max_redirects=` (default 5); o corpo é lido em stream e a busca desiste
+  passando de `max_response_bytes=` (default 5 MiB). Recusa volta
+  `failed=True`, como toda falha. `allow_private_networks=True` desliga só a
+  checagem de endereço, para intranet; `resolver=` injeta o DNS. Limite
+  declarado: checagem e conexão resolvem o DNS separadamente, então DNS
+  rebinding não é coberto.
+- **`make_ai_chat_router` não confia no corpo.** `AIChatTurnSchema.role` é
+  `Literal["user", "assistant"]` (um turno `system` responde `422`); o
+  `AIChatRequestSchema` perdeu o campo `user_id` — o dono da memória vem do
+  novo `current_user_id=` (dependência FastAPI), e `dependencies=` aplica
+  auth/rate limit a toda rota. Pipeline com `memory=` sem
+  `current_user_id=` levanta `ValueError` na montagem.
+- **`AIChatPipeline.stream()` modera a resposta.** Novo
+  `stream_moderation=` no construtor: `"incremental"` (default) checa o
+  texto acumulado antes de mandar cada pedaço e troca o resto por
+  `blocked_message` na primeira flag — pedaço já enviado não volta, mas o
+  que completa o termo nunca sai; `"buffered"` gera tudo, modera uma vez e
+  manda inteiro ou bloqueia. Resposta bloqueada não é indexada.
+- **O `history` passa pelo moderador**, em `respond` e `stream`, como a
+  mensagem nova.
+- **`RuleModerator` normaliza antes de casar**: NFKC, remove caracteres de
+  categoria `Cf` (largura zero, bidi) e casefold, nos termos e no texto; a
+  fronteira de palavra virou lookaround (`(?<!\w)…(?!\w)`), então termo com
+  pontuação na borda casa. Homóglifo de outro alfabeto continua fora.
+
+### Changed
+
+- **`respond`/`stream` aceitam `user_id=None`**, que pula a memória do turno
+  (nem busca, nem indexa) — é o que o router passa sem `current_user_id`.
+- **O `trafilatura` roda em `asyncio.to_thread`** no `ContentExtractor`, fora
+  do event loop.
+
+### Fixed
+
+- **Falha de indexação na memória é logada** (`WARNING` com traceback no
+  logger `tempest_fastapi_sdk.genai.pipeline`) em vez de engolida em
+  silêncio; a resposta continua saindo.
+
+### Migração
+
+- Cliente HTTP que manda `user_id` no corpo não quebra — o campo é ignorado.
+- Pipeline com `memory=` montado no router precisa de
+  `make_ai_chat_router(pipeline, current_user_id=...)`.
+- `history` com `role` fora de `user`/`assistant` passa a responder `422`.
+- `ContentExtractor` apontado para a intranet precisa de
+  `allow_private_networks=True`; página acima de 5 MiB precisa de
+  `max_response_bytes=` maior.
+Os routers de IA não tinham limite de request nenhum. O `/generate`
+aceitava um prompt de 2 MB com `max_new_tokens=10**9`, o `/embed` aceitava
+100 000 textos, o `/image` validava `width=100000` e
+`num_images=10**6` — e renderizava o lote inteiro para devolver só a
+primeira imagem —, o `/rag` aceitava `top_k=-5`, e `/transcribe` e as rotas
+de visão liam o upload inteiro com `await file.read()`. Cada um é um jeito
+de um único cliente segurar o worker.
+
+**Potencialmente breaking:** requests que passavam agora recebem `422`.
+Os tetos default estão abaixo; quem precisa de mais passa
+`make_genai_router(limits=GenAIRequestLimits(...))` ou
+`make_vision_router(max_upload_bytes=..., max_image_pixels=...)`.
+
+### Added
+
+- **`GenAIRequestLimits`** (`tempest_fastapi_sdk.genai`) e
+  **`make_genai_router(limits=...)`**: tetos por request conferidos
+  **antes** de o modelo rodar — `max_prompt_chars` (`32_000`: prompt do
+  `/generate`, soma das mensagens do `/chat`, query do `/rag`, cada texto do
+  `/embed`, prompt e negative prompt do `/image`), `max_chat_messages`
+  (`100`), `max_new_tokens` (`4096`, só o valor que o cliente manda),
+  `max_embed_texts` (`256`), `max_top_k` (`50`), `max_tts_chars`
+  (`5_000`), `max_image_side` (`2048`), `max_image_steps` (`100`) e
+  `max_upload_bytes` (25 MiB). Estouro é `422`, e com
+  `register_exception_handlers` o corpo traz
+  `details={"field": ..., "limit": ...}`.
+- **`read_upload_capped(upload, *, max_bytes, label="upload")`** e
+  **`UPLOAD_READ_CHUNK_BYTES`** (`tempest_fastapi_sdk.utils`, reexportados
+  na raiz): o leitor em blocos que o `make_voice_router` tinha como helper
+  privado, agora público e usado por `/transcribe`, pelo
+  `make_voice_router` e pelo `make_vision_router`. Para de ler no bloco que
+  cruza o teto e levanta `ValidationException` (`422`), a mesma resposta
+  que o `make_voice_router` sempre deu.
+- **`make_vision_router(max_upload_bytes=..., max_image_pixels=...)`** e as
+  constantes **`DEFAULT_MAX_IMAGE_UPLOAD_BYTES`** (20 MiB) e
+  **`DEFAULT_MAX_IMAGE_PIXELS`** (50 MP). O teto de pixels lê o header com
+  `PIL.Image.open`, sem decodificar: medido com Pillow 12.3.0 e
+  `ort-vision-sdk` 0.8.0, um PNG em branco de 9400 x 9400 com 10 804 bytes
+  decodificava num array RGB de 265 080 000 bytes sem disparar o aviso de
+  decompression bomb do Pillow (88,36 MP fica abaixo dos 89,48 MP dele).
+  `max_image_pixels=None` desliga a checagem.
+
+### Changed
+
+- **`ImageGenerationConfig`** ganha teto absoluto no schema: `width` e
+  `height` `<= 4096`, `steps` `<= 500`, `num_images` `<= 16`. Vale para a
+  classe usada direto, não só pela rota.
+- **`RagRequestSchema.top_k`** exige `>= 1`.
+- **`POST /image`** recusa `config.num_images` acima de `1` com `422` em vez
+  de renderizar o lote na GPU e devolver só a primeira imagem.
+
+### Fixed
+
+- **`InMemoryVectorStore.search(top_k=-3)`** devolvia 7 de 10 chunks (o
+  slice `scored[:-3]` corta os **piores** do fim). `top_k <= 0` agora
+  devolve `[]`, o contrato que o `ChromaVectorStore.search` já tinha. O
+  mesmo vale para `PgVectorStore.search` (que mandava `LIMIT` negativo ao
+  Postgres), `HybridRetriever.search` e o ranqueamento do `Reranker`.
+- **Rotas de visão devolviam `500` para bytes que não são imagem**: o
+  `ImageLoadError` do `ort-vision-sdk` escapava sem tratamento (medido:
+  `500 INTERNAL_SERVER_ERROR` antes, `422 VALIDATION_ERROR` depois, com o
+  decoder real do `ort-vision-sdk`).
+- **`GET /models`** montava o relatório no event loop: `probe=True` lê NVML
+  e `torch.cuda`, chamadas síncronas que travavam todo request concorrente.
+  Agora roda em `asyncio.to_thread`.
 
 ## [0.299.0] — 2026-09-25
 

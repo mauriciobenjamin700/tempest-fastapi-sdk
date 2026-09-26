@@ -385,4 +385,27 @@ class TestAssertions:
         run = await Agent(backend, tools=[text_tool("t", "T.", boom)]).run("go")
         assert len(tool_steps(run)) == 1
         assert len(failed_steps(run)) == 1
-        assert "nope" in failed_steps(run)[0].error
+        assert "RuntimeError" in failed_steps(run)[0].error
+
+
+class TestRedisSubjectKeys:
+    @pytest.mark.asyncio
+    async def test_none_empty_and_underscore_are_three_buckets(self) -> None:
+        redis = FakeRedis()
+        store = RedisFactStore(redis, prefix="p")
+        await store.put("plan", "shared")
+        await store.put("plan", "empty", subject="")
+        await store.put("plan", "underscore", subject="_")
+        assert len(redis.hashes) == 3
+        shared = await store.get("plan")
+        empty = await store.get("plan", subject="")
+        underscore = await store.get("plan", subject="_")
+        assert shared is not None and shared.value == "shared"
+        assert empty is not None and empty.value == "empty"
+        assert underscore is not None and underscore.value == "underscore"
+
+    @pytest.mark.asyncio
+    async def test_plain_subjects_keep_their_existing_key(self) -> None:
+        redis = FakeRedis()
+        await RedisFactStore(redis, prefix="p").put("plan", "pro", subject="u:1")
+        assert set(redis.hashes) == {"p:u:1"}

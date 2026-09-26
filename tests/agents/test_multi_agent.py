@@ -641,3 +641,46 @@ class TestLoopResult:
         assert result.final_run is None
         assert result.artifacts == []
         assert result.accepted is False
+
+
+class TestChildSeesTheDelegatingAgent:
+    @pytest.mark.asyncio
+    async def test_parent_is_the_delegating_agents_name(self) -> None:
+        seen: list[str | None] = []
+
+        async def who(_arguments: dict[str, Any], context: AgentContext) -> str:
+            seen.append(context.parent)
+            return "ok"
+
+        leaf = Agent(
+            Scripted(
+                [
+                    {"content": "", "tool_calls": [_call("who", text="x")]},
+                    {"content": "leaf done", "tool_calls": []},
+                ],
+            ),
+            tools=[text_tool("who", "Who.", who)],
+            name="leaf",
+        )
+        middle = Agent(
+            Scripted(
+                [
+                    {"content": "", "tool_calls": [_call("ask_leaf", goal="x")]},
+                    {"content": "middle done", "tool_calls": []},
+                ],
+            ),
+            tools=[agent_tool(leaf)],
+            name="middle",
+        )
+        top = Agent(
+            Scripted(
+                [
+                    {"content": "", "tool_calls": [_call("ask_middle", goal="x")]},
+                    {"content": "top done", "tool_calls": []},
+                ],
+            ),
+            tools=[agent_tool(middle)],
+            name="top",
+        )
+        await top.run("go")
+        assert seen == ["middle"]

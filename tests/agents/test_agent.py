@@ -278,7 +278,7 @@ class TestToolFailures:
         assert "backend is down" in run.output
 
     @pytest.mark.asyncio
-    async def test_non_dict_arguments_become_empty(self) -> None:
+    async def test_non_object_arguments_are_a_tool_error(self) -> None:
         backend = ScriptedBackend(
             [
                 {
@@ -291,7 +291,9 @@ class TestToolFailures:
         run = await Agent(backend, tools=[_echo_tool()]).run("go")
         tool_step = next(s for s in run.steps if s.kind == StepKind.TOOL)
         assert tool_step.arguments == {}
-        assert tool_step.output == "echo:"
+        assert tool_step.output == ""
+        assert tool_step.error is not None
+        assert "not valid JSON" in tool_step.error
 
 
 class TestBudget:

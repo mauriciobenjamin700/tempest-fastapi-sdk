@@ -558,6 +558,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   dropping the old so a bad rollout degrades to the previous version),
   `make_prediction_router`, `RegistryModelSource` (fleet update over the
   existing `ArtifactRegistry`, one cached file per version).
+  **Serving hardening (Unreleased):** inference and reload off the event
+  loop (`asyncio.to_thread`; 0.992 s stall → <1 ms with a 1 s stub),
+  `max_rows` (`DEFAULT_MAX_PREDICT_ROWS = 10_000`, 422 beyond),
+  `dependencies` / `admin_dependencies` guards, `/model` reports the file
+  name unless `expose_model_path=True`; `reload` warms **before** the swap
+  and refuses a model that fails warm-up; `predict` reads session + info as
+  one snapshot; `RegistryModelSource.sync` serialised by a lock, `.part`
+  download + rename, optional `sha256` row check (`checksum_field`).
+  Monitor label buckets capped (`MAX_TRACKED_LABELS = 64` + baseline
+  classes + `OTHER_LABEL`) and keyed by value (`0.0` ≡ `0`); `[modelops]`
+  now declares `numpy`.
   **Monitoring (v0.190.0):** `PredictionMonitor` + `baseline_from_samples`
   + `population_stability_index` — latency/volume, input drift (PSI vs a
   training-time baseline of bin edges only) and prediction distribution;
@@ -608,6 +619,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   per-user quota, `recall()` returns scored `MemoryHit`s over any
   `SupportsEmbed`. Uses `PersistentClient` (embedded, no HTTP server), so the
   `chromadb` server advisory PYSEC-2026-311 is not reachable through the SDK.
+  **Chunk identity + re-index (Unreleased):** every SDK store and
+  `HybridRetriever` key a chunk by `(source, index, text)` and `add`/`index`
+  **replace** the batch's sources (`source#index` collided because
+  `chunk_text` restarts at 0); `PgVectorStore` validates the table
+  identifier, indexes `source` and inserts in one `executemany`;
+  `ChatMemory(candidate_multiplier=4)` over-fetches before the recency
+  re-rank and evicts by UTC instant (`created_at_ts`).
   **Audio (v0.102, `[genai-audio]` = faster-whisper + coqui-tts + the Coqui
   runtime — torch, torchaudio, torchcodec, `transformers<5`, declared since
   v0.252.0 because coqui-tts hides all four behind its own extras; XTTS v2 is
@@ -654,7 +672,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (v0.147); **token/context** (`count_tokens`/`truncate_messages`) (v0.148);
   **`make_vision_router`** (v0.149); **`GenAIMetrics`** Prometheus (v0.150);
   content **moderation** (`RuleModerator`/`ClassifierModerator`) (v0.151);
-  and integration — `AIChatPipeline` moderation + context truncation (v0.152),
+  and integration — `AIChatPipeline` moderation + context truncation (v0.152);
+  trust boundary (Unreleased) — `stream()` moderates the reply
+  (`stream_moderation="incremental"|"buffered"`), `history` is moderated and
+  limited to `user`/`assistant` in the router, the memory owner comes from
+  `make_ai_chat_router(current_user_id=...)` (required with `memory=`), the
+  `RuleModerator` normalizes (NFKC, `Cf` stripped, casefold) and matches
+  punctuation-edged terms, and `ContentExtractor` refuses private/non-http
+  destinations on every redirect hop with a body cap
+  (`allow_private_networks=` opt-out);
   metrics+cache on `TextGenerator`/`Embedder` (v0.153); **OTel spans**
   (`genai_span`) — ambient tracing on `generate`/`chat`/`embed`/RAG reusing the
   `setup_tracing` `TracerProvider` (GenAI semconv; no-op without `[otel]`)
@@ -662,7 +688,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   client was **deliberately skipped** (self-hosted-only). Test tiers
   (unit/`@model`/`@gpu`) + plans live under `planning/genai/`. **Fix:** `httpx`
   + `email-validator` are base deps so a minimal/`[genai]` install imports
-  (v0.151.1).
+  (v0.151.1). **Hardening (Unreleased):** in-memory generation/embedding
+  caches are LRU (`max_entries=1024`); generation cache key scoped by
+  operation + `revision`/`quantization`; `OllamaError` for `{"error": ...}`
+  bodies and stream lines; `OllamaGenerator.chat` gets cache + metrics;
+  `GenAIMetrics` `status` label; `OpenAICompatGenerator` drops HF-only
+  fields (`forward_params=` opts in) and refuses reserved keywords;
+  `BatchScheduler` resolves every future on every path; per-tokenizer
+  lm-format-enforcer index cache; `truncate_messages` keeps tool calls with
+  their results; `HTTPClient.stream` no longer replays after the first line.
 - **Reconhecimento facial (v0.223.0, extra `[faces]`)** —
   `tempest_fastapi_sdk.faces`: `FaceRecognizer` (`detect` sem biometria /
   `recognize` / `embed_face` que recusa entrada ruim), `compare_faces`,
@@ -729,7 +763,8 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `ConversationTranscriber` (junta com o `SpeechToText` existente por
   sobreposição de tempo), `DiarizedTranscription`/`SpeakerTurn` com
   `transcript()` e `by_speaker()`, `ensure_models()` (46 MB, fora do wheel,
-  honra `TEMPEST_VOICE_MODEL_DIR`). **sherpa-onnx e não pyannote**: 1
+  honra `TEMPEST_VOICE_MODEL_DIR`; SHA-256 dos dois modelos fixado e
+  timeout de socket de 60 s no download desde o Unreleased). **sherpa-onnx e não pyannote**: 1
   dependência contra 21 (torch/lightning/matplotlib/otel/SDK pago) e modelos
   abertos contra pipeline gated no HuggingFace; RTF 0,125 em CPU. Transcreve a
   gravação **uma vez** e atribui depois — trecho que atravessa troca de falante
@@ -751,7 +786,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   metadata, no download), `download_model` (`allow`/`ignore` globs →
   `ModelSnapshot`; refuses with `OSError` when free space < estimate x1.1),
   `list_cached_models`/`cache_size_bytes`/`remove_cached_model` (by sha or ref
-  name, `dry_run`, `0` for absent = no-op). All 5 transformers loaders
+  name, `dry_run`, `0` for absent = no-op). The disk check counts only the
+  files the globs select (via `huggingface_hub.utils.filter_repo_objects`)
+  minus those already cached for the revision (Unreleased);
+  `model_disk_bytes` takes the same `allow_patterns`/`ignore_patterns`. All 5 transformers loaders
   (`TextGenerator`/`Embedder`/`VisionTextGenerator`/`ClassifierModerator`/
   `Reranker`) take `revision=`/`local_files_only=`/`trust_remote_code=`;
   `SpeechToText` maps onto faster-whisper's `download_root`/`use_auth_token`
@@ -871,6 +909,28 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `accepted=False` means nothing passed. **Fixed here:** the effective
   deadline was written to the run state but not back to the `AgentContext`,
   so delegation handed the child `None` and it ran to its own budget.
+- **Agents audit (Unreleased)** — ceilings now hold *during* a call, not
+  just between turns: every model call runs under `asyncio.timeout` of the
+  time left and every tool call under that plus a grace that shrinks per
+  delegation depth (so a child always stops before its parent cuts it), and
+  `max_steps`/`max_tool_calls`/deadline are checked before **each** call of
+  a many-call turn. `arguments` as a JSON string (OpenAI wire format) is
+  parsed; invalid JSON is a tool error. `role: tool` messages carry
+  `tool_call_id` + `name` when the call had an id. `ToolResult.final` ends
+  the run — `final_answer` uses it, so structured runs stop on the call and
+  their JSON `output` is what the moderator checks; `data` only on a
+  COMPLETED run. `run_structured` copies the agent (skills survive). Skill
+  loading and the structured answer live per context
+  (`AgentContext.opened_skills`/`.answer`), not in the shared `state`.
+  Unexpected tool exceptions: model reads full text, trace keeps only the
+  type (`expose_tool_errors=True` to opt out). A raising moderator fails
+  closed (`BLOCKED`). Router: stable `AgentRun.run_id` in URLs (not list
+  index), `{name:path}` for `<agent>/<file>` artifacts, `owner=` dependency
+  tagging runs (`AgentRun.owner`/`AgentContext.owner`) and scoping `/runs` +
+  artifact download. `refine` approves only on the exact token from a worker
+  run that completed; `run_until` keeps an earlier inherited deadline;
+  `schema_of` keeps `$defs` for self-referential models; Redis fact keys no
+  longer merge `None`/`""`/`"_"`; builtins never overwrite an artifact.
 - **Planilhas (v0.229.0, `[spreadsheet]` extra = openpyxl)** —
   `tempest_fastapi_sdk.spreadsheet`. `SheetWriter` segura o cursor de linha
   (`title_block`/`header_row`/`group_row`/`write_row`/`total_row`/
@@ -1408,7 +1468,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   factories, `ChatService` (`start_conversation`/`post_message`/
   `list_messages`/`list_conversations`/`is_participant`), `make_chat_router`
   (participant guard) + real-time fan-out via an injected `SSEBroker`.
-  Submodule import.
+  Submodule import. **Access and limits (Unreleased):** every
+  message-id path (`react`/`unreact`/`forward`/`edit_message`/
+  `revoke_message`, and the reply quote) checks active membership of the
+  message's conversation plus `history_from`, answering with the same 404
+  as a missing message; revoke reports a storage key only when no other
+  attachment row references it; the `/stream` holds no DB session and
+  closes on `participant.removed` (`PARTICIPANT_REMOVED_EVENT`) or on the
+  `membership_recheck_seconds` re-read; history page bounded
+  (`max_page_size`, `MESSAGES_PAGE_SIZE_MAX`) and payload ceilings
+  (`MESSAGE_BODY_MAX_LENGTH`, `MESSAGE_ATTACHMENTS_MAX`,
+  `FORWARD_TARGETS_MAX`, `PARTICIPANT_IDS_MAX`). Deferred: uploader
+  tracking on attachments (an unclaimed attachment id is claimable by
+  anyone who holds it) — needs a column, so a consumer migration.
 - **Reviews (v0.105, `tempest_fastapi_sdk.reviews`, no extra)** —
   comments + 0–5 star ratings on any polymorphic `(target_type,
   target_id)`: `BaseCommentModel` (thread via `parent_id`) / `BaseRatingModel`
@@ -2342,3 +2414,15 @@ tabela única. `AdminSite.get`/`require`/`unregister` aceitam a classe.
 
 Consumidor: `alofans-api`, com 9 acessos a `.__tablename__` em `src/` e
 `tests/`.
+
+## Limites de request nos routers de IA (não lançado)
+
+`GenAIRequestLimits` + `make_genai_router(limits=...)` conferem tamanho de
+prompt, chat, `max_new_tokens`, lote do `/embed`, `top_k`, texto do `/tts`,
+lado e steps do `/image` e upload do `/transcribe` antes de o modelo rodar;
+`/image` recusa `num_images > 1`. `make_vision_router` ganha
+`max_upload_bytes` e `max_image_pixels` (header lido sem decodificar, contra
+decompression bomb) e mapeia `ImageLoadError` para `422`. O leitor em blocos
+do `make_voice_router` virou `read_upload_capped`, público e compartilhado.
+Os stores de vetor devolvem `[]` para `top_k <= 0` em vez de fatiar com
+índice negativo.

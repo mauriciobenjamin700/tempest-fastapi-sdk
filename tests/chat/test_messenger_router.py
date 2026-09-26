@@ -466,3 +466,195 @@ class TestRoles:
             p for p in response.json()["participants"] if p["user_id"] == str(ANA)
         )
         assert owner["role"] == ParticipantRole.OWNER
+
+
+class TestOutsiderRoutes:
+    """A message id is not a capability over HTTP either.
+
+    Before the fix, ``PUT /messages/{id}/reaction`` answered an outsider
+    with ``200`` and the whole message — body, attachments, storage keys
+    — and wrote the reaction into a conversation they were never in.
+    """
+
+    async def _secret(self, client: AsyncClient, caller: _Caller) -> str:
+        """Post a message between Ana and Bruno, then become an outsider.
+
+        Args:
+            client (AsyncClient): The ASGI client.
+            caller (_Caller): The identity dependency.
+
+        Returns:
+            str: The message id.
+        """
+        conversation = await _conversation(client)
+        message = await _post(client, conversation, body="segredo")
+        caller.user_id = uuid4()
+        return str(message["id"])
+
+    async def test_react_is_404_for_an_outsider(
+        self,
+        client: AsyncClient,
+        caller: _Caller,
+    ) -> None:
+        message_id = await self._secret(client, caller)
+
+        response = await client.put(
+            f"/api/chat/messages/{message_id}/reaction",
+            json={"emoji": "👍"},
+        )
+
+        assert response.status_code == 404
+        assert "segredo" not in response.text
+
+    async def test_unreact_is_404_for_an_outsider(
+        self,
+        client: AsyncClient,
+        caller: _Caller,
+    ) -> None:
+        message_id = await self._secret(client, caller)
+
+        response = await client.delete(f"/api/chat/messages/{message_id}/reaction")
+
+        assert response.status_code == 404
+        assert "segredo" not in response.text
+
+    async def test_forward_is_404_for_an_outsider(
+        self,
+        client: AsyncClient,
+        caller: _Caller,
+    ) -> None:
+        message_id = await self._secret(client, caller)
+        own = await client.post(
+            "/api/chat/conversations",
+            json={"participant_ids": [str(uuid4())]},
+        )
+
+        response = await client.post(
+            f"/api/chat/messages/{message_id}/forward",
+            json={"conversation_ids": [own.json()["id"]]},
+        )
+
+        assert response.status_code == 404
+        listed = await client.get(
+            f"/api/chat/conversations/{own.json()['id']}/messages",
+        )
+        assert listed.json()["total"] == 0
+
+    async def test_edit_is_404_for_an_outsider(
+        self,
+        client: AsyncClient,
+        caller: _Caller,
+    ) -> None:
+        message_id = await self._secret(client, caller)
+
+        response = await client.patch(
+            f"/api/chat/messages/{message_id}",
+            json={"body": "x"},
+        )
+
+        assert response.status_code == 404
+
+    async def test_revoke_is_404_for_an_outsider(
+        self,
+        client: AsyncClient,
+        caller: _Caller,
+    ) -> None:
+        message_id = await self._secret(client, caller)
+
+        response = await client.delete(f"/api/chat/messages/{message_id}")
+
+        assert response.status_code == 404
+
+    async def test_hidden_and_missing_answer_the_same(
+        self,
+        client: AsyncClient,
+        caller: _Caller,
+    ) -> None:
+        message_id = await self._secret(client, caller)
+
+        hidden = await client.put(
+            f"/api/chat/messages/{message_id}/reaction",
+            json={"emoji": "👍"},
+        )
+        missing = await client.put(
+            f"/api/chat/messages/{uuid4()}/reaction",
+            json={"emoji": "👍"},
+        )
+
+        assert hidden.status_code == missing.status_code == 404
+        assert hidden.json() == missing.json()
+
+
+class TestHistoryPageBounds:
+    """``page_size=0`` was a 500; a negative one returned the whole history."""
+
+    @pytest.mark.parametrize(
+        "query",
+        ["page_size=0", "page_size=-1", "page=0", "page=-3", "page_size=101"],
+    )
+    async def test_out_of_range_is_422(
+        self,
+        client: AsyncClient,
+        query: str,
+    ) -> None:
+        conversation = await _conversation(client)
+
+        response = await client.get(
+            f"/api/chat/conversations/{conversation}/messages?{query}",
+        )
+
+        assert response.status_code == 422, response.text
+
+    async def test_the_ceiling_itself_is_accepted(self, client: AsyncClient) -> None:
+        conversation = await _conversation(client)
+
+        response = await client.get(
+            f"/api/chat/conversations/{conversation}/messages?page_size=100",
+        )
+
+        assert response.status_code == 200
+
+
+class TestPayloadBounds:
+    """Unbounded lists turned one request into an arbitrary number of writes."""
+
+    async def test_forward_fan_out_is_capped(self, client: AsyncClient) -> None:
+        conversation = await _conversation(client)
+        message = await _post(client, conversation, body="oi")
+
+        response = await client.post(
+            f"/api/chat/messages/{message['id']}/forward",
+            json={"conversation_ids": [str(uuid4()) for _ in range(21)]},
+        )
+
+        assert response.status_code == 422
+
+    async def test_participant_ids_are_capped(self, client: AsyncClient) -> None:
+        response = await client.post(
+            "/api/chat/conversations",
+            json={"participant_ids": [str(uuid4()) for _ in range(257)]},
+        )
+
+        assert response.status_code == 422
+
+    async def test_body_is_capped(self, client: AsyncClient) -> None:
+        conversation = await _conversation(client)
+
+        response = await client.post(
+            f"/api/chat/conversations/{conversation}/messages",
+            json={"body": "x" * 65_537},
+        )
+
+        assert response.status_code == 422
+
+    async def test_title_fits_the_column(self, client: AsyncClient) -> None:
+        """The column is ``VARCHAR(255)``; the schema now says so too."""
+        response = await client.post(
+            "/api/chat/conversations",
+            json={
+                "participant_ids": [str(uuid4()), str(uuid4())],
+                "title": "x" * 256,
+            },
+        )
+
+        assert response.status_code == 422

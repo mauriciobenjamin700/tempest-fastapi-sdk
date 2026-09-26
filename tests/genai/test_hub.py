@@ -739,3 +739,147 @@ class TestRequireHub:
         monkeypatch.setattr(builtins, "__import__", fail)
         with pytest.raises(ImportError, match=r"\[genai-hub\]"):
             hub_module._require_hub()
+
+
+class NamedSibling:
+    def __init__(self, rfilename: str, size: int) -> None:
+        self.rfilename = rfilename
+        self.size = size
+
+
+class CacheAwareHub(FakeHub):
+    """A fake hub whose cache lookup is the real ``huggingface_hub`` one."""
+
+    def try_to_load_from_cache(self, repo_id: str, filename: str, **kwargs: Any) -> Any:
+        from huggingface_hub import try_to_load_from_cache
+
+        return try_to_load_from_cache(repo_id, filename, **kwargs)
+
+
+def _free(monkeypatch: pytest.MonkeyPatch, free_bytes: int) -> None:
+    class _Usage:
+        total = free_bytes * 2
+        used = free_bytes
+        free = free_bytes
+
+    monkeypatch.setattr(hub_module.shutil, "disk_usage", lambda _path: _Usage())
+
+
+_FILTERED_REPO: list[NamedSibling] = [
+    NamedSibling("config.json", 1_000),
+    NamedSibling("model-00001-of-00002.safetensors", 7 * 10**9),
+    NamedSibling("model-00002-of-00002.safetensors", 7 * 10**9),
+    NamedSibling("pytorch_model-00001-of-00002.bin", 7 * 10**9),
+    NamedSibling("pytorch_model-00002-of-00002.bin", 7 * 10**9),
+]
+
+
+class TestDiskCheckMatchesWhatIsDownloaded:
+    """The check sized the whole repo although the download is filtered.
+
+    Reproduced: a 28 GB repository whose ``allow_patterns`` select 14 GB of
+    safetensors, with 20 GB free, refused with "needs ~30.8 GB".
+    """
+
+    def test_allow_patterns_shrink_the_estimate(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        pytest.importorskip("huggingface_hub")
+        _install(
+            monkeypatch,
+            CacheAwareHub(
+                api=FakeHfApi(FakeModelInfo(siblings=list(_FILTERED_REPO))),
+                download_path=str(tmp_path),
+            ),
+        )
+        _free(monkeypatch, 20 * 10**9)
+        snapshot = download_model(
+            "org/name",
+            cache_dir=str(tmp_path),
+            allow_patterns=["*.json", "*.safetensors"],
+        )
+        assert snapshot.model_id == "org/name"
+
+    def test_ignore_patterns_shrink_the_estimate(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        pytest.importorskip("huggingface_hub")
+        _install(
+            monkeypatch,
+            CacheAwareHub(
+                api=FakeHfApi(FakeModelInfo(siblings=list(_FILTERED_REPO))),
+                download_path=str(tmp_path),
+            ),
+        )
+        _free(monkeypatch, 20 * 10**9)
+        download_model("org/name", cache_dir=str(tmp_path), ignore_patterns=["*.bin"])
+
+    def test_unfiltered_download_still_refuses(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        pytest.importorskip("huggingface_hub")
+        _install(
+            monkeypatch,
+            CacheAwareHub(
+                api=FakeHfApi(FakeModelInfo(siblings=list(_FILTERED_REPO))),
+                download_path=str(tmp_path),
+            ),
+        )
+        _free(monkeypatch, 20 * 10**9)
+        with pytest.raises(OSError, match=r"needs ~30\.8 GB"):
+            download_model("org/name", cache_dir=str(tmp_path))
+
+    def test_files_already_cached_are_not_counted(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        pytest.importorskip("huggingface_hub")
+        repo = tmp_path / "models--org--name"
+        commit = "a" * 40
+        (repo / "refs").mkdir(parents=True)
+        (repo / "refs" / "main").write_text(commit)
+        snapshot_dir = repo / "snapshots" / commit
+        snapshot_dir.mkdir(parents=True)
+        for name in (
+            "model-00001-of-00002.safetensors",
+            "pytorch_model-00001-of-00002.bin",
+            "pytorch_model-00002-of-00002.bin",
+        ):
+            (snapshot_dir / name).write_bytes(b"")
+        _install(
+            monkeypatch,
+            CacheAwareHub(
+                api=FakeHfApi(FakeModelInfo(siblings=list(_FILTERED_REPO))),
+                download_path=str(tmp_path),
+            ),
+        )
+        _free(monkeypatch, 8 * 10**9)
+        download_model("org/name", cache_dir=str(tmp_path))
+        _free(monkeypatch, 7 * 10**9)
+        with pytest.raises(OSError, match=r"needs ~7\.7 GB"):
+            download_model("org/name", cache_dir=str(tmp_path))
+
+    def test_model_disk_bytes_applies_the_same_patterns(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        pytest.importorskip("huggingface_hub")
+        _install(
+            monkeypatch,
+            FakeHub(api=FakeHfApi(FakeModelInfo(siblings=list(_FILTERED_REPO)))),
+        )
+        assert model_disk_bytes("org/name") == 28 * 10**9 + 1_000
+        assert (
+            model_disk_bytes("org/name", allow_patterns=["*.safetensors"]) == 14 * 10**9
+        )
+        assert (
+            model_disk_bytes("org/name", ignore_patterns=["*.bin", "*.json"])
+            == 14 * 10**9
+        )

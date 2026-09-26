@@ -91,8 +91,11 @@ class ChromaVectorStore:
     """A :class:`VectorStore` backed by ChromaDB.
 
     Mirrors :class:`InMemoryVectorStore` / :class:`PgVectorStore`: ``add``
-    upserts chunks with their aligned vectors, ``search`` returns the
-    nearest chunks with ``score`` = ``1 - distance``. Chunk fields ride
+    replaces every chunk stored for the sources in the batch and writes the
+    batch, ``search`` returns the nearest chunks with
+    ``score`` = ``1 - distance``. Each chunk's Chroma id is the SHA-256 of
+    ``(source, index, text)`` — ``source::index`` collided whenever
+    :func:`chunk_text` was called twice for one source. Chunk fields ride
     along in Chroma metadata and are reconstructed on read. The blocking
     ``chromadb`` calls run inside :func:`asyncio.to_thread`.
 
@@ -145,41 +148,60 @@ class ChromaVectorStore:
         chunks: Sequence[Chunk],
         vectors: Sequence[list[float]],
     ) -> None:
-        """Upsert ``chunks`` with their aligned ``vectors``.
+        """Store ``chunks``, replacing what their sources held before.
+
+        The batch is upserted first; then every other row whose ``source``
+        metadata matches a source in ``chunks`` is deleted (rows written by
+        older SDK versions, keyed ``source::index``, included). Chroma has
+        no transactions, so this order means a failed upsert leaves the
+        previous version in place rather than an empty source. Identical
+        chunks in the batch are written once.
 
         Args:
-            chunks (Sequence[Chunk]): The chunks to store.
+            chunks (Sequence[Chunk]): The chunks to store — every chunk of a
+                source in one call.
             vectors (Sequence[list[float]]): One vector per chunk, aligned.
 
         Raises:
             ValueError: When the counts differ.
         """
-        if len(chunks) != len(vectors):
-            raise ValueError("chunks and vectors must have the same length")
-        if not chunks:
+        from tempest_fastapi_sdk.genai.rag.schemas import (
+            _chunk_identity,
+            _unique_batch,
+        )
+
+        pairs = _unique_batch(chunks, vectors)
+        if not pairs:
             return
         collection = self._get_collection()
+        sources: list[str] = sorted({chunk.source for chunk, _ in pairs})
         ids: list[str] = []
         documents: list[str] = []
         metadatas: list[dict[str, Any]] = []
-        for chunk in chunks:
-            ids.append(f"{chunk.source}::{chunk.index}")
+        embeddings: list[list[float]] = []
+        for chunk, vector in pairs:
+            ids.append(_chunk_identity(chunk))
             documents.append(chunk.text)
             meta: dict[str, Any] = {"source": chunk.source, "index": chunk.index}
             if chunk.page is not None:
                 meta["page"] = chunk.page
             metadatas.append(meta)
-        embeddings: list[list[float]] = [list(v) for v in vectors]
+            embeddings.append(vector)
 
-        def _upsert() -> None:
+        def _replace() -> None:
             collection.upsert(
                 ids=ids,
                 documents=documents,
                 embeddings=embeddings,
                 metadatas=metadatas,
             )
+            fresh = set(ids)
+            stored = collection.get(where={"source": {"$in": sources}}, include=[])
+            stale = [i for i in stored.get("ids") or [] if i not in fresh]
+            if stale:
+                collection.delete(ids=stale)
 
-        await asyncio.to_thread(_upsert)
+        await asyncio.to_thread(_replace)
 
     async def search(self, vector: list[float], *, top_k: int = 5) -> list[Chunk]:
         """Return the ``top_k`` chunks most similar to ``vector``.
@@ -261,7 +283,10 @@ class ChatMemory:
     (optionally excluding the active chat), drops hits below a similarity
     floor, then re-ranks by blending similarity with an exponential recency
     decay so recently-said things can outrank semantically-equal older
-    ones. A soft per-user quota evicts the oldest entries when exceeded.
+    ones. Recall over-fetches ``top_k * candidate_multiplier`` nearest
+    messages before the re-rank, so a recent message just outside the raw
+    top-K can still surface. A soft per-user quota evicts the oldest
+    entries (by UTC instant) when exceeded.
 
     The embedder is injected (any :class:`SupportsEmbed` — ``Embedder`` or
     ``OllamaEmbedder`` both fit), so this class is embedder-agnostic.
@@ -287,6 +312,8 @@ class ChatMemory:
             eviction.
         min_content_chars (int): Messages shorter than this (stripped) are
             skipped by :meth:`index`.
+        candidate_multiplier (int): How many nearest messages per returned
+            hit :meth:`search` asks Chroma for before the recency re-rank.
     """
 
     def __init__(
@@ -302,6 +329,7 @@ class ChatMemory:
         recency_weight: float = 0.5,
         max_entries_per_user: int = 50_000,
         min_content_chars: int = 6,
+        candidate_multiplier: int = 4,
     ) -> None:
         """Initialize chat memory.
 
@@ -319,7 +347,18 @@ class ChatMemory:
             recency_weight (float): Recency blend weight in ``[0, 1]``.
             max_entries_per_user (int): Soft per-user quota (``0`` disables).
             min_content_chars (int): Minimum stripped length to index.
+            candidate_multiplier (int): Over-fetch factor for :meth:`search`:
+                Chroma is asked for ``top_k * candidate_multiplier`` nearest
+                messages, and the recency re-rank picks ``top_k`` of them.
+                ``1`` re-ranks only the raw top-K, where a recent message
+                ranked just below it can never surface.
+
+        Raises:
+            ValueError: When ``candidate_multiplier`` is below 1.
         """
+        if candidate_multiplier < 1:
+            raise ValueError("candidate_multiplier must be >= 1")
+        self.candidate_multiplier = candidate_multiplier
         self._embedder = embedder
         self.collection_name = collection_name
         self._client = client
@@ -392,6 +431,7 @@ class ChatMemory:
             "message_id": str(message_id),
             "role": role,
             "created_at": _to_iso(created_at),
+            "created_at_ts": _to_epoch(created_at),
         }
         collection = self._get_collection()
         await asyncio.to_thread(self._evict_over_quota, str(user_id), str(message_id))
@@ -413,7 +453,12 @@ class ChatMemory:
         Sync helper (Chroma's API is sync) meant to run inside
         :func:`asyncio.to_thread`. The incoming message id is excluded from
         the existing count so idempotent re-indexing never evicts a row it
-        is about to overwrite. Eviction is by ``created_at`` ascending.
+        is about to overwrite. The count reads ids only; metadata is fetched
+        just when the quota is actually exceeded. Eviction is oldest UTC
+        instant first — ``created_at_ts`` (epoch seconds), falling back to
+        parsing ``created_at`` for rows written before that field existed.
+        Sorting the ISO strings instead ranks ``10:00+05:00`` after
+        ``08:00+00:00`` although it is three hours earlier.
 
         Args:
             user_id (str): The user whose entries to bound.
@@ -426,18 +471,21 @@ class ChatMemory:
         if quota <= 0:
             return 0
         collection = self._get_collection()
-        current = collection.get(where={"user_id": user_id}, include=["metadatas"])
+        where: dict[str, Any] = {"user_id": user_id}
+        counted = collection.get(where=where, include=[])
+        others = [i for i in counted.get("ids") or [] if i != incoming_message_id]
+        overflow = max(0, len(others) + 1 - quota)
+        if overflow == 0:
+            return 0
+        current = collection.get(where=where, include=["metadatas"])
         ids: list[str] = list(current.get("ids") or [])
         metas: list[dict[str, Any]] = list(current.get("metadatas") or [])
         existing: list[tuple[str, dict[str, Any]]] = [
-            (entry_id, meta)
+            (entry_id, meta or {})
             for entry_id, meta in zip(ids, metas, strict=False)
             if entry_id != incoming_message_id
         ]
-        overflow = max(0, len(existing) + 1 - quota)
-        if overflow == 0:
-            return 0
-        existing.sort(key=lambda pair: str(pair[1].get("created_at") or ""))
+        existing.sort(key=lambda pair: _stored_epoch(pair[1]))
         evict_ids = [entry_id for entry_id, _meta in existing[:overflow]]
         if evict_ids:
             collection.delete(ids=evict_ids)
@@ -455,9 +503,10 @@ class ChatMemory:
         """Return the most relevant past messages for a user.
 
         Embeds ``query``, runs a metadata-filtered Chroma query scoped to
-        ``user_id`` (and excluding ``exclude_chat_id`` when given), drops
-        hits below the similarity floor, then re-ranks by the recency-decay
-        blend before returning at most ``top_k`` hits.
+        ``user_id`` (and excluding ``exclude_chat_id`` when given) for the
+        ``top_k * candidate_multiplier`` nearest messages, drops hits below
+        the similarity floor, then re-ranks by the recency-decay blend
+        before returning at most ``top_k`` hits.
 
         Args:
             user_id (str | UUID): Whose memory to search.
@@ -499,7 +548,7 @@ class ChatMemory:
         def _query() -> dict[str, Any]:
             result: dict[str, Any] = collection.query(
                 query_embeddings=[query_embedding],
-                n_results=resolved_top_k,
+                n_results=resolved_top_k * self.candidate_multiplier,
                 where=where,
                 include=["documents", "metadatas", "distances"],
             )
@@ -585,10 +634,54 @@ class ChatMemory:
 
 
 def _to_iso(value: datetime) -> str:
-    """Serialize a datetime to ISO-8601, defaulting naive values to UTC."""
+    """Serialize a datetime to ISO-8601 in UTC, treating naive values as UTC.
+
+    Args:
+        value (datetime): The instant to serialize.
+
+    Returns:
+        str: The instant converted to UTC, as ISO-8601 with ``+00:00``.
+    """
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
-    return value.isoformat()
+    return value.astimezone(UTC).isoformat()
+
+
+def _to_epoch(value: datetime) -> float:
+    """Return a datetime as UTC epoch seconds, treating naive values as UTC.
+
+    Args:
+        value (datetime): The instant to convert.
+
+    Returns:
+        float: Seconds since the Unix epoch.
+    """
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.timestamp()
+
+
+def _stored_epoch(meta: dict[str, Any]) -> float:
+    """Return the UTC instant a stored message was created, for ordering.
+
+    Reads ``created_at_ts`` when present and falls back to parsing the ISO
+    ``created_at`` (rows indexed by SDK versions without the epoch field).
+    A row with neither sorts first — oldest — which matches how the
+    previous string sort ordered an empty timestamp.
+
+    Args:
+        meta (dict[str, Any]): The Chroma metadata of one message.
+
+    Returns:
+        float: Epoch seconds, or ``-inf`` when no timestamp is readable.
+    """
+    stamp: Any = meta.get("created_at_ts")
+    if isinstance(stamp, int | float) and not isinstance(stamp, bool):
+        return float(stamp)
+    parsed = _parse_iso(meta.get("created_at"))
+    if parsed is None:
+        return float("-inf")
+    return _to_epoch(parsed)
 
 
 def _parse_iso(value: Any) -> datetime | None:

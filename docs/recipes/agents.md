@@ -196,9 +196,18 @@ if __name__ == "__main__":
 ```
 
 Passos sozinhos **não** limitam uma execução: uma chamada de ferramenta pode
-travar, e aí o agente fica parado sem estourar passo nenhum. Por isso o
-relógio também é verificado, e por isso `max_seconds` tem default (120s) em
-vez de ser opcional.
+travar, e aí o agente fica parado sem estourar passo nenhum. Por isso toda
+chamada de modelo e de ferramenta roda sob o tempo que **resta** no relógio e
+é cancelada quando ele acaba, e por isso `max_seconds` tem default (120s) em
+vez de ser opcional. Medido com uma ferramenta que dorme 3 s e
+`max_seconds=0.5`: a execução termina em 0,75 s com `stop_reason=timeout` —
+os 0,5 s do orçamento mais a folga de 0,25 s que uma ferramenta de topo tem
+para um sub-agente conseguir parar sozinho e devolver o traço dele.
+
+Os tetos de passo e de chamada também valem **dentro** de uma volta: um
+modelo que pede 50 ferramentas de uma vez não executa as 50. Medido com
+`max_steps=5, max_tool_calls=2` e uma volta pedindo 50 chamadas: rodaram 2, e
+a execução parou em `max_tool_calls`.
 
 O orçamento existe porque o critério de parada natural do laço — "o modelo
 decidiu que acabou" — é justamente o que um modelo confuso não cumpre. Medido
@@ -479,8 +488,25 @@ AgentToolError: disco cheio
 completed Não consegui salvar a nota: o disco está cheio.
 ```
 
-Qualquer exceção do handler é tratada igual — a diferença de usar
-`AgentToolError` é só deixar a intenção explícita.
+Qualquer exceção do handler também vira observação, com uma diferença que
+importa: a mensagem de um `AgentToolError` é tratada como **escrita para ser
+mostrada** e vai inteira para o traço, enquanto de uma exceção qualquer o
+traço guarda só o tipo. O traço é o que o router HTTP, o stream SSE e os
+sinks expõem, e uma exceção arbitrária carrega DSN, token ou caminho de
+arquivo. Medido com um handler levantando
+`RuntimeError("could not connect to postgresql://admin:hunter2@db:5432/app")`:
+o modelo lê o texto inteiro, e o passo registra
+`RuntimeError: the tool failed (details withheld)` — a senha não aparece no
+`run.model_dump_json()`. A exceção completa vai para o log
+(`tempest_fastapi_sdk.agents.agent`). Em desenvolvimento,
+`Agent(..., expose_tool_errors=True)` grava o texto inteiro no traço.
+
+!!! tip "Argumento como string JSON"
+    Servidores no formato da OpenAI (vLLM, TGI, APIs hospedadas) mandam os
+    `arguments` de uma chamada como **string** JSON; o agente faz o parse.
+    JSON inválido, ou algo que não é objeto, vira erro de ferramenta que o
+    modelo lê — não uma chamada com `{}`. Quando a chamada traz `id`, a
+    mensagem `tool` de volta leva `tool_call_id` e `name`.
 
 ## Escrever a sua própria ferramenta
 
@@ -564,8 +590,8 @@ Devolver `str` também vale, quando não há nada binário — ele é embrulhado
 
 ## Servir por HTTP
 
-```python title="app.py" hl_lines="11 15 19"
-from fastapi import FastAPI
+```python title="app.py" hl_lines="11 14 23 30"
+from fastapi import FastAPI, Header
 
 from agent_setup import weather_tool
 from tempest_fastapi_sdk.agents import (
@@ -576,6 +602,17 @@ from tempest_fastapi_sdk.agents import (
 from tempest_fastapi_sdk.genai import TextGenerator, TextModel
 
 store = InMemoryAgentRunSink(max_runs=50)
+
+
+def current_user(x_user_id: str = Header()) -> str:
+    """Return who is calling.
+
+    A stand-in for your real authentication dependency: trusting a header
+    is only acceptable behind a gateway that sets it.
+    """
+    return x_user_id
+
+
 agent = Agent(
     TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT),
     tools=[weather_tool],
@@ -583,7 +620,7 @@ agent = Agent(
 )
 
 app = FastAPI()
-app.include_router(make_agent_router(agent, run_store=store))
+app.include_router(make_agent_router(agent, run_store=store, owner=current_user))
 ```
 
 ```bash
@@ -592,10 +629,21 @@ uvicorn app:app --reload
 
 | Rota | O que faz |
 | --- | --- |
-| `POST /api/agent/run` | Executa até o fim e devolve o registro |
-| `POST /api/agent/run/stream` | Cada passo como evento SSE, e um `done` no fim |
-| `GET /api/agent/runs` | Execuções recentes (só com `run_store`) |
-| `GET /api/agent/runs/{i}/artifacts/{nome}` | Baixa um artefato |
+| `POST /api/agent/run` | Executa até o fim e devolve o registro, com `run_id` |
+| `POST /api/agent/run/stream` | Cada passo como evento SSE, e um `done` com `{"run_id": ...}` no fim |
+| `GET /api/agent/runs` | Execuções recentes de **quem chama** (só com `run_store`) |
+| `GET /api/agent/runs/{run_id}/artifacts/{nome}` | Baixa um artefato; `nome` pode ter `/` (`illustrator/bike.png`) |
+
+Uma execução guardada é endereçada pelo `run_id` dela, um id estável — nunca
+pela posição no histórico, que muda a cada execução nova e faria um link de
+um segundo atrás servir a execução de outra pessoa.
+
+`owner=` é a dependência FastAPI que devolve **quem chama**. Com ela, cada
+execução é marcada com esse id (`AgentRun.owner`, e `AgentContext.owner` para
+as ferramentas lerem), `GET /runs` lista só as execuções de quem chama, e o
+artefato da execução de outra pessoa responde `404`, igual a uma execução que
+não existe. Sem `owner=`, todo mundo que alcança o router vê toda execução
+guardada — aceitável só quando um único principal chega nele.
 
 O JSON traz os artefatos como **metadados** (nome, tipo, tamanho), nunca os
 bytes: uma imagem gerada tem megabytes, e base64 no corpo infla isso em um
@@ -613,9 +661,10 @@ também faz um `<img src>` funcionar direto.
 - **Ferramentas prontas** cobrem imagem, visão, áudio, RAG e web sobre os
   modelos que você já hospeda.
 - **Artefatos nomeados** encadeiam multimodal sem disco e sem base64.
-- **Erro de ferramenta vira observação** para o modelo, não exceção.
+- **Erro de ferramenta vira observação** para o modelo, não exceção — e só o
+  texto de `AgentToolError` vai inteiro para o traço.
 - **`make_agent_router`** publica `/run`, `/run/stream` e download de
-  artefato.
+  artefato por `run_id`; `owner=` separa as execuções por quem chama.
 
 Próximo passo: [Agentes de IA (avançado)](agents-advanced.md) — saída
 estruturada tipada, as três camadas de memória, skills carregadas sob

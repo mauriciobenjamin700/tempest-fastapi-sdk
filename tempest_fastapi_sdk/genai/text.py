@@ -519,6 +519,24 @@ class TextGenerator:
         params.update(overrides)
         return params
 
+    def _cache_identity(self) -> dict[str, Any]:
+        """Return the weight identity beyond ``model_id`` that keys the cache.
+
+        Two generators of the same model id at a different ``revision`` or
+        ``quantization`` produce different text, so neither may answer from
+        the other's cached completions.
+
+        Returns:
+            dict[str, Any]: ``revision`` and ``quantization`` (``None`` when
+            unset, which the key builder ignores).
+        """
+        return {
+            "revision": self.source.revision,
+            "quantization": None
+            if self.quantization is None
+            else self.quantization.value,
+        }
+
     @property
     def is_loaded(self) -> bool:
         """Return ``True`` once the weights are in memory.
@@ -801,6 +819,7 @@ class TextGenerator:
                 lambda: asyncio.to_thread(
                     self._generate_sync, prompt, config, dict(kwargs), stop_event
                 ),
+                identity=self._cache_identity(),
             ),
         )
 
@@ -861,6 +880,8 @@ class TextGenerator:
                 lambda: asyncio.to_thread(
                     self._chat_sync, messages, config, dict(kwargs), stop_event
                 ),
+                operation="chat",
+                identity=self._cache_identity(),
             ),
         )
 

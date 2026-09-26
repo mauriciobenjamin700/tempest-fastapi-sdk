@@ -49,6 +49,16 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.sse import SSEBroker
 
 
+PARTICIPANT_REMOVED_EVENT: str = "participant.removed"
+"""SSE event published when a member leaves or is removed.
+
+Its ``data`` is the :class:`ParticipantResponseSchema` of the row that
+just got its ``left_at``. The chat router's stream reads it to close the
+connections of the user it names: their membership ended, so the
+conversation's channel must stop reaching them.
+"""
+
+
 class ChatService:
     """Create conversations, post messages, and keep read state.
 
@@ -282,6 +292,60 @@ class ChatService:
             )
         return row
 
+    async def _visible_message(self, message_id: UUID, user_id: UUID) -> Any:
+        """Return a message row the user may see, or the repository's 404.
+
+        Visibility is the rule the history page already applied: the user
+        is an **active** participant of the message's conversation, and
+        the message is not older than their ``history_from``. Every path
+        that takes a bare message id goes through here, because the id
+        alone is not a capability — whoever learns one must not read the
+        body, touch the reactions or copy the files of a conversation
+        they are not in.
+
+        A message the user may not see raises exactly what a missing one
+        raises — the repository's configured not-found exception with its
+        configured message — so the refusal is not an oracle for which
+        ids exist.
+
+        Args:
+            message_id (UUID): The message being acted on.
+            user_id (UUID): The acting user.
+
+        Returns:
+            Any: The message row.
+
+        Raises:
+            AppException: The message repository's not-found exception
+                when the message does not exist or is not visible to
+                ``user_id``.
+        """
+        row = await self.messages.get_or_none({"id": message_id})
+        if row is None:
+            self.messages._raise_not_found()
+        membership = await self._membership(row.conversation_id, user_id)
+        if not self._can_see(membership, row):
+            self.messages._raise_not_found()
+        return row
+
+    @staticmethod
+    def _can_see(membership: Any | None, message: Any) -> bool:
+        """Return whether a participant row grants sight of a message.
+
+        Args:
+            membership (Any | None): The user's participant row in the
+                message's conversation, or ``None``.
+            message (Any): The message row.
+
+        Returns:
+            bool: ``True`` for an active member whose ``history_from``
+            does not start after the message.
+        """
+        if membership is None or membership.left_at is not None:
+            return False
+        history_from = membership.history_from
+        return history_from is None or message.created_at >= history_from
+
     async def list_conversations(
         self,
         user_id: UUID,
@@ -409,7 +473,10 @@ class ChatService:
                 no body and no attachments — or names attachments while
                 the service has no attachment repository.
             NotFoundException: When ``reply_to_id`` names a message that
-                is not in this conversation.
+                is not in this conversation, or one older than the
+                sender's ``history_from`` — the reply stub carries an
+                excerpt of the parent, so quoting it would hand a
+                newcomer the backlog they were not given.
         """
         payload = MessageCreateSchema(body=data) if isinstance(data, str) else data
         if payload.client_id:
@@ -443,7 +510,13 @@ class ChatService:
             )
         if payload.reply_to_id is not None:
             parent = await self.messages.get_or_none({"id": payload.reply_to_id})
-            if parent is None or parent.conversation_id != conversation_id:
+            membership = await self._membership(conversation_id, sender_id)
+            hidden = (
+                parent is not None
+                and membership is not None
+                and not self._can_see(membership, parent)
+            )
+            if parent is None or parent.conversation_id != conversation_id or hidden:
                 raise NotFoundException(
                     message="the message being replied to is not in this conversation",
                     details={"reply_to_id": str(payload.reply_to_id)},
@@ -517,6 +590,10 @@ class ChatService:
     ) -> MessageResponseSchema:
         """Replace a message's body and stamp ``edited_at``.
 
+        The editor must still be able to see the message — an active
+        participant, within their ``history_from`` — so a sender who left
+        the conversation can no longer rewrite what they said in it.
+
         Args:
             message_id (UUID): The message to edit.
             editor_id (UUID): Who is editing; must be the sender.
@@ -526,10 +603,12 @@ class ChatService:
             MessageResponseSchema: The edited message.
 
         Raises:
+            AppException: The message repository's not-found exception
+                when the message is missing or not visible to the editor.
             ForbiddenException: When the editor is not the sender.
             ValidationException: When the message was already revoked.
         """
-        row = await self.messages.get_by_id(message_id)
+        row = await self._visible_message(message_id, editor_id)
         if row.sender_id != editor_id:
             raise ForbiddenException(message="only the sender can edit a message")
         if row.revoked_at is not None:
@@ -556,9 +635,17 @@ class ChatService:
         behind a flag the next query forgets to filter, and the
         attachment rows go with it.
 
+        A key is reported only when **no other attachment row** still
+        references it. A forward points its copy at the same
+        ``storage_key`` — it copies the row, never the bytes — so
+        revoking the original must not hand the caller a key the
+        forwarded copy still renders; the key is reported by whichever
+        revoke removes its last reference.
+
         Args:
             message_id (UUID): The message to revoke.
-            actor_id (UUID): Who is revoking; must be the sender.
+            actor_id (UUID): Who is revoking; must be the sender, and
+                still an active participant who can see the message.
 
         Returns:
             tuple[MessageResponseSchema, list[str]]: The tombstone, and
@@ -567,9 +654,11 @@ class ChatService:
             file that outlives the message that justified it.
 
         Raises:
+            AppException: The message repository's not-found exception
+                when the message is missing or not visible to the actor.
             ForbiddenException: When the actor is not the sender.
         """
-        row = await self.messages.get_by_id(message_id)
+        row = await self._visible_message(message_id, actor_id)
         if row.sender_id != actor_id:
             raise ForbiddenException(message="only the sender can revoke a message")
         row.body = ""
@@ -579,13 +668,17 @@ class ChatService:
 
         orphaned: list[str] = []
         if self.attachments is not None:
+            released: list[str] = []
             for attachment in await self.attachments.list(
                 filters={"message_id": message_id},
             ):
-                orphaned.append(attachment.storage_key)
+                released.append(attachment.storage_key)
                 if attachment.thumbnail_key:
-                    orphaned.append(attachment.thumbnail_key)
+                    released.append(attachment.thumbnail_key)
                 await self.attachments.delete(attachment.id)
+            for key in dict.fromkeys(released):
+                if not await self._key_in_use(key):
+                    orphaned.append(key)
         if self.reactions is not None:
             stale = await self.reactions.list(filters={"message_id": message_id})
             for reaction in stale:
@@ -594,6 +687,25 @@ class ChatService:
         message = await self._message_response(row)
         await self._publish(row.conversation_id, "message.revoked", message)
         return message, orphaned
+
+    async def _key_in_use(self, key: str) -> bool:
+        """Return whether any attachment row still references a storage key.
+
+        Checked against both columns, because a key recorded as one
+        row's file may be another's thumbnail.
+
+        Args:
+            key (str): The storage key.
+
+        Returns:
+            bool: ``True`` when some row still points at ``key``.
+        """
+        if self.attachments is None:
+            return False
+        for column in ("storage_key", "thumbnail_key"):
+            if await self.attachments.count(filters={column: key}):
+                return True
+        return False
 
     async def react(
         self,
@@ -607,6 +719,9 @@ class ChatService:
         the ``(message_id, user_id)`` uniqueness — widening it to
         include the emoji is what turns a double-tap into two reactions.
 
+        The reactor must be able to see the message: an active
+        participant of its conversation, within their ``history_from``.
+
         Args:
             message_id (UUID): The message reacted to.
             user_id (UUID): Who is reacting.
@@ -616,6 +731,8 @@ class ChatService:
             MessageResponseSchema: The message, with reactions rebuilt.
 
         Raises:
+            AppException: The message repository's not-found exception
+                when the message is missing or not visible to the user.
             ValidationException: When the service has no reaction
                 repository.
         """
@@ -624,7 +741,7 @@ class ChatService:
                 message="this chat service was built without a reaction repository",
                 field="emoji",
             )
-        row = await self.messages.get_by_id(message_id)
+        row = await self._visible_message(message_id, user_id)
         existing = await self.reactions.get_or_none(
             {"message_id": message_id, "user_id": user_id},
         )
@@ -654,6 +771,8 @@ class ChatService:
             MessageResponseSchema: The message, with reactions rebuilt.
 
         Raises:
+            AppException: The message repository's not-found exception
+                when the message is missing or not visible to the user.
             ValidationException: When the service has no reaction
                 repository.
         """
@@ -661,7 +780,7 @@ class ChatService:
             raise ValidationException(
                 message="this chat service was built without a reaction repository",
             )
-        row = await self.messages.get_by_id(message_id)
+        row = await self._visible_message(message_id, user_id)
         existing = await self.reactions.get_or_none(
             {"message_id": message_id, "user_id": user_id},
         )
@@ -693,10 +812,14 @@ class ChatService:
             order given. ``[]`` when no target was given.
 
         Raises:
+            AppException: The message repository's not-found exception
+                when the original is missing or not visible to the
+                sender — forwarding copies the body and the attachment
+                rows, so it is a read of the original.
             ForbiddenException: When the sender is not a participant of
                 a target conversation.
         """
-        original = await self.messages.get_by_id(message_id)
+        original = await self._visible_message(message_id, sender_id)
         forwarded: list[MessageResponseSchema] = []
         for conversation_id in conversation_ids:
             await self._require_membership(conversation_id, sender_id)
@@ -896,7 +1019,21 @@ class ChatService:
             dict[str, Any]: ``items`` (mapped
             :class:`MessageResponseSchema`), ``total``, ``page``,
             ``page_size`` and ``pages``.
+
+        Raises:
+            ValidationException: When ``page`` or ``page_size`` is below
+                ``1``. A zero page size divided by zero inside the page
+                count, and a negative one became ``LIMIT -1``, which
+                SQLite reads as "no limit" and answers with the whole
+                history.
         """
+        if page < 1:
+            raise ValidationException(message="page must be at least 1", field="page")
+        if page_size < 1:
+            raise ValidationException(
+                message="page_size must be at least 1",
+                field="page_size",
+            )
         filters: dict[str, Any] = {"conversation_id": conversation_id}
         if user_id is not None:
             membership = await self._membership(conversation_id, user_id)
@@ -1216,6 +1353,11 @@ class ChatService:
     ) -> ConversationResponseSchema:
         """Remove a member, keeping their row as a tombstone.
 
+        After the system notice, a ``participant.removed`` event carrying
+        the membership row is published on the conversation's channel;
+        :func:`~tempest_fastapi_sdk.chat.make_chat_router` closes the
+        removed user's open streams when it sees one naming them.
+
         Args:
             conversation_id (UUID): The group.
             actor_id (UUID): Who is removing; must be admin or owner.
@@ -1240,6 +1382,11 @@ class ChatService:
             event=SystemEvent.PARTICIPANT_REMOVED,
             user_ids=[user_id],
         )
+        await self._publish(
+            conversation_id,
+            PARTICIPANT_REMOVED_EVENT,
+            ParticipantResponseSchema.model_validate(membership),
+        )
         return await self.get_conversation(conversation_id)
 
     async def leave(
@@ -1248,6 +1395,10 @@ class ChatService:
         user_id: UUID,
     ) -> ConversationResponseSchema:
         """Leave a conversation on your own.
+
+        Publishes the same ``participant.removed`` event as
+        :meth:`remove_participant`, so the leaver's open streams close
+        too.
 
         Args:
             conversation_id (UUID): The conversation to leave.
@@ -1267,6 +1418,11 @@ class ChatService:
             actor_id=user_id,
             event=SystemEvent.PARTICIPANT_LEFT,
             user_ids=[user_id],
+        )
+        await self._publish(
+            conversation_id,
+            PARTICIPANT_REMOVED_EVENT,
+            ParticipantResponseSchema.model_validate(membership),
         )
         return await self.get_conversation(conversation_id)
 
@@ -1424,5 +1580,6 @@ class ChatService:
 
 
 __all__: list[str] = [
+    "PARTICIPANT_REMOVED_EVENT",
     "ChatService",
 ]

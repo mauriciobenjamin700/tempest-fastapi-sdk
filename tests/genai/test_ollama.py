@@ -9,8 +9,11 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from tempest_fastapi_sdk.genai import (
+    GenAIMetrics,
     GenerationConfig,
+    InMemoryGenerationCache,
     OllamaEmbedder,
+    OllamaError,
     OllamaGenerator,
     TextBackend,
 )
@@ -428,3 +431,162 @@ class TestOllamaEmbedder:
 
     def test_satisfies_supports_embed_protocol(self) -> None:
         assert isinstance(OllamaEmbedder("nomic-embed-text"), SupportsEmbed)
+
+
+class TestDaemonErrorBody:
+    """An ``{"error": ...}`` body is a failure, not an empty reply."""
+
+    async def test_generate_raises_on_200_error_body(self) -> None:
+        """``generate`` on ``200 {"error": "boom"}`` used to return ``""``."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"error": "boom"})
+
+        client = HTTPClient(transport=httpx.MockTransport(handler))
+        gen = OllamaGenerator("llama3.2", http_client=client)
+        try:
+            with pytest.raises(OllamaError, match="boom") as info:
+                await gen.generate("hi")
+        finally:
+            await client.aclose()
+        assert info.value.model == "llama3.2"
+        assert info.value.detail == "boom"
+
+    async def test_chat_raises_on_200_error_body(self) -> None:
+        """``chat`` surfaces the daemon error too."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"error": "model not found"})
+
+        client = HTTPClient(transport=httpx.MockTransport(handler))
+        gen = OllamaGenerator("llama3.2", http_client=client)
+        try:
+            with pytest.raises(OllamaError, match="model not found"):
+                await gen.chat([{"role": "user", "content": "hi"}])
+        finally:
+            await client.aclose()
+
+    async def test_embed_raises_on_200_error_body(self) -> None:
+        """``embed`` must not return ``[]`` for a daemon error."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"error": "not an embedding model"})
+
+        client = HTTPClient(transport=httpx.MockTransport(handler))
+        emb = OllamaEmbedder("llama3.2", http_client=client)
+        try:
+            with pytest.raises(OllamaError):
+                await emb.embed(["a"])
+        finally:
+            await client.aclose()
+
+    async def test_stream_raises_on_error_line(self) -> None:
+        """A mid-stream error line used to end the stream as if done."""
+        lines = [
+            json.dumps({"response": "Hel", "done": False}),
+            json.dumps({"error": "runner crashed"}),
+            json.dumps({"response": "never", "done": False}),
+        ]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, text="\n".join(lines))
+
+        client = HTTPClient(transport=httpx.MockTransport(handler))
+        gen = OllamaGenerator("llama3.2", http_client=client)
+        pieces: list[str] = []
+        try:
+            with pytest.raises(OllamaError, match="runner crashed"):
+                async for piece in gen.stream("hi"):
+                    pieces.append(piece)
+        finally:
+            await client.aclose()
+        assert pieces == ["Hel"]
+
+
+class TestChatCacheAndMetrics:
+    """``chat`` honors the generation cache and metrics like ``generate``."""
+
+    async def test_deterministic_chat_is_cached(self) -> None:
+        """A repeated greedy chat skips the daemon on the second call."""
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.url.path)
+            return httpx.Response(
+                200,
+                json={"message": {"role": "assistant", "content": "oi"}},
+            )
+
+        client = HTTPClient(transport=httpx.MockTransport(handler))
+        gen = OllamaGenerator(
+            "llama3.2",
+            http_client=client,
+            generation_cache=InMemoryGenerationCache(),
+        )
+        messages = [{"role": "user", "content": "hi"}]
+        try:
+            first = await gen.chat(messages, do_sample=False)
+            second = await gen.chat(messages, do_sample=False)
+        finally:
+            await client.aclose()
+        assert first == second == "oi"
+        assert calls == ["/api/chat"]
+
+    async def test_chat_and_generate_do_not_share_a_key(self) -> None:
+        """A prompt equal to the serialized messages must not hit chat's entry."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/api/chat":
+                return httpx.Response(
+                    200,
+                    json={"message": {"role": "assistant", "content": "from-chat"}},
+                )
+            return httpx.Response(200, json={"response": "from-generate"})
+
+        client = HTTPClient(transport=httpx.MockTransport(handler))
+        gen = OllamaGenerator(
+            "llama3.2",
+            http_client=client,
+            generation_cache=InMemoryGenerationCache(),
+        )
+        messages = [{"role": "user", "content": "hi"}]
+        try:
+            await gen.chat(messages, do_sample=False)
+            text = await gen.generate(
+                json.dumps(messages, sort_keys=True), do_sample=False
+            )
+        finally:
+            await client.aclose()
+        assert text == "from-generate"
+
+    async def test_chat_records_metrics(self) -> None:
+        """``chat`` is tracked under the ``chat`` operation."""
+        pytest.importorskip("prometheus_client")
+        from prometheus_client import CollectorRegistry
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "message": {"role": "assistant", "content": "oi"},
+                    "prompt_eval_count": 3,
+                    "eval_count": 2,
+                },
+            )
+
+        registry = CollectorRegistry()
+        client = HTTPClient(transport=httpx.MockTransport(handler))
+        gen = OllamaGenerator(
+            "llama3.2",
+            http_client=client,
+            metrics=GenAIMetrics(registry=registry),
+        )
+        try:
+            await gen.chat([{"role": "user", "content": "hi"}])
+        finally:
+            await client.aclose()
+        count = registry.get_sample_value(
+            "genai_requests_total",
+            {"model": "llama3.2", "op": "chat", "status": "ok"},
+        )
+        assert count == 1.0

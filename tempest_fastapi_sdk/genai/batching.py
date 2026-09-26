@@ -108,28 +108,40 @@ class BatchScheduler(Generic[ItemT, ResultT]):
         callers whose items were all queued already came back as
         ``[[0, 1, 2], [3, 4]]`` once the loop was busy enough to burn the
         20 ms window between two ``wait_for`` calls.
+
+        A cancellation that lands while a batch is still being formed (the
+        worker waiting for the next item) cancels the items already taken
+        and everything still queued, so none of their callers waits forever.
+
+        Raises:
+            asyncio.CancelledError: When the worker task is cancelled.
         """
         while not self._queue.empty():
             item, future = await self._queue.get()
             batch: list[ItemT] = [item]
             futures: list[asyncio.Future[ResultT]] = [future]
             deadline = asyncio.get_running_loop().time() + self.max_wait
-            while len(batch) < self.max_batch:
-                try:
-                    nxt_item, nxt_future = self._queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    remaining = deadline - asyncio.get_running_loop().time()
-                    if remaining <= 0:
-                        break
+            try:
+                while len(batch) < self.max_batch:
                     try:
-                        nxt_item, nxt_future = await asyncio.wait_for(
-                            self._queue.get(),
-                            timeout=remaining,
-                        )
-                    except TimeoutError:
-                        break
-                batch.append(nxt_item)
-                futures.append(nxt_future)
+                        nxt_item, nxt_future = self._queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        remaining = deadline - asyncio.get_running_loop().time()
+                        if remaining <= 0:
+                            break
+                        try:
+                            nxt_item, nxt_future = await asyncio.wait_for(
+                                self._queue.get(),
+                                timeout=remaining,
+                            )
+                        except TimeoutError:
+                            break
+                    batch.append(nxt_item)
+                    futures.append(nxt_future)
+            except BaseException:
+                _cancel_all(futures)
+                self._abandon_queue()
+                raise
             await self._dispatch(batch, futures)
 
     async def _dispatch(
@@ -137,31 +149,117 @@ class BatchScheduler(Generic[ItemT, ResultT]):
         batch: list[ItemT],
         futures: list[asyncio.Future[ResultT]],
     ) -> None:
-        """Run the handler on ``batch`` and resolve each future."""
+        """Run the handler on ``batch`` and resolve each future.
+
+        Every path resolves every future, so no :meth:`submit` is left
+        awaiting forever:
+
+        * a handler ``Exception`` is set on each future;
+        * a handler that returns something without a length (``None``, a
+          generator) or the wrong number of results fails each future with
+          ``RuntimeError`` instead of killing the worker with a
+          ``TypeError`` raised outside any handler;
+        * a ``CancelledError`` the handler raised on its own (the worker
+          task was not cancelled) cancels the batch's futures and the worker
+          moves on to the next batch;
+        * a cancellation of the worker itself, or any other
+          ``BaseException`` (``KeyboardInterrupt``, ``SystemExit``), cancels
+          or fails the batch's futures **and** every item still queued,
+          then propagates.
+
+        Args:
+            batch (list[ItemT]): The items handed to the handler.
+            futures (list[asyncio.Future[ResultT]]): One future per item,
+                in the same order.
+
+        Raises:
+            asyncio.CancelledError: When the worker task itself is being
+                cancelled.
+            BaseException: Any non-``Exception`` raised by the handler other
+                than its own ``CancelledError``.
+        """
         try:
             results = await self._handler(batch)
         except Exception as exc:
-            for future in futures:
-                if not future.done():
-                    future.set_exception(exc)
+            _fail_all(futures, exc)
             return
-        if len(results) != len(futures):
-            error = RuntimeError(
-                f"handler returned {len(results)} results for {len(futures)} items",
+        except asyncio.CancelledError:
+            _cancel_all(futures)
+            task = asyncio.current_task()
+            if task is not None and task.cancelling():
+                self._abandon_queue()
+                raise
+            return
+        except BaseException as exc:
+            _fail_all(futures, RuntimeError(f"handler raised {exc!r}"))
+            self._abandon_queue()
+            raise
+        try:
+            count = len(results)
+        except TypeError:
+            _fail_all(
+                futures,
+                RuntimeError(
+                    "handler must return a list with one result per item, "
+                    f"got {type(results).__name__}",
+                ),
             )
-            for future in futures:
-                if not future.done():
-                    future.set_exception(error)
+            return
+        if count != len(futures):
+            _fail_all(
+                futures,
+                RuntimeError(
+                    f"handler returned {count} results for {len(futures)} items",
+                ),
+            )
             return
         for future, result in zip(futures, results, strict=True):
             if not future.done():
                 future.set_result(result)
+
+    def _abandon_queue(self) -> None:
+        """Cancel the future of every item still waiting in the queue.
+
+        Called when the worker is going away for good, so callers whose
+        items never reached a batch get a ``CancelledError`` instead of an
+        await that never returns.
+        """
+        while True:
+            try:
+                _item, future = self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+            if not future.done():
+                future.cancel()
 
     async def aclose(self) -> None:
         """Stop the worker after the current batch; reject new submits."""
         self._closed = True
         if self._worker is not None and not self._worker.done():
             await self._worker
+
+
+def _fail_all(futures: list[asyncio.Future[ResultT]], error: BaseException) -> None:
+    """Set ``error`` on every future that is still pending.
+
+    Args:
+        futures (list[asyncio.Future[ResultT]]): The futures to resolve.
+        error (BaseException): The exception each caller will see.
+    """
+    for future in futures:
+        if not future.done():
+            future.set_exception(error)
+
+
+def _cancel_all(futures: list[asyncio.Future[ResultT]]) -> None:
+    """Cancel every future that is still pending.
+
+    Args:
+        futures (list[asyncio.Future[ResultT]]): The futures to cancel.
+    """
+    for future in futures:
+        if not future.done():
+            future.cancel()
 
 
 __all__: list[str] = [

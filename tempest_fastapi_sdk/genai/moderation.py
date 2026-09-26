@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import unicodedata
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pydantic import Field
@@ -63,12 +64,42 @@ class ModerationBackend(Protocol):
         ...
 
 
-class RuleModerator:
-    """A dependency-free block-list moderator.
+def _normalize_for_matching(text: str) -> str:
+    """Fold ``text`` into the form the block list is matched against.
 
-    Flags text containing any block-listed term (whole-word, case-insensitive).
+    Applies NFKC (so fullwidth and other compatibility forms collapse onto
+    their plain letters), drops every format character (Unicode category
+    ``Cf`` — zero-width space/joiner/non-joiner, word joiner, BOM, bidi
+    marks) and casefolds (so ``"STRAßE"`` matches ``"strasse"``). Both the
+    block-listed terms and the screened text go through it, so the two
+    sides always meet in the same form.
+
+    Args:
+        text (str): The raw text.
+
+    Returns:
+        str: The normalized text.
+    """
+    composed = unicodedata.normalize("NFKC", text)
+    visible = "".join(char for char in composed if unicodedata.category(char) != "Cf")
+    return visible.casefold()
+
+
+class RuleModerator:
+    r"""A dependency-free block-list moderator.
+
+    Flags text containing any block-listed term as a whole word,
+    case-insensitively. Before matching, both the terms and the text are
+    NFKC-normalized, stripped of format characters (zero-width and bidi
+    controls) and casefolded, so a zero-width space (U+200B) inside the
+    word or its fullwidth spelling (U+FF53 U+FF45 ...) still hits
+    ``"secret"``. Whole-word means "not glued to a word character on
+    either side" (lookarounds, not ``\b``), which is what makes terms that
+    start or end with punctuation — ``"$hit"``, ``"c++"`` — match at all.
     Predictable and fast — the deterministic default when a classifier's
-    quality (especially in PT-BR) can't be trusted.
+    quality (especially in PT-BR) can't be trusted. Homoglyphs from other
+    scripts (Cyrillic U+0435 standing in for Latin ``"e"``) are **not**
+    folded; list those spellings explicitly.
 
     Attributes:
         category (str): The category label reported on a match.
@@ -79,14 +110,14 @@ class RuleModerator:
 
         Args:
             blocklist (list[str]): Terms that flag the text (whole-word,
-                case-insensitive).
+                case-insensitive, normalized as described on the class).
+                Terms that normalize to an empty string are ignored.
             category (str): The category label reported on a match.
         """
         self.category = category
+        terms = (_normalize_for_matching(term) for term in blocklist if term)
         self._patterns = [
-            re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE)
-            for term in blocklist
-            if term
+            re.compile(rf"(?<!\w){re.escape(term)}(?!\w)") for term in terms if term
         ]
 
     async def check(self, text: str) -> ModerationResult:
@@ -98,7 +129,8 @@ class RuleModerator:
         Returns:
             ModerationResult: ``flagged=True`` (score ``1.0``) on any match.
         """
-        matched = any(pattern.search(text) for pattern in self._patterns)
+        normalized = _normalize_for_matching(text)
+        matched = any(pattern.search(normalized) for pattern in self._patterns)
         return ModerationResult(
             flagged=matched,
             categories=[self.category] if matched else [],

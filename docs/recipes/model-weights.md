@@ -226,8 +226,11 @@ RUN tempest model pull Qwen/Qwen2.5-0.5B-Instruct \
 
 ### Ele se recusa a começar o que não cabe
 
-`download_model` mede o repositório no Hub antes de escrever qualquer coisa e
-compara com o espaço livre:
+`download_model` mede no Hub o que vai baixar antes de escrever qualquer coisa
+e compara com o espaço livre. Entram na conta só os arquivos que
+`allow_patterns` / `ignore_patterns` selecionam — filtrados pela mesma função
+do `huggingface_hub` que o `snapshot_download` usa — e que ainda não estão no
+cache para aquela revisão:
 
 ```python
 from tempest_fastapi_sdk.genai import download_model
@@ -243,12 +246,21 @@ meta-llama/Llama-3.1-70B needs ~154.0 GB (estimate x1.1) but only 41.3 GB are fr
 ```
 
 Falhar em dois segundos com um número é melhor que falhar quarenta minutos
-depois com um cache pela metade. Para medir sem baixar:
+depois com um cache pela metade. Um repositório de 28 GB que publica os pesos
+em `.bin` e `.safetensors`, baixado com `allow_patterns=["*.json",
+"*.safetensors"]`, pede ~15,4 GB (14 GB x 1,1), não 30,8 GB. Um arquivo que o
+cache já tem naquela revisão não conta; um blob cacheado sob **outra** revisão
+ainda conta, então o erro possível é superestimar, nunca o contrário.
+
+Para medir sem baixar (os mesmos padrões valem aqui):
 
 ```python
 from tempest_fastapi_sdk.genai import model_disk_bytes
 
-needed: int | None = model_disk_bytes("Qwen/Qwen2.5-0.5B-Instruct")
+needed: int | None = model_disk_bytes(
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    allow_patterns=["*.json", "*.safetensors"],
+)
 print(needed)
 ```
 

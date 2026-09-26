@@ -241,6 +241,7 @@ genai-image = [
 modelops = [
     "psutil>=7.2.2",
     "nvidia-ml-py>=13.610.43",
+    "numpy>=2.4.6",
 ]
 modelops-compose = [
     "ort-vision-sdk[compose]>=0.8.0",

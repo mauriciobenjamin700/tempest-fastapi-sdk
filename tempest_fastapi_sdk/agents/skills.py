@@ -42,9 +42,6 @@ from tempest_fastapi_sdk.agents.tools import AgentContext, AgentTool, AgentToolE
 LOAD_SKILL_TOOL: str = "load_skill"
 """Name of the tool an agent calls to open a skill."""
 
-_LOADED_KEY: str = "__loaded_skills__"
-"""Where the run context records which skills are already open."""
-
 
 @dataclass
 class Skill:
@@ -125,10 +122,9 @@ def load_skill_tool(
             raise AgentToolError(
                 f"no skill named {wanted!r}; available: {available}",
             )
-        loaded: set[str] = context.state.setdefault(_LOADED_KEY, set())
-        if wanted in loaded:
+        if wanted in context.opened_skills:
             return ToolResult(text=f"Skill '{wanted}' is already loaded.")
-        loaded.add(wanted)
+        context.opened_skills.add(wanted)
         return ToolResult(text=skill.body())
 
     return AgentTool(
@@ -181,7 +177,9 @@ def loaded_skills(context: AgentContext) -> set[str]:
 
     Useful in a trace or a test: it says which capabilities the agent
     actually reached for, which is usually the first thing you want to
-    know when it took a wrong turn.
+    know when it took a wrong turn. Only the agent running under
+    ``context`` counts: a delegated child has its own context, so a skill
+    it loaded is not reported (or opened) here.
 
     Args:
         context (AgentContext): The run context.
@@ -189,8 +187,7 @@ def loaded_skills(context: AgentContext) -> set[str]:
     Returns:
         set[str]: The loaded skill names; empty when none were.
     """
-    loaded = context.state.get(_LOADED_KEY)
-    return set(loaded) if loaded else set()
+    return set(context.opened_skills)
 
 
 def skill_from_markdown(path: str | Path) -> Skill:

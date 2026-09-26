@@ -43,7 +43,7 @@ class TestTextGeneratorMetrics:
         reply = await gen.generate("hi", config=cfg)
         assert reply == "cached-answer"
         assert gen.is_loaded is False  # served from cache, model never loaded
-        labels = {"model": "m", "op": "generate"}
+        labels = {"model": "m", "op": "generate", "status": "ok"}
         assert _value(registry, "genai_requests_total", labels) == 1.0
 
 
@@ -62,7 +62,11 @@ class TestEmbedderMetrics:
         assert vectors == [[1.0, 2.0]]
         assert emb.is_loaded is False
         assert (
-            _value(registry, "genai_requests_total", {"model": "m", "op": "embed"})
+            _value(
+                registry,
+                "genai_requests_total",
+                {"model": "m", "op": "embed", "status": "ok"},
+            )
             == 1.0
         )
 

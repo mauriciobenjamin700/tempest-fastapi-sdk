@@ -330,6 +330,17 @@ gen = OpenAICompatGenerator(
     Desligar é mais barato e sem risco, não perda de qualidade, quando
     você só quer o resultado.
 
+!!! info "Campos só do HuggingFace não vão pro fio"
+    `do_sample`, `top_k` e `repetition_penalty` existem no `GenerationConfig`
+    mas não no formato OpenAI, e um provedor estrito recusa o corpo (a
+    auditoria relatou `400` da OpenAI; os testes daqui usam transporte mock).
+    Por isso eles são **descartados**; `do_sample=False` sem `temperature`
+    explícita vira `temperature=0`. Um provedor que aceita esses nomes (o
+    servidor do vLLM documenta `top_k` e `repetition_penalty`) é ligado com
+    `forward_params=["top_k", "repetition_penalty"]`. E `model`, `messages` e
+    `stream` não podem vir como keyword de geração — `generate("oi",
+    model="outro")` levanta `TypeError` em vez de redirecionar a chamada.
+
 ## Backend Ollama
 
 O `TextGenerator` carrega os pesos do HuggingFace com `torch` no seu
@@ -393,6 +404,20 @@ Ollama não for local (o padrão é `DEFAULT_OLLAMA_URL`); `keep_alive`,
     `repetition_penalty`→`repeat_penalty`, e `temperature`/`top_p`/`top_k`/
     `seed`/`stop` passam direto. `do_sample=False` vira `temperature=0`
     (geração greedy).
+
+!!! warning "Erro do daemon levanta `OllamaError`"
+    O Ollama reporta algumas falhas (modelo não baixado, runner que caiu no
+    meio) como um corpo `{"error": "..."}` — num `200` ou como uma linha do
+    stream NDJSON. `generate`, `chat`, `embed` e as variantes estruturadas
+    levantam `OllamaError` (com `.model` e `.detail`) em vez de devolver
+    `""`, e `stream` levanta na linha de erro em vez de terminar como se
+    tivesse acabado — os pedaços já entregues continuam entregues.
+
+`chat` segue o `generate` em cache e métricas: com `generation_cache=`, uma
+chamada determinística repetida não vai ao daemon, e com `metrics=` ela é
+registrada sob a operação `chat` com os tokens do Ollama. A chave do `chat`
+é separada da do `generate`, então um prompt igual às mensagens serializadas
+nunca colide.
 
 ### Embeddings via Ollama + RAG
 
@@ -468,6 +493,23 @@ cada `index`) — bom até dezenas de milhares de chunks. Tem também
 `retrieve(query, top_k)` (busca híbrida → bloco de contexto), então o
 `HybridRetriever` satisfaz `SupportsRetrieve` e entra no
 `make_genai_router(retriever=...)` no lugar do `Retriever`.
+
+!!! info "Cada `index` substitui as fontes que ele cita"
+    Um chunk é identificado por `(source, index, text)` — não só por
+    `(source, index)`, que o `chunk_text` repete a cada chamada (ele
+    recomeça o `index` em 0). E cada `index(chunks)` **substitui** tudo que
+    já estava indexado para as `source`s do lote: reindexar um documento
+    editado não deixa a versão antiga, nem uma cauda dela, respondendo
+    busca. Por isso, passe **todos** os chunks de uma fonte na mesma
+    chamada. `InMemoryVectorStore`, `PgVectorStore` e `ChromaVectorStore`
+    aplicam a mesma troca do lado denso; um `VectorStore` seu que só
+    acrescenta continua devolvendo as linhas antigas, e o `HybridRetriever`
+    as descarta antes da fusão (elas só gastam vagas de `candidates`).
+
+    Do lado esparso, só entram na fusão os chunks que compartilham ao menos
+    um termo com a query. Sem sobreposição o BM25 dá 0 para todos, e uma
+    lista de zeros "ordenada por score" é só a ordem de inserção — somada
+    no RRF, invertia o ranking denso.
 
 ### Reranking (cross-encoder)
 
@@ -597,19 +639,34 @@ asyncio.run(main())
 (cosseno cru) e `score` (o valor final, já com recência). `delete_for_chat`
 apaga tudo de um chat quando ele é removido.
 
+O Chroma é consultado pelos `top_k * candidate_multiplier` vizinhos mais
+próximos (padrão `4`), e o re-rank por recência escolhe os `top_k` entre
+eles — assim uma mensagem recente logo abaixo do top-K cru ainda pode subir.
+Com `candidate_multiplier=1`, só o top-K cru é reordenado. A cota por
+usuário (`max_entries_per_user`) despeja primeiro o **instante UTC** mais
+antigo: o `created_at` é gravado convertido para UTC, junto de um
+`created_at_ts` em segundos epoch, e linhas antigas sem esse campo são
+ordenadas lendo o ISO. Ordenar as strings ISO punha `10:00+05:00` depois
+de `08:00+00:00`, embora seja três horas antes.
+
 !!! info "Extra `[genai-chroma]` e o decaimento de recência"
     Instale com `uv add "tempest-fastapi-sdk[genai-chroma]"`. O `score`
     final combina similaridade e recência via
-    `0.5 ** (idade_em_dias / recency_halflife_days)` — com o padrão de 14
-    dias, um trecho de 14 dias atrás pesa metade de um recém-escrito.
-    Ajuste a mistura com `recency_weight` (0 = só similaridade).
+    `(1 - recency_weight) * sim + recency_weight * sim * decay`, com
+    `decay = 0.5 ** (idade_em_dias / recency_halflife_days)`. Com os padrões
+    (14 dias, `recency_weight=0.5`), um trecho de 14 dias atrás tem
+    `decay = 0.5` e fica com `score` 0,75 da similaridade, contra 1,0 de um
+    recém-escrito de mesma similaridade. `recency_weight=0` = só
+    similaridade.
 
 !!! tip "RAG genérico com o `ChromaVectorStore`"
     Precisa só de um vector store persistente (sem a lógica de memória por
     usuário)? `ChromaVectorStore` é um `VectorStore` como os outros —
     `add(chunks, vectors)` / `search(vector, top_k=)` — respaldado por
-    ChromaDB. Injete no `Retriever` no lugar do `InMemoryVectorStore` /
-    `PgVectorStore` pra ter um corpus persistido em disco:
+    ChromaDB, com a mesma regra de reindexação dos outros stores (o `add`
+    substitui as `source`s do lote). Injete no `Retriever` no lugar do
+    `InMemoryVectorStore` / `PgVectorStore` pra ter um corpus persistido em
+    disco:
 
     ```python
     from tempest_fastapi_sdk.genai import OllamaEmbedder
@@ -695,8 +752,9 @@ tool-calling limitado quando há `tools` + um backend que suporta —
 
 !!! tip "Moderação + janela de contexto no pipeline"
     Opcionais no construtor: `moderator=` (um `ModerationBackend` —
-    `RuleModerator`/`ClassifierModerator`) filtra o input antes de gerar e
-    a resposta depois; turno flagueado responde `blocked_message` (input
+    `RuleModerator`/`ClassifierModerator`) filtra o input **e cada turno do
+    `history`** antes de gerar e a resposta depois — em `respond` e em
+    `stream`; turno flagueado responde `blocked_message` (input
     flagueado nem chama o modelo). `tokenizer=` + `max_context_tokens=`
     truncam os turnos mais antigos (via `truncate_messages`) pra caber na
     janela antes de gerar. Ambos opt-in.
@@ -732,13 +790,81 @@ app.include_router(make_ai_chat_router(pipeline))   # prefixo /api/ai-chat
 ```
 
 Ele monta `POST /api/ai-chat/chat` (devolve `AIChatResult`) e
-`POST /api/ai-chat/chat/stream` (tokens via SSE).
+`POST /api/ai-chat/chat/stream` (tokens via SSE). O corpo é
+`{"chat_id": ..., "content": ..., "history": [...]}` — sem `user_id`.
 
 !!! note "O router é stateless"
     O histórico vive no corpo do request, não no servidor — cada chamada
     manda o `history`. Isso mantém o backend sem sessão (escala horizontal
     de graça) e a memória de longo prazo cuida do "lembrar" via
     `ChatMemory`.
+
+#### Com memória: o dono da conversa vem da sessão
+
+Com `memory=` no pipeline, cada turno busca e indexa lembranças **do
+usuário**. Quem é o usuário sai da sua dependência de autenticação, nunca do
+corpo:
+
+```python
+# src/api/app.py
+
+from fastapi import Depends, FastAPI
+
+from tempest_fastapi_sdk.genai import (
+    AIChatPipeline,
+    OllamaEmbedder,
+    OllamaGenerator,
+    make_ai_chat_router,
+)
+from tempest_fastapi_sdk.genai.rag import ChatMemory
+
+from src.api.dependencies.auth import current_user_id
+
+pipeline = AIChatPipeline(
+    OllamaGenerator("llama3.2"),
+    memory=ChatMemory(OllamaEmbedder("nomic-embed-text")),
+)
+
+
+def create_app() -> FastAPI:
+    """Mount the AI chat behind the service's own auth."""
+    app = FastAPI()
+    app.include_router(
+        make_ai_chat_router(
+            pipeline,
+            current_user_id=current_user_id,
+            dependencies=[Depends(current_user_id)],
+        ),
+    )
+    return app
+```
+
+!!! warning "`current_user_id` é obrigatório junto de `memory`"
+    Buscar memória com um `user_id` vindo do **corpo** entregaria as
+    conversas passadas de qualquer pessoa a quem soubesse o id dela — e o
+    `AIChatResult` devolve os `memory_hits`. Por isso o router recusa a
+    combinação na montagem (`ValueError`). Sem memória, `current_user_id` é
+    opcional e o turno roda sem dono.
+
+!!! info "O corpo não escolhe papel"
+    `history[].role` aceita só `"user"` e `"assistant"`. Um turno
+    `"system"` vindo do cliente sentaria no prompt com a autoridade do seu
+    `base_system_prompt` — o corpo volta `422`. E, com `moderator=`, o
+    conteúdo de cada turno do `history` passa pelo mesmo filtro da
+    mensagem nova.
+
+??? note "Migrando de uma versão que lia `user_id` do corpo"
+    Até a 0.299.0 o `AIChatRequestSchema` tinha `user_id` e o router o
+    repassava para `memory.search`. Agora:
+
+    - o campo saiu do schema; cliente antigo que ainda manda `user_id` não
+      quebra — o valor é ignorado;
+    - pipeline **com** `memory=` precisa de `current_user_id=` em
+      `make_ai_chat_router`, senão a montagem levanta `ValueError`;
+    - `history` com `role` diferente de `user`/`assistant` passa a
+      responder `422`;
+    - chamando o pipeline direto, `user_id=None` pula a memória do turno
+      (nem busca, nem indexa).
 
 ### Streaming
 
@@ -762,6 +888,28 @@ async def stream_demo() -> None:
 
 asyncio.run(stream_demo())
 ```
+
+!!! warning "Moderação no streaming: o que já saiu não volta"
+    Com `moderator=`, o `stream` também filtra a resposta, e
+    `stream_moderation=` no construtor escolhe como:
+
+    - `"incremental"` (default) — antes de mandar cada pedaço, o texto
+      gerado até ali (incluindo o pedaço) passa pelo moderador. Na primeira
+      flag o stream para e o último pedaço é o `blocked_message`. Os pedaços
+      anteriores **já foram entregues** e não há como recolhê-los; a
+      garantia é que o pedaço que torna o texto flagueável nunca sai. Com
+      `RuleModerator` e o block-list `["secret"]`, a resposta
+      `"here is the SECRET plan"` emitida um caractere por pedaço sai como
+      `"here is the SECRE"` seguido do
+      `blocked_message` — o termo nunca sai inteiro, um prefixo dele pode
+      sair. Custa uma chamada ao moderador por pedaço.
+    - `"buffered"` — gera a resposta inteira, modera uma vez, e só então
+      manda: ou a resposta inteira num pedaço só, ou o `blocked_message`.
+      Nada vaza, mas o cliente espera a geração toda. É a escolha para um
+      `ClassifierModerator`, que custaria uma inferência por pedaço no modo
+      incremental.
+
+    Resposta bloqueada não é indexada na memória, igual ao `respond`.
 
 !!! tip "O microserviço de inferência vira uma escolha, não um requisito"
     Com o pipeline in-process, ter um serviço separado só pra LLM passa a
@@ -798,7 +946,9 @@ asyncio.run(main())
 
 O `cache` é qualquer objeto com `get(key)->list|None` e `set(key, val)` —
 passe um wrapper sobre o `AsyncRedisManager` pra compartilhar entre
-workers. `device`/`dtype`/`unload`/`unload_if_idle` funcionam como no
+workers. O `InMemoryEmbeddingCache` é um LRU de 1024 vetores por padrão
+(`max_entries=`; `None` desliga o limite), então um worker de vida longa
+não cresce pra sempre. `device`/`dtype`/`unload`/`unload_if_idle` funcionam como no
 `TextGenerator`.
 
 Pra busca semântica, use `normalize=True` (vetores unitários) + a função
@@ -902,6 +1052,13 @@ asyncio.run(main())
 Forma um lote quando junta `max_batch` itens **ou** passa `max_wait_ms`
 desde o primeiro — o que vier antes. Erro do handler propaga pra todos os
 chamadores do lote.
+
+Todo caminho resolve todo chamador: um handler que devolve algo sem tamanho
+(`None`, um gerador) ou com o número errado de resultados falha o lote com
+`RuntimeError` e o worker segue pro próximo; um `CancelledError` levantado
+pelo próprio handler cancela só aquele lote; e cancelar o worker cancela o
+lote em curso **e** tudo que ainda estava na fila — nenhum `submit` fica
+esperando pra sempre.
 
 ### Compartilhar modelos carregados
 
@@ -1345,6 +1502,33 @@ Falhas (timeout, 4xx/5xx, página sem corpo) **nunca** levantam — voltam
 como `ExtractionResult(text="", failed=True)`, então nenhuma fonte some
 silenciosamente.
 
+!!! info "A URL é tratada como entrada não confiável"
+    Quem escolhe a URL é o buscador ou o usuário, então o `extract` protege
+    o seu servidor de virar proxy para a rede interna (SSRF):
+
+    - só `http` e `https` — `file://`, `ftp://` e afins voltam
+      `failed=True` sem request;
+    - o host (IP literal, ou **todo** endereço que o hostname resolve)
+      precisa ser público: loopback, rede privada (10/8, 172.16/12,
+      192.168/16, `fd00::/8`), link-local — inclusive o
+      `169.254.169.254` de metadata de nuvem —, CGNAT, multicast e
+      reservado são recusados, em IPv4 e IPv6;
+    - redirect é seguido à mão, com a mesma checagem em **cada** salto, até
+      `max_redirects=` (default 5);
+    - o corpo é lido em stream e a busca desiste passando de
+      `max_response_bytes=` (default 5 MiB);
+    - o `trafilatura` roda em thread (`asyncio.to_thread`), então página
+      grande não trava o event loop.
+
+    Para ler páginas da intranet de propósito, `allow_private_networks=True`
+    desliga só a checagem de endereço (esquema, limite de redirect e de
+    corpo continuam). Ligue apenas quando as URLs não vêm de quem ataca.
+
+    A checagem de endereço e a conexão fazem duas resoluções de DNS
+    separadas, então um hostname cuja resposta muda entre elas (DNS
+    rebinding) não fica coberto. Se isso importa no seu ambiente, force a
+    mesma regra no egress (proxy ou firewall).
+
 ### Ler PDFs (base de conhecimento)
 
 `PdfReader` (PyMuPDF — extração detalhada, ordem de leitura) transforma
@@ -1404,8 +1588,14 @@ asyncio.run(main())
 - **`VectorStore`** é um `Protocol` — `InMemoryVectorStore` (dev/testes,
   scan por cosseno) ou `PgVectorStore` (produção).
 - **`PgVectorStore`** usa **pgvector** no Postgres que o serviço já tem
-  (sem infra nova): cria a tabela sob demanda, busca com o operador de
-  distância cosseno `<=>`. Requer `[genai-rag]` + `CREATE EXTENSION vector`.
+  (sem infra nova): cria a tabela e um índice B-tree em `source` sob
+  demanda, busca com o operador de distância cosseno `<=>`. Requer
+  `[genai-rag]` + `CREATE EXTENSION vector`.
+- **Todo store do SDK substitui por fonte**: `add` apaga o que a `source`
+  de cada chunk do lote já tinha e grava o lote (no `PgVectorStore`, numa
+  transação: um `DELETE` + um `INSERT` em lote). Reindexar um documento
+  editado não deixa cauda antiga; passe todos os chunks de uma fonte na
+  mesma chamada.
 
 ```python
 from tempest_fastapi_sdk.genai import Embedder, EmbeddingModel
@@ -1419,6 +1609,13 @@ embedder = Embedder(EmbeddingModel.ALL_MINILM_L6_V2)
 store = PgVectorStore(db, dim=384)          # db = AsyncDatabaseManager
 rag = Retriever(embedder, store)
 ```
+
+O nome da tabela é interpolado no SQL (identificador não vira parâmetro),
+então o construtor recusa com `ValueError` qualquer coisa fora de
+`nome` ou `schema.nome` sem aspas (`[A-Za-z_][A-Za-z0-9_]*`, até 63
+caracteres cada), e um `dim` que não seja inteiro positivo. A busca é exata
+(varredura sequencial): nenhum índice aproximado (HNSW/IVFFlat) é criado, então
+adicione um quando o corpus crescer.
 
 `rag.search(query, top_k=)` devolve os `Chunk` com `score` (similaridade);
 `rag.retrieve(...)` já monta o contexto. Precisa de Qdrant/Weaviate depois?
@@ -1810,7 +2007,14 @@ asyncio.run(main())
 ```
 
 `RuleModerator` é dep-free e previsível (block-list whole-word,
-case-insensitive) — o piso determinístico. `ClassifierModerator` roda um
+case-insensitive) — o piso determinístico. Antes de comparar, termo e
+texto passam por NFKC, perdem os caracteres de formatação (espaço de
+largura zero, marcas bidi) e são casefolded — então `"se"` + U+200B +
+`"cret"` e a grafia fullwidth ainda batem com `"secret"`. "Palavra inteira"
+é "sem caractere de palavra colado dos lados", o que faz termo com
+pontuação na borda (`"$hit"`, `"c++"`) funcionar. Homóglifo de outro
+alfabeto (o `е` cirílico no lugar do `e`) **não** é dobrado: liste essas
+grafias no block-list. `ClassifierModerator` roda um
 classificador local (ex. `unitary/toxic-bert`) via transformers (`[genai]`),
 lazy, com `flagged_labels`/`threshold`. Qualidade PT-BR de modelos de
 toxicidade varia — trate o classificador como best-effort e mantenha o
@@ -1944,7 +2148,8 @@ async def painel() -> tuple[UsageTotals, list[ServiceUsage], list[SubjectUsage]]
 
 `GenAIMetrics` empacota os contadores + histograma que todo serviço de
 inferência acaba reimplementando — requests, latência e tokens in/out,
-rotulados por modelo e operação. Reusa o `prometheus-client` (extra
+rotulados por modelo e operação, e requests + latência também pelo
+resultado (`status="ok"` ou `"error"`). Reusa o `prometheus-client` (extra
 `[prometheus]`) e aceita um `registry` explícito (compõe com o
 `PrometheusMiddleware`/`/metrics` do SDK). É **opt-in**:
 
@@ -1964,6 +2169,14 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+!!! warning "O rótulo `status` é novo"
+    Antes, uma chamada que levantava contava como request comum — um
+    backend falhando parecia tráfego saudável. Agora `genai_requests_total`
+    e `genai_request_seconds` carregam `status`; seletor por
+    `{model, op}` continua casando, mas query que compara a série inteira
+    (ou `get_sample_value` com o conjunto exato de rótulos) precisa somar
+    por `status` ou filtrar `status="ok"`.
 
 `OllamaGenerator`, `TextGenerator` e `Embedder` aceitam `metrics=` e
 registram request + latência (o Ollama também extrai
@@ -2063,8 +2276,11 @@ fit = truncate_messages(
 
 `count_message_tokens(messages, tokenizer, per_message_overhead=4)` soma o
 custo do chat; `truncate_messages` preserva os `system` (movidos pra frente)
-e o turno mais recente, dropando os antigos até caber. Funcionam sobre
-qualquer tokenizer com `encode(text) -> sequência` (o `AutoTokenizer` serve).
+e o turno mais recente, dropando os antigos até caber. Um turno `assistant`
+com `tool_calls` e os turnos `tool` que o respondem saem **juntos** — o
+histórico nunca começa com um resultado de ferramenta cuja chamada foi
+cortada. Funcionam sobre qualquer tokenizer com `encode(text) -> sequência`
+(o `AutoTokenizer` serve).
 ### Cache de geração (prompt → completion)
 
 Gerações **determinísticas** (greedy, ou `temperature=0`) produzem sempre o
@@ -2094,10 +2310,19 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`InMemoryGenerationCache` é local ao processo; `RedisGenerationCache`
+`InMemoryGenerationCache` é local ao processo e um LRU de 1024 completions
+por padrão (`max_entries=`; `None` desliga o limite); `RedisGenerationCache`
 (cache `[cache]`) compartilha entre workers — o gerador dá `await` no
 sync-ou-async no mesmo call site. Funciona igual no `TextGenerator`
-(`generation_cache=...`). Invalide removendo a chave (ou via TTL no Redis).
+(`generation_cache=...`) e no `chat` dos dois. Invalide removendo a chave
+(ou via TTL no Redis).
+
+A chave separa o tipo de chamada (`chat` não responde um `generate` cujo
+prompt é o JSON das mesmas mensagens) e, no `TextGenerator`, a identidade
+dos pesos: `revision` e `quantization` entram na chave, então duas
+instâncias do mesmo `model_id` carregadas diferente nunca leem o cache uma
+da outra. Um `generate` sem `revision` nem `quantization` mantém a chave de
+antes, então um Redis já quente continua quente.
 ### Visão (VLM multimodal local)
 
 O `VisionTextGenerator` é o irmão multimodal do `TextGenerator`: carrega
@@ -2166,6 +2391,62 @@ app.include_router(
     evento SSE, encerrando com um evento `done`. Reaproveita o
     `sse_response` do SDK — cliente com `EventSource` recebe os tokens ao
     vivo.
+
+#### Limites por request: `GenAIRequestLimits`
+
+Todo endpoint de IA transforma tamanho de request em tempo de GPU ou
+memória. Por isso o router confere o request contra um
+`GenAIRequestLimits` **antes** de chamar o modelo, e responde `422`
+quando algum teto estoura:
+
+| Campo | Default | Onde vale |
+| --- | --- | --- |
+| `max_prompt_chars` | `32_000` | prompt do `/generate`, soma das mensagens do `/chat`, query do `/rag`, cada texto do `/embed`, prompt e negative prompt do `/image` |
+| `max_chat_messages` | `100` | mensagens por `/chat` |
+| `max_new_tokens` | `4096` | `config.max_new_tokens` enviado pelo cliente |
+| `max_embed_texts` | `256` | textos por `/embed` |
+| `max_top_k` | `50` | `top_k` do `/rag` (que também exige `>= 1` no schema) |
+| `max_tts_chars` | `5_000` | texto do `/tts` |
+| `max_image_side` | `2048` | `config.width` / `config.height` do `/image` |
+| `max_image_steps` | `100` | `config.steps` do `/image` |
+| `max_upload_bytes` | 25 MiB | upload do `/transcribe`, lido em blocos |
+
+Os defaults servem um deploy self-hosted pequeno. Para mudar, passe a sua
+instância:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import register_exception_handlers
+from tempest_fastapi_sdk.genai import GenAIRequestLimits, TextGenerator, make_genai_router
+
+app: FastAPI = FastAPI()
+register_exception_handlers(app)
+app.include_router(
+    make_genai_router(
+        text_generator=TextGenerator("Qwen/Qwen2.5-7B-Instruct"),
+        limits=GenAIRequestLimits(max_prompt_chars=8_000, max_new_tokens=1024),
+    ),
+)
+```
+
+Com o `register_exception_handlers`, o corpo do `422` diz qual campo
+estourou e qual é o teto:
+
+```text
+POST /api/genai/generate {"prompt": "hi", "config": {"max_new_tokens": 1000000000}}
+422 {"detail": "max_new_tokens exceeds the limit of 4096", "code": "VALIDATION_ERROR",
+     "details": {"field": "max_new_tokens", "limit": 4096}}
+```
+
+!!! note "`max_new_tokens` ausente passa"
+    O teto vale para o valor que o **cliente** manda. Request sem
+    `max_new_tokens` cai no default do gerador, que quem escolheu foi você.
+
+!!! warning "`/image` devolve uma imagem, então pede uma"
+    O corpo da resposta é a imagem, então `config.num_images` acima de `1`
+    recebe `422` — antes a rota gerava o lote inteiro na GPU e devolvia só a
+    primeira. Para lote, use o `ImageGenerator` direto.
 
 ### `RedisEmbeddingCache` — cache compartilhado entre workers
 
@@ -2276,6 +2557,15 @@ ensure_models()  # honra TEMPEST_VOICE_MODEL_DIR
 
 Deixar para a primeira requisição faz um usuário pagar o download dentro
 do timeout dele.
+
+Os dois modelos têm o SHA-256 fixado no SDK (`SEGMENTATION_MODEL.sha256`,
+`EMBEDDING_MODEL.sha256`), e o `ensure_models` confere o arquivo toda vez
+que o resolve — download novo ou cache —, levantando `OSError` se não bater.
+Um modelo trocado no release upstream, ou um cache corrompido, falha alto
+em vez de mudar o comportamento do serviço sem nada no diff. O download
+usa timeout de socket de 60 s: uma conexão que fica muda esse tempo levanta
+em vez de travar o primeiro `load()` para sempre (um download lento, mas
+andando, termina normalmente).
 
 ### Quantos falantes? Ele descobre sozinho
 

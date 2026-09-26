@@ -57,7 +57,25 @@ from tempest_fastapi_sdk.chat.models import (
 from tempest_fastapi_sdk.chat.models import (
     make_message_reaction_model as make_message_reaction_model,
 )
+from tempest_fastapi_sdk.chat.router import (
+    MEMBERSHIP_RECHECK_SECONDS as MEMBERSHIP_RECHECK_SECONDS,
+)
 from tempest_fastapi_sdk.chat.router import make_chat_router as make_chat_router
+from tempest_fastapi_sdk.chat.schemas import (
+    FORWARD_TARGETS_MAX as FORWARD_TARGETS_MAX,
+)
+from tempest_fastapi_sdk.chat.schemas import (
+    MESSAGE_ATTACHMENTS_MAX as MESSAGE_ATTACHMENTS_MAX,
+)
+from tempest_fastapi_sdk.chat.schemas import (
+    MESSAGE_BODY_MAX_LENGTH as MESSAGE_BODY_MAX_LENGTH,
+)
+from tempest_fastapi_sdk.chat.schemas import (
+    MESSAGES_PAGE_SIZE_MAX as MESSAGES_PAGE_SIZE_MAX,
+)
+from tempest_fastapi_sdk.chat.schemas import (
+    PARTICIPANT_IDS_MAX as PARTICIPANT_IDS_MAX,
+)
 from tempest_fastapi_sdk.chat.schemas import (
     REPLY_EXCERPT_LENGTH as REPLY_EXCERPT_LENGTH,
 )
@@ -106,9 +124,19 @@ from tempest_fastapi_sdk.chat.schemas import (
 from tempest_fastapi_sdk.chat.schemas import (
     ReplyPreviewSchema as ReplyPreviewSchema,
 )
+from tempest_fastapi_sdk.chat.service import (
+    PARTICIPANT_REMOVED_EVENT as PARTICIPANT_REMOVED_EVENT,
+)
 from tempest_fastapi_sdk.chat.service import ChatService as ChatService
 
 __all__: list[str] = [
+    "FORWARD_TARGETS_MAX",
+    "MEMBERSHIP_RECHECK_SECONDS",
+    "MESSAGES_PAGE_SIZE_MAX",
+    "MESSAGE_ATTACHMENTS_MAX",
+    "MESSAGE_BODY_MAX_LENGTH",
+    "PARTICIPANT_IDS_MAX",
+    "PARTICIPANT_REMOVED_EVENT",
     "REPLY_EXCERPT_LENGTH",
     "AttachmentResponseSchema",
     "BaseConversationModel",
