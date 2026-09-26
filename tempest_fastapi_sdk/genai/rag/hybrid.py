@@ -196,8 +196,11 @@ class HybridRetriever:
                 the fusion before truncating to ``top_k``.
 
         Returns:
-            list[Chunk]: The fused best chunks, best first.
+            list[Chunk]: The fused best chunks, best first. Empty when
+            ``top_k <= 0``, before either retriever runs.
         """
+        if top_k <= 0:
+            return []
         dense = await self.retriever.search(query, top_k=candidates)
         dense_keys = [
             key

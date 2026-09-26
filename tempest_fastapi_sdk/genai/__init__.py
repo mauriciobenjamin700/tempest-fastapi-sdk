@@ -114,6 +114,9 @@ from tempest_fastapi_sdk.genai.schemas import (
     CapacityReport as CapacityReport,
 )
 from tempest_fastapi_sdk.genai.schemas import (
+    GenAIRequestLimits as GenAIRequestLimits,
+)
+from tempest_fastapi_sdk.genai.schemas import (
     GeneratedImage as GeneratedImage,
 )
 from tempest_fastapi_sdk.genai.schemas import (
@@ -216,6 +219,7 @@ __all__: list[str] = [
     "EmbeddingModel",
     "GPUInfo",
     "GenAIMetrics",
+    "GenAIRequestLimits",
     "GeneratedImage",
     "GenerationCache",
     "GenerationConfig",

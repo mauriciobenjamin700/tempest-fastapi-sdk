@@ -2333,3 +2333,15 @@ tabela única. `AdminSite.get`/`require`/`unregister` aceitam a classe.
 
 Consumidor: `alofans-api`, com 9 acessos a `.__tablename__` em `src/` e
 `tests/`.
+
+## Limites de request nos routers de IA (não lançado)
+
+`GenAIRequestLimits` + `make_genai_router(limits=...)` conferem tamanho de
+prompt, chat, `max_new_tokens`, lote do `/embed`, `top_k`, texto do `/tts`,
+lado e steps do `/image` e upload do `/transcribe` antes de o modelo rodar;
+`/image` recusa `num_images > 1`. `make_vision_router` ganha
+`max_upload_bytes` e `max_image_pixels` (header lido sem decodificar, contra
+decompression bomb) e mapeia `ImageLoadError` para `422`. O leitor em blocos
+do `make_voice_router` virou `read_upload_capped`, público e compartilhado.
+Os stores de vetor devolvem `[]` para `top_k <= 0` em vez de fatiar com
+índice negativo.

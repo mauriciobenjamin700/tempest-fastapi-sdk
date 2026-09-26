@@ -28,6 +28,7 @@ except ImportError:  # pragma: no cover - guarded by extras
 from fastapi import UploadFile
 
 from tempest_fastapi_sdk.exceptions.upload import InvalidFileTypeException
+from tempest_fastapi_sdk.exceptions.validation import ValidationException
 
 # Magic-byte signatures, compared against the first bytes of an upload.
 # Used by :func:`sniff_mime` to detect what a file ACTUALLY is, so a
@@ -591,8 +592,62 @@ class UploadUtils:
         return new_key
 
 
+UPLOAD_READ_CHUNK_BYTES: int = 1 << 20
+"""Chunk size :func:`read_upload_capped` reads with (1 MiB).
+
+The ceiling is checked after every chunk, so an oversized upload costs at
+most ``max_bytes`` plus one chunk of memory before it is refused.
+"""
+
+
+async def read_upload_capped(
+    upload: UploadFile,
+    *,
+    max_bytes: int,
+    label: str = "upload",
+) -> bytes:
+    """Read an uploaded file into memory, refusing one that is too large.
+
+    Reads in :data:`UPLOAD_READ_CHUNK_BYTES` chunks and stops at the
+    ceiling instead of calling ``await upload.read()`` and measuring
+    afterwards: measuring afterwards means the oversized upload already
+    occupied the memory it was meant to be denied. This is the reader
+    every route of the SDK that takes a whole file into memory uses
+    (``make_genai_router``'s ``/transcribe``, ``make_voice_router``, and
+    ``make_vision_router``).
+
+    Args:
+        upload (UploadFile): The uploaded file.
+        max_bytes (int): The largest accepted size, in bytes.
+        label (str): What the file is, used in the error message
+            (``"audio is larger than ... bytes"``). Defaults to
+            ``"upload"``.
+
+    Returns:
+        bytes: The whole upload.
+
+    Raises:
+        ValidationException: When the upload exceeds ``max_bytes``; the
+            ``details`` carry ``max_bytes``. The status is ``422``, the
+            same one ``make_voice_router`` has always answered with.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await upload.read(UPLOAD_READ_CHUNK_BYTES):
+        total += len(chunk)
+        if total > max_bytes:
+            raise ValidationException(
+                message=f"{label} is larger than {max_bytes} bytes",
+                details={"max_bytes": max_bytes},
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 __all__: list[str] = [
     "SNIFFABLE_MIMETYPES",
+    "UPLOAD_READ_CHUNK_BYTES",
     "UploadUtils",
+    "read_upload_capped",
     "sniff_mime",
 ]
