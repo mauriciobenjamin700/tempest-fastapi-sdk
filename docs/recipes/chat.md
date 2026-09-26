@@ -385,6 +385,14 @@ async def anexar(
 gravá-la congela um acesso na linha. Um id já reivindicado é recusado
 com `404` — o mesmo arquivo não entra em duas mensagens.
 
+A linha de anexo não registra quem fez o upload, então o serviço não tem
+como conferir que quem reivindica é o mesmo usuário que enviou o
+arquivo: qualquer participante que tenha o id de um anexo ainda não
+reivindicado pode prendê-lo à própria mensagem. O id é um `uuid4` gerado
+no servidor, e o seu endpoint de upload deve devolvê-lo só a quem enviou
+o arquivo: é disso que essa garantia depende hoje — registrar o autor exige uma coluna nova, portanto uma
+migração no seu banco, e fica para uma release que a anuncie.
+
 !!! tip "Validando o upload de texto"
     `UploadUtils(verify_magic_bytes=True)` recusa assinatura
     desconhecida, e `.txt` / `.csv` **não têm assinatura** — num chat
@@ -423,6 +431,16 @@ citar) mas o `body` é **limpo de verdade** — não escondido atrás de um
 flag que a próxima query esquece de filtrar. As chaves de storage saem
 no segundo item da tupla: o SDK não é dono do bucket, e chave esquecida
 é arquivo que sobrevive à mensagem que o justificava.
+
+A lista traz só chave que **nenhuma outra linha de anexo** ainda
+referencia. Encaminhar aponta a cópia para a mesma `storage_key`, então
+revogar a original de uma mensagem encaminhada devolve `[]` — a cópia
+ainda renderiza o arquivo — e a chave sai na revogação que remove a
+última referência. Apagar o que a lista devolve é sempre seguro.
+
+Editar e revogar exigem, além de ser o remetente, que você **ainda
+enxergue** a mensagem: participante ativo da conversa. Quem saiu não
+reescreve nem apaga o que disse lá.
 
 ### Reação: uma por pessoa
 
@@ -586,6 +604,40 @@ Endpoints montados (todos exigem autenticação):
     Postar, ler e assinar exigem que o usuário autenticado seja
     participante da conversa; caso contrário o router responde `403`.
 
+As rotas que recebem só o id de uma mensagem (`PATCH`/`DELETE
+/messages/{id}`, `PUT`/`DELETE /messages/{id}/reaction` e
+`POST /messages/{id}/forward`) conferem a conversa **da mensagem**: o
+usuário precisa ser participante ativo dela, e a mensagem não pode ser
+anterior ao `history_from` dele. Fora disso a resposta é o mesmo `404`
+de uma mensagem que não existe — corpo idêntico —, para o id não virar
+oráculo de existência. Encaminhar é leitura da original: quem não a
+enxerga não a copia para outra conversa. E responder citando uma
+mensagem anterior ao seu `history_from` também é `404`, porque o stub da
+citação carregaria o trecho do backlog que você não recebeu.
+
+### Limites de entrada
+
+O histórico aceita `page >= 1` e `1 <= page_size <= max_page_size`
+(`MESSAGES_PAGE_SIZE_MAX`, `100`, por padrão); fora disso é `422`. Antes,
+`page_size=0` era um `500` (divisão por zero) e `page_size=-1` virava
+`LIMIT -1`, que o SQLite lê como "sem limite" — 25 de 25 mensagens
+numa página. `ChatService.list_messages` recusa os mesmos valores com
+`ValidationException` quando chamado direto.
+
+Os schemas limitam o tamanho do que um request escreve, e passar do teto
+é `422`:
+
+| Campo | Teto | Constante |
+| --- | --- | --- |
+| `body` (postar e editar) | 65 536 caracteres | `MESSAGE_BODY_MAX_LENGTH` |
+| `attachment_ids` | 32 ids | `MESSAGE_ATTACHMENTS_MAX` |
+| `conversation_ids` (encaminhar) | 20 conversas | `FORWARD_TARGETS_MAX` |
+| `participant_ids` (iniciar, adicionar) | 256 ids | `PARTICIPANT_IDS_MAX` |
+| `title` / `description` | 255 / 512 caracteres | o tamanho da coluna |
+
+Passe `max_page_size=` para `make_chat_router` para mudar o teto da
+página; os outros vivem nos schemas.
+
 ## Tempo real via SSE
 
 Injete um `SSEBroker` no serviço e cada mensagem postada também é
@@ -621,9 +673,32 @@ O cliente assina com um `EventSource` apontando para
 
 ```text
 event: message
-id: 7d3c5f8a-6b2e-4a19-b0d4-1c2e3f4a5b6c
 data: {"id": "7d3c5f8a-...", "conversation_id": "1a2b3c4d-...", "sender_id": "7d3c5f8a-...", "body": "Bora!", "created_at": "2026-07-18T14:32:07Z"}
 ```
+
+### O stream não segura sessão de banco
+
+A checagem de participante do `/stream` roda numa sessão própria, aberta
+pelo `session_factory` e **fechada antes do primeiro byte**. Uma sessão
+injetada por `Depends` ficaria aberta — conexão emprestada do pool,
+transação começada — enquanto o cliente continuasse conectado, e algumas
+centenas de abas ociosas esgotariam o pool. Isso vale para o que o
+router controla: se a sua dependência `current_user_id` abre sessão, ela
+continua aberta pela duração do stream.
+
+### O stream acaba quando a participação acaba
+
+`leave` e `remove_participant` publicam, depois do aviso de sistema, um
+evento `participant.removed` (`PARTICIPANT_REMOVED_EVENT`) cujo `data` é
+o `ParticipantResponseSchema` de quem saiu. O stream de quem ele nomeia
+entrega esse evento e fecha; o `EventSource` tenta reconectar e leva
+`403`. Os outros participantes recebem o evento e seguem conectados.
+
+Para saída que não passa pelo `ChatService` — um script, um `UPDATE`
+direto —, o stream relê a participação numa sessão curta a cada
+`membership_recheck_seconds` (`30.0` por padrão), contados nos frames que
+ele entrega, heartbeat incluído. `None` desliga a releitura e deixa só o
+evento.
 
 Veja a receita de
 **[Server-Sent Events »](sse.md)** para o lado do cliente e a ponte
@@ -643,5 +718,8 @@ Redis multi-worker.
 - `client_id` torna o reenvio idempotente; conversa direta é idempotente
   por par.
 - `make_chat_router` monta os endpoints com guarda de participante —
-  que considera quem **saiu** como não-participante.
-- Passe um `SSEBroker` para ganhar entrega em tempo real de graça.
+  que considera quem **saiu** como não-participante. Rota que recebe só
+  o id da mensagem confere a conversa dela e responde `404` igual ao de
+  mensagem inexistente.
+- Passe um `SSEBroker` para ganhar entrega em tempo real de graça — o
+  stream não segura sessão de banco e fecha quando a participação acaba.

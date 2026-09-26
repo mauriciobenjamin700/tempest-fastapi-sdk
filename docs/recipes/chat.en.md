@@ -385,6 +385,15 @@ TTL, and storing one freezes an access into the row. An id that was
 already claimed is refused with `404` — the same file never enters two
 messages.
 
+The attachment row does not record who uploaded it, so the service has
+no way to check that the claimer is the user who sent the file: any
+participant holding the id of an attachment not yet claimed can pin it
+to their own message. The id is a server-generated `uuid4`, and your
+upload endpoint should return it only to whoever sent the file: that is
+what the guarantee rests on today —
+recording the author needs a new column, hence a migration in your
+database, and is left for a release that announces it.
+
 !!! tip "Validating a text upload"
     `UploadUtils(verify_magic_bytes=True)` rejects an unrecognized
     signature, and `.txt` / `.csv` **have none** — in a chat that
@@ -423,6 +432,17 @@ quote) but `body` is **actually cleared** — not hidden behind a flag the
 next query forgets to filter. The storage keys come back as the second
 item of the tuple: the SDK does not own the bucket, and a forgotten key
 is a file that outlives the message that justified it.
+
+The list only carries keys that **no other attachment row** still
+references. A forward points its copy at the same `storage_key`, so
+revoking the original of a forwarded message returns `[]` — the copy
+still renders the file — and the key comes out of the revoke that
+removes its last reference. Deleting what the list returns is always
+safe.
+
+Editing and revoking require, besides being the sender, that you **can
+still see** the message: an active participant of the conversation.
+Someone who left can no longer rewrite or delete what they said there.
 
 ### Reactions: one per person
 
@@ -587,6 +607,41 @@ Mounted endpoints (all require authentication):
     a participant of the conversation; otherwise the router responds
     `403`.
 
+The routes that take only a message id (`PATCH`/`DELETE
+/messages/{id}`, `PUT`/`DELETE /messages/{id}/reaction` and
+`POST /messages/{id}/forward`) check **the message's** conversation: the
+user must be an active participant of it, and the message must not be
+older than their `history_from`. Otherwise the answer is the same `404`
+as a message that does not exist — identical body — so the id is not an
+existence oracle. Forwarding is a read of the original: whoever cannot
+see it cannot copy it into another conversation. And replying with a
+quote of a message older than your `history_from` is a `404` too,
+because the quote stub would carry an excerpt of the backlog you were
+not given.
+
+### Input limits
+
+The history accepts `page >= 1` and `1 <= page_size <= max_page_size`
+(`MESSAGES_PAGE_SIZE_MAX`, `100`, by default); anything else is a `422`.
+Before, `page_size=0` was a `500` (division by zero) and `page_size=-1`
+became `LIMIT -1`, which SQLite reads as "no limit" — 25 of 25 messages
+on one page. `ChatService.list_messages` refuses the same values with a
+`ValidationException` when called directly.
+
+The schemas bound how much one request writes, and going over the
+ceiling is a `422`:
+
+| Field | Ceiling | Constant |
+| --- | --- | --- |
+| `body` (post and edit) | 65,536 characters | `MESSAGE_BODY_MAX_LENGTH` |
+| `attachment_ids` | 32 ids | `MESSAGE_ATTACHMENTS_MAX` |
+| `conversation_ids` (forward) | 20 conversations | `FORWARD_TARGETS_MAX` |
+| `participant_ids` (start, add) | 256 ids | `PARTICIPANT_IDS_MAX` |
+| `title` / `description` | 255 / 512 characters | the column size |
+
+Pass `max_page_size=` to `make_chat_router` to change the page ceiling;
+the others live in the schemas.
+
 ## Real time via SSE
 
 Inject an `SSEBroker` into the service and every posted message is also
@@ -622,9 +677,33 @@ The client subscribes with an `EventSource` pointing at
 
 ```text
 event: message
-id: 7d3c5f8a-6b2e-4a19-b0d4-1c2e3f4a5b6c
 data: {"id": "7d3c5f8a-...", "conversation_id": "1a2b3c4d-...", "sender_id": "7d3c5f8a-...", "body": "Let's!", "created_at": "2026-07-18T14:32:07Z"}
 ```
+
+### The stream holds no database session
+
+The `/stream` participant check runs on a session of its own, opened by
+`session_factory` and **closed before the first byte**. A session
+injected with `Depends` would stay open — connection borrowed from the
+pool, transaction begun — for as long as the client stays connected, and
+a few hundred idle tabs would drain the pool. This covers what the router
+controls: if your `current_user_id` dependency opens a session, that one
+stays open for the life of the stream.
+
+### The stream ends when the membership does
+
+`leave` and `remove_participant` publish, after the system notice, a
+`participant.removed` event (`PARTICIPANT_REMOVED_EVENT`) whose `data` is
+the `ParticipantResponseSchema` of whoever left. The stream of the user
+it names delivers that event and closes; the `EventSource` tries to
+reconnect and gets a `403`. The other participants receive the event and
+stay connected.
+
+For a removal that does not go through `ChatService` — a script, a
+direct `UPDATE` — the stream re-reads the membership on a short-lived
+session every `membership_recheck_seconds` (`30.0` by default), counted
+on the frames it delivers, heartbeats included. `None` turns the re-read
+off and leaves only the event.
 
 See the
 **[Server-Sent Events »](sse.md)** recipe for the client side and the
@@ -644,5 +723,8 @@ multi-worker Redis bridge.
 - `client_id` makes resending idempotent; a direct conversation is
   idempotent per pair.
 - `make_chat_router` mounts the endpoints with the participant guard —
-  which treats someone who **left** as not a participant.
-- Pass an `SSEBroker` to get real-time delivery for free.
+  which treats someone who **left** as not a participant. A route that
+  takes only a message id checks that message's conversation and answers
+  with the same `404` as a missing message.
+- Pass an `SSEBroker` to get real-time delivery for free — the stream
+  holds no database session and closes when the membership ends.
