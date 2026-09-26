@@ -437,6 +437,79 @@ class ChatService:
         ]
         return response
 
+    async def add_attachment(
+        self,
+        uploader_id: UUID,
+        *,
+        storage_key: str,
+        filename: str = "",
+        mime_type: str = "application/octet-stream",
+        size_bytes: int = 0,
+        thumbnail_key: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        duration_ms: int | None = None,
+        waveform: list[int] | None = None,
+    ) -> AttachmentResponseSchema:
+        """Record an uploaded file as an unclaimed attachment of its uploader.
+
+        The first half of the two-step upload: call it once the bytes are
+        stored, hand the returned ``id`` back to the uploader, and let the
+        uploader name it in ``MessageCreateSchema.attachment_ids``. The row
+        is written with ``uploader_id`` set, so :meth:`post_message` claims
+        it only for a message **sent by that same user** — anyone else who
+        learns the id gets the same ``404`` as for an id that does not
+        exist.
+
+        Writing the row yourself works too, as long as it carries
+        ``uploader_id``; a row without one is claimable by any sender.
+
+        Args:
+            uploader_id (UUID): The user who uploaded the file.
+            storage_key (str): Storage key of the stored file — a key,
+                never a URL.
+            filename (str): Original filename, shown for documents.
+            mime_type (str): Type sniffed from the bytes, not the
+                client's claim.
+            size_bytes (int): Size of the stored object.
+            thumbnail_key (str | None): Key of the generated preview.
+            width (int | None): Pixel width, for image and video.
+            height (int | None): Pixel height, for image and video.
+            duration_ms (int | None): Duration, for audio, voice and
+                video.
+            waveform (list[int] | None): Normalized amplitude buckets
+                (0-100) for a voice note.
+
+        Returns:
+            AttachmentResponseSchema: The stored row; its ``id`` is what
+            the uploader posts.
+
+        Raises:
+            ValidationException: When the service was built without an
+                attachment repository.
+        """
+        if self.attachments is None:
+            raise ValidationException(
+                message="this chat service was built without an attachment "
+                "repository, so it cannot store attachments",
+                field="attachments",
+            )
+        row = await self.attachments.add(
+            self.attachments.model(
+                uploader_id=uploader_id,
+                storage_key=storage_key,
+                filename=filename,
+                mime_type=mime_type,
+                size_bytes=size_bytes,
+                thumbnail_key=thumbnail_key,
+                width=width,
+                height=height,
+                duration_ms=duration_ms,
+                waveform=waveform,
+            ),
+        )
+        return AttachmentResponseSchema.model_validate(row)
+
     async def post_message(
         self,
         conversation_id: UUID,
@@ -547,18 +620,33 @@ class ChatService:
         fails on the last byte must not take the caption with it, and a
         retried post must not re-send the file.
 
+        A row that records its uploader is claimable only by a message
+        from that uploader. Someone else naming the id gets the same
+        ``404`` as for an id that does not exist, so the answer does not
+        confirm that the file is there. A row with ``uploader_id`` still
+        ``NULL`` — written before the column existed, or by an upload path
+        that does not fill it — keeps the previous rule and is claimable by
+        any sender: that is the transition window, and it closes once no
+        such row is left unclaimed.
+
         Args:
             message (Any): The message row that claims them.
             ids (list[UUID]): Attachment ids, in render order.
 
         Raises:
-            NotFoundException: When an id names no unclaimed attachment.
+            NotFoundException: When an id names no unclaimed attachment,
+                or one uploaded by someone other than the sender.
         """
         if not ids or self.attachments is None:
             return
         for position, attachment_id in enumerate(ids):
             row = await self.attachments.get_or_none({"id": attachment_id})
-            if row is None or row.message_id is not None:
+            foreign = (
+                row is not None
+                and row.uploader_id is not None
+                and row.uploader_id != message.sender_id
+            )
+            if row is None or row.message_id is not None or foreign:
                 raise NotFoundException(
                     message="unknown or already claimed attachment",
                     details={"attachment_id": str(attachment_id)},
@@ -859,6 +947,7 @@ class ChatService:
             await self.attachments.add(
                 self.attachments.model(
                     message_id=target_id,
+                    uploader_id=item.uploader_id,
                     position=item.position,
                     storage_key=item.storage_key,
                     thumbnail_key=item.thumbnail_key,
