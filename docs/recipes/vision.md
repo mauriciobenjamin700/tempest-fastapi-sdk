@@ -28,6 +28,7 @@ tamanho 1 — pegue o `[0]` e mapeie pros schemas:
 # src/api/routers/vision.py
 from fastapi import APIRouter, UploadFile
 
+from tempest_fastapi_sdk.utils import read_upload_capped
 from tempest_fastapi_sdk.vision import DetectionSchema, Detector, to_detection_schemas
 
 router = APIRouter(prefix="/api/vision", tags=["vision"])
@@ -39,7 +40,8 @@ detector = Detector("models/yolov8n.onnx", labels="coco")
 @router.post("/detect")
 async def detect(file: UploadFile) -> list[DetectionSchema]:
     """Detecta objetos na imagem enviada."""
-    results = (await detector.async_predict(await file.read()))[0]
+    data: bytes = await read_upload_capped(file, max_bytes=20 * 1024 * 1024)
+    results = (await detector.async_predict(data))[0]
     return to_detection_schemas(results)
 ```
 
@@ -60,6 +62,7 @@ retorna **um** `ClassificationSchema` (não uma lista):
 ```python
 from fastapi import APIRouter, UploadFile
 
+from tempest_fastapi_sdk.utils import read_upload_capped
 from tempest_fastapi_sdk.vision import (
     ClassificationSchema,
     Classifier,
@@ -75,7 +78,8 @@ classifier = Classifier("models/resnet.onnx", labels="imagenet")
 @router.post("/classify")
 async def classify(file: UploadFile) -> ClassificationSchema:
     """Classifica a imagem (top-1 + probabilidades top-k)."""
-    results = (await classifier.async_predict(await file.read(), top_k=5))[0]
+    data: bytes = await read_upload_capped(file, max_bytes=20 * 1024 * 1024)
+    results = (await classifier.async_predict(data, top_k=5))[0]
     return to_classification_schema(results)
 ```
 
@@ -92,6 +96,7 @@ quando precisar dos pixels):
 ```python
 from fastapi import APIRouter, UploadFile
 
+from tempest_fastapi_sdk.utils import read_upload_capped
 from tempest_fastapi_sdk.vision import (
     SegmentationSchema,
     Segmenter,
@@ -106,7 +111,8 @@ segmenter = Segmenter("models/yolov8n-seg.onnx", labels="coco")
 
 @router.post("/segment")
 async def segment(file: UploadFile) -> list[SegmentationSchema]:
-    results = (await segmenter.async_predict(await file.read()))[0]
+    data: bytes = await read_upload_capped(file, max_bytes=20 * 1024 * 1024)
+    results = (await segmenter.async_predict(data))[0]
     return to_segmentation_schemas(results)
 ```
 
@@ -123,6 +129,7 @@ uma inferência, quantos objetos houver:
 ```python
 from fastapi import FastAPI, UploadFile
 
+from tempest_fastapi_sdk.utils import read_upload_capped
 from tempest_fastapi_sdk.vision import (
     DetectClassify,
     DetectClassifySchema,
@@ -144,7 +151,8 @@ async def triage(file: UploadFile) -> list[DetectClassifySchema]:
         list[DetectClassifySchema]: One entry per detected object, each
             carrying the second-stage verdict.
     """
-    results = (await pipeline.async_predict(await file.read()))[0]
+    data: bytes = await read_upload_capped(file, max_bytes=20 * 1024 * 1024)
+    results = (await pipeline.async_predict(data))[0]
     return to_detect_classify_schemas(results)
 ```
 
@@ -189,8 +197,10 @@ A resposta aninha o segundo estágio dentro de cada detecção:
 ## Inputs aceitos + execução
 
 `async_predict` aceita os mesmos inputs do `ort-vision-sdk`: caminho,
-`bytes`, `numpy.ndarray` ou imagem PIL — então `await file.read()` (bytes)
-entra direto.
+`bytes`, `numpy.ndarray` ou imagem PIL — então os bytes do upload entram
+direto. Leia com `read_upload_capped(file, max_bytes=...)` em vez de
+`await file.read()`: ele lê em blocos e recusa com `422` assim que passa do
+teto, antes de o upload inteiro ocupar a memória que o teto devia negar.
 
 | Método | Quando usar |
 | --- | --- |
@@ -223,6 +233,43 @@ app.include_router(make_vision_router(detector=Detector("yolov8n.onnx", labels="
 Só o que for injetado aparece; sem nenhum objeto, levanta `ValueError`.
 Cada endpoint lê o `UploadFile`, chama `async_predict` e mapeia via
 `to_*_schemas`.
+
+### Limites de upload e de pixels
+
+Toda rota do `make_vision_router` confere três coisas **antes** de rodar o
+modelo, e responde `422` quando alguma falha:
+
+| Parâmetro | Default | O que barra |
+| --- | --- | --- |
+| `max_upload_bytes` | `DEFAULT_MAX_IMAGE_UPLOAD_BYTES` (20 MiB) | upload grande demais — lido em blocos, recusado ao cruzar o teto |
+| `max_image_pixels` | `DEFAULT_MAX_IMAGE_PIXELS` (50 MP) | canvas declarado no header acima do teto — lido sem decodificar |
+| — | — | bytes que não são imagem, e o `ImageLoadError` do `ort-vision-sdk` (antes virava `500`) |
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.vision import Detector, make_vision_router
+
+app: FastAPI = FastAPI()
+app.include_router(
+    make_vision_router(
+        detector=Detector("yolov8n.onnx", labels="coco"),
+        max_upload_bytes=5 * 1024 * 1024,
+        max_image_pixels=12_000_000,
+    ),
+)
+```
+
+!!! info "Por que contar pixel, se já tem teto de bytes"
+    PNG de cor chapada comprime ordens de grandeza. Medido com Pillow
+    12.3.0 e `ort-vision-sdk` 0.8.0: um PNG em branco de 9400 x 9400 com
+    10 804 bytes decodifica num array RGB de 265 080 000 bytes — e passa
+    calado pelo aviso de decompression bomb do próprio Pillow, porque
+    88,36 MP fica abaixo do limiar dele (89,48 MP). O teto de bytes não pega
+    esse arquivo; o de pixels pega, lendo só o header.
+
+`max_image_pixels=None` desliga a checagem de header (e o import do
+Pillow), deixando só a defesa do próprio Pillow dentro do decoder.
 
 ## Recap
 

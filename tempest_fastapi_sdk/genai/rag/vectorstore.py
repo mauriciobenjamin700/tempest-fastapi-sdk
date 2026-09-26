@@ -84,8 +84,13 @@ class InMemoryVectorStore:
 
         Returns:
             list[Chunk]: Chunks ordered by descending cosine similarity,
-            each with its ``score`` populated.
+            each with its ``score`` populated. Empty when ``top_k <= 0`` -
+            the same contract as ``ChromaVectorStore.search``. A negative
+            ``top_k`` used to reach the slice as ``scored[:-3]`` and return
+            every chunk but the last three.
         """
+        if top_k <= 0:
+            return []
         scored = [
             chunk.model_copy(update={"score": cosine_similarity(vector, stored)})
             for chunk, stored in zip(self._chunks, self._vectors, strict=True)
@@ -200,8 +205,11 @@ class PgVectorStore:
 
         Returns:
             list[Chunk]: Nearest chunks, each with ``score`` = cosine
-            similarity (``1 - distance``).
+            similarity (``1 - distance``). Empty when ``top_k <= 0``,
+            without a query, since Postgres rejects a negative ``LIMIT``.
         """
+        if top_k <= 0:
+            return []
         if not self._ready:
             await self.ensure_schema()
         from sqlalchemy import text
