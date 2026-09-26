@@ -5,6 +5,81 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Auditoria do caminho de serving do `modelops`. O `[modelops]` não declarava
+o `numpy` que o monitor e o leitor compacto importam; a inferência e o reload
+rodavam no event loop; o lote não tinha teto; as rotas de operação não tinham
+guard e expunham o caminho absoluto do modelo; o monitor guardava uma chave
+por valor de regressor e comparava rótulo pelo texto; e o `reload` aquecia a
+sessão **depois** de colocá-la no ar, engolindo a falha.
+
+### Fixed
+
+- **`[modelops]` declara `numpy`.** `baseline_from_samples`,
+  `PredictionMonitor` com baseline, `read_compact` e `predict_compact`
+  importam `numpy`, e o extra trazia só `psutil` + `nvidia-ml-py`: medido
+  numa venv limpa com `tempest-fastapi-sdk[modelops]==0.299.0`,
+  `baseline_from_samples` levantava `ModuleNotFoundError: No module named
+  'numpy'`. Com a wheel desta branch, o mesmo install roda; sem o extra, o
+  erro agora é um `ImportError` nomeando `[modelops]`.
+- **`POST /predict` e o reload do `POST /model/sync` saem do event loop**
+  (`asyncio.to_thread`). Medido com um predictor que segura a thread por
+  1 s: na 0.299.0 o loop ficava parado 0,992 s; agora o atraso de
+  agendamento fica abaixo de 1 ms.
+- **O monitor tem memória limitada de verdade.** Cada rótulo distinto virava
+  uma chave: 50 000 saídas de regressor davam 50 000 chaves e um relatório de
+  889 270 bytes de JSON. Agora no máximo `MAX_TRACKED_LABELS` (64) chaves
+  próprias, mais as classes da baseline (que nunca perdem a delas), e o resto
+  em `OTHER_LABEL` (`"__other__"`): 65 chaves, 1 350 bytes. A docstring do
+  módulo, que já dizia "memória limitada", passa a ser verdade.
+- **PSI de saída compara rótulo por valor.** Baseline com alvo float
+  (`"0.0"`) contra classificador que responde inteiro (`"0"`) dava PSI 26,24
+  (`significant`) sobre distribuições idênticas; agora 0,0 (`stable`).
+  Baselines já salvas com chaves `"0.0"` são normalizadas na leitura.
+- **`OnnxPredictor.reload` aquece antes de trocar.** A docstring prometia
+  "Warm the new session before it serves", mas o código trocava a sessão e
+  aquecia depois, engolindo a exceção. Agora a inferência de aquecimento roda
+  na sessão nova antes do swap; falhou, `reload` levanta `RuntimeError` e o
+  modelo anterior continua servindo. `warm_up()` público registra a falha em
+  log em vez de engolir em silêncio.
+- **`OnnxPredictor.predict` lê sessão e descrição juntas.** A largura era
+  validada contra `self.info` fora do lock e a sessão lida depois: um reload
+  no meio fazia a linha ir para o modelo novo e virar `InvalidArgument` do
+  runtime (500) em vez do `ValueError` (422).
+- **`RegistryModelSource.sync` é serializado** por um `asyncio.Lock`: medido
+  na 0.299.0, três syncs concorrentes faziam três downloads da mesma versão
+  para o mesmo caminho; agora um download e um reload — e é o lock que deixa
+  o reload rodar em thread sem que os três recarreguem. O download cai num `.part` e só é renomeado quando termina —
+  antes, um download interrompido deixava o arquivo parcial no caminho final,
+  e o próximo sync o tratava como versão em cache.
+
+### Added
+
+- **`make_prediction_router(max_rows=...)`**, default
+  `DEFAULT_MAX_PREDICT_ROWS` (10 000): lote maior vira `422`; `None` tira o
+  limite; valor não positivo levanta `ValueError` na construção.
+- **`make_prediction_router(dependencies=..., admin_dependencies=...)`**:
+  o router não traz autenticação; `admin_dependencies` protege `/model`,
+  `/model/sync` e `/monitor` deixando `POST /` aberto, e `dependencies`
+  protege todas as rotas.
+- **`RegistryModelSource(checksum_field="sha256")`**: quando a linha da
+  registry tem esse atributo preenchido, o download é conferido por SHA-256
+  antes de ser cacheado ou carregado; arquivo divergente é apagado e o sync
+  responde `503`. O `ArtifactVersionMixin` não declara a coluna — é opt-in
+  pelo schema do consumidor, sem migration no SDK. `None` desliga.
+- **`PredictionMonitor(max_labels=...)`** e as constantes
+  `MAX_TRACKED_LABELS` / `OTHER_LABEL`.
+
+### Changed
+
+- **`GET /model` e `POST /model/sync` devolvem só o nome do arquivo em
+  `path`** (`classifier.onnx`), não o caminho absoluto do dispositivo.
+  `make_prediction_router(expose_model_path=True)` restaura o comportamento
+  anterior.
+- **`POST /predict` recusa lote acima de 10 000 linhas por default**, antes
+  ilimitado.
+
 ## [0.299.0] — 2026-09-25
 
 Quatro pontes do `alofans-api` sobem para o SDK. O 500 de um

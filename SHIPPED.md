@@ -558,6 +558,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   dropping the old so a bad rollout degrades to the previous version),
   `make_prediction_router`, `RegistryModelSource` (fleet update over the
   existing `ArtifactRegistry`, one cached file per version).
+  **Serving hardening (Unreleased):** inference and reload off the event
+  loop (`asyncio.to_thread`; 0.992 s stall → <1 ms with a 1 s stub),
+  `max_rows` (`DEFAULT_MAX_PREDICT_ROWS = 10_000`, 422 beyond),
+  `dependencies` / `admin_dependencies` guards, `/model` reports the file
+  name unless `expose_model_path=True`; `reload` warms **before** the swap
+  and refuses a model that fails warm-up; `predict` reads session + info as
+  one snapshot; `RegistryModelSource.sync` serialised by a lock, `.part`
+  download + rename, optional `sha256` row check (`checksum_field`).
+  Monitor label buckets capped (`MAX_TRACKED_LABELS = 64` + baseline
+  classes + `OTHER_LABEL`) and keyed by value (`0.0` ≡ `0`); `[modelops]`
+  now declares `numpy`.
   **Monitoring (v0.190.0):** `PredictionMonitor` + `baseline_from_samples`
   + `population_stability_index` — latency/volume, input drift (PSI vs a
   training-time baseline of bin edges only) and prediction distribution;
