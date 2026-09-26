@@ -535,3 +535,21 @@ class TestSize:
         compact = export_sklearn_to_compact(model, features[:50], tmp_path / "f.tmc")
         onnx = export_sklearn_to_onnx(model, features[:10], tmp_path / "f.onnx")
         assert compact.size_bytes < onnx.size_bytes
+
+
+class TestNumpyExtra:
+    def test_a_missing_numpy_names_the_extra(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """Reading a compact file raised a bare ModuleNotFoundError."""
+        import sys
+
+        path = tmp_path / "m.tmc"
+        path.write_bytes(COMPACT_MAGIC)
+        monkeypatch.setitem(sys.modules, "numpy", None)
+        with pytest.raises(ImportError, match=r"\[modelops\]"):
+            read_compact(path)
+        with pytest.raises(ImportError, match=r"\[modelops\]"):
+            predict_compact(path, [[1.0]])

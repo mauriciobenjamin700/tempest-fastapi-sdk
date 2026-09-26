@@ -55,6 +55,32 @@ from tempest_fastapi_sdk.schemas.base import BaseSchema
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+_EXTRA_HINT: str = (
+    "The compact model format requires numpy, shipped by the optional "
+    "[modelops] extra. Install with: pip install tempest-fastapi-sdk[modelops]"
+)
+
+
+def _require_numpy() -> Any:
+    """Import ``numpy`` or raise an error naming the extra that ships it.
+
+    Reading and predicting with a compact file needs numpy and nothing else
+    — that is the point of the format — so the extra that carries it is the
+    lightweight ``[modelops]``, not ``[modelops-sklearn]``.
+
+    Returns:
+        Any: The ``numpy`` module.
+
+    Raises:
+        ImportError: When numpy is unavailable.
+    """
+    try:
+        import numpy
+    except ImportError as exc:
+        raise ImportError(_EXTRA_HINT) from exc
+    return numpy
+
+
 COMPACT_MAGIC: bytes = b"TMC1"
 """Magic bytes opening every compact model file."""
 
@@ -501,7 +527,7 @@ def export_sklearn_to_compact(
             route, which covers everything this does not.
         ValueError: When the written file disagrees with the estimator.
     """
-    import numpy
+    numpy = _require_numpy()
 
     final = _final_step(estimator)
     kind_name = type(final).__name__
@@ -595,9 +621,10 @@ def read_compact(path: str | Path) -> tuple[dict[str, Any], dict[str, Any]]:
         as numpy arrays keyed by name.
 
     Raises:
+        ImportError: When numpy (the ``[modelops]`` extra) is missing.
         ValueError: When the magic bytes or schema version do not match.
     """
-    import numpy
+    numpy = _require_numpy()
 
     raw = Path(path).read_bytes()
     if raw[:4] != COMPACT_MAGIC:
@@ -638,8 +665,11 @@ def predict_compact(path: str | Path, rows: Any) -> tuple[list[Any], list[list[f
     Returns:
         tuple[list[Any], list[list[float]]]: Labels and per-class scores;
         the scores are empty for a regression model.
+
+    Raises:
+        ImportError: When numpy (the ``[modelops]`` extra) is missing.
     """
-    import numpy
+    numpy = _require_numpy()
 
     header, arrays = read_compact(path)
     values = numpy.asarray(getattr(rows, "values", rows), dtype="float64")
@@ -768,7 +798,7 @@ def _verify(
         tuple[bool, float | None]: Whether it passed, and the largest
         difference seen.
     """
-    import numpy
+    numpy = _require_numpy()
 
     labels, probabilities = predict_compact(path, samples)
     expected_labels = [str(value) for value in estimator.predict(samples)]

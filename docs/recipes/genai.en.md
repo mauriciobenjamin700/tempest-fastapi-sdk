@@ -678,8 +678,9 @@ turns.
 
 !!! tip "Moderation + context window in the pipeline"
     Optional constructor args: `moderator=` (a `ModerationBackend` —
-    `RuleModerator`/`ClassifierModerator`) screens the input before generating
-    and the reply after; a flagged turn answers `blocked_message` (a flagged
+    `RuleModerator`/`ClassifierModerator`) screens the input **and every
+    `history` turn** before generating and the reply after — in `respond`
+    and in `stream`; a flagged turn answers `blocked_message` (a flagged
     input never calls the model). `tokenizer=` + `max_context_tokens=` trim the
     oldest turns (via `truncate_messages`) to fit the window before generating.
     Both opt-in.
@@ -717,12 +718,80 @@ app.include_router(make_ai_chat_router(pipeline))   # prefix /api/ai-chat
 ```
 
 It mounts `POST /api/ai-chat/chat` (returns `AIChatResult`) and
-`POST /api/ai-chat/chat/stream` (tokens over SSE).
+`POST /api/ai-chat/chat/stream` (tokens over SSE). The body is
+`{"chat_id": ..., "content": ..., "history": [...]}` — no `user_id`.
 
 !!! note "The router is stateless"
     History lives in the request body, not on the server — each call sends
     `history`. That keeps the backend sessionless (horizontal scale for
     free) and long-term memory handles the "remembering" via `ChatMemory`.
+
+#### With memory: the conversation owner comes from the session
+
+With `memory=` on the pipeline, every turn recalls and indexes the
+**user's** memories. Who the user is comes from your auth dependency, never
+from the body:
+
+```python
+# src/api/app.py
+
+from fastapi import Depends, FastAPI
+
+from tempest_fastapi_sdk.genai import (
+    AIChatPipeline,
+    OllamaEmbedder,
+    OllamaGenerator,
+    make_ai_chat_router,
+)
+from tempest_fastapi_sdk.genai.rag import ChatMemory
+
+from src.api.dependencies.auth import current_user_id
+
+pipeline = AIChatPipeline(
+    OllamaGenerator("llama3.2"),
+    memory=ChatMemory(OllamaEmbedder("nomic-embed-text")),
+)
+
+
+def create_app() -> FastAPI:
+    """Mount the AI chat behind the service's own auth."""
+    app = FastAPI()
+    app.include_router(
+        make_ai_chat_router(
+            pipeline,
+            current_user_id=current_user_id,
+            dependencies=[Depends(current_user_id)],
+        ),
+    )
+    return app
+```
+
+!!! warning "`current_user_id` is required alongside `memory`"
+    Recalling memory under a `user_id` taken from the **body** would hand
+    anyone's past conversations to whoever knows their id — and
+    `AIChatResult` returns the `memory_hits`. So the router refuses that
+    combination at mount time (`ValueError`). Without memory,
+    `current_user_id` is optional and the turn runs with no owner.
+
+!!! info "The body does not pick roles"
+    `history[].role` accepts only `"user"` and `"assistant"`. A
+    client-sent `"system"` turn would sit in the prompt with the authority
+    of your `base_system_prompt` — the body gets a `422`. And with
+    `moderator=`, every `history` turn's content goes through the same
+    filter as the new message.
+
+??? note "Migrating from a version that read `user_id` from the body"
+    Up to 0.299.0, `AIChatRequestSchema` had `user_id` and the router
+    passed it to `memory.search`. Now:
+
+    - the field is gone from the schema; an older client still sending
+      `user_id` does not break — the value is ignored;
+    - a pipeline **with** `memory=` needs `current_user_id=` on
+      `make_ai_chat_router`, or mounting raises `ValueError`;
+    - `history` with a `role` other than `user`/`assistant` now answers
+      `422`;
+    - calling the pipeline directly, `user_id=None` skips memory for the
+      turn (no recall, no indexing).
 
 ### Streaming
 
@@ -746,6 +815,29 @@ async def stream_demo() -> None:
 
 asyncio.run(stream_demo())
 ```
+
+!!! warning "Moderation while streaming: what was sent stays sent"
+    With `moderator=`, `stream` screens the reply too, and
+    `stream_moderation=` on the constructor picks how:
+
+    - `"incremental"` (default) — before each piece is sent, the text
+      generated so far (that piece included) goes through the moderator.
+      On the first flag the stream stops and the last piece is
+      `blocked_message`. Earlier pieces **were already delivered** and
+      cannot be recalled; the guarantee is that the piece which makes the
+      text flaggable is never sent. With `RuleModerator` and the block list
+      `["secret"]`, the reply `"here is the SECRET plan"`, emitted one
+      character per piece, comes out as
+      `"here is the SECRE"` followed by `blocked_message` — the term is
+      never emitted whole, a prefix of it can be. It costs one moderator
+      call per piece.
+    - `"buffered"` — generates the whole reply, moderates once, and only
+      then sends: either the whole reply as a single piece, or
+      `blocked_message`. Nothing leaks, but the client waits for the full
+      generation. It is the choice for a `ClassifierModerator`, which would
+      cost one inference per piece in incremental mode.
+
+    A blocked reply is not indexed into memory, same as `respond`.
 
 !!! tip "The inference microservice becomes a choice, not a requirement"
     With the pipeline in-process, running a separate LLM-only service turns
@@ -1321,6 +1413,34 @@ Failures (timeout, 4xx/5xx, empty page) **never** raise — they come back
 as `ExtractionResult(text="", failed=True)`, so no source is silently
 dropped.
 
+!!! info "The URL is treated as untrusted input"
+    The URL is picked by the search engine or by the user, so `extract`
+    keeps your server from becoming a proxy into the internal network
+    (SSRF):
+
+    - only `http` and `https` — `file://`, `ftp://` and friends come back
+      `failed=True` without a request;
+    - the host (an IP literal, or **every** address the hostname resolves
+      to) must be public: loopback, private ranges (10/8, 172.16/12,
+      192.168/16, `fd00::/8`), link-local — including the cloud metadata
+      `169.254.169.254` —, CGNAT, multicast and reserved are refused, for
+      IPv4 and IPv6;
+    - redirects are followed by hand, with the same check on **every** hop,
+      up to `max_redirects=` (default 5);
+    - the body is streamed and the fetch gives up past
+      `max_response_bytes=` (default 5 MiB);
+    - `trafilatura` runs in a thread (`asyncio.to_thread`), so a large page
+      does not stall the event loop.
+
+    To read intranet pages on purpose, `allow_private_networks=True` turns
+    off only the address check (scheme, redirect bound and body cap still
+    apply). Turn it on only when the URLs do not come from an attacker.
+
+    The address check and the connection do two separate DNS lookups, so a
+    hostname whose answer changes between them (DNS rebinding) is not
+    covered. If that matters in your environment, enforce the same rule at
+    egress (proxy or firewall).
+
 ### Read PDFs (knowledge base)
 
 `PdfReader` (PyMuPDF — detailed, reading-order extraction) turns PDF paths
@@ -1781,7 +1901,14 @@ asyncio.run(main())
 ```
 
 `RuleModerator` is dependency-free and predictable (whole-word,
-case-insensitive block-list) — the deterministic floor. `ClassifierModerator`
+case-insensitive block-list) — the deterministic floor. Before matching,
+both term and text go through NFKC, lose their format characters
+(zero-width space, bidi marks) and are casefolded — so `"se"` + U+200B +
+`"cret"` and the fullwidth spelling still hit `"secret"`. "Whole word"
+means "no word character glued on either side", which is what makes terms
+with punctuation at the edge (`"$hit"`, `"c++"`) work. Homoglyphs from
+another script (Cyrillic `е` for `e`) are **not** folded: list those
+spellings in the block list. `ClassifierModerator`
 runs a local classifier (e.g. `unitary/toxic-bert`) over transformers
 (`[genai]`), lazy, with `flagged_labels` / `threshold`. PT-BR toxicity-model
 quality varies — treat the classifier as best-effort and keep `RuleModerator`

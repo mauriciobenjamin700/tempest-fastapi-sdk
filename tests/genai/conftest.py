@@ -15,6 +15,22 @@ import httpx
 import pytest
 
 
+async def public_resolver(host: str) -> list[str]:
+    """Resolve every hostname to a public documentation-free address.
+
+    ``ContentExtractor`` refuses private destinations by resolving the host
+    first; the ``MockTransport`` tests use made-up hostnames (``"x"``,
+    ``"a"``) that real DNS would not answer, so they inject this resolver.
+
+    Args:
+        host (str): The hostname being fetched.
+
+    Returns:
+        list[str]: A single public IPv4 address.
+    """
+    return ["93.184.216.34"]
+
+
 class FakeTextBackend:
     """Scriptable in-memory ``TextBackend`` for wiring tests.
 

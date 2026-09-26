@@ -558,6 +558,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   dropping the old so a bad rollout degrades to the previous version),
   `make_prediction_router`, `RegistryModelSource` (fleet update over the
   existing `ArtifactRegistry`, one cached file per version).
+  **Serving hardening (Unreleased):** inference and reload off the event
+  loop (`asyncio.to_thread`; 0.992 s stall → <1 ms with a 1 s stub),
+  `max_rows` (`DEFAULT_MAX_PREDICT_ROWS = 10_000`, 422 beyond),
+  `dependencies` / `admin_dependencies` guards, `/model` reports the file
+  name unless `expose_model_path=True`; `reload` warms **before** the swap
+  and refuses a model that fails warm-up; `predict` reads session + info as
+  one snapshot; `RegistryModelSource.sync` serialised by a lock, `.part`
+  download + rename, optional `sha256` row check (`checksum_field`).
+  Monitor label buckets capped (`MAX_TRACKED_LABELS = 64` + baseline
+  classes + `OTHER_LABEL`) and keyed by value (`0.0` ≡ `0`); `[modelops]`
+  now declares `numpy`.
   **Monitoring (v0.190.0):** `PredictionMonitor` + `baseline_from_samples`
   + `population_stability_index` — latency/volume, input drift (PSI vs a
   training-time baseline of bin edges only) and prediction distribution;
@@ -654,7 +665,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (v0.147); **token/context** (`count_tokens`/`truncate_messages`) (v0.148);
   **`make_vision_router`** (v0.149); **`GenAIMetrics`** Prometheus (v0.150);
   content **moderation** (`RuleModerator`/`ClassifierModerator`) (v0.151);
-  and integration — `AIChatPipeline` moderation + context truncation (v0.152),
+  and integration — `AIChatPipeline` moderation + context truncation (v0.152);
+  trust boundary (Unreleased) — `stream()` moderates the reply
+  (`stream_moderation="incremental"|"buffered"`), `history` is moderated and
+  limited to `user`/`assistant` in the router, the memory owner comes from
+  `make_ai_chat_router(current_user_id=...)` (required with `memory=`), the
+  `RuleModerator` normalizes (NFKC, `Cf` stripped, casefold) and matches
+  punctuation-edged terms, and `ContentExtractor` refuses private/non-http
+  destinations on every redirect hop with a body cap
+  (`allow_private_networks=` opt-out);
   metrics+cache on `TextGenerator`/`Embedder` (v0.153); **OTel spans**
   (`genai_span`) — ambient tracing on `generate`/`chat`/`embed`/RAG reusing the
   `setup_tracing` `TracerProvider` (GenAI semconv; no-op without `[otel]`)
