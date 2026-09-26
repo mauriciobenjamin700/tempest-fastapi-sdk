@@ -93,6 +93,14 @@ async def call() -> None:
   `X-Request-ID` (from `RequestIDMiddleware`) is forwarded to the upstream,
   stitching logs end-to-end.
 
+!!! warning "`stream()` only retries before the first line"
+    In `client.stream(...)`, retry and the circuit-breaker cover only
+    **opening** the stream. Once the first line was yielded, a mid-stream
+    failure (including a `ReadTimeout` between two chunks) propagates to the
+    caller — re-sending the POST would replay lines you already consumed.
+    Up to this release a mid-stream `ReadTimeout` was retried, and the
+    caller saw `["Hello ", "Hello ", "world"]` from two POSTs.
+
 !!! tip "Keep it as a singleton in resources.py"
     Build the `HTTPClient` once (in `src/api/dependencies/resources.py`),
     expose a `get_http_client`, and close it on the lifespan with

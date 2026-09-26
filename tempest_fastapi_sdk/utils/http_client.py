@@ -468,7 +468,9 @@ class HTTPClient:
         network errors and retryable statuses on the initial response are
         retried with the same backoff as :meth:`request`. Once the first line
         is yielded the connection is committed, so a mid-stream failure
-        propagates to the caller. A non-success status that is not going to be
+        (including a ``ReadTimeout`` between two chunks) propagates to the
+        caller instead of re-sending the request and replaying lines the
+        caller already consumed. A non-success status that is not going to be
         retried raises ``httpx.HTTPStatusError`` before any line is yielded, so
         the caller never has to inspect ``status_code`` on a stream.
 
@@ -502,6 +504,7 @@ class HTTPClient:
             self.retry_policy.max_attempts if _body_is_replayable(content, files) else 1
         )
 
+        yielded = False
         for attempt in range(1, max_attempts + 1):
             retry_status = False
             try:
@@ -526,10 +529,11 @@ class HTTPClient:
                         response.raise_for_status()
                         await self._breaker_record(host, failed=False)
                         async for line in response.aiter_lines():
+                            yielded = True
                             yield line
                         return
             except (_httpx_mod.ConnectError, _httpx_mod.ReadTimeout):
-                if attempt == max_attempts:
+                if yielded or attempt == max_attempts:
                     await self._breaker_record(host, failed=True)
                     raise
                 await asyncio.sleep(self.retry_policy.sleep_for(attempt))

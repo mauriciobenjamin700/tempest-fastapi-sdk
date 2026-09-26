@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from collections.abc import AsyncIterator
 
 import httpx
 import pytest
@@ -254,6 +255,66 @@ class TestStream:
                     pass
         finally:
             await client.aclose()
+
+    async def test_mid_stream_timeout_propagates_without_replay(self) -> None:
+        """A timeout after the first line must not re-POST and replay lines.
+
+        The retry loop used to wrap the ``yield`` itself, so a ``ReadTimeout``
+        between two chunks re-sent the request and the caller saw
+        ``["Hello ", "Hello ", "world"]`` from two POSTs.
+        """
+        calls = {"n": 0}
+
+        class _Body(httpx.AsyncByteStream):
+            def __init__(self, fail: bool) -> None:
+                self.fail = fail
+
+            async def __aiter__(self) -> AsyncIterator[bytes]:
+                yield b"Hello \n"
+                if self.fail:
+                    raise httpx.ReadTimeout("slow chunk")
+                yield b"world\n"
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            return httpx.Response(200, stream=_Body(fail=calls["n"] == 1))
+
+        client = HTTPClient(
+            transport=_mock_transport(handler),
+            retry_policy=RetryPolicy(max_attempts=3, backoff_initial_seconds=0.001),
+            failure_threshold=0,
+        )
+        seen: list[str] = []
+        try:
+            with pytest.raises(httpx.ReadTimeout):
+                async for line in client.stream("POST", "http://api.test/s"):
+                    seen.append(line)
+        finally:
+            await client.aclose()
+        assert seen == ["Hello "]
+        assert calls["n"] == 1
+
+    async def test_timeout_before_first_line_is_retried(self) -> None:
+        """A timeout while opening the stream is still retried."""
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise httpx.ReadTimeout("slow open")
+            return httpx.Response(200, text="ok")
+
+        client = HTTPClient(
+            transport=_mock_transport(handler),
+            retry_policy=RetryPolicy(max_attempts=2, backoff_initial_seconds=0.001),
+            failure_threshold=0,
+        )
+        try:
+            lines = [line async for line in client.stream("POST", "http://api.test/s")]
+        finally:
+            await client.aclose()
+        assert lines == ["ok"]
+        assert calls["n"] == 2
 
 
 class TestRetryPolicy:

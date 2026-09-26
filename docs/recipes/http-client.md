@@ -90,6 +90,14 @@ async def call() -> None:
   em curso (via `RequestIDMiddleware`) é repassado ao upstream, costurando os
   logs ponta-a-ponta.
 
+!!! warning "`stream()` só refaz antes da primeira linha"
+    Em `client.stream(...)` o retry e o circuit-breaker cobrem só a
+    **abertura** do stream. Depois que a primeira linha foi entregue, uma
+    falha no meio (inclusive um `ReadTimeout` entre dois chunks) propaga
+    pro chamador — refazer o POST reemitiria desde o começo linhas que você
+    já consumiu. Até esta versão o `ReadTimeout` no meio do stream era
+    refeito, e o chamador via `["Hello ", "Hello ", "world"]` de dois POSTs.
+
 !!! tip "Guarde como singleton em resources.py"
     Crie o `HTTPClient` uma vez (em `src/api/dependencies/resources.py`),
     exponha um `get_http_client`, e feche no lifespan com `await client.aclose()`
