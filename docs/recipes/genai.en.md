@@ -2136,6 +2136,62 @@ app.include_router(
     SSE event, ending with a `done` event. It reuses the SDK's
     `sse_response` — a client with `EventSource` receives tokens live.
 
+#### Per-request limits: `GenAIRequestLimits`
+
+Every AI endpoint turns request size into GPU time or memory. So the router
+checks the request against a `GenAIRequestLimits` **before** it calls the
+model, and answers `422` when a ceiling is crossed:
+
+| Field | Default | Where it applies |
+| --- | --- | --- |
+| `max_prompt_chars` | `32_000` | the `/generate` prompt, the sum of the `/chat` messages, the `/rag` query, each `/embed` text, the `/image` prompt and negative prompt |
+| `max_chat_messages` | `100` | messages per `/chat` |
+| `max_new_tokens` | `4096` | the `config.max_new_tokens` the client sends |
+| `max_embed_texts` | `256` | texts per `/embed` |
+| `max_top_k` | `50` | the `/rag` `top_k` (which the schema also requires to be `>= 1`) |
+| `max_tts_chars` | `5_000` | the `/tts` text |
+| `max_image_side` | `2048` | the `/image` `config.width` / `config.height` |
+| `max_image_steps` | `100` | the `/image` `config.steps` |
+| `max_upload_bytes` | 25 MiB | the `/transcribe` upload, read in chunks |
+
+The defaults suit a small self-hosted deployment. To change them, pass your
+own instance:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import register_exception_handlers
+from tempest_fastapi_sdk.genai import GenAIRequestLimits, TextGenerator, make_genai_router
+
+app: FastAPI = FastAPI()
+register_exception_handlers(app)
+app.include_router(
+    make_genai_router(
+        text_generator=TextGenerator("Qwen/Qwen2.5-7B-Instruct"),
+        limits=GenAIRequestLimits(max_prompt_chars=8_000, max_new_tokens=1024),
+    ),
+)
+```
+
+With `register_exception_handlers` installed, the `422` body says which
+field crossed which ceiling:
+
+```text
+POST /api/genai/generate {"prompt": "hi", "config": {"max_new_tokens": 1000000000}}
+422 {"detail": "max_new_tokens exceeds the limit of 4096", "code": "VALIDATION_ERROR",
+     "details": {"field": "max_new_tokens", "limit": 4096}}
+```
+
+!!! note "An absent `max_new_tokens` passes"
+    The ceiling applies to the value the **client** sends. A request without
+    `max_new_tokens` falls through to the generator's default, which you
+    chose.
+
+!!! warning "`/image` returns one image, so it asks for one"
+    The response body is the image, so `config.num_images` above `1` gets
+    `422` — the route used to render the whole batch on the GPU and return
+    only the first. For a batch, use `ImageGenerator` directly.
+
 ### `RedisEmbeddingCache` — cache shared across workers
 
 `Embedder` accepts a synchronous cache (`InMemoryEmbeddingCache`) **or**

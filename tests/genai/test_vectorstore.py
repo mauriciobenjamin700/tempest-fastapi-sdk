@@ -35,6 +35,15 @@ class TestInMemoryVectorStore:
         await store.add([_chunk("a", 0)], [[1.0, 0.0]])
         assert len(store) == 1
 
+    @pytest.mark.parametrize("top_k", [0, -3])
+    async def test_non_positive_top_k_returns_nothing(self, top_k: int) -> None:
+        store = InMemoryVectorStore()
+        await store.add(
+            [_chunk(str(i), i) for i in range(10)],
+            [[1.0, float(i)] for i in range(10)],
+        )
+        assert await store.search([1.0, 0.0], top_k=top_k) == []
+
 
 class _FakeEmbedder:
     """Deterministic 2-D embeddings keyed by first char, for tests."""

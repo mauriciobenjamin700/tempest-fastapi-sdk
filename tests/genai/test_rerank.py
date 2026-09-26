@@ -26,6 +26,11 @@ class TestRankByScores:
         ranked = _rank_by_scores(chunks, [0.1, 0.9, 0.5], top_k=2)
         assert [c.text for c in ranked] == ["b", "c"]
 
+    @pytest.mark.parametrize("top_k", [0, -2])
+    def test_non_positive_top_k_keeps_nothing(self, top_k: int) -> None:
+        chunks = [_chunk("a", 0), _chunk("b", 1), _chunk("c", 2)]
+        assert _rank_by_scores(chunks, [0.1, 0.9, 0.5], top_k=top_k) == []
+
 
 class _FakeEmbedder:
     async def embed(
