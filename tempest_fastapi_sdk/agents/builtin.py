@@ -113,9 +113,13 @@ def generate_image_tool(
         )
         images = await image_generator.generate(prompt, config=config)
         image = images[0]
-        filename = str(arguments.get("filename") or f"{name}-{len(context.artifacts)}")
-        if "." not in filename:
-            filename = f"{filename}.{image.image_format}"
+        requested = str(arguments.get("filename") or "")
+        if requested and "." not in requested:
+            requested = f"{requested}.{image.image_format}"
+        filename = context.claim_artifact_name(
+            requested,
+            f"{name}-{len(context.artifacts)}.{image.image_format}",
+        )
         artifact = AgentArtifact(
             name=filename,
             media_type=_IMAGE_MEDIA_TYPES.get(image.image_format, "image/png"),
@@ -310,9 +314,13 @@ def speak_tool(
             text,
             language=str(language) if language else None,
         )
-        filename = str(arguments.get("filename") or f"{name}-{len(context.artifacts)}")
-        if not filename.endswith(".wav"):
-            filename = f"{filename}.wav"
+        requested = str(arguments.get("filename") or "")
+        if requested and not requested.endswith(".wav"):
+            requested = f"{requested}.wav"
+        filename = context.claim_artifact_name(
+            requested,
+            f"{name}-{len(context.artifacts)}.wav",
+        )
         artifact = AgentArtifact(
             name=filename,
             media_type="audio/wav",
@@ -497,8 +505,9 @@ def save_artifact_tool(
         content = str(arguments.get("content", ""))
         if not content:
             raise AgentToolError("'content' is required")
-        filename = str(
-            arguments.get("filename") or f"note-{len(context.artifacts)}.txt"
+        filename = context.claim_artifact_name(
+            str(arguments.get("filename") or ""),
+            f"note-{len(context.artifacts)}.txt",
         )
         buffer = io.BytesIO(content.encode("utf-8"))
         artifact = AgentArtifact(

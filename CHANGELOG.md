@@ -7,6 +7,107 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Auditoria do `tempest_fastapi_sdk.agents`. Os tetos do `AgentBudget` só
+eram conferidos no topo do laço, então uma ferramenta que dormia 3 s com
+`max_seconds=0.5` rodava os 3 s, e uma volta pedindo 50 chamadas com
+`max_steps=5, max_tool_calls=2` executava as 50. O router HTTP endereçava
+execuções pela posição no histórico e mostrava as execuções de todo mundo a
+todo mundo; o traço servido por ele carregava o texto cru de qualquer
+exceção de ferramenta.
+
+### Security
+
+- **Execuções do router têm dono.** `make_agent_router(..., owner=dep)`
+  recebe uma dependência FastAPI que devolve quem chama; cada execução é
+  marcada (`AgentRun.owner`, `AgentContext.owner`, herdado pela
+  delegação), `GET /runs` lista só as de quem chama e o artefato de outra
+  pessoa responde `404`, igual a uma execução inexistente. Sem `owner=` o
+  comportamento continua o de antes (todo mundo vê tudo), agora documentado
+  como aceitável só com um único principal.
+- **Exceção inesperada de ferramenta não vaza mais pelo traço.** O modelo
+  continua lendo o texto inteiro, mas o `AgentStep.error` — o que o router,
+  o SSE e o `DbAgentRunSink` expõem — guarda só o tipo
+  (`RuntimeError: the tool failed (details withheld)`), e a exceção vai
+  para o log `tempest_fastapi_sdk.agents.agent`. Medido com um DSN com senha
+  na mensagem: a senha não aparece em `run.model_dump_json()` nem na
+  resposta de `POST /run`. `AgentToolError` continua gravado como escrito;
+  `Agent(expose_tool_errors=True)` volta ao texto inteiro.
+- **Moderador que levanta falha fechado.** Antes a exceção derrubava o
+  `run()`; agora a execução termina `BLOCKED` com
+  `blocked: moderation unavailable (<Tipo>)`.
+- **A resposta estruturada passa pela moderação.** O `output` de uma
+  execução encerrada pelo `final_answer` é o JSON da resposta, e é ele que o
+  moderador confere; `run_structured` só devolve `data` de execução
+  `COMPLETED`.
+
+### Fixed
+
+- **`max_seconds` corta a chamada travada.** Chamada de modelo roda sob
+  `asyncio.timeout` do tempo restante; chamada de ferramenta, sob esse tempo
+  mais uma folga de 0,25 s dividida por `depth + 1`, para o sub-agente —
+  que vigia o mesmo prazo — parar sozinho e devolver o traço antes de o pai
+  cortar. Medido: ferramenta de 3 s com `max_seconds=0.5` termina em 0,75 s,
+  `stop_reason=timeout`. Uma `TimeoutError` levantada pela própria
+  ferramenta continua sendo erro comum de ferramenta.
+- **Os tetos valem dentro de uma volta.** `max_steps`, `max_tool_calls` e o
+  prazo são conferidos antes de **cada** chamada; medido: 50 chamadas com
+  `max_steps=5, max_tool_calls=2` executam 2 e param em `max_tool_calls`.
+- **`arguments` como string JSON** (formato OpenAI de vLLM/TGI) é lido; JSON
+  inválido ou que não é objeto vira erro de ferramenta em vez de `{}`
+  silencioso.
+- **Mensagem `role: tool` leva `tool_call_id` e `name`** quando a chamada
+  trouxe `id`; sem `id` o formato fica igual ao de antes.
+- **`final_answer` encerra a execução** — o modelo não é consultado de novo,
+  como a receita já dizia. Resposta que não valida vira erro de ferramenta
+  legível (`invalid answer for final_answer: headline: Field required`).
+- **`run_structured` não perde as skills.** O agente é copiado
+  (`copy.copy`) em vez de reconstruído com um subconjunto dos argumentos; o
+  `load_skill` anunciava ferramentas que a cópia não tinha.
+- **Skill carregada não vaza entre pai e filho.** O controle saiu do `state`
+  compartilhado para `AgentContext.opened_skills`, por contexto; a resposta
+  estruturada, para `AgentContext.answer`.
+- **Router:** execução endereçada pelo `run_id` estável
+  (`/runs/{run_id}/artifacts/{name}`), e `{name:path}` serve artefato de
+  sub-agente (`illustrator/bike.png` dava `404`).
+- **`agent_tool`** passa ao filho o nome do agente que delegou em
+  `context.parent` (antes, o avô ou `"agent"`).
+- **`refine`** aprova só com a resposta inteira igual a `APPROVED` (antes,
+  `startswith`) e só de worker que terminou; tentativa cortada nem vai ao
+  crítico.
+- **`run_until`** mantém o prazo herdado do `context` quando ele é mais
+  cedo; a passada de extração do `run_structured` herda o prazo da execução
+  e o moderador do agente.
+- **`schema_of`** não entra em recursão infinita com model
+  auto-referente: a referência cíclica fica `$ref` e só essas definições
+  ficam em `$defs`.
+- **`RedisFactStore`** não junta mais `None`, `""` e `"_"` no mesmo hash.
+  `None` e subjects comuns mantêm a chave de antes (dado existente
+  continua acessível); `""`, `"_"` e o que começa com `~:s:` vão para
+  `"{prefix}:~:s:<percent-encoded>"`. Fato gravado antes sob `subject=""`
+  ou `subject="_"` está na chave antiga `"{prefix}:_"`.
+- **Artefato não é sobrescrito.** Nome já ocupado por um retorno de
+  ferramenta vira `<nome>-1.<ext>` (o texto para o modelo avisa); nas
+  ferramentas prontas, nome escolhido pelo modelo que já existe é recusado
+  com `AgentToolError`, e o nome padrão pula os ocupados.
+- **`AgentRun.tool_calls`** inclui as delegações (`StepKind.AGENT`).
+
+### Changed
+
+- **`ChatBackend` / `ToolCallingBackend`** descrevem só o que o `Agent`
+  faz: parâmetros posicionais (`/`), sem `**kwargs` obrigatório e mensagens
+  `list[dict[str, Any]]`. Entram em `THIRD_PARTY_CLIENT_PROTOCOLS` do
+  `test_protocol_shape_guard`.
+- **Rota de artefato mudou de `/runs/{index}/...` para `/runs/{run_id}/...`**;
+  `POST /run` devolve `run_id` e o evento `done` do SSE passa a carregar
+  `{"run_id": ...}` (antes vazio).
+
+### Added
+
+- `ToolResult.final`, `AgentRun.run_id`, `AgentRun.owner`,
+  `AgentContext.agent`/`run_id`/`owner`/`opened_skills`/`answer`,
+  `AgentContext.unique_artifact_name`/`claim_artifact_name`,
+  `InMemoryAgentRunSink.get(run_id)`, `OwnerDependency` e o keyword
+  `Agent(expose_tool_errors=...)`.
 O `chat` tratava o id de uma mensagem como capability: toda rota que
 recebe só `/messages/{id}` carregava a linha pelo id e seguia, sem olhar
 a conversa dela. O `/stream` segurava uma sessão de banco pela vida da

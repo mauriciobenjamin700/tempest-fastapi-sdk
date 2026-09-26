@@ -13,9 +13,12 @@ Three properties are deliberate, and each one is a bug this shape avoids:
   it on the next turn, while an exception would throw away the work done
   so far.
 * **Every ceiling is enforced, and the reason is reported.** Steps alone
-  do not bound a run — one tool call can hang — so wall-clock is checked
-  too, and :class:`~tempest_fastapi_sdk.agents.StopReason` says which one
-  fired. A caller that ignores it will present truncated work as finished.
+  do not bound a run — one tool call can hang — so every model call and
+  every tool call runs under the time left on the clock and is cancelled
+  when it runs out, and the step and tool-call ceilings are checked before
+  **each** call, including the calls of one many-call turn.
+  :class:`~tempest_fastapi_sdk.agents.StopReason` says which one fired. A
+  caller that ignores it will present truncated work as finished.
 * **Binary results never enter the prompt.** Tools return text for the
   model and artifacts for the caller; artifacts are held by name so a
   later tool can consume one without base64 round-trips.
@@ -27,27 +30,32 @@ for a toolless agent, which is just a single-shot answer.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import json
+import logging
 import time
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from tempest_fastapi_sdk.agents.protocols import AgentBackend
 from tempest_fastapi_sdk.agents.schemas import (
+    AgentArtifact,
     AgentBudget,
     AgentRun,
     AgentStep,
     StepKind,
     StopReason,
+    ToolResult,
 )
 from tempest_fastapi_sdk.agents.skills import (
     Skill,
     load_skill_tool,
-    loaded_skills,
     skills_prompt,
 )
-from tempest_fastapi_sdk.agents.tools import AgentContext, AgentTool
+from tempest_fastapi_sdk.agents.tools import AgentContext, AgentTool, AgentToolError
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.agents.storage import AgentRunSink
@@ -66,6 +74,42 @@ Written to counter the two failure modes that dominate small local models:
 calling a tool when a direct answer would do, and retrying an identical
 failing call until the budget runs out.
 """
+
+logger = logging.getLogger(__name__)
+
+_TOOL_GRACE_SECONDS: float = 0.25
+"""How long past the deadline a top-level tool call may run before it is cut.
+
+A model call is cancelled exactly at the deadline. A tool call gets this
+grace, divided by one plus the delegation depth (``0.25`` s at the top,
+``0.125`` s one level down, and so on), for one reason: a delegated agent
+watches the **same** deadline and stops on its own, returning its partial
+trace with ``[stopped: timeout]``. Cancelling the delegation at the very same
+instant would race that and throw the child's trace away. With the grace
+shrinking per level, every child is always cut before its parent, so the
+parent receives the child's record; a tool that simply hangs is still
+cancelled, at most this long after the deadline.
+"""
+
+
+@dataclass
+class _ToolOutcome:
+    """What running one tool call produced, beyond the step itself.
+
+    Attributes:
+        step (AgentStep): The recorded step — what the trace, the HTTP
+            router and the sinks see.
+        observation (str): What the model reads back. It differs from the
+            step's ``error`` only for an unexpected exception, whose full
+            text the model gets and the trace does not.
+        final (bool): The tool asked to end the run with its result.
+        timed_out (bool): The call was cancelled by the time budget.
+    """
+
+    step: AgentStep
+    observation: str
+    final: bool = False
+    timed_out: bool = False
 
 
 @dataclass
@@ -133,6 +177,7 @@ class Agent:
         run_sink: AgentRunSink | None = None,
         metrics: Any = None,
         name: str = "agent",
+        expose_tool_errors: bool = False,
     ) -> None:
         """Configure the agent.
 
@@ -156,7 +201,10 @@ class Agent:
             moderator (ModerationBackend | None): When set, the goal is
                 checked before the run starts and the answer before it is
                 returned. A rejection stops the run with
-                :attr:`StopReason.BLOCKED` rather than raising.
+                :attr:`StopReason.BLOCKED` rather than raising. A moderator
+                that **raises** also stops it with ``BLOCKED`` (the output
+                says moderation was unavailable, the exception is logged):
+                failing open would return unchecked text as checked text.
             run_sink (AgentRunSink | None): Where finished runs go —
                 in-memory, a database table, your own callable. Sink
                 failures never fail the run.
@@ -164,6 +212,14 @@ class Agent:
                 :class:`~tempest_fastapi_sdk.genai.GenAIMetrics`; each run
                 records duration under the op ``"agent"``.
             name (str): This agent's name, recorded on each run.
+            expose_tool_errors (bool): Record the full text of an
+                unexpected tool exception on the step. Off by default: the
+                trace is what the HTTP router, the SSE stream and the run
+                sinks expose, and an arbitrary exception can carry a DSN
+                or a token. With it off the model still reads the full
+                text, the step keeps only the exception type, and the
+                exception is logged. :class:`AgentToolError` messages are
+                always recorded as written.
         """
         self.generator = generator
         self.tools = list(tools)
@@ -177,6 +233,7 @@ class Agent:
         self.run_sink = run_sink
         self.metrics = metrics
         self.name = name
+        self.expose_tool_errors = expose_tool_errors
 
     @property
     def tool_names(self) -> list[str]:
@@ -204,7 +261,7 @@ class Agent:
         """
         if not self.skills:
             return self.tools
-        opened = loaded_skills(context)
+        opened = context.opened_skills
         extra = [
             tool
             for skill in self.skills
@@ -230,13 +287,27 @@ class Agent:
         Args:
             text (str): The goal or the answer.
 
+        Fails **closed**: a moderator that raises blocks the text, with a
+        reason naming only the exception type (the exception itself is
+        logged). Treating an outage as "allowed" would hand back unchecked
+        text as though it had passed, and letting it propagate would crash
+        a run whose work is already done.
+
         Returns:
             str | None: A human-readable reason, or ``None`` when the text
             is allowed or no moderator is configured.
         """
         if self.moderator is None or not text:
             return None
-        verdict = await self.moderator.check(text)
+        try:
+            verdict = await self.moderator.check(text)
+        except Exception as exc:
+            logger.warning(
+                "agent %r: moderator raised; blocking the text",
+                self.name,
+                exc_info=exc,
+            )
+            return f"blocked: moderation unavailable ({type(exc).__name__})"
         if not getattr(verdict, "flagged", False):
             return None
         labels = ", ".join(getattr(verdict, "labels", []) or []) or "policy"
@@ -409,6 +480,8 @@ class Agent:
         """
         state.started = time.monotonic()
         state.context.goal = goal
+        state.context.agent = self.name
+        state.context.run_id = uuid4().hex
         state.deadline = self._deadline(state.started, state.context.deadline)
         state.context.deadline = state.deadline
 
@@ -433,19 +506,29 @@ class Agent:
             specs = [tool.to_spec() for tool in available]
 
             step_started = time.monotonic()
+            scope = asyncio.timeout(self._remaining(state))
             try:
-                message = await self._ask(messages, specs)
+                async with scope:
+                    message = await self._ask(messages, specs)
             except Exception as exc:
+                timed_out = isinstance(exc, TimeoutError) and scope.expired()
                 step = AgentStep(
                     index=len(state.steps),
                     kind=StepKind.MODEL,
                     name="chat",
-                    error=f"{type(exc).__name__}: {exc}",
+                    error=(
+                        "model call interrupted: the time budget ran out"
+                        if timed_out
+                        else f"{type(exc).__name__}: {exc}"
+                    ),
                     seconds=time.monotonic() - step_started,
                 )
                 state.steps.append(step)
-                state.outcome = StopReason.ERROR
-                state.output = step.error or ""
+                if timed_out:
+                    state.outcome = StopReason.TIMEOUT
+                else:
+                    state.outcome = StopReason.ERROR
+                    state.output = step.error or ""
                 yield step
                 return
 
@@ -474,21 +557,67 @@ class Agent:
                 },
             )
             for call in calls:
+                stop = self._stop_for_budget(state)
+                if stop is not None:
+                    state.outcome = stop
+                    return
                 state.tool_calls += 1
-                step = await self._run_tool(
+                outcome = await self._run_tool(
                     call,
                     tool_by_name,
-                    state.context,
+                    state,
                     len(state.steps),
                 )
-                state.steps.append(step)
-                messages.append(
-                    {
-                        "role": "tool",
-                        "content": step.error or step.output,
-                    },
-                )
-                yield step
+                state.steps.append(outcome.step)
+                messages.append(self._tool_message(call, outcome))
+                yield outcome.step
+                if outcome.timed_out:
+                    state.outcome = StopReason.TIMEOUT
+                    return
+                if outcome.final:
+                    state.output = outcome.observation
+                    state.outcome = StopReason.COMPLETED
+                    return
+
+    def _remaining(self, state: _RunState) -> float | None:
+        """Return the seconds left before the run's deadline.
+
+        Args:
+            state (_RunState): The run in progress.
+
+        Returns:
+            float | None: The time left (never negative), or ``None`` when
+            the run has no deadline — which ``asyncio.timeout`` reads as
+            "no limit".
+        """
+        if state.deadline is None:
+            return None
+        return max(state.deadline - time.monotonic(), 0.0)
+
+    @staticmethod
+    def _tool_message(call: dict[str, Any], outcome: _ToolOutcome) -> dict[str, Any]:
+        """Build the ``role: tool`` message answering one call.
+
+        OpenAI-compatible servers (vLLM, TGI, hosted APIs) match a result to
+        its request by ``tool_call_id`` and reject or misattribute results
+        without it once a turn has more than one call. The id and the tool
+        name are added only when the call carried an id, so backends whose
+        calls have none (Ollama, the SDK's ``TextGenerator``) keep receiving
+        exactly the shape they did before.
+
+        Args:
+            call (dict[str, Any]): The model's call.
+            outcome (_ToolOutcome): What running it produced.
+
+        Returns:
+            dict[str, Any]: The message to append to the conversation.
+        """
+        message: dict[str, Any] = {"role": "tool", "content": outcome.observation}
+        call_id = call.get("id")
+        if call_id:
+            message["tool_call_id"] = str(call_id)
+            message["name"] = outcome.step.name
+        return message
 
     async def _ask(
         self,
@@ -517,73 +646,208 @@ class Agent:
         reply = await self.generator.chat(messages)
         return {"content": str(reply), "tool_calls": []}
 
+    @staticmethod
+    def _parse_arguments(raw: Any) -> tuple[dict[str, Any], str | None]:
+        """Normalize a call's ``arguments`` into a dict.
+
+        Ollama and the SDK's ``TextGenerator`` hand over a dict; the
+        OpenAI wire format (vLLM, TGI, hosted APIs) hands over a JSON
+        **string**. Both are accepted. Anything that is not an object —
+        malformed JSON, an array, a number — is reported as an error rather
+        than silently replaced by ``{}``, because a tool run with empty
+        arguments fails somewhere far from the real cause.
+
+        Args:
+            raw (Any): The ``arguments`` value from the call.
+
+        Returns:
+            tuple[dict[str, Any], str | None]: The arguments, and the
+            reason they are unusable (``None`` when they are fine).
+        """
+        if raw is None or raw == "":
+            return {}, None
+        if isinstance(raw, dict):
+            return raw, None
+        if isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+            except ValueError as exc:
+                return {}, f"arguments are not valid JSON: {exc}"
+            if isinstance(parsed, dict):
+                return parsed, None
+            return {}, "arguments must be a JSON object"
+        return {}, f"arguments must be a JSON object, got {type(raw).__name__}"
+
+    def _describe_failure(self, name: str, exc: Exception) -> tuple[str, str]:
+        """Return what the model reads and what the trace records.
+
+        Args:
+            name (str): The tool that failed.
+            exc (Exception): What it raised.
+
+        Returns:
+            tuple[str, str]: ``(observation, error)``. They are equal for
+            an :class:`AgentToolError` (its message is written to be
+            shown) or when ``expose_tool_errors`` is on; otherwise the
+            trace keeps only the exception type and the full exception is
+            logged.
+        """
+        full = f"{type(exc).__name__}: {exc}"
+        if isinstance(exc, AgentToolError) or self.expose_tool_errors:
+            return full, full
+        logger.warning(
+            "agent %r: tool %r raised %s",
+            self.name,
+            name,
+            type(exc).__name__,
+            exc_info=exc,
+        )
+        return full, f"{type(exc).__name__}: the tool failed (details withheld)"
+
     async def _run_tool(
         self,
         call: dict[str, Any],
         tool_by_name: dict[str, AgentTool],
-        ctx: AgentContext,
+        state: _RunState,
         index: int,
-    ) -> AgentStep:
+    ) -> _ToolOutcome:
         """Invoke one tool call and turn it into a step.
 
         Never raises: an unknown tool, bad arguments or a handler blowing
         up all become a step carrying ``error``, which the caller feeds
-        back to the model as an observation.
+        back to the model as an observation. The handler runs under the
+        time left on the run's clock; when it runs out the call is
+        cancelled and the outcome is marked ``timed_out``.
 
         Args:
             call (dict[str, Any]): One entry of the model's ``tool_calls``.
             tool_by_name (dict[str, AgentTool]): The available tools.
-            ctx (AgentContext): The run context (artifacts land here).
+            state (_RunState): The run in progress (artifacts land on its
+                context).
             index (int): The step index to assign.
 
         Returns:
-            AgentStep: The completed step, successful or failed.
+            _ToolOutcome: The completed step plus what the model reads.
         """
         started = time.monotonic()
+        ctx = state.context
         function: dict[str, Any] = call.get("function") or {}
         name = str(function.get("name", ""))
-        arguments = function.get("arguments")
-        if not isinstance(arguments, dict):
-            arguments = {}
+        arguments, problem = self._parse_arguments(function.get("arguments"))
 
         tool = tool_by_name.get(name)
         if tool is None:
             known = ", ".join(sorted(tool_by_name)) or "none"
-            return AgentStep(
-                index=index,
-                kind=StepKind.TOOL,
-                name=name or "unknown",
-                arguments=arguments,
-                error=f"unknown tool {name!r}; available: {known}",
-                seconds=time.monotonic() - started,
+            problem = f"unknown tool {name!r}; available: {known}"
+        elif problem is not None:
+            problem = f"invalid call to {name!r}: {problem}"
+        if tool is None or problem is not None:
+            return _ToolOutcome(
+                step=AgentStep(
+                    index=index,
+                    kind=StepKind.TOOL,
+                    name=name or "unknown",
+                    arguments=arguments,
+                    error=problem,
+                    seconds=time.monotonic() - started,
+                ),
+                observation=problem or "",
             )
 
+        remaining = self._remaining(state)
+        scope = asyncio.timeout(
+            None
+            if remaining is None
+            else remaining + _TOOL_GRACE_SECONDS / (ctx.depth + 1),
+        )
         try:
-            result = await tool.invoke(arguments, ctx)
+            async with scope:
+                result = await tool.invoke(arguments, ctx)
         except Exception as exc:
-            return AgentStep(
+            if isinstance(exc, TimeoutError) and scope.expired():
+                error = f"tool {name!r} interrupted: the time budget ran out"
+                return _ToolOutcome(
+                    step=AgentStep(
+                        index=index,
+                        kind=StepKind.TOOL,
+                        name=name,
+                        arguments=arguments,
+                        error=error,
+                        seconds=time.monotonic() - started,
+                    ),
+                    observation=error,
+                    timed_out=True,
+                )
+            observation, error = self._describe_failure(name, exc)
+            return _ToolOutcome(
+                step=AgentStep(
+                    index=index,
+                    kind=StepKind.TOOL,
+                    name=name,
+                    arguments=arguments,
+                    error=error,
+                    seconds=time.monotonic() - started,
+                ),
+                observation=observation,
+            )
+
+        stored, text = self._store_artifacts(result, ctx)
+        delegated = result.run
+        return _ToolOutcome(
+            step=AgentStep(
                 index=index,
-                kind=StepKind.TOOL,
+                kind=StepKind.AGENT if delegated is not None else StepKind.TOOL,
                 name=name,
                 arguments=arguments,
-                error=f"{type(exc).__name__}: {exc}",
+                output=text,
+                artifacts=stored,
                 seconds=time.monotonic() - started,
-            )
-
-        for artifact in result.artifacts:
-            ctx.artifacts[artifact.name] = artifact
-        delegated = result.run
-        return AgentStep(
-            index=index,
-            kind=StepKind.AGENT if delegated is not None else StepKind.TOOL,
-            name=name,
-            arguments=arguments,
-            output=result.text,
-            artifacts=[artifact.name for artifact in result.artifacts],
-            seconds=time.monotonic() - started,
-            agent=delegated.agent if delegated is not None else None,
-            children=delegated.steps if delegated is not None else [],
+                agent=delegated.agent if delegated is not None else None,
+                children=delegated.steps if delegated is not None else [],
+            ),
+            observation=text,
+            final=result.final,
         )
+
+    @staticmethod
+    def _store_artifacts(
+        result: ToolResult, ctx: AgentContext
+    ) -> tuple[list[str], str]:
+        """Register a result's artifacts on the run without overwriting any.
+
+        An artifact whose name is already taken — an input the caller
+        seeded, or an earlier step's output — is stored under a free name
+        (``chart.png`` becomes ``chart-1.png``) and the text the model reads
+        says so. Overwriting would silently destroy the input the run was
+        started from; refusing would throw away work already done.
+
+        Args:
+            result (ToolResult): The tool's result.
+            ctx (AgentContext): The run context holding the artifacts.
+
+        Returns:
+            tuple[list[str], str]: The names the artifacts were stored
+            under, and the result text with a note for each rename.
+        """
+        stored: list[str] = []
+        notes: list[str] = []
+        for artifact in result.artifacts:
+            name = artifact.name
+            if name in ctx.artifacts:
+                name = ctx.unique_artifact_name(name)
+                notes.append(
+                    f"Note: '{artifact.name}' already existed, so this result "
+                    f"was saved as '{name}'.",
+                )
+            kept: AgentArtifact = (
+                artifact
+                if name == artifact.name
+                else artifact.model_copy(update={"name": name})
+            )
+            ctx.artifacts[name] = kept
+            stored.append(name)
+        text = "\n".join([result.text, *notes]) if notes else result.text
+        return stored, text
 
     async def _finish(self, goal: str, state: _RunState) -> AgentRun:
         """Assemble the run, moderate the answer and hand it to the sink.
@@ -617,6 +881,8 @@ class Agent:
                     break
 
         run = AgentRun(
+            run_id=state.context.run_id or uuid4().hex,
+            owner=state.context.owner,
             goal=goal,
             output=output,
             steps=state.steps,

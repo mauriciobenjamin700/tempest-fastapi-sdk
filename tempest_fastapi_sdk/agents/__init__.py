@@ -84,6 +84,7 @@ from tempest_fastapi_sdk.agents.router import (
 from tempest_fastapi_sdk.agents.router import (
     AgentRunResponseSchema as AgentRunResponseSchema,
 )
+from tempest_fastapi_sdk.agents.router import OwnerDependency as OwnerDependency
 from tempest_fastapi_sdk.agents.router import make_agent_router as make_agent_router
 from tempest_fastapi_sdk.agents.schemas import AgentArtifact as AgentArtifact
 from tempest_fastapi_sdk.agents.schemas import AgentBudget as AgentBudget
@@ -159,6 +160,7 @@ __all__: list[str] = [
     "InMemoryFactStore",
     "LoopIteration",
     "LoopResult",
+    "OwnerDependency",
     "RedisFactStore",
     "Skill",
     "StepKind",

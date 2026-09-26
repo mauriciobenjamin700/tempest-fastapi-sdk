@@ -330,3 +330,41 @@ class TestSpecs:
             assert spec["function"]["name"] == tool.name
             assert spec["function"]["parameters"]["type"] == "object"
             assert tool.description
+
+
+class TestArtifactNamesDoNotCollide:
+    @pytest.mark.asyncio
+    async def test_default_note_names_skip_taken_ones(self) -> None:
+        tool = save_artifact_tool()
+        context = AgentContext()
+        context.artifacts["note-1.txt"] = AgentArtifact(
+            name="note-1.txt",
+            media_type="text/plain",
+            data=b"input",
+        )
+        result = await tool.invoke({"content": "fresh"}, context)
+        assert result.artifacts[0].name not in context.artifacts
+
+    @pytest.mark.asyncio
+    async def test_a_chosen_filename_cannot_overwrite_an_artifact(self) -> None:
+        tool = save_artifact_tool()
+        context = AgentContext()
+        context.artifacts["report.txt"] = AgentArtifact(
+            name="report.txt",
+            media_type="text/plain",
+            data=b"input",
+        )
+        with pytest.raises(AgentToolError, match="already exists"):
+            await tool.invoke({"content": "new", "filename": "report.txt"}, context)
+
+    @pytest.mark.asyncio
+    async def test_generated_image_cannot_overwrite_an_artifact(self) -> None:
+        tool = generate_image_tool(FakeImageGenerator())
+        context = AgentContext()
+        context.artifacts["a.png"] = AgentArtifact(
+            name="a.png",
+            media_type="image/png",
+            data=b"input",
+        )
+        with pytest.raises(AgentToolError, match="already exists"):
+            await tool.invoke({"prompt": "cat", "filename": "a.png"}, context)

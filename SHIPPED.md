@@ -870,6 +870,28 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `accepted=False` means nothing passed. **Fixed here:** the effective
   deadline was written to the run state but not back to the `AgentContext`,
   so delegation handed the child `None` and it ran to its own budget.
+- **Agents audit (Unreleased)** — ceilings now hold *during* a call, not
+  just between turns: every model call runs under `asyncio.timeout` of the
+  time left and every tool call under that plus a grace that shrinks per
+  delegation depth (so a child always stops before its parent cuts it), and
+  `max_steps`/`max_tool_calls`/deadline are checked before **each** call of
+  a many-call turn. `arguments` as a JSON string (OpenAI wire format) is
+  parsed; invalid JSON is a tool error. `role: tool` messages carry
+  `tool_call_id` + `name` when the call had an id. `ToolResult.final` ends
+  the run — `final_answer` uses it, so structured runs stop on the call and
+  their JSON `output` is what the moderator checks; `data` only on a
+  COMPLETED run. `run_structured` copies the agent (skills survive). Skill
+  loading and the structured answer live per context
+  (`AgentContext.opened_skills`/`.answer`), not in the shared `state`.
+  Unexpected tool exceptions: model reads full text, trace keeps only the
+  type (`expose_tool_errors=True` to opt out). A raising moderator fails
+  closed (`BLOCKED`). Router: stable `AgentRun.run_id` in URLs (not list
+  index), `{name:path}` for `<agent>/<file>` artifacts, `owner=` dependency
+  tagging runs (`AgentRun.owner`/`AgentContext.owner`) and scoping `/runs` +
+  artifact download. `refine` approves only on the exact token from a worker
+  run that completed; `run_until` keeps an earlier inherited deadline;
+  `schema_of` keeps `$defs` for self-referential models; Redis fact keys no
+  longer merge `None`/`""`/`"_"`; builtins never overwrite an artifact.
 - **Planilhas (v0.229.0, `[spreadsheet]` extra = openpyxl)** —
   `tempest_fastapi_sdk.spreadsheet`. `SheetWriter` segura o cursor de linha
   (`title_block`/`header_row`/`group_row`/`write_row`/`total_row`/

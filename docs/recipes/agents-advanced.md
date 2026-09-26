@@ -102,6 +102,20 @@ modelo, e **chamar essa ferramenta é como o modelo termina**. Os argumentos
 tool-calling que o resto do agente usa — sem um segundo formato para o modelo
 errar.
 
+A chamada **encerra** a execução: o modelo não é consultado de novo. Medido
+com um backend roteirizado cuja segunda resposta nunca deveria acontecer:
+`backend.calls == 1`, `stop_reason=completed`. Uma resposta que não valida é
+um erro de ferramenta comum — o modelo lê qual campo falhou e tenta de novo.
+O `output` da execução passa a ser a resposta em JSON, e é esse texto que o
+`moderator` confere; `run.data` só vem preenchido de uma execução
+`completed` — bloqueada pela moderação ou cortada por orçamento, ela devolve
+`data=None` e `parse_error` diz por quê.
+
+!!! tip "Qualquer ferramenta pode encerrar a execução"
+    O mecanismo é público: uma ferramenta que devolve
+    `ToolResult(text=..., final=True)` termina a execução com `completed`,
+    usando `text` como resposta, sem rodar as outras chamadas daquela volta.
+
 !!! tip "Modelo pequeno responde em prosa mesmo assim"
     Modelos locais pequenos frequentemente resolvem a tarefa certo e depois
     respondem em texto, ignorando a instrução. Por isso existe uma **passada
@@ -830,7 +844,11 @@ True 2
 1 True None
 ```
 
-O crítico aprova respondendo exatamente `APPROVED`. Um crítico solto hesita
+O crítico aprova respondendo exatamente `APPROVED` — a resposta inteira, sem
+contar espaço em volta e sem diferenciar maiúscula. `APPROVED? Não, a
+introdução está errada` **não** é aprovação. E uma tentativa que parou antes
+de terminar (orçamento, erro) nem vai para o crítico: volta como rejeição
+com o motivo. Um crítico solto hesita
 — "está bom, embora você pudesse considerar..." é impossível de ramificar.
 Uma palavra reservada torna a decisão legível por máquina e deixa a
 **rejeição** livre, que é a metade que precisa ser expressiva.
@@ -923,6 +941,13 @@ blocked blocked by moderation (toxicity)
 
 O objetivo é checado **antes** de o modelo ver qualquer coisa, e a resposta
 antes de voltar. Recusa vira `StopReason.BLOCKED`, não exceção.
+
+!!! warning "Moderador fora do ar bloqueia"
+    Um moderador que **levanta** (endpoint fora, timeout) também encerra a
+    execução com `BLOCKED`, e o `output` diz
+    `blocked: moderation unavailable (<TipoDaExceção>)` — a exceção completa
+    vai para o log. Falhar aberto devolveria texto não conferido como se
+    tivesse passado pela moderação.
 
 ## Acompanhar em tempo real
 

@@ -26,14 +26,15 @@ calling is weak; when it runs at all, it is reported rather than hidden.
 
 from __future__ import annotations
 
+import copy
 import json
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field, ValidationError
 
-from tempest_fastapi_sdk.agents.schemas import AgentRun, StopReason
-from tempest_fastapi_sdk.agents.tools import AgentContext, AgentTool
-from tempest_fastapi_sdk.agents.typed import schema_of
+from tempest_fastapi_sdk.agents.schemas import AgentRun, StopReason, ToolResult
+from tempest_fastapi_sdk.agents.tools import AgentContext, AgentTool, AgentToolError
+from tempest_fastapi_sdk.agents.typed import _explain, schema_of
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.agents.agent import Agent
@@ -49,9 +50,12 @@ class StructuredRun(AgentRun, Generic[OutputT]):
 
     Attributes:
         data (OutputT | None): The structured answer, or ``None`` when the
-            run ended without producing one — a budget ran out, the model
-            never called the answer tool, or what it passed did not
-            validate. Always check it; a run can be
+            run ended without producing one — a budget ran out, moderation
+            blocked it, the model never called the answer tool, or what it
+            passed did not validate. Only a
+            :attr:`~tempest_fastapi_sdk.agents.StopReason.COMPLETED` run
+            carries data: an answer recorded by a run that was then blocked
+            or cut short is dropped, not returned. Always check it; a run can be
             :attr:`~tempest_fastapi_sdk.agents.AgentRun.succeeded` and
             still carry ``None`` here if the fallback parse also failed.
         parse_error (str | None): Why the structured answer is missing,
@@ -98,9 +102,13 @@ def final_answer_tool(
             model.
 
     Returns:
-        AgentTool: The submission tool. Its handler records the validated
-        object on the run context and returns a short acknowledgement; the
-        agent notices the record and stops.
+        AgentTool: The submission tool. Its handler validates the answer,
+        records it on the run context (``AgentContext.answer``) and returns
+        a :class:`~tempest_fastapi_sdk.agents.ToolResult` with
+        ``final=True`` whose text is the answer as JSON — so the call ends
+        the run, and that JSON is the run's ``output`` the moderator checks.
+        An answer that does not validate is an ordinary tool error the model
+        reads and corrects; the run goes on.
     """
     text = description or (
         "Deliver your final answer. Call this exactly once, when you have "
@@ -111,11 +119,16 @@ def final_answer_tool(
     async def handler(
         arguments: dict[str, Any],
         context: AgentContext,
-    ) -> str:
-        """Validate the model's answer and stash it on the context."""
-        parsed = output.model_validate(arguments)
-        context.state[_STATE_KEY] = parsed
-        return "Answer recorded."
+    ) -> ToolResult:
+        """Validate the model's answer, record it and end the run."""
+        try:
+            parsed = output.model_validate(arguments)
+        except ValidationError as exc:
+            raise AgentToolError(
+                f"invalid answer for {name}: {_explain(exc)}",
+            ) from exc
+        context.answer = parsed
+        return ToolResult(text=parsed.model_dump_json(), final=True)
 
     return AgentTool(
         name=name,
@@ -123,10 +136,6 @@ def final_answer_tool(
         parameters=schema_of(output),
         handler=handler,
     )
-
-
-_STATE_KEY: str = "__structured_answer__"
-"""Where the answer tool leaves its validated result on the context."""
 
 
 def _instruction(output: type[BaseModel], tool_name: str) -> str:
@@ -172,8 +181,9 @@ async def run_structured(
 
     Args:
         agent (Agent): The agent to run. It is not mutated — the answer
-            tool is added to a copy, so the same agent stays usable for
-            unstructured runs.
+            tool is added to a shallow copy that keeps everything else the
+            agent was built with (skills, moderator, sink, metrics, budget,
+            name), so the same agent stays usable for unstructured runs.
         goal (str): What to accomplish.
         output (type[OutputT]): The answer's shape.
         context (AgentContext | None): A pre-seeded context.
@@ -195,27 +205,29 @@ async def run_structured(
         StructuredRun[OutputT]: The usual run record plus ``data``. When
         ``data`` is ``None``, ``parse_error`` says why.
     """
-    from tempest_fastapi_sdk.agents.agent import Agent as AgentClass
-
     answer_tool = final_answer_tool(output)
-    scoped = AgentClass(
-        agent.generator,
-        tools=[*agent.tools, answer_tool],
-        system_prompt=agent.system_prompt + _instruction(output, answer_tool.name),
-        budget=agent.budget,
-        moderator=agent.moderator,
-        run_sink=agent.run_sink,
-        metrics=agent.metrics,
-        name=agent.name,
+    scoped = copy.copy(agent)
+    scoped.tools = [*agent.tools, answer_tool]
+    scoped.system_prompt = agent.system_prompt + _instruction(
+        output,
+        answer_tool.name,
     )
 
     ctx = context or AgentContext()
+    ctx.answer = None
     run = await scoped.run(goal, context=ctx)
 
-    data: OutputT | None = ctx.state.pop(_STATE_KEY, None)
+    data: OutputT | None = ctx.answer
+    ctx.answer = None
     parse_error: str | None = None
 
-    if data is None:
+    if not run.succeeded:
+        data = None
+        parse_error = (
+            f"the run stopped before finishing ({run.stop_reason}); a "
+            "structured answer is only returned from a completed run"
+        )
+    elif data is None:
         if not allow_text_fallback:
             parse_error = (
                 f"the model did not call '{answer_tool.name}' and the text "
@@ -229,9 +241,12 @@ async def run_structured(
                     run.output,
                     output,
                     answer_tool,
+                    deadline=ctx.deadline,
                 )
 
     return StructuredRun[output](  # type: ignore[valid-type]
+        run_id=run.run_id,
+        owner=run.owner,
         goal=run.goal,
         output=run.output,
         steps=run.steps,
@@ -249,6 +264,8 @@ async def _extract(
     text: str,
     output: type[OutputT],
     answer_tool: AgentTool,
+    *,
+    deadline: float | None = None,
 ) -> tuple[OutputT | None, str | None]:
     """Ask the model to restate a prose answer in the required shape.
 
@@ -257,11 +274,18 @@ async def _extract(
     the fields — the reasoning already happened in the run that produced
     ``text``, and all that remains is transcription.
 
+    It runs under the **same** deadline as the run it rescues (a fresh
+    clock would let the extraction overrun the request holding it) and
+    under the agent's moderator, and its answer is kept only when the
+    extraction itself completed.
+
     Args:
         agent (Agent): The agent whose backend to reuse.
         text (str): The prose answer to convert.
         output (type[OutputT]): The answer's shape.
         answer_tool (AgentTool): The submission tool.
+        deadline (float | None): The ``time.monotonic()`` instant the
+            original run had to stop at.
 
     Returns:
         tuple[OutputT | None, str | None]: The extracted object, or
@@ -280,16 +304,24 @@ async def _extract(
             "is genuinely absent, use the most reasonable empty value."
         ),
         budget=AgentBudget(max_steps=3, max_seconds=agent.budget.max_seconds),
+        moderator=agent.moderator,
         name=f"{agent.name}-extractor",
     )
-    context = AgentContext()
+    context = AgentContext(deadline=deadline)
     try:
-        await extractor.run(f"TEXT TO CONVERT:\n\n{text}", context=context)
+        extraction = await extractor.run(
+            f"TEXT TO CONVERT:\n\n{text}",
+            context=context,
+        )
     except Exception as exc:  # pragma: no cover - backend-specific failures
         return None, f"extraction pass failed: {exc}"
-    extracted: OutputT | None = context.state.pop(_STATE_KEY, None)
-    if extracted is not None:
+    extracted: OutputT | None = context.answer
+    if extracted is not None and extraction.succeeded:
         return extracted, None
+    if not extraction.succeeded:
+        return None, (
+            f"the extraction pass stopped before finishing ({extraction.stop_reason})"
+        )
     return None, "the answer was prose and could not be converted to the schema"
 
 
