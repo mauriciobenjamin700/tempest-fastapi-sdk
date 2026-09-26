@@ -624,6 +624,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   **replace** the batch's sources (`source#index` collided because
   `chunk_text` restarts at 0); `PgVectorStore` validates the table
   identifier, indexes `source` and inserts in one `executemany`;
+  **approximate index (Unreleased, #319):** `PgVectorStore.ensure_schema(
+  ann_index="hnsw" | "ivfflat", m=, ef_construction=, lists=)` builds
+  `<table>_embedding_idx` with `vector_cosine_ops` (HNSW refused below
+  pgvector 0.5.0; an existing index with other params is refused, never
+  rebuilt) and `search(ef_search=, probes=)` sets them transaction-local
+  via `set_config`;
   `ChatMemory(candidate_multiplier=4)` over-fetches before the recency
   re-rank and evicts by UTC instant (`created_at_ts`).
   **Audio (v0.102, `[genai-audio]` = faster-whisper + coqui-tts + the Coqui
