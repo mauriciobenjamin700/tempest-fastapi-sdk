@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
+from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.audio.language import (
     Language,
     preset_for,
@@ -84,6 +85,7 @@ class TextToSpeech:
         *,
         device: str = "auto",
         max_concurrent: int = 2,
+        idle_unload_seconds: float | None = None,
     ) -> None:
         """Configure the voice (does not load weights yet).
 
@@ -91,6 +93,9 @@ class TextToSpeech:
             model_name (str): Coqui TTS model id.
             device (str): ``"auto"`` / ``"cuda"`` / ``"cpu"``.
             max_concurrent (int): Max simultaneous syntheses.
+            idle_unload_seconds (float | None): When set,
+                :meth:`unload_if_idle` frees the voice after this many idle
+                seconds.
 
         Raises:
             ValueError: When ``max_concurrent`` is not positive.
@@ -99,8 +104,14 @@ class TextToSpeech:
             raise ValueError("max_concurrent must be positive")
         self.model_name = model_name
         self.device = resolve_audio_device(device)
+        self.idle_unload_seconds = idle_unload_seconds
         self._tts: Any = None
         self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._lifecycle = ModelLifecycle(
+            build=self._build,
+            release=self._release,
+            is_loaded=lambda: self._tts is not None,
+        )
 
     @classmethod
     def for_language(
@@ -135,20 +146,59 @@ class TextToSpeech:
         """Return ``True`` once the model is in memory."""
         return self._tts is not None
 
-    def load(self) -> None:  # pragma: no cover - needs Coqui TTS + a model
+    @property
+    def seconds_idle(self) -> float:
+        """Return seconds since the voice was last in use.
+
+        Reads ``0.0`` while a synthesis is in flight.
+
+        Returns:
+            float: Idle time in seconds.
+        """
+        return self._lifecycle.seconds_idle()
+
+    def load(self) -> None:
         """Download (if needed) and load the TTS model. Idempotent.
+
+        Safe to call from several threads at once: concurrent callers on a
+        cold instance wait for one build instead of each constructing a
+        voice.
 
         Raises:
             ImportError: When the ``[genai-audio]`` extra is missing.
         """
-        if self.is_loaded:
-            return
+        self._lifecycle.load()
+
+    def _build(self) -> None:
+        """Construct the voice; called once, under the load lock.
+
+        Raises:
+            ImportError: When the ``[genai-audio]`` extra is missing.
+        """
         tts_cls = _require_tts()
         self._tts = tts_cls(model_name=self.model_name).to(self.device)
 
     def unload(self) -> None:
-        """Free the model. Safe when not loaded."""
+        """Free the model. Safe when not loaded.
+
+        While a synthesis is in flight the release waits for it: the last
+        call to finish drops the voice.
+        """
+        self._lifecycle.unload()
+
+    def _release(self) -> None:
+        """Drop the voice."""
         self._tts = None
+
+    def unload_if_idle(self) -> bool:
+        """Free the voice when it has been idle past the threshold.
+
+        Returns:
+            bool: ``True`` when this call unloaded the voice, ``False``
+            when it was already free, still in use, or no
+            ``idle_unload_seconds`` was configured.
+        """
+        return self._lifecycle.unload_if_idle(self.idle_unload_seconds)
 
     async def synthesize(
         self,
@@ -188,7 +238,7 @@ class TextToSpeech:
                 speaker_wav,
             )
 
-    def _synthesize_sync(  # pragma: no cover - needs Coqui TTS + a model
+    def _synthesize_sync(
         self,
         text: str,
         out_path: str | Path | None,
@@ -196,18 +246,54 @@ class TextToSpeech:
         language: str | None,
         speaker_wav: str | Path | None,
     ) -> bytes:
-        """Blocking synthesis; returns the WAV bytes (writing them once)."""
+        """Blocking synthesis; returns the WAV bytes (writing them once).
+
+        Without ``out_path`` the audio goes through a temporary file, which
+        is removed in a ``finally`` — a synthesis that raises (bad speaker,
+        unsupported language, out of memory) used to leave its ``.wav``
+        behind in the temp directory, one per failed request.
+        """
         import os
         import tempfile
         from pathlib import Path as _Path
 
-        self.load()
-        if out_path is not None:
-            target = _Path(out_path)
-        else:
+        with self._lifecycle.use():
+            if out_path is not None:
+                return self._render_to(
+                    _Path(out_path),
+                    text,
+                    speaker,
+                    language,
+                    speaker_wav,
+                )
             handle, name = tempfile.mkstemp(suffix=".wav")
             os.close(handle)
             target = _Path(name)
+            try:
+                return self._render_to(target, text, speaker, language, speaker_wav)
+            finally:
+                target.unlink(missing_ok=True)
+
+    def _render_to(
+        self,
+        target: Path,
+        text: str,
+        speaker: str | None,
+        language: str | None,
+        speaker_wav: str | Path | None,
+    ) -> bytes:
+        """Synthesize into ``target`` and read the bytes back.
+
+        Args:
+            target (Path): Where Coqui writes the WAV.
+            text (str): The text to speak.
+            speaker (str | None): Speaker name for multi-speaker models.
+            language (str | None): Language code for multilingual models.
+            speaker_wav (str | Path | None): Reference clip for cloning.
+
+        Returns:
+            bytes: The WAV audio.
+        """
         self._tts.tts_to_file(
             text=text,
             file_path=str(target),
@@ -215,10 +301,7 @@ class TextToSpeech:
             language=language,
             speaker_wav=str(speaker_wav) if speaker_wav is not None else None,
         )
-        data = target.read_bytes()
-        if out_path is None:
-            target.unlink(missing_ok=True)
-        return data
+        return target.read_bytes()
 
 
 __all__: list[str] = [

@@ -31,12 +31,12 @@ import logging
 import os
 import tarfile
 import threading
-import time
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.audio.schemas import SpeakerTurn
 
 if TYPE_CHECKING:
@@ -359,7 +359,7 @@ class SpeakerDiarizer:
         self._min_duration_off = min_duration_off
         self._num_threads = num_threads
         self._provider = provider
-        self._idle_unload_seconds = idle_unload_seconds
+        self.idle_unload_seconds: float | None = idle_unload_seconds
         self._semaphore: asyncio.Semaphore = asyncio.Semaphore(max_concurrent)
         self._engine: Any | None = None
         self._extractor: Any | None = None
@@ -372,7 +372,11 @@ class SpeakerDiarizer:
         # max_concurrent to be 1.
         self._engine_lock: threading.Lock = threading.Lock()
         self.max_speakers: int = max_speakers
-        self._last_used: float = time.monotonic()
+        self._lifecycle = ModelLifecycle(
+            build=self._build,
+            release=self._release,
+            is_loaded=lambda: self._engine is not None,
+        )
 
     @property
     def is_loaded(self) -> bool:
@@ -385,24 +389,34 @@ class SpeakerDiarizer:
 
     @property
     def seconds_idle(self) -> float:
-        """Seconds since the last diarization finished.
+        """Seconds since the models were last in use.
+
+        Reads ``0.0`` while a diarization is in flight.
 
         Returns:
-            float: Idle time; ``0.0`` while never used.
+            float: Idle time in seconds.
         """
-        return time.monotonic() - self._last_used
+        return self._lifecycle.seconds_idle()
 
     def load(self) -> None:
         """Resolve the models and build the engine.
 
         Downloads the models when they are not cached, so the first call
-        can be slow. Idempotent.
+        can be slow. Idempotent, and safe to call from several threads at
+        once: concurrent callers on a cold instance wait for one build.
 
         Raises:
             ImportError: When the ``[genai-diarization]`` extra is absent.
         """
-        if self._engine is not None:
-            return
+        self._lifecycle.load()
+
+    def _build(self) -> None:
+        """Resolve the model paths and build the engine, under the load lock.
+
+        Raises:
+            ImportError: When the ``[genai-diarization]`` extra is absent.
+            ValueError: When sherpa-onnx rejects the config.
+        """
         sherpa = _require_sherpa()
         if self._segmentation_model is None or self._embedding_model is None:
             resolved = ensure_models(self._cache_dir)
@@ -460,7 +474,15 @@ class SpeakerDiarizer:
         )
 
     def unload(self) -> None:
-        """Release the models."""
+        """Release the models.
+
+        While a diarization is in flight the release waits for it: the
+        last call to finish drops the engine.
+        """
+        self._lifecycle.unload()
+
+    def _release(self) -> None:
+        """Drop the engine and the embedding extractor."""
         self._engine = None
         self._extractor = None
 
@@ -468,14 +490,10 @@ class SpeakerDiarizer:
         """Release the models when idle past the configured threshold.
 
         Returns:
-            bool: Whether anything was unloaded.
+            bool: Whether anything was unloaded — never while a
+            diarization is in flight.
         """
-        if self._idle_unload_seconds is None or not self.is_loaded:
-            return False
-        if self.seconds_idle < self._idle_unload_seconds:
-            return False
-        self.unload()
-        return True
+        return self._lifecycle.unload_if_idle(self.idle_unload_seconds)
 
     async def diarize(
         self,
@@ -520,22 +538,34 @@ class SpeakerDiarizer:
             )
         )
         async with self._semaphore:
+            return await asyncio.to_thread(self._diarize_passes_sync, audio, wanted)
+
+    def _diarize_passes_sync(
+        self,
+        audio: str | Path | bytes,
+        wanted: int | Literal["auto"] | None,
+    ) -> list[SpeakerTurn]:
+        """Run every pass of one diarization on one worker thread.
+
+        The passes share one lifecycle ``use()`` block, so the engine an
+        automatic-mode second pass needs cannot be unloaded between the
+        first pass and the estimate.
+
+        Args:
+            audio (str | Path | bytes): The recording.
+            wanted (int | Literal["auto"] | None): The resolved mode.
+
+        Returns:
+            list[SpeakerTurn]: Turns in chronological order.
+        """
+        with self._lifecycle.use():
             fixed = wanted if isinstance(wanted, int) else None
-            turns = await asyncio.to_thread(self._diarize_sync, audio, fixed)
+            turns = self._diarize_sync(audio, fixed)
             if wanted == "auto" and len(turns) > 1:
-                estimated = await asyncio.to_thread(
-                    self._estimate_sync,
-                    audio,
-                    turns,
-                )
+                estimated = self._estimate_sync(audio, turns)
                 if estimated != len({turn.speaker for turn in turns}):
-                    turns = await asyncio.to_thread(
-                        self._diarize_sync,
-                        audio,
-                        estimated,
-                    )
-        self._last_used = time.monotonic()
-        return turns
+                    turns = self._diarize_sync(audio, estimated)
+            return turns
 
     def _estimate_sync(
         self,
@@ -585,22 +615,23 @@ class SpeakerDiarizer:
         Returns:
             Any: A ``SpeakerEmbeddingExtractor``.
         """
-        if self._extractor is not None:
+        with self._lifecycle.load_lock:
+            if self._extractor is not None:
+                return self._extractor
+            sherpa = _require_sherpa()
+            if self._embedding_model is None:
+                resolved = ensure_models(self._cache_dir, models=(EMBEDDING_MODEL,))
+                path = resolved[EMBEDDING_MODEL.name]
+            else:
+                path = Path(self._embedding_model)
+            self._extractor = sherpa.SpeakerEmbeddingExtractor(
+                sherpa.SpeakerEmbeddingExtractorConfig(
+                    model=str(path),
+                    num_threads=self._num_threads,
+                    provider=self._provider,
+                ),
+            )
             return self._extractor
-        sherpa = _require_sherpa()
-        if self._embedding_model is None:
-            resolved = ensure_models(self._cache_dir, models=(EMBEDDING_MODEL,))
-            path = resolved[EMBEDDING_MODEL.name]
-        else:
-            path = Path(self._embedding_model)
-        self._extractor = sherpa.SpeakerEmbeddingExtractor(
-            sherpa.SpeakerEmbeddingExtractorConfig(
-                model=str(path),
-                num_threads=self._num_threads,
-                provider=self._provider,
-            ),
-        )
-        return self._extractor
 
     def _diarize_sync(
         self,
@@ -616,16 +647,24 @@ class SpeakerDiarizer:
 
         Returns:
             list[SpeakerTurn]: Turns in chronological order.
+
+        Raises:
+            RuntimeError: When the engine is gone despite the lifecycle
+                holding it — a broken invariant, reported as an error
+                rather than an ``assert`` that ``python -O`` strips.
         """
-        self.load()
-        samples = load_audio(audio, target_rate=DIARIZATION_SAMPLE_RATE)
-        engine = self._engine
-        assert engine is not None
-        with self._engine_lock:
-            engine.set_config(
-                self._make_config(override if override is not None else -1),
-            )
-            result = engine.process(samples).sort_by_start_time()
+        with self._lifecycle.use():
+            samples = load_audio(audio, target_rate=DIARIZATION_SAMPLE_RATE)
+            engine = self._engine
+            if engine is None:
+                raise RuntimeError(
+                    "diarization engine was released while a call held it",
+                )
+            with self._engine_lock:
+                engine.set_config(
+                    self._make_config(override if override is not None else -1),
+                )
+                result = engine.process(samples).sort_by_start_time()
         return _renumber(
             [
                 SpeakerTurn(

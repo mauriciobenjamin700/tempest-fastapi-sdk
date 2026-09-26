@@ -34,6 +34,15 @@ class ModelRegistry:
     Each held object must expose ``unload()`` (``TextGenerator`` and
     ``Embedder`` do), called on eviction.
 
+    Eviction never frees weights under a running call: the SDK loaders
+    defer an ``unload()`` that arrives while calls are in flight until the
+    last one finishes. What eviction cannot control is a handle a caller
+    keeps after it was evicted — the next call on it loads the weights
+    again, outside the registry, and ``max_models`` no longer counts it.
+    Call :meth:`get` per request instead of holding the returned object,
+    so an evicted entry is rebuilt through the registry rather than
+    reloaded behind it.
+
     Attributes:
         max_models (int): How many models may be live at once before the
             least-recently-used is evicted.

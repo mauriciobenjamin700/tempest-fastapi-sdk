@@ -20,11 +20,11 @@ from __future__ import annotations
 
 import asyncio
 import re
-import time
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pydantic import Field
 
+from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.text import _require_transformers, resolve_device
 from tempest_fastapi_sdk.schemas.base import BaseSchema
@@ -185,7 +185,11 @@ class ClassifierModerator:
         self.idle_unload_seconds = idle_unload_seconds
         self._model: Any = None
         self._tokenizer: Any = None
-        self._last_used: float = time.monotonic()
+        self._lifecycle = ModelLifecycle(
+            build=self._build,
+            release=self._release,
+            is_loaded=lambda: self._model is not None,
+        )
 
     @property
     def is_loaded(self) -> bool:
@@ -194,15 +198,25 @@ class ClassifierModerator:
 
     @property
     def seconds_idle(self) -> float:
-        """Return seconds since the last moderation call (or load).
+        """Return seconds since the classifier was last in use.
+
+        Reads ``0.0`` while a check is in flight.
 
         Returns:
             float: Idle time in seconds.
         """
-        return time.monotonic() - self._last_used
+        return self._lifecycle.seconds_idle()
 
     def unload(self) -> None:
-        """Free the classifier and its memory. Safe when not loaded."""
+        """Free the classifier and its memory. Safe when not loaded.
+
+        While a check is in flight the release waits for it: the last call
+        to finish drops the weights.
+        """
+        self._lifecycle.unload()
+
+    def _release(self) -> None:
+        """Drop the classifier and tokenizer."""
         self._model = None
         self._tokenizer = None
 
@@ -214,21 +228,25 @@ class ClassifierModerator:
             when it was already free, still in use, or no
             ``idle_unload_seconds`` was configured.
         """
-        if self.idle_unload_seconds is None or not self.is_loaded:
-            return False
-        if self.seconds_idle < self.idle_unload_seconds:
-            return False
-        self.unload()
-        return True
+        return self._lifecycle.unload_if_idle(self.idle_unload_seconds)
 
-    def load(self) -> None:  # pragma: no cover - needs torch + a real model
+    def load(self) -> None:
         """Load the classifier + tokenizer. Idempotent.
+
+        Safe to call from several threads at once: concurrent callers on a
+        cold instance wait for one build.
 
         Raises:
             ImportError: When the ``[genai]`` extra is missing.
         """
-        if self.is_loaded:
-            return
+        self._lifecycle.load()
+
+    def _build(self) -> None:  # pragma: no cover - needs torch + a real model
+        """Load the tokenizer and weights; called once, under the load lock.
+
+        Raises:
+            ImportError: When the ``[genai]`` extra is missing.
+        """
         _torch, transformers = _require_transformers()
         self._tokenizer = transformers.AutoTokenizer.from_pretrained(
             self.model_id,
@@ -259,13 +277,22 @@ class ClassifierModerator:
         """
         return await asyncio.to_thread(self._check_sync, text)
 
-    def _check_sync(
-        self, text: str
-    ) -> ModerationResult:  # pragma: no cover - needs torch
+    def _check_sync(self, text: str) -> ModerationResult:
+        """Load if needed and classify, holding the model for the whole call.
+
+        Args:
+            text (str): The text to screen.
+
+        Returns:
+            ModerationResult: The verdict.
+        """
+        with self._lifecycle.use():
+            return self._classify(text)
+
+    def _classify(self, text: str) -> ModerationResult:  # pragma: no cover - torch
         """Blocking classification + policy mapping."""
         import torch
 
-        self.load()
         inputs = self._tokenizer(
             text,
             truncation=True,
@@ -282,7 +309,6 @@ class ClassifierModerator:
             if self._is_flagged_label(label) and prob >= self.threshold:
                 flagged.append(label)
                 best = max(best, float(prob))
-        self._last_used = time.monotonic()
         return ModerationResult(flagged=bool(flagged), categories=flagged, score=best)
 
 

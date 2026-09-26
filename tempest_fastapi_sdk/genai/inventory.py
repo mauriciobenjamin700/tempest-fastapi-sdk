@@ -270,8 +270,10 @@ def runtime_report(
         hardware (HardwareInfo | None): A snapshot to reuse instead of
             probing again.
         probe (bool): When no ``hardware`` is given, probe the host.
-            Pass ``False`` to skip it — probing reads NVML and is the only
-            part of this call that costs anything.
+            Pass ``False`` to skip it — probing reads NVML (or, without
+            ``pynvml`` installed, initializes CUDA through torch, which
+            creates a context on every GPU) and is the only part of this
+            call that costs anything.
 
     Returns:
         ModelRuntimeReport: The handles plus, optionally, the host

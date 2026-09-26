@@ -383,6 +383,58 @@ class TestEdit:
             await generator.edit("at night", 42)
 
 
+class TestNothingBlocksTheLoop:
+    """``generate``/``edit`` used to call ``self.load()`` on the loop thread.
+
+    A first request then froze every other coroutine for the whole
+    pipeline download and build, and ``edit`` also decoded and converted
+    the input image there. Each blocking step records the thread it ran on.
+    """
+
+    @pytest.mark.asyncio
+    async def test_first_generate_loads_off_the_loop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import threading
+
+        fake = _install(monkeypatch)
+        threads: list[int] = []
+        original = fake.AutoPipelineForText2Image.from_pretrained
+
+        def _record(model_id: str, **kwargs: Any) -> FakePipeline:
+            threads.append(threading.get_ident())
+            return original(model_id, **kwargs)
+
+        monkeypatch.setattr(fake.AutoPipelineForText2Image, "from_pretrained", _record)
+        generator = ImageGenerator("org/diffusion", device="cpu")
+
+        await generator.generate("a cat")
+
+        assert threads and threads[0] != threading.get_ident()
+
+    @pytest.mark.asyncio
+    async def test_edit_decodes_the_input_off_the_loop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import threading
+
+        fake = _install(monkeypatch)
+        threads: list[int] = []
+        original = image_module._load_image
+
+        def _record(source: Any) -> Any:
+            threads.append(threading.get_ident())
+            return original(source)
+
+        monkeypatch.setattr(image_module, "_load_image", _record)
+        generator = ImageGenerator("org/diffusion", device="cpu")
+
+        await generator.edit("at night", _png_bytes(), strength=0.5)
+
+        assert threads and threads[0] != threading.get_ident()
+        assert fake.img2img.calls[0]["image"].mode == "RGB"
+
+
 class TestIdleUnload:
     def test_no_threshold_never_unloads(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _install(monkeypatch)

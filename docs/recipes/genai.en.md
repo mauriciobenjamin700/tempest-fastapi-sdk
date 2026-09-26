@@ -145,7 +145,16 @@ asyncio.run(main())
     **[Model weights »](model-weights.md#where-the-weights-live-and-why-the-second-run-is-instant)**.
 
 Blocking generation runs in `asyncio.to_thread` — it never blocks the
-event loop. `device="auto"` picks CUDA → MPS → CPU; `dtype="auto"` uses
+event loop. That holds for `stream()` too: the first call's load and the wait
+between tokens happen on a worker thread, and closing the iterator early (a
+`break`, a client that disconnected) stops generation at the next token
+instead of leaving the GPU generating up to `max_new_tokens` for nobody.
+Measured with `Qwen/Qwen2.5-0.5B-Instruct` on an RTX 4070 Ti SUPER: the first
+stream used to stall the loop for 4190 ms and now stalls it for 164 to
+193 ms (three runs); closing after 5 of 200 tokens used to block for 3532 ms
+and now returns in ~0.01 ms, with the worker thread done 28 ms later.
+
+`device="auto"` picks CUDA → MPS → CPU; `dtype="auto"` uses
 bf16 on GPU and fp32 on CPU.
 
 !!! tip "Check before loading"
@@ -158,6 +167,14 @@ bf16 on GPU and fp32 on CPU.
     (e.g. in a `@tq.interval(60)` [TaskQueue](queue-tasks.md) task) — it
     unloads only once past the idle threshold, no background-thread magic.
     `unload()` frees immediately.
+
+    A call in progress does **not** count as idle: `seconds_idle` reads
+    `0.0` while it runs and `unload_if_idle()` returns `False`. An
+    `unload()` that arrives mid-call (including one from a `ModelRegistry`
+    eviction) waits: whichever call finishes last drops the weights. And
+    several simultaneous first calls load the model **once**. The same holds
+    for every local loader (`Embedder`, `Reranker`, `ImageGenerator`,
+    `SpeechToText`, `TextToSpeech`, `SpeakerDiarizer`, `OnnxEmbedder`...).
 
 ## Hosted backend (DeepSeek, Groq, OpenRouter, vLLM...)
 
@@ -833,9 +850,13 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-Pooling is the **attention-mask-weighted mean** of the token embeddings (not a
-naive average over padding), so vectors match the torch `Embedder` for the same
-model (cosine ≈ 1.0). Export the model in a throwaway environment — `optimum` is **not** a
+The default pooling is the **attention-mask-weighted mean** of the token
+embeddings (not a naive average over padding), so vectors match the torch
+`Embedder` for the same model (cosine ≈ 1.0). BGE-family models are trained on
+the `[CLS]` token — pass `pooling="cls"` for them, as the model card says. A
+graph exported with its pooling head baked in (a 2-D `sentence_embedding`
+output) is used as is, and padding uses the tokenizer's own `<pad>` (id 1 in
+RoBERTa/XLM-R), not the id 0 `tokenizers` assumes. Export the model in a throwaway environment — `optimum` is **not** a
 dependency of this package, because it pins `transformers<4.58` in the lock of
 whoever installs it:
 
@@ -981,8 +1002,11 @@ app.include_router(make_genai_router(models=registry))
 curl "http://127.0.0.1:8000/api/genai/models?probe=false"
 ```
 
-`probe=false` skips reading NVML — the only part of the endpoint that costs
-anything. With the default, the report comes alongside the host's memory
+`probe=false` skips the host probe — the only part of the endpoint that costs
+anything. With `pynvml` installed (the `[metrics]` extra), the probe reads each
+GPU's name and memory through NVML, without creating a CUDA context in the web
+process; without it, it falls back to `torch.cuda.mem_get_info`, which does —
+measured at +209 MiB of VRAM on an RTX 4070 Ti SUPER. With the default, the report comes alongside the host's memory
 picture, so one call answers both "what is loaded" and "how much room is
 left".
 
@@ -1437,6 +1461,12 @@ temperature=0.9)` uses `0.9`).
     reproduces the output) and `stop` becomes `model.generate`'s
     `stop_strings` argument (requires transformers >= 4.44). Either may come
     from the `GenerationConfig` or per call — the per-call override wins.
+
+!!! warning "The local `seed` is process-wide"
+    `transformers.set_seed` reseeds the RNGs of the whole process, and
+    `model.generate` takes no per-call `torch.Generator` (checked on
+    transformers 4.57). A seeded generation reproduces only while no other
+    sampling generation runs in the same process at the same time.
 
 ### Structured output (validated JSON)
 

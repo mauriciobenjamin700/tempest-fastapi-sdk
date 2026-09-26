@@ -647,7 +647,10 @@ class TestOnnxEmbedderPinsTheTokenizer:
             def enable_truncation(self, max_length: int) -> None:
                 return None
 
-            def enable_padding(self) -> None:
+            def enable_padding(self, **kwargs: Any) -> None:
+                return None
+
+            def token_to_id(self, token: str) -> int | None:
                 return None
 
         class FakeTokenizerCls:
@@ -688,7 +691,10 @@ class TestOnnxEmbedderPinsTheTokenizer:
             def enable_truncation(self, max_length: int) -> None:
                 return None
 
-            def enable_padding(self) -> None:
+            def enable_padding(self, **kwargs: Any) -> None:
+                return None
+
+            def token_to_id(self, token: str) -> int | None:
                 return None
 
         class FakeTokenizerCls:

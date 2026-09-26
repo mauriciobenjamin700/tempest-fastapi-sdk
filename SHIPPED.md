@@ -806,6 +806,26 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   time. Also closed the `docs/reference.md` hole: the top-level `genai`
   surface + `genai.rag` + `genai.audio` now render (269 symbols), where
   before only the three new submodules did.
+- **Shared model lifecycle (Unreleased)** — private
+  `genai/_lifecycle.py::ModelLifecycle` behind `TextGenerator`, `Embedder`,
+  `ImageGenerator`, `VisionTextGenerator`, `Reranker`,
+  `ClassifierModerator`, `OnnxEmbedder`, `SpeechToText`, `TextToSpeech` and
+  `SpeakerDiarizer`: one build per cold start however many threads race
+  (load lock, `is_loaded` checked inside it), and an in-flight counter —
+  `seconds_idle` reads `0.0` during a call, `unload_if_idle` refuses, an
+  explicit `unload()` (and so `ModelRegistry` eviction) is deferred until
+  the last call leaves. Each class keeps its own public
+  `load`/`unload`/`unload_if_idle` so the API reference still renders them.
+  `TextGenerator.stream` runs load + decode on a worker thread and stops
+  decoding on `aclose()`; `ImageGenerator.generate/edit` load and decode the
+  input off the loop; `probe_hardware` reads GPU memory through NVML when
+  `pynvml` is installed (no CUDA context); `OnnxEmbedder` gained
+  `pooling="mean"|"cls"`, named-output selection, the tokenizer's own pad
+  id and `idle_unload_seconds`; `TextToSpeech` gained
+  `idle_unload_seconds` and no longer leaks its temp `.wav` on failure.
+  **Not covered:** `VoiceEmbedder` and `faces.FaceRecognizer` still use the
+  old unguarded pattern; a handle held after registry eviction reloads
+  outside `max_models`.
 - **Agents (v0.181.0)** — `tempest_fastapi_sdk.agents`, submodule import, **no
   extra**. Goal in, traced run out — the split from `AIChatPipeline` (which
   answers a chat *turn*). `Agent.run/stream` → `AgentRun` (output + `steps` +

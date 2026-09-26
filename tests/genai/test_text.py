@@ -97,7 +97,7 @@ class TestState:
         import time
 
         gen = TextGenerator("m", hardware=_cpu_hw())
-        gen._last_used = time.monotonic() - 5
+        gen._lifecycle.last_used = time.monotonic() - 5
         assert gen.seconds_idle >= 5
 
 

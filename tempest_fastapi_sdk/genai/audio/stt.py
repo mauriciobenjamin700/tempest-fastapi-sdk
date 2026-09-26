@@ -6,13 +6,15 @@ The model loads once and is reused; each transcription runs in a worker
 thread (``asyncio.to_thread``) and concurrent calls are serialized through
 a semaphore to bound memory. Mirrors the leviathan STT service.
 
-Loading is guarded by a :class:`threading.Lock`, not an ``asyncio`` one:
+Loading is guarded by a thread lock, not an ``asyncio`` one:
 :meth:`SpeechToText.load` runs **inside** the worker thread, so the
 primitive that has to exclude a second caller is a thread primitive. The
 semaphore does not cover this — it admits ``max_concurrent`` callers, and
 two of them arriving on a cold instance both read ``is_loaded`` as False
 and both build a model, doubling peak memory for the lifetime of the
-process.
+process. The lock and the in-flight count live in the lifecycle helper the
+other loaders share, so an idle unload also never frees the model under a
+transcription that is still decoding.
 
 ``faster_whisper`` / ``torch`` import lazily, so the module and its device
 helpers import without the ``[genai-audio]`` extra.
@@ -22,10 +24,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import threading
-import time
 from typing import TYPE_CHECKING, Any
 
+from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.audio.language import Language, whisper_language
 from tempest_fastapi_sdk.genai.audio.schemas import Transcription, TranscriptionSegment
 
@@ -236,8 +237,11 @@ class SpeechToText:
         self._model: Any = None
         self._pipeline: Any = None
         self._semaphore = asyncio.Semaphore(max_concurrent)
-        self._load_lock = threading.Lock()
-        self._last_used: float = time.monotonic()
+        self._lifecycle = ModelLifecycle(
+            build=self._build,
+            release=self._release,
+            is_loaded=lambda: self._model is not None,
+        )
 
     @property
     def is_loaded(self) -> bool:
@@ -246,12 +250,14 @@ class SpeechToText:
 
     @property
     def seconds_idle(self) -> float:
-        """Return seconds since the last transcription (or load).
+        """Return seconds since the model was last in use.
+
+        Reads ``0.0`` while a transcription is in flight.
 
         Returns:
             float: Idle time in seconds.
         """
-        return time.monotonic() - self._last_used
+        return self._lifecycle.seconds_idle()
 
     def unload_if_idle(self) -> bool:
         """Free the model when it has been idle past the threshold.
@@ -261,12 +267,7 @@ class SpeechToText:
             when it was already free, still in use, or no
             ``idle_unload_seconds`` was configured.
         """
-        if self.idle_unload_seconds is None or not self.is_loaded:
-            return False
-        if self.seconds_idle < self.idle_unload_seconds:
-            return False
-        self.unload()
-        return True
+        return self._lifecycle.unload_if_idle(self.idle_unload_seconds)
 
     def load(self) -> None:
         """Download (if needed) and load the Whisper model. Idempotent.
@@ -276,8 +277,9 @@ class SpeechToText:
         than building a second copy.
 
         The ``is_loaded`` test is inside the lock, not repeated outside it as
-        a fast path. Every caller therefore pays one uncontended acquire,
-        measured at ~157 ns (CPython 3.11, 2M iterations, development
+        a fast path. Every call therefore pays the lifecycle's bookkeeping —
+        the load lock plus the in-flight counter — measured at ~1.6 µs per
+        call on a loaded model (CPython 3.11, 1M iterations, development
         machine), against a transcription measured in seconds.
         Double-checked locking would buy nothing at that price and is the
         shape this bug hid in once already.
@@ -285,30 +287,42 @@ class SpeechToText:
         Raises:
             ImportError: When the ``[genai-audio]`` extra is missing.
         """
-        with self._load_lock:
-            if self.is_loaded:
-                return
-            faster_whisper = _require_faster_whisper()
-            model = faster_whisper.WhisperModel(
-                self.model_size,
-                device=self.device,
-                compute_type=self.compute_type,
-                cpu_threads=self.cpu_threads,
-                num_workers=self.num_workers,
-                download_root=self.cache_dir,
-                revision=self.revision,
-                local_files_only=self.local_files_only,
-                use_auth_token=self.hf_token,
-            )
-            if self.batch_size is not None:
-                self._pipeline = faster_whisper.BatchedInferencePipeline(model=model)
-            self._model = model
+        self._lifecycle.load()
+
+    def _build(self) -> None:
+        """Construct the Whisper model; called once, under the load lock.
+
+        Raises:
+            ImportError: When the ``[genai-audio]`` extra is missing.
+        """
+        faster_whisper = _require_faster_whisper()
+        model = faster_whisper.WhisperModel(
+            self.model_size,
+            device=self.device,
+            compute_type=self.compute_type,
+            cpu_threads=self.cpu_threads,
+            num_workers=self.num_workers,
+            download_root=self.cache_dir,
+            revision=self.revision,
+            local_files_only=self.local_files_only,
+            use_auth_token=self.hf_token,
+        )
+        if self.batch_size is not None:
+            self._pipeline = faster_whisper.BatchedInferencePipeline(model=model)
+        self._model = model
 
     def unload(self) -> None:
-        """Free the model. Safe when not loaded."""
-        with self._load_lock:
-            self._pipeline = None
-            self._model = None
+        """Free the model. Safe when not loaded.
+
+        While a transcription is in flight the release waits for it: the
+        last call to finish drops the model.
+        """
+        self._lifecycle.unload()
+
+    def _release(self) -> None:
+        """Drop the model and its batched pipeline."""
+        self._pipeline = None
+        self._model = None
 
     async def transcribe(
         self,
@@ -358,7 +372,6 @@ class SpeechToText:
                 self.vad_filter if vad_filter is None else vad_filter,
                 on_progress,
             )
-        self._last_used = time.monotonic()
         return result
 
     def _transcribe_sync(
@@ -370,10 +383,47 @@ class SpeechToText:
         vad_filter: bool,
         on_progress: Callable[[float, float], None] | None = None,
     ) -> Transcription:
-        """Blocking transcription; assembles a :class:`Transcription`."""
+        """Blocking transcription; assembles a :class:`Transcription`.
+
+        Runs inside the lifecycle's ``use()`` block: the segments come out
+        of a lazy generator, so the model has to stay resident until the
+        last one is decoded, not only until ``transcribe`` returns.
+        """
+        with self._lifecycle.use():
+            return self._decode(
+                audio,
+                language,
+                with_segments,
+                beam_size,
+                vad_filter,
+                on_progress,
+            )
+
+    def _decode(
+        self,
+        audio: str | Path | bytes,
+        language: str | None,
+        with_segments: bool,
+        beam_size: int,
+        vad_filter: bool,
+        on_progress: Callable[[float, float], None] | None,
+    ) -> Transcription:
+        """Run the loaded engine and collect its segments.
+
+        Args:
+            audio (str | Path | bytes): Audio file path or raw bytes.
+            language (str | None): Whisper language code, or ``None``.
+            with_segments (bool): Include per-span timestamps.
+            beam_size (int): Beam width.
+            vad_filter (bool): Whether to apply VAD.
+            on_progress (Callable[[float, float], None] | None): Progress
+                callback, run on this thread.
+
+        Returns:
+            Transcription: The assembled transcript.
+        """
         import io
 
-        self.load()
         source: Any = io.BytesIO(audio) if isinstance(audio, bytes) else str(audio)
         engine = self._pipeline if self._pipeline is not None else self._model
         options: dict[str, Any] = {
