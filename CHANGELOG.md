@@ -29,6 +29,19 @@ attribute 'decode'`.
   espera a última chamada terminar. O `assert engine is not None` do
   `SpeakerDiarizer` virou `RuntimeError`, e as passadas do modo `"auto"`
   rodam num bloco só, sem janela para o engine sumir entre elas.
+- **Handle guardado depois da evicção do `ModelRegistry` não recarrega mais
+  fora do `max_models`** (#320). A evicção marca o loader como despejado
+  (`ModelLifecycle.mark_evicted`), e a próxima chamada no handle velho volta
+  pelo registry: registra o modelo de novo na mesma chave, despeja o menos
+  usado e espera as chamadas em andamento do despejado terminarem antes de
+  carregar. A mesma espera vale para o primeiro build de um modelo novo do
+  `get()`. Com `max_models=1`, guardar `A`, pedir `B` e usar `A` de novo
+  dava dois modelos residentes; agora são três loads, dois unloads e pico
+  de um residente, inclusive com oito chamadas concorrentes no handle
+  velho e com threads alternando dois handles guardados. Exceção
+  documentada: chamada feita de dentro da chamada de outro modelo não
+  espera (evita deadlock), e o teto é excedido até a de fora acabar.
+  Objeto de terceiro que só tem `unload()` segue como antes.
 - **`TextGenerator.stream()` não trava mais o event loop.** Load, tokenização
   e espera entre tokens rodam numa worker thread, e os pedaços chegam ao
   loop por `call_soon_threadsafe`. Fechar o iterador (`aclose()`, `break`,
@@ -77,9 +90,6 @@ attribute 'decode'`.
   4.57), então uma geração com seed só reproduz sem outra geração com
   amostragem concorrente. Sem mudança de comportamento; o aviso está na
   receita e na docstring.
-- A docstring do `ModelRegistry` diz o limite que sobra: um handle guardado
-  depois da evicção recarrega fora do `max_models` — chame `get()` por
-  request em vez de segurar o objeto.
 Auditoria dos backends de genai e do stream do `HTTPClient`: um timeout no
 meio do stream reenviava o POST e repetia o texto já entregue, o Ollama
 devolvia `""` para um corpo de erro, o cliente OpenAI mandava campos que o

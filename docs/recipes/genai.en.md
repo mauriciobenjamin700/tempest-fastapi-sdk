@@ -1078,6 +1078,25 @@ def get_embedder(model_id: str) -> Embedder:
     return registry.get(model_id, lambda: Embedder(model_id))
 ```
 
+!!! note "A kept handle still counts toward `max_models`"
+    Keeping the object `get()` returned (`embedder = registry.get(...)` at
+    startup, used for every request) is safe with the SDK loaders. After an
+    eviction, the next call on that handle does **not** reload behind the
+    registry: it registers the model again under the same key (replacing
+    any object a later `get()` built there), evicts the least-recently-used
+    entry, and only then loads the weights. With `max_models=1`, keeping
+    `A`, asking for `B` and using `A` again means three loads and two
+    unloads, never both models resident at once.
+
+    When the evicted model still has calls running, whatever takes its
+    place waits for them to finish before loading — both the readmitted
+    handle and the new model from a `get()`. The exception is a call made
+    **from inside** another model's call: it does not wait (the outer call
+    may be exactly what the evicted model is waiting on), so there the
+    ceiling is exceeded until the outer call ends. A third-party object
+    that only implements `unload()` has no such hook — for those, call
+    `get()` per request.
+
 ### What is loaded right now
 
 A self-hosted service can hold several models at once, each holding
