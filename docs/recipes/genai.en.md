@@ -1080,6 +1080,25 @@ def get_embedder(model_id: str) -> Embedder:
     return registry.get(model_id, lambda: Embedder(model_id))
 ```
 
+!!! note "A kept handle still counts toward `max_models`"
+    Keeping the object `get()` returned (`embedder = registry.get(...)` at
+    startup, used for every request) is safe with the SDK loaders. After an
+    eviction, the next call on that handle does **not** reload behind the
+    registry: it registers the model again under the same key (replacing
+    any object a later `get()` built there), evicts the least-recently-used
+    entry, and only then loads the weights. With `max_models=1`, keeping
+    `A`, asking for `B` and using `A` again means three loads and two
+    unloads, never both models resident at once.
+
+    When the evicted model still has calls running, whatever takes its
+    place waits for them to finish before loading — both the readmitted
+    handle and the new model from a `get()`. The exception is a call made
+    **from inside** another model's call: it does not wait (the outer call
+    may be exactly what the evicted model is waiting on), so there the
+    ceiling is exceeded until the outer call ends. A third-party object
+    that only implements `unload()` has no such hook — for those, call
+    `get()` per request.
+
 ### What is loaded right now
 
 A self-hosted service can hold several models at once, each holding
@@ -1617,9 +1636,114 @@ rag = Retriever(embedder, store)
 The table name is interpolated into the SQL (an identifier cannot be a bound
 parameter), so the constructor refuses with `ValueError` anything outside an
 unquoted `name` or `schema.name` (`[A-Za-z_][A-Za-z0-9_]*`, up to 63
-characters each), and a `dim` that is not a positive integer. Search is exact
-(a sequential scan): no approximate index (HNSW/IVFFlat) is created, so add one
-once the corpus grows.
+characters each), and a `dim` that is not a positive integer.
+
+#### Approximate index: HNSW or IVFFlat
+
+Out of the box, search is **exact**: Postgres runs a sequential scan and
+computes `<=>` against every row. With 100,000 chunks of 384 dimensions that
+already costs ~50–60 ms per search (measurement below), and the cost follows
+the row count.
+
+An approximate index trades some **recall** (the fraction of the exact
+neighbors that comes back) for latency. Ask for one in `ensure_schema`:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import AsyncDatabaseManager
+from tempest_fastapi_sdk.genai.rag import Chunk, PgVectorStore
+
+db = AsyncDatabaseManager("postgresql+asyncpg://app:app@127.0.0.1:5432/app")
+store = PgVectorStore(db, dim=384)
+
+
+async def main() -> None:
+    """Build the HNSW index once, then search with a wider candidate list."""
+    await store.ensure_schema(ann_index="hnsw", m=16, ef_construction=64)
+    query: list[float] = [0.1] * 384
+    hits: list[Chunk] = await store.search(query, top_k=10, ef_search=100)
+    print([hit.text for hit in hits])
+
+
+asyncio.run(main())
+```
+
+- **`ann_index="hnsw"`** builds a navigable graph. Build parameters: `m`
+  (connections per node) and `ef_construction` (candidates while building).
+  Needs pgvector **>= 0.5.0**; below that `ensure_schema` raises
+  `RuntimeError` naming the version it found.
+- **`ann_index="ivfflat"`** splits the vectors into `lists` groups and, at
+  search time, scans only the nearest ones. Much faster to build, but the
+  centroids come from the rows present **when it is built** — call it after
+  loading the corpus, not before the first `add`.
+- The index is named `<table>_embedding_idx` (`store.ann_index_name`) and
+  uses `vector_cosine_ops`, the operator class of the `<=>` that `search`
+  orders by.
+- A parameter left as `None` stays out of the `WITH` clause, so pgvector's
+  default applies. A parameter of the other method (`lists` with HNSW), or
+  one given without `ann_index`, raises `ValueError` before any SQL runs.
+- Calling it again with the same parameters does nothing. With **another**
+  method or other parameters it raises `ValueError` asking for `DROP INDEX`:
+  rebuilding a large index never happens hidden inside an `ensure_schema`.
+
+At search time, `ef_search` (HNSW) and `probes` (IVFFlat) tune the trade-off
+per call. `search` applies both with `set_config(..., true)`, the function
+form of `SET LOCAL`: it lasts for the search's transaction only, and the next
+session on the same pool reads the server value again (`40` and `1`,
+checked in the docker test).
+
+!!! warning "`ef_search` also caps how many results come back"
+    An HNSW scan returns at most `ef_search` rows: measured on pgvector
+    0.8.6, `search(top_k=20, ef_search=5)` returns **5** chunks. Keep
+    `ef_search >= top_k`.
+
+##### What it buys
+
+Measured through `PgVectorStore.search` end to end (Python + asyncpg +
+Postgres on `localhost`), `top_k=10`, against `pgvector/pgvector:pg16`
+(pgvector 0.8.6, the container's default configuration, `--shm-size=1g`) on
+a 12-core machine under WSL2. **N = 100,000 vectors of 384 dimensions.**
+Recall@10 is the fraction of the exact scan's 10 neighbors that the index
+returns; each row combines two runs with different seeds (200 searches per
+seed on the Gaussian data, 500 on the clustered data), and the range shows
+both.
+
+Two synthetic corpora that bracket the real case from above and below:
+
+- **Gaussian**: every component is `N(0, 1)`, no structure at all — the
+  nearest neighbor is barely nearer than the rest;
+- **clustered**: 1,000 Gaussian centers, each vector is a center plus
+  `N(0, 0.5)` noise; queries are generated the same way.
+
+| Search | p50 | recall@10 Gaussian | recall@10 clustered |
+| --- | --- | --- | --- |
+| exact (sequential scan) | 50–60 ms | 1.00 | 1.00 |
+| HNSW, `ef_search=40` (default) | 4–8 ms | 0.05–0.06 | 0.986–0.992 |
+| HNSW, `ef_search=100` | 4–8 ms | 0.12–0.13 | 1.00 |
+| HNSW, `ef_search=400` | 7–20 ms | 0.36–0.37 | 1.00 |
+| IVFFlat `lists=100`, `probes=1` (default) | 3.4–4.4 ms | 0.03–0.04 | 0.992–0.996 |
+| IVFFlat `lists=100`, `probes=10` | 6–7.5 ms | 0.23 | 0.9996–0.9998 |
+| IVFFlat `lists=100`, `probes=40` | 17–20 ms | 0.62 | 1.00 |
+
+Index build over the 100,000 rows: HNSW with the defaults (`m=16`,
+`ef_construction=64`) took 72–81 s on the Gaussian data and 26 s on the
+clustered data; IVFFlat with `lists=100`, 0.8–1.5 s.
+
+What to take from it:
+
+- **Latency**: at this N the index takes a search from ~50 ms to ~5 ms. With
+  5,000 Gaussian rows (50 searches, one seed) the exact scan measured ~20 ms
+  at p50 and HNSW ~4 ms: the gain is there, but it is milliseconds.
+- **Recall depends on the corpus, not only on the index.** The same
+  parameters return nearly everything on the clustered data and nearly
+  nothing on the Gaussian data. Text embeddings have structure (documents on
+  the same subject sit close together), but how much only measuring **your**
+  corpus tells: compare `search` with the index against the exact result
+  (taken before creating the index) on a handful of real queries, and raise
+  `ef_search`/`probes` until the recall is good enough.
+- **A few thousand chunks?** Stay on exact search: the cost is small and the
+  recall is 1.
 
 `rag.search(query, top_k=)` returns the `Chunk`s with a `score` (similarity);
 `rag.retrieve(...)` builds the context for you. Need Qdrant/Weaviate later?

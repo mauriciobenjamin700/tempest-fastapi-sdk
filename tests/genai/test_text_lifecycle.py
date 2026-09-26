@@ -420,6 +420,24 @@ class TestUnloadDuringGeneration:
         assert (await task).startswith("t0 ")
         assert not first.is_loaded
 
+    async def test_kept_handle_after_eviction_goes_back_through_registry(
+        self,
+        fake: FakeTransformers,
+    ) -> None:
+        """A generator kept past its eviction re-registers instead of doubling up."""
+        registry = ModelRegistry(max_models=1)
+        first = registry.get("a", lambda: TextGenerator("a", hardware=_cpu()))
+        await first.generate("hi")
+        second = registry.get("b", lambda: TextGenerator("b", hardware=_cpu()))
+        await second.generate("hi")
+
+        await first.generate("hi")
+
+        assert first.is_loaded
+        assert not second.is_loaded
+        assert list(registry.items()) == ["a"]
+        assert fake.AutoModelForCausalLM.calls == 3
+
 
 class TestStreamDoesNotBlockTheLoop:
     async def test_first_stream_keeps_the_loop_responsive(
