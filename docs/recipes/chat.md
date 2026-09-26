@@ -157,7 +157,9 @@ vez de postar a segunda; a segunda é o que faz reagir de novo
     from tempest_fastapi_sdk.chat import (
         make_conversation_model,
         make_conversation_participant_model,
+        make_message_attachment_model,
         make_message_model,
+        make_message_reaction_model,
     )
 
     Conversation = make_conversation_model()
@@ -344,16 +346,13 @@ exatamente a granularidade que a interface mostra.
 ### Anexos
 
 ```python
-from typing import Any
 from uuid import UUID
 
-from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.chat import ChatService, MessageCreateSchema, MessageKind
 
 
 async def anexar(
     service: ChatService,
-    attachments: BaseRepository[Any],
     conversation_id: UUID,
     alice: UUID,
     storage_key: str,
@@ -361,13 +360,12 @@ async def anexar(
     size_bytes: int,
 ) -> None:
     """Grava o arquivo primeiro e só depois posta a mensagem."""
-    attachment = await attachments.add(
-        attachments.model(
-            storage_key=storage_key,  # chave, nunca URL
-            filename="foto.jpg",
-            mime_type=mime_type,
-            size_bytes=size_bytes,
-        ),
+    attachment = await service.add_attachment(
+        alice,
+        storage_key=storage_key,  # chave, nunca URL
+        filename="foto.jpg",
+        mime_type=mime_type,
+        size_bytes=size_bytes,
     )
 
     await service.post_message(
@@ -385,13 +383,62 @@ async def anexar(
 gravá-la congela um acesso na linha. Um id já reivindicado é recusado
 com `404` — o mesmo arquivo não entra em duas mensagens.
 
-A linha de anexo não registra quem fez o upload, então o serviço não tem
-como conferir que quem reivindica é o mesmo usuário que enviou o
-arquivo: qualquer participante que tenha o id de um anexo ainda não
-reivindicado pode prendê-lo à própria mensagem. O id é um `uuid4` gerado
-no servidor, e o seu endpoint de upload deve devolvê-lo só a quem enviou
-o arquivo: é disso que essa garantia depende hoje — registrar o autor exige uma coluna nova, portanto uma
-migração no seu banco, e fica para uma release que a anuncie.
+`add_attachment` grava a linha com `uploader_id` preenchido, e o
+`post_message` só reivindica o anexo para uma mensagem **do mesmo
+usuário**. Outra pessoa que descubra o id — num log, numa URL
+compartilhada — recebe o mesmo `404` de um id que não existe, então a
+resposta não confirma que o arquivo está lá, e o arquivo continua livre
+para quem o enviou. Se o seu endpoint de upload grava a linha por conta
+própria, preencha `uploader_id` nela: linha sem uploader continua
+reivindicável por qualquer remetente.
+
+!!! warning "`uploader_id` é coluna nova: migre antes de atualizar"
+    A coluna vive em `BaseMessageAttachmentModel`, então toda tabela de
+    anexo concreta a herda e todo `SELECT` nela passa a nomeá-la.
+    Atualizar o pacote sem migrar quebra **toda rota que monta mensagem**,
+    inclusive mensagem de texto sem anexo, porque a resposta lê os anexos.
+    Medido com SQLite, rodando o código novo sobre a tabela antiga:
+
+    ```text
+    POST /api/chat/conversations/{id}/messages -> 500
+    GET  /api/chat/conversations/{id}/messages -> 500
+    sqlite3.OperationalError: no such column: message_attachments.uploader_id
+    ```
+
+    A migração é uma coluna nullable e um índice — o que o
+    `alembic revision --autogenerate` gera sobre a tabela antiga:
+
+    ```python
+    import sqlalchemy as sa
+    from alembic import op
+
+
+    def upgrade() -> None:
+        op.add_column(
+            "message_attachments",
+            sa.Column("uploader_id", sa.Uuid(), nullable=True),
+        )
+        op.create_index(
+            op.f("ix_message_attachments_uploader_id"),
+            "message_attachments",
+            ["uploader_id"],
+            unique=False,
+        )
+
+
+    def downgrade() -> None:
+        op.drop_index(
+            op.f("ix_message_attachments_uploader_id"),
+            table_name="message_attachments",
+        )
+        op.drop_column("message_attachments", "uploader_id")
+    ```
+
+    Troque `message_attachments` pelo `__tablename__` da sua tabela. As
+    linhas que já existiam ficam com `uploader_id` `NULL` e seguem a regra
+    antiga — qualquer remetente as reivindica. É a janela de transição:
+    arquivo enviado antes do deploy e ainda não postado não fica preso, e
+    a janela fecha sozinha quando não sobra linha `NULL` sem mensagem.
 
 !!! tip "Validando o upload de texto"
     `UploadUtils(verify_magic_bytes=True)` recusa assinatura

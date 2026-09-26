@@ -389,9 +389,22 @@ class BaseMessageAttachmentModel(BaseModel):
     read with a short TTL, so storing one freezes a capability into the
     row.
 
+    ``uploader_id`` is what stops the two-step upload from being a
+    capability: between the upload and the post, the attachment id is the
+    only thing tying the file to anyone, and an id leaks (a log line, a
+    shared URL). With the uploader recorded, ``ChatService`` claims the row
+    only for a message whose sender is that uploader. The column is
+    **nullable** for rows written before it existed: a ``NULL`` uploader
+    keeps the old rule — claimable by whoever names the id — so upgrading
+    does not strand files already uploaded and not yet posted. It is not an
+    FK, like ``created_by`` on a conversation, so deleting a user never has
+    to decide whether their unposted uploads survive.
+
     Attributes:
         message_id (UUID | None): FK to the owning message, or ``None``
             while the file is uploaded but not yet posted.
+        uploader_id (UUID | None): The user who uploaded the file, or
+            ``None`` for a row written before the column existed.
         position (int): Order within the message, 0-based.
         storage_key (str): Storage key of the stored file.
         thumbnail_key (str | None): Key of the generated preview.
@@ -414,6 +427,12 @@ class BaseMessageAttachmentModel(BaseModel):
         default=None,
         index=True,
         doc="FK to the owning message, or NULL while unclaimed.",
+    )
+    uploader_id: Mapped[UUID | None] = mapped_column(
+        nullable=True,
+        default=None,
+        index=True,
+        doc="The user who uploaded the file; NULL for a legacy row.",
     )
     position: Mapped[int] = mapped_column(
         SmallInteger,

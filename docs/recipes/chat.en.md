@@ -159,7 +159,9 @@ instead of posting a second one; the second is what makes reacting again
     from tempest_fastapi_sdk.chat import (
         make_conversation_model,
         make_conversation_participant_model,
+        make_message_attachment_model,
         make_message_model,
+        make_message_reaction_model,
     )
 
     Conversation = make_conversation_model()
@@ -343,16 +345,13 @@ the UI shows.
 ### Attachments
 
 ```python
-from typing import Any
 from uuid import UUID
 
-from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.chat import ChatService, MessageCreateSchema, MessageKind
 
 
 async def attach(
     service: ChatService,
-    attachments: BaseRepository[Any],
     conversation_id: UUID,
     alice: UUID,
     storage_key: str,
@@ -360,13 +359,12 @@ async def attach(
     size_bytes: int,
 ) -> None:
     """Store the file first, post the message afterwards."""
-    attachment = await attachments.add(
-        attachments.model(
-            storage_key=storage_key,  # a key, never a URL
-            filename="photo.jpg",
-            mime_type=mime_type,
-            size_bytes=size_bytes,
-        ),
+    attachment = await service.add_attachment(
+        alice,
+        storage_key=storage_key,  # a key, never a URL
+        filename="photo.jpg",
+        mime_type=mime_type,
+        size_bytes=size_bytes,
     )
 
     await service.post_message(
@@ -385,14 +383,62 @@ TTL, and storing one freezes an access into the row. An id that was
 already claimed is refused with `404` — the same file never enters two
 messages.
 
-The attachment row does not record who uploaded it, so the service has
-no way to check that the claimer is the user who sent the file: any
-participant holding the id of an attachment not yet claimed can pin it
-to their own message. The id is a server-generated `uuid4`, and your
-upload endpoint should return it only to whoever sent the file: that is
-what the guarantee rests on today —
-recording the author needs a new column, hence a migration in your
-database, and is left for a release that announces it.
+`add_attachment` writes the row with `uploader_id` filled in, and
+`post_message` claims the attachment only for a message **from that same
+user**. Someone else who learns the id — from a log, a shared URL — gets
+the same `404` as for an id that does not exist, so the answer does not
+confirm the file is there, and the file stays free for whoever sent it.
+If your upload endpoint writes the row itself, fill `uploader_id` in: a
+row without an uploader stays claimable by any sender.
+
+!!! warning "`uploader_id` is a new column: migrate before upgrading"
+    The column lives on `BaseMessageAttachmentModel`, so every concrete
+    attachment table inherits it and every `SELECT` on it now names it.
+    Upgrading the package without migrating breaks **every route that
+    builds a message**, a text message without attachments included,
+    because the response reads the attachments. Measured with SQLite,
+    running the new code against the old table:
+
+    ```text
+    POST /api/chat/conversations/{id}/messages -> 500
+    GET  /api/chat/conversations/{id}/messages -> 500
+    sqlite3.OperationalError: no such column: message_attachments.uploader_id
+    ```
+
+    The migration is one nullable column and one index — what
+    `alembic revision --autogenerate` produces against the old table:
+
+    ```python
+    import sqlalchemy as sa
+    from alembic import op
+
+
+    def upgrade() -> None:
+        op.add_column(
+            "message_attachments",
+            sa.Column("uploader_id", sa.Uuid(), nullable=True),
+        )
+        op.create_index(
+            op.f("ix_message_attachments_uploader_id"),
+            "message_attachments",
+            ["uploader_id"],
+            unique=False,
+        )
+
+
+    def downgrade() -> None:
+        op.drop_index(
+            op.f("ix_message_attachments_uploader_id"),
+            table_name="message_attachments",
+        )
+        op.drop_column("message_attachments", "uploader_id")
+    ```
+
+    Replace `message_attachments` with your table's `__tablename__`. Rows
+    that already existed keep `uploader_id` `NULL` and follow the old rule
+    — any sender can claim them. That is the transition window: a file
+    uploaded before the deploy and not yet posted is not stranded, and the
+    window closes by itself once no `NULL` row is left without a message.
 
 !!! tip "Validating a text upload"
     `UploadUtils(verify_magic_bytes=True)` rejects an unrecognized

@@ -586,6 +586,158 @@ class TestAttachments:
             )
 
 
+class TestAttachmentOwnership:
+    """An unclaimed attachment belongs to whoever uploaded it.
+
+    Between the upload and the post, the attachment id was the only thing
+    tying the file to anyone, so a leaked id let any participant attach
+    somebody else's file to their own message (#317).
+    """
+
+    async def test_add_attachment_records_the_uploader(
+        self,
+        service: ChatService,
+    ) -> None:
+        ana = uuid4()
+
+        attachment = await service.add_attachment(
+            ana,
+            storage_key="uploads/foto.jpg",
+            filename="foto.jpg",
+            mime_type="image/jpeg",
+            size_bytes=42,
+        )
+
+        assert service.attachments is not None
+        row = await service.attachments.get_or_none({"id": attachment.id})
+        assert row is not None
+        assert row.uploader_id == ana
+        assert row.message_id is None
+        assert attachment.storage_key == "uploads/foto.jpg"
+        assert attachment.size_bytes == 42
+
+    async def test_the_uploader_claims_it(self, service: ChatService) -> None:
+        ana, bruno = uuid4(), uuid4()
+        conversation = await service.start_conversation(ana, [bruno])
+        attachment = await service.add_attachment(ana, storage_key="a.jpg")
+
+        message = await service.post_message(
+            conversation.id,
+            ana,
+            MessageCreateSchema(kind=MessageKind.IMAGE, attachment_ids=[attachment.id]),
+        )
+
+        assert [a.id for a in message.attachments] == [attachment.id]
+
+    async def test_another_sender_gets_the_unknown_id_404(
+        self,
+        service: ChatService,
+    ) -> None:
+        ana, bruno = uuid4(), uuid4()
+        conversation = await service.start_conversation(ana, [bruno])
+        attachment = await service.add_attachment(ana, storage_key="ana.jpg")
+        unknown = uuid4()
+
+        with pytest.raises(NotFoundException) as foreign:
+            await service.post_message(
+                conversation.id,
+                bruno,
+                MessageCreateSchema(
+                    kind=MessageKind.IMAGE,
+                    attachment_ids=[attachment.id],
+                ),
+            )
+        with pytest.raises(NotFoundException) as missing:
+            await service.post_message(
+                conversation.id,
+                bruno,
+                MessageCreateSchema(kind=MessageKind.IMAGE, attachment_ids=[unknown]),
+            )
+
+        assert foreign.value.status_code == 404
+        assert foreign.value.message == missing.value.message
+        assert foreign.value.field == missing.value.field
+        assert foreign.value.details == {"attachment_id": str(attachment.id)}
+        assert missing.value.details == {"attachment_id": str(unknown)}
+
+    async def test_a_refused_claim_leaves_the_file_to_its_uploader(
+        self,
+        service: ChatService,
+    ) -> None:
+        ana, bruno = uuid4(), uuid4()
+        conversation = await service.start_conversation(ana, [bruno])
+        attachment = await service.add_attachment(ana, storage_key="ana.jpg")
+        with pytest.raises(NotFoundException):
+            await service.post_message(
+                conversation.id,
+                bruno,
+                MessageCreateSchema(
+                    kind=MessageKind.IMAGE,
+                    attachment_ids=[attachment.id],
+                ),
+            )
+
+        message = await service.post_message(
+            conversation.id,
+            ana,
+            MessageCreateSchema(kind=MessageKind.IMAGE, attachment_ids=[attachment.id]),
+        )
+
+        assert [a.storage_key for a in message.attachments] == ["ana.jpg"]
+
+    async def test_a_legacy_row_without_uploader_stays_claimable(
+        self,
+        service: ChatService,
+    ) -> None:
+        ana, bruno = uuid4(), uuid4()
+        conversation = await service.start_conversation(ana, [bruno])
+        legacy = await _upload(service, key="legacy.jpg")
+        assert legacy.uploader_id is None
+
+        message = await service.post_message(
+            conversation.id,
+            bruno,
+            MessageCreateSchema(kind=MessageKind.IMAGE, attachment_ids=[legacy.id]),
+        )
+
+        assert [a.storage_key for a in message.attachments] == ["legacy.jpg"]
+
+    async def test_a_forward_keeps_the_original_uploader(
+        self,
+        service: ChatService,
+    ) -> None:
+        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+        first = await service.start_conversation(ana, [bruno])
+        second = await service.start_conversation(bruno, [carla])
+        attachment = await service.add_attachment(ana, storage_key="ana.jpg")
+        original = await service.post_message(
+            first.id,
+            ana,
+            MessageCreateSchema(kind=MessageKind.IMAGE, attachment_ids=[attachment.id]),
+        )
+
+        forwarded = await service.forward(original.id, bruno, [second.id])
+
+        assert service.attachments is not None
+        rows = await service.attachments.list(
+            filters={"message_id": forwarded[0].id},
+        )
+        assert [row.uploader_id for row in rows] == [ana]
+
+    async def test_add_attachment_needs_the_repository(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = ChatService(
+            conversations=BaseRepository(session, model=_Conversation),
+            participants=BaseRepository(session, model=_Participant),
+            messages=BaseRepository(session, model=_Message),
+        )
+
+        with pytest.raises(ValidationException):
+            await service.add_attachment(uuid4(), storage_key="x.jpg")
+
+
 class TestGroups:
     """Roles, leaving, and the backlog a newcomer does not inherit."""
 

@@ -1478,9 +1478,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `membership_recheck_seconds` re-read; history page bounded
   (`max_page_size`, `MESSAGES_PAGE_SIZE_MAX`) and payload ceilings
   (`MESSAGE_BODY_MAX_LENGTH`, `MESSAGE_ATTACHMENTS_MAX`,
-  `FORWARD_TARGETS_MAX`, `PARTICIPANT_IDS_MAX`). Deferred: uploader
-  tracking on attachments (an unclaimed attachment id is claimable by
-  anyone who holds it) — needs a column, so a consumer migration.
+  `FORWARD_TARGETS_MAX`, `PARTICIPANT_IDS_MAX`). **Attachment ownership
+  (Unreleased, #317):** nullable `uploader_id` on
+  `BaseMessageAttachmentModel`, written by `ChatService.add_attachment`;
+  `post_message` claims a row only for a message from its uploader (the
+  same 404 as an unknown id), while a legacy `NULL` row stays claimable by
+  anyone (transition window). Schema change: consumers run the
+  `add_column` + `create_index` migration from the chat recipe before
+  upgrading, or every route that builds a message answers 500.
 - **Reviews (v0.105, `tempest_fastapi_sdk.reviews`, no extra)** —
   comments + 0–5 star ratings on any polymorphic `(target_type,
   target_id)`: `BaseCommentModel` (thread via `parent_id`) / `BaseRatingModel`

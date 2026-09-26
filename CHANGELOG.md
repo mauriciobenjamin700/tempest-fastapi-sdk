@@ -404,10 +404,9 @@ aceitava `page_size=0`.
   /messages/{id}` onde antes recebia `403`; o remetente que ainda é
   participante continua recebendo `403` para mensagem alheia.
 
-A linha de anexo continua sem registrar quem fez o upload: qualquer
-participante com o id de um anexo não reivindicado pode prendê-lo à
-própria mensagem. Corrigir exige coluna nova e migração no banco do
-consumidor, então fica para uma release que a anuncie.
+A linha de anexo continuava sem registrar quem fez o upload; a correção,
+que exige coluna nova e migração, está na seção do `uploader_id` abaixo.
+
 Seis defeitos de fronteira de confiança no GenAI. O `ContentExtractor`
 seguia redirect para qualquer lugar — um `302` para
 `http://169.254.169.254/latest/meta-data/` era buscado e o texto extraído
@@ -538,6 +537,58 @@ Os tetos default estão abaixo; quem precisa de mais passa
 - **`GET /models`** montava o relatório no event loop: `probe=True` lê NVML
   e `torch.cuda`, chamadas síncronas que travavam todo request concorrente.
   Agora roda em `asyncio.to_thread`.
+
+O anexo do chat não registrava quem fez o upload, então qualquer
+participante que soubesse o id de um anexo ainda não reivindicado — vazado
+num log, numa URL compartilhada — o prendia à própria mensagem
+([#317](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/317)).
+
+### Added
+
+- **`BaseMessageAttachmentModel.uploader_id`** (nullable, indexado, sem FK)
+  e **`ChatService.add_attachment(uploader_id, *, storage_key, ...)`**, que
+  grava a linha do upload já com o autor e devolve o
+  `AttachmentResponseSchema` cujo `id` o autor posta. Encaminhar copia o
+  `uploader_id` da linha original.
+
+### Security
+
+- **Só quem enviou o arquivo o reivindica.** `post_message` recusa um
+  `attachment_ids` cujo `uploader_id` não é o remetente com o **mesmo**
+  `404` de um id inexistente (`unknown or already claimed attachment`, mesmo
+  `field`), então a resposta não confirma que o arquivo existe — e o anexo
+  continua livre para o autor postar. Linha com `uploader_id` `NULL` (gravada
+  antes da coluna, ou por um upload que não a preenche) segue a regra antiga
+  e é reivindicável por qualquer remetente: é a janela de transição, que
+  fecha quando não sobra linha `NULL` sem mensagem.
+
+### Migração
+
+**Breaking de schema: migre o banco antes de atualizar o pacote.** A coluna
+mora na tabela abstrata, então toda tabela de anexo concreta a herda e todo
+`SELECT` nela passa a nomeá-la. Sem a migração quebra **toda rota que monta
+mensagem** — inclusive mensagem de texto sem anexo, porque a resposta lê os
+anexos. Medido com SQLite, código novo sobre a tabela antiga:
+
+```text
+POST /api/chat/conversations/{id}/messages -> 500
+GET  /api/chat/conversations/{id}/messages -> 500
+GET  /api/chat/conversations               -> 200
+sqlite3.OperationalError: no such column: message_attachments.uploader_id
+```
+
+A migração é o que o `alembic revision --autogenerate` gera sobre a tabela
+antiga — uma coluna nullable e um índice, sem backfill:
+
+```python
+op.add_column("message_attachments", sa.Column("uploader_id", sa.Uuid(), nullable=True))
+op.create_index(op.f("ix_message_attachments_uploader_id"), "message_attachments", ["uploader_id"], unique=False)
+```
+
+O exemplo completo, com `downgrade()`, está na receita de chat (seção
+Anexos). Quem grava a linha de upload à mão em vez de chamar
+`add_attachment` precisa passar `uploader_id=` — sem ele, a linha nova
+nasce `NULL` e continua reivindicável por qualquer um.
 
 ## [0.299.0] — 2026-09-25
 

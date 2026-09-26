@@ -2,6 +2,29 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.300.0 — o anexo do chat registra quem fez o upload
+
+`BaseMessageAttachmentModel` ganhou a coluna `uploader_id` (nullable,
+indexada). Como toda tabela de anexo concreta a herda, **migre o banco antes
+de atualizar o pacote**: sem a coluna, toda rota do chat que monta mensagem
+responde `500` (`no such column: message_attachments.uploader_id`, medido
+com SQLite).
+
+### O que fazer
+
+1. Gere a migration (`alembic revision --autogenerate`) ou escreva-a à mão —
+   um `op.add_column(..., sa.Column("uploader_id", sa.Uuid(), nullable=True))`
+   e um `op.create_index(...)`. O arquivo completo, com `downgrade()`, está
+   na [receita de chat](recipes/chat.md#anexos).
+2. Rode `alembic upgrade head` e só então faça o deploy da versão nova.
+3. Grave o upload por `ChatService.add_attachment(uploader_id, ...)`, ou
+   passe `uploader_id=` onde você já grava a linha à mão.
+
+Linhas antigas ficam com `uploader_id` `NULL` e seguem reivindicáveis por
+qualquer remetente — a janela de transição. Linha nova com autor só é
+reivindicada por uma mensagem do próprio autor; outra pessoa recebe o mesmo
+`404` de um id inexistente.
+
 ## 0.274.0 — só o link mais recente abre a conta
 
 Nenhuma assinatura muda e nenhum default de campo existente muda. O que muda é

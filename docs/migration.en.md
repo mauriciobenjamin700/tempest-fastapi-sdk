@@ -2,6 +2,29 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.300.0 — the chat attachment records who uploaded it
+
+`BaseMessageAttachmentModel` gained the `uploader_id` column (nullable,
+indexed). Since every concrete attachment table inherits it, **migrate the
+database before upgrading the package**: without the column, every chat
+route that builds a message answers `500` (`no such column:
+message_attachments.uploader_id`, measured with SQLite).
+
+### What to do
+
+1. Generate the migration (`alembic revision --autogenerate`) or write it by
+   hand — one `op.add_column(..., sa.Column("uploader_id", sa.Uuid(),
+   nullable=True))` and one `op.create_index(...)`. The full file, with
+   `downgrade()`, is in the [chat recipe](recipes/chat.md#attachments).
+2. Run `alembic upgrade head`, and only then deploy the new version.
+3. Record the upload through `ChatService.add_attachment(uploader_id, ...)`,
+   or pass `uploader_id=` where you already write the row by hand.
+
+Existing rows keep `uploader_id` `NULL` and stay claimable by any sender —
+the transition window. A new row with an uploader is claimed only by a
+message from that uploader; anyone else gets the same `404` as for an id
+that does not exist.
+
 ## 0.274.0 — only the newest link opens the account
 
 No signature changes and no existing field default changes. What changes is
