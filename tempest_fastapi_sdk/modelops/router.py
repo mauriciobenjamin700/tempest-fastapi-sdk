@@ -14,12 +14,16 @@ that occasionally does nothing.
 
 from __future__ import annotations
 
+import asyncio
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, status
+from fastapi.params import Depends
 from pydantic import Field
 
+from tempest_fastapi_sdk.artifacts.digest import _read_file_digest
 from tempest_fastapi_sdk.modelops.monitoring import MonitoringReport
 from tempest_fastapi_sdk.modelops.serving import OnnxPredictor, PredictorInfo
 from tempest_fastapi_sdk.schemas.base import BaseSchema
@@ -40,8 +44,21 @@ the supported range, so the number is the only spelling that does. The other
 statuses on this router keep their constants — only these four names warn.
 """
 
+DEFAULT_MAX_PREDICT_ROWS: int = 10_000
+"""Rows one ``POST /predict`` may carry before it is refused with ``422``.
+
+Without a limit, one request decides how much memory and how many seconds of
+inference the device spends on it: every row is parsed, coerced and scored
+before that request is answered. Ten thousand rows is well past the batch
+sizes the serving guidance here measures, and still bounds the worst
+request. Raise it per router with ``max_rows=``; ``None`` removes the limit
+for a device that trusts its callers.
+"""
+
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from tempest_fastapi_sdk.artifacts.registry import ArtifactRegistry
     from tempest_fastapi_sdk.modelops.monitoring import (
         PredictionMetrics,
@@ -119,9 +136,18 @@ class RegistryModelSource:
     automatically: on a device with a small disk you want to decide when
     old versions go, not discover they went.
 
+    A download lands in a ``.part`` file and is renamed into place only
+    once it is complete (and, when the row carries a digest, verified), so
+    a connection dropped mid-file is retried on the next sync instead of
+    being mistaken for a cached version. :meth:`sync` holds a lock across
+    fetch and reload, so a periodic task and ``POST /model/sync`` racing
+    each other download and reload a version once.
+
     Attributes:
         name (str): The logical artifact key in the registry.
         cache_dir (Path): Where downloaded versions live.
+        checksum_field (str | None): Row attribute holding the expected hex
+            SHA-256 of the file.
         current_version (str | None): The version currently loaded.
     """
 
@@ -130,6 +156,8 @@ class RegistryModelSource:
         registry: ArtifactRegistry[Any],
         name: str,
         cache_dir: str | Path,
+        *,
+        checksum_field: str | None = "sha256",
     ) -> None:
         """Configure the source.
 
@@ -137,12 +165,23 @@ class RegistryModelSource:
             registry (ArtifactRegistry[Any]): The registry to ask.
             name (str): The logical artifact key.
             cache_dir (str | Path): Where to keep downloaded versions.
+            checksum_field (str | None): Row attribute holding the expected
+                hex SHA-256 of the file. The SDK's
+                :class:`~tempest_fastapi_sdk.artifacts.ArtifactVersionMixin`
+                does not declare one, so this is opt-in by schema: declare a
+                ``sha256`` column on your version model (written by whoever
+                publishes the file) and every download is verified before it
+                is cached or loaded. A row without the attribute, or with an
+                empty value, is downloaded unverified. ``None`` turns the
+                check off.
         """
         self._registry = registry
         self.name = name
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.checksum_field = checksum_field
         self.current_version: str | None = None
+        self._lock = asyncio.Lock()
 
     def _path_for(self, version: str) -> Path:
         """Return the local path for a version.
@@ -156,6 +195,22 @@ class RegistryModelSource:
         safe = version.replace("/", "_")
         return self.cache_dir / f"{self.name}-{safe}.onnx"
 
+    def _expected_digest(self, row: Any) -> str | None:
+        """Return the digest the row advertises, when it advertises one.
+
+        Args:
+            row (Any): The registry row.
+
+        Returns:
+            str | None: The lowercase hex SHA-256, or ``None``.
+        """
+        if self.checksum_field is None:
+            return None
+        value = getattr(row, self.checksum_field, None)
+        if not value:
+            return None
+        return str(value).strip().lower()
+
     async def fetch(self) -> tuple[str, Path] | None:
         """Download the current version if it is not already cached.
 
@@ -166,7 +221,9 @@ class RegistryModelSource:
 
         Raises:
             RuntimeError: When the registry row names an object the
-                storage client cannot produce.
+                storage client cannot produce, or when the downloaded file
+                does not match the SHA-256 the row advertises. A mismatched
+                file is deleted, never cached.
         """
         row = await self._registry.current(self.name)
         if row is None:
@@ -183,14 +240,30 @@ class RegistryModelSource:
                 f"{self.name} version {version} is registered but the registry "
                 "has no object-storage client to download it with",
             )
-        await minio.fget_object(str(row.file_key), path, bucket=bucket)
+        partial = path.with_name(f"{path.name}.part")
+        try:
+            await minio.fget_object(str(row.file_key), partial, bucket=bucket)
+            expected = self._expected_digest(row)
+            if expected is not None:
+                actual, _ = await asyncio.to_thread(_read_file_digest, partial)
+                if actual != expected:
+                    raise RuntimeError(
+                        f"{self.name} version {version}: downloaded file has "
+                        f"SHA-256 {actual}, the registry row advertises "
+                        f"{expected}; refusing to load it",
+                    )
+            os.replace(partial, path)
+        finally:
+            partial.unlink(missing_ok=True)
         return version, path
 
     async def sync(self, predictor: OnnxPredictor) -> str | None:
         """Reload ``predictor`` when the registry has a different version.
 
-        Safe to call on a schedule: it is a no-op when the current
-        version is already loaded.
+        Safe to call on a schedule, and concurrently: calls are serialised,
+        and a no-op when the current version is already loaded. The reload
+        itself (session build plus warm-up) runs in a worker thread, so the
+        event loop keeps answering requests while a large model loads.
 
         Args:
             predictor (OnnxPredictor): The predictor to update.
@@ -199,15 +272,33 @@ class RegistryModelSource:
             str | None: The version now loaded, or ``None`` when the
             registry had nothing to offer.
         """
-        found = await self.fetch()
-        if found is None:
-            return None
-        version, path = found
-        if version == self.current_version:
+        async with self._lock:
+            found = await self.fetch()
+            if found is None:
+                return None
+            version, path = found
+            if version == self.current_version:
+                return version
+            await asyncio.to_thread(predictor.reload, path)
+            self.current_version = version
             return version
-        predictor.reload(path)
-        self.current_version = version
-        return version
+
+
+def _public_info(info: PredictorInfo, *, expose_path: bool) -> PredictorInfo:
+    """Return ``info`` as the HTTP surface shows it.
+
+    Args:
+        info (PredictorInfo): The predictor's description.
+        expose_path (bool): Keep the absolute file path.
+
+    Returns:
+        PredictorInfo: ``info`` itself, or a copy whose ``path`` is only the
+        file name — enough to tell versions apart without telling a caller
+        how the device's disk is laid out.
+    """
+    if expose_path:
+        return info
+    return info.model_copy(update={"path": Path(info.path).name})
 
 
 def make_prediction_router(
@@ -218,6 +309,10 @@ def make_prediction_router(
     metrics: PredictionMetrics | None = None,
     prefix: str = "/api/predict",
     tags: list[str] | None = None,
+    max_rows: int | None = DEFAULT_MAX_PREDICT_ROWS,
+    dependencies: Sequence[Depends] | None = None,
+    admin_dependencies: Sequence[Depends] | None = None,
+    expose_model_path: bool = False,
 ) -> APIRouter:
     """Build a router serving one predictor.
 
@@ -231,10 +326,25 @@ def make_prediction_router(
     * ``GET  {prefix}/monitor`` — latency, input drift and prediction
       distribution (only with a ``monitor``).
 
+    Inference and reload run in a worker thread (``asyncio.to_thread``):
+    both are blocking ONNX Runtime calls, and on the event loop a 1 s
+    inference would stall every other request for 1 s.
+
+    The router ships **no authentication of its own**. ``GET /model``,
+    ``POST /model/sync`` and ``GET /monitor`` are operational — pass the
+    guard as ``admin_dependencies`` to protect them while ``POST /`` stays
+    as open as the rest of the service, or as ``dependencies`` to protect
+    every route.
+
     Example:
 
         >>> predictor = OnnxPredictor("dist/classifier.onnx")
-        >>> app.include_router(make_prediction_router(predictor))
+        >>> app.include_router(
+        ...     make_prediction_router(
+        ...         predictor,
+        ...         admin_dependencies=[Depends(require_operator)],
+        ...     ),
+        ... )
 
     Args:
         predictor (OnnxPredictor): The loaded model.
@@ -249,11 +359,33 @@ def make_prediction_router(
             latency without carrying a drift baseline.
         prefix (str): URL prefix.
         tags (list[str] | None): OpenAPI tags.
+        max_rows (int | None): Rows one request may carry; more is a
+            ``422``. See :data:`DEFAULT_MAX_PREDICT_ROWS`. ``None`` removes
+            the limit.
+        dependencies (Sequence[Depends] | None): Dependencies run before
+            **every** route, e.g. ``[Depends(require_token)]``.
+        admin_dependencies (Sequence[Depends] | None): Dependencies run
+            before the operational routes only — ``/model``,
+            ``/model/sync`` and ``/monitor``.
+        expose_model_path (bool): Report the model's absolute path in
+            ``/model`` and ``/model/sync``. Off by default, which reports the
+            file name only: the absolute path describes the device's disk
+            layout and tells a caller nothing it needs.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
+
+    Raises:
+        ValueError: When ``max_rows`` is not positive.
     """
-    router = APIRouter(prefix=prefix, tags=list(tags or ["prediction"]))
+    if max_rows is not None and max_rows < 1:
+        raise ValueError(f"max_rows must be positive or None, got {max_rows}")
+    router = APIRouter(
+        prefix=prefix,
+        tags=list(tags or ["prediction"]),
+        dependencies=list(dependencies or []),
+    )
+    admin = list(admin_dependencies or [])
 
     @router.post("/", response_model=PredictResponseSchema)
     async def predict(body: PredictRequestSchema) -> PredictResponseSchema:
@@ -266,12 +398,18 @@ def make_prediction_router(
             PredictResponseSchema: Labels, scores and timing.
 
         Raises:
-            HTTPException: ``422`` when the rows do not match the model's
-                expected width — a client error, reported as one rather
+            HTTPException: ``422`` when the batch holds more than
+                ``max_rows`` rows, or the rows do not match the model's
+                expected width — client errors, reported as such rather
                 than as a 500.
         """
+        if max_rows is not None and len(body.rows) > max_rows:
+            raise HTTPException(
+                status_code=_UNPROCESSABLE_CONTENT,
+                detail=f"a request holds at most {max_rows} rows, got {len(body.rows)}",
+            )
         try:
-            result = predictor.predict(body.rows)
+            result = await asyncio.to_thread(predictor.predict, body.rows)
         except ValueError as exc:
             raise HTTPException(
                 status_code=_UNPROCESSABLE_CONTENT,
@@ -289,7 +427,7 @@ def make_prediction_router(
             model_version=source.current_version if source else None,
         )
 
-    @router.get("/model", response_model=PredictorInfo)
+    @router.get("/model", response_model=PredictorInfo, dependencies=admin)
     async def model_info() -> PredictorInfo:
         """Report what is loaded and how it is running.
 
@@ -297,12 +435,16 @@ def make_prediction_router(
             PredictorInfo: The current model's description, including the
             providers actually in use.
         """
-        return predictor.info
+        return _public_info(predictor.info, expose_path=expose_model_path)
 
     if source is not None:
         _source = source
 
-        @router.post("/model/sync", response_model=PredictorInfo)
+        @router.post(
+            "/model/sync",
+            response_model=PredictorInfo,
+            dependencies=admin,
+        )
         async def sync_model() -> PredictorInfo:
             """Reload from the registry if a newer version is current.
 
@@ -332,12 +474,16 @@ def make_prediction_router(
             if monitor is not None and after != before:
                 monitor.reset()
                 monitor.model_version = after
-            return predictor.info
+            return _public_info(predictor.info, expose_path=expose_model_path)
 
     if monitor is not None:
         _monitor = monitor
 
-        @router.get("/monitor", response_model=MonitoringReport)
+        @router.get(
+            "/monitor",
+            response_model=MonitoringReport,
+            dependencies=admin,
+        )
         async def monitor_report() -> MonitoringReport:
             """Report latency, input drift and prediction distribution.
 
@@ -355,6 +501,7 @@ def make_prediction_router(
 
 
 __all__: list[str] = [
+    "DEFAULT_MAX_PREDICT_ROWS",
     "PredictRequestSchema",
     "PredictResponseSchema",
     "RegistryModelSource",
