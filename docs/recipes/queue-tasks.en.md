@@ -1059,7 +1059,8 @@ app: FastAPI = FastAPI(title=settings.TITLE, lifespan=lifespan)
     the lease fixing it. `tests/tasks/test_scheduler_lease.py` pins both
     counts — the first parametrized over 2, 3 and 5 replicas — and a
     separate case waits for the leader to leave and confirms the standby
-    takes over within one TTL.
+    takes over on the first `acquire` that begins after the leader
+    releases the lease, without waiting for the TTL to lapse.
 
 ### Where the lease comes from
 
