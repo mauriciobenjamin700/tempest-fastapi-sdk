@@ -25,6 +25,97 @@ qualquer remetente — a janela de transição. Linha nova com autor só é
 reivindicada por uma mensagem do próprio autor; outra pessoa recebe o mesmo
 `404` de um id inexistente.
 
+## 0.300.0 — o resto das quebras: IA, chat, métricas e migrations
+
+A mesma release fecha defeitos de segurança e de recurso nos módulos de IA, e
+alguns consertos mudam o contrato. Percorra a lista e aplique o que você usa;
+o porquê de cada item, medido, está no `CHANGELOG.md`.
+
+### `make_ai_chat_router`
+
+- O campo `user_id` saiu do corpo — cliente que ainda o manda não quebra, o
+  campo é ignorado. O dono da memória agora vem de uma dependência:
+  `make_ai_chat_router(pipeline, current_user_id=...)`. Pipeline com
+  `memory=` montado **sem** `current_user_id=` levanta `ValueError` na
+  montagem. Exemplo completo em
+  [Memória de longo prazo](recipes/genai.md#memoria-de-longo-prazo).
+- `history` com `role` fora de `user`/`assistant` responde `422`.
+
+### `ContentExtractor`
+
+- Host privado (intranet, `localhost`, metadata de nuvem) é recusado com
+  `failed=True`. Para buscar na intranet, passe
+  `allow_private_networks=True`.
+- Página acima de 5 MiB precisa de `max_response_bytes=` maior.
+- HTTPS por proxy HTTP passa a falhar fechado; atrás de proxy, use
+  `allow_private_networks=True` e deixe o proxy como controle de saída.
+
+### Limites novos que respondem `422`
+
+- `make_genai_router` confere `GenAIRequestLimits` antes de rodar o modelo;
+  quem precisa de mais passa `limits=GenAIRequestLimits(...)`
+  ([Limites por request](recipes/genai.md#limites-por-request-genairequestlimits)).
+  `POST /image` recusa `num_images > 1`.
+- `make_vision_router` lê no máximo 20 MiB e 50 MP por imagem
+  (`max_upload_bytes=` / `max_image_pixels=`).
+- `make_chat_router` exige `page >= 1` e `1 <= page_size <= 100`
+  (`max_page_size=`), e os schemas do chat têm teto de tamanho.
+- `POST /predict` do `modelops` recusa lote acima de 10 000 linhas
+  (`max_rows=`; `None` tira o limite).
+
+### Router de agentes
+
+- A rota de artefato mudou de `/runs/{index}/artifacts/{name}` para
+  `/runs/{run_id}/artifacts/{name}`; `POST /run` devolve o `run_id`.
+- Sem `owner=`, toda execução continua visível para todo chamador — passe
+  `make_agent_router(agent, owner=...)` quando houver mais de um usuário
+  ([Servir por HTTP](recipes/agents.md#servir-por-http)).
+- Erro inesperado de ferramenta aparece no traço só como o tipo;
+  `Agent(expose_tool_errors=True)` volta ao texto inteiro.
+- Backend próprio que implementa `ChatBackend` / `ToolCallingBackend`
+  recebe as mensagens por posição e não precisa mais aceitar `**kwargs`.
+
+### Chat
+
+- Quem não enxerga a mensagem recebe `404` onde antes recebia `403`. O
+  remetente que ainda é participante continua recebendo `403` para mensagem
+  alheia.
+
+### RAG
+
+- `add` e `index` dos stores do SDK e do `HybridRetriever` **substituem por
+  fonte**: passe todos os chunks de uma `source` na mesma chamada, ou os
+  lotes anteriores dela somem.
+
+### Métricas
+
+- `genai_requests_total` e `genai_request_seconds` ganharam o rótulo
+  `status` (`ok` / `error`). Seletor `{model, op}` continua casando, mas cada
+  série vira duas: some por `status` ou filtre `status="ok"` em query e
+  alerta que comparam a série inteira.
+
+### `modelops`
+
+- `/model` devolve só o nome do arquivo em `path`;
+  `make_prediction_router(expose_model_path=True)` restaura o caminho
+  absoluto.
+- `[modelops]` passa a instalar `numpy`.
+
+### `AlembicHelper`
+
+- O método síncrono que roda o `env.py`, chamado com um event loop rodando
+  (o lifespan do FastAPI), levanta `RuntimeError` — use o par `_async`
+  (`await helper.upgrade_async()`). O `env.py` que você já tem continua
+  funcionando ([receita de migrations](recipes/migrations.md)).
+
+### Outros
+
+- `RedisFactStore`: fato gravado antes sob `subject=""` ou `subject="_"`
+  continua na chave antiga `{prefix}:_`, e a versão nova grava esses
+  subjects em outra chave.
+- O helper privado `genai/_lifecycle.py` mudou para `utils/_lifecycle.py`,
+  sem shim.
+
 ## 0.274.0 — só o link mais recente abre a conta
 
 Nenhuma assinatura muda e nenhum default de campo existente muda. O que muda é

@@ -5,54 +5,331 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.300.0] — 2026-09-26
 
-`AlembicHelper` não tinha caminho para código async (#323). O `env.py` que o
-SDK gera sobe o engine com `asyncio.run(...)`, então `helper.upgrade()`
-chamado de um lifespan do FastAPI morria dentro do Alembic com `asyncio.run()
-cannot be called from a running event loop` e um `RuntimeWarning: coroutine
-'run_async_migrations' was never awaited`; a docstring mandava usar
-`asyncio.to_thread`, e cada serviço escrevia esse passo à mão. O `check()`
-era pior: engolia o erro e devolvia `False`, relatando drift que nunca foi
-medido.
+Auditoria dos módulos de IA — `agents`, `genai` (texto, RAG, áudio, imagem,
+moderação), `chat`, `modelops` e `vision` — com cada defeito reproduzido antes
+do conserto e um teste que falha no código antigo, mais os follow-ups que a
+própria auditoria abriu (#315–#323, #332). Os temas: dados de um usuário que
+outro alcançava (chat, memória do pipeline, runs do router de agentes); SSRF
+e DNS rebinding na extração de conteúdo; request sem teto que segurava o
+worker ou a GPU; trabalho síncrono no event loop; loaders que carregavam o
+modelo N vezes e descarregavam no meio de uma chamada; e promessas de
+docstring e receita que o código não cumpria.
 
-### Added
+### Migração — leia antes de atualizar
 
-- **Par `_async` para todo método que roda o `env.py`**: `upgrade_async`,
-  `safe_upgrade_async`, `downgrade_async`, `stamp_async`, `revision_async`,
-  `check_async`, `current_async`, `has_existing_schema_async`, `adopt_async`,
-  `sync_schema_async`, `squash_async` e `pending_destructive_ops_async`, com a
-  mesma assinatura do síncrono (teste compara). Rodam o síncrono numa worker
-  thread — sem loop próprio, então o `asyncio.run` do `env.py` funciona lá — e
-  por isso funcionam com todo `env.py` já gerado. Medido com 20 revisions em
-  SQLite: `upgrade_async` levou de 0,10 a 0,14 s e um ticker de 5 ms no loop
-  seguiu rodando (maior intervalo entre ticks de 7 a 26 ms, três execuções).
-  Rodar no loop via `AsyncConnection.run_sync` (receita de connection sharing
-  do Alembic) foi descartado como default: contra o `env.py` gerado até a
-  0.299.0 ele falha com o mesmo erro de `asyncio.run`.
-- **`env.py` gerado aceita `config.attributes["connection"]`.** Recebendo uma
-  conexão (de dentro de `AsyncConnection.run_sync`), migra nela sem criar
-  engine; executado de um loop **sem** conexão, levanta `RuntimeError`
-  explicando as duas saídas antes de criar a coroutine, em vez do erro de
-  `asyncio.run` com coroutine não aguardada. Vale para projeto que regenerar
-  o `env.py`; o existente continua funcionando com os métodos `_async`.
+Esta release quebra compatibilidade em vários pontos. Cada item aponta para
+o detalhe na seção da área.
 
-### Changed
+- **Schema do chat (migre o banco antes de atualizar o pacote).**
+  `BaseMessageAttachmentModel` ganhou a coluna `uploader_id`; sem a migração,
+  `POST` e `GET` de mensagens respondem `500` — inclusive mensagem sem anexo
+  (medido no SQLite). Migration em *Chat*.
+- **`make_ai_chat_router`:** `user_id` saiu do corpo (é ignorado), o dono da
+  memória vem de `current_user_id=`, pipeline com `memory=` sem ele levanta
+  `ValueError` na montagem, e `history` com `role` fora de
+  `user`/`assistant` responde `422`.
+- **`ContentExtractor`:** intranet precisa de `allow_private_networks=True`;
+  página acima de 5 MiB precisa de `max_response_bytes=` maior; HTTPS por
+  proxy HTTP passa a falhar fechado (`failed=True`).
+- **Limites novos respondem `422`** em `make_genai_router`
+  (`GenAIRequestLimits`), `make_vision_router`, `make_chat_router`
+  (paginação e tetos de schema) e `POST /predict` do `modelops` (10 000
+  linhas); `POST /image` recusa `num_images > 1`.
+- **Router de agentes:** a rota de artefato mudou de `/runs/{index}/...` para
+  `/runs/{run_id}/...`; `ChatBackend`/`ToolCallingBackend` ficaram
+  posicionais e sem `**kwargs`; erro inesperado de ferramenta não aparece mais
+  no traço (`Agent(expose_tool_errors=True)` restaura).
+- **Chat:** quem não enxerga a mensagem recebe `404` onde antes recebia
+  `403`.
+- **RAG:** `add`/`index` substituem por fonte — passe todos os chunks de uma
+  fonte na mesma chamada.
+- **Métricas:** `genai_requests_total` e `genai_request_seconds` ganharam o
+  rótulo `status`; query que compara a série inteira precisa somar ou filtrar
+  por ele.
+- **`modelops`:** `/model` devolve só o nome do arquivo em `path`
+  (`expose_model_path=True` restaura); `[modelops]` passa a trazer `numpy`.
+- **`AlembicHelper`:** o método síncrono que roda o `env.py`, chamado com um
+  event loop rodando, levanta `RuntimeError` — use o par `_async`.
+- **`RedisFactStore`:** fato gravado antes sob `subject=""` ou `subject="_"`
+  fica na chave antiga `{prefix}:_`.
+- **Helper privado** `genai/_lifecycle.py` mudou para `utils/_lifecycle.py`
+  (sem shim; só afeta quem importava o módulo privado).
 
-- **Método síncrono que roda o `env.py` levanta com um loop rodando**
-  (`upgrade`, `safe_upgrade`, `downgrade`, `stamp`, `revision`, `check`,
-  `adopt`, `sync_schema`, `squash`): `RuntimeError` nomeando o par `_async`,
-  antes de tocar no Alembic. `revision` recusa mesmo com
-  `autogenerate=False`, porque `revision_environment` no ini faz esse caminho
-  executar o `env.py`. `current()` e `has_existing_schema()` continuam
-  funcionando no loop quando há driver síncrono; só o fallback só-async
-  (`asyncpg` sem `psycopg2`) levanta, nomeando `current_async` /
-  `has_existing_schema_async`. Quem chamava o síncrono de código async com um
-  `env.py` próprio sem `asyncio.run` passa a receber o erro — troque pelo
-  `_async`.
-- Receitas `migrations` e `database` (PT/EN) usam os métodos `_async` no
-  lifespan; o `asyncio.to_thread` escrito à mão saiu dos exemplos. O scaffold
-  do `tempest new` não chama o helper no lifespan, então não mudou.
+### Agentes (#312)
+
+Auditoria do `tempest_fastapi_sdk.agents`. Os tetos do `AgentBudget` só
+eram conferidos no topo do laço, então uma ferramenta que dormia 3 s com
+`max_seconds=0.5` rodava os 3 s, e uma volta pedindo 50 chamadas com
+`max_steps=5, max_tool_calls=2` executava as 50. O router HTTP endereçava
+execuções pela posição no histórico e mostrava as execuções de todo mundo a
+todo mundo; o traço servido por ele carregava o texto cru de qualquer
+exceção de ferramenta.
+
+#### Security
+
+- **Execuções do router têm dono.** `make_agent_router(..., owner=dep)`
+  recebe uma dependência FastAPI que devolve quem chama; cada execução é
+  marcada (`AgentRun.owner`, `AgentContext.owner`, herdado pela
+  delegação), `GET /runs` lista só as de quem chama e o artefato de outra
+  pessoa responde `404`, igual a uma execução inexistente. Sem `owner=` o
+  comportamento continua o de antes (todo mundo vê tudo), agora documentado
+  como aceitável só com um único principal.
+- **Exceção inesperada de ferramenta não vaza mais pelo traço.** O modelo
+  continua lendo o texto inteiro, mas o `AgentStep.error` — o que o router,
+  o SSE e o `DbAgentRunSink` expõem — guarda só o tipo
+  (`RuntimeError: the tool failed (details withheld)`), e a exceção vai
+  para o log `tempest_fastapi_sdk.agents.agent`. Medido com um DSN com senha
+  na mensagem: a senha não aparece em `run.model_dump_json()` nem na
+  resposta de `POST /run`. `AgentToolError` continua gravado como escrito;
+  `Agent(expose_tool_errors=True)` volta ao texto inteiro.
+- **Moderador que levanta falha fechado.** Antes a exceção derrubava o
+  `run()`; agora a execução termina `BLOCKED` com
+  `blocked: moderation unavailable (<Tipo>)`.
+- **A resposta estruturada passa pela moderação.** O `output` de uma
+  execução encerrada pelo `final_answer` é o JSON da resposta, e é ele que o
+  moderador confere; `run_structured` só devolve `data` de execução
+  `COMPLETED`.
+
+#### Fixed
+
+- **`max_seconds` corta a chamada travada.** Chamada de modelo roda sob
+  `asyncio.timeout` do tempo restante; chamada de ferramenta, sob esse tempo
+  mais uma folga de 0,25 s dividida por `depth + 1`, para o sub-agente —
+  que vigia o mesmo prazo — parar sozinho e devolver o traço antes de o pai
+  cortar. Medido: ferramenta de 3 s com `max_seconds=0.5` termina em 0,75 s,
+  `stop_reason=timeout`. Uma `TimeoutError` levantada pela própria
+  ferramenta continua sendo erro comum de ferramenta.
+- **Os tetos valem dentro de uma volta.** `max_steps`, `max_tool_calls` e o
+  prazo são conferidos antes de **cada** chamada; medido: 50 chamadas com
+  `max_steps=5, max_tool_calls=2` executam 2 e param em `max_tool_calls`.
+- **`arguments` como string JSON** (formato OpenAI de vLLM/TGI) é lido; JSON
+  inválido ou que não é objeto vira erro de ferramenta em vez de `{}`
+  silencioso.
+- **Mensagem `role: tool` leva `tool_call_id` e `name`** quando a chamada
+  trouxe `id`; sem `id` o formato fica igual ao de antes.
+- **`final_answer` encerra a execução** — o modelo não é consultado de novo,
+  como a receita já dizia. Resposta que não valida vira erro de ferramenta
+  legível (`invalid answer for final_answer: headline: Field required`).
+- **`run_structured` não perde as skills.** O agente é copiado
+  (`copy.copy`) em vez de reconstruído com um subconjunto dos argumentos; o
+  `load_skill` anunciava ferramentas que a cópia não tinha.
+- **Skill carregada não vaza entre pai e filho.** O controle saiu do `state`
+  compartilhado para `AgentContext.opened_skills`, por contexto; a resposta
+  estruturada, para `AgentContext.answer`.
+- **Router:** execução endereçada pelo `run_id` estável
+  (`/runs/{run_id}/artifacts/{name}`), e `{name:path}` serve artefato de
+  sub-agente (`illustrator/bike.png` dava `404`).
+- **`agent_tool`** passa ao filho o nome do agente que delegou em
+  `context.parent` (antes, o avô ou `"agent"`).
+- **`refine`** aprova só com a resposta inteira igual a `APPROVED` (antes,
+  `startswith`) e só de worker que terminou; tentativa cortada nem vai ao
+  crítico.
+- **`run_until`** mantém o prazo herdado do `context` quando ele é mais
+  cedo; a passada de extração do `run_structured` herda o prazo da execução
+  e o moderador do agente.
+- **`schema_of`** não entra em recursão infinita com model
+  auto-referente: a referência cíclica fica `$ref` e só essas definições
+  ficam em `$defs`.
+- **`RedisFactStore`** não junta mais `None`, `""` e `"_"` no mesmo hash.
+  `None` e subjects comuns mantêm a chave de antes (dado existente
+  continua acessível); `""`, `"_"` e o que começa com `~:s:` vão para
+  `"{prefix}:~:s:<percent-encoded>"`. Fato gravado antes sob `subject=""`
+  ou `subject="_"` está na chave antiga `"{prefix}:_"`.
+- **Artefato não é sobrescrito.** Nome já ocupado por um retorno de
+  ferramenta vira `<nome>-1.<ext>` (o texto para o modelo avisa); nas
+  ferramentas prontas, nome escolhido pelo modelo que já existe é recusado
+  com `AgentToolError`, e o nome padrão pula os ocupados.
+- **`AgentRun.tool_calls`** inclui as delegações (`StepKind.AGENT`).
+
+#### Changed
+
+- **`ChatBackend` / `ToolCallingBackend`** descrevem só o que o `Agent`
+  faz: parâmetros posicionais (`/`), sem `**kwargs` obrigatório e mensagens
+  `list[dict[str, Any]]`. Entram em `THIRD_PARTY_CLIENT_PROTOCOLS` do
+  `test_protocol_shape_guard`.
+- **Rota de artefato mudou de `/runs/{index}/...` para `/runs/{run_id}/...`**;
+  `POST /run` devolve `run_id` e o evento `done` do SSE passa a carregar
+  `{"run_id": ...}` (antes vazio).
+
+#### Added
+
+- `ToolResult.final`, `AgentRun.run_id`, `AgentRun.owner`,
+  `AgentContext.agent`/`run_id`/`owner`/`opened_skills`/`answer`,
+  `AgentContext.unique_artifact_name`/`claim_artifact_name`,
+  `InMemoryAgentRunSink.get(run_id)`, `OwnerDependency` e o keyword
+  `Agent(expose_tool_errors=...)`.
+
+### GenAI: fronteira de confiança e SSRF (#309, #315)
+
+Seis defeitos de fronteira de confiança no GenAI. O `ContentExtractor`
+seguia redirect para qualquer lugar — um `302` para
+`http://169.254.169.254/latest/meta-data/` era buscado e o texto extraído
+(reproduzido com `httpx.MockTransport`); o `AIChatPipeline.stream()` não
+moderava a resposta que o `respond()` moderava e a docstring prometia; o
+`make_ai_chat_router` aceitava `role: "system"` no `history` e tirava o
+`user_id` do corpo, então quem soubesse o id de outra pessoa recebia os
+`memory_hits` dela; e o `RuleModerator` nunca casava `"$hit"` nem `"c++"` e
+caía com espaço de largura zero ou letra fullwidth.
+
+#### Security
+
+- **`ContentExtractor.extract` bloqueia SSRF por padrão.** Só `http`/`https`;
+  o host (IP literal ou todo endereço que o hostname resolve) precisa ser
+  público — loopback, privado, link-local (o endpoint de metadata incluso),
+  CGNAT, reservado e multicast são recusados, e IPv4 mapeado em IPv6
+  (`::ffff:127.0.0.1`) é julgado pelo IPv4 que carrega;
+  redirect é seguido à mão com a mesma checagem em cada salto, até
+  `max_redirects=` (default 5); o corpo é lido em stream e a busca desiste
+  passando de `max_response_bytes=` (default 5 MiB). Recusa volta
+  `failed=True`, como toda falha. `allow_private_networks=True` desliga só a
+  checagem de endereço, para intranet; `resolver=` injeta o DNS. O DNS
+  rebinding que a primeira versão deste guard deixava aberto foi fechado
+  na mesma release (#315, mais abaixo nesta seção).
+- **`make_ai_chat_router` não confia no corpo.** `AIChatTurnSchema.role` é
+  `Literal["user", "assistant"]` (um turno `system` responde `422`); o
+  `AIChatRequestSchema` perdeu o campo `user_id` — o dono da memória vem do
+  novo `current_user_id=` (dependência FastAPI), e `dependencies=` aplica
+  auth/rate limit a toda rota. Pipeline com `memory=` sem
+  `current_user_id=` levanta `ValueError` na montagem.
+- **`AIChatPipeline.stream()` modera a resposta.** Novo
+  `stream_moderation=` no construtor: `"incremental"` (default) checa o
+  texto acumulado antes de mandar cada pedaço e troca o resto por
+  `blocked_message` na primeira flag — pedaço já enviado não volta, mas o
+  que completa o termo nunca sai; `"buffered"` gera tudo, modera uma vez e
+  manda inteiro ou bloqueia. Resposta bloqueada não é indexada.
+- **O `history` passa pelo moderador**, em `respond` e `stream`, como a
+  mensagem nova.
+- **`RuleModerator` normaliza antes de casar**: NFKC, remove caracteres de
+  categoria `Cf` (largura zero, bidi) e casefold, nos termos e no texto; a
+  fronteira de palavra virou lookaround (`(?<!\w)…(?!\w)`), então termo com
+  pontuação na borda casa. Homóglifo de outro alfabeto continua fora.
+
+#### Changed
+
+- **`respond`/`stream` aceitam `user_id=None`**, que pula a memória do turno
+  (nem busca, nem indexa) — é o que o router passa sem `current_user_id`.
+- **O `trafilatura` roda em `asyncio.to_thread`** no `ContentExtractor`, fora
+  do event loop.
+
+#### Fixed
+
+- **Falha de indexação na memória é logada** (`WARNING` com traceback no
+  logger `tempest_fastapi_sdk.genai.pipeline`) em vez de engolida em
+  silêncio; a resposta continua saindo.
+
+#### Migração
+
+- Cliente HTTP que manda `user_id` no corpo não quebra — o campo é ignorado.
+- Pipeline com `memory=` montado no router precisa de
+  `make_ai_chat_router(pipeline, current_user_id=...)`.
+- `history` com `role` fora de `user`/`assistant` passa a responder `422`.
+- `ContentExtractor` apontado para a intranet precisa de
+  `allow_private_networks=True`; página acima de 5 MiB precisa de
+  `max_response_bytes=` maior.
+
+O guard de SSRF do `ContentExtractor` (entregue no #309) validava uma
+resolução de DNS e conectava usando outra. Cada salto agora conecta no IP
+que passou na checagem.
+
+#### Security
+
+- **`ContentExtractor.extract` fecha o DNS rebinding (#315).** O guard de SSRF
+  resolvia o host, validava e deixava o `httpx` resolver de novo na conexão;
+  um DNS que respondia IP público na checagem e `127.0.0.1` na conexão
+  alcançava o endereço privado (reproduzido com um resolver fake atrás do
+  `AsyncHTTPTransport` real: a conexão ia para `127.0.0.1`). Agora cada salto,
+  redirect incluso, conecta no IP validado: a URL leva o IP, e o header
+  `Host` e a extensão `sni_hostname` mantêm o hostname, então o HTTPS segue
+  validando o certificado contra o nome (medido com servidor TLS local:
+  certificado do nome aceito, de outro nome recusado). O `resolver=` passa a
+  ser chamado uma vez por salto, e o primeiro endereço que ele devolve é o
+  conectado.
+- **Conexão do pool aberta para outro hostname no mesmo IP não é
+  reaproveitada em HTTPS.** Como o pool indexa por IP, a resposta que chega
+  numa sessão TLS negociada para outro nome é descartada sem ler o corpo (o
+  que fecha a conexão) e o salto é refeito numa conexão nova, até
+  `MAX_TLS_NAME_RETRIES` (3) vezes.
+
+#### Changed
+
+- **HTTPS por proxy HTTP volta `failed=True` no `ContentExtractor`.** O
+  httpcore 1.0.9 abre o túnel para o IP fixado e não manda o SNI, então a
+  verificação do certificado falha (`IP address mismatch`, medido com proxy
+  CONNECT local). Atrás de proxy quem resolve o DNS é o proxy;
+  `allow_private_networks=True` desliga a fixação junto com a checagem de
+  endereço.
+
+### GenAI: limites de request (#307)
+
+Os routers de IA não tinham limite de request nenhum. O `/generate`
+aceitava um prompt de 2 MB com `max_new_tokens=10**9`, o `/embed` aceitava
+100 000 textos, o `/image` validava `width=100000` e
+`num_images=10**6` — e renderizava o lote inteiro para devolver só a
+primeira imagem —, o `/rag` aceitava `top_k=-5`, e `/transcribe` e as rotas
+de visão liam o upload inteiro com `await file.read()`. Cada um é um jeito
+de um único cliente segurar o worker.
+
+**Potencialmente breaking:** requests que passavam agora recebem `422`.
+Os tetos default estão abaixo; quem precisa de mais passa
+`make_genai_router(limits=GenAIRequestLimits(...))` ou
+`make_vision_router(max_upload_bytes=..., max_image_pixels=...)`.
+
+#### Added
+
+- **`GenAIRequestLimits`** (`tempest_fastapi_sdk.genai`) e
+  **`make_genai_router(limits=...)`**: tetos por request conferidos
+  **antes** de o modelo rodar — `max_prompt_chars` (`32_000`: prompt do
+  `/generate`, soma das mensagens do `/chat`, query do `/rag`, cada texto do
+  `/embed`, prompt e negative prompt do `/image`), `max_chat_messages`
+  (`100`), `max_new_tokens` (`4096`, só o valor que o cliente manda),
+  `max_embed_texts` (`256`), `max_top_k` (`50`), `max_tts_chars`
+  (`5_000`), `max_image_side` (`2048`), `max_image_steps` (`100`) e
+  `max_upload_bytes` (25 MiB). Estouro é `422`, e com
+  `register_exception_handlers` o corpo traz
+  `details={"field": ..., "limit": ...}`.
+- **`read_upload_capped(upload, *, max_bytes, label="upload")`** e
+  **`UPLOAD_READ_CHUNK_BYTES`** (`tempest_fastapi_sdk.utils`, reexportados
+  na raiz): o leitor em blocos que o `make_voice_router` tinha como helper
+  privado, agora público e usado por `/transcribe`, pelo
+  `make_voice_router` e pelo `make_vision_router`. Para de ler no bloco que
+  cruza o teto e levanta `ValidationException` (`422`), a mesma resposta
+  que o `make_voice_router` sempre deu.
+- **`make_vision_router(max_upload_bytes=..., max_image_pixels=...)`** e as
+  constantes **`DEFAULT_MAX_IMAGE_UPLOAD_BYTES`** (20 MiB) e
+  **`DEFAULT_MAX_IMAGE_PIXELS`** (50 MP). O teto de pixels lê o header com
+  `PIL.Image.open`, sem decodificar: medido com Pillow 12.3.0 e
+  `ort-vision-sdk` 0.8.0, um PNG em branco de 9400 x 9400 com 10 804 bytes
+  decodificava num array RGB de 265 080 000 bytes sem disparar o aviso de
+  decompression bomb do Pillow (88,36 MP fica abaixo dos 89,48 MP dele).
+  `max_image_pixels=None` desliga a checagem.
+
+#### Changed
+
+- **`ImageGenerationConfig`** ganha teto absoluto no schema: `width` e
+  `height` `<= 4096`, `steps` `<= 500`, `num_images` `<= 16`. Vale para a
+  classe usada direto, não só pela rota.
+- **`RagRequestSchema.top_k`** exige `>= 1`.
+- **`POST /image`** recusa `config.num_images` acima de `1` com `422` em vez
+  de renderizar o lote na GPU e devolver só a primeira imagem.
+
+#### Fixed
+
+- **`InMemoryVectorStore.search(top_k=-3)`** devolvia 7 de 10 chunks (o
+  slice `scored[:-3]` corta os **piores** do fim). `top_k <= 0` agora
+  devolve `[]`, o contrato que o `ChromaVectorStore.search` já tinha. O
+  mesmo vale para `PgVectorStore.search` (que mandava `LIMIT` negativo ao
+  Postgres), `HybridRetriever.search` e o ranqueamento do `Reranker`.
+- **Rotas de visão devolviam `500` para bytes que não são imagem**: o
+  `ImageLoadError` do `ort-vision-sdk` escapava sem tratamento (medido:
+  `500 INTERNAL_SERVER_ERROR` antes, `422 VALIDATION_ERROR` depois, com o
+  decoder real do `ort-vision-sdk`).
+- **`GET /models`** montava o relatório no event loop: `probe=True` lê NVML
+  e `torch.cuda`, chamadas síncronas que travavam todo request concorrente.
+  Agora roda em `asyncio.to_thread`.
+
+### GenAI: ciclo de vida dos modelos (#314, #318, #320, #321, #332)
 
 O ciclo de vida dos loaders self-hosted de `genai` tinha dois defeitos
 repetidos em todas as classes, e o `stream()` do `TextGenerator` travava o
@@ -63,7 +340,7 @@ ociosidade só andava no fim da chamada, então `unload_if_idle` soltava os
 pesos no meio de uma geração longa, que morria em `'NoneType' object has no
 attribute 'decode'`.
 
-### Fixed
+#### Fixed
 
 - **Um build por cold start, e nada de unload no meio de uma chamada.**
   `TextGenerator`, `Embedder`, `ImageGenerator`, `VisionTextGenerator`,
@@ -161,7 +438,7 @@ attribute 'decode'`.
   keywords de `generate`/`chat` com as do `TextGenerator`: campo novo que o
   VLM nem aplica nem recusa derruba o teste.
 
-### Added
+#### Added
 
 - **`OnnxEmbedder(pooling="mean" | "cls")`** — `"cls"` para modelos da
   família BGE, treinados no token `[CLS]`. Default `"mean"`, o comportamento
@@ -174,13 +451,15 @@ attribute 'decode'`.
 - **`VoiceEmbedder(idle_unload_seconds=)`** + `unload_if_idle()`, no mesmo
   contrato; o `ModelRegistry.unload_idle()` passa a liberar o extrator de voz.
 
+### GenAI: backends, stream e cache (#313)
+
 Auditoria dos backends de genai e do stream do `HTTPClient`: um timeout no
 meio do stream reenviava o POST e repetia o texto já entregue, o Ollama
 devolvia `""` para um corpo de erro, o cliente OpenAI mandava campos que o
 formato OpenAI não define, os caches em memória cresciam sem limite e o
 `BatchScheduler` podia deixar um `submit` esperando para sempre.
 
-### Fixed
+#### Fixed
 
 - **`HTTPClient.stream` não reemite depois da primeira linha.** O `except
   ReadTimeout` envolvia o `yield`, então um timeout entre dois chunks
@@ -222,7 +501,7 @@ formato OpenAI não define, os caches em memória cresciam sem limite e o
   `assistant` com `tool_calls` e os turnos `tool` que o respondem saem
   juntos, então o histórico nunca começa com um resultado órfão.
 
-### Added
+#### Added
 
 - **`OllamaError`** (`tempest_fastapi_sdk.genai`), com `.model` e `.detail`.
 - **`InMemoryGenerationCache(max_entries=1024)`** e
@@ -236,7 +515,7 @@ formato OpenAI não define, os caches em memória cresciam sem limite e o
   `TextGenerator.chat`: cacheia chamada determinística (chave `chat`) e
   registra `op="chat"` com os tokens do Ollama.
 
-### Changed
+#### Changed
 
 - **`GenAIMetrics`: rótulo `status` (`"ok"` / `"error"`) em
   `genai_requests_total` e `genai_request_seconds`.** Antes uma chamada que
@@ -246,12 +525,48 @@ formato OpenAI não define, os caches em memória cresciam sem limite e o
   `get_sample_value` com o conjunto exato de rótulos, precisa somar por
   `status` ou filtrar `status="ok"`. `GenAIMetrics.record` ganha
   `status=` keyword-only (default `"ok"`).
+
+### GenAI: moderação por classificador (#316)
+
+O `ClassifierModerator` pontuava modelo multi-rótulo com softmax e só lia os
+primeiros 512 tokens (#316): com o `unitary/toxic-bert`, que a receita
+recomenda, `insult` nunca passava do limiar ao lado de `toxic`, e um insulto
+atrás de uns 650 tokens inócuos pontuava `toxic` em 0,001.
+
+#### Fixed
+
+- **`ClassifierModerator` usa sigmoid em modelo multi-rótulo.**
+  `activation="auto"` (default) lê `config.problem_type`: sigmoid para
+  `"multi_label_classification"` ou saída única, softmax nos demais. Medido
+  com o `unitary/toxic-bert` (revisão `4d6c22e`), os seis rótulos em
+  `flagged_labels`, sobre um conjunto fixo de 10 frases ofensivas e 5 limpas:
+  com sigmoid, 31 rótulos reportados nas 10 ofensivas e 0 das 5 limpas
+  sinalizadas; com softmax, 10 rótulos (só `toxic`) e 1 limpa sinalizada
+  (`toxic` 0,556).
+- **`ClassifierModerator` não trunca mais.** O texto é classificado em
+  janelas com sobreposição e cada rótulo fica com o maior score entre elas.
+  O default é curto (`window_tokens=64`, `window_overlap=16`) porque o
+  modelo dilui uma frase curta em texto benigno: sobre 40 trechos de 1801 a
+  3030 tokens com uma frase ofensiva inserida, janelas de 512 pegaram 1 de
+  40 e janelas de 64 pegaram 36 de 40, com 0 de 40 trechos limpos
+  sinalizados em ambas. Texto de até 62 tokens continua numa passada só;
+  texto maior custa mais passadas (a tabela está na receita).
+
+#### Added
+
+- **`ClassifierModerator(activation=, window_tokens=, window_overlap=)`**,
+  keyword-only. `activation="sigmoid" | "softmax"` força a ativação para
+  checkpoint cuja config não declara o `problem_type`; `window_tokens=None`
+  usa o contexto inteiro do modelo, e qualquer valor é limitado a ele.
+
+### RAG, memória de chat, hub e diarização (#311, #319)
+
 Auditoria de RAG, memória de chat, hub e diarização. O defeito de raiz era a
 chave do chunk: `source#index` (e `source::index` no Chroma) não é única,
 porque o `chunk_text` recomeça o `index` em 0 a cada chamada — dois lotes da
 mesma fonte se sobrescreviam em silêncio.
 
-### Changed
+#### Changed
 
 - **Todo store do SDK e o `HybridRetriever` substituem por fonte.**
   `InMemoryVectorStore.add`, `PgVectorStore.add`, `ChromaVectorStore.add` e
@@ -268,7 +583,7 @@ mesma fonte se sobrescreviam em silêncio.
 - **`ChatMemory`** grava o `created_at` convertido para UTC e um
   `created_at_ts` (segundos epoch) no metadado.
 
-### Fixed
+#### Fixed
 
 - **`HybridRetriever` devolvia texto de outro chunk.** Dois `index()` da
   mesma fonte sobrescreviam o mapa por chave enquanto o BM25 guardava os
@@ -313,7 +628,7 @@ mesma fonte se sobrescreviam em silêncio.
   `urlopen` sem timeout travava o primeiro `load()` para sempre numa conexão
   muda.
 
-### Security
+#### Security
 
 - **`PgVectorStore` valida o nome da tabela**, que é interpolado em DDL e DML:
   fora de `nome` ou `schema.nome` sem aspas (`[A-Za-z_][A-Za-z0-9_]*`, até 63
@@ -321,114 +636,45 @@ mesma fonte se sobrescreviam em silêncio.
   inteiro positivo. O store também cria um índice B-tree em `source`, grava o
   lote num `executemany` e ganhou um teste contra `pgvector/pgvector:pg16`
   (`make test-docker`).
-Auditoria do `tempest_fastapi_sdk.agents`. Os tetos do `AgentBudget` só
-eram conferidos no topo do laço, então uma ferramenta que dormia 3 s com
-`max_seconds=0.5` rodava os 3 s, e uma volta pedindo 50 chamadas com
-`max_steps=5, max_tool_calls=2` executava as 50. O router HTTP endereçava
-execuções pela posição no histórico e mostrava as execuções de todo mundo a
-todo mundo; o traço servido por ele carregava o texto cru de qualquer
-exceção de ferramenta.
 
-### Security
+Índice aproximado no `PgVectorStore` (#319). Toda busca era varredura
+sequencial com `<=>`, e o índice HNSW/IVFFlat ficava como passo manual.
 
-- **Execuções do router têm dono.** `make_agent_router(..., owner=dep)`
-  recebe uma dependência FastAPI que devolve quem chama; cada execução é
-  marcada (`AgentRun.owner`, `AgentContext.owner`, herdado pela
-  delegação), `GET /runs` lista só as de quem chama e o artefato de outra
-  pessoa responde `404`, igual a uma execução inexistente. Sem `owner=` o
-  comportamento continua o de antes (todo mundo vê tudo), agora documentado
-  como aceitável só com um único principal.
-- **Exceção inesperada de ferramenta não vaza mais pelo traço.** O modelo
-  continua lendo o texto inteiro, mas o `AgentStep.error` — o que o router,
-  o SSE e o `DbAgentRunSink` expõem — guarda só o tipo
-  (`RuntimeError: the tool failed (details withheld)`), e a exceção vai
-  para o log `tempest_fastapi_sdk.agents.agent`. Medido com um DSN com senha
-  na mensagem: a senha não aparece em `run.model_dump_json()` nem na
-  resposta de `POST /run`. `AgentToolError` continua gravado como escrito;
-  `Agent(expose_tool_errors=True)` volta ao texto inteiro.
-- **Moderador que levanta falha fechado.** Antes a exceção derrubava o
-  `run()`; agora a execução termina `BLOCKED` com
-  `blocked: moderation unavailable (<Tipo>)`.
-- **A resposta estruturada passa pela moderação.** O `output` de uma
-  execução encerrada pelo `final_answer` é o JSON da resposta, e é ele que o
-  moderador confere; `run_structured` só devolve `data` de execução
-  `COMPLETED`.
+#### Added
 
-### Fixed
+- **`PgVectorStore.ensure_schema(ann_index="hnsw" | "ivfflat", m=,
+  ef_construction=, lists=)`** (keyword-only) cria `<table>_embedding_idx`
+  com `vector_cosine_ops`, a operator class do `<=>` que a busca usa.
+  Parâmetro `None` fica fora do `WITH` (vale o default do pgvector);
+  parâmetro do outro método, ou sem `ann_index`, levanta `ValueError` antes
+  de qualquer SQL. `"hnsw"` num pgvector abaixo de 0.5.0 levanta
+  `RuntimeError` com a versão encontrada (medido contra
+  `ankane/pgvector:v0.4.4`; o IVFFlat segue funcionando lá). Um índice com
+  esse nome que já existe com outro método ou outros parâmetros levanta
+  `ValueError` pedindo `DROP INDEX` — nunca é reconstruído em silêncio.
+  Novo `PgVectorStore.ann_index_name` e o tipo `AnnIndex`
+  (`tempest_fastapi_sdk.genai.rag`).
+- **`PgVectorStore.search(ef_search=, probes=)`** (keyword-only) aplica
+  `hnsw.ef_search` / `ivfflat.probes` via `set_config(..., true)` — o
+  `SET LOCAL` em forma de função, com valor bindado —, válidos só na
+  transação da busca: a sessão seguinte no mesmo pool volta a ler `40` e
+  `1`. Medida de latência e recall@10 a 100 000 vetores na receita de
+  genai.
+- Teste `@pytest.mark.docker` contra `pgvector/pgvector:pg16` confirma que
+  o índice existe e que o `EXPLAIN` do statement que o `search` envia
+  (capturado no engine) usa `Index Scan` nele. O container do teste ganhou
+  nome e porta por processo, então dois checkouts rodando `make test-docker`
+  ao mesmo tempo não derrubam o banco um do outro.
 
-- **`max_seconds` corta a chamada travada.** Chamada de modelo roda sob
-  `asyncio.timeout` do tempo restante; chamada de ferramenta, sob esse tempo
-  mais uma folga de 0,25 s dividida por `depth + 1`, para o sub-agente —
-  que vigia o mesmo prazo — parar sozinho e devolver o traço antes de o pai
-  cortar. Medido: ferramenta de 3 s com `max_seconds=0.5` termina em 0,75 s,
-  `stop_reason=timeout`. Uma `TimeoutError` levantada pela própria
-  ferramenta continua sendo erro comum de ferramenta.
-- **Os tetos valem dentro de uma volta.** `max_steps`, `max_tool_calls` e o
-  prazo são conferidos antes de **cada** chamada; medido: 50 chamadas com
-  `max_steps=5, max_tool_calls=2` executam 2 e param em `max_tool_calls`.
-- **`arguments` como string JSON** (formato OpenAI de vLLM/TGI) é lido; JSON
-  inválido ou que não é objeto vira erro de ferramenta em vez de `{}`
-  silencioso.
-- **Mensagem `role: tool` leva `tool_call_id` e `name`** quando a chamada
-  trouxe `id`; sem `id` o formato fica igual ao de antes.
-- **`final_answer` encerra a execução** — o modelo não é consultado de novo,
-  como a receita já dizia. Resposta que não valida vira erro de ferramenta
-  legível (`invalid answer for final_answer: headline: Field required`).
-- **`run_structured` não perde as skills.** O agente é copiado
-  (`copy.copy`) em vez de reconstruído com um subconjunto dos argumentos; o
-  `load_skill` anunciava ferramentas que a cópia não tinha.
-- **Skill carregada não vaza entre pai e filho.** O controle saiu do `state`
-  compartilhado para `AgentContext.opened_skills`, por contexto; a resposta
-  estruturada, para `AgentContext.answer`.
-- **Router:** execução endereçada pelo `run_id` estável
-  (`/runs/{run_id}/artifacts/{name}`), e `{name:path}` serve artefato de
-  sub-agente (`illustrator/bike.png` dava `404`).
-- **`agent_tool`** passa ao filho o nome do agente que delegou em
-  `context.parent` (antes, o avô ou `"agent"`).
-- **`refine`** aprova só com a resposta inteira igual a `APPROVED` (antes,
-  `startswith`) e só de worker que terminou; tentativa cortada nem vai ao
-  crítico.
-- **`run_until`** mantém o prazo herdado do `context` quando ele é mais
-  cedo; a passada de extração do `run_structured` herda o prazo da execução
-  e o moderador do agente.
-- **`schema_of`** não entra em recursão infinita com model
-  auto-referente: a referência cíclica fica `$ref` e só essas definições
-  ficam em `$defs`.
-- **`RedisFactStore`** não junta mais `None`, `""` e `"_"` no mesmo hash.
-  `None` e subjects comuns mantêm a chave de antes (dado existente
-  continua acessível); `""`, `"_"` e o que começa com `~:s:` vão para
-  `"{prefix}:~:s:<percent-encoded>"`. Fato gravado antes sob `subject=""`
-  ou `subject="_"` está na chave antiga `"{prefix}:_"`.
-- **Artefato não é sobrescrito.** Nome já ocupado por um retorno de
-  ferramenta vira `<nome>-1.<ext>` (o texto para o modelo avisa); nas
-  ferramentas prontas, nome escolhido pelo modelo que já existe é recusado
-  com `AgentToolError`, e o nome padrão pula os ocupados.
-- **`AgentRun.tool_calls`** inclui as delegações (`StepKind.AGENT`).
+### Chat (#310, #317)
 
-### Changed
-
-- **`ChatBackend` / `ToolCallingBackend`** descrevem só o que o `Agent`
-  faz: parâmetros posicionais (`/`), sem `**kwargs` obrigatório e mensagens
-  `list[dict[str, Any]]`. Entram em `THIRD_PARTY_CLIENT_PROTOCOLS` do
-  `test_protocol_shape_guard`.
-- **Rota de artefato mudou de `/runs/{index}/...` para `/runs/{run_id}/...`**;
-  `POST /run` devolve `run_id` e o evento `done` do SSE passa a carregar
-  `{"run_id": ...}` (antes vazio).
-
-### Added
-
-- `ToolResult.final`, `AgentRun.run_id`, `AgentRun.owner`,
-  `AgentContext.agent`/`run_id`/`owner`/`opened_skills`/`answer`,
-  `AgentContext.unique_artifact_name`/`claim_artifact_name`,
-  `InMemoryAgentRunSink.get(run_id)`, `OwnerDependency` e o keyword
-  `Agent(expose_tool_errors=...)`.
 O `chat` tratava o id de uma mensagem como capability: toda rota que
 recebe só `/messages/{id}` carregava a linha pelo id e seguia, sem olhar
 a conversa dela. O `/stream` segurava uma sessão de banco pela vida da
 conexão e continuava entregando depois que a pessoa saía, e o histórico
 aceitava `page_size=0`.
 
-### Security
+#### Security
 
 - **`react` / `unreact` exigem enxergar a mensagem.** Antes, qualquer
   usuário autenticado que soubesse um id recebia `200` com a
@@ -458,7 +704,7 @@ aceitava `page_size=0`.
   (`MEMBERSHIP_RECHECK_SECONDS`, `30.0`; `None` desliga), numa sessão
   curta.
 
-### Fixed
+#### Fixed
 
 - **O `/stream` não segura mais sessão de banco.** O endpoint recebia o
   serviço por `Depends`, e a sessão com `yield` ficava aberta — conexão
@@ -480,7 +726,7 @@ aceitava `page_size=0`.
   `ChatService.list_messages` levanta `ValidationException` para os
   mesmos valores.
 
-### Added
+#### Added
 
 - **`make_chat_router(max_page_size=..., membership_recheck_seconds=...)`**,
   keyword-only, com defaults `MESSAGES_PAGE_SIZE_MAX` (`100`) e
@@ -492,7 +738,7 @@ aceitava `page_size=0`.
   256), e `title` / `description` no tamanho da coluna (255 / 512), que o
   schema não conferia.
 
-### Changed
+#### Changed
 
 - Quem não enxerga a mensagem recebe `404` em `PATCH`/`DELETE
   /messages/{id}` onde antes recebia `403`; o remetente que ainda é
@@ -501,143 +747,12 @@ aceitava `page_size=0`.
 A linha de anexo continuava sem registrar quem fez o upload; a correção,
 que exige coluna nova e migração, está na seção do `uploader_id` abaixo.
 
-Seis defeitos de fronteira de confiança no GenAI. O `ContentExtractor`
-seguia redirect para qualquer lugar — um `302` para
-`http://169.254.169.254/latest/meta-data/` era buscado e o texto extraído
-(reproduzido com `httpx.MockTransport`); o `AIChatPipeline.stream()` não
-moderava a resposta que o `respond()` moderava e a docstring prometia; o
-`make_ai_chat_router` aceitava `role: "system"` no `history` e tirava o
-`user_id` do corpo, então quem soubesse o id de outra pessoa recebia os
-`memory_hits` dela; e o `RuleModerator` nunca casava `"$hit"` nem `"c++"` e
-caía com espaço de largura zero ou letra fullwidth.
-
-### Security
-
-- **`ContentExtractor.extract` bloqueia SSRF por padrão.** Só `http`/`https`;
-  o host (IP literal ou todo endereço que o hostname resolve) precisa ser
-  público — loopback, privado, link-local (o endpoint de metadata incluso),
-  CGNAT, reservado e multicast são recusados, e IPv4 mapeado em IPv6
-  (`::ffff:127.0.0.1`) é julgado pelo IPv4 que carrega;
-  redirect é seguido à mão com a mesma checagem em cada salto, até
-  `max_redirects=` (default 5); o corpo é lido em stream e a busca desiste
-  passando de `max_response_bytes=` (default 5 MiB). Recusa volta
-  `failed=True`, como toda falha. `allow_private_networks=True` desliga só a
-  checagem de endereço, para intranet; `resolver=` injeta o DNS. Limite
-  declarado: checagem e conexão resolvem o DNS separadamente, então DNS
-  rebinding não é coberto.
-- **`make_ai_chat_router` não confia no corpo.** `AIChatTurnSchema.role` é
-  `Literal["user", "assistant"]` (um turno `system` responde `422`); o
-  `AIChatRequestSchema` perdeu o campo `user_id` — o dono da memória vem do
-  novo `current_user_id=` (dependência FastAPI), e `dependencies=` aplica
-  auth/rate limit a toda rota. Pipeline com `memory=` sem
-  `current_user_id=` levanta `ValueError` na montagem.
-- **`AIChatPipeline.stream()` modera a resposta.** Novo
-  `stream_moderation=` no construtor: `"incremental"` (default) checa o
-  texto acumulado antes de mandar cada pedaço e troca o resto por
-  `blocked_message` na primeira flag — pedaço já enviado não volta, mas o
-  que completa o termo nunca sai; `"buffered"` gera tudo, modera uma vez e
-  manda inteiro ou bloqueia. Resposta bloqueada não é indexada.
-- **O `history` passa pelo moderador**, em `respond` e `stream`, como a
-  mensagem nova.
-- **`RuleModerator` normaliza antes de casar**: NFKC, remove caracteres de
-  categoria `Cf` (largura zero, bidi) e casefold, nos termos e no texto; a
-  fronteira de palavra virou lookaround (`(?<!\w)…(?!\w)`), então termo com
-  pontuação na borda casa. Homóglifo de outro alfabeto continua fora.
-
-### Changed
-
-- **`respond`/`stream` aceitam `user_id=None`**, que pula a memória do turno
-  (nem busca, nem indexa) — é o que o router passa sem `current_user_id`.
-- **O `trafilatura` roda em `asyncio.to_thread`** no `ContentExtractor`, fora
-  do event loop.
-
-### Fixed
-
-- **Falha de indexação na memória é logada** (`WARNING` com traceback no
-  logger `tempest_fastapi_sdk.genai.pipeline`) em vez de engolida em
-  silêncio; a resposta continua saindo.
-
-### Migração
-
-- Cliente HTTP que manda `user_id` no corpo não quebra — o campo é ignorado.
-- Pipeline com `memory=` montado no router precisa de
-  `make_ai_chat_router(pipeline, current_user_id=...)`.
-- `history` com `role` fora de `user`/`assistant` passa a responder `422`.
-- `ContentExtractor` apontado para a intranet precisa de
-  `allow_private_networks=True`; página acima de 5 MiB precisa de
-  `max_response_bytes=` maior.
-Os routers de IA não tinham limite de request nenhum. O `/generate`
-aceitava um prompt de 2 MB com `max_new_tokens=10**9`, o `/embed` aceitava
-100 000 textos, o `/image` validava `width=100000` e
-`num_images=10**6` — e renderizava o lote inteiro para devolver só a
-primeira imagem —, o `/rag` aceitava `top_k=-5`, e `/transcribe` e as rotas
-de visão liam o upload inteiro com `await file.read()`. Cada um é um jeito
-de um único cliente segurar o worker.
-
-**Potencialmente breaking:** requests que passavam agora recebem `422`.
-Os tetos default estão abaixo; quem precisa de mais passa
-`make_genai_router(limits=GenAIRequestLimits(...))` ou
-`make_vision_router(max_upload_bytes=..., max_image_pixels=...)`.
-
-### Added
-
-- **`GenAIRequestLimits`** (`tempest_fastapi_sdk.genai`) e
-  **`make_genai_router(limits=...)`**: tetos por request conferidos
-  **antes** de o modelo rodar — `max_prompt_chars` (`32_000`: prompt do
-  `/generate`, soma das mensagens do `/chat`, query do `/rag`, cada texto do
-  `/embed`, prompt e negative prompt do `/image`), `max_chat_messages`
-  (`100`), `max_new_tokens` (`4096`, só o valor que o cliente manda),
-  `max_embed_texts` (`256`), `max_top_k` (`50`), `max_tts_chars`
-  (`5_000`), `max_image_side` (`2048`), `max_image_steps` (`100`) e
-  `max_upload_bytes` (25 MiB). Estouro é `422`, e com
-  `register_exception_handlers` o corpo traz
-  `details={"field": ..., "limit": ...}`.
-- **`read_upload_capped(upload, *, max_bytes, label="upload")`** e
-  **`UPLOAD_READ_CHUNK_BYTES`** (`tempest_fastapi_sdk.utils`, reexportados
-  na raiz): o leitor em blocos que o `make_voice_router` tinha como helper
-  privado, agora público e usado por `/transcribe`, pelo
-  `make_voice_router` e pelo `make_vision_router`. Para de ler no bloco que
-  cruza o teto e levanta `ValidationException` (`422`), a mesma resposta
-  que o `make_voice_router` sempre deu.
-- **`make_vision_router(max_upload_bytes=..., max_image_pixels=...)`** e as
-  constantes **`DEFAULT_MAX_IMAGE_UPLOAD_BYTES`** (20 MiB) e
-  **`DEFAULT_MAX_IMAGE_PIXELS`** (50 MP). O teto de pixels lê o header com
-  `PIL.Image.open`, sem decodificar: medido com Pillow 12.3.0 e
-  `ort-vision-sdk` 0.8.0, um PNG em branco de 9400 x 9400 com 10 804 bytes
-  decodificava num array RGB de 265 080 000 bytes sem disparar o aviso de
-  decompression bomb do Pillow (88,36 MP fica abaixo dos 89,48 MP dele).
-  `max_image_pixels=None` desliga a checagem.
-
-### Changed
-
-- **`ImageGenerationConfig`** ganha teto absoluto no schema: `width` e
-  `height` `<= 4096`, `steps` `<= 500`, `num_images` `<= 16`. Vale para a
-  classe usada direto, não só pela rota.
-- **`RagRequestSchema.top_k`** exige `>= 1`.
-- **`POST /image`** recusa `config.num_images` acima de `1` com `422` em vez
-  de renderizar o lote na GPU e devolver só a primeira imagem.
-
-### Fixed
-
-- **`InMemoryVectorStore.search(top_k=-3)`** devolvia 7 de 10 chunks (o
-  slice `scored[:-3]` corta os **piores** do fim). `top_k <= 0` agora
-  devolve `[]`, o contrato que o `ChromaVectorStore.search` já tinha. O
-  mesmo vale para `PgVectorStore.search` (que mandava `LIMIT` negativo ao
-  Postgres), `HybridRetriever.search` e o ranqueamento do `Reranker`.
-- **Rotas de visão devolviam `500` para bytes que não são imagem**: o
-  `ImageLoadError` do `ort-vision-sdk` escapava sem tratamento (medido:
-  `500 INTERNAL_SERVER_ERROR` antes, `422 VALIDATION_ERROR` depois, com o
-  decoder real do `ort-vision-sdk`).
-- **`GET /models`** montava o relatório no event loop: `probe=True` lê NVML
-  e `torch.cuda`, chamadas síncronas que travavam todo request concorrente.
-  Agora roda em `asyncio.to_thread`.
-
 O anexo do chat não registrava quem fez o upload, então qualquer
 participante que soubesse o id de um anexo ainda não reivindicado — vazado
 num log, numa URL compartilhada — o prendia à própria mensagem
 ([#317](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/317)).
 
-### Added
+#### Added
 
 - **`BaseMessageAttachmentModel.uploader_id`** (nullable, indexado, sem FK)
   e **`ChatService.add_attachment(uploader_id, *, storage_key, ...)`**, que
@@ -645,7 +760,7 @@ num log, numa URL compartilhada — o prendia à própria mensagem
   `AttachmentResponseSchema` cujo `id` o autor posta. Encaminhar copia o
   `uploader_id` da linha original.
 
-### Security
+#### Security
 
 - **Só quem enviou o arquivo o reivindica.** `post_message` recusa um
   `attachment_ids` cujo `uploader_id` não é o remetente com o **mesmo**
@@ -656,7 +771,7 @@ num log, numa URL compartilhada — o prendia à própria mensagem
   e é reivindicável por qualquer remetente: é a janela de transição, que
   fecha quando não sobra linha `NULL` sem mensagem.
 
-### Migração
+#### Migração
 
 **Breaking de schema: migre o banco antes de atualizar o pacote.** A coluna
 mora na tabela abstrata, então toda tabela de anexo concreta a herda e todo
@@ -683,97 +798,130 @@ O exemplo completo, com `downgrade()`, está na receita de chat (seção
 Anexos). Quem grava a linha de upload à mão em vez de chamar
 `add_attachment` precisa passar `uploader_id=` — sem ele, a linha nova
 nasce `NULL` e continua reivindicável por qualquer um.
-O `ClassifierModerator` pontuava modelo multi-rótulo com softmax e só lia os
-primeiros 512 tokens (#316): com o `unitary/toxic-bert`, que a receita
-recomenda, `insult` nunca passava do limiar ao lado de `toxic`, e um insulto
-atrás de uns 650 tokens inócuos pontuava `toxic` em 0,001.
 
-### Fixed
+### modelops (#308)
 
-- **`ClassifierModerator` usa sigmoid em modelo multi-rótulo.**
-  `activation="auto"` (default) lê `config.problem_type`: sigmoid para
-  `"multi_label_classification"` ou saída única, softmax nos demais. Medido
-  com o `unitary/toxic-bert` (revisão `4d6c22e`), os seis rótulos em
-  `flagged_labels`, sobre um conjunto fixo de 10 frases ofensivas e 5 limpas:
-  com sigmoid, 31 rótulos reportados nas 10 ofensivas e 0 das 5 limpas
-  sinalizadas; com softmax, 10 rótulos (só `toxic`) e 1 limpa sinalizada
-  (`toxic` 0,556).
-- **`ClassifierModerator` não trunca mais.** O texto é classificado em
-  janelas com sobreposição e cada rótulo fica com o maior score entre elas.
-  O default é curto (`window_tokens=64`, `window_overlap=16`) porque o
-  modelo dilui uma frase curta em texto benigno: sobre 40 trechos de 1801 a
-  3030 tokens com uma frase ofensiva inserida, janelas de 512 pegaram 1 de
-  40 e janelas de 64 pegaram 36 de 40, com 0 de 40 trechos limpos
-  sinalizados em ambas. Texto de até 62 tokens continua numa passada só;
-  texto maior custa mais passadas (a tabela está na receita).
+Auditoria do caminho de serving do `modelops`. O `[modelops]` não declarava
+o `numpy` que o monitor e o leitor compacto importam; a inferência e o reload
+rodavam no event loop; o lote não tinha teto; as rotas de operação não tinham
+guard e expunham o caminho absoluto do modelo; o monitor guardava uma chave
+por valor de regressor e comparava rótulo pelo texto; e o `reload` aquecia a
+sessão **depois** de colocá-la no ar, engolindo a falha.
 
-### Added
+#### Fixed
 
-- **`ClassifierModerator(activation=, window_tokens=, window_overlap=)`**,
-  keyword-only. `activation="sigmoid" | "softmax"` força a ativação para
-  checkpoint cuja config não declara o `problem_type`; `window_tokens=None`
-  usa o contexto inteiro do modelo, e qualquer valor é limitado a ele.
+- **`[modelops]` declara `numpy`.** `baseline_from_samples`,
+  `PredictionMonitor` com baseline, `read_compact` e `predict_compact`
+  importam `numpy`, e o extra trazia só `psutil` + `nvidia-ml-py`: medido
+  numa venv limpa com `tempest-fastapi-sdk[modelops]==0.299.0`,
+  `baseline_from_samples` levantava `ModuleNotFoundError: No module named
+  'numpy'`. Com a wheel desta branch, o mesmo install roda; sem o extra, o
+  erro agora é um `ImportError` nomeando `[modelops]`.
+- **`POST /predict` e o reload do `POST /model/sync` saem do event loop**
+  (`asyncio.to_thread`). Medido com um predictor que segura a thread por
+  1 s: na 0.299.0 o loop ficava parado 0,992 s; agora o atraso de
+  agendamento fica abaixo de 1 ms.
+- **O monitor tem memória limitada de verdade.** Cada rótulo distinto virava
+  uma chave: 50 000 saídas de regressor davam 50 000 chaves e um relatório de
+  889 270 bytes de JSON. Agora no máximo `MAX_TRACKED_LABELS` (64) chaves
+  próprias, mais as classes da baseline (que nunca perdem a delas), e o resto
+  em `OTHER_LABEL` (`"__other__"`): 65 chaves, 1 350 bytes. A docstring do
+  módulo, que já dizia "memória limitada", passa a ser verdade.
+- **PSI de saída compara rótulo por valor.** Baseline com alvo float
+  (`"0.0"`) contra classificador que responde inteiro (`"0"`) dava PSI 26,24
+  (`significant`) sobre distribuições idênticas; agora 0,0 (`stable`).
+  Baselines já salvas com chaves `"0.0"` são normalizadas na leitura.
+- **`OnnxPredictor.reload` aquece antes de trocar.** A docstring prometia
+  "Warm the new session before it serves", mas o código trocava a sessão e
+  aquecia depois, engolindo a exceção. Agora a inferência de aquecimento roda
+  na sessão nova antes do swap; falhou, `reload` levanta `RuntimeError` e o
+  modelo anterior continua servindo. `warm_up()` público registra a falha em
+  log em vez de engolir em silêncio.
+- **`OnnxPredictor.predict` lê sessão e descrição juntas.** A largura era
+  validada contra `self.info` fora do lock e a sessão lida depois: um reload
+  no meio fazia a linha ir para o modelo novo e virar `InvalidArgument` do
+  runtime (500) em vez do `ValueError` (422).
+- **`RegistryModelSource.sync` é serializado** por um `asyncio.Lock`: medido
+  na 0.299.0, três syncs concorrentes faziam três downloads da mesma versão
+  para o mesmo caminho; agora um download e um reload — e é o lock que deixa
+  o reload rodar em thread sem que os três recarreguem. O download cai num `.part` e só é renomeado quando termina —
+  antes, um download interrompido deixava o arquivo parcial no caminho final,
+  e o próximo sync o tratava como versão em cache.
 
-Índice aproximado no `PgVectorStore` (#319). Toda busca era varredura
-sequencial com `<=>`, e o índice HNSW/IVFFlat ficava como passo manual.
+#### Added
 
-### Added
+- **`make_prediction_router(max_rows=...)`**, default
+  `DEFAULT_MAX_PREDICT_ROWS` (10 000): lote maior vira `422`; `None` tira o
+  limite; valor não positivo levanta `ValueError` na construção.
+- **`make_prediction_router(dependencies=..., admin_dependencies=...)`**:
+  o router não traz autenticação; `admin_dependencies` protege `/model`,
+  `/model/sync` e `/monitor` deixando `POST /` aberto, e `dependencies`
+  protege todas as rotas.
+- **`RegistryModelSource(checksum_field="sha256")`**: quando a linha da
+  registry tem esse atributo preenchido, o download é conferido por SHA-256
+  antes de ser cacheado ou carregado; arquivo divergente é apagado e o sync
+  responde `503`. O `ArtifactVersionMixin` não declara a coluna — é opt-in
+  pelo schema do consumidor, sem migration no SDK. `None` desliga.
+- **`PredictionMonitor(max_labels=...)`** e as constantes
+  `MAX_TRACKED_LABELS` / `OTHER_LABEL`.
 
-- **`PgVectorStore.ensure_schema(ann_index="hnsw" | "ivfflat", m=,
-  ef_construction=, lists=)`** (keyword-only) cria `<table>_embedding_idx`
-  com `vector_cosine_ops`, a operator class do `<=>` que a busca usa.
-  Parâmetro `None` fica fora do `WITH` (vale o default do pgvector);
-  parâmetro do outro método, ou sem `ann_index`, levanta `ValueError` antes
-  de qualquer SQL. `"hnsw"` num pgvector abaixo de 0.5.0 levanta
-  `RuntimeError` com a versão encontrada (medido contra
-  `ankane/pgvector:v0.4.4`; o IVFFlat segue funcionando lá). Um índice com
-  esse nome que já existe com outro método ou outros parâmetros levanta
-  `ValueError` pedindo `DROP INDEX` — nunca é reconstruído em silêncio.
-  Novo `PgVectorStore.ann_index_name` e o tipo `AnnIndex`
-  (`tempest_fastapi_sdk.genai.rag`).
-- **`PgVectorStore.search(ef_search=, probes=)`** (keyword-only) aplica
-  `hnsw.ef_search` / `ivfflat.probes` via `set_config(..., true)` — o
-  `SET LOCAL` em forma de função, com valor bindado —, válidos só na
-  transação da busca: a sessão seguinte no mesmo pool volta a ler `40` e
-  `1`. Medida de latência e recall@10 a 100 000 vetores na receita de
-  genai.
-- Teste `@pytest.mark.docker` contra `pgvector/pgvector:pg16` confirma que
-  o índice existe e que o `EXPLAIN` do statement que o `search` envia
-  (capturado no engine) usa `Index Scan` nele. O container do teste ganhou
-  nome e porta por processo, então dois checkouts rodando `make test-docker`
-  ao mesmo tempo não derrubam o banco um do outro.
+#### Changed
 
-O guard de SSRF do `ContentExtractor` (entregue no #309) validava uma
-resolução de DNS e conectava usando outra. Cada salto agora conecta no IP
-que passou na checagem.
+- **`GET /model` e `POST /model/sync` devolvem só o nome do arquivo em
+  `path`** (`classifier.onnx`), não o caminho absoluto do dispositivo.
+  `make_prediction_router(expose_model_path=True)` restaura o comportamento
+  anterior.
+- **`POST /predict` recusa lote acima de 10 000 linhas por default**, antes
+  ilimitado.
 
-### Security
+### Migrações: `AlembicHelper` async (#323)
 
-- **`ContentExtractor.extract` fecha o DNS rebinding (#315).** O guard de SSRF
-  resolvia o host, validava e deixava o `httpx` resolver de novo na conexão;
-  um DNS que respondia IP público na checagem e `127.0.0.1` na conexão
-  alcançava o endereço privado (reproduzido com um resolver fake atrás do
-  `AsyncHTTPTransport` real: a conexão ia para `127.0.0.1`). Agora cada salto,
-  redirect incluso, conecta no IP validado: a URL leva o IP, e o header
-  `Host` e a extensão `sni_hostname` mantêm o hostname, então o HTTPS segue
-  validando o certificado contra o nome (medido com servidor TLS local:
-  certificado do nome aceito, de outro nome recusado). O `resolver=` passa a
-  ser chamado uma vez por salto, e o primeiro endereço que ele devolve é o
-  conectado.
-- **Conexão do pool aberta para outro hostname no mesmo IP não é
-  reaproveitada em HTTPS.** Como o pool indexa por IP, a resposta que chega
-  numa sessão TLS negociada para outro nome é descartada sem ler o corpo (o
-  que fecha a conexão) e o salto é refeito numa conexão nova, até
-  `MAX_TLS_NAME_RETRIES` (3) vezes.
+`AlembicHelper` não tinha caminho para código async (#323). O `env.py` que o
+SDK gera sobe o engine com `asyncio.run(...)`, então `helper.upgrade()`
+chamado de um lifespan do FastAPI morria dentro do Alembic com `asyncio.run()
+cannot be called from a running event loop` e um `RuntimeWarning: coroutine
+'run_async_migrations' was never awaited`; a docstring mandava usar
+`asyncio.to_thread`, e cada serviço escrevia esse passo à mão. O `check()`
+era pior: engolia o erro e devolvia `False`, relatando drift que nunca foi
+medido.
 
-### Changed
+#### Added
 
-- **HTTPS por proxy HTTP volta `failed=True` no `ContentExtractor`.** O
-  httpcore 1.0.9 abre o túnel para o IP fixado e não manda o SNI, então a
-  verificação do certificado falha (`IP address mismatch`, medido com proxy
-  CONNECT local). Atrás de proxy quem resolve o DNS é o proxy;
-  `allow_private_networks=True` desliga a fixação junto com a checagem de
-  endereço.
+- **Par `_async` para todo método que roda o `env.py`**: `upgrade_async`,
+  `safe_upgrade_async`, `downgrade_async`, `stamp_async`, `revision_async`,
+  `check_async`, `current_async`, `has_existing_schema_async`, `adopt_async`,
+  `sync_schema_async`, `squash_async` e `pending_destructive_ops_async`, com a
+  mesma assinatura do síncrono (teste compara). Rodam o síncrono numa worker
+  thread — sem loop próprio, então o `asyncio.run` do `env.py` funciona lá — e
+  por isso funcionam com todo `env.py` já gerado. Medido com 20 revisions em
+  SQLite: `upgrade_async` levou de 0,10 a 0,14 s e um ticker de 5 ms no loop
+  seguiu rodando (maior intervalo entre ticks de 7 a 26 ms, três execuções).
+  Rodar no loop via `AsyncConnection.run_sync` (receita de connection sharing
+  do Alembic) foi descartado como default: contra o `env.py` gerado até a
+  0.299.0 ele falha com o mesmo erro de `asyncio.run`.
+- **`env.py` gerado aceita `config.attributes["connection"]`.** Recebendo uma
+  conexão (de dentro de `AsyncConnection.run_sync`), migra nela sem criar
+  engine; executado de um loop **sem** conexão, levanta `RuntimeError`
+  explicando as duas saídas antes de criar a coroutine, em vez do erro de
+  `asyncio.run` com coroutine não aguardada. Vale para projeto que regenerar
+  o `env.py`; o existente continua funcionando com os métodos `_async`.
+
+#### Changed
+
+- **Método síncrono que roda o `env.py` levanta com um loop rodando**
+  (`upgrade`, `safe_upgrade`, `downgrade`, `stamp`, `revision`, `check`,
+  `adopt`, `sync_schema`, `squash`): `RuntimeError` nomeando o par `_async`,
+  antes de tocar no Alembic. `revision` recusa mesmo com
+  `autogenerate=False`, porque `revision_environment` no ini faz esse caminho
+  executar o `env.py`. `current()` e `has_existing_schema()` continuam
+  funcionando no loop quando há driver síncrono; só o fallback só-async
+  (`asyncpg` sem `psycopg2`) levanta, nomeando `current_async` /
+  `has_existing_schema_async`. Quem chamava o síncrono de código async com um
+  `env.py` próprio sem `asyncio.run` passa a receber o erro — troque pelo
+  `_async`.
+- Receitas `migrations` e `database` (PT/EN) usam os métodos `_async` no
+  lifespan; o `asyncio.to_thread` escrito à mão saiu dos exemplos. O scaffold
+  do `tempest new` não chama o helper no lifespan, então não mudou.
 
 ## [0.299.0] — 2026-09-25
 

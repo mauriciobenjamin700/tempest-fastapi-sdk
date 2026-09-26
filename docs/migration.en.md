@@ -25,6 +25,97 @@ the transition window. A new row with an uploader is claimed only by a
 message from that uploader; anyone else gets the same `404` as for an id
 that does not exist.
 
+## 0.300.0 — the other breaking changes: AI, chat, metrics and migrations
+
+The same release closes security and resource defects in the AI modules, and
+some fixes change the contract. Walk the list and apply what you use; the
+measured reason for each item is in `CHANGELOG.md`.
+
+### `make_ai_chat_router`
+
+- The `user_id` field left the body — a client that still sends it does not
+  break, the field is ignored. The memory owner now comes from a dependency:
+  `make_ai_chat_router(pipeline, current_user_id=...)`. A pipeline with
+  `memory=` mounted **without** `current_user_id=` raises `ValueError` at
+  mount time. Complete example in
+  [Long-term memory](recipes/genai.md#long-term-memory).
+- `history` with a `role` other than `user`/`assistant` answers `422`.
+
+### `ContentExtractor`
+
+- A private host (intranet, `localhost`, cloud metadata) is refused with
+  `failed=True`. To fetch from the intranet, pass
+  `allow_private_networks=True`.
+- A page above 5 MiB needs a larger `max_response_bytes=`.
+- HTTPS through an HTTP proxy now fails closed; behind a proxy, use
+  `allow_private_networks=True` and leave egress control to the proxy.
+
+### New limits that answer `422`
+
+- `make_genai_router` checks `GenAIRequestLimits` before running the model;
+  pass `limits=GenAIRequestLimits(...)` if you need more
+  ([Per-request limits](recipes/genai.md#per-request-limits-genairequestlimits)).
+  `POST /image` refuses `num_images > 1`.
+- `make_vision_router` reads at most 20 MiB and 50 MP per image
+  (`max_upload_bytes=` / `max_image_pixels=`).
+- `make_chat_router` requires `page >= 1` and `1 <= page_size <= 100`
+  (`max_page_size=`), and the chat schemas have length caps.
+- `modelops`'s `POST /predict` refuses batches above 10 000 rows
+  (`max_rows=`; `None` removes the cap).
+
+### Agent router
+
+- The artifact route moved from `/runs/{index}/artifacts/{name}` to
+  `/runs/{run_id}/artifacts/{name}`; `POST /run` returns the `run_id`.
+- Without `owner=`, every run is still visible to every caller — pass
+  `make_agent_router(agent, owner=...)` when there is more than one user
+  ([Serving it over HTTP](recipes/agents.md#serving-it-over-http)).
+- An unexpected tool error shows in the trace only as its type;
+  `Agent(expose_tool_errors=True)` restores the full text.
+- A custom backend implementing `ChatBackend` / `ToolCallingBackend` gets
+  the messages positionally and no longer has to accept `**kwargs`.
+
+### Chat
+
+- A caller who cannot see the message gets `404` where it used to get
+  `403`. A sender who is still a participant keeps getting `403` for someone
+  else's message.
+
+### RAG
+
+- `add` and `index` on the SDK's stores and on `HybridRetriever` **replace by
+  source**: pass every chunk of a `source` in the same call, or its earlier
+  batches are gone.
+
+### Metrics
+
+- `genai_requests_total` and `genai_request_seconds` gained the `status`
+  label (`ok` / `error`). A `{model, op}` selector still matches, but each
+  series becomes two: sum by `status` or filter `status="ok"` in queries and
+  alerts that compare the whole series.
+
+### `modelops`
+
+- `/model` returns only the file name in `path`;
+  `make_prediction_router(expose_model_path=True)` restores the absolute
+  path.
+- `[modelops]` now installs `numpy`.
+
+### `AlembicHelper`
+
+- A sync method that runs `env.py`, called with an event loop running (the
+  FastAPI lifespan), raises `RuntimeError` — use the `_async` pair
+  (`await helper.upgrade_async()`). The `env.py` you already have keeps
+  working ([migrations recipe](recipes/migrations.md)).
+
+### Other
+
+- `RedisFactStore`: a fact written before under `subject=""` or
+  `subject="_"` stays under the old `{prefix}:_` key, and the new version
+  writes those subjects to another key.
+- The private helper `genai/_lifecycle.py` moved to `utils/_lifecycle.py`,
+  with no shim.
+
 ## 0.274.0 — only the newest link opens the account
 
 No signature changes and no existing field default changes. What changes is
