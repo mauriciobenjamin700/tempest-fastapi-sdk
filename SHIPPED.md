@@ -902,7 +902,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `_prepare_generation_config`, pinned end to end against the installed
   transformers by `tests/genai/test_text_seed.py`. **Not covered:** beam
   sampling, assisted/prompt-lookup decoding and DoLa keep the process-wide
-  `set_seed`; `VisionTextGenerator` still ignores `stop`.
+  `set_seed`. `VisionTextGenerator` applies every `GenerationConfig` field
+  and per-call keyword the way `TextGenerator` does — `stop` through the
+  shared `_apply_stop_strings`, plus `stop_event` (#332) — pinned by
+  `tests/genai/test_vision_text_config.py`, which walks
+  `GenerationConfig.model_fields`.
 - **Agents (v0.181.0)** — `tempest_fastapi_sdk.agents`, submodule import, **no
   extra**. Goal in, traced run out — the split from `AIChatPipeline` (which
   answers a chat *turn*). `Agent.run/stream` → `AgentRun` (output + `steps` +

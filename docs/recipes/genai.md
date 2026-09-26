@@ -2596,11 +2596,49 @@ As imagens entram como caminho, `bytes`, `PIL.Image` ou `ndarray` NumPy
 image-opcionais — chamadas só-texto continuam funcionando (é um
 `TextBackend`).
 
-A `seed` (do `GenerationConfig` ou por chamada) segue a mesma regra do
-`TextGenerator`: `generator` próprio da chamada na amostragem simples. Antes
-ela era descartada em silêncio quando vinha do config, e `seed=` por chamada
-fazia o `model.generate` levantar `ValueError` listando `seed` entre os
-`model_kwargs` não usados.
+O `GenerationConfig` vale aqui campo por campo como no `TextGenerator`, e
+os argumentos por chamada também — incluindo `stop_event`:
+
+- `seed` usa um `generator` próprio da chamada na amostragem simples;
+- `stop` (no config ou `stop=` por chamada, que vence o config) encerra a
+  decodificação no token que completa a string de parada, lida contra o
+  tokenizer do processor. A string de parada **fica** no texto devolvido,
+  igual ao `TextGenerator`;
+- os demais campos (`max_new_tokens`, `temperature`, `top_p`, `top_k`,
+  `repetition_penalty`, `do_sample`) vão para o `model.generate`.
+
+```python
+import asyncio
+import threading
+
+from tempest_fastapi_sdk.genai import GenerationConfig, VisionTextGenerator
+
+gen = VisionTextGenerator("llava-hf/llava-1.5-7b-hf")
+config = GenerationConfig(max_new_tokens=128, do_sample=False, stop=["\n\n"])
+
+
+async def main() -> None:
+    """Run this example."""
+    parar = threading.Event()
+    legenda: str = await gen.generate(
+        "USER: <image>\nDê uma legenda curta.\nASSISTANT:",
+        images=["foto.jpg"],
+        config=config,
+        stop=["."],
+        stop_event=parar,
+    )
+    print(legenda)
+
+
+asyncio.run(main())
+```
+
+Antes, `stop` no config era descartado em silêncio (a geração passava da
+string de parada), e `stop=` ou `stop_event=` por chamada faziam o
+`model.generate` levantar `ValueError` listando o argumento entre os
+`model_kwargs` não usados. `tests/genai/test_vision_text_config.py` percorre
+`GenerationConfig.model_fields`: campo novo que o VLM nem aplica nem recusa
+com erro claro derruba o teste.
 
 !!! warning "Convenções de processor variam por família"
     Esta classe mira a interface comum `processor(text=..., images=...)`

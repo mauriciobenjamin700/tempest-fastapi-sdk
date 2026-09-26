@@ -147,6 +147,19 @@ attribute 'decode'`.
 - **`VisionTextGenerator` honra a `seed`.** A do `GenerationConfig` era
   descartada em silêncio, e `seed=` por chamada fazia o `model.generate`
   levantar `ValueError`; agora segue a mesma regra do `TextGenerator`.
+- **`VisionTextGenerator` honra `stop` e `stop_event` (#332).** O `stop` do
+  `GenerationConfig` era descartado em silêncio (a geração passava da string
+  de parada), e `stop=` ou `stop_event=` por chamada fazia o `model.generate`
+  levantar `ValueError: The following model_kwargs are not used by the
+  model`. Agora o VLM usa os mesmos helpers do `TextGenerator`
+  (`_resolve_control` e `_apply_stop_strings`, promovidos a funções de
+  módulo em `genai/text.py`): `stop` vira `stop_strings` contra o tokenizer
+  do processor e a string de parada fica no texto, como no `TextGenerator`;
+  `stop_event` encerra no próximo token e levanta `GenerationStoppedError`.
+  `tests/genai/test_vision_text_config.py` percorre
+  `GenerationConfig.model_fields` (no config e por chamada) e compara as
+  keywords de `generate`/`chat` com as do `TextGenerator`: campo novo que o
+  VLM nem aplica nem recusa derruba o teste.
 
 ### Added
 
