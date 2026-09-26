@@ -103,6 +103,19 @@ structured output, already validated, carried by the same tool-calling
 machinery the rest of the agent uses — no second format for the model to get
 wrong.
 
+The call **ends** the run: the model is not asked again. Measured with a
+scripted backend whose second reply should never happen: `backend.calls ==
+1`, `stop_reason=completed`. An answer that does not validate is an ordinary
+tool error — the model reads which field failed and tries again. The run's
+`output` becomes the answer as JSON, and that text is what the `moderator`
+checks; `run.data` is only set on a `completed` run — blocked by moderation
+or cut by a budget, it returns `data=None` and `parse_error` says why.
+
+!!! tip "Any tool can end the run"
+    The mechanism is public: a tool that returns
+    `ToolResult(text=..., final=True)` ends the run as `completed`, with
+    `text` as the answer, without running the other calls of that turn.
+
 !!! tip "Small models answer in prose anyway"
     Small local models routinely work the task out correctly and then answer
     in text regardless of instructions. That is why there is an **extraction
@@ -829,7 +842,11 @@ True 2
 1 True None
 ```
 
-The critic approves by replying with exactly `APPROVED`. A critic asked for
+The critic approves by replying with exactly `APPROVED` — the whole reply,
+ignoring surrounding whitespace and case. `APPROVED? No, the intro is wrong`
+is **not** an approval. And an attempt that stopped before finishing
+(budget, error) never reaches the critic: it comes back as a rejection with
+the reason. A critic asked for
 free-form judgement hedges — "looks good, though you might consider..." is
 impossible to branch on. One reserved word makes the decision
 machine-readable while the **rejection** stays free-form, which is the half
@@ -923,6 +940,13 @@ blocked blocked by moderation (toxicity)
 The goal is checked **before** the model sees anything, and the answer
 before it is returned. A rejection becomes `StopReason.BLOCKED`, not an
 exception.
+
+!!! warning "A moderator that is down blocks"
+    A moderator that **raises** (endpoint down, timeout) also ends the run
+    with `BLOCKED`, and the `output` says
+    `blocked: moderation unavailable (<ExceptionType>)` — the full exception
+    goes to the log. Failing open would return unchecked text as though it
+    had passed moderation.
 
 ## Watching it work
 

@@ -105,7 +105,7 @@ def agent_tool(
                 f"(max {max_depth}). Answer with what you have.",
             )
 
-        child_context = context.child(goal=goal, parent=context.parent or "agent")
+        child_context = context.child(goal=goal, parent=context.agent or "agent")
         run = await agent.run(goal, context=child_context)
 
         artifacts: list[AgentArtifact] = []

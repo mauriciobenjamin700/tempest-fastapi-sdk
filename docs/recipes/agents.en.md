@@ -196,8 +196,18 @@ if __name__ == "__main__":
 ```
 
 Steps alone do **not** bound a run: one tool call can hang, and the agent
-sits there without burning a single step. That is why wall-clock is checked
-too, and why `max_seconds` has a default (120s) rather than being optional.
+sits there without burning a single step. That is why every model call and
+every tool call runs under the time **left** on the clock and is cancelled
+when it runs out, and why `max_seconds` has a default (120s) rather than
+being optional. Measured with a tool that sleeps 3 s and `max_seconds=0.5`:
+the run ends after 0.75 s with `stop_reason=timeout` — the 0.5 s budget plus
+the 0.25 s grace a top-level tool gets so a sub-agent can stop on its own and
+hand back its trace.
+
+The step and tool-call ceilings also hold **inside** one turn: a model that
+asks for 50 tools at once does not get 50. Measured with `max_steps=5,
+max_tool_calls=2` and one turn asking for 50 calls: 2 ran, and the run
+stopped at `max_tool_calls`.
 
 The budget exists because the loop's natural stopping condition — "the model
 decided it was done" — is exactly what a confused model does not meet.
@@ -479,8 +489,25 @@ AgentToolError: disk full
 completed I could not save the note: the disk is full.
 ```
 
-Any exception from the handler is treated the same way — using
-`AgentToolError` just makes the intent explicit.
+Any exception from the handler also becomes an observation, with one
+difference that matters: an `AgentToolError` message is treated as
+**written to be shown** and goes onto the trace in full, while for any other
+exception the trace keeps only its type. The trace is what the HTTP router,
+the SSE stream and the sinks expose, and an arbitrary exception carries a
+DSN, a token or a file path. Measured with a handler raising
+`RuntimeError("could not connect to postgresql://admin:hunter2@db:5432/app")`:
+the model reads the whole text, and the step records
+`RuntimeError: the tool failed (details withheld)` — the password is not in
+`run.model_dump_json()`. The full exception goes to the log
+(`tempest_fastapi_sdk.agents.agent`). In development,
+`Agent(..., expose_tool_errors=True)` records the whole text on the trace.
+
+!!! tip "Arguments as a JSON string"
+    OpenAI-format servers (vLLM, TGI, hosted APIs) send a call's
+    `arguments` as a JSON **string**; the agent parses it. Invalid JSON, or
+    anything that is not an object, becomes a tool error the model reads —
+    not a call with `{}`. When the call carries an `id`, the `tool` message
+    sent back includes `tool_call_id` and `name`.
 
 ## Writing your own tool
 
@@ -564,8 +591,8 @@ into a `ToolResult` for you.
 
 ## Serving it over HTTP
 
-```python title="app.py" hl_lines="11 15 19"
-from fastapi import FastAPI
+```python title="app.py" hl_lines="11 14 23 30"
+from fastapi import FastAPI, Header
 
 from agent_setup import weather_tool
 from tempest_fastapi_sdk.agents import (
@@ -576,6 +603,17 @@ from tempest_fastapi_sdk.agents import (
 from tempest_fastapi_sdk.genai import TextGenerator, TextModel
 
 store = InMemoryAgentRunSink(max_runs=50)
+
+
+def current_user(x_user_id: str = Header()) -> str:
+    """Return who is calling.
+
+    A stand-in for your real authentication dependency: trusting a header
+    is only acceptable behind a gateway that sets it.
+    """
+    return x_user_id
+
+
 agent = Agent(
     TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT),
     tools=[weather_tool],
@@ -583,7 +621,7 @@ agent = Agent(
 )
 
 app = FastAPI()
-app.include_router(make_agent_router(agent, run_store=store))
+app.include_router(make_agent_router(agent, run_store=store, owner=current_user))
 ```
 
 ```bash
@@ -592,10 +630,21 @@ uvicorn app:app --reload
 
 | Route | What it does |
 | --- | --- |
-| `POST /api/agent/run` | Runs to completion, returns the record |
-| `POST /api/agent/run/stream` | Each step as an SSE event, then `done` |
-| `GET /api/agent/runs` | Recent runs (only with a `run_store`) |
-| `GET /api/agent/runs/{i}/artifacts/{name}` | Downloads an artifact |
+| `POST /api/agent/run` | Runs to completion, returns the record with its `run_id` |
+| `POST /api/agent/run/stream` | Each step as an SSE event, then a `done` carrying `{"run_id": ...}` |
+| `GET /api/agent/runs` | Recent runs of **the caller** (only with a `run_store`) |
+| `GET /api/agent/runs/{run_id}/artifacts/{name}` | Downloads an artifact; `name` may contain `/` (`illustrator/bike.png`) |
+
+A kept run is addressed by its `run_id`, a stable id — never by its position
+in the history, which shifts with every new run and would make a link from
+one second ago serve someone else's run.
+
+`owner=` is the FastAPI dependency that returns **who is calling**. With it,
+every run is tagged with that id (`AgentRun.owner`, and `AgentContext.owner`
+for tools to read), `GET /runs` lists only the caller's runs, and another
+caller's artifact answers `404`, exactly like a run that does not exist.
+Without `owner=`, everyone who reaches the router sees every kept run — only
+acceptable when a single principal can reach it.
 
 The JSON carries artifacts as **metadata** (name, type, size), never bytes:
 a generated image is megabytes, and base64 in the body inflates that by a
@@ -613,9 +662,10 @@ which also means an `<img src>` works directly.
 - **Ready-made tools** cover image, vision, audio, RAG and web over the
   models you already host.
 - **Named artifacts** chain multimodal work without disk or base64.
-- **A tool error becomes an observation** for the model, not an exception.
+- **A tool error becomes an observation** for the model, not an exception —
+  and only `AgentToolError` text reaches the trace in full.
 - **`make_agent_router`** publishes `/run`, `/run/stream` and artifact
-  download.
+  download by `run_id`; `owner=` keeps each caller's runs apart.
 
 Next: [AI agents (advanced)](agents-advanced.md) — typed structured output,
 the three memory layers, skills loaded on demand, delegation between agents,

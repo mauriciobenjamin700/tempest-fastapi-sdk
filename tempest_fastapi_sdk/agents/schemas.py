@@ -15,6 +15,7 @@ run reports why it stopped rather than just stopping.
 from __future__ import annotations
 
 from typing import Any
+from uuid import uuid4
 
 from pydantic import Field
 
@@ -51,7 +52,9 @@ class StopReason(BaseStrEnum):
     * ``TIMEOUT`` — the wall-clock budget ran out first.
     * ``MAX_TOOL_CALLS`` — the tool-call budget ran out first.
     * ``ERROR`` — the model backend itself failed.
-    * ``BLOCKED`` — moderation rejected the goal or the answer.
+    * ``BLOCKED`` — moderation rejected the goal or the answer, or the
+      moderator itself failed. A moderator that raises fails **closed**:
+      an unchecked answer is never returned as if it had been checked.
     """
 
     COMPLETED = "completed"
@@ -121,6 +124,12 @@ class ToolResult(BaseSchema):
     Attributes:
         text (str): What the model reads as the tool's output.
         artifacts (list[AgentArtifact]): Binary results, if any.
+        run (AgentRun | None): The delegated run, when the tool was an
+            agent.
+        final (bool): Whether this result ends the run. A submission tool
+            (the structured ``final_answer``) sets it so calling the tool
+            *is* finishing, instead of the model being asked for one more
+            turn it does not need.
     """
 
     text: str = Field(
@@ -138,6 +147,14 @@ class ToolResult(BaseSchema):
         title="Delegated run",
         description="Set when the tool was another agent — its full run, "
         "so the caller can nest the trace instead of losing it.",
+    )
+    final: bool = Field(
+        default=False,
+        title="Final",
+        description="End the run with this result: the agent stops, "
+        "reports COMPLETED and uses text as the answer without asking the "
+        "model again. Remaining calls of the same turn are not executed.",
+        examples=[False],
     )
 
     @classmethod
@@ -290,8 +307,25 @@ class AgentRun(BaseSchema):
             trusting ``output``.
         seconds (float): Total wall-clock duration.
         agent (str): The agent's name, for traces holding more than one.
+        run_id (str): Stable identifier of this run — what the HTTP router
+            addresses a kept run by. A position in a history list is not an
+            identifier: it shifts every time a newer run arrives.
+        owner (str | None): Who the run belongs to, when the caller said
+            (``AgentContext.owner``); ``None`` otherwise.
     """
 
+    run_id: str = Field(
+        default_factory=lambda: uuid4().hex,
+        title="Run id",
+        description="Stable identifier of this run.",
+        examples=["3f2b8c1d9e4a4f6b8a7c5d3e2f1a0b9c"],
+    )
+    owner: str | None = Field(
+        default=None,
+        title="Owner",
+        description="Who the run belongs to, when known.",
+        examples=["user-42"],
+    )
     goal: str = Field(
         title="Goal",
         description="What the agent was asked to do.",
@@ -347,9 +381,16 @@ class AgentRun(BaseSchema):
         """Return the tool names invoked, in order.
 
         Returns:
-            list[str]: One entry per tool step, including failed ones.
+            list[str]: One entry per tool step, including failed ones and
+            delegations — a delegation is invoked by tool name like any
+            other call, so leaving it out would under-count what the model
+            asked for.
         """
-        return [step.name for step in self.steps if step.kind == StepKind.TOOL]
+        return [
+            step.name
+            for step in self.steps
+            if step.kind in (StepKind.TOOL, StepKind.AGENT)
+        ]
 
     def artifact(self, name: str) -> AgentArtifact | None:
         """Return one artifact by name.

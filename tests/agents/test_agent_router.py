@@ -140,10 +140,11 @@ class TestStreamEndpoint:
         ) as response:
             assert response.status_code == 200
             payload = "".join(response.iter_text())
+        lines = payload.splitlines()
         kinds = [
-            json.loads(line[len("data: ") :])["kind"]
-            for line in payload.splitlines()
-            if line.startswith("data: ") and line != "data: "
+            json.loads(lines[index + 1][len("data: ") :])["kind"]
+            for index, line in enumerate(lines)
+            if line == "event: step"
         ]
         assert kinds == ["model", "tool", "model"]
         assert "event: done" in payload
@@ -167,8 +168,8 @@ class TestHistoryEndpoints:
             ],
             store=store,
         )
-        client.post("/api/agent/run", json={"goal": "draw"})
-        response = client.get("/api/agent/runs/0/artifacts/cat.png")
+        run_id = client.post("/api/agent/run", json={"goal": "draw"}).json()["run_id"]
+        response = client.get(f"/api/agent/runs/{run_id}/artifacts/cat.png")
         assert response.status_code == 200
         assert response.headers["content-type"] == "image/png"
         assert response.content == b"\x89PNG-fake"
@@ -176,13 +177,14 @@ class TestHistoryEndpoints:
     def test_unknown_artifact_is_404(self) -> None:
         store = InMemoryAgentRunSink(max_runs=5)
         client = _client([{"content": "a", "tool_calls": []}], store=store)
-        client.post("/api/agent/run", json={"goal": "x"})
-        assert client.get("/api/agent/runs/0/artifacts/ghost.png").status_code == 404
+        run_id = client.post("/api/agent/run", json={"goal": "x"}).json()["run_id"]
+        url = f"/api/agent/runs/{run_id}/artifacts/ghost.png"
+        assert client.get(url).status_code == 404
 
     def test_unknown_run_is_404(self) -> None:
         store = InMemoryAgentRunSink(max_runs=5)
         client = _client([{"content": "a", "tool_calls": []}], store=store)
-        assert client.get("/api/agent/runs/9/artifacts/x.png").status_code == 404
+        assert client.get("/api/agent/runs/nope/artifacts/x.png").status_code == 404
 
     def test_history_is_absent_without_a_store(self) -> None:
         client = _client([{"content": "a", "tool_calls": []}])
@@ -269,3 +271,202 @@ class TestPersistenceSink:
         await sink(AgentRun(goal="g", output="o"))
         assert len(added) == 1
         assert added[0].goal == "g"
+
+
+def _owned_client(
+    replies: list[dict[str, Any]],
+    store: InMemoryAgentRunSink,
+) -> TestClient:
+    """Build a client whose runs are scoped to the ``X-User`` header."""
+    from fastapi import Header
+
+    def principal(x_user: str = Header(default="anonymous")) -> str:
+        return x_user
+
+    agent = Agent(ScriptedBackend(replies), tools=[_drawing_tool()], run_sink=store)
+    app = FastAPI()
+    app.include_router(make_agent_router(agent, run_store=store, owner=principal))
+    return TestClient(app)
+
+
+class TestStableRunIds:
+    def test_artifact_url_survives_a_newer_run(self) -> None:
+        store = InMemoryAgentRunSink(max_runs=5)
+        client = _client(
+            [
+                {"content": "", "tool_calls": [_call("draw", filename="cat.png")]},
+                {"content": "done", "tool_calls": []},
+            ],
+            store=store,
+        )
+        first = client.post("/api/agent/run", json={"goal": "draw"}).json()
+        client.post("/api/agent/run", json={"goal": "something else"})
+        run_id = first["run_id"]
+        response = client.get(f"/api/agent/runs/{run_id}/artifacts/cat.png")
+        assert response.status_code == 200
+        assert response.content == b"\x89PNG-fake"
+
+    def test_a_list_index_is_not_a_run_id(self) -> None:
+        store = InMemoryAgentRunSink(max_runs=5)
+        client = _client(
+            [
+                {"content": "", "tool_calls": [_call("draw", filename="cat.png")]},
+                {"content": "done", "tool_calls": []},
+            ],
+            store=store,
+        )
+        client.post("/api/agent/run", json={"goal": "draw"})
+        assert client.get("/api/agent/runs/0/artifacts/cat.png").status_code == 404
+
+    def test_the_stream_reports_the_run_id(self) -> None:
+        store = InMemoryAgentRunSink(max_runs=5)
+        client = _client([{"content": "hi", "tool_calls": []}], store=store)
+        with client.stream(
+            "POST",
+            "/api/agent/run/stream",
+            json={"goal": "x"},
+        ) as response:
+            payload = "".join(response.iter_text())
+        lines = payload.splitlines()
+        done_at = lines.index("event: done")
+        done = json.loads(lines[done_at + 1][len("data: ") :])
+        assert done["run_id"] == store.recent()[0].run_id
+
+
+class TestNestedArtifactNames:
+    def test_a_sub_agent_artifact_path_is_served(self) -> None:
+        from tempest_fastapi_sdk.agents import agent_tool
+
+        store = InMemoryAgentRunSink(max_runs=5)
+        illustrator = Agent(
+            ScriptedBackend(
+                [
+                    {"content": "", "tool_calls": [_call("draw", filename="bike.png")]},
+                    {"content": "drew", "tool_calls": []},
+                ],
+            ),
+            tools=[_drawing_tool()],
+            name="illustrator",
+        )
+        coordinator = Agent(
+            ScriptedBackend(
+                [
+                    {
+                        "content": "",
+                        "tool_calls": [_call("ask_illustrator", goal="bike")],
+                    },
+                    {"content": "done", "tool_calls": []},
+                ],
+            ),
+            tools=[agent_tool(illustrator)],
+            run_sink=store,
+        )
+        app = FastAPI()
+        app.include_router(make_agent_router(coordinator, run_store=store))
+        client = TestClient(app)
+        body = client.post("/api/agent/run", json={"goal": "draw"}).json()
+        names = [artifact["name"] for artifact in body["artifacts"]]
+        assert names == ["illustrator/bike.png"]
+        response = client.get(
+            f"/api/agent/runs/{body['run_id']}/artifacts/illustrator/bike.png",
+        )
+        assert response.status_code == 200
+        assert response.content == b"\x89PNG-fake"
+
+
+class TestOwnerScoping:
+    def test_runs_are_listed_only_to_their_owner(self) -> None:
+        store = InMemoryAgentRunSink(max_runs=5)
+        client = _owned_client([{"content": "a", "tool_calls": []}], store)
+        client.post("/api/agent/run", json={"goal": "alice"}, headers={"X-User": "a"})
+        client.post("/api/agent/run", json={"goal": "bob"}, headers={"X-User": "b"})
+        mine = client.get("/api/agent/runs", headers={"X-User": "a"}).json()
+        assert [run["goal"] for run in mine] == ["alice"]
+
+    def test_another_owners_artifact_is_404(self) -> None:
+        store = InMemoryAgentRunSink(max_runs=5)
+        client = _owned_client(
+            [
+                {"content": "", "tool_calls": [_call("draw", filename="cat.png")]},
+                {"content": "done", "tool_calls": []},
+            ],
+            store,
+        )
+        body = client.post(
+            "/api/agent/run",
+            json={"goal": "draw"},
+            headers={"X-User": "a"},
+        ).json()
+        url = f"/api/agent/runs/{body['run_id']}/artifacts/cat.png"
+        assert client.get(url, headers={"X-User": "b"}).status_code == 404
+        assert client.get(url, headers={"X-User": "a"}).status_code == 200
+
+    def test_a_tool_reads_the_owner_from_the_context(self) -> None:
+        from fastapi import Header
+
+        seen: list[str | None] = []
+
+        async def whoami(_arguments: dict[str, Any], context: AgentContext) -> str:
+            seen.append(context.owner)
+            return "ok"
+
+        def principal(x_user: str = Header(default="anonymous")) -> str:
+            return x_user
+
+        agent = Agent(
+            ScriptedBackend(
+                [
+                    {"content": "", "tool_calls": [_call("whoami")]},
+                    {"content": "done", "tool_calls": []},
+                ],
+            ),
+            tools=[
+                AgentTool(
+                    name="whoami",
+                    description="Who.",
+                    parameters={"type": "object", "properties": {}},
+                    handler=whoami,
+                ),
+            ],
+        )
+        app = FastAPI()
+        app.include_router(make_agent_router(agent, owner=principal))
+        TestClient(app).post(
+            "/api/agent/run",
+            json={"goal": "g"},
+            headers={"X-User": "alice"},
+        )
+        assert seen == ["alice"]
+
+    def test_the_owner_is_recorded_on_the_run(self) -> None:
+        store = InMemoryAgentRunSink(max_runs=5)
+        client = _owned_client([{"content": "a", "tool_calls": []}], store)
+        client.post("/api/agent/run", json={"goal": "g"}, headers={"X-User": "a"})
+        assert store.recent()[0].owner == "a"
+
+
+class TestToolFailuresOverHttp:
+    def test_raw_exception_text_is_not_served(self) -> None:
+        async def leaky(_arguments: dict[str, Any], _ctx: AgentContext) -> str:
+            raise RuntimeError("postgresql://admin:hunter2@db/app")
+
+        agent = Agent(
+            ScriptedBackend(
+                [
+                    {"content": "", "tool_calls": [_call("db")]},
+                    {"content": "sorry", "tool_calls": []},
+                ],
+            ),
+            tools=[
+                AgentTool(
+                    name="db",
+                    description="DB.",
+                    parameters={"type": "object", "properties": {}},
+                    handler=leaky,
+                ),
+            ],
+        )
+        app = FastAPI()
+        app.include_router(make_agent_router(agent))
+        response = TestClient(app).post("/api/agent/run", json={"goal": "g"})
+        assert "hunter2" not in response.text

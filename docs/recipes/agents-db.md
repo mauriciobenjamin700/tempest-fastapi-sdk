@@ -330,10 +330,13 @@ Lendo de cima para baixo: o endpoint põe `user_id` no `state`; o `state`
 acompanha a execução inteira; a ferramenta pega de lá e entrega ao service. O
 modelo nunca vê esse valor e não tem como trocá-lo.
 
-!!! warning "`make_agent_router` não semeia contexto"
-    O router pronto chama `agent.run(goal)` sem contexto — ele não conhece a
-    sua autenticação. Quando a ferramenta precisa saber quem pergunta,
-    escreva o endpoint você mesmo, como acima.
+!!! warning "`make_agent_router` não semeia o `state`"
+    O router pronto não conhece a sua autenticação nem o seu `state`. O que
+    ele oferece é `owner=`: uma dependência FastAPI que devolve quem chama,
+    e cujo valor chega à ferramenta como `context.owner` (e separa o
+    histórico por quem chama). Quando isso basta — a ferramenta só precisa
+    do id —, passe `owner=`; quando ela precisa de mais que um id, escreva
+    o endpoint você mesmo, como acima.
 
 ### Rascunho compartilhado entre as ferramentas
 
@@ -436,7 +439,7 @@ aquilo na resposta. Monte a string com os campos que podem ser lidos.
   service, e isso serve a todo consumidor sem requisição.
 - **Um `AsyncDatabaseManager` por processo**, com `disconnect()` no lifespan.
 - **`context` carrega o que o modelo não pode escolher** — antes de tudo, quem
-  está perguntando. `make_agent_router` não semeia contexto.
+  está perguntando. `make_agent_router` só semeia `context.owner`, via `owner=`.
 - **O retorno é texto para o modelo**: curto, com os filtros de segurança
   travados no código e sem campo privado.
 

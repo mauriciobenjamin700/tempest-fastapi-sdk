@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from tempest_fastapi_sdk.agents import (
     Agent,
@@ -227,10 +227,15 @@ class TestFinalAnswerTool:
     async def test_records_the_validated_answer_on_the_context(self) -> None:
         built = final_answer_tool(Summary)
         context = AgentContext()
-        await built.invoke({"headline": "All good", "bullets": ["a"]}, context)
-        stored = next(iter(context.state.values()))
+        result = await built.invoke(
+            {"headline": "All good", "bullets": ["a"]},
+            context,
+        )
+        stored = context.answer
         assert isinstance(stored, Summary)
         assert stored.headline == "All good"
+        assert result.final is True
+        assert context.state == {}
 
 
 class TestRunStructured:
@@ -499,3 +504,27 @@ class TestStructuredVerdict:
             max_rounds=2,
         )
         assert result.accepted is False
+
+
+class TreeNode(BaseModel):
+    """A self-referential model, as a tree or a thread of replies is."""
+
+    label: str
+    children: list[TreeNode] = []
+
+
+class TestSchemaOfRecursion:
+    def test_a_self_referential_model_does_not_recurse_forever(self) -> None:
+        schema = schema_of(TreeNode)
+        assert schema["type"] == "object"
+        assert "label" in schema["properties"]
+        assert "TreeNode" in schema["$defs"]
+        items = schema["properties"]["children"]["items"]
+        assert items == {"$ref": "#/$defs/TreeNode"}
+        kept = schema["$defs"]["TreeNode"]
+        assert kept["properties"]["children"]["items"] == {
+            "$ref": "#/$defs/TreeNode",
+        }
+
+    def test_a_non_recursive_model_still_has_no_defs(self) -> None:
+        assert "$defs" not in schema_of(NestedArgs)
