@@ -1075,6 +1075,25 @@ def get_embedder(model_id: str) -> Embedder:
     return registry.get(model_id, lambda: Embedder(model_id))
 ```
 
+!!! note "Handle guardado continua contando no `max_models`"
+    Guardar o objeto que o `get()` devolveu (`embedder = registry.get(...)`
+    no startup, usado em todo request) é seguro com os loaders do SDK.
+    Depois de uma evicção, a próxima chamada nesse handle **não** recarrega
+    por fora: ela registra o modelo de novo na mesma chave (substituindo o
+    objeto que um `get()` posterior tenha criado ali), despeja o menos usado
+    e só então carrega os pesos. Com `max_models=1`, guardar `A`, pedir `B`
+    e voltar a usar `A` dá três loads e dois unloads, nunca os dois modelos
+    residentes ao mesmo tempo.
+
+    Se o modelo despejado ainda tem chamadas rodando, quem entra no lugar
+    dele espera elas terminarem antes de carregar — vale para o handle
+    readmitido e para o modelo novo de um `get()`. A exceção é a chamada
+    feita **de dentro** da chamada de outro modelo: ela não espera (a
+    chamada de fora pode ser justamente o que o despejado aguarda), então
+    ali o teto é excedido até a chamada de fora acabar. Um objeto de
+    terceiro que só implementa `unload()` não tem esse gancho — para esses,
+    chame `get()` por request.
+
 ### O que está carregado agora
 
 Um serviço self-hosted pode segurar vários modelos ao mesmo tempo, cada um
