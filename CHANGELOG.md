@@ -539,6 +539,37 @@ Os tetos default estão abaixo; quem precisa de mais passa
   e `torch.cuda`, chamadas síncronas que travavam todo request concorrente.
   Agora roda em `asyncio.to_thread`.
 
+O `ClassifierModerator` pontuava modelo multi-rótulo com softmax e só lia os
+primeiros 512 tokens (#316): com o `unitary/toxic-bert`, que a receita
+recomenda, `insult` nunca passava do limiar ao lado de `toxic`, e um insulto
+atrás de uns 650 tokens inócuos pontuava `toxic` em 0,001.
+
+### Fixed
+
+- **`ClassifierModerator` usa sigmoid em modelo multi-rótulo.**
+  `activation="auto"` (default) lê `config.problem_type`: sigmoid para
+  `"multi_label_classification"` ou saída única, softmax nos demais. Medido
+  com o `unitary/toxic-bert` (revisão `4d6c22e`), os seis rótulos em
+  `flagged_labels`, sobre um conjunto fixo de 10 frases ofensivas e 5 limpas:
+  com sigmoid, 31 rótulos reportados nas 10 ofensivas e 0 das 5 limpas
+  sinalizadas; com softmax, 10 rótulos (só `toxic`) e 1 limpa sinalizada
+  (`toxic` 0,556).
+- **`ClassifierModerator` não trunca mais.** O texto é classificado em
+  janelas com sobreposição e cada rótulo fica com o maior score entre elas.
+  O default é curto (`window_tokens=64`, `window_overlap=16`) porque o
+  modelo dilui uma frase curta em texto benigno: sobre 40 trechos de 1801 a
+  3030 tokens com uma frase ofensiva inserida, janelas de 512 pegaram 1 de
+  40 e janelas de 64 pegaram 36 de 40, com 0 de 40 trechos limpos
+  sinalizados em ambas. Texto de até 62 tokens continua numa passada só;
+  texto maior custa mais passadas (a tabela está na receita).
+
+### Added
+
+- **`ClassifierModerator(activation=, window_tokens=, window_overlap=)`**,
+  keyword-only. `activation="sigmoid" | "softmax"` força a ativação para
+  checkpoint cuja config não declara o `problem_type`; `window_tokens=None`
+  usa o contexto inteiro do modelo, e qualquer valor é limitado a ele.
+
 ## [0.299.0] — 2026-09-25
 
 Quatro pontes do `alofans-api` sobem para o SDK. O 500 de um

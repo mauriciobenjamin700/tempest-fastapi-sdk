@@ -2019,6 +2019,102 @@ classificador local (ex. `unitary/toxic-bert`) via transformers (`[genai]`),
 lazy, com `flagged_labels`/`threshold`. Qualidade PT-BR de modelos de
 toxicidade varia — trate o classificador como best-effort e mantenha o
 `RuleModerator` como base.
+
+#### O classificador: rótulos independentes, o texto inteiro
+
+O `unitary/toxic-bert` é **multi-rótulo**: `toxic`, `obscene` e `insult` são
+perguntas de sim/não separadas, e um mesmo texto pode ser as três coisas. O
+`ClassifierModerator` lê isso da config do modelo (`problem_type =
+"multi_label_classification"`) e pontua cada rótulo com **sigmoid**. Modelo
+sem essa declaração continua com softmax; `activation="sigmoid"` ou
+`"softmax"` força uma das duas.
+
+Ele também nunca trunca. O texto é cortado em janelas de 64 tokens com
+sobreposição (`window_tokens=64`, `window_overlap=16`), cada janela é
+classificada, e cada rótulo fica com o maior score entre as janelas:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import ClassifierModerator, ModerationResult
+
+mod = ClassifierModerator(
+    "unitary/toxic-bert",
+    flagged_labels=["toxic", "insult"],
+    threshold=0.5,
+)
+
+prefix = "The weather report says it will be sunny and mild. " * 60
+text = prefix + "You are a stupid idiot and I hate you."
+
+
+async def main() -> None:
+    """Modera um texto longo cujo insulto vem depois de 660 tokens inócuos."""
+    verdict: ModerationResult = await mod.check(text)
+    print(verdict.flagged, verdict.categories)
+
+
+asyncio.run(main())
+```
+
+Saída: `True ['toxic', 'insult']` — o mesmo veredito que a frase recebe
+sozinha, 660 tokens depois.
+
+!!! info "Por que sigmoid: o que o softmax fazia"
+    Medido com o `unitary/toxic-bert` (revisão `4d6c22e`), os seis rótulos
+    em `flagged_labels`, `threshold=0.5`, sobre um conjunto fixo de 10
+    frases ofensivas em inglês e 5 limpas:
+
+    | | Sigmoid (agora) | Softmax (antes) |
+    | --- | --- | --- |
+    | frases ofensivas sinalizadas | 10 de 10 | 10 de 10 |
+    | rótulos reportados nelas | 31 (`toxic` + `obscene` + `insult` em todas, `threat` em uma) | 10 (só `toxic`, sempre) |
+    | frases limpas sinalizadas | 0 de 5 | 1 de 5 |
+
+    Com softmax os seis scores somam 1, então os rótulos disputam a mesma
+    massa: `insult` nunca passou de 0,5 ao lado de `toxic`, e uma política
+    chaveada em `insult` não via nada. Falha também no sentido oposto —
+    todo score de *"Could you send me the invoice for last month?"* é
+    minúsculo, o softmax obriga a soma a dar 1 mesmo assim, e o `toxic`
+    saiu em 0,556.
+
+!!! info "Por que janelas de 64 tokens: o modelo dilui"
+    Antes, `truncation=True` classificava só os primeiros 512 tokens. Com
+    uns 650 tokens inócuos na frente, o mesmo insulto pontuava `toxic` em
+    0,001 — prefixar enchimento bastava para passar.
+
+    Janela do tamanho do contexto do modelo (512) não fecha esse buraco
+    inteiro, porque o próprio classificador dilui uma frase no meio de muito
+    texto benigno: numa janela só, o insulto atrás de 130 tokens de
+    enchimento ainda foi pego em 9 de 10 frases, atrás de 260 tokens em 3
+    de 10, atrás de 490 tokens em nenhuma. Medido sobre 40 trechos da prosa
+    em inglês deste site (de 1801 a 3030 tokens cada), com uma das 10 frases
+    inserida numa palavra aleatória (seed 316), `window_overlap` em um
+    quarto da janela:
+
+    | `window_tokens` | insulto pego | trecho limpo sinalizado | ms por check |
+    | --- | --- | --- | --- |
+    | 512 | 1 de 40 | 0 de 40 | 41 |
+    | 256 | 6 de 40 | 0 de 40 | 36 |
+    | 128 | 23 de 40 | 0 de 40 | 41 |
+    | 96 | 28 de 40 | 0 de 40 | 66 |
+    | **64** (default) | **36 de 40** | 0 de 40 | 62 |
+    | 48 | 39 de 40 | 0 de 40 | 80 |
+    | 32 | 40 de 40 | 0 de 40 | 139 |
+
+    A coluna de latência saiu de uma RTX 4070 Ti SUPER num host sob carga
+    pesada de outros jobs: leia a razão entre as linhas, não o valor
+    absoluto. Texto que cabe numa janela (até 62 tokens aqui) custa a mesma
+    passada única de antes.
+
+!!! tip "Quando mudar a janela"
+    Janela mais curta vê menos da frase em volta de cada palavra. A tabela
+    acima não mede o que isso custa para uma política que depende de
+    contexto (ironia, citação, negação) — se a sua depende, valide um
+    `window_tokens` maior nos seus dados. `window_tokens=None` usa o
+    contexto inteiro do modelo, e qualquer valor é limitado a ele (512 no
+    BERT).
+
 ### Contabilidade de uso por usuário (tabela)
 
 O `GenAIMetrics` acima responde "como está a frota agora". Ele **não**
