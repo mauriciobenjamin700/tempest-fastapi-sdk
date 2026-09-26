@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+`AlembicHelper` não tinha caminho para código async (#323). O `env.py` que o
+SDK gera sobe o engine com `asyncio.run(...)`, então `helper.upgrade()`
+chamado de um lifespan do FastAPI morria dentro do Alembic com `asyncio.run()
+cannot be called from a running event loop` e um `RuntimeWarning: coroutine
+'run_async_migrations' was never awaited`; a docstring mandava usar
+`asyncio.to_thread`, e cada serviço escrevia esse passo à mão. O `check()`
+era pior: engolia o erro e devolvia `False`, relatando drift que nunca foi
+medido.
+
+### Added
+
+- **Par `_async` para todo método que roda o `env.py`**: `upgrade_async`,
+  `safe_upgrade_async`, `downgrade_async`, `stamp_async`, `revision_async`,
+  `check_async`, `current_async`, `has_existing_schema_async`, `adopt_async`,
+  `sync_schema_async`, `squash_async` e `pending_destructive_ops_async`, com a
+  mesma assinatura do síncrono (teste compara). Rodam o síncrono numa worker
+  thread — sem loop próprio, então o `asyncio.run` do `env.py` funciona lá — e
+  por isso funcionam com todo `env.py` já gerado. Medido com 20 revisions em
+  SQLite: `upgrade_async` levou de 0,10 a 0,14 s e um ticker de 5 ms no loop
+  seguiu rodando (maior intervalo entre ticks de 7 a 26 ms, três execuções).
+  Rodar no loop via `AsyncConnection.run_sync` (receita de connection sharing
+  do Alembic) foi descartado como default: contra o `env.py` gerado até a
+  0.299.0 ele falha com o mesmo erro de `asyncio.run`.
+- **`env.py` gerado aceita `config.attributes["connection"]`.** Recebendo uma
+  conexão (de dentro de `AsyncConnection.run_sync`), migra nela sem criar
+  engine; executado de um loop **sem** conexão, levanta `RuntimeError`
+  explicando as duas saídas antes de criar a coroutine, em vez do erro de
+  `asyncio.run` com coroutine não aguardada. Vale para projeto que regenerar
+  o `env.py`; o existente continua funcionando com os métodos `_async`.
+
+### Changed
+
+- **Método síncrono que roda o `env.py` levanta com um loop rodando**
+  (`upgrade`, `safe_upgrade`, `downgrade`, `stamp`, `revision`, `check`,
+  `adopt`, `sync_schema`, `squash`): `RuntimeError` nomeando o par `_async`,
+  antes de tocar no Alembic. `revision` recusa mesmo com
+  `autogenerate=False`, porque `revision_environment` no ini faz esse caminho
+  executar o `env.py`. `current()` e `has_existing_schema()` continuam
+  funcionando no loop quando há driver síncrono; só o fallback só-async
+  (`asyncpg` sem `psycopg2`) levanta, nomeando `current_async` /
+  `has_existing_schema_async`. Quem chamava o síncrono de código async com um
+  `env.py` próprio sem `asyncio.run` passa a receber o erro — troque pelo
+  `_async`.
+- Receitas `migrations` e `database` (PT/EN) usam os métodos `_async` no
+  lifespan; o `asyncio.to_thread` escrito à mão saiu dos exemplos. O scaffold
+  do `tempest new` não chama o helper no lifespan, então não mudou.
+
 O ciclo de vida dos loaders self-hosted de `genai` tinha dois defeitos
 repetidos em todas as classes, e o `stream()` do `TextGenerator` travava o
 event loop. Três primeiras chamadas simultâneas a `TextGenerator.generate`
@@ -82,6 +129,24 @@ attribute 'decode'`.
   helper saiu de `genai/_lifecycle.py` para `utils/_lifecycle.py` (continua
   privado): importar de `genai` puxava 39 módulos de `genai` para dentro de
   `faces`, que não depende dele.
+- **A `seed` do `TextGenerator` vale sob concorrência (#321).** O
+  `model.generate` não aceita `torch.Generator` por chamada
+  (`generate(..., generator=g)` levanta `ValueError` no transformers 4.57.6
+  e no 5.17.0), e o `transformers.set_seed` resemeava o RNG do processo:
+  duas chamadas concorrentes com a mesma seed divergiam da execução serial
+  (5 de 5 pares, `Qwen/Qwen2.5-0.5B-Instruct` na CPU e na GPU) e toda
+  chamada sem seed virava determinística por tabela. Na amostragem simples
+  (`do_sample=True`, `num_beams=1`, sem modelo assistente) um logits
+  processor privado sorteia o token com um `torch.Generator` da chamada;
+  agora 0 de 5 pares divergem, e sem concorrência a mesma seed dá o mesmo
+  texto de antes. Custo só nas chamadas com seed: o passo de escolha do
+  token vai de 1,07 para 3,08 ms na RTX 4070 Ti SUPER e de 7,3 para 13,3 ms
+  na CPU (vocabulário de 151 936), de 4 a 6% de throughput na GPU e 12% na
+  CPU, medidos numa máquina carregada. Beam sampling, decodificação
+  assistida/prompt lookup e DoLa continuam no `set_seed` global.
+- **`VisionTextGenerator` honra a `seed`.** A do `GenerationConfig` era
+  descartada em silêncio, e `seed=` por chamada fazia o `model.generate`
+  levantar `ValueError`; agora segue a mesma regra do `TextGenerator`.
 
 ### Added
 
@@ -96,14 +161,6 @@ attribute 'decode'`.
 - **`VoiceEmbedder(idle_unload_seconds=)`** + `unload_if_idle()`, no mesmo
   contrato; o `ModelRegistry.unload_idle()` passa a liberar o extrator de voz.
 
-### Changed
-
-- **A `seed` do `TextGenerator` é documentada como global ao processo.**
-  `transformers.set_seed` resemeia os RNGs do processo e o `model.generate`
-  não aceita `torch.Generator` por chamada (conferido no transformers
-  4.57), então uma geração com seed só reproduz sem outra geração com
-  amostragem concorrente. Sem mudança de comportamento; o aviso está na
-  receita e na docstring.
 Auditoria dos backends de genai e do stream do `HTTPClient`: um timeout no
 meio do stream reenviava o POST e repetia o texto já entregue, o Ollama
 devolvia `""` para um corpo de erro, o cliente OpenAI mandava campos que o

@@ -1963,7 +1963,6 @@ de data ordena cronologicamente e torna conflitos de merge óbvios.
 ```python
 # src/api/app.py — dentro do lifespan
 
-import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -1979,11 +1978,17 @@ from src.core.settings import settings
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Run pending migrations, then serve."""
     helper = AlembicHelper("alembic.ini", db_url=settings.DATABASE_URL)
-    await asyncio.to_thread(helper.upgrade)
+    await helper.upgrade_async()
     await db.connect()
     yield
     await db.disconnect()
 ```
+
+`upgrade_async()` roda a migration numa thread de trabalho: o `env.py` do SDK
+chama `asyncio.run`, que não aninha dentro do loop do lifespan, então um
+`helper.upgrade()` simples ali levanta `RuntimeError` nomeando o
+`upgrade_async`. Todo comando que roda o `env.py` tem o mesmo par `_async` —
+veja [Migrations »](migrations.md#de-codigo-async-use-o-metodo-_async).
 
 !!! warning "Migrações destrutivas: use `safe_upgrade`"
     `helper.pending_destructive_ops()` lista DROPs de coluna/tabela

@@ -187,7 +187,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `head`), `base_revision()` and `has_existing_schema()` are the two
   questions behind it. Exists because `create_tables()` + `stamp("head")`
   is a plausible bootstrap that leaves an old schema with Alembic
-  declaring itself up to date — recipe `docs/recipes/migrations.md`. **Transactions (v0.200.0):**
+  declaring itself up to date — recipe `docs/recipes/migrations.md`.
+  **Async callers (#323):** every `AlembicHelper` method that runs
+  `env.py` has an `*_async` twin (`upgrade_async`, `sync_schema_async`,
+  `check_async`, ... — same signature, worker thread, works with any
+  `env.py` already generated); the sync method raises a `RuntimeError`
+  naming the twin when a loop is running, instead of Alembic's nested
+  `asyncio.run` error. Generated `env.py` also accepts
+  `config.attributes["connection"]` (Alembic connection sharing).
+  Guard: `tests/db/test_migrations_async.py`. **Transactions (v0.200.0):**
   `transaction(session)` / `savepoint(session)` (+ `repo.transaction()` /
   `.savepoint()`), depth counter in `session.info` so **every repository on
   that session joins the same block**; `commit()`/`flush()`/`rollback()` on
@@ -873,6 +881,26 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   for the evicted model's in-flight calls before building — `max_models`
   holds for kept handles too (#320); the one allowance is a call nested
   inside another model's call, which does not wait.
+  id and `idle_unload_seconds`; `TextToSpeech` gained
+  `idle_unload_seconds` and no longer leaks its temp `.wav` on failure.
+  `ModelRegistry` eviction marks the loader evicted, so a handle kept past
+  it re-registers through the registry (evicting the LRU) and waits for the
+  evicted model's in-flight calls before building — `max_models` holds for
+  kept handles too (#320); the one allowance is a call nested inside
+  another model's call, which does not wait.
+  **Not covered:** `VoiceEmbedder` and `faces.FaceRecognizer` still use the
+  old unguarded pattern.
+- **Per-call sampling seed (Unreleased)** — `TextGenerator` (and now
+  `VisionTextGenerator`, which used to drop `config.seed` and choke on a
+  per-call `seed=`) seeds plain multinomial sampling through a private
+  `_SeededSampler` logits processor holding its own `torch.Generator`,
+  instead of `transformers.set_seed`: concurrent seeded calls match the
+  serial run and the process RNG is left alone. The warper chain is a port
+  of `_get_logits_processor`, resolved through the model's
+  `_prepare_generation_config`, pinned end to end against the installed
+  transformers by `tests/genai/test_text_seed.py`. **Not covered:** beam
+  sampling, assisted/prompt-lookup decoding and DoLa keep the process-wide
+  `set_seed`; `VisionTextGenerator` still ignores `stop`.
 - **Agents (v0.181.0)** — `tempest_fastapi_sdk.agents`, submodule import, **no
   extra**. Goal in, traced run out — the split from `AIChatPipeline` (which
   answers a chat *turn*). `Agent.run/stream` → `AgentRun` (output + `steps` +

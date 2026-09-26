@@ -36,6 +36,7 @@ from tempest_fastapi_sdk.genai.schemas import (
     precision_kwarg,
 )
 from tempest_fastapi_sdk.genai.text import (
+    _apply_seed,
     _require_transformers,
     auto_dtype_name,
     resolve_device,
@@ -307,25 +308,36 @@ class VisionTextGenerator:
             kwargs,
         )
 
-    def _generate_sync(  # pragma: no cover - needs torch + a real model
+    def _generate_sync(
         self,
         prompt: str,
         images: list[Any] | None,
         config: GenerationConfig | None,
         overrides: dict[str, Any],
     ) -> str:
-        """Run blocking multimodal generation and return the completion."""
+        """Run blocking multimodal generation and return the completion.
+
+        ``seed`` (per call, or from ``config``) is not a ``model.generate``
+        argument: it is taken out of the kwargs and applied the same way
+        :class:`~tempest_fastapi_sdk.genai.TextGenerator` applies it — a
+        private per-call generator for plain sampling — so concurrent
+        seeded calls do not disturb each other.
+        """
         with self._lifecycle.use():
+            torch, transformers = _require_transformers()
+            call_overrides = dict(overrides)
+            seed: int | None = call_overrides.pop("seed", None)
+            if seed is None and config is not None:
+                seed = config.seed
             pil_images = [_load_image(image) for image in images] if images else None
             inputs = self._processor(
                 text=prompt,
                 images=pil_images,
                 return_tensors="pt",
             ).to(self._model.device)
-            output = self._model.generate(
-                **inputs,
-                **self._gen_kwargs(overrides, config),
-            )
+            gen_kwargs = self._gen_kwargs(call_overrides, config)
+            _apply_seed(torch, transformers, self._model, seed, gen_kwargs)
+            output = self._model.generate(**inputs, **gen_kwargs)
             generated = output[0][inputs["input_ids"].shape[1] :]
             text = self._processor.decode(generated, skip_special_tokens=True)
             return str(text)

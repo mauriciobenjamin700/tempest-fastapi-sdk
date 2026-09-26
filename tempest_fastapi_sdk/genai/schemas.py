@@ -186,8 +186,8 @@ class GenerationConfig(BaseSchema):
 
         ``seed`` and ``stop`` are dropped from the mapping — they are not
         ``transformers`` ``generate`` kwargs. The generator reapplies them
-        itself: ``seed`` via ``transformers.set_seed`` and ``stop`` via the
-        ``stop_strings`` generation argument (see
+        itself: ``seed`` through a per-call ``torch.Generator`` and ``stop``
+        via the ``stop_strings`` generation argument (see
         :meth:`~tempest_fastapi_sdk.genai.text.TextGenerator._resolve_control`).
 
         Returns:
