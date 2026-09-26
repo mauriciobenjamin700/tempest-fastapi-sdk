@@ -18,15 +18,23 @@ use, so importing this module costs nothing.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Response, UploadFile, status
+from pydantic import Field
 
+from tempest_fastapi_sdk.exceptions.validation import ValidationException
 from tempest_fastapi_sdk.genai.inventory import ModelRuntimeReport, runtime_report
-from tempest_fastapi_sdk.genai.schemas import GenerationConfig, ImageGenerationConfig
+from tempest_fastapi_sdk.genai.schemas import (
+    GenAIRequestLimits,
+    GenerationConfig,
+    ImageGenerationConfig,
+)
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 from tempest_fastapi_sdk.sse import ServerSentEvent, sse_response
+from tempest_fastapi_sdk.utils.upload import read_upload_capped
 
 if TYPE_CHECKING:
     from starlette.responses import StreamingResponse
@@ -123,11 +131,18 @@ class RagRequestSchema(BaseSchema):
 
     Attributes:
         query (str): The natural-language query.
-        top_k (int): How many chunks to include in the context.
+        top_k (int): How many chunks to include in the context; at least
+            ``1``. The router also caps it at
+            ``GenAIRequestLimits.max_top_k``.
     """
 
     query: str
-    top_k: int = 5
+    top_k: int = Field(
+        default=5,
+        ge=1,
+        title="Top-k",
+        description="How many chunks to include in the context.",
+    )
 
 
 class RagResponseSchema(BaseSchema):
@@ -178,6 +193,7 @@ def make_genai_router(
     models: ModelRegistry | dict[str, Any] | list[Any] | None = None,
     prefix: str = "/api/genai",
     tags: list[str] | None = None,
+    limits: GenAIRequestLimits | None = None,
 ) -> APIRouter:
     """Build a router exposing whichever GenAI objects you inject.
 
@@ -199,6 +215,17 @@ def make_genai_router(
     lifecycle (loading, idle-unloading, auth). Add your own auth by
     including the router under an authenticated parent or wrapping it.
 
+    Every request is checked against ``limits`` before the model runs:
+    prompt length, chat size, ``max_new_tokens``, ``/embed`` batch size,
+    ``top_k``, ``/tts`` text length, image size and steps, and the
+    ``/transcribe`` upload size (read in chunks, so an oversized upload is
+    refused before it is held in memory). A request over any of them gets
+    ``422``; with ``register_exception_handlers`` installed the body also
+    carries ``details={"field": ..., "limit": ...}`` (or
+    ``{"max_bytes": ...}`` for the upload). ``/image`` answers with one
+    image, so it refuses ``config.num_images`` above ``1`` instead of
+    rendering a batch and dropping all but the first.
+
     Args:
         text_generator (TextBackend | None): Backs the text endpoints
             (a ``TextGenerator``, an ``OllamaGenerator``, or any object
@@ -215,6 +242,8 @@ def make_genai_router(
             hold yourself.
         prefix (str): URL prefix. Defaults to ``"/api/genai"``.
         tags (list[str] | None): OpenAPI tags. Defaults to ``["genai"]``.
+        limits (GenAIRequestLimits | None): Per-request ceilings. ``None``
+            uses ``GenAIRequestLimits()`` and its defaults.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -244,6 +273,7 @@ def make_genai_router(
         )
 
     router = APIRouter(prefix=prefix, tags=list(tags or ["genai"]))
+    bounds = limits if limits is not None else GenAIRequestLimits()
 
     if text_generator is not None:
         generator = text_generator
@@ -258,6 +288,8 @@ def make_genai_router(
             Returns:
                 GenerateResponseSchema: The generated text.
             """
+            _check_prompt(body.prompt, bounds)
+            _check_generation(body.config, bounds)
             text = await generator.generate(body.prompt, config=body.config)
             return GenerateResponseSchema(text=text)
 
@@ -272,6 +304,8 @@ def make_genai_router(
                 StreamingResponse: A ``text/event-stream`` of token events,
                 ending with a ``done`` event.
             """
+            _check_prompt(body.prompt, bounds)
+            _check_generation(body.config, bounds)
 
             async def _events() -> AsyncIterator[bytes]:
                 async for piece in generator.stream(body.prompt, config=body.config):
@@ -290,6 +324,8 @@ def make_genai_router(
             Returns:
                 ChatResponseSchema: The assistant reply.
             """
+            _check_chat(body.messages, bounds)
+            _check_generation(body.config, bounds)
             messages = [{"role": m.role, "content": m.content} for m in body.messages]
             reply = await generator.chat(messages, config=body.config)
             return ChatResponseSchema(reply=reply)
@@ -307,6 +343,9 @@ def make_genai_router(
             Returns:
                 EmbedResponseSchema: The vectors and their dimensionality.
             """
+            _check_at_most("texts", len(body.texts), bounds.max_embed_texts)
+            for text in body.texts:
+                _check_at_most("texts", len(text), bounds.max_prompt_chars)
             vectors = await embed_model.embed(body.texts)
             dimensions = len(vectors[0]) if vectors else 0
             return EmbedResponseSchema(vectors=vectors, dimensions=dimensions)
@@ -324,6 +363,8 @@ def make_genai_router(
             Returns:
                 RagResponseSchema: The assembled context.
             """
+            _check_at_most("query", len(body.query), bounds.max_prompt_chars)
+            _check_at_most("top_k", body.top_k, bounds.max_top_k)
             context = await rag.retrieve(body.query, top_k=body.top_k)
             return RagResponseSchema(context=context)
 
@@ -345,7 +386,11 @@ def make_genai_router(
                 object: The :class:`Transcription` (text, language,
                 duration, segments).
             """
-            audio = await file.read()
+            audio = await read_upload_capped(
+                file,
+                max_bytes=bounds.max_upload_bytes,
+                label="audio",
+            )
             return await stt.transcribe(audio, language=language)
 
     if text_to_speech is not None:
@@ -365,6 +410,7 @@ def make_genai_router(
             Returns:
                 Response: The ``audio/wav`` payload.
             """
+            _check_at_most("text", len(body.text), bounds.max_tts_chars)
             wav = await tts.synthesize(
                 body.text,
                 language=body.language,
@@ -384,13 +430,21 @@ def make_genai_router(
                     ``false`` to skip reading NVML — the only part of this
                     endpoint that costs anything.
 
+            The report is built in a worker thread: probing reads NVML and
+            ``torch.cuda``, synchronous calls that would otherwise stall
+            every other request on the event loop.
+
             Returns:
                 ModelRuntimeReport: The handles, loaded first and
                 longest-idle first, plus the host picture when probed.
             """
             if hasattr(held, "inventory"):
-                return held.inventory(probe=probe)  # type: ignore[no-any-return]
-            return runtime_report(held, probe=probe)
+                report: ModelRuntimeReport = await asyncio.to_thread(
+                    held.inventory,
+                    probe=probe,
+                )
+                return report
+            return await asyncio.to_thread(runtime_report, held, probe=probe)
 
     if image_generator is not None:
         images = image_generator
@@ -403,8 +457,10 @@ def make_genai_router(
         async def render_image(body: ImageRequestSchema) -> Response:
             """Render one image and return its bytes.
 
-            Only the first image is returned, because the response body is
-            the image itself — ask for several with the class directly when
+            Exactly one image is rendered, because the response body is
+            the image itself: ``config.num_images`` above ``1`` is refused
+            with ``422`` rather than rendering a batch and returning only
+            its first image. Ask for several with the class directly when
             you need a batch. The seed that produced it travels in the
             ``X-Image-Seed`` header, so a client can reproduce the render.
 
@@ -415,6 +471,7 @@ def make_genai_router(
                 Response: The encoded image, typed by the generator's
                 ``image_format``.
             """
+            _check_image(body, bounds)
             rendered = await images.generate(body.prompt, config=body.config)
             first = rendered[0]
             return Response(
@@ -424,6 +481,110 @@ def make_genai_router(
             )
 
     return router
+
+
+def _check_at_most(field: str, value: int, limit: int) -> None:
+    """Refuse a request whose ``field`` measures above ``limit``.
+
+    Args:
+        field (str): The request field being measured, reported back in
+            ``details``.
+        value (int): The measured size (characters, items or the value).
+        limit (int): The largest accepted size.
+
+    Raises:
+        ValidationException: When ``value`` exceeds ``limit`` (``422``,
+            ``details={"field": field, "limit": limit}``).
+    """
+    if value > limit:
+        raise ValidationException(
+            message=f"{field} exceeds the limit of {limit}",
+            details={"field": field, "limit": limit},
+        )
+
+
+def _check_prompt(prompt: str, bounds: GenAIRequestLimits) -> None:
+    """Refuse a prompt longer than ``bounds.max_prompt_chars``.
+
+    Args:
+        prompt (str): The prompt.
+        bounds (GenAIRequestLimits): The router's limits.
+
+    Raises:
+        ValidationException: When the prompt is too long.
+    """
+    _check_at_most("prompt", len(prompt), bounds.max_prompt_chars)
+
+
+def _check_generation(
+    config: GenerationConfig | None,
+    bounds: GenAIRequestLimits,
+) -> None:
+    """Refuse a ``max_new_tokens`` above ``bounds.max_new_tokens``.
+
+    An unset ``max_new_tokens`` passes: the generator's own default was
+    chosen by the operator, not by the caller.
+
+    Args:
+        config (GenerationConfig | None): The request's generation config.
+        bounds (GenAIRequestLimits): The router's limits.
+
+    Raises:
+        ValidationException: When the requested token budget is too large.
+    """
+    if config is not None and config.max_new_tokens is not None:
+        _check_at_most("max_new_tokens", config.max_new_tokens, bounds.max_new_tokens)
+
+
+def _check_chat(
+    messages: list[ChatMessageSchema],
+    bounds: GenAIRequestLimits,
+) -> None:
+    """Refuse a chat with too many messages or too many characters.
+
+    The character budget is ``bounds.max_prompt_chars`` summed across every
+    message, because the whole transcript is what reaches the model.
+
+    Args:
+        messages (list[ChatMessageSchema]): The conversation.
+        bounds (GenAIRequestLimits): The router's limits.
+
+    Raises:
+        ValidationException: When either ceiling is exceeded.
+    """
+    _check_at_most("messages", len(messages), bounds.max_chat_messages)
+    total = sum(len(message.content) for message in messages)
+    _check_at_most("messages", total, bounds.max_prompt_chars)
+
+
+def _check_image(body: ImageRequestSchema, bounds: GenAIRequestLimits) -> None:
+    """Refuse an ``/image`` request over the router's limits.
+
+    Args:
+        body (ImageRequestSchema): The request.
+        bounds (GenAIRequestLimits): The router's limits.
+
+    Raises:
+        ValidationException: When the prompt, negative prompt, a side,
+            the step count or ``num_images`` is over its limit.
+    """
+    _check_prompt(body.prompt, bounds)
+    config = body.config
+    if config is None:
+        return
+    if config.negative_prompt is not None:
+        _check_at_most(
+            "negative_prompt",
+            len(config.negative_prompt),
+            bounds.max_prompt_chars,
+        )
+    if config.width is not None:
+        _check_at_most("width", config.width, bounds.max_image_side)
+    if config.height is not None:
+        _check_at_most("height", config.height, bounds.max_image_side)
+    if config.steps is not None:
+        _check_at_most("steps", config.steps, bounds.max_image_steps)
+    _check_at_most("num_images", config.num_images, 1)
 
 
 __all__: list[str] = [

@@ -22,6 +22,7 @@ from pydantic import Field
 
 from tempest_fastapi_sdk.genai.audio.schemas import DiarizedTranscription
 from tempest_fastapi_sdk.schemas.base import BaseSchema
+from tempest_fastapi_sdk.utils.upload import read_upload_capped
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Sequence
@@ -113,39 +114,6 @@ def _render_profile(profile: Any) -> VoiceProfileSchema:
             profile.last_matched_at.isoformat() if profile.last_matched_at else None
         ),
     )
-
-
-async def _read_upload(upload: UploadFile, *, max_bytes: int) -> bytes:
-    """Read an uploaded recording, refusing one that is too large.
-
-    Reads in chunks and stops at the ceiling rather than reading the
-    whole body and measuring afterwards — measuring afterwards means the
-    oversized upload already occupied the memory it was meant to be
-    denied.
-
-    Args:
-        upload (UploadFile): The uploaded file.
-        max_bytes (int): Ceiling.
-
-    Returns:
-        bytes: The recording.
-
-    Raises:
-        ValidationException: When the upload exceeds the ceiling.
-    """
-    from tempest_fastapi_sdk.exceptions import ValidationException
-
-    chunks: list[bytes] = []
-    total = 0
-    while chunk := await upload.read(1 << 20):
-        total += len(chunk)
-        if total > max_bytes:
-            raise ValidationException(
-                message=f"audio is larger than {max_bytes} bytes",
-                details={"max_bytes": max_bytes},
-            )
-        chunks.append(chunk)
-    return b"".join(chunks)
 
 
 def make_voice_router(
@@ -247,7 +215,11 @@ def make_voice_router(
             Returns:
                 DiarizedTranscription: The conversation, split by speaker.
             """
-            payload = await _read_upload(audio, max_bytes=max_upload_bytes)
+            payload = await read_upload_capped(
+                audio,
+                max_bytes=max_upload_bytes,
+                label="audio",
+            )
             return await service_transcriber.transcribe(
                 payload,
                 language=language,
@@ -297,7 +269,11 @@ def make_voice_router(
             Returns:
                 EnrollmentResponseSchema: The stored profile.
             """
-            payload = await _read_upload(audio, max_bytes=max_upload_bytes)
+            payload = await read_upload_capped(
+                audio,
+                max_bytes=max_upload_bytes,
+                label="audio",
+            )
             profile = await service_profiles.enroll(
                 session,
                 user_id=user_id,

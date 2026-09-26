@@ -69,6 +69,11 @@ class TestHybridRetriever:
         rag = HybridRetriever(_DenseBlindEmbedder(), _ListStore())  # type: ignore[arg-type]
         assert await rag.index(_corpus_chunks()) == len(CORPUS)
 
+    async def test_negative_top_k_returns_nothing(self) -> None:
+        rag = HybridRetriever(_DenseBlindEmbedder(), _ListStore())  # type: ignore[arg-type]
+        await rag.index(_corpus_chunks())
+        assert await rag.search("What is PIX?", top_k=-3, candidates=8) == []
+
     async def test_bm25_recovers_proper_nouns_dense_misses(self) -> None:
         rag = HybridRetriever(_DenseBlindEmbedder(), _ListStore())  # type: ignore[arg-type]
         await rag.index(_corpus_chunks())

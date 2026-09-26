@@ -208,9 +208,18 @@ content-type: image/png
 x-image-seed: 418223901
 ```
 
-The response body **is** the image, so the route returns only the first one;
-the seed travels in the `X-Image-Seed` header. Want a batch? Use the class
-directly — the route exists for the common case of one image per request.
+The response body **is** the image, so the route renders exactly one: a
+`config.num_images` above `1` gets `422` instead of rendering the batch and
+discarding the rest. The seed travels in the `X-Image-Seed` header. Want a
+batch? Use the class directly — the route exists for the common case of one
+image per request.
+
+The route also answers `422` for a side above `max_image_side` (default
+`2048`) and `steps` above `max_image_steps` (default `100`), both from the
+`GenAIRequestLimits` that `make_genai_router(limits=...)` takes — see
+[Per-request limits](genai.md#per-request-limits-genairequestlimits).
+`ImageGenerationConfig` itself already rejects `width`/`height` above
+`4096`, `steps` above `500` and `num_images` above `16`, on every path.
 
 ## Not holding the GPU hostage
 

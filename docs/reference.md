@@ -1149,6 +1149,8 @@ o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.email.EmailUtils
 ::: tempest_fastapi_sdk.utils.upload.UploadUtils
 ::: tempest_fastapi_sdk.utils.upload.SNIFFABLE_MIMETYPES
+::: tempest_fastapi_sdk.utils.upload.read_upload_capped
+::: tempest_fastapi_sdk.utils.upload.UPLOAD_READ_CHUNK_BYTES
 ::: tempest_fastapi_sdk.utils.download.DownloadUtils
 ::: tempest_fastapi_sdk.utils.file_store.FileStoreUtils
 ::: tempest_fastapi_sdk.utils.metrics.MetricsUtils
