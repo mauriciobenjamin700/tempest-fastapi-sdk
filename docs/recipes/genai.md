@@ -312,6 +312,17 @@ gen = OpenAICompatGenerator(
     Desligar é mais barato e sem risco, não perda de qualidade, quando
     você só quer o resultado.
 
+!!! info "Campos só do HuggingFace não vão pro fio"
+    `do_sample`, `top_k` e `repetition_penalty` existem no `GenerationConfig`
+    mas não no formato OpenAI, e um provedor estrito recusa o corpo (a
+    auditoria relatou `400` da OpenAI; os testes daqui usam transporte mock).
+    Por isso eles são **descartados**; `do_sample=False` sem `temperature`
+    explícita vira `temperature=0`. Um provedor que aceita esses nomes (o
+    servidor do vLLM documenta `top_k` e `repetition_penalty`) é ligado com
+    `forward_params=["top_k", "repetition_penalty"]`. E `model`, `messages` e
+    `stream` não podem vir como keyword de geração — `generate("oi",
+    model="outro")` levanta `TypeError` em vez de redirecionar a chamada.
+
 ## Backend Ollama
 
 O `TextGenerator` carrega os pesos do HuggingFace com `torch` no seu
@@ -375,6 +386,20 @@ Ollama não for local (o padrão é `DEFAULT_OLLAMA_URL`); `keep_alive`,
     `repetition_penalty`→`repeat_penalty`, e `temperature`/`top_p`/`top_k`/
     `seed`/`stop` passam direto. `do_sample=False` vira `temperature=0`
     (geração greedy).
+
+!!! warning "Erro do daemon levanta `OllamaError`"
+    O Ollama reporta algumas falhas (modelo não baixado, runner que caiu no
+    meio) como um corpo `{"error": "..."}` — num `200` ou como uma linha do
+    stream NDJSON. `generate`, `chat`, `embed` e as variantes estruturadas
+    levantam `OllamaError` (com `.model` e `.detail`) em vez de devolver
+    `""`, e `stream` levanta na linha de erro em vez de terminar como se
+    tivesse acabado — os pedaços já entregues continuam entregues.
+
+`chat` segue o `generate` em cache e métricas: com `generation_cache=`, uma
+chamada determinística repetida não vai ao daemon, e com `metrics=` ela é
+registrada sob a operação `chat` com os tokens do Ollama. A chave do `chat`
+é separada da do `generate`, então um prompt igual às mensagens serializadas
+nunca colide.
 
 ### Embeddings via Ollama + RAG
 
@@ -780,7 +805,9 @@ asyncio.run(main())
 
 O `cache` é qualquer objeto com `get(key)->list|None` e `set(key, val)` —
 passe um wrapper sobre o `AsyncRedisManager` pra compartilhar entre
-workers. `device`/`dtype`/`unload`/`unload_if_idle` funcionam como no
+workers. O `InMemoryEmbeddingCache` é um LRU de 1024 vetores por padrão
+(`max_entries=`; `None` desliga o limite), então um worker de vida longa
+não cresce pra sempre. `device`/`dtype`/`unload`/`unload_if_idle` funcionam como no
 `TextGenerator`.
 
 Pra busca semântica, use `normalize=True` (vetores unitários) + a função
@@ -880,6 +907,13 @@ asyncio.run(main())
 Forma um lote quando junta `max_batch` itens **ou** passa `max_wait_ms`
 desde o primeiro — o que vier antes. Erro do handler propaga pra todos os
 chamadores do lote.
+
+Todo caminho resolve todo chamador: um handler que devolve algo sem tamanho
+(`None`, um gerador) ou com o número errado de resultados falha o lote com
+`RuntimeError` e o worker segue pro próximo; um `CancelledError` levantado
+pelo próprio handler cancela só aquele lote; e cancelar o worker cancela o
+lote em curso **e** tudo que ainda estava na fila — nenhum `submit` fica
+esperando pra sempre.
 
 ### Compartilhar modelos carregados
 
@@ -1913,7 +1947,8 @@ async def painel() -> tuple[UsageTotals, list[ServiceUsage], list[SubjectUsage]]
 
 `GenAIMetrics` empacota os contadores + histograma que todo serviço de
 inferência acaba reimplementando — requests, latência e tokens in/out,
-rotulados por modelo e operação. Reusa o `prometheus-client` (extra
+rotulados por modelo e operação, e requests + latência também pelo
+resultado (`status="ok"` ou `"error"`). Reusa o `prometheus-client` (extra
 `[prometheus]`) e aceita um `registry` explícito (compõe com o
 `PrometheusMiddleware`/`/metrics` do SDK). É **opt-in**:
 
@@ -1933,6 +1968,14 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+!!! warning "O rótulo `status` é novo"
+    Antes, uma chamada que levantava contava como request comum — um
+    backend falhando parecia tráfego saudável. Agora `genai_requests_total`
+    e `genai_request_seconds` carregam `status`; seletor por
+    `{model, op}` continua casando, mas query que compara a série inteira
+    (ou `get_sample_value` com o conjunto exato de rótulos) precisa somar
+    por `status` ou filtrar `status="ok"`.
 
 `OllamaGenerator`, `TextGenerator` e `Embedder` aceitam `metrics=` e
 registram request + latência (o Ollama também extrai
@@ -2032,8 +2075,11 @@ fit = truncate_messages(
 
 `count_message_tokens(messages, tokenizer, per_message_overhead=4)` soma o
 custo do chat; `truncate_messages` preserva os `system` (movidos pra frente)
-e o turno mais recente, dropando os antigos até caber. Funcionam sobre
-qualquer tokenizer com `encode(text) -> sequência` (o `AutoTokenizer` serve).
+e o turno mais recente, dropando os antigos até caber. Um turno `assistant`
+com `tool_calls` e os turnos `tool` que o respondem saem **juntos** — o
+histórico nunca começa com um resultado de ferramenta cuja chamada foi
+cortada. Funcionam sobre qualquer tokenizer com `encode(text) -> sequência`
+(o `AutoTokenizer` serve).
 ### Cache de geração (prompt → completion)
 
 Gerações **determinísticas** (greedy, ou `temperature=0`) produzem sempre o
@@ -2063,10 +2109,19 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`InMemoryGenerationCache` é local ao processo; `RedisGenerationCache`
+`InMemoryGenerationCache` é local ao processo e um LRU de 1024 completions
+por padrão (`max_entries=`; `None` desliga o limite); `RedisGenerationCache`
 (cache `[cache]`) compartilha entre workers — o gerador dá `await` no
 sync-ou-async no mesmo call site. Funciona igual no `TextGenerator`
-(`generation_cache=...`). Invalide removendo a chave (ou via TTL no Redis).
+(`generation_cache=...`) e no `chat` dos dois. Invalide removendo a chave
+(ou via TTL no Redis).
+
+A chave separa o tipo de chamada (`chat` não responde um `generate` cujo
+prompt é o JSON das mesmas mensagens) e, no `TextGenerator`, a identidade
+dos pesos: `revision` e `quantization` entram na chave, então duas
+instâncias do mesmo `model_id` carregadas diferente nunca leem o cache uma
+da outra. Um `generate` sem `revision` nem `quantization` mantém a chave de
+antes, então um Redis já quente continua quente.
 ### Visão (VLM multimodal local)
 
 O `VisionTextGenerator` é o irmão multimodal do `TextGenerator`: carrega

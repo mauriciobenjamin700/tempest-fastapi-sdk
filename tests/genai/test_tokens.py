@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from tempest_fastapi_sdk.genai import (
     count_message_tokens,
     count_tokens,
@@ -82,3 +84,50 @@ class TestTruncateMessages:
             per_message_overhead=0,
         )
         assert result == [{"role": "user", "content": "latest"}]
+
+
+class TestTruncateKeepsToolCallsWithResults:
+    """A tool call and its results are dropped together or kept together."""
+
+    def _history(self) -> list[dict[str, Any]]:
+        """Build a chat whose middle is one call answered by two results."""
+        return [
+            {"role": "user", "content": "one two three four"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"id": "a"}, {"id": "b"}],
+            },
+            {"role": "tool", "tool_call_id": "a", "content": "r1"},
+            {"role": "tool", "tool_call_id": "b", "content": "r2"},
+            {"role": "user", "content": "last"},
+        ]
+
+    def test_never_starts_with_an_orphan_tool_result(self) -> None:
+        """Dropping one turn at a time left ``tool`` turns with no call."""
+        history = self._history()
+        for budget in range(0, 40):
+            result = truncate_messages(
+                history, budget, _WordTokenizer(), per_message_overhead=0
+            )
+            assert result[0].get("role") != "tool", budget
+
+    def test_group_is_dropped_whole(self) -> None:
+        """A budget that fits only the last turn drops the call and results."""
+        result = truncate_messages(
+            self._history(), 1, _WordTokenizer(), per_message_overhead=0
+        )
+        assert result == [{"role": "user", "content": "last"}]
+
+    def test_group_is_kept_whole(self) -> None:
+        """A budget for the group plus the last turn keeps all of it."""
+        result = truncate_messages(
+            self._history(), 3, _WordTokenizer(), per_message_overhead=0
+        )
+        assert [m["role"] for m in result] == ["assistant", "tool", "tool", "user"]
+
+    def test_trailing_tool_result_keeps_its_call(self) -> None:
+        """When the newest turn is a tool result, its call is kept with it."""
+        history = self._history()[:4]
+        result = truncate_messages(history, 0, _WordTokenizer(), per_message_overhead=0)
+        assert [m["role"] for m in result] == ["assistant", "tool", "tool"]

@@ -47,7 +47,7 @@ Example:
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.genai.tokens import TokenUsage
@@ -72,6 +72,22 @@ _PARAM_NAMES: dict[str, str] = {
     "stop": "stop",
 }
 
+_HF_ONLY_PARAMS: frozenset[str] = frozenset(
+    {"do_sample", "top_k", "repetition_penalty"},
+)
+"""``GenerationConfig`` fields the OpenAI wire format does not define.
+
+OpenAI's API documents none of them and a strict provider refuses the body
+(an audit reported ``400`` from OpenAI; the tests here drive a mock transport,
+not a live provider), so these are never forwarded under their HuggingFace
+name unless the instance was built with ``forward_params`` naming them.
+``do_sample=False`` is expressed instead as ``temperature=0`` (greedy), the
+one of the three that has a wire equivalent.
+"""
+
+_RESERVED_BODY_KEYS: frozenset[str] = frozenset({"model", "messages", "stream"})
+"""Body fields this class owns; a per-call keyword may not replace them."""
+
 
 class OpenAICompatGenerator:
     """Text generation against any OpenAI-compatible ``/chat/completions``.
@@ -94,6 +110,7 @@ class OpenAICompatGenerator:
         transport: httpx.AsyncBaseTransport | None = None,
         retry_policy: RetryPolicy | None = None,
         metrics: GenAIMetrics | None = None,
+        forward_params: Iterable[str] = (),
     ) -> None:
         """Configure the client. No network call happens here.
 
@@ -129,6 +146,12 @@ class OpenAICompatGenerator:
             retry_policy (RetryPolicy | None): Retry configuration for the
                 lazily-created client. Ignored when ``http_client`` is given.
             metrics (GenAIMetrics | None): Optional Prometheus recorder.
+            forward_params (Iterable[str]): HuggingFace-only generation
+                fields (``top_k``, ``repetition_penalty``, ``do_sample``)
+                this provider accepts under the same name — vLLM's server,
+                for one, documents ``top_k`` and ``repetition_penalty``.
+                Empty by default: those fields are dropped, because a
+                strict provider (OpenAI, as reported) refuses the body.
 
         Raises:
             ValueError: When ``api_key`` is empty.
@@ -145,6 +168,7 @@ class OpenAICompatGenerator:
         self._api_key = api_key
         self._extra_body = dict(extra_body or {})
         self._extra_headers = dict(extra_headers or {})
+        self._forward_params: frozenset[str] = frozenset(forward_params)
         self._client: HTTPClient | None = http_client
         self._owns_client: bool = http_client is None
         self._transport = transport
@@ -208,6 +232,12 @@ class OpenAICompatGenerator:
         ``extra_body`` goes in first so the computed fields win: a caller
         cannot accidentally redirect the call to another model through it.
 
+        HuggingFace-only fields (``do_sample``, ``top_k``,
+        ``repetition_penalty``) are not part of the wire format and a strict
+        provider refuses them, so they are dropped unless named in
+        ``forward_params``. ``do_sample=False`` without an explicit
+        ``temperature`` becomes ``temperature=0``.
+
         Args:
             messages (list[dict[str, Any]]): The chat turns.
             config (GenerationConfig | None): Typed parameters.
@@ -218,7 +248,19 @@ class OpenAICompatGenerator:
 
         Returns:
             dict[str, Any]: The JSON body to POST.
+
+        Raises:
+            TypeError: When ``overrides`` names ``model``, ``messages`` or
+                ``stream`` — fields this class computes and a keyword must
+                not silently replace.
         """
+        reserved = _RESERVED_BODY_KEYS.intersection(overrides)
+        if reserved:
+            raise TypeError(
+                f"{sorted(reserved)} cannot be passed as a generation keyword; "
+                "the model is fixed at construction and the messages and "
+                "stream flag are set by the method you call.",
+            )
         params: dict[str, Any] = {}
         if config is not None:
             params.update(config.model_dump(exclude_none=True, exclude_unset=True))
@@ -230,6 +272,14 @@ class OpenAICompatGenerator:
         body["stream"] = stream
         for name, value in params.items():
             if value is None or (name == "stop" and not value):
+                continue
+            if name in _HF_ONLY_PARAMS and name not in self._forward_params:
+                if (
+                    name == "do_sample"
+                    and value is False
+                    and params.get("temperature") is None
+                ):
+                    body["temperature"] = 0.0
                 continue
             body[_PARAM_NAMES.get(name, name)] = value
         return body

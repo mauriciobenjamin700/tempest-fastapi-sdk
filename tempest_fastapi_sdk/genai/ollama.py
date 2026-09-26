@@ -123,6 +123,47 @@ def _build_options(
     return options
 
 
+class OllamaError(RuntimeError):
+    """The Ollama daemon answered with an ``{"error": ...}`` body.
+
+    The daemon reports some failures (model not pulled, out of memory, a
+    runner crash mid-stream) as a JSON object with an ``error`` key — on a
+    ``200`` response or as one line of an NDJSON stream. Treating that
+    object as a normal reply yields an empty completion, or a stream that
+    ends as if it had finished. This exception surfaces it instead.
+
+    Attributes:
+        model (str): The model tag the request targeted.
+        detail (str): The daemon's error message.
+    """
+
+    def __init__(self, model: str, detail: str) -> None:
+        """Build the error from the daemon message.
+
+        Args:
+            model (str): The model tag the request targeted.
+            detail (str): The daemon's ``error`` string.
+        """
+        super().__init__(f"Ollama error for model {model!r}: {detail}")
+        self.model: str = model
+        self.detail: str = detail
+
+
+def _raise_on_error(model: str, data: dict[str, Any]) -> None:
+    """Raise :class:`OllamaError` when ``data`` is a daemon error object.
+
+    Args:
+        model (str): The model tag, used in the message.
+        data (dict[str, Any]): A decoded response body or NDJSON line.
+
+    Raises:
+        OllamaError: When ``data`` carries a non-empty ``error`` key.
+    """
+    error = data.get("error")
+    if error:
+        raise OllamaError(model, str(error))
+
+
 class _OllamaClientMixin:
     """Shared HTTP-client lifecycle for the Ollama backend classes."""
 
@@ -272,6 +313,12 @@ class OllamaGenerator(_OllamaClientMixin):
 
         Returns:
             str: The generated text.
+
+        Raises:
+            OllamaError: When the daemon answers with an ``error`` body
+                (e.g. the model is not pulled), even on a ``200``.
+            httpx.HTTPStatusError: When the daemon answers a non-success
+                status.
         """
         params = self._key_params(config, kwargs, images)
 
@@ -352,6 +399,7 @@ class OllamaGenerator(_OllamaClientMixin):
         )
         response.raise_for_status()
         data: dict[str, Any] = response.json()
+        _raise_on_error(self.model, data)
         return (
             str(data.get("response", "")),
             data.get("prompt_eval_count"),
@@ -376,8 +424,19 @@ class OllamaGenerator(_OllamaClientMixin):
             **kwargs (Any): Per-call generation overrides (win over
                 ``config``).
 
+        Honors ``generation_cache`` (deterministic calls only, keyed apart
+        from :meth:`generate` so a prompt that equals the serialized
+        messages never collides) and records ``metrics`` like
+        :meth:`generate`, matching
+        :meth:`~tempest_fastapi_sdk.genai.text.TextGenerator.chat`.
+
         Returns:
             str: The assistant reply.
+
+        Raises:
+            OllamaError: When the daemon answers with an ``error`` body.
+            httpx.HTTPStatusError: When the daemon answers a non-success
+                status.
         """
         payload: dict[str, Any] = {
             "model": self.model,
@@ -385,14 +444,59 @@ class OllamaGenerator(_OllamaClientMixin):
             "stream": False,
         }
         self._apply_common(payload, config, kwargs)
-        async with genai_span("chat", self.model):
-            response = await self._http().post(
-                f"{self.base_url}/api/chat", json=payload
-            )
-            response.raise_for_status()
-            data: dict[str, Any] = response.json()
-            message: dict[str, Any] = data.get("message") or {}
-            return str(message.get("content", ""))
+
+        async def _produce() -> str:
+            async with genai_span("chat", self.model) as trace_span:
+                if self.metrics is None:
+                    text, prompt_tokens, eval_tokens = await self._chat_measured(
+                        payload
+                    )
+                else:
+                    async with self.metrics.track(self.model, "chat") as span:
+                        text, prompt_tokens, eval_tokens = await self._chat_measured(
+                            payload
+                        )
+                        span.tokens_in = prompt_tokens
+                        span.tokens_out = eval_tokens
+                trace_span.tokens_in = prompt_tokens
+                trace_span.tokens_out = eval_tokens
+                return text
+
+        return await cached_generate(
+            self.generation_cache,
+            self.model,
+            json.dumps(messages, sort_keys=True, default=str),
+            self._key_params(config, kwargs),
+            _produce,
+            operation="chat",
+        )
+
+    async def _chat_measured(
+        self,
+        payload: dict[str, Any],
+    ) -> tuple[str, int | None, int | None]:
+        """Run one ``/api/chat`` call, returning text + Ollama token counts.
+
+        Args:
+            payload (dict[str, Any]): The complete ``/api/chat`` body.
+
+        Returns:
+            tuple[str, int | None, int | None]: The reply content, the
+            ``prompt_eval_count`` and the ``eval_count``.
+
+        Raises:
+            OllamaError: When the daemon answers with an ``error`` body.
+        """
+        response = await self._http().post(f"{self.base_url}/api/chat", json=payload)
+        response.raise_for_status()
+        data: dict[str, Any] = response.json()
+        _raise_on_error(self.model, data)
+        message: dict[str, Any] = data.get("message") or {}
+        return (
+            str(message.get("content", "")),
+            data.get("prompt_eval_count"),
+            data.get("eval_count"),
+        )
 
     async def generate_structured(
         self,
@@ -462,6 +566,7 @@ class OllamaGenerator(_OllamaClientMixin):
             )
             response.raise_for_status()
             data: dict[str, Any] = response.json()
+            _raise_on_error(self.model, data)
             message: dict[str, Any] = data.get("message") or {}
             content = str(message.get("content") or "")
             if not content.strip():
@@ -566,6 +671,7 @@ class OllamaGenerator(_OllamaClientMixin):
             )
             response.raise_for_status()
             data: dict[str, Any] = response.json()
+            _raise_on_error(self.model, data)
             message: dict[str, Any] = data.get("message") or {}
             return parse_structured(str(message.get("content", "")), schema)
 
@@ -609,6 +715,7 @@ class OllamaGenerator(_OllamaClientMixin):
         response = await self._http().post(f"{self.base_url}/api/chat", json=payload)
         response.raise_for_status()
         data: dict[str, Any] = response.json()
+        _raise_on_error(self.model, data)
         return data.get("message") or {}
 
     async def stream(
@@ -628,6 +735,11 @@ class OllamaGenerator(_OllamaClientMixin):
 
         Yields:
             str: Text pieces as the daemon produces them.
+
+        Raises:
+            OllamaError: When a stream line is an ``{"error": ...}`` object —
+                the daemon's way of failing mid-generation. Pieces already
+                yielded stay yielded; the stream does not end as if done.
         """
         payload = self._request_payload(prompt, config, kwargs, stream=True)
         async for line in self._http().stream(
@@ -638,6 +750,7 @@ class OllamaGenerator(_OllamaClientMixin):
             if not line.strip():
                 continue
             chunk: dict[str, Any] = json.loads(line)
+            _raise_on_error(self.model, chunk)
             piece = chunk.get("response")
             if piece:
                 yield str(piece)
@@ -737,6 +850,7 @@ class OllamaEmbedder(_OllamaClientMixin):
                 response = await client.post(f"{self.base_url}/api/embed", json=payload)
                 response.raise_for_status()
                 data: dict[str, Any] = response.json()
+                _raise_on_error(self.model, data)
                 embeddings: list[list[float]] = data.get("embeddings") or []
                 vectors.extend([float(x) for x in vector] for vector in embeddings)
             return vectors
@@ -745,5 +859,6 @@ class OllamaEmbedder(_OllamaClientMixin):
 __all__: list[str] = [
     "DEFAULT_OLLAMA_URL",
     "OllamaEmbedder",
+    "OllamaError",
     "OllamaGenerator",
 ]

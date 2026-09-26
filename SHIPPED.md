@@ -662,7 +662,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   client was **deliberately skipped** (self-hosted-only). Test tiers
   (unit/`@model`/`@gpu`) + plans live under `planning/genai/`. **Fix:** `httpx`
   + `email-validator` are base deps so a minimal/`[genai]` install imports
-  (v0.151.1).
+  (v0.151.1). **Hardening (Unreleased):** in-memory generation/embedding
+  caches are LRU (`max_entries=1024`); generation cache key scoped by
+  operation + `revision`/`quantization`; `OllamaError` for `{"error": ...}`
+  bodies and stream lines; `OllamaGenerator.chat` gets cache + metrics;
+  `GenAIMetrics` `status` label; `OpenAICompatGenerator` drops HF-only
+  fields (`forward_params=` opts in) and refuses reserved keywords;
+  `BatchScheduler` resolves every future on every path; per-tokenizer
+  lm-format-enforcer index cache; `truncate_messages` keeps tool calls with
+  their results; `HTTPClient.stream` no longer replays after the first line.
 - **Reconhecimento facial (v0.223.0, extra `[faces]`)** —
   `tempest_fastapi_sdk.faces`: `FaceRecognizer` (`detect` sem biometria /
   `recognize` / `embed_face` que recusa entrada ruim), `compare_faces`,

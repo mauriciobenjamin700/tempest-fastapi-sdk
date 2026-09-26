@@ -182,8 +182,16 @@ def truncate_messages(
     """Drop the oldest turns until the chat fits within ``max_tokens``.
 
     System messages are kept (when ``keep_system``) and moved to the front; the
-    most recent message is always kept even if it alone exceeds the budget. The
+    most recent turn is always kept even if it alone exceeds the budget. The
     oldest non-system, non-last turns are dropped first.
+
+    An assistant turn carrying ``tool_calls`` and the ``role="tool"`` results
+    that answer it are dropped **together**, never split: a history that
+    starts with a tool result whose call was trimmed away, or ends a call
+    with no result, breaks the pairing the OpenAI chat format requires
+    between a call and its results, and strict providers refuse it.
+    If the most recent turn is such a tool result, its whole group (the call
+    plus every result) is what is always kept.
 
     Args:
         messages (list[dict[str, Any]]): The full chat history.
@@ -200,7 +208,6 @@ def truncate_messages(
         return []
     system = [m for m in messages if keep_system and m.get("role") == "system"]
     rest = [m for m in messages if not (keep_system and m.get("role") == "system")]
-    kept = list(rest)
 
     def total(msgs: list[dict[str, Any]]) -> int:
         """Return the token count of ``msgs`` under the outer settings.
@@ -217,9 +224,50 @@ def truncate_messages(
             per_message_overhead=per_message_overhead,
         )
 
-    while len(kept) > 1 and total(system + kept) > max_tokens:
-        kept.pop(0)
-    return system + kept
+    groups = _tool_call_groups(rest)
+    while len(groups) > 1 and total(system + _flatten(groups)) > max_tokens:
+        groups.pop(0)
+    return system + _flatten(groups)
+
+
+def _tool_call_groups(
+    messages: list[dict[str, Any]],
+) -> list[list[dict[str, Any]]]:
+    """Split turns into the units :func:`truncate_messages` may drop.
+
+    Every turn is its own unit, except that the ``role="tool"`` turns right
+    after an assistant turn with ``tool_calls`` join that assistant turn's
+    unit. A run of tool turns with no call before it (a history already
+    trimmed elsewhere) forms a unit of its own.
+
+    Args:
+        messages (list[dict[str, Any]]): Non-system turns, in order.
+
+    Returns:
+        list[list[dict[str, Any]]]: The units, in order.
+    """
+    groups: list[list[dict[str, Any]]] = []
+    for message in messages:
+        if message.get("role") == "tool" and groups:
+            head = groups[-1][0]
+            if head.get("tool_calls") or head.get("role") == "tool":
+                groups[-1].append(message)
+                continue
+        groups.append([message])
+    return groups
+
+
+def _flatten(groups: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    """Concatenate the units back into one turn list.
+
+    Args:
+        groups (list[list[dict[str, Any]]]): Units from
+            :func:`_tool_call_groups`.
+
+    Returns:
+        list[dict[str, Any]]: The turns, in order.
+    """
+    return [message for group in groups for message in group]
 
 
 __all__: list[str] = [

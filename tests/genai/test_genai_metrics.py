@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 from prometheus_client import CollectorRegistry
 
 from tempest_fastapi_sdk.genai import GenAIMetrics, OllamaGenerator
@@ -19,7 +20,7 @@ class TestGenAIMetrics:
         metrics = GenAIMetrics(registry=registry)
         async with metrics.track("m", "generate"):
             pass
-        labels = {"model": "m", "op": "generate"}
+        labels = {"model": "m", "op": "generate", "status": "ok"}
         assert _value(registry, "genai_requests_total", labels) == 1.0
         assert _value(registry, "genai_request_seconds_count", labels) == 1.0
 
@@ -38,8 +39,27 @@ class TestGenAIMetrics:
         for _ in range(3):
             async with metrics.track("m", "generate"):
                 pass
-        labels = {"model": "m", "op": "generate"}
+        labels = {"model": "m", "op": "generate", "status": "ok"}
         assert _value(registry, "genai_requests_total", labels) == 3.0
+
+    async def test_failed_call_is_counted_as_error(self) -> None:
+        """A block that raised is recorded under ``status="error"``.
+
+        Without the label every failure landed on the same series as a
+        success, so a backend returning errors read as healthy traffic.
+        """
+        registry = CollectorRegistry()
+        metrics = GenAIMetrics(registry=registry)
+        with pytest.raises(RuntimeError):
+            async with metrics.track("m", "generate"):
+                raise RuntimeError("backend down")
+        async with metrics.track("m", "generate"):
+            pass
+        error = {"model": "m", "op": "generate", "status": "error"}
+        ok = {"model": "m", "op": "generate", "status": "ok"}
+        assert _value(registry, "genai_requests_total", error) == 1.0
+        assert _value(registry, "genai_requests_total", ok) == 1.0
+        assert _value(registry, "genai_request_seconds_count", error) == 1.0
 
     def test_record_tokens_ignores_none(self) -> None:
         registry = CollectorRegistry()
@@ -69,7 +89,7 @@ class TestOllamaGeneratorMetrics:
         await client.aclose()
 
         assert text == "hi"
-        labels = {"model": "llama3.2", "op": "generate"}
+        labels = {"model": "llama3.2", "op": "generate", "status": "ok"}
         assert _value(registry, "genai_requests_total", labels) == 1.0
         assert _value(registry, "genai_tokens_in_total", {"model": "llama3.2"}) == 3.0
         assert _value(registry, "genai_tokens_out_total", {"model": "llama3.2"}) == 5.0
