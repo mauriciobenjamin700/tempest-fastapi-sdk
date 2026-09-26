@@ -14,6 +14,8 @@ which is why every case here builds two queues instead of one.
 from __future__ import annotations
 
 import asyncio
+import time
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import fakeredis.aioredis as fakeredis
@@ -28,6 +30,44 @@ from tempest_fastapi_sdk.tasks import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+DEADLINE_SECONDS: float = 10.0
+"""How long a poll waits for the supervisors before the case fails.
+
+Generous on purpose: it bounds a failing run, not a passing one, which
+returns as soon as the condition holds. A fixed ``sleep`` sized for a
+laptop is what made the count flaky on a loaded CI runner.
+"""
+
+
+async def wait_until(
+    condition: Callable[[], bool],
+    *,
+    timeout: float = DEADLINE_SECONDS,
+    interval: float = 0.01,
+) -> bool:
+    """Poll ``condition`` until it holds or the deadline passes.
+
+    The supervisors elect in background tasks, so ``__aenter__`` returns
+    before any of them has asked for the lease. Waiting on the state
+    itself, instead of on the clock, is what keeps the count independent
+    of how busy the machine is.
+
+    Args:
+        condition (Callable[[], bool]): The state to wait for.
+        timeout (float): Seconds before giving up.
+        interval (float): Seconds between checks.
+
+    Returns:
+        bool: ``True`` when the condition held before the deadline.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while not condition():
+        if loop.time() >= deadline:
+            return False
+        await asyncio.sleep(interval)
+    return True
 
 
 class CountingQueue(TaskQueue):
@@ -74,8 +114,43 @@ class CountingQueue(TaskQueue):
 
 
 @pytest.fixture
-def leases() -> Callable[[str], SchedulerLock]:
+def steady_fakeredis_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Expire ``fakeredis`` keys on a clock that never steps.
+
+    ``fakeredis`` stamps every command with ``time.time()`` and expires
+    keys against it, so a step of the wall clock ages every lease at
+    once. On a WSL2 host the wall clock stepped forward by 3.585 s twice
+    in 60 s of sampling, idle or loaded, while ``time.monotonic()``
+    advanced evenly. A step that size outlasts the 2 s lease: the holder
+    loses it with no stall anywhere, a standby takes over, and the case
+    counts two loops that the election never ran concurrently. Measured
+    under load, that was every failure left once the fixed sleeps were
+    gone.
+
+    A real Redis expires against its own clock too, so a stepped server
+    clock shortens a real lease the same way. That is a property of
+    leases, not of the election under test, so the clock is pinned here
+    — anchored to the current epoch, advancing at monotonic pace.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Restores the module afterwards.
+            ``raising`` stays on, so a ``fakeredis`` that moves its clock
+            elsewhere fails here instead of silently going unpinned.
+    """
+    offset = time.time() - time.monotonic()
+    monkeypatch.setattr(
+        "fakeredis._basefakesocket.time",
+        SimpleNamespace(time=lambda: time.monotonic() + offset),
+    )
+
+
+@pytest.fixture
+def leases(steady_fakeredis_clock: None) -> Callable[[str], SchedulerLock]:
     """Return a factory of leases contending for one Redis key.
+
+    Args:
+        steady_fakeredis_clock (None): Pins the key-expiry clock, so a
+            wall-clock step cannot expire a lease mid-case.
 
     Returns:
         Callable[[str], SchedulerLock]: Builds a lease over a shared
@@ -99,6 +174,66 @@ def leases() -> Callable[[str], SchedulerLock]:
         return RedisSchedulerLock(client, name=name, ttl_seconds=2.0)
 
     return build
+
+
+class RecordingLock:
+    """A lease that records every answer it gave, around a real one.
+
+    The records are what the polls wait on: a replica that has been
+    refused twice has already had its chance to start a second loop, so
+    counting then measures the election rather than the scheduler.
+
+    Attributes:
+        acquired (list[bool]): Every ``acquire`` answer, in order.
+        renewed (list[bool]): Every ``renew`` answer, in order.
+    """
+
+    def __init__(self, inner: SchedulerLock) -> None:
+        """Wrap ``inner`` with empty records.
+
+        Args:
+            inner (SchedulerLock): The lease that actually contends.
+        """
+        self._inner: SchedulerLock = inner
+        self.acquired: list[bool] = []
+        self.renewed: list[bool] = []
+
+    @property
+    def answers(self) -> int:
+        """Return how many ``acquire`` and ``renew`` calls completed.
+
+        Returns:
+            int: Completed calls, whichever they were.
+        """
+        return len(self.acquired) + len(self.renewed)
+
+    async def acquire(self) -> bool:
+        """Try to take the lease, and record the answer.
+
+        The answer is recorded and returned with no ``await`` in between,
+        and the supervisor starts the loop without one either — so a
+        poll never observes a granted lease whose loop has not started.
+
+        Returns:
+            bool: The inner lease's answer.
+        """
+        granted = await self._inner.acquire()
+        self.acquired.append(granted)
+        return granted
+
+    async def renew(self) -> bool:
+        """Extend the lease, and record the answer.
+
+        Returns:
+            bool: The inner lease's answer.
+        """
+        renewed = await self._inner.renew()
+        self.renewed.append(renewed)
+        return renewed
+
+    async def release(self) -> None:
+        """Give the lease up."""
+        await self._inner.release()
 
 
 class TestTheLeaseItself:
@@ -176,28 +311,42 @@ class TestOnlyOneReplicaSchedules:
         is the defect the lease exists to prevent. The counts are
         parametrized rather than fixed at two because the docs state the
         property for three replicas.
+
+        The count is taken once every lease has answered twice: the
+        holder's acquire and first renew, and two refusals for each
+        standby — a whole poll round after the election, in which a
+        second loop would have started. The starts are read into one
+        list at that instant, so the failure message reports the same
+        state the assertion judged.
         """
         queues = [CountingQueue(InMemoryBroker()) for _ in range(replicas)]
+        locks = [RecordingLock(leases("k")) for _ in range(replicas)]
         contexts = [
             queue.lifespan(
                 scheduler=True,
-                scheduler_lock=leases("k"),
+                scheduler_lock=lock,
                 lease_ttl_seconds=2.0,
             )
-            for queue in queues
+            for queue, lock in zip(queues, locks, strict=True)
         ]
         for context in contexts:
             await context.__aenter__()
         try:
-            await asyncio.sleep(0.2)
-            running = sum(queue.starts for queue in queues)
+            settled = await wait_until(
+                lambda: all(lock.answers >= 2 for lock in locks),
+            )
+            starts = [queue.starts for queue in queues]
         finally:
             for context in reversed(contexts):
                 await context.__aexit__(None, None, None)
 
-        assert running == 1, (
+        assert settled, (
+            f"the leases did not all answer twice in {DEADLINE_SECONDS}s: "
+            f"{[lock.answers for lock in locks]}"
+        )
+        assert sum(starts) == 1, (
             f"expected exactly one scheduler loop across {replicas} replicas, "
-            f"got {running}: {[queue.starts for queue in queues]}"
+            f"got {sum(starts)}: {starts}"
         )
 
     @pytest.mark.asyncio
@@ -232,9 +381,16 @@ class TestOnlyOneReplicaSchedules:
         because the lease goes to whoever asks first and a nested
         ``async with`` always exits the innermost — the opposite of the
         order this case needs.
+
+        The standby opens only once the holder's loop runs, so which one
+        leads is decided by the case and not by task scheduling. After
+        the holder leaves, the standby must take over on its first
+        ``acquire`` that began after the release: at most one refusal
+        (an attempt already in flight during the release) may follow it.
         """
         holder = CountingQueue(InMemoryBroker())
         standby = CountingQueue(InMemoryBroker())
+        standby_lock = RecordingLock(leases("k"))
         ttl = 0.9
 
         holder_cm = holder.lifespan(
@@ -244,22 +400,28 @@ class TestOnlyOneReplicaSchedules:
         )
         standby_cm = standby.lifespan(
             scheduler=True,
-            scheduler_lock=leases("k"),
+            scheduler_lock=standby_lock,
             lease_ttl_seconds=ttl,
         )
 
         await holder_cm.__aenter__()
         try:
+            assert await wait_until(lambda: holder.starts == 1)
             await standby_cm.__aenter__()
             try:
-                await asyncio.sleep(ttl / 3)
+                assert await wait_until(lambda: len(standby_lock.acquired) >= 1)
                 assert holder.starts == 1
                 assert standby.starts == 0
 
                 await holder_cm.__aexit__(None, None, None)
-                await asyncio.sleep(ttl)
+                released_at = len(standby_lock.acquired)
 
-                assert standby.starts == 1
+                assert await wait_until(lambda: standby.starts == 1), (
+                    f"the standby never took over: {standby_lock.acquired}"
+                )
+                after_release = standby_lock.acquired[released_at:]
+                assert after_release[-1] is True
+                assert len(after_release) <= 2, after_release
             finally:
                 await standby_cm.__aexit__(None, None, None)
         except BaseException:
@@ -337,11 +499,15 @@ class CancelSwallowingLock:
 
     Attributes:
         swallowed (int): How many cancels ``renew`` absorbed.
+        renewing (asyncio.Event): Set once a ``renew`` is under way, so
+            the cases cancel inside it rather than after a fixed sleep
+            that a loaded runner can outlast or undershoot.
     """
 
     def __init__(self) -> None:
         """Start with no cancel absorbed."""
         self.swallowed: int = 0
+        self.renewing: asyncio.Event = asyncio.Event()
 
     async def acquire(self) -> bool:
         """Take the lease.
@@ -357,6 +523,7 @@ class CancelSwallowingLock:
         Returns:
             bool: Always ``True``.
         """
+        self.renewing.set()
         try:
             await asyncio.sleep(0.05)
         except asyncio.CancelledError:
@@ -382,7 +549,7 @@ class TestShutdownSurvivesASwallowedCancel:
             lease_ttl_seconds=0.03,
         )
         await context.__aenter__()
-        await asyncio.sleep(0.02)
+        await asyncio.wait_for(lock.renewing.wait(), timeout=DEADLINE_SECONDS)
 
         exit_task = asyncio.create_task(context.__aexit__(None, None, None))
         done, _ = await asyncio.wait({exit_task}, timeout=2)
@@ -393,14 +560,15 @@ class TestShutdownSurvivesASwallowedCancel:
     @pytest.mark.asyncio
     async def test_a_cancelled_exit_is_not_reported_as_finished(self) -> None:
         """``suppress(CancelledError)`` used to absorb the caller's own cancel."""
+        lock = CancelSwallowingLock()
         queue = CountingQueue(InMemoryBroker())
         context = queue.lifespan(
             scheduler=True,
-            scheduler_lock=CancelSwallowingLock(),
+            scheduler_lock=lock,
             lease_ttl_seconds=0.03,
         )
         await context.__aenter__()
-        await asyncio.sleep(0.02)
+        await asyncio.wait_for(lock.renewing.wait(), timeout=DEADLINE_SECONDS)
 
         exit_task = asyncio.create_task(context.__aexit__(None, None, None))
         await asyncio.sleep(0)

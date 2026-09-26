@@ -15,6 +15,7 @@ from tempest_fastapi_sdk.genai import (
     resolve_device,
 )
 from tempest_fastapi_sdk.genai.schemas import GPUInfo
+from tempest_fastapi_sdk.genai.text import _resolve_control
 
 
 def _gpu_hw() -> HardwareInfo:
@@ -103,31 +104,27 @@ class TestState:
 
 class TestResolveControl:
     def test_reads_from_config(self) -> None:
-        gen = TextGenerator("m", hardware=_cpu_hw())
         cfg = GenerationConfig(seed=7, stop=["END"])
-        seed, stop = gen._resolve_control({}, cfg)
+        seed, stop = _resolve_control({}, cfg)
         assert seed == 7
         assert stop == ["END"]
 
     def test_overrides_win_over_config(self) -> None:
-        gen = TextGenerator("m", hardware=_cpu_hw())
         cfg = GenerationConfig(seed=7, stop=["END"])
         overrides: dict[str, object] = {"seed": 99, "stop": ["STOP"]}
-        seed, stop = gen._resolve_control(overrides, cfg)
+        seed, stop = _resolve_control(overrides, cfg)
         assert seed == 99
         assert stop == ["STOP"]
 
     def test_pops_seed_and_stop_from_overrides(self) -> None:
-        gen = TextGenerator("m", hardware=_cpu_hw())
         overrides: dict[str, object] = {"seed": 1, "stop": ["x"], "temperature": 0.5}
-        gen._resolve_control(overrides, None)
+        _resolve_control(overrides, None)
         assert "seed" not in overrides
         assert "stop" not in overrides
         assert overrides == {"temperature": 0.5}
 
     def test_absent_yields_none_and_empty(self) -> None:
-        gen = TextGenerator("m", hardware=_cpu_hw())
-        seed, stop = gen._resolve_control({}, None)
+        seed, stop = _resolve_control({}, None)
         assert seed is None
         assert stop == []
 

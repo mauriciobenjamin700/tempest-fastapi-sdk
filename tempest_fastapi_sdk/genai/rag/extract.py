@@ -11,6 +11,13 @@ user, so the fetch is treated as untrusted egress: only ``http``/``https``
 is allowed, every hop (the first request and each redirect) must resolve
 to public addresses, redirects are followed by hand up to a bound, and the
 body is streamed with a byte cap.
+
+Each hop connects to the address that passed the check, not to a second
+lookup of the name: the request URL carries the validated IP, while the
+``Host`` header and the TLS SNI name (``sni_hostname``) keep the original
+hostname, so the certificate is still validated against that name. A DNS
+answer that changes between the check and the connection (DNS rebinding)
+therefore never reaches the connection.
 """
 
 from __future__ import annotations
@@ -37,12 +44,27 @@ DEFAULT_MAX_RESPONSE_BYTES: int = 5 * 1024 * 1024
 REDIRECT_STATUSES: frozenset[int] = frozenset({301, 302, 303, 307, 308})
 """HTTP statuses whose ``Location`` the extractor follows."""
 
+MAX_TLS_NAME_RETRIES: int = 3
+"""Pooled connections to the same IP discarded, per hop, for a wrong TLS name.
+
+A connection the pool opened for another hostname that resolved to the
+same IP carries that hostname's TLS session. The check runs once the
+response headers arrive, so the request line and headers have already gone
+to that server; the extractor then refuses to read the body and retries
+the hop. Each retry closes one such connection, so after this many the hop
+is reported as failed.
+"""
+
 Resolver = Callable[[str], Awaitable[Sequence[str]]]
 """Async callable mapping a hostname to the IP addresses it resolves to."""
 
 
 class _BlockedDestinationError(Exception):
     """Raised internally when a hop is refused by the egress guard."""
+
+
+class _WrongTLSNameError(Exception):
+    """Raised internally when a response arrived on another host's TLS session."""
 
 
 @dataclass(slots=True)
@@ -128,10 +150,19 @@ class ContentExtractor:
     once it exceeds ``max_response_bytes``. Any refusal comes back as
     ``failed=True``, like every other failure.
 
-    The address check and the connection are two separate lookups, so a
-    hostname whose DNS answer changes between them (DNS rebinding) is not
-    covered; when that matters, route egress through a proxy or firewall
-    that enforces the same rule at connect time.
+    The connection goes to the address that passed the check: the hop is
+    sent to ``scheme://<validated-ip>:<port>`` with the original ``Host``
+    header and ``sni_hostname`` extension, so a DNS answer that changes
+    after the check (DNS rebinding) is never connected, and HTTPS still
+    validates the certificate against the hostname. Because the pool keys
+    connections by IP, an HTTPS response that arrives on a connection whose
+    TLS session was negotiated for another hostname is discarded and the
+    hop retried on a fresh connection (see :data:`MAX_TLS_NAME_RETRIES`).
+    Through an HTTP proxy, httpcore 1.0.9 tunnels to the pinned IP and
+    does not send ``sni_hostname``, so certificate validation fails and
+    HTTPS fetches come back ``failed=True``; ``allow_private_networks=True``
+    turns pinning off along with the address check, leaving the proxy as
+    the egress guard.
 
     Attributes:
         user_agent (str): ``User-Agent`` header sent with each fetch.
@@ -171,8 +202,9 @@ class ContentExtractor:
             max_response_bytes (int): Largest body, in bytes, read before
                 the fetch is reported as failed.
             resolver (Resolver | None): Async hostname → addresses lookup
-                used by the private-address check. ``None`` uses the event
-                loop's ``getaddrinfo``.
+                used by the private-address check, called once per hop;
+                the first address it returns is the one the hop connects
+                to. ``None`` uses the event loop's ``getaddrinfo``.
         """
         self._http = http_client
         self.user_agent = user_agent
@@ -182,11 +214,16 @@ class ContentExtractor:
         self.max_response_bytes = max_response_bytes
         self._resolver: Resolver = resolver or _system_resolver
 
-    async def _check_destination(self, url: httpx.URL) -> None:
-        """Refuse a hop whose scheme or resolved addresses are not allowed.
+    async def _pin_destination(self, url: httpx.URL) -> str | None:
+        """Refuse a disallowed hop and return the address to connect to.
 
         Args:
             url (httpx.URL): The URL about to be requested.
+
+        Returns:
+            str | None: The validated IP the hop must connect to, or
+            ``None`` when the URL is sent unchanged (private networks are
+            allowed, or the host is already an IP literal).
 
         Raises:
             _BlockedDestinationError: When the scheme is not ``http``/
@@ -196,17 +233,55 @@ class ContentExtractor:
         if url.scheme not in ALLOWED_SCHEMES or not url.host:
             raise _BlockedDestinationError(str(url))
         if self.allow_private_networks:
-            return
-        addresses: Sequence[str]
+            return None
         try:
-            addresses = [str(ipaddress.ip_address(url.host))]
+            literal = str(ipaddress.ip_address(url.host))
         except ValueError:
-            addresses = await self._resolver(url.host)
+            literal = None
+        if literal is not None:
+            if not _is_public_address(literal):
+                raise _BlockedDestinationError(str(url))
+            return None
+        addresses = await self._resolver(url.raw_host.decode("ascii"))
         if not addresses or not all(_is_public_address(a) for a in addresses):
             raise _BlockedDestinationError(str(url))
+        return str(addresses[0]).split("%", 1)[0]
+
+    @staticmethod
+    def _check_tls_name(response: httpx.Response, sni_hostname: str) -> None:
+        """Refuse a response read over a TLS session for another hostname.
+
+        Only runs when the transport exposes the TLS object (httpcore does,
+        through the ``network_stream`` extension); a transport without one,
+        such as ``httpx.MockTransport``, is taken as is.
+
+        Args:
+            response (httpx.Response): The response whose headers arrived.
+            sni_hostname (str): The hostname the TLS session must be for.
+
+        Raises:
+            _WrongTLSNameError: When the session was negotiated for another
+                name, which happens when the pool reuses a connection it
+                opened for a different hostname on the same IP.
+        """
+        stream = response.extensions.get("network_stream")
+        if stream is None:
+            return
+        ssl_object = stream.get_extra_info("ssl_object")
+        if ssl_object is None:
+            return
+        if ssl_object.server_hostname != sni_hostname:
+            raise _WrongTLSNameError(sni_hostname)
 
     async def _fetch_html(self, url: str) -> str:
         """Fetch ``url`` under the egress guard and return the decoded body.
+
+        Each hop is pinned to the address :meth:`_pin_destination` validated;
+        redirects are resolved against the original URL, so the next hop is
+        checked and pinned on its own hostname. An HTTPS response that
+        arrives over another hostname's TLS session is abandoned unread,
+        which makes httpcore close that connection, and the hop is retried
+        up to :data:`MAX_TLS_NAME_RETRIES` times.
 
         Args:
             url (str): The page to fetch.
@@ -217,37 +292,71 @@ class ContentExtractor:
 
         Raises:
             _BlockedDestinationError: When a hop is refused, the redirect
-                bound is exceeded or the body is over the cap.
+                bound is exceeded, the body is over the cap, or no
+                connection with the right TLS name could be obtained.
             httpx.HTTPError: On transport or HTTP status errors.
         """
         import httpx
 
         current = httpx.URL(url)
         for _ in range(self.max_redirects + 1):
-            await self._check_destination(current)
-            async with self._http.stream(
-                "GET",
-                current,
-                headers={"User-Agent": self.user_agent},
-                timeout=self.timeout,
-                follow_redirects=False,
-            ) as response:
-                location = response.headers.get("location")
-                if response.status_code in REDIRECT_STATUSES and location:
-                    current = current.join(location)
+            address = await self._pin_destination(current)
+            target = current
+            headers = {"User-Agent": self.user_agent}
+            extensions: dict[str, str] = {}
+            if address is not None:
+                target = current.copy_with(host=address)
+                headers["Host"] = current.netloc.decode("ascii")
+                extensions["sni_hostname"] = current.raw_host.decode("ascii")
+            for _attempt in range(MAX_TLS_NAME_RETRIES + 1):
+                try:
+                    async with self._http.stream(
+                        "GET",
+                        target,
+                        headers=headers,
+                        timeout=self.timeout,
+                        follow_redirects=False,
+                        extensions=extensions,
+                    ) as response:
+                        if target.scheme == "https" and address is not None:
+                            self._check_tls_name(response, extensions["sni_hostname"])
+                        location = response.headers.get("location")
+                        if response.status_code in REDIRECT_STATUSES and location:
+                            current = current.join(location)
+                            break
+                        return await self._read_body(response, current)
+                except _WrongTLSNameError:
                     continue
-                response.raise_for_status()
-                declared = response.headers.get("content-length", "")
-                if declared.isdigit() and int(declared) > self.max_response_bytes:
-                    raise _BlockedDestinationError(str(current))
-                body = bytearray()
-                async for chunk in response.aiter_bytes():
-                    body.extend(chunk)
-                    if len(body) > self.max_response_bytes:
-                        raise _BlockedDestinationError(str(current))
-                encoding = response.charset_encoding or "utf-8"
-                return bytes(body).decode(encoding, errors="replace")
+            else:
+                raise _BlockedDestinationError(str(current))
         raise _BlockedDestinationError(str(current))
+
+    async def _read_body(self, response: httpx.Response, url: httpx.URL) -> str:
+        """Read a final response under the byte cap and decode it.
+
+        Args:
+            response (httpx.Response): The streamed, non-redirect response.
+            url (httpx.URL): The original (unpinned) URL, for error context.
+
+        Returns:
+            str: The body decoded with its declared charset (UTF-8 when none
+            is declared).
+
+        Raises:
+            _BlockedDestinationError: When the body is over the cap.
+            httpx.HTTPStatusError: On a 4xx/5xx status.
+        """
+        response.raise_for_status()
+        declared = response.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > self.max_response_bytes:
+            raise _BlockedDestinationError(str(url))
+        body = bytearray()
+        async for chunk in response.aiter_bytes():
+            body.extend(chunk)
+            if len(body) > self.max_response_bytes:
+                raise _BlockedDestinationError(str(url))
+        encoding = response.charset_encoding or "utf-8"
+        return bytes(body).decode(encoding, errors="replace")
 
     async def extract(self, url: str) -> ExtractionResult:
         """Fetch ``url`` and return its extracted main text.

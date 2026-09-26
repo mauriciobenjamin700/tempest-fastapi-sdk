@@ -156,6 +156,36 @@ def _resolve_runtime_database_url() -> str | None:
     return None
 
 
+def _refuse_running_loop(method: str) -> None:
+    """Raise when ``method`` is called from a thread running an event loop.
+
+    Every command that executes ``alembic/env.py`` ends in the SDK
+    template's ``asyncio.run(run_async_migrations())``, and ``asyncio.run``
+    refuses to nest: called from a FastAPI lifespan it raises ``asyncio.run()
+    cannot be called from a running event loop`` from deep inside Alembic
+    and leaves ``run_async_migrations`` un-awaited, which Python reports as a
+    second, unrelated-looking ``RuntimeWarning``. Checking first turns that
+    into one error that names the method to call instead.
+
+    Args:
+        method (str): Name of the sync :class:`AlembicHelper` method being
+            called; the message points at its ``_async`` counterpart.
+
+    Raises:
+        RuntimeError: When an event loop is running in the current thread.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    raise RuntimeError(
+        f"AlembicHelper.{method}() was called from a running event loop. It "
+        "runs alembic/env.py, which drives migrations with asyncio.run() and "
+        f"cannot nest inside the loop; use `await helper.{method}_async(...)` "
+        "instead."
+    )
+
+
 def _strip_async_driver(url: str) -> str:
     """Return a sync flavor of an async database URL.
 
@@ -183,9 +213,25 @@ class AlembicHelper:
     downgrade, revision authoring, schema-vs-models check — without
     leaking Alembic internals into application code.
 
-    All methods are synchronous because Alembic itself is sync; run
-    them from CLI scripts or from FastAPI's startup hook via
-    ``asyncio.to_thread`` if you must call them from async code.
+    Alembic itself is synchronous, and the SDK's ``env.py`` drives the
+    async engine with ``asyncio.run``, so the plain methods are for CLI
+    scripts and other code with no event loop running. Code that already
+    runs on a loop — a FastAPI lifespan, an admin endpoint — awaits the
+    ``*_async`` counterpart instead (:meth:`upgrade_async`,
+    :meth:`sync_schema_async`, ...). Each one runs the sync method in a
+    worker thread, which has no loop of its own, so ``asyncio.run`` inside
+    ``env.py`` works there and the caller's loop keeps serving while the
+    migration runs. A sync method that would execute ``env.py`` called from
+    a running loop raises a ``RuntimeError`` naming its ``_async``
+    counterpart, instead of failing inside Alembic.
+
+    The worker thread is chosen over running the migration on the caller's
+    loop through ``AsyncConnection.run_sync`` (Alembic's connection-sharing
+    recipe) because it works with every ``env.py`` already generated: that
+    recipe needs an ``env.py`` that reads ``config.attributes["connection"]``,
+    and the template only learned to in the release that added these
+    methods. The template now supports both, so code that must reuse its
+    own connection still can — see the migrations recipe.
 
     Attributes:
         config_path (str): Path to the ``alembic.ini`` configuration.
@@ -374,8 +420,21 @@ class AlembicHelper:
             revision (str): Target revision identifier or relative
                 spec (``"+1"``). ``"head"`` runs every pending
                 migration.
+
+        Raises:
+            RuntimeError: When called from a running event loop; await
+                :meth:`upgrade_async` there instead.
         """
+        _refuse_running_loop("upgrade")
         command.upgrade(self.config, revision)
+
+    async def upgrade_async(self, revision: str = "head") -> None:
+        """Run :meth:`upgrade` in a worker thread, for async callers.
+
+        Args:
+            revision (str): Target revision identifier or relative spec.
+        """
+        await asyncio.to_thread(self.upgrade, revision)
 
     def pending_destructive_ops(self, revision: str = "head") -> list[tuple[str, str]]:
         """Scan migrations pending up to ``revision`` for destructive ops.
@@ -410,6 +469,20 @@ class AlembicHelper:
                     offences.append((revobj.revision, op.rstrip("(")))
         return offences
 
+    async def pending_destructive_ops_async(
+        self,
+        revision: str = "head",
+    ) -> list[tuple[str, str]]:
+        """Run :meth:`pending_destructive_ops` in a worker thread.
+
+        Args:
+            revision (str): The target revision (default ``"head"``).
+
+        Returns:
+            list[tuple[str, str]]: ``(revision_id, operation)`` pairs.
+        """
+        return await asyncio.to_thread(self.pending_destructive_ops, revision)
+
     def safe_upgrade(self, revision: str = "head", *, force: bool = False) -> None:
         """Upgrade, but refuse destructive migrations unless forced.
 
@@ -428,11 +501,32 @@ class AlembicHelper:
         Raises:
             DestructiveMigrationError: When destructive ops are pending
                 and ``force`` is ``False``.
+            RuntimeError: When called from a running event loop; await
+                :meth:`safe_upgrade_async` there instead.
         """
+        _refuse_running_loop("safe_upgrade")
         offences = self.pending_destructive_ops(revision)
         if offences and not force:
             raise DestructiveMigrationError(offences)
         self.upgrade(revision)
+
+    async def safe_upgrade_async(
+        self,
+        revision: str = "head",
+        *,
+        force: bool = False,
+    ) -> None:
+        """Run :meth:`safe_upgrade` in a worker thread, for async callers.
+
+        Args:
+            revision (str): The target revision (default ``"head"``).
+            force (bool): Run even if destructive ops are pending.
+
+        Raises:
+            DestructiveMigrationError: When destructive ops are pending
+                and ``force`` is ``False``.
+        """
+        await asyncio.to_thread(self.safe_upgrade, revision, force=force)
 
     def squash(
         self,
@@ -482,9 +576,11 @@ class AlembicHelper:
 
         Raises:
             RuntimeError: When ``force`` is ``False``, when there are no
-                revisions to squash, or when the migration graph has
-                multiple heads (run a merge revision first).
+                revisions to squash, when the migration graph has
+                multiple heads (run a merge revision first), or when called
+                from a running event loop (await :meth:`squash_async`).
         """
+        _refuse_running_loop("squash")
         if not force:
             raise RuntimeError(
                 "squash drops every table in the configured database; pass "
@@ -523,16 +619,53 @@ class AlembicHelper:
             return new_revision
         return self.current() or ""
 
+    async def squash_async(
+        self,
+        message: str = "squash",
+        *,
+        force: bool = False,
+        backup: bool = True,
+    ) -> str:
+        """Run :meth:`squash` in a worker thread, for async callers.
+
+        Args:
+            message (str): Slug/message for the new root revision.
+            force (bool): Must be ``True`` to proceed.
+            backup (bool): Move the old revision files aside instead of
+                deleting them.
+
+        Returns:
+            str: The revision id of the new root migration.
+
+        Raises:
+            RuntimeError: When ``force`` is ``False``, when there are no
+                revisions to squash, or when the graph has multiple heads.
+        """
+        return await asyncio.to_thread(self.squash, message, force=force, backup=backup)
+
     def downgrade(self, revision: str = "-1") -> None:
         """Revert migrations down to ``revision`` (default: one step back).
 
         Args:
             revision (str): Target revision identifier or relative
                 spec. ``"base"`` rolls everything back.
+
+        Raises:
+            RuntimeError: When called from a running event loop; await
+                :meth:`downgrade_async` there instead.
         """
+        _refuse_running_loop("downgrade")
         command.downgrade(self.config, revision)
 
-    def _read(self, operation: Callable[[Connection], _T]) -> _T:
+    async def downgrade_async(self, revision: str = "-1") -> None:
+        """Run :meth:`downgrade` in a worker thread, for async callers.
+
+        Args:
+            revision (str): Target revision identifier or relative spec.
+        """
+        await asyncio.to_thread(self.downgrade, revision)
+
+    def _read(self, operation: Callable[[Connection], _T], *, method: str) -> _T:
         """Run ``operation`` against the database on a sync connection.
 
         Opens a short-lived engine from the configured URL with the async
@@ -549,6 +682,8 @@ class AlembicHelper:
             operation (Callable[[Connection], _T]): Reader invoked with an
                 open sync connection. Must not depend on the connection
                 outliving the call.
+            method (str): The public method reading, named in the error the
+                async fallback raises from a running event loop.
 
         Returns:
             _T: Whatever ``operation`` returned.
@@ -563,12 +698,12 @@ class AlembicHelper:
         try:
             engine = create_engine(_strip_async_driver(url))
         except (NoSuchModuleError, ModuleNotFoundError):
-            return self._read_via_async(url, operation)
+            return self._read_via_async(url, operation, method=method)
         try:
             with engine.connect() as connection:
                 return operation(connection)
         except ModuleNotFoundError:
-            return self._read_via_async(url, operation)
+            return self._read_via_async(url, operation, method=method)
         finally:
             engine.dispose()
 
@@ -576,6 +711,8 @@ class AlembicHelper:
         self,
         url: str,
         operation: Callable[[Connection], _T],
+        *,
+        method: str,
     ) -> _T:
         """Run ``operation`` through the async driver instead.
 
@@ -584,14 +721,24 @@ class AlembicHelper:
         URL. Opens a short-lived async engine and hands ``operation`` the
         sync connection ``run_sync`` provides.
 
+        This is the only read path that needs ``asyncio.run``, so it is the
+        only one that refuses a running event loop: with a sync driver
+        installed, :meth:`current` keeps working from async code.
+
         Args:
             url (str): The (async-flavored) database URL from the config.
             operation (Callable[[Connection], _T]): The reader to run.
+            method (str): The public method reading, named in the error.
 
         Returns:
             _T: Whatever ``operation`` returned.
+
+        Raises:
+            RuntimeError: When called from a running event loop.
         """
         from sqlalchemy.ext.asyncio import create_async_engine
+
+        _refuse_running_loop(method)
 
         async def _run() -> _T:
             engine = create_async_engine(url)
@@ -613,15 +760,35 @@ class AlembicHelper:
             str | None: The revision identifier, or ``None`` when the
             ``alembic_version`` table is missing/empty.
 
+        Works from a running event loop whenever a sync driver for the
+        backend is installed. On an async-only install (``asyncpg``
+        without a sync PostgreSQL driver) the read goes through
+        ``asyncio.run`` and therefore raises there; await
+        :meth:`current_async` instead.
+
         Raises:
             RuntimeError: When ``sqlalchemy.url`` is not configured, so
-                there is no database to read the revision from.
+                there is no database to read the revision from, or when
+                the async-only fallback is needed inside a running loop.
         """
         return self._read(
             lambda connection: MigrationContext.configure(
                 connection
-            ).get_current_revision()
+            ).get_current_revision(),
+            method="current",
         )
+
+    async def current_async(self) -> str | None:
+        """Run :meth:`current` in a worker thread, for async callers.
+
+        Returns:
+            str | None: The revision identifier, or ``None`` when the
+            database is not stamped.
+
+        Raises:
+            RuntimeError: When ``sqlalchemy.url`` is not configured.
+        """
+        return await asyncio.to_thread(self.current)
 
     def has_existing_schema(self) -> bool:
         """Report whether the database holds tables Alembic did not create.
@@ -636,13 +803,26 @@ class AlembicHelper:
             bool: ``True`` when at least one non-Alembic table exists.
 
         Raises:
-            RuntimeError: When ``sqlalchemy.url`` is not configured.
+            RuntimeError: When ``sqlalchemy.url`` is not configured, or when
+                the async-only fallback is needed inside a running loop.
         """
         return self._read(
             lambda connection: bool(
                 set(inspect(connection).get_table_names()) - {"alembic_version"}
-            )
+            ),
+            method="has_existing_schema",
         )
+
+    async def has_existing_schema_async(self) -> bool:
+        """Run :meth:`has_existing_schema` in a worker thread.
+
+        Returns:
+            bool: ``True`` when at least one non-Alembic table exists.
+
+        Raises:
+            RuntimeError: When ``sqlalchemy.url`` is not configured.
+        """
+        return await asyncio.to_thread(self.has_existing_schema)
 
     def base_revision(self) -> str:
         """Return the root revision of the migration tree.
@@ -683,14 +863,30 @@ class AlembicHelper:
         Raises:
             AmbiguousBaseRevisionError: When adoption is needed but the
                 tree has no single root to stamp.
-            RuntimeError: When ``sqlalchemy.url`` is not configured.
+            RuntimeError: When ``sqlalchemy.url`` is not configured, or when
+                called from a running event loop (await
+                :meth:`adopt_async`).
         """
+        _refuse_running_loop("adopt")
         if self.current() is not None:
             return False
         if not self.has_existing_schema():
             return False
         self.stamp(self.base_revision())
         return True
+
+    async def adopt_async(self) -> bool:
+        """Run :meth:`adopt` in a worker thread, for async callers.
+
+        Returns:
+            bool: ``True`` when a stamp was written.
+
+        Raises:
+            AmbiguousBaseRevisionError: When adoption is needed but the
+                tree has no single root to stamp.
+            RuntimeError: When ``sqlalchemy.url`` is not configured.
+        """
+        return await asyncio.to_thread(self.adopt)
 
     def sync_schema(self, *, force: bool = False) -> SchemaSyncOutcome:
         """Bring the schema in line with the migration tree, from any state.
@@ -715,8 +911,8 @@ class AlembicHelper:
           base, then ``safe_upgrade`` runs everything after it.
         * **Database already under Alembic** — ``safe_upgrade`` alone.
 
-        Alembic is synchronous, so call this from a lifespan hook via
-        ``asyncio.to_thread(helper.sync_schema)``.
+        From a lifespan hook, await :meth:`sync_schema_async` — this
+        method raises when an event loop is already running.
 
         Args:
             force (bool): Passed to :meth:`safe_upgrade`. Destructive
@@ -730,13 +926,37 @@ class AlembicHelper:
                 table, column or constraint and ``force`` is ``False``.
             AmbiguousBaseRevisionError: When adoption is needed but the
                 tree has no single root to stamp.
-            RuntimeError: When ``sqlalchemy.url`` is not configured.
+            RuntimeError: When ``sqlalchemy.url`` is not configured, or when
+                called from a running event loop (await
+                :meth:`sync_schema_async`).
         """
+        _refuse_running_loop("sync_schema")
         if not self.heads():
             return SchemaSyncOutcome.NO_MIGRATIONS
         adopted = self.adopt()
         self.safe_upgrade(force=force)
         return SchemaSyncOutcome.ADOPTED if adopted else SchemaSyncOutcome.SYNCED
+
+    async def sync_schema_async(self, *, force: bool = False) -> SchemaSyncOutcome:
+        """Run :meth:`sync_schema` in a worker thread, for async callers.
+
+        The call to make from a FastAPI lifespan: the worker thread has no
+        event loop, so the ``asyncio.run`` inside ``env.py`` works there.
+
+        Args:
+            force (bool): Passed to :meth:`safe_upgrade`.
+
+        Returns:
+            SchemaSyncOutcome: Which of the three paths ran.
+
+        Raises:
+            DestructiveMigrationError: When a pending migration drops a
+                table, column or constraint and ``force`` is ``False``.
+            AmbiguousBaseRevisionError: When adoption is needed but the
+                tree has no single root to stamp.
+            RuntimeError: When ``sqlalchemy.url`` is not configured.
+        """
+        return await asyncio.to_thread(self.sync_schema, force=force)
 
     def heads(self) -> list[str]:
         """Return every head revision known to the script directory.
@@ -789,10 +1009,44 @@ class AlembicHelper:
         Returns:
             Any: The Alembic ``Script`` (or list of scripts) created
             by the command, as returned by ``alembic.command.revision``.
+
+        Raises:
+            RuntimeError: When called from a running event loop; await
+                :meth:`revision_async` there instead. Refused even with
+                ``autogenerate=False``, because ``revision_environment`` in
+                the ini makes that path execute ``env.py`` too.
         """
+        _refuse_running_loop("revision")
         return command.revision(
             self.config,
             message=message,
+            autogenerate=autogenerate,
+            sql=sql,
+            head=head,
+        )
+
+    async def revision_async(
+        self,
+        message: str,
+        *,
+        autogenerate: bool = True,
+        sql: bool = False,
+        head: str = "head",
+    ) -> Any:
+        """Run :meth:`revision` in a worker thread, for async callers.
+
+        Args:
+            message (str): Description of the change.
+            autogenerate (bool): Run autogenerate against the live schema.
+            sql (bool): Emit SQL to stdout instead of executing.
+            head (str): Parent revision; defaults to the current head.
+
+        Returns:
+            Any: What :meth:`revision` returned.
+        """
+        return await asyncio.to_thread(
+            self.revision,
+            message,
             autogenerate=autogenerate,
             sql=sql,
             head=head,
@@ -824,8 +1078,23 @@ class AlembicHelper:
                 directory — a plain stamp would fail with
                 ``Can't locate revision`` because Alembic cannot resolve
                 the stale pointer. Defaults to ``False``.
+
+        Raises:
+            RuntimeError: When called from a running event loop; await
+                :meth:`stamp_async` there instead.
         """
+        _refuse_running_loop("stamp")
         command.stamp(self.config, revision, purge=purge)
+
+    async def stamp_async(self, revision: str = "head", *, purge: bool = False) -> None:
+        """Run :meth:`stamp` in a worker thread, for async callers.
+
+        Args:
+            revision (str): The revision to stamp.
+            purge (bool): Delete the existing ``alembic_version`` rows
+                before stamping.
+        """
+        await asyncio.to_thread(self.stamp, revision, purge=purge)
 
     def check(self) -> bool:
         """Return ``True`` if no autogenerate diff would be produced.
@@ -833,14 +1102,32 @@ class AlembicHelper:
         Wraps ``alembic check`` (added in Alembic 1.9). Suitable for
         CI to fail when models drift from the migration tree.
 
+        The running-loop refusal sits outside the ``except`` that maps
+        every Alembic failure to ``False``: before it, a call from async
+        code swallowed the ``asyncio.run`` error and reported drift that
+        was never measured.
+
         Returns:
             bool: ``True`` if the schema matches the models.
+
+        Raises:
+            RuntimeError: When called from a running event loop; await
+                :meth:`check_async` there instead.
         """
+        _refuse_running_loop("check")
         try:
             command.check(self.config)
             return True
         except Exception:
             return False
+
+    async def check_async(self) -> bool:
+        """Run :meth:`check` in a worker thread, for async callers.
+
+        Returns:
+            bool: ``True`` if the schema matches the models.
+        """
+        return await asyncio.to_thread(self.check)
 
     def show(self, revision: str = "head") -> str:
         """Return the details of a single revision.

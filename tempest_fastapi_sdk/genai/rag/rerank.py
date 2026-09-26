@@ -19,7 +19,6 @@ import asyncio
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.schemas import (
     HardwareInfo,
@@ -31,6 +30,7 @@ from tempest_fastapi_sdk.genai.text import (
     auto_dtype_name,
     resolve_device,
 )
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.genai.rag.schemas import Chunk

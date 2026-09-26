@@ -21,13 +21,13 @@ score lower.
 from __future__ import annotations
 
 import asyncio
-import time
 from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.faces.detector import FaceDetector
 from tempest_fastapi_sdk.faces.geometry import align_face
 from tempest_fastapi_sdk.faces.models import LIGHT_PACK, ensure_models, resolve_pack
 from tempest_fastapi_sdk.faces.schemas import DetectedFace
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -63,9 +63,15 @@ face at all".
 class FaceRecognizer:
     """Detects, aligns and embeds faces.
 
+    Concurrent first calls build the models once, and a call in flight
+    keeps them resident: ``unload_if_idle`` refuses while one runs, and an
+    explicit ``unload`` waits for the last one to finish.
+
     Attributes:
         pack (FaceModelPack): Which models are in use.
         threshold (float): Similarity above which faces match.
+        idle_unload_seconds (float | None): Idle time after which
+            :meth:`unload_if_idle` releases the models.
     """
 
     def __init__(
@@ -113,11 +119,15 @@ class FaceRecognizer:
         self._detector_model = detector_model
         self._recognizer_model = recognizer_model
         self._num_threads = num_threads
-        self._idle_unload_seconds = idle_unload_seconds
+        self.idle_unload_seconds: float | None = idle_unload_seconds
         self._semaphore: asyncio.Semaphore = asyncio.Semaphore(max_concurrent)
         self._detector: FaceDetector | None = None
         self._session: Any | None = None
-        self._last_used: float = time.monotonic()
+        self._lifecycle = ModelLifecycle(
+            build=self._build,
+            release=self._release,
+            is_loaded=lambda: self.is_loaded,
+        )
 
     @property
     def is_loaded(self) -> bool:
@@ -130,23 +140,32 @@ class FaceRecognizer:
 
     @property
     def seconds_idle(self) -> float:
-        """Seconds since the last inference.
+        """Seconds since the models were last in use.
+
+        Reads ``0.0`` while an inference is in flight.
 
         Returns:
-            float: Idle time.
+            float: Idle time in seconds.
         """
-        return time.monotonic() - self._last_used
+        return self._lifecycle.seconds_idle()
 
     def load(self) -> None:
         """Resolve and load both models, downloading the pack if needed.
 
-        Idempotent.
+        Idempotent, and safe to call from several threads at once:
+        concurrent callers on a cold instance wait for one build.
 
         Raises:
             ImportError: When the ``[faces]`` extra is absent.
         """
-        if self.is_loaded:
-            return
+        self._lifecycle.load()
+
+    def _build(self) -> None:
+        """Resolve the model paths and open both sessions, under the load lock.
+
+        Raises:
+            ImportError: When the ``[faces]`` extra is absent.
+        """
         try:
             import onnxruntime as ort
         except ImportError as exc:  # pragma: no cover - extra-gated
@@ -166,11 +185,12 @@ class FaceRecognizer:
         else:
             detector_path = self._detector_model
             recognizer_path = self._recognizer_model
-        self._detector = FaceDetector(
+        detector = FaceDetector(
             detector_path,
             num_threads=self._num_threads,
         )
-        self._detector.load()
+        detector.load()
+        self._detector = detector
         options = ort.SessionOptions()
         options.intra_op_num_threads = self._num_threads
         self._session = ort.InferenceSession(
@@ -180,24 +200,46 @@ class FaceRecognizer:
         )
 
     def unload(self) -> None:
-        """Release both models."""
+        """Release both models.
+
+        While an inference is in flight the release waits for it: the last
+        call to finish drops the sessions.
+        """
+        self._lifecycle.unload()
+
+    def _release(self) -> None:
+        """Drop the detector and the recognition session."""
         if self._detector is not None:
             self._detector.unload()
         self._detector = None
         self._session = None
 
     def unload_if_idle(self) -> bool:
-        """Release the models when idle past the configured threshold.
+        """Release the models when idle past ``idle_unload_seconds``.
 
         Returns:
-            bool: Whether anything was unloaded.
+            bool: Whether anything was unloaded — never while an inference
+            is in flight, and never when no ``idle_unload_seconds`` was
+            configured.
         """
-        if self._idle_unload_seconds is None or not self.is_loaded:
-            return False
-        if self.seconds_idle < self._idle_unload_seconds:
-            return False
-        self.unload()
-        return True
+        return self._lifecycle.unload_if_idle(self.idle_unload_seconds)
+
+    def _require_models(self) -> tuple[FaceDetector, Any]:
+        """Return the loaded detector and recognition session.
+
+        Returns:
+            tuple[FaceDetector, Any]: The detector and the ONNX Runtime
+            session.
+
+        Raises:
+            RuntimeError: When the models are not loaded, which inside a
+                lifecycle ``use()`` block means the build did not set them.
+        """
+        detector = self._detector
+        session = self._session
+        if detector is None or session is None:
+            raise RuntimeError("face models are not loaded")
+        return detector, session
 
     async def detect(self, image: str | Path | bytes) -> list[DetectedFace]:
         """Find faces without embedding them.
@@ -214,9 +256,7 @@ class FaceRecognizer:
             first, embeddings empty.
         """
         async with self._semaphore:
-            faces = await asyncio.to_thread(self._detect_sync, image)
-        self._last_used = time.monotonic()
-        return faces
+            return await asyncio.to_thread(self._detect_sync, image)
 
     async def recognize(self, image: str | Path | bytes) -> list[DetectedFace]:
         """Find faces and embed each one.
@@ -231,9 +271,7 @@ class FaceRecognizer:
             rather than a vector describing its upscaling.
         """
         async with self._semaphore:
-            faces = await asyncio.to_thread(self._recognize_sync, image)
-        self._last_used = time.monotonic()
-        return faces
+            return await asyncio.to_thread(self._recognize_sync, image)
 
     async def embed_face(self, image: str | Path | bytes) -> list[float]:
         """Embed the largest face in an image.
@@ -281,7 +319,7 @@ class FaceRecognizer:
         return Image.open(str(image))
 
     def _detect_sync(self, image: str | Path | bytes) -> list[DetectedFace]:
-        """Detect faces. Runs in a worker thread.
+        """Detect faces, holding the models for the call. Runs in a worker thread.
 
         Args:
             image (str | Path | bytes): The source.
@@ -289,12 +327,14 @@ class FaceRecognizer:
         Returns:
             list[DetectedFace]: The faces.
         """
-        self.load()
-        assert self._detector is not None
-        return self._detector.detect(self._open(image))
+        with self._lifecycle.use():
+            detector, _session = self._require_models()
+            return detector.detect(self._open(image))
 
     def _recognize_sync(self, image: str | Path | bytes) -> list[DetectedFace]:
-        """Detect and embed faces. Runs in a worker thread.
+        """Detect and embed faces, holding the models for the call.
+
+        Runs in a worker thread.
 
         Args:
             image (str | Path | bytes): The source.
@@ -302,25 +342,28 @@ class FaceRecognizer:
         Returns:
             list[DetectedFace]: The faces with embeddings.
         """
-        self.load()
-        assert self._detector is not None
-        picture = self._open(image)
-        faces = self._detector.detect(picture)
-        embedded: list[DetectedFace] = []
-        for face in faces:
-            if min(face.box.width, face.box.height) < self.min_face_pixels:
-                embedded.append(face)
-                continue
-            crop = align_face(picture, face.landmarks)
-            embedded.append(
-                face.model_copy(update={"embedding": self._embed_crop(crop)}),
-            )
-        return embedded
+        with self._lifecycle.use():
+            detector, session = self._require_models()
+            picture = self._open(image)
+            faces = detector.detect(picture)
+            embedded: list[DetectedFace] = []
+            for face in faces:
+                if min(face.box.width, face.box.height) < self.min_face_pixels:
+                    embedded.append(face)
+                    continue
+                crop = align_face(picture, face.landmarks)
+                embedded.append(
+                    face.model_copy(
+                        update={"embedding": self._embed_crop(session, crop)},
+                    ),
+                )
+            return embedded
 
-    def _embed_crop(self, crop: Image.Image) -> list[float]:
+    def _embed_crop(self, session: Any, crop: Image.Image) -> list[float]:
         """Run the recognizer on an aligned 112x112 crop.
 
         Args:
+            session (Any): The loaded ONNX Runtime recognition session.
             crop (Image.Image): The aligned ``112x112`` crop.
 
         Returns:
@@ -330,8 +373,6 @@ class FaceRecognizer:
 
         blob = (np.asarray(crop, dtype=np.float32) - 127.5) / 127.5
         blob = blob.transpose(2, 0, 1)[None]
-        session = self._session
-        assert session is not None
         vector = session.run(None, {session.get_inputs()[0].name: blob})[0][0]
         norm = float(np.linalg.norm(vector))
         if norm == 0.0:

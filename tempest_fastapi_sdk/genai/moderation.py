@@ -21,17 +21,66 @@ from __future__ import annotations
 import asyncio
 import re
 import unicodedata
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, get_args, runtime_checkable
 
 from pydantic import Field
 
-from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.text import _require_transformers, resolve_device
 from tempest_fastapi_sdk.schemas.base import BaseSchema
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.genai.schemas import HardwareInfo
+
+_Activation = Literal["auto", "sigmoid", "softmax"]
+"""How :class:`ClassifierModerator` turns logits into per-label scores."""
+
+_MULTI_LABEL_PROBLEM_TYPE: str = "multi_label_classification"
+"""``config.problem_type`` value that marks independent labels (sigmoid)."""
+
+_WINDOW_BATCH_SIZE: int = 16
+"""Windows run through the model per forward pass, bounding peak memory."""
+
+_DEFAULT_MAX_POSITIONS: int = 512
+"""Window width when neither the tokenizer nor the config states a limit."""
+
+
+def _split_windows(ids: list[int], size: int, overlap: int) -> list[list[int]]:
+    """Cut ``ids`` into windows of at most ``size`` sharing ``overlap`` tokens.
+
+    Consecutive windows start ``size - overlap`` tokens apart and the last one
+    ends on the final token, so every token lands in at least one window and
+    any span of up to ``overlap + 1`` tokens lands whole in one of them.
+
+    Args:
+        ids (list[int]): Token ids without special tokens.
+        size (int): Maximum tokens per window.
+        overlap (int): Tokens shared by consecutive windows; must be smaller
+            than ``size``.
+
+    Returns:
+        list[list[int]]: The windows, in order; one (possibly empty) window
+        when ``ids`` fits.
+
+    Raises:
+        ValueError: When ``overlap`` leaves no room to advance.
+    """
+    if overlap >= size:
+        raise ValueError(
+            f"window_overlap ({overlap}) must be smaller than the "
+            f"{size} content tokens a window holds"
+        )
+    if len(ids) <= size:
+        return [ids]
+    step = size - overlap
+    windows: list[list[int]] = []
+    start = 0
+    while True:
+        windows.append(ids[start : start + size])
+        if start + size >= len(ids):
+            return windows
+        start += step
 
 
 class ModerationResult(BaseSchema):
@@ -143,13 +192,33 @@ class ClassifierModerator:
 
     Runs a sequence-classification model (e.g. a toxicity classifier), maps its
     labels via the model config, and flags the text when a configured label's
-    probability crosses ``threshold``. Lazy-loaded; inference runs in a worker
+    score crosses ``threshold``. Lazy-loaded; inference runs in a worker
     thread. Best-effort — validate the model on your language before relying on
     it. Needs the ``[genai]`` extra.
 
+    Scores come from a sigmoid per label when the model is multi-label
+    (``config.problem_type == "multi_label_classification"``, as in
+    ``unitary/toxic-bert``) or has a single output, and from a softmax
+    otherwise; ``activation=`` forces either. A softmax over independent
+    labels splits the mass between them, so a text that is both toxic and
+    insulting can score under the threshold on both.
+
+    Text is never truncated: it is cut into short overlapping windows (64
+    tokens by default), every window is classified, and each label keeps its
+    highest score across windows — so content placed after a long harmless
+    prefix is still screened. The windows are short on purpose: a classifier
+    such as ``unitary/toxic-bert`` dilutes one toxic sentence inside a few
+    hundred benign tokens below the threshold, so a window as wide as the
+    model's context (512) still lets that sentence through. Cost grows with
+    the number of windows.
+
     Attributes:
         model_id (str): The HuggingFace classifier id.
-        threshold (float): Probability above which a label flags the text.
+        threshold (float): Score above which a label flags the text.
+        activation (str): ``"auto"``, ``"sigmoid"`` or ``"softmax"``.
+        window_tokens (int | None): Tokens per window, special tokens
+            included; ``None`` uses the model's whole context.
+        window_overlap (int): Tokens shared by consecutive windows.
     """
 
     def __init__(
@@ -166,6 +235,9 @@ class ClassifierModerator:
         trust_remote_code: bool = False,
         idle_unload_seconds: float | None = None,
         hardware: HardwareInfo | None = None,
+        activation: _Activation = "auto",
+        window_tokens: int | None = 64,
+        window_overlap: int = 16,
     ) -> None:
         """Configure the moderator (does not load weights yet).
 
@@ -199,8 +271,41 @@ class ClassifierModerator:
                 :meth:`unload_if_idle` frees the classifier after this many
                 idle seconds.
             hardware (HardwareInfo | None): Injected snapshot (tests).
+            activation (str): ``"auto"`` reads the model config —
+                sigmoid for ``problem_type="multi_label_classification"`` or
+                a single output, softmax otherwise. ``"sigmoid"`` /
+                ``"softmax"`` force one, for a checkpoint whose config does
+                not declare its problem type.
+            window_tokens (int | None): Tokens per classified window, special
+                tokens included, capped at the model's context (the
+                tokenizer's ``model_max_length`` and the config's
+                ``max_position_embeddings``, 512 for BERT). ``None`` uses
+                that whole context — fewer forward passes, but a short
+                violation diluted by the text around it scores lower.
+            window_overlap (int): Tokens shared by consecutive windows, so a
+                phrase of up to ``window_overlap + 1`` tokens cut by one
+                window boundary lands whole in the next.
+
+        Raises:
+            ValueError: On an unknown ``activation``, a negative
+                ``window_overlap``, or a ``window_tokens`` that leaves no
+                room to advance past ``window_overlap``.
         """
+        if activation not in get_args(_Activation):
+            raise ValueError(
+                f"activation must be one of {get_args(_Activation)}, got {activation!r}"
+            )
+        if window_overlap < 0:
+            raise ValueError(f"window_overlap must be >= 0, got {window_overlap}")
+        if window_tokens is not None and window_overlap >= window_tokens:
+            raise ValueError(
+                f"window_overlap ({window_overlap}) must be smaller than "
+                f"window_tokens ({window_tokens})"
+            )
         self.model_id = model_id
+        self.activation: _Activation = activation
+        self.window_tokens = window_tokens
+        self.window_overlap = window_overlap
         self.flagged_labels = {label.lower() for label in (flagged_labels or [])}
         self.threshold = threshold
         self.device = resolve_device(device, hardware)
@@ -321,26 +426,93 @@ class ClassifierModerator:
         with self._lifecycle.use():
             return self._classify(text)
 
-    def _classify(self, text: str) -> ModerationResult:  # pragma: no cover - torch
-        """Blocking classification + policy mapping."""
+    def _uses_sigmoid(self) -> bool:
+        """Return ``True`` when labels are scored independently.
+
+        Returns:
+            bool: The resolved activation for the loaded model.
+        """
+        if self.activation != "auto":
+            return self.activation == "sigmoid"
+        config = self._model.config
+        if getattr(config, "problem_type", None) == _MULTI_LABEL_PROBLEM_TYPE:
+            return True
+        return len(config.id2label) == 1
+
+    def _window_size(self) -> int:
+        """Return how many tokens (special tokens included) a window holds.
+
+        Returns:
+            int: ``window_tokens`` capped at the model's context — the
+            smaller of the tokenizer's ``model_max_length`` and the config's
+            ``max_position_embeddings`` — or that context when
+            ``window_tokens`` is ``None``.
+        """
+        limits = [
+            limit
+            for limit in (
+                getattr(self._tokenizer, "model_max_length", None),
+                getattr(self._model.config, "max_position_embeddings", None),
+            )
+            if isinstance(limit, int) and limit > 0
+        ]
+        context = min(limits) if limits else _DEFAULT_MAX_POSITIONS
+        if self.window_tokens is None:
+            return context
+        return min(self.window_tokens, context)
+
+    def _classify(self, text: str) -> ModerationResult:
+        """Blocking windowed classification + policy mapping.
+
+        Tokenizes without truncation, classifies every window in batches of
+        ``_WINDOW_BATCH_SIZE`` and keeps each label's highest score.
+
+        Args:
+            text (str): The text to screen.
+
+        Returns:
+            ModerationResult: The verdict over the whole text.
+        """
         import torch
 
-        inputs = self._tokenizer(
+        tokenizer = self._tokenizer
+        ids: list[int] = tokenizer(
             text,
-            truncation=True,
-            return_tensors="pt",
-        ).to(self._model.device)
-        with torch.no_grad():
-            logits = self._model(**inputs).logits[0]
-        probs = torch.softmax(logits, dim=-1).tolist()
+            add_special_tokens=False,
+            truncation=False,
+            verbose=False,
+        )["input_ids"]
+        content = self._window_size() - tokenizer.num_special_tokens_to_add()
+        windows = [
+            tokenizer.build_inputs_with_special_tokens(window)
+            for window in _split_windows(ids, content, self.window_overlap)
+        ]
+        sigmoid = self._uses_sigmoid()
+        best_scores: torch.Tensor | None = None
+        for start in range(0, len(windows), _WINDOW_BATCH_SIZE):
+            batch = tokenizer.pad(
+                {"input_ids": windows[start : start + _WINDOW_BATCH_SIZE]},
+                return_tensors="pt",
+            ).to(self._model.device)
+            with torch.no_grad():
+                logits = self._model(**batch).logits
+            scores = torch.sigmoid(logits) if sigmoid else torch.softmax(logits, -1)
+            batch_best = scores.max(dim=0).values
+            best_scores = (
+                batch_best
+                if best_scores is None
+                else torch.maximum(best_scores, batch_best)
+            )
+        if best_scores is None:
+            raise RuntimeError("no window was classified")
         id2label = self._model.config.id2label
         flagged: list[str] = []
         best = 0.0
-        for index, prob in enumerate(probs):
+        for index, score in enumerate(best_scores.tolist()):
             label = id2label[index]
-            if self._is_flagged_label(label) and prob >= self.threshold:
+            if self._is_flagged_label(label) and score >= self.threshold:
                 flagged.append(label)
-                best = max(best, float(prob))
+                best = max(best, float(score))
         return ModerationResult(flagged=bool(flagged), categories=flagged, score=best)
 
 

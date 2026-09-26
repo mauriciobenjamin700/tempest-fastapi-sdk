@@ -291,6 +291,34 @@ class TestConfiguration:
         """Below it the embedding describes the upscaling, not the person."""
         assert MIN_FACE_PIXELS == 40
 
+    def test_imports_without_the_extra_or_genai(self) -> None:
+        """The shared lifecycle must not drag the extra or ``genai`` in.
+
+        Runs in a fresh interpreter with the ``[faces]`` dependencies
+        blocked, because this process already imported them.
+        """
+        import subprocess
+        import sys
+
+        script = (
+            "import sys\n"
+            "for name in ('onnxruntime', 'PIL', 'numpy'):\n"
+            "    sys.modules[name] = None\n"
+            "from tempest_fastapi_sdk.faces import FaceRecognizer\n"
+            "recognizer = FaceRecognizer(idle_unload_seconds=0.0)\n"
+            "assert recognizer.unload_if_idle() is False\n"
+            "prefix = 'tempest_fastapi_sdk.genai'\n"
+            "loaded = [m for m in sys.modules if m.startswith(prefix)]\n"
+            "assert not loaded, loaded\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+
 
 class TestSchemas:
     def test_the_box_reports_its_own_size(self) -> None:

@@ -1056,7 +1056,8 @@ app: FastAPI = FastAPI(title=settings.TITLE, lifespan=lifespan)
     resolvendo. `tests/tasks/test_scheduler_lease.py` fixa as duas
     contagens — a primeira parametrizada em 2, 3 e 5 réplicas — e um
     caso separado espera o líder sair e confirma que a de prontidão
-    assume dentro de um TTL.
+    assume na primeira tentativa de `acquire` que começa depois que o
+    líder solta o lease, sem esperar o TTL lapsar.
 
 ### De onde vem o lease
 
@@ -1091,6 +1092,34 @@ lease: SchedulerLock = RedisSchedulerLock.from_url(
 !!! warning "Dois serviços numa Redis precisam de `name` diferente"
     O default é `"tempest:tasks:scheduler"`. Dois serviços compartilhando
     a instância disputam a mesma chave, e um deles **nunca** agenda.
+
+!!! warning "Relógio que salta encurta o lease"
+    O Redis grava a expiração de uma chave como timestamp Unix absoluto e
+    consulta o relógio do computador mesmo com a instância rodando — a
+    [documentação do `EXPIRE`](https://redis.io/docs/latest/commands/expire/#expires-and-persistence)
+    dá o exemplo: chave com TTL de 1000 s e relógio adiantado 2000 s expira
+    na hora. Para o lease do scheduler, isso quer dizer que **um salto para
+    frente no relógio do servidor Redis maior que o TTL que resta derruba o
+    lease** antes do prazo, e outra réplica pode adquiri-lo.
+
+    Não é hipótese de laboratório: numa máquina WSL2 medimos o relógio de
+    parede saltando +3,6 s duas vezes por minuto, e com um lease de 2 s o
+    `tests/tasks/test_scheduler_lease.py` viu dois loops rodando ao mesmo
+    tempo (o teste agora fixa o relógio do fakeredis para medir a eleição,
+    não o host). Ajuste de NTP em *step* e VM retomada depois de pausa são
+    as outras fontes comuns.
+
+    O default de `ttl_seconds=30.0`, renovado a cada terço, mantém sempre
+    pelo menos ~20 s de TTL restante — é o tamanho do salto que ele
+    absorve. Em produção:
+
+    * sincronize o relógio do host do Redis por *slew* (chrony/NTP), não
+      por *step*;
+    * não baixe o TTL para poucos segundos para "assumir mais rápido" — o
+      líder que sai solta o lease no shutdown, então a troca planejada já
+      não espera o TTL;
+    * mantenha as tarefas agendadas idempotentes: o lease reduz disparo
+      duplicado, não o torna impossível.
 
 !!! info "`scheduler="unlocked"` existe, e tem que ser digitado"
     Quem roda réplica única de propósito passa `scheduler="unlocked"` e

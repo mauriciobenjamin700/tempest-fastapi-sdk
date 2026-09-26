@@ -98,8 +98,7 @@ class TestCancellingWorkInAThread:
             )
 
         assert event.is_set()
-        await asyncio.sleep(0.1)
-        assert stopped_early.is_set()
+        assert await asyncio.to_thread(stopped_early.wait, 10.0)
 
     async def test_without_the_event_the_thread_is_left_running(self) -> None:
         release = threading.Event()
@@ -124,5 +123,4 @@ class TestCancellingWorkInAThread:
 
         assert not finished.is_set()
         release.set()
-        await asyncio.sleep(0.1)
-        assert finished.is_set()
+        assert await asyncio.to_thread(finished.wait, 10.0)

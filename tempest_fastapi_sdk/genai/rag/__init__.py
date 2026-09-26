@@ -36,6 +36,7 @@ from tempest_fastapi_sdk.genai.rag.schemas import SearchResult as SearchResult
 from tempest_fastapi_sdk.genai.rag.search import SearxngBackend as SearxngBackend
 from tempest_fastapi_sdk.genai.rag.search import WebSearch as WebSearch
 from tempest_fastapi_sdk.genai.rag.search import WebSearchBackend as WebSearchBackend
+from tempest_fastapi_sdk.genai.rag.vectorstore import AnnIndex as AnnIndex
 from tempest_fastapi_sdk.genai.rag.vectorstore import (
     InMemoryVectorStore as InMemoryVectorStore,
 )
@@ -43,6 +44,7 @@ from tempest_fastapi_sdk.genai.rag.vectorstore import PgVectorStore as PgVectorS
 from tempest_fastapi_sdk.genai.rag.vectorstore import VectorStore as VectorStore
 
 __all__: list[str] = [
+    "AnnIndex",
     "ChatMemory",
     "ChromaVectorStore",
     "Chunk",

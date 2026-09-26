@@ -85,6 +85,18 @@ dizendo por quê).
   factory devolveu (`router.routes`) ou sobre `app.openapi()["paths"]`. Achado
   ao montar o kill-switch de signup (v0.272.0), quando 4 testes passavam
   provando nada.
+- **Estado de task em background se espera, não se dorme.** `sleep` fixo
+  antes de contar o que outra task fez mede a velocidade do runner: o
+  `test_scheduler_lease` contava loops aos 200 ms e falhava com `got 0` no CI
+  (#322). Faça polling com prazo sobre o próprio estado (ou sobre um
+  `asyncio.Event`/`threading.Event` que o código sinaliza), leia tudo que a
+  mensagem de erro cita **no mesmo instante** da asserção, e dimensione o
+  prazo para limitar a falha, não o sucesso. E o `fakeredis` expira chave
+  contra `time.time()`: num host WSL2 o relógio de parede deu salto de
+  3,585 s duas vezes em 60 s de amostragem, o que vence um lease de 2 s sem
+  stall nenhum — o `leases` do `test_scheduler_lease` fixa esse relógio. Sem
+  guard: distinguir `sleep` que espera estado de `sleep` que simula trabalho
+  exige ler a intenção do teste.
 - **Fake não substitui o artefato real.** Suíte de fake esconde gap de
   design: dois defeitos do caminho de modelo só apareceram rodando peso de
   verdade, e quatro do caminho OO de fila só com broker real. Para superfície

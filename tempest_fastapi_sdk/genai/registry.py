@@ -6,14 +6,21 @@ model reuse one instance instead of loading it twice. When more than
 ``max_models`` are live, the least-recently-used one is evicted and its
 ``unload()`` called to free memory.
 
+An evicted SDK loader stays evicted even through a handle a caller kept:
+its next call re-registers it here, evicting another model, instead of
+loading behind the registry's back.
+
 Dependency-free (pure Python) — imports and tests without ``[genai]``.
 """
 
 from __future__ import annotations
 
+import threading
 from collections import OrderedDict
 from collections.abc import Callable
 from typing import Any, Protocol, TypeVar, runtime_checkable
+
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 
 @runtime_checkable
@@ -36,12 +43,24 @@ class ModelRegistry:
 
     Eviction never frees weights under a running call: the SDK loaders
     defer an ``unload()`` that arrives while calls are in flight until the
-    last one finishes. What eviction cannot control is a handle a caller
-    keeps after it was evicted — the next call on it loads the weights
-    again, outside the registry, and ``max_models`` no longer counts it.
-    Call :meth:`get` per request instead of holding the returned object,
-    so an evicted entry is rebuilt through the registry rather than
-    reloaded behind it.
+    last one finishes.
+
+    A handle kept after its eviction (``model = registry.get(...)`` at
+    startup, used for every request) does not reload behind the registry.
+    Its next call re-registers it under its key — replacing whatever
+    object a later :meth:`get` built there — and evicts the
+    least-recently-used entry to make room, then waits for that entry's
+    in-flight calls to finish before building. So ``max_models`` keeps
+    holding for SDK loaders however the handle was obtained.
+
+    The same wait applies to a model :meth:`get` just built: when the
+    entry it pushed out still has calls running, the new model's first
+    call blocks until they finish, so the two are never resident together.
+    One allowance remains — a call made from *inside* another model's call
+    does not wait, since the outer call could be what the evicted model is
+    waiting on; there the ceiling is exceeded until that outer call ends.
+    A third-party object exposing only ``unload()`` has no hook for any of
+    this; hold those through :meth:`get` per request.
 
     Attributes:
         max_models (int): How many models may be live at once before the
@@ -61,6 +80,7 @@ class ModelRegistry:
             raise ValueError("max_models must be positive")
         self.max_models = max_models
         self._models: OrderedDict[str, Unloadable] = OrderedDict()
+        self._lock: threading.RLock = threading.RLock()
 
     def get(self, key: str, factory: Callable[[], T]) -> T:
         """Return the model for ``key``, creating it via ``factory`` on miss.
@@ -75,21 +95,100 @@ class ModelRegistry:
         Returns:
             T: The cached or freshly built model.
         """
-        existing = self._models.get(key)
-        if existing is not None:
+        with self._lock:
+            existing = self._models.get(key)
+            if existing is not None:
+                self._models.move_to_end(key)
+                return existing  # type: ignore[return-value]
+            model = factory()
+            self._models[key] = model
             self._models.move_to_end(key)
-            return existing  # type: ignore[return-value]
-        model = factory()
-        self._models[key] = model
-        self._models.move_to_end(key)
-        self._evict_over_capacity()
-        return model
+            self._hold_until_drained(model, self._evict_over_capacity())
+            return model
 
-    def _evict_over_capacity(self) -> None:
-        """Evict LRU entries until at most ``max_models`` remain."""
+    @staticmethod
+    def _hold_until_drained(model: Unloadable, blockers: list[ModelLifecycle]) -> None:
+        """Make ``model`` wait for ``blockers`` to release before it builds.
+
+        Args:
+            model (Unloadable): The model just admitted.
+            blockers (list[ModelLifecycle]): Models evicted to make room
+                whose release is deferred behind calls in flight.
+        """
+        lifecycle = _lifecycle_of(model)
+        if lifecycle is not None and blockers:
+            lifecycle.wait_for(blockers)
+
+    def _evict_over_capacity(self) -> list[ModelLifecycle]:
+        """Evict LRU entries until at most ``max_models`` remain.
+
+        Returns:
+            list[ModelLifecycle]: The evicted models whose release was
+            deferred behind calls still in flight.
+        """
+        pending: list[ModelLifecycle] = []
         while len(self._models) > self.max_models:
-            _key, model = self._models.popitem(last=False)
-            model.unload()
+            key, model = self._models.popitem(last=False)
+            lifecycle = self._unload_evicted(key, model)
+            if lifecycle is not None:
+                pending.append(lifecycle)
+        return pending
+
+    def _unload_evicted(self, key: str, model: Unloadable) -> ModelLifecycle | None:
+        """Unload a model just removed from the registry, marking it evicted.
+
+        Runs under the registry lock, so a call on a kept handle that finds
+        the mark cannot readmit the model between the mark and the unload.
+
+        Args:
+            key (str): The key the model was registered under.
+            model (Unloadable): The model removed from the registry.
+
+        Returns:
+            ModelLifecycle | None: The model's lifecycle when its release
+            was deferred behind calls in flight, ``None`` otherwise.
+        """
+        lifecycle = _lifecycle_of(model)
+        if lifecycle is not None:
+            lifecycle.mark_evicted(lambda: self._readmit(key, model))
+        model.unload()
+        if lifecycle is not None and lifecycle.unload_pending:
+            return lifecycle
+        return None
+
+    def _readmit(self, key: str, model: Unloadable) -> None:
+        """Take an evicted model back, evicting what no longer fits.
+
+        Called from the model's own lifecycle when a kept handle is used
+        after its eviction. The object under ``key`` now, if a later
+        :meth:`get` built one, is evicted in its favour: the caller is
+        about to load this one, and two live copies of one key would be
+        exactly the overcommit the ceiling exists to prevent.
+
+        Models evicted to make room whose release is still waiting for
+        their calls in flight become the readmitted model's blockers: it
+        does not build until they have left memory.
+
+        Args:
+            key (str): The key the model was registered under.
+            model (Unloadable): The evicted model being used again.
+        """
+        with self._lock:
+            lifecycle = _lifecycle_of(model)
+            if lifecycle is not None:
+                lifecycle.clear_eviction()
+            pending: list[ModelLifecycle] = []
+            current = self._models.get(key)
+            if current is not model:
+                if current is not None:
+                    del self._models[key]
+                    replaced = self._unload_evicted(key, current)
+                    if replaced is not None:
+                        pending.append(replaced)
+                self._models[key] = model
+            self._models.move_to_end(key)
+            pending.extend(self._evict_over_capacity())
+            self._hold_until_drained(model, pending)
 
     def evict(self, key: str) -> bool:
         """Evict one model by key, calling its ``unload()``.
@@ -97,20 +196,26 @@ class ModelRegistry:
         Args:
             key (str): The entry to remove.
 
+        An SDK loader evicted this way still counts if a kept handle uses
+        it again: the call re-registers it (see the class docstring).
+
         Returns:
             bool: ``True`` when an entry was evicted, ``False`` otherwise.
         """
-        model = self._models.pop(key, None)
-        if model is None:
-            return False
-        model.unload()
-        return True
+        with self._lock:
+            model = self._models.pop(key, None)
+            if model is None:
+                return False
+            self._unload_evicted(key, model)
+            return True
 
     def evict_all(self) -> None:
         """Evict every model, calling each ``unload()``."""
-        for model in self._models.values():
-            model.unload()
-        self._models.clear()
+        with self._lock:
+            evicted = list(self._models.items())
+            self._models.clear()
+            for key, model in evicted:
+                self._unload_evicted(key, model)
 
     def items(self) -> dict[str, Unloadable]:
         """Return the live entries, most-recently-used last.
@@ -121,7 +226,8 @@ class ModelRegistry:
             dict[str, Unloadable]: Key to model, in LRU order — the first
             entry is the next one eviction would take.
         """
-        return dict(self._models)
+        with self._lock:
+            return dict(self._models)
 
     def inventory(
         self,
@@ -147,7 +253,7 @@ class ModelRegistry:
         """
         from tempest_fastapi_sdk.genai.inventory import runtime_report
 
-        return runtime_report(dict(self._models), hardware=hardware, probe=probe)
+        return runtime_report(self.items(), hardware=hardware, probe=probe)
 
     def unload_idle(self) -> list[str]:
         """Free every held model that has sat idle past its own threshold.
@@ -166,7 +272,7 @@ class ModelRegistry:
             list[str]: The keys whose models this call unloaded.
         """
         freed: list[str] = []
-        for key, model in self._models.items():
+        for key, model in self.items().items():
             hook = getattr(model, "unload_if_idle", None)
             if callable(hook) and hook():
                 freed.append(key)
@@ -179,6 +285,22 @@ class ModelRegistry:
     def __contains__(self, key: str) -> bool:
         """Return whether ``key`` has a live model."""
         return key in self._models
+
+
+def _lifecycle_of(model: object) -> ModelLifecycle | None:
+    """Return the SDK lifecycle behind a held model, when it has one.
+
+    Args:
+        model (object): A model held by the registry.
+
+    Returns:
+        ModelLifecycle | None: The loader's lifecycle, or ``None`` for an
+        object that only implements ``unload()``.
+    """
+    lifecycle = getattr(model, "_lifecycle", None)
+    if isinstance(lifecycle, ModelLifecycle):
+        return lifecycle
+    return None
 
 
 __all__: list[str] = [

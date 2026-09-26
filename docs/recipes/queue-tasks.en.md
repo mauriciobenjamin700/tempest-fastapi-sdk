@@ -1059,7 +1059,8 @@ app: FastAPI = FastAPI(title=settings.TITLE, lifespan=lifespan)
     the lease fixing it. `tests/tasks/test_scheduler_lease.py` pins both
     counts — the first parametrized over 2, 3 and 5 replicas — and a
     separate case waits for the leader to leave and confirms the standby
-    takes over within one TTL.
+    takes over on the first `acquire` that begins after the leader
+    releases the lease, without waiting for the TTL to lapse.
 
 ### Where the lease comes from
 
@@ -1100,6 +1101,34 @@ lease: SchedulerLock = RedisSchedulerLock.from_url(
     The default is `"tempest:tasks:scheduler"`. Two services sharing the
     instance contend for the same key, and one of them **never**
     schedules.
+
+!!! warning "A clock that jumps shortens the lease"
+    Redis stores a key's expiry as an absolute Unix timestamp and checks
+    the computer clock even while the instance is running — the
+    [`EXPIRE` documentation](https://redis.io/docs/latest/commands/expire/#expires-and-persistence)
+    gives the example: a key with a 1000 s TTL and a clock moved 2000 s
+    forward expires immediately. For the scheduler lease, that means **a
+    forward jump of the Redis server's clock larger than the remaining TTL
+    drops the lease** early, and another replica can acquire it.
+
+    This is not a lab hypothetical: on a WSL2 machine we measured the wall
+    clock jumping +3.6 s twice a minute, and with a 2 s lease
+    `tests/tasks/test_scheduler_lease.py` saw two loops running at once
+    (the test now pins fakeredis's clock so it measures the election, not
+    the host). NTP *step* corrections and a VM resumed after a pause are
+    the other common sources.
+
+    The default `ttl_seconds=30.0`, renewed every third of it, always
+    keeps at least ~20 s of TTL left — that is the size of jump it
+    absorbs. In production:
+
+    * keep the Redis host's clock synced by *slewing* (chrony/NTP), not
+      *stepping*;
+    * don't lower the TTL to a few seconds to "take over faster" — a
+      leader that exits releases the lease on shutdown, so a planned
+      handover already does not wait for the TTL;
+    * keep scheduled tasks idempotent: the lease reduces double firing, it
+      does not make it impossible.
 
 !!! info "`scheduler="unlocked"` exists, and has to be typed"
     A service that genuinely runs a single replica passes
