@@ -23,6 +23,38 @@ whole parent — attachments and reactions included — under every reply
 multiplies the payload of a history page by the number of replies in it.
 """
 
+MESSAGE_BODY_MAX_LENGTH: int = 65_536
+"""Longest body, in characters, a posted or edited message may carry.
+
+The column is ``TEXT``, so without a bound the only ceiling was the
+request size the server happened to accept — and every reader of the
+thread then downloads that body on every history page.
+"""
+
+MESSAGE_ATTACHMENTS_MAX: int = 32
+"""Most attachment ids a single message may claim.
+
+Each id costs a lookup and an ``UPDATE`` on the post path.
+"""
+
+FORWARD_TARGETS_MAX: int = 20
+"""Most conversations one forward may fan out to.
+
+A forward writes one message, its attachment rows and one SSE publish
+per target, so an unbounded list turned a single request into an
+arbitrary number of writes.
+"""
+
+PARTICIPANT_IDS_MAX: int = 256
+"""Most user ids one request may add to a conversation.
+
+Bounds the start and add-participants paths per request; a larger group
+is built across several requests.
+"""
+
+MESSAGES_PAGE_SIZE_MAX: int = 100
+"""Largest ``page_size`` the chat router accepts for the history page."""
+
 
 class ReplyPreviewSchema(BaseSchema):
     """The quoted parent, small enough to inline under every reply.
@@ -152,6 +184,7 @@ class MessageCreateSchema(BaseSchema):
 
     body: str = Field(
         default="",
+        max_length=MESSAGE_BODY_MAX_LENGTH,
         title="Body",
         description="The message text, or the caption of a media message.",
     )
@@ -173,6 +206,7 @@ class MessageCreateSchema(BaseSchema):
     )
     attachment_ids: list[UUID] = Field(
         default_factory=list,
+        max_length=MESSAGE_ATTACHMENTS_MAX,
         title="Attachment ids",
         description="Uploaded, unclaimed attachments to attach, in order.",
     )
@@ -191,6 +225,7 @@ class MessageEditSchema(BaseSchema):
     """
 
     body: str = Field(
+        max_length=MESSAGE_BODY_MAX_LENGTH,
         title="Body",
         description="The new message text.",
     )
@@ -235,6 +270,7 @@ class ForwardSchema(BaseSchema):
 
     conversation_ids: list[UUID] = Field(
         default_factory=list,
+        max_length=FORWARD_TARGETS_MAX,
         title="Conversation ids",
         description="Conversations to forward the message into.",
     )
@@ -324,6 +360,7 @@ class ConversationCreateSchema(BaseSchema):
 
     participant_ids: list[UUID] = Field(
         default_factory=list,
+        max_length=PARTICIPANT_IDS_MAX,
         title="Participant ids",
         description="Users to add to the conversation.",
     )
@@ -337,11 +374,13 @@ class ConversationCreateSchema(BaseSchema):
     )
     title: str | None = Field(
         default=None,
+        max_length=255,
         title="Title",
         description="Group title.",
     )
     description: str | None = Field(
         default=None,
+        max_length=512,
         title="Description",
         description="Group subject text.",
     )
@@ -355,8 +394,12 @@ class ConversationUpdateSchema(BaseSchema):
         description (str | None): New description, when given.
     """
 
-    title: str | None = Field(default=None, title="Title")
-    description: str | None = Field(default=None, title="Description")
+    title: str | None = Field(default=None, max_length=255, title="Title")
+    description: str | None = Field(
+        default=None,
+        max_length=512,
+        title="Description",
+    )
 
 
 class ParticipantPreferencesSchema(BaseSchema):
@@ -409,6 +452,11 @@ class ConversationResponseSchema(BaseSchema):
 
 
 __all__: list[str] = [
+    "FORWARD_TARGETS_MAX",
+    "MESSAGES_PAGE_SIZE_MAX",
+    "MESSAGE_ATTACHMENTS_MAX",
+    "MESSAGE_BODY_MAX_LENGTH",
+    "PARTICIPANT_IDS_MAX",
     "REPLY_EXCERPT_LENGTH",
     "AttachmentResponseSchema",
     "ConversationCreateSchema",

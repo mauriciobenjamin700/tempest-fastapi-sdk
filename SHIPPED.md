@@ -558,6 +558,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   dropping the old so a bad rollout degrades to the previous version),
   `make_prediction_router`, `RegistryModelSource` (fleet update over the
   existing `ArtifactRegistry`, one cached file per version).
+  **Serving hardening (Unreleased):** inference and reload off the event
+  loop (`asyncio.to_thread`; 0.992 s stall → <1 ms with a 1 s stub),
+  `max_rows` (`DEFAULT_MAX_PREDICT_ROWS = 10_000`, 422 beyond),
+  `dependencies` / `admin_dependencies` guards, `/model` reports the file
+  name unless `expose_model_path=True`; `reload` warms **before** the swap
+  and refuses a model that fails warm-up; `predict` reads session + info as
+  one snapshot; `RegistryModelSource.sync` serialised by a lock, `.part`
+  download + rename, optional `sha256` row check (`checksum_field`).
+  Monitor label buckets capped (`MAX_TRACKED_LABELS = 64` + baseline
+  classes + `OTHER_LABEL`) and keyed by value (`0.0` ≡ `0`); `[modelops]`
+  now declares `numpy`.
   **Monitoring (v0.190.0):** `PredictionMonitor` + `baseline_from_samples`
   + `population_stability_index` — latency/volume, input drift (PSI vs a
   training-time baseline of bin edges only) and prediction distribution;
@@ -661,7 +672,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (v0.147); **token/context** (`count_tokens`/`truncate_messages`) (v0.148);
   **`make_vision_router`** (v0.149); **`GenAIMetrics`** Prometheus (v0.150);
   content **moderation** (`RuleModerator`/`ClassifierModerator`) (v0.151);
-  and integration — `AIChatPipeline` moderation + context truncation (v0.152),
+  and integration — `AIChatPipeline` moderation + context truncation (v0.152);
+  trust boundary (Unreleased) — `stream()` moderates the reply
+  (`stream_moderation="incremental"|"buffered"`), `history` is moderated and
+  limited to `user`/`assistant` in the router, the memory owner comes from
+  `make_ai_chat_router(current_user_id=...)` (required with `memory=`), the
+  `RuleModerator` normalizes (NFKC, `Cf` stripped, casefold) and matches
+  punctuation-edged terms, and `ContentExtractor` refuses private/non-http
+  destinations on every redirect hop with a body cap
+  (`allow_private_networks=` opt-out);
   metrics+cache on `TextGenerator`/`Embedder` (v0.153); **OTel spans**
   (`genai_span`) — ambient tracing on `generate`/`chat`/`embed`/RAG reusing the
   `setup_tracing` `TracerProvider` (GenAI semconv; no-op without `[otel]`)
@@ -862,6 +881,28 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `accepted=False` means nothing passed. **Fixed here:** the effective
   deadline was written to the run state but not back to the `AgentContext`,
   so delegation handed the child `None` and it ran to its own budget.
+- **Agents audit (Unreleased)** — ceilings now hold *during* a call, not
+  just between turns: every model call runs under `asyncio.timeout` of the
+  time left and every tool call under that plus a grace that shrinks per
+  delegation depth (so a child always stops before its parent cuts it), and
+  `max_steps`/`max_tool_calls`/deadline are checked before **each** call of
+  a many-call turn. `arguments` as a JSON string (OpenAI wire format) is
+  parsed; invalid JSON is a tool error. `role: tool` messages carry
+  `tool_call_id` + `name` when the call had an id. `ToolResult.final` ends
+  the run — `final_answer` uses it, so structured runs stop on the call and
+  their JSON `output` is what the moderator checks; `data` only on a
+  COMPLETED run. `run_structured` copies the agent (skills survive). Skill
+  loading and the structured answer live per context
+  (`AgentContext.opened_skills`/`.answer`), not in the shared `state`.
+  Unexpected tool exceptions: model reads full text, trace keeps only the
+  type (`expose_tool_errors=True` to opt out). A raising moderator fails
+  closed (`BLOCKED`). Router: stable `AgentRun.run_id` in URLs (not list
+  index), `{name:path}` for `<agent>/<file>` artifacts, `owner=` dependency
+  tagging runs (`AgentRun.owner`/`AgentContext.owner`) and scoping `/runs` +
+  artifact download. `refine` approves only on the exact token from a worker
+  run that completed; `run_until` keeps an earlier inherited deadline;
+  `schema_of` keeps `$defs` for self-referential models; Redis fact keys no
+  longer merge `None`/`""`/`"_"`; builtins never overwrite an artifact.
 - **Planilhas (v0.229.0, `[spreadsheet]` extra = openpyxl)** —
   `tempest_fastapi_sdk.spreadsheet`. `SheetWriter` segura o cursor de linha
   (`title_block`/`header_row`/`group_row`/`write_row`/`total_row`/
@@ -1399,7 +1440,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   factories, `ChatService` (`start_conversation`/`post_message`/
   `list_messages`/`list_conversations`/`is_participant`), `make_chat_router`
   (participant guard) + real-time fan-out via an injected `SSEBroker`.
-  Submodule import.
+  Submodule import. **Access and limits (Unreleased):** every
+  message-id path (`react`/`unreact`/`forward`/`edit_message`/
+  `revoke_message`, and the reply quote) checks active membership of the
+  message's conversation plus `history_from`, answering with the same 404
+  as a missing message; revoke reports a storage key only when no other
+  attachment row references it; the `/stream` holds no DB session and
+  closes on `participant.removed` (`PARTICIPANT_REMOVED_EVENT`) or on the
+  `membership_recheck_seconds` re-read; history page bounded
+  (`max_page_size`, `MESSAGES_PAGE_SIZE_MAX`) and payload ceilings
+  (`MESSAGE_BODY_MAX_LENGTH`, `MESSAGE_ATTACHMENTS_MAX`,
+  `FORWARD_TARGETS_MAX`, `PARTICIPANT_IDS_MAX`). Deferred: uploader
+  tracking on attachments (an unclaimed attachment id is claimable by
+  anyone who holds it) — needs a column, so a consumer migration.
 - **Reviews (v0.105, `tempest_fastapi_sdk.reviews`, no extra)** —
   comments + 0–5 star ratings on any polymorphic `(target_type,
   target_id)`: `BaseCommentModel` (thread via `parent_id`) / `BaseRatingModel`

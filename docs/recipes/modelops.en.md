@@ -9,7 +9,7 @@ you **export** to the format the target device runs.
 of one measurement instead of two unrelated runs.
 
 ```bash
-uv add "tempest-fastapi-sdk[modelops]"        # benchmarking only
+uv add "tempest-fastapi-sdk[modelops]"        # benchmarking, monitoring, compact reader
 uv add "tempest-fastapi-sdk[modelops-onnx]"   # + ONNX, .ort, quantization
 ```
 
@@ -522,7 +522,50 @@ app.include_router(make_prediction_router(OnnxPredictor("dist/classifier.onnx"))
 | `GET /api/predict/model` | What is loaded, providers **in use**, threads |
 | `POST /api/predict/model/sync` | Reloads from the registry (only with a `source`) |
 
-A row of the wrong width is a **422**, not a 500 — it is a client error.
+A row of the wrong width is a **422**, not a 500 — it is a client error. So
+is a batch larger than `max_rows` (`DEFAULT_MAX_PREDICT_ROWS`, 10,000 rows;
+pass `max_rows=None` to remove the limit): without a ceiling, one request
+decides how much memory and how many seconds of inference the device spends
+on it.
+
+Inference and reload run in a worker thread (`asyncio.to_thread`), not on the
+event loop. Measured with a predictor that holds its thread for 1 s: on
+0.299.0 the loop stood still for 0.992 s — no other request was answered in
+that time —; now the scheduling delay stays under 1 ms.
+
+!!! warning "The router ships no authentication"
+    `GET /model`, `POST /model/sync` and `GET /monitor` are operational
+    routes: the second makes the device download and reload a model. Guard
+    them with `admin_dependencies` — `POST /` stays as open as the rest of
+    the service — or every route with `dependencies`:
+
+    ```python
+    import hmac
+
+    from fastapi import Depends, FastAPI, Header, HTTPException
+
+    from tempest_fastapi_sdk.modelops import OnnxPredictor, make_prediction_router
+
+    OPERATOR_TOKEN: str = "change-me"
+
+
+    def require_operator(x_token: str = Header(default="")) -> None:
+        if not hmac.compare_digest(x_token, OPERATOR_TOKEN):
+            raise HTTPException(status_code=401, detail="operator token required")
+
+
+    app = FastAPI()
+    app.include_router(
+        make_prediction_router(
+            OnnxPredictor("dist/classifier.onnx"),
+            admin_dependencies=[Depends(require_operator)],
+        ),
+    )
+    ```
+
+    `GET /model` returns only the file **name** in `path` (`classifier.onnx`),
+    not the absolute path, which describes the device's disk and is of no use
+    to a client. `expose_model_path=True` brings the full path back.
 
 ### Swapping the model without a deploy
 
@@ -560,14 +603,32 @@ if it does not have it, and reloads. Call `source.sync(predictor)` from a
 periodic task — it is a no-op when the right version is already loaded.
 
 !!! check "A bad rollout degrades to the previous version, never to nothing"
-    The new session is built **before** the old one is dropped. A corrupt
-    file leaves the predictor serving the previous model rather than taking
+    The new session is built **and warmed** (one throwaway inference)
+    **before** the old one is dropped. A corrupt file — or one that loads but
+    cannot answer the input its own graph declares — makes `reload` raise
+    and leaves the predictor serving the previous model rather than taking
     the device out of service. A fleet that can go silent from a deploy is
     worse than one that is occasionally out of date.
 
     One file per version in `cache_dir`, so a rollback is a reload rather
     than a re-download. Nothing is deleted automatically — on a small disk
     you want to decide when old versions go.
+
+The download lands in a `.part` file and is renamed to its final name only
+once it completes, so a connection dropped mid-file is downloaded again on
+the next sync instead of becoming a "cached version". `sync` holds a lock
+from fetch to reload: the periodic task and a `POST /model/sync` at the same
+time download and reload the version **once**.
+
+!!! tip "Verifying what arrived: a `sha256` column"
+    `ArtifactVersionMixin` declares no digest. Declare a `sha256` column on
+    your version model, filled in by whoever publishes the file, and every
+    download is checked before it is cached or loaded — a file that does not
+    match is deleted and the sync fails with `503`, the previous model still
+    serving. A row without the attribute (or with it empty) downloads
+    unverified; another column name goes in
+    `RegistryModelSource(..., checksum_field="digest")`, and
+    `checksum_field=None` turns the check off.
 
 
 ## The edge package: one directory, two runtimes
@@ -786,11 +847,13 @@ from pathlib import Path
 from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 
+from tempest_fastapi_sdk.modelops import baseline_from_samples
+
 X_train, X_test, y_train, y_test = train_test_split(
     *load_iris(return_X_y=True), random_state=0
 )
 
-baseline = X_train
+baseline = baseline_from_samples(X_train, labels=y_train)
 
 
 Path("dist/baseline.json").write_text(baseline.model_dump_json())
@@ -817,12 +880,27 @@ not `stable`: with 30 rows across 10 bins, an empty bin is the expected
 outcome of sampling. "We do not have traffic yet" and "there is no drift"
 are different answers, and the second one would lie on the dashboard.
 
+Labels are compared **by value**, not by their text: `0`, `0.0`,
+`numpy.int64(0)` and `numpy.float32(0.0)` all land on the key `"0"`, on both
+sides. Before, a baseline built from float targets (`"0.0"`) against a
+classifier answering integers (`"0"`) scored PSI 26.24 — `significant` — on
+identical distributions; it now scores 0.0. Baselines already saved with
+`"0.0"` keys are read the same way, with no need to rebuild them.
+
 ### Constant memory
 
 Rows are counted into bins and discarded. The cost is
 `n_features x n_bins` counters regardless of traffic — nothing accumulates a
 copy of the requests, which also means no feature value stays in memory to
 leak into a log or a crash dump.
+
+Predicted labels are capped too: at most `MAX_TRACKED_LABELS` (64) keys of
+their own, plus the baseline's classes, which never lose theirs; the rest
+count into `OTHER_LABEL` (`"__other__"`). That is what holds a regressor,
+whose output is a new value per row: measured with 50,000 distinct values,
+the report had 50,000 keys and 889,270 bytes of JSON; with the cap, 65 keys
+and 1,350 bytes. A regressor's signal is in `mean`, `minimum` and `maximum`,
+which stay exact. `PredictionMonitor(max_labels=...)` changes the cap.
 
 Drift is measured **per window** (`DEFAULT_WINDOW_ROWS`, 1000 rows). When
 one closes it becomes the last complete measurement and the counters reset,
@@ -840,13 +918,14 @@ from tempest_fastapi_sdk.modelops import (
     PredictionMonitor,
     OnnxPredictor,
     PredictionMetrics,
+    baseline_from_samples,
     make_prediction_router,
 )
 
-baseline, _, _, _ = train_test_split(  # the training matrix the drift baseline is measured against
+X_train, X_test, y_train, y_test = train_test_split(
     *load_iris(return_X_y=True), random_state=0
 )
-monitor = PredictionMonitor(baseline=baseline)
+monitor = PredictionMonitor(baseline=baseline_from_samples(X_train, labels=y_train))
 predictor = OnnxPredictor("model.onnx")
 app = FastAPI()
 

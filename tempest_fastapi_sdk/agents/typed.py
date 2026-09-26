@@ -55,6 +55,13 @@ def schema_of(model: type[BaseModel]) -> dict[str, Any]:
     is a plain ``{"type": "object", "properties": …}`` — the shape every
     backend documents.
 
+    A **self-referential** model (a tree, a thread of replies) cannot be
+    inlined — the expansion never ends. Each reference is expanded at most
+    once per branch; a reference back into a definition already being
+    expanded stays a ``$ref``, and only those definitions are kept under
+    ``$defs``. A model without recursion still comes out with no ``$defs``
+    at all.
+
     Args:
         model (type[BaseModel]): The arguments model.
 
@@ -63,24 +70,43 @@ def schema_of(model: type[BaseModel]) -> dict[str, Any]:
     """
     raw = model.model_json_schema()
     defs: dict[str, Any] = raw.pop("$defs", {})
+    kept: set[str] = set()
 
-    def inline(node: Any) -> Any:
-        """Replace every ``$ref`` with the definition it points at."""
+    def inline(node: Any, expanding: frozenset[str]) -> Any:
+        """Replace every ``$ref`` with its definition, stopping at cycles."""
         if isinstance(node, dict):
             ref = node.get("$ref")
             if isinstance(ref, str) and ref.startswith("#/$defs/"):
-                target = defs.get(ref.split("/")[-1], {})
-                merged = {**inline(target)}
+                target_name = ref.split("/")[-1]
+                if target_name in expanding or target_name not in defs:
+                    kept.add(target_name)
+                    return {
+                        key: (value if key == "$ref" else inline(value, expanding))
+                        for key, value in node.items()
+                    }
+                merged = {
+                    **inline(defs[target_name], expanding | {target_name}),
+                }
                 for key, value in node.items():
                     if key != "$ref":
-                        merged[key] = inline(value)
+                        merged[key] = inline(value, expanding)
                 return merged
-            return {key: inline(value) for key, value in node.items()}
+            return {key: inline(value, expanding) for key, value in node.items()}
         if isinstance(node, list):
-            return [inline(item) for item in node]
+            return [inline(item, expanding) for item in node]
         return node
 
-    schema: dict[str, Any] = inline(raw)
+    schema: dict[str, Any] = inline(raw, frozenset())
+    if kept:
+        kept_defs: dict[str, Any] = {}
+        pending = sorted(kept & set(defs))
+        while pending:
+            name = pending.pop()
+            if name in kept_defs:
+                continue
+            kept_defs[name] = inline(defs[name], frozenset({name}))
+            pending.extend(sorted((kept & set(defs)) - set(kept_defs)))
+        schema["$defs"] = kept_defs
     schema.pop("title", None)
     schema.setdefault("type", "object")
     return schema

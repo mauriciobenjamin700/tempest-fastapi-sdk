@@ -105,6 +105,22 @@ class InMemoryAgentRunSink:
         runs = list(reversed(self._runs))
         return runs if limit is None else runs[:limit]
 
+    def get(self, run_id: str) -> AgentRun | None:
+        """Return the kept run with ``run_id``.
+
+        Args:
+            run_id (str): The run's
+                :attr:`~tempest_fastapi_sdk.agents.AgentRun.run_id`.
+
+        Returns:
+            AgentRun | None: The run, or ``None`` when it was never kept or
+            has already been dropped from the buffer.
+        """
+        for run in self._runs:
+            if run.run_id == run_id:
+                return run
+        return None
+
     def clear(self) -> None:
         """Drop every kept run."""
         self._runs.clear()
