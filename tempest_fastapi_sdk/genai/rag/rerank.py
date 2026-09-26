@@ -64,12 +64,15 @@ def _rank_by_scores(
         top_k (int | None): Keep only the best ``top_k`` (all when ``None``).
 
     Returns:
-        list[Chunk]: Chunks with ``.score`` set, ordered best-first.
+        list[Chunk]: Chunks with ``.score`` set, ordered best-first. Empty
+        when ``top_k <= 0``: a negative value is clamped rather than used as
+        a slice bound, which would drop the *worst* chunks instead of
+        keeping the best.
     """
     for chunk, score in zip(chunks, scores, strict=True):
         chunk.score = float(score)
     ranked = sorted(chunks, key=lambda chunk: chunk.score or 0.0, reverse=True)
-    return ranked[:top_k] if top_k is not None else ranked
+    return ranked[: max(top_k, 0)] if top_k is not None else ranked
 
 
 class Reranker:

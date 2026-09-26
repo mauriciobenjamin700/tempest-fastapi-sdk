@@ -558,6 +558,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   dropping the old so a bad rollout degrades to the previous version),
   `make_prediction_router`, `RegistryModelSource` (fleet update over the
   existing `ArtifactRegistry`, one cached file per version).
+  **Serving hardening (Unreleased):** inference and reload off the event
+  loop (`asyncio.to_thread`; 0.992 s stall → <1 ms with a 1 s stub),
+  `max_rows` (`DEFAULT_MAX_PREDICT_ROWS = 10_000`, 422 beyond),
+  `dependencies` / `admin_dependencies` guards, `/model` reports the file
+  name unless `expose_model_path=True`; `reload` warms **before** the swap
+  and refuses a model that fails warm-up; `predict` reads session + info as
+  one snapshot; `RegistryModelSource.sync` serialised by a lock, `.part`
+  download + rename, optional `sha256` row check (`checksum_field`).
+  Monitor label buckets capped (`MAX_TRACKED_LABELS = 64` + baseline
+  classes + `OTHER_LABEL`) and keyed by value (`0.0` ≡ `0`); `[modelops]`
+  now declares `numpy`.
   **Monitoring (v0.190.0):** `PredictionMonitor` + `baseline_from_samples`
   + `population_stability_index` — latency/volume, input drift (PSI vs a
   training-time baseline of bin edges only) and prediction distribution;
@@ -2330,3 +2341,15 @@ tabela única. `AdminSite.get`/`require`/`unregister` aceitam a classe.
 
 Consumidor: `alofans-api`, com 9 acessos a `.__tablename__` em `src/` e
 `tests/`.
+
+## Limites de request nos routers de IA (não lançado)
+
+`GenAIRequestLimits` + `make_genai_router(limits=...)` conferem tamanho de
+prompt, chat, `max_new_tokens`, lote do `/embed`, `top_k`, texto do `/tts`,
+lado e steps do `/image` e upload do `/transcribe` antes de o modelo rodar;
+`/image` recusa `num_images > 1`. `make_vision_router` ganha
+`max_upload_bytes` e `max_image_pixels` (header lido sem decodificar, contra
+decompression bomb) e mapeia `ImageLoadError` para `422`. O leitor em blocos
+do `make_voice_router` virou `read_upload_capped`, público e compartilhado.
+Os stores de vetor devolvem `[]` para `top_k <= 0` em vez de fatiar com
+índice negativo.

@@ -27,6 +27,7 @@ of this package produce.
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from pathlib import Path
@@ -38,6 +39,8 @@ from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_INTRA_OP_THREADS: int = 1
 """Intra-op threads. One, because one request should not take the machine.
@@ -199,8 +202,9 @@ class OnnxPredictor:
         ([0], [0.98, 0.02, 0.0])
 
     Thread-safe for concurrent :meth:`predict`: ONNX Runtime sessions are,
-    and :meth:`reload` swaps the session under a lock so an in-flight call
-    finishes against the session it started with.
+    and :meth:`reload` swaps the session and its description together under
+    a lock, so an in-flight call finishes against the session it started
+    with and validates its rows against that same session.
 
     Attributes:
         path (Path): The model file currently loaded.
@@ -250,15 +254,23 @@ class OnnxPredictor:
         self._lock = threading.Lock()
         self._session: Any = None
         self._info: PredictorInfo | None = None
-        self._load(self.path)
+        session, info = self._open(self.path)
+        self._swap(self.path, session, info)
         if warmup:
             self.warm_up()
 
-    def _load(self, path: Path) -> None:
+    def _open(self, path: Path) -> tuple[Any, PredictorInfo]:
         """Open a session for ``path`` and describe its graph.
+
+        Nothing is swapped here: the caller decides whether the new session
+        goes into service, which is what lets :meth:`reload` warm it first
+        and keep the previous model when it cannot answer.
 
         Args:
             path (Path): The model file.
+
+        Returns:
+            tuple[Any, PredictorInfo]: The session and its description.
         """
         from tempest_fastapi_sdk.modelops.static import _require_onnxruntime
 
@@ -283,20 +295,44 @@ class OnnxPredictor:
         if label_output is None and proba_output is None and outputs:
             label_output = outputs[0]
 
+        info = PredictorInfo(
+            path=str(path),
+            input_name=graph_input.name,
+            n_features=n_features,
+            output_names=outputs,
+            label_output=label_output,
+            proba_output=proba_output,
+            providers=list(session.get_providers()),
+            intra_op_threads=self._intra,
+            is_classifier=proba_output is not None,
+        )
+        return session, info
+
+    def _swap(self, path: Path, session: Any, info: PredictorInfo) -> None:
+        """Put a session into service, atomically with its description.
+
+        Args:
+            path (Path): The model file the session was built from.
+            session (Any): The new session.
+            info (PredictorInfo): Its description.
+        """
         with self._lock:
             self._session = session
+            self._info = info
             self.path = path
-            self._info = PredictorInfo(
-                path=str(path),
-                input_name=graph_input.name,
-                n_features=n_features,
-                output_names=outputs,
-                label_output=label_output,
-                proba_output=proba_output,
-                providers=list(session.get_providers()),
-                intra_op_threads=self._intra,
-                is_classifier=proba_output is not None,
-            )
+
+    def _snapshot(self) -> tuple[Any, PredictorInfo]:
+        """Read the session and its description as one consistent pair.
+
+        Returns:
+            tuple[Any, PredictorInfo]: The session in service and the
+            description of that same session.
+        """
+        with self._lock:
+            session = self._session
+            info = self._info
+        assert info is not None
+        return session, info
 
     @property
     def info(self) -> PredictorInfo:
@@ -308,24 +344,45 @@ class OnnxPredictor:
         assert self._info is not None
         return self._info
 
+    def _warm(self, session: Any, info: PredictorInfo, rows: int) -> None:
+        """Run one throwaway inference against ``session``.
+
+        Args:
+            session (Any): The session to warm, in service or not.
+            info (PredictorInfo): Its description.
+            rows (int): Rows in the warm-up batch.
+
+        Raises:
+            Exception: Whatever the runtime raises for a session that cannot
+                answer the input its own graph declares.
+        """
+        if not info.n_features:
+            return
+        import numpy
+
+        self._run(
+            session,
+            info,
+            numpy.zeros((rows, info.n_features), dtype=self._dtype),
+        )
+
     def warm_up(self, rows: int = 1) -> None:
         """Run one throwaway inference to pay the first-call cost now.
 
-        Skipped silently when the graph does not declare a fixed feature
-        count, since there is no shape to synthesise.
+        Skipped when the graph does not declare a fixed feature count, since
+        there is no shape to synthesise. A failure is logged, not raised: the
+        model is already in service, and a warm-up that fails here says the
+        same thing the first real request will — :meth:`reload`, which still
+        has a previous model to keep, refuses the swap instead.
 
         Args:
             rows (int): Rows in the warm-up batch.
         """
-        features = self.info.n_features
-        if not features:
-            return
+        session, info = self._snapshot()
         try:
-            import numpy
-
-            self.predict(numpy.zeros((rows, features), dtype=self._dtype))
+            self._warm(session, info, rows)
         except Exception:
-            pass
+            logger.warning("warm-up of %s failed", info.path, exc_info=True)
 
     def predict(self, features: Any) -> Prediction:
         """Predict for a batch of rows.
@@ -333,6 +390,10 @@ class OnnxPredictor:
         Example:
 
             >>> predictor.predict([[5.1, 3.5, 1.4, 0.2], [6.2, 2.9, 4.3, 1.3]])
+
+        The session and its description are read together, so a
+        :meth:`reload` landing mid-call cannot validate the width against one
+        model and run the rows through another.
 
         Args:
             features (Any): A 2-D array, nested sequence, or DataFrame.
@@ -347,6 +408,25 @@ class OnnxPredictor:
                 match what the graph expects. Checking the width here
                 turns a confusing runtime error into a clear one.
         """
+        session, info = self._snapshot()
+        return self._run(session, info, features)
+
+    def _run(self, session: Any, info: PredictorInfo, features: Any) -> Prediction:
+        """Validate ``features`` against ``info`` and run them through ``session``.
+
+        Args:
+            session (Any): The session to run.
+            info (PredictorInfo): The description of that same session.
+            features (Any): A 2-D array, nested sequence, or DataFrame.
+
+        Returns:
+            Prediction: Labels, probabilities when the graph has them, and
+            the call's duration.
+
+        Raises:
+            ValueError: When the input is not 2-D, or its width does not
+                match ``info``.
+        """
         import numpy
 
         values = getattr(features, "values", features)
@@ -356,15 +436,11 @@ class OnnxPredictor:
                 f"features must be 2-D (n_rows, n_features); got shape "
                 f"{array.shape}. Wrap a single row as [[...]].",
             )
-        expected = self.info.n_features
+        expected = info.n_features
         if expected is not None and array.shape[1] != expected:
             raise ValueError(
                 f"model expects {expected} features per row, got {array.shape[1]}",
             )
-
-        with self._lock:
-            session = self._session
-            info = self.info
 
         started = time.perf_counter()
         outputs = session.run(None, {info.input_name: array})
@@ -391,31 +467,45 @@ class OnnxPredictor:
     def reload(self, model_path: str | Path, *, warmup: bool = True) -> PredictorInfo:
         """Swap in a different model file without recreating the object.
 
-        The new session is built **before** the old one is dropped, so a
-        broken file leaves the predictor serving the previous model
-        instead of taking it out of service. That is the behaviour a
-        fleet update needs: a bad rollout should degrade to "still on the
-        old version", never to "answering nothing".
+        The new session is built — and, with ``warmup``, run once — **before**
+        the old one is dropped, so a broken file leaves the predictor serving
+        the previous model instead of taking it out of service. That is the
+        behaviour a fleet update needs: a bad rollout should degrade to
+        "still on the old version", never to "answering nothing".
+
+        Blocking: loading and warming run on the calling thread. From an
+        ``async`` handler, call it through ``asyncio.to_thread``.
 
         Args:
             model_path (str | Path): The new model file.
-            warmup (bool): Warm the new session before it serves.
+            warmup (bool): Run one inference on the new session before it
+                serves, and refuse the swap when that inference fails. A
+                model that loads but cannot answer its own declared input is
+                a bad rollout, not a slow first request.
 
         Returns:
             PredictorInfo: The newly loaded model's description.
 
         Raises:
             FileNotFoundError: When the new file does not exist.
+            RuntimeError: When the new session fails its warm-up — the
+                previous model stays in service.
             Exception: Whatever the runtime raises for an unloadable
                 model — the previous model stays in service.
         """
         path = Path(model_path)
         if not path.exists():
             raise FileNotFoundError(f"model not found: {path}")
-        self._load(path)
+        session, info = self._open(path)
         if warmup:
-            self.warm_up()
-        return self.info
+            try:
+                self._warm(session, info, 1)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"warm-up of {path} failed, still serving {self.path}: {exc}",
+                ) from exc
+        self._swap(path, session, info)
+        return info
 
 
 def _match_output(names: Sequence[str], hints: Sequence[str]) -> str | None:
