@@ -23,7 +23,7 @@ import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.x509.oid import NameOID
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from tempest_fastapi_sdk.genai.rag import ContentExtractor, extract
 
@@ -271,6 +271,16 @@ class TLSAuthority:
                 x509.SubjectAlternativeName([x509.DNSName(n) for n in names]),
                 critical=False,
             )
+            .add_extension(
+                x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]),
+                critical=False,
+            )
+            .add_extension(
+                x509.AuthorityKeyIdentifier.from_issuer_public_key(
+                    self.key.public_key()
+                ),
+                critical=False,
+            )
             .sign(self.key, hashes.SHA256())
         )
         directory = tmp_path_factory.mktemp("tls")
@@ -293,6 +303,11 @@ class TLSAuthority:
 def authority() -> TLSAuthority:
     """Create a CA and a client context that trusts nothing else.
 
+    The client context sets ``VERIFY_X509_STRICT`` (the default from Python
+    3.13 on), so the CA and leaf carry the key-usage and key-identifier
+    extensions strict verification requires, and every supported Python
+    runs the same check.
+
     Returns:
         TLSAuthority: The CA key, certificate and verifying client context.
     """
@@ -308,11 +323,30 @@ def authority() -> TLSAuthority:
         .not_valid_before(now - datetime.timedelta(minutes=5))
         .not_valid_after(now + datetime.timedelta(hours=1))
         .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=True,
+                crl_sign=True,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(key.public_key()),
+            critical=False,
+        )
         .sign(key, hashes.SHA256())
     )
     client_context = ssl.create_default_context(
         cadata=cert.public_bytes(serialization.Encoding.PEM).decode("ascii")
     )
+    client_context.verify_flags |= ssl.VERIFY_X509_STRICT
     return TLSAuthority(key=key, cert=cert, client_context=client_context)
 
 
