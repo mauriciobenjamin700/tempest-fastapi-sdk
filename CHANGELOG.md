@@ -117,6 +117,24 @@ attribute 'decode'`.
   pelo nome (`sentence_embedding`/`pooler_output` já pooled, depois
   `last_hidden_state`) em vez de `outputs[0]`, e uma saída 2-D é usada como
   veio.
+- **A `seed` do `TextGenerator` vale sob concorrência (#321).** O
+  `model.generate` não aceita `torch.Generator` por chamada
+  (`generate(..., generator=g)` levanta `ValueError` no transformers 4.57.6
+  e no 5.17.0), e o `transformers.set_seed` resemeava o RNG do processo:
+  duas chamadas concorrentes com a mesma seed divergiam da execução serial
+  (5 de 5 pares, `Qwen/Qwen2.5-0.5B-Instruct` na CPU e na GPU) e toda
+  chamada sem seed virava determinística por tabela. Na amostragem simples
+  (`do_sample=True`, `num_beams=1`, sem modelo assistente) um logits
+  processor privado sorteia o token com um `torch.Generator` da chamada;
+  agora 0 de 5 pares divergem, e sem concorrência a mesma seed dá o mesmo
+  texto de antes. Custo só nas chamadas com seed: o passo de escolha do
+  token vai de 1,07 para 3,08 ms na RTX 4070 Ti SUPER e de 7,3 para 13,3 ms
+  na CPU (vocabulário de 151 936), de 4 a 6% de throughput na GPU e 12% na
+  CPU, medidos numa máquina carregada. Beam sampling, decodificação
+  assistida/prompt lookup e DoLa continuam no `set_seed` global.
+- **`VisionTextGenerator` honra a `seed`.** A do `GenerationConfig` era
+  descartada em silêncio, e `seed=` por chamada fazia o `model.generate`
+  levantar `ValueError`; agora segue a mesma regra do `TextGenerator`.
 
 ### Added
 
@@ -129,14 +147,6 @@ attribute 'decode'`.
 - **`TextToSpeech(idle_unload_seconds=)`** + `seconds_idle` /
   `unload_if_idle()`, no mesmo contrato dos outros loaders.
 
-### Changed
-
-- **A `seed` do `TextGenerator` é documentada como global ao processo.**
-  `transformers.set_seed` resemeia os RNGs do processo e o `model.generate`
-  não aceita `torch.Generator` por chamada (conferido no transformers
-  4.57), então uma geração com seed só reproduz sem outra geração com
-  amostragem concorrente. Sem mudança de comportamento; o aviso está na
-  receita e na docstring.
 Auditoria dos backends de genai e do stream do `HTTPClient`: um timeout no
 meio do stream reenviava o POST e repetia o texto já entregue, o Ollama
 devolvia `""` para um corpo de erro, o cliente OpenAI mandava campos que o

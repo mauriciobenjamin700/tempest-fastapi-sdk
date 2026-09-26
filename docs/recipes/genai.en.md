@@ -1780,17 +1780,38 @@ temperature=0.9)` uses `0.9`).
 
 !!! tip "`seed` and `stop` apply on the local path too"
     `seed` and `stop` are honored by both `OllamaGenerator` and
-    `TextGenerator` (transformers): `seed` is reapplied via
-    `transformers.set_seed` before generating (same seed + `do_sample=True`
-    reproduces the output) and `stop` becomes `model.generate`'s
+    `TextGenerator` (transformers): the same seed + `do_sample=True`
+    reproduces the output, and `stop` becomes `model.generate`'s
     `stop_strings` argument (requires transformers >= 4.44). Either may come
     from the `GenerationConfig` or per call — the per-call override wins.
 
-!!! warning "The local `seed` is process-wide"
-    `transformers.set_seed` reseeds the RNGs of the whole process, and
-    `model.generate` takes no per-call `torch.Generator` (checked on
-    transformers 4.57). A seeded generation reproduces only while no other
-    sampling generation runs in the same process at the same time.
+!!! info "The local `seed` is per call, and holds under concurrency"
+    `model.generate` takes no per-call `torch.Generator` —
+    `generate(..., generator=g)` raises `ValueError` (unused `model_kwargs`)
+    on transformers 4.57.6 and on 5.17.0 — and samples with the process-wide
+    RNG. So `TextGenerator` no longer uses `transformers.set_seed` for plain
+    sampling (`do_sample=True`, `num_beams=1`, no assistant model): a logits
+    processor of its own draws the token with a `torch.Generator` private
+    to that call. Two concurrent generations with the same seed give the
+    same text as one running alone, and unseeded calls do not become
+    deterministic as a side effect.
+
+    Measured with `Qwen/Qwen2.5-0.5B-Instruct`, 5 pairs of concurrent calls
+    (`asyncio.gather`) with the same seed: before, all 5 pairs diverged from
+    the serial run; now, none does — on CPU (transformers 4.57.6) and on an
+    RTX 4070 Ti SUPER (4.57.6 and 5.17.0). Without concurrency, the same seed gives
+    the same text as before the change, on both devices.
+
+    The cost is paid by seeded calls only. The token-selection step went
+    from 1.07 to 3.08 ms on the GPU and from 7.3 to 13.3 ms on the CPU
+    (151 936-token vocabulary, top-k 20 + top-p 0.9, best of 5 rounds of 500
+    steps). End to end, on a machine loaded by other processes, seeded
+    generation came out 4 to 6% slower than the old path on the GPU (3 runs
+    of 10 x 64 tokens) and 12% on the CPU (1 run of 5 x 32 tokens).
+
+    Beam sampling (`num_beams > 1`), assisted/prompt-lookup decoding and
+    DoLa sample in code a logits processor cannot steer; in those modes the
+    seed still goes through `transformers.set_seed`, process-wide.
 
 ### Structured output (validated JSON)
 
@@ -2478,6 +2499,12 @@ asyncio.run(main())
 Images are accepted as a path, `bytes`, `PIL.Image` or a NumPy `ndarray` (same
 leniency as `ort-vision-sdk`). `generate`/`chat` are image-optional — text-only
 calls keep working (it is a `TextBackend`).
+
+The `seed` (from the `GenerationConfig` or per call) follows the same rule as
+`TextGenerator`: a generator private to the call for plain sampling. Before,
+it was silently dropped when it came from the config, and a per-call `seed=`
+made `model.generate` raise `ValueError` listing `seed` among the unused
+`model_kwargs`.
 
 !!! warning "Processor conventions vary by family"
     This class targets the common `processor(text=..., images=...)` interface

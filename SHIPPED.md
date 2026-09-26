@@ -882,6 +882,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   another model's call, which does not wait.
   **Not covered:** `VoiceEmbedder` and `faces.FaceRecognizer` still use the
   old unguarded pattern.
+- **Per-call sampling seed (Unreleased)** — `TextGenerator` (and now
+  `VisionTextGenerator`, which used to drop `config.seed` and choke on a
+  per-call `seed=`) seeds plain multinomial sampling through a private
+  `_SeededSampler` logits processor holding its own `torch.Generator`,
+  instead of `transformers.set_seed`: concurrent seeded calls match the
+  serial run and the process RNG is left alone. The warper chain is a port
+  of `_get_logits_processor`, resolved through the model's
+  `_prepare_generation_config`, pinned end to end against the installed
+  transformers by `tests/genai/test_text_seed.py`. **Not covered:** beam
+  sampling, assisted/prompt-lookup decoding and DoLa keep the process-wide
+  `set_seed`; `VisionTextGenerator` still ignores `stop`.
 - **Agents (v0.181.0)** — `tempest_fastapi_sdk.agents`, submodule import, **no
   extra**. Goal in, traced run out — the split from `AIChatPipeline` (which
   answers a chat *turn*). `Agent.run/stream` → `AgentRun` (output + `steps` +
