@@ -108,6 +108,71 @@ exceção de ferramenta.
   `AgentContext.unique_artifact_name`/`claim_artifact_name`,
   `InMemoryAgentRunSink.get(run_id)`, `OwnerDependency` e o keyword
   `Agent(expose_tool_errors=...)`.
+Os routers de IA não tinham limite de request nenhum. O `/generate`
+aceitava um prompt de 2 MB com `max_new_tokens=10**9`, o `/embed` aceitava
+100 000 textos, o `/image` validava `width=100000` e
+`num_images=10**6` — e renderizava o lote inteiro para devolver só a
+primeira imagem —, o `/rag` aceitava `top_k=-5`, e `/transcribe` e as rotas
+de visão liam o upload inteiro com `await file.read()`. Cada um é um jeito
+de um único cliente segurar o worker.
+
+**Potencialmente breaking:** requests que passavam agora recebem `422`.
+Os tetos default estão abaixo; quem precisa de mais passa
+`make_genai_router(limits=GenAIRequestLimits(...))` ou
+`make_vision_router(max_upload_bytes=..., max_image_pixels=...)`.
+
+### Added
+
+- **`GenAIRequestLimits`** (`tempest_fastapi_sdk.genai`) e
+  **`make_genai_router(limits=...)`**: tetos por request conferidos
+  **antes** de o modelo rodar — `max_prompt_chars` (`32_000`: prompt do
+  `/generate`, soma das mensagens do `/chat`, query do `/rag`, cada texto do
+  `/embed`, prompt e negative prompt do `/image`), `max_chat_messages`
+  (`100`), `max_new_tokens` (`4096`, só o valor que o cliente manda),
+  `max_embed_texts` (`256`), `max_top_k` (`50`), `max_tts_chars`
+  (`5_000`), `max_image_side` (`2048`), `max_image_steps` (`100`) e
+  `max_upload_bytes` (25 MiB). Estouro é `422`, e com
+  `register_exception_handlers` o corpo traz
+  `details={"field": ..., "limit": ...}`.
+- **`read_upload_capped(upload, *, max_bytes, label="upload")`** e
+  **`UPLOAD_READ_CHUNK_BYTES`** (`tempest_fastapi_sdk.utils`, reexportados
+  na raiz): o leitor em blocos que o `make_voice_router` tinha como helper
+  privado, agora público e usado por `/transcribe`, pelo
+  `make_voice_router` e pelo `make_vision_router`. Para de ler no bloco que
+  cruza o teto e levanta `ValidationException` (`422`), a mesma resposta
+  que o `make_voice_router` sempre deu.
+- **`make_vision_router(max_upload_bytes=..., max_image_pixels=...)`** e as
+  constantes **`DEFAULT_MAX_IMAGE_UPLOAD_BYTES`** (20 MiB) e
+  **`DEFAULT_MAX_IMAGE_PIXELS`** (50 MP). O teto de pixels lê o header com
+  `PIL.Image.open`, sem decodificar: medido com Pillow 12.3.0 e
+  `ort-vision-sdk` 0.8.0, um PNG em branco de 9400 x 9400 com 10 804 bytes
+  decodificava num array RGB de 265 080 000 bytes sem disparar o aviso de
+  decompression bomb do Pillow (88,36 MP fica abaixo dos 89,48 MP dele).
+  `max_image_pixels=None` desliga a checagem.
+
+### Changed
+
+- **`ImageGenerationConfig`** ganha teto absoluto no schema: `width` e
+  `height` `<= 4096`, `steps` `<= 500`, `num_images` `<= 16`. Vale para a
+  classe usada direto, não só pela rota.
+- **`RagRequestSchema.top_k`** exige `>= 1`.
+- **`POST /image`** recusa `config.num_images` acima de `1` com `422` em vez
+  de renderizar o lote na GPU e devolver só a primeira imagem.
+
+### Fixed
+
+- **`InMemoryVectorStore.search(top_k=-3)`** devolvia 7 de 10 chunks (o
+  slice `scored[:-3]` corta os **piores** do fim). `top_k <= 0` agora
+  devolve `[]`, o contrato que o `ChromaVectorStore.search` já tinha. O
+  mesmo vale para `PgVectorStore.search` (que mandava `LIMIT` negativo ao
+  Postgres), `HybridRetriever.search` e o ranqueamento do `Reranker`.
+- **Rotas de visão devolviam `500` para bytes que não são imagem**: o
+  `ImageLoadError` do `ort-vision-sdk` escapava sem tratamento (medido:
+  `500 INTERNAL_SERVER_ERROR` antes, `422 VALIDATION_ERROR` depois, com o
+  decoder real do `ort-vision-sdk`).
+- **`GET /models`** montava o relatório no event loop: `probe=True` lê NVML
+  e `torch.cuda`, chamadas síncronas que travavam todo request concorrente.
+  Agora roda em `asyncio.to_thread`.
 
 ## [0.299.0] — 2026-09-25
 

@@ -207,9 +207,17 @@ content-type: image/png
 x-image-seed: 418223901
 ```
 
-O corpo da resposta **é a imagem**, então a rota devolve só a primeira; a
-seed vai no header `X-Image-Seed`. Quer um lote, use a classe direto — a
-rota existe para o caso comum de uma imagem por request.
+O corpo da resposta **é a imagem**, então a rota gera exatamente uma: um
+`config.num_images` acima de `1` recebe `422` em vez de renderizar o lote e
+descartar o resto. A seed vai no header `X-Image-Seed`. Quer um lote, use a
+classe direto — a rota existe para o caso comum de uma imagem por request.
+
+A rota também recusa com `422` lado acima de `max_image_side` (default
+`2048`) e `steps` acima de `max_image_steps` (default `100`), ambos do
+`GenAIRequestLimits` que o `make_genai_router(limits=...)` recebe — veja
+[Limites por request](genai.md#limites-por-request-genairequestlimits). O
+próprio `ImageGenerationConfig` já barra `width`/`height` acima de `4096`,
+`steps` acima de `500` e `num_images` acima de `16`, em qualquer caminho.
 
 ## Não deixar a GPU presa
 
