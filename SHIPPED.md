@@ -685,7 +685,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   **generation cache** (`InMemory`/`RedisGenerationCache`, deterministic-only)
   (v0.147); **token/context** (`count_tokens`/`truncate_messages`) (v0.148);
   **`make_vision_router`** (v0.149); **`GenAIMetrics`** Prometheus (v0.150);
-  content **moderation** (`RuleModerator`/`ClassifierModerator`) (v0.151);
+  content **moderation** (`RuleModerator`/`ClassifierModerator`) (v0.151) —
+  the classifier scores multi-label models with a sigmoid and classifies the
+  whole text in overlapping 64-token windows, max per label (Unreleased);
   and integration — `AIChatPipeline` moderation + context truncation (v0.152);
   trust boundary (Unreleased) — `stream()` moderates the reply
   (`stream_moderation="incremental"|"buffered"`), `history` is moderated and

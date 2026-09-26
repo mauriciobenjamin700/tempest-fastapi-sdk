@@ -2168,6 +2168,100 @@ runs a local classifier (e.g. `unitary/toxic-bert`) over transformers
 (`[genai]`), lazy, with `flagged_labels` / `threshold`. PT-BR toxicity-model
 quality varies — treat the classifier as best-effort and keep `RuleModerator`
 as the baseline.
+
+#### The classifier: independent labels, the whole text
+
+`unitary/toxic-bert` is **multi-label**: `toxic`, `obscene` and `insult` are
+separate yes/no questions, and one text can be all three. `ClassifierModerator`
+reads that from the model config (`problem_type =
+"multi_label_classification"`) and scores each label with a **sigmoid**. A
+model without that declaration keeps the softmax; `activation="sigmoid"` or
+`"softmax"` forces either one.
+
+It also never truncates. The text is cut into overlapping windows of 64
+tokens (`window_tokens=64`, `window_overlap=16`), each window is classified,
+and every label keeps its highest score across windows:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import ClassifierModerator, ModerationResult
+
+mod = ClassifierModerator(
+    "unitary/toxic-bert",
+    flagged_labels=["toxic", "insult"],
+    threshold=0.5,
+)
+
+prefix = "The weather report says it will be sunny and mild. " * 60
+text = prefix + "You are a stupid idiot and I hate you."
+
+
+async def main() -> None:
+    """Screen a long text whose insult sits after 660 harmless tokens."""
+    verdict: ModerationResult = await mod.check(text)
+    print(verdict.flagged, verdict.categories)
+
+
+asyncio.run(main())
+```
+
+Output: `True ['toxic', 'insult']` — the same verdict the sentence gets on its
+own, 660 tokens later.
+
+!!! info "Why sigmoid: what the softmax did"
+    Measured with `unitary/toxic-bert` (revision `4d6c22e`), all six labels
+    in `flagged_labels`, `threshold=0.5`, over a fixed set of 10 insulting
+    English sentences and 5 clean ones:
+
+    | | Sigmoid (now) | Softmax (before) |
+    | --- | --- | --- |
+    | insulting sentences flagged | 10 of 10 | 10 of 10 |
+    | labels reported across them | 31 (`toxic` + `obscene` + `insult` on each, `threat` on one) | 10 (`toxic` only, every time) |
+    | clean sentences flagged | 0 of 5 | 1 of 5 |
+
+    With the softmax the six scores add up to 1, so labels compete for the
+    same mass: `insult` never crossed 0.5 next to `toxic`, and a policy
+    keyed on `insult` saw nothing. It also fails the other way — every
+    score of *"Could you send me the invoice for last month?"* is tiny, the
+    softmax makes them add up to 1 anyway, and `toxic` came out at 0.556.
+
+!!! info "Why 64-token windows: the model dilutes"
+    Before, `truncation=True` classified only the first 512 tokens. With
+    about 650 harmless tokens in front, the same insult scored `toxic` at
+    0.001 — prefixing filler was enough to get through.
+
+    Windows as wide as the model's context (512) do not fully close that
+    hole, because the classifier itself dilutes one sentence inside a lot of
+    benign text: in a single window, the insult behind 130 tokens of
+    filler was still caught in 9 of 10 sentences, behind 260 tokens in 3 of
+    10, behind 490 tokens in none. Measured over 40 excerpts of this
+    site's English prose (1801 to 3030 tokens each), with one of the 10
+    sentences inserted at a random word (seed 316), `window_overlap` at a
+    quarter of the window:
+
+    | `window_tokens` | insult caught | clean excerpt flagged | ms per check |
+    | --- | --- | --- | --- |
+    | 512 | 1 of 40 | 0 of 40 | 41 |
+    | 256 | 6 of 40 | 0 of 40 | 36 |
+    | 128 | 23 of 40 | 0 of 40 | 41 |
+    | 96 | 28 of 40 | 0 of 40 | 66 |
+    | **64** (default) | **36 of 40** | 0 of 40 | 62 |
+    | 48 | 39 of 40 | 0 of 40 | 80 |
+    | 32 | 40 of 40 | 0 of 40 | 139 |
+
+    The latency column is from an RTX 4070 Ti SUPER on a host under heavy
+    load from other jobs: read the ratio between rows, not the absolute
+    value. A text that fits in one window (up to 62 tokens here) costs the
+    same single pass as before.
+
+!!! tip "When to change the window"
+    A shorter window sees less of the sentence around each word. The table
+    above does not measure what that costs for a policy that depends on
+    context (irony, quoting, negation) — if yours does, validate a larger
+    `window_tokens` on your own data. `window_tokens=None` uses the model's
+    whole context, and any value is capped there (512 for BERT).
+
 ### Per-user usage accounting (a table)
 
 `GenAIMetrics` above answers "how is the fleet doing right now". It does
