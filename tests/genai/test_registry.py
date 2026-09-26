@@ -15,7 +15,7 @@ import time
 from collections.abc import Callable
 
 from tempest_fastapi_sdk.genai import ModelRegistry
-from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 WAIT_SECONDS: float = 5.0
 

@@ -868,17 +868,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `pooling="mean"|"cls"`, named-output selection, the tokenizer's own pad
   id and `idle_unload_seconds`; `TextToSpeech` and `VoiceEmbedder` gained
   `idle_unload_seconds`, and `TextToSpeech` no longer leaks its temp `.wav`
-  on failure. **Not covered:** a handle held after registry eviction reloads
-  outside `max_models` (#320).
-  id and `idle_unload_seconds`; `TextToSpeech` gained
-  `idle_unload_seconds` and no longer leaks its temp `.wav` on failure.
-  `ModelRegistry` eviction marks the loader evicted, so a handle kept past
-  it re-registers through the registry (evicting the LRU) and waits for the
-  evicted model's in-flight calls before building — `max_models` holds for
-  kept handles too (#320); the one allowance is a call nested inside
-  another model's call, which does not wait.
-  **Not covered:** `VoiceEmbedder` and `faces.FaceRecognizer` still use the
-  old unguarded pattern.
+  on failure. `ModelRegistry` eviction marks the loader evicted, so a handle
+  kept past it re-registers through the registry (evicting the LRU) and waits
+  for the evicted model's in-flight calls before building — `max_models`
+  holds for kept handles too (#320); the one allowance is a call nested
+  inside another model's call, which does not wait.
 - **Agents (v0.181.0)** — `tempest_fastapi_sdk.agents`, submodule import, **no
   extra**. Goal in, traced run out — the split from `AIChatPipeline` (which
   answers a chat *turn*). `Agent.run/stream` → `AgentRun` (output + `steps` +
