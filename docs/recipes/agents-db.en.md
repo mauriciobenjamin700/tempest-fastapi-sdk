@@ -330,10 +330,13 @@ Reading top to bottom: the endpoint puts `user_id` on `state`; `state` travels
 with the whole run; the tool takes it from there and hands it to the service.
 The model never sees that value and has no way to swap it.
 
-!!! warning "`make_agent_router` does not seed the context"
-    The ready-made router calls `agent.run(goal)` with no context — it knows
-    nothing about your authentication. When a tool needs to know who is asking,
-    write the endpoint yourself, as above.
+!!! warning "`make_agent_router` does not seed the `state`"
+    The ready-made router knows nothing about your authentication or your
+    `state`. What it offers is `owner=`: a FastAPI dependency returning who
+    is calling, whose value reaches the tool as `context.owner` (and keeps
+    each caller's history apart). When that is enough — the tool only needs
+    the id —, pass `owner=`; when it needs more than an id, write the
+    endpoint yourself, as above.
 
 ### Scratch space shared between tools
 
@@ -437,7 +440,7 @@ publishes it in its answer. Build the string from the fields that may be read.
 - **One `AsyncDatabaseManager` per process**, with `disconnect()` in the
   lifespan.
 - **`context` carries what the model must not choose** — above all, who is
-  asking. `make_agent_router` does not seed the context.
+  asking. `make_agent_router` only seeds `context.owner`, via `owner=`.
 - **The return value is text for the model**: short, with security filters
   pinned in code and no private fields.
 

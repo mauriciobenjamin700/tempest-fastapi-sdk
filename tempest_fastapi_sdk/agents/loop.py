@@ -200,7 +200,10 @@ async def run_until(
             ``accepted=False``.
         max_seconds (float | None): Wall-clock ceiling across **all**
             rounds. Each round inherits what is left, so the loop cannot
-            overrun by one agent's budget.
+            overrun by one agent's budget. A deadline already on
+            ``context`` (a loop running inside a delegation, say) is kept
+            when it is earlier — the loop can shorten the caller's clock,
+            never extend it.
         feedback (Callable[[AgentRun, int], str] | None): Builds the next
             round's goal from the rejected run. Defaults to restating the
             goal with the failed attempt attached — a model that cannot see
@@ -217,7 +220,10 @@ async def run_until(
         raise ValueError("max_rounds must be positive")
 
     started = time.monotonic()
-    deadline = started + max_seconds if max_seconds is not None else None
+    own = started + max_seconds if max_seconds is not None else None
+    inherited = context.deadline if context is not None else None
+    bounds = [value for value in (own, inherited) if value is not None]
+    deadline = min(bounds) if bounds else None
     iterations: list[LoopIteration] = []
     output = ""
 
@@ -299,7 +305,13 @@ rejection stays free-form, which is the half that needs to be expressive.
 """
 
 APPROVAL_TOKEN: str = "APPROVED"
-"""What the critic says when it accepts. Compared case-insensitively."""
+"""What the critic says when it accepts.
+
+The whole reply, stripped of surrounding whitespace, must equal this token
+(case-insensitively). A prefix match would read "APPROVED? No — the intro is
+wrong" as an approval, and a critic run that stopped on a budget is never an
+approval whatever it said.
+"""
 
 
 async def refine(
@@ -373,14 +385,21 @@ async def refine(
         run = await worker.run(prompt, context=worker_context)
         output = run.output
 
-        critic_context = AgentContext()
-        critic_context.deadline = deadline
-        review = await critic.run(
-            f"{critic_prompt}\n\nGOAL:\n{goal}\n\nWORK TO REVIEW:\n{output}",
-            context=critic_context,
-        )
-        verdict = review.output.strip()
-        approved = verdict.upper().startswith(APPROVAL_TOKEN)
+        if run.succeeded:
+            critic_context = AgentContext()
+            critic_context.deadline = deadline
+            review = await critic.run(
+                f"{critic_prompt}\n\nGOAL:\n{goal}\n\nWORK TO REVIEW:\n{output}",
+                context=critic_context,
+            )
+            verdict = review.output.strip()
+            approved = review.succeeded and verdict.upper() == APPROVAL_TOKEN
+        else:
+            verdict = (
+                f"The attempt stopped before finishing ({run.stop_reason}); "
+                "produce a complete answer."
+            )
+            approved = False
         last_critique = None if approved else verdict
 
         iterations.append(

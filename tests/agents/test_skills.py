@@ -274,3 +274,92 @@ class TestSkillFiles:
         skill = discover_skills(tmp_path)[0]
         skill.tools.append(text_tool("parse_nfe", "Parse.", _noop))
         assert "Tools now available: parse_nfe." in skill.body()
+
+
+class TestSkillStateIsPerAgent:
+    @pytest.mark.asyncio
+    async def test_a_child_loading_a_skill_does_not_open_it_for_the_parent(
+        self,
+    ) -> None:
+        from tempest_fastapi_sdk.agents import agent_tool
+        from tempest_fastapi_sdk.agents.testing import (
+            ScriptedBackend,
+            replies,
+            replies_with_tool,
+        )
+
+        async def secret(_arguments: dict[str, Any], _ctx: AgentContext) -> str:
+            return "secret ran"
+
+        shared = Skill(
+            name="vault",
+            description="Open the vault.",
+            tools=[text_tool("open_vault", "Open it.", secret)],
+        )
+        child = Agent(
+            ScriptedBackend(
+                [replies_with_tool("load_skill", {"name": "vault"}), replies("ok")],
+            ),
+            skills=[shared],
+            name="child",
+        )
+        parent_backend = ScriptedBackend(
+            [
+                replies_with_tool("ask_child", {"goal": "open"}),
+                replies_with_tool("open_vault", {"text": "x"}),
+                replies("done"),
+            ],
+        )
+        parent = Agent(
+            parent_backend,
+            tools=[agent_tool(child)],
+            skills=[shared],
+            name="parent",
+        )
+        context = AgentContext()
+        run = await parent.run("go", context=context)
+        attempt = next(step for step in run.steps if step.name == "open_vault")
+        assert attempt.error is not None
+        assert "unknown tool" in attempt.error
+        assert loaded_skills(context) == set()
+
+    @pytest.mark.asyncio
+    async def test_a_skill_loaded_by_the_parent_is_closed_for_the_child(
+        self,
+    ) -> None:
+        from tempest_fastapi_sdk.agents import agent_tool
+        from tempest_fastapi_sdk.agents.testing import (
+            ScriptedBackend,
+            replies,
+            replies_with_tool,
+        )
+
+        async def secret(_arguments: dict[str, Any], _ctx: AgentContext) -> str:
+            return "secret ran"
+
+        shared = Skill(
+            name="vault",
+            description="Open the vault.",
+            tools=[text_tool("open_vault", "Open it.", secret)],
+        )
+        child_backend = ScriptedBackend(
+            [replies_with_tool("open_vault", {"text": "x"}), replies("ok")],
+        )
+        child = Agent(child_backend, skills=[shared], name="child")
+        parent = Agent(
+            ScriptedBackend(
+                [
+                    replies_with_tool("load_skill", {"name": "vault"}),
+                    replies_with_tool("ask_child", {"goal": "open"}),
+                    replies("done"),
+                ],
+            ),
+            tools=[agent_tool(child)],
+            skills=[shared],
+            name="parent",
+        )
+        run = await parent.run("go")
+        delegation = next(step for step in run.steps if step.name == "ask_child")
+        nested = next(step for step in delegation.children if step.name == "open_vault")
+        assert nested.error is not None
+        assert "unknown tool" in nested.error

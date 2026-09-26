@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import time
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 from sqlalchemy import Float, String, Text, delete, select
 from sqlalchemy.orm import Mapped, mapped_column
@@ -267,12 +268,26 @@ class RedisFactStore:
         Args:
             subject (str | None): Whose facts.
 
+        The mapping is one-to-one. ``None`` (the shared namespace) keeps the
+        ``"{prefix}:_"`` bucket it always had, and an ordinary subject keeps
+        ``"{prefix}:{subject}"`` — so data written by earlier versions stays
+        where it was. The two subjects that used to land in that same
+        ``"_"`` bucket — ``""`` and the literal ``"_"`` — are moved to an
+        escaped segment ``"~:s:<percent-encoded>"`` instead, and so is any
+        subject that itself starts with ``~:s:``, which is what keeps the
+        escaped segments from ever equalling an ordinary one.
+
+        Args:
+            subject (str | None): Whose facts.
+
         Returns:
-            str: The Redis key. ``None`` maps to a literal ``"_"`` bucket
-            rather than an empty segment, so a shared namespace cannot
-            collide with a subject whose id happens to be empty.
+            str: The Redis key.
         """
-        return f"{self.prefix}:{subject or '_'}"
+        if subject is None:
+            return f"{self.prefix}:_"
+        if subject in ("", "_") or subject.startswith("~:s:"):
+            return f"{self.prefix}:~:s:{quote(subject, safe='')}"
+        return f"{self.prefix}:{subject}"
 
     @staticmethod
     def _decode(raw: Any) -> str:

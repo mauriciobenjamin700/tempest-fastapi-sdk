@@ -12,6 +12,14 @@ toolless agent, which is a single-shot answer. `ToolCallingBackend` adds
 `chat_with_tools`, which is what makes the loop worth having. The agent
 probes for it at runtime and falls back to `chat`, so both are accepted
 where a backend is asked for.
+
+Both describe a client we do not own, so they state only what `Agent`
+actually does with it: every argument is passed **positionally** (so the
+parameters are positional-only and an implementation may name them as it
+likes), and no keyword option is ever passed (so an implementation does not
+need ``**kwargs``). The message dicts are ``dict[str, Any]`` because the
+conversation carries more than role/content strings — an assistant turn
+holds its ``tool_calls`` list.
 """
 
 from __future__ import annotations
@@ -23,16 +31,11 @@ from typing import Any, Protocol, runtime_checkable
 class ChatBackend(Protocol):
     """The minimum an agent needs: turn a message list into a reply."""
 
-    async def chat(
-        self,
-        messages: list[dict[str, str]],
-        **kwargs: Any,
-    ) -> str:
+    async def chat(self, messages: list[dict[str, Any]], /) -> str:
         """Return the model's reply for a chat ``messages`` list.
 
         Args:
-            messages (list[dict[str, str]]): Role/content pairs.
-            **kwargs (Any): Backend-specific generation options.
+            messages (list[dict[str, Any]]): The conversation, oldest first.
 
         Returns:
             str: The reply text.
@@ -46,21 +49,23 @@ class ToolCallingBackend(ChatBackend, Protocol):
 
     async def chat_with_tools(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
-        **kwargs: Any,
+        /,
     ) -> dict[str, Any]:
         """Return a reply that may request tool calls.
 
         Args:
-            messages (list[dict[str, str]]): The conversation so far.
+            messages (list[dict[str, Any]]): The conversation so far,
+                including assistant turns with ``tool_calls`` and
+                ``role: tool`` results.
             tools (list[dict[str, Any]]): JSON-schema specs of the tools
                 the model may call this turn.
-            **kwargs (Any): Backend-specific generation options.
 
         Returns:
             dict[str, Any]: A message dict with ``content`` and, when the
-            model asked for tools, a ``tool_calls`` list.
+            model asked for tools, a ``tool_calls`` list. Each call's
+            ``arguments`` may be a dict or a JSON string.
         """
         ...
 

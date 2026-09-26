@@ -478,6 +478,23 @@ fuse arbitrary rankings. The BM25 index is in-memory (rebuilt on each `index`)
 satisfies `SupportsRetrieve` and drops into `make_genai_router(retriever=...)`
 in place of a `Retriever`.
 
+!!! info "Each `index` replaces the sources it names"
+    A chunk is identified by `(source, index, text)` — not by
+    `(source, index)` alone, which `chunk_text` repeats on every call (it
+    restarts `index` at 0). And each `index(chunks)` **replaces** whatever
+    was already indexed for the batch's `source`s: re-indexing an edited
+    document leaves neither the old version nor a tail of it answering
+    searches. So pass **every** chunk of a source in the same call.
+    `InMemoryVectorStore`, `PgVectorStore` and `ChromaVectorStore` apply the
+    same replacement on the dense side; a `VectorStore` of your own that
+    only appends keeps returning the old rows, and `HybridRetriever` drops
+    them before fusion (they only cost `candidates` slots).
+
+    On the sparse side, only chunks sharing at least one term with the query
+    enter the fusion. With no overlap BM25 scores every chunk 0, and a list
+    of zeros "sorted by score" is just insertion order — added into RRF, it
+    inverted the dense ranking.
+
 ### Reranking (cross-encoder)
 
 Dense search (embed the query, embed the chunks, cosine) is fast but coarse:
@@ -607,19 +624,33 @@ carries `content`, `role`, `chat_id`, `created_at`, `similarity` (raw
 cosine) and `score` (the final value, recency included). `delete_for_chat`
 wipes everything for a chat when it's removed.
 
+Chroma is asked for the `top_k * candidate_multiplier` nearest neighbours
+(default `4`), and the recency re-rank picks `top_k` of them — so a recent
+message ranked just below the raw top-K can still rise. With
+`candidate_multiplier=1` only the raw top-K is reordered. The per-user
+quota (`max_entries_per_user`) evicts the oldest **UTC instant** first:
+`created_at` is stored converted to UTC, alongside a `created_at_ts` in
+epoch seconds, and older rows without that field are ordered by parsing
+the ISO string. Sorting the ISO strings put `10:00+05:00` after
+`08:00+00:00`, although it is three hours earlier.
+
 !!! info "The `[genai-chroma]` extra and the recency decay"
     Install with `uv add "tempest-fastapi-sdk[genai-chroma]"`. The final
     `score` combines similarity and recency via
-    `0.5 ** (age_in_days / recency_halflife_days)` — with the 14-day
-    default, a 14-day-old snippet weighs half of a freshly written one.
-    Tune the blend with `recency_weight` (0 = similarity only).
+    `(1 - recency_weight) * sim + recency_weight * sim * decay`, with
+    `decay = 0.5 ** (age_in_days / recency_halflife_days)`. With the
+    defaults (14 days, `recency_weight=0.5`), a 14-day-old snippet has
+    `decay = 0.5` and scores 0.75 of its similarity, against 1.0 for a
+    freshly written one of equal similarity. `recency_weight=0` = similarity
+    only.
 
 !!! tip "Generic RAG with `ChromaVectorStore`"
     Just need a persistent vector store (without the per-user memory
     logic)? `ChromaVectorStore` is a `VectorStore` like the others —
-    `add(chunks, vectors)` / `search(vector, top_k=)` — backed by ChromaDB.
-    Drop it into `Retriever` in place of `InMemoryVectorStore` /
-    `PgVectorStore` to get a disk-persisted corpus:
+    `add(chunks, vectors)` / `search(vector, top_k=)` — backed by ChromaDB,
+    with the same re-index rule as the other stores (`add` replaces the
+    batch's `source`s). Drop it into `Retriever` in place of
+    `InMemoryVectorStore` / `PgVectorStore` to get a disk-persisted corpus:
 
     ```python
     from tempest_fastapi_sdk.genai import OllamaEmbedder
@@ -704,8 +735,9 @@ turns.
 
 !!! tip "Moderation + context window in the pipeline"
     Optional constructor args: `moderator=` (a `ModerationBackend` —
-    `RuleModerator`/`ClassifierModerator`) screens the input before generating
-    and the reply after; a flagged turn answers `blocked_message` (a flagged
+    `RuleModerator`/`ClassifierModerator`) screens the input **and every
+    `history` turn** before generating and the reply after — in `respond`
+    and in `stream`; a flagged turn answers `blocked_message` (a flagged
     input never calls the model). `tokenizer=` + `max_context_tokens=` trim the
     oldest turns (via `truncate_messages`) to fit the window before generating.
     Both opt-in.
@@ -743,12 +775,80 @@ app.include_router(make_ai_chat_router(pipeline))   # prefix /api/ai-chat
 ```
 
 It mounts `POST /api/ai-chat/chat` (returns `AIChatResult`) and
-`POST /api/ai-chat/chat/stream` (tokens over SSE).
+`POST /api/ai-chat/chat/stream` (tokens over SSE). The body is
+`{"chat_id": ..., "content": ..., "history": [...]}` — no `user_id`.
 
 !!! note "The router is stateless"
     History lives in the request body, not on the server — each call sends
     `history`. That keeps the backend sessionless (horizontal scale for
     free) and long-term memory handles the "remembering" via `ChatMemory`.
+
+#### With memory: the conversation owner comes from the session
+
+With `memory=` on the pipeline, every turn recalls and indexes the
+**user's** memories. Who the user is comes from your auth dependency, never
+from the body:
+
+```python
+# src/api/app.py
+
+from fastapi import Depends, FastAPI
+
+from tempest_fastapi_sdk.genai import (
+    AIChatPipeline,
+    OllamaEmbedder,
+    OllamaGenerator,
+    make_ai_chat_router,
+)
+from tempest_fastapi_sdk.genai.rag import ChatMemory
+
+from src.api.dependencies.auth import current_user_id
+
+pipeline = AIChatPipeline(
+    OllamaGenerator("llama3.2"),
+    memory=ChatMemory(OllamaEmbedder("nomic-embed-text")),
+)
+
+
+def create_app() -> FastAPI:
+    """Mount the AI chat behind the service's own auth."""
+    app = FastAPI()
+    app.include_router(
+        make_ai_chat_router(
+            pipeline,
+            current_user_id=current_user_id,
+            dependencies=[Depends(current_user_id)],
+        ),
+    )
+    return app
+```
+
+!!! warning "`current_user_id` is required alongside `memory`"
+    Recalling memory under a `user_id` taken from the **body** would hand
+    anyone's past conversations to whoever knows their id — and
+    `AIChatResult` returns the `memory_hits`. So the router refuses that
+    combination at mount time (`ValueError`). Without memory,
+    `current_user_id` is optional and the turn runs with no owner.
+
+!!! info "The body does not pick roles"
+    `history[].role` accepts only `"user"` and `"assistant"`. A
+    client-sent `"system"` turn would sit in the prompt with the authority
+    of your `base_system_prompt` — the body gets a `422`. And with
+    `moderator=`, every `history` turn's content goes through the same
+    filter as the new message.
+
+??? note "Migrating from a version that read `user_id` from the body"
+    Up to 0.299.0, `AIChatRequestSchema` had `user_id` and the router
+    passed it to `memory.search`. Now:
+
+    - the field is gone from the schema; an older client still sending
+      `user_id` does not break — the value is ignored;
+    - a pipeline **with** `memory=` needs `current_user_id=` on
+      `make_ai_chat_router`, or mounting raises `ValueError`;
+    - `history` with a `role` other than `user`/`assistant` now answers
+      `422`;
+    - calling the pipeline directly, `user_id=None` skips memory for the
+      turn (no recall, no indexing).
 
 ### Streaming
 
@@ -772,6 +872,29 @@ async def stream_demo() -> None:
 
 asyncio.run(stream_demo())
 ```
+
+!!! warning "Moderation while streaming: what was sent stays sent"
+    With `moderator=`, `stream` screens the reply too, and
+    `stream_moderation=` on the constructor picks how:
+
+    - `"incremental"` (default) — before each piece is sent, the text
+      generated so far (that piece included) goes through the moderator.
+      On the first flag the stream stops and the last piece is
+      `blocked_message`. Earlier pieces **were already delivered** and
+      cannot be recalled; the guarantee is that the piece which makes the
+      text flaggable is never sent. With `RuleModerator` and the block list
+      `["secret"]`, the reply `"here is the SECRET plan"`, emitted one
+      character per piece, comes out as
+      `"here is the SECRE"` followed by `blocked_message` — the term is
+      never emitted whole, a prefix of it can be. It costs one moderator
+      call per piece.
+    - `"buffered"` — generates the whole reply, moderates once, and only
+      then sends: either the whole reply as a single piece, or
+      `blocked_message`. Nothing leaks, but the client waits for the full
+      generation. It is the choice for a `ClassifierModerator`, which would
+      cost one inference per piece in incremental mode.
+
+    A blocked reply is not indexed into memory, same as `respond`.
 
 !!! tip "The inference microservice becomes a choice, not a requirement"
     With the pipeline in-process, running a separate LLM-only service turns
@@ -1357,6 +1480,34 @@ Failures (timeout, 4xx/5xx, empty page) **never** raise — they come back
 as `ExtractionResult(text="", failed=True)`, so no source is silently
 dropped.
 
+!!! info "The URL is treated as untrusted input"
+    The URL is picked by the search engine or by the user, so `extract`
+    keeps your server from becoming a proxy into the internal network
+    (SSRF):
+
+    - only `http` and `https` — `file://`, `ftp://` and friends come back
+      `failed=True` without a request;
+    - the host (an IP literal, or **every** address the hostname resolves
+      to) must be public: loopback, private ranges (10/8, 172.16/12,
+      192.168/16, `fd00::/8`), link-local — including the cloud metadata
+      `169.254.169.254` —, CGNAT, multicast and reserved are refused, for
+      IPv4 and IPv6;
+    - redirects are followed by hand, with the same check on **every** hop,
+      up to `max_redirects=` (default 5);
+    - the body is streamed and the fetch gives up past
+      `max_response_bytes=` (default 5 MiB);
+    - `trafilatura` runs in a thread (`asyncio.to_thread`), so a large page
+      does not stall the event loop.
+
+    To read intranet pages on purpose, `allow_private_networks=True` turns
+    off only the address check (scheme, redirect bound and body cap still
+    apply). Turn it on only when the URLs do not come from an attacker.
+
+    The address check and the connection do two separate DNS lookups, so a
+    hostname whose answer changes between them (DNS rebinding) is not
+    covered. If that matters in your environment, enforce the same rule at
+    egress (proxy or firewall).
+
 ### Read PDFs (knowledge base)
 
 `PdfReader` (PyMuPDF — detailed, reading-order extraction) turns PDF paths
@@ -1415,8 +1566,14 @@ asyncio.run(main())
 - **`VectorStore`** is a `Protocol` — `InMemoryVectorStore` (dev/tests,
   cosine scan) or `PgVectorStore` (production).
 - **`PgVectorStore`** uses **pgvector** in the Postgres the service already
-  has (no new infra): creates the table on demand, searches with the cosine
-  distance operator `<=>`. Needs `[genai-rag]` + `CREATE EXTENSION vector`.
+  has (no new infra): creates the table and a B-tree index on `source` on
+  demand, searches with the cosine distance operator `<=>`. Needs
+  `[genai-rag]` + `CREATE EXTENSION vector`.
+- **Every SDK store replaces per source**: `add` deletes what each batch
+  chunk's `source` already held and writes the batch (in `PgVectorStore`,
+  in one transaction: one `DELETE` + one batched `INSERT`). Re-indexing an
+  edited document leaves no old tail; pass every chunk of a source in the
+  same call.
 
 ```python
 from tempest_fastapi_sdk.genai import Embedder, EmbeddingModel
@@ -1430,6 +1587,13 @@ embedder = Embedder(EmbeddingModel.ALL_MINILM_L6_V2)
 store = PgVectorStore(db, dim=384)          # db = AsyncDatabaseManager
 rag = Retriever(embedder, store)
 ```
+
+The table name is interpolated into the SQL (an identifier cannot be a bound
+parameter), so the constructor refuses with `ValueError` anything outside an
+unquoted `name` or `schema.name` (`[A-Za-z_][A-Za-z0-9_]*`, up to 63
+characters each), and a `dim` that is not a positive integer. Search is exact
+(a sequential scan): no approximate index (HNSW/IVFFlat) is created, so add one
+once the corpus grows.
 
 `rag.search(query, top_k=)` returns the `Chunk`s with a `score` (similarity);
 `rag.retrieve(...)` builds the context for you. Need Qdrant/Weaviate later?
@@ -1817,7 +1981,14 @@ asyncio.run(main())
 ```
 
 `RuleModerator` is dependency-free and predictable (whole-word,
-case-insensitive block-list) — the deterministic floor. `ClassifierModerator`
+case-insensitive block-list) — the deterministic floor. Before matching,
+both term and text go through NFKC, lose their format characters
+(zero-width space, bidi marks) and are casefolded — so `"se"` + U+200B +
+`"cret"` and the fullwidth spelling still hit `"secret"`. "Whole word"
+means "no word character glued on either side", which is what makes terms
+with punctuation at the edge (`"$hit"`, `"c++"`) work. Homoglyphs from
+another script (Cyrillic `е` for `e`) are **not** folded: list those
+spellings in the block list. `ClassifierModerator`
 runs a local classifier (e.g. `unitary/toxic-bert`) over transformers
 (`[genai]`), lazy, with `flagged_labels` / `threshold`. PT-BR toxicity-model
 quality varies — treat the classifier as best-effort and keep `RuleModerator`
@@ -2357,6 +2528,15 @@ ensure_models()  # honors TEMPEST_VOICE_MODEL_DIR
 
 Leaving it to the first request makes one user pay the download inside
 their timeout.
+
+Both models have their SHA-256 pinned in the SDK (`SEGMENTATION_MODEL.sha256`,
+`EMBEDDING_MODEL.sha256`), and `ensure_models` checks the file every time it
+resolves it — fresh download or cache hit —, raising `OSError` on a mismatch.
+A model swapped in the upstream release, or a corrupted cache, fails loudly
+instead of changing the service's behavior with nothing in the diff. The
+download uses a 60 s socket timeout: a connection that goes silent that long
+raises instead of hanging the first `load()` forever (a slow but moving
+download still completes).
 
 ### How many speakers? It works it out
 

@@ -22,7 +22,9 @@ def reciprocal_rank_fusion(
     Args:
         rankings (Sequence[Sequence[str]]): One ranked list of ids per
             retriever (best first). Ids absent from a list simply do not
-            contribute that list's term.
+            contribute that list's term. An id repeated inside one list
+            contributes only its first (best) rank; the repeats still occupy
+            their positions, so the ranks of the ids after them do not move.
         k (int): RRF damping constant; larger flattens the rank weighting.
 
     Returns:
@@ -32,7 +34,11 @@ def reciprocal_rank_fusion(
     order: dict[str, int] = {}
     seen = 0
     for ranking in rankings:
+        counted: set[str] = set()
         for rank, item in enumerate(ranking, start=1):
+            if item in counted:
+                continue
+            counted.add(item)
             scores[item] = scores.get(item, 0.0) + 1.0 / (k + rank)
             if item not in order:
                 order[item] = seen

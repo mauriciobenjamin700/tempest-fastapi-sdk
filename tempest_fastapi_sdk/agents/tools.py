@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.agents.schemas import AgentArtifact, ToolResult
@@ -31,9 +32,15 @@ class AgentToolError(Exception):
 
     Raising this (rather than returning text) marks the step as failed in
     the trace while still feeding the message back to the model as an
-    observation, so it can try something else. Any other exception is
-    treated the same way — the difference is only that this one is
-    deliberate.
+    observation, so it can try something else.
+
+    Its message is treated as **written for an audience**: it is fed to
+    the model and recorded verbatim on the step, which is what the HTTP
+    router, the SSE stream and every run sink expose. Any other exception
+    also becomes an observation the model reads in full, but the trace
+    keeps only its type — an arbitrary exception can carry a DSN, a token
+    or a file path, and the trace is served to clients. Raise this one when
+    the text is safe to show.
     """
 
 
@@ -59,6 +66,23 @@ class AgentContext:
             a request open.
         parent (str | None): Name of the agent that delegated here, for
             reading a nested trace.
+        agent (str | None): Name of the agent running under this context.
+            Set by the agent at the start of each run, so a delegation tool
+            can tell its child who the parent is.
+        run_id (str | None): Identifier of the run using this context.
+            Assigned by the agent at the start of **each** run (a context
+            reused for a second run gets a new one) and copied onto
+            :attr:`~tempest_fastapi_sdk.agents.AgentRun.run_id`.
+        owner (str | None): Who the run belongs to — a user or tenant id.
+            Copied onto :attr:`~tempest_fastapi_sdk.agents.AgentRun.owner`
+            and inherited by delegated runs; the HTTP router sets it from
+            its ``owner`` dependency and filters history by it.
+        opened_skills (set[str]): Skills loaded by the agent running under
+            **this** context. Deliberately not kept in :attr:`state`, which
+            a delegated child shares: a skill one agent opened must not
+            expose its tools to the other.
+        answer (Any): The structured answer a final-answer tool recorded,
+            per context for the same reason.
     """
 
     goal: str = ""
@@ -67,15 +91,21 @@ class AgentContext:
     depth: int = 0
     deadline: float | None = None
     parent: str | None = None
+    agent: str | None = None
+    run_id: str | None = None
+    owner: str | None = None
+    opened_skills: set[str] = field(default_factory=set)
+    answer: Any = None
 
     def child(self, *, goal: str, parent: str) -> AgentContext:
         """Derive the context a delegated agent should run under.
 
         The child gets its **own** artifact namespace — a sub-agent that
         writes ``report.md`` must not silently overwrite the parent's
-        ``report.md`` — while inheriting the deadline and one more level of
-        depth. Whatever it produces is merged back explicitly by the
-        caller, so the parent decides what to keep.
+        ``report.md`` — and its own loaded skills and answer slot, while
+        inheriting the deadline, the owner, the shared :attr:`state` and one
+        more level of depth. Whatever it produces is merged back explicitly
+        by the caller, so the parent decides what to keep.
 
         Args:
             goal (str): The sub-goal being delegated.
@@ -90,7 +120,59 @@ class AgentContext:
             deadline=self.deadline,
             parent=parent,
             state=self.state,
+            owner=self.owner,
         )
+
+    def unique_artifact_name(self, name: str) -> str:
+        """Return ``name``, or the first free variant of it on this run.
+
+        ``chart.png`` becomes ``chart-1.png``, then ``chart-2.png``: the
+        extension survives so the media type still reads right, and a name
+        already taken — an input the caller seeded, an earlier step's
+        output — is never reused.
+
+        Args:
+            name (str): The desired artifact name.
+
+        Returns:
+            str: A name no artifact on this context holds.
+        """
+        if name not in self.artifacts:
+            return name
+        suffix = PurePosixPath(name).suffix
+        stem = name[: len(name) - len(suffix)] if suffix else name
+        counter = 1
+        while f"{stem}-{counter}{suffix}" in self.artifacts:
+            counter += 1
+        return f"{stem}-{counter}{suffix}"
+
+    def claim_artifact_name(self, requested: str | None, default: str) -> str:
+        """Return the name a tool should store a new artifact under.
+
+        A name the **model** chose is honoured only when it is free: saving
+        over an existing artifact would silently destroy an input, so it is
+        refused with a message the model can act on. With no chosen name the
+        ``default`` is made unique instead, because a generated default
+        colliding is the tool's problem, not the model's.
+
+        Args:
+            requested (str | None): The filename the model passed, if any.
+            default (str): The tool's own default name.
+
+        Returns:
+            str: A free artifact name.
+
+        Raises:
+            AgentToolError: When ``requested`` names an existing artifact.
+        """
+        if requested:
+            if requested in self.artifacts:
+                raise AgentToolError(
+                    f"an artifact named {requested!r} already exists; "
+                    "choose another filename",
+                )
+            return requested
+        return self.unique_artifact_name(default)
 
     def require_artifact(self, name: str) -> AgentArtifact:
         """Return an artifact by name, or fail with a message for the model.
