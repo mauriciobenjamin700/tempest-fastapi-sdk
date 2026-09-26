@@ -1584,7 +1584,6 @@ Generated file lands at `alembic/versions/2026_05_16_1432-ae12cd34_add_users_tab
 ```python
 # src/api/app.py — extend lifespan
 
-import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -1598,14 +1597,17 @@ from src.core.settings import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    # Run pending migrations before serving traffic.
+    """Run pending migrations before serving traffic."""
     helper = AlembicHelper("alembic.ini", db_url=settings.DATABASE_URL)
-    await asyncio.to_thread(helper.upgrade)
+    await helper.upgrade_async()
 
     await db.connect()
     yield
     await db.disconnect()
 ```
+
+Every `AlembicHelper` command that runs `alembic/env.py` has an `*_async` twin
+for code on a running event loop; the sync method raises there, naming it.
 
 #### CI gate — schema must match models
 
