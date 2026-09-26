@@ -174,7 +174,8 @@ fp32 em CPU.
     várias primeiras chamadas simultâneas carregam o modelo **uma** vez só.
     Vale igual pra todo loader local (`Embedder`, `Reranker`,
     `ImageGenerator`, `SpeechToText`, `TextToSpeech`, `SpeakerDiarizer`,
-    `OnnxEmbedder`...).
+    `VoiceEmbedder`, `OnnxEmbedder`...) e pro `FaceRecognizer` do
+    [reconhecimento facial](faces.md).
 
 ## Backend hospedado (DeepSeek, Groq, OpenRouter, vLLM...)
 

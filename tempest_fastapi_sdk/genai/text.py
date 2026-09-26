@@ -22,7 +22,6 @@ import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, Protocol, runtime_checkable
 
-from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.generation_cache import (
     AsyncGenerationCache,
     GenerationCache,
@@ -43,6 +42,7 @@ from tempest_fastapi_sdk.genai.structured import (
     parse_structured,
 )
 from tempest_fastapi_sdk.genai.tracing import genai_span
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 _QUANTIZATIONS: frozenset[ModelDtype] = frozenset({ModelDtype.INT8, ModelDtype.INT4})
 

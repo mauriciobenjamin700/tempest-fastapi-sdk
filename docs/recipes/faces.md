@@ -185,6 +185,12 @@ nenhum para dar — então o módulo adiciona a moldura sozinho.
 treinados com olhos, nariz e cantos da boca em posições fixas. Recorte não
 alinhado não falha: perde acurácia em silêncio.
 
+**Descarregar não derruba chamada em andamento.** Com `idle_unload_seconds`,
+`unload_if_idle()` solta os modelos só quando nada os usa: durante um
+`recognize()` o `seconds_idle` lê `0.0` e a resposta é `False`. Um
+`unload()` no meio de uma chamada espera ela terminar, e várias primeiras
+chamadas simultâneas carregam os modelos **uma** vez só.
+
 ## Recap
 
 - `FaceRecognizer.recognize()` detecta e embute; `detect()` só detecta e não

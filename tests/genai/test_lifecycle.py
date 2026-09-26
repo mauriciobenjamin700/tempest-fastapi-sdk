@@ -25,6 +25,7 @@ from typing import Any
 
 import pytest
 
+from tempest_fastapi_sdk.faces import FaceRecognizer
 from tempest_fastapi_sdk.genai import (
     ClassifierModerator,
     Embedder,
@@ -35,11 +36,17 @@ from tempest_fastapi_sdk.genai import (
     VisionTextGenerator,
 )
 from tempest_fastapi_sdk.genai import image as image_module
-from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
-from tempest_fastapi_sdk.genai.audio import SpeakerDiarizer, SpeechToText, TextToSpeech
+from tempest_fastapi_sdk.genai.audio import (
+    SpeakerDiarizer,
+    SpeechToText,
+    TextToSpeech,
+    VoiceEmbedder,
+)
 from tempest_fastapi_sdk.genai.audio import diarization as diarization_module
+from tempest_fastapi_sdk.genai.audio import voiceprint as voiceprint_module
 from tempest_fastapi_sdk.genai.moderation import ModerationResult
 from tempest_fastapi_sdk.genai.rag import Chunk, Reranker
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 BUILD_SECONDS: float = 0.1
 
@@ -403,6 +410,82 @@ class FakeTorch:
         return FakeGenerator()
 
 
+class FakeVoiceStream:
+    """sherpa-onnx embedding stream stand-in."""
+
+    def accept_waveform(self, *, sample_rate: int, waveform: Any) -> None:
+        """Accept samples.
+
+        Args:
+            sample_rate (int): Ignored.
+            waveform (Any): Ignored.
+        """
+
+    def input_finished(self) -> None:
+        """Mark the end of the input."""
+
+
+class FakeVoiceExtractor:
+    """sherpa-onnx ``SpeakerEmbeddingExtractor`` stand-in."""
+
+    dim: int = 1
+
+    def __init__(self, gate: Gate) -> None:
+        """Initialize the extractor.
+
+        Args:
+            gate (Gate): Held while computing.
+        """
+        self.gate = gate
+
+    def create_stream(self) -> FakeVoiceStream:
+        """Open a stream.
+
+        Returns:
+            FakeVoiceStream: The stream.
+        """
+        return FakeVoiceStream()
+
+    def compute(self, stream: FakeVoiceStream) -> list[float]:
+        """Return a voiceprint after the gate opens.
+
+        Args:
+            stream (FakeVoiceStream): Ignored.
+
+        Returns:
+            list[float]: A one-element vector.
+        """
+        self.gate.pass_through()
+        return [1.0]
+
+
+class FakeFaceDetector:
+    """:class:`~tempest_fastapi_sdk.faces.FaceDetector` stand-in."""
+
+    def __init__(self, gate: Gate) -> None:
+        """Initialize the detector.
+
+        Args:
+            gate (Gate): Held while detecting.
+        """
+        self.gate = gate
+
+    def detect(self, image: Any) -> list[Any]:
+        """Find no faces, after the gate opens.
+
+        Args:
+            image (Any): Ignored.
+
+        Returns:
+            list[Any]: No faces.
+        """
+        self.gate.pass_through()
+        return []
+
+    def unload(self) -> None:
+        """Release nothing."""
+
+
 @dataclass
 class Case:
     """One loader wired to fakes.
@@ -569,6 +652,34 @@ def _image(mp: pytest.MonkeyPatch, gate: Gate, counter: BuildCounter) -> Any:
     )
 
 
+def _voice(mp: pytest.MonkeyPatch, gate: Gate, counter: BuildCounter) -> Any:
+    """Build a :class:`VoiceEmbedder` over fakes."""
+    import numpy as np
+
+    def _assign(self: Any) -> None:
+        self._extractor = FakeVoiceExtractor(gate)
+
+    _patch_build(mp, VoiceEmbedder, counter, _assign)
+    mp.setattr(
+        voiceprint_module,
+        "load_audio",
+        lambda audio, target_rate: np.zeros(16, dtype=np.float32),
+    )
+    return VoiceEmbedder(max_concurrent=3, idle_unload_seconds=0.0)
+
+
+def _face(mp: pytest.MonkeyPatch, gate: Gate, counter: BuildCounter) -> Any:
+    """Build a :class:`FaceRecognizer` over fakes."""
+
+    def _assign(self: Any) -> None:
+        self._detector = FakeFaceDetector(gate)
+        self._session = object()
+
+    _patch_build(mp, FaceRecognizer, counter, _assign)
+    mp.setattr(FaceRecognizer, "_open", lambda self, image: object())
+    return FaceRecognizer(max_concurrent=3, idle_unload_seconds=0.0)
+
+
 CASES: list[Case] = [
     Case("embedder", _embedder, lambda model: model.embed(["a"])),
     Case(
@@ -583,6 +694,8 @@ CASES: list[Case] = [
     Case("diarizer", _diarizer, lambda model: model.diarize(b"audio")),
     Case("onnx", _onnx, lambda model: model.embed(["a"])),
     Case("image", _image, lambda model: model.generate("a cat")),
+    Case("voice", _voice, lambda model: model.embed(b"audio")),
+    Case("face", _face, lambda model: model.recognize(b"image")),
 ]
 
 
