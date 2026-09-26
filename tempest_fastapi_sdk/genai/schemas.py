@@ -218,15 +218,19 @@ class ImageGenerationConfig(BaseSchema):
         negative_prompt (str | None): What to steer away from. Ignored by
             models that do not implement classifier-free guidance.
         width (int | None): Output width in pixels; must suit the model
-            (multiples of 8, and SDXL expects ~1024).
-        height (int | None): Output height in pixels.
+            (multiples of 8, and SDXL expects ~1024). At most ``4096``.
+        height (int | None): Output height in pixels. At most ``4096``.
         steps (int | None): Denoising steps. Distilled/turbo models want
-            1-8; full models want 20-50.
+            1-8; full models want 20-50. At most ``500``.
         guidance_scale (float | None): How hard to follow the prompt.
             Turbo models want ``0.0``; full models want 5-9.
         seed (int | None): RNG seed. Set it and the same prompt gives the
             same image on the same hardware.
-        num_images (int): How many images to generate per call.
+        num_images (int): How many images to generate per call, at most
+            ``16``. These ceilings are the schema's absolute bounds, far
+            above any model's useful range, so an unbounded value cannot
+            reach the pipeline; ``make_genai_router`` enforces the tighter
+            per-request limits of :class:`GenAIRequestLimits` on top.
     """
 
     negative_prompt: str | None = Field(
@@ -238,6 +242,7 @@ class ImageGenerationConfig(BaseSchema):
     width: int | None = Field(
         default=None,
         gt=0,
+        le=4096,
         title="Width",
         description="Output width in pixels.",
         examples=[512, 1024],
@@ -245,6 +250,7 @@ class ImageGenerationConfig(BaseSchema):
     height: int | None = Field(
         default=None,
         gt=0,
+        le=4096,
         title="Height",
         description="Output height in pixels.",
         examples=[512, 1024],
@@ -252,6 +258,7 @@ class ImageGenerationConfig(BaseSchema):
     steps: int | None = Field(
         default=None,
         gt=0,
+        le=500,
         title="Steps",
         description="Denoising steps; turbo models want 1-8, full ones 20-50.",
         examples=[4, 30],
@@ -272,6 +279,7 @@ class ImageGenerationConfig(BaseSchema):
     num_images: int = Field(
         default=1,
         gt=0,
+        le=16,
         title="Number of images",
         description="How many images to generate per call.",
         examples=[1, 4],
@@ -297,6 +305,103 @@ class ImageGenerationConfig(BaseSchema):
         if "num_images" in data:
             data["num_images_per_prompt"] = data.pop("num_images")
         return data
+
+
+class GenAIRequestLimits(BaseSchema):
+    """Per-request ceilings :func:`make_genai_router` enforces.
+
+    Every GenAI endpoint turns request size into GPU time or memory: a
+    2 MB prompt with ``max_new_tokens=10**9``, a 100 000-item ``/embed``
+    batch or a 100 000 x 100 000 image are each a way for one caller to
+    hold the worker. The router checks the request against these limits
+    **before** calling the model and answers ``422`` with the offending
+    field and its limit in ``details``. The defaults suit a small
+    self-hosted deployment; pass your own instance to raise or lower any
+    of them.
+
+    ``max_new_tokens`` caps only the value a caller sends. A request that
+    leaves it unset falls through to the generator's own default, which
+    the operator — not the caller — chose.
+
+    Example:
+
+        >>> limits = GenAIRequestLimits(max_prompt_chars=8_000, max_top_k=20)
+        >>> router = make_genai_router(text_generator=gen, limits=limits)
+
+    Attributes:
+        max_prompt_chars (int): Largest prompt, in characters. Applies to
+            the ``/generate`` prompt, the sum of every ``/chat`` message,
+            the ``/rag`` query, each ``/embed`` text and the ``/image``
+            prompt and negative prompt.
+        max_chat_messages (int): Most messages one ``/chat`` request may
+            carry.
+        max_new_tokens (int): Largest ``config.max_new_tokens`` accepted.
+        max_embed_texts (int): Most texts one ``/embed`` request may carry.
+        max_top_k (int): Largest ``top_k`` accepted by ``/rag``.
+        max_tts_chars (int): Largest ``/tts`` text, in characters.
+        max_image_side (int): Largest ``config.width`` / ``config.height``
+            accepted by ``/image``, in pixels.
+        max_image_steps (int): Largest ``config.steps`` accepted by
+            ``/image``.
+        max_upload_bytes (int): Largest ``/transcribe`` upload, in bytes.
+            The default equals ``DEFAULT_MAX_UPLOAD_BYTES`` (25 MiB), the
+            ceiling ``make_voice_router`` uses.
+    """
+
+    max_prompt_chars: int = Field(
+        default=32_000,
+        gt=0,
+        title="Max prompt characters",
+        description="Largest prompt, chat transcript, query or text, in characters.",
+    )
+    max_chat_messages: int = Field(
+        default=100,
+        gt=0,
+        title="Max chat messages",
+        description="Most messages one /chat request may carry.",
+    )
+    max_new_tokens: int = Field(
+        default=4096,
+        gt=0,
+        title="Max new tokens",
+        description="Largest config.max_new_tokens a caller may request.",
+    )
+    max_embed_texts: int = Field(
+        default=256,
+        gt=0,
+        title="Max embed texts",
+        description="Most texts one /embed request may carry.",
+    )
+    max_top_k: int = Field(
+        default=50,
+        gt=0,
+        title="Max top_k",
+        description="Largest top_k accepted by /rag.",
+    )
+    max_tts_chars: int = Field(
+        default=5_000,
+        gt=0,
+        title="Max TTS characters",
+        description="Largest /tts text, in characters.",
+    )
+    max_image_side: int = Field(
+        default=2048,
+        gt=0,
+        title="Max image side",
+        description="Largest width or height accepted by /image, in pixels.",
+    )
+    max_image_steps: int = Field(
+        default=100,
+        gt=0,
+        title="Max image steps",
+        description="Largest denoising step count accepted by /image.",
+    )
+    max_upload_bytes: int = Field(
+        default=25 * 1024 * 1024,
+        gt=0,
+        title="Max upload bytes",
+        description="Largest /transcribe upload, in bytes.",
+    )
 
 
 class GeneratedImage(BaseSchema):
@@ -397,6 +502,7 @@ __all__: list[str] = [
     "DTYPE_KWARG_RENAMED_IN",
     "CapacityReport",
     "GPUInfo",
+    "GenAIRequestLimits",
     "GeneratedImage",
     "GenerationConfig",
     "HardwareInfo",

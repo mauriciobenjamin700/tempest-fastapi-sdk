@@ -8,9 +8,12 @@ from fastapi import UploadFile
 from starlette.datastructures import Headers
 
 from tempest_fastapi_sdk import (
+    UPLOAD_READ_CHUNK_BYTES,
     FileTooLargeException,
     InvalidFileTypeException,
     UploadUtils,
+    ValidationException,
+    read_upload_capped,
     sniff_mime,
 )
 
@@ -301,3 +304,22 @@ class TestVerifyMagicBytes:
         )
         with pytest.raises(InvalidFileTypeException):
             await utils.save(upload)
+
+
+class TestReadUploadCapped:
+    async def test_reads_an_upload_at_the_ceiling(self) -> None:
+        upload = _make_upload(b"x" * 32)
+        assert await read_upload_capped(upload, max_bytes=32) == b"x" * 32
+
+    async def test_refuses_one_byte_over_with_the_label(self) -> None:
+        upload = _make_upload(b"x" * 33)
+        with pytest.raises(ValidationException) as info:
+            await read_upload_capped(upload, max_bytes=32, label="image")
+        assert info.value.status_code == 422
+        assert "image is larger than 32 bytes" in str(info.value.detail)
+
+    async def test_stops_reading_after_the_chunk_that_crosses(self) -> None:
+        upload = _make_upload(b"x" * (UPLOAD_READ_CHUNK_BYTES * 4))
+        with pytest.raises(ValidationException, match="larger than"):
+            await read_upload_capped(upload, max_bytes=10)
+        assert upload.file.tell() == UPLOAD_READ_CHUNK_BYTES
