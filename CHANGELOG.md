@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+`AlembicHelper` não tinha caminho para código async (#323). O `env.py` que o
+SDK gera sobe o engine com `asyncio.run(...)`, então `helper.upgrade()`
+chamado de um lifespan do FastAPI morria dentro do Alembic com `asyncio.run()
+cannot be called from a running event loop` e um `RuntimeWarning: coroutine
+'run_async_migrations' was never awaited`; a docstring mandava usar
+`asyncio.to_thread`, e cada serviço escrevia esse passo à mão. O `check()`
+era pior: engolia o erro e devolvia `False`, relatando drift que nunca foi
+medido.
+
+### Added
+
+- **Par `_async` para todo método que roda o `env.py`**: `upgrade_async`,
+  `safe_upgrade_async`, `downgrade_async`, `stamp_async`, `revision_async`,
+  `check_async`, `current_async`, `has_existing_schema_async`, `adopt_async`,
+  `sync_schema_async`, `squash_async` e `pending_destructive_ops_async`, com a
+  mesma assinatura do síncrono (teste compara). Rodam o síncrono numa worker
+  thread — sem loop próprio, então o `asyncio.run` do `env.py` funciona lá — e
+  por isso funcionam com todo `env.py` já gerado. Medido com 20 revisions em
+  SQLite: `upgrade_async` levou de 0,10 a 0,14 s e um ticker de 5 ms no loop
+  seguiu rodando (maior intervalo entre ticks de 7 a 26 ms, três execuções).
+  Rodar no loop via `AsyncConnection.run_sync` (receita de connection sharing
+  do Alembic) foi descartado como default: contra o `env.py` gerado até a
+  0.299.0 ele falha com o mesmo erro de `asyncio.run`.
+- **`env.py` gerado aceita `config.attributes["connection"]`.** Recebendo uma
+  conexão (de dentro de `AsyncConnection.run_sync`), migra nela sem criar
+  engine; executado de um loop **sem** conexão, levanta `RuntimeError`
+  explicando as duas saídas antes de criar a coroutine, em vez do erro de
+  `asyncio.run` com coroutine não aguardada. Vale para projeto que regenerar
+  o `env.py`; o existente continua funcionando com os métodos `_async`.
+
+### Changed
+
+- **Método síncrono que roda o `env.py` levanta com um loop rodando**
+  (`upgrade`, `safe_upgrade`, `downgrade`, `stamp`, `revision`, `check`,
+  `adopt`, `sync_schema`, `squash`): `RuntimeError` nomeando o par `_async`,
+  antes de tocar no Alembic. `revision` recusa mesmo com
+  `autogenerate=False`, porque `revision_environment` no ini faz esse caminho
+  executar o `env.py`. `current()` e `has_existing_schema()` continuam
+  funcionando no loop quando há driver síncrono; só o fallback só-async
+  (`asyncpg` sem `psycopg2`) levanta, nomeando `current_async` /
+  `has_existing_schema_async`. Quem chamava o síncrono de código async com um
+  `env.py` próprio sem `asyncio.run` passa a receber o erro — troque pelo
+  `_async`.
+- Receitas `migrations` e `database` (PT/EN) usam os métodos `_async` no
+  lifespan; o `asyncio.to_thread` escrito à mão saiu dos exemplos. O scaffold
+  do `tempest new` não chama o helper no lifespan, então não mudou.
+
 O ciclo de vida dos loaders self-hosted de `genai` tinha dois defeitos
 repetidos em todas as classes, e o `stream()` do `TextGenerator` travava o
 event loop. Três primeiras chamadas simultâneas a `TextGenerator.generate`

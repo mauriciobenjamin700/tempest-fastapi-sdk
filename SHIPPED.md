@@ -187,7 +187,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `head`), `base_revision()` and `has_existing_schema()` are the two
   questions behind it. Exists because `create_tables()` + `stamp("head")`
   is a plausible bootstrap that leaves an old schema with Alembic
-  declaring itself up to date — recipe `docs/recipes/migrations.md`. **Transactions (v0.200.0):**
+  declaring itself up to date — recipe `docs/recipes/migrations.md`.
+  **Async callers (#323):** every `AlembicHelper` method that runs
+  `env.py` has an `*_async` twin (`upgrade_async`, `sync_schema_async`,
+  `check_async`, ... — same signature, worker thread, works with any
+  `env.py` already generated); the sync method raises a `RuntimeError`
+  naming the twin when a loop is running, instead of Alembic's nested
+  `asyncio.run` error. Generated `env.py` also accepts
+  `config.attributes["connection"]` (Alembic connection sharing).
+  Guard: `tests/db/test_migrations_async.py`. **Transactions (v0.200.0):**
   `transaction(session)` / `savepoint(session)` (+ `repo.transaction()` /
   `.savepoint()`), depth counter in `session.info` so **every repository on
   that session joins the same block**; `commit()`/`flush()`/`rollback()` on
