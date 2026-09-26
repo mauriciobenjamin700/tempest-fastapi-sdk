@@ -1672,17 +1672,39 @@ temperature=0.9)` usa `0.9`).
 
 !!! tip "`seed` e `stop` valem no path local"
     `seed` e `stop` são honrados tanto no `OllamaGenerator` quanto no
-    `TextGenerator` (transformers): `seed` é reaplicado via
-    `transformers.set_seed` antes de gerar (mesma seed + `do_sample=True`
-    reproduz a saída) e `stop` vira o argumento `stop_strings` de
-    `model.generate` (requer transformers >= 4.44). Ambos podem vir do
-    `GenerationConfig` ou por chamada — o override por chamada vence.
+    `TextGenerator` (transformers): mesma seed + `do_sample=True` reproduz a
+    saída, e `stop` vira o argumento `stop_strings` de `model.generate`
+    (requer transformers >= 4.44). Ambos podem vir do `GenerationConfig` ou
+    por chamada — o override por chamada vence.
 
-!!! warning "A `seed` local é global ao processo"
-    `transformers.set_seed` resemeia os RNGs do processo inteiro, e o
-    `model.generate` não aceita um `torch.Generator` por chamada (conferido
-    no transformers 4.57). Uma geração com seed só reproduz enquanto nenhuma
-    outra geração com amostragem roda ao mesmo tempo no mesmo processo.
+!!! info "A `seed` local é por chamada, e vale sob concorrência"
+    O `model.generate` não aceita `torch.Generator` por chamada —
+    `generate(..., generator=g)` levanta `ValueError` (`model_kwargs` não
+    usado) no transformers 4.57.6 e no 5.17.0 — e amostra com o RNG global
+    do processo. Por isso o `TextGenerator` não usa mais `transformers.set_seed`
+    na amostragem simples (`do_sample=True`, `num_beams=1`, sem modelo
+    assistente): um logits processor próprio sorteia o token com um
+    `torch.Generator` só daquela chamada. Duas gerações concorrentes com a
+    mesma seed dão o mesmo texto que uma rodando sozinha, e chamadas sem
+    seed não viram determinísticas por tabela.
+
+    Medido com `Qwen/Qwen2.5-0.5B-Instruct`, 5 pares de chamadas
+    concorrentes (`asyncio.gather`) com a mesma seed: antes, os 5 pares
+    divergiam da execução serial; agora, nenhum — na CPU (transformers
+    4.57.6) e numa RTX 4070 Ti SUPER (4.57.6 e 5.17.0). Sem concorrência, a mesma seed
+    dá o mesmo texto que antes da mudança, nos dois devices.
+
+    O custo fica só nas chamadas com seed. O passo de escolha do token passou
+    de 1,07 para 3,08 ms na GPU e de 7,3 para 13,3 ms na CPU (vocabulário de
+    151 936 tokens, top-k 20 + top-p 0,9, melhor de 5 rodadas de 500 passos).
+    De ponta a ponta, numa máquina carregada por outros processos, a geração
+    com seed ficou de 4 a 6% mais lenta que o caminho antigo na GPU (3
+    execuções de 10 x 64 tokens) e 12% na CPU (1 execução de 5 x 32 tokens).
+
+    Beam sampling (`num_beams > 1`), decodificação assistida/prompt lookup
+    e DoLa amostram num código que um logits processor não controla; nesses
+    modos a seed continua indo por `transformers.set_seed`, global ao
+    processo.
 
 ### Saída estruturada (JSON validado)
 
@@ -2372,6 +2394,12 @@ As imagens entram como caminho, `bytes`, `PIL.Image` ou `ndarray` NumPy
 (mesma leniência do `ort-vision-sdk`). `generate`/`chat` são
 image-opcionais — chamadas só-texto continuam funcionando (é um
 `TextBackend`).
+
+A `seed` (do `GenerationConfig` ou por chamada) segue a mesma regra do
+`TextGenerator`: `generator` próprio da chamada na amostragem simples. Antes
+ela era descartada em silêncio quando vinha do config, e `seed=` por chamada
+fazia o `model.generate` levantar `ValueError` listando `seed` entre os
+`model_kwargs` não usados.
 
 !!! warning "Convenções de processor variam por família"
     Esta classe mira a interface comum `processor(text=..., images=...)`
