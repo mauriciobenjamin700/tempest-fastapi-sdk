@@ -566,7 +566,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   dropping the old so a bad rollout degrades to the previous version),
   `make_prediction_router`, `RegistryModelSource` (fleet update over the
   existing `ArtifactRegistry`, one cached file per version).
-  **Serving hardening (Unreleased):** inference and reload off the event
+  **Serving hardening (v0.300.0):** inference and reload off the event
   loop (`asyncio.to_thread`; 0.992 s stall → <1 ms with a 1 s stub),
   `max_rows` (`DEFAULT_MAX_PREDICT_ROWS = 10_000`, 422 beyond),
   `dependencies` / `admin_dependencies` guards, `/model` reports the file
@@ -627,12 +627,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   per-user quota, `recall()` returns scored `MemoryHit`s over any
   `SupportsEmbed`. Uses `PersistentClient` (embedded, no HTTP server), so the
   `chromadb` server advisory PYSEC-2026-311 is not reachable through the SDK.
-  **Chunk identity + re-index (Unreleased):** every SDK store and
+  **Chunk identity + re-index (v0.300.0):** every SDK store and
   `HybridRetriever` key a chunk by `(source, index, text)` and `add`/`index`
   **replace** the batch's sources (`source#index` collided because
   `chunk_text` restarts at 0); `PgVectorStore` validates the table
   identifier, indexes `source` and inserts in one `executemany`;
-  **approximate index (Unreleased, #319):** `PgVectorStore.ensure_schema(
+  **approximate index (v0.300.0, #319):** `PgVectorStore.ensure_schema(
   ann_index="hnsw" | "ivfflat", m=, ef_construction=, lists=)` builds
   `<table>_embedding_idx` with `vector_cosine_ops` (HNSW refused below
   pgvector 0.5.0; an existing index with other params is refused, never
@@ -687,9 +687,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   **`make_vision_router`** (v0.149); **`GenAIMetrics`** Prometheus (v0.150);
   content **moderation** (`RuleModerator`/`ClassifierModerator`) (v0.151) —
   the classifier scores multi-label models with a sigmoid and classifies the
-  whole text in overlapping 64-token windows, max per label (Unreleased);
+  whole text in overlapping 64-token windows, max per label (v0.300.0);
   and integration — `AIChatPipeline` moderation + context truncation (v0.152);
-  trust boundary (Unreleased) — `stream()` moderates the reply
+  trust boundary (v0.300.0) — `stream()` moderates the reply
   (`stream_moderation="incremental"|"buffered"`), `history` is moderated and
   limited to `user`/`assistant` in the router, the memory owner comes from
   `make_ai_chat_router(current_user_id=...)` (required with `memory=`), the
@@ -705,7 +705,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   client was **deliberately skipped** (self-hosted-only). Test tiers
   (unit/`@model`/`@gpu`) + plans live under `planning/genai/`. **Fix:** `httpx`
   + `email-validator` are base deps so a minimal/`[genai]` install imports
-  (v0.151.1). **Hardening (Unreleased):** in-memory generation/embedding
+  (v0.151.1). **Hardening (v0.300.0):** in-memory generation/embedding
   caches are LRU (`max_entries=1024`); generation cache key scoped by
   operation + `revision`/`quantization`; `OllamaError` for `{"error": ...}`
   bodies and stream lines; `OllamaGenerator.chat` gets cache + metrics;
@@ -781,7 +781,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   sobreposição de tempo), `DiarizedTranscription`/`SpeakerTurn` com
   `transcript()` e `by_speaker()`, `ensure_models()` (46 MB, fora do wheel,
   honra `TEMPEST_VOICE_MODEL_DIR`; SHA-256 dos dois modelos fixado e
-  timeout de socket de 60 s no download desde o Unreleased). **sherpa-onnx e não pyannote**: 1
+  timeout de socket de 60 s no download desde a v0.300.0). **sherpa-onnx e não pyannote**: 1
   dependência contra 21 (torch/lightning/matplotlib/otel/SDK pago) e modelos
   abertos contra pipeline gated no HuggingFace; RTF 0,125 em CPU. Transcreve a
   gravação **uma vez** e atribui depois — trecho que atravessa troca de falante
@@ -805,7 +805,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `list_cached_models`/`cache_size_bytes`/`remove_cached_model` (by sha or ref
   name, `dry_run`, `0` for absent = no-op). The disk check counts only the
   files the globs select (via `huggingface_hub.utils.filter_repo_objects`)
-  minus those already cached for the revision (Unreleased);
+  minus those already cached for the revision (v0.300.0);
   `model_disk_bytes` takes the same `allow_patterns`/`ignore_patterns`. All 5 transformers loaders
   (`TextGenerator`/`Embedder`/`VisionTextGenerator`/`ClassifierModerator`/
   `Reranker`) take `revision=`/`local_files_only=`/`trust_remote_code=`;
@@ -861,7 +861,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   time. Also closed the `docs/reference.md` hole: the top-level `genai`
   surface + `genai.rag` + `genai.audio` now render (269 symbols), where
   before only the three new submodules did.
-- **Shared model lifecycle (Unreleased)** — private
+- **Shared model lifecycle (v0.300.0)** — private
   `utils/_lifecycle.py::ModelLifecycle` (under `utils` so `faces` does not
   import `genai`) behind `TextGenerator`, `Embedder`,
   `ImageGenerator`, `VisionTextGenerator`, `Reranker`,
@@ -884,16 +884,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   for the evicted model's in-flight calls before building — `max_models`
   holds for kept handles too (#320); the one allowance is a call nested
   inside another model's call, which does not wait.
-  id and `idle_unload_seconds`; `TextToSpeech` gained
-  `idle_unload_seconds` and no longer leaks its temp `.wav` on failure.
-  `ModelRegistry` eviction marks the loader evicted, so a handle kept past
-  it re-registers through the registry (evicting the LRU) and waits for the
-  evicted model's in-flight calls before building — `max_models` holds for
-  kept handles too (#320); the one allowance is a call nested inside
-  another model's call, which does not wait.
-  **Not covered:** `VoiceEmbedder` and `faces.FaceRecognizer` still use the
-  old unguarded pattern.
-- **Per-call sampling seed (Unreleased)** — `TextGenerator` (and now
+- **Per-call sampling seed (v0.300.0)** — `TextGenerator` (and now
   `VisionTextGenerator`, which used to drop `config.seed` and choke on a
   per-call `seed=`) seeds plain multinomial sampling through a private
   `_SeededSampler` logits processor holding its own `torch.Generator`,
@@ -953,7 +944,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `accepted=False` means nothing passed. **Fixed here:** the effective
   deadline was written to the run state but not back to the `AgentContext`,
   so delegation handed the child `None` and it ran to its own budget.
-- **Agents audit (Unreleased)** — ceilings now hold *during* a call, not
+- **Agents audit (v0.300.0)** — ceilings now hold *during* a call, not
   just between turns: every model call runs under `asyncio.timeout` of the
   time left and every tool call under that plus a grace that shrinks per
   delegation depth (so a child always stops before its parent cuts it), and
@@ -1512,7 +1503,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   factories, `ChatService` (`start_conversation`/`post_message`/
   `list_messages`/`list_conversations`/`is_participant`), `make_chat_router`
   (participant guard) + real-time fan-out via an injected `SSEBroker`.
-  Submodule import. **Access and limits (Unreleased):** every
+  Submodule import. **Access and limits (v0.300.0):** every
   message-id path (`react`/`unreact`/`forward`/`edit_message`/
   `revoke_message`, and the reply quote) checks active membership of the
   message's conversation plus `history_from`, answering with the same 404
@@ -1523,7 +1514,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (`max_page_size`, `MESSAGES_PAGE_SIZE_MAX`) and payload ceilings
   (`MESSAGE_BODY_MAX_LENGTH`, `MESSAGE_ATTACHMENTS_MAX`,
   `FORWARD_TARGETS_MAX`, `PARTICIPANT_IDS_MAX`). **Attachment ownership
-  (Unreleased, #317):** nullable `uploader_id` on
+  (v0.300.0, #317):** nullable `uploader_id` on
   `BaseMessageAttachmentModel`, written by `ChatService.add_attachment`;
   `post_message` claims a row only for a message from its uploader (the
   same 404 as an unknown id), while a legacy `NULL` row stays claimable by
