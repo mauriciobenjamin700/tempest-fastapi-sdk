@@ -180,6 +180,12 @@ the module adds the margin itself.
 eyes, nose and mouth corners at fixed positions. An unaligned crop does not
 fail: it loses accuracy silently.
 
+**Unloading does not pull the models from under a call.** With
+`idle_unload_seconds`, `unload_if_idle()` frees the models only when nothing
+uses them: during a `recognize()` `seconds_idle` reads `0.0` and the answer
+is `False`. An `unload()` mid-call waits for it to finish, and several
+simultaneous first calls load the models **once**.
+
 ## Recap
 
 - `FaceRecognizer.recognize()` detects and embeds; `detect()` only detects

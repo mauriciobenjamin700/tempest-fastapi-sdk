@@ -19,7 +19,6 @@ so treat it with the same care.
 from __future__ import annotations
 
 import asyncio
-import time
 from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.genai.audio.diarization import (
@@ -28,6 +27,7 @@ from tempest_fastapi_sdk.genai.audio.diarization import (
     ensure_models,
     load_audio,
 )
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -101,6 +101,14 @@ class VoiceEmbedder:
     of the audio module. Shares the embedding model with
     :class:`~tempest_fastapi_sdk.genai.audio.diarization.SpeakerDiarizer`
     by default, so a service doing both keeps one copy in memory.
+
+    Concurrent first calls build the extractor once, and a call in flight
+    keeps it resident: ``unload_if_idle`` refuses while one runs, and an
+    explicit ``unload`` waits for the last one to finish.
+
+    Attributes:
+        idle_unload_seconds (float | None): Idle time after which
+            :meth:`unload_if_idle` releases the model.
     """
 
     def __init__(
@@ -111,6 +119,7 @@ class VoiceEmbedder:
         num_threads: int = 1,
         provider: str = "cpu",
         max_concurrent: int = 2,
+        idle_unload_seconds: float | None = None,
     ) -> None:
         """Initialize the embedder without loading anything.
 
@@ -122,6 +131,9 @@ class VoiceEmbedder:
             num_threads (int): ONNX Runtime intra-op threads.
             provider (str): Execution provider.
             max_concurrent (int): Extractions allowed at once.
+            idle_unload_seconds (float | None): Idle time after which
+                :meth:`unload_if_idle` releases the model. ``None``
+                disables idle unloading.
 
         Raises:
             ValueError: If ``max_concurrent`` is below 1.
@@ -133,8 +145,13 @@ class VoiceEmbedder:
         self._num_threads = num_threads
         self._provider = provider
         self._semaphore: asyncio.Semaphore = asyncio.Semaphore(max_concurrent)
+        self.idle_unload_seconds: float | None = idle_unload_seconds
         self._extractor: Any | None = None
-        self._last_used: float = time.monotonic()
+        self._lifecycle = ModelLifecycle(
+            build=self._build,
+            release=self._release,
+            is_loaded=lambda: self._extractor is not None,
+        )
 
     @property
     def is_loaded(self) -> bool:
@@ -147,12 +164,14 @@ class VoiceEmbedder:
 
     @property
     def seconds_idle(self) -> float:
-        """Seconds since the last extraction.
+        """Seconds since the model was last in use.
+
+        Reads ``0.0`` while an extraction is in flight.
 
         Returns:
-            float: Idle time.
+            float: Idle time in seconds.
         """
-        return time.monotonic() - self._last_used
+        return self._lifecycle.seconds_idle()
 
     @property
     def dimensions(self) -> int:
@@ -161,19 +180,27 @@ class VoiceEmbedder:
         Returns:
             int: The dimension, loading the model if needed.
         """
-        self.load()
-        assert self._extractor is not None
-        dim: int = self._extractor.dim
-        return dim
+        with self._lifecycle.use():
+            dim: int = self._require_extractor().dim
+            return dim
 
     def load(self) -> None:
         """Resolve and load the embedding model. Idempotent.
 
+        Safe to call from several threads at once: concurrent callers on a
+        cold instance wait for one build.
+
         Raises:
             ImportError: When the ``[genai-diarization]`` extra is absent.
         """
-        if self._extractor is not None:
-            return
+        self._lifecycle.load()
+
+    def _build(self) -> None:
+        """Resolve the model path and build the extractor, under the load lock.
+
+        Raises:
+            ImportError: When the ``[genai-diarization]`` extra is absent.
+        """
         try:
             import sherpa_onnx
         except ImportError as exc:  # pragma: no cover - extra-gated
@@ -195,8 +222,41 @@ class VoiceEmbedder:
         )
 
     def unload(self) -> None:
-        """Release the model."""
+        """Release the model.
+
+        While an extraction is in flight the release waits for it: the
+        last call to finish drops the extractor.
+        """
+        self._lifecycle.unload()
+
+    def _release(self) -> None:
+        """Drop the extractor."""
         self._extractor = None
+
+    def unload_if_idle(self) -> bool:
+        """Release the model when idle past ``idle_unload_seconds``.
+
+        Returns:
+            bool: Whether anything was unloaded — never while an
+            extraction is in flight, and never when no
+            ``idle_unload_seconds`` was configured.
+        """
+        return self._lifecycle.unload_if_idle(self.idle_unload_seconds)
+
+    def _require_extractor(self) -> Any:
+        """Return the loaded extractor.
+
+        Returns:
+            Any: The ``SpeakerEmbeddingExtractor``.
+
+        Raises:
+            RuntimeError: When no extractor is loaded, which inside a
+                lifecycle ``use()`` block means the build did not set it.
+        """
+        extractor = self._extractor
+        if extractor is None:
+            raise RuntimeError("voice embedding model is not loaded")
+        return extractor
 
     async def embed(
         self,
@@ -222,9 +282,7 @@ class VoiceEmbedder:
             ValueError: When the span is empty.
         """
         async with self._semaphore:
-            vector = await asyncio.to_thread(self._embed_sync, audio, start, end, None)
-        self._last_used = time.monotonic()
-        return vector
+            return await asyncio.to_thread(self._embed_sync, audio, start, end, None)
 
     def _embed_sync(
         self,
@@ -233,7 +291,9 @@ class VoiceEmbedder:
         end: float | None,
         min_seconds: float | None,
     ) -> list[float]:
-        """Run the extractor. Executes in a worker thread.
+        """Load if needed and extract, holding the model for the whole call.
+
+        Executes in a worker thread.
 
         Takes ``min_seconds`` rather than leaving the length check to the
         caller because the caller would have to decode the audio to
@@ -256,7 +316,31 @@ class VoiceEmbedder:
             ValueError: When the requested span holds no samples, or the
                 recording is shorter than ``min_seconds``.
         """
-        self.load()
+        with self._lifecycle.use():
+            return self._extract(audio, start, end, min_seconds)
+
+    def _extract(
+        self,
+        audio: str | Path | bytes,
+        start: float | None,
+        end: float | None,
+        min_seconds: float | None,
+    ) -> list[float]:
+        """Decode the recording and run the loaded extractor.
+
+        Args:
+            audio (str | Path | bytes): The recording.
+            start (float | None): Span start in seconds.
+            end (float | None): Span end in seconds.
+            min_seconds (float | None): Shortest accepted duration.
+
+        Returns:
+            list[float]: The voiceprint.
+
+        Raises:
+            ValueError: When the requested span holds no samples, or the
+                recording is shorter than ``min_seconds``.
+        """
         samples = load_audio(audio, target_rate=DIARIZATION_SAMPLE_RATE)
         if min_seconds is not None:
             duration = len(samples) / DIARIZATION_SAMPLE_RATE
@@ -274,8 +358,7 @@ class VoiceEmbedder:
             samples = samples[first:last]
         if len(samples) == 0:
             raise ValueError("the requested audio span is empty")
-        extractor = self._extractor
-        assert extractor is not None
+        extractor = self._require_extractor()
         stream = extractor.create_stream()
         stream.accept_waveform(
             sample_rate=DIARIZATION_SAMPLE_RATE,
@@ -317,15 +400,13 @@ class VoiceEmbedder:
             ImportError: When the ``[genai-diarization]`` extra is absent.
         """
         async with self._semaphore:
-            vector = await asyncio.to_thread(
+            return await asyncio.to_thread(
                 self._embed_sync,
                 audio,
                 None,
                 None,
                 min_seconds,
             )
-        self._last_used = time.monotonic()
-        return vector
 
 
 __all__: list[str] = [

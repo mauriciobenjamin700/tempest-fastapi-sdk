@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+`AlembicHelper` não tinha caminho para código async (#323). O `env.py` que o
+SDK gera sobe o engine com `asyncio.run(...)`, então `helper.upgrade()`
+chamado de um lifespan do FastAPI morria dentro do Alembic com `asyncio.run()
+cannot be called from a running event loop` e um `RuntimeWarning: coroutine
+'run_async_migrations' was never awaited`; a docstring mandava usar
+`asyncio.to_thread`, e cada serviço escrevia esse passo à mão. O `check()`
+era pior: engolia o erro e devolvia `False`, relatando drift que nunca foi
+medido.
+
+### Added
+
+- **Par `_async` para todo método que roda o `env.py`**: `upgrade_async`,
+  `safe_upgrade_async`, `downgrade_async`, `stamp_async`, `revision_async`,
+  `check_async`, `current_async`, `has_existing_schema_async`, `adopt_async`,
+  `sync_schema_async`, `squash_async` e `pending_destructive_ops_async`, com a
+  mesma assinatura do síncrono (teste compara). Rodam o síncrono numa worker
+  thread — sem loop próprio, então o `asyncio.run` do `env.py` funciona lá — e
+  por isso funcionam com todo `env.py` já gerado. Medido com 20 revisions em
+  SQLite: `upgrade_async` levou de 0,10 a 0,14 s e um ticker de 5 ms no loop
+  seguiu rodando (maior intervalo entre ticks de 7 a 26 ms, três execuções).
+  Rodar no loop via `AsyncConnection.run_sync` (receita de connection sharing
+  do Alembic) foi descartado como default: contra o `env.py` gerado até a
+  0.299.0 ele falha com o mesmo erro de `asyncio.run`.
+- **`env.py` gerado aceita `config.attributes["connection"]`.** Recebendo uma
+  conexão (de dentro de `AsyncConnection.run_sync`), migra nela sem criar
+  engine; executado de um loop **sem** conexão, levanta `RuntimeError`
+  explicando as duas saídas antes de criar a coroutine, em vez do erro de
+  `asyncio.run` com coroutine não aguardada. Vale para projeto que regenerar
+  o `env.py`; o existente continua funcionando com os métodos `_async`.
+
+### Changed
+
+- **Método síncrono que roda o `env.py` levanta com um loop rodando**
+  (`upgrade`, `safe_upgrade`, `downgrade`, `stamp`, `revision`, `check`,
+  `adopt`, `sync_schema`, `squash`): `RuntimeError` nomeando o par `_async`,
+  antes de tocar no Alembic. `revision` recusa mesmo com
+  `autogenerate=False`, porque `revision_environment` no ini faz esse caminho
+  executar o `env.py`. `current()` e `has_existing_schema()` continuam
+  funcionando no loop quando há driver síncrono; só o fallback só-async
+  (`asyncpg` sem `psycopg2`) levanta, nomeando `current_async` /
+  `has_existing_schema_async`. Quem chamava o síncrono de código async com um
+  `env.py` próprio sem `asyncio.run` passa a receber o erro — troque pelo
+  `_async`.
+- Receitas `migrations` e `database` (PT/EN) usam os métodos `_async` no
+  lifespan; o `asyncio.to_thread` escrito à mão saiu dos exemplos. O scaffold
+  do `tempest new` não chama o helper no lifespan, então não mudou.
+
 O ciclo de vida dos loaders self-hosted de `genai` tinha dois defeitos
 repetidos em todas as classes, e o `stream()` do `TextGenerator` travava o
 event loop. Três primeiras chamadas simultâneas a `TextGenerator.generate`
@@ -22,13 +69,26 @@ attribute 'decode'`.
   `TextGenerator`, `Embedder`, `ImageGenerator`, `VisionTextGenerator`,
   `Reranker`, `ClassifierModerator`, `OnnxEmbedder`, `SpeechToText`,
   `TextToSpeech` e `SpeakerDiarizer` passam por um helper privado comum
-  (`genai/_lifecycle.py`): lock de load (primeiras chamadas concorrentes
+  (`utils/_lifecycle.py`): lock de load (primeiras chamadas concorrentes
   esperam um build só) e contador de chamadas em andamento. Durante uma
   chamada `seconds_idle` lê `0.0` e `unload_if_idle()` devolve `False`; um
   `unload()` explícito — inclusive o de uma evicção do `ModelRegistry` —
   espera a última chamada terminar. O `assert engine is not None` do
   `SpeakerDiarizer` virou `RuntimeError`, e as passadas do modo `"auto"`
   rodam num bloco só, sem janela para o engine sumir entre elas.
+- **Handle guardado depois da evicção do `ModelRegistry` não recarrega mais
+  fora do `max_models`** (#320). A evicção marca o loader como despejado
+  (`ModelLifecycle.mark_evicted`), e a próxima chamada no handle velho volta
+  pelo registry: registra o modelo de novo na mesma chave, despeja o menos
+  usado e espera as chamadas em andamento do despejado terminarem antes de
+  carregar. A mesma espera vale para o primeiro build de um modelo novo do
+  `get()`. Com `max_models=1`, guardar `A`, pedir `B` e usar `A` de novo
+  dava dois modelos residentes; agora são três loads, dois unloads e pico
+  de um residente, inclusive com oito chamadas concorrentes no handle
+  velho e com threads alternando dois handles guardados. Exceção
+  documentada: chamada feita de dentro da chamada de outro modelo não
+  espera (evita deadlock), e o teto é excedido até a de fora acabar.
+  Objeto de terceiro que só tem `unload()` segue como antes.
 - **`TextGenerator.stream()` não trava mais o event loop.** Load, tokenização
   e espera entre tokens rodam numa worker thread, e os pedaços chegam ao
   loop por `call_soon_threadsafe`. Fechar o iterador (`aclose()`, `break`,
@@ -57,6 +117,49 @@ attribute 'decode'`.
   pelo nome (`sentence_embedding`/`pooler_output` já pooled, depois
   `last_hidden_state`) em vez de `outputs[0]`, e uma saída 2-D é usada como
   veio.
+- **`VoiceEmbedder` e `FaceRecognizer` entram no mesmo ciclo de vida.** As
+  duas classes tinham os dois defeitos corrigidos acima: três primeiras
+  chamadas simultâneas construíam o extrator de voz duas vezes (o
+  `max_concurrent=2` default deixava duas passarem) e os modelos de rosto
+  três vezes, e `FaceRecognizer.unload_if_idle()` devolvia `True` — soltando
+  os modelos — com um `recognize()` em andamento; um `unload()` no meio de um
+  `VoiceEmbedder.embed()` soltava o extrator na hora. Agora é um build só,
+  `unload_if_idle()` devolve `False` durante a chamada e `unload()` espera a
+  última terminar. Os `assert` de modelo carregado viraram `RuntimeError`. O
+  helper saiu de `genai/_lifecycle.py` para `utils/_lifecycle.py` (continua
+  privado): importar de `genai` puxava 39 módulos de `genai` para dentro de
+  `faces`, que não depende dele.
+- **A `seed` do `TextGenerator` vale sob concorrência (#321).** O
+  `model.generate` não aceita `torch.Generator` por chamada
+  (`generate(..., generator=g)` levanta `ValueError` no transformers 4.57.6
+  e no 5.17.0), e o `transformers.set_seed` resemeava o RNG do processo:
+  duas chamadas concorrentes com a mesma seed divergiam da execução serial
+  (5 de 5 pares, `Qwen/Qwen2.5-0.5B-Instruct` na CPU e na GPU) e toda
+  chamada sem seed virava determinística por tabela. Na amostragem simples
+  (`do_sample=True`, `num_beams=1`, sem modelo assistente) um logits
+  processor privado sorteia o token com um `torch.Generator` da chamada;
+  agora 0 de 5 pares divergem, e sem concorrência a mesma seed dá o mesmo
+  texto de antes. Custo só nas chamadas com seed: o passo de escolha do
+  token vai de 1,07 para 3,08 ms na RTX 4070 Ti SUPER e de 7,3 para 13,3 ms
+  na CPU (vocabulário de 151 936), de 4 a 6% de throughput na GPU e 12% na
+  CPU, medidos numa máquina carregada. Beam sampling, decodificação
+  assistida/prompt lookup e DoLa continuam no `set_seed` global.
+- **`VisionTextGenerator` honra a `seed`.** A do `GenerationConfig` era
+  descartada em silêncio, e `seed=` por chamada fazia o `model.generate`
+  levantar `ValueError`; agora segue a mesma regra do `TextGenerator`.
+- **`VisionTextGenerator` honra `stop` e `stop_event` (#332).** O `stop` do
+  `GenerationConfig` era descartado em silêncio (a geração passava da string
+  de parada), e `stop=` ou `stop_event=` por chamada fazia o `model.generate`
+  levantar `ValueError: The following model_kwargs are not used by the
+  model`. Agora o VLM usa os mesmos helpers do `TextGenerator`
+  (`_resolve_control` e `_apply_stop_strings`, promovidos a funções de
+  módulo em `genai/text.py`): `stop` vira `stop_strings` contra o tokenizer
+  do processor e a string de parada fica no texto, como no `TextGenerator`;
+  `stop_event` encerra no próximo token e levanta `GenerationStoppedError`.
+  `tests/genai/test_vision_text_config.py` percorre
+  `GenerationConfig.model_fields` (no config e por chamada) e compara as
+  keywords de `generate`/`chat` com as do `TextGenerator`: campo novo que o
+  VLM nem aplica nem recusa derruba o teste.
 
 ### Added
 
@@ -68,18 +171,9 @@ attribute 'decode'`.
   `ModelRegistry.unload_idle()` agora libera a sessão ONNX também.
 - **`TextToSpeech(idle_unload_seconds=)`** + `seconds_idle` /
   `unload_if_idle()`, no mesmo contrato dos outros loaders.
+- **`VoiceEmbedder(idle_unload_seconds=)`** + `unload_if_idle()`, no mesmo
+  contrato; o `ModelRegistry.unload_idle()` passa a liberar o extrator de voz.
 
-### Changed
-
-- **A `seed` do `TextGenerator` é documentada como global ao processo.**
-  `transformers.set_seed` resemeia os RNGs do processo e o `model.generate`
-  não aceita `torch.Generator` por chamada (conferido no transformers
-  4.57), então uma geração com seed só reproduz sem outra geração com
-  amostragem concorrente. Sem mudança de comportamento; o aviso está na
-  receita e na docstring.
-- A docstring do `ModelRegistry` diz o limite que sobra: um handle guardado
-  depois da evicção recarrega fora do `max_models` — chame `get()` por
-  request em vez de segurar o objeto.
 Auditoria dos backends de genai e do stream do `HTTPClient`: um timeout no
 meio do stream reenviava o POST e repetia o texto já entregue, o Ollama
 devolvia `""` para um corpo de erro, o cliente OpenAI mandava campos que o
@@ -538,6 +632,66 @@ Os tetos default estão abaixo; quem precisa de mais passa
 - **`GET /models`** montava o relatório no event loop: `probe=True` lê NVML
   e `torch.cuda`, chamadas síncronas que travavam todo request concorrente.
   Agora roda em `asyncio.to_thread`.
+
+O `ClassifierModerator` pontuava modelo multi-rótulo com softmax e só lia os
+primeiros 512 tokens (#316): com o `unitary/toxic-bert`, que a receita
+recomenda, `insult` nunca passava do limiar ao lado de `toxic`, e um insulto
+atrás de uns 650 tokens inócuos pontuava `toxic` em 0,001.
+
+### Fixed
+
+- **`ClassifierModerator` usa sigmoid em modelo multi-rótulo.**
+  `activation="auto"` (default) lê `config.problem_type`: sigmoid para
+  `"multi_label_classification"` ou saída única, softmax nos demais. Medido
+  com o `unitary/toxic-bert` (revisão `4d6c22e`), os seis rótulos em
+  `flagged_labels`, sobre um conjunto fixo de 10 frases ofensivas e 5 limpas:
+  com sigmoid, 31 rótulos reportados nas 10 ofensivas e 0 das 5 limpas
+  sinalizadas; com softmax, 10 rótulos (só `toxic`) e 1 limpa sinalizada
+  (`toxic` 0,556).
+- **`ClassifierModerator` não trunca mais.** O texto é classificado em
+  janelas com sobreposição e cada rótulo fica com o maior score entre elas.
+  O default é curto (`window_tokens=64`, `window_overlap=16`) porque o
+  modelo dilui uma frase curta em texto benigno: sobre 40 trechos de 1801 a
+  3030 tokens com uma frase ofensiva inserida, janelas de 512 pegaram 1 de
+  40 e janelas de 64 pegaram 36 de 40, com 0 de 40 trechos limpos
+  sinalizados em ambas. Texto de até 62 tokens continua numa passada só;
+  texto maior custa mais passadas (a tabela está na receita).
+
+### Added
+
+- **`ClassifierModerator(activation=, window_tokens=, window_overlap=)`**,
+  keyword-only. `activation="sigmoid" | "softmax"` força a ativação para
+  checkpoint cuja config não declara o `problem_type`; `window_tokens=None`
+  usa o contexto inteiro do modelo, e qualquer valor é limitado a ele.
+
+Índice aproximado no `PgVectorStore` (#319). Toda busca era varredura
+sequencial com `<=>`, e o índice HNSW/IVFFlat ficava como passo manual.
+
+### Added
+
+- **`PgVectorStore.ensure_schema(ann_index="hnsw" | "ivfflat", m=,
+  ef_construction=, lists=)`** (keyword-only) cria `<table>_embedding_idx`
+  com `vector_cosine_ops`, a operator class do `<=>` que a busca usa.
+  Parâmetro `None` fica fora do `WITH` (vale o default do pgvector);
+  parâmetro do outro método, ou sem `ann_index`, levanta `ValueError` antes
+  de qualquer SQL. `"hnsw"` num pgvector abaixo de 0.5.0 levanta
+  `RuntimeError` com a versão encontrada (medido contra
+  `ankane/pgvector:v0.4.4`; o IVFFlat segue funcionando lá). Um índice com
+  esse nome que já existe com outro método ou outros parâmetros levanta
+  `ValueError` pedindo `DROP INDEX` — nunca é reconstruído em silêncio.
+  Novo `PgVectorStore.ann_index_name` e o tipo `AnnIndex`
+  (`tempest_fastapi_sdk.genai.rag`).
+- **`PgVectorStore.search(ef_search=, probes=)`** (keyword-only) aplica
+  `hnsw.ef_search` / `ivfflat.probes` via `set_config(..., true)` — o
+  `SET LOCAL` em forma de função, com valor bindado —, válidos só na
+  transação da busca: a sessão seguinte no mesmo pool volta a ler `40` e
+  `1`. Medida de latência e recall@10 a 100 000 vetores na receita de
+  genai.
+- Teste `@pytest.mark.docker` contra `pgvector/pgvector:pg16` confirma que
+  o índice existe e que o `EXPLAIN` do statement que o `search` envia
+  (capturado no engine) usa `Index Scan` nele. O container do teste ganhou
+  nome e porta por processo, então dois checkouts rodando `make test-docker`
+  ao mesmo tempo não derrubam o banco um do outro.
 
 O guard de SSRF do `ContentExtractor` (entregue no #309) validava uma
 resolução de DNS e conectava usando outra. Cada salto agora conecta no IP

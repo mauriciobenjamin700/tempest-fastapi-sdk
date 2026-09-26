@@ -187,7 +187,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `head`), `base_revision()` and `has_existing_schema()` are the two
   questions behind it. Exists because `create_tables()` + `stamp("head")`
   is a plausible bootstrap that leaves an old schema with Alembic
-  declaring itself up to date — recipe `docs/recipes/migrations.md`. **Transactions (v0.200.0):**
+  declaring itself up to date — recipe `docs/recipes/migrations.md`.
+  **Async callers (#323):** every `AlembicHelper` method that runs
+  `env.py` has an `*_async` twin (`upgrade_async`, `sync_schema_async`,
+  `check_async`, ... — same signature, worker thread, works with any
+  `env.py` already generated); the sync method raises a `RuntimeError`
+  naming the twin when a loop is running, instead of Alembic's nested
+  `asyncio.run` error. Generated `env.py` also accepts
+  `config.attributes["connection"]` (Alembic connection sharing).
+  Guard: `tests/db/test_migrations_async.py`. **Transactions (v0.200.0):**
   `transaction(session)` / `savepoint(session)` (+ `repo.transaction()` /
   `.savepoint()`), depth counter in `session.info` so **every repository on
   that session joins the same block**; `commit()`/`flush()`/`rollback()` on
@@ -624,6 +632,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   **replace** the batch's sources (`source#index` collided because
   `chunk_text` restarts at 0); `PgVectorStore` validates the table
   identifier, indexes `source` and inserts in one `executemany`;
+  **approximate index (Unreleased, #319):** `PgVectorStore.ensure_schema(
+  ann_index="hnsw" | "ivfflat", m=, ef_construction=, lists=)` builds
+  `<table>_embedding_idx` with `vector_cosine_ops` (HNSW refused below
+  pgvector 0.5.0; an existing index with other params is refused, never
+  rebuilt) and `search(ef_search=, probes=)` sets them transaction-local
+  via `set_config`;
   `ChatMemory(candidate_multiplier=4)` over-fetches before the recency
   re-rank and evicts by UTC instant (`created_at_ts`).
   **Audio (v0.102, `[genai-audio]` = faster-whisper + coqui-tts + the Coqui
@@ -671,7 +685,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   **generation cache** (`InMemory`/`RedisGenerationCache`, deterministic-only)
   (v0.147); **token/context** (`count_tokens`/`truncate_messages`) (v0.148);
   **`make_vision_router`** (v0.149); **`GenAIMetrics`** Prometheus (v0.150);
-  content **moderation** (`RuleModerator`/`ClassifierModerator`) (v0.151);
+  content **moderation** (`RuleModerator`/`ClassifierModerator`) (v0.151) —
+  the classifier scores multi-label models with a sigmoid and classifies the
+  whole text in overlapping 64-token windows, max per label (Unreleased);
   and integration — `AIChatPipeline` moderation + context truncation (v0.152);
   trust boundary (Unreleased) — `stream()` moderates the reply
   (`stream_moderation="incremental"|"buffered"`), `history` is moderated and
@@ -846,10 +862,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   surface + `genai.rag` + `genai.audio` now render (269 symbols), where
   before only the three new submodules did.
 - **Shared model lifecycle (Unreleased)** — private
-  `genai/_lifecycle.py::ModelLifecycle` behind `TextGenerator`, `Embedder`,
+  `utils/_lifecycle.py::ModelLifecycle` (under `utils` so `faces` does not
+  import `genai`) behind `TextGenerator`, `Embedder`,
   `ImageGenerator`, `VisionTextGenerator`, `Reranker`,
-  `ClassifierModerator`, `OnnxEmbedder`, `SpeechToText`, `TextToSpeech` and
-  `SpeakerDiarizer`: one build per cold start however many threads race
+  `ClassifierModerator`, `OnnxEmbedder`, `SpeechToText`, `TextToSpeech`,
+  `SpeakerDiarizer`, `VoiceEmbedder` and `faces.FaceRecognizer`: one build per cold start however many threads race
   (load lock, `is_loaded` checked inside it), and an in-flight counter —
   `seconds_idle` reads `0.0` during a call, `unload_if_idle` refuses, an
   explicit `unload()` (and so `ModelRegistry` eviction) is deferred until
@@ -860,11 +877,37 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   input off the loop; `probe_hardware` reads GPU memory through NVML when
   `pynvml` is installed (no CUDA context); `OnnxEmbedder` gained
   `pooling="mean"|"cls"`, named-output selection, the tokenizer's own pad
+  id and `idle_unload_seconds`; `TextToSpeech` and `VoiceEmbedder` gained
+  `idle_unload_seconds`, and `TextToSpeech` no longer leaks its temp `.wav`
+  on failure. `ModelRegistry` eviction marks the loader evicted, so a handle
+  kept past it re-registers through the registry (evicting the LRU) and waits
+  for the evicted model's in-flight calls before building — `max_models`
+  holds for kept handles too (#320); the one allowance is a call nested
+  inside another model's call, which does not wait.
   id and `idle_unload_seconds`; `TextToSpeech` gained
   `idle_unload_seconds` and no longer leaks its temp `.wav` on failure.
+  `ModelRegistry` eviction marks the loader evicted, so a handle kept past
+  it re-registers through the registry (evicting the LRU) and waits for the
+  evicted model's in-flight calls before building — `max_models` holds for
+  kept handles too (#320); the one allowance is a call nested inside
+  another model's call, which does not wait.
   **Not covered:** `VoiceEmbedder` and `faces.FaceRecognizer` still use the
-  old unguarded pattern; a handle held after registry eviction reloads
-  outside `max_models`.
+  old unguarded pattern.
+- **Per-call sampling seed (Unreleased)** — `TextGenerator` (and now
+  `VisionTextGenerator`, which used to drop `config.seed` and choke on a
+  per-call `seed=`) seeds plain multinomial sampling through a private
+  `_SeededSampler` logits processor holding its own `torch.Generator`,
+  instead of `transformers.set_seed`: concurrent seeded calls match the
+  serial run and the process RNG is left alone. The warper chain is a port
+  of `_get_logits_processor`, resolved through the model's
+  `_prepare_generation_config`, pinned end to end against the installed
+  transformers by `tests/genai/test_text_seed.py`. **Not covered:** beam
+  sampling, assisted/prompt-lookup decoding and DoLa keep the process-wide
+  `set_seed`. `VisionTextGenerator` applies every `GenerationConfig` field
+  and per-call keyword the way `TextGenerator` does — `stop` through the
+  shared `_apply_stop_strings`, plus `stop_event` (#332) — pinned by
+  `tests/genai/test_vision_text_config.py`, which walks
+  `GenerationConfig.model_fields`.
 - **Agents (v0.181.0)** — `tempest_fastapi_sdk.agents`, submodule import, **no
   extra**. Goal in, traced run out — the split from `AIChatPipeline` (which
   answers a chat *turn*). `Agent.run/stream` → `AgentRun` (output + `steps` +

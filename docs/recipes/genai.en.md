@@ -174,7 +174,9 @@ bf16 on GPU and fp32 on CPU.
     eviction) waits: whichever call finishes last drops the weights. And
     several simultaneous first calls load the model **once**. The same holds
     for every local loader (`Embedder`, `Reranker`, `ImageGenerator`,
-    `SpeechToText`, `TextToSpeech`, `SpeakerDiarizer`, `OnnxEmbedder`...).
+    `SpeechToText`, `TextToSpeech`, `SpeakerDiarizer`, `VoiceEmbedder`,
+    `OnnxEmbedder`...) and for the [face recognition](faces.md)
+    `FaceRecognizer`.
 
 ## Hosted backend (DeepSeek, Groq, OpenRouter, vLLM...)
 
@@ -1078,6 +1080,25 @@ def get_embedder(model_id: str) -> Embedder:
     return registry.get(model_id, lambda: Embedder(model_id))
 ```
 
+!!! note "A kept handle still counts toward `max_models`"
+    Keeping the object `get()` returned (`embedder = registry.get(...)` at
+    startup, used for every request) is safe with the SDK loaders. After an
+    eviction, the next call on that handle does **not** reload behind the
+    registry: it registers the model again under the same key (replacing
+    any object a later `get()` built there), evicts the least-recently-used
+    entry, and only then loads the weights. With `max_models=1`, keeping
+    `A`, asking for `B` and using `A` again means three loads and two
+    unloads, never both models resident at once.
+
+    When the evicted model still has calls running, whatever takes its
+    place waits for them to finish before loading — both the readmitted
+    handle and the new model from a `get()`. The exception is a call made
+    **from inside** another model's call: it does not wait (the outer call
+    may be exactly what the evicted model is waiting on), so there the
+    ceiling is exceeded until the outer call ends. A third-party object
+    that only implements `unload()` has no such hook — for those, call
+    `get()` per request.
+
 ### What is loaded right now
 
 A self-hosted service can hold several models at once, each holding
@@ -1632,9 +1653,114 @@ rag = Retriever(embedder, store)
 The table name is interpolated into the SQL (an identifier cannot be a bound
 parameter), so the constructor refuses with `ValueError` anything outside an
 unquoted `name` or `schema.name` (`[A-Za-z_][A-Za-z0-9_]*`, up to 63
-characters each), and a `dim` that is not a positive integer. Search is exact
-(a sequential scan): no approximate index (HNSW/IVFFlat) is created, so add one
-once the corpus grows.
+characters each), and a `dim` that is not a positive integer.
+
+#### Approximate index: HNSW or IVFFlat
+
+Out of the box, search is **exact**: Postgres runs a sequential scan and
+computes `<=>` against every row. With 100,000 chunks of 384 dimensions that
+already costs ~50–60 ms per search (measurement below), and the cost follows
+the row count.
+
+An approximate index trades some **recall** (the fraction of the exact
+neighbors that comes back) for latency. Ask for one in `ensure_schema`:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import AsyncDatabaseManager
+from tempest_fastapi_sdk.genai.rag import Chunk, PgVectorStore
+
+db = AsyncDatabaseManager("postgresql+asyncpg://app:app@127.0.0.1:5432/app")
+store = PgVectorStore(db, dim=384)
+
+
+async def main() -> None:
+    """Build the HNSW index once, then search with a wider candidate list."""
+    await store.ensure_schema(ann_index="hnsw", m=16, ef_construction=64)
+    query: list[float] = [0.1] * 384
+    hits: list[Chunk] = await store.search(query, top_k=10, ef_search=100)
+    print([hit.text for hit in hits])
+
+
+asyncio.run(main())
+```
+
+- **`ann_index="hnsw"`** builds a navigable graph. Build parameters: `m`
+  (connections per node) and `ef_construction` (candidates while building).
+  Needs pgvector **>= 0.5.0**; below that `ensure_schema` raises
+  `RuntimeError` naming the version it found.
+- **`ann_index="ivfflat"`** splits the vectors into `lists` groups and, at
+  search time, scans only the nearest ones. Much faster to build, but the
+  centroids come from the rows present **when it is built** — call it after
+  loading the corpus, not before the first `add`.
+- The index is named `<table>_embedding_idx` (`store.ann_index_name`) and
+  uses `vector_cosine_ops`, the operator class of the `<=>` that `search`
+  orders by.
+- A parameter left as `None` stays out of the `WITH` clause, so pgvector's
+  default applies. A parameter of the other method (`lists` with HNSW), or
+  one given without `ann_index`, raises `ValueError` before any SQL runs.
+- Calling it again with the same parameters does nothing. With **another**
+  method or other parameters it raises `ValueError` asking for `DROP INDEX`:
+  rebuilding a large index never happens hidden inside an `ensure_schema`.
+
+At search time, `ef_search` (HNSW) and `probes` (IVFFlat) tune the trade-off
+per call. `search` applies both with `set_config(..., true)`, the function
+form of `SET LOCAL`: it lasts for the search's transaction only, and the next
+session on the same pool reads the server value again (`40` and `1`,
+checked in the docker test).
+
+!!! warning "`ef_search` also caps how many results come back"
+    An HNSW scan returns at most `ef_search` rows: measured on pgvector
+    0.8.6, `search(top_k=20, ef_search=5)` returns **5** chunks. Keep
+    `ef_search >= top_k`.
+
+##### What it buys
+
+Measured through `PgVectorStore.search` end to end (Python + asyncpg +
+Postgres on `localhost`), `top_k=10`, against `pgvector/pgvector:pg16`
+(pgvector 0.8.6, the container's default configuration, `--shm-size=1g`) on
+a 12-core machine under WSL2. **N = 100,000 vectors of 384 dimensions.**
+Recall@10 is the fraction of the exact scan's 10 neighbors that the index
+returns; each row combines two runs with different seeds (200 searches per
+seed on the Gaussian data, 500 on the clustered data), and the range shows
+both.
+
+Two synthetic corpora that bracket the real case from above and below:
+
+- **Gaussian**: every component is `N(0, 1)`, no structure at all — the
+  nearest neighbor is barely nearer than the rest;
+- **clustered**: 1,000 Gaussian centers, each vector is a center plus
+  `N(0, 0.5)` noise; queries are generated the same way.
+
+| Search | p50 | recall@10 Gaussian | recall@10 clustered |
+| --- | --- | --- | --- |
+| exact (sequential scan) | 50–60 ms | 1.00 | 1.00 |
+| HNSW, `ef_search=40` (default) | 4–8 ms | 0.05–0.06 | 0.986–0.992 |
+| HNSW, `ef_search=100` | 4–8 ms | 0.12–0.13 | 1.00 |
+| HNSW, `ef_search=400` | 7–20 ms | 0.36–0.37 | 1.00 |
+| IVFFlat `lists=100`, `probes=1` (default) | 3.4–4.4 ms | 0.03–0.04 | 0.992–0.996 |
+| IVFFlat `lists=100`, `probes=10` | 6–7.5 ms | 0.23 | 0.9996–0.9998 |
+| IVFFlat `lists=100`, `probes=40` | 17–20 ms | 0.62 | 1.00 |
+
+Index build over the 100,000 rows: HNSW with the defaults (`m=16`,
+`ef_construction=64`) took 72–81 s on the Gaussian data and 26 s on the
+clustered data; IVFFlat with `lists=100`, 0.8–1.5 s.
+
+What to take from it:
+
+- **Latency**: at this N the index takes a search from ~50 ms to ~5 ms. With
+  5,000 Gaussian rows (50 searches, one seed) the exact scan measured ~20 ms
+  at p50 and HNSW ~4 ms: the gain is there, but it is milliseconds.
+- **Recall depends on the corpus, not only on the index.** The same
+  parameters return nearly everything on the clustered data and nearly
+  nothing on the Gaussian data. Text embeddings have structure (documents on
+  the same subject sit close together), but how much only measuring **your**
+  corpus tells: compare `search` with the index against the exact result
+  (taken before creating the index) on a handful of real queries, and raise
+  `ef_search`/`probes` until the recall is good enough.
+- **A few thousand chunks?** Stay on exact search: the cost is small and the
+  recall is 1.
 
 `rag.search(query, top_k=)` returns the `Chunk`s with a `score` (similarity);
 `rag.retrieve(...)` builds the context for you. Need Qdrant/Weaviate later?
@@ -1673,17 +1799,38 @@ temperature=0.9)` uses `0.9`).
 
 !!! tip "`seed` and `stop` apply on the local path too"
     `seed` and `stop` are honored by both `OllamaGenerator` and
-    `TextGenerator` (transformers): `seed` is reapplied via
-    `transformers.set_seed` before generating (same seed + `do_sample=True`
-    reproduces the output) and `stop` becomes `model.generate`'s
+    `TextGenerator` (transformers): the same seed + `do_sample=True`
+    reproduces the output, and `stop` becomes `model.generate`'s
     `stop_strings` argument (requires transformers >= 4.44). Either may come
     from the `GenerationConfig` or per call — the per-call override wins.
 
-!!! warning "The local `seed` is process-wide"
-    `transformers.set_seed` reseeds the RNGs of the whole process, and
-    `model.generate` takes no per-call `torch.Generator` (checked on
-    transformers 4.57). A seeded generation reproduces only while no other
-    sampling generation runs in the same process at the same time.
+!!! info "The local `seed` is per call, and holds under concurrency"
+    `model.generate` takes no per-call `torch.Generator` —
+    `generate(..., generator=g)` raises `ValueError` (unused `model_kwargs`)
+    on transformers 4.57.6 and on 5.17.0 — and samples with the process-wide
+    RNG. So `TextGenerator` no longer uses `transformers.set_seed` for plain
+    sampling (`do_sample=True`, `num_beams=1`, no assistant model): a logits
+    processor of its own draws the token with a `torch.Generator` private
+    to that call. Two concurrent generations with the same seed give the
+    same text as one running alone, and unseeded calls do not become
+    deterministic as a side effect.
+
+    Measured with `Qwen/Qwen2.5-0.5B-Instruct`, 5 pairs of concurrent calls
+    (`asyncio.gather`) with the same seed: before, all 5 pairs diverged from
+    the serial run; now, none does — on CPU (transformers 4.57.6) and on an
+    RTX 4070 Ti SUPER (4.57.6 and 5.17.0). Without concurrency, the same seed gives
+    the same text as before the change, on both devices.
+
+    The cost is paid by seeded calls only. The token-selection step went
+    from 1.07 to 3.08 ms on the GPU and from 7.3 to 13.3 ms on the CPU
+    (151 936-token vocabulary, top-k 20 + top-p 0.9, best of 5 rounds of 500
+    steps). End to end, on a machine loaded by other processes, seeded
+    generation came out 4 to 6% slower than the old path on the GPU (3 runs
+    of 10 x 64 tokens) and 12% on the CPU (1 run of 5 x 32 tokens).
+
+    Beam sampling (`num_beams > 1`), assisted/prompt-lookup decoding and
+    DoLa sample in code a logits processor cannot steer; in those modes the
+    seed still goes through `transformers.set_seed`, process-wide.
 
 ### Structured output (validated JSON)
 
@@ -2040,6 +2187,100 @@ runs a local classifier (e.g. `unitary/toxic-bert`) over transformers
 (`[genai]`), lazy, with `flagged_labels` / `threshold`. PT-BR toxicity-model
 quality varies — treat the classifier as best-effort and keep `RuleModerator`
 as the baseline.
+
+#### The classifier: independent labels, the whole text
+
+`unitary/toxic-bert` is **multi-label**: `toxic`, `obscene` and `insult` are
+separate yes/no questions, and one text can be all three. `ClassifierModerator`
+reads that from the model config (`problem_type =
+"multi_label_classification"`) and scores each label with a **sigmoid**. A
+model without that declaration keeps the softmax; `activation="sigmoid"` or
+`"softmax"` forces either one.
+
+It also never truncates. The text is cut into overlapping windows of 64
+tokens (`window_tokens=64`, `window_overlap=16`), each window is classified,
+and every label keeps its highest score across windows:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import ClassifierModerator, ModerationResult
+
+mod = ClassifierModerator(
+    "unitary/toxic-bert",
+    flagged_labels=["toxic", "insult"],
+    threshold=0.5,
+)
+
+prefix = "The weather report says it will be sunny and mild. " * 60
+text = prefix + "You are a stupid idiot and I hate you."
+
+
+async def main() -> None:
+    """Screen a long text whose insult sits after 660 harmless tokens."""
+    verdict: ModerationResult = await mod.check(text)
+    print(verdict.flagged, verdict.categories)
+
+
+asyncio.run(main())
+```
+
+Output: `True ['toxic', 'insult']` — the same verdict the sentence gets on its
+own, 660 tokens later.
+
+!!! info "Why sigmoid: what the softmax did"
+    Measured with `unitary/toxic-bert` (revision `4d6c22e`), all six labels
+    in `flagged_labels`, `threshold=0.5`, over a fixed set of 10 insulting
+    English sentences and 5 clean ones:
+
+    | | Sigmoid (now) | Softmax (before) |
+    | --- | --- | --- |
+    | insulting sentences flagged | 10 of 10 | 10 of 10 |
+    | labels reported across them | 31 (`toxic` + `obscene` + `insult` on each, `threat` on one) | 10 (`toxic` only, every time) |
+    | clean sentences flagged | 0 of 5 | 1 of 5 |
+
+    With the softmax the six scores add up to 1, so labels compete for the
+    same mass: `insult` never crossed 0.5 next to `toxic`, and a policy
+    keyed on `insult` saw nothing. It also fails the other way — every
+    score of *"Could you send me the invoice for last month?"* is tiny, the
+    softmax makes them add up to 1 anyway, and `toxic` came out at 0.556.
+
+!!! info "Why 64-token windows: the model dilutes"
+    Before, `truncation=True` classified only the first 512 tokens. With
+    about 650 harmless tokens in front, the same insult scored `toxic` at
+    0.001 — prefixing filler was enough to get through.
+
+    Windows as wide as the model's context (512) do not fully close that
+    hole, because the classifier itself dilutes one sentence inside a lot of
+    benign text: in a single window, the insult behind 130 tokens of
+    filler was still caught in 9 of 10 sentences, behind 260 tokens in 3 of
+    10, behind 490 tokens in none. Measured over 40 excerpts of this
+    site's English prose (1801 to 3030 tokens each), with one of the 10
+    sentences inserted at a random word (seed 316), `window_overlap` at a
+    quarter of the window:
+
+    | `window_tokens` | insult caught | clean excerpt flagged | ms per check |
+    | --- | --- | --- | --- |
+    | 512 | 1 of 40 | 0 of 40 | 41 |
+    | 256 | 6 of 40 | 0 of 40 | 36 |
+    | 128 | 23 of 40 | 0 of 40 | 41 |
+    | 96 | 28 of 40 | 0 of 40 | 66 |
+    | **64** (default) | **36 of 40** | 0 of 40 | 62 |
+    | 48 | 39 of 40 | 0 of 40 | 80 |
+    | 32 | 40 of 40 | 0 of 40 | 139 |
+
+    The latency column is from an RTX 4070 Ti SUPER on a host under heavy
+    load from other jobs: read the ratio between rows, not the absolute
+    value. A text that fits in one window (up to 62 tokens here) costs the
+    same single pass as before.
+
+!!! tip "When to change the window"
+    A shorter window sees less of the sentence around each word. The table
+    above does not measure what that costs for a policy that depends on
+    context (irony, quoting, negation) — if yours does, validate a larger
+    `window_tokens` on your own data. `window_tokens=None` uses the model's
+    whole context, and any value is capped there (512 for BERT).
+
 ### Per-user usage accounting (a table)
 
 `GenAIMetrics` above answers "how is the fleet doing right now". It does
@@ -2371,6 +2612,50 @@ asyncio.run(main())
 Images are accepted as a path, `bytes`, `PIL.Image` or a NumPy `ndarray` (same
 leniency as `ort-vision-sdk`). `generate`/`chat` are image-optional — text-only
 calls keep working (it is a `TextBackend`).
+
+`GenerationConfig` applies here field by field as it does on
+`TextGenerator`, and so do the per-call arguments — `stop_event` included:
+
+- `seed` uses a generator private to the call for plain sampling;
+- `stop` (in the config, or `stop=` per call, which wins over the config)
+  ends decoding on the token that completes the stop string, matched against
+  the processor's tokenizer. The stop string **stays** in the returned text,
+  as on `TextGenerator`;
+- the other fields (`max_new_tokens`, `temperature`, `top_p`, `top_k`,
+  `repetition_penalty`, `do_sample`) go to `model.generate`.
+
+```python
+import asyncio
+import threading
+
+from tempest_fastapi_sdk.genai import GenerationConfig, VisionTextGenerator
+
+gen = VisionTextGenerator("llava-hf/llava-1.5-7b-hf")
+config = GenerationConfig(max_new_tokens=128, do_sample=False, stop=["\n\n"])
+
+
+async def main() -> None:
+    """Run this example."""
+    stop = threading.Event()
+    caption: str = await gen.generate(
+        "USER: <image>\nWrite a short caption.\nASSISTANT:",
+        images=["photo.jpg"],
+        config=config,
+        stop=["."],
+        stop_event=stop,
+    )
+    print(caption)
+
+
+asyncio.run(main())
+```
+
+Before, `stop` in the config was silently dropped (generation ran past the
+stop string), and a per-call `stop=` or `stop_event=` made
+`model.generate` raise `ValueError` listing the argument among the unused
+`model_kwargs`. `tests/genai/test_vision_text_config.py` walks
+`GenerationConfig.model_fields`: a new field the VLM neither applies nor
+refuses with a clear error fails the test.
 
 !!! warning "Processor conventions vary by family"
     This class targets the common `processor(text=..., images=...)` interface

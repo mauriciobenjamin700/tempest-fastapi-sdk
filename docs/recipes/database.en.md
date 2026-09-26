@@ -1967,7 +1967,6 @@ prefix orders files chronologically and makes merge conflicts obvious.
 ```python
 # src/api/app.py — inside the lifespan
 
-import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -1983,11 +1982,17 @@ from src.core.settings import settings
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Run pending migrations, then serve."""
     helper = AlembicHelper("alembic.ini", db_url=settings.DATABASE_URL)
-    await asyncio.to_thread(helper.upgrade)
+    await helper.upgrade_async()
     await db.connect()
     yield
     await db.disconnect()
 ```
+
+`upgrade_async()` runs the migration in a worker thread: the SDK's `env.py`
+calls `asyncio.run`, which cannot nest inside the lifespan's loop, so a plain
+`helper.upgrade()` there raises a `RuntimeError` naming `upgrade_async`. Every
+command that runs `env.py` has the same `_async` twin — see
+[Migrations »](migrations.md#from-async-code-use-the-_async-method).
 
 !!! warning "Destructive migrations: use `safe_upgrade`"
     `helper.pending_destructive_ops()` lists pending column/table DROPs;

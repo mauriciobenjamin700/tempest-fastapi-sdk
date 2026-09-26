@@ -98,9 +98,12 @@ class CapacityReport(BaseSchema):
 
 
 class GenerationConfig(BaseSchema):
-    """Typed generation parameters for the local text generator.
+    """Typed generation parameters for the local text generators.
 
-    Passed to :class:`~tempest_fastapi_sdk.genai.TextGenerator`.
+    Passed to :class:`~tempest_fastapi_sdk.genai.TextGenerator` and
+    :class:`~tempest_fastapi_sdk.genai.VisionTextGenerator`, which apply
+    every field the same way (``tests/genai/test_vision_text_config.py``
+    fails when a field reaches one and not the other).
     Replaces loose ``**kwargs`` at the call site with a validated,
     self-describing, reusable object — build one config and pass it to
     ``generate`` / ``chat`` / ``stream``. Only the fields you set are
@@ -185,10 +188,10 @@ class GenerationConfig(BaseSchema):
         """Return only the set fields as ``model.generate`` keyword args.
 
         ``seed`` and ``stop`` are dropped from the mapping — they are not
-        ``transformers`` ``generate`` kwargs. The generator reapplies them
-        itself: ``seed`` via ``transformers.set_seed`` and ``stop`` via the
-        ``stop_strings`` generation argument (see
-        :meth:`~tempest_fastapi_sdk.genai.text.TextGenerator._resolve_control`).
+        ``transformers`` ``generate`` kwargs. Both generators reapply them
+        themselves: ``seed`` through a per-call ``torch.Generator`` and
+        ``stop`` via the ``stop_strings`` generation argument (see
+        :func:`~tempest_fastapi_sdk.genai.text._resolve_control`).
 
         Returns:
             dict[str, Any]: The explicitly-set generation kwargs.

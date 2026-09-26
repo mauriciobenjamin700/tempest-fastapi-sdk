@@ -29,7 +29,6 @@ import secrets
 from pathlib import Path
 from typing import Any
 
-from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
 from tempest_fastapi_sdk.genai.schemas import (
@@ -40,6 +39,7 @@ from tempest_fastapi_sdk.genai.schemas import (
 )
 from tempest_fastapi_sdk.genai.text import auto_dtype_name, resolve_device
 from tempest_fastapi_sdk.genai.tracing import genai_span
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 _MAX_SEED: int = 2**32 - 1
 

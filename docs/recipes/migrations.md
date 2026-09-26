@@ -12,8 +12,6 @@ que seu banco está.
 
 ```python
 # src/db/schema.py
-import asyncio
-
 from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcome
 
 from src.core.settings import settings
@@ -25,7 +23,7 @@ async def sync_schema() -> SchemaSyncOutcome:
         "alembic.ini",
         db_url=settings.DATABASE_URL,
     )
-    return await asyncio.to_thread(helper.sync_schema)
+    return await helper.sync_schema_async()
 ```
 
 Chame isso do lifespan e o serviço sobe com o schema certo a partir de
@@ -52,8 +50,92 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app: FastAPI = FastAPI(lifespan=lifespan)
 ```
 
-O Alembic é síncrono, por isso o `asyncio.to_thread` — chamar direto de código
-async bloqueia o event loop durante a migration inteira.
+## De código async, use o método `_async`
+
+O lifespan roda dentro do event loop do uvicorn. Todo método do `AlembicHelper`
+que executa o `alembic/env.py` tem um par `_async` — `upgrade_async`,
+`safe_upgrade_async`, `downgrade_async`, `stamp_async`, `revision_async`,
+`check_async`, `current_async`, `has_existing_schema_async`, `adopt_async`,
+`sync_schema_async`, `squash_async`, `pending_destructive_ops_async` — com a
+mesma assinatura, e é ele que você chama de código async.
+
+O motivo é o `env.py` que o SDK gera: ele sobe o engine async com
+`asyncio.run(...)`, e `asyncio.run` não pode ser chamado com um loop já
+rodando. Chamar o método síncrono do lifespan agora falha **na hora**, com a
+instrução certa:
+
+```text
+RuntimeError: AlembicHelper.upgrade() was called from a running event loop. It runs alembic/env.py, which drives migrations with asyncio.run() and cannot nest inside the loop; use `await helper.upgrade_async(...)` instead.
+```
+
+Antes, o mesmo erro saía de dentro do Alembic como `asyncio.run() cannot be
+called from a running event loop`, acompanhado de um
+`RuntimeWarning: coroutine 'run_async_migrations' was never awaited` — e o
+`check()` nem levantava: engolia o erro e respondia `False`, como se o schema
+tivesse driftado.
+
+O método `_async` roda o síncrono numa thread de trabalho, que não tem loop
+próprio, então o `asyncio.run` do `env.py` funciona lá e o loop do serviço
+continua atendendo enquanto a migration roda. Como a thread não depende de
+nada novo no `env.py`, **o `env.py` que você já tem no repositório continua
+funcionando** — não precisa regenerar.
+
+!!! tip "`current()` síncrono continua funcionando no loop"
+    Ler a revision não passa pelo `env.py`: com um driver síncrono instalado
+    (o `sqlite3` da stdlib, ou `psycopg2` no PostgreSQL), `helper.current()`
+    funciona de código async como antes. Só a instalação só-async (`asyncpg`
+    sem driver síncrono) cai no caminho de `asyncio.run` — e aí ele também
+    levanta pedindo `current_async()`.
+
+??? info "Detalhes técnicos: compartilhar a conexão em vez de usar thread"
+    O Alembic tem uma receita oficial para rodar a migration **no próprio
+    loop**: abrir uma `AsyncConnection` e entregar a conexão síncrona que o
+    `run_sync` fornece em `config.attributes["connection"]`. O `env.py` que o
+    SDK gera a partir desta versão aceita isso — quando recebe a conexão,
+    migra nela, sem criar engine nem chamar `asyncio.run`:
+
+    ```python
+    # src/db/shared_connection.py
+    from alembic import command
+    from sqlalchemy.engine import Connection
+    from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+    from tempest_fastapi_sdk import AlembicHelper
+
+    from src.core.settings import settings
+
+
+    async def upgrade_on_shared_connection() -> None:
+        """Run every pending migration on a connection this code owns."""
+        helper: AlembicHelper = AlembicHelper(
+            "alembic.ini",
+            db_url=settings.DATABASE_URL,
+        )
+        config = helper.config
+
+        def _upgrade(connection: Connection) -> None:
+            """Hand the sync connection to env.py and upgrade on it."""
+            config.attributes["connection"] = connection
+            command.upgrade(config, "head")
+
+        engine: AsyncEngine = create_async_engine(settings.DATABASE_URL)
+        async with engine.begin() as conn:
+            await conn.run_sync(_upgrade)
+        await engine.dispose()
+    ```
+
+    Os métodos `_async` **não** usam esse caminho, e o motivo é
+    compatibilidade: o `env.py` gerado antes desta versão ignora
+    `config.attributes` e chama `asyncio.run` de qualquer jeito — dentro do
+    `run_sync` o loop está rodando, e ele falha com o mesmo erro de antes. A
+    thread funciona com qualquer `env.py` já gerado. Use o caminho acima
+    quando precisar que a migration rode na **sua** conexão ou transação, e
+    regenere o `env.py` para isso: rode `tempest db init` num diretório
+    vazio e copie o `alembic/env.py` gerado por cima do seu, conferindo o
+    import de metadata (o default é `from src.db.models import BaseModel`).
+
+    O `env.py` novo também recusa, com mensagem própria, ser executado de
+    dentro de um loop **sem** conexão entregue — o caso de quem chama
+    `command.upgrade` direto de código async.
 
 ## Os três estados que ele distingue
 
@@ -87,8 +169,6 @@ O defeito real, que derrubou um serviço por um dia:
 
 ```python
 # scripts/broken_bootstrap.py — o defeito, reproduzido; não é receita.
-import asyncio
-
 from tempest_fastapi_sdk import AlembicHelper, AsyncDatabaseManager
 
 from src.core.settings import settings
@@ -102,11 +182,11 @@ async def broken_bootstrap() -> None:
         "alembic.ini",
         db_url=settings.DATABASE_URL,
     )
-    if await asyncio.to_thread(helper.current) is None:
+    if await helper.current_async() is None:
         await db.create_tables()
-        await asyncio.to_thread(helper.stamp, "head")
+        await helper.stamp_async("head")
         return
-    await asyncio.to_thread(helper.safe_upgrade)
+    await helper.safe_upgrade_async()
 ```
 
 Cada linha é plausível. Juntas produzem o pior estado possível: **schema velho,
@@ -235,6 +315,9 @@ nenhuma tabela, mas possivelmente várias colunas — e coluna ele não olha.
 !!! check "Recap"
     - `sync_schema()` é o bootstrap inteiro: distingue banco vazio, banco que
       precede o Alembic e banco já migrado, e devolve qual caminho tomou.
+    - De código async (lifespan, endpoint), chame o par `_async`
+      (`await helper.sync_schema_async()`); o método síncrono levanta com um
+      loop rodando, nomeando o `_async` a usar.
     - `create_tables()` é `CREATE TABLE IF NOT EXISTS` — **no-op silencioso**
       numa tabela existente. Nunca é o passo que faz um schema evoluir.
     - Ao adotar um schema existente, carimbe a **revision base**

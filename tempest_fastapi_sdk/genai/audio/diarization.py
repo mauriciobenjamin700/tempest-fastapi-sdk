@@ -36,8 +36,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.audio.schemas import SpeakerTurn
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

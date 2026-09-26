@@ -25,10 +25,10 @@ from __future__ import annotations
 
 import asyncio
 import io
+import threading
 from pathlib import Path
 from typing import Any
 
-from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.schemas import (
     GenerationConfig,
@@ -37,10 +37,16 @@ from tempest_fastapi_sdk.genai.schemas import (
     precision_kwarg,
 )
 from tempest_fastapi_sdk.genai.text import (
+    GenerationStoppedError,
+    _apply_seed,
+    _apply_stop_strings,
     _require_transformers,
+    _resolve_control,
+    _stop_criteria,
     auto_dtype_name,
     resolve_device,
 )
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 
 def _require_pillow() -> Any:
@@ -284,9 +290,16 @@ class VisionTextGenerator:
         *,
         images: list[Any] | None = None,
         config: GenerationConfig | None = None,
+        stop_event: threading.Event | None = None,
         **kwargs: Any,
     ) -> str:
         """Generate a completion for ``prompt`` conditioned on ``images``.
+
+        Every :class:`GenerationConfig` field is applied the way
+        :class:`~tempest_fastapi_sdk.genai.TextGenerator` applies it:
+        ``seed`` through a private per-call generator, ``stop`` through
+        the ``stop_strings`` generation argument, the rest forwarded to
+        ``model.generate``.
 
         Args:
             prompt (str): The text prompt (include the model's image
@@ -294,10 +307,19 @@ class VisionTextGenerator:
             images (list[Any] | None): Images as path / bytes / PIL / ndarray;
                 ``None`` for a text-only call.
             config (GenerationConfig | None): Typed generation parameters.
-            **kwargs (Any): Generation overrides (win over ``config``).
+            stop_event (threading.Event | None): Set it to stop decoding
+                at the next token. Pair it with
+                :func:`~tempest_fastapi_sdk.tasks.run_cancellable`, which
+                sets it for you when the work is cancelled.
+            **kwargs (Any): Generation overrides (win over ``config``);
+                ``seed`` and ``stop`` are applied as above, the rest go to
+                ``model.generate``.
 
         Returns:
             str: The generated text.
+
+        Raises:
+            GenerationStoppedError: When ``stop_event`` was set mid-flight.
         """
         return await asyncio.to_thread(
             self._generate_sync,
@@ -305,27 +327,57 @@ class VisionTextGenerator:
             images,
             config,
             kwargs,
+            stop_event,
         )
 
-    def _generate_sync(  # pragma: no cover - needs torch + a real model
+    def _generate_sync(
         self,
         prompt: str,
         images: list[Any] | None,
         config: GenerationConfig | None,
         overrides: dict[str, Any],
+        stop_event: threading.Event | None = None,
     ) -> str:
-        """Run blocking multimodal generation and return the completion."""
+        """Run blocking multimodal generation and return the completion.
+
+        ``seed`` and ``stop`` (per call, or from ``config``) are not
+        ``model.generate`` arguments: :func:`_resolve_control` takes them
+        out of the kwargs and they are applied with the same helpers
+        :class:`~tempest_fastapi_sdk.genai.TextGenerator` uses — a private
+        per-call generator for plain sampling, and ``stop_strings`` read
+        against the processor's tokenizer.
+
+        Raises:
+            GenerationStoppedError: When ``stop_event`` was set while the
+                model was decoding.
+        """
         with self._lifecycle.use():
+            torch, transformers = _require_transformers()
+            call_overrides = dict(overrides)
+            seed, stop = _resolve_control(call_overrides, config)
             pil_images = [_load_image(image) for image in images] if images else None
             inputs = self._processor(
                 text=prompt,
                 images=pil_images,
                 return_tensors="pt",
             ).to(self._model.device)
-            output = self._model.generate(
-                **inputs,
-                **self._gen_kwargs(overrides, config),
+            gen_kwargs = self._gen_kwargs(call_overrides, config)
+            _apply_stop_strings(
+                gen_kwargs,
+                stop,
+                getattr(self._processor, "tokenizer", self._processor),
             )
+            _apply_seed(torch, transformers, self._model, seed, gen_kwargs)
+            if stop_event is not None:
+                gen_kwargs["stopping_criteria"] = _stop_criteria(
+                    transformers,
+                    stop_event,
+                )
+            output = self._model.generate(**inputs, **gen_kwargs)
+            if stop_event is not None and stop_event.is_set():
+                raise GenerationStoppedError(
+                    f"generation with {self.model_id} was stopped",
+                )
             generated = output[0][inputs["input_ids"].shape[1] :]
             text = self._processor.decode(generated, skip_special_tokens=True)
             return str(text)
@@ -336,6 +388,7 @@ class VisionTextGenerator:
         *,
         images: list[Any] | None = None,
         config: GenerationConfig | None = None,
+        stop_event: threading.Event | None = None,
         **kwargs: Any,
     ) -> str:
         """Generate a reply for a chat ``messages`` list with optional images.
@@ -348,10 +401,16 @@ class VisionTextGenerator:
                 referenced per the model's template.
             images (list[Any] | None): Images for the turn.
             config (GenerationConfig | None): Typed generation parameters.
-            **kwargs (Any): Generation overrides (win over ``config``).
+            stop_event (threading.Event | None): Set it to stop decoding
+                at the next token.
+            **kwargs (Any): Generation overrides (win over ``config``),
+                handled as in :meth:`generate`.
 
         Returns:
             str: The assistant reply.
+
+        Raises:
+            GenerationStoppedError: When ``stop_event`` was set mid-flight.
         """
         return await asyncio.to_thread(
             self._chat_sync,
@@ -359,6 +418,7 @@ class VisionTextGenerator:
             images,
             config,
             kwargs,
+            stop_event,
         )
 
     def _chat_sync(  # pragma: no cover - needs torch + a real model
@@ -367,6 +427,7 @@ class VisionTextGenerator:
         images: list[Any] | None,
         config: GenerationConfig | None,
         overrides: dict[str, Any],
+        stop_event: threading.Event | None = None,
     ) -> str:
         """Blocking multimodal chat generation via the processor template."""
         with self._lifecycle.use():
@@ -375,7 +436,13 @@ class VisionTextGenerator:
                 tokenize=False,
                 add_generation_prompt=True,
             )
-            return self._generate_sync(prompt, images, config, overrides)
+            return self._generate_sync(
+                prompt,
+                images,
+                config,
+                overrides,
+                stop_event,
+            )
 
 
 __all__: list[str] = [

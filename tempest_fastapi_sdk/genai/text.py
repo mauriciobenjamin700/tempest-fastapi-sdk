@@ -22,7 +22,6 @@ import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, Protocol, runtime_checkable
 
-from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.generation_cache import (
     AsyncGenerationCache,
     GenerationCache,
@@ -43,6 +42,7 @@ from tempest_fastapi_sdk.genai.structured import (
     parse_structured,
 )
 from tempest_fastapi_sdk.genai.tracing import genai_span
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 _QUANTIZATIONS: frozenset[ModelDtype] = frozenset({ModelDtype.INT8, ModelDtype.INT4})
 
@@ -384,6 +384,264 @@ def _require_transformers() -> tuple[Any, Any]:
     return torch, transformers
 
 
+def _sampling_warpers(
+    transformers: Any,
+    generation_config: Any,
+    device: Any,
+) -> list[Any]:
+    """Build the sampling warpers ``generate`` applies for ``generation_config``.
+
+    Ported from transformers' ``GenerationMixin._get_logits_processor``
+    (the ``if generation_config.do_sample:`` block, 4.57.6 and 5.17.0),
+    restricted to multinomial sampling (``num_beams == 1``, so
+    ``min_tokens_to_keep`` is always 1). Same classes, same conditions, same
+    order; ``TopHLogitsWarper`` only exists from 5.x on, so it is added only
+    when both the class and the ``top_h`` field are present.
+    ``tests/genai/test_text_seed.py`` compares this list against the one the
+    installed transformers builds, so upstream drift fails there instead of
+    silently changing the seeded distribution.
+
+    Args:
+        transformers (Any): The imported ``transformers`` module.
+        generation_config (Any): The effective ``GenerationConfig`` of the
+            call, as ``generate`` resolves it (see :func:`_apply_seed`).
+        device (Any): The device the logits live on (``EtaLogitsWarper``
+            keeps a tensor there).
+
+    Returns:
+        list[Any]: The warpers, in the order ``generate`` applies them.
+    """
+    gc = generation_config
+    warpers: list[Any] = []
+    if gc.temperature is not None and gc.temperature != 1.0:
+        warpers.append(transformers.TemperatureLogitsWarper(gc.temperature))
+    top_h: Any = getattr(gc, "top_h", None)
+    if top_h is not None and hasattr(transformers, "TopHLogitsWarper"):
+        warpers.append(transformers.TopHLogitsWarper(top_h=top_h))
+    if gc.top_k is not None and gc.top_k != 0:
+        warpers.append(
+            transformers.TopKLogitsWarper(top_k=gc.top_k, min_tokens_to_keep=1),
+        )
+    if gc.top_p is not None and gc.top_p < 1.0:
+        warpers.append(
+            transformers.TopPLogitsWarper(top_p=gc.top_p, min_tokens_to_keep=1),
+        )
+    if gc.min_p is not None:
+        warpers.append(
+            transformers.MinPLogitsWarper(min_p=gc.min_p, min_tokens_to_keep=1),
+        )
+    if gc.typical_p is not None and gc.typical_p < 1.0:
+        warpers.append(
+            transformers.TypicalLogitsWarper(mass=gc.typical_p, min_tokens_to_keep=1),
+        )
+    if gc.epsilon_cutoff is not None and 0.0 < gc.epsilon_cutoff < 1.0:
+        warpers.append(
+            transformers.EpsilonLogitsWarper(
+                epsilon=gc.epsilon_cutoff,
+                min_tokens_to_keep=1,
+            ),
+        )
+    if gc.eta_cutoff is not None and 0.0 < gc.eta_cutoff < 1.0:
+        warpers.append(
+            transformers.EtaLogitsWarper(
+                epsilon=gc.eta_cutoff,
+                min_tokens_to_keep=1,
+                device=device,
+            ),
+        )
+    return warpers
+
+
+class _SeededSampler:
+    """Logits processor that draws the next token from a private generator.
+
+    ``model.generate`` takes no per-call ``torch.Generator`` (neither
+    transformers 4.57.6 nor 5.17.0 has one) and samples with the
+    process-wide RNG. This processor makes a seeded call independent of it:
+    it applies the call's sampling warpers itself, draws the token with
+    ``torch.multinomial(..., generator=own)``, and returns scores that are
+    ``0`` for that token and ``-inf`` everywhere else. ``generate`` then
+    runs its own warpers over that one-hot row (they keep the only finite
+    entry) and its global ``multinomial`` can only pick the same token — it
+    still advances the global RNG, but no longer decides anything.
+
+    Custom processors run after the built-in ones that are not warpers
+    (repetition penalty, ``prefix_allowed_tokens_fn`` constraints, …), so
+    the distribution sampled here is the one ``generate`` would sample.
+
+    Attributes:
+        seed (int): The seed the private generator starts from.
+    """
+
+    def __init__(self, torch: Any, seed: int, warpers: list[Any]) -> None:
+        """Initialize the sampler.
+
+        Args:
+            torch (Any): The imported ``torch`` module.
+            seed (int): Seed for the private generator.
+            warpers (list[Any]): The sampling warpers from
+                :func:`_sampling_warpers`, applied before the draw.
+        """
+        self.seed: int = seed
+        self._torch: Any = torch
+        self._warpers: list[Any] = warpers
+        self._generator: Any = None
+
+    def __call__(self, input_ids: Any, scores: Any) -> Any:
+        """Sample one token per row and return one-hot scores for it.
+
+        The generator is created on the first call, on the device of the
+        logits, so a CUDA model samples with a CUDA generator.
+
+        Args:
+            input_ids (Any): The token ids so far (``LongTensor``).
+            scores (Any): The next-token logits (``FloatTensor``).
+
+        Returns:
+            Any: Scores with ``0`` at the sampled token and ``-inf``
+            elsewhere.
+        """
+        torch = self._torch
+        for warper in self._warpers:
+            scores = warper(input_ids, scores)
+        if self._generator is None:
+            self._generator = torch.Generator(device=scores.device)
+            self._generator.manual_seed(self.seed)
+        probs = torch.nn.functional.softmax(scores, dim=-1)
+        tokens = torch.multinomial(probs, num_samples=1, generator=self._generator)
+        one_hot = torch.full_like(scores, float("-inf"))
+        return one_hot.scatter(-1, tokens, 0.0)
+
+
+def _resolve_control(
+    overrides: dict[str, Any],
+    config: GenerationConfig | None,
+) -> tuple[int | None, list[str]]:
+    """Extract ``seed`` + ``stop`` strings, popping them out of ``overrides``.
+
+    ``seed`` and ``stop`` are not ``model.generate`` keyword arguments —
+    ``transformers`` refuses an unknown one with ``ValueError`` — so they
+    are removed from ``overrides`` here, before the rest is merged into the
+    generation kwargs, and returned for the caller to apply via
+    :func:`_apply_seed` and :func:`_apply_stop_strings`. Per-call overrides
+    win over ``config``.
+
+    Shared by :class:`TextGenerator` and
+    :class:`~tempest_fastapi_sdk.genai.vision_text.VisionTextGenerator`.
+
+    Args:
+        overrides (dict[str, Any]): Per-call keyword args; ``seed`` and
+            ``stop`` are popped out in place when present.
+        config (GenerationConfig | None): Typed config supplying the
+            fallback ``seed`` / ``stop`` when the overrides omit them.
+
+    Returns:
+        tuple[int | None, list[str]]: The resolved ``(seed, stop)``.
+    """
+    seed: int | None = overrides.pop("seed", None)
+    stop: list[str] | None = overrides.pop("stop", None)
+    if config is not None:
+        if seed is None:
+            seed = config.seed
+        if not stop:
+            stop = list(config.stop)
+    return seed, list(stop) if stop else []
+
+
+def _apply_stop_strings(
+    gen_kwargs: dict[str, Any],
+    stop: list[str],
+    tokenizer: Any,
+) -> None:
+    """Wire resolved stop strings into the ``model.generate`` kwargs.
+
+    Adds the ``stop_strings`` + ``tokenizer`` pair that ``transformers``
+    (>= 4.44) turns into a ``StopStringCriteria``. Decoding ends on the
+    token that completes a stop string, and that string stays in the
+    decoded text — the output is not trimmed.
+
+    Shared by :class:`TextGenerator` and
+    :class:`~tempest_fastapi_sdk.genai.vision_text.VisionTextGenerator`.
+
+    Args:
+        gen_kwargs (dict[str, Any]): The ``model.generate`` kwargs,
+            updated in place.
+        stop (list[str]): Resolved stop strings; empty is a no-op.
+        tokenizer (Any): The tokenizer ``StopStringCriteria`` reads the
+            vocabulary from (a processor's ``tokenizer`` for a VLM).
+    """
+    if stop:
+        gen_kwargs["stop_strings"] = stop
+        gen_kwargs["tokenizer"] = tokenizer
+
+
+def _apply_seed(
+    torch: Any,
+    transformers: Any,
+    model: Any,
+    seed: int | None,
+    gen_kwargs: dict[str, Any],
+) -> None:
+    """Make a seeded call reproducible without touching the global RNG.
+
+    Resolves the call's effective ``GenerationConfig`` with the model's own
+    ``_prepare_generation_config`` — the step ``generate`` runs first, so
+    the resolution matches it on every version: on 4.57 the model's
+    defaults updated with ``gen_kwargs``, on 5.x the global defaults
+    (``top_k=50`` …) filling what the model's config leaves unset. It is a
+    private method; if a future transformers drops or reshapes it, the call
+    falls back to ``transformers.set_seed`` (reproducible serially, not
+    under concurrency) instead of sampling from a distribution that no
+    longer matches ``generate``'s. For plain multinomial sampling
+    it appends a :class:`_SeededSampler` to the call's
+    ``logits_processor``, so the draw comes from a generator private to
+    this call: two concurrent calls with the same seed give the same text
+    as one call run alone, and unseeded calls in the same process keep
+    drawing from an RNG nobody reset. Greedy decoding needs no seed and is
+    left alone.
+
+    Every other sampling mode (beam sampling, assisted/prompt-lookup
+    decoding, DoLa) samples in code a logits processor cannot steer — a
+    one-hot row would break beam sampling's draw without replacement — so
+    those keep ``transformers.set_seed``, which reseeds the process-wide
+    RNGs and is reproducible only while no other sampling generation runs
+    at the same time.
+
+    Shared by :class:`TextGenerator` and
+    :class:`~tempest_fastapi_sdk.genai.vision_text.VisionTextGenerator`.
+
+    Args:
+        torch (Any): The imported ``torch`` module.
+        transformers (Any): The imported ``transformers`` module.
+        model (Any): The loaded model whose ``generate`` will run.
+        seed (int | None): The resolved seed; ``None`` is a no-op.
+        gen_kwargs (dict[str, Any]): The ``model.generate`` kwargs,
+            updated in place.
+    """
+    if seed is None:
+        return
+    try:
+        effective: Any = model._prepare_generation_config(None, **gen_kwargs)[0]
+    except (AttributeError, TypeError):
+        transformers.set_seed(seed)
+        return
+    if not effective.do_sample:
+        return
+    mode: Any = effective.get_generation_mode(gen_kwargs.get("assistant_model"))
+    if mode != transformers.generation.GenerationMode.SAMPLE:
+        transformers.set_seed(seed)
+        return
+    sampler = _SeededSampler(
+        torch,
+        seed,
+        _sampling_warpers(transformers, effective, model.device),
+    )
+    processors: list[Any] = list(gen_kwargs.get("logits_processor") or [])
+    gen_kwargs["logits_processor"] = transformers.LogitsProcessorList(
+        [*processors, sampler],
+    )
+
+
 class TextGenerator:
     """A lazily-loaded local causal LM with streaming and idle unload.
 
@@ -640,37 +898,6 @@ class TextGenerator:
         """
         return self._lifecycle.unload_if_idle(self.idle_unload_seconds)
 
-    def _resolve_control(
-        self,
-        overrides: dict[str, Any],
-        config: GenerationConfig | None,
-    ) -> tuple[int | None, list[str]]:
-        """Extract ``seed`` + ``stop`` strings, popping them out of ``overrides``.
-
-        ``seed`` and ``stop`` are not ``model.generate`` keyword arguments, so
-        they are removed from ``overrides`` here — before :meth:`_gen_kwargs`
-        merges the rest — and returned for the caller to apply via
-        ``transformers.set_seed`` and the ``stop_strings`` generation argument.
-        Per-call overrides win over ``config``.
-
-        Args:
-            overrides (dict[str, Any]): Per-call keyword args; ``seed`` and
-                ``stop`` are popped out in place when present.
-            config (GenerationConfig | None): Typed config supplying the
-                fallback ``seed`` / ``stop`` when the overrides omit them.
-
-        Returns:
-            tuple[int | None, list[str]]: The resolved ``(seed, stop)``.
-        """
-        seed: int | None = overrides.pop("seed", None)
-        stop: list[str] | None = overrides.pop("stop", None)
-        if config is not None:
-            if seed is None:
-                seed = config.seed
-            if not stop:
-                stop = list(config.stop)
-        return seed, list(stop) if stop else []
-
     def _assemble_kwargs(
         self,
         overrides: dict[str, Any],
@@ -682,20 +909,17 @@ class TextGenerator:
 
         Args:
             overrides (dict[str, Any]): Per-call overrides (seed/stop already
-                popped by :meth:`_resolve_control`).
+                popped by :func:`_resolve_control`).
             config (GenerationConfig | None): Typed config layered over defaults.
-            stop (list[str]): Resolved stop strings; when non-empty, adds the
-                ``stop_strings`` + ``tokenizer`` arguments (transformers >= 4.44
-                ``StopStringCriteria``).
+            stop (list[str]): Resolved stop strings, wired by
+                :func:`_apply_stop_strings`.
             tokenizer (Any): The tokenizer required alongside ``stop_strings``.
 
         Returns:
             dict[str, Any]: The merged generation kwargs.
         """
         gen = self._gen_kwargs(overrides, config)
-        if stop:
-            gen["stop_strings"] = stop
-            gen["tokenizer"] = tokenizer
+        _apply_stop_strings(gen, stop, tokenizer)
         return gen
 
     def _generate_sync(
@@ -710,26 +934,22 @@ class TextGenerator:
         The whole call runs inside the lifecycle's ``use()`` block, which
         keeps the weights resident until the text is decoded.
 
-        ``seed`` goes through ``transformers.set_seed``, which reseeds the
-        **process-wide** RNGs: ``model.generate`` takes no per-call
-        ``torch.Generator`` (checked on transformers 4.57), so sampling
-        draws from the global one. A seeded call is therefore reproducible
-        only while no other sampling generation runs in the same process
-        at the same time.
+        ``seed`` is applied by :func:`_apply_seed`: plain sampling draws
+        from a private per-call generator, so concurrent calls do not
+        disturb each other.
 
         Raises:
             GenerationStoppedError: When ``stop_event`` was set while the
                 model was decoding.
         """
         with self._lifecycle.use():
-            _torch, transformers = _require_transformers()
-            seed, stop = self._resolve_control(overrides, config)
-            if seed is not None:
-                transformers.set_seed(seed)
+            torch, transformers = _require_transformers()
+            seed, stop = _resolve_control(overrides, config)
             inputs = self._tokenizer(prompt, return_tensors="pt").to(
                 self._model.device,
             )
             gen_kwargs = self._assemble_kwargs(overrides, config, stop, self._tokenizer)
+            _apply_seed(torch, transformers, self._model, seed, gen_kwargs)
             if stop_event is not None:
                 gen_kwargs["stopping_criteria"] = _stop_criteria(
                     transformers,
@@ -1149,10 +1369,8 @@ class TextGenerator:
                 safe to call from this thread.
         """
         with self._lifecycle.use():
-            _torch, transformers = _require_transformers()
-            seed, stop = self._resolve_control(overrides, config)
-            if seed is not None:
-                transformers.set_seed(seed)
+            torch, transformers = _require_transformers()
+            seed, stop = _resolve_control(overrides, config)
             streamer = _callback_streamer(
                 transformers,
                 self._tokenizer,
@@ -1162,8 +1380,15 @@ class TextGenerator:
             inputs = self._tokenizer(prompt, return_tensors="pt").to(
                 self._model.device,
             )
+            call_kwargs = self._assemble_kwargs(
+                overrides,
+                config,
+                stop,
+                self._tokenizer,
+            )
+            _apply_seed(torch, transformers, self._model, seed, call_kwargs)
             gen_kwargs: dict[str, Any] = {
-                **self._assemble_kwargs(overrides, config, stop, self._tokenizer),
+                **call_kwargs,
                 **inputs,
                 "streamer": streamer,
                 "stopping_criteria": _stop_criteria(transformers, stop_event),

@@ -22,9 +22,9 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Literal
 
-from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.embeddings import _l2_normalize
 from tempest_fastapi_sdk.genai.hub import ModelRef
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 _Pooling = Literal["mean", "cls"]
 """How token embeddings become one sentence vector."""
