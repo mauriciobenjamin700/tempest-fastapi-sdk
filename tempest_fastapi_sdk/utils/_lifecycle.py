@@ -1,7 +1,10 @@
 """Load-once, in-flight-aware lifecycle shared by every self-hosted loader.
 
-Every loader in :mod:`tempest_fastapi_sdk.genai` holds one lazily-built
-model and offers ``load`` / ``unload`` / ``unload_if_idle``. Each used to
+Every loader in :mod:`tempest_fastapi_sdk.genai`, and
+:class:`~tempest_fastapi_sdk.faces.FaceRecognizer`, holds one lazily-built
+model and offers ``load`` / ``unload`` / ``unload_if_idle``. The helper
+lives under ``utils`` rather than ``genai`` so ``faces`` can use it without
+importing the whole ``genai`` package. Each used to
 implement those three with a bare ``if self.is_loaded: return`` and an idle
 clock touched only after a call finished, which shipped two defects in
 every class at once:

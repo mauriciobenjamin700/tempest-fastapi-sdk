@@ -20,7 +20,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
-from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 
 @runtime_checkable

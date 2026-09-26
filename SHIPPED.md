@@ -861,10 +861,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   surface + `genai.rag` + `genai.audio` now render (269 symbols), where
   before only the three new submodules did.
 - **Shared model lifecycle (Unreleased)** — private
-  `genai/_lifecycle.py::ModelLifecycle` behind `TextGenerator`, `Embedder`,
+  `utils/_lifecycle.py::ModelLifecycle` (under `utils` so `faces` does not
+  import `genai`) behind `TextGenerator`, `Embedder`,
   `ImageGenerator`, `VisionTextGenerator`, `Reranker`,
-  `ClassifierModerator`, `OnnxEmbedder`, `SpeechToText`, `TextToSpeech` and
-  `SpeakerDiarizer`: one build per cold start however many threads race
+  `ClassifierModerator`, `OnnxEmbedder`, `SpeechToText`, `TextToSpeech`,
+  `SpeakerDiarizer`, `VoiceEmbedder` and `faces.FaceRecognizer`: one build per cold start however many threads race
   (load lock, `is_loaded` checked inside it), and an in-flight counter —
   `seconds_idle` reads `0.0` during a call, `unload_if_idle` refuses, an
   explicit `unload()` (and so `ModelRegistry` eviction) is deferred until
@@ -875,6 +876,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   input off the loop; `probe_hardware` reads GPU memory through NVML when
   `pynvml` is installed (no CUDA context); `OnnxEmbedder` gained
   `pooling="mean"|"cls"`, named-output selection, the tokenizer's own pad
+  id and `idle_unload_seconds`; `TextToSpeech` and `VoiceEmbedder` gained
+  `idle_unload_seconds`, and `TextToSpeech` no longer leaks its temp `.wav`
+  on failure. `ModelRegistry` eviction marks the loader evicted, so a handle
+  kept past it re-registers through the registry (evicting the LRU) and waits
+  for the evicted model's in-flight calls before building — `max_models`
+  holds for kept handles too (#320); the one allowance is a call nested
+  inside another model's call, which does not wait.
   id and `idle_unload_seconds`; `TextToSpeech` gained
   `idle_unload_seconds` and no longer leaks its temp `.wav` on failure.
   `ModelRegistry` eviction marks the loader evicted, so a handle kept past

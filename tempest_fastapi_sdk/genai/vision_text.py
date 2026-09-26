@@ -28,7 +28,6 @@ import io
 from pathlib import Path
 from typing import Any
 
-from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.schemas import (
     GenerationConfig,
@@ -42,6 +41,7 @@ from tempest_fastapi_sdk.genai.text import (
     auto_dtype_name,
     resolve_device,
 )
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 
 def _require_pillow() -> Any:

@@ -69,7 +69,7 @@ attribute 'decode'`.
   `TextGenerator`, `Embedder`, `ImageGenerator`, `VisionTextGenerator`,
   `Reranker`, `ClassifierModerator`, `OnnxEmbedder`, `SpeechToText`,
   `TextToSpeech` e `SpeakerDiarizer` passam por um helper privado comum
-  (`genai/_lifecycle.py`): lock de load (primeiras chamadas concorrentes
+  (`utils/_lifecycle.py`): lock de load (primeiras chamadas concorrentes
   esperam um build só) e contador de chamadas em andamento. Durante uma
   chamada `seconds_idle` lê `0.0` e `unload_if_idle()` devolve `False`; um
   `unload()` explícito — inclusive o de uma evicção do `ModelRegistry` —
@@ -117,6 +117,18 @@ attribute 'decode'`.
   pelo nome (`sentence_embedding`/`pooler_output` já pooled, depois
   `last_hidden_state`) em vez de `outputs[0]`, e uma saída 2-D é usada como
   veio.
+- **`VoiceEmbedder` e `FaceRecognizer` entram no mesmo ciclo de vida.** As
+  duas classes tinham os dois defeitos corrigidos acima: três primeiras
+  chamadas simultâneas construíam o extrator de voz duas vezes (o
+  `max_concurrent=2` default deixava duas passarem) e os modelos de rosto
+  três vezes, e `FaceRecognizer.unload_if_idle()` devolvia `True` — soltando
+  os modelos — com um `recognize()` em andamento; um `unload()` no meio de um
+  `VoiceEmbedder.embed()` soltava o extrator na hora. Agora é um build só,
+  `unload_if_idle()` devolve `False` durante a chamada e `unload()` espera a
+  última terminar. Os `assert` de modelo carregado viraram `RuntimeError`. O
+  helper saiu de `genai/_lifecycle.py` para `utils/_lifecycle.py` (continua
+  privado): importar de `genai` puxava 39 módulos de `genai` para dentro de
+  `faces`, que não depende dele.
 - **A `seed` do `TextGenerator` vale sob concorrência (#321).** O
   `model.generate` não aceita `torch.Generator` por chamada
   (`generate(..., generator=g)` levanta `ValueError` no transformers 4.57.6
@@ -146,6 +158,8 @@ attribute 'decode'`.
   `ModelRegistry.unload_idle()` agora libera a sessão ONNX também.
 - **`TextToSpeech(idle_unload_seconds=)`** + `seconds_idle` /
   `unload_if_idle()`, no mesmo contrato dos outros loaders.
+- **`VoiceEmbedder(idle_unload_seconds=)`** + `unload_if_idle()`, no mesmo
+  contrato; o `ModelRegistry.unload_idle()` passa a liberar o extrator de voz.
 
 Auditoria dos backends de genai e do stream do `HTTPClient`: um timeout no
 meio do stream reenviava o POST e repetia o texto já entregue, o Ollama

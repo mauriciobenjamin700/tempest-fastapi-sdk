@@ -25,10 +25,10 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, get_args, runtime_chec
 
 from pydantic import Field
 
-from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.text import _require_transformers, resolve_device
 from tempest_fastapi_sdk.schemas.base import BaseSchema
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.genai.schemas import HardwareInfo

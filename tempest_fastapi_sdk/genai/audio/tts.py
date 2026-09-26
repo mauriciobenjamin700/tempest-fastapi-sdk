@@ -14,13 +14,13 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.audio.language import (
     Language,
     preset_for,
     tts_language,
 )
 from tempest_fastapi_sdk.genai.audio.stt import resolve_audio_device
+from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 if TYPE_CHECKING:
     from pathlib import Path

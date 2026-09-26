@@ -174,7 +174,9 @@ bf16 on GPU and fp32 on CPU.
     eviction) waits: whichever call finishes last drops the weights. And
     several simultaneous first calls load the model **once**. The same holds
     for every local loader (`Embedder`, `Reranker`, `ImageGenerator`,
-    `SpeechToText`, `TextToSpeech`, `SpeakerDiarizer`, `OnnxEmbedder`...).
+    `SpeechToText`, `TextToSpeech`, `SpeakerDiarizer`, `VoiceEmbedder`,
+    `OnnxEmbedder`...) and for the [face recognition](faces.md)
+    `FaceRecognizer`.
 
 ## Hosted backend (DeepSeek, Groq, OpenRouter, vLLM...)
 
