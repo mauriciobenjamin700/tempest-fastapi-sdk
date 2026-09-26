@@ -1056,7 +1056,8 @@ app: FastAPI = FastAPI(title=settings.TITLE, lifespan=lifespan)
     resolvendo. `tests/tasks/test_scheduler_lease.py` fixa as duas
     contagens — a primeira parametrizada em 2, 3 e 5 réplicas — e um
     caso separado espera o líder sair e confirma que a de prontidão
-    assume dentro de um TTL.
+    assume na primeira tentativa de `acquire` que começa depois que o
+    líder solta o lease, sem esperar o TTL lapsar.
 
 ### De onde vem o lease
 

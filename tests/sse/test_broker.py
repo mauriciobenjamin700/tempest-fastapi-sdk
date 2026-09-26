@@ -16,6 +16,26 @@ async def _first_frame(stream_iter: object, timeout: float = 1.0) -> bytes:
     return await asyncio.wait_for(stream_iter.__anext__(), timeout)  # type: ignore[attr-defined]
 
 
+async def _until_subscribed(
+    redis: fakeredis_async.FakeRedis,
+    timeout: float = 10.0,
+) -> None:
+    """Wait until the broker's ``PSUBSCRIBE`` has landed on Redis.
+
+    ``run`` subscribes in a background task, and a ``PUBLISH`` sent
+    before the pattern exists reaches nobody. Polling ``PUBSUB NUMPAT``
+    waits on the subscription itself, where a fixed sleep only bets on
+    how fast the runner is.
+
+    Args:
+        redis (fakeredis_async.FakeRedis): The client the broker uses.
+        timeout (float): Seconds before the wait fails.
+    """
+    async with asyncio.timeout(timeout):
+        while await redis.pubsub_numpat() < 1:
+            await asyncio.sleep(0.01)
+
+
 class TestMemoryMode:
     async def test_fans_out_to_all_local_streams(self) -> None:
         broker = SSEBroker(heartbeat_seconds=None)
@@ -96,7 +116,7 @@ class TestRedisMode:
         redis = fakeredis_async.FakeRedis(decode_responses=True)
         broker = SSEBroker(redis=redis, heartbeat_seconds=None)
         task = asyncio.create_task(broker.run())
-        await asyncio.sleep(0.1)  # let PSUBSCRIBE land
+        await _until_subscribed(redis)
 
         stream = broker.register("u1")
         await broker.publish("u1", {"hello": "world"}, event="greet")
@@ -164,7 +184,7 @@ class TestBroadcast:
         publisher = SSEBroker(redis=redis, heartbeat_seconds=None)
         receiver = SSEBroker(redis=redis, heartbeat_seconds=None)
         task = asyncio.create_task(receiver.run())
-        await asyncio.sleep(0.1)
+        await _until_subscribed(redis)
 
         stream = receiver.register("u1")
         await publisher.broadcast({"type": "PING"}, event="system")
