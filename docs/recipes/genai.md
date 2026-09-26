@@ -1075,6 +1075,25 @@ def get_embedder(model_id: str) -> Embedder:
     return registry.get(model_id, lambda: Embedder(model_id))
 ```
 
+!!! note "Handle guardado continua contando no `max_models`"
+    Guardar o objeto que o `get()` devolveu (`embedder = registry.get(...)`
+    no startup, usado em todo request) é seguro com os loaders do SDK.
+    Depois de uma evicção, a próxima chamada nesse handle **não** recarrega
+    por fora: ela registra o modelo de novo na mesma chave (substituindo o
+    objeto que um `get()` posterior tenha criado ali), despeja o menos usado
+    e só então carrega os pesos. Com `max_models=1`, guardar `A`, pedir `B`
+    e voltar a usar `A` dá três loads e dois unloads, nunca os dois modelos
+    residentes ao mesmo tempo.
+
+    Se o modelo despejado ainda tem chamadas rodando, quem entra no lugar
+    dele espera elas terminarem antes de carregar — vale para o handle
+    readmitido e para o modelo novo de um `get()`. A exceção é a chamada
+    feita **de dentro** da chamada de outro modelo: ela não espera (a
+    chamada de fora pode ser justamente o que o despejado aguarda), então
+    ali o teto é excedido até a chamada de fora acabar. Um objeto de
+    terceiro que só implementa `unload()` não tem esse gancho — para esses,
+    chame `get()` por request.
+
 ### O que está carregado agora
 
 Um serviço self-hosted pode segurar vários modelos ao mesmo tempo, cada um
@@ -1613,9 +1632,113 @@ rag = Retriever(embedder, store)
 O nome da tabela é interpolado no SQL (identificador não vira parâmetro),
 então o construtor recusa com `ValueError` qualquer coisa fora de
 `nome` ou `schema.nome` sem aspas (`[A-Za-z_][A-Za-z0-9_]*`, até 63
-caracteres cada), e um `dim` que não seja inteiro positivo. A busca é exata
-(varredura sequencial): nenhum índice aproximado (HNSW/IVFFlat) é criado, então
-adicione um quando o corpus crescer.
+caracteres cada), e um `dim` que não seja inteiro positivo.
+
+#### Índice aproximado: HNSW ou IVFFlat
+
+Sem mais nada, a busca é **exata**: o Postgres faz varredura sequencial e
+calcula `<=>` contra toda linha. Com 100 000 chunks de 384 dimensões isso já
+custa ~50–60 ms por busca (medição abaixo), e o custo acompanha o número de
+linhas.
+
+Um índice aproximado troca um pouco de **recall** (a fração dos vizinhos
+exatos que volta) por latência. Peça no `ensure_schema`:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import AsyncDatabaseManager
+from tempest_fastapi_sdk.genai.rag import Chunk, PgVectorStore
+
+db = AsyncDatabaseManager("postgresql+asyncpg://app:app@127.0.0.1:5432/app")
+store = PgVectorStore(db, dim=384)
+
+
+async def main() -> None:
+    """Build the HNSW index once, then search with a wider candidate list."""
+    await store.ensure_schema(ann_index="hnsw", m=16, ef_construction=64)
+    query: list[float] = [0.1] * 384
+    hits: list[Chunk] = await store.search(query, top_k=10, ef_search=100)
+    print([hit.text for hit in hits])
+
+
+asyncio.run(main())
+```
+
+- **`ann_index="hnsw"`** constrói um grafo navegável. Parâmetros de build:
+  `m` (conexões por nó) e `ef_construction` (candidatos durante o build).
+  Exige pgvector **>= 0.5.0**; abaixo disso o `ensure_schema` levanta
+  `RuntimeError` com a versão encontrada.
+- **`ann_index="ivfflat"`** divide os vetores em `lists` grupos e, na busca,
+  varre só os mais próximos. Build muito mais rápido, mas os centróides saem
+  das linhas que existem **na hora do build** — chame depois de carregar o
+  corpus, não antes do primeiro `add`.
+- O índice se chama `<tabela>_embedding_idx` (`store.ann_index_name`) e usa
+  `vector_cosine_ops`, a operator class do `<=>` que o `search` ordena.
+- Parâmetro deixado em `None` fica fora do `WITH`, e vale o default do
+  pgvector. Parâmetro do outro método (`lists` com HNSW) ou sem
+  `ann_index` levanta `ValueError` antes de qualquer SQL.
+- Chamar de novo com os mesmos parâmetros não faz nada. Com **outro** método
+  ou outros parâmetros levanta `ValueError` pedindo `DROP INDEX`: rebuild de
+  índice grande não acontece escondido dentro de um `ensure_schema`.
+
+Na busca, `ef_search` (HNSW) e `probes` (IVFFlat) regulam o trade-off por
+chamada. O `search` aplica os dois com `set_config(..., true)`, que é o
+`SET LOCAL` em forma de função: vale só na transação da busca, e a próxima
+sessão no mesmo pool volta a ler o valor do servidor (`40` e `1`, conferido
+no teste docker).
+
+!!! warning "`ef_search` também limita quantos resultados voltam"
+    Uma varredura HNSW devolve no máximo `ef_search` linhas: medido no
+    pgvector 0.8.6, `search(top_k=20, ef_search=5)` devolve **5** chunks.
+    Mantenha `ef_search >= top_k`.
+
+##### Quanto rende
+
+Medido com o `PgVectorStore.search` de ponta a ponta (Python + asyncpg +
+Postgres em `localhost`), `top_k=10`, contra `pgvector/pgvector:pg16`
+(pgvector 0.8.6, configuração default do container, `--shm-size=1g`) numa
+máquina de 12 núcleos sob WSL2. **N = 100 000 vetores de 384 dimensões.**
+Recall@10 é a fração dos 10 vizinhos da varredura exata que o índice
+devolve; cada linha junta duas execuções com seeds diferentes (200 buscas
+por seed nos dados gaussianos, 500 nos agrupados), e o intervalo mostra as
+duas.
+
+Dois corpora sintéticos, que cercam o caso real por cima e por baixo:
+
+- **gaussiano**: cada componente é `N(0, 1)`, sem estrutura nenhuma — o
+  vizinho mais próximo quase não é mais próximo que o resto;
+- **agrupado**: 1 000 centros gaussianos, cada vetor é um centro mais ruído
+  `N(0, 0,5)`; a consulta é gerada do mesmo jeito.
+
+| Busca | p50 | recall@10 gaussiano | recall@10 agrupado |
+| --- | --- | --- | --- |
+| exata (varredura sequencial) | 50–60 ms | 1,00 | 1,00 |
+| HNSW, `ef_search=40` (default) | 4–8 ms | 0,05–0,06 | 0,986–0,992 |
+| HNSW, `ef_search=100` | 4–8 ms | 0,12–0,13 | 1,00 |
+| HNSW, `ef_search=400` | 7–20 ms | 0,36–0,37 | 1,00 |
+| IVFFlat `lists=100`, `probes=1` (default) | 3,4–4,4 ms | 0,03–0,04 | 0,992–0,996 |
+| IVFFlat `lists=100`, `probes=10` | 6–7,5 ms | 0,23 | 0,9996–0,9998 |
+| IVFFlat `lists=100`, `probes=40` | 17–20 ms | 0,62 | 1,00 |
+
+Build do índice sobre as 100 000 linhas: HNSW com os defaults (`m=16`,
+`ef_construction=64`) levou 72–81 s no gaussiano e 26 s no agrupado; IVFFlat
+com `lists=100`, 0,8–1,5 s.
+
+O que tirar disso:
+
+- **Latência**: nesse N o índice leva a busca de ~50 ms para ~5 ms. Com
+  5 000 linhas gaussianas (50 buscas, uma seed) a varredura exata mediu
+  ~20 ms de p50 e o HNSW ~4 ms: o ganho existe, mas é de milissegundos.
+- **Recall depende do corpus, não só do índice.** Os mesmos parâmetros
+  devolvem quase tudo nos dados agrupados e quase nada nos gaussianos.
+  Embedding de texto tem estrutura (documentos do mesmo assunto ficam
+  perto), mas quanto — isso só medindo no **seu** corpus: compare o
+  `search` com índice contra o resultado exato (antes de criar o índice)
+  num punhado de consultas reais e suba `ef_search`/`probes` até o recall
+  servir.
+- **Poucos milhares de chunks?** Fique na busca exata: o custo é pequeno e
+  o recall é 1.
 
 `rag.search(query, top_k=)` devolve os `Chunk` com `score` (similaridade);
 `rag.retrieve(...)` já monta o contexto. Precisa de Qdrant/Weaviate depois?

@@ -29,6 +29,19 @@ attribute 'decode'`.
   espera a última chamada terminar. O `assert engine is not None` do
   `SpeakerDiarizer` virou `RuntimeError`, e as passadas do modo `"auto"`
   rodam num bloco só, sem janela para o engine sumir entre elas.
+- **Handle guardado depois da evicção do `ModelRegistry` não recarrega mais
+  fora do `max_models`** (#320). A evicção marca o loader como despejado
+  (`ModelLifecycle.mark_evicted`), e a próxima chamada no handle velho volta
+  pelo registry: registra o modelo de novo na mesma chave, despeja o menos
+  usado e espera as chamadas em andamento do despejado terminarem antes de
+  carregar. A mesma espera vale para o primeiro build de um modelo novo do
+  `get()`. Com `max_models=1`, guardar `A`, pedir `B` e usar `A` de novo
+  dava dois modelos residentes; agora são três loads, dois unloads e pico
+  de um residente, inclusive com oito chamadas concorrentes no handle
+  velho e com threads alternando dois handles guardados. Exceção
+  documentada: chamada feita de dentro da chamada de outro modelo não
+  espera (evita deadlock), e o teto é excedido até a de fora acabar.
+  Objeto de terceiro que só tem `unload()` segue como antes.
 - **`TextGenerator.stream()` não trava mais o event loop.** Load, tokenização
   e espera entre tokens rodam numa worker thread, e os pedaços chegam ao
   loop por `call_soon_threadsafe`. Fechar o iterador (`aclose()`, `break`,
@@ -77,9 +90,6 @@ attribute 'decode'`.
   4.57), então uma geração com seed só reproduz sem outra geração com
   amostragem concorrente. Sem mudança de comportamento; o aviso está na
   receita e na docstring.
-- A docstring do `ModelRegistry` diz o limite que sobra: um handle guardado
-  depois da evicção recarrega fora do `max_models` — chame `get()` por
-  request em vez de segurar o objeto.
 Auditoria dos backends de genai e do stream do `HTTPClient`: um timeout no
 meio do stream reenviava o POST e repetia o texto já entregue, o Ollama
 devolvia `""` para um corpo de erro, o cliente OpenAI mandava campos que o
@@ -569,6 +579,34 @@ atrás de uns 650 tokens inócuos pontuava `toxic` em 0,001.
   keyword-only. `activation="sigmoid" | "softmax"` força a ativação para
   checkpoint cuja config não declara o `problem_type`; `window_tokens=None`
   usa o contexto inteiro do modelo, e qualquer valor é limitado a ele.
+Índice aproximado no `PgVectorStore` (#319). Toda busca era varredura
+sequencial com `<=>`, e o índice HNSW/IVFFlat ficava como passo manual.
+
+### Added
+
+- **`PgVectorStore.ensure_schema(ann_index="hnsw" | "ivfflat", m=,
+  ef_construction=, lists=)`** (keyword-only) cria `<table>_embedding_idx`
+  com `vector_cosine_ops`, a operator class do `<=>` que a busca usa.
+  Parâmetro `None` fica fora do `WITH` (vale o default do pgvector);
+  parâmetro do outro método, ou sem `ann_index`, levanta `ValueError` antes
+  de qualquer SQL. `"hnsw"` num pgvector abaixo de 0.5.0 levanta
+  `RuntimeError` com a versão encontrada (medido contra
+  `ankane/pgvector:v0.4.4`; o IVFFlat segue funcionando lá). Um índice com
+  esse nome que já existe com outro método ou outros parâmetros levanta
+  `ValueError` pedindo `DROP INDEX` — nunca é reconstruído em silêncio.
+  Novo `PgVectorStore.ann_index_name` e o tipo `AnnIndex`
+  (`tempest_fastapi_sdk.genai.rag`).
+- **`PgVectorStore.search(ef_search=, probes=)`** (keyword-only) aplica
+  `hnsw.ef_search` / `ivfflat.probes` via `set_config(..., true)` — o
+  `SET LOCAL` em forma de função, com valor bindado —, válidos só na
+  transação da busca: a sessão seguinte no mesmo pool volta a ler `40` e
+  `1`. Medida de latência e recall@10 a 100 000 vetores na receita de
+  genai.
+- Teste `@pytest.mark.docker` contra `pgvector/pgvector:pg16` confirma que
+  o índice existe e que o `EXPLAIN` do statement que o `search` envia
+  (capturado no engine) usa `Index Scan` nele. O container do teste ganhou
+  nome e porta por processo, então dois checkouts rodando `make test-docker`
+  ao mesmo tempo não derrubam o banco um do outro.
 
 ## [0.299.0] — 2026-09-25
 
