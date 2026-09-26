@@ -15,13 +15,14 @@ never blocks the event loop.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
 import threading
-import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, Protocol, runtime_checkable
 
+from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.generation_cache import (
     AsyncGenerationCache,
     GenerationCache,
@@ -147,6 +148,74 @@ def _stop_criteria(transformers: Any, stop_event: threading.Event) -> Any:
             return stop_event.is_set()
 
     return transformers.StoppingCriteriaList([_EventCriteria()])
+
+
+class _StreamEnd:
+    """Marks the end of a stream on the consumer's queue."""
+
+
+_STREAM_END: _StreamEnd = _StreamEnd()
+
+
+def _consume_result(task: asyncio.Future[None]) -> None:
+    """Retrieve a finished producer's outcome so asyncio does not log it.
+
+    Attached whenever the consumer leaves. On the normal path the exception
+    was already raised through ``await producer``; when the consumer left
+    early the generation is being stopped on purpose, so an exception it
+    raises on the way out has no reader and would otherwise surface as
+    "Task exception was never retrieved".
+
+    Args:
+        task (asyncio.Future[None]): The producer future.
+    """
+    if not task.cancelled():
+        task.exception()
+
+
+def _callback_streamer(
+    transformers: Any,
+    tokenizer: Any,
+    emit: Callable[[str], None],
+    stop_event: threading.Event,
+) -> Any:
+    """Build a streamer that pushes finalized text to ``emit``.
+
+    ``TextIteratorStreamer`` hands text over through a blocking
+    ``queue.Queue``, and iterating it from a coroutine stalls the event
+    loop between tokens. Measured with ``Qwen/Qwen2.5-0.5B-Instruct`` on an
+    RTX 4070 Ti SUPER, 180 pieces from a warm model, against a ticker that
+    sleeps 5 ms: 77 loop ticks in 3.67 s through the blocking iterator,
+    728 to 770 ticks in 3.8 to 4.0 s through this callback. Subclassing
+    ``TextStreamer`` keeps its detokenization (word boundaries, CJK, the
+    prompt skip) and replaces only the delivery, which here is a callback
+    the worker thread calls directly.
+
+    Args:
+        transformers (Any): The imported ``transformers`` module.
+        tokenizer (Any): The tokenizer that decodes the tokens.
+        emit (Callable[[str], None]): Receives each finalized piece.
+        stop_event (threading.Event): Once set, pieces are no longer
+            delivered.
+
+    Returns:
+        Any: A ``TextStreamer`` subclass instance.
+    """
+
+    class _CallbackStreamer(transformers.TextStreamer):  # type: ignore[misc]
+        """Delivers text to a callback instead of printing it."""
+
+        def on_finalized_text(self, text: str, stream_end: bool = False) -> None:
+            """Forward one finalized piece unless the stream was stopped.
+
+            Args:
+                text (str): The decoded text.
+                stream_end (bool): Whether this is the last piece; unused.
+            """
+            if text and not stop_event.is_set():
+                emit(text)
+
+    return _CallbackStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
 
 
 class GenerationStoppedError(RuntimeError):
@@ -432,7 +501,11 @@ class TextGenerator:
         self.metrics = metrics
         self._model: Any = None
         self._tokenizer: Any = None
-        self._last_used: float = time.monotonic()
+        self._lifecycle = ModelLifecycle(
+            build=self._build,
+            release=self._release,
+            is_loaded=lambda: self._model is not None,
+        )
 
     def _key_params(
         self,
@@ -475,29 +548,40 @@ class TextGenerator:
 
     @property
     def seconds_idle(self) -> float:
-        """Return seconds since the last generation (or load).
+        """Return seconds since the model was last in use.
+
+        A generation in flight counts as use for its whole duration, so
+        this reads ``0.0`` while one runs — a long generation is never
+        mistaken for an idle model.
 
         Returns:
             float: Idle time in seconds.
         """
-        return time.monotonic() - self._last_used
+        return self._lifecycle.seconds_idle()
 
-    def _touch(self) -> None:
-        """Mark the model as just used (resets the idle clock)."""
-        self._last_used = time.monotonic()
-
-    def load(self) -> None:  # pragma: no cover - needs torch + a real model
+    def load(self) -> None:
         """Download (if needed) and load the model + tokenizer into memory.
 
         Idempotent — a no-op once loaded. Called automatically by
-        :meth:`generate` / :meth:`stream` / :meth:`chat`.
+        :meth:`generate` / :meth:`stream` / :meth:`chat`. Safe to call from
+        several threads at once: concurrent callers on a cold instance
+        wait for one build instead of each running ``from_pretrained``.
+        It blocks for the whole download and build, so call it through
+        ``asyncio.to_thread`` from async code.
 
         Raises:
             ImportError: When the ``[genai]`` (or ``[genai-quant]``) extra
                 is missing.
         """
-        if self.is_loaded:
-            return
+        self._lifecycle.load()
+
+    def _build(self) -> None:
+        """Load the tokenizer and weights; called once, under the load lock.
+
+        Raises:
+            ImportError: When the ``[genai]`` (or ``[genai-quant]``) extra
+                is missing.
+        """
         torch, transformers = _require_transformers()
         kwargs: dict[str, Any] = self.source.loader_kwargs()
         if self.quantization is not None:
@@ -520,16 +604,19 @@ class TextGenerator:
         )
         if self.quantization is None and self.device == "cpu":
             self._model = self._model.to("cpu")
-        self._touch()
 
     def unload(self) -> None:
         """Free the model and its memory (VRAM/RAM).
 
         Safe to call when not loaded. After this, the next generation call
-        reloads the weights.
+        reloads the weights. While generations are in flight the release
+        waits for them: the last one to finish drops the weights, so a
+        running call never has its model freed underneath it.
         """
-        if self._model is None:
-            return
+        self._lifecycle.unload()
+
+    def _release(self) -> None:
+        """Drop the weights and tokenizer and return cached CUDA memory."""
         self._model = None
         self._tokenizer = None
         try:  # pragma: no cover - only meaningful with torch + CUDA
@@ -545,19 +632,13 @@ class TextGenerator:
 
         Call periodically (e.g. from a ``@tq.interval`` task) to reclaim
         VRAM between bursts. A no-op when ``idle_unload_seconds`` is unset,
-        the model isn't loaded, or it isn't idle enough yet.
+        the model isn't loaded, a generation is in flight, or it isn't
+        idle enough yet.
 
         Returns:
             bool: ``True`` when it unloaded, ``False`` otherwise.
         """
-        if (
-            self.idle_unload_seconds is None
-            or not self.is_loaded
-            or self.seconds_idle < self.idle_unload_seconds
-        ):
-            return False
-        self.unload()
-        return True
+        return self._lifecycle.unload_if_idle(self.idle_unload_seconds)
 
     def _resolve_control(
         self,
@@ -617,7 +698,7 @@ class TextGenerator:
             gen["tokenizer"] = tokenizer
         return gen
 
-    def _generate_sync(  # pragma: no cover - needs torch + a real model
+    def _generate_sync(
         self,
         prompt: str,
         config: GenerationConfig | None,
@@ -626,30 +707,44 @@ class TextGenerator:
     ) -> str:
         """Run blocking generation and return the completion text.
 
+        The whole call runs inside the lifecycle's ``use()`` block, which
+        keeps the weights resident until the text is decoded.
+
+        ``seed`` goes through ``transformers.set_seed``, which reseeds the
+        **process-wide** RNGs: ``model.generate`` takes no per-call
+        ``torch.Generator`` (checked on transformers 4.57), so sampling
+        draws from the global one. A seeded call is therefore reproducible
+        only while no other sampling generation runs in the same process
+        at the same time.
+
         Raises:
             GenerationStoppedError: When ``stop_event`` was set while the
                 model was decoding.
         """
-        self.load()
-        _torch, transformers = _require_transformers()
-        seed, stop = self._resolve_control(overrides, config)
-        if seed is not None:
-            transformers.set_seed(seed)
-        inputs = self._tokenizer(prompt, return_tensors="pt").to(self._model.device)
-        gen_kwargs = self._assemble_kwargs(overrides, config, stop, self._tokenizer)
-        if stop_event is not None:
-            gen_kwargs["stopping_criteria"] = _stop_criteria(transformers, stop_event)
-        output = self._model.generate(**inputs, **gen_kwargs)
-        if stop_event is not None and stop_event.is_set():
-            raise GenerationStoppedError(
-                f"generation with {self.model_id} was stopped",
+        with self._lifecycle.use():
+            _torch, transformers = _require_transformers()
+            seed, stop = self._resolve_control(overrides, config)
+            if seed is not None:
+                transformers.set_seed(seed)
+            inputs = self._tokenizer(prompt, return_tensors="pt").to(
+                self._model.device,
             )
-        text = self._tokenizer.decode(
-            output[0][inputs["input_ids"].shape[1] :],
-            skip_special_tokens=True,
-        )
-        self._touch()
-        return str(text)
+            gen_kwargs = self._assemble_kwargs(overrides, config, stop, self._tokenizer)
+            if stop_event is not None:
+                gen_kwargs["stopping_criteria"] = _stop_criteria(
+                    transformers,
+                    stop_event,
+                )
+            output = self._model.generate(**inputs, **gen_kwargs)
+            if stop_event is not None and stop_event.is_set():
+                raise GenerationStoppedError(
+                    f"generation with {self.model_id} was stopped",
+                )
+            text = self._tokenizer.decode(
+                output[0][inputs["input_ids"].shape[1] :],
+                skip_special_tokens=True,
+            )
+            return str(text)
 
     def _gen_kwargs(
         self,
@@ -798,9 +893,9 @@ class TextGenerator:
         stop_event: threading.Event | None = None,
     ) -> str:
         """Blocking chat generation via the tokenizer chat template."""
-        self.load()
-        prompt = self._chat_prompt(messages)
-        return self._generate_sync(prompt, config, overrides, stop_event)
+        with self._lifecycle.use():
+            prompt = self._chat_prompt(messages)
+            return self._generate_sync(prompt, config, overrides, stop_event)
 
     def _chat_prompt(  # pragma: no cover - needs torch + a real model
         self,
@@ -869,14 +964,14 @@ class TextGenerator:
         overrides: dict[str, Any],
     ) -> dict[str, Any]:
         """Blocking tool-calling generation via the tokenizer chat template."""
-        self.load()
-        prompt = self._tokenizer.apply_chat_template(
-            messages,
-            tools=tools,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-        text = self._generate_sync(prompt, config, overrides)
+        with self._lifecycle.use():
+            prompt = self._tokenizer.apply_chat_template(
+                messages,
+                tools=tools,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            text = self._generate_sync(prompt, config, overrides)
         content, tool_calls = _parse_tool_calls(text)
         return {"content": content, "tool_calls": tool_calls}
 
@@ -1001,15 +1096,15 @@ class TextGenerator:
         stop_event: threading.Event | None = None,
     ) -> StructuredT:
         """Blocking schema-constrained chat generation."""
-        self.load()
-        return self._generate_structured_sync(
-            self._chat_prompt(messages),
-            schema,
-            config,
-            overrides,
-            constrained,
-            stop_event,
-        )
+        with self._lifecycle.use():
+            return self._generate_structured_sync(
+                self._chat_prompt(messages),
+                schema,
+                config,
+                overrides,
+                constrained,
+                stop_event,
+            )
 
     def _generate_structured_sync(  # pragma: no cover - needs torch + a real model
         self,
@@ -1021,17 +1116,61 @@ class TextGenerator:
         stop_event: threading.Event | None = None,
     ) -> StructuredT:
         """Blocking schema-constrained generation."""
-        self.load()
-        call_overrides = dict(overrides)
-        if constrained:
-            call_overrides["prefix_allowed_tokens_fn"] = build_prefix_allowed_tokens_fn(
-                self._tokenizer,
-                schema,
-            )
-        text = self._generate_sync(prompt, config, call_overrides, stop_event)
+        with self._lifecycle.use():
+            call_overrides = dict(overrides)
+            if constrained:
+                call_overrides["prefix_allowed_tokens_fn"] = (
+                    build_prefix_allowed_tokens_fn(self._tokenizer, schema)
+                )
+            text = self._generate_sync(prompt, config, call_overrides, stop_event)
         return parse_structured(text, schema)
 
-    async def stream(  # pragma: no cover - needs torch + a real model
+    def _stream_sync(
+        self,
+        prompt: str,
+        config: GenerationConfig | None,
+        overrides: dict[str, Any],
+        stop_event: threading.Event,
+        emit: Callable[[str], None],
+    ) -> None:
+        """Run a streaming generation on a worker thread.
+
+        Loading, tokenizing and decoding all happen here, off the event
+        loop. Each finalized piece of text goes to ``emit``, and the
+        ``stop_event`` criterion ends decoding at the next token once the
+        consumer goes away.
+
+        Args:
+            prompt (str): The input text.
+            config (GenerationConfig | None): Typed generation parameters.
+            overrides (dict[str, Any]): Per-call generation overrides.
+            stop_event (threading.Event): Set by the consumer to stop.
+            emit (Callable[[str], None]): Receives each text piece; must be
+                safe to call from this thread.
+        """
+        with self._lifecycle.use():
+            _torch, transformers = _require_transformers()
+            seed, stop = self._resolve_control(overrides, config)
+            if seed is not None:
+                transformers.set_seed(seed)
+            streamer = _callback_streamer(
+                transformers,
+                self._tokenizer,
+                emit,
+                stop_event,
+            )
+            inputs = self._tokenizer(prompt, return_tensors="pt").to(
+                self._model.device,
+            )
+            gen_kwargs: dict[str, Any] = {
+                **self._assemble_kwargs(overrides, config, stop, self._tokenizer),
+                **inputs,
+                "streamer": streamer,
+                "stopping_criteria": _stop_criteria(transformers, stop_event),
+            }
+            self._model.generate(**gen_kwargs)
+
+    async def stream(
         self,
         prompt: str,
         *,
@@ -1039,6 +1178,21 @@ class TextGenerator:
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Stream the completion token by token.
+
+        The generation runs on a worker thread and hands each piece to the
+        event loop through ``call_soon_threadsafe``, so the loop never
+        blocks — not on the first-call load, not while waiting for the next
+        token. Closing the iterator early (a client disconnecting, a
+        ``break``, ``aclose()``) sets an internal stop event that the
+        model checks after every token, so decoding stops within one token
+        instead of running to ``max_new_tokens`` for nobody; the close
+        itself returns without waiting for the worker thread.
+
+        Measured with ``Qwen/Qwen2.5-0.5B-Instruct`` on an RTX 4070 Ti
+        SUPER: the first (cold) stream used to stall the loop for 4190 ms
+        while the weights loaded on it, now 164 to 193 ms over three runs;
+        closing after 5 of 200 tokens used to block for 3532 ms, now about
+        0.01 ms, with the worker thread done 28 ms later.
 
         Args:
             prompt (str): The input text.
@@ -1048,33 +1202,43 @@ class TextGenerator:
         Yields:
             str: Text pieces as they are produced.
         """
-        self.load()
-        _torch, transformers = _require_transformers()
-        seed, stop = self._resolve_control(kwargs, config)
-        if seed is not None:
-            transformers.set_seed(seed)
-        streamer = transformers.TextIteratorStreamer(
-            self._tokenizer,
-            skip_prompt=True,
-            skip_special_tokens=True,
-        )
-        inputs = self._tokenizer(prompt, return_tensors="pt").to(self._model.device)
-        gen_kwargs = {
-            **self._assemble_kwargs(kwargs, config, stop, self._tokenizer),
-            **inputs,
-            "streamer": streamer,
-        }
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[str | _StreamEnd] = asyncio.Queue()
+        stop_event = threading.Event()
 
-        thread = threading.Thread(target=self._model.generate, kwargs=gen_kwargs)
-        thread.start()
+        def _emit(piece: str) -> None:
+            """Forward one piece to the loop's queue from the worker thread.
+
+            A loop that closed while the thread was still decoding raises
+            ``RuntimeError`` here; nobody is left to read the piece, and the
+            stop event already ends the generation at the next token, so
+            the piece is dropped instead of crashing the worker.
+
+            Args:
+                piece (str): The text to deliver.
+            """
+            with contextlib.suppress(RuntimeError):
+                loop.call_soon_threadsafe(queue.put_nowait, piece)
+
+        def _produce() -> None:
+            """Run the generation, always signalling the end to the loop."""
+            try:
+                self._stream_sync(prompt, config, dict(kwargs), stop_event, _emit)
+            finally:
+                with contextlib.suppress(RuntimeError):
+                    loop.call_soon_threadsafe(queue.put_nowait, _STREAM_END)
+
+        producer = asyncio.ensure_future(asyncio.to_thread(_produce))
         try:
-            for piece in streamer:
-                if piece:
-                    yield piece
-                await asyncio.sleep(0)
+            while True:
+                item = await queue.get()
+                if isinstance(item, _StreamEnd):
+                    break
+                yield item
+            await producer
         finally:
-            thread.join()
-            self._touch()
+            stop_event.set()
+            producer.add_done_callback(_consume_result)
 
 
 __all__: list[str] = [

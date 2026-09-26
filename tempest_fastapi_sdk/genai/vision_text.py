@@ -25,10 +25,10 @@ from __future__ import annotations
 
 import asyncio
 import io
-import time
 from pathlib import Path
 from typing import Any
 
+from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.schemas import (
     GenerationConfig,
@@ -173,7 +173,11 @@ class VisionTextGenerator:
         self.idle_unload_seconds = idle_unload_seconds
         self._model: Any = None
         self._processor: Any = None
-        self._last_used: float = time.monotonic()
+        self._lifecycle = ModelLifecycle(
+            build=self._build,
+            release=self._release,
+            is_loaded=lambda: self._model is not None,
+        )
 
     @property
     def is_loaded(self) -> bool:
@@ -182,24 +186,33 @@ class VisionTextGenerator:
 
     @property
     def seconds_idle(self) -> float:
-        """Return seconds since the last generation (or load)."""
-        return time.monotonic() - self._last_used
+        """Return seconds since the model was last in use.
 
-    def _touch(self) -> None:
-        """Mark the model as just used (resets the idle clock)."""
-        self._last_used = time.monotonic()
+        Reads ``0.0`` while a generation is in flight.
 
-    def load(self) -> None:  # pragma: no cover - needs torch + a real model
+        Returns:
+            float: Idle time in seconds.
+        """
+        return self._lifecycle.seconds_idle()
+
+    def load(self) -> None:
         """Download (if needed) and load the model + processor into memory.
 
         Idempotent — a no-op once loaded. Called automatically by
-        :meth:`generate` / :meth:`chat`.
+        :meth:`generate` / :meth:`chat`. Safe to call from several threads
+        at once: concurrent callers on a cold instance wait for one build.
 
         Raises:
             ImportError: When the ``[genai]`` extra is missing.
         """
-        if self.is_loaded:
-            return
+        self._lifecycle.load()
+
+    def _build(self) -> None:  # pragma: no cover - needs torch + a real model
+        """Load the processor and weights; called once, under the load lock.
+
+        Raises:
+            ImportError: When the ``[genai]`` extra is missing.
+        """
         torch, transformers = _require_transformers()
         self._processor = transformers.AutoProcessor.from_pretrained(
             self.model_id,
@@ -223,12 +236,17 @@ class VisionTextGenerator:
         )
         if self.device == "cpu":
             self._model = self._model.to("cpu")
-        self._touch()
 
     def unload(self) -> None:
-        """Free the model and its memory (VRAM/RAM). Safe when not loaded."""
-        if self._model is None:
-            return
+        """Free the model and its memory (VRAM/RAM). Safe when not loaded.
+
+        While a generation is in flight the release waits for it: the last
+        call to finish drops the weights.
+        """
+        self._lifecycle.unload()
+
+    def _release(self) -> None:
+        """Drop the weights and processor and return cached CUDA memory."""
         self._model = None
         self._processor = None
         try:  # pragma: no cover - only meaningful with torch + CUDA
@@ -243,16 +261,10 @@ class VisionTextGenerator:
         """Unload the model when idle past ``idle_unload_seconds``.
 
         Returns:
-            bool: ``True`` when it unloaded, ``False`` otherwise.
+            bool: ``True`` when it unloaded, ``False`` otherwise — including
+            while a generation is in flight.
         """
-        if (
-            self.idle_unload_seconds is None
-            or not self.is_loaded
-            or self.seconds_idle < self.idle_unload_seconds
-        ):
-            return False
-        self.unload()
-        return True
+        return self._lifecycle.unload_if_idle(self.idle_unload_seconds)
 
     def _gen_kwargs(
         self,
@@ -303,18 +315,20 @@ class VisionTextGenerator:
         overrides: dict[str, Any],
     ) -> str:
         """Run blocking multimodal generation and return the completion."""
-        self.load()
-        pil_images = [_load_image(image) for image in images] if images else None
-        inputs = self._processor(
-            text=prompt,
-            images=pil_images,
-            return_tensors="pt",
-        ).to(self._model.device)
-        output = self._model.generate(**inputs, **self._gen_kwargs(overrides, config))
-        generated = output[0][inputs["input_ids"].shape[1] :]
-        text = self._processor.decode(generated, skip_special_tokens=True)
-        self._touch()
-        return str(text)
+        with self._lifecycle.use():
+            pil_images = [_load_image(image) for image in images] if images else None
+            inputs = self._processor(
+                text=prompt,
+                images=pil_images,
+                return_tensors="pt",
+            ).to(self._model.device)
+            output = self._model.generate(
+                **inputs,
+                **self._gen_kwargs(overrides, config),
+            )
+            generated = output[0][inputs["input_ids"].shape[1] :]
+            text = self._processor.decode(generated, skip_special_tokens=True)
+            return str(text)
 
     async def chat(
         self,
@@ -355,13 +369,13 @@ class VisionTextGenerator:
         overrides: dict[str, Any],
     ) -> str:
         """Blocking multimodal chat generation via the processor template."""
-        self.load()
-        prompt = self._processor.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-        return self._generate_sync(prompt, images, config, overrides)
+        with self._lifecycle.use():
+            prompt = self._processor.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            return self._generate_sync(prompt, images, config, overrides)
 
 
 __all__: list[str] = [

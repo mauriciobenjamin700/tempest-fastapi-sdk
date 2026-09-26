@@ -7,8 +7,9 @@ parameter count and precision (:func:`estimate_model_bytes`), and reports
 whether the two are compatible (:func:`can_run`, :func:`recommend`).
 
 Every dependency is optional and lazily used: ``psutil`` for RAM/CPU,
-``torch`` for CUDA/MPS detection, ``huggingface_hub`` to read a model's
-parameter count without downloading its weights. Missing pieces degrade
+``torch`` for CUDA/MPS detection, ``pynvml`` (``nvidia-ml-py``, in the
+``[metrics]`` extra) for per-GPU name and memory, ``huggingface_hub`` to read
+a model's parameter count without downloading its weights. Missing pieces degrade
 gracefully (no torch → ``has_cuda=False``), so the module imports without
 the ``[genai]`` extra — you only need it installed to probe real GPUs.
 """
@@ -79,8 +80,70 @@ def estimate_model_bytes(
     return int(num_params * bytes_per_param(dtype) * overhead)
 
 
+def _nvml_gpus(expected_count: int) -> list[GPUInfo] | None:
+    """Read per-GPU name and memory through NVML, without touching CUDA.
+
+    ``torch.cuda.mem_get_info`` and ``torch.cuda.get_device_name`` both
+    initialize the CUDA runtime, which creates a context on the device —
+    measured at +209 MiB of VRAM on an RTX 4070 Ti SUPER (driver 591.86,
+    torch 2.14.0+cu130, WSL2) for a process that only wanted to *ask*.
+    NVML answers the same two questions from the driver with no context.
+
+    NVML numbers devices in PCI order while CUDA's default is fastest-first
+    and ``CUDA_VISIBLE_DEVICES`` can hide or reorder them, so the NVML answer
+    is only used when it cannot disagree with CUDA's indices: no
+    ``CUDA_VISIBLE_DEVICES`` set and the same device count.
+
+    Args:
+        expected_count (int): ``torch.cuda.device_count()``.
+
+    Returns:
+        list[GPUInfo] | None: One entry per GPU, or ``None`` when NVML is
+        unavailable or its view might not match CUDA's indices.
+    """
+    if os.environ.get("CUDA_VISIBLE_DEVICES") is not None:
+        return None
+    try:
+        import pynvml
+    except ImportError:
+        return None
+    try:
+        pynvml.nvmlInit()
+    except Exception:
+        return None
+    try:
+        if int(pynvml.nvmlDeviceGetCount()) != expected_count:
+            return None
+        gpus: list[GPUInfo] = []
+        for index in range(expected_count):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(index)
+            raw_name = pynvml.nvmlDeviceGetName(handle)
+            memory = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            gpus.append(
+                GPUInfo(
+                    index=index,
+                    name=raw_name.decode() if isinstance(raw_name, bytes) else raw_name,
+                    vram_total_bytes=int(memory.total),
+                    vram_free_bytes=int(memory.free),
+                ),
+            )
+        return gpus
+    except Exception:
+        return None
+    finally:
+        with contextlib.suppress(Exception):
+            pynvml.nvmlShutdown()
+
+
 def probe_hardware(*, cache_dir: str | None = None) -> HardwareInfo:
     """Snapshot the host's CPU, RAM, GPU and disk.
+
+    GPU name and memory come from NVML when ``pynvml`` is installed, so a
+    web process that probes (the ``/models`` endpoint, a health check) does
+    not create a CUDA context on every GPU. Without NVML it falls back to
+    ``torch.cuda.mem_get_info``, which does initialize CUDA in the calling
+    process. ``has_cuda`` always comes from ``torch.cuda.is_available()``,
+    which does not create a context.
 
     Args:
         cache_dir (str | None): Directory whose free space to report
@@ -112,16 +175,21 @@ def probe_hardware(*, cache_dir: str | None = None) -> HardwareInfo:
 
         has_cuda = bool(torch.cuda.is_available())
         if has_cuda:
-            for index in range(torch.cuda.device_count()):
-                free, total = torch.cuda.mem_get_info(index)
-                gpus.append(
-                    GPUInfo(
-                        index=index,
-                        name=torch.cuda.get_device_name(index),
-                        vram_total_bytes=int(total),
-                        vram_free_bytes=int(free),
-                    ),
-                )
+            count = int(torch.cuda.device_count())
+            nvml = _nvml_gpus(count)
+            if nvml is not None:
+                gpus = nvml
+            else:
+                for index in range(count):
+                    free, total = torch.cuda.mem_get_info(index)
+                    gpus.append(
+                        GPUInfo(
+                            index=index,
+                            name=torch.cuda.get_device_name(index),
+                            vram_total_bytes=int(total),
+                            vram_free_bytes=int(free),
+                        ),
+                    )
         has_mps = bool(
             getattr(torch.backends, "mps", None) and torch.backends.mps.is_available(),
         )

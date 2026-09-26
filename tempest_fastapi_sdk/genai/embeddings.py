@@ -16,10 +16,10 @@ import asyncio
 import inspect
 import json
 import math
-import time
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
 from tempest_fastapi_sdk.genai.schemas import (
@@ -374,7 +374,11 @@ class Embedder:
         self.metrics = metrics
         self._model: Any = None
         self._tokenizer: Any = None
-        self._last_used: float = time.monotonic()
+        self._lifecycle = ModelLifecycle(
+            build=self._build,
+            release=self._release,
+            is_loaded=lambda: self._model is not None,
+        )
 
     @property
     def is_loaded(self) -> bool:
@@ -383,12 +387,14 @@ class Embedder:
 
     @property
     def seconds_idle(self) -> float:
-        """Return seconds since the last embed (or load)."""
-        return time.monotonic() - self._last_used
+        """Return seconds since the model was last in use.
 
-    def _touch(self) -> None:
-        """Reset the idle clock."""
-        self._last_used = time.monotonic()
+        Reads ``0.0`` while an embedding batch is in flight.
+
+        Returns:
+            float: Idle time in seconds.
+        """
+        return self._lifecycle.seconds_idle()
 
     def _cache_key(self, text: str) -> str:
         """Return the cache key for one text under this model."""
@@ -424,14 +430,23 @@ class Embedder:
         if inspect.isawaitable(result):
             await result
 
-    def load(self) -> None:  # pragma: no cover - needs torch + a real model
+    def load(self) -> None:
         """Load the embedding model + tokenizer into memory (idempotent).
+
+        Safe to call from several threads at once: concurrent callers on a
+        cold instance wait for one build.
 
         Raises:
             ImportError: When the ``[genai]`` extra is missing.
         """
-        if self.is_loaded:
-            return
+        self._lifecycle.load()
+
+    def _build(self) -> None:  # pragma: no cover - needs torch + a real model
+        """Load the tokenizer and weights; called once, under the load lock.
+
+        Raises:
+            ImportError: When the ``[genai]`` extra is missing.
+        """
         from tempest_fastapi_sdk.genai.text import _require_transformers
 
         torch, transformers = _require_transformers()
@@ -445,12 +460,17 @@ class Embedder:
             **self.source.loader_kwargs(),
         )
         self._model = model.to(self.device)
-        self._touch()
 
     def unload(self) -> None:
-        """Free the model and its memory. Safe when not loaded."""
-        if self._model is None:
-            return
+        """Free the model and its memory. Safe when not loaded.
+
+        While an embedding batch is in flight the release waits for it:
+        the last call to finish drops the weights.
+        """
+        self._lifecycle.unload()
+
+    def _release(self) -> None:
+        """Drop the weights and tokenizer and return cached CUDA memory."""
         self._model = None
         self._tokenizer = None
         try:  # pragma: no cover - only meaningful with torch + CUDA
@@ -465,16 +485,10 @@ class Embedder:
         """Unload the model once idle past ``idle_unload_seconds``.
 
         Returns:
-            bool: ``True`` when it unloaded, ``False`` otherwise.
+            bool: ``True`` when it unloaded, ``False`` otherwise — including
+            while a batch is in flight.
         """
-        if (
-            self.idle_unload_seconds is None
-            or not self.is_loaded
-            or self.seconds_idle < self.idle_unload_seconds
-        ):
-            return False
-        self.unload()
-        return True
+        return self._lifecycle.unload_if_idle(self.idle_unload_seconds)
 
     async def embed(
         self,
@@ -543,13 +557,29 @@ class Embedder:
             return [_l2_normalize(vector) for vector in vectors]
         return vectors
 
-    def _embed_many(  # pragma: no cover - needs torch + a real model
+    def _embed_many(
+        self,
+        texts: list[str],
+        batch_size: int,
+    ) -> list[list[float]]:
+        """Load if needed and embed, holding the model for the whole call.
+
+        Args:
+            texts (list[str]): The texts to embed.
+            batch_size (int): Max texts per forward pass.
+
+        Returns:
+            list[list[float]]: One vector per text.
+        """
+        with self._lifecycle.use():
+            return self._embed_batches(texts, batch_size)
+
+    def _embed_batches(  # pragma: no cover - needs torch + a real model
         self,
         texts: list[str],
         batch_size: int,
     ) -> list[list[float]]:
         """Blocking batched embedding with mean pooling over tokens."""
-        self.load()
         import torch
 
         out: list[list[float]] = []
@@ -569,7 +599,6 @@ class Embedder:
             counts = mask.sum(dim=1).clamp(min=1e-9)
             pooled = summed / counts
             out.extend(pooled.cpu().tolist())
-        self._touch()
         return out
 
 

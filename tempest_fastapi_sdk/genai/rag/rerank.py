@@ -16,10 +16,10 @@ extra (``torch`` / ``transformers``).
 from __future__ import annotations
 
 import asyncio
-import time
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.schemas import (
     HardwareInfo,
@@ -157,7 +157,11 @@ class Reranker:
         self.idle_unload_seconds = idle_unload_seconds
         self._model: Any = None
         self._tokenizer: Any = None
-        self._last_used: float = time.monotonic()
+        self._lifecycle = ModelLifecycle(
+            build=self._build,
+            release=self._release,
+            is_loaded=lambda: self._model is not None,
+        )
 
     @property
     def is_loaded(self) -> bool:
@@ -166,20 +170,33 @@ class Reranker:
 
     @property
     def seconds_idle(self) -> float:
-        """Return seconds since the last rerank (or load)."""
-        return time.monotonic() - self._last_used
+        """Return seconds since the model was last in use.
 
-    def load(self) -> None:  # pragma: no cover - needs torch + a real model
+        Reads ``0.0`` while a rerank is in flight.
+
+        Returns:
+            float: Idle time in seconds.
+        """
+        return self._lifecycle.seconds_idle()
+
+    def load(self) -> None:
         """Download (if needed) and load the cross-encoder + tokenizer.
 
         Idempotent — a no-op once loaded. Called automatically by
-        :meth:`rerank`.
+        :meth:`rerank`. Safe to call from several threads at once:
+        concurrent callers on a cold instance wait for one build.
 
         Raises:
             ImportError: When the ``[genai]`` extra is missing.
         """
-        if self.is_loaded:
-            return
+        self._lifecycle.load()
+
+    def _build(self) -> None:  # pragma: no cover - needs torch + a real model
+        """Load the tokenizer and weights; called once, under the load lock.
+
+        Raises:
+            ImportError: When the ``[genai]`` extra is missing.
+        """
         torch, transformers = _require_transformers()
         self._tokenizer = transformers.AutoTokenizer.from_pretrained(
             self.model_id,
@@ -192,12 +209,17 @@ class Reranker:
         )
         self._model = self._model.to(self.device if self.device != "cpu" else "cpu")
         self._model.eval()
-        self._last_used = time.monotonic()
 
     def unload(self) -> None:
-        """Free the model and its memory (VRAM/RAM). Safe when not loaded."""
-        if self._model is None:
-            return
+        """Free the model and its memory (VRAM/RAM). Safe when not loaded.
+
+        While a rerank is in flight the release waits for it: the last call
+        to finish drops the weights.
+        """
+        self._lifecycle.unload()
+
+    def _release(self) -> None:
+        """Drop the weights and tokenizer and return cached CUDA memory."""
         self._model = None
         self._tokenizer = None
         try:  # pragma: no cover - only meaningful with torch + CUDA
@@ -212,16 +234,10 @@ class Reranker:
         """Unload the model when idle past ``idle_unload_seconds``.
 
         Returns:
-            bool: ``True`` when it unloaded, ``False`` otherwise.
+            bool: ``True`` when it unloaded, ``False`` otherwise — including
+            while a rerank is in flight.
         """
-        if (
-            self.idle_unload_seconds is None
-            or not self.is_loaded
-            or self.seconds_idle < self.idle_unload_seconds
-        ):
-            return False
-        self.unload()
-        return True
+        return self._lifecycle.unload_if_idle(self.idle_unload_seconds)
 
     async def rerank(
         self,
@@ -248,7 +264,24 @@ class Reranker:
         scores = await asyncio.to_thread(self._score_sync, query, list(chunks))
         return _rank_by_scores(chunks, scores, top_k)
 
-    def _score_sync(  # pragma: no cover - needs torch + a real model
+    def _score_sync(
+        self,
+        query: str,
+        chunks: list[Chunk],
+    ) -> list[float]:
+        """Load if needed and score, holding the model for the whole call.
+
+        Args:
+            query (str): The query text.
+            chunks (list[Chunk]): The candidates.
+
+        Returns:
+            list[float]: One score per chunk.
+        """
+        with self._lifecycle.use():
+            return self._score_pairs(query, chunks)
+
+    def _score_pairs(  # pragma: no cover - needs torch + a real model
         self,
         query: str,
         chunks: list[Chunk],
@@ -256,7 +289,6 @@ class Reranker:
         """Score every ``(query, chunk)`` pair with the cross-encoder."""
         import torch
 
-        self.load()
         pairs = [[query, chunk.text] for chunk in chunks]
         inputs = self._tokenizer(
             pairs,
@@ -268,7 +300,6 @@ class Reranker:
         with torch.no_grad():
             logits = self._model(**inputs).logits
         scores = logits[:, 0] if logits.shape[-1] == 1 else logits[:, -1]
-        self._last_used = time.monotonic()
         return [float(score) for score in scores.tolist()]
 
 

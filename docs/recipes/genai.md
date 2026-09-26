@@ -144,6 +144,15 @@ asyncio.run(main())
     **[Pesos de modelos »](model-weights.md#onde-os-pesos-ficam-e-por-que-a-2a-execucao-e-instantanea)**.
 
 A geração bloqueante roda em `asyncio.to_thread` — não trava o event loop.
+Isso vale também pro `stream()`: o load da primeira chamada e a espera entre
+tokens acontecem numa worker thread, e fechar o iterador antes do fim (um
+`break`, um cliente que desconectou) para a geração no próximo token em vez
+de deixar a GPU gerando até `max_new_tokens` pra ninguém. Medido com
+`Qwen/Qwen2.5-0.5B-Instruct` numa RTX 4070 Ti SUPER: o primeiro stream
+travava o loop por 4190 ms e agora trava de 164 a 193 ms (três execuções);
+fechar depois de 5 de 200 tokens bloqueava 3532 ms e agora volta em ~0,01 ms,
+com a worker thread encerrada 28 ms depois.
+
 `device="auto"` escolhe CUDA → MPS → CPU; `dtype="auto"` usa bf16 em GPU e
 fp32 em CPU.
 
@@ -157,6 +166,15 @@ fp32 em CPU.
     periodicamente (ex.: num `@tq.interval(60)` do [TaskQueue](queue-tasks.md))
     — ele descarrega o modelo só quando passou do tempo ocioso, sem mágica
     de background thread. `unload()` libera na hora.
+
+    Uma chamada em andamento **não** conta como ociosa: `seconds_idle` lê
+    `0.0` enquanto ela roda e `unload_if_idle()` devolve `False`. Um
+    `unload()` que chega no meio de uma chamada (inclusive o de uma evicção
+    do `ModelRegistry`) espera: quem terminar por último solta os pesos. E
+    várias primeiras chamadas simultâneas carregam o modelo **uma** vez só.
+    Vale igual pra todo loader local (`Embedder`, `Reranker`,
+    `ImageGenerator`, `SpeechToText`, `TextToSpeech`, `SpeakerDiarizer`,
+    `OnnxEmbedder`...).
 
 ## Backend hospedado (DeepSeek, Groq, OpenRouter, vLLM...)
 
@@ -982,9 +1000,13 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-O pooling é a **média ponderada pela attention mask** dos embeddings de
-token (não uma média ingênua sobre padding), então os vetores batem com os
-do `Embedder` torch (cosseno ≈ 1.0 pro mesmo modelo). Exporte o modelo em ambiente descartável — `optimum` **não** é dependência
+O pooling default é a **média ponderada pela attention mask** dos embeddings
+de token (não uma média ingênua sobre padding), então os vetores batem com os
+do `Embedder` torch (cosseno ≈ 1.0 pro mesmo modelo). Modelos da família BGE
+são treinados no token `[CLS]` — passe `pooling="cls"` pra eles, conforme o
+model card. Um grafo exportado já com a cabeça de pooling (saída 2-D
+`sentence_embedding`) é usado como veio, e o padding usa o `<pad>` do próprio
+tokenizer (id 1 no RoBERTa/XLM-R), não o id 0 que o `tokenizers` assume. Exporte o modelo em ambiente descartável — `optimum` **não** é dependência
 deste pacote, porque ela prende `transformers<4.58` no lock de quem instalar:
 
 ```bash
@@ -1138,8 +1160,11 @@ app.include_router(make_genai_router(models=registry))
 curl "http://127.0.0.1:8000/api/genai/models?probe=false"
 ```
 
-O `probe=false` pula a leitura de NVML — a única parte do endpoint que custa
-alguma coisa. Com o default, o relatório vem junto do retrato de memória do
+O `probe=false` pula a sonda do host — a única parte do endpoint que custa
+alguma coisa. Com o `pynvml` instalado (extra `[metrics]`), a sonda lê nome e
+memória de cada GPU pelo NVML, sem criar contexto CUDA no processo web; sem
+ele, cai no `torch.cuda.mem_get_info`, que cria — medido em +209 MiB de VRAM
+numa RTX 4070 Ti SUPER. Com o default, o relatório vem junto do retrato de memória do
 host, então uma chamada responde "o que está carregado" e "quanto ainda
 cabe" de uma vez.
 
@@ -1633,6 +1658,12 @@ temperature=0.9)` usa `0.9`).
     reproduz a saída) e `stop` vira o argumento `stop_strings` de
     `model.generate` (requer transformers >= 4.44). Ambos podem vir do
     `GenerationConfig` ou por chamada — o override por chamada vence.
+
+!!! warning "A `seed` local é global ao processo"
+    `transformers.set_seed` resemeia os RNGs do processo inteiro, e o
+    `model.generate` não aceita um `torch.Generator` por chamada (conferido
+    no transformers 4.57). Uma geração com seed só reproduz enquanto nenhuma
+    outra geração com amostragem roda ao mesmo tempo no mesmo processo.
 
 ### Saída estruturada (JSON validado)
 

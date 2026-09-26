@@ -427,8 +427,10 @@ def make_genai_router(
 
             Args:
                 probe (bool): Include the host memory snapshot. Pass
-                    ``false`` to skip reading NVML — the only part of this
-                    endpoint that costs anything.
+                    ``false`` to skip the host probe — NVML when
+                    ``pynvml`` is installed, a CUDA context through torch
+                    otherwise, and the only part of this endpoint that
+                    costs anything.
 
             The report is built in a worker thread: probing reads NVML and
             ``torch.cuda``, synchronous calls that would otherwise stall

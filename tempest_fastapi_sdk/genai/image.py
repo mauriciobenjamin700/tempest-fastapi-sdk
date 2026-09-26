@@ -26,10 +26,10 @@ from __future__ import annotations
 import asyncio
 import io
 import secrets
-import time
 from pathlib import Path
 from typing import Any
 
+from tempest_fastapi_sdk.genai._lifecycle import ModelLifecycle
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
 from tempest_fastapi_sdk.genai.schemas import (
@@ -251,7 +251,11 @@ class ImageGenerator:
         self._pipeline: Any = None
         self._edit_pipeline: Any = None
         self._semaphore = asyncio.Semaphore(max_concurrent)
-        self._last_used: float = time.monotonic()
+        self._lifecycle = ModelLifecycle(
+            build=self._build,
+            release=self._release,
+            is_loaded=lambda: self._pipeline is not None,
+        )
 
     @property
     def is_loaded(self) -> bool:
@@ -265,19 +269,23 @@ class ImageGenerator:
 
     @property
     def seconds_idle(self) -> float:
-        """Return seconds since the last render (or load).
+        """Return seconds since the pipeline was last in use.
+
+        A render in flight counts as use for its whole duration, so this
+        reads ``0.0`` while one runs.
 
         Returns:
             float: Idle time in seconds.
         """
-        return time.monotonic() - self._last_used
+        return self._lifecycle.seconds_idle()
 
     @property
     def pipeline(self) -> Any:
         """Return the underlying diffusers pipeline (escape hatch).
 
         Use it to swap the scheduler, attach a LoRA or enable a memory
-        optimization the SDK does not wrap. Loads on first access.
+        optimization the SDK does not wrap. Loads on first access, which
+        blocks for the whole download and build.
 
         Returns:
             Any: The loaded ``AutoPipelineForText2Image``.
@@ -285,42 +293,48 @@ class ImageGenerator:
         self.load()
         return self._pipeline
 
-    def _touch(self) -> None:
-        """Mark the pipeline as just used (resets the idle clock)."""
-        self._last_used = time.monotonic()
-
-    def load(self) -> None:  # pragma: no cover - needs torch + a real model
+    def load(self) -> None:
         """Download (if needed) and load the diffusion pipeline.
 
         Idempotent — a no-op once loaded. Called automatically by
-        :meth:`generate` / :meth:`edit`.
+        :meth:`generate` / :meth:`edit`, on their worker thread. Safe to
+        call from several threads at once: concurrent callers on a cold
+        instance wait for one build.
 
         Raises:
             ImportError: When the ``[genai-image]`` extra is missing.
         """
-        if self.is_loaded:
-            return
+        self._lifecycle.load()
+
+    def _build(self) -> None:  # pragma: no cover - needs torch + a real model
+        """Build the pipeline; called once, under the load lock.
+
+        Raises:
+            ImportError: When the ``[genai-image]`` extra is missing.
+        """
         torch, diffusers = _require_diffusers()
         kwargs: dict[str, Any] = {
             "torch_dtype": getattr(torch, self.dtype.value),
             **self.source.loader_kwargs(),
             **self.pipeline_kwargs,
         }
-        self._pipeline = diffusers.AutoPipelineForText2Image.from_pretrained(
+        pipeline = diffusers.AutoPipelineForText2Image.from_pretrained(
             self.model_id,
             **kwargs,
         )
-        self._pipeline = self._pipeline.to(self.device)
-        self._touch()
+        self._pipeline = pipeline.to(self.device)
 
     def unload(self) -> None:
         """Free the pipeline and its memory (VRAM/RAM).
 
         Safe to call when not loaded. After this, the next render reloads
-        the weights.
+        the weights. While renders are in flight the release waits for
+        them: the last one to finish drops the pipeline.
         """
-        if self._pipeline is None:
-            return
+        self._lifecycle.unload()
+
+    def _release(self) -> None:
+        """Drop both pipelines and return cached CUDA memory."""
         self._pipeline = None
         self._edit_pipeline = None
         try:  # pragma: no cover - only meaningful with torch + CUDA
@@ -339,12 +353,7 @@ class ImageGenerator:
             when it was already free, still in use, or no
             ``idle_unload_seconds`` was configured.
         """
-        if self.idle_unload_seconds is None or not self.is_loaded:
-            return False
-        if self.seconds_idle < self.idle_unload_seconds:
-            return False
-        self.unload()
-        return True
+        return self._lifecycle.unload_if_idle(self.idle_unload_seconds)
 
     def _resolve_seed(self, config: ImageGenerationConfig | None) -> int:
         """Return the seed to render with, drawing one when unset.
@@ -364,54 +373,72 @@ class ImageGenerator:
 
     def _run_sync(
         self,
-        pipeline: Any,
         kwargs: dict[str, Any],
         seed: int,
+        *,
+        edit_source: Any = None,
     ) -> list[GeneratedImage]:
-        """Run a loaded pipeline and encode its output.
+        """Load if needed, run a pipeline and encode its output.
+
+        Everything blocking — the first-call load, building the
+        image-to-image pipeline, decoding the input image and the render
+        itself — happens here, on the worker thread, inside the
+        lifecycle's ``use()`` block so an unload cannot free the pipeline
+        mid-render.
 
         Args:
-            pipeline (Any): The diffusers pipeline to call.
             kwargs (dict[str, Any]): Pipeline keywords, already merged.
             seed (int): The seed to bind to the torch generator.
+            edit_source (Any): The starting image for an edit; ``None``
+                renders from text.
 
         Returns:
             list[GeneratedImage]: One entry per rendered image.
         """
-        torch, _ = _require_diffusers()
-        generator = torch.Generator(device=self.device).manual_seed(seed)
-        result = pipeline(generator=generator, **kwargs)
-        return [
-            GeneratedImage(
-                data=_encode(image, self.image_format),
-                image_format=self.image_format,
-                seed=seed,
-                width=image.width,
-                height=image.height,
-            )
-            for image in result.images
-        ]
+        with self._lifecycle.use():
+            torch, _ = _require_diffusers()
+            if edit_source is None:
+                pipeline = self._pipeline
+            else:
+                pipeline = self._load_edit_pipeline()
+                kwargs = {**kwargs, "image": _load_image(edit_source).convert("RGB")}
+            generator = torch.Generator(device=self.device).manual_seed(seed)
+            result = pipeline(generator=generator, **kwargs)
+            return [
+                GeneratedImage(
+                    data=_encode(image, self.image_format),
+                    image_format=self.image_format,
+                    seed=seed,
+                    width=image.width,
+                    height=image.height,
+                )
+                for image in result.images
+            ]
 
     async def _render(
         self,
-        pipeline: Any,
         kwargs: dict[str, Any],
         seed: int,
+        *,
+        edit_source: Any = None,
     ) -> list[GeneratedImage]:
         """Run the blocking pipeline off the event loop, one at a time.
 
         Args:
-            pipeline (Any): The diffusers pipeline to call.
             kwargs (dict[str, Any]): Pipeline keywords, already merged.
             seed (int): The seed for this render.
+            edit_source (Any): The starting image for an edit, or ``None``.
 
         Returns:
             list[GeneratedImage]: The encoded results.
         """
         async with self._semaphore:
-            images = await asyncio.to_thread(self._run_sync, pipeline, kwargs, seed)
-        self._touch()
-        return images
+            return await asyncio.to_thread(
+                self._run_sync,
+                kwargs,
+                seed,
+                edit_source=edit_source,
+            )
 
     async def generate(
         self,
@@ -421,8 +448,9 @@ class ImageGenerator:
     ) -> list[GeneratedImage]:
         """Render one or more images from a text prompt.
 
-        Runs the blocking pipeline in a worker thread, capped by the
-        concurrency semaphore, so it never blocks the event loop.
+        Runs the blocking pipeline — including the first-call load — in a
+        worker thread, capped by the concurrency semaphore, so it never
+        blocks the event loop.
 
         Example:
 
@@ -444,34 +472,34 @@ class ImageGenerator:
         Raises:
             ImportError: When the ``[genai-image]`` extra is missing.
         """
-        self.load()
         seed = self._resolve_seed(config)
         kwargs: dict[str, Any] = {"prompt": prompt}
         if config is not None:
             kwargs.update(config.to_pipeline_kwargs())
         async with genai_span("image", self.model_id):
             if self.metrics is None:
-                return await self._render(self._pipeline, kwargs, seed)
+                return await self._render(kwargs, seed)
             async with self.metrics.track(self.model_id, "image"):
-                return await self._render(self._pipeline, kwargs, seed)
+                return await self._render(kwargs, seed)
 
     def _load_edit_pipeline(self) -> Any:  # pragma: no cover - needs a model
         """Build the image-to-image pipeline over the loaded components.
 
         ``from_pipe`` shares the already-loaded UNet, VAE and text encoders
         rather than reading a second copy off disk, so enabling edits costs
-        no additional VRAM.
+        no additional VRAM. Built under the load lock, so two concurrent
+        first edits build it once.
 
         Returns:
             Any: The ``AutoPipelineForImage2Image``.
         """
-        if self._edit_pipeline is not None:
+        with self._lifecycle.load_lock:
+            if self._edit_pipeline is None:
+                _, diffusers = _require_diffusers()
+                self._edit_pipeline = diffusers.AutoPipelineForImage2Image.from_pipe(
+                    self._pipeline,
+                )
             return self._edit_pipeline
-        _, diffusers = _require_diffusers()
-        self._edit_pipeline = diffusers.AutoPipelineForImage2Image.from_pipe(
-            self._pipeline,
-        )
-        return self._edit_pipeline
 
     async def edit(
         self,
@@ -482,6 +510,10 @@ class ImageGenerator:
         config: ImageGenerationConfig | None = None,
     ) -> list[GeneratedImage]:
         """Redraw an existing image under a new prompt (image-to-image).
+
+        The load, the image-to-image pipeline build and the decoding of
+        ``image`` all run on the worker thread with the render, so none of
+        them blocks the event loop.
 
         Example:
 
@@ -512,21 +544,15 @@ class ImageGenerator:
         """
         if not 0.0 <= strength <= 1.0:
             raise ValueError("strength must be between 0.0 and 1.0")
-        self.load()
-        pipeline = self._load_edit_pipeline()
         seed = self._resolve_seed(config)
-        kwargs: dict[str, Any] = {
-            "prompt": prompt,
-            "image": _load_image(image).convert("RGB"),
-            "strength": strength,
-        }
+        kwargs: dict[str, Any] = {"prompt": prompt, "strength": strength}
         if config is not None:
             kwargs.update(config.to_pipeline_kwargs())
         async with genai_span("image_edit", self.model_id):
             if self.metrics is None:
-                return await self._render(pipeline, kwargs, seed)
+                return await self._render(kwargs, seed, edit_source=image)
             async with self.metrics.track(self.model_id, "image_edit"):
-                return await self._render(pipeline, kwargs, seed)
+                return await self._render(kwargs, seed, edit_source=image)
 
 
 __all__: list[str] = ["ImageGenerator"]

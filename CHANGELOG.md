@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+O ciclo de vida dos loaders self-hosted de `genai` tinha dois defeitos
+repetidos em todas as classes, e o `stream()` do `TextGenerator` travava o
+event loop. Três primeiras chamadas simultâneas a `TextGenerator.generate`
+rodavam o `from_pretrained` três vezes (e às vezes falhavam com
+`NotImplementedError: Cannot copy out of meta tensor`); o relógio de
+ociosidade só andava no fim da chamada, então `unload_if_idle` soltava os
+pesos no meio de uma geração longa, que morria em `'NoneType' object has no
+attribute 'decode'`.
+
+### Fixed
+
+- **Um build por cold start, e nada de unload no meio de uma chamada.**
+  `TextGenerator`, `Embedder`, `ImageGenerator`, `VisionTextGenerator`,
+  `Reranker`, `ClassifierModerator`, `OnnxEmbedder`, `SpeechToText`,
+  `TextToSpeech` e `SpeakerDiarizer` passam por um helper privado comum
+  (`genai/_lifecycle.py`): lock de load (primeiras chamadas concorrentes
+  esperam um build só) e contador de chamadas em andamento. Durante uma
+  chamada `seconds_idle` lê `0.0` e `unload_if_idle()` devolve `False`; um
+  `unload()` explícito — inclusive o de uma evicção do `ModelRegistry` —
+  espera a última chamada terminar. O `assert engine is not None` do
+  `SpeakerDiarizer` virou `RuntimeError`, e as passadas do modo `"auto"`
+  rodam num bloco só, sem janela para o engine sumir entre elas.
+- **`TextGenerator.stream()` não trava mais o event loop.** Load, tokenização
+  e espera entre tokens rodam numa worker thread, e os pedaços chegam ao
+  loop por `call_soon_threadsafe`. Fechar o iterador (`aclose()`, `break`,
+  cliente que desconectou) seta um stop event checado a cada token e volta
+  sem esperar a thread. Medido com `Qwen/Qwen2.5-0.5B-Instruct` numa RTX 4070
+  Ti SUPER: o primeiro stream travava o loop 4190 ms, agora de 164 a 193 ms
+  (três execuções); fechar depois de 5 de 200 tokens bloqueava 3532 ms, agora
+  ~0,01 ms, com a thread encerrada 28 ms depois.
+- **`ImageGenerator.generate`/`edit` carregam fora do loop.** O `load()`, o
+  build do pipeline image-to-image e a decodificação/conversão da imagem de
+  entrada do `edit` rodavam na thread do loop; agora rodam na worker thread,
+  junto do render.
+- **`probe_hardware` não cria mais contexto CUDA quando há NVML.** Nome e
+  memória de cada GPU vêm do `pynvml` (extra `[metrics]`); o fallback
+  `torch.cuda.mem_get_info` inicializa CUDA no processo — medido em +209 MiB
+  de VRAM numa RTX 4070 Ti SUPER. O NVML só é usado quando não pode
+  discordar dos índices do CUDA (sem `CUDA_VISIBLE_DEVICES` e mesma contagem).
+  As docstrings de `runtime_report` e da rota `/models`, que diziam "lê NVML"
+  sem ressalva, agora nomeiam o fallback.
+- **`TextToSpeech` não vaza mais `.wav` temporário** quando a síntese falha:
+  o arquivo do `mkstemp` é removido num `finally`.
+- **`OnnxEmbedder` usa o pad id do próprio tokenizer.** O `enable_padding()`
+  sem argumentos padroniza com id 0, que no RoBERTa/XLM-R é `<s>`; agora o
+  padding exportado no `tokenizer.json` é mantido (com comprimento dinâmico)
+  ou o `<pad>`/`[PAD]` é lido do vocabulário. A saída do grafo é escolhida
+  pelo nome (`sentence_embedding`/`pooler_output` já pooled, depois
+  `last_hidden_state`) em vez de `outputs[0]`, e uma saída 2-D é usada como
+  veio.
+
+### Added
+
+- **`OnnxEmbedder(pooling="mean" | "cls")`** — `"cls"` para modelos da
+  família BGE, treinados no token `[CLS]`. Default `"mean"`, o comportamento
+  anterior.
+- **`OnnxEmbedder(idle_unload_seconds=)`** + `seconds_idle` /
+  `unload_if_idle()`, que o `SHIPPED.md` já prometia: o
+  `ModelRegistry.unload_idle()` agora libera a sessão ONNX também.
+- **`TextToSpeech(idle_unload_seconds=)`** + `seconds_idle` /
+  `unload_if_idle()`, no mesmo contrato dos outros loaders.
+
+### Changed
+
+- **A `seed` do `TextGenerator` é documentada como global ao processo.**
+  `transformers.set_seed` resemeia os RNGs do processo e o `model.generate`
+  não aceita `torch.Generator` por chamada (conferido no transformers
+  4.57), então uma geração com seed só reproduz sem outra geração com
+  amostragem concorrente. Sem mudança de comportamento; o aviso está na
+  receita e na docstring.
+- A docstring do `ModelRegistry` diz o limite que sobra: um handle guardado
+  depois da evicção recarrega fora do `max_models` — chame `get()` por
+  request em vez de segurar o objeto.
 Auditoria dos backends de genai e do stream do `HTTPClient`: um timeout no
 meio do stream reenviava o POST e repetia o texto já entregue, o Ollama
 devolvia `""` para um corpo de erro, o cliente OpenAI mandava campos que o
