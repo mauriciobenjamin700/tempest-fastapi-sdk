@@ -451,6 +451,23 @@ cada `index`) — bom até dezenas de milhares de chunks. Tem também
 `HybridRetriever` satisfaz `SupportsRetrieve` e entra no
 `make_genai_router(retriever=...)` no lugar do `Retriever`.
 
+!!! info "Cada `index` substitui as fontes que ele cita"
+    Um chunk é identificado por `(source, index, text)` — não só por
+    `(source, index)`, que o `chunk_text` repete a cada chamada (ele
+    recomeça o `index` em 0). E cada `index(chunks)` **substitui** tudo que
+    já estava indexado para as `source`s do lote: reindexar um documento
+    editado não deixa a versão antiga, nem uma cauda dela, respondendo
+    busca. Por isso, passe **todos** os chunks de uma fonte na mesma
+    chamada. `InMemoryVectorStore`, `PgVectorStore` e `ChromaVectorStore`
+    aplicam a mesma troca do lado denso; um `VectorStore` seu que só
+    acrescenta continua devolvendo as linhas antigas, e o `HybridRetriever`
+    as descarta antes da fusão (elas só gastam vagas de `candidates`).
+
+    Do lado esparso, só entram na fusão os chunks que compartilham ao menos
+    um termo com a query. Sem sobreposição o BM25 dá 0 para todos, e uma
+    lista de zeros "ordenada por score" é só a ordem de inserção — somada
+    no RRF, invertia o ranking denso.
+
 ### Reranking (cross-encoder)
 
 A busca densa (embed da query, embed dos chunks, cosseno) é rápida mas
@@ -579,19 +596,34 @@ asyncio.run(main())
 (cosseno cru) e `score` (o valor final, já com recência). `delete_for_chat`
 apaga tudo de um chat quando ele é removido.
 
+O Chroma é consultado pelos `top_k * candidate_multiplier` vizinhos mais
+próximos (padrão `4`), e o re-rank por recência escolhe os `top_k` entre
+eles — assim uma mensagem recente logo abaixo do top-K cru ainda pode subir.
+Com `candidate_multiplier=1`, só o top-K cru é reordenado. A cota por
+usuário (`max_entries_per_user`) despeja primeiro o **instante UTC** mais
+antigo: o `created_at` é gravado convertido para UTC, junto de um
+`created_at_ts` em segundos epoch, e linhas antigas sem esse campo são
+ordenadas lendo o ISO. Ordenar as strings ISO punha `10:00+05:00` depois
+de `08:00+00:00`, embora seja três horas antes.
+
 !!! info "Extra `[genai-chroma]` e o decaimento de recência"
     Instale com `uv add "tempest-fastapi-sdk[genai-chroma]"`. O `score`
     final combina similaridade e recência via
-    `0.5 ** (idade_em_dias / recency_halflife_days)` — com o padrão de 14
-    dias, um trecho de 14 dias atrás pesa metade de um recém-escrito.
-    Ajuste a mistura com `recency_weight` (0 = só similaridade).
+    `(1 - recency_weight) * sim + recency_weight * sim * decay`, com
+    `decay = 0.5 ** (idade_em_dias / recency_halflife_days)`. Com os padrões
+    (14 dias, `recency_weight=0.5`), um trecho de 14 dias atrás tem
+    `decay = 0.5` e fica com `score` 0,75 da similaridade, contra 1,0 de um
+    recém-escrito de mesma similaridade. `recency_weight=0` = só
+    similaridade.
 
 !!! tip "RAG genérico com o `ChromaVectorStore`"
     Precisa só de um vector store persistente (sem a lógica de memória por
     usuário)? `ChromaVectorStore` é um `VectorStore` como os outros —
     `add(chunks, vectors)` / `search(vector, top_k=)` — respaldado por
-    ChromaDB. Injete no `Retriever` no lugar do `InMemoryVectorStore` /
-    `PgVectorStore` pra ter um corpus persistido em disco:
+    ChromaDB, com a mesma regra de reindexação dos outros stores (o `add`
+    substitui as `source`s do lote). Injete no `Retriever` no lugar do
+    `InMemoryVectorStore` / `PgVectorStore` pra ter um corpus persistido em
+    disco:
 
     ```python
     from tempest_fastapi_sdk.genai import OllamaEmbedder
@@ -1379,8 +1411,14 @@ asyncio.run(main())
 - **`VectorStore`** é um `Protocol` — `InMemoryVectorStore` (dev/testes,
   scan por cosseno) ou `PgVectorStore` (produção).
 - **`PgVectorStore`** usa **pgvector** no Postgres que o serviço já tem
-  (sem infra nova): cria a tabela sob demanda, busca com o operador de
-  distância cosseno `<=>`. Requer `[genai-rag]` + `CREATE EXTENSION vector`.
+  (sem infra nova): cria a tabela e um índice B-tree em `source` sob
+  demanda, busca com o operador de distância cosseno `<=>`. Requer
+  `[genai-rag]` + `CREATE EXTENSION vector`.
+- **Todo store do SDK substitui por fonte**: `add` apaga o que a `source`
+  de cada chunk do lote já tinha e grava o lote (no `PgVectorStore`, numa
+  transação: um `DELETE` + um `INSERT` em lote). Reindexar um documento
+  editado não deixa cauda antiga; passe todos os chunks de uma fonte na
+  mesma chamada.
 
 ```python
 from tempest_fastapi_sdk.genai import Embedder, EmbeddingModel
@@ -1394,6 +1432,13 @@ embedder = Embedder(EmbeddingModel.ALL_MINILM_L6_V2)
 store = PgVectorStore(db, dim=384)          # db = AsyncDatabaseManager
 rag = Retriever(embedder, store)
 ```
+
+O nome da tabela é interpolado no SQL (identificador não vira parâmetro),
+então o construtor recusa com `ValueError` qualquer coisa fora de
+`nome` ou `schema.nome` sem aspas (`[A-Za-z_][A-Za-z0-9_]*`, até 63
+caracteres cada), e um `dim` que não seja inteiro positivo. A busca é exata
+(varredura sequencial): nenhum índice aproximado (HNSW/IVFFlat) é criado, então
+adicione um quando o corpus crescer.
 
 `rag.search(query, top_k=)` devolve os `Chunk` com `score` (similaridade);
 `rag.retrieve(...)` já monta o contexto. Precisa de Qdrant/Weaviate depois?
@@ -2245,6 +2290,15 @@ ensure_models()  # honra TEMPEST_VOICE_MODEL_DIR
 
 Deixar para a primeira requisição faz um usuário pagar o download dentro
 do timeout dele.
+
+Os dois modelos têm o SHA-256 fixado no SDK (`SEGMENTATION_MODEL.sha256`,
+`EMBEDDING_MODEL.sha256`), e o `ensure_models` confere o arquivo toda vez
+que o resolve — download novo ou cache —, levantando `OSError` se não bater.
+Um modelo trocado no release upstream, ou um cache corrompido, falha alto
+em vez de mudar o comportamento do serviço sem nada no diff. O download
+usa timeout de socket de 60 s: uma conexão que fica muda esse tempo levanta
+em vez de travar o primeiro `load()` para sempre (um download lento, mas
+andando, termina normalmente).
 
 ### Quantos falantes? Ele descobre sozinho
 

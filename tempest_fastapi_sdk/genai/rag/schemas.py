@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+from collections.abc import Sequence
+
 from pydantic import Field
 
 from tempest_fastapi_sdk.schemas.base import BaseSchema
@@ -73,6 +76,51 @@ class Document(BaseSchema):
     text: str
     pages: list[PdfPage] = Field(default_factory=list)
     metadata: dict[str, str] = Field(default_factory=dict)
+
+
+def _chunk_identity(chunk: Chunk) -> str:
+    """Return the identity every SDK store and retriever keys a chunk by.
+
+    ``source#index`` was not unique: :func:`chunk_text` restarts ``index`` at
+    0 on every call, so two batches from one source (or two pages chunked
+    separately) produced the same key and silently overwrote each other. The
+    identity therefore folds the text in as well — two chunks share it only
+    when they are the same slice of the same source, which is exactly when
+    deduplicating them is correct.
+
+    Args:
+        chunk (Chunk): The chunk to identify.
+
+    Returns:
+        str: A 64-character SHA-256 hex digest of ``(source, index, text)``.
+    """
+    payload = f"{chunk.source}\x1f{chunk.index}\x1f{chunk.text}".encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _unique_batch(
+    chunks: Sequence[Chunk],
+    vectors: Sequence[list[float]],
+) -> list[tuple[Chunk, list[float]]]:
+    """Pair chunks with vectors, keeping the first of identical chunks.
+
+    Args:
+        chunks (Sequence[Chunk]): The batch.
+        vectors (Sequence[list[float]]): One vector per chunk, aligned.
+
+    Returns:
+        list[tuple[Chunk, list[float]]]: The pairs, deduplicated by
+        ``(source, index, text)`` in first-seen order.
+
+    Raises:
+        ValueError: When the counts differ.
+    """
+    if len(chunks) != len(vectors):
+        raise ValueError("chunks and vectors must have the same length")
+    pairs: dict[str, tuple[Chunk, list[float]]] = {}
+    for chunk, vector in zip(chunks, vectors, strict=True):
+        pairs.setdefault(_chunk_identity(chunk), (chunk, list(vector)))
+    return list(pairs.values())
 
 
 __all__: list[str] = [

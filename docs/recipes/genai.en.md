@@ -452,6 +452,23 @@ fuse arbitrary rankings. The BM25 index is in-memory (rebuilt on each `index`)
 satisfies `SupportsRetrieve` and drops into `make_genai_router(retriever=...)`
 in place of a `Retriever`.
 
+!!! info "Each `index` replaces the sources it names"
+    A chunk is identified by `(source, index, text)` — not by
+    `(source, index)` alone, which `chunk_text` repeats on every call (it
+    restarts `index` at 0). And each `index(chunks)` **replaces** whatever
+    was already indexed for the batch's `source`s: re-indexing an edited
+    document leaves neither the old version nor a tail of it answering
+    searches. So pass **every** chunk of a source in the same call.
+    `InMemoryVectorStore`, `PgVectorStore` and `ChromaVectorStore` apply the
+    same replacement on the dense side; a `VectorStore` of your own that
+    only appends keeps returning the old rows, and `HybridRetriever` drops
+    them before fusion (they only cost `candidates` slots).
+
+    On the sparse side, only chunks sharing at least one term with the query
+    enter the fusion. With no overlap BM25 scores every chunk 0, and a list
+    of zeros "sorted by score" is just insertion order — added into RRF, it
+    inverted the dense ranking.
+
 ### Reranking (cross-encoder)
 
 Dense search (embed the query, embed the chunks, cosine) is fast but coarse:
@@ -581,19 +598,33 @@ carries `content`, `role`, `chat_id`, `created_at`, `similarity` (raw
 cosine) and `score` (the final value, recency included). `delete_for_chat`
 wipes everything for a chat when it's removed.
 
+Chroma is asked for the `top_k * candidate_multiplier` nearest neighbours
+(default `4`), and the recency re-rank picks `top_k` of them — so a recent
+message ranked just below the raw top-K can still rise. With
+`candidate_multiplier=1` only the raw top-K is reordered. The per-user
+quota (`max_entries_per_user`) evicts the oldest **UTC instant** first:
+`created_at` is stored converted to UTC, alongside a `created_at_ts` in
+epoch seconds, and older rows without that field are ordered by parsing
+the ISO string. Sorting the ISO strings put `10:00+05:00` after
+`08:00+00:00`, although it is three hours earlier.
+
 !!! info "The `[genai-chroma]` extra and the recency decay"
     Install with `uv add "tempest-fastapi-sdk[genai-chroma]"`. The final
     `score` combines similarity and recency via
-    `0.5 ** (age_in_days / recency_halflife_days)` — with the 14-day
-    default, a 14-day-old snippet weighs half of a freshly written one.
-    Tune the blend with `recency_weight` (0 = similarity only).
+    `(1 - recency_weight) * sim + recency_weight * sim * decay`, with
+    `decay = 0.5 ** (age_in_days / recency_halflife_days)`. With the
+    defaults (14 days, `recency_weight=0.5`), a 14-day-old snippet has
+    `decay = 0.5` and scores 0.75 of its similarity, against 1.0 for a
+    freshly written one of equal similarity. `recency_weight=0` = similarity
+    only.
 
 !!! tip "Generic RAG with `ChromaVectorStore`"
     Just need a persistent vector store (without the per-user memory
     logic)? `ChromaVectorStore` is a `VectorStore` like the others —
-    `add(chunks, vectors)` / `search(vector, top_k=)` — backed by ChromaDB.
-    Drop it into `Retriever` in place of `InMemoryVectorStore` /
-    `PgVectorStore` to get a disk-persisted corpus:
+    `add(chunks, vectors)` / `search(vector, top_k=)` — backed by ChromaDB,
+    with the same re-index rule as the other stores (`add` replaces the
+    batch's `source`s). Drop it into `Retriever` in place of
+    `InMemoryVectorStore` / `PgVectorStore` to get a disk-persisted corpus:
 
     ```python
     from tempest_fastapi_sdk.genai import OllamaEmbedder
@@ -1379,8 +1410,14 @@ asyncio.run(main())
 - **`VectorStore`** is a `Protocol` — `InMemoryVectorStore` (dev/tests,
   cosine scan) or `PgVectorStore` (production).
 - **`PgVectorStore`** uses **pgvector** in the Postgres the service already
-  has (no new infra): creates the table on demand, searches with the cosine
-  distance operator `<=>`. Needs `[genai-rag]` + `CREATE EXTENSION vector`.
+  has (no new infra): creates the table and a B-tree index on `source` on
+  demand, searches with the cosine distance operator `<=>`. Needs
+  `[genai-rag]` + `CREATE EXTENSION vector`.
+- **Every SDK store replaces per source**: `add` deletes what each batch
+  chunk's `source` already held and writes the batch (in `PgVectorStore`,
+  in one transaction: one `DELETE` + one batched `INSERT`). Re-indexing an
+  edited document leaves no old tail; pass every chunk of a source in the
+  same call.
 
 ```python
 from tempest_fastapi_sdk.genai import Embedder, EmbeddingModel
@@ -1394,6 +1431,13 @@ embedder = Embedder(EmbeddingModel.ALL_MINILM_L6_V2)
 store = PgVectorStore(db, dim=384)          # db = AsyncDatabaseManager
 rag = Retriever(embedder, store)
 ```
+
+The table name is interpolated into the SQL (an identifier cannot be a bound
+parameter), so the constructor refuses with `ValueError` anything outside an
+unquoted `name` or `schema.name` (`[A-Za-z_][A-Za-z0-9_]*`, up to 63
+characters each), and a `dim` that is not a positive integer. Search is exact
+(a sequential scan): no approximate index (HNSW/IVFFlat) is created, so add one
+once the corpus grows.
 
 `rag.search(query, top_k=)` returns the `Chunk`s with a `score` (similarity);
 `rag.retrieve(...)` builds the context for you. Need Qdrant/Weaviate later?
@@ -2246,6 +2290,15 @@ ensure_models()  # honors TEMPEST_VOICE_MODEL_DIR
 
 Leaving it to the first request makes one user pay the download inside
 their timeout.
+
+Both models have their SHA-256 pinned in the SDK (`SEGMENTATION_MODEL.sha256`,
+`EMBEDDING_MODEL.sha256`), and `ensure_models` checks the file every time it
+resolves it — fresh download or cache hit —, raising `OSError` on a mismatch.
+A model swapped in the upstream release, or a corrupted cache, fails loudly
+instead of changing the service's behavior with nothing in the diff. The
+download uses a 60 s socket timeout: a connection that goes silent that long
+raises instead of hanging the first `load()` forever (a slow but moving
+download still completes).
 
 ### How many speakers? It works it out
 

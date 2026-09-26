@@ -66,6 +66,8 @@ def _match(meta: dict[str, Any], where: dict[str, Any] | None) -> bool:
         if isinstance(cond, dict):
             if "$ne" in cond and value == cond["$ne"]:
                 return False
+            if "$in" in cond and value not in cond["$in"]:
+                return False
         elif value != cond:
             return False
     return True

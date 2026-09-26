@@ -389,11 +389,77 @@ def resolve_revision(
     return str(sha) if sha else None
 
 
+def _sized_files(
+    hub: Any,
+    model_id: str,
+    *,
+    revision: str | None,
+    token: str | None,
+    allow_patterns: list[str] | None,
+    ignore_patterns: list[str] | None,
+) -> list[tuple[str | None, int]] | None:
+    """List the repository files a download would fetch, with their sizes.
+
+    The patterns are applied by ``huggingface_hub.utils.filter_repo_objects``
+    — the function ``snapshot_download`` itself filters with — so the
+    estimate selects exactly the files the download will. A file whose
+    name the Hub does not report cannot be matched and is kept, which errs
+    toward over-estimating.
+
+    Args:
+        hub (Any): The ``huggingface_hub`` module.
+        model_id (str): The Hub model id.
+        revision (str | None): Branch, tag or sha.
+        token (str | None): Token for gated or private repositories.
+        allow_patterns (list[str] | None): Only count files matching these.
+        ignore_patterns (list[str] | None): Skip files matching these.
+
+    Returns:
+        list[tuple[str | None, int]] | None: ``(filename, size)`` per file
+        with a known size, or ``None`` when the Hub is unreachable or
+        reports no per-file sizes.
+    """
+    try:
+        info = hub.HfApi().model_info(
+            model_id,
+            revision=revision,
+            files_metadata=True,
+            token=token,
+        )
+    except Exception:
+        return None
+    siblings = getattr(info, "siblings", None) or []
+    files: list[tuple[str | None, int]] = [
+        (getattr(sibling, "rfilename", None), int(sibling.size))
+        for sibling in siblings
+        if getattr(sibling, "size", None)
+    ]
+    if not files:
+        return None
+    if allow_patterns is None and ignore_patterns is None:
+        return files
+    from huggingface_hub.utils import (  # type: ignore[attr-defined]
+        filter_repo_objects,
+    )
+
+    named = [entry for entry in files if entry[0] is not None]
+    kept = set(
+        filter_repo_objects(
+            [name for name, _ in named],
+            allow_patterns=allow_patterns,
+            ignore_patterns=ignore_patterns,
+        ),
+    )
+    return [entry for entry in files if entry[0] is None or entry[0] in kept]
+
+
 def model_disk_bytes(
     model_id: str,
     *,
     revision: str | None = None,
     token: str | None = None,
+    allow_patterns: list[str] | None = None,
+    ignore_patterns: list[str] | None = None,
 ) -> int | None:
     """Return how many bytes a repository would occupy, without fetching it.
 
@@ -406,30 +472,71 @@ def model_disk_bytes(
         revision (str | None): Branch, tag or sha; ``None`` for the Hub
             default.
         token (str | None): Token for gated or private repositories.
+        allow_patterns (list[str] | None): Count only files matching these
+            globs — the same filter :func:`download_model` forwards to
+            ``snapshot_download``.
+        ignore_patterns (list[str] | None): Leave out files matching these
+            globs.
 
     Returns:
-        int | None: Total size in bytes, or ``None`` when the Hub is
-        unreachable or reports no per-file sizes.
+        int | None: Total size in bytes of the selected files, or ``None``
+        when the Hub is unreachable or reports no per-file sizes.
 
     Raises:
         ImportError: When ``huggingface_hub`` is not installed.
     """
     hub = _require_hub()
-    try:
-        info = hub.HfApi().model_info(
-            model_id,
-            revision=revision,
-            files_metadata=True,
-            token=token,
-        )
-    except Exception:
+    files = _sized_files(
+        hub,
+        model_id,
+        revision=revision,
+        token=token,
+        allow_patterns=allow_patterns,
+        ignore_patterns=ignore_patterns,
+    )
+    if files is None:
         return None
-    siblings = getattr(info, "siblings", None) or []
-    sizes = [getattr(sibling, "size", None) for sibling in siblings]
-    known = [int(size) for size in sizes if size]
-    if not known:
-        return None
-    return sum(known)
+    return sum(size for _, size in files)
+
+
+def _missing_bytes(
+    hub: Any,
+    model_id: str,
+    files: list[tuple[str | None, int]],
+    *,
+    revision: str | None,
+    cache_dir: str | None,
+) -> int:
+    """Sum the sizes of the files the local cache does not hold yet.
+
+    A file counts as held when ``huggingface_hub.try_to_load_from_cache``
+    resolves it for ``revision`` — a file already in that snapshot costs
+    the download nothing. A blob cached under another revision is still
+    counted, so the result can over-estimate, never under-estimate.
+
+    Args:
+        hub (Any): The ``huggingface_hub`` module.
+        model_id (str): The Hub model id.
+        files (list[tuple[str | None, int]]): ``(filename, size)`` pairs.
+        revision (str | None): Branch, tag or sha (``None`` = ``main``).
+        cache_dir (str | None): The cache to look in.
+
+    Returns:
+        int: Bytes still to be downloaded.
+    """
+    missing = 0
+    for name, size in files:
+        if name is not None:
+            cached = hub.try_to_load_from_cache(
+                model_id,
+                name,
+                cache_dir=cache_dir,
+                revision=revision,
+            )
+            if isinstance(cached, str):
+                continue
+        missing += size
+    return missing
 
 
 def _cache_root(cache_dir: str | None) -> str:
@@ -478,7 +585,10 @@ def download_model(
 
     ``check_disk`` refuses to start a download the filesystem cannot
     hold. Failing in two seconds with a number beats failing forty
-    minutes later with a half-written cache.
+    minutes later with a half-written cache. The estimate counts only the
+    files ``allow_patterns`` / ``ignore_patterns`` select (filtered by the
+    same ``huggingface_hub`` function ``snapshot_download`` uses) and
+    leaves out the ones already in the cache for that revision.
 
     Example:
 
@@ -505,7 +615,8 @@ def download_model(
             that also ships ``.safetensors``.
         ignore_patterns (list[str] | None): Skip files matching these
             globs.
-        check_disk (bool): Verify free space before downloading.
+        check_disk (bool): Verify free space before downloading — the
+            bytes of the selected files that are not cached yet.
         disk_margin (float): Multiplier applied to the estimated size
             for the free-space check. The default 1.1 covers the
             temporary files the download writes next to the blobs.
@@ -528,8 +639,22 @@ def download_model(
         local_files_only=local_files_only,
     )
     if check_disk and not local_files_only:
-        needed = model_disk_bytes(model_id, revision=revision, token=token)
-        if needed is not None:
+        planned = _sized_files(
+            hub,
+            model_id,
+            revision=revision,
+            token=token,
+            allow_patterns=allow_patterns,
+            ignore_patterns=ignore_patterns,
+        )
+        if planned is not None:
+            needed = _missing_bytes(
+                hub,
+                model_id,
+                planned,
+                revision=revision,
+                cache_dir=cache_dir,
+            )
             required = int(needed * disk_margin)
             free = shutil.disk_usage(_cache_root(cache_dir)).free
             if free < required:
