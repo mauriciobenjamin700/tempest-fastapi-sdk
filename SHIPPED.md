@@ -1407,7 +1407,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   factories, `ChatService` (`start_conversation`/`post_message`/
   `list_messages`/`list_conversations`/`is_participant`), `make_chat_router`
   (participant guard) + real-time fan-out via an injected `SSEBroker`.
-  Submodule import.
+  Submodule import. **Access and limits (Unreleased):** every
+  message-id path (`react`/`unreact`/`forward`/`edit_message`/
+  `revoke_message`, and the reply quote) checks active membership of the
+  message's conversation plus `history_from`, answering with the same 404
+  as a missing message; revoke reports a storage key only when no other
+  attachment row references it; the `/stream` holds no DB session and
+  closes on `participant.removed` (`PARTICIPANT_REMOVED_EVENT`) or on the
+  `membership_recheck_seconds` re-read; history page bounded
+  (`max_page_size`, `MESSAGES_PAGE_SIZE_MAX`) and payload ceilings
+  (`MESSAGE_BODY_MAX_LENGTH`, `MESSAGE_ATTACHMENTS_MAX`,
+  `FORWARD_TARGETS_MAX`, `PARTICIPANT_IDS_MAX`). Deferred: uploader
+  tracking on attachments (an unclaimed attachment id is claimable by
+  anyone who holds it) — needs a column, so a consumer migration.
 - **Reviews (v0.105, `tempest_fastapi_sdk.reviews`, no extra)** —
   comments + 0–5 star ratings on any polymorphic `(target_type,
   target_id)`: `BaseCommentModel` (thread via `parent_id`) / `BaseRatingModel`

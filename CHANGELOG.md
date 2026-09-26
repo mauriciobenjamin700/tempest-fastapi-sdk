@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+O `chat` tratava o id de uma mensagem como capability: toda rota que
+recebe só `/messages/{id}` carregava a linha pelo id e seguia, sem olhar
+a conversa dela. O `/stream` segurava uma sessão de banco pela vida da
+conexão e continuava entregando depois que a pessoa saía, e o histórico
+aceitava `page_size=0`.
+
+### Security
+
+- **`react` / `unreact` exigem enxergar a mensagem.** Antes, qualquer
+  usuário autenticado que soubesse um id recebia `200` com a
+  `MessageResponseSchema` inteira (body, anexos, `storage_key`), e a
+  reação era gravada e publicada no SSE de uma conversa em que ele nunca
+  esteve. Agora o usuário precisa ser participante ativo da conversa da
+  mensagem, e a mensagem não pode ser anterior ao `history_from` dele.
+  Fora disso a resposta é o not-found do próprio repositório — mesma
+  classe, mesma mensagem, corpo HTTP idêntico ao de um id inexistente —,
+  para o id não virar oráculo de existência.
+- **`forward` confere a original.** O encaminhamento copiava body,
+  payload e as linhas de anexo de qualquer mensagem para uma conversa do
+  chamador; agora é leitura da original e segue a mesma regra.
+- **`edit_message` / `revoke_message` exigem participação ativa**, além de
+  ser o remetente: quem saiu da conversa não reescreve nem apaga mais o
+  que disse lá. Quem não enxerga a mensagem recebe `404`, não o `403`
+  "only the sender", que confirmava a existência.
+- **Responder citando mensagem anterior ao `history_from`** é `404`: o
+  stub da citação carregava o trecho do backlog que o recém-chegado não
+  recebeu.
+- **O `/stream` fecha quando a participação acaba.** `leave` e
+  `remove_participant` publicam `participant.removed`
+  (`PARTICIPANT_REMOVED_EVENT`, com o `ParticipantResponseSchema` de quem
+  saiu); o stream de quem ele nomeia entrega o evento e termina, e a
+  reconexão leva `403`. Saída feita fora do `ChatService` é pega pela
+  releitura da participação a cada `membership_recheck_seconds`
+  (`MEMBERSHIP_RECHECK_SECONDS`, `30.0`; `None` desliga), numa sessão
+  curta.
+
+### Fixed
+
+- **O `/stream` não segura mais sessão de banco.** O endpoint recebia o
+  serviço por `Depends`, e a sessão com `yield` ficava aberta — conexão
+  do pool emprestada, transação começada — enquanto o cliente estivesse
+  conectado: N abas ociosas esgotavam o pool. A checagem de participante
+  agora roda numa sessão própria, fechada antes do primeiro byte (medido
+  com um contador de sessões abertas: `1` antes, `0` depois, com o
+  stream aberto).
+- **`revoke_message` só devolve chave que ninguém mais referencia.**
+  Encaminhar aponta a cópia para a mesma `storage_key`, então revogar a
+  original mandava o chamador apagar o arquivo que a cópia ainda
+  renderizava. A chave sai agora na revogação que remove a última linha
+  de anexo que a cita (como `storage_key` ou `thumbnail_key`).
+- **Paginação do histórico.** `page_size=0` era `500`
+  (`ZeroDivisionError`), `page_size=-1` virava `LIMIT -1` — que o SQLite
+  lê como "sem limite": 25 de 25 mensagens numa página — e `page=0`
+  respondia `200`. O router exige `page >= 1` e
+  `1 <= page_size <= max_page_size` (`422` fora disso), e
+  `ChatService.list_messages` levanta `ValidationException` para os
+  mesmos valores.
+
+### Added
+
+- **`make_chat_router(max_page_size=..., membership_recheck_seconds=...)`**,
+  keyword-only, com defaults `MESSAGES_PAGE_SIZE_MAX` (`100`) e
+  `MEMBERSHIP_RECHECK_SECONDS` (`30.0`).
+- **Tetos nos schemas**, `422` quando passados: `body` de postar e editar
+  (`MESSAGE_BODY_MAX_LENGTH`, 65 536 caracteres), `attachment_ids`
+  (`MESSAGE_ATTACHMENTS_MAX`, 32), `ForwardSchema.conversation_ids`
+  (`FORWARD_TARGETS_MAX`, 20), `participant_ids` (`PARTICIPANT_IDS_MAX`,
+  256), e `title` / `description` no tamanho da coluna (255 / 512), que o
+  schema não conferia.
+
+### Changed
+
+- Quem não enxerga a mensagem recebe `404` em `PATCH`/`DELETE
+  /messages/{id}` onde antes recebia `403`; o remetente que ainda é
+  participante continua recebendo `403` para mensagem alheia.
+
+A linha de anexo continua sem registrar quem fez o upload: qualquer
+participante com o id de um anexo não reivindicado pode prendê-lo à
+própria mensagem. Corrigir exige coluna nova e migração no banco do
+consumidor, então fica para uma release que a anuncie.
 Seis defeitos de fronteira de confiança no GenAI. O `ContentExtractor`
 seguia redirect para qualquer lugar — um `302` para
 `http://169.254.169.254/latest/meta-data/` era buscado e o texto extraído
