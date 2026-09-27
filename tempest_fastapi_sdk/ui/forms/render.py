@@ -191,6 +191,51 @@ def _render_select(spec: FormSpec, field: FieldSpec) -> Widget:
     return Stack(tag="select", attrs=attrs, children=options)
 
 
+def _render_hidden(field: FieldSpec) -> Widget:
+    """Render a bare ``<input type="hidden">``.
+
+    Only ``type``, ``name`` and ``value`` are emitted (plus the field's
+    own ``attrs``): no id, no validation attributes, no ARIA wiring,
+    because nothing is shown and nothing points at it.
+
+    Args:
+        field (FieldSpec): The field to render.
+
+    Returns:
+        Widget: The hidden input element.
+    """
+    attrs = _merge(
+        {"type": "hidden", "name": field.name, "value": field.value},
+        dict(field.attrs),
+    )
+    return Text(content="", tag="input", attrs=attrs)
+
+
+def _render_file(spec: FormSpec, field: FieldSpec) -> Widget:
+    """Render an ``<input type="file">`` control.
+
+    The control never carries a ``value``: browsers refuse to pre-fill a
+    file input, so a re-rendered form shows it empty, with its messages,
+    and the reader picks the file again.
+
+    Args:
+        spec (FormSpec): The owning form.
+        field (FieldSpec): The field to render.
+
+    Returns:
+        Widget: The file input element.
+    """
+    attrs = _merge(
+        _control_attrs(spec, field),
+        {
+            "type": "file",
+            "accept": field.accept,
+            "multiple": "multiple" if field.multiple else "",
+        },
+    )
+    return Text(content="", tag="input", attrs=attrs)
+
+
 def _render_control(spec: FormSpec, field: FieldSpec) -> Widget:
     """Render the control matching a field's :attr:`FieldSpec.control`.
 
@@ -201,6 +246,8 @@ def _render_control(spec: FormSpec, field: FieldSpec) -> Widget:
     Returns:
         Widget: The rendered control.
     """
+    if field.control == "file":
+        return _render_file(spec, field)
     if field.control == "select":
         return _render_select(spec, field)
     if field.control == "textarea":
@@ -211,18 +258,25 @@ def _render_control(spec: FormSpec, field: FieldSpec) -> Widget:
 def render_field(spec: FormSpec, field: FieldSpec) -> Widget:
     """Render one field: label, control, hint and messages.
 
+    A ``hidden`` field is the exception: it renders as the bare
+    ``<input type="hidden">``, with no wrapper, label or hint. Its
+    messages have nowhere to show, so :func:`render_form` lists them with
+    the form-level errors instead.
+
     Args:
         spec (FormSpec): The owning form, read for class names and the
             id prefix.
         field (FieldSpec): The field to render.
 
     Returns:
-        Widget: The field wrapper.
+        Widget: The field wrapper, or the hidden input itself.
 
     Raises:
         ImportError: When the optional ``[ssr]`` extra is missing.
     """
     require_core()
+    if field.control == "hidden":
+        return _render_hidden(field)
     base = _field_id(spec, field)
     classes = spec.classes
     label_children: list[Widget] = [Text(content=field.label, tag="span")]
@@ -272,6 +326,11 @@ def render_field(spec: FormSpec, field: FieldSpec) -> Widget:
 def render_form(spec: FormSpec) -> Widget:
     """Render a whole form from its specification.
 
+    Messages of ``hidden`` fields join the form-level errors, prefixed
+    with the field label, because the field itself shows nothing. A form
+    holding a ``file`` field gets ``enctype="multipart/form-data"``
+    unless :attr:`FormSpec.attrs` sets an ``enctype`` of its own.
+
     Args:
         spec (FormSpec): The form description.
 
@@ -287,12 +346,19 @@ def render_form(spec: FormSpec) -> Widget:
     classes = spec.classes
     children: list[Widget] = []
 
-    if spec.errors:
+    messages = list(spec.errors)
+    messages.extend(
+        f"{field.label}: {message}"
+        for field in spec.fields
+        if field.control == "hidden"
+        for message in field.errors
+    )
+    if messages:
         children.append(
             Stack(
                 tag="div",
                 attrs={"class": classes.errors, "role": "alert"},
-                children=[Text(content=message, tag="p") for message in spec.errors],
+                children=[Text(content=message, tag="p") for message in messages],
             ),
         )
     children.extend(render_field(spec, field) for field in spec.fields)
@@ -316,6 +382,7 @@ def render_form(spec: FormSpec) -> Widget:
             "method": spec.method,
             "action": spec.action,
             "class": classes.form,
+            "enctype": "multipart/form-data" if spec.multipart else "",
         },
         dict(spec.attrs),
     )
@@ -337,6 +404,7 @@ def form_for(
     attrs: Mapping[str, str] | None = None,
     classes: FormClasses | None = None,
     id_prefix: str = "f",
+    describe: bool = True,
 ) -> Widget:
     """Generate and render a form for a Pydantic schema in one call.
 
@@ -361,6 +429,11 @@ def form_for(
             ``<form>`` element (``hx-post``, ``enctype``, …).
         classes (FormClasses | None): CSS class overrides.
         id_prefix (str): Prefix of the generated control ids.
+        describe (bool): Whether a field ``description`` becomes the
+            hint under its control when the ``ui`` block sets no
+            ``help_text``. The description is also the schema's OpenAPI
+            documentation; pass ``False`` when it is written for
+            developers rather than for the reader of the form.
 
     Returns:
         Widget: The rendered ``<form>`` tree.
@@ -368,7 +441,7 @@ def form_for(
     Raises:
         ImportError: When the optional ``[ssr]`` extra is missing.
         UnsupportedFieldError: When a field is a nested model or a
-            binary upload and was not excluded.
+            ``bytes`` payload and was not excluded.
 
     Example:
         ```python
@@ -402,6 +475,7 @@ def form_for(
             attrs=attrs,
             classes=classes,
             id_prefix=id_prefix,
+            describe=describe,
         ),
     )
 

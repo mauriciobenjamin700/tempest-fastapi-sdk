@@ -509,7 +509,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Feature flags »](feature-flags.md)** | `FeatureFlags`, backends env/Redis/composto, `make_flag_dependency` |
 | **[Fila e Tarefas »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, outbox transacional |
 | **[File store (unificado) »](file-store.md)** | `FileStoreUtils` — upload + download + presign sobre um backend só |
-| **[Formulários a partir de schemas Pydantic »](ui-forms.md)** | `form_for` / `form_spec_for` / `render_form`, `parse_form` + `FormResult` (erros por campo e valores preservados), mapeamento tipo → controle, `json_schema_extra={"ui": ...}`, `form_stylesheet` |
+| **[Formulários a partir de schemas Pydantic »](ui-forms.md)** | `form_for` / `form_spec_for` / `render_form`, `parse_form` + `FormResult` (erros por campo e valores preservados), `form_dependency` (rota sem `Request`), campo oculto, upload com `UploadFile`, mapeamento tipo → controle, `json_schema_extra={"ui": ...}`, `form_stylesheet` |
 | **[Frontend tempestweb + SDK »](tempestweb-frontend.md)** | Frontend tempestweb chamando o backend do SDK: `tempestweb.native.http`, `Idempotency-Key` + `IdempotencyMiddleware`, retry, mesma origem vs CORS |
 | **[Geolocalização (distância + tempo) »](geo.md)** | `haversine_km`, `estimate_travel`, `OSRMBackend`, `NominatimBackend`, `GeoPointMixin` / `GeoRepositoryMixin` |
 | **[Geração de imagem (local) »](image-generation.md)** | `ImageGenerator` (diffusers local — `generate` / `edit` img2img), `ImageGenerationConfig`, `GeneratedImage` com a seed que reproduz, `make_genai_router(image_generator=...)` → `POST /image` |

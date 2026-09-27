@@ -5,6 +5,53 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### `ui.forms` — campo oculto, upload, dependency e ajuda sob controle (#340, #345, #347, #351)
+
+#### Adicionado
+
+- **Campo oculto de verdade (#340).** `json_schema_extra={"ui": {"control":
+  "hidden"}}` renderiza só `<input type="hidden" name value>` — sem label,
+  ajuda nem wrapper, e sem atributos de validação —, qualquer que seja o tipo
+  ou o `max_length` (um `str` com `max_length=1024` não vira mais
+  `<textarea>`). O valor atravessa o `parse_form` e é validado pelo schema;
+  como o campo não mostra nada, o erro dele sobe para a lista de erros do
+  formulário prefixado com o label (`Position: Input should be greater than
+  or equal to 0`). `Control` ganhou `"hidden"`.
+- **`{"ui": {"omit": True}}`** tira o campo do formulário. É o nome novo do
+  que `{"hidden": True}` sempre fez; **`hidden: True` não mudou de
+  semântica** e continua omitindo o campo — ele não gera campo oculto.
+- **`form_dependency(Schema, *, include=(), exclude=(), extra=None,
+  error_message=None)` (#345)** devolve a dependency do FastAPI que chama o
+  `parse_form`, então a rota recebe
+  `Annotated[FormResult[Schema], Depends(form_dependency(Schema))]` sem
+  declarar `Request`. `result.unwrap()` sai tipado como `Schema` no mypy
+  `--strict`, e a rota não ganha `requestBody` nem parâmetro no OpenAPI.
+- **Upload de arquivo (#347).** Campo anotado como `fastapi.UploadFile`
+  (ou `list[UploadFile]`, ou marcado com `{"ui": {"control": "file"}}`)
+  renderiza `<input type="file">`, com `accept`/`multiple` vindos do bloco
+  `ui`, e o formulário ganha `enctype="multipart/form-data"` sozinho (um
+  `enctype` em `attrs=` vence). O `parse_form` entrega o próprio
+  `UploadFile` no modelo; controle de arquivo vazio conta como chave
+  ausente; no re-render com erro o arquivo volta vazio, com a mensagem, e os
+  outros campos mantêm o valor. `Control` ganhou `"file"`, `FieldSpec` ganhou
+  `accept` e `FormSpec` ganhou a propriedade `multipart`.
+- **`describe=` em `form_for`, `form_spec_for` e `fields_for` (#351).**
+  `describe=False` desliga o fallback da dica para a `description` do campo.
+
+#### Mudado
+
+- **`help_text` presente sempre vence (#351).** `{"ui": {"help_text": ""}}`,
+  `None` ou `False` suprimem o `<small>` (e o `aria-describedby`); antes o
+  `or` caía na `description` de novo. Só quem passava `help_text` vazio
+  esperando ver a `description` percebe a diferença.
+- **Campo `UploadFile` num schema de formulário deixou de sair como
+  `<input type="text">`.** O JSON schema dele não tem `format: binary`, então
+  a recusa antiga nunca disparava para `UploadFile`; agora ele gera o
+  controle de arquivo. `bytes` continua levantando `UnsupportedFieldError`,
+  com mensagem que aponta para `UploadFile`.
+
 ## [0.300.0] — 2026-09-26
 
 Auditoria dos módulos de IA — `agents`, `genai` (texto, RAG, áudio, imagem,

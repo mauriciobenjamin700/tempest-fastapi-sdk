@@ -68,6 +68,7 @@ from tempest_fastapi_sdk.ui.forms.introspect import (
 from tempest_fastapi_sdk.ui.forms.introspect import fields_for as fields_for
 from tempest_fastapi_sdk.ui.forms.introspect import form_spec_for as form_spec_for
 from tempest_fastapi_sdk.ui.forms.parse import FormResult as FormResult
+from tempest_fastapi_sdk.ui.forms.parse import form_dependency as form_dependency
 from tempest_fastapi_sdk.ui.forms.parse import parse_form as parse_form
 from tempest_fastapi_sdk.ui.forms.render import form_for as form_for
 from tempest_fastapi_sdk.ui.forms.render import render_field as render_field
@@ -88,6 +89,7 @@ __all__: list[str] = [
     "SelectOption",
     "UnsupportedFieldError",
     "fields_for",
+    "form_dependency",
     "form_for",
     "form_spec_for",
     "form_stylesheet",

@@ -78,6 +78,7 @@ A tabela é a regra completa, na ordem em que é avaliada:
 | Campo do schema | Controle |
 | --- | --- |
 | override `ui` em `json_schema_extra` | o que ele mandar |
+| `UploadFile` / `list[UploadFile]` | `<input type="file">` (`multiple` na lista) |
 | `Enum` / `Literal` | `<select>` |
 | `bool` | `<input type="checkbox">` |
 | `int` | `number` com `step="1"` |
@@ -185,14 +186,124 @@ class ArticleSchema(BaseModel):
             },
         },
     )
-    owner_id: str = Field(default="", json_schema_extra={"ui": {"hidden": True}})
+    owner_id: str = Field(default="", json_schema_extra={"ui": {"omit": True}})
 
 
-widget = form_for(ArticleSchema, action="/articles", exclude=["owner_id"])
+widget = form_for(ArticleSchema, action="/articles")
 ```
 
 Chaves aceitas em `ui`: `control`, `input_type`, `label`, `placeholder`,
-`help_text`, `autocomplete`, `rows`, `hidden`, `attrs`.
+`help_text`, `autocomplete`, `rows`, `accept`, `multiple`, `omit`,
+`hidden`, `attrs`.
+
+`{"omit": True}` tira o campo do formulário, como o `exclude=` faz na
+chamada. `{"hidden": True}` é a grafia antiga do `omit` e continua
+significando a mesma coisa: **não** gera campo oculto. Para isso, leia a
+próxima seção.
+
+### Campo oculto de verdade
+
+Um formulário de ação por linha (remover o objeto `key` e voltar para a
+pasta `prefix`) precisa devolver ao servidor valores que a pessoa não
+edita. Marque o campo com `{"control": "hidden"}`:
+
+```python
+from pydantic import BaseModel, Field
+from pydantic.json_schema import JsonDict
+from tempestweb.html import render_to_html
+
+from tempest_fastapi_sdk.ui.forms import form_for
+
+HIDDEN: JsonDict = {"ui": {"control": "hidden"}}
+
+
+class RemoveObjectSchema(BaseModel):
+    """Remove um objeto; nenhum dos valores é digitado."""
+
+    prefix: str = Field(max_length=64, json_schema_extra=HIDDEN)
+    key: str = Field(max_length=1024, json_schema_extra=HIDDEN)
+    position: int = Field(ge=0, json_schema_extra=HIDDEN)
+
+
+html: str = render_to_html(
+    form_for(
+        RemoveObjectSchema,
+        action="/objects/remove",
+        values={"prefix": "docs/", "key": "docs/a.txt", "position": 3},
+        submit_label="Remover",
+    ),
+)
+print(html)
+```
+
+A saída tem só os três `<input type="hidden">` e o botão:
+
+```html
+<form method="post" action="/objects/remove" class="tui-form"><input type="hidden" name="prefix" value="docs/" /><input type="hidden" name="key" value="docs/a.txt" /><input type="hidden" name="position" value="3" /><div class="tui-form__actions"><button type="submit" class="tui-btn">Remover</button></div></form>
+```
+
+- **Sem label, ajuda nem wrapper**, qualquer que seja o tipo. Um `str`
+  com `max_length > 255` continua um `<input type="hidden">`, e não vira
+  `<textarea>`.
+- **O valor atravessa o `parse_form`** e é validado pelo schema como
+  qualquer campo: `position=-1` volta como erro de `position`.
+- **O erro de um campo oculto não tem onde aparecer**, então ele sobe para
+  a lista de erros do formulário, prefixado com o label:
+  `Position: Input should be greater than or equal to 0`.
+
+!!! warning "Oculto não é protegido"
+    O navegador manda o que estiver no `value`, e qualquer pessoa edita o
+    HTML antes de enviar. Campo oculto serve para contexto que a própria
+    pessoa poderia escolher (a pasta em que ela estava). Valor que o
+    servidor decide (dono, tenant, status) sai com `exclude=` e entra com
+    `extra=`, como mostra [Lendo a submissão](#lendo-a-submissao).
+
+### O texto de ajuda sai da `description`
+
+Sem `help_text`, a dica embaixo do controle é a `description` do campo.
+Só que a `description` também é a documentação do schema no OpenAPI, e
+**o que você escreve ali aparece na tela** para quem preenche o
+formulário. Um schema documentado em inglês para o time mostra essa frase
+técnica para o usuário final.
+
+Você controla isso de dois jeitos:
+
+```python
+from pydantic import BaseModel, Field
+from tempestweb.html import render_to_html
+
+from tempest_fastapi_sdk.ui.forms import form_for
+
+
+class ObjectSchema(BaseModel):
+    """Descrições escritas para desenvolvedor."""
+
+    key: str = Field(description="Key of the object to remove.")
+    note: str = Field(
+        description="Free text stored with the object.",
+        json_schema_extra={"ui": {"help_text": None}},
+    )
+    title: str = Field(
+        description="Display title.",
+        json_schema_extra={"ui": {"help_text": "Nome que aparece na lista"}},
+    )
+
+
+per_field: str = render_to_html(form_for(ObjectSchema, action="/objects"))
+whole_form: str = render_to_html(
+    form_for(ObjectSchema, action="/objects", describe=False),
+)
+assert "Key of the object to remove." in per_field
+assert "Free text stored with the object." not in per_field
+assert "Key of the object to remove." not in whole_form
+assert "Nome que aparece na lista" in whole_form
+```
+
+- **Por campo:** a chave `help_text` presente sempre vence. `""`, `None`
+  ou `False` suprimem o `<small>` (e o `aria-describedby` que aponta para
+  ele) em vez de cair na `description`.
+- **Por formulário:** `describe=False` desliga o fallback. Só o
+  `help_text` explícito vira dica.
 
 ## Quando o schema não basta: edite a especificação
 
@@ -313,6 +424,145 @@ def translate(error: Mapping[str, Any]) -> str:
     return MESSAGES.get(str(error["type"]), str(error["msg"]))
 ```
 
+## Sem `Request` na rota: `form_dependency`
+
+O `parse_form` recebe a `Request`, e é só por isso que ela aparece no
+router. `form_dependency(Schema)` devolve uma dependency do FastAPI que
+chama o `parse_form` por você, e a rota recebe o `FormResult` já tipado,
+como qualquer outro `Depends`:
+
+```python
+from typing import Annotated
+
+from fastapi import Depends, FastAPI
+from fastapi.responses import RedirectResponse, Response
+from pydantic import BaseModel, EmailStr, Field
+
+from tempest_fastapi_sdk.ssr import html_response
+from tempest_fastapi_sdk.ui.forms import FormResult, form_dependency, form_for
+
+app: FastAPI = FastAPI()
+
+
+class SignupSchema(BaseModel):
+    """Payload de cadastro."""
+
+    email: EmailStr
+    password: str = Field(min_length=8)
+
+
+SignupForm = Annotated[FormResult[SignupSchema], Depends(form_dependency(SignupSchema))]
+
+
+@app.post("/signup")
+async def signup(result: SignupForm) -> Response:
+    """Valida a submissão sem tocar na Request."""
+    if not result.ok:
+        return html_response(
+            form_for(
+                SignupSchema,
+                action="/signup",
+                values=result.values,
+                errors=result.errors,
+                form_errors=result.form_errors,
+            ),
+            title="Cadastro",
+            status_code=422,
+        )
+    user = result.unwrap()
+    return RedirectResponse(f"/welcome?email={user.email}", status_code=303)
+```
+
+`form_dependency` aceita os mesmos `include=`, `exclude=`, `extra=` e
+`error_message=` do `parse_form`. `result.unwrap()` sai tipado como
+`SignupSchema` no mypy `--strict` (fixado em
+`tests/ui/test_forms_dependency.py`), e a dependency não acrescenta nada
+ao schema OpenAPI da rota.
+
+!!! tip "Valor do servidor que depende do request"
+    O `extra=` do `form_dependency` é fixo: ele é montado junto do módulo,
+    antes de existir request. Para injetar o usuário corrente, deixe o
+    campo em `exclude=` e defina o valor na rota, ou chame `parse_form`
+    direto.
+
+!!! note "Declare o alias no nível do módulo"
+    Com `from __future__ import annotations`, o FastAPI resolve a anotação
+    da rota contra as globais do módulo. Um `Depends(...)` guardado numa
+    variável local da função não é encontrado, e o parâmetro vira query
+    string obrigatória.
+
+## Upload de arquivo
+
+Anote o campo como `UploadFile` do FastAPI, e o `form_for` emite o
+`<input type="file">` e troca o `enctype` do formulário para
+`multipart/form-data` sozinho. `list[UploadFile]` vira um controle com
+`multiple`. O `parse_form` entrega o próprio `UploadFile` no modelo:
+
+```python
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, UploadFile
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
+
+from tempest_fastapi_sdk.ssr import html_response
+from tempest_fastapi_sdk.ui.forms import FormResult, form_dependency, form_for
+
+app: FastAPI = FastAPI()
+
+
+class AvatarSchema(BaseModel):
+    """Título e imagem de perfil."""
+
+    title: str = Field(min_length=3)
+    avatar: UploadFile = Field(json_schema_extra={"ui": {"accept": "image/*"}})
+    attachments: list[UploadFile] = Field(default_factory=list)
+
+
+AvatarForm = Annotated[FormResult[AvatarSchema], Depends(form_dependency(AvatarSchema))]
+
+
+@app.get("/avatar")
+async def avatar_form() -> Response:
+    """Mostra o formulário de upload."""
+    return html_response(form_for(AvatarSchema, action="/avatar"), title="Avatar")
+
+
+@app.post("/avatar")
+async def upload_avatar(result: AvatarForm) -> Response:
+    """Recebe o arquivo, ou recarrega a tela com o erro."""
+    if not result.ok:
+        return html_response(
+            form_for(
+                AvatarSchema,
+                action="/avatar",
+                values=result.values,
+                errors=result.errors,
+            ),
+            title="Avatar",
+            status_code=422,
+        )
+    form = result.unwrap()
+    content: bytes = await form.avatar.read()
+    return Response(f"{form.avatar.filename}: {len(content)} bytes")
+```
+
+- **O `enctype` é automático** quando o formulário tem campo de arquivo.
+  Um `enctype` passado em `attrs=` vence.
+- **`accept` e `multiple`** vêm do bloco `ui`. Com
+  `{"ui": {"control": "file"}}` você marca o controle de arquivo pelo
+  override em vez do tipo.
+- **Controle de arquivo vazio conta como chave ausente.** O navegador
+  manda uma parte sem nome de arquivo; o `parse_form` a descarta, então o
+  campo obrigatório reporta `Field required` e o opcional fica no default.
+- **No re-render com erro, o arquivo volta vazio**, com a mensagem, e os
+  outros campos mantêm o valor. O navegador não deixa pré-preencher
+  `<input type="file">`, então a pessoa escolhe o arquivo de novo; o
+  arquivo nunca entra em `result.values`.
+
+O caminho completo, com corpo `multipart/form-data` montado byte a byte
+como o navegador manda, está em `tests/ui/test_forms_file.py`.
+
 ## O visual vem junto
 
 As classes que o formulário emite (`tui-form`, `tui-field`, …) já têm
@@ -336,8 +586,9 @@ design system próprio, passe `classes=FormClasses(...)` tanto para
     - **Modelo aninhado** levanta `UnsupportedFieldError`: ele precisa do
       próprio formulário, ou de um `exclude=` e o valor definido no
       servidor.
-    - **Campo binário (`bytes`)** também levanta: upload é `UploadFile`
-      na rota, não um valor coagido de string.
+    - **Campo `bytes`** também levanta: arquivo se declara como
+      `UploadFile`, que gera o controle de arquivo e chega ao modelo como
+      o próprio upload ([Upload de arquivo](#upload-de-arquivo)).
 
     Falhar alto é melhor do que renderizar um campo que nunca fecha o
     round-trip.
@@ -371,5 +622,11 @@ design system próprio, passe `classes=FormClasses(...)` tanto para
   `FormSpec` com `replace()`.
 - `exclude=` + `extra=` mantêm valores do servidor fora do alcance do
   navegador.
+- `{"control": "hidden"}` gera o `<input type="hidden">` puro;
+  `{"omit": True}` tira o campo do formulário.
+- A `description` vira texto de tela; `help_text=None` ou
+  `describe=False` desligam.
+- `form_dependency(Schema)` tira a `Request` da rota, e `UploadFile` no
+  schema gera o upload com `multipart/form-data`.
 
 Veja também: [Camada UI »](ui.md) e [CSS tipado »](ui-css.md).

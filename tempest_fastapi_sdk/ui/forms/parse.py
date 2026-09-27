@@ -24,17 +24,31 @@ async def signup(request: Request) -> Response:
         )
     ...
 ```
+
+A route that would rather not see the ``Request`` takes the result as a
+dependency, built by :func:`form_dependency`:
+
+```python
+@app.post("/signup")
+async def signup(
+    result: Annotated[FormResult[SignupSchema], Depends(form_dependency(SignupSchema))],
+) -> Response:
+    ...
+```
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import UnionType
 from typing import Any, Generic, TypeVar, Union, get_args, get_origin
 
 from pydantic import BaseModel, ValidationError
 from starlette.datastructures import UploadFile
+from starlette.requests import Request
+
+from tempest_fastapi_sdk.ui.forms.introspect import _ui_overrides, _upload_annotation
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -138,6 +152,41 @@ def _accepts_none(annotation: Any) -> bool:
     return annotation is type(None)
 
 
+def _is_file_field(field_info: Any) -> bool:
+    """Whether a schema field receives uploaded files.
+
+    Args:
+        field_info (Any): The Pydantic ``FieldInfo``.
+
+    Returns:
+        bool: ``True`` when the annotation is an ``UploadFile`` (bare,
+        optional or in a list) or the ``ui`` block forces
+        ``{"control": "file"}`` — the same rule
+        :func:`~tempest_fastapi_sdk.ui.forms.fields_for` renders by.
+    """
+    if _upload_annotation(field_info.annotation)[0]:
+        return True
+    return _ui_overrides(field_info).get("control") == "file"
+
+
+def _uploads(body: Any, name: str) -> list[UploadFile]:
+    """Collect the files a body carries under one name.
+
+    An ``<input type="file">`` left empty still submits a part, with an
+    empty filename and no content; that part is dropped, so an empty
+    control reads as an absent key.
+
+    Args:
+        body (Any): The parsed form body.
+        name (str): The field name.
+
+    Returns:
+        list[UploadFile]: The uploads that carry a filename, in order.
+    """
+    items = body.getlist(name) if hasattr(body, "getlist") else [body.get(name)]
+    return [item for item in items if isinstance(item, UploadFile) and item.filename]
+
+
 def _lines(raw: Any) -> list[str]:
     """Split a textarea value into one item per non-blank line.
 
@@ -216,6 +265,13 @@ async def parse_form(
     Booleans are the exception: an unchecked checkbox submits nothing,
     so an absent boolean key means ``False``.
 
+    A file field (``UploadFile``, ``list[UploadFile]``, or a field whose
+    ``ui`` block forces ``{"control": "file"}``) receives the uploaded
+    ``UploadFile`` objects themselves. An empty file control counts as an
+    absent key, and a file never goes back into
+    :attr:`FormResult.values` — a browser cannot pre-fill a file input,
+    so the re-rendered control comes back empty.
+
     Args:
         schema (type[T]): The schema to validate against — the same one
             the form was generated from.
@@ -267,6 +323,12 @@ async def parse_form(
     payload: dict[str, Any] = {}
     for name in names:
         annotation = model_fields[name].annotation
+        if _is_file_field(model_fields[name]):
+            raw_values[name] = ""
+            files = _uploads(body, name)
+            if files:
+                payload[name] = files if _is_sequence_field(annotation) else files[0]
+            continue
         submitted = name in body
         if _is_sequence_field(annotation) and hasattr(body, "getlist"):
             raw: Any = body.getlist(name)
@@ -304,4 +366,86 @@ async def parse_form(
     return FormResult(value=value, values=raw_values)
 
 
-__all__: list[str] = ["FormResult", "parse_form"]
+def form_dependency(
+    schema: type[T],
+    *,
+    include: Sequence[str] = (),
+    exclude: Sequence[str] = (),
+    extra: Mapping[str, Any] | None = None,
+    error_message: Callable[[Mapping[str, Any]], str] | None = None,
+) -> Callable[[Request], Awaitable[FormResult[T]]]:
+    """Build a FastAPI dependency that parses a form into a schema.
+
+    The dependency is :func:`parse_form` bound to ``schema`` and the
+    given options, taking the ``Request`` itself so the route does not
+    have to. It is a framework hook, not a wrapper: FastAPI injects the
+    ``Request`` into the returned callable and hands its result to the
+    route.
+
+    Args:
+        schema (type[T]): The schema to validate against.
+        include (Sequence[str]): Read only these fields from the body.
+        exclude (Sequence[str]): Field names never read from the body.
+        extra (Mapping[str, Any] | None): Fixed server-side values merged
+            in after the body. A value that depends on the request (the
+            current user) is not known when the dependency is built:
+            exclude the field, parse, and set it in the route — or call
+            :func:`parse_form` directly.
+        error_message (Callable[[Mapping[str, Any]], str] | None): Maps
+            a raw Pydantic error dict to the message shown to the reader.
+
+    Returns:
+        Callable[[Request], Awaitable[FormResult[T]]]: The dependency,
+        ready for ``Depends(...)``.
+
+    Example:
+        ```python
+        from typing import Annotated
+
+        from fastapi import Depends, FastAPI
+        from pydantic import BaseModel
+
+        from tempest_fastapi_sdk.ui.forms import FormResult, form_dependency
+
+        app: FastAPI = FastAPI()
+
+
+        class SignupSchema(BaseModel):
+            email: str
+
+
+        SignupForm = Annotated[
+            FormResult[SignupSchema],
+            Depends(form_dependency(SignupSchema)),
+        ]
+
+
+        @app.post("/signup")
+        async def signup(result: SignupForm) -> dict[str, bool]:
+            return {"ok": result.ok}
+        ```
+    """
+    fixed_extra: dict[str, Any] = dict(extra or {})
+
+    async def dependency(request: Request) -> FormResult[T]:
+        """Parse the request body into the bound schema.
+
+        Args:
+            request (Request): The incoming request, injected by FastAPI.
+
+        Returns:
+            FormResult[T]: The outcome of :func:`parse_form`.
+        """
+        return await parse_form(
+            schema,
+            request,
+            include=include,
+            exclude=exclude,
+            extra=fixed_extra,
+            error_message=error_message,
+        )
+
+    return dependency
+
+
+__all__: list[str] = ["FormResult", "form_dependency", "parse_form"]
