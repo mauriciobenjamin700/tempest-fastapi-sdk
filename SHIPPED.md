@@ -1035,6 +1035,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `make_htmx_router` (serves a wheel-bundled HTMX 2.x locally, no CDN).
   `tempestweb` imported lazily so `import tempest_fastapi_sdk` never
   needs the extra.
+- **SSR: head na página-base, confirmação, flash e redirect-back
+  (Unreleased, #348/#349/#352)** — `Page.stylesheets` / `head` /
+  `title_suffix` + `document_title()` lidos por `html_response`;
+  `form_for(confirm=)` / `confirm()` + `/_ssr/confirm.js` (sem JS inline,
+  texto lido do atributo); `FlashMiddleware` + `flash` / `get_flashes` +
+  `FlashMessages` (cookie HMAC de leitura única); `redirect_back` /
+  `back_url` anti open redirect; `register_html_error_handlers` +
+  `ErrorPage` (página no GET, flash + 303 no POST, JSON na API). Receita:
+  `docs/recipes/ssr-actions.md`.
 - **Assinatura de webhook do Mercado Pago portada do provedor (v0.251.0)** —
   `build_manifest`, `SignatureHeader`, `DEFAULT_SIGNATURE_VERSIONS`, mais
   `versions=` e `tolerance_seconds=` em `verify_signature`. O manifesto omite

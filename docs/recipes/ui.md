@@ -52,6 +52,9 @@ Três arquivos: o chrome, a tela e a rota.
 
 ```python
 # src/ui/layout/base.py
+from collections.abc import Sequence
+from typing import ClassVar
+
 from tempest_core import Text, Widget
 
 from tempest_fastapi_sdk.ui.components import NavBar, NavItem
@@ -66,6 +69,9 @@ NAV_ITEMS: list[NavItem] = [
 
 class BasePage(Page):
     """Chrome compartilhado por todas as telas."""
+
+    stylesheets: ClassVar[Sequence[str]] = ("/static/app.css",)
+    title_suffix: ClassVar[str] = " · Tempest"
 
     active_href: str = "/"
 
@@ -120,8 +126,6 @@ async def users_page() -> Response:
     users: list[dict[str, str]] = [{"nome": "Ana", "email": "ana@example.com"}]
     return html_response(
         UsersPage(title="Usuários", active_href="/users", users=users),
-        title="Usuários",
-        stylesheets=["/static/app.css"],
     )
 ```
 
@@ -134,8 +138,19 @@ Peça por peça:
   que uma tela concreta precisa implementar.
 - **`shell()`** envolve o corpo. Fica na página-base e é herdado por
   herança normal de Python — mudou o header, mudou em todas as telas.
+- **`stylesheets`, `head` e `title_suffix`** são atributos de **classe**
+  (`ClassVar`), não campos: declarados uma vez na página-base, valem para
+  toda tela. O `html_response` lê de lá o `<link rel="stylesheet">`, o
+  markup extra do `<head>` (favicon, meta) e o `<title>` — aqui,
+  `"Usuários · Tempest"`, que é o `title` da página mais o sufixo.
 - **`html_response`** renderiza para HTML e devolve a resposta do
-  FastAPI. O `stylesheets=` vira `<link rel="stylesheet">` no `<head>`.
+  FastAPI. Os argumentos `title=`, `stylesheets=` e `head=` continuam
+  valendo, e quando passados **substituem** o que a página declara — a
+  rota nova que esquece de passá-los não sai mais sem estilo.
+
+!!! tip "Precisa de mais que um sufixo no título?"
+    Sobrescreva `document_title()` na página: ela recebe a instância, então
+    pode montar `"(3) Fila · Tempest"` a partir de um campo.
 
 ## Componentes prontos
 
@@ -174,6 +189,7 @@ Pagination(page=2, pages=5, url="/users")
 | `Pagination` | navegação de páginas | `pagination_for(envelope, url=...)` lê o `BasePaginationSchema` |
 | `EmptyState` | coleção vazia | coleção vazia é `200 OK`, não 404 |
 | `NavBar` | navegação principal | marca o item atual com `aria-current="page"` |
+| `FlashMessages` | avisos de uma leitura só depois de um redirect | lê o que `get_flashes(request)` devolve; veja [Ações SSR](ssr-actions.md) |
 
 `DataTable` é o que mais rende: passe as **response schemas** que o
 serviço já devolve e o cabeçalho sai do `title` de cada campo.

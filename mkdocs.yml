@@ -178,6 +178,7 @@ plugins:
               - "Social login (OAuth2/OIDC)": recipes/oauth.md
               - Spreadsheets (.xlsx): recipes/spreadsheets.md
               - SSR (typed pages): ssr.md
+              - "SSR actions (confirmation, flash, redirect back)": recipes/ssr-actions.md
               - Storage (MinIO/S3): recipes/storage.md
               - Stripe (cards + subscriptions): recipes/stripe.md
               - System checks (check-config): recipes/system-checks.md
@@ -222,6 +223,7 @@ plugins:
             Exemplos: Examples
             "Fullstack web (SSR, WASM, server)": "Fullstack web (SSR, WASM, server)"
             "SSR (páginas tipadas)": "SSR (typed pages)"
+            "Ações SSR (confirmação, flash, redirect-back)": "SSR actions (confirmation, flash, redirect back)"
             Receitas: Recipes
             "Artefatos versionados (modelos)": "Versioned artifacts (models)"
             Banco de dados: Database
@@ -389,6 +391,7 @@ nav:
   - Tutorial: tutorial.md
   - Receitas:
       - recipes/index.md
+      - "Ações SSR (confirmação, flash, redirect-back)": recipes/ssr-actions.md
       - "Agentes de IA": recipes/agents.md
       - "Agentes de IA (arquitetura)": recipes/agents-architecture.md
       - "Agentes de IA (avançado)": recipes/agents-advanced.md
