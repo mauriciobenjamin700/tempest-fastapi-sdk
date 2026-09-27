@@ -41,6 +41,7 @@ Todos rodam dentro do `make check`.
 | `test_agent_docs_guard` | roster desta tabela bate com o disco; link e caminho citado em arquivo de agente existem | conteúdo da prosa |
 | `test_version_agreement` | `pyproject.toml` e `__version__` concordam | `uv.lock`, que `uv run` conserta em disco antes de qualquer teste ler |
 | `test_lock_version_guard` | versão **commitada** em `uv.lock` bate com a do `pyproject.toml`, lida por `git show HEAD:` | commit que ainda não existe (drift aparece na próxima execução) |
+| `test_timeout_method_guard` | a configuração do `pytest-timeout` deste repo **encerra** um teardown cujo primeiro abort é engolido (finalizer que come o `Failed`, depois outro que trava), e o `timeout_method = "signal"` que ela substituiu não encerra | hang fora de um item (coleta, `sessionfinish`, join de thread não-daemon no fim do interpretador), que nenhum timer por item cobre |
 | `test_testclient_httpx2_guard` | dev group deste repo **e** do template do `tempest new` pinam `httpx2`, sem o qual `fastapi.testclient` importa avisando um `UserWarning` que derruba quem roda `filterwarnings = ["error"]` | outro projeto que copie o template antes deste bump |
 | `test_sdist_payload` | entrada com ponto na raiz do **sdist** é allowlist com motivo — o sdist leva o repo inteiro menos um `exclude`, então diretório que uma ferramenta deixa na raiz shippa até alguém notar (`.claude/` custou 12 938 bytes, `.playwright-mcp/` custou 2 623 bytes e shippou até a 0.284.0) | arquivo não-dotted na raiz |
 | `test_wheel_payload` | payload não-`.py` da wheel é exatamente a allowlist | — |
@@ -50,6 +51,58 @@ propósito, **ou** bloco que é o erro descrito pela seção — é como
 `recipes/typing.md` demonstra chamada recusada sem derrubar o guard de tipo),
 `# kwargs-guard: skip` (caso que genuinamente não é isso, com docstring
 dizendo por quê).
+
+## Timeout: `thread`, não `signal`
+
+`pyproject.toml` configura `timeout = 300` **e** `timeout_method = "thread"`
+(#337). Não volte para `signal` para "salvar o resto da suíte":
+
+- **O `signal` é um tiro só, e o tiro pode ser engolido.** Ele arma um
+  `SIGALRM` de disparo único e aborta levantando `Failed` (um
+  `BaseException`) na thread principal. Levantado dentro de um finalizer
+  (`del sys.modules[x]` derrubando o último ref de um recurso), vira
+  `Exception ignored in: ... Failed: Timeout`; dentro de um callback do
+  `asyncio`, o `Handle._run` loga e segue; dentro de um `with` cujo
+  `__exit__` espera o mesmo recurso preso, o cleanup trava de novo. Nada
+  rearma o alarme. Medido com teste artificial (timeout de 2 s, prazo de
+  15 s, N=10 por cenário): os três cenários ficaram **pendurados 10/10** sob
+  `signal` e **encerraram 10/10** sob `thread`, em ≤2,4 s. É o formato do
+  que o gate do #336 relatou — o handler disparou dentro do teardown do
+  `scaffolded` e o pytest seguiu preso por mais de 40 min —, embora aquele
+  travamento específico não tenha se repetido aqui (0 em 40 execuções de
+  `tests/agents` + `tests/cli` sob load ~11–22, 0 na suíte inteira).
+- **O `thread` mata o processo inteiro** (`os._exit(1)`): os testes
+  seguintes não rodam, não sai relatório de cobertura, e o `make check`
+  falha no primeiro hang. É a troca certa para o gate — um hang é defeito,
+  e 300 s por item está muito acima do item mais lento medido sob carga
+  (18,66 s, `test_generic_bounds`, num `make check` de 33 min com load
+  entre ~3 e ~17). Em troca, o dump sai de uma thread de timer e
+  **inclui a thread principal** (`Stack of MainThread`); o do `signal` pula
+  a thread corrente e só mostra a principal pelo traceback do `Failed` — o
+  que se perde justamente quando ele é engolido.
+- **Custo medido:** 10 000 testes vazios levaram 4,8–5,2 s com `signal` e
+  8,5–8,8 s com `thread` (3 execuções de cada, load ~11) — ~0,36 ms por
+  item, alguns segundos numa suíte de ~10 200 testes.
+- **O que nenhum dos dois cobre:** hang fora de um item. Thread
+  **não-daemon** viva no fim da sessão segura o interpretador no
+  `threading._shutdown` depois que todo timer já foi cancelado — medido,
+  pendurado 3/3 sob os dois métodos. Hoje nenhuma sobra: as que sobrevivem
+  à sessão são daemon (workers do `aiosqlite`, `OtelBatchSpanRecordProcessor`,
+  `tqdm_monitor`).
+- **`faulthandler_timeout` não substitui:** ele só despeja as stacks, uma
+  vez, e deixa o processo seguir — medido, o teardown artificial continuou
+  pendurado depois do dump. Serve para diagnóstico, não para abortar.
+
+Guard: `test_timeout_method_guard.py` roda a configuração deste repo contra
+um teardown que engole o primeiro abort e assere as duas metades — o método
+configurado encerra, o `signal` fica preso.
+
+Fixture que abre recurso com thread própria **fecha no teardown**. O
+`scaffolded` conectava o `resources.db` do projeto gerado e nunca
+desconectava: o worker do `aiosqlite` sobrevivia ao módulo e à sessão, e
+quem finalizava a conexão depois era um passe de `gc` no meio de outro
+teardown. Hoje ele faz `disconnect()` antes de esquecer os módulos e falha
+se alguma thread iniciada pelo módulo ainda estiver viva.
 
 ## Ao adicionar guard novo
 

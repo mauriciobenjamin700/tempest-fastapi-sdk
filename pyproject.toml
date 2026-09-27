@@ -637,6 +637,7 @@ addopts = [
     "not model and not gpu and not docker",
 ]
 timeout = 300
+timeout_method = "thread"
 filterwarnings = [
     "error::starlette.exceptions.StarletteDeprecationWarning",
 ]
