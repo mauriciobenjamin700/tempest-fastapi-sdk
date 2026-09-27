@@ -6,6 +6,10 @@ Pairs the password-verify path from
 
 * ``authenticate(session, email, password)`` — bcrypt-verify the
   credentials against the project's ``UserModel``.
+* ``authenticate_credentials(username, password)`` /
+  ``login_with_credentials(...)`` — the same step for a service with no
+  user table, through a :class:`SessionAuthenticator`
+  (:meth:`SessionAuth.from_credentials` wires one fixed pair).
 * ``login(user_id, ip=, user_agent=, previous_session_id=)`` —
   mint a fresh session, optionally evict an old one (session-id
   rotation against fixation).
@@ -29,13 +33,19 @@ from __future__ import annotations
 
 from datetime import timedelta
 from typing import TYPE_CHECKING
+from uuid import UUID
 
+from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.exceptions import (
     NotFoundException,
     UnauthorizedException,
+)
+from tempest_fastapi_sdk.sessions.authenticator import (
+    SessionAuthenticator,
+    StaticCredentialAuthenticator,
 )
 from tempest_fastapi_sdk.sessions.schemas import Session, SessionSummarySchema
 from tempest_fastapi_sdk.utils.datetime import utcnow
@@ -46,8 +56,6 @@ from tempest_fastapi_sdk.utils.opaque_token import (
 from tempest_fastapi_sdk.utils.password import PasswordUtils
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
     from tempest_fastapi_sdk.db.user_model import BaseUserModel
     from tempest_fastapi_sdk.sessions.store import SessionStore
     from tempest_fastapi_sdk.settings.mixins import SessionSettings
@@ -58,21 +66,25 @@ class SessionAuth:
 
     Mount one instance per ``FastAPI`` app. Stateless — the only
     state lives in the injected :class:`SessionStore` and the
-    project's ``UserModel`` table.
+    project's ``UserModel`` table, or in the :class:`SessionAuthenticator`
+    that replaces it.
     """
 
     def __init__(
         self,
         *,
-        user_model: type[BaseUserModel],
+        user_model: type[BaseUserModel] | None = None,
         store: SessionStore,
         settings: SessionSettings,
         passwords: PasswordUtils | None = None,
+        authenticator: SessionAuthenticator | None = None,
     ) -> None:
         """Initialize the service.
 
+        Pass exactly one of ``user_model`` and ``authenticator``.
+
         Args:
-            user_model (type[BaseUserModel]): Concrete user model
+            user_model (type[BaseUserModel] | None): Concrete user model
                 (typically ``src.db.models.UserModel``) used to
                 resolve email → password hash on ``authenticate``.
             store (SessionStore): Persistence backend
@@ -82,11 +94,68 @@ class SessionAuth:
                 flags driving the lifecycle.
             passwords (PasswordUtils | None): Override for tests;
                 defaults to a fresh ``PasswordUtils()``.
+            authenticator (SessionAuthenticator | None): Credential verifier
+                for a service with no user table, used by
+                :meth:`authenticate_credentials`. See
+                :meth:`from_credentials` for the single fixed pair.
+
+        Raises:
+            ValueError: When both or neither of ``user_model`` and
+                ``authenticator`` are given.
         """
-        self.user_model: type[BaseUserModel] = user_model
+        if (user_model is None) == (authenticator is None):
+            raise ValueError(
+                "SessionAuth needs exactly one of user_model= (a user table) "
+                "or authenticator= (e.g. SessionAuth.from_credentials(...))"
+            )
+        self.user_model: type[BaseUserModel] | None = user_model
+        self.authenticator: SessionAuthenticator | None = authenticator
         self.store: SessionStore = store
         self.settings: SessionSettings = settings
         self.passwords: PasswordUtils = passwords or PasswordUtils()
+
+    @classmethod
+    def from_credentials(
+        cls,
+        username: str,
+        password: str | SecretStr,
+        *,
+        store: SessionStore,
+        settings: SessionSettings,
+        user_id: UUID | None = None,
+    ) -> SessionAuth:
+        """Build a service that accepts one fixed username / password pair.
+
+        For a service whose only account is a credential from the
+        environment (a root user guarding an admin panel). The pair is
+        checked by :class:`StaticCredentialAuthenticator`, which compares
+        both halves in constant time.
+
+        Args:
+            username (str): The accepted username.
+            password (str | SecretStr): The accepted password.
+            store (SessionStore): Session persistence backend.
+            settings (SessionSettings): TTL / cookie / rotation flags.
+            user_id (UUID | None): Owner written on every session.
+                ``None`` derives a stable id from ``username`` (see
+                :data:`STATIC_CREDENTIAL_NAMESPACE`).
+
+        Returns:
+            SessionAuth: A service to call
+            :meth:`login_with_credentials` on.
+
+        Raises:
+            ValueError: When ``username`` or ``password`` is empty.
+        """
+        return cls(
+            authenticator=StaticCredentialAuthenticator(
+                username,
+                password,
+                user_id=user_id,
+            ),
+            store=store,
+            settings=settings,
+        )
 
     # ------------------------------------------------------------------
     # Authentication
@@ -112,9 +181,17 @@ class SessionAuth:
         Raises:
             UnauthorizedException: On any failure — wrong password,
                 missing user, inactive user. The message is
-                deliberately generic so attackers cannot enumerate
-                accounts via timing or wording.
+                deliberately generic so the response body does not
+                tell the two apart (the timing still does; see the
+                sessions recipe).
+            RuntimeError: When the service was built with
+                ``authenticator=`` instead of ``user_model=``.
         """
+        if self.user_model is None:
+            raise RuntimeError(
+                "SessionAuth was built with authenticator=; "
+                "call authenticate_credentials() instead"
+            )
         normalized = email.strip().lower()
         result = await session.execute(
             select(self.user_model).where(self.user_model.email == normalized),
@@ -128,6 +205,70 @@ class SessionAuth:
         await session.flush()
         await session.refresh(user_obj)
         return user_obj
+
+    async def authenticate_credentials(self, username: str, password: str) -> UUID:
+        """Verify ``username`` / ``password`` through the configured authenticator.
+
+        Args:
+            username (str): The submitted username.
+            password (str): The submitted plaintext password.
+
+        Returns:
+            UUID: The id the session should belong to.
+
+        Raises:
+            UnauthorizedException: When the authenticator rejects the pair.
+            RuntimeError: When the service was built with ``user_model=``
+                — that path goes through :meth:`authenticate`, which needs
+                a database session.
+        """
+        if self.authenticator is None:
+            raise RuntimeError(
+                "SessionAuth was built with user_model=; "
+                "call authenticate(session, email=..., password=...) instead"
+            )
+        return await self.authenticator.authenticate(username, password)
+
+    async def login_with_credentials(
+        self,
+        username: str,
+        password: str,
+        *,
+        ip: str | None = None,
+        user_agent: str | None = None,
+        previous_session_id: str | None = None,
+    ) -> tuple[Session, str]:
+        """Verify the credentials, then open a session for their owner.
+
+        :meth:`authenticate_credentials` followed by :meth:`login`, the
+        whole login step of an HTML form handler.
+
+        Args:
+            username (str): The submitted username.
+            password (str): The submitted plaintext password.
+            ip (str | None): Client IP.
+            user_agent (str | None): Raw User-Agent header.
+            previous_session_id (str | None): Plaintext cookie the
+                request already carried, revoked when
+                ``SESSION_ROTATE_ON_LOGIN`` is ``True``.
+
+        Returns:
+            tuple[Session, str]: The persisted session and the plaintext
+            id for ``Set-Cookie``.
+
+        Raises:
+            UnauthorizedException: When the credentials do not match.
+                No session is created and ``previous_session_id`` is
+                left alone.
+            RuntimeError: When the service was built with ``user_model=``.
+        """
+        user_id = await self.authenticate_credentials(username, password)
+        return await self.login(
+            user_id=user_id,
+            ip=ip,
+            user_agent=user_agent,
+            previous_session_id=previous_session_id,
+        )
 
     # ------------------------------------------------------------------
     # Session lifecycle
