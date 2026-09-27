@@ -34,7 +34,7 @@ box.
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 from pydantic import Field, field_validator
 
@@ -2215,6 +2215,47 @@ class MinIOSettings(BaseAppSettings):
         }
 
 
+SessionCookieSameSite = Literal["lax", "strict", "none"]
+"""The ``SameSite`` values Starlette's ``Response.set_cookie`` accepts."""
+
+
+class SessionCookieDeleteKwargs(TypedDict):
+    """Keyword arguments for ``Response.delete_cookie`` on the session cookie.
+
+    Returned by :meth:`SessionSettings.session_cookie_delete_kwargs`.
+
+    Attributes:
+        key (str): Cookie name (``SESSION_COOKIE_NAME``).
+        path (str): Cookie ``Path`` (``SESSION_COOKIE_PATH``).
+        domain (str | None): Cookie ``Domain`` (``SESSION_COOKIE_DOMAIN``).
+        secure (bool): ``Secure`` flag (``SESSION_COOKIE_SECURE``).
+        httponly (bool): ``HttpOnly`` flag (``SESSION_COOKIE_HTTPONLY``).
+        samesite (SessionCookieSameSite): ``SameSite`` policy
+            (``SESSION_COOKIE_SAMESITE``).
+    """
+
+    key: str
+    path: str
+    domain: str | None
+    secure: bool
+    httponly: bool
+    samesite: SessionCookieSameSite
+
+
+class SessionCookieKwargs(SessionCookieDeleteKwargs):
+    """Keyword arguments for ``Response.set_cookie`` on the session cookie.
+
+    Returned by :meth:`SessionSettings.session_cookie_kwargs`: every key
+    of :class:`SessionCookieDeleteKwargs` plus the lifetime.
+
+    Attributes:
+        max_age (int): Cookie ``Max-Age`` in seconds
+            (``SESSION_TTL_SECONDS``).
+    """
+
+    max_age: int
+
+
 class SessionSettings(BaseAppSettings):
     """Server-side session cookie + storage configuration.
 
@@ -2242,10 +2283,19 @@ class SessionSettings(BaseAppSettings):
             Default: ``True``.
         SESSION_COOKIE_HTTPONLY (bool): Hide the cookie from page JavaScript.
             Default: ``True``.
-        SESSION_COOKIE_SAMESITE (str): Cookie ``SameSite`` policy
-            (``lax``/``strict``/``none``). Default: ``"lax"``.
+        SESSION_COOKIE_SAMESITE (SessionCookieSameSite): Cookie
+            ``SameSite`` policy (``lax``/``strict``/``none``, lowercase;
+            surrounding whitespace is trimmed, anything else fails at
+            construction). Default: ``"lax"``.
         SESSION_ROTATE_ON_LOGIN (bool): Issue a new session id on login.
             Default: ``True``.
+
+    Examples:
+        Write and clear the cookie with the two mappers instead of
+        repeating the settings at each call site::
+
+            response.set_cookie(value=token, **settings.session_cookie_kwargs())
+            response.delete_cookie(**settings.session_cookie_delete_kwargs())
     """
 
     SESSION_TTL_SECONDS: int = Field(
@@ -2319,9 +2369,8 @@ class SessionSettings(BaseAppSettings):
         ),
         examples=[True, False],
     )
-    SESSION_COOKIE_SAMESITE: str = Field(
+    SESSION_COOKIE_SAMESITE: SessionCookieSameSite = Field(
         default="lax",
-        pattern="^(lax|strict|none)$",
         title="Cookie SameSite policy",
         description=(
             "``lax`` (default) — sent on top-level cross-site GETs but "
@@ -2342,6 +2391,78 @@ class SessionSettings(BaseAppSettings):
         ),
         examples=[True, False],
     )
+
+    @field_validator("SESSION_COOKIE_SAMESITE", mode="before")
+    @classmethod
+    def _strip_samesite(cls, value: object) -> object:
+        """Trim whitespace around ``SESSION_COOKIE_SAMESITE`` before the literal check.
+
+        ``str_strip_whitespace`` only applies to ``str`` fields, and the
+        field became a ``Literal`` in this release. Up to v0.300.0 it was
+        a ``str`` with a ``pattern``, so ``"lax "`` from a ``.env`` was
+        trimmed and accepted; this keeps that value working. Case is
+        not folded: ``"Lax"`` was rejected before and still is.
+
+        Args:
+            value (object): The raw configured value.
+
+        Returns:
+            object: ``value`` stripped when it is a string, unchanged
+            otherwise (the literal check then decides).
+        """
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    def session_cookie_kwargs(self) -> SessionCookieKwargs:
+        """Map these settings onto ``Response.set_cookie`` keyword arguments.
+
+        Carries the cookie name as ``key``, so the call site passes only
+        the session id::
+
+            response.set_cookie(value=plaintext, **settings.session_cookie_kwargs())
+
+        ``max_age`` tracks ``SESSION_TTL_SECONDS``, the same lifetime the
+        store gives the session.
+
+        Returns:
+            SessionCookieKwargs: ``key``, ``max_age``, ``path``,
+            ``domain``, ``secure``, ``httponly`` and ``samesite``, typed
+            so mypy checks the splat against Starlette's signature.
+        """
+        return {
+            "key": self.SESSION_COOKIE_NAME,
+            "max_age": self.SESSION_TTL_SECONDS,
+            "path": self.SESSION_COOKIE_PATH,
+            "domain": self.SESSION_COOKIE_DOMAIN,
+            "secure": self.SESSION_COOKIE_SECURE,
+            "httponly": self.SESSION_COOKIE_HTTPONLY,
+            "samesite": self.SESSION_COOKIE_SAMESITE,
+        }
+
+    def session_cookie_delete_kwargs(self) -> SessionCookieDeleteKwargs:
+        """Map these settings onto ``Response.delete_cookie`` keyword arguments.
+
+        A browser only drops a cookie when the deleting ``Set-Cookie``
+        names the same ``path`` and ``domain`` it was set with, so both
+        come from the same fields :meth:`session_cookie_kwargs` reads,
+        together with the ``Secure`` / ``HttpOnly`` / ``SameSite``
+        attributes::
+
+            response.delete_cookie(**settings.session_cookie_delete_kwargs())
+
+        Returns:
+            SessionCookieDeleteKwargs: ``key``, ``path``, ``domain``,
+            ``secure``, ``httponly`` and ``samesite``.
+        """
+        return {
+            "key": self.SESSION_COOKIE_NAME,
+            "path": self.SESSION_COOKIE_PATH,
+            "domain": self.SESSION_COOKIE_DOMAIN,
+            "secure": self.SESSION_COOKIE_SECURE,
+            "httponly": self.SESSION_COOKIE_HTTPONLY,
+            "samesite": self.SESSION_COOKIE_SAMESITE,
+        }
 
 
 class WebSocketSettings(BaseAppSettings):
