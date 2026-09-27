@@ -8,8 +8,9 @@ so a fake that emulates the contract would assert nothing about it.
 
 from __future__ import annotations
 
-import asyncio
+import time
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -25,6 +26,7 @@ from tempest_fastapi_sdk import (
     RateLimitMiddleware,
     RateLimitRule,
     RedisQuotaStore,
+    RedisRateLimitStore,
     StaticRateLimitPolicy,
     key_by_ip,
     key_by_plan_principal,
@@ -55,40 +57,131 @@ def _request(headers: dict[str, str] | None = None) -> Request:
     )
 
 
-def _memory_store() -> QuotaStore:
-    """Build an in-process quota store.
+class _Clock:
+    """A clock that only moves when the test moves it.
+
+    Stores read the time on every call, so a real clock lets the
+    machine's speed decide how much refill happens between two calls —
+    the cause of #339, where the gap between four sequential calls
+    outgrew the 10 ms a token took to come back on a loaded runner.
+
+    Attributes:
+        now (float): Current reading, in seconds.
+    """
+
+    def __init__(self, start: float) -> None:
+        """Start the clock at ``start``.
+
+        Args:
+            start (float): The first reading, in seconds.
+        """
+        self.now: float = start
+
+    def __call__(self) -> float:
+        """Read the clock.
+
+        Returns:
+            float: The current reading, in seconds.
+        """
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        """Move the clock forward.
+
+        Args:
+            seconds (float): How far to move it.
+        """
+        self.now += seconds
+
+
+EPOCH: float = 1_790_000_000.0
+"""Where every fixed clock starts: a plausible Unix time, in seconds."""
+
+
+def _pin_fakeredis_clock(monkeypatch: pytest.MonkeyPatch, clock: _Clock) -> None:
+    """Make ``fakeredis`` read ``clock`` for ``TIME`` and for key expiry.
+
+    The scripts read the time with ``redis.call('TIME')``, which
+    ``fakeredis`` answers from ``time.time()`` in its server mixin; key
+    expiry reads the same function in its socket module. Both are
+    pinned, so moving ``clock`` ages scripts and TTLs together, as it
+    would on a real server.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Restores both modules
+            afterwards. ``raising`` stays on, so a ``fakeredis`` that
+            reads its clock elsewhere fails here instead of silently
+            going unpinned.
+        clock (_Clock): The clock the server should read.
+    """
+    pinned = SimpleNamespace(time=clock)
+    monkeypatch.setattr("fakeredis.commands_mixins.server_mixin.time", pinned)
+    monkeypatch.setattr("fakeredis._basefakesocket.time", pinned)
+
+
+def _memory_store(clock: _Clock, monkeypatch: pytest.MonkeyPatch) -> QuotaStore:
+    """Build an in-process quota store reading ``clock``.
+
+    Args:
+        clock (_Clock): The store's clock.
+        monkeypatch (pytest.MonkeyPatch): Unused; the factories share a
+            signature.
 
     Returns:
         QuotaStore: A fresh :class:`MemoryQuotaStore`.
     """
-    return MemoryQuotaStore()
+    return MemoryQuotaStore(clock=clock)
 
 
-def _redis_store() -> QuotaStore:
-    """Build a Redis quota store over an isolated fake server.
+def _redis_store(clock: _Clock, monkeypatch: pytest.MonkeyPatch) -> QuotaStore:
+    """Build a Redis quota store over an isolated fake server on ``clock``.
+
+    Args:
+        clock (_Clock): The server's clock.
+        monkeypatch (pytest.MonkeyPatch): Pins the server's clock.
 
     Returns:
         QuotaStore: A fresh :class:`RedisQuotaStore`.
     """
+    _pin_fakeredis_clock(monkeypatch, clock)
     return RedisQuotaStore(fake_aioredis.FakeRedis())
 
 
-STORES: list[Callable[[], QuotaStore]] = [_memory_store, _redis_store]
+STORES: list[Callable[[_Clock, pytest.MonkeyPatch], QuotaStore]] = [
+    _memory_store,
+    _redis_store,
+]
 """Store **factories** — a shared instance would leak state between tests."""
 
 
+@pytest.fixture
+def clock() -> _Clock:
+    """Yield a clock that stands still until the test advances it.
+
+    Returns:
+        _Clock: A clock at :data:`EPOCH`.
+    """
+    return _Clock(EPOCH)
+
+
 @pytest.fixture(params=STORES, ids=["memory", "redis"])
-def store(request: pytest.FixtureRequest) -> QuotaStore:
-    """Yield a fresh quota store, once per implementation.
+def store(
+    request: pytest.FixtureRequest,
+    clock: _Clock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> QuotaStore:
+    """Yield a fresh quota store on ``clock``, once per implementation.
 
     Args:
         request (pytest.FixtureRequest): Carries the store factory.
+        clock (_Clock): The clock the store reads.
+        monkeypatch (pytest.MonkeyPatch): Lets a factory pin a clock.
 
     Returns:
         QuotaStore: A store nobody else has written to.
     """
-    factory: Callable[[], QuotaStore] = request.param
-    return factory()
+    factory: Callable[[_Clock, pytest.MonkeyPatch], QuotaStore] = request.param
+    return factory(clock, monkeypatch)
 
 
 # --------------------------------------------------------------------- #
@@ -138,22 +231,43 @@ async def test_window_rule_allows_then_rejects(store: QuotaStore) -> None:
 
 @pytest.mark.asyncio
 async def test_bucket_absorbs_burst_then_rejects(store: QuotaStore) -> None:
-    """A token bucket serves its whole capacity at once."""
-    rules = [RateLimitRule(max_requests=100, window_seconds=1.0, burst=3)]
+    """A token bucket serves its whole capacity at once, then rejects.
+
+    The clock stands still, so no token comes back between the calls
+    however slow the machine is, and the retry hint is at least the full
+    refill time of one token. It is rounded up, not exact: the Redis
+    script reports 3601 s here, from ``ceil`` over a float rate.
+    """
+    rules = [RateLimitRule(max_requests=1, window_seconds=3600.0, burst=3)]
     results = [await store.consume("k", rules) for _ in range(4)]
     assert [r.allowed for r in results] == [True, True, True, False]
-    assert results[-1].retry_after >= 1
+    assert [r.remaining for r in results] == [2, 1, 0, 0]
+    assert results[-1].retry_after >= 3600
 
 
 @pytest.mark.asyncio
-async def test_bucket_refills_over_time(store: QuotaStore) -> None:
-    """Tokens come back at the configured rate."""
-    rules = [RateLimitRule(max_requests=100, window_seconds=1.0, burst=2)]
+async def test_bucket_refills_over_time(store: QuotaStore, clock: _Clock) -> None:
+    """A token comes back after one refill interval, and not before.
+
+    The rule refills one token per hour, and only the test moves the
+    clock. One second short of the interval the bucket is still empty;
+    one second past it, exactly one token is back. The margin covers
+    float rounding at the boundary: the Redis script holds the rate in
+    tokens per millisecond, and ``3600000 * (1 / 3600000)`` is
+    ``0.9999999999999999`` in double precision, so it still denies at
+    exactly 3600 s where the memory store already allows.
+    """
+    rules = [RateLimitRule(max_requests=1, window_seconds=3600.0, burst=2)]
     assert (await store.consume("k", rules)).allowed
     assert (await store.consume("k", rules)).allowed
     assert not (await store.consume("k", rules)).allowed
-    await asyncio.sleep(0.06)
+    clock.advance(3599.0)
+    early = await store.consume("k", rules)
+    assert not early.allowed
+    assert early.retry_after >= 1
+    clock.advance(2.0)
     assert (await store.consume("k", rules)).allowed
+    assert not (await store.consume("k", rules)).allowed
 
 
 @pytest.mark.asyncio
@@ -304,6 +418,121 @@ async def test_redis_bucket_ttl_covers_a_full_refill() -> None:
     await store.consume("k", [rule])
     ttl_ms = await redis.pttl(f"quota:k|{rule.effective_scope}")
     assert ttl_ms > 60_000 * 2
+
+
+# --------------------------------------------------------------------- #
+# Server clock (both Redis stores)                                       #
+# --------------------------------------------------------------------- #
+
+
+SKEWS: list[tuple[float, float]] = [(0.0, 3600.0), (-3600.0, 0.0)]
+"""``(drain_offset, probe_offset)`` pairs, in seconds of client wall clock.
+
+The first drains the limit on time and probes from a client one hour
+ahead; the second drains from a client one hour behind and probes on
+time. Both handed out a free request when the scripts took the time
+from the caller.
+"""
+
+
+_WALL_CLOCK: Callable[[], float] = time.time
+"""The unpatched ``time.time``, captured before any test shifts it."""
+
+
+def _skew_client_clock(monkeypatch: pytest.MonkeyPatch, offset: float) -> None:
+    """Shift ``time.time()`` for the calling process by ``offset`` seconds.
+
+    ``fakeredis`` is pinned to its own clock first
+    (:func:`_pin_fakeredis_clock`), so this moves only what a client
+    would read — the time a store would pass to Redis if it took it
+    from the process.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Restores ``time.time``.
+        offset (float): Seconds to add to the real wall clock.
+    """
+    monkeypatch.setattr(time, "time", lambda: _WALL_CLOCK() + offset)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("drain", "probe"), SKEWS, ids=["ahead", "behind"])
+async def test_quota_clients_with_skewed_clocks_share_one_bucket(
+    clock: _Clock,
+    monkeypatch: pytest.MonkeyPatch,
+    drain: float,
+    probe: float,
+) -> None:
+    """Two clients an hour apart on the wall clock drain the same bucket.
+
+    The bucket refills one token per hour. Taking the time from the
+    caller, the client an hour ahead saw a full hour of refill, and the
+    client an hour behind wrote a ``ts`` that gave the on-time client
+    the same hour — each probe was allowed. With the time read from the
+    server, the clients' clocks never enter the decision.
+    """
+    _pin_fakeredis_clock(monkeypatch, clock)
+    server = fake_aioredis.FakeServer()
+    draining = RedisQuotaStore(fake_aioredis.FakeRedis(server=server))
+    probing = RedisQuotaStore(fake_aioredis.FakeRedis(server=server))
+    rules = [RateLimitRule(max_requests=1, window_seconds=3600.0, burst=3)]
+    _skew_client_clock(monkeypatch, drain)
+    drained = [await draining.consume("k", rules) for _ in range(3)]
+    assert all(result.allowed for result in drained)
+    _skew_client_clock(monkeypatch, probe)
+    denied = await probing.consume("k", rules)
+    assert not denied.allowed
+    assert denied.retry_after >= 3600
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("drain", "probe"), SKEWS, ids=["ahead", "behind"])
+async def test_rate_limit_clients_with_skewed_clocks_share_one_window(
+    clock: _Clock,
+    monkeypatch: pytest.MonkeyPatch,
+    drain: float,
+    probe: float,
+) -> None:
+    """The sliding-window store keeps one window for skewed clients too.
+
+    Taking the time from the caller, the client an hour ahead pruned
+    every hit as older than the window, and hits written by the client
+    an hour behind were pruned by the next on-time call; the fourth hit
+    was allowed either way.
+    """
+    _pin_fakeredis_clock(monkeypatch, clock)
+    server = fake_aioredis.FakeServer()
+    draining = RedisRateLimitStore(fake_aioredis.FakeRedis(server=server))
+    probing = RedisRateLimitStore(fake_aioredis.FakeRedis(server=server))
+    _skew_client_clock(monkeypatch, drain)
+    hits = [await draining.hit("k", 3, 3600.0) for _ in range(3)]
+    assert all(hit.allowed for hit in hits)
+    _skew_client_clock(monkeypatch, probe)
+    denied = await probing.hit("k", 3, 3600.0)
+    assert not denied.allowed
+    assert denied.retry_after == 3600
+
+
+@pytest.mark.asyncio
+async def test_redis_scripts_read_the_server_clock(
+    clock: _Clock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Moving only the server's clock refills the bucket.
+
+    The converse of the skew cases: the client clock stays put, and the
+    hour of refill comes entirely from ``TIME``. The burst of two keeps
+    the key's TTL (two hours) past the advance, so the token that comes
+    back is a refill and not a key that expired into a fresh bucket.
+    """
+    _pin_fakeredis_clock(monkeypatch, clock)
+    store = RedisQuotaStore(fake_aioredis.FakeRedis())
+    rules = [RateLimitRule(max_requests=1, window_seconds=3600.0, burst=2)]
+    assert (await store.consume("k", rules)).allowed
+    assert (await store.consume("k", rules)).allowed
+    assert not (await store.consume("k", rules)).allowed
+    clock.advance(3601.0)
+    assert (await store.consume("k", rules)).allowed
+    assert not (await store.consume("k", rules)).allowed
 
 
 # --------------------------------------------------------------------- #

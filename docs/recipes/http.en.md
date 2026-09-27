@@ -902,6 +902,90 @@ bucket**, not the window: a slow bucket with a large burst (10 tokens/minute,
 back a full bucket for free. On a Redis error, `fail_open=True` (default)
 allows the request.
 
+### Clock: Redis's, not the replica's
+
+Bucket refill and window pruning depend on "how much time passed". With several
+replicas, the question is: **by whose clock?**
+
+Both Redis stores (`RedisQuotaStore` and `RedisRateLimitStore`) answer "by
+Redis's": the Lua script reads `TIME` from the server itself, and no replica
+sends a timestamp. Replicas with out-of-sync wall clocks — or a VM that just
+took an NTP step — still see **one** bucket and **one** window.
+
+!!! info "What this prevents, measured"
+    Up to v0.301.0 each replica sent its own `time.time()`. Against real Redis 4
+    and 7, with two clients — one exhausting the limit, the other probing:
+
+    - a client **one hour ahead** got through a bucket (1 token/hour,
+      `burst=3`) and a window (3/hour) the other one had just exhausted;
+    - a client **one hour behind** wrote timestamps that let the on-time client
+      through the same way.
+
+    With the server's `TIME`, all eight cases are denied. They live in
+    `tests/api/test_quota_redis_live.py` (`make test-docker`).
+
+Two practical consequences:
+
+- **The clock that matters is the Redis host's.** A step there still moves
+  every key at once — but it is one clock, instead of one per replica.
+- **Redis 4 works**, because the script switches to effects replication
+  (`redis.replicate_commands()`) before writing. Without it Redis 4.0.14
+  refuses the write after `TIME`, and under `fail_open=True` a one-request
+  limit let 10 of 10 through.
+
+!!! warning "redis-py 8 and Redis before 6"
+    `redis-py` 8.1.0 — the `[cache]` extra's floor — opens the connection
+    with `HELLO 3`, which Redis 4 and 5 reject as an unknown command. Against those servers, build the client with
+    `protocol=2`: `Redis.from_url(settings.REDIS_URL, protocol=2)`.
+
+### Testing without depending on the machine's speed
+
+`MemoryQuotaStore` accepts `clock=`: any callable returning seconds. With a
+clock that only moves when the test moves it, "the burst runs out" and "the
+token comes back after an hour" become exact assertions — not a race against
+the refill rate:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import MemoryQuotaStore, RateLimitRule
+
+
+class ManualClock:
+    def __init__(self) -> None:
+        self.now: float = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+async def main() -> None:
+    clock = ManualClock()
+    store = MemoryQuotaStore(clock=clock)
+    rules = [RateLimitRule(max_requests=1, window_seconds=3600.0, burst=2)]
+
+    print([(await store.consume("k", rules)).allowed for _ in range(3)])
+    clock.now += 3600.0
+    print((await store.consume("k", rules)).allowed)
+
+
+asyncio.run(main())
+```
+
+Output:
+
+```text
+[True, True, False]
+True
+```
+
+!!! tip "Why not `sleep`?"
+    A 100-per-second rule refills one token every 10 ms. Four sequential calls
+    on a loaded machine take longer than that, the token comes back, and the
+    "burst runs out" test fails: that is what happened to the SDK's own suite
+    (#339). A negligible rate over the test's span (1 per hour) or an injected
+    clock takes the machine's speed out of the assertion.
+
 
 ## Request body size limit (`BodySizeLimitMiddleware`)
 

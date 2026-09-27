@@ -282,8 +282,18 @@ class MemoryQuotaStore:
     hour to fill, so evicting it early resets it to full.
     """
 
-    def __init__(self) -> None:
-        """Initialize an empty store."""
+    def __init__(self, *, clock: Callable[[], float] = time.monotonic) -> None:
+        """Initialize an empty store.
+
+        Args:
+            clock (Callable[[], float]): Source of the current time, in
+                seconds. Only differences between two readings are used,
+                so any steadily advancing clock works. Defaults to
+                ``time.monotonic``, which a step of the wall clock does
+                not move; pass a controllable clock to make refill
+                deterministic in tests.
+        """
+        self._clock: Callable[[], float] = clock
         self._windows: dict[str, deque[float]] = {}
         self._buckets: dict[str, tuple[float, float]] = {}
         self._expires_at: dict[str, float] = {}
@@ -313,7 +323,7 @@ class MemoryQuotaStore:
         """
         if not rules:
             raise ValueError("rules must not be empty")
-        now = time.monotonic()
+        now = self._clock()
         async with self._lock:
             self._ops += 1
             if self._ops % _GC_EVERY == 0:
@@ -424,19 +434,43 @@ class RedisLike(Protocol):
         ...
 
 
-# Evaluates every rule before writing any of them, so a rejection never
-# spends another rule's budget. Rule i is encoded as four ARGV slots
-# (kind, max_requests, window_ms, capacity) starting at index 4.
-# Returns {allowed, limit, remaining, reset_ms, retry_ms, rule_index}
-# for the binding rule.
-_QUOTA_LUA: str = """
-local now = tonumber(ARGV[1])
-local count = tonumber(ARGV[2])
-local member = ARGV[3]
+_SERVER_NOW_LUA: str = """
+if redis.replicate_commands then redis.replicate_commands() end
+local clock = redis.call('TIME')
+local now = tonumber(clock[1]) * 1000 + math.floor(tonumber(clock[2]) / 1000)
+"""
+"""Lua prologue binding ``now`` to the Redis server's clock, in milliseconds.
+
+Every script that decides a limit reads the time from the server it
+writes to instead of taking it as an argument, so the replicas sharing
+a key agree on one clock. With a client-supplied timestamp each replica
+refilled and pruned with its own wall clock. Measured against Redis 4
+and 7 with two clients, one draining the limit and the other probing:
+a prober one hour ahead was allowed on a token bucket (1 token per
+hour, burst 3) and on a sliding window (3 per hour) that the other
+client had just exhausted, and a drainer one hour behind wrote
+timestamps that let the on-time prober in the same way.
+
+``TIME`` is non-deterministic, and Redis 4.0.14 refuses a write after it
+(``Write commands not allowed after non deterministic commands``)
+unless the script first switches to effects replication, which the
+guarded ``redis.replicate_commands()`` does. A script reading ``TIME``
+and then writing was probed on Redis 4.0.14, 5.0.14, 6.2.24, 7.4.9,
+8.8.0 and ``fakeredis`` 2.37.1: unguarded it failed only on 4.0.14,
+guarded it ran on all six. Without the guard every call on Redis 4
+raises, and under the default ``fail_open=True`` a one-request limit
+let 10 of 10 requests through.
+"""
+
+_QUOTA_LUA: str = (
+    _SERVER_NOW_LUA
+    + """
+local count = tonumber(ARGV[1])
+local member = ARGV[2]
 local allowed = 1
 local state = {}
 for i = 1, count do
-  local base = 3 + (i - 1) * 4
+  local base = 2 + (i - 1) * 4
   local kind = tonumber(ARGV[base + 1])
   local limit = tonumber(ARGV[base + 2])
   local window = tonumber(ARGV[base + 3])
@@ -530,17 +564,33 @@ end
 local chosen = state[pick]
 return {allowed, chosen[2], chosen[3], chosen[4], chosen[5], pick}
 """
+)
+"""Evaluate every quota rule of one request in a single atomic call.
+
+Every rule is decided before any of them is written, so a rejection
+never spends another rule's budget. Rule ``i`` is encoded as four
+``ARGV`` slots (``kind``, ``max_requests``, ``window_ms``, ``capacity``)
+after the two leading ones (rule count, sorted-set member). The time
+comes from :data:`_SERVER_NOW_LUA`. Returns ``{allowed, limit,
+remaining, reset_ms, retry_ms, rule_index}`` for the binding rule.
+"""
 
 
 class RedisQuotaStore:
     """Distributed quota store — every rule evaluated in one Lua call.
 
     A sliding-window rule maps to a sorted set of request timestamps; a
-    token-bucket rule maps to a hash holding ``tokens`` and the
-    monotonic-free wall clock ``ts`` of the last refill. The script
-    decides every rule first and only writes when all of them accept, so
-    the whole list is atomic — which a client-side loop over several
-    single-rule calls cannot be.
+    token-bucket rule maps to a hash holding ``tokens`` and the time
+    ``ts`` of the last refill. The script decides every rule first and
+    only writes when all of them accept, so the whole list is atomic —
+    which a client-side loop over several single-rule calls cannot be.
+
+    Every timestamp comes from the Redis server's own clock (``TIME``,
+    read inside the script), never from the calling process, so the
+    replicas sharing a quota cannot disagree about how much time passed.
+    A wall-clock step on an application host no longer refills a bucket
+    or empties a window. What remains is the server's clock: a step on
+    the Redis host still moves every key it holds at once.
 
     When the backend raises and ``fail_open`` is ``True`` (the default),
     the request is allowed rather than locking every caller out on a
@@ -589,11 +639,10 @@ class RedisQuotaStore:
         """
         if not rules:
             raise ValueError("rules must not be empty")
-        now_ms = int(time.time() * 1000)
         keys: list[str] = [
             f"{self._namespace}:{key}|{rule.effective_scope}" for rule in rules
         ]
-        args: list[Any] = [now_ms, len(rules), uuid.uuid4().hex]
+        args: list[Any] = [len(rules), uuid.uuid4().hex]
         for rule in rules:
             args.extend(
                 [
