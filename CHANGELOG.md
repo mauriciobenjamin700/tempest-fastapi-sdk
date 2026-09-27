@@ -5,6 +5,72 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Nome de constraint composta leva todas as colunas (#335)
+
+`NAMING_CONVENTION` nomeava unique, índice e foreign key só pela **primeira**
+coluna. `UniqueConstraint("title")` e `UniqueConstraint("title",
+"release_year")` viravam ambas `uq_books_title`: o PostgreSQL 16 recusa o
+`CREATE TABLE` com `relation "uq_books_title" already exists`, o SQLite
+aceita as duas — e é por isso que o defeito passava no banco de teste. Com
+dois uniques com o mesmo nome, o `constraint` que o `parse_integrity_error`
+devolve no PostgreSQL deixava de identificar a regra. Reproduzido contra
+PostgreSQL 16 em container e SQLite via `aiosqlite`
+(`tests/db/test_naming_live.py`).
+
+#### Migração — leia antes de atualizar
+
+- **Constraint composta muda de nome.** `uq`, `ix` e `fk` com mais de uma
+  coluna passam a levar todas no nome: `uq_books_title` →
+  `uq_books_title_release_year`, `ix_books_author` →
+  `ix_books_author_books_title`, `fk_books_tenant_id_authors` →
+  `fk_books_tenant_id_author_id_authors`. **Nome de uma coluna não muda**
+  (`uq_books_title`, `ix_books_title`, `fk_books_author_id_authors`,
+  com e sem schema — fixado por teste). `pk` e `ck` não mudam.
+- **Banco criado antes precisa de uma revisão com `RENAME`.** Medido
+  contra PostgreSQL 16 e Alembic 1.19.1: o `--autogenerate` acusa as uniques
+  e os índices compostos como `drop` + `create` e **não vê** a FK composta
+  renomeada. Esse `drop` + `create` falha quando uma FK depende da unique
+  (`cannot drop constraint ... because other objects depend on it`). Gere os
+  `RENAME` com `legacy_constraint_renames(BaseModel.metadata)` e cole numa
+  revisão vazia; depois dela o `compare_metadata` devolve `[]`. Passo a passo
+  na receita *Banco de dados → Migrar constraints compostas da convenção
+  antiga*.
+- **O próprio SDK tem duas.** O model de `make_user_oauth_account_model`
+  renomeia `uq_<tabela>_provider` → `uq_<tabela>_provider_subject` e
+  `uq_<tabela>_user_id` → `uq_<tabela>_user_id_provider`; com o model
+  importado, `legacy_constraint_renames` as inclui.
+- **Para adiar**, dê à constraint composta o nome que ela já tem no banco
+  (`name="uq_books_title"`): nome explícito vence a convenção.
+
+#### Changed
+
+- **`NAMING_CONVENTION`** usa `column_0_N_name` / `column_0_N_label` em
+  `uq`, `ix` e `fk`. Para uma coluna, esses tokens renderizam o mesmo que
+  `column_0_*` (medido no SQLAlchemy 2.0.52, piso declarado e versão do
+  lock, e no 2.1.1).
+  Nome acima de 63 caracteres é encurtado pelo SQLAlchemy no DDL do
+  PostgreSQL — 55 caracteres, `_` e 4 hex do MD5 do nome completo —, igual
+  em toda execução e sem drift no autogenerate depois (medido).
+
+#### Added
+
+- **`legacy_constraint_renames(metadata, *, legacy=LEGACY_NAMING_CONVENTION)`**
+  lista toda constraint composta nomeada pela convenção cujo nome antigo era
+  outro — FK incluída —, como `ConstraintRename(kind, table, schema,
+  columns, old_name, new_name)`. Constraint com `name=` explícito fica de
+  fora. Os nomes saem do próprio SQLAlchemy, por tabela de rascunho sob cada
+  convenção.
+- **`ConstraintRename.statement(dialect)`** escreve o `ALTER TABLE ...
+  RENAME CONSTRAINT` (unique, FK) ou `ALTER INDEX ... RENAME TO` (índice)
+  do PostgreSQL, com o encurtamento de 63 caracteres e a citação do dialeto;
+  `inverse()` dá o do `downgrade()`. Fora do PostgreSQL levanta
+  `ValueError` — o SQLite não renomeia constraint, e a migração em batch do
+  autogenerate funciona lá (medido).
+- **`LEGACY_NAMING_CONVENTION`** (a convenção anterior) e
+  **`ConstraintKind`**.
+
 ## [0.301.0] — 2026-09-27
 
 As pontes que o painel administrativo do `tempest-bucket` escrevia à mão

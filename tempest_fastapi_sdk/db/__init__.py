@@ -120,6 +120,14 @@ from tempest_fastapi_sdk.db.mixins import SoftDeleteMixin as SoftDeleteMixin
 from tempest_fastapi_sdk.db.model import NAMING_CONVENTION as NAMING_CONVENTION
 from tempest_fastapi_sdk.db.model import BaseModel as BaseModel
 from tempest_fastapi_sdk.db.model import to_snake_case as to_snake_case
+from tempest_fastapi_sdk.db.naming import (
+    LEGACY_NAMING_CONVENTION as LEGACY_NAMING_CONVENTION,
+)
+from tempest_fastapi_sdk.db.naming import ConstraintKind as ConstraintKind
+from tempest_fastapi_sdk.db.naming import ConstraintRename as ConstraintRename
+from tempest_fastapi_sdk.db.naming import (
+    legacy_constraint_renames as legacy_constraint_renames,
+)
 from tempest_fastapi_sdk.db.outbox import BaseOutboxModel as BaseOutboxModel
 from tempest_fastapi_sdk.db.outbox import OutboxRelay as OutboxRelay
 from tempest_fastapi_sdk.db.outbox import OutboxStatus as OutboxStatus
@@ -202,6 +210,7 @@ __all__: list[str] = [
     "BASE_COLUMN_ORDER",
     "DEFAULT_AUDIT_REDACT",
     "ENUM_TYPE_SUFFIX",
+    "LEGACY_NAMING_CONVENTION",
     "NAMING_CONVENTION",
     "WITHHELD_NOTICE",
     "AlembicHelper",
@@ -224,6 +233,8 @@ __all__: list[str] = [
     "BaseWebAuthnCredentialModel",
     "BaseWebPushSubscriptionModel",
     "ColumnRef",
+    "ConstraintKind",
+    "ConstraintRename",
     "DatabaseBackup",
     "DestructiveMigrationError",
     "DroppedFilterWarning",
@@ -274,6 +285,7 @@ __all__: list[str] = [
     "full_text_rank",
     "in_transaction",
     "is_memory_sqlite_url",
+    "legacy_constraint_renames",
     "like_search_condition",
     "make_device_token_model",
     "make_user_oauth_account_model",

@@ -239,6 +239,110 @@ every machine and every engine.
     the same schema. With the convention, autogenerate only emits **real
     schema diffs** — no name churn.
 
+### Composite unique — the name carries every column
+
+A uniqueness rule spanning more than one column ("the same title cannot repeat
+in the same year") is a `UniqueConstraint` with several columns in
+`__table_args__`. You do not need to name it — the convention does:
+
+```python
+# src/db/models/book.py
+from sqlalchemy import Index, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseModel
+
+
+class BookModel(BaseModel):
+    """Catalog books."""
+
+    __tablename__ = "books"
+    __table_args__ = (
+        UniqueConstraint("isbn"),
+        UniqueConstraint("title", "release_year"),
+        UniqueConstraint("title", "author"),
+        Index(None, "author", "title"),
+    )
+
+    isbn: Mapped[str] = mapped_column()
+    title: Mapped[str] = mapped_column()
+    release_year: Mapped[int] = mapped_column()
+    author: Mapped[str] = mapped_column()
+
+
+names: list[str] = sorted(
+    str(item.name)
+    for item in [*BookModel.__table__.constraints, *BookModel.__table__.indexes]
+)
+print(names)
+```
+
+Output:
+
+```text
+['ix_books_author_books_title', 'pk_books', 'uq_books_isbn', 'uq_books_title_author', 'uq_books_title_release_year']
+```
+
+Every composite constraint gets **all** its columns in the name, joined with
+`_`: `uq_books_title_release_year` and `uq_books_title_author` are two
+different rules with two different names. The templates use SQLAlchemy's
+`column_0_N_*` tokens, which for a single column render exactly what the
+`column_0_*` tokens rendered — so `uq_books_isbn`, `ix_user_email` and
+`fk_order_user_id_user` stay the same.
+
+A distinct name is what makes the `constraint` Postgres returns through
+[`parse_integrity_error`](#which-constraint-refused-parse_integrity_error)
+useful: a `name → error code` dict now points at exactly one rule.
+
+```python
+from typing import Any
+
+from sqlalchemy.exc import IntegrityError
+
+from tempest_fastapi_sdk import parse_integrity_error
+
+CONFLICT_CODES: dict[str, str] = {
+    "uq_books_isbn": "ISBN_TAKEN",
+    "uq_books_title_release_year": "TITLE_TAKEN_THIS_YEAR",
+    "uq_books_title_author": "AUTHOR_ALREADY_HAS_TITLE",
+}
+
+
+def to_conflict(error: IntegrityError) -> dict[str, Any]:
+    """Translate the violation into the code the client branches on."""
+    failure = parse_integrity_error(error)
+    return {
+        "code": CONFLICT_CODES.get(failure.constraint or "", "CONFLICT"),
+        "fields": list(failure.columns),
+    }
+```
+
+!!! warning "Before this fix, the two uniques shared one name"
+    Up to the previous version, the `uq`, `ix` and `fk` templates read **only
+    the first column**. `UniqueConstraint("title")` and
+    `UniqueConstraint("title", "release_year")` both became
+    `uq_books_title`. PostgreSQL refuses the `CREATE TABLE` with
+    `relation "uq_books_title" already exists`; SQLite accepts both, which is
+    why the defect slipped past the test database. A database created under
+    the old convention still holds the old names for its composite
+    constraints — the step-by-step rename is in
+    [Migrate composite constraints from the old convention](#migrate-composite-constraints-from-the-old-convention).
+
+!!! note "Names past 63 characters"
+    PostgreSQL accepts identifiers of up to 63 characters. When a convention
+    name is longer, SQLAlchemy shortens it while emitting the DDL: the first
+    55 characters, `_`, and the last 4 hex digits of the full name's MD5 —
+    `uq_subscription_billing_events_customer_identifier_bill_f06e` for a
+    90-character unique. It is the same on every run, and autogenerate
+    reports no difference afterwards (measured against PostgreSQL 16).
+    SQLite has no limit and keeps the full name.
+
+??? info "The one ambiguity left"
+    Joining with `_` leaves one case the convention cannot tell apart:
+    columns `("a_b", "c")` and `("a", "b_c")` on the same table render the
+    same name. If your schema has such a pair, give one of them an explicit
+    `name=` — an explicit name wins over the convention.
+
 ### Helpers you get for free
 
 Every `BaseModel` instance gets:
@@ -303,8 +407,9 @@ checker, and `AdminSite.get` / `require` / `unregister` take the class itself
 in place of the string.
 
 **Recap:** inherit `BaseModel`, declare only your domain columns, and the
-SDK delivers id/timestamps/soft-delete, deterministic constraint names and
-serialization helpers.
+SDK delivers id/timestamps/soft-delete, deterministic constraint names
+(a composite unique carries every column in its name) and serialization
+helpers.
 
 ---
 
@@ -2187,8 +2292,144 @@ print("Schema is in sync.")
     `server_default=sa.text("...")` by hand to the `op.add_column` (or
     backfill + `alter_column` to drop the default afterwards).
 
+### Migrate composite constraints from the old convention
+
+If your database was created before the composite naming fix, every unique,
+index and foreign key **with more than one column** is still named after its
+first column only. Single-column names did not change. After upgrading the
+SDK the drift gate reports a difference — and what autogenerate proposes is
+not what you want to apply.
+
+On a database with `UniqueConstraint("title", "release_year")`,
+`Index(None, "author", "title")` and a composite FK,
+`alembic revision --autogenerate` renders (measured against PostgreSQL 16 and
+Alembic 1.19.1):
+
+```python
+from alembic import op
+
+
+def upgrade() -> None:
+    """What autogenerate renders on the legacy database."""
+    with op.batch_alter_table("books", schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f("ix_books_author"))
+        batch_op.drop_constraint(batch_op.f("uq_books_title"), type_="unique")
+        batch_op.create_index(
+            batch_op.f("ix_books_author_books_title"),
+            ["author", "title"],
+            unique=False,
+        )
+        batch_op.create_unique_constraint(
+            batch_op.f("uq_books_title_release_year"),
+            ["title", "release_year"],
+        )
+```
+
+!!! danger "Do not apply that drop + create on PostgreSQL"
+    Two measured problems, and a cost:
+
+    - **It breaks when an FK depends on the unique.** With a composite FK
+      pointing at the unique it drops, PostgreSQL refuses:
+      `cannot drop constraint uq_authors_tenant_id on table authors because
+      other objects depend on it`.
+    - **It does not see the foreign keys.** A composite FK whose name changed
+      does not show up in the diff; it keeps its old name in the database,
+      and that is the name `parse_integrity_error` returns.
+    - **It rebuilds the index.** Creating the unique again builds its index
+      by reading the whole table. `RENAME` only changes the name — and on
+      PostgreSQL renaming the constraint also renames the index behind it
+      (measured in `pg_indexes`).
+
+`legacy_constraint_renames` compares the `metadata` against the old
+convention and lists every composite constraint whose name changed — foreign
+keys included — with the `RENAME` ready. Run it once, with every model
+imported:
+
+```python
+# scripts/constraint_renames.py
+from sqlalchemy.dialects import postgresql
+
+import src.db.models
+from tempest_fastapi_sdk import BaseModel, legacy_constraint_renames
+
+dialect = postgresql.dialect()
+renames = legacy_constraint_renames(BaseModel.metadata)
+
+print("def upgrade() -> None:")
+for rename in renames:
+    print(f"    op.execute({rename.statement(dialect)!r})")
+
+print("def downgrade() -> None:")
+for rename in renames:
+    print(f"    op.execute({rename.inverse().statement(dialect)!r})")
+```
+
+Create an **empty** revision (`helper.revision(message="rename composite
+constraints", autogenerate=False)`) and paste the output into it:
+
+```python
+"""rename composite constraints to the per-column convention."""
+
+from alembic import op
+
+revision: str = "b7e1c2d3a4f5"
+down_revision: str | None = "ae12cd34"
+
+
+def upgrade() -> None:
+    """Rename composite constraints to the per-column convention."""
+    op.execute("ALTER INDEX ix_books_author RENAME TO ix_books_author_books_title")
+    op.execute(
+        "ALTER TABLE books RENAME CONSTRAINT uq_books_title "
+        "TO uq_books_title_release_year"
+    )
+
+
+def downgrade() -> None:
+    """Go back to the old convention's names."""
+    op.execute("ALTER INDEX ix_books_author_books_title RENAME TO ix_books_author")
+    op.execute(
+        "ALTER TABLE books RENAME CONSTRAINT uq_books_title_release_year "
+        "TO uq_books_title"
+    )
+```
+
+After the `upgrade`, autogenerate sees no difference at all, and the
+single-column constraints were left untouched (measured: `compare_metadata`
+returns `[]` on the renamed database, in `tests/db/test_naming_live.py`).
+
+!!! tip "Why paste, instead of calling the function inside the migration"
+    A migration has to do tomorrow what it does today. Called inside
+    `upgrade()`, the function would compute the renames from the models on
+    the day the migration runs — a composite constraint added later would
+    leak into an old file. Earlier revisions need nothing: autogenerate
+    wrote the name into each of them with `op.f(...)`.
+
+!!! info "Details worth knowing"
+    - **The SDK has one too.** `make_user_oauth_account_model` declares
+      `UniqueConstraint("provider", "subject")` and
+      `UniqueConstraint("user_id", "provider")`: `uq_<table>_provider`
+      becomes `uq_<table>_provider_subject`, and `uq_<table>_user_id`
+      becomes `uq_<table>_user_id_provider`. With the model imported, the
+      function lists them next to yours.
+    - **Two entries with the same `old_name`** are the old collision:
+      PostgreSQL refused the second `CREATE`, so the database holds only one
+      of them. Keep the entry whose columns are those of the constraint that
+      exists.
+    - **SQLite cannot rename a constraint** — the name lives in the
+      `CREATE TABLE` text —, and `statement()` raises `ValueError` outside
+      PostgreSQL. On a development SQLite, apply the batch migration
+      autogenerate renders (it rebuilds the table and works, measured) or
+      recreate the database.
+    - **Want to postpone?** Give the constraint the name it already has in
+      the database: `UniqueConstraint("title", "release_year",
+      name="uq_books_title")`. An explicit name wins over the convention,
+      and the function then skips it.
+
 **Recap:** `init` once, `revision --autogenerate` per change, `upgrade` on
-startup, `check` in CI, `safe_upgrade` to protect data.
+startup, `check` in CI, `safe_upgrade` to protect data. A database created
+before the composite naming fix: `legacy_constraint_renames` writes the
+`RENAME`s, and you paste them into an empty revision.
 
 ---
 
@@ -2242,6 +2483,9 @@ lifespan turns slow queries into actionable log lines, with optional
 - `BaseModel` brings `id`, `is_active`, `created_at` and `updated_at`; you
   declare only your domain columns, and the Alembic hook keeps that order in
   generated migrations.
+- A composite constraint is named after every column
+  (`uq_books_title_release_year`); a database created before that fix
+  migrates with the `RENAME`s `legacy_constraint_renames` writes.
 - One `AsyncDatabaseManager` per application, in `resources.py` — not one per
   request.
 - `BaseRepository` works instantiated for plain CRUD and subclassed once real
