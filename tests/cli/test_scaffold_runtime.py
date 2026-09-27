@@ -105,11 +105,13 @@ def test_generated_layer_serves_a_page_and_its_stylesheet(scaffolded: Path) -> N
     page = client.get("/")
     assert page.status_code == 200
     assert page.text.startswith("<!doctype html>")
-    assert f'<link rel="stylesheet" href="{ui.CSS_PATH}">' in page.text
+    assert f"{ui.CSS_PATH}?v={ui.STYLESHEET.version()}" == ui.CSS_URL
+    assert f'<link rel="stylesheet" href="{ui.CSS_URL}">' in page.text
     assert 'class="tui-shell"' in page.text
 
-    stylesheet = client.get(ui.CSS_PATH)
+    stylesheet = client.get(ui.CSS_URL)
     assert stylesheet.status_code == 200
+    assert stylesheet.headers["cache-control"].endswith("immutable")
     assert "--t-color-primary" in stylesheet.text
     assert ".page-title" in stylesheet.text
 

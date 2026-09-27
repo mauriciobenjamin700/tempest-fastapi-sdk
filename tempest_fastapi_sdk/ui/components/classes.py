@@ -29,6 +29,9 @@ class ComponentClasses:
         flash (str): The wrapper of the flash messages.
         table (str): The data table.
         table_empty (str): The row shown when a table has no rows.
+        table_align (str): Prefix of the per-column alignment modifier;
+            ``"tui-table__cell--"`` yields ``tui-table__cell--right``.
+            Applied to the header and every body cell of the column.
         pagination (str): The pagination wrapper.
         pagination_link (str): A page link.
         pagination_current (str): The current-page marker.
@@ -42,6 +45,8 @@ class ComponentClasses:
         shell (str): The page shell wrapper.
         shell_header (str): The shell header.
         shell_main (str): The shell main region.
+        shell_main_full (str): Modifier of the main region when the
+            shell spans the full viewport width (``Shell(width="full")``).
         shell_footer (str): The shell footer.
         grid (str): The grid container.
     """
@@ -70,6 +75,8 @@ class ComponentClasses:
     shell_main: str = "tui-shell__main"
     shell_footer: str = "tui-shell__footer"
     grid: str = "tui-grid"
+    table_align: str = "tui-table__cell--"
+    shell_main_full: str = "tui-shell__main--full"
 
 
 DEFAULT_CLASSES: ComponentClasses = ComponentClasses()

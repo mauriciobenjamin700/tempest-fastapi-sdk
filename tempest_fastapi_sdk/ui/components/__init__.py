@@ -52,13 +52,18 @@ from tempest_fastapi_sdk.ui.components.pagination import (
 from tempest_fastapi_sdk.ui.components.styles import (
     component_stylesheet as component_stylesheet,
 )
+from tempest_fastapi_sdk.ui.components.table import CellAlign as CellAlign
+from tempest_fastapi_sdk.ui.components.table import CellRenderer as CellRenderer
 from tempest_fastapi_sdk.ui.components.table import DataTable as DataTable
+from tempest_fastapi_sdk.ui.components.table import TableColumn as TableColumn
 
 __all__: list[str] = [
     "DEFAULT_CLASSES",
     "Alert",
     "AlertVariant",
     "Card",
+    "CellAlign",
+    "CellRenderer",
     "ComponentClasses",
     "DataTable",
     "EmptyState",
@@ -67,6 +72,7 @@ __all__: list[str] = [
     "NavBar",
     "NavItem",
     "Pagination",
+    "TableColumn",
     "component_stylesheet",
     "pagination_for",
 ]
