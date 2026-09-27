@@ -52,6 +52,9 @@ Three files: the chrome, the screen, the route.
 
 ```python
 # src/ui/layout/base.py
+from collections.abc import Sequence
+from typing import ClassVar
+
 from tempest_core import Text, Widget
 
 from tempest_fastapi_sdk.ui.components import NavBar, NavItem
@@ -66,6 +69,9 @@ NAV_ITEMS: list[NavItem] = [
 
 class BasePage(Page):
     """Chrome shared by every screen."""
+
+    stylesheets: ClassVar[Sequence[str]] = ("/static/app.css",)
+    title_suffix: ClassVar[str] = " · Tempest"
 
     active_href: str = "/"
 
@@ -120,8 +126,6 @@ async def users_page() -> Response:
     users: list[dict[str, str]] = [{"name": "Ana", "email": "ana@example.com"}]
     return html_response(
         UsersPage(title="Users", active_href="/users", users=users),
-        title="Users",
-        stylesheets=["/static/app.css"],
     )
 ```
 
@@ -135,8 +139,19 @@ Piece by piece:
 - **`shell()`** wraps the body. It lives on the base page and is
   inherited through ordinary Python inheritance — change the header
   once, every screen follows.
+- **`stylesheets`, `head` and `title_suffix`** are **class** attributes
+  (`ClassVar`), not fields: declared once on the base page, they apply to
+  every screen. `html_response` reads the `<link rel="stylesheet">`, the
+  extra `<head>` markup (favicon, meta) and the `<title>` from there —
+  here, `"Users · Tempest"`, the page's `title` plus the suffix.
 - **`html_response`** renders to HTML and returns the FastAPI response.
-  `stylesheets=` becomes a `<link rel="stylesheet">` in the `<head>`.
+  The `title=`, `stylesheets=` and `head=` arguments still work, and when
+  passed they **replace** what the page declares — a new route that
+  forgets them no longer ships unstyled.
+
+!!! tip "Need more than a suffix in the title?"
+    Override `document_title()` on the page: it gets the instance, so it
+    can build `"(3) Queue · Tempest"` from a field.
 
 ## The bundled components
 
@@ -173,6 +188,7 @@ Pagination(page=2, pages=5, url="/users")
 | `Pagination` | page navigation | `pagination_for(envelope, url=...)` reads `BasePaginationSchema` |
 | `EmptyState` | an empty collection | an empty collection is `200 OK`, not a 404 |
 | `NavBar` | main navigation | marks the current entry with `aria-current="page"` |
+| `FlashMessages` | one-shot notices after a redirect | reads what `get_flashes(request)` returns; see [SSR actions](ssr-actions.md) |
 
 `DataTable` pays off the most: pass the **response schemas** the service
 already returns and the header comes from each field's `title`.

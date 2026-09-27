@@ -116,6 +116,8 @@ return html_response(HomePage(title="Home", user="Ana"), title="Home")
 Its signature:
 
 ```python
+from collections.abc import Sequence
+
 from fastapi.responses import HTMLResponse
 from tempest_core import Widget
 
@@ -128,21 +130,33 @@ def html_response(
     htmx: bool = False,
     document: bool = True,
     lang: str = "pt-BR",
+    stylesheets: Sequence[str] | None = None,
+    head: str | None = None,
+    confirm: bool | None = None,
 ) -> HTMLResponse: ...
 ```
 
-- **`document=True`** (default) → full HTML5 document. Requires `title`
-  (raises `ValueError` if `title is None`).
+- **`document=True`** (default) → full HTML5 document. The `<title>`
+  comes from `title=`; without it, from `page.document_title()` when the
+  widget is a `Page` (the page's `title` plus the class's `title_suffix`).
 - **`document=False`** → bare HTML fragment (no `<!doctype>`), ideal for
   partial swaps with HTMX.
 - **`status_code`** → passed through to the `HTMLResponse`.
 - **`htmx=True`** → inject the HTMX `<script>` **served locally** (never
   from a CDN — see below).
+- **`stylesheets` / `head`** → `None` (default) uses what the page
+  declares in the `Page.stylesheets` and `Page.head` class attributes; an
+  explicit value **replaces** the page's. See
+  [UI layer](recipes/ui.md#a-complete-minimal-example).
+- **`confirm`** → include `/_ssr/confirm.js`, which asks before a
+  destructive action. `None` (default) includes it when the document uses
+  `data-confirm` or when `htmx=True`. See
+  [SSR actions](recipes/ssr-actions.md).
 
-!!! warning "`title` is required for documents"
-    Calling `html_response(page)` with `document=True` (the default) and
-    no `title` raises `ValueError`. For fragments (`document=False`),
-    `title` is ignored.
+!!! warning "`title` is required for documents that are not a `Page`"
+    Calling `html_response(widget)` with `document=True` (the default),
+    no `title` and a widget that is not a `Page` raises `ValueError`. For
+    fragments (`document=False`), `title` is ignored.
 
 ## Shared layout with `shell()`
 

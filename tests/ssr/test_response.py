@@ -46,9 +46,14 @@ def test_document_true_emits_full_document() -> None:
     assert "Hello Ana" in body
 
 
-def test_document_true_without_title_raises() -> None:
+def test_document_true_without_title_raises_for_a_plain_widget() -> None:
     with pytest.raises(ValueError, match="requires a `title`"):
-        html_response(_page())
+        html_response(Text(content="Hello"))
+
+
+def test_document_title_defaults_to_the_page_title() -> None:
+    body = html_response(_page()).body.decode()
+    assert "<title>Demo</title>" in body
 
 
 def test_document_false_returns_fragment() -> None:

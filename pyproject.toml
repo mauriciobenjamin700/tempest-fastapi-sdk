@@ -361,6 +361,8 @@ exclude = ["**/CLAUDE.md"]
 "tempest_fastapi_sdk/utils/data/br_locations.json" = "tempest_fastapi_sdk/utils/data/br_locations.json"
 # Locally-bundled HTMX asset for the [ssr] extra (served without a CDN).
 "tempest_fastapi_sdk/ssr/_static/htmx.min.js" = "tempest_fastapi_sdk/ssr/_static/htmx.min.js"
+# Locally-bundled confirmation script for `data-confirm` (no inline JS).
+"tempest_fastapi_sdk/ssr/_static/confirm.js" = "tempest_fastapi_sdk/ssr/_static/confirm.js"
 
 [dependency-groups]
 dev = [

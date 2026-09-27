@@ -1045,6 +1045,7 @@ o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.ssr.webapp.BuildMode
 ::: tempest_fastapi_sdk.ssr.webapp.ShellSource
+::: tempest_fastapi_sdk.ssr.flashes.flash
 ---
 
 ## UI (páginas, componentes, formulários, CSS)
@@ -1056,6 +1057,7 @@ o namespace não constrói nenhum modelo.
 ### `tempest_fastapi_sdk.ui.pages`
 
 ::: tempest_fastapi_sdk.ui.pages.page.Page
+::: tempest_fastapi_sdk.ui.pages.error.ErrorPage
 
 ### `tempest_fastapi_sdk.ui.layout`
 
@@ -1070,6 +1072,8 @@ o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.ui.components.pagination.Pagination
 ::: tempest_fastapi_sdk.ui.components.pagination.pagination_for
 ::: tempest_fastapi_sdk.ui.components.empty.EmptyState
+::: tempest_fastapi_sdk.ui.components.flash.FlashMessages
+::: tempest_fastapi_sdk.ui.components.flash.FlashMessage
 ::: tempest_fastapi_sdk.ui.components.nav.NavBar
 ::: tempest_fastapi_sdk.ui.components.nav.NavItem
 ::: tempest_fastapi_sdk.ui.components.classes.ComponentClasses
