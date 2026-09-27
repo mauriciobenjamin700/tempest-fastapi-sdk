@@ -23,6 +23,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from tempest_fastapi_sdk.ssr.attributes import confirm as confirm_attrs
 from tempest_fastapi_sdk.ui._core import Stack, Text, Widget, require_core
 from tempest_fastapi_sdk.ui.forms.spec import FieldSpec, FormClasses, FormSpec
 
@@ -337,6 +338,7 @@ def form_for(
     attrs: Mapping[str, str] | None = None,
     classes: FormClasses | None = None,
     id_prefix: str = "f",
+    confirm: str | None = None,
 ) -> Widget:
     """Generate and render a form for a Pydantic schema in one call.
 
@@ -361,6 +363,15 @@ def form_for(
             ``<form>`` element (``hx-post``, ``enctype``, …).
         classes (FormClasses | None): CSS class overrides.
         id_prefix (str): Prefix of the generated control ids.
+        confirm (str | None): Question asked before the form submits,
+            emitted as ``data-confirm`` on the ``<form>`` (see
+            :func:`tempest_fastapi_sdk.ssr.confirm`).
+            :func:`~tempest_fastapi_sdk.ssr.html_response` then includes
+            the locally-served listener. The text is read from the
+            attribute, never interpolated into script, so it may quote a
+            user-supplied name. Without JavaScript the form still
+            submits, just without the question. An explicit
+            ``data-confirm`` in ``attrs`` wins.
 
     Returns:
         Widget: The rendered ``<form>`` tree.
@@ -369,6 +380,7 @@ def form_for(
         ImportError: When the optional ``[ssr]`` extra is missing.
         UnsupportedFieldError: When a field is a nested model or a
             binary upload and was not excluded.
+        ValueError: When ``confirm`` is blank.
 
     Example:
         ```python
@@ -387,6 +399,8 @@ def form_for(
     """
     from tempest_fastapi_sdk.ui.forms.introspect import form_spec_for
 
+    if confirm is not None:
+        attrs = {**confirm_attrs(confirm), **(attrs or {})}
     return render_form(
         form_spec_for(
             schema,

@@ -8,7 +8,12 @@ shape for building full-stack, typed pages:
 * optionally override :meth:`Page.shell` to wrap every page in a shared
   header / nav / footer layout — inherited through normal Python class
   inheritance (a ``BasePage(Page)`` with a ``shell()`` subclassed by
-  concrete pages).
+  concrete pages),
+* optionally set the document-level class attributes
+  :attr:`Page.stylesheets`, :attr:`Page.head` and :attr:`Page.title_suffix`
+  on that base page, so :func:`tempest_fastapi_sdk.ssr.html_response`
+  emits the same ``<link>`` tags, head markup and ``<title>`` shape for
+  every screen without each route repeating them.
 
 Pages live in the ``ui`` layer of a service (``src/ui/pages/``), one
 module per screen, and receive already-loaded data: the controller does
@@ -22,6 +27,9 @@ the extra ``Page`` still imports; constructing one raises a helpful
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import ClassVar
+
 from tempest_fastapi_sdk.ui._core import Component, Widget
 
 
@@ -34,9 +42,23 @@ class Page(Component):
     composes ``shell(body())`` for you.
 
     Attributes:
-        title (str): The page title. Pass it to
-            :func:`tempest_fastapi_sdk.ssr.html_response` as the document
-            ``<title>``.
+        title (str): The page title. :func:`tempest_fastapi_sdk.ssr.html_response`
+            derives the document ``<title>`` from it (through
+            :meth:`document_title`) when no ``title=`` is passed.
+        stylesheets (ClassVar[Sequence[str]]): Stylesheet URLs the
+            document links, in order. Read by
+            :func:`~tempest_fastapi_sdk.ssr.html_response` when its
+            ``stylesheets=`` argument is not passed. A class attribute,
+            not a field: set it once on a base page and every subclass
+            inherits it.
+        head (ClassVar[str]): Raw markup appended to the document head
+            (favicon, meta tags). Read by
+            :func:`~tempest_fastapi_sdk.ssr.html_response` when its
+            ``head=`` argument is not passed. Inserted **verbatim**, so it
+            is a class constant and never built from request data.
+        title_suffix (ClassVar[str]): Appended to :attr:`title` by
+            :meth:`document_title` — ``" · tempest-bucket"`` turns the
+            page titled ``"Buckets"`` into ``"Buckets · tempest-bucket"``.
 
     Example:
         ```python
@@ -54,6 +76,21 @@ class Page(Component):
     """
 
     title: str
+
+    stylesheets: ClassVar[Sequence[str]] = ()
+    head: ClassVar[str] = ""
+    title_suffix: ClassVar[str] = ""
+
+    def document_title(self) -> str:
+        """Return the text of the document ``<title>``.
+
+        Override it when the document title needs more than a suffix
+        (a counter, a prefix that depends on a field).
+
+        Returns:
+            str: :attr:`title` followed by :attr:`title_suffix`.
+        """
+        return f"{self.title}{self.title_suffix}"
 
     def body(self) -> Widget:
         """Return the page's main content widget tree.

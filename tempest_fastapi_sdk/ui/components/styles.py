@@ -147,6 +147,15 @@ def component_stylesheet(
         ),
         Rule(f".{names.alert} p", declarations={"margin": "0"}),
         Rule(
+            f".{names.flash}",
+            declarations={
+                "display": "flex",
+                "flex-direction": "column",
+                "gap": tokens.space("sm"),
+            },
+        ),
+        Rule(f".{names.flash}:empty", declarations={"display": "none"}),
+        Rule(
             f".{names.table}",
             declarations={
                 "width": "100%",
