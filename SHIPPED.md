@@ -2548,3 +2548,17 @@ atributos — o `make_session_router` usa os dois.
 
 Consumidor: `tempest-bucket` (#343, #344), que mantinha um
 `AdminSessionService` próprio e o override do campo como `Literal`.
+
+## Nome de constraint composta com todas as colunas (não lançado)
+
+`NAMING_CONVENTION` usa `column_0_N_name`/`column_0_N_label` em `uq`, `ix` e
+`fk`: `UniqueConstraint("title", "release_year")` é
+`uq_books_title_release_year`, e não mais o `uq_books_title` que colidia com
+a unique de uma coluna (o PostgreSQL recusava o `CREATE TABLE`; o SQLite
+aceitava). Nome de uma coluna não mudou. `legacy_constraint_renames(metadata)`
+lista as compostas que um banco criado antes ainda tem com o nome antigo —
+FK incluída, que o `--autogenerate` não vê — e `ConstraintRename.statement()`
+escreve o `RENAME` do PostgreSQL, com o encurtamento de 63 caracteres.
+`LEGACY_NAMING_CONVENTION` guarda a convenção anterior.
+
+Consumidor: relato da issue #335, com o DDL reproduzido contra PostgreSQL 16.
