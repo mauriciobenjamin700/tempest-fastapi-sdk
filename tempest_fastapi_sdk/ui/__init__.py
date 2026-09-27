@@ -30,12 +30,14 @@ Example:
     from tempest_fastapi_sdk.ssr import html_response
     from tempest_fastapi_sdk.ui import app_stylesheet
     from tempest_fastapi_sdk.ui.components import Card, NavBar, NavItem
-    from tempest_fastapi_sdk.ui.css import make_css_router
+    from tempest_fastapi_sdk.ui.css import StyleSheet, make_css_router
     from tempest_fastapi_sdk.ui.layout import Shell
     from tempest_fastapi_sdk.ui.pages import Page
 
     app: FastAPI = FastAPI()
-    app.include_router(make_css_router(app_stylesheet()))
+    STYLESHEET: StyleSheet = app_stylesheet()
+    CSS_URL: str = STYLESHEET.url("/static/app.css")
+    app.include_router(make_css_router(STYLESHEET, path="/static/app.css"))
 
 
     class BasePage(Page):
@@ -61,7 +63,7 @@ Example:
         return html_response(
             HomePage(title="Início", total=12),
             title="Início",
-            stylesheets=["/static/app.css"],
+            stylesheets=[CSS_URL],
         )
     ```
 

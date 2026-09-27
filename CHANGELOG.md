@@ -5,6 +5,72 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Três contornos que o painel do tempest-bucket escrevia à mão sobem para a
+camada `ui`: a folha servida com `max-age=3600` num path fixo deixava o
+browser até uma hora no CSS antigo depois do deploy (#341); o texto saía
+na fonte padrão do browser e o `Shell` prendia o `<main>` em `72rem` sem
+opção (#350); e o `DataTable` só aceitava texto na célula, então link,
+botão e form por linha viravam tabela escrita com `Stack` (#346).
+
+### Migração
+
+- **`make_css_router` e `css_response` mudam o `Cache-Control` default
+  de `public, max-age=3600` para `no-cache`** no path sem versão. O
+  browser passa a revalidar pelo `ETag` (resposta `304`, sem corpo) antes
+  de usar a cópia. Para o cache longo, linke `sheet.url(path)` — ver
+  abaixo. Quem passava `cache_control=` explícito não muda nada.
+- **O reset do `StyleSheet` ganhou `font-family` no `body`.** Serviço que
+  já definia a família numa regra própria continua vencendo quando a regra
+  vem depois do reset (é o caso do `extra=` do `app_stylesheet`).
+
+### Added
+
+- **`StyleSheet.url(path="/static/app.css")`** e
+  **`StyleSheet.version()`** (#341): a URL que a página linka,
+  `"/static/app.css?v=<versão>"`, com a versão = 12 primeiros hex do
+  SHA-256 do CSS renderizado (o mesmo hash do `ETag`). Path sem `/`
+  inicial ou com query levanta `ValueError`. Teste em subprocesso
+  (`PYTHONHASHSEED` 1 e 2) confirma a mesma URL em dois interpretadores e
+  no processo do teste; mudar uma declaração muda a URL.
+- **`make_css_router(..., versioned_cache_control=...)`**: requisição com
+  `?v=` igual à versão servida recebe
+  `public, max-age=31536000, immutable` (default), inclusive no `304`;
+  path sem `?v=` ou com versão diferente recebe `cache_control`
+  (`no-cache`). Versão diferente nunca sai `immutable`, para uma réplica
+  antiga num deploy em rolagem não fixar o CSS velho sob a URL nova.
+- **`ThemeTokens(font_family_body=...)`**, **`ThemeTokens.font_family()`**
+  e **`SYSTEM_FONT_STACK`** (`tempest_fastapi_sdk.ui.css`, #350): o
+  `:root` emite `--t-font-family-body` (default: pilha `system-ui, …,
+  sans-serif`, sem web font) e o reset aplica
+  `font-family: var(--t-font-family-body)` no `body`; sem `theme`, o reset
+  aplica a pilha literal.
+- **`Shell(width="contained" | "full")`** + `ShellWidth` e
+  `ComponentClasses.shell_main_full` (`tui-shell__main--full`, #350):
+  `"full"` acrescenta a classe no `<main>`, e a regra zera `max-width`,
+  `margin` e `padding`. `"contained"` (default) mantém o `72rem`
+  centralizado. Valor fora dos dois é `ValidationError`.
+- **`TableColumn(name, header=, render=, align=, class_name=)`** +
+  `CellAlign` e `CellRenderer` (`tempest_fastapi_sdk.ui.components`,
+  #346): `DataTable.columns` aceita `str | TableColumn` misturados.
+  `render` recebe a linha e devolve widget, lista de widgets ou `str`
+  (texto escapado; `None` vira `none_text`); widgets passam pelo
+  renderizador, sem HTML cru. `align` (`left`/`center`/`right`) aplica
+  `ComponentClasses.table_align` (`tui-table__cell--<align>`) no `<th>` e
+  em cada `<td>`; `right` liga `tabular-nums`. `class_name` vai no `<th>`
+  e em cada `<td>`. `align` fora dos três ou `render` não chamável
+  levantam `ValueError` na construção. `DataTable.column_specs()` devolve
+  as colunas como `TableColumn`; `resolved_columns()` continua devolvendo
+  os nomes.
+
+### Changed
+
+- **Scaffold do `tempest generate`/`tempest new --extras "ssr"`**:
+  `src/ui/styles.py` exporta `CSS_URL = STYLESHEET.url(CSS_PATH)`, e
+  `api/routers/web.py` linka `CSS_URL` em vez de `CSS_PATH`. O `CLAUDE.md`
+  gerado manda linkar `CSS_URL` e usar `TableColumn` para ação por linha.
+
 ## [0.300.0] — 2026-09-26
 
 Auditoria dos módulos de IA — `agents`, `genai` (texto, RAG, áudio, imagem,

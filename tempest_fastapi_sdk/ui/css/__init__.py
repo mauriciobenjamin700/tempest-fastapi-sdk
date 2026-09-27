@@ -14,6 +14,8 @@ pseudo-classes, media queries, design tokens — while staying typed Python:
 * :class:`StyleSheet` — the whole sheet, with :meth:`StyleSheet.cls` to
   reference a class name and have a typo raise instead of silently
   rendering an unstyled element.
+* :meth:`StyleSheet.url` — the content-versioned URL pages link, so a
+  deploy that changes the CSS is a URL the browser never cached.
 * :func:`make_css_router` — serve it from the app, with ETag and
   ``304`` support.
 
@@ -53,6 +55,7 @@ Example:
 from tempest_fastapi_sdk.ui.css.router import css_response as css_response
 from tempest_fastapi_sdk.ui.css.router import make_css_router as make_css_router
 from tempest_fastapi_sdk.ui.css.router import stylesheet_links as stylesheet_links
+from tempest_fastapi_sdk.ui.css.rules import SYSTEM_FONT_STACK as SYSTEM_FONT_STACK
 from tempest_fastapi_sdk.ui.css.rules import Layout as Layout
 from tempest_fastapi_sdk.ui.css.rules import Media as Media
 from tempest_fastapi_sdk.ui.css.rules import Rule as Rule
@@ -61,6 +64,7 @@ from tempest_fastapi_sdk.ui.css.rules import cls as cls
 from tempest_fastapi_sdk.ui.css.tokens import ThemeTokens as ThemeTokens
 
 __all__: list[str] = [
+    "SYSTEM_FONT_STACK",
     "Layout",
     "Media",
     "Rule",

@@ -226,9 +226,9 @@ the submission back with ``parse_form``.
 
 from __ROOT__.ui.layout import BasePage
 from __ROOT__.ui.pages import HomePage
-from __ROOT__.ui.styles import CSS_PATH, STYLESHEET
+from __ROOT__.ui.styles import CSS_PATH, CSS_URL, STYLESHEET
 
-__all__: list[str] = ["CSS_PATH", "STYLESHEET", "BasePage", "HomePage"]
+__all__: list[str] = ["CSS_PATH", "CSS_URL", "STYLESHEET", "BasePage", "HomePage"]
 '''
 
 
@@ -237,7 +237,9 @@ _UI_STYLES = '''\
 
 :data:`STYLESHEET` composes the SDK defaults (design tokens, form rules,
 component rules) with this service's own rules. It is served from the app
-itself at :data:`CSS_PATH` — no build step and no CDN.
+itself at :data:`CSS_PATH`, and every page links :data:`CSS_URL` — the same
+path with a content version, so a deploy that changes the CSS is a URL the
+browser has never cached. No build step and no CDN.
 
 Add a rule by appending to ``_OWN_RULES``; reference a design token
 through ``THEME`` so light and dark stay consistent.
@@ -300,8 +302,16 @@ STYLESHEET: StyleSheet = app_stylesheet(
 )
 """The whole sheet: tokens, reset, SDK rules and the rules above."""
 
+CSS_URL: str = STYLESHEET.url(CSS_PATH)
+"""What every page links: ``CSS_PATH`` plus ``?v=<content version>``.
 
-__all__: list[str] = ["CSS_PATH", "STYLESHEET", "THEME"]
+The CSS router caches this URL for a year as ``immutable``; changing any
+rule changes the version, so the browser fetches the new sheet on the
+first page load after a deploy.
+"""
+
+
+__all__: list[str] = ["CSS_PATH", "CSS_URL", "STYLESHEET", "THEME"]
 '''
 
 
@@ -503,7 +513,7 @@ from fastapi import APIRouter
 from fastapi.responses import Response
 from tempest_fastapi_sdk.ssr import html_response
 
-from __ROOT__.ui import CSS_PATH, HomePage
+from __ROOT__.ui import CSS_URL, HomePage
 
 router: APIRouter = APIRouter(tags=["web"], include_in_schema=False)
 
@@ -518,7 +528,7 @@ async def home() -> Response:
     return html_response(
         HomePage(title="Início", users=0, orders=0),
         title="Início",
-        stylesheets=[CSS_PATH],
+        stylesheets=[CSS_URL],
     )
 
 

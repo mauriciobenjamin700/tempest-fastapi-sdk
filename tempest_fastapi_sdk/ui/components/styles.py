@@ -22,6 +22,18 @@ _ALERT_ROLES: dict[str, str] = {
     "error": "error",
 }
 
+_TABLE_ALIGNMENTS: dict[str, dict[str, str]] = {
+    "left": {"text-align": "left"},
+    "center": {"text-align": "center"},
+    "right": {"text-align": "right", "font-variant-numeric": "tabular-nums"},
+}
+"""Declarations of each ``TableColumn.align`` modifier.
+
+Right alignment is the one numbers use, so it also switches to tabular
+figures: every digit gets the same width and a column of amounts lines
+up on the units.
+"""
+
 
 def component_stylesheet(
     *,
@@ -67,6 +79,14 @@ def component_stylesheet(
                 "display": "flex",
                 "flex-direction": "column",
                 "gap": tokens.space("lg"),
+            },
+        ),
+        Rule(
+            f".{names.shell_main_full}",
+            declarations={
+                "max-width": "none",
+                "margin": "0",
+                "padding": "0",
             },
         ),
         Rule(
@@ -240,6 +260,10 @@ def component_stylesheet(
             },
         )
         for variant, role in _ALERT_ROLES.items()
+    )
+    rules.extend(
+        Rule(f".{names.table} .{names.table_align}{align}", declarations=declarations)
+        for align, declarations in _TABLE_ALIGNMENTS.items()
     )
 
     return StyleSheet(reset=False, rules=rules)

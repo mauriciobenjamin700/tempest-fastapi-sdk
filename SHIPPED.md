@@ -1398,6 +1398,21 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `OpenPixEnvironment` so `settings` never drags the lazy `integrations`
   namespace in — the enum is imported inside the method, keeping one source of
   truth for the hosts.
+- **Versioned CSS URL, body font, full-width shell, rich table cells
+  (Unreleased; #341, #350, #346)** — `StyleSheet.url(path)` /
+  `StyleSheet.version()` give the content-versioned link
+  (`?v=<12 hex of the CSS SHA-256>`, same in every process rendering the
+  same rules — tested across two subprocesses); `make_css_router` answers
+  the current `?v=` with `public, max-age=31536000, immutable` and anything
+  else (bare path, stale version) with `no-cache`, which is also the new
+  `css_response` default. `ThemeTokens` emits `--t-font-family-body`
+  (`SYSTEM_FONT_STACK` by default, `font_family_body=` to change) and the
+  reset applies it to `body`. `Shell(width="full")` adds
+  `tui-shell__main--full` (no max-width, margin or padding).
+  `DataTable.columns` takes `str | TableColumn` — `render=` (row → widget,
+  widgets or escaped `str`), `align=` (`tui-table__cell--<align>`,
+  `right` with tabular figures), `class_name=`, `header=`. The
+  `tempest generate` scaffold links `CSS_URL`.
 - **App palette (v0.243.0, floor `tempestweb>=0.67.0` from v0.244.0)** —
   `build_web_app(..., theme=...)` hands a `tempest_core.Theme` to every
   session's `App`. This is the half CSS cannot reach: a themed component

@@ -7,7 +7,8 @@ from enum import StrEnum
 
 import pytest
 from pydantic import BaseModel, Field
-from tempest_core import Text
+from tempest_core import Text, Widget
+from tempest_core.widgets import Stack
 from tempestweb.html import render_to_html
 
 from tempest_fastapi_sdk.schemas import BasePaginationSchema
@@ -20,6 +21,7 @@ from tempest_fastapi_sdk.ui.components import (
     NavBar,
     NavItem,
     Pagination,
+    TableColumn,
     component_stylesheet,
     pagination_for,
 )
@@ -122,6 +124,123 @@ def test_table_escapes_cell_content() -> None:
     html = render_to_html(DataTable(rows=[{"x": "<b>hi</b>"}]))
     assert "<b>hi</b>" not in html
     assert "&lt;b&gt;hi&lt;/b&gt;" in html
+
+
+class FileSchema(BaseModel):
+    """Row schema for the custom-cell tests."""
+
+    id: int
+    name: str
+    size: int
+
+
+def _file_actions(row: FileSchema) -> Widget:
+    """Build a cell holding a link and a form, the panel's per-row actions.
+
+    Args:
+        row (FileSchema): The record the cell belongs to.
+
+    Returns:
+        Widget: The link followed by a ``POST`` form with one button.
+    """
+    return [
+        Text(content=row.name, tag="a", attrs={"href": f"/files/{row.id}"}),
+        Stack(
+            tag="form",
+            attrs={"method": "post", "action": f"/files/{row.id}/delete"},
+            children=[Text(content="Remover", tag="button", attrs={"type": "submit"})],
+        ),
+    ]
+
+
+def test_table_cell_renderer_puts_link_and_form_in_one_cell() -> None:
+    html = render_to_html(
+        DataTable(
+            rows=[FileSchema(id=7, name="a.txt", size=120)],
+            row_schema=FileSchema,
+            columns=[TableColumn("name", render=_file_actions, header="Ações"), "size"],
+        ),
+    )
+    assert (
+        "<td>"
+        '<a href="/files/7">a.txt</a>'
+        '<form method="post" action="/files/7/delete">'
+        '<button type="submit">Remover</button>'
+        "</form>"
+        "</td>"
+        "<td>120</td>"
+    ) in html
+    assert '<th scope="col">Ações</th><th scope="col">Size</th>' in html
+
+
+def test_table_renderer_widgets_are_escaped_by_the_renderer() -> None:
+    """A widget returned by a renderer is rendered, never inserted as HTML."""
+
+    def evil(row: dict[str, str]) -> Widget:
+        return Text(content=row["name"], tag="a", attrs={"href": "/x"})
+
+    html = render_to_html(
+        DataTable(
+            rows=[{"name": "<script>x</script>"}],
+            columns=[TableColumn("name", render=evil)],
+        ),
+    )
+    assert "<script>" not in html
+    assert '<a href="/x">&lt;script&gt;x&lt;/script&gt;</a>' in html
+
+
+def test_table_renderer_returning_text_is_escaped() -> None:
+    html = render_to_html(
+        DataTable(
+            rows=[{"name": "ana"}],
+            columns=[TableColumn("name", render=lambda row: f"<i>{row['name']}</i>")],
+        ),
+    )
+    assert "<td>&lt;i&gt;ana&lt;/i&gt;</td>" in html
+
+
+def test_table_renderer_returning_none_uses_none_text() -> None:
+    html = render_to_html(
+        DataTable(
+            rows=[{"name": "ana"}],
+            columns=[TableColumn("name", render=lambda row: None)],
+        ),
+    )
+    assert "<td>—</td>" in html
+
+
+def test_table_column_alignment_and_class_reach_header_and_cells() -> None:
+    html = render_to_html(
+        DataTable(
+            rows=[{"name": "a", "size": 3}],
+            columns=["name", TableColumn("size", align="right", class_name="col-opt")],
+        ),
+    )
+    assert '<th scope="col">Name</th>' in html
+    assert '<th scope="col" class="tui-table__cell--right col-opt">Size</th>' in html
+    assert '<td>a</td><td class="tui-table__cell--right col-opt">3</td>' in html
+
+
+def test_table_alignment_class_follows_component_classes() -> None:
+    html = render_to_html(
+        DataTable(
+            rows=[{"n": 1}],
+            columns=[TableColumn("n", align="center")],
+            classes=ComponentClasses(table_align="cell-"),
+        ),
+    )
+    assert '<td class="cell-center">1</td>' in html
+
+
+def test_table_column_specs_and_names_mix_both_forms() -> None:
+    table = DataTable(columns=["a", TableColumn("b", align="left")])
+    assert table.resolved_columns() == ["a", "b"]
+    assert [spec.align for spec in table.column_specs()] == [None, "left"]
+
+
+def test_table_column_rejects_an_unknown_alignment() -> None:
+    with pytest.raises(ValueError, match="right"):
+        DataTable(columns=[TableColumn("a", align="middle")])  # type: ignore[arg-type]
 
 
 def test_pagination_links_carry_the_page_query() -> None:

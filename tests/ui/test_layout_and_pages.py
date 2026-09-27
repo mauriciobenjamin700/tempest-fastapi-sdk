@@ -95,3 +95,19 @@ def test_ssr_page_is_the_same_class() -> None:
     from tempest_fastapi_sdk.ssr import Page as SsrPage
 
     assert SsrPage is Page
+
+
+def test_shell_is_contained_by_default() -> None:
+    html = render_to_html(Shell(children=[Text(content="x")]))
+    assert '<main class="tui-shell__main">' in html
+    assert "tui-shell__main--full" not in html
+
+
+def test_full_width_shell_adds_the_modifier() -> None:
+    html = render_to_html(Shell(children=[Text(content="x")], width="full"))
+    assert '<main class="tui-shell__main tui-shell__main--full">' in html
+
+
+def test_shell_rejects_an_unknown_width() -> None:
+    with pytest.raises(ValueError, match="contained"):
+        Shell(children=[], width="wide")  # type: ignore[arg-type]

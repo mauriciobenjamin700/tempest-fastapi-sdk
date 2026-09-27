@@ -109,6 +109,7 @@ from fastapi.responses import Response
 
 from tempest_fastapi_sdk.ssr import html_response
 
+from src.ui import CSS_URL
 from src.ui.pages.users import UsersPage
 
 router: APIRouter = APIRouter(tags=["web"], include_in_schema=False)
@@ -121,7 +122,7 @@ async def users_page() -> Response:
     return html_response(
         UsersPage(title="Users", active_href="/users", users=users),
         title="Users",
-        stylesheets=["/static/app.css"],
+        stylesheets=[CSS_URL],
     )
 ```
 
@@ -198,6 +199,85 @@ Passing `row_schema=` keeps the header visible **even when the list is
 empty** — in which case the table renders a single row carrying
 `empty_text`.
 
+### A link, button or form inside a cell
+
+A panel table is hardly ever text only: the name opens the detail page,
+and every row has a "remove" action. For that the column becomes a
+`TableColumn`, with a `render=` that takes the row and returns widgets.
+Text columns and `TableColumn`s mix in one list:
+
+```python hl_lines="15-26 33-35"
+from pydantic import BaseModel
+from tempest_core import Text, Widget
+from tempest_core.widgets import Stack
+
+from tempest_fastapi_sdk.ui.components import DataTable, TableColumn
+
+
+class FileResponseSchema(BaseModel):
+    id: int
+    name: str
+    size: int
+    owner: str
+
+
+def file_actions(row: FileResponseSchema) -> list[Widget]:
+    return [
+        Text(content=row.name, tag="a", attrs={"href": f"/files/{row.id}"}),
+        Stack(
+            tag="form",
+            attrs={"method": "post", "action": f"/files/{row.id}/delete"},
+            children=[
+                Text(content="Remove", tag="button", attrs={"type": "submit"}),
+            ],
+        ),
+    ]
+
+
+table = DataTable(
+    rows=[FileResponseSchema(id=7, name="a.txt", size=120, owner="ana")],
+    row_schema=FileResponseSchema,
+    columns=[
+        TableColumn("name", header="File", render=file_actions),
+        TableColumn("size", header="Bytes", align="right"),
+        TableColumn("owner", class_name="col-optional"),
+    ],
+)
+```
+
+The row comes out like this (measured with `tempestweb`'s HTML renderer):
+
+```html
+<tr><td><a href="/files/7">a.txt</a><form method="post" action="/files/7/delete"><button type="submit">Remove</button></form></td><td class="tui-table__cell--right">120</td><td class="col-optional">ana</td></tr>
+```
+
+Piece by piece:
+
+- **`render=`** takes the row (the schema or the dict from `rows`) and
+  returns a widget, a list of widgets or a `str`. A widget goes through
+  the normal renderer — nothing is inserted as raw HTML, and the text
+  inside is still escaped. A `str` becomes an escaped text cell, like the
+  default; `None` becomes `none_text`.
+- **`align=`** (`"left"`, `"center"`, `"right"`) applies the
+  `tui-table__cell--<align>` modifier to the `<th>` and every `<td>` of
+  the column. `"right"` also turns on `font-variant-numeric:
+  tabular-nums`, so numbers line up on the units.
+- **`class_name=`** goes on the `<th>` and every `<td>`, so your sheet
+  can target the column — for example, hide it on a narrow screen:
+
+```python
+from tempest_fastapi_sdk.ui.css import Media, Rule, StyleSheet
+
+own: StyleSheet = StyleSheet(
+    reset=False,
+    rules=[Media.max_width(600, [Rule(".col-optional", declarations={"display": "none"})])],
+)
+```
+
+- **`header=`** changes the label of that column alone. Without it the
+  usual chain applies: `headers=`, then the field's `title`, then the
+  humanized name.
+
 And pagination pairs with the SDK envelope:
 
 ```python
@@ -228,7 +308,13 @@ Grid(children=[Text(content="a"), Text(content="b")], columns=2)
 ```
 
 - **`Shell`** builds the `<header>` / `<main>` / `<footer>` landmarks —
-  the structure a screen reader navigates by.
+  the structure a screen reader navigates by. By default
+  (`width="contained"`) `<main>` sits in a centred `72rem` column with a
+  gutter on each side — right for a reading page. `Shell(width="full")`
+  adds the `tui-shell__main--full` class, which clears the maximum width,
+  the margin and the padding: the classic panel layout, with a sidebar
+  flush against the edge, spans the whole screen and handles its own
+  spacing, with no CSS override from you.
 - **`Grid`** is a real CSS grid. Without `columns=` it auto-fits
   (`minmax(16rem, 1fr)`), so it collapses to one column on a phone with
   no media query at all.
@@ -304,6 +390,10 @@ app.include_router(make_css_router(STYLESHEET, path=CSS_PATH))
 app.include_router(web_router)
 ```
 
+The router serves at `CSS_PATH`, and the generated pages link `CSS_URL`
+(`STYLESHEET.url(CSS_PATH)`), the URL carrying the content version —
+[Typed CSS](ui-css.md#serving-the-sheet) explains the caching that buys.
+
 ## Recap
 
 - `ui` is a layer, beside `controllers` and `services`, and answers only
@@ -313,6 +403,9 @@ app.include_router(web_router)
 - The page receives loaded data from the router — no I/O inside
   `body()`.
 - `Stack` for semantic markup, `Column`/`Row` for flexbox.
+- `DataTable` takes `TableColumn(render=..., align=..., class_name=...)`
+  for a link, button or form per row, with no hand-written table.
+- `Shell(width="full")` frees the whole width for a panel layout.
 - `tempest new --extras "ssr"` writes all of it, working.
 
 Next: [Forms from Pydantic schemas »](ui-forms.md) and
