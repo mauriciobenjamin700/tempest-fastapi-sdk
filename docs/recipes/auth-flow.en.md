@@ -10,6 +10,7 @@ Since v0.31.0 the SDK ships the full local-account lifecycle — email + passwor
     | I want to… | Logged in? | Section | Endpoints |
     | --- | --- | --- | --- |
     | Create account + activate by email | — | [Setup](#minimum-setup) | `signup` → `activate/{token}` |
+    | **Test everything without a frontend** (curl, Swagger, mobile app) | — | **[Backend only](#backend-only-from-signup-to-a-protected-route)** | `signup` → `activate/{token}` → `login` → protected route |
     | **The activation email never arrived** | ❌ no | **[Re-send the activation](#re-send-the-activation)** | `activation/request` → `activate/{token}` |
     | Log in | — | [Endpoints](#endpoints) | `login` |
     | **I forgot my password** | ❌ no | **[Password recovery](#password-recovery)** | `password-reset/request` → `password-reset/confirm` |
@@ -26,6 +27,7 @@ Since v0.31.0 the SDK ships the full local-account lifecycle — email + passwor
 1. **[Minimum setup](#minimum-setup)** — extras install + wiring four objects (`AsyncDatabaseManager`, `EmailUtils`, `UserAuthService`, `make_auth_router`).
 2. **[Concrete UserTokenModel](#concrete-usertokenmodel)** — `BaseUserTokenModel` is abstract, your project owns the concrete table.
 3. **[Endpoints](#endpoints)** — table of all endpoints + payload + behavior.
+    - **[Backend only](#backend-only-from-signup-to-a-protected-route)** — the signup → activation → login → protected route cycle without a frontend, measured with `curl`, and the same cycle in a test.
 4. **[Password recovery](#password-recovery)** — the "forgot password" flow, step by step, plus changing the password while logged in.
 5. **[Email change and recovery](#email-change-and-recovery)** — change email logged in, re-verify, and recover when the mailbox is lost.
 6. **[Settings — environment variables](#settings-environment-variables)** — env vars in **groups** (JWT, password policy, email flow, TTL, URLs/templates, backend pages) — each in a typed table, not one blob.
@@ -407,6 +409,443 @@ visible in OpenAPI. `on_signup` is where its fields become columns, inside the
 insert's transaction. Nothing else has to leave the SDK for your service.
 
 
+## Backend only: from signup to a protected route
+
+You don't have a frontend yet. Maybe you are testing the API with `curl` or
+through Swagger, writing a mobile app, or you want the email link to
+activate the account straight on the backend. The default
+`AUTH_ACTIVATION_URL_TEMPLATE` points at
+`http://localhost:3000/activate?token={token}` — a frontend page that, in your
+case, does not exist.
+
+This section runs the whole cycle **with the API alone**: sign up, get the
+activation token, activate, log in and call a protected route. Every output
+below came from a `curl` against the app on this page.
+
+### Step 1 — the whole app in one file
+
+```bash
+uv add "tempest-fastapi-sdk[auth,email,sqlite]" uvicorn
+```
+
+`[auth]` brings bcrypt and PyJWT, `[sqlite]` brings the `aiosqlite` driver,
+and `[email]` brings the Jinja2 that the [Mode E](#mode-e-backend-only-v0320)
+HTML pages render with. `uvicorn` is the server.
+
+```python
+# main.py
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+import uvicorn
+from fastapi import Depends, FastAPI
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    AuthSettings,
+    AuthUserSchema,
+    BaseUserModel,
+    DatabaseSettings,
+    JWTSettings,
+    UserAuthService,
+    make_auth_router,
+    make_user_token_model,
+)
+
+
+class Settings(DatabaseSettings, JWTSettings, AuthSettings):
+    """Settings read from the environment (and from `.env`)."""
+
+
+class UserModel(BaseUserModel):
+    """The account table."""
+
+    __tablename__ = "users"
+
+
+UserTokenModel = make_user_token_model(user_table="users")
+
+settings: Settings = Settings()
+db: AsyncDatabaseManager = AsyncDatabaseManager(settings.DATABASE_URL)
+auth_service: UserAuthService = UserAuthService(
+    db=db,
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+    email=None,
+)
+get_current_user = auth_service.current_user_dependency()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Open the database and create the tables on startup.
+
+    Args:
+        app (FastAPI): The application being started.
+
+    Yields:
+        None: Control back to FastAPI while the app serves requests.
+    """
+    await db.connect()
+    await db.create_tables()
+    yield
+    await db.disconnect()
+
+
+app: FastAPI = FastAPI(lifespan=lifespan)
+app.include_router(
+    make_auth_router(auth_service, session_factory=db.session_dependency),
+)
+
+
+@app.get("/api/profile")
+async def profile(current: UserModel = Depends(get_current_user)) -> AuthUserSchema:
+    """Return the account that owns the bearer token.
+
+    Args:
+        current (UserModel): The user resolved from the token.
+
+    Returns:
+        AuthUserSchema: The public view of the account.
+    """
+    return AuthUserSchema.model_validate(current)
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)
+```
+
+Three lines do this section's work:
+
+- **`email=None`** — with no `EmailUtils`, the activation link comes back
+  **in the body** of `signup` (the `activation_url` field). You don't need
+  `AUTH_RETURN_TOKEN_IN_RESPONSE=true`: with `email=None` the link shows up
+  anyway, and it is the only place it shows up.
+- **`db.create_tables()`** — creates `users` and `user_tokens` in SQLite
+  (`./app.db`, the `DATABASE_URL` default). Fine for dev; in production the
+  schema comes from Alembic, as in [Concrete UserTokenModel](#concrete-usertokenmodel).
+- **`current_user_dependency()`** — the dependency guarding `/api/profile`.
+  Details in [Getting the `current_user`](#getting-the-current_user-from-the-request).
+
+### Step 2 — the dev `.env` without a frontend
+
+```bash
+# .env
+AUTH_BACKEND_LINKS=true
+AUTH_ACTIVATION_URL_TEMPLATE=http://127.0.0.1:8000/auth/activate/{token}
+AUTH_PASSWORD_RESET_URL_TEMPLATE=http://127.0.0.1:8000/auth/password-reset/{token}
+```
+
+`AUTH_BACKEND_LINKS=true` turns on [Mode E](#mode-e-backend-only-v0320): the
+backend mounts `GET /auth/activate/{token}`, an HTML page that activates the
+account when someone opens the link. The template points at that route, so
+the `activation_url` you get back is a link that works on its own.
+
+!!! info "`127.0.0.1` only works because the link opens on your machine"
+    In dev, whoever opens the link is you, on the same computer as the
+    server. In production the link opens in the **user's** browser, and the
+    host must be the backend's public domain — see the prefix warning in
+    [Mode E](#mode-e-backend-only-v0320).
+
+Start the server:
+
+```bash
+uv run python main.py
+```
+
+### Step 3 — sign up
+
+```bash
+curl -X POST 127.0.0.1:8000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email": "ana@example.com", "password": "senha-forte-123"}'
+```
+
+`201 Created`:
+
+```json
+{
+  "user_id": "69ce003d-1384-43a6-86df-01e547a03f13",
+  "activation_required": true,
+  "activation_url": "http://127.0.0.1:8000/auth/activate/5wScVz_EX6rW-PGCYkaDYpv0dGjjm779J3-HbcVW6nswr_Lao7Q_ynzwicIrQzZe",
+  "access_token": null,
+  "refresh_token": null
+}
+```
+
+The token is the last segment of `activation_url`. The account exists but is
+still inactive — logging in now answers `401` with
+`{"detail": "invalid email or password"}`, the same sentence as a wrong
+password, so nobody learns that the email has an account.
+
+### Step 4 — activate
+
+Pick **one** of the two paths. The token is single-use, so the second use
+answers an error.
+
+=== "Link (browser or `curl`)"
+
+    Open `activation_url` in the browser, or:
+
+    ```bash
+    curl -i http://127.0.0.1:8000/auth/activate/5wScVz_EX6rW-PGCYkaDYpv0dGjjm779J3-HbcVW6nswr_Lao7Q_ynzwicIrQzZe
+    ```
+
+    `200 OK` with `content-type: text/html` and the account-activated page
+    (in the `AUTH_DEFAULT_LOCALE` language, `pt-BR` by default). It is what a
+    Mode E user sees after clicking the email. Opening the same link again
+    answers `400` with the activation-failed page.
+
+    This page does not hand out a JWT (a token in a URL leaks into history and
+    logs), so the next step is logging in.
+
+=== "JSON (Swagger, mobile app)"
+
+    ```bash
+    curl -X POST 127.0.0.1:8000/auth/activate/5wScVz_EX6rW-PGCYkaDYpv0dGjjm779J3-HbcVW6nswr_Lao7Q_ynzwicIrQzZe
+    ```
+
+    `200 OK` with the JWT pair — the account comes out activated **and**
+    logged in:
+
+    ```json
+    {
+      "user_id": "69ce003d-1384-43a6-86df-01e547a03f13",
+      "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…",
+      "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…"
+    }
+    ```
+
+    Repeating it answers `401` with `{"detail": "token already used"}`. This
+    route exists in every mode; the `GET` one only with
+    `AUTH_BACKEND_LINKS=true` — without it, opening the link in the browser
+    answers `405 Method Not Allowed`.
+
+### Step 5 — log in and call the protected route
+
+```bash
+curl -X POST 127.0.0.1:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "ana@example.com", "password": "senha-forte-123"}'
+```
+
+`200 OK`:
+
+```json
+{
+  "user_id": "69ce003d-1384-43a6-86df-01e547a03f13",
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…",
+  "mfa_required": false,
+  "mfa_token": null
+}
+```
+
+Send the `access_token` in the `Authorization` header:
+
+```bash
+curl 127.0.0.1:8000/api/profile \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…"
+```
+
+`200 OK`:
+
+```json
+{
+  "id": "69ce003d-1384-43a6-86df-01e547a03f13",
+  "is_active": true,
+  "created_at": "2026-09-27T22:16:42.190695Z",
+  "updated_at": "2026-09-27T22:16:48.642307Z",
+  "email": "ana@example.com",
+  "is_admin": false,
+  "last_login_at": "2026-09-27T22:16:48.641560Z"
+}
+```
+
+Without the header, the same route answers `401` with
+`{"detail": "Authorization token is missing or invalid"}`.
+
+!!! tip "Through Swagger"
+    Open `http://127.0.0.1:8000/docs`. `POST /auth/signup` returns the
+    `activation_url`; paste the token into `POST /auth/activate/{token}`;
+    copy the `access_token` from the response, click **Authorize** (the
+    `HTTPBearer` scheme the dependency registers) and paste it. From then on,
+    **Try it out** on `/api/profile` goes authenticated.
+
+### What about the mobile app?
+
+The app has no web page to receive the link, but it can receive a **deep
+link**. The template is a `.format()` string with no scheme validation, so
+it takes your app's scheme:
+
+```bash
+# .env
+AUTH_ACTIVATION_URL_TEMPLATE=meuapp://ativar?token={token}
+```
+
+`signup` then returns
+`"activation_url": "meuapp://ativar?token=f8vX7Qa…"`. The app opens from
+that link, reads `token` from the query string and calls
+`POST /auth/activate/{token}` — the JSON path from step 4, which already
+returns the JWT pair. `AUTH_BACKEND_LINKS` can stay off here: the app
+handles the link, not the backend.
+
+### The same cycle in a test, with the email captured
+
+In a test you want the production path — the link **in the email**, not in
+the body. `FakeEmailUtils` is an `EmailUtils` that keeps each message in
+`outbox` instead of opening an SMTP connection:
+
+```python
+# tests/test_auth_flow.py
+import re
+from collections.abc import AsyncIterator
+
+import pytest
+from fastapi import Depends, FastAPI
+from httpx import ASGITransport, AsyncClient, Response
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    AuthSettings,
+    AuthUserSchema,
+    BaseUserModel,
+    JWTSettings,
+    UserAuthService,
+    make_auth_router,
+    make_user_token_model,
+)
+from tempest_fastapi_sdk.testing.fakes import FakeEmailUtils
+
+
+class UserModel(BaseUserModel):
+    """The account table."""
+
+    __tablename__ = "users"
+
+
+UserTokenModel = make_user_token_model(user_table="users")
+
+
+@pytest.fixture
+async def mailer() -> FakeEmailUtils:
+    """Return a mailer whose messages land in `outbox`.
+
+    Returns:
+        FakeEmailUtils: The fake mailer.
+    """
+    return FakeEmailUtils()
+
+
+@pytest.fixture
+async def client(mailer: FakeEmailUtils) -> AsyncIterator[AsyncClient]:
+    """Serve the auth router over an in-memory SQLite database.
+
+    Args:
+        mailer (FakeEmailUtils): Where the activation email lands.
+
+    Yields:
+        AsyncClient: A client bound to the app, no socket involved.
+    """
+    db: AsyncDatabaseManager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.create_tables()
+    service: UserAuthService = UserAuthService(
+        db=db,
+        user_model=UserModel,
+        token_model=UserTokenModel,
+        auth_settings=AuthSettings(
+            AUTH_BACKEND_LINKS=True,
+            AUTH_ACTIVATION_URL_TEMPLATE="http://test/auth/activate/{token}",
+        ),
+        jwt_settings=JWTSettings(),
+        email=mailer,
+    )
+    get_current_user = service.current_user_dependency()
+    app: FastAPI = FastAPI()
+    app.include_router(make_auth_router(service, session_factory=db.session_dependency))
+
+    @app.get("/api/profile")
+    async def profile(current: UserModel = Depends(get_current_user)) -> AuthUserSchema:
+        """Return the account that owns the bearer token.
+
+        Args:
+            current (UserModel): The user resolved from the token.
+
+        Returns:
+            AuthUserSchema: The public view of the account.
+        """
+        return AuthUserSchema.model_validate(current)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as opened:
+        yield opened
+    await db.disconnect()
+
+
+async def test_signup_activate_login_profile(
+    client: AsyncClient,
+    mailer: FakeEmailUtils,
+) -> None:
+    """Walk the account from signup to a protected route.
+
+    Args:
+        client (AsyncClient): The app client.
+        mailer (FakeEmailUtils): The captured outbox.
+    """
+    credentials: dict[str, str] = {"email": "ana@example.com", "password": "senha-forte-123"}
+
+    signup: Response = await client.post("/auth/signup", json=credentials)
+    assert signup.status_code == 201
+    assert signup.json()["activation_url"] is None
+
+    match = re.search(r"http://test/auth/activate/\S+", mailer.outbox[0].body)
+    assert match is not None
+    link: str = match.group(0)
+
+    page: Response = await client.get(link)
+    assert page.status_code == 200
+    assert "text/html" in page.headers["content-type"]
+
+    login: Response = await client.post("/auth/login", json=credentials)
+    assert login.status_code == 200
+    token: str = login.json()["access_token"]
+
+    profile: Response = await client.get(
+        "/api/profile",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert profile.status_code == 200
+    assert profile.json()["is_active"] is True
+```
+
+Note the `assert signup.json()["activation_url"] is None`: with an
+`EmailUtils` configured, the link **leaves the body** and goes only to the
+email — that is what proves the test exercises the production path. The
+`async` fixtures need `asyncio_mode = "auto"` under
+`[tool.pytest.ini_options]` in `pyproject.toml` (with `pytest-asyncio`
+installed).
+
+!!! note "Installed only `[auth]`?"
+    The JSON path works with `[auth,sqlite]`. With `AUTH_BACKEND_LINKS=true`
+    and without the `[email]` Jinja2, `make_auth_router` refuses to start and
+    names the missing extra — before, the router started, and the first click
+    on the link activated the account and answered `500`.
+
+**Recap.**
+
+- With no frontend, the link comes in the `signup` body while `email=None`;
+  with real email, only in the email.
+- `POST /auth/activate/{token}` activates and already returns the JWT pair;
+  `GET` on the same path is the Mode E HTML page, which asks for a login
+  afterwards.
+- `AUTH_ACTIVATION_URL_TEMPLATE` points at whoever will open the link: the
+  frontend, the backend (Mode E) or the app (deep link).
+- The `access_token` goes in `Authorization: Bearer …` on any route guarded
+  by `current_user_dependency()`.
+
+---
+
 ## Re-send the activation
 
 The activation email goes out **once**, at `signup`. When it does not
@@ -773,17 +1212,36 @@ Lifetime of the **single-use** tokens (activation / reset) — distinct from the
 
 | Env var | Type | Default | What it does |
 |---------|------|---------|--------------|
-| `AUTH_ACTIVATION_URL_TEMPLATE` | `str` | `http://localhost:3000/activate?token={token}` | URL that goes in the email; `{token}` is substituted. **Points at the frontend** (except in Mode E). |
+| `AUTH_ACTIVATION_URL_TEMPLATE` | `str` | `http://localhost:3000/activate?token={token}` | Activation link that goes in the email (or in the `signup` body, when there is no email); `{token}` is substituted. Points at **whoever will open the link** — frontend, backend or app. Per-mode table right below. |
 | `AUTH_PASSWORD_RESET_URL_TEMPLATE` | `str` | `http://localhost:3000/reset-password?token={token}` | Same, for reset. |
 | `AUTH_ACTIVATION_TEMPLATE` | `str` | `activation.html` | Jinja2 filename of the activation **email HTML**, resolved against `EmailUtils.template_dir`. |
 | `AUTH_PASSWORD_RESET_TEMPLATE` | `str` | `password_reset.html` | Same, for reset. |
+
+#### Where `AUTH_ACTIVATION_URL_TEMPLATE` points
+
+The template is just a `.format()` string: the SDK substitutes `{token}` and
+does not know who will open the result. The mode decides:
+
+| Mode | Who opens the link | Template | Route that consumes the token |
+| --- | --- | --- | --- |
+| [A](#mode-a-production), [B](#mode-b-dev-with-local-smtp-mailhog-or-smtp4dev), [C](#mode-c-dev-without-smtp-link-in-body) | a **frontend** page, which reads `?token=` and calls the API | `https://app.example.com/activate?token={token}` | `POST /auth/activate/{token}` |
+| [E — backend-only](#mode-e-backend-only-v0320) | the **backend** itself: `AUTH_BACKEND_LINKS=true` mounts an HTML page at `GET /auth/activate/{token}` that activates the account on click | `https://api.example.com/auth/activate/{token}` (with the router prefix, if any) | `GET /auth/activate/{token}` |
+| Mobile app | the **app**, through a deep link | `meuapp://ativar?token={token}` | `POST /auth/activate/{token}` |
+| [D](#mode-d-ci-tests-skip-everything) | nobody — the account is born active | irrelevant | none |
+
+**Dev without a frontend:** the default points at `localhost:3000`, a page
+that does not exist in your case. Turn on Mode E with the template on the
+backend itself (`http://127.0.0.1:8000/auth/activate/{token}`), or leave the
+template as is and send the token to `POST /auth/activate/{token}`. The step
+by step, with measured responses, is in
+[Backend only](#backend-only-from-signup-to-a-protected-route).
 
 !!! warning "URL template ≠ Jinja2 template"
     `*_URL_TEMPLATE` is a `.format()` string with `{token}` — it's the **link**. `*_TEMPLATE` is the name of an `.html` file — it's the **email that wraps the link**. Confusing the two is the #1 mistake. Full detail in [Email anatomy](#email-anatomy).
 
 ### Group 6 — Backend-rendered pages (Mode E, `AuthSettings`)
 
-Only relevant when `AUTH_BACKEND_LINKS=true`. See [Mode E](#five-operating-modes) for the full flow.
+Only relevant when `AUTH_BACKEND_LINKS=true`. See [Mode E](#mode-e-backend-only-v0320) for the full flow.
 
 | Env var | Type | Default | What it does |
 |---------|------|---------|--------------|
@@ -874,7 +1332,7 @@ Three different concepts that look the same. Here's what each one does, exactly 
 In prose:
 
 - **Opaque token** — random string the SDK generates, hashes (SHA-256), and stores in the `user_tokens` table. The plaintext leaves over email **only once**; the database keeps just the hash.
-- **URL template** (`AUTH_ACTIVATION_URL_TEMPLATE`) — literal format string used to build the URL the user will click. **It points at the frontend, not the backend.** The frontend reads `?token=…` from the query string and calls `POST /auth/activate/{token}` on the backend.
+- **URL template** (`AUTH_ACTIVATION_URL_TEMPLATE`) — literal format string used to build the URL the user will click. In modes A–C **it points at the frontend**: it reads `?token=…` from the query string and calls `POST /auth/activate/{token}` on the backend. In [Mode E](#mode-e-backend-only-v0320) it points at the backend, which activates the account on `GET`. Full table in [Where the template points](#where-auth_activation_url_template-points).
 - **Jinja2 template** (`AUTH_ACTIVATION_TEMPLATE`) — filename of the HTML template inside `EmailUtils.template_dir`. It's **the HTML body of the email**, not the URL. It receives the `{ user, activation_url, expires_at, expires_at_str }` context and renders the final markup. Use `{{ expires_at_str }}` in the template — it's the expiry already formatted short (e.g. `2026-06-21 23:25 (UTC)`, no seconds); `expires_at` is still available as the raw `datetime` if you want to format it yourself.
 
 !!! warning "URL template ≠ Jinja2 template"
@@ -1129,6 +1587,8 @@ Signup skips activation entirely and returns `{access_token, refresh_token}` str
 
 When you'd rather have the **whole** link experience happen on the backend, with no frontend page in the loop, flip `AUTH_BACKEND_LINKS=True`. The router then mounts **five extra HTML endpoints** — `GET /auth/activate/{token}`, `GET /auth/password-reset/{token}`, `POST /auth/password-reset/{token}` (form-encoded), `GET /auth/email-change/{token}` and `GET /auth/email-verify/{token}`. The email points the user straight at those endpoints; the backend activates the account / processes the reset / renders HTML success or error — using bundled Jinja2 templates you can shadow.
 
+It is also the mode for **dev without a frontend**: the whole cycle — signup, link, login and protected route — with measured responses is in [Backend only](#backend-only-from-signup-to-a-protected-route).
+
 ```bash
 # .env — Mode E (backend-only)
 AUTH_BACKEND_LINKS=true
@@ -1261,7 +1721,7 @@ app.include_router(
 - ✅ **MVP in minutes** — no need to create SPA routes to process tokens.
 - ✅ **Works in frontend-less projects** — public APIs, intranets, internal tooling.
 - ⚠️ **JWT is not auto-delivered** — after activation, the user signs in manually (clicking "Go to login" and entering credentials). By design: zero token leak via URL, history, or server logs.
-- ⚠️ **Requires the `[email]` extra** (Jinja2) to render the HTML pages — same dependency as the email template renderer.
+- ⚠️ **Requires the `[email]` extra** (Jinja2) to render the HTML pages — same dependency as the email template renderer. Without it, `make_auth_router` raises `RuntimeError` at construction naming the extra, instead of the first click activating the account and answering 500.
 - ⚠️ **No CSRF on the reset form** — the HTML form posts traditionally without a CSRF token. The reset token is one-shot + short TTL + bound to a single user, but consider plugging in `CSRFMiddleware` if attackers can predict active URLs.
 
 The **JSON** endpoints (`POST /auth/activate/{token}`, `POST /auth/password-reset/confirm`) are still mounted — you can mix Mode E with SPA endpoints.
