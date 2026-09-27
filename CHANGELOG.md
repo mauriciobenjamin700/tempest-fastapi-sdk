@@ -5,6 +5,47 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Três pontes do `tempest-bucket`: a dependency que embrulhava
+`get_session_context()` commitava depois da resposta sem o nome avisar
+(issue #342), um controller que orquestra três services não tinha base sem
+CRUD (issue #353) e `create_tables()` não criava nada para uma
+`DeclarativeBase` própria (issue #354).
+
+### Added
+
+- **`session_dependency_for(get_db)`** (issue #342): dependency de sessão por
+  request para um manager construído sob demanda (`@lru_cache def get_db()`).
+  Mesma semântica de `session_dependency` — sem commit no sucesso, sessão
+  fechada no fim do request, também quando o endpoint levanta — e `get_db` só
+  é chamado no request, nunca no import. Abre a sessão direto em vez de
+  iterar o gerador do manager, então não sobra gerador interno para o GC
+  fechar (o `aclosing` do contorno do consumidor deixa de ser necessário).
+- **`AsyncDatabaseManager.transaction()`** (issue #342): o mesmo context
+  manager de `get_session_context()` sob um nome que diz que ele commita.
+  Não confundir com `transaction(session)` de `db.transaction`, que agrupa
+  escritas numa sessão que já existe.
+- **`Controller`** (issue #353): raiz da camada de controllers, sem método
+  nenhum, para controller que orquestra vários services sem CRUD de recurso
+  único. Fixa só a convenção (services injetados pelo `__init__`, nenhum
+  acesso a banco), sem checagem em runtime. `BaseController` passa a
+  herdar dela; nada muda para quem já a usa.
+- **`create_tables(metadata=None)` / `drop_tables(metadata=None)`** (issue
+  #354): aceitam a `metadata` de uma `DeclarativeBase` própria; o default
+  continua `BaseModel.metadata`.
+
+### Changed
+
+- **Docstring e receita de `get_session_context()`** (issue #342) dizem na
+  primeira linha que ele commita na saída e alertam contra usá-lo numa
+  dependency de request: medido no FastAPI 0.141.1, `http.response.start` e
+  `http.response.body` saem antes do `COMMIT` do teardown.
+- `session_dependency` passa a abrir a sessão por `get_session()`; o
+  comportamento é o mesmo.
+- Receitas `database` e `architecture` (PT/EN), README e referência cobrem
+  as três peças.
+
 ## [0.300.0] — 2026-09-26
 
 Auditoria dos módulos de IA — `agents`, `genai` (texto, RAG, áudio, imagem,

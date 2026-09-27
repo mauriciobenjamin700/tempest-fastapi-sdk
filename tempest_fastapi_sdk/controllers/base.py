@@ -1,4 +1,10 @@
-"""Generic controller skeleton bridging routers and services."""
+"""Controller bases bridging routers and services.
+
+:class:`Controller` is the root of the layer: a controller that
+orchestrates several services and has no single-resource CRUD.
+:class:`BaseController` specializes it for the common case of one
+service with CRUD pass-throughs.
+"""
 
 from __future__ import annotations
 
@@ -24,8 +30,47 @@ UpdateT = TypeVar("UpdateT", bound=BaseSchema, default=BaseSchema)
 pass a third argument to type the payload precisely."""
 
 
-class BaseController(Generic[ServiceT, ResponseT, UpdateT]):
-    """Thin orchestration layer between routers and services.
+class Controller:
+    """Root of the controller layer, for controllers that orchestrate.
+
+    Subclass it when a controller coordinates several services — under
+    one lock, one commit, one audit entry — and has no CRUD of a single
+    resource to pass through. It ships no methods on purpose: inheriting
+    :class:`BaseController` there would hand the router ``get_by_id``,
+    ``update`` and ``delete`` methods that mean nothing for that
+    controller.
+
+    What it fixes is the convention of the layer, the same one
+    :class:`BaseController` follows:
+
+    - services are **injected** through ``__init__`` (built by a FastAPI
+      dependency provider, never inside the controller);
+    - the controller never touches the database — no session, no
+      repository, no engine. Persistence goes through the services it
+      receives.
+
+    The convention is not checked at runtime: the constructor belongs to
+    the subclass, and telling a service from a repository by annotation
+    would need the subclass's forward references resolved.
+
+    Examples:
+        >>> from tempest_fastapi_sdk import Controller
+        >>> class BillingController(Controller):
+        ...     def __init__(self, invoices: object, ledger: object) -> None:
+        ...         self.invoices: object = invoices
+        ...         self.ledger: object = ledger
+        >>> isinstance(BillingController(object(), object()), Controller)
+        True
+    """
+
+
+class BaseController(Controller, Generic[ServiceT, ResponseT, UpdateT]):
+    """Thin orchestration layer between routers and one CRUD service.
+
+    The CRUD specialization of :class:`Controller`: it takes a single
+    service and passes its CRUD methods through. For a controller that
+    orchestrates several services without single-resource CRUD,
+    subclass :class:`Controller` instead.
 
     Following the SDK layering rules (router → controller → service →
     repository), controllers are kept present even when no
@@ -152,4 +197,5 @@ class BaseController(Generic[ServiceT, ResponseT, UpdateT]):
 
 __all__: list[str] = [
     "BaseController",
+    "Controller",
 ]

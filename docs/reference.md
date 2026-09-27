@@ -160,6 +160,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.mixins.NameMixin
 ::: tempest_fastapi_sdk.db.mixins.LocaleColumnMixin
 ::: tempest_fastapi_sdk.db.connection.AsyncDatabaseManager
+::: tempest_fastapi_sdk.db.connection.session_dependency_for
 ::: tempest_fastapi_sdk.db.migrations.AlembicHelper
 ::: tempest_fastapi_sdk.db.slow_query.SlowQueryLogger
 ::: tempest_fastapi_sdk.db.outbox.BaseOutboxModel
@@ -1010,6 +1011,7 @@ o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.services.base.BaseService
 ::: tempest_fastapi_sdk.services.file_mixin.StoredFileServiceMixin
+::: tempest_fastapi_sdk.controllers.base.Controller
 ::: tempest_fastapi_sdk.controllers.base.BaseController
 
 ---

@@ -44,7 +44,7 @@ flowchart LR
     | **Repository** | Queries SQLAlchemy async cruas, CRUD + filtro + paginação | Regras de domínio, HTTP |
     | **UI** (quando o serviço entrega HTML) | Páginas, componentes, formulários e folha de estilo — *como isso aparece* | DB, controllers, services, HTTP |
 
-O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[ModelType]`][tempest_fastapi_sdk.BaseRepository]. O service **DEVE** ser uma subclasse de [`BaseService[RepositoryT, ResponseT]`][tempest_fastapi_sdk.BaseService]. O controller **DEVE** ser uma subclasse de [`BaseController[ServiceT, ResponseT]`][tempest_fastapi_sdk.BaseController] — mesmo quando todo método é um pass-through, porque o controller é a costura para adicionar coordenação entre services mais tarde.
+O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[ModelType]`][tempest_fastapi_sdk.BaseRepository]. O service **DEVE** ser uma subclasse de [`BaseService[RepositoryT, ResponseT]`][tempest_fastapi_sdk.BaseService]. O controller **DEVE** ser uma subclasse de [`BaseController[ServiceT, ResponseT]`][tempest_fastapi_sdk.BaseController] — mesmo quando todo método é um pass-through, porque o controller é a costura para adicionar coordenação entre services mais tarde — ou, quando orquestra vários services sem CRUD de um recurso só, de [`Controller`][tempest_fastapi_sdk.Controller] (veja [Controller que orquestra](#controller-que-orquestra-controller)).
 
 ## Layout obrigatório do projeto
 
@@ -379,3 +379,72 @@ async def create_user(
 ```
 
 Mantenha os controllers presentes mesmo quando só fazem pass-through — o grafo de imports fica uniforme entre os serviços, então adicionar política transversal mais tarde não muda a assinatura do router.
+
+### Controller que orquestra — `Controller`
+
+`BaseController` recebe **um** service e repassa o CRUD dele. Um controller
+que coordena vários services — emitir a fatura, lançar no razão, notificar —
+não tem `get_by_id` nem `delete` de um recurso só; herdar `BaseController` ali
+entregaria ao router métodos que não significam nada. Para esse caso existe
+[`Controller`][tempest_fastapi_sdk.Controller], a raiz da camada: sem método
+nenhum, só a convenção — services **injetados** pelo `__init__`, nenhum acesso
+a banco (sem sessão, sem repository). `BaseController` é a especialização CRUD
+dela, então `isinstance(controller, Controller)` vale para os dois.
+
+| O seu controller… | Herde |
+| --- | --- |
+| repassa o CRUD de um recurso, via um service | `BaseController[ServiceT, ResponseT, UpdateT]` |
+| coordena vários services, sem CRUD de recurso único | `Controller` |
+
+```python
+# src/controllers/billing_controller.py
+from uuid import UUID
+
+from tempest_fastapi_sdk import Controller
+
+from src.schemas import ChargeResponse
+from src.services import InvoiceService, LedgerService, NotificationService
+
+
+class BillingController(Controller):
+    """Charge = invoice + ledger posting + notification."""
+
+    def __init__(
+        self,
+        invoices: InvoiceService,
+        ledger: LedgerService,
+        notifications: NotificationService,
+    ) -> None:
+        self.invoices: InvoiceService = invoices
+        self.ledger: LedgerService = ledger
+        self.notifications: NotificationService = notifications
+
+    async def charge(self, customer_id: UUID, amount_cents: int) -> ChargeResponse:
+        invoice = await self.invoices.issue(customer_id, amount_cents)
+        await self.ledger.post(invoice.id, amount_cents)
+        await self.notifications.invoice_issued(customer_id, invoice.id)
+        return ChargeResponse(invoice_id=invoice.id, amount_cents=amount_cents)
+
+
+# src/api/dependencies/controllers.py
+from src.api.dependencies.resources import SessionDep
+from src.controllers.billing_controller import BillingController
+from src.db.repositories import InvoiceRepository, LedgerRepository
+from src.services import InvoiceService, LedgerService, NotificationService
+
+
+def get_billing_controller(session: SessionDep) -> BillingController:
+    return BillingController(
+        InvoiceService(InvoiceRepository(session)),
+        LedgerService(LedgerRepository(session)),
+        NotificationService(),
+    )
+```
+
+O provider monta os services, o controller só os recebe — a sessão fica no
+provider e nos repositories, nunca no controller.
+
+!!! note "A convenção não é checada em runtime"
+    O `__init__` é da subclasse, e distinguir service de repository pela
+    anotação exigiria resolver as forward references dela. Quem garante a
+    regra é a revisão.

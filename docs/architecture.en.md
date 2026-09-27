@@ -44,7 +44,7 @@ flowchart LR
     | **Repository** | Raw async SQLAlchemy queries, CRUD + filter + pagination | Domain rules, HTTP |
     | **UI** (when the service serves HTML) | Pages, components, forms and the stylesheet — *what it looks like* | DB, controllers, services, HTTP |
 
-The repository **MUST** be a [`BaseRepository[ModelType]`][tempest_fastapi_sdk.BaseRepository] subclass (or instance). The service **MUST** be a [`BaseService[RepositoryT, ResponseT]`][tempest_fastapi_sdk.BaseService] subclass. The controller **MUST** be a [`BaseController[ServiceT, ResponseT]`][tempest_fastapi_sdk.BaseController] subclass — even when every method is a pass-through, because the controller is the seam to add cross-service coordination later.
+The repository **MUST** be a [`BaseRepository[ModelType]`][tempest_fastapi_sdk.BaseRepository] subclass (or instance). The service **MUST** be a [`BaseService[RepositoryT, ResponseT]`][tempest_fastapi_sdk.BaseService] subclass. The controller **MUST** be a [`BaseController[ServiceT, ResponseT]`][tempest_fastapi_sdk.BaseController] subclass — even when every method is a pass-through, because the controller is the seam to add cross-service coordination later — or, when it orchestrates several services with no single-resource CRUD, a [`Controller`][tempest_fastapi_sdk.Controller] subclass (see [A controller that orchestrates](#a-controller-that-orchestrates-controller)).
 
 ## Mandatory project layout
 
@@ -378,4 +378,74 @@ async def create_user(
 ```
 
 Keep controllers present even when they only pass through — the import graph stays uniform across services, so adding cross-cutting policy later doesn't change the router signature.
+
+### A controller that orchestrates — `Controller`
+
+`BaseController` takes **one** service and passes its CRUD through. A
+controller that coordinates several services — issue the invoice, post to the
+ledger, notify — has no `get_by_id` or `delete` of a single resource;
+inheriting `BaseController` there would hand the router methods that mean
+nothing. For that case there is [`Controller`][tempest_fastapi_sdk.Controller],
+the root of the layer: no methods at all, only the convention — services
+**injected** through `__init__`, no database access (no session, no
+repository). `BaseController` is its CRUD specialization, so
+`isinstance(controller, Controller)` holds for both.
+
+| Your controller… | Inherit |
+| --- | --- |
+| passes one resource's CRUD through, via one service | `BaseController[ServiceT, ResponseT, UpdateT]` |
+| coordinates several services, with no single-resource CRUD | `Controller` |
+
+```python
+# src/controllers/billing_controller.py
+from uuid import UUID
+
+from tempest_fastapi_sdk import Controller
+
+from src.schemas import ChargeResponse
+from src.services import InvoiceService, LedgerService, NotificationService
+
+
+class BillingController(Controller):
+    """Charge = invoice + ledger posting + notification."""
+
+    def __init__(
+        self,
+        invoices: InvoiceService,
+        ledger: LedgerService,
+        notifications: NotificationService,
+    ) -> None:
+        self.invoices: InvoiceService = invoices
+        self.ledger: LedgerService = ledger
+        self.notifications: NotificationService = notifications
+
+    async def charge(self, customer_id: UUID, amount_cents: int) -> ChargeResponse:
+        invoice = await self.invoices.issue(customer_id, amount_cents)
+        await self.ledger.post(invoice.id, amount_cents)
+        await self.notifications.invoice_issued(customer_id, invoice.id)
+        return ChargeResponse(invoice_id=invoice.id, amount_cents=amount_cents)
+
+
+# src/api/dependencies/controllers.py
+from src.api.dependencies.resources import SessionDep
+from src.controllers.billing_controller import BillingController
+from src.db.repositories import InvoiceRepository, LedgerRepository
+from src.services import InvoiceService, LedgerService, NotificationService
+
+
+def get_billing_controller(session: SessionDep) -> BillingController:
+    return BillingController(
+        InvoiceService(InvoiceRepository(session)),
+        LedgerService(LedgerRepository(session)),
+        NotificationService(),
+    )
+```
+
+The provider builds the services, the controller only receives them — the
+session lives in the provider and the repositories, never in the controller.
+
+!!! note "The convention is not checked at runtime"
+    `__init__` belongs to the subclass, and telling a service from a
+    repository by annotation would need its forward references resolved.
+    Review is what enforces the rule.
 

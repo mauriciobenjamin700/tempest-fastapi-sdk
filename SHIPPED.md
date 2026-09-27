@@ -2466,3 +2466,20 @@ decompression bomb) e mapeia `ImageLoadError` para `422`. O leitor em blocos
 do `make_voice_router` virou `read_upload_capped`, público e compartilhado.
 Os stores de vetor devolvem `[]` para `top_k <= 0` em vez de fatiar com
 índice negativo.
+
+## Sessão, schema e controller de orquestração (não lançado)
+
+Três pontes do `tempest-bucket`.
+
+- **`session_dependency_for(get_db)`** (#342) — dependency de sessão por
+  request para manager construído sob demanda: sem commit, fecha a sessão
+  (também quando o endpoint levanta), `get_db` só chamado no request.
+  `AsyncDatabaseManager.transaction()` é o nome explícito do
+  `get_session_context()`, que commita na saída — e cuja docstring agora
+  avisa que, numa dependency, o `COMMIT` sai depois da resposta (medido no
+  FastAPI 0.141.1).
+- **`Controller`** (#353) — raiz sem CRUD da camada, para controller que
+  orquestra vários services; `BaseController` é a especialização CRUD dela.
+- **`create_tables(metadata)` / `drop_tables(metadata)`** (#354) — aceitam a
+  `metadata` de uma `DeclarativeBase` própria; default `BaseModel.metadata`.
+
