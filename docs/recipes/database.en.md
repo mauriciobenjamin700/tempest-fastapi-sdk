@@ -373,6 +373,47 @@ async def get_user(user_id: UUID, session: SessionDep) -> UserResponse:
     return repository.map_to_response(await repository.get_by_id(user_id))
 ```
 
+### A manager built on demand — `session_dependency_for`
+
+`Depends(db.session_dependency)` needs `db` to exist when the module is
+imported. Some services prefer to build the manager on first use: to read
+settings **after** the boot guard, and so tests can swap `DATABASE_URL`
+before any engine exists. In that case, hand the **factory** to
+`session_dependency_for`:
+
+```python
+# src/api/dependencies/resources.py
+import os
+from functools import lru_cache
+from typing import Annotated
+
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from tempest_fastapi_sdk import AsyncDatabaseManager, session_dependency_for
+
+
+@lru_cache
+def get_db() -> AsyncDatabaseManager:
+    """Build the manager on first use, never at import."""
+    return AsyncDatabaseManager(os.environ["DATABASE_URL"])
+
+
+get_session = session_dependency_for(get_db)
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
+```
+
+The returned dependency has the same semantics as `session_dependency`: one
+session per request, **no** commit on success, and the session closed when
+the request ends — also when the endpoint raises. `get_db` is called on each
+request, never at import; with `@lru_cache`, every request gets the same
+manager.
+
+!!! tip "Build the dependency once, at module level"
+    FastAPI caches a dependency per request by the callable's **identity**.
+    Two calls to `session_dependency_for(get_db)` return two different
+    functions — and, used in the same request, two sessions. Keep the result
+    under a name (`get_session`) and reuse it.
+
 ### Lifecycle in the lifespan
 
 Open and close the engine alongside the application:
@@ -419,12 +460,25 @@ async def health() -> dict[str, object]:
 ```
 
 !!! info "Other ways to get a session"
-    - `db.get_session_context()` — a context manager that **commits** on
-      success and rolls back on error. Use it in scripts and background
-      tasks.
+    - `db.get_session_context()` / `db.transaction()` — the same context
+      manager under two names: it **commits** on exit and rolls back on
+      error. Use it in scripts and background tasks.
     - `db.get_session()` — a raw session; you close it.
     - `db.create_tables()` / `db.drop_tables()` — tests and local dev
-      only; in production the schema is Alembic's.
+      only; in production the schema is Alembic's. Without an argument,
+      only the models of the SDK's `BaseModel` — see
+      [Your own `DeclarativeBase`](#your-own-declarativebase).
+
+!!! warning "`get_session_context()` commits — never in a request dependency"
+    The code after a dependency's `yield` runs **after** the response went
+    out. Measured on FastAPI 0.141.1, with an ASGI middleware recording the
+    messages: `http.response.start` and `http.response.body` are sent before
+    the `COMMIT`. A dependency wrapping `get_session_context()` answers `204`
+    to a `DELETE` whose commit has not happened yet — the client's next `GET`
+    may still see the row — and, if that commit fails, the status the client
+    already received can no longer change. For requests use
+    `session_dependency` (or `session_dependency_for`) and commit in the
+    service/repository layer.
 
 !!! danger "`create_tables()` is a silent no-op on an existing table"
     `create_all` is `CREATE TABLE IF NOT EXISTS`: against a table that already
@@ -439,6 +493,51 @@ async def health() -> dict[str, object]:
     `postgresql+asyncpg://***@host/db`. The raw URL lives on a private
     attribute precisely so it doesn't leak through `repr()` or accidental
     logging.
+
+### Your own `DeclarativeBase`
+
+`create_tables()` without an argument creates only what inherits the SDK's
+`BaseModel`. A service with its own `DeclarativeBase` — because it addresses
+rows by a natural key, say, and `BaseModel` imposes a UUID and timestamps —
+gets no table at all: the first query fails with `no such table` (SQLite).
+Pass your base's `metadata`:
+
+```python
+import asyncio
+
+from sqlalchemy import Integer, String, select
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from tempest_fastapi_sdk import AsyncDatabaseManager
+
+
+class Base(DeclarativeBase):
+    """A base of your own: natural key, no BaseModel UUID or timestamps."""
+
+
+class ObjectModel(Base):
+    __tablename__ = "objects"
+
+    bucket: Mapped[str] = mapped_column(String(63), primary_key=True)
+    key: Mapped[str] = mapped_column(String(1024), primary_key=True)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+async def main() -> None:
+    db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.create_tables(Base.metadata)
+    async with db.transaction() as session:
+        session.add(ObjectModel(bucket="photos", key="cat.jpg", size=2048))
+    async with db.transaction() as session:
+        rows = (await session.scalars(select(ObjectModel))).all()
+        print([(row.bucket, row.key, row.size) for row in rows])
+    await db.disconnect()
+
+
+asyncio.run(main())
+```
+
+Output: `[('photos', 'cat.jpg', 2048)]`. `drop_tables(Base.metadata)` goes
+the other way. Both remain tools for tests and local dev.
 
 ### Outside a request
 
@@ -555,7 +654,10 @@ and `DATABASE_SQLITE_BUSY_TIMEOUT`.
     do the work with **no session open**, and only then persist.
 
 **Recap:** one `AsyncDatabaseManager` per app, in `resources.py`;
-`session_dependency` injects the per-request session; `connect`/`disconnect`
+`session_dependency` injects the per-request session (`session_dependency_for`
+when the manager is built on demand), while `get_session_context()`/
+`transaction()`, which commit, stay outside requests; `create_tables(metadata)`
+accepts your own `DeclarativeBase`; `connect`/`disconnect`
 in the lifespan; `health_check` + `db_url_safe` on `/health`; on SQLite,
 WAL and the busy timeout ship on so web and worker can share the file.
 

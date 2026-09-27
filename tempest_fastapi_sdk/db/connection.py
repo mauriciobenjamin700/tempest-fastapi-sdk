@@ -1,11 +1,11 @@
 """Async database manager with engine/session lifecycle helpers."""
 
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncGenerator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import event, text
+from sqlalchemy import MetaData, event, text
 from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.ext.asyncio import (
     AsyncConnection,
@@ -372,7 +372,25 @@ class AsyncDatabaseManager:
 
     @asynccontextmanager
     async def get_session_context(self) -> AsyncGenerator[AsyncSession]:
-        """Yield a session that auto-commits on exit and rolls back on error.
+        """Yield a session that **commits on exit** and rolls back on error.
+
+        This is a unit of work, not a plain session scope: a clean exit
+        from the ``async with`` block runs ``session.commit()``, an
+        exception runs ``session.rollback()`` and re-raises, and the
+        session is closed either way. :meth:`transaction` is the same
+        context manager under a name that says so.
+
+        Use it where the block **is** the unit of work: scripts, TaskIQ
+        tasks, FastStream consumers, agent tools. Do **not** wrap it in a
+        FastAPI dependency. The exit code of a ``yield`` dependency runs
+        after the response has been sent — measured on FastAPI 0.141.1,
+        the ASGI ``http.response.start`` and ``http.response.body``
+        messages go out before the ``COMMIT`` — so the client can act on
+        a ``204`` before the write is durable, and a commit that fails
+        there cannot change the status code the client already received.
+        For a request-scoped session use :meth:`session_dependency` (or
+        :func:`session_dependency_for` when the manager is built lazily)
+        and commit in the service or repository layer.
 
         Yields:
             AsyncSession: A managed session.
@@ -393,6 +411,26 @@ class AsyncDatabaseManager:
         finally:
             await session.close()
 
+    def transaction(self) -> AbstractAsyncContextManager[AsyncSession]:
+        """Open a session that **commits on exit** and rolls back on error.
+
+        Explicit-name alias of :meth:`get_session_context`, with the same
+        behaviour and the same caveat: never wrap it in a FastAPI
+        dependency, because the commit would run after the response is
+        sent.
+
+        Not to be confused with
+        :func:`tempest_fastapi_sdk.db.transaction.transaction`, which
+        takes a session that already exists and groups several
+        repository writes into one ``COMMIT``. This method opens a new
+        session; the function scopes writes on one you already hold.
+
+        Returns:
+            AbstractAsyncContextManager[AsyncSession]: The same context
+            manager :meth:`get_session_context` returns.
+        """
+        return self.get_session_context()
+
     async def session_dependency(self) -> AsyncGenerator[AsyncSession]:
         """FastAPI dependency yielding one session per request.
 
@@ -402,12 +440,15 @@ class AsyncDatabaseManager:
         repository layer. The session is closed when the request
         scope ends; failures bubble up unchanged.
 
+        Binding ``db.session_dependency`` requires the manager to exist
+        when the module is imported. When it is built on demand (an
+        ``@lru_cache`` factory that reads settings after a boot guard),
+        use :func:`session_dependency_for` instead.
+
         Yields:
             AsyncSession: A request-scoped session.
         """
-        if self._engine is None:
-            await self.connect()
-        session = self._require_session_maker()()
+        session = await self.get_session()
         try:
             yield session
         finally:
@@ -433,37 +474,96 @@ class AsyncDatabaseManager:
         except Exception:
             return False
 
-    async def create_tables(self) -> None:
-        """Issue ``CREATE TABLE`` for every model registered on ``BaseModel``.
+    async def create_tables(self, metadata: MetaData | None = None) -> None:
+        """Issue ``CREATE TABLE`` for every table registered on ``metadata``.
 
-        Intended for tests and local development. Production schemas
-        should be managed by Alembic (see
+        Without an argument only the models that inherit the SDK's
+        :class:`~tempest_fastapi_sdk.db.model.BaseModel` are created. A
+        service that declares its own ``DeclarativeBase`` passes that
+        base's ``metadata``; otherwise nothing of its schema is created
+        and the first query fails with a missing table.
+
+        Connects lazily when :meth:`connect` has not run yet. Intended
+        for tests and local development. Production schemas should be
+        managed by Alembic (see
         :class:`tempest_fastapi_sdk.db.migrations.AlembicHelper`).
 
-        Raises:
-            RuntimeError: When the engine is not connected.
+        Args:
+            metadata (MetaData | None): The metadata whose tables are
+                created. Defaults to ``BaseModel.metadata``.
         """
         if self._engine is None:
             await self.connect()
-        if self._engine is None:
-            raise RuntimeError("Engine is not connected.")
-        async with self._engine.begin() as conn:
-            await conn.run_sync(BaseModel.metadata.create_all)
+        target = BaseModel.metadata if metadata is None else metadata
+        async with self.engine.begin() as conn:
+            await conn.run_sync(target.create_all)
 
-    async def drop_tables(self) -> None:
-        """Issue ``DROP TABLE`` for every model registered on ``BaseModel``.
+    async def drop_tables(self, metadata: MetaData | None = None) -> None:
+        """Issue ``DROP TABLE`` for every table registered on ``metadata``.
 
+        Without an argument only the tables of the SDK's
+        :class:`~tempest_fastapi_sdk.db.model.BaseModel` are dropped;
+        pass the ``metadata`` of your own ``DeclarativeBase`` to drop its
+        tables. Connects lazily when :meth:`connect` has not run yet.
         Intended for tests and local development.
 
-        Raises:
-            RuntimeError: When the engine is not connected.
+        Args:
+            metadata (MetaData | None): The metadata whose tables are
+                dropped. Defaults to ``BaseModel.metadata``.
         """
         if self._engine is None:
             await self.connect()
-        if self._engine is None:
-            raise RuntimeError("Engine is not connected.")
-        async with self._engine.begin() as conn:
-            await conn.run_sync(BaseModel.metadata.drop_all)
+        target = BaseModel.metadata if metadata is None else metadata
+        async with self.engine.begin() as conn:
+            await conn.run_sync(target.drop_all)
+
+
+def session_dependency_for(
+    get_db: Callable[[], AsyncDatabaseManager],
+) -> Callable[[], AsyncGenerator[AsyncSession]]:
+    """Build a request-session dependency for a manager built on demand.
+
+    ``Depends(db.session_dependency)`` needs ``db`` at import time. A
+    service that builds the manager lazily — an ``@lru_cache`` factory
+    that reads settings only after a boot guard, and that tests swap for
+    a test database — passes the factory here instead. ``get_db`` is
+    called once per request, never at import.
+
+    The returned dependency has the semantics of
+    :meth:`AsyncDatabaseManager.session_dependency`: one session per
+    request, **no** commit on success, the session closed when the
+    request scope ends — also when the endpoint raises. It opens the
+    session itself instead of iterating the manager's generator, so there
+    is no inner generator left suspended for the garbage collector when
+    FastAPI throws into the dependency.
+
+    Build it once, at module level (``get_session =
+    session_dependency_for(get_db)``). FastAPI caches a dependency per
+    request by callable identity, so two separate calls produce two
+    functions and, used in one request, two sessions.
+
+    Args:
+        get_db (Callable[[], AsyncDatabaseManager]): Zero-argument
+            factory returning the manager, typically ``@lru_cache``-d.
+
+    Returns:
+        Callable[[], AsyncGenerator[AsyncSession]]: The dependency, for
+        ``Depends(...)``.
+    """
+
+    async def dependency() -> AsyncGenerator[AsyncSession]:
+        """Yield one uncommitted request session from ``get_db()``.
+
+        Yields:
+            AsyncSession: A request-scoped session.
+        """
+        session = await get_db().get_session()
+        try:
+            yield session
+        finally:
+            await session.close()
+
+    return dependency
 
 
 __all__: list[str] = [
@@ -471,5 +571,6 @@ __all__: list[str] = [
     "enable_sqlite_savepoints",
     "enable_sqlite_wal",
     "is_memory_sqlite_url",
+    "session_dependency_for",
     "shared_memory_url",
 ]
