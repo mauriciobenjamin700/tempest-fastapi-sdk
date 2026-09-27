@@ -472,6 +472,7 @@ aqui pra plugar cada capacidade conforme precisar.
 
 | Tema | Cobre |
 | --- | --- |
+| **[Ações SSR (confirmação, flash, redirect-back) »](ssr-actions.md)** | `form_for(..., confirm=...)` / `confirm()` sem JS inline, `FlashMiddleware` + `flash` / `get_flashes` + `FlashMessages` (cookie assinado de leitura única), `redirect_back` contra open redirect, `register_html_error_handlers` (página de erro no GET, flash + 303 no POST, JSON para a API) |
 | **[Agentes de IA »](agents.md)** | `Agent` (objetivo → traço + artefatos), `AgentBudget` (passos/tempo/chamadas), `AgentTool` + ferramentas prontas sobre imagem/visão/áudio/RAG, `InMemoryAgentRunSink` / `DbAgentRunSink`, `make_agent_router` |
 | **[Agentes de IA (arquitetura) »](agents-architecture.md)** | como organizar um serviço com agentes: a camada `ai` ao lado de `services`, `runtime` com um gerador por processo, `tools` separado de `agents`, `views` e `policy`, o controller que semeia a identidade, e quando trocar um agente por skills |
 | **[Agentes de IA (avançado) »](agents-advanced.md)** | saída estruturada tipada (`run_structured`), três camadas de memória (`scratchpad_tools` / `fact_tools` / `recall_prompt`), `Skill` sob demanda, `agent_tool` para delegação, `run_until` / `refine` |

@@ -26,6 +26,7 @@ class ComponentClasses:
         alert (str): The alert wrapper.
         alert_variant (str): Prefix of the per-variant alert modifier;
             ``"tui-alert--"`` yields ``tui-alert--error``.
+        flash (str): The wrapper of the flash messages.
         table (str): The data table.
         table_empty (str): The row shown when a table has no rows.
         pagination (str): The pagination wrapper.
@@ -51,6 +52,7 @@ class ComponentClasses:
     card_footer: str = "tui-card__footer"
     alert: str = "tui-alert"
     alert_variant: str = "tui-alert--"
+    flash: str = "tui-flash"
     table: str = "tui-table"
     table_empty: str = "tui-table__empty"
     pagination: str = "tui-pagination"

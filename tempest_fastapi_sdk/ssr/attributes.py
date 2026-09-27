@@ -263,8 +263,51 @@ def data(**items: str | int | float | bool) -> dict[str, str]:
     return attrs
 
 
+CONFIRM_ATTRIBUTE: str = "data-confirm"
+"""The attribute the bundled ``confirm.js`` listener reads.
+
+A ``<form>``, a submit ``<button>`` or an ``<a>`` carrying it asks
+``window.confirm`` with the attribute's text before the browser acts.
+"""
+
+
+def confirm(message: str) -> dict[str, str]:
+    """Build the ``data-confirm`` attribute that guards a destructive action.
+
+    Spread it into ``attrs=`` of a submit ``<button>``, a ``<form>`` or an
+    ``<a>``. :func:`~tempest_fastapi_sdk.ssr.html_response` includes the
+    locally-served ``/_ssr/confirm.js`` whenever the rendered document
+    carries the attribute, and that script asks ``window.confirm`` with
+    this text before the submit (or the navigation) goes ahead.
+
+    The message is an attribute **value**, escaped by the renderer and
+    read back by the script with ``getAttribute`` — it is never
+    interpolated into JavaScript, so a message quoting a user-supplied
+    name (``f"Remover {name}?"``) cannot inject script. Without
+    JavaScript the element keeps working, just without the question.
+
+    For an element that fires an HTMX request, prefer
+    ``htmx(confirm=...)`` (``hx-confirm``), which HTMX reads itself.
+
+    Args:
+        message (str): The question shown in the confirmation dialog.
+
+    Returns:
+        dict[str, str]: ``{"data-confirm": message}``.
+
+    Raises:
+        ValueError: When ``message`` is blank — an empty dialog asks
+            nothing, and the listener ignores an empty attribute.
+    """
+    if not message.strip():
+        raise ValueError("confirm() requires a non-blank message.")
+    return {CONFIRM_ATTRIBUTE: message}
+
+
 __all__: list[str] = [
+    "CONFIRM_ATTRIBUTE",
     "aria",
+    "confirm",
     "data",
     "htmx",
 ]

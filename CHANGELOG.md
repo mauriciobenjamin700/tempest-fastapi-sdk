@@ -162,6 +162,44 @@ anotado `str`, que o mypy recusa contra o `Literal` do Starlette.
   que sem middleware a dependência levantava `AttributeError` estava errada:
   ela responde `401`.
 
+### SSR — head na página-base, confirmação sem JS inline, flash e redirect-back (#348, #349, #352)
+
+**Adicionado**
+
+- `Page.stylesheets`, `Page.head` e `Page.title_suffix` (`ClassVar`,
+  herdados) e `Page.document_title()`. `html_response(page)` usa esses
+  valores quando `stylesheets=` / `head=` / `title=` não são passados; um
+  argumento explícito **substitui** o da página (#352).
+- `form_for(..., confirm="...")` e `tempest_fastapi_sdk.ssr.confirm()`
+  emitem `data-confirm`; `make_htmx_router()` passa a servir também
+  `/_ssr/confirm.js`, e `html_response(confirm=None)` o inclui quando o
+  documento usa o atributo ou quando `htmx=True`. O texto é lido do
+  atributo com `getAttribute`, nunca interpolado em script; sem JS o form
+  continua submetendo (#348). Validado em Chromium (Playwright): cancelar
+  não submete, a pergunta do botão de submit vale no lugar da do form,
+  `<a data-confirm>` também pergunta.
+- Flash messages: `FlashMiddleware` (cookie `HttpOnly`, assinado com
+  HMAC-SHA256, lido uma vez, expira em `max_age`), `flash()`,
+  `get_flashes()`, `flash_enabled()`, e os componentes `FlashMessage` /
+  `FlashMessages` em `ui.components` (#349).
+- `redirect_back(request, fallback=..., allowed_prefix=...)` e
+  `back_url()`: seguem o `Referer` só para o mesmo host e um path sob o
+  prefixo, e emitem `Location` relativo; recusam outro host, user info,
+  `Referer` sem host, `//host`, esquema que não é `http`/`https`, path fora
+  do prefixo, `..` (inclusive `%2e%2e`), barra codificada e `\` (#349).
+- `register_html_error_handlers(app, prefixes=..., tags=...,
+  error_page=..., fallback=...)`: embrulha os handlers de `AppException` e
+  `HTTPException`; rota HTML responde `ErrorPage` no `GET`/`HEAD` e flash +
+  `303` nos demais métodos; o resto mantém o JSON. Novo `ui.pages.ErrorPage`
+  (`title_template`, `from_error`) (#349).
+- Receita nova: *Ações SSR (confirmação, flash, redirect-back)*.
+
+**Mudado**
+
+- `html_response(page)` sem `title=` agora usa `page.document_title()` em
+  vez de levantar `ValueError`; o erro continua para widget que não é
+  `Page`. `stylesheets` e `head` passaram a aceitar `None` (o novo padrão).
+
 ## [0.300.0] — 2026-09-26
 
 Auditoria dos módulos de IA — `agents`, `genai` (texto, RAG, áudio, imagem,
