@@ -37,6 +37,7 @@ from tempest_fastapi_sdk.utils.upload import UploadUtils
 if TYPE_CHECKING:
     from fastapi import UploadFile
     from fastapi.responses import FileResponse, StreamingResponse
+    from starlette.requests import Request
     from starlette.responses import Response
 
     from tempest_fastapi_sdk.storage.minio_client import AsyncMinIOClient
@@ -248,6 +249,8 @@ class FileStoreUtils:
         filename: str | None = None,
         media_type: str | None = None,
         as_attachment: bool = True,
+        request: Request | None = None,
+        cache_control: str | None = None,
         headers: dict[str, str] | None = None,
     ) -> Response:
         """Build a download response for ``key`` from the configured backend.
@@ -260,6 +263,13 @@ class FileStoreUtils:
                 the basename of ``key``.
             media_type (str | None): MIME type. Guessed/derived when omitted.
             as_attachment (bool): ``True`` forces a download; ``False`` inline.
+            request (Request | None): The incoming request. MinIO mode needs
+                it to answer ``Range`` with ``206`` and validators with
+                ``304`` (see :meth:`AsyncMinIOClient.download_response`);
+                local mode ignores it, because ``FileResponse`` already reads
+                ``Range`` from the ASGI scope.
+            cache_control (str | None): ``Cache-Control`` value for the
+                response. ``None`` sends none.
             headers (dict[str, str] | None): Extra response headers.
 
         Returns:
@@ -277,6 +287,8 @@ class FileStoreUtils:
             filename=filename,
             media_type=media_type,
             as_attachment=as_attachment,
+            request=request,
+            cache_control=cache_control,
             headers=headers,
         )
 

@@ -1575,7 +1575,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   hatches).
 - **MinIO / S3** — `AsyncMinIOClient` via `[minio]` extra
   (bucket lifecycle, object I/O, streaming download, presigned
-  URLs).
+  URLs). **(não lançado, #361)** `download_response(key, request=...)`
+  answers `206` (three single-range forms, reading only the slice via
+  `stream_object(offset=, length=)`), `416`, `304` (ETag / date) and honours
+  `If-Range`; multi-range → `200`. Always `Accept-Ranges`/`ETag`/
+  `Last-Modified`; `cache_control=`. Validators live in the private
+  `utils._http_cache`, shared with `ResponseCacheMiddleware`.
 - **Email** — SMTP via `EmailUtils` + Jinja2 template rendering
   with bundled defaults (`activation.html`, `password_reset.html`)
   shadowable by the project's `template_dir`. **Bulk send (v0.258.0):**

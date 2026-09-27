@@ -100,16 +100,16 @@ async def upload_file(file: UploadFile) -> dict[str, str]:
 
 ### Streaming de download
 
-!!! tip "Atalho: `download_response` (ou `DownloadUtils`)"
-    O `AsyncMinIOClient.download_response(key, ...)` já faz stat + stream +
-    Content-Disposition/Type/Length numa chamada só — e o
-    [`DownloadUtils(minio)`](downloads.md) embrulha isso. O exemplo manual
-    abaixo é só pra mostrar as peças.
+Quando o download precisa passar pelo backend — arquivo com autorização, ou
+bucket que o navegador não alcança —, `download_response` faz stat + stream
+numa chamada só, chunk a chunk, sem carregar o objeto na memória. O
+[`DownloadUtils(minio)`](downloads.md) embrulha a mesma chamada.
 
-Use para arquivos grandes — chunk-a-chunk evita carregar tudo em memória:
+Passe o `request`. É ele que deixa o `<video>` avançar, o download retomar e
+a imagem ser revalidada em vez de baixada de novo:
 
 ```python
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from starlette.responses import Response
 
 from src.api.app import storage
@@ -118,10 +118,63 @@ router = APIRouter()
 
 
 @router.get("/files/{key}")
-async def download_file(key: str) -> Response:
-    """Stream do objeto no bucket padrão (uma chamada)."""
-    return await storage.download_response(key)
+async def download_file(key: str, request: Request) -> Response:
+    """Stream do objeto no bucket padrão, com Range e revalidação."""
+    return await storage.download_response(
+        key,
+        request=request,
+        as_attachment=False,
+        cache_control="private, max-age=3600",
+    )
 ```
+
+Toda resposta leva `Accept-Ranges: bytes`, o `ETag` do objeto (entre aspas)
+e o `Last-Modified`. Com o `request` em mãos, a rota responde assim:
+
+| O cliente manda | Resposta |
+| --- | --- |
+| nada de especial | `200`, objeto inteiro |
+| `Range: bytes=1000-1999`, `bytes=1000-` ou `bytes=-300` | `206` com `Content-Range`, lendo **só** o trecho no bucket |
+| `Range` que começa no fim do objeto ou depois | `416` com `Content-Range: bytes */<tamanho>` |
+| `Range: bytes=0-1,5-6` (vários trechos) | `200`, objeto inteiro |
+| `If-None-Match` com o `ETag` atual | `304`, sem corpo e sem ler o objeto |
+| `If-Modified-Since` não mais antigo que o objeto (sem `If-None-Match`) | `304` |
+| `Range` + `If-Range` que não bate mais com o objeto | `200`, objeto inteiro |
+
+Cada linha da tabela é um teste contra um MinIO de verdade em container
+(`tests/storage/test_download_live.py`, `make test-docker`). O `206` passa
+`offset`/`length` ao `get_object` do `minio-py`, que manda o `Range` ao
+bucket — o teste espiona essa chamada e confere que foi só o trecho.
+
+!!! info "Por que vários trechos viram `200`"
+    O RFC 9110 permite ignorar o `Range` e responder o objeto inteiro. A
+    alternativa, um corpo `multipart/byteranges`, não é o que `<video>`,
+    `<audio>` ou gerenciador de download pedem — eles mandam um trecho só.
+
+!!! tip "`If-Range` protege a retomada"
+    O gerenciador de download que retoma manda `If-Range` com o `ETag` que
+    tinha. Se o arquivo mudou no meio, o SDK ignora o `Range` e manda o
+    arquivo novo inteiro, em vez de emendar bytes de duas versões.
+
+O lado do navegador não precisa de nada além da tag:
+
+```html
+<video src="/files/aula-01.mp4" controls preload="metadata"></video>
+```
+
+Medido num Chromium (Playwright) com um MP4 de 60 s e 30 033 093 bytes servido
+pela rota acima: o player abriu com `Range: bytes=0-` (`206`) e, ao pular para
+os 50 s, pediu `bytes=24969216-30033092`, respondido com `206`; o vídeo parou
+em `currentTime == 50`, sem erro de mídia.
+
+!!! warning "Sem `request`, é o comportamento antigo"
+    `download_response(key)` sem `request` não lê header nenhum da requisição
+    e responde sempre `200` com o objeto inteiro — só os headers
+    `Accept-Ranges`/`ETag`/`Last-Modified` são novos. Nesse modo o `<video>`
+    não avança.
+
+Quer só os bytes, sem montar resposta? `stream_object(key, offset=, length=)`
+devolve o iterador do trecho.
 
 ### Presigned URL — upload direto do browser
 
@@ -327,6 +380,9 @@ asyncio.run(main())
   `create_app()` — uma instância por processo, não uma por request.
 - URL pré-assinada é a forma de entregar arquivo privado sem passar os bytes
   pelo seu processo.
+- Quando os bytes precisam passar pelo backend, `download_response(key,
+  request=request)` responde `206`, `304` e `416` — sem o `request`, é sempre
+  `200` inteiro.
 - Operação fora da fachada não é bloqueada: chame `storage.client.<método>` e
   use o `minio-py` direto, em vez de esperar que a fachada cresça.
 - Para alternar disco local e MinIO por configuração, o backend pluggável de

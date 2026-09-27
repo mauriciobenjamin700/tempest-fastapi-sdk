@@ -36,7 +36,7 @@ Mesmo código, só muda o construtor — `download(key)` faz proxy do objeto do
 bucket (sem cair em disco, sem carregar inteiro na memória):
 
 ```python
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Request, Response
 
 from tempest_fastapi_sdk import AsyncMinIOClient, DownloadUtils
 
@@ -50,15 +50,23 @@ downloads = DownloadUtils(minio)
 
 
 @router.get("/files/{name}")
-async def download(name: str) -> Response:
+async def download(name: str, request: Request) -> Response:
     """Baixa o objeto do bucket via streaming, atrás do auth da app."""
-    return await downloads.download(name, subdir="invoices")
+    return await downloads.download(name, subdir="invoices", request=request)
 ```
 
 Parâmetros do `download`: `subdir=` (pasta local / prefixo da key),
 `filename=` (nome mostrado ao cliente), `media_type=` (senão vem do
 content-type do objeto / extensão), `as_attachment=False` (servir
-**inline** — ex.: abrir um PDF no navegador), `headers=`.
+**inline** — ex.: abrir um PDF no navegador), `request=` (no modo MinIO,
+responde `Range` com `206` e `If-None-Match`/`If-Modified-Since` com `304`
+— detalhe na [receita de storage](storage.md#streaming-de-download)),
+`cache_control=` (valor do `Cache-Control`), `headers=`.
+
+!!! warning "Sem `request=`, o MinIO responde sempre `200` inteiro"
+    O modo local não precisa dele: o `FileResponse` do Starlette lê o `Range`
+    direto do request. No modo MinIO, sem `request=` o `<video>` não avança e
+    o download interrompido recomeça do zero.
 
 !!! tip "Proxy (app) vs presigned (direto)"
     `download()` faz o **proxy** pela app — ideal quando o download precisa

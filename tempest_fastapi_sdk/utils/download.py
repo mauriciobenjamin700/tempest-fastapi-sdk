@@ -24,6 +24,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from tempest_fastapi_sdk.exceptions.not_found import NotFoundException
 
 if TYPE_CHECKING:
+    from starlette.requests import Request
     from starlette.responses import Response
 
     from tempest_fastapi_sdk.storage.minio_client import AsyncMinIOClient
@@ -131,13 +132,16 @@ class DownloadUtils:
         filename: str | None = None,
         media_type: str | None = None,
         as_attachment: bool = True,
+        request: Request | None = None,
+        cache_control: str | None = None,
         headers: dict[str, str] | None = None,
     ) -> Response:
         """Build a download response for ``key`` from the configured backend.
 
         Works the same for both backends: local disk returns a streamed
         ``FileResponse`` (range-aware), MinIO returns a ``StreamingResponse``
-        proxied from the bucket.
+        proxied from the bucket — range- and validator-aware when
+        ``request`` is passed.
 
         Args:
             key (str): File path (local, relative to ``base_dir``) or object
@@ -147,6 +151,13 @@ class DownloadUtils:
                 the basename of ``key``.
             media_type (str | None): MIME type. Guessed/derived when omitted.
             as_attachment (bool): ``True`` forces a download; ``False`` inline.
+            request (Request | None): The incoming request. MinIO mode needs
+                it to answer ``Range`` with ``206`` and validators with
+                ``304`` (see :meth:`AsyncMinIOClient.download_response`);
+                local mode ignores it, because ``FileResponse`` already reads
+                ``Range`` from the ASGI scope.
+            cache_control (str | None): ``Cache-Control`` value for the
+                response. ``None`` sends none.
             headers (dict[str, str] | None): Extra response headers.
 
         Returns:
@@ -162,18 +173,23 @@ class DownloadUtils:
             object_key = f"{subdir.rstrip('/')}/{key}" if subdir else key
             return await self._minio.download_response(
                 object_key,
+                request=request,
                 filename=filename,
                 media_type=media_type,
                 as_attachment=as_attachment,
+                cache_control=cache_control,
                 headers=headers,
             )
+        local_headers: dict[str, str] = dict(headers or {})
+        if cache_control is not None:
+            local_headers["cache-control"] = cache_control
         return self.file_response(
             key,
             subdir=subdir,
             filename=filename,
             media_type=media_type,
             as_attachment=as_attachment,
-            headers=headers,
+            headers=local_headers,
         )
 
     def resolve(self, relative_path: Path | str, *, subdir: str = "") -> Path:
