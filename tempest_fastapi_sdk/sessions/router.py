@@ -25,8 +25,6 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Request, Response, status
 
-from tempest_fastapi_sdk.api.cookies import clear_cookie, set_cookie
-from tempest_fastapi_sdk.exceptions import UnauthorizedException
 from tempest_fastapi_sdk.sessions.dependencies import make_session_dependency
 from tempest_fastapi_sdk.sessions.schemas import (
     Session,
@@ -39,7 +37,6 @@ from tempest_fastapi_sdk.utils.client_ip import get_client_ip
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from tempest_fastapi_sdk.api.cookies import SameSite
     from tempest_fastapi_sdk.sessions.service import SessionAuth
 
 
@@ -65,7 +62,18 @@ def make_session_router(
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
+
+    Raises:
+        ValueError: When ``service`` was built with ``authenticator=``
+            (for example by :meth:`SessionAuth.from_credentials`).
     """
+    if service.user_model is None:
+        raise ValueError(
+            "make_session_router needs a SessionAuth built with user_model=; "
+            "a SessionAuth from authenticator= / from_credentials() has no "
+            "user table for the bundled JSON login. Write the login route "
+            "with SessionAuth.login_with_credentials() instead."
+        )
     settings = service.settings
     router = APIRouter(prefix=prefix, tags=list(tags or ["session"]))
 
@@ -77,26 +85,21 @@ def make_session_router(
     current_session_required = Depends(make_session_dependency(required=True))
 
     def _set_session_cookie(response: Response, plaintext: str) -> None:
-        set_cookie(
-            response,
-            settings.SESSION_COOKIE_NAME,
-            plaintext,
-            max_age=settings.SESSION_TTL_SECONDS,
-            path=settings.SESSION_COOKIE_PATH,
-            domain=settings.SESSION_COOKIE_DOMAIN,
-            secure=settings.SESSION_COOKIE_SECURE,
-            http_only=settings.SESSION_COOKIE_HTTPONLY,
-            samesite=_samesite(settings.SESSION_COOKIE_SAMESITE),
-        )
+        """Write the session cookie from ``SessionSettings``.
+
+        Args:
+            response (Response): The outgoing response.
+            plaintext (str): The session id to send.
+        """
+        response.set_cookie(value=plaintext, **settings.session_cookie_kwargs())
 
     def _clear_session_cookie(response: Response) -> None:
-        clear_cookie(
-            response,
-            settings.SESSION_COOKIE_NAME,
-            path=settings.SESSION_COOKIE_PATH,
-            domain=settings.SESSION_COOKIE_DOMAIN,
-            samesite=_samesite(settings.SESSION_COOKIE_SAMESITE),
-        )
+        """Delete the session cookie with the attributes it was set with.
+
+        Args:
+            response (Response): The outgoing response.
+        """
+        response.delete_cookie(**settings.session_cookie_delete_kwargs())
 
     @router.post(
         "/login",
@@ -223,13 +226,6 @@ def make_session_router(
         return response
 
     return router
-
-
-def _samesite(value: str) -> SameSite:
-    """Narrow ``str`` from settings to the ``SameSite`` literal alias."""
-    if value not in {"lax", "strict", "none"}:
-        raise UnauthorizedException(message="invalid SameSite policy")
-    return value  # type: ignore[return-value]
 
 
 __all__: list[str] = ["make_session_router"]

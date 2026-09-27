@@ -33,6 +33,15 @@ from tempest_fastapi_sdk.settings.mixins import PushSettings as PushSettings
 from tempest_fastapi_sdk.settings.mixins import RabbitMQSettings as RabbitMQSettings
 from tempest_fastapi_sdk.settings.mixins import RedisSettings as RedisSettings
 from tempest_fastapi_sdk.settings.mixins import ServerSettings as ServerSettings
+from tempest_fastapi_sdk.settings.mixins import (
+    SessionCookieDeleteKwargs as SessionCookieDeleteKwargs,
+)
+from tempest_fastapi_sdk.settings.mixins import (
+    SessionCookieKwargs as SessionCookieKwargs,
+)
+from tempest_fastapi_sdk.settings.mixins import (
+    SessionCookieSameSite as SessionCookieSameSite,
+)
 from tempest_fastapi_sdk.settings.mixins import SessionSettings as SessionSettings
 from tempest_fastapi_sdk.settings.mixins import TaskIQSettings as TaskIQSettings
 from tempest_fastapi_sdk.settings.mixins import TokenSettings as TokenSettings
@@ -60,6 +69,9 @@ __all__: list[str] = [
     "RabbitMQSettings",
     "RedisSettings",
     "ServerSettings",
+    "SessionCookieDeleteKwargs",
+    "SessionCookieKwargs",
+    "SessionCookieSameSite",
     "SessionSettings",
     "TaskIQSettings",
     "TokenSettings",

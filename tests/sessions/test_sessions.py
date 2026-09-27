@@ -352,8 +352,13 @@ class TestSessionRouter:
             )
             r = await c.post("/auth/session/logout")
         assert r.status_code == 204
-        # Cookie cleared (Max-Age=0)
-        assert "max-age=0" in r.headers.get("set-cookie", "").lower()
+        cleared = [
+            p.strip().lower() for p in r.headers.get("set-cookie", "").split(";")
+        ]
+        assert "max-age=0" in cleared
+        assert "path=/" in cleared
+        assert "samesite=lax" in cleared
+        assert "secure" not in cleared
 
     async def test_list_includes_current_session(
         self,

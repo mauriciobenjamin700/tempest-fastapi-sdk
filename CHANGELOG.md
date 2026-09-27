@@ -91,6 +91,77 @@ CRUD (issue #353) e `create_tables()` não criava nada para uma
 - Receitas `database` e `architecture` (PT/EN), README e referência cobrem
   as três peças.
 
+### Sessões: login sem tabela de usuário, rota HTML sem middleware e cookie por mapper (#343, #344)
+
+O painel do `tempest-bucket` não conseguiu usar `tempest_fastapi_sdk.sessions`:
+`SessionAuth` exigia `user_model=` (o serviço tem uma credencial root no
+ambiente, nenhuma tabela), `make_session_dependency` só respondia `401` (rota
+HTML precisa de `303` para o login) e só funcionava com o `SessionMiddleware`,
+um `BaseHTTPMiddleware` no caminho de todo byte do upload/download. E a rota de
+login repetia sete settings no `set_cookie`, com `SESSION_COOKIE_SAMESITE`
+anotado `str`, que o mypy recusa contra o `Literal` do Starlette.
+
+#### Migração
+
+- **`make_session_dependency(...)` devolve uma dependência `async`.** Quem só
+  usa em `Depends(...)` não muda nada; quem chamava o resolver direto (teste)
+  precisa de `await`.
+- **`SessionAuth.user_model` é `type[BaseUserModel] | None`.** Código tipado
+  que lê o atributo precisa estreitar.
+- **`SESSION_COOKIE_SAMESITE` é `Literal["lax", "strict", "none"]`.** Nenhum
+  valor que passava antes é recusado agora — medido com pydantic 2.13.5:
+  `Lax`/`LAX`/`lax;` já falhavam no `pattern` antigo e continuam falhando
+  (agora `literal_error`), e `lax ` com espaço continua aparado e aceito. O que
+  muda é o tipo: um `Settings` que sobrescreve o campo como `str` passa a ser
+  override incompatível no mypy — sobrescreva com o `Literal` ou remova o
+  override.
+- **O logout do `make_session_router` apaga o cookie com os atributos do
+  settings.** Antes o `Set-Cookie` de remoção saía sempre com `Secure` e
+  `HttpOnly`, qualquer que fosse `SESSION_COOKIE_SECURE`/`_HTTPONLY` (medido:
+  `...; HttpOnly; Max-Age=0; Path=/; SameSite=lax; Secure`).
+
+#### Added
+
+- **`SessionAuth.from_credentials(username, password, *, store, settings,
+  user_id=None)`** — sessão sem tabela de usuário, sobre um
+  `StaticCredentialAuthenticator`: as duas metades são sempre comparadas com
+  `hmac.compare_digest` sobre o SHA-256 (32 contra 32 bytes, sem vazar
+  tamanho nem quebrar em não-ASCII) e combinadas com `&`, então usuário
+  errado custa o mesmo que senha errada e a mensagem é uma só. Aceita
+  `SecretStr`; credencial vazia levanta `ValueError` na construção. O dono da
+  sessão é `uuid5(STATIC_CREDENTIAL_NAMESPACE, username)` por padrão.
+- **Protocolo `SessionAuthenticator`** (`async def authenticate(self,
+  username, password, /) -> UUID`) e `SessionAuth(authenticator=...)` no
+  lugar de `user_model=` — exatamente um dos dois, senão `ValueError`.
+  `authenticate_credentials(...)` e `login_with_credentials(...)` são o passo
+  de login desse modo; `authenticate(session, ...)` num serviço sem
+  `user_model` levanta `RuntimeError`, e `make_session_router` recusa esse
+  serviço na montagem.
+- **`make_session_dependency(session_auth=..., on_missing=...)`** —
+  `session_auth=` resolve o cookie na própria dependência, sem middleware (e
+  reaproveita a sessão quando o middleware já rodou); `on_missing=` troca o
+  `401` por outra exceção. `redirect_to("/login")` é o handler de rota HTML:
+  `303` com `Location`, mantido pelo handler do FastAPI e pelo
+  `register_exception_handlers`.
+- **`SessionSettings.session_cookie_kwargs()` /
+  `session_cookie_delete_kwargs()`** — `response.set_cookie(value=token,
+  **settings.session_cookie_kwargs())` e
+  `response.delete_cookie(**settings.session_cookie_delete_kwargs())`, com
+  `key`, `path`, `domain`, `secure`, `httponly` e `samesite` saindo dos
+  mesmos campos. Tipados como `TypedDict` (`SessionCookieKwargs`,
+  `SessionCookieDeleteKwargs`), então o mypy confere o splat.
+  `make_session_router` passou a usá-los.
+
+#### Docs
+
+- A receita de sessões ganha a seção *Login sem tabela de usuário* (exemplo
+  completo de painel com form, página protegida e logout, com a saída
+  medida) e o aviso do custo do `SessionMiddleware` com streaming — medido
+  com Starlette 1.6.0: 256 MiB em pedaços de 64 KiB levaram ~4 ms sem o
+  middleware e ~64 ms com ele (mediana de 7, `send` vazio). A frase que dizia
+  que sem middleware a dependência levantava `AttributeError` estava errada:
+  ela responde `401`.
+
 ## [0.300.0] — 2026-09-26
 
 Auditoria dos módulos de IA — `agents`, `genai` (texto, RAG, áudio, imagem,
