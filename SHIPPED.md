@@ -2538,3 +2538,17 @@ atributos — o `make_session_router` usa os dois.
 
 Consumidor: `tempest-bucket` (#343, #344), que mantinha um
 `AdminSessionService` próprio e o override do campo como `Literal`.
+
+## Auth só com o backend (não lançado)
+
+O Modo E (`AUTH_BACKEND_LINKS=true`) é o caminho de quem não tem frontend, e
+não subia com os extras que a receita manda instalar: o form HTML de reset
+usava `Form(...)`, então `make_auth_router` exigia `python-multipart`, que
+`[auth,email]` não traz. Agora o form lê o corpo urlencoded com
+`urllib.parse.parse_qs`, e a falta de Jinja2 derruba o boot com o extra no
+texto, em vez de o clique no link ativar a conta e responder 500 (#324).
+
+A receita `auth-flow` ganhou a seção **Só o backend: do cadastro à rota
+protegida**: o ciclo cadastro → token → ativação → login → rota protegida
+medido com `curl`, pelos dois caminhos (JSON e link `GET`), e num teste com
+`FakeEmailUtils`.

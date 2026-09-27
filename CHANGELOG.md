@@ -5,6 +5,51 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Auth só com o backend: Modo E sobe com `[auth,email]` e a receita mostra o ciclo inteiro (#324)
+
+A issue pedia a doc de como cadastrar, ativar e logar tendo **só** o backend.
+Rodar esse fluxo numa venv limpa achou dois defeitos no Modo E
+(`AUTH_BACKEND_LINKS=true`), o que existe exatamente para quem não tem
+frontend:
+
+- Com `[auth,email]`, a combinação que a receita manda instalar, o
+  `make_auth_router` levantava `RuntimeError: Form data requires
+  "python-multipart" to be installed` na construção: o form HTML de reset
+  declarava os campos com `Form(...)`.
+- Sem Jinja2 (`[auth]` sozinho), o router subia e o primeiro clique no link de
+  ativação consumia o token, ativava a conta e respondia **500**
+  (`ModuleNotFoundError: No module named 'jinja2'`), porque a página renderiza
+  depois do commit. O usuário via erro, o link já estava gasto, e o login dava
+  200.
+
+#### Fixed
+
+- **`POST /auth/password-reset/{token}` sem `python-multipart`**: o form lê o
+  corpo `application/x-www-form-urlencoded` (o que um `<form method="post">`
+  envia) com `urllib.parse.parse_qs`. Corpo `multipart/form-data` (template
+  próprio com `enctype`) continua passando pelo parser do Starlette.
+- **`AUTH_BACKEND_LINKS=true` sem Jinja2 falha no boot**: `make_auth_router`
+  levanta `RuntimeError` citando `tempest-fastapi-sdk[auth,email]`, em vez do
+  500 no clique.
+
+#### Changed
+
+- Campo faltando no form de reset HTML re-renderiza o form com **400** e o
+  token intacto, como já fazia senha curta ou divergente. Antes respondia
+  **422** em JSON (a validação do `Form(...)`), numa página que o browser
+  abriu.
+
+#### Docs
+
+- Receita `auth-flow`, seção nova **Só o backend: do cadastro à rota
+  protegida** (PT-BR + EN): app completo num arquivo, o ciclo medido com
+  `curl` pelos dois caminhos (JSON com `POST /auth/activate/{token}`, e link
+  `GET` do Modo E), Swagger, app mobile por deep link e o mesmo ciclo num teste
+  com `FakeEmailUtils`. A tabela de settings diz para onde o
+  `AUTH_ACTIVATION_URL_TEMPLATE` aponta em cada modo.
+
 ## [0.301.0] — 2026-09-27
 
 As pontes que o painel administrativo do `tempest-bucket` escrevia à mão
