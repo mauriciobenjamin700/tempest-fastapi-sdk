@@ -176,6 +176,14 @@ def component_stylesheet(
         ),
         Rule(f".{names.flash}:empty", declarations={"display": "none"}),
         Rule(
+            f".{names.table_scroll}",
+            declarations={
+                "overflow-x": "auto",
+                "max-width": "100%",
+                "min-width": "0",
+            },
+        ),
+        Rule(
             f".{names.table}",
             declarations={
                 "width": "100%",

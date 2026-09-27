@@ -28,6 +28,9 @@ class ComponentClasses:
             ``"tui-alert--"`` yields ``tui-alert--error``.
         flash (str): The wrapper of the flash messages.
         table (str): The data table.
+        table_scroll (str): The wrapper around the table that scrolls it
+            horizontally, so a table wider than the viewport scrolls in
+            place instead of widening the whole page.
         table_empty (str): The row shown when a table has no rows.
         table_align (str): Prefix of the per-column alignment modifier;
             ``"tui-table__cell--"`` yields ``tui-table__cell--right``.
@@ -77,6 +80,7 @@ class ComponentClasses:
     grid: str = "tui-grid"
     table_align: str = "tui-table__cell--"
     shell_main_full: str = "tui-shell__main--full"
+    table_scroll: str = "tui-table-scroll"
 
 
 DEFAULT_CLASSES: ComponentClasses = ComponentClasses()

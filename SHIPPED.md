@@ -1420,7 +1420,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `tui-shell__main--full` (no max-width, margin or padding).
   `DataTable.columns` takes `str | TableColumn` — `render=` (row → widget,
   widgets or escaped `str`), `align=` (`tui-table__cell--<align>`,
-  `right` with tabular figures), `class_name=`, `header=`. The
+  `right` with tabular figures), `class_name=`, `header=`; the table sits
+  in a focusable `tui-table-scroll` wrapper that scrolls it horizontally
+  instead of widening the page on a phone. The
   `tempest generate` scaffold links `CSS_URL`.
 - **App palette (v0.243.0, floor `tempestweb>=0.67.0` from v0.244.0)** —
   `build_web_app(..., theme=...)` hands a `tempest_core.Theme` to every

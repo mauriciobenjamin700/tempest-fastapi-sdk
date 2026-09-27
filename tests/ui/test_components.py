@@ -243,6 +243,34 @@ def test_table_column_rejects_an_unknown_alignment() -> None:
         DataTable(columns=[TableColumn("a", align="middle")])  # type: ignore[arg-type]
 
 
+def test_table_sits_inside_a_focusable_scroll_wrapper() -> None:
+    html = render_to_html(DataTable(rows=[{"a": 1}]))
+    assert html.startswith('<div class="tui-table-scroll" tabindex="0">')
+    assert html.endswith("</table></div>")
+
+
+def test_table_scroll_wrapper_is_a_region_labelled_by_the_caption() -> None:
+    html = render_to_html(DataTable(rows=[{"a": 1}], caption="Arquivos"))
+    assert html.startswith(
+        '<div class="tui-table-scroll" tabindex="0" role="region" '
+        'aria-label="Arquivos">'
+    )
+
+
+def test_table_scroll_wrapper_scrolls_horizontally() -> None:
+    css = component_stylesheet().to_css()
+    rule = css.split(".tui-table-scroll {", 1)[1].split("}", 1)[0]
+    assert "overflow-x: auto" in rule
+    assert "min-width: 0" in rule
+
+
+def test_table_scroll_wrapper_follows_custom_classes() -> None:
+    html = render_to_html(
+        DataTable(rows=[{"a": 1}], classes=ComponentClasses(table_scroll="wrap"))
+    )
+    assert html.startswith('<div class="wrap"')
+
+
 def test_pagination_links_carry_the_page_query() -> None:
     html = render_to_html(Pagination(page=2, pages=4, url="/users"))
     assert 'href="/users?page=1"' in html
@@ -326,7 +354,14 @@ def test_components_accept_custom_class_names() -> None:
 def test_component_stylesheet_covers_every_class_it_targets() -> None:
     sheet = component_stylesheet()
     defined = sheet.class_names()
-    for name in ("tui-card", "tui-alert", "tui-table", "tui-pagination", "tui-nav"):
+    for name in (
+        "tui-card",
+        "tui-alert",
+        "tui-table",
+        "tui-table-scroll",
+        "tui-pagination",
+        "tui-nav",
+    ):
         assert name in defined
 
 
