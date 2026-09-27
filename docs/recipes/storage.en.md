@@ -176,6 +176,154 @@ video settled at `currentTime == 50`, with no media error.
 Only need the bytes, not a response? `stream_object(key, offset=, length=)`
 returns the iterator over that slice.
 
+### Delivery through nginx — `X-Accel-Redirect`
+
+With `download_response`, every byte goes through the Python process. It
+works, but for video and high traffic you want a different split: **the
+backend only authorises, and nginx delivers**.
+
+The route checks the permission and answers an **empty** response with one
+header:
+
+```text
+X-Accel-Redirect: /_bucket/media/lesson.mp4?X-Amz-Algorithm=...&X-Amz-Signature=...
+```
+
+nginx intercepts that header, follows it into an internal `location`, fetches
+the file from the bucket over the private network and streams it to the
+client. The backend carries no bytes, the bucket stays private and the client
+only ever sees the backend's domain.
+
+#### When to pick each mode
+
+| | Proxy (`download_response`) | Redirect (`accel_redirect_response`) |
+| --- | --- | --- |
+| Who moves the bytes | the Python process | nginx |
+| Needs nginx in front | no | yes, with the internal `location` below |
+| `206` / `304` | answered by the SDK | answered by the bucket, behind nginx |
+| Good for | small files, local dev, deploys without nginx | video, large files, high traffic |
+
+#### Switch it by configuration
+
+Both modes come out of **the same route**. `serve_object` picks according to
+what the client got in its constructor, and `MinIOSettings` maps two new
+variables:
+
+```bash
+# .env
+MINIO_ENDPOINT=bucket:9000          # INTERNAL endpoint: the SDK signs against it
+STORAGE_ACCEL_REDIRECT=true         # false (default) = proxy through the app
+STORAGE_ACCEL_PREFIX=/_bucket/      # nginx's internal location
+```
+
+```python
+from fastapi import APIRouter, Request
+from starlette.responses import Response
+from tempest_fastapi_sdk import AsyncMinIOClient
+
+from src.core.settings import settings
+
+router = APIRouter()
+storage = AsyncMinIOClient(**settings.minio_kwargs())
+
+
+@router.get("/files/{key:path}")
+async def download_file(key: str, request: Request) -> Response:
+    """Authorise and deliver — through the app or through nginx, per the .env."""
+    return await storage.serve_object(key, request=request, as_attachment=False)
+```
+
+With `STORAGE_ACCEL_REDIRECT=false`, it is the previous section's
+`download_response`. With `true`, it is `accel_redirect_response`, and the
+`request` is not used: nginx forwards the client's `Range` and
+`If-None-Match` to the bucket by itself.
+
+!!! info "`accel_redirect_response` directly"
+    Want the redirect on a single route, regardless of the flag? Call
+    `storage.accel_redirect_response(key, internal_prefix="/_bucket/",
+    expires=timedelta(minutes=5), filename=..., media_type=...,
+    as_attachment=False, cache_control=...)`. It **never** uses
+    `MINIO_PUBLIC_ENDPOINT`: the URL is signed against `MINIO_ENDPOINT`, the
+    host nginx is going to call.
+
+#### The nginx block
+
+```nginx
+upstream app {
+    server app:8000;
+}
+
+server {
+    listen 80;
+    server_name example.com;
+
+    location / {
+        proxy_pass http://app;
+        proxy_set_header Host $host;
+    }
+
+    location /_bucket/ {
+        internal;
+        proxy_pass http://bucket:9000/;
+        proxy_set_header Host bucket:9000;
+    }
+}
+```
+
+Three lines do the work of `location /_bucket/`, and each has a reason:
+
+- **`internal;`** — only nginx gets in here, following an
+  `X-Accel-Redirect`. A client asking for `/_bucket/...` directly gets `404`.
+- **`proxy_pass http://bucket:9000/;` with the trailing slash** — with the
+  slash, nginx replaces the `/_bucket/` prefix with `/`, and the bucket
+  receives `/media/lesson.mp4?X-Amz-...`, exactly the path that was signed.
+  Without it, the prefix goes along, MinIO reads `_bucket` as the bucket name
+  and answers `400 InvalidBucketName`.
+- **`proxy_set_header Host bucket:9000;`** — the SigV4 signature covers
+  `Host`. It has to be the `MINIO_ENDPOINT` that signed the URL. The danger is
+  inheritance: a `proxy_set_header` defined at `server` level (the
+  `Host $host` nearly every config has for the app) is inherited by any
+  `location` that defines none. The bucket then receives
+  `Host: example.com` and answers `403 SignatureDoesNotMatch` — the symptom is
+  "the file does not load".
+
+!!! warning "`Content-Type` and `Content-Disposition` travel inside the URL"
+    The SDK does not put those headers on the empty response: it signs them
+    into the URL as the S3 `response-content-type`,
+    `response-content-disposition` and `response-cache-control` overrides, and
+    the bucket returns them along with the bytes. Measured on nginx 1.27.5:
+    the bucket's `Content-Type` wins over the one the app sets, and a
+    `Content-Disposition` set on both reaches the client twice.
+
+!!! danger "Without nginx in front, the flag leaks the signed URL"
+    With `STORAGE_ACCEL_REDIRECT=true` and no nginx intercepting, the client
+    gets an empty `200` carrying the `X-Accel-Redirect` — path and signature
+    included. The URL points at the internal host and is valid for `expires`
+    (5 minutes by default). Only turn the flag on where the block above is
+    deployed.
+
+#### What was measured
+
+`tests/storage/test_accel_redirect_live.py` (`make test-docker`) starts
+MinIO and nginx in containers and the app under uvicorn, and downloads
+through the route. The same file passed in full on nginx 1.22.1, 1.27.5 and
+1.29.8:
+
+| Request | Result |
+| --- | --- |
+| `GET /files/clip.mp4` | `200`, the object's bytes, the `Content-Type` stored in the bucket |
+| `GET /files/clip.mp4` with `Range: bytes=100-199` | `206`, `Content-Range: bytes 100-199/1048576` |
+| `GET /files/clip.mp4` with `If-None-Match: <etag>` | `304` |
+| key with a space, an accent and `+` | `200` |
+| `GET /_bucket/media/clip.mp4` straight from the client | `404` |
+| a `location` inheriting `Host $host` | `403 SignatureDoesNotMatch` |
+| `proxy_pass` without the trailing slash | `400 InvalidBucketName` |
+| the same route with `STORAGE_ACCEL_REDIRECT=false` and `Range: bytes=-10` | `206` from the app |
+
+In the test, bucket, app and nginx run on the host network, so the internal
+endpoint is `127.0.0.1:<port>` instead of `bucket:9000`. What matters is the
+same: the `Host` nginx sends is the host that signed the URL.
+
 ### Presigned URL — direct browser upload
 
 Recommended pattern for large files: the client `PUT`s directly to MinIO/S3 and bytes don't pass through FastAPI.
@@ -383,6 +531,10 @@ asyncio.run(main())
 - When the bytes must go through the backend, `download_response(key,
   request=request)` answers `206`, `304` and `416` — without the `request` it
   is always a full `200`.
+- To have nginx deliver instead of the app, `serve_object` with
+  `STORAGE_ACCEL_REDIRECT=true` answers `X-Accel-Redirect`; the internal
+  `location` needs `proxy_pass` with a trailing slash and `Host` equal to
+  `MINIO_ENDPOINT`.
 - Anything outside the facade is not blocked: call `storage.client.<method>` and
   use `minio-py` directly, instead of waiting for the facade to grow.
 - To switch between local disk and MinIO by configuration, the pluggable upload

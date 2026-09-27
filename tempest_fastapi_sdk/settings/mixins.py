@@ -2116,6 +2116,12 @@ class MinIOSettings(BaseAppSettings):
             directly. ``None`` reuses ``MINIO_ENDPOINT``. Default: ``None``.
         MINIO_PUBLIC_SECURE (bool | None): HTTPS for the public endpoint;
             ``None`` falls back to ``MINIO_SECURE``. Default: ``None``.
+        STORAGE_ACCEL_REDIRECT (bool): ``True`` makes
+            ``AsyncMinIOClient.serve_object`` answer with
+            ``X-Accel-Redirect`` for nginx instead of proxying the bytes.
+            Default: ``False``.
+        STORAGE_ACCEL_PREFIX (str): nginx ``internal`` location the
+            ``X-Accel-Redirect`` points into. Default: ``"/_bucket/"``.
     """
 
     MINIO_ENDPOINT: str = Field(
@@ -2195,6 +2201,30 @@ class MinIOSettings(BaseAppSettings):
         ),
         examples=[None, True, False],
     )
+    STORAGE_ACCEL_REDIRECT: bool = Field(
+        default=False,
+        title="Deliver objects through nginx X-Accel-Redirect",
+        description=(
+            "Delivery mode of ``AsyncMinIOClient.serve_object``. ``False`` "
+            "(default) streams the bytes through the app "
+            "(``download_response``); ``True`` answers with an empty "
+            "response carrying ``X-Accel-Redirect`` so nginx fetches the "
+            "object from the bucket over the internal network "
+            "(``accel_redirect_response``). Only turn it on behind an nginx "
+            "that has the matching ``internal`` location."
+        ),
+        examples=[False, True],
+    )
+    STORAGE_ACCEL_PREFIX: str = Field(
+        default="/_bucket/",
+        title="nginx internal location for X-Accel-Redirect",
+        description=(
+            "Prefix of the ``X-Accel-Redirect`` value — the nginx "
+            "``location`` marked ``internal`` that proxies to "
+            "``MINIO_ENDPOINT``. Must start with ``/``."
+        ),
+        examples=["/_bucket/", "/_media/"],
+    )
 
     def minio_kwargs(self) -> dict[str, Any]:
         """Map these settings onto :class:`AsyncMinIOClient` kwargs.
@@ -2212,6 +2242,8 @@ class MinIOSettings(BaseAppSettings):
             "region": self.MINIO_REGION,
             "public_endpoint": self.MINIO_PUBLIC_ENDPOINT,
             "public_secure": self.MINIO_PUBLIC_SECURE,
+            "accel_redirect": self.STORAGE_ACCEL_REDIRECT,
+            "accel_prefix": self.STORAGE_ACCEL_PREFIX,
         }
 
 
