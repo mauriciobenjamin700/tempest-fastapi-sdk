@@ -2466,3 +2466,20 @@ decompression bomb) e mapeia `ImageLoadError` para `422`. O leitor em blocos
 do `make_voice_router` virou `read_upload_capped`, público e compartilhado.
 Os stores de vetor devolvem `[]` para `top_k <= 0` em vez de fatiar com
 índice negativo.
+
+## Sessões sem tabela e sem middleware (não lançado)
+
+`SessionAuth.from_credentials(username, password, store=, settings=)` abre
+sessão para uma credencial fixa do ambiente — `StaticCredentialAuthenticator`
+compara as duas metades com `hmac.compare_digest` sobre SHA-256 e combina com
+`&`. Outro backend entra pelo protocolo `SessionAuthenticator` em
+`SessionAuth(authenticator=...)`; `login_with_credentials(...)` é o passo de
+login. `make_session_dependency(session_auth=..., on_missing=redirect_to("/login"))`
+protege rota HTML com `303`, sem o `SessionMiddleware` (`BaseHTTPMiddleware`,
+~15 µs por pedaço de corpo em toda rota, medido). `SESSION_COOKIE_SAMESITE`
+virou `Literal`, e `SessionSettings.session_cookie_kwargs()` /
+`session_cookie_delete_kwargs()` escrevem e apagam o cookie com os mesmos
+atributos — o `make_session_router` usa os dois.
+
+Consumidor: `tempest-bucket` (#343, #344), que mantinha um
+`AdminSessionService` próprio e o override do campo como `Literal`.

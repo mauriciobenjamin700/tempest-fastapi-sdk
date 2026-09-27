@@ -26,8 +26,9 @@ Desde v0.34.0 o SDK fornece o ciclo completo de autenticação baseada em **sess
 3. **[Settings (`SessionSettings`)](#settings)** — flags + defaults.
 4. **[Stores](#stores)** — `MemorySessionStore` vs `RedisSessionStore`.
 5. **[Como o middleware injeta a sessão](#middleware)** — `request.state.session` + dependency.
-6. **[Segurança](#seguranca)** — anti-fixation rotation, hash-at-rest, anti-enumeração, CSRF.
-7. **[Trade-offs e quando NÃO usar](#trade-offs)** — multi-replica, mobile, edge.
+6. **[Login sem tabela de usuário](#login-sem-tabela-de-usuario)** — credencial fixa, rota HTML com redirect, sem middleware.
+7. **[Segurança](#seguranca)** — anti-fixation rotation, hash-at-rest, anti-enumeração, CSRF.
+8. **[Trade-offs e quando NÃO usar](#trade-offs)** — multi-replica, mobile, edge.
 
 ---
 
@@ -110,7 +111,7 @@ Pronto. O usuário faz `POST /auth/session/login` com email+senha; o SDK seta o 
 
 1. **`SessionStore`** (`RedisSessionStore` / `MemorySessionStore`) — a camada de persistência. Guarda o estado real da sessão indexado pelo hash SHA-256 do id opaco. É o único objeto que fala com o Redis.
 2. **`SessionAuth`** — a camada de lógica. Verifica credenciais contra o `UserModel`, cria (mint), rotaciona e revoga sessões via o `store`. Não sabe nada de HTTP.
-3. **`SessionMiddleware`** — a ponte HTTP → sessão. A cada request lê o cookie, resolve via `SessionAuth`/`store` e popula `request.state.session` **antes** de qualquer router rodar. Sem ele, `request.state.session` nunca existe e as dependencies levantam `AttributeError`.
+3. **`SessionMiddleware`** — a ponte HTTP → sessão. A cada request lê o cookie, resolve via `SessionAuth`/`store` e popula `request.state.session` **antes** de qualquer router rodar. Sem ele, `make_session_dependency()` não encontra sessão nenhuma e responde `401` mesmo com cookie válido — a menos que você passe `session_auth=` para a dependency, que então resolve o cookie sozinha ([sem middleware](#login-sem-tabela-de-usuario)).
 4. **`make_session_router`** — expõe os cinco endpoints bundled (`login` / `logout` / `me` / `list` / `{id}`). Recebe o mesmo `session_auth` e uma `session_factory` pra abrir a sessão de DB no login.
 
 !!! warning "Ordem importa: `add_middleware` ANTES de `include_router`"
@@ -156,6 +157,33 @@ SESSION_COOKIE_HTTPONLY=true           # JavaScript não lê — sempre true
 SESSION_COOKIE_SAMESITE=lax            # lax / strict / none
 SESSION_ROTATE_ON_LOGIN=true           # anti-fixation
 ```
+
+`SESSION_COOKIE_SAMESITE` é `Literal["lax", "strict", "none"]` (alias `SessionCookieSameSite`). Valor fora disso — `Strict`, `LAX`, `lax;` — derruba a construção do `Settings()` com `literal_error`, no boot, e não na primeira resposta. Espaço em volta (`lax `) é aparado, como antes.
+
+Para escrever e apagar o cookie, use os dois mappers em vez de repetir sete settings no `set_cookie` e três no `delete_cookie`:
+
+```python
+from fastapi import Response
+
+from tempest_fastapi_sdk import BaseAppSettings, SessionSettings
+
+
+class Settings(SessionSettings, BaseAppSettings):
+    pass
+
+
+settings = Settings()
+
+
+def start_session(response: Response, plaintext: str) -> None:
+    response.set_cookie(value=plaintext, **settings.session_cookie_kwargs())
+
+
+def end_session(response: Response) -> None:
+    response.delete_cookie(**settings.session_cookie_delete_kwargs())
+```
+
+`session_cookie_kwargs()` leva o nome do cookie como `key`, então o call site só passa o id. `session_cookie_delete_kwargs()` repete `path`, `domain`, `secure`, `httponly` e `samesite` do mesmo lugar — o browser só apaga o cookie quando o `Set-Cookie` de remoção casa `path` e `domain` com o que o criou. Os dois devolvem `TypedDict` (`SessionCookieKwargs` / `SessionCookieDeleteKwargs`), então o mypy confere o splat contra a assinatura do Starlette. O `make_session_router` usa os mesmos mappers.
 
 !!! danger "`SESSION_COOKIE_SECURE=false` é só pra dev HTTP"
     O default é `true`: o browser só envia o cookie sobre HTTPS. Setar `false` faz o cookie de sessão trafegar em texto claro sobre HTTP — qualquer intermediário na rede captura o id e sequestra a sessão. Use `false` **exclusivamente** em localdev sem TLS; nunca em staging ou produção. O mesmo vale pra deixar `SESSION_COOKIE_HTTPONLY=true` (default) — desligar expõe o cookie a XSS.
@@ -248,6 +276,123 @@ async def handler(request: Request) -> dict:
 
 ---
 
+## Login sem tabela de usuário
+
+`SessionAuth(user_model=...)` procura o e-mail numa tabela e verifica o hash. Um painel administrativo com **uma** credencial root vinda do ambiente não tem tabela para apontar. Para esse caso, `SessionAuth.from_credentials(username, password, ...)` monta o serviço sobre um `StaticCredentialAuthenticator`, e `make_session_dependency(session_auth=..., on_missing=redirect_to("/login"))` protege a rota HTML sem middleware nenhum.
+
+O exemplo inteiro — form de login, página protegida e logout:
+
+```python
+from fastapi import Depends, FastAPI, Form, Request, status
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from pydantic import SecretStr
+
+from tempest_fastapi_sdk import (
+    BaseAppSettings,
+    MemorySessionStore,
+    Session,
+    SessionAuth,
+    SessionSettings,
+    UnauthorizedException,
+    make_session_dependency,
+    redirect_to,
+    register_exception_handlers,
+)
+
+
+class Settings(SessionSettings, BaseAppSettings):
+    ADMIN_USERNAME: str
+    ADMIN_PASSWORD: SecretStr
+
+
+settings = Settings()
+session_auth = SessionAuth.from_credentials(
+    settings.ADMIN_USERNAME,
+    settings.ADMIN_PASSWORD,
+    store=MemorySessionStore(),
+    settings=settings,
+)
+require_admin = make_session_dependency(
+    session_auth=session_auth,
+    on_missing=redirect_to("/login"),
+)
+
+app = FastAPI()
+register_exception_handlers(app)
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page() -> str:
+    return (
+        '<form method="post" action="/login">'
+        '<input name="username"> <input name="password" type="password">'
+        "<button>Entrar</button></form>"
+    )
+
+
+@app.post("/login")
+async def login(
+    request: Request,
+    username: str = Form(),
+    password: str = Form(),
+) -> Response:
+    try:
+        _session, plaintext = await session_auth.login_with_credentials(
+            username,
+            password,
+            previous_session_id=request.cookies.get(settings.SESSION_COOKIE_NAME),
+        )
+    except UnauthorizedException:
+        return HTMLResponse("Credenciais inválidas", status_code=401)
+    response = RedirectResponse("/admin", status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie(value=plaintext, **settings.session_cookie_kwargs())
+    return response
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin(session: Session = Depends(require_admin)) -> str:
+    return f"<h1>Painel</h1><p>Sessão expira em {session.expires_at:%H:%M}</p>"
+
+
+@app.post("/logout")
+async def logout(request: Request) -> Response:
+    cookie = request.cookies.get(settings.SESSION_COOKIE_NAME)
+    if cookie:
+        await session_auth.revoke(cookie)
+    response = RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    response.delete_cookie(**settings.session_cookie_delete_kwargs())
+    return response
+```
+
+Com `ADMIN_USERNAME=root`, `ADMIN_PASSWORD=s3cret` e `SESSION_COOKIE_SECURE=false` no ambiente, dirigido por `httpx.AsyncClient`:
+
+```text
+GET /admin sem cookie: 303 /login
+POST /login errado: 401 Credenciais inválidas
+POST /login certo: 303 /admin
+  Set-Cookie: tempest_session=63XC...; HttpOnly; Max-Age=86400; Path=/; SameSite=lax
+GET /admin com cookie: 200 <h1>Painel</h1><p>Sessão expira em 16:55</p>
+POST /logout: 303 /login
+  Set-Cookie: tempest_session=""; expires=...; HttpOnly; Max-Age=0; Path=/; SameSite=lax
+GET /admin com cookie revogado: 303 /login
+```
+
+### Pedaço por pedaço
+
+1. **`SessionAuth.from_credentials(...)`** — aceita exatamente um par. As duas metades são sempre comparadas, cada uma com `hmac.compare_digest` sobre o SHA-256 do valor, e os resultados são combinados com `&`, não com `and`: usuário errado custa o mesmo que senha errada, e a mensagem (`invalid username or password`) é a mesma nos dois casos. Aceita `SecretStr`, então o campo do `Settings` entra direto. Credencial vazia levanta `ValueError` na construção — uma env var vazia não vira "aceita form vazio".
+2. **O dono da sessão** é `uuid5(STATIC_CREDENTIAL_NAMESPACE, username)` por padrão: estável entre restarts e réplicas, então `session_auth.revoke_all(...)` alcança todas as sessões do root. Passe `user_id=` para escolher outro.
+3. **`login_with_credentials(...)`** — verifica e abre a sessão numa chamada. Credencial errada levanta `UnauthorizedException` sem criar sessão e sem revogar a anterior; a rota decide o que renderizar.
+4. **`make_session_dependency(session_auth=..., on_missing=redirect_to("/login"))`** — lê o cookie e resolve a sessão ela mesma (com o TTL deslizante, como o middleware). Sem sessão, levanta `HTTPException(303, Location=/login)`; o handler do FastAPI e o `register_exception_handlers` do SDK mantêm o header, e o browser segue. Sem `on_missing`, a resposta continua `401`.
+5. **Logout** — `revoke(cookie)` apaga a sessão no store (o mesmo cookie depois disso redireciona para o login) e `delete_cookie(**settings.session_cookie_delete_kwargs())` apaga o cookie no browser.
+
+!!! tip "Outro backend de credencial"
+    `from_credentials` é um atalho. Qualquer objeto com `async def authenticate(self, username: str, password: str, /) -> UUID` que levante `UnauthorizedException` na recusa satisfaz o protocolo `SessionAuthenticator` — LDAP, uma API upstream — e entra em `SessionAuth(authenticator=..., store=..., settings=...)`. Passe `user_model=` **ou** `authenticator=`, nunca os dois. O `make_session_router` (login JSON por e-mail) exige `user_model=` e recusa na montagem um serviço montado com `authenticator=`.
+
+!!! warning "`SessionMiddleware` é `BaseHTTPMiddleware` e fica no caminho de toda resposta"
+    O middleware envolve o app inteiro, e o `BaseHTTPMiddleware` do Starlette repassa cada pedaço do corpo da resposta por um stream em memória. Medido aqui (Starlette 1.6.0, chamada ASGI direta com `send` vazio, mediana de 7 execuções): um `StreamingResponse` de 256 MiB em pedaços de 64 KiB levou **~4 ms** sem middleware e **~64 ms** com `SessionMiddleware` — cerca de 15 µs por pedaço, pagos por **toda** rota, inclusive o upload/download que nunca lê a sessão. Num serviço que faz streaming de arquivo e usa sessão em três rotas, prefira a dependency com `session_auth=`: só as rotas que a declaram pagam a resolução. Se o middleware estiver montado mesmo assim, a dependency reaproveita a sessão que ele resolveu em vez de resolver de novo.
+
+---
+
 ## Segurança
 
 - **Hash at rest**: cookie carrega plaintext de 32 bytes URL-safe; store guarda só SHA-256. Vazamento da tabela `sessions` **não** dá login.
@@ -282,6 +427,12 @@ Possível. SPA web usa cookie de sessão; mobile do mesmo backend usa `UserAuthS
   `request.state.session` antes de qualquer router.
 - O cookie leva plaintext; o store guarda só SHA-256. Vazar a tabela de
   sessões **não** dá login em ninguém.
+- Sem tabela de usuário, `SessionAuth.from_credentials(...)` compara as duas
+  metades da credencial em tempo constante, e
+  `make_session_dependency(session_auth=..., on_missing=redirect_to("/login"))`
+  protege rota HTML com `303`, sem middleware.
+- `settings.session_cookie_kwargs()` / `session_cookie_delete_kwargs()`
+  escrevem e apagam o cookie com os mesmos atributos.
 - `MemorySessionStore` serve dev e teste; troque o store, não o resto do
   wiring, para ir a Redis ou banco.
 
