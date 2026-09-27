@@ -11,6 +11,7 @@ Mapping rules, in the order they are checked:
 | Schema field | Control |
 | --- | --- |
 | ``ui`` override in ``json_schema_extra`` | whatever it names |
+| ``UploadFile`` / ``list[UploadFile]`` | ``<input type="file">`` (``multiple``) |
 | ``Enum`` / ``Literal`` | ``<select>`` |
 | ``bool`` | ``<input type="checkbox">`` |
 | ``int`` | ``number`` with ``step="1"`` |
@@ -25,9 +26,11 @@ Mapping rules, in the order they are checked:
 | ``list[...]`` of enum values | multiple ``<select>`` |
 | other ``list[...]`` | ``<textarea>``, one value per line |
 
-Nested models and binary fields raise :class:`UnsupportedFieldError`
+Nested models and ``bytes`` fields raise :class:`UnsupportedFieldError`
 rather than rendering something that cannot round-trip — a nested model
-needs its own form, and an upload needs FastAPI's ``UploadFile``.
+needs its own form, and an upload is declared as FastAPI's
+``UploadFile``, which renders a file control and reaches the model as
+the uploaded file itself.
 
 Override anything per field with ``json_schema_extra``:
 
@@ -43,8 +46,20 @@ class ArticleSchema(BaseModel):
 ```
 
 Recognised ``ui`` keys: ``control``, ``input_type``, ``label``,
-``placeholder``, ``help_text``, ``autocomplete``, ``rows``, ``hidden``,
-``attrs``.
+``placeholder``, ``help_text``, ``autocomplete``, ``rows``, ``accept``,
+``multiple``, ``omit``, ``hidden``, ``attrs``.
+
+``{"control": "hidden"}`` renders a real hidden input — no label, hint or
+wrapper, whatever the type or ``max_length`` — and the value still goes
+through :func:`~tempest_fastapi_sdk.ui.forms.parse_form`. ``{"omit": True}``
+drops the field from the form altogether; ``{"hidden": True}`` is the older
+spelling of ``omit`` and keeps that meaning.
+
+The hint under a control is ``help_text`` when the key is present — an
+empty string, ``None`` or ``False`` suppresses it — and otherwise the
+field ``description``, unless ``describe=False`` turns that fallback off.
+The ``description`` is also the schema's OpenAPI documentation, so what
+you write there is shown to the reader of the form.
 """
 
 from __future__ import annotations
@@ -58,6 +73,7 @@ from typing import Any, Union, get_args, get_origin
 
 from pydantic import BaseModel, TypeAdapter
 from pydantic_core import PydanticUndefined
+from starlette.datastructures import UploadFile
 
 from tempest_fastapi_sdk.ui.forms.spec import (
     Control,
@@ -89,13 +105,66 @@ _AUTOCOMPLETE_BY_TYPE: dict[str, str] = {
 }
 
 
+_OMIT_KEYS = ("omit", "hidden")
+_FORCED_CONTROLS = frozenset({"hidden", "file"})
+
+
 class UnsupportedFieldError(ValueError):
     """Raised when a schema field has no meaningful HTML control.
 
-    Nested models and binary payloads are the two cases: a nested model
-    needs a form of its own, and a file upload needs FastAPI's
+    Nested models and ``bytes`` payloads are the two cases: a nested model
+    needs a form of its own, and a file upload is declared as FastAPI's
     ``UploadFile`` rather than a value coerced from a string.
     """
+
+
+def _upload_annotation(annotation: Any) -> tuple[bool, bool]:
+    """Tell whether an annotation declares an uploaded file.
+
+    Args:
+        annotation (Any): The declared field annotation.
+
+    Returns:
+        tuple[bool, bool]: Whether the field is an ``UploadFile`` (bare,
+        optional or in a list), and whether it holds many files.
+    """
+    inner = _base_annotation(annotation)
+    many = False
+    if get_origin(inner) in {list, tuple, set, frozenset}:
+        args = get_args(inner)
+        if not args:
+            return (False, False)
+        inner = _base_annotation(args[0])
+        many = True
+    is_upload = isinstance(inner, type) and issubclass(inner, UploadFile)
+    return (is_upload, many and is_upload)
+
+
+def _help_text(
+    overrides: Mapping[str, Any],
+    field_info: Any,
+    *,
+    describe: bool,
+) -> str:
+    """Pick the hint rendered under a control.
+
+    Args:
+        overrides (Mapping[str, Any]): The field's ``ui`` block.
+        field_info (Any): The Pydantic ``FieldInfo``.
+        describe (bool): Whether the field ``description`` fills in when
+            the ``ui`` block carries no ``help_text`` key.
+
+    Returns:
+        str: The hint. A ``help_text`` key that is present always wins,
+        so ``""``, ``None`` and ``False`` suppress the hint instead of
+        falling back to the description.
+    """
+    if "help_text" in overrides:
+        chosen = overrides["help_text"]
+        return "" if chosen is None or chosen is False else str(chosen)
+    if not describe:
+        return ""
+    return str(field_info.description or "")
 
 
 def _humanize(name: str) -> str:
@@ -342,16 +411,20 @@ def _control_for(
         for an input, and whether a select accepts many values.
 
     Raises:
-        UnsupportedFieldError: For nested models and binary fields.
+        UnsupportedFieldError: For nested models and ``bytes`` fields.
     """
     json_type = node.get("type")
     json_format = node.get("format")
 
+    is_upload, many_files = _upload_annotation(annotation)
+    if is_upload:
+        return ("file", "file", many_files)
     if json_format == "binary" or json_type == "binary":
         raise UnsupportedFieldError(
-            f"Field {name!r} is a binary upload; generated forms do not "
-            "coerce files. Declare it as `UploadFile = File(...)` on the "
-            "route and keep it out of the form schema.",
+            f"Field {name!r} is raw bytes; generated forms do not coerce "
+            "files into bytes. Annotate it as `fastapi.UploadFile` (or "
+            "`list[UploadFile]`) to render a file control and receive the "
+            "upload itself.",
         )
     inner = _base_annotation(annotation)
     if isinstance(inner, type) and issubclass(inner, BaseModel):
@@ -401,6 +474,7 @@ def fields_for(
     errors: Mapping[str, Sequence[str]] | None = None,
     include: Sequence[str] = (),
     exclude: Sequence[str] = (),
+    describe: bool = True,
 ) -> list[FieldSpec]:
     """Derive the field specifications of a Pydantic schema.
 
@@ -415,14 +489,19 @@ def fields_for(
         include (Sequence[str]): When non-empty, render only these
             fields, in the given order.
         exclude (Sequence[str]): Field names to drop.
+        describe (bool): Whether a field ``description`` becomes the hint
+            under its control when the ``ui`` block sets no
+            ``help_text``. The description is also the OpenAPI
+            documentation of the schema; turn this off when it is written
+            for developers rather than for the reader of the form.
 
     Returns:
         list[FieldSpec]: One spec per rendered field, in schema
         declaration order (or ``include`` order when given).
 
     Raises:
-        UnsupportedFieldError: When a field is a nested model or a binary
-            upload and was not excluded.
+        UnsupportedFieldError: When a field is a nested model or a
+            ``bytes`` payload and was not excluded.
         KeyError: When ``include`` names a field the schema lacks.
 
     Example:
@@ -459,27 +538,44 @@ def fields_for(
     for name in names:
         field_info = model_fields[name]
         overrides = _ui_overrides(field_info)
-        if overrides.get("hidden"):
+        if any(overrides.get(key) for key in _OMIT_KEYS):
             continue
 
         annotation = field_info.annotation
         node = _unwrap_optional_schema(_field_json_schema(annotation))
-        control, input_type, multiple = _control_for(name, annotation, node, field_info)
-
-        control = str(overrides.get("control", control))  # type: ignore[assignment]
-        input_type = str(overrides.get("input_type", input_type))
+        control: Control
+        input_type: str
+        forced = overrides.get("control")
+        if forced in _FORCED_CONTROLS:
+            control = "hidden" if forced == "hidden" else "file"
+            input_type = str(control)
+            multiple = control == "file" and _upload_annotation(annotation)[1]
+        else:
+            control, input_type, multiple = _control_for(
+                name,
+                annotation,
+                node,
+                field_info,
+            )
+            control = str(overrides.get("control", control))  # type: ignore[assignment]
+            input_type = str(overrides.get("input_type", input_type))
+        if control == "file":
+            multiple = bool(overrides.get("multiple", multiple))
 
         raw = supplied[name] if name in supplied else _default_value(field_info)
+        if control == "file":
+            raw = ""
         already_text = isinstance(raw, str) and not isinstance(raw, Enum)
         value = raw if already_text else _format_value(raw)
+        listed = multiple and control != "file"
         selected = (
             [item for item in value.splitlines() if item]
-            if multiple
+            if listed
             else [value]
             if value
             else []
         )
-        if multiple and isinstance(raw, (list, tuple, set)):
+        if listed and isinstance(raw, (list, tuple, set)):
             selected = [_format_value(item) for item in raw]
 
         options = [
@@ -507,15 +603,13 @@ def fields_for(
                 ),
                 control=control,
                 input_type=input_type,
-                value="" if multiple or control == "select" else value,
-                selected_values=selected if multiple else (),
+                value="" if listed or control == "select" else value,
+                selected_values=selected if listed else (),
                 options=options,
                 required=field_info.is_required(),
                 multiple=multiple,
                 placeholder=str(overrides.get("placeholder", "")),
-                help_text=str(
-                    overrides.get("help_text") or field_info.description or "",
-                ),
+                help_text=_help_text(overrides, field_info, describe=describe),
                 errors=tuple(messages.get(name, ())),
                 autocomplete=str(
                     overrides.get(
@@ -524,7 +618,8 @@ def fields_for(
                     ),
                 ),
                 rows=int(overrides.get("rows", 4)),
-                constraints=constraints,
+                accept=str(overrides.get("accept", "")) if control == "file" else "",
+                constraints={} if control in _FORCED_CONTROLS else constraints,
                 attrs=dict(extra_attrs) if isinstance(extra_attrs, Mapping) else {},
             ),
         )
@@ -549,6 +644,7 @@ def form_spec_for(
     attrs: Mapping[str, str] | None = None,
     classes: FormClasses | None = None,
     id_prefix: str = "f",
+    describe: bool = True,
 ) -> FormSpec:
     """Build the full :class:`FormSpec` of a schema.
 
@@ -568,6 +664,8 @@ def form_spec_for(
         classes (FormClasses | None): CSS class overrides.
         id_prefix (str): Prefix of the generated control ids. Give each
             form on the same page its own prefix.
+        describe (bool): Whether field descriptions fill in the hint of
+            fields without a ``help_text`` (see :func:`fields_for`).
 
     Returns:
         FormSpec: The form description, ready to render or to patch.
@@ -586,6 +684,7 @@ def form_spec_for(
             errors=errors,
             include=include,
             exclude=exclude,
+            describe=describe,
         ),
         method="post" if normalized == "post" else "get",
         submit_label=submit_label,

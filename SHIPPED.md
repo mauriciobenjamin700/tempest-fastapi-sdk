@@ -1452,9 +1452,22 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   default applies, empty optional to `None`, repeated keys and textarea
   lines to `list`. `FormResult` carries per-field errors plus the raw
   input, so re-rendering keeps what the reader typed. Overrides via
-  `json_schema_extra={"ui": {...}}`; nested models and binary fields
+  `json_schema_extra={"ui": {...}}`; nested models and `bytes` fields
   raise `UnsupportedFieldError` rather than rendering something that
-  cannot round-trip. Emits the elements through `tag`/`attrs`: measured,
+  cannot round-trip. **Unreleased (#340, #345, #347, #351):**
+  `{"ui": {"control": "hidden"}}` is a bare `<input type="hidden">`
+  (no label/hint/wrapper, any type or `max_length`; its errors join the
+  form-level list), `{"ui": {"omit": True}}` names the old
+  `hidden: True` omission (which keeps its meaning); `form_dependency(Schema)`
+  gives the route `Annotated[FormResult[Schema], Depends(...)]` with no
+  `Request`, typed under mypy `--strict`; `UploadFile` /
+  `list[UploadFile]` (or `{"control": "file"}`) render `<input
+  type="file">` with `accept`/`multiple`, switch the form to
+  `multipart/form-data`, and reach the model as the `UploadFile` itself
+  (an empty control reads as absent; the file is never pre-filled on
+  re-render); a present `help_text` key always wins (`""`/`None`/`False`
+  suppress the hint) and `describe=False` turns off the `description`
+  fallback. Emits the elements through `tag`/`attrs`: measured,
   `tempest_core`'s `Input` renders without a `name` and `Dropdown` /
   `TextArea` render as empty `<div>`s under the HTML renderer
   (`tests/ui/test_core_contract.py`).

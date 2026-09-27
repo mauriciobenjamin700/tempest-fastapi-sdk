@@ -500,7 +500,7 @@ come back here to plug in each capability as you need it.
 | **[Feature flags »](feature-flags.md)** | `FeatureFlags`, env/Redis/composite backends, `make_flag_dependency` |
 | **[File store (unified) »](file-store.md)** | `FileStoreUtils` — upload + download + presign over a single backend |
 | **[Firebase auth (ID token) »](firebase-auth.md)** | `FirebaseAuth`, `FirebaseIdentity`, `FirebaseUserResolver` — verify the ID token a mobile app sends, idempotent initialization, one `code` per failure, `[firebase]` extra |
-| **[Forms from Pydantic schemas »](ui-forms.md)** | `form_for` / `form_spec_for` / `render_form`, `parse_form` + `FormResult` (per-field errors, input preserved), type-to-control mapping, `json_schema_extra={"ui": ...}`, `form_stylesheet` |
+| **[Forms from Pydantic schemas »](ui-forms.md)** | `form_for` / `form_spec_for` / `render_form`, `parse_form` + `FormResult` (per-field errors, input preserved), `form_dependency` (no `Request` in the route), hidden fields, `UploadFile` uploads, type-to-control mapping, `json_schema_extra={"ui": ...}`, `form_stylesheet` |
 | **[Geolocation (distance + travel time) »](geo.md)** | `haversine_km`, `estimate_travel`, `OSRMBackend`, `NominatimBackend`, `GeoPointMixin` / `GeoRepositoryMixin` |
 | **[Host control (files, commands, power) »](hostbridge.md)** | `HostBridge` + `HostBridgeConfig` / `HostBridgeSettings` (power, files, PDFs, commands, native picker), `make_hostbridge_router` with required auth and an opt-in destructive side, sandboxed WSL/Windows paths |
 | **[HTTP client (outbound) »](http-client.md)** | `HTTPClient` — typed httpx with retry/backoff, circuit-breaker, X-Request-ID; `RetryPolicy`, `CircuitOpenError` |

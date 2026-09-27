@@ -233,7 +233,7 @@ def test_binary_field_is_rejected() -> None:
 
         payload: bytes
 
-    with pytest.raises(UnsupportedFieldError, match="binary upload"):
+    with pytest.raises(UnsupportedFieldError, match="raw bytes"):
         fields_for(UploadSchema)
 
 

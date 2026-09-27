@@ -14,8 +14,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
-Control = Literal["input", "textarea", "select", "checkbox"]
-"""Which HTML control renders a field."""
+Control = Literal["input", "textarea", "select", "checkbox", "hidden", "file"]
+"""Which HTML control renders a field.
+
+``"hidden"`` renders a bare ``<input type="hidden">`` with no label, hint
+or wrapper; ``"file"`` renders ``<input type="file">`` and switches the
+form to ``multipart/form-data``.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +55,8 @@ class FieldSpec:
             select. Ignored by the other controls.
         options (Sequence[SelectOption]): Options of a ``select``.
         required (bool): Whether the control renders ``required``.
-        multiple (bool): Whether a ``select`` accepts many values.
+        multiple (bool): Whether a ``select`` or a ``file`` control
+            accepts many values.
         placeholder (str): Placeholder text for text-like controls.
         help_text (str): Hint rendered under the control and wired to it
             through ``aria-describedby``.
@@ -58,6 +64,9 @@ class FieldSpec:
             non-empty list also marks the control ``aria-invalid``.
         autocomplete (str): The ``autocomplete`` attribute, when known.
         rows (int): Row count for a ``textarea``.
+        accept (str): The ``accept`` attribute of a ``file`` control
+            (``"image/*"``, ``".pdf,.csv"``). Ignored by the other
+            controls.
         constraints (Mapping[str, str]): Native validation attributes
             derived from the schema — ``minlength``, ``maxlength``,
             ``min``, ``max``, ``step``, ``pattern``.
@@ -79,6 +88,7 @@ class FieldSpec:
     errors: Sequence[str] = ()
     autocomplete: str = ""
     rows: int = 4
+    accept: str = ""
     constraints: Mapping[str, str] = field(default_factory=dict)
     attrs: Mapping[str, str] = field(default_factory=dict)
 
@@ -176,6 +186,18 @@ class FormSpec:
     attrs: Mapping[str, str] = field(default_factory=dict)
     classes: FormClasses = field(default_factory=FormClasses)
     id_prefix: str = "f"
+
+    @property
+    def multipart(self) -> bool:
+        """Whether the form must be submitted as ``multipart/form-data``.
+
+        Returns:
+            bool: ``True`` when at least one field is a ``file`` control,
+            which is what makes
+            :func:`~tempest_fastapi_sdk.ui.forms.render_form` set the
+            ``enctype`` on its own.
+        """
+        return any(item.control == "file" for item in self.fields)
 
     def field_named(self, name: str) -> FieldSpec:
         """Return one field by name.

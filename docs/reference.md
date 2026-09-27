@@ -1078,6 +1078,7 @@ o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.ui.forms.introspect.UnsupportedFieldError
 ::: tempest_fastapi_sdk.ui.forms.parse.parse_form
 ::: tempest_fastapi_sdk.ui.forms.parse.FormResult
+::: tempest_fastapi_sdk.ui.forms.parse.form_dependency
 ::: tempest_fastapi_sdk.ui.forms.spec.FormSpec
 ::: tempest_fastapi_sdk.ui.forms.spec.FieldSpec
 ::: tempest_fastapi_sdk.ui.forms.spec.SelectOption
