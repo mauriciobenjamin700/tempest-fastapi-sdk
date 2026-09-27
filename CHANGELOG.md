@@ -25,10 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   receita de testes ganhou a seção *A suíte em paralelo*: quando usar, o que
   a mensagem de pytest-xdist ausente diz, e o caminho de conferência de teste
   que só falha em paralelo (rodá-lo sozinho, em série, antes de tratar como
-  regressão). A flag é do `tempest-cli` e chega na **0.4.0**; este SDK ainda
-  declara `tempest-cli>=0.3.0`, e o piso sobe numa PR à parte depois que a
-  0.4.0 estiver no PyPI — até lá, a receita manda fixar
-  `tempest-cli>=0.4.0` no projeto. Medido na suíte deste repo (10 218
+  regressão). A flag é do `tempest-cli` 0.4.0, e o piso do SDK
+  sobe para `tempest-cli>=0.4.0`. Medido na suíte deste repo (10 218
   testes, máquina de 6 núcleos físicos / 12 threads, uma execução de cada,
   com o `tempest-cli` da branch instalado em modo editável): 2127 s em série,
   411 s com `--fast` (`auto` → 6 workers, porque o `psutil` está no

@@ -269,18 +269,12 @@ desligado porque vários workers escrevendo `.pytest_cache` ao mesmo tempo é
 corrida à toa — e é esse cache que o `--lf` / `--ff` leem, então esses dois
 continuam sendo coisa de execução serial.
 
-!!! info "O `--fast` chega no `tempest-cli` 0.4.0"
+!!! info "O `--fast` vem do `tempest-cli` 0.4.0"
     Os comandos `test` e `check` são do
     [`tempest-cli`](https://pypi.org/project/tempest-cli/), que o SDK monta
-    na CLI dele. O SDK ainda declara `tempest-cli>=0.3.0`; até ele subir esse
-    piso, garanta a versão no seu projeto:
-
-    ```bash
-    uv add --dev "tempest-cli>=0.4.0"
-    ```
-
-    Com o `tempest-cli` 0.3.0, `tempest test --fast` sai com
-    `No such option: --fast` (saída 2).
+    na CLI dele. O SDK declara `tempest-cli>=0.4.0`, então a flag já vem com
+    ele. Com o `tempest-cli` 0.3.0 fixado à parte no seu projeto,
+    `tempest test --fast` sai com `No such option: --fast` (saída 2).
 
 ### Sem o pytest-xdist
 

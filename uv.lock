@@ -6819,15 +6819,15 @@ wheels = [
 
 [[package]]
 name = "tempest-cli"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ruff" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/57/37/b29a19141ea0090d1dde26b3245102d24f877818ffa53c1e81cf2333c2cf/tempest_cli-0.3.0.tar.gz", hash = "sha256:e32d5c627fb621fa9d8e26526f001a31899f12f961ec418d0e8259034b420e80", size = 129659, upload-time = "2026-08-15T17:22:46.487Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/92/67/d7a325f59524f1265e4061686522dc4b5386c4c4e68409445cdbecce8f16/tempest_cli-0.4.0.tar.gz", hash = "sha256:10199afc042919268597d5992c1275bee74a87160b1f6fc2af4e6d187bec2646", size = 146150, upload-time = "2026-09-27T23:13:18.113Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/11/88/724c9bcbe12e92586a2e56c26d793f90cb7cb9ff417cfb39f28925a244d9/tempest_cli-0.3.0-py3-none-any.whl", hash = "sha256:d6d652decb225d081ccf74922feefabe39e11732668c2bf85bc77eb3d4f72a5e", size = 27181, upload-time = "2026-08-15T17:22:45.445Z" },
+    { url = "https://files.pythonhosted.org/packages/31/1c/b832ccf7686c3a6414b9934e9c896805888ce3858b447eb5f39de800a8bf/tempest_cli-0.4.0-py3-none-any.whl", hash = "sha256:79bc001ef0472cc4837c83bb2cf50f3867e3b70dc319ce0a0194fa58761557d7", size = 31092, upload-time = "2026-09-27T23:13:16.723Z" },
 ]
 
 [[package]]
@@ -7283,7 +7283,7 @@ requires-dist = [
     { name = "taskiq-aio-pika", marker = "extra == 'tasks'", specifier = ">=0.6.0" },
     { name = "taskiq-redis", marker = "extra == 'all'", specifier = ">=1.2.3" },
     { name = "taskiq-redis", marker = "extra == 'tasks-redis'", specifier = ">=1.2.3" },
-    { name = "tempest-cli", specifier = ">=0.3.0" },
+    { name = "tempest-cli", specifier = ">=0.4.0" },
     { name = "tempestweb", marker = "extra == 'all'", specifier = ">=0.127.0" },
     { name = "tempestweb", marker = "extra == 'ssr'", specifier = ">=0.127.0" },
     { name = "tokenizers", marker = "extra == 'genai-onnx'", specifier = ">=0.22.2" },

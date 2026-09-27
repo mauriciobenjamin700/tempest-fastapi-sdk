@@ -36,7 +36,7 @@ dependencies = [
     # this framework-agnostic package. It is a dependency and not a copy
     # so both CLIs expose one implementation; it pulls only `typer`,
     # which the SDK already requires.
-    "tempest-cli>=0.3.0",
+    "tempest-cli>=0.4.0",
     "click>=8.5.0",
     "email-validator>=2.3.0",
     "fastapi>=0.141.1",
