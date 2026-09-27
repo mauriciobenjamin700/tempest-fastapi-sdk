@@ -393,7 +393,7 @@ like*.
   from tempest_fastapi_sdk.ui.forms import form_for, parse_form
 
   from src.schemas import ProductCreateSchema
-  from src.ui import CSS_PATH
+  from src.ui import CSS_URL
 
 
   async def create_product_form(request: Request) -> Response:
@@ -409,16 +409,21 @@ like*.
               ),
               title="Novo produto",
               status_code=422,
-              stylesheets=[CSS_PATH],
+              stylesheets=[CSS_URL],
           )
       return RedirectResponse("/products", status_code=303)
   ```
 
 - **Styling is the typed sheet in `src/ui/styles.py`**, served by
-  `make_css_router(STYLESHEET, path=CSS_PATH)`. Reference design tokens
-  (`THEME.color("surface")`, `THEME.space("md")`) instead of hard-coding
-  colours, and add rules to `_OWN_RULES` rather than writing a `.css`
-  file.
+  `make_css_router(STYLESHEET, path=CSS_PATH)`; pages link `CSS_URL`
+  (`STYLESHEET.url(CSS_PATH)`, the content-versioned URL), never the bare
+  path, so a deploy is never new HTML on top of a cached old sheet.
+  Reference design tokens (`THEME.color("surface")`, `THEME.space("md")`)
+  instead of hard-coding colours, and add rules to `_OWN_RULES` rather
+  than writing a `.css` file.
+- **Tables are `DataTable`, even with links or forms per row**: a
+  `TableColumn("name", render=...)` cell returns widgets, `align="right"`
+  lines numbers up, and `class_name=` targets a column from the sheet.
 - **Use `Stack` for semantic markup** (`<select>`, `<table>`, `<ul>`) and
   `Column`/`Row` only where a flex box is wanted.
 - Reuse the shipped components: `Card`, `Alert`, `DataTable`,

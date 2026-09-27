@@ -37,13 +37,27 @@ _LAYOUT_WIDGET: dict[str, str] = {"column": "Column", "row": "Row"}
 
 _CLASS_PATTERN = re.compile(r"\.(-?[_a-zA-Z][\w-]*)")
 
-_RESET = """*, *::before, *::after {
+_VERSION_PARAM: str = "v"
+"""Query parameter carrying the sheet version in :meth:`StyleSheet.url`."""
+
+SYSTEM_FONT_STACK: str = (
+    'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", '
+    '"Noto Sans", "Liberation Sans", Arial, sans-serif'
+)
+"""The default body font: the operating system's own UI face.
+
+Without a ``font-family`` anywhere in the sheet, the page renders in the
+browser's own default face (#350 reported it serif) instead of the one
+the operating system uses for its interface. The stack starts at
+``system-ui`` and ends at the generic ``sans-serif``, so no web font is
+fetched.
+"""
+
+_RESET_HEAD = """*, *::before, *::after {
   box-sizing: border-box;
-}
-body {
-  margin: 0;
-}
-img, svg, video {
+}"""
+
+_RESET_TAIL = """img, svg, video {
   display: block;
   max-width: 100%;
 }
@@ -51,7 +65,29 @@ button, input, select, textarea {
   font: inherit;
   color: inherit;
 }"""
-"""Minimal base reset. Opt out with ``StyleSheet(reset=False)``."""
+
+
+def _reset_css(theme: Any | None) -> str:
+    """Render the minimal base reset.
+
+    The ``body`` rule sets the font family: through the theme's
+    ``--<prefix>-font-family-body`` custom property when the sheet has a
+    theme (so a service swaps the face in one token), otherwise the
+    literal :data:`SYSTEM_FONT_STACK`. Opt out of the whole reset with
+    ``StyleSheet(reset=False)``.
+
+    Args:
+        theme (Any | None): The sheet's
+            :class:`~tempest_fastapi_sdk.ui.css.ThemeTokens`, or ``None``.
+
+    Returns:
+        str: The reset block.
+    """
+    family = (
+        theme.var("font-family", "body") if theme is not None else SYSTEM_FONT_STACK
+    )
+    body = f"body {{\n  margin: 0;\n  font-family: {family};\n}}"
+    return f"{_RESET_HEAD}\n{body}\n{_RESET_TAIL}"
 
 
 def _style_declarations(style: Any, layout: Layout | None) -> str:
@@ -280,8 +316,8 @@ class StyleSheet:
         theme (ThemeTokens | None): Design tokens emitted as custom
             properties before every rule. ``None`` emits no token block.
         reset (bool): Whether to prepend the minimal base reset
-            (``box-sizing``, zeroed body margin, block media, inherited
-            control fonts).
+            (``box-sizing``, zeroed body margin, the body font family,
+            block media, inherited control fonts).
         extra_css (str): Raw CSS appended at the end, for the rare thing
             no rule expresses (``@font-face``, keyframes).
     """
@@ -301,7 +337,7 @@ class StyleSheet:
         """
         blocks: list[str] = []
         if self.reset:
-            blocks.append(_RESET)
+            blocks.append(_reset_css(self.theme))
         if self.theme is not None:
             blocks.append(self.theme.to_css())
         for rule in self.rules:
@@ -378,11 +414,69 @@ class StyleSheet:
             str: A quoted SHA-256 prefix of the CSS, stable for identical
             content so a conditional request can answer ``304``.
         """
-        digest = hashlib.sha256(self.to_css().encode("utf-8")).hexdigest()
-        return f'"{digest[:32]}"'
+        return f'"{self._digest()[:32]}"'
+
+    def version(self) -> str:
+        """Return a short content version of the rendered sheet.
+
+        Derived from the same SHA-256 as :meth:`etag`, so it depends on
+        the CSS text alone: two processes rendering the same rules get
+        the same value, and changing any declaration changes it.
+
+        Returns:
+            str: The first 12 hex characters of the digest.
+        """
+        return self._digest()[:12]
+
+    def url(self, path: str = "/static/app.css") -> str:
+        """Return the content-versioned URL pages should link.
+
+        Pass the same ``path`` given to
+        :func:`~tempest_fastapi_sdk.ui.css.make_css_router`. The router
+        answers a request carrying the current version with a year-long
+        ``immutable`` cache policy, and a changed sheet yields a URL the
+        browser has never cached — so a deploy never leaves new HTML on
+        top of an old stylesheet.
+
+        Compute it once, next to the sheet, at import time: every call
+        renders the whole sheet to hash it.
+
+        Args:
+            path (str): Absolute route path the sheet is served from.
+
+        Returns:
+            str: ``"/static/app.css?v=<version>"``.
+
+        Raises:
+            ValueError: When ``path`` does not start with ``"/"`` or
+                already carries a query string.
+
+        Example:
+            ```python
+            from tempest_fastapi_sdk.ui import app_stylesheet
+            from tempest_fastapi_sdk.ui.css import StyleSheet
+
+            STYLESHEET: StyleSheet = app_stylesheet()
+            CSS_URL: str = STYLESHEET.url("/static/app.css")
+            ```
+        """
+        if not path.startswith("/"):
+            raise ValueError(f"CSS path must start with '/', got {path!r}.")
+        if "?" in path:
+            raise ValueError(f"CSS path must not carry a query string, got {path!r}.")
+        return f"{path}?{_VERSION_PARAM}={self.version()}"
+
+    def _digest(self) -> str:
+        """Hash the rendered sheet.
+
+        Returns:
+            str: The hex SHA-256 of :meth:`to_css`, UTF-8 encoded.
+        """
+        return hashlib.sha256(self.to_css().encode("utf-8")).hexdigest()
 
 
 __all__: list[str] = [
+    "SYSTEM_FONT_STACK",
     "Layout",
     "Media",
     "Rule",

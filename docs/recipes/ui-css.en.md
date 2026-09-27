@@ -103,8 +103,38 @@ choice wins) and `:root[data-theme="dark"]` for a toggle. Writing
 `theme.color("surface")` once settles both modes.
 
 Available groups: `color` (39 roles — `primary`, `on_surface`,
-`error_container`, …), `space`, `radius`, `font-size`, `line-height`,
-`font-weight`, `letter-spacing`, `duration`, `easing`.
+`error_container`, …), `space`, `radius`, `font-family`, `font-size`,
+`line-height`, `font-weight`, `letter-spacing`, `duration`, `easing`.
+
+### The font family
+
+`tempest_core`'s token set carries size, weight and line height, but no
+family. With no `font-family` anywhere in the sheet, text renders in the
+browser's default face. So `ThemeTokens` emits `--t-font-family-body`, and
+the reset applies it to `body`:
+
+```css
+body {
+  margin: 0;
+  font-family: var(--t-font-family-body);
+}
+```
+
+The default is `SYSTEM_FONT_STACK`, the operating system's interface face
+(`system-ui, -apple-system, "Segoe UI", Roboto, …, sans-serif`) — no web
+font is downloaded. To change it, change the token:
+
+```python
+from tempest_fastapi_sdk.ui import app_stylesheet
+from tempest_fastapi_sdk.ui.css import StyleSheet, ThemeTokens
+
+theme: ThemeTokens = ThemeTokens(font_family_body='"Inter", system-ui, sans-serif')
+sheet: StyleSheet = app_stylesheet(theme=theme)
+```
+
+`theme.font_family()` returns `var(--t-font-family-body)`, so a rule of
+yours can reference the same family. A `StyleSheet` without a `theme`
+applies the literal stack to `body`, with no `var()`.
 
 Breakpoints are the exception, for a reason: a media query cannot read
 `var()`. So they come back as numbers:
@@ -124,33 +154,72 @@ Besides `min_width` there are `max_width`, `dark()` and
 
 ## Serving the sheet
 
-```python
+```python hl_lines="11 14 22"
 from fastapi import FastAPI
+from fastapi.responses import Response
+from tempest_core import Text
 
+from tempest_fastapi_sdk.ssr import html_response
 from tempest_fastapi_sdk.ui import app_stylesheet
-from tempest_fastapi_sdk.ui.css import make_css_router
+from tempest_fastapi_sdk.ui.css import StyleSheet, make_css_router
+
+CSS_PATH: str = "/static/app.css"
+STYLESHEET: StyleSheet = app_stylesheet()
+CSS_URL: str = STYLESHEET.url(CSS_PATH)
 
 app: FastAPI = FastAPI()
-app.include_router(make_css_router(app_stylesheet(), path="/static/app.css"))
+app.include_router(make_css_router(STYLESHEET, path=CSS_PATH))
+
+
+@app.get("/")
+async def home() -> Response:
+    return html_response(
+        Text(content="Hello", tag="h1"),
+        title="Home",
+        stylesheets=[CSS_URL],
+    )
 ```
 
 The CSS is rendered **once**, when the router is built — no request pays
 for walking the rules. The response carries a content-derived `ETag`, and
 a matching `If-None-Match` gets a bodyless `304`.
 
-On the page side, point the `<link>`:
+The page does not point its `<link>` at the fixed path but at
+`STYLESHEET.url(CSS_PATH)`: the same path with the **content version** in
+the query — for example `"/static/app.css?v=9566b49f33e0"`. The version is
+the first 12 hex characters of the SHA-256 of the rendered CSS — the same
+hash as the `ETag`. It depends on the sheet's text alone, so two replicas
+with the same rules (and the same `tempest_core` version, where the token
+values come from) arrive at the same URL, and changing one declaration
+changes the URL.
 
-```python
-from tempest_core import Text
+The router then picks the cache policy per request:
 
-from tempest_fastapi_sdk.ssr import html_response
+| The request carries | `Cache-Control` |
+| --- | --- |
+| `?v=` equal to the version this process serves | `public, max-age=31536000, immutable` |
+| the path with no `?v=`, or a `?v=` of another version | `no-cache` |
 
-response = html_response(
-    Text(content="Hello", tag="h1"),
-    title="Home",
-    stylesheets=["/static/app.css"],
-)
-```
+The versioned URL is cached for a year, and `immutable` (RFC 8246) tells
+the browser it never needs revalidating. A deploy that changes the CSS
+changes the URL, and the new page asks for a file the browser has never
+seen — no new HTML on top of an old sheet.
+
+!!! info "Why a wrong version gets `no-cache`"
+    During a rolling deploy, a page rendered by a new replica can ask a
+    replica still serving the old sheet for `?v=<new>`. Were the old
+    replica to answer `immutable`, the browser would keep the old CSS
+    under the new URL for a year. So the long cache is only sent when the
+    requested version is **exactly** the one the process serves; any
+    other revalidates through the `ETag`.
+
+Both policies are configurable: `cache_control=` (without a version) and
+`versioned_cache_control=` (the current version).
+
+!!! tip "Compute the URL once"
+    `url()` renders the whole sheet to hash it. Keep it in a module
+    constant next to the sheet, like `CSS_URL` above — which is what the
+    `tempest generate` scaffold does in `src/ui/styles.py`.
 
 ## The ready sheet, and yours on top
 
@@ -232,8 +301,11 @@ the first time it ran.
   token (`Style` only accepts hex colours).
 - `ThemeTokens` translates `tempest_core`'s token set into custom
   properties, light and dark at once.
+- `ThemeTokens` also emits `--t-font-family-body` (the system stack by
+  default), and the reset applies it to `body`.
 - `make_css_router` serves the sheet rendered once, with `ETag` and
-  `304`.
+  `304`; pages link `sheet.url(path)`, which the router serves with a
+  one-year `immutable` cache, while the unversioned path gets `no-cache`.
 - `app_stylesheet()` already brings tokens, reset, forms and components;
   your rules go in through `extra=`.
 - `sheet.cls(...)` turns a class typo into a `KeyError`.

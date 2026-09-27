@@ -27,6 +27,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from tempest_fastapi_sdk.ui.css.rules import SYSTEM_FONT_STACK
+
 _DEFAULT_PREFIX = "t"
 
 
@@ -98,11 +100,17 @@ class ThemeTokens:
         prefix (str): Custom-property prefix, without dashes. ``"t"``
             yields ``--t-color-primary``.
         dark_mode (bool): Whether to emit the dark colour scheme blocks.
+        font_family_body (str): Value of ``--<prefix>-font-family-body``,
+            the face the reset applies to ``body``. Defaults to
+            :data:`~tempest_fastapi_sdk.ui.css.SYSTEM_FONT_STACK`.
+            ``tempest_core``'s token set carries sizes and weights but no
+            family, so the family lives here.
     """
 
     token_set: Any = None
     prefix: str = _DEFAULT_PREFIX
     dark_mode: bool = True
+    font_family_body: str = SYSTEM_FONT_STACK
     _resolved: list[Any] = field(default_factory=list, repr=False, compare=False)
 
     def _tokens(self) -> Any:
@@ -122,7 +130,8 @@ class ThemeTokens:
 
         Args:
             group (str): Token group (``color``, ``space``, ``radius``,
-                ``font-size``, ``line-height``, ``font-weight``,
+                ``font-family``, ``font-size``, ``line-height``,
+                ``font-weight``,
                 ``letter-spacing``, ``duration``, ``easing``).
             name (str): Token name within the group (``primary``,
                 ``md``, ``body_medium``).
@@ -180,6 +189,17 @@ class ThemeTokens:
         """
         return self.var("font-size", name)
 
+    def font_family(self, name: str = "body") -> str:
+        """Return a ``var(...)`` reference to a font family.
+
+        Args:
+            name (str): Family token. Only ``body`` is emitted.
+
+        Returns:
+            str: ``var(--t-font-family-body)``.
+        """
+        return self.var("font-family", name)
+
     def breakpoint(self, name: str) -> float:
         """Return a breakpoint width in pixels.
 
@@ -208,7 +228,8 @@ class ThemeTokens:
 
         Returns:
             list[str]: ``--t-space-md: 16px``-style declarations, in
-            token-set order (spacing, shape, typography, motion).
+            token-set order (spacing, shape, body font family,
+            typography, motion).
         """
         dumped: dict[str, Any] = self._tokens().model_dump(mode="json")
         prefix = self.prefix
@@ -218,6 +239,7 @@ class ThemeTokens:
             out.append(f"--{prefix}-space-{_css_name(name)}: {value}px")
         for name, value in dumped["shape"].items():
             out.append(f"--{prefix}-radius-{_css_name(name)}: {value}px")
+        out.append(f"--{prefix}-font-family-body: {self.font_family_body}")
         for name, scale in dumped["typography"].items():
             css_name = _css_name(name)
             out.append(f"--{prefix}-font-size-{css_name}: {scale['font_size']}px")

@@ -1069,6 +1069,7 @@ o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.ui.components.card.Card
 ::: tempest_fastapi_sdk.ui.components.alert.Alert
 ::: tempest_fastapi_sdk.ui.components.table.DataTable
+::: tempest_fastapi_sdk.ui.components.table.TableColumn
 ::: tempest_fastapi_sdk.ui.components.pagination.Pagination
 ::: tempest_fastapi_sdk.ui.components.pagination.pagination_for
 ::: tempest_fastapi_sdk.ui.components.empty.EmptyState

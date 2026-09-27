@@ -61,6 +61,8 @@ from tempest_fastapi_sdk.ui.components import NavBar, NavItem
 from tempest_fastapi_sdk.ui.layout import Shell
 from tempest_fastapi_sdk.ui.pages import Page
 
+from src.ui.styles import CSS_URL
+
 NAV_ITEMS: list[NavItem] = [
     NavItem(label="Início", href="/"),
     NavItem(label="Usuários", href="/users"),
@@ -70,7 +72,7 @@ NAV_ITEMS: list[NavItem] = [
 class BasePage(Page):
     """Chrome compartilhado por todas as telas."""
 
-    stylesheets: ClassVar[Sequence[str]] = ("/static/app.css",)
+    stylesheets: ClassVar[Sequence[str]] = (CSS_URL,)
     title_suffix: ClassVar[str] = " · Tempest"
 
     active_href: str = "/"
@@ -215,6 +217,85 @@ Passar `row_schema=` faz o cabeçalho aparecer **mesmo com a lista
 vazia** — e nesse caso a tabela mostra uma linha única com
 `empty_text`.
 
+### Link, botão e form dentro da célula
+
+Tabela de painel quase nunca é só texto: o nome abre o detalhe, e cada
+linha tem uma ação "remover". Para isso a coluna vira um `TableColumn`,
+com um `render=` que recebe a linha e devolve widgets. Coluna de texto e
+`TableColumn` se misturam na mesma lista:
+
+```python hl_lines="15-26 33-35"
+from pydantic import BaseModel
+from tempest_core import Text, Widget
+from tempest_core.widgets import Stack
+
+from tempest_fastapi_sdk.ui.components import DataTable, TableColumn
+
+
+class FileResponseSchema(BaseModel):
+    id: int
+    name: str
+    size: int
+    owner: str
+
+
+def file_actions(row: FileResponseSchema) -> list[Widget]:
+    return [
+        Text(content=row.name, tag="a", attrs={"href": f"/files/{row.id}"}),
+        Stack(
+            tag="form",
+            attrs={"method": "post", "action": f"/files/{row.id}/delete"},
+            children=[
+                Text(content="Remover", tag="button", attrs={"type": "submit"}),
+            ],
+        ),
+    ]
+
+
+table = DataTable(
+    rows=[FileResponseSchema(id=7, name="a.txt", size=120, owner="ana")],
+    row_schema=FileResponseSchema,
+    columns=[
+        TableColumn("name", header="Arquivo", render=file_actions),
+        TableColumn("size", header="Bytes", align="right"),
+        TableColumn("owner", class_name="col-optional"),
+    ],
+)
+```
+
+A linha sai assim (medido com o renderizador HTML do `tempestweb`):
+
+```html
+<tr><td><a href="/files/7">a.txt</a><form method="post" action="/files/7/delete"><button type="submit">Remover</button></form></td><td class="tui-table__cell--right">120</td><td class="col-optional">ana</td></tr>
+```
+
+Peça por peça:
+
+- **`render=`** recebe a linha (o schema ou o dict de `rows`) e devolve um
+  widget, uma lista de widgets ou uma `str`. Widget passa pelo
+  renderizador normal — nada entra como HTML cru, e o texto de dentro
+  continua escapado. `str` vira célula de texto escapada, igual ao
+  default; `None` vira `none_text`.
+- **`align=`** (`"left"`, `"center"`, `"right"`) aplica o modificador
+  `tui-table__cell--<align>` no `<th>` e em cada `<td>` da coluna. O
+  `"right"` também liga `font-variant-numeric: tabular-nums`, para os
+  números alinharem pela unidade.
+- **`class_name=`** vai no `<th>` e em cada `<td>`, para a sua folha
+  mirar a coluna — por exemplo, escondê-la em tela estreita:
+
+```python
+from tempest_fastapi_sdk.ui.css import Media, Rule, StyleSheet
+
+own: StyleSheet = StyleSheet(
+    reset=False,
+    rules=[Media.max_width(600, [Rule(".col-optional", declarations={"display": "none"})])],
+)
+```
+
+- **`header=`** troca o rótulo só daquela coluna. Sem ele, vale a mesma
+  cadeia de sempre: `headers=`, depois o `title` do campo, depois o nome
+  humanizado.
+
 E a paginação casa com o envelope do SDK:
 
 ```python
@@ -245,7 +326,13 @@ Grid(children=[Text(content="a"), Text(content="b")], columns=2)
 ```
 
 - **`Shell`** monta os landmarks `<header>` / `<main>` / `<footer>` —
-  estrutura que leitor de tela usa para navegar.
+  estrutura que leitor de tela usa para navegar. Por default
+  (`width="contained"`) o `<main>` fica numa coluna centralizada de
+  `72rem`, com respiro dos lados — bom para página de leitura.
+  `Shell(width="full")` acrescenta a classe `tui-shell__main--full`, que
+  zera largura máxima, margem e padding: o layout clássico de painel, com
+  sidebar colada na borda, ocupa a tela toda e cuida do próprio
+  espaçamento, sem você sobrescrever CSS.
 - **`Grid`** é CSS grid de verdade. Sem `columns=`, ele auto-ajusta
   (`minmax(16rem, 1fr)`), então vira uma coluna no celular sem media
   query nenhuma.
@@ -321,6 +408,10 @@ app.include_router(make_css_router(STYLESHEET, path=CSS_PATH))
 app.include_router(web_router)
 ```
 
+O router serve em `CSS_PATH`, e as páginas geradas linkam `CSS_URL`
+(`STYLESHEET.url(CSS_PATH)`), a URL com a versão do conteúdo — o
+[CSS tipado](ui-css.md#servindo-a-folha) explica o cache que isso compra.
+
 ## Recap
 
 - `ui` é uma camada, no mesmo nível de `controllers` e `services`, e só
@@ -331,6 +422,9 @@ app.include_router(web_router)
 - A página recebe dados prontos do router — nada de I/O dentro de
   `body()`.
 - `Stack` para marcação semântica, `Column`/`Row` para flexbox.
+- `DataTable` aceita `TableColumn(render=..., align=..., class_name=...)`
+  para link, botão e form por linha, sem tabela escrita à mão.
+- `Shell(width="full")` libera a largura toda para layout de painel.
 - `tempest new --extras "ssr"` escreve tudo isso funcionando.
 
 Próximos passos: [Formulários a partir de schemas Pydantic »](ui-forms.md)

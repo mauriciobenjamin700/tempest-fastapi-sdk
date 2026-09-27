@@ -18,5 +18,6 @@ Example:
 
 from tempest_fastapi_sdk.ui.layout.grid import Grid as Grid
 from tempest_fastapi_sdk.ui.layout.shell import Shell as Shell
+from tempest_fastapi_sdk.ui.layout.shell import ShellWidth as ShellWidth
 
-__all__: list[str] = ["Grid", "Shell"]
+__all__: list[str] = ["Grid", "Shell", "ShellWidth"]
