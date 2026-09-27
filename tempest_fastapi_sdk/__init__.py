@@ -1199,7 +1199,13 @@ from tempest_fastapi_sdk.services import (
     SupportsUpload as SupportsUpload,
 )
 from tempest_fastapi_sdk.sessions import (
+    STATIC_CREDENTIAL_NAMESPACE as STATIC_CREDENTIAL_NAMESPACE,
+)
+from tempest_fastapi_sdk.sessions import (
     MemorySessionStore as MemorySessionStore,
+)
+from tempest_fastapi_sdk.sessions import (
+    MissingSessionHandler as MissingSessionHandler,
 )
 from tempest_fastapi_sdk.sessions import (
     RedisSessionStore as RedisSessionStore,
@@ -1209,6 +1215,9 @@ from tempest_fastapi_sdk.sessions import (
 )
 from tempest_fastapi_sdk.sessions import (
     SessionAuth as SessionAuth,
+)
+from tempest_fastapi_sdk.sessions import (
+    SessionAuthenticator as SessionAuthenticator,
 )
 from tempest_fastapi_sdk.sessions import (
     SessionLoginSchema as SessionLoginSchema,
@@ -1226,10 +1235,16 @@ from tempest_fastapi_sdk.sessions import (
     SessionSummarySchema as SessionSummarySchema,
 )
 from tempest_fastapi_sdk.sessions import (
+    StaticCredentialAuthenticator as StaticCredentialAuthenticator,
+)
+from tempest_fastapi_sdk.sessions import (
     make_session_dependency as make_session_dependency,
 )
 from tempest_fastapi_sdk.sessions import (
     make_session_router as make_session_router,
+)
+from tempest_fastapi_sdk.sessions import (
+    redirect_to as redirect_to,
 )
 from tempest_fastapi_sdk.settings import (
     AppSettingsMeta as AppSettingsMeta,
@@ -1284,6 +1299,15 @@ from tempest_fastapi_sdk.settings import (
 )
 from tempest_fastapi_sdk.settings import (
     ServerSettings as ServerSettings,
+)
+from tempest_fastapi_sdk.settings import (
+    SessionCookieDeleteKwargs as SessionCookieDeleteKwargs,
+)
+from tempest_fastapi_sdk.settings import (
+    SessionCookieKwargs as SessionCookieKwargs,
+)
+from tempest_fastapi_sdk.settings import (
+    SessionCookieSameSite as SessionCookieSameSite,
 )
 from tempest_fastapi_sdk.settings import (
     SessionSettings as SessionSettings,
@@ -1902,6 +1926,7 @@ __all__: list[str] = [
     "REFRESH_TOKEN_TYPE",
     "REQUEST_ID_HEADER",
     "SNIFFABLE_MIMETYPES",
+    "STATIC_CREDENTIAL_NAMESPACE",
     "SUPPORTED_LOCALES",
     "UF",
     "UPLOAD_READ_CHUNK_BYTES",
@@ -2102,6 +2127,7 @@ __all__: list[str] = [
     "MetricsUtils",
     "MinIOSettings",
     "MinIOUploadStorage",
+    "MissingSessionHandler",
     "MobilePhoneBRField",
     "NameMixin",
     "NonEmptyStrField",
@@ -2215,6 +2241,10 @@ __all__: list[str] = [
     "ServerSettings",
     "Session",
     "SessionAuth",
+    "SessionAuthenticator",
+    "SessionCookieDeleteKwargs",
+    "SessionCookieKwargs",
+    "SessionCookieSameSite",
     "SessionLoginSchema",
     "SessionMiddleware",
     "SessionResponseSchema",
@@ -2229,6 +2259,7 @@ __all__: list[str] = [
     "SlugField",
     "SoftDeleteMixin",
     "StateBR",
+    "StaticCredentialAuthenticator",
     "StaticRateLimitPolicy",
     "StoredFileServiceMixin",
     "SupportsPresign",
@@ -2435,6 +2466,7 @@ __all__: list[str] = [
     "read_upload_capped",
     "redact_database_errors",
     "redact_snapshot",
+    "redirect_to",
     "region_choices",
     "register_check",
     "register_exception_handlers",

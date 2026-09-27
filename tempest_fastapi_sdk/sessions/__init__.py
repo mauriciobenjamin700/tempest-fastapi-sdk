@@ -15,8 +15,23 @@ alongside ``__all__`` so every type-checker accepts
 a "private import usage" diagnostic.
 """
 
+from tempest_fastapi_sdk.sessions.authenticator import (
+    STATIC_CREDENTIAL_NAMESPACE as STATIC_CREDENTIAL_NAMESPACE,
+)
+from tempest_fastapi_sdk.sessions.authenticator import (
+    SessionAuthenticator as SessionAuthenticator,
+)
+from tempest_fastapi_sdk.sessions.authenticator import (
+    StaticCredentialAuthenticator as StaticCredentialAuthenticator,
+)
+from tempest_fastapi_sdk.sessions.dependencies import (
+    MissingSessionHandler as MissingSessionHandler,
+)
 from tempest_fastapi_sdk.sessions.dependencies import (
     make_session_dependency as make_session_dependency,
+)
+from tempest_fastapi_sdk.sessions.dependencies import (
+    redirect_to as redirect_to,
 )
 from tempest_fastapi_sdk.sessions.middleware import (
     SessionMiddleware as SessionMiddleware,
@@ -44,15 +59,20 @@ from tempest_fastapi_sdk.sessions.store import (
 from tempest_fastapi_sdk.sessions.store import SessionStore as SessionStore
 
 __all__: list[str] = [
+    "STATIC_CREDENTIAL_NAMESPACE",
     "MemorySessionStore",
+    "MissingSessionHandler",
     "RedisSessionStore",
     "Session",
     "SessionAuth",
+    "SessionAuthenticator",
     "SessionLoginSchema",
     "SessionMiddleware",
     "SessionResponseSchema",
     "SessionStore",
     "SessionSummarySchema",
+    "StaticCredentialAuthenticator",
     "make_session_dependency",
     "make_session_router",
+    "redirect_to",
 ]
