@@ -150,6 +150,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[otel]` | `opentelemetry-sdk` + OTLP/gRPC exporter + FastAPI/SQLAlchemy/httpx instrumentors | `setup_tracing` — distributed tracing |
 | `[sqlite]` | `aiosqlite` | SQLite async driver for `sqlite+aiosqlite://` URLs (dev default) |
 | `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
+| `[tests]` | `pytest`, `pytest-asyncio`, `pytest-xdist` | A service's suite plus `tempest test --fast` / `tempest check --fast` (the suite in parallel with pytest-xdist; the flag ships in `tempest-cli` 0.4.0). No bound of its own; inherits `pytest<10` from `pytest-asyncio` 1.4.0 and `pluggy<2` from `pytest`. Test tooling, so it stays out of `[all]` — add it to the dev group: `uv add --dev "tempest-fastapi-sdk[tests]"` |
 | `[all]` | everything above | every helper |
 
 ```bash

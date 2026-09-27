@@ -1478,8 +1478,17 @@ tempest fmt-check                               # ruff format --check .   (read-
 tempest type                                    # mypy .
 tempest test                                    # pytest
 tempest test tests/api/                         # pytest with a path filter
+tempest test --fast                             # pytest -n auto -p no:cacheprovider  (pytest-xdist)
+tempest test --fast -w 4                        # four workers
 tempest check                                   # lint + fmt-check + type + test, stops at first failure
+tempest check --fast                            # the same gate, with the test step in parallel
 ```
+
+`--fast` (from `tempest-cli` 0.4.0 on) runs the suite in parallel with the
+pytest-xdist of the `[tests]` extra; without it installed in pytest's
+environment, the exit code is `127` with the install instruction. When to use
+it, and what to do with a test that fails only in parallel, is in the
+[testing recipe](testing.md#the-suite-in-parallel-tempest-test-fast).
 
 `tempest fix` is the one-shot "organize the project" pass — sorts and dedupes imports, drops unused imports, normalizes string quotes, removes trailing whitespace, then runs `ruff format` to align indentation, line length, blank lines and trailing newlines. Run it before pushing when CI keeps catching style nits.
 

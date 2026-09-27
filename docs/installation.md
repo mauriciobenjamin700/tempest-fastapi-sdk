@@ -63,11 +63,12 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[ssr]` | `tempestweb` | SSR com HTMX: `build_web_app`, `make_htmx_router`, `Page`, helper `htmx` |
 | `[tasks]` | `taskiq`, `taskiq-aio-pika` | `AsyncTaskBrokerManager`, `AsyncTaskScheduler` |
 | `[tasks-redis]` | `taskiq`, `taskiq-redis` | `TaskQueue.redis` / `TaskQueue.from_settings` sobre Redis Streams, result backend e o lease do scheduler |
+| `[tests]` | `pytest`, `pytest-asyncio`, `pytest-xdist` | a suíte do serviço e o `tempest test --fast` (suíte em paralelo, a partir do `tempest-cli` 0.4.0). Sem teto próprio; herda `pytest<10` do `pytest-asyncio` e `pluggy<2` do `pytest`. Ferramenta de teste, não helper — fica **fora do `[all]`**. [Receita](recipes/testing.md#a-suite-em-paralelo-tempest-test-fast) |
 | `[upload]` | `aiofiles`, `python-multipart` | `UploadUtils`, `DownloadUtils`, `LocalUploadStorage` |
 | `[vision]` | `ort-vision-sdk` | helpers de visão (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[webauthn]` | `fido2` | passkeys / chaves de segurança: `WebAuthnService`, `make_web_authn_credential_model`, rotas `/auth/webauthn/*` — login sem senha, resistente a phishing |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
-| `[all]` | tudo acima **exceto** os 15 extras de stack pesado ou binário nativo: `[genai]`, `[genai-audio]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]` | os helpers de aplicação — instale os 15 acima à parte |
+| `[all]` | tudo acima **exceto** os 15 extras de stack pesado ou binário nativo: `[genai]`, `[genai-audio]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]` | os helpers de aplicação — instale os 15 acima à parte (e o `[tests]`, que é ferramenta de teste, no grupo de dev) |
 
 === "Subconjunto (recomendado)"
 
