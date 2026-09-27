@@ -241,11 +241,106 @@ the fixture.
 
 Pass `metadata=` when your project mixes the SDK's `BaseModel.metadata` with a second isolated metadata (rare — keep one `BaseModel` per service whenever possible).
 
+## The suite in parallel — `tempest test --fast`
+
+With a throw-away database per test, the tests already share no state.
+Running them serially is paying for one core while the rest of the machine
+sits idle. `--fast` spreads the suite across the cores with
+[pytest-xdist](https://pytest-xdist.readthedocs.io/).
+
+First, what the suite needs — the `[tests]` extra brings `pytest`,
+`pytest-asyncio` and `pytest-xdist`:
+
+```bash
+uv add --dev "tempest-fastapi-sdk[tests]"
+```
+
+Then, the suite:
+
+```bash
+tempest test --fast              # -n auto: one worker per core
+tempest test --fast -w 4         # four workers
+tempest test tests/api --fast    # the target is still forwarded
+tempest check --fast             # the full gate, with the test step in parallel
+```
+
+Underneath it becomes `pytest -n <workers> -p no:cacheprovider [target]`,
+and pytest's exit code comes back untranslated. The pytest cache is off
+because several workers writing `.pytest_cache` at once is a race that buys
+nothing — and that cache is what `--lf` / `--ff` read, so those two remain a
+serial-run affair.
+
+!!! info "`--fast` arrives in `tempest-cli` 0.4.0"
+    The `test` and `check` commands belong to
+    [`tempest-cli`](https://pypi.org/project/tempest-cli/), which the SDK
+    mounts on its own CLI. The SDK still declares `tempest-cli>=0.3.0`; until
+    it raises that floor, make sure of the version in your project:
+
+    ```bash
+    uv add --dev "tempest-cli>=0.4.0"
+    ```
+
+    With `tempest-cli` 0.3.0, `tempest test --fast` exits with
+    `No such option: --fast` (exit 2).
+
+### Without pytest-xdist
+
+Before running anything, `--fast` asks **the very interpreter that will run
+pytest** whether it can import `xdist`. When it cannot, the message names the
+package and the extra, and the exit code is `127`, with no traceback —
+instead of the `unrecognized arguments: -n` pytest would give on its own:
+
+```console
+$ tempest test --fast
+error: --fast needs pytest-xdist, which is not installed in the environment pytest runs in (.venv/bin/pytest). Install it with 'uv add --dev pytest-xdist' — or a bundle that carries it, 'uv add --dev "tempest-cli[tools]"' or 'uv add --dev "tempest-fastapi-sdk[tests]"' — and retry, or drop --fast to run the suite serially.
+```
+
+### When to use it
+
+- **Use it** on the suite that gates the merge — locally, before the push,
+  and in CI. The gain grows with the suite: a service with 2678 tests on a
+  12-core machine went from ~5 min to 1 min 28 s
+  ([#328](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/328)).
+  This SDK's own suite (10 218 tests), on a machine with 6 physical cores and
+  12 threads, went from 2127 s serial to 411 s with `--fast` — about 5.2x,
+  measured over one run of each.
+- **`auto` counts physical cores when `psutil` is installed** (pytest-xdist's
+  rule): on the machine above, `auto` started 6 workers. Without `psutil` it
+  counts logical CPUs. To use the threads, `-w logical`.
+- **Skip it** to run one file or one test: starting the workers costs more
+  than the test.
+
+### A test that fails only in parallel
+
+Parallelism exposes tests that depend on order or on an idle machine: two
+tests writing the same file, the same port, a module-level global, or a fixed
+`sleep` waiting for something that takes longer once every core is busy.
+Before treating the failure as a regression, run the test **alone and
+serially**:
+
+```bash
+tempest test "tests/test_scheduler.py::test_lease_expires"
+```
+
+- **It passes alone**: the defect is the test's isolation, not the change
+  under review. Fix the test — a file under `tmp_path`, a free port, wait on a
+  condition instead of a `sleep`.
+- **It fails alone too**: it is a real regression.
+
+!!! warning "The extra carries an inherited cap: `pytest<10`"
+    `[tests]` declares no upper bound, but it inherits the ones in the
+    `requires-dist` of what it brings: `pytest-asyncio` 1.4.0 requires
+    `pytest<10,>=8.4`, and `pytest` itself requires `pluggy<2`. Every service
+    here already depends on `pytest-asyncio`, so the cap is not new — it is
+    now written down. `pytest-xdist` 3.8.0 (`execnet>=2.1`, `pytest>=7.0.0`)
+    brings no cap.
+
 !!! check "Recap"
     - Use `httpx.AsyncClient` + `ASGITransport`, never the synchronous `TestClient`.
     - The `db` fixture builds an in-memory SQLite per test with `create_tables()` / `drop_tables()` — **no arguments**, they use `BaseModel.metadata` internally.
     - `dependency_overrides` swaps the production database for the test one on the `client`.
     - The `tempest_fastapi_sdk.testing` helpers (`test_database` / `test_session`) give ready-made fixtures when you don't need a full `AsyncDatabaseManager`.
+    - `tempest test --fast` runs the suite in parallel with the `[tests]` extra; a test that fails only there is checked by running it alone.
 
 **Next step:** see the [database recipe](database.md) for the `BaseRepository` and migration patterns these tests exercise.
 
@@ -266,3 +361,6 @@ Pass `metadata=` when your project mixes the SDK's `BaseModel.metadata` with a s
 - An endpoint test boots the app with `AsyncClient` and swaps dependencies
   through `dependency_overrides` — the same seam where a [fake »](fakes.md)
   goes in place of the real provider.
+- `tempest test --fast` (and `tempest check --fast`) spreads the suite across
+  the cores with the pytest-xdist of the `[tests]` extra; a test that fails
+  only in parallel is an isolation problem until it runs alone and fails too.

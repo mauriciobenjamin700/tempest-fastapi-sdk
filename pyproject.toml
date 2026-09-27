@@ -272,6 +272,17 @@ otel = [
     "opentelemetry-instrumentation-sqlalchemy>=0.65b0",
     "opentelemetry-instrumentation-httpx>=0.65b0",
 ]
+# What a service's suite and `tempest test --fast` need. No bound of its
+# own; the ones it inherits come from upstream requires-dist:
+# pytest-asyncio 1.4.0 caps `pytest<10`, and pytest itself caps
+# `pluggy<2`. Every Tempest service already depends on pytest-asyncio,
+# so the cap is not new — it is now written down. Kept out of `[all]`:
+# it is test tooling, not an application helper.
+tests = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-xdist>=3.8.0",
+]
 all = [
     "bcrypt>=5.0.0",
     "pyjwt>=2.13.0",

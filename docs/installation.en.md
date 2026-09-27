@@ -63,11 +63,12 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[ssr]` | `tempestweb` | HTMX-based SSR: `build_web_app`, `make_htmx_router`, `Page`, the `htmx` helper |
 | `[tasks]` | `taskiq`, `taskiq-aio-pika` | `AsyncTaskBrokerManager`, `AsyncTaskScheduler` |
 | `[tasks-redis]` | `taskiq`, `taskiq-redis` | `TaskQueue.redis` / `TaskQueue.from_settings` over Redis Streams, the result backend and the scheduler lease |
+| `[tests]` | `pytest`, `pytest-asyncio`, `pytest-xdist` | the service's suite and `tempest test --fast` (the suite in parallel, from `tempest-cli` 0.4.0 on). No bound of its own; inherits `pytest<10` from `pytest-asyncio` and `pluggy<2` from `pytest`. Test tooling, not a helper — kept **out of `[all]`**. [Recipe](recipes/testing.md#the-suite-in-parallel-tempest-test-fast) |
 | `[upload]` | `aiofiles`, `python-multipart` | `UploadUtils`, `DownloadUtils`, `LocalUploadStorage` |
 | `[vision]` | `ort-vision-sdk` | vision helpers (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[webauthn]` | `fido2` | Passkeys / security keys: `WebAuthnService`, `make_web_authn_credential_model`, the `/auth/webauthn/*` routes — passwordless, phishing-resistant login |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
-| `[all]` | everything above **except** the 15 extras that pull a heavy stack or a native binary: `[genai]`, `[genai-audio]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]` | the application helpers — install the 15 above separately |
+| `[all]` | everything above **except** the 15 extras that pull a heavy stack or a native binary: `[genai]`, `[genai-audio]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]` | the application helpers — install the 15 above separately (and `[tests]`, which is test tooling, in the dev group) |
 
 === "Subset (recommended)"
 

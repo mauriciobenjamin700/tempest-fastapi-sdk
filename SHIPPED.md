@@ -2538,3 +2538,15 @@ atributos — o `make_session_router` usa os dois.
 
 Consumidor: `tempest-bucket` (#343, #344), que mantinha um
 `AdminSessionService` próprio e o override do campo como `Literal`.
+
+## Extra `[tests]` e a suíte em paralelo (Unreleased)
+
+- **`[tests]`** (#328) — `pytest>=9.1.1`, `pytest-asyncio>=1.4.0`,
+  `pytest-xdist>=3.8.0`, sem teto próprio; herda `pytest<10` do
+  `pytest-asyncio` 1.4.0 e `pluggy<2` do `pytest`. Fora do `[all]`.
+- **`tempest test --fast` / `tempest check --fast`** — a flag é do
+  `tempest-cli` (chega na 0.4.0; o piso do SDK ainda é `>=0.3.0` e sobe
+  depois da release dele). Roda `pytest -n <workers> -p no:cacheprovider`,
+  `-w N` escolhe os workers (`auto` por padrão), e sem pytest-xdist no
+  ambiente do pytest sai `127` com a instrução de instalação. Receita:
+  `docs/recipes/testing.md#a-suite-em-paralelo-tempest-test-fast`.
