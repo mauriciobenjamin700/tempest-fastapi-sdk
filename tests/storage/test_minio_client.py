@@ -68,6 +68,7 @@ class _FakeMinio:
     def __init__(self, *_: Any, **__: Any) -> None:
         self.buckets: dict[str, dict[str, _FakeObject]] = {}
         self.get_calls: list[tuple[str, int, int]] = []
+        self.presign_overrides: list[dict[str, str]] = []
 
     def bucket_exists(self, bucket: str) -> bool:
         return bucket in self.buckets
@@ -185,7 +186,9 @@ class _FakeMinio:
         bucket: str,
         key: str,
         expires: timedelta,
+        response_headers: dict[str, str] | None = None,
     ) -> str:
+        self.presign_overrides.append(dict(response_headers or {}))
         return (
             f"https://fake.minio/{bucket}/{key}"
             f"?op=GET&exp={int(expires.total_seconds())}"
@@ -454,7 +457,13 @@ class _RecordingMinio:
         self.endpoint: str = endpoint
         self.secure: bool = secure
 
-    def presigned_get_object(self, bucket: str, key: str, expires: timedelta) -> str:
+    def presigned_get_object(
+        self,
+        bucket: str,
+        key: str,
+        expires: timedelta,
+        response_headers: dict[str, str] | None = None,
+    ) -> str:
         scheme = "https" if self.secure else "http"
         return f"{scheme}://{self.endpoint}/{bucket}/{key}?op=GET"
 
@@ -767,3 +776,104 @@ class TestDownloadResponseValidators:
         )
         assert response.status_code == 206
         assert response.headers["cache-control"] == "no-cache"
+
+
+class TestAccelRedirect:
+    async def test_header_points_into_internal_prefix(
+        self, client: AsyncMinIOClient, fake_minio: _FakeMinio
+    ) -> None:
+        response = await client.accel_redirect_response("videos/aula.mp4")
+        assert response.status_code == 200
+        assert response.body == b""
+        assert (
+            response.headers["x-accel-redirect"]
+            == "/_bucket/uploads/videos/aula.mp4?op=GET&exp=300"
+        )
+        assert "content-disposition" not in response.headers
+        assert "content-type" not in response.headers
+        overrides = fake_minio.presign_overrides[-1]
+        assert overrides == {
+            "response-content-disposition": (
+                "inline; filename=\"aula.mp4\"; filename*=UTF-8''aula.mp4"
+            )
+        }
+
+    async def test_overrides_carry_type_cache_and_attachment(
+        self, client: AsyncMinIOClient, fake_minio: _FakeMinio
+    ) -> None:
+        response = await client.accel_redirect_response(
+            "k",
+            bucket="media",
+            internal_prefix="/_media",
+            expires=timedelta(seconds=30),
+            filename="relatório.pdf",
+            media_type="application/pdf",
+            as_attachment=True,
+            cache_control="private, max-age=60",
+            headers={"x-trace": "1"},
+        )
+        assert response.headers["x-accel-redirect"] == "/_media/media/k?op=GET&exp=30"
+        assert response.headers["x-trace"] == "1"
+        overrides = fake_minio.presign_overrides[-1]
+        assert overrides["response-content-type"] == "application/pdf"
+        assert overrides["response-cache-control"] == "private, max-age=60"
+        assert overrides["response-content-disposition"].startswith("attachment;")
+        assert "relat%C3%B3rio.pdf" in overrides["response-content-disposition"]
+
+    async def test_rejects_prefix_without_leading_slash(
+        self, client: AsyncMinIOClient
+    ) -> None:
+        with pytest.raises(ValueError, match="must start with '/'"):
+            await client.accel_redirect_response("k", internal_prefix="_bucket/")
+
+    def test_constructor_rejects_prefix_without_leading_slash(
+        self, fake_minio: _FakeMinio
+    ) -> None:
+        with pytest.raises(ValueError, match="must start with '/'"):
+            AsyncMinIOClient(
+                endpoint="fake:9000", access_key="a", secret_key="s", accel_prefix="x"
+            )
+
+    async def test_signs_against_internal_endpoint_not_public(
+        self, recording_minio: list[_RecordingMinio]
+    ) -> None:
+        client = AsyncMinIOClient(
+            endpoint="bucket:9000",
+            access_key="ak",
+            secret_key="sk",
+            default_bucket="uploads",
+            public_endpoint="https://storage.example.com",
+        )
+        response = await client.accel_redirect_response("k")
+        assert response.headers["x-accel-redirect"] == "/_bucket/uploads/k?op=GET"
+        assert await client.presigned_get_url("k") == (
+            "https://storage.example.com/uploads/k?op=GET"
+        )
+
+
+class TestServeObject:
+    async def test_proxy_mode_by_default(
+        self, client: AsyncMinIOClient, stored: _FakeMinio
+    ) -> None:
+        response = await client.serve_object(
+            "video.mp4", request=_request(range="bytes=0-9")
+        )
+        assert response.status_code == 206
+        assert "x-accel-redirect" not in response.headers
+
+    async def test_redirect_mode_from_constructor(self, fake_minio: _FakeMinio) -> None:
+        client = AsyncMinIOClient(
+            endpoint="fake:9000",
+            access_key="ak",
+            secret_key="sk",
+            accel_redirect=True,
+            accel_prefix="/_media/",
+        )
+        response = await client.serve_object(
+            "video.mp4", as_attachment=False, cache_control="no-cache"
+        )
+        assert response.headers["x-accel-redirect"].startswith(
+            "/_media/uploads/video.mp4?"
+        )
+        assert fake_minio.presign_overrides[-1]["response-cache-control"] == "no-cache"
+        assert fake_minio.get_calls == []

@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from minio import Minio
     from minio.datatypes import Object as _MinioObject
     from starlette.requests import Request
-    from starlette.responses import StreamingResponse
+    from starlette.responses import Response, StreamingResponse
 
 _T = TypeVar("_T")
 
@@ -138,6 +138,8 @@ class AsyncMinIOClient:
         session_token: str | None = None,
         public_endpoint: str | None = None,
         public_secure: bool | None = None,
+        accel_redirect: bool = False,
+        accel_prefix: str = "/_bucket/",
     ) -> None:
         """Initialize the client.
 
@@ -166,8 +168,18 @@ class AsyncMinIOClient:
             public_secure (bool | None): HTTPS for ``public_endpoint``.
                 ``None`` falls back to ``secure`` (unless a ``https://``
                 scheme on ``public_endpoint`` forces it).
+            accel_redirect (bool): Delivery mode of :meth:`serve_object`.
+                ``True`` answers with an ``X-Accel-Redirect`` for nginx to
+                fetch the object (:meth:`accel_redirect_response`);
+                ``False`` (default) streams the bytes through the app
+                (:meth:`download_response`).
+            accel_prefix (str): Internal nginx location the
+                ``X-Accel-Redirect`` points into, and the default
+                ``internal_prefix`` of :meth:`accel_redirect_response`.
+                Must start with ``/``. Default ``"/_bucket/"``.
 
         Raises:
+            ValueError: When ``accel_prefix`` does not start with ``/``.
             ImportError: When the ``minio`` package is not
                 installed. Install the ``[minio]`` extra:
                 ``pip install tempest-fastapi-sdk[minio]``.
@@ -188,6 +200,8 @@ class AsyncMinIOClient:
                 "Install with: pip install tempest-fastapi-sdk[minio]"
             ) from exc
 
+        self.accel_redirect: bool = accel_redirect
+        self.accel_prefix: str = self._check_accel_prefix(accel_prefix)
         self.endpoint: str = endpoint
         self.default_bucket: str = default_bucket
         self.region: str = region
@@ -219,6 +233,29 @@ class AsyncMinIOClient:
             )
         else:
             self.public_secure = secure
+
+    @staticmethod
+    def _check_accel_prefix(prefix: str) -> str:
+        """Validate an internal nginx prefix for ``X-Accel-Redirect``.
+
+        nginx resolves the header value as a URI on the same server, so a
+        value without the leading ``/`` never matches the internal location.
+
+        Args:
+            prefix (str): The configured prefix, e.g. ``"/_bucket/"``.
+
+        Returns:
+            str: The same prefix.
+
+        Raises:
+            ValueError: When ``prefix`` does not start with ``/``.
+        """
+        if not prefix.startswith("/"):
+            raise ValueError(
+                f"accel prefix must start with '/', got {prefix!r} "
+                "(nginx matches X-Accel-Redirect against its own locations)"
+            )
+        return prefix
 
     @staticmethod
     def _split_public_endpoint(
@@ -746,6 +783,180 @@ class AsyncMinIOClient:
             content=body,
             media_type=resolved_media_type,
             headers=response_headers,
+        )
+
+    async def accel_redirect_response(
+        self,
+        key: str,
+        *,
+        bucket: str | None = None,
+        internal_prefix: str | None = None,
+        expires: timedelta = timedelta(minutes=5),
+        filename: str | None = None,
+        media_type: str | None = None,
+        as_attachment: bool = False,
+        cache_control: str | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Response:
+        """Hand the transfer to nginx with an ``X-Accel-Redirect`` header.
+
+        The route keeps the authorisation decision and nginx moves the
+        bytes: the response is empty and carries
+        ``X-Accel-Redirect: <internal_prefix><bucket>/<key>?X-Amz-...``, a
+        URL presigned against the **internal** ``endpoint`` — never
+        ``public_endpoint`` — so the bucket stays private and the client
+        only ever sees the backend's domain. nginx follows the header into
+        an ``internal`` location that proxies to the bucket; the client's
+        ``Range`` and ``If-None-Match`` travel with that request, so ``206``
+        and ``304`` come from the store itself.
+
+        SigV4 signs the ``Host`` header and the path, so the internal
+        location must strip the prefix (``proxy_pass`` with a trailing
+        ``/``) and send ``Host`` equal to ``endpoint``; otherwise the store
+        answers ``403 SignatureDoesNotMatch``. The storage recipe carries
+        the full nginx block.
+
+        ``Content-Disposition``, ``Content-Type`` and ``Cache-Control`` are
+        not set on this response but signed into the URL as the S3
+        ``response-*`` overrides, so the store returns them with the bytes.
+        Measured on nginx 1.27.5: the upstream's ``Content-Type`` wins over
+        the one the app sets, and a ``Content-Disposition`` set on both
+        reaches the client twice.
+
+        No ``stat`` is made: a missing object surfaces as the store's
+        ``404`` through nginx instead of an ``S3Error`` here.
+
+        Args:
+            key (str): Object key.
+            bucket (str | None): Override source bucket.
+            internal_prefix (str | None): The nginx ``internal`` location
+                the header points into, starting with ``/``. ``None`` uses
+                ``accel_prefix`` from the constructor (``"/_bucket/"`` by
+                default).
+            expires (timedelta): Lifetime of the presigned URL. nginx uses
+                it at once, so it only has to outlive the hop. Default five
+                minutes.
+            filename (str | None): Name presented to the client. Defaults to
+                the object key's basename.
+            media_type (str | None): Content type the store should answer
+                with. ``None`` keeps the type stored with the object.
+            as_attachment (bool): ``True`` forces a download; ``False``
+                (default) serves inline, which is what ``<video>`` and
+                ``<img>`` want.
+            cache_control (str | None): ``Cache-Control`` the store should
+                answer with. ``None`` sends none.
+            headers (dict[str, str] | None): Extra headers on the app's
+                response.
+
+        Returns:
+            Response: An empty ``200`` carrying ``X-Accel-Redirect``, for
+            nginx to replace with the object.
+
+        Raises:
+            ValueError: When ``internal_prefix`` does not start with ``/``.
+        """
+        from urllib.parse import urlsplit
+
+        from starlette.responses import Response
+
+        from tempest_fastapi_sdk.utils.download import build_content_disposition
+
+        prefix = (
+            self.accel_prefix
+            if internal_prefix is None
+            else self._check_accel_prefix(internal_prefix)
+        )
+        download_name = filename or key.rsplit("/", 1)[-1]
+        overrides: dict[str, str | list[str] | tuple[str]] = {
+            "response-content-disposition": build_content_disposition(
+                download_name, as_attachment=as_attachment
+            ),
+        }
+        if media_type is not None:
+            overrides["response-content-type"] = media_type
+        if cache_control is not None:
+            overrides["response-cache-control"] = cache_control
+        target = self._bucket(bucket)
+        url = await asyncio.to_thread(
+            self.client.presigned_get_object,
+            target,
+            key,
+            expires,
+            response_headers=overrides,
+        )
+        signed = urlsplit(url)
+        response_headers: dict[str, str] = dict(headers or {})
+        response_headers["x-accel-redirect"] = (
+            f"{prefix.rstrip('/')}{signed.path}?{signed.query}"
+        )
+        return Response(status_code=200, headers=response_headers)
+
+    async def serve_object(
+        self,
+        key: str,
+        *,
+        request: Request | None = None,
+        bucket: str | None = None,
+        filename: str | None = None,
+        media_type: str | None = None,
+        as_attachment: bool = True,
+        cache_control: str | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Response:
+        """Serve an object the way the constructor's ``accel_redirect`` says.
+
+        One route, two delivery modes chosen by configuration
+        (``STORAGE_ACCEL_REDIRECT`` via :meth:`MinIOSettings.minio_kwargs`):
+        ``accel_redirect=False`` proxies the bytes through the app with
+        :meth:`download_response`; ``True`` answers with
+        :meth:`accel_redirect_response` into ``accel_prefix``. Both honour
+        ``Range`` and revalidation — the first in the app, the second in the
+        store behind nginx.
+
+        Args:
+            key (str): Object key.
+            request (Request | None): The incoming request. Proxy mode needs
+                it for ``206``/``304``/``416``; redirect mode ignores it,
+                because nginx forwards the client's headers itself.
+            bucket (str | None): Override source bucket.
+            filename (str | None): Name presented to the client. Defaults to
+                the object key's basename.
+            media_type (str | None): Content type. ``None`` uses the type
+                stored with the object.
+            as_attachment (bool): ``True`` (default) forces a download;
+                ``False`` serves inline.
+            cache_control (str | None): ``Cache-Control`` value. ``None``
+                sends none.
+            headers (dict[str, str] | None): Extra headers on the app's
+                response.
+
+        Returns:
+            Response: A :class:`StreamingResponse` (proxy mode) or an empty
+            ``X-Accel-Redirect`` response (redirect mode).
+
+        Raises:
+            S3Error: Proxy mode, when the object is missing or the request
+                fails.
+        """
+        if self.accel_redirect:
+            return await self.accel_redirect_response(
+                key,
+                bucket=bucket,
+                filename=filename,
+                media_type=media_type,
+                as_attachment=as_attachment,
+                cache_control=cache_control,
+                headers=headers,
+            )
+        return await self.download_response(
+            key,
+            request=request,
+            bucket=bucket,
+            filename=filename,
+            media_type=media_type,
+            as_attachment=as_attachment,
+            cache_control=cache_control,
+            headers=headers,
         )
 
     async def stat_object(

@@ -1581,6 +1581,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `If-Range`; multi-range → `200`. Always `Accept-Ranges`/`ETag`/
   `Last-Modified`; `cache_control=`. Validators live in the private
   `utils._http_cache`, shared with `ResponseCacheMiddleware`.
+  **(não lançado, #362)** `accel_redirect_response(key, ...)` answers an
+  empty response with `X-Accel-Redirect` presigned against the internal
+  endpoint (type/disposition/cache signed as S3 `response-*` overrides);
+  `serve_object(key, request=...)` switches proxy ↔ redirect by the
+  constructor's `accel_redirect=`, fed by `STORAGE_ACCEL_REDIRECT` /
+  `STORAGE_ACCEL_PREFIX` in `MinIOSettings`. Recipe has the nginx block,
+  measured against nginx + MinIO containers.
 - **Email** — SMTP via `EmailUtils` + Jinja2 template rendering
   with bundled defaults (`activation.html`, `password_reset.html`)
   shadowable by the project's `template_dir`. **Bulk send (v0.258.0):**

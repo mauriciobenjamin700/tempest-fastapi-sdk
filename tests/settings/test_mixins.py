@@ -204,8 +204,22 @@ class TestMixinDefaults:
             "region",
             "public_endpoint",
             "public_secure",
+            "accel_redirect",
+            "accel_prefix",
         }
         assert AsyncMinIOClient(**kwargs) is not None
+
+    def test_minio_accel_settings_reach_the_client(self) -> None:
+        from tempest_fastapi_sdk import AsyncMinIOClient, MinIOSettings
+
+        settings = MinIOSettings(
+            STORAGE_ACCEL_REDIRECT=True, STORAGE_ACCEL_PREFIX="/_media/"
+        )
+        client = AsyncMinIOClient(**settings.minio_kwargs())
+        assert client.accel_redirect is True
+        assert client.accel_prefix == "/_media/"
+        assert MinIOSettings().STORAGE_ACCEL_REDIRECT is False
+        assert MinIOSettings().STORAGE_ACCEL_PREFIX == "/_bucket/"
 
     def test_upload_settings_defaults(self) -> None:
         settings = UploadSettings()

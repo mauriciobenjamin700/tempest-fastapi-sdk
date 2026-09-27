@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Storage: `X-Accel-Redirect` para o nginx entregar o arquivo (#362)
+
+O backend autoriza e o nginx entrega: a rota responde vazia com
+`X-Accel-Redirect`, e o nginx busca o objeto no bucket pela rede interna. O
+bucket continua privado e nenhum byte passa pelo processo Python.
+
+- **`AsyncMinIOClient.accel_redirect_response(key, *, bucket=None,
+  internal_prefix=None, expires=timedelta(minutes=5), filename=None,
+  media_type=None, as_attachment=False, cache_control=None, headers=None)`**
+  presigna contra o `endpoint` interno — nunca o `public_endpoint` — e monta
+  `X-Accel-Redirect: <prefixo><bucket>/<key>?X-Amz-...`. `Content-Disposition`,
+  `Content-Type` e `Cache-Control` vão assinados na URL como os overrides
+  `response-*` do S3, porque no nginx 1.27.5 o `Content-Type` do app perde
+  para o do bucket e um `Content-Disposition` nos dois chega duplicado
+  (medido).
+- **`AsyncMinIOClient.serve_object(key, *, request=None, ...)`** escolhe
+  entre `download_response` e `accel_redirect_response` pelo novo
+  `accel_redirect=` do construtor, então a mesma rota alterna proxy e
+  redirect só por configuração. `accel_prefix=` (default `"/_bucket/"`)
+  precisa começar com `/` — `ValueError` caso contrário.
+- **`MinIOSettings`** ganha `STORAGE_ACCEL_REDIRECT` (default `false`) e
+  `STORAGE_ACCEL_PREFIX` (default `/_bucket/`), mapeados por `minio_kwargs()`.
+- Receita de storage com o bloco nginx completo, o porquê do `Host` e da barra
+  final do `proxy_pass`, e quando escolher cada modo. Medido com nginx +
+  MinIO em container (`tests/storage/test_accel_redirect_live.py`, nginx
+  1.22.1, 1.27.5 e 1.29.8): `200` pela rota, `206` com o `Range` repassado,
+  `304`, `404` em `/_bucket/...` direto, `403 SignatureDoesNotMatch` com o
+  `Host $host` herdado e `400 InvalidBucketName` sem a barra final.
+
 ### Storage: `download_response` com `Range` e revalidação (#361)
 
 O `AsyncMinIOClient.download_response()` respondia sempre `200` com o objeto
