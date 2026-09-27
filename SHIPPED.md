@@ -386,7 +386,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `burst=1000` expired an hour before it filled and came back **full**.
   `RateLimit-*` headers describe the tightest rule; `RateLimit-Reset` is
   emitted only where it is known. `lupa` is a dev dep so `fakeredis` runs
-  the real Lua.
+  the real Lua. **Server clock (não lançado, #339):** both Redis stores
+  (`RedisQuotaStore`, `RedisRateLimitStore`) read `TIME` inside the script
+  instead of taking the replica's `time.time()` — measured on real Redis 4
+  and 7, a client one hour ahead or behind got a free request past an
+  exhausted limit; `redis.replicate_commands()` keeps Redis 4.0.14 working.
+  `MemoryQuotaStore(clock=)` makes refill deterministic in tests.
 - **Pagination** — offset + cursor.
 - **Settings mixins** — every `*Settings` carries
   `title`/`description`/`examples` on every field.

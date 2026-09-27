@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import pytest
@@ -122,7 +123,8 @@ class _FakeRedis:
 
     Implements just enough of ``eval`` to behave like the real script:
     prune expired members, count, conditionally add, and report
-    ``[allowed, remaining, retry_after_ms]``.
+    ``[allowed, remaining, retry_after_ms]``. The script reads the time
+    from the server, so this fake reads its own clock the same way.
     """
 
     def __init__(self) -> None:
@@ -137,10 +139,10 @@ class _FakeRedis:
     ) -> list[int]:
         self.calls += 1
         key = str(keys_and_args[0])
-        now = int(keys_and_args[1])
-        window = int(keys_and_args[2])
-        limit = int(keys_and_args[3])
-        member = str(keys_and_args[4])
+        now = int(time.time() * 1000)
+        window = int(keys_and_args[1])
+        limit = int(keys_and_args[2])
+        member = str(keys_and_args[3])
         entries = [e for e in self._zsets.get(key, []) if e[0] > now - window]
         if len(entries) < limit:
             entries.append((now, member))

@@ -902,6 +902,91 @@ leva mais de uma hora para encher, e expirar antes disso devolveria um balde
 cheio de graça. Em erro do Redis, `fail_open=True` (default) libera a
 requisição.
 
+### Relógio: o do Redis, não o da réplica
+
+Recarga de bucket e poda de janela dependem de "quanto tempo passou". Com várias
+réplicas, a pergunta é: **pelo relógio de quem?**
+
+Os dois stores de Redis (`RedisQuotaStore` e `RedisRateLimitStore`) respondem
+"pelo do Redis": o script Lua lê `TIME` do próprio servidor, e nenhuma réplica
+manda timestamp. Assim, réplicas com relógio de parede dessincronizado — ou uma
+VM que acabou de dar um salto de NTP — continuam vendo **um** balde e **uma**
+janela.
+
+!!! info "O que isso evita, medido"
+    Até a v0.301.0 cada réplica mandava o `time.time()` dela. Contra Redis 4 e 7
+    reais, com dois clientes — um esgotando o limite, outro sondando:
+
+    - um cliente **uma hora adiantado** passou num bucket (1 token/hora,
+      `burst=3`) e numa janela (3/hora) que o outro tinha acabado de esgotar;
+    - um cliente **uma hora atrasado** gravou timestamps que deixaram o cliente
+      no horário passar do mesmo jeito.
+
+    Com o `TIME` do servidor, os oito casos são negados. Eles ficam em
+    `tests/api/test_quota_redis_live.py` (`make test-docker`).
+
+Duas consequências práticas:
+
+- **O relógio que importa é o do host do Redis.** Um salto nele ainda move todas
+  as chaves de uma vez — mas é um relógio só, em vez de um por réplica.
+- **Redis 4 funciona**, porque o script liga a replicação por efeito
+  (`redis.replicate_commands()`) antes de escrever. Sem isso o Redis 4.0.14
+  recusa a escrita depois do `TIME`, e com `fail_open=True` um limite de 1
+  requisição deixou passar 10 de 10.
+
+!!! warning "redis-py 8 e Redis anterior ao 6"
+    O `redis-py` 8.1.0 — o piso do extra `[cache]` — abre a conexão com
+    `HELLO 3`, que o Redis 4 e o 5 recusam como comando desconhecido. Contra esses servidores, crie o client com
+    `protocol=2`: `Redis.from_url(settings.REDIS_URL, protocol=2)`.
+
+### Testando sem depender da velocidade da máquina
+
+O `MemoryQuotaStore` aceita `clock=`: qualquer callable que devolve segundos.
+Com um relógio que só anda quando o teste manda, "o burst se esgota" e "o token
+volta depois de uma hora" viram asserções exatas — não uma corrida contra a
+taxa de recarga:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import MemoryQuotaStore, RateLimitRule
+
+
+class ManualClock:
+    def __init__(self) -> None:
+        self.now: float = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+async def main() -> None:
+    clock = ManualClock()
+    store = MemoryQuotaStore(clock=clock)
+    rules = [RateLimitRule(max_requests=1, window_seconds=3600.0, burst=2)]
+
+    print([(await store.consume("k", rules)).allowed for _ in range(3)])
+    clock.now += 3600.0
+    print((await store.consume("k", rules)).allowed)
+
+
+asyncio.run(main())
+```
+
+Saída:
+
+```text
+[True, True, False]
+True
+```
+
+!!! tip "Por que não `sleep`?"
+    Uma regra de 100 por segundo repõe um token a cada 10 ms. Quatro chamadas
+    seguidas numa máquina carregada passam disso, o token volta, e o teste
+    "o burst se esgota" falha: foi o que aconteceu com a própria suíte do SDK
+    (#339). Taxa desprezível na janela do teste (1 por hora) ou relógio
+    injetado tiram a velocidade da máquina da asserção.
+
 
 ## Limite de tamanho do body (`BodySizeLimitMiddleware`)
 

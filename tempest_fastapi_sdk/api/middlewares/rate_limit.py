@@ -39,6 +39,7 @@ from starlette.types import ASGIApp
 
 from tempest_fastapi_sdk.api.middlewares._exempt import PathExemption
 from tempest_fastapi_sdk.api.middlewares.quota import (
+    _SERVER_NOW_LUA,
     MemoryQuotaStore,
     QuotaStore,
     RateLimitPolicy,
@@ -238,15 +239,13 @@ class RedisLike(Protocol):
         ...
 
 
-# Atomic sliding-window log: drop expired members, count, and only add
-# the new member when still under the limit. Returns
-# ``{allowed, remaining, retry_after_ms}``.
-_SLIDING_WINDOW_LUA: str = """
+_SLIDING_WINDOW_LUA: str = (
+    _SERVER_NOW_LUA
+    + """
 local key = KEYS[1]
-local now = tonumber(ARGV[1])
-local window = tonumber(ARGV[2])
-local limit = tonumber(ARGV[3])
-local member = ARGV[4]
+local window = tonumber(ARGV[1])
+local limit = tonumber(ARGV[2])
+local member = ARGV[3]
 redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
 local count = redis.call('ZCARD', key)
 if count < limit then
@@ -262,6 +261,15 @@ end
 if retry < 1 then retry = 1 end
 return {0, 0, retry}
 """
+)
+"""Atomic sliding-window log over one sorted set.
+
+Drops expired members, counts the survivors and only adds the new member
+when still under the limit. ``ARGV`` is ``window_ms``, ``max_requests``
+and the member; the time comes from the server
+(:data:`~tempest_fastapi_sdk.api.middlewares.quota._SERVER_NOW_LUA`).
+Returns ``{allowed, remaining, retry_after_ms}``.
+"""
 
 
 class RedisRateLimitStore:
@@ -271,6 +279,11 @@ class RedisRateLimitStore:
     timestamps (in milliseconds). A single Lua script prunes expired
     members, counts the survivors and conditionally adds the new hit, so
     the check is atomic across replicas — no race between count and add.
+
+    The timestamps come from the Redis server's clock (``TIME``, read
+    inside the script), not from the calling process, so replicas whose
+    wall clocks disagree still share one window. A step on the Redis
+    host's clock still moves every window at once.
 
     When the backend raises and ``fail_open`` is ``True`` (the default),
     the request is allowed rather than locking every caller out on a
@@ -321,7 +334,6 @@ class RedisRateLimitStore:
             Exception: Propagates the backend error when ``fail_open``
                 is ``False``.
         """
-        now_ms = int(time.time() * 1000)
         window_ms = int(window_seconds * 1000)
         member = uuid.uuid4().hex
         try:
@@ -329,7 +341,6 @@ class RedisRateLimitStore:
                 _SLIDING_WINDOW_LUA,
                 1,
                 self._key(key),
-                now_ms,
                 window_ms,
                 max_requests,
                 member,

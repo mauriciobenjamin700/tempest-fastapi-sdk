@@ -35,6 +35,31 @@ do zero e imagem era baixada de novo a cada visita.
   `If-None-Match` (módulo privado `utils._http_cache`), sem mudança de
   comportamento.
 
+### Rate limit e quotas: o relógio é o do Redis (#339)
+
+- **`RedisQuotaStore` e `RedisRateLimitStore` leem o tempo do servidor.** O
+  script Lua chama `TIME` em vez de receber o `time.time()` da réplica.
+  Medido contra Redis 4 e 7 reais, com dois clientes: um cliente uma hora
+  adiantado passava num bucket e numa janela que o outro tinha acabado de
+  esgotar, e um cliente uma hora atrasado gravava timestamps que deixavam o
+  cliente no horário passar. Com o `TIME` do servidor, os oito casos são
+  negados (`tests/api/test_quota_redis_live.py`, `make test-docker`). O
+  script liga `redis.replicate_commands()` antes de escrever: sem isso o
+  Redis 4.0.14 recusa a escrita depois do `TIME`, e com `fail_open=True`
+  (default) um limite de 1 requisição deixou passar 10 de 10. Nenhuma
+  assinatura muda; o layout de `ARGV` dos scripts perde o timestamp.
+- **`MemoryQuotaStore(clock=...)`**: callable keyword-only que devolve
+  segundos, default `time.monotonic`. Deixa recarga e esgotamento
+  determinísticos em teste.
+- **Teste intermitente corrigido.**
+  `test_bucket_absorbs_burst_then_rejects[redis]` usava 100 req/s com
+  `burst=3` — um token de volta a cada 10 ms. Sob carga (24 processos
+  ocupando 12 CPUs), em N=1000 execuções por caso: 267 falhas no `[redis]`,
+  3 no `[memory]` e 3 no `test_bucket_refills_over_time[redis]`; depois da
+  correção, 0 em 1000 nos quatro. Os testes de store rodam num relógio que só
+  anda quando o teste manda (injetado no `MemoryQuotaStore`, fixado no
+  `fakeredis`), com regra de 1 token por hora.
+
 ## [0.301.0] — 2026-09-27
 
 As pontes que o painel administrativo do `tempest-bucket` escrevia à mão
