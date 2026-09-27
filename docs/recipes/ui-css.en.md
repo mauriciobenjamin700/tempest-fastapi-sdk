@@ -186,7 +186,7 @@ a matching `If-None-Match` gets a bodyless `304`.
 
 The page does not point its `<link>` at the fixed path but at
 `STYLESHEET.url(CSS_PATH)`: the same path with the **content version** in
-the query — for example `"/static/app.css?v=9566b49f33e0"`. The version is
+the query — `"/static/app.css?v="` followed by 12 hex characters. The version is
 the first 12 hex characters of the SHA-256 of the rendered CSS — the same
 hash as the `ETag`. It depends on the sheet's text alone, so two replicas
 with the same rules (and the same `tempest_core` version, where the token

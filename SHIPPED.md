@@ -1036,7 +1036,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `tempestweb` imported lazily so `import tempest_fastapi_sdk` never
   needs the extra.
 - **SSR: head na página-base, confirmação, flash e redirect-back
-  (Unreleased, #348/#349/#352)** — `Page.stylesheets` / `head` /
+  (v0.301.0, #348/#349/#352)** — `Page.stylesheets` / `head` /
   `title_suffix` + `document_title()` lidos por `html_response`;
   `form_for(confirm=)` / `confirm()` + `/_ssr/confirm.js` (sem JS inline,
   texto lido do atributo); `FlashMiddleware` + `flash` / `get_flashes` +
@@ -1408,7 +1408,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   namespace in — the enum is imported inside the method, keeping one source of
   truth for the hosts.
 - **Versioned CSS URL, body font, full-width shell, rich table cells
-  (Unreleased; #341, #350, #346)** — `StyleSheet.url(path)` /
+  (v0.301.0; #341, #350, #346)** — `StyleSheet.url(path)` /
   `StyleSheet.version()` give the content-versioned link
   (`?v=<12 hex of the CSS SHA-256>`, same in every process rendering the
   same rules — tested across two subprocesses); `make_css_router` answers
@@ -1480,7 +1480,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   input, so re-rendering keeps what the reader typed. Overrides via
   `json_schema_extra={"ui": {...}}`; nested models and `bytes` fields
   raise `UnsupportedFieldError` rather than rendering something that
-  cannot round-trip. **Unreleased (#340, #345, #347, #351):**
+  cannot round-trip. **v0.301.0 (#340, #345, #347, #351):**
   `{"ui": {"control": "hidden"}}` is a bare `<input type="hidden">`
   (no label/hint/wrapper, any type or `max_length`; its errors join the
   form-level list), `{"ui": {"omit": True}}` names the old
@@ -2494,7 +2494,7 @@ tabela única. `AdminSite.get`/`require`/`unregister` aceitam a classe.
 Consumidor: `alofans-api`, com 9 acessos a `.__tablename__` em `src/` e
 `tests/`.
 
-## Limites de request nos routers de IA (não lançado)
+## Limites de request nos routers de IA (v0.300.0)
 
 `GenAIRequestLimits` + `make_genai_router(limits=...)` conferem tamanho de
 prompt, chat, `max_new_tokens`, lote do `/embed`, `top_k`, texto do `/tts`,
@@ -2506,7 +2506,7 @@ do `make_voice_router` virou `read_upload_capped`, público e compartilhado.
 Os stores de vetor devolvem `[]` para `top_k <= 0` em vez de fatiar com
 índice negativo.
 
-## Sessão, schema e controller de orquestração (não lançado)
+## Sessão, schema e controller de orquestração (v0.301.0)
 
 Três pontes do `tempest-bucket`.
 
@@ -2522,7 +2522,7 @@ Três pontes do `tempest-bucket`.
 - **`create_tables(metadata)` / `drop_tables(metadata)`** (#354) — aceitam a
   `metadata` de uma `DeclarativeBase` própria; default `BaseModel.metadata`.
 
-## Sessões sem tabela e sem middleware (não lançado)
+## Sessões sem tabela e sem middleware (v0.301.0)
 
 `SessionAuth.from_credentials(username, password, store=, settings=)` abre
 sessão para uma credencial fixa do ambiente — `StaticCredentialAuthenticator`

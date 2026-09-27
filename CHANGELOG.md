@@ -5,11 +5,43 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.301.0] — 2026-09-27
+
+As pontes que o painel administrativo do `tempest-bucket` escrevia à mão
+sobem para o SDK (#340–#354): formulário com campo oculto, upload e
+dependency tipada; CSS com URL versionada, fonte de sistema, `Shell` de largura
+total e `DataTable` com widget na célula; confirmação de ação destrutiva sem
+JS inline, flash message, redirect-back contra open redirect e página de erro
+para rota HTML; sessão sem tabela de usuário e dependency de rota HTML com
+`303`; e, no banco, dependency de sessão para manager lazy, `create_tables`
+com `metadata` própria e uma base de controller sem CRUD. A validação em
+browser da release achou um defeito antigo, corrigido aqui: o `DataTable`
+alargava a página inteira no celular (#360).
+
+### Migração — leia antes de atualizar
+
+Cada item aponta para o detalhe na seção da área.
+
+- **CSS:** `make_css_router` e `css_response` mudam o `Cache-Control` default
+  de `public, max-age=3600` para `no-cache` no path sem versão — linke
+  `sheet.url(path)` para o cache longo. O reset do `StyleSheet` ganhou
+  `font-family` no `body`. Detalhe em *`ui.css`, `Shell` e `DataTable`*.
+- **`DataTable`:** o `<table>` agora sai dentro de
+  `<div class="tui-table-scroll">`; seletor próprio que mirava
+  `.tui-card__body > table` precisa incluir o wrapper.
+- **Formulários:** `help_text` presente sempre vence (vazio suprime a dica em
+  vez de cair na `description`), e campo `UploadFile` deixou de sair como
+  `<input type="text">`. Detalhe em *`ui.forms`*.
+- **`html_response(page)`** sem `title=` usa `page.document_title()` em vez de
+  levantar `ValueError`. Detalhe em *SSR*.
+- **Sessões:** `make_session_dependency(...)` devolve dependency `async`,
+  `SessionAuth.user_model` pode ser `None`, `SESSION_COOKIE_SAMESITE` é
+  `Literal` e o logout apaga o cookie com os atributos do settings. Detalhe
+  em *Sessões*.
 
 ### `ui.forms` — campo oculto, upload, dependency e ajuda sob controle (#340, #345, #347, #351)
 
-#### Adicionado
+#### Added
 
 - **Campo oculto de verdade (#340).** `json_schema_extra={"ui": {"control":
   "hidden"}}` renderiza só `<input type="hidden" name value>` — sem label,
@@ -40,7 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`describe=` em `form_for`, `form_spec_for` e `fields_for` (#351).**
   `describe=False` desliga o fallback da dica para a `description` do campo.
 
-#### Mudado
+#### Changed
 
 - **`help_text` presente sempre vence (#351).** `{"ui": {"help_text": ""}}`,
   `None` ou `False` suprimem o `<small>` (e o `aria-describedby`); antes o
@@ -52,46 +84,122 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controle de arquivo. `bytes` continua levantando `UnsupportedFieldError`,
   com mensagem que aponta para `UploadFile`.
 
-Três pontes do `tempest-bucket`: a dependency que embrulhava
-`get_session_context()` commitava depois da resposta sem o nome avisar
-(issue #342), um controller que orquestra três services não tinha base sem
-CRUD (issue #353) e `create_tables()` não criava nada para uma
-`DeclarativeBase` própria (issue #354).
+### `ui.css`, `Shell` e `DataTable` — URL versionada, fonte, largura e célula com widget (#341, #350, #346)
 
-### Added
+Três contornos que o painel do tempest-bucket escrevia à mão sobem para a
+camada `ui`: a folha servida com `max-age=3600` num path fixo deixava o
+browser até uma hora no CSS antigo depois do deploy (#341); o texto saía
+na fonte padrão do browser e o `Shell` prendia o `<main>` em `72rem` sem
+opção (#350); e o `DataTable` só aceitava texto na célula, então link,
+botão e form por linha viravam tabela escrita com `Stack` (#346).
 
-- **`session_dependency_for(get_db)`** (issue #342): dependency de sessão por
-  request para um manager construído sob demanda (`@lru_cache def get_db()`).
-  Mesma semântica de `session_dependency` — sem commit no sucesso, sessão
-  fechada no fim do request, também quando o endpoint levanta — e `get_db` só
-  é chamado no request, nunca no import. Abre a sessão direto em vez de
-  iterar o gerador do manager, então não sobra gerador interno para o GC
-  fechar (o `aclosing` do contorno do consumidor deixa de ser necessário).
-- **`AsyncDatabaseManager.transaction()`** (issue #342): o mesmo context
-  manager de `get_session_context()` sob um nome que diz que ele commita.
-  Não confundir com `transaction(session)` de `db.transaction`, que agrupa
-  escritas numa sessão que já existe.
-- **`Controller`** (issue #353): raiz da camada de controllers, sem método
-  nenhum, para controller que orquestra vários services sem CRUD de recurso
-  único. Fixa só a convenção (services injetados pelo `__init__`, nenhum
-  acesso a banco), sem checagem em runtime. `BaseController` passa a
-  herdar dela; nada muda para quem já a usa.
-- **`create_tables(metadata=None)` / `drop_tables(metadata=None)`** (issue
-  #354): aceitam a `metadata` de uma `DeclarativeBase` própria; o default
-  continua `BaseModel.metadata`.
+#### Migração
 
-### Changed
+- **`make_css_router` e `css_response` mudam o `Cache-Control` default
+  de `public, max-age=3600` para `no-cache`** no path sem versão. O
+  browser passa a revalidar pelo `ETag` (resposta `304`, sem corpo) antes
+  de usar a cópia. Para o cache longo, linke `sheet.url(path)` — ver
+  abaixo. Quem passava `cache_control=` explícito não muda nada.
+- **O reset do `StyleSheet` ganhou `font-family` no `body`.** Serviço que
+  já definia a família numa regra própria continua vencendo quando a regra
+  vem depois do reset (é o caso do `extra=` do `app_stylesheet`).
 
-- **Docstring e receita de `get_session_context()`** (issue #342) dizem na
-  primeira linha que ele commita na saída e alertam contra usá-lo numa
-  dependency de request: medido no FastAPI 0.141.1, `http.response.start` e
-  `http.response.body` saem antes do `COMMIT` do teardown.
-- `session_dependency` passa a abrir a sessão por `get_session()`; o
-  comportamento é o mesmo.
-- Receitas `database` e `architecture` (PT/EN), README e referência cobrem
-  as três peças.
+#### Added
 
-### Sessões: login sem tabela de usuário, rota HTML sem middleware e cookie por mapper (#343, #344)
+- **`StyleSheet.url(path="/static/app.css")`** e
+  **`StyleSheet.version()`** (#341): a URL que a página linka,
+  `"/static/app.css?v=<versão>"`, com a versão = 12 primeiros hex do
+  SHA-256 do CSS renderizado (o mesmo hash do `ETag`). Path sem `/`
+  inicial ou com query levanta `ValueError`. Teste em subprocesso
+  (`PYTHONHASHSEED` 1 e 2) confirma a mesma URL em dois interpretadores e
+  no processo do teste; mudar uma declaração muda a URL.
+- **`make_css_router(..., versioned_cache_control=...)`**: requisição com
+  `?v=` igual à versão servida recebe
+  `public, max-age=31536000, immutable` (default), inclusive no `304`;
+  path sem `?v=` ou com versão diferente recebe `cache_control`
+  (`no-cache`). Versão diferente nunca sai `immutable`, para uma réplica
+  antiga num deploy em rolagem não fixar o CSS velho sob a URL nova.
+- **`ThemeTokens(font_family_body=...)`**, **`ThemeTokens.font_family()`**
+  e **`SYSTEM_FONT_STACK`** (`tempest_fastapi_sdk.ui.css`, #350): o
+  `:root` emite `--t-font-family-body` (default: pilha `system-ui, …,
+  sans-serif`, sem web font) e o reset aplica
+  `font-family: var(--t-font-family-body)` no `body`; sem `theme`, o reset
+  aplica a pilha literal.
+- **`Shell(width="contained" | "full")`** + `ShellWidth` e
+  `ComponentClasses.shell_main_full` (`tui-shell__main--full`, #350):
+  `"full"` acrescenta a classe no `<main>`, e a regra zera `max-width`,
+  `margin` e `padding`. `"contained"` (default) mantém o `72rem`
+  centralizado. Valor fora dos dois é `ValidationError`.
+- **`TableColumn(name, header=, render=, align=, class_name=)`** +
+  `CellAlign` e `CellRenderer` (`tempest_fastapi_sdk.ui.components`,
+  #346): `DataTable.columns` aceita `str | TableColumn` misturados.
+  `render` recebe a linha e devolve widget, lista de widgets ou `str`
+  (texto escapado; `None` vira `none_text`); widgets passam pelo
+  renderizador, sem HTML cru. `align` (`left`/`center`/`right`) aplica
+  `ComponentClasses.table_align` (`tui-table__cell--<align>`) no `<th>` e
+  em cada `<td>`; `right` liga `tabular-nums`. `class_name` vai no `<th>`
+  e em cada `<td>`. `align` fora dos três ou `render` não chamável
+  levantam `ValueError` na construção. `DataTable.column_specs()` devolve
+  as colunas como `TableColumn`; `resolved_columns()` continua devolvendo
+  os nomes.
+
+#### Fixed
+
+- **`DataTable` largo não alarga mais a página no celular.** O `<table>` sai
+  dentro de `<div class="tui-table-scroll" tabindex="0">` (nova
+  `ComponentClasses.table_scroll`), com `overflow-x: auto` e `min-width: 0`;
+  com `caption=` o wrapper vira `role="region"` rotulado pela legenda. Antes
+  não havia wrapper nenhum: a 390px, uma tabela de 849px levava o documento a
+  890px de `scrollWidth`; agora o documento fica em 390px e a tabela rola no
+  contêiner (medido no Chromium). Quem mirava `.tui-card__body > table` na
+  própria folha precisa incluir o wrapper no seletor.
+
+#### Changed
+
+- **Scaffold do `tempest generate`/`tempest new --extras "ssr"`**:
+  `src/ui/styles.py` exporta `CSS_URL = STYLESHEET.url(CSS_PATH)`, e
+  `api/routers/web.py` linka `CSS_URL` em vez de `CSS_PATH`. O `CLAUDE.md`
+  gerado manda linkar `CSS_URL` e usar `TableColumn` para ação por linha.
+
+### SSR — head na página-base, confirmação sem JS inline, flash e redirect-back (#348, #349, #352)
+
+#### Added
+
+- `Page.stylesheets`, `Page.head` e `Page.title_suffix` (`ClassVar`,
+  herdados) e `Page.document_title()`. `html_response(page)` usa esses
+  valores quando `stylesheets=` / `head=` / `title=` não são passados; um
+  argumento explícito **substitui** o da página (#352).
+- `form_for(..., confirm="...")` e `tempest_fastapi_sdk.ssr.confirm()`
+  emitem `data-confirm`; `make_htmx_router()` passa a servir também
+  `/_ssr/confirm.js`, e `html_response(confirm=None)` o inclui quando o
+  documento usa o atributo ou quando `htmx=True`. O texto é lido do
+  atributo com `getAttribute`, nunca interpolado em script; sem JS o form
+  continua submetendo (#348). Validado em Chromium (Playwright): cancelar
+  não submete, a pergunta do botão de submit vale no lugar da do form,
+  `<a data-confirm>` também pergunta.
+- Flash messages: `FlashMiddleware` (cookie `HttpOnly`, assinado com
+  HMAC-SHA256, lido uma vez, expira em `max_age`), `flash()`,
+  `get_flashes()`, `flash_enabled()`, e os componentes `FlashMessage` /
+  `FlashMessages` em `ui.components` (#349).
+- `redirect_back(request, fallback=..., allowed_prefix=...)` e
+  `back_url()`: seguem o `Referer` só para o mesmo host e um path sob o
+  prefixo, e emitem `Location` relativo; recusam outro host, user info,
+  `Referer` sem host, `//host`, esquema que não é `http`/`https`, path fora
+  do prefixo, `..` (inclusive `%2e%2e`), barra codificada e `\` (#349).
+- `register_html_error_handlers(app, prefixes=..., tags=...,
+  error_page=..., fallback=...)`: embrulha os handlers de `AppException` e
+  `HTTPException`; rota HTML responde `ErrorPage` no `GET`/`HEAD` e flash +
+  `303` nos demais métodos; o resto mantém o JSON. Novo `ui.pages.ErrorPage`
+  (`title_template`, `from_error`) (#349).
+- Receita nova: *Ações SSR (confirmação, flash, redirect-back)*.
+
+#### Changed
+
+- `html_response(page)` sem `title=` agora usa `page.document_title()` em
+  vez de levantar `ValueError`; o erro continua para widget que não é
+  `Page`. `stylesheets` e `head` passaram a aceitar `None` (o novo padrão).
+
+### Sessões — login sem tabela de usuário, rota HTML sem middleware e cookie por mapper (#343, #344)
 
 O painel do `tempest-bucket` não conseguiu usar `tempest_fastapi_sdk.sessions`:
 `SessionAuth` exigia `user_model=` (o serviço tem uma credencial root no
@@ -162,118 +270,46 @@ anotado `str`, que o mypy recusa contra o `Literal` do Starlette.
   que sem middleware a dependência levantava `AttributeError` estava errada:
   ela responde `401`.
 
-### SSR — head na página-base, confirmação sem JS inline, flash e redirect-back (#348, #349, #352)
+### Banco e controllers — sessão para manager lazy, `metadata` própria e controller de orquestração (#342, #353, #354)
 
-**Adicionado**
+Três pontes do `tempest-bucket`: a dependency que embrulhava
+`get_session_context()` commitava depois da resposta sem o nome avisar
+(issue #342), um controller que orquestra três services não tinha base sem
+CRUD (issue #353) e `create_tables()` não criava nada para uma
+`DeclarativeBase` própria (issue #354).
 
-- `Page.stylesheets`, `Page.head` e `Page.title_suffix` (`ClassVar`,
-  herdados) e `Page.document_title()`. `html_response(page)` usa esses
-  valores quando `stylesheets=` / `head=` / `title=` não são passados; um
-  argumento explícito **substitui** o da página (#352).
-- `form_for(..., confirm="...")` e `tempest_fastapi_sdk.ssr.confirm()`
-  emitem `data-confirm`; `make_htmx_router()` passa a servir também
-  `/_ssr/confirm.js`, e `html_response(confirm=None)` o inclui quando o
-  documento usa o atributo ou quando `htmx=True`. O texto é lido do
-  atributo com `getAttribute`, nunca interpolado em script; sem JS o form
-  continua submetendo (#348). Validado em Chromium (Playwright): cancelar
-  não submete, a pergunta do botão de submit vale no lugar da do form,
-  `<a data-confirm>` também pergunta.
-- Flash messages: `FlashMiddleware` (cookie `HttpOnly`, assinado com
-  HMAC-SHA256, lido uma vez, expira em `max_age`), `flash()`,
-  `get_flashes()`, `flash_enabled()`, e os componentes `FlashMessage` /
-  `FlashMessages` em `ui.components` (#349).
-- `redirect_back(request, fallback=..., allowed_prefix=...)` e
-  `back_url()`: seguem o `Referer` só para o mesmo host e um path sob o
-  prefixo, e emitem `Location` relativo; recusam outro host, user info,
-  `Referer` sem host, `//host`, esquema que não é `http`/`https`, path fora
-  do prefixo, `..` (inclusive `%2e%2e`), barra codificada e `\` (#349).
-- `register_html_error_handlers(app, prefixes=..., tags=...,
-  error_page=..., fallback=...)`: embrulha os handlers de `AppException` e
-  `HTTPException`; rota HTML responde `ErrorPage` no `GET`/`HEAD` e flash +
-  `303` nos demais métodos; o resto mantém o JSON. Novo `ui.pages.ErrorPage`
-  (`title_template`, `from_error`) (#349).
-- Receita nova: *Ações SSR (confirmação, flash, redirect-back)*.
+#### Added
 
-**Mudado**
+- **`session_dependency_for(get_db)`** (issue #342): dependency de sessão por
+  request para um manager construído sob demanda (`@lru_cache def get_db()`).
+  Mesma semântica de `session_dependency` — sem commit no sucesso, sessão
+  fechada no fim do request, também quando o endpoint levanta — e `get_db` só
+  é chamado no request, nunca no import. Abre a sessão direto em vez de
+  iterar o gerador do manager, então não sobra gerador interno para o GC
+  fechar (o `aclosing` do contorno do consumidor deixa de ser necessário).
+- **`AsyncDatabaseManager.transaction()`** (issue #342): o mesmo context
+  manager de `get_session_context()` sob um nome que diz que ele commita.
+  Não confundir com `transaction(session)` de `db.transaction`, que agrupa
+  escritas numa sessão que já existe.
+- **`Controller`** (issue #353): raiz da camada de controllers, sem método
+  nenhum, para controller que orquestra vários services sem CRUD de recurso
+  único. Fixa só a convenção (services injetados pelo `__init__`, nenhum
+  acesso a banco), sem checagem em runtime. `BaseController` passa a
+  herdar dela; nada muda para quem já a usa.
+- **`create_tables(metadata=None)` / `drop_tables(metadata=None)`** (issue
+  #354): aceitam a `metadata` de uma `DeclarativeBase` própria; o default
+  continua `BaseModel.metadata`.
 
-- `html_response(page)` sem `title=` agora usa `page.document_title()` em
-  vez de levantar `ValueError`; o erro continua para widget que não é
-  `Page`. `stylesheets` e `head` passaram a aceitar `None` (o novo padrão).
+#### Changed
 
-Três contornos que o painel do tempest-bucket escrevia à mão sobem para a
-camada `ui`: a folha servida com `max-age=3600` num path fixo deixava o
-browser até uma hora no CSS antigo depois do deploy (#341); o texto saía
-na fonte padrão do browser e o `Shell` prendia o `<main>` em `72rem` sem
-opção (#350); e o `DataTable` só aceitava texto na célula, então link,
-botão e form por linha viravam tabela escrita com `Stack` (#346).
-
-### Migração
-
-- **`make_css_router` e `css_response` mudam o `Cache-Control` default
-  de `public, max-age=3600` para `no-cache`** no path sem versão. O
-  browser passa a revalidar pelo `ETag` (resposta `304`, sem corpo) antes
-  de usar a cópia. Para o cache longo, linke `sheet.url(path)` — ver
-  abaixo. Quem passava `cache_control=` explícito não muda nada.
-- **O reset do `StyleSheet` ganhou `font-family` no `body`.** Serviço que
-  já definia a família numa regra própria continua vencendo quando a regra
-  vem depois do reset (é o caso do `extra=` do `app_stylesheet`).
-
-### Added
-
-- **`StyleSheet.url(path="/static/app.css")`** e
-  **`StyleSheet.version()`** (#341): a URL que a página linka,
-  `"/static/app.css?v=<versão>"`, com a versão = 12 primeiros hex do
-  SHA-256 do CSS renderizado (o mesmo hash do `ETag`). Path sem `/`
-  inicial ou com query levanta `ValueError`. Teste em subprocesso
-  (`PYTHONHASHSEED` 1 e 2) confirma a mesma URL em dois interpretadores e
-  no processo do teste; mudar uma declaração muda a URL.
-- **`make_css_router(..., versioned_cache_control=...)`**: requisição com
-  `?v=` igual à versão servida recebe
-  `public, max-age=31536000, immutable` (default), inclusive no `304`;
-  path sem `?v=` ou com versão diferente recebe `cache_control`
-  (`no-cache`). Versão diferente nunca sai `immutable`, para uma réplica
-  antiga num deploy em rolagem não fixar o CSS velho sob a URL nova.
-- **`ThemeTokens(font_family_body=...)`**, **`ThemeTokens.font_family()`**
-  e **`SYSTEM_FONT_STACK`** (`tempest_fastapi_sdk.ui.css`, #350): o
-  `:root` emite `--t-font-family-body` (default: pilha `system-ui, …,
-  sans-serif`, sem web font) e o reset aplica
-  `font-family: var(--t-font-family-body)` no `body`; sem `theme`, o reset
-  aplica a pilha literal.
-- **`Shell(width="contained" | "full")`** + `ShellWidth` e
-  `ComponentClasses.shell_main_full` (`tui-shell__main--full`, #350):
-  `"full"` acrescenta a classe no `<main>`, e a regra zera `max-width`,
-  `margin` e `padding`. `"contained"` (default) mantém o `72rem`
-  centralizado. Valor fora dos dois é `ValidationError`.
-- **`TableColumn(name, header=, render=, align=, class_name=)`** +
-  `CellAlign` e `CellRenderer` (`tempest_fastapi_sdk.ui.components`,
-  #346): `DataTable.columns` aceita `str | TableColumn` misturados.
-  `render` recebe a linha e devolve widget, lista de widgets ou `str`
-  (texto escapado; `None` vira `none_text`); widgets passam pelo
-  renderizador, sem HTML cru. `align` (`left`/`center`/`right`) aplica
-  `ComponentClasses.table_align` (`tui-table__cell--<align>`) no `<th>` e
-  em cada `<td>`; `right` liga `tabular-nums`. `class_name` vai no `<th>`
-  e em cada `<td>`. `align` fora dos três ou `render` não chamável
-  levantam `ValueError` na construção. `DataTable.column_specs()` devolve
-  as colunas como `TableColumn`; `resolved_columns()` continua devolvendo
-  os nomes.
-
-### Fixed
-
-- **`DataTable` largo não alarga mais a página no celular.** O `<table>` sai
-  dentro de `<div class="tui-table-scroll" tabindex="0">` (nova
-  `ComponentClasses.table_scroll`), com `overflow-x: auto` e `min-width: 0`;
-  com `caption=` o wrapper vira `role="region"` rotulado pela legenda. Antes
-  não havia wrapper nenhum: a 390px, uma tabela de 849px levava o documento a
-  890px de `scrollWidth`; agora o documento fica em 390px e a tabela rola no
-  contêiner (medido no Chromium). Quem mirava `.tui-card__body > table` na
-  própria folha precisa incluir o wrapper no seletor.
-
-### Changed
-
-- **Scaffold do `tempest generate`/`tempest new --extras "ssr"`**:
-  `src/ui/styles.py` exporta `CSS_URL = STYLESHEET.url(CSS_PATH)`, e
-  `api/routers/web.py` linka `CSS_URL` em vez de `CSS_PATH`. O `CLAUDE.md`
-  gerado manda linkar `CSS_URL` e usar `TableColumn` para ação por linha.
+- **Docstring e receita de `get_session_context()`** (issue #342) dizem na
+  primeira linha que ele commita na saída e alertam contra usá-lo numa
+  dependency de request: medido no FastAPI 0.141.1, `http.response.start` e
+  `http.response.body` saem antes do `COMMIT` do teardown.
+- `session_dependency` passa a abrir a sessão por `get_session()`; o
+  comportamento é o mesmo.
+- Receitas `database` e `architecture` (PT/EN), README e referência cobrem
+  as três peças.
 
 ## [0.300.0] — 2026-09-26
 

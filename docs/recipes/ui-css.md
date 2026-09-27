@@ -186,7 +186,7 @@ sem corpo.
 
 A página não aponta o `<link>` para o path fixo, e sim para
 `STYLESHEET.url(CSS_PATH)`: o mesmo path com a **versão do conteúdo** na
-query — por exemplo `"/static/app.css?v=9566b49f33e0"`. A versão são os 12 primeiros
+query — `"/static/app.css?v="` seguido de 12 caracteres hexadecimais. A versão são os 12 primeiros
 caracteres hexadecimais do SHA-256 do CSS renderizado — o mesmo hash do
 `ETag`. Ela depende só do texto da folha, então duas réplicas com as mesmas
 regras (e a mesma versão do `tempest_core`, de onde vêm os valores dos tokens)
