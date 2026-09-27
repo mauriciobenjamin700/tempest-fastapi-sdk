@@ -374,6 +374,47 @@ async def get_user(user_id: UUID, session: SessionDep) -> UserResponse:
     return repository.map_to_response(await repository.get_by_id(user_id))
 ```
 
+### Manager criado sob demanda — `session_dependency_for`
+
+`Depends(db.session_dependency)` exige que `db` já exista quando o módulo é
+importado. Tem serviço que prefere construir o manager só na primeira
+chamada: para ler as settings **depois** do guard de boot, e para os testes
+trocarem a `DATABASE_URL` antes de qualquer engine nascer. Nesse caso,
+entregue a **fábrica** para `session_dependency_for`:
+
+```python
+# src/api/dependencies/resources.py
+import os
+from functools import lru_cache
+from typing import Annotated
+
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from tempest_fastapi_sdk import AsyncDatabaseManager, session_dependency_for
+
+
+@lru_cache
+def get_db() -> AsyncDatabaseManager:
+    """Build the manager on first use, never at import."""
+    return AsyncDatabaseManager(os.environ["DATABASE_URL"])
+
+
+get_session = session_dependency_for(get_db)
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
+```
+
+A dependency devolvida tem a mesma semântica de `session_dependency`: uma
+sessão por request, **sem** commit no sucesso, e a sessão fechada no fim do
+request — também quando o endpoint levanta. `get_db` é chamado a cada
+request, nunca no import; com o `@lru_cache`, todo request recebe o mesmo
+manager.
+
+!!! tip "Crie a dependency uma vez, no nível do módulo"
+    O FastAPI faz cache de dependency por request pela **identidade** do
+    callable. Duas chamadas a `session_dependency_for(get_db)` devolvem duas
+    funções diferentes — e, usadas no mesmo request, duas sessões. Guarde o
+    resultado num nome (`get_session`) e reuse.
+
 ### Ciclo de vida no lifespan
 
 Abra e feche a engine junto com a aplicação:
@@ -420,11 +461,25 @@ async def health() -> dict[str, object]:
 ```
 
 !!! info "Outras formas de obter sessão"
-    - `db.get_session_context()` — context manager que faz **commit** no
-      sucesso e rollback no erro. Use em scripts e tasks de background.
+    - `db.get_session_context()` / `db.transaction()` — o mesmo context
+      manager com dois nomes: faz **commit** na saída e rollback no erro.
+      Use em scripts e tasks de background.
     - `db.get_session()` — sessão crua; você fecha.
     - `db.create_tables()` / `db.drop_tables()` — só para testes e dev
-      local; em produção o schema é do Alembic.
+      local; em produção o schema é do Alembic. Sem argumento, só os models
+      do `BaseModel` do SDK — veja
+      [Sua própria `DeclarativeBase`](#sua-propria-declarativebase).
+
+!!! warning "`get_session_context()` commita — nunca numa dependency de request"
+    O código depois do `yield` de uma dependency roda **depois** que a
+    resposta saiu. Medido no FastAPI 0.141.1, com um middleware ASGI
+    registrando as mensagens: `http.response.start` e `http.response.body`
+    são enviadas antes do `COMMIT`. Uma dependency que embrulha
+    `get_session_context()` responde `204` para um `DELETE` cujo commit
+    ainda não aconteceu — o `GET` seguinte do cliente pode ver a linha — e,
+    se esse commit falhar, o status que o cliente já recebeu não muda mais.
+    Para request use `session_dependency` (ou `session_dependency_for`) e
+    commite na camada de service/repository.
 
 !!! danger "`create_tables()` é no-op silencioso em tabela que já existe"
     `create_all` é `CREATE TABLE IF NOT EXISTS`: contra uma tabela existente
@@ -438,6 +493,51 @@ async def health() -> dict[str, object]:
     A URL crua carrega usuário e senha. `db_url_safe` renderiza
     `postgresql+asyncpg://***@host/db`. A URL crua fica num atributo
     privado justamente para não vazar em `repr()` ou log acidental.
+
+### Sua própria `DeclarativeBase`
+
+`create_tables()` sem argumento cria só o que herda o `BaseModel` do SDK. Um
+serviço com a própria `DeclarativeBase` — porque endereça por chave natural,
+por exemplo, e o `BaseModel` impõe UUID e timestamps — não ganha tabela
+nenhuma: a primeira query falha com `no such table` (SQLite). Passe a
+`metadata` da sua base:
+
+```python
+import asyncio
+
+from sqlalchemy import Integer, String, select
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from tempest_fastapi_sdk import AsyncDatabaseManager
+
+
+class Base(DeclarativeBase):
+    """A base of your own: natural key, no BaseModel UUID or timestamps."""
+
+
+class ObjectModel(Base):
+    __tablename__ = "objects"
+
+    bucket: Mapped[str] = mapped_column(String(63), primary_key=True)
+    key: Mapped[str] = mapped_column(String(1024), primary_key=True)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+async def main() -> None:
+    db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.create_tables(Base.metadata)
+    async with db.transaction() as session:
+        session.add(ObjectModel(bucket="photos", key="cat.jpg", size=2048))
+    async with db.transaction() as session:
+        rows = (await session.scalars(select(ObjectModel))).all()
+        print([(row.bucket, row.key, row.size) for row in rows])
+    await db.disconnect()
+
+
+asyncio.run(main())
+```
+
+Saída: `[('photos', 'cat.jpg', 2048)]`. `drop_tables(Base.metadata)` faz o
+caminho inverso. Os dois continuam sendo ferramenta de teste e dev local.
 
 ### Fora de um request
 
@@ -553,7 +653,10 @@ Pelo ambiente, via `DatabaseSettings`: `DATABASE_SQLITE_WAL` e
     linha, faça o trabalho **sem sessão aberta**, e só então persista.
 
 **Recap:** um `AsyncDatabaseManager` por app, em `resources.py`;
-`session_dependency` injeta a sessão por request; `connect`/`disconnect`
+`session_dependency` injeta a sessão por request (`session_dependency_for`
+quando o manager nasce sob demanda), e `get_session_context()`/`transaction()`,
+que commitam, ficam fora do request; `create_tables(metadata)` aceita a sua
+`DeclarativeBase`; `connect`/`disconnect`
 no lifespan; `health_check` + `db_url_safe` no `/health`; em SQLite, WAL
 e `busy_timeout` já vêm ligados para web e worker conviverem.
 

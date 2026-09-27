@@ -45,6 +45,9 @@ from tempest_fastapi_sdk.db.connection import (
     is_memory_sqlite_url as is_memory_sqlite_url,
 )
 from tempest_fastapi_sdk.db.connection import (
+    session_dependency_for as session_dependency_for,
+)
+from tempest_fastapi_sdk.db.connection import (
     shared_memory_url as shared_memory_url,
 )
 from tempest_fastapi_sdk.db.datetime_type import UtcDateTime as UtcDateTime
@@ -286,6 +289,7 @@ __all__: list[str] = [
     "render_enum_types",
     "reorder_base_columns_first",
     "savepoint",
+    "session_dependency_for",
     "shared_memory_url",
     "snapshot_model",
     "supports_full_text",

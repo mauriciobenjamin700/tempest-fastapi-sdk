@@ -685,6 +685,7 @@ from tempest_fastapi_sdk.checks import (
     run_system_checks as run_system_checks,
 )
 from tempest_fastapi_sdk.controllers import BaseController as BaseController
+from tempest_fastapi_sdk.controllers import Controller as Controller
 from tempest_fastapi_sdk.core import (
     DEFAULT_LOG_BACKUP_COUNT as DEFAULT_LOG_BACKUP_COUNT,
 )
@@ -990,6 +991,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     savepoint as savepoint,
+)
+from tempest_fastapi_sdk.db import (
+    session_dependency_for as session_dependency_for,
 )
 from tempest_fastapi_sdk.db import (
     shared_memory_url as shared_memory_url,
@@ -1986,6 +1990,7 @@ __all__: list[str] = [
     "CompactPaginationSchema",
     "CompositeFeatureFlagBackend",
     "ConflictException",
+    "Controller",
     "CursorPaginationFilterSchema",
     "CursorPaginationSchema",
     "DatabaseBackup",
@@ -2456,6 +2461,7 @@ __all__: list[str] = [
     "run_server",
     "run_system_checks",
     "savepoint",
+    "session_dependency_for",
     "set_cookie",
     "set_request_id",
     "setup_tracing",
