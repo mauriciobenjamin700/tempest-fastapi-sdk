@@ -5,6 +5,36 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Storage: `download_response` com `Range` e revalidação (#361)
+
+O `AsyncMinIOClient.download_response()` respondia sempre `200` com o objeto
+inteiro: `<video>`/`<audio>` não avançavam, download interrompido recomeçava
+do zero e imagem era baixada de novo a cada visita.
+
+- **`download_response(key, *, request=None, cache_control=None, ...)`.** Com
+  o `request`: `Range: bytes=a-b`, `bytes=a-` e `bytes=-n` → `206` com
+  `Content-Range`, lendo só o trecho no bucket; range que começa no fim do
+  objeto ou depois → `416` com `Content-Range: bytes */<tamanho>`;
+  `If-None-Match` batendo com o ETag, ou `If-Modified-Since` não mais antigo
+  que o objeto → `304` sem corpo e sem ler o objeto; vários trechos, `Range`
+  inválido ou `If-Range` que não bate mais → `200` inteiro. Toda resposta leva
+  `Accept-Ranges: bytes`, `ETag` entre aspas e `Last-Modified`. Sem `request`
+  o status continua sempre `200` — medido contra MinIO em container
+  (`tests/storage/test_download_live.py`) e num Chromium, onde um MP4 de 60 s
+  pulou para os 50 s com `206`.
+- **`stream_object(key, *, offset=0, length=None)`** repassa o trecho ao
+  `Minio.get_object`. A leitura inteira continua chamando
+  `get_object(bucket, key)` sem argumento novo, então dublê de teste da
+  chamada antiga segue funcionando.
+- **`DownloadUtils.download` / `FileStoreUtils.download`** ganham `request=`
+  e `cache_control=`, repassados no modo MinIO (o modo local já respondia
+  `Range` pelo `FileResponse`).
+- O `ResponseCacheMiddleware` passa a usar o mesmo comparador de
+  `If-None-Match` (módulo privado `utils._http_cache`), sem mudança de
+  comportamento.
+
 ## [0.301.0] — 2026-09-27
 
 As pontes que o painel administrativo do `tempest-bucket` escrevia à mão

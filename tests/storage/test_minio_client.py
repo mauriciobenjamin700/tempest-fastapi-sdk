@@ -67,6 +67,7 @@ class _FakeMinio:
 
     def __init__(self, *_: Any, **__: Any) -> None:
         self.buckets: dict[str, dict[str, _FakeObject]] = {}
+        self.get_calls: list[tuple[str, int, int]] = []
 
     def bucket_exists(self, bucket: str) -> bool:
         return bucket in self.buckets
@@ -124,8 +125,13 @@ class _FakeMinio:
         )
         return type("R", (), {"etag": f'"etag-{key}"'})()
 
-    def get_object(self, bucket: str, key: str) -> _FakeResponse:
-        return _FakeResponse(self.buckets[bucket][key]._data)
+    def get_object(
+        self, bucket: str, key: str, offset: int = 0, length: int = 0
+    ) -> _FakeResponse:
+        self.get_calls.append((key, offset, length))
+        data = self.buckets[bucket][key]._data
+        end = offset + length if length else len(data)
+        return _FakeResponse(data[offset:end])
 
     def fget_object(self, bucket: str, key: str, file_path: str) -> None:
         Path(file_path).write_bytes(self.buckets[bucket][key]._data)
@@ -549,3 +555,215 @@ class TestSplitEndpoint:
             public_secure=False,
         )
         assert client.public_secure is False
+
+
+def _request(**headers: str) -> Any:
+    """Build a Starlette ``Request`` carrying ``headers`` (underscores → dashes)."""
+    from starlette.requests import Request
+
+    raw = [
+        (name.replace("_", "-").lower().encode(), value.encode())
+        for name, value in headers.items()
+    ]
+    return Request({"type": "http", "method": "GET", "headers": raw})
+
+
+async def _body(response: Any) -> bytes:
+    """Drain a ``StreamingResponse`` body."""
+    chunks: list[bytes] = []
+    async for chunk in response.body_iterator:
+        chunks.append(chunk if isinstance(chunk, bytes) else chunk.encode())
+    return b"".join(chunks)
+
+
+PAYLOAD: bytes = bytes(range(100))
+
+
+@pytest.fixture
+async def stored(client: AsyncMinIOClient, fake_minio: _FakeMinio) -> _FakeMinio:
+    """Store a 100-byte ``video.mp4`` and reset the recorded reads."""
+    await client.ensure_bucket()
+    await client.put_object("video.mp4", PAYLOAD, content_type="video/mp4")
+    fake_minio.get_calls.clear()
+    return fake_minio
+
+
+class TestStreamObjectRange:
+    async def test_offset_and_length_reach_get_object(
+        self, client: AsyncMinIOClient, stored: _FakeMinio
+    ) -> None:
+        stream = await client.stream_object("video.mp4", offset=10, length=5)
+        assert b"".join([chunk async for chunk in stream]) == PAYLOAD[10:15]
+        assert stored.get_calls == [("video.mp4", 10, 5)]
+
+    async def test_default_reads_whole_object(
+        self, client: AsyncMinIOClient, stored: _FakeMinio
+    ) -> None:
+        stream = await client.stream_object("video.mp4")
+        assert b"".join([chunk async for chunk in stream]) == PAYLOAD
+        assert stored.get_calls == [("video.mp4", 0, 0)]
+
+    async def test_rejects_negative_offset(self, client: AsyncMinIOClient) -> None:
+        with pytest.raises(ValueError, match="offset"):
+            await client.stream_object("video.mp4", offset=-1)
+
+    async def test_rejects_non_positive_length(self, client: AsyncMinIOClient) -> None:
+        with pytest.raises(ValueError, match="length"):
+            await client.stream_object("video.mp4", length=0)
+
+
+class TestDownloadResponseValidators:
+    async def test_without_request_is_full_200_with_validators(
+        self, client: AsyncMinIOClient, stored: _FakeMinio
+    ) -> None:
+        response = await client.download_response("video.mp4")
+        assert response.status_code == 200
+        assert await _body(response) == PAYLOAD
+        assert response.headers["accept-ranges"] == "bytes"
+        assert response.headers["etag"] == '"etag-video.mp4"'
+        assert response.headers["last-modified"] == "Thu, 01 Jan 2026 00:00:00 GMT"
+        assert response.headers["content-length"] == "100"
+        assert "cache-control" not in response.headers
+        assert stored.get_calls == [("video.mp4", 0, 0)]
+
+    async def test_cache_control(
+        self, client: AsyncMinIOClient, stored: _FakeMinio
+    ) -> None:
+        response = await client.download_response(
+            "video.mp4", cache_control="private, max-age=60"
+        )
+        assert response.headers["cache-control"] == "private, max-age=60"
+
+    @pytest.mark.parametrize(
+        ("header", "start", "end"),
+        [
+            ("bytes=10-19", 10, 19),
+            ("bytes=90-", 90, 99),
+            ("bytes=-5", 95, 99),
+            ("bytes=95-500", 95, 99),
+            ("bytes=-500", 0, 99),
+        ],
+    )
+    async def test_single_range_is_206_reading_only_the_slice(
+        self,
+        client: AsyncMinIOClient,
+        stored: _FakeMinio,
+        header: str,
+        start: int,
+        end: int,
+    ) -> None:
+        response = await client.download_response(
+            "video.mp4", request=_request(range=header)
+        )
+        assert response.status_code == 206
+        assert await _body(response) == PAYLOAD[start : end + 1]
+        assert response.headers["content-range"] == f"bytes {start}-{end}/100"
+        assert response.headers["content-length"] == str(end - start + 1)
+        assert response.media_type == "video/mp4"
+        assert stored.get_calls == [("video.mp4", start, end - start + 1)]
+
+    @pytest.mark.parametrize("header", ["bytes=100-", "bytes=500-600", "bytes=-0"])
+    async def test_unsatisfiable_range_is_416(
+        self, client: AsyncMinIOClient, stored: _FakeMinio, header: str
+    ) -> None:
+        response = await client.download_response(
+            "video.mp4", request=_request(range=header)
+        )
+        assert response.status_code == 416
+        assert response.headers["content-range"] == "bytes */100"
+        assert await _body(response) == b""
+        assert stored.get_calls == []
+
+    @pytest.mark.parametrize(
+        "header",
+        ["bytes=0-1,5-6", "bytes=abc", "items=0-5", "bytes=9-3", "bytes=-", "bytes=²-"],
+    )
+    async def test_ignored_range_serves_whole_object(
+        self, client: AsyncMinIOClient, stored: _FakeMinio, header: str
+    ) -> None:
+        response = await client.download_response(
+            "video.mp4", request=_request(range=header)
+        )
+        assert response.status_code == 200
+        assert await _body(response) == PAYLOAD
+        assert "content-range" not in response.headers
+
+    async def test_if_none_match_is_304_without_reading(
+        self, client: AsyncMinIOClient, stored: _FakeMinio
+    ) -> None:
+        response = await client.download_response(
+            "video.mp4",
+            request=_request(if_none_match='"etag-video.mp4"', range="bytes=0-1"),
+        )
+        assert response.status_code == 304
+        assert await _body(response) == b""
+        assert response.headers["etag"] == '"etag-video.mp4"'
+        assert stored.get_calls == []
+
+    async def test_weak_and_listed_if_none_match(
+        self, client: AsyncMinIOClient, stored: _FakeMinio
+    ) -> None:
+        response = await client.download_response(
+            "video.mp4", request=_request(if_none_match='"x", W/"etag-video.mp4"')
+        )
+        assert response.status_code == 304
+
+    async def test_stale_if_none_match_wins_over_fresh_date(
+        self, client: AsyncMinIOClient, stored: _FakeMinio
+    ) -> None:
+        response = await client.download_response(
+            "video.mp4",
+            request=_request(
+                if_none_match='"old"',
+                if_modified_since="Fri, 01 Jan 2100 00:00:00 GMT",
+            ),
+        )
+        assert response.status_code == 200
+
+    @pytest.mark.parametrize(
+        ("since", "status"),
+        [
+            ("Thu, 01 Jan 2026 00:00:00 GMT", 304),
+            ("Fri, 02 Jan 2026 00:00:00 GMT", 304),
+            ("Wed, 31 Dec 2025 23:59:59 GMT", 200),
+            ("not a date", 200),
+        ],
+    )
+    async def test_if_modified_since(
+        self, client: AsyncMinIOClient, stored: _FakeMinio, since: str, status: int
+    ) -> None:
+        response = await client.download_response(
+            "video.mp4", request=_request(if_modified_since=since)
+        )
+        assert response.status_code == status
+
+    @pytest.mark.parametrize(
+        ("if_range", "status"),
+        [
+            ('"etag-video.mp4"', 206),
+            ('"stale"', 200),
+            ('W/"etag-video.mp4"', 200),
+            ("Thu, 01 Jan 2026 00:00:00 GMT", 206),
+            ("Fri, 02 Jan 2026 00:00:00 GMT", 200),
+        ],
+    )
+    async def test_if_range_guards_resume(
+        self, client: AsyncMinIOClient, stored: _FakeMinio, if_range: str, status: int
+    ) -> None:
+        response = await client.download_response(
+            "video.mp4", request=_request(range="bytes=10-19", if_range=if_range)
+        )
+        assert response.status_code == status
+
+    async def test_download_utils_forwards_request(
+        self, client: AsyncMinIOClient, stored: _FakeMinio
+    ) -> None:
+        from tempest_fastapi_sdk import DownloadUtils
+
+        response = await DownloadUtils(client).download(
+            "video.mp4",
+            request=_request(range="bytes=0-3"),
+            cache_control="no-cache",
+        )
+        assert response.status_code == 206
+        assert response.headers["cache-control"] == "no-cache"

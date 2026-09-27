@@ -47,6 +47,7 @@ from starlette.types import ASGIApp
 from tempest_fastapi_sdk.api.middlewares._exempt import PathExemption
 from tempest_fastapi_sdk.api.middlewares._streaming import is_unbounded_stream
 from tempest_fastapi_sdk.api.middlewares.idempotency import CachedResponse
+from tempest_fastapi_sdk.utils._http_cache import etag_matches
 
 _ETAG_HEADER = "etag"
 
@@ -64,24 +65,6 @@ def _compute_etag(body: bytes) -> str:
         str: The quoted ETag value (e.g. ``'"a1b2..."'``).
     """
     return f'"{hashlib.sha256(body).hexdigest()}"'
-
-
-def _etag_matches(if_none_match: str, etag: str) -> bool:
-    """Return whether ``If-None-Match`` covers ``etag``.
-
-    Args:
-        if_none_match (str): The raw ``If-None-Match`` header value.
-        etag (str): The current strong ETag (quoted).
-
-    Returns:
-        bool: ``True`` for ``*`` or when ``etag`` is one of the listed tags
-        (weak-prefix ``W/`` tolerated on the client side).
-    """
-    candidate = if_none_match.strip()
-    if candidate == "*":
-        return True
-    tags = {tag.strip().removeprefix("W/") for tag in candidate.split(",")}
-    return etag in tags
 
 
 @runtime_checkable
@@ -454,7 +437,7 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
                 etag = dict(cached.headers).get(
                     _ETAG_HEADER, _compute_etag(cached.body)
                 )
-                if if_none_match and _etag_matches(if_none_match, etag):
+                if if_none_match and etag_matches(if_none_match, etag):
                     return self._not_modified(etag)
                 headers = self._decorate(dict(cached.headers), etag)
                 headers["x-cache"] = "HIT"
@@ -489,7 +472,7 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
             )
             await store.set(key, stored, ttl_seconds=self._ttl)
 
-        if if_none_match and _etag_matches(if_none_match, etag):
+        if if_none_match and etag_matches(if_none_match, etag):
             return self._not_modified(etag)
 
         if store is not None:

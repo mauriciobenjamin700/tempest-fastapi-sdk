@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, BinaryIO, TypeVar
 if TYPE_CHECKING:
     from minio import Minio
     from minio.datatypes import Object as _MinioObject
+    from starlette.requests import Request
     from starlette.responses import StreamingResponse
 
 _T = TypeVar("_T")
@@ -528,29 +529,56 @@ class AsyncMinIOClient:
         *,
         bucket: str | None = None,
         chunk_size: int = 64 * 1024,
+        offset: int = 0,
+        length: int | None = None,
     ) -> AsyncIterator[bytes]:
-        """Stream an object in fixed-size chunks.
+        """Stream an object (or one byte range of it) in fixed-size chunks.
 
         The whole network read still runs in a worker thread —
         each ``chunk_size`` read is one ``asyncio.to_thread``
         round-trip — but the event loop yields between chunks so
         other requests progress.
 
+        ``offset`` and ``length`` are forwarded to ``Minio.get_object``,
+        which turns them into a ``Range`` header on the request to the
+        store, so only that slice crosses the network — what a ``206``
+        response needs. A whole-object read (the defaults) still calls
+        ``get_object(bucket, key)`` without them, so a test double written
+        against the older two-argument call keeps working.
+
         Args:
             key (str): Object key.
             bucket (str | None): Override source bucket.
             chunk_size (int): Bytes per chunk. Default 64 KiB.
+            offset (int): First byte to read. Default ``0``.
+            length (int | None): How many bytes to read from ``offset``.
+                ``None`` (default) reads to the end of the object.
 
         Returns:
             AsyncIterator[bytes]: Async generator yielding chunks
             until the stream ends.
 
         Raises:
+            ValueError: When ``offset`` is negative or ``length`` is not
+                positive.
             S3Error: When the object is missing or the request
                 fails.
         """
+        if offset < 0:
+            raise ValueError("offset must be zero or positive")
+        if length is not None and length < 1:
+            raise ValueError("length must be at least 1; pass None to read to the end")
         target = self._bucket(bucket)
-        response = await asyncio.to_thread(self.client.get_object, target, key)
+        if offset == 0 and length is None:
+            response = await asyncio.to_thread(self.client.get_object, target, key)
+        else:
+            response = await asyncio.to_thread(
+                self.client.get_object,
+                target,
+                key,
+                offset=offset,
+                length=length or 0,
+            )
 
         async def _iter() -> AsyncIterator[bytes]:
             try:
@@ -569,24 +597,52 @@ class AsyncMinIOClient:
         self,
         key: str,
         *,
+        request: Request | None = None,
         bucket: str | None = None,
         filename: str | None = None,
         media_type: str | None = None,
         as_attachment: bool = True,
         chunk_size: int = 64 * 1024,
+        cache_control: str | None = None,
         headers: dict[str, str] | None = None,
     ) -> StreamingResponse:
         """Stream an object straight to the client as a download response.
 
-        Reads the object's metadata (for the content type + length) and
-        streams its bytes **through the app** — the file never lands on the
-        app's disk nor loads fully into memory. Reach for this when the
-        download must be auth-gated or the MinIO endpoint is not publicly
-        reachable; prefer :meth:`presigned_get_url` to offload the transfer
-        to MinIO directly when the client can hit it.
+        Reads the object's metadata (for the content type, length and
+        validators) and streams its bytes **through the app** — the file
+        never lands on the app's disk nor loads fully into memory. Reach for
+        this when the download must be auth-gated or the MinIO endpoint is
+        not publicly reachable; prefer :meth:`presigned_get_url` to offload
+        the transfer to MinIO directly when the client can hit it.
+
+        Every response carries ``Accept-Ranges: bytes`` plus the object's
+        ``ETag`` (quoted) and ``Last-Modified``. Pass ``request`` to let the
+        client use them:
+
+        * ``If-None-Match`` matching the ETag — or, when no
+          ``If-None-Match`` is sent, ``If-Modified-Since`` not older than
+          the object — answers ``304`` with no body, without reading the
+          object.
+        * ``Range: bytes=a-b``, ``bytes=a-`` or ``bytes=-n`` answers ``206``
+          with ``Content-Range``, reading **only** that slice from the store
+          (``offset``/``length`` on ``get_object``). This is what lets a
+          ``<video>`` seek and a download manager resume.
+        * A range starting at or past the end answers ``416`` with
+          ``Content-Range: bytes */<size>``.
+        * Several ranges (``bytes=0-1,5-6``), an unparseable ``Range``, or an
+          ``If-Range`` that no longer matches the object serve the whole
+          object with ``200`` — RFC 9110 allows ignoring ``Range``, and it
+          avoids a ``multipart/byteranges`` body.
+
+        Without ``request`` no request header is read and the response is
+        always ``200`` with the whole object.
 
         Args:
             key (str): Object key.
+            request (Request | None): The incoming request, whose ``Range``,
+                ``If-Range``, ``If-None-Match`` and ``If-Modified-Since``
+                headers are honoured. ``None`` always serves the whole
+                object.
             bucket (str | None): Override source bucket.
             filename (str | None): Name presented to the client. Defaults
                 to the object key's basename.
@@ -596,16 +652,28 @@ class AsyncMinIOClient:
             as_attachment (bool): ``True`` forces a download; ``False``
                 serves inline (e.g. view a PDF in-browser). Default ``True``.
             chunk_size (int): Bytes per streamed chunk. Default 64 KiB.
+            cache_control (str | None): ``Cache-Control`` value, for example
+                ``"private, max-age=3600"``. ``None`` sends none.
             headers (dict[str, str] | None): Extra response headers.
 
         Returns:
-            StreamingResponse: Response ready to return from a router.
+            StreamingResponse: Response ready to return from a router —
+            ``200``, ``206``, ``304`` or ``416``; the last two carry an empty
+            body.
 
         Raises:
             S3Error: When the object is missing or the request fails.
         """
         from starlette.responses import StreamingResponse
 
+        from tempest_fastapi_sdk.utils._http_cache import (
+            ByteRange,
+            RangeNotSatisfiableError,
+            format_http_date,
+            if_range_allows,
+            is_not_modified,
+            resolve_byte_range,
+        )
         from tempest_fastapi_sdk.utils.download import build_content_disposition
 
         stat = await self.stat_object(key, bucket=bucket)
@@ -616,10 +684,61 @@ class AsyncMinIOClient:
             or mimetypes.guess_type(download_name)[0]
             or "application/octet-stream"
         )
+        etag = f'"{stat.etag}"' if stat.etag else None
         response_headers: dict[str, str] = dict(headers or {})
+        response_headers["accept-ranges"] = "bytes"
+        if etag is not None:
+            response_headers["etag"] = etag
+        if stat.last_modified is not None:
+            response_headers["last-modified"] = format_http_date(stat.last_modified)
+        if cache_control is not None:
+            response_headers["cache-control"] = cache_control
+
+        byte_range: ByteRange | None = None
+        if request is not None:
+            if is_not_modified(
+                if_none_match=request.headers.get("if-none-match"),
+                if_modified_since=request.headers.get("if-modified-since"),
+                etag=etag,
+                last_modified=stat.last_modified,
+            ):
+                return StreamingResponse(
+                    content=iter(()), status_code=304, headers=response_headers
+                )
+            if if_range_allows(
+                request.headers.get("if-range"),
+                etag=etag,
+                last_modified=stat.last_modified,
+            ):
+                try:
+                    byte_range = resolve_byte_range(
+                        request.headers.get("range"), stat.size
+                    )
+                except RangeNotSatisfiableError as exc:
+                    response_headers["content-range"] = exc.content_range()
+                    return StreamingResponse(
+                        content=iter(()), status_code=416, headers=response_headers
+                    )
+
         response_headers["content-disposition"] = build_content_disposition(
             download_name, as_attachment=as_attachment
         )
+        if byte_range is not None:
+            response_headers["content-range"] = byte_range.content_range()
+            response_headers["content-length"] = str(byte_range.length)
+            partial = await self.stream_object(
+                key,
+                bucket=bucket,
+                chunk_size=chunk_size,
+                offset=byte_range.start,
+                length=byte_range.length,
+            )
+            return StreamingResponse(
+                content=partial,
+                status_code=206,
+                media_type=resolved_media_type,
+                headers=response_headers,
+            )
         if stat.size:
             response_headers["content-length"] = str(stat.size)
         body = await self.stream_object(key, bucket=bucket, chunk_size=chunk_size)
