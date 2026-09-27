@@ -334,10 +334,17 @@ class DataTable(Component):
     def render(self) -> Widget:
         """Compose the table.
 
+        The ``<table>`` sits inside a ``<div>`` carrying
+        :attr:`ComponentClasses.table_scroll`, which scrolls it
+        horizontally: a table wider than a narrow viewport scrolls in
+        place instead of widening the whole page. The wrapper is
+        focusable (``tabindex="0"``) so keyboard users can scroll it, and
+        becomes a labelled ``region`` when :attr:`caption` is set.
+
         Returns:
-            Widget: A ``<table>`` with a header row and one body row per
-            record, or a single spanning row carrying
-            :attr:`empty_text` when there is nothing to show.
+            Widget: A scroll wrapper around a ``<table>`` with a header
+            row and one body row per record, or a single spanning row
+            carrying :attr:`empty_text` when there is nothing to show.
         """
         specs = self.column_specs()
         parts: list[Widget] = []
@@ -393,10 +400,23 @@ class DataTable(Component):
             ]
         parts.append(Stack(tag="tbody", children=body))
 
+        scroll_attrs: dict[str, str] = {
+            "class": self.classes.table_scroll,
+            "tabindex": "0",
+        }
+        if self.caption:
+            scroll_attrs["role"] = "region"
+            scroll_attrs["aria-label"] = self.caption
         return Stack(
-            tag="table",
-            attrs={"class": self.classes.table},
-            children=parts,
+            tag="div",
+            attrs=scroll_attrs,
+            children=[
+                Stack(
+                    tag="table",
+                    attrs={"class": self.classes.table},
+                    children=parts,
+                ),
+            ],
         )
 
 

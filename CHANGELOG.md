@@ -257,6 +257,17 @@ botão e form por linha viravam tabela escrita com `Stack` (#346).
   as colunas como `TableColumn`; `resolved_columns()` continua devolvendo
   os nomes.
 
+### Fixed
+
+- **`DataTable` largo não alarga mais a página no celular.** O `<table>` sai
+  dentro de `<div class="tui-table-scroll" tabindex="0">` (nova
+  `ComponentClasses.table_scroll`), com `overflow-x: auto` e `min-width: 0`;
+  com `caption=` o wrapper vira `role="region"` rotulado pela legenda. Antes
+  não havia wrapper nenhum: a 390px, uma tabela de 849px levava o documento a
+  890px de `scrollWidth`; agora o documento fica em 390px e a tabela rola no
+  contêiner (medido no Chromium). Quem mirava `.tui-card__body > table` na
+  própria folha precisa incluir o wrapper no seletor.
+
 ### Changed
 
 - **Scaffold do `tempest generate`/`tempest new --extras "ssr"`**:

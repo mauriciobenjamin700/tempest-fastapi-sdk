@@ -269,6 +269,14 @@ A linha sai assim (medido com o renderizador HTML do `tempestweb`):
 <tr><td><a href="/files/7">a.txt</a><form method="post" action="/files/7/delete"><button type="submit">Remover</button></form></td><td class="tui-table__cell--right">120</td><td class="col-optional">ana</td></tr>
 ```
 
+!!! note "Tabela larga no celular"
+    O `<table>` sai dentro de um `<div class="tui-table-scroll" tabindex="0">`,
+    com `overflow-x: auto` e `min-width: 0`. Numa tela de 390px, uma tabela de
+    849px rola dentro do próprio contêiner, e a página continua com 390px de
+    largura (medido no Chromium). O wrapper recebe foco pelo teclado para quem
+    rola sem mouse e, com `caption=`, vira uma `region` rotulada pela legenda.
+    A classe é `ComponentClasses.table_scroll`.
+
 Peça por peça:
 
 - **`render=`** recebe a linha (o schema ou o dict de `rows`) e devolve um

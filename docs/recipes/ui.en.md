@@ -268,6 +268,14 @@ The row comes out like this (measured with `tempestweb`'s HTML renderer):
 <tr><td><a href="/files/7">a.txt</a><form method="post" action="/files/7/delete"><button type="submit">Remove</button></form></td><td class="tui-table__cell--right">120</td><td class="col-optional">ana</td></tr>
 ```
 
+!!! note "Wide table on a phone"
+    The `<table>` comes out inside a `<div class="tui-table-scroll" tabindex="0">`,
+    with `overflow-x: auto` and `min-width: 0`. On a 390px screen, an 849px
+    table scrolls inside its own container and the page stays 390px wide
+    (measured in Chromium). The wrapper takes keyboard focus for readers who
+    scroll without a mouse and, with `caption=`, becomes a `region` labelled by
+    the caption. The class is `ComponentClasses.table_scroll`.
+
 Piece by piece:
 
 - **`render=`** takes the row (the schema or the dict from `rows`) and
