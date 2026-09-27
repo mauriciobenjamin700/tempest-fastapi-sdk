@@ -5,6 +5,41 @@ existe: o defeito que shippou, o comando que mediu, o número que apareceu.
 Consulte quando a regra parecer exagerada — ela quase sempre é a cicatriz
 de algo que passou por revisão manual e escapou.
 
+## O timeout disparou, foi engolido, e nada rearmou (#337)
+
+Com load ~20, o gate do #336 ficou mais de 40 min parado no teardown do
+`scaffolded` (`tests/cli/test_scaffold_runtime.py`): o handler do
+`pytest-timeout` tinha disparado **lá dentro** e o teste não acabou. A
+primeira hipótese da issue era um lock de import disputado; medido, não é
+o que impede o abort — um lock comum e um lock de import presos por outra
+thread foram abortados pelo `signal` (uma execução de cada, os dois em
+~3 s com timeout de 3 s).
+
+O que o `signal` não aborta é o hang em que o **único** `Failed` que ele
+levanta cai num lugar que o come. Ele arma um `SIGALRM` de disparo único;
+se o `BaseException` nasce dentro de um finalizer (`del sys.modules[x]`
+derrubando o último ref de um recurso), vira `Exception ignored in:
+... Failed: Timeout` e o teardown segue para o próximo finalizer; dentro de
+um callback do loop, o `Handle._run` loga e segue; dentro de um `with`, o
+`__exit__` espera o mesmo recurso preso. Nos três cenários artificiais o
+`signal` ficou pendurado 10/10 e o `thread` encerrou 10/10.
+
+A fixture tinha um recurso exatamente desse tipo: conectava o
+`resources.db` do projeto gerado e nunca desconectava, e o worker do
+`aiosqlite` sobrevivia ao módulo e à sessão inteira (o levantamento de
+threads na suíte completa achou worker do `aiosqlite` vivo depois do item
+em mais treze arquivos de teste e três workers ainda vivos no fim da
+sessão, todos daemon). O travamento original não se
+repetiu — 0 em 40 execuções de `tests/agents` + `tests/cli` sob load
+~11–22 antes da correção, 0 na suíte inteira —, então a correção não
+depende de ter achado qual finalizer travou: o teardown agora fecha o
+banco e falha se sobrar thread, e o timeout passou a um método que nada
+dentro do teste consegue engolir (`os._exit`).
+
+**A lição:** um timeout cooperativo é tão forte quanto o lugar mais fraco
+por onde a exceção dele passa. Mecanismo de abort em gate precisa ser
+preemptivo; o graceful só vale quando o hang coopera, e hang não coopera.
+
 ## O cancel que a dependência engoliu segurou o CI por 2h20 (v0.299.0)
 
 O job de Python 3.11 do PR #301 ficou 2h20 em "Run tests" até
