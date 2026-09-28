@@ -167,6 +167,31 @@ frontend:
   com `FakeEmailUtils`. A tabela de settings diz para onde o
   `AUTH_ACTIVATION_URL_TEMPLATE` aponta em cada modo.
 
+### Added
+
+- **Extra `[tests]`: `pytest`, `pytest-asyncio` e `pytest-xdist`** (#328).
+  O que a suíte de um serviço e o `tempest test --fast` precisam, num
+  `uv add --dev "tempest-fastapi-sdk[tests]"`. Pisos iguais aos do grupo de
+  dev deste repo (`pytest>=9.1.1`, `pytest-asyncio>=1.4.0`,
+  `pytest-xdist>=3.8.0`) e **nenhum teto próprio**. Os tetos herdados, lidos
+  do `requires-dist` de cada um: o `pytest-asyncio` 1.4.0 exige
+  **`pytest<10,>=8.4`**, e o `pytest` 9.1.1 exige `pluggy<2`; o
+  `pytest-xdist` 3.8.0 (`execnet>=2.1`, `pytest>=7.0.0`) não traz teto. O
+  `pytest<10` não é custo novo — todo serviço daqui já depende do
+  `pytest-asyncio` —, só passou a estar escrito. Fica **fora do `[all]`**:
+  é ferramenta de teste, não helper de aplicação.
+
+- **Documentação do `tempest test --fast` / `tempest check --fast`.** A
+  receita de testes ganhou a seção *A suíte em paralelo*: quando usar, o que
+  a mensagem de pytest-xdist ausente diz, e o caminho de conferência de teste
+  que só falha em paralelo (rodá-lo sozinho, em série, antes de tratar como
+  regressão). A flag é do `tempest-cli` 0.4.0, e o piso do SDK
+  sobe para `tempest-cli>=0.4.0`. Medido na suíte deste repo (10 218
+  testes, máquina de 6 núcleos físicos / 12 threads, uma execução de cada,
+  com o `tempest-cli` da branch instalado em modo editável): 2127 s em série,
+  411 s com `--fast` (`auto` → 6 workers, porque o `psutil` está no
+  ambiente).
+
 ## [0.301.0] — 2026-09-27
 
 As pontes que o painel administrativo do `tempest-bucket` escrevia à mão
