@@ -21,6 +21,8 @@ import os
 import re
 import sys
 import textwrap
+import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -33,6 +35,13 @@ from tempest_fastapi_sdk.cli.main import app as cli_app
 
 runner = CliRunner()
 
+TIMEOUT_TIMER_PREFIX = "pytest_timeout "
+"""Name prefix of the per-item timer thread ``timeout_method = "thread"`` starts.
+
+Ported from pytest-timeout's ``pytest_timeout_set_timer``, which names the
+``threading.Timer`` ``"%s %s" % (__name__, item.nodeid)``.
+"""
+
 
 def _forget_src_modules() -> None:
     """Drop any cached ``src`` package from a previously scaffolded project.
@@ -41,11 +50,75 @@ def _forget_src_modules() -> None:
     package name. Whichever ran first would otherwise stay in
     ``sys.modules`` and shadow this one, so submodules of the project
     under test would not be found.
+
+    The names are read from ``list(sys.modules)``, a snapshot taken in one
+    C-level call, rather than by iterating the live dict: any thread still
+    running from an earlier test may import while this runs, and iterating
+    ``sys.modules`` itself can then raise ``RuntimeError: dictionary changed
+    size during iteration`` — seen once in 2000 passes with another thread
+    importing under ``sys.setswitchinterval(1e-6)``, never over the snapshot
+    in the same 2000. It is rare enough that this proves possibility, not a
+    rate.
     """
     for name in [
-        module for module in sys.modules if module == "src" or module.startswith("src.")
+        module
+        for module in list(sys.modules)
+        if module == "src" or module.startswith("src.")
     ]:
         del sys.modules[name]
+
+
+def _disconnect_scaffold_database() -> None:
+    """Dispose the engine the scaffolded ``resources.db`` opened, if any.
+
+    The recipe tests call ``resources.db.connect()`` and the requests they
+    make leave pooled ``aiosqlite`` connections behind. Each one owns a
+    worker thread that stays blocked on its queue until the connection is
+    closed, so without this every scaffold run leaves a thread alive for
+    the rest of the session, and whatever finalizes that connection later
+    (a ``gc`` pass inside ``_forget_src_modules``, say) runs in the middle
+    of an unrelated teardown.
+    """
+    resources = sys.modules.get("src.api.dependencies.resources")
+    database = getattr(resources, "db", None)
+    if database is not None:
+        asyncio.run(database.disconnect())
+
+
+def _wait_for_threads_to_end(
+    before: set[threading.Thread],
+    *,
+    deadline_seconds: float = 10.0,
+) -> list[threading.Thread]:
+    """Poll until every thread started after ``before`` has finished.
+
+    Polling instead of a single check because ``AnyIO`` worker threads stop
+    from a callback on their portal's loop and may still be unwinding when
+    the teardown gets here; the deadline bounds a failure, not a success.
+    The ``pytest-timeout`` timer of the item running the teardown is not
+    the module's and is left out.
+
+    Args:
+        before (set[threading.Thread]): Threads alive when the scaffold
+            fixture started.
+        deadline_seconds (float): How long to wait before giving up.
+
+    Returns:
+        list[threading.Thread]: The threads still alive at the deadline;
+        empty when everything the module started has ended.
+    """
+    limit = time.monotonic() + deadline_seconds
+    while True:
+        alive = [
+            thread
+            for thread in threading.enumerate()
+            if thread not in before
+            and thread.is_alive()
+            and not thread.name.startswith(TIMEOUT_TIMER_PREFIX)
+        ]
+        if not alive or time.monotonic() > limit:
+            return alive
+        time.sleep(0.05)
 
 
 @pytest.fixture(scope="module")
@@ -59,6 +132,11 @@ def scaffolded(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
     temporary directory before the scaffold is imported, so the run
     neither reads nor writes an ``app.db`` in the working directory.
 
+    The teardown disposes the scaffold's database before forgetting its
+    modules, then fails if any thread the module started is still alive:
+    an ``aiosqlite`` worker left running here outlived the module and
+    kept its connection open for the rest of the session (#337).
+
     Args:
         tmp_path_factory (pytest.TempPathFactory): Pytest's temporary
             directory factory.
@@ -66,6 +144,7 @@ def scaffolded(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
     Yields:
         Path: The generated project root.
     """
+    threads_before = set(threading.enumerate())
     tmp_path = tmp_path_factory.mktemp("scaffold")
     previous_url = os.environ.get("DATABASE_URL")
     os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"
@@ -82,13 +161,18 @@ def scaffolded(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
     try:
         yield project
     finally:
-        sys.path.remove(str(project))
-        _forget_src_modules()
-        importlib.invalidate_caches()
-        if previous_url is None:
-            os.environ.pop("DATABASE_URL", None)
-        else:
-            os.environ["DATABASE_URL"] = previous_url
+        try:
+            _disconnect_scaffold_database()
+        finally:
+            sys.path.remove(str(project))
+            _forget_src_modules()
+            importlib.invalidate_caches()
+            if previous_url is None:
+                os.environ.pop("DATABASE_URL", None)
+            else:
+                os.environ["DATABASE_URL"] = previous_url
+    leaked = _wait_for_threads_to_end(threads_before)
+    assert not leaked, f"threads outlived the scaffold module: {leaked}"
 
 
 def test_generated_layer_serves_a_page_and_its_stylesheet(scaffolded: Path) -> None:
