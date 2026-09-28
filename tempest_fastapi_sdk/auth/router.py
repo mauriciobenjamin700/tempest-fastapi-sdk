@@ -40,10 +40,12 @@ token models and the email rendering pipeline.
 from __future__ import annotations
 
 import hmac
+import importlib
 from collections.abc import AsyncIterator, Callable, Collection, Mapping
 from typing import TYPE_CHECKING
+from urllib.parse import parse_qs
 
-from fastapi import APIRouter, Form, Request, Response, status
+from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import inspect as sa_inspect
@@ -182,6 +184,61 @@ async def _reload_if_expired(session: AsyncSession, user: BaseUserModel) -> None
     """
     if sa_inspect(user).expired:
         await session.refresh(user)
+
+
+async def _read_form_fields(request: Request) -> dict[str, str]:
+    """Read the fields of a submitted HTML form.
+
+    The bundled reset form is a plain ``<form method="post">``, which a
+    browser submits as ``application/x-www-form-urlencoded``. That encoding
+    is a query string in the body, so :func:`urllib.parse.parse_qs` reads it
+    and the page needs no ``python-multipart``: declaring the fields with
+    FastAPI's ``Form(...)`` made ``make_auth_router`` raise ``RuntimeError``
+    at construction whenever ``AUTH_BACKEND_LINKS=True`` and that package
+    was absent, which is the case for ``[auth,email]``. A
+    ``multipart/form-data`` body (a project template that sets ``enctype``)
+    still goes through Starlette's parser, which does need the package.
+
+    A repeated field keeps its last value, as Starlette's form parser does.
+
+    Args:
+        request (Request): The incoming form submission.
+
+    Returns:
+        dict[str, str]: Field name to submitted value. A field the body
+        does not carry is absent from the mapping.
+    """
+    content_type = request.headers.get("content-type", "")
+    if content_type.startswith("multipart/form-data"):
+        form = await request.form()
+        return {key: value for key, value in form.items() if isinstance(value, str)}
+    body = (await request.body()).decode("utf-8", errors="replace")
+    parsed = parse_qs(body, keep_blank_values=True)
+    return {key: values[-1] for key, values in parsed.items()}
+
+
+def _require_jinja2() -> None:
+    """Refuse to build the backend pages when Jinja2 is not installed.
+
+    The pages render **after** the work they report: ``GET
+    /auth/activate/{token}`` consumes the token and commits, then renders.
+    Without Jinja2 the render raised ``ImportError`` on the first click, so
+    the account was activated, the link was spent, and the user saw a 500.
+    Checking at construction turns that into a boot failure that names the
+    extra to install.
+
+    Raises:
+        RuntimeError: When ``AUTH_BACKEND_LINKS=True`` and ``jinja2`` cannot
+            be imported.
+    """
+    try:
+        importlib.import_module("jinja2")
+    except ImportError as exc:
+        raise RuntimeError(
+            "AUTH_BACKEND_LINKS=True renders HTML pages with Jinja2, which is "
+            "not installed. Install it with "
+            "`pip install tempest-fastapi-sdk[auth,email]`."
+        ) from exc
 
 
 def make_auth_router(
@@ -347,7 +404,9 @@ def make_auth_router(
             on without a ``webauthn`` service; or when
             ``AUTH_OAUTH_ENABLED`` is on and any of its three
             prerequisites — a client, an ``oauth_account_model``, a
-            ``name`` column — is missing. Every one of these fails at
+            ``name`` column — is missing; or when ``AUTH_BACKEND_LINKS``
+            is on and Jinja2 (the ``[email]`` extra) is not installed.
+            Every one of these fails at
             construction rather than on the first request that needs
             the piece.
     """
@@ -1186,6 +1245,7 @@ def make_auth_router(
     # ------------------------------------------------------------------
 
     if backend_links:
+        _require_jinja2()
 
         @router.get(
             "/activate/{token}",
@@ -1306,10 +1366,11 @@ def make_auth_router(
         async def password_reset_form_submit(
             request: Request,
             token: str,
-            new_password: str = Form(...),
-            confirm_password: str = Form(...),
             session: AsyncSession = session_dep,
         ) -> HTMLResponse:
+            fields = await _read_form_fields(request)
+            new_password = fields.get("new_password", "")
+            confirm_password = fields.get("confirm_password", "")
             locale = _page_locale(request)
             if new_password != confirm_password:
                 try:
