@@ -961,15 +961,37 @@ shortcut for the single-column case.
 
     | | Postgres | SQLite |
     | --- | --- | --- |
-    | unique | names the constraint; columns arrive in `DETAIL:` | names `table.column`; no constraint |
+    | unique | names constraint, table and columns | names `table.column`; no constraint |
     | not null | names column and table | names `table.column` |
     | check | names the constraint and the table | returns the **expression** when the constraint is unnamed |
     | foreign key | names constraint, table and column | says only `FOREIGN KEY constraint failed` |
 
-    Two measured absences worth repeating: a SQLite foreign key carries
-    nothing beyond the kind, and a Postgres unique **does not name the
-    table** — the constraint name usually starts with it, but splitting on a
-    convention a hand-written DDL need not follow would be a guess.
+    A measured absence worth repeating: a SQLite foreign key carries nothing
+    beyond the kind.
+
+!!! info "On Postgres, the driver's fields come before the text"
+    `asyncpg` exposes the server's diagnostics as attributes of the
+    exception — `sqlstate`, `detail`, `constraint_name`, `table_name`,
+    `column_name` — and `parse_integrity_error` reads those first, falling
+    back to the sentence only for what they leave empty. The text is not a
+    stable carrier. Measured against Postgres 16 with `asyncpg` 0.31.0:
+
+    | SQLAlchemy | `str(error.orig)` | where the driver exception is |
+    | --- | --- | --- |
+    | 2.0.52 (the SDK's floor) | first sentence **plus** the `DETAIL:` line | `error.orig.__cause__` |
+    | 2.1.1 | first sentence only | `error.orig.orig` (and `__cause__`) |
+
+    Reading only the text, a unique under 2.1.1 came back with
+    `columns=()`. The fields are read by attribute name: `asyncpg` is not
+    imported, and an installation without `[postgres]` does not need it. The
+    `table` of a unique comes from `table_name`; a bare message, without the
+    driver exception behind it, still leaves it `None`, because the sentence
+    does not say it and splitting the constraint name on a convention would
+    be a guess. The `sqlstate` (`23505`, `23503`, `23502`, `23514`) also
+    classifies a violation whose sentence the server translated: with
+    `lc_messages=de_DE.utf8`, on both SQLAlchemy versions, a unique came back
+    `unique` with constraint and table, and with `columns=()`, because the
+    `DETAIL` is translated too.
 
 !!! info "Reads `error.orig`, not `str(error)`"
     `str()` on a SQLAlchemy `IntegrityError` appends `[SQL: <statement>]`, and

@@ -328,11 +328,13 @@ Por isso os três handlers de 5xx aplicam `redact_database_errors` antes de
 logar, por default. Com o mesmo erro, a última linha do traceback vira:
 
 ```text
-tempest_fastapi_sdk.api.redaction.RedactedError: sqlalchemy.exc.IntegrityError: unique violation; constraint=p_cpf_key; columns=cpf; driver=sqlalchemy.dialects.postgresql.asyncpg.AsyncAdapt_asyncpg_dbapi.IntegrityError; database message withheld from the log
+tempest_fastapi_sdk.api.redaction.RedactedError: sqlalchemy.exc.IntegrityError: unique violation; constraint=p_cpf_key; table=p; columns=cpf; driver=sqlalchemy.dialects.postgresql.asyncpg.AsyncAdapt_asyncpg_dbapi.IntegrityError; database message withheld from the log
 ```
 
 As duas saídas acima foram capturadas de um Postgres 16 real, com o
-`JSONFormatter` do SDK.
+`JSONFormatter` do SDK, no SQLAlchemy 2.0.52. No 2.1.1 o resumo é o mesmo,
+menos o `driver=`, que termina em
+`AsyncAdapt_asyncpg_dbapi.UniqueViolationError`.
 
 - **Os frames ficam.** Todo `File ..., line ...` é o do erro original; só o
   texto do erro de banco muda.
@@ -352,7 +354,7 @@ devolve o mesmo objeto.
 O caminho **tratado** tinha o mesmo vazamento: ao converter o
 `IntegrityError` em `409`, o `BaseRepository` escrevia um `warning` com o
 texto do driver. Hoje ele escreve `IntegrityError on User.add: unique
-violation; constraint=...; columns=...`, montado por
+violation; constraint=...; table=...; columns=...`, montado por
 `describe_database_error` — a mesma função que dá o resumo acima, pública
 para o seu próprio `except IntegrityError`.
 

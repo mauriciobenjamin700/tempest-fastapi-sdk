@@ -221,6 +221,38 @@ frontend:
   411 s com `--fast` (`auto` → 6 workers, porque o `psutil` está no
   ambiente).
 
+### Fixed
+
+- **`parse_integrity_error` perdia as colunas no PostgreSQL com SQLAlchemy
+  2.1** (#367). O pacote declara `sqlalchemy[asyncio]>=2.0.52` sem teto, e no
+  2.1.1 o `str(error.orig)` do asyncpg traz só a primeira frase, sem a linha
+  `DETAIL:` de onde saíam as colunas: toda unique voltava `columns=()`, e o
+  resumo do `describe_database_error` / `redact_database_errors` perdia o
+  `columns=`. Agora a função lê primeiro o diagnóstico estruturado que a
+  exceção do driver carrega (`sqlstate`, `detail`, `constraint_name`,
+  `table_name`, `column_name`), percorrendo `orig` e `__cause__`, e cai para
+  o texto só no que falta. Os campos são lidos por nome de atributo: o
+  `asyncpg` não é importado e o SDK continua sem exigir `[postgres]`. Medido
+  contra Postgres 16 com `asyncpg` 0.31.0, no SQLAlchemy 2.0.52 (o piso) e
+  no 2.1.1: `tests/db/test_integrity_live.py` tinha 3 falhas no 2.1.1
+  (`test_unique`, `test_unique_composite`,
+  `test_redaction_drops_the_detail_value`) e passa inteiro nas duas versões.
+  SQLite não muda: não expõe esses atributos e segue pelo texto.
+- **Unique no PostgreSQL agora nomeia a tabela.** O `table_name` do driver
+  é `users` nas duas versões; antes a frase não dizia, e `table` ficava
+  `None`. O resumo de log ganha o campo:
+  `unique violation; constraint=users_email_key; table=users; columns=email`.
+  Mensagem solta, sem a exceção do driver atrás, continua com `table=None`.
+- **Violação com a frase traduzida (`lc_messages`) é classificada pelo
+  `sqlstate`** (`23505`, `23503`, `23502`, `23514`). Medido com
+  `lc_messages=de_DE.utf8` nas duas versões: antes voltava `unknown`; agora
+  volta `unique` com constraint e tabela, e com `columns=()`, porque o
+  `DETAIL` também vem traduzido.
+- **Guard de drift:** `tests/db/test_integrity_sqlalchemy_matrix.py`
+  (marcado `docker`) reroda o módulo live, SQLite incluído, sob o piso
+  declarado no `pyproject.toml` e sob o 2.1.1. Contra o código antigo, o
+  caso `2.1.1` falha com as 3 falhas acima e o do piso passa.
+
 ## [0.301.0] — 2026-09-27
 
 As pontes que o painel administrativo do `tempest-bucket` escrevia à mão

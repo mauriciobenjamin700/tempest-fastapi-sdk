@@ -173,7 +173,8 @@ def redact_database_errors(error: BaseException) -> BaseException:
     the chain is rebuilt from :class:`RedactedError` links that keep
     every frame and replace the database error's text with a summary —
     for an ``IntegrityError``, ``unique violation; constraint=...;
-    columns=...`` — ending in :data:`~tempest_fastapi_sdk.WITHHELD_NOTICE`.
+    table=...; columns=...`` — ending in
+    :data:`~tempest_fastapi_sdk.WITHHELD_NOTICE`.
 
     What is lost, on purpose: the driver's exception (asyncpg's
     ``UniqueViolationError`` and SQLAlchemy's adapter around it), whose

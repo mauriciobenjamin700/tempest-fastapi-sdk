@@ -344,7 +344,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   and SQLite, the two dialects the SDK supports; every pattern was read off a
   real server, and `tests/db/test_integrity_live.py` (marked `docker`)
   reproduces them live. Reads `error.orig`, never `str(error)`, whose
-  `[SQL: ...]` echo carries user data.
+  `[SQL: ...]` echo carries user data. **Structured diagnostics first (não
+  lançado, #367):** on Postgres it reads the driver's `sqlstate`, `detail`,
+  `constraint_name`, `table_name` and `column_name` through `orig` /
+  `__cause__` (duck-typed, no `asyncpg` import), and falls back to the text —
+  SQLAlchemy 2.1.1 dropped `DETAIL:` from `str(error.orig)` and every unique
+  parsed to `columns=()`. A unique now names its table, and a translated
+  sentence (`lc_messages`) is classified by `sqlstate`.
+  `tests/db/test_integrity_sqlalchemy_matrix.py` (marked `docker`) reruns the
+  live module under the declared floor and 2.1.1.
   **`redact_database_errors` (v0.299.0)** — the default `redact_exception`
   of the three 5xx handlers: a `DBAPIError` anywhere in the chain is logged
   as a `RedactedError` summary (kind, constraint, table, columns, driver
