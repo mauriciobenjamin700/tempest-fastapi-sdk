@@ -753,6 +753,9 @@ from tempest_fastapi_sdk.db import (
     ENUM_TYPE_SUFFIX as ENUM_TYPE_SUFFIX,
 )
 from tempest_fastapi_sdk.db import (
+    LEGACY_NAMING_CONVENTION as LEGACY_NAMING_CONVENTION,
+)
+from tempest_fastapi_sdk.db import (
     NAMING_CONVENTION as NAMING_CONVENTION,
 )
 from tempest_fastapi_sdk.db import (
@@ -814,6 +817,12 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     ColumnRef as ColumnRef,
+)
+from tempest_fastapi_sdk.db import (
+    ConstraintKind as ConstraintKind,
+)
+from tempest_fastapi_sdk.db import (
+    ConstraintRename as ConstraintRename,
 )
 from tempest_fastapi_sdk.db import (
     DatabaseBackup as DatabaseBackup,
@@ -949,6 +958,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     is_memory_sqlite_url as is_memory_sqlite_url,
+)
+from tempest_fastapi_sdk.db import (
+    legacy_constraint_renames as legacy_constraint_renames,
 )
 from tempest_fastapi_sdk.db import (
     like_search_condition as like_search_condition,
@@ -1922,6 +1934,7 @@ __all__: list[str] = [
     "HTTP_500_MARKER",
     "HUNDRED",
     "IDEMPOTENCY_HEADER",
+    "LEGACY_NAMING_CONVENTION",
     "LOCALE_QUERY_PARAM",
     "MFA_TOKEN_TYPE",
     "NAMING_CONVENTION",
@@ -2015,6 +2028,8 @@ __all__: list[str] = [
     "CompactPaginationSchema",
     "CompositeFeatureFlagBackend",
     "ConflictException",
+    "ConstraintKind",
+    "ConstraintRename",
     "Controller",
     "CursorPaginationFilterSchema",
     "CursorPaginationSchema",
@@ -2405,6 +2420,7 @@ __all__: list[str] = [
     "key_by_jwt_claim",
     "key_by_jwt_subject",
     "key_by_plan_principal",
+    "legacy_constraint_renames",
     "like_search_condition",
     "list_states",
     "make_activate_artifact_action",

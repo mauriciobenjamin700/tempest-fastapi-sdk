@@ -23,10 +23,10 @@ from tempest_fastapi_sdk.utils.dict import modify_dict
 from tempest_fastapi_sdk.utils.naming import to_snake_case
 
 NAMING_CONVENTION: dict[str, str] = {
-    "ix": "ix_%(column_0_label)s",
-    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ix": "ix_%(column_0_N_label)s",
+    "uq": "uq_%(table_name)s_%(column_0_N_name)s",
     "ck": "ck_%(table_name)s_%(constraint_name)s",
-    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_N_name)s_%(referred_table_name)s",
     "pk": "pk_%(table_name)s",
 }
 """Alembic-friendly naming convention applied to every constraint.
@@ -34,6 +34,32 @@ NAMING_CONVENTION: dict[str, str] = {
 Constraint names become deterministic across machines and DB engines,
 so ``alembic revision --autogenerate`` only emits real schema diffs
 instead of churn from auto-generated identifiers.
+
+Composite unique constraints, indexes and foreign keys are named after
+**every** column, joined with ``_``: ``UniqueConstraint("title",
+"release_year")`` on ``books`` is ``uq_books_title_release_year``. The
+``column_0_N_*`` tokens SQLAlchemy expands render a one-column
+constraint exactly like the ``column_0_*`` tokens did, so a
+single-column name (``uq_books_title``, ``ix_books_title``) is the same
+as before by construction.
+
+Until the composite fix the templates read only the first column
+(:data:`~tempest_fastapi_sdk.db.naming.LEGACY_NAMING_CONVENTION`), so
+``UniqueConstraint("title")`` and ``UniqueConstraint("title",
+"release_year")`` were both ``uq_books_title``: PostgreSQL refuses the
+second with ``relation "uq_books_title" already exists`` while SQLite
+accepts both. A database created under that convention holds the old
+names for its composite constraints;
+:func:`~tempest_fastapi_sdk.db.naming.legacy_constraint_renames` lists
+them and writes the ``RENAME`` statements.
+
+A name longer than the dialect's identifier limit (63 characters on
+PostgreSQL) is shortened by SQLAlchemy when it emits the DDL: the first
+55 characters, ``_``, and the last four hex digits of the full name's
+MD5 — the same on every run. SQLite has no limit and keeps the full
+name. Joining with ``_`` leaves one ambiguity the convention cannot
+remove: columns ``("a_b", "c")`` and ``("a", "b_c")`` render the same
+name, and such a pair needs an explicit ``name=``.
 """
 
 

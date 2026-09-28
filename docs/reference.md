@@ -145,6 +145,10 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.integrity.WITHHELD_NOTICE
 ::: tempest_fastapi_sdk.db.integrity.IntegrityFailure
 ::: tempest_fastapi_sdk.db.integrity.IntegrityViolation
+::: tempest_fastapi_sdk.db.naming.legacy_constraint_renames
+::: tempest_fastapi_sdk.db.naming.ConstraintRename
+::: tempest_fastapi_sdk.db.naming.ConstraintKind
+::: tempest_fastapi_sdk.db.naming.LEGACY_NAMING_CONVENTION
 ::: tempest_fastapi_sdk.db.expressions.F
 ::: tempest_fastapi_sdk.db.expressions.Q
 ::: tempest_fastapi_sdk.db.expressions.build_filter_condition
