@@ -532,6 +532,7 @@ come back here to plug in each capability as you need it.
 | **[Queue & Tasks »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, transactional outbox |
 | **[React SPA on FastAPI »](react-spa.md)** | `make_spa_router` — serve the Vite build from the same process, with history fallback |
 | **[Real-time »](realtime.md)** | Overview — when to choose SSE, WebSocket or Web Push |
+| **[Receiving WhatsApp messages (zap-api) »](zap-inbound.md)** | `make_zap_webhook_dependency` — HMAC over the raw body, `ZapWebhookDelivery` with `inbound` / `status` already parsed by `event`, `is_forward_transition` against out-of-order callbacks, media via `get_message_media` |
 | **[Refresh tokens (rotation/revocation) »](refresh-tokens.md)** | `BaseUserRefreshTokenModel`, `make_user_refresh_token_model`, `issue_token_pair`, rotation + family reuse detection |
 | **[Safe deploys »](deploy-safety.md)** | `AlembicHelper.safe_upgrade` (blocks DROPs), `GracefulShutdownMiddleware` |
 | **[Security »](security.md)** | `AttemptThrottle`, opaque-token helpers, `HardenedStaticFiles`, security headers |

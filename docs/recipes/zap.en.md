@@ -82,14 +82,13 @@ Those transitions arrive on the gateway's **status webhook**.
     `status` null — there is no outbox row to name or to report a status
     for. It is the only case where they come back null.
 
-!!! warning "The webhook has no contract yet"
+!!! tip "The webhook is modelled by hand"
     The specification describes the webhook in prose and declares neither a
-    `webhooks` block nor `callbacks`, so there is nothing to generate and
-    this package does not model it. A service that needs delivery state
-    reads the webhook on its own, for now.
-
-    Measured on 2026-09-06 against the document this package generated
-    from: 27 operations, zero `callbacks`, no `webhooks`.
+    `webhooks` block nor `callbacks`, so there is nothing to generate from
+    it — measured on 2026-09-06 against the document this package generated
+    from: 27 operations, zero `callbacks`, no `webhooks`. The receiver is
+    ported from the gateway's code instead: see
+    [Receiving WhatsApp messages (zap-api)](zap-inbound.md).
 
 ## Retry needs the idempotency key
 
@@ -311,5 +310,6 @@ runs. That is why the vendored file is the authority, and why
 - A send answers `202` and an enqueued row — **not** a delivery.
 - One `idempotency_key` per message, reused only to retry that message.
 - A non-JSON body arrives as `bytes`; media exists exactly once.
-- The status webhook has no schema yet; the package does not model it.
+- The webhook (inbound and status) is received with `make_zap_webhook_dependency`:
+  [Receiving WhatsApp messages (zap-api)](zap-inbound.md).
 - `make zap-regen` is what edits the generated code, never you.

@@ -41,6 +41,46 @@ URL presignada aponta para o bucket; esta aponta para a rota do app.
   assinada, `403` sem nenhum `stat_object` na URL adulterada, e o mesmo par com
   `serve_object` em modo `X-Accel-Redirect`.
 
+### WhatsApp: receber mensagem e status do zap-api (#374)
+
+O `integrations.messaging.zap` ganha o lado de **entrada**, escrito à mão
+em `webhooks.py` e portado do código do gateway (`src/utils/signature.ts`,
+`src/services/webhook.service.ts`, `src/services/callback.service.ts`),
+já que a spec não declara `webhooks` nem `callbacks`.
+
+- **`make_zap_webhook_dependency(*, secret=None, verifier=None,
+  error_message=...)`** verifica `x-zap-signature: sha256=<hex>` sobre o
+  corpo cru com `hmac.compare_digest` e devolve um **`ZapWebhookDelivery`**
+  (`event_name`, `event`, `inbound`, `status`, `payload`, `body`). Corpo
+  alterado, secret errado, header ausente e prefixo `sha256=` ausente são
+  `UnauthorizedException` (`401`). Evento desconhecido, corpo que não bate
+  com o modelo e corpo não-JSON voltam com `event=None` em vez de `500`.
+  Construir sem secret (ou com secret vazio) é `ValueError`, porque o
+  gateway entrega **sem assinatura** quando o webhook não tem secret.
+- **`ZapInboundMessage`** (`message.received`) e **`ZapStatusCallback`**
+  (`message.{sent,delivered,read,failed}`, `status: AcceptedResponseStatus`),
+  com os nomes do fio em `validation_alias`/`serialization_alias`. O `text`
+  da mensagem recebida não passa pelo `str_strip_whitespace` do
+  `BaseSchema`.
+- **`ZapWebhookEvent`**, **`ZapInboundMediaType`**, **`webhook_verifier(secret)`**
+  e as constantes **`ZAP_WEBHOOK_SIGNATURE_HEADER`**,
+  **`ZAP_WEBHOOK_SIGNATURE_PREFIX`** e **`ZAP_INBOUND_EVENT`**, cada uma com
+  teste fixando o valor portado.
+- **`is_forward_transition(current, new)`**: `queued < sending < sent <
+  delivered < read`, `failed` terminal e só sobre `queued`/`sending`/`sent`
+  (o `OUTRANKED_BY` do gateway). O gateway protege a própria linha mas manda
+  o callback mesmo assim, então um `delivered` atrasado depois de `read`
+  chega ao consumidor.
+- Os nomes novos resolvem de forma lazy como os gerados: importar o
+  namespace continua sem carregar `schemas`.
+- Receita nova, bilíngue: **Receber mensagens do WhatsApp (zap-api)**.
+
+### Fixed
+
+- A docstring do pacote `zap` mostrava
+  `assert accepted.status is AcceptedResponseStatus.QUEUED`, que é sempre
+  falso: o `BaseSchema` guarda o valor do enum. Agora usa `==`.
+
 ### Storage: `X-Accel-Redirect` para o nginx entregar o arquivo (#362)
 
 O backend autoriza e o nginx entrega: a rota responde vazia com
@@ -286,6 +326,18 @@ frontend:
   (marcado `docker`) reroda o módulo live, SQLite incluído, sob o piso
   declarado no `pyproject.toml` e sob o 2.1.1. Contra o código antigo, o
   caso `2.1.1` falha com as 3 falhas acima e o do piso passa.
+- **`SessionAuth.from_credentials(...)` exigia o extra `[auth]` sem usá-lo**
+  (#373). O `__init__` construía `PasswordUtils()` sempre, e ele levanta
+  `ImportError` sem bcrypt — então o modo `authenticator=`, que compara com
+  `hmac.compare_digest` sobre SHA-256 e nunca verifica hash, não subia num
+  serviço instalado só com `[ssr]`. Agora `SessionAuth.passwords` é uma
+  propriedade: no modo `authenticator=` o `PasswordUtils` só é construído se
+  alguém ler o atributo; no modo `user_model=` continua construído no
+  `__init__`, para a falta do extra derrubar o boot e não o primeiro login.
+  `passwords=` injetado e atribuição a `.passwords` seguem como antes.
+  Medido numa venv com `.[ssr]` (sem `bcrypt` nem `jwt` importáveis):
+  `from_credentials` + `login_with_credentials` + `resolve` levantavam
+  `ImportError: PasswordUtils requires the [auth] extra` e agora completam.
 
 ## [0.301.0] — 2026-09-27
 

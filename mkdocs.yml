@@ -169,6 +169,7 @@ plugins:
               - Queue & Tasks: recipes/queue-tasks.md
               - React SPA inside FastAPI: recipes/react-spa.md
               - Real-time: recipes/realtime.md
+              - "Receiving WhatsApp messages (zap-api)": recipes/zap-inbound.md
               - Refresh tokens (rotation/revocation): recipes/refresh-tokens.md
               - Safe deploys (migrations + shutdown): recipes/deploy-safety.md
               - Security: recipes/security.md
@@ -241,6 +242,7 @@ plugins:
             "Frontend tempestweb + SDK": "tempestweb frontend + SDK"
             WebSocket router: WebSocket router
             "WhatsApp (zap-api)": "WhatsApp (zap-api)"
+            "Receber mensagens do WhatsApp (zap-api)": "Receiving WhatsApp messages (zap-api)"
             Fila e Tarefas: Queue & Tasks
             Outbox transacional: Transactional outbox
             Email transacional: Transactional email
@@ -467,6 +469,7 @@ nav:
       - "Planos de query (EXPLAIN)": recipes/query-plans.md
       - "Protocolo de Pix (um contrato, vários provedores)": recipes/pix-protocol.md
       - "Push (web + mobile)": recipes/push.md
+      - "Receber mensagens do WhatsApp (zap-api)": recipes/zap-inbound.md
       - "Reconhecimento facial": recipes/faces.md
       - "Refresh tokens (rotação/revogação)": recipes/refresh-tokens.md
       - Segurança: recipes/security.md

@@ -2573,6 +2573,10 @@ atributos — o `make_session_router` usa os dois.
 Consumidor: `tempest-bucket` (#343, #344), que mantinha um
 `AdminSessionService` próprio e o override do campo como `Literal`.
 
+O modo `authenticator=` roda sem o extra `[auth]` (#373): `SessionAuth.passwords`
+só constrói o `PasswordUtils` quando lido, e o `user_model=` continua
+construindo no `__init__` para falhar no boot.
+
 ## Nome de constraint composta com todas as colunas (não lançado)
 
 `NAMING_CONVENTION` usa `column_0_N_name`/`column_0_N_label` em `uq`, `ix` e
@@ -2612,3 +2616,25 @@ medido com `curl`, pelos dois caminhos (JSON e link `GET`), e num teste com
   `-w N` escolhe os workers (`auto` por padrão), e sem pytest-xdist no
   ambiente do pytest sai `127` com a instrução de instalação. Receita:
   `docs/recipes/testing.md#a-suite-em-paralelo-tempest-test-fast`.
+
+## Webhook de entrada e de status do zap-api (não lançado)
+
+`integrations.messaging.zap.webhooks`, escrito à mão e portado do código do
+gateway, porque a spec descreve o webhook só em prosa (#374). Fecha o item
+1 do "Fora de escopo" da v0.287.0.
+
+- `make_zap_webhook_dependency` → `ZapWebhookDelivery`: HMAC-SHA256 sobre o
+  corpo cru (`x-zap-signature: sha256=<hex>`), despacho por `event` para
+  `ZapInboundMessage` / `ZapStatusCallback`, `event=None` para o que não se
+  modela (nunca `500`). Recusa ser construída sem secret.
+- `is_forward_transition` para status fora de ordem, portado do
+  `OUTRANKED_BY` do gateway.
+- `webhook_verifier`, `ZapWebhookEvent`, `ZapInboundMediaType` e as
+  constantes `ZAP_WEBHOOK_SIGNATURE_HEADER`, `ZAP_WEBHOOK_SIGNATURE_PREFIX`,
+  `ZAP_INBOUND_EVENT`.
+- Fixture cruzada: os dois exemplos do README do gateway, assinados pelo
+  `signPayload` do próprio gateway, em
+  `tests/integrations/messaging/zap/test_webhooks.py`.
+- Receita `docs/recipes/zap-inbound.md` (+ `.en.md`).
+- Fora de escopo: persistência/idempotência do consumidor (a receita mostra
+  o padrão) e registro do webhook no gateway (`npm run webhook:set`, admin).

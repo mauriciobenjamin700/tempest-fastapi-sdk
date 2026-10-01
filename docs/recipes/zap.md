@@ -81,14 +81,12 @@ O `status` caminha `queued → sending → sent → delivered → read`, ou
     `status` nulos — não existe linha de outbox para nomear nem para
     reportar estado. É a única situação em que eles vêm nulos.
 
-!!! warning "O webhook ainda não tem contrato"
+!!! tip "O webhook é modelado à mão"
     A especificação descreve o webhook em prosa e **não** declara um bloco
-    `webhooks` nem `callbacks`, então não há o que gerar e este pacote não
-    o modela. Um serviço que precisa de estado de entrega lê o webhook por
-    conta própria, por enquanto.
-
-    Medido em 2026-09-06 contra o documento que este pacote gerou: 27
-    operações, zero `callbacks`, `webhooks` ausente.
+    `webhooks` nem `callbacks`, então não há o que gerar dela — medido em
+    2026-09-06 contra o documento que este pacote gerou: 27 operações, zero
+    `callbacks`, `webhooks` ausente. O receiver é portado do código do
+    gateway: veja [Receber mensagens do WhatsApp (zap-api)](zap-inbound.md).
 
 ## Retry precisa da chave de idempotência
 
@@ -309,5 +307,6 @@ gateway estiver. Por isso o arquivo vendorizado é a autoridade, e o
 - Envio responde `202` e uma linha enfileirada — **não** uma entrega.
 - Uma `idempotency_key` por mensagem, reutilizada só em retry da mesma.
 - Corpo não-JSON chega como `bytes`; a mídia só existe uma vez.
-- O webhook de status ainda não tem schema; o pacote não o modela.
+- O webhook (entrada e status) se recebe com `make_zap_webhook_dependency`:
+  [Receber mensagens do WhatsApp (zap-api)](zap-inbound.md).
 - `make zap-regen` é quem edita o código gerado, nunca você.
