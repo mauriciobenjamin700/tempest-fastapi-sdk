@@ -92,8 +92,13 @@ class SessionAuth:
                 :class:`RedisSessionStore`).
             settings (SessionSettings): TTL / cookie / rotation
                 flags driving the lifecycle.
-            passwords (PasswordUtils | None): Override for tests;
-                defaults to a fresh ``PasswordUtils()``.
+            passwords (PasswordUtils | None): Override for tests.
+                ``None`` builds a ``PasswordUtils()`` here when
+                ``user_model`` is given (so a missing ``[auth]`` extra
+                fails at boot, not at the first login), and only on first
+                access of :attr:`passwords` otherwise — the
+                ``authenticator=`` mode never verifies a hash, so it does
+                not need the extra.
             authenticator (SessionAuthenticator | None): Credential verifier
                 for a service with no user table, used by
                 :meth:`authenticate_credentials`. See
@@ -102,6 +107,9 @@ class SessionAuth:
         Raises:
             ValueError: When both or neither of ``user_model`` and
                 ``authenticator`` are given.
+            ImportError: When ``user_model`` is given without
+                ``passwords`` and the ``[auth]`` extra (bcrypt) is not
+                installed.
         """
         if (user_model is None) == (authenticator is None):
             raise ValueError(
@@ -112,7 +120,40 @@ class SessionAuth:
         self.authenticator: SessionAuthenticator | None = authenticator
         self.store: SessionStore = store
         self.settings: SessionSettings = settings
-        self.passwords: PasswordUtils = passwords or PasswordUtils()
+        self._passwords: PasswordUtils | None = passwords
+        if passwords is None and user_model is not None:
+            self._passwords = PasswordUtils()
+
+    @property
+    def passwords(self) -> PasswordUtils:
+        """The bcrypt helper :meth:`authenticate` verifies hashes with.
+
+        Built in ``__init__`` for the ``user_model=`` mode; otherwise on
+        first access when none was injected, and cached. Only the
+        ``user_model=`` path reads it, so a service built with
+        ``authenticator=`` (for instance through :meth:`from_credentials`)
+        runs without bcrypt installed.
+
+        Returns:
+            PasswordUtils: The injected helper, or the lazily built one.
+
+        Raises:
+            ImportError: When none was injected and the ``[auth]`` extra
+                (bcrypt) is not installed.
+        """
+        if self._passwords is None:
+            self._passwords = PasswordUtils()
+        return self._passwords
+
+    @passwords.setter
+    def passwords(self, value: PasswordUtils) -> None:
+        """Replace the bcrypt helper.
+
+        Args:
+            value (PasswordUtils): The helper :meth:`authenticate` uses
+                from now on.
+        """
+        self._passwords = value
 
     @classmethod
     def from_credentials(

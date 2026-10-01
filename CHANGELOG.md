@@ -252,6 +252,18 @@ frontend:
   (marcado `docker`) reroda o módulo live, SQLite incluído, sob o piso
   declarado no `pyproject.toml` e sob o 2.1.1. Contra o código antigo, o
   caso `2.1.1` falha com as 3 falhas acima e o do piso passa.
+- **`SessionAuth.from_credentials(...)` exigia o extra `[auth]` sem usá-lo**
+  (#373). O `__init__` construía `PasswordUtils()` sempre, e ele levanta
+  `ImportError` sem bcrypt — então o modo `authenticator=`, que compara com
+  `hmac.compare_digest` sobre SHA-256 e nunca verifica hash, não subia num
+  serviço instalado só com `[ssr]`. Agora `SessionAuth.passwords` é uma
+  propriedade: no modo `authenticator=` o `PasswordUtils` só é construído se
+  alguém ler o atributo; no modo `user_model=` continua construído no
+  `__init__`, para a falta do extra derrubar o boot e não o primeiro login.
+  `passwords=` injetado e atribuição a `.passwords` seguem como antes.
+  Medido numa venv com `.[ssr]` (sem `bcrypt` nem `jwt` importáveis):
+  `from_credentials` + `login_with_credentials` + `resolve` levantavam
+  `ImportError: PasswordUtils requires the [auth] extra` e agora completam.
 
 ## [0.301.0] — 2026-09-27
 
