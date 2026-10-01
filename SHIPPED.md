@@ -2564,6 +2564,10 @@ atributos — o `make_session_router` usa os dois.
 Consumidor: `tempest-bucket` (#343, #344), que mantinha um
 `AdminSessionService` próprio e o override do campo como `Literal`.
 
+O modo `authenticator=` roda sem o extra `[auth]` (#373): `SessionAuth.passwords`
+só constrói o `PasswordUtils` quando lido, e o `user_model=` continua
+construindo no `__init__` para falhar no boot.
+
 ## Nome de constraint composta com todas as colunas (não lançado)
 
 `NAMING_CONVENTION` usa `column_0_N_name`/`column_0_N_label` em `uq`, `ix` e

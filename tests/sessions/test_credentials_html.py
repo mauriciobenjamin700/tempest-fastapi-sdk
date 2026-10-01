@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import contextlib
 import hmac
+import subprocess
+import sys
 from collections.abc import AsyncIterator
 from uuid import UUID, uuid4, uuid5
 
@@ -17,6 +19,7 @@ from tempest_fastapi_sdk import (
     STATIC_CREDENTIAL_NAMESPACE,
     BaseUserModel,
     MemorySessionStore,
+    PasswordUtils,
     Session,
     SessionAuth,
     SessionAuthenticator,
@@ -30,6 +33,7 @@ from tempest_fastapi_sdk import (
 )
 from tempest_fastapi_sdk.exceptions import UnauthorizedException
 from tempest_fastapi_sdk.sessions import authenticator as authenticator_module
+from tempest_fastapi_sdk.utils import password as password_module
 
 
 class _CredentialTestUser(BaseUserModel):
@@ -353,3 +357,95 @@ class TestSessionDependency:
     def test_redirect_to_refuses_non_redirect_status(self) -> None:
         with pytest.raises(ValueError, match="3xx"):
             redirect_to("/login", status_code=401)
+
+
+_NO_AUTH_EXTRA_SCRIPT: str = """
+import asyncio
+import sys
+
+sys.modules["bcrypt"] = None
+sys.modules["jwt"] = None
+
+from tempest_fastapi_sdk.sessions import MemorySessionStore, SessionAuth
+from tempest_fastapi_sdk.settings import SessionSettings
+
+auth = SessionAuth.from_credentials(
+    "root", "s3cret", store=MemorySessionStore(), settings=SessionSettings()
+)
+
+
+async def main() -> None:
+    session, plaintext = await auth.login_with_credentials("root", "s3cret")
+    resolved = await auth.resolve(plaintext)
+    assert resolved is not None
+    assert resolved.user_id == session.user_id
+
+
+asyncio.run(main())
+for name in ("bcrypt", "jwt"):
+    assert sys.modules[name] is None, name
+print("ok")
+"""
+
+
+class TestCredentialModeWithoutAuthExtra:
+    """The ``authenticator=`` mode never touches bcrypt, so it must not need it (#373).
+
+    ``SessionAuth.__init__`` used to build a ``PasswordUtils()`` eagerly,
+    which raises ``ImportError`` without the ``[auth]`` extra, so
+    ``from_credentials`` failed in a service installed with ``[ssr]`` only.
+    """
+
+    def test_from_credentials_runs_with_bcrypt_and_jwt_unimportable(self) -> None:
+        """A fresh interpreter where ``import bcrypt`` / ``import jwt`` raise.
+
+        A subprocess, because ``utils.password`` binds bcrypt at import time
+        and this interpreter already imported it; ``sys.modules[name] = None``
+        makes the import statement raise ``ImportError``, the same thing a
+        venv without the extra does.
+        """
+        result = subprocess.run(
+            [sys.executable, "-c", _NO_AUTH_EXTRA_SCRIPT],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "ok"
+
+    def test_passwords_is_not_built_until_read(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(password_module, "_bcrypt", None)
+        auth = _auth()
+        with pytest.raises(ImportError, match=r"\[auth\] extra"):
+            _ = auth.passwords
+
+    def test_user_model_mode_still_fails_at_construction(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(password_module, "_bcrypt", None)
+        with pytest.raises(ImportError, match=r"\[auth\] extra"):
+            SessionAuth(
+                user_model=_CredentialTestUser,
+                store=MemorySessionStore(),
+                settings=_settings(),
+            )
+
+    def test_passwords_is_built_once_and_cached(self) -> None:
+        auth = _auth()
+        assert isinstance(auth.passwords, PasswordUtils)
+        assert auth.passwords is auth.passwords
+
+    def test_injected_passwords_is_kept_and_assignable(self) -> None:
+        injected = PasswordUtils(rounds=4)
+        auth = SessionAuth(
+            user_model=_CredentialTestUser,
+            store=MemorySessionStore(),
+            settings=_settings(),
+            passwords=injected,
+        )
+        assert auth.passwords is injected
+        replacement = PasswordUtils(rounds=5)
+        auth.passwords = replacement
+        assert auth.passwords is replacement
