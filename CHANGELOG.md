@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### WhatsApp: receber mensagem e status do zap-api (#374)
+
+O `integrations.messaging.zap` ganha o lado de **entrada**, escrito à mão
+em `webhooks.py` e portado do código do gateway (`src/utils/signature.ts`,
+`src/services/webhook.service.ts`, `src/services/callback.service.ts`),
+já que a spec não declara `webhooks` nem `callbacks`.
+
+- **`make_zap_webhook_dependency(*, secret=None, verifier=None,
+  error_message=...)`** verifica `x-zap-signature: sha256=<hex>` sobre o
+  corpo cru com `hmac.compare_digest` e devolve um **`ZapWebhookDelivery`**
+  (`event_name`, `event`, `inbound`, `status`, `payload`, `body`). Corpo
+  alterado, secret errado, header ausente e prefixo `sha256=` ausente são
+  `UnauthorizedException` (`401`). Evento desconhecido, corpo que não bate
+  com o modelo e corpo não-JSON voltam com `event=None` em vez de `500`.
+  Construir sem secret (ou com secret vazio) é `ValueError`, porque o
+  gateway entrega **sem assinatura** quando o webhook não tem secret.
+- **`ZapInboundMessage`** (`message.received`) e **`ZapStatusCallback`**
+  (`message.{sent,delivered,read,failed}`, `status: AcceptedResponseStatus`),
+  com os nomes do fio em `validation_alias`/`serialization_alias`. O `text`
+  da mensagem recebida não passa pelo `str_strip_whitespace` do
+  `BaseSchema`.
+- **`ZapWebhookEvent`**, **`ZapInboundMediaType`**, **`webhook_verifier(secret)`**
+  e as constantes **`ZAP_WEBHOOK_SIGNATURE_HEADER`**,
+  **`ZAP_WEBHOOK_SIGNATURE_PREFIX`** e **`ZAP_INBOUND_EVENT`**, cada uma com
+  teste fixando o valor portado.
+- **`is_forward_transition(current, new)`**: `queued < sending < sent <
+  delivered < read`, `failed` terminal e só sobre `queued`/`sending`/`sent`
+  (o `OUTRANKED_BY` do gateway). O gateway protege a própria linha mas manda
+  o callback mesmo assim, então um `delivered` atrasado depois de `read`
+  chega ao consumidor.
+- Os nomes novos resolvem de forma lazy como os gerados: importar o
+  namespace continua sem carregar `schemas`.
+- Receita nova, bilíngue: **Receber mensagens do WhatsApp (zap-api)**.
+
+### Fixed
+
+- A docstring do pacote `zap` mostrava
+  `assert accepted.status is AcceptedResponseStatus.QUEUED`, que é sempre
+  falso: o `BaseSchema` guarda o valor do enum. Agora usa `==`.
+
 ### Storage: `X-Accel-Redirect` para o nginx entregar o arquivo (#362)
 
 O backend autoriza e o nginx entrega: a rota responde vazia com
