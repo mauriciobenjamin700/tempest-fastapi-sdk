@@ -11,10 +11,18 @@ This module makes the same five assertions against a live Postgres in a
 container and a live SQLite through ``aiosqlite``, so the day a wording
 changes it fails here — in this repo, on `make test-docker` — instead of
 in a service's 409 handler.
+
+It runs against whichever SQLAlchemy the interpreter imports, so on its
+own it measures the lock. ``test_integrity_sqlalchemy_matrix.py`` reruns
+this module under the declared floor and under 2.1.1, passing a
+container name and port per run through ``TEMPEST_INTEGRITY_CONTAINER``
+and ``TEMPEST_INTEGRITY_PORT`` so the reruns never reuse this module's
+own container.
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -26,6 +34,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 from tempest_fastapi_sdk import (
     IntegrityViolation,
@@ -169,11 +178,15 @@ class TestSQLiteLive(_SharedAssertions):
     async def engine(self) -> AsyncIterator[AsyncEngine]:
         """Yield an engine on a fresh shared in-memory database.
 
+        ``StaticPool`` is named rather than inferred: SQLAlchemy 2.1.1
+        emits ``SADeprecationWarning`` for picking it from ``mode=memory``
+        and says a future release will pick ``AsyncAdaptedQueuePool``.
+
         Yields:
             AsyncEngine: The engine, disposed afterwards.
         """
         url = "sqlite+aiosqlite:///file:integrity?mode=memory&cache=shared&uri=true"
-        engine = create_async_engine(url)
+        engine = create_async_engine(url, poolclass=StaticPool)
         await _seed(engine, DDL_SQLITE)
         yield engine
         async with engine.begin() as connection:
@@ -214,8 +227,11 @@ class TestPostgresLive(_SharedAssertions):
     """The dialect whose wording the fixtures were captured from."""
 
     IMAGE: str = "postgres:16-alpine"
-    CONTAINER: str = "tempest-integrity-probe"
-    PORT: int = 55433
+    CONTAINER: str = os.environ.get(
+        "TEMPEST_INTEGRITY_CONTAINER",
+        "tempest-integrity-probe",
+    )
+    PORT: int = int(os.environ.get("TEMPEST_INTEGRITY_PORT", "55433"))
 
     @pytest.fixture
     def postgres_url(self) -> Iterator[str]:
@@ -302,6 +318,17 @@ class TestPostgresLive(_SharedAssertions):
 
         assert failure.constraint == "users_email_key"
 
+    async def test_unique_names_the_table(self, engine: AsyncEngine) -> None:
+        """The sentence never says ``users``; the structured field does.
+
+        Measured on SQLAlchemy 2.0.52 and 2.1.1 with ``asyncpg`` 0.31.0:
+        the driver exception's ``table_name`` is ``users`` on both, and
+        it is the only place a unique violation names its table.
+        """
+        failure = parse_integrity_error(await _violate(engine, DUPLICATE))
+
+        assert failure.table == "users"
+
     async def test_redaction_drops_the_detail_value(self, engine: AsyncEngine) -> None:
         """The value Postgres quotes in ``DETAIL`` never reaches the log.
 
@@ -325,4 +352,4 @@ class TestPostgresLive(_SharedAssertions):
 
         assert "Key (email)=(a@x.com)" in raw
         assert "a@x.com" not in redacted
-        assert "constraint=users_email_key; columns=email" in redacted
+        assert "constraint=users_email_key; table=users; columns=email" in redacted

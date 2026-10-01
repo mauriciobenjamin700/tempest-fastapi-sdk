@@ -104,6 +104,40 @@ quem finalizava a conexão depois era um passe de `gc` no meio de outro
 teardown. Hoje ele faz `disconnect()` antes de esquecer os módulos e falha
 se alguma thread iniciada pelo módulo ainda estiver viva.
 
+## Matriz de versão de dependência: `uv run --with`, num subprocess
+
+O lock resolve o **piso** de uma dependência; o consumidor resolve a mais
+nova. O `parse_integrity_error` passou verde no lock (SQLAlchemy 2.0.52) e
+devolvia `columns=()` para toda unique no 2.1.1 (#367). Não havia mecanismo de
+matriz de dependência no repo — a CI só varia o Python, e os testes `docker`
+nem rodam lá —, então o primeiro é o de
+`tests/db/test_integrity_sqlalchemy_matrix.py`: um teste `docker`,
+parametrizado pelas versões, que reroda o módulo live num subprocess com
+`uv run --no-sync --with sqlalchemy==<versão> python -m pytest <módulo>`.
+
+- **Por que subprocess, e não parametrizar no processo:** a versão de um
+  pacote já importado não troca dentro do interpretador. Um job de CI por
+  versão exigiria docker na CI, que ela não tem.
+- **`python -m pytest`, nunca `pytest`.** Medido: o shebang do script
+  `.venv/bin/pytest` é o Python do `.venv`, então
+  `uv run --with sqlalchemy==2.1.1 pytest ...` importa o 2.0.52 e passa — a
+  reprodução do #367 escrita desse jeito deu 7/7 verde no código quebrado;
+  com `python -m pytest`, 3 falhas.
+- **Premissa conferida.** O teste imprime `sqlalchemy.__version__` pelo mesmo
+  `uv run` e compara com a versão pedida antes de rodar a suíte, e falha se o
+  subprocess reportar `skipped` — docker ausente no filho não vira verde.
+- **`--no-sync`** para o filho não re-sincronizar o `.venv` com os grupos
+  default e derrubar os extras do `uv sync --all-extras`.
+- **Piso lido do `pyproject.toml`**, não copiado: subir o piso move a matriz.
+  A outra ponta é uma versão fixa (a primeira medida com o defeito), não
+  "a mais nova" — o teste precisa reproduzir, e resolver a mais nova a cada
+  execução troca a medição sem ninguém ver.
+- **Container e porta por execução** (`TEMPEST_INTEGRITY_CONTAINER`,
+  `TEMPEST_INTEGRITY_PORT`), para o filho não derrubar o container do módulo
+  live rodando no processo pai.
+
+Copie o molde para a próxima dependência cujo comportamento o SDK parseia.
+
 ## Ao adicionar guard novo
 
 1. **Ele precisa provar que dispara** na forma que de fato shippou. Guard que

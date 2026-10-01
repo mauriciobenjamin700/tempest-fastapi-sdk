@@ -11,13 +11,25 @@ The two dialects this SDK supports say the same five things five
 different ways, and the differences are not cosmetic:
 
 * Postgres names the constraint (``users_email_key``) and lists the
-  columns separately, in a ``DETAIL:`` line, so a composite unique
+  columns separately, in its ``DETAIL`` field, so a composite unique
   yields both names.
 * SQLite names ``table.column`` pairs and **no** constraint, except for
   a foreign key, where it names nothing at all.
 * Postgres quotes identifiers with ``"``; SQLite does not quote at all,
   so a pattern hunting for quoted text finds the *value* on one dialect
   and the *column* on the other.
+
+On Postgres the parser reads the server's **structured** diagnostics
+first — ``sqlstate``, ``detail``, ``constraint_name``, ``table_name`` and
+``column_name``, the fields ``asyncpg`` exposes on its
+``PostgresError`` — and falls back to the sentence only for what they
+leave empty. The text is not a stable carrier: measured against
+Postgres 16 with ``asyncpg`` 0.31.0, ``str(error.orig)`` carries the
+``DETAIL:`` line under SQLAlchemy 2.0.52 and drops it under 2.1.1, whose
+emulated DBAPI exception keeps only the first sentence and holds the
+driver's own exception in ``orig``. The fields are read by attribute
+name, so ``asyncpg`` is never imported here and an installation without
+``[postgres]`` loses nothing.
 
 Every pattern below was read off a real error from a real server —
 Postgres 16 in a container, SQLite through ``aiosqlite`` — not from
@@ -38,13 +50,15 @@ Known limits, both measured rather than assumed:
   ``CHECK constraint failed: age >= 18``. Naming the constraint in the
   DDL makes SQLite report the name instead, and SQLite reports no table
   for a ``CHECK`` either way.
-* **A Postgres unique violation names no table.** The sentence is about
-  the constraint (``violates unique constraint "users_email_key"``) and
-  the ``DETAIL:`` line is about the columns; neither says ``users``.
-  The constraint name usually starts with the table by convention, and
-  splitting on that convention is a guess — a constraint named in the
-  DDL need not follow it — so :attr:`IntegrityFailure.table` stays
-  ``None`` rather than carrying one.
+* **The Postgres text alone names no table for a unique violation.**
+  The sentence is about the constraint (``violates unique constraint
+  "users_email_key"``) and the ``DETAIL`` is about the columns; neither
+  says ``users``. The structured ``table_name`` does, so an error that
+  still carries the driver exception reports the table. A bare message
+  (a captured string, an exception whose chain holds no driver error)
+  leaves :attr:`IntegrityFailure.table` ``None`` rather than splitting
+  the constraint name on a convention a hand-written DDL need not
+  follow.
 """
 
 from __future__ import annotations
@@ -142,6 +156,27 @@ _PG_TABLE: re.Pattern[str] = re.compile(
 )
 _PG_DETAIL_KEY: re.Pattern[str] = re.compile(r"Key \(([^)]+)\)=")
 
+_PG_SQLSTATE_VIOLATIONS: Final[dict[str, IntegrityViolation]] = {
+    "23505": IntegrityViolation.UNIQUE,
+    "23503": IntegrityViolation.FOREIGN_KEY,
+    "23502": IntegrityViolation.NOT_NULL,
+    "23514": IntegrityViolation.CHECK,
+}
+"""Postgres ``SQLSTATE`` codes of the four integrity violations.
+
+Ported from the PostgreSQL manual's *Appendix A. PostgreSQL Error Codes*
+(class 23: ``unique_violation``, ``foreign_key_violation``,
+``not_null_violation``, ``check_violation``). The code does not depend
+on ``lc_messages``, so it classifies a violation whose sentence the
+server translated and no pattern below matches. Measured on Postgres 16
+with ``lc_messages=de_DE.utf8``, under SQLAlchemy 2.0.52 and 2.1.1: a
+unique comes back ``UNIQUE`` with its constraint and table, and with no
+columns, because the ``DETAIL`` is translated too.
+"""
+
+_MAX_CHAIN: Final[int] = 8
+"""How many exceptions :func:`_exception_chain` follows before stopping."""
+
 _SQLITE_UNIQUE: re.Pattern[str] = re.compile(
     r"UNIQUE constraint failed: (.+)",
 )
@@ -176,6 +211,141 @@ def _driver_message(error: BaseException) -> str:
     if orig is not None:
         return str(orig)
     return _SQL_ECHO.split(str(error), maxsplit=1)[0]
+
+
+@dataclass(frozen=True, slots=True)
+class _ServerFields:
+    """The structured diagnostics a Postgres driver exposes on its error.
+
+    Attributes:
+        sqlstate (str | None): The five-character ``SQLSTATE`` code.
+        detail (str | None): The ``DETAIL`` field, which lists the key
+            columns of a unique or foreign-key violation.
+        constraint (str | None): The ``constraint_name`` field.
+        table (str | None): The ``table_name`` field.
+        column (str | None): The ``column_name`` field, which Postgres
+            fills for a not-null violation.
+    """
+
+    sqlstate: str | None = None
+    detail: str | None = None
+    constraint: str | None = None
+    table: str | None = None
+    column: str | None = None
+
+
+_SERVER_ATTRIBUTES: Final[tuple[tuple[str, str], ...]] = (
+    ("sqlstate", "sqlstate"),
+    ("detail", "detail"),
+    ("constraint", "constraint_name"),
+    ("table", "table_name"),
+    ("column", "column_name"),
+)
+"""``_ServerFields`` field paired with the driver attribute it reads."""
+
+
+def _exception_chain(error: BaseException) -> list[BaseException]:
+    """Return ``error`` and the driver exceptions it wraps, outermost first.
+
+    Follows ``orig`` when an object holds an exception there — the
+    SQLAlchemy ``DBAPIError`` and, measured on SQLAlchemy 2.1.1, its
+    emulated ``asyncpg`` DBAPI exception — and ``__cause__`` otherwise,
+    which is where SQLAlchemy 2.0.52's adapter leaves the ``asyncpg``
+    error. Bounded and cycle-safe, because the chain is built by code
+    this SDK does not own.
+
+    Args:
+        error (BaseException): The outermost exception.
+
+    Returns:
+        list[BaseException]: Every exception reached, without repeats.
+    """
+    chain: list[BaseException] = []
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        if len(chain) >= _MAX_CHAIN:
+            break
+        seen.add(id(current))
+        chain.append(current)
+        wrapped: Any = getattr(current, "orig", None)
+        current = wrapped if isinstance(wrapped, BaseException) else current.__cause__
+    return chain
+
+
+def _server_fields(error: BaseException) -> _ServerFields | None:
+    """Collect the structured diagnostics anywhere in the error's chain.
+
+    Each field comes from the outermost exception that carries it as a
+    non-empty ``str``. Measured on SQLAlchemy 2.1.1, the emulated
+    exception copies ``detail`` and ``sqlstate`` but not
+    ``constraint_name`` or ``table_name``, which only the ``asyncpg``
+    exception it wraps has. Reading by attribute name is what keeps
+    ``asyncpg`` out of this module's imports.
+
+    Args:
+        error (BaseException): The error to read.
+
+    Returns:
+        _ServerFields | None: The fields found, or ``None`` when no
+        exception in the chain carries any — SQLite, or a bare message.
+    """
+    found: dict[str, str] = {}
+    for source in _exception_chain(error):
+        for key, attribute in _SERVER_ATTRIBUTES:
+            value: Any = getattr(source, attribute, None)
+            if key not in found and isinstance(value, str) and value:
+                found[key] = value
+    if not found:
+        return None
+    return _ServerFields(**found)
+
+
+def _pg_key_columns(text: str) -> tuple[str, ...]:
+    """Read the column list out of a Postgres ``Key (a, b)=(...)`` detail.
+
+    Args:
+        text (str): The ``DETAIL`` field, or a whole message holding a
+            ``DETAIL:`` line.
+
+    Returns:
+        tuple[str, ...]: The columns in the order listed, or an empty
+        tuple when the text carries no key.
+    """
+    detail = _PG_DETAIL_KEY.search(text)
+    if detail is None:
+        return ()
+    return tuple(part.strip() for part in detail.group(1).split(","))
+
+
+def _merge_server_fields(
+    parsed: IntegrityFailure,
+    server: _ServerFields,
+) -> IntegrityFailure:
+    """Overlay the structured diagnostics on what the text yielded.
+
+    A structured field wins over the parsed one and the text fills only
+    what the server left out, so a captured message with no driver
+    exception behind it parses exactly as it did before.
+
+    Args:
+        parsed (IntegrityFailure): The result of parsing the message.
+        server (_ServerFields): The structured diagnostics.
+
+    Returns:
+        IntegrityFailure: The merged result.
+    """
+    kind = _PG_SQLSTATE_VIOLATIONS.get(server.sqlstate or "", parsed.kind)
+    columns = _pg_key_columns(server.detail) if server.detail else ()
+    if not columns and kind is IntegrityViolation.NOT_NULL and server.column:
+        columns = (server.column,)
+    return IntegrityFailure(
+        kind=kind,
+        constraint=server.constraint or parsed.constraint,
+        table=server.table or parsed.table,
+        columns=columns or parsed.columns,
+        message=parsed.message,
+    )
 
 
 def _sqlite_columns(raw: str) -> tuple[str | None, tuple[str, ...]]:
@@ -233,7 +403,23 @@ def parse_integrity_error(error: BaseException) -> IntegrityFailure:
         not report are ``None`` or empty — see the module docstring for
         which those are.
     """
-    message = _driver_message(error)
+    parsed = _parse_message(_driver_message(error))
+    server = _server_fields(error)
+    if server is None:
+        return parsed
+    return _merge_server_fields(parsed, server)
+
+
+def _parse_message(message: str) -> IntegrityFailure:
+    """Parse a driver message with the dialect patterns alone.
+
+    Args:
+        message (str): The driver message, SQL echo already stripped.
+
+    Returns:
+        IntegrityFailure: What the text says; ``UNKNOWN`` when no
+        pattern matches.
+    """
 
     match = _PG_NOT_NULL.search(message)
     if match:
@@ -252,17 +438,11 @@ def parse_integrity_error(error: BaseException) -> IntegrityFailure:
         match = pattern.search(message)
         if match:
             table_match = _PG_TABLE.search(message)
-            detail = _PG_DETAIL_KEY.search(message)
-            columns = (
-                tuple(part.strip() for part in detail.group(1).split(","))
-                if detail
-                else ()
-            )
             return IntegrityFailure(
                 kind=kind,
                 constraint=match.group(1),
                 table=table_match.group(1) if table_match else None,
-                columns=columns,
+                columns=_pg_key_columns(message),
                 message=message,
             )
 

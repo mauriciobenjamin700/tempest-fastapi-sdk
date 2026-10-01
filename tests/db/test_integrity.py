@@ -15,6 +15,7 @@ from tempest_fastapi_sdk import (
     IntegrityViolation,
     parse_integrity_error,
 )
+from tempest_fastapi_sdk.db.integrity import _PG_SQLSTATE_VIOLATIONS
 
 PG_UNIQUE = (
     "<class 'asyncpg.exceptions.UniqueViolationError'>: duplicate key "
@@ -82,12 +83,13 @@ class TestPostgres:
         """Naming only the first would guess which half the user got wrong."""
         assert parse_integrity_error(_error(PG_UNIQUE_COMPOSITE)).column is None
 
-    def test_unique_reports_no_table(self) -> None:
+    def test_unique_text_alone_reports_no_table(self) -> None:
         """Measured absence: the sentence never names one.
 
         The constraint name usually starts with the table by convention,
         and splitting on a convention a hand-written DDL need not follow
-        would be a guess.
+        would be a guess. The structured ``table_name`` does name it —
+        see :class:`TestStructuredDiagnostics`.
         """
         assert parse_integrity_error(_error(PG_UNIQUE)).table is None
 
@@ -189,3 +191,199 @@ class TestRobustness:
 
     def test_the_default_failure_is_unknown(self) -> None:
         assert IntegrityFailure().kind is IntegrityViolation.UNKNOWN
+
+
+class _DriverError(Exception):
+    """Stand-in for an ``asyncpg`` error: the attributes, not the import.
+
+    The parser reads the diagnostics by attribute name, so a plain
+    exception carrying the same five attributes exercises the same path
+    as ``asyncpg.exceptions.UniqueViolationError`` without the extra.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        sqlstate: str,
+        detail: str | None = None,
+        constraint_name: str | None = None,
+        table_name: str | None = None,
+        column_name: str | None = None,
+    ) -> None:
+        """Build the error.
+
+        Args:
+            message (str): The server's primary sentence.
+            sqlstate (str): The ``SQLSTATE`` code.
+            detail (str | None): The ``DETAIL`` field.
+            constraint_name (str | None): The ``constraint_name`` field.
+            table_name (str | None): The ``table_name`` field.
+            column_name (str | None): The ``column_name`` field.
+        """
+        super().__init__(message)
+        self.sqlstate: str = sqlstate
+        self.detail: str | None = detail
+        self.constraint_name: str | None = constraint_name
+        self.table_name: str | None = table_name
+        self.column_name: str | None = column_name
+
+
+class _EmulatedError(Exception):
+    """Shape of SQLAlchemy 2.1.1's emulated ``asyncpg`` DBAPI exception.
+
+    Measured against Postgres 16: ``str()`` is the first sentence only,
+    ``detail`` and ``sqlstate`` are copied, ``constraint_name`` and
+    ``table_name`` are absent, and the driver error sits in ``orig``.
+    """
+
+    def __init__(self, driver: _DriverError) -> None:
+        """Wrap ``driver`` the way SQLAlchemy 2.1.1 does.
+
+        Args:
+            driver (_DriverError): The driver exception.
+        """
+        super().__init__(str(driver))
+        self.orig: _DriverError = driver
+        self.detail: str | None = driver.detail
+        self.sqlstate: str = driver.sqlstate
+
+
+def _unique_driver(
+    detail: str = "Key (email)=(a@x.com) already exists.",
+) -> _DriverError:
+    """Build the driver error for the captured single-column unique.
+
+    Args:
+        detail (str): The ``DETAIL`` field.
+
+    Returns:
+        _DriverError: The error, fields as Postgres 16 filled them.
+    """
+    return _DriverError(
+        'duplicate key value violates unique constraint "users_email_key"',
+        sqlstate="23505",
+        detail=detail,
+        constraint_name="users_email_key",
+        table_name="users",
+    )
+
+
+def _sqlalchemy_21(driver: _DriverError) -> IntegrityError:
+    """Wrap ``driver`` in the chain SQLAlchemy 2.1.1 builds.
+
+    Args:
+        driver (_DriverError): The driver exception.
+
+    Returns:
+        IntegrityError: The error a consumer's ``except`` receives.
+    """
+    emulated = _EmulatedError(driver)
+    emulated.__cause__ = driver
+    return IntegrityError("INSERT INTO users VALUES (1)", {}, emulated)
+
+
+def _sqlalchemy_20(driver: _DriverError, text: str) -> IntegrityError:
+    """Wrap ``driver`` in the chain SQLAlchemy 2.0.52 builds.
+
+    Args:
+        driver (_DriverError): The driver exception.
+        text (str): The adapter's ``str``, which still has ``DETAIL:``.
+
+    Returns:
+        IntegrityError: The error a consumer's ``except`` receives.
+    """
+    adapter = Exception(text)
+    adapter.__cause__ = driver
+    return IntegrityError("INSERT INTO users VALUES (1)", {}, adapter)
+
+
+class TestStructuredDiagnostics:
+    """The driver's fields come first; the text only fills the gaps (#367)."""
+
+    def test_sqlalchemy_21_unique_keeps_its_columns(self) -> None:
+        """The defect: 2.1.1's ``str(orig)`` has no ``DETAIL:`` line."""
+        error = _sqlalchemy_21(_unique_driver())
+
+        assert "DETAIL" not in str(error.orig)
+        failure = parse_integrity_error(error)
+
+        assert failure.kind is IntegrityViolation.UNIQUE
+        assert failure.constraint == "users_email_key"
+        assert failure.columns == ("email",)
+        assert failure.table == "users"
+
+    def test_sqlalchemy_21_composite_unique_keeps_every_column(self) -> None:
+        driver = _unique_driver("Key (nickname, age)=(ann, 30) already exists.")
+
+        failure = parse_integrity_error(_sqlalchemy_21(driver))
+
+        assert failure.columns == ("nickname", "age")
+
+    def test_sqlalchemy_20_chain_reads_the_cause(self) -> None:
+        """2.0.52 leaves the driver error in ``__cause__``, not ``orig``."""
+        error = _sqlalchemy_20(_unique_driver(), PG_UNIQUE)
+
+        failure = parse_integrity_error(error)
+
+        assert failure.columns == ("email",)
+        assert failure.table == "users"
+        assert failure.message == PG_UNIQUE
+
+    def test_a_driver_error_passed_directly_parses(self) -> None:
+        assert parse_integrity_error(_unique_driver()).column == "email"
+
+    def test_not_null_reads_column_name(self) -> None:
+        """Postgres fills ``column_name`` for not-null; ``detail`` is the row."""
+        driver = _DriverError(
+            'null value in column "email" of relation "users" violates '
+            "not-null constraint",
+            sqlstate="23502",
+            detail="Failing row contains (4, null, d, 20).",
+            table_name="users",
+            column_name="email",
+        )
+
+        failure = parse_integrity_error(_sqlalchemy_21(driver))
+
+        assert failure.kind is IntegrityViolation.NOT_NULL
+        assert failure.columns == ("email",)
+        assert failure.table == "users"
+
+    def test_a_translated_sentence_is_classified_by_sqlstate(self) -> None:
+        """``lc_messages`` translates the sentence and the detail, not the code.
+
+        Captured from Postgres 16 with ``lc_messages=de_DE.utf8``. The
+        translated ``DETAIL`` matches no key pattern, so the columns stay
+        empty — measured, and pinned so it is not mistaken for a defect.
+        """
+        driver = _DriverError(
+            "doppelter Schlüsselwert verletzt Unique-Constraint »users_email_key«",
+            sqlstate="23505",
+            detail="Schlüssel »(email)=(a@x.com)« existiert bereits.",
+            constraint_name="users_email_key",
+            table_name="users",
+        )
+
+        failure = parse_integrity_error(_sqlalchemy_21(driver))
+
+        assert failure.kind is IntegrityViolation.UNIQUE
+        assert failure.constraint == "users_email_key"
+        assert failure.table == "users"
+        assert failure.columns == ()
+
+    def test_a_cyclic_chain_terminates(self) -> None:
+        driver = _unique_driver()
+        emulated = _EmulatedError(driver)
+        driver.__cause__ = emulated
+
+        assert parse_integrity_error(emulated).column == "email"
+
+    def test_sqlstate_table_is_pinned(self) -> None:
+        """Ported from PostgreSQL's Appendix A, class 23; drift fails here."""
+        assert _PG_SQLSTATE_VIOLATIONS == {
+            "23505": IntegrityViolation.UNIQUE,
+            "23503": IntegrityViolation.FOREIGN_KEY,
+            "23502": IntegrityViolation.NOT_NULL,
+            "23514": IntegrityViolation.CHECK,
+        }
