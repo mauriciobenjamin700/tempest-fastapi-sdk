@@ -327,6 +327,14 @@ from tempest_fastapi_sdk.utils.retry import (
 from tempest_fastapi_sdk.utils.retry import (
     async_retry as async_retry,
 )
+from tempest_fastapi_sdk.utils.signed_url import (
+    SIGNED_URL_EXPIRES_PARAM as SIGNED_URL_EXPIRES_PARAM,
+)
+from tempest_fastapi_sdk.utils.signed_url import (
+    SIGNED_URL_SIGNATURE_PARAM as SIGNED_URL_SIGNATURE_PARAM,
+)
+from tempest_fastapi_sdk.utils.signed_url import sign_path as sign_path
+from tempest_fastapi_sdk.utils.signed_url import verify_path as verify_path
 from tempest_fastapi_sdk.utils.storage_backends import (
     LocalUploadStorage as LocalUploadStorage,
 )
@@ -393,6 +401,8 @@ __all__: list[str] = [
     "PHONE_BR_PATTERN",
     "REFRESH_TOKEN_TYPE",
     "REQUEST_ID_HEADER",
+    "SIGNED_URL_EXPIRES_PARAM",
+    "SIGNED_URL_SIGNATURE_PARAM",
     "SNIFFABLE_MIMETYPES",
     "UF",
     "UPLOAD_READ_CHUNK_BYTES",
@@ -503,6 +513,7 @@ __all__: list[str] = [
     "quantize_money",
     "read_upload_capped",
     "region_choices",
+    "sign_path",
     "sniff_mime",
     "states_by_region",
     "to_utc",
@@ -510,4 +521,5 @@ __all__: list[str] = [
     "uf_choices",
     "utcnow",
     "verify_opaque_token",
+    "verify_path",
 ]

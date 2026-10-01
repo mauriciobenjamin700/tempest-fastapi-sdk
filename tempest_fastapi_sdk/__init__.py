@@ -352,6 +352,9 @@ from tempest_fastapi_sdk.api import (
     make_role_dependency as make_role_dependency,
 )
 from tempest_fastapi_sdk.api import (
+    make_signed_path_dependency as make_signed_path_dependency,
+)
+from tempest_fastapi_sdk.api import (
     make_spa_router as make_spa_router,
 )
 from tempest_fastapi_sdk.api import (
@@ -1035,6 +1038,9 @@ from tempest_fastapi_sdk.exceptions import (
     ConflictException as ConflictException,
 )
 from tempest_fastapi_sdk.exceptions import (
+    ExpiredSignedURLException as ExpiredSignedURLException,
+)
+from tempest_fastapi_sdk.exceptions import (
     ExpiredTokenException as ExpiredTokenException,
 )
 from tempest_fastapi_sdk.exceptions import (
@@ -1048,6 +1054,9 @@ from tempest_fastapi_sdk.exceptions import (
 )
 from tempest_fastapi_sdk.exceptions import (
     InvalidFileTypeException as InvalidFileTypeException,
+)
+from tempest_fastapi_sdk.exceptions import (
+    InvalidSignedURLException as InvalidSignedURLException,
 )
 from tempest_fastapi_sdk.exceptions import (
     InvalidTokenException as InvalidTokenException,
@@ -1740,6 +1749,9 @@ from tempest_fastapi_sdk.utils import (
     region_choices as region_choices,
 )
 from tempest_fastapi_sdk.utils import (
+    sign_path as sign_path,
+)
+from tempest_fastapi_sdk.utils import (
     sniff_mime as sniff_mime,
 )
 from tempest_fastapi_sdk.utils import (
@@ -1759,6 +1771,9 @@ from tempest_fastapi_sdk.utils import (
 )
 from tempest_fastapi_sdk.utils import (
     verify_opaque_token as verify_opaque_token,
+)
+from tempest_fastapi_sdk.utils import (
+    verify_path as verify_path,
 )
 from tempest_fastapi_sdk.webpush import (
     WebPushDispatcher as WebPushDispatcher,
@@ -2058,6 +2073,7 @@ __all__: list[str] = [
     "ErrorResponseSchema",
     "EventStream",
     "ExceptionRedactor",
+    "ExpiredSignedURLException",
     "ExpiredTokenException",
     "ExplainDetail",
     "ExplainReport",
@@ -2105,6 +2121,7 @@ __all__: list[str] = [
     "IntegrityViolation",
     "IntrospectionAuth",
     "InvalidFileTypeException",
+    "InvalidSignedURLException",
     "InvalidTokenException",
     "JSONFormatter",
     "JWTSettings",
@@ -2444,6 +2461,7 @@ __all__: list[str] = [
     "make_role_dependency",
     "make_session_dependency",
     "make_session_router",
+    "make_signed_path_dependency",
     "make_spa_router",
     "make_token_dependency",
     "make_tool_spec_router",
@@ -2514,6 +2532,7 @@ __all__: list[str] = [
     "set_request_id",
     "setup_tracing",
     "shared_memory_url",
+    "sign_path",
     "snapshot_model",
     "sniff_mime",
     "sse_response",
@@ -2530,4 +2549,5 @@ __all__: list[str] = [
     "uf_choices",
     "utcnow",
     "verify_opaque_token",
+    "verify_path",
 ]
