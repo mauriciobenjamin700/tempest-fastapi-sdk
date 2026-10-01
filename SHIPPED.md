@@ -1601,6 +1601,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   constructor's `accel_redirect=`, fed by `STORAGE_ACCEL_REDIRECT` /
   `STORAGE_ACCEL_PREFIX` in `MinIOSettings`. Recipe has the nginx block,
   measured against nginx + MinIO containers.
+- **Signed app URLs** — **(não lançado, #363)** `sign_path` /
+  `verify_path` in `utils.signed_url` (stdlib only): HMAC-SHA256 over
+  `expires LF decoded-path`, key derived from the secret and `purpose`
+  (domain separation, so reusing `JWT_SECRET` is safe), `compare_digest`,
+  signature checked before expiry. `make_signed_path_dependency(secret=,
+  purpose=)` in `api.dependencies` gates a route from the query string;
+  failures are `403` `InvalidSignedURLException` (`SIGNED_URL_INVALID`) /
+  `ExpiredSignedURLException` (`SIGNED_URL_EXPIRED`). Storage recipe pairs it
+  with `download_response(..., request=)`; measured against MinIO.
 - **Email** — SMTP via `EmailUtils` + Jinja2 template rendering
   with bundled defaults (`activation.html`, `password_reset.html`)
   shadowable by the project's `template_dir`. **Bulk send (v0.258.0):**
