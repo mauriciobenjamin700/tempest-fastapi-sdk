@@ -19,8 +19,12 @@ by `AUTH_OAUTH_ENABLED`.
     guarantees — and the day someone turns on `strict=True` in the type check,
     every Google login breaks at once.
 
-Nothing extra to install: `httpx` is a base dependency of the SDK and
-`HTTPClient` (retry + circuit breaker) is already bundled.
+The redirect login needs no extra beyond `[auth]` (bcrypt + PyJWT), which the
+`UserAuthService` behind `make_auth_router` already requires: `httpx` is a
+base dependency of the SDK and `HTTPClient` (retry + circuit breaker) is
+already bundled. Only `OIDCTokenVerifier`, which checks a realm's token offline
+([its own section](#verifying-the-realm-token-offline-oidctokenverifier-v02970)),
+needs `[oidc]`, which brings `cryptography`.
 
 ## The flow, end to end
 
@@ -74,13 +78,14 @@ class Settings(
 settings: Settings = Settings()
 ```
 
-`OAuthSettings` reads five environment variables:
+`OAuthSettings` reads six environment variables:
 
 | Variable | Default | What it is |
 | --- | --- | --- |
 | `OAUTH_REDIRECT_BASE_URL` | `""` | Public origin of the service (`https://api.example.com`), no trailing slash and no path |
 | `OAUTH_GOOGLE_CLIENT_ID` | `""` | `Client ID` from the Google console |
 | `OAUTH_GOOGLE_CLIENT_SECRET` | `""` | Matching `Client secret` |
+| `OAUTH_GOOGLE_EXTRA_AUDIENCES` | `[]` | The project's other Google client ids (Android, iOS) whose token `POST /auth/oauth/google/token` accepts; in the environment, a JSON list (`'["android-id","ios-id"]'`) |
 | `OAUTH_GITHUB_CLIENT_ID` | `""` | `Client ID` of the GitHub OAuth app |
 | `OAUTH_GITHUB_CLIENT_SECRET` | `""` | Matching `Client secret` |
 
@@ -820,8 +825,10 @@ What the callback answers, by cause:
     those people to do something that cannot work.
 
     Each class subclasses the exception that site already raised
-    (`OAuthEmailTakenException(ConflictException)` and the other nine), so
-    `except ConflictException` keeps catching what it caught.
+    (`OAuthEmailTakenException(ConflictException)` and the other eleven), so
+    `except ConflictException` keeps catching what it caught. The only one
+    that subclasses `AppException` directly is
+    `OAuthAudienceUnverifiableException` (501), which replaced no exception.
 
 ## Doing it by hand
 

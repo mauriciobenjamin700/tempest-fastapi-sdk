@@ -527,6 +527,9 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "FIREBASE_UNAVAILABLE": (
             "Não foi possível alcançar o serviço de certificados do Firebase"
         ),
+        "MFA_ALREADY_ENROLLED": (
+            "O MFA já está ativo — desative-o antes de cadastrar de novo"
+        ),
         "VOICE_CONSENT_REQUIRED": ("O cadastro de voz exige consentimento gravado"),
     },
     "en-US": {
@@ -602,6 +605,9 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "FIREBASE_TOKEN_REVOKED": "Firebase ID token revoked",
         "FIREBASE_USER_DISABLED": "The Firebase account is disabled",
         "FIREBASE_UNAVAILABLE": ("Could not reach the Firebase certificate endpoint"),
+        "MFA_ALREADY_ENROLLED": (
+            "MFA is already active — disable it before enrolling again"
+        ),
         "VOICE_CONSENT_REQUIRED": "Voice enrolment requires recorded consent",
     },
 }

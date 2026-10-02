@@ -73,7 +73,6 @@ def create_app() -> FastAPI:
     app = FastAPI(title="my-app")
     register_exception_handlers(app)
 
-    # Order matters: middleware ANTES dos routers.
     app.add_middleware(
         SessionMiddleware,
         session_auth=session_auth,
@@ -114,8 +113,8 @@ Pronto. O usuário faz `POST /auth/session/login` com email+senha; o SDK seta o 
 3. **`SessionMiddleware`** — a ponte HTTP → sessão. A cada request lê o cookie, resolve via `SessionAuth`/`store` e popula `request.state.session` **antes** de qualquer router rodar. Sem ele, `make_session_dependency()` não encontra sessão nenhuma e responde `401` mesmo com cookie válido — a menos que você passe `session_auth=` para a dependency, que então resolve o cookie sozinha ([sem middleware](#login-sem-tabela-de-usuario)).
 4. **`make_session_router`** — expõe os cinco endpoints bundled (`login` / `logout` / `me` / `list` / `{id}`). Recebe o mesmo `session_auth` e uma `session_factory` pra abrir a sessão de DB no login.
 
-!!! warning "Ordem importa: `add_middleware` ANTES de `include_router`"
-    O `SessionMiddleware` precisa rodar em toda request pra popular `request.state.session`. Registre-o com `app.add_middleware(...)` **antes** de montar os routers via `app.include_router(...)`. Se inverter, os handlers que dependem de `request.state.session` (ou de `make_session_dependency`) encontram o atributo ausente e quebram. Mantenha o wire na ordem exata do exemplo acima.
+!!! note "A ordem entre `add_middleware` e `include_router` não importa"
+    O Starlette monta a pilha de middleware na primeira request, por cima do app inteiro, então o `SessionMiddleware` envolve também os routers incluídos antes dele. Medido aqui (Starlette 1.6.0, FastAPI 0.141.1): com `include_router` antes de `add_middleware`, o login responde `200` e o `GET /auth/session/me` seguinte também `200`, igual à ordem do exemplo. O que importa é registrar o middleware **antes de o app começar a servir**: `add_middleware` depois da primeira request levanta `RuntimeError: Cannot add middleware after an application has started`. Monte tudo dentro do `create_app`.
 
 ---
 
@@ -400,7 +399,7 @@ GET /admin com cookie revogado: 303 /login
 - **CSRF nativo via SameSite**: `SESSION_COOKIE_SAMESITE=lax` (default) bloqueia POST cross-site. Combine com [`CSRFMiddleware`](security.md) pra GET-state-changing endpoints e form-submission.
 - **HttpOnly + Secure**: `SESSION_COOKIE_HTTPONLY=True` + `SESSION_COOKIE_SECURE=True` por default. JavaScript não lê (anti-XSS); browser não envia em HTTP.
 - **Sliding TTL com floor**: `SESSION_SLIDING=True` (default) refresh a cada hit, mas `created_at` permanece — você pode forçar logout absoluto após N dias via job que limpa rows com `created_at < now - 30d`.
-- **Anti-enumeração (parcial — leia o timing)**: `/auth/session/login` rejeita e-mail inexistente e senha errada com o **mesmo** `UnauthorizedException` e a mesma mensagem, então a *resposta* não distingue os dois casos. O **tempo** distingue: `authenticate()` levanta assim que a query não acha o usuário, antes de chamar o verificador de senha, então a tentativa contra conta inexistente não paga o custo do bcrypt — medido nesta máquina, ~153 ms por verificação. Quem cronometra a resposta separa "conta não existe" de "senha errada". Se enumeração por timing está no seu modelo de ameaça, limite a taxa de tentativas por IP/identificador antes do endpoint; o corpo da resposta sozinho não fecha esse canal.
+- **Anti-enumeração, no corpo e no tempo**: `/auth/session/login` rejeita e-mail inexistente, senha errada e conta inativa com o **mesmo** `UnauthorizedException` e a mesma mensagem (`invalid email or password`). E as três recusas pagam uma verificação bcrypt: e-mail desconhecido é conferido contra um hash descartável (`PasswordUtils.dummy_verify`), e a senha de conta inativa é verificada antes do `is_active`. Medido nesta máquina (bcrypt custo 12, `SessionAuth.authenticate` direto, mediana de N=21): senha errada **153,9 ms**, e-mail inexistente **154,1 ms** — antes da correção, o e-mail inexistente respondia em 0,4 ms. Continua variando o que não é bcrypt (a query, a rede), e a primeira recusa por e-mail inexistente do processo paga um hash a mais para montar o hash descartável. Limite a taxa de tentativas por IP/identificador mesmo assim: isso fecha a força bruta, que o tempo igual não fecha.
 - **Revogação instantânea**: `revoke_all(user_id)` no password-change / suspeita de compromisso → logout em todos os dispositivos no próximo request.
 
 ---

@@ -14,6 +14,9 @@ re-export form combined with ``__all__`` so every type-checker
 a "private import usage" / "is not exported" diagnostic.
 """
 
+from tempest_fastapi_sdk.auth.exceptions import (
+    MFAAlreadyEnrolledException as MFAAlreadyEnrolledException,
+)
 from tempest_fastapi_sdk.auth.firebase import (
     DEFAULT_FIREBASE_APP_NAME as DEFAULT_FIREBASE_APP_NAME,
 )
@@ -220,6 +223,7 @@ __all__: list[str] = [
     "LoginResponseSchema",
     "LoginSchema",
     "LogoutSchema",
+    "MFAAlreadyEnrolledException",
     "MFAConfirmSchema",
     "MFADisableSchema",
     "MFAEnrollResponseSchema",

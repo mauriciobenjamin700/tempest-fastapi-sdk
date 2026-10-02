@@ -65,6 +65,15 @@ class TestPasswordUtils:
         utils = PasswordUtils(rounds=6)
         assert utils.rounds == 6
 
+    def test_dummy_verify_fails_at_the_instance_cost(self) -> None:
+        utils = PasswordUtils(rounds=5)
+        assert utils.dummy_verify("hunter2") is False
+        first = utils._dummy_hash
+        assert first is not None
+        assert first.startswith("$2b$05$")
+        assert utils.dummy_verify("hunter2") is False
+        assert utils._dummy_hash == first
+
 
 class _PolicyUser(BaseUserModel):
     __tablename__ = "password_policy_users"

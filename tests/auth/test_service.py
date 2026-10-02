@@ -33,6 +33,7 @@ from tempest_fastapi_sdk.exceptions import (
     ValidationException,
 )
 from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
+from tempest_fastapi_sdk.utils import password as _password_module
 
 
 class _TestUser(BaseUserModel):
@@ -500,6 +501,74 @@ class TestLogin:
                 email="a@b.com",
                 password="strong-pass-12-chars",
             )
+
+    async def test_unknown_email_pays_one_bcrypt_check(
+        self,
+        session: AsyncSession,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An unknown address costs the same bcrypt check as a wrong password.
+
+        Returning before any hashing made the response time tell a caller
+        which addresses are registered.
+        """
+        service = _service(auto_activate=True)
+        await service.signup(
+            session,
+            email="a@b.com",
+            password="strong-pass-12-chars",
+        )
+        calls: list[str] = []
+        real_checkpw = _password_module._bcrypt.checkpw
+
+        def _counting_checkpw(plain: bytes, hashed: bytes) -> bool:
+            calls.append("checkpw")
+            return bool(real_checkpw(plain, hashed))
+
+        monkeypatch.setattr(_password_module._bcrypt, "checkpw", _counting_checkpw)
+        with pytest.raises(UnauthorizedException):
+            await service.login(
+                session,
+                email="a@b.com",
+                password="wrong-pass-12-chars",
+            )
+        assert calls == ["checkpw"]
+        calls.clear()
+        with pytest.raises(UnauthorizedException) as missing:
+            await service.login(
+                session,
+                email="nobody@b.com",
+                password="wrong-pass-12-chars",
+            )
+        assert calls == ["checkpw"]
+        assert missing.value.message == "invalid email or password"
+
+    async def test_inactive_user_pays_one_bcrypt_check(
+        self,
+        session: AsyncSession,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        service = _service()
+        await service.signup(
+            session,
+            email="a@b.com",
+            password="strong-pass-12-chars",
+        )
+        calls: list[str] = []
+        real_checkpw = _password_module._bcrypt.checkpw
+
+        def _counting_checkpw(plain: bytes, hashed: bytes) -> bool:
+            calls.append("checkpw")
+            return bool(real_checkpw(plain, hashed))
+
+        monkeypatch.setattr(_password_module._bcrypt, "checkpw", _counting_checkpw)
+        with pytest.raises(UnauthorizedException):
+            await service.login(
+                session,
+                email="a@b.com",
+                password="strong-pass-12-chars",
+            )
+        assert calls == ["checkpw"]
 
 
 class TestPasswordReset:
