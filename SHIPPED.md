@@ -34,7 +34,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `AUTH_EMAIL_CHANGE_NOTIFY_OLD`; `EMAIL_CHANGE` token purpose;
   JSON + backend HTML pages + bilingual templates), OAuth2/OIDC
   providers (`GoogleOAuthClient`, `GitHubOAuthClient`,
-  `OIDCProvider`) **plus the four bundled social-login routes since
+  `OIDCProvider`) **plus the five bundled social-login routes since
   v0.273.0** (see the dedicated bullet below), CSRF middleware +
   `make_csrf_token_dependency`,
   opt-in DB-backed opaque refresh tokens
@@ -2638,3 +2638,32 @@ gateway, porque a spec descreve o webhook só em prosa (#374). Fecha o item
 - Receita `docs/recipes/zap-inbound.md` (+ `.en.md`).
 - Fora de escopo: persistência/idempotência do consumidor (a receita mostra
   o padrão) e registro do webhook no gateway (`npm run webhook:set`, admin).
+
+## Auditoria da documentação contra o código (v0.303.0)
+
+150 afirmações da doc conferidas com execução; o que o código não sustentava
+virou fix. Superfície nova ou mudada:
+
+- **Segurança** — `MFAAlreadyEnrolledException` (409 `MFA_ALREADY_ENROLLED`)
+  no enroll sobre MFA ativo; `PasswordUtils.dummy_verify` usado por
+  `UserAuthService.login`, `SessionAuth.authenticate` e
+  `UserModelAuthBackend.authenticate` (admin), que agora verifica a senha
+  antes de revelar `is_active`/`is_admin`; `analyze_sql` classifica pela
+  escrita mais privilegiada da árvore (CTE que modifica dados, `EXPLAIN
+  ANALYZE` do MySQL, `PRAGMA` com valor ou de ação).
+- **Tracing** — `instrument_sqlalchemy_engine(engine)` para o engine que só
+  existe depois do `connect()`; `setup_tracing` avisa quando chamado no
+  lifespan.
+- **GenAI** — `Embedder(query_prefix=, passage_prefix=)` +
+  `embed_query`/`embed_passages`, usados por `Retriever`/`HybridRetriever`/
+  `ChatMemory`.
+- **Comportamento corrigido** — WebSocket fecha com `4401` depois do
+  `accept`; `@cached` ignora `self`/`cls` na chave default; `UploadUtils`
+  trata vazio/`0` como sem restrição; `OutboxRelay` valida a aridade do
+  `publish`; `make_spa_router` responde `HEAD`; template `queue` do scaffold
+  importa; máscaras `BR_*` com `[$-416]`; limiar do formato compacto
+  arredonda para baixo.
+- **Fora de escopo, registrado:** `changes_since` perde a escrita cuja
+  transação atravessa o `server_time` (flush antes, commit depois). A
+  docstring e a receita `offline-sync` descrevem o limite; recuar o marco
+  muda o contrato (o cliente passa a receber linhas repetidas) e não entrou.

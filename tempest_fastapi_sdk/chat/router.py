@@ -109,11 +109,34 @@ def make_chat_router(
 
     * ``POST {prefix}/conversations`` -> start a conversation (creator is
       auto-added as a participant).
-    * ``GET {prefix}/conversations`` -> list the caller's conversations.
+    * ``GET {prefix}/conversations`` -> list the caller's conversations,
+      pinned first then newest.
+    * ``GET {prefix}/conversations/{id}`` -> one conversation with its
+      participants.
+    * ``PATCH {prefix}/conversations/{id}`` -> edit a group's title or
+      description.
+    * ``PUT {prefix}/conversations/{id}/preferences`` -> pin, archive or
+      mute for the caller only.
+    * ``POST {prefix}/conversations/{id}/participants`` -> add members to
+      a group.
+    * ``DELETE {prefix}/conversations/{id}/participants/{participant_id}``
+      -> remove a member from a group.
+    * ``POST {prefix}/conversations/{id}/leave`` -> leave a conversation.
+    * ``POST {prefix}/conversations/{id}/read`` -> move the caller's read
+      watermark.
     * ``POST {prefix}/conversations/{id}/messages`` -> post a message
       (caller must be a participant).
     * ``GET {prefix}/conversations/{id}/messages`` -> page the history
       (participant only).
+    * ``PATCH {prefix}/messages/{message_id}`` -> edit a message you sent.
+    * ``DELETE {prefix}/messages/{message_id}`` -> delete a message for
+      everyone, leaving a tombstone.
+    * ``PUT {prefix}/messages/{message_id}/reaction`` -> react, replacing
+      your previous reaction (needs a service built with ``reactions=``).
+    * ``DELETE {prefix}/messages/{message_id}/reaction`` -> remove your
+      reaction.
+    * ``POST {prefix}/messages/{message_id}/forward`` -> forward a message
+      into other conversations.
     * ``GET {prefix}/conversations/{id}/stream`` -> SSE stream of new
       messages (participant only; requires the service to carry an
       ``SSEBroker``).

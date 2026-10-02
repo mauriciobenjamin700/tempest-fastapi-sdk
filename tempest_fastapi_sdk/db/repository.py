@@ -1614,10 +1614,19 @@ class BaseRepository(Generic[ModelType]):
         2. Persist the returned ``server_time`` (NOT the max
            ``updated_at`` of the items) as the next ``since``.
         3. Next sync: call with that ``since``. The filter is
-           ``updated_at > since`` (strict), and because ``server_time``
-           is captured *before* the query runs it is a safe high-water
-           mark — anything committed afterwards has a later
-           ``updated_at`` and surfaces on the following pull.
+           ``updated_at > since`` (strict), and ``server_time`` is
+           captured *before* the query runs, so a write stamped after
+           that instant surfaces on the following pull.
+
+        The mark is not safe against a transaction that straddles it.
+        ``updated_at`` and ``server_time`` both come from the application
+        process clock (``utcnow()``), and ``updated_at`` is stamped at
+        flush time, not at commit. A write that flushes before
+        ``server_time`` and commits after the pull ran is invisible to
+        that pull and older than the next ``since``, so no incremental
+        pull ever returns it; only a full resync (``since=None``) does.
+        The same holds across replicas whose clocks disagree. Keep write
+        transactions short, and give clients a periodic full resync.
 
         When the model mixes in
         :class:`tempest_fastapi_sdk.SoftDeleteMixin`, keep

@@ -304,6 +304,9 @@ from tempest_fastapi_sdk.api import (
     generate_oauth_state as generate_oauth_state,
 )
 from tempest_fastapi_sdk.api import (
+    instrument_sqlalchemy_engine as instrument_sqlalchemy_engine,
+)
+from tempest_fastapi_sdk.api import (
     key_by_header as key_by_header,
 )
 from tempest_fastapi_sdk.api import (
@@ -2422,6 +2425,7 @@ __all__: list[str] = [
     "hash_opaque_token",
     "heartbeat",
     "in_transaction",
+    "instrument_sqlalchemy_engine",
     "is_memory_sqlite_url",
     "is_valid_cep",
     "is_valid_city",

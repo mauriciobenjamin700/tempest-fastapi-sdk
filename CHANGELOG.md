@@ -5,6 +5,146 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.303.0] — 2026-10-02
+
+Auditoria da documentação contra o código entregue: 150 afirmações da doc
+conferidas com execução, e as que o código não sustentava viraram fix de
+código (quando o defeito era do SDK) ou de prosa. Três são de segurança:
+`POST /auth/mfa/enroll` desligava o MFA com só o access token, o login
+revelava pelo tempo (e, no admin, pela mensagem) quais contas existem, e o
+console SQL do admin classificava como leitura três formas de escrita.
+
+**Leia antes de atualizar:**
+
+- `POST /auth/mfa/enroll` sobre conta com MFA ativo agora responde **409**
+  `MFA_ALREADY_ENROLLED`. Para girar o segredo: `/auth/mfa/disable` (senha +
+  código) e depois `enroll`.
+- O login do admin com senha errada responde `"Invalid credentials"` para
+  qualquer conta; `"Account disabled"` e `"This account is not authorized
+  for /admin"` só aparecem com a senha certa.
+- `BR_CURRENCY_FORMAT`, `BR_PERCENT_FORMAT`, `BR_DATE_FORMAT` e
+  `BR_DATETIME_FORMAT` mudam de valor (ganham `[$-416]`).
+- `make_websocket_router` passa a aceitar o handshake antes de fechar com
+  `4401`: o cliente real vê o close code em vez de `HTTP 403`/`1006`.
+- `@cached` em método deixa `self`/`cls` fora da chave default: instâncias
+  da mesma classe passam a dividir a entrada.
+- `UploadUtils` trata allowlist vazia e `max_size_bytes=0` como "sem
+  restrição".
+- `OutboxRelay` recusa na construção um `publish` que não aceita
+  `publish(event)`.
+
+### Security
+
+- **`POST /auth/mfa/enroll` não desliga mais o MFA com só o access token.**
+  Um segundo enroll sobre conta com MFA ativo apagava os recovery codes e
+  zerava `totp_enabled_at`, sem pedir senha nem código. Agora
+  `UserAuthService.mfa_enroll` levanta `MFAAlreadyEnrolledException` (409,
+  `MFA_ALREADY_ENROLLED`) e não muda nada. Enroll sobre um enrollment
+  pendente (sem confirm) continua permitido.
+- **Login não denuncia mais e-mail inexistente pelo tempo.**
+  `UserAuthService.login` e `SessionAuth.authenticate` respondiam em ~0,5 ms
+  para e-mail desconhecido contra ~154 ms para senha errada (bcrypt custo
+  12, mediana de 21). As três recusas (e-mail inexistente, senha errada,
+  conta inativa) agora pagam um bcrypt.
+- **Login do admin não revela mais quem é admin nem quem está desativado.**
+  `UserModelAuthBackend.authenticate` checava `is_active` e `is_admin` antes
+  da senha: qualquer senha bastava para ler, pela mensagem, se o e-mail
+  existia e que tipo de conta era. Agora a senha é verificada primeiro (e o
+  e-mail inexistente paga um bcrypt fictício); com senha errada as quatro
+  situações respondem `"Invalid credentials"` em ~154 ms (mediana de 11).
+- **Console SQL do admin: leitura por fora, escrita por dentro.**
+  `analyze_sql` classificava pelo nó do topo, então três formas de escrita
+  saíam `read` e passavam por um console read-only: CTE que modifica dados
+  (`WITH gone AS (DELETE … RETURNING *) SELECT …`), `EXPLAIN ANALYZE` do
+  MySQL (que executa o statement) e `PRAGMA` do SQLite com valor
+  (`journal_mode = DELETE`, `writable_schema = ON`) ou que age
+  (`optimize`). Agora o statement leva a capacidade mais privilegiada que
+  contém, e a regra de `WHERE` obrigatório olha a escrita.
+
+### Fixed
+
+- `tempest new --extras queue` (e `tempest generate --src`) gerava
+  `src/queue/__init__.py` importando `AsyncBrokerManager` do topo do pacote,
+  que nunca o exportou: o projeto dava `ImportError` no primeiro import. O
+  template usa `AsyncQueueManager` de `tempest_fastapi_sdk.queue`, e um teste
+  importa cada módulo gerado por extra. O `tasks/jobs.py` gerado registra com
+  `@tq.task`, como o `tasks/__init__.py` já ensinava.
+- `make_spa_router`: `HEAD` no fallback respondia 405; agora responde como
+  `GET`, sem corpo.
+- `UploadUtils` (e `FileStoreUtils`) trata `allowed_extensions=set()`,
+  `allowed_mimetypes=set()` e `max_size_bytes=0` como "sem restrição", o
+  contrato que o `UploadSettings` documenta. Antes,
+  `UploadUtils(**settings.upload_kwargs())` com os defaults do mixin recusava
+  todo upload com 415.
+- `@cached`: a chave default deixa de fora o `self`/`cls` quando a função
+  decorada é método. `str(self)` carregava o endereço de memória, então um
+  método num service construído por request nunca acertava o cache.
+  `key_builder` customizado continua recebendo os args completos.
+- `Agent`: o motivo de bloqueio da moderação lia `verdict.labels`, campo que
+  o `ModerationResult` não tem, e saía sempre `(policy)`. Agora lê
+  `categories` — `RuleModerator(..., category="toxicity")` produz
+  `blocked by moderation (toxicity)`.
+- `make_websocket_router` aceita o handshake antes de fechar com `4401`
+  (token ausente ou inválido). Fechar antes do `accept` virava `HTTP 403` no
+  uvicorn e `1006` no browser; o `TestClient` escondia a diferença.
+- `setup_tracing` emite `RuntimeWarning` quando chamado depois de a app
+  montar a pilha de middleware (no lifespan), caso em que nenhuma request
+  vira span. Com provider já instalado, passa a instrumentar
+  `sqlalchemy_engine` em vez de ignorá-lo.
+- `make_admin_router`: card de `dashboard_cards` cujo `compute` levanta é
+  registrado com `logger.exception` em vez de sumir sem rastro.
+- `BR_PERCENT_FORMAT`, `BR_DATE_FORMAT` e `BR_DATETIME_FORMAT` ganham
+  `[$-416]` e passam a não depender do locale de quem abre a planilha
+  (LibreOffice 7.4: sem ele, `30.00%` em en-US e `14.08.2026` em de-DE).
+  `BR_CURRENCY_FORMAT` passa de `[$R$-416] #,##0.00` para
+  `[$-416]"R$ "#,##0.00`: a forma antiga não fixava os separadores (en-US
+  lia `R$ 1,234.56`). Medido no LibreOffice, não no Excel.
+- `OutboxRelay` recusa na construção, com `TypeError`, um `publish` que não
+  aceita ser chamado como `publish(event)` — o `MessageBroker.publish(channel,
+  message)` cru era aceito e cada evento terminava `failed` sem ter sido
+  publicado.
+- `export_sklearn_to_compact` (e `edge_pipeline(compact=True)`): o limiar de
+  split vira float32 arredondando para baixo. O arredondamento para o mais
+  próximo fazia uma floresta sem `max_depth` ser recusada pela própria
+  verificação nos dados de treino. O leitor do browser (`tempest-react-sdk`)
+  já compara `Math.fround(x) <= threshold` e bate com o valor novo.
+- `edge_pipeline(compact=True, verify_samples=<ndarray>)` não levanta mais
+  "truth value of an array is ambiguous", e `feature_names` com contagem
+  errada levanta `ValueError` com as duas contagens (antes, `IndexError`).
+
+### Added
+
+- `MFAAlreadyEnrolledException` (`tempest_fastapi_sdk.auth`).
+- `PasswordUtils.dummy_verify(plain)`: uma verificação bcrypt contra um hash
+  descartável, para o ramo "conta não existe" custar o mesmo que uma senha
+  errada.
+- `instrument_sqlalchemy_engine(engine)` (`tempest_fastapi_sdk.api` e topo do
+  pacote): instrumenta o engine que só existe depois do `connect()`; as
+  queries saem como filhas do span da request.
+- `Embedder(query_prefix=..., passage_prefix=...)` e
+  `Embedder.embed_query` / `Embedder.embed_passages`. `Retriever` (e
+  `HybridRetriever`) e `ChatMemory` os usam quando o embedder os tem, então
+  `multilingual-e5` recebe `query: ` / `passage: ` sem prefixo escrito à mão.
+  `embed()` continua sem prefixo.
+
+### Documentation
+
+- `migration` ganha as seções 0.302.0 (constraint composta, com
+  `legacy_constraint_renames` medido) e 0.301.0; PT e EN voltam a contar a
+  mesma história sobre dump de `float`.
+- Exemplos que quebravam quem copiava: `tempest new` com hífen (recusado),
+  prefixo duplicado da auth na receita React SPA, CORS que ficava `*` no
+  `tempestweb-frontend`, `@cached` que nunca gravava, `outbox` com argumentos
+  invertidos, fábrica do chat sem anexos/reações, `drain` de graceful shutdown
+  que nunca emitia `503`, tracing no lifespan, exemplos de `modelops` que não
+  rodavam, `Settings` do WebAuthn sem banco.
+- Números e status medidos: 401 (não 400) para token inválido, 13 rotas no
+  `make_auth_router`, cinco rotas OAuth, 93 receitas, 684 classes de schema
+  da OpenPix, tabela completa de env vars.
+- `httpx` vem no pacote base; o extra `[http]` é opcional.
+- `changes_since`: a docstring deixa de chamar o `server_time` de marco
+  seguro e descreve a transação que o atravessa.
+
 ## [0.302.0] — 2026-10-01
 
 Arquivo privado servido pelo backend (#361, #362, #363): `download_response`

@@ -255,8 +255,8 @@ mexer neles. Todos rodam dentro do `make check`.
   __all__: list[str] = ["Bar", "Baz"]
   ```
 
-- **Wildcard não é re-export.** Para superfície gerada (OpenPix, 373 nomes
-  lazy), `__all__` é a única forma disponível — e é suficiente. Detalhe em
+- **Wildcard não é re-export.** Para superfície gerada (OpenPix: 686 nomes
+  lazy em `schemas.__all__` na v0.302.0), `__all__` é a única forma disponível — e é suficiente. Detalhe em
   [`tempest_fastapi_sdk/integrations/CLAUDE.md`](tempest_fastapi_sdk/integrations/CLAUDE.md).
 - **Regra de segurança que a doc manda o consumidor implementar é regra que
   o SDK deveria implementar** (v0.273.0). A receita de OAuth carregava três

@@ -844,6 +844,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.api.webhooks.WebhookSender
 ::: tempest_fastapi_sdk.api.webhooks.WebhookDelivery
 ::: tempest_fastapi_sdk.api.tracing.setup_tracing
+::: tempest_fastapi_sdk.api.tracing.instrument_sqlalchemy_engine
 
 ### `tempest_fastapi_sdk.auth`
 
@@ -860,6 +861,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.auth.firebase.FirebaseTokenRevokedError
 ::: tempest_fastapi_sdk.auth.firebase.FirebaseUserDisabledError
 ::: tempest_fastapi_sdk.auth.firebase.FirebaseUnavailableError
+::: tempest_fastapi_sdk.auth.exceptions.MFAAlreadyEnrolledException
 ::: tempest_fastapi_sdk.auth.firebase.DEFAULT_FIREBASE_APP_NAME
 ::: tempest_fastapi_sdk.auth.router.make_auth_router
 ::: tempest_fastapi_sdk.auth.guards.require_authenticated
