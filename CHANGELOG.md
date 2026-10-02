@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Utils: URL curta assinada para rota do próprio app (#363)
+
+Arquivo privado servido pelo backend precisa de uma URL que o navegador abra
+sozinho: `<img>`, `<video>` e link de download não mandam `Authorization`. A
+URL presignada aponta para o bucket; esta aponta para a rota do app.
+
+- **`sign_path(path, *, secret, expires_in, purpose, now=None) -> str`**
+  devolve o path com percent-encoding seguido de `?expires=&signature=`. A
+  assinatura é `HMAC-SHA256` sobre `"<expires>\n<path>"`, com a chave derivada
+  do segredo e do `purpose` (`HMAC-SHA256(secret,
+  "tempest-fastapi-sdk.signed-url.v1\0" + purpose)`), em base64 URL-safe sem
+  padding. Só stdlib, sem extra novo.
+- **`verify_path(path, *, expires, signature, secret, purpose, now=None)`**
+  compara com `hmac.compare_digest`, confere a assinatura antes da validade e
+  levanta `InvalidSignedURLException` (`403`, `SIGNED_URL_INVALID`) ou
+  `ExpiredSignedURLException` (`403`, `SIGNED_URL_EXPIRED`). `403`, e não
+  `401`, porque URL assinada é capacidade e não login, como no S3.
+- **`make_signed_path_dependency(*, secret, purpose)`** em
+  `tempest_fastapi_sdk.api.dependencies`, ao lado dos outros `make_*_dependency`:
+  lê `expires`/`signature` da query, declara os dois no OpenAPI e verifica
+  contra `request.scope["path"]`. Parâmetro ausente ou `expires` não numérico
+  é `403`, nunca `422`. Segredo ou `purpose` vazio é `ValueError` na
+  construção.
+- Regra de encoding: o path assinado é o **decodificado**, o mesmo que a rota
+  vê. `%2F` e `/` chegam à rota como o mesmo path e valem com a mesma
+  assinatura (medido no Starlette 0.46.0 e 1.6.0).
+- `SIGNED_URL_EXPIRES_PARAM` / `SIGNED_URL_SIGNATURE_PARAM` exportados, e os
+  dois `code` novos no catálogo i18n (pt-BR e en-US).
+- Receita de storage mostra `sign_path` no mapper e a dependency na rota com
+  `download_response(..., request=)`. Medido contra MinIO em container
+  (`tests/storage/test_signed_url_live.py`): `200` e `206` com `Range` pela URL
+  assinada, `403` sem nenhum `stat_object` na URL adulterada, e o mesmo par com
+  `serve_object` em modo `X-Accel-Redirect`.
+
 ### WhatsApp: receber mensagem e status do zap-api (#374)
 
 O `integrations.messaging.zap` ganha o lado de **entrada**, escrito à mão

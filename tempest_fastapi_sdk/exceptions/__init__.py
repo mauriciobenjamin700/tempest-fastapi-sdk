@@ -90,6 +90,12 @@ from tempest_fastapi_sdk.exceptions.oauth import (
 from tempest_fastapi_sdk.exceptions.oauth import (
     OAuthTokenRejectedException as OAuthTokenRejectedException,
 )
+from tempest_fastapi_sdk.exceptions.signed_url import (
+    ExpiredSignedURLException as ExpiredSignedURLException,
+)
+from tempest_fastapi_sdk.exceptions.signed_url import (
+    InvalidSignedURLException as InvalidSignedURLException,
+)
 from tempest_fastapi_sdk.exceptions.too_many_requests import (
     TooManyRequestsException as TooManyRequestsException,
 )
@@ -123,11 +129,13 @@ __all__: list[str] = [
     "DEFAULT_NOT_FOUND_TEMPLATE_ANONYMOUS",
     "AppException",
     "ConflictException",
+    "ExpiredSignedURLException",
     "ExpiredTokenException",
     "FileTooLargeException",
     "ForbiddenException",
     "InheritedErrorCodeWarning",
     "InvalidFileTypeException",
+    "InvalidSignedURLException",
     "InvalidTokenException",
     "MessageCatalog",
     "NotFoundException",

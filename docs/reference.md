@@ -108,6 +108,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.error_docs.TempestAPIRouter
 ::: tempest_fastapi_sdk.api.error_docs.RaisesSpec
 ::: tempest_fastapi_sdk.api.error_docs.declared_raises
+::: tempest_fastapi_sdk.api.dependencies.signed_url.make_signed_path_dependency
 
 ---
 
@@ -405,6 +406,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.too_many_requests.TooManyRequestsException
 ::: tempest_fastapi_sdk.exceptions.jwt.InvalidTokenException
 ::: tempest_fastapi_sdk.exceptions.jwt.ExpiredTokenException
+::: tempest_fastapi_sdk.exceptions.signed_url.InvalidSignedURLException
+::: tempest_fastapi_sdk.exceptions.signed_url.ExpiredSignedURLException
 ::: tempest_fastapi_sdk.exceptions.oauth.OAuthProviderNotConfiguredException
 ::: tempest_fastapi_sdk.exceptions.oauth.OAuthProviderDeniedException
 ::: tempest_fastapi_sdk.exceptions.oauth.OAuthStateMismatchException
@@ -1187,6 +1190,10 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.core.logging.configure_root_once
 ::: tempest_fastapi_sdk.core.logging.reinitialize_logging
 ::: tempest_fastapi_sdk.utils.throttle.AttemptThrottle
+::: tempest_fastapi_sdk.utils.signed_url.sign_path
+::: tempest_fastapi_sdk.utils.signed_url.verify_path
+::: tempest_fastapi_sdk.utils.signed_url.SIGNED_URL_EXPIRES_PARAM
+::: tempest_fastapi_sdk.utils.signed_url.SIGNED_URL_SIGNATURE_PARAM
 ::: tempest_fastapi_sdk.utils.locations.UF
 ::: tempest_fastapi_sdk.utils.locations.Region
 ::: tempest_fastapi_sdk.utils.locations.StateBR

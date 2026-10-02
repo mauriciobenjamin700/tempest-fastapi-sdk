@@ -22,6 +22,9 @@ from tempest_fastapi_sdk.api.dependencies import (
     make_role_dependency as make_role_dependency,
 )
 from tempest_fastapi_sdk.api.dependencies import (
+    make_signed_path_dependency as make_signed_path_dependency,
+)
+from tempest_fastapi_sdk.api.dependencies import (
     make_token_dependency as make_token_dependency,
 )
 from tempest_fastapi_sdk.api.dependencies import (
@@ -434,6 +437,7 @@ __all__: list[str] = [
     "make_prometheus_registry",
     "make_prometheus_router",
     "make_role_dependency",
+    "make_signed_path_dependency",
     "make_spa_router",
     "make_token_dependency",
     "make_tool_spec_router",

@@ -324,6 +324,184 @@ In the test, bucket, app and nginx run on the host network, so the internal
 endpoint is `127.0.0.1:<port>` instead of `bucket:9000`. What matters is the
 same: the `Host` nginx sends is the host that signed the URL.
 
+### Private file behind a signed URL of your own route
+
+When the frontend talks only to the backend, a private file needs a URL **of
+the backend** that the browser can open on its own. `<img src>`,
+`<video src>` and a download link send no `Authorization: Bearer`, and a
+session cookie across the app's domain and the API's runs into `SameSite`.
+The bucket's presigned URL does not help: it sends the browser to the bucket,
+not to your route.
+
+The way out has the same shape as a presigned URL, aimed at the app's route.
+The mapper that already authorized the caller builds
+`/api/files/<key>?expires=<ts>&signature=<mac>` with `sign_path`, and the
+route checks the signature with `make_signed_path_dependency` before
+streaming:
+
+```python
+from datetime import timedelta
+
+from fastapi import Depends, FastAPI, Request
+from starlette.responses import Response
+from tempest_fastapi_sdk import (
+    AsyncMinIOClient,
+    BaseSchema,
+    make_signed_path_dependency,
+    register_exception_handlers,
+    sign_path,
+)
+
+FILES_SECRET: str = "replace-with-settings.JWT_SECRET"
+FILES_PURPOSE: str = "files"
+
+storage = AsyncMinIOClient(
+    endpoint="minio.internal:9000",
+    access_key="minioadmin",
+    secret_key="minioadmin",
+    default_bucket="uploads",
+)
+signed_file = make_signed_path_dependency(secret=FILES_SECRET, purpose=FILES_PURPOSE)
+
+
+class AttachmentResponseSchema(BaseSchema):
+    """An attachment as the frontend gets it: the key and a URL to open."""
+
+    key: str
+    url: str
+
+
+def to_attachment_response(key: str) -> AttachmentResponseSchema:
+    """Map the stored key to the schema, with the URL already signed."""
+    return AttachmentResponseSchema(
+        key=key,
+        url=sign_path(
+            f"/api/files/{key}",
+            secret=FILES_SECRET,
+            expires_in=timedelta(minutes=15),
+            purpose=FILES_PURPOSE,
+        ),
+    )
+
+
+app = FastAPI()
+register_exception_handlers(app)
+
+
+@app.get("/api/attachments/{key:path}")
+async def get_attachment(key: str) -> AttachmentResponseSchema:
+    """Your authorization goes here: JWT, resource owner, role."""
+    return to_attachment_response(key)
+
+
+@app.get("/api/files/{key:path}", dependencies=[Depends(signed_file)])
+async def download_file(key: str, request: Request) -> Response:
+    """Only reached with a signed URL that has not expired."""
+    return await storage.download_response(
+        key, request=request, as_attachment=False
+    )
+```
+
+Signed at 12:00 UTC on October 1st 2026 with the secret above, the `url` the
+frontend receives for the key `aulas/aula 01.mp4` is:
+
+```text
+/api/files/aulas/aula%2001.mp4?expires=1790856900&signature=e9vPzlJkaaLXY6fJ0dSsV6RS6D3pOElruFdeskdikck
+```
+
+It goes straight into the tag, with no header at all:
+
+```html
+<video src="/api/files/aulas/aula%2001.mp4?expires=1790856900&signature=e9vPzlJkaaLXY6fJ0dSsV6RS6D3pOElruFdeskdikck" controls></video>
+```
+
+Piece by piece:
+
+- **`sign_path` in the mapper.** It runs after authorization, so only a caller
+  allowed to see the attachment ever gets the URL. Whoever holds the URL opens
+  the file until `expires` — it is a capability, like a presigned URL, which
+  is why the window is short.
+- **`make_signed_path_dependency` on the route.** The dependency reads
+  `expires` and `signature` from the query and checks them against the
+  decoded request path. The handler only runs for a valid signature that has
+  not expired: the bucket is not even consulted for a rejected URL.
+- **`download_response(..., request=)` is unchanged.** `Range` goes through
+  the signature, so the `<video>` still seeks and a download still resumes.
+  Swap in `serve_object` and the same dependency guards the
+  `X-Accel-Redirect` mode from the previous section.
+
+`tests/storage/test_signed_url_live.py` (`make test-docker`) builds this route
+against MinIO in a container and measures: `200` with the whole object through
+the signed URL, `206` with `Range: bytes=1000-1999` and only that slice, and
+`403` for a tampered or unsigned URL, with no `stat_object` reaching the
+bucket. With `serve_object` and `accel_redirect=True`, the signed URL answers
+the `X-Accel-Redirect` and the tampered one answers `403` without it.
+
+#### What the signature covers
+
+- **The path and `expires`.** The signature is
+  `HMAC-SHA256(key, "<expires>\n<path>")`. Changing the object key or
+  stretching `expires` breaks the MAC. Other query parameters are **not**
+  covered.
+- **The `purpose`.** The MAC key is derived from the secret with the
+  `purpose` (`HMAC-SHA256(secret, "tempest-fastapi-sdk.signed-url.v1\0" +
+  purpose)`) and is never the raw secret. That is why reusing `JWT_SECRET` is
+  safe, and why a URL signed for `"files"` does not open a route guarded with
+  `"email-link"`.
+- **Constant-time comparison**, with `hmac.compare_digest`.
+
+| The request | Response |
+| --- | --- |
+| signed URL, not expired | the handler runs |
+| `expires` changed | `403`, `code: "SIGNED_URL_INVALID"` |
+| path changed | `403`, `code: "SIGNED_URL_INVALID"` |
+| signed with another `purpose` or another secret | `403`, `code: "SIGNED_URL_INVALID"` |
+| no `expires`/`signature`, or a non-numeric `expires` | `403`, `code: "SIGNED_URL_INVALID"` (never `422`) |
+| authentic, but at the `expires` second or later | `403`, `code: "SIGNED_URL_EXPIRED"` |
+
+Each row is a test in `tests/api/test_signed_path_dependency.py`. The body
+follows the SDK envelope:
+
+```json
+{"detail": "Signed URL has expired", "code": "SIGNED_URL_EXPIRED", "details": {}}
+```
+
+!!! info "Why `403` and not `401`"
+    A signed URL is a capability, not a login: no credential the client could
+    send fixes the URL. S3 answers an expired or tampered presigned URL with
+    `403` for the same reason. A `401` would also trip the "session expired,
+    back to login" interceptor nearly every frontend installs, while the
+    user's session is fine. The two `code`s exist so the frontend can tell
+    "ask the backend for a fresh URL" (`SIGNED_URL_EXPIRED`) from "this link
+    was tampered with" (`SIGNED_URL_INVALID`).
+
+#### The path encoding rule
+
+`sign_path` takes the **decoded** path, the way the route will see it in
+`request.scope["path"]` (it is what `{key:path}` receives), and returns the
+URL already percent-encoded. Starlette decodes the path before routing, so
+both sides sign the same string:
+
+- `aula 01.mp4` travels as `aula%2001.mp4`, `100%.pdf` as `100%25.pdf`, and
+  `á.txt` as `%C3%A1.txt`; the route receives the original key;
+- `/api/files/a%2Fb.pdf` and `/api/files/a/b.pdf` reach the route as the same
+  path, with the same key `a/b.pdf`, and verify with the same signature.
+
+Measured on Starlette 0.46.0 (the floor `fastapi>=0.141.1` accepts) and on
+1.6.0.
+
+!!! warning "Pass the decoded path, never an encoded one"
+    `sign_path("/api/files/aula%2001.mp4", ...)` signs the literal key
+    `aula%2001.mp4`, which becomes `aula%252001.mp4` in the URL. Build the
+    path from the key as it is stored.
+
+!!! tip "Mounted apps and `root_path`"
+    Under `app.mount("/v1", sub_app)` the route sees `/v1/api/files/...`, so
+    sign with the mount prefix. A proxy `root_path` (the prefix the reverse
+    proxy strips before forwarding) does **not** show up in
+    `request.scope["path"]`: sign without it and prepend the prefix to the
+    URL the browser gets.
+
 ### Presigned URL — direct browser upload
 
 Recommended pattern for large files: the client `PUT`s directly to MinIO/S3 and bytes don't pass through FastAPI.
@@ -535,6 +713,11 @@ asyncio.run(main())
   `STORAGE_ACCEL_REDIRECT=true` answers `X-Accel-Redirect`; the internal
   `location` needs `proxy_pass` with a trailing slash and `Host` equal to
   `MINIO_ENDPOINT`.
+- For the browser to open a private file through **the app's route**, sign
+  the path in the mapper with `sign_path` and guard the route with
+  `make_signed_path_dependency`: the signature covers path, `expires` and
+  `purpose`, and a rejection is `403` (`SIGNED_URL_INVALID` or
+  `SIGNED_URL_EXPIRED`).
 - Anything outside the facade is not blocked: call `storage.client.<method>` and
   use `minio-py` directly, instead of waiting for the facade to grow.
 - To switch between local disk and MinIO by configuration, the pluggable upload
