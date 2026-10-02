@@ -8,8 +8,12 @@ every WebSocket endpoint needs to get right:
   ``WebSocket`` constructor can ship a bearer) or from the
   ``Sec-WebSocket-Protocol: bearer,<jwt>`` subprotocol header
   (preferred when both ends control the client, since query strings
-  end up in proxy logs). When the resolver returns ``None``, the
-  socket is closed with code ``4401`` before the handler runs.
+  end up in proxy logs). When no token arrives or the resolver returns
+  ``None``, the handshake is **accepted and then closed** with code
+  ``4401`` before the handler runs. Accepting first is what makes the
+  code reach the client: an ASGI close before ``accept`` is a handshake
+  rejection, which uvicorn answers with ``HTTP 403`` and a browser
+  reports as close code ``1006`` with no reason.
 * **Heartbeat with timeout** — the router emits a ``{"type": "ping"}``
   frame every ``WS_HEARTBEAT_SECONDS`` and closes the socket with code
   ``4408`` when nothing arrives for ``WS_HEARTBEAT_TIMEOUT_SECONDS``.
@@ -61,6 +65,9 @@ from tempest_fastapi_sdk.websockets.schemas import WSEnvelope
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.settings.mixins import WebSocketSettings
 
+
+_UNAUTHORIZED_CLOSE_CODE: int = 4401
+"""Close code sent when the handshake carries no valid bearer token."""
 
 BearerResolver = Callable[[str], Awaitable[UUID | None]]
 """Awaitable mapping a bearer token to a user UUID (or ``None`` on failure)."""
@@ -115,12 +122,9 @@ def make_websocket_router(
         token: str | None = Query(default=None),
     ) -> None:
         bearer = _extract_bearer(ws, token)
-        if bearer is None:
-            await ws.close(code=4401)
-            return
-        user_id = await bearer_resolver(bearer)
+        user_id = await bearer_resolver(bearer) if bearer is not None else None
         if user_id is None:
-            await ws.close(code=4401)
+            await _reject(ws, code=_UNAUTHORIZED_CLOSE_CODE)
             return
         await ws.accept(
             subprotocol=_negotiated_subprotocol(ws),
@@ -175,6 +179,27 @@ def _negotiated_subprotocol(ws: WebSocket) -> str | None:
     if protocols and protocols[0].lower() == "bearer":
         return "bearer"
     return None
+
+
+async def _reject(ws: WebSocket, *, code: int) -> None:
+    """Accept the handshake, then close it with an application close code.
+
+    Args:
+        ws (WebSocket): The socket still in the handshake phase.
+        code (int): The application close code (``4xxx``) the client
+            must receive.
+
+    An ASGI ``websocket.close`` sent before ``websocket.accept`` is a
+    handshake rejection: uvicorn turns it into ``HTTP 403`` and the
+    custom code never reaches the wire, so a browser sees ``1006``.
+    Starlette's ``TestClient`` reports the code either way, which is why
+    the pre-accept form passes a test suite and fails in production.
+    The subprotocol is negotiated exactly as on success, since a browser
+    that offered ``bearer`` treats an accept without it as a failed
+    handshake and again reports ``1006``.
+    """
+    await ws.accept(subprotocol=_negotiated_subprotocol(ws))
+    await ws.close(code=code)
 
 
 async def _send_hello(ws: WebSocket, *, live: Liveness) -> None:

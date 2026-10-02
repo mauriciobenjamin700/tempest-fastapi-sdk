@@ -258,10 +258,20 @@ asyncio.run(main())
   another) → the browser requires CORS. Enable it on the backend:
 
   ```python
-  from tempest_fastapi_sdk import CORSSettings, apply_cors
+  from fastapi import FastAPI
 
-  apply_cors(app, CORSSettings(allow_origins=["http://localhost:5173"]))
+  from tempest_fastapi_sdk import apply_cors
+
+  app: FastAPI = FastAPI()
+  apply_cors(app, origins=["http://localhost:5173"])
   ```
+
+  !!! warning "`CORSSettings(allow_origins=...)` restricts nothing"
+      The mixin field is called `CORS_ORIGINS`; an `allow_origins=` becomes
+      an ignored extra key, and the origin stays at the `["*"]` default.
+      Measured: with that form, `Origin: http://evil.example` gets
+      `access-control-allow-origin: *`; with `origins=[...]`, it gets none.
+      Pass the list in `origins=` (or `CORS_ORIGINS` in the environment).
 
 !!! info "Prefer same origin in production"
     Serving the frontend from the backend (same origin) removes CORS,

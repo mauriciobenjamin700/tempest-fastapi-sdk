@@ -32,9 +32,27 @@ sheet: StyleSheet = StyleSheet(
 print(sheet.to_css())
 ```
 
-Sai exatamente o que você espera:
+Sai isto — primeiro o reset que o `StyleSheet` inclui por padrão
+(`reset=True`; `StyleSheet(..., reset=False)` tira), depois as suas regras,
+na ordem em que você as passou:
 
 ```css
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial, sans-serif;
+}
+img, svg, video {
+  display: block;
+  max-width: 100%;
+}
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
 .card {
   padding: 16px 16px 16px 16px;
   border-radius: 8px;

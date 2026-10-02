@@ -3,8 +3,9 @@
 `HTTPClient` é um wrapper tipado sobre o `httpx.AsyncClient` para **chamar
 serviços externos** com retry + backoff exponencial, circuit-breaker,
 timeouts padrão e propagação do `X-Request-ID`. É a contraparte de saída do
-[middleware HTTP](http.md) (que cuida do tráfego de entrada). Requer o extra
-`[http]` (`httpx`).
+[middleware HTTP](http.md) (que cuida do tráfego de entrada). O `httpx` já
+vem no pacote base, então não precisa de extra; o `[http]` continua
+existindo como forma explícita (e opcional) de declarar a dependência.
 
 ## Uso básico
 
@@ -184,7 +185,7 @@ async def publish(payload: dict[str, str]) -> None:
 ## Recap
 
 - `HTTPClient` = `httpx.AsyncClient` tipado + retry/backoff/circuit-breaker + X-Request-ID.
-- Extra `[http]`. Métodos `get/post/put/patch/delete/request` → `httpx.Response`.
+- Sem extra obrigatório (`httpx` vem no pacote base; `[http]` é opcional). Métodos `get/post/put/patch/delete/request` → `httpx.Response`.
 - `RetryPolicy(max_attempts, backoff_initial_seconds, backoff_max_seconds)` controla o retry.
 - `async_retry(policy, exceptions, logger=)` aplica a curva a qualquer corrotina; `logger=` aceita `logging.Logger` ou `LogUtils`.
 - `failure_threshold` / `recovery_seconds` controlam o breaker; `CircuitOpenError` quando aberto.
