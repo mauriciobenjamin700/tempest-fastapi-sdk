@@ -366,6 +366,39 @@ def _linear_sections(model: Any, numpy: Any) -> tuple[dict[str, Any], list[Any]]
     ]
 
 
+def _thresholds_rounded_down(thresholds: list[float], numpy: Any) -> Any:
+    """Narrow split thresholds to float32 without moving any routing.
+
+    scikit-learn keeps a threshold as a float64 midpoint between two
+    float32 feature values and compares ``float64(x32) <= threshold``.
+    Round-to-nearest breaks that when the two values are adjacent float32
+    numbers: the midpoint (``1.699999988079071`` between ``1.6999999`` and
+    ``1.7000000476837158`` in iris) rounds *up* onto the larger value, and
+    a training row holding exactly that value goes left here and right in
+    scikit-learn. On a 20-tree iris forest without ``max_depth`` that sent
+    nine nodes the wrong way and failed the export's own verification.
+
+    The largest float32 not above the threshold is the one narrowing that
+    routes every float32 input identically, so a threshold that rounded up
+    steps one ULP towards minus infinity.
+
+    Args:
+        thresholds (list[float]): The float64 thresholds, leaves included.
+        numpy (Any): The imported numpy module.
+
+    Returns:
+        Any: A float32 array, element for element.
+    """
+    wide = numpy.asarray(thresholds, dtype="float64")
+    narrow = wide.astype("float32")
+    rounded_up = narrow.astype("float64") > wide
+    narrow[rounded_up] = numpy.nextafter(
+        narrow[rounded_up],
+        numpy.float32(-numpy.inf),
+    )
+    return narrow
+
+
 def _tree_sections(model: Any, numpy: Any) -> tuple[dict[str, Any], list[Any]]:
     """Build the header fields and arrays for a tree or forest.
 
@@ -442,7 +475,7 @@ def _tree_sections(model: Any, numpy: Any) -> tuple[dict[str, Any], list[Any]]:
     }
     return header, [
         ("node_feature", "int32", numpy.asarray(features, dtype="int32")),
-        ("node_threshold", "float32", numpy.asarray(thresholds, dtype="float32")),
+        ("node_threshold", "float32", _thresholds_rounded_down(thresholds, numpy)),
         ("node_left", "int32", numpy.asarray(lefts, dtype="int32")),
         ("node_right", "int32", numpy.asarray(rights, dtype="int32")),
         ("leaf_value", "float32", numpy.asarray(values, dtype="float32")),

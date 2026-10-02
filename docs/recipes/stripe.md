@@ -7,9 +7,9 @@ seu jeito. `tempest_fastapi_sdk.integrations.payment.stripe` entrega essa
 camada pronta.
 
 !!! info "Instalação"
-    Nenhum extra. A integração usa o `HTTPClient` que o SDK já tem —
-    `uv add "tempest-fastapi-sdk[http]"` se você ainda não puxou o
-    `httpx`.
+    Nenhum extra. A integração usa o `HTTPClient` que o SDK já tem, e o
+    `httpx` vem no pacote base. O extra `[http]` existe e é opcional: só
+    declara o `httpx` explicitamente.
 
 !!! info "Quando usar isto"
     Cobrança internacional com cartão, assinatura ou Checkout hospedado.

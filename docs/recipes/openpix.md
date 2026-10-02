@@ -22,11 +22,13 @@ gerados da especificação, mais quatro coisas que a especificação não diz
 (ambientes, eventos de webhook, verificação de assinatura e centavos).
 
 ```bash
-uv add "tempest-fastapi-sdk[http]"
+uv add tempest-fastapi-sdk
 uv add cryptography
 ```
 
-O `[http]` traz o `HTTPClient`, que é o transporte do cliente gerado. O
+O `HTTPClient`, transporte do cliente gerado, vem no pacote base: o `httpx`
+já é dependência dele. O extra `[http]` continua existindo e é opcional —
+declara o `httpx` explicitamente para quem prefere o contrato escrito. O
 `cryptography` é o que verifica a assinatura do webhook — sem ele o módulo
 importa normalmente e só falha na primeira entrega de verdade, em produção.
 
@@ -575,7 +577,7 @@ alguns e você chega em `0.30000000000000004`.
     spec](#o-que-este-pacote-corrige-na-spec)) reescreve os campos de valor e
     de contagem como `integer` antes de gerar, então `Charge.value`,
     `ChargePayload.value`, `Transaction.value`, `SubAccount.balance` e os
-    outros **154** são `int`. Os três helpers continuam valendo — o que muda é
+    outros **153** são `int` — 157 campos ao todo, contados pelo overlay. Os três helpers continuam valendo — o que muda é
     que `to_cents` deixou de ser obrigatório para ler um modelo gerado.
 
 ```python
@@ -801,7 +803,7 @@ diferentes:
 
 | Metade | O que é | De onde vem |
 | --- | --- | --- |
-| **Gerada** | `OpenPixClient`, `DEFAULT_BASE_URL`, 373 classes de schema | A spec, verbatim |
+| **Gerada** | `OpenPixClient`, `DEFAULT_BASE_URL`, 684 classes de schema | A spec, verbatim |
 | **À mão** | `OpenPixEnvironment`, `OpenPixEvent`, webhook, helpers de dinheiro | O que a spec **não** diz |
 
 !!! info "A metade gerada é versionada, não escrita à mão"
@@ -812,15 +814,16 @@ diferentes:
     openpix-regen`, e o diff mostra exatamente o que o terceiro mudou.
 
 !!! note "Os modelos carregam no primeiro uso, não no import"
-    Construir 373 modelos Pydantic custa perto de um segundo. Importar o
-    pacote só para usar `to_cents` não deveria pagar isso, então a metade
-    gerada resolve por [PEP 562](https://peps.python.org/pep-0562/).
+    Construir as 684 classes Pydantic custa perto de um terço de segundo.
+    Importar o pacote só para usar `to_cents` não deveria pagar isso, então a
+    metade gerada resolve por [PEP 562](https://peps.python.org/pep-0562/).
 
-    Medido nesta máquina (Python 3.11, com `tempest_fastapi_sdk` já
-    importado): **~11 ms** para importar o subpacote, **~150 ms** no primeiro
-    acesso a um nome gerado, **~0,02 ms** nos seguintes. Os números variam com
-    a máquina; o que não varia é a ordem de grandeza entre eles — quem só usa
-    `to_cents` nunca paga os 150 ms.
+    Medido em 2026-10-02 nesta máquina, com `tempest_fastapi_sdk` já
+    importado, mediana de 7 processos novos: **~14 ms** para importar o
+    subpacote, **~320 ms** no primeiro acesso a um nome gerado no Python
+    3.11 (**~310 ms** no 3.13) e **~0,03 ms** nos seguintes. Os números variam
+    com a máquina; o que não varia é a ordem de grandeza entre eles — quem só
+    usa `to_cents` nunca paga o primeiro acesso.
 
 ## Recapitulando
 

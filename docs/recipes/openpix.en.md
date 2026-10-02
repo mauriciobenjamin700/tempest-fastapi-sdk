@@ -23,12 +23,14 @@ specification does not say (environments, webhook events, signature
 verification, and cents).
 
 ```bash
-uv add "tempest-fastapi-sdk[http]"
+uv add tempest-fastapi-sdk
 uv add cryptography
 ```
 
-`[http]` brings `HTTPClient`, the transport the generated client rides on.
-`cryptography` is what verifies the webhook signature — without it the module
+`HTTPClient`, the transport the generated client rides on, ships in the base
+package: `httpx` is already one of its dependencies. The `[http]` extra still
+exists and is optional — it declares `httpx` explicitly for whoever prefers
+the written contract. `cryptography` is what verifies the webhook signature — without it the module
 imports fine and only fails on the first real delivery, in production.
 
 !!! tip "Need another API the SDK does not bundle?"
@@ -576,8 +578,8 @@ add a few of them and you get `0.30000000000000004`.
     The specification overlay (see [What this package corrects in the
     spec](#what-this-package-corrects-in-the-spec)) retypes the value and count
     fields as `integer` before generating, so `Charge.value`,
-    `ChargePayload.value`, `Transaction.value`, `SubAccount.balance` and **154**
-    others are `int`. All three helpers still apply — what changed is that
+    `ChargePayload.value`, `Transaction.value`, `SubAccount.balance` and **153**
+    others are `int` — 157 fields in all, as counted by the overlay. All three helpers still apply — what changed is that
     `to_cents` is no longer required to read a generated model.
 
 ```python
@@ -804,7 +806,7 @@ differently:
 
 | Half | What it is | Where it comes from |
 | --- | --- | --- |
-| **Generated** | `OpenPixClient`, `DEFAULT_BASE_URL`, 373 schema classes | The spec, verbatim |
+| **Generated** | `OpenPixClient`, `DEFAULT_BASE_URL`, 684 schema classes | The spec, verbatim |
 | **Hand-written** | `OpenPixEnvironment`, `OpenPixEvent`, the webhook, the money helpers | What the spec does **not** say |
 
 !!! info "The generated half is checked in, not written by hand"
@@ -815,15 +817,16 @@ differently:
     openpix-regen`, and the diff shows exactly what the third party changed.
 
 !!! note "The models load on first use, not on import"
-    Building 373 Pydantic models costs the better part of a second. Importing
-    the package just for `to_cents` should not pay that, so the generated half
-    resolves through [PEP 562](https://peps.python.org/pep-0562/).
+    Building the 684 Pydantic classes costs about a third of a second.
+    Importing the package just for `to_cents` should not pay that, so the
+    generated half resolves through [PEP 562](https://peps.python.org/pep-0562/).
 
-    Measured on this machine (Python 3.11, with `tempest_fastapi_sdk` already
-    imported): **~11 ms** to import the subpackage, **~150 ms** on the first
-    access to a generated name, **~0.02 ms** after that. The numbers move with
-    the machine; what does not move is the ratio between them — code that only
-    calls `to_cents` never pays the 150 ms.
+    Measured on 2026-10-02 on this machine, with `tempest_fastapi_sdk` already
+    imported, median of 7 fresh processes: **~14 ms** to import the
+    subpackage, **~320 ms** on the first access to a generated name on Python
+    3.11 (**~310 ms** on 3.13) and **~0.03 ms** after that. The numbers move
+    with the machine; what does not move is the ratio between them — code
+    that only calls `to_cents` never pays the first access.
 
 ## Recap
 

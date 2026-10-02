@@ -173,7 +173,7 @@ fiação extra — e com a frase em PT-BR ou en-US conforme o `Accept-Language`:
 | `HOST_FILE_DECODE_FAILED` | 400 | Bytes não decodificam — um PDF ou imagem |
 | `HOST_COMMAND_FAILED` | 500 | O comando saiu com status diferente de zero |
 | `HOST_COMMAND_TIMEOUT` | 504 | O comando passou do tempo e foi morto |
-| `HOST_UNAVAILABLE` | 503 | Nem PowerShell nem `wslpath` existem aqui |
+| `HOST_UNAVAILABLE` | 503 | O executável que a ação chama (PowerShell, `wslpath`, `shutdown.exe`) não existe aqui — basta faltar um |
 
 `HOST_UNAVAILABLE` é o que separa "esta máquina não tem host Windows" de
 "a ação falhou": num container Linux puro, o chamador degrada em vez de

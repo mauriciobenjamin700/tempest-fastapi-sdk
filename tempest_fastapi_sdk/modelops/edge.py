@@ -663,7 +663,9 @@ def edge_pipeline(
         ValueError: When the export fails verification. Shipping a graph
             that does not reproduce the estimator is the one outcome this
             pipeline refuses to let pass quietly — pass
-            ``verify_samples=False`` to skip the check deliberately.
+            ``verify_samples=False`` to skip the check deliberately. Also
+            when ``feature_names`` does not hold one name per feature the
+            graph expects.
     """
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
@@ -676,6 +678,12 @@ def edge_pipeline(
         dtype=dtype,
         opset=opset,
     )
+    if feature_names is not None and len(feature_names) != export.n_features:
+        raise ValueError(
+            f"{len(feature_names)} feature names for a model of "
+            f"{export.n_features} features: the manifest would record a column "
+            "order no reader can apply.",
+        )
 
     verification: ExportVerification | None = None
     if verify_samples is not False:
@@ -719,7 +727,9 @@ def edge_pipeline(
         compact_path = directory / f"{name}{COMPACT_SUFFIX}"
         export_sklearn_to_compact(
             estimator,
-            samples if verify_samples is False else (verify_samples or samples),
+            samples
+            if verify_samples is None or verify_samples is False
+            else verify_samples,
             compact_path,
             feature_names=feature_names,
         )
