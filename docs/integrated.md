@@ -20,11 +20,13 @@ from tempest_fastapi_sdk.cache import AsyncRedisManager
 from tempest_fastapi_sdk.queue import MessageBroker
 from tempest_fastapi_sdk.sse import SSEBroker
 from tempest_fastapi_sdk.tasks import TaskQueue
+from tempest_fastapi_sdk.utils import EmailUtils
 
 from src.core.settings import settings
 
 db = AsyncDatabaseManager(settings.DATABASE_URL)
 cache = AsyncRedisManager(settings.REDIS_URL)
+email = EmailUtils(**settings.email_kwargs())
 mq = MessageBroker.rabbitmq(settings.RABBITMQ_URL)      # eventos entre serviços
 tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)     # trabalho fora do request
 events = SSEBroker(redis=cache.client_proxy)                  # status em tempo real
@@ -82,9 +84,7 @@ inseguro. Grave a linha do pedido **e** a linha de outbox juntas —
 
 ```python
 # src/services/orders.py
-
-from tempest_fastapi_sdk import BaseModel
-from tempest_fastapi_sdk.utils import CentsField
+from uuid import UUID, uuid4
 
 from src.core.resources import db
 from src.db.models import OrderModel, OutboxModel
@@ -97,10 +97,12 @@ class OrderService:
     async def checkout(self, *, user_id: str, data: CheckoutSchema) -> OrderModel:
         unit_cents = await get_product_cents(data.product_id)     # cache
         total = unit_cents * data.quantity
+        order_id: UUID = uuid4()
 
         async with db.get_session_context() as session:
             repo = OrderRepository(session)
             order = OrderModel(
+                id=order_id,
                 user_id=user_id,
                 product_id=data.product_id,
                 total_cents=total,
@@ -112,11 +114,18 @@ class OrderService:
                 order,
                 OutboxModel.new_event(
                     "orders.paid",
-                    {"order_id": str(order.id), "user_id": user_id, "total": total},
+                    {"order_id": str(order_id), "user_id": user_id, "total": total},
                 ),
             )
         return order
 ```
+
+!!! warning "Gere o `id` antes de montar o evento"
+    O `id` do `BaseModel` tem `default=uuid4` na coluna, e esse default só
+    roda no `flush`: `OrderModel(...).id` é `None` antes dele (medido). Como
+    o payload do evento é montado antes do `save_with_outbox`,
+    `str(order.id)` gravaria `"None"` no outbox. Gerar o `uuid4()` e passá-lo
+    em `id=` deixa o mesmo valor na linha e no evento.
 
 ## 5. Endpoint autenticado
 
@@ -248,7 +257,7 @@ O corpo do `notify` são **duas linhas**, uma por canal:
 
 Repare que os dois recebem o **mesmo `data`** — é isso que mantém os canais em
 sincronia. Monte `notifications` com o `events` global (seção 1) e um
-`WebPushSubscriptionService(BaseRepository(session, PushSubscriptionModel), dispatcher)`
+`WebPushSubscriptionService(BaseRepository(session, model=WebPushSubscriptionModel), dispatcher)`
 — o `dispatcher` sai de `WebPushDispatcher(**settings.webpush_kwargs())`.
 
 ### Disparando do handler
@@ -330,7 +339,8 @@ data: {"order_id": "ord_123"}
 
 O register/unregister das assinaturas Web Push (VAPID) — o cadastro de cada
 device pra receber push com o app fechado — entra montado via
-`make_web_push_router(...)`. O modelo concreto (`PushSubscriptionModel`) e o
+`make_web_push_router(...)`. O modelo concreto (`WebPushSubscriptionModel`, subclasse de
+`BaseWebPushSubscriptionModel`) e o
 router estão na receita de [Web Push](recipes/webpush.md); é dele que o
 `notify_user` lê as assinaturas na hora do fan-out.
 

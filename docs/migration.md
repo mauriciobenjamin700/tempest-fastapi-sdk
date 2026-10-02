@@ -2,6 +2,167 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.302.0 — constraint composta leva todas as colunas no nome
+
+`NAMING_CONVENTION` nomeava unique, índice e foreign key só pela **primeira**
+coluna, então `UniqueConstraint("title")` e
+`UniqueConstraint("title", "release_year")` viravam ambas `uq_books_title`. O
+PostgreSQL recusa o `CREATE TABLE` (`relation "uq_books_title" already
+exists`); o SQLite aceita as duas, e é por isso que o defeito passava no banco
+de teste. A convenção agora usa todas as colunas.
+
+### O que muda
+
+- **Constraint composta muda de nome.** `uq`, `ix` e `fk` com mais de uma
+  coluna levam todas no nome: `uq_books_title` →
+  `uq_books_title_release_year`, `ix_books_author` →
+  `ix_books_author_books_title`, `fk_books_tenant_id_authors` →
+  `fk_books_tenant_id_author_id_authors`.
+- **Nome de uma coluna não muda**, nem `pk` e `ck`.
+- **O próprio SDK tem duas.** O model de `make_user_oauth_account_model`
+  renomeia `uq_<tabela>_provider` → `uq_<tabela>_provider_subject` e
+  `uq_<tabela>_user_id` → `uq_<tabela>_user_id_provider`.
+- **O `constraint` do `parse_integrity_error` acompanha o banco.** Depois do
+  `RENAME`, o PostgreSQL devolve o nome novo; mapa seu de nome de constraint
+  para código de erro precisa da chave nova.
+
+### O que fazer
+
+O `alembic revision --autogenerate` sobre um banco antigo propõe `drop` +
+`create` para as uniques e os índices compostos e **não vê** a FK composta
+renomeada (medido contra PostgreSQL 16 e Alembic 1.19.1). Esse `drop` falha
+quando uma FK depende da unique. O caminho é uma revisão com `RENAME`:
+
+1. Com todos os models importados, gere os `RENAME` com
+   `legacy_constraint_renames(BaseModel.metadata)`. Cada item é um
+   `ConstraintRename(kind, table, schema, columns, old_name, new_name)`;
+   `statement(dialect)` escreve o SQL e `inverse()` dá o do `downgrade()`.
+   Constraint com `name=` explícito fica de fora.
+
+    ```python
+    from sqlalchemy import Index, UniqueConstraint
+    from sqlalchemy.dialects import postgresql, sqlite
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    from tempest_fastapi_sdk import (
+        BaseModel,
+        ConstraintRename,
+        legacy_constraint_renames,
+    )
+
+
+    class BookModel(BaseModel):
+        """Livros do catálogo."""
+
+        __tablename__ = "books"
+        __table_args__ = (
+            UniqueConstraint("isbn"),
+            UniqueConstraint("title", "release_year"),
+            Index(None, "author", "title"),
+        )
+
+        isbn: Mapped[str] = mapped_column()
+        title: Mapped[str] = mapped_column()
+        release_year: Mapped[int] = mapped_column()
+        author: Mapped[str] = mapped_column()
+
+
+    renames: list[ConstraintRename] = legacy_constraint_renames(BaseModel.metadata)
+    for rename in renames:
+        print(rename.kind, rename.old_name, "->", rename.new_name)
+        print(rename.statement(postgresql.dialect()))
+
+    try:
+        renames[0].statement(sqlite.dialect())
+    except ValueError as exc:
+        print(f"ValueError: {exc}")
+    ```
+
+    Saída:
+
+    ```text
+    index ix_books_author -> ix_books_author_books_title
+    ALTER INDEX ix_books_author RENAME TO ix_books_author_books_title
+    unique uq_books_title -> uq_books_title_release_year
+    ALTER TABLE books RENAME CONSTRAINT uq_books_title TO uq_books_title_release_year
+    ValueError: ConstraintRename.statement supports postgresql, not 'sqlite'; SQLite cannot rename a constraint, so use the batch migration alembic --autogenerate renders
+    ```
+
+    O `uq_books_isbn`, de uma coluna, não aparece: o nome dele não mudou.
+
+2. Cole os comandos numa revisão **vazia** e rode `alembic upgrade head`
+   antes do deploy da versão nova. O passo a passo, com a revisão completa e
+   o `downgrade()`, está em
+   [Banco de dados → Migrar constraints compostas da convenção antiga](recipes/database.md#migrar-constraints-compostas-da-convencao-antiga).
+3. **No SQLite** o `statement()` levanta `ValueError`, como na saída acima: o
+   SQLite não renomeia constraint, e lá a migração em batch que o
+   autogenerate gera funciona.
+
+!!! tip "Para adiar"
+    Dê à constraint composta o nome que ela já tem no banco
+    (`UniqueConstraint("title", "release_year", name="uq_books_title")`): nome
+    explícito vence a convenção, e o `legacy_constraint_renames` deixa a
+    constraint de fora. A convenção antiga continua disponível como
+    `LEGACY_NAMING_CONVENTION`.
+
+## 0.301.0 — CSS, `DataTable`, formulários, SSR e sessões
+
+A release que trouxe para o SDK as pontes do painel do `tempest-bucket` muda
+comportamento em cinco áreas que um serviço percebe. Nenhuma exige migration de
+banco.
+
+### CSS
+
+- **`make_css_router` e `css_response` mudam o `Cache-Control` default** de
+  `public, max-age=3600` para `no-cache` no path sem versão: o browser
+  revalida pelo `ETag` (`304`, sem corpo) antes de usar a cópia. Para o cache
+  longo, linke `sheet.url(path)`, que acrescenta `?v=<versão>` e recebe
+  `public, max-age=31536000, immutable`. Quem já passava `cache_control=`
+  explícito não muda nada.
+- **O reset do `StyleSheet` ganhou `font-family` no `body`.** Regra própria
+  que define a família continua vencendo quando vem depois do reset (é o caso
+  do `extra=` do `app_stylesheet`).
+
+Detalhe em [CSS tipado](recipes/ui-css.md).
+
+### `DataTable`
+
+O `<table>` agora sai dentro de `<div class="tui-table-scroll">`, para a
+tabela larga rolar no contêiner em vez de alargar a página no celular.
+Seletor próprio que mirava `.tui-card__body > table` precisa incluir o
+wrapper.
+
+### Formulários
+
+- **`help_text` presente sempre vence.** `{"ui": {"help_text": ""}}`, `None`
+  ou `False` suprimem a dica; antes caía na `description` do campo.
+- **Campo `UploadFile` deixou de sair como `<input type="text">`**: gera
+  `<input type="file">`, e o formulário ganha
+  `enctype="multipart/form-data"`.
+
+Detalhe em [Formulários](recipes/ui-forms.md).
+
+### SSR
+
+`html_response(page)` sem `title=` usa `page.document_title()` em vez de
+levantar `ValueError`. O erro continua para widget que não é `Page`.
+
+### Sessões
+
+- **`make_session_dependency(...)` devolve dependency `async`.** Em
+  `Depends(...)` nada muda; teste que chamava o resolver direto precisa de
+  `await`.
+- **`SessionAuth.user_model` é `type[BaseUserModel] | None`.** Código tipado
+  que lê o atributo precisa estreitar.
+- **`SESSION_COOKIE_SAMESITE` é `Literal["lax", "strict", "none"]`.** Nenhum
+  valor aceito antes é recusado agora; `Settings` que sobrescreve o campo como
+  `str` passa a ser override incompatível no mypy — sobrescreva com o
+  `Literal` ou remova o override.
+- **O logout do `make_session_router` apaga o cookie com os atributos do
+  settings**, em vez de sempre `Secure` e `HttpOnly`.
+
+Detalhe em [Sessões](recipes/sessions.md).
+
 ## 0.300.0 — o anexo do chat registra quem fez o upload
 
 `BaseMessageAttachmentModel` ganhou a coluna `uploader_id` (nullable,
@@ -926,10 +1087,9 @@ de execução. Confira três pontos:
 
 - **Anotação sua.** `valor: float = charge.value` passa a ser erro de tipo.
   Troque para `int`.
-- **Comparação de dump em teste.** `assert dumped == {"value": 1000.0}` falha:
-  agora é `1000`. Em Python `1000 == 1000.0` é `True`, mas
-  `{"value": 1000} == {"value": 1000.0}` também é — o que quebra é comparação
-  de **string** JSON, e snapshot de `model_dump_json()`.
+- **Comparação de dump em teste.** `assert dumped == {"value": 1000.0}`
+  continua passando (`1000 == 1000.0`), mas comparação contra **string** JSON,
+  ou snapshot de `model_dump_json()`, não passa.
 - **`to_cents` sobre model gerado.** Continua funcionando e continua validando
   (recusa negativo e fração), só não estreita mais nada. Para payload cru — o
   dicionário que saiu do JSON, um webhook — ele continua sendo a forma certa.

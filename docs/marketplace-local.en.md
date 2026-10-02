@@ -14,7 +14,10 @@ Components exercised at once: **geo** (`GeoPointMixin` +
 for the current user.
 
 !!! info "What you need"
-    The SDK core + the `[geo]` extra (for the geocoder/OSRM `httpx`). Chat,
+    The SDK core + the `[geo]` extra. The `httpx` the geocoder and OSRM use
+    already ships with the base package, and the extra pulls only that same
+    `httpx`: declaring `[geo]` records the intent in the service's
+    `pyproject.toml`. Chat,
     reviews and the notification SSE are core (no extra); Web Push needs the
     `[webpush]` extra — `uv add "tempest-fastapi-sdk[webpush]"`. Redis is
     optional (multi-worker SSE fan-out).
@@ -102,6 +105,17 @@ class RatingModel(BaseRatingModel):
 The buyer sends an address (or CEP). We geocode it with Nominatim, search
 sellers in a radius straight from the database, and attach a motorcycle
 travel estimate — all with no paid API.
+
+!!! warning "Nominatim on the request path"
+    The public instance (`https://nominatim.openstreetmap.org`, the default
+    `base_url`) has a strict usage policy — about one request per second and
+    a `User-Agent` that identifies your application — and becomes a third
+    party on the critical path of every search. Before production:
+
+    - pass your own `user_agent=` (the default is `"tempest-fastapi-sdk"`);
+    - cache the result per normalized address or CEP, so the same search
+      does not go back to Nominatim;
+    - with volume, point `base_url=` at your own Nominatim instance.
 
 ```python
 # src/services/discovery.py

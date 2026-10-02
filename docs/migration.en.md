@@ -2,6 +2,170 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.302.0 — a composite constraint carries every column in its name
+
+`NAMING_CONVENTION` named unique constraints, indexes and foreign keys after
+the **first** column only, so `UniqueConstraint("title")` and
+`UniqueConstraint("title", "release_year")` both became `uq_books_title`.
+PostgreSQL refuses the `CREATE TABLE` (`relation "uq_books_title" already
+exists`); SQLite accepts both, which is why the defect passed on the test
+database. The convention now uses every column.
+
+### What changes
+
+- **A composite constraint is renamed.** A `uq`, `ix` or `fk` over more than
+  one column carries all of them in the name: `uq_books_title` →
+  `uq_books_title_release_year`, `ix_books_author` →
+  `ix_books_author_books_title`, `fk_books_tenant_id_authors` →
+  `fk_books_tenant_id_author_id_authors`.
+- **A single-column name does not change**, and neither do `pk` and `ck`.
+- **The SDK itself has two.** The model from `make_user_oauth_account_model`
+  renames `uq_<table>_provider` → `uq_<table>_provider_subject` and
+  `uq_<table>_user_id` → `uq_<table>_user_id_provider`.
+- **The `constraint` from `parse_integrity_error` follows the database.**
+  After the `RENAME`, PostgreSQL returns the new name; your own map from
+  constraint name to error code needs the new key.
+
+### What to do
+
+`alembic revision --autogenerate` over an old database proposes `drop` +
+`create` for the composite uniques and indexes and **does not see** the
+renamed composite FK (measured against PostgreSQL 16 and Alembic 1.19.1).
+That `drop` fails when an FK depends on the unique. The way through is a
+revision with `RENAME`:
+
+1. With every model imported, generate the `RENAME`s with
+   `legacy_constraint_renames(BaseModel.metadata)`. Each item is a
+   `ConstraintRename(kind, table, schema, columns, old_name, new_name)`;
+   `statement(dialect)` writes the SQL and `inverse()` gives the
+   `downgrade()` one. A constraint with an explicit `name=` is left out.
+
+    ```python
+    from sqlalchemy import Index, UniqueConstraint
+    from sqlalchemy.dialects import postgresql, sqlite
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    from tempest_fastapi_sdk import (
+        BaseModel,
+        ConstraintRename,
+        legacy_constraint_renames,
+    )
+
+
+    class BookModel(BaseModel):
+        """Books in the catalogue."""
+
+        __tablename__ = "books"
+        __table_args__ = (
+            UniqueConstraint("isbn"),
+            UniqueConstraint("title", "release_year"),
+            Index(None, "author", "title"),
+        )
+
+        isbn: Mapped[str] = mapped_column()
+        title: Mapped[str] = mapped_column()
+        release_year: Mapped[int] = mapped_column()
+        author: Mapped[str] = mapped_column()
+
+
+    renames: list[ConstraintRename] = legacy_constraint_renames(BaseModel.metadata)
+    for rename in renames:
+        print(rename.kind, rename.old_name, "->", rename.new_name)
+        print(rename.statement(postgresql.dialect()))
+
+    try:
+        renames[0].statement(sqlite.dialect())
+    except ValueError as exc:
+        print(f"ValueError: {exc}")
+    ```
+
+    Output:
+
+    ```text
+    index ix_books_author -> ix_books_author_books_title
+    ALTER INDEX ix_books_author RENAME TO ix_books_author_books_title
+    unique uq_books_title -> uq_books_title_release_year
+    ALTER TABLE books RENAME CONSTRAINT uq_books_title TO uq_books_title_release_year
+    ValueError: ConstraintRename.statement supports postgresql, not 'sqlite'; SQLite cannot rename a constraint, so use the batch migration alembic --autogenerate renders
+    ```
+
+    `uq_books_isbn`, a single-column unique, does not show up: its name did
+    not change.
+
+2. Paste the statements into an **empty** revision and run
+   `alembic upgrade head` before deploying the new version. The step by step,
+   with the full revision and its `downgrade()`, is in
+   [Database → Migrate composite constraints from the old convention](recipes/database.md#migrate-composite-constraints-from-the-old-convention).
+3. **On SQLite** `statement()` raises `ValueError`, as in the output above:
+   SQLite cannot rename a constraint, and there the batch migration the
+   autogenerate renders works.
+
+!!! tip "To postpone"
+    Give the composite constraint the name it already has in the database
+    (`UniqueConstraint("title", "release_year", name="uq_books_title")`): an
+    explicit name beats the convention, and `legacy_constraint_renames` leaves
+    the constraint out. The old convention is still available as
+    `LEGACY_NAMING_CONVENTION`.
+
+## 0.301.0 — CSS, `DataTable`, forms, SSR and sessions
+
+The release that brought the `tempest-bucket` admin panel's bridges into the
+SDK changes behaviour in five areas a service notices. None needs a database
+migration.
+
+### CSS
+
+- **`make_css_router` and `css_response` change the default `Cache-Control`**
+  from `public, max-age=3600` to `no-cache` on the unversioned path: the
+  browser revalidates through the `ETag` (`304`, no body) before using its
+  copy. For the long cache, link `sheet.url(path)`, which appends
+  `?v=<version>` and receives `public, max-age=31536000, immutable`. If you
+  already passed an explicit `cache_control=`, nothing changes.
+- **The `StyleSheet` reset gained a `font-family` on `body`.** A rule of your
+  own that sets the family still wins when it comes after the reset (which is
+  the case for `app_stylesheet`'s `extra=`).
+
+Details in [Typed CSS](recipes/ui-css.md).
+
+### `DataTable`
+
+The `<table>` now comes inside `<div class="tui-table-scroll">`, so a wide
+table scrolls inside its container instead of widening the page on a phone.
+A selector of your own that targeted `.tui-card__body > table` needs to
+include the wrapper.
+
+### Forms
+
+- **A present `help_text` always wins.** `{"ui": {"help_text": ""}}`, `None`
+  or `False` suppress the hint; before, it fell back to the field's
+  `description`.
+- **An `UploadFile` field no longer renders as `<input type="text">`**: it
+  renders `<input type="file">`, and the form gains
+  `enctype="multipart/form-data"`.
+
+Details in [Forms](recipes/ui-forms.md).
+
+### SSR
+
+`html_response(page)` without `title=` uses `page.document_title()` instead of
+raising `ValueError`. The error stays for a widget that is not a `Page`.
+
+### Sessions
+
+- **`make_session_dependency(...)` returns an `async` dependency.** Inside
+  `Depends(...)` nothing changes; a test that called the resolver directly
+  needs an `await`.
+- **`SessionAuth.user_model` is `type[BaseUserModel] | None`.** Typed code
+  that reads the attribute has to narrow it.
+- **`SESSION_COOKIE_SAMESITE` is `Literal["lax", "strict", "none"]`.** No
+  value accepted before is refused now; a `Settings` that overrides the field
+  as `str` becomes an incompatible override under mypy — override it with the
+  `Literal` or drop the override.
+- **`make_session_router`'s logout deletes the cookie with the settings'
+  attributes**, instead of always `Secure` and `HttpOnly`.
+
+Details in [Sessions](recipes/sessions.md).
+
 ## 0.300.0 — the chat attachment records who uploaded it
 
 `BaseMessageAttachmentModel` gained the `uploader_id` column (nullable,

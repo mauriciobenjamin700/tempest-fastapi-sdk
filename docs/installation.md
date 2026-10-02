@@ -45,7 +45,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[genai-quant]` | `bitsandbytes` | quantização 4/8-bit dos modelos locais do `[genai]` |
 | `[genai-rag]` | `trafilatura`, `pymupdf`, `pgvector`, `httpx` | ingestão RAG: scraping web, extração de PDF e embeddings em pgvector |
 | `[geo]` | `httpx` | helpers geoespaciais: `haversine_km`, `estimate_travel`, `NominatimBackend`/`OSRMBackend` (geocoding + rotas), `GeoPointMixin` |
-| `[http]` | `httpx` | `HTTPClient` + `RetryPolicy` + circuit-breaker |
+| `[http]` | `httpx` (já vem no pacote base) | `HTTPClient` + `RetryPolicy` + circuit-breaker. O extra é opcional: o `HTTPClient` funciona na instalação base, e declarar o extra só registra a intenção no `pyproject.toml` do serviço |
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
 | `[mfa]` | `pyotp` | `TOTPHelper` + endpoints MFA/2FA (TOTP) do fluxo bundled de auth |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |
