@@ -10,7 +10,7 @@ This tutorial walks through wiring the **Users** feature using every SDK convent
 - A paginated `GET /users` and a signup `POST /users` (with password hashing via `PasswordUtils`)
 
 !!! tip "Tip for the impatient"
-    If you only want to copy the layout, scaffold it: `tempest new my-service`. The CLI ships the same skeleton this tutorial walks through.
+    If you only want to copy the layout, scaffold it: `tempest new my_service`. The CLI ships the same skeleton this tutorial walks through.
 
 !!! info "Auth flow already ships"
     This tutorial shows how to **build** signup/login with `BaseRepository` + `BaseService` + `BaseController` — the foundation for any feature. For the **complete auth flow** (signup + email activation + JWT login + password reset), the SDK ships `UserAuthService` + `make_auth_router` since v0.31.0; jump to the **[Auth flow »](recipes/auth-flow.en.md)** recipe when you want the shortcut instead of implementing it manually.
@@ -70,7 +70,7 @@ If your service has no controllers/services/repositories yet, **still ship empty
 
 ### 2. Settings, server, app factory & entry point
 
-Four files map onto four responsibilities:
+Five files map onto five responsibilities:
 
 | File | Responsibility |
 | --- | --- |
@@ -484,7 +484,7 @@ class UserRepository(BaseRepository[UserModel]):
         return self.map_to_schema(instance)
 ```
 
-The base repo gives you 20+ methods for free — see the [reference table](../reference/#tempest_fastapi_sdk.db.repository.BaseRepository). Add custom queries on top of the same `UserRepository`:
+The base repo gives you 20+ methods for free — see the [reference table](../../reference/#tempest_fastapi_sdk.db.repository.BaseRepository). Add custom queries on top of the same `UserRepository`:
 
 ```python
 # src/db/repositories/user.py  (continued)

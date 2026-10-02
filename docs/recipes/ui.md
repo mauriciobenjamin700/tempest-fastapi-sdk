@@ -386,7 +386,7 @@ existem só no `Page`.
 ## O scaffold escreve a camada inteira
 
 ```bash
-tempest new meu-servico --extras "ssr"
+tempest new meu_servico --extras "ssr"
 ```
 
 Isso gera `src/ui/` completo — `styles.py`, `layout/base.py`,

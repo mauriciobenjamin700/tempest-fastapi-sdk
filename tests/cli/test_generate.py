@@ -253,7 +253,7 @@ class TestGenerateSrc:
         assert result.exit_code == 0
         content = (tmp_path / "src" / "queue" / "__init__.py").read_text()
         assert "# hand-edited" not in content
-        assert "AsyncBrokerManager" in content
+        assert "AsyncQueueManager" in content
 
     def test_detects_app_root(self, tmp_path: Path) -> None:
         _seed_project(tmp_path, name="svc", extras="tasks")
@@ -261,7 +261,7 @@ class TestGenerateSrc:
         result = runner.invoke(app, ["generate", "--src", "--path", str(tmp_path)])
         assert result.exit_code == 0
         jobs = (tmp_path / "app" / "tasks" / "jobs.py").read_text()
-        assert "from app.tasks import broker" in jobs
+        assert "from app.tasks import tq" in jobs
 
     def test_extras_override(self, tmp_path: Path) -> None:
         _seed_project(tmp_path, name="svc", extras="auth")

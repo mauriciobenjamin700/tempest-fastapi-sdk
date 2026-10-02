@@ -26,7 +26,7 @@ _ROOT_PLACEHOLDER = "__ROOT__"
 _QUEUE_INIT = '''\
 """FastStream (RabbitMQ) message-queue wiring for this service.
 
-A single :class:`AsyncBrokerManager` owns the broker for the whole
+A single :class:`AsyncQueueManager` owns the broker for the whole
 process. Routers and services reach it through :func:`get_broker`;
 connect/disconnect run from the app lifespan.
 """
@@ -36,7 +36,7 @@ from __future__ import annotations
 import os
 
 from faststream.rabbit import RabbitBroker
-from tempest_fastapi_sdk import AsyncBrokerManager
+from tempest_fastapi_sdk.queue import AsyncQueueManager
 
 RABBITMQ_URL: str = os.environ.get(
     "RABBITMQ_URL",
@@ -47,15 +47,15 @@ RABBITMQ_URL: str = os.environ.get(
 broker: RabbitBroker = RabbitBroker(RABBITMQ_URL)
 """Process-wide FastStream broker; subscribers register against it."""
 
-broker_manager: AsyncBrokerManager = AsyncBrokerManager(broker)
+broker_manager: AsyncQueueManager = AsyncQueueManager(broker)
 """SDK manager wrapping :data:`broker` (connect/disconnect/publish)."""
 
 
-def get_broker() -> AsyncBrokerManager:
+def get_broker() -> AsyncQueueManager:
     """Return the process-wide FastStream broker manager.
 
     Returns:
-        AsyncBrokerManager: The shared manager (connected during the
+        AsyncQueueManager: The shared manager (connected during the
         app lifespan).
     """
     return broker_manager
@@ -176,17 +176,17 @@ __all__: list[str] = ["broker", "get_task_queue", "scheduler", "tq"]
 _TASKS_JOBS = '''\
 """TaskIQ background jobs for this service.
 
-Jobs are declared against the shared :data:`broker` so they register
-on startup. Enqueue them from a request handler with
-``await example_job.kiq("payload")``.
+Jobs are declared against the shared :data:`tq` so they register on
+startup. Enqueue them from a request handler with
+``await example_job.enqueue("payload")``.
 """
 
 from __future__ import annotations
 
-from __ROOT__.tasks import broker
+from __ROOT__.tasks import tq
 
 
-@broker.task
+@tq.task
 async def example_job(payload: str) -> str:
     """Process one background job.
 
