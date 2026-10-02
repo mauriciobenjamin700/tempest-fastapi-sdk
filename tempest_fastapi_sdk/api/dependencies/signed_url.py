@@ -34,7 +34,10 @@ def make_signed_path_dependency(
     Both query parameters are declared, so they show up in the OpenAPI schema
     of the route. They are read as strings and validated here rather than by
     FastAPI, so a missing or non-numeric ``expires`` answers the same ``403``
-    as a forged one instead of a ``422`` that names the parameter.
+    as a forged one instead of a ``422`` that names the parameter. That
+    includes an ``expires`` longer than Python's int-conversion limit (4300
+    digits), whose ``int()`` raises ``ValueError`` and would otherwise be a
+    ``500``.
 
     Args:
         secret (str): The secret the URLs are signed with.
@@ -68,9 +71,13 @@ def make_signed_path_dependency(
     ) -> None:
         if not (expires.isascii() and expires.isdigit()) or not signature:
             raise InvalidSignedURLException()
+        try:
+            expires_at = int(expires)
+        except ValueError:
+            raise InvalidSignedURLException() from None
         verify_path(
             request.scope["path"],
-            expires=int(expires),
+            expires=expires_at,
             signature=signature,
             secret=secret,
             purpose=purpose,
