@@ -294,7 +294,8 @@ error: --fast needs pytest-xdist, which is not installed in the environment pyte
   O ganho cresce com a suíte: um serviço de 2678 testes numa máquina de 12
   núcleos caiu de ~5 min para 1 min 28 s
   ([#328](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/328)).
-  A suíte deste SDK (10 218 testes), numa máquina de 6 núcleos físicos e 12
+  A suíte deste SDK, com 10 218 testes no desenvolvimento da v0.302.0 (o
+  número cresce a cada release), numa máquina de 6 núcleos físicos e 12
   threads, foi de 2127 s em série para 411 s com `--fast` — cerca de 5,2x,
   medido numa execução de cada.
 - **`auto` conta núcleo físico quando o `psutil` está instalado** (regra do

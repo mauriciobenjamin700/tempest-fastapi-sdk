@@ -14,13 +14,16 @@ Isso significa: **3.11 é o mínimo**, e qualquer versão acima serve. A políti
 
 | Python | Status |
 | --- | --- |
-| 3.13 | Matriz principal do CI |
+| 3.13 | Suportado — a versão do `.python-version` do repositório |
 | 3.12 | Suportado |
 | 3.11 | Suportado (mínimo) |
 | 3.10 e anteriores | Não suportado |
 
 !!! tip "Na dúvida, use 3.13"
-    É a versão em que o SDK é testado a cada commit. Use 3.11 só quando algo fora do seu controle exigir (uma imagem Docker antiga, um servidor legado).
+    É a que o `.python-version` do repositório fixa, então é onde o SDK é
+    desenvolvido. O CI roda o gate inteiro (lint, tipos, testes e o smoke da
+    wheel) nas três versões a cada push na `main` e em todo PR, uma job por
+    versão. Use 3.11 só quando algo fora do seu controle exigir (uma imagem Docker antiga, um servidor legado).
 
 !!! info "Como o Python numera versões"
     `3.13.2` é `major.minor.patch`. Quem quebra compatibilidade é o **minor** (3.12 → 3.13); o patch (3.13.1 → 3.13.2) só corrige bugs e segurança. Por isso a gente fixa "3.13" e deixa o patch flutuar. O calendário de suporte de cada versão está em <https://devguide.python.org/versions/>.
@@ -113,7 +116,12 @@ UV_PYTHON=3.11 uv run pytest
 ```
 
 !!! example "É assim que o SDK roda os próprios gates"
-    O repositório do `tempest-fastapi-sdk` executa `UV_PYTHON=3.11 make check` antes de qualquer release: se o código passa no piso, passa nas versões acima.
+    O CI do `tempest-fastapi-sdk` roda uma job por versão (3.11, 3.12 e 3.13)
+    com `UV_PYTHON` apontando para ela. É o `UV_PYTHON` que faz a matriz valer:
+    ele tem precedência sobre o `.python-version` (que fixa 3.13), e sem ele as
+    três jobs montavam o mesmo venv 3.13. O `make release` local roda o
+    `make check` no Python do `.python-version` e o smoke da wheel num venv
+    3.11, o piso.
 
 ## Teste nas três versões suportadas
 

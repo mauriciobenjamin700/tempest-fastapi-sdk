@@ -427,13 +427,18 @@ class BillingController(Controller):
 
 
 # src/api/dependencies/controllers.py
-from src.api.dependencies.resources import SessionDep
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.api.dependencies.resources import db
 from src.controllers.billing_controller import BillingController
 from src.db.repositories import InvoiceRepository, LedgerRepository
 from src.services import InvoiceService, LedgerService, NotificationService
 
 
-def get_billing_controller(session: SessionDep) -> BillingController:
+def get_billing_controller(
+    session: AsyncSession = Depends(db.session_dependency),
+) -> BillingController:
     return BillingController(
         InvoiceService(InvoiceRepository(session)),
         LedgerService(LedgerRepository(session)),

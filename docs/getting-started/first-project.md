@@ -171,18 +171,27 @@ Um serviço de verdade tem camadas (router → controller → service → reposi
 uv tool install "tempest-fastapi-sdk[all]"
 
 # 2. gere o serviço
-tempest new minha-api
-cd minha-api
+tempest new minha_api
+cd minha_api
 
 # 3. instale as dependências geradas e rode os testes
 uv sync
 uv run pytest
 ```
 
+!!! note "O nome vira pacote Python: `minha_api`, não `minha-api`"
+    O `uv init` do caminho A aceita hífen; o `tempest new` não. O nome precisa
+    casar com `^[a-z][a-z0-9_]*$`, e `tempest new minha-api` sai com código 2
+    antes de escrever qualquer arquivo:
+
+    ```text
+    Error: project name must match ^[a-z][a-z0-9_]*$ (lowercase, underscores, no leading digit).
+    ```
+
 O que sai disso:
 
 ```text
-minha-api/
+minha_api/
 ├── main.py                 # one-liner que chama run() de src.server
 ├── pyproject.toml
 ├── .env.example
