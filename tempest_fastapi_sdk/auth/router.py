@@ -270,7 +270,23 @@ def make_auth_router(
             wired as ``db.session_dependency`` where ``db`` is
             an :class:`AsyncDatabaseManager`. Used inside each
             handler to scope the transaction to the request.
-        prefix (str): URL prefix; defaults to ``"/auth"``.
+        prefix (str): The full public path the auth routes live under;
+            defaults to ``"/auth"``. Pass the whole path here
+            (``prefix="/api/auth"``) rather than adding one through
+            ``app.include_router(router, prefix=...)``: the router also
+            writes this value into the URLs it builds itself, and it
+            cannot see a prefix added at mount time. The refresh
+            cookie's ``Path`` (``AuthCookieConfig.refresh_path``) is
+            ``prefix`` (``prefix + "/cookie"`` in ``both`` mode), the
+            backend-rendered password-reset form posts to
+            ``prefix + "/password-reset/{token}"``, and the OAuth state
+            cookie is scoped to ``prefix``. Mounting
+            ``make_auth_router(prefix="/auth")`` with
+            ``include_router(..., prefix="/api")`` serves
+            ``/api/auth/login`` but sets the refresh cookie with
+            ``Path=/auth``, which the browser never sends to
+            ``/api/auth/refresh``; and ``include_router(...,
+            prefix="/api/auth")`` doubles it into ``/api/auth/auth/*``.
         tags (list[str] | None): OpenAPI tags. Defaults to
             ``["auth"]``.
         template_dir (str | None): Optional directory holding
@@ -1566,8 +1582,19 @@ def make_auth_router(
                 "    The secret and recovery codes are returned **only "
                 "    this once** and are never retrievable again — show "
                 "    them to the user immediately. Enrollment is not "
-                "    active until confirmed at ``/mfa/confirm``."
+                "    active until confirmed at ``/mfa/confirm``.\n\n"
+                "Once MFA is active this answers **409** with code "
+                "``MFA_ALREADY_ENROLLED`` and changes nothing: a bearer "
+                "token alone must not reset the second factor. To rotate "
+                "the secret, call ``/mfa/disable`` (password + code) and "
+                "enroll again. Calling it again while an enrollment is "
+                "still pending replaces the staged secret and codes."
             ),
+            responses={
+                status.HTTP_409_CONFLICT: {
+                    "description": "MFA is already active for this account.",
+                },
+            },
         )
         async def mfa_enroll(
             session: AsyncSession = session_dep,
@@ -1582,6 +1609,10 @@ def make_auth_router(
             Returns:
                 MFAEnrollResponseSchema: The shared secret, provisioning URI and
             one-time recovery codes — returned only once.
+
+            Raises:
+                MFAAlreadyEnrolledException: When MFA is already active
+                    for the caller.
             """
             secret, uri, codes = await service.mfa_enroll(
                 session,

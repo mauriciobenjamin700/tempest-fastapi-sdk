@@ -211,6 +211,13 @@ class SessionAuth:
     ) -> BaseUserModel:
         """Validate credentials and return the matching user row.
 
+        Every refusal pays one bcrypt verification: an unknown address
+        is checked against a throwaway hash
+        (:meth:`~tempest_fastapi_sdk.PasswordUtils.dummy_verify`) and an
+        inactive account's password is verified before the
+        ``is_active`` check, so neither branch answers faster than a
+        wrong password.
+
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             email (str): Account email.
@@ -223,8 +230,7 @@ class SessionAuth:
             UnauthorizedException: On any failure — wrong password,
                 missing user, inactive user. The message is
                 deliberately generic so the response body does not
-                tell the two apart (the timing still does; see the
-                sessions recipe).
+                tell them apart.
             RuntimeError: When the service was built with
                 ``authenticator=`` instead of ``user_model=``.
         """
@@ -238,9 +244,12 @@ class SessionAuth:
             select(self.user_model).where(self.user_model.email == normalized),
         )
         user_obj = result.scalar_one_or_none()
-        if user_obj is None or not user_obj.is_active:
+        if user_obj is None:
+            self.passwords.dummy_verify(password)
             raise UnauthorizedException(message="invalid email or password")
         if not self.passwords.verify(password, user_obj.hashed_password):
+            raise UnauthorizedException(message="invalid email or password")
+        if not user_obj.is_active:
             raise UnauthorizedException(message="invalid email or password")
         user_obj.last_login_at = utcnow()
         await session.flush()

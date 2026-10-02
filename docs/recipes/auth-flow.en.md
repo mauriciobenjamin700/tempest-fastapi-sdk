@@ -1,6 +1,6 @@
 # Bundled auth flow (signup / activate / login / reset)
 
-Since v0.31.0 the SDK ships the full local-account lifecycle — email + password signup, link-based activation, JWT-pair login, password reset — via `UserAuthService` + `make_auth_router`. **Endpoints ready to mount** (including `POST /auth/refresh` since v0.65.0), Jinja2 templates bundled, settings flags decide whether the link is emailed or returned in the response body, and four pre-thought modes for dev / staging / production / CI.
+Since v0.31.0 the SDK ships the full local-account lifecycle — email + password signup, link-based activation, JWT-pair login, password reset — via `UserAuthService` + `make_auth_router`. **Endpoints ready to mount** (including `POST /auth/refresh` since v0.65.0), Jinja2 templates bundled, settings flags decide whether the link is emailed or returned in the response body, and five pre-thought modes: production, dev with local SMTP, dev without SMTP, CI and backend-only.
 
 !!! tip "Jump straight to your case"
     The table below maps **what the user wants to do** → the section and
@@ -28,15 +28,19 @@ Since v0.31.0 the SDK ships the full local-account lifecycle — email + passwor
 2. **[Concrete UserTokenModel](#concrete-usertokenmodel)** — `BaseUserTokenModel` is abstract, your project owns the concrete table.
 3. **[Endpoints](#endpoints)** — table of all endpoints + payload + behavior.
     - **[Backend only](#backend-only-from-signup-to-a-protected-route)** — the signup → activation → login → protected route cycle without a frontend, measured with `curl`, and the same cycle in a test.
-4. **[Password recovery](#password-recovery)** — the "forgot password" flow, step by step, plus changing the password while logged in.
-5. **[Email change and recovery](#email-change-and-recovery)** — change email logged in, re-verify, and recover when the mailbox is lost.
-6. **[Settings — environment variables](#settings-environment-variables)** — env vars in **groups** (JWT, password policy, email flow, TTL, URLs/templates, backend pages) — each in a typed table, not one blob.
-5. **[Email anatomy: how link, template and URL fit together](#email-anatomy)** — disambiguates the three concepts that confuse readers the most.
-6. **[Five operating modes](#five-operating-modes)** — production, dev with local SMTP (Mailhog / smtp4dev), dev without SMTP, CI without activation, and **backend-only** (links and pages served directly by the backend).
-7. **[Mailhog vs smtp4dev — which to pick for local dev](#mailhog-vs-smtp4dev)** — comparison + copy-paste docker-compose snippets.
-8. **[Customizing email templates](#customizing-templates)** — override `activation.html` and `password_reset.html` + variables exposed to the Jinja2 context.
-9. **[Security](#security)** — token storage, TTL, anti-enumeration.
-10. **[Next steps](#next-steps)**.
+4. **[Re-send the activation](#re-send-the-activation)** — the activation email never arrived.
+5. **[Password recovery](#password-recovery)** — the "forgot password" flow, step by step, plus changing the password while logged in.
+6. **[Email change and recovery](#email-change-and-recovery)** — change email logged in, re-verify, and recover when the mailbox is lost.
+7. **[Settings — environment variables](#settings-environment-variables)** — env vars in **groups** (JWT, password policy, email flow, TTL, URLs/templates, backend pages) — each in a typed table, not one blob.
+8. **[Email anatomy: how link, template and URL fit together](#email-anatomy)** — disambiguates the three concepts that confuse readers the most.
+9. **[Email and page language (i18n)](#email-and-page-language-i18n)** — default language, per-user preference and your own translation.
+10. **[Five operating modes](#five-operating-modes)** — production, dev with local SMTP (Mailhog / smtp4dev), dev without SMTP, CI without activation, and **backend-only** (links and pages served directly by the backend).
+11. **[Token delivery](#token-delivery)** — bearer, cookie or both.
+12. **[Mailhog vs smtp4dev — which to pick for local dev](#mailhog-vs-smtp4dev)** — comparison + copy-paste docker-compose snippets.
+13. **[Customizing email templates](#customizing-templates)** — override `activation.html` and `password_reset.html` + variables exposed to the Jinja2 context.
+14. **[Security](#security)** — token storage, TTL, anti-enumeration.
+15. **[Getting the `current_user` from the request](#getting-the-current_user-from-the-request)** — the authenticated-user dependency in your routes.
+16. **[Next steps](#next-steps)**.
 
 ---
 
@@ -116,7 +120,7 @@ app.include_router(
     testable without starting the application.
 
 !!! tip "Four-object TL;DR"
-    `AsyncDatabaseManager` → connection. `EmailUtils` → SMTP + Jinja2. `UserAuthService` → business rules (5 methods). `make_auth_router` → glues it all into 5 HTTP endpoints.
+    `AsyncDatabaseManager` → connection. `EmailUtils` → SMTP + Jinja2. `UserAuthService` → business rules. `make_auth_router` → glues it all into the HTTP endpoints: 13 with default settings, plus the MFA, cookie, social-login, WebAuthn and backend-page ones when enabled.
 
 ---
 
@@ -370,6 +374,8 @@ app.include_router(
     ),
 )
 ```
+
+With `AUTH_AUTO_ACTIVATE=true` in `.env` the account is born active and signup already returns the JWT pair. Under the default (`false`) the same call answers `"activation_required":true` with `access_token` and `refresh_token` set to `null`, and the pair only comes out of `POST /auth/activate/{token}`:
 
 ```console
 $ curl -s -X POST localhost:8000/auth/signup \
@@ -913,7 +919,7 @@ curl -X POST localhost:8000/auth/password-reset/request \
 ```
 
 ```json
-{ "message": "If the email exists, we sent a link.", "reset_url": null }
+{"message": "If the email matches an account, a reset link was sent.", "reset_url": null}
 ```
 
 **Step 2 — set the new password.** The user opens the emailed link; the
@@ -938,7 +944,8 @@ curl -X POST localhost:8000/auth/password-reset/confirm \
 ```
 
 !!! check "Errors you'll see"
-    - Unknown / already-used / expired token → **400**.
+    - Unknown / already-used / expired token → **401** with `code: "INVALID_TOKEN"` and a `detail` naming the reason (unknown token: `token not recognized`).
+    - A `token` shorter than 16 characters → **422** from FastAPI itself (`string_too_short`), before it reaches the service.
     - `new_password` violates `AUTH_PASSWORD_MIN_LENGTH` / complexity → **422**.
     - `request` **never** errors on a missing email — always **202**.
 
@@ -1007,7 +1014,7 @@ so a hijacked account still alerts its owner.
 !!! check "Errors"
     - Wrong current password → **401**.
     - `new_email` already in use (at request **or** confirm — a race) → **409**.
-    - Invalid / expired / used token → **400**.
+    - Invalid / expired / used token → **401** with `code: "INVALID_TOKEN"`.
 
 ### Re-verify the current email
 
@@ -1283,7 +1290,7 @@ There's a whole section dedicated to this, explained step by step:
 
 | Env var | Type | Default | What it does |
 |---------|------|---------|--------------|
-| `AUTH_OAUTH_ENABLED` | `bool` | `false` | `true` mounts the four `/auth/oauth/*` routes. Requires a client in `oauth_clients=`, an `oauth_account_model` on the service and a `name` column on the user model — each missing piece raises `RuntimeError` at router construction. |
+| `AUTH_OAUTH_ENABLED` | `bool` | `false` | `true` mounts the five `/auth/oauth/*` routes (`{provider}/login`, `{provider}/callback`, `{provider}/token`, `accounts` and `accounts/unlink`). Requires a client in `oauth_clients=`, an `oauth_account_model` on the service and a `name` column on the user model — each missing piece raises `RuntimeError` at router construction. |
 | `AUTH_OAUTH_STATE_COOKIE_NAME` | `str` | `oauth_state` | Cookie carrying the CSRF `state` between the redirect and the callback. Always `HttpOnly` and always `SameSite=Lax`. |
 | `AUTH_OAUTH_STATE_TTL_SECONDS` | `int` | `600` | How long the user has to finish consenting at the provider. |
 | `AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL` | `bool` | `false` | `true` attaches a new identity to an existing account whose email matches — **only** when `email_verified is True`. Off by default because this is the knob that turns a provider's word about an email into control of an account. |
@@ -1354,9 +1361,9 @@ sequenceDiagram
     API->>API: render Jinja2 (user, activation_url, expires_at)
     alt AUTH_RETURN_TOKEN_IN_RESPONSE=false
         API->>E: SMTP send (rendered HTML)
-        API->>F: 201 + {message: "check your email"}
+        API->>F: 201 + {activation_required: true, activation_url: null}
     else AUTH_RETURN_TOKEN_IN_RESPONSE=true
-        API->>F: 201 + {activation_url: "https://app/activate?token=..."}
+        API->>F: 201 + {activation_required: true, activation_url: "https://app/activate?token=..."}
     end
     Note right of F: user (or dev) opens the URL
     F->>API: POST /auth/activate/{token}
@@ -1975,7 +1982,7 @@ emails/                            # ← template_dir="emails"
 - **Token stored as SHA-256 hash.** Plaintext leaves via email only once; the database can never reproduce the original token. A leak of the `user_tokens` table does **not** enable retroactive activation.
 - **One-shot.** `used_at` is stamped on consume; replay rejected with `UnauthorizedException`.
 - **TTL-bounded.** `expires_at` computed from `AUTH_ACTIVATION_TTL_SECONDS` / `AUTH_PASSWORD_RESET_TTL_SECONDS`. Expired tokens rejected.
-- **Anti-enumeration.** `POST /auth/password-reset/request` always returns HTTP 202 + a generic body, regardless of whether the email exists. `POST /auth/login` raises the same `UnauthorizedException` for wrong-email vs wrong-password.
+- **Anti-enumeration.** `POST /auth/password-reset/request` always returns HTTP 202 + a generic body, regardless of whether the email exists. `POST /auth/login` raises the same `UnauthorizedException` for wrong-email, wrong-password and inactive account, and all three pay one bcrypt verification (an unknown email is checked against a throwaway hash), so the response time does not separate them either. Measured on this machine (bcrypt cost 12, `UserAuthService.login` called directly, median of N=21): wrong password 153.8 ms, unknown email 153.8 ms; before the fix, 0.5 ms for the unknown email.
 - **Password floor enforced twice.** `SignupSchema` validates on input; `UserAuthService` re-validates before hashing — defense in depth in case anyone bypasses the schema.
 
 ---

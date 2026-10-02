@@ -24,7 +24,9 @@ from tempest_fastapi_sdk import (
     make_auth_router,
     make_user_recovery_code_model,
     make_user_token_model,
+    register_exception_handlers,
 )
+from tempest_fastapi_sdk.auth import MFAAlreadyEnrolledException
 from tempest_fastapi_sdk.exceptions import (
     UnauthorizedException,
     ValidationException,
@@ -775,3 +777,136 @@ class TestMFARouter:
 
         with pytest.raises(RuntimeError):
             make_auth_router(service, session_factory=_factory)
+
+
+class TestMFAEnrollOnActiveAccount:
+    """A bearer token alone must never switch off an active second factor.
+
+    ``/mfa/enroll`` only requires the access token. Before the guard, a
+    second enroll on an account with MFA already active wiped every
+    recovery code and reset ``totp_enabled_at`` to ``None``, so whoever
+    held a stolen access token could disable MFA without the password or
+    a TOTP code, the two proofs ``/mfa/disable`` demands.
+    """
+
+    async def test_token_alone_cannot_disable_mfa_through_enroll(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service()
+        await _make_user(service, session, email="reenroll@a.com")
+
+        async def _factory() -> AsyncIterator[AsyncSession]:
+            yield session
+
+        app = FastAPI()
+        register_exception_handlers(app)
+        app.include_router(
+            make_auth_router(
+                service,
+                session_factory=_factory,
+                recovery_code_model=_MfaRecoveryCode,
+            )
+        )
+        credentials: dict[str, str] = {
+            "email": "reenroll@a.com",
+            "password": "strong-pass-12-chars",
+        }
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            r = await c.post("/auth/login", json=credentials)
+            assert r.status_code == 200, r.text
+            bearer = {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+            r = await c.post("/auth/mfa/enroll", headers=bearer)
+            assert r.status_code == 200, r.text
+            secret = r.json()["secret"]
+            r = await c.post(
+                "/auth/mfa/confirm",
+                headers=bearer,
+                json={"code": pyotp.TOTP(secret).now()},
+            )
+            assert r.status_code == 204, r.text
+
+            r = await c.post("/auth/mfa/enroll", headers=bearer)
+            assert r.status_code == 409, r.text
+            assert r.json()["code"] == "MFA_ALREADY_ENROLLED"
+
+            r = await c.post("/auth/login", json=credentials)
+        assert r.status_code == 200, r.text
+        assert r.json()["mfa_required"] is True
+        assert r.json()["access_token"] is None
+
+    async def test_refused_enroll_keeps_factor_and_recovery_codes(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service()
+        user = await _make_user(service, session)
+        secret, _, codes = await service.mfa_enroll(
+            session,
+            user=user,
+            recovery_code_model=_MfaRecoveryCode,
+        )
+        await service.mfa_confirm(session, user=user, code=pyotp.TOTP(secret).now())
+        await session.commit()
+        enabled_at = user.totp_enabled_at
+
+        with pytest.raises(MFAAlreadyEnrolledException) as excinfo:
+            await service.mfa_enroll(
+                session,
+                user=user,
+                recovery_code_model=_MfaRecoveryCode,
+            )
+        assert excinfo.value.status_code == 409
+        assert user.totp_secret == secret
+        assert user.totp_enabled_at == enabled_at
+        assert await service._verify_mfa_code(session, user, codes[0], _MfaRecoveryCode)
+
+    async def test_refused_even_with_kill_switch_off(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service()
+        user = await _make_user(service, session)
+        secret, _, _ = await service.mfa_enroll(
+            session,
+            user=user,
+            recovery_code_model=_MfaRecoveryCode,
+        )
+        await service.mfa_confirm(session, user=user, code=pyotp.TOTP(secret).now())
+        await session.commit()
+        with pytest.raises(MFAAlreadyEnrolledException):
+            await _service(mfa_enabled=False).mfa_enroll(
+                session,
+                user=user,
+                recovery_code_model=_MfaRecoveryCode,
+            )
+
+    async def test_disable_then_enroll_rotates(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service()
+        user = await _make_user(service, session)
+        secret, _, _ = await service.mfa_enroll(
+            session,
+            user=user,
+            recovery_code_model=_MfaRecoveryCode,
+        )
+        await service.mfa_confirm(session, user=user, code=pyotp.TOTP(secret).now())
+        await service.mfa_disable(
+            session,
+            user=user,
+            password="strong-pass-12-chars",
+            code=pyotp.TOTP(secret).now(),
+            recovery_code_model=_MfaRecoveryCode,
+        )
+        new_secret, _, _ = await service.mfa_enroll(
+            session,
+            user=user,
+            recovery_code_model=_MfaRecoveryCode,
+        )
+        assert new_secret != secret
+        assert user.totp_enabled_at is None

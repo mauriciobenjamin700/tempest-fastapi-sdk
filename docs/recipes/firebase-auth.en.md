@@ -86,7 +86,7 @@ tampered or wrong-project token gets **401** — each with its own `code`.
 !!! tip "Register the exception handlers"
     `FirebaseAuth` raises subclasses of the SDK's own
     `UnauthorizedException` and `ForbiddenException`. Call
-    `register_exception_handlers(app)` (the SDK's `create_app()` already
+    `register_exception_handlers(app)` (the `create_app()` that `tempest new` generates already
     does) so they become 401/403 with a
     `{"detail": ..., "code": ...}` body instead of a 500.
 
