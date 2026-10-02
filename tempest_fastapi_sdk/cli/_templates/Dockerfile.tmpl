@@ -53,10 +53,10 @@ COPY --from=builder --chown=app:app /app /app
 # and pre-create logs/ so the SDK's file logging (LOG_DIR=logs) works.
 RUN mkdir -p /app/logs && chown -R app:app /app
 
-# Put the venv on PATH so `python` resolves to the project interpreter.
+__SPA_COPY__# Put the venv on PATH so `python` resolves to the project interpreter.
 # SERVER_HOST=0.0.0.0 binds all interfaces inside the container so the app
 # is reachable from the host (overridable via .env / `environment:`).
-__SPA_COPY__ENV PATH="/app/.venv/bin:$PATH" \
+ENV PATH="/app/.venv/bin:$PATH" \
     SERVER_HOST=0.0.0.0 \
     SERVER_PORT=__PORT__
 

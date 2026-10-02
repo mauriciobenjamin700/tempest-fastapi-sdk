@@ -22,8 +22,8 @@ are easy to get wrong:
 * API paths are excluded from the fallback, so a typo'd endpoint still
   returns a JSON 404 instead of a 200 with an HTML body — which would
   otherwise surface in the client as a confusing JSON parse error.
-* Only ``GET``/``HEAD`` requests that accept HTML fall back. A ``POST`` to a
-  missing path stays a 405/404 rather than silently returning a page.
+* Only ``GET``/``HEAD`` requests fall back. A ``POST`` to a missing path
+  stays a 405 rather than silently returning a page.
 
 For the development loop, do **not** use this: run ``vite dev`` and let it
 proxy ``/api`` to the FastAPI process, so hot-module reload keeps working.
@@ -361,7 +361,11 @@ def make_spa_router(
             headers={"Cache-Control": document_cache_control, **headers},
         )
 
-    @router.get("/{spa_path:path}", include_in_schema=False)
+    @router.api_route(
+        "/{spa_path:path}",
+        methods=["GET", "HEAD"],
+        include_in_schema=False,
+    )
     async def serve_spa(spa_path: str) -> Response:
         """Serve a build file, or fall back to the SPA entry document.
 
