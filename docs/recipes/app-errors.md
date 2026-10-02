@@ -64,6 +64,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.app_errors import AppErrorService, make_app_error_router
 
+from src.api.dependencies.auth import get_current_user_id_optional
 from src.db.models.app_error import AppErrorModel
 from src.db.session import get_session
 
@@ -95,9 +96,18 @@ app.include_router(
     make_app_error_router(
         service_factory=service_factory,
         session_factory=session_factory,
+        current_user_id_optional=get_current_user_id_optional,
     )
 )
 ```
+
+!!! warning "Sem `current_user_id_optional`, todo relato é anônimo"
+    O parâmetro é opcional porque o endpoint é público, e o default é não
+    resolver ninguém: sem ele o router grava `user_id=None` em **todo**
+    relato, inclusive no de quem estava logado. Passe uma dependência que
+    devolve o UUID do token quando há um válido e `None` quando não há —
+    nunca uma que responde `401`, ou o relato de quem quebrou antes do
+    login é recusado.
 
 O app manda:
 

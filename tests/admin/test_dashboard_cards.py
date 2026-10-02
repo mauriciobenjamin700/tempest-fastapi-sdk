@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 
 import pytest
@@ -111,6 +112,31 @@ async def test_dashboard_renders_cards(app_cards: FastAPI) -> None:
     assert "pro" in body
     # The broken card was skipped, not fatal.
     assert "Broken" not in body
+
+
+@pytest.mark.asyncio
+async def test_broken_card_is_logged_with_traceback(
+    app_cards: FastAPI, caplog: pytest.LogCaptureFixture
+) -> None:
+    async with _client(app_cards) as client:
+        await client.post(
+            "/admin/login",
+            data={"identifier": "root@example.com", "password": "hunter2"},
+        )
+        with caplog.at_level(logging.ERROR, logger="tempest_fastapi_sdk.admin.router"):
+            response = await client.get("/admin/")
+
+    assert response.status_code == 200
+    records = [
+        r
+        for r in caplog.records
+        if r.name == "tempest_fastapi_sdk.admin.router" and "'Broken'" in r.getMessage()
+    ]
+    assert len(records) == 1
+    assert records[0].levelno == logging.ERROR
+    assert records[0].exc_info is not None
+    assert isinstance(records[0].exc_info[1], RuntimeError)
+    assert "metric blew up" in str(records[0].exc_info[1])
 
 
 def test_metric_trend_properties() -> None:

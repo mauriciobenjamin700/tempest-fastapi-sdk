@@ -8,7 +8,8 @@ table, a reconciliation, an export.
 Three pieces, each usable on its own:
 
 * :mod:`~tempest_fastapi_sdk.spreadsheet.formats` — Excel number formats
-  pinned to pt-BR, so the file renders the same under any locale.
+  pinned to pt-BR by the ``[$-416]`` language code, so the file does not
+  render differently on a reader whose machine is en-US or de-DE.
 * :mod:`~tempest_fastapi_sdk.spreadsheet.styles` — the visual theme as
   plain data (hex colours, point sizes), importable without ``openpyxl``.
 * :mod:`~tempest_fastapi_sdk.spreadsheet.writer` — a row cursor with column

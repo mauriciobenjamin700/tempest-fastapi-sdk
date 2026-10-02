@@ -174,8 +174,9 @@ vez de postar a segunda; a segunda é o que faz reagir de novo
 
 ## O serviço
 
-`ChatService` recebe três repositórios (e, opcionalmente, um `SSEBroker`
-para tempo real):
+`ChatService` recebe três repositórios obrigatórios — e, opcionalmente,
+`attachments=` e `reactions=` (veja [O router](#o-router)) e um `SSEBroker`
+para tempo real. Para o fluxo de texto abaixo, os três bastam:
 
 ```python
 from uuid import UUID
@@ -642,10 +643,30 @@ Endpoints montados (todos exigem autenticação):
 | Método | Rota | Faz |
 | --- | --- | --- |
 | `POST` | `/api/chat/conversations` | Inicia conversa (criador vira participante) |
-| `GET` | `/api/chat/conversations` | Lista as conversas do usuário |
+| `GET` | `/api/chat/conversations` | Lista as conversas do usuário, fixadas primeiro |
+| `GET` | `/api/chat/conversations/{id}` | Uma conversa com os participantes |
+| `PATCH` | `/api/chat/conversations/{id}` | Edita título ou descrição do grupo |
+| `PUT` | `/api/chat/conversations/{id}/preferences` | Fixa, arquiva ou silencia só para quem chama |
+| `POST` | `/api/chat/conversations/{id}/participants` | Adiciona membros ao grupo |
+| `DELETE` | `/api/chat/conversations/{id}/participants/{participant_id}` | Remove um membro do grupo |
+| `POST` | `/api/chat/conversations/{id}/leave` | Sai da conversa |
+| `POST` | `/api/chat/conversations/{id}/read` | Move a marca de leitura de quem chama |
 | `POST` | `/api/chat/conversations/{id}/messages` | Posta mensagem (só participante) |
 | `GET` | `/api/chat/conversations/{id}/messages` | Pagina o histórico (só participante) |
+| `PATCH` | `/api/chat/messages/{id}` | Edita uma mensagem sua |
+| `DELETE` | `/api/chat/messages/{id}` | Apaga para todos, deixando a lápide |
+| `PUT` | `/api/chat/messages/{id}/reaction` | Reage, substituindo a reação anterior |
+| `DELETE` | `/api/chat/messages/{id}/reaction` | Remove a sua reação |
+| `POST` | `/api/chat/messages/{id}/forward` | Encaminha para outras conversas |
 | `GET` | `/api/chat/conversations/{id}/stream` | SSE de novas mensagens (só participante) |
+
+!!! warning "Reação e anexo precisam dos dois repositórios opcionais"
+    `attachments=` e `reactions=` são opcionais no `ChatService`. Sem
+    `reactions=`, o `PUT /messages/{id}/reaction` responde `422` com
+    `"this chat service was built without a reaction repository"`; sem
+    `attachments=`, postar com `attachment_ids` responde `422` também. Por
+    isso a fábrica de [Tempo real via SSE](#tempo-real-via-sse) passa os
+    cinco repositórios.
 
 !!! warning "Guarda de participante"
     Postar, ler e assinar exigem que o usuário autenticado seja
@@ -699,7 +720,13 @@ from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.chat import ChatService
 from tempest_fastapi_sdk.sse import SSEBroker
 
-from src.db.models import ConversationModel, ConversationParticipantModel, MessageModel
+from src.db.models import (
+    ConversationModel,
+    ConversationParticipantModel,
+    MessageAttachmentModel,
+    MessageModel,
+    MessageReactionModel,
+)
 
 
 broker = SSEBroker()  # single-process; passe redis=<client> para multi-worker
@@ -710,6 +737,8 @@ def build_chat_service(session: AsyncSession) -> ChatService:
         conversations=BaseRepository(session, model=ConversationModel),
         participants=BaseRepository(session, model=ConversationParticipantModel),
         messages=BaseRepository(session, model=MessageModel),
+        attachments=BaseRepository(session, model=MessageAttachmentModel),
+        reactions=BaseRepository(session, model=MessageReactionModel),
         broker=broker,
     )
 ```

@@ -69,16 +69,17 @@ não importa nenhum broker específico — você passa a função:
 import asyncio
 
 from tempest_fastapi_sdk import AsyncDatabaseManager, BaseOutboxModel, OutboxRelay
+from tempest_fastapi_sdk.queue import MessageBroker
 
 from src.db.models import OutboxModel
 
 
-async def run_relay(db: AsyncDatabaseManager, broker: object) -> None:
+async def run_relay(db: AsyncDatabaseManager, broker: MessageBroker) -> None:
     """Publica eventos pendentes continuamente."""
 
     async def publish(event: BaseOutboxModel) -> None:
         """Encaminha um evento pro broker."""
-        await broker.publish(event.payload, event.topic)  # type: ignore[attr-defined]
+        await broker.publish(event.topic, event.payload)
 
     relay: OutboxRelay = OutboxRelay(db, model=OutboxModel, publish=publish)
     await relay.run(poll_interval=1.0)  # loop até a task ser cancelada
@@ -86,6 +87,19 @@ async def run_relay(db: AsyncDatabaseManager, broker: object) -> None:
 
 Rode o relay como um processo/worker separado (ou uma task no lifespan).
 Cada evento publicado vira `status="sent"` com `sent_at` preenchido.
+
+!!! warning "O relay chama `publish(event)` com **um** argumento"
+    O `MessageBroker.publish` é `publish(channel, message)`, então ele não
+    entra cru no `OutboxRelay` — sempre pela função `publish(event)` acima.
+    Passar `publish=mq.publish` direto é recusado na construção:
+
+    ```text
+    TypeError: publish=MessageBroker.publish(channel: 'str | QueueSpec', message: 'Any', **options: 'Any') -> 'Any' cannot be called as publish(event): missing a required argument: 'message'. OutboxRelay calls publish(event) with ONE argument, the outbox row. ...
+    ```
+
+    Antes dessa checagem o relay aceitava, e o `TypeError` de cada chamada
+    caía no caminho de retry: todo evento terminava `failed` sem ter sido
+    publicado.
 
 ### Falhas e retry
 
@@ -97,9 +111,20 @@ pra inspeção manual (nunca mais é retentada automaticamente).
 
 !!! tip "Múltiplos workers"
     Em PostgreSQL/MySQL o relay trava o lote com `FOR UPDATE SKIP LOCKED`,
-    então você pode rodar **vários** workers de relay sem publicar o mesmo
-    evento duas vezes. Em SQLite (sem lock de linha) ele cai pra um
-    `SELECT` simples — use um worker só.
+    então vários workers de relay não pegam a **mesma linha** ao mesmo
+    tempo. Em SQLite (sem lock de linha) ele cai pra um `SELECT` simples —
+    use um worker só.
+
+!!! danger "A entrega é at-least-once: o consumidor tem que ser idempotente"
+    O relay publica cada evento do lote e só grava `status="sent"` no
+    `commit` do fim do lote. Se o worker morre entre os dois — deploy,
+    OOM, `CancelledError` —, o broker já recebeu o evento e a linha volta
+    a `pending`; o próximo drain publica de novo. Medido em
+    `tests/db/test_outbox.py::TestAtLeastOnce`: um drain cancelado no
+    segundo evento de dois deixa os dois pendentes, e o drain seguinte
+    publica `a` de novo (`["a", "b", "a", "b"]`). O outbox garante que o
+    evento **não se perde**, não que chega uma vez só. Deduplique no
+    consumidor pelo `event.id`.
 
 ### Drenar uma vez (testes / cron)
 
@@ -109,13 +134,19 @@ devolve quantos eventos foram publicados:
 ```python
 import asyncio
 
-from tempest_fastapi_sdk import OutboxRelay
+from tempest_fastapi_sdk import BaseOutboxModel, OutboxRelay
 
 from src.api.dependencies.resources import db
 from src.db.models import OutboxModel
 from src.queue import mq
 
-relay = OutboxRelay(db, model=OutboxModel, publish=mq.publish)
+
+async def publish(event: BaseOutboxModel) -> None:
+    """Adapta o `publish(channel, message)` do broker ao `publish(event)` do relay."""
+    await mq.publish(event.topic, event.payload)
+
+
+relay = OutboxRelay(db, model=OutboxModel, publish=publish)
 
 
 async def main() -> None:
@@ -131,6 +162,8 @@ asyncio.run(main())
 - `BaseOutboxModel` → tabela concreta `OutboxModel(__tablename__="outbox")`.
 - `repo.save_with_outbox(model, event)` grava negócio + evento **atômico**.
 - `OutboxRelay(db, model=..., publish=...).run()` publica os pendentes,
-  com retry/backoff e marcação `sent` / `failed`.
+  com retry/backoff e marcação `sent` / `failed`; `publish` recebe **um**
+  argumento, o evento.
+- A entrega é at-least-once: o consumidor deduplica pelo `event.id`.
 - `OutboxModel.new_event(topic, payload)` monta o evento; `drain_once()`
   drena um lote pra testes/cron.

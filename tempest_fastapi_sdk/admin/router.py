@@ -953,7 +953,10 @@ def make_admin_router(
         """Compute the site's business-metric cards for the dashboard.
 
         A card whose ``compute`` raises is skipped, so one broken metric
-        never blanks the whole dashboard.
+        never blanks the whole dashboard. The failure is logged with its
+        traceback through the module logger (``logger.exception``), naming
+        the card label, so a broken card is visible in the logs instead of
+        silently disappearing from the page.
 
         Args:
             db_session (AsyncSession): The DB session passed to each card.
@@ -966,6 +969,10 @@ def make_admin_router(
             try:
                 data = await card.compute(db_session)
             except Exception:
+                logger.exception(
+                    "Admin dashboard card %r failed to compute; skipping it",
+                    card.label,
+                )
                 continue
             entry: dict[str, Any] = {"label": card.label, "help": card.help_text}
             if isinstance(data, MetricTrend):

@@ -1,6 +1,6 @@
 # Fila e Tarefas
 
-Trabalho em background sem dor. O SDK envelopa o **FastStream** (mensageria) e o **TaskIQ** (tarefas + agendamento) em classes tipadas com um vocabulário único — você **nunca importa** `faststream` nem `taskiq` no código da aplicação.
+Trabalho em background sem dor. O SDK envelopa o **FastStream** (mensageria) e o **TaskIQ** (tarefas + agendamento) em classes tipadas com um vocabulário único — o caminho comum (publicar, consumir, enfileirar, agendar) não importa `faststream` nem `taskiq` no código da aplicação. A exceção é opção específica do transporte, como o `RabbitExchange` repassado em `exchange=` mais abaixo.
 
 !!! tip "Qual ferramenta usar?"
     - **`MessageBroker`** (mensageria) — evento acontece, **vários** serviços/consumidores reagem. Fan-out, at-least-once, desacoplado do request. Ex.: "pedido pago" → estoque, e-mail, analytics.
@@ -184,11 +184,11 @@ mq.register(OrdersConsumer())
 ```python
 from tempest_fastapi_sdk.queue import Publisher
 
-from src.queue import ORDERS_PAID, OrderPaid, mq
+from src.queue import OrderPaid, mq
 
 
 class OrderPaidPublisher(Publisher[OrderPaid]):
-    channel = ORDERS_PAID
+    channel = "orders.paid"
     schema = OrderPaid
 
 
@@ -474,7 +474,7 @@ mq.register(OrderPaidConsumer(channel="orders.paid", schema=OrderPaid, prefetch=
     — e o que o type checker enxerga.
 
 !!! warning "Não existe default bom que eu possa chutar"
-    O comportamento atual é **sem limite**, e este PR não muda isso — expõe o botão. Valor pequeno demais serializa o consumo e derruba o throughput; grande demais recria o problema. O número certo depende da latência do seu handler, e fixar um sem medir seria o mesmo erro que o `DEFAULT_INTRA_OP_THREADS` do modelops cometeu antes de ser rejustificado. Meça com um consumidor de latência conhecida antes de escolher.
+    Sem `prefetch=`, o consumo é **sem limite** (o default é `None`) — o SDK expõe o botão, não escolhe o valor. Valor pequeno demais serializa o consumo e derruba o throughput; grande demais recria o problema. O número certo depende da latência do seu handler, e fixar um sem medir seria o mesmo erro que o `DEFAULT_INTRA_OP_THREADS` do modelops cometeu antes de ser rejustificado. Meça com um consumidor de latência conhecida antes de escolher.
 
 !!! info "Prefetch não é concorrência do handler"
     Prefetch limita quantas mensagens o **broker entrega** sem ack. Quantas corrotinas rodam ao mesmo tempo é outra coisa. Confundir os dois é comum: `prefetch=1` não serializa o handler se você mesmo dispara tarefas em paralelo dentro dele.
@@ -1123,8 +1123,10 @@ lease: SchedulerLock = RedisSchedulerLock.from_url(
 
 !!! info "`scheduler="unlocked"` existe, e tem que ser digitado"
     Quem roda réplica única de propósito passa `scheduler="unlocked"` e
-    dispensa o lease. É uma escolha; `True` é o default guardado, porque
-    quem esqueceu não está escolhendo nada.
+    dispensa o lease. É uma escolha, e por isso não é o default: o default
+    é `scheduler=False` (só o broker, sem agendar nada), e `True` é a forma
+    guardada de ligar o scheduler. Quem esqueceu de pedir não agenda — não
+    agenda N vezes.
 
 ## Uma linha para o transporte — `from_settings`
 

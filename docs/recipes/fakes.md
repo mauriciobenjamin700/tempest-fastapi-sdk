@@ -86,8 +86,10 @@ alguém abrindo uma disputa. Aqui é uma chamada.
 | `FakeRoutingBackend` | `RoutingBackend` (OSRM) | `add_route(...)`, `routes` |
 | `FakeWebSearchBackend` | `WebSearchBackend` (Searxng) | `add_results(...)`, `queries` |
 
-Todos expõem `fail_next(erro)` e `calls` — a lista de métodos que rodaram, em
-ordem.
+Todos expõem `fail_next(erro)`. Todos menos o `FakeEmailUtils` expõem também
+`calls` — a lista de métodos que rodaram, em ordem; no `FakeEmailUtils` o
+registro é o próprio `outbox`, porque `send` é o único método que ele
+substitui.
 
 ## Email: o outbox no lugar do SMTP
 
@@ -270,7 +272,9 @@ fake novo por teste — instância nova é estado limpo.
 
     A defesa é a de sempre — o provedor vem de configuração, e o ambiente
     decide. Se quiser um alarme explícito, faça o `build_provider` do seu
-    serviço recusar fake quando `settings.ENVIRONMENT == "production"`.
+    serviço recusar fake quando o ambiente for produção — com um campo que o
+    **seu** `Settings` declara (`ENVIRONMENT`, por exemplo): nenhum mixin de
+    settings do SDK traz esse campo.
 
 ## Garantia: o fake não pode divergir da costura
 
@@ -301,5 +305,7 @@ falha com `['self', 'query', 'limit'] == ['self', 'query', 'max_results']`.
   real levanta.
 - `calls`, `outbox`, `sent`, `prompts`, `charges`, `queries`: o que aconteceu
   fica inspecionável.
-- Resolução é lazy: pedir um fake de Pix não importa genai, push nem geo.
+- Resolução é lazy: pedir um fake de Pix não importa genai nem geo — nem
+  carrega nada além do que o `import tempest_fastapi_sdk` já carregou (o
+  `push` entra por ali, não pelo fake).
 - Guard de assinatura impede o fake de divergir da costura.

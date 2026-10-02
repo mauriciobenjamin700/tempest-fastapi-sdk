@@ -66,8 +66,8 @@ from src.db.models import OrderModel, UserModel
 # In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
-current_user = UserModel(name="Ana", email="ana@example.com")
-user = UserModel(name="Ana", email="ana@example.com")
+current_user = UserModel(email="ana@example.com")
+user = UserModel(email="ana@example.com")
 order = OrderModel(user_id=user.id, total=100)
 repository = BaseRepository(session, model=UserModel)
 
@@ -91,8 +91,8 @@ from tempest_fastapi_sdk.authz import check_permission
 
 from src.db.models import OrderModel, UserModel
 
-current_user = UserModel(name="Ana", email="ana@example.com")
-user = UserModel(name="Ana", email="ana@example.com")
+current_user = UserModel(email="ana@example.com")
+user = UserModel(email="ana@example.com")
 order = OrderModel(user_id=user.id, total=100)
 
 
@@ -234,7 +234,7 @@ from tempest_fastapi_sdk.authz import PermissionMixin
 
 from src.db.models import OrderModel, UserModel
 
-user = UserModel(name="Ana", email="ana@example.com")
+user = UserModel(email="ana@example.com")
 order = OrderModel(user_id=user.id, total=100)
 
 

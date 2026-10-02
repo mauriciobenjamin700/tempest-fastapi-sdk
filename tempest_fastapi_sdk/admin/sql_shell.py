@@ -79,7 +79,12 @@ class SqlCapability(BaseStrEnum):
     rows and corrupting them are different incidents, and ``DROP`` is
     separate from the rest of DDL because it is the one nobody undoes.
 
-    * ``READ`` — ``SELECT``, ``WITH`` … ``SELECT``, ``EXPLAIN``, ``SHOW``.
+    * ``READ`` — ``SELECT``, ``WITH`` … ``SELECT``, ``DESCRIBE``, ``PRAGMA``,
+      and ``EXPLAIN`` / ``SHOW`` only where sqlglot parses them into a
+      typed expression (the ``mysql`` dialect). Under ``postgres``,
+      ``sqlite`` and no dialect, sqlglot 30 falls back to a generic
+      ``Command`` for ``EXPLAIN`` and ``SHOW``, so they classify as
+      ``ADMIN``.
     * ``INSERT`` — adds rows.
     * ``UPDATE`` — changes rows.
     * ``DELETE`` — removes rows.

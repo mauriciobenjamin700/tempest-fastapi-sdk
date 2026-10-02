@@ -190,10 +190,34 @@ a segunda é um número.
 | `BR_DATETIME_FORMAT` | `14/08/2026 19:30` | Data e hora |
 | `TEXT_FORMAT` | o que você escreveu | Identificador que parece número |
 
-O que faz essas máscaras funcionarem é o código de idioma embutido —
-`[$R$-416]` para moeda, `[$-416]` para o resto. Ele fixa o ponto como
-separador de milhar e a vírgula como decimal **dentro do arquivo**, então o
-documento lê igual em qualquer máquina.
+O que faz essas máscaras funcionarem é o código de idioma pt-BR, `[$-416]`,
+no começo de **todas** elas — moeda, percentual e data inclusive. Ele fixa
+o ponto como separador de milhar, a vírgula como decimal e a barra como
+separador de data **dentro do arquivo**, então o documento não depende da
+máquina de quem abre.
+
+Medido abrindo a mesma planilha no LibreOffice 7.4 headless em três
+locales:
+
+| Constante | en-US | de-DE | pt-BR |
+| --- | --- | --- | --- |
+| `BR_CURRENCY_FORMAT` | `R$ 1.234,56` | `R$ 1.234,56` | `R$ 1.234,56` |
+| `BR_PERCENT_FORMAT` | `30,00%` | `30,00%` | `30,00%` |
+| `BR_DATE_FORMAT` | `14/08/2026` | `14/08/2026` | `14/08/2026` |
+| `0.00%` (sem o código) | `30.00%` | `30,00 %` | `30,00%` |
+| `DD/MM/YYYY` (sem o código) | `14/08/2026` | `14.08.2026` | `14/08/2026` |
+| `[$R$-416] #,##0.00` | `R$ 1,234.56` | `R$ 1.234,56` | `R$ 1.234,56` |
+
+!!! warning "A barra da data não é literal"
+    Numa máscara de data, `/` é o separador de data **do locale**, não o
+    caractere barra. Sem o `[$-416]`, quem abre em alemão lê `14.08.2026`.
+
+!!! info "Por que a moeda não usa `[$R$-416]`"
+    `[$R$-416]` é a forma "símbolo de moeda com idioma" e parece o jeito
+    natural de escrever real. Não fixa os separadores: a última linha da
+    tabela mostra o LibreOffice lendo `1,234.56` em en-US. Por isso
+    `BR_CURRENCY_FORMAT` é `[$-416]"R$ "#,##0.00` — o código de idioma na
+    frente e o símbolo como texto literal. O Excel não foi medido.
 
 !!! danger "Percentual guarda a razão, não o percentual"
     O Excel multiplica por 100 sozinho. Uma célula com
@@ -327,8 +351,8 @@ async def download_budget(budget_id: int) -> Response:
   `write_row`, `total_row`, `blank_rows` — todos devolvem a próxima linha
   livre.
 * Escreva **números**; a máscara apresenta. Texto pronto mata soma e filtro.
-* As máscaras `BR_*` embutem o código `416`, então o arquivo lê igual em
-  qualquer locale.
+* As máscaras `BR_*` começam com o código `[$-416]`, então o arquivo lê
+  igual em en-US, de-DE e pt-BR (medido no LibreOffice 7.4).
 * `SheetStyle` é dado puro, então o tema não precisa do extra para existir.
 * `workbook_to_bytes` entrega bytes — resposta HTTP, storage, e-mail.
 
