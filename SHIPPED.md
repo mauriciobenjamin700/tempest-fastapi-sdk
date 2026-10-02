@@ -2663,7 +2663,7 @@ virou fix. Superfície nova ou mudada:
   `publish`; `make_spa_router` responde `HEAD`; template `queue` do scaffold
   importa; máscaras `BR_*` com `[$-416]`; limiar do formato compacto
   arredonda para baixo.
-- **Fora de escopo, registrado:** `changes_since` perde a escrita cuja
-  transação atravessa o `server_time` (flush antes, commit depois). A
-  docstring e a receita `offline-sync` descrevem o limite; recuar o marco
-  muda o contrato (o cliente passa a receber linhas repetidas) e não entrou.
+- **Delta sync** — `changes_since(..., watermark_lag=)` com
+  `DEFAULT_SYNC_WATERMARK_LAG` (5 s): o marco fica atrás do início da query,
+  e a escrita cuja transação atravessa o pull aparece no pull seguinte em vez
+  de se perder. Linha da janela chega duas vezes; o cliente faz upsert.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import Any, ClassVar, Generic, List, NoReturn, TypeVar, cast
@@ -62,6 +62,24 @@ from tempest_fastapi_sdk.utils.datetime import to_utc, utcnow
 logger = logging.getLogger(__name__)
 
 ModelType = TypeVar("ModelType", bound=BaseModel)
+
+DEFAULT_SYNC_WATERMARK_LAG: timedelta = timedelta(seconds=5)
+"""How far :meth:`BaseRepository.changes_since` sets its mark behind "now".
+
+``updated_at`` is stamped at flush time and becomes visible at commit, so
+a write whose transaction is still open when a pull runs carries an
+``updated_at`` older than the pull. A mark taken at "now" would put that
+write behind every later ``since``, and no incremental pull would ever
+return it. Setting the mark this far back makes the next pull re-read the
+window, which catches any such write whose transaction lasted less than
+the lag, and any clock disagreement between replicas smaller than it.
+
+The cost is that rows changed inside the window come back on the next pull
+too, so the client must apply items idempotently (upsert by ``id``), which
+the offline-sync recipe already requires. Five seconds covers a request
+transaction with room to spare; a service with longer write transactions
+passes a larger ``watermark_lag``.
+"""
 
 
 def _wants_timezone(column_type: Any) -> bool:
@@ -1597,6 +1615,7 @@ class BaseRepository(Generic[ModelType]):
         limit: int = 50,
         order_by: str = "updated_at",
         include_deleted: bool = True,
+        watermark_lag: timedelta = DEFAULT_SYNC_WATERMARK_LAG,
     ) -> dict[str, Any]:
         """Return the rows that changed since a high-water mark.
 
@@ -1618,15 +1637,17 @@ class BaseRepository(Generic[ModelType]):
            captured *before* the query runs, so a write stamped after
            that instant surfaces on the following pull.
 
-        The mark is not safe against a transaction that straddles it.
-        ``updated_at`` and ``server_time`` both come from the application
-        process clock (``utcnow()``), and ``updated_at`` is stamped at
-        flush time, not at commit. A write that flushes before
-        ``server_time`` and commits after the pull ran is invisible to
-        that pull and older than the next ``since``, so no incremental
-        pull ever returns it; only a full resync (``since=None``) does.
-        The same holds across replicas whose clocks disagree. Keep write
-        transactions short, and give clients a periodic full resync.
+        ``server_time`` is set ``watermark_lag`` behind the instant the
+        query started (:data:`DEFAULT_SYNC_WATERMARK_LAG`, five seconds).
+        ``updated_at`` is stamped at flush time, not at commit, so a write
+        that flushed before the pull and committed after it is older than
+        the pull; with the mark at "now" no incremental pull would ever
+        return it. Behind by the lag, the next pull re-reads the window and
+        finds it, as long as its transaction lasted less than the lag. The
+        same covers replicas whose clocks disagree by less than the lag.
+        Rows changed inside the window therefore arrive twice: apply items
+        idempotently (upsert by ``id``). ``timedelta(0)`` restores the
+        mark at "now", and the loss with it.
 
         When the model mixes in
         :class:`tempest_fastapi_sdk.SoftDeleteMixin`, keep
@@ -1652,12 +1673,16 @@ class BaseRepository(Generic[ModelType]):
             include_deleted (bool): Whether to include soft-deleted
                 rows (tombstones). Defaults to ``True``. Ignored when
                 the model has no ``deleted_at`` column.
+            watermark_lag (timedelta): How far behind the query start
+                ``server_time`` is set. Defaults to
+                :data:`DEFAULT_SYNC_WATERMARK_LAG`. Must not be negative.
 
         Returns:
             dict[str, Any]: The :meth:`cursor_paginate` mapping
             (``items`` / ``next_cursor`` / ``has_more`` / ``limit``)
             plus ``server_time`` (:class:`datetime`) — the instant the
-            query started, to be persisted as the next ``since``.
+            query started minus ``watermark_lag``, to be persisted as the
+            next ``since``.
 
         Raises:
             OrderByNotAllowedException: When ``order_by`` is not a mapped
@@ -1666,9 +1691,14 @@ class BaseRepository(Generic[ModelType]):
                 set.
             PageSizeTooLargeException: When ``max_page_size`` is set and
                 ``limit`` exceeds it.
-            ValueError: When ``cursor`` is malformed.
+            ValueError: When ``cursor`` is malformed, or
+                ``watermark_lag`` is negative.
         """
-        server_time = utcnow()
+        if watermark_lag < timedelta(0):
+            raise ValueError(
+                f"watermark_lag must not be negative, got {watermark_lag!r}",
+            )
+        server_time = utcnow() - watermark_lag
 
         combined: dict[str, Any] = dict(filters or {})
         if since is not None:

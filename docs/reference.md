@@ -141,6 +141,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.user_oauth_account_model.BaseUserOAuthAccountModel
 ::: tempest_fastapi_sdk.db.user_oauth_account_model.make_user_oauth_account_model
 ::: tempest_fastapi_sdk.db.repository.BaseRepository
+::: tempest_fastapi_sdk.db.repository.DEFAULT_SYNC_WATERMARK_LAG
 ::: tempest_fastapi_sdk.db.integrity.parse_integrity_error
 ::: tempest_fastapi_sdk.db.integrity.describe_database_error
 ::: tempest_fastapi_sdk.db.integrity.WITHHELD_NOTICE

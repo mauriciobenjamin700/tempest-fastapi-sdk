@@ -756,6 +756,9 @@ from tempest_fastapi_sdk.db import (
     DEFAULT_AUDIT_REDACT as DEFAULT_AUDIT_REDACT,
 )
 from tempest_fastapi_sdk.db import (
+    DEFAULT_SYNC_WATERMARK_LAG as DEFAULT_SYNC_WATERMARK_LAG,
+)
+from tempest_fastapi_sdk.db import (
     ENUM_TYPE_SUFFIX as ENUM_TYPE_SUFFIX,
 )
 from tempest_fastapi_sdk.db import (
@@ -1947,6 +1950,7 @@ __all__: list[str] = [
     "DEFAULT_SPA_CONTENT_SECURITY_POLICY",
     "DEFAULT_SPA_SECURITY_HEADERS",
     "DEFAULT_STATIC_SECURITY_HEADERS",
+    "DEFAULT_SYNC_WATERMARK_LAG",
     "ENUM_TYPE_SUFFIX",
     "HEARTBEAT_TIMEOUT_CODE",
     "HTTP_500_MARKER",

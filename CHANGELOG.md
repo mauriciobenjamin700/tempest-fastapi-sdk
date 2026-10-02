@@ -32,6 +32,10 @@ console SQL do admin classificava como leitura três formas de escrita.
   restrição".
 - `OutboxRelay` recusa na construção um `publish` que não aceita
   `publish(event)`.
+- `changes_since` devolve o `server_time` 5 segundos atrás do início da
+  query: linha alterada nessa janela volta no pull seguinte, então o cliente
+  aplica os itens por upsert no `id`. `watermark_lag=timedelta(0)` restaura
+  o marco antigo.
 
 ### Security
 
@@ -108,6 +112,13 @@ console SQL do admin classificava como leitura três formas de escrita.
   próximo fazia uma floresta sem `max_depth` ser recusada pela própria
   verificação nos dados de treino. O leitor do browser (`tempest-react-sdk`)
   já compara `Math.fround(x) <= threshold` e bate com o valor novo.
+- `BaseRepository.changes_since` não perde mais a escrita cuja transação
+  atravessa o pull. O `updated_at` é carimbado no `flush`, então uma escrita
+  que fazia `flush` antes do pull e commitava depois ficava com `updated_at`
+  anterior ao `server_time` e fora de todo pull incremental. O marco agora
+  sai `watermark_lag` atrás (default `DEFAULT_SYNC_WATERMARK_LAG`, 5 s);
+  medido com duas sessões num SQLite em arquivo, a linha que se perdia
+  aparece no pull seguinte.
 - `edge_pipeline(compact=True, verify_samples=<ndarray>)` não levanta mais
   "truth value of an array is ambiguous", e `feature_names` com contagem
   errada levanta `ValueError` com as duas contagens (antes, `IndexError`).
@@ -126,6 +137,8 @@ console SQL do admin classificava como leitura três formas de escrita.
   `HybridRetriever`) e `ChatMemory` os usam quando o embedder os tem, então
   `multilingual-e5` recebe `query: ` / `passage: ` sem prefixo escrito à mão.
   `embed()` continua sem prefixo.
+- `changes_since(..., watermark_lag=...)` e a constante
+  `DEFAULT_SYNC_WATERMARK_LAG` (`timedelta(seconds=5)`).
 
 ### Documentation
 
@@ -142,8 +155,8 @@ console SQL do admin classificava como leitura três formas de escrita.
   `make_auth_router`, cinco rotas OAuth, 93 receitas, 684 classes de schema
   da OpenPix, tabela completa de env vars.
 - `httpx` vem no pacote base; o extra `[http]` é opcional.
-- `changes_since`: a docstring deixa de chamar o `server_time` de marco
-  seguro e descreve a transação que o atravessa.
+- `offline-sync`: a janela do marco medida, com o que ela não cobre
+  (transação mais longa que ela, skew entre réplicas maior, SQL à mão).
 
 ## [0.302.0] — 2026-10-01
 
