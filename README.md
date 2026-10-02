@@ -64,7 +64,7 @@ The goal is to start every new backend with the same opinionated foundation alre
   - [Webhook signature verification (`WebhookSignatureVerifier`)](#webhook-signature-verification-recipe)
   - [Pagination Link headers (`build_pagination_link_header`)](#pagination-link-headers-recipe)
   - [Rate limit middleware (`RateLimitMiddleware`)](#rate-limit-middleware-recipe)
-  - [Outbox dispatcher pattern](#outbox-dispatcher-pattern-recipe)
+  - [Transactional outbox (`BaseOutboxModel` / `OutboxRelay`)](#transactional-outbox-recipe)
   - [Base enums (`BaseStrEnum` / `BaseIntEnum`)](#base-enums-recipe)
   - [Runtime typing (`strict_types` / `typed` / `require_annotations`)](#runtime-typing-recipe)
   - [Hardened static files + cookie helpers](#hardened-static-files--cookie-helpers-recipe)
@@ -117,7 +117,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[admin]` | `jinja2`, `itsdangerous` | `AdminSite`, `AdminModel`, `make_admin_router` |
 | `[admin-sql]` | `sqlglot` | Admin SQL console — `SqlShellService` + `SqlShellPolicy` (capabilities, allowed/denied tables, row cap, `require_where`, statement timeout) with real statement parsing, every attempt audited. Opt-in; the policy narrows and explains, the database GRANTs enforce |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `ObjectStat`, `PutObjectItem`, `MinIOSettings` |
-| `[http]` | `httpx` | `HTTPClient`, `RetryPolicy`, `CircuitOpenError`, OAuth2 / OIDC providers |
+| `[http]` | `httpx` (already in the base package) | `HTTPClient`, `RetryPolicy`, `CircuitOpenError`, OAuth2 / OIDC providers. The extra is optional — all of these work on the base install; declaring it only records the intent |
 | `[oidc]` | `PyJWT`, `cryptography` | `OIDCTokenVerifier` — offline verification of realm-signed access tokens (JWKS cached, refresh cooldown, one error `code` per failure); plug into `OIDCProvider(token_verifier=...)` |
 | `[openapi]` | `pyyaml` | YAML support for `tempest openapi-client` (a JSON spec needs no extra) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry`, `BusinessMetrics` |
@@ -144,7 +144,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[genai-vlm]` | `pillow`, `torchvision` | Local vision-language generation — `VisionTextGenerator` (`AutoModelForImageTextToText`) generates text conditioned on images (path/bytes/PIL/ndarray); mirrors `TextGenerator`, image-optional |
 | `[genai-image]` | `diffusers`, `pillow` | Local image generation — `ImageGenerator` runs a HuggingFace diffusion pipeline on your own hardware (`generate` text-to-image, `edit` image-to-image reusing the loaded components), typed `ImageGenerationConfig`, `GeneratedImage` carrying the seed that reproduces it, `POST /image` on `make_genai_router` |
 | `[genai-hub]` | `huggingface-hub` | Weight lifecycle — `resolve_revision` (pin a moving branch to a sha), `download_model` (fetch before the first request, refusing what the disk cannot hold), `model_disk_bytes`, `list_cached_models` / `remove_cached_model`; already included in `[genai]` |
-| `[modelops-sklearn]` | `skl2onnx` | scikit-learn to ONNX for edge — `export_sklearn_to_onnx` (float32, ZipMap off), `verify_sklearn_onnx` (label agreement / numeric diff against the estimator), `edge_bundle` (export → verify → optimise → quantise → `.ort`, shipping the **smallest** artifact). Reports the known binary tree-ensemble converter defect at export time |
+| `[modelops-sklearn]` | `skl2onnx` | scikit-learn to ONNX for edge — `export_sklearn_to_onnx` (float32, ZipMap off), `verify_sklearn_onnx` (label agreement / numeric diff against the estimator), `edge_bundle` (export → verify → optimise → quantise → `.ort`, shipping the **smallest** artifact). Warns at export time when the installed `onnxruntime` is older than 1.28, which evaluates a binary tree-ensemble classifier wrong; the declared floor (`onnxruntime>=1.29.0`) is above that, so a normal install never sees the warning |
 | `[geo]` | `httpx` | Geolocation — `haversine_km`, `estimate_travel` (offline heuristic, no dep) + `OSRMBackend` (free OSRM routing) |
 | `[ssr]` | `tempestweb` | The whole `ui` layer plus SSR: `Page`, `html_response`, `make_htmx_router` — typed Python pages rendered to HTML; `form_for` / `parse_form` (forms generated from Pydantic schemas, validated back); `StyleSheet` / `Rule` / `Media` / `ThemeTokens` / `make_css_router` + `StyleSheet.url()` (typed CSS served with an ETag, linked through a content-versioned URL cached as `immutable`); `Card` / `Alert` / `DataTable` (+ `TableColumn` for widget cells) / `Pagination` / `EmptyState` / `NavBar` / `Shell` / `Grid`; `htmx()` / `aria()` / `data()` typed attribute builders; plus `make_web_app_router` / `build_web_app` / `detect_build_mode` to serve a compiled `tempestweb build` (static wasm SPA or server WS/SSE), `build_web_app(theme=...)` carrying the app's palette into every session, resolved by the components the view builds |
 | `[otel]` | `opentelemetry-sdk` + OTLP/gRPC exporter + FastAPI/SQLAlchemy/httpx instrumentors | `setup_tracing` — distributed tracing |
@@ -208,7 +208,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.modelops` *(extras: `[modelops]` / `[modelops-onnx]`; imports without either)* | Export, benchmark and quantize the models a service serves. Benchmark: `benchmark` (any callable), `benchmark_onnx`, `benchmark_torch`, `benchmark_models` — warm-up + N repetitions, median/IQR/p95/p99 latency, RSS, GPU memory and **energy** (`NvmlPowerSampler` preferring the NVML total-energy counter, `NvidiaSmiPowerSampler`, `RaplEnergySampler` for CPU package energy, `NullPowerSampler` fallback; `resolve_power_sampler`/`resolve_cpu_energy_sampler`). Ranking: `composite_scores` (weights renormalized over measured dimensions), `pareto_points`, `rank` → `BenchmarkReport`. Export: `export_torch_to_onnx`, `export_onnx_to_ort` (`.ort` + `.required_operators.config` for minimal runtime builds, `target_platform`, type reduction), `optimize_onnx_graph`. Quantization: `quantize_onnx_dynamic`, `quantize_onnx_static` (calibration reader), plus the transformers-export path on ONNX Runtime's own fusion/quantization tooling — `optimize_hf_onnx` (`O1`-`O4`), `quantize_hf_onnx` (arm64/avx2/avx512/avx512_vnni) — and `quantize_hf_bnb` (int4/int8 PyTorch weights). No `optimum` dependency, so nothing here caps your `transformers` version; producing the ONNX export itself is a documented `uvx optimum-cli` build step. Static analysis: `analyze_onnx`/`analyze_ort`/`analyze_torch`/`analyze_model`. CLI: `tempest model analyze|bench|optimize|quantize|export-ort|hardware`, plus the Hub weight lifecycle `tempest model pull|cache-list|cache-rm` (`[genai-hub]`) |
 | `tempest_fastapi_sdk.vision` *(extra: `[vision]`)* | `Detector`, `Classifier`, `Segmenter` (ONNX, lazy), `DetectionSchema`/`ClassificationSchema`/`SegmentationSchema`/`BoundingBoxSchema`/`ClassProbabilitySchema`, `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`, `make_vision_router` (opt-in `POST /classify` / `/detect` / `/segment`) |
 | `tempest_fastapi_sdk.faces` *(extra: `[faces]`)* | Face detection and recognition — `FaceRecognizer` (`detect` / `recognize` / `embed_face`), `compare_faces`, `FaceDetector`, `align_face` / `similarity_transform`, `DetectedFace` / `BoundingBox` / `FaceMatch`, `ensure_models` + `LIGHT_PACK` / `LARGE_PACK` |
-| `tempest_fastapi_sdk.pdf` *(extras: `[pdf]` to write, `[pdf-read]` to read)* | PDF documents from HTML templates — `PdfRenderer` (async, worker thread, deterministic bytes), five bundled documents with Pydantic schemas (`ReceiptDocument` / `QuoteDocument` / `ReportDocument` / `ContractDocument` / `VoucherDocument`) plus `Party` / `Branding` / `LineItem` / `Clause` / `Signatory` / `ReportColumn`, Brazilian formatting filters (`format_cents`, `valor_por_extenso`, `format_document`, `format_quantity`), `AssetPolicy` (deny-by-default fetching), `make_pdf_router`, `tempest pdf list|schema|render`. Reading back: `extract_pdf_text` / `extract_pdf_pages` (text layer only — a scan returns `""` instead of a blank prompt), page markers and a visible truncation notice |
+| `tempest_fastapi_sdk.pdf` *(extras: `[pdf]` to write, `[pdf-read]` to read)* | PDF documents from HTML templates — `PdfRenderer` (async, worker thread; byte-identical across processes only with `SOURCE_DATE_EPOCH` pinned, and only on the same font and WeasyPrint versions), five bundled documents with Pydantic schemas (`ReceiptDocument` / `QuoteDocument` / `ReportDocument` / `ContractDocument` / `VoucherDocument`) plus `Party` / `Branding` / `LineItem` / `Clause` / `Signatory` / `ReportColumn`, Brazilian formatting filters (`format_cents`, `valor_por_extenso`, `format_document`, `format_quantity`), `AssetPolicy` (deny-by-default fetching), `make_pdf_router`, `tempest pdf list|schema|render`. Reading back: `extract_pdf_text` / `extract_pdf_pages` (text layer only — a scan returns `""` instead of a blank prompt), page markers and a visible truncation notice |
 | `tempest_fastapi_sdk.spreadsheet` *(extra: `[spreadsheet]`)* | `.xlsx` documents a recipient can work with — `SheetWriter` (row cursor, `title_block` / `header_row` / `group_row` / `write_row` / `total_row`, per-column number format and alignment, `apply_widths`, `freeze_below`), `Column`, `SheetStyle` as plain data (importable without the extra), `BR_CURRENCY_FORMAT` and the other `BR_*` masks pinned to pt-BR via the `416` language code, `new_workbook` (drops openpyxl's ghost sheet), `workbook_to_bytes` |
 | `tempest_fastapi_sdk.webpush` *(extra: `[webpush]`)* | `WebPushDispatcher`, `WebPushSubscriptionService`, `make_web_push_router`, `WebPushError`, `WebPushGoneError`, `WebPushSubscriptionSchema`, `WebPushKeysSchema`, `WebPushPayloadSchema` |
 
@@ -3407,128 +3407,84 @@ def create_app() -> FastAPI:
 
 The sliding-window semantics are identical across both stores; only where the counters live changes. You can still push rate limiting to the edge (nginx / Cloudflare / AWS WAF) when you prefer.
 
-### Outbox dispatcher pattern recipe
+### Transactional outbox recipe
 
-The transactional outbox pattern keeps a "to publish" table in the same database as the domain rows, so writing the row and recording the side-effect happen in a single transaction. A worker reads the outbox in order and publishes to RabbitMQ (FastStream) / TaskIQ, marking each row as dispatched only after the broker ACKs. Crashes between commit and publish replay safely on the next poll.
+The transactional outbox keeps a "to publish" table in the same database as the domain rows, so writing the row and recording the event happen in a single transaction. A relay reads the pending rows and publishes them, marking each one sent; a crash between commit and publish replays on the next drain.
 
-The SDK does **not** ship a dedicated `OutboxDispatcher` primitive — the implementation is short, opinionated, and benefits from staying in the service's `db/models/` + `tasks/` boundary. Use the recipe below.
+The SDK ships the three pieces: `BaseOutboxModel` (the abstract table you subclass), `BaseRepository.save_with_outbox` (business row and event in one commit) and `OutboxRelay` (drains pending rows through any async `publish` callable, with exponential backoff and `failed` after `max_attempts`).
 
 ```python
-# src/db/models/outbox.py
-from sqlalchemy import JSON, String
+import asyncio
+
+from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from tempest_fastapi_sdk import BaseModel
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    BaseModel,
+    BaseOutboxModel,
+    BaseRepository,
+    OutboxRelay,
+)
 
 
-class OutboxEventModel(BaseModel):
-    """One row per domain event waiting to be published."""
+class OrderModel(BaseModel):
+    """A placed order."""
 
-    topic: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
-    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(16),
-        nullable=False,
-        default="pending",
-        index=True,
-    )
-    # is_active / created_at / updated_at come from BaseModel.
-```
+    __tablename__ = "orders"
 
-```python
-# src/db/repositories/outbox.py
-
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from tempest_fastapi_sdk import BaseRepository
-
-from src.db.models import OutboxEventModel
+    sku: Mapped[str] = mapped_column(String(64))
 
 
-class OutboxRepository(BaseRepository[OutboxEventModel]):
-    def __init__(self, session: AsyncSession) -> None:
-        super().__init__(session, model=OutboxEventModel)
+class OutboxModel(BaseOutboxModel):
+    """The service's pending-events table."""
 
-    async def claim_pending(self, *, limit: int = 100) -> list[OutboxEventModel]:
-        """Lock-free claim — fine for single-worker dispatcher."""
-        stmt = (
-            select(OutboxEventModel)
-            .where(OutboxEventModel.status == "pending")
-            .order_by(OutboxEventModel.created_at)
-            .limit(limit)
-        )
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
-
-    async def mark_dispatched(self, ids: list[str]) -> None:
-        await self.session.execute(
-            update(OutboxEventModel)
-            .where(OutboxEventModel.id.in_(ids))
-            .values(status="dispatched"),
-        )
-        await self.session.commit()
-```
-
-```python
-# src/services/orders.py — produce side
-
-from src.db.models import OrderModel, OutboxEventModel
-from src.schemas import OrderCreateSchema, OrderResponseSchema
+    __tablename__ = "outbox"
 
 
-class OrderService:
-    async def place_order(self, data: OrderCreateSchema) -> OrderResponseSchema:
-        order = OrderModel(**data.to_dict())
-        self.repo.session.add(order)
-        # Same transaction as the order row.
-        self.repo.session.add(
-            OutboxEventModel(
-                topic="orders.placed",
-                payload={"order_id": str(order.id), "amount": order.amount},
-            ),
-        )
-        await self.repo.session.flush()
-        await self.repo.session.commit()
-        return self.repo.map_to_response(order)
-```
+async def main() -> None:
+    """Write an order with its event, then drain the outbox once."""
+    db: AsyncDatabaseManager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.connect()
+    await db.create_tables()
+    published: list[tuple[str, dict[str, object]]] = []
 
-```python
-# src/tasks/__init__.py — dispatcher side
-from tempest_fastapi_sdk.tasks import AsyncTaskScheduler
+    async def publish(event: BaseOutboxModel) -> None:
+        """Stand-in for the broker: record what would be published."""
+        published.append((event.topic, event.payload))
 
-from src.api.app import broker as queue_broker  # FastStream AsyncBrokerManager
-from src.api.app import db
-from src.db.repositories import OutboxRepository
-
-scheduler = AsyncTaskScheduler(queue_broker)
-
-
-@scheduler.interval(seconds=5)
-async def dispatch_outbox() -> None:
-    """Poll the outbox and publish each pending event."""
     async with db.get_session_context() as session:
-        repo = OutboxRepository(session)
-        events = await repo.claim_pending(limit=100)
-        if not events:
-            return
-        dispatched: list[str] = []
-        for event in events:
-            try:
-                await queue_broker.publish(event.payload, event.topic)
-                dispatched.append(str(event.id))
-            except Exception:  # noqa: BLE001 — retry on next tick
-                continue
-        if dispatched:
-            await repo.mark_dispatched(dispatched)
+        repo: BaseRepository[OrderModel] = BaseRepository(session, model=OrderModel)
+        order: OrderModel = await repo.save_with_outbox(
+            OrderModel(sku="book-42"),
+            OutboxModel.new_event("orders.created", {"sku": "book-42"}),
+        )
+        print(order.sku)
+
+    relay: OutboxRelay = OutboxRelay(db, model=OutboxModel, publish=publish)
+    print(await relay.drain_once())
+    print(published)
+    await db.disconnect()
+
+
+asyncio.run(main())
+```
+
+Output:
+
+```text
+book-42
+1
+[('orders.created', {'sku': 'book-42'})]
 ```
 
 Trade-offs to keep in mind:
 
-- **Order is best-effort.** When a batch contains one failing publish, every later event in the same batch still runs — but they're still published in `created_at` order. If strict ordering matters, break on the first failure.
-- **Single dispatcher.** The naive `claim_pending` does not lock rows; running multiple dispatcher workers will double-publish. Use `SELECT ... FOR UPDATE SKIP LOCKED` on PostgreSQL when you need to scale out.
-- **Retention.** Add a periodic `TRUNCATE`-style job to delete `dispatched` rows older than N days, otherwise the outbox table grows unbounded.
-- **At-least-once.** Consumers must be idempotent — the dispatcher can crash after publishing but before `mark_dispatched`.
+- **Several workers.** On PostgreSQL/MySQL the relay locks the batch with `FOR UPDATE SKIP LOCKED`, so relay workers can scale out; on SQLite it falls back to a plain `SELECT`, so run one.
+- **At-least-once.** Consumers must be idempotent — the relay can crash after publishing but before the row is marked sent.
+- **Retention.** `sent` rows stay in the table; add a periodic job that deletes old ones, otherwise the outbox grows unbounded.
+
+Full walkthrough (retry, `run()` loop, `drain_once()` for tests and cron) in the [Transactional outbox recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/outbox/).
 
 ### Base enums recipe
 
@@ -4368,10 +4324,9 @@ Pick what fits. None of these are required.
 - Move `SMTP_*` / `UPLOAD_*` / `TOKEN_SECRET` / `VAPID_*` /
   `TASKIQ_*` fields out of the project's `Settings` and onto the
   matching SDK mixin ([Settings mixins composition](#settings-mixins-composition-recipe)).
-- Adopt the
-  [`Outbox dispatcher pattern`](#outbox-dispatcher-pattern-recipe) if
-  you already write side-effects from the same transaction as your
-  domain rows.
+- Replace a hand-written outbox table and dispatcher with the
+  [transactional outbox](#transactional-outbox-recipe)
+  (`BaseOutboxModel` + `save_with_outbox` + `OutboxRelay`).
 
 #### 5. Verify
 
@@ -4738,7 +4693,7 @@ uv run mypy tempest_fastapi_sdk
 uv build
 ```
 
-The CI gate (`.github/workflows/ci.yml`) runs the equivalent of `make ci` on every push and pull request against `main`. The wheel-build smoke step installs the freshly built artifact into a clean Python 3.13 virtualenv and imports the top-level surface to guard against the empty-wheel / missing-package-data class of bugs.
+The CI gate (`.github/workflows/ci.yml`) runs the equivalent of `make ci` on every push and pull request against `main`. The wheel-build smoke step installs the freshly built artifact into a clean virtualenv on each Python of the matrix (3.11, 3.12, 3.13; `make smoke` locally uses 3.11) and imports the top-level surface to guard against the empty-wheel / missing-package-data class of bugs.
 
 ---
 

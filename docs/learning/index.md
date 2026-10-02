@@ -17,7 +17,7 @@ Esta seção reúne projetos didáticos construídos **inteiramente sobre o `tem
 
 Plataforma estilo Mercado Livre / Shopee onde:
 
-- Usuários se cadastram via endpoint público (`POST /signup`).
+- Usuários se cadastram via endpoint público (`POST /auth/signup`).
 - Cada usuário pode criar **até 2 organizações** (lojistas).
 - Cada organização pode convidar **até 10 membros** (donos + admins + colaboradores).
 - Membros cadastram produtos com variantes, preços versionados e controle de estoque.

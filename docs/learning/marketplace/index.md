@@ -114,7 +114,7 @@ marketplace/
 
 ## Ordem recomendada de implementação
 
-1. **Auth** — `UserModel(BaseUserModel)` + `UserTokenModel(BaseUserTokenModel)` + montar `UserAuthService` + `make_auth_router`. Five endpoints prontos: `/auth/signup`, `/auth/activate/{token}`, `/auth/login`, `/auth/password-reset/request`, `/auth/password-reset/confirm`. (Cobre: model abstrato concretizado, fluxo bundled, JWT pair, templates Jinja2.) Veja **[Receita Auth flow »](../../recipes/auth-flow.md)**.
+1. **Auth** — `UserModel(BaseUserModel)` + `UserTokenModel(BaseUserTokenModel)` + montar `UserAuthService` + `make_auth_router`. Com a configuração default ele monta 13 endpoints sob `/auth` — o caminho do cadastro é `/auth/signup`, `/auth/activate/{token}` e `/auth/login`, com `/auth/refresh`, `/auth/me`, reset e troca de senha, troca e verificação de e-mail ao lado. (Cobre: model abstrato concretizado, fluxo bundled, JWT pair, templates Jinja2.) Veja **[Receita Auth flow »](../../recipes/auth-flow.md)**.
 2. **Organizações + membros** — `Organization` + `Membership` com regra de no máximo 2 orgs por user e 10 membros por org. (Cobre: invariantes de negócio, controle por role.)
 3. **Convites** — `Invitation` com token opaco, email Jinja2, expiração 7 dias. (Cobre: emails transacionais.)
 4. **Catálogo + produtos** — `Product` + `ProductVariant` + `PriceHistory`. (Cobre: relacionamentos 1-N, soft-delete.)

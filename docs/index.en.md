@@ -96,7 +96,7 @@ uv run pytest
 
 -   **[Recipes »](recipes/index.md)**
 
-    The heart of the docs: the **SDK tour** (one minimal example per block), the index of **86 recipes**, the **complete examples** (Pix checkout, marketplace, admin, fullstack web, GenAI) and **typed SSR**.
+    The heart of the docs: the **SDK tour** (one minimal example per block), the index of **93 recipes**, the **complete examples** (Pix checkout, marketplace, admin, fullstack web, GenAI) and **typed SSR**.
 
 -   **[Reference »](reference.md)**
 
@@ -124,7 +124,7 @@ uv run pytest
 | Surface | State |
 | --- | --- |
 | Python | 3.11 / 3.12 / 3.13 (matrix-tested in CI) |
-| Tests | 2,650+ pytest cases, ≥ 90 % coverage |
+| Tests | 10,400+ pytest cases and 90 % coverage (lines + branches) at v0.302.0 (measured; CI has no coverage gate) |
 | Type-checking | `mypy --strict`, `py.typed` shipped (PEP 561) |
 | Lint / format | `ruff` (check + fix + format) |
 | Release pipeline | PyPI trusted-publishing on every `vX.Y.Z` tag |

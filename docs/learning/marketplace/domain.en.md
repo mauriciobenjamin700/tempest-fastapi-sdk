@@ -379,8 +379,8 @@ classDiagram
 | `Invitation` | `BaseModel + AuditMixin` | `BaseRepository[InvitationModel]` | `BaseService` |
 | `Product` | `BaseModel + AuditMixin + SoftDeleteMixin` | custom (JOINs variant+price) | `BaseService` |
 | `ProductVariant` | `BaseModel + AuditMixin` | custom | `BaseService` |
-| `PriceHistory` | `BaseModel` (no updated_at) | append-only | `BaseService` |
-| `StockMovement` | `BaseModel` (no updated_at) | append-only via `bulk_create_values` when batching | `BaseService` |
+| `PriceHistory` | `BaseModel` (append-only: `updated_at` exists but never changes) | append-only | `BaseService` |
+| `StockMovement` | `BaseModel` (append-only: `updated_at` exists but never changes) | append-only via `bulk_create_values` when batching | `BaseService` |
 | `Cart`/`CartItem` | `BaseModel + AuditMixin` | `BaseRepository[CartModel]` | `BaseService` |
 | `Order`/`OrderItem` | `BaseModel + AuditMixin` | custom | `BaseService` |
 | `Review` | `BaseModel + AuditMixin` | `BaseRepository[ReviewModel]` | `BaseService` |
@@ -388,7 +388,7 @@ classDiagram
 
 `PushSubscriptionModel` is **not hand-written** — it concretizes the base subscription model the SDK ships (just declares `__tablename__` and the `user_id` FK), exactly as in the **[Web Push recipe »](../../recipes/webpush.en.md)**. The `WebPushSubscriptionService` takes that `BaseRepository[PushSubscriptionModel]` + a `WebPushDispatcher` and handles CRUD and delivery (pruning dead 404/410 devices). There is no persisted `Notification` entity: each notification is ephemeral — it lives only as an SSE frame (foreground) and/or Web Push payload (background), both derived from the same domain event.
 
-`PriceHistory` and `StockMovement` are append-only, so their repository **doesn't expose `update` or `delete`** — only `add`/`list`/`get`. That prevents accidental ALTER on history.
+`PriceHistory` and `StockMovement` are append-only. Every `BaseModel` carries `updated_at`, and every `BaseRepository` carries `update` and `delete` — the SDK has no read-and-insert-only repository. Append-only here is a service rule: on these two tables it only calls `add`/`list`/`get`. To make the code unable to alter the history, give them a repository of their own that does not inherit `BaseRepository` and exposes only those three methods.
 
 ## Next step
 

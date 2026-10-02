@@ -127,11 +127,12 @@ A domain event (order paid/shipped, invite, new review) is delivered on two chan
 | Method | Path | Auth | Idem | Status | Description |
 |--------|------|------|------|--------|-------------|
 | GET  | `/notifications/stream` | user | — | 200 | **SSE** — per-user channel (`SSEBroker`, channel = `str(user.id)`); returns `broker.response(...)`. Receives all the user's events live. |
-| POST | `/push/subscriptions` | user | ✅ | 201 | Register a device for Web Push (`endpoint` + `p256dh`/`auth` keys). `make_web_push_router`. |
-| DELETE | `/push/subscriptions` | user | — | 204 | Remove the current device's subscription (by `endpoint`). `make_web_push_router`. |
+| POST | `/api/push/subscribe` | user | ✅ | 201 | Register a device for Web Push (the browser's `PushSubscription.toJSON()`: `endpoint` + `p256dh`/`auth` keys); answers `{"status": "subscribed"}`. `make_web_push_router`. |
+| POST | `/api/push/unsubscribe` | user | — | 200 | Remove the device's subscription (by the `endpoint` in the same body); answers `{"status": "unsubscribed"}`. `make_web_push_router`. |
+| GET | `/api/push/vapid-public-key` | public | — | 200 | VAPID public key (`{"public_key": ...}`); mounted only when `make_web_push_router(vapid_public_key=...)` receives the key. |
 
 !!! info "Required extras"
-    SSE (`/notifications/stream`) is **core** — no extra needed. The `/push/subscriptions` routes come from `make_web_push_router` and need the `[webpush]` extra (`uv add "tempest-fastapi-sdk[webpush]"`). Multi-worker SSE (Redis fan-out) needs `[cache]`.
+    SSE (`/notifications/stream`) is **core** — no extra needed. The `/api/push/*` routes come from `make_web_push_router` (the prefix is the default `prefix="/api/push"`) and need the `[webpush]` extra (`uv add "tempest-fastapi-sdk[webpush]"`). Multi-worker SSE (Redis fan-out) needs `[cache]`.
 
 ## Technical endpoints (SDK)
 

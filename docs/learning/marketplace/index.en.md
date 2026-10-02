@@ -114,7 +114,7 @@ marketplace/
 
 ## Recommended implementation order
 
-1. **Auth** — `UserModel(BaseUserModel)` + `UserTokenModel(BaseUserTokenModel)` + wire `UserAuthService` + `make_auth_router`. Five endpoints ready: `/auth/signup`, `/auth/activate/{token}`, `/auth/login`, `/auth/password-reset/request`, `/auth/password-reset/confirm`. (Covers: abstract model concretization, bundled flow, JWT pair, Jinja2 templates.) See **[Auth flow recipe »](../../recipes/auth-flow.en.md)**.
+1. **Auth** — `UserModel(BaseUserModel)` + `UserTokenModel(BaseUserTokenModel)` + wire `UserAuthService` + `make_auth_router`. With the default configuration it mounts 13 endpoints under `/auth` — the signup path is `/auth/signup`, `/auth/activate/{token}` and `/auth/login`, with `/auth/refresh`, `/auth/me`, password reset and change, and email change and verification alongside. (Covers: abstract model concretization, bundled flow, JWT pair, Jinja2 templates.) See **[Auth flow recipe »](../../recipes/auth-flow.en.md)**.
 2. **Organizations + members** — `Organization` + `Membership` with the 2-orgs-per-user / 10-members-per-org guard. (Covers: domain invariants, role-based access.)
 3. **Invitations** — `Invitation` with opaque token, Jinja2 email, 7-day expiry. (Covers: transactional email.)
 4. **Catalog + products** — `Product` + `ProductVariant` + `PriceHistory`. (Covers: 1-N relationships, soft-delete.)

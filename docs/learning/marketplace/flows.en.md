@@ -145,7 +145,7 @@ sequenceDiagram
     participant Q as TaskIQ
 
     B->>MW: POST /orders {cart_id, address}<br/>Idempotency-Key: chk_uuid
-    MW->>MW: cache lookup (method+path+key)
+    MW->>MW: cache lookup (principal+method+path+key)
     alt cache hit
         MW-->>B: cached response (200/201)
     else cache miss
@@ -273,7 +273,7 @@ from tempest_fastapi_sdk import BaseService
 from src.db.models import OrderModel
 from src.db.repositories import OrderRepository
 from src.schemas import OrderResponseSchema
-from src.services.notifications import NotificationService
+from src.services.notification import NotificationService
 
 
 class OrderService(BaseService[OrderRepository, OrderResponseSchema]):
