@@ -632,7 +632,7 @@ uvicorn app:app --reload
 | `POST /api/agent/run` | Executa até o fim e devolve o registro, com `run_id` |
 | `POST /api/agent/run/stream` | Cada passo como evento SSE, e um `done` com `{"run_id": ...}` no fim |
 | `GET /api/agent/runs` | Execuções recentes de **quem chama** (só com `run_store`) |
-| `GET /api/agent/runs/{run_id}/artifacts/{nome}` | Baixa um artefato; `nome` pode ter `/` (`illustrator/bike.png`) |
+| `GET /api/agent/runs/{run_id}/artifacts/{nome}` | Baixa um artefato (só com `run_store`); `nome` pode ter `/` (`illustrator/bike.png`) |
 
 Uma execução guardada é endereçada pelo `run_id` dela, um id estável — nunca
 pela posição no histórico, que muda a cada execução nova e faria um link de

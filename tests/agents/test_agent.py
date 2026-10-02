@@ -26,6 +26,7 @@ from tempest_fastapi_sdk.agents import (
     text_tool,
 )
 from tempest_fastapi_sdk.agents.schemas import AgentArtifact
+from tempest_fastapi_sdk.genai import ModerationResult, RuleModerator
 
 
 def _call(name: str, **arguments: Any) -> dict[str, Any]:
@@ -616,14 +617,9 @@ class TestSinkAndMetrics:
 class TestModeration:
     @pytest.mark.asyncio
     async def test_a_blocked_goal_never_reaches_the_model(self) -> None:
-        class Verdict:
-            def __init__(self) -> None:
-                self.flagged = True
-                self.labels = ["toxicity"]
-
         class Moderator:
-            async def check(self, _text: str) -> Verdict:
-                return Verdict()
+            async def check(self, _text: str) -> ModerationResult:
+                return ModerationResult(flagged=True, categories=["toxicity"])
 
         backend = ScriptedBackend([{"content": "should not run", "tool_calls": []}])
         run = await Agent(backend, moderator=Moderator()).run("something bad")
@@ -634,23 +630,40 @@ class TestModeration:
 
     @pytest.mark.asyncio
     async def test_a_blocked_answer_is_replaced(self) -> None:
-        class Verdict:
-            def __init__(self, flagged: bool) -> None:
-                self.flagged = flagged
-                self.labels = ["policy"] if flagged else []
-
         class Moderator:
             def __init__(self) -> None:
                 self.seen = 0
 
-            async def check(self, _text: str) -> Verdict:
+            async def check(self, _text: str) -> ModerationResult:
                 self.seen += 1
-                return Verdict(self.seen > 1)
+                flagged = self.seen > 1
+                return ModerationResult(
+                    flagged=flagged,
+                    categories=["policy"] if flagged else [],
+                )
 
         backend = ScriptedBackend([{"content": "bad answer", "tool_calls": []}])
         run = await Agent(backend, moderator=Moderator()).run("fine goal")
         assert run.stop_reason == StopReason.BLOCKED
         assert "bad answer" not in run.output
+
+    @pytest.mark.asyncio
+    async def test_the_reason_names_the_rule_moderator_category(self) -> None:
+        backend = ScriptedBackend([{"content": "should not run", "tool_calls": []}])
+        moderator = RuleModerator(["bomba"], category="toxicity")
+        run = await Agent(backend, moderator=moderator).run("Como fabricar uma bomba?")
+        assert run.stop_reason == StopReason.BLOCKED
+        assert run.output == "blocked by moderation (toxicity)"
+
+    @pytest.mark.asyncio
+    async def test_a_flag_without_categories_falls_back_to_policy(self) -> None:
+        class Moderator:
+            async def check(self, _text: str) -> ModerationResult:
+                return ModerationResult(flagged=True)
+
+        backend = ScriptedBackend([{"content": "should not run", "tool_calls": []}])
+        run = await Agent(backend, moderator=Moderator()).run("anything")
+        assert run.output == "blocked by moderation (policy)"
 
 
 class TestInMemorySink:

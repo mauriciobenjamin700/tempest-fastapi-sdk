@@ -277,6 +277,51 @@ class TestChatMemory:
         assert hits[0].chat_id == "c1"
         assert hits[0].role == "user"
 
+    async def test_role_methods_are_used_when_the_embedder_has_them(
+        self,
+        chroma_client: Any,
+    ) -> None:
+        class RoleEmbedder(_FakeEmbedder):
+            def __init__(self) -> None:
+                super().__init__({})
+                self.calls: list[tuple[str, list[str]]] = []
+
+            async def embed_query(
+                self,
+                texts: str | list[str],
+                *,
+                batch_size: int = 32,
+            ) -> list[list[float]]:
+                items = [texts] if isinstance(texts, str) else list(texts)
+                self.calls.append(("query", items))
+                return [[1.0, 0.0] for _ in items]
+
+            async def embed_passages(
+                self,
+                texts: str | list[str],
+                *,
+                batch_size: int = 32,
+            ) -> list[list[float]]:
+                items = [texts] if isinstance(texts, str) else list(texts)
+                self.calls.append(("passage", items))
+                return [[1.0, 0.0] for _ in items]
+
+        embedder = RoleEmbedder()
+        memory = ChatMemory(embedder, client=chroma_client, collection_name="m-role")
+        await memory.index(
+            user_id="u1",
+            chat_id="c1",
+            message_id="msg1",
+            role="user",
+            content="the cat sat on the mat",
+            created_at=_now(),
+        )
+        await memory.search(user_id="u1", query="cat", top_k=1)
+        assert embedder.calls == [
+            ("passage", ["the cat sat on the mat"]),
+            ("query", ["cat"]),
+        ]
+
     async def test_search_scopes_to_user(self, chroma_client: Any) -> None:
         embedder = _FakeEmbedder({"topic text one": [1.0, 0.0], "topic": [1.0, 0.0]})
         memory = ChatMemory(embedder, client=chroma_client, collection_name="m-scope")

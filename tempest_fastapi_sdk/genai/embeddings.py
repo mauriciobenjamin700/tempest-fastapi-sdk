@@ -291,6 +291,8 @@ class Embedder:
         dtype (ModelDtype): Resolved compute precision.
         idle_unload_seconds (float | None): Idle threshold for
             :meth:`unload_if_idle`.
+        query_prefix (str): Prepended by :meth:`embed_query`.
+        passage_prefix (str): Prepended by :meth:`embed_passages`.
     """
 
     def __init__(
@@ -309,6 +311,8 @@ class Embedder:
         idle_unload_seconds: float | None = None,
         hardware: HardwareInfo | None = None,
         metrics: GenAIMetrics | None = None,
+        query_prefix: str = "",
+        passage_prefix: str = "",
     ) -> None:
         """Configure the embedder (does not load weights yet).
 
@@ -350,8 +354,17 @@ class Embedder:
             metrics (GenAIMetrics | None): Optional Prometheus metrics; when
                 set, :meth:`embed` records request count + latency (op
                 ``"embed"``).
+            query_prefix (str): Text prepended to every input of
+                :meth:`embed_query`. Asymmetric models were trained with a
+                role marker on each side — the ``multilingual-e5`` family
+                wants ``"query: "`` here and ``"passage: "`` in
+                ``passage_prefix``. :meth:`embed` never applies it.
+            passage_prefix (str): Text prepended to every input of
+                :meth:`embed_passages` (the corpus side).
         """
         self.model_id = model_id
+        self.query_prefix = query_prefix
+        self.passage_prefix = passage_prefix
         self.device = resolve_device(device, hardware)
         self.dtype = (
             ModelDtype(auto_dtype_name(self.device))
@@ -510,6 +523,56 @@ class Embedder:
                 return await self._embed_impl(texts, batch_size=batch_size)
             async with self.metrics.track(self.model_id, "embed"):
                 return await self._embed_impl(texts, batch_size=batch_size)
+
+    async def embed_query(
+        self,
+        texts: str | list[str],
+        *,
+        batch_size: int = 32,
+    ) -> list[list[float]]:
+        """Embed search queries, prepending ``query_prefix`` to each one.
+
+        :class:`~tempest_fastapi_sdk.genai.rag.Retriever` calls this for the
+        query when the embedder has it, so an asymmetric model gets its
+        role marker without the caller writing it.
+
+        Args:
+            texts (str | list[str]): A single query or a list of queries.
+            batch_size (int): Max texts per model forward pass.
+
+        Returns:
+            list[list[float]]: One vector per input query, in input order.
+        """
+        items = [texts] if isinstance(texts, str) else list(texts)
+        return await self.embed(
+            [f"{self.query_prefix}{text}" for text in items],
+            batch_size=batch_size,
+        )
+
+    async def embed_passages(
+        self,
+        texts: str | list[str],
+        *,
+        batch_size: int = 32,
+    ) -> list[list[float]]:
+        """Embed corpus passages, prepending ``passage_prefix`` to each one.
+
+        :class:`~tempest_fastapi_sdk.genai.rag.Retriever` calls this when it
+        indexes chunks, so the stored vectors and the query vectors carry
+        the role markers the model was trained with.
+
+        Args:
+            texts (str | list[str]): A single passage or a list of passages.
+            batch_size (int): Max texts per model forward pass.
+
+        Returns:
+            list[list[float]]: One vector per input passage, in input order.
+        """
+        items = [texts] if isinstance(texts, str) else list(texts)
+        return await self.embed(
+            [f"{self.passage_prefix}{text}" for text in items],
+            batch_size=batch_size,
+        )
 
     async def _embed_impl(
         self,

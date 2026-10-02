@@ -26,6 +26,7 @@ from tempest_fastapi_sdk.agents.testing import (
     replies,
     replies_with_tool,
 )
+from tempest_fastapi_sdk.genai import ModerationResult
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 
@@ -40,15 +41,6 @@ async def _echo(arguments: dict[str, Any], _ctx: AgentContext) -> str:
     return str(arguments.get("text", ""))
 
 
-class _Verdict:
-    """What a moderator returns."""
-
-    def __init__(self, *, flagged: bool, labels: list[str]) -> None:
-        """Store the verdict."""
-        self.flagged = flagged
-        self.labels = labels
-
-
 class _WordModerator:
     """Flag any text containing a banned word."""
 
@@ -56,11 +48,11 @@ class _WordModerator:
         """Configure the banned word."""
         self.word = word
 
-    async def check(self, text: str) -> _Verdict:
+    async def check(self, text: str) -> ModerationResult:
         """Flag text containing the banned word."""
         if self.word in text:
-            return _Verdict(flagged=True, labels=["banned"])
-        return _Verdict(flagged=False, labels=[])
+            return ModerationResult(flagged=True, categories=["banned"])
+        return ModerationResult(flagged=False)
 
 
 class TestSkillsSurviveTheScopedCopy:
@@ -120,7 +112,7 @@ class TestStructuredDataIsModerated:
         backend = ScriptedBackend(
             [replies_with_tool("final_answer", {"headline": "forbidden thing"})],
         )
-        agent = Agent(backend, moderator=_WordModerator("forbidden"))  # type: ignore[arg-type]
+        agent = Agent(backend, moderator=_WordModerator("forbidden"))
         run = await run_structured(agent, "go", Answer)
         assert run.stop_reason == StopReason.BLOCKED
         assert run.data is None

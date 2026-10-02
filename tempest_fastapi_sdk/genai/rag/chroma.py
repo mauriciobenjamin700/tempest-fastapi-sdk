@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from tempest_fastapi_sdk.genai.rag.retriever import _embed_passages, _embed_query
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 if TYPE_CHECKING:
@@ -420,7 +421,7 @@ class ChatMemory:
         if len(text) < self.min_content_chars:
             return False
 
-        vectors: list[list[float]] = await self._embedder.embed([text])
+        vectors: list[list[float]] = await _embed_passages(self._embedder, [text])
         if not vectors or not vectors[0]:
             return False
         embedding: list[float] = vectors[0]
@@ -529,7 +530,7 @@ class ChatMemory:
         if not text:
             return []
 
-        vectors: list[list[float]] = await self._embedder.embed([text])
+        vectors: list[list[float]] = await _embed_query(self._embedder, [text])
         if not vectors or not vectors[0]:
             return []
         query_embedding: list[float] = vectors[0]

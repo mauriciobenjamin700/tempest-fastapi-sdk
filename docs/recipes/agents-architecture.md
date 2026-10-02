@@ -83,10 +83,14 @@ inofensivo enquanto existe um agente — no dia do segundo, são duas cópias do
 modelo na memória. Com 0.5B ninguém percebe; com um 7B quantizado são
 gigabytes.
 
-!!! tip "`idle_unload_seconds` devolve memória de graça"
-    Numa API que responde muito mais HTTP comum do que pergunta de agente, o
-    modelo se descarrega sozinho entre conversas e recarrega na próxima. Não
-    custa uma linha de código a mais — custa um campo de settings.
+!!! tip "`idle_unload_seconds` é o limiar, não o gatilho"
+    Numa API que responde muito mais HTTP comum do que pergunta de agente,
+    vale soltar o modelo entre conversas — ele recarrega sozinho na próxima
+    chamada. Mas nada descarrega por conta própria: `idle_unload_seconds` só
+    diz a partir de quando `generator.unload_if_idle()` aceita soltar os
+    pesos, e quem chama esse método é você, de uma tarefa periódica (ou
+    `ModelRegistry.unload_idle()`, para vários modelos de uma vez). O padrão
+    está em [Gerar texto com LLM local](genai.md#gerar-texto-com-llm-local).
 
 !!! warning "O orçamento é o que protege a requisição"
     `max_seconds` sempre **abaixo** do timeout do proxy. Acima dele o cliente
@@ -365,10 +369,15 @@ class AIController:
         )
 ```
 
-O router pronto do SDK chama `agent.run(goal)` **sem contexto** — ele não
-conhece a sua autenticação. Um serviço com ferramentas de dono precisa do
-endpoint próprio; `make_agent_router` continua ótimo para um agente sem
-identidade (um assistente de documentação, um agente interno de suporte).
+O router pronto do SDK não conhece a sua autenticação, mas aceita uma
+dependência `owner=`: ele roda `agent.run(goal, context=AgentContext(owner=...))`
+com o valor que ela devolve, e esse valor chega à ferramenta como
+`context.owner` (sem `owner=`, fica `None`). O que ele **não** semeia é o
+`state` — e é de lá que as ferramentas desta página leem quem chama, via
+`context_for` e `require_user_id`. Por isso o endpoint aqui é próprio. Com
+`make_agent_router(agent, owner=...)` a ferramenta leria o id em
+`context.owner`, como texto; quando ela precisa de mais que um id, o endpoint
+continua sendo seu.
 
 !!! check "Sempre traduza `stop_reason`"
     Uma execução truncada por orçamento devolve texto — o último que o modelo
