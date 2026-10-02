@@ -209,8 +209,8 @@ If your editor runs Pyright and you want the file clean, declare the name
 through the same mechanism the base class uses:
 
 ```python hl_lines="7 8"
-from pydantic import BaseModel
 from sqlalchemy.orm import declared_attr
+from tempest_fastapi_sdk import BaseModel
 
 from src.db.configs.names import USER_TABLE_NAME
 
@@ -593,11 +593,14 @@ async def health() -> dict[str, object]:
     cause. The correct bootstrap, for all three states a database can be in, is
     in [Migrations »](migrations.en.md).
 
-!!! danger "Never log `db_url`, always `db_url_safe`"
-    The raw URL carries user and password. `db_url_safe` renders
-    `postgresql+asyncpg://***@host/db`. The raw URL lives on a private
-    attribute precisely so it doesn't leak through `repr()` or accidental
-    logging.
+!!! danger "Never log the raw URL, always `db_url_safe`"
+    The raw URL carries user and password. `db_url_safe` replaces **only
+    the password**: `postgresql+asyncpg://user:pass@host:5432/db` comes out
+    as `postgresql+asyncpg://user:***@host:5432/db` — user, host, port,
+    database and query string stay visible, so treat the result as internal
+    diagnostics if the database user is itself sensitive. The raw URL lives
+    on a private attribute precisely so it doesn't leak through `repr()` or
+    accidental logging.
 
 ### Your own `DeclarativeBase`
 
@@ -805,8 +808,12 @@ asyncio.run(main())
 
 ### Subclass mode — when you have your own queries
 
-Subclass it to add domain queries and the three mappers that translate
-ORM ↔ DTO. **The constructor is the contract** — you forward `model` to
+Subclass it to add domain queries and the mappers that translate
+ORM ↔ DTO. There are three: `map_to_model` (default `self.model(**data)`),
+`map_to_response` and `map_to_schema` — the last two raise
+`NotImplementedError` until you override them, so implement the ones your
+code calls (the example implements `map_to_response` and `map_to_model`).
+**The constructor is the contract** — you forward `model` to
 `super().__init__`, there are no magic class attributes:
 
 ```python
@@ -864,8 +871,9 @@ class UserRepository(BaseRepository[UserModel]):
     The kwargs `not_found_message`, `create_conflict_message`,
     `update_conflict_message`, `bulk_create_conflict_message` and
     `bulk_update_conflict_message` customize the exception text. Without
-    them, the SDK generates messages from `Model.__name__` (`"User not
-    found"`, `"Conflict creating User"`).
+    them, the SDK generates messages from `Model.__name__` — the whole
+    class name, suffix included: `"UserModel not found"`,
+    `"Conflict creating UserModel"`.
 
 !!! tip "Per-repository exception classes"
     Every `*_message` has a matching `*_exception`. A message alone gives the
@@ -1146,7 +1154,7 @@ async def main() -> None:
         users = await repository.list({"is_active": True}, with_=["orders"])
 
 
-    asyncio.run(main())
+asyncio.run(main())
 ```
 
 Each path uses `selectinload`: N related rows cost **one** extra query
@@ -1269,7 +1277,7 @@ async def main() -> None:
         await repository.bulk_update({"id": pid}, {"total": F("price") * F("qty")})
 
 
-    asyncio.run(main())
+asyncio.run(main())
 ```
 
 **`Q` — the `OR` / `NOT` the filter dict can't express.** The dict ANDs
@@ -1302,8 +1310,18 @@ async def main() -> None:
         )
 
 
-    asyncio.run(main())
+asyncio.run(main())
 ```
+
+!!! warning "`~Q(...)` does not return the `NULL` row"
+    The negation becomes `role != 'guest'` in SQL, and
+    `NULL != 'guest'` is `NULL`, not true: the row whose `role` is null
+    **is left out** along with the `guest` one. With three users (`guest`,
+    `admin` and `role=None`), `~Q(role="guest")` returns only `admin`. If the
+    null row belongs in the result, ask for it explicitly:
+    `~Q(role="guest") | Q(role=None)` returns `admin` and the null one
+    (`None` on a bare column is `IS NULL`). `role__ne="guest"` has the same
+    semantics as `~Q` here — it also drops the null.
 
 `Q` uses the same conventions as the filter dict (`name` ILIKE,
 `field__gte`, iterable → `IN`, …), so `Q(priority__gte=5, name="ana")` is the
@@ -1384,7 +1402,7 @@ async def main() -> None:
         hits = await repository.list({"name": "silva", "id": selected_ids})
 
 
-    asyncio.run(main())
+asyncio.run(main())
 ```
 
 !!! info "`start_in`/`end_in` vs `__gt`/`__lt`"
@@ -1581,7 +1599,7 @@ async def main() -> None:
         )  # INSERT ... ON CONFLICT DO UPDATE — Postgres and SQLite
 
 
-    asyncio.run(main())
+asyncio.run(main())
 ```
 
 !!! warning "`bulk_update` refuses an empty filter"
@@ -2517,7 +2535,8 @@ lifespan turns slow queries into actionable log lines, with optional
   (`add_all`, `update_many`) and the one that does not, but is a single trip to
   the database.
 - A mixin joins when the domain asks for it: soft-delete and auditing cost a
-  column and an implicit filter.
+  column, and the filter is yours — `SoftDeleteMixin` installs no global
+  filter, so hiding a deleted row means passing `{"deleted_at": None}`.
 - Pagination has two shapes with different purposes: `paginate` to walk pages,
   `cursor_paginate` for a list that grows while the user reads it.
 - Migrations are `init` once, `revision --autogenerate` per change, `upgrade` on

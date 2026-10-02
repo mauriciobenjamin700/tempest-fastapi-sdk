@@ -226,10 +226,28 @@ Esta é a parte que costuma dar bug. Siga à risca:
    `updated_at > since` (estrito).
 
 !!! tip "Por que `server_time` e não o relógio do cliente"
-    O `server_time` é capturado no servidor **antes** da query rodar. Como ele é
-    um marco do próprio relógio do banco, qualquer linha escrita depois tem
-    `updated_at` maior e aparece no pull seguinte — imune ao clock skew do
-    aparelho.
+    O `server_time` é capturado no servidor **antes** da query rodar, pelo
+    mesmo `utcnow()` do processo da aplicação que carimba `updated_at` no
+    `flush` do ORM. Os dois saem do relógio do servidor da aplicação — não do
+    banco, e não do aparelho —, então o clock skew do dispositivo não entra
+    na conta: uma linha carimbada depois do marco tem `updated_at` maior e
+    aparece no pull seguinte.
+
+!!! warning "O que o marco não cobre"
+    - **Transação aberta atravessando o pull.** O `updated_at` é carimbado no
+      `flush`, não no `commit`. Uma escrita que faz `flush` antes do
+      `server_time` e só commita depois que a query do pull rodou fica com
+      `updated_at < server_time`, invisível no pull corrente (ainda não
+      commitada) e fora do seguinte (`updated_at > since` é falso). Medido
+      com duas sessões num SQLite em arquivo: o pull durante a transação
+      voltou vazio, o pull a partir do marco voltou vazio, e só o resync com
+      `since=None` trouxe a linha. Transação curta encolhe a janela; não a
+      fecha.
+    - **Várias réplicas.** Cada processo carimba com o próprio relógio, então
+      o skew entre os servidores da aplicação entra no `updated_at`.
+    - **SQL escrito à mão** (`text(...)`, `psql`, outra linguagem). Um
+      `INSERT` assim cai no `server_default=NOW()` — o relógio do banco —, e
+      um `UPDATE` assim não mexe no `updated_at`.
 
 !!! warning "Tombstones não são opcionais"
     Deixe `include_deleted=True` (padrão). Um pull que esconde os deletados

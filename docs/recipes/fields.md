@@ -184,8 +184,8 @@ is_valid_pix_key("529.982.247-25")       # -> True
 
 ## Exemplo completo (schema + rota + 422)
 
-Os tipos são `Annotated` puros — funcionam em qualquer `BaseSchema` e o
-FastAPI já converte o `ValidationError` em **422** pelo handler do SDK.
+Os tipos são `Annotated` puros — funcionam em qualquer `BaseSchema`, e o
+próprio FastAPI converte a falha de validação do corpo em **422**.
 Programa completo:
 
 ```python
@@ -221,15 +221,68 @@ async def create_product(payload: ProductCreateSchema) -> dict[str, str]:
     return {"slug": payload.slug}
 ```
 
-Um `POST` inválido (`price_cents: -5`, `slug: "Não Slug"`) recebe **422**
-com o corpo que o handler do SDK padroniza:
+Um `POST` inválido (`{"name": "x", "slug": "Não Slug", "price_cents": -5}`)
+recebe **422** com o corpo **padrão do FastAPI** — uma lista por campo, na
+ordem em que os campos aparecem no schema (`slug` antes de `price_cents`),
+com o valor enviado ecoado em `input`:
 
 ```json
 {
   "detail": [
-    {"loc": ["body", "price_cents"], "msg": "Input should be greater than or equal to 0"},
-    {"loc": ["body", "slug"], "msg": "String should match pattern ..."}
+    {
+      "type": "string_pattern_mismatch",
+      "loc": ["body", "slug"],
+      "msg": "String should match pattern '^[a-z0-9]+(?:-[a-z0-9]+)*$'",
+      "input": "Não Slug",
+      "ctx": {"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"}
+    },
+    {
+      "type": "greater_than_equal",
+      "loc": ["body", "price_cents"],
+      "msg": "Input should be greater than or equal to 0",
+      "input": -5,
+      "ctx": {"ge": 0}
+    }
   ]
+}
+```
+
+Esse é o corpo com ou sem `register_exception_handlers(app)`: por padrão o
+SDK não mexe no 422. Para o envelope do SDK — o mesmo formato dos outros
+erros, com `code`, mensagens do `MessageCatalog` e **sem** ecoar o
+`input` —, ligue `envelope_validation_errors=True`:
+
+```python
+from fastapi import FastAPI
+from tempest_fastapi_sdk import register_exception_handlers
+
+from src.api.routers.products import router
+
+app = FastAPI()
+register_exception_handlers(app, envelope_validation_errors=True)
+app.include_router(router)
+```
+
+O mesmo `POST` passa a receber:
+
+```json
+{
+  "detail": "Validation error",
+  "code": "VALIDATION_ERROR",
+  "details": {
+    "errors": [
+      {
+        "loc": ["body", "slug"],
+        "type": "string_pattern_mismatch",
+        "msg": "String should match pattern '^[a-z0-9]+(?:-[a-z0-9]+)*$'"
+      },
+      {
+        "loc": ["body", "price_cents"],
+        "type": "greater_than_equal",
+        "msg": "Input should be greater than or equal to 0"
+      }
+    ]
+  }
 }
 ```
 

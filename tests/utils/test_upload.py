@@ -16,6 +16,7 @@ from tempest_fastapi_sdk import (
     read_upload_capped,
     sniff_mime,
 )
+from tempest_fastapi_sdk.settings import UploadSettings
 
 # Minimal valid magic-byte prefixes for the formats sniff_mime knows.
 _JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01" + b"\x00" * 16
@@ -110,6 +111,44 @@ class TestValidation:
         # Partial file must be cleaned up on overflow.
         leftovers = list(tmp_path.iterdir())
         assert leftovers == []
+
+
+class TestUnrestrictedSentinels:
+    """Empty allow-lists and a zero size cap mean "no restriction".
+
+    ``UploadSettings`` documents ``UPLOAD_ALLOWED_EXTENSIONS=set()`` and
+    ``UPLOAD_ALLOWED_MIMETYPES=set()`` as "any" and
+    ``UPLOAD_MAX_SIZE_BYTES=0`` as "disables the check", and
+    ``upload_kwargs()`` forwards those values verbatim. Before the fix the
+    constructor treated an empty set as an allow-list that matches
+    nothing, so the settings defaults refused every upload with 415.
+    """
+
+    async def test_empty_allowlists_accept_any_file(self, tmp_path: Path) -> None:
+        utils = UploadUtils(
+            tmp_path,
+            allowed_extensions=set(),
+            allowed_mimetypes=set(),
+        )
+        upload = _make_upload(b"hello", filename="a.txt", content_type="text/plain")
+        key = await utils.save(upload)
+        assert (tmp_path / key).read_bytes() == b"hello"
+        assert utils.allowed_extensions is None
+        assert utils.allowed_mimetypes is None
+
+    async def test_zero_size_cap_disables_the_check(self, tmp_path: Path) -> None:
+        utils = UploadUtils(tmp_path, max_size_bytes=0, chunk_size=4)
+        upload = _make_upload(b"x" * 100)
+        key = await utils.save(upload)
+        assert (tmp_path / key).read_bytes() == b"x" * 100
+        assert utils.max_size_bytes is None
+
+    async def test_settings_defaults_accept_an_upload(self, tmp_path: Path) -> None:
+        settings = UploadSettings(UPLOAD_DIR=str(tmp_path), UPLOAD_MAX_SIZE_BYTES=0)
+        utils = UploadUtils(**settings.upload_kwargs())
+        upload = _make_upload(b"hello", filename="a.txt", content_type="text/plain")
+        key = await utils.save(upload)
+        assert (tmp_path / key).read_bytes() == b"hello"
 
 
 class TestDelete:

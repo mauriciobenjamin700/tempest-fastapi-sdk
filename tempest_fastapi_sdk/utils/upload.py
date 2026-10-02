@@ -125,12 +125,15 @@ class UploadUtils:
         upload_dir (Path | None): Local base directory when constructed
             with a path; ``None`` in MinIO mode.
         max_size_bytes (int | None): Reject uploads larger than this.
-            ``None`` disables the size check.
+            ``None`` disables the size check; a constructor value of
+            ``0`` is stored as ``None``.
         allowed_extensions (set[str] | None): Whitelist of file
             extensions (lowercase, no dot). ``None`` disables the
-            extension check.
+            extension check; an empty constructor set is stored as
+            ``None``.
         allowed_mimetypes (set[str] | None): Whitelist of MIME types
-            (lowercase). ``None`` disables the MIME check.
+            (lowercase). ``None`` disables the MIME check; an empty
+            constructor set is stored as ``None``.
         require_known_signature (bool): With ``verify_magic_bytes`` on,
             whether an upload whose signature is unrecognized is
             rejected. ``True`` (the default, and the behaviour before
@@ -175,12 +178,23 @@ class UploadUtils:
                 to expose :attr:`upload_dir` (set from a path, ``None``
                 otherwise) and no backend is built here.
             max_size_bytes (int | None): Reject uploads larger than
-                this. ``None`` disables the size check.
+                this. ``None`` or ``0`` disables the size check -- ``0``
+                means "no limit", matching ``UPLOAD_MAX_SIZE_BYTES`` in
+                :class:`~tempest_fastapi_sdk.settings.UploadSettings`, so
+                ``UploadUtils(**settings.upload_kwargs())`` honours the
+                documented setting instead of rejecting every non-empty
+                file.
             allowed_extensions (set[str] | None): Whitelist of file
                 extensions. Leading dots and case are normalized
                 internally so ``{"PNG", ".jpg"}`` works as expected.
+                ``None`` or an empty set disables the check: an empty
+                allow-list would refuse every upload, and the settings
+                mixin documents an empty ``UPLOAD_ALLOWED_EXTENSIONS``
+                as "any extension".
             allowed_mimetypes (set[str] | None): Whitelist of MIME
                 types (case-insensitive, e.g. ``{"image/png"}``).
+                ``None`` or an empty set disables the check, for the
+                same reason as ``allowed_extensions``.
             verify_magic_bytes (bool): Sniff the first bytes of each
                 upload and reject content that does not match its
                 declared type / the allow-list. See the class
@@ -227,16 +241,14 @@ class UploadUtils:
             self._storage = MinIOUploadStorage(source)
         else:
             raise ValueError("UploadUtils requires either `source` or `backend`.")
-        self.max_size_bytes: int | None = max_size_bytes
+        self.max_size_bytes: int | None = max_size_bytes or None
         self.allowed_extensions: set[str] | None = (
             {ext.lower().lstrip(".") for ext in allowed_extensions}
-            if allowed_extensions is not None
+            if allowed_extensions
             else None
         )
         self.allowed_mimetypes: set[str] | None = (
-            {mime.lower() for mime in allowed_mimetypes}
-            if allowed_mimetypes is not None
-            else None
+            {mime.lower() for mime in allowed_mimetypes} if allowed_mimetypes else None
         )
         self.verify_magic_bytes: bool = verify_magic_bytes
         self.require_known_signature: bool = require_known_signature
