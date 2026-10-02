@@ -344,8 +344,8 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   and SQLite, the two dialects the SDK supports; every pattern was read off a
   real server, and `tests/db/test_integrity_live.py` (marked `docker`)
   reproduces them live. Reads `error.orig`, never `str(error)`, whose
-  `[SQL: ...]` echo carries user data. **Structured diagnostics first (não
-  lançado, #367):** on Postgres it reads the driver's `sqlstate`, `detail`,
+  `[SQL: ...]` echo carries user data. **Structured diagnostics first
+  (v0.302.0, #367):** on Postgres it reads the driver's `sqlstate`, `detail`,
   `constraint_name`, `table_name` and `column_name` through `orig` /
   `__cause__` (duck-typed, no `asyncpg` import), and falls back to the text —
   SQLAlchemy 2.1.1 dropped `DETAIL:` from `str(error.orig)` and every unique
@@ -394,7 +394,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `burst=1000` expired an hour before it filled and came back **full**.
   `RateLimit-*` headers describe the tightest rule; `RateLimit-Reset` is
   emitted only where it is known. `lupa` is a dev dep so `fakeredis` runs
-  the real Lua. **Server clock (não lançado, #339):** both Redis stores
+  the real Lua. **Server clock (v0.302.0, #339):** both Redis stores
   (`RedisQuotaStore`, `RedisRateLimitStore`) read `TIME` inside the script
   instead of taking the replica's `time.time()` — measured on real Redis 4
   and 7, a client one hour ahead or behind got a free request past an
@@ -1588,20 +1588,20 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   hatches).
 - **MinIO / S3** — `AsyncMinIOClient` via `[minio]` extra
   (bucket lifecycle, object I/O, streaming download, presigned
-  URLs). **(não lançado, #361)** `download_response(key, request=...)`
+  URLs). **(v0.302.0, #361)** `download_response(key, request=...)`
   answers `206` (three single-range forms, reading only the slice via
   `stream_object(offset=, length=)`), `416`, `304` (ETag / date) and honours
   `If-Range`; multi-range → `200`. Always `Accept-Ranges`/`ETag`/
   `Last-Modified`; `cache_control=`. Validators live in the private
   `utils._http_cache`, shared with `ResponseCacheMiddleware`.
-  **(não lançado, #362)** `accel_redirect_response(key, ...)` answers an
+  **(v0.302.0, #362)** `accel_redirect_response(key, ...)` answers an
   empty response with `X-Accel-Redirect` presigned against the internal
   endpoint (type/disposition/cache signed as S3 `response-*` overrides);
   `serve_object(key, request=...)` switches proxy ↔ redirect by the
   constructor's `accel_redirect=`, fed by `STORAGE_ACCEL_REDIRECT` /
   `STORAGE_ACCEL_PREFIX` in `MinIOSettings`. Recipe has the nginx block,
   measured against nginx + MinIO containers.
-- **Signed app URLs** — **(não lançado, #363)** `sign_path` /
+- **Signed app URLs** — **(v0.302.0, #363)** `sign_path` /
   `verify_path` in `utils.signed_url` (stdlib only): HMAC-SHA256 over
   `expires LF decoded-path`, key derived from the secret and `purpose`
   (domain separation, so reusing `JWT_SECRET` is safe), `compare_digest`,
@@ -2195,6 +2195,7 @@ e por isso o pacote não modela:
 
 1. **O webhook de status.** É a metade que diz se a mensagem chegou; a
    spec o descreve em prosa e não declara `webhooks` nem `callbacks`.
+   (Fechado na v0.302.0, #374: portado à mão do código do gateway.)
 2. **`Retry-After` no `429`.** Dezesseis operações declaram `429` e
    nenhuma resposta do documento declara header nenhum.
 3. **Corpo de `/health` e `/ready`.** Medido, os dois respondem JSON com
@@ -2573,11 +2574,11 @@ atributos — o `make_session_router` usa os dois.
 Consumidor: `tempest-bucket` (#343, #344), que mantinha um
 `AdminSessionService` próprio e o override do campo como `Literal`.
 
-O modo `authenticator=` roda sem o extra `[auth]` (#373): `SessionAuth.passwords`
+O modo `authenticator=` roda sem o extra `[auth]` (v0.302.0, #373): `SessionAuth.passwords`
 só constrói o `PasswordUtils` quando lido, e o `user_model=` continua
 construindo no `__init__` para falhar no boot.
 
-## Nome de constraint composta com todas as colunas (não lançado)
+## Nome de constraint composta com todas as colunas (v0.302.0)
 
 `NAMING_CONVENTION` usa `column_0_N_name`/`column_0_N_label` em `uq`, `ix` e
 `fk`: `UniqueConstraint("title", "release_year")` é
@@ -2591,7 +2592,7 @@ escreve o `RENAME` do PostgreSQL, com o encurtamento de 63 caracteres.
 
 Consumidor: relato da issue #335, com o DDL reproduzido contra PostgreSQL 16.
 
-## Auth só com o backend (não lançado)
+## Auth só com o backend (v0.302.0)
 
 O Modo E (`AUTH_BACKEND_LINKS=true`) é o caminho de quem não tem frontend, e
 não subia com os extras que a receita manda instalar: o form HTML de reset
@@ -2605,19 +2606,18 @@ protegida**: o ciclo cadastro → token → ativação → login → rota proteg
 medido com `curl`, pelos dois caminhos (JSON e link `GET`), e num teste com
 `FakeEmailUtils`.
 
-## Extra `[tests]` e a suíte em paralelo (Unreleased)
+## Extra `[tests]` e a suíte em paralelo (v0.302.0)
 
 - **`[tests]`** (#328) — `pytest>=9.1.1`, `pytest-asyncio>=1.4.0`,
   `pytest-xdist>=3.8.0`, sem teto próprio; herda `pytest<10` do
   `pytest-asyncio` 1.4.0 e `pluggy<2` do `pytest`. Fora do `[all]`.
 - **`tempest test --fast` / `tempest check --fast`** — a flag é do
-  `tempest-cli` (chega na 0.4.0; o piso do SDK ainda é `>=0.3.0` e sobe
-  depois da release dele). Roda `pytest -n <workers> -p no:cacheprovider`,
+  `tempest-cli` 0.4.0, e o piso do SDK é `>=0.4.0`. Roda `pytest -n <workers> -p no:cacheprovider`,
   `-w N` escolhe os workers (`auto` por padrão), e sem pytest-xdist no
   ambiente do pytest sai `127` com a instrução de instalação. Receita:
   `docs/recipes/testing.md#a-suite-em-paralelo-tempest-test-fast`.
 
-## Webhook de entrada e de status do zap-api (não lançado)
+## Webhook de entrada e de status do zap-api (v0.302.0)
 
 `integrations.messaging.zap.webhooks`, escrito à mão e portado do código do
 gateway, porque a spec descreve o webhook só em prosa (#374). Fecha o item

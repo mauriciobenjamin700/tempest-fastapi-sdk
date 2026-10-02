@@ -177,6 +177,21 @@ class TestSignedPathDependency:
         assert response.status_code == 403
         assert response.json()["code"] == "SIGNED_URL_INVALID"
 
+    @pytest.mark.parametrize("digits", [4300, 4301, 5000])
+    def test_oversized_expires_is_403(self, digits: int) -> None:
+        """An ``expires`` past the int-conversion digit limit is 403, not 500.
+
+        Python refuses ``int()`` over 4300 digits with ``ValueError``; the
+        ``isdigit`` check lets such a value through, so the dependency must
+        turn the conversion failure into the same invalid-URL answer.
+        """
+        client = TestClient(_build_app(), raise_server_exceptions=False)
+        response = client.get(
+            f"/api/files/report.pdf?expires={'9' * digits}&signature=abc"
+        )
+        assert response.status_code == 403
+        assert response.json()["code"] == "SIGNED_URL_INVALID"
+
     def test_params_are_declared_in_openapi(self, client: TestClient) -> None:
         """``expires`` and ``signature`` appear as query parameters."""
         operation = client.app.openapi()["paths"]["/api/files/{key}"]["get"]

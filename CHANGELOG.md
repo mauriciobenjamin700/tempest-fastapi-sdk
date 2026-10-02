@@ -5,7 +5,20 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.302.0] — 2026-10-01
+
+Arquivo privado servido pelo backend (#361, #362, #363): `download_response`
+com `Range`, `X-Accel-Redirect` para o nginx e URL assinada para a rota do
+próprio app. O `zap` ganha o lado de entrada (#374), e o Redis passa a ser o
+relógio do rate limit e das quotas (#339). Correções: `parse_integrity_error`
+com SQLAlchemy 2.1 (#367), `SessionAuth.from_credentials` sem o extra `[auth]`
+(#373) e o Modo E do auth subindo com `[auth,email]` (#324). Extra novo
+`[tests]` (#328).
+
+**Leia a migração do #335 antes de atualizar:** constraint composta (`uq`,
+`ix`, `fk` com mais de uma coluna) muda de nome. Banco criado antes precisa
+de uma revisão com `RENAME`, ou de `name=` explícito na constraint para
+manter o nome antigo.
 
 ### Utils: URL curta assinada para rota do próprio app (#363)
 
@@ -28,7 +41,8 @@ URL presignada aponta para o bucket; esta aponta para a rota do app.
   `tempest_fastapi_sdk.api.dependencies`, ao lado dos outros `make_*_dependency`:
   lê `expires`/`signature` da query, declara os dois no OpenAPI e verifica
   contra `request.scope["path"]`. Parâmetro ausente ou `expires` não numérico
-  é `403`, nunca `422`. Segredo ou `purpose` vazio é `ValueError` na
+  (inclusive com mais dígitos do que o `int()` do Python aceita) é `403`,
+  nunca `422` nem `500`. Segredo ou `purpose` vazio é `ValueError` na
   construção.
 - Regra de encoding: o path assinado é o **decodificado**, o mesmo que a rota
   vê. `%2F` e `/` chegam à rota como o mesmo path e valem com a mesma

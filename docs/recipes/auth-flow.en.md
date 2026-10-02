@@ -593,10 +593,9 @@ answers an error.
     curl -i http://127.0.0.1:8000/auth/activate/5wScVz_EX6rW-PGCYkaDYpv0dGjjm779J3-HbcVW6nswr_Lao7Q_ynzwicIrQzZe
     ```
 
-    `200 OK` with `content-type: text/html` and the account-activated page
-    (in the `AUTH_DEFAULT_LOCALE` language, `pt-BR` by default). It is what a
-    Mode E user sees after clicking the email. Opening the same link again
-    answers `400` with the activation-failed page.
+    `200 OK` with `content-type: text/html` and the **Account activated**
+    page. It is what a Mode E user sees after clicking the email. Opening
+    the same link again answers `400` with the activation-failed page.
 
     This page does not hand out a JWT (a token in a URL leaks into history and
     logs), so the next step is logging in.
