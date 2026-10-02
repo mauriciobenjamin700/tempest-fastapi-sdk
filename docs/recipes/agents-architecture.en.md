@@ -83,10 +83,14 @@ harmless while there is one agent — the day the second arrives, that is two
 copies of the model in memory. At 0.5B nobody notices; at a quantized 7B it is
 gigabytes.
 
-!!! tip "`idle_unload_seconds` gives memory back for free"
-    In an API that serves far more plain HTTP than agent questions, the model
-    unloads itself between conversations and reloads on the next one. It costs
-    no extra code — it costs one settings field.
+!!! tip "`idle_unload_seconds` is the threshold, not the trigger"
+    In an API that serves far more plain HTTP than agent questions, it pays to
+    release the model between conversations — it reloads by itself on the
+    next call. But nothing unloads on its own: `idle_unload_seconds` only sets
+    when `generator.unload_if_idle()` agrees to drop the weights, and you are
+    the one calling that method, from a periodic task (or
+    `ModelRegistry.unload_idle()`, for several models at once). The pattern
+    is in [Generate text with a local LLM](genai.md#generate-text-with-a-local-llm).
 
 !!! warning "The budget is what protects the request"
     Keep `max_seconds` **below** the proxy timeout. Past it the client is gone
@@ -364,10 +368,16 @@ class AIController:
         )
 ```
 
-The SDK's ready-made router calls `agent.run(goal)` **with no context** — it
-knows nothing about your authentication. A service with owner tools needs its
-own endpoint; `make_agent_router` stays great for an agent with no identity (a
-documentation assistant, an internal support agent).
+The SDK's ready-made router knows nothing about your authentication, but it
+takes an `owner=` dependency: it runs
+`agent.run(goal, context=AgentContext(owner=...))` with the value that
+dependency returns, and the tool sees it as `context.owner` (without `owner=`,
+it is `None`). What it does **not** seed is `state` — and `state` is where
+the tools on this page read the caller from, through `context_for` and
+`require_user_id`. That is why the endpoint here is your own. With
+`make_agent_router(agent, owner=...)` the tool would read the id from
+`context.owner`, as a string; when it needs more than an id, the endpoint stays
+yours.
 
 !!! check "Always translate `stop_reason`"
     A budget-truncated run still returns text — the last thing the model said.

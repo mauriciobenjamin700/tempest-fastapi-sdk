@@ -128,9 +128,11 @@ O `output` da execução passa a ser a resposta em JSON, e é esse texto que o
     perder a execução inteira. Desligue com `extraction_retry=False`.
 
 !!! warning "Sempre cheque `has_data`"
-    Uma execução pode ser `succeeded` e ainda assim vir com `data=None` — o
-    orçamento acabou, ou nem a extração conseguiu. `run.parse_error` diz
-    qual foi o caso. E modelos pequenos às vezes deixam um campo vazio em vez
+    Uma execução pode ser `succeeded` e ainda assim vir com `data=None`: o
+    modelo terminou sem chamar `final_answer` e nem o parse do texto nem a
+    extração acharam a forma (ou `allow_text_fallback=False` desligou essa
+    rede). Orçamento esgotado é outro caso — aí a execução já não é
+    `succeeded`. Nos dois, `run.parse_error` diz o motivo. E modelos pequenos às vezes deixam um campo vazio em vez
     de omitir: valide os valores, não só a presença do objeto.
 
 Para insistir até a forma chegar, repita a execução e julgue com

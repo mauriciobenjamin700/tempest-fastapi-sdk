@@ -308,10 +308,10 @@ class Agent:
                 exc_info=exc,
             )
             return f"blocked: moderation unavailable ({type(exc).__name__})"
-        if not getattr(verdict, "flagged", False):
+        if not verdict.flagged:
             return None
-        labels = ", ".join(getattr(verdict, "labels", []) or []) or "policy"
-        return f"blocked by moderation ({labels})"
+        categories = ", ".join(verdict.categories) or "policy"
+        return f"blocked by moderation ({categories})"
 
     async def run(
         self,
