@@ -173,7 +173,7 @@ with no extra wiring — in PT-BR or en-US, per `Accept-Language`:
 | `HOST_FILE_DECODE_FAILED` | 400 | Bytes do not decode — a PDF or an image |
 | `HOST_COMMAND_FAILED` | 500 | The command exited non-zero |
 | `HOST_COMMAND_TIMEOUT` | 504 | The command ran past its timeout and was killed |
-| `HOST_UNAVAILABLE` | 503 | Neither PowerShell nor `wslpath` exists here |
+| `HOST_UNAVAILABLE` | 503 | The executable the action calls (PowerShell, `wslpath`, `shutdown.exe`) does not exist here — one missing is enough |
 
 `HOST_UNAVAILABLE` is what tells "this machine has no Windows host" apart
 from "the action failed": on a plain Linux container the caller degrades

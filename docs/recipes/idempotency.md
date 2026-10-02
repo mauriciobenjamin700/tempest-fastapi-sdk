@@ -46,9 +46,6 @@ Use `principal_resolver=` quando a identidade vive em outro lugar — um id de A
 !!! tip "Erro 5xx não é cacheado"
     Por padrão respostas `>= 500` não entram no store, então o retry do cliente realmente chega ao handler. Uma falha transitória cacheada por `ttl_seconds` prenderia aquela chave no erro pelo tempo todo da entrada. Passe `cache_server_errors=True` se o seu caso exige o oposto.
 
-!!! warning "Concorrência entre réplicas"
-    Duas requisições **simultâneas** com a mesma chave no mesmo processo são serializadas: a segunda espera e replica a resposta da primeira. Entre réplicas diferentes isso não vale — o store deduplica retries, mas duas requisições ao mesmo tempo em réplicas distintas podem ambas executar.
-
 ## Setup mínimo (single-replica / dev)
 
 ```python
