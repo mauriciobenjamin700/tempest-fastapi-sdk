@@ -65,6 +65,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.app_errors import AppErrorService, make_app_error_router
 
+from src.api.dependencies.auth import get_current_user_id_optional
 from src.db.models.app_error import AppErrorModel
 from src.db.session import get_session
 
@@ -96,9 +97,18 @@ app.include_router(
     make_app_error_router(
         service_factory=service_factory,
         session_factory=session_factory,
+        current_user_id_optional=get_current_user_id_optional,
     )
 )
 ```
+
+!!! warning "Without `current_user_id_optional`, every report is anonymous"
+    The parameter is optional because the endpoint is public, and the
+    default resolves nobody: without it the router stores `user_id=None`
+    on **every** report, including those from a logged-in user. Pass a
+    dependency that returns the token's UUID when there is a valid one and
+    `None` when there is not — never one that answers `401`, or the report
+    from someone who broke before logging in is refused.
 
 The app sends:
 

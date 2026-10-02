@@ -106,7 +106,7 @@ keywords:
 
 | Capability | Covers |
 | --- | --- |
-| `READ` | `SELECT`, `WITH … SELECT`, `EXPLAIN`, `SHOW` |
+| `READ` | `SELECT`, `WITH … SELECT`, `DESCRIBE`, `PRAGMA` — and `EXPLAIN` / `SHOW` only under the `mysql` dialect (see below) |
 | `INSERT` | adds rows |
 | `UPDATE` | changes rows |
 | `DELETE` | removes rows |
@@ -119,6 +119,23 @@ keywords:
     permission rather than slipping through as harmless. It is the safe
     default: a parser that does not recognise something must not wave it
     through.
+
+!!! warning "`EXPLAIN` and `SHOW` are `ADMIN` on PostgreSQL and SQLite"
+    The classification comes from the tree `sqlglot` builds. For `EXPLAIN`
+    and `SHOW` under the `postgres` and `sqlite` dialects (and with no
+    dialect), `sqlglot` 30 has no dedicated expression and returns a
+    generic `Command` — which falls to the `ADMIN` default. Measured with
+    `analyze_sql(sql, dialect=...)`:
+
+    | Statement | `postgres` | `sqlite` | `mysql` |
+    | --- | --- | --- | --- |
+    | `EXPLAIN SELECT 1` | `admin` | `admin` | `read` |
+    | `SHOW TABLES` | `admin` | `admin` | `read` |
+    | `DESCRIBE users` | `read` | `read` | `read` |
+
+    On a `READ`-only console over PostgreSQL or SQLite, then, `EXPLAIN` is
+    refused. That is the safe default working — `EXPLAIN ANALYZE` runs the
+    statement — not a bug to work around by granting the operator `ADMIN`.
 
 ### Deny beats allow
 

@@ -16,7 +16,7 @@ def risky() -> None:
     raise RuntimeError("boom")
 
 
-user = UserModel(name="Ana", email="ana@example.com")
+user = UserModel(email="ana@example.com")
 
 
 # Imperativo — chame uma vez durante o bootstrap.

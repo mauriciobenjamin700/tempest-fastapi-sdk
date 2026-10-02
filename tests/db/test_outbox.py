@@ -1,7 +1,10 @@
 """Tests for the transactional outbox: model, save_with_outbox, relay."""
 
+import asyncio
+import functools
 from collections.abc import AsyncGenerator
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -177,3 +180,112 @@ class TestValidation:
 
         with pytest.raises(ValueError):
             OutboxRelay(outbox_db, model=_OutboxModel, publish=_publish, batch_size=0)
+
+
+class _BrokerLike:
+    """Stand-in with the shape of ``MessageBroker.publish(channel, message)``."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[Any, Any]] = []
+
+    async def publish(self, channel: Any, message: Any, **options: Any) -> None:
+        self.calls.append((channel, message))
+
+
+class TestPublishContract:
+    """``OutboxRelay`` calls ``publish(event)`` with one argument.
+
+    A broker's bound ``publish(channel, message)`` passed raw used to be
+    accepted, then raised ``TypeError`` on every drain — swallowed by the
+    retry path, so each event ended ``FAILED`` without being published.
+    """
+
+    def test_raw_two_argument_publish_is_refused_at_construction(
+        self, outbox_db: AsyncDatabaseManager
+    ) -> None:
+        broker = _BrokerLike()
+        with pytest.raises(TypeError, match=r"publish\(event\)") as info:
+            OutboxRelay(outbox_db, model=_OutboxModel, publish=broker.publish)
+        assert "event.topic, event.payload" in str(info.value)
+
+    def test_non_callable_is_refused(self, outbox_db: AsyncDatabaseManager) -> None:
+        with pytest.raises(TypeError, match="callable"):
+            OutboxRelay(outbox_db, model=_OutboxModel, publish="nope")  # type: ignore[arg-type]
+
+    def test_one_argument_shapes_are_accepted(
+        self, outbox_db: AsyncDatabaseManager
+    ) -> None:
+        broker = _BrokerLike()
+
+        async def wrapper(event: BaseOutboxModel) -> None:
+            await broker.publish(event.topic, event.payload)
+
+        class _Callable:
+            async def __call__(self, event: BaseOutboxModel) -> None:
+                return None
+
+        async def two(topic: str, event: BaseOutboxModel) -> None:
+            return None
+
+        accepted: list[Any] = [
+            wrapper,
+            lambda e: broker.publish(e.topic, e.payload),
+            functools.partial(two, "orders"),
+            _Callable(),
+            AsyncMock(),
+        ]
+        for publish in accepted:
+            OutboxRelay(outbox_db, model=_OutboxModel, publish=publish)
+
+    @pytest.mark.asyncio
+    async def test_wrapped_broker_publishes_topic_then_payload(
+        self, outbox_db: AsyncDatabaseManager
+    ) -> None:
+        broker = _BrokerLike()
+
+        async def publish(event: BaseOutboxModel) -> None:
+            await broker.publish(event.topic, event.payload)
+
+        async with outbox_db.get_session_context() as session:
+            session.add(_OutboxModel.new_event("orders.paid", {"order_id": "1"}))
+            await session.commit()
+
+        relay = OutboxRelay(outbox_db, model=_OutboxModel, publish=publish)
+        assert await relay.drain_once() == 1
+        assert broker.calls == [("orders.paid", {"order_id": "1"})]
+
+
+class TestAtLeastOnce:
+    """Delivery is at-least-once: a published event can be published again."""
+
+    @pytest.mark.asyncio
+    async def test_drain_cut_short_after_publish_republishes_the_event(
+        self, outbox_db: AsyncDatabaseManager
+    ) -> None:
+        """The ``SENT`` flip commits at the end of the batch, after publishing.
+
+        A drain interrupted between the two — here a ``CancelledError`` on
+        the second event, standing in for a worker killed mid-batch — rolls
+        the flip back, so the first event, already handed to the broker,
+        is still ``PENDING`` and the next drain publishes it again.
+        """
+        async with outbox_db.get_session_context() as session:
+            session.add(_OutboxModel.new_event("a", {"n": 1}))
+            await session.commit()
+            session.add(_OutboxModel.new_event("b", {"n": 2}))
+            await session.commit()
+
+        seen: list[str] = []
+        cancel_on: set[str] = {"b"}
+
+        async def publish(event: BaseOutboxModel) -> None:
+            seen.append(event.topic)
+            if event.topic in cancel_on:
+                raise asyncio.CancelledError
+
+        relay = OutboxRelay(outbox_db, model=_OutboxModel, publish=publish)
+        with pytest.raises(asyncio.CancelledError):
+            await relay.drain_once()
+        cancel_on.clear()
+        assert await relay.drain_once() == 2
+        assert seen == ["a", "b", "a", "b"]

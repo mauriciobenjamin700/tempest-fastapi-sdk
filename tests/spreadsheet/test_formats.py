@@ -3,11 +3,12 @@
 Two things are asserted here, and only one of them is a string comparison.
 
 The literal values are fixed because the **language code is the whole
-point**: `[$R$-416]` renders `1.234,56` in any locale, while a plain
-`#,##0.00` renders `1,234.56` for a reader whose machine is en-US. Dropping
-the `416` is a silent, invisible regression — the mask still looks right in
-review and the document is wrong on someone else's laptop. A literal test is
-what turns that into a failure.
+point**: rendered by LibreOffice 7.4 under en-US, `[$-416]#,##0.00` reads
+`1.234,56` while a plain `#,##0.00` reads `1,234.56` — and so does the
+currency-tagged `[$R$-416] #,##0.00`, which is why the currency mask is not
+written that way. Dropping the `416` is a silent, invisible regression — the
+mask still looks right in review and the document is wrong on someone
+else's laptop. A literal test is what turns that into a failure.
 
 The rest asserts behaviour that survives the file: what a cell actually
 holds once the workbook has been written and read back.
@@ -60,13 +61,13 @@ class TestFormatLiterals:
     @pytest.mark.parametrize(
         ("mask", "expected"),
         [
-            (BR_CURRENCY_FORMAT, "[$R$-416] #,##0.00"),
+            (BR_CURRENCY_FORMAT, '[$-416]"R$ "#,##0.00'),
             (BR_CURRENCY_FORMAT_NO_SYMBOL, "[$-416]#,##0.00"),
             (BR_QUANTITY_FORMAT, "[$-416]#,##0.00"),
             (BR_INTEGER_FORMAT, "[$-416]#,##0"),
-            (BR_PERCENT_FORMAT, "0.00%"),
-            (BR_DATE_FORMAT, "DD/MM/YYYY"),
-            (BR_DATETIME_FORMAT, "DD/MM/YYYY HH:MM"),
+            (BR_PERCENT_FORMAT, "[$-416]0.00%"),
+            (BR_DATE_FORMAT, "[$-416]DD/MM/YYYY"),
+            (BR_DATETIME_FORMAT, "[$-416]DD/MM/YYYY HH:MM"),
             (TEXT_FORMAT, "@"),
         ],
     )
@@ -84,10 +85,18 @@ class TestFormatLiterals:
             BR_CURRENCY_FORMAT_NO_SYMBOL,
             BR_QUANTITY_FORMAT,
             BR_INTEGER_FORMAT,
+            BR_PERCENT_FORMAT,
+            BR_DATE_FORMAT,
+            BR_DATETIME_FORMAT,
         ],
     )
     def test_numeric_masks_carry_the_language_code(self, mask: str) -> None:
-        """Without `416` the separators follow the reader's locale."""
+        """Without `416` the separators follow the reader's locale.
+
+        Percent and date masks are included: rendered by LibreOffice, a plain
+        `0.00%` reads `30.00%` under en-US and a plain `DD/MM/YYYY` reads
+        `14.08.2026` under de-DE, because `/` is the locale's date separator.
+        """
         assert "-416" in mask
 
 
@@ -109,6 +118,13 @@ class TestFormatsSurviveTheFile:
         cell = write_and_reopen(Decimal("1234.56"), BR_CURRENCY_FORMAT)
         assert cell.value == 1234.56  # type: ignore[attr-defined]
         assert cell.data_type == "n"  # type: ignore[attr-defined]
+
+    @pytest.mark.parametrize("mask", [BR_DATE_FORMAT, BR_DATETIME_FORMAT])
+    def test_language_code_keeps_openpyxl_reading_a_date(self, mask: str) -> None:
+        """The `[$-416]` prefix must not make the cell read back as a number."""
+        assert openpyxl.styles.numbers.is_date_format(mask)
+        cell = write_and_reopen(datetime(2026, 8, 14, 19, 30), mask)
+        assert cell.is_date  # type: ignore[attr-defined]
 
     def test_datetime_cell_stays_a_datetime(self) -> None:
         cell = write_and_reopen(datetime(2026, 8, 14, 19, 30), BR_DATETIME_FORMAT)

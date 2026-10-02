@@ -144,7 +144,13 @@ from src.db.models import AuditLog, Category, Order, OrderItem, Product, User
 
 
 def access_policy(user: User, admin: AdminModel, action: AdminPermission) -> bool:
-    """superadmin does everything; staff read-only; no one else gets in."""
+    """superadmin does everything; staff read-only; any other role does nothing.
+
+    The policy only runs for whoever already passed the login, and the
+    `UserModelAuthBackend` login requires `is_admin=True` and
+    `is_active=True`. What bars the door is `is_admin`; `role` decides what
+    happens inside.
+    """
     if user.role == "superadmin":
         return True
     if user.role == "staff":
@@ -195,6 +201,12 @@ site.register(
 # OrderItem needs a registered admin for the inline's links to work:
 site.register(AdminModel(model=OrderItem, autocomplete_fields=[OrderItem.product_id]))
 ```
+
+!!! warning "`role` does not open the door — `is_admin` does"
+    `UserModelAuthBackend` refuses at login every user without
+    `is_admin=True`, before any policy runs. A `User` with `role="staff"`
+    and `is_admin=False` never reaches the panel; for staff to read, the
+    row needs `is_admin=True` **and** `role="staff"`.
 
 ## 4. Mounting the router
 
@@ -505,7 +517,7 @@ from src.api.dependencies.admin_stream import require_admin
 from src.api.dependencies.resources import get_broker
 from src.db.models import User
 
-STAFF_CHANNEL = "staff.alerts"
+STAFF_CHANNEL = "staff"
 
 
 router = APIRouter(prefix="/admin/notifications")
@@ -553,10 +565,14 @@ The endpoint itself is one line. Step by step, on every
 
 Web Push needs each device to subscribe; `make_web_push_router` ships
 `/subscribe` + `/unsubscribe` ready-made (like `make_auth_router`). Wire
-them into the §4 `create_app`, next to the admin router and the stream:
+them into the §4 `create_app`, next to the admin router and the stream —
+§4 leaves no module-level `app`, so the wiring is a function `create_app`
+calls with the app it just built (`mount_notifications(app)` before
+`return app`):
 
 ```python
 # src/api/app.py  (adding to §4)
+from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import (
@@ -567,29 +583,37 @@ from tempest_fastapi_sdk import (
     make_web_push_router,
 )
 
-from src.api.app import app       # the app assembled in §4
 from src.api.dependencies import get_current_user_id, get_session
 from src.api.routers.admin_stream import router as admin_stream_router
 from src.core.settings import settings
 from src.db.models import WebPushSubscription
 
-broker = SSEBroker()   # the same singleton get_broker resolves
+broker = SSEBroker()
 
 
-def _push_service(session: AsyncSession) -> WebPushSubscriptionService:
+def _push_service(
+    session: AsyncSession,
+) -> WebPushSubscriptionService[WebPushSubscription]:
+    """Build the subscription service over the request's session."""
     repo = BaseRepository(session, model=WebPushSubscription)
     return WebPushSubscriptionService(repo, WebPushDispatcher(**settings.webpush_kwargs()))
 
 
-app.state.broker = broker
-app.include_router(admin_stream_router)
-app.include_router(
-    make_web_push_router(
-        service_factory=_push_service,
-        session_factory=get_session,
-        current_user_id=get_current_user_id,
+def mount_notifications(app: FastAPI) -> None:
+    """Wire the panel stream and device subscription into the §4 app.
+
+    Call it inside `create_app`, before `return app`. The `broker` is the
+    same singleton `get_broker` resolves.
+    """
+    app.state.broker = broker
+    app.include_router(admin_stream_router)
+    app.include_router(
+        make_web_push_router(
+            service_factory=_push_service,
+            session_factory=get_session,
+            current_user_id=get_current_user_id,
+        )
     )
-)
 # GET  /admin/notifications/stream         (SSE, admin cookie)
 # POST /api/push/subscribe | /unsubscribe  (device registration)
 ```

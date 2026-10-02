@@ -433,7 +433,8 @@ start** with:
 | --- | --- |
 | `@requires()` with no guard | `needs at least one guard` |
 | non-callable guard | `is not callable` |
-| guard with 2 required params | `takes 2 required params, expected 1 (user)` |
+| guard with 3+ required positional params | `takes 3 required params, expected 1 (user) or 2 (user, meta)` |
+| guard with a required keyword-only param | `has a required keyword-only parameter` |
 | `async` guard on a sync function | `is async but ... is not` |
 | no user parameter | `no parameter annotated with a user model` |
 | two user parameters | `several parameters are user models` |

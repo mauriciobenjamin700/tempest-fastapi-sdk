@@ -432,7 +432,8 @@ com:
 | --- | --- |
 | `@requires()` sem guard | `needs at least one guard` |
 | guard não-callable | `is not callable` |
-| guard com 2 parâmetros obrigatórios | `takes 2 required params, expected 1 (user)` |
+| guard com 3+ parâmetros posicionais obrigatórios | `takes 3 required params, expected 1 (user) or 2 (user, meta)` |
+| guard com parâmetro keyword-only obrigatório | `has a required keyword-only parameter` |
 | guard `async` em função sync | `is async but ... is not` |
 | nenhum parâmetro de usuário | `no parameter annotated with a user model` |
 | dois parâmetros de usuário | `several parameters are user models` |

@@ -189,10 +189,34 @@ one is a number.
 | `BR_DATETIME_FORMAT` | `14/08/2026 19:30` | Date and time |
 | `TEXT_FORMAT` | exactly what you wrote | An identifier that looks numeric |
 
-What makes these masks work is the embedded language code — `[$R$-416]` for
-currency, `[$-416]` for the rest. It pins the dot as thousands separator and
-the comma as decimal **inside the file**, so the document reads the same on
-any machine.
+What makes these masks work is the pt-BR language code, `[$-416]`, at the
+start of **every one of them** — currency, percent and dates included. It
+pins the dot as thousands separator, the comma as decimal and the slash as
+date separator **inside the file**, so the document does not depend on the
+machine of whoever opens it.
+
+Measured by opening the same workbook in LibreOffice 7.4 headless under
+three locales:
+
+| Constant | en-US | de-DE | pt-BR |
+| --- | --- | --- | --- |
+| `BR_CURRENCY_FORMAT` | `R$ 1.234,56` | `R$ 1.234,56` | `R$ 1.234,56` |
+| `BR_PERCENT_FORMAT` | `30,00%` | `30,00%` | `30,00%` |
+| `BR_DATE_FORMAT` | `14/08/2026` | `14/08/2026` | `14/08/2026` |
+| `0.00%` (no code) | `30.00%` | `30,00 %` | `30,00%` |
+| `DD/MM/YYYY` (no code) | `14/08/2026` | `14.08.2026` | `14/08/2026` |
+| `[$R$-416] #,##0.00` | `R$ 1,234.56` | `R$ 1.234,56` | `R$ 1.234,56` |
+
+!!! warning "The date slash is not a literal"
+    In a date mask, `/` is the **locale's** date separator, not the slash
+    character. Without `[$-416]`, a German reader sees `14.08.2026`.
+
+!!! info "Why the currency mask does not use `[$R$-416]`"
+    `[$R$-416]` is the "currency symbol with language" form and looks like
+    the natural way to write reais. It does not pin the separators: the last
+    row of the table shows LibreOffice reading `1,234.56` under en-US. So
+    `BR_CURRENCY_FORMAT` is `[$-416]"R$ "#,##0.00` — the language code first
+    and the symbol as a quoted literal. Excel was not measured.
 
 !!! danger "A percent cell holds the ratio, not the percentage"
     Excel multiplies by 100 itself. A cell with `BR_PERCENT_FORMAT` must
@@ -325,8 +349,8 @@ async def download_budget(budget_id: int) -> Response:
   `write_row`, `total_row`, `blank_rows` — all return the next free row.
 * Write **numbers**; the mask presents them. Finished text kills sum and
   filter.
-* The `BR_*` masks embed language code `416`, so the file reads the same
-  under any locale.
+* The `BR_*` masks start with language code `[$-416]`, so the file reads
+  the same under en-US, de-DE and pt-BR (measured in LibreOffice 7.4).
 * `SheetStyle` is plain data, so a theme exists without the extra.
 * `workbook_to_bytes` hands you bytes — HTTP response, storage, e-mail.
 
