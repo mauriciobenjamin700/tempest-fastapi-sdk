@@ -162,16 +162,40 @@ No rollout, o orquestrador manda `SIGTERM` e, depois de um tempo,
 é cortada — vira um 502 intermitente. `GracefulShutdownMiddleware`:
 
 1. Ao entrar em **drenagem**, responde `503` + `Retry-After` pra requests
-   novas, então o load balancer para de rotear pra esse pod.
+   novas — inclusive no endpoint de health, que é o que faz o load balancer
+   parar de rotear pra esse pod.
 2. **Conta** as requests em voo; `wait_drained()` espera elas terminarem
-   (com timeout) antes do processo sair.
+   (com timeout).
 
-Você segura a instância e dirige a drenagem pelo `lifespan` (o uvicorn
-roda o shutdown do lifespan no `SIGTERM` — e é ele quem cuida do sinal):
+### O que o uvicorn já faz sozinho no `SIGTERM`
+
+Antes de escolher onde ligar a drenagem, veja o que acontece sob o uvicorn.
+Medido com o uvicorn num subprocesso, uma request de 3 s em voo e `SIGTERM`
+0,5 s depois:
+
+```text
+after SIGTERM: /health ConnectError
+in-flight /slow: 200
+LIFESPAN-SHUTDOWN in_flight=0
+LIFESPAN-DRAINED True
+```
+
+O uvicorn **fecha o listener na hora** (a request nova nem conecta), **espera
+ele mesmo** a request em voo terminar e só **depois** roda o shutdown do
+lifespan. Ou seja: um `begin_drain()` no shutdown do lifespan chega quando
+não há mais request nenhuma — nunca emite um `503`, e o `wait_drained()`
+volta `True` na hora. A espera pelas requests em voo, sob o uvicorn, é a do
+próprio uvicorn, limitada pelo `--timeout-graceful-shutdown`.
+
+### Drenar **antes** do `SIGTERM`
+
+O `503` só serve se sair enquanto o listener ainda aceita conexão — ou seja,
+antes do `SIGTERM`. No Kubernetes, esse momento é o hook `preStop`, que roda
+antes do sinal. Ligue a drenagem a um sinal que o uvicorn **não** usa
+(`SIGUSR1`) e mande esse sinal do `preStop`:
 
 ```python
-from contextlib import asynccontextmanager
-from collections.abc import AsyncGenerator
+import signal
 
 from fastapi import FastAPI
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -180,28 +204,53 @@ from tempest_fastapi_sdk import GracefulShutdownMiddleware
 
 shutdown: GracefulShutdownMiddleware = GracefulShutdownMiddleware(drain_timeout=25.0)
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Drena as requests em voo no shutdown."""
-    yield
-    shutdown.begin_drain()
-    await shutdown.wait_drained()
-
-
-app: FastAPI = FastAPI(lifespan=lifespan)
+app: FastAPI = FastAPI()
 app.add_middleware(BaseHTTPMiddleware, dispatch=shutdown.dispatch)
+shutdown.install_signal_handlers((signal.SIGUSR1,))
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    """Readiness: responde 503 assim que a drenagem começa."""
+    return {"status": "ok"}
 ```
 
-Configure o grace period do orquestrador um pouco **acima** do
-`drain_timeout`, e o `--timeout-graceful-shutdown` do uvicorn pra casar.
+```yaml
+lifecycle:
+  preStop:
+    exec:
+      command: ["sh", "-c", "kill -USR1 1 && sleep 15"]
+```
 
-!!! warning "O sinal é do seu servidor"
-    O uvicorn já instala handlers de `SIGTERM` e dispara o shutdown do
-    lifespan — dirija a drenagem por lá. O método opt-in
-    `install_signal_handlers()` só serve pra servidores que **não**
-    gerenciam sinais sozinhos; ele encadeia o handler anterior e é no-op
-    fora da thread principal.
+Medido com o mesmo app, mandando `SIGUSR1` antes do `SIGTERM`:
+
+```text
+after SIGUSR1: /health 503 Retry-After= 5
+after SIGTERM: /health ConnectError
+in-flight /slow: 200
+```
+
+Depois do `SIGUSR1`, toda request nova recebe `503` com `Retry-After` — a
+readiness probe falha e o pod sai do balanceamento — enquanto a request em
+voo termina com `200`. O `sleep` do `preStop` dá tempo pra isso acontecer; o
+`SIGTERM` chega depois, e o uvicorn espera o que ainda estiver em voo.
+
+!!! warning "Um processo por pod"
+    `kill -USR1 1` alcança o processo de PID 1 do container — o seu
+    `python main.py` quando o `CMD` está na forma exec. Com
+    `uvicorn --workers N`, o PID 1 é o supervisor e o sinal não chega aos
+    workers; nesse caso rode um worker por pod, ou mande o sinal para cada
+    worker.
+
+!!! info "`install_signal_handlers` precisa da thread principal"
+    O `signal.signal` só funciona na thread principal; fora dela o método não
+    faz nada. A medição acima chama o método no nível do módulo de um
+    `main.py` que sobe com `uvicorn.run(app)`. Não passe `SIGTERM` nem
+    `SIGINT`: esses são do uvicorn.
+
+Configure o grace period do orquestrador (`terminationGracePeriodSeconds`)
+acima da soma do `sleep` do `preStop` com o `--timeout-graceful-shutdown` do
+uvicorn.
 
 ## Recap
 
@@ -212,4 +261,7 @@ Configure o grace period do orquestrador um pouco **acima** do
   dialeto (Postgres via `pg_dump`/`pg_restore`, SQLite por cópia), a partir da
   mesma `DATABASE_URL` do serviço.
 - `GracefulShutdownMiddleware` responde `503` durante a drenagem e
-  `wait_drained()` espera as requests em voo — dirigido pelo `lifespan`.
+  `wait_drained()` espera as requests em voo. Sob o uvicorn, dispare a
+  drenagem **antes** do `SIGTERM` (`install_signal_handlers((signal.SIGUSR1,))`
+  + `preStop`): no shutdown do lifespan o listener já fechou e não há
+  request pra recusar.

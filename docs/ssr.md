@@ -234,7 +234,7 @@ Container(
         ],
     ),
 )
-# <section><div style="display: flex"><h2>Título</h2>…<small>v1.0</small></div></section>
+# <section><div style="display: flex; flex-direction: row"><h2>Título</h2><div style="flex-grow: 1"></div><small>v1.0</small></div></section>
 ```
 
 !!! warning "`Button.on_click` é ignorado no SSR"
@@ -266,10 +266,17 @@ Column(
 ```
 
 - `Edge.all(16)` / `Edge.symmetric(vertical=8, horizontal=16)` /
-  `Edge.only(top=4)` — margens e paddings tipados.
+  `Edge(top=4)` — margens e paddings tipados (não há `Edge.only`; os
+  lados que você não passa ficam em `0`).
 - `gap`, `padding`, `margin`, cores e tipografia saem no `style=""` inline.
-- A conversão `Style → CSS` é **byte-idêntica** entre o renderizador
-  Python (SSR) e o cliente JS (WASM/server) — a mesma tela nos dois lados.
+- A conversão `Style → CSS` do renderizador Python (SSR) é um port do
+  `styleToCss` do cliente JS (WASM/server), e o `tempestweb` declara as
+  duas saídas idênticas byte a byte, para a página não "pular" quando o
+  cliente re-renderiza. Medido no `tempestweb` 0.127.0 (o piso do extra
+  `[ssr]`) com três `Style` — o deste exemplo, um `Edge.symmetric` com
+  `radius`, e um com margem, borda, cores, `font_size` e `width`
+  fracionário —, as duas funções emitiram a mesma string nos três. É uma
+  amostra, não prova para todo campo do `Style`.
 
 !!! info "Para seletor, `:hover` e media query, use a folha tipada"
     O `Style` inline é ótimo para layout local e componentes
@@ -761,8 +768,11 @@ def view(app: App[object]) -> Widget:
 - **`Page`** — componente tipado; declare campos, implemente `body()`,
   opcionalmente sobrescreva `shell()` para layout compartilhado. Não
   sobrescreva `render()`.
-- **`html_response(widget, *, title, status_code, htmx, document, lang)`** —
-  renderiza e devolve um `HTMLResponse`. `document=True` exige `title`;
+- **`html_response(widget, *, title, status_code, htmx, document, lang, stylesheets, head, confirm)`** —
+  renderiza e devolve um `HTMLResponse`. Com `document=True`, o `title` vem
+  do argumento ou, para um `Page`, do `title` da página mais o `title_suffix` (qualquer
+  outro widget sem `title` levanta `ValueError`); `stylesheets=` e `head=`
+  substituem os do `Page`; `confirm=` liga o listener de `data-confirm`.
   `document=False` devolve um fragmento para trocas HTMX.
 - **`make_htmx_router(prefix="/_ssr")`** — serve o HTMX embutido
   localmente em `GET /_ssr/htmx.js`; combine com `htmx=True`.

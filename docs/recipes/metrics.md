@@ -37,18 +37,22 @@ def create_app() -> FastAPI:
     return app
 ```
 
-Pronto. `GET /metrics` agora devolve algo como:
+Pronto. Depois de duas requests a uma rota `GET /api/users/{user_id}`, o `GET /metrics` devolve (trecho da saída real; as linhas `..._created` e os demais buckets foram cortados, e o `in_progress` conta o próprio scrape):
 
 ```text
-# HELP http_requests_total Total HTTP requests
+# HELP http_requests_total HTTP requests by method, route template, and response status.
 # TYPE http_requests_total counter
-http_requests_total{method="GET",path="/api/users",status="200"} 142.0
-http_requests_total{method="POST",path="/auth/signup",status="201"} 7.0
-# HELP http_request_duration_seconds HTTP request latency
-# TYPE http_request_duration_seconds histogram
-http_request_duration_seconds_bucket{le="0.005",method="GET",path="/api/users"} 89.0
+http_requests_total{method="GET",path="/api/users/{user_id}",status="200"} 2.0
 ...
-http_requests_in_progress{method="GET"} 2.0
+# HELP http_request_duration_seconds HTTP request latency by method and route template (seconds).
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{le="0.005",method="GET",path="/api/users/{user_id}"} 2.0
+...
+http_request_duration_seconds_count{method="GET",path="/api/users/{user_id}"} 2.0
+...
+# HELP http_requests_in_progress HTTP requests currently being handled.
+# TYPE http_requests_in_progress gauge
+http_requests_in_progress{method="GET"} 1.0
 ```
 
 Buckets padrão (`DEFAULT_LATENCY_BUCKETS`) cobrem 5ms → 10s — adequado pra APIs típicas. Sobrescreva com `PrometheusMiddleware(registry=..., latency_buckets=(0.001, 0.005, 0.025, 0.1, 0.5, 2, 10))` quando seu workload é mais granular.

@@ -269,14 +269,22 @@ class TestWebSocketRouter:
         assert received["data"]["received"] == "chat.message"
 
     def test_invalid_token_closed_with_4401(self) -> None:
+        """The handshake is accepted, then closed with ``4401``.
+
+        The live counterpart in ``test_router_live.py`` is the one that
+        tells this apart from a pre-accept close, which the test client
+        reports with the same code.
+        """
         hub = WebSocketHub()
         app = _build_app(hub=hub, user_id=uuid4())
         with (
             TestClient(app) as client,
-            pytest.raises(Exception),  # noqa: B017 — Starlette closes the handshake
-            client.websocket_connect("/ws?token=wrong"),
+            client.websocket_connect("/ws?token=wrong") as ws,
+            pytest.raises(WebSocketDisconnect) as excinfo,
         ):
-            pass
+            ws.receive_json()
+        assert excinfo.value.code == 4401
+        assert hub.connection_count() == 0
 
     def test_subprotocol_bearer_negotiation(self) -> None:
         user_id = uuid4()

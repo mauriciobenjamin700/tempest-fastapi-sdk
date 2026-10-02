@@ -726,8 +726,10 @@ def create_app() -> FastAPI:
     `max_requests` / `window_seconds` / `store` describe **one** sliding
     window. With `policy=` you pass a *list* of limits, and the counters live
     in `quota_store=` (`MemoryQuotaStore` by default, `RedisQuotaStore` for
-    multi-replica). Passing both raises `ValueError` at construction —
-    honoring one would silently ignore the other.
+    multi-replica). Passing both raises `ValueError` when Starlette builds the
+    middleware stack — at lifespan startup, not on the `add_middleware` line,
+    which returns without error. Honoring one would silently ignore the
+    other.
 
 ### Per-plan quotas
 
@@ -1169,7 +1171,7 @@ With `cache_credentialed=True` a digest of the credential headers joins the key,
 ## Webhook signature verification
 
 
-`WebhookSignatureVerifier` validates HMAC-signed inbound webhooks (Stripe / GitHub style) and exposes a FastAPI dependency that reads the raw body, checks the signature with `hmac.compare_digest`, and yields the body bytes so the route handler can re-parse it without re-reading the stream.
+`WebhookSignatureVerifier` validates HMAC-signed inbound webhooks (GitHub style) and exposes a FastAPI dependency that reads the raw body, checks the signature with `hmac.compare_digest`, and yields the body bytes so the route handler can re-parse it without re-reading the stream.
 
 ```python
 # src/api/dependencies/webhooks.py
@@ -1184,13 +1186,17 @@ github = WebhookSignatureVerifier(
     header_name="X-Hub-Signature-256",
     prefix="sha256=",
 )
-stripe = WebhookSignatureVerifier(
-    secret=settings.STRIPE_WEBHOOK_SECRET,
-    algorithm="sha256",
-    header_name="Stripe-Signature",
-    encoding="hex",
-)
 ```
+
+!!! warning "Stripe does not fit this verifier"
+    `Stripe-Signature` is not a hex HMAC of the body: it is
+    `t=<timestamp>,v1=<hex>`, and what Stripe signs is `"<t>." + body`. A
+    `WebhookSignatureVerifier(header_name="Stripe-Signature",
+    encoding="hex")` rejects every legitimate delivery — measured with a
+    header produced by `sign_payload`, `verify` returns `False`. For Stripe
+    use `make_stripe_webhook_dependency` from the
+    [Stripe integration](stripe.md), which parses the header and checks the
+    time window.
 
 ```python
 # src/api/routers/webhooks.py
@@ -1236,7 +1242,7 @@ check_github = github.dependency(
 It is opt-in because a provider that sends no such header would have its legitimate traffic rejected. The SDK's own `WebhookSender` sends `X-Webhook-Timestamp`.
 
 !!! warning "The timestamp is not covered by the signature"
-    Since only the body is signed, whoever replays a capture can also rewrite the timestamp to a current one. The check bounds **accidental and opportunistic** replay, not an active attacker who reads and rewrites the request. Closing that depends on the provider signing `timestamp.body` — the shape Stripe uses; when yours does, verify it with `verifier.verify(f"{ts}.".encode() + body, signature)`.
+    Since only the body is signed, whoever replays a capture can also rewrite the timestamp to a current one. The check bounds **accidental and opportunistic** replay, not an active attacker who reads and rewrites the request. Closing that depends on the provider signing `timestamp.body` — the shape Stripe uses (and that the [Stripe integration](stripe.md) already verifies); when your provider does, verify it with `verifier.verify(f"{ts}.".encode() + body, signature)`.
 
 For providers that sign with an RSA private key (Apple App Store, Google Play, custom enterprise services), swap `WebhookSignatureVerifier` for `RSAWebhookSignatureVerifier` — same `verify(body, signature)` surface, but it validates the signature against a PEM-encoded public key. Uses `RSASSA-PKCS1-v1_5` over SHA-256/384/512 (configurable via `algorithm=`). Requires the `cryptography` package (installed by the `[webpush]` extra).
 
@@ -1269,9 +1275,9 @@ with exponential backoff. Other 4xx are **not** retried. The httpx
 client is injected (you own its lifecycle).
 
 !!! info "Installation"
-    The rest of the HTTP layer ships with `tempest-fastapi-sdk`.
-    `WebhookSender` needs the `[http]` extra —
-    `uv add "tempest-fastapi-sdk[http]"` (pulls in `httpx`).
+    `WebhookSender` uses `httpx`, which already ships with the base
+    `tempest-fastapi-sdk` package — no extra is needed. The `[http]` extra
+    still exists and is optional: it declares `httpx` explicitly.
 
 ```python
 import asyncio
@@ -1497,13 +1503,13 @@ Each mixin owns its own env-var prefix — pick only the ones the service needs:
 | Mixin | Env vars |
 | --- | --- |
 | `ServerSettings` | `SERVER_HOST`, `SERVER_PORT`, `SERVER_RELOAD`, `SERVER_DEBUG` |
-| `LogSettings` | `LOG_LEVEL`, `LOG_JSON` |
-| `DatabaseSettings` | `DATABASE_URL`, `DATABASE_ECHO`, `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW`, `DATABASE_POOL_RECYCLE` |
+| `LogSettings` | `LOG_LEVEL`, `LOG_JSON`, `LOG_DIR`, `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT` |
+| `DatabaseSettings` | `DATABASE_URL`, `DATABASE_ECHO`, `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW`, `DATABASE_POOL_RECYCLE`, `DATABASE_SQLITE_WAL`, `DATABASE_SQLITE_BUSY_TIMEOUT` |
 | `RedisSettings` | `REDIS_URL`, `REDIS_DECODE_RESPONSES` |
 | `RabbitMQSettings` | `RABBITMQ_URL`, `RABBITMQ_PREFETCH_COUNT` |
 | `TaskIQSettings` | `TASKIQ_BROKER_URL`, `TASKIQ_RESULT_BACKEND_URL`, `TASKIQ_STORE_RESULTS`, `TASKIQ_RESULT_TTL_SECONDS` |
 | `JWTSettings` | `JWT_SECRET`, `JWT_ALGORITHM`, `JWT_ACCESS_TTL_SECONDS`, `JWT_REFRESH_TTL_SECONDS`, `JWT_ISSUER` |
-| `CORSSettings` | `CORS_ORIGINS`, `CORS_ALLOW_CREDENTIALS`, `CORS_ALLOW_METHODS`, `CORS_ALLOW_HEADERS`, `CORS_EXPOSE_HEADERS`, `CORS_MAX_AGE` |
+| `CORSSettings` | `CORS_ORIGINS`, `CORS_ORIGIN_REGEX`, `CORS_ALLOW_CREDENTIALS`, `CORS_ALLOW_METHODS`, `CORS_ALLOW_HEADERS`, `CORS_EXPOSE_HEADERS`, `CORS_MAX_AGE` |
 | `EmailSettings` | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_ADDR`, `SMTP_USE_TLS`, `SMTP_USE_SSL`, `SMTP_TIMEOUT_SECONDS` |
 | `UploadSettings` | `UPLOAD_DIR`, `UPLOAD_MAX_SIZE_BYTES`, `UPLOAD_ALLOWED_EXTENSIONS`, `UPLOAD_ALLOWED_MIMETYPES` |
 | `TokenSettings` | `TOKEN_SECRET` |

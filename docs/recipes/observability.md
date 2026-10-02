@@ -20,40 +20,79 @@ SQLAlchemy (queries) e httpx (chamadas de saída). Requer o extra `[otel]`:
 uv add "tempest-fastapi-sdk[otel]"
 ```
 
-Chame uma vez no startup, depois que a app existe e (quando quiser tracear
-queries) depois que o banco conectou:
+São **dois momentos**, e cada um tem a sua chamada:
 
-```python
+1. `setup_tracing` no **nível do módulo**, logo depois de criar a app (ou
+   dentro da sua `create_app`). É aqui que as requests passam a virar span.
+2. `instrument_sqlalchemy_engine` no **lifespan**, logo depois do
+   `db.connect()` — o engine do `AsyncDatabaseManager` só existe depois do
+   `connect()`.
+
+```python hl_lines="16 22"
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from tempest_fastapi_sdk import AsyncDatabaseManager, setup_tracing
+from tempest_fastapi_sdk.api import instrument_sqlalchemy_engine
 
 db: AsyncDatabaseManager = AsyncDatabaseManager("postgresql+asyncpg://...")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Conecta o banco e liga o tracing."""
+    """Conecta o banco e instrumenta o engine recém-criado."""
     await db.connect()
-    setup_tracing(
-        app,
-        service_name="orders-api",
-        otlp_endpoint="http://otel-collector:4317",
-        sqlalchemy_engine=db.engine,
-    )
+    instrument_sqlalchemy_engine(db.engine)
     yield
     await db.disconnect()
 
 
 app: FastAPI = FastAPI(lifespan=lifespan)
+setup_tracing(
+    app,
+    service_name="orders-api",
+    otlp_endpoint="http://otel-collector:4317",
+)
 ```
 
-Pronto: cada request vira um span pai, cada query e cada chamada httpx vira
-um span filho, e o trace inteiro aparece no Jaeger / Tempo / Honeycomb sob o
-nome `orders-api`.
+Pronto: cada request vira um span raiz, e as queries e as chamadas httpx
+feitas dentro dela viram spans filhos. Medido com um exportador em memória e
+o banco em SQLite em memória, uma request `GET /orders` que chama httpx e
+roda um `SELECT 1` produz estes spans (`span <- pai`; o sufixo
+`file:tempest_mem_<hex>` é o nome do banco em memória, encurtado aqui):
+
+```text
+GET <- GET /orders
+connect <- GET /orders
+BEGIN file:tempest_mem_<hex> <- GET /orders
+SELECT file:tempest_mem_<hex> <- GET /orders
+GET /orders http send <- GET /orders
+GET /orders http send <- GET /orders
+GET /orders <- None
+```
+
+O trace inteiro aparece no Jaeger / Tempo / Honeycomb sob o nome
+`orders-api`.
+
+!!! warning "Não chame `setup_tracing` dentro do lifespan"
+    O span de request vem de embrulhar a pilha de middleware da app, e o
+    Starlette monta essa pilha no **primeiro evento ASGI** que recebe — que é
+    justamente o startup do lifespan. Chamado de lá, `setup_tracing` encontra
+    a pilha já montada e **nenhuma request vira span**; as queries até saem,
+    mas como raízes soltas, sem request pai. Desde a 0.303.0 a função detecta
+    esse caso e emite um `RuntimeWarning` em vez de falhar em silêncio.
+
+!!! tip "Engine que já existe no nível do módulo"
+    Se o engine já existe antes do lifespan (um `create_async_engine`
+    seu, no módulo), dá para passá-lo direto:
+    `setup_tracing(app, ..., sqlalchemy_engine=engine)`. Para o engine do
+    `AsyncDatabaseManager`, use `instrument_sqlalchemy_engine` depois do
+    `connect()`. Um engine por processo: o instrumentador do SQLAlchemy é
+    singleton, e uma segunda chamada (para outro engine) só loga
+    `Attempting to instrument while already instrumented` — medido, as
+    queries do segundo engine não geram span.
 
 ### Sem coletor (debug local)
 
@@ -99,7 +138,9 @@ setup_tracing(
     SQLAlchemy e httpx só são instrumentados se os pacotes
     `opentelemetry-instrumentation-sqlalchemy` /
     `...-httpx` estiverem instalados (o extra `[otel]` já traz os dois). Se
-    faltarem, a instrumentação é pulada em silêncio em vez de quebrar o boot.
+    faltarem, `setup_tracing` pula essa instrumentação em silêncio em vez de
+    quebrar o boot. `instrument_sqlalchemy_engine`, por ser um pedido
+    explícito, levanta `ImportError` nesse caso.
 
 ## Slow query logger
 
@@ -166,7 +207,10 @@ Pra desligar (ex.: num shutdown ou teste), chame `slow.detach()`.
 
 - `setup_tracing(app, service_name=..., otlp_endpoint=...)` liga tracing
   distribuído com auto-instrumentação de FastAPI/SQLAlchemy/httpx — extra
-  `[otel]`.
+  `[otel]`. Chame no nível do módulo, nunca no lifespan.
+- `instrument_sqlalchemy_engine(db.engine)` no lifespan, depois do
+  `connect()`, põe as queries do `AsyncDatabaseManager` sob o span da
+  request.
 - `otlp_endpoint=None` exporta spans pro console (debug local);
   `sample_ratio` controla a amostragem.
 - `SlowQueryLogger(engine, threshold_ms=...).attach()` loga queries lentas

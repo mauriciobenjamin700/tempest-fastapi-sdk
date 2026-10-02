@@ -727,8 +727,9 @@ def create_app() -> FastAPI:
     deslizante. Com `policy=` você passa uma *lista* de limites, e os
     contadores vivem em `quota_store=` (`MemoryQuotaStore` por padrão,
     `RedisQuotaStore` para multi-réplica). Passar os dois levanta
-    `ValueError` na construção — honrar um significaria ignorar o outro em
-    silêncio.
+    `ValueError` quando o Starlette monta a pilha de middleware — no startup
+    do lifespan, não na linha do `add_middleware`, que retorna sem erro.
+    Honrar um significaria ignorar o outro em silêncio.
 
 ### Cotas por plano
 
@@ -1167,7 +1168,7 @@ Com `cache_credentialed=True` um digest dos headers de credencial entra na chave
 ## Verificação de assinatura de webhook
 
 
-`WebhookSignatureVerifier` valida webhooks de entrada assinados com HMAC (estilo Stripe / GitHub) e expõe uma dependência FastAPI que lê o corpo cru, checa a assinatura com `hmac.compare_digest` e entrega os bytes do corpo para que o handler da rota possa reparsear sem reler o stream.
+`WebhookSignatureVerifier` valida webhooks de entrada assinados com HMAC (estilo GitHub) e expõe uma dependência FastAPI que lê o corpo cru, checa a assinatura com `hmac.compare_digest` e entrega os bytes do corpo para que o handler da rota possa reparsear sem reler o stream.
 
 ```python
 # src/api/dependencies/webhooks.py
@@ -1182,13 +1183,16 @@ github = WebhookSignatureVerifier(
     header_name="X-Hub-Signature-256",
     prefix="sha256=",
 )
-stripe = WebhookSignatureVerifier(
-    secret=settings.STRIPE_WEBHOOK_SECRET,
-    algorithm="sha256",
-    header_name="Stripe-Signature",
-    encoding="hex",
-)
 ```
+
+!!! warning "Stripe não cabe neste verificador"
+    O `Stripe-Signature` não é um hex do HMAC do corpo: é
+    `t=<timestamp>,v1=<hex>`, e o que a Stripe assina é `"<t>." + corpo`.
+    Um `WebhookSignatureVerifier(header_name="Stripe-Signature",
+    encoding="hex")` recusa toda entrega legítima — medido com um header
+    gerado por `sign_payload`, `verify` devolve `False`. Para a Stripe use
+    `make_stripe_webhook_dependency` da [integração Stripe](stripe.md), que
+    parseia o header e checa a janela de tempo.
 
 ```python
 # src/api/routers/webhooks.py
@@ -1234,7 +1238,7 @@ check_github = github.dependency(
 É opt-in porque provedor que não manda esse header teria o tráfego legítimo recusado. O `WebhookSender` do próprio SDK envia `X-Webhook-Timestamp`.
 
 !!! warning "O timestamp não entra na assinatura"
-    Como só o corpo é assinado, quem replica uma captura também pode reescrever o timestamp pra um atual. A checagem limita replay **acidental e oportunista**, não um atacante ativo que lê e reescreve a request. Fechar isso depende do provedor assinar `timestamp.body` — o formato que o Stripe usa; quando o seu fizer isso, valide com `verifier.verify(f"{ts}.".encode() + body, signature)`.
+    Como só o corpo é assinado, quem replica uma captura também pode reescrever o timestamp pra um atual. A checagem limita replay **acidental e oportunista**, não um atacante ativo que lê e reescreve a request. Fechar isso depende do provedor assinar `timestamp.body` — o formato que a Stripe usa (e que a [integração Stripe](stripe.md) já verifica); quando o seu provedor fizer isso, valide com `verifier.verify(f"{ts}.".encode() + body, signature)`.
 
 Para provedores que assinam com uma chave privada RSA (Apple App Store, Google Play, serviços enterprise custom), troque `WebhookSignatureVerifier` por `RSAWebhookSignatureVerifier` — mesma superfície `verify(body, signature)`, mas valida a assinatura contra uma chave pública codificada em PEM. Usa `RSASSA-PKCS1-v1_5` sobre SHA-256/384/512 (configurável via `algorithm=`). Requer o pacote `cryptography` (instalado com o extra `[webpush]`).
 
@@ -1267,9 +1271,9 @@ backoff exponencial. Outros 4xx **não** são re-tentados. O cliente httpx
 é injetado (você é dono do ciclo de vida).
 
 !!! info "Instalação"
-    O resto da camada HTTP já vem com `tempest-fastapi-sdk`. O
-    `WebhookSender` depende do extra `[http]` —
-    `uv add "tempest-fastapi-sdk[http]"` (traz `httpx`).
+    O `WebhookSender` usa `httpx`, que já vem no pacote base
+    `tempest-fastapi-sdk` — nenhum extra é necessário. O extra `[http]`
+    continua existindo e é opcional: declara o `httpx` de forma explícita.
 
 ```python
 import asyncio
@@ -1494,13 +1498,13 @@ Cada mixin é dono do seu próprio prefixo de env var — escolha só os que o s
 | Mixin | Env vars |
 | --- | --- |
 | `ServerSettings` | `SERVER_HOST`, `SERVER_PORT`, `SERVER_RELOAD`, `SERVER_DEBUG` |
-| `LogSettings` | `LOG_LEVEL`, `LOG_JSON` |
-| `DatabaseSettings` | `DATABASE_URL`, `DATABASE_ECHO`, `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW`, `DATABASE_POOL_RECYCLE` |
+| `LogSettings` | `LOG_LEVEL`, `LOG_JSON`, `LOG_DIR`, `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT` |
+| `DatabaseSettings` | `DATABASE_URL`, `DATABASE_ECHO`, `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW`, `DATABASE_POOL_RECYCLE`, `DATABASE_SQLITE_WAL`, `DATABASE_SQLITE_BUSY_TIMEOUT` |
 | `RedisSettings` | `REDIS_URL`, `REDIS_DECODE_RESPONSES` |
 | `RabbitMQSettings` | `RABBITMQ_URL`, `RABBITMQ_PREFETCH_COUNT` |
 | `TaskIQSettings` | `TASKIQ_BROKER_URL`, `TASKIQ_RESULT_BACKEND_URL`, `TASKIQ_STORE_RESULTS`, `TASKIQ_RESULT_TTL_SECONDS` |
 | `JWTSettings` | `JWT_SECRET`, `JWT_ALGORITHM`, `JWT_ACCESS_TTL_SECONDS`, `JWT_REFRESH_TTL_SECONDS`, `JWT_ISSUER` |
-| `CORSSettings` | `CORS_ORIGINS`, `CORS_ALLOW_CREDENTIALS`, `CORS_ALLOW_METHODS`, `CORS_ALLOW_HEADERS`, `CORS_EXPOSE_HEADERS`, `CORS_MAX_AGE` |
+| `CORSSettings` | `CORS_ORIGINS`, `CORS_ORIGIN_REGEX`, `CORS_ALLOW_CREDENTIALS`, `CORS_ALLOW_METHODS`, `CORS_ALLOW_HEADERS`, `CORS_EXPOSE_HEADERS`, `CORS_MAX_AGE` |
 | `EmailSettings` | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_ADDR`, `SMTP_USE_TLS`, `SMTP_USE_SSL`, `SMTP_TIMEOUT_SECONDS` |
 | `UploadSettings` | `UPLOAD_DIR`, `UPLOAD_MAX_SIZE_BYTES`, `UPLOAD_ALLOWED_EXTENSIONS`, `UPLOAD_ALLOWED_MIMETYPES` |
 | `TokenSettings` | `TOKEN_SECRET` |
