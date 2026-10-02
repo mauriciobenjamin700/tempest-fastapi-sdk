@@ -226,10 +226,28 @@ This is the part that usually breaks. Follow it exactly:
    `updated_at > since` (strict).
 
 !!! tip "Why `server_time` and not the client clock"
-    `server_time` is captured on the server **before** the query runs. Because
-    it is a marker on the database's own clock, any row written afterwards has a
-    larger `updated_at` and surfaces on the next pull — immune to device clock
-    skew.
+    `server_time` is captured on the server **before** the query runs, by the
+    same application-process `utcnow()` that stamps `updated_at` on the ORM
+    `flush`. Both come from the application server's clock — not the
+    database's, and not the device's —, so device clock skew does not enter
+    the picture: a row stamped after the marker has a larger `updated_at` and
+    surfaces on the next pull.
+
+!!! warning "What the marker does not cover"
+    - **An open transaction straddling the pull.** `updated_at` is stamped
+      on `flush`, not on `commit`. A write that flushes before `server_time`
+      and only commits after the pull's query ran ends up with
+      `updated_at < server_time`, invisible to the current pull (not yet
+      committed) and outside the next one (`updated_at > since` is false).
+      Measured with two sessions on a file-backed SQLite: the pull during
+      the transaction came back empty, the pull from the marker came back
+      empty, and only a resync with `since=None` returned the row. A short
+      transaction shrinks the window; it does not close it.
+    - **Several replicas.** Each process stamps with its own clock, so skew
+      between application servers enters `updated_at`.
+    - **Hand-written SQL** (`text(...)`, `psql`, another language). Such an
+      `INSERT` falls back to `server_default=NOW()` — the database clock —,
+      and such an `UPDATE` does not touch `updated_at`.
 
 !!! warning "Tombstones are not optional"
     Keep `include_deleted=True` (the default). A pull that hides deleted rows

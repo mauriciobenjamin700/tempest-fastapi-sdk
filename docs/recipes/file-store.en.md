@@ -93,11 +93,18 @@ your API:
 import asyncio
 from datetime import timedelta
 
-from tempest_fastapi_sdk import FileStoreUtils
+from tempest_fastapi_sdk import AsyncMinIOClient, FileStoreUtils
 
-key = "avatars/ana.png"
+key = "users/42/ana.png"
 
-store = FileStoreUtils(source="./uploads")
+minio = AsyncMinIOClient(
+    endpoint="minio:9000",
+    access_key="...",
+    secret_key="...",
+    default_bucket="avatars",
+    region="us-east-1",
+)
+store = FileStoreUtils(minio)
 
 
 async def main() -> None:
@@ -142,34 +149,38 @@ store = FileStoreUtils(
 )
 ```
 
+!!! tip "An empty set and `0` turn the check off"
+    `allowed_extensions=set()`, `allowed_mimetypes=set()` and
+    `max_size_bytes=0` mean the same as `None`: **no restriction**. That is
+    the `UploadSettings` contract (an empty `UPLOAD_ALLOWED_EXTENSIONS` means
+    any extension, `UPLOAD_MAX_SIZE_BYTES=0` disables the limit), so the
+    mixin defaults passed through `**settings.upload_kwargs()` accept any file
+    instead of refusing everything with 415.
+
 ## Replace a file (avatar / attachment)
 
 `replace` writes the new object **first** (a validation error leaves the old
 one intact), then deletes the old one — through the same backend:
 
 ```python
-import asyncio
-
 from fastapi import UploadFile
 
 from tempest_fastapi_sdk import FileStoreUtils
 
 from src.db.models import UserModel
 
-file: UploadFile = ...  # comes from the endpoint signature
-
 store = FileStoreUtils(source="./uploads")
 
-user = UserModel(name="Ana", email="ana@example.com")
 
+async def change_avatar(user: UserModel, file: UploadFile) -> None:
+    """Swap the avatar: write the new one, only then delete the old.
 
-async def main() -> None:
-    """Run this example."""
+    Args:
+        user (UserModel): The already-loaded user (e.g. `current_user`).
+        file (UploadFile): The file from the endpoint signature.
+    """
     new_key = await store.replace(user.avatar_key, file, filename=f"{user.id}.png")
     user.avatar_key = str(new_key)
-
-
-asyncio.run(main())
 ```
 
 ## Escape hatches

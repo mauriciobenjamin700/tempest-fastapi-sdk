@@ -210,8 +210,8 @@ Se o seu editor roda Pyright e você quer o arquivo limpo, declare o nome
 pelo mesmo mecanismo da classe base:
 
 ```python hl_lines="7 8"
-from pydantic import BaseModel
 from sqlalchemy.orm import declared_attr
+from tempest_fastapi_sdk import BaseModel
 
 from src.db.configs.names import USER_TABLE_NAME
 
@@ -593,10 +593,14 @@ async def health() -> dict[str, object]:
     bootstrap correto, para os três estados possíveis do banco, está em
     [Migrations »](migrations.md).
 
-!!! danger "Nunca logue `db_url`, sempre `db_url_safe`"
-    A URL crua carrega usuário e senha. `db_url_safe` renderiza
-    `postgresql+asyncpg://***@host/db`. A URL crua fica num atributo
-    privado justamente para não vazar em `repr()` ou log acidental.
+!!! danger "Nunca logue a URL crua, sempre `db_url_safe`"
+    A URL crua carrega usuário e senha. `db_url_safe` troca **só a senha**:
+    `postgresql+asyncpg://user:pass@host:5432/db` sai como
+    `postgresql+asyncpg://user:***@host:5432/db` — usuário, host, porta,
+    banco e query string continuam visíveis, então trate o resultado como
+    diagnóstico interno se o próprio usuário do banco for sensível. A URL
+    crua fica num atributo privado justamente para não vazar em `repr()` ou
+    log acidental.
 
 ### Sua própria `DeclarativeBase`
 
@@ -803,8 +807,12 @@ asyncio.run(main())
 
 ### Modo subclasse — quando há queries próprias
 
-Subclassifique para adicionar consultas do domínio e os três mappers que
-traduzem ORM ↔ DTO. **O construtor é o contrato** — você repassa `model`
+Subclassifique para adicionar consultas do domínio e os mappers que
+traduzem ORM ↔ DTO. São três: `map_to_model` (padrão `self.model(**data)`),
+`map_to_response` e `map_to_schema` — os dois últimos levantam
+`NotImplementedError` até você sobrescrever, então implemente os que o seu
+código chama (o exemplo implementa `map_to_response` e `map_to_model`).
+**O construtor é o contrato** — você repassa `model`
 para `super().__init__`, não há atributos de classe mágicos:
 
 ```python
@@ -862,8 +870,9 @@ class UserRepository(BaseRepository[UserModel]):
     Os kwargs `not_found_message`, `create_conflict_message`,
     `update_conflict_message`, `bulk_create_conflict_message` e
     `bulk_update_conflict_message` customizam o texto das exceções. Sem
-    eles, o SDK gera mensagens a partir de `Model.__name__` (`"User not
-    found"`, `"Conflict creating User"`).
+    eles, o SDK gera mensagens a partir de `Model.__name__` — o nome da
+    classe inteiro, sufixo incluído: `"UserModel not found"`,
+    `"Conflict creating UserModel"`.
 
 !!! tip "Classes de exceção por repository"
     Cada `*_message` tem um `*_exception` correspondente. A mensagem sozinha
@@ -1143,7 +1152,7 @@ async def main() -> None:
         users = await repository.list({"is_active": True}, with_=["orders"])
 
 
-    asyncio.run(main())
+asyncio.run(main())
 ```
 
 Cada caminho usa `selectinload`: N relacionados custam **uma** query
@@ -1266,7 +1275,7 @@ async def main() -> None:
         await repository.bulk_update({"id": pid}, {"total": F("price") * F("qty")})
 
 
-    asyncio.run(main())
+asyncio.run(main())
 ```
 
 **`Q` — `OR` / `NOT` que o dict de filtros não expressa.** O dict ANDeia
@@ -1299,8 +1308,17 @@ async def main() -> None:
         )
 
 
-    asyncio.run(main())
+asyncio.run(main())
 ```
+
+!!! warning "`~Q(...)` não devolve a linha com `NULL`"
+    A negação vira `role != 'guest'` em SQL, e `NULL != 'guest'` é
+    `NULL`, não verdadeiro: a linha com `role` nulo **fica de fora** junto
+    com a `guest`. Com três usuários (`guest`, `admin` e `role=None`),
+    `~Q(role="guest")` devolve só o `admin`. Se a linha nula deve entrar,
+    peça explicitamente: `~Q(role="guest") | Q(role=None)` devolve `admin` e
+    o nulo (`None` numa coluna simples é `IS NULL`). O `role__ne="guest"`
+    tem a mesma semântica do `~Q` aqui — também exclui o nulo.
 
 `Q` usa as mesmas convenções do dict de filtros (`name` ILIKE,
 `campo__gte`, iterável → `IN`, …), então `Q(priority__gte=5, name="ana")` é
@@ -1382,7 +1400,7 @@ async def main() -> None:
         hits = await repository.list({"name": "silva", "id": selected_ids})
 
 
-    asyncio.run(main())
+asyncio.run(main())
 ```
 
 !!! info "`start_in`/`end_in` vs `__gt`/`__lt`"
@@ -1576,7 +1594,7 @@ async def main() -> None:
         )  # INSERT ... ON CONFLICT DO UPDATE — Postgres e SQLite
 
 
-    asyncio.run(main())
+asyncio.run(main())
 ```
 
 !!! warning "`bulk_update` recusa filtro vazio"
@@ -2509,8 +2527,9 @@ lifespan transforma queries lentas em linhas de log acionáveis, com
   numa coluna simples é `IS NULL`.
 - Operação em lote tem duas famílias: a que devolve instância (`add_all`,
   `update_many`) e a que não devolve, mas é uma ida ao banco.
-- Mixin entra quando o domínio pede: soft-delete e auditoria custam coluna e
-  filtro implícito.
+- Mixin entra quando o domínio pede: soft-delete e auditoria custam coluna,
+  e o filtro é seu — o `SoftDeleteMixin` não instala filtro global, então
+  esconder linha apagada é passar `{"deleted_at": None}`.
 - Paginação tem duas formas com propósitos diferentes: `paginate` para navegar
   por página, `cursor_paginate` para lista que cresce enquanto o usuário lê.
 - Migração é `init` uma vez, `revision --autogenerate` por mudança, `upgrade`

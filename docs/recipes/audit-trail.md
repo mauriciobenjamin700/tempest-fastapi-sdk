@@ -50,9 +50,11 @@ class ProductRepository(BaseRepository[ProductModel]):
 
 ```python
 import asyncio
+from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-from src.db.models import ProductModel, UserModel
+from src.db.models import ProductModel
 from src.db.repositories import ProductRepository
 
 # Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
@@ -60,12 +62,13 @@ session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 repo = ProductRepository(session)
 
-user = UserModel(name="Ana", email="ana@example.com")
+# O ator é o id de quem já está autenticado (ex.: `current_user.id`).
+actor_id = UUID("2b1d0c2e-7f3a-4c56-9d18-2f9a4c5b6d70")
 
 
 async def main() -> None:
     """Run this example."""
-    product = await repo.add_audited(ProductModel(name="Widget"), actor=str(user.id))
+    product = await repo.add_audited(ProductModel(name="Widget"), actor=str(actor_id))
     # grava o produto + uma entrada CREATE com {"after": {...}}
 
 
@@ -107,24 +110,25 @@ async def rename_product(
 
 ```python
 import asyncio
+from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-from src.db.models import ProductModel, UserModel
 from src.db.repositories import ProductRepository
 
 # Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
-product = ProductModel(name="Café", price_cents=1990)
-
 repo = ProductRepository(session)
 
-user = UserModel(name="Ana", email="ana@example.com")
+product_id = UUID("6f1c3d84-2a55-4d0b-9d7e-0c1a2b3c4d5e")
+actor_id = UUID("2b1d0c2e-7f3a-4c56-9d18-2f9a4c5b6d70")
 
 
 async def main() -> None:
     """Run this example."""
-    await repo.delete_audited(product, actor=str(user.id))
+    product = await repo.get_by_id(product_id)
+    await repo.delete_audited(product, actor=str(actor_id))
     # apaga a linha + grava uma entrada DELETE com {"before": {...}}
 
 
@@ -132,7 +136,7 @@ asyncio.run(main())
 ```
 
 !!! warning "Mesma transação"
-    As três variantes commitam a linha de negócio e a de auditoria **juntas**. Se a auditoria falhar, a mudança é revertida — nunca fica meia gravada. Repositories sem `audit_model` levantam `RuntimeError` ao chamar os métodos auditados.
+    As três variantes gravam a linha de negócio e a de auditoria **juntas**. Chamadas soltas, elas commitam as duas no fim; dentro de um bloco `repo.transaction()` (ou num repository com `autocommit=False`) elas só fazem `flush`, e o commit é do bloco — se o bloco aborta, as duas linhas somem juntas. Nos dois casos, se a auditoria falhar a mudança é revertida — nunca fica meia gravada. Veja [Transações](transactions.md). Repositories sem `audit_model` levantam `RuntimeError` ao chamar os métodos auditados.
 
 ## Helpers avulsos
 

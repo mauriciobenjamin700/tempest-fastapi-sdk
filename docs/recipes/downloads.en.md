@@ -80,14 +80,19 @@ In local mode, `file_response` gives direct control and returns a
 `FileResponse` streamed in chunks by Starlette (supports range requests):
 
 ```python
+from fastapi import APIRouter
+from starlette.responses import FileResponse
+
 from tempest_fastapi_sdk import DownloadUtils
 
-downloads = DownloadUtils("./uploads/invoices")
+router = APIRouter(prefix="/invoices", tags=["invoices"])
+downloads = DownloadUtils("./uploads")
 
-name = "invoice-2026-01.pdf"
 
-
-return downloads.file_response(name, subdir="invoices", as_attachment=False)
+@router.get("/{name}")
+async def show_invoice(name: str) -> FileResponse:
+    """Open ./uploads/invoices/<name> inline in the browser."""
+    return downloads.file_response(name, subdir="invoices", as_attachment=False)
 ```
 
 Parameters: `subdir=`, `filename=`, `media_type=`, `as_attachment=`,

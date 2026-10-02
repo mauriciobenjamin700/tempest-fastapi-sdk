@@ -129,3 +129,130 @@ class TestCachedDecorator:
         # Decode fails -> function runs again.
         assert await value() == 7
         assert calls == 2
+
+
+class TestMethodReceiverExcludedFromKey:
+    """The default key leaves ``self`` / ``cls`` out.
+
+    ``str(self)`` of an instance without a custom ``__repr__`` embeds its
+    memory address, so before the fix a service built per request wrote a
+    fresh entry on every call and never hit.
+    """
+
+    async def test_fresh_instances_share_the_entry(
+        self, manager: AsyncRedisManager
+    ) -> None:
+        calls: list[str] = []
+
+        class CatalogService:
+            @cached(manager, ttl=60, key_prefix="catalog:")
+            async def get_product(self, product_id: str) -> dict[str, str]:
+                calls.append(product_id)
+                return {"id": product_id}
+
+        assert await CatalogService().get_product("p1") == {"id": "p1"}
+        assert await CatalogService().get_product("p1") == {"id": "p1"}
+        assert len(await manager.client.keys("catalog:*")) == 1
+        assert calls == ["p1"]
+
+    async def test_receiver_passed_by_keyword_is_dropped(
+        self, manager: AsyncRedisManager
+    ) -> None:
+        calls: int = 0
+
+        class Svc:
+            @cached(manager, ttl=60)
+            async def get(self, item: str) -> str:
+                nonlocal calls
+                calls += 1
+                return item
+
+        await Svc.get(Svc(), "i")
+        await Svc.get(self=Svc(), item="i")
+        await Svc().get(item="i")
+        assert calls == 2
+
+    async def test_remaining_args_still_split_the_key(
+        self, manager: AsyncRedisManager
+    ) -> None:
+        calls: list[str] = []
+
+        class CatalogService:
+            @cached(manager, ttl=60)
+            async def get_product(self, product_id: str) -> str:
+                calls.append(product_id)
+                return product_id
+
+        await CatalogService().get_product("p1")
+        await CatalogService().get_product("p2")
+        assert calls == ["p1", "p2"]
+
+    async def test_classmethod_receiver_is_dropped(
+        self, manager: AsyncRedisManager
+    ) -> None:
+        calls: int = 0
+
+        class Lookup:
+            @classmethod
+            @cached(manager, ttl=60, key_prefix="cls:")
+            async def find(cls, code: str) -> str:
+                nonlocal calls
+                calls += 1
+                return code
+
+        class Child(Lookup):
+            pass
+
+        await Lookup.find("x")
+        await Child.find("x")
+        assert calls == 1
+
+    async def test_qualname_separates_classes(self, manager: AsyncRedisManager) -> None:
+        class A:
+            @cached(manager, ttl=60)
+            async def value(self) -> str:
+                return "a"
+
+        class B:
+            @cached(manager, ttl=60)
+            async def value(self) -> str:
+                return "b"
+
+        assert await A().value() == "a"
+        assert await B().value() == "b"
+
+    async def test_custom_key_builder_receives_the_receiver(
+        self, manager: AsyncRedisManager
+    ) -> None:
+        seen: list[tuple[object, ...]] = []
+
+        def builder(
+            name: str,
+            args: tuple[object, ...],
+            kwargs: dict[str, object],
+        ) -> str:
+            seen.append(args)
+            return f"{name}:{args[1]}"
+
+        class Svc:
+            @cached(manager, ttl=60, key_builder=builder)
+            async def get(self, item: str) -> str:
+                return item
+
+        svc = Svc()
+        await svc.get("i")
+        assert seen[0][0] is svc
+
+    async def test_free_function_first_arg_stays_in_key(
+        self, manager: AsyncRedisManager
+    ) -> None:
+        calls: list[int] = []
+
+        @cached(manager, ttl=60)
+        async def square(value: int) -> int:
+            calls.append(value)
+            return value * value
+
+        await square(2)
+        await square(3)
+        assert calls == [2, 3]

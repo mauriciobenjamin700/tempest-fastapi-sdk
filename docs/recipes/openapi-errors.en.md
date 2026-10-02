@@ -248,7 +248,7 @@ only the id — the shape anyone writes first, because the id is what the
 ...     def __init__(self, budget_id: str) -> None:
 ...         super().__init__(message=f"Budget {budget_id} not found.")
 >>> BudgetNotFoundException(message="Not found.")
-TypeError: __init__() got an unexpected keyword argument 'message'
+TypeError: BudgetNotFoundException.__init__() got an unexpected keyword argument 'message'
 ```
 
 The factory returns a class that is right in both directions:
