@@ -106,7 +106,7 @@ keywords:
 
 | Capability | Covers |
 | --- | --- |
-| `READ` | `SELECT`, `WITH … SELECT`, `DESCRIBE`, `PRAGMA` — and `EXPLAIN` / `SHOW` only under the `mysql` dialect (see below) |
+| `READ` | `SELECT`, `WITH … SELECT`, `DESCRIBE`, a `PRAGMA` that only reports — and `EXPLAIN` / `SHOW` only under the `mysql` dialect (see below) |
 | `INSERT` | adds rows |
 | `UPDATE` | changes rows |
 | `DELETE` | removes rows |
@@ -136,6 +136,26 @@ keywords:
     On a `READ`-only console over PostgreSQL or SQLite, then, `EXPLAIN` is
     refused. That is the safe default working — `EXPLAIN ANALYZE` runs the
     statement — not a bug to work around by granting the operator `ADMIN`.
+
+!!! check "Reads outside, writes inside"
+    The top-level node is not enough. A data-modifying CTE is a `SELECT`
+    at the top; MySQL's `EXPLAIN ANALYZE` runs the statement it explains;
+    and a SQLite `PRAGMA` with a value changes the database. Through
+    0.302.0 all three classified as `read` and passed a read-only
+    console. The analyser now walks the tree and the statement takes the
+    most privileged capability it contains — and the required-`WHERE`
+    rule judges the write, not the `SELECT` around it. Measured with
+    `analyze_sql(sql, dialect=...)`:
+
+    | Statement | Dialect | Capability |
+    | --- | --- | --- |
+    | `WITH gone AS (DELETE FROM orders WHERE id = 1 RETURNING *) SELECT * FROM gone` | `postgres` | `delete` |
+    | `EXPLAIN ANALYZE DELETE FROM orders WHERE id = 1` | `mysql` | `delete` |
+    | `EXPLAIN DELETE FROM orders` | `mysql` | `read` |
+    | `PRAGMA table_info(orders)` | `sqlite` | `read` |
+    | `PRAGMA journal_mode` | `sqlite` | `read` |
+    | `PRAGMA journal_mode = DELETE` | `sqlite` | `admin` |
+    | `PRAGMA optimize` | `sqlite` | `admin` |
 
 ### Deny beats allow
 

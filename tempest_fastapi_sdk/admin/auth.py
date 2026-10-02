@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from tempest_fastapi_sdk.db.user_model import BaseUserModel
 from tempest_fastapi_sdk.utils.datetime import utcnow
+from tempest_fastapi_sdk.utils.password import PasswordUtils
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -214,6 +215,7 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         self.user_model: type[BaseUserModel] = user_model
         self.mfa_issuer: str = mfa_issuer
         self.mfa_window: int = mfa_window
+        self._password_utils: PasswordUtils | None = None
 
     async def authenticate(
         self,
@@ -223,6 +225,18 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         password: str,
     ) -> BaseUserModel:
         """Verify credentials against the configured user model.
+
+        The password is checked before anything about the account is
+        revealed. An unknown address pays a bcrypt check against a
+        throwaway hash (:meth:`PasswordUtils.dummy_verify`, on one instance
+        kept by the backend so the hash is built once, not per attempt),
+        and every
+        wrong password — unknown, non-admin, disabled or admin account —
+        is refused with the same ``"Invalid credentials"``. Only a caller
+        who already knows the password learns that the account is disabled
+        or not an admin. Checking ``is_active`` and ``is_admin`` first let
+        anyone with a list of addresses read which ones are admins, and
+        which are disabled, off the error message and the response time.
 
         Args:
             session (AsyncSession): A live DB session.
@@ -242,13 +256,16 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         )
         user = result.scalar_one_or_none()
         if user is None:
+            if self._password_utils is None:
+                self._password_utils = PasswordUtils()
+            self._password_utils.dummy_verify(password)
+            raise AdminAuthError("Invalid credentials")
+        if not user.check_password(password):
             raise AdminAuthError("Invalid credentials")
         if not user.is_active:
             raise AdminAuthError("Account disabled")
         if not user.is_admin:
             raise AdminAuthError("This account is not authorized for /admin")
-        if not user.check_password(password):
-            raise AdminAuthError("Invalid credentials")
         user.last_login_at = utcnow()
         await session.commit()
         await session.refresh(user)

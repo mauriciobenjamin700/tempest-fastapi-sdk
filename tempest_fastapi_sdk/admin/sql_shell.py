@@ -79,12 +79,16 @@ class SqlCapability(BaseStrEnum):
     rows and corrupting them are different incidents, and ``DROP`` is
     separate from the rest of DDL because it is the one nobody undoes.
 
-    * ``READ`` — ``SELECT``, ``WITH`` … ``SELECT``, ``DESCRIBE``, ``PRAGMA``,
-      and ``EXPLAIN`` / ``SHOW`` only where sqlglot parses them into a
-      typed expression (the ``mysql`` dialect). Under ``postgres``,
-      ``sqlite`` and no dialect, sqlglot 30 falls back to a generic
-      ``Command`` for ``EXPLAIN`` and ``SHOW``, so they classify as
-      ``ADMIN``.
+    * ``READ`` — ``SELECT``, ``WITH`` … ``SELECT``, ``DESCRIBE``, the
+      ``PRAGMA`` forms that only report (``table_info(t)``, a bare
+      ``PRAGMA journal_mode``), and ``EXPLAIN`` / ``SHOW`` only where
+      sqlglot parses them into a typed expression (the ``mysql``
+      dialect). Under ``postgres``, ``sqlite`` and no dialect, sqlglot 30
+      falls back to a generic ``Command`` for ``EXPLAIN`` and ``SHOW``,
+      so they classify as ``ADMIN``. A statement that reads at the top
+      and writes inside — a data-modifying CTE, MySQL's
+      ``EXPLAIN ANALYZE``, which executes what it explains — takes the
+      capability of the write.
     * ``INSERT`` — adds rows.
     * ``UPDATE`` — changes rows.
     * ``DELETE`` — removes rows.
@@ -148,6 +152,64 @@ _EXPRESSION_CAPABILITY: dict[str, SqlCapability] = {
 
 Anything absent maps to :attr:`SqlCapability.ADMIN` — see that member's
 docstring for why the unknown case is the privileged one.
+"""
+
+_CAPABILITY_RANK: tuple[SqlCapability, ...] = (
+    SqlCapability.READ,
+    SqlCapability.INSERT,
+    SqlCapability.UPDATE,
+    SqlCapability.DELETE,
+    SqlCapability.DDL,
+    SqlCapability.DROP,
+    SqlCapability.ADMIN,
+)
+"""Capabilities from least to most privileged.
+
+A statement that contains several families — a ``SELECT`` whose CTE
+deletes — is classified as the most privileged one it contains, so a
+policy has to grant everything the statement will actually do.
+"""
+
+_INTROSPECTION_PRAGMAS: frozenset[str] = frozenset(
+    {
+        "collation_list",
+        "compile_options",
+        "database_list",
+        "foreign_key_check",
+        "foreign_key_list",
+        "function_list",
+        "index_info",
+        "index_list",
+        "index_xinfo",
+        "integrity_check",
+        "module_list",
+        "pragma_list",
+        "quick_check",
+        "table_info",
+        "table_list",
+        "table_xinfo",
+    },
+)
+"""SQLite pragmas that only report, whatever argument they get.
+
+Taken from the SQLite pragma documentation: each of these takes a table,
+index or schema name and returns rows describing it, and none of them
+changes state.
+"""
+
+_ACTION_PRAGMAS: frozenset[str] = frozenset(
+    {
+        "incremental_vacuum",
+        "optimize",
+        "shrink_memory",
+        "wal_checkpoint",
+    },
+)
+"""SQLite pragmas that act even when written bare.
+
+Every other bare ``PRAGMA name`` reads the current value of a setting;
+these four run an operation instead (rewrite statistics, free pages,
+checkpoint the WAL), per the SQLite pragma documentation.
 """
 
 
@@ -463,21 +525,95 @@ def analyze_sql(sql: str, *, dialect: str | None = None) -> list[SqlStatement]:
     for expression in parsed:
         if expression is None:
             continue
-        kind = type(expression).__name__
-        capability = _EXPRESSION_CAPABILITY.get(kind, SqlCapability.ADMIN)
+        capability, decisive = _classify(expression)
         tables = _tables_of(expression, sqlglot)
         statements.append(
             SqlStatement(
                 sql=expression.sql(dialect=dialect),
                 capability=capability,
                 tables=tables,
-                has_where=expression.args.get("where") is not None,
+                has_where=decisive.args.get("where") is not None,
                 returns_rows=capability == SqlCapability.READ,
             ),
         )
     if not statements:
         raise SqlShellError("no statement given")
     return statements
+
+
+def _classify(expression: Any) -> tuple[SqlCapability, Any]:
+    """Return what running ``expression`` does, and the node that decides it.
+
+    The top-level node is not enough. Three shapes read at the top and
+    write when executed, and each one used to classify as ``READ``:
+
+    * a data-modifying CTE (``WITH gone AS (DELETE … RETURNING *) SELECT
+      * FROM gone``) — the walk finds the ``DELETE`` inside;
+    * ``EXPLAIN ANALYZE`` in MySQL, which executes the statement it
+      explains — it takes the capability of that statement, while a plain
+      ``EXPLAIN`` (which only plans) stays ``READ``;
+    * a SQLite ``PRAGMA`` that assigns (``journal_mode = DELETE``,
+      ``writable_schema = ON``) or acts (``optimize``) — see
+      :func:`_pragma_capability`.
+
+    Args:
+        expression (Any): A parsed sqlglot expression.
+
+    Returns:
+        tuple[SqlCapability, Any]: The most privileged capability the
+        statement contains, and the node it came from — the caller reads
+        ``WHERE`` off that node, so the missing-``WHERE`` rule judges the
+        write rather than the ``SELECT`` wrapped around it.
+    """
+    kind = type(expression).__name__
+    if kind == "Pragma":
+        return _pragma_capability(expression), expression
+    if kind == "Describe":
+        style = str(expression.args.get("style") or "").upper()
+        inner = expression.args.get("this")
+        if style != "ANALYZE" or inner is None:
+            return SqlCapability.READ, expression
+        return _classify(inner)
+
+    capability = _EXPRESSION_CAPABILITY.get(kind, SqlCapability.ADMIN)
+    decisive = expression
+    for node in expression.walk():
+        if node is expression:
+            continue
+        found = _EXPRESSION_CAPABILITY.get(type(node).__name__)
+        if found is None or found is SqlCapability.READ:
+            continue
+        if _CAPABILITY_RANK.index(found) > _CAPABILITY_RANK.index(capability):
+            capability = found
+            decisive = node
+    return capability, decisive
+
+
+def _pragma_capability(expression: Any) -> SqlCapability:
+    """Classify a SQLite ``PRAGMA``.
+
+    ``READ`` only for the two shapes that cannot change state: an
+    introspection pragma (``table_info(orders)``), with or without its
+    argument, and a bare setting read (``PRAGMA journal_mode``) that is
+    not one of the pragmas that act when bare. Every assignment —
+    ``name = value`` and ``name(value)`` alike, which sqlglot parses to
+    the same tree — and every action needs ``ADMIN``.
+
+    Args:
+        expression (Any): A parsed sqlglot ``Pragma``.
+
+    Returns:
+        SqlCapability: ``READ`` or ``ADMIN``.
+    """
+    target = expression.args.get("this")
+    bare = type(target).__name__ == "Var"
+    named = target if bare else getattr(target, "this", None)
+    name = str(getattr(named, "name", "") or "").lower()
+    if name in _INTROSPECTION_PRAGMAS:
+        return SqlCapability.READ
+    if bare and name and name not in _ACTION_PRAGMAS:
+        return SqlCapability.READ
+    return SqlCapability.ADMIN
 
 
 def _tables_of(expression: Any, sqlglot: Any) -> list[str]:

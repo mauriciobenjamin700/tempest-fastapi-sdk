@@ -105,7 +105,7 @@ palavras-chave:
 
 | Capacidade | Cobre |
 | --- | --- |
-| `READ` | `SELECT`, `WITH … SELECT`, `DESCRIBE`, `PRAGMA` — e `EXPLAIN` / `SHOW` só no dialeto `mysql` (veja abaixo) |
+| `READ` | `SELECT`, `WITH … SELECT`, `DESCRIBE`, o `PRAGMA` que só consulta — e `EXPLAIN` / `SHOW` só no dialeto `mysql` (veja abaixo) |
 | `INSERT` | insere linhas |
 | `UPDATE` | altera linhas |
 | `DELETE` | remove linhas |
@@ -133,6 +133,25 @@ palavras-chave:
     Num console `READ`-only sobre PostgreSQL ou SQLite, então, `EXPLAIN`
     é recusado. É o default seguro funcionando — `EXPLAIN ANALYZE` executa
     o statement —, não um bug a contornar dando `ADMIN` ao operador.
+
+!!! check "Leitura por fora, escrita por dentro"
+    O nó do topo não basta. Uma CTE que modifica dados é um `SELECT` no
+    topo; o `EXPLAIN ANALYZE` do MySQL executa o statement que explica; e
+    um `PRAGMA` do SQLite com valor muda o banco. Até a 0.302.0 os três
+    saíam `read` e passavam por um console read-only. Agora o analisador
+    percorre a árvore e o statement leva a capacidade mais privilegiada
+    que contém — e a regra de `WHERE` obrigatório olha a escrita, não o
+    `SELECT` em volta. Medido com `analyze_sql(sql, dialect=...)`:
+
+    | Statement | Dialeto | Capacidade |
+    | --- | --- | --- |
+    | `WITH gone AS (DELETE FROM orders WHERE id = 1 RETURNING *) SELECT * FROM gone` | `postgres` | `delete` |
+    | `EXPLAIN ANALYZE DELETE FROM orders WHERE id = 1` | `mysql` | `delete` |
+    | `EXPLAIN DELETE FROM orders` | `mysql` | `read` |
+    | `PRAGMA table_info(orders)` | `sqlite` | `read` |
+    | `PRAGMA journal_mode` | `sqlite` | `read` |
+    | `PRAGMA journal_mode = DELETE` | `sqlite` | `admin` |
+    | `PRAGMA optimize` | `sqlite` | `admin` |
 
 ### Deny ganha de allow
 
