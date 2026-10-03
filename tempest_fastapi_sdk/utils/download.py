@@ -13,7 +13,6 @@ extra is required.
 
 from __future__ import annotations
 
-import mimetypes
 from collections.abc import AsyncIterable, Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -22,6 +21,7 @@ from urllib.parse import quote
 from fastapi.responses import FileResponse, StreamingResponse
 
 from tempest_fastapi_sdk.exceptions.not_found import NotFoundException
+from tempest_fastapi_sdk.utils.media_types import guess_media_type
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -266,7 +266,7 @@ class DownloadUtils:
         target: Path = self.resolve(relative_path, subdir=subdir)
         download_name: str = filename or target.name
         resolved_media_type: str = (
-            media_type or mimetypes.guess_type(download_name)[0] or _DEFAULT_MEDIA_TYPE
+            media_type or guess_media_type(download_name) or _DEFAULT_MEDIA_TYPE
         )
         response_headers: dict[str, str] = dict(headers or {})
         response_headers["content-disposition"] = build_content_disposition(
@@ -311,7 +311,7 @@ class DownloadUtils:
             iter((content,)) if isinstance(content, bytes) else content
         )
         resolved_media_type: str = (
-            media_type or mimetypes.guess_type(filename)[0] or _DEFAULT_MEDIA_TYPE
+            media_type or guess_media_type(filename) or _DEFAULT_MEDIA_TYPE
         )
         response_headers: dict[str, str] = dict(headers or {})
         response_headers["content-disposition"] = build_content_disposition(

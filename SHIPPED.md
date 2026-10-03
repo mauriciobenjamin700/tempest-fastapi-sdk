@@ -979,6 +979,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   run that completed; `run_until` keeps an earlier inherited deadline;
   `schema_of` keeps `$defs` for self-referential models; Redis fact keys no
   longer merge `None`/`""`/`"_"`; builtins never overwrite an artifact.
+- **Media type independente da imagem (Unreleased)** —
+  `guess_media_type` + `XLSX_MEDIA_TYPE`/`DOCX_MEDIA_TYPE`/`PPTX_MEDIA_TYPE`
+  (`utils`, topo; xlsx também em `spreadsheet`). Tabela própria antes do
+  `mimetypes`, cuja tabela embutida não tem Office/OpenDocument/ogg: na
+  `python:3.13-slim` (sem `/etc/mime.types`) o download de `.xlsx` saía
+  `application/octet-stream`. Usado por `DownloadUtils` e
+  `AsyncMinIOClient.download_response`.
 - **Dependency de sessão com fábrica (Unreleased, #381)** —
   `make_session_dependency(session_auth=...)` aceita `SessionAuthFactory`
   (`(request) -> SessionAuth`), resolvido por request; overloads tipam

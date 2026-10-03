@@ -169,6 +169,18 @@ from tempest_fastapi_sdk.utils.locations import (
     uf_choices as uf_choices,
 )
 from tempest_fastapi_sdk.utils.log import LogUtils as LogUtils
+from tempest_fastapi_sdk.utils.media_types import (
+    DOCX_MEDIA_TYPE as DOCX_MEDIA_TYPE,
+)
+from tempest_fastapi_sdk.utils.media_types import (
+    PPTX_MEDIA_TYPE as PPTX_MEDIA_TYPE,
+)
+from tempest_fastapi_sdk.utils.media_types import (
+    XLSX_MEDIA_TYPE as XLSX_MEDIA_TYPE,
+)
+from tempest_fastapi_sdk.utils.media_types import (
+    guess_media_type as guess_media_type,
+)
 from tempest_fastapi_sdk.utils.metrics import (
     CPUMetrics as CPUMetrics,
 )
@@ -396,9 +408,11 @@ __all__: list[str] = [
     "CPF_CNPJ_PATTERN",
     "CPF_PATTERN",
     "DEFAULT_GENERATED_PASSWORD_LENGTH",
+    "DOCX_MEDIA_TYPE",
     "HUNDRED",
     "MFA_TOKEN_TYPE",
     "PHONE_BR_PATTERN",
+    "PPTX_MEDIA_TYPE",
     "REFRESH_TOKEN_TYPE",
     "REQUEST_ID_HEADER",
     "SIGNED_URL_EXPIRES_PARAM",
@@ -406,6 +420,7 @@ __all__: list[str] = [
     "SNIFFABLE_MIMETYPES",
     "UF",
     "UPLOAD_READ_CHUNK_BYTES",
+    "XLSX_MEDIA_TYPE",
     "AttemptThrottle",
     "BulkEmailReport",
     "CEPField",
@@ -486,6 +501,7 @@ __all__: list[str] = [
     "get_client_ip",
     "get_client_ip_from_scope",
     "get_state",
+    "guess_media_type",
     "hash_opaque_token",
     "is_valid_cep",
     "is_valid_city",
