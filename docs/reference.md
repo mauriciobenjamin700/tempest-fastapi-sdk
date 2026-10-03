@@ -1193,6 +1193,10 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.upload.read_upload_capped
 ::: tempest_fastapi_sdk.utils.upload.UPLOAD_READ_CHUNK_BYTES
 ::: tempest_fastapi_sdk.utils.download.DownloadUtils
+::: tempest_fastapi_sdk.utils.media_types.guess_media_type
+::: tempest_fastapi_sdk.utils.media_types.XLSX_MEDIA_TYPE
+::: tempest_fastapi_sdk.utils.media_types.DOCX_MEDIA_TYPE
+::: tempest_fastapi_sdk.utils.media_types.PPTX_MEDIA_TYPE
 ::: tempest_fastapi_sdk.utils.file_store.FileStoreUtils
 ::: tempest_fastapi_sdk.utils.metrics.MetricsUtils
 ::: tempest_fastapi_sdk.utils.log.LogUtils

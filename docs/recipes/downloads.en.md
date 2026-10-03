@@ -134,6 +134,43 @@ async def report() -> StreamingResponse:
     return downloads.stream(rows(), filename="report.csv", media_type="text/csv")
 ```
 
+## `Content-Type` that does not depend on the image
+
+When you pass no `media_type=`, `DownloadUtils` guesses from the file name.
+Python's `mimetypes` alone does not cut it: its built-in table has no
+`.xlsx`, `.docx`, `.pptx`, `.odt`, `.ods` or `.ogg` (measured on Python
+3.11, 3.12 and 3.13), and it only knows them when the host has
+`/etc/mime.types`. Your machine does; `python:3.13-slim` — the base of the
+Dockerfile `tempest new` generates — does not, and the same `.xlsx` went out
+as `application/octet-stream` in production only.
+
+So the guess goes through `guess_media_type`, which checks an SDK table
+before `mimetypes`. Measured inside `python:3.13-slim`:
+
+| File | `mimetypes.guess_type` | `guess_media_type` |
+| --- | --- | --- |
+| `a.xlsx` | `None` | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` |
+| `a.docx` | `None` | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` |
+| `a.ods` | `None` | `application/vnd.oasis.opendocument.spreadsheet` |
+| `a.pdf` | `application/pdf` | `application/pdf` |
+
+Use the same function (or the constants) when you build the response by
+hand:
+
+```python
+from tempest_fastapi_sdk import XLSX_MEDIA_TYPE, guess_media_type
+
+media_type: str | None = guess_media_type("exports/Budget.XLSX")
+print(media_type == XLSX_MEDIA_TYPE)
+# -> True, on the host and in the container
+```
+
+`XLSX_MEDIA_TYPE`, `DOCX_MEDIA_TYPE` and `PPTX_MEDIA_TYPE` live in
+`tempest_fastapi_sdk.utils` (and at the package top level); `XLSX_MEDIA_TYPE`
+also in `tempest_fastapi_sdk.spreadsheet`. An extension neither the table
+nor `mimetypes` knows stays `None`, and the download falls back to
+`application/octet-stream`.
+
 ## `Content-Disposition` header
 
 To build the header manually (outside `DownloadUtils`), use
@@ -169,3 +206,4 @@ header: str = build_content_disposition("report 2026.pdf", as_attachment=True)
 - `file_response(...)` is local-only (fine control); MinIO uses `download()`.
 - `as_attachment=False` serves inline; `as_attachment=True` (default) forces a download.
 - Local: path traversal becomes `NotFoundException` — safe by construction.
+- With no `media_type=`, the type comes from `guess_media_type`: `.xlsx`/`.docx`/`.pptx` come out right in a slim image too, with no `/etc/mime.types`.

@@ -317,12 +317,12 @@ os entrega.
 from fastapi import APIRouter
 from fastapi.responses import Response
 
-from tempest_fastapi_sdk.spreadsheet import new_workbook, workbook_to_bytes
-from tempest_fastapi_sdk.utils import build_content_disposition
-
-XLSX_MEDIA_TYPE = (
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+from tempest_fastapi_sdk.spreadsheet import (
+    XLSX_MEDIA_TYPE,
+    new_workbook,
+    workbook_to_bytes,
 )
+from tempest_fastapi_sdk.utils import build_content_disposition
 
 router = APIRouter()
 
@@ -341,6 +341,11 @@ async def download_budget(budget_id: int) -> Response:
         },
     )
 ```
+
+`XLSX_MEDIA_TYPE` vem pronto do SDK. Não confie no palpite pela extensão:
+a tabela embutida do Python não conhece `.xlsx`, e o `mimetypes` só acerta
+quando o host tem `/etc/mime.types` — a `python:3.13-slim` não tem (detalhe
+em [Downloads](downloads.md#content-type-sem-depender-da-imagem)).
 
 !!! tip "Sem arquivo temporário, sem corrida"
     Duas requisições simultâneas escreveriam o mesmo caminho temporário. Em

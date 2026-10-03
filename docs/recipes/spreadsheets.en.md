@@ -314,12 +314,12 @@ handler ships them.
 from fastapi import APIRouter
 from fastapi.responses import Response
 
-from tempest_fastapi_sdk.spreadsheet import new_workbook, workbook_to_bytes
-from tempest_fastapi_sdk.utils import build_content_disposition
-
-XLSX_MEDIA_TYPE = (
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+from tempest_fastapi_sdk.spreadsheet import (
+    XLSX_MEDIA_TYPE,
+    new_workbook,
+    workbook_to_bytes,
 )
+from tempest_fastapi_sdk.utils import build_content_disposition
 
 router = APIRouter()
 
@@ -338,6 +338,11 @@ async def download_budget(budget_id: int) -> Response:
         },
     )
 ```
+
+`XLSX_MEDIA_TYPE` comes ready from the SDK. Do not trust a guess from the
+extension: Python's built-in table has no `.xlsx`, and `mimetypes` only gets
+it right when the host has `/etc/mime.types` — `python:3.13-slim` does not
+(details in [Downloads](downloads.en.md#content-type-that-does-not-depend-on-the-image)).
 
 !!! tip "No temp file, no race"
     Two concurrent requests would write the same temporary path. In memory
