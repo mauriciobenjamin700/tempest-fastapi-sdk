@@ -101,8 +101,9 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
     do seu deploy: instale `[sqlite]` (`aiosqlite`, default de dev) ou
     `[postgres]` (`asyncpg`, produção). Sem nenhum, o engine levanta
     `ModuleNotFoundError` do driver na primeira conexão. Serviços
-    criados com `tempest new` já pinam `aiosqlite` e carregam uma linha
-    `asyncpg` comentada no `pyproject.toml`.
+    criados com `tempest new` já pinam `aiosqlite` e `asyncpg` no
+    `pyproject.toml` — o segundo é o que o profile `prod` do
+    `docker-compose.yaml` gerado usa.
 
 !!! info "Imports preguiçosos"
     Desde a 0.7.1 toda dependência opcional é importada de forma preguiçosa na primeira instanciação, então `import tempest_fastapi_sdk` funciona mesmo quando só um subconjunto de extras está instalado. Instanciar um helper cujo extra está faltando levanta `ImportError` com uma dica clara apontando para o extra certo.

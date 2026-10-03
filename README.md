@@ -159,7 +159,7 @@ pip install "tempest-fastapi-sdk[postgres]"       # add the async DB driver you 
 pip install "tempest-fastapi-sdk[all]"            # or pull everything
 ```
 
-> **The SDK ships no database driver by default.** `sqlalchemy[asyncio]` is core, but the async DBAPI is your deploy choice — add `[sqlite]` (`aiosqlite`, dev default) or `[postgres]` (`asyncpg`, production). Without one, the engine raises `ModuleNotFoundError` for the driver on first connection. Services scaffolded with `tempest new` already pin `aiosqlite` and carry a commented `asyncpg` line in `pyproject.toml`.
+> **The SDK ships no database driver by default.** `sqlalchemy[asyncio]` is core, but the async DBAPI is your deploy choice — add `[sqlite]` (`aiosqlite`, dev default) or `[postgres]` (`asyncpg`, production). Without one, the engine raises `ModuleNotFoundError` for the driver on first connection. Services scaffolded with `tempest new` already pin both `aiosqlite` and `asyncpg` in `pyproject.toml` (the latter backs the generated compose's `prod` profile).
 
 Since `0.7.1` every optional dependency is imported lazily at first instantiation, so `import tempest_fastapi_sdk` works with any subset of extras — instantiating a helper whose extra is missing raises `ImportError` with a clear hint pointing at the right one.
 
