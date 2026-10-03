@@ -27,7 +27,7 @@ tempest --version                               # mostra a versão do SDK
 tempest new my_service                          # gera em ./my_service
 tempest new my_service --path ~/projects        # diretório-pai customizado
 # HOST/PORT padrão no .env.example e extras do SDK fixados no pyproject.toml
-tempest new my_service --bind-host 0.0.0.0 --bind-port 9090 --extras auth,upload
+tempest new my_service --bind-host 0.0.0.0 --bind-port 9090 --extras upload
 tempest new my_service --force                  # sobrescreve diretório existente
 ```
 
@@ -82,7 +82,7 @@ my_service/
     `code` certo, listagem paginada no envelope do SDK). Um símbolo
     renomeado no SDK quebra o teste, não o projeto de quem usa.
 
-O `pyproject.toml` gerado fixa a versão atual do SDK (`tempest-fastapi-sdk[auth,admin]>=<versão>` por padrão — mude com `--extras`). O `.env.example` criado usa a nomenclatura de settings da v0.8.0 (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), e `src/server.py` delega a `tempest_fastapi_sdk.run_server` para que o uvicorn seja importado de forma preguiçosa e os testes possam importar o app sem ele. Regras de validação: o nome do projeto deve casar com `^[a-z][a-z0-9_]*$` e não pode colidir com uma palavra-chave do Python, então `tempest new Bad-Name` e `tempest new class` saem com código 2 antes de qualquer arquivo ser escrito.
+O `pyproject.toml` gerado fixa a versão atual do SDK (`tempest-fastapi-sdk[admin,auth]>=<versão>` por padrão). `admin` e `auth` são obrigatórios — o `src/api/app.py` gerado monta o painel admin, e o login dele verifica a senha pelo `PasswordUtils` — então `--extras` **soma** a eles em vez de substituí-los: `--extras cache,tasks` fixa `[admin,auth,cache,tasks]`, `--extras ""` fixa só `[admin,auth]`, e duplicatas somem com a lista saindo em ordem alfabética. O `.env.example` criado usa a nomenclatura de settings da v0.8.0 (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), e `src/server.py` delega a `tempest_fastapi_sdk.run_server` para que o uvicorn seja importado de forma preguiçosa e os testes possam importar o app sem ele. Regras de validação: o nome do projeto deve casar com `^[a-z][a-z0-9_]*$` e não pode colidir com uma palavra-chave do Python, então `tempest new Bad-Name` e `tempest new class` saem com código 2 antes de qualquer arquivo ser escrito.
 
 !!! tip "Título / versão da API vêm do `.env`"
     A partir da v0.48.0 o `Settings` scaffoldado carrega `TITLE`,
