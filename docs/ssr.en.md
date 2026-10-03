@@ -232,7 +232,7 @@ Container(
         ],
     ),
 )
-# <section><div style="display: flex"><h2>Title</h2>…<small>v1.0</small></div></section>
+# <section><div style="display: flex; flex-direction: row"><h2>Title</h2><div style="flex-grow: 1"></div><small>v1.0</small></div></section>
 ```
 
 !!! warning "`Button.on_click` is ignored in SSR"
@@ -264,12 +264,18 @@ Column(
 ```
 
 - `Edge.all(16)` / `Edge.symmetric(vertical=8, horizontal=16)` /
-  `Edge.only(top=4)` — typed margins and paddings.
+  `Edge(top=4)` — typed margins and paddings (there is no `Edge.only`;
+  the sides you do not pass stay at `0`).
 - `gap`, `padding`, `margin`, colors and typography land in the inline
   `style=""`.
-- The `Style → CSS` conversion is **byte-identical** between the Python
-  renderer (SSR) and the JS client (WASM/server) — the same screen on both
-  sides.
+- The Python renderer's (SSR) `Style → CSS` conversion is a port of the
+  JS client's (WASM/server) `styleToCss`, and `tempestweb` declares both
+  outputs byte-identical, so the page does not "jump" when the client
+  re-renders it. Measured on `tempestweb` 0.127.0 (the `[ssr]` extra's
+  floor) with three `Style`s — this example's, an `Edge.symmetric` with
+  `radius`, and one with margin, border, colors, `font_size` and a
+  fractional `width` —, both functions emitted the same string for all
+  three. That is a sample, not proof for every `Style` field.
 
 !!! info "For selectors, `:hover` and media queries, use the typed sheet"
     Inline `Style` is great for local layout and self-contained
@@ -758,9 +764,12 @@ def view(app: App[object]) -> Widget:
 - **`Page`** — typed component; declare fields, implement `body()`,
   optionally override `shell()` for a shared layout. Do not override
   `render()`.
-- **`html_response(widget, *, title, status_code, htmx, document, lang)`** —
-  renders and returns an `HTMLResponse`. `document=True` requires `title`;
-  `document=False` returns a fragment for HTMX swaps.
+- **`html_response(widget, *, title, status_code, htmx, document, lang, stylesheets, head, confirm)`** —
+  renders and returns an `HTMLResponse`. With `document=True`, `title`
+  comes from the argument or, for a `Page`, from the page's `title` plus its `title_suffix`
+  (any other widget without `title` raises `ValueError`); `stylesheets=`
+  and `head=` replace the `Page`'s; `confirm=` turns on the `data-confirm`
+  listener. `document=False` returns a fragment for HTMX swaps.
 - **`make_htmx_router(prefix="/_ssr")`** — serves the bundled HTMX locally
   at `GET /_ssr/htmx.js`; combine with `htmx=True`.
 - **`make_web_app_router(dir)`** — serves a **wasm** (static SPA) build

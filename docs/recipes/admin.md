@@ -240,7 +240,7 @@ async def send_welcome(ctx: AdminActionContext) -> AdminActionResult:
         await mailer.send(
             user.email,
             subject="Bem-vindo",
-            body=f"Olá, {user.name}! Sua conta está pronta.",
+            body=f"Olá, {user.email}! Sua conta está pronta.",
         )
     return AdminActionResult(f"{len(users)} e-mails enviados.")
 
@@ -384,7 +384,7 @@ from tempest_fastapi_sdk.db.audit import snapshot_model
 
 from src.db.models import AuditLog, OrderModel, UserModel
 
-current_user = UserModel(name="Ana", email="ana@example.com")
+current_user = UserModel(email="ana@example.com")
 # Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
@@ -554,6 +554,7 @@ três tipos:
 ```python
 from datetime import date, timedelta
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import (
@@ -564,21 +565,34 @@ from tempest_fastapi_sdk import (
     MetricValue,
 )
 
+from src.db.models import OrderModel
 from src.db.repositories import OrderRepository
-
-today = date.today()
-this_week = today - timedelta(days=7)
-last_week = this_week - timedelta(days=7)
 
 
 async def orders_today(session: AsyncSession) -> MetricValue:
-    total = await OrderRepository(session).count(filters={"start_in": today()})
+    total = await OrderRepository(session).count(filters={"start_in": date.today()})
     return MetricValue(total, unit="pedidos")
 
 
+async def revenue_between(session: AsyncSession, start: date, end: date) -> float:
+    """Soma a receita dos pedidos criados em [start, end)."""
+    result = await session.execute(
+        select(func.coalesce(func.sum(OrderModel.total), 0)).where(
+            func.date(OrderModel.created_at) >= start,
+            func.date(OrderModel.created_at) < end,
+        )
+    )
+    return float(result.scalar_one())
+
+
 async def revenue_trend(session: AsyncSession) -> MetricTrend:
+    tomorrow = date.today() + timedelta(days=1)
+    this_week = tomorrow - timedelta(days=7)
+    last_week = this_week - timedelta(days=7)
     return MetricTrend(
-        value=await this_week(session), previous=await last_week(session), unit="BRL"
+        value=await revenue_between(session, this_week, tomorrow),
+        previous=await revenue_between(session, last_week, this_week),
+        unit="BRL",
     )
 
 
@@ -589,7 +603,7 @@ async def users_by_plan(session: AsyncSession) -> MetricPartition:
 site = AdminSite(
     title="Shop",
     dashboard_cards=[
-        MetricCard("Pedidos hoje", orders_today, help_text="últimas 24h"),
+        MetricCard("Pedidos hoje", orders_today, help_text="desde 00h"),
         MetricCard("Receita", revenue_trend),
         MetricCard("Usuários por plano", users_by_plan),
     ],
@@ -605,7 +619,9 @@ site = AdminSite(
 
 Os cards renderizam no topo do dashboard, computados a cada load. Um
 card cujo `compute` levanta é **pulado** — uma métrica quebrada nunca
-zera a página.
+zera a página — e a falha vai para o log com traceback
+(`logger.exception` no logger `tempest_fastapi_sdk.admin.router`, nomeando
+o `label` do card), então o card que sumiu da tela aparece no log.
 
 ## Import CSV (`can_import=True`)
 
@@ -1278,7 +1294,8 @@ dashboard, list, detail, forms) sem tocar em CSS. Para customização total,
 - `access_policy=` é RBAC por (principal, ação, model): sem ele, quem entra no
   admin pode tudo.
 - `AdminTheme` cobre a aparência por campo tipado; `can_import=True` abre o
-  import CSV com pré-visualização antes de gravar.
+  import CSV, que grava cada linha válida na hora e devolve o relatório
+  das que pulou — não há pré-visualização.
 - `exclude_fields=` tira a credencial que não é senha de toda superfície
   do painel; `readonly_fields` só tranca a escrita.
 - `display_timezone=` é o que transforma o campo de datetime em widget:

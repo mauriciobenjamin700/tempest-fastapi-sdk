@@ -90,11 +90,18 @@ cliente baixar/subir direto do MinIO, sem passar os bytes pela sua API:
 import asyncio
 from datetime import timedelta
 
-from tempest_fastapi_sdk import FileStoreUtils
+from tempest_fastapi_sdk import AsyncMinIOClient, FileStoreUtils
 
-key = "avatars/ana.png"
+key = "users/42/ana.png"
 
-store = FileStoreUtils(source="./uploads")
+minio = AsyncMinIOClient(
+    endpoint="minio:9000",
+    access_key="...",
+    secret_key="...",
+    default_bucket="avatars",
+    region="us-east-1",
+)
+store = FileStoreUtils(minio)
 
 
 async def main() -> None:
@@ -138,34 +145,38 @@ store = FileStoreUtils(
 )
 ```
 
+!!! tip "Conjunto vazio e `0` desligam a checagem"
+    `allowed_extensions=set()`, `allowed_mimetypes=set()` e `max_size_bytes=0`
+    valem o mesmo que `None`: **sem restrição**. É o contrato do
+    `UploadSettings` (`UPLOAD_ALLOWED_EXTENSIONS` vazio = qualquer extensão,
+    `UPLOAD_MAX_SIZE_BYTES=0` desliga o limite), então os defaults do mixin
+    passados por `**settings.upload_kwargs()` aceitam qualquer arquivo em vez
+    de recusar tudo com 415.
+
 ## Trocar um arquivo (avatar / anexo)
 
 `replace` grava o novo **primeiro** (um erro de validação deixa o antigo
 intacto), depois apaga o antigo — pelo mesmo backend:
 
 ```python
-import asyncio
-
 from fastapi import UploadFile
 
 from tempest_fastapi_sdk import FileStoreUtils
 
 from src.db.models import UserModel
 
-file: UploadFile = ...  # comes from the endpoint signature
-
 store = FileStoreUtils(source="./uploads")
 
-user = UserModel(name="Ana", email="ana@example.com")
 
+async def change_avatar(user: UserModel, file: UploadFile) -> None:
+    """Troca o avatar: grava o novo e só então apaga o antigo.
 
-async def main() -> None:
-    """Run this example."""
+    Args:
+        user (UserModel): O usuário já carregado (ex.: `current_user`).
+        file (UploadFile): O arquivo vindo da assinatura do endpoint.
+    """
     new_key = await store.replace(user.avatar_key, file, filename=f"{user.id}.png")
     user.avatar_key = str(new_key)
-
-
-asyncio.run(main())
 ```
 
 ## Escape hatches

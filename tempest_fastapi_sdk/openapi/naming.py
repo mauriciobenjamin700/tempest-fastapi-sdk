@@ -30,9 +30,14 @@ an ``Attributes:`` entry is prose inside a string.
 The bound is needed because the generator **synthesizes** these names for
 inline schemas by concatenating the whole path
 (``PostApiV1DecodeEmvResponseEmvMerchantAccountInformationPix``), so nothing
-in the specification limits their length. Measured against the OpenPix
-specification, this truncates 6 of 358 names and creates no new collision;
-the ones it does create are resolved by :func:`unique` like any other.
+in the specification limits their length. How many names the cut touches
+depends on the specification and moves with every refresh of it, so it is
+not a fixed property of this constant. Measured on v0.302.0 against the
+vendored OpenPix specification (``vendor/openpix-openapi.json`` after the
+overlay): 138 of the 686 names in ``spec.schemas`` exceed the cap, the cut
+folds them onto 31 distinct prefixes, and none of those prefixes equals a
+name that was already short. The collisions the cut does create, between
+the long names themselves, are resolved by :func:`unique` like any other.
 """
 
 MAX_ENUM_MEMBER: int = 72

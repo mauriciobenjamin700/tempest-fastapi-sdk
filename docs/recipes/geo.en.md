@@ -397,8 +397,11 @@ async def nearby_stores(repo: StoreRepository, center: Coordinate) -> list[Store
 !!! tip "PostGIS when the volume grows"
     On Postgres + the PostGIS extension, swap in `PostGISRepositoryMixin`:
     `nearby` pushes the filter and distance sort into the database via
-    `ST_DWithin` / `ST_Distance` — no extra Python dependency, same
-    signature.
+    `ST_DWithin` / `ST_Distance` — no extra Python dependency. The
+    signature is **not** the same: the PostGIS `nearby` takes `center`,
+    `radius_km`, `limit`, `latitude_field` and `longitude_field`, with no
+    `extra_filters` (the example above, with `is_active`, does not run on
+    it), and the mixin has no `paginate_nearby`.
 
 ## Paginating a radius search in the database (`paginate_nearby`)
 
@@ -588,8 +591,11 @@ b = store_b
 
 client = httpx.AsyncClient()
 
-destination = Coordinate(latitude=-7.9899, longitude=-34.8386)
-destinations = [destination]
+destinations = [
+    Coordinate(latitude=-7.9899, longitude=-34.8386),
+    Coordinate(latitude=-8.0631, longitude=-34.8711),
+    Coordinate(latitude=-8.1127, longitude=-34.9156),
+]
 
 
 def draw_on_map(line: list[Coordinate]) -> None:
@@ -785,7 +791,7 @@ geocoder = RetryingGeocoder(
 
 - `haversine_km(a, b)` — great-circle distance, pure, always available.
 - `bounding_box` / `within_radius` / `nearest` — offline proximity; `key=` for your own objects.
-- `GeoPointMixin` + `GeoRepositoryMixin.nearby` — radius search in the DB (PostGIS via `PostGISRepositoryMixin`).
+- `GeoPointMixin` + `GeoRepositoryMixin.nearby` — radius search in the DB (PostGIS via `PostGISRepositoryMixin`, without `extra_filters` or `paginate_nearby`).
 - `GeoRepositoryMixin.paginate_nearby` — radius, sort, `COUNT` and page in SQL, no PostGIS; each item is `NearbyMatch(row, distance_km)`.
 - `NominatimBackend` — address<->coordinate geocoding, free, injected `httpx`.
 - `OSRMBackend.matrix` / `route(with_geometry=True)` — N×M matrix and route line; `encode_polyline`/`decode_polyline`.

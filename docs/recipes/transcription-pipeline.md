@@ -207,25 +207,24 @@ Duas coisas que parecem detalhe e não são:
 
 ## 4. Cancelar uma transcrição que já começou
 
-Aqui o caminho fácil não funciona. `run_cancellable` corre a corotina
-contra um predicado e cancela de verdade — mas `transcribe()` entrega o
-decode a `asyncio.to_thread`, e cancelar a corotina abandona o *wrapper*
-enquanto a thread segue até o fim, ainda ocupando CPU e ainda competindo
-com o próximo job.
+`run_cancellable` corre a corotina contra um predicado e cancela de verdade —
+mas, sozinho, não basta aqui. `transcribe()` entrega o decode a
+`asyncio.to_thread`, e cancelar a corotina abandona o *wrapper* enquanto a
+thread segue até o fim, ainda ocupando CPU e ainda competindo com o próximo
+job.
 
-O que **funciona** é levantar de dentro do `on_progress`. O callback roda
-na worker thread, dentro do laço que consome os segmentos, e nada no
-caminho engole a exceção — ela sobe pelo gerador, sai do `to_thread` e
-chega em quem estava aguardando:
+A metade que falta é o `stop_event=`: o `run_cancellable` liga esse
+`threading.Event` antes de cancelar, e o `on_progress` — que roda na worker
+thread, dentro do laço que consome os segmentos — lê o evento e levanta. Nada
+no caminho engole a exceção, então o decode para no segmento seguinte:
 
 ```python
 # src/tasks/transcribe.py
-import asyncio
 import threading
 from collections.abc import Awaitable, Callable
 
 from tempest_fastapi_sdk.genai.audio import Transcription
-from tempest_fastapi_sdk.tasks import StageInterruptedError
+from tempest_fastapi_sdk.tasks import StageInterruptedError, run_cancellable
 
 from src.core.ai import stt
 
@@ -251,40 +250,34 @@ async def transcrever_cancelavel(
     parar = threading.Event()
 
     def progresso(pronto: float, total: float) -> None:
-        """Aborta o decode assim que o vigia levanta a bandeira."""
+        """Aborta o decode assim que o run_cancellable levanta a bandeira."""
         if parar.is_set():
             raise StageInterruptedError
 
-    async def vigiar() -> None:
-        """Consulta o cancelamento no event loop e avisa a thread."""
-        while not parar.is_set():
-            if await cancelado():
-                parar.set()
-                return
-            await asyncio.sleep(2.0)
-
-    vigia = asyncio.create_task(vigiar())
-    try:
-        return await stt.transcribe(caminho, on_progress=progresso)
-    finally:
-        vigia.cancel()
+    return await run_cancellable(
+        stt.transcribe(caminho, on_progress=progresso),
+        interrupted=cancelado,
+        stop_event=parar,
+    )
 ```
 
-O `threading.Event` é a ponte, e é obrigatório: o callback roda **fora**
-do event loop, então ele não pode `await` a consulta de cancelamento. Um
-lado pergunta ao banco de 2 em 2 segundos; o outro só lê um booleano.
+O `threading.Event` é a ponte, e é obrigatório: o callback roda **fora** do
+event loop, então ele não pode `await` a consulta de cancelamento. O
+`run_cancellable` pergunta ao predicado a cada `poll_seconds` (2 s por padrão);
+o callback só lê um booleano.
 
 !!! check "Medido, não deduzido"
-    Contra um decode de 600 trechos, com o cancelamento chegando em 0,25 s:
-    a exceção propagou e **25 dos 600 trechos** tinham sido decodificados.
-    Sem o callback, os 600 rodam até o fim.
+    Contra um decode falso de 600 trechos (10 ms por trecho), com o
+    cancelamento chegando em 0,25 s e `poll_seconds=0.05`: o
+    `StageInterruptedError` saiu em 0,25 s e a thread parou com **25 dos 600
+    trechos** decodificados. Sem o `stop_event=`, o mesmo `run_cancellable`
+    levanta no mesmo instante, mas a thread segue e decodifica os 600.
 
-    O intervalo do vigia é o teto do seu desperdício e o piso da sua
-    granularidade: a primeira consulta é em `t=0`, a seguinte só depois do
-    intervalo, então trabalho que termina dentro dele nunca chega a ver o
-    cancelamento — também medido, num decode que acabou em 0,06 s com o
-    vigia em 2 s. Dois segundos num trabalho de minutos é ruído; ajuste se
-    o seu caso for outro.
+    O `poll_seconds` é o teto do seu desperdício e o piso da sua
+    granularidade: a primeira consulta só acontece depois de um intervalo,
+    então trabalho que termina dentro dele nunca chega a ver o cancelamento.
+    Dois segundos num trabalho de minutos é ruído; ajuste se o seu caso for
+    outro.
 
 !!! danger "O callback não pode fazer I/O"
     Ele roda na worker thread, a cada segmento. Nada de corotina lá dentro
@@ -587,7 +580,7 @@ resumo de 3000 tokens de entrada + 800 de saída), o painel lê:
 
 ```text
 UsageTotals(input_tokens=3000, output_tokens=800, total_tokens=3800,
-            duration_seconds=30.0, calls=2, cost=0.000644,
+            duration_seconds=30.0, calls=2, cost=0.0006439999999999999,
             cache_hit_tokens=0)
 [ServiceUsage(service='summary', total_tokens=3800, share=100.0)]
 ```
@@ -597,11 +590,14 @@ UsageTotals(input_tokens=3000, output_tokens=800, total_tokens=3800,
 `service=NULL` e não vira uma fatia de 0% no gráfico.
 
 !!! warning "O custo não vem arredondado"
-    `0.000644` é o valor cheio. Qualquer precisão fixa erra em alguma
-    escala — arredondar para centavos zera quase toda chamada isolada,
-    enquanto um total mensal quer centavos. A formatação fica na borda,
-    que sabe qual dos dois está mostrando. `cost is None` significa "não
-    mostre custo", nunca zero.
+    `cost` é um `float` comum, sem arredondamento — e por isso carrega
+    também o erro de ponto flutuante binário: o `0.000644` que os preços
+    dão sai como `0.0006439999999999999`. Qualquer precisão fixa erra em
+    alguma escala — arredondar para centavos zera quase toda chamada
+    isolada, enquanto um total mensal quer centavos. A formatação fica na
+    borda, que sabe qual dos dois está mostrando: `f"{totais.cost:.6f}"`
+    imprime `0.000644`. `cost is None` significa "não mostre custo", nunca
+    zero.
 
 !!! info "O preço nunca é gravado"
     O custo sai dos tokens na hora da leitura, então corrigir
@@ -623,9 +619,10 @@ UsageTotals(input_tokens=3000, output_tokens=800, total_tokens=3800,
 O `StageMap` dá nome às colunas de estado sem declarar nenhuma,
 e é a forma certa quando a tela já carrega o registro; cada estágio marca
 `RUNNING`, solta a sessão, trabalha, relê e só grava se `owns` disser que
-o estágio ainda é dele; transcrição cancela levantando de dentro do
-`on_progress`, porque `to_thread` não é cancelável e a bandeira atravessa
-por um `threading.Event`; `generate_with_usage` é a metade que devolve o
+o estágio ainda é dele; transcrição cancela com
+`run_cancellable(..., stop_event=)` e um `on_progress` que levanta quando o
+evento liga, porque `to_thread` não é cancelável e a bandeira atravessa por
+um `threading.Event`; `generate_with_usage` é a metade que devolve o
 `TokenUsage` que `record` grava, `record_duration` cobre o modelo local
 que não tem token; `generate_structured_list` acha e valida o array, e a
 lista vazia é resposta, não erro.

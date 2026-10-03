@@ -476,7 +476,7 @@ passwords = PasswordUtils()
 
 log = LogUtils("app.users")
 
-payload = {"email": "ana@example.com", "password": "s3cr3t", "name": "Ana"}
+payload = {"email": "ana@example.com", "password": "s3cr3t", "display_name": "Ana"}
 
 # Strip password before logging
 log.info("user_signup", **modify_dict(payload, exclude=["password"]))
@@ -515,6 +515,6 @@ Todo helper tem sua própria receita — esta seção é o mapa rápido:
 - UF e município saem de tabela embutida, para validar payload e montar
   `<select>` sem consultar serviço externo.
 - Dinheiro tem as duas direções: número para texto em real, e texto de volta
-  para centavo inteiro.
+  para `Decimal` em reais (`Decimal("2930.00")`, não `293000`).
 - `utcnow`, `to_utc` e `modify_dict` são os helpers stateless que o próprio SDK
   usa — disponíveis sem extra.

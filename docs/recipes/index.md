@@ -15,7 +15,7 @@ Um passeio por **tudo** que o `tempest-fastapi-sdk` oferece: cada bloco tem o co
 
 ### Fundação
 
-`BaseAppSettings`, `AsyncDatabaseManager`, `create_app` factory, `run()`.
+`BaseAppSettings` e `AsyncDatabaseManager` vêm do SDK. A factory `create_app()` e o `run()` são do **seu** serviço, não do pacote: o `tempest new` escreve os dois (`src/api/app.py` e `src/server.py`, cujo `run()` delega a `run_server`).
 
 ```python
 from tempest_fastapi_sdk import AsyncDatabaseManager, BaseAppSettings
@@ -453,7 +453,7 @@ Receitas: [SSR](../ssr.md), [Visão](vision.md).
 shutdown).
 
 ```bash
-tempest new my-service && cd my-service
+tempest new my_service && cd my_service
 tempest db init && tempest db upgrade
 tempest check          # ruff + mypy + testes
 ```

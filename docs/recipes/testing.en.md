@@ -295,9 +295,10 @@ error: --fast needs pytest-xdist, which is not installed in the environment pyte
   and in CI. The gain grows with the suite: a service with 2678 tests on a
   12-core machine went from ~5 min to 1 min 28 s
   ([#328](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/328)).
-  This SDK's own suite (10 218 tests), on a machine with 6 physical cores and
-  12 threads, went from 2127 s serial to 411 s with `--fast` — about 5.2x,
-  measured over one run of each.
+  This SDK's own suite, at 10 218 tests during the v0.302.0 development
+  cycle (the number grows every release), on a machine with 6 physical cores
+  and 12 threads, went from 2127 s serial to 411 s with `--fast` — about
+  5.2x, measured over one run of each.
 - **`auto` counts physical cores when `psutil` is installed** (pytest-xdist's
   rule): on the machine above, `auto` started 6 workers. Without `psutil` it
   counts logical CPUs. To use the threads, `-w logical`.

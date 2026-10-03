@@ -173,6 +173,7 @@ class PasswordUtils:
                 "Install with `pip install tempest-fastapi-sdk[auth]`."
             )
         self.rounds: int = rounds
+        self._dummy_hash: str | None = None
 
     def hash(self, plain: str) -> str:
         """Hash a plaintext password.
@@ -220,6 +221,31 @@ class PasswordUtils:
             )
         except (ValueError, TypeError):
             return False
+
+    def dummy_verify(self, plain: str) -> bool:
+        """Spend one :meth:`verify` against a throwaway hash, and fail.
+
+        Call it on the login branch where no stored hash exists (unknown
+        account), so that branch pays the same bcrypt cost as a wrong
+        password. Without it the refusal for a missing account returns
+        before any hashing, and the response time alone tells a caller
+        which addresses are registered.
+
+        The throwaway hash is built on first use with this instance's
+        :attr:`rounds`, the cost the instance writes for real accounts,
+        then cached; that first call pays one extra hash.
+
+        Args:
+            plain (str): The submitted plaintext password.
+
+        Returns:
+            bool: Always ``False``, so the call can stand where a
+            :meth:`verify` result is expected.
+        """
+        if self._dummy_hash is None:
+            self._dummy_hash = self.hash(secrets.token_urlsafe(16))
+        self.verify(plain, self._dummy_hash)
+        return False
 
 
 DEFAULT_GENERATED_PASSWORD_LENGTH: int = 24

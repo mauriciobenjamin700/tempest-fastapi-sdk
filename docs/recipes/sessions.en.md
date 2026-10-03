@@ -73,7 +73,6 @@ def create_app() -> FastAPI:
     app = FastAPI(title="my-app")
     register_exception_handlers(app)
 
-    # Order matters: middleware BEFORE the routers.
     app.add_middleware(
         SessionMiddleware,
         session_auth=session_auth,
@@ -112,8 +111,8 @@ Done. The user calls `POST /auth/session/login` with email+password; the SDK set
 3. **`SessionMiddleware`** — the HTTP → session bridge. On every request it reads the cookie, resolves it through `SessionAuth`/`store`, and populates `request.state.session` **before** any router runs. Without it, `make_session_dependency()` finds no session and answers `401` even with a valid cookie — unless you pass `session_auth=` to the dependency, which then resolves the cookie itself ([no middleware](#login-without-a-user-table)).
 4. **`make_session_router`** — exposes the five bundled endpoints (`login` / `logout` / `me` / `list` / `{id}`). Takes the same `session_auth` plus a `session_factory` to open the DB session on login.
 
-!!! warning "Order matters: `add_middleware` BEFORE `include_router`"
-    `SessionMiddleware` must run on every request to populate `request.state.session`. Register it with `app.add_middleware(...)` **before** mounting the routers via `app.include_router(...)`. Reverse the order and any handler that depends on `request.state.session` (or on `make_session_dependency`) finds the attribute missing and breaks. Keep the wiring in exactly the order shown above.
+!!! note "The order between `add_middleware` and `include_router` does not matter"
+    Starlette builds the middleware stack on the first request, around the whole app, so `SessionMiddleware` also wraps routers included before it. Measured here (Starlette 1.6.0, FastAPI 0.141.1): with `include_router` before `add_middleware`, login answers `200` and the following `GET /auth/session/me` answers `200` too, same as the order in the example. What matters is registering the middleware **before the app starts serving**: `add_middleware` after the first request raises `RuntimeError: Cannot add middleware after an application has started`. Wire everything inside `create_app`.
 
 ---
 
@@ -400,7 +399,7 @@ GET /admin com cookie revogado: 303 /login
 - **Native CSRF via SameSite**: `SESSION_COOKIE_SAMESITE=lax` (default) blocks cross-site POSTs. Pair with [`CSRFMiddleware`](security.en.md) for GET-state-changing endpoints and form submissions.
 - **HttpOnly + Secure**: `SESSION_COOKIE_HTTPONLY=True` + `SESSION_COOKIE_SECURE=True` by default. JavaScript cannot read (anti-XSS); the browser does not send over HTTP.
 - **Sliding TTL with floor**: `SESSION_SLIDING=True` (default) refreshes on every hit, but `created_at` stays put — you can force an absolute logout after N days via a job that prunes rows where `created_at < now - 30d`.
-- **Anti-enumeration (partial — read the timing note)**: `/auth/session/login` rejects an unknown e-mail and a wrong password with the **same** `UnauthorizedException` and the same message, so the *response* does not tell the two apart. The **timing** does: `authenticate()` raises as soon as the query finds no user, before it calls the password verifier, so an attempt against a non-existent account never pays the bcrypt cost — measured on this machine, ~153 ms per verification. Anyone timing the response separates "no such account" from "wrong password". If timing enumeration is in your threat model, rate-limit attempts per IP/identifier in front of the endpoint; the response body alone does not close that channel.
+- **Anti-enumeration, in the body and in the timing**: `/auth/session/login` rejects an unknown e-mail, a wrong password and an inactive account with the **same** `UnauthorizedException` and the same message (`invalid email or password`). And all three refusals pay one bcrypt verification: an unknown e-mail is checked against a throwaway hash (`PasswordUtils.dummy_verify`), and an inactive account's password is verified before `is_active`. Measured on this machine (bcrypt cost 12, `SessionAuth.authenticate` called directly, median of N=21): wrong password **153.9 ms**, unknown e-mail **154.1 ms** — before the fix, the unknown e-mail answered in 0.4 ms. What is not bcrypt still varies (the query, the network), and the process's first refusal for an unknown e-mail pays one extra hash to build the throwaway hash. Rate-limit attempts per IP/identifier anyway: that closes brute force, which equal timing does not.
 - **Instant revocation**: `revoke_all(user_id)` on password change / suspected compromise → logout on every device on the next request.
 
 ---

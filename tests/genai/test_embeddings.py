@@ -7,6 +7,7 @@ import importlib.util
 import pytest
 
 from tempest_fastapi_sdk.genai import Embedder, InMemoryEmbeddingCache
+from tempest_fastapi_sdk.genai.rag import Chunk, InMemoryVectorStore, Retriever
 from tempest_fastapi_sdk.genai.schemas import HardwareInfo
 
 
@@ -82,3 +83,71 @@ class TestInMemoryEmbeddingCacheBound:
         """A capacity of zero would evict every write."""
         with pytest.raises(ValueError, match="max_entries"):
             InMemoryEmbeddingCache(max_entries=0)
+
+
+class _RecordingEmbedder(Embedder):
+    """An ``Embedder`` whose forward pass records the texts it receives."""
+
+    def __init__(self, **kwargs: str) -> None:
+        """Configure a CPU embedder with the given prefixes."""
+        super().__init__("m", hardware=_cpu(), **kwargs)
+        self.seen: list[str] = []
+
+    def _embed_many(self, texts: list[str], batch_size: int) -> list[list[float]]:
+        """Record ``texts`` and return one constant vector per text."""
+        self.seen.extend(texts)
+        return [[1.0, 0.0] for _ in texts]
+
+
+class TestEmbedderRolePrefixes:
+    """``query_prefix`` / ``passage_prefix`` land on the right side only."""
+
+    async def test_embed_query_prepends_the_query_prefix(self) -> None:
+        emb = _RecordingEmbedder(query_prefix="query: ", passage_prefix="passage: ")
+        await emb.embed_query("como pedir reembolso?")
+        assert emb.seen == ["query: como pedir reembolso?"]
+
+    async def test_embed_passages_prepends_the_passage_prefix(self) -> None:
+        emb = _RecordingEmbedder(query_prefix="query: ", passage_prefix="passage: ")
+        await emb.embed_passages(["a", "b"])
+        assert emb.seen == ["passage: a", "passage: b"]
+
+    async def test_plain_embed_never_prefixes(self) -> None:
+        emb = _RecordingEmbedder(query_prefix="query: ", passage_prefix="passage: ")
+        await emb.embed(["raw"])
+        assert emb.seen == ["raw"]
+
+    async def test_default_prefixes_are_empty(self) -> None:
+        emb = _RecordingEmbedder()
+        await emb.embed_query("q")
+        await emb.embed_passages("p")
+        assert emb.seen == ["q", "p"]
+
+    async def test_the_retriever_applies_both_prefixes(self) -> None:
+        emb = _RecordingEmbedder(query_prefix="query: ", passage_prefix="passage: ")
+        rag = Retriever(emb, InMemoryVectorStore())
+        await rag.index([Chunk(text="reembolso em 7 dias", source="kb", index=0)])
+        await rag.search("reembolso?", top_k=1)
+        assert emb.seen == ["passage: reembolso em 7 dias", "query: reembolso?"]
+
+    async def test_an_embed_only_backend_still_works_in_the_retriever(self) -> None:
+        class PlainEmbedder:
+            def __init__(self) -> None:
+                self.seen: list[str] = []
+
+            async def embed(
+                self,
+                texts: str | list[str],
+                *,
+                batch_size: int = 32,
+            ) -> list[list[float]]:
+                items = [texts] if isinstance(texts, str) else texts
+                self.seen.extend(items)
+                return [[1.0, 0.0] for _ in items]
+
+        plain = PlainEmbedder()
+        rag = Retriever(plain, InMemoryVectorStore())
+        await rag.index([Chunk(text="t", source="kb", index=0)])
+        hits = await rag.search("q", top_k=1)
+        assert plain.seen == ["t", "q"]
+        assert [hit.text for hit in hits] == ["t"]

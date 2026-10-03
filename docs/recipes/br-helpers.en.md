@@ -485,7 +485,7 @@ passwords = PasswordUtils()
 
 log = LogUtils("app.users")
 
-payload = {"email": "ana@example.com", "password": "s3cr3t", "name": "Ana"}
+payload = {"email": "ana@example.com", "password": "s3cr3t", "display_name": "Ana"}
 
 # Strip password before logging
 log.info("user_signup", **modify_dict(payload, exclude=["password"]))
@@ -525,6 +525,6 @@ Every helper has its own recipe — this section is the quick map:
 - States and municipalities come from a bundled table, so you validate a
   payload and build a `<select>` without calling an external service.
 - Money goes both ways: a number into Brazilian-real text, and text back into
-  whole cents.
+  a `Decimal` in reais (`Decimal("2930.00")`, not `293000`).
 - `utcnow`, `to_utc` and `modify_dict` are the stateless helpers the SDK itself
   uses — available with no extra.

@@ -118,6 +118,28 @@ class TestServing:
         assert response.status_code == 200
         assert "<div id=root>" in response.text
 
+    def test_head_on_the_document_answers_like_get(self, client: TestClient) -> None:
+        """``HEAD`` falls back too, with the headers and no body.
+
+        Load balancers and uptime checks probe with ``HEAD``; a route
+        registered for ``GET`` alone answers them 405.
+        """
+        for path in ("/", "/users/42"):
+            response = client.head(path)
+            assert response.status_code == 200
+            assert response.headers["cache-control"] == DEFAULT_DOCUMENT_CACHE_CONTROL
+            assert response.content == b""
+
+    def test_head_on_a_root_level_file_is_served(self, client: TestClient) -> None:
+        """A file outside ``assets/`` answers ``HEAD`` like ``GET``."""
+        response = client.head("/favicon.ico")
+        assert response.status_code == 200
+        assert response.headers["content-length"] == str(len("icon"))
+
+    def test_post_still_does_not_fall_back(self, client: TestClient) -> None:
+        """Only ``GET``/``HEAD`` reach the fallback; ``POST`` is refused."""
+        assert client.post("/users/42").status_code == 405
+
 
 class TestCachePolicy:
     """The entry document must not be cached; hashed assets should be."""

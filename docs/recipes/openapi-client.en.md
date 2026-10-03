@@ -102,7 +102,7 @@ class Customer(BaseSchema):
         class_ (str | None): Reserved-word field name.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     id: UUID = Field(description="Server-assigned id.")
     email_address: EmailStr = Field(
@@ -126,7 +126,7 @@ class Customer(BaseSchema):
     )
 ```
 
-Five things happening there:
+Six things happening there:
 
 - **Python names + wire aliases.** `emailAddress` → `email_address`, with the
   wire name preserved in `validation_alias` **and** `serialization_alias`.
@@ -147,13 +147,21 @@ Five things happening there:
 - **Metadata filled in**, and **nothing invented**: a field with no
   `description` upstream gets none (the docstring says `Undocumented in the
   spec.`).
+- **A response model keeps what it did not expect.** `Customer` is the
+  response of `GET /customers` (the client below), so it comes out with
+  `extra="allow"`: a field the third party started sending without updating
+  the spec lands in `customer.model_extra` instead of vanishing in
+  validation. A model that only appears as a request body keeps
+  `BaseSchema`'s `extra="ignore"` — there, an unexpected key is the caller's
+  own typo, and sending it to the third party would be worse than dropping
+  it.
 
 ### `client.py`
 
 ```python
 from tempest_fastapi_sdk import HTTPClient
 
-from src.integrations.billing import Customer, CustomerStatus
+from .schemas import Customer, CustomerStatus
 
 
 class VendorClient:
@@ -177,7 +185,8 @@ class VendorClient:
 
         Args:
             page_size (int | None): Rows per page. Omitted from the query when None.
-            status (CustomerStatus | None): The status value. Omitted when None.
+            status (CustomerStatus | None): The status value. Omitted from the query
+                when None.
 
         Returns:
             list[Customer]: The 200 response body, validated.
@@ -214,7 +223,8 @@ import asyncio
 
 from tempest_fastapi_sdk import HTTPClient
 
-from src.integrations.billing import CustomerStatus, TerceiroClient
+from src.integrations.terceiro import TerceiroClient
+from src.integrations.terceiro.schemas import CustomerStatus
 
 vendor = TerceiroClient(HTTPClient(base_url="https://api.parceiro.com"))
 
@@ -258,9 +268,12 @@ asyncio.run(main())
             assert await VendorClient(http).list_customers() == []
     ```
 
-!!! warning "The generated client needs the `[http]` extra"
-    `HTTPClient` raises `ImportError` without it.
-    `uv add "tempest-fastapi-sdk[http]"`.
+!!! info "`httpx` already ships in the base package"
+    `HTTPClient` uses `httpx`, which is a dependency of the base
+    `tempest-fastapi-sdk` — the generated client imports and runs with no
+    extra at all. The `[http]` extra still exists and is optional: declaring
+    `uv add "tempest-fastapi-sdk[http]"` makes it explicit in your
+    `pyproject.toml` that the service depends on the HTTP client.
 
 ### A declared header becomes a call argument
 
@@ -320,7 +333,7 @@ async def charge(client: VendorClient) -> None:
 | `--path` / `-p` | Project root used to resolve the default destination |
 | `--schemas-only` | Do not generate `client.py` |
 | `--force` / `-f` | Overwrite what already exists |
-| `--no-format` | Skip the `ruff format` pass over the result |
+| `--no-format` | Skip the `ruff format` + `ruff check --fix` pass over the result |
 
 ### A specification behind authentication
 
@@ -351,10 +364,16 @@ tempest openapi-client https://api.vendor.com/openapi.json --name vendor --force
 ```
 
 !!! tip "The diff is the integration's changelog"
-    Running against an unchanged spec produces a **byte-for-byte identical**
-    file (there is a test for it). So any line that shows up in `git diff` after
-    a `--force` is a real change from the third party — a new field, a field
-    that became required, an enum that gained a value.
+    Running again with the same spec, the same SDK version and the same `ruff`
+    version produces **byte-for-byte identical** files — the
+    `test_regeneration_is_byte_identical` test pins that for the raw output
+    (`--no-format`), and two runs with the default pass also came out equal
+    (empty `diff -r`, ruff 0.16.5). So, with the SDK and `ruff` pinned in the
+    lock, any line that shows up in `git diff` after a `--force` is a real
+    change from the third party — a new field, a field that became required,
+    an enum that gained a value. Bumping the SDK or `ruff` in the same commit
+    mixes the two sources of diff: regenerate once without changing the spec
+    to separate them.
 
 ## OpenAPI coverage
 
@@ -378,6 +397,8 @@ What the generator represents, stated:
 | Recursive / mutually recursive | Deferred annotations + `model_rebuild()` at the end of the module |
 | `path` and `query` parameters | Typed method arguments |
 | `application/json` body and response | Generated schema |
+| `multipart/form-data` / `application/x-www-form-urlencoded` body | Sent as a form (`files=` / `data=`); a `format: binary` part becomes `bytes` |
+| Non-JSON response (`application/octet-stream`, `text/plain`, …) | `bytes` return — the `response.content`, unparsed |
 | 204 / no-content response | `None` return |
 
 And what is **not** represented — always with a line in the command's summary,
@@ -389,7 +410,7 @@ never silently:
 | External `$ref` | Bundle the spec first (`redocly bundle`) |
 | Swagger 2.0 | Convert to OpenAPI 3 (`swagger2openapi`) |
 | `cookie` parameters | A cookie is connection state, not a per-call value |
-| Non-JSON body/response (`multipart`, `octet-stream`) | Out of scope for this iteration |
+| Request body in another content type (`application/octet-stream`, `text/plain`, …) | Only JSON, urlencoded and multipart are modelled; the method comes out without the body, marked |
 | `type` with several concrete values | Not modelled |
 
 !!! danger "It never guesses"
@@ -412,17 +433,26 @@ never silently:
     it**, so the generator writes a comment above the affected line:
 
     ```python
-    # openapi: unsupported — `not` in ThingWeird rendered as Any (no Python
+    # openapi: unsupported — `not` in ThingWeirdWeird rendered as Any (no Python
     #   equivalent)
     weird: Any | None = None
     ```
 
-    It covers fields, methods (a `multipart` body, an unmodelled response) and
-    synthesized parameters. It is greppable on purpose:
+    It covers fields and methods — including when what was lost is a
+    parameter: the dropped `cookie`, the `path` parameter the template never
+    uses, the body in an unmodelled content type and the synthesized
+    placeholder all come out as a comment above the method that lost (or
+    gained) them:
+
+    ```text
+    # openapi: unsupported — 'cookie' parameter 'sessionHint' skipped (pass it via
+    #   HTTPClient default_headers)
+    async def list_customers(
+    ```
+
+    It is greppable on purpose:
     `grep -rn "openapi: unsupported" src/integrations/` lists everything the
-    integration lost. A gap with nothing in the file to mark — a dropped
-    `cookie` parameter, say — stays summary-only, because there is no line to
-    comment on.
+    integration lost.
 
 ## The generated code passes your gates
 
@@ -437,6 +467,16 @@ That is tested, not promised: the suite runs `ruff` against the raw output
 un-imported `UUID`, an un-imported enum, an over-long docstring line and two
 import-ordering mistakes that no assertion about the schemas' *shape* would have
 noticed.
+
+The guarantee's scope is what the suite and this measurement
+cover: with ruff 0.16.5, the raw output of a spec with a 204 operation, a
+multipart body, a `cookie` and a `not` passed `ruff format --check` and
+`ruff check --isolated --select E,F,I,W,N,UP,B`. Outside that set it is not a
+promise: with `RET` and `PL` enabled, a 204 operation's `return None` trips
+`RET501` and `PLR1711`; and in a project that declares `tempest_fastapi_sdk`
+first-party for isort, the import block trips `I001`. All three are
+auto-fixable, and the default pass — `ruff format` + `ruff check --fix`, with
+**your** project's config — resolves them.
 
 So `--no-format` (or a machine with no `ruff` installed) still yields a usable
 package. The `ruff` pass the command runs by default is polish, not correctness.
@@ -573,8 +613,14 @@ them:
 Synthesized class names are capped at 55 characters. The binding constraint is
 not the `class` statement but the docstring's `Attributes:` entry: there the
 annotation composes around the name (`dict[str, Name] | None` costs another 18
-columns at an indent of 12) and `ruff format` breaks neither. Measured on the
-vendored OpenPix specification: 8 of 373 names truncated, no new collision.
+columns at an indent of 12) and `ruff format` breaks neither.
+
+How many names the cut touches depends on the spec and moves with every
+refresh of it. Measured on v0.302.0 against the vendored OpenPix specification
+(after the overlay): 138 of the 686 names in `spec.schemas` exceed 55, the cut
+folds them onto 31 prefixes, none of which equals a name that was already
+short, and `unique` disambiguates the rest with a numeric suffix — which takes
+the final name to up to 57 characters in the largest measured case.
 
 !!! warning "One case has no solution, and the docs do not pretend otherwise"
     A very long field name next to an annotation that is a **single
@@ -614,15 +660,18 @@ declares:
     summary:
 
     ```text
-    2 construct(s) could not be modelled (rendered as Any, marked in the output):
+    2 construct(s) could not be modelled as written — each line says what was
+    generated instead, and the ones with something to mark carry an
+    `# openapi: unsupported` comment in the output:
       - path parameter 'expand' of '/accounts/{accountId}' is declared but absent
         from the path template — skipped, since the value would never reach the request
       - path '/receipts/{receiptId}' interpolates 'receiptId', which no parameter
         declares — generated as a required str
     ```
 
-    The synthesized parameter is marked in `client.py` too, above the method —
-    the dropped one is not, because no line was left to comment on.
+    Both are marked in `client.py` too, above the method — the dropped one
+    included, because the comment goes on the method, not on the parameter
+    that vanished.
 
 ## Recap
 
@@ -635,7 +684,8 @@ declares:
 4. **The client takes an injected `HTTPClient`**, so retry / circuit breaker /
    credentials stay yours, and `httpx.MockTransport` tests everything offline.
 5. **`--force` regenerates**, and since an unchanged spec yields an identical
-   file, the diff shows exactly what the third party changed.
+   file (with the same SDK and `ruff` versions), the diff shows exactly what
+   the third party changed.
 6. **The spec's prose does not break the module** — quotes, `\#`, line breaks
    and over-long text come out as valid literals that pass `ruff format --check`
    on your side, with the text intact.

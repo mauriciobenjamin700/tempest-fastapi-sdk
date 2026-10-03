@@ -171,18 +171,27 @@ A real service has layers (router → controller → service → repository), se
 uv tool install "tempest-fastapi-sdk[all]"
 
 # 2. scaffold the service
-tempest new my-api
-cd my-api
+tempest new my_api
+cd my_api
 
 # 3. install the generated dependencies and run the tests
 uv sync
 uv run pytest
 ```
 
+!!! note "The name becomes a Python package: `my_api`, not `my-api`"
+    Path A's `uv init` accepts a hyphen; `tempest new` does not. The name has
+    to match `^[a-z][a-z0-9_]*$`, and `tempest new my-api` exits with code 2
+    before writing any file:
+
+    ```text
+    Error: project name must match ^[a-z][a-z0-9_]*$ (lowercase, underscores, no leading digit).
+    ```
+
 What comes out:
 
 ```text
-my-api/
+my_api/
 ├── main.py                 # one-liner calling run() from src.server
 ├── pyproject.toml
 ├── .env.example

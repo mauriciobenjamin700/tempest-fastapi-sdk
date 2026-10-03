@@ -141,6 +141,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.user_oauth_account_model.BaseUserOAuthAccountModel
 ::: tempest_fastapi_sdk.db.user_oauth_account_model.make_user_oauth_account_model
 ::: tempest_fastapi_sdk.db.repository.BaseRepository
+::: tempest_fastapi_sdk.db.repository.DEFAULT_SYNC_WATERMARK_LAG
 ::: tempest_fastapi_sdk.db.integrity.parse_integrity_error
 ::: tempest_fastapi_sdk.db.integrity.describe_database_error
 ::: tempest_fastapi_sdk.db.integrity.WITHHELD_NOTICE
@@ -844,6 +845,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.api.webhooks.WebhookSender
 ::: tempest_fastapi_sdk.api.webhooks.WebhookDelivery
 ::: tempest_fastapi_sdk.api.tracing.setup_tracing
+::: tempest_fastapi_sdk.api.tracing.instrument_sqlalchemy_engine
 
 ### `tempest_fastapi_sdk.auth`
 
@@ -860,6 +862,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.auth.firebase.FirebaseTokenRevokedError
 ::: tempest_fastapi_sdk.auth.firebase.FirebaseUserDisabledError
 ::: tempest_fastapi_sdk.auth.firebase.FirebaseUnavailableError
+::: tempest_fastapi_sdk.auth.exceptions.MFAAlreadyEnrolledException
 ::: tempest_fastapi_sdk.auth.firebase.DEFAULT_FIREBASE_APP_NAME
 ::: tempest_fastapi_sdk.auth.router.make_auth_router
 ::: tempest_fastapi_sdk.auth.guards.require_authenticated

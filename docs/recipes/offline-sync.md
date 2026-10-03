@@ -226,10 +226,43 @@ Esta é a parte que costuma dar bug. Siga à risca:
    `updated_at > since` (estrito).
 
 !!! tip "Por que `server_time` e não o relógio do cliente"
-    O `server_time` é capturado no servidor **antes** da query rodar. Como ele é
-    um marco do próprio relógio do banco, qualquer linha escrita depois tem
-    `updated_at` maior e aparece no pull seguinte — imune ao clock skew do
-    aparelho.
+    O `server_time` é capturado no servidor **antes** da query rodar, pelo
+    mesmo `utcnow()` do processo da aplicação que carimba `updated_at` no
+    `flush` do ORM. Os dois saem do relógio do servidor da aplicação — não do
+    banco, e não do aparelho —, então o clock skew do dispositivo não entra
+    na conta: uma linha carimbada depois do marco tem `updated_at` maior e
+    aparece no pull seguinte.
+
+!!! check "O marco fica 5 segundos atrás"
+    O `updated_at` é carimbado no `flush`, não no `commit`. Uma escrita que
+    faz `flush` antes do pull e só commita depois fica com `updated_at`
+    anterior ao pull: invisível nele (ainda não commitada) e, com o marco em
+    "agora", fora de todo pull seguinte. Por isso o `server_time` sai
+    `watermark_lag` atrás do início da query — `DEFAULT_SYNC_WATERMARK_LAG`,
+    5 segundos —, e o pull seguinte relê essa janela. Medido com duas
+    sessões num SQLite em arquivo (flush na primeira, pull na segunda,
+    commit, pull a partir do marco):
+
+    | `watermark_lag` | pull durante | pull seguinte |
+    | --- | --- | --- |
+    | `timedelta(0)` | vazio | vazio — a linha se perdeu |
+    | default (5 s) | vazio | `['straddler']` |
+
+    O preço é que linha alterada dentro da janela chega **duas vezes**:
+    aplique os itens por upsert no `id`, como a seção de push já faz.
+    Transação de escrita mais longa que 5 segundos pede um
+    `watermark_lag` maior.
+
+!!! warning "O que a janela não cobre"
+    - **Transação mais longa que a janela.** Ela volta a cair fora; aumente
+      o `watermark_lag` ou dê ao cliente um resync periódico com
+      `since=None`.
+    - **Várias réplicas.** Cada processo carimba com o próprio relógio; skew
+      entre os servidores da aplicação maior que a janela entra no
+      `updated_at`.
+    - **SQL escrito à mão** (`text(...)`, `psql`, outra linguagem). Um
+      `INSERT` assim cai no `server_default=NOW()` — o relógio do banco —, e
+      um `UPDATE` assim não mexe no `updated_at`.
 
 !!! warning "Tombstones não são opcionais"
     Deixe `include_deleted=True` (padrão). Um pull que esconde os deletados

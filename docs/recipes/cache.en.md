@@ -112,7 +112,7 @@ It applies to every Redis store the SDK ships -- `RedisRateLimitStore`, `RedisQu
 ## @cached decorator
 
 
-`@cached(redis, ttl=..., key_prefix=...)` memoizes the result of an async function in Redis. Cache keys are derived from the function's `__qualname__` plus a SHA-256 of args/kwargs; pass `key_prefix=` to namespace entries. To invalidate **before** the TTL, use tags/namespace (below) rather than a prefix scan.
+`@cached(redis, ttl=..., key_prefix=...)` memoizes the result of an async function in Redis. Cache keys are derived from the function's `__qualname__` plus a SHA-256 of args/kwargs (without a method's `self`/`cls` — see [below](#cache-aside-in-a-service)); pass `key_prefix=` to namespace entries. To invalidate **before** the TTL, use tags/namespace (below) rather than a prefix scan.
 
 ```python
 from typing import Any
@@ -229,7 +229,9 @@ try/miss — it does it for you:
 # src/services/catalog.py
 
 from typing import Any
+from uuid import UUID
 
+from fastapi.encoders import jsonable_encoder
 from tempest_fastapi_sdk.cache import CacheInvalidator, cached
 
 from src.core.resources import redis
@@ -241,24 +243,49 @@ class CatalogService:
         self.repo = repo
 
     @cached(redis, ttl=300, key_prefix="catalog:", namespace="products")
-    async def get_product(self, product_id: str) -> dict[str, Any]:
+    async def get_product(self, product_id: UUID) -> dict[str, Any]:
         """Reads from the DB on a miss; serves from Redis for 5 min on a hit."""
         product = await self.repo.get_by_id(product_id)
-        return product.to_dict()
+        return jsonable_encoder(product.to_dict())
 
-    async def update_product(self, product_id: str, data: dict[str, Any]) -> None:
+    async def update_product(self, product_id: UUID, data: dict[str, Any]) -> None:
         """Writes and drops the whole namespace's cache."""
-        await self.repo.update(product_id, data)
+        product = await self.repo.get_by_id(product_id)
+        product.update_from_dict(data, allowed_fields={"name", "price"})
+        await self.repo.update(product)
         await CacheInvalidator(redis, key_prefix="catalog:").invalidate_namespace(
             "products",
         )
 ```
 
-!!! warning "Don't cache methods that depend on mutable `self`"
-    The `@cached` key includes the arguments — but **not** `self`'s state.
-    Only cache methods whose result depends solely on the arguments (like
-    above, where `product_id` determines everything). If the result varies
-    with instance state, cache a pure function instead.
+Two details of that example are not decoration:
+
+- **`jsonable_encoder(product.to_dict())`**, not a bare
+  `product.to_dict()`. `to_dict()` returns `id` as a `UUID` and
+  `created_at` as a `datetime`, and the default serializer (`json.dumps`)
+  refuses both: `@cached` logs `cached_serialization_failed`, returns the
+  result and **stores nothing** — every call goes to the database, with no
+  error at all. Through `jsonable_encoder` the dict becomes JSON types
+  (strings in place of `UUID`/`datetime`), and the miss and the hit return
+  the same value.
+- **`repo.update(product)`** takes the already-mutated instance —
+  `BaseRepository.update` only does `commit` + `refresh` of what the
+  session tracks. That is why `update_product` fetches, applies with
+  `update_from_dict(..., allowed_fields=...)`, and only then writes.
+
+!!! warning "The key ignores `self` — and its state"
+    When the decorated function's first parameter is named `self` or
+    `cls`, the default key **leaves that argument out**: only the
+    qualified name (`CatalogService.get_product`) and the remaining
+    arguments go in. That is what lets the cache hit with a service built
+    per request — `str(self)` of an instance without its own `__repr__`
+    carries its memory address and never repeats. The consequence is that
+    **every instance of the class shares the entry**. Only cache methods
+    whose result depends solely on the arguments (like above, where
+    `product_id` determines everything). If the result varies with
+    instance state (a `tenant_id` kept on `self`, say), pass a
+    `key_builder` that reads that state — it receives the full `args`,
+    `self` included — or cache a pure function instead.
 
 ### One Redis for everything
 
@@ -294,25 +321,26 @@ DB every time. Cache the empty result with a short TTL:
 ```python
 from typing import Any
 
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
 
 from src.core.settings import settings
-from src.db.repositories import ProductRepository
+from src.db.repositories import UserRepository
 
 # In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 redis = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
 
-repo = ProductRepository(session)
+repo = UserRepository(session)
 
 
 @cached(redis, ttl=30, key_prefix="lookup:")  # short TTL for the negative
 async def find_user(email: str) -> dict[str, Any] | None:
     """Returns None on a miss — and that None is cached for 30s."""
     user = await repo.get_by_email(email)
-    return user.to_dict() if user else None
+    return jsonable_encoder(user.to_dict()) if user else None
 ```
 
 !!! tip "Stampede / dogpile"

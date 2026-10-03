@@ -117,7 +117,7 @@ for you.
     the `finally`. `on_disconnect=` replaces that boilerplate:
 
     ```python
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncIterator
     from tempest_fastapi_sdk import sse_response
 
     async def lifecycle_aware() -> AsyncIterator[bytes]:
@@ -571,7 +571,7 @@ async def create_order(
     return await controller.create_order(data)
 ```
 
-A buyer with `GET /feed` open receives it instantly:
+The seller with `GET /feed` open receives it instantly:
 
 ```text
 event: order_created
@@ -728,15 +728,12 @@ it reaches every worker:
 import asyncio
 from uuid import UUID
 
-from src.db.models import OrderModel, UserModel
 from src.queue import mq
-
-user = UserModel(name="Ana", email="ana@example.com")
-order = OrderModel(user_id=user.id, total=100)
 
 sse_exchange = "sse.fanout"
 
 user_id = UUID("2b1d0c2e-7f3a-4c56-9d18-2f9a4c5b6d70")
+order_id = UUID("9f3a6e1c-2d4b-4f8a-b1c7-5e0d9a3b2c41")
 
 
 async def main() -> None:
@@ -746,7 +743,7 @@ async def main() -> None:
         {
             "channel": str(user_id),
             "event": "order_created",
-            "data": {"order_id": str(order.id)},
+            "data": {"order_id": str(order_id)},
         },
         exchange=sse_exchange,
     )
@@ -820,9 +817,8 @@ from starlette.responses import StreamingResponse
 
 from tempest_fastapi_sdk import SSEBroker
 
-from src.db.models import User, UserModel
-
-current_user = UserModel(name="Ana", email="ana@example.com")
+from src.api.dependencies.auth import current_user
+from src.db.models import UserModel
 
 
 def get_broker() -> SSEBroker:
@@ -838,7 +834,7 @@ router = APIRouter()
 
 @router.get("/feed")
 async def feed(
-    user: User = Depends(current_user),      # resolves the JWT from the query
+    user: UserModel = Depends(current_user),      # resolves the JWT from the query
     broker: SSEBroker = Depends(get_broker),
 ) -> StreamingResponse:
     """Authenticated stream without a cookie — token comes in the URL."""

@@ -17,7 +17,7 @@ This section collects didactic projects built **entirely on top of `tempest-fast
 
 A Mercado Livre / Shopee–style platform where:
 
-- Users sign up via a public endpoint (`POST /signup`).
+- Users sign up via a public endpoint (`POST /auth/signup`).
 - Each user can create **up to 2 organizations** (sellers).
 - Each organization can invite **up to 10 members** (owners + admins + collaborators).
 - Members register products with variants, versioned prices, and stock control.

@@ -184,6 +184,7 @@ O serviço expõe:
 | `subscribe(user_id, subscription, *, user_agent=None)` | Salva a inscrição, **idempotente por `endpoint`** — re-subscribe atualiza, não duplica. |
 | `unsubscribe(endpoint)` | Remove a inscrição (no-op se não existe). |
 | `list_for_user(user_id)` | Lista os devices do usuário. |
+| `prune(endpoints)` | Apaga as inscrições desses endpoints — a lista que `send_many` devolve. Devolve quantas linhas saíram; endpoint que não existe é ignorado. |
 | `notify_user(user_id, payload)` | Envia pra todos os devices e **poda os mortos** (404/410) antes de retornar. Devolve quantos receberam. |
 
 ### 4. Controller — a camada fina de política
@@ -450,29 +451,30 @@ O `payload` aceita `WebPushPayloadSchema`, `dict`, `str` ou `bytes`
 inscrição morta do seu store.
 
 ```python
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import (
     WebPushGoneError,
     WebPushPayloadSchema,
     WebPushSubscriptionSchema,
 )
-from tempest_fastapi_sdk.webpush import WebPushDispatcher
+from tempest_fastapi_sdk.webpush import WebPushSubscriptionService
 
-from src.core.settings import settings
-from src.db.repositories import WebPushSubscriptionRepository
-
-# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
-session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
-
-dispatcher = WebPushDispatcher(**settings.webpush_kwargs())
-
-subscriptions_repo = WebPushSubscriptionRepository(session)
+from src.db.models import WebPushSubscriptionModel
 
 
 async def notify_order_paid(
+    service: WebPushSubscriptionService[WebPushSubscriptionModel],
     subscription: WebPushSubscriptionSchema,
     order_id: str,
 ) -> None:
+    """Avisa um aparelho e apaga a inscrição se o push service a deu por morta.
+
+    Args:
+        service (WebPushSubscriptionService[WebPushSubscriptionModel]): O
+            serviço montado pelo `get_webpush_service`; traz o dispatcher
+            em `service.dispatcher`.
+        subscription (WebPushSubscriptionSchema): O aparelho de destino.
+        order_id (str): O pedido aprovado.
+    """
     payload = WebPushPayloadSchema(
         title="Pagamento confirmado",
         body=f"Pedido {order_id} aprovado.",
@@ -480,9 +482,9 @@ async def notify_order_paid(
         data={"orderId": order_id, "url": f"/orders/{order_id}"},
     )
     try:
-        await dispatcher.send(subscription, payload)
+        await service.dispatcher.send(subscription, payload)
     except WebPushGoneError:
-        await subscriptions_repo.delete_by_endpoint(subscription.endpoint)
+        await service.unsubscribe(subscription.endpoint)
 ```
 
 ## Broadcast: um aviso para todo mundo
@@ -588,14 +590,15 @@ from tempest_fastapi_sdk.webpush import (
     WebPushDispatcher,
     WebPushPayloadSchema,
     WebPushSubscriptionSchema,
+    WebPushSubscriptionService,
 )
 
-from src.db.repositories import WebPushSubscriptionRepository
+from src.db.models import WebPushSubscriptionModel
 
 
 async def broadcast(
     dispatcher: WebPushDispatcher,
-    repository: WebPushSubscriptionRepository,
+    service: WebPushSubscriptionService[WebPushSubscriptionModel],
     subs: list[WebPushSubscriptionSchema],
     payload: WebPushPayloadSchema,
 ) -> None:
@@ -603,13 +606,14 @@ async def broadcast(
 
     Args:
         dispatcher (WebPushDispatcher): O dispatcher configurado.
-        repository (WebPushSubscriptionRepository): Onde as inscrições vivem.
+        service (WebPushSubscriptionService[WebPushSubscriptionModel]): Onde as
+            inscrições vivem; `prune` apaga as mortas.
         subs (list[WebPushSubscriptionSchema]): Os destinatários.
         payload (WebPushPayloadSchema): A notificação.
     """
     gone: list[str] = await dispatcher.send_many(subs, payload, max_concurrency=16)
     if gone:
-        await repository.delete_by_endpoints(gone)
+        await service.prune(gone)
 ```
 
 !!! warning "A lista que volta é só de inscrição morta"

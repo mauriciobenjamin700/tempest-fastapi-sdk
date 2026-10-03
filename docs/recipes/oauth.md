@@ -19,8 +19,12 @@ genérico `OIDCProvider`, todos terminando na mesma identidade normalizada
     garantias — e o dia em que alguém ligar `strict=True` na verificação de
     tipo, todo login com Google quebra de uma vez.
 
-Nada de extra pra instalar: `httpx` é dependência base do SDK e o `HTTPClient`
-(com retry e circuit breaker) já vem embutido.
+O login por redirect não pede extra além do `[auth]` (bcrypt + PyJWT), que o
+`UserAuthService` por trás do `make_auth_router` já exige: `httpx` é
+dependência base do SDK e o `HTTPClient` (com retry e circuit breaker) já vem
+embutido. Só o `OIDCTokenVerifier`, que confere offline o token de um realm
+([seção própria](#verificar-o-token-do-realm-offline-oidctokenverifier-v02970)), pede o
+`[oidc]`, que traz o `cryptography`.
 
 ## O fluxo, ponta a ponta
 
@@ -74,13 +78,14 @@ class Settings(
 settings: Settings = Settings()
 ```
 
-`OAuthSettings` lê cinco variáveis de ambiente:
+`OAuthSettings` lê seis variáveis de ambiente:
 
 | Variável | Default | Para que serve |
 | --- | --- | --- |
 | `OAUTH_REDIRECT_BASE_URL` | `""` | Origem pública do serviço (`https://api.exemplo.com`), sem barra final e sem path |
 | `OAUTH_GOOGLE_CLIENT_ID` | `""` | `Client ID` do console do Google |
 | `OAUTH_GOOGLE_CLIENT_SECRET` | `""` | `Client secret` correspondente |
+| `OAUTH_GOOGLE_EXTRA_AUDIENCES` | `[]` | Os outros client ids Google do projeto (Android, iOS) cujo token o `POST /auth/oauth/google/token` aceita; no ambiente, lista JSON (`'["id-android","id-ios"]'`) |
 | `OAUTH_GITHUB_CLIENT_ID` | `""` | `Client ID` do OAuth app do GitHub |
 | `OAUTH_GITHUB_CLIENT_SECRET` | `""` | `Client secret` correspondente |
 
@@ -813,8 +818,10 @@ O que o callback — e o token-in-hand — respondem, por causa:
     funcionar.
 
     Cada classe herda a exceção que aquele ponto já levantava
-    (`OAuthEmailTakenException(ConflictException)` e as outras nove), então
-    `except ConflictException` continua pegando o que pegava.
+    (`OAuthEmailTakenException(ConflictException)` e as outras onze), então
+    `except ConflictException` continua pegando o que pegava. A única que
+    herda direto de `AppException` é `OAuthAudienceUnverifiableException`
+    (501), que não substituiu exceção nenhuma.
 
 ## Fazendo na mão
 

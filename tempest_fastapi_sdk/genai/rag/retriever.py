@@ -36,6 +36,65 @@ class SupportsEmbed(Protocol):
 
 
 @runtime_checkable
+class _SupportsRoleEmbed(Protocol):
+    """An embedder that tells a search query apart from a corpus passage.
+
+    :class:`~tempest_fastapi_sdk.genai.Embedder` implements it; embedders
+    that only expose ``embed`` keep working through the plain call.
+    """
+
+    async def embed_query(
+        self,
+        texts: str | list[str],
+        *,
+        batch_size: int = ...,
+    ) -> list[list[float]]:
+        """Return one vector per query."""
+        ...
+
+    async def embed_passages(
+        self,
+        texts: str | list[str],
+        *,
+        batch_size: int = ...,
+    ) -> list[list[float]]:
+        """Return one vector per passage."""
+        ...
+
+
+async def _embed_passages(
+    embedder: SupportsEmbed, texts: list[str]
+) -> list[list[float]]:
+    """Embed corpus passages, through ``embed_passages`` when the embedder has it.
+
+    Args:
+        embedder (SupportsEmbed): The embedding model.
+        texts (list[str]): The passages to embed.
+
+    Returns:
+        list[list[float]]: One vector per passage, in input order.
+    """
+    if isinstance(embedder, _SupportsRoleEmbed):
+        return await embedder.embed_passages(texts)
+    return await embedder.embed(texts)
+
+
+async def _embed_query(embedder: SupportsEmbed, texts: list[str]) -> list[list[float]]:
+    """Embed search queries, through ``embed_query`` when the embedder has it.
+
+    Args:
+        embedder (SupportsEmbed): The embedding model.
+        texts (list[str]): The queries to embed.
+
+    Returns:
+        list[list[float]]: One vector per query, in input order.
+    """
+    if isinstance(embedder, _SupportsRoleEmbed):
+        return await embedder.embed_query(texts)
+    return await embedder.embed(texts)
+
+
+@runtime_checkable
 class SupportsRetrieve(Protocol):
     """A one-shot corpus-RAG helper: query in, context block out.
 
@@ -93,6 +152,10 @@ class Retriever:
     async def index(self, chunks: Sequence[Chunk]) -> int:
         """Embed ``chunks`` and add them to the store.
 
+        An embedder with ``embed_passages`` (``Embedder``) is called through
+        it, so its ``passage_prefix`` lands on every chunk; :meth:`search`
+        does the same with ``embed_query``.
+
         Args:
             chunks (Sequence[Chunk]): Chunks (e.g. from ``PdfReader.chunks``
                 or ``chunk_text``).
@@ -102,7 +165,10 @@ class Retriever:
         """
         if not chunks:
             return 0
-        vectors = await self.embedder.embed([chunk.text for chunk in chunks])
+        vectors = await _embed_passages(
+            self.embedder,
+            [chunk.text for chunk in chunks],
+        )
         await self.store.add(list(chunks), vectors)
         return len(chunks)
 
@@ -131,7 +197,7 @@ class Retriever:
         """
         model = getattr(self.embedder, "model_id", "rag")
         async with genai_span("retrieve", model, **{"gen_ai.request.top_k": top_k}):
-            (vector,) = await self.embedder.embed([query])
+            (vector,) = await _embed_query(self.embedder, [query])
             if self.reranker is None:
                 return await self.store.search(vector, top_k=top_k)
             candidates = await self.store.search(

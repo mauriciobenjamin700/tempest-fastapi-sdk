@@ -33,6 +33,7 @@ together.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -184,6 +185,59 @@ class BaseOutboxModel(BaseModel):
         )
 
 
+_PUBLISH_CONTRACT_HINT: str = (
+    "OutboxRelay calls publish(event) with ONE argument, the outbox row. "
+    "Wrap a broker's publish(channel, message) instead of passing it raw:\n\n"
+    "    async def publish(event: BaseOutboxModel) -> None:\n"
+    "        await broker.publish(event.topic, event.payload)\n\n"
+    "    OutboxRelay(db, model=OutboxModel, publish=publish)"
+)
+
+
+def _check_publish_arity(publish: Callable[[BaseOutboxModel], Awaitable[Any]]) -> None:
+    """Refuse a ``publish`` callable that cannot take exactly one positional argument.
+
+    The relay calls ``publish(event)``. A callable with a different shape
+    — the usual one being a broker's bound ``publish(channel, message)``
+    passed raw — raises ``TypeError`` on every call, and inside the drain
+    loop that error is indistinguishable from a broker outage: the row is
+    retried with backoff and ends ``FAILED`` without ever being published.
+    Checking the signature at construction turns that silent loss into an
+    error at startup.
+
+    The check binds one positional placeholder against
+    :func:`inspect.signature`. Callables whose signature cannot be read
+    (some builtins and C extensions) are accepted unchecked rather than
+    refused, and a callable taking ``*args`` (a ``Mock``, a generic
+    wrapper) binds and passes, which is the correct answer for it.
+
+    Args:
+        publish (Callable[[BaseOutboxModel], Awaitable[Any]]): The callable
+            handed to :class:`OutboxRelay`.
+
+    Raises:
+        TypeError: If ``publish`` is not callable, or its signature cannot
+            accept a single positional argument.
+    """
+    if not callable(publish):
+        raise TypeError(
+            f"publish must be callable, got {type(publish).__name__}. "
+            f"{_PUBLISH_CONTRACT_HINT}"
+        )
+    try:
+        signature = inspect.signature(publish)
+    except (TypeError, ValueError):
+        return
+    try:
+        signature.bind(object())
+    except TypeError as exc:
+        name = getattr(publish, "__qualname__", repr(publish))
+        raise TypeError(
+            f"publish={name}{signature} cannot be called as publish(event): "
+            f"{exc}. {_PUBLISH_CONTRACT_HINT}"
+        ) from None
+
+
 class OutboxRelay:
     """Drain pending outbox rows and publish them through a callable.
 
@@ -194,15 +248,22 @@ class OutboxRelay:
 
     On a backend that supports it (PostgreSQL, MySQL), the relay locks
     the batch with ``FOR UPDATE SKIP LOCKED`` so several relay workers
-    can run concurrently without publishing the same row twice. On
+    can run concurrently without two of them taking the same row. On
     SQLite (no row locks) it falls back to a plain select — fine for a
     single worker.
+
+    Delivery is **at-least-once**. Each event is published inside the
+    drain's transaction and marked ``SENT`` only when that transaction
+    commits at the end of the batch, so a drain interrupted after a
+    publish (worker killed, task cancelled) leaves the row ``PENDING`` and
+    the next drain publishes it again. Consumers deduplicate by the
+    event ``id``.
 
     Example:
         >>> relay = OutboxRelay(
         ...     db,
         ...     model=OutboxModel,
-        ...     publish=lambda e: broker.publish(e.payload, e.topic),
+        ...     publish=lambda e: broker.publish(e.topic, e.payload),
         ... )
         >>> await relay.run(poll_interval=1.0)  # loops until cancelled
 
@@ -238,9 +299,15 @@ class OutboxRelay:
 
         Raises:
             ValueError: If ``batch_size`` is not positive.
+            TypeError: If ``publish`` cannot be called with exactly one
+                positional argument — e.g. a broker's bound
+                ``publish(channel, message)`` passed without a wrapper,
+                which would otherwise fail on every event and mark each
+                one ``FAILED`` without publishing it.
         """
         if batch_size <= 0:
             raise ValueError("batch_size must be positive")
+        _check_publish_arity(publish)
         self._db: AsyncDatabaseManager = db
         self._model: type[BaseOutboxModel] = model
         self._publish: Callable[[BaseOutboxModel], Awaitable[Any]] = publish

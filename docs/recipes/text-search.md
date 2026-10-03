@@ -124,8 +124,46 @@ async def search_page(
 ```
 
 Isso funciona porque `where=` passou a aceitar tanto um `Q` quanto uma
-cláusula SQLAlchemy pronta. `count()`, `list()` e `cursor_paginate()`
-aceitam a mesma coisa.
+cláusula SQLAlchemy pronta. `count()` e `list()` aceitam a mesma coisa.
+
+O `cursor_paginate()` **não** tem `where=` — passar um levanta
+`TypeError: ... got an unexpected keyword argument 'where'`. Ele recebe um
+`Select` pronto em `query=`, e a condição entra ali:
+
+```python
+from typing import Any
+
+from sqlalchemy import select
+from tempest_fastapi_sdk import BaseRepository
+
+from src.db.models import ArticleModel
+
+
+async def search_feed(
+    articles: BaseRepository[ArticleModel],
+    term: str,
+    cursor: str | None = None,
+) -> dict[str, Any]:
+    """Pagina uma busca por cursor.
+
+    Args:
+        articles (BaseRepository[ArticleModel]): Repositório de artigos.
+        term (str): O termo digitado pelo usuário.
+        cursor (str | None): O `next_cursor` da página anterior.
+
+    Returns:
+        dict[str, Any]: `items`, `next_cursor`, `has_more` e `limit`.
+    """
+    query = select(ArticleModel)
+    condition = articles.search_condition(term, fields=["title", "body"])
+    if condition is not None:
+        query = query.where(condition)
+    return await articles.cursor_paginate(query=query, cursor=cursor, limit=20)
+```
+
+O `if` não é enfeite: termo em branco faz o `search_condition` devolver
+`None` — via `where=` isso já significa "sem filtro", mas um `Select` montado à
+mão precisa pular o `.where(...)` sozinho.
 
 ## Camada full-text: `full_text_search()`
 

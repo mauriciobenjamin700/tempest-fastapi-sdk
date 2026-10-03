@@ -226,10 +226,43 @@ This is the part that usually breaks. Follow it exactly:
    `updated_at > since` (strict).
 
 !!! tip "Why `server_time` and not the client clock"
-    `server_time` is captured on the server **before** the query runs. Because
-    it is a marker on the database's own clock, any row written afterwards has a
-    larger `updated_at` and surfaces on the next pull — immune to device clock
-    skew.
+    `server_time` is captured on the server **before** the query runs, by the
+    same application-process `utcnow()` that stamps `updated_at` on the ORM
+    `flush`. Both come from the application server's clock — not the
+    database's, and not the device's —, so device clock skew does not enter
+    the picture: a row stamped after the marker has a larger `updated_at` and
+    surfaces on the next pull.
+
+!!! check "The marker sits 5 seconds back"
+    `updated_at` is stamped on `flush`, not on `commit`. A write that flushes
+    before the pull and only commits after it carries an `updated_at` older
+    than the pull: invisible to it (not yet committed) and, with the marker
+    at "now", outside every later pull. So `server_time` is set
+    `watermark_lag` behind the query start — `DEFAULT_SYNC_WATERMARK_LAG`,
+    5 seconds — and the next pull re-reads that window. Measured with two
+    sessions on a file-backed SQLite (flush in the first, pull in the
+    second, commit, pull from the marker):
+
+    | `watermark_lag` | pull during | next pull |
+    | --- | --- | --- |
+    | `timedelta(0)` | empty | empty — the row is lost |
+    | default (5 s) | empty | `['straddler']` |
+
+    The price is that a row changed inside the window arrives **twice**:
+    apply items by upsert on `id`, as the push section already does. A
+    write transaction longer than 5 seconds needs a larger
+    `watermark_lag`.
+
+!!! warning "What the window does not cover"
+    - **A transaction longer than the window.** It falls outside again;
+      raise `watermark_lag` or give the client a periodic resync with
+      `since=None`.
+    - **Several replicas.** Each process stamps with its own clock; skew
+      between application servers larger than the window enters
+      `updated_at`.
+    - **Hand-written SQL** (`text(...)`, `psql`, another language). Such an
+      `INSERT` falls back to `server_default=NOW()` — the database clock —,
+      and such an `UPDATE` does not touch `updated_at`.
 
 !!! warning "Tombstones are not optional"
     Keep `include_deleted=True` (the default). A pull that hides deleted rows

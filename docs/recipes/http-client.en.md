@@ -4,7 +4,9 @@
 external services** with retries + exponential backoff, a circuit-breaker,
 default timeouts, and `X-Request-ID` propagation. It's the outbound
 counterpart of the [HTTP middleware](http.md) (which handles inbound
-traffic). Requires the `[http]` extra (`httpx`).
+traffic). `httpx` already ships with the base package, so no extra is
+needed; `[http]` still exists as an explicit (and optional) way to declare
+the dependency.
 
 ## Basic usage
 
@@ -188,7 +190,7 @@ async def publish(payload: dict[str, str]) -> None:
 ## Recap
 
 - `HTTPClient` = typed `httpx.AsyncClient` + retry/backoff/circuit-breaker + X-Request-ID.
-- `[http]` extra. Methods `get/post/put/patch/delete/request` → `httpx.Response`.
+- No extra required (`httpx` ships with the base package; `[http]` is optional). Methods `get/post/put/patch/delete/request` → `httpx.Response`.
 - `RetryPolicy(max_attempts, backoff_initial_seconds, backoff_max_seconds)` controls retries.
 - `async_retry(policy, exceptions, logger=)` applies the curve to any coroutine; `logger=` takes a `logging.Logger` or a `LogUtils`.
 - `failure_threshold` / `recovery_seconds` control the breaker; `CircuitOpenError` when open.

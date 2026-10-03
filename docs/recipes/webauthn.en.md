@@ -67,10 +67,21 @@ Generate the migration as usual — `tempest db revision -m "webauthn credential
 # src/core/settings.py
 
 from tempest_fastapi_sdk import BaseAppSettings
-from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
+from tempest_fastapi_sdk.settings.mixins import (
+    AuthSettings,
+    DatabaseSettings,
+    JWTSettings,
+    RedisSettings,
+)
 
 
-class Settings(AuthSettings, JWTSettings, BaseAppSettings):
+class Settings(
+    AuthSettings,
+    JWTSettings,
+    DatabaseSettings,
+    RedisSettings,
+    BaseAppSettings,
+):
     """Application settings."""
 
 
@@ -81,6 +92,10 @@ settings = Settings(
     AUTH_WEBAUTHN_RP_NAME="Acme",
 )
 ```
+
+`DatabaseSettings` brings the `DATABASE_URL` step 3 reads, and `RedisSettings`
+the `REDIS_URL` of the shared challenge store; without them,
+`settings.DATABASE_URL` is an `AttributeError`.
 
 !!! danger "`AUTH_WEBAUTHN_RP_ID` is the security boundary"
     It is the domain the credential is bound to. It must be the site's origin

@@ -9,6 +9,7 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
 )
 from tempest_fastapi_sdk.db.model import BaseModel
+from tempest_fastapi_sdk.utils import password as _password_module
 
 
 class AdminUser(BaseUserModel):
@@ -113,3 +114,81 @@ class TestUserModelAuthBackend:
         user.id = uuid4()
         assert backend.principal_id(user) == str(user.id)
         assert backend.display_name(user) == "x@y.com"
+
+
+class TestNoAccountEnumeration:
+    """A wrong password must not tell an anonymous caller who the account is."""
+
+    async def _add(
+        self,
+        session: AsyncSession,
+        email: str,
+        *,
+        is_admin: bool = True,
+        is_active: bool = True,
+    ) -> None:
+        user = AdminUser(
+            email=email,
+            hashed_password="",
+            is_admin=is_admin,
+            is_active=is_active,
+        )
+        user.set_password("pw")
+        session.add(user)
+        await session.commit()
+
+    async def _message(
+        self,
+        session: AsyncSession,
+        email: str,
+        password: str,
+    ) -> str:
+        backend = UserModelAuthBackend(AdminUser)
+        with pytest.raises(AdminAuthError) as excinfo:
+            await backend.authenticate(session, identifier=email, password=password)
+        return str(excinfo.value)
+
+    async def test_wrong_password_reads_the_same_for_every_kind_of_account(
+        self, session: AsyncSession
+    ) -> None:
+        await self._add(session, "admin@example.com")
+        await self._add(session, "staff@example.com", is_admin=False)
+        await self._add(session, "gone@example.com", is_active=False)
+        messages = {
+            await self._message(session, email, "wrong")
+            for email in (
+                "admin@example.com",
+                "staff@example.com",
+                "gone@example.com",
+                "nobody@example.com",
+            )
+        }
+        assert messages == {"Invalid credentials"}
+
+    async def test_the_specific_reason_needs_the_right_password(
+        self, session: AsyncSession
+    ) -> None:
+        await self._add(session, "staff@example.com", is_admin=False)
+        await self._add(session, "gone@example.com", is_active=False)
+        assert await self._message(session, "staff@example.com", "pw") == (
+            "This account is not authorized for /admin"
+        )
+        assert await self._message(session, "gone@example.com", "pw") == (
+            "Account disabled"
+        )
+
+    async def test_an_unknown_address_pays_a_bcrypt_check(
+        self,
+        session: AsyncSession,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        calls: list[str] = []
+        real_checkpw = _password_module._bcrypt.checkpw
+
+        def _counting_checkpw(plain: bytes, hashed: bytes) -> bool:
+            calls.append("checkpw")
+            return bool(real_checkpw(plain, hashed))
+
+        monkeypatch.setattr(_password_module._bcrypt, "checkpw", _counting_checkpw)
+        await self._message(session, "nobody@example.com", "pw")
+        assert calls == ["checkpw"]

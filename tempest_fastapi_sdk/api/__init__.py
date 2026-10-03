@@ -325,6 +325,9 @@ from tempest_fastapi_sdk.api.static import (
 from tempest_fastapi_sdk.api.static import (
     HardenedStaticFiles as HardenedStaticFiles,
 )
+from tempest_fastapi_sdk.api.tracing import (
+    instrument_sqlalchemy_engine as instrument_sqlalchemy_engine,
+)
 from tempest_fastapi_sdk.api.tracing import setup_tracing as setup_tracing
 from tempest_fastapi_sdk.api.webhooks import (
     RSAWebhookSignatureVerifier as RSAWebhookSignatureVerifier,
@@ -421,6 +424,7 @@ __all__: list[str] = [
     "error_responses",
     "generate_csrf_token",
     "generate_oauth_state",
+    "instrument_sqlalchemy_engine",
     "key_by_header",
     "key_by_ip",
     "key_by_jwt_claim",

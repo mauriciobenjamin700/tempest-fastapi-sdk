@@ -385,7 +385,7 @@ only on `Page`.
 ## The scaffold writes the whole layer
 
 ```bash
-tempest new my-service --extras "ssr"
+tempest new my_service --extras "ssr"
 ```
 
 That writes a complete `src/ui/` — `styles.py`, `layout/base.py`,

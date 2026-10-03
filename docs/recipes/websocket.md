@@ -136,7 +136,10 @@ Quando ambos vêm, **subprotocol vence**.
 !!! warning "Token na query vaza em logs"
     `?token=<jwt>` aparece nos access logs de proxy/Nginx, no header `Referer` e no histórico do browser — qualquer um deles pode reter o JWT em texto plano. Prefira sempre o subprotocol (`["bearer", jwt]`) quando o cliente for seu; use o query param só como fallback pra clientes que não conseguem setar subprotocol.
 
-Resolver retornando `None` → o SDK fecha o socket com código `4401` antes do handler rodar.
+Sem token, ou com o resolver retornando `None`, o SDK **aceita o handshake e logo em seguida fecha** o socket com código `4401`, antes do handler rodar. O cliente recebe o `open` e, na sequência, um `close` com `code === 4401`.
+
+!!! info "Por que aceitar antes de recusar"
+    Um `close` enviado antes do `accept` não é fechamento de WebSocket: é recusa do handshake. O uvicorn responde `HTTP 403`, o código `4401` nunca chega ao fio, e o browser vê só `1006`, sem motivo. O `TestClient` do Starlette reporta o `4401` nos dois casos, por isso a forma errada passava na suíte. Até a 0.302.0 o router fechava antes do `accept`; desde então ele aceita (devolvendo o subprotocolo `bearer`, quando oferecido) e fecha com `4401`. Medido com uvicorn de verdade e o cliente `websockets`: `received 4401 (private use)`.
 
 ---
 

@@ -6,9 +6,9 @@ hand-retyped schemas, and a webhook verification each one derived its own
 way. `tempest_fastapi_sdk.integrations.payment.stripe` ships that layer.
 
 !!! info "Installation"
-    No extra. The integration uses the `HTTPClient` the SDK already has —
-    `uv add "tempest-fastapi-sdk[http]"` if you have not pulled `httpx`
-    in yet.
+    No extra. The integration uses the `HTTPClient` the SDK already has,
+    and `httpx` ships in the base package. The `[http]` extra exists and is
+    optional: it only declares `httpx` explicitly.
 
 !!! info "When to use this"
     International card payments, subscriptions or hosted Checkout. For

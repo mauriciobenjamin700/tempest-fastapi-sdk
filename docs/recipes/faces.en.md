@@ -120,6 +120,12 @@ between the two.
     the threshold stops being a free choice — which is what `buffalo_l` is
     for.
 
+!!! warning "Raise the threshold to grant access"
+    The measurement is on cooperative, frontal photos. Where recognition
+    unlocks something, the expensive error stops being "did not recognise"
+    and becomes "recognised the wrong person" — and then a stricter
+    threshold trades that for asking the person to try again.
+
 ## Choosing a model pack
 
 | pack | size | detection | same person | diff max |
