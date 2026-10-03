@@ -83,7 +83,7 @@ uv run pytest -k cursor      # testes que casam com "cursor"
 uv run pytest -x             # para no primeiro erro
 ```
 
-O `make test` não roda a suite inteira: o `addopts` do `pyproject.toml` passa `-m "not model and not gpu and not docker"`, então os testes que baixam peso de modelo, pedem CUDA ou sobem container ficam de fora. Cada grupo tem o seu alvo opt-in: `make test-model`, `make test-gpu` e `make test-docker`.
+O `make test` não roda a suite inteira: o `addopts` do `pyproject.toml` passa `-m "not model and not gpu and not docker and not network"`, então os testes que baixam peso de modelo, pedem CUDA, sobem container ou falam com um serviço de terceiro pela internet ficam de fora. Cada grupo tem o seu alvo opt-in: `make test-model`, `make test-gpu`, `make test-docker` e `make test-network`.
 
 A suite usa SQLite em memória: a fixture `db` de `tests/conftest.py` abre um `AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")` novo por teste, e os testes de repository compartilham a fixture `session` aberta sobre ele.
 

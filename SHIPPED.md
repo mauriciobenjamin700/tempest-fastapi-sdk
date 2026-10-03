@@ -1028,6 +1028,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   latência mediana de 11,91 s (22,73 s). Sem knob de threads
   (`torch.set_num_threads` é global). Receita: "Vários pedidos ao mesmo
   tempo em CPU" em `genai.md`; nota em `agents.md`.
+- **Leitura de Google Sheets (Unreleased, sem extra)** —
+  `read_google_sheet` / `read_google_sheet_as` / `google_sheet_export_url` em
+  `tempest_fastapi_sdk.spreadsheet`. Lê uma aba de planilha compartilhada
+  como *qualquer pessoa com o link* pelo `/export?format=csv`, só com `httpx`
+  + `csv`. Parseia o `#gid=` (fragmento, nunca vai ao servidor), segue o
+  `307` para `*.googleusercontent.com` mesmo em cliente injetado sem
+  `follow_redirects`, e recusa o que não é `text/csv` com
+  `GoogleSheetAccessError` (`502`) — medido: ID inexistente `404` HTML,
+  `gid` inválido `400` HTML; planilha privada **não medida**.
+  `read_google_sheet_as` valida cada linha num modelo Pydantic e o
+  `GoogleSheetRowError` (`422`) traz o número da linha da planilha
+  (cabeçalho = 1). Célula vazia = campo ausente (`omit_blank=True`). Ler o
+  `.xlsx` exportado ainda não existe.
 - **Planilhas (v0.229.0, `[spreadsheet]` extra = openpyxl)** —
   `tempest_fastapi_sdk.spreadsheet`. `SheetWriter` segura o cursor de linha
   (`title_block`/`header_row`/`group_row`/`write_row`/`total_row`/

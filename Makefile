@@ -35,6 +35,10 @@ test-gpu: ## Run GPU tests (needs CUDA; skipped without a GPU)
 test-docker: ## Run tests that start a real container (needs a docker daemon)
 	uv run pytest -m docker
 
+.PHONY: test-network
+test-network: ## Run tests that reach a real third-party endpoint (needs internet)
+	uv run pytest -m network
+
 cov: ## Open the last coverage HTML report (run `pytest --cov-report=html` first)
 	@command -v xdg-open >/dev/null && xdg-open htmlcov/index.html || open htmlcov/index.html
 
