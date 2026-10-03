@@ -1416,6 +1416,9 @@ from tempest_fastapi_sdk.utils import (
     CPF_PATTERN as CPF_PATTERN,
 )
 from tempest_fastapi_sdk.utils import (
+    DOCX_MEDIA_TYPE as DOCX_MEDIA_TYPE,
+)
+from tempest_fastapi_sdk.utils import (
     HUNDRED as HUNDRED,
 )
 from tempest_fastapi_sdk.utils import (
@@ -1423,6 +1426,9 @@ from tempest_fastapi_sdk.utils import (
 )
 from tempest_fastapi_sdk.utils import (
     PHONE_BR_PATTERN as PHONE_BR_PATTERN,
+)
+from tempest_fastapi_sdk.utils import (
+    PPTX_MEDIA_TYPE as PPTX_MEDIA_TYPE,
 )
 from tempest_fastapi_sdk.utils import (
     REFRESH_TOKEN_TYPE as REFRESH_TOKEN_TYPE,
@@ -1438,6 +1444,9 @@ from tempest_fastapi_sdk.utils import (
 )
 from tempest_fastapi_sdk.utils import (
     UPLOAD_READ_CHUNK_BYTES as UPLOAD_READ_CHUNK_BYTES,
+)
+from tempest_fastapi_sdk.utils import (
+    XLSX_MEDIA_TYPE as XLSX_MEDIA_TYPE,
 )
 from tempest_fastapi_sdk.utils import (
     AttemptThrottle as AttemptThrottle,
@@ -1675,6 +1684,9 @@ from tempest_fastapi_sdk.utils import (
 )
 from tempest_fastapi_sdk.utils import (
     get_state as get_state,
+)
+from tempest_fastapi_sdk.utils import (
+    guess_media_type as guess_media_type,
 )
 from tempest_fastapi_sdk.utils import (
     hash_opaque_token as hash_opaque_token,
@@ -1954,6 +1966,7 @@ __all__: list[str] = [
     "DEFAULT_SPA_SECURITY_HEADERS",
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "DEFAULT_SYNC_WATERMARK_LAG",
+    "DOCX_MEDIA_TYPE",
     "ENUM_TYPE_SUFFIX",
     "HEARTBEAT_TIMEOUT_CODE",
     "HTTP_500_MARKER",
@@ -1964,6 +1977,7 @@ __all__: list[str] = [
     "MFA_TOKEN_TYPE",
     "NAMING_CONVENTION",
     "PHONE_BR_PATTERN",
+    "PPTX_MEDIA_TYPE",
     "RAISES_ATTRIBUTE",
     "REFRESH_TOKEN_TYPE",
     "REQUEST_ID_HEADER",
@@ -1974,6 +1988,7 @@ __all__: list[str] = [
     "UPLOAD_READ_CHUNK_BYTES",
     "VALIDATION_ERROR_CODE",
     "WITHHELD_NOTICE",
+    "XLSX_MEDIA_TYPE",
     "AccessLogMiddleware",
     "ActivationRequestSchema",
     "ActivationResendResponseSchema",
@@ -2429,6 +2444,7 @@ __all__: list[str] = [
     "get_state",
     "guard_metadata",
     "guarded_user_param",
+    "guess_media_type",
     "has_perm",
     "hash_opaque_token",
     "heartbeat",
