@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`make_session_dependency(session_auth=<fábrica>)`** (#381). Além de um
+  `SessionAuth`, `session_auth=` aceita um `SessionAuthFactory`
+  (`(request) -> SessionAuth`), chamado por request e só quando o
+  middleware não resolveu a sessão. A dependency fica declarável no nível do
+  módulo num serviço que monta o `SessionAuth` a partir de settings atrás de
+  `@lru_cache`, sem guardá-la em `app.state` nem reescrever adaptador. E
+  ganha overloads: com `required=True` (default) o tipo é
+  `Callable[[Request], Awaitable[Session]]`, então o `if session is None`
+  que só servia para estreitar o tipo sai do consumidor; com
+  `required=False` continua `Session | None`.
+
 - **Defaults de geração no gerador: `config=` em `TextGenerator` e
   `OllamaGenerator`, `num_ctx=` e `options=` no `OllamaGenerator`.** O laço
   do `Agent` chama `chat_with_tools(messages, tools)` sem opção nenhuma, então

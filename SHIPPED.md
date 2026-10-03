@@ -979,6 +979,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   run that completed; `run_until` keeps an earlier inherited deadline;
   `schema_of` keeps `$defs` for self-referential models; Redis fact keys no
   longer merge `None`/`""`/`"_"`; builtins never overwrite an artifact.
+- **Dependency de sessão com fábrica (Unreleased, #381)** —
+  `make_session_dependency(session_auth=...)` aceita `SessionAuthFactory`
+  (`(request) -> SessionAuth`), resolvido por request; overloads tipam
+  `required=True` como `Session`. Mesmo molde do `session_dependency_for`
+  do banco. Receita: "`SessionAuth` montado depois do import" em
+  `sessions.md`.
 - **Defaults de geração no gerador (Unreleased)** — `config=` em
   `TextGenerator`/`OllamaGenerator`, `num_ctx=`/`options=` no
   `OllamaGenerator`, aplicados em toda chamada e na chave do cache. Existe

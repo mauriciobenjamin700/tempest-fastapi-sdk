@@ -1251,6 +1251,9 @@ from tempest_fastapi_sdk.sessions import (
     SessionAuthenticator as SessionAuthenticator,
 )
 from tempest_fastapi_sdk.sessions import (
+    SessionAuthFactory as SessionAuthFactory,
+)
+from tempest_fastapi_sdk.sessions import (
     SessionLoginSchema as SessionLoginSchema,
 )
 from tempest_fastapi_sdk.sessions import (
@@ -2285,6 +2288,7 @@ __all__: list[str] = [
     "ServerSettings",
     "Session",
     "SessionAuth",
+    "SessionAuthFactory",
     "SessionAuthenticator",
     "SessionCookieDeleteKwargs",
     "SessionCookieKwargs",

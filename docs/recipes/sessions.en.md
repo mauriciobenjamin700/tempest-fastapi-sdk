@@ -390,6 +390,78 @@ GET /admin com cookie revogado: 303 /login
 !!! warning "`SessionMiddleware` is a `BaseHTTPMiddleware` and sits in the path of every response"
     The middleware wraps the whole app, and Starlette's `BaseHTTPMiddleware` relays every chunk of the response body through an in-memory stream. Measured here (Starlette 1.6.0, direct ASGI call with an empty `send`, median of 7 runs): a 256 MiB `StreamingResponse` in 64 KiB chunks took **~4 ms** with no middleware and **~64 ms** with `SessionMiddleware` — about 15 µs per chunk, paid by **every** route, including the upload/download that never reads the session. In a service that streams files and uses a session on three routes, prefer the dependency with `session_auth=`: only the routes that declare it pay for the lookup. If the middleware is mounted anyway, the dependency reuses the session it resolved instead of resolving again.
 
+### `SessionAuth` built after import
+
+In the example above the `SessionAuth` exists at import, because `Settings()` runs at module level. In a service whose settings sit behind an `@lru_cache` — which the tests clear and rebuild per test — there is no `SessionAuth` to pass when the dependency is declared. Pass a **factory** that takes the request:
+
+```python hl_lines="25-27 34 58"
+from functools import lru_cache
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import HTMLResponse
+from pydantic import SecretStr
+
+from tempest_fastapi_sdk import (
+    BaseAppSettings,
+    MemorySessionStore,
+    Session,
+    SessionAuth,
+    SessionSettings,
+    make_session_dependency,
+    redirect_to,
+    register_exception_handlers,
+)
+
+
+class Settings(SessionSettings, BaseAppSettings):
+    ADMIN_USERNAME: str
+    ADMIN_PASSWORD: SecretStr
+
+
+def get_session_auth(request: Request) -> SessionAuth:
+    auth: SessionAuth = request.app.state.session_auth
+    return auth
+
+
+AdminSession = Annotated[
+    Session,
+    Depends(
+        make_session_dependency(
+            session_auth=get_session_auth,
+            on_missing=redirect_to("/login"),
+        )
+    ),
+]
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+def create_app() -> FastAPI:
+    settings = get_settings()
+    app = FastAPI()
+    register_exception_handlers(app)
+    app.state.session_auth = SessionAuth.from_credentials(
+        settings.ADMIN_USERNAME,
+        settings.ADMIN_PASSWORD,
+        store=MemorySessionStore(),
+        settings=settings,
+    )
+
+    @app.get("/admin", response_class=HTMLResponse)
+    async def admin(session: AdminSession) -> str:
+        return f"<h1>Panel</h1><p>Session expires at {session.expires_at:%H:%M}</p>"
+
+    return app
+```
+
+1. **`get_session_auth(request)`** — returns the service of the app serving the request. `make_session_dependency` calls it per request, and only when the middleware did not resolve the session first; declaring the dependency never calls it. Two apps in one process — a test that runs `get_settings.cache_clear()` and builds another — each resolve against their own: one app's cookie does not open the other's panel.
+2. **`AdminSession`** — the alias lives at module level, before any `SessionAuth` exists, and routes use it as is.
+3. **The type is `Session`, not `Session | None`.** With `required=True` (the default) the dependency raises instead of returning `None`, and the signature says so: no `if session is None` just for the type checker. With `required=False` the type stays `Session | None`.
+
 ---
 
 ## Security
@@ -430,7 +502,9 @@ Possible. A web SPA uses the session cookie; mobile on the same backend uses `Us
 - Without a user table, `SessionAuth.from_credentials(...)` compares both
   halves of the credential in constant time, and
   `make_session_dependency(session_auth=..., on_missing=redirect_to("/login"))`
-  guards an HTML route with a `303`, no middleware.
+  guards an HTML route with a `303`, no middleware. With the `SessionAuth`
+  built after import, `session_auth=` takes a `(request) -> SessionAuth`
+  factory, and the dependency alias comes out typed as `Session`.
 - `settings.session_cookie_kwargs()` / `session_cookie_delete_kwargs()` write
   and delete the cookie with the same attributes.
 - `MemorySessionStore` covers dev and tests; swap the store, not the rest of

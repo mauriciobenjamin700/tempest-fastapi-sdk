@@ -982,6 +982,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.sessions.dependencies.make_session_dependency
 ::: tempest_fastapi_sdk.sessions.dependencies.redirect_to
 ::: tempest_fastapi_sdk.sessions.dependencies.MissingSessionHandler
+::: tempest_fastapi_sdk.sessions.dependencies.SessionAuthFactory
 ::: tempest_fastapi_sdk.sessions.store.SessionStore
 ::: tempest_fastapi_sdk.sessions.store.MemorySessionStore
 ::: tempest_fastapi_sdk.sessions.store.RedisSessionStore
