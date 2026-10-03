@@ -21,7 +21,6 @@ use object storage are not forced to install the extra.
 from __future__ import annotations
 
 import asyncio
-import mimetypes
 from collections.abc import AsyncIterator, Awaitable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -712,13 +711,14 @@ class AsyncMinIOClient:
             resolve_byte_range,
         )
         from tempest_fastapi_sdk.utils.download import build_content_disposition
+        from tempest_fastapi_sdk.utils.media_types import guess_media_type
 
         stat = await self.stat_object(key, bucket=bucket)
         download_name = filename or key.rsplit("/", 1)[-1]
         resolved_media_type = (
             media_type
             or stat.content_type
-            or mimetypes.guess_type(download_name)[0]
+            or guess_media_type(download_name)
             or "application/octet-stream"
         )
         etag = f'"{stat.etag}"' if stat.etag else None

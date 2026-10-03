@@ -88,6 +88,9 @@ from tempest_fastapi_sdk.spreadsheet.writer import (
 from tempest_fastapi_sdk.spreadsheet.writer import (
     workbook_to_bytes as workbook_to_bytes,
 )
+from tempest_fastapi_sdk.utils.media_types import (
+    XLSX_MEDIA_TYPE as XLSX_MEDIA_TYPE,
+)
 
 __all__: list[str] = [
     "BR_CURRENCY_FORMAT",
@@ -99,6 +102,7 @@ __all__: list[str] = [
     "BR_QUANTITY_FORMAT",
     "DEFAULT_SHEET_STYLE",
     "TEXT_FORMAT",
+    "XLSX_MEDIA_TYPE",
     "CellValue",
     "Column",
     "SheetStyle",

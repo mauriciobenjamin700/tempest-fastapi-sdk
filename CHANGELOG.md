@@ -7,7 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Download de `.xlsx`/`.docx`/`.pptx` saía `application/octet-stream` em
+  container slim.** `DownloadUtils.file_response`, `DownloadUtils.stream` e
+  `AsyncMinIOClient.download_response` adivinhavam o tipo com
+  `mimetypes.guess_type`, cuja tabela embutida não tem `.xlsx`, `.docx`,
+  `.pptx`, `.odt`, `.ods` nem `.ogg` (Python 3.11 a 3.13); ele só os conhece
+  pelo `/etc/mime.types` do host. Medido na `python:3.13-slim` — base do
+  Dockerfile do `tempest new` —, que não tem o arquivo: `None` para os seis,
+  e o download caía no fallback. Agora o palpite passa por
+  `guess_media_type`, que consulta uma tabela do SDK antes do `mimetypes`.
+
+- **Cancelar uma chamada do modelo local para a decodificação.**
+  `TextGenerator` (`generate`, `chat`, `chat_with_tools`,
+  `generate_structured`, `chat_structured`) e `VisionTextGenerator`
+  (`generate`, `chat`) rodam numa thread, e cancelar a corotina só
+  abandonava a espera: a thread seguia gerando até `max_new_tokens`,
+  segurando os núcleos. O laço do `Agent` nunca passa `stop_event`, então
+  todo timeout do `AgentBudget` deixava um worker decodificando para
+  ninguém. Agora toda chamada roda sob um evento (o `stop_event` do caller
+  ou um privado) que é acionado no cancelamento. Medido com
+  `Qwen/Qwen2.5-0.5B-Instruct` em CPU, 300 tokens forçados: por um `Agent`
+  com `AgentBudget(max_seconds=1.0)`, a thread decodificava 10,8 s depois
+  de o run voltar `timeout`; agora termina em 0,01 s.
+- `TextGenerator.chat_with_tools` aceita `stop_event=`, como os outros
+  métodos.
+
 ### Added
+
+- **`XLSX_MEDIA_TYPE`, `DOCX_MEDIA_TYPE`, `PPTX_MEDIA_TYPE` e
+  `guess_media_type(filename)`** em `tempest_fastapi_sdk.utils` (e no topo);
+  `XLSX_MEDIA_TYPE` também em `tempest_fastapi_sdk.spreadsheet`. A receita de
+  planilhas deixa de mandar copiar a string do media type.
 
 - **`make_session_dependency(session_auth=<fábrica>)`** (#381). Além de um
   `SessionAuth`, `session_auth=` aceita um `SessionAuthFactory`
@@ -32,23 +64,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   forte: `options` cruas, `config` do gerador, `config` da chamada (campo a
   campo), `**kwargs` da chamada. Os defaults entram na chave do
   `generation_cache`.
-
-### Fixed
-
-- **Cancelar uma chamada do modelo local para a decodificação.**
-  `TextGenerator` (`generate`, `chat`, `chat_with_tools`,
-  `generate_structured`, `chat_structured`) e `VisionTextGenerator`
-  (`generate`, `chat`) rodam numa thread, e cancelar a corotina só
-  abandonava a espera: a thread seguia gerando até `max_new_tokens`,
-  segurando os núcleos. O laço do `Agent` nunca passa `stop_event`, então
-  todo timeout do `AgentBudget` deixava um worker decodificando para
-  ninguém. Agora toda chamada roda sob um evento (o `stop_event` do caller
-  ou um privado) que é acionado no cancelamento. Medido com
-  `Qwen/Qwen2.5-0.5B-Instruct` em CPU, 300 tokens forçados: por um `Agent`
-  com `AgentBudget(max_seconds=1.0)`, a thread decodificava 10,8 s depois
-  de o run voltar `timeout`; agora termina em 0,01 s.
-- `TextGenerator.chat_with_tools` aceita `stop_event=`, como os outros
-  métodos.
 
 ## [0.303.0] — 2026-10-02
 
