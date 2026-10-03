@@ -294,6 +294,11 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.spreadsheet.formats.BR_DATE_FORMAT
 ::: tempest_fastapi_sdk.spreadsheet.formats.BR_DATETIME_FORMAT
 ::: tempest_fastapi_sdk.spreadsheet.formats.TEXT_FORMAT
+::: tempest_fastapi_sdk.spreadsheet.google.read_google_sheet
+::: tempest_fastapi_sdk.spreadsheet.google.read_google_sheet_as
+::: tempest_fastapi_sdk.spreadsheet.google.google_sheet_export_url
+::: tempest_fastapi_sdk.spreadsheet.google.GoogleSheetAccessError
+::: tempest_fastapi_sdk.spreadsheet.google.GoogleSheetRowError
 
 ---
 

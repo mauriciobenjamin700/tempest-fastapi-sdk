@@ -540,7 +540,7 @@ come back here to plug in each capability as you need it.
 | **[Server-Sent Events (SSE) »](sse.md)** | `EventStream`, `sse_response`, `ServerSentEvent`, `SSEBroker` (per-channel fan-out, Redis bridge) |
 | **[Server-side sessions »](sessions.md)** | `SessionMiddleware`, `SessionAuth`, `make_session_router`, `MemorySessionStore` / `RedisSessionStore` |
 | **[Social login (OAuth2/OIDC) »](oauth.md)** | `AUTH_OAUTH_ENABLED` + `oauth_clients=` (four `/auth/oauth/*` routes), `OAuthSettings`, `make_user_oauth_account_model`, `NameMixin`, `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`, `OAuthUser`, `OAuthClient`, `generate_oauth_state` |
-| **[Spreadsheets (.xlsx) »](spreadsheets.md)** | `SheetWriter` (row cursor), `Column` (width/mask/alignment), `SheetStyle` as plain data, `BR_*` formats pinned to pt-BR, `new_workbook` / `workbook_to_bytes` |
+| **[Spreadsheets (.xlsx) »](spreadsheets.md)** | `SheetWriter` (row cursor), `Column` (width/mask/alignment), `SheetStyle` as plain data, `BR_*` formats pinned to pt-BR, `new_workbook` / `workbook_to_bytes`; reading a public Google Sheet validated into a schema (`read_google_sheet_as`) |
 | **[SSR (typed pages) »](../ssr.md)** | `Page`, `html_response`, `make_htmx_router`, hosting a `tempestweb` build |
 | **[SSR actions (confirmation, flash, redirect back) »](ssr-actions.md)** | `form_for(..., confirm=...)` / `confirm()` without inline JS, `FlashMiddleware` + `flash` / `get_flashes` + `FlashMessages` (signed read-once cookie), `redirect_back` against open redirects, `register_html_error_handlers` (error page on GET, flash + 303 on POST, JSON for the API) |
 | **[Storage (MinIO/S3) »](storage.md)** | `AsyncMinIOClient`, `MinIOUploadStorage`, `presigned_get_url` / `presigned_put_url`, `list_objects` |

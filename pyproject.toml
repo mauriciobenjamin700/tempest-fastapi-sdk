@@ -645,7 +645,7 @@ addopts = [
     "--cov=tempest_fastapi_sdk",
     "--cov-report=term-missing",
     "-m",
-    "not model and not gpu and not docker",
+    "not model and not gpu and not docker and not network",
 ]
 timeout = 300
 timeout_method = "thread"
@@ -657,6 +657,7 @@ markers = [
     "gpu: needs CUDA; skipped without a GPU (make test-gpu)",
     "docs: asserts against the built MkDocs site; triggers one `mkdocs build`",
     "docker: starts a real container; opt-in, needs a running daemon (make test-docker)",
+    "network: reaches a real third-party endpoint over the internet; opt-in (make test-network)",
 ]
 
 [tool.coverage.run]
