@@ -202,6 +202,34 @@ class GenerationConfig(BaseSchema):
         return data
 
 
+def _layer_config(
+    base: GenerationConfig | None,
+    call: GenerationConfig | None,
+) -> GenerationConfig | None:
+    """Layer a per-call config over a generator's default config.
+
+    Field by field: a field the call set wins, a field it left unset falls
+    through to ``base``. Only *set* fields travel, so the result still
+    forwards nothing the caller never chose, and a call that sets a field
+    to ``None`` on purpose clears the default.
+
+    Args:
+        base (GenerationConfig | None): The generator's default config.
+        call (GenerationConfig | None): The config passed to this call.
+
+    Returns:
+        GenerationConfig | None: The effective config, or ``None`` when
+        neither side has one.
+    """
+    if base is None:
+        return call
+    if call is None:
+        return base
+    data = base.model_dump(exclude_unset=True)
+    data.update(call.model_dump(exclude_unset=True))
+    return GenerationConfig.model_validate(data)
+
+
 class ImageGenerationConfig(BaseSchema):
     """Typed parameters for local image generation.
 

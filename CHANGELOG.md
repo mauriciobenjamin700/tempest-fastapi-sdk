@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Defaults de geração no gerador: `config=` em `TextGenerator` e
+  `OllamaGenerator`, `num_ctx=` e `options=` no `OllamaGenerator`.** O laço
+  do `Agent` chama `chat_with_tools(messages, tools)` sem opção nenhuma, então
+  um agente rodava sempre nos defaults do backend — no Ollama, inclusive a
+  janela de contexto, que corta o prompt sem erro. Medido no Ollama 0.30.11
+  com `ministral-3:14b` e uma ferramenta devolvendo ~11,5 mil tokens: sem
+  `num_ctx`, o daemon processou 2 051 tokens e o agente respondeu errado com
+  `stop_reason=completed` (3 de 3 execuções); com `num_ctx=32768`, processou
+  os 11 551 e respondeu certo (3 de 3). Ordem, da mais fraca para a mais
+  forte: `options` cruas, `config` do gerador, `config` da chamada (campo a
+  campo), `**kwargs` da chamada. Os defaults entram na chave do
+  `generation_cache`.
+
 ### Fixed
 
 - **Cancelar uma chamada do modelo local para a decodificação.**

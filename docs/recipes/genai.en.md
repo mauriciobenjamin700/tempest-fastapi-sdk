@@ -422,6 +422,49 @@ recorded under the `chat` operation with Ollama's token counts. The `chat`
 key is scoped apart from `generate`, so a prompt equal to the serialized
 messages never collides.
 
+#### Context window: `num_ctx`
+
+Ollama processes at most `num_ctx` prompt tokens, and it **cuts the rest
+without a word**: the reply comes back `200`, no error, generated over a
+slice of what you sent. Measured on Ollama 0.30.11 (`lfm2.5-thinking:1.2b`,
+on a 16 GB RTX 4070 Ti SUPER): a 35,018-token chat came back with
+`prompt_eval_count` 2,051 under the default, and 35,018 with
+`num_ctx=65536`. Pin the window on the generator, and it goes with every
+call:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import GenerationConfig, OllamaGenerator
+
+gen = OllamaGenerator(
+    "llama3.2",
+    num_ctx=32768,
+    options={"num_thread": 8},
+    config=GenerationConfig(max_new_tokens=512),
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    reply: str = await gen.chat([{"role": "user", "content": "Hi"}])
+    print(reply)
+
+
+asyncio.run(main())
+```
+
+- **`num_ctx`** becomes the `num_ctx` option of every request.
+- **`options`** are raw Ollama options (`num_thread`, `num_gpu`, …), also
+  on every request. `num_ctx` in both places raises `ValueError`.
+- **`config`** is the default `GenerationConfig`. Each call's own wins field
+  by field, and the call's `**kwargs` win over everything.
+
+This matters most for a caller that passes **no** option per call — the
+[agent loop](agents.en.md#the-model-runs-on-the-generators-defaults) is one.
+The window and the default config are part of the `generation_cache` key, so
+two generators with different defaults never answer from each other's cache.
+
 ### Embeddings via Ollama + RAG
 
 `OllamaEmbedder` satisfies the same `SupportsEmbed` protocol as `Embedder`,
@@ -1796,6 +1839,13 @@ asyncio.run(main())
 Only the set fields layer over the defaults; explicit `**kwargs` still
 win over the config (`gen.generate(prompt, config=config,
 temperature=0.9)` uses `0.9`).
+
+!!! tip "A default on the generator: `config=`"
+    `TextGenerator(..., config=GenerationConfig(...))` (and the same on
+    `OllamaGenerator`) applies to every call. The order, weakest to
+    strongest: the built-in defaults, the generator's `config`, the call's
+    `config` (field by field) and the call's `**kwargs`. It is the way in
+    for a caller that passes no options per call, such as the agent loop.
 
 !!! tip "`seed` and `stop` apply on the local path too"
     `seed` and `stop` are honored by both `OllamaGenerator` and

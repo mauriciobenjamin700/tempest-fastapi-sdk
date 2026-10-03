@@ -420,6 +420,49 @@ registrada sob a operação `chat` com os tokens do Ollama. A chave do `chat`
 é separada da do `generate`, então um prompt igual às mensagens serializadas
 nunca colide.
 
+#### Janela de contexto: `num_ctx`
+
+O Ollama processa no máximo `num_ctx` tokens de prompt, e o que passa disso
+ele **corta sem avisar**: a resposta vem `200`, sem erro, gerada sobre um
+pedaço do que você mandou. Medido no Ollama 0.30.11 (`lfm2.5-thinking:1.2b`,
+numa RTX 4070 Ti SUPER de 16 GB): um chat de 35 018 tokens voltou com
+`prompt_eval_count` de 2 051 no default, e de 35 018 com `num_ctx=65536`.
+Fixe a janela no gerador, e ela vai em toda chamada:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import GenerationConfig, OllamaGenerator
+
+gen = OllamaGenerator(
+    "llama3.2",
+    num_ctx=32768,
+    options={"num_thread": 8},
+    config=GenerationConfig(max_new_tokens=512),
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    resposta: str = await gen.chat([{"role": "user", "content": "Oi"}])
+    print(resposta)
+
+
+asyncio.run(main())
+```
+
+- **`num_ctx`** vira a opção `num_ctx` de toda requisição.
+- **`options`** são opções cruas do Ollama (`num_thread`, `num_gpu`, …),
+  também em toda requisição. `num_ctx` nos dois lugares levanta
+  `ValueError`.
+- **`config`** é o `GenerationConfig` padrão. O de cada chamada ganha campo a
+  campo, e os `**kwargs` da chamada ganham de todos.
+
+Isso importa sobretudo para quem **não** passa opção nenhuma por chamada — o
+[laço do agente](agents.md#o-modelo-roda-com-os-defaults-do-gerador) é
+assim. A janela e o config padrão entram na chave do `generation_cache`, então
+dois geradores com defaults diferentes não respondem um pelo cache do outro.
+
 ### Embeddings via Ollama + RAG
 
 `OllamaEmbedder` satisfaz o mesmo protocolo `SupportsEmbed` do `Embedder`,
@@ -1790,6 +1833,13 @@ asyncio.run(main())
 Só os campos definidos entram sobre os defaults; `**kwargs` explícitos
 ainda vencem o config (`gen.generate(prompt, config=config,
 temperature=0.9)` usa `0.9`).
+
+!!! tip "Default no gerador: `config=`"
+    `TextGenerator(..., config=GenerationConfig(...))` (e o mesmo no
+    `OllamaGenerator`) vale para toda chamada. A ordem, da mais fraca para a
+    mais forte: os defaults internos, o `config` do gerador, o `config` da
+    chamada (campo a campo) e os `**kwargs` da chamada. É o caminho para
+    quem não passa opção por chamada, como o laço do agente.
 
 !!! tip "`seed` e `stop` valem no path local"
     `seed` e `stop` são honrados tanto no `OllamaGenerator` quanto no
