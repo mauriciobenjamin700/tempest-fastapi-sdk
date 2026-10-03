@@ -28,6 +28,9 @@ from tempest_fastapi_sdk.sessions.dependencies import (
     MissingSessionHandler as MissingSessionHandler,
 )
 from tempest_fastapi_sdk.sessions.dependencies import (
+    SessionAuthFactory as SessionAuthFactory,
+)
+from tempest_fastapi_sdk.sessions.dependencies import (
     make_session_dependency as make_session_dependency,
 )
 from tempest_fastapi_sdk.sessions.dependencies import (
@@ -65,6 +68,7 @@ __all__: list[str] = [
     "RedisSessionStore",
     "Session",
     "SessionAuth",
+    "SessionAuthFactory",
     "SessionAuthenticator",
     "SessionLoginSchema",
     "SessionMiddleware",
