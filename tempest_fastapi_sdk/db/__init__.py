@@ -131,6 +131,9 @@ from tempest_fastapi_sdk.db.naming import (
 from tempest_fastapi_sdk.db.outbox import BaseOutboxModel as BaseOutboxModel
 from tempest_fastapi_sdk.db.outbox import OutboxRelay as OutboxRelay
 from tempest_fastapi_sdk.db.outbox import OutboxStatus as OutboxStatus
+from tempest_fastapi_sdk.db.repository import (
+    DEFAULT_SYNC_WATERMARK_LAG as DEFAULT_SYNC_WATERMARK_LAG,
+)
 from tempest_fastapi_sdk.db.repository import BaseRepository as BaseRepository
 from tempest_fastapi_sdk.db.search import ColumnRef as ColumnRef
 from tempest_fastapi_sdk.db.search import TextSearchLanguage as TextSearchLanguage
@@ -209,6 +212,7 @@ __all__: list[str] = [
     "AUDIT_REDACTED",
     "BASE_COLUMN_ORDER",
     "DEFAULT_AUDIT_REDACT",
+    "DEFAULT_SYNC_WATERMARK_LAG",
     "ENUM_TYPE_SUFFIX",
     "LEGACY_NAMING_CONVENTION",
     "NAMING_CONVENTION",

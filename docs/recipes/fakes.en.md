@@ -86,8 +86,10 @@ someone opening a dispute. Here it is one call.
 | `FakeRoutingBackend` | `RoutingBackend` (OSRM) | `add_route(...)`, `routes` |
 | `FakeWebSearchBackend` | `WebSearchBackend` (Searxng) | `add_results(...)`, `queries` |
 
-All of them expose `fail_next(error)` and `calls` — the list of methods that
-ran, in order.
+All of them expose `fail_next(error)`. All but `FakeEmailUtils` also expose
+`calls` — the list of methods that ran, in order; on `FakeEmailUtils` the
+record is the `outbox` itself, because `send` is the only method it
+replaces.
 
 ## Email: an outbox instead of SMTP
 
@@ -270,8 +272,9 @@ fake per test — a new instance is clean state.
 
     The defence is the usual one — the provider comes from configuration, and
     the environment decides. If you want an explicit alarm, make your
-    service's `build_provider` refuse a fake when
-    `settings.ENVIRONMENT == "production"`.
+    service's `build_provider` refuse a fake when the environment is
+    production — with a field **your** `Settings` declares (`ENVIRONMENT`,
+    say): no SDK settings mixin carries one.
 
 ## The guarantee: a fake cannot drift from its seam
 
@@ -302,6 +305,7 @@ fails with `['self', 'query', 'limit'] == ['self', 'query', 'max_results']`.
   client raises.
 - `calls`, `outbox`, `sent`, `prompts`, `charges`, `queries`: what happened
   stays inspectable.
-- Resolution is lazy: asking for a Pix fake imports neither genai, push nor
-  geo.
+- Resolution is lazy: asking for a Pix fake imports neither genai nor geo —
+  nor loads anything beyond what `import tempest_fastapi_sdk` already loaded
+  (`push` comes in through there, not through the fake).
 - A signature guard keeps the fake from drifting away from its seam.

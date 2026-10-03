@@ -208,25 +208,25 @@ Two things that look like details and are not:
 
 ## 4. Cancelling a transcription that already started
 
-The easy path does not work here. `run_cancellable` races the coroutine
-against a predicate and cancels for real — but `transcribe()` hands the
-decode to `asyncio.to_thread`, and cancelling the coroutine abandons the
-*wrapper* while the thread runs to completion, still burning CPU and still
-competing with the next job.
+`run_cancellable` races the coroutine against a predicate and cancels for
+real — but on its own that is not enough here. `transcribe()` hands the decode
+to `asyncio.to_thread`, and cancelling the coroutine abandons the *wrapper*
+while the thread runs to completion, still burning CPU and still competing with
+the next job.
 
-What **does** work is raising from inside `on_progress`. The callback runs
-on the worker thread, inside the loop that consumes the segments, and
-nothing along the way swallows the exception — it travels up through the
-generator, out of the `to_thread`, and into whoever was awaiting:
+The missing half is `stop_event=`: `run_cancellable` sets that
+`threading.Event` before it cancels, and `on_progress` — which runs on the
+worker thread, inside the loop that consumes the segments — reads it and raises.
+Nothing along the way swallows the exception, so the decode stops at the next
+segment:
 
 ```python
 # src/tasks/transcribe.py
-import asyncio
 import threading
 from collections.abc import Awaitable, Callable
 
 from tempest_fastapi_sdk.genai.audio import Transcription
-from tempest_fastapi_sdk.tasks import StageInterruptedError
+from tempest_fastapi_sdk.tasks import StageInterruptedError, run_cancellable
 
 from src.core.ai import stt
 
@@ -252,41 +252,34 @@ async def transcribe_cancellable(
     stop = threading.Event()
 
     def progress(done: float, total: float) -> None:
-        """Abort the decode as soon as the watcher raises the flag."""
+        """Abort the decode as soon as run_cancellable raises the flag."""
         if stop.is_set():
             raise StageInterruptedError
 
-    async def watch() -> None:
-        """Poll cancellation on the event loop and tell the thread."""
-        while not stop.is_set():
-            if await cancelled():
-                stop.set()
-                return
-            await asyncio.sleep(2.0)
-
-    watcher = asyncio.create_task(watch())
-    try:
-        return await stt.transcribe(path, on_progress=progress)
-    finally:
-        watcher.cancel()
+    return await run_cancellable(
+        stt.transcribe(path, on_progress=progress),
+        interrupted=cancelled,
+        stop_event=stop,
+    )
 ```
 
-The `threading.Event` is the bridge, and it is mandatory: the callback
-runs **outside** the event loop, so it cannot `await` the cancellation
-lookup. One side asks the database every two seconds; the other only reads
-a boolean.
+The `threading.Event` is the bridge, and it is mandatory: the callback runs
+**outside** the event loop, so it cannot `await` the cancellation lookup.
+`run_cancellable` asks the predicate every `poll_seconds` (2 s by default); the
+callback only reads a boolean.
 
 !!! check "Measured, not deduced"
-    Against a 600-segment decode, with cancellation arriving at 0.25 s:
-    the exception propagated and **25 of the 600 segments** had been
-    decoded. Without the callback, all 600 run to the end.
+    Against a fake 600-segment decode (10 ms per segment), with
+    cancellation arriving at 0.25 s and `poll_seconds=0.05`:
+    `StageInterruptedError` came out at 0.25 s and the thread stopped with
+    **25 of the 600 segments** decoded. Without `stop_event=`, the same
+    `run_cancellable` raises at the same moment, but the thread keeps going
+    and decodes all 600.
 
-    The watcher's interval is your ceiling on waste and your floor on
-    granularity: the first lookup happens at `t=0` and the next only after
-    the interval, so work that finishes inside it never gets to see the
-    cancellation — also measured, on a decode that ended in 0.06 s with the
-    watcher at 2 s. Two seconds inside a job that takes minutes is noise;
-    tune it if your case differs.
+    `poll_seconds` is your ceiling on waste and your floor on granularity:
+    the first lookup only happens after one interval, so work that finishes
+    inside it never gets to see the cancellation. Two seconds inside a job
+    that takes minutes is noise; tune it if your case differs.
 
 !!! danger "The callback must not do I/O"
     It runs on the worker thread, once per segment. No coroutines in there
@@ -592,7 +585,7 @@ of 3000 input + 800 output tokens), the dashboard reads:
 
 ```text
 UsageTotals(input_tokens=3000, output_tokens=800, total_tokens=3800,
-            duration_seconds=30.0, calls=2, cost=0.000644,
+            duration_seconds=30.0, calls=2, cost=0.0006439999999999999,
             cache_hit_tokens=0)
 [ServiceUsage(service='summary', total_tokens=3800, share=100.0)]
 ```
@@ -602,10 +595,12 @@ by the clock. `by_service` brings only the first: the local transcription
 carries `service=NULL` and never becomes a 0% slice on the chart.
 
 !!! warning "The cost is not rounded"
-    `0.000644` is the full value. Any fixed precision is wrong at some
-    scale — rounding to cents zeroes almost every single call, while a
-    monthly total wants cents. Formatting belongs at the boundary, which
-    knows which of the two it is showing. `cost is None` means "do not
+    `cost` is a plain `float`, unrounded — so it also carries binary
+    floating-point error: the `0.000644` the prices imply comes out as
+    `0.0006439999999999999`. Any fixed precision is wrong at some scale —
+    rounding to cents zeroes almost every single call, while a monthly total
+    wants cents. Formatting belongs at the boundary, which knows which of the
+    two it is showing: `f"{totals.cost:.6f}"` prints `0.000644`. `cost is None` means "do not
     show a cost", never zero.
 
 !!! info "The price is never stored"
@@ -628,9 +623,10 @@ carries `service=NULL` and never becomes a 0% slice on the chart.
 `StageMap` names the state columns without declaring any, and
 is the right shape when the screen already loads the record; each stage
 marks `RUNNING`, releases the session, works, re-reads and only stores if
-`owns` says the stage is still its own; a transcription cancels by raising
-from inside `on_progress`, because `to_thread` is not cancellable and the
-flag crosses over on a `threading.Event`; `generate_with_usage` is the
+`owns` says the stage is still its own; a transcription cancels with
+`run_cancellable(..., stop_event=)` and an `on_progress` that raises once the
+event is set, because `to_thread` is not cancellable and the flag crosses over
+on a `threading.Event`; `generate_with_usage` is the
 half that returns the `TokenUsage` that `record` stores, while
 `record_duration` covers the local model that has no tokens;
 `generate_structured_list` finds and validates the array, and an empty

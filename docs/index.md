@@ -96,7 +96,7 @@ uv run pytest
 
 -   **[Receitas »](recipes/index.md)**
 
-    O coração da doc: o **tour do SDK** (um exemplo mínimo por bloco), o índice das **86 receitas**, os **exemplos completos** (checkout Pix, marketplace, admin, fullstack web, GenAI) e o **SSR tipado**.
+    O coração da doc: o **tour do SDK** (um exemplo mínimo por bloco), o índice das **93 receitas**, os **exemplos completos** (checkout Pix, marketplace, admin, fullstack web, GenAI) e o **SSR tipado**.
 
 -   **[Referência »](reference.md)**
 
@@ -124,7 +124,7 @@ uv run pytest
 | Superfície | Estado |
 | --- | --- |
 | Python | 3.11 / 3.12 / 3.13 (matriz testada no CI) |
-| Testes | 2.650+ casos de pytest, cobertura ≥ 90 % |
+| Testes | 10.400+ casos de pytest e 90 % de cobertura (linhas + branches) na v0.302.0 (medidos, sem gate de cobertura no CI) |
 | Type-checking | `mypy --strict`, `py.typed` distribuído (PEP 561) |
 | Lint / format | `ruff` (check + fix + format) |
 | Pipeline de release | publicação confiável no PyPI a cada tag `vX.Y.Z` |

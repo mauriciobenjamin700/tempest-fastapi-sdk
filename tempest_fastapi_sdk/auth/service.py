@@ -26,6 +26,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tempest_fastapi_sdk.auth.exceptions import MFAAlreadyEnrolledException
 from tempest_fastapi_sdk.auth.guards import (
     GuardException,
     UserT,
@@ -435,6 +436,13 @@ class UserAuthService:
     ) -> BaseUserModel:
         """Validate credentials and return the matching user row.
 
+        Every refusal pays one bcrypt verification: an unknown address
+        is checked against a throwaway hash
+        (:meth:`~tempest_fastapi_sdk.PasswordUtils.dummy_verify`) and an
+        inactive account's password is verified before the
+        ``is_active`` check, so neither the body nor the response time
+        separates the three refusals.
+
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             email (str): Login identifier.
@@ -457,9 +465,12 @@ class UserAuthService:
         )
         user_obj = user_result.scalar_one_or_none()
         user: BaseUserModel | None = user_obj
-        if user is None or not user.is_active:
+        if user is None:
+            self.passwords.dummy_verify(password)
             raise UnauthorizedException(message="invalid email or password")
         if not self.passwords.verify(password, user.hashed_password):
+            raise UnauthorizedException(message="invalid email or password")
+        if not user.is_active:
             raise UnauthorizedException(message="invalid email or password")
         user.last_login_at = utcnow()
         await session.flush()
@@ -2520,12 +2531,21 @@ class UserAuthService:
     ) -> tuple[str, str, list[str]]:
         """Issue a fresh TOTP secret + recovery codes for ``user``.
 
-        Idempotent in spirit — calling it again rotates the secret
-        AND invalidates every previously issued recovery code.
         ``totp_enabled_at`` is **NOT** set yet; the caller MUST
         confirm a valid code via :meth:`mfa_confirm` before MFA is
         actually active. Until then, the persisted secret is dead
         weight and login keeps working without the TOTP step.
+
+        Refused once MFA is active (``totp_enabled_at`` set): enrolling
+        wipes the recovery codes, so allowing it over an active factor
+        would let a bare access token switch MFA off without the
+        password and code that :meth:`mfa_disable` requires. Rotation
+        is :meth:`mfa_disable` followed by a new enroll and confirm.
+        Calling it again while the previous enrollment is still
+        pending (never confirmed) is allowed and replaces the staged
+        secret and codes. The check reads the column, not
+        :meth:`is_mfa_enrolled`, so it holds even with the
+        ``AUTH_MFA_ENABLED`` kill-switch off.
 
         Args:
             session (AsyncSession): Active SQLAlchemy session.
@@ -2541,15 +2561,19 @@ class UserAuthService:
             recovery code.
 
         Raises:
+            MFAAlreadyEnrolledException: When MFA is already active for
+                ``user`` (409, code ``MFA_ALREADY_ENROLLED``).
             ImportError: When the ``[mfa]`` extra is not installed.
 
         Notes:
-            Enrolling wipes any previously stored recovery codes — enrollment
-            has rotation semantics, so an old code set never stays valid
-            alongside a new one.
+            Enrolling over a pending enrollment wipes the recovery codes
+            it staged, so an old code set never stays valid alongside a
+            new one.
         """
         from tempest_fastapi_sdk.utils.totp import TOTPHelper
 
+        if getattr(user, "totp_enabled_at", None) is not None:
+            raise MFAAlreadyEnrolledException()
         totp = TOTPHelper(issuer=self.auth_settings.AUTH_MFA_ISSUER)
         secret = totp.generate_secret()
         provisioning = totp.provisioning_uri(secret, user.email)
@@ -2569,7 +2593,6 @@ class UserAuthService:
             session.add(record)
         user = await self._attach(session, user)
         user.totp_secret = secret
-        user.totp_enabled_at = None
         await session.flush()
         await session.refresh(user)
         return secret, provisioning, plaintexts

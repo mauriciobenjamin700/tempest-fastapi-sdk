@@ -86,7 +86,7 @@ o upstream rejeita recebe **401**; um usuário sem `famacha` no
 !!! tip "Ligue os handlers de exceção"
     `IntrospectionAuth` levanta `UnauthorizedException` (401) e
     `ForbiddenException` (403) do próprio SDK. Chame
-    `register_exception_handlers(app)` (o `create_app()` do SDK já faz)
+    `register_exception_handlers(app)` (o `create_app()` que o `tempest new` gera já faz)
     pra que virem os status HTTP certos em vez de 500.
 
 ## Como funciona, peça por peça

@@ -153,7 +153,7 @@ Os quatro só são montados quando `AUTH_MFA_ENABLED=True`:
 
 | Método | Path | Auth | Body / Output | Comportamento |
 |--------|------|------|---------------|---------------|
-| POST | `/auth/mfa/enroll` | Bearer JWT | — → `MFAEnrollResponseSchema` | Gera segredo + URI do QR + N recovery codes. **Mostrados só uma vez.** Não ativa MFA ainda. |
+| POST | `/auth/mfa/enroll` | Bearer JWT | — → `MFAEnrollResponseSchema` | Gera segredo + URI do QR + N recovery codes. **Mostrados só uma vez.** Não ativa MFA ainda. Com MFA já ativo, responde `409` (`MFA_ALREADY_ENROLLED`) e não muda nada. |
 | POST | `/auth/mfa/confirm` | Bearer JWT | `MFAConfirmSchema` | Confirma o enrollment com o primeiro código. A partir daqui MFA está ativo. |
 | POST | `/auth/mfa/verify` | — | `MFAVerifySchema` → `LoginResponseSchema` | Passo 2 do login: troca `mfa_token` + código pelo JWT pair. |
 | POST | `/auth/mfa/disable` | Bearer JWT | `MFADisableSchema` | Desliga MFA. Exige senha **e** código ativo (TOTP ou recovery). |
@@ -180,7 +180,17 @@ httpx.post(f"{BASE}/auth/mfa/confirm", headers=headers, json={"code": code})
 ```
 
 !!! danger "Os recovery codes aparecem UMA vez"
-    A resposta de `enroll` é a única vez que o `secret` e os `recovery_codes` saem em plaintext. Chamar `enroll` de novo **rotaciona** o segredo e **invalida** todos os códigos anteriores. Mostre-os com destaque e instrua o usuário a guardar offline.
+    A resposta de `enroll` é a única vez que o `secret` e os `recovery_codes` saem em plaintext. Mostre-os com destaque e instrua o usuário a guardar offline.
+
+### Trocar o segredo: `disable` e depois `enroll`
+
+Chamar `enroll` de novo **antes** do `confirm` substitui o segredo e os códigos pendentes: o enrollment ainda não está ativo, então não há fator a proteger. Depois do `confirm`, `enroll` recusa com `409` e não toca em nada:
+
+```json
+{"detail":"MFA is already active — disable it before enrolling again","code":"MFA_ALREADY_ENROLLED","details":{}}
+```
+
+Esse é o corpo com o `register_exception_handlers` montado. A recusa existe porque `enroll` só pede o bearer token e apaga os recovery codes: aceitar um segundo `enroll` sobre MFA ativo deixava quem tem só o access token desligar o segundo fator, sem a senha e sem o código que `disable` exige. Para trocar de segredo (celular novo, segredo vazado), o usuário passa por `POST /auth/mfa/disable` com senha + código e então refaz `enroll` + `confirm`. No serviço, a mesma recusa é a exceção `MFAAlreadyEnrolledException` (subclasse de `ConflictException`), levantada por `mfa_enroll` mesmo com o kill-switch `AUTH_MFA_ENABLED` desligado.
 
 ---
 
@@ -299,7 +309,7 @@ Superfície completa:
 |--------|-----------------------|---------|
 | `is_mfa_enrolled` | `(user) -> bool` | `True` se MFA ativo (e kill-switch ligado). |
 | `issue_mfa_token` | `(user) -> str` | JWT curto que liga passo 1 e passo 2. |
-| `mfa_enroll` | `(session, *, user, recovery_code_model) -> tuple[str, str, list[str]]` | `(secret, provisioning_uri, recovery_codes)`. |
+| `mfa_enroll` | `(session, *, user, recovery_code_model) -> tuple[str, str, list[str]]` | `(secret, provisioning_uri, recovery_codes)`. Levanta `MFAAlreadyEnrolledException` com MFA ativo. |
 | `mfa_confirm` | `(session, *, user, code) -> None` | Ativa MFA. |
 | `mfa_verify` | `(session, *, mfa_token, code, recovery_code_model) -> UserModel` | Usuário autenticado (mint o JWT depois). |
 | `mfa_disable` | `(session, *, user, password, code, recovery_code_model) -> None` | Limpa segredo + códigos. |
@@ -311,7 +321,7 @@ Superfície completa:
 - **Segredo TOTP persistido no `UserModel`.** Considere criptografar a coluna `totp_secret` em repouso (Postgres `pgcrypto` ou um wrapper Fernet no nível da aplicação).
 - **Recovery codes guardados como hash SHA-256.** O plaintext sai uma única vez no enrollment; vazamento da tabela não rende códigos usáveis.
 - **Recovery codes são single-use.** `used_at` é carimbado no consume; replay rejeitado.
-- **`disable` exige senha + código.** Uma sessão sequestrada não consegue desligar MFA sozinha — precisa da senha **e** de um fator ativo.
+- **`disable` exige senha + código, e `enroll` não é um atalho para ele.** Uma sessão sequestrada não consegue desligar MFA sozinha — precisa da senha **e** de um fator ativo. `enroll` sobre MFA ativo responde `409` em vez de apagar os recovery codes, então o access token sozinho não reinicia o fator.
 - **`mfa_token` é curto e bound ao usuário.** TTL de 5 min por padrão; carrega `purpose: "mfa_pending"` + o `sub`. Tokens de outro propósito são rejeitados em `mfa_verify`.
 - **Verificação em tempo constante.** `TOTPHelper.verify` delega ao `pyotp`, que compara o código com `hmac.compare_digest`.
 

@@ -246,7 +246,7 @@ o dado que o *chamador* tem — transforma **todo miss do repositório em
 ...     def __init__(self, budget_id: str) -> None:
 ...         super().__init__(message=f"Orçamento {budget_id} não encontrado.")
 >>> BudgetNotFoundException(message="Não encontrado.")
-TypeError: __init__() got an unexpected keyword argument 'message'
+TypeError: BudgetNotFoundException.__init__() got an unexpected keyword argument 'message'
 ```
 
 A fábrica devolve uma classe correta nos dois sentidos:

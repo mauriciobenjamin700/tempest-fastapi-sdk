@@ -61,7 +61,7 @@ class TestWorkbookToBytes:
         reopened = openpyxl.load_workbook(BytesIO(workbook_to_bytes(workbook)))
 
         cell = reopened["Dados"].cell(row=1, column=3)
-        assert cell.number_format == "[$R$-416] #,##0.00"
+        assert cell.number_format == '[$-416]"R$ "#,##0.00'
         assert cell.value == 2.5
 
     def test_a_percent_cell_round_trips_as_the_ratio(self) -> None:
@@ -73,7 +73,7 @@ class TestWorkbookToBytes:
 
         cell = reopened["Dados"].cell(row=1, column=1)
         assert cell.value == 0.3
-        assert cell.number_format == "0.00%"
+        assert cell.number_format == "[$-416]0.00%"
 
 
 class TestSheetWriterCursor:

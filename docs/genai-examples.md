@@ -25,7 +25,7 @@ gen = TextGenerator(
     MODEL,
     device=rec.device,
     quantization=rec.dtype.value if rec.dtype.value in ("int8", "int4") else None,
-    idle_unload_seconds=300,             # libera VRAM entre picos
+    idle_unload_seconds=300,             # limiar do unload_if_idle()
 )
 
 
@@ -56,17 +56,23 @@ rag = Retriever(
 gen = TextGenerator("Qwen/Qwen2.5-7B-Instruct", quantization="int4")
 
 
-async def main() -> None:
-    """Run this example."""
-    # indexação (uma vez, na subida do serviço ou num job)
+async def index_corpus() -> None:
+    """Index the PDFs once, at service start-up or in a job."""
     for pdf in ("manual.pdf", "faq.pdf", "politicas.pdf"):
         await rag.index(PdfReader().chunks(f"/kb/{pdf}", max_chars=1500, overlap=150))
 
-    # consulta (barata, por request)
-    async def answer(question: str) -> str:
-        context = await rag.retrieve(question, top_k=5)
-        prompt = f"{context}\n\nResponda só com base nas fontes acima.\n{question}"
-        return await gen.generate(prompt, max_new_tokens=400)
+
+async def answer(question: str) -> str:
+    """Answer one question from the indexed PDFs; cheap, per request."""
+    context = await rag.retrieve(question, top_k=5)
+    prompt = f"{context}\n\nResponda só com base nas fontes acima.\n{question}"
+    return await gen.generate(prompt, max_new_tokens=400)
+
+
+async def main() -> None:
+    """Index the corpus, then answer one question."""
+    await index_corpus()
+    print(await answer("Como peço reembolso?"))
 
 
 asyncio.run(main())

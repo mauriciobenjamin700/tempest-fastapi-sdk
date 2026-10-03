@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import functools
 import hashlib
+import inspect
 import json
 import logging
 from collections.abc import Awaitable, Callable, Sequence
@@ -26,6 +27,72 @@ TagSpec = (
     Sequence[str] | Callable[[tuple[Any, ...], dict[str, Any]], Sequence[str]] | None
 )
 """Static tags, a per-call tag builder, or ``None`` for no tags."""
+
+_METHOD_RECEIVER_NAMES: frozenset[str] = frozenset({"self", "cls"})
+"""First-parameter names that mark a decorated callable as a method.
+
+The default key builder leaves the receiver out of the key, because
+``str(self)`` of an instance without a custom ``__str__``/``__repr__``
+embeds its memory address: a service built per request would never hit.
+"""
+
+
+def _receiver_name(func: Callable[..., Any]) -> str | None:
+    """Return the receiver parameter name when ``func`` is a method.
+
+    A function decorated inside a class body is still a plain function
+    at decoration time, so the only reliable signal is its first
+    parameter: a positional parameter named ``self`` or ``cls``.
+
+    Args:
+        func (Callable[..., Any]): The callable being decorated.
+
+    Returns:
+        str | None: ``"self"`` / ``"cls"`` when the first parameter is a
+        receiver, ``None`` otherwise (free function, ``staticmethod``,
+        already-bound method, or a signature ``inspect`` cannot read).
+    """
+    try:
+        params = list(inspect.signature(func).parameters.values())
+    except (TypeError, ValueError):
+        return None
+    if not params:
+        return None
+    first = params[0]
+    positional = (
+        inspect.Parameter.POSITIONAL_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    )
+    if first.kind in positional and first.name in _METHOD_RECEIVER_NAMES:
+        return first.name
+    return None
+
+
+def _strip_receiver(
+    receiver: str | None,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    """Drop the method receiver from the arguments used for the key.
+
+    Args:
+        receiver (str | None): The receiver name from
+            :func:`_receiver_name`, or ``None`` for a non-method.
+        args (tuple[Any, ...]): The call's positional arguments.
+        kwargs (dict[str, Any]): The call's keyword arguments.
+
+    Returns:
+        tuple[tuple[Any, ...], dict[str, Any]]: The arguments without
+        the receiver, whether it came positionally (the normal
+        ``instance.method(...)`` call) or by keyword.
+    """
+    if receiver is None:
+        return args, kwargs
+    if args:
+        return args[1:], kwargs
+    if receiver in kwargs:
+        return args, {k: v for k, v in kwargs.items() if k != receiver}
+    return args, kwargs
 
 
 def _default_key_builder(
@@ -116,7 +183,16 @@ def cached(
             ``"users:"`` to make invalidation easier). Pass the same
             prefix to :class:`CacheInvalidator`.
         key_builder (Callable[[str, tuple, dict], str] | None): Custom
-            cache key builder. Defaults to a SHA-256 of args/kwargs.
+            cache key builder, called with the qualified name and the
+            call's full ``args`` / ``kwargs`` (receiver included).
+            Defaults to a SHA-256 of args/kwargs that **leaves out the
+            method receiver**: when the decorated function's first
+            parameter is ``self`` or ``cls``, that argument is not part
+            of the key, so every instance of the class shares the entry
+            for the same remaining arguments. The qualified name
+            (``Class.method``) still separates classes. A method whose
+            result depends on instance state needs a ``key_builder``
+            that reads that state, or a pure function instead.
         serializer (Callable[[Any], str]): How to encode the result
             before storing. Defaults to :func:`json.dumps`.
         deserializer (Callable[[str | bytes], Any]): How to decode the
@@ -138,15 +214,25 @@ def cached(
         Callable[[F[T]], F[T]]: A decorator preserving the signature
         of the wrapped async callable.
     """
-    builder = key_builder or _default_key_builder
 
     def decorator(func: F[T]) -> F[T]:
+        receiver = _receiver_name(func) if key_builder is None else None
+
         @functools.wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> T:
             if skip_cache is not None and skip_cache(args, kwargs):
                 return await func(*args, **kwargs)
 
-            key = key_prefix + builder(func.__qualname__, args, kwargs)
+            if key_builder is None:
+                key_args, key_kwargs = _strip_receiver(receiver, args, kwargs)
+                fragment = _default_key_builder(
+                    func.__qualname__,
+                    key_args,
+                    key_kwargs,
+                )
+            else:
+                fragment = key_builder(func.__qualname__, args, kwargs)
+            key = key_prefix + fragment
             client = redis.client
             cached_value = await client.get(key)
             if cached_value is not None:

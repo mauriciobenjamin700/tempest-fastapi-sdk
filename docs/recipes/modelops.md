@@ -176,25 +176,39 @@ dizer a deixar você descobrir:
     produzido, não o último — devolver um arquivo maior chamando de
     otimizado seria uma mentira que a ferramenta conta sozinha.
 
-!!! danger "Árvore + classificação binária converte errado hoje"
-    Com `skl2onnx` 1.20 e scikit-learn 1.9, um `RandomForestClassifier`
-    binário gera um grafo cuja saída de probabilidade é um score em
-    `[-1, 1]` em vez de `[0, 1]`, e os rótulos previstos discordam do
-    estimador numa fração significativa das linhas. Multiclasse e modelos
-    lineares estão corretos.
+!!! note "Árvore + classificação binária: defeito antigo do runtime, ainda vigiado"
+    Um `RandomForestClassifier` **binário** exportado já respondeu errado:
+    a probabilidade vinha como score em `[-1, 1]` em vez de `[0, 1]`, e os
+    rótulos discordavam do estimador. A causa era o `onnxruntime` < 1.28,
+    não o conversor (a medição está em
+    [Por que manifesto](#por-que-manifesto)). O
+    piso do SDK é `onnxruntime>=1.29.0`, então uma instalação normal não
+    reproduz mais: com `onnxruntime` 1.29.0, `skl2onnx` 1.20.0 e
+    scikit-learn 1.9.0, uma floresta binária de 50 árvores no
+    `load_breast_cancer` exporta sem aviso e verifica com
+    `label_agreement == 1.0` e diferença máxima de probabilidade `1.8e-07`.
 
-    Nenhuma opção do conversor resolve — `zipmap`, `raw_scores` e quatro
-    opsets diferentes foram testados. O `export.warnings` sinaliza a
-    combinação, e a verificação pega:
+    O aviso continua no código para o ambiente montado à força abaixo do
+    piso: `export.warnings` só ganha a mensagem quando o estimador final é
+    um ensemble de árvore binário **e** o `onnxruntime` instalado é anterior
+    a `BINARY_TREE_FIXED_IN_ONNXRUNTIME` (hoje `(1, 28)`):
 
     ```python
+    from sklearn.datasets import load_breast_cancer
+    from sklearn.ensemble import RandomForestClassifier
+
+    from tempest_fastapi_sdk.modelops import export_sklearn_to_onnx
+
+    X, y = load_breast_cancer(return_X_y=True)
+    model: RandomForestClassifier = RandomForestClassifier(
+        n_estimators=50, random_state=0
+    ).fit(X, y)
     export = export_sklearn_to_onnx(model, X[:10], "m.onnx")
     if export.needs_verification:
         print(export.warnings[0])
     ```
 
-    Alternativas: usar uma formulação multiclasse, um modelo linear, ou
-    fixar versões que você validou.
+    Com o piso instalado, isso não imprime nada.
 
 ### Com e sem GPU
 
@@ -386,7 +400,7 @@ print([(r.kind, r.bytes) for r in package.manifest.runtimes])
 ```
 
 ```text
-[('onnx', 19941), ('compact', 9608)]
+[('onnx', 15324), ('compact', 7476)]
 ```
 
 O navegador escolhe a rota pelo manifesto.
@@ -411,7 +425,16 @@ O navegador escolhe a rota pelo manifesto.
     Reimplementar a aritmética de outra biblioteca só é defensável com a
     comparação: o exportador roda o arquivo escrito pelo decodificador de
     referência e compara com `predict`/`predict_proba` do próprio estimador.
-    Discordou, **não grava** — levanta com a diferença medida.
+    Discordou, **levanta** com a diferença medida; o arquivo fica no disco só
+    para inspeção, e a mensagem diz que ele não pode ser enviado.
+
+    Os limiares de split viram float32 arredondados **para baixo**, não para
+    o mais próximo. O scikit-learn guarda o limiar como ponto médio float64
+    entre dois valores float32; quando os dois são vizinhos (`1.6999999` e
+    `1.7000000` no iris), o arredondamento comum cai em cima do maior, e a
+    linha de treino com exatamente esse valor trocava de lado. A floresta
+    acima, sem `max_depth`, verificada nos próprios dados de treino, era
+    recusada por isso até a 0.302.0.
 
     Do lado do navegador, os testes rodam contra fixtures geradas aqui junto
     das saídas do scikit-learn: 7 famílias, rótulos idênticos, probabilidades
@@ -434,7 +457,20 @@ Exportar produz o arquivo. Isto é tudo entre o arquivo e uma resposta —
 código que todo consumidor reescreve igual e erra do mesmo jeito.
 
 ```python
-from tempest_fastapi_sdk.modelops import OnnxPredictor
+from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+
+from tempest_fastapi_sdk.modelops import OnnxPredictor, export_sklearn_to_onnx
+
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+model = RandomForestClassifier(n_estimators=20, random_state=0).fit(
+    X_train, y_train
+)
+export_sklearn_to_onnx(model, X_train[:10], "dist/classifier.onnx")
+
 
 predictor = OnnxPredictor("dist/classifier.onnx")
 result = predictor.predict([[5.1, 3.5, 1.4, 0.2]])
@@ -443,7 +479,7 @@ print(result.labels, result.probabilities[0])
 ```
 
 ```text
-[0] [0.98, 0.02, 0.0]
+[0] [1.0000001192092896, 0.0, 0.0]
 ```
 
 O predictor resolve o que você teria que resolver à mão: **qual é o input**
@@ -653,14 +689,19 @@ package = edge_pipeline(
     "dist/risk",
     name="risk",
     labels=y_train,
-    feature_names=["idade", "renda", "tempo_casa", "score", "visitas"],
+    feature_names=["sepal_length", "sepal_width", "petal_length", "petal_width"],
 )
 print(package.manifest.version, package.manifest.verified)
 ```
 
 ```text
-cc17b06c76d4 True
+55a78cb2a1d4 True
 ```
+
+`feature_names` precisa de um nome por coluna do grafo. Passar cinco nomes
+para os quatro do iris levanta antes de escrever o manifesto:
+`ValueError: 5 feature names for a model of 4 features: the manifest would
+record a column order no reader can apply.`
 
 Saem quatro arquivos, e você publica o diretório inteiro:
 
@@ -784,34 +825,52 @@ contrário.
 
 ```python
 from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
 from tempest_fastapi_sdk.modelops import (
     OnnxPredictor,
     PredictionMonitor,
     baseline_from_samples,
+    export_sklearn_to_onnx,
 )
 
 X_train, X_test, y_train, y_test = train_test_split(
     *load_iris(return_X_y=True), random_state=0
 )
+model = RandomForestClassifier(n_estimators=20, random_state=0).fit(
+    X_train, y_train
+)
+export_sklearn_to_onnx(model, X_train[:10], "model.onnx")
 predictor = OnnxPredictor("model.onnx")
-rows = X_test.tolist()
 
 
 baseline = baseline_from_samples(X_train, labels=y_train)
+
+held_out = X_test.tolist()
 monitor = PredictionMonitor(baseline=baseline)
-
-result = predictor.predict(rows)
-monitor.observe(rows, result)
-
+monitor.observe(held_out, predictor.predict(held_out))
 report = monitor.report()
-print(report.drift.verdict, report.drift.worst_psi)
+print(report.drift.n_rows, report.drift.verdict, round(report.drift.worst_psi, 2))
+
+shifted = [[value * 1.3 for value in row] for row in X_train.tolist()]
+monitor = PredictionMonitor(baseline=baseline)
+monitor.observe(shifted, predictor.predict(shifted))
+report = monitor.report()
+print(report.drift.n_rows, report.drift.verdict, round(report.drift.worst_psi, 2))
 ```
 
 ```text
-significant 3.95
+38 insufficient_data 0.44
+112 significant 5.09
 ```
+
+As 38 linhas do teste vêm da **mesma** distribuição do treino e ainda assim
+dão PSI 0,44, acima do limiar de `significant` (0,25): com tão poucas linhas,
+bin vazio é ruído de amostragem. Por isso o veredito fica em
+`insufficient_data` abaixo de `MIN_ROWS_FOR_DRIFT` (100 linhas). As 112
+linhas multiplicadas por 1,3 simulam um sensor que mudou de escala, e essas
+sim saem `significant`.
 
 ### Três sinais, porque separam falhas diferentes
 
@@ -1315,9 +1374,22 @@ Um servidor com SLO de throughput deve repesar — é exatamente pra isso que
 o parâmetro existe:
 
 ```python
-from tempest_fastapi_sdk.modelops import rank
+from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
 
-profiles = []  # results collected from a previous benchmark run
+from tempest_fastapi_sdk.modelops import (
+    BenchmarkProfile,
+    benchmark_onnx,
+    export_sklearn_to_onnx,
+    rank,
+)
+
+X, y = load_iris(return_X_y=True)
+profiles: list[BenchmarkProfile] = []
+for name, trees in [("n", 5), ("s", 50)]:
+    model = RandomForestClassifier(n_estimators=trees, random_state=0).fit(X, y)
+    export_sklearn_to_onnx(model, X[:10], f"models/{name}.onnx")
+    profiles.append(benchmark_onnx(f"models/{name}.onnx", n_repetitions=50))
 
 
 report = rank(
@@ -1325,6 +1397,8 @@ report = rank(
     weights={"latency_ms_p99": 0.7, "rss_peak_mb": 0.3},
     quality={"n": 0.802, "s": 0.841},
 )
+for profile in report.profiles:
+    print(profile.name, profile.composite_score, profile.is_pareto)
 ```
 
 A **fronteira de Pareto** não tem opinião. Um modelo está nela quando
@@ -1332,9 +1406,24 @@ nenhum outro é ao menos tão barato em todos os eixos *e* ao menos tão bom.
 O que sobra é o conjunto de escolhas defensáveis:
 
 ```python
-from tempest_fastapi_sdk.modelops import pareto_points
+from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
 
-profiles = []  # results collected from a previous benchmark run
+from tempest_fastapi_sdk.modelops import (
+    BenchmarkProfile,
+    benchmark_onnx,
+    export_sklearn_to_onnx,
+    pareto_points,
+)
+
+X, y = load_iris(return_X_y=True)
+profiles: list[BenchmarkProfile] = []
+for name, trees in [("n", 5), ("s", 50)]:
+    model = RandomForestClassifier(n_estimators=trees, random_state=0).fit(X, y)
+    export_sklearn_to_onnx(model, X[:10], f"models/{name}.onnx")
+    profile = benchmark_onnx(f"models/{name}.onnx", n_repetitions=50)
+    quality = {"n": 0.802, "s": 0.841}[name]
+    profiles.append(profile.model_copy(update={"quality": quality}))
 
 
 for point in pareto_points(profiles):
@@ -1732,13 +1821,17 @@ async def run_benchmark(paths: list[str]) -> BenchmarkReport:
 | --- | --- |
 | `tempest model analyze <modelo>` | Parâmetros, tamanho, opset e shapes, sem executar. |
 | `tempest model bench <modelo>` | Latência, memória e energia sobre N repetições. |
-| `tempest model quantize <in> <out>` | Quantização dinâmica int8. |
-| `tempest model optimize <in> <out>` | Persiste as otimizações de grafo do ONNX Runtime. |
 | `tempest model export-ort <modelo>` | Converte para `.ort` + config de operadores. |
+| `tempest model optimize <in> <out>` | Persiste as otimizações de grafo do ONNX Runtime. |
+| `tempest model quantize <in> <out>` | Quantização dinâmica, int8 por padrão (`--weight-type` aceita `uint8`, `int16`, `uint16`, `int4`, `uint4`). |
 | `tempest model hardware` | O que esta máquina roda e o que consegue medir. |
+| `tempest model pull <model_id>` | Baixa os pesos de um modelo do HuggingFace antes da primeira requisição; `--pin` imprime o commit por trás da revisão. |
+| `tempest model cache-list` | Lista o que o cache local de pesos guarda, do maior para o menor. |
+| `tempest model cache-rm <model_id>` | Apaga um modelo do cache local; pede confirmação sem `--yes`, e `--dry-run` só mede. |
 
-Todos aceitam `--json` (exceto `export-ort` e `optimize`, que já imprimem
-os caminhos escritos), o que os torna utilizáveis num passo de CI:
+`--json` existe em `analyze`, `bench`, `hardware`, `pull` e `cache-list`;
+`quantize`, `optimize`, `export-ort` e `cache-rm` não têm a flag. Com ela, o
+comando vira um passo de CI:
 
 ```bash
 tempest model bench models/classify.onnx --json > bench.json

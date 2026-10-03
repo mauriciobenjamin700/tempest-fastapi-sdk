@@ -61,9 +61,11 @@ class ProductRepository(BaseRepository[ProductModel]):
 
 ```python
 import asyncio
+from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-from src.db.models import ProductModel, UserModel
+from src.db.models import ProductModel
 from src.db.repositories import ProductRepository
 
 # In a service the session comes from `db.get_session_context()`; here, SQLite.
@@ -71,12 +73,13 @@ session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 repo = ProductRepository(session)
 
-user = UserModel(name="Ana", email="ana@example.com")
+# The actor is the id of whoever is already authenticated (`current_user.id`).
+actor_id = UUID("2b1d0c2e-7f3a-4c56-9d18-2f9a4c5b6d70")
 
 
 async def main() -> None:
     """Run this example."""
-    product = await repo.add_audited(ProductModel(name="Widget"), actor=str(user.id))
+    product = await repo.add_audited(ProductModel(name="Widget"), actor=str(actor_id))
     # writes the product + a CREATE entry with {"after": {...}}
 
 
@@ -119,24 +122,25 @@ async def rename_product(
 
 ```python
 import asyncio
+from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-from src.db.models import ProductModel, UserModel
 from src.db.repositories import ProductRepository
 
 # In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
-product = ProductModel(name="Café", price_cents=1990)
-
 repo = ProductRepository(session)
 
-user = UserModel(name="Ana", email="ana@example.com")
+product_id = UUID("6f1c3d84-2a55-4d0b-9d7e-0c1a2b3c4d5e")
+actor_id = UUID("2b1d0c2e-7f3a-4c56-9d18-2f9a4c5b6d70")
 
 
 async def main() -> None:
     """Run this example."""
-    await repo.delete_audited(product, actor=str(user.id))
+    product = await repo.get_by_id(product_id)
+    await repo.delete_audited(product, actor=str(actor_id))
     # deletes the row + writes a DELETE entry with {"before": {...}}
 
 
@@ -144,10 +148,14 @@ asyncio.run(main())
 ```
 
 !!! warning "Same transaction"
-    All three variants commit the business row and the audit row
-    **together**. If the audit write fails, the change is rolled back —
-    never half-written. Repositories without `audit_model` raise
-    `RuntimeError` when the audited methods are called.
+    All three variants write the business row and the audit row
+    **together**. Called on their own, they commit both at the end; inside
+    a `repo.transaction()` block (or on a repository built with
+    `autocommit=False`) they only `flush`, and the commit belongs to the
+    block — if the block aborts, both rows disappear together. Either way,
+    if the audit write fails the change is rolled back — never
+    half-written. See [Transactions](transactions.md). Repositories without
+    `audit_model` raise `RuntimeError` when the audited methods are called.
 
 ## Standalone helpers
 

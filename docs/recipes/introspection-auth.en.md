@@ -86,7 +86,7 @@ gets **403**.
 !!! tip "Wire up the exception handlers"
     `IntrospectionAuth` raises the SDK's own `UnauthorizedException`
     (401) and `ForbiddenException` (403). Call
-    `register_exception_handlers(app)` (the SDK's `create_app()` already
+    `register_exception_handlers(app)` (the `create_app()` that `tempest new` generates already
     does) so they become the right HTTP statuses instead of 500.
 
 ## How it works, piece by piece

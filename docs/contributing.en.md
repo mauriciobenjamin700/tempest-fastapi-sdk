@@ -77,13 +77,15 @@ The same gates are available through the bundled CLI: `tempest lint` / `tempest 
 ## Tests
 
 ```bash
-make test                    # full suite + coverage
+make test                    # default suite + coverage (no model/gpu/docker)
 uv run pytest tests/admin    # the admin module only
 uv run pytest -k cursor      # tests matching "cursor"
 uv run pytest -x             # stop at the first failure
 ```
 
-The suite uses in-memory SQLite via `tempest_fastapi_sdk.testing.test_session`. Repository tests share the `session` fixture from `tests/conftest.py`.
+`make test` does not run the whole suite: the `addopts` in `pyproject.toml` passes `-m "not model and not gpu and not docker"`, so the tests that download model weights, need CUDA or start a container stay out. Each group has its own opt-in target: `make test-model`, `make test-gpu` and `make test-docker`.
+
+The suite uses in-memory SQLite: the `db` fixture in `tests/conftest.py` opens a fresh `AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")` per test, and repository tests share the `session` fixture opened over it.
 
 ## Docs
 
@@ -103,9 +105,8 @@ Conventional Commits prefixes:
 
 - `feat:` — new user-facing capability
 - `fix:` — bug fix
-- `refactor:` — internal restructuring with no behavior change
+- `ref:` — internal restructuring with no behavior change
 - `docs:` — documentation only
-- `style:` — formatting / whitespace
 - `tests:` — test-only changes
 - `chore:` — tooling, deps, release plumbing
 

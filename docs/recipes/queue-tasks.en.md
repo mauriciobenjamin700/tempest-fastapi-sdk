@@ -1,6 +1,6 @@
 # Queues and Tasks
 
-Background work without the pain. The SDK wraps **FastStream** (messaging) and **TaskIQ** (tasks + scheduling) in typed classes with a single vocabulary — you **never import** `faststream` or `taskiq` in application code.
+Background work without the pain. The SDK wraps **FastStream** (messaging) and **TaskIQ** (tasks + scheduling) in typed classes with a single vocabulary — the common path (publish, consume, enqueue, schedule) imports neither `faststream` nor `taskiq` in application code. The exception is a transport-specific option, such as the `RabbitExchange` passed as `exchange=` further down.
 
 !!! tip "Which tool?"
     - **`MessageBroker`** (messaging) — an event happens and **many** services/consumers react. Fan-out, at-least-once, decoupled from the request. E.g. "order paid" → inventory, email, analytics.
@@ -185,11 +185,11 @@ mq.register(OrdersConsumer())
 ```python
 from tempest_fastapi_sdk.queue import Publisher
 
-from src.queue import ORDERS_PAID, OrderPaid, mq
+from src.queue import OrderPaid, mq
 
 
 class OrderPaidPublisher(Publisher[OrderPaid]):
-    channel = ORDERS_PAID
+    channel = "orders.paid"
     schema = OrderPaid
 
 
@@ -475,7 +475,7 @@ mq.register(OrderPaidConsumer(channel="orders.paid", schema=OrderPaid, prefetch=
     what the type checker sees.
 
 !!! warning "There is no good default I could guess"
-    Current behaviour is **uncapped**, and this PR does not change that — it exposes the knob. Too small serializes consumption and destroys throughput; too large recreates the problem. The right number depends on your handler's latency, and fixing one without measuring would repeat the mistake `DEFAULT_INTRA_OP_THREADS` made in modelops before it was re-justified. Measure with a known-latency consumer before choosing.
+    Without `prefetch=`, consumption is **uncapped** (the default is `None`) — the SDK exposes the knob, it does not pick the value. Too small serializes consumption and destroys throughput; too large recreates the problem. The right number depends on your handler's latency, and fixing one without measuring would repeat the mistake `DEFAULT_INTRA_OP_THREADS` made in modelops before it was re-justified. Measure with a known-latency consumer before choosing.
 
 !!! info "Prefetch is not handler concurrency"
     Prefetch caps how many messages the **broker delivers** unacked. How many coroutines run at once is a separate decision. Confusing the two is common: `prefetch=1` does not serialize the handler if the handler itself fans out.
@@ -1132,9 +1132,11 @@ lease: SchedulerLock = RedisSchedulerLock.from_url(
 
 !!! info "`scheduler="unlocked"` exists, and has to be typed"
     A service that genuinely runs a single replica passes
-    `scheduler="unlocked"` and skips the lease. That is a choice; `True`
-    is the guarded default, because a service that forgot is not
-    choosing anything.
+    `scheduler="unlocked"` and skips the lease. That is a choice, which
+    is why it is not the default: the default is `scheduler=False` (broker
+    only, nothing scheduled), and `True` is the guarded way to turn the
+    scheduler on. A service that forgot to ask schedules nothing — not
+    everything N times.
 
 ## One line for the transport — `from_settings`
 

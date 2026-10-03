@@ -128,8 +128,11 @@ or cut by a budget, it returns `data=None` and `parse_error` says why.
     losing the whole run. Switch it off with `extraction_retry=False`.
 
 !!! warning "Always check `has_data`"
-    A run can be `succeeded` and still carry `data=None` — the budget ran
-    out, or even the extraction failed. `run.parse_error` says which. And
+    A run can be `succeeded` and still carry `data=None`: the model finished
+    without calling `final_answer`, and neither the text parse nor the
+    extraction found the shape (or `allow_text_fallback=False` turned that
+    net off). A spent budget is a different case — that run is no longer
+    `succeeded`. Either way, `run.parse_error` says why. And
     small models sometimes leave a field empty rather than omitting it:
     validate the values, not just the presence of the object.
 

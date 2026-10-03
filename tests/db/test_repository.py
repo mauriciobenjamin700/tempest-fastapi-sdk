@@ -1,6 +1,6 @@
 """Tests for tempest_fastapi_sdk.db.repository.BaseRepository."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import Integer, String, inspect
@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
+    DEFAULT_SYNC_WATERMARK_LAG,
     AsyncDatabaseManager,
     BaseModel,
     BaseRepository,
@@ -16,6 +17,7 @@ from tempest_fastapi_sdk import (
     SoftDeleteMixin,
     ValidationException,
 )
+from tempest_fastapi_sdk.utils.datetime import utcnow
 
 
 class Product(BaseModel):
@@ -571,6 +573,59 @@ class TestChangesSince:
             seen.extend(page["items"])
             cursor = page["next_cursor"]
         assert len({r.id for r in seen}) == 5
+
+
+class TestWatermarkLag:
+    """A write whose transaction straddles the pull must reach the next one.
+
+    ``updated_at`` is stamped at flush time, so a write that flushed just
+    before a pull and committed after it carries an ``updated_at`` older
+    than the ``server_time`` that pull returned. A mark taken at "now"
+    puts that write behind every later ``since``.
+    """
+
+    async def test_a_write_flushed_before_the_pull_reaches_the_next_pull(
+        self, sync_repo: SyncItemRepository
+    ) -> None:
+        flushed_at = utcnow()
+        page = await sync_repo.changes_since(None)
+        await sync_repo.add(SyncItem(name="late", value=1, updated_at=flushed_at))
+        following = await sync_repo.changes_since(page["server_time"])
+        assert [r.name for r in following["items"]] == ["late"]
+
+    async def test_without_a_lag_that_write_is_lost(
+        self, sync_repo: SyncItemRepository
+    ) -> None:
+        flushed_at = utcnow()
+        page = await sync_repo.changes_since(None, watermark_lag=timedelta(0))
+        await sync_repo.add(SyncItem(name="late", value=1, updated_at=flushed_at))
+        following = await sync_repo.changes_since(
+            page["server_time"], watermark_lag=timedelta(0)
+        )
+        assert following["items"] == []
+
+    async def test_the_mark_is_now_minus_the_lag(
+        self, sync_repo: SyncItemRepository
+    ) -> None:
+        before = utcnow()
+        page = await sync_repo.changes_since(None, watermark_lag=timedelta(seconds=30))
+        after = utcnow()
+        assert before - timedelta(seconds=30) <= page["server_time"]
+        assert page["server_time"] <= after - timedelta(seconds=30)
+
+    async def test_the_default_lag_is_the_named_constant(
+        self, sync_repo: SyncItemRepository
+    ) -> None:
+        assert timedelta(seconds=5) == DEFAULT_SYNC_WATERMARK_LAG
+        before = utcnow()
+        page = await sync_repo.changes_since(None)
+        assert page["server_time"] <= before
+
+    async def test_a_negative_lag_is_refused(
+        self, sync_repo: SyncItemRepository
+    ) -> None:
+        with pytest.raises(ValueError, match="watermark_lag"):
+            await sync_repo.changes_since(None, watermark_lag=timedelta(seconds=-1))
 
 
 class TestOrderByValidation:

@@ -1,6 +1,6 @@
 # Bundled auth flow (signup / activate / login / reset)
 
-Desde v0.31.0 o SDK fornece o ciclo completo de conta local — signup com email/senha, ativação por link, login com JWT pair, reset de senha — via `UserAuthService` + `make_auth_router`. **Endpoints prontos pra mount** (incluindo `POST /auth/refresh` desde v0.65.0), templates Jinja2 bundled, settings flags controlando se o link sai por e-mail ou no body da resposta, e quatro modos pré-pensados pra dev / staging / produção / CI.
+Desde v0.31.0 o SDK fornece o ciclo completo de conta local — signup com email/senha, ativação por link, login com JWT pair, reset de senha — via `UserAuthService` + `make_auth_router`. **Endpoints prontos pra mount** (incluindo `POST /auth/refresh` desde v0.65.0), templates Jinja2 bundled, settings flags controlando se o link sai por e-mail ou no body da resposta, e cinco modos pré-pensados: produção, dev com SMTP local, dev sem SMTP, CI e backend-only.
 
 !!! tip "Vá direto ao seu caso"
     A tabela abaixo mapeia **o que o usuário quer fazer** → a seção e os
@@ -28,15 +28,19 @@ Desde v0.31.0 o SDK fornece o ciclo completo de conta local — signup com email
 2. **[UserTokenModel concreto](#usertokenmodel-concreto)** — `BaseUserTokenModel` é abstrato, projeto cria a tabela final.
 3. **[Endpoints](#endpoints)** — tabela de todos os endpoints + payload + comportamento.
     - **[Só o backend](#so-o-backend-do-cadastro-a-rota-protegida)** — o ciclo cadastro → ativação → login → rota protegida sem frontend, medido com `curl`, e o mesmo ciclo num teste.
-4. **[Recuperação de senha](#recuperacao-de-senha)** — o fluxo "esqueci a senha", passo a passo, mais trocar a senha logado.
-5. **[Troca e recuperação de e-mail](#troca-e-recuperacao-de-e-mail)** — trocar e-mail logado, re-verificar, e recuperar quando a caixa se perdeu.
-6. **[Settings — variáveis de ambiente](#settings-variaveis-de-ambiente)** — env vars em **grupos** (JWT, política de senha, fluxo de e-mail, TTL, URLs/templates, páginas backend) — cada uma em tabela tipada, não num blob.
-5. **[Anatomia de um e-mail: como link, template e URL se encaixam](#anatomia-de-um-e-mail)** — desambigua os três conceitos que mais confundem.
-6. **[Cinco modos de operação](#cinco-modos-de-operacao)** — produção, dev com SMTP local (Mailhog / smtp4dev), dev sem SMTP, CI sem ativação e **backend-only** (links e páginas servidas direto pelo backend).
-7. **[Mailhog vs smtp4dev — qual escolher pra dev local](#mailhog-vs-smtp4dev)** — comparativo + receitas docker-compose copy-paste.
-8. **[Customizando os templates de e-mail](#customizando-templates)** — override do `activation.html` e `password_reset.html` + variáveis disponíveis no contexto Jinja2.
-9. **[Segurança](#seguranca)** — como o token é armazenado, TTL, anti-enumeração.
-10. **[Próximos passos](#proximos-passos)**.
+4. **[Reenviar a ativação](#reenviar-a-ativacao)** — o e-mail de ativação não chegou.
+5. **[Recuperação de senha](#recuperacao-de-senha)** — o fluxo "esqueci a senha", passo a passo, mais trocar a senha logado.
+6. **[Troca e recuperação de e-mail](#troca-e-recuperacao-de-e-mail)** — trocar e-mail logado, re-verificar, e recuperar quando a caixa se perdeu.
+7. **[Settings — variáveis de ambiente](#settings-variaveis-de-ambiente)** — env vars em **grupos** (JWT, política de senha, fluxo de e-mail, TTL, URLs/templates, páginas backend) — cada uma em tabela tipada, não num blob.
+8. **[Anatomia de um e-mail: como link, template e URL se encaixam](#anatomia-de-um-e-mail)** — desambigua os três conceitos que mais confundem.
+9. **[Idioma dos e-mails e páginas (i18n)](#idioma-dos-e-mails-e-paginas-i18n)** — idioma padrão, preferência por usuário e tradução própria.
+10. **[Cinco modos de operação](#cinco-modos-de-operacao)** — produção, dev com SMTP local (Mailhog / smtp4dev), dev sem SMTP, CI sem ativação e **backend-only** (links e páginas servidas direto pelo backend).
+11. **[Entrega de token](#entrega-de-token)** — bearer, cookie ou os dois.
+12. **[Mailhog vs smtp4dev — qual escolher pra dev local](#mailhog-vs-smtp4dev)** — comparativo + receitas docker-compose copy-paste.
+13. **[Customizando os templates de e-mail](#customizando-templates)** — override do `activation.html` e `password_reset.html` + variáveis disponíveis no contexto Jinja2.
+14. **[Segurança](#seguranca)** — como o token é armazenado, TTL, anti-enumeração.
+15. **[Pegando o `current_user` da requisição](#pegando-o-current_user-da-requisicao)** — a dependency de usuário autenticado nas suas rotas.
+16. **[Próximos passos](#proximos-passos)**.
 
 ---
 
@@ -115,7 +119,7 @@ app.include_router(
     deixa o service testável sem subir a aplicação.
 
 !!! tip "TL;DR de quatro objetos"
-    `AsyncDatabaseManager` → conexão. `EmailUtils` → SMTP + Jinja2. `UserAuthService` → regras de negócio (5 métodos). `make_auth_router` → cola tudo em 5 endpoints HTTP.
+    `AsyncDatabaseManager` → conexão. `EmailUtils` → SMTP + Jinja2. `UserAuthService` → regras de negócio. `make_auth_router` → cola tudo nos endpoints HTTP: 13 com os settings default, mais os de MFA, cookie, login social, WebAuthn e páginas backend quando ligados.
 
 ---
 
@@ -365,6 +369,8 @@ app.include_router(
     ),
 )
 ```
+
+Com `AUTH_AUTO_ACTIVATE=true` no `.env` a conta nasce ativa e o signup já devolve o par de JWT. No default (`false`) a mesma chamada responde `"activation_required":true` com `access_token` e `refresh_token` em `null`, e o par só sai no `POST /auth/activate/{token}`:
 
 ```console
 $ curl -s -X POST localhost:8000/auth/signup \
@@ -896,7 +902,7 @@ passos.
 
 **Passo 1 — pedir o link.** O usuário digita o e-mail; o backend sempre
 responde **202** com a mesma mensagem genérica (não vaza se o e-mail
-existe):
+existe). A mensagem é fixa no código, em inglês:
 
 ```bash
 curl -X POST localhost:8000/auth/password-reset/request \
@@ -905,7 +911,7 @@ curl -X POST localhost:8000/auth/password-reset/request \
 ```
 
 ```json
-{ "message": "Se o e-mail existir, enviamos um link.", "reset_url": null }
+{"message": "If the email matches an account, a reset link was sent.", "reset_url": null}
 ```
 
 **Passo 2 — trocar a senha.** O usuário abre o link do e-mail; o
@@ -929,7 +935,8 @@ curl -X POST localhost:8000/auth/password-reset/confirm \
 ```
 
 !!! check "Erros que você vai ver"
-    - Token desconhecido / já usado / expirado → **400**.
+    - Token desconhecido / já usado / expirado → **401** com `code: "INVALID_TOKEN"` e um `detail` que diz o motivo (token desconhecido: `token not recognized`).
+    - `token` com menos de 16 caracteres → **422** do próprio FastAPI (`string_too_short`), antes de chegar ao serviço.
     - `new_password` viola `AUTH_PASSWORD_MIN_LENGTH` / complexidade → **422**.
     - `request` **nunca** erra por e-mail inexistente — sempre **202**.
 
@@ -997,7 +1004,7 @@ uma conta sequestrada ainda alertar o dono.
 !!! check "Erros"
     - Senha atual errada → **401**.
     - `new_email` já em uso (no pedido **ou** na confirmação — corrida) → **409**.
-    - Token inválido / expirado / usado → **400**.
+    - Token inválido / expirado / usado → **401** com `code: "INVALID_TOKEN"`.
 
 ### Re-verificar o e-mail atual
 
@@ -1273,7 +1280,7 @@ Tem uma seção inteira só pra isso, explicada bem devagar: [Idioma dos e-mails
 
 | Env var | Tipo | Default | O que faz |
 |---------|------|---------|-----------|
-| `AUTH_OAUTH_ENABLED` | `bool` | `false` | `true` monta as quatro rotas `/auth/oauth/*`. Exige um client em `oauth_clients=`, um `oauth_account_model` no serviço e a coluna `name` no user model — cada um que faltar levanta `RuntimeError` na construção do router. |
+| `AUTH_OAUTH_ENABLED` | `bool` | `false` | `true` monta as cinco rotas `/auth/oauth/*` (`{provider}/login`, `{provider}/callback`, `{provider}/token`, `accounts` e `accounts/unlink`). Exige um client em `oauth_clients=`, um `oauth_account_model` no serviço e a coluna `name` no user model — cada um que faltar levanta `RuntimeError` na construção do router. |
 | `AUTH_OAUTH_STATE_COOKIE_NAME` | `str` | `oauth_state` | Cookie que carrega o `state` CSRF entre o redirect e o callback. Sempre `HttpOnly` e sempre `SameSite=Lax`. |
 | `AUTH_OAUTH_STATE_TTL_SECONDS` | `int` | `600` | Quanto tempo o usuário tem para concluir o consentimento no provedor. |
 | `AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL` | `bool` | `false` | `true` liga uma identidade nova a uma conta existente cujo e-mail bate — **só** quando `email_verified is True`. Desligado por padrão porque é o knob que transforma a palavra do provedor sobre um e-mail em controle de uma conta. |
@@ -1344,9 +1351,9 @@ sequenceDiagram
     API->>API: render Jinja2 (user, activation_url, expires_at)
     alt AUTH_RETURN_TOKEN_IN_RESPONSE=false
         API->>E: SMTP send (HTML renderizado)
-        API->>F: 201 + {message: "check your email"}
+        API->>F: 201 + {activation_required: true, activation_url: null}
     else AUTH_RETURN_TOKEN_IN_RESPONSE=true
-        API->>F: 201 + {activation_url: "https://app/activate?token=..."}
+        API->>F: 201 + {activation_required: true, activation_url: "https://app/activate?token=..."}
     end
     Note right of F: usuário (ou dev) abre a URL
     F->>API: POST /auth/activate/{token}
@@ -1961,7 +1968,7 @@ emails/                            # ← template_dir="emails"
 - **Token armazenado como hash SHA-256.** O plaintext sai pelo e-mail uma única vez; o banco nunca tem como reproduzir o token original. Vazamento da tabela `user_tokens` **não** permite ativação retroativa.
 - **One-shot.** `used_at` é carimbado no consume; replay rejeitado com `UnauthorizedException`.
 - **TTL-bounded.** `expires_at` calculado a partir de `AUTH_ACTIVATION_TTL_SECONDS` / `AUTH_PASSWORD_RESET_TTL_SECONDS`. Tokens expirados rejeitados.
-- **Anti-enumeração.** `POST /auth/password-reset/request` retorna sempre HTTP 202 + corpo genérico, independente de o e-mail existir ou não. `POST /auth/login` levanta a mesma `UnauthorizedException` para email-errado vs senha-errada.
+- **Anti-enumeração.** `POST /auth/password-reset/request` retorna sempre HTTP 202 + corpo genérico, independente de o e-mail existir ou não. `POST /auth/login` levanta a mesma `UnauthorizedException` para email-errado, senha-errada e conta inativa, e as três pagam uma verificação bcrypt (e-mail desconhecido é conferido contra um hash descartável), então o tempo de resposta também não separa os casos. Medido nesta máquina (bcrypt custo 12, `UserAuthService.login` direto, mediana de N=21): senha errada 153,8 ms, e-mail inexistente 153,8 ms; antes da correção, 0,5 ms para o e-mail inexistente.
 - **Password floor aplicado duas vezes.** `SignupSchema` valida no input; `UserAuthService` revalida antes do hash — defesa em profundidade caso alguém bypasse o schema.
 
 ---
@@ -2099,7 +2106,7 @@ async def profile(current: UserModel = Depends(get_current_user)) -> UserRespons
     As páginas HTML renderizam depois do commit que consome o token, e o
     `async_sessionmaker` do SQLAlchemy usa `expire_on_commit=True` por
     default — o que fazia a página ler coluna expirada e responder **500**
-    (`MissingGreenlet`) até a v0.266.0. Agora o router recarrega a linha
+    (`MissingGreenlet`) até a v0.265.0. Agora o router recarrega a linha
     **só quando ela expirou**, checando `inspect(user).expired`, que não
     toca no banco. Com o `session_factory` do `AsyncDatabaseManager`
     (`expire_on_commit=False`) não há query extra nenhuma.

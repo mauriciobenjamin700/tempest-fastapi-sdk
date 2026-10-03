@@ -108,6 +108,66 @@ class TestAnalyzer:
         assert statement.capability == SqlCapability.ADMIN
 
 
+class TestWritesDisguisedAsReads:
+    """Statements whose top-level node reads but whose execution writes."""
+
+    def test_a_data_modifying_cte_takes_the_capability_of_its_write(self) -> None:
+        statement = analyze_sql(
+            "WITH gone AS (DELETE FROM orders WHERE id = 1 RETURNING *) "
+            "SELECT * FROM gone",
+            dialect="postgres",
+        )[0]
+        assert statement.capability == SqlCapability.DELETE
+        assert statement.returns_rows is False
+
+    def test_an_insert_inside_a_cte_is_an_insert(self) -> None:
+        statement = analyze_sql(
+            "WITH n AS (INSERT INTO orders VALUES (3, 1) RETURNING id) "
+            "SELECT id FROM n",
+            dialect="postgres",
+        )[0]
+        assert statement.capability == SqlCapability.INSERT
+
+    def test_explain_analyze_runs_the_statement_so_it_takes_its_capability(
+        self,
+    ) -> None:
+        statement = analyze_sql(
+            "EXPLAIN ANALYZE DELETE FROM orders WHERE id = 1",
+            dialect="mysql",
+        )[0]
+        assert statement.capability == SqlCapability.DELETE
+        assert statement.has_where is True
+
+    def test_plain_explain_of_a_write_is_still_a_read(self) -> None:
+        statement = analyze_sql("EXPLAIN DELETE FROM orders", dialect="mysql")[0]
+        assert statement.capability == SqlCapability.READ
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "PRAGMA journal_mode = DELETE",
+            "PRAGMA writable_schema = ON",
+            "PRAGMA journal_mode(WAL)",
+            "PRAGMA optimize",
+        ],
+    )
+    def test_a_pragma_that_can_write_needs_the_admin_capability(self, sql: str) -> None:
+        assert analyze_sql(sql, dialect="sqlite")[0].capability == SqlCapability.ADMIN
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "PRAGMA journal_mode",
+            "PRAGMA table_info(orders)",
+            "PRAGMA index_list(orders)",
+            "PRAGMA foreign_key_list(orders)",
+            "PRAGMA integrity_check",
+        ],
+    )
+    def test_a_pragma_that_only_reads_stays_read(self, sql: str) -> None:
+        assert analyze_sql(sql, dialect="sqlite")[0].capability == SqlCapability.READ
+
+
 class TestPolicy:
     def test_read_only_by_default(self) -> None:
         policy = SqlShellPolicy()

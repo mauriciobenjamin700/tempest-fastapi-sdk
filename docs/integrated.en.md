@@ -20,11 +20,13 @@ from tempest_fastapi_sdk.cache import AsyncRedisManager
 from tempest_fastapi_sdk.queue import MessageBroker
 from tempest_fastapi_sdk.sse import SSEBroker
 from tempest_fastapi_sdk.tasks import TaskQueue
+from tempest_fastapi_sdk.utils import EmailUtils
 
 from src.core.settings import settings
 
 db = AsyncDatabaseManager(settings.DATABASE_URL)
 cache = AsyncRedisManager(settings.REDIS_URL)
+email = EmailUtils(**settings.email_kwargs())
 mq = MessageBroker.rabbitmq(settings.RABBITMQ_URL)      # cross-service events
 tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)     # work off the request
 events = SSEBroker(redis=cache.client_proxy)                  # real-time status
@@ -82,6 +84,7 @@ unsafe. Write the order row **and** the outbox row together —
 
 ```python
 # src/services/orders.py
+from uuid import UUID, uuid4
 
 from src.core.resources import db
 from src.db.models import OrderModel, OutboxModel
@@ -94,10 +97,12 @@ class OrderService:
     async def checkout(self, *, user_id: str, data: CheckoutSchema) -> OrderModel:
         unit_cents = await get_product_cents(data.product_id)     # cache
         total = unit_cents * data.quantity
+        order_id: UUID = uuid4()
 
         async with db.get_session_context() as session:
             repo = OrderRepository(session)
             order = OrderModel(
+                id=order_id,
                 user_id=user_id,
                 product_id=data.product_id,
                 total_cents=total,
@@ -109,11 +114,18 @@ class OrderService:
                 order,
                 OutboxModel.new_event(
                     "orders.paid",
-                    {"order_id": str(order.id), "user_id": user_id, "total": total},
+                    {"order_id": str(order_id), "user_id": user_id, "total": total},
                 ),
             )
         return order
 ```
+
+!!! warning "Generate the `id` before building the event"
+    `BaseModel`'s `id` has `default=uuid4` on the column, and that default only
+    runs at `flush`: `OrderModel(...).id` is `None` before it (measured). Since
+    the event payload is built before `save_with_outbox`, `str(order.id)` would
+    write `"None"` into the outbox. Generating the `uuid4()` and passing it as
+    `id=` puts the same value on the row and on the event.
 
 ## 5. Authenticated endpoint
 
@@ -247,7 +259,7 @@ The body of `notify` is **two lines**, one per channel:
 
 Note both get the **same `data`** — that's what keeps the channels in sync. Wire
 `notifications` with the global `events` (section 1) and a
-`WebPushSubscriptionService(BaseRepository(session, PushSubscriptionModel), dispatcher)`
+`WebPushSubscriptionService(BaseRepository(session, model=WebPushSubscriptionModel), dispatcher)`
 — the `dispatcher` comes from `WebPushDispatcher(**settings.webpush_kwargs())`.
 
 ### Triggering from the handler
@@ -329,7 +341,8 @@ data: {"order_id": "ord_123"}
 
 The register/unregister of Web Push (VAPID) subscriptions — enrolling each device
 to receive push with the app closed — is mounted via `make_web_push_router(...)`.
-The concrete model (`PushSubscriptionModel`) and the router live in the
+The concrete model (`WebPushSubscriptionModel`, a subclass of
+`BaseWebPushSubscriptionModel`) and the router live in the
 [Web Push](recipes/webpush.md) recipe; that's where `notify_user` reads the
 subscriptions from at fan-out time.
 

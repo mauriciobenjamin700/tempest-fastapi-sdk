@@ -37,8 +37,10 @@ need one.
 
 ## The file that runs
 
-```python title="catalog_setup.py" hl_lines="12 32 35 56 57"
+```python title="catalog_setup.py" hl_lines="14 35 38 69 70"
 import asyncio
+from typing import Any
+from uuid import UUID
 
 from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,6 +62,7 @@ class ServiceModel(BaseModel):
     name: Mapped[str] = mapped_column()
     city: Mapped[str] = mapped_column()
     state: Mapped[str] = mapped_column()
+    owner_id: Mapped[UUID | None] = mapped_column(default=None)
 
 
 class CatalogService:
@@ -74,9 +77,19 @@ class CatalogService:
         """Assemble the service over a single database session."""
         return cls(BaseRepository(session, model=ServiceModel))
 
-    async def search(self, city: str | None, limit: int) -> list[ServiceModel]:
-        """Return the services published in a city."""
-        filters = {"city": city} if city else {}
+    async def search(
+        self,
+        city: str | None,
+        limit: int,
+        *,
+        owner_id: UUID | None = None,
+    ) -> list[ServiceModel]:
+        """Return the services published in a city, optionally one owner's."""
+        filters: dict[str, Any] = {}
+        if city:
+            filters["city"] = city
+        if owner_id is not None:
+            filters["owner_id"] = owner_id
         page = await self.repository.paginate(filters=filters, page_size=limit)
         return list(page["items"])
 
@@ -298,7 +311,7 @@ async def ask(question: str, user_id: UUID = Depends(get_current_user_id)) -> di
 
 And the tool reads from there, never from the arguments:
 
-```python title="owner_tool.py" hl_lines="16"
+```python title="owner_tool.py" hl_lines="17 23"
 from pydantic import Field
 
 from catalog_setup import CatalogService, db
@@ -321,7 +334,7 @@ async def get_my_services(args: MyServicesArgs, context: AgentContext) -> str:
 
     async with db.get_session_context() as session:
         catalog = CatalogService.from_session(session)
-        found = await catalog.search(args.city, limit=5)
+        found = await catalog.search(args.city, limit=5, owner_id=user_id)
 
     return "\n".join(f"- {item.name} ({item.city})" for item in found) or "Nothing of yours here."
 ```
@@ -355,10 +368,11 @@ def remember_category(context: AgentContext, category_id: UUID) -> None:
     context.state["resolved_category_id"] = category_id
 ```
 
-The SDK itself uses that space: the notepad
-([`scratchpad_tools`](agents-advanced.md#scratchpad-within-one-run)), loaded
-skills and structured output all keep their state there. Prefix your keys with
-something from your domain so they never collide.
+The SDK itself uses that space for one thing only: the notepad
+([`scratchpad_tools`](agents-advanced.md#scratchpad-within-one-run)) keeps its
+notes there. Loaded skills and the structured answer live outside it, on
+`context.opened_skills` and `context.answer`. Prefix your keys with something
+from your domain so they never collide with the notepad's.
 
 ### Files one tool hands to another
 

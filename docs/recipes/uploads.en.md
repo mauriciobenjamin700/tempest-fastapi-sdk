@@ -127,10 +127,16 @@ async def upload_model(file: UploadFile) -> dict[str, str]:
     but the filename is client-controlled. For formats with a known signature
     (images, PDF) turn on `verify_magic_bytes=True` + `allowed_mimetypes={...}`
     to match the **real bytes** against the allowlist. Binary formats with no
-    signature in `sniff_mime` (like `.onnx` / `.ort`) **must** keep
-    `verify_magic_bytes=False` (the default) — otherwise the sniff fails to
-    recognize the signature and rejects everything. For those, validate the
-    content with a `content_validator=...` on `save()`.
+    signature in `sniff_mime` (like `.onnx` / `.ort`) do not pass with
+    `verify_magic_bytes=True` alone: the default
+    `require_known_signature=True` refuses every unknown signature. Two ways
+    out: keep `verify_magic_bytes=False` (the default), or turn the sniff on
+    with `require_known_signature=False`, which only refuses a
+    **contradiction** — an `.onnx` sent as `application/octet-stream` is
+    saved, the same file declared as `image/png` is refused (415), because
+    `image/png` is a type `sniff_mime` knows and the bytes do not carry it.
+    To actually validate the content, use a `content_validator=...` on
+    `save()`.
 
 ### Via settings (`.env`)
 
@@ -155,6 +161,14 @@ uploads = UploadUtils(
     max_size_bytes=settings.UPLOAD_MAX_SIZE_BYTES,
 )
 ```
+
+!!! tip "Empty and `0` mean no restriction"
+    With no `UPLOAD_ALLOWED_EXTENSIONS` in the environment the field is
+    `set()`, and `UPLOAD_MAX_SIZE_BYTES=0` disables the limit. `UploadUtils`
+    treats `set()` and `0` exactly like `None` — no check —, so both the code
+    above and `UploadUtils(**settings.upload_kwargs())` accept any extension
+    when the allow-list was not configured, instead of refusing every upload
+    with 415.
 
 ## Switching via settings
 

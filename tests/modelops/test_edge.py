@@ -399,3 +399,48 @@ class TestDualRuntimePackage:
         )
         with pytest.raises(UnsupportedEstimatorError):
             edge_pipeline(model, features, tmp_path / "mlp", compact=True)
+
+    def test_an_array_of_verify_samples_checks_the_compact_form(
+        self,
+        tmp_path: Path,
+        classifier: Any,
+        training_data: tuple[Any, Any],
+    ) -> None:
+        """Held-out rows as an ndarray used to reach ``verify or samples``,
+        which asks numpy for the truth value of an array and raises before
+        the compact file is ever checked."""
+        features, target = training_data
+        package = edge_pipeline(
+            classifier,
+            features[:300],
+            tmp_path / "held-out",
+            labels=target[:300],
+            compact=True,
+            verify_samples=features[300:],
+        )
+
+        assert [entry.kind for entry in package.manifest.runtimes] == [
+            "onnx",
+            "compact",
+        ]
+
+
+class TestFeatureNames:
+    def test_a_name_count_that_does_not_match_the_graph_is_refused(
+        self,
+        tmp_path: Path,
+        classifier: Any,
+        training_data: tuple[Any, Any],
+    ) -> None:
+        """A manifest naming five columns for a four-column model would
+        tell every reader the wrong order; before this check the mismatch
+        surfaced as an ``IndexError`` deep in the baseline builder."""
+        features, target = training_data
+        with pytest.raises(ValueError, match="6 feature names for a model of 5"):
+            edge_pipeline(
+                classifier,
+                features,
+                tmp_path / "names",
+                labels=target,
+                feature_names=["a", "b", "c", "d", "e", "f"],
+            )

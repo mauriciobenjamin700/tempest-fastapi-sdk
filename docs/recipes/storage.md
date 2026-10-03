@@ -56,8 +56,9 @@ from tempest_fastapi_sdk import AsyncMinIOClient
 from src.core.settings import settings
 
 
-# settings.minio_kwargs() mapeia MINIO_* -> endpoint/access_key/secret_key/
-# default_bucket/secure/region, então não precisa repetir campo a campo.
+# settings.minio_kwargs() mapeia MINIO_* e STORAGE_ACCEL_* -> endpoint,
+# access_key, secret_key, default_bucket, secure, region, public_endpoint,
+# public_secure, accel_redirect e accel_prefix: nada a repetir campo a campo.
 storage = AsyncMinIOClient(**settings.minio_kwargs())
 
 

@@ -239,11 +239,15 @@ class AsyncDatabaseManager:
 
     @property
     def db_url_safe(self) -> str:
-        """Return the URL with credentials masked.
+        """Return the URL with the password masked.
 
         Useful for diagnostics, health payloads or log lines —
-        ``postgresql+asyncpg://user:pass@host/db`` becomes
-        ``postgresql+asyncpg://***@host/db``.
+        ``postgresql+asyncpg://user:pass@host:5432/db`` becomes
+        ``postgresql+asyncpg://user:***@host:5432/db``. Only the password
+        is replaced (SQLAlchemy's ``render_as_string(hide_password=True)``):
+        the username, host, port, database and query string are kept, so
+        treat the result as internal-facing if the username is itself
+        sensitive. A URL without a password (SQLite) comes back unchanged.
 
         Returns:
             str: The URL safe to surface outside the manager.

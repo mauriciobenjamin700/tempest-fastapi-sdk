@@ -112,7 +112,7 @@ Vale para todo store Redis do SDK — `RedisRateLimitStore`, `RedisQuotaStore`, 
 ## Decorator @cached
 
 
-`@cached(redis, ttl=..., key_prefix=...)` memoiza o resultado de uma função async no Redis. As chaves de cache são derivadas do `__qualname__` da função mais um SHA-256 de args/kwargs; passe `key_prefix=` para dar namespace às entradas. Para invalidar **antes** do TTL, use tags/namespace (abaixo) em vez de scan de prefixo.
+`@cached(redis, ttl=..., key_prefix=...)` memoiza o resultado de uma função async no Redis. As chaves de cache são derivadas do `__qualname__` da função mais um SHA-256 de args/kwargs (sem o `self`/`cls` de um método — veja [abaixo](#cache-aside-num-service)); passe `key_prefix=` para dar namespace às entradas. Para invalidar **antes** do TTL, use tags/namespace (abaixo) em vez de scan de prefixo.
 
 ```python
 from typing import Any
@@ -228,7 +228,9 @@ e grava. Com `@cached` você nem escreve o try/miss — ele faz isso:
 # src/services/catalog.py
 
 from typing import Any
+from uuid import UUID
 
+from fastapi.encoders import jsonable_encoder
 from tempest_fastapi_sdk.cache import CacheInvalidator, cached
 
 from src.core.resources import redis
@@ -240,24 +242,48 @@ class CatalogService:
         self.repo = repo
 
     @cached(redis, ttl=300, key_prefix="catalog:", namespace="products")
-    async def get_product(self, product_id: str) -> dict[str, Any]:
+    async def get_product(self, product_id: UUID) -> dict[str, Any]:
         """Lê do banco no miss; serve do Redis por 5 min no hit."""
         product = await self.repo.get_by_id(product_id)
-        return product.to_dict()
+        return jsonable_encoder(product.to_dict())
 
-    async def update_product(self, product_id: str, data: dict[str, Any]) -> None:
+    async def update_product(self, product_id: UUID, data: dict[str, Any]) -> None:
         """Grava e derruba o cache do namespace inteiro."""
-        await self.repo.update(product_id, data)
+        product = await self.repo.get_by_id(product_id)
+        product.update_from_dict(data, allowed_fields={"name", "price"})
+        await self.repo.update(product)
         await CacheInvalidator(redis, key_prefix="catalog:").invalidate_namespace(
             "products",
         )
 ```
 
-!!! warning "Não decore métodos que dependem de `self` mutável"
-    A chave do `@cached` inclui os argumentos — mas **não** o estado de
-    `self`. Só cacheie métodos cujo resultado dependa apenas dos
-    argumentos (como acima, onde `product_id` determina tudo). Se o
-    resultado varia com o estado da instância, cacheie uma função pura.
+Dois detalhes desse exemplo não são enfeite:
+
+- **`jsonable_encoder(product.to_dict())`**, não `product.to_dict()` puro.
+  O `to_dict()` devolve o `id` como `UUID` e o `created_at` como
+  `datetime`, e o serializer default (`json.dumps`) recusa os dois: o
+  `@cached` registra `cached_serialization_failed`, devolve o resultado e
+  **não grava nada** — toda chamada vai ao banco, sem erro nenhum. Passado
+  pelo `jsonable_encoder`, o dict vira tipos JSON (strings no lugar de
+  `UUID`/`datetime`) e o miss e o hit devolvem o mesmo valor.
+- **`repo.update(product)`** recebe a instância já alterada — o
+  `BaseRepository.update` só faz `commit` + `refresh` do que a sessão
+  rastreia. Por isso o `update_product` busca, aplica com
+  `update_from_dict(..., allowed_fields=...)` e só então grava.
+
+!!! warning "A chave ignora `self` — e o estado dele"
+    Quando o primeiro parâmetro da função decorada se chama `self` ou
+    `cls`, a chave default **deixa esse argumento de fora**: entra só o
+    nome qualificado (`CatalogService.get_product`) e os demais
+    argumentos. É o que faz o cache acertar com um service construído por
+    request — `str(self)` de uma instância sem `__repr__` próprio carrega
+    o endereço de memória e nunca se repete. A consequência é que **todas
+    as instâncias da classe dividem a entrada**. Só cacheie métodos cujo
+    resultado dependa apenas dos argumentos (como acima, onde
+    `product_id` determina tudo). Se o resultado varia com o estado da
+    instância (um `tenant_id` guardado em `self`, por exemplo), passe um
+    `key_builder` que leia esse estado — ele recebe os `args` completos,
+    com `self` — ou cacheie uma função pura.
 
 ### Um Redis pra tudo
 
@@ -293,25 +319,26 @@ banco toda vez. Cacheie o resultado vazio com um TTL curto:
 ```python
 from typing import Any
 
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
 
 from src.core.settings import settings
-from src.db.repositories import ProductRepository
+from src.db.repositories import UserRepository
 
 # Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 redis = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
 
-repo = ProductRepository(session)
+repo = UserRepository(session)
 
 
 @cached(redis, ttl=30, key_prefix="lookup:")  # TTL curto pro negativo
 async def find_user(email: str) -> dict[str, Any] | None:
     """Retorna None no miss — e o None fica em cache por 30s."""
     user = await repo.get_by_email(email)
-    return user.to_dict() if user else None
+    return jsonable_encoder(user.to_dict()) if user else None
 ```
 
 !!! tip "Stampede / dogpile"

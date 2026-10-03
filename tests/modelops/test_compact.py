@@ -252,6 +252,74 @@ class TestRoutingRule:
         assert matched
         assert difference < 1e-6
 
+    def test_a_midpoint_between_adjacent_float32_values_is_rounded_down(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """The rule the unbounded iris forest exposed.
+
+        scikit-learn stores a split threshold as a float64 midpoint between
+        two float32 feature values. When those values are adjacent float32
+        numbers (1.6999999 and 1.7000000 in iris), round-to-nearest lands
+        the float32 threshold *on the upper value*, so that training row
+        goes left in the compact file and right in scikit-learn. Rounding
+        towards minus infinity is the only float32 threshold that routes
+        every float32 input the same way, which is what this pins: the
+        forest from the recipe, verified on its own training rows.
+        """
+        from sklearn.datasets import load_iris
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.model_selection import train_test_split
+
+        features_train, _, target_train, _ = train_test_split(
+            *load_iris(return_X_y=True),
+            random_state=0,
+        )
+        model = RandomForestClassifier(n_estimators=20, random_state=0).fit(
+            features_train,
+            target_train,
+        )
+
+        path = tmp_path / "iris.tmc"
+        export = export_sklearn_to_compact(model, features_train, path)
+
+        assert export.verified is True
+        matched, difference = _agrees(model, path, features_train)
+        assert matched
+        assert difference < 1e-6
+
+    def test_every_stored_threshold_is_the_largest_float32_not_above_sklearn(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """The property behind the routing rule, checked node by node."""
+        from sklearn.datasets import load_iris
+        from sklearn.ensemble import RandomForestClassifier
+
+        features, target = load_iris(return_X_y=True)
+        model = RandomForestClassifier(n_estimators=20, random_state=0).fit(
+            features,
+            target,
+        )
+        path = tmp_path / "iris.tmc"
+        export_sklearn_to_compact(model, False, path)
+        _, arrays = read_compact(path)
+
+        expected = numpy.concatenate(
+            [tree.tree_.threshold for tree in model.estimators_],
+        )
+        splits = arrays["node_feature"] >= 0
+        stored = arrays["node_threshold"][splits].astype("float64")
+        reference = expected[expected != -2.0]
+        above = numpy.nextafter(
+            arrays["node_threshold"][splits],
+            numpy.float32(numpy.inf),
+        ).astype("float64")
+
+        assert stored.shape == reference.shape
+        assert bool(numpy.all(stored <= reference))
+        assert bool(numpy.all(above > reference))
+
     def test_the_boundary_rows_exist_in_this_dataset(self) -> None:
         """Guard for the guard: a fixture that never hits a boundary proves
         nothing, so this asserts the case is really there."""

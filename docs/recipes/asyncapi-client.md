@@ -119,8 +119,12 @@ Um gerador de cliente precisa **inverter** todos.
     error: ./doc.json does not declare `x-tempest-perspective`. AsyncAPI's
     `action` is relative to whoever published the document, and a client has
     to invert it — so a document that does not say which end wrote it cannot
-    be generated from.
+    be generated from. Documents produced by `tempest-express-sdk` carry it;
+    add `"x-tempest-perspective": "server"` at the root of a hand-written one
+    served by the application it describes.
     ```
+
+    O comando sai com código `2`.
 
     Documento gerado pelo `tempest-express-sdk` já carrega o campo. Num
     escrito à mão, é uma linha.
@@ -147,8 +151,10 @@ from src.integrations.zap_ws import SubscribeFrame
 
 # docs-guard: skip — a chamada recusada abaixo é o assunto da seção
 SubscribeFrame(action="subscribe", room="nao@vale@nada")
-# pydantic_core.ValidationError: String should match pattern
-# '^(\*|\d{10,15}|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+)$'
+# pydantic_core.ValidationError: 1 validation error for SubscribeFrame
+# room
+#   String should match pattern '^(\*|\d{10,15}|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+)$'
+#   [type=string_pattern_mismatch, input_value='nao@vale@nada', input_type=str]
 ```
 
 O frame inválido nem chega à rede. É o mesmo regex que o servidor aplica,

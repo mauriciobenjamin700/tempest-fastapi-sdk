@@ -153,7 +153,7 @@ The four are only mounted when `AUTH_MFA_ENABLED=True`:
 
 | Method | Path | Auth | Body / Output | Behavior |
 |--------|------|------|---------------|----------|
-| POST | `/auth/mfa/enroll` | Bearer JWT | — → `MFAEnrollResponseSchema` | Generates secret + QR URI + N recovery codes. **Shown only once.** Does NOT activate MFA yet. |
+| POST | `/auth/mfa/enroll` | Bearer JWT | — → `MFAEnrollResponseSchema` | Generates secret + QR URI + N recovery codes. **Shown only once.** Does NOT activate MFA yet. With MFA already active, answers `409` (`MFA_ALREADY_ENROLLED`) and changes nothing. |
 | POST | `/auth/mfa/confirm` | Bearer JWT | `MFAConfirmSchema` | Confirms enrollment with the first code. From here MFA is active. |
 | POST | `/auth/mfa/verify` | — | `MFAVerifySchema` → `LoginResponseSchema` | Login step 2: swaps `mfa_token` + code for the JWT pair. |
 | POST | `/auth/mfa/disable` | Bearer JWT | `MFADisableSchema` | Disables MFA. Requires password **and** an active code (TOTP or recovery). |
@@ -180,7 +180,17 @@ httpx.post(f"{BASE}/auth/mfa/confirm", headers=headers, json={"code": code})
 ```
 
 !!! danger "Recovery codes appear ONCE"
-    The `enroll` response is the only time `secret` and `recovery_codes` leave in plaintext. Calling `enroll` again **rotates** the secret and **invalidates** every previous code. Show them prominently and tell the user to store them offline.
+    The `enroll` response is the only time `secret` and `recovery_codes` leave in plaintext. Show them prominently and tell the user to store them offline.
+
+### Rotating the secret: `disable`, then `enroll`
+
+Calling `enroll` again **before** `confirm` replaces the pending secret and codes: the enrollment is not active yet, so there is no factor to protect. After `confirm`, `enroll` refuses with `409` and touches nothing:
+
+```json
+{"detail":"MFA is already active — disable it before enrolling again","code":"MFA_ALREADY_ENROLLED","details":{}}
+```
+
+That is the body with `register_exception_handlers` mounted. The refusal exists because `enroll` only asks for the bearer token and wipes the recovery codes: accepting a second `enroll` over active MFA let whoever held just the access token switch the second factor off, without the password and the code `disable` demands. To rotate the secret (new phone, leaked secret), the user goes through `POST /auth/mfa/disable` with password + code and then redoes `enroll` + `confirm`. In the service, the same refusal is the `MFAAlreadyEnrolledException` exception (a `ConflictException` subclass), raised by `mfa_enroll` even with the `AUTH_MFA_ENABLED` kill-switch off.
 
 ---
 
@@ -299,7 +309,7 @@ Full surface:
 |--------|----------------------|---------|
 | `is_mfa_enrolled` | `(user) -> bool` | `True` if MFA active (and kill-switch on). |
 | `issue_mfa_token` | `(user) -> str` | Short JWT bridging step 1 and step 2. |
-| `mfa_enroll` | `(session, *, user, recovery_code_model) -> tuple[str, str, list[str]]` | `(secret, provisioning_uri, recovery_codes)`. |
+| `mfa_enroll` | `(session, *, user, recovery_code_model) -> tuple[str, str, list[str]]` | `(secret, provisioning_uri, recovery_codes)`. Raises `MFAAlreadyEnrolledException` while MFA is active. |
 | `mfa_confirm` | `(session, *, user, code) -> None` | Activates MFA. |
 | `mfa_verify` | `(session, *, mfa_token, code, recovery_code_model) -> UserModel` | Authenticated user (mint the JWT next). |
 | `mfa_disable` | `(session, *, user, password, code, recovery_code_model) -> None` | Clears secret + codes. |
@@ -311,7 +321,7 @@ Full surface:
 - **TOTP secret persisted on the `UserModel`.** Consider encrypting the `totp_secret` column at rest (Postgres `pgcrypto` or an application-level Fernet wrapper).
 - **Recovery codes stored as SHA-256 hashes.** The plaintext leaves only once at enrollment; a table leak yields no usable codes.
 - **Recovery codes are single-use.** `used_at` is stamped on consume; replay is rejected.
-- **`disable` requires password + code.** A hijacked session cannot disable MFA on its own — it needs the password **and** an active factor.
+- **`disable` requires password + code, and `enroll` is not a shortcut around it.** A hijacked session cannot disable MFA on its own — it needs the password **and** an active factor. `enroll` over active MFA answers `409` instead of wiping the recovery codes, so the access token alone cannot reset the factor.
 - **`mfa_token` is short and user-bound.** 5-min TTL by default; carries `purpose: "mfa_pending"` + the `sub`. Tokens of any other purpose are rejected in `mfa_verify`.
 - **Constant-time verification.** `TOTPHelper.verify` delegates to `pyotp`, which compares the code with `hmac.compare_digest`.
 

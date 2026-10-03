@@ -394,8 +394,11 @@ async def nearby_stores(repo: StoreRepository, center: Coordinate) -> list[Store
 !!! tip "PostGIS quando o volume cresce"
     Com Postgres + extensão PostGIS, troque por `PostGISRepositoryMixin`:
     o `nearby` empurra o filtro e a ordenação por distância pro banco via
-    `ST_DWithin` / `ST_Distance` — sem dependência Python extra, mesma
-    assinatura.
+    `ST_DWithin` / `ST_Distance` — sem dependência Python extra. A
+    assinatura **não** é a mesma: o `nearby` do PostGIS aceita `center`,
+    `radius_km`, `limit`, `latitude_field` e `longitude_field`, sem
+    `extra_filters` (o exemplo acima, com `is_active`, não roda nele), e o
+    mixin não tem `paginate_nearby`.
 
 ## Paginação por raio no banco (`paginate_nearby`)
 
@@ -591,8 +594,11 @@ def desenhar_no_mapa(linha: list[Coordinate]) -> None:
     """Render the route line on your map widget."""
 
 
-destino = Coordinate(latitude=-7.9899, longitude=-34.8386)
-destinos = [destino]
+destinos = [
+    Coordinate(latitude=-7.9899, longitude=-34.8386),
+    Coordinate(latitude=-8.0631, longitude=-34.8711),
+    Coordinate(latitude=-8.1127, longitude=-34.9156),
+]
 
 origem = Coordinate(latitude=-8.0476, longitude=-34.8770)
 origens = [origem]
@@ -784,7 +790,7 @@ geocoder = RetryingGeocoder(
 
 - `haversine_km(a, b)` — distância great-circle, pura, sempre disponível.
 - `bounding_box` / `within_radius` / `nearest` — proximidade offline; `key=` pra objetos seus.
-- `GeoPointMixin` + `GeoRepositoryMixin.nearby` — busca por raio no banco (PostGIS via `PostGISRepositoryMixin`).
+- `GeoPointMixin` + `GeoRepositoryMixin.nearby` — busca por raio no banco (PostGIS via `PostGISRepositoryMixin`, sem `extra_filters` nem `paginate_nearby`).
 - `GeoRepositoryMixin.paginate_nearby` — raio, ordenação, `COUNT` e página no SQL, sem PostGIS; cada item é `NearbyMatch(row, distance_km)`.
 - `NominatimBackend` — geocoding endereço↔coordenada, grátis, `httpx` injetado.
 - `OSRMBackend.matrix` / `route(with_geometry=True)` — matriz N×M e linha da rota; `encode_polyline`/`decode_polyline`.

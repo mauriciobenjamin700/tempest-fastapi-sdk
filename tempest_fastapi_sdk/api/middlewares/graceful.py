@@ -14,11 +14,16 @@ severed — a 502 the client sees as a flaky API.
    they finish (or a timeout), so shutdown can wait them out instead of
    severing them.
 
-You hold the instance and wire its :meth:`dispatch` into the app, then
-drive it from the lifespan shutdown (which uvicorn runs on ``SIGTERM``,
-and uvicorn owns the signal handling):
+You hold the instance and wire its :meth:`dispatch` into the app. Under
+uvicorn, **where** you call :meth:`begin_drain` decides whether the 503
+ever goes out. On ``SIGTERM`` uvicorn closes its listener at once, waits
+for in-flight requests itself (bounded by ``--timeout-graceful-shutdown``)
+and only then runs the lifespan shutdown — so a ``begin_drain`` there finds
+no request left to refuse. Trigger draining **before** ``SIGTERM`` instead,
+from a signal uvicorn does not use, sent by the orchestrator's pre-stop
+hook (``kill -USR1 1 && sleep 15``)::
 
-    from contextlib import asynccontextmanager
+    import signal
 
     from fastapi import FastAPI
     from starlette.middleware.base import BaseHTTPMiddleware
@@ -29,24 +34,19 @@ and uvicorn owns the signal handling):
 
     shutdown = GracefulShutdownMiddleware(drain_timeout=25.0)
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        yield
-        shutdown.begin_drain()
-        await shutdown.wait_drained()
-
-    app = FastAPI(lifespan=lifespan)
+    app = FastAPI()
     app.add_middleware(BaseHTTPMiddleware, dispatch=shutdown.dispatch)
+    shutdown.install_signal_handlers((signal.SIGUSR1,))
 
-Set the orchestrator's grace period a little **above** ``drain_timeout``
-and uvicorn's ``--timeout-graceful-shutdown`` to match.
+Set the orchestrator's grace period above the pre-stop ``sleep`` plus
+uvicorn's ``--timeout-graceful-shutdown``.
 
-!!! warning "Signal handling belongs to your server"
-    uvicorn already installs ``SIGTERM`` handlers and triggers the
-    lifespan shutdown — drive draining from there. The opt-in
-    :meth:`install_signal_handlers` is only for servers that do **not**
-    manage signals themselves; it chains the previous handler via
-    :func:`signal.signal` and is a no-op off the main thread.
+!!! warning "SIGTERM and SIGINT belong to your server"
+    uvicorn installs its own ``SIGTERM`` / ``SIGINT`` handlers, so do not
+    hook those through :meth:`install_signal_handlers` under uvicorn —
+    hook a signal it leaves alone (``SIGUSR1``). The method chains the
+    previous handler via :func:`signal.signal` and is a no-op off the
+    main thread.
 """
 
 from __future__ import annotations
@@ -74,8 +74,10 @@ class GracefulShutdownMiddleware:
 
     Wire :meth:`dispatch` via
     ``app.add_middleware(BaseHTTPMiddleware, dispatch=shutdown.dispatch)``
-    and call :meth:`begin_drain` / :meth:`wait_drained` from the
-    lifespan shutdown.
+    and call :meth:`begin_drain` while the server still accepts
+    connections — under uvicorn that means before ``SIGTERM``, since the
+    lifespan shutdown runs after the listener closed and in-flight
+    requests finished (see the module docstring).
 
     Attributes:
         drain_timeout (float): Seconds :meth:`wait_drained` waits for
@@ -176,8 +178,10 @@ class GracefulShutdownMiddleware:
     def begin_drain(self) -> None:
         """Flip into draining mode (idempotent).
 
-        New non-exempt requests get ``503`` from now on. Call from the
-        lifespan shutdown hook.
+        New non-exempt requests get ``503`` from now on. Call it while the
+        server still accepts connections (under uvicorn: before
+        ``SIGTERM``, e.g. from a ``SIGUSR1`` handler that a pre-stop hook
+        fires); from the lifespan shutdown it refuses nothing.
         """
         if not self._draining:
             self._draining = True
@@ -207,9 +211,10 @@ class GracefulShutdownMiddleware:
     ) -> None:
         """Chain a drain trigger onto the given signals via ``signal.signal``.
 
-        Only for servers that do **not** manage signals themselves —
-        uvicorn does, so prefer the lifespan hook. Best-effort: a no-op
-        when called off the main thread.
+        Under uvicorn, hook a signal uvicorn leaves alone (``SIGUSR1``),
+        not the default ``SIGTERM`` / ``SIGINT`` it handles itself. The
+        defaults are for servers that do **not** manage signals. Best-effort:
+        a no-op when called off the main thread.
 
         Args:
             signals (Sequence[int]): Signals to hook. Defaults to

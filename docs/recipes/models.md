@@ -97,13 +97,60 @@ Um enum por tarefa:
 | `MULTILINGUAL_E5_LARGE` | 1024 | 100+ | Melhor qualidade em PT-BR. |
 | `BGE_M3` | 1024 | 100+ | Documento longo (8k tokens), denso + esparso no mesmo modelo. |
 
-!!! danger "`multilingual-e5` exige prefixo"
-    O E5 foi treinado com `query: ` na pergunta e `passage: ` no trecho.
-    Sem os prefixos a qualidade cai para o patamar do MiniLM — ou seja,
-    você paga 1024 dimensões e recebe 384.
-
 Trocar de embedder **invalida o índice**: os vetores gravados vieram do
 modelo antigo. Reindexe o corpus inteiro ao mudar esta linha.
+
+### `multilingual-e5` e os prefixos de papel
+
+O E5 foi treinado com `query: ` na pergunta e `passage: ` no trecho. Sem os
+prefixos a qualidade cai para o patamar do MiniLM — ou seja, você paga 1024
+dimensões e recebe 384. Você não escreve o prefixo à mão: declare os dois no
+`Embedder` e o `Retriever` aplica cada um do lado certo.
+
+```python title="e5_rag.py" hl_lines="12 13"
+import asyncio
+
+from tempest_fastapi_sdk.genai import Embedder, EmbeddingModel
+from tempest_fastapi_sdk.genai.rag import Chunk, InMemoryVectorStore, Retriever
+
+
+async def main() -> None:
+    """Index two passages and search them with E5's role prefixes."""
+    embedder = Embedder(
+        EmbeddingModel.MULTILINGUAL_E5_LARGE,
+        normalize=True,
+        query_prefix="query: ",
+        passage_prefix="passage: ",
+    )
+    rag = Retriever(embedder, InMemoryVectorStore())
+    await rag.index(
+        [
+            Chunk(text="O reembolso cai em até 7 dias úteis.", source="faq", index=0),
+            Chunk(text="A entrega expressa chega amanhã.", source="faq", index=1),
+        ],
+    )
+    hits = await rag.search("Quanto tempo demora o reembolso?", top_k=1)
+    print(hits[0].text)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+```text
+O reembolso cai em até 7 dias úteis.
+```
+
+`Retriever.index` chama `embed_passages`, que antepõe `passage_prefix` a cada
+trecho; `Retriever.search` chama `embed_query`, que antepõe `query_prefix` à
+pergunta. A `ChatMemory` faz o mesmo ao gravar e ao buscar mensagens. O
+`embed()` puro nunca aplica prefixo, então quem não declara nada continua com o
+comportamento de antes.
+
+!!! note "Embedder que só tem `embed()`"
+    `OnnxEmbedder`, `OllamaEmbedder` ou um embedder seu sem `embed_query` /
+    `embed_passages` continuam funcionando no `Retriever` pelo `embed()` puro
+    — e, nesse caso, sem prefixo.
 
 ## Rerank — `RerankerModel`
 

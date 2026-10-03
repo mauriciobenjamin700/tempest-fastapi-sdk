@@ -87,7 +87,7 @@ adulterado ou de outro projeto recebe **401** — cada um com o seu
 !!! tip "Ligue os handlers de exceção"
     `FirebaseAuth` levanta subclasses de `UnauthorizedException` e
     `ForbiddenException` do próprio SDK. Chame
-    `register_exception_handlers(app)` (o `create_app()` do SDK já faz)
+    `register_exception_handlers(app)` (o `create_app()` que o `tempest new` gera já faz)
     pra que virem 401/403 com corpo `{"detail": ..., "code": ...}` em
     vez de 500.
 

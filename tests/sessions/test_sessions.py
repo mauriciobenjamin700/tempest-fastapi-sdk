@@ -170,6 +170,42 @@ class TestSessionAuth:
                 password="wrong-pass-12-chars",
             )
 
+    async def test_authenticate_unknown_email_pays_one_bcrypt_check(
+        self,
+        session: AsyncSession,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An unknown address costs the same bcrypt check as a wrong password."""
+        from tempest_fastapi_sdk.exceptions import UnauthorizedException
+        from tempest_fastapi_sdk.utils import password as password_module
+
+        await _make_active_user(session)
+        await session.commit()
+        service = _auth()
+        calls: list[str] = []
+        real_checkpw = password_module._bcrypt.checkpw
+
+        def _counting_checkpw(plain: bytes, hashed: bytes) -> bool:
+            calls.append("checkpw")
+            return bool(real_checkpw(plain, hashed))
+
+        monkeypatch.setattr(password_module._bcrypt, "checkpw", _counting_checkpw)
+        with pytest.raises(UnauthorizedException):
+            await service.authenticate(
+                session,
+                email="ana@example.com",
+                password="wrong-pass-12-chars",
+            )
+        assert calls == ["checkpw"]
+        calls.clear()
+        with pytest.raises(UnauthorizedException):
+            await service.authenticate(
+                session,
+                email="nobody@example.com",
+                password="wrong-pass-12-chars",
+            )
+        assert calls == ["checkpw"]
+
     async def test_login_mints_session_and_returns_plaintext(
         self,
         session: AsyncSession,
