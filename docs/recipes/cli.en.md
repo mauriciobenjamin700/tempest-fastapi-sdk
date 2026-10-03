@@ -103,13 +103,19 @@ The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sd
 
 Since v0.25.0 the scaffold generates a `docker-compose.yaml` carrying **only** the supporting services the chosen extras actually need — no ZooKeeper, no Kafka, nothing you won't use.
 
-| Extra | Container | Exposed port(s) |
-|-------|-----------|-----------------|
+| Extra | Container | Port(s) published on `127.0.0.1` |
+|-------|-----------|----------------------------------|
 | (always) | `postgres:18-alpine` | 5432 |
 | `[cache]` | `redis:8-alpine` | 6379 |
 | `[queue]` / `[tasks]` | `rabbitmq:4-management-alpine` | 5672 (AMQP) + 15672 (UI) |
 | `[minio]` | `quay.io/minio/minio` + bootstrap mc | 9000 (API) + 9001 (Console) |
 | `[email]` | `mailhog/mailhog` | 1025 (SMTP) + 8025 (UI) |
+
+Every infra port is published on **loopback only** (`"127.0.0.1:5432:5432"`):
+the process you run on the host still reaches Postgres at `localhost:5432`,
+and nothing outside the machine does. The API does not need those ports —
+inside the compose it talks to the infra by service name (see the
+[`prod` profile](#the-prod-profile-the-api-inside-the-compose)).
 
 Example — service using cache + S3 uploads + emails:
 
@@ -134,23 +140,182 @@ Generates:
     `RABBITMQ_DEFAULT_VHOST`, `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`
     — all with their defaults already in `.env.example`.
 
-Boot it all:
+Boot only the infra — the dev loop, with the app running on the host with reload:
 
 ```bash
 docker compose up -d
+uv run python main.py
 ```
 
 Tear down keeping volumes:
 
 ```bash
-docker compose down
+docker compose --profile prod down
 ```
 
 Tear down wiping volumes:
 
 ```bash
-docker compose down -v
+docker compose --profile prod down -v
 ```
+
+!!! warning "`down` without `--profile prod` leaves the API up"
+    A bare `docker compose down` does not see the `api` service: it stops the
+    infra, leaves the `my_service-api` container running, and the network
+    ends in `Resource is still in use`. Passing `--profile prod` to `down`
+    works in both cases — with or without the API running.
+
+#### The `prod` profile: the API inside the compose
+
+The compose also carries the API itself, as an `api` service behind
+`profiles: ["prod"]`. Without the profile it does not exist —
+`docker compose up -d` keeps starting just the infra, as above. With the
+profile, the project's `Dockerfile` is built and the app runs **on the
+compose network**, next to the infra:
+
+```bash
+cp .env.example .env
+docker compose --profile prod up -d --build --wait
+curl http://127.0.0.1:8000/health/readiness
+```
+
+```json
+{"status":"ready","checks":{"database":true},"version":"0.1.0"}
+```
+
+For `tempest new my_service --extras auth,admin,cache,tasks`, the generated block is:
+
+```yaml
+services:
+  api:
+    # Only under `docker compose --profile prod up -d --build`;
+    # plain `docker compose up -d` keeps running just the infra.
+    profiles: ["prod"]
+    build: .
+    container_name: my_service-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # environment: wins over env_file. .env points every backend
+      # at localhost (right for the host, wrong in a container), so
+      # the hosts are re-pointed at the compose service names here.
+      # SMTP_* is left to .env on purpose: MailHog is dev-only and
+      # production mail goes through the real SMTP server.
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: "8000"
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@postgres:5432/${POSTGRES_DB:-my_service}
+      REDIS_URL: redis://redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-guest}:${RABBITMQ_DEFAULT_PASS:-guest}@rabbitmq:5672/
+      TASKIQ_BROKER_URL: amqp://${RABBITMQ_DEFAULT_USER:-guest}:${RABBITMQ_DEFAULT_PASS:-guest}@rabbitmq:5672/
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      # python:3.13-slim has no curl; readiness is 503 until the DB answers.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/readiness', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+```
+
+Piece by piece:
+
+- **`environment:` rewrites the hosts.** The `.env` the scaffold writes
+  points everything at `localhost` — right for the host process, wrong
+  inside a container, where `localhost` is the API container itself.
+  Compose gives `environment:` precedence over `env_file:`, so every host
+  `.env.example` points at `localhost` is swapped for the service name, only
+  for the extras you chose:
+
+    | Variable | Value inside the compose | When |
+    |----------|--------------------------|------|
+    | `DATABASE_URL` | `postgresql+asyncpg://…@postgres:5432/<db>` | always |
+    | `REDIS_URL` | `redis://redis:6379/0` | `[cache]` |
+    | `RABBITMQ_URL` / `TASKIQ_BROKER_URL` | `amqp://…@rabbitmq:5672/` | `[queue]` / `[tasks]` |
+    | `MINIO_ENDPOINT` | `minio:9000` | `[minio]` |
+
+    Without that rewrite the API does not crash — it boots **against the
+    wrong thing**. The same image run with only `--env-file .env` answered
+    `{"status":"ready","checks":{"database":true}}` with `200` and created
+    `/app/app.db` inside the container: the `.env` default `DATABASE_URL` is
+    SQLite, and Postgres was never touched.
+
+- **`SERVER_HOST: 0.0.0.0` and `SERVER_PORT`.** The `Dockerfile` already
+  sets `SERVER_HOST=0.0.0.0`, but the `.env` carries
+  `SERVER_HOST=127.0.0.1` and beats the image `ENV` — uvicorn comes up on
+  `http://127.0.0.1:8000` inside the container and the published port does
+  not answer. Pinning both in `environment:` fixes it. This does not
+  contradict the templates' `127.0.0.1` bind: that one is for the process
+  on the host; inside the container the bind must accept the compose
+  network.
+- **`depends_on` with `condition: service_healthy`**, one per extra service
+  (all of them have a `healthcheck`). With `[minio]`, the API also waits for
+  `minio-bootstrap` to finish (`service_completed_successfully`), so the
+  `uploads` bucket exists before the first request.
+- **`healthcheck` on `/health/readiness`, via `urllib`.**
+  `python:3.13-slim` has no `curl`. The scaffold mounts
+  `make_health_router`, which serves `/health/liveness` and
+  `/health/readiness` — **`/health` alone answers `404`**. Readiness answers
+  `503` while the database is unreachable, and `urlopen` raises on it, so
+  `healthy` means the app reached Postgres. It checks **only the
+  database**: Redis, RabbitMQ and MinIO are not in the scaffold's payload.
+- **`env_file: .env` is required under the profile.** Without `.env`,
+  `docker compose --profile prod config` fails with
+  `env file .../.env not found`; the dev `docker compose up -d` keeps
+  working without it.
+
+!!! info "`prod` profile decisions"
+    - **Compose default network**, no `networks:` block. Service names
+      already resolve on it; a named network would only matter if another
+      compose had to join this one.
+    - **Infra on `127.0.0.1` only, API on every interface.** The dev loop on
+      the host still reaches the database and broker; in production they
+      are not exposed outside the machine. The API port is published
+      normally — it is the one serving traffic.
+    - **MailHog without a profile, and SMTP stays with `.env`.** MailHog
+      starts in both modes (the dev loop does not change), but the API's
+      `environment:` does **not** rewrite `SMTP_*`: inside the container,
+      the `.env.example`'s `SMTP_HOST=localhost` does not reach MailHog. In
+      production set the real SMTP server in `.env`; to test email against
+      MailHog inside the compose, use `SMTP_HOST=mailhog` in `.env`.
+    - **`asyncpg` is a dependency of the generated project.** The
+      scaffold's `pyproject.toml` declares `asyncpg>=0.30.0` next to
+      `aiosqlite`, because the image installs only what `pyproject.toml`
+      declares and the `prod` profile always uses `postgresql+asyncpg://`.
+
+!!! warning "`--extras` replaces the `auth,admin` default"
+    The scaffolded `app.py` mounts the admin panel, which only imports with
+    `[admin]`. `tempest new my_service --extras cache,tasks` produces a
+    project whose container exits with
+    `ImportError: Admin requires the [admin] extra` — pass
+    `--extras auth,admin,cache,tasks`.
+
+##### Migrations under the `prod` profile
+
+The scaffold does not generate Alembic, so the compose has no migration
+service: the API boots against an empty database. Create the environment
+and the first revision on the host, against the compose Postgres (which is
+at `127.0.0.1:5432`), and apply it inside the network:
+
+```bash
+docker compose up -d --wait
+# in .env: DATABASE_URL=postgresql+asyncpg://app:app@localhost:5432/my_service
+tempest db init
+tempest db revision -m "init"
+docker compose --profile prod up -d --build --wait
+docker compose --profile prod run --rm api tempest db upgrade
+```
+
+`alembic/` lands in the image through `COPY . .`, and `tempest db upgrade`
+inside the container reads `DATABASE_URL` from `environment:` — so it
+migrates the compose Postgres, not the SQLite in `.env`.
 
 Image tags are pinned by the SDK — bump them through `pyproject.toml` of the SDK, not on a per-project basis. Current versions (v0.26.0+): `postgres:18-alpine`, `redis:8-alpine`, `rabbitmq:4-management-alpine`.
 
@@ -210,11 +375,14 @@ The file generated for `my_service`, pasted from the generator's output:
 #
 # Build:  docker build -t my_service .
 # Run:    docker run --rm -p 8000:8000 --env-file .env my_service
+# Or, with the infra:  docker compose --profile prod up -d --build
 #
 # The image binds SERVER_HOST=0.0.0.0 (see the final stage) so the app is
-# reachable from outside the container even without a .env file. The infra
-# in docker-compose.yaml (Postgres, etc.) is separate — point DATABASE_URL
-# at it via --env-file or `environment:` when you wire this image in.
+# reachable from outside the container even without a .env file. The `api`
+# service in docker-compose.yaml (prod profile) builds this image and
+# re-points DATABASE_URL & co. from the .env's localhost to the compose
+# service names; a bare `docker run --env-file .env` does not, so it only
+# reaches the infra if you edit those hosts yourself.
 
 # ---- builder ----------------------------------------------------------------
 FROM python:3.13-slim AS builder
@@ -282,20 +450,21 @@ docker run --rm -p 8000:8000 --env-file .env my_service
     reachable from outside the container even without a `.env`. Locally
     the scaffold keeps `SERVER_HOST=127.0.0.1` (internal service) — the
     container overrides it to `0.0.0.0` because the bind there must
-    accept external connections. Pass `--env-file .env` to point
-    `DATABASE_URL` at the infra in `docker-compose.yaml`.
+    accept external connections. A bare `--env-file .env` does **not**
+    wire the image to the infra in `docker-compose.yaml`: the `.env`
+    points at `localhost`. Use the
+    [`prod` profile](#the-prod-profile-the-api-inside-the-compose) for that.
 
     But a variable from `--env-file` **beats** the image's `ENV`: a `.env`
     copied from `.env.example` carries `SERVER_HOST=127.0.0.1` and puts the
     bind back inside the container. Drop `SERVER_HOST` from the `.env` that
     goes to the container, or set `SERVER_HOST=0.0.0.0` in it.
 
-!!! warning "`docker-compose.yaml` stays infra-only"
-    The generated compose brings up **only** Postgres + the services
-    your extras need (Redis, RabbitMQ, MinIO, MailHog) — it does not
-    embed an `app` service. The `Dockerfile` is standalone: use
-    `docker build` / `docker run`, or add an `app:` service with
-    `build: .` to the compose by hand if you want a one-command stack.
+!!! tip "App + infra in one command"
+    The generated `docker-compose.yaml` already builds this image in the
+    `api` service, behind the `prod` profile:
+    `docker compose --profile prod up -d --build`. See
+    [the `prod` profile](#the-prod-profile-the-api-inside-the-compose).
 
 #### Regenerating the Dockerfile — `tempest generate --dockerfile`
 

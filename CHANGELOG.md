@@ -50,6 +50,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`docker-compose.yaml` gerado sobe a API sob o profile `prod`** (#384).
+  `tempest new` e `tempest generate --docker` emitem um serviço `api` com
+  `profiles: ["prod"]`, `build: .`, `env_file: .env` e um `environment:`
+  que reescreve todo host que o `.env.example` aponta para `localhost`
+  (`DATABASE_URL` → `postgres`, `REDIS_URL` → `redis`, `RABBITMQ_URL` /
+  `TASKIQ_BROKER_URL` → `rabbitmq`, `MINIO_ENDPOINT` → `minio:9000`) só
+  para os extras escolhidos, mais `SERVER_HOST=0.0.0.0` / `SERVER_PORT`;
+  `depends_on` em `service_healthy` por serviço de extra (e
+  `service_completed_successfully` no `minio-bootstrap`) e healthcheck em
+  `/health/readiness` via `urllib`. `docker compose up -d` continua subindo
+  só a infra. Medido com Docker 29.6.1 / Compose v5.3.0 e
+  `--extras auth,admin,cache,tasks`: `--profile prod up -d --build --wait`
+  deixa a `api` `healthy`, a readiness responde `200` com
+  `{"database": true}`, a conexão aparece no `pg_stat_activity` do Postgres
+  vinda do IP do container e não existe `/app/app.db`. A mesma imagem com
+  só `--env-file .env` respondia `200` sobre um SQLite criado dentro do
+  container. `generate()` ganhou `port=` keyword-only (default `8000`).
 - **`XLSX_MEDIA_TYPE`, `DOCX_MEDIA_TYPE`, `PPTX_MEDIA_TYPE` e
   `guess_media_type(filename)`** em `tempest_fastapi_sdk.utils` (e no topo);
   `XLSX_MEDIA_TYPE` também em `tempest_fastapi_sdk.spreadsheet`. A receita de
@@ -78,6 +95,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   forte: `options` cruas, `config` do gerador, `config` da chamada (campo a
   campo), `**kwargs` da chamada. Os defaults entram na chave do
   `generation_cache`.
+
+### Changed
+
+- **Portas da infra do compose gerado publicadas só em `127.0.0.1`**
+  (#384): `"127.0.0.1:5432:5432"` e equivalentes para Redis, RabbitMQ,
+  MinIO e MailHog. O processo no host continua alcançando a infra; nada de
+  fora da máquina alcança. A porta da API segue publicada em todas as
+  interfaces.
+- **`asyncpg>=0.30.0` é dependência do `pyproject.toml` scaffoldado**
+  (#384), não mais uma linha comentada: a imagem do profile `prod` usa
+  `postgresql+asyncpg://` e instala só o que o `pyproject.toml` declara.
 
 ## [0.303.0] — 2026-10-02
 

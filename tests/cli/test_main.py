@@ -201,9 +201,14 @@ class TestNew:
         assert "SERVER_HOST=0.0.0.0" in env
         assert "SERVER_PORT=9090" in env
 
-    def test_scaffold_ships_sqlite_driver_and_commented_asyncpg(
-        self, tmp_path: Path
-    ) -> None:
+    def test_scaffold_ships_sqlite_and_postgres_drivers(self, tmp_path: Path) -> None:
+        """Both async drivers are runtime dependencies.
+
+        SQLite backs the default ``DATABASE_URL`` on the host; asyncpg backs
+        the ``prod`` compose profile, whose ``api`` service points
+        ``DATABASE_URL`` at ``postgresql+asyncpg://...@postgres``, and the
+        image installs only what ``pyproject.toml`` declares.
+        """
         result = runner.invoke(
             app,
             ["new", "demo_svc", "--path", str(tmp_path), "--extras", ""],
@@ -214,9 +219,8 @@ class TestNew:
         # not a dev-only one — so the service runs without --dev installs.
         runtime_block = pyproject.split("[dependency-groups]", 1)[0]
         assert '"aiosqlite>=0.20.0",' in runtime_block
-        # asyncpg ships commented next to the SQLite driver, ready to enable
-        # when switching DATABASE_URL to PostgreSQL.
-        assert '# "asyncpg>=0.30.0",' in pyproject
+        assert '    "asyncpg>=0.30.0",' in runtime_block
+        assert '# "asyncpg' not in pyproject
 
     def test_scaffold_is_not_a_package(self, tmp_path: Path) -> None:
         """A scaffolded service must declare no build backend.

@@ -323,7 +323,10 @@ def scaffold(
     )
 
     compose_path = target / "docker-compose.yaml"
-    compose_path.write_text(generate_compose(resolved_name, extras), encoding="utf-8")
+    compose_path.write_text(
+        generate_compose(resolved_name, extras, port=bind_port),
+        encoding="utf-8",
+    )
     written.append(compose_path)
 
     env_example = target / ".env.example"
@@ -353,6 +356,10 @@ def scaffold(
     typer.echo(
         f"Containerize the app:  docker build -t {resolved_name} . "
         f"(Dockerfile + .dockerignore included)",
+        err=False,
+    )
+    typer.echo(
+        "Run app + infra in containers:  docker compose --profile prod up -d --build",
         err=False,
     )
 

@@ -72,6 +72,19 @@ class TestGenerateDocker:
         assert "image: postgres:18-alpine" in compose
         assert "image: redis:8-alpine" in compose
 
+    def test_prod_api_uses_the_port_from_env_example(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="my_svc", extras="auth")
+        (tmp_path / ".env.example").write_text("SERVER_PORT=9090\n", encoding="utf-8")
+        result = runner.invoke(
+            app,
+            ["generate", "--docker", "--path", str(tmp_path)],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        compose = (tmp_path / "docker-compose.yaml").read_text()
+        assert 'profiles: ["prod"]' in compose
+        assert '- "9090:9090"' in compose
+        assert "http://127.0.0.1:9090/health/readiness" in compose
+
     def test_minio_bumps_use_pinned_release_tags(self, tmp_path: Path) -> None:
         _seed_project(tmp_path, name="svc", extras="minio")
         runner.invoke(app, ["generate", "--docker", "--path", str(tmp_path)])
