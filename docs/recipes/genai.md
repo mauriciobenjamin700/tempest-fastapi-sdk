@@ -177,6 +177,94 @@ fp32 em CPU.
     `VoiceEmbedder`, `OnnxEmbedder`...) e pro `FaceRecognizer` do
     [reconhecimento facial](faces.md).
 
+### Vários pedidos ao mesmo tempo em CPU: `max_concurrent`
+
+Cada chamada roda numa worker thread, e em CPU o `model.generate` de **uma**
+thread já usa todo o pool intra-op do torch. Sem limite, quatro agentes
+respondendo ao mesmo tempo viram quatro threads disputando os mesmos
+núcleos: ninguém termina antes, e todo mundo termina tarde.
+`max_concurrent` põe os pedidos excedentes numa fila:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import TextGenerator
+
+gen = TextGenerator(
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    device="cpu",
+    max_concurrent=1,               # um decode por vez; os outros esperam na fila
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    respostas = await asyncio.gather(
+        *(gen.generate(f"Dê uma dica de Python, número {n}.") for n in range(4))
+    )
+    for resposta in respostas:
+        print(resposta)
+
+
+asyncio.run(main())
+```
+
+Medido com `Qwen/Qwen2.5-0.5B-Instruct` em CPU (WSL2 num i9-13900F, 12 CPUs
+lógicas visíveis = 6 núcleos × 2, torch 2.14 com 6 threads intra-op),
+128 tokens forçados (`min_new_tokens` = `max_new_tokens`), `do_sample=False`,
+cada configuração no seu próprio processo, mediana de 5 rodadas:
+
+| Chamadas simultâneas | `max_concurrent` | Throughput | Latência mediana | Latência máxima |
+| --- | --- | --- | --- | --- |
+| 1 | `None` | 28,3 tokens/s | 4,53 s | 4,53 s |
+| 2 | `None` | 24,6 tokens/s | 10,26 s | 10,42 s |
+| 2 | `1` | 26,7 tokens/s | 7,27 s | 9,60 s |
+| 2 | `2` | 27,7 tokens/s | 9,13 s | 9,24 s |
+| 4 | `None` | 22,4 tokens/s | 22,73 s | 22,85 s |
+| 4 | `1` | 26,9 tokens/s | 11,91 s | 19,03 s |
+| 4 | `2` | 25,6 tokens/s | 14,80 s | 19,97 s |
+
+Com quatro pedidos e `max_concurrent=1`, a vazão volta a 95% da de uma
+chamada sozinha, a **latência mediana cai pela metade**,
+e o último termina
+antes do que terminaria sem limite. Uma chamada sozinha não muda: em duas
+reexecuções de 9 rodadas, 4,56 s contra 4,57 s e 4,66 s contra 4,65 s.
+
+!!! info "Por que uma fila de threads dedicadas, e não um semáforo"
+    O runtime OpenMP do torch mantém **um time de workers por thread que
+    chama** o modelo, e o executor padrão do asyncio entrega cada chamada à
+    thread que estiver livre. Medido no mesmo hardware, decodificando
+    estritamente um por vez: 4,5 s por chamada enquanto tudo rodava na mesma
+    thread, 6,4 s por chamada depois de alternar entre quatro threads vivas
+    — cada thread nova somou 6 threads ao processo, e a lentidão continuou
+    mesmo voltando para a primeira. Um semáforo na frente do executor
+    padrão serializava **e** deixava cada chamada mais lenta: quatro
+    chamadas simultâneas fecharam em 18,5 tokens/s, abaixo dos 22,8 sem
+    limite nenhum medidos no mesmo processo. Por isso `max_concurrent=N`
+    cria um pool de **N threads
+    próprias** do gerador, e a decodificação nunca sai delas.
+    (`OMP_WAIT_POLICY=PASSIVE` não resolve: deixou a chamada sozinha em
+    6,7 s.)
+
+O default continua `None` (sem limite, cada chamada começa na hora), para
+uma atualização do SDK não mudar a concorrência de ninguém — em GPU o
+trade-off não foi medido. Em CPU, comece com `max_concurrent=1`. Um pedido
+cancelado enquanto espera na fila sai dela sem rodar; um cancelado durante
+a decodificação para no próximo token e só libera a vaga quando a thread
+termina de fato. Vale para `generate`, `chat`, `chat_with_tools`,
+`generate_structured`, `chat_structured` e `stream` (que segura a vaga até
+o último token, ou até um token depois de você fechar o iterador). O
+`VisionTextGenerator` aceita o mesmo `max_concurrent=`.
+
+!!! note "E o número de threads?"
+    Não há knob de threads no `TextGenerator` de propósito:
+    `torch.set_num_threads` é **global ao processo**, não por gerador, e
+    o default do torch aqui já era o número de núcleos físicos visíveis
+    (6). Com `max_concurrent=1` a vazão sob carga ficou a 5% da de uma
+    chamada sozinha, então sobrava pouco para ganhar. Se você precisar
+    mudar, chame `torch.set_num_threads(n)` uma vez no startup, sabendo que
+    vale para todo modelo do processo.
+
 ## Backend hospedado (DeepSeek, Groq, OpenRouter, vLLM...)
 
 Nem todo serviço quer carregar peso: às vezes a conta que importa é a de

@@ -30,6 +30,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `[]`. Marcador novo de teste `network` (fora do run default;
   `make test-network`).
 
+- **`max_concurrent=` em `TextGenerator` e `VisionTextGenerator`.** Limita
+  quantas decodificações a instância roda ao mesmo tempo; as excedentes
+  esperam numa fila. Em CPU uma decodificação já usa todo o pool intra-op do
+  torch, então N execuções de agente simultâneas viravam N threads
+  disputando os mesmos núcleos. O limite é um pool de N threads **próprias**
+  do gerador, e não um semáforo na frente do `asyncio.to_thread`: o OpenMP
+  do torch mantém um time de workers por thread chamadora, e o semáforo
+  sobre o executor padrão serializava e ainda deixava cada chamada mais
+  lenta (18,5 tokens/s com quatro chamadas, contra 22,8 sem limite no mesmo
+  processo). Medido com `Qwen/Qwen2.5-0.5B-Instruct` em CPU (WSL2, i9-13900F,
+  12 CPUs lógicas visíveis, torch 2.14 com 6 threads intra-op), 128 tokens
+  forçados, greedy, mediana de 5 rodadas: com quatro chamadas simultâneas,
+  `max_concurrent=1` levou a vazão de 22,4 para 26,9 tokens/s e a latência
+  mediana de 22,73 s para 11,91 s; uma chamada sozinha não muda (4,56 s
+  contra 4,57 s). Cancelar na fila tira o pedido sem rodar; cancelar durante
+  a decodificação continua acionando o `stop_event` e só libera a vaga
+  quando a thread termina. Cobre `generate`, `chat`, `chat_with_tools`,
+  `generate_structured`, `chat_structured` e `stream`. O default continua
+  `None` (sem limite): o ganho foi medido só em CPU, e mudar o default
+  mudaria a concorrência de quem roda em GPU. Sem knob de threads:
+  `torch.set_num_threads` é global ao processo.
+
 - **`docker-compose.yaml` gerado sobe a API sob o profile `prod`** (#384).
   `tempest new` e `tempest generate --docker` emitem um serviço `api` com
   `profiles: ["prod"]`, `build: .`, `env_file: .env` e um `environment:`
