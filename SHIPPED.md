@@ -979,6 +979,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   run that completed; `run_until` keeps an earlier inherited deadline;
   `schema_of` keeps `$defs` for self-referential models; Redis fact keys no
   longer merge `None`/`""`/`"_"`; builtins never overwrite an artifact.
+- **Defaults de geração no gerador (Unreleased)** — `config=` em
+  `TextGenerator`/`OllamaGenerator`, `num_ctx=`/`options=` no
+  `OllamaGenerator`, aplicados em toda chamada e na chave do cache. Existe
+  porque o `Agent` não passa opção ao modelo: no Ollama 0.30.11 a janela
+  default cortou o prompt de um agente para 2 051 tokens sem erro (resposta
+  errada, `completed`); `num_ctx=32768` leu os 11 551. Receita: seção "O
+  modelo roda com os defaults do gerador" em `agents.md`.
 - **Cancelar para o modelo local (Unreleased)** — `TextGenerator` e
   `VisionTextGenerator` rodam toda chamada sob um `threading.Event` (o do
   caller ou um privado) e o acionam quando a corotina é cancelada, então

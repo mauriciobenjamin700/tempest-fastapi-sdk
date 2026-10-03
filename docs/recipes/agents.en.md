@@ -216,6 +216,52 @@ the run ends `max_steps`, `succeeded=False`, and `output` **empty**, because
 it never got around to writing text. Details in
 [why the budget exists](agents-concepts.md#why-the-budget-exists).
 
+## The model runs on the generator's defaults
+
+The agent loop calls the model with the messages and the tools, and nothing
+else: no `config`, no `max_new_tokens`, no context size. So what applies is
+whatever **the generator** ships with — and the generator is where you tune
+it:
+
+```python title="defaults.py" hl_lines="12-13"
+import asyncio
+
+from agent_setup import weather_tool
+from tempest_fastapi_sdk.agents import Agent
+from tempest_fastapi_sdk.genai import GenerationConfig, OllamaGenerator
+
+
+async def main() -> None:
+    """Run an agent whose model has a bounded window and greedy decoding."""
+    model = OllamaGenerator(
+        "ministral-3:14b",
+        num_ctx=32768,
+        config=GenerationConfig(max_new_tokens=512, do_sample=False),
+    )
+    agent = Agent(model, tools=[weather_tool])
+    run = await agent.run("What's the weather in Recife?")
+
+    print(run.stop_reason, run.output)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+`config=` applies to every call the generator makes, and a call that brings
+its own `config` wins field by field. `TextGenerator` takes the same
+`config=`.
+
+!!! warning "On Ollama, `num_ctx` is not optional for an agent"
+    An agent's prompt is the system turn, every tool spec and **every** tool
+    result so far — it grows with each step. Once it passes the context
+    window, Ollama cuts the prompt **with no error**. Measured on Ollama
+    0.30.11 with `ministral-3:14b`, with a tool returning ~11.5k tokens:
+    without `num_ctx` the daemon processed 2,051 tokens, the model lost the
+    question and the run ended `completed` with the wrong answer (3 of 3
+    runs); with `num_ctx=32768` it processed all 11,551 and answered
+    correctly (3 of 3).
+
 ## Pydantic-typed tools
 
 Writing JSON-schema by hand next to the handler means **two descriptions of

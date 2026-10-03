@@ -216,6 +216,50 @@ termina em `max_steps`, com `succeeded=False` e `output` **vazio**, porque ele
 nunca chegou a escrever texto. Detalhes em
 [por que existe orçamento](agents-concepts.md#por-que-existe-orcamento).
 
+## O modelo roda com os defaults do gerador
+
+O laço do agente chama o modelo com as mensagens e as ferramentas, e só: não
+passa `config`, nem `max_new_tokens`, nem tamanho de contexto. Então o que
+vale é o que **o gerador** traz de fábrica — e é no gerador que você ajusta:
+
+```python title="defaults.py" hl_lines="12-13"
+import asyncio
+
+from agent_setup import weather_tool
+from tempest_fastapi_sdk.agents import Agent
+from tempest_fastapi_sdk.genai import GenerationConfig, OllamaGenerator
+
+
+async def main() -> None:
+    """Run an agent whose model has a bounded window and greedy decoding."""
+    model = OllamaGenerator(
+        "ministral-3:14b",
+        num_ctx=32768,
+        config=GenerationConfig(max_new_tokens=512, do_sample=False),
+    )
+    agent = Agent(model, tools=[weather_tool])
+    run = await agent.run("Qual o tempo no Recife?")
+
+    print(run.stop_reason, run.output)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+`config=` vale em toda chamada do gerador, e uma chamada que traz o próprio
+`config` ganha campo a campo. O `TextGenerator` aceita o mesmo `config=`.
+
+!!! warning "No Ollama, `num_ctx` não é opcional para agente"
+    O prompt de um agente é o turno de sistema, a especificação de toda
+    ferramenta e **todo** resultado de ferramenta até ali — ele cresce a
+    cada passo. Quando passa da janela de contexto, o Ollama corta o
+    prompt **sem erro**. Medido no Ollama 0.30.11 com `ministral-3:14b`,
+    numa ferramenta que devolvia ~11,5 mil tokens: sem `num_ctx`, o daemon
+    processou 2 051 tokens, o modelo perdeu a pergunta e a execução terminou
+    `completed` com a resposta errada (3 de 3 execuções); com
+    `num_ctx=32768`, processou os 11 551 e respondeu certo (3 de 3).
+
 ## Ferramentas tipadas com Pydantic
 
 Escrever JSON-schema à mão ao lado do handler significa **duas descrições da

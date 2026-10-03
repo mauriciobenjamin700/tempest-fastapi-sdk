@@ -39,7 +39,7 @@ from tempest_fastapi_sdk.genai.generation_cache import (
     cached_generate,
 )
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
-from tempest_fastapi_sdk.genai.schemas import GenerationConfig
+from tempest_fastapi_sdk.genai.schemas import GenerationConfig, _layer_config
 from tempest_fastapi_sdk.genai.structured import StructuredT, parse_structured
 from tempest_fastapi_sdk.genai.tracing import genai_span
 from tempest_fastapi_sdk.utils.http_client import HTTPClient, RetryPolicy
@@ -266,7 +266,92 @@ class OllamaGenerator(_OllamaClientMixin):
     Attributes:
         model (str): The Ollama model tag.
         base_url (str): The daemon base URL.
+        config (GenerationConfig | None): Default generation parameters,
+            layered under every call's own.
+        options (dict[str, Any]): Raw Ollama ``options`` sent with every
+            request, ``num_ctx`` included when set.
     """
+
+    def __init__(
+        self,
+        model: str,
+        *,
+        base_url: str = DEFAULT_OLLAMA_URL,
+        timeout: float = 120.0,
+        keep_alive: str | float | None = None,
+        http_client: HTTPClient | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
+        retry_policy: RetryPolicy | None = None,
+        metrics: GenAIMetrics | None = None,
+        generation_cache: GenerationCache | AsyncGenerationCache | None = None,
+        config: GenerationConfig | None = None,
+        num_ctx: int | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> None:
+        """Configure the daemon connection and the per-request defaults.
+
+        The connection arguments are the ones every Ollama client takes;
+        the last three exist because some callers pass no options at all.
+        The :class:`~tempest_fastapi_sdk.agents.Agent` loop calls
+        ``chat_with_tools(messages, tools)`` and nothing else, so before
+        these a generator driving an agent always ran on the daemon's
+        defaults — including its context window, which truncates the
+        prompt **silently**. Measured on Ollama 0.30.11 with
+        ``lfm2.5-thinking:1.2b``: a 35,018-token chat came back with
+        ``prompt_eval_count`` 2,051 and no error under the default, and
+        35,018 with ``num_ctx=65536``. An agent's prompt is the system
+        turn, every tool spec and every tool result so far, so it reaches
+        that ceiling within a few steps.
+
+        Args:
+            model (str): The Ollama model tag (must already be pulled).
+            base_url (str): Base URL of the Ollama daemon.
+            timeout (float): Per-request HTTP timeout in seconds.
+            keep_alive (str | float | None): Ollama ``keep_alive`` value;
+                ``None`` uses the daemon default.
+            http_client (HTTPClient | None): An injected client; one is
+                created lazily and owned by this instance when ``None``.
+            transport (httpx.AsyncBaseTransport | None): Transport for the
+                lazily-created client (tests). Ignored with ``http_client``.
+            retry_policy (RetryPolicy | None): Retry configuration for the
+                lazily-created client. Ignored with ``http_client``.
+            metrics (GenAIMetrics | None): Optional Prometheus metrics.
+            generation_cache (GenerationCache | AsyncGenerationCache | None):
+                Optional prompt→completion cache for deterministic calls.
+            config (GenerationConfig | None): Default generation parameters
+                for every call. A call's own ``config`` is layered over it
+                field by field, and its keyword overrides win over both.
+            num_ctx (int | None): Context window in tokens, sent as the
+                ``num_ctx`` option on every request. ``None`` leaves the
+                daemon's default.
+            options (dict[str, Any] | None): Raw Ollama ``options`` sent on
+                every request (``num_thread``, ``num_gpu``, …), under the
+                ones a call's config or overrides produce.
+
+        Raises:
+            ValueError: When ``num_ctx`` is not positive, or is given both
+                as an argument and inside ``options``.
+        """
+        super().__init__(
+            model,
+            base_url=base_url,
+            timeout=timeout,
+            keep_alive=keep_alive,
+            http_client=http_client,
+            transport=transport,
+            retry_policy=retry_policy,
+            metrics=metrics,
+            generation_cache=generation_cache,
+        )
+        merged: dict[str, Any] = dict(options or {})
+        if num_ctx is not None:
+            if num_ctx <= 0:
+                raise ValueError("num_ctx must be positive")
+            if "num_ctx" in merged:
+                raise ValueError("num_ctx given both as an argument and in options")
+            merged["num_ctx"] = num_ctx
+        self.config = config
+        self.options: dict[str, Any] = merged
 
     @property
     def is_loaded(self) -> bool:
@@ -357,8 +442,16 @@ class OllamaGenerator(_OllamaClientMixin):
         overrides: dict[str, Any],
         images: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Merge config + overrides (+ images) into the cache-key parameters."""
+        """Merge config + overrides (+ images) into the cache-key parameters.
+
+        The defaults are part of the key: a different context window or a
+        different default config produces different text, so a generator
+        must not answer from another's cached completions.
+        """
+        config = _layer_config(self.config, config)
         params: dict[str, Any] = {}
+        if self.options:
+            params["options"] = dict(self.options)
         if config is not None:
             params.update(config.model_dump(exclude_none=True, exclude_unset=True))
         params.update(overrides)
@@ -797,7 +890,10 @@ class OllamaGenerator(_OllamaClientMixin):
             config (GenerationConfig | None): Typed generation parameters.
             overrides (dict[str, Any]): Per-call overrides.
         """
-        options = _build_options(config, overrides)
+        options = {
+            **self.options,
+            **_build_options(_layer_config(self.config, config), overrides),
+        }
         if options:
             payload["options"] = options
         if self.keep_alive is not None:

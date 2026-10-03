@@ -34,6 +34,7 @@ from tempest_fastapi_sdk.genai.schemas import (
     GenerationConfig,
     HardwareInfo,
     ModelDtype,
+    _layer_config,
     precision_kwarg,
 )
 from tempest_fastapi_sdk.genai.structured import (
@@ -707,6 +708,8 @@ class TextGenerator:
             ``from_pretrained`` call.
         idle_unload_seconds (float | None): Idle threshold used by
             :meth:`unload_if_idle`.
+        config (GenerationConfig | None): Default generation parameters,
+            layered under every call's own.
     """
 
     def __init__(
@@ -725,6 +728,7 @@ class TextGenerator:
         hardware: HardwareInfo | None = None,
         generation_cache: GenerationCache | AsyncGenerationCache | None = None,
         metrics: GenAIMetrics | None = None,
+        config: GenerationConfig | None = None,
     ) -> None:
         """Configure the generator (does not load weights yet).
 
@@ -771,11 +775,18 @@ class TextGenerator:
             metrics (GenAIMetrics | None): Optional Prometheus metrics;
                 when set, ``generate`` / ``chat`` record request count and
                 latency (op ``"generate"`` / ``"chat"``).
+            config (GenerationConfig | None): Default generation parameters
+                for every call. A call's own ``config`` is layered over it
+                field by field, and its keyword overrides win over both.
+                This is how a caller that passes no options — the
+                :class:`~tempest_fastapi_sdk.agents.Agent` loop — still
+                gets a bounded ``max_new_tokens`` or greedy decoding.
 
         Raises:
             ValueError: When ``quantization`` is not int8/int4.
         """
         self.model_id = model_id
+        self.config = config
         self.device = resolve_device(device, hardware)
         resolved_dtype = (
             ModelDtype(auto_dtype_name(self.device))
@@ -814,7 +825,13 @@ class TextGenerator:
         config: GenerationConfig | None,
         overrides: dict[str, Any],
     ) -> dict[str, Any]:
-        """Merge config + overrides into the parameters that key the cache."""
+        """Merge config + overrides into the parameters that key the cache.
+
+        The default ``config`` is layered in first: two generators of the
+        same model with different defaults produce different text, so
+        neither may answer from the other's cached completions.
+        """
+        config = _layer_config(self.config, config)
         params: dict[str, Any] = {}
         if config is not None:
             params.update(config.model_dump(exclude_none=True, exclude_unset=True))
@@ -988,6 +1005,7 @@ class TextGenerator:
         """
         with self._lifecycle.use():
             torch, transformers = _require_transformers()
+            config = _layer_config(self.config, config)
             seed, stop = _resolve_control(overrides, config)
             inputs = self._tokenizer(prompt, return_tensors="pt").to(
                 self._model.device,
@@ -1418,6 +1436,7 @@ class TextGenerator:
         """
         with self._lifecycle.use():
             torch, transformers = _require_transformers()
+            config = _layer_config(self.config, config)
             seed, stop = _resolve_control(overrides, config)
             streamer = _callback_streamer(
                 transformers,
