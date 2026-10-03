@@ -178,6 +178,93 @@ bf16 on GPU and fp32 on CPU.
     `OnnxEmbedder`...) and for the [face recognition](faces.md)
     `FaceRecognizer`.
 
+### Several requests at once on CPU: `max_concurrent`
+
+Every call runs on a worker thread, and on CPU the `model.generate` of
+**one** thread already uses torch's whole intra-op pool. With no limit, four
+agents answering at once become four threads fighting over the same cores:
+nobody finishes early, and everybody finishes late. `max_concurrent` queues
+the extra requests instead:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import TextGenerator
+
+gen = TextGenerator(
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    device="cpu",
+    max_concurrent=1,               # one decode at a time; the rest wait in line
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    replies = await asyncio.gather(
+        *(gen.generate(f"Give a Python tip, number {n}.") for n in range(4))
+    )
+    for reply in replies:
+        print(reply)
+
+
+asyncio.run(main())
+```
+
+Measured with `Qwen/Qwen2.5-0.5B-Instruct` on CPU (WSL2 on an i9-13900F, 12
+visible logical CPUs = 6 cores × 2, torch 2.14 with 6 intra-op threads), 128
+forced tokens (`min_new_tokens` = `max_new_tokens`), `do_sample=False`, each
+configuration in its own process, median of 5 rounds:
+
+| Concurrent calls | `max_concurrent` | Throughput | Median latency | Max latency |
+| --- | --- | --- | --- | --- |
+| 1 | `None` | 28.3 tokens/s | 4.53 s | 4.53 s |
+| 2 | `None` | 24.6 tokens/s | 10.26 s | 10.42 s |
+| 2 | `1` | 26.7 tokens/s | 7.27 s | 9.60 s |
+| 2 | `2` | 27.7 tokens/s | 9.13 s | 9.24 s |
+| 4 | `None` | 22.4 tokens/s | 22.73 s | 22.85 s |
+| 4 | `1` | 26.9 tokens/s | 11.91 s | 19.03 s |
+| 4 | `2` | 25.6 tokens/s | 14.80 s | 19.97 s |
+
+With four requests and `max_concurrent=1`, throughput is back to 95% of a
+lone call's, the **median latency halves**, and the last one still
+finishes earlier than it would with no limit. A lone call does not change:
+over two re-runs of 9 rounds, 4.56 s against 4.57 s and 4.66 s against
+4.65 s.
+
+!!! info "Why a queue of dedicated threads, and not a semaphore"
+    Torch's OpenMP runtime keeps **one worker team per thread that calls**
+    the model, and asyncio's default executor hands each call to whichever
+    of its threads is free. Measured on the same hardware, decoding strictly
+    one at a time: 4.5 s per call while everything ran on the same thread,
+    6.4 s per call after alternating across four live threads — each new
+    thread added 6 threads to the process, and the slowdown stayed even
+    after going back to the first one. A semaphore in front of the default
+    executor serialized calls **and** made each one slower: four concurrent
+    calls finished at 18.5 tokens/s, below the 22.8 with no limit at all
+    measured in the same process.
+    That is why `max_concurrent=N` builds a pool of **N threads owned by the
+    generator**, and decoding never leaves them. (`OMP_WAIT_POLICY=PASSIVE`
+    does not fix it: it put the lone call at 6.7 s.)
+
+The default stays `None` (no limit, every call starts right away), so an SDK
+upgrade does not change anyone's concurrency — the trade-off was not measured
+on GPU. On CPU, start with `max_concurrent=1`. A request cancelled while
+waiting in line leaves it without running; one cancelled while decoding
+stops at the next token and only frees its place once the thread has really
+finished. It covers `generate`, `chat`, `chat_with_tools`,
+`generate_structured`, `chat_structured` and `stream` (which holds its place
+until the last token, or until one token after you close the iterator).
+`VisionTextGenerator` takes the same `max_concurrent=`.
+
+!!! note "What about the thread count?"
+    There is no thread knob on `TextGenerator`, on purpose:
+    `torch.set_num_threads` is **process-wide**, not per generator, and
+    torch's default here was already the number of visible physical cores
+    (6). With `max_concurrent=1` the throughput under load stayed within 5%
+    of a lone call's, so there was little left to gain. If you need to
+    change it, call `torch.set_num_threads(n)` once at startup, knowing it
+    applies to every model in the process.
+
 ## Hosted backend (DeepSeek, Groq, OpenRouter, vLLM...)
 
 Not every service wants to hold weights: sometimes the budget that matters

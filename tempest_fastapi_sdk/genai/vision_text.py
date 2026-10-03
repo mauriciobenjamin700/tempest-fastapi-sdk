@@ -40,6 +40,7 @@ from tempest_fastapi_sdk.genai.text import (
     _apply_seed,
     _apply_stop_strings,
     _decode_in_thread,
+    _decoding_executor,
     _require_transformers,
     _resolve_control,
     _stop_criteria,
@@ -112,6 +113,8 @@ class VisionTextGenerator:
         dtype (ModelDtype): The resolved compute precision.
         idle_unload_seconds (float | None): Idle threshold for
             :meth:`unload_if_idle`.
+        max_concurrent (int | None): How many decodings run at once, or
+            ``None`` for no limit.
     """
 
     def __init__(
@@ -127,6 +130,7 @@ class VisionTextGenerator:
         trust_remote_code: bool = False,
         idle_unload_seconds: float | None = None,
         hardware: HardwareInfo | None = None,
+        max_concurrent: int | None = None,
     ) -> None:
         """Configure the generator (does not load weights yet).
 
@@ -158,7 +162,17 @@ class VisionTextGenerator:
                 :meth:`unload_if_idle` frees the model after this idle window.
             hardware (HardwareInfo | None): Injected snapshot for device
                 resolution (tests); probed when ``None``.
+            max_concurrent (int | None): Decodings this instance runs at
+                once; the rest wait their turn. ``None`` (the default)
+                starts every call immediately. Same trade-off as
+                :class:`~tempest_fastapi_sdk.genai.TextGenerator`'s
+                ``max_concurrent``: on CPU, ``1`` keeps concurrent calls
+                from splitting the cores between them.
+
+        Raises:
+            ValueError: When ``max_concurrent`` is not positive.
         """
+        self._executor = _decoding_executor(max_concurrent, model_id)
         self.model_id = model_id
         self.device = resolve_device(device, hardware)
         self.dtype = (
@@ -177,6 +191,7 @@ class VisionTextGenerator:
             trust_remote_code=trust_remote_code,
         )
         self.idle_unload_seconds = idle_unload_seconds
+        self.max_concurrent = max_concurrent
         self._model: Any = None
         self._processor: Any = None
         self._lifecycle = ModelLifecycle(
@@ -323,6 +338,7 @@ class VisionTextGenerator:
         return await _decode_in_thread(
             lambda event: self._generate_sync(prompt, images, config, kwargs, event),
             stop_event,
+            executor=self._executor,
         )
 
     def _generate_sync(
@@ -410,6 +426,7 @@ class VisionTextGenerator:
         return await _decode_in_thread(
             lambda event: self._chat_sync(messages, images, config, kwargs, event),
             stop_event,
+            executor=self._executor,
         )
 
     def _chat_sync(  # pragma: no cover - needs torch + a real model
