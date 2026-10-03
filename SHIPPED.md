@@ -979,6 +979,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   run that completed; `run_until` keeps an earlier inherited deadline;
   `schema_of` keeps `$defs` for self-referential models; Redis fact keys no
   longer merge `None`/`""`/`"_"`; builtins never overwrite an artifact.
+- **Cancelar para o modelo local (Unreleased)** — `TextGenerator` e
+  `VisionTextGenerator` rodam toda chamada sob um `threading.Event` (o do
+  caller ou um privado) e o acionam quando a corotina é cancelada, então
+  timeout do `AgentBudget`, `asyncio.timeout` e `run_cancellable` param a
+  decodificação em até um token. Antes, o budget do agente cortava a espera
+  e a thread seguia até `max_new_tokens`: Qwen2.5-0.5B em CPU, 300 tokens
+  forçados, budget de 1 s — 10,8 s decodificando depois do `timeout`, agora
+  0,01 s. `chat_with_tools` ganha `stop_event=`.
 - **Planilhas (v0.229.0, `[spreadsheet]` extra = openpyxl)** —
   `tempest_fastapi_sdk.spreadsheet`. `SheetWriter` segura o cursor de linha
   (`title_block`/`header_row`/`group_row`/`write_row`/`total_row`/

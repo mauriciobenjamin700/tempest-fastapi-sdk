@@ -20,7 +20,7 @@ import json
 import re
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from tempest_fastapi_sdk.genai.generation_cache import (
     AsyncGenerationCache,
@@ -43,6 +43,8 @@ from tempest_fastapi_sdk.genai.structured import (
 )
 from tempest_fastapi_sdk.genai.tracing import genai_span
 from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
+
+_ResultT = TypeVar("_ResultT")
 
 _QUANTIZATIONS: frozenset[ModelDtype] = frozenset({ModelDtype.INT8, ModelDtype.INT4})
 
@@ -171,6 +173,48 @@ def _consume_result(task: asyncio.Future[None]) -> None:
     """
     if not task.cancelled():
         task.exception()
+
+
+async def _decode_in_thread(
+    work: Callable[[threading.Event], _ResultT],
+    stop_event: threading.Event | None,
+) -> _ResultT:
+    """Run blocking decoding in a worker thread that stops when cancelled.
+
+    ``asyncio.to_thread`` cannot interrupt the thread it starts: cancelling
+    the coroutine that awaits it (an ``asyncio.timeout``, an agent budget,
+    a client that went away) only stops the *waiting*, and the model keeps
+    decoding to ``max_new_tokens`` for a reply nobody will read. The agent
+    loop never passes a ``stop_event``, so every budget timeout used to
+    leave a worker holding the cores. Measured with
+    ``Qwen/Qwen2.5-0.5B-Instruct`` on CPU, 300 forced tokens, cancelled
+    after 1 s: the thread kept decoding 9.3 s afterwards; with the event set
+    on cancellation it stops within one token.
+
+    So the work always runs under an event — the caller's when one was
+    passed, a private one otherwise — and cancellation sets it. Setting the
+    caller's event is deliberate: it already means "stop decoding", which
+    is exactly what a cancelled call wants.
+
+    Args:
+        work (Callable[[threading.Event], _ResultT]): The blocking call,
+            given the event its stopping criterion must watch.
+        stop_event (threading.Event | None): The caller's event, or
+            ``None`` to use a private one.
+
+    Returns:
+        _ResultT: Whatever ``work`` returned.
+
+    Raises:
+        asyncio.CancelledError: When the awaiting coroutine is cancelled,
+            after the event was set.
+    """
+    event = stop_event if stop_event is not None else threading.Event()
+    try:
+        return await asyncio.to_thread(work, event)
+    except asyncio.CancelledError:
+        event.set()
+        raise
 
 
 def _callback_streamer(
@@ -1007,18 +1051,19 @@ class TextGenerator:
         """Generate a completion for ``prompt``.
 
         Runs the blocking model in a worker thread so the event loop stays
-        free — which is also why stopping it needs ``stop_event``:
-        cancelling the coroutine that awaits this leaves the thread
-        decoding, and the GPU busy, for a reply nobody will read.
+        free. A thread cannot be interrupted, so cancelling the coroutine
+        that awaits this (a timeout, a client that went away) sets the stop
+        event the model checks after every token — the caller's
+        ``stop_event`` when one was passed — and decoding ends within one
+        token instead of running to ``max_new_tokens`` for nobody.
 
         Args:
             prompt (str): The input text.
             config (GenerationConfig | None): Typed generation parameters;
                 its set fields layer over the defaults.
             stop_event (threading.Event | None): Set it to stop decoding
-                at the next token. Pair it with
-                :func:`~tempest_fastapi_sdk.tasks.run_cancellable`, which
-                sets it for you when the work is cancelled.
+                at the next token. Cancelling the call sets it too, so a
+                timeout stops the model instead of only the wait.
             **kwargs (Any): Generation overrides (``max_new_tokens``,
                 ``temperature``, ``top_p``, …) forwarded to
                 ``model.generate``; these win over ``config``.
@@ -1036,8 +1081,11 @@ class TextGenerator:
                 self.model_id,
                 prompt,
                 self._key_params(config, kwargs),
-                lambda: asyncio.to_thread(
-                    self._generate_sync, prompt, config, dict(kwargs), stop_event
+                lambda: _decode_in_thread(
+                    lambda event: self._generate_sync(
+                        prompt, config, dict(kwargs), event
+                    ),
+                    stop_event,
                 ),
                 identity=self._cache_identity(),
             ),
@@ -1080,7 +1128,7 @@ class TextGenerator:
                 ``{"role": ..., "content": ...}``.
             config (GenerationConfig | None): Typed generation parameters.
             stop_event (threading.Event | None): Set it to stop decoding
-                at the next token.
+                at the next token. Cancelling the call sets it too.
             **kwargs (Any): Generation overrides (win over ``config``).
 
         Returns:
@@ -1097,8 +1145,11 @@ class TextGenerator:
                 self.model_id,
                 cache_prompt,
                 self._key_params(config, kwargs),
-                lambda: asyncio.to_thread(
-                    self._chat_sync, messages, config, dict(kwargs), stop_event
+                lambda: _decode_in_thread(
+                    lambda event: self._chat_sync(
+                        messages, config, dict(kwargs), event
+                    ),
+                    stop_event,
                 ),
                 operation="chat",
                 identity=self._cache_identity(),
@@ -1143,6 +1194,7 @@ class TextGenerator:
         tools: list[dict[str, Any]],
         *,
         config: GenerationConfig | None = None,
+        stop_event: threading.Event | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Generate a chat reply with tool-calling enabled.
@@ -1161,6 +1213,8 @@ class TextGenerator:
                 ``{"type": "function", "function": {...}}`` shape (as produced
                 by :meth:`~tempest_fastapi_sdk.genai.pipeline.Tool.to_spec`).
             config (GenerationConfig | None): Typed generation parameters.
+            stop_event (threading.Event | None): Set it to stop decoding
+                at the next token. Cancelling the call sets it too.
             **kwargs (Any): Generation overrides (win over ``config``).
 
         Returns:
@@ -1168,12 +1222,11 @@ class TextGenerator:
             call has the ``{"function": {"name", "arguments"}}`` shape;
             ``tool_calls`` is empty when the model returned plain text.
         """
-        return await asyncio.to_thread(
-            self._chat_with_tools_sync,
-            messages,
-            tools,
-            config,
-            kwargs,
+        return await _decode_in_thread(
+            lambda event: self._chat_with_tools_sync(
+                messages, tools, config, kwargs, event
+            ),
+            stop_event,
         )
 
     def _chat_with_tools_sync(  # pragma: no cover - needs torch + a real model
@@ -1182,6 +1235,7 @@ class TextGenerator:
         tools: list[dict[str, Any]],
         config: GenerationConfig | None,
         overrides: dict[str, Any],
+        stop_event: threading.Event | None = None,
     ) -> dict[str, Any]:
         """Blocking tool-calling generation via the tokenizer chat template."""
         with self._lifecycle.use():
@@ -1191,7 +1245,7 @@ class TextGenerator:
                 tokenize=False,
                 add_generation_prompt=True,
             )
-            text = self._generate_sync(prompt, config, overrides)
+            text = self._generate_sync(prompt, config, overrides, stop_event)
         content, tool_calls = _parse_tool_calls(text)
         return {"content": content, "tool_calls": tool_calls}
 
@@ -1221,7 +1275,7 @@ class TextGenerator:
             constrained (bool): Enforce the schema during decoding (needs the
                 ``[genai-structured]`` extra) or only parse afterwards.
             stop_event (threading.Event | None): Set it to stop decoding at
-                the next token.
+                the next token. Cancelling the call sets it too.
             **kwargs (Any): Generation overrides (win over ``config``).
 
         Returns:
@@ -1234,13 +1288,10 @@ class TextGenerator:
             GenerationStoppedError: When ``stop_event`` was set mid-flight.
             pydantic.ValidationError: When the JSON fails ``schema`` validation.
         """
-        return await asyncio.to_thread(
-            self._generate_structured_sync,
-            prompt,
-            schema,
-            config,
-            kwargs,
-            constrained,
+        return await _decode_in_thread(
+            lambda event: self._generate_structured_sync(
+                prompt, schema, config, kwargs, constrained, event
+            ),
             stop_event,
         )
 
@@ -1282,7 +1333,7 @@ class TextGenerator:
             constrained (bool): Enforce the schema during decoding (needs
                 the ``[genai-structured]`` extra) or only parse afterwards.
             stop_event (threading.Event | None): Set it to stop decoding at
-                the next token.
+                the next token. Cancelling the call sets it too.
             **kwargs (Any): Generation overrides (win over ``config``).
 
         Returns:
@@ -1296,13 +1347,10 @@ class TextGenerator:
             pydantic.ValidationError: When the JSON fails ``schema``
                 validation.
         """
-        return await asyncio.to_thread(
-            self._chat_structured_sync,
-            messages,
-            schema,
-            config,
-            kwargs,
-            constrained,
+        return await _decode_in_thread(
+            lambda event: self._chat_structured_sync(
+                messages, schema, config, kwargs, constrained, event
+            ),
             stop_event,
         )
 

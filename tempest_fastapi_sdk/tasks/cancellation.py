@@ -39,7 +39,9 @@ here reaches a model already decoding
 (:meth:`~tempest_fastapi_sdk.genai.TextGenerator.chat_structured` takes the
 same event). The event is set before the coroutine is cancelled, so the
 thread starts winding down at the moment the decision is made rather than
-whenever it happens to finish.
+whenever it happens to finish. ``TextGenerator`` and ``VisionTextGenerator``
+no longer depend on it: cancelling any of their calls sets the event their
+stopping criterion watches, so the event matters for your own thread work.
 
 That last check matters even with this helper, and it is a check of
 **ownership**, not of cancellation: "this stage is no longer mine" covers

@@ -23,7 +23,6 @@ Qwen2-VL; other families may need a thin adapter.
 
 from __future__ import annotations
 
-import asyncio
 import io
 import threading
 from pathlib import Path
@@ -40,6 +39,7 @@ from tempest_fastapi_sdk.genai.text import (
     GenerationStoppedError,
     _apply_seed,
     _apply_stop_strings,
+    _decode_in_thread,
     _require_transformers,
     _resolve_control,
     _stop_criteria,
@@ -308,9 +308,8 @@ class VisionTextGenerator:
                 ``None`` for a text-only call.
             config (GenerationConfig | None): Typed generation parameters.
             stop_event (threading.Event | None): Set it to stop decoding
-                at the next token. Pair it with
-                :func:`~tempest_fastapi_sdk.tasks.run_cancellable`, which
-                sets it for you when the work is cancelled.
+                at the next token. Cancelling the call sets it too, so a
+                timeout stops the model instead of only the wait.
             **kwargs (Any): Generation overrides (win over ``config``);
                 ``seed`` and ``stop`` are applied as above, the rest go to
                 ``model.generate``.
@@ -321,12 +320,8 @@ class VisionTextGenerator:
         Raises:
             GenerationStoppedError: When ``stop_event`` was set mid-flight.
         """
-        return await asyncio.to_thread(
-            self._generate_sync,
-            prompt,
-            images,
-            config,
-            kwargs,
+        return await _decode_in_thread(
+            lambda event: self._generate_sync(prompt, images, config, kwargs, event),
             stop_event,
         )
 
@@ -402,7 +397,7 @@ class VisionTextGenerator:
             images (list[Any] | None): Images for the turn.
             config (GenerationConfig | None): Typed generation parameters.
             stop_event (threading.Event | None): Set it to stop decoding
-                at the next token.
+                at the next token. Cancelling the call sets it too.
             **kwargs (Any): Generation overrides (win over ``config``),
                 handled as in :meth:`generate`.
 
@@ -412,12 +407,8 @@ class VisionTextGenerator:
         Raises:
             GenerationStoppedError: When ``stop_event`` was set mid-flight.
         """
-        return await asyncio.to_thread(
-            self._chat_sync,
-            messages,
-            images,
-            config,
-            kwargs,
+        return await _decode_in_thread(
+            lambda event: self._chat_sync(messages, images, config, kwargs, event),
             stop_event,
         )
 

@@ -508,13 +508,14 @@ is done" is something only the table call finishing can say.
     `await tracker.report("pdf", done=read / total)`. A measured number
     beats an estimate, and only it may reach the phase ceiling.
 
-!!! warning "A local model runs in a thread"
-    Cancelling the coroutine does not stop a thread. For
-    [`TextGenerator`](genai.en.md), pass the same
-    `threading.Event` on both sides — `tracker.run(..., stop_event=event)`
-    and `chat_structured(..., stop_event=event)` — and the decision
-    reaches a model already decoding. Without it, the screen says
-    "cancelled" while the GPU keeps generating.
+!!! warning "Your own work in a thread"
+    Cancelling the coroutine does not stop a thread. A
+    [`TextGenerator`](genai.en.md) already handles its own case: when
+    `tracker.run` cancels the call, it sets the event the model checks
+    after every token. For **your** work running in a thread, pass a
+    `threading.Event` to `tracker.run(..., stop_event=event)` and check it
+    in your loop. Without it, the screen says "cancelled" while the thread
+    keeps working.
 
 On the screen side, ask `watch` to emit on progress changes too, or the
 bar will not move:
