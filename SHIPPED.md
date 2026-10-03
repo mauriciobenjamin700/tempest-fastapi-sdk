@@ -2706,3 +2706,21 @@ virou fix. Superfície nova ou mudada:
   `DEFAULT_SYNC_WATERMARK_LAG` (5 s): o marco fica atrás do início da query,
   e a escrita cuja transação atravessa o pull aparece no pull seguinte em vez
   de se perder. Linha da janela chega duas vezes; o cliente faz upsert.
+
+## `tempest new --extras` soma aos extras obrigatórios (Unreleased, #389)
+
+O `--extras` substituía o default `auth,admin`, e o `app.py` gerado monta o
+admin incondicionalmente — `--extras cache,tasks` gerava um projeto que
+morria no import (`Admin requires the [admin] extra`). Agora
+`REQUIRED_EXTRAS = {"admin", "auth"}` entra sempre; o `--extras` soma,
+deduplica e ordena, uma vez, no começo do `scaffold`, para pyproject,
+`CLAUDE.md`, compose, `.env.example`, Dockerfile e camadas de `src` verem o
+mesmo conjunto. `auth` entra porque o login do admin passa pelo
+`PasswordUtils` — o app importa sem ele e quebra no primeiro login.
+
+O teste (`tests/cli/test_new_required_extras.py`) não precisa de rede: roda o
+app gerado num subprocess que recusa importar toda distribuição que só um
+extra **não** pinado traria, e faz o login do admin. A suíte roda com todos
+os extras instalados, então importar o app no próprio processo não provava
+nada sobre o `pyproject.toml` ao lado dele.
+

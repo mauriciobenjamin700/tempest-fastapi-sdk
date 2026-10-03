@@ -52,7 +52,7 @@ def test_is_written_and_fully_rendered(claude_md: str) -> None:
     assert "__PROJECT_NAME__" not in claude_md
     assert "__SDK_DEP__" not in claude_md
     assert "__SDK_EXTRAS__" not in claude_md
-    assert "tempest-fastapi-sdk[ssr,auth]" in claude_md
+    assert "tempest-fastapi-sdk[admin,auth,ssr]" in claude_md
 
 
 def test_every_python_block_parses(claude_md: str) -> None:
