@@ -2011,15 +2011,20 @@ the recommended structured route, no extra library**.
     asyncio.run(main())
     ```
 
-!!! warning "Cancelling the local model needs `stop_event`"
+!!! info "Cancelling the call stops the local model"
     Local generation runs in a thread, and a thread cannot be cancelled
-    from outside: abandoning the coroutine leaves the GPU producing a reply
-    nobody will read. The `stop_event` is how the decision gets in —
-    transformers asks its stopping criteria after every token. Pass the
-    same event to
-    [`run_cancellable`](jobs.en.md#8-progress-the-bar-that-does-not-lie),
-    which sets it on cancellation. On the daemon this is unnecessary:
-    aborting the HTTP request stops the generation.
+    from outside. So `TextGenerator` (and `VisionTextGenerator`) runs every
+    call under an event that the transformers stopping criteria check after
+    every token, and sets it when the call is cancelled: an
+    `asyncio.timeout`, an agent budget or
+    [`run_cancellable`](jobs.en.md#8-progress-the-bar-that-does-not-lie)
+    stop decoding within one token. Measured with
+    `Qwen/Qwen2.5-0.5B-Instruct` on CPU, 300 forced tokens, cancelled after
+    1 s: the thread used to keep decoding 9.3 to 9.4 s after the cancellation; it
+    now ends in 0.02 s. `stop_event` still serves to stop **without**
+    cancelling (from another thread, say), and it is set on cancellation
+    too. On the daemon none of this is needed: aborting the HTTP request
+    stops the generation.
 
 !!! tip "Just the parse"
     `parse_structured(text, schema)` pulls the JSON out of a raw completion

@@ -505,13 +505,14 @@ acabou" é coisa que só a chamada da tabela terminando pode dizer.
     use `await tracker.report("pdf", done=lidas / total)`. Um número
     medido vence uma estimativa, e só ele pode encostar no teto da fase.
 
-!!! warning "Modelo local roda numa thread"
-    Cancelar a corotina não para uma thread. Para
-    [`TextGenerator`](genai.md), passe o mesmo
-    `threading.Event` nos dois lados — `tracker.run(..., stop_event=evento)`
-    e `chat_structured(..., stop_event=evento)` — e a decisão alcança um
-    modelo que já está decodificando. Sem isso, a tela mostra
-    "cancelado" enquanto a GPU continua gerando.
+!!! warning "Trabalho seu numa thread"
+    Cancelar a corotina não para uma thread. O
+    [`TextGenerator`](genai.md) já resolve o caso dele: quando o
+    `tracker.run` cancela a chamada, ele aciona o evento que o modelo
+    consulta a cada token. Para trabalho **seu** que roda numa thread,
+    passe um `threading.Event` em `tracker.run(..., stop_event=evento)` e
+    consulte-o no seu laço. Sem isso, a tela mostra "cancelado" enquanto a
+    thread continua trabalhando.
 
 Do lado da tela, peça para o `watch` emitir também em mudança de
 progresso, senão a barra não anda:

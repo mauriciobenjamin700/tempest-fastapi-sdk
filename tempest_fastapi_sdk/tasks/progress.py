@@ -408,8 +408,9 @@ class ProgressTracker:
                 characters is not paced like one over 4.000.
             stop_event (threading.Event | None): Forwarded to
                 :func:`~tempest_fastapi_sdk.tasks.run_cancellable`, for
-                work that runs in a thread and watches an event — a local
-                model decoding, which no coroutine cancellation reaches.
+                work that runs in a thread and watches an event, which no
+                coroutine cancellation reaches on its own. ``TextGenerator``
+                does not need it: it sets its own event when cancelled.
 
         Returns:
             ResultT: Whatever ``work`` returned.

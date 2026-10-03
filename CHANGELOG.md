@@ -5,6 +5,25 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Cancelar uma chamada do modelo local para a decodificação.**
+  `TextGenerator` (`generate`, `chat`, `chat_with_tools`,
+  `generate_structured`, `chat_structured`) e `VisionTextGenerator`
+  (`generate`, `chat`) rodam numa thread, e cancelar a corotina só
+  abandonava a espera: a thread seguia gerando até `max_new_tokens`,
+  segurando os núcleos. O laço do `Agent` nunca passa `stop_event`, então
+  todo timeout do `AgentBudget` deixava um worker decodificando para
+  ninguém. Agora toda chamada roda sob um evento (o `stop_event` do caller
+  ou um privado) que é acionado no cancelamento. Medido com
+  `Qwen/Qwen2.5-0.5B-Instruct` em CPU, 300 tokens forçados: por um `Agent`
+  com `AgentBudget(max_seconds=1.0)`, a thread decodificava 10,8 s depois
+  de o run voltar `timeout`; agora termina em 0,01 s.
+- `TextGenerator.chat_with_tools` aceita `stop_event=`, como os outros
+  métodos.
+
 ## [0.303.0] — 2026-10-02
 
 Auditoria da documentação contra o código entregue: 150 afirmações da doc
