@@ -3787,7 +3787,7 @@ tempest new my_service --path ~/projects        # custom parent dir
 tempest new my_service \
     --bind-host 0.0.0.0 \                       # default HOST in .env.example
     --bind-port 9090 \                          # default PORT in .env.example
-    --extras auth,upload                        # pinned SDK extras
+    --extras upload                             # pinned on top of admin,auth
 tempest new my_service --force                  # overwrite existing dir
 ```
 

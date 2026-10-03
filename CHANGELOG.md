@@ -92,6 +92,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`tempest new --extras cache,tasks` gerava um projeto que não subia.**
+  O `--extras` substituía o default `auth,admin`, mas o `src/api/app.py`
+  gerado sempre monta o painel admin: o `pyproject.toml` saía com
+  `tempest-fastapi-sdk[cache,tasks]` e o app quebrava no import com
+  `ImportError: Admin requires the [admin] extra` (reproduzido numa venv
+  limpa com só os extras pinados; `--extras ""` quebrava igual). Sem `[auth]`
+  o app sobe, mas o primeiro login do admin levanta
+  `PasswordUtils requires the [auth] extra`. Agora `admin` e `auth`
+  (`REQUIRED_EXTRAS` em `tempest_fastapi_sdk/cli/new.py`) entram sempre e o
+  `--extras` soma a eles, sem duplicata e em ordem alfabética:
+  `--extras cache,tasks` fixa `[admin,auth,cache,tasks]`. O default da opção
+  passou de `"auth,admin"` para `""` — o resultado é o mesmo conjunto. O
+  `tempest generate` não muda: ele lê os extras do `pyproject.toml` existente
+  e não reescreve a dependência do SDK (#389).
+
 - **Download de `.xlsx`/`.docx`/`.pptx` saía `application/octet-stream` em
   container slim.** `DownloadUtils.file_response`, `DownloadUtils.stream` e
   `AsyncMinIOClient.download_response` adivinhavam o tipo com
