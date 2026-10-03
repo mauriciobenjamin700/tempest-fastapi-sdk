@@ -697,6 +697,19 @@ a generated image is megabytes, and base64 in the body inflates that by a
 third. The bytes come from a second request with the right media type —
 which also means an `<img src>` works directly.
 
+!!! tip "Several runs at once on a CPU model"
+    Every run that reaches the router calls the same `TextGenerator`, and on
+    CPU one decode already takes every core: with no limit, four concurrent
+    runs split the machine and all of them finish late. Build the generator
+    with `max_concurrent=1` —
+    `TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT, max_concurrent=1)` — and
+    the extra requests wait in line. Measured with that model, four
+    concurrent calls: median latency from 22.73 s to 11.91 s, throughput from
+    22.4 to 26.9 tokens/s. The agent's time budget counts the time spent in
+    line, so size `max_seconds` with that in mind. The numbers, the hardware
+    and why it is a thread pool and not a semaphore are in
+    [Self-hosted generative AI](genai.md#several-requests-at-once-on-cpu-max_concurrent).
+
 ## Recap
 
 - **`Agent.run(goal)`** returns an `AgentRun`: answer, trace, artifacts and

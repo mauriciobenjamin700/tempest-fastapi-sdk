@@ -694,6 +694,19 @@ bytes: uma imagem gerada tem megabytes, e base64 no corpo infla isso em um
 terço. Os bytes vêm numa segunda requisição, com o media type certo — o que
 também faz um `<img src>` funcionar direto.
 
+!!! tip "Várias execuções ao mesmo tempo num modelo em CPU"
+    Cada execução que chega no router chama o mesmo `TextGenerator`, e em
+    CPU uma decodificação já ocupa todos os núcleos: sem limite, quatro
+    execuções simultâneas dividem a máquina e todas terminam tarde. Crie o
+    gerador com `max_concurrent=1` —
+    `TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT, max_concurrent=1)` — e
+    os pedidos excedentes esperam numa fila. Medido com esse modelo, quatro
+    chamadas simultâneas: latência mediana de 22,73 s para 11,91 s, vazão de
+    22,4 para 26,9 tokens/s. O orçamento de tempo do agente conta a espera
+    na fila, então dimensione `max_seconds` com isso em mente. Os números, o
+    hardware e por que é um pool de threads e não um semáforo estão em
+    [IA generativa self-hosted](genai.md#varios-pedidos-ao-mesmo-tempo-em-cpu-max_concurrent).
+
 ## Recapitulando
 
 - **`Agent.run(goal)`** devolve `AgentRun`: resposta, traço, artefatos e

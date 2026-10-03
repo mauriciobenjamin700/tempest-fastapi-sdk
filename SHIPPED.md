@@ -1007,6 +1007,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   e a thread seguia até `max_new_tokens`: Qwen2.5-0.5B em CPU, 300 tokens
   forçados, budget de 1 s — 10,8 s decodificando depois do `timeout`, agora
   0,01 s. `chat_with_tools` ganha `stop_event=`.
+- **Concorrência do gerador local em CPU (Unreleased)** —
+  `TextGenerator(max_concurrent=N)` e `VisionTextGenerator(max_concurrent=N)`
+  rodam a decodificação num pool de N threads próprias (fila FIFO; default
+  `None` = sem limite). Pool, não semáforo, porque o OpenMP do torch mantém
+  um time por thread chamadora: serial, 4,5 s por chamada numa thread só e
+  6,4 s depois de alternar entre quatro. Qwen2.5-0.5B em CPU, quatro chamadas
+  simultâneas: `max_concurrent=1` dá 26,9 tokens/s (sem limite: 22,4) e
+  latência mediana de 11,91 s (22,73 s). Sem knob de threads
+  (`torch.set_num_threads` é global). Receita: "Vários pedidos ao mesmo
+  tempo em CPU" em `genai.md`; nota em `agents.md`.
 - **Planilhas (v0.229.0, `[spreadsheet]` extra = openpyxl)** —
   `tempest_fastapi_sdk.spreadsheet`. `SheetWriter` segura o cursor de linha
   (`title_block`/`header_row`/`group_row`/`write_row`/`total_row`/
