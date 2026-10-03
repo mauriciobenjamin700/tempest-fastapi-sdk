@@ -189,7 +189,7 @@ def regenerate_docker_compose(
         )
         raise typer.Exit(1)
     compose_path.write_text(
-        generate(resolved_name, resolved_extras),
+        generate(resolved_name, resolved_extras, port=_discover_port(target)),
         encoding="utf-8",
     )
 
@@ -217,8 +217,10 @@ def regenerate_docker_compose(
 def _discover_port(target: Path, fallback: int = 8000) -> int:
     """Read ``SERVER_PORT`` from the project's ``.env`` / ``.env.example``.
 
-    The port only feeds the Dockerfile's ``EXPOSE`` / ``SERVER_PORT`` —
-    purely informational, so a missing value falls back silently.
+    The port feeds the Dockerfile's ``EXPOSE`` / ``SERVER_PORT`` and the
+    compose ``api`` service's published port and health probe. A missing
+    value falls back silently to ``fallback``, which matches the default
+    ``tempest new --port``.
 
     Args:
         target (Path): Project root directory.

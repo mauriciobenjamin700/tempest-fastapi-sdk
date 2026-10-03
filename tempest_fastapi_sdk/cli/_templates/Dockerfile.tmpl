@@ -7,10 +7,14 @@
 # Build:  docker build -t __PROJECT_NAME__ .
 __SPA_HEADER__# Run:    docker run --rm -p __PORT__:__PORT__ --env-file .env __PROJECT_NAME__
 #
+# Or, with the infra:  docker compose --profile prod up -d --build
+#
 # The image binds SERVER_HOST=0.0.0.0 (see the final stage) so the app is
-# reachable from outside the container even without a .env file. The infra
-# in docker-compose.yaml (Postgres, etc.) is separate — point DATABASE_URL
-# at it via --env-file or `environment:` when you wire this image in.
+# reachable from outside the container even without a .env file. The `api`
+# service in docker-compose.yaml (prod profile) builds this image and
+# re-points DATABASE_URL & co. from the .env's localhost to the compose
+# service names; a bare `docker run --env-file .env` does not, so it only
+# reaches the infra if you edit those hosts yourself.
 
 __SPA_STAGE__# ---- builder ----------------------------------------------------------------
 FROM python:3.13-slim AS builder

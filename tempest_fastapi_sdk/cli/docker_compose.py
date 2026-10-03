@@ -16,6 +16,15 @@ core — the scaffolded ``.env`` keeps SQLite as the default URL so
 file gives the developer a one-command path to a real Postgres
 when they need it.
 
+The service itself is wired in too, as an ``api`` service behind the
+``prod`` compose profile: ``docker compose up -d`` still starts only
+the infra (the dev loop runs the app on the host), while
+``docker compose --profile prod up -d --build`` builds the scaffolded
+``Dockerfile`` and runs the app on the compose network, with every
+host the ``.env`` points at ``localhost`` re-pointed at the compose
+service name. Infra ports are published on ``127.0.0.1`` only, so the
+host's dev loop keeps reaching them and nothing outside the host does.
+
 The image tags are pinned to versions known to work with the SDK
 at release time — bump intentionally, not by accident. Bumping any
 of them should go through the smoke suite first.
@@ -86,7 +95,7 @@ def _postgres_block(project_name: str) -> str:
       # Postgres 14+ defaults to scram-sha-256 — leave the explicit
       # method off so the cluster picks the secure default.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       # Postgres 18+ requires the mount at /var/lib/postgresql
       # (not /var/lib/postgresql/data). Wipe the old volume with
@@ -115,7 +124,7 @@ def _redis_block(project_name: str) -> str:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -145,8 +154,8 @@ def _rabbitmq_block(project_name: str) -> str:
       RABBITMQ_DEFAULT_PASS: ${{RABBITMQ_DEFAULT_PASS:-guest}}
       RABBITMQ_DEFAULT_VHOST: ${{RABBITMQ_DEFAULT_VHOST:-/}}
     ports:
-      - "5672:5672"     # AMQP
-      - "15672:15672"   # Management UI — http://localhost:15672 (guest/guest)
+      - "127.0.0.1:5672:5672"     # AMQP
+      - "127.0.0.1:15672:15672"   # Management UI — http://localhost:15672 (guest/guest)
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
@@ -171,8 +180,8 @@ def _minio_blocks(project_name: str) -> str:
       MINIO_ROOT_USER: ${{MINIO_ROOT_USER:-minioadmin}}
       MINIO_ROOT_PASSWORD: ${{MINIO_ROOT_PASSWORD:-minioadmin}}
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Web console — http://localhost:9001
+      - "127.0.0.1:9000:9000"   # S3 API
+      - "127.0.0.1:9001:9001"   # Web console — http://localhost:9001
     volumes:
       - minio-data:/data
     healthcheck:
@@ -204,12 +213,113 @@ def _mailhog_block(project_name: str) -> str:
     container_name: {project_name}-mailhog
     restart: unless-stopped
     ports:
-      - "1025:1025"   # SMTP
-      - "8025:8025"   # Web UI — http://localhost:8025
+      - "127.0.0.1:1025:1025"   # SMTP
+      - "127.0.0.1:8025:8025"   # Web UI — http://localhost:8025
 """
 
 
-def generate(project_name: str, extras: str) -> str:
+def _api_block(project_name: str, extras_set: set[str], port: int) -> str:
+    """Compose snippet for the service itself, gated behind the ``prod`` profile.
+
+    ``docker compose up -d`` leaves this service out, so the dev loop is
+    unchanged: infra in containers, the app on the host with reload.
+    ``docker compose --profile prod up -d --build`` builds the scaffolded
+    ``Dockerfile`` and runs the app inside the compose network.
+
+    The ``.env`` the scaffold writes points every backend at
+    ``localhost``, which is right for the host process and wrong inside a
+    container, where ``localhost`` is the API container itself. Compose
+    gives ``environment:`` precedence over ``env_file:``, so the block
+    re-points each host :func:`env_block_for` writes for the chosen
+    extras at the compose service name. ``SMTP_HOST`` is the deliberate
+    exception: MailHog is a dev catch-all, and production mail goes
+    through the real SMTP server configured in ``.env``.
+
+    ``SERVER_HOST`` / ``SERVER_PORT`` are pinned too, because ``.env``
+    carries the host-side ``SERVER_HOST=127.0.0.1`` and would otherwise
+    override the image's ``0.0.0.0`` and make the app unreachable from
+    the published port.
+
+    The health probe hits ``/health/readiness`` (the scaffold mounts
+    ``make_health_router``, which serves ``/health/liveness`` and
+    ``/health/readiness`` but nothing at ``/health``) through
+    ``urllib``, since ``python:3.13-slim`` ships no ``curl``. Readiness
+    answers ``503`` while the database is unreachable, and ``urlopen``
+    raises on it, so ``healthy`` means the app reached Postgres.
+
+    Args:
+        project_name (str): Scaffolded project name, used for the
+            container name and the default ``POSTGRES_DB``.
+        extras_set (set[str]): Parsed extras deciding which hosts are
+            re-pointed and which services the API waits on.
+        port (int): Port the app listens on inside the container and
+            publishes on the host.
+
+    Returns:
+        str: The ``api`` service block.
+    """
+    safe = project_name.replace("-", "_")
+    environment: list[str] = [
+        "      SERVER_HOST: 0.0.0.0",
+        f'      SERVER_PORT: "{port}"',
+        "      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-app}:"
+        f"${{POSTGRES_PASSWORD:-app}}@postgres:5432/${{POSTGRES_DB:-{safe}}}",
+    ]
+    depends_on: list[str] = [
+        "      postgres:\n        condition: service_healthy",
+    ]
+    if "cache" in extras_set:
+        environment.append("      REDIS_URL: redis://redis:6379/0")
+        depends_on.append("      redis:\n        condition: service_healthy")
+    if extras_set & {"queue", "tasks"}:
+        amqp = (
+            "amqp://${RABBITMQ_DEFAULT_USER:-guest}:"
+            "${RABBITMQ_DEFAULT_PASS:-guest}@rabbitmq:5672/"
+        )
+        environment.append(f"      RABBITMQ_URL: {amqp}")
+        environment.append(f"      TASKIQ_BROKER_URL: {amqp}")
+        depends_on.append("      rabbitmq:\n        condition: service_healthy")
+    if "minio" in extras_set:
+        environment.append("      MINIO_ENDPOINT: minio:9000")
+        depends_on.append("      minio:\n        condition: service_healthy")
+        depends_on.append(
+            "      minio-bootstrap:\n        condition: service_completed_successfully"
+        )
+    probe = (
+        "import urllib.request; urllib.request.urlopen("
+        f"'http://127.0.0.1:{port}/health/readiness', timeout=3)"
+    )
+    return (
+        "  api:\n"
+        "    # Only under `docker compose --profile prod up -d --build`;\n"
+        "    # plain `docker compose up -d` keeps running just the infra.\n"
+        '    profiles: ["prod"]\n'
+        "    build: .\n"
+        f"    container_name: {project_name}-api\n"
+        "    restart: unless-stopped\n"
+        "    env_file: .env\n"
+        "    environment:\n"
+        "      # environment: wins over env_file. .env points every backend\n"
+        "      # at localhost (right for the host, wrong in a container), so\n"
+        "      # the hosts are re-pointed at the compose service names here.\n"
+        "      # SMTP_* is left to .env on purpose: MailHog is dev-only and\n"
+        "      # production mail goes through the real SMTP server.\n"
+        + "\n".join(environment)
+        + "\n"
+        "    ports:\n"
+        f'      - "{port}:{port}"\n'
+        "    depends_on:\n" + "\n".join(depends_on) + "\n"
+        "    healthcheck:\n"
+        "      # python:3.13-slim has no curl; readiness is 503 until the DB answers.\n"
+        f'      test: ["CMD", "python", "-c", "{probe}"]\n'
+        "      interval: 10s\n"
+        "      timeout: 5s\n"
+        "      retries: 6\n"
+        "      start_period: 20s\n"
+    )
+
+
+def generate(project_name: str, extras: str, *, port: int = 8000) -> str:
     """Render a ``docker-compose.yaml`` matching the chosen extras.
 
     Args:
@@ -219,6 +329,9 @@ def generate(project_name: str, extras: str) -> str:
         extras (str): Comma-separated SDK extras the caller picked
             via ``tempest new --extras``. Triggers the
             corresponding service blocks.
+        port (int): Port the app listens on. Feeds the ``api`` service
+            under the ``prod`` profile (published port and health
+            probe); the infra blocks do not use it.
 
     Returns:
         str: YAML body, ready to write at ``docker-compose.yaml``.
@@ -243,13 +356,20 @@ def generate(project_name: str, extras: str) -> str:
     if "email" in extras_set:
         services.append(_mailhog_block(project_name))
 
+    services.append(_api_block(project_name, extras_set, port))
+
     header = (
         f"# docker-compose.yaml — generated by `tempest new` for "
         f"`{project_name}`.\n"
         "#\n"
-        "# Boot the entire stack:   docker compose up -d\n"
-        "# Tear it down (keep data): docker compose down\n"
-        "# Tear it down (wipe data): docker compose down -v\n"
+        "# Dev  (infra only, app on the host): docker compose up -d\n"
+        "# Prod (infra + app in containers):   docker compose --profile prod up -d --build\n"
+        "# Tear it down (keep data): docker compose --profile prod down\n"
+        "# Tear it down (wipe data): docker compose --profile prod down -v\n"
+        "#\n"
+        "# Infra ports are published on 127.0.0.1 only: the host's dev\n"
+        "# loop reaches them, nothing outside the host does. The api\n"
+        "# service talks to them over the compose network by name.\n"
         "#\n"
         "# Only services backing the SDK extras you chose are wired\n"
         "# in here. Add others manually as the service grows.\n"
@@ -293,9 +413,10 @@ def env_block_for(extras: str) -> str:
         "POSTGRES_PASSWORD=app\n"
         "# POSTGRES_DB defaults to the project name; uncomment to override.\n"
         "# POSTGRES_DB=app\n"
-        "# Uncomment to switch the app from the default SQLite URL\n"
-        "# (host/port/db must match the credentials above; also uncomment\n"
-        "# the asyncpg dependency in pyproject.toml):\n"
+        "# Uncomment to switch the host-run app from the default SQLite URL\n"
+        "# (host/port/db must match the credentials above; asyncpg is\n"
+        "# already a dependency). The prod profile's api service overrides\n"
+        "# this with the in-network postgres host on its own.\n"
         "# DATABASE_URL=postgresql+asyncpg://app:app@localhost:5432/app\n"
     )
 
