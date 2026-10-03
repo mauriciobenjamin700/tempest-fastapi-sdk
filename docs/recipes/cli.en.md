@@ -27,7 +27,7 @@ tempest --version                               # show the SDK version
 tempest new my_service                          # scaffold under ./my_service
 tempest new my_service --path ~/projects        # custom parent dir
 # default HOST/PORT in .env.example and SDK extras pinned in pyproject.toml
-tempest new my_service --bind-host 0.0.0.0 --bind-port 9090 --extras auth,upload
+tempest new my_service --bind-host 0.0.0.0 --bind-port 9090 --extras upload
 tempest new my_service --force                  # overwrite existing dir
 ```
 
@@ -82,7 +82,7 @@ my_service/
     right `code`, paginated listing in the SDK envelope). A renamed
     symbol breaks that test, not someone's project.
 
-The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sdk[auth,admin]>=<version>` by default — change with `--extras`). The scaffolded `.env.example` uses the v0.8.0 settings naming (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), and `src/server.py` delegates to `tempest_fastapi_sdk.run_server` so uvicorn is imported lazily and tests can import the app without it. Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
+The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sdk[admin,auth]>=<version>` by default). `admin` and `auth` are required — the generated `src/api/app.py` mounts the admin panel, and its login checks the password through `PasswordUtils` — so `--extras` **adds** to them instead of replacing them: `--extras cache,tasks` pins `[admin,auth,cache,tasks]`, `--extras ""` pins just `[admin,auth]`, and duplicates are dropped with the list sorted alphabetically. The scaffolded `.env.example` uses the v0.8.0 settings naming (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), and `src/server.py` delegates to `tempest_fastapi_sdk.run_server` so uvicorn is imported lazily and tests can import the app without it. Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
 
 !!! tip "API title / version come from `.env`"
     Since v0.48.0 the scaffolded `Settings` carries `TITLE`, `VERSION`
@@ -183,7 +183,7 @@ curl http://127.0.0.1:8000/health/readiness
 {"status":"ready","checks":{"database":true},"version":"0.1.0"}
 ```
 
-For `tempest new my_service --extras auth,admin,cache,tasks`, the generated block is:
+For `tempest new my_service --extras cache,tasks`, the generated block is:
 
 ```yaml
 services:
@@ -289,13 +289,6 @@ Piece by piece:
       scaffold's `pyproject.toml` declares `asyncpg>=0.30.0` next to
       `aiosqlite`, because the image installs only what `pyproject.toml`
       declares and the `prod` profile always uses `postgresql+asyncpg://`.
-
-!!! warning "`--extras` replaces the `auth,admin` default"
-    The scaffolded `app.py` mounts the admin panel, which only imports with
-    `[admin]`. `tempest new my_service --extras cache,tasks` produces a
-    project whose container exits with
-    `ImportError: Admin requires the [admin] extra` — pass
-    `--extras auth,admin,cache,tasks`.
 
 ##### Migrations under the `prod` profile
 

@@ -31,6 +31,34 @@ need to be a Python identifier. Hyphens are common on existing repos
 _TEMPLATE_SUFFIX = ".tmpl"
 """Suffix stripped from every bundled template file on render."""
 
+REQUIRED_EXTRAS: frozenset[str] = frozenset({"admin", "auth"})
+"""SDK extras the scaffolded project cannot boot without.
+
+The bundled ``src/api/app.py`` always mounts the admin panel:
+``make_admin_router`` raises ``ImportError`` at app creation without
+``[admin]``, and the ``UserModelAuthBackend`` it is given hashes the
+login password through ``PasswordUtils``, which raises ``ImportError`` on
+the first admin login without ``[auth]``. ``--extras`` therefore adds to
+this set instead of replacing it.
+"""
+
+
+def _resolve_extras(extras: str) -> str:
+    """Merge the requested extras with :data:`REQUIRED_EXTRAS`.
+
+    Args:
+        extras (str): Comma-separated extras passed to ``--extras``.
+            Blank entries are dropped and names are lower-cased, matching
+            how the compose and ``src`` layer generators read them.
+
+    Returns:
+        str: The deduplicated union, sorted so the pinned requirement is
+        stable regardless of input order (``"cache,auth,cache"`` becomes
+        ``"admin,auth,cache"``).
+    """
+    requested = {part.strip().lower() for part in extras.split(",") if part.strip()}
+    return ",".join(sorted(requested | REQUIRED_EXTRAS))
+
 
 def _validate_name(name: str) -> None:
     """Reject project names that are not safe Python identifiers.
@@ -229,7 +257,8 @@ def scaffold(
             working directory.
         bind_host (str): ``HOST`` value to inject into ``.env.example``.
         bind_port (int): ``PORT`` value to inject into ``.env.example``.
-        extras (str): Comma-separated SDK extras to pin.
+        extras (str): Comma-separated SDK extras to pin on top of
+            :data:`REQUIRED_EXTRAS`, which are always added.
         force (bool): Overwrite the target if it already exists.
 
     Raises:
@@ -243,6 +272,7 @@ def scaffold(
         --src``.
     """
     resolved_name, target = _resolve_name_and_target(name, path)
+    extras = _resolve_extras(extras)
 
     is_cwd_scaffold = target == Path.cwd().resolve()
     if target.exists() and not is_cwd_scaffold and not force:
