@@ -182,7 +182,7 @@ curl http://127.0.0.1:8000/health/readiness
 {"status":"ready","checks":{"database":true},"version":"0.1.0"}
 ```
 
-Para `tempest new my_service --extras auth,admin,cache,tasks`, o bloco gerado é:
+Para `tempest new my_service --extras cache,tasks`, o bloco gerado é:
 
 ```yaml
 services:
@@ -287,13 +287,6 @@ Pedaço por pedaço:
       scaffold declara `asyncpg>=0.30.0` ao lado do `aiosqlite`, porque a
       imagem instala só o que o `pyproject.toml` declara e o profile `prod`
       sempre usa `postgresql+asyncpg://`.
-
-!!! warning "`--extras` substitui o default `auth,admin`"
-    O `app.py` scaffoldado monta o painel admin, que só importa com
-    `[admin]`. `tempest new my_service --extras cache,tasks` gera um projeto
-    cujo container sai com
-    `ImportError: Admin requires the [admin] extra` — passe
-    `--extras auth,admin,cache,tasks`.
 
 ##### Migrations no profile `prod`
 
