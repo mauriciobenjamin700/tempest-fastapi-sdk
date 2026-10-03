@@ -8,18 +8,22 @@ first use, streams tokens, and can free VRAM when idle.
 The heavy imports (``torch`` / ``transformers``) are deferred to
 :meth:`TextGenerator.load`, so this module imports without the ``[genai]``
 extra — the device/precision resolution helpers are usable and testable
-on their own. Blocking generation runs in ``asyncio.to_thread`` so it
-never blocks the event loop.
+on their own. Blocking generation runs on a worker thread — the event
+loop's default executor, or the generator's own pool when
+``max_concurrent`` is set — so it never blocks the event loop.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
+import functools
 import json
 import re
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from tempest_fastapi_sdk.genai.generation_cache import (
@@ -160,25 +164,73 @@ class _StreamEnd:
 _STREAM_END: _StreamEnd = _StreamEnd()
 
 
-def _consume_result(task: asyncio.Future[None]) -> None:
-    """Retrieve a finished producer's outcome so asyncio does not log it.
+def _consume_result(task: asyncio.Future[Any]) -> None:
+    """Retrieve a finished worker's outcome so asyncio does not log it.
 
     Attached whenever the consumer leaves. On the normal path the exception
     was already raised through ``await producer``; when the consumer left
     early the generation is being stopped on purpose, so an exception it
-    raises on the way out has no reader and would otherwise surface as
-    "Task exception was never retrieved".
+    raises on the way out (typically :class:`GenerationStoppedError`) has
+    no reader and would otherwise surface as "Task exception was never
+    retrieved".
 
     Args:
-        task (asyncio.Future[None]): The producer future.
+        task (asyncio.Future[Any]): The worker future.
     """
     if not task.cancelled():
         task.exception()
 
 
+def _decoding_executor(
+    max_concurrent: int | None,
+    model_id: str,
+) -> ThreadPoolExecutor | None:
+    """Build the worker pool that bounds a generator's concurrent decodings.
+
+    The bound is a pool of ``max_concurrent`` long-lived threads rather
+    than a semaphore in front of ``asyncio.to_thread``, and the difference
+    was measured, not assumed. On CPU, torch's OpenMP runtime keeps one
+    worker team per *calling* thread, and the shared default executor hands
+    each call to whichever of its threads is free. Measured with
+    ``Qwen/Qwen2.5-0.5B-Instruct`` on a 6-core / 12-thread CPU (torch
+    2.14, 6 intra-op threads), 128 forced tokens: decoding strictly one at
+    a time took 4.5 s per call while it always ran on the same thread, and
+    6.4 s per call once it had alternated across four live threads — each
+    new calling thread added 6 OS threads, and the slowdown stayed even
+    after decoding went back to the first thread. A semaphore over the
+    default executor therefore serialized calls *and* made each one slower:
+    four concurrent calls finished at 18.5 tokens/s against 22.8 with no
+    limit at all. Pinning decoding to a dedicated pool keeps the number of
+    teams at ``max_concurrent``.
+
+    Args:
+        max_concurrent (int | None): How many decodings may run at once, or
+            ``None`` for no bound.
+        model_id (str): Names the pool's threads, for debuggers and
+            profilers.
+
+    Returns:
+        ThreadPoolExecutor | None: The pool, or ``None`` to run on the
+        event loop's default executor as before.
+
+    Raises:
+        ValueError: When ``max_concurrent`` is not positive.
+    """
+    if max_concurrent is None:
+        return None
+    if max_concurrent <= 0:
+        raise ValueError("max_concurrent must be positive")
+    return ThreadPoolExecutor(
+        max_workers=max_concurrent,
+        thread_name_prefix=f"genai-decode-{model_id}",
+    )
+
+
 async def _decode_in_thread(
     work: Callable[[threading.Event], _ResultT],
     stop_event: threading.Event | None,
+    *,
+    executor: ThreadPoolExecutor | None = None,
 ) -> _ResultT:
     """Run blocking decoding in a worker thread that stops when cancelled.
 
@@ -197,11 +249,19 @@ async def _decode_in_thread(
     caller's event is deliberate: it already means "stop decoding", which
     is exactly what a cancelled call wants.
 
+    With a bounded ``executor`` a call may first wait in its queue. A call
+    cancelled while still queued is dropped from the queue and never runs.
+    One cancelled while decoding keeps its worker until the thread really
+    returns — one token later — so the next queued call never overlaps the
+    stopped one's last forward pass.
+
     Args:
         work (Callable[[threading.Event], _ResultT]): The blocking call,
             given the event its stopping criterion must watch.
         stop_event (threading.Event | None): The caller's event, or
             ``None`` to use a private one.
+        executor (ThreadPoolExecutor | None): The generator's bounded pool,
+            or ``None`` for the loop's default executor.
 
     Returns:
         _ResultT: Whatever ``work`` returned.
@@ -211,8 +271,13 @@ async def _decode_in_thread(
             after the event was set.
     """
     event = stop_event if stop_event is not None else threading.Event()
+    context = contextvars.copy_context()
+    worker = asyncio.get_running_loop().run_in_executor(
+        executor,
+        functools.partial(context.run, work, event),
+    )
     try:
-        return await asyncio.to_thread(work, event)
+        return await worker
     except asyncio.CancelledError:
         event.set()
         raise
@@ -710,6 +775,8 @@ class TextGenerator:
             :meth:`unload_if_idle`.
         config (GenerationConfig | None): Default generation parameters,
             layered under every call's own.
+        max_concurrent (int | None): How many decodings run at once, or
+            ``None`` for no limit.
     """
 
     def __init__(
@@ -729,6 +796,7 @@ class TextGenerator:
         generation_cache: GenerationCache | AsyncGenerationCache | None = None,
         metrics: GenAIMetrics | None = None,
         config: GenerationConfig | None = None,
+        max_concurrent: int | None = None,
     ) -> None:
         """Configure the generator (does not load weights yet).
 
@@ -781,10 +849,29 @@ class TextGenerator:
                 This is how a caller that passes no options — the
                 :class:`~tempest_fastapi_sdk.agents.Agent` loop — still
                 gets a bounded ``max_new_tokens`` or greedy decoding.
+            max_concurrent (int | None): Decodings this instance runs at
+                once; the rest wait their turn, in arrival order. ``None``
+                (the default) starts every call immediately, each on its
+                own worker thread. On CPU, set ``1``: one decode already
+                uses every intra-op thread, so concurrent calls only split
+                the cores. Measured with ``Qwen/Qwen2.5-0.5B-Instruct``,
+                four concurrent calls, 128 forced tokens: 22.4 tokens/s
+                and a 22.73 s median latency with no limit, 26.9 tokens/s
+                and 11.91 s with ``1``. The default stays ``None`` because
+                the gain was measured on CPU only. Decoding runs on a pool
+                of this many threads owned by the generator, never on the
+                loop's default executor: torch's OpenMP keeps one worker
+                team per calling thread, and a semaphore over the shared
+                executor measured 18.5 tokens/s on the same load, slower
+                than no limit at all. Process-wide
+                thread count is torch's (``torch.set_num_threads``) and is
+                deliberately not a knob here.
 
         Raises:
-            ValueError: When ``quantization`` is not int8/int4.
+            ValueError: When ``quantization`` is not int8/int4, or
+                ``max_concurrent`` is not positive.
         """
+        self._executor = _decoding_executor(max_concurrent, model_id)
         self.model_id = model_id
         self.config = config
         self.device = resolve_device(device, hardware)
@@ -812,6 +899,7 @@ class TextGenerator:
         self.idle_unload_seconds = idle_unload_seconds
         self.generation_cache = generation_cache
         self.metrics = metrics
+        self.max_concurrent = max_concurrent
         self._model: Any = None
         self._tokenizer: Any = None
         self._lifecycle = ModelLifecycle(
@@ -1104,6 +1192,7 @@ class TextGenerator:
                         prompt, config, dict(kwargs), event
                     ),
                     stop_event,
+                    executor=self._executor,
                 ),
                 identity=self._cache_identity(),
             ),
@@ -1168,6 +1257,7 @@ class TextGenerator:
                         messages, config, dict(kwargs), event
                     ),
                     stop_event,
+                    executor=self._executor,
                 ),
                 operation="chat",
                 identity=self._cache_identity(),
@@ -1245,6 +1335,7 @@ class TextGenerator:
                 messages, tools, config, kwargs, event
             ),
             stop_event,
+            executor=self._executor,
         )
 
     def _chat_with_tools_sync(  # pragma: no cover - needs torch + a real model
@@ -1311,6 +1402,7 @@ class TextGenerator:
                 prompt, schema, config, kwargs, constrained, event
             ),
             stop_event,
+            executor=self._executor,
         )
 
     async def chat_structured(
@@ -1370,6 +1462,7 @@ class TextGenerator:
                 messages, schema, config, kwargs, constrained, event
             ),
             stop_event,
+            executor=self._executor,
         )
 
     def _chat_structured_sync(  # pragma: no cover - needs torch + a real model
@@ -1486,6 +1579,11 @@ class TextGenerator:
         closing after 5 of 200 tokens used to block for 3532 ms, now about
         0.01 ms, with the worker thread done 28 ms later.
 
+        With ``max_concurrent`` set, the stream holds one of the pool's
+        workers from its first token until that thread returns — after the
+        last token, or one token after the iterator was closed. A stream
+        closed while still queued is dropped from the queue and never runs.
+
         Args:
             prompt (str): The input text.
             config (GenerationConfig | None): Typed generation parameters.
@@ -1520,7 +1618,10 @@ class TextGenerator:
                 with contextlib.suppress(RuntimeError):
                     loop.call_soon_threadsafe(queue.put_nowait, _STREAM_END)
 
-        producer = asyncio.ensure_future(asyncio.to_thread(_produce))
+        producer = loop.run_in_executor(
+            self._executor,
+            functools.partial(contextvars.copy_context().run, _produce),
+        )
         try:
             while True:
                 item = await queue.get()
@@ -1530,6 +1631,7 @@ class TextGenerator:
             await producer
         finally:
             stop_event.set()
+            producer.cancel()
             producer.add_done_callback(_consume_result)
 
 

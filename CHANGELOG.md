@@ -7,48 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **`tempest new --extras cache,tasks` gerava um projeto que não subia.**
-  O `--extras` substituía o default `auth,admin`, mas o `src/api/app.py`
-  gerado sempre monta o painel admin: o `pyproject.toml` saía com
-  `tempest-fastapi-sdk[cache,tasks]` e o app quebrava no import com
-  `ImportError: Admin requires the [admin] extra` (reproduzido numa venv
-  limpa com só os extras pinados; `--extras ""` quebrava igual). Sem `[auth]`
-  o app sobe, mas o primeiro login do admin levanta
-  `PasswordUtils requires the [auth] extra`. Agora `admin` e `auth`
-  (`REQUIRED_EXTRAS` em `tempest_fastapi_sdk/cli/new.py`) entram sempre e o
-  `--extras` soma a eles, sem duplicata e em ordem alfabética:
-  `--extras cache,tasks` fixa `[admin,auth,cache,tasks]`. O default da opção
-  passou de `"auth,admin"` para `""` — o resultado é o mesmo conjunto. O
-  `tempest generate` não muda: ele lê os extras do `pyproject.toml` existente
-  e não reescreve a dependência do SDK (#389).
-- **Download de `.xlsx`/`.docx`/`.pptx` saía `application/octet-stream` em
-  container slim.** `DownloadUtils.file_response`, `DownloadUtils.stream` e
-  `AsyncMinIOClient.download_response` adivinhavam o tipo com
-  `mimetypes.guess_type`, cuja tabela embutida não tem `.xlsx`, `.docx`,
-  `.pptx`, `.odt`, `.ods` nem `.ogg` (Python 3.11 a 3.13); ele só os conhece
-  pelo `/etc/mime.types` do host. Medido na `python:3.13-slim` — base do
-  Dockerfile do `tempest new` —, que não tem o arquivo: `None` para os seis,
-  e o download caía no fallback. Agora o palpite passa por
-  `guess_media_type`, que consulta uma tabela do SDK antes do `mimetypes`.
-
-- **Cancelar uma chamada do modelo local para a decodificação.**
-  `TextGenerator` (`generate`, `chat`, `chat_with_tools`,
-  `generate_structured`, `chat_structured`) e `VisionTextGenerator`
-  (`generate`, `chat`) rodam numa thread, e cancelar a corotina só
-  abandonava a espera: a thread seguia gerando até `max_new_tokens`,
-  segurando os núcleos. O laço do `Agent` nunca passa `stop_event`, então
-  todo timeout do `AgentBudget` deixava um worker decodificando para
-  ninguém. Agora toda chamada roda sob um evento (o `stop_event` do caller
-  ou um privado) que é acionado no cancelamento. Medido com
-  `Qwen/Qwen2.5-0.5B-Instruct` em CPU, 300 tokens forçados: por um `Agent`
-  com `AgentBudget(max_seconds=1.0)`, a thread decodificava 10,8 s depois
-  de o run voltar `timeout`; agora termina em 0,01 s.
-- `TextGenerator.chat_with_tools` aceita `stop_event=`, como os outros
-  métodos.
-
 ### Added
+
+- **`max_concurrent=` em `TextGenerator` e `VisionTextGenerator`.** Limita
+  quantas decodificações a instância roda ao mesmo tempo; as excedentes
+  esperam numa fila. Em CPU uma decodificação já usa todo o pool intra-op do
+  torch, então N execuções de agente simultâneas viravam N threads
+  disputando os mesmos núcleos. O limite é um pool de N threads **próprias**
+  do gerador, e não um semáforo na frente do `asyncio.to_thread`: o OpenMP
+  do torch mantém um time de workers por thread chamadora, e o semáforo
+  sobre o executor padrão serializava e ainda deixava cada chamada mais
+  lenta (18,5 tokens/s com quatro chamadas, contra 22,8 sem limite no mesmo
+  processo). Medido com `Qwen/Qwen2.5-0.5B-Instruct` em CPU (WSL2, i9-13900F,
+  12 CPUs lógicas visíveis, torch 2.14 com 6 threads intra-op), 128 tokens
+  forçados, greedy, mediana de 5 rodadas: com quatro chamadas simultâneas,
+  `max_concurrent=1` levou a vazão de 22,4 para 26,9 tokens/s e a latência
+  mediana de 22,73 s para 11,91 s; uma chamada sozinha não muda (4,56 s
+  contra 4,57 s). Cancelar na fila tira o pedido sem rodar; cancelar durante
+  a decodificação continua acionando o `stop_event` e só libera a vaga
+  quando a thread termina. Cobre `generate`, `chat`, `chat_with_tools`,
+  `generate_structured`, `chat_structured` e `stream`. O default continua
+  `None` (sem limite): o ganho foi medido só em CPU, e mudar o default
+  mudaria a concorrência de quem roda em GPU. Sem knob de threads:
+  `torch.set_num_threads` é global ao processo.
 
 - **`docker-compose.yaml` gerado sobe a API sob o profile `prod`** (#384).
   `tempest new` e `tempest generate --docker` emitem um serviço `api` com
@@ -67,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vinda do IP do container e não existe `/app/app.db`. A mesma imagem com
   só `--env-file .env` respondia `200` sobre um SQLite criado dentro do
   container. `generate()` ganhou `port=` keyword-only (default `8000`).
+
 - **`XLSX_MEDIA_TYPE`, `DOCX_MEDIA_TYPE`, `PPTX_MEDIA_TYPE` e
   `guess_media_type(filename)`** em `tempest_fastapi_sdk.utils` (e no topo);
   `XLSX_MEDIA_TYPE` também em `tempest_fastapi_sdk.spreadsheet`. A receita de
@@ -103,9 +85,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   MinIO e MailHog. O processo no host continua alcançando a infra; nada de
   fora da máquina alcança. A porta da API segue publicada em todas as
   interfaces.
+
 - **`asyncpg>=0.30.0` é dependência do `pyproject.toml` scaffoldado**
   (#384), não mais uma linha comentada: a imagem do profile `prod` usa
   `postgresql+asyncpg://` e instala só o que o `pyproject.toml` declara.
+
+### Fixed
+
+- **`tempest new --extras cache,tasks` gerava um projeto que não subia.**
+  O `--extras` substituía o default `auth,admin`, mas o `src/api/app.py`
+  gerado sempre monta o painel admin: o `pyproject.toml` saía com
+  `tempest-fastapi-sdk[cache,tasks]` e o app quebrava no import com
+  `ImportError: Admin requires the [admin] extra` (reproduzido numa venv
+  limpa com só os extras pinados; `--extras ""` quebrava igual). Sem `[auth]`
+  o app sobe, mas o primeiro login do admin levanta
+  `PasswordUtils requires the [auth] extra`. Agora `admin` e `auth`
+  (`REQUIRED_EXTRAS` em `tempest_fastapi_sdk/cli/new.py`) entram sempre e o
+  `--extras` soma a eles, sem duplicata e em ordem alfabética:
+  `--extras cache,tasks` fixa `[admin,auth,cache,tasks]`. O default da opção
+  passou de `"auth,admin"` para `""` — o resultado é o mesmo conjunto. O
+  `tempest generate` não muda: ele lê os extras do `pyproject.toml` existente
+  e não reescreve a dependência do SDK (#389).
+
+- **Download de `.xlsx`/`.docx`/`.pptx` saía `application/octet-stream` em
+  container slim.** `DownloadUtils.file_response`, `DownloadUtils.stream` e
+  `AsyncMinIOClient.download_response` adivinhavam o tipo com
+  `mimetypes.guess_type`, cuja tabela embutida não tem `.xlsx`, `.docx`,
+  `.pptx`, `.odt`, `.ods` nem `.ogg` (Python 3.11 a 3.13); ele só os conhece
+  pelo `/etc/mime.types` do host. Medido na `python:3.13-slim` — base do
+  Dockerfile do `tempest new` —, que não tem o arquivo: `None` para os seis,
+  e o download caía no fallback. Agora o palpite passa por
+  `guess_media_type`, que consulta uma tabela do SDK antes do `mimetypes`.
+
+- **Cancelar uma chamada do modelo local para a decodificação.**
+  `TextGenerator` (`generate`, `chat`, `chat_with_tools`,
+  `generate_structured`, `chat_structured`) e `VisionTextGenerator`
+  (`generate`, `chat`) rodam numa thread, e cancelar a corotina só
+  abandonava a espera: a thread seguia gerando até `max_new_tokens`,
+  segurando os núcleos. O laço do `Agent` nunca passa `stop_event`, então
+  todo timeout do `AgentBudget` deixava um worker decodificando para
+  ninguém. Agora toda chamada roda sob um evento (o `stop_event` do caller
+  ou um privado) que é acionado no cancelamento. Medido com
+  `Qwen/Qwen2.5-0.5B-Instruct` em CPU, 300 tokens forçados: por um `Agent`
+  com `AgentBudget(max_seconds=1.0)`, a thread decodificava 10,8 s depois
+  de o run voltar `timeout`; agora termina em 0,01 s.
+
+- `TextGenerator.chat_with_tools` aceita `stop_event=`, como os outros
+  métodos.
 
 ## [0.303.0] — 2026-10-02
 
