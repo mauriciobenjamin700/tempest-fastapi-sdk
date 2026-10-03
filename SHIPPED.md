@@ -986,6 +986,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `python:3.13-slim` (sem `/etc/mime.types`) o download de `.xlsx` saía
   `application/octet-stream`. Usado por `DownloadUtils` e
   `AsyncMinIOClient.download_response`.
+- **Profile `prod` no compose gerado (Unreleased, #384)** — serviço `api`
+  atrás de `profiles: ["prod"]` no `docker-compose.yaml` do `tempest new` /
+  `tempest generate --docker`: `build: .`, `env_file: .env`,
+  `environment:` reescrevendo os hosts `localhost` do `.env` para os nomes
+  de serviço (SMTP fica com o `.env`), `depends_on` healthy por extra,
+  healthcheck em `/health/readiness` via `urllib`. Infra publicada só em
+  `127.0.0.1`; `asyncpg` vira dependência do projeto gerado. Migrations:
+  sem serviço `migrate` (o scaffold não gera Alembic) —
+  `docker compose --profile prod run --rm api tempest db upgrade`. Receita:
+  "Profile `prod`" em `cli.md`; teste live em
+  `tests/cli/test_docker_compose_live.py`.
 - **Dependency de sessão com fábrica (Unreleased, #381)** —
   `make_session_dependency(session_auth=...)` aceita `SessionAuthFactory`
   (`(request) -> SessionAuth`), resolvido por request; overloads tipam
