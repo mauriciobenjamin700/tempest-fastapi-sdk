@@ -979,14 +979,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   run that completed; `run_until` keeps an earlier inherited deadline;
   `schema_of` keeps `$defs` for self-referential models; Redis fact keys no
   longer merge `None`/`""`/`"_"`; builtins never overwrite an artifact.
-- **Media type independente da imagem (Unreleased)** —
+- **Media type independente da imagem (0.303.0)** —
   `guess_media_type` + `XLSX_MEDIA_TYPE`/`DOCX_MEDIA_TYPE`/`PPTX_MEDIA_TYPE`
   (`utils`, topo; xlsx também em `spreadsheet`). Tabela própria antes do
   `mimetypes`, cuja tabela embutida não tem Office/OpenDocument/ogg: na
   `python:3.13-slim` (sem `/etc/mime.types`) o download de `.xlsx` saía
   `application/octet-stream`. Usado por `DownloadUtils` e
   `AsyncMinIOClient.download_response`.
-- **Profile `prod` no compose gerado (Unreleased, #384)** — serviço `api`
+- **Profile `prod` no compose gerado (0.303.0, #384)** — serviço `api`
   atrás de `profiles: ["prod"]` no `docker-compose.yaml` do `tempest new` /
   `tempest generate --docker`: `build: .`, `env_file: .env`,
   `environment:` reescrevendo os hosts `localhost` do `.env` para os nomes
@@ -997,28 +997,28 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `docker compose --profile prod run --rm api tempest db upgrade`. Receita:
   "Profile `prod`" em `cli.md`; teste live em
   `tests/cli/test_docker_compose_live.py`.
-- **Dependency de sessão com fábrica (Unreleased, #381)** —
+- **Dependency de sessão com fábrica (0.303.0, #381)** —
   `make_session_dependency(session_auth=...)` aceita `SessionAuthFactory`
   (`(request) -> SessionAuth`), resolvido por request; overloads tipam
   `required=True` como `Session`. Mesmo molde do `session_dependency_for`
   do banco. Receita: "`SessionAuth` montado depois do import" em
   `sessions.md`.
-- **Defaults de geração no gerador (Unreleased)** — `config=` em
+- **Defaults de geração no gerador (0.303.0)** — `config=` em
   `TextGenerator`/`OllamaGenerator`, `num_ctx=`/`options=` no
   `OllamaGenerator`, aplicados em toda chamada e na chave do cache. Existe
   porque o `Agent` não passa opção ao modelo: no Ollama 0.30.11 a janela
   default cortou o prompt de um agente para 2 051 tokens sem erro (resposta
   errada, `completed`); `num_ctx=32768` leu os 11 551. Receita: seção "O
   modelo roda com os defaults do gerador" em `agents.md`.
-- **Cancelar para o modelo local (Unreleased)** — `TextGenerator` e
+- **Cancelar para o modelo local (0.303.0)** — `TextGenerator` e
   `VisionTextGenerator` rodam toda chamada sob um `threading.Event` (o do
   caller ou um privado) e o acionam quando a corotina é cancelada, então
   timeout do `AgentBudget`, `asyncio.timeout` e `run_cancellable` param a
   decodificação em até um token. Antes, o budget do agente cortava a espera
   e a thread seguia até `max_new_tokens`: Qwen2.5-0.5B em CPU, 300 tokens
-  forçados, budget de 1 s — 10,8 s decodificando depois do `timeout`, agora
-  0,01 s. `chat_with_tools` ganha `stop_event=`.
-- **Concorrência do gerador local em CPU (Unreleased)** —
+  forçados, budget de 1 s — 9,3 a 10,8 s decodificando depois do `timeout`
+  (em medições diferentes), agora 0,01 a 0,02 s. `chat_with_tools` ganha `stop_event=`.
+- **Concorrência do gerador local em CPU (0.303.0)** —
   `TextGenerator(max_concurrent=N)` e `VisionTextGenerator(max_concurrent=N)`
   rodam a decodificação num pool de N threads próprias (fila FIFO; default
   `None` = sem limite). Pool, não semáforo, porque o OpenMP do torch mantém
@@ -1028,7 +1028,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   latência mediana de 11,91 s (22,73 s). Sem knob de threads
   (`torch.set_num_threads` é global). Receita: "Vários pedidos ao mesmo
   tempo em CPU" em `genai.md`; nota em `agents.md`.
-- **Leitura de Google Sheets (Unreleased, sem extra)** —
+- **Leitura de Google Sheets (0.303.0, sem extra)** —
   `read_google_sheet` / `read_google_sheet_as` / `google_sheet_export_url` em
   `tempest_fastapi_sdk.spreadsheet`. Lê uma aba de planilha compartilhada
   como *qualquer pessoa com o link* pelo `/export?format=csv`, só com `httpx`
@@ -2730,7 +2730,7 @@ virou fix. Superfície nova ou mudada:
   e a escrita cuja transação atravessa o pull aparece no pull seguinte em vez
   de se perder. Linha da janela chega duas vezes; o cliente faz upsert.
 
-## `tempest new --extras` soma aos extras obrigatórios (Unreleased, #389)
+## `tempest new --extras` soma aos extras obrigatórios (0.303.0, #389)
 
 O `--extras` substituía o default `auth,admin`, e o `app.py` gerado monta o
 admin incondicionalmente — `--extras cache,tasks` gerava um projeto que

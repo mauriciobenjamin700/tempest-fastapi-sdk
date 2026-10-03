@@ -2157,8 +2157,9 @@ the recommended structured route, no extra library**.
     [`run_cancellable`](jobs.en.md#8-progress-the-bar-that-does-not-lie)
     stop decoding within one token. Measured with
     `Qwen/Qwen2.5-0.5B-Instruct` on CPU, 300 forced tokens, cancelled after
-    1 s: the thread used to keep decoding 9.3 to 9.4 s after the cancellation; it
-    now ends in 0.02 s. `stop_event` still serves to stop **without**
+    1 s: the thread used to keep decoding 9.3 to 10.8 s after the cancellation
+    (across separate measurements); it
+    now ends in 0.01 to 0.02 s. `stop_event` still serves to stop **without**
     cancelling (from another thread, say), and it is set on cancellation
     too. On the daemon none of this is needed: aborting the HTTP request
     stops the generation.

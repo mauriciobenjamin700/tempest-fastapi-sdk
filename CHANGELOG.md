@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.303.0] — 2026-10-03
+
+Auditoria da documentação contra o código entregue: 150 afirmações da doc
+conferidas com execução, e as que o código não sustentava viraram fix de
+código (quando o defeito era do SDK) ou de prosa. Três são de segurança:
+`POST /auth/mfa/enroll` desligava o MFA com só o access token, o login
+revelava pelo tempo (e, no admin, pela mensagem) quais contas existem, e o
+console SQL do admin classificava como leitura três formas de escrita.
+
+Entram junto: leitura de planilha pública do Google Sheets,
+`max_concurrent=` e defaults de geração nos geradores, `make_session_dependency`
+com fábrica de `SessionAuth` (e tipado `Session` com `required=True`), o
+compose gerado com a API sob o profile `prod`, media types de Office fixos
+e o `tempest new --extras` que agora soma aos obrigatórios `admin` e `auth`.
+
+**Leia antes de atualizar:**
+
+- `POST /auth/mfa/enroll` sobre conta com MFA ativo agora responde **409**
+  `MFA_ALREADY_ENROLLED`. Para girar o segredo: `/auth/mfa/disable` (senha +
+  código) e depois `enroll`.
+- O login do admin com senha errada responde `"Invalid credentials"` para
+  qualquer conta; `"Account disabled"` e `"This account is not authorized
+  for /admin"` só aparecem com a senha certa.
+- `BR_CURRENCY_FORMAT`, `BR_PERCENT_FORMAT`, `BR_DATE_FORMAT` e
+  `BR_DATETIME_FORMAT` mudam de valor (ganham `[$-416]`).
+- `make_websocket_router` passa a aceitar o handshake antes de fechar com
+  `4401`: o cliente real vê o close code em vez de `HTTP 403`/`1006`.
+- `@cached` em método deixa `self`/`cls` fora da chave default: instâncias
+  da mesma classe passam a dividir a entrada.
+- `UploadUtils` trata allowlist vazia e `max_size_bytes=0` como "sem
+  restrição".
+- `OutboxRelay` recusa na construção um `publish` que não aceita
+  `publish(event)`.
+- `changes_since` devolve o `server_time` 5 segundos atrás do início da
+  query: linha alterada nessa janela volta no pull seguinte, então o cliente
+  aplica os itens por upsert no `id`. `watermark_lag=timedelta(0)` restaura
+  o marco antigo.
+
+### Security
+
+- **`POST /auth/mfa/enroll` não desliga mais o MFA com só o access token.**
+  Um segundo enroll sobre conta com MFA ativo apagava os recovery codes e
+  zerava `totp_enabled_at`, sem pedir senha nem código. Agora
+  `UserAuthService.mfa_enroll` levanta `MFAAlreadyEnrolledException` (409,
+  `MFA_ALREADY_ENROLLED`) e não muda nada. Enroll sobre um enrollment
+  pendente (sem confirm) continua permitido.
+- **Login não denuncia mais e-mail inexistente pelo tempo.**
+  `UserAuthService.login` e `SessionAuth.authenticate` respondiam em ~0,5 ms
+  para e-mail desconhecido contra ~154 ms para senha errada (bcrypt custo
+  12, mediana de 21). As três recusas (e-mail inexistente, senha errada,
+  conta inativa) agora pagam um bcrypt.
+- **Login do admin não revela mais quem é admin nem quem está desativado.**
+  `UserModelAuthBackend.authenticate` checava `is_active` e `is_admin` antes
+  da senha: qualquer senha bastava para ler, pela mensagem, se o e-mail
+  existia e que tipo de conta era. Agora a senha é verificada primeiro (e o
+  e-mail inexistente paga um bcrypt fictício); com senha errada as quatro
+  situações respondem `"Invalid credentials"` em ~154 ms (mediana de 11).
+- **Console SQL do admin: leitura por fora, escrita por dentro.**
+  `analyze_sql` classificava pelo nó do topo, então três formas de escrita
+  saíam `read` e passavam por um console read-only: CTE que modifica dados
+  (`WITH gone AS (DELETE … RETURNING *) SELECT …`), `EXPLAIN ANALYZE` do
+  MySQL (que executa o statement) e `PRAGMA` do SQLite com valor
+  (`journal_mode = DELETE`, `writable_schema = ON`) ou que age
+  (`optimize`). Agora o statement leva a capacidade mais privilegiada que
+  contém, e a regra de `WHERE` obrigatório olha a escrita.
+
 ### Added
 
 - **Leitura de planilha pública do Google Sheets:** `read_google_sheet`,
@@ -98,6 +164,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   forte: `options` cruas, `config` do gerador, `config` da chamada (campo a
   campo), `**kwargs` da chamada. Os defaults entram na chave do
   `generation_cache`.
+- `MFAAlreadyEnrolledException` (`tempest_fastapi_sdk.auth`).
+- `PasswordUtils.dummy_verify(plain)`: uma verificação bcrypt contra um hash
+  descartável, para o ramo "conta não existe" custar o mesmo que uma senha
+  errada.
+- `instrument_sqlalchemy_engine(engine)` (`tempest_fastapi_sdk.api` e topo do
+  pacote): instrumenta o engine que só existe depois do `connect()`; as
+  queries saem como filhas do span da request.
+- `Embedder(query_prefix=..., passage_prefix=...)` e
+  `Embedder.embed_query` / `Embedder.embed_passages`. `Retriever` (e
+  `HybridRetriever`) e `ChatMemory` os usam quando o embedder os tem, então
+  `multilingual-e5` recebe `query: ` / `passage: ` sem prefixo escrito à mão.
+  `embed()` continua sem prefixo.
+- `changes_since(..., watermark_lag=...)` e a constante
+  `DEFAULT_SYNC_WATERMARK_LAG` (`timedelta(seconds=5)`).
 
 ### Changed
 
@@ -148,74 +228,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ninguém. Agora toda chamada roda sob um evento (o `stop_event` do caller
   ou um privado) que é acionado no cancelamento. Medido com
   `Qwen/Qwen2.5-0.5B-Instruct` em CPU, 300 tokens forçados: por um `Agent`
-  com `AgentBudget(max_seconds=1.0)`, a thread decodificava 10,8 s depois
-  de o run voltar `timeout`; agora termina em 0,01 s.
+  com `AgentBudget(max_seconds=1.0)`, a thread seguia decodificando de
+  9,3 a 10,8 s depois de o run voltar `timeout` (em medições
+  diferentes); agora termina em 0,01 a 0,02 s.
 
 - `TextGenerator.chat_with_tools` aceita `stop_event=`, como os outros
   métodos.
-
-## [0.303.0] — 2026-10-02
-
-Auditoria da documentação contra o código entregue: 150 afirmações da doc
-conferidas com execução, e as que o código não sustentava viraram fix de
-código (quando o defeito era do SDK) ou de prosa. Três são de segurança:
-`POST /auth/mfa/enroll` desligava o MFA com só o access token, o login
-revelava pelo tempo (e, no admin, pela mensagem) quais contas existem, e o
-console SQL do admin classificava como leitura três formas de escrita.
-
-**Leia antes de atualizar:**
-
-- `POST /auth/mfa/enroll` sobre conta com MFA ativo agora responde **409**
-  `MFA_ALREADY_ENROLLED`. Para girar o segredo: `/auth/mfa/disable` (senha +
-  código) e depois `enroll`.
-- O login do admin com senha errada responde `"Invalid credentials"` para
-  qualquer conta; `"Account disabled"` e `"This account is not authorized
-  for /admin"` só aparecem com a senha certa.
-- `BR_CURRENCY_FORMAT`, `BR_PERCENT_FORMAT`, `BR_DATE_FORMAT` e
-  `BR_DATETIME_FORMAT` mudam de valor (ganham `[$-416]`).
-- `make_websocket_router` passa a aceitar o handshake antes de fechar com
-  `4401`: o cliente real vê o close code em vez de `HTTP 403`/`1006`.
-- `@cached` em método deixa `self`/`cls` fora da chave default: instâncias
-  da mesma classe passam a dividir a entrada.
-- `UploadUtils` trata allowlist vazia e `max_size_bytes=0` como "sem
-  restrição".
-- `OutboxRelay` recusa na construção um `publish` que não aceita
-  `publish(event)`.
-- `changes_since` devolve o `server_time` 5 segundos atrás do início da
-  query: linha alterada nessa janela volta no pull seguinte, então o cliente
-  aplica os itens por upsert no `id`. `watermark_lag=timedelta(0)` restaura
-  o marco antigo.
-
-### Security
-
-- **`POST /auth/mfa/enroll` não desliga mais o MFA com só o access token.**
-  Um segundo enroll sobre conta com MFA ativo apagava os recovery codes e
-  zerava `totp_enabled_at`, sem pedir senha nem código. Agora
-  `UserAuthService.mfa_enroll` levanta `MFAAlreadyEnrolledException` (409,
-  `MFA_ALREADY_ENROLLED`) e não muda nada. Enroll sobre um enrollment
-  pendente (sem confirm) continua permitido.
-- **Login não denuncia mais e-mail inexistente pelo tempo.**
-  `UserAuthService.login` e `SessionAuth.authenticate` respondiam em ~0,5 ms
-  para e-mail desconhecido contra ~154 ms para senha errada (bcrypt custo
-  12, mediana de 21). As três recusas (e-mail inexistente, senha errada,
-  conta inativa) agora pagam um bcrypt.
-- **Login do admin não revela mais quem é admin nem quem está desativado.**
-  `UserModelAuthBackend.authenticate` checava `is_active` e `is_admin` antes
-  da senha: qualquer senha bastava para ler, pela mensagem, se o e-mail
-  existia e que tipo de conta era. Agora a senha é verificada primeiro (e o
-  e-mail inexistente paga um bcrypt fictício); com senha errada as quatro
-  situações respondem `"Invalid credentials"` em ~154 ms (mediana de 11).
-- **Console SQL do admin: leitura por fora, escrita por dentro.**
-  `analyze_sql` classificava pelo nó do topo, então três formas de escrita
-  saíam `read` e passavam por um console read-only: CTE que modifica dados
-  (`WITH gone AS (DELETE … RETURNING *) SELECT …`), `EXPLAIN ANALYZE` do
-  MySQL (que executa o statement) e `PRAGMA` do SQLite com valor
-  (`journal_mode = DELETE`, `writable_schema = ON`) ou que age
-  (`optimize`). Agora o statement leva a capacidade mais privilegiada que
-  contém, e a regra de `WHERE` obrigatório olha a escrita.
-
-### Fixed
-
 - `tempest new --extras queue` (e `tempest generate --src`) gerava
   `src/queue/__init__.py` importando `AsyncBrokerManager` do topo do pacote,
   que nunca o exportou: o projeto dava `ImportError` no primeiro import. O
@@ -271,23 +289,6 @@ console SQL do admin classificava como leitura três formas de escrita.
 - `edge_pipeline(compact=True, verify_samples=<ndarray>)` não levanta mais
   "truth value of an array is ambiguous", e `feature_names` com contagem
   errada levanta `ValueError` com as duas contagens (antes, `IndexError`).
-
-### Added
-
-- `MFAAlreadyEnrolledException` (`tempest_fastapi_sdk.auth`).
-- `PasswordUtils.dummy_verify(plain)`: uma verificação bcrypt contra um hash
-  descartável, para o ramo "conta não existe" custar o mesmo que uma senha
-  errada.
-- `instrument_sqlalchemy_engine(engine)` (`tempest_fastapi_sdk.api` e topo do
-  pacote): instrumenta o engine que só existe depois do `connect()`; as
-  queries saem como filhas do span da request.
-- `Embedder(query_prefix=..., passage_prefix=...)` e
-  `Embedder.embed_query` / `Embedder.embed_passages`. `Retriever` (e
-  `HybridRetriever`) e `ChatMemory` os usam quando o embedder os tem, então
-  `multilingual-e5` recebe `query: ` / `passage: ` sem prefixo escrito à mão.
-  `embed()` continua sem prefixo.
-- `changes_since(..., watermark_lag=...)` e a constante
-  `DEFAULT_SYNC_WATERMARK_LAG` (`timedelta(seconds=5)`).
 
 ### Documentation
 

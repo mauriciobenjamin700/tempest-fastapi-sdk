@@ -2153,7 +2153,8 @@ rota estruturada recomendada, sem biblioteca extra**.
     [`run_cancellable`](jobs.md#8-progresso-a-barra-que-nao-mente) param a
     decodificação em até um token. Medido com `Qwen/Qwen2.5-0.5B-Instruct`
     em CPU, 300 tokens forçados, cancelado em 1 s: a thread seguia
-    decodificando 9,3 a 9,4 s depois do cancelamento; agora termina em 0,02 s.
+    decodificando 9,3 a 10,8 s depois do cancelamento (em medições
+    diferentes); agora termina em 0,01 a 0,02 s.
     O `stop_event` continua servindo para parar **sem** cancelar (de outra
     thread, por exemplo), e também é acionado no cancelamento. No daemon
     nada disso é preciso: abortar a requisição HTTP já para a geração.
