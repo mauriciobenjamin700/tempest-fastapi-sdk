@@ -5,7 +5,7 @@ when the numbers are final; a spreadsheet is what you send when the
 recipient has to sort, filter, re-total or audit them — a budget, a price
 table, a reconciliation, an export.
 
-Three pieces, each usable on its own:
+Three writing pieces, each usable on its own:
 
 * :mod:`~tempest_fastapi_sdk.spreadsheet.formats` — Excel number formats
   pinned to pt-BR by the ``[$-416]`` language code, so the file does not
@@ -34,8 +34,14 @@ Three pieces, each usable on its own:
     writer.apply_widths()
     data = workbook_to_bytes(workbook)
 
-Needs the ``[spreadsheet]`` extra (``openpyxl``); the engine is imported at
-first use, so importing this package without it still works.
+Reading goes the other way: :mod:`~tempest_fastapi_sdk.spreadsheet.google`
+reads one tab of a Google Sheet shared as *Anyone with the link* —
+:func:`read_google_sheet` for ``dict`` rows, :func:`read_google_sheet_as` to
+validate each row into a Pydantic model. It runs on ``httpx`` and the
+standard ``csv`` module only, so it needs no extra.
+
+Writing needs the ``[spreadsheet]`` extra (``openpyxl``); the engine is
+imported at first use, so importing this package without it still works.
 
 Re-exports use the PEP 484 ``from x import Y as Y`` explicit re-export form
 combined with ``__all__`` so every type-checker accepts
@@ -66,6 +72,21 @@ from tempest_fastapi_sdk.spreadsheet.formats import (
 )
 from tempest_fastapi_sdk.spreadsheet.formats import (
     TEXT_FORMAT as TEXT_FORMAT,
+)
+from tempest_fastapi_sdk.spreadsheet.google import (
+    GoogleSheetAccessError as GoogleSheetAccessError,
+)
+from tempest_fastapi_sdk.spreadsheet.google import (
+    GoogleSheetRowError as GoogleSheetRowError,
+)
+from tempest_fastapi_sdk.spreadsheet.google import (
+    google_sheet_export_url as google_sheet_export_url,
+)
+from tempest_fastapi_sdk.spreadsheet.google import (
+    read_google_sheet as read_google_sheet,
+)
+from tempest_fastapi_sdk.spreadsheet.google import (
+    read_google_sheet_as as read_google_sheet_as,
 )
 from tempest_fastapi_sdk.spreadsheet.styles import (
     DEFAULT_SHEET_STYLE as DEFAULT_SHEET_STYLE,
@@ -101,8 +122,13 @@ __all__: list[str] = [
     "TEXT_FORMAT",
     "CellValue",
     "Column",
+    "GoogleSheetAccessError",
+    "GoogleSheetRowError",
     "SheetStyle",
     "SheetWriter",
+    "google_sheet_export_url",
     "new_workbook",
+    "read_google_sheet",
+    "read_google_sheet_as",
     "workbook_to_bytes",
 ]

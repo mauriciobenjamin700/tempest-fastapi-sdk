@@ -22,6 +22,9 @@ Montar na mão custa três coisas, sempre as mesmas:
 `tempest_fastapi_sdk.spreadsheet` resolve os três: um cursor de linha,
 colunas declaradas uma vez, e máscaras fixadas em pt-BR.
 
+E no sentido contrário, para ler a planilha que alguém mantém no Google,
+veja [Ler uma planilha do Google Sheets](#ler-uma-planilha-do-google-sheets).
+
 !!! info "Extra necessário"
     ```bash
     uv add "tempest-fastapi-sdk[spreadsheet]"
@@ -343,6 +346,221 @@ async def download_budget(budget_id: int) -> Response:
     Duas requisições simultâneas escreveriam o mesmo caminho temporário. Em
     memória o problema não existe — e não sobra nada para limpar.
 
+## Ler uma planilha do Google Sheets
+
+Até aqui o caminho foi do código para a planilha. O inverso aparece cedo em
+todo projeto: alguém mantém a tabela de preços ou o estoque **numa planilha
+do Google**, e o serviço precisa ler essa tabela.
+
+A versão feita à mão costuma ser assim: cortar o link em `/edit`, pescar o
+`gid` do fragmento, montar `/export?format=csv&gid=...` e mandar para o
+`pandas`. Funciona — até o dia em que não funciona, e por motivos que não
+aparecem lendo o código:
+
+* **O `#gid=` é fragmento.** O navegador nunca o envia ao servidor; se você
+  repassar o link inteiro, a aba escolhida some no caminho.
+* **O export responde com redirect.** O `docs.google.com` devolve `307`
+  para um host `*.googleusercontent.com`. Um `httpx.AsyncClient` criado sem
+  `follow_redirects` entrega esse `307` como se fosse a resposta.
+* **Erro não vem com cara de erro.** Um ID que não existe responde `404` com
+  uma página HTML; um `gid` que não é aba nenhuma responde `400`, também em
+  HTML. Quem não confere o `Content-Type` acaba fazendo parse de HTML como
+  se fosse dado.
+
+`read_google_sheet_as` cuida das três coisas e ainda valida cada linha num
+modelo Pydantic.
+
+!!! info "Sem extra"
+    A leitura usa só `httpx` (dependência base) e o módulo `csv` da
+    biblioteca padrão. Não precisa do `[spreadsheet]` nem do `openpyxl`.
+
+### O código
+
+A planilha de exemplo é pública e tem três colunas: `item`, `valor` e
+`tamanho`.
+
+```python
+# scripts/estoque.py
+
+import asyncio
+
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk.spreadsheet import read_google_sheet_as
+
+SHEET_URL: str = (
+    "https://docs.google.com/spreadsheets/d/"
+    "1h0ATstw2f6ryXvbwV-DW6zwsBRIF-2k5zHcm2uTEge8/edit?usp=sharing"
+)
+
+
+class Produto(BaseModel):
+    """Uma linha da planilha de estoque."""
+
+    item: str
+    valor: int | None = None
+    tamanho: str
+
+
+async def main() -> None:
+    """Lê a planilha e imprime cada produto."""
+    produtos: list[Produto] = await read_google_sheet_as(SHEET_URL, Produto)
+    for produto in produtos:
+        print(produto.item, produto.valor, produto.tamanho)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Rodando (saída real, 2026-10-03):
+
+```text
+Bota forza 500 41
+Bota new forza 1000 41
+Macacao forza 1700 X
+Protetor de coluna 300 uni
+macacao dainese 1000 XL
+Jaqueta x11 Masc 200 consultar
+Jaqueta x11 Fem 200 consultar
+Bota Forma 400 vendida
+Luva x11 Fem L 250 M
+Luva alpinestar Gp Pro L 250 M
+Capacete Ls2 62 arrow*** None consultar
+```
+
+### Pedaço por pedaço
+
+**O link.** Passe o link que o Google mostra no botão *Compartilhar*, do
+jeito que ele vem. `google_sheet_export_url` aceita `/edit?usp=sharing`,
+`?gid=` ou `#gid=`, o link sem `/edit`, o prefixo `/u/<n>/` de quem tem
+várias contas, o link sem `https://` ou só o ID da planilha. Link que não é
+de planilha levanta `ValueError` antes de qualquer requisição.
+
+```python
+from tempest_fastapi_sdk.spreadsheet import google_sheet_export_url
+
+url: str = google_sheet_export_url(
+    "https://docs.google.com/spreadsheets/d/abc123/edit?usp=sharing#gid=42"
+)
+assert url == (
+    "https://docs.google.com/spreadsheets/d/abc123/export?format=csv&gid=42"
+)
+```
+
+**A aba.** Cada chamada lê **uma** aba: a que o `gid` do link indica. Para
+ler outra aba, abra-a no navegador e copie o link — o `gid` muda. Sem `gid`,
+a URL não escolhe aba e a escolha fica com o Google (na planilha de exemplo,
+que tem uma aba só, a resposta foi a mesma de `gid=0`).
+
+**O schema.** O cabeçalho (linha 1) vira o nome dos campos: a coluna `item`
+alimenta o campo `item`. Para um cabeçalho que não é identificador válido
+(`Preço unitário`), use `Field(validation_alias="Preço unitário")`.
+
+Repare nos dois tipos que fogem do óbvio:
+
+* `tamanho: str`, e não `int`. A coluna mistura número e texto — `41`, `X`,
+  `uni`, `consultar`. A planilha é digitada por gente, e o schema descreve o
+  que ela **tem**, não o que você gostaria que ela tivesse.
+* `valor: int | None = None`. A última linha tem a célula de valor vazia.
+  Por padrão (`omit_blank=True`) célula vazia significa **ausente**: o campo
+  cai no default, e um campo obrigatório reporta `missing`. Passe
+  `omit_blank=False` para receber a string vazia no validador.
+
+**O erro de linha.** Tipar `tamanho` como `int` falha — e o erro diz onde:
+
+```python
+import asyncio
+
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk.spreadsheet import GoogleSheetRowError, read_google_sheet_as
+
+SHEET_URL: str = (
+    "https://docs.google.com/spreadsheets/d/"
+    "1h0ATstw2f6ryXvbwV-DW6zwsBRIF-2k5zHcm2uTEge8/edit?usp=sharing"
+)
+
+
+class ProdutoComTamanhoNumerico(BaseModel):
+    """Tipa o tamanho como número — e a planilha discorda."""
+
+    item: str
+    valor: int | None = None
+    tamanho: int
+
+
+async def main() -> None:
+    """Mostra a linha que falhou."""
+    try:
+        await read_google_sheet_as(SHEET_URL, ProdutoComTamanhoNumerico)
+    except GoogleSheetRowError as exc:
+        print(exc.details["row"], exc.details["errors"][0]["input"])
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+```text
+4 X
+```
+
+`details["row"]` é o número que a planilha mostra na lateral (cabeçalho = 1,
+`Macacao forza` = 4), contando também as linhas em branco, que são puladas.
+`details["errors"]` é a lista de erros do Pydantic daquela linha.
+
+**Dicionários, sem schema.** `read_google_sheet` devolve
+`list[dict[str, str]]`, com cada célula exatamente como o CSV traz (célula
+vazia é `""`). Planilha só com cabeçalho, ou vazia, devolve `[]` — coleção
+vazia é sucesso.
+
+### Quando a planilha não abre
+
+Qualquer resposta que não seja um `text/csv` de sucesso levanta
+`GoogleSheetAccessError` (código `GOOGLE_SHEET_UNAVAILABLE`, status `502`).
+Os `details` guardam o que veio de fato:
+
+```json
+{
+  "detail": "The Google Sheet could not be read as CSV. Check the link and share the sheet as 'Anyone with the link'.",
+  "code": "GOOGLE_SHEET_UNAVAILABLE",
+  "details": {
+    "export_url": "https://docs.google.com/spreadsheets/d/<id-inexistente>/export?format=csv",
+    "status_code": 404,
+    "content_type": "text/html; charset=utf-8"
+  }
+}
+```
+
+Esse é o corpo que uma rota devolve com `register_exception_handlers` para
+um ID que não existe (medido). Um `gid` que não corresponde a aba nenhuma
+chega com `status_code: 400`. As duas exceções são `AppException`, então
+dentro de uma rota viram o envelope de erro do SDK sem `try` nenhum; com um
+`MessageCatalog` registrado, o `detail` sai traduzido.
+
+!!! warning "Planilha privada: não medido"
+    O comportamento de uma planilha **não compartilhada** não foi medido —
+    só o `404` do ID inexistente e o `400` do `gid` inválido. Por isso o
+    leitor não tenta adivinhar a causa: tudo que não é CSV vira o mesmo
+    erro. Se for o seu caso, compartilhe como *Qualquer pessoa com o link*
+    (leitor).
+
+!!! tip "Reuse o cliente HTTP"
+    Passe `client=` para reaproveitar um `httpx.AsyncClient` do serviço. O
+    leitor segue o redirect por requisição (`follow_redirects=True` na
+    chamada), então o seu cliente não precisa estar configurado para isso,
+    e **nunca** o fecha. Sem `client=`, ele cria um com `timeout=30.0`
+    (ajustável por `timeout=`) e fecha ao terminar. Falha de rede (timeout,
+    DNS) sobe como `httpx.HTTPError`.
+
+??? note "Por que só CSV"
+    O export em CSV traz **uma aba** e nada de formatação — exatamente o que
+    uma leitura de dados quer. O mesmo endpoint também responde
+    `format=xlsx` (a pasta inteira), e `google_sheet_export_url` monta essa
+    URL com `export_format="xlsx"`; ler o `.xlsx` baixado ainda não faz
+    parte desta API.
+
 ## Recapitulando
 
 * `new_workbook("Aba")` cria a pasta **sem** a aba fantasma do `openpyxl`.
@@ -355,6 +573,9 @@ async def download_budget(budget_id: int) -> Response:
   igual em en-US, de-DE e pt-BR (medido no LibreOffice 7.4).
 * `SheetStyle` é dado puro, então o tema não precisa do extra para existir.
 * `workbook_to_bytes` entrega bytes — resposta HTTP, storage, e-mail.
+* `read_google_sheet_as(link, Schema)` lê uma aba de uma planilha do Google
+  compartilhada por link e valida cada linha; o erro aponta o número da
+  linha. Sem extra.
 
 Para gerar o mesmo conteúdo como documento fechado, veja
 [Geração de PDF](pdf.md). Para os utilitários de moeda que formatam a prosa

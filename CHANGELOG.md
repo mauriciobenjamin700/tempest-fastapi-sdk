@@ -33,6 +33,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   campo), `**kwargs` da chamada. Os defaults entram na chave do
   `generation_cache`.
 
+- **Leitura de planilha pública do Google Sheets:** `read_google_sheet`,
+  `read_google_sheet_as`, `google_sheet_export_url`, `GoogleSheetAccessError`
+  e `GoogleSheetRowError` em `tempest_fastapi_sdk.spreadsheet`. Aceita o link
+  que o Google mostra no *Compartilhar* (`/edit?usp=sharing`, `?gid=` ou
+  `#gid=`, sem `/edit`, `/u/<n>/`, ou só o ID) e lê uma aba pelo
+  `/export?format=csv`. Não precisa de extra: roda só com `httpx` e `csv`.
+  Medido em 2026-10-03 contra uma planilha pública: o export responde `307`
+  para `*.googleusercontent.com` (um `httpx.AsyncClient` sem
+  `follow_redirects` devolve esse `307`; o leitor segue o redirect por
+  requisição, inclusive em cliente injetado, que nunca é fechado); ID
+  inexistente responde `404` `text/html` e `gid` inválido `400`
+  `text/html` — toda resposta que não é `text/csv` de sucesso vira
+  `GoogleSheetAccessError` (`502`, `GOOGLE_SHEET_UNAVAILABLE`). Planilha
+  privada não foi medida. `read_google_sheet_as` valida cada linha num
+  modelo Pydantic; a falha vira `GoogleSheetRowError` (`422`,
+  `GOOGLE_SHEET_ROW_INVALID`) com `details["row"]` igual ao número da linha
+  na planilha (cabeçalho = 1). Célula vazia conta como ausente
+  (`omit_blank=True`); linha em branco é pulada e planilha sem dados devolve
+  `[]`. Marcador novo de teste `network` (fora do run default;
+  `make test-network`).
+
 ### Fixed
 
 - **Cancelar uma chamada do modelo local para a decodificação.**
