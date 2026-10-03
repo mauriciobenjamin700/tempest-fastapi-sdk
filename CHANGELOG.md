@@ -7,7 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Download de `.xlsx`/`.docx`/`.pptx` saía `application/octet-stream` em
+  container slim.** `DownloadUtils.file_response`, `DownloadUtils.stream` e
+  `AsyncMinIOClient.download_response` adivinhavam o tipo com
+  `mimetypes.guess_type`, cuja tabela embutida não tem `.xlsx`, `.docx`,
+  `.pptx`, `.odt`, `.ods` nem `.ogg` (Python 3.11 a 3.13); ele só os conhece
+  pelo `/etc/mime.types` do host. Medido na `python:3.13-slim` — base do
+  Dockerfile do `tempest new` —, que não tem o arquivo: `None` para os seis,
+  e o download caía no fallback. Agora o palpite passa por
+  `guess_media_type`, que consulta uma tabela do SDK antes do `mimetypes`.
+
+- **Cancelar uma chamada do modelo local para a decodificação.**
+  `TextGenerator` (`generate`, `chat`, `chat_with_tools`,
+  `generate_structured`, `chat_structured`) e `VisionTextGenerator`
+  (`generate`, `chat`) rodam numa thread, e cancelar a corotina só
+  abandonava a espera: a thread seguia gerando até `max_new_tokens`,
+  segurando os núcleos. O laço do `Agent` nunca passa `stop_event`, então
+  todo timeout do `AgentBudget` deixava um worker decodificando para
+  ninguém. Agora toda chamada roda sob um evento (o `stop_event` do caller
+  ou um privado) que é acionado no cancelamento. Medido com
+  `Qwen/Qwen2.5-0.5B-Instruct` em CPU, 300 tokens forçados: por um `Agent`
+  com `AgentBudget(max_seconds=1.0)`, a thread decodificava 10,8 s depois
+  de o run voltar `timeout`; agora termina em 0,01 s.
+- `TextGenerator.chat_with_tools` aceita `stop_event=`, como os outros
+  métodos.
+
 ### Added
+
+- **`docker-compose.yaml` gerado sobe a API sob o profile `prod`** (#384).
+  `tempest new` e `tempest generate --docker` emitem um serviço `api` com
+  `profiles: ["prod"]`, `build: .`, `env_file: .env` e um `environment:`
+  que reescreve todo host que o `.env.example` aponta para `localhost`
+  (`DATABASE_URL` → `postgres`, `REDIS_URL` → `redis`, `RABBITMQ_URL` /
+  `TASKIQ_BROKER_URL` → `rabbitmq`, `MINIO_ENDPOINT` → `minio:9000`) só
+  para os extras escolhidos, mais `SERVER_HOST=0.0.0.0` / `SERVER_PORT`;
+  `depends_on` em `service_healthy` por serviço de extra (e
+  `service_completed_successfully` no `minio-bootstrap`) e healthcheck em
+  `/health/readiness` via `urllib`. `docker compose up -d` continua subindo
+  só a infra. Medido com Docker 29.6.1 / Compose v5.3.0 e
+  `--extras auth,admin,cache,tasks`: `--profile prod up -d --build --wait`
+  deixa a `api` `healthy`, a readiness responde `200` com
+  `{"database": true}`, a conexão aparece no `pg_stat_activity` do Postgres
+  vinda do IP do container e não existe `/app/app.db`. A mesma imagem com
+  só `--env-file .env` respondia `200` sobre um SQLite criado dentro do
+  container. `generate()` ganhou `port=` keyword-only (default `8000`).
+- **`XLSX_MEDIA_TYPE`, `DOCX_MEDIA_TYPE`, `PPTX_MEDIA_TYPE` e
+  `guess_media_type(filename)`** em `tempest_fastapi_sdk.utils` (e no topo);
+  `XLSX_MEDIA_TYPE` também em `tempest_fastapi_sdk.spreadsheet`. A receita de
+  planilhas deixa de mandar copiar a string do media type.
 
 - **`make_session_dependency(session_auth=<fábrica>)`** (#381). Além de um
   `SessionAuth`, `session_auth=` aceita um `SessionAuthFactory`
@@ -33,24 +82,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   campo), `**kwargs` da chamada. Os defaults entram na chave do
   `generation_cache`.
 
-- **`docker-compose.yaml` gerado sobe a API sob o profile `prod`** (#384).
-  `tempest new` e `tempest generate --docker` emitem um serviço `api` com
-  `profiles: ["prod"]`, `build: .`, `env_file: .env` e um `environment:`
-  que reescreve todo host que o `.env.example` aponta para `localhost`
-  (`DATABASE_URL` → `postgres`, `REDIS_URL` → `redis`, `RABBITMQ_URL` /
-  `TASKIQ_BROKER_URL` → `rabbitmq`, `MINIO_ENDPOINT` → `minio:9000`) só
-  para os extras escolhidos, mais `SERVER_HOST=0.0.0.0` / `SERVER_PORT`;
-  `depends_on` em `service_healthy` por serviço de extra (e
-  `service_completed_successfully` no `minio-bootstrap`) e healthcheck em
-  `/health/readiness` via `urllib`. `docker compose up -d` continua subindo
-  só a infra. Medido com Docker 29.6.1 / Compose v5.3.0 e
-  `--extras auth,admin,cache,tasks`: `--profile prod up -d --build --wait`
-  deixa a `api` `healthy`, a readiness responde `200` com
-  `{"database": true}`, a conexão aparece no `pg_stat_activity` do Postgres
-  vinda do IP do container e não existe `/app/app.db`. A mesma imagem com
-  só `--env-file .env` respondia `200` sobre um SQLite criado dentro do
-  container. `generate()` ganhou `port=` keyword-only (default `8000`).
-
 ### Changed
 
 - **Portas da infra do compose gerado publicadas só em `127.0.0.1`**
@@ -61,23 +92,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`asyncpg>=0.30.0` é dependência do `pyproject.toml` scaffoldado**
   (#384), não mais uma linha comentada: a imagem do profile `prod` usa
   `postgresql+asyncpg://` e instala só o que o `pyproject.toml` declara.
-
-### Fixed
-
-- **Cancelar uma chamada do modelo local para a decodificação.**
-  `TextGenerator` (`generate`, `chat`, `chat_with_tools`,
-  `generate_structured`, `chat_structured`) e `VisionTextGenerator`
-  (`generate`, `chat`) rodam numa thread, e cancelar a corotina só
-  abandonava a espera: a thread seguia gerando até `max_new_tokens`,
-  segurando os núcleos. O laço do `Agent` nunca passa `stop_event`, então
-  todo timeout do `AgentBudget` deixava um worker decodificando para
-  ninguém. Agora toda chamada roda sob um evento (o `stop_event` do caller
-  ou um privado) que é acionado no cancelamento. Medido com
-  `Qwen/Qwen2.5-0.5B-Instruct` em CPU, 300 tokens forçados: por um `Agent`
-  com `AgentBudget(max_seconds=1.0)`, a thread decodificava 10,8 s depois
-  de o run voltar `timeout`; agora termina em 0,01 s.
-- `TextGenerator.chat_with_tools` aceita `stop_event=`, como os outros
-  métodos.
 
 ## [0.303.0] — 2026-10-02
 

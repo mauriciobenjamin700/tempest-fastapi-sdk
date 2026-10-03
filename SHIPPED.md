@@ -979,6 +979,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   run that completed; `run_until` keeps an earlier inherited deadline;
   `schema_of` keeps `$defs` for self-referential models; Redis fact keys no
   longer merge `None`/`""`/`"_"`; builtins never overwrite an artifact.
+- **Media type independente da imagem (Unreleased)** —
+  `guess_media_type` + `XLSX_MEDIA_TYPE`/`DOCX_MEDIA_TYPE`/`PPTX_MEDIA_TYPE`
+  (`utils`, topo; xlsx também em `spreadsheet`). Tabela própria antes do
+  `mimetypes`, cuja tabela embutida não tem Office/OpenDocument/ogg: na
+  `python:3.13-slim` (sem `/etc/mime.types`) o download de `.xlsx` saía
+  `application/octet-stream`. Usado por `DownloadUtils` e
+  `AsyncMinIOClient.download_response`.
 - **Profile `prod` no compose gerado (Unreleased, #384)** — serviço `api`
   atrás de `profiles: ["prod"]` no `docker-compose.yaml` do `tempest new` /
   `tempest generate --docker`: `build: .`, `env_file: .env`,
