@@ -276,6 +276,26 @@ If every tool reimplemented the lookup, one of them would get the key wrong —
 and a typo there **fails open**: it returns somebody else's data instead of
 raising.
 
+## `prompts/` — one text per agent
+
+```text
+src/ai/prompts/
+├── __init__.py   # re-exports the constants
+├── base.py       # rules common to every agent
+├── service.py    # SERVICE_AGENT_PROMPT
+└── support.py    # SUPPORT_AGENT_PROMPT
+```
+
+Each prompt is an `UPPER_SNAKE_CASE` constant in its own module, built on the
+rules in `base.py` — what to do when a tool fails, the answer's format. The
+agent imports the constant; the test imports the same one.
+
+The prompt says **when** to use each tool. **What** the tool does already
+reaches the model through the `@tool` `description` and the schema, and
+identity stays in `policy.py`, never in a sentence of the prompt. The complete
+files, what the model actually receives and how to compose the prompt per
+request are in [AI agents (prompts)](agents-prompts.md).
+
 ## `agents/` — composition only
 
 ```python title="src/ai/agents/service.py"
@@ -317,9 +337,17 @@ small file instead of a copy of this one.
     infrastructure layer's business. Built here, `ai` would start importing
     `db/models` and the arrow in the table above would be reversed.
 
-The agent is built **once** and shared. That is safe because it keeps nothing
-per request: identity travels on the run context and each tool opens its own
-session.
+With a fixed prompt, the agent can be built **once** and shared. That is safe
+because it keeps nothing per request: identity travels on the run context and
+each tool opens its own session.
+
+When the prompt depends on who is asking — the user's facts from
+`facts_prompt`, the `recall_prompt` block — the agent is built **per request**
+instead, because `Agent` takes the prompt in its constructor and `run()` does
+not accept another one. The factory is still this file, and the generator is
+still the one in `runtime.py`: measured, building the agent with eight tools
+and three skills costs ~3.3 µs
+([A prompt that depends on the request](agents-prompts.md#a-prompt-that-depends-on-the-request)).
 
 ## The endpoint: why not `make_agent_router`
 
@@ -454,6 +482,8 @@ time.
 - **`views/` decides what the model reads** — and, by extension, what the end
   user reads with it.
 - **`policy.py` holds identity**, which is never an argument.
+- **`prompts/` holds one text per agent**, on shared rules from `base.py`; a
+  per-request prompt is a per-request agent, around the same generator.
 - **The controller calls `agent.run`**, seeds the context and translates
   `stop_reason`.
 - **The `run_sink` comes in from the edges** and answers "why did it say that?".

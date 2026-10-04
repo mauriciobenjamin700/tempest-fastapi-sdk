@@ -301,6 +301,16 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.spreadsheet.google.google_sheet_export_url
 ::: tempest_fastapi_sdk.spreadsheet.google.GoogleSheetAccessError
 ::: tempest_fastapi_sdk.spreadsheet.google.GoogleSheetRowError
+::: tempest_fastapi_sdk.spreadsheet.google.download_google_sheet_xlsx
+::: tempest_fastapi_sdk.spreadsheet.google.read_google_sheet_xlsx
+::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx
+::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_as
+::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_sheets
+::: tempest_fastapi_sdk.spreadsheet.reader.XlsxCellValue
+::: tempest_fastapi_sdk.spreadsheet.reader.XlsxSource
+::: tempest_fastapi_sdk.spreadsheet.reader.InvalidSpreadsheetError
+::: tempest_fastapi_sdk.spreadsheet.reader.SheetNotFoundError
+::: tempest_fastapi_sdk.spreadsheet.reader.SpreadsheetRowError
 
 ---
 
