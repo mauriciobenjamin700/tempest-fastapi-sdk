@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, Request
 from fastapi.testclient import TestClient
 
 from tempest_fastapi_sdk.agents import (
@@ -19,6 +19,7 @@ from tempest_fastapi_sdk.agents import (
     make_agent_run_model,
 )
 from tempest_fastapi_sdk.agents.schemas import AgentArtifact, AgentRun, StopReason
+from tempest_fastapi_sdk.agents.testing import ScriptedBackend as Recorder
 
 
 def _call(name: str, **arguments: Any) -> dict[str, Any]:
@@ -470,3 +471,95 @@ class TestToolFailuresOverHttp:
         app.include_router(make_agent_router(agent))
         response = TestClient(app).post("/api/agent/run", json={"goal": "g"})
         assert "hunter2" not in response.text
+
+
+class TestPerRequestAgent:
+    def test_a_fixed_agent_is_the_same_instance_on_every_request(self) -> None:
+        agent = Agent(ScriptedBackend([]), name="fixed")
+        app = FastAPI()
+        app.include_router(make_agent_router(agent))
+        client = TestClient(app)
+        first = client.post("/api/agent/run", json={"goal": "a"}).json()
+        second = client.post("/api/agent/run", json={"goal": "b"}).json()
+        assert first["agent"] == second["agent"] == "fixed"
+
+    def test_a_factory_taking_the_request_builds_one_agent_per_call(self) -> None:
+        recorder = Recorder([])
+        built: list[str] = []
+
+        def agent_for(request: Request) -> Agent:
+            tenant = request.headers.get("X-Tenant", "none")
+            built.append(tenant)
+            return Agent(recorder, system_prompt=f"tenant={tenant}", name=tenant)
+
+        app = FastAPI()
+        app.include_router(make_agent_router(agent_for))
+        client = TestClient(app)
+        body = client.post(
+            "/api/agent/run",
+            json={"goal": "g"},
+            headers={"X-Tenant": "acme"},
+        ).json()
+        client.post("/api/agent/run", json={"goal": "g"}, headers={"X-Tenant": "zeta"})
+        assert body["agent"] == "acme"
+        assert built == ["acme", "zeta"]
+        assert recorder.system_prompts == ["tenant=acme", "tenant=zeta"]
+
+    def test_an_async_factory_shares_the_owner_dependency(self) -> None:
+        recorder = Recorder([])
+        resolved: list[str] = []
+        store = InMemoryAgentRunSink(max_runs=5)
+
+        def principal(x_user: str = Header(default="anonymous")) -> str:
+            resolved.append(x_user)
+            return x_user
+
+        async def agent_for(user_id: str = Depends(principal)) -> Agent:
+            return Agent(recorder, system_prompt=f"user={user_id}", run_sink=store)
+
+        app = FastAPI()
+        app.include_router(
+            make_agent_router(agent_for, run_store=store, owner=principal),
+        )
+        client = TestClient(app)
+        client.post("/api/agent/run", json={"goal": "g"}, headers={"X-User": "ana"})
+        assert recorder.system_prompts == ["user=ana"]
+        assert resolved == ["ana"]
+        assert store.recent()[0].owner == "ana"
+        listed = client.get("/api/agent/runs", headers={"X-User": "ana"}).json()
+        assert [run["goal"] for run in listed] == ["g"]
+
+    def test_the_stream_runs_the_agent_the_factory_built(self) -> None:
+        recorder = Recorder([{"content": "streamed", "tool_calls": []}])
+
+        def agent_for(request: Request) -> Agent:
+            return Agent(recorder, system_prompt=request.headers["X-Prompt"])
+
+        app = FastAPI()
+        app.include_router(make_agent_router(agent_for))
+        with TestClient(app).stream(
+            "POST",
+            "/api/agent/run/stream",
+            json={"goal": "g"},
+            headers={"X-Prompt": "per-request"},
+        ) as response:
+            text = "".join(response.iter_text())
+        assert "streamed" in text
+        assert recorder.system_prompts == ["per-request"]
+
+    def test_the_history_endpoints_never_call_the_factory(self) -> None:
+        store = InMemoryAgentRunSink(max_runs=5)
+        calls: list[int] = []
+
+        def agent_for() -> Agent:
+            calls.append(1)
+            return Agent(ScriptedBackend([]), run_sink=store)
+
+        app = FastAPI()
+        app.include_router(make_agent_router(agent_for, run_store=store))
+        assert TestClient(app).get("/api/agent/runs").json() == []
+        assert calls == []
+
+    def test_anything_else_is_rejected_at_construction(self) -> None:
+        with pytest.raises(TypeError, match="Agent or a FastAPI dependency"):
+            make_agent_router("not an agent")  # type: ignore[arg-type]

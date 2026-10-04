@@ -678,12 +678,107 @@ class AIController:
         )
 ```
 
-!!! note "`make_agent_router` takes a ready-made agent"
-    `make_agent_router(agent, ...)` always serves the same `Agent`, hence the
-    same prompt. A per-request prompt needs an endpoint of your own, like the
-    controller above — which is what the
-    [architecture](agents-architecture.md#the-endpoint-why-not-make_agent_router)
-    already recommends when the tool needs more than an id.
+### With the ready-made router
+
+The controller above is an endpoint of your own. When the only thing that
+changes per request is the prompt, the SDK's router covers it:
+`make_agent_router` accepts, in place of the `Agent`, a **FastAPI dependency
+that returns the request's `Agent`**.
+
+```python title="prompt_router.py" hl_lines="30 32 33 38"
+import asyncio
+
+from fastapi import Depends, FastAPI, Header
+from fastapi.testclient import TestClient
+
+from tempest_fastapi_sdk.agents import (
+    Agent,
+    InMemoryAgentRunSink,
+    InMemoryFactStore,
+    make_agent_router,
+)
+from tempest_fastapi_sdk.agents.testing import ScriptedBackend, replies
+
+from prompt_per_request import prompt_for
+
+facts: InMemoryFactStore = InMemoryFactStore()
+generator: ScriptedBackend = ScriptedBackend([replies("ok"), replies("ok")])
+store: InMemoryAgentRunSink = InMemoryAgentRunSink(max_runs=50)
+
+
+def current_user(x_user_id: str = Header()) -> str:
+    """Return who is calling.
+
+    A stand-in for your real authentication dependency: trusting a header
+    is only acceptable behind a gateway that sets it.
+    """
+    return x_user_id
+
+
+async def agent_for(user_id: str = Depends(current_user)) -> Agent:
+    """Build the agent of one request, with the caller's facts in the prompt."""
+    prompt = await prompt_for(user_id, facts)
+    return Agent(generator, system_prompt=prompt, run_sink=store, name="service-agent")
+
+
+app: FastAPI = FastAPI()
+app.include_router(
+    make_agent_router(agent_for, run_store=store, owner=current_user),
+)
+
+
+def main() -> None:
+    """Call the router as two users and show what each run received."""
+    asyncio.run(facts.put("city", "Picos/PI", subject="ana"))
+    client = TestClient(app)
+    for user_id in ("ana", "bruno"):
+        client.post(
+            "/api/agent/run",
+            json={"goal": "Is there an electrician near me?"},
+            headers={"X-User-Id": user_id},
+        )
+
+    for prompt in generator.system_prompts:
+        print(prompt.splitlines()[-2:])
+    print([run.owner for run in store.recent()])
+
+
+if __name__ == "__main__":
+    main()
+```
+
+```text
+['What you already know:', '- city: Picos/PI']
+['Answer only from what the tools returned. If they did not bring the answer, say you could not find it.', 'Answer in English, in at most three sentences, no markdown.']
+['bruno', 'ana']
+```
+
+Ana got her fact; Bruno, who has none, got the bare `SERVICE_AGENT_PROMPT`,
+ending on the last two rules of `BASE_RULES`. Both runs landed in the `store`
+with the right owner (most recent first).
+
+What to know about the factory:
+
+* **It is a dependency like any other.** It can take the `Request`, declare
+  its own `Depends(...)` (the user, a session), be `def` or `async def`. Its
+  type is `AgentDependency`.
+* **The `owner=` dependency is resolved once.** The factory above declares
+  `Depends(current_user)`, the same function passed as `owner=`; FastAPI
+  caches the value for the request, so the factory and the run record see the
+  same user.
+* **Only `/run` and `/run/stream` call the factory.** `GET /runs` and the
+  artifact download read the `run_store` without building an agent — which is
+  why every agent the factory builds must write to the **same** sink
+  (`run_sink=store`).
+* **`make_agent_router(agent)` is unchanged.** A ready-made `Agent` is served
+  as always, the same instance on every request.
+
+!!! note "When the endpoint is still yours"
+    The router seeds only `context.owner`. A tool that reads the caller from
+    `state` (the `context_for` + `require_user_id` of the
+    [architecture](agents-architecture.md#the-endpoint-why-not-make_agent_router))
+    still needs the controller above — a per-request prompt is no longer a
+    reason for it.
 
 ## What not to put in the prompt
 
@@ -772,7 +867,8 @@ all, `facts_prompt` returns an empty string and Bruno's prompt is **exactly**
   want to keep the SDK's rules. Skills append their own block after your text.
 - **A per-request prompt is a per-request agent**: a function builds the
   `Agent` around the process's generator. Measured, it costs ~3.3 µs with eight
-  tools and three skills.
+  tools and three skills. `make_agent_router` takes that function as a
+  dependency, so the ready-made endpoints stay.
 - **Identity, permission, volatile data and secrets stay out of the prompt.**
 - **Test the constant and what reached the model**; whether the model obeys is
   another suite.

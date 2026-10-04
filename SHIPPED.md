@@ -994,6 +994,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   run that completed; `run_until` keeps an earlier inherited deadline;
   `schema_of` keeps `$defs` for self-referential models; Redis fact keys no
   longer merge `None`/`""`/`"_"`; builtins never overwrite an artifact.
+- **Per-request agent + full transcript in tests (#407)** —
+  `make_agent_router` takes an `Agent` **or** a FastAPI dependency returning
+  one (`AgentDependency`); `/run` and `/run/stream` resolve it per request,
+  history/artifact endpoints never call it, an `owner=` dependency shared
+  with the factory resolves once. Chosen over `Agent.run(system_prompt=...)`,
+  which would touch `run`/`stream`/`run_structured` and the skills/structured
+  prompt composition to save ~3.3 µs of construction.
+  `ScriptedBackend.messages_seen` keeps each call's full conversation as a
+  deep copy.
 - **Media type independente da imagem (0.303.0)** —
   `guess_media_type` + `XLSX_MEDIA_TYPE`/`DOCX_MEDIA_TYPE`/`PPTX_MEDIA_TYPE`
   (`utils`, topo; xlsx também em `spreadsheet`). Tabela própria antes do

@@ -709,6 +709,12 @@ caller's artifact answers `404`, exactly like a run that does not exist.
 Without `owner=`, everyone who reaches the router sees every kept run — only
 acceptable when a single principal can reach it.
 
+The first argument can also be a **FastAPI dependency returning the `Agent`**
+instead of a ready-made agent: `/run` and `/run/stream` resolve it on every
+request. That is how a prompt that depends on the caller (their facts, the
+tenant) keeps the ready-made router —
+[With the ready-made router](agents-prompts.md#with-the-ready-made-router).
+
 The JSON carries artifacts as **metadata** (name, type, size), never bytes:
 a generated image is megabytes, and base64 in the body inflates that by a
 third. The bytes come from a second request with the right media type —

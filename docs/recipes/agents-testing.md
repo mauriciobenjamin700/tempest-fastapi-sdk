@@ -19,7 +19,7 @@ from tempest_fastapi_sdk.agents.testing import ScriptedBackend, replies
 
 !!! abstract "O mesmo backend serve para estudar o laço"
     `ScriptedBackend` guarda o que o agente mandou em cada chamada
-    (`system_prompts`, `prompts`, `specs_seen`), então ele não serve só para
+    (`system_prompts`, `prompts`, `specs_seen`, `messages_seen`), então ele não serve só para
     afirmar: serve para **ver**. É com ele que [Agentes: como funcionam por
     dentro](agents-concepts.md) mostra a transcrição turno a turno.
 
@@ -241,6 +241,62 @@ async def test_facts_reach_the_model() -> None:
     assert "timezone: America/Recife" in backend.system_prompts[0]
 ```
 
+## Testar o que a ferramenta pôs na frente do modelo
+
+`system_prompts` e `prompts` mostram só o começo da conversa. O que uma
+ferramenta devolveu chega ao modelo como mensagem `role: tool`, numa volta
+seguinte — e é `backend.messages_seen` que guarda a conversa **inteira** de
+cada chamada:
+
+```python title="test_observation.py" hl_lines="29 30 31 32"
+import pytest
+
+from tempest_fastapi_sdk.agents import Agent, AgentContext, text_tool
+from tempest_fastapi_sdk.agents.testing import (
+    ScriptedBackend,
+    replies,
+    replies_with_tool,
+)
+
+
+async def lookup(arguments: dict[str, str], context: AgentContext) -> str:
+    """Return a customer record without its document number."""
+    return f"cliente {arguments['id']}: Ana, Picos/PI"
+
+
+@pytest.mark.asyncio
+async def test_the_model_reads_only_what_the_tool_returned() -> None:
+    """The observation is the tool's text, and nothing else about the customer."""
+    backend = ScriptedBackend(
+        [
+            replies_with_tool("lookup", {"id": "42"}),
+            replies("Ana mora em Picos."),
+        ],
+    )
+    agent = Agent(backend, tools=[text_tool("lookup", "Find a customer.", lookup)])
+
+    await agent.run("Onde mora o cliente 42?")
+
+    second_call = backend.messages_seen[1]
+    roles = [message["role"] for message in second_call]
+    assert roles == ["system", "user", "assistant", "tool"]
+    assert second_call[-1]["content"] == "cliente 42: Ana, Picos/PI"
+```
+
+```text
+.                                                                        [100%]
+1 passed in 0.53s
+```
+
+Cada entrada é uma **cópia** tirada na hora da chamada. O agente continua
+acrescentando mensagens na mesma lista ao longo da execução; uma referência
+mostraria, na primeira chamada, as voltas que vieram depois. Medido nesta
+execução: `len(backend.messages_seen[0]) == 2`, mesmo com a conversa
+terminando com quatro mensagens.
+
+É assim que se prova o que uma ferramenta deixou chegar ao modelo — e o que
+ela **não** deixou.
+
 ## Testar a queda do backend
 
 ```python title="test_outage.py" hl_lines="12"
@@ -343,6 +399,8 @@ addopts = ["-m", "not model"]
   texto.
 - **`specs_seen` / `system_prompts`** provam o que chegou ao modelo em cada
   turno — é assim que se testa skill e memória.
+- **`messages_seen`** guarda a conversa inteira de cada chamada, observações
+  de ferramenta incluídas, como cópia daquele instante.
 - **`FailingBackend`** garante que a queda do modelo vire resposta, não 500.
 - **Uma camada `@model` separada** cobre a única coisa que o script não
   cobre: se o modelo escolhe certo.

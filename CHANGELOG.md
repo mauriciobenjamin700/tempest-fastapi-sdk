@@ -39,6 +39,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   de tipo. Com ele, o `CapacityReport.reason` termina com *"RAM is limited
   by the container's cgroup to 512 MiB."*, e o `tempest model hardware`
   imprime `ram total  : 0.5 GB (cgroup limit)`.
+- **Agente por requisição no router pronto (#407):** `make_agent_router`
+  aceita, no lugar do `Agent`, uma dependência FastAPI que devolve o
+  `Agent` da requisição (`AgentDependency`, re-exportado em
+  `tempest_fastapi_sdk.agents`). `/run` e `/run/stream` a resolvem a cada
+  requisição; `GET /runs` e o download de artefato nunca a chamam. A
+  dependência pode receber o `Request` ou declarar `Depends` próprios —
+  inclusive a mesma função de `owner=`, que o FastAPI resolve uma vez só.
+  `make_agent_router(agent)` continua servindo a mesma instância. É como um
+  prompt que depende de quem chama (`facts_prompt`) usa o router sem
+  endpoint próprio. `Agent.run(..., system_prompt=...)` ficou de fora: tocaria
+  `run`/`stream`/`run_structured` e a composição do bloco de skills e do
+  `run_structured`, para economizar ~3,3 µs de construção de agente.
+- **`ScriptedBackend.messages_seen`** (#407): a conversa inteira recebida em
+  cada chamada (`list[list[dict[str, Any]]]`), como cópia profunda tirada na
+  hora — o agente continua acrescentando na mesma lista, e uma referência
+  mostraria voltas futuras dentro de chamadas antigas. É como se afirma o que
+  uma observação de ferramenta pôs na frente do modelo.
 
 ### Changed
 

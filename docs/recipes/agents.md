@@ -706,6 +706,12 @@ artefato da execução de outra pessoa responde `404`, igual a uma execução qu
 não existe. Sem `owner=`, todo mundo que alcança o router vê toda execução
 guardada — aceitável só quando um único principal chega nele.
 
+O primeiro argumento também pode ser uma **dependência FastAPI que devolve o
+`Agent`** em vez do agente pronto: `/run` e `/run/stream` a resolvem a cada
+requisição. É como um prompt que depende de quem chama (os fatos do usuário, o
+tenant) usa o router pronto —
+[Com o router pronto](agents-prompts.md#com-o-router-pronto).
+
 O JSON traz os artefatos como **metadados** (nome, tipo, tamanho), nunca os
 bytes: uma imagem gerada tem megabytes, e base64 no corpo infla isso em um
 terço. Os bytes vêm numa segunda requisição, com o media type certo — o que

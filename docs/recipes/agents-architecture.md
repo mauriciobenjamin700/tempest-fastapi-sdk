@@ -405,7 +405,9 @@ com o valor que ela devolve, e esse valor chega à ferramenta como
 `context_for` e `require_user_id`. Por isso o endpoint aqui é próprio. Com
 `make_agent_router(agent, owner=...)` a ferramenta leria o id em
 `context.owner`, como texto; quando ela precisa de mais que um id, o endpoint
-continua sendo seu.
+continua sendo seu. O prompt por requisição, sozinho, não é motivo: o router
+aceita uma fábrica no lugar do agente
+([Com o router pronto](agents-prompts.md#com-o-router-pronto)).
 
 !!! check "Sempre traduza `stop_reason`"
     Uma execução truncada por orçamento devolve texto — o último que o modelo
