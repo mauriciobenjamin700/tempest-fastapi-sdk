@@ -14664,7 +14664,7 @@ class Payment(BaseSchema):
         correlation_id (str | None): Your correlation ID to keep track of this payment
         comment (str | None): the comment that will be sent alongside your payment
         source_account_id (str | None): the source account the payment was created from
-        status (PaymentStatus | None): payment status
+        status (PaymentStatus | str | None): payment status
         boleto (PaymentBoleto | None): present for boleto payments (type BOLETO),
             resolved from the validated boleto
     """
@@ -14715,7 +14715,10 @@ class Payment(BaseSchema):
         description="the source account the payment was created from",
         default=None,
     )
-    status: PaymentStatus | None = Field(description="payment status", default=None)
+    status: PaymentStatus | str | None = Field(
+        description="payment status",
+        default=None,
+    )
     boleto: PaymentBoleto | None = Field(
         description=(
             "present for boleto payments (type BOLETO), resolved from the validated "

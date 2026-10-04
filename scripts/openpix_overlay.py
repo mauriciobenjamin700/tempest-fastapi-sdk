@@ -301,6 +301,7 @@ and is written as-is.
 
 LIFTED_ENUMS: dict[str, dict[str, str]] = {
     "Charge": {"status": "ChargeStatus"},
+    "Payment": {"status": "PaymentStatus"},
 }
 """Response properties whose declared ``enum`` the provider does not honour.
 
@@ -336,6 +337,16 @@ becomes an ``anyOf`` of that component and a bare string. The generator
 emits the component as the same class under the same name, and the field
 annotation becomes ``ChargeStatus | str | None``: known states keep the
 enum member, an unrecognized one arrives as the string the provider sent.
+
+``Payment.status`` is the same defect, and the document proves it
+against itself: ``Payment`` declares ``["CREATED", "FAILED", "CONFIRMED",
+"DENIED"]``, while the ``autoApproved`` example of ``POST /api/v1/payment``
+— the answer to ``autoApprove: true`` — carries ``"status": "APPROVED"``.
+Measured before the lift: ``CreatePaymentResponse.model_validate`` refused
+that example with ``Input should be 'CREATED', 'FAILED', 'CONFIRMED' or
+'DENIED'``, so ``create_payment`` raised on a 200 after the Pix had been
+sent. The lift keeps ``PaymentStatus`` and lets ``APPROVED`` through as a
+string.
 
 A union was rejected for ``Charge.expiresIn`` in v0.269.0 and is right
 here, because the two unions are not the same shape. ``int | str`` forces

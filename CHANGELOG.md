@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`create_payment` com `autoApprove: true` levantava depois de enviar o
+  Pix.** A resposta documentada pela própria OpenPix para esse caso traz
+  `"status": "APPROVED"`, e o enum fechado de `Payment.status`
+  (`CREATED`, `FAILED`, `CONFIRMED`, `DENIED`) recusava o valor com
+  `Input should be 'CREATED', 'FAILED', 'CONFIRMED' or 'DENIED'`: o
+  dinheiro saía e o chamador recebia um `ValidationError`. O overlay agora
+  levanta o enum como já fazia com `Charge.status`, então o campo é
+  `PaymentStatus | str | None` e `PaymentStatus` continua igual. Os cinco
+  exemplos de resposta de `POST /api/v1/payment` validam, fixados em
+  `tests/integrations/payment/openpix/test_overlay.py`.
+
 ## [0.303.2] — 2026-10-04
 
 Três defeitos achados ao medir agente e planejador em CPU: resposta vazia
