@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -332,3 +333,21 @@ class TestClaimOnce:
         await session.commit()
 
         assert (first, second) == (True, False)
+
+
+class TestLedgerOutlivesItsUser:
+    async def test_a_user_with_ledger_lines_cannot_be_hard_deleted(
+        self, session: AsyncSession
+    ) -> None:
+        """``RESTRICT`` is the default, so the money history is never erased."""
+        user_id = await _user(session)
+        await _service(session).credit(user_id, 100, kind="SALE")
+        user = await session.get(_WalletUser, user_id)
+        assert user is not None
+
+        await session.delete(user)
+        with pytest.raises(IntegrityError):
+            await session.commit()
+        await session.rollback()
+
+        assert len((await session.scalars(select(_Entry))).all()) == 1
