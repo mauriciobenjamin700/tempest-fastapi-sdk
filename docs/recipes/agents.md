@@ -876,24 +876,33 @@ Use essa conta, com as taxas da **sua** máquina, para escolher o teto:
 ### O timeout do Ollama e o orçamento
 
 `timeout=` do `OllamaGenerator` (default 120 s) é **por requisição**, e o
-cliente HTTP do gerador refaz uma requisição que estoura o tempo: três
-tentativas, com 0,5 s e 1 s de espera entre elas. Numa chamada que precisa
-de mais tempo que o timeout, nenhuma tentativa termina — o daemon aborta
-cada uma quando o cliente desiste. Medido com o `qwen2.5:3b` em CPU, um
-prompt de ~4 400 tokens (~33 s de prefill) e `timeout=10.0`: a chamada
-levantou `ReadTimeout` depois de 31,53 s, e o log do Ollama mostrou três
-`POST /api/chat` de 10,0 s cada. Dentro de um agente, a execução terminou
-em `error` com 33,73 s.
+cliente HTTP do gerador **não** refaz uma requisição que estoura o tempo:
+quando o cliente desiste, o daemon aborta a geração, então uma nova
+tentativa recomeçaria do zero e estouraria de novo. O `ReadTimeout` chega
+depois de um timeout. Medido com o `qwen2.5:3b` em CPU e `timeout=10.0`: a
+chamada levantou `ReadTimeout` em 10,01 s (mediana, N=5), com um
+`POST /api/chat` de 10,0 s no log do Ollama. Erro de conexão e `429`/`5xx`
+continuam sendo refeitos.
 
-Duas configurações que se comportam bem, medidas no mesmo cenário:
+??? note "Até a v0.303.1, o timeout era refeito três vezes"
+    O cliente fazia três tentativas, com 0,5 s e 1 s de espera entre elas.
+    No mesmo cenário, com um prompt de ~4 400 tokens (~33 s de prefill), a
+    chamada levantava `ReadTimeout` depois de 31,53 s, o log do Ollama
+    mostrava três `POST /api/chat` de 10,0 s, e dentro de um agente a
+    execução terminava em `error` com 33,73 s. Nessas versões, passe
+    `retry_policy=RetryPolicy(max_attempts=1)` (com
+    `from tempest_fastapi_sdk import RetryPolicy`): com ela, a execução do
+    agente terminou em `error` com 10,84 s — uma tentativa, que é o
+    comportamento default a partir da versão seguinte.
+
+Duas configurações que se comportam bem:
 
 - **`timeout` maior ou igual a `max_seconds`** (o caso dos defaults): o
   orçamento corta antes do timeout. Com `max_seconds=20`, a execução
   terminou em `timeout` com 20,02 s.
-- **Timeout menor, sem retentativa**:
-  `OllamaGenerator(..., timeout=10.0, retry_policy=RetryPolicy(max_attempts=1))`
-  (com `from tempest_fastapi_sdk import RetryPolicy`) terminou em `error`
-  com 10,84 s.
+- **Timeout menor que `max_seconds`**: a volta que estoura o timeout falha
+  depois de um timeout, e a execução termina em `error`. Para o agente
+  tratar isso como fim de orçamento, prefira a configuração anterior.
 
 !!! tip "Resumo para começar em CPU"
     `OllamaGenerator` com um modelo de 3B em GGUF, `num_ctx` explícito,

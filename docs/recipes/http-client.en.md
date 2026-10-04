@@ -86,7 +86,8 @@ async def call() -> None:
 
 - **Retry**: retried on transient errors (timeouts, 5xx, connection
   failures) up to `max_attempts`, with exponential backoff capped by
-  `backoff_max_seconds`.
+  `backoff_max_seconds`. `RetryPolicy(retry_on_read_timeout=False)` takes
+  `ReadTimeout` off that list and keeps the rest — see the warning below.
 - **Circuit-breaker**: after `failure_threshold` consecutive failures the
   circuit **opens** and calls raise `CircuitOpenError` immediately (without
   touching the network) until `recovery_seconds` elapse, then it half-opens
@@ -102,6 +103,18 @@ async def call() -> None:
     caller — re-sending the POST would replay lines you already consumed.
     Up to this release a mid-stream `ReadTimeout` was retried, and the
     caller saw `["Hello ", "Hello ", "world"]` from two POSTs.
+
+!!! warning "A read timeout on an expensive call"
+    A `ReadTimeout` means the request **reached** the server and the
+    response did not arrive in time. On a quick call that is a stalled
+    connection, and retrying fixes it. On a call whose cost is the server's
+    work — a model generation — the server aborts the work when the client
+    gives up, and the next attempt starts from zero with the same timeout:
+    the failure arrives after `max_attempts` × the timeout instead of one.
+    For those, pass `RetryPolicy(retry_on_read_timeout=False)`; a
+    `ConnectError` is still retried, since no work started. The
+    [`genai`](genai.md) generators already default to it on the client they
+    build.
 
 !!! tip "Keep it as a singleton in resources.py"
     Build the `HTTPClient` once (in `src/api/dependencies/resources.py`),
@@ -191,7 +204,7 @@ async def publish(payload: dict[str, str]) -> None:
 
 - `HTTPClient` = typed `httpx.AsyncClient` + retry/backoff/circuit-breaker + X-Request-ID.
 - No extra required (`httpx` ships with the base package; `[http]` is optional). Methods `get/post/put/patch/delete/request` → `httpx.Response`.
-- `RetryPolicy(max_attempts, backoff_initial_seconds, backoff_max_seconds)` controls retries.
+- `RetryPolicy(max_attempts, backoff_initial_seconds, backoff_max_seconds)` controls retries; `retry_on_read_timeout=False` for an expensive call (generation).
 - `async_retry(policy, exceptions, logger=)` applies the curve to any coroutine; `logger=` takes a `logging.Logger` or a `LogUtils`.
 - `failure_threshold` / `recovery_seconds` control the breaker; `CircuitOpenError` when open.
 - Share a singleton and close it with `aclose()` on shutdown.

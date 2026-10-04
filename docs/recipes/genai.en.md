@@ -546,6 +546,28 @@ another host when Ollama isn't local (the default is `DEFAULT_OLLAMA_URL`);
 `keep_alive`, `timeout` and your own `http_client` (to reuse the pool) are
 optional.
 
+!!! warning "A read timeout is not retried"
+    The `HTTPClient` the generator builds retries a connection error and a
+    retryable status (`429`, `5xx`), but **not** a `ReadTimeout`. When the
+    client stops waiting, the daemon aborts the generation — in the Ollama
+    0.30.11 log each attempt shows up as a `500` of exactly the timeout — so
+    the next attempt starts from zero and times out again. Measured with
+    `qwen2.5:3b` on CPU (`options={"num_gpu": 0}`) and `timeout=10`: up to
+    v0.303.1 the failure arrived after 31.5 s, after three aborts; now it
+    arrives after 10.0 s, with one (median of N=3 before and N=5 after). The
+    same holds for `OllamaEmbedder` and `OpenAICompatGenerator`. To get the
+    retry back, pass the policy explicitly — it is used as given:
+
+    ```python
+    from tempest_fastapi_sdk import RetryPolicy
+    from tempest_fastapi_sdk.genai import OllamaGenerator
+
+    gen: OllamaGenerator = OllamaGenerator(
+        "llama3.2",
+        retry_policy=RetryPolicy(retry_on_read_timeout=True),
+    )
+    ```
+
 !!! info "`GenerationConfig` maps to Ollama options"
     The same typed `GenerationConfig` works here — its fields are translated
     to Ollama options: `max_new_tokens`→`num_predict`,

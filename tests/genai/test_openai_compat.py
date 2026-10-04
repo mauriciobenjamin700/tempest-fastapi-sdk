@@ -400,3 +400,47 @@ class TestReservedKeys:
         with pytest.raises(TypeError, match=key):
             await _generator(rec).generate("oi", **{key: "x"})
         assert rec.requests == []
+
+
+class TestDefaultRetryPolicy:
+    """The owned client does not retry a read timeout by default."""
+
+    async def test_read_timeout_fails_after_one_attempt(self) -> None:
+        """A retry would start the generation that timed out again from zero."""
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            raise httpx.ReadTimeout("generation outlived the timeout")
+
+        gen = OpenAICompatGenerator(
+            "test-model",
+            api_key="sk-test",
+            base_url="https://api.example.com/v1",
+            transport=httpx.MockTransport(handler),
+        )
+        try:
+            with pytest.raises(httpx.ReadTimeout):
+                await gen.generate("Write an essay.")
+        finally:
+            await gen.aclose()
+        assert calls["n"] == 1
+
+    async def test_rate_limit_is_still_retried(self) -> None:
+        statuses = iter([429, 200])
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if next(statuses) == 429:
+                return httpx.Response(429)
+            return httpx.Response(200, json=_completion("ok"))
+
+        gen = OpenAICompatGenerator(
+            "test-model",
+            api_key="sk-test",
+            base_url="https://api.example.com/v1",
+            transport=httpx.MockTransport(handler),
+        )
+        try:
+            assert await gen.generate("hi") == "ok"
+        finally:
+            await gen.aclose()

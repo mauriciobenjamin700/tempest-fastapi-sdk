@@ -144,7 +144,13 @@ class OpenAICompatGenerator:
                 ``httpx.MockTransport`` in tests. Ignored when
                 ``http_client`` is given.
             retry_policy (RetryPolicy | None): Retry configuration for the
-                lazily-created client. Ignored when ``http_client`` is given.
+                lazily-created client. ``None`` keeps the ``HTTPClient``
+                defaults but does not retry a read timeout: a retry is a new
+                request, so the provider starts the generation that outlived
+                the timeout again from zero, and the failure would arrive
+                after three timeouts instead of one. A connection
+                error and a retryable status (``429``, ``5xx``) are still
+                retried. Ignored when ``http_client`` is given.
             metrics (GenAIMetrics | None): Optional Prometheus recorder.
             forward_params (Iterable[str]): HuggingFace-only generation
                 fields (``top_k``, ``repetition_penalty``, ``do_sample``)
@@ -200,12 +206,13 @@ class OpenAICompatGenerator:
             HTTPClient: The resilient client used for API requests.
         """
         if self._client is None:
-            from tempest_fastapi_sdk.utils.http_client import HTTPClient
+            from tempest_fastapi_sdk.utils.http_client import HTTPClient, RetryPolicy
 
             self._client = HTTPClient(
                 timeout=self.timeout,
                 transport=self._transport,
-                retry_policy=self._retry_policy,
+                retry_policy=self._retry_policy
+                or RetryPolicy(retry_on_read_timeout=False),
             )
         return self._client
 
