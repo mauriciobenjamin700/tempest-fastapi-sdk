@@ -37,9 +37,9 @@ Loading a too-large model ends in an OOM minutes into the download.
 `can_run` answers first:
 
 ```python
-from tempest_fastapi_sdk.genai import can_run, ModelDtype
+from tempest_fastapi_sdk.genai import can_run
 
-report = can_run(model_id="Qwen/Qwen2.5-7B-Instruct", dtype=ModelDtype.BFLOAT16)
+report = can_run(model_id="Qwen/Qwen2.5-7B-Instruct")
 
 if report.fits:
     print(f"OK on {report.device} — {report.headroom_pct:.0f}% headroom")
@@ -53,9 +53,15 @@ else:
 concrete `suggestion` when it doesn't fit (quantize, offload to CPU, or
 pick a smaller model).
 
+Without `dtype=`, `can_run` sizes the precision `TextGenerator(dtype="auto")`
+loads on the chosen device: `bfloat16` on CUDA/MPS, `float32` on CPU. Pass
+`dtype=` to plan for something else — an explicit `dtype=` on the
+generator, or `ModelDtype.INT8`/`INT4` for `quantization=`.
+
 !!! tip "Let the SDK pick the precision"
-    `recommend(...)` tries `bfloat16` → `int8` → `int4` on the best
-    available device and returns the **first** config that fits:
+    `recommend(...)` tries the native precision of the best available
+    device (`bfloat16` on a GPU, `float32` on CPU) → `int8` → `int4` and
+    returns the **first** config that fits:
 
     ```python
     from tempest_fastapi_sdk.genai import recommend
@@ -63,6 +69,54 @@ pick a smaller model).
     best = recommend(model_id="meta-llama/Llama-3.1-8B")
     print(best.device, best.dtype, best.fits)   # e.g. cuda int8 True
     ```
+
+### On CPU
+
+Up to 0.303.0 the planner sized every unquantized load at `bfloat16`, but
+on CPU `TextGenerator` loads `float32` — twice the bytes. `recommend()`
+said "fits" for a model that did not. CPU is now sized at `float32`, and
+the rung below it is `int8` (never `bfloat16`, which is not a
+quantization).
+
+Measured with the GPU hidden (`CUDA_VISIBLE_DEVICES=`), i9-13900F, 62 GB
+RAM, WSL2, torch 2.14, bitsandbytes 0.50.2, N=3 per row. "Measured" is the
+process RSS growth from before to after `load()`, median; transformers
+4.57.6 (the floor) / 5.18.0 (the newest on the day):
+
+| Model | Precision | Estimate | Measured (4.57.6 / 5.18.0) |
+| --- | --- | --- | --- |
+| Qwen2.5-0.5B-Instruct | `float32` (was: `bfloat16`) | 2.47 GB (was: 1.24 GB) | 2.13 GB / 2.12 GB |
+| Qwen2.5-0.5B-Instruct | `int8` | 0.62 GB | 0.89 GB / 1.29 GB |
+| Qwen2.5-0.5B-Instruct | `int4` | 0.37 GB | 1.02 GB / 1.62 GB |
+| Qwen2.5-3B-Instruct | `float32` (was: `bfloat16`) | 15.43 GB (was: 7.71 GB) | 12.51 GB / 12.48 GB |
+| Qwen2.5-3B-Instruct | `int8` | 3.86 GB | 3.67 GB / 8.54 GB |
+| Qwen2.5-3B-Instruct | `int4` | 2.31 GB | 3.25 GB / 8.16 GB |
+
+What the table says:
+
+- **`float32` is what CPU loads**, and the new estimate covers the RSS
+  after the load. The peak **during** the load goes past it: 3.12 GB for
+  the 0.5B and 14.71 GB / 18.66 GB for the 3B.
+- **bitsandbytes int8/int4 load and generate on CPU** with bitsandbytes
+  0.50.2 — no error in the table's 24 quantized runs.
+- **The quantized estimate is optimistic.** For the 0.5B the measured
+  int4 RSS was 2.7× to 4.4× above it (embeddings are not quantized, and
+  weigh more in a small model). On transformers 5.18.0 the quantized 3B
+  load leaves the process with 5.65 GB of **file-backed** RSS (`RssFile`,
+  against 0.36 GB on 4.57.6); the whole process's anonymous memory was
+  3.33 GB (int8) and 2.95 GB (int4).
+- **bitsandbytes on CPU is slower than `float32`.** On the 3B, a
+  `generate()` capped at 16 tokens took ~9 s at int8/int4 against ~3 s at
+  `float32`. That is why a CPU quantization `suggestion` points at the CPU
+  path the SDK already ships:
+
+!!! tip "On CPU, GGUF through Ollama"
+    llama.cpp (build 687e778, `-ngl 0`, context 4096) serving the Q4_K_M
+    GGUF that Ollama 0.30.11 pulls for `qwen2.5:3b` sat at 3.60 GB RSS
+    (1.61 GB anonymous + 1.99 GB file-backed) and generated 24 to 27
+    tokens/s; `qwen2.5:0.5b` sat at 0.66 GB and 107 to 134 tokens/s (N=3
+    each). Use [`OllamaGenerator`](#ollama-backend) — memory is in the same
+    range as bitsandbytes int4; the measured advantage is speed.
 
 ## Probing the hardware
 

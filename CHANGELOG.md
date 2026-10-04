@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`can_run(dtype=...)` agora tem default `None`**, que dimensiona na
+  precisão que o `TextGenerator(dtype="auto")` carrega no device escolhido:
+  `bfloat16` em CUDA/MPS (igual a antes), **`float32` em CPU** (antes
+  `bfloat16`). `dtype=` explícito continua valendo. `recommend()` tenta a
+  precisão nativa → `int8` → `int4`; em GPU a ordem é a mesma de antes. O
+  `CapacityReport` não mudou de forma; muda o `dtype`/`estimated_bytes`
+  que ele traz para CPU.
+- A `suggestion` de quantizar em CPU acrescenta que o bitsandbytes em CPU
+  decodifica mais devagar que `float32` e aponta o `OllamaGenerator`
+  (GGUF) como o caminho de CPU. Medido no Qwen2.5-3B: `generate()` de até
+  16 tokens em ~9 s com int8/int4 contra ~3 s em `float32`.
+
+### Fixed
+
+- **O planejador subdimensionava CPU pela metade.** Sem `dtype=`,
+  `can_run`/`recommend` estimavam CPU em `bfloat16` enquanto o gerador
+  carrega `float32`: para o Qwen2.5-0.5B a estimativa era 1,24 GB e o RSS
+  medido após o `load()` foi 2,13 GB (transformers 4.57.6) / 2,12 GB
+  (5.18.0); para o 3B, 7,71 GB contra 12,51 / 12,48 GB. Agora a estimativa
+  é 2,47 GB / 15,43 GB.
+- A `suggestion` em CPU não propõe mais "Quantize to bfloat16" (não é
+  quantização, e o `TextGenerator` recusa `quantization="bfloat16"`).
+- **`TextGenerator(device="cpu", quantization="int8"|"int4")` carregava na
+  GPU** quando havia CUDA: o caminho quantizado passava sempre
+  `device_map="auto"`, e o `accelerate` punha os pesos em `cuda:0`
+  enquanto `gen.device` dizia `"cpu"` — o offload que o `can_run` sugere
+  era irrealizável. Agora usa `device_map="cpu"` quando o device é CPU
+  (medido: pesos em `cpu` com CUDA visível, transformers 4.57.6 +
+  bitsandbytes 0.50.2).
+- O exemplo de `recommend()` em `genai-examples` lia `rec.dtype.value`,
+  que levanta `AttributeError`: o `CapacityReport` guarda o valor do enum
+  (`use_enum_values`), então `rec.dtype` já é a string.
+
 ## [0.303.0] — 2026-10-03
 
 Auditoria da documentação contra o código entregue: 150 afirmações da doc

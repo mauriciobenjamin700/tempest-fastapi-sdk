@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+from typing import Any
 
 import pytest
 
@@ -14,6 +15,7 @@ from tempest_fastapi_sdk.genai import (
     auto_dtype_name,
     resolve_device,
 )
+from tempest_fastapi_sdk.genai import text as text_module
 from tempest_fastapi_sdk.genai.schemas import GPUInfo
 from tempest_fastapi_sdk.genai.text import _resolve_control
 
@@ -255,3 +257,87 @@ class TestWithoutExtra:
         # transformers not installed -> helpful ImportError
         with pytest.raises(ImportError, match=r"\[genai\]"):
             await gen.generate("hi")
+
+
+class _RecordingLoader:
+    """Records the keyword arguments ``from_pretrained`` was called with."""
+
+    def __init__(self) -> None:
+        """Start with no recorded call."""
+        self.kwargs: dict[str, Any] = {}
+
+    def from_pretrained(self, model_id: str, **kwargs: Any) -> object:
+        """Record ``kwargs`` and return a placeholder model.
+
+        Args:
+            model_id (str): Ignored.
+            **kwargs (Any): The loader arguments, recorded.
+
+        Returns:
+            object: A placeholder standing in for the model.
+        """
+        self.kwargs = kwargs
+        return object()
+
+
+class _FakeBitsAndBytesConfig:
+    """Keeps the quantization arguments it was built with."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        """Store ``kwargs``.
+
+        Args:
+            **kwargs (Any): The quantization arguments.
+        """
+        self.kwargs: dict[str, Any] = kwargs
+
+
+class _FakeTransformers:
+    """The slice of ``transformers`` that ``TextGenerator._build`` touches."""
+
+    def __init__(self) -> None:
+        """Wire the recording loaders and the quantization config."""
+        self.AutoTokenizer = _RecordingLoader()
+        self.AutoModelForCausalLM = _RecordingLoader()
+        self.BitsAndBytesConfig = _FakeBitsAndBytesConfig
+
+
+class TestQuantizedDevicePlacement:
+    """A quantized CPU generator loads on CPU, even on a host with CUDA.
+
+    The shipped defect: the quantized path always passed
+    ``device_map="auto"``, so ``TextGenerator(device="cpu",
+    quantization="int4")`` — the offload ``can_run`` suggests when a model
+    does not fit the GPU — loaded onto ``cuda:0`` (measured with
+    Qwen2.5-0.5B, transformers 4.57.6, bitsandbytes 0.50.2) while
+    ``gen.device`` reported ``"cpu"``.
+    """
+
+    @pytest.mark.parametrize(
+        ("device", "expected"),
+        [("cpu", "cpu"), ("cuda", "auto")],
+    )
+    def test_device_map_follows_the_resolved_device(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        device: str,
+        expected: str,
+    ) -> None:
+        fake = _FakeTransformers()
+        monkeypatch.setattr(
+            text_module,
+            "_require_transformers",
+            lambda: (object(), fake),
+        )
+        gen = TextGenerator(
+            "m",
+            device=device,
+            quantization="int4",
+            hardware=_gpu_hw(),
+        )
+
+        gen._build()
+
+        loaded = fake.AutoModelForCausalLM.kwargs
+        assert loaded["device_map"] == expected
+        assert loaded["quantization_config"].kwargs == {"load_in_4bit": True}

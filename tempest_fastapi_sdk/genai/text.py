@@ -31,7 +31,7 @@ from tempest_fastapi_sdk.genai.generation_cache import (
     GenerationCache,
     cached_generate,
 )
-from tempest_fastapi_sdk.genai.hardware import probe_hardware
+from tempest_fastapi_sdk.genai.hardware import _native_dtype, probe_hardware
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
 from tempest_fastapi_sdk.genai.schemas import (
@@ -469,9 +469,11 @@ def auto_dtype_name(device: str) -> str:
 
     Returns:
         str: ``"bfloat16"`` on CUDA/MPS, ``"float32"`` on CPU (which has
-        no fast half-precision path).
+        no fast half-precision path). The capacity planner
+        (:func:`~tempest_fastapi_sdk.genai.can_run`) sizes an unquantized
+        load from the same rule, so the two cannot drift.
     """
-    return "float32" if device == "cpu" else "bfloat16"
+    return _native_dtype(device).value
 
 
 def _require_transformers() -> tuple[Any, Any]:
@@ -985,6 +987,13 @@ class TextGenerator:
     def _build(self) -> None:
         """Load the tokenizer and weights; called once, under the load lock.
 
+        A quantized load pins ``device_map="cpu"`` when the resolved device
+        is CPU. ``device_map="auto"`` lets ``accelerate`` place the weights
+        on any GPU it sees, so on a host with CUDA a generator built with
+        ``device="cpu", quantization="int4"`` — the offload the capacity
+        planner suggests — would load onto ``cuda:0`` while ``self.device``
+        still said ``"cpu"``.
+
         Raises:
             ImportError: When the ``[genai]`` (or ``[genai-quant]``) extra
                 is missing.
@@ -996,7 +1005,7 @@ class TextGenerator:
             kwargs["quantization_config"] = transformers.BitsAndBytesConfig(
                 **{f"load_in_{bits}bit": True},
             )
-            kwargs["device_map"] = "auto"
+            kwargs["device_map"] = "cpu" if self.device == "cpu" else "auto"
         else:
             kwargs.update(precision_kwarg(getattr(torch, self.dtype.value)))
             kwargs["device_map"] = self.device if self.device != "cpu" else None
