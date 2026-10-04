@@ -405,7 +405,9 @@ the tools on this page read the caller from, through `context_for` and
 `require_user_id`. That is why the endpoint here is your own. With
 `make_agent_router(agent, owner=...)` the tool would read the id from
 `context.owner`, as a string; when it needs more than an id, the endpoint stays
-yours.
+yours. A per-request prompt alone is not a reason: the router takes a factory in
+place of the agent
+([With the ready-made router](agents-prompts.md#with-the-ready-made-router)).
 
 !!! check "Always translate `stop_reason`"
     A budget-truncated run still returns text — the last thing the model said.

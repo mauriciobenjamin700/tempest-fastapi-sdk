@@ -78,6 +78,7 @@ from tempest_fastapi_sdk.agents.protocols import (
 from tempest_fastapi_sdk.agents.router import (
     AgentArtifactSchema as AgentArtifactSchema,
 )
+from tempest_fastapi_sdk.agents.router import AgentDependency as AgentDependency
 from tempest_fastapi_sdk.agents.router import (
     AgentRunRequestSchema as AgentRunRequestSchema,
 )
@@ -142,6 +143,7 @@ __all__: list[str] = [
     "AgentBackend",
     "AgentBudget",
     "AgentContext",
+    "AgentDependency",
     "AgentRun",
     "AgentRunRequestSchema",
     "AgentRunResponseSchema",

@@ -11,7 +11,9 @@ Three properties are deliberate, and each one is a bug this shape avoids:
   the step and handed to the model as an observation, because a model that
   hears "no artifact named 'chart.png'; available: plot.png" usually fixes
   it on the next turn, while an exception would throw away the work done
-  so far.
+  so far. Only an :class:`AgentToolError` carries its text; any other
+  exception reaches the model as ``"tool failed: <Type>"``, since its text
+  can hold a credential the model would then be free to repeat.
 * **Every ceiling is enforced, and the reason is reported.** Steps alone
   do not bound a run — one tool call can hang — so every model call and
   every tool call runs under the time left on the clock and is cancelled
@@ -34,6 +36,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import time
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
@@ -77,6 +80,57 @@ failing call until the budget runs out.
 
 logger = logging.getLogger(__name__)
 
+_SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(
+            r"(?i)([?&;][\w.\-]*?(?:key|token|secret|password|passwd|pwd)"
+            r"[\w.\-]*=)[^&#\s'\"]+",
+        ),
+        r"\1***",
+    ),
+    (
+        re.compile(
+            r"(?i)\b((?:proxy-)?authorization[\"']?\s*[:=]\s*[\"']?)"
+            r"((?:bearer|basic|token|digest)\s+)?[^\s\"',}]+",
+        ),
+        r"\1\2***",
+    ),
+    (
+        re.compile(r"(?i)(\b[a-z][a-z0-9+.\-]*://[^\s:/@]+:)[^\s@/]+@"),
+        r"\1***@",
+    ),
+)
+"""The shapes :func:`_mask_secrets` replaces, with their replacements.
+
+A query or form parameter whose name contains ``key``, ``token``,
+``secret`` or ``password`` (``?apikey=``, ``&access_token=``); an
+``Authorization`` / ``Proxy-Authorization`` value, keeping the scheme; and
+the password of a URL's userinfo (``postgresql://admin:***@db``). These are
+the forms an HTTP client's or a database driver's exception message puts a
+credential in. The list is a backstop, not a guarantee: a secret in any
+other shape passes through untouched.
+"""
+
+
+def _mask_secrets(text: str) -> str:
+    """Replace the obvious credential shapes in an exception's text.
+
+    Applied to the text that ``expose_tool_errors=True`` hands to the model
+    and the trace. It narrows the damage of an opt-in that is meant for
+    development; it does not make the raw text safe to serve, because the
+    patterns only know the shapes listed in :data:`_SECRET_PATTERNS`.
+
+    Args:
+        text (str): The exception text.
+
+    Returns:
+        str: The text with each matched secret replaced by ``***``.
+    """
+    for pattern, replacement in _SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
 _TOOL_GRACE_SECONDS: float = 0.25
 """How long past the deadline a top-level tool call may run before it is cut.
 
@@ -99,9 +153,10 @@ class _ToolOutcome:
     Attributes:
         step (AgentStep): The recorded step — what the trace, the HTTP
             router and the sinks see.
-        observation (str): What the model reads back. It differs from the
-            step's ``error`` only for an unexpected exception, whose full
-            text the model gets and the trace does not.
+        observation (str): What the model reads back. For an unexpected
+            exception it is ``"tool failed: <Type>"`` and the step's
+            ``error`` is ``"<Type>: the tool failed (details withheld)"``;
+            otherwise the two carry the same text.
         final (bool): The tool asked to end the run with its result.
         timed_out (bool): The call was cancelled by the time budget.
     """
@@ -212,14 +267,20 @@ class Agent:
                 :class:`~tempest_fastapi_sdk.genai.GenAIMetrics`; each run
                 records duration under the op ``"agent"``.
             name (str): This agent's name, recorded on each run.
-            expose_tool_errors (bool): Record the full text of an
-                unexpected tool exception on the step. Off by default: the
-                trace is what the HTTP router, the SSE stream and the run
-                sinks expose, and an arbitrary exception can carry a DSN
-                or a token. With it off the model still reads the full
-                text, the step keeps only the exception type, and the
-                exception is logged. :class:`AgentToolError` messages are
-                always recorded as written.
+            expose_tool_errors (bool): Hand the text of an unexpected tool
+                exception (anything but :class:`AgentToolError`) to the
+                model **and** record it on the step. Off by default: the
+                model reads ``"tool failed: <Type>"``, the step records
+                ``"<Type>: the tool failed (details withheld)"``, and the
+                full exception goes to the log either way. An arbitrary
+                exception can carry a DSN, a token or a URL with its API
+                key; the trace is what the HTTP router, the SSE stream and
+                the run sinks expose, and the model can repeat what it
+                reads to the user. With it on, the text passes through a
+                mask of the obvious credential shapes (``?apikey=``,
+                ``Authorization``, a URL's password) first — a backstop for
+                development, not a guarantee. :class:`AgentToolError`
+                messages always reach both as written.
         """
         self.generator = generator
         self.tools = list(tools)
@@ -699,23 +760,28 @@ class Agent:
             exc (Exception): What it raised.
 
         Returns:
-            tuple[str, str]: ``(observation, error)``. They are equal for
-            an :class:`AgentToolError` (its message is written to be
-            shown) or when ``expose_tool_errors`` is on; otherwise the
-            trace keeps only the exception type and the full exception is
-            logged.
+            tuple[str, str]: ``(observation, error)``. An
+            :class:`AgentToolError` gives its message to both, unchanged —
+            it is written to be shown. Any other exception is logged in
+            full; with ``expose_tool_errors`` on, both get its text with
+            the obvious secrets masked, and otherwise the model reads
+            ``"tool failed: <Type>"`` and the trace keeps only the type.
         """
-        full = f"{type(exc).__name__}: {exc}"
-        if isinstance(exc, AgentToolError) or self.expose_tool_errors:
-            return full, full
+        kind = type(exc).__name__
+        if isinstance(exc, AgentToolError):
+            curated = f"{kind}: {exc}"
+            return curated, curated
         logger.warning(
             "agent %r: tool %r raised %s",
             self.name,
             name,
-            type(exc).__name__,
+            kind,
             exc_info=exc,
         )
-        return full, f"{type(exc).__name__}: the tool failed (details withheld)"
+        if self.expose_tool_errors:
+            exposed = _mask_secrets(f"{kind}: {exc}")
+            return exposed, exposed
+        return f"tool failed: {kind}", f"{kind}: the tool failed (details withheld)"
 
     async def _run_tool(
         self,

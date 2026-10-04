@@ -78,6 +78,7 @@ someone opening a dispute. Here it is one call.
 | Fake | Stands in for | Its own steering |
 | --- | --- | --- |
 | `FakePixProvider` | `PixProvider` (OpenPix) | `advance(id, status)`, `charges` |
+| `FakePayoutProvider` | `PayoutProvider` (Pix payouts) | `transfers`, `status=` in the constructor |
 | `FakeTextBackend` | `TextBackend` (local model) | `queue(...)`, `prompts` |
 | `FakeModerationBackend` | `ModerationBackend` | `flag(substring)`, `checked` |
 | `FakePushDispatcher` | `PushDispatcher` (FCM/APNs/WebPush) | `sent`, `sent_to(token)` |
@@ -297,7 +298,7 @@ fails with `['self', 'query', 'limit'] == ['self', 'query', 'max_results']`.
 
 ## Recap
 
-- `from tempest_fastapi_sdk.testing.fakes import Fake...` — eight seams, no
+- `from tempest_fastapi_sdk.testing.fakes import Fake...` — nine seams, no
   credentials and no network.
 - A fake is not a mock: it holds state, and you **move** that state
   (`advance`, `flag`, `add_place`, `queue`).

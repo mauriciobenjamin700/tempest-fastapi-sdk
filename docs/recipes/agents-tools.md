@@ -308,7 +308,7 @@ cliente abaixo do orçamento, o CEP `99999999` voltou como observação
 
 O atalho é chamar `raise_for_status()` e deixar a exceção do `httpx` subir:
 
-```python title="cep_raw.py" hl_lines="34 35"
+```python title="cep_raw.py" hl_lines="34 35 49 50"
 import asyncio
 
 import httpx
@@ -348,7 +348,7 @@ async def lookup_cep_raw(args: CepArgs, context: AgentContext) -> str:
 
 
 async def main() -> None:
-    """Show what the trace keeps from an untranslated exception."""
+    """Show what the trace and the model get from an untranslated exception."""
     backend = ScriptedBackend(
         [
             replies_with_tool("lookup_cep", {"cep": "64600000"}),
@@ -358,6 +358,7 @@ async def main() -> None:
     run = await Agent(backend, tools=[lookup_cep_raw]).run("De onde é o CEP 64600-000?")
 
     print(tool_steps(run)[0].error)
+    print(backend.messages_seen[1][-1]["content"])
     await raw_client.aclose()
 
 
@@ -367,24 +368,49 @@ if __name__ == "__main__":
 
 ```text
 HTTPStatusError: the tool failed (details withheld)
+tool failed: HTTPStatusError
 ```
 
-O traço guardou só o tipo: exceção que não é `AgentToolError` tem o texto
-retido no passo, porque o traço é o que o router HTTP, o stream SSE e os sinks
-expõem. O **modelo**, porém, lê o texto inteiro. Medido com um backend que
-guarda as mensagens, a observação que chegou a ele foi:
+A primeira linha é o traço; a segunda, a observação que o modelo leu na volta
+seguinte, tirada de
+[`messages_seen`](agents-testing.md#testar-o-que-a-ferramenta-pos-na-frente-do-modelo).
+Exceção que não é `AgentToolError` não leva o texto para nenhum dos dois: o
+modelo lê só o tipo, o traço guarda só o tipo, e a exceção inteira vai para o
+log (`tempest_fastapi_sdk.agents.agent`). O texto dela era este:
 
 ```text
 HTTPStatusError: Server error '503 Service Unavailable' for url 'https://cep.example.com/cep/64600000?apikey=s3cr3t'
 For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/503
 ```
 
-A chave da API, dentro da conversa que o modelo lê — e ele pode repetir o
-que lê. Com o
-`AgentToolError` do `cep_tool.py`, o modelo lê só o que você escreveu e o
-traço grava a mesma frase. `Agent(..., expose_tool_errors=True)` grava o
-texto inteiro no traço também; serve para desenvolvimento, não para um
-endpoint aberto. O mecanismo completo está em
+A chave da API está na URL. Até a v0.303.2 esse texto inteiro chegava ao
+modelo — o traço já o retinha, a conversa não — e o modelo pode repetir na
+resposta o que leu. Agora o SDK retém nos dois lugares por default.
+
+**Traduzir ainda vale a pena**, pelo outro motivo: `tool failed:
+HTTPStatusError` não diz ao modelo o que mudar. Um 404 ("esse CEP não
+existe; confira os dígitos") e um 503 ("o serviço caiu; tente mais tarde")
+pedem respostas diferentes, e só a frase do `AgentToolError` do `cep_tool.py`
+dá isso a ele — é ela que o modelo lê, e é ela que o traço grava. Traduza o
+que o modelo pode resolver; o resto pode subir cru.
+
+!!! warning "`expose_tool_errors=True` é para desenvolvimento"
+    `Agent(..., expose_tool_errors=True)` entrega o texto da exceção ao modelo
+    **e** ao traço. Antes, o SDK mascara as formas óbvias de credencial —
+    parâmetro cujo nome contém `key`, `token`, `secret` ou `password`
+    (`?apikey=***`), o valor de `Authorization` e a senha de uma URL
+    (`postgresql://admin:***@db`). Medido com o `raw_client` acima respondendo
+    `401`:
+
+    ```text
+    HTTPStatusError: Client error '401 Unauthorized' for url 'https://cep.example.com/cep/64600000?apikey=***'
+    ```
+
+    A máscara só conhece essas formas: segredo em qualquer outro formato passa
+    intacto. É defesa adicional para quando você ligou o opt-in, não motivo
+    para ligá-lo num endpoint aberto.
+
+O mecanismo completo está em
 [Falha de ferramenta não derruba a execução](agents.md#falha-de-ferramenta-nao-derruba-a-execucao).
 
 ### Cliente injetado: `typed_tool` sobre método ligado
@@ -836,8 +862,8 @@ deixa schema e handler divergirem.
   timeout **abaixo** do `max_seconds` do orçamento — senão quem corta é o
   orçamento, e o modelo nunca lê o erro.
 - **4xx, 5xx e timeout viram `AgentToolError`** com uma frase que diz o que
-  fazer. Exceção crua tem o texto retido no traço, mas chega inteira ao
-  modelo — com a URL e o que estiver nela.
+  fazer. Exceção crua chega ao modelo só como `tool failed: <Tipo>` — sem a
+  URL e o que estiver nela, e sem dizer o que mudar.
 - **Devolva pouco**: dez campos da API viram uma linha.
 - **`typed_tool` sobre método ligado** deixa o cliente injetável, e o teste
   usa `httpx.MockTransport`.

@@ -42,6 +42,9 @@ if TYPE_CHECKING:
         FakeRoutingBackend as FakeRoutingBackend,
     )
     from tempest_fastapi_sdk.testing.fakes.payment import (
+        FakePayoutProvider as FakePayoutProvider,
+    )
+    from tempest_fastapi_sdk.testing.fakes.payment import (
         FakePixProvider as FakePixProvider,
     )
     from tempest_fastapi_sdk.testing.fakes.push import (
@@ -56,6 +59,7 @@ _EXPORTS: dict[str, str] = {
     "FakeEmailUtils": "email",
     "FakeGeocodingBackend": "geo",
     "FakeModerationBackend": "genai",
+    "FakePayoutProvider": "payment",
     "FakePixProvider": "payment",
     "FakePushDispatcher": "push",
     "FakeRoutingBackend": "geo",

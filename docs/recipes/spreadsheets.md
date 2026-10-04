@@ -819,6 +819,175 @@ aba, e `read_xlsx_sheets` devolve todas, num `dict` pelo nome da aba, na
 ordem das abas (aba de gráfico fica de fora). Aba vazia, ou só com
 cabeçalho, devolve `[]`.
 
+## Limites: zip bomb e planilha enorme
+
+Um `.xlsx` é um ZIP. O tamanho do upload não diz nada sobre o tamanho que o
+`openpyxl` vai descompactar e parsear — e é exatamente isso que um atacante
+explora. Medido aqui: um arquivo de **1,7 MB** com uma `sheet1.xml` de
+**505 MB** (5 milhões de linhas iguais) levou o leitor sem limites a
+**2 278 MB** de RSS e 151 s de CPU; com a memória do processo limitada a
+2 GB, terminou em `MemoryError` depois de 113 s. E uma planilha legítima com
+milhões de linhas faz o mesmo, só que devagar.
+
+Por isso os leitores de `.xlsx` têm três limites, todos **ligados por
+padrão**:
+
+| Parâmetro | Default | O que mede | Quando confere |
+| --- | --- | --- | --- |
+| `max_uncompressed_bytes` | `100 MiB` | soma do tamanho descompactado das partes do ZIP | antes de abrir, pelo diretório central |
+| `max_compression_ratio` | `100` | descompactado ÷ compactado, por parte de pelo menos 1 MiB | antes de abrir, pelo diretório central |
+| `max_rows` | `100 000` | linhas de dados **por aba** (linha em branco não conta) | durante a leitura, na primeira linha além do limite |
+
+O mesmo arquivo de 1,7 MB agora responde em 0,1 s, com o pico de RSS do
+processo em 126 MB (o import do `openpyxl` incluído), sem descompactar nada.
+
+### O código
+
+```python
+# scripts/limites.py
+
+from tempest_fastapi_sdk.spreadsheet import (
+    SpreadsheetTooLargeError,
+    new_workbook,
+    read_xlsx,
+    workbook_to_bytes,
+)
+
+
+def gerar_planilha(linhas: int) -> bytes:
+    """Monta uma aba Vendas com o número de linhas pedido."""
+    workbook = new_workbook("Vendas")
+    aba = workbook["Vendas"]
+    aba.append(["produto", "quantidade"])
+    for numero in range(linhas):
+        aba.append([f"Produto {numero}", numero])
+    return workbook_to_bytes(workbook)
+
+
+def main() -> None:
+    """Lê a mesma planilha com um limite abaixo e outro acima do tamanho dela."""
+    planilha: bytes = gerar_planilha(150)
+    try:
+        read_xlsx(planilha, max_rows=100)
+    except SpreadsheetTooLargeError as erro:
+        print(erro.status_code, erro.code, erro.details)
+    linhas = read_xlsx(planilha, max_rows=200)
+    print(len(linhas), "linhas lidas")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+Rodando (saída real):
+
+```text
+413 SPREADSHEET_TOO_LARGE {'limit': 'rows', 'max': 100, 'actual': 101, 'sheet': 'Vendas', 'row': 102}
+150 linhas lidas
+```
+
+### Pedaço por pedaço
+
+**Recusar, nunca truncar.** Passar do limite levanta
+`SpreadsheetTooLargeError`; nenhum leitor devolve "as primeiras 100 000
+linhas" em silêncio. A leitura para na linha 100 001, e nenhuma linha depois
+dela chega a virar `dict`.
+
+**O erro.** `SpreadsheetTooLargeError` é subclasse de
+`FileTooLargeException`, então responde `413` como o limite de upload do SDK
+— e um `except FileTooLargeException` pega os dois. `details["limit"]` diz
+qual limite foi:
+
+* `"uncompressed_bytes"` e `"compression_ratio"`: `details["actual"]` é o
+  que o ZIP declara; no da razão, `details["member"]` nomeia a parte;
+* `"rows"`: `details["sheet"]` é a aba e `details["row"]` a linha da
+  planilha em que a leitura parou;
+* `"download_bytes"`: o download do Google (veja a próxima seção).
+
+O endpoint de importação da seção anterior, sem mudar uma linha, responde
+assim a uma zip bomb de 208 786 bytes:
+
+```json
+{
+  "detail": "The spreadsheet decompresses to 209731887 bytes; the limit is 104857600.",
+  "code": "SPREADSHEET_TOO_LARGE",
+  "details": {
+    "limit": "uncompressed_bytes",
+    "max": 104857600,
+    "actual": 209731887
+  }
+}
+```
+
+**De onde vêm os defaults.** Medido com `openpyxl` 3.1.5 no CPython 3.11,
+uma execução por tamanho, numa aba gerada de 8 colunas (id, dois textos,
+três números, uma data, um status):
+
+* 200 000 linhas: 291,5 MB de pico de RSS, 15,6 s; 1 000 000 de linhas:
+  959,1 MB, 78,1 s. Daí **~834 bytes de RSS e ~78 µs por linha**, sobre
+  uns 125 MB que o interpretador e o `openpyxl` já ocupam. Com o default, a
+  aba de 200 000 linhas parou na linha 100 001 em 10,8 s, com pico de
+  214 MB.
+* Cada linha ocupa ~404 bytes de XML, então a memória cresce **~2 bytes por
+  byte de XML**: no teto de 100 MiB, algo perto de 215 MB de linhas
+  (estimado pela conta, não medido). Numa aba estreita o
+  limite de linhas dispara antes (100 000 linhas dão ~40 MB de XML); o de
+  bytes é o que segura aba larga, muitas abas e tabela de textos grande.
+* A razão de compressão de arquivo legítimo ficou entre 7,2 e 14,7 (a aba de
+  200 000 linhas **idênticas**, o caso mais repetitivo); a da zip bomb foi
+  294,5. `100` deixa mais de seis vezes de folga.
+* A planilha pública de 16 abas usada nesta página tem 2 580 linhas e
+  6,1 MB descompactada: passa com folga.
+
+!!! info "Pior caso dentro dos defaults"
+    Um arquivo montado para ficar logo abaixo dos dois limites de bytes
+    (99 MiB descompactados, razão sob controle) e sem a tag `<dimension>`
+    ainda custa: o `openpyxl` varre a aba inteira ao abrir quando a tag
+    falta (o export do Google não a escreve), e a leitura para na linha
+    100 001. Medido: **11,4 s e 248 MB de pico**. Se o seu endpoint não
+    pode pagar isso, baixe os limites.
+
+**O diretório central pode mentir.** Os tamanhos vêm do diretório central
+do ZIP, que quem monta o arquivo escreve como quiser. A mentira não
+passa porque o `zipfile` para de descompactar uma parte no tamanho
+declarado e confere o CRC ali (medido no CPython 3.11 a 3.14): uma parte
+que declara 4 KiB e guarda 50 MB lê 4 KiB e falha — CRC errado, ou XML
+cortado no meio — e as duas viram `InvalidSpreadsheetError` (`422`). Uma
+parte que declara **mais** do que tem é recusada pela soma.
+
+**Subir o limite para planilha confiável.** Passe o valor que serve ao seu
+caso, por chamada:
+
+```python
+# app/importacao.py
+
+from tempest_fastapi_sdk.spreadsheet import (
+    DEFAULT_XLSX_MAX_ROWS,
+    XlsxCellValue,
+    read_xlsx,
+)
+
+
+def ler_relatorio_interno(conteudo: bytes) -> list[dict[str, XlsxCellValue]]:
+    """Lê o relatório que o próprio sistema gera, maior que um upload comum."""
+    return read_xlsx(
+        conteudo,
+        max_rows=DEFAULT_XLSX_MAX_ROWS * 5,
+        max_uncompressed_bytes=500 * 1024 * 1024,
+    )
+```
+
+`None` desliga um limite (`max_rows=None`). Faça isso só para arquivo de
+fonte que você controla: os três existem porque o upload é o caso comum. Os defaults são constantes públicas — `DEFAULT_XLSX_MAX_ROWS`,
+`DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES`, `DEFAULT_XLSX_MAX_COMPRESSION_RATIO`
+— para você escrever o limite como múltiplo deles. Valor zero ou negativo
+levanta `ValueError`.
+
+!!! tip "O limite do corpo da requisição continua valendo"
+    Os limites do leitor medem o que o ZIP **vira**; o tamanho do upload em
+    si é o limite de corpo da requisição, que fica antes, no
+    [`BodySizeLimitMiddleware`](http.md). Os dois se completam.
+
 ## A pasta inteira do Google numa requisição
 
 O CSV lê uma aba por requisição, e para isso você precisa do `gid` de cada
@@ -958,6 +1127,19 @@ type certo mas não abrir como planilha, `read_google_sheet_xlsx` também
 responde `GoogleSheetAccessError`, não `422`: o defeito é do upstream, não
 de quem chamou.
 
+**O limite do download.** O corpo do export é lido em streaming e
+contado: passou de `max_bytes` (default
+`DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES`, 32 MiB), a transferência é
+fechada e sai `SpreadsheetTooLargeError` com `details["limit"] ==
+"download_bytes"` — um `Content-Length` acima do limite é recusado sem ler
+o corpo. A conta: um `.xlsx` no teto de 100 MiB descompactados, com a razão
+de 7,2 a 8,1 medida nos arquivos reais, baixa uns 14 MiB; 32 MiB ainda o
+aceita comprimindo só 3,2 vezes. A planilha de 16 abas baixa 785 152 bytes.
+`read_google_sheet_xlsx` aceita também `max_rows`,
+`max_uncompressed_bytes` e `max_compression_ratio`, repassados ao leitor —
+e o erro de tamanho sai como `SpreadsheetTooLargeError` (`413`), não como
+`GoogleSheetAccessError`. O caminho CSV não tem esse limite.
+
 **O extra.** `download_google_sheet_xlsx` só baixa bytes e roda sem extra;
 `read_google_sheet_xlsx` precisa do `[spreadsheet]` e confere isso
 **antes** do download, para não gastar a requisição.
@@ -981,9 +1163,14 @@ de quem chamou.
   (upload, arquivo, export) com a célula **tipada**: número, `datetime`,
   `bool`. Arquivo que não é planilha, aba que não existe e linha inválida
   viram erro `422` tipado.
+* Os leitores de `.xlsx` recusam zip bomb e planilha enorme **antes** de
+  gastar a memória: `max_uncompressed_bytes` (100 MiB),
+  `max_compression_ratio` (100) e `max_rows` (100 000 por aba) viram
+  `SpreadsheetTooLargeError` (`413`). Nunca truncam; para arquivo confiável,
+  suba o limite ou passe `None`.
 * `download_google_sheet_xlsx(link)` baixa a pasta inteira do Google numa
-  requisição (o `gid` é descartado); `read_google_sheet_xlsx` já devolve
-  todas as abas pelo nome.
+  requisição (o `gid` é descartado), parando o download em `max_bytes`
+  (32 MiB); `read_google_sheet_xlsx` já devolve todas as abas pelo nome.
 
 Para gerar o mesmo conteúdo como documento fechado, veja
 [Geração de PDF](pdf.md). Para os utilitários de moeda que formatam a prosa

@@ -1012,6 +1012,22 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   run that completed; `run_until` keeps an earlier inherited deadline;
   `schema_of` keeps `$defs` for self-referential models; Redis fact keys no
   longer merge `None`/`""`/`"_"`; builtins never overwrite an artifact.
+- **Per-request agent + full transcript in tests (#407)** —
+  `make_agent_router` takes an `Agent` **or** a FastAPI dependency returning
+  one (`AgentDependency`); `/run` and `/run/stream` resolve it per request,
+  history/artifact endpoints never call it, an `owner=` dependency shared
+  with the factory resolves once. Chosen over `Agent.run(system_prompt=...)`,
+  which would touch `run`/`stream`/`run_structured` and the skills/structured
+  prompt composition to save ~3.3 µs of construction.
+  `ScriptedBackend.messages_seen` keeps each call's full conversation as a
+  deep copy.
+- **Raw tool errors stay off the model (#406)** — a non-`AgentToolError`
+  exception reaches the model as `tool failed: <Type>` (it used to read the
+  full text, and `raise_for_status()` put `?apikey=` in the conversation). The
+  trace and log are unchanged. `expose_tool_errors=True` (same knob) hands the
+  text to model **and** trace through `_mask_secrets` (query params named
+  `*key*`/`*token*`/`*secret*`/`*password*`, `Authorization`, URL password) —
+  a backstop, pinned by a test that a secret in another shape passes.
 - **Media type independente da imagem (0.303.0)** —
   `guess_media_type` + `XLSX_MEDIA_TYPE`/`DOCX_MEDIA_TYPE`/`PPTX_MEDIA_TYPE`
   (`utils`, topo; xlsx também em `spreadsheet`). Tabela própria antes do
@@ -1078,6 +1094,20 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   inexistente `404` HTML; o Google grava o resultado de toda fórmula (as
   975 de 1 429 que chegam `None` são resultado `""`); número vem `int` ou
   `float` na mesma coluna, data vem `datetime`, porcentagem vem razão.
+- **Limites do leitor de `.xlsx` (Unreleased, #404)** — `max_uncompressed_bytes`
+  (100 MiB, soma do diretório central do ZIP), `max_compression_ratio` (100,
+  por parte de ≥1 MiB) e `max_rows` (100 000 por aba, conferido em streaming)
+  em `read_xlsx` / `read_xlsx_as` / `read_xlsx_sheets` / `read_google_sheet_xlsx`;
+  `max_bytes` (32 MiB, corpo em streaming) em `download_google_sheet_xlsx` /
+  `read_google_sheet_xlsx`. Passou do limite: `SpreadsheetTooLargeError`
+  (`SPREADSHEET_TOO_LARGE`, `413`, subclasse de `FileTooLargeException`), nunca
+  truncamento; `None` desliga. Defaults são constantes públicas
+  `DEFAULT_XLSX_*` / `DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES` com a conta na
+  docstring. Medido: zip bomb de 1,7 MB (505 MB de XML) ia a 2 278 MB de RSS e
+  151 s; agora recusa em 0,1 s. O `zipfile` para no `file_size` declarado e
+  confere o CRC (CPython 3.11 a 3.14), então diretório central mentindo vira
+  `InvalidSpreadsheetError`; XML truncado (`SyntaxError` do parser) deixou de
+  escapar como `500`. Fica de fora: o caminho CSV do Google não tem limite.
 - **Leitura de Google Sheets (0.303.0, sem extra)** —
   `read_google_sheet` / `read_google_sheet_as` / `google_sheet_export_url` em
   `tempest_fastapi_sdk.spreadsheet`. Lê uma aba de planilha compartilhada
@@ -1692,6 +1722,24 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `list_comments`/`rate` upsert/`get_user_rating`/`aggregate` → avg +
   count + per-star distribution), `make_reviews_router`; `RatingField`
   (`Annotated[int, 0..5]`) in `utils.fields`. Submodule import.
+- **Wallet (v0.304.0, `tempest_fastapi_sdk.wallet`, no extra, #400)** —
+  balance in integer cents on the app's user row (`WalletBalanceMixin`,
+  or `balance_attribute=` for an existing column) + ledger
+  (`BaseWalletEntryModel`/`make_wallet_entry_model`, user FK `RESTRICT`
+  by default). `WalletService`: every balance change is one
+  `UPDATE ... SET balance = balance + :delta RETURNING` plus its ledger
+  line in the same transaction; `credit(hold=)`, `debit_available` (the
+  hold is inside the `UPDATE`'s `WHERE`), `reverse`, `withdraw` (debit →
+  payout → refund only on `PayoutRejectedException`; ambiguous failure
+  keeps the debit and logs `CRITICAL`), `balance`, `statement`.
+  `claim_once` for run-once settlement. `openpix_fee_cents` /
+  `split_net` in basis points, ported from alofans-api (identical on
+  every total from 1 to 200 000 cents). Payout contract
+  `PayoutProvider`/`PayoutRequest`/`PayoutResult`/`PayoutStatus` in
+  `integrations.payment.base`, `OpenPixPayoutProvider` (autoApprove;
+  refuses an `HTTPClient` that retries), `FakePayoutProvider`,
+  `make_wallet_router`. Concurrency measured against Postgres
+  (`tests/wallet/test_wallet_live.py`, docker). Submodule import.
 - **Upload** — `UploadUtils` with pluggable backends
   (`LocalUploadStorage`, `MinIOUploadStorage`, opt-in injected via
   `backend=`), download helpers, presigned URLs, plus `FileStoreUtils`

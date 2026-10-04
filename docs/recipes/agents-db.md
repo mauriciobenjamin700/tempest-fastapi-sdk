@@ -26,9 +26,9 @@ ferramenta de agente não passa por esse caminho:
   o `AgentContext`. Não existe grafo de dependências ali para injetar nada.
 
 Forçar a sessão da requisição até a ferramenta custa caro nos dois lados: o
-agente precisaria ser reconstruído a cada requisição (e aí `make_agent_router`
-deixa de servir), e a sessão ficaria aberta durante **toda** a execução — que
-pode levar minutos e vários passos.
+agente precisaria ser reconstruído a cada requisição em volta de ferramentas
+presas àquela sessão, e a sessão ficaria aberta durante **toda** a execução —
+que pode levar minutos e vários passos.
 
 A resposta é mais simples do que parece: **a ferramenta abre a própria
 sessão**. É exatamente o que os objetos de banco do próprio SDK fazem —

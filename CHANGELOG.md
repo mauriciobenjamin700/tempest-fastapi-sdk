@@ -56,7 +56,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   de dizer "as CSV" — a mesma exceção cobre agora o caminho `.xlsx`. O
   `code` e o status não mudam.
 
+- **Erro cru de ferramenta não chega mais ao modelo (#406).** Exceção de
+  ferramenta que não é `AgentToolError` vira a observação
+  `tool failed: <Tipo>`; antes o modelo lia o texto inteiro, e o
+  `HTTPStatusError` de um `raise_for_status()` levava a URL com
+  `?apikey=s3cr3t` para a conversa (medido com `httpx.MockTransport`
+  respondendo `401`, pelo `ScriptedBackend.messages_seen`). O traço continua
+  `<Tipo>: the tool failed (details withheld)` e o log continua com a exceção
+  inteira; `AgentToolError` continua chegando como foi escrito. O mesmo knob
+  `expose_tool_errors=True` devolve o texto — agora ao modelo **e** ao traço,
+  com as formas óbvias de credencial mascaradas (parâmetro com `key`/`token`/
+  `secret`/`password` no nome, valor de `Authorization`, senha de URL); a
+  máscara é defesa adicional, não garantia. **Quebra quem dependia do texto
+  cru na observação:** traduza para `AgentToolError` o que o modelo precisa
+  ler — [guia de migração](docs/migration.md).
+
 ### Added
+
+- **`tempest_fastapi_sdk.wallet` — carteira, extrato, retenção e saque Pix
+  em centavos inteiros (#400).** O saldo fica na linha do usuário do app
+  (`WalletBalanceMixin`, ou `balance_attribute=` para uma coluna que já
+  existe) e cada movimento vira uma linha de extrato
+  (`BaseWalletEntryModel` / `make_wallet_entry_model`, com a FK do usuário
+  `RESTRICT` por padrão: apagar o usuário não apaga o histórico financeiro).
+  `WalletService` faz todo movimento de saldo num único `UPDATE ... SET
+  saldo = saldo + :delta RETURNING`, na mesma transação da linha de extrato:
+  `credit(hold=)`, `debit_available` (a retenção está dentro do `WHERE` do
+  débito, então dois saques simultâneos não consomem dinheiro retido),
+  `reverse`, `withdraw` (debita, paga, e devolve só na recusa definitiva;
+  falha ambígua mantém o débito com log `CRITICAL`), `balance` e
+  `statement`. Mais `claim_once` (liquidação que roda uma vez),
+  `openpix_fee_cents` / `split_net` em basis points e o router opcional
+  `make_wallet_router`. Medido com 50 tarefas simultâneas contra Postgres
+  real (`tests/wallet/test_wallet_live.py`, marcador `docker`): os créditos
+  somam todos, o saque paga uma vez, a retenção não é consumida; o teste de
+  controle mostra a escrita ingênua perdendo crédito no mesmo cenário.
+  Receita: "Carteira e saque Pix".
+
+- **Contrato de saque Pix em `integrations.payment`.** `PayoutProvider`,
+  `PayoutRequest`, `PayoutResult` e `PayoutStatus` em
+  `integrations.payment.base`; `OpenPixPayoutProvider` em
+  `integrations.payment.adapters` (cria e aprova numa chamada só, com
+  `autoApprove: true`; HTTP 4xx e pagamento `DENIED`/`FAILED` viram
+  `PayoutRejectedException`, o resto propaga como incerto);
+  `FakePayoutProvider` em `testing.fakes`. O adapter recusa no construtor
+  um `HTTPClient` que refaz requisição: medido com a política padrão, um
+  `POST` respondido `500` sai três vezes, e num saque o retry pode pagar
+  duas vezes. A chave usa o `PixKeyType` que o SDK já tinha.
+
+- **Exceções `InsufficientBalanceException` (409),
+  `PayoutRejectedException` (502) e `PayoutUncertainException` (502)**,
+  com mensagens PT-BR e EN-US no catálogo padrão.
 
 - **Leitura de `.xlsx`:** `read_xlsx`, `read_xlsx_as` e `read_xlsx_sheets` em
   `tempest_fastapi_sdk.spreadsheet` (extra `[spreadsheet]`, sem dependência
@@ -88,6 +138,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   de tipo. Com ele, o `CapacityReport.reason` termina com *"RAM is limited
   by the container's cgroup to 512 MiB."*, e o `tempest model hardware`
   imprime `ram total  : 0.5 GB (cgroup limit)`.
+- **Agente por requisição no router pronto (#407):** `make_agent_router`
+  aceita, no lugar do `Agent`, uma dependência FastAPI que devolve o
+  `Agent` da requisição (`AgentDependency`, re-exportado em
+  `tempest_fastapi_sdk.agents`). `/run` e `/run/stream` a resolvem a cada
+  requisição; `GET /runs` e o download de artefato nunca a chamam. A
+  dependência pode receber o `Request` ou declarar `Depends` próprios —
+  inclusive a mesma função de `owner=`, que o FastAPI resolve uma vez só.
+  `make_agent_router(agent)` continua servindo a mesma instância. É como um
+  prompt que depende de quem chama (`facts_prompt`) usa o router sem
+  endpoint próprio. `Agent.run(..., system_prompt=...)` ficou de fora: tocaria
+  `run`/`stream`/`run_structured` e a composição do bloco de skills e do
+  `run_structured`, para economizar ~3,3 µs de construção de agente.
+- **`ScriptedBackend.messages_seen`** (#407): a conversa inteira recebida em
+  cada chamada (`list[list[dict[str, Any]]]`), como cópia profunda tirada na
+  hora — o agente continua acrescentando na mesma lista, e uma referência
+  mostraria voltas futuras dentro de chamadas antigas. É como se afirma o que
+  uma observação de ferramenta pôs na frente do modelo.
 
 - **`enable_sqlite_foreign_keys(engine)`**, em `tempest_fastapi_sdk.db` e na
   raiz: o listener do `connect` para quem monta engine SQLite à mão, irmão de
@@ -105,6 +172,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   motivo (hoje, só os engines de migration).
 
 ### Fixed
+- **`create_payment` com `autoApprove: true` levantava depois de enviar o
+  Pix.** A resposta documentada pela própria OpenPix para esse caso traz
+  `"status": "APPROVED"`, e o enum fechado de `Payment.status`
+  (`CREATED`, `FAILED`, `CONFIRMED`, `DENIED`) recusava o valor com
+  `Input should be 'CREATED', 'FAILED', 'CONFIRMED' or 'DENIED'`: o
+  dinheiro saía e o chamador recebia um `ValidationError`. O overlay agora
+  levanta o enum como já fazia com `Charge.status`, então o campo é
+  `PaymentStatus | str | None` e `PaymentStatus` continua igual. Os cinco
+  exemplos de resposta de `POST /api/v1/payment` validam, fixados em
+  `tests/integrations/payment/openpix/test_overlay.py`.
 
 - **SQLite: `COMMIT` recusado deixava a conexão do pool presa no `BEGIN`**
   (#411). Quando o SQLite recusa o `COMMIT` com `database is locked`, a
@@ -155,6 +232,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `create_test_engine(url=..., **engine_kwargs)` e `test_database(url=...)`;
   as assinaturas reais usam `database_url` e não aceitam `**engine_kwargs`.
 
+- **Leitor de `.xlsx` com limite de tamanho (#404):** um `.xlsx` é um ZIP, e
+  o leitor do #403 entregava qualquer coisa ao `openpyxl`. Medido: uma zip
+  bomb de 1,7 MB (uma `sheet1.xml` de 505 MB) levava o `read_xlsx` a
+  2 278 MB de RSS e 151 s; com a memória limitada a 2 GB, `MemoryError`
+  depois de 113 s. Agora `read_xlsx`, `read_xlsx_as`, `read_xlsx_sheets` e
+  `read_google_sheet_xlsx` aceitam três limites keyword-only, ligados por
+  padrão: `max_uncompressed_bytes` (100 MiB) e `max_compression_ratio` (100,
+  por parte de pelo menos 1 MiB), conferidos no diretório central do ZIP
+  **antes** de abrir — a mesma bomb é recusada em 0,1 s —, e `max_rows`
+  (100 000 por aba, linha em branco não conta), conferido durante a leitura,
+  sem guardar nada depois da linha recusada. `download_google_sheet_xlsx` e
+  `read_google_sheet_xlsx` ganham `max_bytes` (32 MiB): o corpo do export é
+  lido em streaming e a transferência para ao passar. Passou de qualquer
+  limite: `SpreadsheetTooLargeError` (`SPREADSHEET_TOO_LARGE`, `413`,
+  subclasse de `FileTooLargeException`, i18n PT/EN), com o limite em
+  `details["limit"]` — nunca truncamento. `None` desliga um limite; valor
+  zero ou negativo levanta `ValueError`. Os defaults são constantes públicas
+  (`DEFAULT_XLSX_MAX_ROWS`, `DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES`,
+  `DEFAULT_XLSX_MAX_COMPRESSION_RATIO`, `DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES`)
+  e a docstring de cada uma traz a conta: ~834 bytes de RSS e ~78 µs por linha
+  numa aba de 8 colunas (200 000 e 1 000 000 de linhas, uma execução cada),
+  razão de 7,2 a 14,7 em arquivo legítimo contra 294,5 na bomb.
+- **XML truncado no `.xlsx` deixou de virar `500`:** uma parte cortada no meio
+  (por exemplo, diretório central declarando menos bytes do que a parte tem,
+  com o CRC ajustado) fazia o parser levantar `ParseError` / `XMLSyntaxError`
+  durante a leitura da aba, fora do `try`. Agora vira
+  `InvalidSpreadsheetError` (`422`). O caso com CRC não ajustado já virava
+  `InvalidSpreadsheetError`: o `zipfile` para no tamanho declarado e confere o
+  CRC ali (medido no CPython 3.11 a 3.14).
 
 ## [0.303.2] — 2026-10-04
 

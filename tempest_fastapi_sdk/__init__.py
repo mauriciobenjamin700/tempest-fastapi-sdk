@@ -1109,6 +1109,15 @@ from tempest_fastapi_sdk.exceptions import (
 from tempest_fastapi_sdk.exceptions import (
     parse_accept_language as parse_accept_language,
 )
+from tempest_fastapi_sdk.exceptions.wallet import (
+    InsufficientBalanceException as InsufficientBalanceException,
+)
+from tempest_fastapi_sdk.exceptions.wallet import (
+    PayoutRejectedException as PayoutRejectedException,
+)
+from tempest_fastapi_sdk.exceptions.wallet import (
+    PayoutUncertainException as PayoutUncertainException,
+)
 from tempest_fastapi_sdk.flags import (
     CompositeFeatureFlagBackend as CompositeFeatureFlagBackend,
 )
@@ -2148,6 +2157,7 @@ __all__: list[str] = [
     "IdempotencyStore",
     "InheritedErrorCodeWarning",
     "Inline",
+    "InsufficientBalanceException",
     "IntegrityFailure",
     "IntegrityViolation",
     "IntrospectionAuth",
@@ -2243,6 +2253,8 @@ __all__: list[str] = [
     "PasswordResetResponseSchema",
     "PasswordResetToken",
     "PasswordUtils",
+    "PayoutRejectedException",
+    "PayoutUncertainException",
     "PercentField",
     "PermissionMixin",
     "PermissionRegistry",

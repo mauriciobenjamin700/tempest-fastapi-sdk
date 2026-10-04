@@ -12,12 +12,14 @@ import json
 import time
 from typing import Any
 
+import httpx
 import pytest
 
 from tempest_fastapi_sdk.agents import (
     Agent,
     AgentBudget,
     AgentContext,
+    AgentTool,
     AgentToolError,
     StepKind,
     StopReason,
@@ -25,6 +27,7 @@ from tempest_fastapi_sdk.agents import (
     agent_tool,
     text_tool,
 )
+from tempest_fastapi_sdk.agents.agent import _mask_secrets
 from tempest_fastapi_sdk.agents.schemas import AgentArtifact
 from tempest_fastapi_sdk.agents.testing import (
     ScriptedBackend,
@@ -291,7 +294,7 @@ class TestUnexpectedToolErrorsStayOffTheTrace:
         assert "hunter2" not in failed.error
         assert "hunter2" not in run.model_dump_json()
         observation = backend.transcripts[1][-1]["content"]
-        assert "could not connect" in observation
+        assert observation == "tool failed: RuntimeError"
 
     @pytest.mark.asyncio
     async def test_agent_tool_error_text_is_kept(self) -> None:
@@ -320,6 +323,141 @@ class TestUnexpectedToolErrorsStayOffTheTrace:
             expose_tool_errors=True,
         ).run("go")
         assert run.steps[1].error == "RuntimeError: verbose detail"
+        assert backend.messages_seen[1][-1]["content"] == "RuntimeError: verbose detail"
+
+
+class TestUntranslatedHttpErrorDoesNotReachTheModel:
+    """#406: ``raise_for_status()`` put ``?apikey=`` in front of the model."""
+
+    @staticmethod
+    def _lookup_tool() -> tuple[AgentTool, httpx.AsyncClient]:
+        """Build a tool whose API answers 401 and whose URL carries a key."""
+        client = httpx.AsyncClient(
+            base_url="https://cep.example.com",
+            transport=httpx.MockTransport(lambda request: httpx.Response(401)),
+        )
+
+        async def lookup(_arguments: dict[str, Any], _ctx: AgentContext) -> str:
+            response = await client.get(
+                "/cep/64600000",
+                params={"apikey": "s3cr3t"},
+                headers={"Authorization": "Bearer t0k3n"},
+            )
+            response.raise_for_status()
+            return response.text
+
+        return text_tool("lookup", "Look up a CEP.", lookup), client
+
+    @staticmethod
+    def _backend() -> ScriptedBackend:
+        return ScriptedBackend(
+            [replies_with_tool("lookup", {"cep": "64600000"}), replies("sorry")],
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_exception_does_carry_the_key(self) -> None:
+        """The premise: what the tool raises really has the secret in it."""
+        tool, client = self._lookup_tool()
+        with pytest.raises(httpx.HTTPStatusError) as caught:
+            await tool.invoke({"cep": "64600000"}, AgentContext())
+        await client.aclose()
+        assert "apikey=s3cr3t" in str(caught.value)
+
+    @pytest.mark.asyncio
+    async def test_by_default_the_model_reads_only_the_type(self) -> None:
+        tool, client = self._lookup_tool()
+        backend = self._backend()
+        run = await Agent(backend, tools=[tool]).run("cep?")
+        await client.aclose()
+        observation = backend.messages_seen[1][-1]["content"]
+        assert observation == "tool failed: HTTPStatusError"
+        assert "s3cr3t" not in str(backend.messages_seen)
+        assert run.steps[1].error == (
+            "HTTPStatusError: the tool failed (details withheld)"
+        )
+        assert "s3cr3t" not in run.model_dump_json()
+        assert run.succeeded
+
+    @pytest.mark.asyncio
+    async def test_the_full_text_still_reaches_the_log(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        tool, client = self._lookup_tool()
+        with caplog.at_level("WARNING", logger="tempest_fastapi_sdk.agents.agent"):
+            await Agent(self._backend(), tools=[tool]).run("cep?")
+        await client.aclose()
+        assert "apikey=s3cr3t" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_the_opt_in_hands_the_text_over_with_the_key_masked(self) -> None:
+        tool, client = self._lookup_tool()
+        backend = self._backend()
+        run = await Agent(backend, tools=[tool], expose_tool_errors=True).run("cep?")
+        await client.aclose()
+        observation = backend.messages_seen[1][-1]["content"]
+        assert observation.startswith("HTTPStatusError: Client error '401")
+        assert "cep.example.com/cep/64600000?apikey=***" in observation
+        assert "s3cr3t" not in observation
+        assert run.steps[1].error == observation
+
+    @pytest.mark.asyncio
+    async def test_an_agent_tool_error_still_reaches_the_model_as_written(
+        self,
+    ) -> None:
+        async def curated(_arguments: dict[str, Any], _ctx: AgentContext) -> str:
+            raise AgentToolError("o serviço de CEP recusou a chave; avise o suporte")
+
+        backend = self._backend()
+        await Agent(backend, tools=[text_tool("lookup", "L.", curated)]).run("cep?")
+        assert backend.messages_seen[1][-1]["content"] == (
+            "AgentToolError: o serviço de CEP recusou a chave; avise o suporte"
+        )
+
+
+class TestMaskSecrets:
+    @pytest.mark.parametrize(
+        ("raw", "masked"),
+        [
+            (
+                "for url 'https://x.com/a?apikey=s3cr3t'",
+                "for url 'https://x.com/a?apikey=***'",
+            ),
+            (
+                "https://x/y?a=1&access_token=abc&b=2#f",
+                "https://x/y?a=1&access_token=***&b=2#f",
+            ),
+            ("GET /x?password=hunter2 failed", "GET /x?password=*** failed"),
+            ("?client_secret=zz", "?client_secret=***"),
+            ("Authorization: Bearer t0k3n", "Authorization: Bearer ***"),
+            ("authorization=raw", "authorization=***"),
+            (
+                "{'Authorization': 'Basic dXNlcjpwYXNz', 'Accept': '*/*'}",
+                "{'Authorization': 'Basic ***', 'Accept': '*/*'}",
+            ),
+            (
+                "postgresql://admin:hunter2@db:5432/app",
+                "postgresql://admin:***@db:5432/app",
+            ),
+        ],
+    )
+    def test_the_obvious_shapes_are_masked(self, raw: str, masked: str) -> None:
+        assert _mask_secrets(raw) == masked
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "https://api.x/v1?q=pix&page=2",
+            "no secret here: key points",
+            "https://db.example.com:5432/app",
+        ],
+    )
+    def test_text_without_those_shapes_is_untouched(self, text: str) -> None:
+        assert _mask_secrets(text) == text
+
+    def test_a_secret_in_any_other_shape_passes_through(self) -> None:
+        """Pinned on purpose: the mask is a backstop, not a guarantee."""
+        assert _mask_secrets("key s3cr3t rejected") == "key s3cr3t rejected"
 
 
 class _RaisingModerator:

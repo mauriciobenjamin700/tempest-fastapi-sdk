@@ -546,16 +546,25 @@ completed Não consegui salvar a nota: o disco está cheio.
 
 Qualquer exceção do handler também vira observação, com uma diferença que
 importa: a mensagem de um `AgentToolError` é tratada como **escrita para ser
-mostrada** e vai inteira para o traço, enquanto de uma exceção qualquer o
-traço guarda só o tipo. O traço é o que o router HTTP, o stream SSE e os
-sinks expõem, e uma exceção arbitrária carrega DSN, token ou caminho de
-arquivo. Medido com um handler levantando
+mostrada** e vai inteira para o modelo e para o traço, enquanto de uma
+exceção qualquer os dois recebem só o tipo. O traço é o que o router HTTP, o
+stream SSE e os sinks expõem; o modelo pode repetir na resposta o que leu; e
+uma exceção arbitrária carrega DSN, token ou a URL com a chave da API. Medido
+com um handler levantando
 `RuntimeError("could not connect to postgresql://admin:hunter2@db:5432/app")`:
-o modelo lê o texto inteiro, e o passo registra
-`RuntimeError: the tool failed (details withheld)` — a senha não aparece no
+o modelo lê `tool failed: RuntimeError`, o passo registra
+`RuntimeError: the tool failed (details withheld)`, e a senha não aparece no
 `run.model_dump_json()`. A exceção completa vai para o log
-(`tempest_fastapi_sdk.agents.agent`). Em desenvolvimento,
-`Agent(..., expose_tool_errors=True)` grava o texto inteiro no traço.
+(`tempest_fastapi_sdk.agents.agent`).
+
+Por isso, levante `AgentToolError` quando o modelo precisa saber **o que**
+deu errado para tentar outro caminho ("disco cheio", "esse CEP não existe");
+o resto pode subir cru. Em desenvolvimento,
+`Agent(..., expose_tool_errors=True)` entrega o texto ao modelo e ao traço,
+com as formas óbvias de credencial mascaradas — no mesmo handler,
+`RuntimeError: could not connect to postgresql://admin:***@db:5432/app`. A
+máscara não é garantia
+([o que ela cobre](agents-tools.md#por-que-traduzir-a-excecao)).
 
 !!! tip "Argumento como string JSON"
     Servidores no formato da OpenAI (vLLM, TGI, APIs hospedadas) mandam os
@@ -705,6 +714,12 @@ as ferramentas lerem), `GET /runs` lista só as execuções de quem chama, e o
 artefato da execução de outra pessoa responde `404`, igual a uma execução que
 não existe. Sem `owner=`, todo mundo que alcança o router vê toda execução
 guardada — aceitável só quando um único principal chega nele.
+
+O primeiro argumento também pode ser uma **dependência FastAPI que devolve o
+`Agent`** em vez do agente pronto: `/run` e `/run/stream` a resolvem a cada
+requisição. É como um prompt que depende de quem chama (os fatos do usuário, o
+tenant) usa o router pronto —
+[Com o router pronto](agents-prompts.md#com-o-router-pronto).
 
 O JSON traz os artefatos como **metadados** (nome, tipo, tamanho), nunca os
 bytes: uma imagem gerada tem megabytes, e base64 no corpo infla isso em um
@@ -942,7 +957,8 @@ Duas configurações que se comportam bem:
   modelos que você já hospeda.
 - **Artefatos nomeados** encadeiam multimodal sem disco e sem base64.
 - **Erro de ferramenta vira observação** para o modelo, não exceção — e só o
-  texto de `AgentToolError` vai inteiro para o traço.
+  texto de `AgentToolError` chega ao modelo e ao traço; de qualquer outra
+  exceção, os dois recebem só o tipo.
 - **`make_agent_router`** publica `/run`, `/run/stream` e download de
   artefato por `run_id`; `owner=` separa as execuções por quem chama.
 - **Em CPU**, o GGUF pelo `OllamaGenerator` gera 6× mais rápido que o

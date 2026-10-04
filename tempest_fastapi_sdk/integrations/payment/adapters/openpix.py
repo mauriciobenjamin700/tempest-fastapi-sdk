@@ -11,8 +11,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Final
 
+import httpx
+
+from tempest_fastapi_sdk.exceptions.wallet import PayoutRejectedException
 from tempest_fastapi_sdk.integrations.payment.base import (
     PaymentStatus,
+    PayoutRequest,
+    PayoutResult,
+    PayoutStatus,
     PixCharge,
     PixChargeRequest,
     PixEventType,
@@ -21,12 +27,16 @@ from tempest_fastapi_sdk.integrations.payment.base import (
 from tempest_fastapi_sdk.integrations.payment.openpix import (
     ChargePayload,
     ChargeStatus,
+    CreatePaymentBodyPixKey,
     CustomerPayload,
     OpenPixClient,
     OpenPixEvent,
     OpenPixWebhookEvent,
+    PaymentCreatePayloadPixKeyDestinationAliasType,
+    PaymentCreatePayloadPixKeyType,
     to_cents,
 )
+from tempest_fastapi_sdk.utils.http_client import HTTPClient
 
 PROVIDER_NAME: Final[str] = "openpix"
 """Value written into :attr:`PixCharge.provider` by this adapter."""
@@ -482,9 +492,126 @@ class OpenPixPixProvider:
         )
 
 
+PAYOUT_REJECTED_STATUSES: Final[frozenset[str]] = frozenset({"DENIED", "FAILED"})
+"""Payment states that mean the money did not leave.
+
+From OpenPix's ``PaymentStatus`` (``CREATED``, ``FAILED``, ``CONFIRMED``,
+``DENIED``). Only these two let the wallet give the debit back; every other
+state is treated as money possibly in flight.
+"""
+
+
+class OpenPixPayoutProvider:
+    """OpenPix as a :class:`~...payment.base.PayoutProvider`.
+
+    Sends with ``autoApprove: true``: one call creates and approves the
+    payment. The two-step form (create, then ``approve``) leaves a window
+    in which a payment exists but is not approved, and a crash inside that
+    window is a payout nobody knows whether to retry. Reading the answer
+    depends on v0.304.0's overlay fix, which lets ``Payment.status`` carry
+    the ``"APPROVED"`` that the ``autoApproved`` response documents.
+
+    Error mapping (the contract the wallet relies on):
+
+    * HTTP 4xx, or a payment answered ``DENIED``/``FAILED`` ->
+      :class:`~tempest_fastapi_sdk.exceptions.PayoutRejectedException`;
+    * anything else that goes wrong — HTTP 5xx, timeout, connection error,
+      a body that does not validate — propagates unchanged, because the
+      payment may have been made.
+
+    Attributes:
+        provider_name (str): Always ``"openpix"``.
+    """
+
+    provider_name: str = PROVIDER_NAME
+
+    def __init__(self, http: HTTPClient) -> None:
+        """Build the provider over a transport that never re-sends.
+
+        Takes the ``HTTPClient`` rather than an ``OpenPixClient`` so it
+        can check the one setting that decides whether a payout can be
+        paid twice. ``HTTPClient`` retries every method, ``POST``
+        included, on HTTP 429/5xx and on a read timeout — measured with
+        the default policy: one ``POST`` answered ``500`` goes out three
+        times. For a payout that is the worst case: the first request may
+        have created the payment, and the retry gets an answer the adapter
+        would report as a refusal, so the wallet would give back money
+        that already left.
+
+        Args:
+            http (HTTPClient): Transport carrying the AppID, pointed at the
+                right environment, built with
+                ``retry_policy=RetryPolicy(max_attempts=1)``.
+
+        Raises:
+            ValueError: If ``http`` would retry a request.
+        """
+        if http.retry_policy.max_attempts != 1:
+            raise ValueError(
+                "OpenPixPayoutProvider needs an HTTPClient that never retries: "
+                "build it with retry_policy=RetryPolicy(max_attempts=1). "
+                "A retried payout POST can pay the same withdrawal twice."
+            )
+        self._client: OpenPixClient = OpenPixClient(http)
+
+    async def transfer_to_pix_key(self, request: PayoutRequest, /) -> PayoutResult:
+        """Create and approve a Pix-key payment in one call.
+
+        Args:
+            request (PayoutRequest): The transfer.
+
+        Returns:
+            PayoutResult: ``CONFIRMED`` when OpenPix says so, ``PENDING``
+            for ``CREATED``, ``APPROVED`` or a state this mapping does not
+            know; the raw value stays in ``provider_status``.
+
+        Raises:
+            PayoutRejectedException: On HTTP 4xx, or a ``DENIED`` /
+                ``FAILED`` payment.
+        """
+        body = CreatePaymentBodyPixKey(
+            type=PaymentCreatePayloadPixKeyType.PIX_KEY,
+            value=request.amount_cents,
+            destination_alias=request.pix_key,
+            destination_alias_type=PaymentCreatePayloadPixKeyDestinationAliasType(
+                str(request.pix_key_type).upper()
+            ),
+            correlation_id=request.correlation_id,
+            comment=request.comment,
+            auto_approve=True,
+        )
+        try:
+            response = await self._client.create_payment(body=body)
+        except httpx.HTTPStatusError as exc:
+            if 400 <= exc.response.status_code < 500:
+                raise PayoutRejectedException(
+                    f"OpenPix refused the payout ({exc.response.status_code})",
+                ) from exc
+            raise
+        raw_status = (
+            str(response.payment.status)
+            if response.payment is not None and response.payment.status
+            else None
+        )
+        if raw_status in PAYOUT_REJECTED_STATUSES:
+            raise PayoutRejectedException(f"OpenPix answered {raw_status}")
+        return PayoutResult(
+            correlation_id=request.correlation_id,
+            status=(
+                PayoutStatus.CONFIRMED
+                if raw_status == "CONFIRMED"
+                else PayoutStatus.PENDING
+            ),
+            provider=self.provider_name,
+            provider_status=raw_status,
+        )
+
+
 __all__: list[str] = [
     "EVENT_MAP",
+    "PAYOUT_REJECTED_STATUSES",
     "PROVIDER_NAME",
     "STATUS_MAP",
+    "OpenPixPayoutProvider",
     "OpenPixPixProvider",
 ]

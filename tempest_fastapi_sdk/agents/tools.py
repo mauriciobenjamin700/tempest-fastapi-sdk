@@ -37,10 +37,11 @@ class AgentToolError(Exception):
     Its message is treated as **written for an audience**: it is fed to
     the model and recorded verbatim on the step, which is what the HTTP
     router, the SSE stream and every run sink expose. Any other exception
-    also becomes an observation the model reads in full, but the trace
-    keeps only its type — an arbitrary exception can carry a DSN, a token
-    or a file path, and the trace is served to clients. Raise this one when
-    the text is safe to show.
+    reaches neither by default: the model reads ``"tool failed: <Type>"``
+    and the step keeps only the type, because an arbitrary exception can
+    carry a DSN, a token or a URL with its API key, the trace is served to
+    clients, and the model can repeat what it reads. Raise this one when the
+    model should know **what** went wrong — and the text is safe to show.
     """
 
 

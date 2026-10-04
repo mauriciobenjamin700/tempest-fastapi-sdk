@@ -25,6 +25,7 @@ from typing import Any, Protocol
 from pydantic import ConfigDict, Field
 
 from tempest_fastapi_sdk import BaseSchema, BaseStrEnum
+from tempest_fastapi_sdk.utils.regex import PixKeyType
 
 
 class PaymentStatus(BaseStrEnum):
@@ -362,8 +363,100 @@ class PixProvider(Protocol):
         ...
 
 
+class PayoutStatus(BaseStrEnum):
+    """Where a payout stands right after the provider accepted it.
+
+    A refusal is not a status here: it is
+    :class:`~tempest_fastapi_sdk.exceptions.PayoutRejectedException`, raised,
+    because the caller has to act on it (give the money back).
+
+    Attributes:
+        CONFIRMED: The provider reports the transfer done.
+        PENDING: Accepted, not settled yet. Settlement or failure arrives
+            later (for OpenPix, the ``MOVEMENT_*`` webhooks).
+    """
+
+    CONFIRMED = "confirmed"
+    PENDING = "pending"
+
+
+class PayoutRequest(BaseSchema):
+    """A transfer from the platform account to someone's Pix key.
+
+    Attributes:
+        amount_cents (int): The amount, in cents.
+        pix_key (str): The destination key, read from the payee's profile
+            and never from the request that asked for the payout.
+        pix_key_type (PixKeyType): The kind of key — the SDK's
+            :class:`~tempest_fastapi_sdk.PixKeyType`, which
+            :func:`~tempest_fastapi_sdk.detect_pix_key_type` can infer from
+            the key itself.
+        correlation_id (str): The service's id for this payout. Providers
+            use it to make a retried request idempotent.
+        comment (str | None): Text that travels with the transfer.
+    """
+
+    amount_cents: int = Field(gt=0, description="Valor do saque em centavos.")
+    pix_key: str = Field(min_length=1, description="Chave Pix de destino.")
+    pix_key_type: PixKeyType = Field(description="Tipo da chave Pix.")
+    correlation_id: str = Field(
+        min_length=1, description="Identificador do saque no lado do serviço."
+    )
+    comment: str | None = Field(default=None, description="Texto do saque.")
+
+
+class PayoutResult(_EnumSafeSchema):
+    """What the provider answered when it accepted a payout.
+
+    Attributes:
+        correlation_id (str): Echo of :attr:`PayoutRequest.correlation_id`.
+        status (PayoutStatus): Confirmed or still pending.
+        provider (str): Which provider handled it.
+        provider_status (str | None): The provider's own status string,
+            kept so a value the mapping did not anticipate is still visible.
+    """
+
+    correlation_id: str
+    status: PayoutStatus
+    provider: str
+    provider_status: str | None = None
+
+
+class PayoutProvider(Protocol):
+    """The contract a provider that can send Pix out of the platform implements.
+
+    Error contract, which the wallet's withdrawal depends on:
+
+    * raise :class:`~tempest_fastapi_sdk.exceptions.PayoutRejectedException`
+      **only** when the provider definitively refused — the money did not
+      leave, so the debit is given back;
+    * let anything else propagate (timeout, connection error, unreadable
+      answer): the outcome is unknown and the debit must be kept.
+
+    Attributes:
+        provider_name (str): Copied into :attr:`PayoutResult.provider`.
+    """
+
+    provider_name: str
+
+    async def transfer_to_pix_key(self, request: PayoutRequest, /) -> PayoutResult:
+        """Send ``request.amount_cents`` to ``request.pix_key``.
+
+        Args:
+            request (PayoutRequest): The transfer.
+
+        Returns:
+            PayoutResult: The accepted transfer.
+        """
+        ...
+
+
 __all__: list[str] = [
     "PaymentStatus",
+    "PayoutProvider",
+    "PayoutRequest",
+    "PayoutResult",
+    "PayoutStatus",
     "PixCharge",
     "PixChargeRequest",
     "PixEventType",
