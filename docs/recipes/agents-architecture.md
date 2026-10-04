@@ -277,6 +277,26 @@ Se cada ferramenta reimplementasse a leitura, uma delas erraria a chave — e um
 erro de digitação aqui **falha aberto**: devolve os dados de outra pessoa em vez
 de levantar.
 
+## `prompts/` — um texto por agente
+
+```text
+src/ai/prompts/
+├── __init__.py   # re-exporta as constantes
+├── base.py       # regras comuns a todo agente
+├── service.py    # SERVICE_AGENT_PROMPT
+└── support.py    # SUPPORT_AGENT_PROMPT
+```
+
+Cada prompt é uma constante `UPPER_SNAKE_CASE` num módulo próprio, montada
+sobre as regras de `base.py` — o que fazer quando uma ferramenta falha, o
+formato da resposta. O agente importa a constante; o teste importa a mesma.
+
+O prompt diz **quando** usar cada ferramenta. **O que** ela faz já chega ao
+modelo pela `description` do `@tool` e pelo schema, e identidade fica em
+`policy.py`, nunca numa frase do prompt. Os arquivos completos, o que o modelo
+de fato recebe e como compor o prompt por requisição estão em
+[Agentes de IA (prompts)](agents-prompts.md).
+
 ## `agents/` — só composição
 
 ```python title="src/ai/agents/service.py"
@@ -318,9 +338,17 @@ arquivo pequeno, em vez de uma cópia deste.
     infraestrutura. Se ele fosse construído aqui, `ai` passaria a importar
     `db/models`, e a seta da tabela lá em cima estaria invertida.
 
-O agente é construído **uma vez** e compartilhado. É seguro porque ele não
-guarda nada por requisição: a identidade viaja no contexto da execução e cada
-ferramenta abre a própria sessão.
+Com um prompt fixo, o agente pode ser construído **uma vez** e compartilhado.
+É seguro porque ele não guarda nada por requisição: a identidade viaja no
+contexto da execução e cada ferramenta abre a própria sessão.
+
+Quando o prompt depende de quem pergunta — os fatos do usuário de
+`facts_prompt`, o `recall_prompt` — o agente passa a ser construído **por
+requisição**, porque o `Agent` recebe o prompt no construtor e `run()` não
+aceita outro. A fábrica continua sendo este arquivo, e o gerador continua
+sendo o de `runtime.py`: medido, construir o agente com oito ferramentas e três
+skills custa ~3,3 µs
+([Prompt que depende da requisição](agents-prompts.md#prompt-que-depende-da-requisicao)).
 
 ## O endpoint: por que não `make_agent_router`
 
@@ -456,6 +484,8 @@ no 1.
 - **`views/` decide o que o modelo lê** — e, por tabela, o que o usuário final
   vai ler junto.
 - **`policy.py` guarda a identidade**, que nunca é argumento.
+- **`prompts/` guarda um texto por agente**, sobre regras comuns de `base.py`;
+  prompt por requisição é agente por requisição, em volta do mesmo gerador.
 - **O controller chama `agent.run`**, semeia o contexto e traduz o
   `stop_reason`.
 - **O `run_sink` entra pelas bordas** e responde "por que ele disse aquilo?".

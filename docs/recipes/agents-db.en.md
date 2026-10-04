@@ -19,7 +19,7 @@ In FastAPI the session arrives through `Depends(db.session_dependency)`, and
 the dependency is resolved by the framework when the request comes in. An
 agent tool never goes down that path:
 
-- the agent is built **once**, not per request;
+- an agent with a fixed prompt is built **once**, not per request;
 - the run may not come from HTTP at all — a TaskIQ task, a FastStream consumer
   or a command-line script call the same `agent.run(...)`;
 - the caller is the agent loop, which passes only the `arguments` and an
