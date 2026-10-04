@@ -226,7 +226,7 @@ class FakePayoutProvider(_Steerable):
         ...     PayoutRequest(
         ...         amount_cents=5000,
         ...         pix_key="driver@example.com",
-        ...         pix_key_type="EMAIL",
+        ...         pix_key_type=PixKeyType.EMAIL,
         ...         correlation_id="w-1",
         ...     ),
         ... )

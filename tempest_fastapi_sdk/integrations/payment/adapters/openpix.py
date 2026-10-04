@@ -13,7 +13,6 @@ from typing import Any, Final
 
 import httpx
 
-from tempest_fastapi_sdk.utils.http_client import HTTPClient
 from tempest_fastapi_sdk.exceptions.wallet import PayoutRejectedException
 from tempest_fastapi_sdk.integrations.payment.base import (
     PaymentStatus,
@@ -37,6 +36,7 @@ from tempest_fastapi_sdk.integrations.payment.openpix import (
     PaymentCreatePayloadPixKeyType,
     to_cents,
 )
+from tempest_fastapi_sdk.utils.http_client import HTTPClient
 
 PROVIDER_NAME: Final[str] = "openpix"
 """Value written into :attr:`PixCharge.provider` by this adapter."""
@@ -574,7 +574,7 @@ class OpenPixPayoutProvider:
             value=request.amount_cents,
             destination_alias=request.pix_key,
             destination_alias_type=PaymentCreatePayloadPixKeyDestinationAliasType(
-                request.pix_key_type
+                str(request.pix_key_type).upper()
             ),
             correlation_id=request.correlation_id,
             comment=request.comment,

@@ -198,6 +198,7 @@ plugins:
               - Utilities: recipes/utilities.md
               - Validated fields (ready-made types): recipes/fields.md
               - Versioned artifacts (models): recipes/artifact-registry.md
+              - Wallet and Pix payouts: recipes/wallet.md
               - Web Push: recipes/webpush.md
               - WebAuthn / passkeys: recipes/webauthn.md
               - WebSocket client (AsyncAPI): recipes/asyncapi-client.md
@@ -412,6 +413,7 @@ nav:
       - Camada HTTP: recipes/http.md
       - "Camada UI (páginas e componentes)": recipes/ui.md
       - "Campos validados (tipos prontos)": recipes/fields.md
+      - "Carteira e saque Pix": recipes/wallet.md
       - "Chat (conversas + mensagens)": recipes/chat.md
       - CLI: recipes/cli.md
       - "Cliente de integração (OpenAPI)": recipes/openapi-client.md

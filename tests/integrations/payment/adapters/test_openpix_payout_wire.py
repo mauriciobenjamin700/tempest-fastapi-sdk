@@ -21,12 +21,13 @@ from typing import Any
 import httpx
 import pytest
 
-from tempest_fastapi_sdk import HTTPClient, PayoutRejectedException, RetryPolicy
-from tempest_fastapi_sdk.integrations.payment import (
-    PayoutRequest,
-    PayoutStatus,
+from tempest_fastapi_sdk import (
+    HTTPClient,
+    PayoutRejectedException,
     PixKeyType,
+    RetryPolicy,
 )
+from tempest_fastapi_sdk.integrations.payment import PayoutRequest, PayoutStatus
 from tempest_fastapi_sdk.integrations.payment.adapters import OpenPixPayoutProvider
 from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixEnvironment
 

@@ -18,8 +18,8 @@ from tempest_fastapi_sdk import (
     InsufficientBalanceException,
     PayoutRejectedException,
     PayoutUncertainException,
+    PixKeyType,
 )
-from tempest_fastapi_sdk.integrations.payment import PixKeyType
 from tempest_fastapi_sdk.testing.fakes import FakePayoutProvider
 from tempest_fastapi_sdk.wallet import (
     WalletBalanceMixin,
@@ -314,9 +314,7 @@ class TestStatement:
         assert page["pages"] == 2
         assert [e.amount_cents for e in page["items"]] == [300, 200]
 
-    async def test_an_empty_statement_is_a_success(
-        self, session: AsyncSession
-    ) -> None:
+    async def test_an_empty_statement_is_a_success(self, session: AsyncSession) -> None:
         user_id = await _user(session)
         page = await _service(session).statement(user_id)
         assert page["items"] == []

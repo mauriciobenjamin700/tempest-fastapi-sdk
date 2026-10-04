@@ -15,13 +15,16 @@ from tempest_fastapi_sdk.wallet import (
 class TestOpenPixFeeTiers:
     def test_the_ported_schedule_is_pinned(self) -> None:
         """Ported from alofans-api; drift upstream must show up as a failure."""
-        assert OPENPIX_FEE_TIERS == OpenPixFeeTiers(
-            low_tier_max_cents=6_250,
-            low_tier_cents=50,
-            mid_tier_max_cents=62_500,
-            mid_tier_per_mille=8,
-            high_tier_cents=500,
-            fixed_cents=100,
+        assert (
+            OpenPixFeeTiers(
+                low_tier_max_cents=6_250,
+                low_tier_cents=50,
+                mid_tier_max_cents=62_500,
+                mid_tier_per_mille=8,
+                high_tier_cents=500,
+                fixed_cents=100,
+            )
+            == OPENPIX_FEE_TIERS
         )
 
     @pytest.mark.parametrize(

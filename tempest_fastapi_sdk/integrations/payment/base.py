@@ -25,6 +25,7 @@ from typing import Any, Protocol
 from pydantic import ConfigDict, Field
 
 from tempest_fastapi_sdk import BaseSchema, BaseStrEnum
+from tempest_fastapi_sdk.utils.regex import PixKeyType
 
 
 class PaymentStatus(BaseStrEnum):
@@ -362,24 +363,6 @@ class PixProvider(Protocol):
         ...
 
 
-class PixKeyType(BaseStrEnum):
-    """Kind of Pix key a payout is sent to.
-
-    Attributes:
-        CPF: An individual's tax id.
-        CNPJ: A company's tax id.
-        EMAIL: An e-mail address.
-        PHONE: A phone number.
-        RANDOM: A random key (``EVP``), the UUID-shaped one banks issue.
-    """
-
-    CPF = "CPF"
-    CNPJ = "CNPJ"
-    EMAIL = "EMAIL"
-    PHONE = "PHONE"
-    RANDOM = "RANDOM"
-
-
 class PayoutStatus(BaseStrEnum):
     """Where a payout stands right after the provider accepted it.
 
@@ -404,7 +387,10 @@ class PayoutRequest(BaseSchema):
         amount_cents (int): The amount, in cents.
         pix_key (str): The destination key, read from the payee's profile
             and never from the request that asked for the payout.
-        pix_key_type (PixKeyType): The kind of key.
+        pix_key_type (PixKeyType): The kind of key — the SDK's
+            :class:`~tempest_fastapi_sdk.PixKeyType`, which
+            :func:`~tempest_fastapi_sdk.detect_pix_key_type` can infer from
+            the key itself.
         correlation_id (str): The service's id for this payout. Providers
             use it to make a retried request idempotent.
         comment (str | None): Text that travels with the transfer.
@@ -474,7 +460,6 @@ __all__: list[str] = [
     "PixCharge",
     "PixChargeRequest",
     "PixEventType",
-    "PixKeyType",
     "PixPayer",
     "PixPaymentEvent",
     "PixProvider",

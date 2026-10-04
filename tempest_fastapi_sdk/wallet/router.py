@@ -24,9 +24,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.integrations.payment.base import (
     PayoutProvider,
-    PixKeyType,
 )
 from tempest_fastapi_sdk.schemas.pagination import BasePaginationSchema
+from tempest_fastapi_sdk.utils.regex import PixKeyType
 from tempest_fastapi_sdk.wallet.schemas import (
     PixDestinationSchema,
     WalletBalanceSchema,

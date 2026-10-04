@@ -14,9 +14,9 @@ from tempest_fastapi_sdk import (
     AsyncDatabaseManager,
     BaseRepository,
     BaseUserModel,
+    PixKeyType,
     register_exception_handlers,
 )
-from tempest_fastapi_sdk.integrations.payment import PixKeyType
 from tempest_fastapi_sdk.testing.fakes import FakePayoutProvider
 from tempest_fastapi_sdk.wallet import (
     PixDestinationSchema,
@@ -155,9 +155,7 @@ async def test_withdraw_beyond_the_balance_is_409(
 ) -> None:
     client, _user_id, payout = wallet_app
 
-    response = await client.post(
-        "/api/wallet/withdraw", json={"amount_cents": 99_999}
-    )
+    response = await client.post("/api/wallet/withdraw", json={"amount_cents": 99_999})
 
     assert response.status_code == 409
     assert response.json()["code"] == "WALLET_INSUFFICIENT_BALANCE"

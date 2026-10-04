@@ -8,8 +8,9 @@ from uuid import UUID
 from pydantic import Field
 
 from tempest_fastapi_sdk.core.enums import BaseStrEnum
-from tempest_fastapi_sdk.integrations.payment.base import PayoutResult, PixKeyType
+from tempest_fastapi_sdk.integrations.payment.base import PayoutResult
 from tempest_fastapi_sdk.schemas.base import BaseSchema
+from tempest_fastapi_sdk.utils.regex import PixKeyType
 
 
 class WalletEntryKind(BaseStrEnum):

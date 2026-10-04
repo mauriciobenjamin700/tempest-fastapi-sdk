@@ -341,6 +341,20 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## Carteira e saque Pix
+
+### `tempest_fastapi_sdk.wallet`
+
+::: tempest_fastapi_sdk.wallet
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
 ## Chat
 
 ### `tempest_fastapi_sdk.chat`
@@ -426,6 +440,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.oauth.OAuthAccountNotLinkedException
 ::: tempest_fastapi_sdk.exceptions.upload.FileTooLargeException
 ::: tempest_fastapi_sdk.exceptions.upload.InvalidFileTypeException
+::: tempest_fastapi_sdk.exceptions.wallet.InsufficientBalanceException
+::: tempest_fastapi_sdk.exceptions.wallet.PayoutRejectedException
+::: tempest_fastapi_sdk.exceptions.wallet.PayoutUncertainException
 ::: tempest_fastapi_sdk.exceptions.i18n.MessageCatalog
 ::: tempest_fastapi_sdk.exceptions.i18n.default_message_catalog
 ::: tempest_fastapi_sdk.exceptions.i18n.parse_accept_language
@@ -646,10 +663,15 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.integrations.payment.base.PixPaymentEvent
 ::: tempest_fastapi_sdk.integrations.payment.base.PaymentStatus
 ::: tempest_fastapi_sdk.integrations.payment.base.PixEventType
+::: tempest_fastapi_sdk.integrations.payment.base.PayoutProvider
+::: tempest_fastapi_sdk.integrations.payment.base.PayoutRequest
+::: tempest_fastapi_sdk.integrations.payment.base.PayoutResult
+::: tempest_fastapi_sdk.integrations.payment.base.PayoutStatus
 
 ### `tempest_fastapi_sdk.integrations.payment.adapters`
 
 ::: tempest_fastapi_sdk.integrations.payment.adapters.openpix.OpenPixPixProvider
+::: tempest_fastapi_sdk.integrations.payment.adapters.openpix.OpenPixPayoutProvider
 
 ## WhatsApp (zap-api)
 
@@ -1162,6 +1184,7 @@ então importar o namespace não constrói nenhum modelo.
 ### `tempest_fastapi_sdk.testing.fakes`
 
 ::: tempest_fastapi_sdk.testing.fakes.payment.FakePixProvider
+::: tempest_fastapi_sdk.testing.fakes.payment.FakePayoutProvider
 ::: tempest_fastapi_sdk.testing.fakes.genai.FakeTextBackend
 ::: tempest_fastapi_sdk.testing.fakes.genai.FakeModerationBackend
 ::: tempest_fastapi_sdk.testing.fakes.push.FakePushDispatcher

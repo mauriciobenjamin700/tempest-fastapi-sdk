@@ -70,9 +70,6 @@ from tempest_fastapi_sdk.integrations.payment.base import (
 from tempest_fastapi_sdk.integrations.payment.base import (
     PixEventType as PixEventType,
 )
-from tempest_fastapi_sdk.integrations.payment.base import (
-    PixKeyType as PixKeyType,
-)
 from tempest_fastapi_sdk.integrations.payment.base import PixPayer as PixPayer
 from tempest_fastapi_sdk.integrations.payment.base import (
     PixPaymentEvent as PixPaymentEvent,
@@ -117,7 +114,6 @@ __all__: list[str] = [
     "PixCharge",
     "PixChargeRequest",
     "PixEventType",
-    "PixKeyType",
     "PixPayer",
     "PixPaymentEvent",
     "PixProvider",

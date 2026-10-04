@@ -35,8 +35,8 @@ from tempest_fastapi_sdk import (
     BaseRepository,
     BaseUserModel,
     InsufficientBalanceException,
+    PixKeyType,
 )
-from tempest_fastapi_sdk.integrations.payment import PixKeyType
 from tempest_fastapi_sdk.testing.fakes import FakePayoutProvider
 from tempest_fastapi_sdk.wallet import (
     WalletBalanceMixin,

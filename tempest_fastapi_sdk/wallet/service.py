@@ -27,9 +27,9 @@ from tempest_fastapi_sdk.exceptions.wallet import (
 from tempest_fastapi_sdk.integrations.payment.base import (
     PayoutProvider,
     PayoutRequest,
-    PixKeyType,
 )
 from tempest_fastapi_sdk.utils.datetime import utcnow
+from tempest_fastapi_sdk.utils.regex import PixKeyType
 from tempest_fastapi_sdk.wallet.schemas import (
     WalletBalanceSchema,
     WalletEntryKind,
@@ -490,13 +490,10 @@ class WalletService:
             use inside another statement.
         """
         entry_model = self.entries.model
-        return (
-            select(func.coalesce(func.sum(entry_model.amount_cents), 0))
-            .where(
-                entry_model.user_id == user_id,
-                entry_model.amount_cents > 0,
-                entry_model.available_at > now,
-            )
+        return select(func.coalesce(func.sum(entry_model.amount_cents), 0)).where(
+            entry_model.user_id == user_id,
+            entry_model.amount_cents > 0,
+            entry_model.available_at > now,
         )
 
     async def _apply(
