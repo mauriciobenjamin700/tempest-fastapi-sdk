@@ -157,17 +157,29 @@ motivos são o agente cortando a execução:
 
 | `stop_reason` | O que aconteceu |
 | --- | --- |
-| `completed` | O modelo respondeu sem pedir outra ferramenta. |
+| `completed` | O modelo respondeu com texto, sem pedir outra ferramenta. |
 | `max_steps` | O teto de passos acabou primeiro. |
 | `timeout` | O teto de tempo acabou primeiro. |
 | `max_tool_calls` | O teto de chamadas acabou primeiro. |
 | `error` | O backend do modelo falhou. |
 | `blocked` | A moderação recusou o objetivo ou a resposta. |
+| `empty_response` | O modelo encerrou a vez sem texto e sem chamar ferramenta. |
 
 !!! warning "Uma execução truncada ainda traz texto"
     O `output` de uma execução cortada é a última coisa que o modelo disse —
     trabalho parcial, não resposta final. Quem ignora o `stop_reason`
     apresenta trabalho pela metade como se estivesse pronto.
+
+!!! info "Resposta vazia não é `completed`"
+    Uma mensagem do modelo sem texto (ou só com espaço em branco) e sem
+    `tool_calls` termina em `empty_response`, com `succeeded=False`. Até a
+    0.303.1 ela virava `completed` com `output == ""`: sucesso sem resposta.
+    O `qwen2.5:0.5b` no Ollama 0.30.11, em CPU, com a meta desta página,
+    terminou assim 58 de 200 execuções. O agente não repete a pergunta por
+    conta própria — isso gastaria um passo do orçamento e esconderia quanto
+    o modelo falha. Para repetir, use
+    [`run_until(agent, goal, until=succeeded)`](agents-advanced.md#loop-insistir-ate-passar-num-criterio): no mesmo
+    modelo, 58 de 60 laços com `max_rounds=3` terminaram aceitos.
 
 ## Orçamento
 
@@ -836,12 +848,14 @@ O que os números dizem:
   ferramenta devolve custam ~7,6 s de prefill (1 000 / 132), em qualquer
   dos dois backends. Ferramenta que devolve o resumo e não o dump é a
   alavanca de tempo, não só de contexto.
-- **0,5B no Ollama falhou em silêncio.** Em 12 de 54 execuções o
-  `qwen2.5:0.5b` terminou `completed` sem chamar a ferramenta e com
-  `output` vazio: o Ollama devolveu a mensagem sem texto e sem
-  `tool_calls`. O mesmo modelo pelo `TextGenerator` chamou a ferramenta nas
-  36 execuções, e o `qwen2.5:3b` nas 54. Em CPU, o 3B pelo Ollama foi o
-  menor que completou todas.
+- **0,5B no Ollama devolveu resposta vazia.** Em 12 de 54 execuções o
+  `qwen2.5:0.5b` não chamou a ferramenta e o Ollama devolveu a mensagem
+  sem texto e sem `tool_calls`. Até a 0.303.1 isso terminava `completed`
+  com `output` vazio — sucesso sem resposta; hoje termina
+  [`empty_response`](#sempre-olhe-o-stop_reason), com `succeeded=False`. O
+  mesmo modelo pelo `TextGenerator` chamou a ferramenta nas 36 execuções,
+  e o `qwen2.5:3b` nas 54. Em CPU, o 3B pelo Ollama foi o menor que
+  completou todas.
 - **O primeiro passo paga o load.** Frio contra quente, o primeiro passo
   custou +2,2 s no 0,5B e +2,6 s no 3B em `float32`, e o Ollama reportou
   1,4 s a 2,2 s de `load_duration` no 3B — com os pesos já no cache de disco.

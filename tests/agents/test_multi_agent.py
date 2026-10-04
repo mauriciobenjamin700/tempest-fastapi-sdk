@@ -278,6 +278,27 @@ class TestDelegation:
         assert "stopped: max_steps" in delegation.output
 
     @pytest.mark.asyncio
+    async def test_a_child_that_answered_nothing_is_flagged(self) -> None:
+        child = Agent(
+            Scripted([{"content": "", "tool_calls": []}]),
+            tools=[text_tool("echo", "Echo.", _echo)],
+            name="mute",
+        )
+        parent = Agent(
+            Scripted(
+                [
+                    {"content": "", "tool_calls": [_call("ask_mute", goal="x")]},
+                    {"content": "done", "tool_calls": []},
+                ],
+            ),
+            tools=[agent_tool(child)],
+            name="boss",
+        )
+        run = await parent.run("go")
+        delegation = next(s for s in run.steps if s.kind == StepKind.AGENT)
+        assert "stopped: empty_response" in delegation.output
+
+    @pytest.mark.asyncio
     async def test_missing_goal_is_a_tool_error(self) -> None:
         child = _specialist("researcher")
         parent = Agent(
@@ -522,6 +543,23 @@ class TestRunUntil:
         result = await run_until(agent, "g", until=succeeded, max_rounds=2)
         assert result.accepted is False
         assert result.final_run.stop_reason == StopReason.MAX_STEPS
+
+    @pytest.mark.asyncio
+    async def test_succeeded_helper_retries_an_empty_reply(self) -> None:
+        agent = Agent(
+            Scripted(
+                [
+                    {"content": "", "tool_calls": []},
+                    {"content": "the answer", "tool_calls": []},
+                ],
+            ),
+            tools=[text_tool("echo", "Echo.", _echo)],
+        )
+        result = await run_until(agent, "g", until=succeeded, max_rounds=3)
+        assert result.accepted is True
+        assert result.rounds == 2
+        assert result.iterations[0].run.stop_reason == StopReason.EMPTY_RESPONSE
+        assert result.output == "the answer"
 
     @pytest.mark.asyncio
     async def test_the_wall_clock_bounds_every_round_together(self) -> None:

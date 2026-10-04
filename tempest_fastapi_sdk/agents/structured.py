@@ -51,8 +51,8 @@ class StructuredRun(AgentRun, Generic[OutputT]):
     Attributes:
         data (OutputT | None): The structured answer, or ``None`` when the
             run ended without producing one — a budget ran out, moderation
-            blocked it, the model never called the answer tool, or what it
-            passed did not validate. Only a
+            blocked it, the model replied with nothing, the model never
+            called the answer tool, or what it passed did not validate. Only a
             :attr:`~tempest_fastapi_sdk.agents.StopReason.COMPLETED` run
             carries data: an answer recorded by a run that was then blocked
             or cut short is dropped, not returned. Always check it; a run can be
@@ -221,7 +221,10 @@ async def run_structured(
     ctx.answer = None
     parse_error: str | None = None
 
-    if not run.succeeded:
+    if run.stop_reason == StopReason.EMPTY_RESPONSE:
+        data = None
+        parse_error = "the run produced no answer"
+    elif not run.succeeded:
         data = None
         parse_error = (
             f"the run stopped before finishing ({run.stop_reason}); a "

@@ -157,17 +157,29 @@ reasons are the agent cutting the run short:
 
 | `stop_reason` | What happened |
 | --- | --- |
-| `completed` | The model answered without asking for another tool. |
+| `completed` | The model answered with text, without asking for another tool. |
 | `max_steps` | The step budget ran out first. |
 | `timeout` | The wall-clock budget ran out first. |
 | `max_tool_calls` | The tool-call budget ran out first. |
 | `error` | The model backend failed. |
 | `blocked` | Moderation rejected the goal or the answer. |
+| `empty_response` | The model ended its turn with no text and no tool call. |
 
 !!! warning "A truncated run still carries text"
     The `output` of a cut-short run is the last thing the model said —
     partial work, not a final answer. A caller that ignores `stop_reason`
     presents half-finished work as done.
+
+!!! info "An empty reply is not `completed`"
+    A model message with no text (or whitespace only) and no `tool_calls`
+    ends in `empty_response`, with `succeeded=False`. Up to 0.303.1 it
+    became `completed` with `output == ""`: a success with no answer.
+    `qwen2.5:0.5b` on Ollama 0.30.11, in CPU, with this page's goal, ended
+    58 of 200 runs that way. The agent does not re-ask on its own — that
+    would spend a step of the budget and hide how often the model fails.
+    To retry, use
+    [`run_until(agent, goal, until=succeeded)`](agents-advanced.md#loop-keep-going-until-it-passes-a-check): on the
+    same model, 58 of 60 loops with `max_rounds=3` ended accepted.
 
 ## Budget
 
@@ -840,12 +852,14 @@ What the numbers say:
   tokens a tool returns cost ~7.6 s of prefill (1,000 / 132) on either
   backend. A tool that returns the summary rather than the dump is a time
   lever, not only a context one.
-- **0.5B on Ollama failed silently.** In 12 of 54 runs `qwen2.5:0.5b`
-  finished `completed` without calling the tool and with an empty
-  `output`: Ollama returned the message with no text and no `tool_calls`.
-  The same model through the `TextGenerator` called the tool in all 36
-  runs, and `qwen2.5:3b` in all 54. On CPU, the 3B through Ollama was the
-  smallest that completed every run.
+- **0.5B on Ollama returned empty replies.** In 12 of 54 runs
+  `qwen2.5:0.5b` did not call the tool and Ollama returned the message with
+  no text and no `tool_calls`. Up to 0.303.1 that finished `completed` with
+  an empty `output` — a success with no answer; it now ends
+  [`empty_response`](#always-check-stop_reason), with `succeeded=False`. The same
+  model through the `TextGenerator` called the tool in all 36 runs, and
+  `qwen2.5:3b` in all 54. On CPU, the 3B through Ollama was the smallest
+  that completed every run.
 - **The first step pays for the load.** Cold against warm, the first step
   cost +2.2 s on the 0.5B and +2.6 s on the 3B in `float32`, and Ollama
   reported 1.4 s to 2.2 s of `load_duration` on the 3B — with the weights

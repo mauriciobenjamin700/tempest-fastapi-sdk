@@ -55,6 +55,14 @@ class StopReason(BaseStrEnum):
     * ``BLOCKED`` — moderation rejected the goal or the answer, or the
       moderator itself failed. A moderator that raises fails **closed**:
       an unchecked answer is never returned as if it had been checked.
+    * ``EMPTY_RESPONSE`` — the model ended its turn with neither text nor
+      a tool call (whitespace-only text counts as none). It is not
+      ``COMPLETED`` because there is no answer to hand back, and it is not
+      ``ERROR`` because the backend did not fail: the call returned, the
+      model just said nothing. Small models do this: ``qwen2.5:0.5b`` on
+      Ollama 0.30.11 in CPU, with a goal needing one tool, ended 58 of 200
+      runs like this. Retrying is the caller's choice —
+      ``run_until(agent, goal, until=succeeded)`` re-runs it.
     """
 
     COMPLETED = "completed"
@@ -63,6 +71,7 @@ class StopReason(BaseStrEnum):
     MAX_TOOL_CALLS = "max_tool_calls"
     ERROR = "error"
     BLOCKED = "blocked"
+    EMPTY_RESPONSE = "empty_response"
 
 
 class AgentArtifact(BaseSchema):
@@ -372,7 +381,9 @@ class AgentRun(BaseSchema):
         Returns:
             bool: ``True`` only for :attr:`StopReason.COMPLETED`. A run cut
             off by a budget may still carry useful text, but calling it a
-            success would hide a truncation.
+            success would hide a truncation; a run whose model answered with
+            nothing ends :attr:`StopReason.EMPTY_RESPONSE`, so a successful
+            run never ends on an empty model reply.
         """
         return self.stop_reason == StopReason.COMPLETED
 
