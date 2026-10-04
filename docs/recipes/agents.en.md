@@ -643,6 +643,11 @@ into a `ToolResult` for you.
     [AI agents (database) »](agents-db.md) shows the whole pattern, and it is
     where the `context` parameter is unpacked.
 
+!!! tip "A tool that calls an API, or that structures text?"
+    The process's HTTP client, a timeout below the budget, 4xx/5xx becoming
+    `AgentToolError`, and pulling an object out of free text with `schema_of`
+    and `final_answer_tool`: [AI agents (tools) »](agents-tools.md).
+
 !!! tip "Already have `AIChatPipeline` tools?"
     `AgentTool.from_tool(tool)` adapts the chat pipeline's single-argument
     tools without touching them.

@@ -295,8 +295,8 @@ Três coisas aqui **não** são julgamento, são mecânica do SDK:
   observação volta como `unknown tool 'search_catalog'; available: ...`.
 * **O erro que o modelo lê é o que a ferramenta escreveu.** A regra de falha
   só funciona se a mensagem do `AgentToolError` disser o que mudar —
-  [Falha de ferramenta não derruba a execução](agents.md#falha-de-ferramenta-nao-derruba-a-execucao)
-  mostra o caminho dessa mensagem até o modelo.
+  [Agentes de IA (ferramentas)](agents-tools.md#ferramenta-que-chama-uma-api)
+  mostra mensagens escritas para isso.
 * **Descrição de ferramenta mora no `@tool`, não aqui.** O prompt diz *quando*;
   a `description` e o schema dizem *o quê*. Escrever o *o quê* duas vezes é
   duas descrições que divergem na primeira edição.
@@ -773,6 +773,7 @@ nenhum, `facts_prompt` devolve string vazia e o prompt de Bruno é
 - **Teste a constante e o que chegou ao modelo**; se o modelo obedece é outra
   suíte.
 
-Veja também:
+Veja também: [Agentes de IA (ferramentas)](agents-tools.md) para escrever a
+mensagem de erro que a regra de falha manda o modelo ler, e
 [Agentes de IA (avançado)](agents-advanced.md#memoria-tres-camadas-e-qual-escolher)
 para os blocos de `facts_prompt` e `recall_prompt`.

@@ -297,8 +297,8 @@ Three things here are **not** judgement, they are SDK mechanics:
   back as `unknown tool 'search_catalog'; available: ...`.
 * **The error the model reads is the one the tool wrote.** The failure rule
   only works if the `AgentToolError` message says what to change —
-  [A failing tool does not end the run](agents.md#a-failing-tool-does-not-end-the-run)
-  shows how that message reaches the model.
+  [AI agents (tools)](agents-tools.md#a-tool-that-calls-an-api) shows messages
+  written for that.
 * **Tool descriptions live on the `@tool`, not here.** The prompt says *when*;
   the `description` and the schema say *what*. Writing the *what* twice is two
   descriptions that drift apart on the first edit.
@@ -777,6 +777,7 @@ all, `facts_prompt` returns an empty string and Bruno's prompt is **exactly**
 - **Test the constant and what reached the model**; whether the model obeys is
   another suite.
 
-See also:
+See also: [AI agents (tools)](agents-tools.md) for writing the error message
+the failure rule tells the model to read, and
 [AI agents (advanced)](agents-advanced.md#memory-three-layers-and-which-to-pick)
 for the `facts_prompt` and `recall_prompt` blocks.
