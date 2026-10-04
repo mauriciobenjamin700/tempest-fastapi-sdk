@@ -561,6 +561,97 @@ dentro de uma rota viram o envelope de erro do SDK sem `try` nenhum; com um
     (ajustável por `timeout=`) e fecha ao terminar. Falha de rede (timeout,
     DNS) sobe como `httpx.HTTPError`.
 
+### Aba grande demais
+
+Uma aba enorme, ou um link que aponta para algo maior do que você esperava,
+não pode virar uma lista de milhões de `dict` na memória do serviço. Por
+isso o caminho CSV tem dois limites, **ligados por padrão**:
+
+| Parâmetro | Default | O que mede | Quando confere |
+| --- | --- | --- | --- |
+| `max_bytes` | `10 MiB` | bytes do corpo do export | durante o download, em streaming |
+| `max_rows` | `100 000` | linhas de dados da aba (linha em branco não conta) | durante o parse, na primeira linha além do limite |
+
+```python
+# scripts/estoque_limite.py
+
+import asyncio
+
+from tempest_fastapi_sdk.spreadsheet import SpreadsheetTooLargeError, read_google_sheet
+
+SHEET_URL: str = (
+    "https://docs.google.com/spreadsheets/d/"
+    "1h0ATstw2f6ryXvbwV-DW6zwsBRIF-2k5zHcm2uTEge8/edit?usp=sharing"
+)
+
+
+async def main() -> None:
+    """Lê a mesma aba com um limite de linhas abaixo e outro acima do tamanho dela."""
+    try:
+        await read_google_sheet(SHEET_URL, max_rows=5)
+    except SpreadsheetTooLargeError as erro:
+        print(erro.status_code, erro.code, erro.details)
+    linhas: list[dict[str, str]] = await read_google_sheet(SHEET_URL, max_rows=20)
+    print(len(linhas), "linhas lidas")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Rodando (saída real, 2026-10-04):
+
+```text
+413 SPREADSHEET_TOO_LARGE {'limit': 'rows', 'max': 5, 'actual': 6, 'sheet': None, 'row': 7}
+11 linhas lidas
+```
+
+**Recusar, nunca truncar.** Passou de um limite, sai
+`SpreadsheetTooLargeError` (`413`, código `SPREADSHEET_TOO_LARGE`) — o
+mesmo erro dos leitores de `.xlsx`, descrito em
+[Limites: zip bomb e planilha enorme](#limites-zip-bomb-e-planilha-enorme).
+Nenhum leitor devolve "as primeiras linhas" em silêncio. No CSV,
+`details["sheet"]` é `None`: o export não traz o nome da aba.
+
+**O download.** O corpo é lido em streaming e contado. Um `Content-Length`
+acima de `max_bytes` é recusado sem ler o corpo; sem o cabeçalho, a
+transferência é fechada no primeiro pedaço que passa do limite.
+`details["limit"]` sai `"download_bytes"`.
+
+**As linhas.** O CSV é decodificado e parseado aos poucos, direto dos bytes
+baixados: na linha `max_rows + 1` a leitura para, e o resto do corpo nunca
+vira `str`, `list` nem `dict`. `details["row"]` é a linha da planilha em
+que a leitura parou, contando as linhas em branco. Em
+`read_google_sheet_as`, o limite é conferido antes de qualquer validação:
+uma aba grande demais responde `413`, não o `422` da primeira linha
+inválida.
+
+**De onde vêm os defaults.** Medido no CPython 3.11, pico de RSS acima do
+que o interpretador já ocupa, só o parse (corpo incluído), três execuções
+por arquivo:
+
+* Na aba de 8 colunas usada para medir o `.xlsx` (id, dois textos, três
+  números, uma data, um status), cada linha custa **~94 bytes de CSV e
+  ~1 014 bytes de memória**: uns **11 bytes de memória por byte de CSV**.
+  100 000 linhas são 9 212 287 bytes e chegaram a 96,7 MB; 110 000 linhas
+  (10 166 854 bytes, ainda abaixo de 10 MiB) pararam na linha 100 001.
+  Nessa forma, quem dispara primeiro é o limite de linhas — a mesma divisão
+  do `.xlsx`.
+* O pior caso é uma aba de muitas células de dois caracteres: **~31,5 bytes
+  de memória por byte de CSV**. 100 000 linhas de 34 células assim
+  (10 300 127 bytes) chegaram a 309,4 MB. É por isso que o default do CSV é
+  menor que os 32 MiB do `.xlsx`: o CSV não é comprimido, e cada célula vira
+  um objeto `str` dentro de um `dict`.
+* A planilha pública de 16 abas usada nesta página tem, na maior aba, 18 577
+  bytes e 1 004 linhas de dados: lida aba por aba com os defaults (2 580
+  linhas no total), nenhuma foi recusada.
+
+**Subir ou desligar.** Os dois limites são por chamada, e `None` desliga
+(`max_bytes=None`, `max_rows=None`). Os defaults são as constantes públicas
+`DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES` e `DEFAULT_XLSX_MAX_ROWS` — a mesma
+dos leitores de `.xlsx`. Valor zero ou negativo levanta `ValueError` antes
+da requisição.
+
 ??? note "CSV ou .xlsx?"
     O CSV traz **uma aba** por requisição, escolhida pelo `gid`, e cada
     célula como **texto formatado** pelo locale da planilha (`"1.234,56"`,
@@ -900,7 +991,7 @@ qual limite foi:
 
 * `"uncompressed_bytes"` e `"compression_ratio"`: `details["actual"]` é o
   que o ZIP declara; no da razão, `details["member"]` nomeia a parte;
-* `"rows"`: `details["sheet"]` é a aba e `details["row"]` a linha da
+* `"rows"`: `details["sheet"]` é a aba (`None` no caminho CSV) e `details["row"]` a linha da
   planilha em que a leitura parou;
 * `"download_bytes"`: o download do Google (veja a próxima seção).
 
@@ -1138,7 +1229,9 @@ aceita comprimindo só 3,2 vezes. A planilha de 16 abas baixa 785 152 bytes.
 `read_google_sheet_xlsx` aceita também `max_rows`,
 `max_uncompressed_bytes` e `max_compression_ratio`, repassados ao leitor —
 e o erro de tamanho sai como `SpreadsheetTooLargeError` (`413`), não como
-`GoogleSheetAccessError`. O caminho CSV não tem esse limite.
+`GoogleSheetAccessError`. O caminho CSV tem os mesmos `max_bytes` e
+`max_rows`, com outro default de download — veja
+[Aba grande demais](#aba-grande-demais).
 
 **O extra.** `download_google_sheet_xlsx` só baixa bytes e roda sem extra;
 `read_google_sheet_xlsx` precisa do `[spreadsheet]` e confere isso
@@ -1158,7 +1251,8 @@ e o erro de tamanho sai como `SpreadsheetTooLargeError` (`413`), não como
 * `workbook_to_bytes` entrega bytes — resposta HTTP, storage, e-mail.
 * `read_google_sheet_as(link, Schema)` lê uma aba de uma planilha do Google
   compartilhada por link e valida cada linha; o erro aponta o número da
-  linha. Sem extra.
+  linha. Sem extra. O download para em `max_bytes` (10 MiB) e o parse em
+  `max_rows` (100 000), com o mesmo `SpreadsheetTooLargeError` (`413`).
 * `read_xlsx_as(bytes, Schema, sheet="Aba")` lê uma aba de um `.xlsx`
   (upload, arquivo, export) com a célula **tipada**: número, `datetime`,
   `bool`. Arquivo que não é planilha, aba que não existe e linha inválida

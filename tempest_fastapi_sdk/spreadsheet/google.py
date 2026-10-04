@@ -34,6 +34,12 @@ Two paths share those guarantees:
   ``[spreadsheet]`` extra — imported at call time, so the CSV path keeps
   importing without it.
 
+Both paths stream the download and stop it past ``max_bytes``, and both
+count the data rows against ``max_rows`` while they parse; past a limit
+they raise
+:class:`~tempest_fastapi_sdk.spreadsheet.reader.SpreadsheetTooLargeError`
+(``413``) instead of returning part of the sheet.
+
     from pydantic import BaseModel
 
     from tempest_fastapi_sdk.spreadsheet import read_google_sheet_as
@@ -57,6 +63,7 @@ from __future__ import annotations
 import csv
 import io
 import re
+from collections.abc import Iterator
 from typing import Any, Final, Literal, TypeVar
 from urllib.parse import parse_qs, urlsplit
 
@@ -105,6 +112,29 @@ The arithmetic: a workbook the reader accepts decompresses to at most
 limit downloads as about 14 MiB; 32 MiB still admits it when it compresses
 only 3.2 times, and anything larger would be refused by the decompressed
 limit anyway. The 16-tab public sheet measured downloads as 785 152 bytes.
+"""
+
+
+DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES: Final[int] = 10 * 1024 * 1024
+"""Bytes the CSV export of one tab may answer with before the download stops (10 MiB).
+
+Smaller than :data:`DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES` because a byte
+of CSV costs more memory than a byte of ``.xlsx``: the CSV is not
+compressed, and every cell becomes a ``str`` in a ``dict``.
+
+The arithmetic, measured on CPython 3.11 (peak RSS over the interpreter's
+baseline, body included, parse only, three runs per file, spread under
+0.5 MB): the 8-column tab the ``.xlsx`` limits were measured with (id, two
+texts, three numbers, a date, a status) costs **~94 bytes of CSV and
+~1 014 bytes of RSS per row**, about **11 bytes of memory per byte of
+CSV** — 100 000 rows are 9 212 287 bytes and peaked at 96.7 MB. So a tab of
+:data:`~tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_ROWS` rows
+in that shape fits under this limit, and for it the row limit trips first:
+110 000 rows (10 166 854 bytes) were refused at row 100 001. The worst case
+is a tab of many two-character cells, **~31.5 bytes of memory per byte**:
+100 000 rows of 34 such cells (10 300 127 bytes) peaked at 309.4 MB over
+the baseline. The largest tab of the 16-tab public sheet measured is
+18 577 bytes.
 """
 
 
@@ -270,24 +300,43 @@ def google_sheet_export_url(
     return _export_url(sheet_id, export_format, gid)
 
 
-def _parse_csv(text: str) -> list[tuple[int, dict[str, str]]]:
+def _parse_csv(body: bytes, max_rows: int | None) -> list[tuple[int, dict[str, str]]]:
     """Split a CSV export into numbered rows keyed by the header.
 
     The first record is the header; the rest follow the rules of
     :func:`~tempest_fastapi_sdk.spreadsheet.reader._number_rows` — the
     same ones the ``.xlsx`` reader applies — with ``""`` as the padding.
 
+    The body is decoded as UTF-8 (a leading BOM is dropped) and parsed
+    lazily, chunk by chunk: no decoded copy of the whole body is ever
+    held, and with ``max_rows`` the parse stops at the first data row past
+    the limit, so the records after it are never decoded. ``io.StringIO`` is
+    avoided on purpose: it holds a copy about five times the size of the
+    text (measured: +475 MB for 95 MiB of ASCII), and through it a 95 MB
+    export peaked 632 MB over the baseline before the row limit tripped,
+    against 179 MB read from the bytes.
+
     Args:
-        text (str): The decoded CSV body.
+        body (bytes): The CSV body as downloaded.
+        max_rows (int | None): Most data rows (blank ones excluded) to
+            accept; ``None`` accepts any number.
 
     Returns:
         list[tuple[int, dict[str, str]]]: ``(row_number, row)`` pairs, the
         header being row 1. Empty when the export has no data row.
+
+    Raises:
+        SpreadsheetTooLargeError: On the data row past ``max_rows``, with
+            ``details["limit"] == "rows"``.
     """
-    records: list[list[str]] = list(csv.reader(io.StringIO(text, newline="")))
-    if not records:
+    stream: io.TextIOWrapper = io.TextIOWrapper(
+        io.BytesIO(body), encoding="utf-8-sig", newline=""
+    )
+    records: Iterator[list[str]] = csv.reader(stream)
+    header: list[str] | None = next(records, None)
+    if header is None:
         return []
-    return _number_rows(records[0], records[1:], "")
+    return _number_rows(header, records, "", max_rows=max_rows)
 
 
 async def _receive(
@@ -390,30 +439,46 @@ async def _download(
     return await _receive(client, export_url, media_type, max_bytes)
 
 
-async def _download_csv(
+async def _read_csv_rows(
     url: str,
     client: httpx.AsyncClient | None,
     timeout: float,
-) -> str:
-    """Fetch the CSV export of the sheet a link points at.
+    max_bytes: int | None,
+    max_rows: int | None,
+) -> list[tuple[int, dict[str, str]]]:
+    """Fetch the CSV export of the sheet a link points at and number its rows.
+
+    Both limits and the link are checked before the request is sent.
 
     Args:
         url (str): Anything :func:`google_sheet_export_url` accepts.
         client (httpx.AsyncClient | None): Client to reuse; left open.
         timeout (float): Seconds the created client waits.
+        max_bytes (int | None): Most bytes the export may answer with;
+            ``None`` accepts any.
+        max_rows (int | None): Most data rows to accept; ``None`` accepts
+            any number.
 
     Returns:
-        str: The CSV body, decoded as UTF-8 (a leading BOM is dropped).
+        list[tuple[int, dict[str, str]]]: ``(row_number, row)`` pairs, the
+        header being row 1.
 
     Raises:
-        ValueError: If ``url`` is not a Google Sheets link.
+        ValueError: If ``url`` is not a Google Sheets link, or a limit is
+            zero or negative.
         GoogleSheetAccessError: If the export does not answer with a
             successful ``text/csv`` response.
+        SpreadsheetTooLargeError: If the body passes ``max_bytes`` or the
+            tab holds more than ``max_rows`` data rows.
         httpx.HTTPError: If the request itself fails.
     """
+    _check_limit("max_bytes", max_bytes)
+    _check_limit("max_rows", max_rows)
     export_url: str = google_sheet_export_url(url, export_format="csv")
-    body: bytes = await _download(export_url, _CSV_MEDIA_TYPE, client, timeout)
-    return body.decode("utf-8-sig")
+    body: bytes = await _download(
+        export_url, _CSV_MEDIA_TYPE, client, timeout, max_bytes
+    )
+    return _parse_csv(body, max_rows)
 
 
 async def read_google_sheet(
@@ -421,6 +486,8 @@ async def read_google_sheet(
     *,
     client: httpx.AsyncClient | None = None,
     timeout: float = 30.0,
+    max_bytes: int | None = DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES,
+    max_rows: int | None = DEFAULT_XLSX_MAX_ROWS,
 ) -> list[dict[str, str]]:
     """Read one tab of a publicly shared Google Sheet as a list of rows.
 
@@ -438,19 +505,34 @@ async def read_google_sheet(
             call and closes it.
         timeout (float): Seconds the created client waits for the export.
             Ignored when ``client`` is given.
+        max_bytes (int | None): Most bytes the CSV export may answer
+            with; the body is streamed and the transfer stops past it.
+            Defaults to :data:`DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES`;
+            ``None`` removes the limit.
+        max_rows (int | None): Most data rows (blank ones excluded) the tab
+            may hold, counted while the CSV is parsed. Defaults to
+            :data:`~tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_ROWS`,
+            the same limit the ``.xlsx`` readers apply; ``None`` removes it.
 
     Returns:
         list[dict[str, str]]: The data rows, in sheet order.
 
     Raises:
-        ValueError: If ``url`` is not a Google Sheets link.
+        ValueError: If ``url`` is not a Google Sheets link, or a limit is
+            zero or negative — both checked before the request.
         GoogleSheetAccessError: If the export does not answer with CSV —
             the sheet does not exist, is not shared as *Anyone with the
             link*, or the ``gid`` names no tab.
+        SpreadsheetTooLargeError: If the download passes ``max_bytes``
+            (``details["limit"] == "download_bytes"``) or the tab passes
+            ``max_rows`` (``details["limit"] == "rows"``). Nothing is
+            truncated: the tab is refused, never returned in part.
         httpx.HTTPError: If the request itself fails.
     """
-    text: str = await _download_csv(url, client, timeout)
-    return [row for _, row in _parse_csv(text)]
+    rows: list[tuple[int, dict[str, str]]] = await _read_csv_rows(
+        url, client, timeout, max_bytes, max_rows
+    )
+    return [row for _, row in rows]
 
 
 def _google_row_error(row_number: int, errors: list[dict[str, Any]]) -> AppException:
@@ -477,6 +559,8 @@ async def read_google_sheet_as(
     client: httpx.AsyncClient | None = None,
     timeout: float = 30.0,
     omit_blank: bool = True,
+    max_bytes: int | None = DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES,
+    max_rows: int | None = DEFAULT_XLSX_MAX_ROWS,
 ) -> list[ModelT]:
     """Read one tab of a public Google Sheet and validate each row.
 
@@ -496,21 +580,32 @@ async def read_google_sheet_as(
             validating, so a blank cell means *absent*: the field falls
             back to its default, and a required field reports ``missing``.
             ``False`` passes the empty string through.
+        max_bytes (int | None): Most bytes the CSV export may answer
+            with; the body is streamed and the transfer stops past it.
+            Defaults to :data:`DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES`;
+            ``None`` removes the limit.
+        max_rows (int | None): Most data rows (blank ones excluded) the tab
+            may hold, counted while the CSV is parsed. Defaults to
+            :data:`~tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_ROWS`,
+            the same limit the ``.xlsx`` readers apply; ``None`` removes it.
 
     Returns:
         list[ModelT]: One instance per data row, in sheet order. ``[]``
         when the sheet has no data row.
 
     Raises:
-        ValueError: If ``url`` is not a Google Sheets link.
+        ValueError: If ``url`` is not a Google Sheets link, or a limit is
+            zero or negative — both checked before the request.
         GoogleSheetAccessError: If the export does not answer with CSV.
+        SpreadsheetTooLargeError: If the download passes ``max_bytes`` or
+            the tab passes ``max_rows``; checked before any row is
+            validated.
         GoogleSheetRowError: On the first row that fails validation;
             ``details["row"]`` is its number in the sheet (header = 1).
         httpx.HTTPError: If the request itself fails.
     """
-    text: str = await _download_csv(url, client, timeout)
     return _validate_rows(
-        _parse_csv(text),
+        await _read_csv_rows(url, client, timeout, max_bytes, max_rows),
         schema,
         omit_blank=omit_blank,
         row_error=_google_row_error,
@@ -647,6 +742,7 @@ async def read_google_sheet_xlsx(
 
 
 __all__: list[str] = [
+    "DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES",
     "DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES",
     "GoogleSheetAccessError",
     "GoogleSheetRowError",

@@ -559,6 +559,95 @@ route they become the SDK's error envelope with no `try` at all; with a
     (tunable through `timeout=`) and closes it when done. A network failure
     (timeout, DNS) surfaces as `httpx.HTTPError`.
 
+### A tab that is too large
+
+A huge tab, or a link that points at something larger than you expected,
+must not become a list of millions of `dict`s in the service's memory.
+That is why the CSV path has two limits, **on by default**:
+
+| Parameter | Default | What it measures | When it checks |
+| --- | --- | --- | --- |
+| `max_bytes` | `10 MiB` | bytes of the export's body | during the download, streamed |
+| `max_rows` | `100,000` | data rows of the tab (a blank row does not count) | during the parse, on the first row past the limit |
+
+```python
+# scripts/stock_limit.py
+
+import asyncio
+
+from tempest_fastapi_sdk.spreadsheet import SpreadsheetTooLargeError, read_google_sheet
+
+SHEET_URL: str = (
+    "https://docs.google.com/spreadsheets/d/"
+    "1h0ATstw2f6ryXvbwV-DW6zwsBRIF-2k5zHcm2uTEge8/edit?usp=sharing"
+)
+
+
+async def main() -> None:
+    """Read the same tab with a row limit below and above its size."""
+    try:
+        await read_google_sheet(SHEET_URL, max_rows=5)
+    except SpreadsheetTooLargeError as error:
+        print(error.status_code, error.code, error.details)
+    rows: list[dict[str, str]] = await read_google_sheet(SHEET_URL, max_rows=20)
+    print(len(rows), "rows read")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Running it (real output, 2026-10-04):
+
+```text
+413 SPREADSHEET_TOO_LARGE {'limit': 'rows', 'max': 5, 'actual': 6, 'sheet': None, 'row': 7}
+11 rows read
+```
+
+**Refuse, never truncate.** Past a limit, `SpreadsheetTooLargeError` is
+raised (`413`, code `SPREADSHEET_TOO_LARGE`) — the same error as the
+`.xlsx` readers, described in
+[Limits: zip bombs and huge sheets](#limits-zip-bombs-and-huge-sheets).
+No reader quietly returns "the first rows". On CSV, `details["sheet"]` is
+`None`: the export does not carry the tab's name.
+
+**The download.** The body is streamed and counted. A `Content-Length`
+over `max_bytes` is refused without reading the body; without the header,
+the transfer is closed on the first chunk past the limit.
+`details["limit"]` is `"download_bytes"`.
+
+**The rows.** The CSV is decoded and parsed bit by bit, straight from the
+downloaded bytes: at row `max_rows + 1` reading stops, and the rest of the
+body never becomes a `str`, a `list` or a `dict`. `details["row"]` is the
+sheet row where reading stopped, blank rows included. In
+`read_google_sheet_as` the limit is checked before any validation: a tab
+that is too large answers `413`, not the `422` of the first invalid row.
+
+**Where the defaults come from.** Measured on CPython 3.11, peak RSS above
+what the interpreter already holds, parse only (body included), three runs
+per file:
+
+* On the 8-column tab used to measure `.xlsx` (id, two texts, three
+  numbers, a date, a status), each row costs **~94 bytes of CSV and
+  ~1,014 bytes of memory**: about **11 bytes of memory per byte of CSV**.
+  100,000 rows are 9,212,287 bytes and peaked at 96.7 MB; 110,000 rows
+  (10,166,854 bytes, still under 10 MiB) stopped at row 100,001. In that
+  shape the row limit trips first — the same split as `.xlsx`.
+* The worst case is a tab of many two-character cells: **~31.5 bytes of
+  memory per byte of CSV**. 100,000 rows of 34 such cells (10,300,127
+  bytes) peaked at 309.4 MB. That is why the CSV default is smaller than
+  the 32 MiB of `.xlsx`: CSV is not compressed, and every cell becomes a
+  `str` object inside a `dict`.
+* The 16-tab public sheet used on this page has, in its largest tab,
+  18,577 bytes and 1,004 data rows of CSV: read tab by tab with the
+  defaults (2,580 rows in all), none was refused.
+
+**Raise it or turn it off.** Both limits are per call, and `None` turns
+one off (`max_bytes=None`, `max_rows=None`). The defaults are the public
+constants `DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES` and
+`DEFAULT_XLSX_MAX_ROWS` — the same one the `.xlsx` readers use. Zero or a
+negative value raises `ValueError` before the request.
+
 ??? note "CSV or .xlsx?"
     CSV brings **one tab** per request, picked by `gid`, and each cell as
     **text formatted** by the sheet's locale (`"1.234,56"`, `"04/10/2026"`).
@@ -898,7 +987,7 @@ says which limit it was:
 
 * `"uncompressed_bytes"` and `"compression_ratio"`: `details["actual"]` is
   what the ZIP declares; for the ratio, `details["member"]` names the part;
-* `"rows"`: `details["sheet"]` is the tab and `details["row"]` the sheet
+* `"rows"`: `details["sheet"]` is the tab (`None` on the CSV path) and `details["row"]` the sheet
   row where reading stopped;
 * `"download_bytes"`: the Google download (see the next section).
 
@@ -1138,7 +1227,9 @@ files, downloads as about 14 MiB; 32 MiB still admits it compressing only
 `read_google_sheet_xlsx` also takes `max_rows`, `max_uncompressed_bytes`
 and `max_compression_ratio`, forwarded to the reader — and the size error
 comes out as `SpreadsheetTooLargeError` (`413`), not as
-`GoogleSheetAccessError`. The CSV path has no such limit.
+`GoogleSheetAccessError`. The CSV path has the same `max_bytes` and
+`max_rows`, with a different download default — see
+[A tab that is too large](#a-tab-that-is-too-large).
 
 **The extra.** `download_google_sheet_xlsx` only downloads bytes and runs
 with no extra; `read_google_sheet_xlsx` needs `[spreadsheet]` and checks
@@ -1159,7 +1250,8 @@ for it **before** the download, so the request is not wasted.
 * `workbook_to_bytes` hands you bytes — HTTP response, storage, e-mail.
 * `read_google_sheet_as(link, Schema)` reads one tab of a Google Sheet
   shared by link and validates each row; the error names the row number.
-  No extra.
+  No extra. The download stops at `max_bytes` (10 MiB) and the parse at
+  `max_rows` (100,000), with the same `SpreadsheetTooLargeError` (`413`).
 * `read_xlsx_as(bytes, Schema, sheet="Tab")` reads one tab of an `.xlsx`
   (upload, file, export) with **typed** cells: number, `datetime`, `bool`.
   A file that is not a spreadsheet, a missing tab and an invalid row

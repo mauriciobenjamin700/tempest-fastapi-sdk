@@ -304,6 +304,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.spreadsheet.google.download_google_sheet_xlsx
 ::: tempest_fastapi_sdk.spreadsheet.google.read_google_sheet_xlsx
 ::: tempest_fastapi_sdk.spreadsheet.google.DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES
+::: tempest_fastapi_sdk.spreadsheet.google.DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES
 ::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx
 ::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_as
 ::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_sheets
