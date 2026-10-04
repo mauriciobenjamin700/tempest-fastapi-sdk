@@ -32,6 +32,8 @@ from tempest_fastapi_sdk.integrations.messaging.zap import (
     AcceptedResponseStatus,
     ZapInboundMediaType,
     ZapInboundMessage,
+    ZapJidServer,
+    ZapOutboundKind,
     ZapStatusCallback,
     ZapWebhookDelivery,
     ZapWebhookEvent,
@@ -171,6 +173,32 @@ class TestPortedConstants:
             "document",
             "sticker",
         ]
+
+    def test_outbound_kind_values(self) -> None:
+        """``OutboundKind`` in ``src/db/models/outbound-message.model.ts``."""
+        assert [member.value for member in ZapOutboundKind] == [
+            "text",
+            "image",
+            "video",
+            "audio",
+            "document",
+            "reaction",
+        ]
+
+    def test_jid_server_values(self) -> None:
+        """Baileys' ``JidServer``, 7.0.0-rc14, as a set — order is ours."""
+        assert {member.value for member in ZapJidServer} == {
+            "c.us",
+            "g.us",
+            "broadcast",
+            "s.whatsapp.net",
+            "call",
+            "lid",
+            "newsletter",
+            "bot",
+            "hosted",
+            "hosted.lid",
+        }
 
 
 class TestVerifier:
@@ -406,6 +434,74 @@ class TestParsing:
         assert message.chat_key is None
         assert message.media_type == ZapInboundMediaType.AUDIO
         assert message.media_url is None
+
+
+class TestFromServer:
+    """``ZapInboundMessage.from_server`` names the kind of address."""
+
+    @staticmethod
+    def _message(from_: str) -> ZapInboundMessage:
+        """Build a text message from ``from_``.
+
+        Args:
+            from_ (str): The raw JID.
+
+        Returns:
+            ZapInboundMessage: The validated message.
+        """
+        return ZapInboundMessage.model_validate(
+            {
+                "event": "message.received",
+                "messageId": "M1",
+                "from": from_,
+                "text": "oi",
+                "timestamp": "2026-04-21T18:30:00.000Z",
+            }
+        )
+
+    @pytest.mark.parametrize(
+        ("from_", "expected"),
+        [
+            ("5511999999999@s.whatsapp.net", ZapJidServer.USER),
+            ("5511999999999:12@s.whatsapp.net", ZapJidServer.USER),
+            ("123456789012345@lid", ZapJidServer.LID),
+            ("120363000000000000@g.us", ZapJidServer.GROUP),
+            ("status@broadcast", ZapJidServer.BROADCAST),
+            ("120363000000000000@newsletter", ZapJidServer.NEWSLETTER),
+            ("123@hosted.lid", ZapJidServer.HOSTED_LID),
+        ],
+    )
+    def test_known_servers(self, from_: str, expected: ZapJidServer) -> None:
+        """Every server the gateway can forward maps to its member."""
+        assert self._message(from_).from_server is expected
+
+    @pytest.mark.parametrize("from_", ["5511999999999", "x@example.com", ""])
+    def test_unknown_or_missing_server_is_none(self, from_: str) -> None:
+        """No ``@``, or a server Baileys does not define, is ``None``."""
+        assert self._message(from_).from_server is None
+
+    def test_not_serialized(self) -> None:
+        """A property, not a field: the wire shape is unchanged."""
+        dumped = self._message("1@g.us").model_dump(by_alias=True)
+        assert "from_server" not in dumped
+        assert "fromServer" not in dumped
+
+
+class TestOutboundKind:
+    """``ZapStatusCallback.kind`` stays ``str`` and compares to the enum."""
+
+    def test_compares_with_the_enum(self) -> None:
+        """The README status example is a ``text`` send."""
+        callback = ZapStatusCallback.model_validate_json(STATUS_BODY)
+        assert callback.kind == ZapOutboundKind.TEXT
+
+    async def test_unknown_kind_still_dispatches(self) -> None:
+        """A kind the gateway adds later does not drop the status."""
+        body = STATUS_BODY.replace(b'"kind":"text"', b'"kind":"poll"')
+        response = await _post(body, {ZAP_WEBHOOK_SIGNATURE_HEADER: _sign(body)})
+        assert response.status_code == 200
+        assert response.json()["event"] == "message.delivered"
+        assert response.json()["status"] == "outbound-uuid"
 
 
 class TestDispatch:

@@ -73,6 +73,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Enums para o webhook da zap-api** (#417). `ZapOutboundKind` (`text`,
+  `image`, `video`, `audio`, `document`, `reaction`, portado do
+  `OutboundKind` do gateway) dá nome aos valores de
+  `ZapStatusCallback.kind`, e `ZapJidServer` (os dez servidores do
+  `JidServer` do Baileys 7.0.0-rc14) aos de `from_`. O campo `kind` continua
+  `str` — um tipo de envio novo no gateway não pode virar entrega
+  `event=None` —, e os dois são `StrEnum`, então quem compara com string não
+  muda nada.
+- **`ZapInboundMessage.from_server`** — property que lê o servidor do JID em
+  `from_` e devolve o membro de `ZapJidServer` (ou `None` sem `@` ou com
+  servidor desconhecido). Separa pessoa, grupo, story de status e canal sem
+  `endswith("@g.us")`. Não é campo: o `model_dump` continua com a forma do
+  fio.
+- Docstrings de `ZapWebhookEvent`, `ZapInboundMediaType`,
+  `ZapInboundMessage`, `ZapStatusCallback` e `ZapWebhookDelivery` reescritas
+  com `Attributes:` por membro e `Examples:` conferidos com
+  `python -m doctest`; a receita `recipes/zap-inbound` virou tutorial em
+  quatro passos (mínimo, enums, camada model → repository → service →
+  controller → router, teste), com cada exemplo executado e a saída colada.
+
 - **`BaseRepository.update_returning(filters, values, *, returning, where=None)`**:
   um `UPDATE ... WHERE ... RETURNING` condicional que devolve as colunas pedidas
   de cada linha atualizada (`[]` quando a condição não casa), com os mesmos
@@ -86,7 +106,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SQLite e PostgreSQL, com controle que mostra o read-modify-write perdendo
   50/50; e a forma "um `UPDATE ... WHERE` decide" fixada em todo método que
   move saldo.
-
 - **`tempest_fastapi_sdk.wallet` — carteira, extrato, retenção e saque Pix
   em centavos inteiros (#400).** O saldo fica na linha do usuário do app
   (`WalletBalanceMixin`, ou `balance_attribute=` para uma coluna que já
