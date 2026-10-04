@@ -144,8 +144,10 @@ Output:
     `tests/wallet/test_wallet_live.py` runs 50 concurrent tasks, each on its
     own session, against Postgres in a container. 50 credits of `100` always
     end at `5000`; and the control test, running the naive version (read,
-    add, write) in the same setup, ends below `5000`. Five consecutive runs,
-    the same result in all five.
+    add, write) in the same setup, ends below `5000`. Measured on
+    `postgres:16-alpine`: five consecutive runs of
+    `pytest tests/wallet/test_wallet_live.py -m docker`, all 4 tests passing
+    in all five.
 
 ## Withdrawing
 

@@ -1220,10 +1220,12 @@ the defect is upstream's, not the caller's.
 `max_bytes` (default `DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES`, 32 MiB),
 the transfer is closed and `SpreadsheetTooLargeError` is raised with
 `details["limit"] == "download_bytes"` — a `Content-Length` over the
-limit is refused without reading the body. The arithmetic: an `.xlsx` at
-the 100 MiB decompressed ceiling, at the 7.2 to 8.1 ratio measured on real
-files, downloads as about 14 MiB; 32 MiB still admits it compressing only
-3.2 times. The 16-tab sheet downloads as 785,152 bytes.
+limit is refused without reading the body. The arithmetic: the 16-tab
+public sheet compresses 7.7 times as a whole file (785,152 bytes
+downloaded, 6,072,058 decompressed — the 7.2 to 14.7 range above is per
+part, not per file); an `.xlsx` at the 100 MiB decompressed ceiling with
+that ratio downloads as about 13 MiB, and 32 MiB still admits it
+compressing only 3.2 times. The 16-tab sheet downloads as 785,152 bytes.
 `read_google_sheet_xlsx` also takes `max_rows`, `max_uncompressed_bytes`
 and `max_compression_ratio`, forwarded to the reader — and the size error
 comes out as `SpreadsheetTooLargeError` (`413`), not as

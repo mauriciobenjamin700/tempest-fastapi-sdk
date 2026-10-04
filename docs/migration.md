@@ -2,7 +2,33 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
-## Não lançado — o SQLite confere chave estrangeira
+## 0.304.0 — o leitor CSV do Google Sheets tem limite por padrão
+
+`read_google_sheet` e `read_google_sheet_as` ganharam `max_bytes` e
+`max_rows`, **ligados por padrão**: um export acima de 10 MiB
+(`DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES`) ou com mais de 100 000 linhas de
+dado (`DEFAULT_XLSX_MAX_ROWS`) passa a levantar `SpreadsheetTooLargeError`
+(`413`, `SPREADSHEET_TOO_LARGE`). Até a 0.303.2 a mesma aba era lida inteira,
+sem teto. Detalhes em [Aba grande demais](recipes/spreadsheets.md#aba-grande-demais).
+
+### O que muda
+
+- **Aba com 100 001 linhas de dado**: antes devolvia as 100 001; agora levanta
+  `SpreadsheetTooLargeError` com `details == {"limit": "rows", "max": 100000,
+  "actual": 100001, "sheet": None, "row": 100002}`.
+- **Export acima de 10 MiB**: a transferência é fechada e sai o mesmo erro com
+  `details["limit"] == "download_bytes"`.
+- Linha em branco não conta para `max_rows`.
+
+### O que fazer
+
+- **Aba que você sabe que é grande e confia na origem**: suba o limite
+  (`max_rows=500_000`, `max_bytes=50 * 1024 * 1024`) ou desligue com
+  `max_rows=None` / `max_bytes=None`.
+- **Endpoint que repassa a exceção**: o erro já é um `AppException` com `413`;
+  nada a fazer se você usa o `register_exception_handlers` do SDK.
+
+## 0.304.0 — o SQLite confere chave estrangeira
 
 Todo engine SQLite que o `AsyncDatabaseManager` e o `create_test_engine` montam
 passa a rodar `PRAGMA foreign_keys=ON` em cada conexão. Antes nenhum rodava, e
@@ -73,7 +99,7 @@ medição em [Banco de dados](recipes/database.md#sqlite-com-chave-estrangeira-p
    `AlembicHelper` e `tempest db ...` abrem engine próprio, sem FK, e não
    mudam.
 
-## Não lançado — erro cru de ferramenta não chega mais ao modelo
+## 0.304.0 — erro cru de ferramenta não chega mais ao modelo
 
 Quando uma ferramenta do agente levanta uma exceção que **não** é
 `AgentToolError`, o modelo passa a ler só `tool failed: <Tipo>` na observação.

@@ -1942,7 +1942,7 @@ class TestUsersAPI:
 | `create_test_session_factory(engine)` | Build a `sessionmaker` bound to the engine. |
 | `init_test_metadata(engine, metadata=None)` | Create every SQLAlchemy table on the engine (defaults to `BaseModel.metadata`). |
 | `drop_test_metadata(engine, metadata=None)` | Drop every table. |
-| `test_database(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an engine with metadata pre-created, drops everything and disposes on exit. |
+| `test_database(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an `async_sessionmaker[AsyncSession]` bound to a fresh engine with metadata pre-created; drops everything and disposes on exit. |
 | `test_session(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an `AsyncSession` on top of a fresh `test_database`. |
 | `ModelFactory(session, Model, **defaults)` | Bind a model + defaults to a session; `build()` (unsaved), `create()`/`create_many(n)` (add + flush + refresh). Callable defaults/overrides get the row index. |
 | `seq(template, *, start=0)` | Index generator formatting `template` with `{n}` — `seq("user{n}@x.com")` yields unique values one per row. |
@@ -1953,16 +1953,16 @@ class TestUsersAPI:
 from collections.abc import AsyncGenerator
 
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tempest_fastapi_sdk.testing import test_database, test_session
 
 
 @pytest_asyncio.fixture
-async def engine() -> AsyncGenerator[AsyncEngine, None]:
-    """Yield a fresh in-memory SQLite engine for each test."""
-    async with test_database() as e:
-        yield e
+async def session_factory() -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
+    """Yield a session factory over a fresh in-memory SQLite database."""
+    async with test_database() as factory:
+        yield factory
 
 
 @pytest_asyncio.fixture

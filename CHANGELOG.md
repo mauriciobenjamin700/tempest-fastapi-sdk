@@ -7,7 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.304.0] — 2026-10-04
+
+Leitura de planilha `.xlsx` (arquivo, upload e a pasta inteira do Google
+Sheets) com limites contra zip bomb, carteira com saldo atômico e saque Pix,
+agente por requisição no router pronto, e duas mudanças de default que
+quebram compatibilidade: o SQLite passa a conferir chave estrangeira e a
+exceção crua de ferramenta não chega mais ao modelo. Os leitores do Google
+Sheets passam a ter teto de download e de linhas por padrão. Passo a passo
+em `docs/migration.md` (seções `0.304.0`).
+
 ### Changed
+
+- **O leitor CSV do Google Sheets tem limite por padrão (#413).**
+  `read_google_sheet` / `read_google_sheet_as` recusam export acima de
+  10 MiB ou com mais de 100 000 linhas de dado com `SpreadsheetTooLargeError`
+  (`413`); até a 0.303.2 liam a aba inteira, sem teto. Medido: um export
+  falso de 100 001 linhas levanta com `details["limit"] == "rows"`, e com
+  `max_rows=None` devolve as 100 001. `max_rows=None` / `max_bytes=None`
+  desligam.
 
 - **SQLite agora confere chave estrangeira** (#395). Todo engine SQLite que o
   `AsyncDatabaseManager` e o `create_test_engine` montam roda

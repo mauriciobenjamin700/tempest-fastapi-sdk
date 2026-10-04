@@ -2,7 +2,34 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
-## Unreleased — SQLite enforces foreign keys
+## 0.304.0 — the Google Sheets CSV reader has a limit by default
+
+`read_google_sheet` and `read_google_sheet_as` gained `max_bytes` and
+`max_rows`, **on by default**: an export over 10 MiB
+(`DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES`) or with more than 100,000 data rows
+(`DEFAULT_XLSX_MAX_ROWS`) now raises `SpreadsheetTooLargeError` (`413`,
+`SPREADSHEET_TOO_LARGE`). Up to 0.303.2 the same tab was read whole, with no
+ceiling. Details in [A tab that is too large](recipes/spreadsheets.md#a-tab-that-is-too-large).
+
+### What changes
+
+- **A tab with 100,001 data rows**: it used to return all 100,001; it now
+  raises `SpreadsheetTooLargeError` with `details == {"limit": "rows", "max":
+  100000, "actual": 100001, "sheet": None, "row": 100002}`.
+- **An export over 10 MiB**: the transfer is closed and the same error is
+  raised with `details["limit"] == "download_bytes"`.
+- A blank row does not count toward `max_rows`.
+
+### What to do
+
+- **A tab you know is large and whose source you trust**: raise the limit
+  (`max_rows=500_000`, `max_bytes=50 * 1024 * 1024`) or turn it off with
+  `max_rows=None` / `max_bytes=None`.
+- **An endpoint that lets the exception through**: the error is already an
+  `AppException` with `413`; nothing to do if you use the SDK's
+  `register_exception_handlers`.
+
+## 0.304.0 — SQLite enforces foreign keys
 
 Every SQLite engine `AsyncDatabaseManager` and `create_test_engine` build now
 runs `PRAGMA foreign_keys=ON` on each connection. None did before, so SQLite
@@ -75,7 +102,7 @@ accepted what PostgreSQL refuses: a child pointing at a missing parent,
    `AlembicHelper` and `tempest db ...` open their own engine, without FK,
    and do not change.
 
-## Unreleased — a raw tool error no longer reaches the model
+## 0.304.0 — a raw tool error no longer reaches the model
 
 When an agent tool raises an exception that is **not** an `AgentToolError`,
 the model now reads only `tool failed: <Type>` as the observation. It used to

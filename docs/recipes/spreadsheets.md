@@ -1223,9 +1223,11 @@ contado: passou de `max_bytes` (default
 `DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES`, 32 MiB), a transferência é
 fechada e sai `SpreadsheetTooLargeError` com `details["limit"] ==
 "download_bytes"` — um `Content-Length` acima do limite é recusado sem ler
-o corpo. A conta: um `.xlsx` no teto de 100 MiB descompactados, com a razão
-de 7,2 a 8,1 medida nos arquivos reais, baixa uns 14 MiB; 32 MiB ainda o
-aceita comprimindo só 3,2 vezes. A planilha de 16 abas baixa 785 152 bytes.
+o corpo. A conta: a planilha pública de 16 abas comprime 7,7 vezes no
+arquivo inteiro (785 152 bytes baixados, 6 072 058 descompactados — a
+faixa de 7,2 a 14,7 de cima é por parte, não por arquivo); um `.xlsx` no
+teto de 100 MiB descompactados com essa razão baixa uns 13 MiB, e 32 MiB
+ainda o aceita comprimindo só 3,2 vezes. A planilha de 16 abas baixa 785 152 bytes.
 `read_google_sheet_xlsx` aceita também `max_rows`,
 `max_uncompressed_bytes` e `max_compression_ratio`, repassados ao leitor —
 e o erro de tamanho sai como `SpreadsheetTooLargeError` (`413`), não como

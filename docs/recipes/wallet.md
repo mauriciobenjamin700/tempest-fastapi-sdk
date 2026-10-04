@@ -143,7 +143,9 @@ Saída:
     uma na própria sessão, contra Postgres num container. 50 créditos de
     `100` terminam em `5000`, sempre; e o teste de controle, rodando no
     mesmo cenário a versão ingênua (ler, somar, gravar), termina abaixo de
-    `5000`. Foram 5 execuções seguidas, com o mesmo resultado nas cinco.
+    `5000`. Medido em `postgres:16-alpine`: 5 execuções seguidas de
+    `pytest tests/wallet/test_wallet_live.py -m docker`, os 4 testes
+    passando nas cinco.
 
 ## Sacar
 
