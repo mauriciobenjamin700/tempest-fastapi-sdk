@@ -760,6 +760,18 @@ Pelo ambiente, via `DatabaseSettings`: `DATABASE_SQLITE_WAL` e
     porque não há o que aguardar. Em trabalho longo: reivindique a
     linha, faça o trabalho **sem sessão aberta**, e só então persista.
 
+!!! info "`COMMIT` recusado não suja mais a conexão do pool"
+    Sem WAL, um leitor aberto em outra conexão faz o `COMMIT` falhar com
+    `database is locked`. A transação continua aberta no driver, e o
+    SQLAlchemy não a fecha: a conexão voltava ao pool dentro do `BEGIN`, e o
+    próximo uso dela falhava com `cannot start a transaction within a
+    transaction`. O `enable_sqlite_savepoints` — que o manager e o
+    `create_test_engine` aplicam — dá `ROLLBACK` na devolução ao pool sempre
+    que o driver ainda está em transação. O `COMMIT` recusado continua
+    levantando `OperationalError`; o que muda é que a conexão seguinte sai
+    limpa, e a escrita recusada não fica durável. Engine montado à mão
+    precisa chamar `enable_sqlite_savepoints` para ganhar o mesmo reset.
+
 ### SQLite com chave estrangeira: `PRAGMA foreign_keys`
 
 O SQLite lê a cláusula `REFERENCES`, mas **só confere** a chave estrangeira

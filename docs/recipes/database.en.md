@@ -761,6 +761,19 @@ and `DATABASE_SQLITE_BUSY_TIMEOUT`.
     because there is nothing to wait for. For long work: claim the row,
     do the work with **no session open**, and only then persist.
 
+!!! info "A refused `COMMIT` no longer leaves the pooled connection dirty"
+    Without WAL, a reader open on another connection makes `COMMIT` fail
+    with `database is locked`. The transaction stays open on the driver,
+    and SQLAlchemy does not close it: the connection went back to the pool
+    inside its `BEGIN`, and its next use failed with `cannot start a
+    transaction within a transaction`. `enable_sqlite_savepoints` — which
+    the manager and `create_test_engine` apply — rolls back on check-in
+    whenever the driver is still in a transaction. The refused `COMMIT`
+    still raises `OperationalError`; what changes is that the next
+    connection comes out clean, and the refused write does not become
+    durable. An engine you build by hand must call
+    `enable_sqlite_savepoints` to get the same reset.
+
 ### SQLite with foreign keys: `PRAGMA foreign_keys`
 
 SQLite parses the `REFERENCES` clause but **only checks** the foreign key on

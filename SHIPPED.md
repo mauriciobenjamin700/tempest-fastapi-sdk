@@ -222,7 +222,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (`require_sqlite_foreign_keys_off`). Guards:
   `tests/db/test_sqlite_foreign_keys.py`,
   `tests/db/test_migrations_foreign_keys.py`,
-  `tests/test_engine_configuration_guard.py`. **Search (v0.200.0):**
+  `tests/test_engine_configuration_guard.py`. **Refused `COMMIT` (#411,
+  unreleased):** `enable_sqlite_savepoints` also registers a pool `reset`
+  listener that rolls back when the driver is still `in_transaction`, so a
+  `COMMIT` refused with `database is locked` no longer returns the
+  connection to the pool inside its `BEGIN`. Guard:
+  `tests/db/test_sqlite_failed_commit.py`. **Search (v0.200.0):**
   `search()` portable
   (escaped ILIKE, AND across words, OR across columns) +
   `full_text_search()` (`websearch_to_tsquery` + `ts_rank` + `setweight` on
