@@ -901,13 +901,13 @@ continuam sendo refeitos.
 ??? note "Até a v0.303.1, o timeout era refeito três vezes"
     O cliente fazia três tentativas, com 0,5 s e 1 s de espera entre elas.
     No mesmo cenário, com um prompt de ~4 400 tokens (~33 s de prefill), a
-    chamada levantava `ReadTimeout` depois de 31,53 s, o log do Ollama
+    chamada levantava `ReadTimeout` depois de 31,53 s (uma execução), o log do Ollama
     mostrava três `POST /api/chat` de 10,0 s, e dentro de um agente a
     execução terminava em `error` com 33,73 s. Nessas versões, passe
     `retry_policy=RetryPolicy(max_attempts=1)` (com
     `from tempest_fastapi_sdk import RetryPolicy`): com ela, a execução do
     agente terminou em `error` com 10,84 s — uma tentativa, que é o
-    comportamento default a partir da versão seguinte.
+    comportamento default a partir da v0.303.2.
 
 Duas configurações que se comportam bem:
 

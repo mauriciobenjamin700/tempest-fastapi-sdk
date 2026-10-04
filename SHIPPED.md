@@ -286,7 +286,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (httpx wrapper with retry/backoff/circuit-breaker /
   `X-Request-ID` propagation), `async_retry` (v0.280.0 — applies a
   `RetryPolicy` to any coroutine, not just an HTTP call; `RetryPolicy`
-  moved to `utils/retry.py`, old import path kept; **`logger=` is typed
+  moved to `utils/retry.py`, old import path kept;
+  **`retry_on_read_timeout` since v0.303.2** — `False` stops retrying a
+  `ReadTimeout` while still retrying connect errors and `retry_statuses`;
+  the Ollama/OpenAI-compat generators and `OllamaEmbedder` default to it,
+  because a generation the server aborted is never finished by a retry; **`logger=` is typed
   `RetryLogger` since v0.281.0** — a `Protocol` with `warning`/`error`, so
   the `LogUtils` this SDK hands the service is accepted where
   `logging.Logger | None` rejected it, and `logger=logger.logger` is no
@@ -612,7 +616,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `[genai-quant]` = bitsandbytes) — `tempest_fastapi_sdk.genai`, delivered
   in slices. **Shipped (v0.96):** hardware capacity check — `probe_hardware`
   → `HardwareInfo` (CPU/RAM/CUDA-VRAM/MPS/disk, degrades without
-  psutil/torch; since the fix after v0.303.1 RAM falls back to
+  psutil/torch; since v0.303.2 RAM falls back to
   `/proc/meminfo` on Linux without psutil (host memory, not the cgroup
   limit — same as psutil), and an unread RAM/disk is flagged
   `ram_measured`/`disk_measured=False` instead of passing as `0` free, so
@@ -925,7 +929,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `artifacts` + `stop_reason`); `AgentBudget` bounds steps/wall-clock/tool
   calls and `StopReason` names which fired (`succeeded` is `COMPLETED` only —
   a truncated run still carries text; a model reply with no text and no tool
-  call is `EMPTY_RESPONSE`, not `COMPLETED`, after 0.303.1). **Three deliberate properties:** a
+  call is `EMPTY_RESPONSE`, not `COMPLETED`, since v0.303.2). **Three deliberate properties:** a
   raising tool becomes an observation fed back to the model, never a crashed
   run; every ceiling is enforced *and reported* (`max_seconds` defaults to 120
   because steps alone do not bound a hung call); binary results never enter

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.303.2] — 2026-10-04
+
+Três defeitos achados ao medir agente e planejador em CPU: resposta vazia
+do modelo deixa de contar como sucesso, a geração do Ollama não refaz mais
+`ReadTimeout` (que custava três timeouts), e o planejador de hardware para
+de tratar "RAM não medida" como "zero bytes livres" — no Linux, mede pelo
+`/proc/meminfo` mesmo sem `psutil`.
+
 ### Added
 
 - **`RetryPolicy.retry_on_read_timeout`** (default `True`): com `False`, o
@@ -14,8 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   de `stream()`, e continua refazendo `ConnectError` e os `retry_statuses`.
   Quem usa `HTTPClient` direto não vê mudança.
 
-- Campos novos, todos `bool` com default `True` (sem quebra de tipo — os
-  campos de bytes continuam `int`): `HardwareInfo.ram_measured`,
+- **Flags de "medido" no planejador de hardware.** Campos novos, todos
+  `bool` com default `True` (sem quebra de tipo — os campos de bytes
+  continuam `int`): `HardwareInfo.ram_measured`,
   `HardwareInfo.disk_measured` (o `disk_free_bytes` também virava `0` quando
   o `shutil.disk_usage` levantava `OSError`) e
   `CapacityReport.memory_measured`. Em GPU o veredito segue medido pela

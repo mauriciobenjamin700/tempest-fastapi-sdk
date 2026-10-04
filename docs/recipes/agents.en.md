@@ -906,13 +906,13 @@ are still retried.
 ??? note "Up to v0.303.1, the timeout was retried three times"
     The client made three attempts, waiting 0.5 s and 1 s between them. On
     the same scenario, with a ~4,400-token prompt (~33 s of prefill), the
-    call raised `ReadTimeout` after 31.53 s, the Ollama log showed three
+    call raised `ReadTimeout` after 31.53 s (a single run), the Ollama log showed three
     10.0 s `POST /api/chat`, and inside an agent the run ended in `error`
     after 33.73 s. On those versions, pass
     `retry_policy=RetryPolicy(max_attempts=1)` (with
     `from tempest_fastapi_sdk import RetryPolicy`): with it, the agent run
     ended in `error` after 10.84 s — one attempt, which is the default
-    behaviour from the next version on.
+    behaviour from v0.303.2 on.
 
 Two setups that behave:
 
