@@ -111,6 +111,7 @@ plugins:
               - AI agents (architecture): recipes/agents-architecture.md
               - AI agents (concepts): recipes/agents-concepts.md
               - AI agents (database): recipes/agents-db.md
+              - AI agents (prompts): recipes/agents-prompts.md
               - AI agents (testing): recipes/agents-testing.md
               - App error reports: recipes/app-errors.md
               - Audit trail: recipes/audit-trail.md
@@ -255,6 +256,7 @@ plugins:
             "Stripe (cartão + assinatura)": "Stripe (cards + subscriptions)"
             "OpenPix (assinaturas e planos)": "OpenPix (subscriptions and plans)"
             "Agentes de IA (conceitos)": "AI agents (concepts)"
+            "Agentes de IA (prompts)": "AI agents (prompts)"
             Uploads (backends): Uploads (backends)
             Downloads: Downloads
             "File store (unificado)": "Unified file store"
@@ -399,6 +401,7 @@ nav:
       - "Agentes de IA (avançado)": recipes/agents-advanced.md
       - "Agentes de IA (banco de dados)": recipes/agents-db.md
       - "Agentes de IA (conceitos)": recipes/agents-concepts.md
+      - "Agentes de IA (prompts)": recipes/agents-prompts.md
       - "Agentes de IA (testes)": recipes/agents-testing.md
       - "Arquivo no serviço (mixin)": recipes/stored-files.md
       - "Artefatos versionados (modelos)": recipes/artifact-registry.md
