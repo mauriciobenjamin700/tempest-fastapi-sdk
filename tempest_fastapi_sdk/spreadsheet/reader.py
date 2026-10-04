@@ -89,6 +89,10 @@ Counted per tab, blank rows excluded, while the tab is streamed: row
 ``max_rows + 1`` raises before it is kept, so the refused part of the sheet
 is never held in memory.
 
+The CSV readers of :mod:`~tempest_fastapi_sdk.spreadsheet.google`
+(``read_google_sheet``, ``read_google_sheet_as``) apply the same default,
+counted the same way while the CSV is parsed.
+
 The arithmetic, measured with ``openpyxl`` 3.1.5 on CPython 3.11 (one run
 per size): a generated tab of 8 columns (id, two texts, three numbers, a
 date, a status) read by :func:`read_xlsx` peaked at 291.5 MB of RSS with
@@ -217,7 +221,8 @@ class SpreadsheetTooLargeError(FileTooLargeException):
     ``details["max"]`` its value, and ``details["actual"]`` what was found
     (for ``"rows"`` and ``"download_bytes"``, the count at which reading
     stopped). ``details["member"]`` names the ZIP member for the ratio and
-    ``details["sheet"]`` the tab for the row limit.
+    ``details["sheet"]`` the tab for the row limit (``None`` for a CSV export,
+    which carries no tab name).
 
     A subclass of :class:`~tempest_fastapi_sdk.exceptions.FileTooLargeException`,
     so the status is ``413`` like the SDK's upload limit, and
@@ -285,7 +290,8 @@ def _number_rows(
         pad (CellT): Value for the cells a short record lacks.
         max_rows (int | None): Most data rows (blank ones excluded) to
             accept; ``None`` accepts any number.
-        sheet (str | None): The tab's name, reported in the error.
+        sheet (str | None): The tab's name, reported in the error;
+            ``None`` when the source has none (a CSV export).
 
     Returns:
         list[tuple[int, dict[str, CellT]]]: ``(row_number, row)`` pairs,
@@ -302,9 +308,10 @@ def _number_rows(
         if all(_is_blank(cell) for cell in cells):
             continue
         if max_rows is not None and len(rows) >= max_rows:
+            subject: str = "The sheet" if sheet is None else f"Sheet {sheet!r}"
             raise SpreadsheetTooLargeError(
                 message=(
-                    f"Sheet {sheet!r} has more than {max_rows} data rows "
+                    f"{subject} has more than {max_rows} data rows "
                     f"(reading stopped at row {offset + 2})."
                 ),
                 details={

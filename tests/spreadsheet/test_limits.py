@@ -1,4 +1,4 @@
-"""Tests for the size limits of the ``.xlsx`` readers and the Google download.
+"""Tests for the size limits of the ``.xlsx`` readers and the Google readers.
 
 Every hostile workbook is built here, small on disk: the sheet XML is
 written through a streaming ZIP writer, so a member that decompresses to
@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 from tempest_fastapi_sdk.exceptions.upload import FileTooLargeException
 from tempest_fastapi_sdk.spreadsheet import (
+    DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES,
     DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES,
     DEFAULT_XLSX_MAX_COMPRESSION_RATIO,
     DEFAULT_XLSX_MAX_ROWS,
@@ -34,6 +35,8 @@ from tempest_fastapi_sdk.spreadsheet import (
     SpreadsheetTooLargeError,
     download_google_sheet_xlsx,
     new_workbook,
+    read_google_sheet,
+    read_google_sheet_as,
     read_google_sheet_xlsx,
     read_xlsx,
     read_xlsx_as,
@@ -413,14 +416,19 @@ def _export(
     *,
     chunked: bool = False,
     served: list[int] | None = None,
+    media_type: str = XLSX_MEDIA_TYPE,
+    declared: int | None = None,
 ) -> httpx.MockTransport:
-    """Answer every request with an ``.xlsx`` export.
+    """Answer every request with an export.
 
     Args:
-        body (bytes): The workbook.
+        body (bytes): The workbook, or the CSV.
         chunked (bool): Stream the body in 64 KiB chunks with no
             ``Content-Length``, as a server that does not announce the size.
         served (list[int] | None): Collects the size of every chunk sent.
+        media_type (str): The ``Content-Type`` of the answer.
+        declared (int | None): A ``Content-Length`` to announce on a
+            chunked body, so a test can tell whether any chunk was pulled.
 
     Returns:
         httpx.MockTransport: The fake transport.
@@ -445,9 +453,11 @@ def _export(
             request (httpx.Request): The incoming request (unused).
 
         Returns:
-            httpx.Response: ``200`` with the ``.xlsx`` media type.
+            httpx.Response: ``200`` with ``media_type``.
         """
-        headers = {"content-type": XLSX_MEDIA_TYPE}
+        headers = {"content-type": media_type}
+        if declared is not None:
+            headers["content-length"] = str(declared)
         if chunked:
             return httpx.Response(200, headers=headers, content=stream())
         return httpx.Response(200, headers=headers, content=body)
@@ -558,3 +568,226 @@ class TestReadGoogleSheetXlsxLimits:
         """A bad reader limit is caught before the download."""
         with pytest.raises(ValueError, match="max_rows"):
             await read_google_sheet_xlsx(SHARE_LINK, max_rows=-5)
+
+
+CSV_MEDIA_TYPE: Final[str] = "text/csv; charset=utf-8"
+
+
+class Item(BaseModel):
+    """A row of the CSV the tests serve."""
+
+    nome: str
+    valor: int
+
+
+def _csv(rows: int, *, blank_every: int = 0) -> bytes:
+    """Build a CSV export with ``rows`` data rows.
+
+    Args:
+        rows (int): Data rows after the header.
+        blank_every (int): Insert a blank record (``,``) after every this
+            many data rows; ``0`` inserts none.
+
+    Returns:
+        bytes: The CSV, with ``\\r\\n`` line ends like the Google export.
+    """
+    lines: list[str] = ["nome,valor"]
+    for number in range(rows):
+        lines.append(f"item {number},{number}")
+        if blank_every and (number + 1) % blank_every == 0:
+            lines.append(",")
+    return ("\r\n".join(lines) + "\r\n").encode()
+
+
+def _refuse_requests() -> httpx.MockTransport:
+    """Fail the test if any request is sent.
+
+    Returns:
+        httpx.MockTransport: A transport whose handler always fails.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Fail on contact.
+
+        Args:
+            request (httpx.Request): The request that should not exist.
+
+        Raises:
+            AssertionError: Always.
+        """
+        raise AssertionError(f"unexpected request to {request.url}")
+
+    return httpx.MockTransport(handler)
+
+
+class TestReadGoogleSheetCsvDownloadLimit:
+    """The CSV export is streamed and cut off past ``max_bytes``."""
+
+    async def test_content_length_over_the_limit_reads_no_body(self) -> None:
+        """An announced size over the limit is refused before any chunk."""
+        body = _csv(1000)
+        served: list[int] = []
+        transport = _export(
+            body,
+            chunked=True,
+            served=served,
+            media_type=CSV_MEDIA_TYPE,
+            declared=len(body),
+        )
+        async with httpx.AsyncClient(transport=transport) as client:
+            with pytest.raises(SpreadsheetTooLargeError) as caught:
+                await read_google_sheet(SHARE_LINK, client=client, max_bytes=1024)
+        assert served == []
+        details = caught.value.details
+        assert details["limit"] == "download_bytes"
+        assert details["max"] == 1024
+        assert details["actual"] == len(body)
+        assert details["export_url"].endswith("/export?format=csv")
+        assert caught.value.status_code == 413
+        assert isinstance(caught.value, FileTooLargeException)
+
+    async def test_unannounced_body_stops_one_chunk_past(self) -> None:
+        """Without ``Content-Length`` the transfer stops past the limit."""
+        body = _csv(100_000)
+        served: list[int] = []
+        transport = _export(
+            body, chunked=True, served=served, media_type=CSV_MEDIA_TYPE
+        )
+        async with httpx.AsyncClient(transport=transport) as client:
+            with pytest.raises(SpreadsheetTooLargeError) as caught:
+                await read_google_sheet_as(
+                    SHARE_LINK, Item, client=client, max_bytes=100 * 1024
+                )
+        assert caught.value.details["limit"] == "download_bytes"
+        assert caught.value.details["actual"] <= 100 * 1024 + 64 * 1024
+        assert sum(served) < len(body)
+
+    async def test_body_at_the_limit_is_read(self) -> None:
+        """A body exactly ``max_bytes`` long comes back whole."""
+        body = _csv(10)
+        for chunked in (False, True):
+            transport = _export(body, chunked=chunked, media_type=CSV_MEDIA_TYPE)
+            async with httpx.AsyncClient(transport=transport) as client:
+                rows = await read_google_sheet(
+                    SHARE_LINK, client=client, max_bytes=len(body)
+                )
+            assert len(rows) == 10
+
+
+class TestReadGoogleSheetCsvRowLimit:
+    """``max_rows`` is counted while the CSV is parsed."""
+
+    async def test_one_row_over_raises(self) -> None:
+        """Row ``max_rows + 1`` is refused with its sheet row number."""
+        transport = _export(_csv(11), media_type=CSV_MEDIA_TYPE)
+        async with httpx.AsyncClient(transport=transport) as client:
+            with pytest.raises(SpreadsheetTooLargeError) as caught:
+                await read_google_sheet(SHARE_LINK, client=client, max_rows=10)
+            rows = await read_google_sheet(SHARE_LINK, client=client, max_rows=11)
+        assert caught.value.details == {
+            "limit": "rows",
+            "max": 10,
+            "actual": 11,
+            "sheet": None,
+            "row": 12,
+        }
+        assert caught.value.message.startswith("The sheet has more than 10")
+        assert len(rows) == 11
+
+    async def test_blank_rows_do_not_count(self) -> None:
+        """Blank records are skipped, not counted, but keep the numbering."""
+        transport = _export(_csv(11, blank_every=2), media_type=CSV_MEDIA_TYPE)
+        async with httpx.AsyncClient(transport=transport) as client:
+            with pytest.raises(SpreadsheetTooLargeError) as caught:
+                await read_google_sheet(SHARE_LINK, client=client, max_rows=10)
+            rows = await read_google_sheet(SHARE_LINK, client=client, max_rows=11)
+        assert caught.value.details["actual"] == 11
+        assert caught.value.details["row"] == 17
+        assert len(rows) == 11
+
+    async def test_records_past_the_limit_are_never_decoded(self) -> None:
+        """The parse stops at the limit: bytes after it are never decoded.
+
+        The tail is not UTF-8, so decoding the whole body first would raise
+        ``UnicodeDecodeError`` instead of the row limit.
+        """
+        body = _csv(20_000) + b"\xff\xfe broken,1\r\n"
+        transport = _export(body, media_type=CSV_MEDIA_TYPE)
+        async with httpx.AsyncClient(transport=transport) as client:
+            with pytest.raises(SpreadsheetTooLargeError) as caught:
+                await read_google_sheet(SHARE_LINK, client=client, max_rows=10)
+            with pytest.raises(UnicodeDecodeError):
+                await read_google_sheet(SHARE_LINK, client=client, max_rows=None)
+        assert caught.value.details["row"] == 12
+
+    async def test_limit_is_checked_before_validation(self) -> None:
+        """``read_google_sheet_as`` refuses the size before any row error."""
+        body = b"nome,valor\r\n" + b"item,not-a-number\r\n" * 11
+        transport = _export(body, media_type=CSV_MEDIA_TYPE)
+        async with httpx.AsyncClient(transport=transport) as client:
+            with pytest.raises(SpreadsheetTooLargeError) as caught:
+                await read_google_sheet_as(SHARE_LINK, Item, client=client, max_rows=10)
+        assert caught.value.details["limit"] == "rows"
+
+
+class TestReadGoogleSheetCsvDefaults:
+    """The defaults admit a real sheet, and every limit can be switched off."""
+
+    def test_default_download_limit(self) -> None:
+        """10 MiB, below the ``.xlsx`` download limit."""
+        assert DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES == 10 * MIB
+        assert DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES < (
+            DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES
+        )
+
+    async def test_defaults_admit_the_measured_public_tab(self) -> None:
+        """A tab larger than the largest public one measured passes.
+
+        The real tab (16-tab public sheet, measured once over the network)
+        is 18 577 bytes with 1 004 data rows; this stand-in is larger in
+        both, so the suite stays offline.
+        """
+        body = _csv(2_000)
+        transport = _export(body, media_type=CSV_MEDIA_TYPE)
+        async with httpx.AsyncClient(transport=transport) as client:
+            rows = await read_google_sheet(SHARE_LINK, client=client)
+            items = await read_google_sheet_as(SHARE_LINK, Item, client=client)
+        assert len(body) > 18_577
+        assert len(rows) == len(items) == 2_000
+
+    async def test_default_row_limit_is_the_xlsx_one(self) -> None:
+        """The default refuses row ``DEFAULT_XLSX_MAX_ROWS + 1``."""
+        body = _csv(DEFAULT_XLSX_MAX_ROWS + 1)
+        transport = _export(body, media_type=CSV_MEDIA_TYPE)
+        async with httpx.AsyncClient(transport=transport) as client:
+            with pytest.raises(SpreadsheetTooLargeError) as caught:
+                await read_google_sheet(SHARE_LINK, client=client)
+            rows = await read_google_sheet(SHARE_LINK, client=client, max_rows=None)
+        assert caught.value.details["max"] == DEFAULT_XLSX_MAX_ROWS
+        assert len(rows) == DEFAULT_XLSX_MAX_ROWS + 1
+
+    async def test_none_disables_the_download_limit(self) -> None:
+        """``max_bytes=None`` reads a body past the default."""
+        body = _csv(10) + (b"x," + b"y" * 1_000 + b"\r\n") * 11_000
+        assert len(body) > DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES
+        transport = _export(body, media_type=CSV_MEDIA_TYPE)
+        async with httpx.AsyncClient(transport=transport) as client:
+            with pytest.raises(SpreadsheetTooLargeError) as caught:
+                await read_google_sheet(SHARE_LINK, client=client)
+            rows = await read_google_sheet(SHARE_LINK, client=client, max_bytes=None)
+        assert caught.value.details["limit"] == "download_bytes"
+        assert len(rows) == 11_010
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [{"max_bytes": 0}, {"max_bytes": -1}, {"max_rows": 0}, {"max_rows": -5}],
+    )
+    async def test_non_positive_limit_raises_before_the_request(
+        self, kwargs: dict[str, Any]
+    ) -> None:
+        """``ValueError`` names the parameter, and nothing is sent."""
+        async with httpx.AsyncClient(transport=_refuse_requests()) as client:
+            with pytest.raises(ValueError, match=next(iter(kwargs))):
+                await read_google_sheet(SHARE_LINK, client=client, **kwargs)
+            with pytest.raises(ValueError, match=next(iter(kwargs))):
+                await read_google_sheet_as(SHARE_LINK, Item, client=client, **kwargs)

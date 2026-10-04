@@ -164,6 +164,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `InvalidSpreadsheetError` (`422`). O caso com CRC não ajustado já virava
   `InvalidSpreadsheetError`: o `zipfile` para no tamanho declarado e confere o
   CRC ali (medido no CPython 3.11 a 3.14).
+- **Leitor CSV do Google Sheets com limite de tamanho (#413):** o
+  `read_google_sheet` / `read_google_sheet_as` lia o corpo inteiro do export
+  com `response.content`, decodificava num `str` e só então montava a
+  `list[dict]`, sem teto nenhum. Agora os dois aceitam `max_bytes` e
+  `max_rows` keyword-only, ligados por padrão: o download passa pelo mesmo
+  streaming do `.xlsx` (um `Content-Length` acima do teto é recusado sem ler
+  o corpo; sem ele, a transferência para no primeiro pedaço além), e as
+  linhas são contadas durante o parse, que lê direto dos bytes baixados —
+  na linha `max_rows + 1` a leitura para, e o resto do corpo nunca é
+  decodificado. Passou de um limite: o mesmo `SpreadsheetTooLargeError`
+  (`413`), com `details["sheet"]` `None` (o CSV não traz o nome da aba);
+  em `read_google_sheet_as` o limite vem antes de qualquer validação. `None`
+  desliga; zero ou negativo levanta `ValueError` antes da requisição. O
+  `max_rows` usa o `DEFAULT_XLSX_MAX_ROWS` (100 000); o download ganha
+  constante própria, `DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES` (10 MiB), menor
+  que a do `.xlsx` porque o CSV não é comprimido. Medido no CPython 3.11
+  (pico de RSS acima da base, três execuções por arquivo): uma aba de 8
+  colunas custa ~94 bytes de CSV e ~1 014 bytes de memória por linha (~11
+  bytes por byte), então 100 000 linhas (9 212 287 bytes) cabem e o limite
+  de linhas dispara primeiro; o pior caso, células de dois caracteres, custa
+  ~31,5 bytes por byte — 10 300 127 bytes chegaram a 309,4 MB. A maior aba
+  da planilha pública de 16 abas tem 18 577 bytes; as 16, lidas com os
+  defaults, deram 2 580 linhas sem recusa. O parse deixou de passar pelo
+  `io.StringIO`, que guarda uma cópia de umas cinco vezes o tamanho do texto
+  (+475 MB para 95 MiB de ASCII): com o limite de linhas ligado, um export de
+  95 MB chegava a 632 MB acima da base por esse caminho, e chega a 179 MB
+  lendo dos bytes.
 
 ## [0.303.2] — 2026-10-04
 

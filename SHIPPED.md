@@ -1086,7 +1086,20 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   151 s; agora recusa em 0,1 s. O `zipfile` para no `file_size` declarado e
   confere o CRC (CPython 3.11 a 3.14), então diretório central mentindo vira
   `InvalidSpreadsheetError`; XML truncado (`SyntaxError` do parser) deixou de
-  escapar como `500`. Fica de fora: o caminho CSV do Google não tem limite.
+  escapar como `500`.
+- **Limites do leitor CSV do Google (Unreleased, #413)** — `max_bytes`
+  (`DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES`, 10 MiB, pelo mesmo streaming do
+  `.xlsx`) e `max_rows` (`DEFAULT_XLSX_MAX_ROWS`, 100 000, contado durante o
+  parse) em `read_google_sheet` / `read_google_sheet_as`; mesmo
+  `SpreadsheetTooLargeError` (`413`, `details["sheet"]` `None`), `None`
+  desliga, zero/negativo é `ValueError` antes da requisição. O parse lê dos
+  bytes baixados (`TextIOWrapper` sobre `BytesIO`), sem cópia decodificada
+  inteira e sem decodificar o que vem depois da linha recusada. Medido no
+  CPython 3.11: ~11 bytes de memória por byte de CSV numa aba de 8 colunas
+  (100 000 linhas = 9,2 MB cabem; o limite de linhas dispara antes), ~31,5
+  no pior caso (células de dois caracteres; 10,3 MB → 309 MB). A planilha
+  pública de 16 abas (maior aba 18 577 bytes, 2 580 linhas no total) passa
+  com os defaults.
 - **Leitura de Google Sheets (0.303.0, sem extra)** —
   `read_google_sheet` / `read_google_sheet_as` / `google_sheet_export_url` em
   `tempest_fastapi_sdk.spreadsheet`. Lê uma aba de planilha compartilhada
