@@ -19,6 +19,12 @@ Linux (WSL and containers included) it is read from ``/proc/meminfo`` when
 ``psutil`` the probe reports ``ram_measured=False`` and the capacity checks
 answer "could not measure" instead of "does not fit"; ``psutil`` ships in the
 ``[metrics]`` extra, not in ``[genai]``.
+
+Both RAM sources report the host's memory, even inside a container. On Linux
+the probe then reads the memory limit of the process's cgroup (v2 or v1) and,
+when it is below the host's RAM, reports the limit instead and sets
+``ram_cgroup_limited=True``, so ``docker run --memory=512m`` is planned as
+512 MiB and not as the host's RAM.
 """
 
 from __future__ import annotations
@@ -133,6 +139,338 @@ def _read_proc_meminfo(path: str) -> tuple[int, int] | None:
     if available > total:
         available = values.get(_MEMINFO_FREE_KEY, 0)
     return total, available
+
+
+_MIB: int = 1024 * 1024
+"""Bytes per MiB, the unit a cgroup limit is usually set in (``--memory=512m``)."""
+
+_PROC_SELF_CGROUP_PATH: str = "/proc/self/cgroup"
+"""The calling process's cgroup membership, one ``id:controllers:path`` per line.
+
+cgroup v2 has a single line ``0::<path>``; cgroup v1 has one line per
+hierarchy, and the memory one lists ``memory`` among its controllers. The
+path is relative to the cgroup namespace root: inside a container with its
+own cgroup namespace (Docker's default on cgroup v2) it is ``/``.
+"""
+
+_PROC_SELF_MOUNTINFO_PATH: str = "/proc/self/mountinfo"
+"""Mount table used to find where the cgroup hierarchy is mounted.
+
+Each line is ``id parent major:minor root mountpoint options [optional...] -
+fstype source superoptions``. The cgroup path from
+:data:`_PROC_SELF_CGROUP_PATH` is resolved under ``mountpoint`` after
+stripping ``root``: without a cgroup namespace (Docker on cgroup v1) the
+container's memory hierarchy is mounted with ``root=/docker/<id>`` while its
+cgroup path is that same ``/docker/<id>``.
+"""
+
+_MOUNTINFO_SEPARATOR: str = " - "
+"""Separates the per-mount fields from ``fstype source superoptions``."""
+
+_CGROUP_V2_FSTYPE: str = "cgroup2"
+"""Filesystem type of a cgroup v2 (unified) mount in ``mountinfo``."""
+
+_CGROUP_V1_FSTYPE: str = "cgroup"
+"""Filesystem type of a cgroup v1 hierarchy mount in ``mountinfo``."""
+
+_CGROUP_V1_MEMORY_CONTROLLER: str = "memory"
+"""Name of the v1 memory controller in ``/proc/self/cgroup`` and in the
+mount's super options."""
+
+_CGROUP_V2_MAX_FILE: str = "memory.max"
+"""cgroup v2 hard memory limit; above it the cgroup's OOM killer runs."""
+
+_CGROUP_V2_UNLIMITED: str = "max"
+"""What ``memory.max`` reads when no limit is set.
+
+Ported from the kernel's ``seq_puts_memcg_tunable`` (``mm/memcontrol.c``),
+which prints ``max`` when the counter is ``PAGE_COUNTER_MAX``.
+"""
+
+_CGROUP_V2_CURRENT_FILE: str = "memory.current"
+"""cgroup v2 memory charged to the cgroup and its descendants, page cache
+included."""
+
+_CGROUP_V2_STAT_FILE: str = "memory.stat"
+"""cgroup v2 breakdown of the charged memory (recursive over descendants)."""
+
+_CGROUP_V2_FILE_KEY: str = "file"
+"""v2 ``memory.stat`` key for page cache, tmpfs and shared memory included.
+
+Ported from the kernel's ``memory_stats`` table (``mm/memcontrol.c``), where
+``file`` is ``NR_FILE_PAGES``.
+"""
+
+_CGROUP_V2_SHMEM_KEY: str = "shmem"
+"""v2 ``memory.stat`` key for tmpfs and shared memory (``NR_SHMEM``): part of
+``file``, but not reclaimable without swap."""
+
+_CGROUP_V1_LIMIT_FILE: str = "memory.limit_in_bytes"
+"""cgroup v1 hard memory limit of one hierarchy level."""
+
+_CGROUP_V1_USAGE_FILE: str = "memory.usage_in_bytes"
+"""cgroup v1 memory charged to one level and its descendants."""
+
+_CGROUP_V1_STAT_FILE: str = "memory.stat"
+"""cgroup v1 breakdown; its ``total_*`` keys include descendants."""
+
+_CGROUP_V1_FILE_KEY: str = "total_cache"
+"""v1 ``memory.stat`` key for page cache over the subtree.
+
+Ported from the kernel's ``memcg1_stat_names`` (``mm/memcontrol-v1.c``):
+``cache`` is ``NR_FILE_PAGES``, the same counter as v2's ``file``, and the
+``total_`` prefix is the hierarchical sum that matches
+``memory.usage_in_bytes``.
+"""
+
+_CGROUP_V1_SHMEM_KEY: str = "total_shmem"
+"""v1 ``memory.stat`` key for tmpfs and shared memory over the subtree."""
+
+_CGROUP_V1_UNLIMITED_MIN: int = 2**63 - 2**16
+"""Smallest ``memory.limit_in_bytes`` that means "no limit" on 64-bit.
+
+Ported from the kernel: an unset limit is ``PAGE_COUNTER_MAX``, which is
+``LONG_MAX / PAGE_SIZE`` on 64-bit (``include/linux/page_counter.h``), and
+``memory.limit_in_bytes`` prints it times ``PAGE_SIZE``
+(``mm/memcontrol-v1.c``). That is ``2**63 - 4096`` with 4 KiB pages and
+``2**63 - 65536`` with 64 KiB pages, so anything at or above this floor is
+the sentinel. A limit at or above the host's RAM is ignored anyway, which
+also covers the 32-bit sentinel.
+"""
+
+
+def _read_text(path: str) -> str | None:
+    """Return the stripped contents of a small text file, or ``None``.
+
+    Args:
+        path (str): The file to read.
+
+    Returns:
+        str | None: The contents without surrounding whitespace, or ``None``
+        when the file cannot be read.
+    """
+    try:
+        with open(path, encoding="ascii", errors="replace") as handle:
+            return handle.read().strip()
+    except OSError:
+        return None
+
+
+def _read_int(path: str) -> int | None:
+    """Read a file holding one non-negative integer.
+
+    Args:
+        path (str): The file to read.
+
+    Returns:
+        int | None: The integer, or ``None`` when the file is missing or does
+        not hold a plain integer (``max`` included).
+    """
+    text = _read_text(path)
+    if text is None or not text.isdigit():
+        return None
+    return int(text)
+
+
+def _read_memory_stat(path: str) -> dict[str, int]:
+    """Parse a cgroup ``memory.stat`` file into ``{key: bytes}``.
+
+    Args:
+        path (str): The ``memory.stat`` file.
+
+    Returns:
+        dict[str, int]: Every ``key value`` line with an integer value; empty
+        when the file cannot be read.
+    """
+    text = _read_text(path)
+    stats: dict[str, int] = {}
+    if text is None:
+        return stats
+    for line in text.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[1].isdigit():
+            stats[fields[0]] = int(fields[1])
+    return stats
+
+
+def _cgroup_memory_dirs(
+    cgroup_path: str, mountinfo_path: str
+) -> tuple[bool, list[str]] | None:
+    """Locate the memory cgroup directories that bound this process.
+
+    A cgroup v1 memory hierarchy wins over a v2 mount when both exist,
+    because on a hybrid host the memory controller lives in v1 and the
+    unified mount carries no memory files. The process's cgroup path is
+    resolved under the matching mount (see :data:`_PROC_SELF_MOUNTINFO_PATH`)
+    and every ancestor up to the mount point is returned, since a parent's
+    limit bounds the child even when the child's own limit is unset.
+
+    Args:
+        cgroup_path (str): A ``/proc/self/cgroup``-format file.
+        mountinfo_path (str): A ``/proc/self/mountinfo``-format file.
+
+    Returns:
+        tuple[bool, list[str]] | None: ``(is_v2, directories)`` with the
+        directories ordered from the process's own cgroup up to the mount
+        point, or ``None`` when either file is unreadable, the process has
+        no memory cgroup, or its path is not visible under the mount.
+    """
+    cgroup_text = _read_text(cgroup_path)
+    mountinfo_text = _read_text(mountinfo_path)
+    if cgroup_text is None or mountinfo_text is None:
+        return None
+    v1_path: str | None = None
+    v2_path: str | None = None
+    for line in cgroup_text.splitlines():
+        parts = line.split(":", 2)
+        if len(parts) != 3:
+            continue
+        hierarchy, controllers, path = parts
+        if hierarchy == "0" and controllers == "":
+            v2_path = path
+        elif _CGROUP_V1_MEMORY_CONTROLLER in controllers.split(","):
+            v1_path = path
+    v1_mount: tuple[str, str] | None = None
+    v2_mount: tuple[str, str] | None = None
+    for line in mountinfo_text.splitlines():
+        head, separator, tail = line.partition(_MOUNTINFO_SEPARATOR)
+        head_fields = head.split()
+        tail_fields = tail.split()
+        if not separator or len(head_fields) < 5 or not tail_fields:
+            continue
+        root, mountpoint, fstype = head_fields[3], head_fields[4], tail_fields[0]
+        super_options = tail_fields[2].split(",") if len(tail_fields) > 2 else []
+        if fstype == _CGROUP_V2_FSTYPE and v2_mount is None:
+            v2_mount = (root, mountpoint)
+        elif (
+            fstype == _CGROUP_V1_FSTYPE
+            and _CGROUP_V1_MEMORY_CONTROLLER in super_options
+            and v1_mount is None
+        ):
+            v1_mount = (root, mountpoint)
+    if v1_path is not None and v1_mount is not None:
+        is_v2, path, (root, mountpoint) = False, v1_path, v1_mount
+    elif v2_path is not None and v2_mount is not None:
+        is_v2, path, (root, mountpoint) = True, v2_path, v2_mount
+    else:
+        return None
+    if root != "/":
+        if path != root and not path.startswith(root.rstrip("/") + "/"):
+            return None
+        path = path[len(root) :]
+    relative = [part for part in path.split("/") if part]
+    directories = [
+        os.path.join(mountpoint, *relative[:depth])
+        for depth in range(len(relative), -1, -1)
+    ]
+    return is_v2, directories
+
+
+def _cgroup_level_memory(directory: str, *, is_v2: bool) -> tuple[int, int] | None:
+    """Read one cgroup level's limit and the memory still available under it.
+
+    Available is ``limit - (usage - reclaimable)``, clamped to
+    ``[0, limit]``, where reclaimable is page cache minus shared memory
+    (``file - shmem`` on v2, ``total_cache - total_shmem`` on v1). The usage
+    files count page cache, which the kernel drops before it OOM-kills, so
+    ``limit - usage`` alone undercounts.
+
+    Measured in ``python:3.12-slim`` under ``docker run --memory=512m
+    --memory-swap=512m`` (WSL2, kernel 5.15, cgroup v2), allocating in 8 MiB
+    steps until the OOM killer: with 300 MiB of page cache, read once (it
+    sits in ``inactive_file``) or three times (``active_file``),
+    ``limit - usage`` predicted ~183 MiB, this formula ~483 MiB, and the
+    process reached 504 MiB either way — so subtracting only
+    ``inactive_file`` would have undercounted the second case by ~280 MiB.
+    With the 300 MiB written to ``/dev/shm`` instead (``shmem``), the
+    process reached 200 MiB, this formula predicted ~191 MiB, and counting
+    all of ``file`` would have predicted ~491 MiB. Swap is not counted: a
+    model paged out to swap is not a model that runs.
+
+    Args:
+        directory (str): The cgroup directory.
+        is_v2 (bool): Whether it belongs to a cgroup v2 hierarchy.
+
+    Returns:
+        tuple[int, int] | None: ``(limit_bytes, available_bytes)``, or
+        ``None`` when this level sets no limit or the limit is unreadable.
+        A readable limit with an unreadable usage reports the whole limit as
+        available; an unreadable ``memory.stat`` counts nothing as
+        reclaimable.
+    """
+    if is_v2:
+        raw_limit = _read_text(os.path.join(directory, _CGROUP_V2_MAX_FILE))
+        if raw_limit == _CGROUP_V2_UNLIMITED:
+            return None
+        limit = _read_int(os.path.join(directory, _CGROUP_V2_MAX_FILE))
+        usage = _read_int(os.path.join(directory, _CGROUP_V2_CURRENT_FILE))
+        stats = _read_memory_stat(os.path.join(directory, _CGROUP_V2_STAT_FILE))
+        file_key, shmem_key = _CGROUP_V2_FILE_KEY, _CGROUP_V2_SHMEM_KEY
+    else:
+        limit = _read_int(os.path.join(directory, _CGROUP_V1_LIMIT_FILE))
+        if limit is not None and limit >= _CGROUP_V1_UNLIMITED_MIN:
+            return None
+        usage = _read_int(os.path.join(directory, _CGROUP_V1_USAGE_FILE))
+        stats = _read_memory_stat(os.path.join(directory, _CGROUP_V1_STAT_FILE))
+        file_key, shmem_key = _CGROUP_V1_FILE_KEY, _CGROUP_V1_SHMEM_KEY
+    if limit is None:
+        return None
+    if usage is None:
+        return limit, limit
+    reclaimable = max(0, stats.get(file_key, 0) - stats.get(shmem_key, 0))
+    return limit, min(max(0, limit - usage + reclaimable), limit)
+
+
+def _read_cgroup_memory(
+    cgroup_path: str, mountinfo_path: str
+) -> tuple[int, int] | None:
+    """Read the tightest memory limit over this process's cgroup ancestry.
+
+    Args:
+        cgroup_path (str): A ``/proc/self/cgroup``-format file.
+        mountinfo_path (str): A ``/proc/self/mountinfo``-format file.
+
+    Returns:
+        tuple[int, int] | None: ``(limit_bytes, available_bytes)``, each the
+        smallest over the levels that set a limit, or ``None`` when no level
+        sets one (``max`` or the v1 sentinel everywhere) or the cgroup
+        cannot be located.
+    """
+    located = _cgroup_memory_dirs(cgroup_path, mountinfo_path)
+    if located is None:
+        return None
+    is_v2, directories = located
+    readings = [
+        reading
+        for directory in directories
+        if (reading := _cgroup_level_memory(directory, is_v2=is_v2)) is not None
+    ]
+    if not readings:
+        return None
+    return min(limit for limit, _ in readings), min(free for _, free in readings)
+
+
+def _clamp_to_cgroup(total: int, available: int) -> tuple[int, int, bool]:
+    """Bound a host RAM reading by this process's cgroup memory limit.
+
+    The cgroup applies only when its limit is below the host's total: a
+    limit at or above the host's RAM cannot bind first, and the host's own
+    numbers stand.
+
+    Args:
+        total (int): Host RAM total in bytes.
+        available (int): Host RAM available in bytes.
+
+    Returns:
+        tuple[int, int, bool]: ``(total, available, cgroup_limited)``. When
+        limited, ``total`` is the cgroup limit and ``available`` the smaller
+        of the host's and the cgroup's available bytes.
+    """
+    cgroup = _read_cgroup_memory(_PROC_SELF_CGROUP_PATH, _PROC_SELF_MOUNTINFO_PATH)
+    if cgroup is None or cgroup[0] >= total:
+        return total, available, False
+    limit, cgroup_available = cgroup
+    return limit, min(available, cgroup_available), True
 
 
 def _is_linux() -> bool:
@@ -299,8 +637,11 @@ def probe_hardware(*, cache_dir: str | None = None) -> HardwareInfo:
         not be taken is reported as unmeasured, not as empty. RAM comes
         from ``psutil`` and, failing that on Linux, from ``/proc/meminfo``;
         when neither answers ``ram_measured`` is ``False`` and the RAM
-        fields are ``0``. Both sources read the same file on Linux, so in a
-        container they report the host's memory, not the cgroup limit.
+        fields are ``0``. Both sources report the host's memory; on Linux
+        the reading is then bounded by the process's cgroup memory limit
+        (v2 ``memory.max`` or v1 ``memory.limit_in_bytes``, over the whole
+        ancestry) when that limit is below the host's RAM, and
+        ``ram_cgroup_limited`` says so.
         When the disk query raises ``OSError``, ``disk_measured`` is
         ``False``. Without ``torch`` no GPU is reported
         (``has_cuda=False``, ``gpus=[]``).
@@ -308,6 +649,11 @@ def probe_hardware(*, cache_dir: str | None = None) -> HardwareInfo:
     cpu_cores = os.cpu_count() or 1
     ram = _read_ram()
     ram_total, ram_available = ram if ram is not None else (0, 0)
+    ram_cgroup_limited = False
+    if ram is not None and _is_linux():
+        ram_total, ram_available, ram_cgroup_limited = _clamp_to_cgroup(
+            ram_total, ram_available
+        )
 
     has_cuda = False
     gpus: list[GPUInfo] = []
@@ -349,6 +695,7 @@ def probe_hardware(*, cache_dir: str | None = None) -> HardwareInfo:
         ram_total_bytes=ram_total,
         ram_available_bytes=ram_available,
         ram_measured=ram is not None,
+        ram_cgroup_limited=ram_cgroup_limited,
         has_cuda=has_cuda,
         gpus=gpus,
         has_mps=has_mps,
@@ -473,7 +820,10 @@ def can_run(
         of the device could not be measured (CPU or MPS with no RAM
         reading), ``memory_measured`` is ``False``, ``fits`` is ``False``
         because nothing was verified, and the suggestion says how to get a
-        reading on this platform — not to shrink the model.
+        reading on this platform — not to shrink the model. When the RAM
+        that sizes ``device`` was bounded by a cgroup limit
+        (``hardware.ram_cgroup_limited``), ``reason`` ends by naming the
+        limit in MiB.
 
     Raises:
         ValueError: When neither ``num_params`` nor a resolvable
@@ -527,6 +877,11 @@ def can_run(
             f"~{available / 1e9:.1f} GB free on {chosen}."
         )
         suggestion = _suggest(hw, params, planned, chosen)
+    if hw.ram_cgroup_limited and not (chosen == "cuda" and hw.gpus):
+        reason += (
+            f" RAM is limited by the container's cgroup to "
+            f"{hw.ram_total_bytes / _MIB:.0f} MiB."
+        )
 
     return CapacityReport(
         fits=fits,
