@@ -16,7 +16,7 @@ import asyncio
 from tempest_fastapi_sdk.genai import TextGenerator, recommend
 
 MODEL = "Qwen/Qwen2.5-7B-Instruct"
-rec = recommend(model_id=MODEL)          # tries bf16 -> int8 -> int4
+rec = recommend(model_id=MODEL)          # native (bf16 GPU, fp32 CPU) -> int8 -> int4
 
 if not rec.fits:
     raise RuntimeError(rec.reason + " " + (rec.suggestion or ""))
@@ -24,7 +24,7 @@ if not rec.fits:
 gen = TextGenerator(
     MODEL,
     device=rec.device,
-    quantization=rec.dtype.value if rec.dtype.value in ("int8", "int4") else None,
+    quantization=rec.dtype if rec.dtype in ("int8", "int4") else None,
     idle_unload_seconds=300,             # threshold for unload_if_idle()
 )
 

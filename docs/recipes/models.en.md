@@ -74,7 +74,8 @@ One enum per task:
 
 !!! tip "Do not memorize VRAM — ask"
     `recommend()` measures the host and picks the precision that fits,
-    from bf16 down to int4:
+    from the device's native one (bf16 on a GPU, fp32 on CPU) down to
+    int4:
 
     ```python
     from tempest_fastapi_sdk.genai import TextModel, recommend

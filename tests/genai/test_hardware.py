@@ -8,6 +8,7 @@ from tempest_fastapi_sdk.genai import (
     GPUInfo,
     HardwareInfo,
     ModelDtype,
+    auto_dtype_name,
     bytes_per_param,
     can_run,
     estimate_model_bytes,
@@ -115,3 +116,99 @@ class TestProbe:
         assert info.cpu_cores >= 1
         # torch not installed in the test env -> no CUDA reported
         assert isinstance(info.has_cuda, bool)
+
+
+QWEN_0_5B_PARAMS: int = 494_032_768
+"""Parameter count of ``Qwen/Qwen2.5-0.5B-Instruct`` as loaded (tied embeddings)."""
+
+
+def _cpu_with(ram_available_gb: float) -> HardwareInfo:
+    """Build a CPU-only snapshot with ``ram_available_gb`` of free RAM.
+
+    Args:
+        ram_available_gb (float): Free RAM in GB (10**9 bytes).
+
+    Returns:
+        HardwareInfo: A host without CUDA or MPS.
+    """
+    return HardwareInfo(
+        cpu_cores=4,
+        ram_total_bytes=8 * 10**9,
+        ram_available_bytes=int(ram_available_gb * 10**9),
+    )
+
+
+class TestCpuPlansTheLoadedPrecision:
+    """On CPU the planner sizes the float32 weights ``TextGenerator`` loads.
+
+    The shipped defect: ``can_run`` and ``recommend`` sized every unquantized
+    load at ``bfloat16`` while ``TextGenerator(dtype="auto")`` loads
+    ``float32`` on CPU. For Qwen2.5-0.5B the planner said ~1.2 GB fits in
+    1.5 GB free; the measured resident growth of that load was ~2.1 GB.
+    """
+
+    def test_can_run_defaults_to_float32_on_cpu(self) -> None:
+        report = can_run(num_params=QWEN_0_5B_PARAMS, hardware=_cpu_with(8.0))
+
+        assert report.device == "cpu"
+        assert report.dtype == ModelDtype.FLOAT32
+        assert report.estimated_bytes == estimate_model_bytes(
+            QWEN_0_5B_PARAMS, ModelDtype.FLOAT32
+        )
+
+    def test_can_run_defaults_to_bfloat16_on_cuda(self) -> None:
+        report = can_run(num_params=QWEN_0_5B_PARAMS, hardware=_gpu(free_gb=24.0))
+
+        assert report.device == "cuda"
+        assert report.dtype == ModelDtype.BFLOAT16
+
+    def test_explicit_dtype_is_still_honoured_on_cpu(self) -> None:
+        report = can_run(
+            num_params=QWEN_0_5B_PARAMS,
+            dtype=ModelDtype.BFLOAT16,
+            hardware=_cpu_with(8.0),
+        )
+
+        assert report.dtype == ModelDtype.BFLOAT16
+
+    def test_recommend_does_not_promise_an_unquantized_cpu_load_that_cannot_fit(
+        self,
+    ) -> None:
+        report = recommend(num_params=QWEN_0_5B_PARAMS, hardware=_cpu_with(1.5))
+
+        assert report.fits is True
+        assert report.dtype == ModelDtype.INT8
+
+    def test_recommend_picks_float32_on_cpu_when_it_fits(self) -> None:
+        report = recommend(num_params=QWEN_0_5B_PARAMS, hardware=_cpu_with(3.0))
+
+        assert report.dtype == ModelDtype.FLOAT32
+        assert report.fits is True
+
+    def test_recommend_keeps_bfloat16_first_on_cuda(self) -> None:
+        report = recommend(num_params=7_000_000_000, hardware=_gpu(free_gb=24.0))
+
+        assert report.dtype == ModelDtype.BFLOAT16
+        assert report.device == "cuda"
+
+    def test_cpu_suggestion_never_proposes_bfloat16_as_a_quantization(self) -> None:
+        report = can_run(num_params=QWEN_0_5B_PARAMS, hardware=_cpu_with(1.5))
+
+        assert report.fits is False
+        assert report.suggestion is not None
+        assert "bfloat16" not in report.suggestion
+        assert "int8" in report.suggestion
+        assert "OllamaGenerator" in report.suggestion
+
+    def test_cuda_quantization_suggestion_has_no_cpu_note(self) -> None:
+        report = can_run(num_params=13_000_000_000, hardware=_gpu(free_gb=12.0))
+
+        assert report.suggestion is not None
+        assert report.suggestion.startswith("Quantize to int")
+        assert "OllamaGenerator" not in report.suggestion
+
+    def test_auto_dtype_name_agrees_with_the_planner(self) -> None:
+        for hardware in (_cpu_with(8.0), _gpu(free_gb=24.0)):
+            report = can_run(num_params=QWEN_0_5B_PARAMS, hardware=hardware)
+
+            assert auto_dtype_name(report.device) == report.dtype

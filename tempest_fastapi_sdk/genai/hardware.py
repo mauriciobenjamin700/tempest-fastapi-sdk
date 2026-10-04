@@ -37,6 +37,19 @@ _BYTES_PER_PARAM: dict[ModelDtype, float] = {
     ModelDtype.INT4: 0.6,
 }
 
+_CPU_QUANTIZATION_NOTE: str = (
+    " bitsandbytes on CPU decodes slower than float32; a GGUF build served"
+    " through OllamaGenerator is the faster CPU path."
+)
+"""Appended to a CPU quantization suggestion.
+
+Measured on Qwen2.5-3B-Instruct with the GPU hidden (torch 2.14,
+bitsandbytes 0.50.2, transformers 4.57.6 and 5.18.0, N=3 each): a
+``generate()`` capped at 16 new tokens took ~9 s with bitsandbytes int8 or
+int4 against ~3 s at float32. llama.cpp on the Q4_K_M GGUF that Ollama
+serves for the same model decoded ~24-27 tokens/s.
+"""
+
 # Inference needs more than the weights (activations, KV cache, CUDA
 # context). Scale the raw weight size by this to plan with headroom.
 _INFERENCE_OVERHEAD: float = 1.25
@@ -266,11 +279,31 @@ def _pick_device(hardware: HardwareInfo) -> str:
     return "cpu"
 
 
+def _native_dtype(device: str) -> ModelDtype:
+    """Return the precision an unquantized model is loaded in on ``device``.
+
+    This is the single source of truth shared with
+    :func:`~tempest_fastapi_sdk.genai.auto_dtype_name`, which is what
+    ``TextGenerator(dtype="auto")`` loads with, so the planner sizes the
+    weights the generator will actually hold. CPU has no fast
+    half-precision path, so it loads ``float32`` — twice the bytes of the
+    ``bfloat16`` used on CUDA and MPS.
+
+    Args:
+        device (str): The concrete device (``"cuda"``, ``"mps"`` or
+            ``"cpu"``).
+
+    Returns:
+        ModelDtype: ``FLOAT32`` on CPU, ``BFLOAT16`` elsewhere.
+    """
+    return ModelDtype.FLOAT32 if device == "cpu" else ModelDtype.BFLOAT16
+
+
 def can_run(
     *,
     num_params: int | None = None,
     model_id: str | None = None,
-    dtype: ModelDtype = ModelDtype.BFLOAT16,
+    dtype: ModelDtype | None = None,
     device: str = "auto",
     hardware: HardwareInfo | None = None,
     token: str | None = None,
@@ -286,7 +319,11 @@ def can_run(
             precedence over ``model_id``.
         model_id (str | None): Hub id to look the parameter count up from
             when ``num_params`` is not given.
-        dtype (ModelDtype): The precision to plan for.
+        dtype (ModelDtype | None): The precision to plan for. ``None`` (the
+            default) plans for the precision ``TextGenerator(dtype="auto")``
+            loads on the chosen device: ``bfloat16`` on CUDA/MPS,
+            ``float32`` on CPU. Pass a value to plan for an explicit
+            ``TextGenerator(dtype=...)`` or ``quantization=...``.
         device (str): ``"auto"``, ``"cuda"``, ``"mps"`` or ``"cpu"``.
         hardware (HardwareInfo | None): Inject a snapshot (tests, or to
             reuse one probe); defaults to a fresh :func:`probe_hardware`.
@@ -311,28 +348,29 @@ def can_run(
         )
 
     chosen = _pick_device(hw) if device == "auto" else device
-    estimated = estimate_model_bytes(params, dtype)
+    planned = dtype if dtype is not None else _native_dtype(chosen)
+    estimated = estimate_model_bytes(params, planned)
     available = _device_capacity(hw, chosen)
     fits = estimated <= available
     headroom = ((available - estimated) / available * 100) if available else -100.0
 
     if fits:
         reason = (
-            f"~{estimated / 1e9:.1f} GB needed at {dtype.value} fits the "
+            f"~{estimated / 1e9:.1f} GB needed at {planned.value} fits the "
             f"~{available / 1e9:.1f} GB free on {chosen}."
         )
         suggestion = None
     else:
         reason = (
-            f"~{estimated / 1e9:.1f} GB needed at {dtype.value} exceeds the "
+            f"~{estimated / 1e9:.1f} GB needed at {planned.value} exceeds the "
             f"~{available / 1e9:.1f} GB free on {chosen}."
         )
-        suggestion = _suggest(hw, params, dtype, chosen)
+        suggestion = _suggest(hw, params, planned, chosen)
 
     return CapacityReport(
         fits=fits,
         device=chosen,
-        dtype=dtype,
+        dtype=planned,
         estimated_bytes=estimated,
         available_bytes=available,
         headroom_pct=round(headroom, 1),
@@ -347,18 +385,37 @@ def _suggest(
     dtype: ModelDtype,
     device: str,
 ) -> str:
-    """Return the best next step when a model doesn't fit as asked."""
-    order = [ModelDtype.BFLOAT16, ModelDtype.INT8, ModelDtype.INT4]
+    """Return the best next step when a model doesn't fit as asked.
+
+    The ladder starts at the device's native precision (see
+    :func:`_native_dtype`) and only goes down, so on CPU — which loads
+    ``float32`` — the first rung below is ``int8``, never ``bfloat16``:
+    ``bfloat16`` is not a quantization, and ``TextGenerator`` rejects it
+    as ``quantization=``.
+
+    Args:
+        hardware (HardwareInfo): The probed hardware.
+        num_params (int): The model's parameter count.
+        dtype (ModelDtype): The precision that did not fit.
+        device (str): The device it did not fit on.
+
+    Returns:
+        str: The suggested next step.
+    """
+    order = [_native_dtype(device), ModelDtype.INT8, ModelDtype.INT4]
     available = _device_capacity(hardware, device)
     for candidate in order:
         if bytes_per_param(candidate) >= bytes_per_param(dtype):
             continue
         if estimate_model_bytes(num_params, candidate) <= available:
-            return (
+            suggestion = (
                 f"Quantize to {candidate.value} (needs "
                 f"~{estimate_model_bytes(num_params, candidate) / 1e9:.1f} GB) "
                 f"to fit {device}."
             )
+            if device == "cpu" and candidate in (ModelDtype.INT8, ModelDtype.INT4):
+                suggestion += _CPU_QUANTIZATION_NOTE
+            return suggestion
     if (
         device == "cuda"
         and estimate_model_bytes(num_params, ModelDtype.INT4)
@@ -378,11 +435,15 @@ def recommend(
     hardware: HardwareInfo | None = None,
     token: str | None = None,
 ) -> CapacityReport:
-    """Pick the best precision that fits, from bf16 down to int4.
+    """Pick the best precision that fits, from the native one down to int4.
 
-    Tries ``bfloat16`` → ``int8`` → ``int4`` on the auto-selected device
-    and returns the first :class:`CapacityReport` that fits (or the int4
-    report when nothing fits, so the caller sees the closest option).
+    Tries the precision ``TextGenerator(dtype="auto")`` loads on the
+    auto-selected device (``bfloat16`` on CUDA/MPS, ``float32`` on CPU),
+    then ``int8``, then ``int4``, and returns the first
+    :class:`CapacityReport` that fits (or the int4 report when nothing
+    fits, so the caller sees the closest option). A report whose ``dtype``
+    is ``int8``/``int4`` maps to ``TextGenerator(quantization=...)``; any
+    other ``dtype`` is what ``dtype="auto"`` already loads.
 
     Args:
         num_params (int | None): The model's parameter count.
@@ -394,21 +455,23 @@ def recommend(
     Returns:
         CapacityReport: The recommended configuration.
 
+    Raises:
+        ValueError: When neither ``num_params`` nor a resolvable
+            ``model_id`` is available.
+
     Notes:
         Two fallbacks are tried in order: a smaller precision on the same
         device first, since that keeps the model on the accelerator, and
         only then CPU RAM when the current device is a GPU.
     """
     hw = hardware or probe_hardware()
+    params = num_params
+    if params is None and model_id is not None:
+        params = fetch_num_params(model_id, token=token)
+    native = _native_dtype(_pick_device(hw))
     report = None
-    for dtype in (ModelDtype.BFLOAT16, ModelDtype.INT8, ModelDtype.INT4):
-        report = can_run(
-            num_params=num_params,
-            model_id=model_id,
-            dtype=dtype,
-            hardware=hw,
-            token=token,
-        )
+    for dtype in (native, ModelDtype.INT8, ModelDtype.INT4):
+        report = can_run(num_params=params, dtype=dtype, hardware=hw)
         if report.fits:
             return report
     assert report is not None

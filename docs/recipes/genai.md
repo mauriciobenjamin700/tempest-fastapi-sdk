@@ -37,9 +37,9 @@ Carregar um modelo grande demais termina num OOM minutos depois do
 download começar. `can_run` responde antes:
 
 ```python
-from tempest_fastapi_sdk.genai import can_run, ModelDtype
+from tempest_fastapi_sdk.genai import can_run
 
-report = can_run(model_id="Qwen/Qwen2.5-7B-Instruct", dtype=ModelDtype.BFLOAT16)
+report = can_run(model_id="Qwen/Qwen2.5-7B-Instruct")
 
 if report.fits:
     print(f"OK em {report.device} — {report.headroom_pct:.0f}% de folga")
@@ -53,9 +53,16 @@ O `CapacityReport` traz: `fits`, `device` (`cuda`/`mps`/`cpu`),
 `suggestion` concreta quando não cabe (quantizar, offload pra CPU, ou
 trocar de modelo).
 
+Sem `dtype=`, o `can_run` dimensiona na precisão que o
+`TextGenerator(dtype="auto")` carrega no device escolhido: `bfloat16` em
+CUDA/MPS, `float32` em CPU. Passe `dtype=` para planejar outra coisa — um
+`dtype=` explícito no gerador, ou `ModelDtype.INT8`/`INT4` para
+`quantization=`.
+
 !!! tip "Deixe o SDK escolher a precisão"
-    `recommend(...)` tenta `bfloat16` → `int8` → `int4` no melhor device
-    disponível e devolve a **primeira** config que cabe:
+    `recommend(...)` tenta a precisão nativa do melhor device disponível
+    (`bfloat16` em GPU, `float32` em CPU) → `int8` → `int4` e devolve a
+    **primeira** config que cabe:
 
     ```python
     from tempest_fastapi_sdk.genai import recommend
@@ -63,6 +70,56 @@ trocar de modelo).
     best = recommend(model_id="meta-llama/Llama-3.1-8B")
     print(best.device, best.dtype, best.fits)   # ex.: cuda int8 True
     ```
+
+### Em CPU
+
+Até a 0.303.0 o planejador dimensionava todo load sem quantização em
+`bfloat16`, mas em CPU o `TextGenerator` carrega em `float32` — o dobro
+de bytes. O `recommend()` dizia "cabe" para um modelo que não cabia.
+Agora a CPU é dimensionada em `float32`, e o degrau abaixo é `int8` (nunca
+`bfloat16`, que não é quantização).
+
+Medido com o GPU escondido (`CUDA_VISIBLE_DEVICES=`), i9-13900F, 62 GB de
+RAM, WSL2, torch 2.14, bitsandbytes 0.50.2, N=3 por linha. "Medido" é o
+crescimento do RSS do processo entre antes e depois do `load()`, na
+mediana; transformers 4.57.6 (o piso) / 5.18.0 (a mais nova no dia):
+
+| Modelo | Precisão | Estimativa | Medido (4.57.6 / 5.18.0) |
+| --- | --- | --- | --- |
+| Qwen2.5-0.5B-Instruct | `float32` (antes: `bfloat16`) | 2,47 GB (antes: 1,24 GB) | 2,13 GB / 2,12 GB |
+| Qwen2.5-0.5B-Instruct | `int8` | 0,62 GB | 0,89 GB / 1,29 GB |
+| Qwen2.5-0.5B-Instruct | `int4` | 0,37 GB | 1,02 GB / 1,62 GB |
+| Qwen2.5-3B-Instruct | `float32` (antes: `bfloat16`) | 15,43 GB (antes: 7,71 GB) | 12,51 GB / 12,48 GB |
+| Qwen2.5-3B-Instruct | `int8` | 3,86 GB | 3,67 GB / 8,54 GB |
+| Qwen2.5-3B-Instruct | `int4` | 2,31 GB | 3,25 GB / 8,16 GB |
+
+O que a tabela diz:
+
+- **`float32` é o que a CPU carrega**, e a estimativa nova cobre o RSS
+  depois do load. O pico **durante** o load passa dela: 3,12 GB no 0,5B
+  e 14,71 GB / 18,66 GB no 3B.
+- **int8/int4 via bitsandbytes carregam e geram em CPU** com o
+  bitsandbytes 0.50.2 — nenhum erro nas 24 execuções quantizadas da
+  tabela.
+- **A estimativa quantizada é otimista.** No 0,5B o RSS medido do int4
+  ficou 2,7× a 4,4× acima dela (os embeddings não são quantizados, e
+  pesam mais num modelo pequeno). No transformers 5.18.0 o load
+  quantizado do 3B deixa o processo com 5,65 GB de RSS **mapeado de
+  arquivo** (`RssFile`, contra 0,36 GB no 4.57.6); a memória anônima do
+  processo inteiro ficou em 3,33 GB (int8) e 2,95 GB (int4).
+- **bitsandbytes em CPU é mais lento que `float32`.** No 3B, um
+  `generate()` limitado a 16 tokens levou ~9 s em int8/int4 contra ~3 s
+  em `float32`. Por isso a `suggestion` de quantizar em CPU aponta o
+  caminho de CPU que já está no SDK:
+
+!!! tip "Em CPU, GGUF pelo Ollama"
+    O llama.cpp (build 687e778, `-ngl 0`, contexto 4096) servindo o GGUF
+    Q4_K_M que o Ollama 0.30.11 baixa para `qwen2.5:3b` ficou em 3,60 GB
+    de RSS (1,61 GB anônima + 1,99 GB de arquivo) e gerou 24 a 27
+    tokens/s; o `qwen2.5:0.5b` ficou em 0,66 GB e 107 a 134 tokens/s
+    (N=3 cada). Use o [`OllamaGenerator`](#backend-ollama) — a memória é
+    da mesma ordem do int4 do bitsandbytes; a vantagem medida é a
+    velocidade.
 
 ## Sondando o hardware
 

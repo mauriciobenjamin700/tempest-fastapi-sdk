@@ -73,8 +73,8 @@ Um enum por tarefa:
     **[Pesos de modelos »](model-weights.md#onde-os-pesos-ficam-e-por-que-a-2a-execucao-e-instantanea)**.
 
 !!! tip "Não decore VRAM — pergunte"
-    `recommend()` mede a máquina e escolhe a precisão que cabe, de bf16
-    até int4:
+    `recommend()` mede a máquina e escolhe a precisão que cabe, da nativa
+    do device (bf16 em GPU, fp32 em CPU) até int4:
 
     ```python
     from tempest_fastapi_sdk.genai import TextModel, recommend
