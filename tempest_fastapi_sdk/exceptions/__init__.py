@@ -120,6 +120,15 @@ from tempest_fastapi_sdk.exceptions.validation import (
 from tempest_fastapi_sdk.exceptions.value_errors import (
     ValidationValueError as ValidationValueError,
 )
+from tempest_fastapi_sdk.exceptions.wallet import (
+    InsufficientBalanceException as InsufficientBalanceException,
+)
+from tempest_fastapi_sdk.exceptions.wallet import (
+    PayoutRejectedException as PayoutRejectedException,
+)
+from tempest_fastapi_sdk.exceptions.wallet import (
+    PayoutUncertainException as PayoutUncertainException,
+)
 
 __all__: list[str] = [
     "DEFAULT_CONFLICT_TEMPLATE",
@@ -134,6 +143,7 @@ __all__: list[str] = [
     "FileTooLargeException",
     "ForbiddenException",
     "InheritedErrorCodeWarning",
+    "InsufficientBalanceException",
     "InvalidFileTypeException",
     "InvalidSignedURLException",
     "InvalidTokenException",
@@ -154,6 +164,8 @@ __all__: list[str] = [
     "OAuthTokenRejectedException",
     "OrderByNotAllowedException",
     "PageSizeTooLargeException",
+    "PayoutRejectedException",
+    "PayoutUncertainException",
     "TooManyRequestsException",
     "UnauthorizedException",
     "ValidationException",

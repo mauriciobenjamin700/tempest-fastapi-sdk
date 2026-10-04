@@ -14,6 +14,9 @@ from typing import Any
 
 from tempest_fastapi_sdk.integrations.payment.base import (
     PaymentStatus,
+    PayoutRequest,
+    PayoutResult,
+    PayoutStatus,
     PixCharge,
     PixChargeRequest,
     PixEventType,
@@ -207,3 +210,66 @@ class FakePixProvider(_Steerable):
         )
         self._charges[charge_id] = updated
         return updated
+
+
+class FakePayoutProvider(_Steerable):
+    """A ``PayoutProvider`` that sends nothing and remembers every transfer.
+
+    Steer the two failure branches a withdrawal has with :meth:`fail_next`:
+    ``PayoutRejectedException`` (the money did not leave, the wallet gives
+    the debit back) and any other exception, such as ``TimeoutError`` (the
+    outcome is unknown, the debit is kept).
+
+    Example:
+        >>> payout = FakePayoutProvider()
+        >>> result = await payout.transfer_to_pix_key(
+        ...     PayoutRequest(
+        ...         amount_cents=5000,
+        ...         pix_key="driver@example.com",
+        ...         pix_key_type="EMAIL",
+        ...         correlation_id="w-1",
+        ...     ),
+        ... )
+        >>> result.status is PayoutStatus.CONFIRMED
+        True
+
+    Attributes:
+        provider_name (str): Copied into :attr:`PayoutResult.provider`.
+        status (PayoutStatus): What every accepted transfer reports.
+        transfers (list[PayoutRequest]): Accepted transfers, in order.
+        calls (list[str]): Contract methods that ran, in order.
+    """
+
+    provider_name: str = "fake"
+
+    def __init__(self, *, status: PayoutStatus = PayoutStatus.CONFIRMED) -> None:
+        """Start with no transfers.
+
+        Args:
+            status (PayoutStatus): The status every accepted transfer gets.
+        """
+        super().__init__()
+        self.status: PayoutStatus = status
+        self.transfers: list[PayoutRequest] = []
+
+    async def transfer_to_pix_key(self, request: PayoutRequest, /) -> PayoutResult:
+        """Accept a transfer, unless a failure was queued.
+
+        Args:
+            request (PayoutRequest): The transfer.
+
+        Returns:
+            PayoutResult: The accepted transfer, with :attr:`status`.
+
+        Raises:
+            BaseException: Whatever :meth:`fail_next` queued. A failed call
+                is not added to :attr:`transfers`.
+        """
+        self._record("transfer_to_pix_key")
+        self.transfers.append(request)
+        return PayoutResult(
+            correlation_id=request.correlation_id,
+            status=self.status,
+            provider=self.provider_name,
+            provider_status=self.status.value,
+        )

@@ -16,11 +16,16 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
+        OpenPixPayoutProvider as OpenPixPayoutProvider,
+    )
+    from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
         OpenPixPixProvider as OpenPixPixProvider,
     )
 
 _EXPORTS: dict[str, str] = {
+    "OpenPixPayoutProvider": "openpix",
     "OpenPixPixProvider": "openpix",
+    "PAYOUT_REJECTED_STATUSES": "openpix",
     "EVENT_MAP": "openpix",
     "PROVIDER_NAME": "openpix",
     "STATUS_MAP": "openpix",
@@ -59,4 +64,4 @@ def __dir__() -> list[str]:
     return sorted(set(_EXPORTS) | set(_EXPORTS.values()))
 
 
-__all__: list[str] = ["OpenPixPixProvider"]
+__all__: list[str] = ["OpenPixPayoutProvider", "OpenPixPixProvider"]
