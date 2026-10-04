@@ -520,6 +520,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "SPREADSHEET_ROW_INVALID": (
             "A linha {row} da aba '{sheet}' não passou na validação"
         ),
+        "SPREADSHEET_TOO_LARGE": "A planilha é grande demais para ser lida",
         "PDF_DECRYPT_FAILED": "PDF protegido por senha — informe a senha correta",
         "PDF_EXTRACT_FAILED": "Não foi possível extrair o conteúdo do PDF",
         "PDF_PAGE_EXTRACT_FAILED": "Não foi possível extrair a página {page} do PDF",
@@ -610,6 +611,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "SPREADSHEET_INVALID": "The file is not a valid .xlsx spreadsheet",
         "SPREADSHEET_SHEET_NOT_FOUND": "The spreadsheet has no sheet '{sheet}'",
         "SPREADSHEET_ROW_INVALID": "Row {row} of sheet '{sheet}' failed validation",
+        "SPREADSHEET_TOO_LARGE": "The spreadsheet is too large to read",
         "PDF_DECRYPT_FAILED": "PDF is password protected — provide the password",
         "PDF_EXTRACT_FAILED": "Could not extract the PDF's content",
         "PDF_PAGE_EXTRACT_FAILED": "Could not extract page {page} of the PDF",

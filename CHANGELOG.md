@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Leitor de `.xlsx` com limite de tamanho (#404):** um `.xlsx` é um ZIP, e
+  o leitor do #403 entregava qualquer coisa ao `openpyxl`. Medido: uma zip
+  bomb de 1,7 MB (uma `sheet1.xml` de 505 MB) levava o `read_xlsx` a
+  2 278 MB de RSS e 151 s; com a memória limitada a 2 GB, `MemoryError`
+  depois de 113 s. Agora `read_xlsx`, `read_xlsx_as`, `read_xlsx_sheets` e
+  `read_google_sheet_xlsx` aceitam três limites keyword-only, ligados por
+  padrão: `max_uncompressed_bytes` (100 MiB) e `max_compression_ratio` (100,
+  por parte de pelo menos 1 MiB), conferidos no diretório central do ZIP
+  **antes** de abrir — a mesma bomb é recusada em 0,1 s —, e `max_rows`
+  (100 000 por aba, linha em branco não conta), conferido durante a leitura,
+  sem guardar nada depois da linha recusada. `download_google_sheet_xlsx` e
+  `read_google_sheet_xlsx` ganham `max_bytes` (32 MiB): o corpo do export é
+  lido em streaming e a transferência para ao passar. Passou de qualquer
+  limite: `SpreadsheetTooLargeError` (`SPREADSHEET_TOO_LARGE`, `413`,
+  subclasse de `FileTooLargeException`, i18n PT/EN), com o limite em
+  `details["limit"]` — nunca truncamento. `None` desliga um limite; valor
+  zero ou negativo levanta `ValueError`. Os defaults são constantes públicas
+  (`DEFAULT_XLSX_MAX_ROWS`, `DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES`,
+  `DEFAULT_XLSX_MAX_COMPRESSION_RATIO`, `DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES`)
+  e a docstring de cada uma traz a conta: ~834 bytes de RSS e ~78 µs por linha
+  numa aba de 8 colunas (200 000 e 1 000 000 de linhas, uma execução cada),
+  razão de 7,2 a 14,7 em arquivo legítimo contra 294,5 na bomb.
+- **XML truncado no `.xlsx` deixou de virar `500`:** uma parte cortada no meio
+  (por exemplo, diretório central declarando menos bytes do que a parte tem,
+  com o CRC ajustado) fazia o parser levantar `ParseError` / `XMLSyntaxError`
+  durante a leitura da aba, fora do `try`. Agora vira
+  `InvalidSpreadsheetError` (`422`). O caso com CRC não ajustado já virava
+  `InvalidSpreadsheetError`: o `zipfile` para no tamanho declarado e confere o
+  CRC ali (medido no CPython 3.11 a 3.14).
+
 ### Added
 
 - **Leitura de `.xlsx`:** `read_xlsx`, `read_xlsx_as` e `read_xlsx_sheets` em

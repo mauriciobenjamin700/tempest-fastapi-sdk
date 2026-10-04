@@ -818,6 +818,176 @@ A date typed as text (`"01/10/2026"`) on row 2:
 them, in a `dict` keyed by tab name, in tab order (chart sheets are left
 out). An empty tab, or one with only a header, returns `[]`.
 
+## Limits: zip bombs and huge sheets
+
+An `.xlsx` is a ZIP. The size of the upload says nothing about the size
+`openpyxl` will decompress and parse — and that is exactly what an attacker
+exploits. Measured here: a **1.7 MB** file holding a **505 MB**
+`sheet1.xml` (5 million identical rows) took the unguarded reader to
+**2,278 MB** of RSS and 151 s of CPU; with the process memory capped at
+2 GB, it ended in `MemoryError` after 113 s. A legitimate sheet with
+millions of rows does the same, only slower.
+
+That is why the `.xlsx` readers have three limits, all **on by default**:
+
+| Parameter | Default | What it measures | When it is checked |
+| --- | --- | --- | --- |
+| `max_uncompressed_bytes` | `100 MiB` | sum of the decompressed sizes of the ZIP's parts | before opening, from the central directory |
+| `max_compression_ratio` | `100` | decompressed ÷ compressed, per part of at least 1 MiB | before opening, from the central directory |
+| `max_rows` | `100,000` | data rows **per tab** (blank rows do not count) | while reading, on the first row past the limit |
+
+The same 1.7 MB file now answers in 0.1 s, with the process's peak RSS at
+126 MB (the `openpyxl` import included), without decompressing anything.
+
+### The code
+
+```python
+# scripts/limits.py
+
+from tempest_fastapi_sdk.spreadsheet import (
+    SpreadsheetTooLargeError,
+    new_workbook,
+    read_xlsx,
+    workbook_to_bytes,
+)
+
+
+def build_workbook(rows: int) -> bytes:
+    """Build a Vendas tab with the requested number of rows."""
+    workbook = new_workbook("Vendas")
+    sheet = workbook["Vendas"]
+    sheet.append(["produto", "quantidade"])
+    for number in range(rows):
+        sheet.append([f"Produto {number}", number])
+    return workbook_to_bytes(workbook)
+
+
+def main() -> None:
+    """Read the same workbook with a limit below and one above its size."""
+    workbook: bytes = build_workbook(150)
+    try:
+        read_xlsx(workbook, max_rows=100)
+    except SpreadsheetTooLargeError as error:
+        print(error.status_code, error.code, error.details)
+    rows = read_xlsx(workbook, max_rows=200)
+    print(len(rows), "rows read")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+Running it (real output):
+
+```text
+413 SPREADSHEET_TOO_LARGE {'limit': 'rows', 'max': 100, 'actual': 101, 'sheet': 'Vendas', 'row': 102}
+150 rows read
+```
+
+### Piece by piece
+
+**Refuse, never truncate.** Going past a limit raises
+`SpreadsheetTooLargeError`; no reader silently returns "the first 100,000
+rows". Reading stops at row 100,001, and no row after it ever becomes a
+`dict`.
+
+**The error.** `SpreadsheetTooLargeError` is a subclass of
+`FileTooLargeException`, so it answers `413` like the SDK's upload limit —
+and one `except FileTooLargeException` catches both. `details["limit"]`
+says which limit it was:
+
+* `"uncompressed_bytes"` and `"compression_ratio"`: `details["actual"]` is
+  what the ZIP declares; for the ratio, `details["member"]` names the part;
+* `"rows"`: `details["sheet"]` is the tab and `details["row"]` the sheet
+  row where reading stopped;
+* `"download_bytes"`: the Google download (see the next section).
+
+The import endpoint from the previous section, without changing a line,
+answers a 208,786-byte zip bomb like this:
+
+```json
+{
+  "detail": "The spreadsheet decompresses to 209731887 bytes; the limit is 104857600.",
+  "code": "SPREADSHEET_TOO_LARGE",
+  "details": {
+    "limit": "uncompressed_bytes",
+    "max": 104857600,
+    "actual": 209731887
+  }
+}
+```
+
+**Where the defaults come from.** Measured with `openpyxl` 3.1.5 on
+CPython 3.11, one run per size, on a generated 8-column tab (id, two
+texts, three numbers, a date, a status):
+
+* 200,000 rows: 291.5 MB peak RSS, 15.6 s; 1,000,000 rows: 959.1 MB,
+  78.1 s. Hence **~834 bytes of RSS and ~78 µs per row**, on top of about
+  125 MB the interpreter and `openpyxl` already hold. With the default,
+  the 200,000-row tab stopped at row 100,001 after 10.8 s, peaking at
+  214 MB.
+* Each row is ~404 bytes of XML, so memory grows by **~2 bytes per byte of
+  XML**: at the 100 MiB ceiling, somewhere near 215 MB of rows (estimated
+  from the arithmetic, not measured). On a narrow tab the row limit trips
+  first (100,000 rows are ~40 MB of XML); the byte limit is what holds wide
+  tabs, many tabs and large shared-string tables.
+* The compression ratio of legitimate files stayed between 7.2 and 14.7
+  (the tab of 200,000 **identical** rows, the most repetitive case); the
+  zip bomb's was 294.5. `100` leaves more than six times of headroom.
+* The 16-tab public sheet used on this page has 2,580 rows and is 6.1 MB
+  decompressed: it passes with room to spare.
+
+!!! info "Worst case within the defaults"
+    A file built to stay just under both byte limits (99 MiB decompressed,
+    ratio kept in check) and without the `<dimension>` tag still costs
+    something: `openpyxl` scans the whole tab on open when the tag is
+    missing (the Google export does not write it), and reading stops at
+    row 100,001. Measured: **11.4 s and 248 MB peak**. If your endpoint
+    cannot pay that, lower the limits.
+
+**The central directory can lie.** The sizes come from the ZIP's central
+directory, which whoever builds the file writes as they please. The lie
+does not get through because `zipfile` stops decompressing a part at the
+declared size and checks the CRC there (measured on CPython 3.11 to
+3.14): a part that declares 4 KiB and holds 50 MB reads 4 KiB and fails —
+wrong CRC, or XML cut short — and both become `InvalidSpreadsheetError`
+(`422`). A part that declares **more** than it holds is refused by the
+sum.
+
+**Raising the limit for a trusted workbook.** Pass the value that fits your
+case, per call:
+
+```python
+# app/imports.py
+
+from tempest_fastapi_sdk.spreadsheet import (
+    DEFAULT_XLSX_MAX_ROWS,
+    XlsxCellValue,
+    read_xlsx,
+)
+
+
+def read_internal_report(content: bytes) -> list[dict[str, XlsxCellValue]]:
+    """Read the report the system itself generates, larger than an upload."""
+    return read_xlsx(
+        content,
+        max_rows=DEFAULT_XLSX_MAX_ROWS * 5,
+        max_uncompressed_bytes=500 * 1024 * 1024,
+    )
+```
+
+`None` disables a limit (`max_rows=None`). Do that only for files from a
+source you control: the three exist because the upload is the common case.
+The defaults are public constants — `DEFAULT_XLSX_MAX_ROWS`,
+`DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES`, `DEFAULT_XLSX_MAX_COMPRESSION_RATIO`
+— so you can write the limit as a multiple of them. A zero or negative
+value raises `ValueError`.
+
+!!! tip "The request body limit still applies"
+    The reader's limits measure what the ZIP **turns into**; the size of
+    the upload itself is the request body limit, which sits earlier, in
+    [`BodySizeLimitMiddleware`](http.en.md). The two complement each other.
+
 ## The whole Google workbook in one request
 
 CSV reads one tab per request, and for that you need each tab's `gid`. A
@@ -957,6 +1127,19 @@ with the right media type but does not open as a workbook,
 `read_google_sheet_xlsx` also raises `GoogleSheetAccessError`, not `422`:
 the defect is upstream's, not the caller's.
 
+**The download limit.** The export's body is streamed and counted: past
+`max_bytes` (default `DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES`, 32 MiB),
+the transfer is closed and `SpreadsheetTooLargeError` is raised with
+`details["limit"] == "download_bytes"` — a `Content-Length` over the
+limit is refused without reading the body. The arithmetic: an `.xlsx` at
+the 100 MiB decompressed ceiling, at the 7.2 to 8.1 ratio measured on real
+files, downloads as about 14 MiB; 32 MiB still admits it compressing only
+3.2 times. The 16-tab sheet downloads as 785,152 bytes.
+`read_google_sheet_xlsx` also takes `max_rows`, `max_uncompressed_bytes`
+and `max_compression_ratio`, forwarded to the reader — and the size error
+comes out as `SpreadsheetTooLargeError` (`413`), not as
+`GoogleSheetAccessError`. The CSV path has no such limit.
+
 **The extra.** `download_google_sheet_xlsx` only downloads bytes and runs
 with no extra; `read_google_sheet_xlsx` needs `[spreadsheet]` and checks
 for it **before** the download, so the request is not wasted.
@@ -981,9 +1164,15 @@ for it **before** the download, so the request is not wasted.
   (upload, file, export) with **typed** cells: number, `datetime`, `bool`.
   A file that is not a spreadsheet, a missing tab and an invalid row
   become typed `422` errors.
+* The `.xlsx` readers refuse zip bombs and huge sheets **before** spending
+  the memory: `max_uncompressed_bytes` (100 MiB), `max_compression_ratio`
+  (100) and `max_rows` (100,000 per tab) become `SpreadsheetTooLargeError`
+  (`413`). They never truncate; for a trusted file, raise the limit or pass
+  `None`.
 * `download_google_sheet_xlsx(link)` downloads the whole Google workbook in
-  one request (the `gid` is dropped); `read_google_sheet_xlsx` returns
-  every tab by name right away.
+  one request (the `gid` is dropped), stopping the download at
+  `max_bytes` (32 MiB); `read_google_sheet_xlsx` returns every tab by name
+  right away.
 
 To ship the same content as a closed document, see
 [PDF generation](pdf.en.md). For the currency helpers that format the
