@@ -471,6 +471,16 @@ class Agent:
         use one implementation: the caller owns it, so two concurrent runs
         on the same agent never see each other.
 
+        A reply with no tool call ends the run. It ends ``COMPLETED`` only
+        when it carries text; a reply with neither text nor a tool call
+        (whitespace counts as no text) ends ``EMPTY_RESPONSE``, because
+        handing back ``""`` as a successful answer is the one failure a
+        caller checking ``succeeded`` cannot see. The agent does not
+        re-prompt on its own: a retry spends a step the budget was sized
+        for and hides how often the model does this, while
+        ``run_until(agent, goal, until=succeeded)`` already retries when the
+        caller wants it.
+
         Args:
             goal (str): The goal.
             state (_RunState): This run's state, mutated in place.
@@ -545,8 +555,11 @@ class Agent:
             yield model_step
 
             if not calls:
-                state.output = content
-                state.outcome = StopReason.COMPLETED
+                if content.strip():
+                    state.output = content
+                    state.outcome = StopReason.COMPLETED
+                else:
+                    state.outcome = StopReason.EMPTY_RESPONSE
                 return
 
             messages.append(
@@ -856,7 +869,9 @@ class Agent:
         the model said is used as the output. It is partial work, and
         :attr:`~tempest_fastapi_sdk.agents.AgentRun.stop_reason` is what
         says so — returning an empty string instead would throw away the
-        only useful thing a truncated run produced.
+        only useful thing a truncated run produced. The same fallback
+        applies to ``EMPTY_RESPONSE``: text the model wrote alongside an
+        earlier tool call is kept, and blank text is skipped.
 
         Args:
             goal (str): The goal.
@@ -876,7 +891,7 @@ class Agent:
 
         if not output:
             for step in reversed(state.steps):
-                if step.kind == StepKind.MODEL and step.output:
+                if step.kind == StepKind.MODEL and step.output.strip():
                     output = step.output
                     break
 

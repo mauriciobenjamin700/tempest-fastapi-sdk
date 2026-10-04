@@ -297,6 +297,79 @@ class TestToolFailures:
         assert "not valid JSON" in tool_step.error
 
 
+class TestEmptyResponse:
+    """A reply with neither text nor a tool call is not a finished answer.
+
+    Up to 0.303.1 this ended ``COMPLETED`` with ``output == ""``, so a
+    caller checking ``succeeded`` shipped an empty answer as a success.
+    ``qwen2.5:0.5b`` on Ollama in CPU did it in 58 of 200 runs.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("content", ["", None, "   ", "\n\t "])
+    async def test_a_blank_reply_is_not_a_success(self, content: str | None) -> None:
+        backend = ScriptedBackend([{"content": content, "tool_calls": []}])
+        run = await Agent(backend, tools=[_echo_tool()]).run("go")
+        assert run.stop_reason == StopReason.EMPTY_RESPONSE
+        assert run.succeeded is False
+        assert run.output.strip() == ""
+
+    @pytest.mark.asyncio
+    async def test_a_reply_without_the_tool_calls_key_is_empty_too(self) -> None:
+        backend = ScriptedBackend([{"content": ""}])
+        run = await Agent(backend, tools=[_echo_tool()]).run("go")
+        assert run.stop_reason == StopReason.EMPTY_RESPONSE
+
+    @pytest.mark.asyncio
+    async def test_a_toolless_backend_answering_nothing_is_empty(self) -> None:
+        run = await Agent(ToollessBackend(""), tools=[_echo_tool()]).run("hi")
+        assert run.stop_reason == StopReason.EMPTY_RESPONSE
+        assert run.succeeded is False
+
+    @pytest.mark.asyncio
+    async def test_the_agent_does_not_reprompt_on_its_own(self) -> None:
+        backend = ScriptedBackend(
+            [
+                {"content": "", "tool_calls": []},
+                {"content": "late answer", "tool_calls": []},
+            ],
+        )
+        run = await Agent(backend, tools=[_echo_tool()]).run("go")
+        assert len(backend.calls) == 1
+        assert [step.kind for step in run.steps] == [StepKind.MODEL]
+
+    @pytest.mark.asyncio
+    async def test_text_from_an_earlier_turn_is_kept_as_partial_output(self) -> None:
+        backend = ScriptedBackend(
+            [
+                {"content": "looking it up", "tool_calls": [_call("echo", text="x")]},
+                {"content": " ", "tool_calls": []},
+            ],
+        )
+        run = await Agent(backend, tools=[_echo_tool()]).run("go")
+        assert run.stop_reason == StopReason.EMPTY_RESPONSE
+        assert run.succeeded is False
+        assert run.output == "looking it up"
+
+    @pytest.mark.asyncio
+    async def test_a_text_answer_still_completes(self) -> None:
+        backend = ScriptedBackend([{"content": " 42 ", "tool_calls": []}])
+        run = await Agent(backend, tools=[_echo_tool()]).run("go")
+        assert run.stop_reason == StopReason.COMPLETED
+        assert run.output == "42"
+
+    @pytest.mark.asyncio
+    async def test_streaming_records_the_empty_run(self) -> None:
+        sink = InMemoryAgentRunSink()
+        backend = ScriptedBackend([{"content": "", "tool_calls": []}])
+        agent = Agent(backend, tools=[_echo_tool()], run_sink=sink)
+        kinds = [step.kind async for step in agent.stream("go")]
+        assert kinds == [StepKind.MODEL]
+        recorded = sink.recent()[0]
+        assert recorded.stop_reason == StopReason.EMPTY_RESPONSE
+        assert recorded.succeeded is False
+
+
 class TestBudget:
     @pytest.mark.asyncio
     async def test_max_steps_stops_and_says_so(self) -> None:

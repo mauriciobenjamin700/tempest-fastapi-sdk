@@ -919,7 +919,8 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   answers a chat *turn*). `Agent.run/stream` → `AgentRun` (output + `steps` +
   `artifacts` + `stop_reason`); `AgentBudget` bounds steps/wall-clock/tool
   calls and `StopReason` names which fired (`succeeded` is `COMPLETED` only —
-  a truncated run still carries text). **Three deliberate properties:** a
+  a truncated run still carries text; a model reply with no text and no tool
+  call is `EMPTY_RESPONSE`, not `COMPLETED`, after 0.303.1). **Three deliberate properties:** a
   raising tool becomes an observation fed back to the model, never a crashed
   run; every ceiling is enforced *and reported* (`max_seconds` defaults to 120
   because steps alone do not bound a hung call); binary results never enter

@@ -132,7 +132,9 @@ or cut by a budget, it returns `data=None` and `parse_error` says why.
     without calling `final_answer`, and neither the text parse nor the
     extraction found the shape (or `allow_text_fallback=False` turned that
     net off). A spent budget is a different case — that run is no longer
-    `succeeded`. Either way, `run.parse_error` says why. And
+    `succeeded` — and so is an empty model reply: it ends in
+    `empty_response`, with `parse_error="the run produced no answer"` and
+    no extra extraction call. Either way, `run.parse_error` says why. And
     small models sometimes leave a field empty rather than omitting it:
     validate the values, not just the presence of the object.
 

@@ -29,6 +29,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   quando `retry_policy=` não é dado; uma política explícita é usada como
   veio, e um `http_client=` injetado mantém a dele.
 
+- **Resposta vazia do modelo não termina mais como sucesso.** Uma mensagem
+  sem texto (ou só com espaço em branco) e sem `tool_calls` virava
+  `StopReason.COMPLETED`, e a execução saía com `succeeded=True` e
+  `output == ""`. Agora termina no novo `StopReason.EMPTY_RESPONSE`
+  (`"empty_response"`), com `succeeded=False` — vale para `run`, `stream`,
+  a delegação (`agent_tool` marca `[stopped: empty_response]`), o
+  `run_until(..., until=succeeded)` (que passa a repetir a rodada) e o
+  `run_structured` (`parse_error="the run produced no answer"`, sem a
+  chamada de extração). O agente não repete a pergunta sozinho. Medido com
+  `OllamaGenerator("qwen2.5:0.5b", options={"num_gpu": 0})` no Ollama
+  0.30.11, meta que pede uma ferramenta e a resposta: antes, 58 de 200
+  execuções saíam `completed` com `output` vazio; depois, 73 de 200
+  terminaram `empty_response` e 0 de 200 saíram `succeeded` vazias (a taxa
+  oscilou entre 25% e 40% de um lote para outro). Com
+  `run_until(..., until=succeeded, max_rounds=3)`, 58 de 60 laços terminaram
+  aceitos.
+
 ## [0.303.1] — 2026-10-04
 
 O planejador de hardware passa a dimensionar CPU na precisão que o gerador
