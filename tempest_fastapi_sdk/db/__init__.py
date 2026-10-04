@@ -36,6 +36,9 @@ from tempest_fastapi_sdk.db.connection import (
     AsyncDatabaseManager as AsyncDatabaseManager,
 )
 from tempest_fastapi_sdk.db.connection import (
+    enable_sqlite_foreign_keys as enable_sqlite_foreign_keys,
+)
+from tempest_fastapi_sdk.db.connection import (
     enable_sqlite_savepoints as enable_sqlite_savepoints,
 )
 from tempest_fastapi_sdk.db.connection import (
@@ -111,6 +114,9 @@ from tempest_fastapi_sdk.db.migrations import (
 )
 from tempest_fastapi_sdk.db.migrations import (
     SchemaSyncOutcome as SchemaSyncOutcome,
+)
+from tempest_fastapi_sdk.db.migrations import (
+    require_sqlite_foreign_keys_off as require_sqlite_foreign_keys_off,
 )
 from tempest_fastapi_sdk.db.mixins import AuditMixin as AuditMixin
 from tempest_fastapi_sdk.db.mixins import LocaleColumnMixin as LocaleColumnMixin
@@ -279,6 +285,7 @@ __all__: list[str] = [
     "describe_database_error",
     "diff_snapshots",
     "disconnect",
+    "enable_sqlite_foreign_keys",
     "enable_sqlite_savepoints",
     "enable_sqlite_wal",
     "enum_column",
@@ -304,6 +311,7 @@ __all__: list[str] = [
     "redact_snapshot",
     "render_enum_types",
     "reorder_base_columns_first",
+    "require_sqlite_foreign_keys_off",
     "savepoint",
     "session_dependency_for",
     "shared_memory_url",

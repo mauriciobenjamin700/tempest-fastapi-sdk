@@ -24,6 +24,7 @@ from tempest_fastapi_sdk.chat import (
     make_message_model,
 )
 from tempest_fastapi_sdk.sse import SSEBroker
+from tests._seed import seed_users
 
 
 class _ChatUser(BaseUserModel):
@@ -79,7 +80,7 @@ def _service(session: AsyncSession, broker: SSEBroker | None = None) -> ChatServ
 class TestStartConversation:
     async def test_adds_creator_and_participants(self, session: AsyncSession) -> None:
         service = _service(session)
-        creator, other = uuid4(), uuid4()
+        creator, other = await seed_users(session, _ChatUser, 2)
         conv = await service.start_conversation(creator, [other], title="Team")
         assert conv.title == "Team"
         assert await service.is_participant(conv.id, creator) is True
@@ -87,7 +88,7 @@ class TestStartConversation:
 
     async def test_creator_not_duplicated(self, session: AsyncSession) -> None:
         service = _service(session)
-        creator = uuid4()
+        (creator,) = await seed_users(session, _ChatUser, 1)
         conv = await service.start_conversation(creator, [creator])
         participants = await service.participants.list(
             filters={"conversation_id": conv.id},
@@ -96,7 +97,8 @@ class TestStartConversation:
 
     async def test_non_member_is_not_participant(self, session: AsyncSession) -> None:
         service = _service(session)
-        conv = await service.start_conversation(uuid4(), [])
+        (creator,) = await seed_users(session, _ChatUser, 1)
+        conv = await service.start_conversation(creator, [])
         assert await service.is_participant(conv.id, uuid4()) is False
 
 
@@ -106,7 +108,7 @@ class TestListConversations:
         session: AsyncSession,
     ) -> None:
         service = _service(session)
-        alice, bob = uuid4(), uuid4()
+        alice, bob = await seed_users(session, _ChatUser, 2)
         conv_ab = await service.start_conversation(alice, [bob])
         await service.start_conversation(bob, [])
         alice_convs = await service.list_conversations(alice)
@@ -120,7 +122,7 @@ class TestListConversations:
 class TestMessages:
     async def test_post_and_list(self, session: AsyncSession) -> None:
         service = _service(session)
-        creator = uuid4()
+        (creator,) = await seed_users(session, _ChatUser, 1)
         conv = await service.start_conversation(creator, [])
         await service.post_message(conv.id, creator, "first")
         await service.post_message(conv.id, creator, "second")
@@ -131,7 +133,7 @@ class TestMessages:
     async def test_post_publishes_to_broker(self, session: AsyncSession) -> None:
         broker = _SpyBroker()
         service = _service(session, broker=broker)
-        creator = uuid4()
+        (creator,) = await seed_users(session, _ChatUser, 1)
         conv = await service.start_conversation(creator, [])
         await service.post_message(conv.id, creator, "hi")
         assert len(broker.published) == 1

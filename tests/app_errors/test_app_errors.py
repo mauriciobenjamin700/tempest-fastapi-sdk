@@ -34,6 +34,7 @@ from tempest_fastapi_sdk.app_errors import (
     make_app_error_model,
     make_app_error_router,
 )
+from tests._seed import seed_users
 
 
 class _AppErrorUser(BaseUserModel):
@@ -147,7 +148,7 @@ class TestReporting:
         ever sees it — and the service takes the id from its own argument.
         """
         someone_else = uuid4()
-        caller = uuid4()
+        (caller,) = await seed_users(session, _AppErrorUser, 1)
         report = AppErrorReportSchema.model_validate(
             {
                 "code": "X",

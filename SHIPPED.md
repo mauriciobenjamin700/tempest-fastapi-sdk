@@ -209,7 +209,20 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `DATABASE_SQLITE_BUSY_TIMEOUT`, public `enable_sqlite_wal`), which is
   what lets a web process and a `taskiq worker` share one file — measured
   across two processes, the rollback journal fails the writer with
-  `database is locked` where WAL commits at once. **Search (v0.200.0):**
+  `database is locked` where WAL commits at once. **SQLite foreign keys
+  (#395, unreleased):** every SQLite engine `AsyncDatabaseManager` and
+  `create_test_engine` build runs `PRAGMA foreign_keys=ON` from a `connect`
+  listener (`sqlite_foreign_keys=` / `DATABASE_SQLITE_FOREIGN_KEYS` /
+  `create_test_engine(foreign_keys=)`, public `enable_sqlite_foreign_keys`),
+  so an orphan raises and `ON DELETE CASCADE` deletes; both paths go through
+  one internal `_configure_sqlite_engine`, so `create_test_engine` also got
+  the savepoint fix. Migration engines stay FK-off (batch mode rebuilding a
+  parent cascades its children away, 3 -> 0 rows, no error) and the
+  generated `env.py` refuses a handed-over FK-on connection
+  (`require_sqlite_foreign_keys_off`). Guards:
+  `tests/db/test_sqlite_foreign_keys.py`,
+  `tests/db/test_migrations_foreign_keys.py`,
+  `tests/test_engine_configuration_guard.py`. **Search (v0.200.0):**
   `search()` portable
   (escaped ILIKE, AND across words, OR across columns) +
   `full_text_search()` (`websearch_to_tsquery` + `ts_rank` + `setweight` on
@@ -1076,6 +1089,20 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   inexistente `404` HTML; o Google grava o resultado de toda fórmula (as
   975 de 1 429 que chegam `None` são resultado `""`); número vem `int` ou
   `float` na mesma coluna, data vem `datetime`, porcentagem vem razão.
+- **Limites do leitor de `.xlsx` (Unreleased, #404)** — `max_uncompressed_bytes`
+  (100 MiB, soma do diretório central do ZIP), `max_compression_ratio` (100,
+  por parte de ≥1 MiB) e `max_rows` (100 000 por aba, conferido em streaming)
+  em `read_xlsx` / `read_xlsx_as` / `read_xlsx_sheets` / `read_google_sheet_xlsx`;
+  `max_bytes` (32 MiB, corpo em streaming) em `download_google_sheet_xlsx` /
+  `read_google_sheet_xlsx`. Passou do limite: `SpreadsheetTooLargeError`
+  (`SPREADSHEET_TOO_LARGE`, `413`, subclasse de `FileTooLargeException`), nunca
+  truncamento; `None` desliga. Defaults são constantes públicas
+  `DEFAULT_XLSX_*` / `DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES` com a conta na
+  docstring. Medido: zip bomb de 1,7 MB (505 MB de XML) ia a 2 278 MB de RSS e
+  151 s; agora recusa em 0,1 s. O `zipfile` para no `file_size` declarado e
+  confere o CRC (CPython 3.11 a 3.14), então diretório central mentindo vira
+  `InvalidSpreadsheetError`; XML truncado (`SyntaxError` do parser) deixou de
+  escapar como `500`. Fica de fora: o caminho CSV do Google não tem limite.
 - **Leitura de Google Sheets (0.303.0, sem extra)** —
   `read_google_sheet` / `read_google_sheet_as` / `google_sheet_export_url` em
   `tempest_fastapi_sdk.spreadsheet`. Lê uma aba de planilha compartilhada

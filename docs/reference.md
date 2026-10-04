@@ -183,6 +183,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.migrations.DestructiveMigrationError
 ::: tempest_fastapi_sdk.db.migrations.AmbiguousBaseRevisionError
 ::: tempest_fastapi_sdk.db.migrations.SchemaSyncOutcome
+::: tempest_fastapi_sdk.db.migrations.require_sqlite_foreign_keys_off
+::: tempest_fastapi_sdk.db.connection.enable_sqlite_foreign_keys
 ::: tempest_fastapi_sdk.db.connection.enable_sqlite_savepoints
 ::: tempest_fastapi_sdk.db.connection.enable_sqlite_wal
 ::: tempest_fastapi_sdk.db.connection.is_memory_sqlite_url
@@ -301,6 +303,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.spreadsheet.google.GoogleSheetRowError
 ::: tempest_fastapi_sdk.spreadsheet.google.download_google_sheet_xlsx
 ::: tempest_fastapi_sdk.spreadsheet.google.read_google_sheet_xlsx
+::: tempest_fastapi_sdk.spreadsheet.google.DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES
 ::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx
 ::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_as
 ::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_sheets
@@ -309,6 +312,10 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.spreadsheet.reader.InvalidSpreadsheetError
 ::: tempest_fastapi_sdk.spreadsheet.reader.SheetNotFoundError
 ::: tempest_fastapi_sdk.spreadsheet.reader.SpreadsheetRowError
+::: tempest_fastapi_sdk.spreadsheet.reader.SpreadsheetTooLargeError
+::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_ROWS
+::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES
+::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_COMPRESSION_RATIO
 
 ---
 

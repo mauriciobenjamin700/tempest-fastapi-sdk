@@ -761,13 +761,137 @@ and `DATABASE_SQLITE_BUSY_TIMEOUT`.
     because there is nothing to wait for. For long work: claim the row,
     do the work with **no session open**, and only then persist.
 
+### SQLite with foreign keys: `PRAGMA foreign_keys`
+
+SQLite parses the `REFERENCES` clause but **only checks** the foreign key on
+a connection that ran `PRAGMA foreign_keys=ON` — off is its default, and the
+pragma lives on the connection, not on the file. Left off, three things pass
+on SQLite that fail (or do something else) on PostgreSQL:
+
+| Operation | FK off | FK on |
+| --- | --- | --- |
+| insert a child pointing at a missing parent | accepted | `IntegrityError` |
+| delete the parent with `ON DELETE CASCADE` | child left orphaned | child deleted |
+| `add_all([child, parent])` with no `relationship()` ordering the flush | accepted | `IntegrityError` |
+
+Measured on SQLAlchemy 2.0.52 and 2.1.3, aiosqlite 0.22.1, SQLite 3.47.1.
+So `AsyncDatabaseManager` turns the pragma on for every SQLite engine — file
+and `:memory:` alike —, the same way it does WAL:
+
+```python
+import asyncio
+
+from sqlalchemy import ForeignKey, func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from tempest_fastapi_sdk import AsyncDatabaseManager
+
+
+class Base(DeclarativeBase):
+    """Declarative base for this example only."""
+
+
+class Org(Base):
+    """Organization: the parent row."""
+
+    __tablename__ = "orgs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+
+class Member(Base):
+    """Member: deleted along with its organization."""
+
+    __tablename__ = "members"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("orgs.id", ondelete="CASCADE"))
+
+
+async def main() -> None:
+    """Show the orphan refused and the cascade applied."""
+    db: AsyncDatabaseManager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.create_tables(Base.metadata)
+
+    async with await db.get_session() as session:
+        session.add(Member(id=1, org_id=999))
+        try:
+            await session.commit()
+        except IntegrityError as exc:
+            await session.rollback()
+            print("orphan:", exc.orig)
+
+        session.add(Org(id=1))
+        await session.flush()
+        session.add(Member(id=2, org_id=1))
+        await session.commit()
+
+        org: Org | None = await session.get(Org, 1)
+        await session.delete(org)
+        await session.commit()
+        left: int = (
+            await session.execute(select(func.count()).select_from(Member))
+        ).scalar_one()
+        print("members after deleting the organization:", left)
+
+    await db.disconnect()
+
+
+asyncio.run(main())
+```
+
+```text
+orphan: FOREIGN KEY constraint failed
+members after deleting the organization: 0
+```
+
+!!! tip "Out-of-order INSERT"
+    With no `relationship()` between the two models, SQLAlchemy's unit of
+    work does not know the member depends on the organization and sends the
+    INSERTs in `add_all` order. Declare the `relationship()`, or `flush()`
+    after the parent, as the example does.
+
+To turn it off — a legacy database with orphan rows you cannot clean up yet:
+
+```python
+from tempest_fastapi_sdk import AsyncDatabaseManager
+
+db: AsyncDatabaseManager = AsyncDatabaseManager(
+    "sqlite+aiosqlite:///./legacy.db",
+    sqlite_foreign_keys=False,
+)
+```
+
+From the environment, through `DatabaseSettings`:
+`DATABASE_SQLITE_FOREIGN_KEYS=false`. In tests,
+`create_test_engine(foreign_keys=False)` — see
+[Testing](testing.md#the-test-engine-checks-foreign-keys).
+
+!!! info "Why the pragma runs on `connect`"
+    SQLite ignores `PRAGMA foreign_keys` inside a transaction, without an
+    error. Since the manager emits an explicit `BEGIN` (that is what stops
+    `RELEASE SAVEPOINT` from committing), a pragma issued through the session
+    would never take effect: measured, it keeps answering `0`. The SDK
+    registers a listener on the engine's `connect` event that runs the pragma
+    through the driver cursor before any transaction. An engine you build by
+    hand gets the same behaviour from `enable_sqlite_foreign_keys(engine)`.
+
+!!! warning "Migrations do not run with FK on"
+    Alembic's batch mode rebuilds the table on SQLite, and with FK on the
+    `DROP TABLE` of the old copy fires `ON DELETE CASCADE`: measured, the
+    children go from 3 rows to 0, with no error. The SDK's migration engines
+    keep FK off, and the generated `env.py` refuses a handed-over connection
+    that has it on — see [Migrations](migrations.md#sqlite-migrations-run-with-foreign-keys-off).
+
 **Recap:** one `AsyncDatabaseManager` per app, in `resources.py`;
 `session_dependency` injects the per-request session (`session_dependency_for`
 when the manager is built on demand), while `get_session_context()`/
 `transaction()`, which commit, stay outside requests; `create_tables(metadata)`
 accepts your own `DeclarativeBase`; `connect`/`disconnect`
 in the lifespan; `health_check` + `db_url_safe` on `/health`; on SQLite,
-WAL and the busy timeout ship on so web and worker can share the file.
+WAL and the busy timeout ship on so web and worker can share the file, and
+foreign keys are checked the way PostgreSQL checks them.
 
 ---
 

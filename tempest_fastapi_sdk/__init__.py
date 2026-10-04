@@ -939,6 +939,9 @@ from tempest_fastapi_sdk.db import (
     diff_snapshots as diff_snapshots,
 )
 from tempest_fastapi_sdk.db import (
+    enable_sqlite_foreign_keys as enable_sqlite_foreign_keys,
+)
+from tempest_fastapi_sdk.db import (
     enable_sqlite_savepoints as enable_sqlite_savepoints,
 )
 from tempest_fastapi_sdk.db import (
@@ -1009,6 +1012,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     reorder_base_columns_first as reorder_base_columns_first,
+)
+from tempest_fastapi_sdk.db import (
+    require_sqlite_foreign_keys_off as require_sqlite_foreign_keys_off,
 )
 from tempest_fastapi_sdk.db import (
     savepoint as savepoint,
@@ -2418,6 +2424,7 @@ __all__: list[str] = [
     "detect_pix_key_type",
     "diff_snapshots",
     "discover_models",
+    "enable_sqlite_foreign_keys",
     "enable_sqlite_savepoints",
     "enable_sqlite_wal",
     "encode_cursor",
@@ -2547,6 +2554,7 @@ __all__: list[str] = [
     "require_admin",
     "require_annotations",
     "require_authenticated",
+    "require_sqlite_foreign_keys_off",
     "require_x_token",
     "requires",
     "resolve_locale",

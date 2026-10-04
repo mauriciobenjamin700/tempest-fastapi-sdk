@@ -2,6 +2,77 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## Não lançado — o SQLite confere chave estrangeira
+
+Todo engine SQLite que o `AsyncDatabaseManager` e o `create_test_engine` montam
+passa a rodar `PRAGMA foreign_keys=ON` em cada conexão. Antes nenhum rodava, e
+o SQLite aceitava o que o PostgreSQL recusa: filho apontando para pai
+inexistente, `ON DELETE CASCADE` que não apagava nada, e `add_all([filho,
+pai])` sem `relationship()` mandando o INSERT do filho primeiro. Detalhes e
+medição em [Banco de dados](recipes/database.md#sqlite-com-chave-estrangeira-pragma-foreign_keys).
+
+### O que muda
+
+- **Teste que grava filho sem pai falha** com
+  `IntegrityError: FOREIGN KEY constraint failed`. Era um teste que passava no
+  SQLite e falharia no PostgreSQL.
+- **`ON DELETE CASCADE` apaga os filhos** também no SQLite.
+- **`create_test_engine` aplica o fix de savepoint** do manager: um
+  `begin_nested()` que sai limpo não comita mais a transação de fora.
+- **Engine de migration continua sem FK**, e o `env.py` gerado recusa uma
+  conexão entregue com a FK ligada — veja abaixo.
+
+### O que fazer
+
+1. **Semeie o pai nos testes.** Crie a linha referenciada antes da que
+   referencia, e dê `flush()` depois do pai quando os models não têm
+   `relationship()`. Não desligue a FK no teste para fazê-lo passar: o defeito
+   é o teste, não a FK.
+2. **Banco SQLite existente:** procure órfão antes de subir a versão.
+
+    ```python
+    import sqlite3
+
+    with sqlite3.connect("app.db") as conn:
+        for row in conn.execute("PRAGMA foreign_key_check"):
+            print(row)
+    ```
+
+    Cada linha é `(tabela, rowid, tabela pai, índice da FK)`: o membro de
+    id 2 apontando para uma organização que não existe sai
+    `('member', 2, 'org', 0)`. Medido no SQLite 3.47.1: com a FK ligada, o
+    banco abre e lê normalmente, `UPDATE` de outra coluna do órfão e `DELETE`
+    dele passam; falha gravar uma chave sem pai (`INSERT`, ou `UPDATE` da
+    coluna FK para um pai inexistente).
+3. **Precisa adiar?** Desligue pelo caminho que você usa — ignorado em
+   qualquer backend que não seja SQLite:
+
+    ```python
+    from sqlalchemy.ext.asyncio import AsyncEngine
+
+    from tempest_fastapi_sdk import AsyncDatabaseManager
+    from tempest_fastapi_sdk.testing import create_test_engine
+
+    db: AsyncDatabaseManager = AsyncDatabaseManager(
+        "sqlite+aiosqlite:///./app.db",
+        sqlite_foreign_keys=False,
+    )
+    engine: AsyncEngine = create_test_engine(foreign_keys=False)
+    ```
+
+    Pelo ambiente: `DATABASE_SQLITE_FOREIGN_KEYS=false`, lido pelo
+    `DatabaseSettings.database_kwargs()`.
+4. **Conexão compartilhada com o Alembic:** se você entrega a conexão de um
+   `AsyncDatabaseManager` ao `env.py` (`config.attributes["connection"]`),
+   ela agora chega com FK ligada — e o batch mode que recria a tabela pai
+   apaga os filhos com `ON DELETE CASCADE` sem erro (medido com Alembic
+   1.19.1: 3 linhas → 0). O `env.py` que já está no seu repositório **não**
+   recusa. Migre numa conexão de `AsyncDatabaseManager(url,
+   sqlite_foreign_keys=False)` e regenere o `env.py` — passo a passo em
+   [Migrações](recipes/migrations.md#sqlite-migration-roda-com-chave-estrangeira-desligada).
+   `AlembicHelper` e `tempest db ...` abrem engine próprio, sem FK, e não
+   mudam.
+
 ## Não lançado — erro cru de ferramenta não chega mais ao modelo
 
 Quando uma ferramenta do agente levanta uma exceção que **não** é

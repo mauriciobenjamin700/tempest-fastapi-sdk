@@ -140,7 +140,7 @@ class TestUsersAPI:
 
 | Helper | Assinatura | Propósito |
 | --- | --- | --- |
-| `create_test_engine` | `(database_url="sqlite+aiosqlite:///:memory:", *, echo=False) -> AsyncEngine` | Constrói um `AsyncEngine` descartável (StaticPool quando in-memory). |
+| `create_test_engine` | `(database_url="sqlite+aiosqlite:///:memory:", *, echo=False, foreign_keys=True) -> AsyncEngine` | Constrói um `AsyncEngine` descartável (StaticPool quando in-memory); em SQLite confere chave estrangeira e aplica o savepoint do manager. |
 | `create_test_session_factory` | `(engine) -> async_sessionmaker[AsyncSession]` | Constrói um `sessionmaker` vinculado ao engine (`expire_on_commit=False`). |
 | `init_test_metadata` | `async (engine, metadata=None) -> None` | Cria todas as tabelas (default `BaseModel.metadata`). |
 | `drop_test_metadata` | `async (engine, metadata=None) -> None` | Apaga todas as tabelas. |
@@ -192,6 +192,86 @@ async def test_repo_directly() -> None:
         )
         assert await repo.count() == 1
 ```
+
+### O engine de teste confere chave estrangeira
+
+`create_test_engine` — e com ele `test_database` e `test_session` — monta o
+engine SQLite com a mesma configuração do `AsyncDatabaseManager`, menos o WAL:
+
+- **chave estrangeira conferida** (`PRAGMA foreign_keys=ON` em toda
+  conexão): filho órfão levanta `IntegrityError` e `ON DELETE CASCADE` apaga
+  os filhos, como no PostgreSQL;
+- **savepoint de verdade**: um `begin_nested()` que sai limpo não comita a
+  transação de fora (antes, o `RELEASE SAVEPOINT` virava o commit final no
+  SQLite).
+
+Consequência prática: **teste que grava um filho semeia o pai antes.** Um
+`user_id=uuid4()` solto, que antes passava no SQLite e falharia no
+PostgreSQL, agora falha aqui também:
+
+```python
+import pytest
+from sqlalchemy import ForeignKey
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from tempest_fastapi_sdk.testing import test_session
+
+
+class Base(DeclarativeBase):
+    """Base declarativa só deste exemplo."""
+
+
+class Org(Base):
+    """Organização: a linha pai."""
+
+    __tablename__ = "orgs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+
+class Member(Base):
+    """Membro de uma organização."""
+
+    __tablename__ = "members"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("orgs.id", ondelete="CASCADE"))
+
+
+async def test_member_needs_an_existing_org() -> None:
+    async with test_session(metadata=Base.metadata) as session:
+        session.add(Member(id=1, org_id=999))
+        with pytest.raises(IntegrityError, match="FOREIGN KEY"):
+            await session.commit()
+
+
+async def test_member_of_a_seeded_org() -> None:
+    async with test_session(metadata=Base.metadata) as session:
+        session.add(Org(id=1))
+        await session.flush()
+        session.add(Member(id=1, org_id=1))
+        await session.commit()
+        assert await session.get(Member, 1) is not None
+```
+
+O `flush()` depois do pai importa quando os dois models não têm
+`relationship()`: sem ele, o unit of work do SQLAlchemy manda os INSERTs na
+ordem do `add`, e o do filho pode sair primeiro.
+
+Para desligar — fixture que reproduz de propósito um banco legado com órfão:
+
+```python
+from sqlalchemy.ext.asyncio import AsyncEngine
+
+from tempest_fastapi_sdk.testing import create_test_engine
+
+engine: AsyncEngine = create_test_engine(foreign_keys=False)
+```
+
+!!! note "Só vale para SQLite"
+    `foreign_keys` só vale para SQLite. Com a URL de outro backend o engine
+    sai sem listener nenhum — o PostgreSQL sempre confere a chave.
 
 ## Factories de modelo — `ModelFactory` + `seq`
 
@@ -345,7 +425,8 @@ tempest test "tests/test_scheduler.py::test_lease_expires"
   runtime de produção.
 - `create_test_engine`, `test_database` e `test_session` cobrem o caso em que
   você não quer um `AsyncDatabaseManager` inteiro (sem `lifespan`, sem probe de
-  health).
+  health) — e conferem chave estrangeira, então o teste semeia o pai antes do
+  filho.
 - `ModelFactory` + `seq` tiram o boilerplate de campo obrigatório: default
   declarado uma vez, override por teste, e o índice da linha chega ao callable
   para coluna única continuar única em `create_many`.

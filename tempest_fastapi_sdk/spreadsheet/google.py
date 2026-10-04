@@ -65,9 +65,14 @@ from pydantic import BaseModel
 
 from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.spreadsheet.reader import (
+    DEFAULT_XLSX_MAX_COMPRESSION_RATIO,
+    DEFAULT_XLSX_MAX_ROWS,
+    DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES,
     InvalidSpreadsheetError,
     SpreadsheetRowError,
+    SpreadsheetTooLargeError,
     XlsxCellValue,
+    _check_limit,
     _number_rows,
     _require_openpyxl,
     _validate_rows,
@@ -86,6 +91,21 @@ _SHEET_PATH: Final[re.Pattern[str]] = re.compile(
 _SHEET_ID: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9_-]+$")
 _GID: Final[re.Pattern[str]] = re.compile(r"^\d+$")
 _PUBLISHED_SEGMENT: Final[str] = "e"
+
+DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES: Final[int] = 32 * 1024 * 1024
+"""Bytes the ``.xlsx`` export may answer with before the download stops (32 MiB).
+
+The body is streamed and counted; past the limit the transfer is closed and
+:class:`~tempest_fastapi_sdk.spreadsheet.reader.SpreadsheetTooLargeError`
+is raised, so at most this much is ever held.
+
+The arithmetic: a workbook the reader accepts decompresses to at most
+:data:`~tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES`
+(100 MiB). Measured workbooks compress 7.2 to 8.1 times, so one at that
+limit downloads as about 14 MiB; 32 MiB still admits it when it compresses
+only 3.2 times, and anything larger would be refused by the decompressed
+limit anyway. The 16-tab public sheet measured downloads as 785 152 bytes.
+"""
 
 
 class GoogleSheetAccessError(AppException):
@@ -270,11 +290,77 @@ def _parse_csv(text: str) -> list[tuple[int, dict[str, str]]]:
     return _number_rows(records[0], records[1:], "")
 
 
+async def _receive(
+    client: httpx.AsyncClient,
+    export_url: str,
+    media_type: str,
+    max_bytes: int | None,
+) -> bytes:
+    """Stream an export's body, refusing it once it passes ``max_bytes``.
+
+    The status and the media type are checked before any of the body is
+    read. A ``Content-Length`` over the limit is refused without reading
+    the body; otherwise the decoded body is counted chunk by chunk, so a
+    response that omits or understates the header is still cut off one
+    chunk past the limit.
+
+    Args:
+        client (httpx.AsyncClient): The client to send the request through.
+        export_url (str): The export URL.
+        media_type (str): The media type a successful export carries.
+        max_bytes (int | None): Most bytes to accept; ``None`` accepts any.
+
+    Returns:
+        bytes: The response body.
+
+    Raises:
+        GoogleSheetAccessError: If the export does not answer with a
+            successful response of ``media_type``.
+        SpreadsheetTooLargeError: If the body passes ``max_bytes``, with
+            ``details["limit"] == "download_bytes"``.
+        httpx.HTTPError: If the request itself fails.
+    """
+    async with client.stream("GET", export_url, follow_redirects=True) as response:
+        content_type: str = response.headers.get("content-type", "")
+        received: str = content_type.split(";", 1)[0].strip().lower()
+        if not response.is_success or received != media_type:
+            raise GoogleSheetAccessError(
+                details={
+                    "export_url": export_url,
+                    "status_code": response.status_code,
+                    "content_type": content_type,
+                },
+            )
+        if max_bytes is None:
+            return await response.aread()
+        declared: str = response.headers.get("content-length", "")
+        size: int = int(declared) if declared.isdecimal() else 0
+        body: bytearray = bytearray()
+        if size <= max_bytes:
+            async for chunk in response.aiter_bytes():
+                body.extend(chunk)
+                if len(body) > max_bytes:
+                    break
+            size = len(body)
+        if size > max_bytes:
+            raise SpreadsheetTooLargeError(
+                message=(f"The export passed the download limit of {max_bytes} bytes."),
+                details={
+                    "limit": "download_bytes",
+                    "max": max_bytes,
+                    "actual": size,
+                    "export_url": export_url,
+                },
+            )
+        return bytes(body)
+
+
 async def _download(
     export_url: str,
     media_type: str,
     client: httpx.AsyncClient | None,
     timeout: float,
+    max_bytes: int | None = None,
 ) -> bytes:
     """Fetch an export URL and insist on the media type it must answer with.
 
@@ -285,6 +371,8 @@ async def _download(
             through. Left open. ``None`` creates one, closed on return.
         timeout (float): Seconds the created client waits. Ignored when a
             client is injected — its own timeout applies.
+        max_bytes (int | None): Most bytes of body to accept; ``None``
+            accepts any.
 
     Returns:
         bytes: The response body.
@@ -292,27 +380,14 @@ async def _download(
     Raises:
         GoogleSheetAccessError: If the export does not answer with a
             successful response of ``media_type``.
+        SpreadsheetTooLargeError: If the body passes ``max_bytes``.
         httpx.HTTPError: If the request itself fails (timeout, DNS,
             connection refused).
     """
     if client is None:
         async with httpx.AsyncClient(timeout=timeout) as owned:
-            response: httpx.Response = await owned.get(
-                export_url, follow_redirects=True
-            )
-    else:
-        response = await client.get(export_url, follow_redirects=True)
-    content_type: str = response.headers.get("content-type", "")
-    received: str = content_type.split(";", 1)[0].strip().lower()
-    if not response.is_success or received != media_type:
-        raise GoogleSheetAccessError(
-            details={
-                "export_url": export_url,
-                "status_code": response.status_code,
-                "content_type": content_type,
-            },
-        )
-    return response.content
+            return await _receive(owned, export_url, media_type, max_bytes)
+    return await _receive(client, export_url, media_type, max_bytes)
 
 
 async def _download_csv(
@@ -447,6 +522,7 @@ async def download_google_sheet_xlsx(
     *,
     client: httpx.AsyncClient | None = None,
     timeout: float = 30.0,
+    max_bytes: int | None = DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES,
 ) -> bytes:
     """Download a public Google Sheet as one ``.xlsx`` workbook.
 
@@ -467,20 +543,27 @@ async def download_google_sheet_xlsx(
             call and closes it.
         timeout (float): Seconds the created client waits for the export.
             Ignored when ``client`` is given.
+        max_bytes (int | None): Most bytes the export may answer with; the
+            body is streamed and the transfer stops past it. Defaults to
+            :data:`DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES`; ``None``
+            removes the limit.
 
     Returns:
         bytes: The ``.xlsx`` file.
 
     Raises:
-        ValueError: If ``url`` is not a Google Sheets link.
+        ValueError: If ``url`` is not a Google Sheets link, or
+            ``max_bytes`` is zero or negative.
         GoogleSheetAccessError: If the export does not answer with a
             successful ``.xlsx`` response — the sheet does not exist or is
             not shared as *Anyone with the link*.
+        SpreadsheetTooLargeError: If the body passes ``max_bytes``.
         httpx.HTTPError: If the request itself fails.
     """
+    _check_limit("max_bytes", max_bytes)
     sheet_id, _ = _parse_sheet_link(url)
     export_url: str = _export_url(sheet_id, "xlsx", None)
-    return await _download(export_url, XLSX_MEDIA_TYPE, client, timeout)
+    return await _download(export_url, XLSX_MEDIA_TYPE, client, timeout, max_bytes)
 
 
 async def read_google_sheet_xlsx(
@@ -488,6 +571,10 @@ async def read_google_sheet_xlsx(
     *,
     client: httpx.AsyncClient | None = None,
     timeout: float = 30.0,
+    max_bytes: int | None = DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES,
+    max_rows: int | None = DEFAULT_XLSX_MAX_ROWS,
+    max_uncompressed_bytes: int | None = DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES,
+    max_compression_ratio: float | None = DEFAULT_XLSX_MAX_COMPRESSION_RATIO,
 ) -> dict[str, list[dict[str, XlsxCellValue]]]:
     """Read every tab of a public Google Sheet in one request, by tab name.
 
@@ -504,6 +591,20 @@ async def read_google_sheet_xlsx(
             by the reader. ``None`` creates and closes one.
         timeout (float): Seconds the created client waits. Ignored when
             ``client`` is given.
+        max_bytes (int | None): Most bytes the export may answer with.
+            Defaults to :data:`DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES`;
+            ``None`` removes the limit.
+        max_rows (int | None): Most data rows each tab may hold. Defaults
+            to :data:`~tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_ROWS`;
+            ``None`` removes the limit.
+        max_uncompressed_bytes (int | None): Most bytes the workbook may
+            decompress to. Defaults to
+            :data:`~tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES`;
+            ``None`` removes the limit.
+        max_compression_ratio (float | None): Highest decompressed-to-
+            compressed ratio for a part of at least 1 MiB. Defaults to
+            :data:`~tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_COMPRESSION_RATIO`;
+            ``None`` removes the limit.
 
     Returns:
         dict[str, list[dict[str, XlsxCellValue]]]: The rows of each tab, in
@@ -512,16 +613,29 @@ async def read_google_sheet_xlsx(
     Raises:
         ImportError: When the ``[spreadsheet]`` extra is not installed —
             checked before the download.
-        ValueError: If ``url`` is not a Google Sheets link.
+        ValueError: If ``url`` is not a Google Sheets link, or a limit is
+            zero or negative — both checked before the download.
         GoogleSheetAccessError: If the export does not answer with an
             ``.xlsx`` workbook, or the body it answers with does not open
             as one.
+        SpreadsheetTooLargeError: If the download or the workbook passes a
+            limit.
         httpx.HTTPError: If the request itself fails.
     """
     _require_openpyxl()
-    body: bytes = await download_google_sheet_xlsx(url, client=client, timeout=timeout)
+    _check_limit("max_rows", max_rows)
+    _check_limit("max_uncompressed_bytes", max_uncompressed_bytes)
+    _check_limit("max_compression_ratio", max_compression_ratio)
+    body: bytes = await download_google_sheet_xlsx(
+        url, client=client, timeout=timeout, max_bytes=max_bytes
+    )
     try:
-        return read_xlsx_sheets(body)
+        return read_xlsx_sheets(
+            body,
+            max_rows=max_rows,
+            max_uncompressed_bytes=max_uncompressed_bytes,
+            max_compression_ratio=max_compression_ratio,
+        )
     except InvalidSpreadsheetError as exc:
         sheet_id, _ = _parse_sheet_link(url)
         raise GoogleSheetAccessError(
@@ -533,6 +647,7 @@ async def read_google_sheet_xlsx(
 
 
 __all__: list[str] = [
+    "DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES",
     "GoogleSheetAccessError",
     "GoogleSheetRowError",
     "download_google_sheet_xlsx",

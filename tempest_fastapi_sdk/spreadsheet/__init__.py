@@ -82,6 +82,9 @@ from tempest_fastapi_sdk.spreadsheet.formats import (
     TEXT_FORMAT as TEXT_FORMAT,
 )
 from tempest_fastapi_sdk.spreadsheet.google import (
+    DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES as DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES,
+)
+from tempest_fastapi_sdk.spreadsheet.google import (
     GoogleSheetAccessError as GoogleSheetAccessError,
 )
 from tempest_fastapi_sdk.spreadsheet.google import (
@@ -103,6 +106,15 @@ from tempest_fastapi_sdk.spreadsheet.google import (
     read_google_sheet_xlsx as read_google_sheet_xlsx,
 )
 from tempest_fastapi_sdk.spreadsheet.reader import (
+    DEFAULT_XLSX_MAX_COMPRESSION_RATIO as DEFAULT_XLSX_MAX_COMPRESSION_RATIO,
+)
+from tempest_fastapi_sdk.spreadsheet.reader import (
+    DEFAULT_XLSX_MAX_ROWS as DEFAULT_XLSX_MAX_ROWS,
+)
+from tempest_fastapi_sdk.spreadsheet.reader import (
+    DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES as DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES,
+)
+from tempest_fastapi_sdk.spreadsheet.reader import (
     InvalidSpreadsheetError as InvalidSpreadsheetError,
 )
 from tempest_fastapi_sdk.spreadsheet.reader import (
@@ -110,6 +122,9 @@ from tempest_fastapi_sdk.spreadsheet.reader import (
 )
 from tempest_fastapi_sdk.spreadsheet.reader import (
     SpreadsheetRowError as SpreadsheetRowError,
+)
+from tempest_fastapi_sdk.spreadsheet.reader import (
+    SpreadsheetTooLargeError as SpreadsheetTooLargeError,
 )
 from tempest_fastapi_sdk.spreadsheet.reader import (
     XlsxCellValue as XlsxCellValue,
@@ -159,7 +174,11 @@ __all__: list[str] = [
     "BR_INTEGER_FORMAT",
     "BR_PERCENT_FORMAT",
     "BR_QUANTITY_FORMAT",
+    "DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES",
     "DEFAULT_SHEET_STYLE",
+    "DEFAULT_XLSX_MAX_COMPRESSION_RATIO",
+    "DEFAULT_XLSX_MAX_ROWS",
+    "DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES",
     "TEXT_FORMAT",
     "XLSX_MEDIA_TYPE",
     "CellValue",
@@ -171,6 +190,7 @@ __all__: list[str] = [
     "SheetStyle",
     "SheetWriter",
     "SpreadsheetRowError",
+    "SpreadsheetTooLargeError",
     "XlsxCellValue",
     "XlsxSource",
     "download_google_sheet_xlsx",
