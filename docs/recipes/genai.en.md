@@ -49,9 +49,10 @@ else:
 ```
 
 `CapacityReport` carries: `fits`, `device` (`cuda`/`mps`/`cpu`),
-`estimated_bytes` vs `available_bytes`, `headroom_pct`, `reason`, and a
+`estimated_bytes` vs `available_bytes`, `headroom_pct`, `reason`, a
 concrete `suggestion` when it doesn't fit (quantize, offload to CPU, or
-pick a smaller model).
+pick a smaller model), and `memory_measured`, which says whether the
+device's free memory was actually read (see [Without `psutil`](#without-psutil)).
 
 Without `dtype=`, `can_run` sizes the precision `TextGenerator(dtype="auto")`
 loads on the chosen device: `bfloat16` on CUDA/MPS, `float32` on CPU. Pass
@@ -133,9 +134,58 @@ print(hw.has_cuda, [g.name for g in hw.gpus])   # per-GPU VRAM when CUDA is pres
 ```
 
 `HardwareInfo` reports CPU, total/available RAM, CUDA GPUs (name +
-total/free VRAM), MPS (Apple), and free disk space. Without `psutil` or
-`torch` installed, the matching fields fall back to safe defaults (`0` /
-`False` / empty list) — nothing breaks.
+total/free VRAM), MPS (Apple), and free disk space. Without `torch`, no
+GPU shows up (`has_cuda=False`, `gpus=[]`). A reading that could not be
+taken is marked **unmeasured**, not empty: without `psutil` the RAM fields
+are `0` with `ram_measured=False`; when the disk does not answer,
+`disk_free_bytes=0` with `disk_measured=False`. The fields stay `int`, so
+arithmetic on them does not break — but check the flag before reading `0`
+as "nothing free". A snapshot built by hand (`HardwareInfo(...)`) has both
+flags `True` by default.
+
+### Without `psutil`
+
+`psutil` ships in the `[metrics]` extra, **not** in `[genai]`. Without it
+RAM is not measured, and on CPU/MPS (which are sized from RAM) the planner
+answers "could not measure", not "does not fit". Up to 0.303.1 it read the
+`0` as zero free bytes: measured in a clean venv with only the base
+package, on a host with 62 GB of RAM (`CUDA_VISIBLE_DEVICES=`, no
+`torch`), `recommend(num_params=500_000_000)` returned `fits=False` at
+`int4` with *"Model is too large for this host even quantized; use a
+smaller model or add memory."*. Now, in the same venv:
+
+```python
+from tempest_fastapi_sdk.genai import recommend
+
+report = recommend(num_params=500_000_000)
+print(report.memory_measured, report.fits, report.dtype)
+print(report.suggestion)
+```
+
+```text
+False False float32
+Install psutil (pip install 'tempest-fastapi-sdk[metrics]') so free RAM can be measured, then check again.
+```
+
+With unknown memory:
+
+- **`fits` is `False`** because nothing was verified — an `if report.fits:`
+  that decides whether to load stays conservative. Code that needs to tell
+  "does not fit" from "don't know" reads `memory_measured`.
+- **`dtype` is the native precision** (`float32` on CPU, `bfloat16` on
+  MPS), the one `TextGenerator(dtype="auto")` loads. `recommend()` does
+  not step down to `int8`/`int4`: with no number to compare against,
+  nothing justifies quantizing, and quantizing costs quality and, on CPU,
+  speed (see [On CPU](#on-cpu)).
+- **`available_bytes` and `headroom_pct` are `0`** and carry no
+  information; `reason` says RAM was not measured.
+- **On a GPU the verdict is still measured** — VRAM comes from
+  `torch`/NVML. Only the CPU offload suggestion, which depends on RAM,
+  becomes "install `psutil` to check it" instead of "the host is too
+  small".
+
+With `psutil` installed on the same host, the same `recommend()` answers
+`fits=True` at `float32`, with 53.1 GB free and 95.3% headroom.
 
 ## Estimate without downloading weights
 

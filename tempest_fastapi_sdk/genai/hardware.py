@@ -12,6 +12,11 @@ Every dependency is optional and lazily used: ``psutil`` for RAM/CPU,
 a model's parameter count without downloading its weights. Missing pieces degrade
 gracefully (no torch → ``has_cuda=False``), so the module imports without
 the ``[genai]`` extra — you only need it installed to probe real GPUs.
+
+RAM is the one reading the planner cannot do without on CPU and MPS. Without
+``psutil`` the probe reports ``ram_measured=False`` and the capacity checks
+answer "could not measure" instead of "does not fit"; ``psutil`` ships in the
+``[metrics]`` extra, not in ``[genai]``.
 """
 
 from __future__ import annotations
@@ -53,6 +58,14 @@ serves for the same model decoded ~24-27 tokens/s.
 # Inference needs more than the weights (activations, KV cache, CUDA
 # context). Scale the raw weight size by this to plan with headroom.
 _INFERENCE_OVERHEAD: float = 1.25
+
+_PSUTIL_INSTALL_HINT: str = "pip install 'tempest-fastapi-sdk[metrics]'"
+"""How to get ``psutil``, quoted in the reports when RAM could not be read.
+
+``[metrics]`` is the smallest extra that brings ``psutil`` (with
+``nvidia-ml-py``); ``[genai]`` does not, so a ``[genai]``-only install
+probes GPUs but not RAM.
+"""
 
 
 def bytes_per_param(dtype: ModelDtype) -> float:
@@ -164,20 +177,25 @@ def probe_hardware(*, cache_dir: str | None = None) -> HardwareInfo:
             directory when ``None``.
 
     Returns:
-        HardwareInfo: The current resource picture. Fields that need an
-        absent optional dependency fall back to safe defaults (``0`` /
-        ``False`` / empty).
+        HardwareInfo: The current resource picture. A reading that could
+        not be taken is reported as unmeasured, not as empty: without
+        ``psutil`` (or when it fails) ``ram_measured`` is ``False`` and the
+        RAM fields are ``0``; when the disk query raises ``OSError``,
+        ``disk_measured`` is ``False``. Without ``torch`` no GPU is
+        reported (``has_cuda=False``, ``gpus=[]``).
     """
     cpu_cores = os.cpu_count() or 1
     ram_total = 0
     ram_available = 0
+    ram_measured = False
     try:
         import psutil
 
         mem = psutil.virtual_memory()
         ram_total = int(mem.total)
         ram_available = int(mem.available)
-    except ImportError:
+        ram_measured = True
+    except Exception:
         pass
 
     has_cuda = False
@@ -210,17 +228,21 @@ def probe_hardware(*, cache_dir: str | None = None) -> HardwareInfo:
         pass
 
     disk_free = 0
+    disk_measured = False
     with contextlib.suppress(OSError):
         disk_free = int(shutil.disk_usage(cache_dir or os.getcwd()).free)
+        disk_measured = True
 
     return HardwareInfo(
         cpu_cores=cpu_cores,
         ram_total_bytes=ram_total,
         ram_available_bytes=ram_available,
+        ram_measured=ram_measured,
         has_cuda=has_cuda,
         gpus=gpus,
         has_mps=has_mps,
         disk_free_bytes=disk_free,
+        disk_measured=disk_measured,
     )
 
 
@@ -252,7 +274,7 @@ def fetch_num_params(model_id: str, *, token: str | None = None) -> int | None:
     return None
 
 
-def _device_capacity(hardware: HardwareInfo, device: str) -> int:
+def _device_capacity(hardware: HardwareInfo, device: str) -> int | None:
     """Return the available bytes on ``device`` for ``hardware``.
 
     Both ``mps`` and ``cpu`` report system RAM: Apple's unified memory means
@@ -263,10 +285,15 @@ def _device_capacity(hardware: HardwareInfo, device: str) -> int:
         device (str): The device to size.
 
     Returns:
-        int: Available bytes on that device.
+        int | None: Available bytes on that device, or ``None`` when the
+        device is sized from system RAM and RAM was not measured
+        (``hardware.ram_measured`` is ``False``). ``None`` is "unknown",
+        never "zero free".
     """
     if device == "cuda" and hardware.gpus:
         return max(gpu.vram_free_bytes for gpu in hardware.gpus)
+    if not hardware.ram_measured:
+        return None
     return hardware.ram_available_bytes
 
 
@@ -331,7 +358,11 @@ def can_run(
 
     Returns:
         CapacityReport: The verdict, chosen device, estimate vs available,
-        headroom and a suggestion when it doesn't fit.
+        headroom and a suggestion when it doesn't fit. When the free memory
+        of the device could not be measured (CPU or MPS without
+        ``psutil``), ``memory_measured`` is ``False``, ``fits`` is
+        ``False`` because nothing was verified, and the suggestion is to
+        install ``psutil`` — not to shrink the model.
 
     Raises:
         ValueError: When neither ``num_params`` nor a resolvable
@@ -351,6 +382,25 @@ def can_run(
     planned = dtype if dtype is not None else _native_dtype(chosen)
     estimated = estimate_model_bytes(params, planned)
     available = _device_capacity(hw, chosen)
+    if available is None:
+        return CapacityReport(
+            fits=False,
+            device=chosen,
+            dtype=planned,
+            estimated_bytes=estimated,
+            available_bytes=0,
+            headroom_pct=0.0,
+            reason=(
+                f"~{estimated / 1e9:.1f} GB needed at {planned.value}; free "
+                f"RAM on {chosen} could not be measured (psutil missing or "
+                "failed), so the fit is unknown, not negative."
+            ),
+            suggestion=(
+                f"Install psutil ({_PSUTIL_INSTALL_HINT}) so free RAM can be "
+                "measured, then check again."
+            ),
+            memory_measured=False,
+        )
     fits = estimated <= available
     headroom = ((available - estimated) / available * 100) if available else -100.0
 
@@ -403,7 +453,7 @@ def _suggest(
         str: The suggested next step.
     """
     order = [_native_dtype(device), ModelDtype.INT8, ModelDtype.INT4]
-    available = _device_capacity(hardware, device)
+    available = _device_capacity(hardware, device) or 0
     for candidate in order:
         if bytes_per_param(candidate) >= bytes_per_param(dtype):
             continue
@@ -416,6 +466,12 @@ def _suggest(
             if device == "cpu" and candidate in (ModelDtype.INT8, ModelDtype.INT4):
                 suggestion += _CPU_QUANTIZATION_NOTE
             return suggestion
+    if device == "cuda" and not hardware.ram_measured:
+        return (
+            "Model does not fit this GPU even at int4; free RAM could not be "
+            f"measured, so a CPU offload is unchecked — install psutil "
+            f"({_PSUTIL_INSTALL_HINT}) to check it, or use a smaller model."
+        )
     if (
         device == "cuda"
         and estimate_model_bytes(num_params, ModelDtype.INT4)
@@ -453,7 +509,11 @@ def recommend(
         token (str | None): Hub token for the lookup.
 
     Returns:
-        CapacityReport: The recommended configuration.
+        CapacityReport: The recommended configuration. When the free memory
+        of the device could not be measured (``memory_measured=False``), it
+        is the report at the native precision: the ladder needs a number to
+        step down from, and stepping to ``int4`` on an unknown would
+        recommend a slower, lossier load for nothing.
 
     Raises:
         ValueError: When neither ``num_params`` nor a resolvable
@@ -472,7 +532,7 @@ def recommend(
     report = None
     for dtype in (native, ModelDtype.INT8, ModelDtype.INT4):
         report = can_run(num_params=params, dtype=dtype, hardware=hw)
-        if report.fits:
+        if report.fits or not report.memory_measured:
             return report
     assert report is not None
     return report

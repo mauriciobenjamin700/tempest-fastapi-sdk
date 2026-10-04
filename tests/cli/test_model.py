@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -196,6 +197,16 @@ class TestHardware:
         assert result.exit_code == 0, result.stdout
         assert "cpu cores" in result.stdout
         assert "energy measurement" in result.stdout
+
+    def test_unmeasured_ram_prints_unknown_not_zero(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(sys.modules, "psutil", None)
+
+        result = runner.invoke(app, ["model", "hardware"], env=_WIDE_TERM)
+
+        assert result.exit_code == 0, result.stdout
+        assert "ram total  : unknown (install psutil" in result.stdout
 
     def test_json_output_lists_both_samplers(self) -> None:
         result = runner.invoke(app, ["model", "hardware", "--json"])

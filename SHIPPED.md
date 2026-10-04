@@ -612,7 +612,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `[genai-quant]` = bitsandbytes) — `tempest_fastapi_sdk.genai`, delivered
   in slices. **Shipped (v0.96):** hardware capacity check — `probe_hardware`
   → `HardwareInfo` (CPU/RAM/CUDA-VRAM/MPS/disk, degrades without
-  psutil/torch), `can_run`/`recommend` → `CapacityReport` (fits? device,
+  psutil/torch; since the fix after v0.303.1 an unread RAM/disk is flagged
+  `ram_measured`/`disk_measured=False` instead of passing as `0` free, and
+  `CapacityReport.memory_measured=False` answers "install psutil
+  (`[metrics]`)", not "add memory"), `can_run`/`recommend` → `CapacityReport` (fits? device,
   estimate vs available, suggestion to quantize/offload; since v0.303.1 an unquantized load is sized at the precision
   `TextGenerator(dtype="auto")` loads — `float32` on CPU, not `bfloat16`,
   measured RSS in `docs/recipes/genai.md#em-cpu`), `estimate_model_bytes`/

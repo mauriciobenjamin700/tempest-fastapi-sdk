@@ -50,41 +50,74 @@ class GPUInfo(BaseSchema):
 class HardwareInfo(BaseSchema):
     """A snapshot of the host's compute resources.
 
+    A byte field that could not be read stays ``0`` so arithmetic on it
+    keeps working, and its ``*_measured`` flag turns ``False``: read the
+    flag before treating ``0`` as "nothing free". Both flags default to
+    ``True``, so a snapshot built by hand (tests, a cached probe) means
+    what its numbers say.
+
     Attributes:
         cpu_cores (int): Logical CPU cores.
-        ram_total_bytes (int): Total system RAM.
-        ram_available_bytes (int): Currently available system RAM.
+        ram_total_bytes (int): Total system RAM; ``0`` when
+            ``ram_measured`` is ``False``.
+        ram_available_bytes (int): Currently available system RAM; ``0``
+            when ``ram_measured`` is ``False``.
+        ram_measured (bool): Whether the two RAM fields were read.
+            :func:`~tempest_fastapi_sdk.genai.probe_hardware` sets it to
+            ``False`` when ``psutil`` is not installed (it ships in the
+            ``[metrics]`` extra) or fails to read memory.
         has_cuda (bool): Whether a CUDA GPU is usable via torch.
         gpus (list[GPUInfo]): Per-CUDA-device memory (empty without CUDA).
         has_mps (bool): Whether Apple Metal (MPS) is available.
-        disk_free_bytes (int): Free space on the model cache filesystem.
+        disk_free_bytes (int): Free space on the model cache filesystem;
+            ``0`` when ``disk_measured`` is ``False``.
+        disk_measured (bool): Whether ``disk_free_bytes`` was read.
+            ``False`` when the filesystem query raised ``OSError`` (e.g.
+            the directory does not exist).
     """
 
     cpu_cores: int
     ram_total_bytes: int
     ram_available_bytes: int
+    ram_measured: bool = True
     has_cuda: bool = False
     gpus: list[GPUInfo] = Field(default_factory=list)
     has_mps: bool = False
     disk_free_bytes: int = 0
+    disk_measured: bool = True
 
 
 class CapacityReport(BaseSchema):
     """The verdict of whether the host can run a given model.
 
+    When the memory of ``device`` could not be measured
+    (``memory_measured=False``, e.g. CPU without ``psutil``), the verdict
+    is unknown rather than negative: ``fits`` is ``False`` because nothing
+    was verified, ``available_bytes`` and ``headroom_pct`` are ``0`` and
+    carry no information, and ``reason``/``suggestion`` say what to
+    install to measure it.
+
     Attributes:
         fits (bool): Whether the model is expected to fit on ``device``.
+            Only ``True`` when the free memory was measured and covers the
+            estimate.
         device (str): The chosen device — ``"cuda"``, ``"mps"`` or
             ``"cpu"``.
         dtype (ModelDtype): The precision the estimate assumes.
         estimated_bytes (int): Estimated memory the model needs (weights +
             inference overhead).
-        available_bytes (int): Memory available on ``device``.
+        available_bytes (int): Memory available on ``device``; ``0`` when
+            ``memory_measured`` is ``False``.
         headroom_pct (float): ``(available - estimated) / available * 100``;
-            negative when it doesn't fit.
+            negative when it doesn't fit, ``0.0`` when ``memory_measured``
+            is ``False``.
         reason (str): Human-readable explanation of the verdict.
         suggestion (str | None): A concrete next step when it doesn't fit
-            (e.g. quantize, offload to CPU), or ``None`` when it fits.
+            (e.g. quantize, offload to CPU) or when the memory could not be
+            measured, or ``None`` when it fits.
+        memory_measured (bool): Whether the free memory of ``device`` was
+            read. ``False`` means the report is a "could not check", not a
+            "does not fit".
     """
 
     fits: bool
@@ -95,6 +128,7 @@ class CapacityReport(BaseSchema):
     headroom_pct: float
     reason: str
     suggestion: str | None = None
+    memory_measured: bool = True
 
 
 class GenerationConfig(BaseSchema):

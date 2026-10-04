@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **RAM desconhecida virava "sem memória livre".** Sem `psutil` (que vem
+  no `[metrics]`, não no `[genai]`), o `probe_hardware()` reportava
+  `ram_available_bytes=0` e o planejador lia isso como zero byte livre.
+  Medido na 0.303.1 numa venv limpa só com o pacote base, máquina de 62 GB,
+  `CUDA_VISIBLE_DEVICES=`: `recommend(num_params=500_000_000)` devolvia
+  `fits=False` em `int4`, `headroom_pct=-100.0` e *"use a smaller model or
+  add memory"*. Agora, na mesma venv, devolve `memory_measured=False`,
+  `dtype=float32` (a precisão nativa, sem descer a escada de quantização),
+  `headroom_pct=0.0` e a sugestão de instalar o `psutil`
+  (`tempest-fastapi-sdk[metrics]`); com o `psutil` instalado, `fits=True` em
+  `float32` com 53,1 GB livres. `fits` continua `False` quando nada foi
+  verificado, para um `if report.fits:` seguir conservador.
+- Campos novos, todos `bool` com default `True` (sem quebra de tipo — os
+  campos de bytes continuam `int`): `HardwareInfo.ram_measured`,
+  `HardwareInfo.disk_measured` (o `disk_free_bytes` também virava `0` quando
+  o `shutil.disk_usage` levantava `OSError`) e
+  `CapacityReport.memory_measured`. Em GPU o veredito segue medido pela
+  VRAM; só a sugestão de offload para CPU, que depende da RAM, vira
+  "instale o `psutil` para checar" em vez de "o host é pequeno demais".
+- `tempest model hardware` imprime `ram total  : unknown (install psutil:
+  ...)` em vez de `0.0 GB` quando a RAM não foi medida.
+
 ## [0.303.1] — 2026-10-04
 
 O planejador de hardware passa a dimensionar CPU na precisão que o gerador

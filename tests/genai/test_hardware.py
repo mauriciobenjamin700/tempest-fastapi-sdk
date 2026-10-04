@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pytest
 
 from tempest_fastapi_sdk.genai import (
@@ -212,3 +215,164 @@ class TestCpuPlansTheLoadedPrecision:
             report = can_run(num_params=QWEN_0_5B_PARAMS, hardware=hardware)
 
             assert auto_dtype_name(report.device) == report.dtype
+
+
+def _cpu_without_ram_reading() -> HardwareInfo:
+    """Build the CPU-only snapshot ``probe_hardware`` returns without psutil.
+
+    Returns:
+        HardwareInfo: A host whose RAM was not measured.
+    """
+    return HardwareInfo(
+        cpu_cores=12,
+        ram_total_bytes=0,
+        ram_available_bytes=0,
+        ram_measured=False,
+    )
+
+
+def _gpu_without_ram_reading(free_gb: float) -> HardwareInfo:
+    """Build a CUDA snapshot whose VRAM was read and whose RAM was not.
+
+    Args:
+        free_gb (float): Free VRAM in GB (10**9 bytes).
+
+    Returns:
+        HardwareInfo: A CUDA host without a RAM reading.
+    """
+    return _gpu(free_gb=free_gb).model_copy(
+        update={
+            "ram_total_bytes": 0,
+            "ram_available_bytes": 0,
+            "ram_measured": False,
+        }
+    )
+
+
+class TestUnknownMemoryIsNotZero:
+    """RAM that could not be read is "unknown", never "nothing free".
+
+    The shipped defect (v0.303.1, clean venv with only the base package):
+    ``probe_hardware()`` reported ``ram_available_bytes=0`` and
+    ``recommend(num_params=0.5e9)`` answered ``fits=False`` at ``int4`` with
+    "Model is too large for this host even quantized; use a smaller model or
+    add memory." on a host with 62 GB of RAM.
+    """
+
+    def test_probe_marks_ram_unmeasured_without_psutil(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(sys.modules, "psutil", None)
+
+        info = probe_hardware()
+
+        assert info.ram_measured is False
+        assert info.ram_total_bytes == 0
+        assert info.ram_available_bytes == 0
+
+    def test_probe_marks_ram_measured_with_psutil(self) -> None:
+        pytest.importorskip("psutil")
+
+        info = probe_hardware()
+
+        assert info.ram_measured is True
+        assert info.ram_total_bytes > 0
+
+    def test_probe_marks_disk_unmeasured_when_the_query_fails(
+        self, tmp_path: Path
+    ) -> None:
+        info = probe_hardware(cache_dir=str(tmp_path / "missing"))
+
+        assert info.disk_measured is False
+        assert info.disk_free_bytes == 0
+
+    def test_probe_marks_disk_measured(self, tmp_path: Path) -> None:
+        info = probe_hardware(cache_dir=str(tmp_path))
+
+        assert info.disk_measured is True
+        assert info.disk_free_bytes > 0
+
+    def test_hand_built_snapshot_counts_as_measured(self) -> None:
+        info = _cpu_only()
+
+        assert info.ram_measured is True
+        assert info.disk_measured is True
+
+    def test_can_run_reports_unknown_instead_of_add_memory(self) -> None:
+        report = can_run(num_params=500_000_000, hardware=_cpu_without_ram_reading())
+
+        assert report.memory_measured is False
+        assert report.fits is False
+        assert report.dtype == ModelDtype.FLOAT32
+        assert report.available_bytes == 0
+        assert report.headroom_pct == 0.0
+        assert "could not be measured" in report.reason
+        assert report.suggestion is not None
+        assert "psutil" in report.suggestion
+        assert "[metrics]" in report.suggestion
+        assert "add memory" not in report.suggestion
+        assert "smaller model" not in report.suggestion
+
+    def test_recommend_keeps_the_native_precision_when_ram_is_unknown(
+        self,
+    ) -> None:
+        report = recommend(num_params=500_000_000, hardware=_cpu_without_ram_reading())
+
+        assert report.memory_measured is False
+        assert report.device == "cpu"
+        assert report.dtype == ModelDtype.FLOAT32
+        assert report.estimated_bytes == estimate_model_bytes(
+            500_000_000, ModelDtype.FLOAT32
+        )
+
+    def test_mps_is_sized_from_ram_so_it_is_unknown_too(self) -> None:
+        hardware = _cpu_without_ram_reading().model_copy(update={"has_mps": True})
+
+        report = recommend(num_params=500_000_000, hardware=hardware)
+
+        assert report.memory_measured is False
+        assert report.device == "mps"
+        assert report.dtype == ModelDtype.BFLOAT16
+
+    def test_recommend_without_psutil_end_to_end(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(sys.modules, "psutil", None)
+        monkeypatch.setitem(sys.modules, "torch", None)
+
+        report = recommend(num_params=500_000_000)
+
+        assert report.memory_measured is False
+        assert report.device == "cpu"
+        assert report.dtype == ModelDtype.FLOAT32
+        assert "add memory" not in (report.suggestion or "")
+
+    def test_measured_report_keeps_memory_measured_true(self) -> None:
+        report = can_run(num_params=500_000_000, hardware=_cpu_with(8.0))
+
+        assert report.memory_measured is True
+        assert report.fits is True
+
+    def test_gpu_verdict_is_still_measured_when_only_ram_is_unknown(self) -> None:
+        report = can_run(
+            num_params=7_000_000_000, hardware=_gpu_without_ram_reading(24.0)
+        )
+
+        assert report.memory_measured is True
+        assert report.device == "cuda"
+        assert report.fits is True
+
+    def test_gpu_overflow_does_not_call_the_host_too_small_when_ram_is_unknown(
+        self,
+    ) -> None:
+        report = can_run(
+            num_params=70_000_000_000,
+            dtype=ModelDtype.INT4,
+            hardware=_gpu_without_ram_reading(2.0),
+        )
+
+        assert report.memory_measured is True
+        assert report.fits is False
+        assert report.suggestion is not None
+        assert "psutil" in report.suggestion
+        assert "add memory" not in report.suggestion
