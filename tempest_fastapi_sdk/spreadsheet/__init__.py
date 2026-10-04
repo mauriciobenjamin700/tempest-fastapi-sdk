@@ -34,14 +34,22 @@ Three writing pieces, each usable on its own:
     writer.apply_widths()
     data = workbook_to_bytes(workbook)
 
-Reading goes the other way: :mod:`~tempest_fastapi_sdk.spreadsheet.google`
-reads one tab of a Google Sheet shared as *Anyone with the link* —
-:func:`read_google_sheet` for ``dict`` rows, :func:`read_google_sheet_as` to
-validate each row into a Pydantic model. It runs on ``httpx`` and the
-standard ``csv`` module only, so it needs no extra.
+Reading goes the other way:
 
-Writing needs the ``[spreadsheet]`` extra (``openpyxl``); the engine is
-imported at first use, so importing this package without it still works.
+* :mod:`~tempest_fastapi_sdk.spreadsheet.reader` reads an ``.xlsx`` — an
+  upload, a file, a downloaded export — one tab (:func:`read_xlsx`,
+  :func:`read_xlsx_as`) or all of them (:func:`read_xlsx_sheets`), cells
+  typed as the file stores them.
+* :mod:`~tempest_fastapi_sdk.spreadsheet.google` reads a Google Sheet
+  shared as *Anyone with the link*: one tab as CSV
+  (:func:`read_google_sheet`, :func:`read_google_sheet_as`), which runs on
+  ``httpx`` and the standard ``csv`` module only and needs no extra, or
+  the whole workbook as ``.xlsx`` (:func:`read_google_sheet_xlsx`,
+  :func:`download_google_sheet_xlsx`).
+
+Writing and reading ``.xlsx`` need the ``[spreadsheet]`` extra
+(``openpyxl``); the engine is imported at first use, so importing this
+package without it still works.
 
 Re-exports use the PEP 484 ``from x import Y as Y`` explicit re-export form
 combined with ``__all__`` so every type-checker accepts
@@ -80,6 +88,9 @@ from tempest_fastapi_sdk.spreadsheet.google import (
     GoogleSheetRowError as GoogleSheetRowError,
 )
 from tempest_fastapi_sdk.spreadsheet.google import (
+    download_google_sheet_xlsx as download_google_sheet_xlsx,
+)
+from tempest_fastapi_sdk.spreadsheet.google import (
     google_sheet_export_url as google_sheet_export_url,
 )
 from tempest_fastapi_sdk.spreadsheet.google import (
@@ -87,6 +98,33 @@ from tempest_fastapi_sdk.spreadsheet.google import (
 )
 from tempest_fastapi_sdk.spreadsheet.google import (
     read_google_sheet_as as read_google_sheet_as,
+)
+from tempest_fastapi_sdk.spreadsheet.google import (
+    read_google_sheet_xlsx as read_google_sheet_xlsx,
+)
+from tempest_fastapi_sdk.spreadsheet.reader import (
+    InvalidSpreadsheetError as InvalidSpreadsheetError,
+)
+from tempest_fastapi_sdk.spreadsheet.reader import (
+    SheetNotFoundError as SheetNotFoundError,
+)
+from tempest_fastapi_sdk.spreadsheet.reader import (
+    SpreadsheetRowError as SpreadsheetRowError,
+)
+from tempest_fastapi_sdk.spreadsheet.reader import (
+    XlsxCellValue as XlsxCellValue,
+)
+from tempest_fastapi_sdk.spreadsheet.reader import (
+    XlsxSource as XlsxSource,
+)
+from tempest_fastapi_sdk.spreadsheet.reader import (
+    read_xlsx as read_xlsx,
+)
+from tempest_fastapi_sdk.spreadsheet.reader import (
+    read_xlsx_as as read_xlsx_as,
+)
+from tempest_fastapi_sdk.spreadsheet.reader import (
+    read_xlsx_sheets as read_xlsx_sheets,
 )
 from tempest_fastapi_sdk.spreadsheet.styles import (
     DEFAULT_SHEET_STYLE as DEFAULT_SHEET_STYLE,
@@ -128,11 +166,21 @@ __all__: list[str] = [
     "Column",
     "GoogleSheetAccessError",
     "GoogleSheetRowError",
+    "InvalidSpreadsheetError",
+    "SheetNotFoundError",
     "SheetStyle",
     "SheetWriter",
+    "SpreadsheetRowError",
+    "XlsxCellValue",
+    "XlsxSource",
+    "download_google_sheet_xlsx",
     "google_sheet_export_url",
     "new_workbook",
     "read_google_sheet",
     "read_google_sheet_as",
+    "read_google_sheet_xlsx",
+    "read_xlsx",
+    "read_xlsx_as",
+    "read_xlsx_sheets",
     "workbook_to_bytes",
 ]
