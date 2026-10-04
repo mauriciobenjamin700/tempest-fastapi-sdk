@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Leitura de `.xlsx`:** `read_xlsx`, `read_xlsx_as` e `read_xlsx_sheets` em
+  `tempest_fastapi_sdk.spreadsheet` (extra `[spreadsheet]`, sem dependência
+  nova). Leem `bytes`, caminho ou arquivo binário (o `UploadFile.file` serve),
+  uma aba por nome ou posição ou todas pelo nome, cada linha um `dict` pelo
+  cabeçalho e cada célula com o tipo que o arquivo guarda (`XlsxCellValue`:
+  número, `datetime`, `time`, `bool`, `str`, `None`). As regras de linha são
+  as do leitor de CSV, agora num helper só: cabeçalho na linha 1, linha em
+  branco pulada sem alterar a numeração, `omit_blank`. Erros tipados, todos
+  `422`: `InvalidSpreadsheetError` (`SPREADSHEET_INVALID`, arquivo que não é
+  `.xlsx`), `SheetNotFoundError` (`SPREADSHEET_SHEET_NOT_FOUND`, com as abas
+  existentes em `details["available"]`) e `SpreadsheetRowError`
+  (`SPREADSHEET_ROW_INVALID`, `details["row"]` + `details["sheet"]`).
+  `GoogleSheetRowError` passa a ser subclasse de `SpreadsheetRowError`.
+- **Pasta inteira do Google Sheets numa requisição:**
+  `download_google_sheet_xlsx` (bytes do `.xlsx`, sem extra) e
+  `read_google_sheet_xlsx` (todas as abas pelo nome; confere o extra antes do
+  download). Mesmas garantias do caminho CSV: redirect seguido por
+  requisição, cliente injetado nunca fechado, e resposta que não é o media
+  type do `.xlsx` vira `GoogleSheetAccessError`. Medido em 2026-10-04 com
+  planilhas públicas: o export `.xlsx` responde `307` e depois o media type
+  do `.xlsx`; ID inexistente responde `404` `text/html`; com `gid` na URL o
+  export devolve **só aquela aba** (por isso o `gid` do link é descartado); o
+  Google grava o resultado de toda fórmula.
+
+### Changed
+
+- A mensagem de `GoogleSheetAccessError` (`GOOGLE_SHEET_UNAVAILABLE`) deixa
+  de dizer "as CSV" — a mesma exceção cobre agora o caminho `.xlsx`. O
+  `code` e o status não mudam.
+
 ## [0.303.2] — 2026-10-04
 
 Três defeitos achados ao medir agente e planejador em CPU: resposta vazia

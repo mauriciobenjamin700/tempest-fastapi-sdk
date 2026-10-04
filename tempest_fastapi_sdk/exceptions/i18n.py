@@ -511,10 +511,15 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
             "Este processo não roda sob WSL: o 'wslpath' não foi encontrado"
         ),
         "GOOGLE_SHEET_UNAVAILABLE": (
-            "Não foi possível ler a planilha do Google como CSV — confira o "
-            "link e compartilhe como 'qualquer pessoa com o link'"
+            "Não foi possível baixar a planilha do Google — confira o link e "
+            "compartilhe como 'qualquer pessoa com o link'"
         ),
         "GOOGLE_SHEET_ROW_INVALID": "A linha {row} da planilha não passou na validação",
+        "SPREADSHEET_INVALID": "O arquivo não é uma planilha .xlsx válida",
+        "SPREADSHEET_SHEET_NOT_FOUND": "A planilha não tem a aba '{sheet}'",
+        "SPREADSHEET_ROW_INVALID": (
+            "A linha {row} da aba '{sheet}' não passou na validação"
+        ),
         "PDF_DECRYPT_FAILED": "PDF protegido por senha — informe a senha correta",
         "PDF_EXTRACT_FAILED": "Não foi possível extrair o conteúdo do PDF",
         "PDF_PAGE_EXTRACT_FAILED": "Não foi possível extrair a página {page} do PDF",
@@ -598,10 +603,13 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
             "This process is not running under WSL: 'wslpath' was not found"
         ),
         "GOOGLE_SHEET_UNAVAILABLE": (
-            "Could not read the Google Sheet as CSV — check the link and "
-            "share the sheet as 'Anyone with the link'"
+            "Could not download the Google Sheet — check the link and share "
+            "the sheet as 'Anyone with the link'"
         ),
         "GOOGLE_SHEET_ROW_INVALID": "Row {row} of the spreadsheet failed validation",
+        "SPREADSHEET_INVALID": "The file is not a valid .xlsx spreadsheet",
+        "SPREADSHEET_SHEET_NOT_FOUND": "The spreadsheet has no sheet '{sheet}'",
+        "SPREADSHEET_ROW_INVALID": "Row {row} of sheet '{sheet}' failed validation",
         "PDF_DECRYPT_FAILED": "PDF is password protected — provide the password",
         "PDF_EXTRACT_FAILED": "Could not extract the PDF's content",
         "PDF_PAGE_EXTRACT_FAILED": "Could not extract page {page} of the PDF",

@@ -22,7 +22,9 @@ Assembling by hand costs three things, always the same three:
 `tempest_fastapi_sdk.spreadsheet` fixes all three: a row cursor, columns
 declared once, and masks pinned to pt-BR.
 
-And the other way round, to read the sheet someone keeps in Google, see
+And the other way round, to read a spreadsheet — the `.xlsx` a user
+uploads, or the sheet someone keeps in Google — see
+[Reading an `.xlsx` file](#reading-an-xlsx-file) and
 [Reading a Google Sheet](#reading-a-google-sheet).
 
 !!! info "Extra required"
@@ -526,7 +528,7 @@ Its `details` keep what actually came back:
 
 ```json
 {
-  "detail": "The Google Sheet could not be read as CSV. Check the link and share the sheet as 'Anyone with the link'.",
+  "detail": "The Google Sheet could not be downloaded. Check the link and share the sheet as 'Anyone with the link'.",
   "code": "GOOGLE_SHEET_UNAVAILABLE",
   "details": {
     "export_url": "https://docs.google.com/spreadsheets/d/<unknown-id>/export?format=csv",
@@ -557,12 +559,407 @@ route they become the SDK's error envelope with no `try` at all; with a
     (tunable through `timeout=`) and closes it when done. A network failure
     (timeout, DNS) surfaces as `httpx.HTTPError`.
 
-??? note "Why CSV only"
-    The CSV export carries **one tab** and no formatting — exactly what a
-    data read wants. The same endpoint also answers `format=xlsx` (the
-    whole workbook), and `google_sheet_export_url` builds that URL with
-    `export_format="xlsx"`; reading the downloaded `.xlsx` is not part of
-    this API yet.
+??? note "CSV or .xlsx?"
+    CSV brings **one tab** per request, picked by `gid`, and each cell as
+    **text formatted** by the sheet's locale (`"1.234,56"`, `"04/10/2026"`).
+    It runs with no extra at all. `.xlsx` brings **the whole workbook** in
+    one request, tabs by name, and each cell with the **type** the sheet
+    stores (number, date, boolean). It needs `[spreadsheet]`. For one tab of
+    plain text, CSV is enough; for several tabs, or for amount and date
+    columns, see
+    [The whole Google workbook in one request](#the-whole-google-workbook-in-one-request).
+
+## Reading an `.xlsx` file
+
+The most common way a spreadsheet reaches a service is not Google: it is a
+user uploading an `.xlsx` to an import endpoint. And the version written by
+hand with `openpyxl` trips over the same spots every time:
+
+* **The blank row.** The user leaves an empty row in the middle. Skipping
+  it is easy; the hard part is still reporting the error with the number
+  the sheet shows on its side, not the list index.
+* **The file that is not a spreadsheet.** A CSV renamed to `.xlsx`, an
+  empty upload. `openpyxl` raises `BadZipFile` or `KeyError`, and the
+  endpoint answers `500`.
+* **The tab that does not exist.** Asking for `workbook["Vendas"]` in a
+  workbook whose tab is called `Planilha1` is another `KeyError`, another
+  `500`.
+
+`read_xlsx_as` reads one tab, validates each row into a Pydantic model and
+turns those three cases into typed errors.
+
+!!! info "Extra required"
+    Reading `.xlsx` uses the `openpyxl` of the `[spreadsheet]` extra.
+    Without it the module still imports, and the call raises `ImportError`
+    naming the extra to install.
+
+### The code
+
+The example builds the spreadsheet with `SheetWriter` itself (so it runs
+without any file) and reads it back:
+
+```python
+# scripts/sales.py
+
+from datetime import date
+from decimal import Decimal
+
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk.spreadsheet import (
+    BR_CURRENCY_FORMAT,
+    BR_DATE_FORMAT,
+    Column,
+    SheetWriter,
+    new_workbook,
+    read_xlsx_as,
+    workbook_to_bytes,
+)
+
+
+class Sale(BaseModel):
+    """One row of the Vendas tab."""
+
+    data: date
+    produto: str
+    quantidade: int
+    total: Decimal
+    pago: bool
+
+
+def build_spreadsheet() -> bytes:
+    """Build the spreadsheet a user would upload."""
+    workbook = new_workbook("Vendas")
+    writer = SheetWriter(
+        workbook["Vendas"],
+        columns=[
+            Column("data", number_format=BR_DATE_FORMAT),
+            Column("produto"),
+            Column("quantidade"),
+            Column("total", number_format=BR_CURRENCY_FORMAT),
+            Column("pago"),
+        ],
+    )
+    writer.header_row()
+    writer.write_row([date(2026, 10, 1), "Café", 2, Decimal("10.50"), True])
+    writer.blank_rows()
+    writer.write_row([date(2026, 10, 2), "Bolo", 1, Decimal("7.00"), False])
+    return workbook_to_bytes(workbook)
+
+
+def main() -> None:
+    """Read the Vendas tab and print each sale."""
+    sales: list[Sale] = read_xlsx_as(build_spreadsheet(), Sale, sheet="Vendas")
+    for sale in sales:
+        print(sale.data, sale.produto, sale.quantidade, sale.total, sale.pago)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+Running it (real output):
+
+```text
+2026-10-01 Café 2 10.5 True
+2026-10-02 Bolo 1 7 False
+```
+
+And the import endpoint is the same `read_xlsx_as`, fed the upload's bytes:
+
+```python
+# app/main.py
+
+from datetime import date
+from decimal import Decimal
+
+from fastapi import FastAPI, UploadFile
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk import register_exception_handlers
+from tempest_fastapi_sdk.spreadsheet import read_xlsx_as
+
+
+class Sale(BaseModel):
+    """One row of the Vendas tab."""
+
+    data: date
+    produto: str
+    quantidade: int
+    total: Decimal
+    pago: bool
+
+
+app: FastAPI = FastAPI()
+register_exception_handlers(app)
+
+
+@app.post("/sales/import")
+async def import_sales(upload: UploadFile) -> list[Sale]:
+    """Validate the uploaded spreadsheet and return the sales read."""
+    content: bytes = await upload.read()
+    return read_xlsx_as(content, Sale, sheet="Vendas")
+```
+
+### Piece by piece
+
+**The source.** `read_xlsx_as` takes `bytes` (the upload's
+`await upload.read()`, an HTTP response body), a path (`str` or `Path`), or
+an open binary file — `UploadFile.file` works too.
+
+**The tab.** `sheet=` takes the tab's **name** or its **position** (from
+`0`; negative works). Without `sheet=`, the first tab is read. The name is
+compared as is: a tab shown as `Setembro` may be called `"Setembro "`, with
+a trailing space — `SheetNotFoundError` lists the real names in
+`details["available"]`.
+
+**The cell type.** This is the difference from CSV: a cell arrives with
+the **value** the sheet stores, not the text it shows. That is why
+`total: Decimal` and `data: date` validate directly, with no `R$` or
+`dd/mm/yyyy` to undo. What arrives, measured on the `.xlsx` export of a
+public Google Sheet with 16 tabs:
+
+| In the sheet | Arrives as |
+| --- | --- |
+| number (currency included) | `int` or `float` — `30.0` and `50` in the same column |
+| percentage `40%` | `float` holding the **ratio**: `0.4` |
+| date `02/04/2025` | `datetime(2025, 4, 2, 0, 0)` |
+| time | `datetime.time` |
+| boolean | `bool` |
+| text | `str`, with whatever spaces it has |
+| empty cell | `None` |
+
+Two consequences for the schema. Declare a number as `float` or
+`Decimal`, not `int`: the export writes `30.0` and `50` in the same column
+(an `int` field accepts `30.0` but refuses `30.5`). And a column that mixes
+numbers and text, like a size `41` or `X`, becomes `str | int`: `.xlsx`
+hands over `41.0` (a float), which a `str` field refuses — the CSV schema is
+not portable without that tweak.
+
+**Formulas.** What counts is the result **stored** in the file. The Google
+export stores the result of every formula: of the 1,429 formulas in the
+measured sheet, the 975 that arrived as `None` were all `IF(...; ""; ...)`
+with an empty result. A file written by `openpyxl` (`SheetWriter`
+included) stores **no** result, so its formulas arrive as `None` until
+someone opens and saves the file in Excel or LibreOffice.
+
+**Rows and header.** The rules are CSV's, because the code is the same:
+
+* row 1 is the header, and a name counts as written (`" NOME"` with the
+  space);
+* an empty header cell becomes the key `""`, and a repeated name keeps the
+  **last** column's value;
+* a blank row is skipped, but still counts toward the numbering;
+* a row shorter than the header is padded with `None`; a cell past the
+  header's last column is ignored;
+* a merged cell keeps its value in the top-left corner only — the other
+  cells of the range arrive as `None`.
+
+!!! warning "A space is not a blank row"
+    Only `None` and `""` count as empty; `0` and `False` are values. A
+    formula answering `" "` (one space) keeps the row: in the measured
+    sheet, 884 rows of one tab were just that. If your sheet has that
+    pattern, filter out the rows missing the required field before using
+    them — or let the schema's `missing` point at the first one.
+
+**The error.** The three cases from the top become `AppException`s with
+status `422`, and inside a route they become the SDK's error envelope. The
+real answer of the endpoint above, for each:
+
+A CSV sent as `.xlsx`:
+
+```json
+{
+  "detail": "The file is not a valid .xlsx spreadsheet.",
+  "code": "SPREADSHEET_INVALID",
+  "details": {"reason": "File is not a zip file"}
+}
+```
+
+A workbook without the `Vendas` tab:
+
+```json
+{
+  "detail": "The spreadsheet has no sheet 'Vendas'.",
+  "code": "SPREADSHEET_SHEET_NOT_FOUND",
+  "details": {"sheet": "Vendas", "available": ["Planilha1"]}
+}
+```
+
+A date typed as text (`"01/10/2026"`) on row 2:
+
+```json
+{
+  "detail": "Row 2 of sheet 'Vendas' failed validation.",
+  "code": "SPREADSHEET_ROW_INVALID",
+  "details": {
+    "row": 2,
+    "sheet": "Vendas",
+    "errors": [
+      {
+        "type": "date_from_datetime_parsing",
+        "loc": ["data"],
+        "msg": "Input should be a valid date or datetime, invalid character in year",
+        "input": "01/10/2026"
+      }
+    ]
+  }
+}
+```
+
+`SpreadsheetRowError` has the same contract as the CSV reader's
+`GoogleSheetRowError` (`details["row"]` with header = 1, Pydantic's
+`details["errors"]`) and also names the tab in `details["sheet"]`.
+`GoogleSheetRowError` is a subclass of it, so one
+`except SpreadsheetRowError` covers both readers.
+
+**No schema.** `read_xlsx` returns one tab as
+`list[dict[str, XlsxCellValue]]`, and `read_xlsx_sheets` returns all of
+them, in a `dict` keyed by tab name, in tab order (chart sheets are left
+out). An empty tab, or one with only a header, returns `[]`.
+
+## The whole Google workbook in one request
+
+CSV reads one tab per request, and for that you need each tab's `gid`. A
+sales sheet with one tab per month means twelve links, twelve requests —
+and the amounts arrive as formatted text.
+
+`download_google_sheet_xlsx` downloads the whole workbook **once**, as
+`.xlsx`; the readers from the previous section read as many tabs as you
+want from the same bytes.
+
+### The code
+
+The same public stock sheet as the CSV example, now through `.xlsx`:
+
+```python
+# scripts/stock_xlsx.py
+
+import asyncio
+
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk.spreadsheet import download_google_sheet_xlsx, read_xlsx_as
+
+SHEET_URL: str = (
+    "https://docs.google.com/spreadsheets/d/"
+    "1h0ATstw2f6ryXvbwV-DW6zwsBRIF-2k5zHcm2uTEge8/edit?usp=sharing"
+)
+
+
+class Product(BaseModel):
+    """One row of the stock sheet, read from the .xlsx."""
+
+    item: str
+    valor: int | None = None
+    tamanho: str | int
+
+
+async def main() -> None:
+    """Download the workbook once and read the stock tab."""
+    workbook: bytes = await download_google_sheet_xlsx(SHEET_URL)
+    products: list[Product] = read_xlsx_as(workbook, Product, sheet="Página1")
+    for product in products:
+        print(product.item, product.valor, repr(product.tamanho))
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Running it (real output, 2026-10-04):
+
+```text
+Bota forza 500 41
+Bota new forza 1000 41
+Macacao forza 1700 'X'
+Protetor de coluna 300 'uni'
+macacao dainese 1000 'XL'
+Jaqueta x11 Masc 200 'consultar'
+Jaqueta x11 Fem 200 'consultar'
+Bota Forma 400 'vendida'
+Luva x11 Fem L 250 'M'
+Luva alpinestar Gp Pro L 250 'M'
+Capacete Ls2 62 arrow*** None 'consultar'
+```
+
+To look at every tab without a schema, `read_google_sheet_xlsx` downloads
+and reads it all at once:
+
+```python
+# scripts/tabs.py
+
+import asyncio
+
+from tempest_fastapi_sdk.spreadsheet import XlsxCellValue, read_google_sheet_xlsx
+
+SHEET_URL: str = (
+    "https://docs.google.com/spreadsheets/d/"
+    "1d6VsFORSnFrn3GY2MADbeQ2uuifv8alenn9LECDao8A/edit"
+)
+
+
+async def main() -> None:
+    """Read every tab in one request and count each one's rows."""
+    tabs: dict[str, list[dict[str, XlsxCellValue]]] = await read_google_sheet_xlsx(
+        SHEET_URL
+    )
+    for name, rows in tabs.items():
+        print(f"{name!r}: {len(rows)} rows")
+    print(tabs["Abril"][0])
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+```text
+'Itens': 1 rows
+'Eventos': 5 rows
+'Trocas': 14 rows
+'Produtos': 3 rows
+'Mar': 66 rows
+'Abril': 166 rows
+'Maio': 107 rows
+'Junho': 35 rows
+'Julho': 0 rows
+'Agosto': 99 rows
+'Setembro ': 1004 rows
+'Outubro': 999 rows
+'Compras': 14 rows
+'Novembro': 19 rows
+'Dezembro': 3 rows
+'Caixa': 45 rows
+{'Data': datetime.datetime(2025, 4, 1, 0, 0), 'Produto': 'Café ', 'Valor unitário': 1.0, 'Quantidade': 1.0, 'Total': 1, 'Forma de pagamento': 'Pix', 'Vendedor': 'Betania', 'Observação': None, '': None, 'Valor total': 233, 'Total de vendas': 230}
+```
+
+### Piece by piece
+
+**One request.** The 16 tabs came in one 785,152-byte `.xlsx`; the
+`read_google_sheet_xlsx` above took 2.8 s on this machine, download
+included (a single measurement). `Setembro ` and `Outubro` have ~1,000
+rows because a formula in the `Total` column answers `" "` down to row
+1,000 — see the warning about spaces in the previous section.
+
+**The `gid` is dropped.** With a `gid` in the URL, the `.xlsx` export
+returns **only that tab** (measured: the same sheet with `&gid=0` came
+back with one tab, 71,270 bytes). That is why `download_google_sheet_xlsx`
+ignores the link's `gid` and always asks for the whole workbook. To pick
+the tab, use `sheet=` when reading.
+
+**The same guarantees as CSV.** The `307` redirect is followed per request
+(also on an injected `client=`, which is never closed); `timeout=` applies
+to the client it creates. Any answer that is not a successful `.xlsx`
+(`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`)
+becomes `GoogleSheetAccessError`, status `502` — an unknown ID answered
+`404` `text/html` in this format too (measured). And if the body comes
+with the right media type but does not open as a workbook,
+`read_google_sheet_xlsx` also raises `GoogleSheetAccessError`, not `422`:
+the defect is upstream's, not the caller's.
+
+**The extra.** `download_google_sheet_xlsx` only downloads bytes and runs
+with no extra; `read_google_sheet_xlsx` needs `[spreadsheet]` and checks
+for it **before** the download, so the request is not wasted.
 
 ## Recap
 
@@ -580,6 +977,13 @@ route they become the SDK's error envelope with no `try` at all; with a
 * `read_google_sheet_as(link, Schema)` reads one tab of a Google Sheet
   shared by link and validates each row; the error names the row number.
   No extra.
+* `read_xlsx_as(bytes, Schema, sheet="Tab")` reads one tab of an `.xlsx`
+  (upload, file, export) with **typed** cells: number, `datetime`, `bool`.
+  A file that is not a spreadsheet, a missing tab and an invalid row
+  become typed `422` errors.
+* `download_google_sheet_xlsx(link)` downloads the whole Google workbook in
+  one request (the `gid` is dropped); `read_google_sheet_xlsx` returns
+  every tab by name right away.
 
 To ship the same content as a closed document, see
 [PDF generation](pdf.en.md). For the currency helpers that format the

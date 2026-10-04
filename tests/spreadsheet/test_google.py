@@ -7,7 +7,9 @@ host, the CSV comes back as ``text/csv; charset=utf-8`` with CRLF line
 endings and no trailing newline, a non-existent ID answers ``404``
 ``text/html`` and a ``gid`` that names no tab answers ``400``
 ``text/html``. :data:`SAMPLE_CSV` is the body of the public sample sheet,
-byte for byte.
+byte for byte. The ``.xlsx`` export (measured 2026-10-04) takes the same
+``307`` hop, answers with the ``.xlsx`` media type, and narrows to one tab
+when the URL carries a ``gid`` — which is why the reader drops it.
 
 The one test that reaches the real endpoint is marked ``network`` and
 stays out of the default run (``make test-network``).
@@ -24,11 +26,21 @@ import pytest
 from pydantic import BaseModel
 
 from tempest_fastapi_sdk.spreadsheet import (
+    XLSX_MEDIA_TYPE,
+    Column,
     GoogleSheetAccessError,
     GoogleSheetRowError,
+    InvalidSpreadsheetError,
+    SheetWriter,
+    SpreadsheetRowError,
+    download_google_sheet_xlsx,
     google_sheet_export_url,
+    new_workbook,
     read_google_sheet,
     read_google_sheet_as,
+    read_google_sheet_xlsx,
+    read_xlsx_as,
+    workbook_to_bytes,
 )
 
 SHEET_ID: Final[str] = "1h0ATstw2f6ryXvbwV-DW6zwsBRIF-2k5zHcm2uTEge8"
@@ -440,4 +452,225 @@ async def test_live_unknown_id_is_a_typed_error() -> None:
     """A spreadsheet ID that does not exist raises the typed error."""
     with pytest.raises(GoogleSheetAccessError) as caught:
         await read_google_sheet("1" + "x" * 43)
+    assert caught.value.details["status_code"] == 404
+
+
+XLSX_HEADERS: Final[dict[str, str]] = {"content-type": XLSX_MEDIA_TYPE}
+
+
+def _sample_xlsx() -> bytes:
+    """Build the sample sheet as the ``.xlsx`` export writes it.
+
+    Measured on 2026-10-04: the export of the public sample sheet has one
+    tab, ``Página1``, and writes the numeric sizes as ``41.0`` — a float —
+    next to text sizes in the same column. A second tab checks that every
+    tab comes back.
+
+    Returns:
+        bytes: The workbook.
+    """
+    workbook = new_workbook("Página1", "Notas")
+    writer = SheetWriter(
+        workbook["Página1"],
+        columns=[Column("item"), Column("valor"), Column("tamanho")],
+    )
+    writer.header_row()
+    writer.write_row(["Bota forza", 500.0, 41.0])
+    writer.write_row(["Macacao forza", 1700.0, "X"])
+    writer.write_row(["Capacete Ls2 62 arrow***", None, "consultar"])
+    workbook["Notas"].append(["nota"])
+    workbook["Notas"].append(["revisar estoque"])
+    return workbook_to_bytes(workbook)
+
+
+def _google_xlsx(
+    body: bytes,
+    *,
+    seen: list[httpx.Request] | None = None,
+) -> httpx.MockTransport:
+    """Mimic the ``.xlsx`` export: a ``307`` hop, then the workbook.
+
+    Args:
+        body (bytes): Workbook served by the redirect target.
+        seen (list[httpx.Request] | None): Collects every request sent.
+
+    Returns:
+        httpx.MockTransport: The fake transport.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Answer like Google does.
+
+        Args:
+            request (httpx.Request): The incoming request.
+
+        Returns:
+            httpx.Response: ``307`` from ``docs.google.com``, the workbook
+            from the redirect target.
+        """
+        if seen is not None:
+            seen.append(request)
+        if request.url.host == "docs.google.com":
+            return httpx.Response(307, headers={"location": REDIRECT_TARGET})
+        return httpx.Response(200, headers=XLSX_HEADERS, content=body)
+
+    return httpx.MockTransport(handler)
+
+
+class TestReadGoogleSheetXlsx:
+    """The ``.xlsx`` path: whole workbook, one request, typed cells."""
+
+    async def test_every_tab_in_one_request_without_gid(self) -> None:
+        """The ``gid`` is dropped, the redirect followed, every tab read."""
+        seen: list[httpx.Request] = []
+        transport = _google_xlsx(_sample_xlsx(), seen=seen)
+        async with httpx.AsyncClient(transport=transport) as client:
+            sheets = await read_google_sheet_xlsx(f"{SHARE_LINK}#gid=0", client=client)
+        assert [str(request.url) for request in seen] == [
+            f"{EXPORT_BASE}?format=xlsx",
+            REDIRECT_TARGET,
+        ]
+        assert list(sheets) == ["Página1", "Notas"]
+        assert sheets["Página1"] == [
+            {"item": "Bota forza", "valor": 500, "tamanho": 41},
+            {"item": "Macacao forza", "valor": 1700, "tamanho": "X"},
+            {"item": "Capacete Ls2 62 arrow***", "valor": None, "tamanho": "consultar"},
+        ]
+        assert sheets["Notas"] == [{"nota": "revisar estoque"}]
+
+    async def test_download_returns_the_workbook_bytes(self) -> None:
+        """The bytes feed ``read_xlsx_as`` for any tab, without a new request."""
+        body = _sample_xlsx()
+        seen: list[httpx.Request] = []
+        transport = _google_xlsx(body, seen=seen)
+        async with httpx.AsyncClient(transport=transport) as client:
+            data = await download_google_sheet_xlsx(SHARE_LINK, client=client)
+        assert data == body
+        assert len(seen) == 2
+
+        class XlsxProduct(BaseModel):
+            """The size is a number or a text in the ``.xlsx`` export."""
+
+            item: str
+            valor: int | None = None
+            tamanho: str | int
+
+        products = read_xlsx_as(data, XlsxProduct, sheet="Página1")
+        assert [product.tamanho for product in products] == [41, "X", "consultar"]
+        assert products[-1].valor is None
+
+    async def test_csv_schema_fails_on_typed_cell(self) -> None:
+        """``tamanho: str`` from the CSV recipe rejects the float ``41.0``."""
+        async with httpx.AsyncClient(transport=_google_xlsx(_sample_xlsx())) as client:
+            data = await download_google_sheet_xlsx(SHARE_LINK, client=client)
+        with pytest.raises(SpreadsheetRowError) as caught:
+            read_xlsx_as(data, Product, sheet="Página1")
+        assert caught.value.details["row"] == 2
+        assert caught.value.details["sheet"] == "Página1"
+        assert caught.value.details["errors"][0]["type"] == "string_type"
+
+    async def test_injected_client_is_left_open(self) -> None:
+        """The reader never closes a client it did not create."""
+        client = httpx.AsyncClient(transport=_google_xlsx(_sample_xlsx()))
+        await read_google_sheet_xlsx(SHARE_LINK, client=client)
+        assert not client.is_closed
+        await client.aclose()
+
+    async def test_created_client_is_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Without an injected client, the one created is closed on return."""
+        created: list[httpx.AsyncClient] = []
+        original = httpx.AsyncClient
+
+        def factory(*args: object, **kwargs: object) -> httpx.AsyncClient:
+            """Build the client over the fake transport and record it.
+
+            Args:
+                *args (object): Ignored positional arguments.
+                **kwargs (object): Keyword arguments; ``timeout`` is kept.
+
+            Returns:
+                httpx.AsyncClient: The recorded client.
+            """
+            client = original(
+                transport=_google_xlsx(_sample_xlsx()),
+                timeout=kwargs["timeout"],  # type: ignore[arg-type]
+            )
+            created.append(client)
+            return client
+
+        monkeypatch.setattr(httpx, "AsyncClient", factory)
+        sheets = await read_google_sheet_xlsx(SHARE_LINK, timeout=7.5)
+        assert len(sheets["Página1"]) == 3
+        assert len(created) == 1
+        assert created[0].is_closed
+        assert created[0].timeout == httpx.Timeout(7.5)
+
+    @pytest.mark.parametrize(
+        ("status", "headers"),
+        [
+            (404, HTML_HEADERS),
+            (400, HTML_HEADERS),
+            (200, HTML_HEADERS),
+            (200, CSV_HEADERS),
+            (500, XLSX_HEADERS),
+            (200, {}),
+        ],
+    )
+    async def test_non_xlsx_answer_is_a_typed_error(
+        self, status: int, headers: dict[str, str]
+    ) -> None:
+        """Anything but a successful ``.xlsx`` raises, never parses."""
+        async with httpx.AsyncClient(
+            transport=_fixed(status, headers, b"<html>login</html>")
+        ) as client:
+            with pytest.raises(GoogleSheetAccessError) as caught:
+                await read_google_sheet_xlsx(SHARE_LINK, client=client)
+        error = caught.value
+        assert error.status_code == 502
+        assert error.details["status_code"] == status
+        assert error.details["export_url"] == f"{EXPORT_BASE}?format=xlsx"
+        assert "Anyone with the link" in error.message
+
+    async def test_body_that_does_not_open_is_an_access_error(self) -> None:
+        """An upstream body that is not a workbook is a ``502``, not a ``422``."""
+        async with httpx.AsyncClient(
+            transport=_fixed(200, XLSX_HEADERS, b"truncated")
+        ) as client:
+            with pytest.raises(GoogleSheetAccessError) as caught:
+                await read_google_sheet_xlsx(SHARE_LINK, client=client)
+        assert caught.value.details["reason"] == "File is not a zip file"
+        assert isinstance(caught.value.__cause__, InvalidSpreadsheetError)
+
+    async def test_missing_extra_fails_before_the_request(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Without ``openpyxl`` nothing is downloaded and the extra is named."""
+        seen: list[httpx.Request] = []
+        monkeypatch.setitem(sys.modules, "openpyxl", None)
+        transport = _google_xlsx(b"", seen=seen)
+        async with httpx.AsyncClient(transport=transport) as client:
+            with pytest.raises(
+                ImportError, match=r"tempest-fastapi-sdk\[spreadsheet\]"
+            ):
+                await read_google_sheet_xlsx(SHARE_LINK, client=client)
+        assert seen == []
+
+
+@pytest.mark.network
+async def test_live_public_sheet_xlsx() -> None:
+    """The ``.xlsx`` export of the sample sheet reads with typed cells."""
+    sheets = await read_google_sheet_xlsx(f"{SHARE_LINK}#gid=0")
+    assert list(sheets) == ["Página1"]
+    rows = sheets["Página1"]
+    assert rows[0] == {"item": "Bota forza", "valor": 500.0, "tamanho": 41.0}
+    assert rows[-1]["valor"] is None
+
+
+@pytest.mark.network
+async def test_live_unknown_id_xlsx_is_a_typed_error() -> None:
+    """A spreadsheet ID that does not exist raises on the ``.xlsx`` path too."""
+    with pytest.raises(GoogleSheetAccessError) as caught:
+        await download_google_sheet_xlsx("1" + "x" * 43)
     assert caught.value.details["status_code"] == 404
