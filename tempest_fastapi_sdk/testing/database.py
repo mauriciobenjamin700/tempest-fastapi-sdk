@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -14,6 +15,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.sql.schema import MetaData
 
+from tempest_fastapi_sdk.db.connection import _configure_sqlite_engine
 from tempest_fastapi_sdk.db.model import BaseModel
 
 
@@ -21,6 +23,7 @@ def create_test_engine(
     database_url: str = "sqlite+aiosqlite:///:memory:",
     *,
     echo: bool = False,
+    foreign_keys: bool = True,
 ) -> AsyncEngine:
     """Build a throwaway async engine for tests.
 
@@ -29,21 +32,37 @@ def create_test_engine(
     necessary for tests that span multiple sessions in the same
     asyncio loop.
 
+    A SQLite engine gets the same configuration
+    :class:`~tempest_fastapi_sdk.db.AsyncDatabaseManager` applies, minus
+    WAL: :func:`~tempest_fastapi_sdk.db.enable_sqlite_savepoints`, so a
+    nested ``begin_nested()`` that exits cleanly does not commit the
+    outer transaction, and, unless ``foreign_keys=False``,
+    :func:`~tempest_fastapi_sdk.db.enable_sqlite_foreign_keys`, so an
+    orphan row raises ``IntegrityError`` and ``ON DELETE CASCADE``
+    deletes the children — what PostgreSQL does. A test that inserts a
+    child must therefore insert its parent first.
+
     Args:
         database_url (str): SQLAlchemy URL. Defaults to in-memory
             SQLite.
         echo (bool): Echo statements to stdout (useful for debugging
             failing tests).
+        foreign_keys (bool): Whether a SQLite engine enforces
+            ``FOREIGN KEY`` constraints. Ignored on other backends.
 
     Returns:
         AsyncEngine: An engine ready to run :func:`init_test_metadata`.
     """
     kwargs: dict[str, object] = {"echo": echo}
-    if database_url.startswith("sqlite"):
+    is_sqlite = make_url(database_url).get_backend_name() == "sqlite"
+    if is_sqlite:
         kwargs["connect_args"] = {"check_same_thread": False}
         if ":memory:" in database_url:
             kwargs["poolclass"] = StaticPool
-    return create_async_engine(database_url, **kwargs)
+    engine = create_async_engine(database_url, **kwargs)
+    if is_sqlite:
+        _configure_sqlite_engine(engine, wal=False, foreign_keys=foreign_keys)
+    return engine
 
 
 def create_test_session_factory(

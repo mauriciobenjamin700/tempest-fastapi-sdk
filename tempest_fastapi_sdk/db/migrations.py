@@ -205,6 +205,61 @@ def _strip_async_driver(url: str) -> str:
     return parsed.set(drivername=drivername).render_as_string(hide_password=False)
 
 
+def require_sqlite_foreign_keys_off(connection: Connection) -> None:
+    """Refuse to migrate SQLite on a connection that enforces foreign keys.
+
+    Alembic's batch mode is how a SQLite migration alters a table: it
+    creates a copy with the new shape, copies the rows, drops the
+    original and renames the copy. With ``PRAGMA foreign_keys=ON`` that
+    ``DROP TABLE`` performs the foreign-key actions of the dropped
+    table. Measured with Alembic 1.19.1 and SQLite 3.47.1:
+    ``batch_alter_table("org", recreate="always")`` adding one nullable
+    column to a parent whose children reference it with
+    ``ON DELETE CASCADE`` took the child table from 3 rows to 0, and no
+    statement raised.
+
+    The engines the generated ``env.py`` and :class:`AlembicHelper` build
+    never turn enforcement on, so only a connection the caller hands over
+    as ``config.attributes["connection"]`` can carry it — typically one
+    taken from an :class:`~tempest_fastapi_sdk.db.AsyncDatabaseManager`,
+    which enforces foreign keys by default. The generated ``env.py``
+    calls this before running migrations on such a connection.
+
+    Reads the pragma through the raw driver cursor, so the check neither
+    opens a transaction nor changes how Alembic sees the connection. Any
+    backend other than SQLite returns immediately.
+
+    Args:
+        connection (Connection): The connection migrations are about to
+            run on.
+
+    Raises:
+        RuntimeError: When ``connection`` is SQLite and
+            ``PRAGMA foreign_keys`` answers ``1``.
+    """
+    if connection.dialect.name != "sqlite":
+        return
+    cursor = connection.connection.cursor()
+    try:
+        cursor.execute("PRAGMA foreign_keys")
+        row = cursor.fetchone()
+    finally:
+        cursor.close()
+    if row is None or not row[0]:
+        return
+    raise RuntimeError(
+        "refusing to run migrations on a SQLite connection with "
+        "PRAGMA foreign_keys=ON: Alembic batch mode recreates tables, and "
+        "dropping the old copy of a parent table runs ON DELETE CASCADE on "
+        "its children, deleting their rows without an error. Hand env.py a "
+        "connection from an engine that does not enforce foreign keys — "
+        "AsyncDatabaseManager(url, sqlite_foreign_keys=False), or a plain "
+        "create_async_engine(url) — or let AlembicHelper / the alembic CLI "
+        "open their own. PRAGMA foreign_keys=OFF cannot fix an open "
+        "connection: SQLite ignores it inside a transaction."
+    )
+
+
 class AlembicHelper:
     """High-level wrapper around the Alembic command surface.
 
@@ -1156,4 +1211,5 @@ __all__: list[str] = [
     "AmbiguousBaseRevisionError",
     "DestructiveMigrationError",
     "SchemaSyncOutcome",
+    "require_sqlite_foreign_keys_off",
 ]

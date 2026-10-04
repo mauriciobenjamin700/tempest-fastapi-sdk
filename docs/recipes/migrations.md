@@ -281,6 +281,86 @@ existente, sem ponteiro — e o `sync_schema()` toma o caminho de adoção.
     tenha backup. `safe_upgrade` recusa migration destrutiva sem `force=True`,
     o que ajuda, mas não substitui olhar.
 
+## SQLite: migration roda com chave estrangeira desligada
+
+No SQLite, o Alembic altera tabela em **batch mode** (o `env.py` gerado liga
+`render_as_batch=True`): cria uma cópia com o formato novo, copia as linhas,
+**dropa a original** e renomeia a cópia. Com `PRAGMA foreign_keys=ON`, esse
+`DROP TABLE` executa as ações de chave estrangeira da tabela dropada — e um
+filho com `ON DELETE CASCADE` vai junto.
+
+Medido com Alembic 1.19.1 e SQLite 3.47.1, adicionando uma coluna anulável à
+tabela **pai** com `batch_alter_table("org", recreate="always")`:
+
+| `PRAGMA foreign_keys` | Linhas em `member` antes → depois | Erro |
+| --- | --- | --- |
+| `0` | 3 → 3 | nenhum |
+| `1` | 3 → **0** | nenhum |
+
+Por isso os engines que o SDK monta para migrar — o do `env.py` gerado e os
+de leitura do `AlembicHelper` (`current()`, `has_existing_schema()`) —
+**deixam a FK desligada**, enquanto o `AsyncDatabaseManager` a liga por
+padrão. Se você usa a receita de conexão compartilhada
+(`config.attributes["connection"]`, descrita
+[acima](#de-codigo-async-use-o-metodo-_async)), o `env.py` gerado confere o
+pragma da conexão recebida e **recusa** antes de migrar:
+
+```text
+RuntimeError: refusing to run migrations on a SQLite connection with PRAGMA foreign_keys=ON: Alembic batch mode recreates tables, and dropping the old copy of a parent table runs ON DELETE CASCADE on its children, deleting their rows without an error. ...
+```
+
+A saída é migrar numa conexão de um engine sem FK — um manager só para isso:
+
+```python
+# src/db/shared_connection.py
+from alembic import command
+from sqlalchemy.engine import Connection
+from tempest_fastapi_sdk import AlembicHelper, AsyncDatabaseManager
+
+from src.core.settings import settings
+
+
+async def upgrade_on_shared_connection() -> None:
+    """Migra numa conexão sem chave estrangeira conferida."""
+    helper: AlembicHelper = AlembicHelper(
+        "alembic.ini",
+        db_url=settings.DATABASE_URL,
+    )
+    config = helper.config
+
+    def _upgrade(connection: Connection) -> None:
+        """Entrega a conexão ao env.py e migra nela."""
+        config.attributes["connection"] = connection
+        command.upgrade(config, "head")
+
+    migrations_db: AsyncDatabaseManager = AsyncDatabaseManager(
+        settings.DATABASE_URL,
+        sqlite_foreign_keys=False,
+    )
+    await migrations_db.connect()
+    try:
+        async with migrations_db.engine.begin() as conn:
+            await conn.run_sync(_upgrade)
+    finally:
+        await migrations_db.disconnect()
+```
+
+!!! warning "`PRAGMA foreign_keys=OFF` não conserta uma conexão aberta"
+    O SQLite ignora o pragma dentro de uma transação, e a conexão que chega
+    ao `env.py` já está numa. Desligar tem que acontecer na criação do
+    engine (`sqlite_foreign_keys=False`, ou um `create_async_engine(url)`
+    simples), não na conexão.
+
+!!! danger "`env.py` gerado antes desta versão não recusa"
+    A conferência mora no `env.py`, e o seu foi copiado para o repositório
+    quando você rodou `tempest db init`. Se ele recebe a conexão de um
+    `AsyncDatabaseManager` — que agora liga a FK por padrão —, troque a
+    conexão por uma sem FK como acima **e** regenere o `env.py` (rode
+    `tempest db init` num diretório vazio e copie o `alembic/env.py` por
+    cima do seu, conferindo o import de metadata). Quem migra pelo
+    `AlembicHelper` ou pela CLI não é afetado: esses caminhos abrem o
+    próprio engine, sem FK.
+
 ## Onde `create_tables()` é legítimo
 
 Em teste e em dev local descartável — onde o banco nasce e morre no mesmo
@@ -327,6 +407,9 @@ nenhuma tabela, mas possivelmente várias colunas — e coluna ele não olha.
       `sync_schema()`.
     - `create_tables()` fica legítimo onde não há migration para driftar:
       teste e SQLite in-memory.
+    - No SQLite, migration roda em conexão **sem** chave estrangeira: o
+      batch mode recria a tabela e o cascade apagaria os filhos. O `env.py`
+      gerado recusa conexão entregue com a FK ligada.
 
 ## Veja também
 

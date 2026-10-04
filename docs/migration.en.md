@@ -2,6 +2,79 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## Unreleased — SQLite enforces foreign keys
+
+Every SQLite engine `AsyncDatabaseManager` and `create_test_engine` build now
+runs `PRAGMA foreign_keys=ON` on each connection. None did before, so SQLite
+accepted what PostgreSQL refuses: a child pointing at a missing parent,
+`ON DELETE CASCADE` deleting nothing, and `add_all([child, parent])` with no
+`relationship()` sending the child's INSERT first. Details and measurements in
+[Database](recipes/database.md#sqlite-with-foreign-keys-pragma-foreign_keys).
+
+### What changes
+
+- **A test that writes a child without its parent fails** with
+  `IntegrityError: FOREIGN KEY constraint failed`. It was a test that passed
+  on SQLite and would fail on PostgreSQL.
+- **`ON DELETE CASCADE` deletes the children** on SQLite too.
+- **`create_test_engine` applies the manager's savepoint fix**: a
+  `begin_nested()` that exits cleanly no longer commits the outer
+  transaction.
+- **The migration engine stays without FK**, and the generated `env.py`
+  refuses a handed-over connection with FK on — see below.
+
+### What to do
+
+1. **Seed the parent in tests.** Create the referenced row before the one
+   that references it, and `flush()` after the parent when the models have no
+   `relationship()`. Do not turn FK off in the test to make it pass: the
+   defect is the test, not the FK.
+2. **Existing SQLite database:** look for orphans before upgrading.
+
+    ```python
+    import sqlite3
+
+    with sqlite3.connect("app.db") as conn:
+        for row in conn.execute("PRAGMA foreign_key_check"):
+            print(row)
+    ```
+
+    Each row is `(table, rowid, parent table, FK index)`: the member with
+    id 2 pointing at an organization that does not exist prints
+    `('member', 2, 'org', 0)`. Measured on SQLite 3.47.1: with FK on, the
+    database opens and reads normally, an `UPDATE` of another column of the
+    orphan and a `DELETE` of it pass; what fails is writing a key with no
+    parent (an `INSERT`, or an `UPDATE` of the FK column to a missing
+    parent).
+3. **Need to postpone it?** Turn it off on the path you use — ignored on every
+   backend other than SQLite:
+
+    ```python
+    from sqlalchemy.ext.asyncio import AsyncEngine
+
+    from tempest_fastapi_sdk import AsyncDatabaseManager
+    from tempest_fastapi_sdk.testing import create_test_engine
+
+    db: AsyncDatabaseManager = AsyncDatabaseManager(
+        "sqlite+aiosqlite:///./app.db",
+        sqlite_foreign_keys=False,
+    )
+    engine: AsyncEngine = create_test_engine(foreign_keys=False)
+    ```
+
+    From the environment: `DATABASE_SQLITE_FOREIGN_KEYS=false`, read by
+    `DatabaseSettings.database_kwargs()`.
+4. **Connection shared with Alembic:** if you hand an `AsyncDatabaseManager`
+   connection to `env.py` (`config.attributes["connection"]`), it now arrives
+   with FK on — and batch mode rebuilding the parent table deletes the
+   `ON DELETE CASCADE` children without an error (measured with Alembic
+   1.19.1: 3 rows → 0). The `env.py` already in your repository does **not**
+   refuse. Migrate on a connection from `AsyncDatabaseManager(url,
+   sqlite_foreign_keys=False)` and regenerate `env.py` — step by step in
+   [Migrations](recipes/migrations.md#sqlite-migrations-run-with-foreign-keys-off).
+   `AlembicHelper` and `tempest db ...` open their own engine, without FK,
+   and do not change.
+
 ## 0.302.0 — a composite constraint carries every column in its name
 
 `NAMING_CONVENTION` named unique constraints, indexes and foreign keys after

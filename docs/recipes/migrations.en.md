@@ -283,6 +283,87 @@ pointer — and `sync_schema()` takes the adoption path.
     have a backup. `safe_upgrade` refuses destructive migrations without
     `force=True`, which helps, but does not replace looking.
 
+## SQLite: migrations run with foreign keys off
+
+On SQLite, Alembic alters a table in **batch mode** (the generated `env.py`
+sets `render_as_batch=True`): it creates a copy with the new shape, copies the
+rows, **drops the original** and renames the copy. With
+`PRAGMA foreign_keys=ON`, that `DROP TABLE` runs the foreign-key actions of
+the dropped table — and a child with `ON DELETE CASCADE` goes with it.
+
+Measured with Alembic 1.19.1 and SQLite 3.47.1, adding one nullable column to
+the **parent** table with `batch_alter_table("org", recreate="always")`:
+
+| `PRAGMA foreign_keys` | Rows in `member` before → after | Error |
+| --- | --- | --- |
+| `0` | 3 → 3 | none |
+| `1` | 3 → **0** | none |
+
+So the engines the SDK builds to migrate — the generated `env.py`'s and the
+`AlembicHelper` read engines (`current()`, `has_existing_schema()`) — **keep
+FK off**, while `AsyncDatabaseManager` turns it on by default. If you use the
+connection-sharing recipe (`config.attributes["connection"]`, described
+[above](#from-async-code-use-the-_async-method)), the generated `env.py`
+checks the pragma of the connection it receives and **refuses** before
+migrating:
+
+```text
+RuntimeError: refusing to run migrations on a SQLite connection with PRAGMA foreign_keys=ON: Alembic batch mode recreates tables, and dropping the old copy of a parent table runs ON DELETE CASCADE on its children, deleting their rows without an error. ...
+```
+
+The way out is migrating on a connection from an engine without FK — a
+manager just for that:
+
+```python
+# src/db/shared_connection.py
+from alembic import command
+from sqlalchemy.engine import Connection
+from tempest_fastapi_sdk import AlembicHelper, AsyncDatabaseManager
+
+from src.core.settings import settings
+
+
+async def upgrade_on_shared_connection() -> None:
+    """Migrate on a connection that does not enforce foreign keys."""
+    helper: AlembicHelper = AlembicHelper(
+        "alembic.ini",
+        db_url=settings.DATABASE_URL,
+    )
+    config = helper.config
+
+    def _upgrade(connection: Connection) -> None:
+        """Hand the connection to env.py and migrate on it."""
+        config.attributes["connection"] = connection
+        command.upgrade(config, "head")
+
+    migrations_db: AsyncDatabaseManager = AsyncDatabaseManager(
+        settings.DATABASE_URL,
+        sqlite_foreign_keys=False,
+    )
+    await migrations_db.connect()
+    try:
+        async with migrations_db.engine.begin() as conn:
+            await conn.run_sync(_upgrade)
+    finally:
+        await migrations_db.disconnect()
+```
+
+!!! warning "`PRAGMA foreign_keys=OFF` cannot fix an open connection"
+    SQLite ignores the pragma inside a transaction, and the connection that
+    reaches `env.py` is already in one. Turning it off has to happen when
+    the engine is built (`sqlite_foreign_keys=False`, or a plain
+    `create_async_engine(url)`), not on the connection.
+
+!!! danger "An `env.py` generated before this version does not refuse"
+    The check lives in `env.py`, and yours was copied into the repository
+    when you ran `tempest db init`. If it receives a connection from an
+    `AsyncDatabaseManager` — which now turns FK on by default —, switch to a
+    connection without FK as above **and** regenerate `env.py` (run
+    `tempest db init` in an empty directory and copy `alembic/env.py` over
+    yours, checking the metadata import). Migrating through `AlembicHelper`
+    or the CLI is not affected: those paths open their own engine, without
+    FK.
+
 ## Where `create_tables()` is legitimate
 
 In tests and throwaway local development — where the database is born and dies
@@ -329,6 +410,9 @@ columns — and columns it does not look at.
     - To repair a wrong `stamp("head")`: `stamp("base")`, then `sync_schema()`.
     - `create_tables()` stays legitimate where there is no migration to drift
       from: tests and in-memory SQLite.
+    - On SQLite, migrations run on a connection **without** foreign keys:
+      batch mode rebuilds the table and the cascade would delete the children.
+      The generated `env.py` refuses a handed-over connection with FK on.
 
 ## See also
 
