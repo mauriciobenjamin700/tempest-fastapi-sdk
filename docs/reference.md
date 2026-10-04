@@ -183,6 +183,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.migrations.DestructiveMigrationError
 ::: tempest_fastapi_sdk.db.migrations.AmbiguousBaseRevisionError
 ::: tempest_fastapi_sdk.db.migrations.SchemaSyncOutcome
+::: tempest_fastapi_sdk.db.migrations.require_sqlite_foreign_keys_off
+::: tempest_fastapi_sdk.db.connection.enable_sqlite_foreign_keys
 ::: tempest_fastapi_sdk.db.connection.enable_sqlite_savepoints
 ::: tempest_fastapi_sdk.db.connection.enable_sqlite_wal
 ::: tempest_fastapi_sdk.db.connection.is_memory_sqlite_url

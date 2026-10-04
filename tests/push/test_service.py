@@ -19,6 +19,7 @@ from tempest_fastapi_sdk import (
     PushPlatform,
     make_device_token_model,
 )
+from tests._seed import seed_users
 
 
 class _DeviceUser(BaseUserModel):
@@ -141,7 +142,7 @@ class TestRegister:
     ) -> None:
         """A browser registration keeps the encryption material."""
         service = _service(session)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _DeviceUser, 1)
 
         row = await service.register(user_id, _web("https://push.example/aaa"))
 
@@ -154,7 +155,7 @@ class TestRegister:
     ) -> None:
         """A mobile registration leaves the web-only columns NULL."""
         service = _service(session)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _DeviceUser, 1)
 
         row = await service.register(user_id, _mobile("tok", PushPlatform.ANDROID))
 
@@ -165,7 +166,7 @@ class TestRegister:
     async def test_is_idempotent_by_token(self, session: AsyncSession) -> None:
         """Re-registering the same token updates the row instead of duplicating."""
         service = _service(session)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _DeviceUser, 1)
 
         first = await service.register(user_id, _mobile("same", PushPlatform.IOS))
         second = await service.register(user_id, _mobile("same", PushPlatform.IOS))
@@ -178,7 +179,7 @@ class TestRegister:
     ) -> None:
         """Signing in as someone else moves the device, so notifications follow."""
         service = _service(session)
-        user_a, user_b = uuid4(), uuid4()
+        user_a, user_b = await seed_users(session, _DeviceUser, 2)
 
         await service.register(user_a, _mobile("handset", PushPlatform.IOS))
         await service.register(user_b, _mobile("handset", PushPlatform.IOS))
@@ -191,7 +192,7 @@ class TestUnregister:
     async def test_removes_the_device(self, session: AsyncSession) -> None:
         """Unregistering deletes the row."""
         service = _service(session)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _DeviceUser, 1)
         await service.register(user_id, _mobile("bye", PushPlatform.ANDROID))
 
         assert await service.unregister("bye") is True
@@ -212,7 +213,7 @@ class TestFanout:
         web = _RecordingTransport({"web"})
         fcm = _RecordingTransport({"ios", "android"})
         service = _service(session, web, fcm)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _DeviceUser, 1)
         await _register_fleet(service, user_id)
 
         result = await service.notify_user(user_id, PushPayloadSchema(title="hi"))
@@ -228,7 +229,7 @@ class TestFanout:
         web = _RecordingTransport({"web"}, gone={"https://push.example/web-1"})
         fcm = _RecordingTransport({"ios", "android"}, gone={"ios-token-1"})
         service = _service(session, web, fcm)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _DeviceUser, 1)
         await _register_fleet(service, user_id)
 
         result = await service.notify_user(user_id, PushPayloadSchema(title="hi"))
@@ -245,7 +246,7 @@ class TestFanout:
         web = _RecordingTransport({"web"}, broken={"https://push.example/web-1"})
         fcm = _RecordingTransport({"ios", "android"})
         service = _service(session, web, fcm)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _DeviceUser, 1)
         await _register_fleet(service, user_id)
 
         result = await service.notify_user(user_id, PushPayloadSchema(title="hi"))
@@ -260,7 +261,7 @@ class TestFanout:
         """A web-only service keeps mobile rows instead of deleting them."""
         web = _RecordingTransport({"web"})
         service = _service(session, web)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _DeviceUser, 1)
         await _register_fleet(service, user_id)
 
         result = await service.notify_user(user_id, PushPayloadSchema(title="hi"))
@@ -276,7 +277,7 @@ class TestFanout:
         web = _RecordingTransport({"web"})
         fcm = _RecordingTransport({"ios", "android"})
         service = _service(session, web, fcm)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _DeviceUser, 1)
         await _register_fleet(service, user_id)
 
         result = await service.notify_user(
@@ -295,7 +296,7 @@ class TestFanout:
         web = _RecordingTransport({"web"})
         fcm = _RecordingTransport({"ios", "android"})
         service = _service(session, web, fcm)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _DeviceUser, 1)
         await _register_fleet(service, user_id)
 
         result = await service.notify_user(
@@ -324,7 +325,7 @@ class TestFanout:
         """Everything the result exposes is masked."""
         web = _RecordingTransport({"web"}, gone={"https://push.example/web-1"})
         service = _service(session, web)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _DeviceUser, 1)
         await service.register(user_id, _web("https://push.example/web-1"))
 
         summary = (

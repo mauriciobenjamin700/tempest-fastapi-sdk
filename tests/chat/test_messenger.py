@@ -38,6 +38,7 @@ from tempest_fastapi_sdk.exceptions import (
     NotFoundException,
     ValidationException,
 )
+from tests._seed import seed_users
 
 
 class _User(BaseUserModel):
@@ -104,6 +105,53 @@ async def service(session: AsyncSession) -> AsyncIterator[ChatService]:
     yield _service(session)
 
 
+_PEOPLE_PER_TEST: int = 12
+"""Users seeded per test; above the most any single test asks for."""
+
+
+class _People:
+    """Hand out ids of users that already exist in the database.
+
+    Every user id the chat tables store is a foreign key to
+    ``messenger_users``, and the SQLite test engines enforce foreign keys,
+    so a bare ``uuid4()`` as a sender or participant is an orphan the
+    database refuses — as PostgreSQL would.
+    """
+
+    def __init__(self, ids: list[UUID]) -> None:
+        """Initialize the pool.
+
+        Args:
+            ids (list[UUID]): Ids of users already flushed.
+        """
+        self._ids: list[UUID] = ids
+
+    def __call__(self) -> UUID:
+        """Return the next unused user id.
+
+        Returns:
+            UUID: An id with a row in ``messenger_users``.
+
+        Raises:
+            AssertionError: When the test asks for more users than seeded.
+        """
+        assert self._ids, f"raise _PEOPLE_PER_TEST above {_PEOPLE_PER_TEST}"
+        return self._ids.pop(0)
+
+
+@pytest.fixture
+async def person(session: AsyncSession) -> _People:
+    """Seed users and return a dispenser of their ids.
+
+    Args:
+        session (AsyncSession): The suite's session.
+
+    Returns:
+        _People: Call it for one existing user id at a time.
+    """
+    return _People(await seed_users(session, _User, _PEOPLE_PER_TEST))
+
+
 async def _upload(service: ChatService, key: str = "a/b.jpg") -> Any:
     """Write an unclaimed attachment row, the way an upload endpoint does.
 
@@ -131,8 +179,9 @@ class TestDirectIsIdempotent:
     async def test_same_pair_returns_the_same_conversation(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
 
         first = await service.start_conversation(ana, [bruno])
         second = await service.start_conversation(bruno, [ana])
@@ -142,8 +191,9 @@ class TestDirectIsIdempotent:
     async def test_kind_is_inferred_from_the_headcount(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+        ana, bruno, carla = person(), person(), person()
 
         pair = await service.start_conversation(ana, [bruno])
         group = await service.start_conversation(ana, [bruno, carla])
@@ -154,19 +204,21 @@ class TestDirectIsIdempotent:
     async def test_explicit_direct_with_three_is_refused(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
         with pytest.raises(ValidationException):
             await service.start_conversation(
-                uuid4(),
-                [uuid4(), uuid4()],
+                person(),
+                [person(), person()],
                 kind=ConversationKind.DIRECT,
             )
 
     async def test_a_group_is_never_deduplicated(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+        ana, bruno, carla = person(), person(), person()
 
         first = await service.start_conversation(ana, [bruno, carla])
         second = await service.start_conversation(ana, [bruno, carla])
@@ -180,8 +232,9 @@ class TestIdempotentSend:
     async def test_retry_with_the_same_client_id_returns_the_same_row(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         payload = MessageCreateSchema(body="oi", client_id="c-1")
 
@@ -195,9 +248,10 @@ class TestIdempotentSend:
     async def test_a_different_sender_may_reuse_the_id(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
         """Uniqueness is per sender: clients pick ids independently."""
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
 
         first = await service.post_message(
@@ -213,8 +267,10 @@ class TestIdempotentSend:
 
         assert first.id != second.id
 
-    async def test_client_id_is_echoed_back(self, service: ChatService) -> None:
-        ana, bruno = uuid4(), uuid4()
+    async def test_client_id_is_echoed_back(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
 
         message = await service.post_message(
@@ -229,8 +285,10 @@ class TestIdempotentSend:
 class TestReplyStub:
     """The quote renders without a second round-trip — and dies with its parent."""
 
-    async def test_reply_carries_an_excerpt(self, service: ChatService) -> None:
-        ana, bruno = uuid4(), uuid4()
+    async def test_reply_carries_an_excerpt(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         parent = await service.post_message(
             conversation.id,
@@ -253,9 +311,10 @@ class TestReplyStub:
     async def test_revoking_the_parent_empties_every_quote(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
         """Otherwise the deleted text survives inside each reply to it."""
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         parent = await service.post_message(
             conversation.id,
@@ -280,10 +339,11 @@ class TestReplyStub:
     async def test_replying_across_conversations_is_refused(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         here = await service.start_conversation(ana, [bruno])
-        there = await service.start_conversation(ana, [uuid4()])
+        there = await service.start_conversation(ana, [person()])
         elsewhere = await service.post_message(
             there.id,
             ana,
@@ -301,8 +361,10 @@ class TestReplyStub:
 class TestWatermarks:
     """Read state is one row per participant, not one per message per reader."""
 
-    async def test_marking_read_moves_one_row(self, service: ChatService) -> None:
-        ana, bruno = uuid4(), uuid4()
+    async def test_marking_read_moves_one_row(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         await service.post_message(conversation.id, ana, MessageCreateSchema(body="1"))
         await service.post_message(conversation.id, ana, MessageCreateSchema(body="2"))
@@ -318,8 +380,9 @@ class TestWatermarks:
     async def test_unread_count_follows_the_watermark(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         await service.post_message(conversation.id, ana, MessageCreateSchema(body="1"))
         await service.post_message(conversation.id, ana, MessageCreateSchema(body="2"))
@@ -334,8 +397,9 @@ class TestWatermarks:
     async def test_receipts_are_derived_not_stored(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+        ana, bruno, carla = person(), person(), person()
         conversation = await service.start_conversation(ana, [bruno, carla])
         await service.post_message(conversation.id, ana, MessageCreateSchema(body="oi"))
         await service.mark_read(conversation.id, bruno)
@@ -351,8 +415,9 @@ class TestWatermarks:
     async def test_reading_up_to_a_message_does_not_read_later_ones(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         first = await service.post_message(
             conversation.id,
@@ -369,8 +434,10 @@ class TestWatermarks:
 class TestReactions:
     """One per person: reacting again replaces, never stacks."""
 
-    async def test_reacting_twice_replaces(self, service: ChatService) -> None:
-        ana, bruno = uuid4(), uuid4()
+    async def test_reacting_twice_replaces(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         message = await service.post_message(
             conversation.id,
@@ -386,8 +453,9 @@ class TestReactions:
     async def test_two_people_group_under_one_emoji(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+        ana, bruno, carla = person(), person(), person()
         conversation = await service.start_conversation(ana, [bruno, carla])
         message = await service.post_message(
             conversation.id,
@@ -401,8 +469,10 @@ class TestReactions:
         assert updated.reactions[0].count == 2
         assert set(updated.reactions[0].user_ids) == {bruno, carla}
 
-    async def test_unreacting_removes_it(self, service: ChatService) -> None:
-        ana, bruno = uuid4(), uuid4()
+    async def test_unreacting_removes_it(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         message = await service.post_message(
             conversation.id,
@@ -418,13 +488,14 @@ class TestReactions:
     async def test_a_service_without_the_table_refuses_clearly(
         self,
         session: AsyncSession,
+        person: _People,
     ) -> None:
         service = ChatService(
             conversations=BaseRepository(session, model=_Conversation),
             participants=BaseRepository(session, model=_Participant),
             messages=BaseRepository(session, model=_Message),
         )
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         message = await service.post_message(
             conversation.id,
@@ -439,8 +510,10 @@ class TestReactions:
 class TestRevoke:
     """Delete for everyone: the row stays, the content does not."""
 
-    async def test_body_is_cleared_not_flagged(self, service: ChatService) -> None:
-        ana, bruno = uuid4(), uuid4()
+    async def test_body_is_cleared_not_flagged(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         message = await service.post_message(
             conversation.id,
@@ -458,8 +531,9 @@ class TestRevoke:
     async def test_attachments_are_returned_for_the_caller_to_delete(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         attachment = await _upload(service, key="uploads/photo.jpg")
         message = await service.post_message(
@@ -478,8 +552,10 @@ class TestRevoke:
         assert service.attachments is not None
         assert await service.attachments.list(filters={"message_id": message.id}) == []
 
-    async def test_only_the_sender_may_revoke(self, service: ChatService) -> None:
-        ana, bruno = uuid4(), uuid4()
+    async def test_only_the_sender_may_revoke(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         message = await service.post_message(
             conversation.id,
@@ -493,8 +569,9 @@ class TestRevoke:
     async def test_a_revoked_message_cannot_be_edited(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         message = await service.post_message(
             conversation.id,
@@ -513,8 +590,9 @@ class TestAttachments:
     async def test_claiming_sets_message_and_position(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         first = await _upload(service, key="a.jpg")
         second = await _upload(service, key="b.jpg")
@@ -535,8 +613,9 @@ class TestAttachments:
     async def test_an_already_claimed_file_is_refused(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         attachment = await _upload(service)
         await service.post_message(
@@ -558,8 +637,9 @@ class TestAttachments:
     async def test_a_media_message_needs_no_body(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         attachment = await _upload(service)
 
@@ -574,8 +654,9 @@ class TestAttachments:
     async def test_an_empty_text_message_is_refused(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
 
         with pytest.raises(ValidationException):
@@ -597,8 +678,9 @@ class TestAttachmentOwnership:
     async def test_add_attachment_records_the_uploader(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana = uuid4()
+        ana = person()
 
         attachment = await service.add_attachment(
             ana,
@@ -616,8 +698,10 @@ class TestAttachmentOwnership:
         assert attachment.storage_key == "uploads/foto.jpg"
         assert attachment.size_bytes == 42
 
-    async def test_the_uploader_claims_it(self, service: ChatService) -> None:
-        ana, bruno = uuid4(), uuid4()
+    async def test_the_uploader_claims_it(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         attachment = await service.add_attachment(ana, storage_key="a.jpg")
 
@@ -632,8 +716,9 @@ class TestAttachmentOwnership:
     async def test_another_sender_gets_the_unknown_id_404(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         attachment = await service.add_attachment(ana, storage_key="ana.jpg")
         unknown = uuid4()
@@ -663,8 +748,9 @@ class TestAttachmentOwnership:
     async def test_a_refused_claim_leaves_the_file_to_its_uploader(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         attachment = await service.add_attachment(ana, storage_key="ana.jpg")
         with pytest.raises(NotFoundException):
@@ -688,8 +774,9 @@ class TestAttachmentOwnership:
     async def test_a_legacy_row_without_uploader_stays_claimable(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         legacy = await _upload(service, key="legacy.jpg")
         assert legacy.uploader_id is None
@@ -705,8 +792,9 @@ class TestAttachmentOwnership:
     async def test_a_forward_keeps_the_original_uploader(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+        ana, bruno, carla = person(), person(), person()
         first = await service.start_conversation(ana, [bruno])
         second = await service.start_conversation(bruno, [carla])
         attachment = await service.add_attachment(ana, storage_key="ana.jpg")
@@ -727,6 +815,7 @@ class TestAttachmentOwnership:
     async def test_add_attachment_needs_the_repository(
         self,
         session: AsyncSession,
+        person: _People,
     ) -> None:
         service = ChatService(
             conversations=BaseRepository(session, model=_Conversation),
@@ -735,14 +824,16 @@ class TestAttachmentOwnership:
         )
 
         with pytest.raises(ValidationException):
-            await service.add_attachment(uuid4(), storage_key="x.jpg")
+            await service.add_attachment(person(), storage_key="x.jpg")
 
 
 class TestGroups:
     """Roles, leaving, and the backlog a newcomer does not inherit."""
 
-    async def test_creator_owns_the_group(self, service: ChatService) -> None:
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+    async def test_creator_owns_the_group(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno, carla = person(), person(), person()
 
         conversation = await service.start_conversation(ana, [bruno, carla])
 
@@ -751,25 +842,28 @@ class TestGroups:
         assert owner.role == ParticipantRole.OWNER
         assert member.role == ParticipantRole.MEMBER
 
-    async def test_a_member_cannot_add_people(self, service: ChatService) -> None:
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+    async def test_a_member_cannot_add_people(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno, carla = person(), person(), person()
         conversation = await service.start_conversation(ana, [bruno, carla])
 
         with pytest.raises(ForbiddenException):
-            await service.add_participants(conversation.id, bruno, [uuid4()])
+            await service.add_participants(conversation.id, bruno, [person()])
 
     async def test_a_newcomer_does_not_inherit_the_backlog(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+        ana, bruno, carla = person(), person(), person()
         conversation = await service.start_conversation(ana, [bruno, carla])
         await service.post_message(
             conversation.id,
             ana,
             MessageCreateSchema(body="antes"),
         )
-        newcomer = uuid4()
+        newcomer = person()
 
         await service.add_participants(conversation.id, ana, [newcomer])
         await service.post_message(
@@ -786,15 +880,16 @@ class TestGroups:
     async def test_share_history_hands_over_the_backlog(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+        ana, bruno, carla = person(), person(), person()
         conversation = await service.start_conversation(ana, [bruno, carla])
         await service.post_message(
             conversation.id,
             ana,
             MessageCreateSchema(body="antes"),
         )
-        newcomer = uuid4()
+        newcomer = person()
 
         await service.add_participants(
             conversation.id,
@@ -806,9 +901,11 @@ class TestGroups:
         page = await service.list_messages(conversation.id, user_id=newcomer)
         assert "antes" in [item.body for item in page["items"]]
 
-    async def test_leaving_keeps_the_row(self, service: ChatService) -> None:
+    async def test_leaving_keeps_the_row(
+        self, service: ChatService, person: _People
+    ) -> None:
         """Old messages still have to resolve a sender name."""
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+        ana, bruno, carla = person(), person(), person()
         conversation = await service.start_conversation(ana, [bruno, carla])
 
         await service.leave(conversation.id, bruno)
@@ -820,8 +917,10 @@ class TestGroups:
         assert row.left_at is not None
         assert await service.is_participant(conversation.id, bruno) is False
 
-    async def test_the_owner_cannot_be_removed(self, service: ChatService) -> None:
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+    async def test_the_owner_cannot_be_removed(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno, carla = person(), person(), person()
         conversation = await service.start_conversation(ana, [bruno, carla])
         await service.set_role(conversation.id, ana, bruno, ParticipantRole.ADMIN)
 
@@ -835,8 +934,9 @@ class TestSystemMessages:
     async def test_creating_a_group_posts_a_system_message(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+        ana, bruno, carla = person(), person(), person()
 
         conversation = await service.start_conversation(ana, [bruno, carla])
 
@@ -847,8 +947,10 @@ class TestSystemMessages:
         assert notice.payload["event"] == SystemEvent.CONVERSATION_CREATED
         assert notice.payload["actor_id"] == str(ana)
 
-    async def test_leaving_names_who_left(self, service: ChatService) -> None:
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+    async def test_leaving_names_who_left(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno, carla = person(), person(), person()
         conversation = await service.start_conversation(ana, [bruno, carla])
 
         await service.leave(conversation.id, bruno)
@@ -862,8 +964,9 @@ class TestSystemMessages:
     async def test_a_direct_thread_gets_no_notice(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
 
         conversation = await service.start_conversation(ana, [bruno])
 
@@ -876,8 +979,9 @@ class TestPreferences:
     async def test_archiving_hides_it_from_one_side_only(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
 
         await service.set_preferences(conversation.id, ana, is_archived=True)
@@ -887,10 +991,12 @@ class TestPreferences:
             conversation.id,
         ]
 
-    async def test_pinned_threads_sort_first(self, service: ChatService) -> None:
-        ana = uuid4()
-        older = await service.start_conversation(ana, [uuid4()])
-        newer = await service.start_conversation(ana, [uuid4()])
+    async def test_pinned_threads_sort_first(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana = person()
+        older = await service.start_conversation(ana, [person()])
+        newer = await service.start_conversation(ana, [person()])
         await service.post_message(newer.id, ana, MessageCreateSchema(body="novo"))
         await service.set_preferences(older.id, ana, is_pinned=True)
 
@@ -898,8 +1004,10 @@ class TestPreferences:
 
         assert [c.id for c in listed] == [older.id, newer.id]
 
-    async def test_archived_can_be_asked_for(self, service: ChatService) -> None:
-        ana, bruno = uuid4(), uuid4()
+    async def test_archived_can_be_asked_for(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         await service.set_preferences(conversation.id, ana, is_archived=True)
 
@@ -914,10 +1022,11 @@ class TestForward:
     async def test_forwarding_increments_the_score(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         source = await service.start_conversation(ana, [bruno])
-        target = await service.start_conversation(ana, [uuid4()])
+        target = await service.start_conversation(ana, [person()])
         original = await service.post_message(
             source.id,
             ana,
@@ -934,11 +1043,12 @@ class TestForward:
     async def test_forwarding_a_forward_keeps_counting(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana = uuid4()
-        first = await service.start_conversation(ana, [uuid4()])
-        second = await service.start_conversation(ana, [uuid4()])
-        third = await service.start_conversation(ana, [uuid4()])
+        ana = person()
+        first = await service.start_conversation(ana, [person()])
+        second = await service.start_conversation(ana, [person()])
+        third = await service.start_conversation(ana, [person()])
         original = await service.post_message(
             first.id,
             ana,
@@ -953,10 +1063,11 @@ class TestForward:
     async def test_forwarding_into_a_conversation_you_left_is_refused(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         source = await service.start_conversation(ana, [bruno])
-        target = await service.start_conversation(bruno, [uuid4()])
+        target = await service.start_conversation(bruno, [person()])
         original = await service.post_message(
             source.id,
             ana,
@@ -966,8 +1077,10 @@ class TestForward:
         with pytest.raises(ForbiddenException):
             await service.forward(original.id, ana, [target.id])
 
-    async def test_no_targets_forwards_nothing(self, service: ChatService) -> None:
-        ana, bruno = uuid4(), uuid4()
+    async def test_no_targets_forwards_nothing(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno = person(), person()
         source = await service.start_conversation(ana, [bruno])
         original = await service.post_message(
             source.id,
@@ -981,8 +1094,10 @@ class TestForward:
 class TestEdit:
     """Editing stamps the message so a client can label it."""
 
-    async def test_edit_sets_edited_at(self, service: ChatService) -> None:
-        ana, bruno = uuid4(), uuid4()
+    async def test_edit_sets_edited_at(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         message = await service.post_message(
             conversation.id,
@@ -995,8 +1110,10 @@ class TestEdit:
         assert edited.body == "corrigido"
         assert edited.edited_at is not None
 
-    async def test_only_the_sender_may_edit(self, service: ChatService) -> None:
-        ana, bruno = uuid4(), uuid4()
+    async def test_only_the_sender_may_edit(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         message = await service.post_message(
             conversation.id,
@@ -1014,10 +1131,11 @@ class TestConversationOrdering:
     async def test_last_message_at_moves_with_each_post(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana = uuid4()
-        first = await service.start_conversation(ana, [uuid4()])
-        second = await service.start_conversation(ana, [uuid4()])
+        ana = person()
+        first = await service.start_conversation(ana, [person()])
+        second = await service.start_conversation(ana, [person()])
         await service.post_message(first.id, ana, MessageCreateSchema(body="a"))
         await service.post_message(second.id, ana, MessageCreateSchema(body="b"))
         await service.post_message(first.id, ana, MessageCreateSchema(body="c"))
@@ -1034,6 +1152,7 @@ class TestAdversarial:
     async def test_client_id_from_another_conversation_is_refused(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
         """It used to answer 201 with the other thread's message.
 
@@ -1042,9 +1161,9 @@ class TestAdversarial:
         carried a foreign ``conversation_id`` and the message the caller
         actually sent was never written.
         """
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         here = await service.start_conversation(ana, [bruno])
-        there = await service.start_conversation(ana, [uuid4()])
+        there = await service.start_conversation(ana, [person()])
         await service.post_message(
             here.id,
             ana,
@@ -1061,8 +1180,9 @@ class TestAdversarial:
     async def test_the_same_conversation_stays_idempotent(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         payload = MessageCreateSchema(body="oi", client_id="k")
 
@@ -1074,9 +1194,10 @@ class TestAdversarial:
     async def test_your_own_message_is_not_unread_for_you(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
         """The badge used to light up on the thread you just posted in."""
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         await service.post_message(conversation.id, ana, MessageCreateSchema(body="oi"))
 
@@ -1089,11 +1210,12 @@ class TestAdversarial:
     async def test_forwarding_media_carries_the_files(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
         """A forwarded image used to arrive as a media message with no media."""
-        ana = uuid4()
-        source = await service.start_conversation(ana, [uuid4()])
-        target = await service.start_conversation(ana, [uuid4()])
+        ana = person()
+        source = await service.start_conversation(ana, [person()])
+        target = await service.start_conversation(ana, [person()])
         attachment = await _upload(service, key="uploads/original.jpg")
         original = await service.post_message(
             source.id,
@@ -1112,11 +1234,12 @@ class TestAdversarial:
     async def test_forwarding_copies_the_row_not_the_bytes(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
         """Both messages point at the same stored object."""
-        ana = uuid4()
-        source = await service.start_conversation(ana, [uuid4()])
-        target = await service.start_conversation(ana, [uuid4()])
+        ana = person()
+        source = await service.start_conversation(ana, [person()])
+        target = await service.start_conversation(ana, [person()])
         attachment = await _upload(service, key="uploads/one.jpg")
         original = await service.post_message(
             source.id,
@@ -1140,9 +1263,10 @@ class TestAdversarial:
         self,
         service: ChatService,
         session: AsyncSession,
+        person: _People,
     ) -> None:
         """Measured at 42 statements for 20 messages before batching."""
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         for index in range(20):
             await service.post_message(
@@ -1181,7 +1305,7 @@ class TestOutsiderCannotReachAMessage:
     outsider cannot tell a hidden message from a missing one.
     """
 
-    async def _message(self, service: ChatService) -> Any:
+    async def _message(self, service: ChatService, person: _People) -> Any:
         """Post one message between two people and return it.
 
         Args:
@@ -1190,7 +1314,7 @@ class TestOutsiderCannotReachAMessage:
         Returns:
             Any: The posted message.
         """
-        ana, bruno = uuid4(), uuid4()
+        ana, bruno = person(), person()
         conversation = await service.start_conversation(ana, [bruno])
         return await service.post_message(
             conversation.id,
@@ -1198,28 +1322,33 @@ class TestOutsiderCannotReachAMessage:
             MessageCreateSchema(body="segredo"),
         )
 
-    async def test_an_outsider_cannot_react(self, service: ChatService) -> None:
-        message = await self._message(service)
+    async def test_an_outsider_cannot_react(
+        self, service: ChatService, person: _People
+    ) -> None:
+        message = await self._message(service, person)
 
         with pytest.raises(NotFoundException):
-            await service.react(message.id, uuid4(), "👍")
+            await service.react(message.id, person(), "👍")
 
         assert service.reactions is not None
         assert await service.reactions.list(filters={"message_id": message.id}) == []
 
-    async def test_an_outsider_cannot_unreact(self, service: ChatService) -> None:
-        message = await self._message(service)
+    async def test_an_outsider_cannot_unreact(
+        self, service: ChatService, person: _People
+    ) -> None:
+        message = await self._message(service, person)
 
         with pytest.raises(NotFoundException):
-            await service.unreact(message.id, uuid4())
+            await service.unreact(message.id, person())
 
     async def test_an_outsider_cannot_forward_the_source(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        message = await self._message(service)
-        outsider = uuid4()
-        own = await service.start_conversation(outsider, [uuid4()])
+        message = await self._message(service, person)
+        outsider = person()
+        own = await service.start_conversation(outsider, [person()])
 
         with pytest.raises(NotFoundException):
             await service.forward(message.id, outsider, [own.id])
@@ -1227,25 +1356,30 @@ class TestOutsiderCannotReachAMessage:
         page = await service.list_messages(own.id)
         assert page["total"] == 0
 
-    async def test_an_outsider_cannot_edit(self, service: ChatService) -> None:
-        message = await self._message(service)
+    async def test_an_outsider_cannot_edit(
+        self, service: ChatService, person: _People
+    ) -> None:
+        message = await self._message(service, person)
 
         with pytest.raises(NotFoundException):
-            await service.edit_message(message.id, uuid4(), "mudado")
+            await service.edit_message(message.id, person(), "mudado")
 
-    async def test_an_outsider_cannot_revoke(self, service: ChatService) -> None:
-        message = await self._message(service)
+    async def test_an_outsider_cannot_revoke(
+        self, service: ChatService, person: _People
+    ) -> None:
+        message = await self._message(service, person)
 
         with pytest.raises(NotFoundException):
-            await service.revoke_message(message.id, uuid4())
+            await service.revoke_message(message.id, person())
 
     async def test_the_refusal_matches_a_missing_message(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
         """Same class and message for hidden and missing: no existence oracle."""
-        message = await self._message(service)
-        outsider = uuid4()
+        message = await self._message(service, person)
+        outsider = person()
 
         with pytest.raises(NotFoundException) as hidden:
             await service.react(message.id, outsider, "👍")
@@ -1259,8 +1393,10 @@ class TestOutsiderCannotReachAMessage:
 class TestFormerMemberCannotReachAMessage:
     """Leaving ends write access to the old messages, not just to posting."""
 
-    async def test_a_sender_who_left_cannot_edit(self, service: ChatService) -> None:
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+    async def test_a_sender_who_left_cannot_edit(
+        self, service: ChatService, person: _People
+    ) -> None:
+        ana, bruno, carla = person(), person(), person()
         conversation = await service.start_conversation(ana, [bruno, carla])
         message = await service.post_message(
             conversation.id,
@@ -1275,8 +1411,9 @@ class TestFormerMemberCannotReachAMessage:
     async def test_a_sender_who_left_cannot_revoke(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+        ana, bruno, carla = person(), person(), person()
         conversation = await service.start_conversation(ana, [bruno, carla])
         message = await service.post_message(
             conversation.id,
@@ -1291,8 +1428,9 @@ class TestFormerMemberCannotReachAMessage:
     async def test_a_member_who_left_cannot_react(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+        ana, bruno, carla = person(), person(), person()
         conversation = await service.start_conversation(ana, [bruno, carla])
         message = await service.post_message(
             conversation.id,
@@ -1308,7 +1446,9 @@ class TestFormerMemberCannotReachAMessage:
 class TestHistoryFromIsRespectedOutsideThePage:
     """The backlog a newcomer cannot page is also one they cannot touch."""
 
-    async def _backlog(self, service: ChatService) -> tuple[Any, Any, UUID]:
+    async def _backlog(
+        self, service: ChatService, person: _People
+    ) -> tuple[Any, Any, UUID]:
         """Post a message, then add a newcomer without history.
 
         Args:
@@ -1318,22 +1458,23 @@ class TestHistoryFromIsRespectedOutsideThePage:
             tuple[Any, Any, UUID]: The conversation, the old message and
             the newcomer's id.
         """
-        ana, bruno, carla = uuid4(), uuid4(), uuid4()
+        ana, bruno, carla = person(), person(), person()
         conversation = await service.start_conversation(ana, [bruno, carla])
         old = await service.post_message(
             conversation.id,
             ana,
             MessageCreateSchema(body="antes"),
         )
-        newcomer = uuid4()
+        newcomer = person()
         await service.add_participants(conversation.id, ana, [newcomer])
         return conversation, old, newcomer
 
     async def test_a_newcomer_cannot_react_to_the_backlog(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        _conversation, old, newcomer = await self._backlog(service)
+        _conversation, old, newcomer = await self._backlog(service, person)
 
         with pytest.raises(NotFoundException):
             await service.react(old.id, newcomer, "👍")
@@ -1341,9 +1482,10 @@ class TestHistoryFromIsRespectedOutsideThePage:
     async def test_a_newcomer_cannot_forward_the_backlog(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        _conversation, old, newcomer = await self._backlog(service)
-        own = await service.start_conversation(newcomer, [uuid4()])
+        _conversation, old, newcomer = await self._backlog(service, person)
+        own = await service.start_conversation(newcomer, [person()])
 
         with pytest.raises(NotFoundException):
             await service.forward(old.id, newcomer, [own.id])
@@ -1351,9 +1493,10 @@ class TestHistoryFromIsRespectedOutsideThePage:
     async def test_a_newcomer_cannot_quote_the_backlog(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
         """The reply stub carries an excerpt, so quoting would leak the body."""
-        conversation, old, newcomer = await self._backlog(service)
+        conversation, old, newcomer = await self._backlog(service, person)
 
         with pytest.raises(NotFoundException):
             await service.post_message(
@@ -1365,8 +1508,9 @@ class TestHistoryFromIsRespectedOutsideThePage:
     async def test_a_newcomer_can_react_to_what_came_after(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        conversation, _old, newcomer = await self._backlog(service)
+        conversation, _old, newcomer = await self._backlog(service, person)
         fresh = await service.post_message(
             conversation.id,
             newcomer,
@@ -1381,7 +1525,9 @@ class TestHistoryFromIsRespectedOutsideThePage:
 class TestRevokeKeepsSharedFiles:
     """A forward points at the same key, so revoking one side orphans nothing."""
 
-    async def _forwarded(self, service: ChatService) -> tuple[UUID, Any, Any]:
+    async def _forwarded(
+        self, service: ChatService, person: _People
+    ) -> tuple[UUID, Any, Any]:
         """Post an image and forward it once.
 
         Args:
@@ -1390,9 +1536,9 @@ class TestRevokeKeepsSharedFiles:
         Returns:
             tuple[UUID, Any, Any]: The sender, the original and the copy.
         """
-        ana = uuid4()
-        source = await service.start_conversation(ana, [uuid4()])
-        target = await service.start_conversation(ana, [uuid4()])
+        ana = person()
+        source = await service.start_conversation(ana, [person()])
+        target = await service.start_conversation(ana, [person()])
         attachment = await _upload(service, key="uploads/shared.jpg")
         original = await service.post_message(
             source.id,
@@ -1408,8 +1554,9 @@ class TestRevokeKeepsSharedFiles:
     async def test_revoking_the_original_keeps_the_forwarded_file(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, original, copy = await self._forwarded(service)
+        ana, original, copy = await self._forwarded(service, person)
 
         _tombstone, keys = await service.revoke_message(original.id, ana)
 
@@ -1421,8 +1568,9 @@ class TestRevokeKeepsSharedFiles:
     async def test_revoking_the_last_reference_reports_the_key(
         self,
         service: ChatService,
+        person: _People,
     ) -> None:
-        ana, original, copy = await self._forwarded(service)
+        ana, original, copy = await self._forwarded(service, person)
 
         _first, first_keys = await service.revoke_message(original.id, ana)
         _second, second_keys = await service.revoke_message(copy.id, ana)
@@ -1434,20 +1582,26 @@ class TestRevokeKeepsSharedFiles:
 class TestPageBounds:
     """A page size of zero divided by zero; a negative one read everything."""
 
-    async def test_page_size_zero_is_refused(self, service: ChatService) -> None:
-        conversation = await service.start_conversation(uuid4(), [uuid4()])
+    async def test_page_size_zero_is_refused(
+        self, service: ChatService, person: _People
+    ) -> None:
+        conversation = await service.start_conversation(person(), [person()])
 
         with pytest.raises(ValidationException):
             await service.list_messages(conversation.id, page_size=0)
 
-    async def test_negative_page_size_is_refused(self, service: ChatService) -> None:
-        conversation = await service.start_conversation(uuid4(), [uuid4()])
+    async def test_negative_page_size_is_refused(
+        self, service: ChatService, person: _People
+    ) -> None:
+        conversation = await service.start_conversation(person(), [person()])
 
         with pytest.raises(ValidationException):
             await service.list_messages(conversation.id, page_size=-1)
 
-    async def test_page_zero_is_refused(self, service: ChatService) -> None:
-        conversation = await service.start_conversation(uuid4(), [uuid4()])
+    async def test_page_zero_is_refused(
+        self, service: ChatService, person: _People
+    ) -> None:
+        conversation = await service.start_conversation(person(), [person()])
 
         with pytest.raises(ValidationException):
             await service.list_messages(conversation.id, page=0)

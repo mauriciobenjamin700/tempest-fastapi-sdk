@@ -146,6 +146,86 @@ def enable_sqlite_wal(engine: AsyncEngine) -> None:
             cursor.close()
 
 
+def enable_sqlite_foreign_keys(engine: AsyncEngine) -> None:
+    """Make SQLite enforce ``FOREIGN KEY`` constraints on every connection.
+
+    SQLite parses ``REFERENCES`` clauses but only checks them on a
+    connection that ran ``PRAGMA foreign_keys=ON`` — off is the
+    compiled-in default, and the setting lives on the connection, not
+    on the database file. Left off, three things pass on SQLite that
+    PostgreSQL rejects or does differently. Measured on SQLAlchemy
+    2.0.52 and 2.1.3 with aiosqlite 0.22.1, SQLite 3.47.1:
+
+    ========================================  ===========  ==============
+    Operation                                 FK off       FK on
+    ========================================  ===========  ==============
+    insert a child pointing at no parent      accepted     IntegrityError
+    delete a parent, ``ON DELETE CASCADE``    child stays  child deleted
+    ``add_all([child, parent])`` with no      accepted     IntegrityError
+    ``relationship()`` ordering the flush
+    ========================================  ===========  ==============
+
+    The pragma is emitted from a ``connect`` listener on
+    ``engine.sync_engine``, through the raw driver cursor, so it runs
+    once per new connection and **before** any transaction opens.
+    SQLite ignores ``PRAGMA foreign_keys`` inside a transaction:
+    emitted after :func:`enable_sqlite_savepoints` has issued ``BEGIN``
+    it is a silent no-op and the pragma keeps answering ``0``.
+
+    Args:
+        engine (AsyncEngine): The SQLite engine to configure. Emitting
+            this pragma against another backend would fail, so callers
+            building their own engine must gate on the backend.
+
+    Notes:
+        Do not run Alembic batch migrations on a connection with this
+        on. Batch mode rebuilds a table by creating a copy and dropping
+        the original, and with enforcement on the ``DROP TABLE`` runs
+        the foreign-key actions: measured with Alembic 1.19.1,
+        ``batch_alter_table("org", recreate="always")`` on a parent
+        with ``ON DELETE CASCADE`` children deleted every child row
+        without raising. :func:`require_sqlite_foreign_keys_off` is the
+        check the generated ``env.py`` runs before migrating.
+    """
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _enable_foreign_keys(dbapi_connection: Any, _record: Any) -> None:
+        """Turn enforcement on before the connection opens a transaction."""
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA foreign_keys=ON")
+        finally:
+            cursor.close()
+
+
+def _configure_sqlite_engine(
+    engine: AsyncEngine,
+    *,
+    wal: bool,
+    foreign_keys: bool,
+) -> None:
+    """Apply the SDK's SQLite behaviour to an engine it just built.
+
+    The single place that decides what a SQLite engine built by the SDK
+    looks like, so :class:`AsyncDatabaseManager` and
+    :func:`tempest_fastapi_sdk.testing.create_test_engine` cannot drift
+    apart again — before this existed the test engine applied neither
+    savepoints nor foreign keys while the manager applied savepoints.
+    Savepoints are always applied; WAL and foreign keys are the knobs.
+
+    Args:
+        engine (AsyncEngine): A freshly created SQLite engine.
+        wal (bool): Whether to apply :func:`enable_sqlite_wal`.
+        foreign_keys (bool): Whether to apply
+            :func:`enable_sqlite_foreign_keys`.
+    """
+    if foreign_keys:
+        enable_sqlite_foreign_keys(engine)
+    enable_sqlite_savepoints(engine)
+    if wal:
+        enable_sqlite_wal(engine)
+
+
 class AsyncDatabaseManager:
     """Manage the async SQLAlchemy engine and session lifecycle.
 
@@ -162,7 +242,10 @@ class AsyncDatabaseManager:
     SQLite engines are additionally put in WAL mode with a 30-second
     busy timeout, which is what makes "web process plus worker on the
     same file" work at all — see :func:`enable_sqlite_wal` for the
-    measurement and for the one contention WAL does **not** fix.
+    measurement and for the one contention WAL does **not** fix. They
+    also enforce foreign keys (:func:`enable_sqlite_foreign_keys`), so
+    an orphan row or a missing ``ON DELETE CASCADE`` fails the way it
+    does on PostgreSQL.
 
     Attributes:
         is_sqlite (bool): Whether the URL targets a SQLite backend.
@@ -184,6 +267,7 @@ class AsyncDatabaseManager:
         poolclass: type[Pool] | None = None,
         sqlite_wal: bool = True,
         sqlite_busy_timeout: float = 30.0,
+        sqlite_foreign_keys: bool = True,
         **engine_kwargs: Any,
     ) -> None:
         """Initialize the manager (does not open connections yet).
@@ -218,6 +302,12 @@ class AsyncDatabaseManager:
                 writes in bursts. Ignored on every other backend, and
                 ignored here when ``connect_args`` already carries a
                 ``timeout``.
+            sqlite_foreign_keys (bool): Whether SQLite engines enforce
+                ``FOREIGN KEY`` constraints and their ``ON DELETE``
+                actions (see :func:`enable_sqlite_foreign_keys`).
+                Ignored on every other backend. Turn it off only for a
+                database that already holds orphan rows you cannot
+                clean up yet.
             **engine_kwargs: Any additional keyword arguments are
                 passed through to ``create_async_engine`` verbatim.
         """
@@ -227,6 +317,7 @@ class AsyncDatabaseManager:
         self._memory_keepalive: AsyncConnection | None = None
         self._sqlite_wal: bool = sqlite_wal
         self._sqlite_busy_timeout: float = sqlite_busy_timeout
+        self._sqlite_foreign_keys: bool = sqlite_foreign_keys
         self._echo: bool = echo
         self._pool_size: int = pool_size
         self._max_overflow: int = max_overflow
@@ -320,9 +411,11 @@ class AsyncDatabaseManager:
 
         self._engine = create_async_engine(url, **kwargs)
         if self.is_sqlite:
-            enable_sqlite_savepoints(self._engine)
-            if self._sqlite_wal:
-                enable_sqlite_wal(self._engine)
+            _configure_sqlite_engine(
+                self._engine,
+                wal=self._sqlite_wal,
+                foreign_keys=self._sqlite_foreign_keys,
+            )
         if share_memory:
             self._memory_keepalive = await self._engine.connect()
         self._session_maker = async_sessionmaker(
@@ -572,6 +665,7 @@ def session_dependency_for(
 
 __all__: list[str] = [
     "AsyncDatabaseManager",
+    "enable_sqlite_foreign_keys",
     "enable_sqlite_savepoints",
     "enable_sqlite_wal",
     "is_memory_sqlite_url",

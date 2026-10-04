@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **SQLite agora confere chave estrangeira** (#395). Todo engine SQLite que o
+  `AsyncDatabaseManager` e o `create_test_engine` montam roda
+  `PRAGMA foreign_keys=ON` num listener do `connect` — antes, nenhum rodava, e
+  três coisas passavam no SQLite e falham no PostgreSQL: filho apontando para
+  pai inexistente era aceito, `ON DELETE CASCADE` deixava o filho órfão, e
+  `add_all([filho, pai])` sem `relationship()` passava. Medido no
+  SQLAlchemy 2.0.52 e 2.1.3 (aiosqlite 0.22.1, SQLite 3.47.1): os três agora
+  levantam `IntegrityError` / apagam o filho, em arquivo e em `:memory:` (o
+  cache compartilhado do manager e o `StaticPool` do engine de teste). O
+  pragma fica no `connect` porque o SQLite o ignora dentro de transação, e o
+  `BEGIN` explícito dos savepoints já abriu uma.
+- **`create_test_engine` aplica também o `enable_sqlite_savepoints`.** Os dois
+  caminhos passam por um configurador interno só, `_configure_sqlite_engine`;
+  antes o engine de teste não aplicava nem o savepoint, então um
+  `begin_nested()` que saía limpo comitava a transação de fora no teste e
+  não no manager.
+
+**Migração** (guia completo em `docs/migration.md`):
+
+- **Teste que grava filho sem pai passa a falhar** — é o objetivo: falharia
+  no PostgreSQL. Semeie o pai antes (e dê `flush()` depois dele quando os
+  models não têm `relationship()`). A própria suíte do SDK tinha 112 testes
+  assim (`user_id=uuid4()` sem linha em `users`); foram corrigidos semeando o
+  usuário, não desligando a FK.
+- **Opt-out, pelos três caminhos:** `AsyncDatabaseManager(...,
+  sqlite_foreign_keys=False)`, `DATABASE_SQLITE_FOREIGN_KEYS=false` (via
+  `DatabaseSettings.database_kwargs()`), `create_test_engine(...,
+  foreign_keys=False)`. Ignorado em qualquer backend que não seja SQLite.
+- **Banco SQLite existente com órfão** abre e lê normalmente; ache as linhas
+  com `PRAGMA foreign_key_check`. Medido no SQLite 3.47.1: com a FK ligada,
+  `UPDATE` de outra coluna do órfão e `DELETE` dele passam; o que falha é
+  gravar uma chave sem pai (`INSERT`, ou `UPDATE` da coluna FK para um pai
+  inexistente).
+- **Conexão compartilhada com o Alembic:** quem entrega a conexão de um
+  `AsyncDatabaseManager` ao `env.py` (`config.attributes["connection"]`)
+  agora entrega uma conexão com FK ligada, e o batch mode do Alembic que
+  recria a tabela pai apaga os filhos com `ON DELETE CASCADE` sem erro
+  (medido com Alembic 1.19.1: 3 linhas → 0). O `env.py` gerado a partir desta
+  versão recusa essa conexão; o `env.py` que já está no seu repositório
+  **não** — migre com `AsyncDatabaseManager(url, sqlite_foreign_keys=False)`
+  e regenere o `env.py`. `AlembicHelper` e a CLI abrem engine próprio, sem
+  FK, e não são afetados.
+
 ### Added
 
 - **`HardwareInfo.ram_cgroup_limited`** (`bool`, default `False`): `True`
@@ -15,6 +60,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   de tipo. Com ele, o `CapacityReport.reason` termina com *"RAM is limited
   by the container's cgroup to 512 MiB."*, e o `tempest model hardware`
   imprime `ram total  : 0.5 GB (cgroup limit)`.
+
+- **`enable_sqlite_foreign_keys(engine)`**, em `tempest_fastapi_sdk.db` e na
+  raiz: o listener do `connect` para quem monta engine SQLite à mão, irmão de
+  `enable_sqlite_savepoints` / `enable_sqlite_wal`.
+- **`AsyncDatabaseManager(sqlite_foreign_keys=True)`**,
+  **`DatabaseSettings.DATABASE_SQLITE_FOREIGN_KEYS`** (default `True`, entra
+  no `database_kwargs()`) e **`create_test_engine(foreign_keys=True)`**.
+- **`require_sqlite_foreign_keys_off(connection)`**: levanta `RuntimeError`
+  quando a conexão é SQLite com `PRAGMA foreign_keys=ON`, lendo o pragma pelo
+  cursor do driver (não abre transação). O `env.py.template` chama antes de
+  migrar numa conexão entregue.
+- **Guard `tests/test_engine_configuration_guard.py`**: todo
+  `create_async_engine` / `create_engine` / `async_engine_from_config` do
+  pacote passa pelo `_configure_sqlite_engine` ou está numa allowlist com
+  motivo (hoje, só os engines de migration).
 
 ### Fixed
 
@@ -42,6 +102,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reportou 417 MiB livres e o processo alocou 432 MiB (3 de 3). Swap não
   entra. O cgroup v1 é coberto só por teste com arquivos falsos: não havia
   host v1 para medir.
+
+- **README:** a tabela de `tempest_fastapi_sdk.testing` documentava
+  `create_test_engine(url=..., **engine_kwargs)` e `test_database(url=...)`;
+  as assinaturas reais usam `database_url` e não aceitam `**engine_kwargs`.
+
 
 ## [0.303.2] — 2026-10-04
 

@@ -21,6 +21,7 @@ from tempest_fastapi_sdk.reviews import (
     make_rating_model,
     make_reviews_router,
 )
+from tests._seed import seed_users
 
 
 class _ReviewUser(BaseUserModel):
@@ -50,8 +51,9 @@ class TestComments:
     async def test_add_and_list(self, session: AsyncSession) -> None:
         service = _service(session)
         target = uuid4()
-        await service.add_comment("product", target, uuid4(), "great")
-        await service.add_comment("product", target, uuid4(), "meh")
+        first, second = await seed_users(session, _ReviewUser, 2)
+        await service.add_comment("product", target, first, "great")
+        await service.add_comment("product", target, second, "meh")
         page = await service.list_comments("product", target)
         assert page["total"] == 2
         assert [c.body for c in page["items"]] == ["great", "meh"]
@@ -59,8 +61,9 @@ class TestComments:
     async def test_list_scoped_to_target(self, session: AsyncSession) -> None:
         service = _service(session)
         a, b = uuid4(), uuid4()
-        await service.add_comment("product", a, uuid4(), "for-a")
-        await service.add_comment("product", b, uuid4(), "for-b")
+        first, second = await seed_users(session, _ReviewUser, 2)
+        await service.add_comment("product", a, first, "for-a")
+        await service.add_comment("product", b, second, "for-b")
         page = await service.list_comments("product", a)
         assert page["total"] == 1
 
@@ -68,13 +71,15 @@ class TestComments:
 class TestRatings:
     async def test_rate_creates(self, session: AsyncSession) -> None:
         service = _service(session)
-        target, user = uuid4(), uuid4()
+        target = uuid4()
+        (user,) = await seed_users(session, _ReviewUser, 1)
         rating = await service.rate("product", target, user, 5)
         assert rating.stars == 5
 
     async def test_rate_upserts_one_per_user(self, session: AsyncSession) -> None:
         service = _service(session)
-        target, user = uuid4(), uuid4()
+        target = uuid4()
+        (user,) = await seed_users(session, _ReviewUser, 1)
         first = await service.rate("product", target, user, 3)
         second = await service.rate("product", target, user, 5)
         assert first.id == second.id
@@ -84,7 +89,8 @@ class TestRatings:
 
     async def test_get_user_rating(self, session: AsyncSession) -> None:
         service = _service(session)
-        target, user = uuid4(), uuid4()
+        target = uuid4()
+        (user,) = await seed_users(session, _ReviewUser, 1)
         assert await service.get_user_rating("product", target, user) is None
         await service.rate("product", target, user, 4)
         found = await service.get_user_rating("product", target, user)
@@ -94,8 +100,9 @@ class TestRatings:
     async def test_aggregate(self, session: AsyncSession) -> None:
         service = _service(session)
         target = uuid4()
-        for stars in (5, 5, 3):
-            await service.rate("product", target, uuid4(), stars)
+        users = await seed_users(session, _ReviewUser, 3)
+        for user, stars in zip(users, (5, 5, 3), strict=True):
+            await service.rate("product", target, user, stars)
         agg = await service.aggregate("product", target)
         assert agg.count == 3
         assert agg.average == pytest.approx(13 / 3)
