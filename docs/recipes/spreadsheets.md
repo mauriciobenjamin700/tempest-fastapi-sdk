@@ -22,8 +22,10 @@ Montar na mão custa três coisas, sempre as mesmas:
 `tempest_fastapi_sdk.spreadsheet` resolve os três: um cursor de linha,
 colunas declaradas uma vez, e máscaras fixadas em pt-BR.
 
-E no sentido contrário, para ler a planilha que alguém mantém no Google,
-veja [Ler uma planilha do Google Sheets](#ler-uma-planilha-do-google-sheets).
+E no sentido contrário, para ler uma planilha — o `.xlsx` que o usuário
+sobe, ou a que alguém mantém no Google —, veja
+[Ler um arquivo `.xlsx`](#ler-um-arquivo-xlsx) e
+[Ler uma planilha do Google Sheets](#ler-uma-planilha-do-google-sheets).
 
 !!! info "Extra necessário"
     ```bash
@@ -528,7 +530,7 @@ Os `details` guardam o que veio de fato:
 
 ```json
 {
-  "detail": "The Google Sheet could not be read as CSV. Check the link and share the sheet as 'Anyone with the link'.",
+  "detail": "The Google Sheet could not be downloaded. Check the link and share the sheet as 'Anyone with the link'.",
   "code": "GOOGLE_SHEET_UNAVAILABLE",
   "details": {
     "export_url": "https://docs.google.com/spreadsheets/d/<id-inexistente>/export?format=csv",
@@ -559,12 +561,406 @@ dentro de uma rota viram o envelope de erro do SDK sem `try` nenhum; com um
     (ajustável por `timeout=`) e fecha ao terminar. Falha de rede (timeout,
     DNS) sobe como `httpx.HTTPError`.
 
-??? note "Por que só CSV"
-    O export em CSV traz **uma aba** e nada de formatação — exatamente o que
-    uma leitura de dados quer. O mesmo endpoint também responde
-    `format=xlsx` (a pasta inteira), e `google_sheet_export_url` monta essa
-    URL com `export_format="xlsx"`; ler o `.xlsx` baixado ainda não faz
-    parte desta API.
+??? note "CSV ou .xlsx?"
+    O CSV traz **uma aba** por requisição, escolhida pelo `gid`, e cada
+    célula como **texto formatado** pelo locale da planilha (`"1.234,56"`,
+    `"04/10/2026"`). Roda sem extra nenhum. O `.xlsx` traz **a pasta
+    inteira** numa requisição, com as abas pelo nome, e cada célula com o
+    **tipo** que a planilha guarda (número, data, booleano). Precisa do
+    `[spreadsheet]`. Para uma aba de texto simples, o CSV basta; para várias
+    abas, ou para colunas de valor e data, veja
+    [A pasta inteira do Google numa requisição](#a-pasta-inteira-do-google-numa-requisicao).
+
+## Ler um arquivo `.xlsx`
+
+O caminho mais comum de planilha chegando ao serviço não é o Google: é o
+usuário subindo um `.xlsx` num endpoint de importação. E a versão feita à
+mão com `openpyxl` tropeça sempre nos mesmos lugares:
+
+* **A linha em branco.** O usuário deixa uma linha vazia no meio. Pular é
+  fácil; o difícil é continuar reportando o erro com o número que a
+  planilha mostra na lateral, e não o índice da lista.
+* **O arquivo que não é planilha.** Um CSV renomeado para `.xlsx`, um
+  upload vazio. O `openpyxl` levanta `BadZipFile` ou `KeyError`, e o
+  endpoint responde `500`.
+* **A aba que não existe.** Pedir `workbook["Vendas"]` numa pasta cuja aba
+  se chama `Planilha1` é outro `KeyError`, outro `500`.
+
+`read_xlsx_as` lê uma aba, valida cada linha num modelo Pydantic e
+transforma esses três casos em erros tipados.
+
+!!! info "Extra necessário"
+    A leitura de `.xlsx` usa o `openpyxl` do extra `[spreadsheet]`. Sem ele,
+    o módulo importa normalmente, e a chamada levanta `ImportError` dizendo
+    qual extra instalar.
+
+### O código
+
+O exemplo gera a planilha com o próprio `SheetWriter` (para rodar sem
+arquivo nenhum) e lê de volta:
+
+```python
+# scripts/vendas.py
+
+from datetime import date
+from decimal import Decimal
+
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk.spreadsheet import (
+    BR_CURRENCY_FORMAT,
+    BR_DATE_FORMAT,
+    Column,
+    SheetWriter,
+    new_workbook,
+    read_xlsx_as,
+    workbook_to_bytes,
+)
+
+
+class Venda(BaseModel):
+    """Uma linha da aba Vendas."""
+
+    data: date
+    produto: str
+    quantidade: int
+    total: Decimal
+    pago: bool
+
+
+def gerar_planilha() -> bytes:
+    """Monta a planilha que o usuário mandaria no upload."""
+    workbook = new_workbook("Vendas")
+    writer = SheetWriter(
+        workbook["Vendas"],
+        columns=[
+            Column("data", number_format=BR_DATE_FORMAT),
+            Column("produto"),
+            Column("quantidade"),
+            Column("total", number_format=BR_CURRENCY_FORMAT),
+            Column("pago"),
+        ],
+    )
+    writer.header_row()
+    writer.write_row([date(2026, 10, 1), "Café", 2, Decimal("10.50"), True])
+    writer.blank_rows()
+    writer.write_row([date(2026, 10, 2), "Bolo", 1, Decimal("7.00"), False])
+    return workbook_to_bytes(workbook)
+
+
+def main() -> None:
+    """Lê a aba Vendas e imprime cada venda."""
+    vendas: list[Venda] = read_xlsx_as(gerar_planilha(), Venda, sheet="Vendas")
+    for venda in vendas:
+        print(venda.data, venda.produto, venda.quantidade, venda.total, venda.pago)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+Rodando (saída real):
+
+```text
+2026-10-01 Café 2 10.5 True
+2026-10-02 Bolo 1 7 False
+```
+
+E o endpoint de importação é o mesmo `read_xlsx_as`, com os bytes do
+upload:
+
+```python
+# app/main.py
+
+from datetime import date
+from decimal import Decimal
+
+from fastapi import FastAPI, UploadFile
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk import register_exception_handlers
+from tempest_fastapi_sdk.spreadsheet import read_xlsx_as
+
+
+class Venda(BaseModel):
+    """Uma linha da aba Vendas."""
+
+    data: date
+    produto: str
+    quantidade: int
+    total: Decimal
+    pago: bool
+
+
+app: FastAPI = FastAPI()
+register_exception_handlers(app)
+
+
+@app.post("/vendas/importar")
+async def importar_vendas(arquivo: UploadFile) -> list[Venda]:
+    """Valida a planilha enviada e devolve as vendas lidas."""
+    conteudo: bytes = await arquivo.read()
+    return read_xlsx_as(conteudo, Venda, sheet="Vendas")
+```
+
+### Pedaço por pedaço
+
+**A origem.** `read_xlsx_as` aceita `bytes` (o `await arquivo.read()` do
+upload, o corpo de uma resposta HTTP), um caminho (`str` ou `Path`) ou um
+arquivo binário aberto — `arquivo.file` do `UploadFile` também serve.
+
+**A aba.** `sheet=` recebe o **nome** da aba ou a **posição** (a partir de
+`0`, negativa vale). Sem `sheet=`, lê a primeira aba. O nome é comparado
+como está: uma aba que aparece como `Setembro` pode se chamar `"Setembro "`,
+com espaço no fim — o `SheetNotFoundError` lista os nomes reais em
+`details["available"]`.
+
+**O tipo da célula.** Esta é a diferença para o CSV: a célula chega com o
+**valor** que a planilha guarda, não com o texto que ela mostra. Por isso
+`total: Decimal` e `data: date` validam direto, sem desfazer `R$` nem
+`dd/mm/aaaa`. O que chega, medido na exportação `.xlsx` de uma planilha
+pública do Google com 16 abas:
+
+| Na planilha | Chega como |
+| --- | --- |
+| número (inclusive moeda) | `int` ou `float` — `30.0` e `50` na mesma coluna |
+| porcentagem `40%` | `float` com a **razão**: `0.4` |
+| data `02/04/2025` | `datetime(2025, 4, 2, 0, 0)` |
+| hora | `datetime.time` |
+| booleano | `bool` |
+| texto | `str`, com os espaços que tiver |
+| célula vazia | `None` |
+
+Duas consequências para o schema. Declare número como `float` ou
+`Decimal`, não como `int`: o export escreve `30.0` e `50` na mesma coluna
+(um campo `int` aceita `30.0`, mas recusa `30.5`). E coluna que mistura
+número e texto, como um tamanho `41` ou `X`, vira `str | int`: o `.xlsx`
+entrega `41.0` (float), que um campo `str` recusa — o schema do CSV não é
+portável sem esse ajuste.
+
+**Fórmula.** Vale o resultado **guardado** no arquivo. O export do Google
+grava o resultado de toda fórmula: das 1 429 fórmulas da planilha medida,
+as 975 que chegaram como `None` eram todas `IF(...; ""; ...)` com resultado
+vazio. Um arquivo gerado pelo `openpyxl` (inclusive pelo `SheetWriter`)
+**não** guarda resultado, então uma fórmula dele chega como `None` até
+alguém abrir e salvar no Excel ou no LibreOffice.
+
+**Linhas e cabeçalho.** As regras são as mesmas do CSV, porque o código é
+o mesmo:
+
+* a linha 1 é o cabeçalho, e o nome vale como está (`" NOME"` com o espaço);
+* célula de cabeçalho vazia vira a chave `""`, e nome repetido fica com o
+  valor da **última** coluna;
+* linha em branco é pulada, mas conta na numeração;
+* linha mais curta que o cabeçalho é completada com `None`; célula além da
+  última coluna do cabeçalho é ignorada;
+* célula mesclada guarda o valor só no canto superior esquerdo — as outras
+  células do intervalo chegam `None`.
+
+!!! warning "Espaço não é linha em branco"
+    Só `None` e `""` contam como vazio; `0` e `False` são valor. Uma
+    fórmula que responde `" "` (um espaço) mantém a linha: na planilha
+    medida, 884 linhas de uma aba eram só isso. Se a sua planilha tem esse
+    padrão, filtre as linhas sem o campo obrigatório antes de usar — ou
+    deixe o `missing` do schema apontar a primeira.
+
+**O erro.** Os três casos do começo viram `AppException` com status `422`,
+e dentro de uma rota viram o envelope de erro do SDK. A resposta real do
+endpoint acima, para cada um:
+
+Um CSV enviado como `.xlsx`:
+
+```json
+{
+  "detail": "The file is not a valid .xlsx spreadsheet.",
+  "code": "SPREADSHEET_INVALID",
+  "details": {"reason": "File is not a zip file"}
+}
+```
+
+Uma pasta sem a aba `Vendas`:
+
+```json
+{
+  "detail": "The spreadsheet has no sheet 'Vendas'.",
+  "code": "SPREADSHEET_SHEET_NOT_FOUND",
+  "details": {"sheet": "Vendas", "available": ["Planilha1"]}
+}
+```
+
+Uma data digitada como texto (`"01/10/2026"`) na linha 2:
+
+```json
+{
+  "detail": "Row 2 of sheet 'Vendas' failed validation.",
+  "code": "SPREADSHEET_ROW_INVALID",
+  "details": {
+    "row": 2,
+    "sheet": "Vendas",
+    "errors": [
+      {
+        "type": "date_from_datetime_parsing",
+        "loc": ["data"],
+        "msg": "Input should be a valid date or datetime, invalid character in year",
+        "input": "01/10/2026"
+      }
+    ]
+  }
+}
+```
+
+`SpreadsheetRowError` tem o mesmo contrato do `GoogleSheetRowError` do CSV
+(`details["row"]` com cabeçalho = 1, `details["errors"]` do Pydantic) e
+ainda nomeia a aba em `details["sheet"]`. `GoogleSheetRowError` é subclasse
+dele, então um `except SpreadsheetRowError` cobre os dois leitores.
+
+**Sem schema.** `read_xlsx` devolve `list[dict[str, XlsxCellValue]]` de uma
+aba, e `read_xlsx_sheets` devolve todas, num `dict` pelo nome da aba, na
+ordem das abas (aba de gráfico fica de fora). Aba vazia, ou só com
+cabeçalho, devolve `[]`.
+
+## A pasta inteira do Google numa requisição
+
+O CSV lê uma aba por requisição, e para isso você precisa do `gid` de cada
+aba. Uma planilha de vendas com uma aba por mês são doze links, doze
+requisições — e o valor chega como texto formatado.
+
+`download_google_sheet_xlsx` baixa a pasta inteira **uma vez**, como
+`.xlsx`; os leitores da seção anterior leem quantas abas quiser dos mesmos
+bytes.
+
+### O código
+
+A mesma planilha pública de estoque do exemplo de CSV, agora pelo `.xlsx`:
+
+```python
+# scripts/estoque_xlsx.py
+
+import asyncio
+
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk.spreadsheet import download_google_sheet_xlsx, read_xlsx_as
+
+SHEET_URL: str = (
+    "https://docs.google.com/spreadsheets/d/"
+    "1h0ATstw2f6ryXvbwV-DW6zwsBRIF-2k5zHcm2uTEge8/edit?usp=sharing"
+)
+
+
+class Produto(BaseModel):
+    """Uma linha da planilha de estoque, lida do .xlsx."""
+
+    item: str
+    valor: int | None = None
+    tamanho: str | int
+
+
+async def main() -> None:
+    """Baixa a pasta uma vez e lê a aba de estoque."""
+    pasta: bytes = await download_google_sheet_xlsx(SHEET_URL)
+    produtos: list[Produto] = read_xlsx_as(pasta, Produto, sheet="Página1")
+    for produto in produtos:
+        print(produto.item, produto.valor, repr(produto.tamanho))
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Rodando (saída real, 2026-10-04):
+
+```text
+Bota forza 500 41
+Bota new forza 1000 41
+Macacao forza 1700 'X'
+Protetor de coluna 300 'uni'
+macacao dainese 1000 'XL'
+Jaqueta x11 Masc 200 'consultar'
+Jaqueta x11 Fem 200 'consultar'
+Bota Forma 400 'vendida'
+Luva x11 Fem L 250 'M'
+Luva alpinestar Gp Pro L 250 'M'
+Capacete Ls2 62 arrow*** None 'consultar'
+```
+
+Para ver todas as abas sem schema, `read_google_sheet_xlsx` baixa e lê
+tudo de uma vez:
+
+```python
+# scripts/abas.py
+
+import asyncio
+
+from tempest_fastapi_sdk.spreadsheet import XlsxCellValue, read_google_sheet_xlsx
+
+SHEET_URL: str = (
+    "https://docs.google.com/spreadsheets/d/"
+    "1d6VsFORSnFrn3GY2MADbeQ2uuifv8alenn9LECDao8A/edit"
+)
+
+
+async def main() -> None:
+    """Lê todas as abas numa requisição e conta as linhas de cada uma."""
+    abas: dict[str, list[dict[str, XlsxCellValue]]] = await read_google_sheet_xlsx(
+        SHEET_URL
+    )
+    for nome, linhas in abas.items():
+        print(f"{nome!r}: {len(linhas)} linhas")
+    print(abas["Abril"][0])
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+```text
+'Itens': 1 linhas
+'Eventos': 5 linhas
+'Trocas': 14 linhas
+'Produtos': 3 linhas
+'Mar': 66 linhas
+'Abril': 166 linhas
+'Maio': 107 linhas
+'Junho': 35 linhas
+'Julho': 0 linhas
+'Agosto': 99 linhas
+'Setembro ': 1004 linhas
+'Outubro': 999 linhas
+'Compras': 14 linhas
+'Novembro': 19 linhas
+'Dezembro': 3 linhas
+'Caixa': 45 linhas
+{'Data': datetime.datetime(2025, 4, 1, 0, 0), 'Produto': 'Café ', 'Valor unitário': 1.0, 'Quantidade': 1.0, 'Total': 1, 'Forma de pagamento': 'Pix', 'Vendedor': 'Betania', 'Observação': None, '': None, 'Valor total': 233, 'Total de vendas': 230}
+```
+
+### Pedaço por pedaço
+
+**Uma requisição.** As 16 abas vieram num `.xlsx` de 785 152 bytes; o
+`read_google_sheet_xlsx` acima levou 2,8 s nesta máquina, download
+incluído (uma medição). `Setembro ` e `Outubro` têm ~1 000 linhas porque
+uma fórmula da coluna `Total` responde `" "` até a linha 1 000 — veja o
+aviso de espaço na seção anterior.
+
+**O `gid` é descartado.** Com `gid` na URL, o export `.xlsx` devolve
+**só aquela aba** (medido: a mesma planilha com `&gid=0` veio com uma aba
+só, 71 270 bytes). Por isso `download_google_sheet_xlsx` ignora o `gid` do
+link e pede sempre a pasta inteira. Para escolher a aba, use `sheet=` na
+leitura.
+
+**As mesmas garantias do CSV.** O redirect `307` é seguido por requisição
+(também no `client=` injetado, que nunca é fechado); `timeout=` vale para o
+cliente criado. Qualquer resposta que não seja um `.xlsx` de sucesso
+(`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`) vira
+`GoogleSheetAccessError`, status `502` — um ID inexistente respondeu `404`
+`text/html` também neste formato (medido). E se o corpo vier com o media
+type certo mas não abrir como planilha, `read_google_sheet_xlsx` também
+responde `GoogleSheetAccessError`, não `422`: o defeito é do upstream, não
+de quem chamou.
+
+**O extra.** `download_google_sheet_xlsx` só baixa bytes e roda sem extra;
+`read_google_sheet_xlsx` precisa do `[spreadsheet]` e confere isso
+**antes** do download, para não gastar a requisição.
 
 ## Recapitulando
 
@@ -581,6 +977,13 @@ dentro de uma rota viram o envelope de erro do SDK sem `try` nenhum; com um
 * `read_google_sheet_as(link, Schema)` lê uma aba de uma planilha do Google
   compartilhada por link e valida cada linha; o erro aponta o número da
   linha. Sem extra.
+* `read_xlsx_as(bytes, Schema, sheet="Aba")` lê uma aba de um `.xlsx`
+  (upload, arquivo, export) com a célula **tipada**: número, `datetime`,
+  `bool`. Arquivo que não é planilha, aba que não existe e linha inválida
+  viram erro `422` tipado.
+* `download_google_sheet_xlsx(link)` baixa a pasta inteira do Google numa
+  requisição (o `gid` é descartado); `read_google_sheet_xlsx` já devolve
+  todas as abas pelo nome.
 
 Para gerar o mesmo conteúdo como documento fechado, veja
 [Geração de PDF](pdf.md). Para os utilitários de moeda que formatam a prosa

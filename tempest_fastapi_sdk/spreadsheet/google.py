@@ -1,9 +1,10 @@
 """Read a publicly shared Google Sheet as rows, with no API key.
 
 A sheet shared as *Anyone with the link* answers on its ``/export``
-endpoint with the tab rendered as CSV. That is the whole mechanism: no
-OAuth, no service account, no ``gspread``. What this module owns is the
-part every hand-written version gets slightly wrong:
+endpoint with a tab rendered as CSV, or with the whole workbook as
+``.xlsx``. That is the whole mechanism: no OAuth, no service account, no
+``gspread``. What this module owns is the part every hand-written version
+gets slightly wrong:
 
 * **The link the user pastes is not the export URL.** It ends in
   ``/edit``, carries ``?usp=sharing``, and names the tab in the
@@ -16,13 +17,22 @@ part every hand-written version gets slightly wrong:
   without ``follow_redirects`` hands back that ``307`` as the response.
 * **A sheet that cannot be read does not answer with an error status you
   can rely on.** A non-existent ID answers ``404`` with an HTML page, and a
-  ``gid`` that names no tab answers ``400`` with HTML. Anything that is not
-  a successful ``text/csv`` response raises
-  :class:`GoogleSheetAccessError` instead of being parsed as data.
+  ``gid`` that names no tab answers ``400`` with HTML — in both formats.
+  Anything that is not a successful response of the expected media type
+  raises :class:`GoogleSheetAccessError` instead of being parsed as data.
 
-Only the CSV path ships: one tab per call, picked by ``gid``. It needs
-nothing beyond the base install (``httpx`` and the standard ``csv``
-module), so importing it does not require the ``[spreadsheet]`` extra.
+Two paths share those guarantees:
+
+* **CSV** — :func:`read_google_sheet` / :func:`read_google_sheet_as`: one
+  tab per call, picked by ``gid``, every cell a ``str`` as the export
+  formats it. Needs nothing beyond the base install (``httpx`` and the
+  standard ``csv`` module).
+* **xlsx** — :func:`read_google_sheet_xlsx` /
+  :func:`download_google_sheet_xlsx`: the whole workbook in one request,
+  tabs by name, cells typed. Parsed by
+  :mod:`~tempest_fastapi_sdk.spreadsheet.reader`, so it needs the
+  ``[spreadsheet]`` extra — imported at call time, so the CSV path keeps
+  importing without it.
 
     from pydantic import BaseModel
 
@@ -51,9 +61,19 @@ from typing import Any, Final, Literal, TypeVar
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from tempest_fastapi_sdk.exceptions.base import AppException
+from tempest_fastapi_sdk.spreadsheet.reader import (
+    InvalidSpreadsheetError,
+    SpreadsheetRowError,
+    XlsxCellValue,
+    _number_rows,
+    _require_openpyxl,
+    _validate_rows,
+    read_xlsx_sheets,
+)
+from tempest_fastapi_sdk.utils.media_types import XLSX_MEDIA_TYPE
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -69,7 +89,7 @@ _PUBLISHED_SEGMENT: Final[str] = "e"
 
 
 class GoogleSheetAccessError(AppException):
-    """The export URL did not answer with a CSV document.
+    """The export URL did not answer with the requested document.
 
     Covers every way a readable sheet fails to come back: a link to a sheet
     that does not exist, a ``gid`` that names no tab, a sheet not shared
@@ -83,14 +103,14 @@ class GoogleSheetAccessError(AppException):
     """
 
     message: str = (
-        "The Google Sheet could not be read as CSV. Check the link and share "
+        "The Google Sheet could not be downloaded. Check the link and share "
         "the sheet as 'Anyone with the link'."
     )
     code: str = "GOOGLE_SHEET_UNAVAILABLE"
     status_code: int = 502
 
 
-class GoogleSheetRowError(AppException):
+class GoogleSheetRowError(SpreadsheetRowError):
     """One row of the sheet did not validate against the target model.
 
     ``details["row"]`` is the row number as the spreadsheet shows it — the
@@ -98,6 +118,11 @@ class GoogleSheetRowError(AppException):
     ``details["errors"]`` is Pydantic's error list for that row, without
     the ``url`` and ``ctx`` keys (``ctx`` may hold the raised exception,
     which does not serialize to JSON).
+
+    A subclass of
+    :class:`~tempest_fastapi_sdk.spreadsheet.reader.SpreadsheetRowError`,
+    so ``except SpreadsheetRowError`` covers the CSV and the ``.xlsx``
+    readers alike.
     """
 
     message: str = "A row of the Google Sheet failed validation."
@@ -131,6 +156,60 @@ def _gid_from(url_query: str, fragment: str) -> str | None:
     return None
 
 
+def _parse_sheet_link(url: str) -> tuple[str, str | None]:
+    """Split a shared link into the spreadsheet ID and the tab's ``gid``.
+
+    Args:
+        url (str): The shared link, or the bare spreadsheet ID.
+
+    Returns:
+        tuple[str, str | None]: The ID, and the ``gid`` when the link
+        names a tab.
+
+    Raises:
+        ValueError: If ``url`` is not a Google Sheets link, is a
+            *Publish to the web* link, or carries a non-numeric ``gid``.
+    """
+    candidate: str = url.strip()
+    if _SHEET_ID.match(candidate):
+        return candidate, None
+    if candidate.startswith(f"{_GOOGLE_SHEETS_HOST}/"):
+        candidate = f"https://{candidate}"
+    parts = urlsplit(candidate)
+    match: re.Match[str] | None = _SHEET_PATH.match(parts.path)
+    if (
+        parts.scheme not in ("http", "https")
+        or parts.hostname != _GOOGLE_SHEETS_HOST
+        or match is None
+    ):
+        raise ValueError(f"Not a Google Sheets link: {url!r}.")
+    sheet_id: str = match.group("sheet_id")
+    if sheet_id == _PUBLISHED_SEGMENT:
+        raise ValueError(
+            "A 'Publish to the web' link (/d/e/...) has no export "
+            "endpoint; use the sheet's share link instead."
+        )
+    return sheet_id, _gid_from(parts.query, parts.fragment)
+
+
+def _export_url(sheet_id: str, export_format: str, gid: str | None) -> str:
+    """Build the export URL from its parts.
+
+    Args:
+        sheet_id (str): The spreadsheet ID.
+        export_format (str): ``csv`` or ``xlsx``.
+        gid (str | None): The tab, or ``None`` to name none.
+
+    Returns:
+        str: The export URL.
+    """
+    export_url: str = (
+        f"https://{_GOOGLE_SHEETS_HOST}/spreadsheets/d/{sheet_id}"
+        f"/export?format={export_format}"
+    )
+    return export_url if gid is None else f"{export_url}&gid={gid}"
+
+
 def google_sheet_export_url(
     url: str,
     *,
@@ -148,7 +227,10 @@ def google_sheet_export_url(
     Args:
         url (str): The shared link, or the bare spreadsheet ID.
         export_format (Literal["csv", "xlsx"]): Format the export answers
-            with. ``csv`` exports one tab; ``xlsx`` exports the workbook.
+            with. ``csv`` exports one tab. ``xlsx`` exports the whole
+            workbook — unless a ``gid`` is kept, which narrows it to that
+            one tab (measured); :func:`download_google_sheet_xlsx` drops
+            it for that reason.
 
     Returns:
         str: ``https://docs.google.com/spreadsheets/d/<id>/export?format=<f>``,
@@ -164,46 +246,16 @@ def google_sheet_export_url(
         raise ValueError(
             f"export_format must be 'csv' or 'xlsx', got {export_format!r}."
         )
-    candidate: str = url.strip()
-    sheet_id: str
-    gid: str | None = None
-    if _SHEET_ID.match(candidate):
-        sheet_id = candidate
-    else:
-        if candidate.startswith(f"{_GOOGLE_SHEETS_HOST}/"):
-            candidate = f"https://{candidate}"
-        parts = urlsplit(candidate)
-        match: re.Match[str] | None = _SHEET_PATH.match(parts.path)
-        if (
-            parts.scheme not in ("http", "https")
-            or parts.hostname != _GOOGLE_SHEETS_HOST
-            or match is None
-        ):
-            raise ValueError(f"Not a Google Sheets link: {url!r}.")
-        sheet_id = match.group("sheet_id")
-        if sheet_id == _PUBLISHED_SEGMENT:
-            raise ValueError(
-                "A 'Publish to the web' link (/d/e/...) has no export "
-                "endpoint; use the sheet's share link instead."
-            )
-        gid = _gid_from(parts.query, parts.fragment)
-    export_url: str = (
-        f"https://{_GOOGLE_SHEETS_HOST}/spreadsheets/d/{sheet_id}"
-        f"/export?format={export_format}"
-    )
-    if gid is not None:
-        export_url = f"{export_url}&gid={gid}"
-    return export_url
+    sheet_id, gid = _parse_sheet_link(url)
+    return _export_url(sheet_id, export_format, gid)
 
 
 def _parse_csv(text: str) -> list[tuple[int, dict[str, str]]]:
     """Split a CSV export into numbered rows keyed by the header.
 
-    The first record is the header. A record whose cells are all empty —
-    a blank row in the sheet — is skipped, but still counts toward the
-    numbering, so the number stays the one the spreadsheet shows. A record
-    shorter than the header is padded with ``""``; cells beyond the
-    header's width are ignored.
+    The first record is the header; the rest follow the rules of
+    :func:`~tempest_fastapi_sdk.spreadsheet.reader._number_rows` — the
+    same ones the ``.xlsx`` reader applies — with ``""`` as the padding.
 
     Args:
         text (str): The decoded CSV body.
@@ -215,15 +267,52 @@ def _parse_csv(text: str) -> list[tuple[int, dict[str, str]]]:
     records: list[list[str]] = list(csv.reader(io.StringIO(text, newline="")))
     if not records:
         return []
-    header: list[str] = records[0]
-    width: int = len(header)
-    rows: list[tuple[int, dict[str, str]]] = []
-    for offset, record in enumerate(records[1:]):
-        if not any(cell for cell in record):
-            continue
-        padded: list[str] = record + [""] * (width - len(record))
-        rows.append((offset + 2, dict(zip(header, padded, strict=False))))
-    return rows
+    return _number_rows(records[0], records[1:], "")
+
+
+async def _download(
+    export_url: str,
+    media_type: str,
+    client: httpx.AsyncClient | None,
+    timeout: float,
+) -> bytes:
+    """Fetch an export URL and insist on the media type it must answer with.
+
+    Args:
+        export_url (str): The export URL.
+        media_type (str): The media type a successful export carries.
+        client (httpx.AsyncClient | None): Client to send the request
+            through. Left open. ``None`` creates one, closed on return.
+        timeout (float): Seconds the created client waits. Ignored when a
+            client is injected — its own timeout applies.
+
+    Returns:
+        bytes: The response body.
+
+    Raises:
+        GoogleSheetAccessError: If the export does not answer with a
+            successful response of ``media_type``.
+        httpx.HTTPError: If the request itself fails (timeout, DNS,
+            connection refused).
+    """
+    if client is None:
+        async with httpx.AsyncClient(timeout=timeout) as owned:
+            response: httpx.Response = await owned.get(
+                export_url, follow_redirects=True
+            )
+    else:
+        response = await client.get(export_url, follow_redirects=True)
+    content_type: str = response.headers.get("content-type", "")
+    received: str = content_type.split(";", 1)[0].strip().lower()
+    if not response.is_success or received != media_type:
+        raise GoogleSheetAccessError(
+            details={
+                "export_url": export_url,
+                "status_code": response.status_code,
+                "content_type": content_type,
+            },
+        )
+    return response.content
 
 
 async def _download_csv(
@@ -235,10 +324,8 @@ async def _download_csv(
 
     Args:
         url (str): Anything :func:`google_sheet_export_url` accepts.
-        client (httpx.AsyncClient | None): Client to send the request
-            through. Left open. ``None`` creates one, closed on return.
-        timeout (float): Seconds the created client waits. Ignored when a
-            client is injected — its own timeout applies.
+        client (httpx.AsyncClient | None): Client to reuse; left open.
+        timeout (float): Seconds the created client waits.
 
     Returns:
         str: The CSV body, decoded as UTF-8 (a leading BOM is dropped).
@@ -247,28 +334,11 @@ async def _download_csv(
         ValueError: If ``url`` is not a Google Sheets link.
         GoogleSheetAccessError: If the export does not answer with a
             successful ``text/csv`` response.
-        httpx.HTTPError: If the request itself fails (timeout, DNS,
-            connection refused).
+        httpx.HTTPError: If the request itself fails.
     """
     export_url: str = google_sheet_export_url(url, export_format="csv")
-    if client is None:
-        async with httpx.AsyncClient(timeout=timeout) as owned:
-            response: httpx.Response = await owned.get(
-                export_url, follow_redirects=True
-            )
-    else:
-        response = await client.get(export_url, follow_redirects=True)
-    content_type: str = response.headers.get("content-type", "")
-    media_type: str = content_type.split(";", 1)[0].strip().lower()
-    if not response.is_success or media_type != _CSV_MEDIA_TYPE:
-        raise GoogleSheetAccessError(
-            details={
-                "export_url": export_url,
-                "status_code": response.status_code,
-                "content_type": content_type,
-            },
-        )
-    return response.content.decode("utf-8-sig")
+    body: bytes = await _download(export_url, _CSV_MEDIA_TYPE, client, timeout)
+    return body.decode("utf-8-sig")
 
 
 async def read_google_sheet(
@@ -306,6 +376,23 @@ async def read_google_sheet(
     """
     text: str = await _download_csv(url, client, timeout)
     return [row for _, row in _parse_csv(text)]
+
+
+def _google_row_error(row_number: int, errors: list[dict[str, Any]]) -> AppException:
+    """Build the error for a CSV row that failed validation.
+
+    Args:
+        row_number (int): The row's number in the sheet.
+        errors (list[dict[str, Any]]): Pydantic's errors for the row.
+
+    Returns:
+        AppException: The :class:`GoogleSheetRowError`.
+    """
+    return GoogleSheetRowError(
+        message=f"Row {row_number} of the Google Sheet failed validation.",
+        message_params={"row": row_number},
+        details={"row": row_number, "errors": errors},
+    )
 
 
 async def read_google_sheet_as(
@@ -347,32 +434,110 @@ async def read_google_sheet_as(
         httpx.HTTPError: If the request itself fails.
     """
     text: str = await _download_csv(url, client, timeout)
-    models: list[ModelT] = []
-    for row_number, row in _parse_csv(text):
-        payload: dict[str, str] = (
-            {key: value for key, value in row.items() if value != ""}
-            if omit_blank
-            else row
-        )
-        try:
-            models.append(schema.model_validate(payload))
-        except ValidationError as exc:
-            errors: list[dict[str, Any]] = [
-                dict(error)
-                for error in exc.errors(include_url=False, include_context=False)
-            ]
-            raise GoogleSheetRowError(
-                message=f"Row {row_number} of the Google Sheet failed validation.",
-                message_params={"row": row_number},
-                details={"row": row_number, "errors": errors},
-            ) from exc
-    return models
+    return _validate_rows(
+        _parse_csv(text),
+        schema,
+        omit_blank=omit_blank,
+        row_error=_google_row_error,
+    )
+
+
+async def download_google_sheet_xlsx(
+    url: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+    timeout: float = 30.0,
+) -> bytes:
+    """Download a public Google Sheet as one ``.xlsx`` workbook.
+
+    Every tab comes in the one request. The link's ``gid`` is dropped on
+    purpose: with it, the ``.xlsx`` export narrows to that single tab
+    (measured). Hand the bytes to
+    :func:`~tempest_fastapi_sdk.spreadsheet.reader.read_xlsx`,
+    :func:`~tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_as` or
+    :func:`~tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_sheets` to
+    read as many tabs as needed without downloading again. Needs no extra
+    by itself; reading the bytes does.
+
+    Args:
+        url (str): The shared link (any shape
+            :func:`google_sheet_export_url` accepts) or the bare ID.
+        client (httpx.AsyncClient | None): Client to reuse. The reader
+            never closes an injected client. ``None`` creates one for the
+            call and closes it.
+        timeout (float): Seconds the created client waits for the export.
+            Ignored when ``client`` is given.
+
+    Returns:
+        bytes: The ``.xlsx`` file.
+
+    Raises:
+        ValueError: If ``url`` is not a Google Sheets link.
+        GoogleSheetAccessError: If the export does not answer with a
+            successful ``.xlsx`` response — the sheet does not exist or is
+            not shared as *Anyone with the link*.
+        httpx.HTTPError: If the request itself fails.
+    """
+    sheet_id, _ = _parse_sheet_link(url)
+    export_url: str = _export_url(sheet_id, "xlsx", None)
+    return await _download(export_url, XLSX_MEDIA_TYPE, client, timeout)
+
+
+async def read_google_sheet_xlsx(
+    url: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+    timeout: float = 30.0,
+) -> dict[str, list[dict[str, XlsxCellValue]]]:
+    """Read every tab of a public Google Sheet in one request, by tab name.
+
+    Downloads with :func:`download_google_sheet_xlsx` and parses with
+    :func:`~tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_sheets`: each
+    row is a ``dict`` keyed by the tab's header row, and each cell keeps
+    its type — number, ``datetime``, ``bool`` or ``str``; an empty cell is
+    ``None``. A formula reads as the value Google computed.
+
+    Args:
+        url (str): The shared link or the bare ID. A ``gid`` in it is
+            ignored: the whole workbook is read.
+        client (httpx.AsyncClient | None): Client to reuse; never closed
+            by the reader. ``None`` creates and closes one.
+        timeout (float): Seconds the created client waits. Ignored when
+            ``client`` is given.
+
+    Returns:
+        dict[str, list[dict[str, XlsxCellValue]]]: The rows of each tab, in
+        tab order. Tab names are kept verbatim, trailing spaces included.
+
+    Raises:
+        ImportError: When the ``[spreadsheet]`` extra is not installed —
+            checked before the download.
+        ValueError: If ``url`` is not a Google Sheets link.
+        GoogleSheetAccessError: If the export does not answer with an
+            ``.xlsx`` workbook, or the body it answers with does not open
+            as one.
+        httpx.HTTPError: If the request itself fails.
+    """
+    _require_openpyxl()
+    body: bytes = await download_google_sheet_xlsx(url, client=client, timeout=timeout)
+    try:
+        return read_xlsx_sheets(body)
+    except InvalidSpreadsheetError as exc:
+        sheet_id, _ = _parse_sheet_link(url)
+        raise GoogleSheetAccessError(
+            details={
+                "export_url": _export_url(sheet_id, "xlsx", None),
+                "reason": exc.details.get("reason"),
+            },
+        ) from exc
 
 
 __all__: list[str] = [
     "GoogleSheetAccessError",
     "GoogleSheetRowError",
+    "download_google_sheet_xlsx",
     "google_sheet_export_url",
     "read_google_sheet",
     "read_google_sheet_as",
+    "read_google_sheet_xlsx",
 ]

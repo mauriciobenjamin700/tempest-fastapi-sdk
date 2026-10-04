@@ -406,6 +406,8 @@ def hardware_cmd(
         if info.ram_measured
         else f"unknown ({_ram_unmeasured_reason()})"
     )
+    if info.ram_cgroup_limited:
+        ram_total += " (cgroup limit)"
     typer.echo(f"  ram total  : {ram_total}")
     typer.echo(f"  cuda       : {info.has_cuda}")
     for gpu in info.gpus:

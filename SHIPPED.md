@@ -617,8 +617,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   in slices. **Shipped (v0.96):** hardware capacity check — `probe_hardware`
   → `HardwareInfo` (CPU/RAM/CUDA-VRAM/MPS/disk, degrades without
   psutil/torch; since v0.303.2 RAM falls back to
-  `/proc/meminfo` on Linux without psutil (host memory, not the cgroup
-  limit — same as psutil), and an unread RAM/disk is flagged
+  `/proc/meminfo` on Linux without psutil; since #398 (unreleased) both
+  sources are clamped on Linux to the process's cgroup memory limit (v2
+  `memory.max` / v1 `memory.limit_in_bytes`, over the ancestry; available
+  = `limit - (usage - (file - shmem))`, measured against real OOM kills)
+  and flagged `ram_cgroup_limited=True`, and an unread RAM/disk is flagged
   `ram_measured`/`disk_measured=False` instead of passing as `0` free, so
   `CapacityReport.memory_measured=False` answers "not measured", not
   "add memory"), `can_run`/`recommend` → `CapacityReport` (fits? device,
@@ -1040,6 +1043,23 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   latência mediana de 11,91 s (22,73 s). Sem knob de threads
   (`torch.set_num_threads` é global). Receita: "Vários pedidos ao mesmo
   tempo em CPU" em `genai.md`; nota em `agents.md`.
+- **Leitura de `.xlsx` (Unreleased, `[spreadsheet]`)** —
+  `read_xlsx` / `read_xlsx_as` / `read_xlsx_sheets` em
+  `tempest_fastapi_sdk.spreadsheet` (`spreadsheet/reader.py`): bytes, caminho
+  ou arquivo binário (upload), uma aba por nome/posição ou todas, célula
+  **tipada** como o `openpyxl` (`read_only`, `data_only`) entrega. Mesmo
+  helper de linha do CSV (`_number_rows` / `_validate_rows`): cabeçalho na
+  linha 1, linha em branco pulada sem mexer na numeração, `omit_blank`.
+  Erros `422`: `InvalidSpreadsheetError` (não é `.xlsx`),
+  `SheetNotFoundError` (lista as abas), `SpreadsheetRowError` (linha + aba;
+  `GoogleSheetRowError` virou subclasse). Google:
+  `download_google_sheet_xlsx` (pasta inteira, **descarta o `gid`** — com
+  ele o export devolve uma aba só, medido) e `read_google_sheet_xlsx`
+  (todas as abas pelo nome; confere o extra antes do download). Medido em
+  2026-10-04: export `.xlsx` responde `307` + media type do xlsx, ID
+  inexistente `404` HTML; o Google grava o resultado de toda fórmula (as
+  975 de 1 429 que chegam `None` são resultado `""`); número vem `int` ou
+  `float` na mesma coluna, data vem `datetime`, porcentagem vem razão.
 - **Leitura de Google Sheets (0.303.0, sem extra)** —
   `read_google_sheet` / `read_google_sheet_as` / `google_sheet_export_url` em
   `tempest_fastapi_sdk.spreadsheet`. Lê uma aba de planilha compartilhada
@@ -1051,8 +1071,8 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `gid` inválido `400` HTML; planilha privada **não medida**.
   `read_google_sheet_as` valida cada linha num modelo Pydantic e o
   `GoogleSheetRowError` (`422`) traz o número da linha da planilha
-  (cabeçalho = 1). Célula vazia = campo ausente (`omit_blank=True`). Ler o
-  `.xlsx` exportado ainda não existe.
+  (cabeçalho = 1). Célula vazia = campo ausente (`omit_blank=True`). O
+  `.xlsx` exportado é lido pela entrada abaixo.
 - **Planilhas (v0.229.0, `[spreadsheet]` extra = openpyxl)** —
   `tempest_fastapi_sdk.spreadsheet`. `SheetWriter` segura o cursor de linha
   (`title_block`/`header_row`/`group_row`/`write_row`/`total_row`/

@@ -58,15 +58,21 @@ class HardwareInfo(BaseSchema):
 
     Attributes:
         cpu_cores (int): Logical CPU cores.
-        ram_total_bytes (int): Total system RAM; ``0`` when
+        ram_total_bytes (int): Total RAM this process can use: the host's,
+            or the cgroup memory limit when ``ram_cgroup_limited`` is
+            ``True``; ``0`` when ``ram_measured`` is ``False``.
+        ram_available_bytes (int): Currently available RAM, bounded by the
+            cgroup when ``ram_cgroup_limited`` is ``True``; ``0`` when
             ``ram_measured`` is ``False``.
-        ram_available_bytes (int): Currently available system RAM; ``0``
-            when ``ram_measured`` is ``False``.
         ram_measured (bool): Whether the two RAM fields were read.
             :func:`~tempest_fastapi_sdk.genai.probe_hardware` sets it to
             ``False`` when neither ``psutil`` (the ``[metrics]`` extra) nor,
             on Linux, ``/proc/meminfo`` could be read — in practice,
             Windows or macOS without ``psutil``.
+        ram_cgroup_limited (bool): Whether the RAM fields come from a Linux
+            cgroup memory limit (a container's ``--memory``) that is below
+            the host's RAM, rather than from the host. Defaults to
+            ``False``.
         has_cuda (bool): Whether a CUDA GPU is usable via torch.
         gpus (list[GPUInfo]): Per-CUDA-device memory (empty without CUDA).
         has_mps (bool): Whether Apple Metal (MPS) is available.
@@ -81,6 +87,7 @@ class HardwareInfo(BaseSchema):
     ram_total_bytes: int
     ram_available_bytes: int
     ram_measured: bool = True
+    ram_cgroup_limited: bool = False
     has_cuda: bool = False
     gpus: list[GPUInfo] = Field(default_factory=list)
     has_mps: bool = False

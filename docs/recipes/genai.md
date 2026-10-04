@@ -140,7 +140,9 @@ print(hw.has_cuda, [g.name for g in hw.gpus])   # VRAM por GPU quando há CUDA
 VRAM total/livre), MPS (Apple) e espaço livre em disco. Sem `torch`,
 nenhuma GPU aparece (`has_cuda=False`, `gpus=[]`). A RAM vem do `psutil`
 e, no Linux, do `/proc/meminfo` quando o `psutil` falta — veja
-[Sem `psutil`](#sem-psutil). Leitura que não pôde ser feita fica marcada
+[Sem `psutil`](#sem-psutil) —, limitada pelo cgroup em container com
+`--memory` (veja [Em container com limite de
+memória](#em-container-com-limite-de-memoria)). Leitura que não pôde ser feita fica marcada
 como **não medida**, e não como vazia: os campos de RAM ficam em `0` com
 `ram_measured=False`; se o disco não responde, `disk_free_bytes=0` com
 `disk_measured=False`. Os campos continuam `int`, então conta feita com
@@ -206,15 +208,78 @@ desconhecida:
   a sugestão de offload para CPU, que depende da RAM, vira "a RAM não foi
   medida" em vez de "o host é pequeno demais".
 
-!!! warning "Container com limite de memória: o planejador vê o host"
-    O `/proc/meminfo` de um container mostra a memória do **host**, não o
-    limite do cgroup — e o `psutil.virtual_memory()` lê o mesmo arquivo, então
-    instalar o `psutil` não muda nada. Medido com `docker run --memory=512m`
-    (`memory.max` = 536 870 912): o SDK e o `psutil` 7.2.2 reportaram os
-    mesmos 67 430 916 096 bytes de total, e o `recommend(num_params=500_000_000)`
-    respondeu `fits=True` para um load de 2,5 GB que não cabe nos 512 MiB.
-    Em container com `--memory`, confira o limite
-    (`/sys/fs/cgroup/memory.max`) antes de confiar no `fits`.
+### Em container com limite de memória
+
+O `/proc/meminfo` de um container mostra a memória do **host**, e o
+`psutil.virtual_memory()` lê o mesmo arquivo. Até a 0.303.2, num
+`docker run --memory=512m` em host de 62 GB, os dois reportavam os
+67 430 916 096 bytes do host, e o planejador respondia `fits=True` para um
+load de 2,5 GB que não cabe em 512 MiB.
+
+Agora, no Linux, o `probe_hardware()` lê também o limite de memória do
+cgroup do processo — `memory.max` no cgroup v2, `memory.limit_in_bytes` no
+v1, achado pelo `/proc/self/cgroup` e pelo `/proc/self/mountinfo`, subindo
+pelos cgroups pais. Quando esse limite fica abaixo da RAM do host, ele vira
+o `ram_total_bytes`, o `ram_available_bytes` passa a ser o menor entre o do
+host e o que sobra no cgroup, e `ram_cgroup_limited=True`. Vale com e sem
+`psutil`:
+
+```python
+from tempest_fastapi_sdk.genai import can_run, probe_hardware, recommend
+
+info = probe_hardware()
+print(info.ram_total_bytes, info.ram_cgroup_limited)
+
+native = can_run(num_params=500_000_000)
+print(native.fits, native.dtype)
+print(native.reason)
+
+best = recommend(num_params=500_000_000)
+print(best.fits, best.dtype)
+```
+
+Saída num `python:3.12-slim` com `--memory=512m` (WSL2, Docker 29.6.1,
+cgroup v2), com a wheel desta versão e sem `psutil`:
+
+```text
+536870912 True
+False float32
+~2.5 GB needed at float32 exceeds the ~0.4 GB free on cpu. RAM is limited by the container's cgroup to 512 MiB.
+True int4
+```
+
+Com o `psutil` 7.2.2 instalado no mesmo container a saída é a mesma. Sem
+`--memory` (`memory.max` = `max`) nada muda: o total continua sendo os
+67 430 916 096 bytes do host e `ram_cgroup_limited=False`.
+
+**Quanto sobra no cgroup.** O `memory.current` (`memory.usage_in_bytes` no
+v1) conta o page cache, que o kernel descarta antes de chamar o OOM killer.
+Por isso a conta é `limite - (uso - (file - shmem))`: page cache volta, mas
+`tmpfs`/memória compartilhada (`shmem`) não, sem swap. Medido no mesmo
+container com `--memory-swap=512m` (sem swap), alocando de 8 em 8 MiB até
+o OOM killer:
+
+| Cenário | `limite - uso` | `limite - (uso - (file - shmem))` | Alocou de fato |
+| --- | --- | --- | --- |
+| 300 MiB de page cache, lidos uma vez | ~183 MiB | ~483 MiB | 504 MiB |
+| os mesmos 300 MiB lidos 3 vezes (`active_file`) | ~183 MiB | ~483 MiB | 504 MiB |
+| 300 MiB em `/dev/shm` (`shmem`) | ~191 MiB | ~191 MiB | 200 MiB |
+
+Descontar só o `inactive_file` (a conta do `docker stats`) teria dado
+~203 MiB no segundo cenário, e descontar o `file` inteiro teria dado
+~491 MiB no terceiro. Com a wheel, o próprio `probe_hardware()` reportou
+417 MiB livres e o processo alocou 432 MiB (3 de 3 execuções); com 300 MiB
+de page cache ativo, reportou 409 MiB e o processo alocou 416 ou 432 MiB.
+
+!!! note "Swap fica de fora"
+    Com `--memory=512m` e sem `--memory-swap`, o Docker deixa o container
+    usar mais 512 MiB de swap: no mesmo host o processo alocou 944 MiB antes
+    do OOM killer. O planejador conta só a RAM — modelo paginado para o swap
+    não é modelo rodando.
+
+O cgroup v1 é coberto por teste com arquivos falsos (limite, valor
+sentinela de "sem limite", raiz de montagem `/docker/<id>`), mas não foi
+medido num host v1: o Docker sobre WSL2 usa cgroup v2.
 
 ## Estimativa sem baixar pesos
 

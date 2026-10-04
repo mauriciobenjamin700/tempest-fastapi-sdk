@@ -250,6 +250,21 @@ def _gpu_without_ram_reading(free_gb: float) -> HardwareInfo:
     )
 
 
+@pytest.fixture(autouse=True)
+def _no_cgroup_limit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Hide the runner's own cgroup so a CI memory limit cannot clamp RAM.
+
+    The cgroup clamp has its own suite in ``test_hardware_cgroup.py``.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The test's monkeypatch.
+        tmp_path (Path): A directory whose ``no-cgroup`` child does not exist.
+    """
+    monkeypatch.setattr(
+        hardware_module, "_PROC_SELF_CGROUP_PATH", str(tmp_path / "no-cgroup")
+    )
+
+
 def _hide_every_ram_source(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Make both RAM sources fail: no ``psutil`` and no ``/proc/meminfo``.
 
