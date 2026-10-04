@@ -549,16 +549,24 @@ completed I could not save the note: the disk is full.
 
 Any exception from the handler also becomes an observation, with one
 difference that matters: an `AgentToolError` message is treated as
-**written to be shown** and goes onto the trace in full, while for any other
-exception the trace keeps only its type. The trace is what the HTTP router,
-the SSE stream and the sinks expose, and an arbitrary exception carries a
-DSN, a token or a file path. Measured with a handler raising
+**written to be shown** and reaches the model and the trace in full, while
+for any other exception both get only its type. The trace is what the HTTP
+router, the SSE stream and the sinks expose; the model can repeat in its
+answer what it read; and an arbitrary exception carries a DSN, a token or the
+URL with the API key. Measured with a handler raising
 `RuntimeError("could not connect to postgresql://admin:hunter2@db:5432/app")`:
-the model reads the whole text, and the step records
-`RuntimeError: the tool failed (details withheld)` — the password is not in
+the model reads `tool failed: RuntimeError`, the step records
+`RuntimeError: the tool failed (details withheld)`, and the password is not in
 `run.model_dump_json()`. The full exception goes to the log
-(`tempest_fastapi_sdk.agents.agent`). In development,
-`Agent(..., expose_tool_errors=True)` records the whole text on the trace.
+(`tempest_fastapi_sdk.agents.agent`).
+
+So raise `AgentToolError` when the model needs to know **what** went wrong to
+try another path ("disk full", "that CEP does not exist"); the rest can escape
+raw. In development, `Agent(..., expose_tool_errors=True)` hands the text to
+the model and the trace, with the obvious credential shapes masked — for the
+same handler, `RuntimeError: could not connect to postgresql://admin:***@db:5432/app`.
+The mask is not a guarantee
+([what it covers](agents-tools.md#why-translate-the-exception)).
 
 !!! tip "Arguments as a JSON string"
     OpenAI-format servers (vLLM, TGI, hosted APIs) send a call's
@@ -953,7 +961,8 @@ Two setups that behave:
   models you already host.
 - **Named artifacts** chain multimodal work without disk or base64.
 - **A tool error becomes an observation** for the model, not an exception —
-  and only `AgentToolError` text reaches the trace in full.
+  and only `AgentToolError` text reaches the model and the trace; for any other
+  exception both get only the type.
 - **`make_agent_router`** publishes `/run`, `/run/stream` and artifact
   download by `run_id`; `owner=` keeps each caller's runs apart.
 - **On CPU**, the GGUF through `OllamaGenerator` generates 6× faster than

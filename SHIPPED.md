@@ -1003,6 +1003,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   prompt composition to save ~3.3 µs of construction.
   `ScriptedBackend.messages_seen` keeps each call's full conversation as a
   deep copy.
+- **Raw tool errors stay off the model (#406)** — a non-`AgentToolError`
+  exception reaches the model as `tool failed: <Type>` (it used to read the
+  full text, and `raise_for_status()` put `?apikey=` in the conversation). The
+  trace and log are unchanged. `expose_tool_errors=True` (same knob) hands the
+  text to model **and** trace through `_mask_secrets` (query params named
+  `*key*`/`*token*`/`*secret*`/`*password*`, `Authorization`, URL password) —
+  a backstop, pinned by a test that a secret in another shape passes.
 - **Media type independente da imagem (0.303.0)** —
   `guess_media_type` + `XLSX_MEDIA_TYPE`/`DOCX_MEDIA_TYPE`/`PPTX_MEDIA_TYPE`
   (`utils`, topo; xlsx também em `spreadsheet`). Tabela própria antes do

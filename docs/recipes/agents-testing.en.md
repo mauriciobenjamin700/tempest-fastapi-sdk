@@ -291,7 +291,8 @@ turns that came later. Measured on this run: `len(backend.messages_seen[0]) ==
 2`, even though the conversation ends with four messages.
 
 That is how you prove what a tool let reach the model — and what it did
-**not**.
+**not**: [Why translate the exception](agents-tools.md#why-translate-the-exception)
+uses `messages_seen` to show the API key stayed out of the conversation.
 
 ## Testing a backend outage
 

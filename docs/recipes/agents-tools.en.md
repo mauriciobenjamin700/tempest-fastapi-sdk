@@ -309,7 +309,7 @@ the run went on to `completed`.
 The shortcut is to call `raise_for_status()` and let the `httpx` exception
 escape:
 
-```python title="cep_raw.py" hl_lines="34 35"
+```python title="cep_raw.py" hl_lines="34 35 49 50"
 import asyncio
 
 import httpx
@@ -349,7 +349,7 @@ async def lookup_cep_raw(args: CepArgs, context: AgentContext) -> str:
 
 
 async def main() -> None:
-    """Show what the trace keeps from an untranslated exception."""
+    """Show what the trace and the model get from an untranslated exception."""
     backend = ScriptedBackend(
         [
             replies_with_tool("lookup_cep", {"cep": "64600000"}),
@@ -359,6 +359,7 @@ async def main() -> None:
     run = await Agent(backend, tools=[lookup_cep_raw]).run("Where is CEP 64600-000?")
 
     print(tool_steps(run)[0].error)
+    print(backend.messages_seen[1][-1]["content"])
     await raw_client.aclose()
 
 
@@ -368,25 +369,50 @@ if __name__ == "__main__":
 
 ```text
 HTTPStatusError: the tool failed (details withheld)
+tool failed: HTTPStatusError
 ```
 
-The trace kept only the type: an exception that is not an `AgentToolError` has
-its text withheld from the step, because the trace is what the HTTP router, the
-SSE stream and the sinks expose. The **model**, though, reads the full text.
-Measured with a backend that keeps the messages, the observation it received
-was:
+The first line is the trace; the second, the observation the model read on the
+next turn, taken from
+[`messages_seen`](agents-testing.md#testing-what-a-tool-put-in-front-of-the-model).
+An exception that is not an `AgentToolError` takes its text to neither: the
+model reads only the type, the trace keeps only the type, and the whole
+exception goes to the log (`tempest_fastapi_sdk.agents.agent`). Its text was:
 
 ```text
 HTTPStatusError: Server error '503 Service Unavailable' for url 'https://cep.example.com/cep/64600000?apikey=s3cr3t'
 For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/503
 ```
 
-The API key, inside the conversation the model reads — and it can repeat
-what it reads. With
-the `AgentToolError` from `cep_tool.py`, the model reads only what you wrote and
-the trace records the same sentence. `Agent(..., expose_tool_errors=True)`
-writes the full text to the trace as well; it is for development, not for an
-open endpoint. The whole mechanism is in
+The API key is in the URL. Up to v0.303.2 that whole text reached the model —
+the trace already withheld it, the conversation did not — and the model can
+repeat in its answer what it read. Now the SDK withholds it in both places by
+default.
+
+**Translating is still worth it**, for the other reason: `tool failed:
+HTTPStatusError` does not tell the model what to change. A 404 ("that CEP does
+not exist; check the digits") and a 503 ("the service is down; try later") call
+for different answers, and only the sentence of the `AgentToolError` from
+`cep_tool.py` gives it that — it is what the model reads, and what the trace
+records. Translate what the model can act on; the rest can escape raw.
+
+!!! warning "`expose_tool_errors=True` is for development"
+    `Agent(..., expose_tool_errors=True)` hands the exception's text to the
+    model **and** the trace. First, the SDK masks the obvious credential
+    shapes — a parameter whose name contains `key`, `token`, `secret` or
+    `password` (`?apikey=***`), the `Authorization` value, and a URL's password
+    (`postgresql://admin:***@db`). Measured with the `raw_client` above
+    answering `401`:
+
+    ```text
+    HTTPStatusError: Client error '401 Unauthorized' for url 'https://cep.example.com/cep/64600000?apikey=***'
+    ```
+
+    The mask only knows those shapes: a secret in any other format passes
+    through untouched. It is an extra defence for when you turned the opt-in
+    on, not a reason to turn it on behind an open endpoint.
+
+The whole mechanism is in
 [A failing tool does not end the run](agents.md#a-failing-tool-does-not-end-the-run).
 
 ### An injected client: `typed_tool` over a bound method
@@ -839,8 +865,8 @@ and handler from drifting apart.
   timeout **below** the budget's `max_seconds` — otherwise the budget does the
   cutting and the model never reads the error.
 - **4xx, 5xx and timeouts become `AgentToolError`** with a sentence that says
-  what to do. A raw exception has its text withheld from the trace, but reaches
-  the model in full — with the URL and whatever is in it.
+  what to do. A raw exception reaches the model only as `tool failed: <Type>` —
+  without the URL and whatever is in it, and without saying what to change.
 - **Return little**: ten API fields become one line.
 - **`typed_tool` over a bound method** keeps the client injectable, and the
   test uses `httpx.MockTransport`.

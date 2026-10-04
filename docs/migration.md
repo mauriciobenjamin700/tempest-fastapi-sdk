@@ -2,6 +2,41 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## Não lançado — erro cru de ferramenta não chega mais ao modelo
+
+Quando uma ferramenta do agente levanta uma exceção que **não** é
+`AgentToolError`, o modelo passa a ler só `tool failed: <Tipo>` na observação.
+Antes lia o texto inteiro da exceção — e o `HTTPStatusError` de um
+`raise_for_status()` traz a URL completa: medido, a observação levou
+`?apikey=s3cr3t` ao modelo, que pode repetir o que lê. O traço já guardava só o
+tipo desde a 0.300.0; agora a conversa também. Detalhes em
+[Por que traduzir a exceção](recipes/agents-tools.md#por-que-traduzir-a-excecao).
+
+### O que muda
+
+- **Observação de exceção crua** era `HTTPStatusError: Client error '401
+  Unauthorized' for url '...?apikey=...'` e passa a ser
+  `tool failed: HTTPStatusError`.
+- **O traço não muda**: continua `HTTPStatusError: the tool failed (details
+  withheld)`. O log (`tempest_fastapi_sdk.agents.agent`) continua com a
+  exceção inteira.
+- **`AgentToolError` não muda**: a mensagem chega ao modelo e ao traço como
+  foi escrita.
+- **`expose_tool_errors=True` agora vale para os dois lados**: entrega o texto
+  ao modelo **e** ao traço, com as formas óbvias de credencial mascaradas
+  (`?apikey=***`, `Authorization: Bearer ***`, `postgresql://admin:***@db`).
+
+### O que fazer
+
+- **Ferramenta que contava com o modelo lendo o texto cru** para se corrigir
+  (um 404 que dizia "não existe", um erro de validação de outra lib) traduz a
+  falha para `AgentToolError` com a frase que o modelo precisa ler.
+- **Teste que afirmava o texto cru na observação** passa a afirmar
+  `tool failed: <Tipo>` — ou liga `expose_tool_errors=True` naquele agente.
+- **Para voltar ao texto no modelo** em desenvolvimento,
+  `Agent(..., expose_tool_errors=True)`. Ele também grava o texto no traço,
+  que o router HTTP serve: não ligue num endpoint aberto.
+
 ## 0.302.0 — constraint composta leva todas as colunas no nome
 
 `NAMING_CONVENTION` nomeava unique, índice e foreign key só pela **primeira**

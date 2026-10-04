@@ -59,6 +59,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Erro cru de ferramenta não chega mais ao modelo (#406).** Exceção de
+  ferramenta que não é `AgentToolError` vira a observação
+  `tool failed: <Tipo>`; antes o modelo lia o texto inteiro, e o
+  `HTTPStatusError` de um `raise_for_status()` levava a URL com
+  `?apikey=s3cr3t` para a conversa (medido com `httpx.MockTransport`
+  respondendo `401`, pelo `ScriptedBackend.messages_seen`). O traço continua
+  `<Tipo>: the tool failed (details withheld)` e o log continua com a exceção
+  inteira; `AgentToolError` continua chegando como foi escrito. O mesmo knob
+  `expose_tool_errors=True` devolve o texto — agora ao modelo **e** ao traço,
+  com as formas óbvias de credencial mascaradas (parâmetro com `key`/`token`/
+  `secret`/`password` no nome, valor de `Authorization`, senha de URL); a
+  máscara é defesa adicional, não garantia. **Quebra quem dependia do texto
+  cru na observação:** traduza para `AgentToolError` o que o modelo precisa
+  ler — [guia de migração](docs/migration.md).
 - A mensagem de `GoogleSheetAccessError` (`GOOGLE_SHEET_UNAVAILABLE`) deixa
   de dizer "as CSV" — a mesma exceção cobre agora o caminho `.xlsx`. O
   `code` e o status não mudam.

@@ -295,7 +295,8 @@ execução: `len(backend.messages_seen[0]) == 2`, mesmo com a conversa
 terminando com quatro mensagens.
 
 É assim que se prova o que uma ferramenta deixou chegar ao modelo — e o que
-ela **não** deixou.
+ela **não** deixou: [Por que traduzir a exceção](agents-tools.md#por-que-traduzir-a-excecao)
+usa `messages_seen` para mostrar que a chave da API ficou fora da conversa.
 
 ## Testar a queda do backend
 

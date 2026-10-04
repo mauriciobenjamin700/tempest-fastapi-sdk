@@ -2,6 +2,42 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## Unreleased — a raw tool error no longer reaches the model
+
+When an agent tool raises an exception that is **not** an `AgentToolError`,
+the model now reads only `tool failed: <Type>` as the observation. It used to
+read the exception's whole text — and the `HTTPStatusError` from
+`raise_for_status()` carries the full URL: measured, the observation took
+`?apikey=s3cr3t` to the model, which can repeat what it reads. The trace has
+kept only the type since 0.300.0; now the conversation does too. Details in
+[Why translate the exception](recipes/agents-tools.md#why-translate-the-exception).
+
+### What changes
+
+- **The observation of a raw exception** was `HTTPStatusError: Client error
+  '401 Unauthorized' for url '...?apikey=...'` and becomes
+  `tool failed: HTTPStatusError`.
+- **The trace does not change**: still `HTTPStatusError: the tool failed
+  (details withheld)`. The log (`tempest_fastapi_sdk.agents.agent`) still has
+  the whole exception.
+- **`AgentToolError` does not change**: its message reaches the model and the
+  trace as written.
+- **`expose_tool_errors=True` now covers both sides**: it hands the text to the
+  model **and** the trace, with the obvious credential shapes masked
+  (`?apikey=***`, `Authorization: Bearer ***`, `postgresql://admin:***@db`).
+
+### What to do
+
+- **A tool that relied on the model reading the raw text** to correct itself
+  (a 404 that said "does not exist", another library's validation error)
+  translates the failure into an `AgentToolError` with the sentence the model
+  needs to read.
+- **A test that asserted the raw text in the observation** now asserts
+  `tool failed: <Type>` — or turns `expose_tool_errors=True` on for that agent.
+- **To get the text back to the model** in development,
+  `Agent(..., expose_tool_errors=True)`. It also writes the text to the trace,
+  which the HTTP router serves: do not turn it on behind an open endpoint.
+
 ## 0.302.0 — a composite constraint carries every column in its name
 
 `NAMING_CONVENTION` named unique constraints, indexes and foreign keys after
