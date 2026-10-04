@@ -190,7 +190,7 @@ class TestLiftedEnums:
 
         corrected = patched["components"]["schemas"]["Charge"]["properties"]["status"]
         assert "enum" not in corrected
-        assert report.lifted_enums == ("Charge.status",)
+        assert report.lifted_enums == ("Charge.status", "Payment.status")
 
     def test_the_values_survive_as_a_component(self) -> None:
         """Deleting in place would take the public `ChargeStatus` with it."""
@@ -215,18 +215,44 @@ class TestLiftedEnums:
         only means retirement once the table is known to fire.
         """
         _patched, baseline = apply(_vendored())
-        assert baseline.lifted_enums == ("Charge.status",)
+        assert baseline.lifted_enums == ("Charge.status", "Payment.status")
 
         document = _vendored()
         del document["components"]["schemas"]["Charge"]["properties"]["status"]["enum"]
 
         _patched, report = apply(document)
 
-        assert report.lifted_enums == ()
+        assert report.lifted_enums == ("Payment.status",)
 
     def test_the_table_names_the_component_consumers_import(self) -> None:
         """The name is public API, so it is spelled out and not derived."""
         assert LIFTED_ENUMS["Charge"]["status"] == "ChargeStatus"
+        assert LIFTED_ENUMS["Payment"]["status"] == "PaymentStatus"
+
+    def test_every_documented_payment_response_validates(self) -> None:
+        """The document's own `autoApproved` example used to be refused.
+
+        `POST /api/v1/payment` with `autoApprove: true` answers
+        `"status": "APPROVED"`, a value the closed `Payment.status` enum
+        does not list. Before the lift, `create_payment` raised a
+        `ValidationError` on that 200 response, after the Pix had already
+        been sent.
+        """
+        from tempest_fastapi_sdk.integrations.payment.openpix import (
+            CreatePaymentResponse,
+            PaymentStatus,
+        )
+
+        responses = _vendored()["paths"]["/api/v1/payment"]["post"]["responses"]
+        examples = responses["200"]["content"]["application/json"]["examples"]
+
+        statuses = {
+            name: CreatePaymentResponse.model_validate(example["value"]).payment
+            for name, example in examples.items()
+        }
+
+        assert statuses["autoApproved"].status == "APPROVED"
+        assert statuses["pixKey"].status == PaymentStatus.CREATED
 
 
 class TestIntegerUnits:

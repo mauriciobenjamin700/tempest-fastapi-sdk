@@ -1701,6 +1701,24 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `list_comments`/`rate` upsert/`get_user_rating`/`aggregate` → avg +
   count + per-star distribution), `make_reviews_router`; `RatingField`
   (`Annotated[int, 0..5]`) in `utils.fields`. Submodule import.
+- **Wallet (v0.304.0, `tempest_fastapi_sdk.wallet`, no extra, #400)** —
+  balance in integer cents on the app's user row (`WalletBalanceMixin`,
+  or `balance_attribute=` for an existing column) + ledger
+  (`BaseWalletEntryModel`/`make_wallet_entry_model`, user FK `RESTRICT`
+  by default). `WalletService`: every balance change is one
+  `UPDATE ... SET balance = balance + :delta RETURNING` plus its ledger
+  line in the same transaction; `credit(hold=)`, `debit_available` (the
+  hold is inside the `UPDATE`'s `WHERE`), `reverse`, `withdraw` (debit →
+  payout → refund only on `PayoutRejectedException`; ambiguous failure
+  keeps the debit and logs `CRITICAL`), `balance`, `statement`.
+  `claim_once` for run-once settlement. `openpix_fee_cents` /
+  `split_net` in basis points, ported from alofans-api (identical on
+  every total from 1 to 200 000 cents). Payout contract
+  `PayoutProvider`/`PayoutRequest`/`PayoutResult`/`PayoutStatus` in
+  `integrations.payment.base`, `OpenPixPayoutProvider` (autoApprove;
+  refuses an `HTTPClient` that retries), `FakePayoutProvider`,
+  `make_wallet_router`. Concurrency measured against Postgres
+  (`tests/wallet/test_wallet_live.py`, docker). Submodule import.
 - **Upload** — `UploadUtils` with pluggable backends
   (`LocalUploadStorage`, `MinIOUploadStorage`, opt-in injected via
   `backend=`), download helpers, presigned URLs, plus `FileStoreUtils`

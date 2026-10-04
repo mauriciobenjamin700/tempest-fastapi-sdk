@@ -78,6 +78,7 @@ alguém abrindo uma disputa. Aqui é uma chamada.
 | Fake | Substitui | Steering próprio |
 | --- | --- | --- |
 | `FakePixProvider` | `PixProvider` (OpenPix) | `advance(id, status)`, `charges` |
+| `FakePayoutProvider` | `PayoutProvider` (saque Pix) | `transfers`, `status=` no construtor |
 | `FakeTextBackend` | `TextBackend` (modelo local) | `queue(...)`, `prompts` |
 | `FakeModerationBackend` | `ModerationBackend` | `flag(substring)`, `checked` |
 | `FakePushDispatcher` | `PushDispatcher` (FCM/APNs/WebPush) | `sent`, `sent_to(token)` |
@@ -297,7 +298,7 @@ falha com `['self', 'query', 'limit'] == ['self', 'query', 'max_results']`.
 
 ## Recap
 
-- `from tempest_fastapi_sdk.testing.fakes import Fake...` — oito costuras, sem
+- `from tempest_fastapi_sdk.testing.fakes import Fake...` — nove costuras, sem
   credencial e sem rede.
 - Fake não é mock: guarda estado, e você **move** esse estado
   (`advance`, `flag`, `add_place`, `queue`).

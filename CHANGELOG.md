@@ -58,6 +58,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`tempest_fastapi_sdk.wallet` — carteira, extrato, retenção e saque Pix
+  em centavos inteiros (#400).** O saldo fica na linha do usuário do app
+  (`WalletBalanceMixin`, ou `balance_attribute=` para uma coluna que já
+  existe) e cada movimento vira uma linha de extrato
+  (`BaseWalletEntryModel` / `make_wallet_entry_model`, com a FK do usuário
+  `RESTRICT` por padrão: apagar o usuário não apaga o histórico financeiro).
+  `WalletService` faz todo movimento de saldo num único `UPDATE ... SET
+  saldo = saldo + :delta RETURNING`, na mesma transação da linha de extrato:
+  `credit(hold=)`, `debit_available` (a retenção está dentro do `WHERE` do
+  débito, então dois saques simultâneos não consomem dinheiro retido),
+  `reverse`, `withdraw` (debita, paga, e devolve só na recusa definitiva;
+  falha ambígua mantém o débito com log `CRITICAL`), `balance` e
+  `statement`. Mais `claim_once` (liquidação que roda uma vez),
+  `openpix_fee_cents` / `split_net` em basis points e o router opcional
+  `make_wallet_router`. Medido com 50 tarefas simultâneas contra Postgres
+  real (`tests/wallet/test_wallet_live.py`, marcador `docker`): os créditos
+  somam todos, o saque paga uma vez, a retenção não é consumida; o teste de
+  controle mostra a escrita ingênua perdendo crédito no mesmo cenário.
+  Receita: "Carteira e saque Pix".
+
+- **Contrato de saque Pix em `integrations.payment`.** `PayoutProvider`,
+  `PayoutRequest`, `PayoutResult` e `PayoutStatus` em
+  `integrations.payment.base`; `OpenPixPayoutProvider` em
+  `integrations.payment.adapters` (cria e aprova numa chamada só, com
+  `autoApprove: true`; HTTP 4xx e pagamento `DENIED`/`FAILED` viram
+  `PayoutRejectedException`, o resto propaga como incerto);
+  `FakePayoutProvider` em `testing.fakes`. O adapter recusa no construtor
+  um `HTTPClient` que refaz requisição: medido com a política padrão, um
+  `POST` respondido `500` sai três vezes, e num saque o retry pode pagar
+  duas vezes. A chave usa o `PixKeyType` que o SDK já tinha.
+
+- **Exceções `InsufficientBalanceException` (409),
+  `PayoutRejectedException` (502) e `PayoutUncertainException` (502)**,
+  com mensagens PT-BR e EN-US no catálogo padrão.
+
 - **Leitura de `.xlsx`:** `read_xlsx`, `read_xlsx_as` e `read_xlsx_sheets` em
   `tempest_fastapi_sdk.spreadsheet` (extra `[spreadsheet]`, sem dependência
   nova). Leem `bytes`, caminho ou arquivo binário (o `UploadFile.file` serve),
@@ -105,6 +140,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   motivo (hoje, só os engines de migration).
 
 ### Fixed
+- **`create_payment` com `autoApprove: true` levantava depois de enviar o
+  Pix.** A resposta documentada pela própria OpenPix para esse caso traz
+  `"status": "APPROVED"`, e o enum fechado de `Payment.status`
+  (`CREATED`, `FAILED`, `CONFIRMED`, `DENIED`) recusava o valor com
+  `Input should be 'CREATED', 'FAILED', 'CONFIRMED' or 'DENIED'`: o
+  dinheiro saía e o chamador recebia um `ValidationError`. O overlay agora
+  levanta o enum como já fazia com `Charge.status`, então o campo é
+  `PaymentStatus | str | None` e `PaymentStatus` continua igual. Os cinco
+  exemplos de resposta de `POST /api/v1/payment` validam, fixados em
+  `tests/integrations/payment/openpix/test_overlay.py`.
 
 - **Em container com limite de memória o planejador via a RAM do host**
   (#398). O `/proc/meminfo` e o `psutil.virtual_memory()` mostram o host,

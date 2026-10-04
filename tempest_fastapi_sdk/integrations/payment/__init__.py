@@ -51,6 +51,18 @@ from tempest_fastapi_sdk.integrations.payment import stripe as stripe
 from tempest_fastapi_sdk.integrations.payment.base import (
     PaymentStatus as PaymentStatus,
 )
+from tempest_fastapi_sdk.integrations.payment.base import (
+    PayoutProvider as PayoutProvider,
+)
+from tempest_fastapi_sdk.integrations.payment.base import (
+    PayoutRequest as PayoutRequest,
+)
+from tempest_fastapi_sdk.integrations.payment.base import (
+    PayoutResult as PayoutResult,
+)
+from tempest_fastapi_sdk.integrations.payment.base import (
+    PayoutStatus as PayoutStatus,
+)
 from tempest_fastapi_sdk.integrations.payment.base import PixCharge as PixCharge
 from tempest_fastapi_sdk.integrations.payment.base import (
     PixChargeRequest as PixChargeRequest,
@@ -95,6 +107,10 @@ def __getattr__(name: str) -> Any:
 
 __all__: list[str] = [
     "PaymentStatus",
+    "PayoutProvider",
+    "PayoutRequest",
+    "PayoutResult",
+    "PayoutStatus",
     "PixCharge",
     "PixChargeRequest",
     "PixEventType",

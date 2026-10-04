@@ -498,7 +498,7 @@ come back here to plug in each capability as you need it.
 | **[Enum columns (safe on both databases) »](enum-columns.md)** | `Mapped[MyEnum]` storing the `value`, native `ENUM` on PostgreSQL and a `CHECK` on SQLite, `enum_column()`, `op.replace_enum` + `sync_enum_types` for the migration autogenerate cannot see |
 | **[Errors in OpenAPI (Swagger) »](openapi-errors.md)** | `error_responses`, `@raises`, `TempestAPIRouter`, `ErrorResponseSchema`, `tempest openapi-errors --fix` |
 | **[Face recognition »](faces.md)** | `FaceRecognizer` (detect / embed / compare), `compare_faces`, 16 MB or 191 MB packs, no opencv and no torch |
-| **[Fakes (no real provider) »](fakes.md)** | `FakePixProvider`, `FakeTextBackend`, `FakeModerationBackend`, `FakePushDispatcher`, `FakeEmailUtils`, `FakeGeocodingBackend`, `FakeRoutingBackend`, `FakeWebSearchBackend` — eight seams with no credential and no network, steerable (`advance`, `flag`, `fail_next`) and inspectable |
+| **[Fakes (no real provider) »](fakes.md)** | `FakePixProvider`, `FakePayoutProvider`, `FakeTextBackend`, `FakeModerationBackend`, `FakePushDispatcher`, `FakeEmailUtils`, `FakeGeocodingBackend`, `FakeRoutingBackend`, `FakeWebSearchBackend` — nine seams with no credential and no network, steerable (`advance`, `flag`, `fail_next`) and inspectable |
 | **[Feature flags »](feature-flags.md)** | `FeatureFlags`, env/Redis/composite backends, `make_flag_dependency` |
 | **[File store (unified) »](file-store.md)** | `FileStoreUtils` — upload + download + presign over a single backend |
 | **[Firebase auth (ID token) »](firebase-auth.md)** | `FirebaseAuth`, `FirebaseIdentity`, `FirebaseUserResolver` — verify the ID token a mobile app sends, idempotent initialization, one `code` per failure, `[firebase]` extra |
@@ -563,6 +563,7 @@ come back here to plug in each capability as you need it.
 | **[Utilities »](utilities.md)** | `utcnow`/`to_utc`, `modify_dict`, `get_client_ip`, opaque tokens (`generate_opaque_token`) |
 | **[Validated fields (ready-made types) »](fields.md)** | Annotated Pydantic types — `PositiveIntField` / `CentsField` / `PriceField` / `SlugField` / `HexColorField` / `CPFField` / `UFField` |
 | **[Versioned artifacts (models) »](artifact-registry.md)** | `ArtifactRegistry`, `ArtifactVersionMixin`, `build_manifest_entries`, `file_digest` — swap the active version without a redeploy |
+| **[Wallet and Pix payouts »](wallet.md)** | `WalletService` (credit, debit and withdrawal in a single `UPDATE`, hold inside the debit), `WalletBalanceMixin`, `BaseWalletEntryModel`, `claim_once`, `split_net` / `openpix_fee_cents` in basis points, `OpenPixPayoutProvider`, `make_wallet_router` |
 | **[Web Push »](webpush.md)** | `WebPushDispatcher`, VAPID schemas, broadcast with pruning |
 | **[WebAuthn / passkeys »](webauthn.md)** | `WebAuthnService`, `make_web_authn_credential_model`, registration + passwordless login, memory/Redis challenge store |
 | **[WebSocket client (AsyncAPI) »](asyncapi-client.md)** | `tempest asyncapi-client` — a typed socket client from an AsyncAPI 3 document |

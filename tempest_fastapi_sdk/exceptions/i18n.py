@@ -458,6 +458,11 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "SIGNED_URL_EXPIRED": "Link assinado expirado",
         "FILE_TOO_LARGE": "Arquivo muito grande",
         "INVALID_FILE_TYPE": "Tipo de arquivo inválido",
+        "WALLET_INSUFFICIENT_BALANCE": "Saldo insuficiente na carteira",
+        "WALLET_PAYOUT_REJECTED": "O provedor recusou a transferência",
+        "WALLET_PAYOUT_UNCERTAIN": (
+            "Não foi possível confirmar a transferência; ela será conferida"
+        ),
         "OAUTH_ACCOUNT_INACTIVE": "Conta inativa",
         "OAUTH_ACCOUNT_NOT_LINKED": ("Este provedor não está vinculado a esta conta"),
         "OAUTH_AUDIENCE_UNVERIFIABLE": (
@@ -559,6 +564,11 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "SIGNED_URL_EXPIRED": "Signed URL has expired",
         "FILE_TOO_LARGE": "File too large",
         "INVALID_FILE_TYPE": "Invalid file type",
+        "WALLET_INSUFFICIENT_BALANCE": "Insufficient wallet balance",
+        "WALLET_PAYOUT_REJECTED": "The provider rejected the transfer",
+        "WALLET_PAYOUT_UNCERTAIN": (
+            "The transfer could not be confirmed; it will be reconciled"
+        ),
         "OAUTH_ACCOUNT_INACTIVE": "Account is not active",
         "OAUTH_ACCOUNT_NOT_LINKED": "Provider is not linked to this account",
         "OAUTH_AUDIENCE_UNVERIFIABLE": (

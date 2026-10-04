@@ -23,6 +23,7 @@ import pytest
 
 from tempest_fastapi_sdk.integrations.payment import (
     PaymentStatus,
+    PayoutProvider,
     PixCharge,
     PixChargeRequest,
     PixEventType,
@@ -30,9 +31,11 @@ from tempest_fastapi_sdk.integrations.payment import (
 )
 from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
     STATUS_MAP,
+    OpenPixPayoutProvider,
     OpenPixPixProvider,
 )
 from tempest_fastapi_sdk.integrations.payment.openpix import ChargeStatus
+from tempest_fastapi_sdk.testing.fakes import FakePayoutProvider
 
 ADAPTERS: list[type[Any]] = [OpenPixPixProvider]
 """Every adapter that claims to implement :class:`PixProvider`."""
@@ -68,6 +71,30 @@ def test_adapter_signature_matches_protocol(
         f"{list(expected.parameters)}"
     )
     assert actual.return_annotation == expected.return_annotation
+
+
+PAYOUT_PROVIDERS: list[type[Any]] = [OpenPixPayoutProvider, FakePayoutProvider]
+"""Every class that claims to implement :class:`PayoutProvider`."""
+
+
+@pytest.mark.parametrize("provider", PAYOUT_PROVIDERS, ids=lambda a: a.__name__)
+def test_payout_provider_matches_the_protocol(provider: type[Any]) -> None:
+    """Same parameters, same return, a coroutine, and a provider name.
+
+    The wallet's withdrawal calls ``transfer_to_pix_key`` positionally and
+    awaits it; a provider whose signature drifted would fail only there.
+    """
+    expected = inspect.signature(PayoutProvider.transfer_to_pix_key)
+    actual = inspect.signature(provider.transfer_to_pix_key)
+
+    assert list(actual.parameters) == list(expected.parameters)
+    assert [p.kind for p in actual.parameters.values()] == [
+        p.kind for p in expected.parameters.values()
+    ]
+    assert actual.return_annotation == expected.return_annotation
+    assert inspect.iscoroutinefunction(provider.transfer_to_pix_key)
+    assert isinstance(provider.provider_name, str)
+    assert provider.provider_name
 
 
 @pytest.mark.parametrize("adapter", ADAPTERS, ids=lambda a: a.__name__)
