@@ -707,6 +707,201 @@ também faz um `<img src>` funcionar direto.
     hardware e por que é um pool de threads e não um semáforo estão em
     [IA generativa self-hosted](genai.md#varios-pedidos-ao-mesmo-tempo-em-cpu-max_concurrent).
 
+## Agente em CPU: backend, tamanho e orçamento
+
+Sem GPU, cada volta do laço é uma geração inteira na CPU, e três decisões
+mudam o tempo de uma execução por um fator de cinco ou mais: qual backend
+roda o modelo, de que tamanho é o modelo, e quanto texto as ferramentas
+devolvem. O orçamento e o timeout precisam caber nesses números, não o
+contrário.
+
+```python title="cpu_agent.py" hl_lines="11-16 20"
+import asyncio
+
+from agent_setup import weather_tool
+from tempest_fastapi_sdk.agents import Agent, AgentBudget
+from tempest_fastapi_sdk.genai import GenerationConfig, OllamaGenerator
+
+
+def build_cpu_agent() -> Agent:
+    """Build an agent sized for a CPU-only host."""
+    model = OllamaGenerator(
+        "qwen2.5:3b",
+        num_ctx=8192,
+        options={"num_gpu": 0},
+        timeout=120.0,
+        config=GenerationConfig(max_new_tokens=256),
+    )
+    return Agent(
+        model,
+        tools=[weather_tool],
+        budget=AgentBudget(max_steps=12, max_seconds=120),
+    )
+
+
+async def main() -> None:
+    """Run once and print how long each step took."""
+    agent = build_cpu_agent()
+    run = await agent.run("Qual o tempo no Recife? Use a ferramenta.")
+
+    print(run.stop_reason, f"{run.seconds:.1f}s")
+    for step in run.steps:
+        print(step.kind, step.name, f"{step.seconds:.2f}s")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+```text
+completed 1.9s
+model chat 0.86s
+tool get_weather 0.00s
+model chat 1.05s
+```
+
+(Uma execução com o modelo já carregado no daemon; os números de onde ela
+sai estão logo abaixo.)
+
+Pedaço por pedaço:
+
+- **`OllamaGenerator("qwen2.5:3b")`** — um GGUF quantizado em 4 bits servido
+  pelo Ollama, e não o `TextGenerator` em `float32`. O porquê está nos
+  números abaixo; o dimensionamento de memória (e por que o bitsandbytes em
+  CPU não é a saída) está em
+  [IA generativa self-hosted › Em CPU](genai.md#em-cpu).
+- **`num_ctx=8192`** — o prompt do agente cresce a cada passo, e o Ollama
+  corta o que passa da janela sem erro. Ver
+  [O modelo roda com os defaults do gerador](#o-modelo-roda-com-os-defaults-do-gerador).
+- **`options={"num_gpu": 0}`** — força a CPU numa máquina que tem GPU (é
+  como as medições abaixo foram feitas). Numa máquina sem GPU, dispense.
+- **`config=GenerationConfig(max_new_tokens=256)`** — teto de tokens por
+  volta. Em CPU a geração é a parte cara, e o laço não passa teto nenhum.
+- **`timeout=120.0` e `max_seconds=120`** — são os defaults, escritos aqui
+  porque andam juntos; a seção [O timeout do Ollama](#o-timeout-do-ollama-e-o-orcamento)
+  explica por quê.
+
+### Quanto custa cada passo
+
+Medido num i9-13900F sob WSL2 (12 CPUs lógicas visíveis = 6 núcleos × 2,
+62 GB de RAM, GPU escondida), torch 2.14 + transformers 4.57.6 para o
+`TextGenerator` em `float32`, Ollama 0.30.11 com `num_gpu: 0` para os GGUF
+Q4_K_M (`size_vram` = 0 no `/api/ps`). O agente é o desta seção, com os
+defaults de geração de cada backend, e a meta pede **uma** chamada de
+ferramenta e a resposta (três passos). "Frio" é a primeira execução de um
+processo novo, com o load dos pesos dentro do primeiro passo (pesos já no
+cache de disco do sistema); N=3. "Quente" são as cinco execuções seguintes
+de cada processo; N=15. Mediana; parte das rodadas teve outro processo
+ocupando uma CPU lógica.
+
+Com a ferramenta devolvendo uma linha (prompt de ~230 tokens):
+
+| Backend e modelo | Execução fria | Execução quente | Passo de modelo quente | Geração |
+| --- | --- | --- | --- | --- |
+| `TextGenerator` Qwen2.5-0.5B `float32` | 4,39 s | 2,12 s | 1,02 s | 25,6 tokens/s |
+| `TextGenerator` Qwen2.5-3B `float32` | 13,87 s | 11,59 s | 5,50 s | 5,2 tokens/s |
+| `OllamaGenerator` `qwen2.5:0.5b` | 1,52 s | 0,64 s | 0,29 s | 130 tokens/s |
+| `OllamaGenerator` `qwen2.5:3b` | 4,83 s | 1,94 s | 0,84 s | 30,6 tokens/s |
+
+Com a ferramenta devolvendo ~4 100 tokens, diferentes a cada execução
+(prompt do último passo: ~4 400 tokens). O `TextGenerator` relê o prompt
+inteiro em todo passo; no Ollama a observação muda de execução para
+execução para o cache de prefixo não esconder o custo:
+
+| Backend e modelo | Execução quente | Último passo | Prefill do último passo |
+| --- | --- | --- | --- |
+| `TextGenerator` Qwen2.5-0.5B `float32` | 7,60 s | 6,56 s | 819 tokens/s |
+| `TextGenerator` Qwen2.5-3B `float32` | 43,08 s | 37,51 s | 134 tokens/s |
+| `OllamaGenerator` `qwen2.5:0.5b` | 9,65 s | 9,34 s | 509 tokens/s |
+| `OllamaGenerator` `qwen2.5:3b` | 35,91 s | 35,06 s | 132 tokens/s |
+
+Todas as 180 execuções terminaram dentro do `AgentBudget` default
+(`max_steps=12`, `max_seconds=120`): a mais lenta levou 51,3 s, e o passo
+mais lento 43,0 s (3B `float32`, frio, observação longa).
+
+O que os números dizem:
+
+- **O GGUF ganha na geração, não na leitura do prompt.** No 3B, o Ollama
+  gerou 30,6 tokens/s contra 5,2 do `float32` — 6× — e a execução curta
+  caiu de 11,59 s para 1,94 s. Mas o prefill ficou igual (132 contra 134
+  tokens/s): com uma observação de 4 mil tokens, o passo é quase todo
+  prefill, e a diferença encolhe para 35,91 s contra 43,08 s.
+- **O Ollama reaproveita o prefixo; o `TextGenerator` relê tudo.** Com a
+  mesma observação longa repetida idêntica de uma execução para a outra, o
+  prefill do último passo caiu para 0,05 s no `qwen2.5:3b` e continuou em
+  32,66 s no 3B `float32`. O system prompt e a lista de ferramentas são o
+  mesmo prefixo em toda execução, por isso o prefill do primeiro passo
+  quente custa 0,04 s no `qwen2.5:3b` e 1,65 s no 3B `float32`.
+- **Observação é o que custa.** Num 3B nesta CPU, cada mil tokens que uma
+  ferramenta devolve custam ~7,6 s de prefill (1 000 / 132), em qualquer
+  dos dois backends. Ferramenta que devolve o resumo e não o dump é a
+  alavanca de tempo, não só de contexto.
+- **0,5B no Ollama falhou em silêncio.** Em 12 de 54 execuções o
+  `qwen2.5:0.5b` terminou `completed` sem chamar a ferramenta e com
+  `output` vazio: o Ollama devolveu a mensagem sem texto e sem
+  `tool_calls`. O mesmo modelo pelo `TextGenerator` chamou a ferramenta nas
+  36 execuções, e o `qwen2.5:3b` nas 54. Em CPU, o 3B pelo Ollama foi o
+  menor que completou todas.
+- **O primeiro passo paga o load.** Frio contra quente, o primeiro passo
+  custou +2,2 s no 0,5B e +2,6 s no 3B em `float32`, e o Ollama reportou
+  1,4 s a 2,2 s de `load_duration` no 3B — com os pesos já no cache de disco.
+  Chame `load()` do `TextGenerator` no startup do serviço (via
+  `asyncio.to_thread`) para o primeiro usuário não pagar isso.
+
+### Dimensionar o orçamento
+
+O tempo de uma execução é a soma, passo a passo, de **tokens novos no
+prompt ÷ taxa de prefill** mais **tokens gerados ÷ taxa de geração**. Com
+as taxas medidas acima, a conta fecha com a medição: no 3B `float32` com a
+observação longa, 229/140 + 21/5,4 + 4 381/134 + 23/4,6 ≈ 43,2 s, contra
+43,08 s medidos.
+
+Use essa conta, com as taxas da **sua** máquina, para escolher o teto:
+
+- **`max_new_tokens` pesa mais que parece.** O default do `TextGenerator` é
+  256 tokens por volta; a 5,2 tokens/s, uma volta que usa o teto inteiro
+  são ~49 s de geração no 3B `float32`, e duas delas já passam de 120 s. A
+  30,6 tokens/s, no GGUF, a mesma volta são ~8 s.
+- **`max_seconds` é o teto de uma requisição HTTP**, então ele vem do que o
+  seu cliente aceita esperar; o que você ajusta para caber nele é o
+  modelo, o tamanho das observações e o `max_new_tokens`. A 132 tokens/s, os
+  120 s default comportam ~15 mil tokens de observação somados na execução
+  inteira, sem contar geração.
+- **A fila conta no relógio.** Execuções simultâneas num `TextGenerator`
+  com `max_concurrent=1` esperam umas pelas outras, e a espera sai do mesmo
+  `max_seconds` — ver
+  [Várias execuções ao mesmo tempo num modelo em CPU](#servir-por-http). A
+  concorrência dentro do Ollama não foi medida aqui.
+
+### O timeout do Ollama e o orçamento
+
+`timeout=` do `OllamaGenerator` (default 120 s) é **por requisição**, e o
+cliente HTTP do gerador refaz uma requisição que estoura o tempo: três
+tentativas, com 0,5 s e 1 s de espera entre elas. Numa chamada que precisa
+de mais tempo que o timeout, nenhuma tentativa termina — o daemon aborta
+cada uma quando o cliente desiste. Medido com o `qwen2.5:3b` em CPU, um
+prompt de ~4 400 tokens (~33 s de prefill) e `timeout=10.0`: a chamada
+levantou `ReadTimeout` depois de 31,53 s, e o log do Ollama mostrou três
+`POST /api/chat` de 10,0 s cada. Dentro de um agente, a execução terminou
+em `error` com 33,73 s.
+
+Duas configurações que se comportam bem, medidas no mesmo cenário:
+
+- **`timeout` maior ou igual a `max_seconds`** (o caso dos defaults): o
+  orçamento corta antes do timeout. Com `max_seconds=20`, a execução
+  terminou em `timeout` com 20,02 s.
+- **Timeout menor, sem retentativa**:
+  `OllamaGenerator(..., timeout=10.0, retry_policy=RetryPolicy(max_attempts=1))`
+  (com `from tempest_fastapi_sdk import RetryPolicy`) terminou em `error`
+  com 10,84 s.
+
+!!! tip "Resumo para começar em CPU"
+    `OllamaGenerator` com um modelo de 3B em GGUF, `num_ctx` explícito,
+    `max_new_tokens` explícito, ferramentas que devolvem pouco texto e os
+    defaults do `AgentBudget`. Depois meça um `run.steps` na sua máquina e
+    recalcule: as taxas desta página são de um i9-13900F, e a sua CPU muda
+    todas elas.
+
 ## Recapitulando
 
 - **`Agent.run(goal)`** devolve `AgentRun`: resposta, traço, artefatos e
@@ -722,6 +917,9 @@ também faz um `<img src>` funcionar direto.
   texto de `AgentToolError` vai inteiro para o traço.
 - **`make_agent_router`** publica `/run`, `/run/stream` e download de
   artefato por `run_id`; `owner=` separa as execuções por quem chama.
+- **Em CPU**, o GGUF pelo `OllamaGenerator` gera 6× mais rápido que o
+  `float32` no 3B, mas o prefill é igual: o tamanho das observações e o
+  `max_new_tokens` é que fazem a execução caber no `max_seconds`.
 
 Próximo passo: [Agentes de IA (avançado)](agents-advanced.md) — saída
 estruturada tipada, as três camadas de memória, skills carregadas sob

@@ -323,6 +323,12 @@ Nada disso é defeito do módulo — é o que muda quando o modelo cabe na sua
 máquina. Projete para isso: ferramentas poucas e bem descritas, saídas curtas,
 critério verificável fora do modelo.
 
+Em CPU, o tamanho também vira tempo: um 3B leu ~132 tokens de prompt por
+segundo nas medições de
+[Agente em CPU](agents.md#agente-em-cpu-backend-tamanho-e-orcamento), então
+cada mil tokens que uma ferramenta devolve custam ~7,6 s por passo. Saída
+curta é a mesma regra, agora com número.
+
 ## Modos de falha que você vai encontrar
 
 | Sintoma | Causa provável | Onde olhar |

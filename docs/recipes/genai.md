@@ -119,7 +119,9 @@ O que a tabela diz:
     tokens/s; o `qwen2.5:0.5b` ficou em 0,66 GB e 107 a 134 tokens/s
     (N=3 cada). Use o [`OllamaGenerator`](#backend-ollama) — a memória é
     da mesma ordem do int4 do bitsandbytes; a vantagem medida é a
-    velocidade.
+    velocidade. Para um agente, quanto isso rende por passo (e onde não
+    rende: o prefill) está em
+    [Agente em CPU](agents.md#agente-em-cpu-backend-tamanho-e-orcamento).
 
 ## Sondando o hardware
 
