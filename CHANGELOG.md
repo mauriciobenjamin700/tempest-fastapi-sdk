@@ -7,7 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`RetryPolicy.retry_on_read_timeout`** (default `True`): com `False`, o
+  `HTTPClient` deixa de refazer `ReadTimeout` em `request()` e na abertura
+  de `stream()`, e continua refazendo `ConnectError` e os `retry_statuses`.
+  Quem usa `HTTPClient` direto não vê mudança.
+
 ### Fixed
+
+- **Geração mais longa que o timeout custava três timeouts.** O
+  `HTTPClient` que `OllamaGenerator`, `OllamaEmbedder` e
+  `OpenAICompatGenerator` criam refazia `ReadTimeout` até 3 vezes, mas o
+  Ollama aborta a geração quando o cliente desiste (cada tentativa aparece
+  no log do 0.30.11 como um `500` de exatamente o timeout), então nenhuma
+  tentativa terminava. Medido com `qwen2.5:3b` em CPU
+  (`options={"num_gpu": 0}`) e `timeout=10`: 31,54 s até a exceção, com 3
+  requisições no daemon (mediana, N=3); agora 10,01 s, com 1 (mediana,
+  N=5). Com o `timeout=120` padrão, a conta passa de ~6 min para ~2 min.
+  Esses clientes passam a usar `RetryPolicy(retry_on_read_timeout=False)`
+  quando `retry_policy=` não é dado; uma política explícita é usada como
+  veio, e um `http_client=` injetado mantém a dele.
 
 - **Resposta vazia do modelo não termina mais como sucesso.** Uma mensagem
   sem texto (ou só com espaço em branco) e sem `tool_calls` virava

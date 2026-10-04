@@ -895,23 +895,33 @@ Use that sum, with **your** machine's rates, to pick the ceiling:
 ### The Ollama timeout and the budget
 
 The `OllamaGenerator`'s `timeout=` (default 120 s) is **per request**, and
-the generator's HTTP client retries a request that times out: three
-attempts, waiting 0.5 s and 1 s between them. On a call that needs longer
-than the timeout, no attempt finishes — the daemon aborts each one when the
-client gives up. Measured with `qwen2.5:3b` on CPU, a ~4,400-token prompt
-(~33 s of prefill) and `timeout=10.0`: the call raised `ReadTimeout` after
-31.53 s, and the Ollama log showed three 10.0 s `POST /api/chat`. Inside an
-agent, the run ended in `error` after 33.73 s.
+the generator's HTTP client does **not** retry a request that times out:
+when the client gives up, the daemon aborts the generation, so a new
+attempt would start from zero and time out again. The `ReadTimeout` arrives
+after one timeout. Measured with `qwen2.5:3b` on CPU and `timeout=10.0`:
+the call raised `ReadTimeout` after 10.01 s (median, N=5), with one 10.0 s
+`POST /api/chat` in the Ollama log. A connection error and a `429`/`5xx`
+are still retried.
 
-Two setups that behave, measured on the same scenario:
+??? note "Up to v0.303.1, the timeout was retried three times"
+    The client made three attempts, waiting 0.5 s and 1 s between them. On
+    the same scenario, with a ~4,400-token prompt (~33 s of prefill), the
+    call raised `ReadTimeout` after 31.53 s, the Ollama log showed three
+    10.0 s `POST /api/chat`, and inside an agent the run ended in `error`
+    after 33.73 s. On those versions, pass
+    `retry_policy=RetryPolicy(max_attempts=1)` (with
+    `from tempest_fastapi_sdk import RetryPolicy`): with it, the agent run
+    ended in `error` after 10.84 s — one attempt, which is the default
+    behaviour from the next version on.
+
+Two setups that behave:
 
 - **`timeout` greater than or equal to `max_seconds`** (the defaults): the
   budget cuts before the timeout. With `max_seconds=20`, the run ended in
   `timeout` after 20.02 s.
-- **A shorter timeout, no retry**:
-  `OllamaGenerator(..., timeout=10.0, retry_policy=RetryPolicy(max_attempts=1))`
-  (with `from tempest_fastapi_sdk import RetryPolicy`) ended in `error`
-  after 10.84 s.
+- **A timeout shorter than `max_seconds`**: the turn that outlives the
+  timeout fails after one timeout, and the run ends in `error`. For the
+  agent to treat it as the end of the budget, prefer the previous setup.
 
 !!! tip "A starting point on CPU"
     `OllamaGenerator` with a 3B GGUF model, an explicit `num_ctx`, an
