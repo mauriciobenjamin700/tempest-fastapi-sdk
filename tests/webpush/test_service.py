@@ -17,6 +17,7 @@ from tempest_fastapi_sdk import (
     WebPushSubscriptionService,
     make_web_push_subscription_model,
 )
+from tests._seed import seed_users
 
 
 class _PushUser(BaseUserModel):
@@ -74,7 +75,7 @@ def _service(
 class TestSubscribe:
     async def test_creates_row(self, session: AsyncSession) -> None:
         service = _service(session)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _PushUser, 1)
         row = await service.subscribe(
             user_id, _sub("https://push.example/aaa"), user_agent="Firefox"
         )
@@ -84,7 +85,7 @@ class TestSubscribe:
 
     async def test_is_idempotent_by_endpoint(self, session: AsyncSession) -> None:
         service = _service(session)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _PushUser, 1)
         first = await service.subscribe(user_id, _sub("https://push.example/dup"))
         second = await service.subscribe(user_id, _sub("https://push.example/dup"))
         assert first.id == second.id
@@ -92,7 +93,7 @@ class TestSubscribe:
 
     async def test_reassigns_endpoint_to_new_user(self, session: AsyncSession) -> None:
         service = _service(session)
-        user_a, user_b = uuid4(), uuid4()
+        user_a, user_b = await seed_users(session, _PushUser, 2)
         await service.subscribe(user_a, _sub("https://push.example/move"))
         await service.subscribe(user_b, _sub("https://push.example/move"))
         assert await service.list_for_user(user_a) == []
@@ -102,7 +103,7 @@ class TestSubscribe:
 class TestUnsubscribe:
     async def test_removes_existing(self, session: AsyncSession) -> None:
         service = _service(session)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _PushUser, 1)
         await service.subscribe(user_id, _sub("https://push.example/gone"))
         assert await service.unsubscribe("https://push.example/gone") is True
         assert await service.list_for_user(user_id) == []
@@ -116,7 +117,7 @@ class TestNotifyUser:
     async def test_delivers_to_all_devices(self, session: AsyncSession) -> None:
         dispatcher = _FakeDispatcher()
         service = _service(session, dispatcher)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _PushUser, 1)
         await service.subscribe(user_id, _sub("https://push.example/d1"))
         await service.subscribe(user_id, _sub("https://push.example/d2"))
         delivered = await service.notify_user(user_id, {"title": "hi"})
@@ -129,7 +130,7 @@ class TestNotifyUser:
     async def test_prunes_gone_subscriptions(self, session: AsyncSession) -> None:
         dispatcher = _FakeDispatcher(gone=["https://push.example/dead"])
         service = _service(session, dispatcher)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _PushUser, 1)
         await service.subscribe(user_id, _sub("https://push.example/live"))
         await service.subscribe(user_id, _sub("https://push.example/dead"))
         delivered = await service.notify_user(user_id, {"title": "hi"})
@@ -144,7 +145,7 @@ class TestNotifyUser:
     async def test_excludes_given_endpoints(self, session: AsyncSession) -> None:
         dispatcher = _FakeDispatcher()
         service = _service(session, dispatcher)
-        user_id = uuid4()
+        (user_id,) = await seed_users(session, _PushUser, 1)
         await service.subscribe(user_id, _sub("https://push.example/self"))
         await service.subscribe(user_id, _sub("https://push.example/other"))
         delivered = await service.notify_user(
@@ -164,8 +165,9 @@ class TestNotifyUser:
 class TestListAll:
     async def test_returns_every_users_rows(self, session: AsyncSession) -> None:
         service = _service(session)
-        await service.subscribe(uuid4(), _sub("https://push.example/u1"))
-        await service.subscribe(uuid4(), _sub("https://push.example/u2"))
+        first, second = await seed_users(session, _PushUser, 2)
+        await service.subscribe(first, _sub("https://push.example/u1"))
+        await service.subscribe(second, _sub("https://push.example/u2"))
         assert {row.endpoint for row in await service.list_all()} == {
             "https://push.example/u1",
             "https://push.example/u2",
@@ -179,8 +181,9 @@ class TestNotifyAll:
     async def test_delivers_across_users(self, session: AsyncSession) -> None:
         dispatcher = _FakeDispatcher()
         service = _service(session, dispatcher)
-        await service.subscribe(uuid4(), _sub("https://push.example/a"))
-        await service.subscribe(uuid4(), _sub("https://push.example/b"))
+        first, second = await seed_users(session, _PushUser, 2)
+        await service.subscribe(first, _sub("https://push.example/a"))
+        await service.subscribe(second, _sub("https://push.example/b"))
         delivered = await service.notify_all({"title": "maintenance"})
         assert delivered == 2
         assert {e for batch in dispatcher.batches for e in batch} == {
@@ -191,8 +194,9 @@ class TestNotifyAll:
     async def test_prunes_gone_and_discounts_them(self, session: AsyncSession) -> None:
         dispatcher = _FakeDispatcher(gone=["https://push.example/dead"])
         service = _service(session, dispatcher)
-        await service.subscribe(uuid4(), _sub("https://push.example/live"))
-        await service.subscribe(uuid4(), _sub("https://push.example/dead"))
+        first, second = await seed_users(session, _PushUser, 2)
+        await service.subscribe(first, _sub("https://push.example/live"))
+        await service.subscribe(second, _sub("https://push.example/dead"))
         delivered = await service.notify_all({"title": "hi"})
         assert delivered == 1
         assert [row.endpoint for row in await service.list_all()] == [
@@ -203,8 +207,9 @@ class TestNotifyAll:
         """A base larger than one page is fully reached, page by page."""
         dispatcher = _FakeDispatcher()
         service = _service(session, dispatcher)
-        for index in range(7):
-            await service.subscribe(uuid4(), _sub(f"https://push.example/n{index}"))
+        users = await seed_users(session, _PushUser, 7)
+        for index, user_id in enumerate(users):
+            await service.subscribe(user_id, _sub(f"https://push.example/n{index}"))
         delivered = await service.notify_all({"title": "hi"}, page_size=3)
         assert delivered == 7
         assert [len(batch) for batch in dispatcher.batches] == [3, 3, 1]
@@ -217,9 +222,10 @@ class TestNotifyAll:
         dead = [f"https://push.example/d{index}" for index in range(4)]
         dispatcher = _FakeDispatcher(gone=dead)
         service = _service(session, dispatcher)
+        users = iter(await seed_users(session, _PushUser, 8))
         for index in range(4):
-            await service.subscribe(uuid4(), _sub(f"https://push.example/d{index}"))
-            await service.subscribe(uuid4(), _sub(f"https://push.example/l{index}"))
+            await service.subscribe(next(users), _sub(f"https://push.example/d{index}"))
+            await service.subscribe(next(users), _sub(f"https://push.example/l{index}"))
         delivered = await service.notify_all({"title": "hi"}, page_size=2)
         assert delivered == 4
         assert {row.endpoint for row in await service.list_all()} == {
@@ -229,7 +235,8 @@ class TestNotifyAll:
     async def test_forwards_concurrency_bound(self, session: AsyncSession) -> None:
         dispatcher = _FakeDispatcher()
         service = _service(session, dispatcher)
-        await service.subscribe(uuid4(), _sub("https://push.example/one"))
+        (user_id,) = await seed_users(session, _PushUser, 1)
+        await service.subscribe(user_id, _sub("https://push.example/one"))
         await service.notify_all({"title": "hi"})
         assert dispatcher.concurrency_seen == [32]
         await service.notify_all({"title": "hi"}, max_concurrency=None)
@@ -238,8 +245,9 @@ class TestNotifyAll:
     async def test_excludes_given_endpoints(self, session: AsyncSession) -> None:
         dispatcher = _FakeDispatcher()
         service = _service(session, dispatcher)
-        await service.subscribe(uuid4(), _sub("https://push.example/keep"))
-        await service.subscribe(uuid4(), _sub("https://push.example/skip"))
+        first, second = await seed_users(session, _PushUser, 2)
+        await service.subscribe(first, _sub("https://push.example/keep"))
+        await service.subscribe(second, _sub("https://push.example/skip"))
         delivered = await service.notify_all(
             {"title": "hi"},
             exclude_endpoints=["https://push.example/skip"],

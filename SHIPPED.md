@@ -209,7 +209,20 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `DATABASE_SQLITE_BUSY_TIMEOUT`, public `enable_sqlite_wal`), which is
   what lets a web process and a `taskiq worker` share one file — measured
   across two processes, the rollback journal fails the writer with
-  `database is locked` where WAL commits at once. **Search (v0.200.0):**
+  `database is locked` where WAL commits at once. **SQLite foreign keys
+  (#395, unreleased):** every SQLite engine `AsyncDatabaseManager` and
+  `create_test_engine` build runs `PRAGMA foreign_keys=ON` from a `connect`
+  listener (`sqlite_foreign_keys=` / `DATABASE_SQLITE_FOREIGN_KEYS` /
+  `create_test_engine(foreign_keys=)`, public `enable_sqlite_foreign_keys`),
+  so an orphan raises and `ON DELETE CASCADE` deletes; both paths go through
+  one internal `_configure_sqlite_engine`, so `create_test_engine` also got
+  the savepoint fix. Migration engines stay FK-off (batch mode rebuilding a
+  parent cascades its children away, 3 -> 0 rows, no error) and the
+  generated `env.py` refuses a handed-over FK-on connection
+  (`require_sqlite_foreign_keys_off`). Guards:
+  `tests/db/test_sqlite_foreign_keys.py`,
+  `tests/db/test_migrations_foreign_keys.py`,
+  `tests/test_engine_configuration_guard.py`. **Search (v0.200.0):**
   `search()` portable
   (escaped ILIKE, AND across words, OR across columns) +
   `full_text_search()` (`websearch_to_tsquery` + `ts_rank` + `setweight` on
