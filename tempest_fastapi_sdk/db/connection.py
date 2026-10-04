@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.pool import AsyncAdaptedQueuePool, Pool
+from sqlalchemy.pool import AsyncAdaptedQueuePool, Pool, PoolResetState
 
 from tempest_fastapi_sdk.db.model import BaseModel
 
@@ -79,9 +79,38 @@ def enable_sqlite_savepoints(engine: AsyncEngine) -> None:
             non-SQLite engine would break its transaction handling, so
             callers building their own engine must gate on the backend.
 
+    A third listener closes the hole a failed ``COMMIT`` leaves behind.
+    When SQLite refuses the ``COMMIT`` (``database is locked``), the
+    transaction stays open on the driver connection, but SQLAlchemy has
+    already marked its own transaction inactive: closing the
+    :class:`~sqlalchemy.engine.Connection` neither rolls back nor lets
+    the pool do it (the pool is told the transaction was reset). The
+    connection goes back to the pool inside the open transaction, and
+    its next user fails on ``BEGIN`` with ``cannot start a transaction
+    within a transaction``. The ``reset`` listener rolls back on
+    check-in whenever the driver still reports ``in_transaction``.
+
+    Measured with aiosqlite 0.22.1 and SQLite 3.47.1 in the rollback
+    journal. A ``COMMIT`` forced to fail (another connection holding a
+    read transaction, ``busy_timeout`` of 0.1 s) left the connection
+    dirty every time on SQLAlchemy 2.0.52 and 2.1.3 without this
+    listener, and clean with it. Two read-modify-write transactions
+    racing on one file, on 2.0.52, had the first ``COMMIT`` refused in
+    8 to 11 of 200 trials per run, with ``busy_timeout`` unset, 0.1 s or
+    30 s alike, and every refusal left a dirty connection; with the
+    listener, 6 of 200 refused and none dirty. In WAL mode a reader
+    does not block ``COMMIT``, and the same race refused 0 of 200.
+
+    Args:
+        engine (AsyncEngine): The SQLite engine to configure. Passing a
+            non-SQLite engine would break its transaction handling, so
+            callers building their own engine must gate on the backend.
+
     Notes:
         ``tests/db/test_transaction.py`` pins the RELEASE path, which is
         the one that regressed silently before this existed.
+        ``tests/db/test_sqlite_failed_commit.py`` pins the failed
+        ``COMMIT`` path.
     """
 
     @event.listens_for(engine.sync_engine, "connect")
@@ -93,6 +122,31 @@ def enable_sqlite_savepoints(engine: AsyncEngine) -> None:
     def _emit_explicit_begin(connection: Connection) -> None:
         """Open a real transaction so SAVEPOINT nests inside one."""
         connection.exec_driver_sql("BEGIN")
+
+    @event.listens_for(engine.sync_engine, "reset")
+    def _rollback_orphaned_transaction(
+        dbapi_connection: Any,
+        _record: Any,
+        reset_state: PoolResetState,
+    ) -> None:
+        """Roll back a driver transaction SQLAlchemy no longer tracks.
+
+        Only acts when the pool was told the transaction was already
+        reset — otherwise the pool's own rollback follows this listener —
+        and only when the reset may await, since the rollback is a round
+        trip to the aiosqlite thread.
+
+        Args:
+            dbapi_connection (Any): The pooled, adapted driver connection.
+            _record (Any): The pool's connection record (unused).
+            reset_state (PoolResetState): Why and how the pool resets.
+        """
+        if not reset_state.transaction_was_reset:
+            return
+        if reset_state.terminate_only or not reset_state.asyncio_safe:
+            return
+        if dbapi_connection.driver_connection.in_transaction:
+            dbapi_connection.rollback()
 
 
 def enable_sqlite_wal(engine: AsyncEngine) -> None:

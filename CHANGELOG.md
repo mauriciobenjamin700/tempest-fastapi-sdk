@@ -106,6 +106,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **SQLite: `COMMIT` recusado deixava a conexão do pool presa no `BEGIN`**
+  (#411). Quando o SQLite recusa o `COMMIT` com `database is locked`, a
+  transação continua aberta no driver, mas o SQLAlchemy já marcou a dele como
+  inativa: fechar a `Connection` não dá `ROLLBACK` e avisa o pool que a
+  transação já foi resetada, então o pool também não dá. Com o `BEGIN`
+  explícito do `enable_sqlite_savepoints`, o próximo usuário daquela conexão
+  falhava com `cannot start a transaction within a transaction`. Pegava o
+  helper `transaction()` e a `Connection` do Core; o `manager.transaction()` /
+  `get_session_context()` já dava `rollback()` na sessão e escapava. O
+  `enable_sqlite_savepoints` ganha um listener de `reset` do pool que dá
+  `ROLLBACK` quando o driver ainda está `in_transaction` — vale para o
+  `AsyncDatabaseManager` e para o `create_test_engine`, que passam por ele.
+  Medido com aiosqlite 0.22.1 e SQLite 3.47.1, journal `delete`: o `COMMIT`
+  forçado a falhar (outra conexão segurando leitura, `busy_timeout` de 0,1 s)
+  deixava a conexão suja sempre, no SQLAlchemy 2.0.52 e no 2.1.3, e limpa com
+  o fix. Na corrida de dois read-modify-write no mesmo arquivo (2.0.52), o
+  primeiro `COMMIT` foi recusado em 8 a 11 de 200 tentativas por execução,
+  com `busy_timeout` padrão, 0,1 s ou 30 s, e toda recusa sujava a conexão;
+  com o fix, 6 de 200 recusados e nenhuma suja. Em WAL (o padrão do manager)
+  leitor não bloqueia `COMMIT`, e a mesma corrida recusou 0 de 200.
 - **Em container com limite de memória o planejador via a RAM do host**
   (#398). O `/proc/meminfo` e o `psutil.virtual_memory()` mostram o host,
   então num `docker run --memory=512m` em host de 62 GB o
