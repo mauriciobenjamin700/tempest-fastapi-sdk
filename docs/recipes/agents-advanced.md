@@ -132,7 +132,9 @@ O `output` da execução passa a ser a resposta em JSON, e é esse texto que o
     modelo terminou sem chamar `final_answer` e nem o parse do texto nem a
     extração acharam a forma (ou `allow_text_fallback=False` desligou essa
     rede). Orçamento esgotado é outro caso — aí a execução já não é
-    `succeeded`. Nos dois, `run.parse_error` diz o motivo. E modelos pequenos às vezes deixam um campo vazio em vez
+    `succeeded` —, e resposta vazia do modelo também: termina em
+    `empty_response`, com `parse_error="the run produced no answer"` e sem
+    a chamada extra de extração. Nos dois, `run.parse_error` diz o motivo. E modelos pequenos às vezes deixam um campo vazio em vez
     de omitir: valide os valores, não só a presença do objeto.
 
 Para insistir até a forma chegar, repita a execução e julgue com

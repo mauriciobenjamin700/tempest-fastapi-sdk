@@ -453,6 +453,8 @@ class TestExtractionRetry:
         backend = Scripted([{"content": "", "tool_calls": []}])
         run = await run_structured(Agent(backend), "g", Summary)
         assert run.data is None
+        assert run.stop_reason == StopReason.EMPTY_RESPONSE
+        assert run.succeeded is False
         assert run.parse_error == "the run produced no answer"
         assert len(backend.specs_seen) == 1
 

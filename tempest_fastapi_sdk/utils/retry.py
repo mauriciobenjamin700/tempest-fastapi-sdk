@@ -101,6 +101,20 @@ class RetryPolicy:
             because it usually means "back off and try again". Read by
             :class:`~tempest_fastapi_sdk.HTTPClient` only —
             :func:`async_retry` branches on exceptions instead.
+        retry_on_read_timeout (bool): Whether
+            :class:`~tempest_fastapi_sdk.HTTPClient` retries a request
+            whose response did not arrive within the read timeout.
+            ``True`` (default) suits a call the server answers quickly,
+            where a slow read means a stalled connection. Set it to
+            ``False`` for a call whose cost *is* the server's work — a
+            model generation: the server aborts the request when the
+            client gives up, so every retry starts the same work from
+            zero and times out again, and the failure arrives after
+            ``max_attempts`` x the timeout instead of once. The
+            generators in :mod:`tempest_fastapi_sdk.genai` default to
+            ``False``. ``ConnectError`` is retried either way, since no
+            work started. Read by :class:`~tempest_fastapi_sdk.HTTPClient`
+            only.
     """
 
     max_attempts: int = 3
@@ -109,6 +123,7 @@ class RetryPolicy:
     retry_statuses: frozenset[int] = field(
         default_factory=lambda: frozenset({429, 500, 502, 503, 504}),
     )
+    retry_on_read_timeout: bool = True
 
     def sleep_for(self, attempt: int) -> float:
         """Compute the sleep between attempt ``n`` and attempt ``n+1``.

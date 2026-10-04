@@ -202,7 +202,13 @@ class _OllamaClientMixin:
                 in tests. Ignored when ``http_client`` is given.
             retry_policy (RetryPolicy | None): Retry configuration for the
                 lazily-created client. ``None`` uses the ``HTTPClient``
-                defaults. Ignored when ``http_client`` is given.
+                defaults **except** ``retry_on_read_timeout=False``: the
+                daemon aborts a request the client stopped waiting for, so
+                a retried read timeout redoes the whole generation (or
+                embedding batch) and times out again. A connection error
+                and a retryable status are still retried. An explicit
+                policy is used as given. Ignored when ``http_client`` is
+                given.
             generation_cache (GenerationCache | AsyncGenerationCache | None):
                 Optional prompt→completion cache used by
                 :meth:`OllamaGenerator.generate`; only deterministic calls
@@ -230,7 +236,8 @@ class _OllamaClientMixin:
             self._client = HTTPClient(
                 timeout=self.timeout,
                 transport=self._transport,
-                retry_policy=self._retry_policy,
+                retry_policy=self._retry_policy
+                or RetryPolicy(retry_on_read_timeout=False),
             )
         return self._client
 
@@ -314,7 +321,11 @@ class OllamaGenerator(_OllamaClientMixin):
             transport (httpx.AsyncBaseTransport | None): Transport for the
                 lazily-created client (tests). Ignored with ``http_client``.
             retry_policy (RetryPolicy | None): Retry configuration for the
-                lazily-created client. Ignored with ``http_client``.
+                lazily-created client. ``None`` keeps the ``HTTPClient``
+                defaults but does not retry a read timeout: the daemon
+                aborts the generation when the client gives up, so a retry
+                redoes it from zero and the failure would arrive after
+                three timeouts instead of one. Ignored with ``http_client``.
             metrics (GenAIMetrics | None): Optional Prometheus metrics.
             generation_cache (GenerationCache | AsyncGenerationCache | None):
                 Optional prompt→completion cache for deterministic calls.

@@ -624,6 +624,28 @@ Sem `load()` nem `unload()`: o modelo vive no daemon Ollama, que baixa na
 Ollama não for local (o padrão é `DEFAULT_OLLAMA_URL`); `keep_alive`,
 `timeout` e um `http_client` seu (pra reaproveitar o pool) são opcionais.
 
+!!! warning "Timeout de leitura não é refeito"
+    O `HTTPClient` que o gerador cria refaz erro de conexão e status
+    retentável (`429`, `5xx`), mas **não** refaz `ReadTimeout`. Quando o
+    cliente desiste de esperar, o daemon aborta a geração — no log do Ollama
+    0.30.11 cada tentativa aparece como um `500` de exatamente o timeout —,
+    então a nova tentativa recomeça do zero e estoura de novo. Medido com
+    `qwen2.5:3b` em CPU (`options={"num_gpu": 0}`) e `timeout=10`: até a
+    v0.303.1 a falha chegava em 31,5 s, depois de três abortos; agora chega
+    em 10,0 s, com um (mediana de N=3 antes e N=5 depois). O mesmo vale para
+    o `OllamaEmbedder` e para o `OpenAICompatGenerator`. Quem quer o retry de
+    volta passa a política explícita, que é usada como veio:
+
+    ```python
+    from tempest_fastapi_sdk import RetryPolicy
+    from tempest_fastapi_sdk.genai import OllamaGenerator
+
+    gen: OllamaGenerator = OllamaGenerator(
+        "llama3.2",
+        retry_policy=RetryPolicy(retry_on_read_timeout=True),
+    )
+    ```
+
 !!! info "`GenerationConfig` vira opções do Ollama"
     O mesmo `GenerationConfig` tipado funciona aqui — os campos são
     traduzidos pras opções do Ollama: `max_new_tokens`→`num_predict`,

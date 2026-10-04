@@ -201,6 +201,7 @@ que impede a requisição de ficar aberta indefinidamente.
 | `max_tool_calls` | O agente | Quase sempre é laço de repetição da mesma ferramenta |
 | `error` | O backend | O modelo caiu; `output` traz a mensagem do erro |
 | `blocked` | A moderação | Objetivo ou resposta recusados |
+| `empty_response` | O modelo | Respondeu sem texto e sem ferramenta; repetir com `run_until` |
 
 ## Agente, chat, pipeline ou laço?
 

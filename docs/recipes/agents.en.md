@@ -157,17 +157,29 @@ reasons are the agent cutting the run short:
 
 | `stop_reason` | What happened |
 | --- | --- |
-| `completed` | The model answered without asking for another tool. |
+| `completed` | The model answered with text, without asking for another tool. |
 | `max_steps` | The step budget ran out first. |
 | `timeout` | The wall-clock budget ran out first. |
 | `max_tool_calls` | The tool-call budget ran out first. |
 | `error` | The model backend failed. |
 | `blocked` | Moderation rejected the goal or the answer. |
+| `empty_response` | The model ended its turn with no text and no tool call. |
 
 !!! warning "A truncated run still carries text"
     The `output` of a cut-short run is the last thing the model said —
     partial work, not a final answer. A caller that ignores `stop_reason`
     presents half-finished work as done.
+
+!!! info "An empty reply is not `completed`"
+    A model message with no text (or whitespace only) and no `tool_calls`
+    ends in `empty_response`, with `succeeded=False`. Up to 0.303.1 it
+    became `completed` with `output == ""`: a success with no answer.
+    `qwen2.5:0.5b` on Ollama 0.30.11, in CPU, with this page's goal, ended
+    58 of 200 runs that way. The agent does not re-ask on its own — that
+    would spend a step of the budget and hide how often the model fails.
+    To retry, use
+    [`run_until(agent, goal, until=succeeded)`](agents-advanced.md#loop-keep-going-until-it-passes-a-check): on the
+    same model, 58 of 60 loops with `max_rounds=3` ended accepted.
 
 ## Budget
 
@@ -840,12 +852,14 @@ What the numbers say:
   tokens a tool returns cost ~7.6 s of prefill (1,000 / 132) on either
   backend. A tool that returns the summary rather than the dump is a time
   lever, not only a context one.
-- **0.5B on Ollama failed silently.** In 12 of 54 runs `qwen2.5:0.5b`
-  finished `completed` without calling the tool and with an empty
-  `output`: Ollama returned the message with no text and no `tool_calls`.
-  The same model through the `TextGenerator` called the tool in all 36
-  runs, and `qwen2.5:3b` in all 54. On CPU, the 3B through Ollama was the
-  smallest that completed every run.
+- **0.5B on Ollama returned empty replies.** In 12 of 54 runs
+  `qwen2.5:0.5b` did not call the tool and Ollama returned the message with
+  no text and no `tool_calls`. Up to 0.303.1 that finished `completed` with
+  an empty `output` — a success with no answer; it now ends
+  [`empty_response`](#always-check-stop_reason), with `succeeded=False`. The same
+  model through the `TextGenerator` called the tool in all 36 runs, and
+  `qwen2.5:3b` in all 54. On CPU, the 3B through Ollama was the smallest
+  that completed every run.
 - **The first step pays for the load.** Cold against warm, the first step
   cost +2.2 s on the 0.5B and +2.6 s on the 3B in `float32`, and Ollama
   reported 1.4 s to 2.2 s of `load_duration` on the 3B — with the weights
@@ -881,23 +895,33 @@ Use that sum, with **your** machine's rates, to pick the ceiling:
 ### The Ollama timeout and the budget
 
 The `OllamaGenerator`'s `timeout=` (default 120 s) is **per request**, and
-the generator's HTTP client retries a request that times out: three
-attempts, waiting 0.5 s and 1 s between them. On a call that needs longer
-than the timeout, no attempt finishes — the daemon aborts each one when the
-client gives up. Measured with `qwen2.5:3b` on CPU, a ~4,400-token prompt
-(~33 s of prefill) and `timeout=10.0`: the call raised `ReadTimeout` after
-31.53 s, and the Ollama log showed three 10.0 s `POST /api/chat`. Inside an
-agent, the run ended in `error` after 33.73 s.
+the generator's HTTP client does **not** retry a request that times out:
+when the client gives up, the daemon aborts the generation, so a new
+attempt would start from zero and time out again. The `ReadTimeout` arrives
+after one timeout. Measured with `qwen2.5:3b` on CPU and `timeout=10.0`:
+the call raised `ReadTimeout` after 10.01 s (median, N=5), with one 10.0 s
+`POST /api/chat` in the Ollama log. A connection error and a `429`/`5xx`
+are still retried.
 
-Two setups that behave, measured on the same scenario:
+??? note "Up to v0.303.1, the timeout was retried three times"
+    The client made three attempts, waiting 0.5 s and 1 s between them. On
+    the same scenario, with a ~4,400-token prompt (~33 s of prefill), the
+    call raised `ReadTimeout` after 31.53 s, the Ollama log showed three
+    10.0 s `POST /api/chat`, and inside an agent the run ended in `error`
+    after 33.73 s. On those versions, pass
+    `retry_policy=RetryPolicy(max_attempts=1)` (with
+    `from tempest_fastapi_sdk import RetryPolicy`): with it, the agent run
+    ended in `error` after 10.84 s — one attempt, which is the default
+    behaviour from the next version on.
+
+Two setups that behave:
 
 - **`timeout` greater than or equal to `max_seconds`** (the defaults): the
   budget cuts before the timeout. With `max_seconds=20`, the run ended in
   `timeout` after 20.02 s.
-- **A shorter timeout, no retry**:
-  `OllamaGenerator(..., timeout=10.0, retry_policy=RetryPolicy(max_attempts=1))`
-  (with `from tempest_fastapi_sdk import RetryPolicy`) ended in `error`
-  after 10.84 s.
+- **A timeout shorter than `max_seconds`**: the turn that outlives the
+  timeout fails after one timeout, and the run ends in `error`. For the
+  agent to treat it as the end of the budget, prefer the previous setup.
 
 !!! tip "A starting point on CPU"
     `OllamaGenerator` with a 3B GGUF model, an explicit `num_ctx`, an

@@ -7,7 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`RetryPolicy.retry_on_read_timeout`** (default `True`): com `False`, o
+  `HTTPClient` deixa de refazer `ReadTimeout` em `request()` e na abertura
+  de `stream()`, e continua refazendo `ConnectError` e os `retry_statuses`.
+  Quem usa `HTTPClient` direto não vê mudança.
+
+- Campos novos, todos `bool` com default `True` (sem quebra de tipo — os
+  campos de bytes continuam `int`): `HardwareInfo.ram_measured`,
+  `HardwareInfo.disk_measured` (o `disk_free_bytes` também virava `0` quando
+  o `shutil.disk_usage` levantava `OSError`) e
+  `CapacityReport.memory_measured`. Em GPU o veredito segue medido pela
+  VRAM; só a sugestão de offload para CPU, que depende da RAM, vira "a RAM
+  não foi medida" em vez de "o host é pequeno demais".
+
 ### Fixed
+
+- **Geração mais longa que o timeout custava três timeouts.** O
+  `HTTPClient` que `OllamaGenerator`, `OllamaEmbedder` e
+  `OpenAICompatGenerator` criam refazia `ReadTimeout` até 3 vezes, mas o
+  Ollama aborta a geração quando o cliente desiste (cada tentativa aparece
+  no log do 0.30.11 como um `500` de exatamente o timeout), então nenhuma
+  tentativa terminava. Medido com `qwen2.5:3b` em CPU
+  (`options={"num_gpu": 0}`) e `timeout=10`: 31,54 s até a exceção, com 3
+  requisições no daemon (mediana, N=3); agora 10,01 s, com 1 (mediana,
+  N=5). Com o `timeout=120` padrão, a conta passa de ~6 min para ~2 min.
+  Esses clientes passam a usar `RetryPolicy(retry_on_read_timeout=False)`
+  quando `retry_policy=` não é dado; uma política explícita é usada como
+  veio, e um `http_client=` injetado mantém a dele.
+
+- **Resposta vazia do modelo não termina mais como sucesso.** Uma mensagem
+  sem texto (ou só com espaço em branco) e sem `tool_calls` virava
+  `StopReason.COMPLETED`, e a execução saía com `succeeded=True` e
+  `output == ""`. Agora termina no novo `StopReason.EMPTY_RESPONSE`
+  (`"empty_response"`), com `succeeded=False` — vale para `run`, `stream`,
+  a delegação (`agent_tool` marca `[stopped: empty_response]`), o
+  `run_until(..., until=succeeded)` (que passa a repetir a rodada) e o
+  `run_structured` (`parse_error="the run produced no answer"`, sem a
+  chamada de extração). O agente não repete a pergunta sozinho. Medido com
+  `OllamaGenerator("qwen2.5:0.5b", options={"num_gpu": 0})` no Ollama
+  0.30.11, meta que pede uma ferramenta e a resposta: antes, 58 de 200
+  execuções saíam `completed` com `output` vazio; depois, 73 de 200
+  terminaram `empty_response` e 0 de 200 saíram `succeeded` vazias (a taxa
+  oscilou entre 25% e 40% de um lote para outro). Com
+  `run_until(..., until=succeeded, max_rounds=3)`, 58 de 60 laços terminaram
+  aceitos.
 
 - **RAM desconhecida virava "sem memória livre".** Sem `psutil` (que vem
   no `[metrics]`, não no `[genai]`), o `probe_hardware()` reportava
@@ -34,13 +79,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (pip install 'tempest-fastapi-sdk[metrics]')"*). `fits` continua `False`
   quando nada foi verificado, para um `if report.fits:` seguir
   conservador.
-- Campos novos, todos `bool` com default `True` (sem quebra de tipo — os
-  campos de bytes continuam `int`): `HardwareInfo.ram_measured`,
-  `HardwareInfo.disk_measured` (o `disk_free_bytes` também virava `0` quando
-  o `shutil.disk_usage` levantava `OSError`) e
-  `CapacityReport.memory_measured`. Em GPU o veredito segue medido pela
-  VRAM; só a sugestão de offload para CPU, que depende da RAM, vira "a RAM
-  não foi medida" em vez de "o host é pequeno demais".
 - `tempest model hardware` imprime a RAM lida do `/proc/meminfo` no Linux
   sem `psutil`, e `ram total  : unknown (<motivo da plataforma>)` em vez de
   `0.0 GB` quando nenhuma fonte responde.

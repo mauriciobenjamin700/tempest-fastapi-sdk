@@ -317,6 +317,113 @@ class TestStream:
         assert calls["n"] == 2
 
 
+class TestReadTimeoutRetry:
+    """``RetryPolicy.retry_on_read_timeout`` gates only the read timeout."""
+
+    @staticmethod
+    def _client(handler: object, *, retry_on_read_timeout: bool) -> HTTPClient:
+        """Build a client with a fast three-attempt policy.
+
+        Args:
+            handler (object): The mock transport handler.
+            retry_on_read_timeout (bool): The flag under test.
+
+        Returns:
+            HTTPClient: The client under test.
+        """
+        return HTTPClient(
+            transport=_mock_transport(handler),
+            retry_policy=RetryPolicy(
+                max_attempts=3,
+                backoff_initial_seconds=0.001,
+                retry_on_read_timeout=retry_on_read_timeout,
+            ),
+            failure_threshold=0,
+        )
+
+    def test_default_keeps_retrying_read_timeouts(self) -> None:
+        """Plain ``HTTPClient`` callers keep the behaviour they had."""
+        assert RetryPolicy().retry_on_read_timeout is True
+
+    async def test_read_timeout_is_retried_when_enabled(self) -> None:
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            raise httpx.ReadTimeout("slow")
+
+        client = self._client(handler, retry_on_read_timeout=True)
+        try:
+            with pytest.raises(httpx.ReadTimeout):
+                await client.post("http://api.test/gen")
+        finally:
+            await client.aclose()
+        assert calls["n"] == 3
+
+    async def test_read_timeout_is_not_retried_when_disabled(self) -> None:
+        """One attempt, and the timeout surfaces as itself."""
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            raise httpx.ReadTimeout("slow")
+
+        client = self._client(handler, retry_on_read_timeout=False)
+        try:
+            with pytest.raises(httpx.ReadTimeout):
+                await client.post("http://api.test/gen")
+        finally:
+            await client.aclose()
+        assert calls["n"] == 1
+
+    async def test_connect_error_is_still_retried_when_disabled(self) -> None:
+        """No work started on the server, so the retry redoes nothing."""
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise httpx.ConnectError("refused")
+            return httpx.Response(200, json={"ok": True})
+
+        client = self._client(handler, retry_on_read_timeout=False)
+        try:
+            response = await client.post("http://api.test/gen")
+        finally:
+            await client.aclose()
+        assert response.status_code == 200
+        assert calls["n"] == 3
+
+    async def test_retryable_status_is_still_retried_when_disabled(self) -> None:
+        statuses = iter([503, 200])
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(next(statuses))
+
+        client = self._client(handler, retry_on_read_timeout=False)
+        try:
+            response = await client.post("http://api.test/gen")
+        finally:
+            await client.aclose()
+        assert response.status_code == 200
+
+    async def test_stream_open_timeout_is_not_retried_when_disabled(self) -> None:
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            raise httpx.ReadTimeout("slow open")
+
+        client = self._client(handler, retry_on_read_timeout=False)
+        try:
+            with pytest.raises(httpx.ReadTimeout):
+                async for _line in client.stream("POST", "http://api.test/s"):
+                    pass
+        finally:
+            await client.aclose()
+        assert calls["n"] == 1
+
+
 class TestRetryPolicy:
     def test_sleep_grows_exponentially(self) -> None:
         p = RetryPolicy(

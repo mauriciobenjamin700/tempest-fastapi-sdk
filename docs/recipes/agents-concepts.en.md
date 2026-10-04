@@ -200,6 +200,7 @@ what keeps the request from staying open indefinitely.
 | `max_tool_calls` | The agent | Almost always a repeat-the-same-tool loop |
 | `error` | The backend | The model failed; `output` carries the error |
 | `blocked` | Moderation | Goal or answer refused |
+| `empty_response` | The model | Replied with no text and no tool; retry with `run_until` |
 
 ## Agent, chat, pipeline or loop?
 
