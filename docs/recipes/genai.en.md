@@ -118,7 +118,9 @@ What the table says:
     (1.61 GB anonymous + 1.99 GB file-backed) and generated 24 to 27
     tokens/s; `qwen2.5:0.5b` sat at 0.66 GB and 107 to 134 tokens/s (N=3
     each). Use [`OllamaGenerator`](#ollama-backend) — memory is in the same
-    range as bitsandbytes int4; the measured advantage is speed.
+    range as bitsandbytes int4; the measured advantage is speed. For an
+    agent, what that buys per step (and where it does not: prefill) is in
+    [Agents on CPU](agents.md#agents-on-cpu-backend-size-and-budget).
 
 ## Probing the hardware
 

@@ -320,6 +320,12 @@ None of that is a flaw in the module — it is what changes when the model fits
 on your machine. Design for it: few well-described tools, short outputs, a
 criterion checkable outside the model.
 
+On CPU, size turns into time as well: a 3B read ~132 prompt tokens per
+second in the measurements of
+[Agents on CPU](agents.md#agents-on-cpu-backend-size-and-budget), so every
+thousand tokens a tool returns cost ~7.6 s per step. Short output is the
+same rule, now with a number.
+
 ## Failure modes you will meet
 
 | Symptom | Likely cause | Where to look |

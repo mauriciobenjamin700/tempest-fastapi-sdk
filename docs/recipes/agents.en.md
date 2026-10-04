@@ -710,6 +710,202 @@ which also means an `<img src>` works directly.
     and why it is a thread pool and not a semaphore are in
     [Self-hosted generative AI](genai.md#several-requests-at-once-on-cpu-max_concurrent).
 
+## Agents on CPU: backend, size and budget
+
+With no GPU, every turn of the loop is a full generation on the CPU, and
+three choices move a run's time by a factor of five or more: which backend
+runs the model, how big the model is, and how much text the tools return.
+The budget and the timeout have to fit those numbers, not the other way
+around.
+
+```python title="cpu_agent.py" hl_lines="11-16 20"
+import asyncio
+
+from agent_setup import weather_tool
+from tempest_fastapi_sdk.agents import Agent, AgentBudget
+from tempest_fastapi_sdk.genai import GenerationConfig, OllamaGenerator
+
+
+def build_cpu_agent() -> Agent:
+    """Build an agent sized for a CPU-only host."""
+    model = OllamaGenerator(
+        "qwen2.5:3b",
+        num_ctx=8192,
+        options={"num_gpu": 0},
+        timeout=120.0,
+        config=GenerationConfig(max_new_tokens=256),
+    )
+    return Agent(
+        model,
+        tools=[weather_tool],
+        budget=AgentBudget(max_steps=12, max_seconds=120),
+    )
+
+
+async def main() -> None:
+    """Run once and print how long each step took."""
+    agent = build_cpu_agent()
+    run = await agent.run("Qual o tempo no Recife? Use a ferramenta.")
+
+    print(run.stop_reason, f"{run.seconds:.1f}s")
+    for step in run.steps:
+        print(step.kind, step.name, f"{step.seconds:.2f}s")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+```text
+completed 1.9s
+model chat 0.86s
+tool get_weather 0.00s
+model chat 1.05s
+```
+
+(One run with the model already loaded in the daemon; the numbers behind it
+are just below.)
+
+Piece by piece:
+
+- **`OllamaGenerator("qwen2.5:3b")`** — a 4-bit GGUF served by Ollama, not
+  the `TextGenerator` in `float32`. Why is in the numbers below; memory
+  sizing (and why bitsandbytes on CPU is not the way out) is in
+  [Self-hosted generative AI › On CPU](genai.md#on-cpu).
+- **`num_ctx=8192`** — the agent's prompt grows every step, and Ollama cuts
+  whatever passes the window with no error. See
+  [The model runs on the generator's defaults](#the-model-runs-on-the-generators-defaults).
+- **`options={"num_gpu": 0}`** — forces the CPU on a host that has a GPU
+  (that is how the measurements below were taken). On a CPU-only host, drop
+  it.
+- **`config=GenerationConfig(max_new_tokens=256)`** — a token ceiling per
+  turn. On CPU generation is the expensive part, and the loop passes no
+  ceiling of its own.
+- **`timeout=120.0` and `max_seconds=120`** — the defaults, written out
+  because they move together; [The Ollama timeout](#the-ollama-timeout-and-the-budget)
+  explains why.
+
+### What each step costs
+
+Measured on an i9-13900F under WSL2 (12 visible logical CPUs = 6 cores × 2,
+62 GB of RAM, GPU hidden), torch 2.14 + transformers 4.57.6 for the
+`TextGenerator` in `float32`, Ollama 0.30.11 with `num_gpu: 0` for the
+Q4_K_M GGUFs (`size_vram` = 0 in `/api/ps`). The agent is the one in this
+section, with each backend's default generation settings, and the goal
+takes **one** tool call plus the answer (three steps). "Cold" is the first
+run of a fresh process, with the weight load inside the first step
+(weights already in the OS disk cache); N=3. "Warm" is the next five runs
+of each process; N=15. Medians; part of the rounds had another process
+busy on one logical CPU.
+
+With the tool returning one line (a ~230-token prompt):
+
+| Backend and model | Cold run | Warm run | Warm model step | Generation |
+| --- | --- | --- | --- | --- |
+| `TextGenerator` Qwen2.5-0.5B `float32` | 4.39 s | 2.12 s | 1.02 s | 25.6 tokens/s |
+| `TextGenerator` Qwen2.5-3B `float32` | 13.87 s | 11.59 s | 5.50 s | 5.2 tokens/s |
+| `OllamaGenerator` `qwen2.5:0.5b` | 1.52 s | 0.64 s | 0.29 s | 130 tokens/s |
+| `OllamaGenerator` `qwen2.5:3b` | 4.83 s | 1.94 s | 0.84 s | 30.6 tokens/s |
+
+With the tool returning ~4,100 tokens that differ on every run (last step's
+prompt: ~4,400 tokens). The `TextGenerator` rereads the whole prompt on
+every step; on Ollama the observation changes from run to run so the
+prefix cache does not hide the cost:
+
+| Backend and model | Warm run | Last step | Last step's prefill |
+| --- | --- | --- | --- |
+| `TextGenerator` Qwen2.5-0.5B `float32` | 7.60 s | 6.56 s | 819 tokens/s |
+| `TextGenerator` Qwen2.5-3B `float32` | 43.08 s | 37.51 s | 134 tokens/s |
+| `OllamaGenerator` `qwen2.5:0.5b` | 9.65 s | 9.34 s | 509 tokens/s |
+| `OllamaGenerator` `qwen2.5:3b` | 35.91 s | 35.06 s | 132 tokens/s |
+
+All 180 runs finished inside the default `AgentBudget` (`max_steps=12`,
+`max_seconds=120`): the slowest took 51.3 s, and the slowest step 43.0 s
+(3B `float32`, cold, long observation).
+
+What the numbers say:
+
+- **GGUF wins at generating, not at reading the prompt.** On the 3B,
+  Ollama generated 30.6 tokens/s against 5.2 for `float32` — 6× — and the
+  short run dropped from 11.59 s to 1.94 s. But prefill came out the same
+  (132 against 134 tokens/s): with a 4k-token observation the step is
+  almost all prefill, and the gap shrinks to 35.91 s against 43.08 s.
+- **Ollama reuses the prefix; the `TextGenerator` rereads everything.**
+  With the same long observation repeated verbatim from one run to the
+  next, the last step's prefill dropped to 0.05 s on `qwen2.5:3b` and
+  stayed at 32.66 s on the 3B `float32`. The system prompt and tool list
+  are the same prefix in every run, which is why the first warm step's
+  prefill costs 0.04 s on `qwen2.5:3b` and 1.65 s on the 3B `float32`.
+- **Observations are what costs.** On a 3B on this CPU, every thousand
+  tokens a tool returns cost ~7.6 s of prefill (1,000 / 132) on either
+  backend. A tool that returns the summary rather than the dump is a time
+  lever, not only a context one.
+- **0.5B on Ollama failed silently.** In 12 of 54 runs `qwen2.5:0.5b`
+  finished `completed` without calling the tool and with an empty
+  `output`: Ollama returned the message with no text and no `tool_calls`.
+  The same model through the `TextGenerator` called the tool in all 36
+  runs, and `qwen2.5:3b` in all 54. On CPU, the 3B through Ollama was the
+  smallest that completed every run.
+- **The first step pays for the load.** Cold against warm, the first step
+  cost +2.2 s on the 0.5B and +2.6 s on the 3B in `float32`, and Ollama
+  reported 1.4 s to 2.2 s of `load_duration` on the 3B — with the weights
+  already in the disk cache. Call the `TextGenerator`'s `load()` at service
+  startup (through `asyncio.to_thread`) so the first user does not pay for
+  it.
+
+### Sizing the budget
+
+A run's time is the sum, step by step, of **new prompt tokens ÷ prefill
+rate** plus **generated tokens ÷ generation rate**. With the rates measured
+above, the arithmetic matches the measurement: on the 3B `float32` with the
+long observation, 229/140 + 21/5.4 + 4,381/134 + 23/4.6 ≈ 43.2 s, against
+43.08 s measured.
+
+Use that sum, with **your** machine's rates, to pick the ceiling:
+
+- **`max_new_tokens` weighs more than it looks.** The `TextGenerator`
+  default is 256 tokens per turn; at 5.2 tokens/s, a turn that uses the
+  whole ceiling is ~49 s of generation on the 3B `float32`, and two of them
+  already pass 120 s. At 30.6 tokens/s, on the GGUF, the same turn is ~8 s.
+- **`max_seconds` is an HTTP request's ceiling**, so it comes from what
+  your client will wait for; what you tune to fit inside it is the model,
+  the observation size and `max_new_tokens`. At 132 tokens/s, the default
+  120 s holds ~15k tokens of observation summed over the whole run, before
+  counting generation.
+- **The queue counts on the clock.** Concurrent runs on a `TextGenerator`
+  with `max_concurrent=1` wait for one another, and the wait comes out of
+  the same `max_seconds` — see
+  [Several runs at once on a CPU model](#serving-it-over-http). Concurrency
+  inside Ollama was not measured here.
+
+### The Ollama timeout and the budget
+
+The `OllamaGenerator`'s `timeout=` (default 120 s) is **per request**, and
+the generator's HTTP client retries a request that times out: three
+attempts, waiting 0.5 s and 1 s between them. On a call that needs longer
+than the timeout, no attempt finishes — the daemon aborts each one when the
+client gives up. Measured with `qwen2.5:3b` on CPU, a ~4,400-token prompt
+(~33 s of prefill) and `timeout=10.0`: the call raised `ReadTimeout` after
+31.53 s, and the Ollama log showed three 10.0 s `POST /api/chat`. Inside an
+agent, the run ended in `error` after 33.73 s.
+
+Two setups that behave, measured on the same scenario:
+
+- **`timeout` greater than or equal to `max_seconds`** (the defaults): the
+  budget cuts before the timeout. With `max_seconds=20`, the run ended in
+  `timeout` after 20.02 s.
+- **A shorter timeout, no retry**:
+  `OllamaGenerator(..., timeout=10.0, retry_policy=RetryPolicy(max_attempts=1))`
+  (with `from tempest_fastapi_sdk import RetryPolicy`) ended in `error`
+  after 10.84 s.
+
+!!! tip "A starting point on CPU"
+    `OllamaGenerator` with a 3B GGUF model, an explicit `num_ctx`, an
+    explicit `max_new_tokens`, tools that return little text, and the
+    `AgentBudget` defaults. Then measure one `run.steps` on your machine and
+    redo the sum: the rates on this page come from an i9-13900F, and your
+    CPU changes every one of them.
+
 ## Recap
 
 - **`Agent.run(goal)`** returns an `AgentRun`: answer, trace, artifacts and
@@ -725,6 +921,9 @@ which also means an `<img src>` works directly.
   and only `AgentToolError` text reaches the trace in full.
 - **`make_agent_router`** publishes `/run`, `/run/stream` and artifact
   download by `run_id`; `owner=` keeps each caller's runs apart.
+- **On CPU**, the GGUF through `OllamaGenerator` generates 6× faster than
+  `float32` on the 3B, but prefill is the same: observation size and
+  `max_new_tokens` are what make a run fit in `max_seconds`.
 
 Next: [AI agents (advanced)](agents-advanced.md) — typed structured output,
 the three memory layers, skills loaded on demand, delegation between agents,
