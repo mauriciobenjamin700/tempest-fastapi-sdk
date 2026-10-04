@@ -147,6 +147,7 @@ class TestMixinDefaults:
             "pool_recycle",
             "sqlite_wal",
             "sqlite_busy_timeout",
+            "sqlite_foreign_keys",
         }
         manager = AsyncDatabaseManager(**kwargs)  # no connection opened
         assert manager is not None

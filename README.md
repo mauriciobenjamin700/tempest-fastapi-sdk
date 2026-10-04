@@ -1937,12 +1937,12 @@ class TestUsersAPI:
 
 | Helper | Purpose |
 | --- | --- |
-| `create_test_engine(url="sqlite+aiosqlite:///:memory:", **engine_kwargs)` | Build a throw-away `AsyncEngine`. |
+| `create_test_engine(database_url="sqlite+aiosqlite:///:memory:", *, echo=False, foreign_keys=True)` | Build a throw-away `AsyncEngine`. On SQLite it enforces foreign keys (`foreign_keys=False` turns that off) and applies the same savepoint fix as `AsyncDatabaseManager`. |
 | `create_test_session_factory(engine)` | Build a `sessionmaker` bound to the engine. |
 | `init_test_metadata(engine, metadata=None)` | Create every SQLAlchemy table on the engine (defaults to `BaseModel.metadata`). |
 | `drop_test_metadata(engine, metadata=None)` | Drop every table. |
-| `test_database(url="sqlite+aiosqlite:///:memory:", metadata=None)` | Async context manager — yields an engine with metadata pre-created, drops everything and disposes on exit. |
-| `test_session(url="sqlite+aiosqlite:///:memory:", metadata=None)` | Async context manager — yields an `AsyncSession` on top of a fresh `test_database`. |
+| `test_database(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an engine with metadata pre-created, drops everything and disposes on exit. |
+| `test_session(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an `AsyncSession` on top of a fresh `test_database`. |
 | `ModelFactory(session, Model, **defaults)` | Bind a model + defaults to a session; `build()` (unsaved), `create()`/`create_many(n)` (add + flush + refresh). Callable defaults/overrides get the row index. |
 | `seq(template, *, start=0)` | Index generator formatting `template` with `{n}` — `seq("user{n}@x.com")` yields unique values one per row. |
 | `fakes.FakePixProvider()` / `FakeTextBackend()` / `FakeModerationBackend()` / `FakePushDispatcher()` / `FakeEmailUtils()` / `FakeGeocodingBackend()` / `FakeRoutingBackend()` / `FakeWebSearchBackend()` | Steerable stand-ins for the third parties a service talks to — no credential, no network. Move the state (`advance`, `flag`, `add_place`, `queue`), force the failing branch (`fail_next`), assert on what happened (`outbox`, `sent`, `charges`, `calls`). See the [Fakes recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fakes/). |

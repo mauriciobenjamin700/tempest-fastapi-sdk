@@ -209,6 +209,9 @@ class DatabaseSettings(BaseAppSettings):
         DATABASE_SQLITE_BUSY_TIMEOUT (float): Seconds a SQLite
             connection waits on a lock before failing. Ignored on other
             backends. Default: ``30.0``.
+        DATABASE_SQLITE_FOREIGN_KEYS (bool): Make SQLite enforce
+            ``FOREIGN KEY`` constraints and ``ON DELETE`` actions.
+            Ignored on other backends. Default: ``True``.
     """
 
     DATABASE_URL: str = Field(
@@ -275,6 +278,17 @@ class DatabaseSettings(BaseAppSettings):
         ),
         examples=[5.0, 30.0, 60.0],
     )
+    DATABASE_SQLITE_FOREIGN_KEYS: bool = Field(
+        default=True,
+        title="SQLite foreign key enforcement",
+        description=(
+            "Run ``PRAGMA foreign_keys=ON`` on every SQLite connection, so "
+            "an orphan row raises and ``ON DELETE CASCADE`` deletes the "
+            "children, as on PostgreSQL. Turn off only for a database that "
+            "already holds orphan rows. Ignored on other backends."
+        ),
+        examples=[True, False],
+    )
 
     def database_kwargs(self) -> dict[str, Any]:
         """Map these settings onto :class:`AsyncDatabaseManager` kwargs.
@@ -291,6 +305,7 @@ class DatabaseSettings(BaseAppSettings):
             "pool_recycle": self.DATABASE_POOL_RECYCLE,
             "sqlite_wal": self.DATABASE_SQLITE_WAL,
             "sqlite_busy_timeout": self.DATABASE_SQLITE_BUSY_TIMEOUT,
+            "sqlite_foreign_keys": self.DATABASE_SQLITE_FOREIGN_KEYS,
         }
 
 
