@@ -18,6 +18,13 @@ The router owns only the HTTP surface: model lifecycle, authentication and
 rate limiting stay with the caller. What it does own is **who sees which
 run** — pass ``owner`` and every run is tagged with the caller's principal
 and the history endpoints show each caller only their own.
+
+The agent is either one fixed :class:`~tempest_fastapi_sdk.agents.Agent`
+or a FastAPI dependency that builds one per request. The second form is how
+a prompt that depends on the caller (their facts, their tenant, today's
+date) keeps the ready-made endpoints: building an ``Agent`` costs
+microseconds, so a fresh one per request around the process-wide generator
+is the normal shape, not an optimisation problem.
 """
 
 from __future__ import annotations
@@ -28,6 +35,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
+from tempest_fastapi_sdk.agents.agent import Agent
 from tempest_fastapi_sdk.agents.schemas import AgentRun
 from tempest_fastapi_sdk.agents.tools import AgentContext
 from tempest_fastapi_sdk.schemas.base import BaseSchema
@@ -36,11 +44,20 @@ from tempest_fastapi_sdk.sse import ServerSentEvent, sse_response
 if TYPE_CHECKING:
     from starlette.responses import StreamingResponse
 
-    from tempest_fastapi_sdk.agents.agent import Agent
     from tempest_fastapi_sdk.agents.storage import InMemoryAgentRunSink
 
 OwnerDependency = Callable[..., str] | Callable[..., Awaitable[str]]
 """A FastAPI dependency returning the calling principal's id."""
+
+AgentDependency = Callable[..., Agent] | Callable[..., Awaitable[Agent]]
+"""A FastAPI dependency returning the agent that serves one request.
+
+Anything FastAPI accepts in ``Depends`` works: a function taking the
+``Request``, one declaring its own ``Depends`` (the current user, a
+database session), sync or async. A dependency shared with ``owner`` is
+resolved once per request — FastAPI caches it — so the factory and the run
+see the same principal.
+"""
 
 
 class AgentRunRequestSchema(BaseSchema):
@@ -137,8 +154,44 @@ async def _anonymous() -> str | None:
     return None
 
 
+def _agent_dependency(agent: Agent | AgentDependency) -> Callable[..., Any]:
+    """Return the dependency the run endpoints resolve their agent through.
+
+    A fixed agent is wrapped in a dependency that returns it, so both forms
+    reach the endpoints the same way and the fixed form behaves exactly as
+    before — the same instance on every request.
+
+    Args:
+        agent (Agent | AgentDependency): What ``make_agent_router`` received.
+
+    Returns:
+        Callable[..., Any]: A dependency for ``Depends``.
+
+    Raises:
+        TypeError: When ``agent`` is neither an ``Agent`` nor callable.
+    """
+    if isinstance(agent, Agent):
+        fixed = agent
+
+        async def _fixed() -> Agent:
+            """Return the one agent this router serves.
+
+            Returns:
+                Agent: The instance given to ``make_agent_router``.
+            """
+            return fixed
+
+        return _fixed
+    if callable(agent):
+        return agent
+    raise TypeError(
+        "make_agent_router expects an Agent or a FastAPI dependency returning "
+        f"one, got {type(agent).__name__}",
+    )
+
+
 def make_agent_router(
-    agent: Agent,
+    agent: Agent | AgentDependency,
     *,
     run_store: InMemoryAgentRunSink | None = None,
     prefix: str = "/api/agent",
@@ -166,8 +219,22 @@ def make_agent_router(
         ...     make_agent_router(agent, run_store=store, owner=current_user_id),
         ... )
 
+    A prompt that depends on the caller passes a factory instead:
+
+        >>> async def agent_for(user_id: str = Depends(current_user_id)) -> Agent:
+        ...     prompt = BASE_PROMPT + await facts_prompt(facts, subject=user_id)
+        ...     return Agent(generator, system_prompt=prompt, run_sink=store)
+        >>> app.include_router(
+        ...     make_agent_router(agent_for, run_store=store, owner=current_user_id),
+        ... )
+
     Args:
-        agent (Agent): The agent to expose.
+        agent (Agent | AgentDependency): The agent to expose — one fixed
+            instance, or a FastAPI dependency returning the ``Agent`` for
+            each request. The dependency is resolved before the run starts,
+            on every endpoint that runs the agent; the history and artifact
+            endpoints never call it. A per-request agent must write to the
+            same ``run_store`` for its runs to show up there.
         run_store (InMemoryAgentRunSink | None): The same sink the agent
             writes to. Without it the history endpoints are not mounted,
             because there would be nothing to read — a run's artifacts
@@ -185,14 +252,19 @@ def make_agent_router(
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
+
+    Raises:
+        TypeError: When ``agent`` is neither an ``Agent`` nor callable.
     """
     router = APIRouter(prefix=prefix, tags=list(tags or ["agent"]))
     principal_of: Callable[..., Any] = owner if owner is not None else _anonymous
+    agent_of: Callable[..., Any] = _agent_dependency(agent)
 
     @router.post("/run", response_model=AgentRunResponseSchema)
     async def run_agent(
         body: AgentRunRequestSchema,
         principal: str | None = Depends(principal_of),
+        serving: Agent = Depends(agent_of),
     ) -> AgentRunResponseSchema:
         """Run the agent to completion and return the whole record.
 
@@ -200,18 +272,21 @@ def make_agent_router(
             body (AgentRunRequestSchema): The goal.
             principal (str | None): The caller, from the ``owner``
                 dependency.
+            serving (Agent): The agent for this request — the fixed one,
+                or what the factory built.
 
         Returns:
             AgentRunResponseSchema: Answer, trace, artifact metadata and
             the stop reason.
         """
-        run = await agent.run(body.goal, context=AgentContext(owner=principal))
+        run = await serving.run(body.goal, context=AgentContext(owner=principal))
         return AgentRunResponseSchema.from_run(run)
 
     @router.post("/run/stream")
     async def stream_agent(
         body: AgentRunRequestSchema,
         principal: str | None = Depends(principal_of),
+        serving: Agent = Depends(agent_of),
     ) -> StreamingResponse:
         """Stream the agent's steps as they complete.
 
@@ -222,6 +297,8 @@ def make_agent_router(
             body (AgentRunRequestSchema): The goal.
             principal (str | None): The caller, from the ``owner``
                 dependency.
+            serving (Agent): The agent for this request — the fixed one,
+                or what the factory built.
 
         Returns:
             StreamingResponse: An SSE stream of ``step`` events and a
@@ -237,7 +314,7 @@ def make_agent_router(
             tell "finished" from "still thinking". It carries the run id,
             which is what the artifact URL needs.
             """
-            async for step in agent.stream(body.goal, context=context):
+            async for step in serving.stream(body.goal, context=context):
                 payload = json.dumps(step.model_dump(mode="json"))
                 yield (
                     ServerSentEvent(data=payload, event="step")
@@ -333,6 +410,7 @@ def make_agent_router(
 
 __all__: list[str] = [
     "AgentArtifactSchema",
+    "AgentDependency",
     "AgentRunRequestSchema",
     "AgentRunResponseSchema",
     "OwnerDependency",

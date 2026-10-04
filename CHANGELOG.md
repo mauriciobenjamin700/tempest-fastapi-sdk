@@ -56,6 +56,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   de dizer "as CSV" — a mesma exceção cobre agora o caminho `.xlsx`. O
   `code` e o status não mudam.
 
+- **Erro cru de ferramenta não chega mais ao modelo (#406).** Exceção de
+  ferramenta que não é `AgentToolError` vira a observação
+  `tool failed: <Tipo>`; antes o modelo lia o texto inteiro, e o
+  `HTTPStatusError` de um `raise_for_status()` levava a URL com
+  `?apikey=s3cr3t` para a conversa (medido com `httpx.MockTransport`
+  respondendo `401`, pelo `ScriptedBackend.messages_seen`). O traço continua
+  `<Tipo>: the tool failed (details withheld)` e o log continua com a exceção
+  inteira; `AgentToolError` continua chegando como foi escrito. O mesmo knob
+  `expose_tool_errors=True` devolve o texto — agora ao modelo **e** ao traço,
+  com as formas óbvias de credencial mascaradas (parâmetro com `key`/`token`/
+  `secret`/`password` no nome, valor de `Authorization`, senha de URL); a
+  máscara é defesa adicional, não garantia. **Quebra quem dependia do texto
+  cru na observação:** traduza para `AgentToolError` o que o modelo precisa
+  ler — [guia de migração](docs/migration.md).
+
 ### Added
 
 - **`tempest_fastapi_sdk.wallet` — carteira, extrato, retenção e saque Pix
@@ -123,6 +138,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   de tipo. Com ele, o `CapacityReport.reason` termina com *"RAM is limited
   by the container's cgroup to 512 MiB."*, e o `tempest model hardware`
   imprime `ram total  : 0.5 GB (cgroup limit)`.
+- **Agente por requisição no router pronto (#407):** `make_agent_router`
+  aceita, no lugar do `Agent`, uma dependência FastAPI que devolve o
+  `Agent` da requisição (`AgentDependency`, re-exportado em
+  `tempest_fastapi_sdk.agents`). `/run` e `/run/stream` a resolvem a cada
+  requisição; `GET /runs` e o download de artefato nunca a chamam. A
+  dependência pode receber o `Request` ou declarar `Depends` próprios —
+  inclusive a mesma função de `owner=`, que o FastAPI resolve uma vez só.
+  `make_agent_router(agent)` continua servindo a mesma instância. É como um
+  prompt que depende de quem chama (`facts_prompt`) usa o router sem
+  endpoint próprio. `Agent.run(..., system_prompt=...)` ficou de fora: tocaria
+  `run`/`stream`/`run_structured` e a composição do bloco de skills e do
+  `run_structured`, para economizar ~3,3 µs de construção de agente.
+- **`ScriptedBackend.messages_seen`** (#407): a conversa inteira recebida em
+  cada chamada (`list[list[dict[str, Any]]]`), como cópia profunda tirada na
+  hora — o agente continua acrescentando na mesma lista, e uma referência
+  mostraria voltas futuras dentro de chamadas antigas. É como se afirma o que
+  uma observação de ferramenta pôs na frente do modelo.
 
 - **`enable_sqlite_foreign_keys(engine)`**, em `tempest_fastapi_sdk.db` e na
   raiz: o listener do `connect` para quem monta engine SQLite à mão, irmão de

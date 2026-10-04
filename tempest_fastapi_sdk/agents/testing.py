@@ -28,6 +28,7 @@ local model in a separate, marked test, and keep it out of the fast suite.
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from tempest_fastapi_sdk.agents.schemas import AgentRun, AgentStep, StepKind
@@ -111,6 +112,13 @@ class ScriptedBackend:
         specs_seen (list[list[str]]): The tool names offered on each call,
             which is how you assert a skill's tools stayed hidden until it
             was loaded.
+        messages_seen (list[list[dict[str, Any]]]): The full conversation
+            received on each call — system, goal, every assistant turn and
+            every ``role: tool`` observation — as a deep copy taken at call
+            time. The agent keeps appending to the list it passes, so a
+            reference would show later turns inside earlier calls; the copy
+            is what the model read **at that moment**. It is how you assert
+            what a tool's observation put in front of the model.
         calls (int): How many times the backend was asked.
     """
 
@@ -135,11 +143,17 @@ class ScriptedBackend:
         self.prompts: list[str] = []
         self.system_prompts: list[str] = []
         self.specs_seen: list[list[str]] = []
+        self.messages_seen: list[list[dict[str, Any]]] = []
         self.calls = 0
 
     def _record(self, messages: list[dict[str, Any]]) -> None:
-        """Capture what the agent sent this turn."""
+        """Capture what the agent sent this turn.
+
+        Args:
+            messages (list[dict[str, Any]]): The conversation as received.
+        """
         self.calls += 1
+        self.messages_seen.append(copy.deepcopy(messages))
         if messages:
             self.system_prompts.append(str(messages[0].get("content", "")))
         if len(messages) > 1:

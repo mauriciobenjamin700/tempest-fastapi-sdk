@@ -26,9 +26,9 @@ agent tool never goes down that path:
   `AgentContext`. There is no dependency graph there to inject anything into.
 
 Forcing the request's session down to the tool is expensive on both ends: the
-agent would have to be rebuilt per request (and `make_agent_router` stops being
-usable), and the session would stay open for the **whole** run — which can take
-minutes across several steps.
+agent would have to be rebuilt per request around tools bound to that session,
+and the session would stay open for the **whole** run — which can take minutes
+across several steps.
 
 The answer is simpler than it looks: **the tool opens its own session**. That
 is exactly what the SDK's own database objects do — `DbFactStore` and
