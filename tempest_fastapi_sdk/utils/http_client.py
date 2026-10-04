@@ -11,7 +11,10 @@ Design notes:
   instance across requests so the connection pool stays warm.
 * Retries cover **network errors** (``ConnectError``,
   ``ReadTimeout``) and **5xx** responses. **4xx is never retried**
-  — by definition the client is at fault.
+  — by definition the client is at fault. ``ReadTimeout`` is retried
+  only while ``RetryPolicy.retry_on_read_timeout`` is ``True`` (the
+  default); a model generation turns it off, because the server drops
+  the work when the client gives up and the retry redoes all of it.
 * ``X-Request-ID`` is read from the current
   :func:`tempest_fastapi_sdk.get_request_id` contextvar so the
   outbound call propagates the inbound correlation id.
@@ -263,6 +266,28 @@ class HTTPClient:
     # Request loop
     # ------------------------------------------------------------------
 
+    def _should_retry_error(self, exc: BaseException) -> bool:
+        """Decide whether a network error earns another attempt.
+
+        ``ConnectError`` always does: the request never reached the
+        server, so nothing was started and nothing is redone. A
+        ``ReadTimeout`` does only under
+        ``RetryPolicy.retry_on_read_timeout`` — the request *did* reach
+        the server, and for a call whose cost is the server's work the
+        retry repeats that work from zero.
+
+        Args:
+            exc (BaseException): The error the attempt raised; one of the
+                two classes the retry loops catch.
+
+        Returns:
+            bool: ``True`` when the loop may try again.
+        """
+        assert _httpx_mod is not None, "guarded by __init__"
+        if isinstance(exc, _httpx_mod.ReadTimeout):
+            return self.retry_policy.retry_on_read_timeout
+        return True
+
     def _build_headers(
         self,
         explicit: Mapping[str, str] | None,
@@ -359,7 +384,7 @@ class HTTPClient:
                 )
             except (_httpx_mod.ConnectError, _httpx_mod.ReadTimeout) as exc:
                 last_exc = exc
-                if attempt == max_attempts:
+                if attempt == max_attempts or not self._should_retry_error(exc):
                     await self._breaker_record(host, failed=True)
                     raise
                 await asyncio.sleep(self.retry_policy.sleep_for(attempt))
@@ -532,8 +557,12 @@ class HTTPClient:
                             yielded = True
                             yield line
                         return
-            except (_httpx_mod.ConnectError, _httpx_mod.ReadTimeout):
-                if yielded or attempt == max_attempts:
+            except (_httpx_mod.ConnectError, _httpx_mod.ReadTimeout) as exc:
+                if (
+                    yielded
+                    or attempt == max_attempts
+                    or not self._should_retry_error(exc)
+                ):
                     await self._breaker_record(host, failed=True)
                     raise
                 await asyncio.sleep(self.retry_policy.sleep_for(attempt))

@@ -19,7 +19,7 @@ from tempest_fastapi_sdk.genai import (
 )
 from tempest_fastapi_sdk.genai.ollama import _build_options
 from tempest_fastapi_sdk.genai.rag import SupportsEmbed
-from tempest_fastapi_sdk.utils.http_client import HTTPClient
+from tempest_fastapi_sdk.utils.http_client import HTTPClient, RetryPolicy
 
 
 class _CitySchema(BaseModel):
@@ -590,3 +590,96 @@ class TestChatCacheAndMetrics:
             {"model": "llama3.2", "op": "chat", "status": "ok"},
         )
         assert count == 1.0
+
+
+class TestDefaultRetryPolicy:
+    """The owned client does not retry a read timeout by default.
+
+    The daemon aborts a request the client stopped waiting for — measured
+    on Ollama 0.30.11: each ``ReadTimeout`` shows up in its log as a
+    ``500`` after exactly the timeout — so a retry redoes the whole
+    generation and times out again. Three attempts made a ``timeout=10``
+    call fail after 31.5 s instead of 10 s.
+    """
+
+    async def test_generate_read_timeout_fails_after_one_attempt(self) -> None:
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            raise httpx.ReadTimeout("generation outlived the timeout")
+
+        gen = OllamaGenerator("llama3.2", transport=httpx.MockTransport(handler))
+        try:
+            with pytest.raises(httpx.ReadTimeout):
+                await gen.generate("Write an essay.")
+        finally:
+            await gen.aclose()
+        assert calls["n"] == 1
+
+    async def test_chat_read_timeout_fails_after_one_attempt(self) -> None:
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            raise httpx.ReadTimeout("generation outlived the timeout")
+
+        gen = OllamaGenerator("llama3.2", transport=httpx.MockTransport(handler))
+        try:
+            with pytest.raises(httpx.ReadTimeout):
+                await gen.chat([{"role": "user", "content": "Write an essay."}])
+        finally:
+            await gen.aclose()
+        assert calls["n"] == 1
+
+    async def test_embed_read_timeout_fails_after_one_attempt(self) -> None:
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            raise httpx.ReadTimeout("batch outlived the timeout")
+
+        emb = OllamaEmbedder("nomic-embed-text", transport=httpx.MockTransport(handler))
+        try:
+            with pytest.raises(httpx.ReadTimeout):
+                await emb.embed(["a", "b"])
+        finally:
+            await emb.aclose()
+        assert calls["n"] == 1
+
+    async def test_connect_error_is_still_retried(self) -> None:
+        """A refused connection started no work, so it earns a retry."""
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise httpx.ConnectError("daemon restarting")
+            return httpx.Response(200, json={"response": "ok", "done": True})
+
+        gen = OllamaGenerator("llama3.2", transport=httpx.MockTransport(handler))
+        try:
+            assert await gen.generate("hi") == "ok"
+        finally:
+            await gen.aclose()
+        assert calls["n"] == 2
+
+    async def test_explicit_policy_is_used_as_given(self) -> None:
+        """A caller who opts back in gets the retries they asked for."""
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            raise httpx.ReadTimeout("slow")
+
+        gen = OllamaGenerator(
+            "llama3.2",
+            transport=httpx.MockTransport(handler),
+            retry_policy=RetryPolicy(max_attempts=3, backoff_initial_seconds=0.001),
+        )
+        try:
+            with pytest.raises(httpx.ReadTimeout):
+                await gen.generate("hi")
+        finally:
+            await gen.aclose()
+        assert calls["n"] == 3

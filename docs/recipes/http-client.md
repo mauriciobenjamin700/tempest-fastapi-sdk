@@ -84,6 +84,8 @@ async def call() -> None:
 
 - **Retry**: refeito em erros transitórios (timeouts, 5xx, falhas de conexão)
   até `max_attempts`, com backoff exponencial limitado por `backoff_max_seconds`.
+  `RetryPolicy(retry_on_read_timeout=False)` tira o `ReadTimeout` dessa lista
+  e mantém o resto — veja o aviso abaixo.
 - **Circuit-breaker**: após `failure_threshold` falhas consecutivas o circuito
   **abre** e as chamadas levantam `CircuitOpenError` imediatamente (sem tocar
   a rede) até passar `recovery_seconds`, quando entra em meio-aberto pra testar.
@@ -98,6 +100,17 @@ async def call() -> None:
     pro chamador — refazer o POST reemitiria desde o começo linhas que você
     já consumiu. Até esta versão o `ReadTimeout` no meio do stream era
     refeito, e o chamador via `["Hello ", "Hello ", "world"]` de dois POSTs.
+
+!!! warning "Timeout de leitura numa chamada cara"
+    Um `ReadTimeout` quer dizer que o request **chegou** ao servidor e a
+    resposta não veio a tempo. Numa chamada rápida isso é conexão travada, e
+    refazer resolve. Numa chamada cujo custo é o trabalho do servidor — uma
+    geração de modelo — o servidor aborta o trabalho quando o cliente
+    desiste, e a nova tentativa recomeça do zero com o mesmo timeout: a
+    falha chega depois de `max_attempts` × timeout em vez de um. Para essas,
+    passe `RetryPolicy(retry_on_read_timeout=False)`; o `ConnectError`
+    continua sendo refeito, porque nenhum trabalho começou. Os geradores de
+    [`genai`](genai.md) já usam esse default no client que criam.
 
 !!! tip "Guarde como singleton em resources.py"
     Crie o `HTTPClient` uma vez (em `src/api/dependencies/resources.py`),
@@ -186,7 +199,7 @@ async def publish(payload: dict[str, str]) -> None:
 
 - `HTTPClient` = `httpx.AsyncClient` tipado + retry/backoff/circuit-breaker + X-Request-ID.
 - Sem extra obrigatório (`httpx` vem no pacote base; `[http]` é opcional). Métodos `get/post/put/patch/delete/request` → `httpx.Response`.
-- `RetryPolicy(max_attempts, backoff_initial_seconds, backoff_max_seconds)` controla o retry.
+- `RetryPolicy(max_attempts, backoff_initial_seconds, backoff_max_seconds)` controla o retry; `retry_on_read_timeout=False` para chamada cara (geração).
 - `async_retry(policy, exceptions, logger=)` aplica a curva a qualquer corrotina; `logger=` aceita `logging.Logger` ou `LogUtils`.
 - `failure_threshold` / `recovery_seconds` controlam o breaker; `CircuitOpenError` quando aberto.
 - Compartilhe um singleton e feche com `aclose()` no shutdown.
