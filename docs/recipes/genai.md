@@ -138,24 +138,42 @@ print(hw.has_cuda, [g.name for g in hw.gpus])   # VRAM por GPU quando há CUDA
 
 `HardwareInfo` reporta CPU, RAM total/disponível, GPUs CUDA (nome +
 VRAM total/livre), MPS (Apple) e espaço livre em disco. Sem `torch`,
-nenhuma GPU aparece (`has_cuda=False`, `gpus=[]`). Leitura que não pôde
-ser feita fica marcada como **não medida**, e não como vazia: sem `psutil`
-os campos de RAM ficam em `0` com `ram_measured=False`; se o disco não
-responde, `disk_free_bytes=0` com `disk_measured=False`. Os campos
-continuam `int`, então conta feita com eles não quebra — mas confira a
-flag antes de ler `0` como "nada livre". Snapshot montado à mão
-(`HardwareInfo(...)`) tem as duas flags `True` por padrão.
+nenhuma GPU aparece (`has_cuda=False`, `gpus=[]`). A RAM vem do `psutil`
+e, no Linux, do `/proc/meminfo` quando o `psutil` falta — veja
+[Sem `psutil`](#sem-psutil). Leitura que não pôde ser feita fica marcada
+como **não medida**, e não como vazia: os campos de RAM ficam em `0` com
+`ram_measured=False`; se o disco não responde, `disk_free_bytes=0` com
+`disk_measured=False`. Os campos continuam `int`, então conta feita com
+eles não quebra — mas confira a flag antes de ler `0` como "nada livre".
+Snapshot montado à mão (`HardwareInfo(...)`) tem as duas flags `True` por
+padrão.
 
 ### Sem `psutil`
 
-O `psutil` vem no extra `[metrics]`, **não** no `[genai]`. Sem ele, a RAM
-não é medida, e em CPU/MPS (que se dimensionam pela RAM) o planejador
-responde "não deu pra medir", não "não cabe". Até a 0.303.1 ele lia o `0`
-como zero byte livre: medido numa venv limpa só com o pacote base, numa
-máquina com 62 GB de RAM (`CUDA_VISIBLE_DEVICES=`, sem `torch`), o
-`recommend(num_params=500_000_000)` devolvia `fits=False` em `int4` com
+O `psutil` vem no extra `[metrics]`, **não** no `[genai]`. O que acontece
+sem ele depende da plataforma:
+
+- **Linux (WSL e container incluídos): a RAM é medida mesmo assim.** O
+  `probe_hardware()` lê `MemTotal` e `MemAvailable` do `/proc/meminfo` — o
+  mesmo arquivo que o `psutil` lê no Linux. Medido numa venv limpa só com o
+  pacote base (WSL2, 62 GB, `CUDA_VISIBLE_DEVICES=`, sem `torch`): total
+  de 67 430 916 096 bytes, igual ao `free -b`; `MemAvailable` a 516 KB do
+  `free -b` na mesma janela (as duas leituras são instantes diferentes).
+  Lendo o arquivo e chamando o `psutil` 7.2.2 no mesmo processo, os dois
+  bytes bateram exatamente. O `recommend(num_params=500_000_000)` dá
+  `fits=True` em `float32`.
+- **Kernel sem `MemAvailable`** (anterior ao 3.14) ou com `MemAvailable: 0`:
+  a RAM conta como **não medida**. O `psutil` estima nesse caso; somar
+  `MemFree + Buffers + Cached` superestimaria o que um load pode pegar, e o
+  trabalho do planejador é justamente não prometer memória que não existe.
+- **Windows e macOS: sem `psutil` a RAM não é medida**, e o relatório diz
+  isso com todas as letras.
+
+Na 0.303.1, RAM não medida era lida como zero byte livre: na máquina acima,
+o `recommend(num_params=500_000_000)` devolvia `fits=False` em `int4` com
 *"Model is too large for this host even quantized; use a smaller model or
-add memory."*. Agora, na mesma venv:
+add memory."*. Agora, com memória desconhecida (saída abaixo com
+`sys.platform` trocado para `darwin` depois do import, sem `psutil`):
 
 ```python
 from tempest_fastapi_sdk.genai import recommend
@@ -167,10 +185,12 @@ print(report.suggestion)
 
 ```text
 False False float32
-Install psutil (pip install 'tempest-fastapi-sdk[metrics]') so free RAM can be measured, then check again.
+Free RAM was not measured: on darwin measuring RAM requires psutil (pip install 'tempest-fastapi-sdk[metrics]'). Then check again.
 ```
 
-Com memória desconhecida:
+No Linux essa mensagem só aparece se o `/proc/meminfo` também falhar, e
+aí ela diz que o `psutil` e o `/proc/meminfo` falharam. Com memória
+desconhecida:
 
 - **`fits` é `False`** porque nada foi verificado — um `if report.fits:`
   que decide carregar continua conservador. Quem precisa distinguir
@@ -183,11 +203,18 @@ Com memória desconhecida:
 - **`available_bytes` e `headroom_pct` ficam em `0`** e não carregam
   informação; `reason` diz que a RAM não foi medida.
 - **Em GPU o veredito continua medido** — a VRAM vem do `torch`/NVML. Só
-  a sugestão de offload para CPU, que depende da RAM, vira "instale o
-  `psutil` para checar" em vez de "o host é pequeno demais".
+  a sugestão de offload para CPU, que depende da RAM, vira "a RAM não foi
+  medida" em vez de "o host é pequeno demais".
 
-Instalando o `psutil` na mesma máquina, o mesmo `recommend()` responde
-`fits=True` em `float32`, com 53,1 GB livres e 95,3% de folga.
+!!! warning "Container com limite de memória: o planejador vê o host"
+    O `/proc/meminfo` de um container mostra a memória do **host**, não o
+    limite do cgroup — e o `psutil.virtual_memory()` lê o mesmo arquivo, então
+    instalar o `psutil` não muda nada. Medido com `docker run --memory=512m`
+    (`memory.max` = 536 870 912): o SDK e o `psutil` 7.2.2 reportaram os
+    mesmos 67 430 916 096 bytes de total, e o `recommend(num_params=500_000_000)`
+    respondeu `fits=True` para um load de 2,5 GB que não cabe nos 512 MiB.
+    Em container com `--memory`, confira o limite
+    (`/sys/fs/cgroup/memory.max`) antes de confiar no `fits`.
 
 ## Estimativa sem baixar pesos
 

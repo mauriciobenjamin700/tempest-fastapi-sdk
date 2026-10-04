@@ -13,7 +13,9 @@ a model's parameter count without downloading its weights. Missing pieces degrad
 gracefully (no torch → ``has_cuda=False``), so the module imports without
 the ``[genai]`` extra — you only need it installed to probe real GPUs.
 
-RAM is the one reading the planner cannot do without on CPU and MPS. Without
+RAM is the one reading the planner cannot do without on CPU and MPS. On
+Linux (WSL and containers included) it is read from ``/proc/meminfo`` when
+``psutil`` is absent, so no extra is needed there. On other platforms without
 ``psutil`` the probe reports ``ram_measured=False`` and the capacity checks
 answer "could not measure" instead of "does not fit"; ``psutil`` ships in the
 ``[metrics]`` extra, not in ``[genai]``.
@@ -24,6 +26,7 @@ from __future__ import annotations
 import contextlib
 import os
 import shutil
+import sys
 
 from tempest_fastapi_sdk.genai.schemas import (
     CapacityReport,
@@ -64,8 +67,123 @@ _PSUTIL_INSTALL_HINT: str = "pip install 'tempest-fastapi-sdk[metrics]'"
 
 ``[metrics]`` is the smallest extra that brings ``psutil`` (with
 ``nvidia-ml-py``); ``[genai]`` does not, so a ``[genai]``-only install
-probes GPUs but not RAM.
+probes GPUs but not RAM off Linux.
 """
+
+_PROC_MEMINFO_PATH: str = "/proc/meminfo"
+"""Kernel memory report read when ``psutil`` is absent.
+
+Ported from psutil's ``_pslinux.virtual_memory``, which reads the same file
+(``psutil`` 7.2.2). Inside a container it shows the host's memory, not the
+cgroup limit — the same number ``psutil.virtual_memory()`` reports.
+"""
+
+_MEMINFO_TOTAL_KEY: str = "MemTotal:"
+"""``/proc/meminfo`` key for total RAM. Ported from psutil's ``_pslinux``."""
+
+_MEMINFO_AVAILABLE_KEY: str = "MemAvailable:"
+"""``/proc/meminfo`` key for the kernel's available-RAM estimate.
+
+Ported from psutil's ``_pslinux``. Present since Linux 3.14.
+"""
+
+_MEMINFO_FREE_KEY: str = "MemFree:"
+"""``/proc/meminfo`` key for strictly free RAM. Ported from psutil's ``_pslinux``."""
+
+_MEMINFO_UNIT_BYTES: int = 1024
+"""``/proc/meminfo`` reports ``kB``; psutil's ``_pslinux`` multiplies by 1024."""
+
+
+def _read_proc_meminfo(path: str) -> tuple[int, int] | None:
+    """Read total and available RAM from a ``/proc/meminfo``-format file.
+
+    Follows psutil's ``_pslinux.virtual_memory`` for the two numbers the
+    planner needs, with one deliberate difference: when ``MemAvailable`` is
+    missing (kernels older than 3.14) or ``0`` (a kernel bug psutil
+    documents), psutil estimates it from the zone watermarks and
+    ``MemFree + Cached``; this returns ``None`` instead. A coarse
+    ``MemFree + Buffers + Cached`` would overstate what a model load can
+    claim, and the planner's whole job is not to promise memory that is not
+    there, so "not measured" is the honest answer. Like psutil, an available
+    figure above the total (distorted values inside an LXC container) falls
+    back to ``MemFree``.
+
+    Args:
+        path (str): The file to read, normally ``/proc/meminfo``.
+
+    Returns:
+        tuple[int, int] | None: ``(total_bytes, available_bytes)``, or
+        ``None`` when the file cannot be read or lacks ``MemTotal`` or a
+        usable ``MemAvailable``.
+    """
+    try:
+        with open(path, encoding="ascii", errors="replace") as handle:
+            lines = handle.read().splitlines()
+    except OSError:
+        return None
+    values: dict[str, int] = {}
+    for line in lines:
+        fields = line.split()
+        if len(fields) >= 2 and fields[1].isdigit():
+            values[fields[0]] = int(fields[1]) * _MEMINFO_UNIT_BYTES
+    total = values.get(_MEMINFO_TOTAL_KEY)
+    available = values.get(_MEMINFO_AVAILABLE_KEY)
+    if not total or not available:
+        return None
+    if available > total:
+        available = values.get(_MEMINFO_FREE_KEY, 0)
+    return total, available
+
+
+def _is_linux() -> bool:
+    """Return whether this process runs on Linux (WSL and containers too).
+
+    Reads ``sys.platform`` through a plain ``str`` so the check stays a
+    runtime decision: mypy treats ``sys.platform.startswith`` as a platform
+    guard and would mark the other branch unreachable, and tests patch
+    ``sys.platform`` to exercise macOS and Windows.
+
+    Returns:
+        bool: ``True`` when ``sys.platform`` starts with ``"linux"``.
+    """
+    platform: str = sys.platform
+    return platform.startswith("linux")
+
+
+def _read_ram() -> tuple[int, int] | None:
+    """Measure total and available RAM: ``psutil`` first, then ``/proc``.
+
+    Returns:
+        tuple[int, int] | None: ``(total_bytes, available_bytes)``, or
+        ``None`` when neither ``psutil`` nor (on Linux) ``/proc/meminfo``
+        could answer.
+    """
+    try:
+        import psutil
+
+        mem = psutil.virtual_memory()
+        return int(mem.total), int(mem.available)
+    except Exception:
+        pass
+    if _is_linux():
+        return _read_proc_meminfo(_PROC_MEMINFO_PATH)
+    return None
+
+
+def _ram_unmeasured_reason() -> str:
+    """Explain, for this platform, why RAM was not measured and how to fix it.
+
+    Returns:
+        str: On Linux, that both ``psutil`` and ``/proc/meminfo`` failed; on
+        any other platform, that measuring RAM there requires ``psutil``.
+        Either way it ends with the install command.
+    """
+    if _is_linux():
+        return (
+            f"psutil is missing or failed and {_PROC_MEMINFO_PATH} could not "
+            f"be read; install psutil ({_PSUTIL_INSTALL_HINT})"
+        )
+    return f"on {sys.platform} measuring RAM requires psutil ({_PSUTIL_INSTALL_HINT})"
 
 
 def bytes_per_param(dtype: ModelDtype) -> float:
@@ -178,25 +296,18 @@ def probe_hardware(*, cache_dir: str | None = None) -> HardwareInfo:
 
     Returns:
         HardwareInfo: The current resource picture. A reading that could
-        not be taken is reported as unmeasured, not as empty: without
-        ``psutil`` (or when it fails) ``ram_measured`` is ``False`` and the
-        RAM fields are ``0``; when the disk query raises ``OSError``,
-        ``disk_measured`` is ``False``. Without ``torch`` no GPU is
-        reported (``has_cuda=False``, ``gpus=[]``).
+        not be taken is reported as unmeasured, not as empty. RAM comes
+        from ``psutil`` and, failing that on Linux, from ``/proc/meminfo``;
+        when neither answers ``ram_measured`` is ``False`` and the RAM
+        fields are ``0``. Both sources read the same file on Linux, so in a
+        container they report the host's memory, not the cgroup limit.
+        When the disk query raises ``OSError``, ``disk_measured`` is
+        ``False``. Without ``torch`` no GPU is reported
+        (``has_cuda=False``, ``gpus=[]``).
     """
     cpu_cores = os.cpu_count() or 1
-    ram_total = 0
-    ram_available = 0
-    ram_measured = False
-    try:
-        import psutil
-
-        mem = psutil.virtual_memory()
-        ram_total = int(mem.total)
-        ram_available = int(mem.available)
-        ram_measured = True
-    except Exception:
-        pass
+    ram = _read_ram()
+    ram_total, ram_available = ram if ram is not None else (0, 0)
 
     has_cuda = False
     gpus: list[GPUInfo] = []
@@ -237,7 +348,7 @@ def probe_hardware(*, cache_dir: str | None = None) -> HardwareInfo:
         cpu_cores=cpu_cores,
         ram_total_bytes=ram_total,
         ram_available_bytes=ram_available,
-        ram_measured=ram_measured,
+        ram_measured=ram is not None,
         has_cuda=has_cuda,
         gpus=gpus,
         has_mps=has_mps,
@@ -359,10 +470,10 @@ def can_run(
     Returns:
         CapacityReport: The verdict, chosen device, estimate vs available,
         headroom and a suggestion when it doesn't fit. When the free memory
-        of the device could not be measured (CPU or MPS without
-        ``psutil``), ``memory_measured`` is ``False``, ``fits`` is
-        ``False`` because nothing was verified, and the suggestion is to
-        install ``psutil`` — not to shrink the model.
+        of the device could not be measured (CPU or MPS with no RAM
+        reading), ``memory_measured`` is ``False``, ``fits`` is ``False``
+        because nothing was verified, and the suggestion says how to get a
+        reading on this platform — not to shrink the model.
 
     Raises:
         ValueError: When neither ``num_params`` nor a resolvable
@@ -392,12 +503,12 @@ def can_run(
             headroom_pct=0.0,
             reason=(
                 f"~{estimated / 1e9:.1f} GB needed at {planned.value}; free "
-                f"RAM on {chosen} could not be measured (psutil missing or "
-                "failed), so the fit is unknown, not negative."
+                f"RAM on {chosen} could not be measured, so the fit is "
+                "unknown, not negative."
             ),
             suggestion=(
-                f"Install psutil ({_PSUTIL_INSTALL_HINT}) so free RAM can be "
-                "measured, then check again."
+                f"Free RAM was not measured: {_ram_unmeasured_reason()}. "
+                "Then check again."
             ),
             memory_measured=False,
         )
@@ -468,9 +579,9 @@ def _suggest(
             return suggestion
     if device == "cuda" and not hardware.ram_measured:
         return (
-            "Model does not fit this GPU even at int4; free RAM could not be "
-            f"measured, so a CPU offload is unchecked — install psutil "
-            f"({_PSUTIL_INSTALL_HINT}) to check it, or use a smaller model."
+            "Model does not fit this GPU even at int4, and a CPU offload is "
+            f"unchecked because free RAM was not measured: "
+            f"{_ram_unmeasured_reason()}. Or use a smaller model."
         )
     if (
         device == "cuda"

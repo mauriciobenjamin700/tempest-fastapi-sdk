@@ -64,8 +64,9 @@ class HardwareInfo(BaseSchema):
             when ``ram_measured`` is ``False``.
         ram_measured (bool): Whether the two RAM fields were read.
             :func:`~tempest_fastapi_sdk.genai.probe_hardware` sets it to
-            ``False`` when ``psutil`` is not installed (it ships in the
-            ``[metrics]`` extra) or fails to read memory.
+            ``False`` when neither ``psutil`` (the ``[metrics]`` extra) nor,
+            on Linux, ``/proc/meminfo`` could be read — in practice,
+            Windows or macOS without ``psutil``.
         has_cuda (bool): Whether a CUDA GPU is usable via torch.
         gpus (list[GPUInfo]): Per-CUDA-device memory (empty without CUDA).
         has_mps (bool): Whether Apple Metal (MPS) is available.
@@ -91,7 +92,7 @@ class CapacityReport(BaseSchema):
     """The verdict of whether the host can run a given model.
 
     When the memory of ``device`` could not be measured
-    (``memory_measured=False``, e.g. CPU without ``psutil``), the verdict
+    (``memory_measured=False``, e.g. CPU on macOS without ``psutil``), the verdict
     is unknown rather than negative: ``fits`` is ``False`` because nothing
     was verified, ``available_bytes`` and ``headroom_pct`` are ``0`` and
     carry no information, and ``reason``/``suggestion`` say what to
