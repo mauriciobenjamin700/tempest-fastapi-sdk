@@ -73,6 +73,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`BaseRepository.update_returning(filters, values, *, returning, where=None)`**:
+  um `UPDATE ... WHERE ... RETURNING` condicional que devolve as colunas pedidas
+  de cada linha atualizada (`[]` quando a condição não casa), com os mesmos
+  filtros de `list`/`bulk_update` e valores `F` calculados pelo banco. O
+  `bulk_update` passa a dividir o mesmo caminho de erro (`_execute_update`), e
+  `update_returning` levanta o `bulk_update_conflict_exception` da instância.
+  O `WalletService` agora move o saldo por ele. Vindo do #410.
+
+- **Guards `test_wallet_concurrency_guard` e `test_wallet_update_shape_guard`**
+  (do #410, adaptados à API do #409): corridas com intercalação forçada em
+  SQLite e PostgreSQL, com controle que mostra o read-modify-write perdendo
+  50/50; e a forma "um `UPDATE ... WHERE` decide" fixada em todo método que
+  move saldo.
+
 - **`tempest_fastapi_sdk.wallet` — carteira, extrato, retenção e saque Pix
   em centavos inteiros (#400).** O saldo fica na linha do usuário do app
   (`WalletBalanceMixin`, ou `balance_attribute=` para uma coluna que já

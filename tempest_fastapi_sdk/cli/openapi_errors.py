@@ -306,7 +306,9 @@ CONFIGURED_RAISERS: dict[str, frozenset[str]] = {
     "bulk_create_conflict_exception": frozenset(
         {"add_all", "bulk_create_values", "bulk_upsert"}
     ),
-    "bulk_update_conflict_exception": frozenset({"update_many", "bulk_update"}),
+    "bulk_update_conflict_exception": frozenset(
+        {"update_many", "bulk_update", "update_returning"}
+    ),
 }
 """Which inherited method raises the class handed to each constructor kwarg.
 
