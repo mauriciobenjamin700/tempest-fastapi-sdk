@@ -640,6 +640,11 @@ Devolver `str` também vale, quando não há nada binário — ele é embrulhado
     [Agentes de IA (banco de dados) »](agents-db.md) mostra o padrão inteiro,
     e é lá que o parâmetro `context` é destrinchado.
 
+!!! tip "Ferramenta que chama uma API, ou que estrutura texto?"
+    O cliente HTTP do processo, o timeout abaixo do orçamento, 4xx/5xx virando
+    `AgentToolError`, e extrair um objeto de texto livre com `schema_of` e
+    `final_answer_tool`: [Agentes de IA (ferramentas) »](agents-tools.md).
+
 !!! tip "Já tem ferramentas do `AIChatPipeline`?"
     `AgentTool.from_tool(tool)` adapta as ferramentas de um só argumento do
     chat pipeline, sem tocar nelas.

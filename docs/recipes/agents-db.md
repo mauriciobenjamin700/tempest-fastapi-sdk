@@ -19,7 +19,7 @@ No FastAPI a sessão chega por `Depends(db.session_dependency)`, e a
 dependência é resolvida pelo framework quando a requisição entra. Uma
 ferramenta de agente não passa por esse caminho:
 
-- o agente é construído **uma vez**, não a cada requisição;
+- o agente com prompt fixo é construído **uma vez**, não a cada requisição;
 - a execução pode nem vir de HTTP — uma task TaskIQ, um consumer FastStream
   ou um script de linha de comando chamam o mesmo `agent.run(...)`;
 - quem invoca a ferramenta é o laço do agente, que só passa os `arguments` e
