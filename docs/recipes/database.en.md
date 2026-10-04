@@ -761,6 +761,19 @@ and `DATABASE_SQLITE_BUSY_TIMEOUT`.
     because there is nothing to wait for. For long work: claim the row,
     do the work with **no session open**, and only then persist.
 
+!!! info "A refused `COMMIT` no longer leaves the pooled connection dirty"
+    Without WAL, a reader open on another connection makes `COMMIT` fail
+    with `database is locked`. The transaction stays open on the driver,
+    and SQLAlchemy does not close it: the connection went back to the pool
+    inside its `BEGIN`, and its next use failed with `cannot start a
+    transaction within a transaction`. `enable_sqlite_savepoints` — which
+    the manager and `create_test_engine` apply — rolls back on check-in
+    whenever the driver is still in a transaction. The refused `COMMIT`
+    still raises `OperationalError`; what changes is that the next
+    connection comes out clean, and the refused write does not become
+    durable. An engine you build by hand must call
+    `enable_sqlite_savepoints` to get the same reset.
+
 ### SQLite with foreign keys: `PRAGMA foreign_keys`
 
 SQLite parses the `REFERENCES` clause but **only checks** the foreign key on
@@ -1048,7 +1061,7 @@ class UserRepository(BaseRepository[UserModel]):
     | `create_conflict_exception` | `add`, `save_with_outbox`, `add_audited` |
     | `update_conflict_exception` | `update`, `update_audited` |
     | `bulk_create_conflict_exception` | `add_all`, `bulk_create_values`, `bulk_upsert` |
-    | `bulk_update_conflict_exception` | `update_many`, `bulk_update` |
+    | `bulk_update_conflict_exception` | `update_many`, `bulk_update`, `update_returning` |
     | `conflict_exception` | fallback for all four |
 
     The class is instantiated as `cls(message=...)`, the same contract
@@ -1403,6 +1416,47 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+**`update_returning` — the decision and the new value in one statement.**
+`bulk_update` returns only the count. When the write is conditional and
+you need its outcome — debit only if the balance covers it, with the new
+balance in hand —, `update_returning` runs the same `UPDATE ... WHERE`
+with `RETURNING`. No returned row means the condition did not match;
+there is no read first, so there is no window for another request:
+
+```python
+import asyncio
+from uuid import UUID
+
+from tempest_fastapi_sdk import BaseRepository, F
+
+from db_setup import db
+from src.db.models import UserModel
+
+
+async def main() -> None:
+    """Run this example."""
+    user_id = UUID("6f1c3d84-2a55-4d0b-9d7e-0c1a2b3c4d5e")
+    async with db.get_session_context() as session:
+        repository = BaseRepository(session, model=UserModel)
+        rows = await repository.update_returning(
+            {"id": user_id, "wallet_cents__gte": 500},
+            {"wallet_cents": F("wallet_cents") - 500},
+            returning=("wallet_cents",),
+        )
+        if rows:
+            print("new balance:", rows[0]["wallet_cents"])
+        else:
+            print("refused: balance below 500")
+
+
+asyncio.run(main())
+```
+
+`where=` takes a `Q` or a ready SQLAlchemy clause, for what the dict
+cannot express — the [wallet](wallet.md) discounts the held balance with
+a correlated subquery there. `RETURNING` needs PostgreSQL, or SQLite
+3.35+.
 
 **`Q` — the `OR` / `NOT` the filter dict can't express.** The dict ANDs
 everything; `Q` combines with `&` / `|` / `~` and enters via `where=`:

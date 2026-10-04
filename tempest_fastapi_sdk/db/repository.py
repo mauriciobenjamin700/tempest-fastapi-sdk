@@ -281,7 +281,7 @@ class BaseRepository(Generic[ModelType]):
         bulk_create_conflict_exception (type[AppException]): Same, for
             ``add_all`` / ``bulk_create_values`` / ``bulk_upsert``.
         bulk_update_conflict_exception (type[AppException]): Same, for
-            ``update_many`` / ``bulk_update``.
+            ``update_many`` / ``bulk_update`` / ``update_returning``.
         session (AsyncSession): The async database session.
         orderable_columns (ClassVar[frozenset[str] | None]): Class-level
             default for the columns ``order_by`` may name in
@@ -369,8 +369,8 @@ class BaseRepository(Generic[ModelType]):
                 Overrides ``conflict_exception`` for ``add_all``,
                 ``bulk_create_values`` and ``bulk_upsert``.
             bulk_update_conflict_exception (type[AppException] | None):
-                Overrides ``conflict_exception`` for ``update_many`` and
-                ``bulk_update``.
+                Overrides ``conflict_exception`` for ``update_many``,
+                ``bulk_update`` and ``update_returning``.
             not_found_message (str | None): Message used when ``get``,
                 ``get_by_id``, ``delete``, ``soft_delete`` or
                 ``restore`` find no matching record.
@@ -381,8 +381,8 @@ class BaseRepository(Generic[ModelType]):
             bulk_create_conflict_message (str | None): Message used
                 when ``add_all`` raises ``IntegrityError``.
             bulk_update_conflict_message (str | None): Message used
-                when ``update_many`` or ``bulk_update`` raises
-                ``IntegrityError``.
+                when ``update_many``, ``bulk_update`` or
+                ``update_returning`` raises ``IntegrityError``.
             autocommit (bool): Whether a write method commits on its own.
                 ``True`` (the default) keeps the historical behavior —
                 ``add`` / ``update`` / ``delete`` each end in a
@@ -2091,22 +2091,142 @@ class BaseRepository(Generic[ModelType]):
                 "bulk_update requires non-empty filters; "
                 "pass an explicit truthy condition to update every row."
             )
+        affected, _ = await self._execute_update(
+            filters,
+            values,
+            None,
+            (),
+            operation="bulk_update",
+        )
+        return affected
+
+    async def update_returning(
+        self,
+        filters: dict[str, Any],
+        values: dict[str, Any],
+        *,
+        returning: Sequence[str],
+        where: WhereClause | None = None,
+    ) -> List[dict[str, Any]]:
+        """Run one conditional ``UPDATE ... RETURNING`` and hand back the rows.
+
+        The read-back half of :meth:`bulk_update`: the same single
+        statement, with the post-update value of each ``returning``
+        column read in the same round trip. That is what turns a
+        conditional write into a decision the caller can act on —
+        ``{"wallet_cents": F("wallet_cents") - 500}`` filtered by
+        ``{"id": user_id, "wallet_cents__gte": 500}`` either debits and
+        returns the new balance, or matches nothing and returns ``[]``,
+        with no window between the check and the write for a concurrent
+        request to slip into.
+
+        Reading first and writing after is the shape this replaces, and
+        a ``SELECT ... FOR UPDATE`` does not rescue it portably: the
+        SQLite dialect drops ``FOR UPDATE`` from the emitted SQL without
+        a warning, so the lock exists only on PostgreSQL.
+
+        ``RETURNING`` needs PostgreSQL, or SQLite 3.35 or newer.
+
+        Args:
+            filters (dict[str, Any]): Filter conditions identifying the
+                rows to mutate, with the same conventions as :meth:`list`
+                (``column__gte``, ``None`` as ``IS NULL``, ...).
+            values (dict[str, Any]): Column-value pairs to set. An
+                :class:`F` value is resolved against this repository's
+                model, so the new value is computed by the database.
+            returning (Sequence[str]): Names of the mapped columns to read
+                back from each updated row. Must not be empty.
+            where (WhereClause | None): An extra condition ANDed with
+                ``filters`` — a :class:`Q` tree, or a bound SQLAlchemy
+                clause for what a filter dict cannot express (a
+                correlated subquery, say).
+
+        Returns:
+            list[dict[str, Any]]: One mapping per updated row, keyed by
+            the ``returning`` names. An empty list means no row matched
+            the condition.
+
+        Raises:
+            ValueError: If ``returning`` is empty, or if both ``filters``
+                and ``where`` are empty.
+            ConflictException: On integrity violations (the
+                ``bulk_update_conflict_exception`` of this instance).
+        """
+        if not returning:
+            raise ValueError("update_returning requires at least one column")
+        if not filters and where is None:
+            raise ValueError(
+                "update_returning requires non-empty filters or a where clause; "
+                "pass an explicit truthy condition to update every row."
+            )
+        _, rows = await self._execute_update(
+            filters,
+            values,
+            where,
+            [getattr(self.model, name) for name in returning],
+            operation="update_returning",
+        )
+        return [
+            {name: row[index] for index, name in enumerate(returning)} for row in rows
+        ]
+
+    async def _execute_update(
+        self,
+        filters: dict[str, Any],
+        values: dict[str, Any],
+        where: WhereClause | None,
+        returning: Sequence[Any],
+        *,
+        operation: str,
+    ) -> tuple[int, List[Any]]:
+        """Execute one ``UPDATE`` built from filters, values and a clause.
+
+        Shared by :meth:`bulk_update` and :meth:`update_returning` so the
+        two keep one error path. Rows of a ``RETURNING`` statement are
+        read before the commit, because a cursor cannot be read after it.
+
+        Args:
+            filters (dict[str, Any]): Filter conditions.
+            values (dict[str, Any]): Column-value pairs; :class:`F` values
+                are resolved against this repository's model.
+            where (WhereClause | None): Extra condition, or ``None``.
+            returning (Sequence[Any]): Mapped columns to read back; empty
+                for a plain ``UPDATE`` whose row count is all that matters.
+            operation (str): Method name, for the log line.
+
+        Returns:
+            tuple[int, list[Any]]: The affected row count and the
+            returned rows (empty when the statement returns none).
+
+        Raises:
+            ConflictException: On integrity violations.
+        """
         resolved_values = {
             key: value.resolve(self.model) if isinstance(value, F) else value
             for key, value in values.items()
         }
         try:
             query = update(self.model)
+            if returning:
+                query = query.returning(*returning)
             query = self._apply_filters(query, filters)
+            query = self._apply_where(query, where)
             query = query.values(**resolved_values)
-            result = cast(CursorResult[Any], await self.session.execute(query))
+            result = await self.session.execute(query)
+            rows: List[Any] = [*result.all()] if returning else []
+            affected = (
+                len(rows)
+                if returning
+                else cast(CursorResult[Any], result).rowcount or 0
+            )
             await self._commit()
-            return result.rowcount or 0
+            return affected, rows
         except IntegrityError as exc:
             await self._rollback_after_failure()
             logger.warning(
-                "IntegrityError on %s.bulk_update: %s",
+                "IntegrityError on %s.%s: %s",
                 self.model.__name__,
+                operation,
                 describe_database_error(exc),
             )
             raise self.bulk_update_conflict_exception(

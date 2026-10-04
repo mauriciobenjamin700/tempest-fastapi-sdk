@@ -19,6 +19,7 @@ from sqlalchemy import Select, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
+from tempest_fastapi_sdk.db.expressions import F
 from tempest_fastapi_sdk.exceptions.wallet import (
     InsufficientBalanceException,
     PayoutRejectedException,
@@ -505,6 +506,10 @@ class WalletService:
     ) -> int | None:
         """Move a balance by ``delta_cents`` in one ``UPDATE ... RETURNING``.
 
+        Delegates to :meth:`BaseRepository.update_returning`, so the new
+        balance is computed by the database (``F(column) + delta``) and the
+        floor is part of the same statement's ``WHERE``.
+
         Args:
             user_id (UUID): The wallet owner.
             delta_cents (int): Signed change.
@@ -516,18 +521,15 @@ class WalletService:
             int | None: The new balance, or ``None`` when no row matched
             (unknown user, or the floor would be crossed).
         """
-        column = self._balance_column
-        model = self.balances.model
-        conditions = [model.id == user_id]
-        if floor is not None:
-            conditions.append(column + delta_cents >= floor)
-        new_balance = await self._session.scalar(
-            update(model)
-            .where(*conditions)
-            .values({self.balance_attribute: column + delta_cents})
-            .returning(column)
+        rows = await self.balances.update_returning(
+            {"id": user_id},
+            {self.balance_attribute: F(self.balance_attribute) + delta_cents},
+            returning=[self.balance_attribute],
+            where=(
+                None if floor is None else self._balance_column + delta_cents >= floor
+            ),
         )
-        return None if new_balance is None else int(new_balance)
+        return int(rows[0][self.balance_attribute]) if rows else None
 
     async def _write_entry(self, **values: Any) -> WalletEntrySchema:
         """Insert a ledger line inside the caller's transaction block.

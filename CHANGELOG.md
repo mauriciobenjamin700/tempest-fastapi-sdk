@@ -92,6 +92,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `python -m doctest`; a receita `recipes/zap-inbound` virou tutorial em
   quatro passos (mínimo, enums, camada model → repository → service →
   controller → router, teste), com cada exemplo executado e a saída colada.
+
+- **`BaseRepository.update_returning(filters, values, *, returning, where=None)`**:
+  um `UPDATE ... WHERE ... RETURNING` condicional que devolve as colunas pedidas
+  de cada linha atualizada (`[]` quando a condição não casa), com os mesmos
+  filtros de `list`/`bulk_update` e valores `F` calculados pelo banco. O
+  `bulk_update` passa a dividir o mesmo caminho de erro (`_execute_update`), e
+  `update_returning` levanta o `bulk_update_conflict_exception` da instância.
+  O `WalletService` agora move o saldo por ele. Vindo do #410.
+
+- **Guards `test_wallet_concurrency_guard` e `test_wallet_update_shape_guard`**
+  (do #410, adaptados à API do #409): corridas com intercalação forçada em
+  SQLite e PostgreSQL, com controle que mostra o read-modify-write perdendo
+  50/50; e a forma "um `UPDATE ... WHERE` decide" fixada em todo método que
+  move saldo.
 - **`tempest_fastapi_sdk.wallet` — carteira, extrato, retenção e saque Pix
   em centavos inteiros (#400).** O saldo fica na linha do usuário do app
   (`WalletBalanceMixin`, ou `balance_attribute=` para uma coluna que já
@@ -202,6 +216,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exemplos de resposta de `POST /api/v1/payment` validam, fixados em
   `tests/integrations/payment/openpix/test_overlay.py`.
 
+- **SQLite: `COMMIT` recusado deixava a conexão do pool presa no `BEGIN`**
+  (#411). Quando o SQLite recusa o `COMMIT` com `database is locked`, a
+  transação continua aberta no driver, mas o SQLAlchemy já marcou a dele como
+  inativa: fechar a `Connection` não dá `ROLLBACK` e avisa o pool que a
+  transação já foi resetada, então o pool também não dá. Com o `BEGIN`
+  explícito do `enable_sqlite_savepoints`, o próximo usuário daquela conexão
+  falhava com `cannot start a transaction within a transaction`. Pegava o
+  helper `transaction()` e a `Connection` do Core; o `manager.transaction()` /
+  `get_session_context()` já dava `rollback()` na sessão e escapava. O
+  `enable_sqlite_savepoints` ganha um listener de `reset` do pool que dá
+  `ROLLBACK` quando o driver ainda está `in_transaction` — vale para o
+  `AsyncDatabaseManager` e para o `create_test_engine`, que passam por ele.
+  Medido com aiosqlite 0.22.1 e SQLite 3.47.1, journal `delete`: o `COMMIT`
+  forçado a falhar (outra conexão segurando leitura, `busy_timeout` de 0,1 s)
+  deixava a conexão suja sempre, no SQLAlchemy 2.0.52 e no 2.1.3, e limpa com
+  o fix. Na corrida de dois read-modify-write no mesmo arquivo (2.0.52), o
+  primeiro `COMMIT` foi recusado em 8 a 11 de 200 tentativas por execução,
+  com `busy_timeout` padrão, 0,1 s ou 30 s, e toda recusa sujava a conexão;
+  com o fix, 6 de 200 recusados e nenhuma suja. Em WAL (o padrão do manager)
+  leitor não bloqueia `COMMIT`, e a mesma corrida recusou 0 de 200.
 - **Em container com limite de memória o planejador via a RAM do host**
   (#398). O `/proc/meminfo` e o `psutil.virtual_memory()` mostram o host,
   então num `docker run --memory=512m` em host de 62 GB o
@@ -260,6 +294,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `InvalidSpreadsheetError` (`422`). O caso com CRC não ajustado já virava
   `InvalidSpreadsheetError`: o `zipfile` para no tamanho declarado e confere o
   CRC ali (medido no CPython 3.11 a 3.14).
+- **Leitor CSV do Google Sheets com limite de tamanho (#413):** o
+  `read_google_sheet` / `read_google_sheet_as` lia o corpo inteiro do export
+  com `response.content`, decodificava num `str` e só então montava a
+  `list[dict]`, sem teto nenhum. Agora os dois aceitam `max_bytes` e
+  `max_rows` keyword-only, ligados por padrão: o download passa pelo mesmo
+  streaming do `.xlsx` (um `Content-Length` acima do teto é recusado sem ler
+  o corpo; sem ele, a transferência para no primeiro pedaço além), e as
+  linhas são contadas durante o parse, que lê direto dos bytes baixados —
+  na linha `max_rows + 1` a leitura para, e o resto do corpo nunca é
+  decodificado. Passou de um limite: o mesmo `SpreadsheetTooLargeError`
+  (`413`), com `details["sheet"]` `None` (o CSV não traz o nome da aba);
+  em `read_google_sheet_as` o limite vem antes de qualquer validação. `None`
+  desliga; zero ou negativo levanta `ValueError` antes da requisição. O
+  `max_rows` usa o `DEFAULT_XLSX_MAX_ROWS` (100 000); o download ganha
+  constante própria, `DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES` (10 MiB), menor
+  que a do `.xlsx` porque o CSV não é comprimido. Medido no CPython 3.11
+  (pico de RSS acima da base, três execuções por arquivo): uma aba de 8
+  colunas custa ~94 bytes de CSV e ~1 014 bytes de memória por linha (~11
+  bytes por byte), então 100 000 linhas (9 212 287 bytes) cabem e o limite
+  de linhas dispara primeiro; o pior caso, células de dois caracteres, custa
+  ~31,5 bytes por byte — 10 300 127 bytes chegaram a 309,4 MB. A maior aba
+  da planilha pública de 16 abas tem 18 577 bytes; as 16, lidas com os
+  defaults, deram 2 580 linhas sem recusa. O parse deixou de passar pelo
+  `io.StringIO`, que guarda uma cópia de umas cinco vezes o tamanho do texto
+  (+475 MB para 95 MiB de ASCII): com o limite de linhas ligado, um export de
+  95 MB chegava a 632 MB acima da base por esse caminho, e chega a 179 MB
+  lendo dos bytes.
 
 ## [0.303.2] — 2026-10-04
 
