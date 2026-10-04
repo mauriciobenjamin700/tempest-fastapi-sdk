@@ -561,6 +561,7 @@ come back here to plug in each capability as you need it.
 | **[Utilities »](utilities.md)** | `utcnow`/`to_utc`, `modify_dict`, `get_client_ip`, opaque tokens (`generate_opaque_token`) |
 | **[Validated fields (ready-made types) »](fields.md)** | Annotated Pydantic types — `PositiveIntField` / `CentsField` / `PriceField` / `SlugField` / `HexColorField` / `CPFField` / `UFField` |
 | **[Versioned artifacts (models) »](artifact-registry.md)** | `ArtifactRegistry`, `ArtifactVersionMixin`, `build_manifest_entries`, `file_digest` — swap the active version without a redeploy |
+| **[Wallet (balance and statement) »](wallet.md)** | `WalletBalanceMixin` / `OverdraftWalletBalanceMixin`, append-only statement (`make_wallet_entry_model`), `WalletService` (`credit` with a hold, `debit` of the available balance, `reverse`, `balance`, `statement`), `WalletRepository.claim_once` — every move is one conditional `UPDATE`, a replayed event moves nothing |
 | **[Web Push »](webpush.md)** | `WebPushDispatcher`, VAPID schemas, broadcast with pruning |
 | **[WebAuthn / passkeys »](webauthn.md)** | `WebAuthnService`, `make_web_authn_credential_model`, registration + passwordless login, memory/Redis challenge store |
 | **[WebSocket client (AsyncAPI) »](asyncapi-client.md)** | `tempest asyncapi-client` — a typed socket client from an AsyncAPI 3 document |

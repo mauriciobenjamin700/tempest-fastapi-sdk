@@ -198,6 +198,7 @@ plugins:
               - Utilities: recipes/utilities.md
               - Validated fields (ready-made types): recipes/fields.md
               - Versioned artifacts (models): recipes/artifact-registry.md
+              - Wallet (balance and statement): recipes/wallet.md
               - Web Push: recipes/webpush.md
               - WebAuthn / passkeys: recipes/webauthn.md
               - WebSocket client (AsyncAPI): recipes/asyncapi-client.md
@@ -301,6 +302,7 @@ plugins:
             "Permissões object-level": "Object-level permissions"
             "Guards de permissão (@requires)": "Permission guards (@requires)"
             "Campos validados (tipos prontos)": "Validated fields (ready-made types)"
+            "Carteira (saldo e extrato)": "Wallet (balance and statement)"
             "Management commands (tempest <cmd>)": "Management commands (tempest <cmd>)"
             "IA generativa self-hosted": "Self-hosted generative AI"
             "Escolhendo o modelo": "Choosing a model"
@@ -412,6 +414,7 @@ nav:
       - Camada HTTP: recipes/http.md
       - "Camada UI (páginas e componentes)": recipes/ui.md
       - "Campos validados (tipos prontos)": recipes/fields.md
+      - "Carteira (saldo e extrato)": recipes/wallet.md
       - "Chat (conversas + mensagens)": recipes/chat.md
       - CLI: recipes/cli.md
       - "Cliente de integração (OpenAPI)": recipes/openapi-client.md

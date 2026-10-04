@@ -351,6 +351,20 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## Carteira
+
+### `tempest_fastapi_sdk.wallet`
+
+::: tempest_fastapi_sdk.wallet
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
 ## Chat
 
 ### `tempest_fastapi_sdk.chat`

@@ -40,6 +40,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by the container's cgroup to 512 MiB."*, e o `tempest model hardware`
   imprime `ram total  : 0.5 GB (cgroup limit)`.
 
+- **Módulo `tempest_fastapi_sdk.wallet`** (sem extra; primeiro passo do
+  #400): saldo em centavos inteiros na linha do usuário e extrato
+  append-only.
+  - `WalletBalanceMixin` (`wallet_cents`, `NOT NULL`, default `0`, com
+    `CHECK (wallet_cents >= 0)`) e `OverdraftWalletBalanceMixin` (a mesma
+    coluna sem o `CHECK`, para quem registra a dívida de um estorno).
+  - `BaseWalletEntryModel` + `make_wallet_entry_model(user_table=,
+    tablename=)`: `kind`, `amount_cents` com sinal, `balance_after_cents`,
+    `available_at`, `reference_type`/`reference_id`, `description`,
+    `idempotency_key` (único quando presente), `UNIQUE (reference_type,
+    reference_id, kind)` e índice em `(user_id, available_at)`.
+  - `WalletRepository`: `credit`, `debit` (forçado, só o `CHECK` recusa),
+    `debit_available` (desconta o retido com subquery correlata **dentro**
+    do `WHERE`) e `claim_once(model, id, column)` — cada um é exatamente um
+    `UPDATE ... WHERE ... RETURNING`, sem leitura antes; `balance` lê
+    total, retido e próxima liberação numa consulta.
+  - `WalletService(balances=, entries=)`: `credit` (com `hold`), `debit`,
+    `reverse`, `balance` e `statement` (`BasePaginationSchema`, `[]` para
+    carteira sem movimento). Saldo e linha do extrato na mesma transação;
+    a mesma referência com o mesmo dono e valor devolve a linha existente
+    e não move nada, inclusive em corrida (savepoint + unique).
+  - Exceções com code próprio e tradução PT-BR/EN-US:
+    `WalletInsufficientFundsException` (409,
+    `WALLET_INSUFFICIENT_FUNDS`), `WalletNotFoundException` (404,
+    `WALLET_NOT_FOUND`), `WalletEntryNotFoundException` (404,
+    `WALLET_ENTRY_NOT_FOUND`) e `WalletReferenceConflictException` (409,
+    `WALLET_REFERENCE_CONFLICT`).
+  - Medido com intercalação forçada, 50 corridas por cenário, SQLite e
+    PostgreSQL 17: dois créditos, dois débitos, débito contra saldo retido
+    e webhook duplicado em corrida — 0/50 nos dois bancos; o
+    read-modify-write que o módulo substitui perde 50/50 nos dois, e com
+    `FOR UPDATE` continua perdendo 50/50 no SQLite. Receita nova:
+    "Carteira (saldo e extrato)".
+- **`BaseRepository.update_returning(filters, values, *, returning,
+  where=None)`**: um `UPDATE ... WHERE` condicional com `RETURNING`,
+  devolvendo uma lista de dicionários com as colunas pedidas (`[]` quando a
+  condição não casou). `where=` aceita `Q` ou cláusula SQLAlchemy pronta.
+  `bulk_update` passa a dividir com ele o mesmo caminho de execução e de
+  erro, sem mudança de assinatura nem de comportamento.
+
 ### Changed
 
 - A mensagem de `GoogleSheetAccessError` (`GOOGLE_SHEET_UNAVAILABLE`) deixa

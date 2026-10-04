@@ -13,6 +13,7 @@ from tempest_fastapi_sdk import (
     BaseModel,
     BaseRepository,
     ConflictException,
+    F,
     NotFoundException,
     SoftDeleteMixin,
     ValidationException,
@@ -367,6 +368,86 @@ class TestBulkUpdate:
     ) -> None:
         with pytest.raises(ValueError):
             await repo.bulk_update(filters={}, values={"category": "z"})
+
+
+class TestUpdateReturning:
+    async def test_returns_the_updated_values(self, repo: ProductRepository) -> None:
+        await repo.add_all(
+            [Product(name="a", category="x"), Product(name="b", category="y")],
+        )
+        rows = await repo.update_returning(
+            {"category": "x"},
+            {"category": "z"},
+            returning=("name", "category"),
+        )
+        assert rows == [{"name": "a", "category": "z"}]
+
+    async def test_no_match_returns_empty_list(self, repo: ProductRepository) -> None:
+        await repo.add(Product(name="a", category="x"))
+        rows = await repo.update_returning(
+            {"category": "nope"},
+            {"category": "z"},
+            returning=("name",),
+        )
+        assert rows == []
+        assert (await repo.get({"name": "a"})).category == "x"
+
+    async def test_where_clause_is_anded(self, repo: ProductRepository) -> None:
+        await repo.add_all(
+            [Product(name="a", category="x"), Product(name="b", category="x")],
+        )
+        rows = await repo.update_returning(
+            {"category": "x"},
+            {"category": "z"},
+            returning=("name",),
+            where=Product.name == "b",
+        )
+        assert rows == [{"name": "b"}]
+
+    async def test_where_alone_is_enough(self, repo: ProductRepository) -> None:
+        await repo.add(Product(name="a", category="x"))
+        rows = await repo.update_returning(
+            {},
+            {"category": "z"},
+            returning=("category",),
+            where=Product.name == "a",
+        )
+        assert rows == [{"category": "z"}]
+
+    async def test_f_expression_reads_back_the_computed_value(
+        self,
+        repo: ProductRepository,
+    ) -> None:
+        product = await repo.add(Product(name="a", category="x"))
+        rows = await repo.update_returning(
+            {"id": product.id},
+            {"name": F("category") + "-renamed"},
+            returning=("name",),
+        )
+        assert rows == [{"name": "x-renamed"}]
+
+    async def test_rejects_empty_returning(self, repo: ProductRepository) -> None:
+        with pytest.raises(ValueError):
+            await repo.update_returning({"name": "a"}, {"category": "z"}, returning=())
+
+    async def test_rejects_no_condition(self, repo: ProductRepository) -> None:
+        with pytest.raises(ValueError):
+            await repo.update_returning({}, {"category": "z"}, returning=("name",))
+
+    async def test_integrity_violation_is_a_conflict(
+        self,
+        repo: ProductRepository,
+    ) -> None:
+        await repo.add_all(
+            [Product(name="a", category="x"), Product(name="b", category="x")],
+        )
+        with pytest.raises(ConflictException):
+            await repo.update_returning(
+                {"name": "b"},
+                {"name": "a"},
+                returning=("name",),
+            )
+        assert {p.name for p in await repo.list()} == {"a", "b"}
 
 
 class TestCustomMessages:

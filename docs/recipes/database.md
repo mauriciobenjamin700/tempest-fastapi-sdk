@@ -923,7 +923,7 @@ class UserRepository(BaseRepository[UserModel]):
     | `create_conflict_exception` | `add`, `save_with_outbox`, `add_audited` |
     | `update_conflict_exception` | `update`, `update_audited` |
     | `bulk_create_conflict_exception` | `add_all`, `bulk_create_values`, `bulk_upsert` |
-    | `bulk_update_conflict_exception` | `update_many`, `bulk_update` |
+    | `bulk_update_conflict_exception` | `update_many`, `bulk_update`, `update_returning` |
     | `conflict_exception` | fallback de todas as quatro |
 
     A classe é instanciada como `cls(message=...)`, o mesmo contrato que
@@ -1277,6 +1277,46 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+**`update_returning` — a decisão e o valor novo na mesma instrução.**
+`bulk_update` devolve só a contagem. Quando a escrita é condicional e você
+precisa saber o resultado — debitar só se houver saldo, e com o saldo novo
+em mãos —, `update_returning` roda o mesmo `UPDATE ... WHERE` com
+`RETURNING`. Linha nenhuma devolvida significa que a condição não casou;
+não existe leitura antes, então não existe janela para outra requisição:
+
+```python
+import asyncio
+from uuid import UUID
+
+from tempest_fastapi_sdk import BaseRepository, F
+
+from db_setup import db
+from src.db.models import UserModel
+
+
+async def main() -> None:
+    """Run this example."""
+    user_id = UUID("6f1c3d84-2a55-4d0b-9d7e-0c1a2b3c4d5e")
+    async with db.get_session_context() as session:
+        repository = BaseRepository(session, model=UserModel)
+        rows = await repository.update_returning(
+            {"id": user_id, "wallet_cents__gte": 500},
+            {"wallet_cents": F("wallet_cents") - 500},
+            returning=("wallet_cents",),
+        )
+        if rows:
+            print("novo saldo:", rows[0]["wallet_cents"])
+        else:
+            print("recusado: saldo abaixo de 500")
+
+
+asyncio.run(main())
+```
+
+O `where=` aceita um `Q` ou uma cláusula SQLAlchemy pronta, para o que o
+dict não expressa — a [carteira](wallet.md) desconta o saldo retido com
+uma subquery correlata ali. `RETURNING` exige PostgreSQL, ou SQLite 3.35+.
 
 **`Q` — `OR` / `NOT` que o dict de filtros não expressa.** O dict ANDeia
 tudo; `Q` combina com `&` / `|` / `~` e entra via `where=`:

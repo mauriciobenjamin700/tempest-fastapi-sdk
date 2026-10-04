@@ -1674,6 +1674,23 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `list_comments`/`rate` upsert/`get_user_rating`/`aggregate` → avg +
   count + per-star distribution), `make_reviews_router`; `RatingField`
   (`Annotated[int, 0..5]`) in `utils.fields`. Submodule import.
+- **Wallet (Unreleased, `tempest_fastapi_sdk.wallet`, no extra; PR1 of
+  #400)** — balance in integer cents on the app's user row
+  (`WalletBalanceMixin` with `CHECK (wallet_cents >= 0)`, or
+  `OverdraftWalletBalanceMixin` without it) + append-only statement
+  (`BaseWalletEntryModel` / `make_wallet_entry_model`, unique
+  `(reference_type, reference_id, kind)`, index `(user_id,
+  available_at)`). `WalletRepository` writes are each one conditional
+  `UPDATE ... RETURNING` (`credit`, `debit`, `debit_available` with the
+  held sum as a correlated subquery inside the `WHERE`, `claim_once`),
+  pinned by `tests/test_wallet_update_shape_guard.py`; races pinned by
+  `tests/test_wallet_concurrency_guard.py` on SQLite + PostgreSQL.
+  `WalletService` (`credit` with `hold`, `debit`, `reverse`, `balance`,
+  `statement`) pairs move + statement line in one transaction; a replayed
+  reference returns the existing line. Built on the new
+  `BaseRepository.update_returning`. **Still owed by #400:** PIX payout
+  (`withdraw` + `PayoutProvider` + OpenPix adapter + fake), fee tiers /
+  `split_net`, `make_wallet_router`.
 - **Upload** — `UploadUtils` with pluggable backends
   (`LocalUploadStorage`, `MinIOUploadStorage`, opt-in injected via
   `backend=`), download helpers, presigned URLs, plus `FileStoreUtils`

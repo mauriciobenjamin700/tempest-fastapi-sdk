@@ -541,6 +541,12 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
             "O MFA já está ativo — desative-o antes de cadastrar de novo"
         ),
         "VOICE_CONSENT_REQUIRED": ("O cadastro de voz exige consentimento gravado"),
+        "WALLET_ENTRY_NOT_FOUND": "Lançamento da carteira não encontrado",
+        "WALLET_INSUFFICIENT_FUNDS": "Saldo disponível insuficiente na carteira",
+        "WALLET_NOT_FOUND": "Carteira não encontrada",
+        "WALLET_REFERENCE_CONFLICT": (
+            "Esta referência já movimentou outro valor ou outra carteira"
+        ),
     },
     "en-US": {
         "INTERNAL_SERVER_ERROR": "Internal server error",
@@ -627,6 +633,12 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
             "MFA is already active — disable it before enrolling again"
         ),
         "VOICE_CONSENT_REQUIRED": "Voice enrolment requires recorded consent",
+        "WALLET_ENTRY_NOT_FOUND": "Wallet entry not found",
+        "WALLET_INSUFFICIENT_FUNDS": "Insufficient available wallet balance",
+        "WALLET_NOT_FOUND": "Wallet not found",
+        "WALLET_REFERENCE_CONFLICT": (
+            "This reference already moved a different amount or another wallet"
+        ),
     },
 }
 
