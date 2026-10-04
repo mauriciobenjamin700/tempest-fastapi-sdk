@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.303.1] — 2026-10-04
+
+O planejador de hardware passa a dimensionar CPU na precisão que o gerador
+de fato carrega (`float32`), e o offload quantizado que ele sugere fica na
+CPU mesmo com GPU visível.
+
 ### Changed
 
 - **`can_run(dtype=...)` agora tem default `None`**, que dimensiona na
@@ -36,8 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `device_map="auto"`, e o `accelerate` punha os pesos em `cuda:0`
   enquanto `gen.device` dizia `"cpu"` — o offload que o `can_run` sugere
   era irrealizável. Agora usa `device_map="cpu"` quando o device é CPU
-  (medido: pesos em `cpu` com CUDA visível, transformers 4.57.6 +
-  bitsandbytes 0.50.2).
+  (medido com CUDA visível, Qwen2.5-0.5B, transformers 4.57.6 +
+  bitsandbytes 0.50.2: todos os parâmetros em `cpu` em 6/6 loads, N=3 por
+  int8/int4; o código anterior pôs o int4 em `cuda:0`).
 - O exemplo de `recommend()` em `genai-examples` lia `rec.dtype.value`,
   que levanta `AttributeError`: o `CapacityReport` guarda o valor do enum
   (`use_enum_values`), então `rec.dtype` já é a string.

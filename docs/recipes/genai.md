@@ -101,9 +101,11 @@ O que a tabela diz:
 - **int8/int4 via bitsandbytes carregam e geram em CPU** com o
   bitsandbytes 0.50.2 — nenhum erro nas 24 execuções quantizadas da
   tabela.
-- **A estimativa quantizada é otimista.** No 0,5B o RSS medido do int4
+- **A estimativa quantizada pode ser otimista.** No 0,5B o RSS medido do int4
   ficou 2,7× a 4,4× acima dela (os embeddings não são quantizados, e
-  pesam mais num modelo pequeno). No transformers 5.18.0 o load
+  pesam mais num modelo pequeno). No 3B, no transformers 4.57.6, o int8
+  ficou abaixo da estimativa (3,67 contra 3,86 GB) e o int4 acima (3,25
+  contra 2,31 GB). No transformers 5.18.0 o load
   quantizado do 3B deixa o processo com 5,65 GB de RSS **mapeado de
   arquivo** (`RssFile`, contra 0,36 GB no 4.57.6); a memória anônima do
   processo inteiro ficou em 3,33 GB (int8) e 2,95 GB (int4).

@@ -613,8 +613,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   in slices. **Shipped (v0.96):** hardware capacity check — `probe_hardware`
   → `HardwareInfo` (CPU/RAM/CUDA-VRAM/MPS/disk, degrades without
   psutil/torch), `can_run`/`recommend` → `CapacityReport` (fits? device,
-  estimate vs available, suggestion to quantize/offload; since the release
-  after v0.303.0 an unquantized load is sized at the precision
+  estimate vs available, suggestion to quantize/offload; since v0.303.1 an unquantized load is sized at the precision
   `TextGenerator(dtype="auto")` loads — `float32` on CPU, not `bfloat16`,
   measured RSS in `docs/recipes/genai.md#em-cpu`), `estimate_model_bytes`/
   `bytes_per_param`/`fetch_num_params` (Hub metadata, no weight download),

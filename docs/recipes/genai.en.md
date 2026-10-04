@@ -99,9 +99,11 @@ What the table says:
   the 0.5B and 14.71 GB / 18.66 GB for the 3B.
 - **bitsandbytes int8/int4 load and generate on CPU** with bitsandbytes
   0.50.2 — no error in the table's 24 quantized runs.
-- **The quantized estimate is optimistic.** For the 0.5B the measured
+- **The quantized estimate can be optimistic.** For the 0.5B the measured
   int4 RSS was 2.7× to 4.4× above it (embeddings are not quantized, and
-  weigh more in a small model). On transformers 5.18.0 the quantized 3B
+  weigh more in a small model). For the 3B on transformers 4.57.6, int8
+  came in below the estimate (3.67 against 3.86 GB) and int4 above it
+  (3.25 against 2.31 GB). On transformers 5.18.0 the quantized 3B
   load leaves the process with 5.65 GB of **file-backed** RSS (`RssFile`,
   against 0.36 GB on 4.57.6); the whole process's anonymous memory was
   3.33 GB (int8) and 2.95 GB (int4).
