@@ -104,6 +104,12 @@ if TYPE_CHECKING:
         ZapInboundMessage as ZapInboundMessage,
     )
     from tempest_fastapi_sdk.integrations.messaging.zap.webhooks import (
+        ZapJidServer as ZapJidServer,
+    )
+    from tempest_fastapi_sdk.integrations.messaging.zap.webhooks import (
+        ZapOutboundKind as ZapOutboundKind,
+    )
+    from tempest_fastapi_sdk.integrations.messaging.zap.webhooks import (
         ZapStatusCallback as ZapStatusCallback,
     )
     from tempest_fastapi_sdk.integrations.messaging.zap.webhooks import (
@@ -128,6 +134,8 @@ _HAND_WRITTEN: tuple[str, ...] = (
     "ZAP_WEBHOOK_SIGNATURE_PREFIX",
     "ZapInboundMediaType",
     "ZapInboundMessage",
+    "ZapJidServer",
+    "ZapOutboundKind",
     "ZapStatusCallback",
     "ZapWebhookDelivery",
     "ZapWebhookEvent",
@@ -249,6 +257,8 @@ __all__: list[str] = [
     "ZapClient",
     "ZapInboundMediaType",
     "ZapInboundMessage",
+    "ZapJidServer",
+    "ZapOutboundKind",
     "ZapStatusCallback",
     "ZapWebhookDelivery",
     "ZapWebhookEvent",

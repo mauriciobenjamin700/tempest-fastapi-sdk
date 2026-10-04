@@ -2360,6 +2360,16 @@ e por isso o pacote não modela:
 Cada uma é uma linha na spec do gateway, e nenhuma exige mudança aqui —
 `make zap-regen` passa a expor assim que forem declaradas.
 
+**Enums do webhook (#417, `[Unreleased]`).** Todo valor que o consumidor do
+webhook comparava como string tem enum: `ZapWebhookEvent`,
+`ZapInboundMediaType`, `ZapOutboundKind` (valores de `ZapStatusCallback.kind`,
+que segue `str` para tipo novo do gateway não derrubar o status) e
+`ZapJidServer` (servidor do JID), lido por `ZapInboundMessage.from_server`.
+Valores fixados por teste contra a fonte (`OutboundKind` do gateway,
+`JidServer` do Baileys 7.0.0-rc14). A receita `recipes/zap-inbound` é o
+tutorial em quatro passos, até a camada model → repository → service →
+controller → router.
+
 ## Fuso do painel admin, v0.289.0 (2026-09-10)
 
 ### `AdminModel(display_timezone=...)` — o datetime vira widget

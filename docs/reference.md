@@ -725,6 +725,8 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZAP_WEBHOOK_SIGNATURE_PREFIX
 ::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapWebhookEvent
 ::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapInboundMediaType
+::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapJidServer
+::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapOutboundKind
 ::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapInboundMessage
 ::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapStatusCallback
 ::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapWebhookDelivery
