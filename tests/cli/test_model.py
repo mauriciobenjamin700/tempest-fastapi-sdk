@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -196,6 +197,34 @@ class TestHardware:
         assert result.exit_code == 0, result.stdout
         assert "cpu cores" in result.stdout
         assert "energy measurement" in result.stdout
+
+    def test_unmeasured_ram_prints_unknown_not_zero(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(sys.modules, "psutil", None)
+        monkeypatch.setattr(sys, "platform", "darwin")
+
+        result = runner.invoke(app, ["model", "hardware"], env=_WIDE_TERM)
+
+        assert result.exit_code == 0, result.stdout
+        assert (
+            "ram total  : unknown (on darwin measuring RAM requires psutil"
+            in result.stdout
+        )
+
+    def test_linux_without_psutil_prints_ram_from_proc(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        if not Path("/proc/meminfo").is_file():
+            pytest.skip("needs a real /proc/meminfo")
+        monkeypatch.setitem(sys.modules, "psutil", None)
+        monkeypatch.setattr(sys, "platform", "linux")
+
+        result = runner.invoke(app, ["model", "hardware"], env=_WIDE_TERM)
+
+        assert result.exit_code == 0, result.stdout
+        assert "ram total  : unknown" not in result.stdout
+        assert " GB" in result.stdout.split("ram total  :")[1].splitlines()[0]
 
     def test_json_output_lists_both_samplers(self) -> None:
         result = runner.invoke(app, ["model", "hardware", "--json"])

@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   de `stream()`, e continua refazendo `ConnectError` e os `retry_statuses`.
   Quem usa `HTTPClient` direto não vê mudança.
 
+- Campos novos, todos `bool` com default `True` (sem quebra de tipo — os
+  campos de bytes continuam `int`): `HardwareInfo.ram_measured`,
+  `HardwareInfo.disk_measured` (o `disk_free_bytes` também virava `0` quando
+  o `shutil.disk_usage` levantava `OSError`) e
+  `CapacityReport.memory_measured`. Em GPU o veredito segue medido pela
+  VRAM; só a sugestão de offload para CPU, que depende da RAM, vira "a RAM
+  não foi medida" em vez de "o host é pequeno demais".
+
 ### Fixed
 
 - **Geração mais longa que o timeout custava três timeouts.** O
@@ -45,6 +53,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   oscilou entre 25% e 40% de um lote para outro). Com
   `run_until(..., until=succeeded, max_rounds=3)`, 58 de 60 laços terminaram
   aceitos.
+
+- **RAM desconhecida virava "sem memória livre".** Sem `psutil` (que vem
+  no `[metrics]`, não no `[genai]`), o `probe_hardware()` reportava
+  `ram_available_bytes=0` e o planejador lia isso como zero byte livre.
+  Medido na 0.303.1 numa venv limpa só com o pacote base, máquina de 62 GB,
+  `CUDA_VISIBLE_DEVICES=`: `recommend(num_params=500_000_000)` devolvia
+  `fits=False` em `int4`, `headroom_pct=-100.0` e *"use a smaller model or
+  add memory"*.
+- **No Linux a RAM é medida sem `psutil`**, lendo `MemTotal`/`MemAvailable`
+  do `/proc/meminfo` (o arquivo que o próprio `psutil` lê). Na mesma venv
+  limpa, o `recommend(num_params=500_000_000)` agora dá `fits=True` em
+  `float32`; o total lido bateu com o `free -b` (67 430 916 096 bytes) e,
+  no mesmo processo, os dois bytes bateram exatamente com o `psutil` 7.2.2.
+  Kernel sem `MemAvailable` (ou com `0`) conta como não medido, em vez de
+  aproximar por `MemFree + Buffers + Cached`. Limitação medida e
+  documentada: em container com `--memory=512m`, o `/proc/meminfo` (e o
+  `psutil`) mostram a RAM do host, e o planejador diz `fits=True` para um
+  load de 2,5 GB.
+- **Quando nenhuma fonte responde** (Windows/macOS sem `psutil`, ou Linux
+  com o `/proc/meminfo` ilegível), o relatório diz "não medido" em vez de
+  "não cabe": `memory_measured=False`, `dtype` na precisão nativa (sem
+  descer a escada de quantização), `headroom_pct=0.0`, e uma sugestão que
+  diz por plataforma como medir (*"on darwin measuring RAM requires psutil
+  (pip install 'tempest-fastapi-sdk[metrics]')"*). `fits` continua `False`
+  quando nada foi verificado, para um `if report.fits:` seguir
+  conservador.
+- `tempest model hardware` imprime a RAM lida do `/proc/meminfo` no Linux
+  sem `psutil`, e `ram total  : unknown (<motivo da plataforma>)` em vez de
+  `0.0 GB` quando nenhuma fonte responde.
 
 ## [0.303.1] — 2026-10-04
 

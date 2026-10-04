@@ -379,6 +379,7 @@ def hardware_cmd(
     a container, root-only permissions on ``energy_uj``.
     """
     from tempest_fastapi_sdk.genai import probe_hardware
+    from tempest_fastapi_sdk.genai.hardware import _ram_unmeasured_reason
     from tempest_fastapi_sdk.modelops import (
         resolve_cpu_energy_sampler,
         resolve_power_sampler,
@@ -400,7 +401,12 @@ def hardware_cmd(
 
     typer.secho("hardware", fg="cyan", bold=True)
     typer.echo(f"  cpu cores  : {info.cpu_cores}")
-    typer.echo(f"  ram total  : {info.ram_total_bytes / 10**9:.1f} GB")
+    ram_total = (
+        f"{info.ram_total_bytes / 10**9:.1f} GB"
+        if info.ram_measured
+        else f"unknown ({_ram_unmeasured_reason()})"
+    )
+    typer.echo(f"  ram total  : {ram_total}")
     typer.echo(f"  cuda       : {info.has_cuda}")
     for gpu in info.gpus:
         typer.echo(
