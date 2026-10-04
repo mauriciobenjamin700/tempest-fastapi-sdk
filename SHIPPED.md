@@ -617,8 +617,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   in slices. **Shipped (v0.96):** hardware capacity check — `probe_hardware`
   → `HardwareInfo` (CPU/RAM/CUDA-VRAM/MPS/disk, degrades without
   psutil/torch; since v0.303.2 RAM falls back to
-  `/proc/meminfo` on Linux without psutil (host memory, not the cgroup
-  limit — same as psutil), and an unread RAM/disk is flagged
+  `/proc/meminfo` on Linux without psutil; since #398 (unreleased) both
+  sources are clamped on Linux to the process's cgroup memory limit (v2
+  `memory.max` / v1 `memory.limit_in_bytes`, over the ancestry; available
+  = `limit - (usage - (file - shmem))`, measured against real OOM kills)
+  and flagged `ram_cgroup_limited=True`, and an unread RAM/disk is flagged
   `ram_measured`/`disk_measured=False` instead of passing as `0` free, so
   `CapacityReport.memory_measured=False` answers "not measured", not
   "add memory"), `can_run`/`recommend` → `CapacityReport` (fits? device,

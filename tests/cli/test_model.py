@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+import tempest_fastapi_sdk.genai.hardware as hardware_module
 from tempest_fastapi_sdk.cli.main import app
 from tempest_fastapi_sdk.cli.model import _parse_dims
 from tests.modelops.conftest import _build_gemm_model
@@ -225,6 +226,23 @@ class TestHardware:
         assert result.exit_code == 0, result.stdout
         assert "ram total  : unknown" not in result.stdout
         assert " GB" in result.stdout.split("ram total  :")[1].splitlines()[0]
+
+    def test_cgroup_limited_ram_is_labelled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(sys, "platform", "linux")
+        monkeypatch.setattr(
+            hardware_module,
+            "_clamp_to_cgroup",
+            lambda total, available: (536_870_912, 500_000_000, True),
+        )
+
+        result = runner.invoke(app, ["model", "hardware"], env=_WIDE_TERM)
+        payload = json.loads(runner.invoke(app, ["model", "hardware", "--json"]).stdout)
+
+        assert result.exit_code == 0, result.stdout
+        assert "ram total  : 0.5 GB (cgroup limit)" in result.stdout
+        assert payload["hardware"]["ram_cgroup_limited"] is True
 
     def test_json_output_lists_both_samplers(self) -> None:
         result = runner.invoke(app, ["model", "hardware", "--json"])

@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`HardwareInfo.ram_cgroup_limited`** (`bool`, default `False`): `True`
+  quando os campos de RAM vêm do limite de memória do cgroup (o
+  `--memory` de um container) e não do host. Nenhum campo existente muda
+  de tipo. Com ele, o `CapacityReport.reason` termina com *"RAM is limited
+  by the container's cgroup to 512 MiB."*, e o `tempest model hardware`
+  imprime `ram total  : 0.5 GB (cgroup limit)`.
+
+### Fixed
+
+- **Em container com limite de memória o planejador via a RAM do host**
+  (#398). O `/proc/meminfo` e o `psutil.virtual_memory()` mostram o host,
+  então num `docker run --memory=512m` em host de 62 GB o
+  `can_run(num_params=500_000_000)` respondia `fits=True` para um load de
+  2,5 GB em `float32`. Agora, no Linux, o `probe_hardware()` lê o limite do
+  cgroup do processo (`memory.max` no v2, `memory.limit_in_bytes` no v1,
+  pelo `/proc/self/cgroup` + `/proc/self/mountinfo`, subindo pelos pais) e,
+  quando ele fica abaixo da RAM do host, usa o limite como total e o menor
+  entre o disponível do host e o do cgroup. Medido com a wheel do branch em
+  `python:3.12-slim` (WSL2, Docker 29.6.1, cgroup v2): com `--memory=512m`,
+  `ram_total_bytes=536870912`, `can_run` dá `fits=False` em `float32` e o
+  `recommend` desce para `int4` (~0,4 GB); igual com o `psutil` 7.2.2
+  instalado; sem `--memory` (`memory.max` = `max`), o total continua sendo
+  os 67 430 916 096 bytes do host.
+- **O disponível no cgroup desconta o page cache que o kernel recupera.**
+  A conta é `limite - (uso - (file - shmem))`. Medido alocando de 8 em 8
+  MiB até o OOM killer, com `--memory-swap=512m`: com 300 MiB de page cache
+  (lido uma ou três vezes), `limite - uso` previa ~183 MiB e o processo
+  alocou 504 MiB, e a conta acima previa ~483 MiB; com os 300 MiB em
+  `/dev/shm`, o processo alocou 200 MiB e a conta previa ~191 MiB (o `file`
+  inteiro teria previsto ~491 MiB). Pela wheel, o `probe_hardware()`
+  reportou 417 MiB livres e o processo alocou 432 MiB (3 de 3). Swap não
+  entra. O cgroup v1 é coberto só por teste com arquivos falsos: não havia
+  host v1 para medir.
+
 ## [0.303.2] — 2026-10-04
 
 Três defeitos achados ao medir agente e planejador em CPU: resposta vazia
