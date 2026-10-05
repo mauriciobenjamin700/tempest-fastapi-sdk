@@ -2,6 +2,22 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.305.0 — a password reset whose user was removed is an invalid link
+
+`confirm_password_reset` with a token whose user no longer exists raised
+`NotFoundException` (`404`). It now raises `InvalidTokenException`
+(`401` `INVALID_TOKEN`, or the class in `AuthExceptions.invalid_token`), as
+`activate` and `confirm_email_change` already did: to the caller it is a link
+that does not work.
+
+### What to do
+
+- A client that handled `404` on `POST /auth/password-reset/confirm`: handle
+  it like the expired-link error.
+- Code that builds `PasswordPolicyViolation(...)` by hand: pass
+  `code=PasswordViolationCode.<...>`, now required. Callers that only **read**
+  what `check_password_policy` returns change nothing.
+
 ## 0.304.0 — the Google Sheets CSV reader has a limit by default
 
 `read_google_sheet` and `read_google_sheet_as` gained `max_bytes` and

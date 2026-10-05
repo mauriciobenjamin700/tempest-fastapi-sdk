@@ -2,6 +2,22 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.305.0 — troca de senha com usuário removido é link inválido
+
+`confirm_password_reset` com um token cujo usuário não existe mais levantava
+`NotFoundException` (`404`). Agora levanta `InvalidTokenException`
+(`401` `INVALID_TOKEN`, ou a classe de `AuthExceptions.invalid_token`), como
+`activate` e `confirm_email_change` já faziam: para quem chama, é um link que
+não vale.
+
+### O que fazer
+
+- Cliente que tratava `404` em `POST /auth/password-reset/confirm`: trate o
+  mesmo erro do link expirado.
+- Código que constrói `PasswordPolicyViolation(...)` à mão: passe
+  `code=PasswordViolationCode.<...>`, agora obrigatório. Quem só **lê** o
+  retorno de `check_password_policy` não muda nada.
+
 ## 0.304.0 — o leitor CSV do Google Sheets tem limite por padrão
 
 `read_google_sheet` e `read_google_sheet_as` ganharam `max_bytes` e
