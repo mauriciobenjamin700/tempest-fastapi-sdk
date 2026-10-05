@@ -2868,3 +2868,44 @@ extra **não** pinado traria, e faz o login do admin. A suíte roda com todos
 os extras instalados, então importar o app no próprio processo não provava
 nada sobre o `pyproject.toml` ao lado dele.
 
+## Rota pronta do webhook da zap-api (v0.305.0, #420)
+
+`integrations.messaging.zap.router` fecha o que a v0.302.0 deixou como
+dependência + rota manual. `make_zap_webhook_router` monta o `POST` inteiro e
+devolve um `APIRouter`; a dependência `make_zap_webhook_dependency` continua
+pública e é o que a fábrica monta por baixo quando recebe `secret`.
+
+- `make_zap_webhook_router(*, secret=None, verify=None, on_inbound=None,
+  on_status=None, path="/webhooks/zap", tags=None, include_in_schema=True) ->
+  APIRouter`: `secret` monta a dependência, `verify` troca por uma sua,
+  e os dois juntos (ou nenhum) levantam `ValueError` — o gateway assina só
+  quando o webhook tem `--secret`, então a rota não pode existir aceitando
+  entrega sem assinatura. Handler não chamável levanta `TypeError` na
+  construção, não na entrega.
+- Despacho por `event`: `on_inbound(ZapInboundMessage)` para
+  `message.received`, `on_status(ZapStatusCallback)` para os quatro de
+  status. Exceção do handler **sobe** — a resposta é `500` e o gateway
+  re-POSTa os mesmos bytes com backoff (`CALLBACK_MAX_ATTEMPTS`, 3 por
+  default), que é o certo para falha passageira e o errado para corpo que
+  nunca passa. Evento sem handler, evento que o gateway inventar depois e
+  corpo que não casa com o modelo do evento: `200` com o nome do evento de
+  volta e log em `debug`.
+- `ZapWebhookAckSchema` (`{"ok": true, "event": "message.received"}`) é a
+  resposta, e entra no OpenAPI; `include_in_schema=False` esconde a rota sem
+  desmontá-la.
+- `ZapInboundHandler` / `ZapStatusHandler` são os tipos dos handlers. Só
+  callable simples: a docstring que o autor do gateway lê é a do gateway
+  (`onInbound(message)`), e a forma de `AgentDependency` não cabe nela —
+  quem precisar injeta o que falta dentro da própria função.
+- `zap/__init__.py` passa a mapear nome → submódulo em `_HAND_WRITTEN`
+  (antes: um `_HAND_WRITTEN_MODULE` só), porque `webhooks` e `router` são
+  duas metades e a primeira não pode arrastar a segunda. `scripts/regen_zap.py`
+  lê as chaves do mapeamento — as tuplas seguem aceitas, para os outros
+  geradores do repo.
+- `tests/integrations/messaging/zap/test_router.py` (entrega assinada por
+  evento, `401` sem assinatura, `200` para evento sem handler, `500` para
+  handler que levanta, `ValueError`/`TypeError` de construção, caminho, tags,
+  OpenAPI) e três casos no drift test: cada nome responde do módulo certo, e
+  o `webhooks` não importa o `router`.
+- Receita `docs/recipes/zap-inbound.md` (+ `.en.md`) abre com a rota pronta e
+  mantém a rota manual num bloco colapsado, "por baixo dos panos".

@@ -8,8 +8,8 @@ sent changes status.
 You will build the receiver in four steps, each one a complete program that
 runs:
 
-1. **The minimum** — a route that receives the message and answers `401` to
-   whatever did not come from the gateway.
+1. **The ready route** — a route that receives the message and answers `401`
+   to whatever did not come from the gateway, built by one line.
 2. **The enums** — dispatching on event, media and address type without
    comparing against a loose string.
 3. **The service layer** — `model` → `repository` → `service` →
@@ -40,43 +40,133 @@ default is `status` only.
 
 ## Step 1 — The minimum that receives a message
 
-```python title="zap_minimal.py" hl_lines="9 14"
-from fastapi import Depends, FastAPI
+The ready route: one `POST`, the signature checked, the body validated into the
+right model, dispatch by event, and a `200` answer.
+
+```python title="zap_minimal.py" hl_lines="5 15"
+from fastapi import FastAPI
 
 from tempest_fastapi_sdk.integrations.messaging.zap import (
-    ZapWebhookDelivery,
-    make_zap_webhook_dependency,
+    ZapInboundMessage,
+    make_zap_webhook_router,
 )
 
 app: FastAPI = FastAPI()
-verify_zap = make_zap_webhook_dependency(secret="my-secret")
 
 
-@app.post("/webhooks/zap", include_in_schema=False)
-async def receive_zap(
-    delivery: ZapWebhookDelivery = Depends(verify_zap),
-) -> dict[str, str]:
-    """Receive every gateway delivery and print the incoming messages.
+async def on_message(message: ZapInboundMessage) -> None:
+    """Print the messages that arrive.
 
     Args:
-        delivery (ZapWebhookDelivery): The delivery, signature already
-            checked and body already validated.
-
-    Returns:
-        dict[str, str]: Always ``200``, so the gateway does not redeliver.
+        message (ZapInboundMessage): The delivery, signature already checked
+            and body already validated.
     """
-    if delivery.inbound is not None:
-        print(f"{delivery.inbound.push_name}: {delivery.inbound.text}")
-    return {"status": "ok"}
+    print(f"{message.push_name}: {message.text}")
+
+
+app.include_router(
+    make_zap_webhook_router(secret="my-secret", on_inbound=on_message)
+)
 ```
 
-Two lines do the work:
+Three pieces:
 
-- **`make_zap_webhook_dependency(secret=...)`** builds a FastAPI dependency
-  that checks the signature and decodes the body.
-- **`Depends(verify_zap)`** hands the route a `ZapWebhookDelivery` — the
-  signature already checked, the body already validated into the right
-  model.
+- **`make_zap_webhook_router(secret=..., on_inbound=...)`** builds the whole
+  route and returns an `APIRouter` like any other.
+- **`on_message`** receives the delivery already validated: a
+  `ZapInboundMessage` for `message.received`, a `ZapStatusCallback` for the
+  four status events. The latter goes in `on_status`.
+- **The answer** is always `200`, with the event name echoed back —
+  `{"ok": true, "event": "message.received"}`, a
+  [`ZapWebhookAckSchema`](../../../reference/#tempest_fastapi_sdk.integrations.messaging.zap.router.ZapWebhookAckSchema).
+
+The parameters the route takes:
+
+| Parameter | Default | What it does |
+| --- | --- | --- |
+| `secret` | — | The secret registered on the gateway. Required without `verify`, and never empty. |
+| `verify` | — | A dependency of your own, for when the secret is not enough: rotation, two secrets, a secret coming from your settings. |
+| `on_inbound` | `None` | Called with the `ZapInboundMessage` of `message.received`. |
+| `on_status` | `None` | Called with the `ZapStatusCallback` of `message.sent`, `.delivered`, `.read` and `.failed`. |
+| `path` | `"/webhooks/zap"` | Where the route lands. |
+| `tags` | `["zap"]` | The tags in the OpenAPI document. |
+| `include_in_schema` | `True` | `False` hides the route from OpenAPI without unmounting it. |
+
+!!! danger "Without `secret` and without `verify`, the route is not built"
+    The gateway signs only when the webhook was registered with `--secret` —
+    without one it POSTs with no `x-zap-signature` header. The factory
+    **raises `ValueError`** in that case, instead of building a route that
+    would accept any `POST`. And an unsigned delivery is `401`, always.
+
+!!! warning "A handler that raises becomes a `500`, and the gateway redelivers"
+    The ready route does **not** swallow your handler's exception: it
+    propagates, the answer becomes `500`, and the gateway re-POSTs the same
+    bytes with backoff (3 attempts by default). That is what you want for a
+    transient failure — database down, lock held — and what you **do not** want
+    for a body that will never get through: handle that inside the handler and
+    answer `200`. An event with no handler, or an event the gateway invents
+    later, is already a `200` with a `debug` log.
+
+### Under the hood: the route the factory builds
+
+???+ "The same route, written by hand"
+
+    When you need the envelope — or when the route lives inside your service,
+    with its own controller and dependencies (step 3) — the manual route is
+    exactly this:
+
+    ```python title="zap_manual.py" hl_lines="9 14"
+    from fastapi import Depends, FastAPI
+
+    from tempest_fastapi_sdk.integrations.messaging.zap import (
+        ZapWebhookDelivery,
+        make_zap_webhook_dependency,
+    )
+
+    app: FastAPI = FastAPI()
+    verify_zap = make_zap_webhook_dependency(secret="my-secret")
+
+
+    @app.post("/webhooks/zap", include_in_schema=False)
+    async def receive_zap(
+        delivery: ZapWebhookDelivery = Depends(verify_zap),
+    ) -> dict[str, str]:
+        """Receive every gateway delivery and print the incoming messages.
+
+        Args:
+            delivery (ZapWebhookDelivery): The delivery, signature already
+                checked and body already validated.
+
+        Returns:
+            dict[str, str]: Always ``200``, so the gateway does not redeliver.
+        """
+        if delivery.inbound is not None:
+            print(f"{delivery.inbound.push_name}: {delivery.inbound.text}")
+        return {"status": "ok"}
+    ```
+
+    The difference is in the body: the factory dispatches on `event` and
+    answers on its own, with the event name echoed. Yours does whatever you
+    want after receiving the `ZapWebhookDelivery` — and it can still use
+    `Depends(verify_zap)`, which is the same dependency the factory builds for
+    you.
+
+### What the dependency handles for you
+
+The signature travels in the `x-zap-signature` header, HMAC-SHA256 in hex
+with a `sha256=` prefix, computed over the **raw** body before any parsing
+and compared with `hmac.compare_digest`. The two classic mistakes become
+impossible: verifying over re-serialized JSON (which changes whitespace and
+key order) and comparing with `==`. A header without the `sha256=` prefix is
+also `401`, even with the right hex.
+
+!!! tip "Answer 2xx to everything that passed the signature"
+    The gateway treats any non-2xx answer as a failure and redelivers with
+    backoff, up to `CALLBACK_MAX_ATTEMPTS` attempts (3 by default). A `422`
+    for a new event protects nothing: it only produces attempts, and the
+    gateway gives up on the delivery in the end. That is why the route does
+    **not** fail on a body it does not recognize — it answers `200` with the
+    event name and logs at `debug` (see step 2).
 
 To see it work without the gateway, sign the body the way the gateway does
 (HMAC-SHA256 of the raw body, hex, `sha256=` prefix) and send it through the
@@ -126,26 +216,9 @@ print(unsigned.status_code, unsigned.json())
 ```console
 $ python simulate.py
 Fulano: Hello!
-200 {'status': 'ok'}
+200 {'ok': True, 'event': 'message.received'}
 401 {'detail': 'Invalid zap-api webhook signature'}
 ```
-
-### What the dependency handles for you
-
-The signature travels in the `x-zap-signature` header, HMAC-SHA256 in hex
-with a `sha256=` prefix, computed over the **raw** body before any parsing
-and compared with `hmac.compare_digest`. The two classic mistakes become
-impossible: verifying over re-serialized JSON (which changes whitespace and
-key order) and comparing with `==`. A header without the `sha256=` prefix is
-also `401`, even with the right hex.
-
-!!! tip "Answer 2xx to everything that passed the signature"
-    The gateway treats any non-2xx answer as a failure and redelivers with
-    backoff, up to `CALLBACK_MAX_ATTEMPTS` attempts (3 by default). A `422`
-    for a new event protects nothing: it only produces attempts, and the
-    gateway gives up on the delivery in the end. That is why the dependency
-    does **not** fail on a body it does not recognize — it returns
-    `event=None` (see step 2).
 
 ## Step 2 — Dispatch by type with the enums
 
@@ -161,6 +234,11 @@ checking and one place to read what exists.
 | `ZapJidServer` | `message.from_server` | `USER`, `LID`, `GROUP`, `BROADCAST`, `NEWSLETTER` and five more from Baileys |
 | `ZapOutboundKind` | `callback.kind` | `TEXT`, `IMAGE`, `VIDEO`, `AUDIO`, `DOCUMENT`, `REACTION` |
 | `AcceptedResponseStatus` | `callback.status` | `SENT`, `DELIVERED`, `READ`, `FAILED` (plus `QUEUED` and `SENDING`, which never reach the webhook) |
+
+Step 1 dispatched for you; here the route is yours again, because `event` is
+what picks the path and it lives on `ZapWebhookDelivery` — the envelope the
+factory hands the handler already opened on the right model. Anyone who wants
+the factory back just passes these functions to `on_inbound` and `on_status`.
 
 ```python title="zap_dispatch.py" hl_lines="27 29 31 34 36 51 53"
 from fastapi import Depends, FastAPI

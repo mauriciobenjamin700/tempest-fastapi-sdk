@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Rota pronta para o webhook da zap-api** (#420).
+  **`make_zap_webhook_router(*, secret=None, verify=None, on_inbound=None,
+  on_status=None, path="/webhooks/zap", tags=None, include_in_schema=True) -> APIRouter`**
+  monta o `POST` inteiro — verificação da assinatura, despacho por `event` e
+  a resposta `200` — e devolve um `APIRouter` para o `include_router`. É a
+  rota que a receita `recipes/zap-inbound` escrevia à mão no passo 1, com o
+  mesmo comportamento: `secret` monta a dependência
+  `make_zap_webhook_dependency` (ou `verify` traz a sua), e sem nenhum dos
+  dois a construção levanta `ValueError` — o gateway assina só quando o
+  webhook foi registrado com `--secret`, então a rota não pode existir
+  aceitando entrega sem assinatura.
+
+  O `on_inbound` recebe o `ZapInboundMessage` de `message.received` e o
+  `on_status` o `ZapStatusCallback` dos quatro eventos de status, já
+  validados. Exceção do handler **sobe**: a resposta vira `500` e o gateway
+  re-POSTa os mesmos bytes com backoff (`CALLBACK_MAX_ATTEMPTS`, 3 por
+  default) — que é o certo para falha passageira. Evento sem handler, evento
+  que o gateway inventar depois e corpo que não casa com o modelo do evento
+  são `200` com o nome do evento de volta (`ZapWebhookAckSchema`,
+  `{"ok": true, "event": "message.received"}`) e registro em `debug` — um
+  `422` nesses casos só geraria reentrega. A resposta continua
+  tipada no OpenAPI, e `include_in_schema=False` a esconde sem desmontar.
+
+  Os handlers são callables simples: assinatura é
+  `Callable[[ZapInboundMessage], Awaitable[None]]` e nada mais. Dependência
+  do FastAPI no handler não é aceita porque a docstring que o autor do
+  gateway lê é a do gateway — `onInbound(message)` — e a forma de
+  `AgentDependency`, com os parâmetros de resolução resolvidos na chamada,
+  não cabe nela; quem precisar injeta o que falta na própria função, que a
+  rota chama como qualquer outro callable.
+
+  Os testes ficam em `tests/integrations/messaging/zap/test_router.py` (e
+  três casos novos no drift test, para a metade lazy continuar lazy), e a
+  receita `recipes/zap-inbound` (PT e EN) passa a abrir com a rota pronta e
+  mantém a rota manual num bloco colapsado, "por baixo dos panos".
+
 ## [0.304.0] — 2026-10-04
 
 Leitura de planilha `.xlsx` (arquivo, upload e a pasta inteira do Google

@@ -231,7 +231,13 @@ def _module_exports(path: Path) -> list[str]:
 
 
 def _hand_written_names(init_path: Path) -> list[str]:
-    """Read the ``_HAND_WRITTEN`` tuple from the package's ``__init__``.
+    """Read the ``_HAND_WRITTEN`` mapping from the package's ``__init__``.
+
+    The hand-written half of this package spans two submodules (``webhooks``,
+    the ported receiver, and ``router``, the opt-in factory over it), so the
+    mapping is a ``{name: submodule}`` dict. The tuple form is still read,
+    because that is what the sibling generators for the other providers
+    keep in their own packages.
 
     Args:
         init_path (Path): The package's ``__init__.py``.
@@ -244,6 +250,12 @@ def _hand_written_names(init_path: Path) -> list[str]:
         target = node.target if isinstance(node, ast.AnnAssign) else None
         if not isinstance(target, ast.Name) or target.id != "_HAND_WRITTEN":
             continue
+        if isinstance(node.value, ast.Dict):
+            return [
+                key.value
+                for key in node.value.keys
+                if isinstance(key, ast.Constant) and isinstance(key.value, str)
+            ]
         if isinstance(node.value, ast.Tuple):
             return [
                 element.value
