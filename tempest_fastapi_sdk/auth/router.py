@@ -319,8 +319,13 @@ def make_auth_router(
             so ``email`` / ``password`` / ``name`` keep their validation
             and the SDK keeps reading them by name; the extra fields are
             whatever the product's account carries at birth — a phone,
-            a document, a role flag. The payload reaches ``on_signup``
-            as-is. ``None`` (default) uses :class:`SignupSchema`.
+            a document, a role flag. Each extra field that is also a
+            column of the user model (outside
+            :data:`SIGNUP_PROTECTED_FIELDS`) is set on the row before the
+            insert, so a ``NOT NULL`` column needs no hook; a unique one
+            that collides answers ``409``. The payload still reaches
+            ``on_signup`` as-is. ``None`` (default) uses
+            :class:`SignupSchema`.
         on_signup (SignupHook | None): Awaited right after the row is
             created and **before** the commit, as
             ``on_signup(session, user, payload)``. It is where the
@@ -446,6 +451,7 @@ def make_auth_router(
         auth_settings.AUTH_SIGNUP_ENABLED if allow_signup is None else allow_signup
     )
     signup_model: type[SignupSchema] = signup_schema or SignupSchema
+    signup_columns: frozenset[str] = service.signup_column_names()
     if not issubclass(signup_model, SignupSchema):
         raise RuntimeError(
             "signup_schema must subclass SignupSchema: POST /auth/signup "
@@ -556,6 +562,13 @@ def make_auth_router(
         this module's globals, where a factory-local name does not
         exist.
 
+        The fields :paramref:`signup_schema` adds on top of
+        :class:`SignupSchema` that are also columns of the user model
+        (minus :data:`SIGNUP_PROTECTED_FIELDS`) are set on the row
+        **before** the insert, so a ``NOT NULL`` column the product adds
+        is filled from the body. Fields that are not columns reach only
+        ``on_signup``.
+
         ``on_signup`` runs after the insert and before the commit, so
         the extra columns it writes and the row itself land in one
         transaction: a hook that raises leaves no account behind.
@@ -574,6 +587,13 @@ def make_auth_router(
             email=payload.email,
             password=payload.password,
             name=payload.name,
+            fields={
+                key: value
+                for key, value in payload.model_dump(
+                    exclude=set(SignupSchema.model_fields)
+                ).items()
+                if key in signup_columns
+            },
         )
         if on_signup is not None:
             await on_signup(session, user, payload)

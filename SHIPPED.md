@@ -2868,6 +2868,15 @@ extra **não** pinado traria, e faz o login do admin. A suíte roda com todos
 os extras instalados, então importar o app no próprio processo não provava
 nada sobre o `pyproject.toml` ao lado dele.
 
+## Signup com coluna obrigatória do produto (#423)
+
+`UserAuthService.signup(fields=...)` aplica colunas do produto antes do
+`flush`, recusando não-coluna e `SIGNUP_PROTECTED_FIELDS`;
+`make_auth_router(signup_schema=...)` repassa os campos do schema que são
+coluna. Unicidade violada no insert → `ConflictException` com
+`details["columns"]`; `NOT NULL` esquecida → `ValueError` com o nome da
+coluna. Guard: `tests/auth/test_signup_fields.py`.
+
 ## Token de uso único sem corrida (#422)
 
 `_consume_token` virou um `UPDATE ... WHERE used_at IS NULL AND expires_at >
