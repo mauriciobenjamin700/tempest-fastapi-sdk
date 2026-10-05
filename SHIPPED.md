@@ -2878,6 +2878,15 @@ tradução default, `confirm_password_reset` de usuário removido →
 `tests/auth/test_refusal_codes.py` (inclui uma verificação bcrypt por login
 recusado, nos três ramos, com a flag ligada e desligada).
 
+## Signup com coluna obrigatória do produto (#423)
+
+`UserAuthService.signup(fields=...)` aplica colunas do produto antes do
+`flush`, recusando não-coluna e `SIGNUP_PROTECTED_FIELDS`;
+`make_auth_router(signup_schema=...)` repassa os campos do schema que são
+coluna. Unicidade violada no insert → `ConflictException` com
+`details["columns"]`; `NOT NULL` esquecida → `ValueError` com o nome da
+coluna. Guard: `tests/auth/test_signup_fields.py`.
+
 ## Token de uso único sem corrida (#422)
 
 `_consume_token` virou um `UPDATE ... WHERE used_at IS NULL AND expires_at >
