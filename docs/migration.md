@@ -2,6 +2,39 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.306.0 — download só vai `inline` para tipo seguro
+
+`as_attachment=False` virou pedido: `DownloadUtils`, `FileStoreUtils` e
+`AsyncMinIOClient.download_response`/`serve_object` só respondem
+`Content-Disposition: inline` quando o tipo da resposta está em
+`INLINE_SAFE_MEDIA_TYPES`. Qualquer outro — `text/html`, `image/svg+xml`,
+`application/octet-stream` — sai como `attachment`. Toda resposta de download
+também passa a levar `X-Content-Type-Options`, `Content-Security-Policy` e
+`Cross-Origin-Resource-Policy`.
+
+`accel_redirect_response` muda o default para `as_attachment=True`, e com
+`as_attachment=False` só serve `inline` quando `media_type=` é passado.
+
+`build_content_disposition(name, as_attachment=False)` sem `media_type=`
+devolve `attachment`.
+
+### O que fazer
+
+- **Rota que mostra imagem, PDF, áudio ou vídeo no navegador**: nada, se o
+  tipo está na lista. No modo `X-Accel-Redirect`, passe `media_type=` (por
+  exemplo `guess_media_type(key)`), senão o arquivo vira download.
+- **Chamada a `accel_redirect_response` que contava com `inline` por
+  padrão**: passe `as_attachment=False` e `media_type=`.
+- **Deploy com `STORAGE_ACCEL_REDIRECT=true`**: acrescente ao `location`
+  interno do nginx o `proxy_hide_header X-Content-Type-Options;` e os três
+  `add_header ... always;` da receita de storage. O nginx não repassa os
+  headers que o app põe na resposta vazia.
+- **Página que embute o download em `<iframe>` ou de outro site**: a CSP
+  `sandbox` e o CORP `same-site` valem para ela. Passe o valor que precisa em
+  `headers=` — ele substitui o default de mesmo nome.
+- **`build_content_disposition(..., as_attachment=False)` chamado à mão**:
+  passe `media_type=` com o tipo da resposta.
+
 ## 0.305.0 — token de conta desativada não autentica mais
 
 `current_user_dependency()` e as rotas autenticadas do `make_auth_router`

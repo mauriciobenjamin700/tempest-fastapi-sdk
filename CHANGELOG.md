@@ -82,6 +82,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Headers de segurança nos downloads, e `inline` só para tipo seguro.**
+  `DownloadUtils.download`/`file_response`/`stream`, os mesmos métodos do
+  `FileStoreUtils` e `AsyncMinIOClient.download_response` passam a sair com
+  `DEFAULT_STATIC_SECURITY_HEADERS` (`X-Content-Type-Options: nosniff`,
+  `Content-Security-Policy: default-src 'none'; sandbox`,
+  `Cross-Origin-Resource-Policy: same-site`), com semântica `setdefault`: um
+  header de mesmo nome em `headers=` vence. `as_attachment=False` só produz
+  `inline` para tipo na constante nova `INLINE_SAFE_MEDIA_TYPES` (imagem
+  raster, `application/pdf`, `text/plain`, áudio e vídeo comuns); qualquer
+  outro tipo, HTML e SVG incluídos, sai como `attachment`.
+  `build_content_disposition` ganha `media_type=` e aplica a mesma regra —
+  sem ele, `as_attachment=False` devolve `attachment`.
+  `accel_redirect_response` passa a ter `as_attachment=True` por padrão, e no
+  modo redirect `inline` exige `media_type=` (o objeto não é consultado). Os
+  headers de segurança do modo redirect vão no `location` interno do nginx
+  (`add_header ... always`): medido no nginx 1.22.1, 1.27.5 e 1.29.8, o que o
+  app põe na resposta vazia não chega ao cliente. A receita de storage traz o
+  bloco. `DEFAULT_STATIC_SECURITY_HEADERS` continua importável de
+  `tempest_fastapi_sdk.api.static`. Passo a passo em `docs/migration.md`
+  (`0.306.0`).
+
 - **Token de conta desativada deixa de autenticar (#421).**
   `UserAuthService.current_user_dependency` ganha `require_active: bool =
   True` e `inactive_exception`: depois de carregar o usuário, conta inativa

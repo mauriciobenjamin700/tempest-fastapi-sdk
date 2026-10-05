@@ -652,8 +652,12 @@ class AsyncMinIOClient:
         the transfer to MinIO directly when the client can hit it.
 
         Every response carries ``Accept-Ranges: bytes`` plus the object's
-        ``ETag`` (quoted) and ``Last-Modified``. Pass ``request`` to let the
-        client use them:
+        ``ETag`` (quoted) and ``Last-Modified``, and the download security
+        headers of
+        :data:`~tempest_fastapi_sdk.api.static.DEFAULT_STATIC_SECURITY_HEADERS`,
+        since the bytes reach the client on the API's origin with the type
+        stored at upload. Pass ``request`` to let the client use the
+        validators:
 
         * ``If-None-Match`` matching the ETag — or, when no
           ``If-None-Match`` is sent, ``If-Modified-Since`` not older than
@@ -685,12 +689,16 @@ class AsyncMinIOClient:
             media_type (str | None): Content type. Defaults to the object's
                 stored content type, then a guess from ``filename``, then
                 ``application/octet-stream``.
-            as_attachment (bool): ``True`` forces a download; ``False``
-                serves inline (e.g. view a PDF in-browser). Default ``True``.
+            as_attachment (bool): ``True`` forces a download; ``False`` asks
+                for ``inline`` (e.g. view a PDF in-browser), granted only
+                when the resolved type is in
+                :data:`~tempest_fastapi_sdk.utils.download.INLINE_SAFE_MEDIA_TYPES`.
+                Default ``True``.
             chunk_size (int): Bytes per streamed chunk. Default 64 KiB.
             cache_control (str | None): ``Cache-Control`` value, for example
                 ``"private, max-age=3600"``. ``None`` sends none.
-            headers (dict[str, str] | None): Extra response headers.
+            headers (dict[str, str] | None): Extra response headers. One
+                named like a security default replaces that default.
 
         Returns:
             StreamingResponse: Response ready to return from a router —
@@ -710,7 +718,10 @@ class AsyncMinIOClient:
             is_not_modified,
             resolve_byte_range,
         )
-        from tempest_fastapi_sdk.utils.download import build_content_disposition
+        from tempest_fastapi_sdk.utils.download import (
+            _with_security_headers,
+            build_content_disposition,
+        )
         from tempest_fastapi_sdk.utils.media_types import guess_media_type
 
         stat = await self.stat_object(key, bucket=bucket)
@@ -722,7 +733,7 @@ class AsyncMinIOClient:
             or "application/octet-stream"
         )
         etag = f'"{stat.etag}"' if stat.etag else None
-        response_headers: dict[str, str] = dict(headers or {})
+        response_headers: dict[str, str] = _with_security_headers(headers)
         response_headers["accept-ranges"] = "bytes"
         if etag is not None:
             response_headers["etag"] = etag
@@ -758,7 +769,7 @@ class AsyncMinIOClient:
                     )
 
         response_headers["content-disposition"] = build_content_disposition(
-            download_name, as_attachment=as_attachment
+            download_name, as_attachment=as_attachment, media_type=resolved_media_type
         )
         if byte_range is not None:
             response_headers["content-range"] = byte_range.content_range()
@@ -794,7 +805,7 @@ class AsyncMinIOClient:
         expires: timedelta = timedelta(minutes=5),
         filename: str | None = None,
         media_type: str | None = None,
-        as_attachment: bool = False,
+        as_attachment: bool = True,
         cache_control: str | None = None,
         headers: dict[str, str] | None = None,
     ) -> Response:
@@ -823,6 +834,15 @@ class AsyncMinIOClient:
         the one the app sets, and a ``Content-Disposition`` set on both
         reaches the client twice.
 
+        The download security headers
+        (:data:`~tempest_fastapi_sdk.api.static.DEFAULT_STATIC_SECURITY_HEADERS`)
+        are **not** set here: S3 has no ``response-*`` override for them, and
+        nginx answers with the store's response — measured on nginx 1.22.1,
+        1.27.5 and 1.29.8, a ``Content-Security-Policy`` the app sets on the
+        empty response does not reach the client. They belong in the
+        internal location, as ``add_header ... always``; the storage
+        recipe's nginx block carries them.
+
         No ``stat`` is made: a missing object surfaces as the store's
         ``404`` through nginx instead of an ``S3Error`` here.
 
@@ -840,9 +860,15 @@ class AsyncMinIOClient:
                 the object key's basename.
             media_type (str | None): Content type the store should answer
                 with. ``None`` keeps the type stored with the object.
-            as_attachment (bool): ``True`` forces a download; ``False``
-                (default) serves inline, which is what ``<video>`` and
-                ``<img>`` want.
+            as_attachment (bool): ``True`` (default) forces a download.
+                ``False`` asks for ``inline`` — what ``<video>`` and
+                ``<img>`` want — and is granted only when ``media_type`` is
+                passed and is in
+                :data:`~tempest_fastapi_sdk.utils.download.INLINE_SAFE_MEDIA_TYPES`.
+                No ``stat`` is made, so with ``media_type=None`` the type the
+                store will answer with is unknown here and the object is
+                served as ``attachment``; a type passed in is signed into the
+                URL, so it is also the type the client receives.
             cache_control (str | None): ``Cache-Control`` the store should
                 answer with. ``None`` sends none.
             headers (dict[str, str] | None): Extra headers on the app's
@@ -869,7 +895,7 @@ class AsyncMinIOClient:
         download_name = filename or key.rsplit("/", 1)[-1]
         overrides: dict[str, str | list[str] | tuple[str]] = {
             "response-content-disposition": build_content_disposition(
-                download_name, as_attachment=as_attachment
+                download_name, as_attachment=as_attachment, media_type=media_type
             ),
         }
         if media_type is not None:
@@ -924,11 +950,16 @@ class AsyncMinIOClient:
             media_type (str | None): Content type. ``None`` uses the type
                 stored with the object.
             as_attachment (bool): ``True`` (default) forces a download;
-                ``False`` serves inline.
+                ``False`` asks for ``inline``, granted only to a type in
+                :data:`~tempest_fastapi_sdk.utils.download.INLINE_SAFE_MEDIA_TYPES`.
+                Proxy mode checks the type stored with the object; redirect
+                mode makes no ``stat`` and checks only ``media_type``, so
+                pass it there to serve inline.
             cache_control (str | None): ``Cache-Control`` value. ``None``
                 sends none.
             headers (dict[str, str] | None): Extra headers on the app's
-                response.
+                response. In proxy mode, one named like a security default
+                replaces that default.
 
         Returns:
             Response: A :class:`StreamingResponse` (proxy mode) or an empty

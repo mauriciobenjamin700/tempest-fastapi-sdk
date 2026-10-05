@@ -1446,6 +1446,9 @@ from tempest_fastapi_sdk.utils import (
     HUNDRED as HUNDRED,
 )
 from tempest_fastapi_sdk.utils import (
+    INLINE_SAFE_MEDIA_TYPES as INLINE_SAFE_MEDIA_TYPES,
+)
+from tempest_fastapi_sdk.utils import (
     MFA_TOKEN_TYPE as MFA_TOKEN_TYPE,
 )
 from tempest_fastapi_sdk.utils import (
@@ -1999,6 +2002,7 @@ __all__: list[str] = [
     "HTTP_500_MARKER",
     "HUNDRED",
     "IDEMPOTENCY_HEADER",
+    "INLINE_SAFE_MEDIA_TYPES",
     "LEGACY_NAMING_CONVENTION",
     "LOCALE_QUERY_PARAM",
     "MFA_TOKEN_TYPE",

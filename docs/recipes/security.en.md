@@ -279,6 +279,19 @@ app.mount(
 )
 ```
 
+### Downloads carry the same headers
+
+A file served by `DownloadUtils`, `FileStoreUtils` or
+`AsyncMinIOClient.download_response` does not go through
+`HardenedStaticFiles`, but carries the same `DEFAULT_STATIC_SECURITY_HEADERS`
+— a header of the same name passed in `headers=` wins. And
+`as_attachment=False` only becomes `inline` for a type in
+`INLINE_SAFE_MEDIA_TYPES` (raster image, PDF, plain text, audio and video);
+HTML and SVG go out as `attachment`. In `X-Accel-Redirect` mode nginx delivers
+the bytes, and the headers go in its block. Details in
+[Downloads](downloads.md#security-headers-and-what-goes-inline) and
+[Storage](storage.md#the-nginx-block).
+
 ## CSRF for cookie-based flows (`CSRFMiddleware`)
 
 A cookie session has a problem a bearer token does not: the browser resends the
@@ -547,7 +560,8 @@ service) drops in without touching the middleware.
   plaintext goes in the email, the hash goes in the database, and a table leak
   does not become a login.
 - `HardenedStaticFiles` stamps security headers on every response and refuses
-  any path that escapes the base — defence in depth against traversal.
+  any path that escapes the base — defence in depth against traversal. The
+  download helpers carry the same headers and only serve a safe type `inline`.
 - `CSRFMiddleware` covers what bearer tokens never need and cookies always do:
   the browser replaying a credential on a request your service did not start.
 - `set_cookie` / `clear_cookie` default to `HttpOnly`, `Secure` and a safe

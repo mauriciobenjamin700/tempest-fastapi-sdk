@@ -4,9 +4,13 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.testclient import TestClient
 
 from tempest_fastapi_sdk import (
+    DEFAULT_STATIC_SECURITY_HEADERS,
+    INLINE_SAFE_MEDIA_TYPES,
     DownloadUtils,
     NotFoundException,
     build_content_disposition,
@@ -141,14 +145,36 @@ class TestBuildContentDisposition:
         value = build_content_disposition("file.pdf")
         assert value == "attachment; filename=\"file.pdf\"; filename*=UTF-8''file.pdf"
 
-    def test_inline(self) -> None:
+    def test_inline_for_a_safe_type(self) -> None:
+        value = build_content_disposition(
+            "file.pdf", as_attachment=False, media_type="application/pdf"
+        )
+        assert value.startswith("inline;")
+
+    def test_inline_without_a_type_is_attachment(self) -> None:
         value = build_content_disposition("file.pdf", as_attachment=False)
-        assert value.startswith("inline")
+        assert value.startswith("attachment;")
+
+    @pytest.mark.parametrize(
+        "media_type",
+        ["text/html", "image/svg+xml", "application/octet-stream", "text/xml"],
+    )
+    def test_inline_for_an_unsafe_type_is_attachment(self, media_type: str) -> None:
+        value = build_content_disposition(
+            "page", as_attachment=False, media_type=media_type
+        )
+        assert value.startswith("attachment;")
+
+    def test_type_parameters_and_case_are_ignored(self) -> None:
+        value = build_content_disposition(
+            "notes.txt", as_attachment=False, media_type="Text/Plain; charset=utf-8"
+        )
+        assert value.startswith("inline;")
 
     def test_non_ascii_filename_is_percent_encoded(self) -> None:
+        """The ASCII fallback drops the non-ASCII char instead of emitting it raw."""
         value = build_content_disposition("relatório.pdf")
         assert "filename*=UTF-8''relat%C3%B3rio.pdf" in value
-        # ASCII fallback drops the non-ascii char rather than emitting it raw.
         assert 'filename="relatrio.pdf"' in value
 
     def test_path_is_reduced_to_basename(self) -> None:
@@ -186,3 +212,77 @@ class TestControlCharacterStripping:
         header = build_content_disposition("relatório final.pdf")
         assert 'filename="relatrio final.pdf"' in header
         assert "filename*=UTF-8''relat%C3%B3rio%20final.pdf" in header
+
+
+class TestInlineSafeMediaTypes:
+    def test_script_capable_types_are_absent(self) -> None:
+        assert "text/html" not in INLINE_SAFE_MEDIA_TYPES
+        assert "image/svg+xml" not in INLINE_SAFE_MEDIA_TYPES
+        assert "application/xhtml+xml" not in INLINE_SAFE_MEDIA_TYPES
+
+    def test_media_a_browser_embeds_is_present(self) -> None:
+        assert {"image/png", "image/jpeg", "application/pdf", "video/mp4"} <= (
+            INLINE_SAFE_MEDIA_TYPES
+        )
+
+
+class TestDownloadSecurityHeaders:
+    """Every download carries the anti-XSS headers; inline only for safe types.
+
+    The file lands on the API's own origin with the type the uploader chose,
+    so an ``.html`` served ``inline`` would run as a page of the API.
+    """
+
+    def test_uploaded_html_inline_is_forced_to_attachment(self, tmp_path: Path) -> None:
+        _write(tmp_path, "evil.html", b"<script>alert(document.cookie)</script>")
+        downloads = DownloadUtils(tmp_path)
+        app = FastAPI()
+
+        @app.get("/files/{name}")
+        def serve(name: str) -> FileResponse:
+            """Serve the stored file asking for inline rendering."""
+            return downloads.file_response(name, as_attachment=False)
+
+        response = TestClient(app).get("/files/evil.html")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/html")
+        assert response.headers["content-disposition"].startswith("attachment;")
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["content-security-policy"] == (
+            "default-src 'none'; sandbox"
+        )
+        assert response.headers["cross-origin-resource-policy"] == "same-site"
+
+    def test_png_stays_inline_with_the_headers(self, tmp_path: Path) -> None:
+        _write(tmp_path, "photo.png", b"\x89PNG\r\n\x1a\n")
+        response = DownloadUtils(tmp_path).file_response(
+            "photo.png", as_attachment=False
+        )
+        assert response.media_type == "image/png"
+        assert response.headers["content-disposition"].startswith("inline;")
+        for name, value in DEFAULT_STATIC_SECURITY_HEADERS.items():
+            assert response.headers[name] == value
+
+    def test_caller_header_is_not_overwritten(self, tmp_path: Path) -> None:
+        _write(tmp_path, "a.pdf")
+        policy = "default-src 'none'; sandbox allow-scripts"
+        response = DownloadUtils(tmp_path).file_response(
+            "a.pdf", headers={"content-security-policy": policy}
+        )
+        assert response.headers.getlist("content-security-policy") == [policy]
+        assert response.headers["x-content-type-options"] == "nosniff"
+
+    def test_caller_headers_dict_is_not_mutated(self, tmp_path: Path) -> None:
+        _write(tmp_path, "a.pdf")
+        extra = {"x-trace": "1"}
+        DownloadUtils(tmp_path).file_response("a.pdf", headers=extra)
+        assert extra == {"x-trace": "1"}
+
+    def test_stream_carries_the_headers_and_the_allowlist(self, tmp_path: Path) -> None:
+        response = DownloadUtils(tmp_path).stream(
+            b"<svg/>", filename="logo.svg", as_attachment=False
+        )
+        assert response.media_type == "image/svg+xml"
+        assert response.headers["content-disposition"].startswith("attachment;")
+        for name, value in DEFAULT_STATIC_SECURITY_HEADERS.items():
+            assert response.headers[name] == value

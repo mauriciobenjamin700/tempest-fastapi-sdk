@@ -63,6 +63,16 @@ http {{
             internal;
             proxy_pass http://{INTERNAL}/;
             proxy_set_header Host {INTERNAL};
+            proxy_hide_header X-Content-Type-Options;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header Content-Security-Policy "default-src 'none'; sandbox" always;
+            add_header Cross-Origin-Resource-Policy "same-site" always;
+        }}
+
+        location /_no_add_header/ {{
+            internal;
+            proxy_pass http://{INTERNAL}/;
+            proxy_set_header Host {INTERNAL};
         }}
 
         location /_inherits_host/ {{
@@ -78,7 +88,7 @@ http {{
     }}
 }}
 """
-"""The recipe's block plus two broken variants, one per pitfall."""
+"""The recipe's block plus three variants, one per pitfall."""
 
 pytestmark = pytest.mark.docker
 
@@ -137,6 +147,13 @@ def _build_app() -> FastAPI:
     @app.get("/files/{key:path}")
     async def files(key: str, request: Request) -> Response:
         """Serve through nginx (``STORAGE_ACCEL_REDIRECT=true``)."""
+        return await redirecting.serve_object(
+            key, request=request, media_type="video/mp4", as_attachment=False
+        )
+
+    @app.get("/untyped/{key:path}")
+    async def untyped(key: str, request: Request) -> Response:
+        """Ask for inline without naming the type the store will answer."""
         return await redirecting.serve_object(key, request=request, as_attachment=False)
 
     @app.get("/proxied/{key:path}")
@@ -265,6 +282,17 @@ def test_route_serves_the_object_through_nginx(nginx_url: str) -> None:
     ]
     assert response.headers["accept-ranges"] == "bytes"
     assert "x-accel-redirect" not in response.headers
+    assert response.headers["content-security-policy"] == "default-src 'none'; sandbox"
+    assert response.headers["cross-origin-resource-policy"] == "same-site"
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_inline_without_media_type_is_attachment(nginx_url: str) -> None:
+    response = httpx.get(f"{nginx_url}/untyped/clip.mp4", timeout=10)
+    assert response.status_code == 200
+    assert response.headers.get_list("content-disposition") == [
+        "attachment; filename=\"clip.mp4\"; filename*=UTF-8''clip.mp4"
+    ]
 
 
 def test_range_is_forwarded_to_the_bucket(nginx_url: str) -> None:
@@ -317,6 +345,21 @@ def test_inherited_host_breaks_the_signature(nginx_url: str) -> None:
     response = httpx.get(f"{nginx_url}/pitfall/_inherits_host/clip.mp4", timeout=10)
     assert response.status_code == 403
     assert "<Code>SignatureDoesNotMatch</Code>" in response.text
+
+
+def test_app_headers_do_not_survive_the_redirect(nginx_url: str) -> None:
+    """nginx answers with the bucket's response, not the app's.
+
+    The empty ``X-Accel-Redirect`` response is replaced, and a header the app
+    set on it is dropped: the anti-XSS headers reach the client only from an
+    ``add_header`` in the internal location. ``nosniff`` is still present
+    below because MinIO sends it itself.
+    """
+    response = httpx.get(f"{nginx_url}/pitfall/_no_add_header/clip.mp4", timeout=10)
+    assert response.status_code == 200
+    assert response.content == PAYLOAD
+    assert "content-security-policy" not in response.headers
+    assert "cross-origin-resource-policy" not in response.headers
 
 
 def test_proxy_pass_without_trailing_slash_keeps_the_prefix(nginx_url: str) -> None:

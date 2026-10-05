@@ -130,7 +130,11 @@ async def download_file(key: str, request: Request) -> Response:
 ```
 
 Toda resposta leva `Accept-Ranges: bytes`, o `ETag` do objeto (entre aspas)
-e o `Last-Modified`. Com o `request` em mãos, a rota responde assim:
+e o `Last-Modified`, mais os headers de segurança de todo download
+(`nosniff`, a CSP `sandbox` e o CORP `same-site`). O `as_attachment=False`
+só vira `inline` quando o tipo guardado no objeto está em
+`INLINE_SAFE_MEDIA_TYPES` — um `text/html` sai como `attachment`. Detalhe em
+[Downloads](downloads.md#headers-de-seguranca-e-o-que-vai-inline). Com o `request` em mãos, a rota responde assim:
 
 | O cliente manda | Resposta |
 | --- | --- |
@@ -219,7 +223,7 @@ STORAGE_ACCEL_PREFIX=/_bucket/      # a location interna do nginx
 ```python
 from fastapi import APIRouter, Request
 from starlette.responses import Response
-from tempest_fastapi_sdk import AsyncMinIOClient
+from tempest_fastapi_sdk import AsyncMinIOClient, guess_media_type
 
 from src.core.settings import settings
 
@@ -230,8 +234,22 @@ storage = AsyncMinIOClient(**settings.minio_kwargs())
 @router.get("/files/{key:path}")
 async def download_file(key: str, request: Request) -> Response:
     """Autoriza e entrega — pelo app ou pelo nginx, conforme o .env."""
-    return await storage.serve_object(key, request=request, as_attachment=False)
+    return await storage.serve_object(
+        key,
+        request=request,
+        media_type=guess_media_type(key),
+        as_attachment=False,
+    )
 ```
+
+!!! warning "No modo redirect, `inline` exige `media_type=`"
+    O `accel_redirect_response` não faz `stat`, então não sabe com que tipo o
+    bucket vai responder. Sem `media_type=`, o `as_attachment=False` sai
+    `attachment`. Com ele, o tipo é assinado na URL (o bucket responde com
+    esse, não com o guardado) e só vira `inline` se estiver em
+    `INLINE_SAFE_MEDIA_TYPES`. O `guess_media_type(key)` acima resolve pela
+    extensão da chave: `aula.mp4` vai inline, `pagina.html` vira download.
+    O default do `accel_redirect_response` é `as_attachment=True`.
 
 Com `STORAGE_ACCEL_REDIRECT=false`, é o `download_response` da seção
 anterior. Com `true`, é o `accel_redirect_response`, e o `request` não é
@@ -266,12 +284,15 @@ server {
         internal;
         proxy_pass http://bucket:9000/;
         proxy_set_header Host bucket:9000;
+        proxy_hide_header X-Content-Type-Options;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Content-Security-Policy "default-src 'none'; sandbox" always;
+        add_header Cross-Origin-Resource-Policy "same-site" always;
     }
 }
 ```
 
-Três linhas fazem o trabalho da `location /_bucket/`, e cada uma tem um
-porquê:
+As linhas da `location /_bucket/` têm, cada uma, um porquê:
 
 - **`internal;`** — só o nginx entra aqui, seguindo um `X-Accel-Redirect`. O
   cliente que pede `/_bucket/...` direto recebe `404`.
@@ -286,6 +307,16 @@ porquê:
   todo config tem para o app) é herdado pela `location` que não define
   nenhum. Aí o bucket recebe `Host: exemplo.com` e responde
   `403 SignatureDoesNotMatch` — o sintoma é "o arquivo não carrega".
+- **Os `add_header ... always`** — são os headers de segurança de todo
+  download, e aqui é o único lugar onde eles chegam ao cliente. O nginx
+  responde com a resposta do bucket, não com a resposta vazia do app: um
+  header que o app pusesse nela não passaria (medido — por isso o SDK nem
+  põe). Sem o `always`, o nginx só acrescenta o header a uma parte dos
+  status — é como a documentação do `add_header` o define.
+- **`proxy_hide_header X-Content-Type-Options;`** — o MinIO já manda
+  `nosniff`; sem esconder o dele, o cliente recebe `nosniff, nosniff`
+  (medido). Esconder e reemitir deixa um valor só, qualquer que seja o
+  storage atrás.
 
 !!! warning "O `Content-Type` e o `Content-Disposition` vão dentro da URL"
     O SDK não põe esses headers na resposta vazia: ele os assina na URL como
@@ -316,6 +347,9 @@ mesmo arquivo passou inteiro no nginx 1.22.1, 1.27.5 e 1.29.8:
 | `GET /_bucket/media/clip.mp4` direto do cliente | `404` |
 | `location` que herda `Host $host` | `403 SignatureDoesNotMatch` |
 | `proxy_pass` sem a barra final | `400 InvalidBucketName` |
+| `GET /files/clip.mp4`, `location` com os `add_header` | `X-Content-Type-Options`, CSP e CORP, um valor cada |
+| `location` sem os `add_header` | `200` sem CSP nem CORP, mesmo com o app pondo os dois na resposta vazia |
+| `as_attachment=False` sem `media_type=` | `Content-Disposition: attachment` |
 | mesma rota com `STORAGE_ACCEL_REDIRECT=false` e `Range: bytes=-10` | `206` pelo app |
 
 No teste, bucket, app e nginx rodam na rede do host, então o endpoint
@@ -705,8 +739,9 @@ asyncio.run(main())
   `200` inteiro.
 - Para o nginx entregar no lugar do app, `serve_object` com
   `STORAGE_ACCEL_REDIRECT=true` responde `X-Accel-Redirect`; a `location`
-  interna precisa de `proxy_pass` com barra final e `Host` igual ao
-  `MINIO_ENDPOINT`.
+  interna precisa de `proxy_pass` com barra final, `Host` igual ao
+  `MINIO_ENDPOINT` e os `add_header` de segurança — o nginx não repassa os
+  do app.
 - Para o navegador abrir arquivo privado pela **rota do app**, assine o
   path no mapper com `sign_path` e proteja a rota com
   `make_signed_path_dependency`: a assinatura cobre path, `expires` e

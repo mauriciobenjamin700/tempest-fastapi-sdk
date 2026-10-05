@@ -1898,7 +1898,7 @@ async def download_invoice(
     )
 ```
 
-Qualquer caminho relativo que escape de `base_dir` (traversal `../`, caminhos absolutos, escapes via symlink) levanta `NotFoundException` (404) em vez de vazar o arquivo — o mesmo 404 que você ganha para um arquivo genuinamente ausente, então callers nunca distinguem "proibido" de "ausente". `file_response` adivinha o tipo MIME pelo nome do arquivo (sobrescreva com `media_type=`), e `as_attachment=False` serve **inline** (ex.: pré-visualizar um PDF no navegador).
+Qualquer caminho relativo que escape de `base_dir` (traversal `../`, caminhos absolutos, escapes via symlink) levanta `NotFoundException` (404) em vez de vazar o arquivo — o mesmo 404 que você ganha para um arquivo genuinamente ausente, então callers nunca distinguem "proibido" de "ausente". `file_response` adivinha o tipo MIME pelo nome do arquivo (sobrescreva com `media_type=`), e `as_attachment=False` pede **inline** (ex.: pré-visualizar um PDF no navegador) — atendido só para tipo em `INLINE_SAFE_MEDIA_TYPES`, então HTML e SVG continuam baixando. Toda resposta de download sai com `X-Content-Type-Options: nosniff`, CSP `sandbox` e `Cross-Origin-Resource-Policy: same-site`.
 
 Para payloads construídos na hora — um relatório gerado, um zip em memória, bytes descriptografados — use `stream()` em vez de tocar o disco:
 

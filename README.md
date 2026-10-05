@@ -1400,7 +1400,7 @@ async def download_invoice(
     )
 ```
 
-Any relative path that escapes `base_dir` (`../` traversal, absolute paths, symlink escapes) raises `NotFoundException` (404) instead of leaking the file — the same 404 you get for a genuinely missing file, so callers never distinguish "forbidden" from "absent". `file_response` guesses the MIME type from the filename (override with `media_type=`), and `as_attachment=False` serves **inline** (e.g. preview a PDF in-browser).
+Any relative path that escapes `base_dir` (`../` traversal, absolute paths, symlink escapes) raises `NotFoundException` (404) instead of leaking the file — the same 404 you get for a genuinely missing file, so callers never distinguish "forbidden" from "absent". `file_response` guesses the MIME type from the filename (override with `media_type=`), and `as_attachment=False` asks for **inline** (e.g. preview a PDF in-browser) — granted only to a type in `INLINE_SAFE_MEDIA_TYPES`, so HTML and SVG still download. Every download response carries `X-Content-Type-Options: nosniff`, a `sandbox` CSP and `Cross-Origin-Resource-Policy: same-site`.
 
 For payloads built on the fly — a generated report, an in-memory zip, decrypted bytes — use `stream()` instead of touching disk:
 

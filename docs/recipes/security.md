@@ -278,6 +278,18 @@ app.mount(
 )
 ```
 
+### Downloads levam os mesmos headers
+
+Arquivo servido por `DownloadUtils`, `FileStoreUtils` ou
+`AsyncMinIOClient.download_response` não passa pelo `HardenedStaticFiles`, mas
+sai com os mesmos `DEFAULT_STATIC_SECURITY_HEADERS` — header com o mesmo nome
+passado em `headers=` vence. E `as_attachment=False` só vira `inline` para tipo
+em `INLINE_SAFE_MEDIA_TYPES` (imagem raster, PDF, texto puro, áudio e vídeo);
+HTML e SVG saem como `attachment`. No modo `X-Accel-Redirect` quem entrega é o
+nginx, e os headers vão no bloco dele. Detalhe em
+[Downloads](downloads.md#headers-de-seguranca-e-o-que-vai-inline) e
+[Storage](storage.md#o-bloco-do-nginx).
+
 ## CSRF em fluxo com cookie (`CSRFMiddleware`)
 
 Sessão por cookie tem um problema que bearer token não tem: o browser reenvia o
@@ -543,7 +555,8 @@ middleware.
   plaintext vai no e-mail, o hash vai no banco, e vazamento de tabela não vira
   login.
 - `HardenedStaticFiles` carimba header de segurança em toda resposta e recusa
-  caminho que escapa da base — defesa em profundidade contra travessia.
+  caminho que escapa da base — defesa em profundidade contra travessia. Os
+  helpers de download levam os mesmos headers e só servem `inline` tipo seguro.
 - `CSRFMiddleware` cobre o que bearer token não precisa e cookie precisa: o
   browser reenviando credencial em request que o seu serviço não iniciou.
 - `set_cookie` / `clear_cookie` já vêm com `HttpOnly`, `Secure` e `SameSite`
