@@ -303,8 +303,10 @@ tinha que reconstruir a política de senha, o 409 de e-mail duplicado, o ramo de
 ativação e a emissão do par JWT. Quatro coisas que a rota do SDK já acerta, e
 que passam a driftar uma release por vez.
 
-Dois argumentos resolvem: **`signup_schema`** troca o corpo da requisição,
-**`on_signup`** escreve as colunas novas.
+Um argumento resolve o caso comum: **`signup_schema`** troca o corpo da
+requisição, e todo campo novo dele que também é coluna do seu `UserModel` é
+gravado na linha **antes** do insert *(v0.305.0+)*. Para o que não é coluna —
+um aceite de termos, um campo derivado — existe **`on_signup`**.
 
 ```python
 # src/api/app.py
@@ -317,6 +319,7 @@ from tempest_fastapi_sdk import (
     AsyncDatabaseManager,
     SignupSchema,
     UserAuthService,
+    ValidationException,
     make_auth_router,
 )
 
@@ -327,24 +330,28 @@ from src.db.models import UserModel, UserTokenModel
 class ProducerSignupSchema(SignupSchema):
     """O cadastro deste produto: e-mail, senha, nome — e o resto."""
 
-    phone: str | None = Field(default=None, max_length=20)
+    phone: str = Field(max_length=20)
     is_producer: bool = Field(default=False)
+    accept_terms: bool = Field(default=False)
 
 
-async def write_profile(
+async def require_terms(
     session: AsyncSession,
     user: UserModel,
     payload: ProducerSignupSchema,
 ) -> None:
-    """Copia os campos do produto para a linha recém-criada.
+    """Recusa o cadastro sem aceite dos termos.
 
     Args:
         session (AsyncSession): A transação em que a linha foi inserida.
-        user (UserModel): A instância a preencher.
+        user (UserModel): A instância recém-criada.
         payload (ProducerSignupSchema): O corpo validado.
+
+    Raises:
+        ValidationException: Quando ``accept_terms`` é falso.
     """
-    user.phone = payload.phone
-    user.is_producer = payload.is_producer
+    if not payload.accept_terms:
+        raise ValidationException(message="accept the terms to sign up")
 
 
 app = FastAPI()
@@ -365,28 +372,91 @@ app.include_router(
         auth_service,
         session_factory=db.session_dependency,
         signup_schema=ProducerSignupSchema,
-        on_signup=write_profile,
+        on_signup=require_terms,
     ),
 )
 ```
+
+Aqui `phone` e `is_producer` são colunas do `UserModel` (`phone` é
+`NOT NULL` e `UNIQUE`), então chegam à linha sem hook nenhum. `accept_terms`
+não é coluna: fica só no `payload` que o `on_signup` recebe.
 
 Com `AUTH_AUTO_ACTIVATE=true` no `.env` a conta nasce ativa e o signup já devolve o par de JWT. No default (`false`) a mesma chamada responde `"activation_required":true` com `access_token` e `refresh_token` em `null`, e o par só sai no `POST /auth/activate/{token}`:
 
 ```console
 $ curl -s -X POST localhost:8000/auth/signup \
     -H "Content-Type: application/json" \
-    -d '{"email":"ana@example.com","password":"strong-pass-12","phone":"5511999999999","is_producer":true}'
+    -d '{"email":"ana@example.com","password":"strong-pass-12","phone":"5511999999999","is_producer":true,"accept_terms":true}'
 {"user_id":"0e5cf2fc-…","activation_required":false,"activation_url":null,"access_token":"eyJ…","refresh_token":"eyJ…"}
 ```
 
+Um segundo cadastro com o mesmo telefone responde `409`, com a coluna em
+`details` e em `field` — não um `500` de `IntegrityError`:
+
+```console
+$ curl -s -X POST localhost:8000/auth/signup \
+    -H "Content-Type: application/json" \
+    -d '{"email":"bia@example.com","password":"strong-pass-12","phone":"5511999999999","accept_terms":true}'
+{"detail":"phone already in use","code":"CONFLICT","details":{"columns":["phone"],"constraint":null},"field":"phone"}
+```
+
+O `constraint` sai `null` no SQLite, que não nomeia a constraint de unicidade;
+no PostgreSQL vem o nome (`users_phone_key`, por exemplo).
+
+!!! warning "Coluna protegida nunca vem do corpo"
+    `id`, `email`, `hashed_password`, `is_active` e `is_admin`
+    (`SIGNUP_PROTECTED_FIELDS`) são do SDK. Um `signup_schema` com um campo
+    `is_admin` não promove ninguém: a rota descarta esses nomes antes de
+    gravar. Chamando o service direto, `signup(fields={"is_admin": True})`
+    levanta `ValueError`.
+
 Anote o hook com as **suas** classes — o model concreto e o schema concreto —
-como acima: é o que faz `user.phone = …` passar no type-checker do seu lado.
+como acima: é o que faz `payload.accept_terms` passar no type-checker do seu
+lado.
 
 O schema **precisa** herdar de `SignupSchema` — a rota lê `email`, `password` e
 `name` pelo nome, então um corpo que não os traz derruba o `make_auth_router`
 na hora da montagem, não no primeiro request. Os campos novos entram no
 `/openapi.json` junto: o cliente gerado enxerga `phone` e `is_producer` sem
 ninguém escrever schema à mão.
+
+??? info "Sem router: `signup(fields=...)`"
+    O mesmo caminho está no service, para quem monta a própria rota:
+
+    ```python
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from tempest_fastapi_sdk import UserAuthService
+
+
+    async def create_driver(
+        service: UserAuthService,
+        session: AsyncSession,
+        email: str,
+        password: str,
+        phone: str,
+    ) -> None:
+        """Cria o motorista com o telefone obrigatório já no insert.
+
+        Args:
+            service (UserAuthService): O service de auth.
+            session (AsyncSession): A sessão da requisição.
+            email (str): E-mail da conta.
+            password (str): Senha em texto puro.
+            phone (str): Telefone, coluna ``NOT NULL`` e única.
+        """
+        await service.signup(
+            session,
+            email=email,
+            password=password,
+            fields={"phone": phone},
+        )
+        await session.commit()
+    ```
+
+    Chave que não é coluna do model vira `ValueError` antes de qualquer
+    escrita. Coluna `NOT NULL` esquecida também vira `ValueError`, com o nome
+    dela na mensagem — é defeito de montagem, não erro do cliente.
 
 !!! danger "O hook roda **antes** do commit, e isso é o ponto"
     `on_signup` é aguardado logo depois do insert e antes do
@@ -406,9 +476,9 @@ ninguém escrever schema à mão.
     ele — e aceita o seu próprio schema por `me_response_model`.
 
 **Recap.** `signup_schema` é o contrato de entrada — subclasse de
-`SignupSchema`, visível no OpenAPI. `on_signup` é onde os campos dela viram
-colunas, dentro da transação do insert. Nada mais precisa sair do SDK para o
-seu serviço.
+`SignupSchema`, visível no OpenAPI —, e os campos dele que são coluna entram na
+linha antes do insert. `on_signup` é para o resto, dentro da transação do
+insert. Nada mais precisa sair do SDK para o seu serviço.
 
 
 ## Só o backend: do cadastro à rota protegida

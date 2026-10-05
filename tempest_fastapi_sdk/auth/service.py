@@ -23,7 +23,8 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, inspect, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.auth.exceptions import MFAAlreadyEnrolledException
@@ -46,6 +47,10 @@ from tempest_fastapi_sdk.auth.schemas import (
     EmailChangeToken,
     EmailVerificationToken,
     PasswordResetToken,
+)
+from tempest_fastapi_sdk.db.integrity import (
+    IntegrityViolation,
+    parse_integrity_error,
 )
 from tempest_fastapi_sdk.db.user_token_model import (
     BaseUserTokenModel,
@@ -83,7 +88,7 @@ from tempest_fastapi_sdk.utils.token_types import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Coroutine
+    from collections.abc import Callable, Collection, Coroutine, Mapping
     from typing import Any
 
     from sqlalchemy import CursorResult
@@ -102,6 +107,20 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
     from tempest_fastapi_sdk.utils.email import EmailUtils
+
+
+SIGNUP_PROTECTED_FIELDS: frozenset[str] = frozenset(
+    {"id", "email", "hashed_password", "is_active", "is_admin"}
+)
+"""User columns ``signup(fields=...)`` refuses to set.
+
+The service owns each of them: ``email`` is normalized and checked for
+duplicates, ``hashed_password`` comes from the policy-checked password,
+``is_active`` from ``AUTH_AUTO_ACTIVATE``. ``is_admin`` and ``id`` are
+never something a sign-up form decides. ``make_auth_router`` drops them
+from a ``signup_schema`` before forwarding, so a schema field named
+``is_admin`` cannot reach the row.
+"""
 
 
 async def revoke_user_refresh_tokens(
@@ -256,6 +275,7 @@ class UserAuthService:
         email: str,
         password: str,
         name: str | None = None,
+        fields: Mapping[str, Any] | None = None,
     ) -> tuple[BaseUserModel, ActivationToken | None]:
         """Create a user row and (optionally) issue an activation token.
 
@@ -273,6 +293,13 @@ class UserAuthService:
                 against ``AUTH_PASSWORD_MIN_LENGTH``.
             name (str | None): Optional display name; passed
                 through to the model when the column exists.
+            fields (Mapping[str, Any] | None): Extra column values set on
+                the new row **before** the insert, which is what lets a
+                product fill a ``NOT NULL`` column the SDK does not know
+                about (a phone, a document). Each key must be a mapped
+                column of ``user_model`` outside
+                :data:`SIGNUP_PROTECTED_FIELDS`. ``None`` (default) sets
+                nothing extra.
 
         Returns:
             tuple[BaseUserModel, ActivationToken | None]: The
@@ -280,9 +307,20 @@ class UserAuthService:
             token to surface.
 
         Raises:
+            ValueError: When ``fields`` names something that is not a
+                column of ``user_model``, or a protected column; and when
+                the insert is refused because a ``NOT NULL`` column got no
+                value — a wiring defect, so the message names the column
+                instead of surfacing a bare ``IntegrityError``.
             ValidationException: When the password is too short.
-            ConflictException: When the email is already taken.
+            ConflictException: When the email, or another unique column,
+                is already taken. For a column other than ``email`` the
+                row is refused by the database, and ``details["columns"]``
+                carries what the server named; the session must then be
+                rolled back before reuse, as after any failed flush.
         """
+        extra = dict(fields or {})
+        self._check_signup_fields(extra)
         self._enforce_password_policy(password)
         normalized = email.strip().lower()
         existing = await session.execute(
@@ -303,8 +341,13 @@ class UserAuthService:
         user.hashed_password = self.passwords.hash(password)
         if name is not None and hasattr(user, "name"):
             user.name = name
+        for key, value in extra.items():
+            setattr(user, key, value)
         session.add(user)
-        await session.flush()
+        try:
+            await session.flush()
+        except IntegrityError as error:
+            raise self._signup_integrity_error(error) from error
         await session.refresh(user)
 
         if self.auth_settings.AUTH_AUTO_ACTIVATE:
@@ -324,6 +367,81 @@ class UserAuthService:
             url=activation[1],
             expires_at=activation[2],
         )
+
+    def signup_column_names(self) -> frozenset[str]:
+        """Return the ``user_model`` columns ``signup(fields=...)`` accepts.
+
+        Every mapped column attribute, minus
+        :data:`SIGNUP_PROTECTED_FIELDS`. ``make_auth_router`` uses it to
+        forward only those fields of a ``signup_schema`` that are columns,
+        leaving the rest (a terms checkbox, a captcha answer) to
+        ``on_signup``.
+
+        Returns:
+            frozenset[str]: The assignable column attribute names.
+        """
+        columns = {attribute.key for attribute in inspect(self.user_model).column_attrs}
+        return frozenset(columns - SIGNUP_PROTECTED_FIELDS)
+
+    def _check_signup_fields(self, fields: Mapping[str, Any]) -> None:
+        """Refuse ``signup(fields=...)`` keys the service will not set.
+
+        Args:
+            fields (Mapping[str, Any]): The extra column values.
+
+        Raises:
+            ValueError: When a key is protected or not a column.
+        """
+        protected = sorted(set(fields) & SIGNUP_PROTECTED_FIELDS)
+        if protected:
+            raise ValueError(
+                f"signup(fields=...) cannot set protected columns: {protected}"
+            )
+        unknown = sorted(set(fields) - self.signup_column_names())
+        if unknown:
+            raise ValueError(
+                f"signup(fields=...) keys are not columns of "
+                f"{self.user_model.__name__}: {unknown}"
+            )
+
+    def _signup_integrity_error(self, error: IntegrityError) -> Exception:
+        """Translate a refused signup insert into the error to raise.
+
+        A unique violation is a ``409`` the client can act on: a second
+        signup with the same phone, or the same email arriving between
+        the duplicate check and the insert. A ``NOT NULL`` violation is a
+        wiring defect on the product side — a column the model requires
+        and nobody passed in ``fields`` — so it stays a server error, but
+        one that names the column.
+
+        Args:
+            error (IntegrityError): The error the flush raised.
+
+        Returns:
+            Exception: A :class:`ConflictException` for a unique
+            violation, a :class:`ValueError` for a ``NOT NULL`` one, or
+            ``error`` itself for anything else.
+        """
+        failure = parse_integrity_error(error)
+        if failure.kind is IntegrityViolation.UNIQUE:
+            column = failure.column
+            return ConflictException(
+                message=(
+                    f"{column} already in use" if column else "account already exists"
+                ),
+                details={
+                    "columns": list(failure.columns),
+                    "constraint": failure.constraint,
+                },
+                field=column,
+            )
+        if failure.kind is IntegrityViolation.NOT_NULL:
+            return ValueError(
+                f"signup could not insert {self.user_model.__name__}: column "
+                f"{failure.column!r} is NOT NULL and got no value; pass it in "
+                "signup(fields=...) or give the column a default"
+            )
+        return error
 
     # ------------------------------------------------------------------
     # Activation
@@ -2833,6 +2951,7 @@ class UserAuthService:
 
 
 __all__: list[str] = [
+    "SIGNUP_PROTECTED_FIELDS",
     "ActivationToken",
     "EmailChangeToken",
     "EmailVerificationToken",

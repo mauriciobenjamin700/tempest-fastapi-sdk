@@ -898,6 +898,7 @@ então importar o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.auth.service.UserAuthService
 ::: tempest_fastapi_sdk.auth.service.revoke_user_refresh_tokens
+::: tempest_fastapi_sdk.auth.service.SIGNUP_PROTECTED_FIELDS
 ::: tempest_fastapi_sdk.auth.introspection.IntrospectionAuth
 ::: tempest_fastapi_sdk.auth.firebase.FirebaseAuth
 ::: tempest_fastapi_sdk.auth.firebase.FirebaseIdentity
