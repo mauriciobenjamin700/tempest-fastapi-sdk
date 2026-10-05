@@ -2276,11 +2276,55 @@ class UserAuthService:
         token: str,
         purpose: UserTokenPurpose,
     ) -> BaseUserTokenModel:
-        """Look up + mark used. Raise on invalid / expired tokens."""
-        record = await self._lookup_token(session, token=token, purpose=purpose)
-        record.used_at = utcnow()
-        await session.flush()
-        return record
+        """Spend a single-use token in one conditional statement.
+
+        The redemption is one ``UPDATE ... SET used_at = now WHERE
+        token_hash = :h AND purpose = :p AND used_at IS NULL AND
+        expires_at > now RETURNING *``. The database decides who wins:
+        two concurrent redemptions of the same link both issue it, and
+        only one finds ``used_at`` still empty. Reading the row first and
+        writing ``used_at`` afterwards — the shape this replaces — let
+        both requests see ``used_at IS NULL`` before either wrote it, so
+        a password reset applied twice and an email change confirmed
+        twice.
+
+        When no row comes back, :meth:`_lookup_token` runs to name the
+        reason (not recognized, already used, expired). That read only
+        picks the error message; it never decides the redemption.
+
+        ``RETURNING`` needs PostgreSQL, or SQLite 3.35 or newer.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session. The
+                statement is executed but not committed.
+            token (str): Plaintext token.
+            purpose (UserTokenPurpose): Expected token purpose.
+
+        Returns:
+            BaseUserTokenModel: The token record, with ``used_at`` set.
+
+        Raises:
+            InvalidTokenException: When the token is unknown, already
+                used, or expired — including when a concurrent
+                redemption spent it first.
+        """
+        now = utcnow()
+        result = await session.execute(
+            update(self.token_model)
+            .where(
+                self.token_model.token_hash == hash_opaque_token(token),
+                self.token_model.purpose == purpose.value,
+                self.token_model.used_at.is_(None),
+                self.token_model.expires_at > now,
+            )
+            .values(used_at=now)
+            .returning(self.token_model)
+        )
+        record: BaseUserTokenModel | None = result.scalar_one_or_none()
+        if record is not None:
+            return record
+        await self._lookup_token(session, token=token, purpose=purpose)
+        raise self.exceptions.invalid_token(message="token is no longer valid")
 
     async def peek_token(
         self,
@@ -2325,7 +2369,20 @@ class UserAuthService:
         token: str,
         purpose: UserTokenPurpose,
     ) -> BaseUserTokenModel:
-        """Find a token record + run validity checks (without marking used)."""
+        """Find a token record and run the validity checks, read-only.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            token (str): Plaintext token.
+            purpose (UserTokenPurpose): Expected token purpose.
+
+        Returns:
+            BaseUserTokenModel: The valid, unused token record.
+
+        Raises:
+            InvalidTokenException: When the token is unknown, already
+                used, or expired.
+        """
         digest = hash_opaque_token(token)
         result = await session.execute(
             select(self.token_model).where(

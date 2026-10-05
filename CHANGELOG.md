@@ -38,6 +38,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PasswordPolicyViolation` ganhou o campo obrigatório `code`. Passo a passo em
   `docs/migration.md` (`0.305.0`).
 
+### Fixed
+
+- **Token de uso único é gasto numa instrução só (#422).** `_consume_token`
+  (ativação, troca de senha, troca de e-mail) lia a linha, conferia
+  `used_at IS NULL` e gravava `used_at` depois — dois resgates simultâneos do
+  mesmo link liam antes de qualquer escrita e passavam os dois. Agora é um
+  `UPDATE ... WHERE token_hash = :h AND purpose = :p AND used_at IS NULL AND
+  expires_at > now RETURNING`; quando não volta linha, um `SELECT` só escolhe
+  a mensagem (`not recognized` / `already used` / `expired`), sem decidir o
+  resgate. Medido com oito `confirm_password_reset` concorrentes no mesmo
+  token, em sessões separadas: no PostgreSQL 16 o código antigo deixava as
+  oito passarem, e no SQLite (arquivo) as perdedoras saíam como
+  `OperationalError: database is locked`, não `InvalidTokenException`; agora
+  são um sucesso e sete `InvalidTokenException` nos dois. `RETURNING` exige
+  PostgreSQL ou SQLite 3.35+.
+
 ## [0.304.0] — 2026-10-04
 
 Leitura de planilha `.xlsx` (arquivo, upload e a pasta inteira do Google

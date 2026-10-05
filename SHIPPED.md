@@ -2877,3 +2877,12 @@ tradução default, `confirm_password_reset` de usuário removido →
 `ACCOUNT_INACTIVE` só com a senha certa. Guard:
 `tests/auth/test_refusal_codes.py` (inclui uma verificação bcrypt por login
 recusado, nos três ramos, com a flag ligada e desligada).
+
+## Token de uso único sem corrida (#422)
+
+`_consume_token` virou um `UPDATE ... WHERE used_at IS NULL AND expires_at >
+now RETURNING` condicional: o banco escolhe o único resgate que vale.
+`_lookup_token` só roda depois de um resgate recusado, para nomear o motivo.
+Guard: `tests/auth/test_consume_token_race.py` (SQLite em arquivo e
+PostgreSQL via `make test-docker`); sem o fix, o PostgreSQL deixa 8 de 8
+resgates passarem.

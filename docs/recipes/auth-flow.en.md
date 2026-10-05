@@ -591,6 +591,15 @@ password, so nobody learns that the email has an account.
 Pick **one** of the two paths. The token is single-use, so the second use
 answers an error.
 
+!!! info "Single-use under concurrency too"
+    Redemption is a single `UPDATE ... WHERE used_at IS NULL RETURNING`, and
+    the database picks the winner. Eight simultaneous password resets with
+    the same link, on separate sessions, give **one** success and seven
+    `InvalidTokenException` (`tests/auth/test_consume_token_race.py`, on
+    SQLite and PostgreSQL); up to 0.304.0 all eight passed on PostgreSQL.
+    It holds for activation, password reset and email change. `RETURNING`
+    needs PostgreSQL or SQLite 3.35+.
+
 === "Link (browser or `curl`)"
 
     Open `activation_url` in the browser, or:

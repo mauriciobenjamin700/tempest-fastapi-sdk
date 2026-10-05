@@ -586,6 +586,14 @@ para não contar a ninguém que o e-mail tem conta.
 Escolha **um** dos dois caminhos. O token é de uso único, então o segundo
 uso responde erro.
 
+!!! info "Uso único também sob concorrência"
+    O resgate é um `UPDATE ... WHERE used_at IS NULL RETURNING` só, e o banco
+    escolhe o vencedor. Oito trocas de senha simultâneas com o mesmo link,
+    em sessões separadas, dão **um** sucesso e sete `InvalidTokenException`
+    (`tests/auth/test_consume_token_race.py`, em SQLite e PostgreSQL); até a
+    0.304.0 as oito passavam no PostgreSQL. Vale para ativação, troca de
+    senha e troca de e-mail. `RETURNING` exige PostgreSQL ou SQLite 3.35+.
+
 === "Link (browser ou `curl`)"
 
     Abra o `activation_url` no browser, ou:
