@@ -2,6 +2,44 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.306.0 — `make_logs_router` recusa segredo vazio
+
+`make_logs_router(token_secret="")` levanta `ValueError` na construção. Até
+a 0.305.0 o segredo vazio desligava a checagem do `X-Token`, e `GET /logs` e
+`DELETE /logs` respondiam a qualquer um. O serviço gerado pelo `tempest new`
+monta `/logs` só quando `TOKEN_SECRET` não está vazio.
+
+### O que fazer
+
+- **Serviço em produção**: preencha `TOKEN_SECRET` (por exemplo com
+  `uv run tempest secrets init`) em todo ambiente. Sem isso, o app passa a
+  não subir.
+- **Serviço que deve subir sem segredo**: monte o router só quando houver
+  segredo, como o template faz:
+
+    ```python
+    from fastapi import FastAPI
+
+    from tempest_fastapi_sdk import make_logs_router
+
+    from src.core.settings import settings
+
+    app = FastAPI()
+
+    if settings.TOKEN_SECRET.strip():
+        app.include_router(
+            make_logs_router(
+                log_dir=settings.LOG_DIR,
+                token_secret=settings.TOKEN_SECRET,
+            ),
+        )
+    ```
+
+- **Execução local que precisa de `/logs` aberto**: passe
+  `make_logs_router(..., allow_unauthenticated=True)`.
+- **`TOKEN_SECRET` com espaço em volta**: o espaço passa a ser removido antes
+  da comparação, então o cliente envia o valor sem ele.
+
 ## 0.305.0 — token de conta desativada não autentica mais
 
 `current_user_dependency()` e as rotas autenticadas do `make_auth_router`

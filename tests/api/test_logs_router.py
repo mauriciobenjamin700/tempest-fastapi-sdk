@@ -35,7 +35,11 @@ def _seed_logs(tmp_path: Path) -> None:
 def _app(tmp_path: Path, *, token_secret: str = "") -> FastAPI:
     app = FastAPI()
     app.include_router(
-        make_logs_router(log_dir=tmp_path, token_secret=token_secret),
+        make_logs_router(
+            log_dir=tmp_path,
+            token_secret=token_secret,
+            allow_unauthenticated=not token_secret,
+        ),
     )
     return app
 
@@ -116,9 +120,98 @@ async def test_token_required_when_secret_set(tmp_path: Path) -> None:
     app = _app(tmp_path, token_secret="s3cret")
     async with _client(app) as client:
         denied = await client.get("/logs")
+        denied_delete = await client.delete("/logs")
         allowed = await client.get("/logs", headers={"X-Token": "s3cret"})
     assert denied.status_code == 401
+    assert denied_delete.status_code == 401
     assert allowed.status_code == 200
+    assert allowed.json()["total"] == 6
+
+
+class TestEmptySecretIsRefused:
+    """``make_logs_router`` fails closed when no secret is configured.
+
+    ``make_token_dependency`` reads an empty secret as "nothing to check",
+    so a router built from an unset ``TOKEN_SECRET`` used to answer
+    ``GET`` and ``DELETE`` with ``200`` to anyone. The factory now refuses
+    that at construction unless the caller opts in by name.
+    """
+
+    @pytest.mark.parametrize("secret", ["", " ", "\t", " \t\n "])
+    def test_empty_or_blank_secret_raises(self, tmp_path: Path, secret: str) -> None:
+        with pytest.raises(ValueError, match="non-empty token_secret"):
+            make_logs_router(log_dir=tmp_path, token_secret=secret)
+
+    def test_default_secret_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="allow_unauthenticated=True"):
+            make_logs_router(log_dir=tmp_path)
+
+    def test_message_names_the_prefix_and_header(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError) as caught:
+            make_logs_router(
+                log_dir=tmp_path,
+                prefix="/audit",
+                header_name="X-Audit-Key",
+            )
+
+        message = str(caught.value)
+        assert "GET /audit" in message
+        assert "DELETE /audit" in message
+        assert "X-Audit-Key" in message
+        assert "tempest secrets init" in message
+
+    @pytest.mark.asyncio
+    async def test_opt_in_answers_without_a_token(self, tmp_path: Path) -> None:
+        _seed_logs(tmp_path)
+        app = FastAPI()
+        app.include_router(
+            make_logs_router(log_dir=tmp_path, allow_unauthenticated=True),
+        )
+        async with _client(app) as client:
+            read = await client.get("/logs")
+            deleted = await client.delete("/logs")
+
+        assert read.status_code == 200
+        assert read.json()["total"] == 6
+        assert deleted.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_opt_in_does_not_weaken_a_secret(self, tmp_path: Path) -> None:
+        app = FastAPI()
+        app.include_router(
+            make_logs_router(
+                log_dir=tmp_path,
+                token_secret="s3cret",
+                allow_unauthenticated=True,
+            ),
+        )
+        async with _client(app) as client:
+            denied = await client.get("/logs")
+            denied_delete = await client.delete("/logs")
+            allowed = await client.get("/logs", headers={"X-Token": "s3cret"})
+
+        assert denied.status_code == 401
+        assert denied_delete.status_code == 401
+        assert allowed.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_padded_secret_is_compared_stripped(self, tmp_path: Path) -> None:
+        """A padded ``TOKEN_SECRET`` still matches the value clients send.
+
+        ``httpx`` refuses to send a padded header value and uvicorn's
+        ``h11`` parser strips one on arrival, so comparing against the
+        padded string would lock those clients out.
+        """
+        app = FastAPI()
+        app.include_router(
+            make_logs_router(log_dir=tmp_path, token_secret="  s3cret\n"),
+        )
+        async with _client(app) as client:
+            allowed = await client.get("/logs", headers={"X-Token": "s3cret"})
+            denied = await client.get("/logs", headers={"X-Token": "wrong"})
+
+        assert allowed.status_code == 200
+        assert denied.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -182,7 +275,11 @@ async def test_per_file_cap_keeps_the_newest_records(tmp_path: Path) -> None:
 
     app = FastAPI()
     app.include_router(
-        make_logs_router(log_dir=tmp_path, max_records_per_file=3),
+        make_logs_router(
+            log_dir=tmp_path,
+            max_records_per_file=3,
+            allow_unauthenticated=True,
+        ),
     )
     async with _client(app) as client:
         response = await client.get("/logs", params={"source": "info"})

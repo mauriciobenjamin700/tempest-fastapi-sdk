@@ -2944,3 +2944,13 @@ resgates passarem.
 loader do `make_auth_router` recusam conta inativa com `403` depois de
 carregar o usuário; `soft=True` devolve `None`. Guard:
 `tests/auth/test_current_user_active.py`.
+
+## `/logs` exige segredo (0.306.0)
+
+`make_logs_router(token_secret="")` levanta `ValueError` na construção;
+`allow_unauthenticated=True` é o opt-out nomeado e não enfraquece um segredo
+preenchido. O `src/api/app.py` gerado monta `/logs` só com `TOKEN_SECRET`, e
+o `tempest new` manda rodar `tempest secrets init` e `tempest check-config`
+antes de subir. Guards: `tests/api/test_logs_router.py`
+(`TestEmptySecretIsRefused`) e `tests/cli/test_scaffold_runtime.py`
+(`test_generated_app_mounts_logs_only_with_a_secret`).

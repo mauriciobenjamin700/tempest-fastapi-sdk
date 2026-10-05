@@ -351,6 +351,8 @@ def scaffold(
     typer.echo(f"  cd {display}", err=False)
     typer.echo("  uv sync", err=False)
     typer.echo("  cp .env.example .env", err=False)
+    typer.echo("  uv run tempest secrets init", err=False)
+    typer.echo("  uv run tempest check-config", err=False)
     typer.echo("  docker compose up -d", err=False)
     typer.echo("  uv run python main.py", err=False)
     typer.echo(
