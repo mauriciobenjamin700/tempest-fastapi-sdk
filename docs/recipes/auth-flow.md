@@ -2218,6 +2218,7 @@ Desde a v0.49.0, o próprio `UserAuthService` constrói essa dependency — `cur
 1. Procura o token em três lugares, na ordem **header → cookie → query string** (primeiro hit ganha): `Authorization: Bearer <jwt>` via `HTTPBearer`, depois o cookie (`cookie_name`) e por último o parâmetro de query (`query_param`).
 2. Decodifica e verifica o JWT com **o mesmo `JWTUtils` que o service usou pra assinar** — sem segundo segredo pra manter sincronizado.
 3. Pega o `sub` (id do usuário) do payload, abre uma sessão a partir do `db=` e devolve o `UserModel` persistido.
+4. Recusa a conta desativada com `403` *(v0.305.0+)* — ver abaixo.
 
 ### 1. Declare a dependency uma vez
 
@@ -2237,6 +2238,24 @@ get_current_user_or_none = auth_service.current_user_dependency(soft=True)
     O usuário é carregado na sessão **do request** (`db.session_dependency` por default), a mesma que os seus repositórios usam. Ou seja: a instância vem *attached* e você pode mutar/`refresh` sem tomar `InvalidRequestError: Instance is not persistent within this Session`. Se os seus repositórios dependem de outro callable de sessão (um `get_session` local, por exemplo), passe **esse mesmo callable** em `session_dependency=` — o FastAPI cacheia sub-dependency por callable, então um wrapper diferente abre uma segunda sessão e volta a destacar o usuário.
 
     A mesma garantia vale para as rotas autenticadas do próprio `make_auth_router` (`/auth/password-change`, `/auth/mfa/*`): elas carregam o usuário na sessão do request desde a **0.171.1**. Antes disso o router abria uma sessão privada e devolvia a instância já *detached*, então a escrita era descartada em silêncio e o `refresh` seguinte estourava — `/auth/password-change` respondia 500 mantendo a senha antiga.
+
+!!! warning "Conta desativada não passa, mesmo com token válido (v0.305.0+)"
+    O `login` já recusa conta inativa, mas um token emitido **antes** da
+    desativação continua válido até expirar — o access TTL inteiro. Por isso a
+    dependency confere `is_active` depois de carregar o usuário e responde
+    `403` `ACCOUNT_INACTIVE` (o mesmo `AuthExceptions.account_inactive` do login); até a 0.304.0 ela devolvia a linha e cada rota precisava
+    lembrar do `require_active`. As rotas autenticadas do `make_auth_router`
+    (`/auth/me`, troca de senha e de e-mail, MFA, passkeys) fazem a mesma
+    conferência.
+
+    - `soft=True` devolve `None` para conta inativa, como para token inválido.
+    - `inactive_exception=SuaExcecao` troca o `403` pela sua classe.
+    - `require_active=False` volta ao comportamento antigo — para a rota que
+      precisa atender a conta inativa (reativação, por exemplo).
+
+    Medido em `tests/auth/test_current_user_active.py`: token emitido, conta
+    desativada, request com o token → `403`; com `require_active=False` →
+    `200`.
 
 !!! tip "Não é só o header: cookie e query string também valem"
     A dependency tenta **header → cookie → query string** e para no primeiro hit, então a mesma linha acima serve cliente bearer e cliente cookie.

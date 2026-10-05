@@ -58,6 +58,7 @@ from tempest_fastapi_sdk.api.oauth import (
     OAuthTokens,
     generate_oauth_state,
 )
+from tempest_fastapi_sdk.auth.guards import require_active
 from tempest_fastapi_sdk.auth.locale import (
     LOCALE_QUERY_PARAM,
     auth_page_message,
@@ -2472,6 +2473,13 @@ def _make_user_loader(
     persistent within this Session``. ``POST /auth/password-change`` failed that
     way — answering 500 *and* leaving the old password in place.
 
+    An inactive account is refused with ``403``: ``login`` already refuses
+    it, but a token issued before the deactivation stays valid until it
+    expires, and every route here (``/me``, password and email change, MFA,
+    passkeys) acts on the account. No route of this router serves an
+    inactive account — the activation and re-send flows take no bearer
+    token.
+
     Args:
         service (UserAuthService): The service owning the user model to load.
 
@@ -2482,6 +2490,8 @@ def _make_user_loader(
 
     async def _load(user_id: str, session: AsyncSession) -> BaseUserModel | None:
         obj: BaseUserModel | None = await session.get(service.user_model, UUID(user_id))
+        if obj is not None:
+            require_active(obj, exception=service.inactive_account_error)
         return obj
 
     return _load

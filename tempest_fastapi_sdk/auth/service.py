@@ -27,6 +27,7 @@ from sqlalchemy import delete, inspect, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tempest_fastapi_sdk.auth import guards as auth_guards
 from tempest_fastapi_sdk.auth.exceptions import (
     AuthExceptions,
     MFAAlreadyEnrolledException,
@@ -61,6 +62,7 @@ from tempest_fastapi_sdk.db.user_token_model import (
 )
 from tempest_fastapi_sdk.exceptions import (
     ConflictException,
+    ForbiddenException,
     InvalidTokenException,
     NotFoundException,
     OAuthAccountInactiveException,
@@ -625,10 +627,7 @@ class UserAuthService:
             )
         if not user.is_active:
             if self.auth_settings.AUTH_REVEAL_INACTIVE_ACCOUNT:
-                raise self.exceptions.account_inactive(
-                    message="account is not active",
-                    message_key="ACCOUNT_INACTIVE",
-                )
+                raise self.inactive_account_error()
             raise self.exceptions.invalid_credentials(
                 message="invalid email or password"
             )
@@ -2018,6 +2017,8 @@ class UserAuthService:
         query_param: str | None = None,
         strict: bool = False,
         legacy_claims: Collection[str] = (),
+        require_active: bool = True,
+        inactive_exception: GuardException | None = None,
     ) -> Callable[..., Coroutine[Any, Any, Any]]:
         """Build a FastAPI dependency that returns the authenticated user.
 
@@ -2084,6 +2085,21 @@ class UserAuthService:
                 the token type from when ``typ`` is absent, in order.
                 Pair with ``strict=True``. See
                 :func:`~tempest_fastapi_sdk.token_type_allowed`.
+            require_active (bool): Refuse a token whose account is no
+                longer active (default ``True``). ``login`` already
+                refuses an inactive account, but a token issued before the
+                deactivation stays valid until it expires — up to the
+                whole access TTL — so without this check every route had
+                to remember :func:`~tempest_fastapi_sdk.require_active`.
+                ``False`` restores the pre-0.305.0 behavior, for the one
+                route that must serve an inactive account (reactivation).
+            inactive_exception (GuardException | None): Factory for the
+                refusal of an inactive account. ``None`` (default)
+                raises :meth:`inactive_account_error` — ``403``
+                ``ACCOUNT_INACTIVE``, or the product's
+                ``exceptions.account_inactive``. With
+                ``soft=True`` an inactive account yields ``None``
+                instead, as an invalid token does.
 
         Returns:
             Callable[..., Coroutine[Any, Any, Any]]: An async FastAPI
@@ -2108,15 +2124,62 @@ class UserAuthService:
         ):
             resolved_cookie_name = self.auth_settings.AUTH_ACCESS_COOKIE_NAME
 
+        async def load_active_user(
+            subject: str | UUID,
+            session: AsyncSession,
+        ) -> BaseUserModel | None:
+            """Load the token's user and refuse it when inactive.
+
+            Args:
+                subject (str | UUID): The token's ``sub`` claim.
+                session (AsyncSession): The request-scoped session.
+
+            Returns:
+                BaseUserModel | None: The active user, or ``None`` for an
+                inactive one under ``soft=True``.
+
+            Raises:
+                AppException: ``inactive_exception()`` (``403`` by
+                    default) for an inactive account when ``soft`` is
+                    ``False``.
+            """
+            user = await self.get_user(subject, session)
+            if user.is_active:
+                return user
+            if soft:
+                return None
+            return auth_guards.require_active(
+                user,
+                exception=inactive_exception or self.inactive_account_error,
+            )
+
         return make_jwt_user_dependency(
             self.jwt,
-            self.get_user,
+            load_active_user if require_active else self.get_user,
             soft=soft,
             cookie_name=resolved_cookie_name,
             query_param=query_param,
             strict=strict,
             legacy_claims=legacy_claims,
             session_dependency=session_dependency or self.db.session_dependency,
+        )
+
+    def inactive_account_error(self) -> ForbiddenException:
+        """Build the refusal for an account that is no longer active.
+
+        One factory for every place the service refuses an inactive
+        account it has already identified — ``login`` under
+        ``AUTH_REVEAL_INACTIVE_ACCOUNT``, :meth:`current_user_dependency`
+        and the authenticated routes of ``make_auth_router`` — so the
+        ``code`` a client sees does not depend on which of them caught it.
+
+        Returns:
+            ForbiddenException: ``exceptions.account_inactive`` with the
+            ``ACCOUNT_INACTIVE`` message key (``403`` by default).
+        """
+        return self.exceptions.account_inactive(
+            message="account is not active",
+            message_key="ACCOUNT_INACTIVE",
         )
 
     # ------------------------------------------------------------------

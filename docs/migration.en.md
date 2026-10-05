@@ -2,6 +2,24 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.305.0 — a deactivated account's token no longer authenticates
+
+`current_user_dependency()` and the authenticated routes of
+`make_auth_router` now refuse an account with `is_active=False` with `403`
+`ACCOUNT_INACTIVE` (or `AuthExceptions.account_inactive`), even while the token is still valid. Up to 0.304.0 a
+deactivated account kept getting in with the token issued before, for the
+whole access TTL.
+
+### What to do
+
+- **A route that must serve an inactive account** (reactivation, data export
+  before closure): build the dependency with
+  `current_user_dependency(require_active=False)`.
+- **A client that handles the deactivated account under another `code`**:
+  pass `inactive_exception=YourException`.
+- **A `get_user` override that only raised `403` for an inactive account**:
+  can be removed.
+
 ## 0.305.0 — a password reset whose user was removed is an invalid link
 
 `confirm_password_reset` with a token whose user no longer exists raised
