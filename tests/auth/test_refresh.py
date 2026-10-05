@@ -137,8 +137,9 @@ class TestRefreshService:
         user.is_active = False
         await session.commit()
 
-        with pytest.raises(ForbiddenException):
+        with pytest.raises(ForbiddenException) as caught:
             await service.refresh_tokens(session, refresh_token=refresh)
+        assert caught.value.code == "ACCOUNT_INACTIVE"
 
 
 class TestRefreshRouter:

@@ -205,8 +205,9 @@ class TestRefreshDBService:
         user.is_active = False
         await session.commit()
 
-        with pytest.raises(ForbiddenException):
+        with pytest.raises(ForbiddenException) as caught:
             await service.refresh_tokens(session, refresh_token=refresh)
+        assert caught.value.code == "ACCOUNT_INACTIVE"
 
     async def test_revoke_family_blocks_refresh(
         self,

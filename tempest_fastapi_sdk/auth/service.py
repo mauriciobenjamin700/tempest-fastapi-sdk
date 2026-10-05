@@ -1691,13 +1691,13 @@ class UserAuthService:
             if not subject:
                 raise InvalidTokenException(message="refresh token missing subject")
             user = await self.get_user(subject, session)
-            require_active(user)
+            require_active(user, exception=self.inactive_account_error)
             access, refresh = self.issue_jwt_pair(user)
             return user, access, refresh
 
         record = await self._lookup_refresh_record(session, refresh_token)
         user = await self.get_user(record.user_id, session)
-        require_active(user)
+        require_active(user, exception=self.inactive_account_error)
         record.used_at = utcnow()
         await session.flush()
         access, refresh = await self.issue_token_pair(
@@ -2169,8 +2169,9 @@ class UserAuthService:
 
         One factory for every place the service refuses an inactive
         account it has already identified — ``login`` under
-        ``AUTH_REVEAL_INACTIVE_ACCOUNT``, :meth:`current_user_dependency`
-        and the authenticated routes of ``make_auth_router`` — so the
+        ``AUTH_REVEAL_INACTIVE_ACCOUNT``, :meth:`refresh_tokens`,
+        :meth:`current_user_dependency` and the authenticated routes of
+        ``make_auth_router`` — so the
         ``code`` a client sees does not depend on which of them caught it.
 
         Returns:
