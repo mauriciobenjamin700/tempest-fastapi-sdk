@@ -193,6 +193,9 @@ _MESSAGE_KEYS_WITHOUT_A_CODE: frozenset[str] = frozenset(
     {
         "HOST_PATH_TRANSLATION_FAILED",
         "HOST_WSLPATH_MISSING",
+        "PASSWORD_TOO_LONG",
+        "PASSWORD_TOO_SHORT",
+        "PASSWORD_TOO_WEAK",
         "PDF_PAGE_EXTRACT_FAILED",
     }
 )
@@ -463,6 +466,15 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "WALLET_PAYOUT_UNCERTAIN": (
             "Não foi possível confirmar a transferência; ela será conferida"
         ),
+        "ACCOUNT_INACTIVE": (
+            "Esta conta está desativada — fale com o suporte para reativá-la"
+        ),
+        "PASSWORD_TOO_SHORT": "A senha precisa ter pelo menos {min_length} caracteres",
+        "PASSWORD_TOO_LONG": "A senha pode ter no máximo {max_bytes} bytes",
+        "PASSWORD_TOO_WEAK": (
+            "A senha precisa ter letra minúscula, letra maiúscula, número e "
+            "caractere especial"
+        ),
         "OAUTH_ACCOUNT_INACTIVE": "Conta inativa",
         "OAUTH_ACCOUNT_NOT_LINKED": ("Este provedor não está vinculado a esta conta"),
         "OAUTH_AUDIENCE_UNVERIFIABLE": (
@@ -568,6 +580,15 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "WALLET_PAYOUT_REJECTED": "The provider rejected the transfer",
         "WALLET_PAYOUT_UNCERTAIN": (
             "The transfer could not be confirmed; it will be reconciled"
+        ),
+        "ACCOUNT_INACTIVE": (
+            "This account is deactivated — contact support to reactivate it"
+        ),
+        "PASSWORD_TOO_SHORT": "Password must be at least {min_length} characters",
+        "PASSWORD_TOO_LONG": "Password must be at most {max_bytes} bytes",
+        "PASSWORD_TOO_WEAK": (
+            "Password must contain a lowercase letter, an uppercase letter, a "
+            "digit and a special character"
         ),
         "OAUTH_ACCOUNT_INACTIVE": "Account is not active",
         "OAUTH_ACCOUNT_NOT_LINKED": "Provider is not linked to this account",

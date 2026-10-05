@@ -2868,3 +2868,12 @@ extra **não** pinado traria, e faz o login do admin. A suíte roda com todos
 os extras instalados, então importar o app no próprio processo não provava
 nada sobre o `pyproject.toml` ao lado dele.
 
+## Códigos de recusa do produto e conta desativada (#424, #425)
+
+`AuthExceptions` (classe por ponto de recusa, tipada pela default, então
+status e custo não mudam), `PasswordViolationCode` como `message_key` com
+tradução default, `confirm_password_reset` de usuário removido →
+`InvalidTokenException`, e `AUTH_REVEAL_INACTIVE_ACCOUNT` → `403`
+`ACCOUNT_INACTIVE` só com a senha certa. Guard:
+`tests/auth/test_refusal_codes.py` (inclui uma verificação bcrypt por login
+recusado, nos três ramos, com a flag ligada e desligada).

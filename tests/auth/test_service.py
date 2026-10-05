@@ -1368,7 +1368,7 @@ class TestServiceEdgeCases:
         assert token is not None
         await session.delete(user)
         await session.flush()
-        with pytest.raises(NotFoundException):
+        with pytest.raises(InvalidTokenException, match="missing user"):
             await service.confirm_password_reset(
                 session,
                 token=token.token,

@@ -1201,6 +1201,20 @@ class AuthSettings(BaseAppSettings):
         ),
         examples=[False, True],
     )
+    AUTH_REVEAL_INACTIVE_ACCOUNT: bool = Field(
+        default=False,
+        title="Reveal a deactivated account to its owner",
+        description=(
+            "When ``False`` (default), login on a deactivated account "
+            "answers the same ``401`` as a wrong password, so the response "
+            "does not reveal which emails have an account. When ``True``, "
+            "the **right** password on a deactivated account answers "
+            "``403`` ``ACCOUNT_INACTIVE`` instead; a wrong password is "
+            "still the generic ``401``. Every branch pays one bcrypt "
+            "verification either way."
+        ),
+        examples=[False, True],
+    )
     AUTH_RETURN_TOKEN_IN_RESPONSE: bool = Field(
         default=False,
         title="Return token in HTTP response",
