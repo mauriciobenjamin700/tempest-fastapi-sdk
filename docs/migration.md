@@ -2,6 +2,23 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.305.0 — token de conta desativada não autentica mais
+
+`current_user_dependency()` e as rotas autenticadas do `make_auth_router`
+passam a recusar conta com `is_active=False` com `403` `FORBIDDEN`, mesmo
+com o token ainda válido. Até a 0.304.0 a conta desativada seguia entrando
+com o token emitido antes, pelo access TTL inteiro.
+
+### O que fazer
+
+- **Rota que precisa atender conta inativa** (reativação, exportação de dados
+  antes do encerramento): monte a dependência com
+  `current_user_dependency(require_active=False)`.
+- **Cliente que trata a conta desativada por outro `code`**: passe
+  `inactive_exception=SuaExcecao`.
+- **Override de `get_user` só para levantar `403` em conta inativa**: pode
+  ser removido.
+
 ## 0.304.0 — o leitor CSV do Google Sheets tem limite por padrão
 
 `read_google_sheet` e `read_google_sheet_as` ganharam `max_bytes` e

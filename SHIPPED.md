@@ -2876,3 +2876,10 @@ now RETURNING` condicional: o banco escolhe o único resgate que vale.
 Guard: `tests/auth/test_consume_token_race.py` (SQLite em arquivo e
 PostgreSQL via `make test-docker`); sem o fix, o PostgreSQL deixa 8 de 8
 resgates passarem.
+
+## Token de conta desativada não autentica (#421)
+
+`current_user_dependency(require_active=True, inactive_exception=None)` e o
+loader do `make_auth_router` recusam conta inativa com `403` depois de
+carregar o usuário; `soft=True` devolve `None`. Guard:
+`tests/auth/test_current_user_active.py`.

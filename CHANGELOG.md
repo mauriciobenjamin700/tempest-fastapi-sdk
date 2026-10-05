@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Token de conta desativada deixa de autenticar (#421).**
+  `UserAuthService.current_user_dependency` ganha `require_active: bool =
+  True` e `inactive_exception`: depois de carregar o usuário, conta inativa
+  responde `403` `FORBIDDEN` (ou a classe passada); com `soft=True`, devolve
+  `None`. Até a 0.304.0 a dependência devolvia a linha sem olhar `is_active`,
+  e um token emitido antes da desativação autenticava pelo access TTL
+  inteiro. As rotas autenticadas do `make_auth_router` (`/auth/me`, troca de
+  senha e de e-mail, MFA, passkeys) passam a recusar do mesmo jeito.
+  `require_active=False` restaura o comportamento antigo. Medido: token
+  emitido, conta desativada, `GET /me` → `403`; com `require_active=False` →
+  `200`.
+
 ### Fixed
 
 - **Token de uso único é gasto numa instrução só (#422).** `_consume_token`
