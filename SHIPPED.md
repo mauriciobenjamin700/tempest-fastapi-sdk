@@ -2876,3 +2876,12 @@ nada sobre o `pyproject.toml` ao lado dele.
 coluna. Unicidade violada no insert → `ConflictException` com
 `details["columns"]`; `NOT NULL` esquecida → `ValueError` com o nome da
 coluna. Guard: `tests/auth/test_signup_fields.py`.
+
+## Token de uso único sem corrida (#422)
+
+`_consume_token` virou um `UPDATE ... WHERE used_at IS NULL AND expires_at >
+now RETURNING` condicional: o banco escolhe o único resgate que vale.
+`_lookup_token` só roda depois de um resgate recusado, para nomear o motivo.
+Guard: `tests/auth/test_consume_token_race.py` (SQLite em arquivo e
+PostgreSQL via `make test-docker`); sem o fix, o PostgreSQL deixa 8 de 8
+resgates passarem.
