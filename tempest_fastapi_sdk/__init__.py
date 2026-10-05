@@ -436,7 +436,13 @@ from tempest_fastapi_sdk.auth import (
     LOCALE_QUERY_PARAM as LOCALE_QUERY_PARAM,
 )
 from tempest_fastapi_sdk.auth import (
+    SIGNUP_PROTECTED_FIELDS as SIGNUP_PROTECTED_FIELDS,
+)
+from tempest_fastapi_sdk.auth import (
     SUPPORTED_LOCALES as SUPPORTED_LOCALES,
+)
+from tempest_fastapi_sdk.auth import (
+    AccountInactiveException as AccountInactiveException,
 )
 from tempest_fastapi_sdk.auth import (
     ActivationRequestSchema as ActivationRequestSchema,
@@ -452,6 +458,9 @@ from tempest_fastapi_sdk.auth import (
 )
 from tempest_fastapi_sdk.auth import (
     AuthCookieConfig as AuthCookieConfig,
+)
+from tempest_fastapi_sdk.auth import (
+    AuthExceptions as AuthExceptions,
 )
 from tempest_fastapi_sdk.auth import (
     AuthUserSchema as AuthUserSchema,
@@ -1581,6 +1590,9 @@ from tempest_fastapi_sdk.utils import (
     PasswordUtils as PasswordUtils,
 )
 from tempest_fastapi_sdk.utils import (
+    PasswordViolationCode as PasswordViolationCode,
+)
+from tempest_fastapi_sdk.utils import (
     PercentField as PercentField,
 )
 from tempest_fastapi_sdk.utils import (
@@ -1996,6 +2008,7 @@ __all__: list[str] = [
     "RAISES_ATTRIBUTE",
     "REFRESH_TOKEN_TYPE",
     "REQUEST_ID_HEADER",
+    "SIGNUP_PROTECTED_FIELDS",
     "SNIFFABLE_MIMETYPES",
     "STATIC_CREDENTIAL_NAMESPACE",
     "SUPPORTED_LOCALES",
@@ -2005,6 +2018,7 @@ __all__: list[str] = [
     "WITHHELD_NOTICE",
     "XLSX_MEDIA_TYPE",
     "AccessLogMiddleware",
+    "AccountInactiveException",
     "ActivationRequestSchema",
     "ActivationResendResponseSchema",
     "ActivationResponseSchema",
@@ -2032,6 +2046,7 @@ __all__: list[str] = [
     "AuditAction",
     "AuditMixin",
     "AuthCookieConfig",
+    "AuthExceptions",
     "AuthSettings",
     "AuthUserSchema",
     "BackupToolMissingError",
@@ -2253,6 +2268,7 @@ __all__: list[str] = [
     "PasswordResetResponseSchema",
     "PasswordResetToken",
     "PasswordUtils",
+    "PasswordViolationCode",
     "PayoutRejectedException",
     "PayoutUncertainException",
     "PercentField",

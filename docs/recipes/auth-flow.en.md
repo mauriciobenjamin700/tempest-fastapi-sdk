@@ -308,8 +308,10 @@ policy, the 409 on a duplicate email, the activation branch and the JWT pair.
 Four things the bundled route already gets right, and that start drifting one
 release at a time.
 
-Two arguments settle it: **`signup_schema`** replaces the request body,
-**`on_signup`** writes the extra columns.
+One argument covers the common case: **`signup_schema`** replaces the request
+body, and every new field on it that is also a column of your `UserModel` is
+set on the row **before** the insert *(v0.305.0+)*. For what is not a column —
+a terms checkbox, a derived value — there is **`on_signup`**.
 
 ```python
 # src/api/app.py
@@ -322,6 +324,7 @@ from tempest_fastapi_sdk import (
     AsyncDatabaseManager,
     SignupSchema,
     UserAuthService,
+    ValidationException,
     make_auth_router,
 )
 
@@ -332,24 +335,28 @@ from src.db.models import UserModel, UserTokenModel
 class ProducerSignupSchema(SignupSchema):
     """This product's signup: email, password, name — and the rest."""
 
-    phone: str | None = Field(default=None, max_length=20)
+    phone: str = Field(max_length=20)
     is_producer: bool = Field(default=False)
+    accept_terms: bool = Field(default=False)
 
 
-async def write_profile(
+async def require_terms(
     session: AsyncSession,
     user: UserModel,
     payload: ProducerSignupSchema,
 ) -> None:
-    """Copy the product fields onto the freshly created row.
+    """Refuse a signup that did not accept the terms.
 
     Args:
         session (AsyncSession): The transaction the row was inserted in.
-        user (UserModel): The instance to write onto.
+        user (UserModel): The freshly created instance.
         payload (ProducerSignupSchema): The validated body.
+
+    Raises:
+        ValidationException: When ``accept_terms`` is false.
     """
-    user.phone = payload.phone
-    user.is_producer = payload.is_producer
+    if not payload.accept_terms:
+        raise ValidationException(message="accept the terms to sign up")
 
 
 app = FastAPI()
@@ -370,28 +377,92 @@ app.include_router(
         auth_service,
         session_factory=db.session_dependency,
         signup_schema=ProducerSignupSchema,
-        on_signup=write_profile,
+        on_signup=require_terms,
     ),
 )
 ```
+
+Here `phone` and `is_producer` are columns of `UserModel` (`phone` is
+`NOT NULL` and `UNIQUE`), so they reach the row with no hook at all.
+`accept_terms` is not a column: it stays only on the `payload` `on_signup`
+receives.
 
 With `AUTH_AUTO_ACTIVATE=true` in `.env` the account is born active and signup already returns the JWT pair. Under the default (`false`) the same call answers `"activation_required":true` with `access_token` and `refresh_token` set to `null`, and the pair only comes out of `POST /auth/activate/{token}`:
 
 ```console
 $ curl -s -X POST localhost:8000/auth/signup \
     -H "Content-Type: application/json" \
-    -d '{"email":"ana@example.com","password":"strong-pass-12","phone":"5511999999999","is_producer":true}'
+    -d '{"email":"ana@example.com","password":"strong-pass-12","phone":"5511999999999","is_producer":true,"accept_terms":true}'
 {"user_id":"0e5cf2fc-…","activation_required":false,"activation_url":null,"access_token":"eyJ…","refresh_token":"eyJ…"}
 ```
 
+A second signup with the same phone answers `409`, with the column in
+`details` and in `field` — not a `500` from an `IntegrityError`:
+
+```console
+$ curl -s -X POST localhost:8000/auth/signup \
+    -H "Content-Type: application/json" \
+    -d '{"email":"bia@example.com","password":"strong-pass-12","phone":"5511999999999","accept_terms":true}'
+{"detail":"phone already in use","code":"CONFLICT","details":{"columns":["phone"],"constraint":null},"field":"phone"}
+```
+
+`constraint` is `null` on SQLite, which does not name a unique constraint;
+PostgreSQL reports the name (`users_phone_key`, for instance).
+
+!!! warning "A protected column never comes from the body"
+    `id`, `email`, `hashed_password`, `is_active` and `is_admin`
+    (`SIGNUP_PROTECTED_FIELDS`) belong to the SDK. A `signup_schema` with an
+    `is_admin` field promotes nobody: the route drops those names before
+    writing. Calling the service directly,
+    `signup(fields={"is_admin": True})` raises `ValueError`.
+
 Annotate the hook with **your** classes — the concrete model and the concrete
-schema — as above: that is what makes `user.phone = …` type-check on your side.
+schema — as above: that is what makes `payload.accept_terms` type-check on
+your side.
 
 The schema **must** subclass `SignupSchema` — the route reads `email`,
 `password` and `name` off it by name, so a body without them fails
 `make_auth_router` at wiring time, not on the first request. The new fields
 reach `/openapi.json` too: a generated client sees `phone` and `is_producer`
 without anyone hand-writing a schema.
+
+??? info "No router: `signup(fields=...)`"
+    The same path lives on the service, for whoever builds their own route:
+
+    ```python
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from tempest_fastapi_sdk import UserAuthService
+
+
+    async def create_driver(
+        service: UserAuthService,
+        session: AsyncSession,
+        email: str,
+        password: str,
+        phone: str,
+    ) -> None:
+        """Create the driver with the required phone already in the insert.
+
+        Args:
+            service (UserAuthService): The auth service.
+            session (AsyncSession): The request session.
+            email (str): Account email.
+            password (str): Plaintext password.
+            phone (str): Phone, a ``NOT NULL`` unique column.
+        """
+        await service.signup(
+            session,
+            email=email,
+            password=password,
+            fields={"phone": phone},
+        )
+        await session.commit()
+    ```
+
+    A key that is not a column of the model is a `ValueError` before anything
+    is written. A forgotten `NOT NULL` column is a `ValueError` too, naming the
+    column — a wiring defect, not a client error.
 
 !!! danger "The hook runs **before** the commit, and that is the point"
     `on_signup` is awaited right after the insert and before
@@ -411,8 +482,9 @@ without anyone hand-writing a schema.
     takes your own schema through `me_response_model`.
 
 **Recap.** `signup_schema` is the input contract — a `SignupSchema` subclass,
-visible in OpenAPI. `on_signup` is where its fields become columns, inside the
-insert's transaction. Nothing else has to leave the SDK for your service.
+visible in OpenAPI — and its fields that are columns land on the row before the
+insert. `on_signup` is for the rest, inside the insert's transaction. Nothing
+else has to leave the SDK for your service.
 
 
 ## Backend only: from signup to a protected route
@@ -1205,6 +1277,21 @@ Decision table:
 !!! danger "The ceiling counts bytes, not characters"
     `AUTH_PASSWORD_MAX_BYTES` exists because bcrypt **refuses** input over 72 bytes: `hashpw` raises `ValueError`, and without the ceiling that surfaced as a **500** on signup / reset / password change. Bytes is the unit the hash sees, and 72 bytes arrive well before 72 characters on non-ASCII text — an emoji costs 4 bytes, an accented letter 2, so `"🔒" * 19` (19 characters) is already over the limit and answers **422**. Only raise the value if you swap the hasher for one without the limit.
 
+!!! info "Each violation has its own `message_key` (v0.305.0+)"
+    The response `code` stays `VALIDATION_ERROR`, but the `message_key` names
+    the rule that failed, and the default catalog translates each one:
+
+    | `message_key` | When | `detail` in en-US (default catalog) |
+    |---------------|------|-------------------------------------|
+    | `PASSWORD_TOO_SHORT` | below the effective floor | `Password must be at least 12 characters` |
+    | `PASSWORD_TOO_LONG` | above `AUTH_PASSWORD_MAX_BYTES` | `Password must be at most 72 bytes` |
+    | `PASSWORD_TOO_WEAK` | missing a character class (complexity on) | `Password must contain a lowercase letter, an uppercase letter, a digit and a special character` |
+
+    The same value is on `PasswordPolicyViolation.code`
+    (`PasswordViolationCode`), for callers of `check_password_policy`. To
+    change the `code` too, see
+    [your product's error codes](#your-products-error-codes-authexceptions-v03050).
+
 ### Group 3 — Email flow control (`AuthSettings`)
 
 Decide **whether** and **how** the link reaches the user. They map directly to the [five operating modes](#five-operating-modes).
@@ -1328,10 +1415,155 @@ There's a whole section dedicated to this, explained step by step:
     reset does not kill a pending email change) and same user only. The old row
     is marked `used_at`, not deleted, so the audit trail stays.
 
+### Group 12 — Deactivated account (`AuthSettings`) *(v0.305.0+)*
+
+| Env var | Type | Default | What it does |
+|---------|------|---------|--------------|
+| `AUTH_REVEAL_INACTIVE_ACCOUNT` | `bool` | `false` | `true` = the **right** password on a deactivated account answers `403` `ACCOUNT_INACTIVE` instead of the generic `401`. A wrong password and an unknown email stay `401`. |
+
+By default a deactivated account answers the same `401` as a wrong password, so
+the response does not tell which emails have an account. But the owner, not
+knowing why they cannot get in, tries "forgot password", resets it, and still
+cannot get in. Turned on, whoever **proved the password** is told — and that
+enumerates nothing, because whoever has the password already owns the account:
+
+```console
+$ curl -s -X POST localhost:8000/auth/login \
+    -H "Content-Type: application/json" \
+    -d '{"email":"ana@example.com","password":"strong-pass-12-chars"}'
+{"detail":"Esta conta está desativada — fale com o suporte para reativá-la","code":"ACCOUNT_INACTIVE","details":{}}
+```
+
+(With the default catalog in `register_exception_handlers(app, catalog=default_message_catalog())`,
+which negotiates pt-BR here; without a catalog, `detail` is `account is not active`.)
+
+!!! check "The cost is the same in all three branches"
+    The password is verified **before** `is_active` is read, on or off. An
+    unknown email pays one bcrypt against a throwaway hash. Measured in
+    `tests/auth/test_refusal_codes.py`: exactly one verification per refused
+    login, in all three branches, with the flag on and off.
+
 !!! note "MFA / TOTP has its own vars"
     When `AUTH_MFA_ENABLED=true`, `AuthSettings` also exposes `AUTH_MFA_ISSUER`, `AUTH_MFA_RECOVERY_CODES_COUNT`, `AUTH_MFA_TOKEN_TTL_SECONDS` and `AUTH_MFA_VERIFY_WINDOW`. They're out of scope for this recipe (signup/activate/login/reset) — covered in the MFA recipe.
 
 ---
+
+## Your product's error codes (`AuthExceptions`) *(v0.305.0+)*
+
+An existing service has clients handling its own `code`s —
+`ERROR_USER_INVALID_CREDENTIALS`, `USER_ALREADY_EXISTS`, `INVALID_PASSWORD`. The
+SDK answers `UNAUTHORIZED`, `CONFLICT`, `VALIDATION_ERROR`, and the catalog
+swaps the **message**, not the code. Without a seam, adopting
+`UserAuthService` meant overriding methods only to swap the exception.
+
+`AuthExceptions` is that seam: it says which class is raised at each refusal
+point.
+
+```python
+# src/services/auth.py
+
+from tempest_fastapi_sdk import AuthExceptions, UserAuthService
+from tempest_fastapi_sdk.exceptions import (
+    ConflictException,
+    ForbiddenException,
+    InvalidTokenException,
+    UnauthorizedException,
+    ValidationException,
+)
+
+from src.core.settings import settings
+from src.db.models import UserModel, UserTokenModel
+
+
+class InvalidCredentialsError(UnauthorizedException):
+    """Wrong email or password."""
+
+    code: str = "ERROR_USER_INVALID_CREDENTIALS"
+
+
+class UserDeactivatedError(ForbiddenException):
+    """Deactivated account, revealed to whoever proved the password."""
+
+    code: str = "USER_ACCOUNT_DEACTIVATED"
+
+
+class UserAlreadyExistsError(ConflictException):
+    """Email already registered."""
+
+    code: str = "USER_ALREADY_EXISTS"
+
+
+class InvalidPasswordError(ValidationException):
+    """Short or weak password."""
+
+    code: str = "INVALID_PASSWORD"
+
+
+class PasswordTooLongError(ValidationException):
+    """Password above bcrypt's limit."""
+
+    code: str = "PASSWORD_TOO_LONG"
+
+
+class InvalidResetTokenError(InvalidTokenException):
+    """A single-use link that does not work."""
+
+    code: str = "INVALID_PASSWORD_RESET_TOKEN"
+
+
+auth_service = UserAuthService(
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+    exceptions=AuthExceptions(
+        invalid_credentials=InvalidCredentialsError,
+        account_inactive=UserDeactivatedError,
+        email_taken=UserAlreadyExistsError,
+        password_too_short=InvalidPasswordError,
+        password_too_long=PasswordTooLongError,
+        password_too_weak=InvalidPasswordError,
+        invalid_token=InvalidResetTokenError,
+    ),
+)
+```
+
+Measured with `register_exception_handlers(app, catalog=default_message_catalog())`
+and `AUTH_REVEAL_INACTIVE_ACCOUNT=true`:
+
+| Request | Without `exceptions=` | With the map above |
+|---------|-----------------------|--------------------|
+| login, wrong password | `401` `UNAUTHORIZED` | `401` `ERROR_USER_INVALID_CREDENTIALS` |
+| login, deactivated account, right password | `403` `ACCOUNT_INACTIVE` | `403` `USER_ACCOUNT_DEACTIVATED` |
+| signup, short password | `422` `VALIDATION_ERROR` | `422` `INVALID_PASSWORD` |
+| signup, 73 bytes | `422` `VALIDATION_ERROR` | `422` `PASSWORD_TOO_LONG` |
+| signup, repeated email | `409` `CONFLICT` | `409` `USER_ALREADY_EXISTS` |
+
+Each field is typed with the default class, so yours **must** subclass it.
+That is what holds the status: an `InvalidCredentialsError` is an
+`UnauthorizedException`, so it stays `401`, and the refusal path — including
+login's single bcrypt — is the same. The class changes, and the `code` with it.
+
+!!! tip "The message for your `code`"
+    For the password violations and the deactivated account the SDK passes
+    its own `message_key` (`PASSWORD_TOO_SHORT`, `ACCOUNT_INACTIVE`, …), so
+    `detail` stays translated with your class. Elsewhere the catalog looks up
+    **your** `code`; without a translation for it, `detail` is the SDK's
+    English message (`invalid email or password`). Add yours with
+    `default_message_catalog().merge({"en-US": {"ERROR_USER_INVALID_CREDENTIALS": "..."}})`.
+
+!!! note "What `invalid_token` covers"
+    The single-use links: activation, password reset, email change and
+    verification — unknown, used, expired, or pointing to a user that no
+    longer exists. Since v0.305.0 a password reset whose user was removed is
+    an `InvalidTokenException` like its siblings, no longer a `404`. Refresh
+    tokens are left out: they are a different contract with the client.
+
+**Recap.** `AuthExceptions` swaps the class — and the `code` — at each refusal
+point, without overrides and without changing status or cost. Password
+violations already carry their own `message_key`, and
+`AUTH_REVEAL_INACTIVE_ACCOUNT` shows the `403` only to whoever proved the
+password.
 
 ## Email anatomy
 

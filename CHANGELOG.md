@@ -45,6 +45,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   receita `recipes/zap-inbound` (PT e EN) passa a abrir com a rota pronta e
   mantém a rota manual num bloco colapsado, "por baixo dos panos".
 
+- **`AuthExceptions`: a classe de cada recusa do `UserAuthService` (#425).**
+  `UserAuthService(..., exceptions=AuthExceptions(...))` troca a classe
+  levantada em `invalid_credentials`, `account_inactive`, `email_taken`,
+  `password_too_short` / `password_too_long` / `password_too_weak` e
+  `invalid_token` (links de uso único). Cada campo é tipado com a classe
+  default, então a do produto herda dela e o status não muda; muda a classe e
+  o `code`. Medido pelo router: login com senha errada sai
+  `401 ERROR_USER_INVALID_CREDENTIALS`, e-mail repetido `409
+  USER_ALREADY_EXISTS`, senha de 73 bytes `422 PASSWORD_TOO_LONG`, com uma
+  verificação bcrypt por login recusado nos três ramos.
+
+- **Código por violação de senha (#425).** `PasswordViolationCode`
+  (`PASSWORD_TOO_SHORT`, `PASSWORD_TOO_LONG`, `PASSWORD_TOO_WEAK`) em
+  `PasswordPolicyViolation.code`; o `UserAuthService` levanta com esse valor
+  como `message_key`, e o catálogo default traduz os três em pt-BR e en-US
+  (`"A senha pode ter no máximo 72 bytes"`).
+
+- **`AUTH_REVEAL_INACTIVE_ACCOUNT` (#424).** Desligado (default), conta
+  desativada continua no `401` genérico. Ligado, a senha **certa** numa conta
+  desativada responde `403` `ACCOUNT_INACTIVE` (`AccountInactiveException`, ou
+  `AuthExceptions.account_inactive`); senha errada e e-mail desconhecido
+  continuam `401`. A senha é verificada antes de `is_active` nos dois modos.
+
+- **`signup(fields=...)` preenche coluna do produto antes do insert (#423).**
+  `UserAuthService.signup` aceita `fields: Mapping[str, Any]`, aplicado no
+  model antes do `flush` — então uma coluna `NOT NULL` sem default (o
+  `phone` do transport) deixa de exigir reescrever o `signup` inteiro. Chave
+  que não é coluna e as protegidas (`SIGNUP_PROTECTED_FIELDS`: `id`, `email`,
+  `hashed_password`, `is_active`, `is_admin`) levantam `ValueError` antes de
+  qualquer escrita. Coluna `NOT NULL` esquecida vira `ValueError` com o nome
+  dela, não `IntegrityError` cru. Violação de unicidade no insert vira
+  `ConflictException` (`409`) com `details={"columns": [...], "constraint":
+  ...}` e `field`; medido no SQLite: telefone duplicado responde
+  `{"detail":"phone already in use","code":"CONFLICT","details":{"columns":["phone"],"constraint":null},"field":"phone"}`.
+
+### Changed
+
+- **Troca de senha com usuário removido é `InvalidTokenException` (#425).**
+  `confirm_password_reset` levantava `NotFoundException` (`404`); agora é
+  `InvalidTokenException` (`401`), como `activate` e `confirm_email_change`.
+  `PasswordPolicyViolation` ganhou o campo obrigatório `code`. Passo a passo em
+  `docs/migration.md` (`0.305.0`).
+
+- **`make_auth_router(signup_schema=...)` grava os campos que são coluna
+  (#423).** Os campos que o `signup_schema` acrescenta à `SignupSchema` e que
+  também são coluna do user model (fora das protegidas) vão para
+  `signup(fields=...)`, antes do insert. Até a 0.304.0 eram descartados se o
+  `on_signup` não os copiasse; agora o hook só precisa existir para o que não
+  é coluna. Quem tinha um campo de schema com nome de coluna que **não**
+  queria gravado como veio precisa renomeá-lo ou sobrescrevê-lo no
+  `on_signup` (que continua rodando depois, na mesma transação). Um campo
+  `is_admin` no schema continua sem efeito: protegido.
+
 ### Fixed
 
 - **Token de uso único é gasto numa instrução só (#422).** `_consume_token`

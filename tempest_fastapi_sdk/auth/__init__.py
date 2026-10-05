@@ -15,6 +15,12 @@ a "private import usage" / "is not exported" diagnostic.
 """
 
 from tempest_fastapi_sdk.auth.exceptions import (
+    AccountInactiveException as AccountInactiveException,
+)
+from tempest_fastapi_sdk.auth.exceptions import (
+    AuthExceptions as AuthExceptions,
+)
+from tempest_fastapi_sdk.auth.exceptions import (
     MFAAlreadyEnrolledException as MFAAlreadyEnrolledException,
 )
 from tempest_fastapi_sdk.auth.firebase import (
@@ -164,6 +170,9 @@ from tempest_fastapi_sdk.auth.schemas import (
 from tempest_fastapi_sdk.auth.schemas import (
     WebAuthnRegisterCompleteSchema as WebAuthnRegisterCompleteSchema,
 )
+from tempest_fastapi_sdk.auth.service import (
+    SIGNUP_PROTECTED_FIELDS as SIGNUP_PROTECTED_FIELDS,
+)
 from tempest_fastapi_sdk.auth.service import UserAuthService as UserAuthService
 from tempest_fastapi_sdk.auth.service import (
     revoke_user_refresh_tokens as revoke_user_refresh_tokens,
@@ -194,12 +203,15 @@ __all__: list[str] = [
     "DEFAULT_AUTH_LOCALE",
     "DEFAULT_FIREBASE_APP_NAME",
     "LOCALE_QUERY_PARAM",
+    "SIGNUP_PROTECTED_FIELDS",
     "SUPPORTED_LOCALES",
+    "AccountInactiveException",
     "ActivationRequestSchema",
     "ActivationResendResponseSchema",
     "ActivationResponseSchema",
     "ActivationToken",
     "AuthCookieConfig",
+    "AuthExceptions",
     "AuthUserSchema",
     "EmailChangeConfirmSchema",
     "EmailChangeRequestSchema",

@@ -23,10 +23,14 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, inspect, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tempest_fastapi_sdk.auth.exceptions import MFAAlreadyEnrolledException
+from tempest_fastapi_sdk.auth.exceptions import (
+    AuthExceptions,
+    MFAAlreadyEnrolledException,
+)
 from tempest_fastapi_sdk.auth.guards import (
     GuardException,
     UserT,
@@ -46,6 +50,10 @@ from tempest_fastapi_sdk.auth.schemas import (
     EmailChangeToken,
     EmailVerificationToken,
     PasswordResetToken,
+)
+from tempest_fastapi_sdk.db.integrity import (
+    IntegrityViolation,
+    parse_integrity_error,
 )
 from tempest_fastapi_sdk.db.user_token_model import (
     BaseUserTokenModel,
@@ -73,6 +81,7 @@ from tempest_fastapi_sdk.utils.opaque_token import (
 from tempest_fastapi_sdk.utils.password import (
     PasswordPolicy,
     PasswordUtils,
+    PasswordViolationCode,
     check_password_policy,
     generate_password,
 )
@@ -83,7 +92,7 @@ from tempest_fastapi_sdk.utils.token_types import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Coroutine
+    from collections.abc import Callable, Collection, Coroutine, Mapping
     from typing import Any
 
     from sqlalchemy import CursorResult
@@ -102,6 +111,20 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
     from tempest_fastapi_sdk.utils.email import EmailUtils
+
+
+SIGNUP_PROTECTED_FIELDS: frozenset[str] = frozenset(
+    {"id", "email", "hashed_password", "is_active", "is_admin"}
+)
+"""User columns ``signup(fields=...)`` refuses to set.
+
+The service owns each of them: ``email`` is normalized and checked for
+duplicates, ``hashed_password`` comes from the policy-checked password,
+``is_active`` from ``AUTH_AUTO_ACTIVATE``. ``is_admin`` and ``id`` are
+never something a sign-up form decides. ``make_auth_router`` drops them
+from a ``signup_schema`` before forwarding, so a schema field named
+``is_admin`` cannot reach the row.
+"""
 
 
 async def revoke_user_refresh_tokens(
@@ -189,6 +212,7 @@ class UserAuthService:
         db: AsyncDatabaseManager | None = None,
         refresh_token_model: type[BaseUserRefreshTokenModel] | None = None,
         oauth_account_model: type[BaseUserOAuthAccountModel] | None = None,
+        exceptions: AuthExceptions | None = None,
     ) -> None:
         """Initialize the service.
 
@@ -226,7 +250,14 @@ class UserAuthService:
                 required by :meth:`login_with_oauth` and therefore by
                 the ``/auth/oauth/*`` endpoints; ``None`` (default)
                 leaves social login unavailable.
+            exceptions (AuthExceptions | None): The class raised at each
+                refusal point — wrong credentials, inactive account,
+                taken email, each password-policy violation, invalid
+                single-use link. Pass your own subclasses to keep the
+                ``code`` your clients already handle. ``None`` (default)
+                raises the SDK's own classes.
         """
+        self.exceptions: AuthExceptions = exceptions or AuthExceptions()
         self.user_model: type[BaseUserModel] = user_model
         self.token_model: type[BaseUserTokenModel] = token_model
         self.auth_settings: AuthSettings = auth_settings
@@ -256,6 +287,7 @@ class UserAuthService:
         email: str,
         password: str,
         name: str | None = None,
+        fields: Mapping[str, Any] | None = None,
     ) -> tuple[BaseUserModel, ActivationToken | None]:
         """Create a user row and (optionally) issue an activation token.
 
@@ -273,6 +305,13 @@ class UserAuthService:
                 against ``AUTH_PASSWORD_MIN_LENGTH``.
             name (str | None): Optional display name; passed
                 through to the model when the column exists.
+            fields (Mapping[str, Any] | None): Extra column values set on
+                the new row **before** the insert, which is what lets a
+                product fill a ``NOT NULL`` column the SDK does not know
+                about (a phone, a document). Each key must be a mapped
+                column of ``user_model`` outside
+                :data:`SIGNUP_PROTECTED_FIELDS`. ``None`` (default) sets
+                nothing extra.
 
         Returns:
             tuple[BaseUserModel, ActivationToken | None]: The
@@ -280,9 +319,20 @@ class UserAuthService:
             token to surface.
 
         Raises:
+            ValueError: When ``fields`` names something that is not a
+                column of ``user_model``, or a protected column; and when
+                the insert is refused because a ``NOT NULL`` column got no
+                value — a wiring defect, so the message names the column
+                instead of surfacing a bare ``IntegrityError``.
             ValidationException: When the password is too short.
-            ConflictException: When the email is already taken.
+            ConflictException: When the email, or another unique column,
+                is already taken. For a column other than ``email`` the
+                row is refused by the database, and ``details["columns"]``
+                carries what the server named; the session must then be
+                rolled back before reuse, as after any failed flush.
         """
+        extra = dict(fields or {})
+        self._check_signup_fields(extra)
         self._enforce_password_policy(password)
         normalized = email.strip().lower()
         existing = await session.execute(
@@ -291,7 +341,7 @@ class UserAuthService:
             )
         )
         if existing.scalar_one_or_none() is not None:
-            raise ConflictException(
+            raise self.exceptions.email_taken(
                 message="email already in use",
                 details={"email": normalized},
             )
@@ -303,8 +353,13 @@ class UserAuthService:
         user.hashed_password = self.passwords.hash(password)
         if name is not None and hasattr(user, "name"):
             user.name = name
+        for key, value in extra.items():
+            setattr(user, key, value)
         session.add(user)
-        await session.flush()
+        try:
+            await session.flush()
+        except IntegrityError as error:
+            raise self._signup_integrity_error(error) from error
         await session.refresh(user)
 
         if self.auth_settings.AUTH_AUTO_ACTIVATE:
@@ -324,6 +379,87 @@ class UserAuthService:
             url=activation[1],
             expires_at=activation[2],
         )
+
+    def signup_column_names(self) -> frozenset[str]:
+        """Return the ``user_model`` columns ``signup(fields=...)`` accepts.
+
+        Every mapped column attribute, minus
+        :data:`SIGNUP_PROTECTED_FIELDS`. ``make_auth_router`` uses it to
+        forward only those fields of a ``signup_schema`` that are columns,
+        leaving the rest (a terms checkbox, a captcha answer) to
+        ``on_signup``.
+
+        Returns:
+            frozenset[str]: The assignable column attribute names.
+        """
+        columns = {attribute.key for attribute in inspect(self.user_model).column_attrs}
+        return frozenset(columns - SIGNUP_PROTECTED_FIELDS)
+
+    def _check_signup_fields(self, fields: Mapping[str, Any]) -> None:
+        """Refuse ``signup(fields=...)`` keys the service will not set.
+
+        Args:
+            fields (Mapping[str, Any]): The extra column values.
+
+        Raises:
+            ValueError: When a key is protected or not a column.
+        """
+        protected = sorted(set(fields) & SIGNUP_PROTECTED_FIELDS)
+        if protected:
+            raise ValueError(
+                f"signup(fields=...) cannot set protected columns: {protected}"
+            )
+        unknown = sorted(set(fields) - self.signup_column_names())
+        if unknown:
+            raise ValueError(
+                f"signup(fields=...) keys are not columns of "
+                f"{self.user_model.__name__}: {unknown}"
+            )
+
+    def _signup_integrity_error(self, error: IntegrityError) -> Exception:
+        """Translate a refused signup insert into the error to raise.
+
+        A unique violation is a ``409`` the client can act on: a second
+        signup with the same phone, or the same email arriving between
+        the duplicate check and the insert. The email case raises
+        ``exceptions.email_taken``, the same class the duplicate check
+        raises, so the product's ``code`` does not depend on which of the
+        two caught it. A ``NOT NULL`` violation is a
+        wiring defect on the product side — a column the model requires
+        and nobody passed in ``fields`` — so it stays a server error, but
+        one that names the column.
+
+        Args:
+            error (IntegrityError): The error the flush raised.
+
+        Returns:
+            Exception: A :class:`ConflictException` for a unique
+            violation, a :class:`ValueError` for a ``NOT NULL`` one, or
+            ``error`` itself for anything else.
+        """
+        failure = parse_integrity_error(error)
+        if failure.kind is IntegrityViolation.UNIQUE:
+            column = failure.column
+            conflict = (
+                self.exceptions.email_taken if column == "email" else ConflictException
+            )
+            return conflict(
+                message=(
+                    f"{column} already in use" if column else "account already exists"
+                ),
+                details={
+                    "columns": list(failure.columns),
+                    "constraint": failure.constraint,
+                },
+                field=column,
+            )
+        if failure.kind is IntegrityViolation.NOT_NULL:
+            return ValueError(
+                f"signup could not insert {self.user_model.__name__}: column "
+                f"{failure.column!r} is NOT NULL and got no value; pass it in "
+                "signup(fields=...) or give the column a default"
+            )
+        return error
 
     # ------------------------------------------------------------------
     # Activation
@@ -355,7 +491,9 @@ class UserAuthService:
         )
         user: BaseUserModel | None = await session.get(self.user_model, record.user_id)
         if user is None:
-            raise InvalidTokenException(message="token references a missing user")
+            raise self.exceptions.invalid_token(
+                message="token references a missing user"
+            )
         user.is_active = True
         await session.flush()
         await session.refresh(user)
@@ -443,6 +581,14 @@ class UserAuthService:
         ``is_active`` check, so neither the body nor the response time
         separates the three refusals.
 
+        ``AUTH_REVEAL_INACTIVE_ACCOUNT`` changes one branch only: the
+        **right** password on a deactivated account raises
+        ``exceptions.account_inactive`` (``403`` ``ACCOUNT_INACTIVE`` by
+        default) instead of the generic refusal, so the owner learns why
+        they cannot get in. The password is still verified first, so a
+        wrong one stays the generic refusal and the cost stays one
+        bcrypt.
+
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             email (str): Login identifier.
@@ -453,9 +599,12 @@ class UserAuthService:
 
         Raises:
             UnauthorizedException: On any failure — wrong password,
-                missing user, inactive user. The message is
-                deliberately generic so attackers can't enumerate
-                accounts.
+                missing user, inactive user (``exceptions.invalid_credentials``).
+                The message is deliberately generic so attackers can't
+                enumerate accounts.
+            ForbiddenException: When ``AUTH_REVEAL_INACTIVE_ACCOUNT`` is on
+                and the right password opens a deactivated account
+                (``exceptions.account_inactive``).
         """
         normalized = email.strip().lower()
         user_result = await session.execute(
@@ -467,11 +616,22 @@ class UserAuthService:
         user: BaseUserModel | None = user_obj
         if user is None:
             self.passwords.dummy_verify(password)
-            raise UnauthorizedException(message="invalid email or password")
+            raise self.exceptions.invalid_credentials(
+                message="invalid email or password"
+            )
         if not self.passwords.verify(password, user.hashed_password):
-            raise UnauthorizedException(message="invalid email or password")
+            raise self.exceptions.invalid_credentials(
+                message="invalid email or password"
+            )
         if not user.is_active:
-            raise UnauthorizedException(message="invalid email or password")
+            if self.auth_settings.AUTH_REVEAL_INACTIVE_ACCOUNT:
+                raise self.exceptions.account_inactive(
+                    message="account is not active",
+                    message_key="ACCOUNT_INACTIVE",
+                )
+            raise self.exceptions.invalid_credentials(
+                message="invalid email or password"
+            )
         user.last_login_at = utcnow()
         await session.flush()
         await session.refresh(user)
@@ -981,8 +1141,11 @@ class UserAuthService:
             BaseUserModel: The user whose password was rotated.
 
         Raises:
-            ValidationException: When the new password is too short.
-            InvalidTokenException: On bad / expired / spent tokens.
+            ValidationException: When the new password breaks the policy.
+            InvalidTokenException: On bad / expired / spent tokens, and
+                when the token points to a user that no longer exists —
+                for the caller that is a link that does not work, as in
+                :meth:`activate` and :meth:`confirm_email_change`.
         """
         self._enforce_password_policy(new_password)
         record = await self._consume_token(
@@ -992,7 +1155,9 @@ class UserAuthService:
         )
         user: BaseUserModel | None = await session.get(self.user_model, record.user_id)
         if user is None:
-            raise NotFoundException(message="user not found")
+            raise self.exceptions.invalid_token(
+                message="token references a missing user"
+            )
         user.hashed_password = self.passwords.hash(new_password)
         await session.flush()
         await session.refresh(user)
@@ -1128,7 +1293,7 @@ class UserAuthService:
                 message="new email is the same as the current one",
             )
         if await self._email_taken(session, normalized, exclude_user_id=user.id):
-            raise ConflictException(
+            raise self.exceptions.email_taken(
                 message="email already in use",
                 details={"email": normalized},
             )
@@ -1184,14 +1349,16 @@ class UserAuthService:
         )
         new_email = (record.payload or "").strip().lower()
         if not new_email:
-            raise InvalidTokenException(
+            raise self.exceptions.invalid_token(
                 message="email-change token has no target address",
             )
         user: BaseUserModel | None = await session.get(self.user_model, record.user_id)
         if user is None:
-            raise InvalidTokenException(message="token references a missing user")
+            raise self.exceptions.invalid_token(
+                message="token references a missing user"
+            )
         if await self._email_taken(session, new_email, exclude_user_id=user.id):
-            raise ConflictException(
+            raise self.exceptions.email_taken(
                 message="email already in use",
                 details={"email": new_email},
             )
@@ -1266,7 +1433,9 @@ class UserAuthService:
         )
         user: BaseUserModel | None = await session.get(self.user_model, record.user_id)
         if user is None:
-            raise InvalidTokenException(message="token references a missing user")
+            raise self.exceptions.invalid_token(
+                message="token references a missing user"
+            )
         user.is_active = True
         await session.flush()
         await session.refresh(user)
@@ -1347,7 +1516,7 @@ class UserAuthService:
                 message="new email is the same as the current one",
             )
         if await self._email_taken(session, normalized_new, exclude_user_id=user.id):
-            raise ConflictException(
+            raise self.exceptions.email_taken(
                 message="email already in use",
                 details={"email": normalized_new},
             )
@@ -2075,6 +2244,12 @@ class UserAuthService:
         Args:
             password (str): The plaintext password to check.
 
+        The exception class comes from :attr:`exceptions` — one field
+        per violation — and its ``message_key`` is the violation's
+        :class:`~tempest_fastapi_sdk.PasswordViolationCode`, so a message
+        catalog renders "too short" and "too long" differently while the
+        ``details`` stay structured.
+
         Raises:
             ValidationException: When the password is too short, too
                 long for the hasher, or — under complexity mode —
@@ -2084,11 +2259,21 @@ class UserAuthService:
             password,
             PasswordPolicy.from_settings(self.auth_settings),
         )
-        if violation is not None:
-            raise ValidationException(
-                message=violation.message,
-                details=violation.details,
-            )
+        if violation is None:
+            return
+        exception = {
+            PasswordViolationCode.PASSWORD_TOO_SHORT: (
+                self.exceptions.password_too_short
+            ),
+            PasswordViolationCode.PASSWORD_TOO_LONG: self.exceptions.password_too_long,
+            PasswordViolationCode.PASSWORD_TOO_WEAK: self.exceptions.password_too_weak,
+        }[violation.code]
+        raise exception(
+            message=violation.message,
+            details=violation.details,
+            message_key=violation.code.value,
+            message_params=violation.details,
+        )
 
     async def _issue_token(
         self,
@@ -2264,7 +2449,7 @@ class UserAuthService:
         if record is not None:
             return record
         await self._lookup_token(session, token=token, purpose=purpose)
-        raise InvalidTokenException(message="token is no longer valid")
+        raise self.exceptions.invalid_token(message="token is no longer valid")
 
     async def peek_token(
         self,
@@ -2332,9 +2517,9 @@ class UserAuthService:
         )
         record: BaseUserTokenModel | None = result.scalar_one_or_none()
         if record is None:
-            raise InvalidTokenException(message="token not recognized")
+            raise self.exceptions.invalid_token(message="token not recognized")
         if record.used_at is not None:
-            raise InvalidTokenException(message="token already used")
+            raise self.exceptions.invalid_token(message="token already used")
         now = utcnow().replace(tzinfo=None)
         expires_at = (
             record.expires_at.replace(tzinfo=None)
@@ -2342,7 +2527,7 @@ class UserAuthService:
             else record.expires_at
         )
         if expires_at < now:
-            raise InvalidTokenException(message="token expired")
+            raise self.exceptions.invalid_token(message="token expired")
         return record
 
     async def _maybe_send_activation_email(
@@ -2833,6 +3018,7 @@ class UserAuthService:
 
 
 __all__: list[str] = [
+    "SIGNUP_PROTECTED_FIELDS",
     "ActivationToken",
     "EmailChangeToken",
     "EmailVerificationToken",

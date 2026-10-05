@@ -2910,6 +2910,25 @@ pública e é o que a fábrica monta por baixo quando recebe `secret`.
 - Receita `docs/recipes/zap-inbound.md` (+ `.en.md`) abre com a rota pronta e
   mantém a rota manual num bloco colapsado, "por baixo dos panos".
 
+## Códigos de recusa do produto e conta desativada (#424, #425)
+
+`AuthExceptions` (classe por ponto de recusa, tipada pela default, então
+status e custo não mudam), `PasswordViolationCode` como `message_key` com
+tradução default, `confirm_password_reset` de usuário removido →
+`InvalidTokenException`, e `AUTH_REVEAL_INACTIVE_ACCOUNT` → `403`
+`ACCOUNT_INACTIVE` só com a senha certa. Guard:
+`tests/auth/test_refusal_codes.py` (inclui uma verificação bcrypt por login
+recusado, nos três ramos, com a flag ligada e desligada).
+
+## Signup com coluna obrigatória do produto (#423)
+
+`UserAuthService.signup(fields=...)` aplica colunas do produto antes do
+`flush`, recusando não-coluna e `SIGNUP_PROTECTED_FIELDS`;
+`make_auth_router(signup_schema=...)` repassa os campos do schema que são
+coluna. Unicidade violada no insert → `ConflictException` com
+`details["columns"]`; `NOT NULL` esquecida → `ValueError` com o nome da
+coluna. Guard: `tests/auth/test_signup_fields.py`.
+
 ## Token de uso único sem corrida (#422)
 
 `_consume_token` virou um `UPDATE ... WHERE used_at IS NULL AND expires_at >

@@ -217,6 +217,9 @@ from tempest_fastapi_sdk.utils.password import (
 )
 from tempest_fastapi_sdk.utils.password import PasswordUtils as PasswordUtils
 from tempest_fastapi_sdk.utils.password import (
+    PasswordViolationCode as PasswordViolationCode,
+)
+from tempest_fastapi_sdk.utils.password import (
     check_password_policy as check_password_policy,
 )
 from tempest_fastapi_sdk.utils.password import (
@@ -460,6 +463,7 @@ __all__: list[str] = [
     "PasswordPolicy",
     "PasswordPolicyViolation",
     "PasswordUtils",
+    "PasswordViolationCode",
     "PercentField",
     "PhoneBR",
     "PhoneBRField",
