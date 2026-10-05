@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`signup(fields=...)` preenche coluna do produto antes do insert (#423).**
+  `UserAuthService.signup` aceita `fields: Mapping[str, Any]`, aplicado no
+  model antes do `flush` — então uma coluna `NOT NULL` sem default (o
+  `phone` do transport) deixa de exigir reescrever o `signup` inteiro. Chave
+  que não é coluna e as protegidas (`SIGNUP_PROTECTED_FIELDS`: `id`, `email`,
+  `hashed_password`, `is_active`, `is_admin`) levantam `ValueError` antes de
+  qualquer escrita. Coluna `NOT NULL` esquecida vira `ValueError` com o nome
+  dela, não `IntegrityError` cru. Violação de unicidade no insert vira
+  `ConflictException` (`409`) com `details={"columns": [...], "constraint":
+  ...}` e `field`; medido no SQLite: telefone duplicado responde
+  `{"detail":"phone already in use","code":"CONFLICT","details":{"columns":["phone"],"constraint":null},"field":"phone"}`.
+
+### Changed
+
+- **`make_auth_router(signup_schema=...)` grava os campos que são coluna
+  (#423).** Os campos que o `signup_schema` acrescenta à `SignupSchema` e que
+  também são coluna do user model (fora das protegidas) vão para
+  `signup(fields=...)`, antes do insert. Até a 0.304.0 eram descartados se o
+  `on_signup` não os copiasse; agora o hook só precisa existir para o que não
+  é coluna. Quem tinha um campo de schema com nome de coluna que **não**
+  queria gravado como veio precisa renomeá-lo ou sobrescrevê-lo no
+  `on_signup` (que continua rodando depois, na mesma transação). Um campo
+  `is_admin` no schema continua sem efeito: protegido.
+
 ## [0.304.0] — 2026-10-04
 
 Leitura de planilha `.xlsx` (arquivo, upload e a pasta inteira do Google

@@ -232,9 +232,14 @@ class TestTheHookWritesTheProductColumns:
         assert row.phone == "5511999999999"
         assert row.is_producer is True
 
-    async def test_without_a_hook_the_extra_fields_are_simply_not_written(
+    async def test_without_a_hook_the_column_fields_are_written_anyway(
         self, session: AsyncSession
     ) -> None:
+        """Schema fields that are columns reach the row before the insert.
+
+        Until 0.304.0 they were dropped unless ``on_signup`` copied them;
+        since #423 the router forwards them to ``signup(fields=...)``.
+        """
         app = _app(session, signup_schema=_ProfileSignupSchema)
 
         async with _client(app) as client:
@@ -253,7 +258,7 @@ class TestTheHookWritesTheProductColumns:
                 select(_ProfileUser).where(_ProfileUser.email == "bruno@example.com")
             )
         ).scalar_one()
-        assert row.is_producer is False
+        assert row.is_producer is True
 
 
 class TestTheHookSharesTheInsertTransaction:

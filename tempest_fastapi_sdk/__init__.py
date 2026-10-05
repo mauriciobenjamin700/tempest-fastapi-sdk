@@ -436,6 +436,9 @@ from tempest_fastapi_sdk.auth import (
     LOCALE_QUERY_PARAM as LOCALE_QUERY_PARAM,
 )
 from tempest_fastapi_sdk.auth import (
+    SIGNUP_PROTECTED_FIELDS as SIGNUP_PROTECTED_FIELDS,
+)
+from tempest_fastapi_sdk.auth import (
     SUPPORTED_LOCALES as SUPPORTED_LOCALES,
 )
 from tempest_fastapi_sdk.auth import (
@@ -1996,6 +1999,7 @@ __all__: list[str] = [
     "RAISES_ATTRIBUTE",
     "REFRESH_TOKEN_TYPE",
     "REQUEST_ID_HEADER",
+    "SIGNUP_PROTECTED_FIELDS",
     "SNIFFABLE_MIMETYPES",
     "STATIC_CREDENTIAL_NAMESPACE",
     "SUPPORTED_LOCALES",
