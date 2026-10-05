@@ -17,13 +17,14 @@ from httpx import ASGITransport, AsyncClient
 
 from tempest_fastapi_sdk import (
     AsyncDatabaseManager,
+    AuthExceptions,
     BaseUserModel,
     UserAuthService,
     make_auth_router,
     make_user_token_model,
     register_exception_handlers,
 )
-from tempest_fastapi_sdk.exceptions import AppException
+from tempest_fastapi_sdk.exceptions import AppException, ForbiddenException
 from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
 
 PASSWORD: str = "strong-pass-12-chars"
@@ -131,7 +132,7 @@ class TestCurrentUserDependency:
         status, body = await _get_me(service.current_user_dependency(), access)
 
         assert status == 403
-        assert body["code"] == "FORBIDDEN"
+        assert body["code"] == "ACCOUNT_INACTIVE"
 
     async def test_require_active_false_keeps_the_old_behavior(
         self, stack: tuple[UserAuthService, str]
@@ -193,3 +194,38 @@ class TestBundledRouter:
             )
 
         assert response.status_code == 403
+
+
+class UserDeactivatedError(ForbiddenException):
+    """A product's own deactivated-account refusal."""
+
+    code: str = "USER_ACCOUNT_DEACTIVATED"
+
+
+class TestProductRefusal:
+    """``AuthExceptions.account_inactive`` reaches every refusal point."""
+
+    async def test_dependency_and_router_use_the_product_class(
+        self, stack: tuple[UserAuthService, str]
+    ) -> None:
+        """Login, the dependency and ``/auth/me`` answer the same ``code``."""
+        service, access = stack
+        service.exceptions = AuthExceptions(account_inactive=UserDeactivatedError)
+        assert service.db is not None
+
+        status, body = await _get_me(service.current_user_dependency(), access)
+        assert (status, body["code"]) == (403, "USER_ACCOUNT_DEACTIVATED")
+
+        app = FastAPI()
+        register_exception_handlers(app)
+        app.include_router(
+            make_auth_router(service, session_factory=service.db.session_dependency)
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as client:
+            response = await client.get(
+                "/auth/me", headers={"Authorization": f"Bearer {access}"}
+            )
+        assert response.status_code == 403
+        assert response.json()["code"] == "USER_ACCOUNT_DEACTIVATED"

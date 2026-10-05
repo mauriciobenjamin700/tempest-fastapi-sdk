@@ -1265,6 +1265,21 @@ Tabela de decisão:
 !!! danger "O teto conta bytes, não caracteres"
     `AUTH_PASSWORD_MAX_BYTES` existe porque bcrypt **recusa** entrada acima de 72 bytes: `hashpw` levanta `ValueError`, e sem esse teto o erro subia como **500** no signup / reset / troca de senha. Bytes é a unidade que o hash vê, e 72 bytes chegam bem antes de 72 caracteres em texto não-ASCII — um emoji custa 4 bytes, uma letra acentuada 2, então `"🔒" * 19` (19 caracteres) já passa do limite e responde **422**. Só aumente o valor se você trocar o hasher por um sem esse limite.
 
+!!! info "Cada violação tem o seu `message_key` (v0.305.0+)"
+    O `code` da resposta continua `VALIDATION_ERROR`, mas o `message_key` diz
+    qual regra caiu, e o catálogo default traduz cada uma:
+
+    | `message_key` | Quando | `detail` em pt-BR (catálogo default) |
+    |---------------|--------|--------------------------------------|
+    | `PASSWORD_TOO_SHORT` | abaixo do piso efetivo | `A senha precisa ter pelo menos 12 caracteres` |
+    | `PASSWORD_TOO_LONG` | acima de `AUTH_PASSWORD_MAX_BYTES` | `A senha pode ter no máximo 72 bytes` |
+    | `PASSWORD_TOO_WEAK` | falta classe de caractere (complexidade ligada) | `A senha precisa ter letra minúscula, letra maiúscula, número e caractere especial` |
+
+    O mesmo valor está em `PasswordPolicyViolation.code`
+    (`PasswordViolationCode`), para quem chama `check_password_policy` direto.
+    Para trocar também o `code`, veja
+    [os códigos de erro do seu produto](#codigos-de-erro-do-seu-produto-authexceptions-v03050).
+
 ### Grupo 3 — Controle do fluxo de e-mail (`AuthSettings`)
 
 Decidem **se** e **como** o link chega ao usuário. Mapeiam direto nos [cinco modos de operação](#cinco-modos-de-operacao).
@@ -1387,10 +1402,153 @@ Tem uma seção inteira só pra isso, explicada bem devagar: [Idioma dos e-mails
     não derruba uma troca de e-mail pendente) e só o mesmo usuário. A linha
     antiga é marcada `used_at`, não apagada, então a auditoria fica.
 
+### Grupo 12 — Conta desativada (`AuthSettings`) *(v0.305.0+)*
+
+| Env var | Tipo | Default | O que faz |
+|---------|------|---------|-----------|
+| `AUTH_REVEAL_INACTIVE_ACCOUNT` | `bool` | `false` | `true` = a senha **certa** numa conta desativada responde `403` `ACCOUNT_INACTIVE` em vez do `401` genérico. Senha errada e e-mail desconhecido continuam `401`. |
+
+Por padrão, conta desativada responde o mesmo `401` de senha errada, para a
+resposta não contar quais e-mails têm conta. Só que o dono da conta, sem saber
+por que não entra, pede "esqueci a senha", troca a senha e continua sem entrar.
+Ligado, quem **provou a senha** fica sabendo — e isso não enumera nada, porque
+quem tem a senha já é o dono:
+
+```console
+$ curl -s -X POST localhost:8000/auth/login \
+    -H "Content-Type: application/json" \
+    -d '{"email":"ana@example.com","password":"strong-pass-12-chars"}'
+{"detail":"Esta conta está desativada — fale com o suporte para reativá-la","code":"ACCOUNT_INACTIVE","details":{}}
+```
+
+(Com o catálogo default em `register_exception_handlers(app, catalog=default_message_catalog())`;
+sem catálogo, o `detail` é `account is not active`.)
+
+!!! check "O custo é o mesmo nos três ramos"
+    A senha é verificada **antes** de olhar `is_active`, ligado ou desligado.
+    E-mail desconhecido paga um bcrypt contra um hash descartável. Medido em
+    `tests/auth/test_refusal_codes.py`: exatamente uma verificação por login
+    recusado, nos três ramos, com a flag ligada e desligada.
+
 !!! note "MFA / TOTP tem suas próprias vars"
     Quando `AUTH_MFA_ENABLED=true`, o `AuthSettings` ainda expõe `AUTH_MFA_ISSUER`, `AUTH_MFA_RECOVERY_CODES_COUNT`, `AUTH_MFA_TOKEN_TTL_SECONDS` e `AUTH_MFA_VERIFY_WINDOW`. Ficam fora do escopo desta receita (signup/activate/login/reset) — são cobertos na receita de MFA.
 
 ---
+
+## Códigos de erro do seu produto (`AuthExceptions`) *(v0.305.0+)*
+
+Serviço que já existe tem clientes tratando `code`s próprios —
+`ERROR_USER_INVALID_CREDENTIALS`, `USER_ALREADY_EXISTS`, `INVALID_PASSWORD`. O
+SDK responde `UNAUTHORIZED`, `CONFLICT`, `VALIDATION_ERROR`, e o catálogo troca
+a **mensagem**, não o código. Sem uma costura, adotar o `UserAuthService`
+significava sobrescrever método só para trocar a exceção.
+
+`AuthExceptions` é essa costura: diz qual classe sobe em cada ponto de recusa.
+
+```python
+# src/services/auth.py
+
+from tempest_fastapi_sdk import AuthExceptions, UserAuthService
+from tempest_fastapi_sdk.exceptions import (
+    ConflictException,
+    ForbiddenException,
+    InvalidTokenException,
+    UnauthorizedException,
+    ValidationException,
+)
+
+from src.core.settings import settings
+from src.db.models import UserModel, UserTokenModel
+
+
+class InvalidCredentialsError(UnauthorizedException):
+    """E-mail ou senha errados."""
+
+    code: str = "ERROR_USER_INVALID_CREDENTIALS"
+
+
+class UserDeactivatedError(ForbiddenException):
+    """Conta desativada, revelada a quem acertou a senha."""
+
+    code: str = "USER_ACCOUNT_DEACTIVATED"
+
+
+class UserAlreadyExistsError(ConflictException):
+    """E-mail já cadastrado."""
+
+    code: str = "USER_ALREADY_EXISTS"
+
+
+class InvalidPasswordError(ValidationException):
+    """Senha curta ou fraca."""
+
+    code: str = "INVALID_PASSWORD"
+
+
+class PasswordTooLongError(ValidationException):
+    """Senha acima do limite do bcrypt."""
+
+    code: str = "PASSWORD_TOO_LONG"
+
+
+class InvalidResetTokenError(InvalidTokenException):
+    """Link de uso único que não vale."""
+
+    code: str = "INVALID_PASSWORD_RESET_TOKEN"
+
+
+auth_service = UserAuthService(
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+    exceptions=AuthExceptions(
+        invalid_credentials=InvalidCredentialsError,
+        account_inactive=UserDeactivatedError,
+        email_taken=UserAlreadyExistsError,
+        password_too_short=InvalidPasswordError,
+        password_too_long=PasswordTooLongError,
+        password_too_weak=InvalidPasswordError,
+        invalid_token=InvalidResetTokenError,
+    ),
+)
+```
+
+Medido com `register_exception_handlers(app, catalog=default_message_catalog())`
+e `AUTH_REVEAL_INACTIVE_ACCOUNT=true`:
+
+| Requisição | Sem `exceptions=` | Com o mapa acima |
+|------------|-------------------|------------------|
+| login, senha errada | `401` `UNAUTHORIZED` | `401` `ERROR_USER_INVALID_CREDENTIALS` |
+| login, conta desativada, senha certa | `403` `ACCOUNT_INACTIVE` | `403` `USER_ACCOUNT_DEACTIVATED` |
+| signup, senha curta | `422` `VALIDATION_ERROR` | `422` `INVALID_PASSWORD` |
+| signup, 73 bytes | `422` `VALIDATION_ERROR` | `422` `PASSWORD_TOO_LONG` |
+| signup, e-mail repetido | `409` `CONFLICT` | `409` `USER_ALREADY_EXISTS` |
+
+Cada campo é tipado com a classe default, então a sua **precisa** herdar dela.
+É isso que segura o status: um `InvalidCredentialsError` é um
+`UnauthorizedException`, então continua `401`, e o caminho da recusa — inclusive
+o bcrypt único do login — é o mesmo. Muda a classe e, com ela, o `code`.
+
+!!! tip "A mensagem do seu `code`"
+    Nas violações de senha e na conta desativada o SDK passa um `message_key`
+    próprio (`PASSWORD_TOO_SHORT`, `ACCOUNT_INACTIVE`, …), então o `detail`
+    continua traduzido mesmo com a sua classe. Nos outros pontos o catálogo
+    procura o **seu** `code`; sem tradução para ele, o `detail` é a mensagem em
+    inglês do SDK (`invalid email or password`). Acrescente as suas com
+    `default_message_catalog().merge({"pt-BR": {"ERROR_USER_INVALID_CREDENTIALS": "..."}})`.
+
+!!! note "O que `invalid_token` cobre"
+    Os links de uso único: ativação, troca de senha, troca de e-mail e
+    verificação — desconhecido, usado, expirado, ou apontando para usuário que
+    não existe mais. Desde a v0.305.0 a troca de senha com usuário removido é
+    `InvalidTokenException` como os irmãos, não mais `404`. Refresh token fica de
+    fora: é outro contrato com o cliente.
+
+**Recap.** `AuthExceptions` troca a classe — e o `code` — em cada ponto de
+recusa, sem override e sem mudar status nem custo. As violações de senha já
+saem com `message_key` próprio, e `AUTH_REVEAL_INACTIVE_ACCOUNT` mostra o `403`
+só a quem provou a senha.
 
 ## Anatomia de um e-mail
 
@@ -2085,7 +2243,7 @@ get_current_user_or_none = auth_service.current_user_dependency(soft=True)
     O `login` já recusa conta inativa, mas um token emitido **antes** da
     desativação continua válido até expirar — o access TTL inteiro. Por isso a
     dependency confere `is_active` depois de carregar o usuário e responde
-    `403` `FORBIDDEN`; até a 0.304.0 ela devolvia a linha e cada rota precisava
+    `403` `ACCOUNT_INACTIVE` (o mesmo `AuthExceptions.account_inactive` do login); até a 0.304.0 ela devolvia a linha e cada rota precisava
     lembrar do `require_active`. As rotas autenticadas do `make_auth_router`
     (`/auth/me`, troca de senha e de e-mail, MFA, passkeys) fazem a mesma
     conferência.

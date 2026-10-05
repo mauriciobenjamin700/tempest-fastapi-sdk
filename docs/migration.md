@@ -5,7 +5,7 @@ Passo a passo das mudanças que quebram compatibilidade, agrupadas por release m
 ## 0.305.0 — token de conta desativada não autentica mais
 
 `current_user_dependency()` e as rotas autenticadas do `make_auth_router`
-passam a recusar conta com `is_active=False` com `403` `FORBIDDEN`, mesmo
+passam a recusar conta com `is_active=False` com `403` `ACCOUNT_INACTIVE` (ou `AuthExceptions.account_inactive`), mesmo
 com o token ainda válido. Até a 0.304.0 a conta desativada seguia entrando
 com o token emitido antes, pelo access TTL inteiro.
 
@@ -18,6 +18,22 @@ com o token emitido antes, pelo access TTL inteiro.
   `inactive_exception=SuaExcecao`.
 - **Override de `get_user` só para levantar `403` em conta inativa**: pode
   ser removido.
+
+## 0.305.0 — troca de senha com usuário removido é link inválido
+
+`confirm_password_reset` com um token cujo usuário não existe mais levantava
+`NotFoundException` (`404`). Agora levanta `InvalidTokenException`
+(`401` `INVALID_TOKEN`, ou a classe de `AuthExceptions.invalid_token`), como
+`activate` e `confirm_email_change` já faziam: para quem chama, é um link que
+não vale.
+
+### O que fazer
+
+- Cliente que tratava `404` em `POST /auth/password-reset/confirm`: trate o
+  mesmo erro do link expirado.
+- Código que constrói `PasswordPolicyViolation(...)` à mão: passe
+  `code=PasswordViolationCode.<...>`, agora obrigatório. Quem só **lê** o
+  retorno de `check_password_policy` não muda nada.
 
 ## 0.304.0 — o leitor CSV do Google Sheets tem limite por padrão
 

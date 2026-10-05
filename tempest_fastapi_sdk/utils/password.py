@@ -14,6 +14,8 @@ import string
 from dataclasses import dataclass
 from typing import Any
 
+from tempest_fastapi_sdk.core.enums import BaseStrEnum
+
 try:
     import bcrypt as _bcrypt
 except ImportError:  # pragma: no cover - guarded by extras
@@ -66,6 +68,27 @@ class PasswordPolicy:
         )
 
 
+class PasswordViolationCode(BaseStrEnum):
+    """Which rule of a :class:`PasswordPolicy` a password broke.
+
+    Stable identifiers a client can branch on and a message catalog can
+    translate: ``UserAuthService`` raises with the value as
+    ``message_key``, and the default catalog carries all three in pt-BR
+    and en-US.
+
+    Attributes:
+        PASSWORD_TOO_SHORT: Below the effective minimum length.
+        PASSWORD_TOO_LONG: Above ``max_bytes`` UTF-8 bytes (bcrypt's
+            limit).
+        PASSWORD_TOO_WEAK: Missing a required character class under
+            complexity mode.
+    """
+
+    PASSWORD_TOO_SHORT = "PASSWORD_TOO_SHORT"
+    PASSWORD_TOO_LONG = "PASSWORD_TOO_LONG"
+    PASSWORD_TOO_WEAK = "PASSWORD_TOO_WEAK"
+
+
 @dataclass(frozen=True)
 class PasswordPolicyViolation:
     """Why a password was rejected, in a form both callers can render.
@@ -74,10 +97,13 @@ class PasswordPolicyViolation:
         message (str): Human-readable reason.
         details (dict[str, Any]): Structured context — the bound that
             was crossed, or the character classes that were missing.
+        code (PasswordViolationCode): Which rule was broken, stable
+            across releases and locales.
     """
 
     message: str
     details: dict[str, Any]
+    code: PasswordViolationCode
 
 
 def check_password_policy(
@@ -111,6 +137,7 @@ def check_password_policy(
         return PasswordPolicyViolation(
             message=f"password must be at least {floor} characters",
             details={"min_length": floor},
+            code=PasswordViolationCode.PASSWORD_TOO_SHORT,
         )
     encoded_length = len(password.encode("utf-8"))
     if encoded_length > policy.max_bytes:
@@ -120,6 +147,7 @@ def check_password_policy(
                 "max_bytes": policy.max_bytes,
                 "length_bytes": encoded_length,
             },
+            code=PasswordViolationCode.PASSWORD_TOO_LONG,
         )
     if not policy.require_complexity:
         return None
@@ -140,6 +168,7 @@ def check_password_policy(
                 + " character"
             ),
             details={"missing_classes": missing},
+            code=PasswordViolationCode.PASSWORD_TOO_WEAK,
         )
     return None
 
@@ -346,6 +375,7 @@ __all__: list[str] = [
     "PasswordPolicy",
     "PasswordPolicyViolation",
     "PasswordUtils",
+    "PasswordViolationCode",
     "check_password_policy",
     "generate_password",
 ]

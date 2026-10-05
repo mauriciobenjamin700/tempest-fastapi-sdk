@@ -714,7 +714,9 @@ def make_auth_router(
                 "Returns **401** for wrong credentials and for accounts that "
                 "exist but were never activated — the message is "
                 "intentionally generic so callers can't tell which case it "
-                "was.\n\n"
+                "was. With ``AUTH_REVEAL_INACTIVE_ACCOUNT=True``, the right "
+                "password on a deactivated account returns **403** "
+                "``ACCOUNT_INACTIVE`` instead.\n\n"
                 "**MFA.** When the user has finished TOTP enrollment "
                 "(and ``AUTH_MFA_ENABLED=True``) this endpoint does *not* "
                 "return the JWT pair. Instead it returns "
@@ -2489,7 +2491,7 @@ def _make_user_loader(
     async def _load(user_id: str, session: AsyncSession) -> BaseUserModel | None:
         obj: BaseUserModel | None = await session.get(service.user_model, UUID(user_id))
         if obj is not None:
-            require_active(obj)
+            require_active(obj, exception=service.inactive_account_error)
         return obj
 
     return _load

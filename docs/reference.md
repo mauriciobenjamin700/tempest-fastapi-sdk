@@ -735,6 +735,13 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.make_zap_webhook_dependency
 ::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.is_forward_transition
 
+### `tempest_fastapi_sdk.integrations.messaging.zap.router`
+
+::: tempest_fastapi_sdk.integrations.messaging.zap.router.ZapInboundHandler
+::: tempest_fastapi_sdk.integrations.messaging.zap.router.ZapStatusHandler
+::: tempest_fastapi_sdk.integrations.messaging.zap.router.ZapWebhookAckSchema
+::: tempest_fastapi_sdk.integrations.messaging.zap.router.make_zap_webhook_router
+
 ## Mercado Pago
 
 ### `tempest_fastapi_sdk.integrations.payment.mercado_pago`
@@ -911,6 +918,8 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.auth.firebase.FirebaseUserDisabledError
 ::: tempest_fastapi_sdk.auth.firebase.FirebaseUnavailableError
 ::: tempest_fastapi_sdk.auth.exceptions.MFAAlreadyEnrolledException
+::: tempest_fastapi_sdk.auth.exceptions.AccountInactiveException
+::: tempest_fastapi_sdk.auth.exceptions.AuthExceptions
 ::: tempest_fastapi_sdk.auth.firebase.DEFAULT_FIREBASE_APP_NAME
 ::: tempest_fastapi_sdk.auth.router.make_auth_router
 ::: tempest_fastapi_sdk.auth.guards.require_authenticated
@@ -1225,6 +1234,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.password.PasswordUtils
 ::: tempest_fastapi_sdk.utils.password.PasswordPolicy
 ::: tempest_fastapi_sdk.utils.password.PasswordPolicyViolation
+::: tempest_fastapi_sdk.utils.password.PasswordViolationCode
 ::: tempest_fastapi_sdk.utils.password.check_password_policy
 ::: tempest_fastapi_sdk.utils.password.generate_password
 ::: tempest_fastapi_sdk.utils.password.DEFAULT_GENERATED_PASSWORD_LENGTH

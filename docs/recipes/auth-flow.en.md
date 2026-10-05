@@ -1277,6 +1277,21 @@ Decision table:
 !!! danger "The ceiling counts bytes, not characters"
     `AUTH_PASSWORD_MAX_BYTES` exists because bcrypt **refuses** input over 72 bytes: `hashpw` raises `ValueError`, and without the ceiling that surfaced as a **500** on signup / reset / password change. Bytes is the unit the hash sees, and 72 bytes arrive well before 72 characters on non-ASCII text — an emoji costs 4 bytes, an accented letter 2, so `"🔒" * 19` (19 characters) is already over the limit and answers **422**. Only raise the value if you swap the hasher for one without the limit.
 
+!!! info "Each violation has its own `message_key` (v0.305.0+)"
+    The response `code` stays `VALIDATION_ERROR`, but the `message_key` names
+    the rule that failed, and the default catalog translates each one:
+
+    | `message_key` | When | `detail` in en-US (default catalog) |
+    |---------------|------|-------------------------------------|
+    | `PASSWORD_TOO_SHORT` | below the effective floor | `Password must be at least 12 characters` |
+    | `PASSWORD_TOO_LONG` | above `AUTH_PASSWORD_MAX_BYTES` | `Password must be at most 72 bytes` |
+    | `PASSWORD_TOO_WEAK` | missing a character class (complexity on) | `Password must contain a lowercase letter, an uppercase letter, a digit and a special character` |
+
+    The same value is on `PasswordPolicyViolation.code`
+    (`PasswordViolationCode`), for callers of `check_password_policy`. To
+    change the `code` too, see
+    [your product's error codes](#your-products-error-codes-authexceptions-v03050).
+
 ### Group 3 — Email flow control (`AuthSettings`)
 
 Decide **whether** and **how** the link reaches the user. They map directly to the [five operating modes](#five-operating-modes).
@@ -1400,10 +1415,155 @@ There's a whole section dedicated to this, explained step by step:
     reset does not kill a pending email change) and same user only. The old row
     is marked `used_at`, not deleted, so the audit trail stays.
 
+### Group 12 — Deactivated account (`AuthSettings`) *(v0.305.0+)*
+
+| Env var | Type | Default | What it does |
+|---------|------|---------|--------------|
+| `AUTH_REVEAL_INACTIVE_ACCOUNT` | `bool` | `false` | `true` = the **right** password on a deactivated account answers `403` `ACCOUNT_INACTIVE` instead of the generic `401`. A wrong password and an unknown email stay `401`. |
+
+By default a deactivated account answers the same `401` as a wrong password, so
+the response does not tell which emails have an account. But the owner, not
+knowing why they cannot get in, tries "forgot password", resets it, and still
+cannot get in. Turned on, whoever **proved the password** is told — and that
+enumerates nothing, because whoever has the password already owns the account:
+
+```console
+$ curl -s -X POST localhost:8000/auth/login \
+    -H "Content-Type: application/json" \
+    -d '{"email":"ana@example.com","password":"strong-pass-12-chars"}'
+{"detail":"Esta conta está desativada — fale com o suporte para reativá-la","code":"ACCOUNT_INACTIVE","details":{}}
+```
+
+(With the default catalog in `register_exception_handlers(app, catalog=default_message_catalog())`,
+which negotiates pt-BR here; without a catalog, `detail` is `account is not active`.)
+
+!!! check "The cost is the same in all three branches"
+    The password is verified **before** `is_active` is read, on or off. An
+    unknown email pays one bcrypt against a throwaway hash. Measured in
+    `tests/auth/test_refusal_codes.py`: exactly one verification per refused
+    login, in all three branches, with the flag on and off.
+
 !!! note "MFA / TOTP has its own vars"
     When `AUTH_MFA_ENABLED=true`, `AuthSettings` also exposes `AUTH_MFA_ISSUER`, `AUTH_MFA_RECOVERY_CODES_COUNT`, `AUTH_MFA_TOKEN_TTL_SECONDS` and `AUTH_MFA_VERIFY_WINDOW`. They're out of scope for this recipe (signup/activate/login/reset) — covered in the MFA recipe.
 
 ---
+
+## Your product's error codes (`AuthExceptions`) *(v0.305.0+)*
+
+An existing service has clients handling its own `code`s —
+`ERROR_USER_INVALID_CREDENTIALS`, `USER_ALREADY_EXISTS`, `INVALID_PASSWORD`. The
+SDK answers `UNAUTHORIZED`, `CONFLICT`, `VALIDATION_ERROR`, and the catalog
+swaps the **message**, not the code. Without a seam, adopting
+`UserAuthService` meant overriding methods only to swap the exception.
+
+`AuthExceptions` is that seam: it says which class is raised at each refusal
+point.
+
+```python
+# src/services/auth.py
+
+from tempest_fastapi_sdk import AuthExceptions, UserAuthService
+from tempest_fastapi_sdk.exceptions import (
+    ConflictException,
+    ForbiddenException,
+    InvalidTokenException,
+    UnauthorizedException,
+    ValidationException,
+)
+
+from src.core.settings import settings
+from src.db.models import UserModel, UserTokenModel
+
+
+class InvalidCredentialsError(UnauthorizedException):
+    """Wrong email or password."""
+
+    code: str = "ERROR_USER_INVALID_CREDENTIALS"
+
+
+class UserDeactivatedError(ForbiddenException):
+    """Deactivated account, revealed to whoever proved the password."""
+
+    code: str = "USER_ACCOUNT_DEACTIVATED"
+
+
+class UserAlreadyExistsError(ConflictException):
+    """Email already registered."""
+
+    code: str = "USER_ALREADY_EXISTS"
+
+
+class InvalidPasswordError(ValidationException):
+    """Short or weak password."""
+
+    code: str = "INVALID_PASSWORD"
+
+
+class PasswordTooLongError(ValidationException):
+    """Password above bcrypt's limit."""
+
+    code: str = "PASSWORD_TOO_LONG"
+
+
+class InvalidResetTokenError(InvalidTokenException):
+    """A single-use link that does not work."""
+
+    code: str = "INVALID_PASSWORD_RESET_TOKEN"
+
+
+auth_service = UserAuthService(
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+    exceptions=AuthExceptions(
+        invalid_credentials=InvalidCredentialsError,
+        account_inactive=UserDeactivatedError,
+        email_taken=UserAlreadyExistsError,
+        password_too_short=InvalidPasswordError,
+        password_too_long=PasswordTooLongError,
+        password_too_weak=InvalidPasswordError,
+        invalid_token=InvalidResetTokenError,
+    ),
+)
+```
+
+Measured with `register_exception_handlers(app, catalog=default_message_catalog())`
+and `AUTH_REVEAL_INACTIVE_ACCOUNT=true`:
+
+| Request | Without `exceptions=` | With the map above |
+|---------|-----------------------|--------------------|
+| login, wrong password | `401` `UNAUTHORIZED` | `401` `ERROR_USER_INVALID_CREDENTIALS` |
+| login, deactivated account, right password | `403` `ACCOUNT_INACTIVE` | `403` `USER_ACCOUNT_DEACTIVATED` |
+| signup, short password | `422` `VALIDATION_ERROR` | `422` `INVALID_PASSWORD` |
+| signup, 73 bytes | `422` `VALIDATION_ERROR` | `422` `PASSWORD_TOO_LONG` |
+| signup, repeated email | `409` `CONFLICT` | `409` `USER_ALREADY_EXISTS` |
+
+Each field is typed with the default class, so yours **must** subclass it.
+That is what holds the status: an `InvalidCredentialsError` is an
+`UnauthorizedException`, so it stays `401`, and the refusal path — including
+login's single bcrypt — is the same. The class changes, and the `code` with it.
+
+!!! tip "The message for your `code`"
+    For the password violations and the deactivated account the SDK passes
+    its own `message_key` (`PASSWORD_TOO_SHORT`, `ACCOUNT_INACTIVE`, …), so
+    `detail` stays translated with your class. Elsewhere the catalog looks up
+    **your** `code`; without a translation for it, `detail` is the SDK's
+    English message (`invalid email or password`). Add yours with
+    `default_message_catalog().merge({"en-US": {"ERROR_USER_INVALID_CREDENTIALS": "..."}})`.
+
+!!! note "What `invalid_token` covers"
+    The single-use links: activation, password reset, email change and
+    verification — unknown, used, expired, or pointing to a user that no
+    longer exists. Since v0.305.0 a password reset whose user was removed is
+    an `InvalidTokenException` like its siblings, no longer a `404`. Refresh
+    tokens are left out: they are a different contract with the client.
+
+**Recap.** `AuthExceptions` swaps the class — and the `code` — at each refusal
+point, without overrides and without changing status or cost. Password
+violations already carry their own `message_key`, and
+`AUTH_REVEAL_INACTIVE_ACCOUNT` shows the `403` only to whoever proved the
+password.
 
 ## Email anatomy
 
@@ -2102,7 +2262,7 @@ get_current_user_or_none = auth_service.current_user_dependency(soft=True)
     `login` already refuses an inactive account, but a token issued
     **before** the deactivation stays valid until it expires — the whole
     access TTL. So the dependency checks `is_active` after loading the user
-    and answers `403` `FORBIDDEN`; up to 0.304.0 it returned the row and every
+    and answers `403` `ACCOUNT_INACTIVE` (the same `AuthExceptions.account_inactive` login uses); up to 0.304.0 it returned the row and every
     route had to remember `require_active`. The authenticated routes of
     `make_auth_router` (`/auth/me`, password and email change, MFA, passkeys)
     run the same check.
