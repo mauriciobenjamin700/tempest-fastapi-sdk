@@ -407,7 +407,10 @@ $ curl -s -X POST localhost:8000/auth/signup \
 ```
 
 `constraint` is `null` on SQLite, which does not name a unique constraint;
-PostgreSQL reports the name (`users_phone_key`, for instance).
+PostgreSQL reports the name (`users_phone_key`, for instance). The `detail`
+above is from an app without a catalog; with `register_exception_handlers(app,
+catalog=default_message_catalog())` it comes out translated (`Conflito de
+recurso` under pt-BR), and `code`, `details` and `field` do not change.
 
 !!! warning "A protected column never comes from the body"
     `id`, `email`, `hashed_password`, `is_active` and `is_admin`

@@ -401,7 +401,10 @@ $ curl -s -X POST localhost:8000/auth/signup \
 ```
 
 O `constraint` sai `null` no SQLite, que não nomeia a constraint de unicidade;
-no PostgreSQL vem o nome (`users_phone_key`, por exemplo).
+no PostgreSQL vem o nome (`users_phone_key`, por exemplo). O `detail` acima é o
+de um app sem catálogo; com `register_exception_handlers(app,
+catalog=default_message_catalog())` ele sai traduzido (`Conflito de recurso`),
+e `code`, `details` e `field` não mudam.
 
 !!! warning "Coluna protegida nunca vem do corpo"
     `id`, `email`, `hashed_password`, `is_active` e `is_admin`

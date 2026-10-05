@@ -35,6 +35,26 @@ não vale.
   `code=PasswordViolationCode.<...>`, agora obrigatório. Quem só **lê** o
   retorno de `check_password_policy` não muda nada.
 
+## 0.305.0 — o signup grava os campos do schema que são coluna
+
+`make_auth_router(signup_schema=...)` passa a gravar na linha, **antes** do
+insert, todo campo que o seu `signup_schema` acrescenta à `SignupSchema` e que
+também é coluna do user model (fora de `SIGNUP_PROTECTED_FIELDS`: `id`,
+`email`, `hashed_password`, `is_active`, `is_admin`). Até a 0.304.0 esses
+campos só chegavam à linha se o `on_signup` os copiasse.
+
+### O que fazer
+
+- **`on_signup` que só copiava os campos** (`user.phone = payload.phone`): pode
+  ser removido.
+- **Campo de schema com nome de coluna que você transforma antes de gravar**
+  (normaliza telefone, por exemplo): o `on_signup` continua rodando depois, na
+  mesma transação, e sobrescreve o valor. Mas a unicidade é conferida no
+  insert, com o valor cru — se isso importa, normalize num validator do
+  próprio schema.
+- **Campo de schema com nome de coluna que não devia ir para a linha**:
+  renomeie o campo.
+
 ## 0.304.0 — o leitor CSV do Google Sheets tem limite por padrão
 
 `read_google_sheet` e `read_google_sheet_as` ganharam `max_bytes` e

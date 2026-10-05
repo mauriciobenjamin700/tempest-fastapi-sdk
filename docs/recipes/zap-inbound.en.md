@@ -38,7 +38,7 @@ default is `status` only.
     `make_zap_webhook_dependency` **refuses to be built** without a
     non-empty secret: with it, an unsigned delivery is always `401`.
 
-## Step 1 — The minimum that receives a message
+## Step 1 — The ready-made route
 
 The ready route: one `POST`, the signature checked, the body validated into the
 right model, dispatch by event, and a `200` answer.
@@ -76,7 +76,7 @@ Three pieces:
 - **`on_message`** receives the delivery already validated: a
   `ZapInboundMessage` for `message.received`, a `ZapStatusCallback` for the
   four status events. The latter goes in `on_status`.
-- **The answer** is always `200`, with the event name echoed back —
+- **The answer** is `200` once the handler returns, with the event name echoed back —
   `{"ok": true, "event": "message.received"}`, a
   [`ZapWebhookAckSchema`](../../../reference/#tempest_fastapi_sdk.integrations.messaging.zap.router.ZapWebhookAckSchema).
 
@@ -236,9 +236,12 @@ checking and one place to read what exists.
 | `AcceptedResponseStatus` | `callback.status` | `SENT`, `DELIVERED`, `READ`, `FAILED` (plus `QUEUED` and `SENDING`, which never reach the webhook) |
 
 Step 1 dispatched for you; here the route is yours again, because `event` is
-what picks the path and it lives on `ZapWebhookDelivery` — the envelope the
-factory hands the handler already opened on the right model. Anyone who wants
-the factory back just passes these functions to `on_inbound` and `on_status`.
+what picks the path and it lives on `ZapWebhookDelivery` — the factory hands
+the handler only the body (`ZapInboundMessage` or `ZapStatusCallback`), already
+opened on the right model. To use the factory with these functions, wrap each
+in an `async def ... -> None` handler and pass it as `on_inbound` /
+`on_status`: they are synchronous and return `str`, and the factory awaits the
+handler.
 
 ```python title="zap_dispatch.py" hl_lines="27 29 31 34 36 51 53"
 from fastapi import Depends, FastAPI

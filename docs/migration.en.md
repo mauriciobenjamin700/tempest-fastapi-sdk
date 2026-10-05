@@ -36,6 +36,26 @@ that does not work.
   `code=PasswordViolationCode.<...>`, now required. Callers that only **read**
   what `check_password_policy` returns change nothing.
 
+## 0.305.0 — signup writes the schema fields that are columns
+
+`make_auth_router(signup_schema=...)` now sets on the row, **before** the
+insert, every field your `signup_schema` adds on top of `SignupSchema` that is
+also a column of the user model (outside `SIGNUP_PROTECTED_FIELDS`: `id`,
+`email`, `hashed_password`, `is_active`, `is_admin`). Up to 0.304.0 those
+fields reached the row only if `on_signup` copied them.
+
+### What to do
+
+- **An `on_signup` that only copied the fields** (`user.phone =
+  payload.phone`): can be removed.
+- **A schema field named like a column that you transform before storing**
+  (normalizing a phone, say): `on_signup` still runs afterwards, in the same
+  transaction, and overwrites the value. But uniqueness is checked at the
+  insert, against the raw value — if that matters, normalize in a validator on
+  the schema itself.
+- **A schema field named like a column that must not reach the row**: rename
+  the field.
+
 ## 0.304.0 — the Google Sheets CSV reader has a limit by default
 
 `read_google_sheet` and `read_google_sheet_as` gained `max_bytes` and

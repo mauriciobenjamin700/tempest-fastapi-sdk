@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.305.0] — 2026-10-05
+
+Auth que o produto não precisa mais sobrescrever: token de uso único gasto
+numa instrução só (dois resgates do mesmo link não passam mais), coluna
+obrigatória do produto preenchida no signup, códigos de recusa configuráveis
+com `AuthExceptions` e código por violação de senha, conta desativada recusada
+mesmo com token ainda válido (e revelada ao dono que acertou a senha, se
+ligado). Mais a rota pronta para o webhook da zap-api. Três mudanças de
+comportamento — token de conta desativada, troca de senha com usuário removido
+e signup gravando os campos do schema que são coluna — com passo a passo em
+`docs/migration.md` (seções `0.305.0`).
+
 ### Added
 
 - **Rota pronta para o webhook da zap-api** (#420).
@@ -15,7 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   monta o `POST` inteiro — verificação da assinatura, despacho por `event` e
   a resposta `200` — e devolve um `APIRouter` para o `include_router`. É a
   rota que a receita `recipes/zap-inbound` escrevia à mão no passo 1, com o
-  mesmo comportamento: `secret` monta a dependência
+  mesmo despacho e as mesmas recusas; a resposta passa a ser o
+  `ZapWebhookAckSchema` (`{"ok": true, "event": ...}`). `secret` monta a dependência
   `make_zap_webhook_dependency` (ou `verify` traz a sua), e sem nenhum dos
   dois a construção levanta `ValueError` — o gateway assina só quando o
   webhook foi registrado com `--secret`, então a rota não pode existir
@@ -77,8 +90,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   qualquer escrita. Coluna `NOT NULL` esquecida vira `ValueError` com o nome
   dela, não `IntegrityError` cru. Violação de unicidade no insert vira
   `ConflictException` (`409`) com `details={"columns": [...], "constraint":
-  ...}` e `field`; medido no SQLite: telefone duplicado responde
-  `{"detail":"phone already in use","code":"CONFLICT","details":{"columns":["phone"],"constraint":null},"field":"phone"}`.
+  ...}` e `field`; medido no SQLite, sem catálogo: telefone duplicado responde
+  `{"detail":"phone already in use","code":"CONFLICT","details":{"columns":["phone"],"constraint":null},"field":"phone"}`
+  (com `default_message_catalog()` o `detail` sai traduzido).
 
 ### Changed
 
@@ -92,7 +106,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   senha e de e-mail, MFA, passkeys) passam a recusar do mesmo jeito.
   `require_active=False` restaura o comportamento antigo. Medido: token
   emitido, conta desativada, `GET /me` → `403`; com `require_active=False` →
-  `200`.
+  `200`. O `refresh_tokens` já recusava conta inativa com `403`, mas com o
+  `code` genérico `FORBIDDEN`; agora usa o mesmo `ACCOUNT_INACTIVE` (ou a
+  classe de `AuthExceptions.account_inactive`), como o login, a dependência e
+  as rotas do router.
 
 - **Troca de senha com usuário removido é `InvalidTokenException` (#425).**
   `confirm_password_reset` levantava `NotFoundException` (`404`); agora é
