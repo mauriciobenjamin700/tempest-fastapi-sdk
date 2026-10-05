@@ -149,6 +149,86 @@ class TestExportsFollowTheGeneratedModules:
 class TestImportingIsCheap:
     """Reaching the namespace must not build every model."""
 
+    @pytest.mark.parametrize(
+        ("name", "own"),
+        [
+            pytest.param(
+                "ZapWebhookDelivery",
+                "tempest_fastapi_sdk.integrations.messaging.zap.webhooks",
+                id="ported-half",
+            ),
+            pytest.param(
+                "make_zap_webhook_router",
+                "tempest_fastapi_sdk.integrations.messaging.zap.router",
+                id="factory-half",
+            ),
+        ],
+    )
+    def test_each_name_is_answered_from_its_own_module(
+        self, name: str, own: str
+    ) -> None:
+        """The mapping resolves both halves, so this prints ``True`` twice.
+
+        Collapsed back to a single ``_HAND_WRITTEN_MODULE``, the ported half
+        would print ``False`` and this fails — which is what keeps the
+        mapping honest.
+
+        Run in a subprocess because ``sys.modules`` is global and another
+        test in this session will already have imported both.
+
+        Args:
+            name (str): The exported name to reach.
+            own (str): The submodule that must have been imported to answer it.
+        """
+        import subprocess
+
+        code = (
+            "import sys;"
+            "from tempest_fastapi_sdk.integrations.messaging import zap;"
+            f"getattr(zap, {name!r});"
+            f"print({own!r} in sys.modules)"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=REPO_ROOT,
+        )
+        assert result.stdout.strip() == "True"
+
+    def test_the_ported_half_does_not_drag_the_router_in(self) -> None:
+        """A consumer that only parses deliveries never pays for the route.
+
+        The reverse is structural, not an accident: ``router`` builds the
+        verifier with :func:`webhook_verifier` and the dependency with
+        :func:`make_zap_webhook_dependency`, so importing the factory
+        imports the ported half — and, through it, the generated schemas.
+        Anyone calling the factory already imported FastAPI, so the extra
+        models cost nothing there.
+
+        Run in a subprocess because ``sys.modules`` is global and another
+        test in this session will already have imported both.
+        """
+        import subprocess
+
+        code = (
+            "import sys;"
+            "from tempest_fastapi_sdk.integrations.messaging import zap;"
+            "zap.ZapWebhookDelivery;"
+            "print("
+            "'tempest_fastapi_sdk.integrations.messaging.zap.router' in sys.modules"
+            ")"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=REPO_ROOT,
+        )
+        assert result.stdout.strip() == "False"
+
     def test_importing_the_namespace_leaves_schemas_unloaded(self) -> None:
         """The lazy hook is the whole reason the namespace is safe to import.
 

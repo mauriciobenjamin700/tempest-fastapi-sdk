@@ -57,36 +57,62 @@ in prose and declares no ``webhooks`` block and no ``callbacks``, so
 nothing can be generated; ``webhooks.py`` is ported from the gateway's code
 instead. :func:`make_zap_webhook_dependency` verifies the HMAC over the raw
 body and hands the route a :class:`ZapWebhookDelivery`, already parsed into
-:class:`ZapInboundMessage` or :class:`ZapStatusCallback` by ``event``:
+:class:`ZapInboundMessage` or :class:`ZapStatusCallback` by ``event``, and
+:func:`make_zap_webhook_router` mounts the route that consumes it — one
+``POST``, dispatched by event, answering ``200`` for anything the signature
+accepted:
 
 .. code-block:: python
 
-    from fastapi import Depends, FastAPI
+    from fastapi import FastAPI
     from tempest_fastapi_sdk.integrations.messaging.zap import (
-        ZapWebhookDelivery,
-        ZapWebhookEvent,
-        make_zap_webhook_dependency,
+        ZapInboundMessage,
+        ZapStatusCallback,
+        make_zap_webhook_router,
     )
 
     app: FastAPI = FastAPI()
-    verify_zap = make_zap_webhook_dependency(secret="<webhook secret>")
 
-    @app.post("/zap/webhook")
-    async def zap_webhook(
-        delivery: ZapWebhookDelivery = Depends(verify_zap),
-    ) -> dict[str, str]:
-        if delivery.event is ZapWebhookEvent.MESSAGE_RECEIVED:
-            ...
-        return {"status": "ok"}
 
-Status notifications can arrive out of order and more than once; apply one
-only when :func:`is_forward_transition` says it advances the stored state.
+    async def on_message(message: ZapInboundMessage) -> None:
+        ...
+
+
+    async def on_status(callback: ZapStatusCallback) -> None:
+        ...
+
+
+    app.include_router(
+        make_zap_webhook_router(
+            secret="<webhook secret>",
+            on_inbound=on_message,
+            on_status=on_status,
+        )
+    )
+
+A handler that raises propagates, so the response is ``500`` and the gateway
+re-delivers; an event with no handler, or one this SDK does not model, is a
+``200`` and a ``debug`` log. Status notifications can arrive out of order
+and more than once; apply one only when
+:func:`is_forward_transition` says it advances the stored state.
 """
 
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.integrations.messaging.zap.client import *  # noqa: F403
+    from tempest_fastapi_sdk.integrations.messaging.zap.router import (
+        ZapInboundHandler as ZapInboundHandler,
+    )
+    from tempest_fastapi_sdk.integrations.messaging.zap.router import (
+        ZapStatusHandler as ZapStatusHandler,
+    )
+    from tempest_fastapi_sdk.integrations.messaging.zap.router import (
+        ZapWebhookAckSchema as ZapWebhookAckSchema,
+    )
+    from tempest_fastapi_sdk.integrations.messaging.zap.router import (
+        make_zap_webhook_router as make_zap_webhook_router,
+    )
     from tempest_fastapi_sdk.integrations.messaging.zap.schemas import *  # noqa: F403
     from tempest_fastapi_sdk.integrations.messaging.zap.webhooks import (
         ZAP_INBOUND_EVENT as ZAP_INBOUND_EVENT,
@@ -128,31 +154,47 @@ if TYPE_CHECKING:
         webhook_verifier as webhook_verifier,
     )
 
-_HAND_WRITTEN: tuple[str, ...] = (
-    "ZAP_INBOUND_EVENT",
-    "ZAP_WEBHOOK_SIGNATURE_HEADER",
-    "ZAP_WEBHOOK_SIGNATURE_PREFIX",
-    "ZapInboundMediaType",
-    "ZapInboundMessage",
-    "ZapJidServer",
-    "ZapOutboundKind",
-    "ZapStatusCallback",
-    "ZapWebhookDelivery",
-    "ZapWebhookEvent",
-    "is_forward_transition",
-    "make_zap_webhook_dependency",
-    "webhook_verifier",
-)
-"""Names this package defines itself, in ``webhooks``.
+_HAND_WRITTEN: dict[str, str] = {
+    "ZAP_INBOUND_EVENT": "webhooks",
+    "ZAP_WEBHOOK_SIGNATURE_HEADER": "webhooks",
+    "ZAP_WEBHOOK_SIGNATURE_PREFIX": "webhooks",
+    "ZapInboundHandler": "router",
+    "ZapInboundMediaType": "webhooks",
+    "ZapInboundMessage": "webhooks",
+    "ZapJidServer": "webhooks",
+    "ZapOutboundKind": "webhooks",
+    "ZapStatusCallback": "webhooks",
+    "ZapStatusHandler": "router",
+    "ZapWebhookAckSchema": "router",
+    "ZapWebhookDelivery": "webhooks",
+    "ZapWebhookEvent": "webhooks",
+    "is_forward_transition": "webhooks",
+    "make_zap_webhook_dependency": "webhooks",
+    "make_zap_webhook_router": "router",
+    "webhook_verifier": "webhooks",
+}
+"""Names this package defines itself, mapped to the submodule that has them.
 
-Resolved lazily like the generated ones rather than imported eagerly:
-``webhooks`` builds its schemas over the generated
-``AcceptedResponseStatus``, so an eager import would load ``schemas`` on
-every ``import`` of this package.
+Two modules, because ``webhooks`` is the ported half — schemas, verifier and
+the dependency — while ``router`` is the opt-in factory over it. The
+mapping is what keeps the ported half reachable on its own: a consumer that
+only parses deliveries asks for a ``webhooks`` name and never imports the
+router. The other direction is structural rather than a saving — ``router``
+builds its verifier with :func:`webhook_verifier` and its dependency with
+:func:`make_zap_webhook_dependency`, so importing the factory imports
+``webhooks``, and through it the generated schemas.
+
+``scripts/regen_zap.py`` reads the keys of this mapping to compute the
+``__all__`` the generated modules have to be published with.
 """
 
-_HAND_WRITTEN_MODULE: str = "webhooks"
-"""Submodule holding every name in :data:`_HAND_WRITTEN`."""
+_HAND_WRITTEN_MODULES: tuple[str, ...] = tuple(dict.fromkeys(_HAND_WRITTEN.values()))
+"""Submodules holding every name in :data:`_HAND_WRITTEN`, deduplicated.
+
+Derived from the mapping rather than written out, so a submodule added to
+:data:`_HAND_WRITTEN` is reachable as an attribute of the package without a
+second edit.
+"""
 
 _GENERATED_MODULES: tuple[str, ...] = ("schemas", "client")
 """Submodules holding the generated code, in dependency order."""
@@ -195,14 +237,13 @@ def __getattr__(name: str) -> Any:
     """
     from importlib import import_module
 
-    if name in (*_GENERATED_MODULES, _HAND_WRITTEN_MODULE):
+    if name in (*_GENERATED_MODULES, *_HAND_WRITTEN_MODULES):
         module = import_module(f"{__name__}.{name}")
         globals()[name] = module
         return module
 
-    if name in _HAND_WRITTEN:
-        module_name: str | None = _HAND_WRITTEN_MODULE
-    else:
+    module_name: str | None = _HAND_WRITTEN.get(name)
+    if module_name is None:
         module_name = _generated_names().get(name)
     if module_name is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -255,14 +296,18 @@ __all__: list[str] = [
     "UploadImageForm",
     "UploadVideoForm",
     "ZapClient",
+    "ZapInboundHandler",
     "ZapInboundMediaType",
     "ZapInboundMessage",
     "ZapJidServer",
     "ZapOutboundKind",
     "ZapStatusCallback",
+    "ZapStatusHandler",
+    "ZapWebhookAckSchema",
     "ZapWebhookDelivery",
     "ZapWebhookEvent",
     "is_forward_transition",
     "make_zap_webhook_dependency",
+    "make_zap_webhook_router",
     "webhook_verifier",
 ]
