@@ -9,6 +9,7 @@ no screen.
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -339,8 +340,12 @@ class TestRunDetail:
         app = await _app(db, TaskPanelService(job_store=store))
         async with _client(app) as client:
             await _login(client)
+            page = await client.get(f"/admin/tasks/{job.id}")
+            match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+            assert match is not None, "the cancel form carries no csrf_token"
             response = await client.post(
                 f"/admin/tasks/{job.id}/cancel",
+                data={"csrf_token": match.group(1)},
                 follow_redirects=False,
             )
         assert response.status_code == 303

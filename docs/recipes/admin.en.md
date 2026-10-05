@@ -1006,7 +1006,8 @@ and export; "All" clears it.
 - `Secure` flagged when `cookie_secure=True` (default; flip off in local HTTP dev).
 - `SameSite=Lax` (`"lax"`/`"strict"`/`"none"` accepted).
 - Default lifetime `8h`; expired or tampered cookies are rejected silently.
-- Per-session CSRF token is generated at login and required by every form POST (login, logout, create, edit, delete, bulk actions).
+- The cookie is not enough on its own: every authenticated route reloads the principal through the `auth_backend` on each request. An account deleted, deactivated or stripped of `is_admin` after the login is sent to `/admin/login` (`303`) on the very next request, without waiting for the cookie to expire.
+- Per-session CSRF token is generated at login and required by every form POST (login, logout, create, edit, delete, bulk actions, SQL console runs, task cancellation).
 - `secret_key` must be at least 32 bytes — short keys raise `ValueError` at construction time.
 
 !!! danger "Login looping? It's the cookie `Secure` flag over plain HTTP"

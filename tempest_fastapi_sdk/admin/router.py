@@ -1049,9 +1049,11 @@ def make_admin_router(
 
         @router.get("/logs/export", name="admin_logs_export")
         async def logs_export(
+            request: Request,
             source: LogSource = Query(default="all"),
             q: str | None = Query(default=None),
             format: Literal["md", "json"] = Query(default="md"),
+            db_session: AsyncSession = Depends(_db_session),
             session: AdminSession = Depends(_require_session),
         ) -> Response:
             """Download the current log selection as markdown or JSON.
@@ -1070,17 +1072,30 @@ def make_admin_router(
             a partial export read as a complete one.
 
             Inherits the admin session guard: tracebacks and request metadata are
-            exactly the payload that must not be world-readable.
+            exactly the payload that must not be world-readable. The principal
+            is reloaded before anything is read, so an account deleted,
+            deactivated or demoted after the login is redirected to the login
+            page on this request instead of exporting until the cookie expires.
+            Nothing here renders the principal, so the reloaded value is not
+            kept.
 
             Args:
+                request (Request): The inbound request.
                 source (LogSource): Which log file(s) to read.
                 q (str | None): Case-insensitive message substring filter.
                 format (Literal["md", "json"]): Output format.
+                db_session (AsyncSession): The DB session, used to resolve
+                    the principal.
                 session (AdminSession): The validated admin session.
 
             Returns:
                 Response: The rendered document as a file attachment.
+
+            Raises:
+                HTTPException: ``303`` redirect to the login page when the
+                    principal no longer qualifies.
             """
+            await _resolve_principal(request, db_session, session)
             entries = await _collect_log_entries(source, q)
             total = len(entries)
             window = entries[:_logs_export_max]
@@ -2431,21 +2446,32 @@ def make_admin_router(
     if sql_shell is not None:
         _shell = sql_shell
 
-        def _sql_context(session: AdminSession) -> dict[str, Any]:
+        async def _sql_context(
+            session: AdminSession,
+            principal: Any,
+        ) -> dict[str, Any]:
             """Build the template context describing the active policy.
 
             The policy is shown on the page so the operator knows the
             limits before typing, rather than discovering them through
-            refusals.
+            refusals. The chrome (header, logout form, sidebar) is built
+            from the reloaded principal, the same way the task panel does,
+            so the sidebar lists only the models that principal may view.
 
             Args:
-                session (AdminSession): The validated admin session.
+                session (AdminSession): The validated admin session, whose
+                    CSRF token the console form submits.
+                principal (Any): The principal reloaded for this request.
 
             Returns:
                 dict[str, Any]: The base context.
             """
             policy = _shell.policy
             return {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "nav_models": await _visible_nav(principal),
                 "capabilities": sorted(str(item) for item in policy.capabilities),
                 "allowed_tables": sorted(policy.allowed_tables),
                 "denied_tables": sorted(policy.denied_tables),
@@ -2457,23 +2483,37 @@ def make_admin_router(
         @router.get("/sql", response_class=HTMLResponse, name="admin_sql")
         async def sql_console(
             request: Request,
+            db_session: AsyncSession = Depends(_db_session),
             session: AdminSession = Depends(_require_session),
         ) -> Response:
             """Render the empty SQL console.
 
             Args:
                 request (Request): The incoming request.
+                db_session (AsyncSession): The DB session, used to resolve
+                    the principal.
                 session (AdminSession): The validated session.
 
             Returns:
                 Response: The console page.
+
+            Raises:
+                HTTPException: ``303`` redirect to the login page when the
+                    principal no longer qualifies.
             """
-            return _render(request, "sql_shell.html", _sql_context(session))
+            principal = await _resolve_principal(request, db_session, session)
+            return _render(
+                request,
+                "sql_shell.html",
+                await _sql_context(session, principal),
+            )
 
         @router.post("/sql", response_class=HTMLResponse, name="admin_sql_run")
         async def sql_console_run(
             request: Request,
             sql: str = Form(default=""),
+            csrf_token: str = Form(...),
+            db_session: AsyncSession = Depends(_db_session),
             session: AdminSession = Depends(_require_session),
         ) -> Response:
             """Run a statement and render the result or the refusal.
@@ -2487,12 +2527,22 @@ def make_admin_router(
             Args:
                 request (Request): The incoming request.
                 sql (str): The submitted statement.
+                csrf_token (str): CSRF token from the form.
+                db_session (AsyncSession): The DB session, used to resolve
+                    the principal.
                 session (AdminSession): The validated session.
 
             Returns:
                 Response: The console page with the outcome.
+
+            Raises:
+                HTTPException: ``303`` redirect to the login page when the
+                    principal no longer qualifies, before the statement
+                    reaches the shell; ``403`` on CSRF mismatch.
             """
-            context = _sql_context(session)
+            principal = await _resolve_principal(request, db_session, session)
+            _check_csrf(session, csrf_token)
+            context = await _sql_context(session, principal)
             context["submitted"] = sql
             try:
                 context["result"] = await _shell.execute(
@@ -2610,6 +2660,8 @@ def make_admin_router(
         async def task_cancel(
             request: Request,
             job_id: UUID,
+            csrf_token: str = Form(...),
+            db_session: AsyncSession = Depends(_db_session),
             session: AdminSession = Depends(_require_session),
         ) -> Response:
             """Ask a queued or running job to stop, then show it again.
@@ -2622,11 +2674,21 @@ def make_admin_router(
             Args:
                 request (Request): The incoming request.
                 job_id (UUID): The run to cancel.
+                csrf_token (str): CSRF token from the form.
+                db_session (AsyncSession): The DB session, used to resolve
+                    the principal.
                 session (AdminSession): The validated session.
 
             Returns:
                 Response: A redirect back to the run's detail page.
+
+            Raises:
+                HTTPException: ``303`` redirect to the login page when the
+                    principal no longer qualifies, before the row is
+                    touched; ``403`` on CSRF mismatch.
             """
+            await _resolve_principal(request, db_session, session)
+            _check_csrf(session, csrf_token)
             await _panel.cancel(job_id)
             return RedirectResponse(
                 f"{prefix}/tasks/{job_id}",
