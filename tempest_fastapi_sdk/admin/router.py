@@ -77,6 +77,10 @@ from tempest_fastapi_sdk.tasks.jobs import (
     CANCELLABLE_JOB_STATUSES,
     JobStatus,
 )
+from tempest_fastapi_sdk.utils.throttle import (
+    AttemptThrottle,
+    InMemoryThrottleBackend,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,6 +89,15 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+ADMIN_MFA_THROTTLE_MAX_ATTEMPTS: int = 5
+"""Wrong codes one admin principal may submit to ``/mfa`` per window.
+
+The same budget ``make_auth_router`` applies to ``/auth/mfa/verify``.
+"""
+
+ADMIN_MFA_THROTTLE_WINDOW_SECONDS: int = 900
+"""Length, in seconds, of the default admin ``/mfa`` failure window."""
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _STATIC_DIR = Path(__file__).parent / "static"
@@ -162,6 +175,7 @@ def make_admin_router(
     access_policy: AdminAccessPolicy | None = None,
     sql_shell: SqlShellService | None = None,
     tasks: TaskPanelService[Any] | None = None,
+    mfa_throttle: AttemptThrottle | None = None,
 ) -> APIRouter:
     """Build the FastAPI router that mounts the admin site.
 
@@ -236,6 +250,16 @@ def make_admin_router(
             the cancel action at ``POST {prefix}/tasks/{job_id}/cancel``,
             and adds its nav entry. Either half of the service may be
             absent; a section with no source is not rendered.
+        mfa_throttle (AttemptThrottle | None): Failure budget for the
+            ``POST {prefix}/mfa`` challenge, keyed on the principal, so a
+            fresh password login does not reset it. Once spent, the
+            challenge answers ``429`` with ``Retry-After`` before the code
+            is checked; a correct code resets the key. ``None`` (default)
+            allows ``ADMIN_MFA_THROTTLE_MAX_ATTEMPTS`` (5) wrong codes per
+            ``ADMIN_MFA_THROTTLE_WINDOW_SECONDS`` (900) on an
+            :class:`~tempest_fastapi_sdk.InMemoryThrottleBackend`, which
+            counts per process: behind more than one worker, pass an
+            :class:`~tempest_fastapi_sdk.AttemptThrottle` on Redis.
 
     Returns:
         APIRouter: A router ready to attach via ``app.include_router``.
@@ -259,6 +283,11 @@ def make_admin_router(
     )
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
     templates.env.filters["pluralize"] = _pluralize
+    resolved_mfa_throttle: AttemptThrottle = mfa_throttle or AttemptThrottle(
+        InMemoryThrottleBackend(),
+        max_attempts=ADMIN_MFA_THROTTLE_MAX_ATTEMPTS,
+        window_seconds=ADMIN_MFA_THROTTLE_WINDOW_SECONDS,
+    )
 
     router = APIRouter(prefix=prefix, include_in_schema=False)
 
@@ -877,13 +906,30 @@ def make_admin_router(
             return RedirectResponse(
                 f"{prefix}/login", status_code=status.HTTP_303_SEE_OTHER
             )
-        if not auth_backend.verify_mfa(principal, code):
+        throttle_key = f"admin-mfa:{session.principal_id}"
+        attempt = await resolved_mfa_throttle.hit(throttle_key)
+        if attempt.attempts > resolved_mfa_throttle.max_attempts:
+            blocked = _render(
+                request,
+                "mfa.html",
+                {
+                    "user": None,
+                    "session": session,
+                    "error": "Too many invalid codes, try again later",
+                },
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+            blocked.headers["Retry-After"] = str(attempt.retry_after_seconds)
+            return blocked
+        if not await auth_backend.claim_mfa_step(db_session, principal, code):
             return _render(
                 request,
                 "mfa.html",
                 {"user": None, "session": session, "error": "Invalid code"},
                 status_code=status.HTTP_401_UNAUTHORIZED,
             )
+        await db_session.commit()
+        await resolved_mfa_throttle.reset(throttle_key)
         upgraded = AdminSession(
             principal_id=session.principal_id,
             issued_at=datetime.now(tz=UTC).timestamp(),

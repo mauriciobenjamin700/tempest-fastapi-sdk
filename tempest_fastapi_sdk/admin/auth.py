@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 
 from tempest_fastapi_sdk.db.user_model import BaseUserModel
 from tempest_fastapi_sdk.utils.datetime import utcnow
 from tempest_fastapi_sdk.utils.password import PasswordUtils
 
 if TYPE_CHECKING:
+    from sqlalchemy import CursorResult
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -171,6 +172,33 @@ class AdminAuthBackend(ABC, Generic[PrincipalT]):
             bool: ``True`` when the code is valid.
         """
         return False
+
+    async def claim_mfa_step(
+        self,
+        session: AsyncSession,
+        principal: PrincipalT,
+        code: str,
+    ) -> bool:
+        """Accept ``code`` for ``principal`` at most once.
+
+        The admin MFA route calls this, not :meth:`verify_mfa`, so a
+        backend that can record which code it accepted refuses the same
+        code twice. The default delegates to :meth:`verify_mfa` and keeps
+        no record: a custom backend that stores its own TOTP state
+        overrides this method to persist the accepted step, as
+        :class:`UserModelAuthBackend` does.
+
+        Args:
+            session (AsyncSession): The request's DB session. A write is
+                executed but not committed; the caller commits.
+            principal (PrincipalT): The authenticated principal.
+            code (str): The 6-digit code from the authenticator app.
+
+        Returns:
+            bool: ``True`` when the code is valid and was not accepted
+            before.
+        """
+        return self.verify_mfa(principal, code)
 
 
 class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
@@ -352,6 +380,63 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         return TOTPHelper(issuer=self.mfa_issuer).verify(
             secret, code, window=self.mfa_window
         )
+
+    async def claim_mfa_step(
+        self,
+        session: AsyncSession,
+        principal: BaseUserModel,
+        code: str,
+    ) -> bool:
+        """Accept ``code`` once, recording its step in ``totp_last_step``.
+
+        Resolves the 30-second step ``code`` belongs to and stores it with
+        one conditional ``UPDATE`` that only matches while the stored step
+        is ``NULL`` or older, the same claim
+        :class:`~tempest_fastapi_sdk.UserAuthService` uses for
+        ``/auth/mfa/verify``. The row count is the verdict, so a replayed
+        code, or a stale copy of the row in another session, cannot be
+        accepted twice.
+
+        Args:
+            session (AsyncSession): The request's DB session. The statement
+                is executed but not committed; the caller commits.
+            principal (BaseUserModel): The authenticated row.
+            code (str): The submitted authenticator code.
+
+        Returns:
+            bool: ``True`` when ``code`` matched a step inside the window
+            that had not been accepted before, now recorded.
+
+        Raises:
+            ImportError: When the ``[mfa]`` extra (``pyotp``) is not
+                installed but a user has MFA enabled.
+        """
+        from tempest_fastapi_sdk.utils.totp import TOTPHelper
+
+        secret = getattr(principal, "totp_secret", None)
+        if not secret:
+            return False
+        step = TOTPHelper(issuer=self.mfa_issuer).matching_step(
+            secret, code, window=self.mfa_window
+        )
+        if step is None:
+            return False
+        model = self.user_model
+        result = cast(
+            "CursorResult[Any]",
+            await session.execute(
+                update(model)
+                .where(
+                    model.id == principal.id,
+                    or_(
+                        model.totp_last_step.is_(None),
+                        model.totp_last_step < step,
+                    ),
+                )
+                .values(totp_last_step=step)
+            ),
+        )
+        return int(result.rowcount or 0) == 1
 
 
 __all__: list[str] = [
