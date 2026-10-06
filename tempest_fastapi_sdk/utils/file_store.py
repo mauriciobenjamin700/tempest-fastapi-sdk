@@ -262,7 +262,9 @@ class FileStoreUtils:
             filename (str | None): Name presented to the client. Defaults to
                 the basename of ``key``.
             media_type (str | None): MIME type. Guessed/derived when omitted.
-            as_attachment (bool): ``True`` forces a download; ``False`` inline.
+            as_attachment (bool): ``True`` forces a download; ``False`` asks
+                for ``inline``, granted only to a type in
+                :data:`~tempest_fastapi_sdk.utils.download.INLINE_SAFE_MEDIA_TYPES`.
             request (Request | None): The incoming request. MinIO mode needs
                 it to answer ``Range`` with ``206`` and validators with
                 ``304`` (see :meth:`AsyncMinIOClient.download_response`);
@@ -270,7 +272,8 @@ class FileStoreUtils:
                 ``Range`` from the ASGI scope.
             cache_control (str | None): ``Cache-Control`` value for the
                 response. ``None`` sends none.
-            headers (dict[str, str] | None): Extra response headers.
+            headers (dict[str, str] | None): Extra response headers. One
+                named like a download security default replaces that default.
 
         Returns:
             Response: A ``FileResponse`` (local) or ``StreamingResponse``
@@ -312,9 +315,12 @@ class FileStoreUtils:
                 the file's own basename.
             media_type (str | None): MIME type. Guessed from the filename
                 when omitted.
-            as_attachment (bool): ``True`` forces a download; ``False``
-                serves inline. Default ``True``.
-            headers (dict[str, str] | None): Extra response headers.
+            as_attachment (bool): ``True`` forces a download; ``False`` asks
+                for ``inline``, granted only to a type in
+                :data:`~tempest_fastapi_sdk.utils.download.INLINE_SAFE_MEDIA_TYPES`.
+                Default ``True``.
+            headers (dict[str, str] | None): Extra response headers. One
+                named like a download security default replaces that default.
 
         Returns:
             FileResponse: The response to return from a router.
@@ -354,9 +360,12 @@ class FileStoreUtils:
             filename (str): Name presented to the client.
             media_type (str | None): MIME type. Guessed from ``filename``
                 when omitted.
-            as_attachment (bool): ``True`` forces a download; ``False``
-                serves inline. Default ``True``.
-            headers (dict[str, str] | None): Extra response headers.
+            as_attachment (bool): ``True`` forces a download; ``False`` asks
+                for ``inline``, granted only to a type in
+                :data:`~tempest_fastapi_sdk.utils.download.INLINE_SAFE_MEDIA_TYPES`.
+                Default ``True``.
+            headers (dict[str, str] | None): Extra response headers. One
+                named like a download security default replaces that default.
 
         Returns:
             StreamingResponse: The response to return from a router.

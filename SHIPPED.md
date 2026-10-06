@@ -1776,6 +1776,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   constructor's `accel_redirect=`, fed by `STORAGE_ACCEL_REDIRECT` /
   `STORAGE_ACCEL_PREFIX` in `MinIOSettings`. Recipe has the nginx block,
   measured against nginx + MinIO containers.
+  **(Unreleased)** Every download response (`DownloadUtils`,
+  `FileStoreUtils`, `download_response`) carries
+  `DEFAULT_STATIC_SECURITY_HEADERS` (`setdefault`: caller's `headers=` wins);
+  `as_attachment=False` is granted only to a type in
+  `INLINE_SAFE_MEDIA_TYPES` (raster images, PDF, `text/plain`, common
+  audio/video — no HTML, no SVG), also in `build_content_disposition(...,
+  media_type=)`. `accel_redirect_response` defaults to `as_attachment=True`
+  and needs `media_type=` for inline; its security headers live in the
+  nginx internal location (`add_header ... always`), since nginx drops the
+  app's (measured, `tests/storage/test_accel_redirect_live.py`).
 - **Signed app URLs** — **(v0.302.0, #363)** `sign_path` /
   `verify_path` in `utils.signed_url` (stdlib only): HMAC-SHA256 over
   `expires LF decoded-path`, key derived from the secret and `purpose`

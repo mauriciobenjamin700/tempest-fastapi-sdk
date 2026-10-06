@@ -37,6 +37,9 @@ from tempest_fastapi_sdk.utils.datetime import to_utc as to_utc
 from tempest_fastapi_sdk.utils.datetime import utcnow as utcnow
 from tempest_fastapi_sdk.utils.dict import modify_dict as modify_dict
 from tempest_fastapi_sdk.utils.download import (
+    INLINE_SAFE_MEDIA_TYPES as INLINE_SAFE_MEDIA_TYPES,
+)
+from tempest_fastapi_sdk.utils.download import (
     DownloadUtils as DownloadUtils,
 )
 from tempest_fastapi_sdk.utils.download import (
@@ -416,6 +419,7 @@ __all__: list[str] = [
     "DEFAULT_GENERATED_PASSWORD_LENGTH",
     "DOCX_MEDIA_TYPE",
     "HUNDRED",
+    "INLINE_SAFE_MEDIA_TYPES",
     "MFA_TOKEN_TYPE",
     "PHONE_BR_PATTERN",
     "PPTX_MEDIA_TYPE",

@@ -4,19 +4,9 @@ from starlette.responses import Response
 from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
 
-# Headers that neutralize a served file as an XSS/drive-by vector.
-DEFAULT_STATIC_SECURITY_HEADERS: dict[str, str] = {
-    # Browsers stop guessing the MIME from the bytes, so a polyglot
-    # file with a benign extension (HTML+JS uploaded as ``.jpg``) is
-    # not rendered as HTML on retrieval.
-    "X-Content-Type-Options": "nosniff",
-    # Even if a browser renders the file, embedded scripts cannot
-    # execute and the sandbox blocks forms, top-level navigation and
-    # same-origin access.
-    "Content-Security-Policy": "default-src 'none'; sandbox",
-    # Bounds the file's readability to documents on the same site.
-    "Cross-Origin-Resource-Policy": "same-site",
-}
+from tempest_fastapi_sdk.utils._security_headers import (
+    DEFAULT_STATIC_SECURITY_HEADERS as DEFAULT_STATIC_SECURITY_HEADERS,
+)
 
 
 class HardenedStaticFiles(StaticFiles):

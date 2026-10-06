@@ -130,7 +130,11 @@ async def download_file(key: str, request: Request) -> Response:
 ```
 
 Every response carries `Accept-Ranges: bytes`, the object's `ETag` (quoted)
-and `Last-Modified`. With the `request` in hand, the route answers like this:
+and `Last-Modified`, plus the security headers of every download (`nosniff`,
+the `sandbox` CSP and `same-site` CORP). `as_attachment=False` only becomes
+`inline` when the type stored with the object is in `INLINE_SAFE_MEDIA_TYPES`
+— a `text/html` goes out as `attachment`. Details in
+[Downloads](downloads.md#security-headers-and-what-goes-inline). With the `request` in hand, the route answers like this:
 
 | The client sends | Response |
 | --- | --- |
@@ -220,7 +224,7 @@ STORAGE_ACCEL_PREFIX=/_bucket/      # nginx's internal location
 ```python
 from fastapi import APIRouter, Request
 from starlette.responses import Response
-from tempest_fastapi_sdk import AsyncMinIOClient
+from tempest_fastapi_sdk import AsyncMinIOClient, guess_media_type
 
 from src.core.settings import settings
 
@@ -231,8 +235,23 @@ storage = AsyncMinIOClient(**settings.minio_kwargs())
 @router.get("/files/{key:path}")
 async def download_file(key: str, request: Request) -> Response:
     """Authorise and deliver — through the app or through nginx, per the .env."""
-    return await storage.serve_object(key, request=request, as_attachment=False)
+    return await storage.serve_object(
+        key,
+        request=request,
+        media_type=guess_media_type(key),
+        as_attachment=False,
+    )
 ```
+
+!!! warning "In redirect mode, `inline` needs `media_type=`"
+    `accel_redirect_response` makes no `stat`, so it does not know which type
+    the bucket will answer with. Without `media_type=`, `as_attachment=False`
+    comes out `attachment`. With it, the type is signed into the URL (the
+    bucket answers with that one, not the stored one) and only becomes
+    `inline` if it is in `INLINE_SAFE_MEDIA_TYPES`. `guess_media_type(key)`
+    above resolves it from the key's extension: `lesson.mp4` goes inline,
+    `page.html` becomes a download. `accel_redirect_response` defaults to
+    `as_attachment=True`.
 
 With `STORAGE_ACCEL_REDIRECT=false`, it is the previous section's
 `download_response`. With `true`, it is `accel_redirect_response`, and the
@@ -267,11 +286,15 @@ server {
         internal;
         proxy_pass http://bucket:9000/;
         proxy_set_header Host bucket:9000;
+        proxy_hide_header X-Content-Type-Options;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Content-Security-Policy "default-src 'none'; sandbox" always;
+        add_header Cross-Origin-Resource-Policy "same-site" always;
     }
 }
 ```
 
-Three lines do the work of `location /_bucket/`, and each has a reason:
+Each line of `location /_bucket/` has a reason:
 
 - **`internal;`** — only nginx gets in here, following an
   `X-Accel-Redirect`. A client asking for `/_bucket/...` directly gets `404`.
@@ -287,6 +310,16 @@ Three lines do the work of `location /_bucket/`, and each has a reason:
   `location` that defines none. The bucket then receives
   `Host: example.com` and answers `403 SignatureDoesNotMatch` — the symptom is
   "the file does not load".
+- **The `add_header ... always` lines** — the security headers of every
+  download, and this is the only place they reach the client from. nginx
+  answers with the bucket's response, not the app's empty one: a header the
+  app put there would not get through (measured — which is why the SDK does
+  not set them). Without `always`, nginx adds the header to only part of
+  the statuses — that is how the `add_header` documentation defines it.
+- **`proxy_hide_header X-Content-Type-Options;`** — MinIO already sends
+  `nosniff`; without hiding its own, the client gets `nosniff, nosniff`
+  (measured). Hiding and re-emitting leaves a single value, whatever storage
+  sits behind.
 
 !!! warning "`Content-Type` and `Content-Disposition` travel inside the URL"
     The SDK does not put those headers on the empty response: it signs them
@@ -319,6 +352,9 @@ through the route. The same file passed in full on nginx 1.22.1, 1.27.5 and
 | `GET /_bucket/media/clip.mp4` straight from the client | `404` |
 | a `location` inheriting `Host $host` | `403 SignatureDoesNotMatch` |
 | `proxy_pass` without the trailing slash | `400 InvalidBucketName` |
+| `GET /files/clip.mp4`, `location` with the `add_header` lines | `X-Content-Type-Options`, CSP and CORP, one value each |
+| `location` without the `add_header` lines | `200` with no CSP nor CORP, even with the app setting both on the empty response |
+| `as_attachment=False` with no `media_type=` | `Content-Disposition: attachment` |
 | the same route with `STORAGE_ACCEL_REDIRECT=false` and `Range: bytes=-10` | `206` from the app |
 
 In the test, bucket, app and nginx run on the host network, so the internal
@@ -712,8 +748,9 @@ asyncio.run(main())
   is always a full `200`.
 - To have nginx deliver instead of the app, `serve_object` with
   `STORAGE_ACCEL_REDIRECT=true` answers `X-Accel-Redirect`; the internal
-  `location` needs `proxy_pass` with a trailing slash and `Host` equal to
-  `MINIO_ENDPOINT`.
+  `location` needs `proxy_pass` with a trailing slash, `Host` equal to
+  `MINIO_ENDPOINT` and the security `add_header` lines — nginx does not
+  forward the app's.
 - For the browser to open a private file through **the app's route**, sign
   the path in the mapper with `sign_path` and guard the route with
   `make_signed_path_dependency`: the signature covers path, `expires` and

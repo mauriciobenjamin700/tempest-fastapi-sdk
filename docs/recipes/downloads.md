@@ -57,8 +57,9 @@ async def download(name: str, request: Request) -> Response:
 
 Parâmetros do `download`: `subdir=` (pasta local / prefixo da key),
 `filename=` (nome mostrado ao cliente), `media_type=` (senão vem do
-content-type do objeto / extensão), `as_attachment=False` (servir
-**inline** — ex.: abrir um PDF no navegador), `request=` (no modo MinIO,
+content-type do objeto / extensão), `as_attachment=False` (pede
+**inline** — ex.: abrir um PDF no navegador; só vale para tipo seguro, veja
+[abaixo](#headers-de-seguranca-e-o-que-vai-inline)), `request=` (no modo MinIO,
 responde `Range` com `206` e `If-None-Match`/`If-Modified-Since` com `304`
 — detalhe na [receita de storage](storage.md#streaming-de-download)),
 `cache_control=` (valor do `Cache-Control`), `headers=`.
@@ -170,6 +171,83 @@ em `tempest_fastapi_sdk.spreadsheet`. Extensão que nem a tabela nem o
 `mimetypes` conhecem continua `None`, e o download cai em
 `application/octet-stream`.
 
+## Headers de segurança e o que vai inline
+
+O arquivo que você serve chega ao navegador **pela origem da sua API**, e com
+o `Content-Type` que, no fluxo comum, quem fez o upload declarou. Um `.html`
+enviado por um usuário e servido `inline` seria uma página da sua API,
+rodando script com a sessão de quem abriu o link.
+
+Por isso toda resposta de download — `download`, `file_response`, `stream` e
+o `download_response` do MinIO — sai com os mesmos headers do
+`HardenedStaticFiles` (`DEFAULT_STATIC_SECURITY_HEADERS`):
+
+- `X-Content-Type-Options: nosniff`
+- `Content-Security-Policy: default-src 'none'; sandbox`
+- `Cross-Origin-Resource-Policy: same-site`
+
+E `as_attachment=False` virou um **pedido**: só vira `inline` quando o tipo
+da resposta está em `INLINE_SAFE_MEDIA_TYPES` — imagens raster (PNG, JPEG,
+GIF, WebP, AVIF), `application/pdf`, `text/plain` e áudio/vídeo comuns.
+Qualquer outro tipo sai como `attachment`. `text/html` e `image/svg+xml`
+ficam fora de propósito: os dois carregam script.
+
+```python
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from starlette.responses import FileResponse
+
+from tempest_fastapi_sdk import DownloadUtils
+
+Path("uploads").mkdir(exist_ok=True)
+Path("uploads/evil.html").write_text("<script>alert(document.cookie)</script>")
+Path("uploads/photo.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+downloads = DownloadUtils("uploads")
+app = FastAPI()
+
+
+@app.get("/files/{name}")
+async def show_file(name: str) -> FileResponse:
+    """Pede inline; o SDK decide se o tipo pode."""
+    return downloads.file_response(name, as_attachment=False)
+
+
+client = TestClient(app)
+for name in ("photo.png", "evil.html"):
+    headers = client.get(f"/files/{name}").headers
+    print(name, "->", headers["content-disposition"].split(";")[0])
+    print("  x-content-type-options:", headers["x-content-type-options"])
+    print("  content-security-policy:", headers["content-security-policy"])
+    print("  cross-origin-resource-policy:", headers["cross-origin-resource-policy"])
+```
+
+Rodando, a saída é:
+
+```text
+photo.png -> inline
+  x-content-type-options: nosniff
+  content-security-policy: default-src 'none'; sandbox
+  cross-origin-resource-policy: same-site
+evil.html -> attachment
+  x-content-type-options: nosniff
+  content-security-policy: default-src 'none'; sandbox
+  cross-origin-resource-policy: same-site
+```
+
+!!! tip "Header seu vence"
+    Passe `headers={"Content-Security-Policy": "..."}` e o seu valor substitui
+    o default (a comparação ignora maiúscula/minúscula, então não sai
+    duplicado). Os outros dois continuam.
+
+!!! info "No modo MinIO, o tipo conferido é o do objeto"
+    `download` / `download_response` leem o tipo guardado no bucket (o
+    `stat`) quando você não passa `media_type=`. Passando, vale o seu. No
+    modo `X-Accel-Redirect` o objeto não é consultado — veja
+    [Storage](storage.md#o-bloco-do-nginx).
+
 ## Header `Content-Disposition`
 
 Para montar o header manualmente (fora do `DownloadUtils`), use
@@ -182,6 +260,11 @@ from tempest_fastapi_sdk import build_content_disposition
 header: str = build_content_disposition("relatorio 2026.pdf", as_attachment=True)
 # -> attachment; filename="relatorio 2026.pdf"; filename*=UTF-8''relatorio%202026.pdf
 ```
+
+Para `inline`, passe também o tipo que a resposta vai carregar:
+`build_content_disposition("foto.png", as_attachment=False, media_type="image/png")`.
+Sem `media_type=`, ou com um tipo fora de `INLINE_SAFE_MEDIA_TYPES`, o valor
+sai `attachment` — a mesma regra dos helpers de download.
 
 !!! warning "O nome é tratado como não confiável"
     No uso normal ele é `UploadFile.filename`, ou seja, escolhido pelo cliente.
@@ -203,6 +286,7 @@ header: str = build_content_disposition("relatorio 2026.pdf", as_attachment=True
 - `await downloads.download(key, ...)` — unificado: `FileResponse` (local) ou streaming (MinIO).
 - `stream(content, filename=...)` para bytes/geradores produzidos na hora (qualquer modo).
 - `file_response(...)` é local-only (controle fino); MinIO usa `download()`.
-- `as_attachment=False` serve inline; `as_attachment=True` (default) força download.
+- `as_attachment=True` (default) força download; `as_attachment=False` só vira `inline` para tipo em `INLINE_SAFE_MEDIA_TYPES` — HTML e SVG saem como `attachment`.
+- Toda resposta de download sai com `nosniff`, a CSP `sandbox` e o CORP `same-site`; header com o mesmo nome passado em `headers=` vence.
 - Local: path traversal vira `NotFoundException` — seguro por construção.
 - Sem `media_type=`, o tipo sai de `guess_media_type`: `.xlsx`/`.docx`/`.pptx` acertam também numa imagem slim, sem `/etc/mime.types`.

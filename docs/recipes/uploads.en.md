@@ -138,6 +138,59 @@ async def upload_model(file: UploadFile) -> dict[str, str]:
     To actually validate the content, use a `content_validator=...` on
     `save()`.
 
+### A file that will be served back
+
+If the uploaded file is later served by your API (avatar, attachment,
+receipt), close the upload on both ends: `allowed_extensions` refuses the
+wrong name, and `verify_magic_bytes=True` + `allowed_mimetypes` refuse content
+that does not match the type — HTML renamed to `.png` is a `415`:
+
+```python
+from fastapi import FastAPI, UploadFile
+from fastapi.testclient import TestClient
+
+from tempest_fastapi_sdk import UploadUtils, register_exception_handlers
+
+uploads = UploadUtils(
+    "uploads",
+    allowed_extensions={".png", ".jpg", ".jpeg", ".pdf"},
+    allowed_mimetypes={"image/png", "image/jpeg", "application/pdf"},
+    verify_magic_bytes=True,
+)
+app = FastAPI()
+register_exception_handlers(app)
+
+
+@app.post("/files")
+async def upload_file(file: UploadFile) -> dict[str, str]:
+    """Store only PNG, JPEG or PDF whose bytes match the type."""
+    key = await uploads.save(file)
+    return {"key": str(key)}
+
+
+client = TestClient(app)
+png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+html = b"<script>alert(document.cookie)</script>"
+for name, data, mime in [
+    ("photo.png", png, "image/png"),
+    ("evil.html", html, "text/html"),
+    ("evil.png", html, "image/png"),
+]:
+    response = client.post("/files", files={"file": (name, data, mime)})
+    print(name, response.status_code)
+```
+
+```text
+photo.png 200
+evil.html 415
+evil.png 415
+```
+
+The download already defends itself — every response carries `nosniff` and
+the `sandbox` CSP, and HTML/SVG never go `inline` (see
+[Downloads](downloads.md#security-headers-and-what-goes-inline)). Validating
+on the way in is the other half: the hostile file never reaches storage.
+
 ### Via settings (`.env`)
 
 To configure per environment, `UploadSettings` already exposes
@@ -317,6 +370,8 @@ straight to MinIO via a presigned URL. See
   code does not change.
 - `allowed_extensions` is an allowlist, not a denylist — and `UploadSettings`
   lets you configure it per environment.
+- A file that is served back: `allowed_extensions` + `verify_magic_bytes=True`
+  + `allowed_mimetypes`, so the content matches the type.
 - `save()` takes FastAPI's `UploadFile` and returns the **key**; the key is what
   you store in the database, not the path.
 - `replace` covers the swapped avatar without leaving an orphan, and

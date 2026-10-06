@@ -14,7 +14,11 @@ from typing import Any
 
 import pytest
 
-from tempest_fastapi_sdk import AsyncMinIOClient, PutObjectItem
+from tempest_fastapi_sdk import (
+    DEFAULT_STATIC_SECURITY_HEADERS,
+    AsyncMinIOClient,
+    PutObjectItem,
+)
 
 
 class _FakeObject:
@@ -423,6 +427,55 @@ class TestDownloadResponse:
         assert "invoice.pdf" in disposition
 
 
+class TestDownloadResponseSecurity:
+    """The proxied bytes reach the client on the API's origin."""
+
+    async def test_stored_html_inline_is_attachment_with_headers(
+        self, client: AsyncMinIOClient
+    ) -> None:
+        await client.ensure_bucket()
+        await client.put_object(
+            "evil.html", b"<script>alert(1)</script>", content_type="text/html"
+        )
+        response = await client.download_response("evil.html", as_attachment=False)
+        assert response.media_type == "text/html"
+        assert response.headers["content-disposition"].startswith("attachment;")
+        for name, value in DEFAULT_STATIC_SECURITY_HEADERS.items():
+            assert response.headers[name] == value
+
+    async def test_stored_png_stays_inline(self, client: AsyncMinIOClient) -> None:
+        await client.ensure_bucket()
+        await client.put_object("p.png", b"\x89PNG", content_type="image/png")
+        response = await client.download_response("p.png", as_attachment=False)
+        assert response.headers["content-disposition"].startswith("inline;")
+        assert response.headers["x-content-type-options"] == "nosniff"
+
+    async def test_headers_ride_on_304_and_416(
+        self, client: AsyncMinIOClient, stored: _FakeMinio
+    ) -> None:
+        not_modified = await client.download_response(
+            "video.mp4", request=_request(if_none_match='"etag-video.mp4"')
+        )
+        unsatisfiable = await client.download_response(
+            "video.mp4", request=_request(range="bytes=500-")
+        )
+        assert not_modified.status_code == 304
+        assert unsatisfiable.status_code == 416
+        for response in (not_modified, unsatisfiable):
+            for name, value in DEFAULT_STATIC_SECURITY_HEADERS.items():
+                assert response.headers[name] == value
+
+    async def test_caller_header_wins(self, client: AsyncMinIOClient) -> None:
+        await client.ensure_bucket()
+        await client.put_object("k.pdf", b"%PDF", content_type="application/pdf")
+        response = await client.download_response(
+            "k.pdf", headers={"Cross-Origin-Resource-Policy": "cross-origin"}
+        )
+        assert response.headers.getlist("cross-origin-resource-policy") == [
+            "cross-origin"
+        ]
+
+
 class TestDownloadUtilsWithMinio:
     async def test_download_delegates_to_minio(self, client: AsyncMinIOClient) -> None:
         from tempest_fastapi_sdk import DownloadUtils
@@ -794,9 +847,30 @@ class TestAccelRedirect:
         overrides = fake_minio.presign_overrides[-1]
         assert overrides == {
             "response-content-disposition": (
-                "inline; filename=\"aula.mp4\"; filename*=UTF-8''aula.mp4"
+                "attachment; filename=\"aula.mp4\"; filename*=UTF-8''aula.mp4"
             )
         }
+
+    async def test_inline_needs_a_safe_media_type(
+        self, client: AsyncMinIOClient, fake_minio: _FakeMinio
+    ) -> None:
+        """No ``stat`` is made, so only a type the caller names can go inline."""
+        await client.accel_redirect_response(
+            "aula.mp4", media_type="video/mp4", as_attachment=False
+        )
+        named = fake_minio.presign_overrides[-1]
+        assert named["response-content-disposition"].startswith("inline;")
+        assert named["response-content-type"] == "video/mp4"
+
+        await client.accel_redirect_response("aula.mp4", as_attachment=False)
+        unnamed = fake_minio.presign_overrides[-1]
+        assert unnamed["response-content-disposition"].startswith("attachment;")
+
+        await client.accel_redirect_response(
+            "page.html", media_type="text/html", as_attachment=False
+        )
+        unsafe = fake_minio.presign_overrides[-1]
+        assert unsafe["response-content-disposition"].startswith("attachment;")
 
     async def test_overrides_carry_type_cache_and_attachment(
         self, client: AsyncMinIOClient, fake_minio: _FakeMinio

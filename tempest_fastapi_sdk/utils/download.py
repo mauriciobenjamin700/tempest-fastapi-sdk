@@ -7,13 +7,21 @@ confined to a base directory (path-traversal safe) and served as
 ``FileResponse`` (disk) or ``StreamingResponse`` (in-memory bytes or
 generators).
 
+A download answers **on the API's own origin**, with a ``Content-Type`` that
+in the usual flow is the one the client declared at upload. So every
+response carries
+:data:`~tempest_fastapi_sdk.api.static.DEFAULT_STATIC_SECURITY_HEADERS`
+(a header of the same name passed by the caller wins), and ``inline`` is
+granted only to a type in :data:`INLINE_SAFE_MEDIA_TYPES` — anything else is
+served as ``attachment`` whatever ``as_attachment`` says.
+
 Depends only on Starlette responses, which ship with FastAPI — no optional
 extra is required.
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterable, Iterable
+from collections.abc import AsyncIterable, Iterable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import quote
@@ -21,6 +29,9 @@ from urllib.parse import quote
 from fastapi.responses import FileResponse, StreamingResponse
 
 from tempest_fastapi_sdk.exceptions.not_found import NotFoundException
+from tempest_fastapi_sdk.utils._security_headers import (
+    DEFAULT_STATIC_SECURITY_HEADERS,
+)
 from tempest_fastapi_sdk.utils.media_types import guess_media_type
 
 if TYPE_CHECKING:
@@ -31,8 +42,96 @@ if TYPE_CHECKING:
 
 _DEFAULT_MEDIA_TYPE: str = "application/octet-stream"
 
+INLINE_SAFE_MEDIA_TYPES: frozenset[str] = frozenset(
+    {
+        "application/pdf",
+        "audio/aac",
+        "audio/flac",
+        "audio/mp4",
+        "audio/mpeg",
+        "audio/ogg",
+        "audio/wav",
+        "audio/webm",
+        "audio/x-wav",
+        "image/avif",
+        "image/gif",
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "text/plain",
+        "video/mp4",
+        "video/ogg",
+        "video/quicktime",
+        "video/webm",
+    }
+)
+"""Media types a download may serve ``inline`` when the caller asks for it.
 
-def build_content_disposition(filename: str, *, as_attachment: bool = True) -> str:
+A download answers on the API's own origin, and ``inline`` is what lets the
+browser render the bytes as a document of that origin. ``text/html`` there
+is a page that runs script with the viewer's session on the API;
+``image/svg+xml`` is the same risk behind an image type, since SVG can carry
+``<script>``. The list is therefore an
+allowlist: a type absent from it is served as ``attachment`` even with
+``as_attachment=False``, and so is a type the SDK does not know at build time
+(``None``).
+
+What is inside is raster images, ``application/pdf``, ``text/plain`` and
+common audio and video — the inline uses a download helper is asked for
+(``<img>``, ``<video>``, viewing a PDF or a log in the browser). SVG and HTML
+are left out on purpose. To serve another type inline, build the response
+yourself; the helpers do not take an override, because the whole point is
+that an uploader-chosen type cannot reach ``inline``.
+"""
+
+
+def _is_inline_safe(media_type: str | None) -> bool:
+    """Tell whether ``media_type`` may be served ``inline``.
+
+    Args:
+        media_type (str | None): The type the response will carry, with or
+            without parameters (``"text/plain; charset=utf-8"``). ``None``
+            means the type is unknown when the header is built.
+
+    Returns:
+        bool: ``True`` only for a type in :data:`INLINE_SAFE_MEDIA_TYPES`,
+        compared without parameters and case-insensitively.
+    """
+    if media_type is None:
+        return False
+    essence: str = media_type.split(";", 1)[0].strip().lower()
+    return essence in INLINE_SAFE_MEDIA_TYPES
+
+
+def _with_security_headers(headers: Mapping[str, str] | None) -> dict[str, str]:
+    """Return the caller's headers plus the missing download security headers.
+
+    :data:`~tempest_fastapi_sdk.api.static.DEFAULT_STATIC_SECURITY_HEADERS`
+    is merged with ``setdefault`` semantics, comparing names
+    case-insensitively the way HTTP does: a header the caller already set,
+    in any casing, is kept as-is and not sent twice.
+
+    Args:
+        headers (Mapping[str, str] | None): Headers the caller passed, or
+            ``None``.
+
+    Returns:
+        dict[str, str]: A new dict; ``headers`` is not mutated.
+    """
+    merged: dict[str, str] = dict(headers or {})
+    present: set[str] = {name.lower() for name in merged}
+    for name, value in DEFAULT_STATIC_SECURITY_HEADERS.items():
+        if name.lower() not in present:
+            merged[name] = value
+    return merged
+
+
+def build_content_disposition(
+    filename: str,
+    *,
+    as_attachment: bool = True,
+    media_type: str | None = None,
+) -> str:
     """Build an RFC 6266 ``Content-Disposition`` header value.
 
     Emits both an ASCII ``filename`` (with quotes/backslashes stripped as a
@@ -49,19 +148,29 @@ def build_content_disposition(filename: str, *, as_attachment: bool = True) -> s
     below ``0x20`` plus ``DEL`` is dropped here, so what comes out is always
     a single header line.
 
+    ``as_attachment=False`` is a request, not a decision: it yields
+    ``inline`` only when ``media_type`` is in
+    :data:`INLINE_SAFE_MEDIA_TYPES`. Any other type — ``text/html``,
+    ``image/svg+xml``, ``application/octet-stream`` — and ``None`` yield
+    ``attachment``.
+
     Args:
         filename (str): The name the client should see for the download.
             Reduced to its basename, with control characters removed, so
             neither a path nor a header break can be injected.
         as_attachment (bool): ``True`` forces a download
-            (``attachment``); ``False`` lets the browser render inline
-            (``inline``). Default ``True``.
+            (``attachment``); ``False`` asks for ``inline``, granted only
+            to an inline-safe ``media_type``. Default ``True``.
+        media_type (str | None): The type the response carries. Parameters
+            are ignored in the check. ``None`` (unknown) is not inline-safe.
+            Default ``None``.
 
     Returns:
         str: A ready-to-use header value, e.g.
         ``attachment; filename="a.pdf"; filename*=UTF-8''a.pdf``.
     """
-    disposition: str = "attachment" if as_attachment else "inline"
+    inline: bool = not as_attachment and _is_inline_safe(media_type)
+    disposition: str = "inline" if inline else "attachment"
     sanitized: str = _strip_control_chars(filename)
     safe_name: str = Path(sanitized).name or "download"
     ascii_fallback: str = safe_name.encode("ascii", "ignore").decode("ascii")
@@ -150,7 +259,9 @@ class DownloadUtils:
             filename (str | None): Name presented to the client. Defaults to
                 the basename of ``key``.
             media_type (str | None): MIME type. Guessed/derived when omitted.
-            as_attachment (bool): ``True`` forces a download; ``False`` inline.
+            as_attachment (bool): ``True`` forces a download; ``False`` asks
+                for ``inline``, granted only to a type in
+                :data:`INLINE_SAFE_MEDIA_TYPES`.
             request (Request | None): The incoming request. MinIO mode needs
                 it to answer ``Range`` with ``206`` and validators with
                 ``304`` (see :meth:`AsyncMinIOClient.download_response`);
@@ -158,7 +269,10 @@ class DownloadUtils:
                 ``Range`` from the ASGI scope.
             cache_control (str | None): ``Cache-Control`` value for the
                 response. ``None`` sends none.
-            headers (dict[str, str] | None): Extra response headers.
+            headers (dict[str, str] | None): Extra response headers. One
+                named like a security default (``X-Content-Type-Options``,
+                ``Content-Security-Policy``, ``Cross-Origin-Resource-Policy``)
+                replaces that default.
 
         Returns:
             Response: A ``FileResponse`` (local) or ``StreamingResponse``
@@ -251,10 +365,13 @@ class DownloadUtils:
             media_type (str | None): MIME type. Guessed from the filename
                 extension when omitted, falling back to
                 ``application/octet-stream``.
-            as_attachment (bool): ``True`` forces a download; ``False``
-                serves inline (e.g. view a PDF in-browser). Default
-                ``True``.
-            headers (dict[str, str] | None): Extra response headers.
+            as_attachment (bool): ``True`` forces a download; ``False`` asks
+                for ``inline`` (e.g. view a PDF in-browser), granted only to
+                a type in :data:`INLINE_SAFE_MEDIA_TYPES`. Default ``True``.
+            headers (dict[str, str] | None): Extra response headers. One
+                named like a security default (``X-Content-Type-Options``,
+                ``Content-Security-Policy``, ``Cross-Origin-Resource-Policy``)
+                replaces that default.
 
         Returns:
             FileResponse: The response to return from a router.
@@ -268,9 +385,9 @@ class DownloadUtils:
         resolved_media_type: str = (
             media_type or guess_media_type(download_name) or _DEFAULT_MEDIA_TYPE
         )
-        response_headers: dict[str, str] = dict(headers or {})
+        response_headers: dict[str, str] = _with_security_headers(headers)
         response_headers["content-disposition"] = build_content_disposition(
-            download_name, as_attachment=as_attachment
+            download_name, as_attachment=as_attachment, media_type=resolved_media_type
         )
         return FileResponse(
             path=target,
@@ -300,9 +417,13 @@ class DownloadUtils:
             filename (str): Name presented to the client.
             media_type (str | None): MIME type. Guessed from ``filename``
                 when omitted, falling back to ``application/octet-stream``.
-            as_attachment (bool): ``True`` forces a download; ``False``
-                serves inline. Default ``True``.
-            headers (dict[str, str] | None): Extra response headers.
+            as_attachment (bool): ``True`` forces a download; ``False`` asks
+                for ``inline``, granted only to a type in
+                :data:`INLINE_SAFE_MEDIA_TYPES`. Default ``True``.
+            headers (dict[str, str] | None): Extra response headers. One
+                named like a security default (``X-Content-Type-Options``,
+                ``Content-Security-Policy``, ``Cross-Origin-Resource-Policy``)
+                replaces that default.
 
         Returns:
             StreamingResponse: The response to return from a router.
@@ -313,9 +434,9 @@ class DownloadUtils:
         resolved_media_type: str = (
             media_type or guess_media_type(filename) or _DEFAULT_MEDIA_TYPE
         )
-        response_headers: dict[str, str] = dict(headers or {})
+        response_headers: dict[str, str] = _with_security_headers(headers)
         response_headers["content-disposition"] = build_content_disposition(
-            filename, as_attachment=as_attachment
+            filename, as_attachment=as_attachment, media_type=resolved_media_type
         )
         return StreamingResponse(
             content=body,
@@ -325,6 +446,7 @@ class DownloadUtils:
 
 
 __all__: list[str] = [
+    "INLINE_SAFE_MEDIA_TYPES",
     "DownloadUtils",
     "build_content_disposition",
 ]

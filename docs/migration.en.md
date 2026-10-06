@@ -92,6 +92,40 @@ mounts `/logs` only when `TOKEN_SECRET` is not empty.
 - **`TOKEN_SECRET` padded with whitespace**: the padding is now stripped
   before the comparison, so clients send the value without it.
 
+## 0.306.0 — a download only goes `inline` for a safe type
+
+`as_attachment=False` is now a request: `DownloadUtils`, `FileStoreUtils` and
+`AsyncMinIOClient.download_response`/`serve_object` only answer
+`Content-Disposition: inline` when the response type is in
+`INLINE_SAFE_MEDIA_TYPES`. Any other — `text/html`, `image/svg+xml`,
+`application/octet-stream` — goes out as `attachment`. Every download
+response also carries `X-Content-Type-Options`, `Content-Security-Policy`
+and `Cross-Origin-Resource-Policy`.
+
+`accel_redirect_response` changes its default to `as_attachment=True`, and
+with `as_attachment=False` only serves `inline` when `media_type=` is passed.
+
+`build_content_disposition(name, as_attachment=False)` with no `media_type=`
+returns `attachment`.
+
+### What to do
+
+- **Route that shows an image, PDF, audio or video in the browser**: nothing,
+  if the type is on the list. In `X-Accel-Redirect` mode, pass `media_type=`
+  (for example `guess_media_type(key)`), or the file becomes a download.
+- **A call to `accel_redirect_response` that relied on `inline` by default**:
+  pass `as_attachment=False` and `media_type=`.
+- **Deployment with `STORAGE_ACCEL_REDIRECT=true`**: add
+  `proxy_hide_header X-Content-Type-Options;` and the three
+  `add_header ... always;` lines from the storage recipe to nginx's internal
+  `location`. nginx does not forward the headers the app sets on the empty
+  response.
+- **A page that embeds the download in an `<iframe>` or from another site**:
+  the `sandbox` CSP and `same-site` CORP apply to it. Pass the value you need
+  in `headers=` — it replaces the default of the same name.
+- **`build_content_disposition(..., as_attachment=False)` called by hand**:
+  pass `media_type=` with the response type.
+
 ## 0.305.0 — a deactivated account's token no longer authenticates
 
 `current_user_dependency()` and the authenticated routes of

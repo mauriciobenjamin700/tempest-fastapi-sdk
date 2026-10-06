@@ -29,6 +29,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Headers de segurança nos downloads, e `inline` só para tipo seguro.**
+  `DownloadUtils.download`/`file_response`/`stream`, os mesmos métodos do
+  `FileStoreUtils` e `AsyncMinIOClient.download_response` passam a sair com
+  `DEFAULT_STATIC_SECURITY_HEADERS` (`X-Content-Type-Options: nosniff`,
+  `Content-Security-Policy: default-src 'none'; sandbox`,
+  `Cross-Origin-Resource-Policy: same-site`), com semântica `setdefault`: um
+  header de mesmo nome em `headers=` vence. `as_attachment=False` só produz
+  `inline` para tipo na constante nova `INLINE_SAFE_MEDIA_TYPES` (imagem
+  raster, `application/pdf`, `text/plain`, áudio e vídeo comuns); qualquer
+  outro tipo, HTML e SVG incluídos, sai como `attachment`.
+  `build_content_disposition` ganha `media_type=` e aplica a mesma regra —
+  sem ele, `as_attachment=False` devolve `attachment`.
+  `accel_redirect_response` passa a ter `as_attachment=True` por padrão, e no
+  modo redirect `inline` exige `media_type=` (o objeto não é consultado). Os
+  headers de segurança do modo redirect vão no `location` interno do nginx
+  (`add_header ... always`): medido no nginx 1.22.1, 1.27.5 e 1.29.8, o que o
+  app põe na resposta vazia não chega ao cliente. A receita de storage traz o
+  bloco. `DEFAULT_STATIC_SECURITY_HEADERS` continua importável de
+  `tempest_fastapi_sdk.api.static`. Passo a passo em `docs/migration.md`
+  (`0.306.0`).
+
+- **`make_logs_router` recusa segredo vazio, e o serviço gerado só monta
+  `/logs` com segredo.** `make_logs_router(token_secret="")` (ou só espaço)
+  levanta `ValueError` na construção; para montar sem autenticação numa
+  execução local, passe o novo `allow_unauthenticated: bool = False` como
+  `True`. Com segredo, a flag não tem efeito. O espaço em volta de
+  `token_secret` é removido antes da checagem e da comparação. O
+  `src/api/app.py` gerado pelo `tempest new` monta o router só quando
+  `settings.TOKEN_SECRET` não está vazio, e os próximos passos impressos
+  pelo `tempest new` passam a incluir `uv run tempest secrets init` e
+  `uv run tempest check-config` antes de subir o serviço. Até a 0.305.0 um
+  segredo vazio desligava a checagem do `X-Token` em `GET` e `DELETE /logs`.
+  Migração em `docs/migration.md`.
+
 - **Código TOTP de uso único.** `MFAMixin` ganhou a coluna
   `totp_last_step` (nullable). `mfa_confirm`, `mfa_verify`, `mfa_disable` e
   `request_email_recovery` gravam o passo aceito num `UPDATE` condicional e
@@ -36,6 +70,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mais para o primeiro login. `mfa_enroll` e
   `mfa_disable` zeram a coluna. **Exige migration** para quem usa
   `MFAMixin` — passo a passo em `docs/migration.md` (seção `0.306.0`).
+
+### Fixed
+
+- **Admin: toda rota autenticada relê o principal, e os POSTs do console SQL
+  e do cancelamento de task conferem CSRF.** O cookie de sessão prova que um
+  login aconteceu, não que a conta ainda pode entrar; quem decide isso é o
+  `AdminAuthBackend.load_principal`, relido a cada request. Quatro rotas
+  dependiam só do cookie — `GET /admin/logs/export`, `GET` e `POST
+  /admin/sql` e `POST /admin/tasks/{job_id}/cancel` —, então uma conta
+  apagada, desativada ou sem `is_admin` depois do login continuava atendida
+  nelas até o cookie expirar (`8h` por default). Agora as quatro relêem o
+  principal antes de qualquer outra coisa e respondem `303` para
+  `/admin/login`, como as demais: o statement não chega ao `SqlShellService`
+  (nenhuma entrada no auditor) e a linha da task não muda. `POST /admin/sql` e
+  `POST /admin/tasks/{job_id}/cancel` passam a exigir o campo `csrf_token` da
+  sessão, como os outros POSTs do painel: sem o campo é `422`, com token
+  errado é `403`; os formulários dos templates já mandam o campo. Quem posta
+  nessas duas rotas fora do formulário do painel precisa incluir o token. O
+  console SQL passa também a renderizar o cabeçalho com o usuário e o
+  logout a partir do principal relido, como o painel de tasks. Guard: `tests/test_admin_principal_guard.py` percorre o
+  `APIRouter` de `make_admin_router` e falha em toda rota que depende de
+  `_require_session` sem chamar `_resolve_principal` — rodado contra o
+  router anterior, lista exatamente as quatro.
 
 ## [0.305.0] — 2026-10-05
 
@@ -126,19 +183,6 @@ e signup gravando os campos do schema que são coluna — com passo a passo em
 
 ### Changed
 
-- **`make_logs_router` recusa segredo vazio, e o serviço gerado só monta
-  `/logs` com segredo.** `make_logs_router(token_secret="")` (ou só espaço)
-  levanta `ValueError` na construção; para montar sem autenticação numa
-  execução local, passe o novo `allow_unauthenticated: bool = False` como
-  `True`. Com segredo, a flag não tem efeito. O espaço em volta de
-  `token_secret` é removido antes da checagem e da comparação. O
-  `src/api/app.py` gerado pelo `tempest new` monta o router só quando
-  `settings.TOKEN_SECRET` não está vazio, e os próximos passos impressos
-  pelo `tempest new` passam a incluir `uv run tempest secrets init` e
-  `uv run tempest check-config` antes de subir o serviço. Até a 0.305.0 um
-  segredo vazio desligava a checagem do `X-Token` em `GET` e `DELETE /logs`.
-  Migração em `docs/migration.md`.
-
 - **Token de conta desativada deixa de autenticar (#421).**
   `UserAuthService.current_user_dependency` ganha `require_active: bool =
   True` e `inactive_exception`: depois de carregar o usuário, conta inativa
@@ -171,27 +215,6 @@ e signup gravando os campos do schema que são coluna — com passo a passo em
   `is_admin` no schema continua sem efeito: protegido.
 
 ### Fixed
-
-- **Admin: toda rota autenticada relê o principal, e os POSTs do console SQL
-  e do cancelamento de task conferem CSRF.** O cookie de sessão prova que um
-  login aconteceu, não que a conta ainda pode entrar; quem decide isso é o
-  `AdminAuthBackend.load_principal`, relido a cada request. Quatro rotas
-  dependiam só do cookie — `GET /admin/logs/export`, `GET` e `POST
-  /admin/sql` e `POST /admin/tasks/{job_id}/cancel` —, então uma conta
-  apagada, desativada ou sem `is_admin` depois do login continuava atendida
-  nelas até o cookie expirar (`8h` por default). Agora as quatro relêem o
-  principal antes de qualquer outra coisa e respondem `303` para
-  `/admin/login`, como as demais: o statement não chega ao `SqlShellService`
-  (nenhuma entrada no auditor) e a linha da task não muda. `POST /admin/sql` e
-  `POST /admin/tasks/{job_id}/cancel` passam a exigir o campo `csrf_token` da
-  sessão, como os outros POSTs do painel: sem o campo é `422`, com token
-  errado é `403`; os formulários dos templates já mandam o campo. Quem posta
-  nessas duas rotas fora do formulário do painel precisa incluir o token. O
-  console SQL passa também a renderizar o cabeçalho com o usuário e o
-  logout a partir do principal relido, como o painel de tasks. Guard: `tests/test_admin_principal_guard.py` percorre o
-  `APIRouter` de `make_admin_router` e falha em toda rota que depende de
-  `_require_session` sem chamar `_resolve_principal` — rodado contra o
-  router anterior, lista exatamente as quatro.
 
 - **Token de uso único é gasto numa instrução só (#422).** `_consume_token`
   (ativação, troca de senha, troca de e-mail) lia a linha, conferia
