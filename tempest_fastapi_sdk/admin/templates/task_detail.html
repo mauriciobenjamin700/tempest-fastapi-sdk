@@ -40,6 +40,7 @@
 
   {% if cancellable %}
   <form method="post" action="{{ cancel_url }}" class="tempest-admin-tasks__cancel">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <button type="submit">Cancel this run</button>
     <span class="tempest-admin-tasks__hint">
       Cancelling is cooperative: the row flips now, and the worker stops at its

@@ -986,7 +986,8 @@ volta ao padrão.
 - `Secure` marcado quando `cookie_secure=True` (padrão; desligue no dev HTTP local).
 - `SameSite=Lax` (`"lax"`/`"strict"`/`"none"` aceitos).
 - Tempo de vida padrão `8h`; cookies expirados ou adulterados são rejeitados silenciosamente.
-- Um token CSRF por sessão é gerado no login e exigido por todo POST de formulário (login, logout, criar, editar, excluir, ações em massa).
+- O cookie não basta: toda rota autenticada relê o principal pelo `auth_backend` a cada request. Conta apagada, desativada ou sem `is_admin` depois do login é mandada para `/admin/login` (`303`) já no request seguinte, sem esperar o cookie expirar.
+- Um token CSRF por sessão é gerado no login e exigido por todo POST de formulário (login, logout, criar, editar, excluir, ações em massa, execução no console SQL, cancelamento de task).
 - `secret_key` deve ter ao menos 32 bytes — chaves curtas levantam `ValueError` no momento da construção.
 
 !!! danger "Login em loop? É o `Secure` do cookie sobre HTTP puro"

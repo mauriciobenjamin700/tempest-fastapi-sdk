@@ -159,6 +159,27 @@ e signup gravando os campos do schema que são coluna — com passo a passo em
 
 ### Fixed
 
+- **Admin: toda rota autenticada relê o principal, e os POSTs do console SQL
+  e do cancelamento de task conferem CSRF.** O cookie de sessão prova que um
+  login aconteceu, não que a conta ainda pode entrar; quem decide isso é o
+  `AdminAuthBackend.load_principal`, relido a cada request. Quatro rotas
+  dependiam só do cookie — `GET /admin/logs/export`, `GET` e `POST
+  /admin/sql` e `POST /admin/tasks/{job_id}/cancel` —, então uma conta
+  apagada, desativada ou sem `is_admin` depois do login continuava atendida
+  nelas até o cookie expirar (`8h` por default). Agora as quatro relêem o
+  principal antes de qualquer outra coisa e respondem `303` para
+  `/admin/login`, como as demais: o statement não chega ao `SqlShellService`
+  (nenhuma entrada no auditor) e a linha da task não muda. `POST /admin/sql` e
+  `POST /admin/tasks/{job_id}/cancel` passam a exigir o campo `csrf_token` da
+  sessão, como os outros POSTs do painel: sem o campo é `422`, com token
+  errado é `403`; os formulários dos templates já mandam o campo. Quem posta
+  nessas duas rotas fora do formulário do painel precisa incluir o token. O
+  console SQL passa também a renderizar o cabeçalho com o usuário e o
+  logout a partir do principal relido, como o painel de tasks. Guard: `tests/test_admin_principal_guard.py` percorre o
+  `APIRouter` de `make_admin_router` e falha em toda rota que depende de
+  `_require_session` sem chamar `_resolve_principal` — rodado contra o
+  router anterior, lista exatamente as quatro.
+
 - **Token de uso único é gasto numa instrução só (#422).** `_consume_token`
   (ativação, troca de senha, troca de e-mail) lia a linha, conferia
   `used_at IS NULL` e gravava `used_at` depois — dois resgates simultâneos do

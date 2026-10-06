@@ -2870,6 +2870,18 @@ extra **não** pinado traria, e faz o login do admin. A suíte roda com todos
 os extras instalados, então importar o app no próprio processo não provava
 nada sobre o `pyproject.toml` ao lado dele.
 
+## Admin: o cookie não basta, o principal é relido (Unreleased)
+
+Toda rota autenticada do `make_admin_router` relê o principal pelo
+`auth_backend.load_principal` a cada request, e conta apagada, desativada ou
+sem `is_admin` sai com `303` para `/admin/login`. As quatro que ficavam só no
+cookie (`GET /admin/logs/export`, `GET`/`POST /admin/sql`,
+`POST /admin/tasks/{job_id}/cancel`) entraram na regra; os dois POSTs ganharam
+o `csrf_token` que os outros já exigiam, e o console SQL passou a renderizar o
+cabeçalho a partir do principal relido. Guard:
+`tests/test_admin_principal_guard.py`; comportamento (rebaixar, desativar e
+apagar depois do login): `tests/admin/test_principal_revalidation.py`.
+
 ## Rota pronta do webhook da zap-api (v0.305.0, #420)
 
 `integrations.messaging.zap.router` fecha o que a v0.302.0 deixou como

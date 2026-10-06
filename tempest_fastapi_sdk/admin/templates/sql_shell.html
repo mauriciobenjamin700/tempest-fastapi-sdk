@@ -33,6 +33,7 @@
   {% endif %}
 
   <form method="post" action="{{ nav_sql_url }}" class="tempest-admin-sql__form">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <label for="sql-input" class="tempest-admin-sql__label">Statement</label>
     <textarea id="sql-input"
               name="sql"

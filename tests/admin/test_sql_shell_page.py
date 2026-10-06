@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 from typing import Any
 
+import httpx2
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -20,6 +22,30 @@ from tempest_fastapi_sdk.admin.sql_shell import (
     SqlShellService,
 )
 from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
+
+_CSRF_INPUT = re.compile(r'name="csrf_token" value="([^"]+)"')
+"""The hidden CSRF input the console form carries."""
+
+
+def _run_sql(client: TestClient, sql: str) -> httpx2.Response:
+    """Submit a statement the way the console form does.
+
+    The token is read from the rendered console, so the run also proves the
+    form ships the hidden input the route now requires.
+
+    Args:
+        client (TestClient): A signed-in client.
+        sql (str): The statement to submit.
+
+    Returns:
+        httpx2.Response: The console page with the outcome.
+
+    Raises:
+        AssertionError: When the console form carries no CSRF token.
+    """
+    match = _CSRF_INPUT.search(client.get("/admin/sql").text)
+    assert match is not None, "the console form carries no csrf_token"
+    return client.post("/admin/sql", data={"sql": sql, "csrf_token": match.group(1)})
 
 
 class ConsoleUser(BaseUserModel):
@@ -90,10 +116,7 @@ class TestConsolePage:
         console: tuple[TestClient, list[SqlAudit], Any],
     ) -> None:
         client, _audits, _shell = console
-        response = client.post(
-            "/admin/sql",
-            data={"sql": "SELECT id, total FROM orders ORDER BY id"},
-        )
+        response = _run_sql(client, "SELECT id, total FROM orders ORDER BY id")
         assert response.status_code == 200
         assert "100" in response.text
         assert "200" in response.text
@@ -103,7 +126,7 @@ class TestConsolePage:
         console: tuple[TestClient, list[SqlAudit], Any],
     ) -> None:
         client, _audits, _shell = console
-        response = client.post("/admin/sql", data={"sql": "DROP TABLE orders"})
+        response = _run_sql(client, "DROP TABLE orders")
         assert response.status_code == 200
         assert "Refused by policy" in response.text
         assert "drop is not permitted" in response.text
@@ -113,7 +136,7 @@ class TestConsolePage:
         console: tuple[TestClient, list[SqlAudit], Any],
     ) -> None:
         client, _audits, _shell = console
-        response = client.post("/admin/sql", data={"sql": "SELECT * FROM secrets"})
+        response = _run_sql(client, "SELECT * FROM secrets")
         assert "Refused by policy" in response.text
         assert "shh" not in response.text
 
@@ -122,7 +145,7 @@ class TestConsolePage:
         console: tuple[TestClient, list[SqlAudit], Any],
     ) -> None:
         client, _audits, _shell = console
-        response = client.post("/admin/sql", data={"sql": "SELECT * FROM nope"})
+        response = _run_sql(client, "SELECT * FROM nope")
         assert "Statement failed" in response.text
         assert "Refused by policy" not in response.text
 
@@ -131,7 +154,7 @@ class TestConsolePage:
         console: tuple[TestClient, list[SqlAudit], Any],
     ) -> None:
         client, _audits, _shell = console
-        response = client.post("/admin/sql", data={"sql": "SELECT 1 FROM orders"})
+        response = _run_sql(client, "SELECT 1 FROM orders")
         assert "SELECT 1 FROM orders" in response.text
 
     def test_every_attempt_is_audited_with_the_principal(
@@ -139,8 +162,8 @@ class TestConsolePage:
         console: tuple[TestClient, list[SqlAudit], Any],
     ) -> None:
         client, audits, _shell = console
-        client.post("/admin/sql", data={"sql": "SELECT id FROM orders"})
-        client.post("/admin/sql", data={"sql": "DROP TABLE orders"})
+        _run_sql(client, "SELECT id FROM orders")
+        _run_sql(client, "DROP TABLE orders")
         assert len(audits) == 2
         assert audits[0].allowed is True
         assert audits[1].allowed is False
