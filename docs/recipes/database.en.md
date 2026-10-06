@@ -1882,7 +1882,7 @@ class UserService(BaseService[UserRepository, UserResponse]):
     auditing, retention policies.
 
 !!! info "MFA is another opt-in mixin"
-    `MFAMixin` adds `totp_secret` / `totp_enabled_at` to the user model
+    `MFAMixin` adds `totp_secret` / `totp_enabled_at` / `totp_last_step` to the user model
     when the project turns on the bundled MFA flow. Details in
     [MFA (TOTP / 2FA) »](mfa.md).
 

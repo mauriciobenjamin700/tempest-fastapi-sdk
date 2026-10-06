@@ -202,7 +202,7 @@ from starlette.responses import FileResponse
 from tempest_fastapi_sdk import DownloadUtils
 
 Path("uploads").mkdir(exist_ok=True)
-Path("uploads/evil.html").write_text("<script>alert(document.cookie)</script>")
+Path("uploads/evil.html").write_text("<script>window.ran = true</script>")
 Path("uploads/photo.png").write_bytes(b"\x89PNG\r\n\x1a\n")
 
 downloads = DownloadUtils("uploads")

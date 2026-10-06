@@ -319,7 +319,7 @@ A chave é a conta porque o `mfa_token` não segura nada: quem tem a senha pede 
 
 O código TOTP fica válido pela janela de drift inteira (`AUTH_MFA_VERIFY_WINDOW=1` dá 90 segundos). Sem mais nada, quem visse o código passar por cima do ombro, num log ou num proxy, entraria com ele de novo dentro desses 90 segundos.
 
-Agora o SDK grava o passo de 30 segundos do último código aceito na coluna `totp_last_step` e recusa qualquer código do mesmo passo ou de um anterior como se fosse um código errado (no `verify`, o mesmo `401`). Vale para `confirm`, `verify`, `disable` e a recuperação de e-mail (`request_email_recovery`): o código usado para ativar o MFA já não serve para o primeiro login, e o usuário espera o próximo aparecer no app.
+Agora o SDK grava o passo de 30 segundos do último código aceito na coluna `totp_last_step` e recusa qualquer código do mesmo passo ou de um anterior como se fosse um código errado (no `verify`, o mesmo `401`). Vale para `confirm`, `verify`, `disable` e a recuperação de e-mail (`request_email_recovery`): o código usado para ativar o MFA já não serve para o primeiro login, e o usuário espera o próximo aparecer no app. O desafio do painel admin (`POST /admin/mfa`) segue a mesma regra e tem o mesmo limite de tentativas: veja [Admin](admin.md).
 
 A gravação é um `UPDATE` condicional: quem decide é a linha no banco, não o objeto carregado, então uma segunda sessão que leu o usuário antes do primeiro aceite também recebe a recusa (medido com SQLite, duas sessões abertas sobre a mesma linha).
 

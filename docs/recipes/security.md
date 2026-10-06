@@ -6,7 +6,7 @@ Primitivos defensivos: rate-limit por falha (login/OTP), tokens opacos single-us
 
 `AttemptThrottle` conta tentativas falhas por chave (tipicamente `<endpoint>:<identificador>` — e-mail de login, alvo de reset de senha, IP, etc.). Quando o limite é cruzado, `raise_if_blocked` levanta `TooManyRequestsException` direto; ou você lê `status`/`hit` e decide o que fazer.
 
-O construtor recebe um `backend` (qualquer objeto que case com o `Protocol` `ThrottleBackend`) + `max_attempts` + `window_seconds`. Sem backend "in-memory" bundled — use o cliente Redis do `AsyncRedisManager` ou um fake nos testes.
+O construtor recebe um `backend` (qualquer objeto que case com o `Protocol` `ThrottleBackend`) + `max_attempts` + `window_seconds`. Para um processo só (servidor de dev, testes) o `InMemoryThrottleBackend` bundled funciona sem Redis; ele conta por processo, então com mais de um worker use o cliente Redis do `AsyncRedisManager`.
 
 !!! check "`redis.asyncio.Redis` e `fakeredis` passam no `Protocol`, medido"
 
@@ -88,8 +88,8 @@ Use os campos pra montar payloads de erro amigáveis. `raise_if_blocked` já cri
 !!! note "Conecte o `AsyncRedisManager` no startup"
     `cache.client` levanta `RuntimeError` enquanto `connect()` não for chamado. Conecte o manager no startup da aplicação (via `FastAPI(lifespan=...)` ou `on_startup`) antes de acessar `cache.client` — e chame `cache.disconnect()` no shutdown.
 
-!!! warning "`AttemptThrottle` não tem backend bundled in-memory"
-    Pra testes sem Redis, use [fakeredis](https://github.com/cunla/fakeredis-py) (`pip install fakeredis`): `fakeredis.aioredis.FakeRedis` satisfaz o `ThrottleBackend` (métodos `get`, `incr`, `expire`, `ttl`, `delete`) e expõe um Redis funcional 100% em memória. Conferido no type-checker **e** em runtime: `tests/utils/test_throttle.py::TestTheClientsTheRecipeNames` roda a janela inteira sobre um `FakeRedis` — contagem, bloqueio, `TooManyRequestsException`, `reset`, e o TTL de 900s que o primeiro `hit` gravou.
+!!! warning "`InMemoryThrottleBackend` conta por processo"
+    Com `uvicorn --workers`, gunicorn ou mais de um pod, cada processo tem o próprio contador e o limite efetivo vira `max_attempts` vezes o número de workers: aí o backend é o Redis. Para testar contra a API do Redis sem subir um, use [fakeredis](https://github.com/cunla/fakeredis-py) (`pip install fakeredis`): `fakeredis.aioredis.FakeRedis` satisfaz o `ThrottleBackend` (métodos `get`, `incr`, `expire`, `ttl`, `delete`) e expõe um Redis funcional 100% em memória. Conferido no type-checker **e** em runtime: `tests/utils/test_throttle.py::TestTheClientsTheRecipeNames` roda a janela inteira sobre um `FakeRedis` — contagem, bloqueio, `TooManyRequestsException`, `reset`, e o TTL de 900s que o primeiro `hit` gravou.
 
 ## Tipos de token JWT (`typ`)
 

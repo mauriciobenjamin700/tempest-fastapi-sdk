@@ -222,6 +222,8 @@ app.include_router(
 
     **MFA login**: a principal with MFA enabled (`MFAMixin`'s `totp_secret`/`totp_enabled_at`) goes through a TOTP challenge at `/admin/mfa` after the password — only a valid code grants access. Enable it via `UserModelAuthBackend(UserModel, mfa_issuer=...)`; custom backends override `mfa_enabled`/`verify_mfa`.
 
+    Each code is good for **one** sign-in: `UserModelAuthBackend` records the accepted step in `totp_last_step` (an `MFAMixin` column; a custom backend that keeps its own state overrides `claim_mfa_step`). And the challenge limits wrong codes per principal: `make_admin_router(mfa_throttle=...)`, by default 5 failures per 900 s on an `InMemoryThrottleBackend`; once spent, `/admin/mfa` answers `429` with `Retry-After` before looking at the code, even after a fresh login. With more than one worker, pass an `AttemptThrottle` on Redis.
+
     **Audit trail**: create/edit through the admin stamps `created_by`/`updated_by` (from `AuditMixin`) with the acting admin's id; the detail view shows an **Audit** panel with timestamps and — when the model has the audit columns — the actor (UUID resolved to a display name via the auth backend). Models without `AuditMixin` show timestamps only.
 
     In-place inline editing of children: see `Inline(editable=True)` below.

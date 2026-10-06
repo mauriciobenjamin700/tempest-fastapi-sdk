@@ -319,7 +319,7 @@ The key is the account because the `mfa_token` holds nothing back: whoever has t
 
 A TOTP code stays valid for the whole drift window (`AUTH_MFA_VERIFY_WINDOW=1` gives 90 seconds). With nothing else, anyone who saw the code go by (over a shoulder, in a log, at a proxy) could log in with it again inside those 90 seconds.
 
-The SDK now stores the 30-second step of the last accepted code in the `totp_last_step` column and refuses any code from the same step or an earlier one as if it were a wrong code (at `verify`, the same `401`). It holds for `confirm`, `verify`, `disable` and email recovery (`request_email_recovery`): the code used to activate MFA no longer works for the first login, and the user waits for the next one to show in the app.
+The SDK now stores the 30-second step of the last accepted code in the `totp_last_step` column and refuses any code from the same step or an earlier one as if it were a wrong code (at `verify`, the same `401`). It holds for `confirm`, `verify`, `disable` and email recovery (`request_email_recovery`): the code used to activate MFA no longer works for the first login, and the user waits for the next one to show in the app. The admin panel's challenge (`POST /admin/mfa`) follows the same rule and has the same attempt limit: see [Admin](admin.md).
 
 The write is a conditional `UPDATE`: the stored row decides, not the loaded object, so a second session that read the user before the first acceptance is refused too (measured with SQLite, two sessions open over the same row).
 

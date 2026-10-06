@@ -1776,7 +1776,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   constructor's `accel_redirect=`, fed by `STORAGE_ACCEL_REDIRECT` /
   `STORAGE_ACCEL_PREFIX` in `MinIOSettings`. Recipe has the nginx block,
   measured against nginx + MinIO containers.
-  **(Unreleased)** Every download response (`DownloadUtils`,
+  **(0.306.0)** Every download response (`DownloadUtils`,
   `FileStoreUtils`, `download_response`) carries
   `DEFAULT_STATIC_SECURITY_HEADERS` (`setdefault`: caller's `headers=` wins);
   `as_attachment=False` is granted only to a type in
@@ -2880,7 +2880,7 @@ extra **não** pinado traria, e faz o login do admin. A suíte roda com todos
 os extras instalados, então importar o app no próprio processo não provava
 nada sobre o `pyproject.toml` ao lado dele.
 
-## Admin: o cookie não basta, o principal é relido (Unreleased)
+## Admin: o cookie não basta, o principal é relido (0.306.0)
 
 Toda rota autenticada do `make_admin_router` relê o principal pelo
 `auth_backend.load_principal` a cada request, e conta apagada, desativada ou
@@ -2978,3 +2978,14 @@ o `tempest new` manda rodar `tempest secrets init` e `tempest check-config`
 antes de subir. Guards: `tests/api/test_logs_router.py`
 (`TestEmptySecretIsRefused`) e `tests/cli/test_scaffold_runtime.py`
 (`test_generated_app_mounts_logs_only_with_a_secret`).
+
+## MFA com limite de tentativas e código de uso único (0.306.0)
+
+`make_auth_router(mfa_throttle=...)` e `make_admin_router(mfa_throttle=...)`
+limitam códigos errados por conta (default 5 em 900 s sobre
+`InMemoryThrottleBackend`; `429` com `Retry-After` antes de verificar).
+`TOTPHelper.matching_step` devolve o passo do código, e a coluna
+`totp_last_step` do `MFAMixin` o registra com um `UPDATE` condicional, então
+cada código entra uma vez — no `UserAuthService` e no
+`UserModelAuthBackend.claim_mfa_step` do admin. Guards:
+`tests/auth/test_mfa.py`, `tests/admin/test_mfa_attempt_limit.py`.

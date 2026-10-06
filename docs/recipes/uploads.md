@@ -168,7 +168,7 @@ async def upload_file(file: UploadFile) -> dict[str, str]:
 
 client = TestClient(app)
 png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
-html = b"<script>alert(document.cookie)</script>"
+html = b"<script>window.ran = true</script>"
 for name, data, mime in [
     ("photo.png", png, "image/png"),
     ("evil.html", html, "text/html"),

@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contagem. Cada tentativa reserva sua vaga antes da verificação, então uma
   rajada simultânea não passa do limite. `UserAuthService.mfa_verify` ganhou o
   parâmetro `throttle=` correspondente.
+- **`make_admin_router(mfa_throttle=...)` e `AdminAuthBackend.claim_mfa_step`.**
+  O desafio `POST /admin/mfa` do painel ganha o mesmo limite do
+  `/auth/mfa/verify` (5 códigos errados por 900 s, chave por principal,
+  `429` com `Retry-After` antes de olhar o código) e passa a aceitar cada
+  código uma vez: `UserModelAuthBackend.claim_mfa_step` grava o passo em
+  `totp_last_step` com o mesmo `UPDATE` condicional do service. O default de
+  `claim_mfa_step` na base delega a `verify_mfa`, então backend customizado
+  continua funcionando sem mudança.
 - **`TOTPHelper.matching_step(secret, code, *, window=1) -> int | None`** —
   devolve o passo de 30 segundos de onde o código saiu (comparação com
   `hmac.compare_digest`); `verify` passa a delegar a ele.
