@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.306.0] — 2026-10-06
+
+Release de segurança. Downloads saem com `nosniff`, CSP e CORP e só vão
+`inline` para tipo seguro; `make_logs_router` recusa segredo vazio e o serviço
+gerado só monta `/logs` com segredo; as rotas do admin que confiavam só no
+cookie passam a reler o principal, e os POSTs do console SQL e do cancel de
+task conferem CSRF; o MFA — em `/auth/mfa/verify` e no `/admin/mfa` — ganha
+limite de tentativas por conta e aceita cada código uma vez. Três mudanças
+pedem ação na atualização (coluna `totp_last_step`, segredo do `/logs`,
+download `inline`), com passo a passo em `docs/migration.md` (seções
+`0.306.0`). Advisories: GHSA-2qc2-pcgx-589h, GHSA-233q-cpq4-mwx3,
+GHSA-427r-m66r-6332, GHSA-5wpj-fr23-7p37.
+
 ### Added
 
 - **`InMemoryThrottleBackend`** — `ThrottleBackend` sem Redis, por processo,
