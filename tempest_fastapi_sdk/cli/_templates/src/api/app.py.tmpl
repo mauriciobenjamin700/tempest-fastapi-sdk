@@ -43,6 +43,15 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
 def create_app() -> FastAPI:
     """Build the configured FastAPI instance.
 
+    ``/logs`` is mounted only when ``TOKEN_SECRET`` is set:
+    ``make_logs_router`` refuses an empty secret, and the generated
+    ``.env.example`` ships ``TOKEN_SECRET=`` empty. Fill it with
+    ``uv run tempest secrets init`` to get the endpoint.
+
+    The admin panel needs the ``[admin]`` extra and a ``UserModel`` row
+    with ``is_admin=True``; create one after the first
+    ``uv run alembic upgrade head``.
+
     Returns:
         FastAPI: A fully wired application ready for uvicorn.
     """
@@ -60,18 +69,14 @@ def create_app() -> FastAPI:
     app.include_router(
         make_health_router(db=db, version=settings.VERSION),
     )
-    app.include_router(
-        make_logs_router(
-            log_dir=settings.LOG_DIR,
-            token_secret=settings.TOKEN_SECRET,
-        ),
-    )
+    if settings.TOKEN_SECRET.strip():
+        app.include_router(
+            make_logs_router(
+                log_dir=settings.LOG_DIR,
+                token_secret=settings.TOKEN_SECRET,
+            ),
+        )
 
-    # Admin panel — requires the [admin] extra plus a UserModel row
-    # with ``is_admin=True``. Bootstrap one after running the first
-    # Alembic migration:
-    #   uv run alembic upgrade head
-    #   uv run python -c "..."  # set hashed_password + is_admin=True
     admin_site = AdminSite(title=f"{settings.TITLE} admin")
     admin_site.register(AdminModel(model=UserModel))
     app.include_router(

@@ -126,6 +126,19 @@ e signup gravando os campos do schema que são coluna — com passo a passo em
 
 ### Changed
 
+- **`make_logs_router` recusa segredo vazio, e o serviço gerado só monta
+  `/logs` com segredo.** `make_logs_router(token_secret="")` (ou só espaço)
+  levanta `ValueError` na construção; para montar sem autenticação numa
+  execução local, passe o novo `allow_unauthenticated: bool = False` como
+  `True`. Com segredo, a flag não tem efeito. O espaço em volta de
+  `token_secret` é removido antes da checagem e da comparação. O
+  `src/api/app.py` gerado pelo `tempest new` monta o router só quando
+  `settings.TOKEN_SECRET` não está vazio, e os próximos passos impressos
+  pelo `tempest new` passam a incluir `uv run tempest secrets init` e
+  `uv run tempest check-config` antes de subir o serviço. Até a 0.305.0 um
+  segredo vazio desligava a checagem do `X-Token` em `GET` e `DELETE /logs`.
+  Migração em `docs/migration.md`.
+
 - **Token de conta desativada deixa de autenticar (#421).**
   `UserAuthService.current_user_dependency` ganha `require_active: bool =
   True` e `inactive_exception`: depois de carregar o usuário, conta inativa

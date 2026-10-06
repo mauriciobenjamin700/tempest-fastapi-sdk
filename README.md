@@ -2087,12 +2087,13 @@ def create_app() -> FastAPI:
             version=settings.VERSION,
         ),
     )
-    app.include_router(
-        make_logs_router(
-            log_dir=settings.LOG_DIR,
-            token_secret=settings.TOKEN_SECRET,
-        ),
-    )
+    if settings.TOKEN_SECRET.strip():
+        app.include_router(
+            make_logs_router(
+                log_dir=settings.LOG_DIR,
+                token_secret=settings.TOKEN_SECRET,
+            ),
+        )
 
     # Business endpoints under /api/<domain>, guarded by the shared secret.
     from src.api.routers import users
@@ -2197,7 +2198,7 @@ The scaffold reads the directory from `LOG_DIR` (defaults to `"logs"`; set it em
 
 #### Reading logs over HTTP — `make_logs_router`
 
-`make_logs_router` mounts `GET /logs`, which parses the on-disk JSON files and returns a paginated `BasePaginationSchema[LogEntrySchema]` (newest first). It is gated by a shared-secret `X-Token` header — never expose it unauthenticated in production (the payload carries tracebacks and request metadata).
+`make_logs_router` mounts `GET /logs`, which parses the on-disk JSON files and returns a paginated `BasePaginationSchema[LogEntrySchema]` (newest first). It is gated by a shared-secret `X-Token` header, and an empty `token_secret` raises `ValueError` at construction unless you pass `allow_unauthenticated=True` (the payload carries tracebacks and request metadata, and `DELETE /logs` truncates the files). Fill `TOKEN_SECRET` with `uv run tempest secrets init`.
 
 ```python
 from fastapi import FastAPI

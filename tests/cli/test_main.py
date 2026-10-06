@@ -306,6 +306,24 @@ class TestNew:
         assert result.exit_code == 1
         assert (tmp_path / "demo_svc" / "old.txt").exists()
 
+    def test_next_steps_fill_the_secrets_before_serving(self, tmp_path: Path) -> None:
+        """The printed steps fill ``TOKEN_SECRET`` before the first run.
+
+        ``.env.example`` ships ``TOKEN_SECRET=`` empty and the generated
+        app mounts ``/logs`` only with a secret, so the steps name
+        ``tempest secrets init`` after the copy and ``tempest check-config``
+        before the service starts.
+        """
+        result = runner.invoke(app, ["new", "demo_svc", "--path", str(tmp_path)])
+        assert result.exit_code == 0, result.stdout + result.stderr
+        out = result.stdout
+
+        copy = out.index("cp .env.example .env")
+        fill = out.index("uv run tempest secrets init")
+        check = out.index("uv run tempest check-config")
+        start = out.index("uv run python main.py")
+        assert copy < fill < check < start
+
     def test_force_overwrites_target(self, tmp_path: Path) -> None:
         (tmp_path / "demo_svc").mkdir()
         result = runner.invoke(

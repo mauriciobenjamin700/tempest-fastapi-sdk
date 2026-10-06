@@ -25,12 +25,14 @@ import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
+import tempest_fastapi_sdk
 from tempest_fastapi_sdk.cli.main import app as cli_app
 
 runner = CliRunner()
@@ -480,3 +482,56 @@ def test_the_names_module_imports_nothing_from_the_project(
 
     assert "import" not in source.split('"""')[-1]
     assert "USER_TABLE_NAME" in source
+
+
+def test_generated_app_mounts_logs_only_with_a_secret(
+    scaffolded: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The scaffold ships ``TOKEN_SECRET=`` empty, so ``/logs`` stays unmounted.
+
+    Paths are read from ``app.openapi()["paths"]``, never from
+    ``app.routes``: FastAPI 0.141.1 keeps an ``_IncludedRouter`` entry
+    there instead of the included routes, so an absence check over it
+    passes with the endpoint mounted.
+
+    ``src.api.app`` calls ``configure_logging`` at import, which would
+    reconfigure logging for the rest of the session and create a ``logs/``
+    directory in the working directory, so the SDK function is replaced
+    by a no-op before the import binds it. The settings are frozen, and
+    each case swaps in a copy with the ``TOKEN_SECRET`` under test.
+    """
+
+    def _no_logging(**_: Any) -> None:
+        """Stand in for ``configure_logging`` during the import."""
+
+    monkeypatch.setattr(tempest_fastapi_sdk, "configure_logging", _no_logging)
+    app_module = importlib.import_module("src.api.app")
+    settings = app_module.settings
+
+    monkeypatch.setattr(
+        app_module,
+        "settings",
+        settings.model_copy(update={"TOKEN_SECRET": ""}),
+    )
+    without_secret = app_module.create_app().openapi()["paths"]
+
+    monkeypatch.setattr(
+        app_module,
+        "settings",
+        settings.model_copy(update={"TOKEN_SECRET": "s3cret"}),
+    )
+    with_secret = app_module.create_app().openapi()["paths"]
+
+    assert "/health/liveness" in without_secret
+    assert "/logs" not in without_secret
+    assert set(with_secret["/logs"]) >= {"get", "delete"}
+
+
+def test_generated_env_example_leaves_the_token_secret_empty(
+    scaffolded: Path,
+) -> None:
+    """The case the mount guard exists for is the one the scaffold ships."""
+    lines = (scaffolded / ".env.example").read_text(encoding="utf-8").splitlines()
+
+    assert "TOKEN_SECRET=" in lines

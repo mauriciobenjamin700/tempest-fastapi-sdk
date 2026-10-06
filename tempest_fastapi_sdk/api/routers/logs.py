@@ -363,6 +363,7 @@ def make_logs_router(
     *,
     log_dir: str | Path = "logs",
     token_secret: str = "",
+    allow_unauthenticated: bool = False,
     prefix: str = "/logs",
     tag: str = "logs",
     header_name: str = "X-Token",
@@ -376,23 +377,42 @@ def make_logs_router(
     :func:`tempest_fastapi_sdk.configure_logging` (called with
     ``log_dir=...``), filters them, and returns a
     :class:`BasePaginationSchema` of :class:`LogEntrySchema`. Newest
-    records come first.
+    records come first. ``DELETE <prefix>`` truncates the same files.
 
-    The endpoint is gated by a shared-secret ``X-Token`` header via
-    :func:`make_token_dependency`. An empty ``token_secret`` disables
-    the check (development only) — never ship log access unauthenticated
-    in production, the payload exposes tracebacks and request metadata.
+    Both endpoints are gated by a shared-secret header via
+    :func:`make_token_dependency`, and an empty ``token_secret`` is
+    refused at construction unless ``allow_unauthenticated=True`` is
+    passed.
+
+    The refusal is fail-closed on purpose. ``make_token_dependency``
+    reads an empty secret as "nothing to check", so a router built from
+    a settings field the environment left empty still answers ``200``
+    and the missing gate looks like a working endpoint, while ``GET``
+    hands out tracebacks and request metadata and ``DELETE`` truncates
+    the files. Raising turns that gap into a startup error, and the
+    opt-out is a named flag the reader of the call site sees.
+
+    Leading and trailing whitespace in ``token_secret`` is stripped
+    before the check and before the comparison. A whitespace-only value
+    is not a secret, and a padded one locks clients out: ``httpx``
+    refuses to send a header value with surrounding whitespace, and
+    uvicorn's ``h11`` parser strips it on arrival.
 
     Args:
         log_dir (str | Path): Directory holding the log files. Must
             match the ``log_dir`` passed to ``configure_logging``.
             Defaults to ``"logs"``.
-        token_secret (str): Shared secret for the ``X-Token`` header.
-            Empty disables auth (dev only).
+        token_secret (str): Shared secret expected in the
+            ``header_name`` header. Required unless
+            ``allow_unauthenticated`` is ``True``.
+        allow_unauthenticated (bool): Build the router without a secret,
+            answering every request that reaches it. Meant for a local
+            run nothing else can reach. Has no effect when
+            ``token_secret`` is set. Defaults to ``False``.
         prefix (str): URL prefix for the router. Defaults to
             ``"/logs"`` — mount it at the application root, not under
             ``/api``.
-        tag (str): OpenAPI tag applied to the endpoint.
+        tag (str): OpenAPI tag applied to the endpoints.
         header_name (str): Auth header name. Defaults to ``"X-Token"``.
         default_page_size (int): Page size when the caller omits it.
         max_page_size (int): Upper bound enforced on ``page_size``.
@@ -404,10 +424,23 @@ def make_logs_router(
 
     Returns:
         APIRouter: A router ready to ``include_router(...)`` on the app.
+
+    Raises:
+        ValueError: When ``token_secret`` is empty or whitespace-only and
+            ``allow_unauthenticated`` is ``False``.
     """
+    secret = token_secret.strip()
+    if not secret and not allow_unauthenticated:
+        raise ValueError(
+            "make_logs_router() needs a non-empty token_secret: "
+            f"GET {prefix} exposes tracebacks and DELETE {prefix} truncates "
+            f"the log files. Pass the secret clients send in {header_name} "
+            "(set TOKEN_SECRET, e.g. with `tempest secrets init`), or pass "
+            "allow_unauthenticated=True for a local run nothing else reaches."
+        )
     router = APIRouter(prefix=prefix, tags=[tag])
     base_dir = Path(log_dir)
-    require_token = make_token_dependency(token_secret, header_name=header_name)
+    require_token = make_token_dependency(secret, header_name=header_name)
 
     @router.get(
         "",

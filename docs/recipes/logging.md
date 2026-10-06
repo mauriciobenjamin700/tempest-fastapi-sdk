@@ -506,11 +506,36 @@ app.include_router(
 )
 ```
 
-!!! warning "Proteja o endpoint em produção"
-    O payload expõe tracebacks e metadados de request. O endpoint é
-    protegido por um header de segredo compartilhado `X-Token` via
-    `make_token_dependency`. Um `TOKEN_SECRET` vazio **desativa** a
-    checagem (apenas dev) — nunca exponha `/logs` sem auth em produção.
+!!! warning "Segredo vazio é recusado"
+    `GET /logs` expõe tracebacks e metadados de request, e `DELETE /logs`
+    trunca os arquivos. Os dois exigem o header `X-Token`, comparado com
+    `token_secret` via `make_token_dependency`. Um `token_secret` vazio
+    (ou só espaço) faz o `make_logs_router` levantar `ValueError` na
+    construção: o app não sobe, em vez de subir com `/logs` aberto.
+    Preencha o `TOKEN_SECRET` com `uv run tempest secrets init`.
+
+    O serviço gerado pelo `tempest new` monta `/logs` só quando
+    `TOKEN_SECRET` não está vazio, porque o `.env.example` sai com
+    `TOKEN_SECRET=` em branco.
+
+Para uma execução local que nada mais alcança, a recusa se desliga pelo
+nome, onde quem lê a chamada vê:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import make_logs_router
+
+app = FastAPI()
+
+
+app.include_router(
+    make_logs_router(log_dir="logs", allow_unauthenticated=True),
+)
+```
+
+Com `token_secret` preenchido, `allow_unauthenticated` não tem efeito: a
+requisição sem `X-Token` continua recebendo `401`.
 
 Exemplos de consulta:
 
