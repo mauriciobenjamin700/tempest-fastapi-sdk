@@ -366,6 +366,9 @@ from tempest_fastapi_sdk.utils.throttle import (
     AttemptThrottle as AttemptThrottle,
 )
 from tempest_fastapi_sdk.utils.throttle import (
+    InMemoryThrottleBackend as InMemoryThrottleBackend,
+)
+from tempest_fastapi_sdk.utils.throttle import (
     ThrottleBackend as ThrottleBackend,
 )
 from tempest_fastapi_sdk.utils.throttle import (
@@ -447,6 +450,7 @@ __all__: list[str] = [
     "GPUMetrics",
     "HTTPClient",
     "HexColorField",
+    "InMemoryThrottleBackend",
     "JWTUtils",
     "LatitudeField",
     "LocalUploadStorage",

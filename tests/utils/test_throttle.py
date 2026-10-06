@@ -6,6 +6,8 @@ import pytest
 
 from tempest_fastapi_sdk import (
     AttemptThrottle,
+    InMemoryThrottleBackend,
+    ThrottleBackend,
     ThrottleStatus,
     TooManyRequestsException,
 )
@@ -194,3 +196,101 @@ class TestTheClientsTheRecipeNames:
         await throttle.hit("k")
 
         assert await client.ttl("throttle:k") == 900
+
+
+class _Clock:
+    """Hand-driven clock so expiry is tested without sleeping."""
+
+    def __init__(self) -> None:
+        self.now: float = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+class TestInMemoryThrottleBackend:
+    """The bundled process-local backend honours the Redis contract."""
+
+    def test_satisfies_the_protocol(self) -> None:
+        """Assignable where the throttle expects a backend."""
+        backend: ThrottleBackend = InMemoryThrottleBackend()
+        assert backend is not None
+
+    async def test_ttl_contract_absent_unset_and_counting(self) -> None:
+        """``-2`` absent, ``-1`` without TTL, seconds rounded up after."""
+        clock = _Clock()
+        backend = InMemoryThrottleBackend(clock=clock)
+        assert await backend.ttl("k") == -2
+        assert await backend.get("k") is None
+        assert await backend.incr("k") == 1
+        assert await backend.ttl("k") == -1
+        await backend.expire("k", 60)
+        clock.now += 59.5
+        assert await backend.ttl("k") == 1
+        assert await backend.get("k") == "1"
+
+    async def test_window_expires_on_its_own(self) -> None:
+        """Once the TTL passes the key is gone and counting restarts."""
+        clock = _Clock()
+        throttle = AttemptThrottle(
+            InMemoryThrottleBackend(clock=clock),
+            max_attempts=2,
+            window_seconds=900,
+        )
+        await throttle.hit("k")
+        blocked = await throttle.hit("k")
+        assert blocked.blocked is True
+        assert blocked.retry_after_seconds == 900
+
+        clock.now += 899
+        assert (await throttle.status("k")).blocked is True
+
+        clock.now += 1
+        assert await throttle.status("k") == ThrottleStatus(0, False, 0)
+        assert (await throttle.hit("k")).attempts == 1
+
+    async def test_expire_on_absent_key_is_a_no_op(self) -> None:
+        """Like ``EXPIRE``, a missing key is not created."""
+        backend = InMemoryThrottleBackend()
+        await backend.expire("missing", 60)
+        assert await backend.ttl("missing") == -2
+
+    async def test_delete_and_reset(self) -> None:
+        """``reset`` clears the key whether or not it existed."""
+        throttle = AttemptThrottle(
+            InMemoryThrottleBackend(),
+            max_attempts=1,
+            window_seconds=60,
+        )
+        await throttle.reset("never-set")
+        await throttle.hit("k")
+        with pytest.raises(TooManyRequestsException):
+            await throttle.raise_if_blocked("k")
+        await throttle.reset("k")
+        assert await throttle.status("k") == ThrottleStatus(0, False, 0)
+
+    async def test_expired_entries_are_evicted_on_write(self) -> None:
+        """A key nobody touches again does not stay in the dict."""
+        clock = _Clock()
+        backend = InMemoryThrottleBackend(clock=clock)
+        await backend.incr("old")
+        await backend.expire("old", 10)
+        clock.now += 11
+        await backend.incr("new")
+        assert "old" not in backend._counters
+
+    async def test_matches_fakeredis_step_for_step(self) -> None:
+        """Same operations, same answers as the client the recipe names."""
+        fake_aioredis = pytest.importorskip("fakeredis.aioredis")
+        redis = fake_aioredis.FakeRedis(decode_responses=True)
+        memory = InMemoryThrottleBackend()
+        for backend in (redis, memory):
+            assert await backend.ttl("k") == -2
+            assert await backend.incr("k") == 1
+            assert await backend.ttl("k") == -1
+            await backend.expire("k", 900)
+            assert await backend.incr("k") == 2
+            assert await backend.ttl("k") == 900
+            assert await backend.get("k") == "2"
+            await backend.delete("k")
+            assert await backend.get("k") is None

@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, inspect, select, update
+from sqlalchemy import delete, inspect, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -71,6 +71,7 @@ from tempest_fastapi_sdk.exceptions import (
     OAuthEmailTakenException,
     OAuthEmailUnverifiedException,
     OAuthRegistrationDisabledException,
+    TooManyRequestsException,
     UnauthorizedException,
     ValidationException,
 )
@@ -113,6 +114,7 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
     from tempest_fastapi_sdk.utils.email import EmailUtils
+    from tempest_fastapi_sdk.utils.throttle import AttemptThrottle
 
 
 SIGNUP_PROTECTED_FIELDS: frozenset[str] = frozenset(
@@ -2899,6 +2901,7 @@ class UserAuthService:
             session.add(record)
         user = await self._attach(session, user)
         user.totp_secret = secret
+        user.totp_last_step = None
         await session.flush()
         await session.refresh(user)
         return secret, provisioning, plaintexts
@@ -2919,24 +2922,23 @@ class UserAuthService:
 
         Raises:
             UnauthorizedException: When the code does not match the
-                pending secret (no MFA enrollment happens).
+                pending secret, or when its step was already spent
+                (no MFA enrollment happens either way).
             ValidationException: When no secret is staged (caller
                 must run :meth:`mfa_enroll` first).
-        """
-        from tempest_fastapi_sdk.utils.totp import TOTPHelper
 
+        Notes:
+            The accepted step is stored in ``totp_last_step``, so the
+            code that proves the QR was read cannot be spent again at
+            ``/auth/mfa/verify`` — the first login needs a later step.
+        """
         if not user.totp_secret:
             raise ValidationException(
                 message="MFA not initialized — call enroll first",
             )
-        totp = TOTPHelper(issuer=self.auth_settings.AUTH_MFA_ISSUER)
-        if not totp.verify(
-            user.totp_secret,
-            code,
-            window=self.auth_settings.AUTH_MFA_VERIFY_WINDOW,
-        ):
-            raise UnauthorizedException(message="invalid MFA code")
         user = await self._attach(session, user)
+        if not await self._claim_totp_step(session, user, code):
+            raise UnauthorizedException(message="invalid MFA code")
         user.totp_enabled_at = utcnow()
         await session.flush()
         await session.refresh(user)
@@ -2956,7 +2958,10 @@ class UserAuthService:
             session (AsyncSession): Active SQLAlchemy session.
             user (BaseUserModel): The user disabling MFA.
             password (str): Plaintext password — re-verified.
-            code (str): Active TOTP or single-use recovery code.
+            code (str): Active TOTP or single-use recovery code. A TOTP
+                code whose step was already accepted (by
+                :meth:`mfa_confirm`, :meth:`mfa_verify` or an earlier
+                call) is refused like a wrong one.
             recovery_code_model (type[BaseUserRecoveryCodeModel]): The
                 project's concrete recovery-code model — needed
                 because disabling MFA wipes every code.
@@ -2976,6 +2981,7 @@ class UserAuthService:
         user = await self._attach(session, user)
         user.totp_secret = None
         user.totp_enabled_at = None
+        user.totp_last_step = None
         await session.execute(
             delete(recovery_code_model).where(
                 recovery_code_model.user_id == user.id,
@@ -2991,6 +2997,7 @@ class UserAuthService:
         mfa_token: str,
         code: str,
         recovery_code_model: type[BaseUserRecoveryCodeModel],
+        throttle: AttemptThrottle | None = None,
     ) -> BaseUserModel:
         """Step 2 of two-step login — swap the intermediate token for JWTs.
 
@@ -3001,6 +3008,19 @@ class UserAuthService:
                 code from enrollment.
             recovery_code_model (type[BaseUserRecoveryCodeModel]): The
                 project's concrete recovery-code model.
+            throttle (AttemptThrottle | None): Failure budget keyed on
+                ``f"mfa:{user_id}"`` — the account, not ``mfa_token``,
+                because step 1 mints a fresh token on every login and a
+                per-token key would hand the budget back to whoever
+                retries ``/auth/login``. Each verification reserves one
+                attempt **before** the code is checked, and the attempt
+                past ``max_attempts`` is refused with ``429`` whatever the
+                code; a success resets the key, so only wrong codes
+                accumulate. Reserving first, rather than counting after the
+                check, is what keeps a burst of concurrent guesses from all
+                passing a "not blocked yet" read together. ``None``
+                (default) leaves the call unthrottled — the bundled router
+                always passes one.
 
         Returns:
             BaseUserModel: The fully authenticated user — caller
@@ -3008,7 +3028,19 @@ class UserAuthService:
 
         Raises:
             UnauthorizedException: On bad / expired ``mfa_token``,
-                bad code, or user not enrolled in MFA.
+                bad code, user not enrolled in MFA, or a TOTP code
+                whose step was already accepted.
+            TooManyRequestsException: When ``throttle`` has the
+                account's attempt budget spent (``429``, carrying
+                ``Retry-After``). Raised before the code is checked.
+
+        Notes:
+            A TOTP code is single-use: the accepted step is written to
+            ``totp_last_step`` in one conditional ``UPDATE``, and a code
+            whose step is at or below it is refused — so a code seen in
+            transit is not worth a second login inside its drift window,
+            even from a session that loaded the row before it was spent.
+            Recovery codes were already single-use (``used_at``).
         """
         try:
             payload = self.jwt.decode(mfa_token)
@@ -3025,12 +3057,80 @@ class UserAuthService:
             raise UnauthorizedException(message="invalid MFA token")
         if not self.is_mfa_enrolled(user):
             raise UnauthorizedException(message="MFA not enrolled")
+        throttle_key = f"mfa:{user_id}"
+        if throttle is not None:
+            attempt = await throttle.hit(throttle_key)
+            if attempt.attempts > throttle.max_attempts:
+                raise TooManyRequestsException(
+                    message="too many invalid MFA codes, try again later",
+                    retry_after_seconds=attempt.retry_after_seconds,
+                )
         if not await self._verify_mfa_code(session, user, code, recovery_code_model):
             raise UnauthorizedException(message="invalid MFA code")
+        if throttle is not None:
+            await throttle.reset(throttle_key)
         user.last_login_at = utcnow()
         await session.flush()
         await session.refresh(user)
         return user
+
+    async def _claim_totp_step(
+        self,
+        session: AsyncSession,
+        user: BaseUserModel,
+        code: str,
+    ) -> bool:
+        """Accept ``code`` as a TOTP code at most once.
+
+        Resolves the step ``code`` belongs to and records it in
+        ``totp_last_step`` with a single conditional ``UPDATE`` that only
+        matches while the stored step is ``NULL`` or older. The row count
+        is the verdict: a replayed code (same step) or an older one
+        matches nothing, and the decision is taken by the stored row
+        rather than by the loaded object, so a session holding a stale
+        copy cannot accept a step another session already spent.
+
+        Args:
+            session (AsyncSession): The active DB session. The statement
+                is executed but not committed — the caller owns the
+                transaction.
+            user (BaseUserModel): The user whose secret is checked.
+            code (str): The submitted 6-digit code.
+
+        Returns:
+            bool: ``True`` when ``code`` matched a step inside the
+            configured window that had not been accepted before — and
+            that step is now recorded. ``False`` when there is no secret,
+            no step matches, or the step was already spent.
+        """
+        from tempest_fastapi_sdk.utils.totp import TOTPHelper
+
+        secret: str | None = getattr(user, "totp_secret", None)
+        if not secret:
+            return False
+        step = TOTPHelper(issuer=self.auth_settings.AUTH_MFA_ISSUER).matching_step(
+            secret,
+            code,
+            window=self.auth_settings.AUTH_MFA_VERIFY_WINDOW,
+        )
+        if step is None:
+            return False
+        model = self.user_model
+        result = cast(
+            "CursorResult[Any]",
+            await session.execute(
+                update(model)
+                .where(
+                    model.id == user.id,
+                    or_(
+                        model.totp_last_step.is_(None),
+                        model.totp_last_step < step,
+                    ),
+                )
+                .values(totp_last_step=step)
+            ),
+        )
+        return int(result.rowcount or 0) == 1
 
     async def _verify_mfa_code(
         self,
@@ -3041,8 +3141,10 @@ class UserAuthService:
     ) -> bool:
         """Check ``code`` against TOTP first, then unused recovery codes.
 
-        The recovery-code branch is the fallback, matched against the
-        single-use codes handed out (in plaintext) at enrollment.
+        Both branches spend what they accept: the TOTP branch records the
+        step through :meth:`_claim_totp_step`, so the same code is refused
+        on the next call, and the recovery-code branch stamps ``used_at``
+        on the single-use code handed out (in plaintext) at enrollment.
 
         Args:
             session (AsyncSession): The active DB session.
@@ -3052,19 +3154,11 @@ class UserAuthService:
                 holding this project's recovery codes.
 
         Returns:
-            bool: ``True`` when the code matched a valid TOTP window or an
-            unused recovery code.
+            bool: ``True`` when the code matched a TOTP step not accepted
+            before or an unused recovery code.
         """
-        from tempest_fastapi_sdk.utils.totp import TOTPHelper
-
-        if user.totp_secret:
-            totp = TOTPHelper(issuer=self.auth_settings.AUTH_MFA_ISSUER)
-            if totp.verify(
-                user.totp_secret,
-                code,
-                window=self.auth_settings.AUTH_MFA_VERIFY_WINDOW,
-            ):
-                return True
+        if await self._claim_totp_step(session, user, code):
+            return True
         digest = hash_opaque_token(code.strip())
         result = await session.execute(
             select(recovery_code_model).where(

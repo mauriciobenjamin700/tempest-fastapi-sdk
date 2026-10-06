@@ -3,7 +3,11 @@
 Wraps the small surface of ``pyotp`` the SDK actually needs —
 generating a secret, building the ``otpauth://`` provisioning URI
 (scanned as a QR code by Authenticator apps), and verifying a
-6-digit code with a ±N-step clock-drift window. The import of
+6-digit code with a ±N-step clock-drift window. Verification comes
+in two forms: :meth:`TOTPHelper.verify` answers *is this code
+valid*, and :meth:`TOTPHelper.matching_step` also answers *which
+30-second step it came from*, which is what lets a caller persist the
+last accepted step and refuse the same code twice. The import of
 ``pyotp`` is deferred to first use so the rest of the SDK keeps
 working when the ``[mfa]`` extra is not installed; the
 ``ImportError`` is raised with a clear hint the moment a
@@ -11,6 +15,9 @@ working when the ``[mfa]`` extra is not installed; the
 """
 
 from __future__ import annotations
+
+import hmac
+import time
 
 
 class TOTPHelper:
@@ -101,6 +108,13 @@ class TOTPHelper:
     def verify(self, secret: str, code: str, *, window: int = 1) -> bool:
         """Constant-time check that ``code`` matches ``secret`` now.
 
+        Says nothing about whether ``code`` was **already** used: a step
+        stays valid for the whole window, so the same 6 digits verify
+        again until the window moves past it. A caller that needs
+        single-use semantics compares :meth:`matching_step` against the
+        last accepted step — which is what
+        :meth:`~tempest_fastapi_sdk.UserAuthService.mfa_verify` does.
+
         Args:
             secret (str): Base32 secret persisted on the user row.
             code (str): 6-digit code submitted by the user.
@@ -119,6 +133,33 @@ class TOTPHelper:
         Raises:
             ImportError: When the ``[mfa]`` extra is not installed.
         """
+        return self.matching_step(secret, code, window=window) is not None
+
+    def matching_step(self, secret: str, code: str, *, window: int = 1) -> int | None:
+        """Return the 30-second step ``code`` was generated from.
+
+        The step is the TOTP counter value, an integer that only moves
+        forward — so persisting the last accepted one is what makes a code
+        single-use: a code whose step is at or below that one has already
+        been spent, whatever the clock says now.
+
+        Args:
+            secret (str): Base32 secret persisted on the user row.
+            code (str): 6-digit code submitted by the user. Spacing and
+                dashes are stripped, as in :meth:`verify`.
+            window (int): Tolerance in 30-second steps, as in
+                :meth:`verify`.
+
+        Returns:
+            int | None: The step whose code equals ``code``, or ``None``
+            when no step in the window produces it (also when ``code`` is
+            non-numeric or the wrong length). Steps are scanned oldest
+            first, the order ``pyotp`` itself uses, so two steps that
+            happen to render the same 6 digits resolve to the older one.
+
+        Raises:
+            ImportError: When the ``[mfa]`` extra is not installed.
+        """
         try:
             import pyotp
         except ImportError as exc:  # pragma: no cover - guarded by extra
@@ -128,8 +169,13 @@ class TOTPHelper:
             ) from exc
         cleaned = code.strip().replace(" ", "").replace("-", "")
         if not cleaned.isdigit() or len(cleaned) != 6:
-            return False
-        return bool(pyotp.TOTP(secret).verify(cleaned, valid_window=window))
+            return None
+        totp = pyotp.TOTP(secret)
+        current = int(time.time()) // totp.interval
+        for step in range(current - window, current + window + 1):
+            if hmac.compare_digest(cleaned, totp.generate_otp(step)):
+                return step
+        return None
 
 
 __all__: list[str] = ["TOTPHelper"]

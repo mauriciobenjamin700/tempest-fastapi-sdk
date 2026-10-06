@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`InMemoryThrottleBackend`** — `ThrottleBackend` sem Redis, por processo,
+  com o mesmo contrato do `redis-py` (`ttl` devolve `-2` para chave ausente e
+  `-1` sem TTL) e `clock=` injetável para teste sem `sleep`. Com mais de um
+  worker cada processo conta sozinho; ali o backend continua sendo o Redis.
+  Exportado no topo do pacote e em `tempest_fastapi_sdk.utils`.
+- **`make_auth_router(mfa_throttle=...)`** — limite de códigos errados em
+  `POST /auth/mfa/verify`, por conta (`f"mfa:{user_id}"`), não por
+  `mfa_token`: um login novo não devolve o orçamento. O padrão é
+  `MFA_THROTTLE_MAX_ATTEMPTS` (5) por `MFA_THROTTLE_WINDOW_SECONDS` (900),
+  em `tempest_fastapi_sdk.auth.router`, sobre um `InMemoryThrottleBackend`. Esgotado, a rota responde `429`
+  `TOO_MANY_REQUESTS` com `Retry-After` antes de olhar o código; acerto zera a
+  contagem. Cada tentativa reserva sua vaga antes da verificação, então uma
+  rajada simultânea não passa do limite. `UserAuthService.mfa_verify` ganhou o
+  parâmetro `throttle=` correspondente.
+- **`TOTPHelper.matching_step(secret, code, *, window=1) -> int | None`** —
+  devolve o passo de 30 segundos de onde o código saiu (comparação com
+  `hmac.compare_digest`); `verify` passa a delegar a ele.
+
+### Changed
+
+- **Código TOTP de uso único.** `MFAMixin` ganhou a coluna
+  `totp_last_step` (nullable). `mfa_confirm`, `mfa_verify`, `mfa_disable` e
+  `request_email_recovery` gravam o passo aceito num `UPDATE` condicional e
+  recusam código do mesmo passo ou anterior; o código do `confirm` não serve
+  mais para o primeiro login. `mfa_enroll` e
+  `mfa_disable` zeram a coluna. **Exige migration** para quem usa
+  `MFAMixin` — passo a passo em `docs/migration.md` (seção `0.306.0`).
+
 ## [0.305.0] — 2026-10-05
 
 Auth que o produto não precisa mais sobrescrever: token de uso único gasto

@@ -1257,6 +1257,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.core.logging.configure_root_once
 ::: tempest_fastapi_sdk.core.logging.reinitialize_logging
 ::: tempest_fastapi_sdk.utils.throttle.AttemptThrottle
+::: tempest_fastapi_sdk.utils.throttle.InMemoryThrottleBackend
 ::: tempest_fastapi_sdk.utils.signed_url.sign_path
 ::: tempest_fastapi_sdk.utils.signed_url.verify_path
 ::: tempest_fastapi_sdk.utils.signed_url.SIGNED_URL_EXPIRES_PARAM

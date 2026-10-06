@@ -2,6 +2,58 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.306.0 — single-use TOTP codes need the `totp_last_step` column
+
+`MFAMixin` gained the `totp_last_step` column (integer, nullable), where the
+SDK stores the 30-second step of the last accepted TOTP code so the same code
+is refused a second time. Since it is mapped on the mixin, **migrate the
+database before upgrading the package**: without the column every query on the
+user model fails — signup and login answer `500`
+(`no such column: <table>.totp_last_step`, measured with SQLite). Projects that
+do not use `MFAMixin` change nothing.
+
+### What to do
+
+1. Generate the migration (`uv run tempest db revision -m "totp last step"`,
+   or `alembic revision --autogenerate`) or write it by hand:
+
+    ```python
+    import sqlalchemy as sa
+    from alembic import op
+
+    revision: str = "0306_totp_last_step"
+    down_revision: str | None = "<the previous revision>"
+
+
+    def upgrade() -> None:
+        """Add the last accepted TOTP step column."""
+        op.add_column("users", sa.Column("totp_last_step", sa.Integer(), nullable=True))
+
+
+    def downgrade() -> None:
+        """Drop the last accepted TOTP step column."""
+        op.drop_column("users", "totp_last_step")
+    ```
+
+2. Run `uv run tempest db upgrade` (or `alembic upgrade head`) and only then
+   deploy the new version.
+
+Existing rows stay `NULL`, which means "no code spent yet": the next valid
+code is accepted and records its step.
+
+Two behaviour changes come along, with no required step:
+
+- **A TOTP code is worth one acceptance.** The code used at `confirm` no
+  longer works for the first login, nor the login code for an immediate
+  `disable`: the user waits for the next code in the app (up to 30 seconds).
+  An automated test that reuses `pyotp.TOTP(secret).now()` after `confirm`
+  now gets `401`; use the next step's code,
+  `pyotp.TOTP(secret).at(int(time.time()) + 30)`.
+- **`POST /auth/mfa/verify` answers `429`** after five wrong codes per account
+  in 15 minutes. The default counter lives in the process; with more than one
+  worker, pass `make_auth_router(mfa_throttle=AttemptThrottle(redis, ...))` —
+  see [Attempt limit](recipes/mfa.en.md#attempt-limit).
+
 ## 0.305.0 — a deactivated account's token no longer authenticates
 
 `current_user_dependency()` and the authenticated routes of

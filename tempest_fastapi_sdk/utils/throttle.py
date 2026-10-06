@@ -10,9 +10,10 @@ counts *failures*, so legitimate use is never penalised.
 
 The backend is injected — anything implementing the async Redis verbs
 ``incr``/``expire``/``ttl``/``get``/``delete`` works (e.g.
-``redis.asyncio.Redis``). When the backend raises and ``fail_open`` is
-``True`` (default), the throttle degrades to "allow" rather than locking
-users out on a cache outage.
+``redis.asyncio.Redis``), plus the bundled
+:class:`InMemoryThrottleBackend` for a single process and for tests. When
+the backend raises and ``fail_open`` is ``True`` (default), the throttle
+degrades to "allow" rather than locking users out on a cache outage.
 
 Example:
     throttle = AttemptThrottle(redis, max_attempts=5, window_seconds=900)
@@ -23,7 +24,9 @@ Example:
     await throttle.reset(key)                     # success clears it
 """
 
-from collections.abc import Awaitable
+import math
+import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -258,8 +261,162 @@ class AttemptThrottle:
         return current
 
 
+class InMemoryThrottleBackend:
+    """Process-local :class:`ThrottleBackend` — no Redis, no network.
+
+    Holds one ``(count, expires_at)`` pair per key in a dict and serves the
+    five async verbs :class:`AttemptThrottle` calls, with the same return
+    contract Redis has: ``ttl`` answers ``-2`` for an absent key and ``-1``
+    for one carrying no TTL.
+
+    !!! warning "The counter lives in the process that served the request."
+        Two workers each keep their own dict, so the budget an account
+        can reach is ``max_attempts * workers``: the bound holds per
+        worker, not per account. Anything served by more than one
+        process (``uvicorn --workers``, gunicorn, more than one pod) needs a
+        shared backend; pass the Redis client to
+        :class:`AttemptThrottle` there. Correct for a single-process
+        deployment, a dev server, and tests.
+
+    Every ``incr`` first drops the entries whose TTL already passed, so the
+    dict stays bounded by the keys touched inside one window and a key
+    nobody touches again does not live as long as the process.
+
+    Example:
+        >>> backend = InMemoryThrottleBackend()
+        >>> throttle = AttemptThrottle(backend, max_attempts=5, window_seconds=900)
+        >>> await throttle.hit("mfa:user-id")
+        ThrottleStatus(attempts=1, blocked=False, retry_after_seconds=0)
+    """
+
+    def __init__(self, *, clock: Callable[[], float] = time.monotonic) -> None:
+        """Initialize an empty backend.
+
+        Args:
+            clock (Callable[[], float]): Zero-argument callable returning
+                the current time in seconds. Defaults to
+                :func:`time.monotonic`.
+        """
+        self._clock: Callable[[], float] = clock
+        self._counters: dict[str, tuple[int, float | None]] = {}
+
+    def _live(self, name: str) -> tuple[int, float | None] | None:
+        """Return the entry for ``name``, evicting it once its TTL passed.
+
+        Args:
+            name (str): The backend key to read.
+
+        Returns:
+            tuple[int, float | None] | None: The ``(count, expires_at)``
+            pair still alive under ``name``, or ``None`` when the key is
+            absent or expired. ``expires_at`` is ``None`` when no TTL was
+            set, which is the Redis ``-1`` case.
+        """
+        entry = self._counters.get(name)
+        if entry is None:
+            return None
+        expires_at = entry[1]
+        if expires_at is not None and expires_at <= self._clock():
+            del self._counters[name]
+            return None
+        return entry
+
+    def _evict_expired(self) -> None:
+        """Drop every entry whose TTL already passed.
+
+        Runs on the write path only: a key that stops being touched would
+        otherwise stay in the dict for the life of the process.
+        """
+        now = self._clock()
+        for name in [
+            name
+            for name, (_, expires_at) in self._counters.items()
+            if expires_at is not None and expires_at <= now
+        ]:
+            del self._counters[name]
+
+    async def incr(self, name: str, /) -> int:
+        """Atomically increment ``name`` and return the new count.
+
+        The first increment of a window creates the key with no TTL, exactly
+        like Redis ``INCR`` — the caller is the one that follows up with
+        :meth:`expire`.
+
+        Args:
+            name (str): Identifier being throttled (an IP, a user, an email).
+
+        Returns:
+            int: The attempt count after the increment.
+        """
+        self._evict_expired()
+        entry = self._live(name)
+        count = (entry[0] if entry is not None else 0) + 1
+        self._counters[name] = (count, entry[1] if entry is not None else None)
+        return count
+
+    async def expire(self, name: str, seconds: int, /) -> None:
+        """Set a TTL (seconds) on ``name``.
+
+        A key that is absent or already expired is left absent, which is
+        what ``EXPIRE`` does.
+
+        Args:
+            name (str): Identifier being throttled (an IP, a user, an email).
+            seconds (int): Window length in seconds.
+        """
+        entry = self._live(name)
+        if entry is None:
+            return
+        self._counters[name] = (entry[0], self._clock() + seconds)
+
+    async def ttl(self, name: str, /) -> int:
+        """Return remaining TTL in seconds (``-1``/``-2`` when unset).
+
+        Args:
+            name (str): Identifier being throttled (an IP, a user, an email).
+
+        Returns:
+            int: ``-2`` when the key is absent, ``-1`` when it carries no
+            TTL, and otherwise the seconds left, rounded **up** — a key
+            that is still alive never answers ``0``, which the throttle
+            reads as "no TTL" and would replace with the full window.
+        """
+        entry = self._live(name)
+        if entry is None:
+            return -2
+        expires_at = entry[1]
+        if expires_at is None:
+            return -1
+        return math.ceil(expires_at - self._clock())
+
+    async def get(self, name: str, /) -> str | bytes | None:
+        """Return the counter at ``name`` as text.
+
+        Args:
+            name (str): Identifier being throttled (an IP, a user, an email).
+
+        Returns:
+            str | bytes | None: The attempt count as a decimal string, or
+            ``None`` when the key is absent or expired. The throttle only
+            ever parses it as an ``int``.
+        """
+        entry = self._live(name)
+        if entry is None:
+            return None
+        return str(entry[0])
+
+    async def delete(self, name: str, /) -> None:
+        """Delete ``name``, whether or not it was there.
+
+        Args:
+            name (str): Identifier being throttled (an IP, a user, an email).
+        """
+        self._counters.pop(name, None)
+
+
 __all__: list[str] = [
     "AttemptThrottle",
+    "InMemoryThrottleBackend",
     "ThrottleBackend",
     "ThrottleStatus",
 ]

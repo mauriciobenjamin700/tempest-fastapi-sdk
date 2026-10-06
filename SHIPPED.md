@@ -532,7 +532,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   single-process, or multi-worker via an injected Redis pub/sub bridge
   — same call site).
 - **Throttle** — `AttemptThrottle` (any `ThrottleBackend`, e.g.
-  `redis.asyncio.Redis`; no in-memory backend bundled).
+  `redis.asyncio.Redis`) and, since v0.306.0, the bundled
+  `InMemoryThrottleBackend` (process-local, `clock=` injectable for
+  tests; multi-worker deployments still need Redis).
 - **Base CRUD layers** — `BaseService[Repo, Resp, UpdateT]` and
   `BaseController[Service, Resp, UpdateT]` with
   `get_by_id`/`get_or_none`/`list`/`paginate`/`count`/`exists`/`update`/

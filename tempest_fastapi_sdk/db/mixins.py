@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import String, Uuid
+from sqlalchemy import Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
@@ -110,8 +110,9 @@ class MFAMixin:
 
     Opt-in companion to :class:`tempest_fastapi_sdk.BaseUserModel`.
     Mix it into the concrete user model when the project enables the
-    bundled MFA flow (``AUTH_MFA_ENABLED=True``) so the secret and
-    activation timestamp live on the user row:
+    bundled MFA flow (``AUTH_MFA_ENABLED=True``) so the secret, the
+    activation timestamp and the last accepted TOTP step live on the
+    user row:
 
     ```python
     from tempest_fastapi_sdk import BaseUserModel, MFAMixin
@@ -135,6 +136,15 @@ class MFAMixin:
             step the first time the user supplies a valid TOTP code.
             ``NULL`` means MFA is not active yet — login skips the
             TOTP step entirely.
+        totp_last_step (int | None): TOTP counter value of the last
+            accepted code, written by every bundled path that accepts
+            one (``mfa_confirm``, ``mfa_verify``, ``mfa_disable`` and
+            ``request_email_recovery``). A code whose step is at or below
+            this one is refused, so the same 6 digits cannot be spent
+            twice inside their drift window. ``NULL`` until the
+            first accepted code and again whenever the secret is
+            replaced; rows created before 0.306.0 start ``NULL``, which
+            reads as "nothing spent yet".
     """
 
     totp_secret: Mapped[str | None] = mapped_column(
@@ -157,6 +167,18 @@ class MFAMixin:
             "Set by the MFA confirm step the first time the user "
             "supplies a valid TOTP code. NULL means MFA is not yet "
             "active for this user — login skips the TOTP step entirely."
+        ),
+    )
+    totp_last_step: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        default=None,
+        doc=(
+            "TOTP counter value of the last accepted code. A code whose "
+            "step is at or below this one is refused, so a captured code "
+            "cannot be replayed inside its own window. NULL until the "
+            "first accepted code; reset to NULL when the secret is "
+            "replaced, since steps are counted against one secret."
         ),
     )
 

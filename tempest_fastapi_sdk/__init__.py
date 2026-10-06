@@ -1542,6 +1542,9 @@ from tempest_fastapi_sdk.utils import (
     HTTPClient as HTTPClient,
 )
 from tempest_fastapi_sdk.utils import (
+    InMemoryThrottleBackend as InMemoryThrottleBackend,
+)
+from tempest_fastapi_sdk.utils import (
     JWTUtils as JWTUtils,
 )
 from tempest_fastapi_sdk.utils import (
@@ -2170,6 +2173,7 @@ __all__: list[str] = [
     "HostBridgeSettings",
     "IdempotencyMiddleware",
     "IdempotencyStore",
+    "InMemoryThrottleBackend",
     "InheritedErrorCodeWarning",
     "Inline",
     "InsufficientBalanceException",

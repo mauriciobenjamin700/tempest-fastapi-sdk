@@ -10,9 +10,10 @@ Since **v0.35.0** the bundled auth flow supports **two-factor authentication** w
 4. **[The four endpoints](#endpoints)** — enroll / confirm / verify / disable.
 5. **[Two-step login](#two-step-login)** — how `POST /auth/login` changes when MFA is active.
 6. **[Settings (`AuthSettings`)](#settings)** — flag by flag.
-7. **[Using just `UserAuthService` (no router)](#service-direct)** — for hand-rolled endpoints.
-8. **[Security](#security)**.
-9. **[Next steps](#next-steps)**.
+7. **[Attempt limit](#attempt-limit)** — `429` after five failures, and single-use TOTP codes.
+8. **[Using just `UserAuthService` (no router)](#service-direct)** — for hand-rolled endpoints.
+9. **[Security](#security)**.
+10. **[Next steps](#next-steps)**.
 
 ---
 
@@ -40,7 +41,7 @@ uv add "tempest-fastapi-sdk[auth,mfa]>=0.151.1"
 
 ### Columns via `MFAMixin`
 
-The MFA columns (`totp_secret`, `totp_enabled_at`) do **not** live on `BaseUserModel` — they come from an opt-in mixin, `MFAMixin`. Mix it into your `UserModel` only when you adopt MFA, so projects that never enable the feature carry no dead columns:
+The MFA columns (`totp_secret`, `totp_enabled_at`, `totp_last_step`) do **not** live on `BaseUserModel` — they come from an opt-in mixin, `MFAMixin`. Mix it into your `UserModel` only when you adopt MFA, so projects that never enable the feature carry no dead columns:
 
 ```python
 # src/db/models/user.py
@@ -48,7 +49,7 @@ from tempest_fastapi_sdk import BaseUserModel, MFAMixin
 
 
 class UserModel(MFAMixin, BaseUserModel):
-    """Concrete user table — MFAMixin adds totp_secret / totp_enabled_at."""
+    """Concrete user table — MFAMixin adds the totp_* columns."""
 
     __tablename__ = "users"
 ```
@@ -57,7 +58,7 @@ class UserModel(MFAMixin, BaseUserModel):
     The mixin comes **before** `BaseUserModel` in the base list — same pattern as `AuditMixin` / `SoftDeleteMixin`. The mixin also exposes an `is_mfa_active` property (`totp_enabled_at is not None`).
 
 !!! warning "Migration required"
-    `totp_secret` and `totp_enabled_at` are new columns. Run `uv run tempest db revision -m "mfa columns"` + `uv run tempest db upgrade` before flipping the flag.
+    `totp_secret`, `totp_enabled_at` and `totp_last_step` are new columns. Run `uv run tempest db revision -m "mfa columns"` + `uv run tempest db upgrade` before flipping the flag.
 
 ### Recovery-code table
 
@@ -155,7 +156,7 @@ The four are only mounted when `AUTH_MFA_ENABLED=True`:
 |--------|------|------|---------------|----------|
 | POST | `/auth/mfa/enroll` | Bearer JWT | — → `MFAEnrollResponseSchema` | Generates secret + QR URI + N recovery codes. **Shown only once.** Does NOT activate MFA yet. With MFA already active, answers `409` (`MFA_ALREADY_ENROLLED`) and changes nothing. |
 | POST | `/auth/mfa/confirm` | Bearer JWT | `MFAConfirmSchema` | Confirms enrollment with the first code. From here MFA is active. |
-| POST | `/auth/mfa/verify` | — | `MFAVerifySchema` → `LoginResponseSchema` | Login step 2: swaps `mfa_token` + code for the JWT pair. |
+| POST | `/auth/mfa/verify` | — | `MFAVerifySchema` → `LoginResponseSchema` | Login step 2: swaps `mfa_token` + code for the JWT pair. Five wrong codes per account in 15 min give `429` ([attempt limit](#attempt-limit)). |
 | POST | `/auth/mfa/disable` | Bearer JWT | `MFADisableSchema` | Disables MFA. Requires password **and** an active code (TOTP or recovery). |
 
 ### Enrollment flow
@@ -270,6 +271,61 @@ AUTH_MFA_VERIFY_WINDOW=1                # drift tolerance, in 30s steps (0..4)
 | `AUTH_MFA_TOKEN_TTL_SECONDS` | `300` | Lifetime of the intermediate `mfa_token` (5 min). |
 | `AUTH_MFA_VERIFY_WINDOW` | `1` | Tolerance for the user's clock. `1` accepts previous + current + next step (90s). `0` is strict; above `2` weakens it. |
 
+## Attempt limit
+
+Since **0.306.0** step 2 of the login has two brakes you do not have to write.
+
+### Five wrong codes, and the account waits
+
+`POST /auth/mfa/verify` counts wrong codes **per account**, not per `mfa_token`. After five failures within fifteen minutes, the sixth attempt answers `429` without looking at the code, **even when it is right**:
+
+```json
+{"detail":"too many invalid MFA codes, try again later","code":"TOO_MANY_REQUESTS","details":{"retry_after_seconds":900}}
+```
+
+The response carries a `Retry-After` header with the seconds left in the window. That is the body with `register_exception_handlers` mounted.
+
+The key is the account because the `mfa_token` holds nothing back: whoever has the password asks `POST /auth/login` for another one at will. A fresh token keeps getting `429` until the window passes. A right code before the limit logs in normally and clears the count, so someone who mistypes a digit twice owes nothing.
+
+!!! warning "More than one worker? Pass Redis"
+    The default limit keeps the counter in an `InMemoryThrottleBackend`, which lives **in the process**. With `uvicorn --workers 4`, gunicorn or more than one pod, each process has its own counter, and the account reaches `5 * processes` attempts per window. In that case, pass an `AttemptThrottle` over the Redis your processes share:
+
+    ```python
+    from fastapi import FastAPI
+    from redis.asyncio import Redis
+
+    from tempest_fastapi_sdk import AttemptThrottle, UserAuthService, make_auth_router
+
+    from src.api.dependencies import get_session
+    from src.db.models import UserRecoveryCodeModel
+
+
+    def mount_auth(app: FastAPI, auth_service: UserAuthService, redis: Redis) -> None:
+        """Mount the auth router with the MFA limit on Redis."""
+        mfa_throttle = AttemptThrottle(redis, max_attempts=5, window_seconds=900)
+        app.include_router(
+            make_auth_router(
+                auth_service,
+                session_factory=get_session,
+                recovery_code_model=UserRecoveryCodeModel,
+                mfa_throttle=mfa_throttle,
+            ),
+        )
+    ```
+
+    The same parameter changes the budget (`max_attempts`, `window_seconds`).
+
+### One code, one login
+
+A TOTP code stays valid for the whole drift window (`AUTH_MFA_VERIFY_WINDOW=1` gives 90 seconds). With nothing else, anyone who saw the code go by (over a shoulder, in a log, at a proxy) could log in with it again inside those 90 seconds.
+
+The SDK now stores the 30-second step of the last accepted code in the `totp_last_step` column and refuses any code from the same step or an earlier one as if it were a wrong code (at `verify`, the same `401`). It holds for `confirm`, `verify`, `disable` and email recovery (`request_email_recovery`): the code used to activate MFA no longer works for the first login, and the user waits for the next one to show in the app.
+
+The write is a conditional `UPDATE`: the stored row decides, not the loaded object, so a second session that read the user before the first acceptance is refused too (measured with SQLite, two sessions open over the same row).
+
+!!! warning "New column: `totp_last_step`"
+    Projects already on `MFAMixin` need the migration before running 0.306.0 — see the [migration guide](../migration.md#03060-single-use-totp-codes-need-the-totp_last_step-column).
+
 ---
 
 ## Service direct
@@ -311,7 +367,7 @@ Full surface:
 | `issue_mfa_token` | `(user) -> str` | Short JWT bridging step 1 and step 2. |
 | `mfa_enroll` | `(session, *, user, recovery_code_model) -> tuple[str, str, list[str]]` | `(secret, provisioning_uri, recovery_codes)`. Raises `MFAAlreadyEnrolledException` while MFA is active. |
 | `mfa_confirm` | `(session, *, user, code) -> None` | Activates MFA. |
-| `mfa_verify` | `(session, *, mfa_token, code, recovery_code_model) -> UserModel` | Authenticated user (mint the JWT next). |
+| `mfa_verify` | `(session, *, mfa_token, code, recovery_code_model, throttle=None) -> UserModel` | Authenticated user (mint the JWT next). |
 | `mfa_disable` | `(session, *, user, password, code, recovery_code_model) -> None` | Clears secret + codes. |
 
 ---
@@ -323,7 +379,8 @@ Full surface:
 - **Recovery codes are single-use.** `used_at` is stamped on consume; replay is rejected.
 - **`disable` requires password + code, and `enroll` is not a shortcut around it.** A hijacked session cannot disable MFA on its own — it needs the password **and** an active factor. `enroll` over active MFA answers `409` instead of wiping the recovery codes, so the access token alone cannot reset the factor.
 - **`mfa_token` is short and user-bound.** 5-min TTL by default; carries `purpose: "mfa_pending"` + the `sub`. Tokens of any other purpose are rejected in `mfa_verify`.
-- **Constant-time verification.** `TOTPHelper.verify` delegates to `pyotp`, which compares the code with `hmac.compare_digest`.
+- **Constant-time verification.** `TOTPHelper.matching_step` (and `verify`, which calls it) compares the code of each step in the window with `hmac.compare_digest`.
+- **Single-use TOTP codes and a per-account limit.** See [Attempt limit](#attempt-limit).
 
 ---
 
@@ -343,6 +400,9 @@ Full surface:
   whole cycle without the router.
 - The TOTP secret lives on `UserModel` — consider encrypting that column at
   rest.
+- `/auth/mfa/verify` answers `429` after five wrong codes per account in 15
+  minutes, and each TOTP code is worth one login. With more than one worker,
+  pass `mfa_throttle=` over Redis.
 
 ## Next steps
 

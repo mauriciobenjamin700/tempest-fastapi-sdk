@@ -31,6 +31,7 @@ from tempest_fastapi_sdk.exceptions import (
     ValidationException,
 )
 from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
+from tempest_fastapi_sdk.utils.datetime import utcnow
 
 
 class _EcUser(MFAMixin, BaseUserModel):
@@ -355,6 +356,32 @@ class TestEmailRecovery:
             recovery_code_model=_EcRecoveryCode,
         )
         assert token is not None
+
+    async def test_mfa_code_is_single_use(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        """The TOTP code that proved identity once does not prove it again."""
+        service = _service(recovery_enabled=True, mfa_enabled=True)
+        user = await _make_user(service, session, email="old@example.com")
+        secret = pyotp.random_base32()
+        user.totp_secret = secret
+        user.totp_enabled_at = utcnow()
+        await session.commit()
+        code = pyotp.TOTP(secret).now()
+        tokens = [
+            await service.request_email_recovery(
+                session,
+                email="old@example.com",
+                new_email=f"new{n}@example.com",
+                current_password="strong-pass-12-chars",
+                mfa_code=code,
+                recovery_code_model=_EcRecoveryCode,
+            )
+            for n in range(2)
+        ]
+        assert tokens[0] is not None
+        assert tokens[1] is None
 
 
 class TestRouter:

@@ -117,6 +117,10 @@ from tempest_fastapi_sdk.exceptions import (
     UnauthorizedException,
     ValidationException,
 )
+from tempest_fastapi_sdk.utils.throttle import (
+    AttemptThrottle,
+    InMemoryThrottleBackend,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -133,6 +137,13 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.db.user_webauthn_credential_model import (
         BaseWebAuthnCredentialModel,
     )
+
+
+MFA_THROTTLE_MAX_ATTEMPTS: int = 5
+"""Wrong codes one account may submit to ``/auth/mfa/verify`` per window."""
+
+MFA_THROTTLE_WINDOW_SECONDS: int = 900
+"""Length, in seconds, of the default ``/auth/mfa/verify`` failure window."""
 
 
 SignupHook = Callable[
@@ -260,6 +271,7 @@ def make_auth_router(
     oauth_clients: Mapping[str, OAuthClient] | None = None,
     token_strict: bool = False,
     token_legacy_claims: Collection[str] = (),
+    mfa_throttle: AttemptThrottle | None = None,
 ) -> APIRouter:
     """Build the bundled auth router.
 
@@ -378,6 +390,19 @@ def make_auth_router(
             with ``token_strict=True``: the claims classify the old
             tokens, strict refuses whatever stays unclassified. See
             :func:`~tempest_fastapi_sdk.token_type_allowed`.
+        mfa_throttle (AttemptThrottle | None): Failure budget for
+            ``POST /auth/mfa/verify``, keyed per account
+            (``f"mfa:{user_id}"``), so a fresh ``mfa_token`` from a new
+            ``/auth/login`` does not reset it. Once the budget is spent
+            the endpoint answers ``429`` with ``Retry-After`` before the
+            code is checked; a successful verification clears the key.
+            ``None`` (default) builds one over an
+            :class:`~tempest_fastapi_sdk.InMemoryThrottleBackend` with
+            ``MFA_THROTTLE_MAX_ATTEMPTS`` (5) wrong codes per
+            ``MFA_THROTTLE_WINDOW_SECONDS`` (900). That counter lives in
+            the process: with more than one worker or replica, pass an
+            :class:`~tempest_fastapi_sdk.AttemptThrottle` over the shared
+            Redis client instead.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -461,6 +486,16 @@ def make_auth_router(
     login_url = auth_settings.AUTH_LOGIN_URL
     min_length = auth_settings.AUTH_PASSWORD_MIN_LENGTH
     default_locale = auth_settings.AUTH_DEFAULT_LOCALE
+
+    resolved_mfa_throttle: AttemptThrottle = (
+        mfa_throttle
+        if mfa_throttle is not None
+        else AttemptThrottle(
+            InMemoryThrottleBackend(),
+            max_attempts=MFA_THROTTLE_MAX_ATTEMPTS,
+            window_seconds=MFA_THROTTLE_WINDOW_SECONDS,
+        )
+    )
 
     # --- token delivery (bearer / cookie / both) ----------------------
     delivery: TokenDelivery = token_delivery or auth_settings.AUTH_TOKEN_DELIVERY
@@ -1731,9 +1766,13 @@ def make_auth_router(
                 "returns the real ``access_token`` + ``refresh_token`` "
                 "pair, finishing the login.\n\n"
                 "A wrong / expired ``code`` or ``mfa_token`` returns "
-                "**401**. This endpoint needs **no** bearer token — the "
-                "``mfa_token`` itself is the proof that step one "
-                "succeeded."
+                "**401**. A TOTP code is accepted once: replaying it, "
+                "even inside its 30-second window, is a wrong code. "
+                "Too many wrong codes for the same account return "
+                "**429** with ``Retry-After`` until the window passes, "
+                "even when the next code is right. This endpoint needs "
+                "**no** bearer token — the ``mfa_token`` itself is the "
+                "proof that step one succeeded."
             ),
         )
         async def mfa_verify(
@@ -1755,6 +1794,7 @@ def make_auth_router(
                 mfa_token=payload.mfa_token,
                 code=payload.code,
                 recovery_code_model=recovery_code_model,
+                throttle=resolved_mfa_throttle,
             )
             access, refresh = await service.issue_token_pair(session, user)
             await session.commit()
