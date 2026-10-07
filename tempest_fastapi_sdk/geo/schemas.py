@@ -127,6 +127,74 @@ class BoundingBox(BaseSchema):
         )
 
 
+class GeocodeAddress(BaseSchema):
+    """Structured address parts of a resolved place.
+
+    Parsed from the ``address`` object a Nominatim entry carries when the
+    request asks for ``addressdetails=1``. Every field is optional: the
+    backend returns only what it knows about the matched place, so a
+    coordinate in open country can yield a country and nothing else.
+
+    Attributes:
+        city: Municipality-level name. Nominatim spells it under four
+            different keys — ``city``, ``town``, ``village`` and
+            ``municipality`` — and a single entry can carry several at once
+            (a village inside its town), so this is the first key present in
+            that order, largest settlement first. Measured on payloads from
+            ``nominatim.openstreetmap.org``: Teresina/PI answers ``city``,
+            Coivaras/PI answers ``town``, São José da Tenda/PI answers
+            ``town`` alongside ``village`` and ``hamlet``.
+        state: First-level subdivision name (e.g. ``"Piauí"``), from
+            ``address.state``.
+        state_code: Short subdivision code, the part after the ``-`` of
+            ``address["ISO3166-2-lvl4"]`` (``"BR-PI"`` → ``"PI"``). ``None``
+            when the key is absent or carries no separator. A string, not an
+            enum: the geocoder is worldwide.
+        country: Country name as spelled by the backend (``"Brasil"``), from
+            ``address.country``.
+        country_code: ISO 3166-1 alpha-2 code uppercased (``"br"`` →
+            ``"BR"``), from ``address.country_code``.
+        postcode: Postal code of the place, from ``address.postcode``.
+    """
+
+    city: str | None = Field(
+        default=None,
+        title="City",
+        description="Municipality-level name, when the backend returned one.",
+        examples=["Teresina"],
+    )
+    state: str | None = Field(
+        default=None,
+        title="State",
+        description="First-level subdivision name, when available.",
+        examples=["Piauí"],
+    )
+    state_code: str | None = Field(
+        default=None,
+        title="State code",
+        description="Short subdivision code (e.g. state abbreviation).",
+        examples=["PI"],
+    )
+    country: str | None = Field(
+        default=None,
+        title="Country",
+        description="Country name, when available.",
+        examples=["Brasil"],
+    )
+    country_code: str | None = Field(
+        default=None,
+        title="Country code",
+        description="ISO 3166-1 alpha-2 country code, uppercase.",
+        examples=["BR"],
+    )
+    postcode: str | None = Field(
+        default=None,
+        title="Postcode",
+        description="Postal code of the place, when it has one.",
+        examples=["64001-490"],
+    )
+
+
 class GeocodeResult(BaseSchema):
     """A resolved place from a geocoding backend.
 
@@ -135,6 +203,11 @@ class GeocodeResult(BaseSchema):
         display_name: Human-readable label the backend returned.
         place_type: Optional backend-specific place category
             (e.g. ``"city"``, ``"house"``), when available.
+        address: Structured address parts, when the backend returned an
+            ``address`` object — for Nominatim, whenever the request carried
+            ``addressdetails=1``. ``None`` otherwise, which is what keeps
+            this field backwards compatible with backends that never send
+            one.
     """
 
     coordinate: Coordinate = Field(
@@ -151,6 +224,11 @@ class GeocodeResult(BaseSchema):
         title="Place type",
         description="Backend-specific place category, when available.",
         examples=["city"],
+    )
+    address: GeocodeAddress | None = Field(
+        default=None,
+        title="Address",
+        description="Structured address parts, when the backend returned them.",
     )
 
 
@@ -206,6 +284,7 @@ __all__: list[str] = [
     "BoundingBox",
     "Coordinate",
     "DistanceMatrix",
+    "GeocodeAddress",
     "GeocodeResult",
     "TravelEstimate",
 ]

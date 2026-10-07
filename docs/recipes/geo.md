@@ -566,7 +566,64 @@ asyncio.run(main())
 
 !!! warning "Política do Nominatim público"
     O `nominatim.openstreetmap.org` exige `User-Agent` descritivo e limita
-    a ~1 req/s. Self-host pra escala.
+    a ~1 req/s. Em caminho de request, cacheie o resultado — ou suba uma
+    instância própria antes de escalar.
+
+## Endereço estruturado (`GeocodeAddress`)
+
+`GeocodeResult.display_name` é um texto só para exibir na tela: gravar cidade
+e UF em colunas separadas a partir dele é parser de string, e formato de
+endereço é justamente o tipo de coisa que muda. Como `NominatimBackend` pede
+`addressdetails=1` nas duas direções, o resultado traz
+[`GeocodeAddress`](../reference.md#tempest_fastapi_sdk.geo.GeocodeAddress)
+em `hit.address`, cada parte no seu campo:
+
+```python
+import asyncio
+
+import httpx
+
+from tempest_fastapi_sdk.geo import Coordinate, NominatimBackend
+
+
+async def main() -> None:
+    """Run this example."""
+    async with httpx.AsyncClient() as client:
+        geocoder = NominatimBackend(http_client=client, user_agent="meu-app/1.0")
+        hit = await geocoder.reverse(Coordinate(latitude=-5.0892, longitude=-42.8019))
+        if hit and hit.address:
+            print(hit.address.city)
+            print(hit.address.state)
+            print(hit.address.state_code)
+            print(hit.address.country_code)
+            print(hit.address.postcode)
+
+
+asyncio.run(main())
+```
+
+Saída — do que o servidor respondeu para essas coordenadas (payload gravado
+em 07/10/2026, Memorial Esperança Garcia, Teresina/PI):
+
+```text
+Teresina
+Piauí
+PI
+BR
+64001-490
+```
+
+Os seis campos são opcionais: o servidor devolve só o que sabe sobre o lugar
+encontrado. `city` é o primeiro entre `city`, `town`, `village` e
+`municipality` presente na resposta — a ordem foi medida, não escolhida: num
+mesmo ponto de São José da Tenda/PI vêm `town` (o município), `village` (a
+sede) e `hamlet` juntos, e pegar a primeira chave que aparecer gravaria a
+vila no lugar do município. `state_code` é a parte depois do `-` de
+`ISO3166-2-lvl4` (`"BR-PI"` → `"PI"`) e `country_code` vem maiúsculo
+(`"br"` → `"BR"`) porque o servidor o escreve minúsculo.
+
+`address` fica `None` quando a resposta não traz objeto de endereço — o caso
+de um backend que não manda um, sem virar exceção nem campo obrigatório.
 
 ## Matriz de distância e geometria da rota
 

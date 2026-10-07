@@ -1696,6 +1696,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (`GeoPointMixin` + `GeoRepositoryMixin.nearby` bbox-prefilter+haversine,
   `PostGISRepositoryMixin.nearby` ST_DWithin, `make_geo_point_model`);
   geocoding (`GeocodingBackend`/`NominatimBackend` + `GeocodeResult`);
+  **structured address (Unreleased):** both directions ask
+  `addressdetails=1` and map the entry's `address` object into
+  `GeocodeAddress` (`city`/`state`/`state_code`/`country`/`country_code`/
+  `postcode`, every field optional and `None` when the response carries no
+  address object); `city` is the first of `city`/`town`/`village`/
+  `municipality` present — an order measured on recorded payloads, since one
+  point can carry several;
   `OSRMBackend.matrix` (table → `DistanceMatrix`) + `route(with_geometry=True)`
   (decoded into `TravelEstimate.geometry`) + per-mode `DEFAULT_MODE_PROFILES`;
   polyline codec (`encode_polyline`/`decode_polyline`); `TravelMode.BICYCLE`/
