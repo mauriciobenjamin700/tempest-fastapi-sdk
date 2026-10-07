@@ -1,0 +1,32 @@
+{
+  "place_id": 13149935,
+  "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+  "osm_type": "way",
+  "osm_id": 521022494,
+  "lat": "-7.8169660",
+  "lon": "-42.5810083",
+  "category": "highway",
+  "type": "residential",
+  "place_rank": 26,
+  "importance": 0.053384631876096704,
+  "addresstype": "road",
+  "name": "Rua Projetada 19",
+  "display_name": "Rua Projetada 19, Alto da Conceição, São José da Tenda, Socorro do Piauí, Piauí, Região Nordeste, Brasil",
+  "address": {
+    "road": "Rua Projetada 19",
+    "hamlet": "Alto da Conceição",
+    "village": "São José da Tenda",
+    "town": "Socorro do Piauí",
+    "state": "Piauí",
+    "ISO3166-2-lvl4": "BR-PI",
+    "region": "Região Nordeste",
+    "country": "Brasil",
+    "country_code": "br"
+  },
+  "boundingbox": [
+    "-7.8171049",
+    "-7.8167524",
+    "-42.5811902",
+    "-42.5807287"
+  ]
+}

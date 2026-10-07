@@ -1,0 +1,34 @@
+{
+  "place_id": 13174625,
+  "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+  "osm_type": "way",
+  "osm_id": 1447782945,
+  "lat": "-5.0892285",
+  "lon": "-42.8017923",
+  "category": "tourism",
+  "type": "museum",
+  "place_rank": 30,
+  "importance": 6.0815594720332917e-05,
+  "addresstype": "tourism",
+  "name": "Memorial Esperança Garcia",
+  "display_name": "Memorial Esperança Garcia, Avenida Miguel Rosa, Centro Sul, Centro, Teresina, Piauí, Região Nordeste, 64001-490, Brasil",
+  "address": {
+    "tourism": "Memorial Esperança Garcia",
+    "road": "Avenida Miguel Rosa",
+    "residential": "Centro Sul",
+    "suburb": "Centro",
+    "city": "Teresina",
+    "state": "Piauí",
+    "ISO3166-2-lvl4": "BR-PI",
+    "region": "Região Nordeste",
+    "postcode": "64001-490",
+    "country": "Brasil",
+    "country_code": "br"
+  },
+  "boundingbox": [
+    "-5.0894414",
+    "-5.0890157",
+    "-42.8021093",
+    "-42.8017034"
+  ]
+}

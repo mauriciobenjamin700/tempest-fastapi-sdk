@@ -1,0 +1,30 @@
+{
+  "place_id": 14178197,
+  "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+  "osm_type": "relation",
+  "osm_id": 302784,
+  "lat": "-5.0927005",
+  "lon": "-42.2052489",
+  "category": "boundary",
+  "type": "administrative",
+  "place_rank": 16,
+  "importance": 0.47526498357954355,
+  "addresstype": "town",
+  "name": "Coivaras",
+  "display_name": "Coivaras, Piauí, Região Nordeste, 64335-000, Brasil",
+  "address": {
+    "town": "Coivaras",
+    "state": "Piauí",
+    "ISO3166-2-lvl4": "BR-PI",
+    "region": "Região Nordeste",
+    "postcode": "64335-000",
+    "country": "Brasil",
+    "country_code": "br"
+  },
+  "boundingbox": [
+    "-5.2973016",
+    "-4.9379946",
+    "-42.3900658",
+    "-42.1511663"
+  ]
+}

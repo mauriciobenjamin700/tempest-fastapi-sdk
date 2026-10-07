@@ -568,7 +568,66 @@ asyncio.run(main())
 
 !!! warning "Public Nominatim usage policy"
     `nominatim.openstreetmap.org` requires a descriptive `User-Agent` and
-    caps you at ~1 req/s. Self-host for scale.
+    caps you at ~1 req/s. On a request path, cache the result — or run your
+    own instance before scaling up.
+
+## Structured address (`GeocodeAddress`)
+
+`GeocodeResult.display_name` is one string for the screen: saving city and
+state into separate columns means parsing it, and address formats are exactly
+the kind of thing that varies. Because `NominatimBackend` asks for
+`addressdetails=1` on both directions, the result carries
+[`GeocodeAddress`](../../../reference/#tempest_fastapi_sdk.geo.GeocodeAddress)
+in `hit.address`, one part per field:
+
+```python
+import asyncio
+
+import httpx
+
+from tempest_fastapi_sdk.geo import Coordinate, NominatimBackend
+
+
+async def main() -> None:
+    """Run this example."""
+    async with httpx.AsyncClient() as client:
+        geocoder = NominatimBackend(http_client=client, user_agent="my-app/1.0")
+        hit = await geocoder.reverse(Coordinate(latitude=-5.0892, longitude=-42.8019))
+        if hit and hit.address:
+            print(hit.address.city)
+            print(hit.address.state)
+            print(hit.address.state_code)
+            print(hit.address.country_code)
+            print(hit.address.postcode)
+
+
+asyncio.run(main())
+```
+
+Output — what the server answered for these coordinates (payload recorded on
+2026-10-07, Esperança Garcia Memorial, Teresina/PI):
+
+```text
+Teresina
+Piauí
+PI
+BR
+64001-490
+```
+
+All six fields are optional: the server returns only what it knows about the
+matched place. `city` is the first of `city`, `town`, `village` and
+`municipality` present in the response — that order was measured, not chosen:
+one point in São José da Tenda/PI answers with `town` (the municipality),
+`village` (the seat) and `hamlet` together, and taking whichever key comes
+first would store the village in place of the municipality. `state_code` is
+the part after the `-` of `ISO3166-2-lvl4` (`"BR-PI"` → `"PI"`), and
+`country_code` comes uppercased (`"br"` → `"BR"`) because the server spells
+it lowercase.
+
+`address` is `None` when the response carries no address object — the case
+of a backend that does not send one, with no exception and no required field
+involved.
 
 ## Distance matrix and route geometry
 

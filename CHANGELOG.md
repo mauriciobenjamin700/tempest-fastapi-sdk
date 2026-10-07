@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`GeocodeAddress`** — endereço estruturado no resultado do
+  `NominatimBackend`: `geocode` e `reverse` passam a pedir `addressdetails=1`
+  e a devolver `GeocodeResult.address` com `city`, `state`, `state_code`,
+  `country`, `country_code` e `postcode` (todos opcionais; `None`, sem
+  exceção, quando a resposta não traz objeto de endereço). `city` é a
+  primeira entre `city`, `town`, `village` e `municipality` presente na
+  resposta — ordem medida em payloads reais, porque um mesmo ponto em São
+  José da Tenda/PI traz `town`, `village` e `hamlet` juntos; `state_code` é
+  a parte depois do `-` de `ISO3166-2-lvl4` (`"BR-PI"` → `"PI"`) e
+  `country_code` vem maiusculado (`"br"` → `"BR"`), como o servidor o
+  escreve. Retrocompatível: quem não lê o campo não muda nada.
+
+### Documentation
+
+- **Receita de geocoding ganha seção de endereço estruturado**
+  (`docs/recipes/geo.md` + `.en.md`) com exemplo executável e saída medida
+  de um payload registrado do `nominatim.openstreetmap.org`.
+
 ## [0.306.0] — 2026-10-06
 
 Release de segurança. Downloads saem com `nosniff`, CSP e CORP e só vão

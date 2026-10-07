@@ -16,13 +16,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from tempest_fastapi_sdk.geo.schemas import Coordinate, GeocodeResult
+from tempest_fastapi_sdk.geo.schemas import Coordinate, GeocodeAddress, GeocodeResult
 
 if TYPE_CHECKING:
     import httpx
 
 # Public OSM Nominatim server. Rate-limited (~1 req/s), best-effort.
 DEFAULT_NOMINATIM_BASE_URL: str = "https://nominatim.openstreetmap.org"
+
+_ADDRESS_CITY_KEYS: tuple[str, ...] = ("city", "town", "village", "municipality")
 
 
 @runtime_checkable
@@ -56,6 +58,11 @@ class GeocodingBackend(Protocol):
 
 class NominatimBackend:
     """Geocode through a Nominatim (OpenStreetMap) HTTP server.
+
+    Both directions ask for ``format=jsonv2`` with ``addressdetails=1``, so
+    the result carries the structured
+    :class:`~tempest_fastapi_sdk.geo.GeocodeAddress` (city, state, country,
+    postcode) next to the free-text ``display_name``.
 
     Attributes:
         base_url: Root URL of the Nominatim server (no trailing slash needed).
@@ -112,7 +119,12 @@ class NominatimBackend:
         try:
             response = await self._http.get(
                 f"{self.base_url}/search",
-                params={"q": query, "format": "jsonv2", "limit": 1},
+                params={
+                    "q": query,
+                    "format": "jsonv2",
+                    "limit": 1,
+                    "addressdetails": 1,
+                },
                 headers=self._headers(),
             )
             response.raise_for_status()
@@ -149,6 +161,7 @@ class NominatimBackend:
                     "lat": coordinate.latitude,
                     "lon": coordinate.longitude,
                     "format": "jsonv2",
+                    "addressdetails": 1,
                 },
                 headers=self._headers(),
             )
@@ -171,7 +184,69 @@ class NominatimBackend:
             ),
             display_name=str(entry.get("display_name", "")),
             place_type=entry.get("type") or entry.get("addresstype"),
+            address=NominatimBackend._to_address(entry.get("address")),
         )
+
+    @staticmethod
+    def _to_address(raw: object) -> GeocodeAddress | None:
+        """Read Nominatim's ``address`` object into a :class:`GeocodeAddress`.
+
+        The city is the first key of :data:`_ADDRESS_CITY_KEYS` present
+        (``city``, ``town``, ``village``, ``municipality``): one entry can
+        carry several — measured on the public instance, a point in São José
+        da Tenda/PI returns ``town``, ``village`` and ``hamlet`` together —
+        and the outermost settlement is the one a service wants to store.
+        ``state_code`` comes from the ``ISO3166-2-lvl4`` key (``"BR-PI"`` →
+        ``"PI"``), and ``country_code`` is uppercased because Nominatim
+        spells it lowercase (``"br"``, measured).
+
+        Args:
+            raw: The ``address`` value of a Nominatim entry.
+
+        Returns:
+            The structured address, or ``None`` when the entry carries no
+            address object — the answer for payloads fetched without
+            ``addressdetails=1`` and for backends that do not send one.
+        """
+        if not isinstance(raw, dict) or not raw:
+            return None
+        address: dict[str, Any] = raw
+
+        city: str | None = None
+        for key in _ADDRESS_CITY_KEYS:
+            city = _text(address.get(key))
+            if city is not None:
+                break
+
+        iso = _text(address.get("ISO3166-2-lvl4"))
+        state_code: str | None = None
+        if iso is not None and "-" in iso:
+            state_code = iso.split("-", 1)[1] or None
+
+        country_code = _text(address.get("country_code"))
+        return GeocodeAddress(
+            city=city,
+            state=_text(address.get("state")),
+            state_code=state_code,
+            country=_text(address.get("country")),
+            country_code=country_code.upper() if country_code is not None else None,
+            postcode=_text(address.get("postcode")),
+        )
+
+
+def _text(value: object) -> str | None:
+    """Return a payload value as a non-empty string, or ``None``.
+
+    Args:
+        value: Any value read out of a Nominatim payload.
+
+    Returns:
+        The value as text, or ``None`` when it is missing or empty — the
+        distinction a consumer needs between "absent" and "present".
+    """
+    if value is None:
+        return None
+    return str(value) or None
 
 
 __all__: list[str] = [

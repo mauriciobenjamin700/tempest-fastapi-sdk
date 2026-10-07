@@ -84,6 +84,7 @@ from tempest_fastapi_sdk.geo.routing import RoutingBackend as RoutingBackend
 from tempest_fastapi_sdk.geo.schemas import BoundingBox as BoundingBox
 from tempest_fastapi_sdk.geo.schemas import Coordinate as Coordinate
 from tempest_fastapi_sdk.geo.schemas import DistanceMatrix as DistanceMatrix
+from tempest_fastapi_sdk.geo.schemas import GeocodeAddress as GeocodeAddress
 from tempest_fastapi_sdk.geo.schemas import GeocodeResult as GeocodeResult
 from tempest_fastapi_sdk.geo.schemas import TravelEstimate as TravelEstimate
 
@@ -102,6 +103,7 @@ __all__: list[str] = [
     "DistanceMatrix",
     "GeoPointMixin",
     "GeoRepositoryMixin",
+    "GeocodeAddress",
     "GeocodeResult",
     "GeocodingBackend",
     "NearbyMatch",
