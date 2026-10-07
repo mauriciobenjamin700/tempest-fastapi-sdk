@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.307.0] — 2026-10-07
+
+Geocoding com endereço estruturado: `NominatimBackend.reverse` e `geocode`
+devolvem cidade, estado, UF e país separados em `GeocodeResult.address`, sem
+parse do `display_name`.
+
 ### Added
 
 - **`GeocodeAddress`** — endereço estruturado no resultado do
