@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 from unittest.mock import patch
 
@@ -221,6 +222,24 @@ class TestNew:
         assert '"aiosqlite>=0.20.0",' in runtime_block
         assert '    "asyncpg>=0.30.0",' in runtime_block
         assert '# "asyncpg' not in pyproject
+
+    def test_dev_group_carries_the_cli_extra(self, tmp_path: Path) -> None:
+        """``tempest new`` pins ``[cli]`` in dev, never in the runtime deps.
+
+        Since 0.308.0 the CLI is the ``[cli]`` extra, so the generated
+        project keeps ``tempest check`` / ``tempest db upgrade`` runnable in
+        the terminal and in CI while its Dockerfile — ``uv sync
+        --no-dev`` — installs no formatter into the image. The docs promise
+        both halves (``docs/recipes/cli.md``, ``docs/migration.md``).
+        """
+        result = runner.invoke(app, ["new", "demo_svc", "--path", str(tmp_path)])
+        assert result.exit_code == 0, result.stdout + result.stderr
+        document = tomllib.loads(
+            (tmp_path / "demo_svc" / "pyproject.toml").read_text(encoding="utf-8")
+        )
+        dev = document["dependency-groups"]["dev"]
+        assert f"tempest-fastapi-sdk[cli]>={__version__}" in dev
+        assert all("[cli]" not in line for line in document["project"]["dependencies"])
 
     def test_scaffold_is_not_a_package(self, tmp_path: Path) -> None:
         """A scaffolded service must declare no build backend.

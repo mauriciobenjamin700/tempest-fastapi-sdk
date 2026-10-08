@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking para quem usa o comando `tempest`: a CLI virou o extra
+  `[cli]`.** `tempest-cli>=0.4.0`, `typer>=0.27.2` e `click>=8.5.0` saem de
+  `dependencies` e vão para `[project.optional-dependencies] cli` (e para o
+  `[all]`). O `tempest-cli` exige `ruff>=0.8.0` em runtime, então todo serviço
+  que adotava o SDK carregava um formatador como dependência de produção — e
+  um projeto que fixa `ruff<0.8` no grupo dev não resolvia o lock (`uv lock`:
+  `tempest-cli>=0.4.0 depends on ruff>=0.8.0`). `typer` e `click` vão junto
+  porque nada fora de `tempest_fastapi_sdk/cli/` os importa (medido com `grep`
+  no pacote). Medido com `uv pip install --dry-run` numa venv vazia: o pacote
+  sem extras passa de 34 para 25 pacotes, sem `ruff`, `tempest-cli`, `typer`,
+  `click` e `rich`. A biblioteca não muda: `import tempest_fastapi_sdk`,
+  `import tempest_fastapi_sdk.cli` e `tempest_fastapi_sdk.openapi` importam
+  sem o extra.
+  - O script `tempest` continua registrado, agora em
+    `tempest_fastapi_sdk.cli.entrypoint:main`, que só usa a stdlib: sem o
+    extra, imprime `error: missing tempest_cli, typer, click.` seguido da
+    instrução (`uv add --dev "tempest-fastapi-sdk[cli]"` /
+    `uv tool install "tempest-fastapi-sdk[cli]"`) e sai com código 2, sem
+    traceback (medido numa venv limpa com a wheel instalada sem extras).
+  - `tempest_fastapi_sdk.cli` re-exporta `app`, `TempestConfig`,
+    `TypingStrictness`, `DEFAULT_TYPING_STRICTNESS` e `load_tempest_config`
+    de forma preguiçosa; sem o extra, ler um deles — ou importar
+    `tempest_fastapi_sdk.cli.main`, `.config`, `.lint`, `.pr_prompt` —
+    levanta `ImportError` com a mesma instrução.
+  - `generate_integration(run_format=True)` sem o extra devolve
+    `formatted=False`, como já fazia sem `ruff`: a busca do `ruff` é do
+    `tempest-cli`, e o código gerado já sai formatado.
+  - `tempest new` passa a escrever `tempest-fastapi-sdk[cli]>=<versão>` no
+    grupo `dev` do projeto gerado, que o `Dockerfile` (`uv sync --no-dev`)
+    não instala.
+  - Guard novo: `tests/test_cli_extra_guard.py` (CLI fora do base, nenhum
+    import do extra em nível de módulo no que o base carrega). Passo a passo
+    em `docs/migration.md` (seção `0.308.0`).
+
 ## [0.307.0] — 2026-10-07
 
 Geocoding com endereço estruturado: `NominatimBackend.reverse` e `geocode`

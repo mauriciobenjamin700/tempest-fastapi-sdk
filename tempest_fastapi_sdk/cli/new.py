@@ -294,6 +294,7 @@ def scaffold(
         "HOST": bind_host,
         "PORT": str(bind_port),
         "SDK_DEP": _build_sdk_dep(extras),
+        "SDK_CLI_DEP": _build_sdk_dep("cli"),
         "SDK_EXTRAS": extras,
         # The Dockerfile and .dockerignore templates are shared with
         # `tempest generate dockerfile`, which fills these in. Scaffolding

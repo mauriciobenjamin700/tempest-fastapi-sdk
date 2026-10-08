@@ -11,6 +11,9 @@ Requires **Python 3.11+**.
 !!! tip "Use `uv` instead"
     `uv add tempest-fastapi-sdk` is faster and writes to `pyproject.toml` for you.
 
+!!! info "The `tempest` command is the `[cli]` extra"
+    Since 0.308.0 the CLI (`tempest new`, `tempest check`, `tempest db`, …) is not part of the base package — it brings `ruff`, which has no place in a production image. Install it as a tool: `uv tool install "tempest-fastapi-sdk[cli]"`, or in the project's dev group: `uv add --dev "tempest-fastapi-sdk[cli]"`.
+
 !!! info "First time with modern Python?"
     This page assumes you already have a working environment. If you do not, follow the beginner track, which starts from absolute zero: **[Install uv »](getting-started/uv.md)** → **[Pick your Python version »](getting-started/python-versions.md)** → **[Your first project »](getting-started/first-project.md)** → **[Official reference docs »](getting-started/references.md)**.
 
@@ -24,6 +27,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[admin-sql]` | `sqlglot` | admin SQL console: `SqlShellService` + `SqlShellPolicy` (capabilities, allowed/denied tables, row cap), real statement parsing, every attempt audited |
 | `[auth]` | `bcrypt`, `PyJWT` | `PasswordUtils`, `JWTUtils`, bundled `UserAuthService` + `make_auth_router` flow |
 | `[cache]` | `redis` | `AsyncRedisManager` + `@cached` + `RedisIdempotencyStore` |
+| `[cli]` | `tempest-cli` (which requires `ruff`), `typer`, `click` | the `tempest` command (`new`, `check`, `db`, …). Dev tooling: `uv add --dev "tempest-fastapi-sdk[cli]"` or `uv tool install "tempest-fastapi-sdk[cli]"`. Without it, `tempest` prints the install line and exits with code 2. Included in `[all]`. [Recipe](recipes/cli.md) |
 | `[genai-onnx]` | `onnxruntime`, `tokenizers` | Local-model inference from an ONNX export, with no PyTorch at runtime |
 | `[genai-structured]` | `lm-format-enforcer` | Grammar-enforced structured output: the local model can only emit JSON matching the schema |
 | `[genai-vlm]` | `pillow`, `torchvision` | Local vision-language model: describe an image, answer a question about one |

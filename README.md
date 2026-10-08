@@ -98,6 +98,13 @@ dependencies = [
 
 Requires Python `>=3.11`.
 
+The `tempest` command (`tempest new`, `tempest check`, `tempest db`, ...) is the `[cli]` extra since 0.308.0 — a dev tool, kept out of the base so a service does not ship `ruff` to production:
+
+```bash
+uv tool install "tempest-fastapi-sdk[cli]"      # `tempest` available everywhere
+uv add --dev "tempest-fastapi-sdk[cli]"         # or in a project's dev group
+```
+
 ### Optional extras
 
 Feature-rich helpers pull in third-party dependencies that you only need when you actually use the helper. Pick the extras the service consumes:
@@ -108,6 +115,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[email]` | `aiosmtplib`, `jinja2` | `EmailUtils` + `render_template()` |
 | `[upload]` | `aiofiles`, `python-multipart` | `UploadUtils`, `LocalUploadStorage`, `MinIOUploadStorage` (when combined with `[minio]`) |
 | `[cache]` | `redis` | `AsyncRedisManager` |
+| `[cli]` | `tempest-cli` (which requires `ruff`), `typer`, `click` | The `tempest` console script. Without it, `tempest` prints the install line and exits with code 2. Dev tooling: `uv add --dev "tempest-fastapi-sdk[cli]"` or `uv tool install "tempest-fastapi-sdk[cli]"`. Included in `[all]` |
 | `[websocket]` | `websockets` | Protocol driver for `make_websocket_router` |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher`, `WebPushSubscriptionService`, `BaseWebPushSubscriptionModel`, `make_web_push_router` |
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
@@ -177,7 +185,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.cache` *(extra: `[cache]`)* | `AsyncRedisManager` (+ `client_proxy` for import-time wiring), `cached` (with `namespace` / `tags`), `CacheInvalidator`, `namespace_registry_key`, `tag_registry_key` |
 | `tempest_fastapi_sdk.chat` | Threaded chat: abstract tables `BaseConversationModel`/`BaseConversationParticipantModel`/`BaseMessageModel` (+ `make_*` factories), `ChatService` (`start_conversation`/`post_message`/`list_messages`/`list_conversations`), `make_chat_router` (opt-in), real-time fan-out via an injected `SSEBroker` |
 | `tempest_fastapi_sdk.checks` | System checks (Django-style config validation): `check` (register decorator), `run_checks` / `run_system_checks` (raises `SystemCheckError` on ERROR+), `CheckMessage` / `CheckLevel` + `debug`/`info`/`warning`/`error`/`critical`, `CheckRegistry` / `default_registry`; built-in settings checks + the `tempest check-config` CLI (auto-detects settings, `--tag` / `--fail-level`) |
-| `tempest_fastapi_sdk.cli` | `tempest` console script — `new <name>` (scaffold layered service), `lint` / `format` / `fmt-check` / `type` / `test` / `check` (run preferred quality gates), `check-config` (validate settings via the system-check framework), `version` / `--version`; plus project-registered management commands (`tempest <cmd>` from `src/commands.py` or `[tool.tempest] commands`) |
+| `tempest_fastapi_sdk.cli` *(extra: `[cli]`; imports without it)* | `tempest` console script — `new <name>` (scaffold layered service), `lint` / `format` / `fmt-check` / `type` / `test` / `check` (run preferred quality gates), `check-config` (validate settings via the system-check framework), `version` / `--version`; plus project-registered management commands (`tempest <cmd>` from `src/commands.py` or `[tool.tempest] commands`) |
 | `tempest_fastapi_sdk.controllers` | `Controller` (root for a controller that orchestrates several services, no CRUD), `BaseController` (its one-service CRUD specialization) |
 | `tempest_fastapi_sdk.core` | `configure_logging`, `configure_root_once` (idempotent root setup — what `LogUtils` uses so `LogUtils(__name__)` per module shares one handler set), `reinitialize_logging` (re-enable every logger after Alembic's `fileConfig()` disables them), `JSONFormatter`, `get_request_id`/`set_request_id`/`clear_request_id`, `request_id_ctx`, `BaseStrEnum`, `BaseIntEnum`, `Locale` (BCP-47 locale enum), `strict_types`/`typed`/`require_annotations` |
 | `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseUserTokenModel`, `BaseUserRecoveryCodeModel`, `make_user_recovery_code_model`, `UserTokenPurpose`, `BaseRepository[ModelType]`, `TenantScopedRepository[ModelType]`, `AsyncDatabaseManager` (+ `is_memory_sqlite_url` / `shared_memory_url`, which give in-memory SQLite a connection per session; `transaction()`, the explicit name of the commit-on-exit `get_session_context()`; `create_tables(metadata=...)` / `drop_tables(metadata=...)` for your own `DeclarativeBase`), `session_dependency_for` (request-session dependency for a manager built on demand), `AlembicHelper` (+ `safe_upgrade`, and the first-boot bootstrap `sync_schema` / `adopt` / `base_revision` / `has_existing_schema`), `SchemaSyncOutcome`, `DestructiveMigrationError`, `AmbiguousBaseRevisionError`, `NAMING_CONVENTION`, `AuditMixin`, `SoftDeleteMixin`, `MFAMixin`, `LocaleColumnMixin`, `BASE_COLUMN_ORDER`, `reorder_base_columns_first`, `compose_hooks`, `SlowQueryLogger`, `BaseOutboxModel`, `OutboxRelay`, `OutboxStatus`, `BaseRepository.save_with_outbox`, audit trail (`BaseAuditLogModel`, `AuditAction`, `snapshot_model`, `diff_snapshots`, `BaseRepository.add_audited` / `update_audited` / `delete_audited`), eager-loading (`get`/`get_or_none`/`get_by_id`/`first`/`list` accept `with_=[...]`, dotted for nested), lifecycle signals (`RepositorySignal`, `connect` / `on_signal` / `disconnect`, `PRE_SAVE`/`POST_SAVE`/`PRE_DELETE`/`POST_DELETE`), `F` / `Q` expression wrappers (`F("stock") - 1` atomic updates; `Q(...) | Q(...)` OR/NOT via `where=`), `BaseWebPushSubscriptionModel` + `make_web_push_subscription_model`, integrity introspection (`parse_integrity_error` → `IntegrityFailure` / `IntegrityViolation`: reads a driver's rejection back into the constraint that caused it, so a service answers `409` naming the field; Postgres and SQLite, every pattern read off a real server), constraint naming (`NAMING_CONVENTION` names composite `uq`/`ix`/`fk` by every column; `LEGACY_NAMING_CONVENTION`, `ConstraintKind`, `ConstraintRename` and `legacy_constraint_renames` move an existing database to the new names) |
@@ -3772,7 +3780,7 @@ Use `get_client_ip_from_scope(scope, trusted_header=...)` from middleware or web
 
 ### Command-line interface recipe
 
-Installing `tempest-fastapi-sdk` exposes a `tempest` console script. It does two jobs: bootstrap a new layered service from the SDK's preferred skeleton, and run the four quality gates (`ruff check`, `ruff format`, `mypy`, `pytest`) without copy-pasting the same commands into every project.
+Installing `tempest-fastapi-sdk[cli]` exposes a `tempest` console script (the base install registers the script too, but without the `[cli]` extra it only prints the install line and exits with code 2). It does two jobs: bootstrap a new layered service from the SDK's preferred skeleton, and run the four quality gates (`ruff check`, `ruff format`, `mypy`, `pytest`) without copy-pasting the same commands into every project.
 
 ```bash
 tempest --help                                  # list every command

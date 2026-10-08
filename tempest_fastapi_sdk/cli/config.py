@@ -25,11 +25,19 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-from tempest_cli.config import DEFAULT_TYPING_STRICTNESS as DEFAULT_TYPING_STRICTNESS
-from tempest_cli.config import TempestConfig as TempestConfig
-from tempest_cli.config import TypingStrictness as TypingStrictness
-from tempest_cli.config import find_pyproject as find_pyproject
-from tempest_cli.config import load_tempest_config as load_tempest_config
+from tempest_fastapi_sdk.cli.entrypoint import raise_for_missing_cli_extra
+
+try:
+    from tempest_cli.config import (
+        DEFAULT_TYPING_STRICTNESS as DEFAULT_TYPING_STRICTNESS,
+    )
+    from tempest_cli.config import TempestConfig as TempestConfig
+    from tempest_cli.config import TypingStrictness as TypingStrictness
+    from tempest_cli.config import find_pyproject as find_pyproject
+    from tempest_cli.config import load_tempest_config as load_tempest_config
+except ModuleNotFoundError as exc:
+    raise_for_missing_cli_extra(exc)
+    raise
 
 
 def _coerce_commands(value: object, *, source: str) -> tuple[str, ...]:

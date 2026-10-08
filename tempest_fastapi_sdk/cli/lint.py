@@ -14,13 +14,19 @@ here also keeps working and returns the same functions.
 Prefer importing from ``tempest_cli`` directly in new code.
 """
 
-from tempest_cli.lint import resolve_tool as resolve_tool
-from tempest_cli.lint import run_full_check as run_full_check
-from tempest_cli.lint import run_mypy as run_mypy
-from tempest_cli.lint import run_pytest as run_pytest
-from tempest_cli.lint import run_ruff_check as run_ruff_check
-from tempest_cli.lint import run_ruff_fix as run_ruff_fix
-from tempest_cli.lint import run_ruff_format as run_ruff_format
+from tempest_fastapi_sdk.cli.entrypoint import raise_for_missing_cli_extra
+
+try:
+    from tempest_cli.lint import resolve_tool as resolve_tool
+    from tempest_cli.lint import run_full_check as run_full_check
+    from tempest_cli.lint import run_mypy as run_mypy
+    from tempest_cli.lint import run_pytest as run_pytest
+    from tempest_cli.lint import run_ruff_check as run_ruff_check
+    from tempest_cli.lint import run_ruff_fix as run_ruff_fix
+    from tempest_cli.lint import run_ruff_format as run_ruff_format
+except ModuleNotFoundError as exc:
+    raise_for_missing_cli_extra(exc)
+    raise
 
 __all__: list[str] = [
     "resolve_tool",

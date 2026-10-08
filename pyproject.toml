@@ -32,22 +32,24 @@ classifiers = [
 ]
 dependencies = [
     "alembic>=1.19.1",
-    # The quality gate (`tempest lint` / `check` / `pr-prompt`) lives in
-    # this framework-agnostic package. It is a dependency and not a copy
-    # so both CLIs expose one implementation; it pulls only `typer`,
-    # which the SDK already requires.
-    "tempest-cli>=0.4.0",
-    "click>=8.5.0",
     "email-validator>=2.3.0",
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
     "sqlalchemy[asyncio]>=2.0.52",
-    "typer>=0.27.2",
 ]
 
 [project.optional-dependencies]
+# The `tempest` CLI. Kept out of the base because `tempest-cli` (the quality
+# gate) requires `ruff>=0.8.0` at runtime: in the base, every service that
+# imports the SDK shipped a formatter to production and inherited its floor.
+# `typer` and `click` are imported only under `tempest_fastapi_sdk/cli/`.
+cli = [
+    "tempest-cli>=0.4.0",
+    "typer>=0.27.2",
+    "click>=8.5.0",
+]
 auth = [
     "bcrypt>=5.0.0",
     "pyjwt>=2.13.0",
@@ -324,6 +326,9 @@ all = [
     "chromadb>=1.5.9",
     "pyyaml>=6.0.3",
     "onnx>=1.22.0",
+    "tempest-cli>=0.4.0",
+    "typer>=0.27.2",
+    "click>=8.5.0",
 ]
 
 [project.urls]
@@ -332,7 +337,7 @@ Repository = "https://github.com/mauriciobenjamin700/tempest-fastapi-sdk"
 Issues = "https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues"
 
 [project.scripts]
-tempest = "tempest_fastapi_sdk.cli.main:main"
+tempest = "tempest_fastapi_sdk.cli.entrypoint:main"
 
 [build-system]
 requires = ["hatchling"]

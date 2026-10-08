@@ -352,8 +352,8 @@ continuam sendo coisa de execução serial.
 !!! info "O `--fast` vem do `tempest-cli` 0.4.0"
     Os comandos `test` e `check` são do
     [`tempest-cli`](https://pypi.org/project/tempest-cli/), que o SDK monta
-    na CLI dele. O SDK declara `tempest-cli>=0.4.0`, então a flag já vem com
-    ele. Com o `tempest-cli` 0.3.0 fixado à parte no seu projeto,
+    na CLI dele. O extra `[cli]` do SDK declara `tempest-cli>=0.4.0`, então a
+    flag já vem com ele. Com o `tempest-cli` 0.3.0 fixado à parte no seu projeto,
     `tempest test --fast` sai com `No such option: --fast` (saída 2).
 
 ### Sem o pytest-xdist
