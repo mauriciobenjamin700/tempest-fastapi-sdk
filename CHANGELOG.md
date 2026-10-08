@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.308.0] — 2026-10-08
+
+O CLI `tempest` sai do runtime: `tempest-cli`, `typer` e `click` viram o
+extra `[cli]`, e o pacote base deixa de levar `ruff` para produção.
+
 ### Changed
 
 - **Breaking para quem usa o comando `tempest`: a CLI virou o extra
