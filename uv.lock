@@ -6848,15 +6848,12 @@ version = "0.307.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
-    { name = "click" },
     { name = "email-validator" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "sqlalchemy", extra = ["asyncio"] },
-    { name = "tempest-cli" },
-    { name = "typer" },
 ]
 
 [package.optional-dependencies]
@@ -6875,6 +6872,7 @@ all = [
     { name = "asyncpg" },
     { name = "bcrypt" },
     { name = "chromadb" },
+    { name = "click" },
     { name = "cryptography" },
     { name = "email-validator" },
     { name = "faststream", extra = ["rabbit"] },
@@ -6906,7 +6904,9 @@ all = [
     { name = "taskiq" },
     { name = "taskiq-aio-pika" },
     { name = "taskiq-redis" },
+    { name = "tempest-cli" },
     { name = "tempestweb" },
+    { name = "typer" },
     { name = "weasyprint" },
     { name = "websockets" },
 ]
@@ -6916,6 +6916,11 @@ auth = [
 ]
 cache = [
     { name = "redis" },
+]
+cli = [
+    { name = "click" },
+    { name = "tempest-cli" },
+    { name = "typer" },
 ]
 email = [
     { name = "aiosmtplib" },
@@ -7175,7 +7180,8 @@ requires-dist = [
     { name = "bitsandbytes", marker = "extra == 'genai-quant'", specifier = ">=0.50.2" },
     { name = "chromadb", marker = "extra == 'all'", specifier = ">=1.5.9" },
     { name = "chromadb", marker = "extra == 'genai-chroma'", specifier = ">=1.5.9" },
-    { name = "click", specifier = ">=8.5.0" },
+    { name = "click", marker = "extra == 'all'", specifier = ">=8.5.0" },
+    { name = "click", marker = "extra == 'cli'", specifier = ">=8.5.0" },
     { name = "coqui-tts", marker = "extra == 'genai-audio'", specifier = ">=0.27.5" },
     { name = "cryptography", marker = "extra == 'all'", specifier = ">=50.0.1" },
     { name = "cryptography", marker = "extra == 'oidc'", specifier = ">=50.0.1" },
@@ -7283,7 +7289,8 @@ requires-dist = [
     { name = "taskiq-aio-pika", marker = "extra == 'tasks'", specifier = ">=0.6.0" },
     { name = "taskiq-redis", marker = "extra == 'all'", specifier = ">=1.2.3" },
     { name = "taskiq-redis", marker = "extra == 'tasks-redis'", specifier = ">=1.2.3" },
-    { name = "tempest-cli", specifier = ">=0.4.0" },
+    { name = "tempest-cli", marker = "extra == 'all'", specifier = ">=0.4.0" },
+    { name = "tempest-cli", marker = "extra == 'cli'", specifier = ">=0.4.0" },
     { name = "tempestweb", marker = "extra == 'all'", specifier = ">=0.127.0" },
     { name = "tempestweb", marker = "extra == 'ssr'", specifier = ">=0.127.0" },
     { name = "tokenizers", marker = "extra == 'genai-onnx'", specifier = ">=0.22.2" },
@@ -7295,13 +7302,14 @@ requires-dist = [
     { name = "trafilatura", marker = "extra == 'genai-rag'", specifier = ">=2.2.0" },
     { name = "transformers", marker = "extra == 'genai'", specifier = ">=4.57.6" },
     { name = "transformers", marker = "extra == 'genai-audio'", specifier = "<5" },
-    { name = "typer", specifier = ">=0.27.2" },
+    { name = "typer", marker = "extra == 'all'", specifier = ">=0.27.2" },
+    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.27.2" },
     { name = "weasyprint", marker = "extra == 'all'", specifier = ">=69.0" },
     { name = "weasyprint", marker = "extra == 'pdf'", specifier = ">=69.0" },
     { name = "websockets", marker = "extra == 'all'", specifier = ">=17.1" },
     { name = "websockets", marker = "extra == 'websocket'", specifier = ">=17.1" },
 ]
-provides-extras = ["auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "tasks-redis", "admin", "admin-sql", "minio", "http", "oidc", "openapi", "prometheus", "mfa", "webauthn", "firebase", "pdf", "pdf-read", "pdf-layout", "spreadsheet", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-diarization", "faces", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-compose", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "tests", "all"]
+provides-extras = ["cli", "auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "tasks-redis", "admin", "admin-sql", "minio", "http", "oidc", "openapi", "prometheus", "mfa", "webauthn", "firebase", "pdf", "pdf-read", "pdf-layout", "spreadsheet", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-diarization", "faces", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-compose", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "tests", "all"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -17,6 +17,10 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    # The `tempest` CLI (`tempest check`, `tempest db upgrade`, ...). A dev
+    # tool, so it stays out of the runtime dependencies above: the gate it
+    # carries needs ruff, which the production image has no use for.
+    "__SDK_CLI_DEP__",
     "mypy>=1.13.0",
     "pytest>=8.3.3",
     "pytest-asyncio>=0.24.0",

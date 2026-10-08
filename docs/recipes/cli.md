@@ -1,12 +1,41 @@
 # CLI
 
 
-Instalar o `tempest-fastapi-sdk` expõe um console script `tempest`. Ele faz dois trabalhos: criar um novo serviço em camadas a partir do esqueleto preferido do SDK e rodar os quatro gates de qualidade (`ruff check`, `ruff format`, `mypy`, `pytest`) sem copiar e colar os mesmos comandos em cada projeto.
+Instalar o `tempest-fastapi-sdk[cli]` expõe um console script `tempest`. Ele faz dois trabalhos: criar um novo serviço em camadas a partir do esqueleto preferido do SDK e rodar os quatro gates de qualidade (`ruff check`, `ruff format`, `mypy`, `pytest`) sem copiar e colar os mesmos comandos em cada projeto.
 
 ```bash
 tempest --help                                  # lista todos os comandos
 tempest --version                               # mostra a versão do SDK
 ```
+
+!!! info "A CLI é o extra `[cli]` (desde a 0.308.0)"
+    O `tempest` é ferramenta de desenvolvimento, então mora num extra e não
+    no pacote base. Instale do jeito que você usa:
+
+    ```bash
+    uv tool install "tempest-fastapi-sdk[cli]"   # comando global
+    uv add --dev "tempest-fastapi-sdk[cli]"      # no grupo dev do projeto
+    ```
+
+    O motivo é o `ruff`: o gate (`tempest check`) vem do `tempest-cli`, que
+    exige `ruff>=0.8.0` em runtime. No pacote base, todo serviço que importa
+    o SDK levava um formatador para produção, e um projeto que fixa
+    `ruff<0.8` no grupo dev nem conseguia resolver o lock.
+
+    Sem o extra, o script continua instalado e explica o que falta, com
+    saída 2 e sem traceback:
+
+    ```text
+    $ tempest --help
+    error: missing tempest_cli, typer, click. The tempest CLI needs the optional [cli] extra. Install it with:
+      uv add --dev "tempest-fastapi-sdk[cli]"   (in a project)
+      uv tool install "tempest-fastapi-sdk[cli]"   (as a global command)
+    ```
+
+    `import tempest_fastapi_sdk` não precisa do extra; ler
+    `tempest_fastapi_sdk.cli.app` (ou importar `tempest_fastapi_sdk.cli.main`,
+    `.config`, `.lint`, `.pr_prompt`) sem ele levanta `ImportError` com a
+    mesma instrução.
 
 !!! tip "Erro de uso? O help completo aparece junto"
     Quando você digita um comando inexistente, uma opção inválida ou
@@ -82,7 +111,7 @@ my_service/
     `code` certo, listagem paginada no envelope do SDK). Um símbolo
     renomeado no SDK quebra o teste, não o projeto de quem usa.
 
-O `pyproject.toml` gerado fixa a versão atual do SDK (`tempest-fastapi-sdk[admin,auth]>=<versão>` por padrão). `admin` e `auth` são obrigatórios — o `src/api/app.py` gerado monta o painel admin, e o login dele verifica a senha pelo `PasswordUtils` — então `--extras` **soma** a eles em vez de substituí-los: `--extras cache,tasks` fixa `[admin,auth,cache,tasks]`, `--extras ""` fixa só `[admin,auth]`, e duplicatas somem com a lista saindo em ordem alfabética. O `.env.example` criado usa a nomenclatura de settings da v0.8.0 (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), e `src/server.py` delega a `tempest_fastapi_sdk.run_server` para que o uvicorn seja importado de forma preguiçosa e os testes possam importar o app sem ele. Regras de validação: o nome do projeto deve casar com `^[a-z][a-z0-9_]*$` e não pode colidir com uma palavra-chave do Python, então `tempest new Bad-Name` e `tempest new class` saem com código 2 antes de qualquer arquivo ser escrito.
+O `pyproject.toml` gerado fixa a versão atual do SDK (`tempest-fastapi-sdk[admin,auth]>=<versão>` por padrão). `admin` e `auth` são obrigatórios — o `src/api/app.py` gerado monta o painel admin, e o login dele verifica a senha pelo `PasswordUtils` — então `--extras` **soma** a eles em vez de substituí-los: `--extras cache,tasks` fixa `[admin,auth,cache,tasks]`, `--extras ""` fixa só `[admin,auth]`, e duplicatas somem com a lista saindo em ordem alfabética. O grupo `dev` ganha `tempest-fastapi-sdk[cli]>=<versão>`, para o `tempest` rodar no projeto sem entrar na imagem: o `Dockerfile` gerado instala com `uv sync --no-dev`. O `.env.example` criado usa a nomenclatura de settings da v0.8.0 (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), e `src/server.py` delega a `tempest_fastapi_sdk.run_server` para que o uvicorn seja importado de forma preguiçosa e os testes possam importar o app sem ele. Regras de validação: o nome do projeto deve casar com `^[a-z][a-z0-9_]*$` e não pode colidir com uma palavra-chave do Python, então `tempest new Bad-Name` e `tempest new class` saem com código 2 antes de qualquer arquivo ser escrito.
 
 !!! tip "Título / versão da API vêm do `.env`"
     A partir da v0.48.0 o `Settings` scaffoldado carrega `TITLE`,
@@ -1689,8 +1718,8 @@ tempest pr-prompt -p ../outro-repo              # roda contra outro repositório
 !!! info "Esses comandos vêm do `tempest-cli` (v0.226.0)"
     O gate de qualidade não tem nada de FastAPI — é `ruff`, `mypy` e
     `pytest`. Desde a v0.226.0 ele vive num pacote próprio,
-    [`tempest-cli`](https://pypi.org/project/tempest-cli/), que o SDK
-    declara como dependência e monta na CLI dele.
+    [`tempest-cli`](https://pypi.org/project/tempest-cli/), que o extra
+    `[cli]` do SDK declara e que o SDK monta na CLI dele.
 
     **Nada muda para você**: `tempest check` é o mesmo comando, com as
     mesmas flags e o mesmo `[tool.tempest] typing_strictness`. O que

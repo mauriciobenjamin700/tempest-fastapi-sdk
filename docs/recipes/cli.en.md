@@ -1,12 +1,42 @@
 # CLI
 
 
-Installing `tempest-fastapi-sdk` exposes a `tempest` console script. It does two jobs: bootstrap a new layered service from the SDK's preferred skeleton, and run the four quality gates (`ruff check`, `ruff format`, `mypy`, `pytest`) without copy-pasting the same commands into every project.
+Installing `tempest-fastapi-sdk[cli]` exposes a `tempest` console script. It does two jobs: bootstrap a new layered service from the SDK's preferred skeleton, and run the four quality gates (`ruff check`, `ruff format`, `mypy`, `pytest`) without copy-pasting the same commands into every project.
 
 ```bash
 tempest --help                                  # list every command
 tempest --version                               # show the SDK version
 ```
+
+!!! info "The CLI is the `[cli]` extra (since 0.308.0)"
+    `tempest` is a development tool, so it lives in an extra rather than in
+    the base package. Install it the way you use it:
+
+    ```bash
+    uv tool install "tempest-fastapi-sdk[cli]"   # global command
+    uv add --dev "tempest-fastapi-sdk[cli]"      # in the project's dev group
+    ```
+
+    The reason is `ruff`: the gate (`tempest check`) comes from
+    `tempest-cli`, which requires `ruff>=0.8.0` at runtime. In the base
+    package, every service importing the SDK shipped a formatter to
+    production, and a project pinning `ruff<0.8` in its dev group could not
+    even resolve its lock.
+
+    Without the extra the script is still installed and explains what is
+    missing, exiting with code 2 and no traceback:
+
+    ```text
+    $ tempest --help
+    error: missing tempest_cli, typer, click. The tempest CLI needs the optional [cli] extra. Install it with:
+      uv add --dev "tempest-fastapi-sdk[cli]"   (in a project)
+      uv tool install "tempest-fastapi-sdk[cli]"   (as a global command)
+    ```
+
+    `import tempest_fastapi_sdk` does not need the extra; reading
+    `tempest_fastapi_sdk.cli.app` (or importing `tempest_fastapi_sdk.cli.main`,
+    `.config`, `.lint`, `.pr_prompt`) without it raises `ImportError` with the
+    same instruction.
 
 !!! tip "Usage error? The full help shows up with it"
     When you type an unknown command, an invalid option, or forget a
@@ -82,7 +112,7 @@ my_service/
     right `code`, paginated listing in the SDK envelope). A renamed
     symbol breaks that test, not someone's project.
 
-The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sdk[admin,auth]>=<version>` by default). `admin` and `auth` are required — the generated `src/api/app.py` mounts the admin panel, and its login checks the password through `PasswordUtils` — so `--extras` **adds** to them instead of replacing them: `--extras cache,tasks` pins `[admin,auth,cache,tasks]`, `--extras ""` pins just `[admin,auth]`, and duplicates are dropped with the list sorted alphabetically. The scaffolded `.env.example` uses the v0.8.0 settings naming (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), and `src/server.py` delegates to `tempest_fastapi_sdk.run_server` so uvicorn is imported lazily and tests can import the app without it. Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
+The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sdk[admin,auth]>=<version>` by default). `admin` and `auth` are required — the generated `src/api/app.py` mounts the admin panel, and its login checks the password through `PasswordUtils` — so `--extras` **adds** to them instead of replacing them: `--extras cache,tasks` pins `[admin,auth,cache,tasks]`, `--extras ""` pins just `[admin,auth]`, and duplicates are dropped with the list sorted alphabetically. The `dev` group gets `tempest-fastapi-sdk[cli]>=<version>`, so `tempest` runs in the project without entering the image: the generated `Dockerfile` installs with `uv sync --no-dev`. The scaffolded `.env.example` uses the v0.8.0 settings naming (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), and `src/server.py` delegates to `tempest_fastapi_sdk.run_server` so uvicorn is imported lazily and tests can import the app without it. Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
 
 !!! tip "API title / version come from `.env`"
     Since v0.48.0 the scaffolded `Settings` carries `TITLE`, `VERSION`
@@ -1692,8 +1722,8 @@ tempest pr-prompt -p ../other-repo              # run against another repository
 !!! info "These commands come from `tempest-cli` (v0.226.0)"
     The quality gate has nothing to do with FastAPI — it is `ruff`,
     `mypy` and `pytest`. Since v0.226.0 it lives in its own package,
-    [`tempest-cli`](https://pypi.org/project/tempest-cli/), which the SDK
-    declares as a dependency and mounts on its CLI.
+    [`tempest-cli`](https://pypi.org/project/tempest-cli/), which the SDK's
+    `[cli]` extra declares and the SDK mounts on its CLI.
 
     **Nothing changes for you**: `tempest check` is the same command,
     with the same flags and the same `[tool.tempest] typing_strictness`.

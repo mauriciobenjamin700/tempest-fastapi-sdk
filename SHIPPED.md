@@ -2180,8 +2180,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 
 - **Quality gate lives in `tempest-cli` (v0.226.0)** — `lint` / `fix` /
   `format` / `fmt-check` / `type` / `test` / `check` / `pr-prompt` moved
-  to a framework-agnostic package (only runtime dep: `typer`). The SDK
-  depends on it and mounts the same commands via
+  to a framework-agnostic package (runtime deps: `typer` and `ruff`). The
+  SDK's `[cli]` extra (since v0.308.0; a base dependency before) brings it,
+  and the SDK mounts the same commands via
   `tempest_cli.main.register_commands(app)`, so `tempest check` is
   unchanged and there is a single implementation. `[tool.tempest]` is now
   read per owner: `typing_strictness` by the gate, `commands` by the SDK
@@ -2996,3 +2997,14 @@ limitam códigos errados por conta (default 5 em 900 s sobre
 cada código entra uma vez — no `UserAuthService` e no
 `UserModelAuthBackend.claim_mfa_step` do admin. Guards:
 `tests/auth/test_mfa.py`, `tests/admin/test_mfa_attempt_limit.py`.
+
+## A CLI vira o extra `[cli]` (0.308.0)
+
+`tempest-cli`, `typer` e `click` saíram do base para `[cli]` (e `[all]`): o
+`tempest-cli` exige `ruff>=0.8.0` em runtime, e no base ele levava um
+formatador à produção de todo serviço e travava o lock de quem fixa
+`ruff<0.8`. O script `tempest` aponta para `cli.entrypoint:main` (só stdlib),
+que sem o extra imprime a instrução e sai com 2; `tempest_fastapi_sdk.cli`
+re-exporta preguiçosamente e levanta `ImportError` com a instrução; o
+`tempest new` põe `tempest-fastapi-sdk[cli]` no grupo `dev`. Guards:
+`tests/test_cli_extra_guard.py` e `tests/cli/test_entrypoint.py`.

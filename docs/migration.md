@@ -2,6 +2,57 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.308.0 — o CLI `tempest` virou o extra `[cli]`
+
+O `tempest-cli` saiu das dependências do pacote base, junto com o `typer` e o
+`click`, e foi para o extra novo `[cli]` (que também entra no `[all]`). O
+`tempest-cli` exige `ruff>=0.8.0` em runtime: no base, todo serviço que adota o
+SDK carregava um formatador como dependência de produção, e um projeto que
+fixa `ruff<0.8` no grupo dev nem resolvia o lock (`uv lock` recusava com
+`tempest-cli>=0.4.0 depends on ruff>=0.8.0`). A biblioteca — `import
+tempest_fastapi_sdk` e tudo o que o serviço importa em runtime — não muda.
+
+Quem é afetado: **só quem roda o comando `tempest`** sem `[cli]` nem `[all]`.
+Sem o extra, o script continua instalado, mas imprime a instrução e sai com
+código 2:
+
+```text
+$ tempest --help
+error: missing tempest_cli, typer, click. The tempest CLI needs the optional [cli] extra. Install it with:
+  uv add --dev "tempest-fastapi-sdk[cli]"   (in a project)
+  uv tool install "tempest-fastapi-sdk[cli]"   (as a global command)
+```
+
+### O que fazer
+
+1. **CLI global** (`uv tool install tempest-fastapi-sdk`): reinstale com o
+   extra.
+
+    ```bash
+    uv tool install --force "tempest-fastapi-sdk[cli]"
+    ```
+
+2. **CLI no projeto** (`uv run tempest check`, `tempest db upgrade` no
+   terminal, na CI): adicione o extra ao grupo dev. Projetos gerados pelo
+   `tempest new` a partir da 0.308.0 já vêm assim.
+
+    ```bash
+    uv add --dev "tempest-fastapi-sdk[cli]"
+    ```
+
+3. **`tempest` dentro da imagem de produção** (por exemplo, um entrypoint que
+   roda `tempest db upgrade` antes de subir o app): o grupo dev não entra numa
+   imagem construída com `uv sync --no-dev`, então ali o extra vai nas
+   dependências de runtime — `"tempest-fastapi-sdk[cli,...]"` — ou o passo
+   troca para `alembic upgrade head`, que não precisa da CLI.
+
+4. **Import direto** de `tempest_fastapi_sdk.cli.main`, `.config`, `.lint` ou
+   `.pr_prompt`, ou de `tempest_fastapi_sdk.cli.app` / `TempestConfig`: sem o
+   extra, levanta `ImportError` com a mesma instrução. Instale `[cli]` onde
+   esse código roda.
+
+Quem já instala `[all]` não faz nada: o `[all]` traz o `[cli]`.
+
 ## 0.306.0 — código TOTP de uso único pede a coluna `totp_last_step`
 
 O `MFAMixin` ganhou a coluna `totp_last_step` (inteiro, nullable), onde o SDK

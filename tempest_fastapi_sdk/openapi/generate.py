@@ -91,15 +91,24 @@ def _format_paths(paths: list[Path]) -> bool:
     Args:
         paths (list[Path]): Files to format.
 
+    The ruff lookup (PATH, then ``uv run``) is ``tempest_cli.resolve_tool``,
+    which ships with the optional ``[cli]`` extra. Without the extra the
+    lookup is unavailable, and the result is the same as finding no ruff.
+
     Returns:
         bool: ``True`` when ruff ran. ``False`` when no runner could be
-        found — the emitted code is already formatted to the project's
-        style, so a missing ruff degrades the output's polish, never its
-        correctness.
+        found, or when the ``[cli]`` extra that finds it is not installed
+        — the emitted code is already formatted to the project's style, so
+        a missing ruff degrades the output's polish, never its correctness.
     """
     if not paths:
         return False
-    from tempest_cli import resolve_tool
+    try:
+        from tempest_cli import resolve_tool
+    except ModuleNotFoundError as exc:
+        if exc.name != "tempest_cli":
+            raise
+        return False
 
     runner = resolve_tool("ruff")
     if runner is None:

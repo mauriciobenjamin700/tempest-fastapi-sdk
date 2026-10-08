@@ -6,10 +6,16 @@ import sys
 from pathlib import Path
 from typing import Annotated, Any, cast
 
-import click
-import typer
-from tempest_cli.main import register_commands
-from typer.core import TyperGroup
+from tempest_fastapi_sdk.cli.entrypoint import raise_for_missing_cli_extra
+
+try:
+    import click
+    import typer
+    from tempest_cli.main import register_commands
+    from typer.core import TyperGroup
+except ModuleNotFoundError as exc:
+    raise_for_missing_cli_extra(exc)
+    raise
 
 from tempest_fastapi_sdk.cli import generate as generate_module
 from tempest_fastapi_sdk.cli import new as new_module
