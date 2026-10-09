@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
         with:
           enable-cache: true
 
@@ -40,7 +40,7 @@ jobs:
         run: uv python install 3.13
 
       - name: Install docs + every extra
-        run: uv sync --all-extras --group docs
+        run: uv sync --locked --all-extras --group docs
 
       - name: Build site
         run: uv run mkdocs build --strict --site-dir site

@@ -42,7 +42,13 @@ def service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
-    for variable in ("REDIS_URL", "RABBITMQ_URL", "SMTP_HOST", "MINIO_ENDPOINT"):
+    for variable in (
+        "REDIS_URL",
+        "RABBITMQ_URL",
+        "SMTP_HOST",
+        "MINIO_ENDPOINT",
+        "STORAGE_ENDPOINT",
+    ):
         monkeypatch.delenv(variable, raising=False)
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{tmp_path / 'doctor.db'}")
     yield tmp_path

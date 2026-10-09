@@ -280,7 +280,7 @@ def _api_block(project_name: str, extras_set: set[str], port: int) -> str:
         environment.append(f"      TASKIQ_BROKER_URL: {amqp}")
         depends_on.append("      rabbitmq:\n        condition: service_healthy")
     if "minio" in extras_set:
-        environment.append("      MINIO_ENDPOINT: minio:9000")
+        environment.append("      STORAGE_ENDPOINT: minio:9000")
         depends_on.append("      minio:\n        condition: service_healthy")
         depends_on.append(
             "      minio-bootstrap:\n        condition: service_completed_successfully"
@@ -444,12 +444,12 @@ def env_block_for(extras: str) -> str:
             "MINIO_ROOT_PASSWORD=minioadmin\n"
             "# Connection settings consumed by the app (keys must match the\n"
             "# root credentials above for the bundled single-user setup)\n"
-            "MINIO_ENDPOINT=localhost:9000\n"
-            "MINIO_ACCESS_KEY=minioadmin\n"
-            "MINIO_SECRET_KEY=minioadmin\n"
-            "MINIO_SECURE=false\n"
-            "MINIO_REGION=us-east-1\n"
-            "MINIO_DEFAULT_BUCKET=uploads\n"
+            "STORAGE_ENDPOINT=localhost:9000\n"
+            "STORAGE_ACCESS_KEY=minioadmin\n"
+            "STORAGE_SECRET_KEY=minioadmin\n"
+            "STORAGE_SECURE=false\n"
+            "STORAGE_REGION=us-east-1\n"
+            "STORAGE_DEFAULT_BUCKET=uploads\n"
         )
 
     if "email" in extras_set:

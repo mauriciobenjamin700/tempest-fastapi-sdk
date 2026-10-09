@@ -363,6 +363,64 @@ class RedisRateLimitStore:
         )
 
 
+def _rate_limit_headers(
+    *,
+    limit: int,
+    remaining: int,
+    reset: int | None,
+    retry_after: int | None,
+    limit_headers: bool = True,
+    retry_after_header: bool = True,
+) -> dict[str, str]:
+    """Build the ``RateLimit-*`` / ``Retry-After`` headers of a decision.
+
+    Shared by :class:`RateLimitMiddleware` and
+    :func:`~tempest_fastapi_sdk.make_rate_limit_dependency`, so a route
+    limited by either one advertises its limit with the same headers.
+
+    Args:
+        limit (int): The ceiling that applied (``RateLimit-Limit``).
+        remaining (int): Requests left in the window
+            (``RateLimit-Remaining``).
+        reset (int | None): Seconds until the window frees capacity
+            (``RateLimit-Reset``). ``None`` omits the header: the
+            sliding-window store does not report it for an accepted
+            request, and a guessed number is worse than none.
+        retry_after (int | None): Seconds to wait before retrying
+            (``Retry-After``). ``None`` for an accepted request.
+        limit_headers (bool): Whether to emit the ``RateLimit-*`` trio.
+        retry_after_header (bool): Whether to emit ``Retry-After``.
+
+    Returns:
+        dict[str, str]: The headers, possibly empty.
+    """
+    headers: dict[str, str] = {}
+    if limit_headers:
+        headers["RateLimit-Limit"] = str(limit)
+        headers["RateLimit-Remaining"] = str(remaining)
+        if reset is not None:
+            headers["RateLimit-Reset"] = str(reset)
+    if retry_after_header and retry_after is not None:
+        headers["Retry-After"] = str(retry_after)
+    return headers
+
+
+def _rate_limit_details(*, retry_after: int, limit: int) -> dict[str, Any]:
+    """Build the ``details`` object of the ``429`` envelope.
+
+    Shared by :class:`RateLimitMiddleware` and
+    :func:`~tempest_fastapi_sdk.make_rate_limit_dependency`.
+
+    Args:
+        retry_after (int): Seconds to wait — the ``Retry-After`` value.
+        limit (int): The ceiling that refused the request.
+
+    Returns:
+        dict[str, Any]: ``{"retry_after_seconds": ..., "limit": ...}``.
+    """
+    return {"retry_after_seconds": retry_after, "limit": limit}
+
+
 @runtime_checkable
 class _JWTDecoder(Protocol):
     """Minimal JWT decoder surface used by the ``key_by_jwt_*`` helpers.
@@ -719,26 +777,25 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             remaining = result.remaining
             reset = None if allowed else result.retry_after
 
-        headers: dict[str, str] = {}
-        if self._limit_headers:
-            headers["RateLimit-Limit"] = str(limit)
-            headers["RateLimit-Remaining"] = str(remaining)
-            if reset is not None:
-                headers["RateLimit-Reset"] = str(reset)
+        headers = _rate_limit_headers(
+            limit=limit,
+            remaining=remaining,
+            reset=reset,
+            retry_after=None if allowed else retry_after,
+            limit_headers=self._limit_headers,
+            retry_after_header=self._retry_after_header,
+        )
 
         if not allowed:
-            if self._retry_after_header:
-                headers["Retry-After"] = str(retry_after)
-            details: dict[str, Any] = {
-                "retry_after_seconds": retry_after,
-                "limit": limit,
-            }
             return JSONResponse(
                 status_code=429,
                 content={
                     "detail": self._error_message,
                     "code": self._error_code,
-                    "details": details,
+                    "details": _rate_limit_details(
+                        retry_after=retry_after,
+                        limit=limit,
+                    ),
                 },
                 headers=headers,
             )

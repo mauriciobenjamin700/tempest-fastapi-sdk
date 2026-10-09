@@ -17,8 +17,10 @@ from tempest_fastapi_sdk.admin.actions import (
     resolve_admin_action,
 )
 from tempest_fastapi_sdk.db.audit import BaseAuditLogModel, audit_redacted_columns
+from tempest_fastapi_sdk.db.expressions import resolve_filter_key
 from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.db.repository import BaseRepository
+from tempest_fastapi_sdk.exceptions.validation import UnknownFilterKeyException
 from tempest_fastapi_sdk.utils.password import PasswordPolicy
 
 if TYPE_CHECKING:
@@ -135,9 +137,13 @@ class Lens:
     Attributes:
         name (str): The lens identifier; its slug (lowercased,
             spaces→hyphens) is the ``?lens=`` value.
-        filters (dict[str, Any]): Filter conditions merged into the
-            query — same conventions as a repository filter dict
-            (``field__gte`` etc.).
+        filters (dict[str, Any]): Column name to the value the tab's rows must
+            match, ANDed into the query, e.g.
+            ``{"user_id": 1234, "is_active": True}``. A list is ``IN``, ``None`` is
+            ``IS NULL``, and a ``<column>__<op>`` key applies an operator
+            (``{"price__gte": 10}``); every convention is listed on
+            :class:`~tempest_fastapi_sdk.BaseRepository`. An unknown column or
+            operator makes :class:`AdminModel` raise ``ValueError`` at construction.
         order_by (str | None): Column to order by; ``-col`` for
             descending. Applied unless the user clicked a column sort.
         label (str | None): Tab label; defaults to ``name``.
@@ -155,7 +161,13 @@ class Lens:
 
         Args:
             name (str): The lens identifier.
-            filters (dict[str, Any] | None): Filter conditions.
+            filters (dict[str, Any] | None): Column name to the value the tab's rows
+                must match, ANDed together, e.g.
+                ``{"user_id": 1234, "is_active": True}``. A list is ``IN``, ``None``
+                is ``IS NULL``, and a ``<column>__<op>`` key applies an operator
+                (``{"price__gte": 10}``); every convention is listed on
+                :class:`~tempest_fastapi_sdk.BaseRepository`. An unknown column or
+                operator makes :class:`AdminModel` raise ``ValueError`` at construction.
             order_by (str | None): Ordering column (``-col`` = desc).
             label (str | None): Tab label.
         """
@@ -329,7 +341,9 @@ class AdminModel(Generic[ModelT]):
         TypeError: When ``model`` is not a subclass of :class:`BaseModel`,
             or when a field reference cannot be resolved to a column key.
         ValueError: When ``display_timezone`` is not a zone the host's
-            tz database knows.
+            tz database knows, or when ``list_filter``, ``search_fields`` or
+            a lens' ``filters`` carries a key the repository would refuse
+            with ``UnknownFilterKeyException`` (unknown column or operator).
     """
 
     def __init__(
@@ -428,6 +442,7 @@ class AdminModel(Generic[ModelT]):
                 "rows with no password at all. Import without the password "
                 "column and set it per row, or set can_import=False.",
             )
+        self._check_filter_keys()
         self.exclude_fields: list[str] = _normalize_fields(exclude_fields)
         self._check_exclude_fields(known)
         self.display_timezone: str | None = display_timezone
@@ -440,6 +455,56 @@ class AdminModel(Generic[ModelT]):
                     f"AdminModel `display_timezone` {display_timezone!r} is not "
                     "a zone this host's tz database knows",
                 ) from exc
+
+    def _check_filter_keys(self) -> None:
+        """Refuse a filter key the repository would refuse on every request.
+
+        ``list_filter``, ``search_fields`` and every lens' ``filters`` end
+        up as keys of the ``filters`` mapping the list view hands to
+        :meth:`BaseRepository.paginate`. Since #465 the repository raises
+        :class:`~tempest_fastapi_sdk.UnknownFilterKeyException` on a key
+        the model cannot resolve, so a typo here would turn the list view
+        into a 422 the first time an operator opened the tab. Checking at
+        construction makes it a boot error naming the option instead.
+
+        The ``start_in`` / ``end_in`` range keys are repository sugar, not
+        model attributes, so a lens may carry them unchecked.
+
+        Raises:
+            ValueError: When ``list_filter`` or ``search_fields`` names an
+                attribute the model has no SQL reading for, or a lens
+                carries a key with an unknown column or operator.
+        """
+        name = self.model.__name__
+        for option, fields in (
+            ("list_filter", self.list_filter),
+            ("search_fields", self.search_fields),
+        ):
+            unknown: list[str] = []
+            for field in fields:
+                try:
+                    resolve_filter_key(self.model, field)
+                except UnknownFilterKeyException:
+                    unknown.append(field)
+            if unknown:
+                raise ValueError(
+                    f"AdminModel `{option}` names fields {name} cannot filter "
+                    f"on: {', '.join(sorted(unknown))}",
+                )
+        for lens in self.lenses:
+            unknown = []
+            for key in lens.filters:
+                if key in ("start_in", "end_in"):
+                    continue
+                try:
+                    resolve_filter_key(self.model, key)
+                except UnknownFilterKeyException:
+                    unknown.append(key)
+            if unknown:
+                raise ValueError(
+                    f"AdminModel lens {lens.name!r} filters on keys {name} "
+                    f"cannot resolve: {', '.join(sorted(unknown))}",
+                )
 
     def _check_exclude_fields(self, known: set[str]) -> None:
         """Refuse an ``exclude_fields`` the rest of the config contradicts.

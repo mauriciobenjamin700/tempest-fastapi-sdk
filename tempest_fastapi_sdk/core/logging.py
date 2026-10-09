@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from tempest_fastapi_sdk.core.context import get_request_id
+from tempest_fastapi_sdk.core.redaction import RedactionFilter, RedactionPolicy
 
 HTTP_500_MARKER: str = "http_500"
 """``extra`` key the 500 catch-all handler sets so grave failures can
@@ -135,6 +136,14 @@ class JSONFormatter(logging.Formatter):
     (when present) is attached as ``request_id``. Any additional
     keyword passed to the logger via ``extra={...}`` becomes a
     top-level key in the JSON payload.
+
+    The ``exception`` key comes from ``record.exc_text`` when a previous
+    step already rendered it — the same precedence the stdlib
+    :class:`logging.Formatter` uses — and from ``exc_info`` only
+    otherwise. That is what lets a handler filter such as
+    :class:`~tempest_fastapi_sdk.RedactionFilter` redact the traceback:
+    rendering ``exc_info`` again would write the original text back over
+    the redacted one.
     """
 
     def format(self, record: logging.LogRecord) -> str:
@@ -160,8 +169,11 @@ class JSONFormatter(logging.Formatter):
         request_id = get_request_id()
         if request_id is not None:
             payload["request_id"] = request_id
-        if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
+        exception_text = record.exc_text
+        if not exception_text and record.exc_info:
+            exception_text = self.formatException(record.exc_info)
+        if exception_text:
+            payload["exception"] = exception_text
         for key, value in record.__dict__.items():
             if key in _RESERVED_LOG_FIELDS:
                 continue
@@ -289,6 +301,7 @@ def configure_logging(
     file_output: bool = True,
     max_bytes: int = DEFAULT_LOG_MAX_BYTES,
     backup_count: int = DEFAULT_LOG_BACKUP_COUNT,
+    redact: bool | RedactionPolicy = False,
 ) -> logging.Logger:
     """Install a structured stdout handler on the root (or named) logger.
 
@@ -341,6 +354,17 @@ def configure_logging(
             exactly the one that fills the disk.
         backup_count (int): Rotated files kept per level (default ``5``,
             so roughly 60 MB per level at the default size).
+        redact (bool | RedactionPolicy): When truthy, attach a
+            :class:`~tempest_fastapi_sdk.RedactionFilter` to **every**
+            handler installed here — on the handler and not on the logger,
+            because a logger's filters do not run for records propagated
+            from its children. ``True`` uses ``RedactionPolicy()``; pass a
+            :class:`~tempest_fastapi_sdk.RedactionPolicy` to add domain keys
+            or patterns. ``False`` (default) installs no filter and leaves
+            records untouched. Redaction rewrites the record in place
+            (``msg`` becomes the rendered, redacted message and ``args`` is
+            cleared), so a handler added later on the same logger sees the
+            redacted record too — provided one of these handlers ran first.
 
     File logging is **best-effort**: if ``log_dir`` cannot be created or
     its files cannot be opened (read-only mount, missing write
@@ -377,6 +401,12 @@ def configure_logging(
             "would silence every handler. Pick at least one."
         )
 
+    redaction_filter: RedactionFilter | None = None
+    if isinstance(redact, RedactionPolicy):
+        redaction_filter = RedactionFilter(redact)
+    elif redact:
+        redaction_filter = RedactionFilter()
+
     logger = logging.getLogger(logger_name)
     logger.setLevel(level)
     for handler in list(logger.handlers):
@@ -395,6 +425,8 @@ def configure_logging(
                     datefmt="%Y-%m-%dT%H:%M:%S",
                 )
             )
+        if redaction_filter is not None:
+            stream_handler.addFilter(redaction_filter)
         logger.addHandler(stream_handler)
 
     if file_output and log_dir:
@@ -416,6 +448,8 @@ def configure_logging(
                 print(msg, file=sys.stderr)
         else:
             for file_handler in file_handlers:
+                if redaction_filter is not None:
+                    file_handler.addFilter(redaction_filter)
                 logger.addHandler(file_handler)
 
     logger.propagate = False

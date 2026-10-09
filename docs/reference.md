@@ -154,6 +154,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.expressions.F
 ::: tempest_fastapi_sdk.db.expressions.Q
 ::: tempest_fastapi_sdk.db.expressions.build_filter_condition
+::: tempest_fastapi_sdk.db.expressions.resolve_filter_key
+::: tempest_fastapi_sdk.db.expressions.FILTER_OPERATORS
 ::: tempest_fastapi_sdk.db.expressions.DroppedFilterWarning
 ::: tempest_fastapi_sdk.db.signals.RepositorySignal
 ::: tempest_fastapi_sdk.db.signals.connect
@@ -174,16 +176,23 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.outbox.OutboxStatus
 ::: tempest_fastapi_sdk.db.audit.BaseAuditLogModel
 ::: tempest_fastapi_sdk.db.audit.AuditAction
+::: tempest_fastapi_sdk.db.audit.AuditRequestMixin
+::: tempest_fastapi_sdk.db.audit.AuditRequestContext
 ::: tempest_fastapi_sdk.db.audit.snapshot_model
 ::: tempest_fastapi_sdk.db.audit.diff_snapshots
 ::: tempest_fastapi_sdk.db.audit.audit_redacted_columns
 ::: tempest_fastapi_sdk.db.audit.redact_snapshot
 ::: tempest_fastapi_sdk.db.audit.AUDIT_REDACTED
 ::: tempest_fastapi_sdk.db.audit.DEFAULT_AUDIT_REDACT
+::: tempest_fastapi_sdk.db.audit.AUDIT_EVENT_MAX_LENGTH
+::: tempest_fastapi_sdk.db.audit.AUDIT_IP_MAX_LENGTH
+::: tempest_fastapi_sdk.db.audit.AUDIT_USER_AGENT_MAX_LENGTH
 ::: tempest_fastapi_sdk.db.migrations.DestructiveMigrationError
 ::: tempest_fastapi_sdk.db.migrations.AmbiguousBaseRevisionError
 ::: tempest_fastapi_sdk.db.migrations.SchemaSyncOutcome
 ::: tempest_fastapi_sdk.db.migrations.require_sqlite_foreign_keys_off
+::: tempest_fastapi_sdk.db.alembic_env.run_alembic_env
+::: tempest_fastapi_sdk.db.alembic_env.DEFAULT_REVISION_HOOKS
 ::: tempest_fastapi_sdk.db.connection.enable_sqlite_foreign_keys
 ::: tempest_fastapi_sdk.db.connection.enable_sqlite_savepoints
 ::: tempest_fastapi_sdk.db.connection.enable_sqlite_wal
@@ -209,6 +218,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.enum_migrations.EnumTypeState
 ::: tempest_fastapi_sdk.db.enum_migrations.render_enum_types
 ::: tempest_fastapi_sdk.db.enum_migrations.sync_enum_types
+::: tempest_fastapi_sdk.db.enum_migrations.DropEnumTypeOp
+::: tempest_fastapi_sdk.db.enum_migrations.drop_enum_types_on_downgrade
 ::: tempest_fastapi_sdk.db.explain.explain_queries
 ::: tempest_fastapi_sdk.db.explain.ExplainReport
 ::: tempest_fastapi_sdk.db.explain.QueryPlan
@@ -308,6 +319,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx
 ::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_as
 ::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_sheets
+::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_async
+::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_as_async
+::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_sheets_async
 ::: tempest_fastapi_sdk.spreadsheet.reader.XlsxCellValue
 ::: tempest_fastapi_sdk.spreadsheet.reader.XlsxSource
 ::: tempest_fastapi_sdk.spreadsheet.reader.InvalidSpreadsheetError
@@ -317,6 +331,21 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_ROWS
 ::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES
 ::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_COMPRESSION_RATIO
+::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_MAX_CONCURRENT_XLSX_READS
+
+---
+
+## Privacidade (LGPD)
+
+### `tempest_fastapi_sdk.privacy`
+
+::: tempest_fastapi_sdk.privacy
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
 
 ---
 
@@ -440,6 +469,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.validation.ValidationException
 ::: tempest_fastapi_sdk.exceptions.validation.OrderByNotAllowedException
 ::: tempest_fastapi_sdk.exceptions.validation.PageSizeTooLargeException
+::: tempest_fastapi_sdk.exceptions.validation.UnknownFilterKeyException
 ::: tempest_fastapi_sdk.exceptions.value_errors.ValidationValueError
 ::: tempest_fastapi_sdk.exceptions.too_many_requests.TooManyRequestsException
 ::: tempest_fastapi_sdk.exceptions.jwt.InvalidTokenException
@@ -529,6 +559,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.tasks.queue.Hook
 ::: tempest_fastapi_sdk.tasks.jobs.TERMINAL_JOB_STATUSES
 ::: tempest_fastapi_sdk.tasks.jobs.STALE_JOB_ERROR
+::: tempest_fastapi_sdk.tasks.jobs.STORE_OWNED_JOB_COLUMNS
 ::: tempest_fastapi_sdk.tasks.jobs.make_job_admin_model
 
 ---
@@ -689,6 +720,12 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.integrations.payment.base.PayoutResult
 ::: tempest_fastapi_sdk.integrations.payment.base.PayoutStatus
 
+### `tempest_fastapi_sdk.integrations.payment.settlement`
+
+::: tempest_fastapi_sdk.integrations.payment.settlement.confirm_pix_payment
+::: tempest_fastapi_sdk.integrations.payment.settlement.PixPaymentConfirmation
+::: tempest_fastapi_sdk.integrations.payment.settlement.PixConfirmationOutcome
+
 ### `tempest_fastapi_sdk.integrations.payment.adapters`
 
 ::: tempest_fastapi_sdk.integrations.payment.adapters.openpix.OpenPixPixProvider
@@ -764,6 +801,8 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.MercadoPagoWebhookEvent
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.SignatureHeader
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.DEFAULT_SIGNATURE_VERSIONS
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.MERCADO_PAGO_DATA_ID_QUERY
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.make_mercado_pago_webhook_dependency
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.verify_signature
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.sign_manifest
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.build_manifest
@@ -847,6 +886,8 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_jwt_subject
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_jwt_claim
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_header
+::: tempest_fastapi_sdk.api.dependencies.rate_limit.make_rate_limit_dependency
+::: tempest_fastapi_sdk.api.dependencies.rate_limit.key_by_body_field
 ::: tempest_fastapi_sdk.api.middlewares.quota.RateLimitRule
 ::: tempest_fastapi_sdk.api.middlewares.quota.QuotaResult
 ::: tempest_fastapi_sdk.api.middlewares.quota.QuotaStore
@@ -880,6 +921,9 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.api.routers.health.make_health_router
 ::: tempest_fastapi_sdk.api.routers.logs.make_logs_router
 ::: tempest_fastapi_sdk.api.routers.logs.resolve_log_files
+::: tempest_fastapi_sdk.api.routers.logs.read_log_entries
+::: tempest_fastapi_sdk.api.routers.logs.clear_log_files
+::: tempest_fastapi_sdk.api.routers.logs.LogReadResult
 ::: tempest_fastapi_sdk.api.routers.logs.DEFAULT_MAX_RECORDS_PER_FILE
 ::: tempest_fastapi_sdk.api.routers.logs.render_entries_markdown
 ::: tempest_fastapi_sdk.api.routers.logs.render_entries_json
@@ -1055,6 +1099,7 @@ então importar o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.storage.minio_client.AsyncMinIOClient
 ::: tempest_fastapi_sdk.storage.minio_client.ObjectStat
+::: tempest_fastapi_sdk.storage.minio_client.ObjectDeleteError
 
 ### Alembic hooks
 
@@ -1110,6 +1155,7 @@ então importar o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.settings.base.BaseAppSettings
 ::: tempest_fastapi_sdk.settings.base.AppSettingsMeta
+::: tempest_fastapi_sdk.settings.base.reject_conflicting_env_aliases
 ::: tempest_fastapi_sdk.settings.mixins
 
 ---
@@ -1213,6 +1259,9 @@ então importar o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.testing.factories.ModelFactory
 ::: tempest_fastapi_sdk.testing.factories.seq
+::: tempest_fastapi_sdk.testing.database.make_test_database
+::: tempest_fastapi_sdk.testing.database.make_test_session
+::: tempest_fastapi_sdk.testing.privacy.assert_subject_graph_valid
 
 ### `tempest_fastapi_sdk.testing.fakes`
 
@@ -1260,6 +1309,14 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.log.LogUtils
 ::: tempest_fastapi_sdk.core.logging.configure_root_once
 ::: tempest_fastapi_sdk.core.logging.reinitialize_logging
+::: tempest_fastapi_sdk.core.redaction.RedactionPolicy
+::: tempest_fastapi_sdk.core.redaction.RedactionFilter
+::: tempest_fastapi_sdk.core.redaction.REDACTED
+::: tempest_fastapi_sdk.core.redaction.DEFAULT_REDACT_KEYS
+::: tempest_fastapi_sdk.core.redaction.DEFAULT_REDACT_PATTERNS
+::: tempest_fastapi_sdk.core.redaction.EMAIL_PATTERN
+::: tempest_fastapi_sdk.core.redaction.BEARER_PATTERN
+::: tempest_fastapi_sdk.core.redaction.JWT_PATTERN
 ::: tempest_fastapi_sdk.utils.throttle.AttemptThrottle
 ::: tempest_fastapi_sdk.utils.throttle.InMemoryThrottleBackend
 ::: tempest_fastapi_sdk.utils.signed_url.sign_path

@@ -43,6 +43,625 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   executável. Readme e landing de receitas citam a superfície nova; a
   referência ganha stubs para as constantes de `geo.cache`.
 
+## [0.309.0] — 2026-10-09
+
+Rodada de 29 issues: chave desconhecida em `filters` passa a levantar
+(**breaking**), guard de produção nos settings (`EnvironmentSettings`),
+`StorageSettings` no lugar de `MinIOSettings`, limite de tentativas no login e
+rate limit por rota, redação de PII no logging, exportação e exclusão de
+titular (LGPD), auditoria com evento/IP/user agent, `env.py` do Alembic dentro
+do SDK, leitores de planilha async, gate de CVE na CI e as fábricas de
+webhook completas (Mercado Pago). Guia de migração: `docs/migration.md`,
+seções 0.309.0.
+
+### Added
+
+- **Auditoria com evento de domínio, origem da requisição e autor com FK
+  (#458).** `AuditRequestMixin` (opt-in) acrescenta à tabela de auditoria
+  as colunas `event` (`String(128)`, indexada), `ip` (`String(64)`) e
+  `user_agent` (`String(512)`). `new_entry`, `for_create` / `for_update` /
+  `for_delete` e `add_audited` / `update_audited` / `delete_audited`
+  ganham `event=`, `ip=`, `user_agent=`, `request_context=` e `actor_id=`,
+  todos keyword-only, e cada valor vai para a coluna de mesmo nome, sem
+  passar por `context`. `AuditRequestContext.from_request(request,
+  trusted_ip_header=...)` lê o IP pelo `get_client_ip` e o `User-Agent`;
+  `trusted_ip_header` não tem default, valor que não é endereço IP vira
+  `None` e `User-Agent` acima de 512 caracteres é cortado.
+  `BaseRepository.record_event(...)` e `BaseAuditLogModel.for_event(...)`
+  gravam evento sem mutação de linha (`AuditAction.EVENT`, `action="event"`,
+  `entity_id` vazio ou o id do `subject=`). O autor com FK é ponto de
+  extensão: a subclasse declara `actor_id` (ex.: `ForeignKey("users.id",
+  ondelete="SET NULL")`) e passa `actor_id=`, sem sobrescrever `new_entry`
+  — o teste apaga o usuário e lê `actor_id` `NULL` no SQLite com FK ligada.
+  **Sem migration para quem já tem a tabela:** as colunas ficam no mixin,
+  não no `BaseAuditLogModel`, e chamadas só com `actor` / `context` não
+  mudam. Acrescentar o mixin a uma tabela existente exige migration. Valor
+  passado para coluna que a tabela não tem levanta `ValueError` (a
+  transação, linha de negócio incluída, é revertida) em vez de ser
+  descartado; `request_context=` junto de `ip=` / `user_agent=` também.
+  Receita: `docs/recipes/audit-trail`, seção "Evento, origem da requisição
+  e autor".
+- **`configure_logging(..., redact=True | RedactionPolicy(...))` +
+  `RedactionPolicy` / `RedactionFilter` (#445).** Com `redact` ligado, todo
+  handler que o `configure_logging` instala ganha um filtro que reescreve o
+  registro antes do formatter: chave sensível (`password`, `token`, `secret`,
+  `authorization`, `cookie`, `email`, `api_key`... — `DEFAULT_REDACT_KEYS`, por
+  substring) tem o valor trocado por `[REDACTED]` em `extra=`, em argumento
+  dict e em dict aninhado; mensagem, argumentos, traceback (`exc_text`),
+  `stack_info` e valor string passam por e-mail, `Bearer`, JWT e
+  `chave=valor` com chave sensível. O serviço acrescenta domínio com
+  `RedactionPolicy(extra_keys=..., extra_patterns=...)` sem reescrever o
+  filtro. `LogSettings.LOG_REDACT` liga a política default pelo
+  `logging_kwargs()`. Com `redact` ligado, `msg` vira a mensagem já
+  renderizada e `args` é limpo. Custo medido (20 000 registros, melhor de 5,
+  Python 3.11, saída em `/dev/null`): linha de access log de ~13,5 µs para
+  ~26 µs, `logger.exception` de ~44 µs para ~66 µs. O default `redact=False`
+  não instala filtro nenhum.
+- **`JobStore.succeed(values=...)` e `JobStore.redispatch_queued` (#459).**
+  `succeed(job_id, *, result_id=None, values=None)` grava colunas que o
+  projeto adicionou ao modelo de job (um `object_key`, por exemplo) no
+  **mesmo** `UPDATE` condicional que marca `DONE`. Antes o worker gravava a
+  coluna numa sessão própria e depois chamava `succeed` — duas transações, e
+  um cancelamento entre elas deixava uma linha `CANCELLED` apontando para o
+  arquivo que o worker ia apagar (o teste força essa intercalação na forma
+  antiga e reproduz a linha cancelada com a chave). Agora um job cancelado
+  não recebe o valor; numa disputa `succeed` x `cancel` em duas conexões
+  SQLite liberadas por barreira (N=20, os dois desfechos apareceram), toda
+  linha terminou `DONE` com a chave ou `CANCELLED` sem ela. Nome que não é
+  coluna do modelo, ou que está em `STORE_OWNED_JOB_COLUMNS` (nova constante:
+  as colunas de `BaseJobModel`, fixadas por teste contra um modelo concreto),
+  levanta `ValueError` antes de qualquer SQL.
+  `redispatch_queued(dispatch, *, older_than, limit=100)` reenvia linhas
+  `QUEUED` cujo `updated_at` é mais velho que `older_than` — o envio à fila que
+  se perdeu depois do `enqueue` da linha — e renova o `updated_at` depois de
+  cada envio, então cada linha sai no máximo uma vez por janela. Exceção do
+  `dispatch` propaga e as linhas ainda não enviadas ficam para a próxima
+  varredura. Receita: `docs/recipes/jobs`, seções 3 e 5.
+- **`make_rate_limit_dependency` — rate limit por rota, com chave que lê o
+  corpo (#452).** O `RateLimitMiddleware` limita o app inteiro e o `key_func`
+  dele é síncrono e só recebe o `Request`; não havia como dizer "só
+  `POST /api/invites`, por IP **e** por e-mail convidado". A dependency nova
+  conta no mesmo `RateLimitStore` (memória ou Redis), aceita uma ou várias
+  funções de chave (síncronas ou assíncronas — as `key_by_*` do middleware
+  servem) e recusa com `TooManyRequestsException` carregando os mesmos
+  `details` e headers (`Retry-After`, `RateLimit-*`) do middleware, montados
+  pelos mesmos helpers, agora extraídos em `rate_limit.py`. O teste compara os
+  dois 429: corpo e headers de rate limit iguais. Com um `MessageCatalog` no
+  `register_exception_handlers`, o `detail` da dependency sai traduzido pelo
+  `code` e o do middleware não (medido: `"Requisições em excesso"`). O balde é
+  prefixado por método + path template da rota, então a mesma dependency em
+  duas rotas dá um orçamento para cada; `scope=` junta. `trusted_ip_header`
+  molda a chave default e é recusado (`ValueError`) junto com `key=`.
+  `key_by_body_field("email")` lê o campo do JSON — o endpoint continua
+  recebendo o payload validado (medido: o FastAPI lê o corpo antes das
+  dependencies e o Starlette guarda os bytes), normaliza e guarda SHA-256 por
+  padrão. Receita: `docs/recipes/http`, "Limitar um endpoint por IP e por campo
+  do corpo".
+- **`login_ip_throttle`, `signup_throttle` e `trusted_ip_header` em
+  `make_auth_router` (#456).** Orçamentos por IP do cliente: o de login conta
+  só credencial errada (login certo não zera, para uma conta válida não
+  resetar o contador entre chutes) e é lido antes do orçamento do e-mail; o de
+  signup conta toda tentativa. Os dois vêm **desligados**: atrás de um proxy
+  sem `trusted_ip_header`, todo cliente divide o IP do proxy e um orçamento
+  por IP travaria o login de todo mundo. `/auth/login`, `/auth/cookie/login` e
+  `/auth/signup` declaram o 429 no OpenAPI só quando o limite correspondente
+  está ligado.
+- **`tempest_fastapi_sdk.privacy` — exportação e exclusão de titular (LGPD,
+  #460).** `SubjectGraph(metadata, root=..., retained=..., secret_columns=...)`
+  deriva da `MetaData` o fecho de `ON DELETE CASCADE` a partir da tabela raiz
+  do titular: `tables()` (raiz primeiro, em largura), `export(session, id)`
+  (linhas do titular por tabela, valores prontos para JSON, colunas secretas
+  fora — nome com `hash`/`secret`/`password`, `info={"secret": True}` ou
+  `secret_columns`), `count(session, id)` (prova de exclusão: tudo `0` depois
+  do `DELETE` da raiz), `condition(table, id)` (o `WHERE` por tabela, `IN
+  (SELECT ...)` aninhado pelo caminho da cascata, FK composta incluída) e
+  `violations()`, que lista toda FK para tabela do fecho que não é `CASCADE`
+  nem `SET NULL` justificado em `retained` (e entrada de `retained` velha,
+  com ação errada ou em coluna `NOT NULL`). Tabela nova com FK em cascata
+  entra na exportação sem configuração. `tempest_fastapi_sdk.testing.assert_subject_graph_valid(graph)`
+  é o guard de CI pronto. `SubjectObjectStorage(client, prefix=...)` guarda os
+  objetos do titular em `<prefix>/<id>/<nome>` (nome que sairia do prefixo é
+  `ValueError`) com `put`, `presign`, `names`, `delete` e `delete_all`, que
+  apaga o prefixo em lote e levanta `SubjectErasureError` com as chaves
+  recusadas. Medido contra MinIO real (`tests/privacy/test_storage_live.py`):
+  1203 objetos apagados em duas requisições `DeleteObjects` (1000 + 203), o
+  titular `77` e o `8` intactos. Receita: `docs/recipes/subject-data`.
+- **`AsyncMinIOClient.remove_objects(keys, *, bucket=None)`** — remoção em
+  lote via `Minio.remove_objects` (um `DeleteObjects` por 1000 chaves),
+  chaves duplicadas colapsadas, lista vazia não faz requisição. Devolve
+  `list[ObjectDeleteError]` (`key`, `code`, `message`) com o que o storage
+  recusou; lista vazia é sucesso. `ObjectDeleteError` exportado no topo e em
+  `tempest_fastapi_sdk.storage`.
+- **`EnvironmentSettings` — guard de produção que derruba o boot (#446).**
+  Mixin com `ENV: Literal["development", "test", "production"]` (default
+  `development`). Com `ENV=production`, a construção do settings levanta
+  `ValidationError` listando, numa mensagem só e pelo nome (nunca pelo
+  valor), todo campo de desenvolvimento dos mixins compostos: `SERVER_DEBUG` /
+  `SERVER_RELOAD` ligados, `DATABASE_URL` SQLite, `JWT_SECRET` igual ao default
+  declarado em `JWTSettings.model_fields` (não a um literal copiado), `"*"` em
+  `CORS_ORIGINS`, `TOKEN_SECRET` vazio, `TASKIQ_BROKER_URL` vazio (broker em
+  memória), chaves `minioadmin` do storage, `STORAGE_SECURE=false` e
+  `STORAGE_PUBLIC_SECURE=false` explícito. Cada mixin declara as próprias
+  regras num hook cooperativo novo, `BaseAppSettings.production_violations()`;
+  o serviço soma regra ou dispensa uma (SQLite num nó único) sobrescrevendo e
+  chamando `super()`. Em `development`/`test` nada muda. Receita:
+  `docs/recipes/system-checks`, seção "Guard de produção". Testes:
+  `tests/settings/test_environment.py`.
+- **`ServerSettings.TRUSTED_IP_HEADER` (#455).** O header de borda que
+  `get_client_ip(trusted_header=)`, `RateLimitMiddleware`,
+  `AccessLogMiddleware` e `HoneypotBanMiddleware` (`trusted_ip_header=`)
+  recebem, modelado uma vez e lido do ambiente. Default `None` (peer TCP);
+  normalizado para minúsculas; vazio vira `None`. `x-forwarded-for` e
+  `forwarded` (qualquer caixa) falham na validação com o motivo na mensagem:
+  o proxy acrescenta a esses headers, então o conteúdo é o que o cliente
+  mandou. Os middlewares e `get_client_ip` continuam recebendo o parâmetro
+  explícito. Constante `SPOOFABLE_IP_HEADERS` exportada. Receita:
+  `docs/recipes/security`, "Um setting para todos". Testes:
+  `tests/settings/test_trusted_ip_header.py` (rate limit e access log com o
+  mesmo valor veem o IP do header).
+- **`StorageSettings` — o mixin de storage S3 com nome de S3 (#457).** Campos
+  `STORAGE_ENDPOINT`, `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY`,
+  `STORAGE_SECURE`, `STORAGE_REGION`, `STORAGE_DEFAULT_BUCKET`,
+  `STORAGE_PUBLIC_ENDPOINT`, `STORAGE_PUBLIC_SECURE` (mais os
+  `STORAGE_ACCEL_*` que já existiam) e `storage_kwargs()`. Cada campo lê o
+  nome antigo `MINIO_*` como fallback via
+  `validation_alias=AliasChoices(new, old)` — no ambiente e no `.env`.
+  `minio_kwargs()` continua e devolve o mesmo dicionário. Testes:
+  `tests/settings/test_storage_settings.py`.
+- **`BaseAppSettings.DEPRECATED_ENV_ALIASES` +
+  `reject_conflicting_env_aliases`.** Mapa nome antigo → nome novo, coletado
+  pelo MRO. O `settings_customise_sources` do `BaseAppSettings` (novo; mantém
+  a ordem padrão do pydantic-settings) recusa com `SettingsError` quando os
+  dois nomes de um par estão definidos com valores diferentes, entre ambiente
+  e `.env` somados — sem a checagem o `AliasChoices` ficaria com o nome novo
+  em silêncio. Mesmo valor nos dois é aceito (janela de migração). A
+  mensagem nomeia os pares, nunca os valores. `Settings` que sobrescreve
+  `settings_customise_sources` perde a checagem, a menos que chame a função.
+- **`run_alembic_env` e `DEFAULT_REVISION_HOOKS` (#451).** O corpo do
+  `env.py` que o `tempest db init` gera mudou-se para o SDK: o arquivo gerado
+  passa a ter três instruções (import de `run_alembic_env`, import do
+  `BaseModel`, a chamada). URL, hooks de revisão, `render_enum_types`, batch
+  mode, caminhos offline/online e a conexão entregue em
+  `config.attributes["connection"]` continuam iguais, agora num lugar que
+  recebe correção no upgrade do pacote. Hook próprio entra por
+  `process_revision_directives=compose_hooks(*DEFAULT_REVISION_HOOKS, meu_hook)`.
+  Receita: `docs/recipes/migrations`, seção "O `env.py` gerado".
+
+- **`op.drop_enum_type` (`DropEnumTypeOp`) e o hook
+  `drop_enum_types_on_downgrade` (#454).** A operação emite
+  `DROP TYPE IF EXISTS` no PostgreSQL e não faz nada nos outros bancos. O hook,
+  ligado no `env.py` gerado, acrescenta o drop no fim do downgrade de cada
+  tabela nova, para todo `ENUM` nativo que nenhuma tabela remanescente da
+  metadata usa — tipo compartilhado só sai com a última tabela. Medido no
+  PostgreSQL 16 (Alembic 1.19.1, SQLAlchemy 2.0.52): antes, `upgrade` →
+  `downgrade` → `upgrade` falhava com `type "user_role_enum" already exists`;
+  agora passa (`tests/db/test_alembic_env.py`, marcado `docker`).
+- **`expected_sha256` em `load_sklearn_artifact` e `edge_pipeline_from_pickle`
+  (#440).** O chamador pina o SHA-256 que a release do modelo registrou, e a
+  carga recusa com `ArtifactDigestMismatchError` (nova, subclasse de
+  `ValueError`, exportada em `tempest_fastapi_sdk.modelops`) quando o arquivo
+  diverge — **antes** do `joblib.load`, então um pickle trocado não executa.
+  Antes, o digest só era calculado depois do unpickle e ia para o manifesto;
+  conferir contra um valor conhecido exigia o chamador fazer a comparação por
+  fora, com o código do arquivo já rodado. O arquivo é aberto uma vez: o hash
+  é calculado pelo handle e o unpickle lê do mesmo handle, então os bytes
+  conferidos são os que rodam. Formato aceito: 64 dígitos hex em qualquer
+  caixa, prefixo `sha256:` opcional, espaço nas pontas ignorado; qualquer
+  outra coisa é `ValueError` antes de abrir o arquivo. O teste usa um pickle
+  cujo unpickle cria um arquivo-marcador: com hash divergente o marcador não
+  existe, com hash certo existe (controle). Receita: `docs/recipes/modelops`,
+  seção "Pinar o hash da release".
+
+- **`AssetPolicy.for_render()`** — cópia rasa com as mesmas regras e
+  `refusals` vazia, sem rodar o `__post_init__` de novo: `allow_dirs` mantém os
+  caminhos resolvidos na construção, então symlink trocado depois não amplia a
+  política e diretório removido depois não faz a renderização levantar
+  `ValueError`. É o coletor por chamada que a docstring de `build_url_fetcher`
+  sempre pediu e que o renderizador agora usa.
+- **`make_logs_router(dependencies=...)` — logs atrás da auth do próprio
+  serviço** (#426). Antes o router só aceitava o segredo compartilhado do
+  `X-Token`, então quem protege o painel com Bearer JWT de admin não tinha
+  como usá-lo. As dependências valem para `GET` e `DELETE`; cada item é o
+  callable ou um `Depends(...)` / `Security(...)` pronto, que é usado como
+  veio (embrulhar de novo dá `AssertionError: A parameter-less dependency
+  must have a callable dependency` na construção — medido no FastAPI
+  0.141.1). Relação com o `X-Token`: as duas peças **somam**. Só
+  `dependencies` substitui o header (nenhum `X-Token` é lido nem aparece no
+  OpenAPI); `token_secret` junto exige os dois; nenhuma das duas continua
+  levantando `ValueError`, e `dependencies=[]` não conta como gate.
+- **`read_log_entries(...) -> LogReadResult` e
+  `clear_log_files(...) -> list[str]`** (#426), exportadas no topo do pacote.
+  São a leitura (teto por arquivo, flag `truncated`, filtros `q`/`start`/`end`,
+  do mais novo pro mais antigo) e o truncate no lugar que o router fazia em
+  funções privadas — quem precisava de outro contrato de resposta reescrevia
+  as duas e perdia o teto de memória. Síncronas; numa rota `async`, rode com
+  `asyncio.to_thread`. O `make_logs_router` e a página de logs do admin
+  viraram casca sobre elas (a página do admin tinha uma terceira cópia do
+  filtro e da ordenação).
+- **`read_xlsx_async`, `read_xlsx_as_async` e `read_xlsx_sheets_async`**
+  (#432) em `tempest_fastapi_sdk.spreadsheet`: os mesmos argumentos, retorno
+  e erros dos leitores síncronos, rodando numa thread (`asyncio.to_thread`)
+  atrás de um semáforo. Sem `semaphore=`, o limite é
+  `DEFAULT_MAX_CONCURRENT_XLSX_READS` (4) leituras simultâneas **por event
+  loop** — o semáforo é criado no primeiro uso de cada loop, porque um
+  `asyncio.Semaphore` de módulo, disputado em dois `asyncio.run`, levanta
+  `RuntimeError: ... is bound to a different event loop` (reproduzido). Medido
+  numa aba de 99 999 linhas (8 colunas, 4 MB): `read_xlsx` chamado dentro de
+  uma corrotina levou 5,4 s e um ticker de 10 ms rodou 1 vez no lugar de ~540;
+  com `read_xlsx_async` o mesmo ticker rodou 473 vezes. Quatro leituras
+  simultâneas levaram 25,0 s contra 21,6 s de quatro em série: o parse segura
+  o GIL, então o semáforo limita memória e o pool de threads, não acelera.
+- **`confirm_pix_payment` — o webhook avisa, a API confirma (#434).**
+  `tempest_fastapi_sdk.integrations.payment.confirm_pix_payment(provider,
+  charge_id, *, reference, amount_cents)` relê a cobrança com
+  `provider.get_pix_charge` e devolve `PixPaymentConfirmation`, cujo
+  `outcome` (`PixConfirmationOutcome`) diz qual conferência decidiu:
+  `REFERENCE_MISMATCH` (a cobrança é de outro pedido), `NOT_PAID` (qualquer
+  status que não `PAID`), `AMOUNT_MISMATCH` (paga com outro valor) ou `PAID`;
+  `.paid` é `True` só no último. Erro do provedor na releitura sobe em vez de
+  virar "não pago". O helper não escreve nada — a liberação única continua
+  com `tempest_fastapi_sdk.wallet.claim_once`.
+- **`make_mercado_pago_webhook_dependency` (#437)** — a terceira fábrica de
+  webhook, no formato de `make_stripe_webhook_dependency` e
+  `make_openpix_webhook_dependency`. Lê `data.id` da query string
+  (`MERCADO_PAGO_DATA_ID_QUERY`, novo) e `x-signature` / `x-request-id` dos
+  headers, roda `verify_signature` e devolve um `MercadoPagoWebhookEvent`;
+  assinatura ausente ou inválida, `ts` fora de `tolerance_seconds`, ou um
+  `data.id` / `x-request-id` que a assinatura cobria e o request não trouxe
+  levantam `UnauthorizedException` — medido com `TestClient`: **401**
+  `{"detail": "Invalid Mercado Pago webhook signature", "code":
+  "UNAUTHORIZED", "details": {}}`, e o handler não roda. `data_id` sai da
+  query, não do corpo, porque o manifesto assinado não cobre o corpo. Tópico
+  que o SDK não nomeia vira `MercadoPagoEvent.UNKNOWN`; corpo que não é JSON
+  não derruba a entrega. A receita `mercado-pago.md` deixa a função que
+  terminava em `bool` e mostra a rota inteira com a fábrica.
+
+### Changed
+
+- **Breaking: chave desconhecida em `filters` levanta
+  `UnknownFilterKeyException` em vez de ser ignorada** (#465). Chave que não
+  é atributo SQL do model (`{"usr_id": 1234}`) ou sufixo que não é operador
+  (`{"user_id__bogus": 1}`) era descartada em silêncio, e com só a chave
+  errada no dict `list`/`count` devolviam todas as linhas e
+  `bulk_update`/`delete_many` alteravam a tabela inteira (3/3 linhas, fixado
+  pela versão anterior de `tests/db/test_filters_contract.py`). Agora a
+  checagem roda em `build_filter_condition`, antes de qualquer statement, e
+  vale para todo método que recebe `filters` — `list`, `count`, `exists`,
+  `first`, `get`, `get_or_none`, `paginate`, `cursor_paginate`,
+  `bulk_update`, `update_returning`, `delete_many` —, para o `Q` (inclusive
+  `~Q(usr_id=1)`, que antes negava nada) e para `BaseService`,
+  `BaseController` e `TenantScopedRepository`, que só repassam. Medido em
+  SQLite em memória: `delete_many({"usr_id": 1})` levanta e as 3 linhas
+  continuam lá; `bulk_update` e `update_returning` não alteram nenhuma.
+  A exceção nova `UnknownFilterKeyException` (exportada no topo) é subclasse
+  de `ValidationException`: 422, `code="UNKNOWN_FILTER_KEY"` (catálogo
+  PT-BR/EN), `details={"filter": <chave>}` — sem a lista de colunas do model,
+  que numa querystring seria o mapa do que sondar. Atributo Python sem
+  leitura SQL (método, `@property`, `metadata`) também é recusado; coluna,
+  `column_property` e a expressão de classe de `hybrid_property` resolvem.
+  Novos em `tempest_fastapi_sdk.db.expressions`: `resolve_filter_key` (a
+  checagem isolada) e `FILTER_OPERATORS` (os sufixos aceitos).
+  **Quem dependia do ignorar**: schema de filtro com campo que não é coluna
+  (`search`, `include_archived`) repassado inteiro por `get_conditions()`
+  passa a receber 422 — tire o campo do dict antes de repassar. No admin,
+  `list_filter`, `search_fields` e os `filters` de cada `Lens` são conferidos
+  na construção do `AdminModel`: typo vira `ValueError` no boot, nomeando a
+  opção, em vez de 422 no primeiro acesso à listagem. Receita:
+  `docs/recipes/database`, seção "Chave desconhecida é recusada".
+
+- **`JobStore.reclaim_stale()` devolve `ReclaimedJobs`, não `int` (#459).
+  Mudança de comportamento.** Os ids requeued e os que falharam por orçamento
+  (`.requeued`, `.failed`) são o que permite reenviar o job ao worker: a linha
+  voltava para `QUEUED`, mas a mensagem tinha morrido com o worker e nada no
+  SDK a reenviava, então o job ficava `QUEUED` para sempre. As duas
+  atualizações continuam sem `SELECT` antes (agora `UPDATE ... RETURNING id`,
+  que exige SQLite 3.35+ ou PostgreSQL). `len()` e verdade continuam valendo
+  (`if await store.reclaim_stale():`); **quem compara com número (`== 1`) ou
+  soma o retorno quebra** — use `.total`.
+- **`POST /auth/login` passa a responder `429` depois de 5 senhas erradas
+  para o mesmo e-mail em 15 minutos (#456).** `make_auth_router` ganhou
+  `login_throttle`, no molde do `mfa_throttle`: cada tentativa reserva uma
+  unidade **antes** de a senha ser conferida, a sexta leva
+  `429 TOO_MANY_REQUESTS` com `Retry-After` mesmo com a senha certa, e o
+  login certo antes do limite zera a contagem. O default é um
+  `AttemptThrottle` sobre `InMemoryThrottleBackend` (5 por 900 s, por
+  processo); a chave é o SHA-256 do e-mail normalizado, gasta igual para
+  e-mail sem conta, e o `detail` é o mesmo texto nos dois casos — o 429 não
+  revela quais e-mails existem. Vale também para o login por cookie.
+  **Pode quebrar consumidor**: teste ou script que erra a senha mais de 5
+  vezes seguidas para o mesmo e-mail num router só passa a ver 429 — passe
+  `login_throttle=False` para desligar, ou um `AttemptThrottle` próprio
+  (sobre Redis, com mais de um worker). `/auth/me`, `/auth/refresh` e as
+  demais rotas não mudam.
+- **`BaseAppSettings` liga `hide_input_in_errors=True` (#446).** Num
+  `BaseSettings` o input de um erro de validação é o ambiente inteiro: um
+  campo obrigatório faltando imprimia `input_value={'JWT_SECRET': ...}` no
+  traceback do boot, e um valor malformado (uma URL com senha) era ecoado.
+  Agora a mensagem traz só campo e motivo. Quem dependia do input no erro
+  sobrescreve `hide_input_in_errors` no próprio `model_config`.
+- **O scaffold do `tempest new` compõe `EnvironmentSettings`** e o
+  `.env.example` traz `ENV=development` e um `# TRUSTED_IP_HEADER=x-real-ip`
+  comentado. O `create_app` gerado não monta rate limit nem access log, então
+  não há onde repassar o header.
+- **`tempest docker-compose` / `tempest new --extras minio` escrevem
+  `STORAGE_*`** no bloco do app e no `.env.example` (as `MINIO_ROOT_*` do
+  container continuam). `tempest storage` procura `storage_kwargs()` e
+  `tempest doctor` lê `STORAGE_*` (aceitando `MINIO_ENDPOINT` no ambiente);
+  projeto ainda em `MinIOSettings` continua funcionando. **Atenção:** quem
+  regenerar só o compose de um projeto cujo `.env` ainda tem um
+  `MINIO_ENDPOINT` diferente do `STORAGE_ENDPOINT` gerado tem o boot recusado
+  pela checagem de nomes conflitantes — remova o nome antigo.
+
+- **A `AssetPolicy` passada em `PdfRenderer(assets=...)` não tem mais a lista
+  `refusals` lida nem limpa pelo renderizador.** Antes, toda renderização
+  esvaziava essa lista no início e no fim, então ler `policy.refusals` depois de
+  `render_*` devolvia `[]` em qualquer caso (medido: uma nota posta pelo
+  chamador antes da renderização sumia). As recusas de uma renderização
+  continuam chegando por `AssetRefused.details["refused"]` (modo estrito) e pelo
+  aviso em log (`strict_assets=False`), agora sem misturar pedidos.
+
+- **Os quatro workflows instalam com `uv sync --locked`**, e o release roda
+  `uv lock --check` antes do build: um `uv.lock` fora do `pyproject.toml`
+  derruba o run em vez de ser re-resolvido contra o PyPI do dia.
+- **`pypa/gh-action-pypi-publish` e `astral-sh/setup-uv` fixadas por SHA**
+  com a tag em comentário (`dc37677…` = `v1.14.2`, `caf0cab…` = `v3.2.4`,
+  ambas derreferenciadas da tag anotada para o commit). O job que publica
+  tem `id-token: write`, e a referência anterior era o branch `release/v1`.
+  `.github/dependabot.yml` novo atualiza as actions semanalmente (SHA e
+  comentário).
+- **`[build-system]` declara `hatchling>=1.32.4,<2`.** O piso é a versão que
+  construiu a 0.308.0 hoje; antes, cada build resolvia o hatchling mais novo.
+- Guard novo `tests/test_supply_chain_guard.py`: `--locked` em todo
+  `uv sync` de workflow, as duas actions por SHA com tag, `uv lock --check`
+  e `make audit` antes do `uv build` no release, `schedule:` no
+  `audit.yml` e faixa no hatchling — cada checagem alimentada também com o
+  texto exato que estava na `main` antes do #436.
+
+- `MercadoPagoWebhookEvent.event` passa de `Any | None` para
+  `MercadoPagoEvent | None`, o tipo que o docstring já declarava.
+
+- **`test_session` / `test_database` viraram `make_test_session` /
+  `make_test_database` (#450).** O pytest coleta como teste toda função
+  importada num módulo de teste cujo nome comece com `test`, então
+  `from tempest_fastapi_sdk.testing import test_session` dava à suíte do
+  consumidor um item fantasma que "passava" e emitia
+  `PytestReturnNotNoneWarning` — falha de verdade sob `-W error` (medido:
+  `1 failed, 1 passed`). A própria suíte do SDK coletava os dois fantasmas em
+  `tests/testing/test_database.py`. Os nomes antigos continuam importáveis
+  como alias deprecado: cada chamada emite `DeprecationWarning` e os dois
+  carregam `__test__ = False`, então não são mais coletados. O teste roda um
+  pytest de verdade num subprocess, com `-W error`, sobre um módulo que
+  importa os quatro nomes, e falha (`2 failed, 1 passed`) quando o
+  `__test__ = False` é removido. **Quem roda `filterwarnings = ["error"]` e
+  chama o nome antigo passa a ver o `DeprecationWarning` como erro** — troque
+  o import.
+
+### Deprecated
+
+- **`MinIOSettings` → `StorageSettings` (#457).** Continua importável como
+  subclasse de `StorageSettings`; listar como base direta (ou instanciar)
+  emite `DeprecationWarning` apontando para a linha do consumidor, e os
+  atributos `settings.MINIO_*` continuam respondendo (propriedades de
+  leitura). As variáveis `MINIO_*` continuam valendo nas duas classes. Com
+  `filterwarnings = ["error"]` o warning vira erro na definição da classe:
+  troque a base para `StorageSettings` (as variáveis de ambiente não mudam).
+
+### Fixed
+
+- **Readiness: checks em paralelo, com timeout, e log sem a mensagem da
+  exceção (#447).** `make_health_router` rodava os checks em série e sem
+  limite — uma dependência pendurada segurava a readiness inteira até o probe
+  desistir, e as seguintes nem rodavam — e logava `str(exc)`, que em driver de
+  banco ou broker costuma trazer a DSN com usuário e senha. Agora os checks
+  rodam com `asyncio.gather`, cada um sob `asyncio.wait_for` com o novo
+  `timeout=` (default `3.0` s; `None` desliga; zero ou negativo é
+  `ValueError`); timeout conta como falha só daquele check. O log leva só o
+  nome e o tipo (`Health check 'database' raised ConnectionRefusedError`,
+  `Health check 'search' timed out after 0.5s`). Medido: um check com
+  `sleep(60)` e `timeout=0.5` responde `503` com o outro check `True`, num
+  processo de 1,7 s. Testes: o check pendurado falha sozinho; dois checks que
+  esperam um pelo outro só passam em paralelo; com `caplog`, a senha de uma
+  DSN na mensagem não aparece. O valor devolvido por um check agora passa por
+  `bool()` antes de entrar no payload. Receita `http.md` ganhou a seção
+  "Liveness e readiness".
+- **`MessageBroker.health_check` / `AsyncQueueManager.health_check` fazem o
+  `ping` real do FastStream (#448).** Antes devolviam `self._started`, com a
+  docstring dizendo que o FastStream não tinha ping — ele tem
+  (`BrokerUsecase.ping(timeout)`, implementado por RabbitMQ, Redis, Kafka,
+  Confluent e NATS; mesma assinatura no piso `0.7.5` e na `0.7.7`, a mais
+  nova no PyPI hoje). Agora aceitam `timeout: float = 2.0` (abaixo dos 3 s do
+  router), devolvem `False` antes do `connect()` sem tocar a rede e, depois,
+  o resultado do `ping`. Medido com RabbitMQ 3 em container: `True` conectado,
+  e depois do `docker stop` `False` em 2,00 s, com a readiness respondendo
+  `503 {"queue": false}` — antes ficava `True`.
+- **`JSONFormatter` re-renderizava `exc_info` por cima do traceback já
+  redigido (#445).** O campo `exception` agora sai de `record.exc_text` quando
+  um passo anterior já o renderizou — a precedência do `logging.Formatter` da
+  stdlib — e de `exc_info` só no resto. Antes, um filtro de handler que
+  redigia o `exc_text` era ignorado: o e-mail da mensagem da exceção voltava
+  para o JSON. Quem já seta `exc_text` à mão passa a vê-lo no lugar do
+  traceback re-renderizado.
+- **`TaskQueue.from_settings(Settings())` e `@tq.task(...)` passam no
+  `mypy --strict` (#449).** `TaskIQSettingsLike` declarava os campos como
+  atributo simples, que num `Protocol` é **gravável**; o `BaseAppSettings` é
+  `frozen=True`, então o mypy recusava o `Settings` que os próprios mixins
+  montam (`expected settable variable, got read-only attribute`) e o caminho
+  documentado exigia `type: ignore`. Os campos viraram `@property`, o que
+  aceita o settings congelado e um objeto simples de teste. `TaskQueue.task`
+  devolvia `Any`, e sob `--strict` (`disallow_untyped_decorators`)
+  `@tq.task(name=...)` era `untyped-decorator`; agora tem overloads e devolve
+  `Task[P, R]`, preservando parâmetros e retorno. `on_startup` /
+  `on_shutdown` tinham o mesmo `Any` e devolvem o próprio handler tipado.
+  Medido com mypy (config do repo, `--strict`), pyright e basedpyright sobre
+  o mesmo snippet: zero erro no caminho da receita, e `await add.run("x", 1)`
+  vira erro de `arg-type` (com `Any`, passava). Guard:
+  `tests/tasks/test_queue_typing.py`, que no código antigo falha com os três
+  erros.
+- **`env.py` gerado limpo sob ruff e `alembic.ini` com `prepend_sys_path`
+  (#451).** O arquivo da 0.308.0 falhava em `ruff check --select E,W,F,I`
+  (`I001` duas vezes, `E402` no import de metadata) e trazia 21 linhas de
+  comentário inline. O novo não importa `alembic` — o diretório `alembic/` faz
+  o default do ruff (`src = [".", "src"]`) tratar o pacote como first-party e
+  o scaffold do `tempest new` como third-party, então nenhuma ordem fixa
+  passava nos dois — e sai sem erro nas duas configurações, sem comentário.
+  O `alembic.ini` gerado ganhou `prepend_sys_path = .` (o `alembic` puro, sem
+  o CLI do `tempest`, importa o pacote do serviço) e `path_separator = os`
+  (sem ele o Alembic 1.19.1 emite `DeprecationWarning`). Guard:
+  `tests/test_alembic_env_lint_guard.py`. **Projeto existente:** o `env.py`
+  antigo continua funcionando; para receber as correções, troque o conteúdo
+  pelas três instruções e acrescente as duas linhas ao `[alembic]` do ini.
+
+- **CHECK de enum duplicado no autogenerate (#453).** Sob SQLAlchemy 2.1.4 +
+  Alembic 1.20.0, o `create_table` gerado trazia dois `CheckConstraint` por
+  coluna enum, os dois renomeados pela convention para `ck_<tabela>_<enum>`, e
+  o PostgreSQL 16 recusava o segundo (`check constraint ... already exists`).
+  `render_enum_types` passa a omitir o `CHECK` ligado ao tipo (`_type_bound`);
+  o `sa.Enum(..., create_constraint=True)` da coluna o recria no SQLite, que
+  fica com exatamente um `CHECK` com o nome da convention (medido em 2.0.52 e
+  2.1.4). `CheckConstraint` declarado em `__table_args__` continua renderizado.
+  `tests/db/test_alembic_env_sqlalchemy_matrix.py` (marcado `network`) reroda
+  os testes de enum sob 2.1.4/1.20.0 — no lock (2.0.52) o próprio Alembic já
+  filtrava.
+
+- **`PdfRenderer`: cada renderização relata só as próprias recusas de asset
+  (#435).** A instância guardava uma `AssetPolicy` só e todas as
+  renderizações em paralelo (até `max_concurrent`, padrão 4) liam e limpavam a
+  mesma lista `refusals`. Reproduzido com intercalação forçada de duas
+  renderizações na mesma instância: o `AssetRefused.details["refused"]` de B
+  trazia a URL de A (`http://a.test/logo.png?token=secret-of-a` — o token
+  junto), e o de A caía no fallback `Error fetching "..."`; com
+  `strict_assets=False` saía uma linha de aviso só, a de B listando as duas, e
+  a recusa de A não era registrada em lugar nenhum. Agora cada renderização
+  coleta numa cópia própria da política.
+
+- **`make_prometheus_router`: o exemplo de proteção derrubava o app ou punha
+  o segredo na URL** (#439). A docstring sugeria
+  `dependencies=[Depends(require_x_token)]`, que o router envolvia de novo em
+  `Depends` e o FastAPI recusava na construção (`AssertionError: A
+  parameter-less dependency must have a callable dependency`); a forma
+  "corrigida", `dependencies=[require_x_token]`, montava, mas o FastAPI lia
+  `secret` e `token` da query string — todo scrape dava `422`, e só passava
+  com `?secret=...&token=...` na URL. Agora:
+  - item de `dependencies=` que já é `Depends(...)` / `Security(...)` é
+    anexado como está, sem envolver de novo;
+  - `require_x_token` (cru ou dentro de `Depends`) é recusado na construção
+    com `TypeError` apontando para `make_token_dependency`;
+  - a docstring e a receita `recipes/metrics` (PT + EN) montam a rota com
+    `dependencies=[make_token_dependency(metrics_token)]` — `401` sem o header
+    `X-Token`, `200` com ele —, dizem que o default é **sem autenticação**,
+    avisam que segredo vazio desliga a checagem, e o `prometheus.yml` manda o
+    header com `http_headers` (medido no Prometheus `v3.1.0`: `up == 1` com o
+    bloco, `401` e `up == 0` sem).
+  - Guard: `tests/api/test_prometheus_auth.py` executa o `create_app` da
+    receita como publicado e faz scrape com e sem header, e falha se a doc ou
+    a docstring voltarem a sugerir `Depends(require_x_token)` /
+    `dependencies=[require_x_token]`.
+
+- **Os leitores async de Google Sheets não parseiam mais no event loop**
+  (#432). `read_google_sheet` / `read_google_sheet_as` parseiam o CSV por
+  `asyncio.to_thread`, `read_google_sheet_as` valida as linhas também numa
+  thread, e `read_google_sheet_xlsx` lê a pasta por `read_xlsx_sheets_async`.
+  Antes, os três seguravam o loop do worker durante todo o parse.
+- **A receita de planilhas usava o leitor síncrono numa rota `async def`.**
+  `docs/recipes/spreadsheets.md` / `.en.md` passam a usar
+  `read_xlsx_as_async` no endpoint de importação e no script do Google, com
+  um `!!! warning` explicando por quê. Guard novo:
+  `tests/test_spreadsheet_event_loop_guard.py` troca o parser de cada
+  corrotina por uma sonda que só uma task do loop libera, e prova que dispara
+  com `to_thread` substituído por chamada direta (6 de 6 casos pegos).
+
+- **A receita do protocolo de Pix liberava o pedido só pelo webhook (#434).**
+  O `settle` de `docs/recipes/pix-protocol.md` (e `.en.md`) marcava o pedido
+  como pago direto do evento, sem reler a cobrança, sem conferir valor e sem
+  idempotência — o contrário do que a receita da OpenPix exige, com uma
+  assinatura RSA-1024 sem janela de validade. Agora o passo 3 mostra o
+  `OrderModel` com `paid_at` e o repositório com `claim_once`, o `settle`
+  relê com `confirm_pix_payment` pelo `provider_charge_id` guardado, e o
+  teste do passo 7 roda sobre SQLite e mostra a reentrega respondendo
+  `{"settled": null}` (medido num serviço montado com os blocos da página).
+  A receita da OpenPix aponta para o mesmo caminho.
+
+- **O console SQL do admin ganhou estilo (#438).** O `sql_shell.html` usava
+  uma família `tempest-admin-sql*` sem nenhuma regra no `admin.css`, então o
+  editor, o formulário e a grade de resultado caíam no estilo cru do
+  browser. Agora o formulário é um card com as bordas e sombra do painel, o
+  editor é monoespaçado com foco destacado, a política vira etiquetas, erro e
+  aviso usam o padrão de alerta do painel, e a grade de resultado usa o
+  `tempest-admin-table-wrap` + `tempest-admin-list__table` das listagens, com
+  cabeçalho fixo e rolagem própria (horizontal no celular, sem rolar a
+  página). Um teste confere que toda classe do template tem regra no CSS.
+
+### Security
+
+- **Gate de CVE nas dependências travadas (#436).** `make audit` exporta o
+  `uv.lock` commitado (`uv export --locked --all-extras --no-dev`) e roda
+  `pip-audit` 2.10.1 com `--strict`; qualquer advisory conhecido derruba o
+  alvo. Roda no workflow novo `Dependency audit` (push na `main`, PR e
+  diariamente às 07:00 UTC, porque advisory novo chega sem ninguém dar push),
+  no job de build do `release-pypi.yml` antes do `uv build`, e no
+  `make release`. O relatório JSON de cada execução fica arquivado como
+  artefato do run. Medido localmente: ~22 s a frio, ~1–4 s com cache.
+- **Lock atualizado para sair de 31 advisories com correção publicada.**
+  O primeiro `pip-audit` sobre o lock achou 45 advisories em 10 pacotes.
+  Subiram no lock (não no piso do `pyproject.toml`): `pyjwt` 2.13.0 → 2.15.1
+  (14 advisories), `pypdf` 6.16.2 → 6.20.0 (8), `urllib3` 2.7.0 → 2.8.0 (3),
+  `weasyprint` 69.0 → 70.0 (2), `multidict` 6.7.1 → 6.9.1, `oauthlib` 3.3.1
+  → 4.0.0, `werkzeug` 3.1.8 → 3.1.9 e `accelerate` 1.14.0 → 1.15.0 (1 cada).
+- **14 entradas ignoradas — 10 IDs distintos, porque o pip-audit lista alguns
+  IDs do `transformers` mais de uma vez —, com motivo no `Makefile`.** `chromadb`
+  1.5.9 (a mais nova no PyPI em 2026-10-09, sem versão corrigida): os quatro
+  advisories miram o servidor HTTP do Chroma e o
+  `SimpleRBACAuthorizationProvider`, e o SDK só abre o `PersistentClient` /
+  `EphemeralClient` embarcado. `transformers` 4.57.6: toda correção é 5.x, e
+  o `transformers<5` do `[genai-audio]` (coqui-tts 0.27.5 ainda não importa
+  no 5.x) segura o lock; quem instala `[genai]` sem `[genai-audio]` resolve
+  5.x.
+- **O painel admin não carrega mais script de terceiro (#433).** O
+  `base.html` buscava `https://unpkg.com/htmx.org@2.0.3` sem `integrity` em
+  toda página do admin — login, dashboard, CRUD, console SQL —, na mesma
+  origem do `POST /admin/sql`. O `make_admin_router` agora monta o
+  `make_htmx_router` do próprio SDK em `{prefix}/_ssr/htmx.js`, que serve o
+  `ssr/_static/htmx.min.js` empacotado (HTMX 2.0.10) byte a byte e sem exigir
+  sessão, porque a página de login também o carrega; o `<script>` segue o
+  `prefix` (`/backoffice/_ssr/htmx.js` com `prefix="/backoffice"`). Não exige
+  o extra `[ssr]`: medido num interpretador novo com `tempestweb` bloqueado, o
+  `make_admin_router` importa e nenhum módulo `tempestweb` é carregado.
+  `tests/admin/test_local_assets.py` falha se qualquer `src`/`href`/`action`
+  do HTML renderizado (login, dashboard, console SQL com resultado) apontar
+  para outro host — com a linha antiga de volta no `base.html`, 5 testes
+  falham. CSP continua sendo passo à parte: o admin não envia
+  `Content-Security-Policy` e ainda tem script inline (num browser com
+  `script-src 'self'`, o HTMX local carrega e o `<script>` inline da list view
+  é bloqueado).
+
+### Documentation
+
+- **Todo parâmetro `filters: dict[str, Any]` diz o que espera** (#443). As
+  docstrings do `BaseRepository`, `BaseService`, `BaseController`,
+  `TenantScopedRepository` e do `Lens` do admin descreviam o argumento como
+  "Filter conditions", sem dizer que é nome de coluna → valor. Agora cada uma
+  traz o exemplo `{"user_id": 1234, "is_active": True}`, diz que os pares são
+  ligados por `AND`, que lista vira `IN`, `None` vira `IS NULL` e
+  `<coluna>__<op>` aplica operador, e aponta para a lista completa na classe.
+  Medido numa tabela SQLite em memória e fixado em
+  `tests/db/test_filters_contract.py`: igualdade em coluna de texto respeita
+  caixa (`{"status": "OPEN"}` não casa `"open"`). A medição também mostrou
+  que chave que não é coluna era ignorada em silêncio — é o defeito que a
+  entrada **Breaking** de `### Changed` (#465) corrige: agora ela levanta
+  `UnknownFilterKeyException`.
+- **O teto `transformers<5` do `[genai-audio]` aparece com o porquê e o
+  custo** (#441). `README.md` e `docs/installation.md` / `.en.md` diziam
+  `transformers<5` sem explicar. Agora dizem que o teto é intencional (o
+  `coqui-tts` 0.27.5 importa `isin_mps_friendly`, que some da transformers
+  5.1.0 em diante; remedido em 2026-10-09 com a 5.19.0, o `from TTS.api import
+  TTS` ainda falha com `ImportError`) e mostram o que ele rebaixa, resolvido com
+  `uv pip compile` (Python 3.12): com `[genai-audio]`, `huggingface-hub` 0.36.2
+  e `tokenizers` 0.22.2; com `[genai-audio,genai-image]`, também `diffusers`
+  0.39.0; com `[genai-image]` sozinho, `diffusers` 0.41.0 e `huggingface-hub`
+  1.33.0. O comentário do `pyproject.toml` dizia que só o lock do repositório
+  era afetado; a medição mostra que quem instala os dois extras juntos recebe
+  o mesmo `diffusers` 0.39.0, e o comentário foi corrigido.
+
 ## [0.308.0] — 2026-10-08
 
 O CLI `tempest` sai do runtime: `tempest-cli`, `typer` e `click` viram o

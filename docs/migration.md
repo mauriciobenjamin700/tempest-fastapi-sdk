@@ -2,6 +2,78 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.309.0 — outras mudanças de comportamento
+
+Além da recusa de chave em `filters` (seção abaixo), a 0.309.0 traz estas
+mudanças que podem pedir ajuste:
+
+1. **`JobStore.reclaim_stale()` devolve `ReclaimedJobs`, não `int`.**
+   `if await store.reclaim_stale():` continua funcionando (`__len__`); quem
+   compara com número ou soma o retorno passa a ler `.total`.
+2. **`make_auth_router` limita o login por padrão**: 5 senhas erradas para o
+   mesmo e-mail em 900 s viram `429`. Passe `login_throttle=False` para
+   desligar, ou um `AttemptThrottle` próprio para outro orçamento.
+3. **`make_prometheus_router(dependencies=[require_x_token])` é recusado** na
+   construção com `TypeError`. Use `dependencies=[make_token_dependency(segredo)]`,
+   que lê o header `X-Token`.
+4. **Readiness com timeout**: cada check de `make_health_router` tem
+   `timeout=3.0` s por padrão e estourar conta como falha. Check mais lento
+   pede `timeout=` maior (ou `None`).
+5. **`MinIOSettings` está deprecado** em favor de `StorageSettings`
+   (`STORAGE_*`). Os nomes `MINIO_*` continuam sendo lidos; definir os dois
+   nomes de um par com valores **diferentes** derruba o boot. Ao regenerar o
+   `docker-compose.yaml` (que agora escreve `STORAGE_*`), remova os
+   `MINIO_*` antigos do `.env` ou deixe os dois com o mesmo valor.
+6. **`test_session` / `test_database` estão deprecados**: troque por
+   `make_test_session` / `make_test_database` (mesma assinatura).
+
+## 0.309.0 — chave desconhecida em `filters` levanta erro
+
+Chave de `filters` que não é coluna do model (`{"usr_id": 1}`) ou sufixo que
+não é operador (`{"user_id__bogus": 1}`) era ignorada em silêncio — e com só
+a chave errada no dict, `delete_many` e `bulk_update` alteravam a tabela
+inteira. Agora todo método que recebe `filters`, o `Q`, o `BaseService`, o
+`BaseController` e o `TenantScopedRepository` levantam
+`UnknownFilterKeyException` (422, `code="UNKNOWN_FILTER_KEY"`,
+`details={"filter": <chave>}`) antes de qualquer statement.
+
+Quem é afetado: quem passava, de propósito ou sem saber, uma chave que o
+model não resolve. O caso mais comum é um schema de filtro com campo que não
+é coluna (`search`, `include_archived`) repassado inteiro por
+`get_conditions()`: o request que preenche esse campo passa a responder 422.
+
+### O que fazer
+
+1. **Campo de schema que não é coluna**: tire-o do dict antes de repassar e
+   trate-o no service.
+
+    ```python
+    from typing import Any
+
+    from tempest_fastapi_sdk import BasePaginationFilterSchema
+
+
+    class TicketFilterSchema(BasePaginationFilterSchema):
+        status: str | None = None
+        search: str | None = None
+
+
+    def split_conditions(f: TicketFilterSchema) -> tuple[dict[str, Any], str | None]:
+        """Separate the column filters from the free-text term."""
+        conditions = f.get_conditions()
+        search = conditions.pop("search", None)
+        return conditions, search
+    ```
+
+2. **Admin**: `list_filter`, `search_fields` e os `filters` de cada `Lens`
+   passam a ser conferidos na construção do `AdminModel`. Um nome errado
+   vira `ValueError` no boot (`AdminModel lens 'Open' filters on keys Ticket
+   cannot resolve: stauts`); corrija o nome.
+
+3. **Código que capturava o resultado "tudo"** de propósito com uma chave
+   inexistente: passe `{}` (ou nenhuma chave), que continua sem condição.
+   `bulk_update` segue recusando mapping vazio.
+
 ## 0.308.0 — o CLI `tempest` virou o extra `[cli]`
 
 O `tempest-cli` saiu das dependências do pacote base, junto com o `typer` e o

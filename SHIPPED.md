@@ -246,7 +246,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   carries the stale CHECK), `sync_enum_types` autogenerate hook (compares
   `pg_enum` / the CHECK — autogenerate compares neither), and
   `render_enum_types` (without it **every migration touching an enum column
-  failed on import**). Both wired into `env.py.template`. **Query plans
+  failed on import**). Both wired into `env.py.template`. **Enum CHECK +
+  downgrade (0.309.0, #453/#454):** `render_enum_types` omits the
+  type-bound CHECK (SQLAlchemy 2.1 + Alembic 1.20 rendered two, PG refused
+  the second); `op.drop_enum_type` (`DROP TYPE IF EXISTS` on PG, no-op
+  elsewhere) + `drop_enum_types_on_downgrade` hook (type leaves with the last
+  table). **Generated env.py (0.309.0, #451):** three statements calling
+  `run_alembic_env(metadata)` (body lives in `db/alembic_env.py`,
+  `DEFAULT_REVISION_HOOKS` to extend), ruff-clean under both src layouts,
+  `alembic.ini` with `prepend_sys_path = .` + `path_separator = os`.
+  **Query plans
   (v0.200.0):** `explain_queries(session)` / `repo.explain()` → typed
   `ExplainReport`/`QueryPlan`; `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` on
   PG, `EXPLAIN QUERY PLAN` on SQLite reported as `PLAN_ONLY` with `None`
@@ -358,7 +367,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `all` covers `500.log` here and not on the read. **`LOG_MAX_BYTES` /
   `LOG_BACKUP_COUNT` + `logging_kwargs()` on `LogSettings` (v0.280.0)** — the
   rotation knobs `configure_logging` always accepted are now settable from the
-  environment.
+  environment. **`make_logs_router(dependencies=...)` + `read_log_entries()` /
+  `LogReadResult` + `clear_log_files()` (#426, unreleased)** — the logs go
+  behind the service's own auth (a callable or a ready `Depends(...)`; with
+  only `dependencies` no `X-Token` is read, with `token_secret` too both gates
+  apply, an empty list still fails closed), and the read (per-file cap,
+  `truncated` flag, filters, newest first) and the in-place truncate are public
+  sync functions the router and the admin log page are now shells over.
 - **Database error introspection** — `parse_integrity_error()` reads an
   `IntegrityError` back into the constraint that refused it
   (`IntegrityFailure` / `IntegrityViolation`), so a service answers `409`
@@ -402,7 +417,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   against path **and** query, `BanStore`/`MemoryBanStore`/`RedisBanStore`,
   fail-open by default, client IP via `trusted_ip_header`),
   hardened static files, CORS,
-  health + tool-spec routers. **Quotas (v0.216.0):** `RateLimitRule`
+  health + tool-spec routers (readiness runs its checks concurrently, each
+  under `make_health_router(timeout=)`, and logs only the exception type —
+  #447, unreleased). **Quotas (v0.216.0):** `RateLimitRule`
   (sliding window, or **token bucket** when `burst` is set),
   `StaticRateLimitPolicy`/`PlanRateLimitPolicy` (+ `plan_by_jwt_claim`/
   `plan_by_header`/`key_by_plan_principal`) and `MemoryQuotaStore`/
@@ -597,6 +614,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `edge_bundle` (returns the *smallest* artifact — optimize/`.ort` grow tiny
   graphs), `uses_ml_domain` (int8 quantization does not apply to
   `ai.onnx.ml`). `hummingbird-ml` rejected: caps `onnx<=1.16.1`. **Binary-tree defect relocated (v0.201.0):** it was recorded as a `skl2onnx` conversion bug; holding `skl2onnx` 1.20.0 / `sklearn` 1.9.0 / `onnx` 1.22.0 fixed and moving only the runtime showed it is **`onnxruntime`** — error 1.0 vs `predict_proba` on 1.27.0, 9.5e-08 on 1.28.0. Floor moved to `onnxruntime>=1.28`; `BINARY_TREE_FIXED_IN_ONNXRUNTIME` still gates the export warning for a force-assembled environment.
+  **Pinned pickle digest (0.309.0, #440):** `expected_sha256` on
+  `load_sklearn_artifact` / `edge_pipeline_from_pickle`, checked before
+  `joblib.load` through the same handle that is unpickled;
+  `ArtifactDigestMismatchError(ValueError)`; hex any case, `sha256:` optional.
   **Serving (v0.189.0):** `OnnxPredictor` (resolves input/output names,
   `DEFAULT_INTRA_OP_THREADS = 1` for constrained devices, reports the
   providers *actually* in use, `reload` builds the new session before
@@ -1110,6 +1131,20 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   confere o CRC (CPython 3.11 a 3.14), então diretório central mentindo vira
   `InvalidSpreadsheetError`; XML truncado (`SyntaxError` do parser) deixou de
   escapar como `500`.
+- **Leitura de planilha sem bloquear o event loop (0.309.0, #432)** —
+  `read_xlsx_async` / `read_xlsx_as_async` / `read_xlsx_sheets_async` em
+  `tempest_fastapi_sdk.spreadsheet`: o leitor síncrono numa thread
+  (`asyncio.to_thread`) atrás de um semáforo
+  (`DEFAULT_MAX_CONCURRENT_XLSX_READS` = 4 **por event loop**, criado no
+  primeiro uso do loop; `semaphore=` troca por um do chamador). Os caminhos
+  async do `spreadsheet/google.py` deixaram de parsear no loop: o parse do
+  CSV e a validação do `read_google_sheet_as` vão por `to_thread`, o
+  `read_google_sheet_xlsx` chama `read_xlsx_sheets_async`. Receita usa a
+  variante async no endpoint de importação. Medido (99 999 linhas, 4 MB):
+  leitura síncrona numa corrotina segurou o loop 5,4 s (ticker de 10 ms: 1 de
+  ~540); a async deixou 473 ticks. Quatro leituras simultâneas: 25,0 s contra
+  21,6 s em série — o semáforo limita memória e pool de threads, não acelera.
+  Guard: `tests/test_spreadsheet_event_loop_guard.py`.
 - **Limites do leitor CSV do Google (Unreleased, #413)** — `max_bytes`
   (`DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES`, 10 MiB, pelo mesmo streaming do
   `.xlsx`) e `max_rows` (`DEFAULT_XLSX_MAX_ROWS`, 100 000, contado durante o
@@ -1188,6 +1223,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   it fetches nothing); allowed dirs are checked on the *resolved* path so `../`
   and symlinks do not escape, and `_fail_on_errors` aborts the render at the
   first refusal rather than shipping an invoice with a hole where the logo was.
+  **Refusals are per render (#435):** every render fetches through its own
+  `AssetPolicy.for_render()` copy, so concurrent renders sharing one policy
+  each report only their own URLs; the caller's `refusals` list is never
+  read or cleared.
   `logo_data_uri` accepts only `data:`; `accent_color`/`page_size`/`margin` are
   shape-constrained because they land **inside the stylesheet**.
   **Fixed while building:** the report's grand total was a `<tfoot>`
@@ -1857,7 +1896,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   with `enqueue`, a conditional-`UPDATE` `claim` (loser gets `None`),
   `succeed`/`fail` that drop the payload, `list_recent`, `reclaim_stale`
   (bounded by `max_attempts`) and `watch()` polling without holding a
-  session. The symmetric half of the outbox: message to publish vs work
+  session. **Result columns + redispatch (#459):** `succeed(values=...)` writes
+  project columns in the same conditional `UPDATE` as `DONE` (a cancelled
+  job gets nothing; `STORE_OWNED_JOB_COLUMNS` refused), `reclaim_stale()`
+  returns `ReclaimedJobs` (requeued / failed ids) and
+  `redispatch_queued(dispatch, older_than=...)` resends `QUEUED` rows whose
+  send was lost. The symmetric half of the outbox: message to publish vs work
   to execute. **Progress (v0.242.0):** `progress` + `stage` columns,
   `report_progress()` as a conditional `UPDATE` that cannot rewind the bar
   or repaint a cancelled job, `list_recent(statuses=...)` for the one
@@ -1975,7 +2019,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 - **Audit trail** — `BaseAuditLogModel` + `AuditAction`,
   `snapshot_model` / `diff_snapshots`, `BaseRepository` opt-in
   (`audit_model=...` + `add_audited` / `update_audited` /
-  `delete_audited`, same-tx).
+  `delete_audited`, same-tx). Opt-in `AuditRequestMixin` (`event`
+  indexed, `ip`, `user_agent` columns) + `AuditRequestContext.from_request`
+  + `record_event` / `for_event` for events without a mutation +
+  `actor_id=` for a consumer-declared author FK (#458).
 - **Admin panel** — Jinja + HTMX (`AdminSite`, `AdminModel`,
   `make_admin_router`), typed theming via `AdminTheme` (colors /
   logo / favicon / font / radius / footer / dark mode /
@@ -1984,6 +2031,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `AdminActionResult`), file/image upload fields (`AdminModel(
   upload_fields=[...], upload_storage=...)`), rich list filters
   (bool/enum/FK select, date-range, text — auto by column type).
+  HTMX comes from the SDK's own bundle at `{prefix}/_ssr/htmx.js`
+  (`make_htmx_router`, no session, no CDN — #433); the SQL console is
+  styled by `tempest-admin-sql*` rules in `admin.css` (#438).
 - **OpenAPI codegen (v0.161.0)** — `tempest_fastapi_sdk.openapi` +
   `tempest openapi-client <spec>`: generates Pydantic schemas **and** a
   typed HTTP client from a third party's OpenAPI 3 spec into
@@ -2119,6 +2169,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `tests/testing/test_fakes_contract.py` compara assinatura por
   `inspect.signature`, exige `async` onde a costura é `async`, e falha quando um
   fake novo entra sem cobertura.
+- **Helpers de banco de teste (`tempest_fastapi_sdk.testing`)** —
+  `create_test_engine`, `create_test_session_factory`, `init_test_metadata`,
+  `drop_test_metadata`, `make_test_database` e `make_test_session` (#450,
+  unreleased: renomeados de `test_database` / `test_session`, que o pytest
+  coletava como teste fantasma em quem os importava; os nomes antigos ficam
+  como alias deprecado com `__test__ = False`). Guard:
+  `tests/testing/test_database.py::test_consumer_suite_collects_no_phantom_test`.
 - **CLI** — `tempest new` (scaffolds layered service +
   docker-compose + multi-stage uv `Dockerfile`/`.dockerignore`),
   `tempest generate --docker` (regen compose) / `--dockerfile`
@@ -3019,3 +3076,110 @@ que sem o extra imprime a instrução e sai com 2; `tempest_fastapi_sdk.cli`
 re-exporta preguiçosamente e levanta `ImportError` com a instrução; o
 `tempest new` põe `tempest-fastapi-sdk[cli]` no grupo `dev`. Guards:
 `tests/test_cli_extra_guard.py` e `tests/cli/test_entrypoint.py`.
+
+## Confirmar o Pix antes de liberar (#434)
+
+`confirm_pix_payment(provider, charge_id, *, reference, amount_cents)` em
+`integrations.payment` relê a cobrança pelo id que o serviço guardou e
+devolve `PixPaymentConfirmation` com `outcome` (`PAID`,
+`REFERENCE_MISMATCH`, `NOT_PAID`, `AMOUNT_MISMATCH`) e `.paid`; erro do
+provedor sobe, não vira "não pago". Não escreve nada: a liberação única fica
+com `claim_once`. A receita `pix-protocol.md` liberava pelo evento do
+webhook; agora o `settle` relê com o helper e marca `paid_at` sob
+`claim_once`. Guard: `tests/integrations/payment/test_settlement.py`
+(inclui dois eventos pagos para o mesmo pedido liberando uma vez só).
+
+## Webhook do Mercado Pago numa dependency (0.309.0, #437)
+
+`make_mercado_pago_webhook_dependency(secret, *, tolerance_seconds=None,
+versions=DEFAULT_SIGNATURE_VERSIONS, error_message=...)` fecha a terceira
+fábrica de webhook, na forma de `make_stripe_webhook_dependency` e
+`make_openpix_webhook_dependency`: lê `?data.id` (`MERCADO_PAGO_DATA_ID_QUERY`),
+`x-signature` e `x-request-id`, roda `verify_signature` e devolve
+`MercadoPagoWebhookEvent`; falha vira `UnauthorizedException` (401) antes do
+handler. `data_id` vem da query porque o corpo não é assinado; tópico
+desconhecido vira `MercadoPagoEvent.UNKNOWN`, corpo não-JSON não derruba. A
+receita `mercado-pago.md` monta a rota com a fábrica. Testes:
+`tests/integrations/payment/mercado_pago/test_webhook_dependency.py`.
+
+## Redação de PII no log (0.309.0, #445)
+
+`configure_logging(..., redact: bool | RedactionPolicy = False)` pendura um
+`RedactionFilter` em todo handler que instala (stdout + os seis arquivos) —
+no handler, porque filtro de logger não roda para registro propagado.
+`RedactionPolicy` troca inteiro o valor de chave sensível (substring,
+`DEFAULT_REDACT_KEYS`, extensível por `extra_keys`) em `extra=`, argumento
+dict e dict aninhado, e passa mensagem, `exc_text`, `stack_info` e valor
+string por e-mail, `Bearer`, JWT e `chave=valor` sensível (`extra_patterns`
+para domínio). O `JSONFormatter` passou a preferir `record.exc_text` a
+re-renderizar `exc_info` — antes ele escrevia o traceback original por cima do
+redigido. `LOG_REDACT` em `LogSettings`. Custo medido: ~+12 µs por linha de
+access log, ~+22 µs por `logger.exception`; com `redact=False` nada é
+instalado. Testes: `tests/core/test_redaction.py`.
+
+## Rate limit por rota (0.309.0, #452)
+
+`make_rate_limit_dependency(store, *, max_requests, window_seconds, key=None,
+trusted_ip_header=None, scope=None, ...)` limita a rota em que é pendurada,
+contando no mesmo `RateLimitStore` do `RateLimitMiddleware` (memória ou Redis).
+`key` aceita uma ou várias funções de chave, síncronas ou assíncronas (as
+`key_by_*` do middleware servem); `key_by_body_field(field)` lê o campo do corpo
+JSON sem tirar o payload do endpoint, normalizado e em SHA-256 por padrão. O 429
+sai com os mesmos `details` e headers do middleware, montados pelos mesmos
+helpers (`_rate_limit_headers` / `_rate_limit_details`). Balde por método + path
+template da rota; `scope=` junta rotas. Testes:
+`tests/api/test_rate_limit_dependency.py` (compara os dois 429).
+
+## Login e signup com limite de tentativas (0.309.0, #456)
+
+`make_auth_router(login_throttle=..., login_ip_throttle=..., signup_throttle=...,
+trusted_ip_header=...)`. O de login por e-mail vem ligado (5 em 900 s sobre
+`InMemoryThrottleBackend`, reserva antes de conferir a senha, zera no sucesso,
+`False` desliga) e é gasto igual para e-mail sem conta; os por IP vêm desligados
+por causa do IP do proxy. 429 `TOO_MANY_REQUESTS` com `Retry-After`, declarado
+no OpenAPI só quando o limite está ligado. Testes:
+`tests/auth/test_login_throttle.py`.
+
+## Exportação e exclusão de titular (0.309.0, #460)
+
+`tempest_fastapi_sdk.privacy`: `SubjectGraph(metadata, root=..., retained=...,
+secret_columns=..., secret_markers=...)` com `tables()`, `export(session, id)`,
+`count(session, id)`, `condition(table, id)`, `exported_columns(table)` e
+`violations()`; `assert_subject_graph_valid` em `tempest_fastapi_sdk.testing`.
+`SubjectObjectStorage(client, prefix=..., bucket=...)` com `put`, `presign`,
+`names`, `delete`, `delete_all` (lote) e `SubjectErasureError`. No storage,
+`AsyncMinIOClient.remove_objects` + `ObjectDeleteError`. Fora: vínculo sem FK
+(audit trail, id em JSON), raiz com PK composta, busca/cache/backup. Receita
+`recipes/subject-data.md`. Testes: `tests/privacy/`,
+`tests/storage/test_minio_client.py`.
+
+## Settings endurecido: ambiente, header de IP, storage (0.309.0, #446, #455, #457)
+
+`BaseAppSettings` liga `hide_input_in_errors=True` (erro de boot não ecoa o
+ambiente) e ganha dois pontos de extensão: `production_violations()`
+(cooperativo, cada mixin declara seus valores de desenvolvimento) e
+`DEPRECATED_ENV_ALIASES` + `reject_conflicting_env_aliases` (nome antigo e
+novo com valores diferentes derrubam o boot). `EnvironmentSettings` (`ENV`)
+recusa construir em `production` listando os campos — Server, Database, JWT,
+CORS, Token, TaskIQ e Storage participam. `ServerSettings.TRUSTED_IP_HEADER`
+modela o header de borda e recusa `x-forwarded-for`/`forwarded`.
+`StorageSettings` (`STORAGE_*`, `storage_kwargs()`) substitui `MinIOSettings`,
+que fica como subclasse deprecada; `MINIO_*` continua lido como fallback.
+Testes: `tests/settings/test_environment.py`,
+`tests/settings/test_trusted_ip_header.py`,
+`tests/settings/test_storage_settings.py`.
+
+## Chave desconhecida em `filters` é recusada (0.309.0, #465)
+
+Mesma família do `None` da v0.292.0, na outra metade: chave que não é
+coluna (`{"usr_id": 1}`) ou sufixo que não é operador
+(`{"user_id__bogus": 1}`) era descartada em silêncio, e `delete_many` com só
+a chave errada apagava a tabela inteira. Agora `build_filter_condition` (e
+portanto todo método com `filters`, o `Q`, `BaseService`, `BaseController` e
+`TenantScopedRepository`) levanta `UnknownFilterKeyException` (422,
+`UNKNOWN_FILTER_KEY`, `details={"filter": <chave>}`) antes de qualquer
+statement. `resolve_filter_key` / `FILTER_OPERATORS` em
+`db.expressions` expõem a checagem isolada; o `AdminModel` a roda na
+construção sobre `list_filter`, `search_fields` e os `filters` de cada
+`Lens` (typo vira `ValueError` no boot). Teste:
+`tests/db/test_filters_contract.py`.

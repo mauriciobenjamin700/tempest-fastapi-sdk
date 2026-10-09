@@ -277,19 +277,22 @@ alguém precisa **construí-lo** — e é essa construção que decide se trocar
 provedor é uma linha ou uma refatoração.
 
 Esta seção monta o caminho inteiro, de baixo para cima: cliente HTTP →
-adapter → dependência → service → router. O serviço que sai daqui tem
-**dois** arquivos que sabem o nome "OpenPix"; todo o resto fala contrato.
+adapter → dependência → pedido → service → router. O serviço que sai daqui
+tem **dois** arquivos que sabem o nome "OpenPix"; todo o resto fala contrato.
+E ele só libera um pedido depois de **reler a cobrança no provedor** — o
+webhook avisa, a API confirma, do mesmo jeito que a receita
+[OpenPix »](openpix.md#fluxo-2-descobrir-se-foi-paga) exige.
 
 ### Onde cada peça mora
 
 ```text
 src/
 ├── core/
-│   └── settings.py              # OPENPIX_APP_ID + ambiente
+│   └── settings.py              # OPENPIX_APP_ID + ambiente + DATABASE_URL
 ├── api/
 │   ├── app.py                   # create_app() + lifespan
 │   ├── dependencies/
-│   │   ├── orders.py            # o repositório do seu pedido
+│   │   ├── orders.py            # sessão por request + o repositório do pedido
 │   │   └── payments.py          # HTTPClient -> OpenPixClient -> adapter
 │   └── routers/
 │       ├── checkout.py          # POST /api/checkout/{order_id}
@@ -299,8 +302,10 @@ src/
 ├── services/
 │   └── checkout.py              # regra de negócio, escrita só sobre o contrato
 └── db/
+    ├── models/
+    │   └── orders.py            # valor, provider_charge_id e paid_at
     └── repositories/
-        └── orders.py            # onde provider_charge_id fica guardado
+        └── orders.py            # onde a liberação única (claim_once) mora
 ```
 
 | Camada | Pode importar | Nunca importa |
@@ -309,7 +314,7 @@ src/
 | `api/routers` | as dependências, `schemas` | o adapter, `OpenPixClient` |
 | `services` | `PixProvider`, `PixCharge`, repositories | o adapter, `fastapi` |
 | `schemas` | `BaseSchema` | o contrato e o adapter |
-| `db/repositories` | — | qualquer coisa de pagamento |
+| `db/repositories` | `db/models`, `claim_once` | qualquer coisa de pagamento |
 
 `api/dependencies` é a única camada autorizada a conhecer o provedor porque
 é a única cuja função é **montar**. É o composition root: o lugar onde o
@@ -318,10 +323,10 @@ concreto vira contrato, e o único que muda no dia da troca.
 ### Passo 1 — a configuração
 
 ```python
-from tempest_fastapi_sdk import OpenPixSettings
+from tempest_fastapi_sdk import DatabaseSettings, OpenPixSettings
 
 
-class Settings(OpenPixSettings):
+class Settings(OpenPixSettings, DatabaseSettings):
     """Settings do serviço."""
 
 
@@ -331,7 +336,8 @@ settings: Settings = Settings()
 `OpenPixSettings` traz `OPENPIX_APP_ID` e `OPENPIX_ENVIRONMENT`, e
 `settings.openpix_kwargs()` devolve `base_url` e o header `Authorization`
 já resolvidos — os dois argumentos que o `HTTPClient` precisa. Detalhes dos
-ambientes em [OpenPix »](openpix.md).
+ambientes em [OpenPix »](openpix.md). `DatabaseSettings` traz `DATABASE_URL`,
+e `settings.database_kwargs()` é o splat do `AsyncDatabaseManager` do passo 3.
 
 ### Passo 2 — o cliente HTTP e o provider, montados uma vez
 
@@ -456,7 +462,161 @@ a função fica anônima e não há como substituí-la.
     A anotação não é decoração: é o ponto onde o valor volta a existir para
     o type-checker. Com ela, o serviço inteiro passa em `mypy --strict`.
 
-### Passo 3 — o service, que só fala contrato
+### Passo 3 — o pedido, e a coluna que libera uma vez só
+
+O webhook vai chegar mais de uma vez: a OpenPix reentrega quando não recebe
+200, e uma entrega capturada continua com assinatura válida para sempre. O
+pedido precisa de uma coluna que diga "já liberado" — e que só **uma**
+requisição consiga preencher.
+
+```python
+from datetime import datetime
+
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseModel
+
+
+class OrderModel(BaseModel):
+    """An order, and the Pix charge that pays it."""
+
+    __tablename__ = "orders"
+
+    reference: Mapped[str] = mapped_column(unique=True)
+    amount_cents: Mapped[int] = mapped_column()
+    provider_charge_id: Mapped[str | None] = mapped_column(default=None)
+    paid_at: Mapped[datetime | None] = mapped_column(default=None)
+```
+
+O repositório é quem fala com o banco, então é nele que a liberação única
+mora:
+
+```python
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import BaseRepository
+from tempest_fastapi_sdk.wallet import claim_once
+
+from src.db.models import OrderModel
+
+
+class OrderRepository(BaseRepository[OrderModel]):
+    """Data access for orders."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Bind the repository to the request session.
+
+        Args:
+            session (AsyncSession): The request-scoped session.
+        """
+        super().__init__(session, model=OrderModel)
+
+    async def open(
+        self, reference: str, amount_cents: int, provider_charge_id: str
+    ) -> OrderModel:
+        """Persist an order together with the charge that pays it.
+
+        Args:
+            reference (str): The order's identifier, sent as the reference.
+            amount_cents (int): What the order costs, in cents.
+            provider_charge_id (str): How to address the charge later.
+
+        Returns:
+            OrderModel: The stored order.
+        """
+        return await self.add(
+            OrderModel(
+                reference=reference,
+                amount_cents=amount_cents,
+                provider_charge_id=provider_charge_id,
+            ),
+        )
+
+    async def get_by_reference(self, reference: str) -> OrderModel | None:
+        """Find an order by the reference its charge carries.
+
+        Args:
+            reference (str): The order's identifier.
+
+        Returns:
+            OrderModel | None: The order, or None when nothing matches.
+        """
+        return await self.get_or_none({"reference": reference})
+
+    async def claim_paid(self, order_id: UUID) -> bool:
+        """Stamp paid_at, only if no one stamped it before.
+
+        Args:
+            order_id (UUID): The order to claim.
+
+        Returns:
+            bool: True for the one call that claimed the order.
+        """
+        return await claim_once(self.session, OrderModel, order_id, "paid_at")
+```
+
+`claim_once` é um `UPDATE orders SET paid_at = now WHERE id = :id AND
+paid_at IS NULL`. Duas entregas do mesmo evento emitem o mesmo `UPDATE`; só
+uma encontra a coluna vazia, e a outra recebe `False`. Ele **não** faz
+commit: entra no mesmo bloco de transação que os efeitos da liberação, e uma
+falha nesses efeitos desfaz a marcação também. É o mesmo guard da receita
+[Carteira »](wallet.md#liquidar-uma-vez-so).
+
+E a sessão por request, que o repositório recebe:
+
+```python
+from functools import lru_cache
+from typing import Annotated
+
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import AsyncDatabaseManager, session_dependency_for
+
+from src.core.settings import settings
+from src.db.repositories import OrderRepository
+
+
+@lru_cache
+def get_db() -> AsyncDatabaseManager:
+    """Build the database manager once, on first use.
+
+    Returns:
+        AsyncDatabaseManager: The process-wide manager.
+    """
+    return AsyncDatabaseManager(**settings.database_kwargs())
+
+
+get_session = session_dependency_for(get_db)
+"""One uncommitted session per request; the repository commits."""
+
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
+"""The request session, injected."""
+
+
+def get_order_repository(session: SessionDep) -> OrderRepository:
+    """Bind the order repository to the request session.
+
+    Args:
+        session (SessionDep): The request session.
+
+    Returns:
+        OrderRepository: The repository.
+    """
+    return OrderRepository(session)
+
+
+OrderRepositoryDep = Annotated[OrderRepository, Depends(get_order_repository)]
+"""The order repository, injected."""
+```
+
+`get_session` é uma variável nomeada pelo mesmo motivo que
+`verified_delivery`: é a chave que o teste do passo 7 troca por um banco
+temporário.
+
+### Passo 4 — o service, que só fala contrato
 
 ```python
 from datetime import timedelta
@@ -467,6 +627,7 @@ from tempest_fastapi_sdk.integrations.payment import (
     PixEventType,
     PixPaymentEvent,
     PixProvider,
+    confirm_pix_payment,
 )
 
 from src.db.repositories import OrderRepository
@@ -480,7 +641,7 @@ class CheckoutService:
 
         Args:
             provider (PixProvider): Any provider that implements the contract.
-            orders (OrderRepository): Where the charge id is persisted.
+            orders (OrderRepository): Where the order and its charge live.
         """
         self._provider: PixProvider = provider
         self._orders: OrderRepository = orders
@@ -503,27 +664,76 @@ class CheckoutService:
                 expires_in=timedelta(minutes=30),
             ),
         )
-        await self._orders.attach_charge(order_id, charge.provider_charge_id)
+        await self._orders.open(order_id, amount_cents, charge.provider_charge_id)
         return charge
 
     async def settle(self, event: PixPaymentEvent) -> str | None:
-        """Act on a canonical event, whichever provider produced it.
+        """Release an order once the provider confirms it is paid.
+
+        The event is only the notice. What authorizes the release is the
+        provider answering, on a fresh read of the charge this service
+        stored, that it is paid for this order and amount.
 
         Args:
             event (PixPaymentEvent): The parsed event.
 
         Returns:
-            str | None: The order that was settled, or None when the event
-            says something else.
+            str | None: The order released by this call, or None when the
+            event says something else, the charge is not confirmed, or an
+            earlier delivery already released the order.
         """
         if event.type is not PixEventType.CHARGE_PAID or event.charge is None:
             return None
-        await self._orders.mark_paid(event.charge.reference)
-        return event.charge.reference
+        order = await self._orders.get_by_reference(event.charge.reference)
+        if order is None or order.provider_charge_id is None:
+            return None
+        confirmation = await confirm_pix_payment(
+            self._provider,
+            order.provider_charge_id,
+            reference=order.reference,
+            amount_cents=order.amount_cents,
+        )
+        if not confirmation.paid:
+            return None
+        async with self._orders.transaction():
+            if not await self._orders.claim_paid(order.id):
+                return None
+        return order.reference
 ```
 
 Repare no bloco de imports: nada de `adapters`, nada de `openpix`. É a
 regra que dá para verificar com `grep` em vez de com revisão.
+
+O `settle` é onde o dinheiro se move, e cada linha dele está lá por um
+motivo:
+
+1. **O evento é só o gatilho.** Dele sai uma coisa: qual pedido olhar
+   (`event.charge.reference`). O status e o valor que vieram na entrega não
+   decidem nada.
+2. **A releitura usa o id que você guardou.** `confirm_pix_payment` chama
+   `provider.get_pix_charge(order.provider_charge_id)` — o id gravado no
+   `open_charge`, não um id que a entrega trouxe. Uma entrega forjada ou
+   reenviada consegue, no máximo, fazer o serviço perguntar ao provedor
+   sobre uma cobrança que já é dele.
+3. **Pago é três conferências.** A cobrança relida precisa ser deste pedido
+   (`reference`), estar `PAID` e ter o valor do pedido (`amount_cents`,
+   igualdade exata). `confirmation.outcome` diz qual falhou:
+   `REFERENCE_MISMATCH`, `NOT_PAID` ou `AMOUNT_MISMATCH`.
+4. **A liberação é única.** `claim_paid` roda dentro de
+   `self._orders.transaction()`; a segunda entrega do mesmo evento encontra
+   `paid_at` preenchido e devolve `None`. Efeito de liberação — baixar
+   estoque, mandar o e-mail, creditar a carteira do vendedor — entra
+   **dentro** desse bloco, depois do `claim_paid`, para cair junto se o
+   efeito falhar.
+
+!!! tip "Erro do provedor não é \"não pago\""
+    Se o `get_pix_charge` levanta (timeout, provedor fora), o
+    `confirm_pix_payment` deixa a exceção subir, e o pedido continua sem
+    liberar — que é o certo para uma pergunta sem resposta. Medido com o
+    `get_pix_charge` do fake levantando `TimeoutError`: a entrega responde
+    **500**; a reentrega seguinte, com o provedor de volta, responde
+    `{"settled": "pedido-1042"}`. Quem reentrega é o provedor, quando não
+    recebe 200 (ver [OpenPix »](openpix.md)).
 
 O `reference` é o id do **seu** pedido, e o `provider_charge_id` é gravado
 na mesma transação em que a cobrança nasce. Um é como o webhook te encontra;
@@ -531,7 +741,7 @@ o outro é como você volta ao provedor para consultar ou cancelar. Perder o
 segundo significa uma cobrança que existe no provedor e que o seu serviço
 não sabe mais endereçar.
 
-### Passo 4 — o router devolve schema seu, não `PixCharge`
+### Passo 5 — o router devolve schema seu, não `PixCharge`
 
 ```python
 from fastapi import APIRouter, status
@@ -586,7 +796,7 @@ async def open_checkout(
     resposta próprio, com os campos que a tela usa, é o que separa a sua
     API do payload de um terceiro.
 
-### Passo 5 — o webhook: verificação na borda, contrato dentro
+### Passo 6 — o webhook: verificação na borda, contrato dentro
 
 ```python
 from fastapi import APIRouter
@@ -622,6 +832,11 @@ provider e age sobre o `PixPaymentEvent` que sai. A verificação de
 assinatura — a parte que nenhum contrato unifica — ficou inteira dentro do
 `Annotated` do composition root.
 
+E ele não libera nada sozinho: `service.settle` relê a cobrança e marca o
+pedido sob `claim_once` (passo 4). Assinatura válida prova que a entrega
+veio do provedor; quem autoriza mover dinheiro é a releitura. Por isso a
+mesma entrega, reenviada, responde `{"settled": null}` na segunda vez.
+
 !!! note "`include_in_schema=False` não é cosmético"
     Webhook não é endpoint da sua API pública: quem se autentica ali é uma
     assinatura, não o token do seu usuário. Com o router fora do schema, o
@@ -631,64 +846,76 @@ assinatura — a parte que nenhum contrato unifica — ficou inteira dentro do
     ['/api/checkout/{order_id}']
     ```
 
-### Passo 6 — nos testes, o fake entra pela dependência
+### Passo 7 — nos testes, o fake entra pela dependência
 
 O adapter in-memory da última seção desta página não serve só para script:
 ele entra no lugar do provedor por `dependency_overrides`, e a suíte inteira
 roda sem rede.
 
 ```python
+import asyncio
+from pathlib import Path
 from typing import Any
 
 from fastapi.testclient import TestClient
 
+from tempest_fastapi_sdk import AsyncDatabaseManager, session_dependency_for
 from tempest_fastapi_sdk.integrations.payment import PixProvider
 
 from src.api.app import create_app
-from src.api.dependencies import get_pix_provider, verified_delivery
-from src.db.repositories import OrderRepository
+from src.api.dependencies import get_pix_provider, get_session, verified_delivery
 from tests.fakes import FakePixProvider
 
 
-def test_checkout_and_webhook() -> None:
-    """Charge and settle through the whole stack, on the fake."""
+def test_checkout_and_webhook(tmp_path: Path) -> None:
+    """Charge, settle, and replay the delivery, on the fake and a real SQLite."""
+    db = AsyncDatabaseManager(f"sqlite+aiosqlite:///{tmp_path / 'orders.db'}")
+    asyncio.run(db.create_tables())
+
     app = create_app()
     provider: PixProvider = FakePixProvider()
-    orders = OrderRepository()
-    app.state.orders = orders
     app.dependency_overrides[get_pix_provider] = lambda: provider
+    app.dependency_overrides[get_session] = session_dependency_for(lambda: db)
+
+    def fake_delivery() -> Any:
+        """Stand in for the verified delivery.
+
+        Returns:
+            Any: What this provider's parse_webhook reads.
+        """
+        return {"charge_id": "fake-1"}
+
+    app.dependency_overrides[verified_delivery] = fake_delivery
 
     with TestClient(app) as client:
         created = client.post("/api/checkout/pedido-1042", json={"amount_cents": 1990})
         assert created.status_code == 201
         assert created.json()["br_code"] == "000201fake-1"
-        assert orders.charge_ids == {"pedido-1042": "fake-1"}
 
-        def fake_delivery() -> Any:
-            """Stand in for the verified delivery.
+        first = client.post("/webhooks/pix")
+        assert first.json() == {"settled": "pedido-1042"}
 
-            Returns:
-                Any: What this provider's parse_webhook reads.
-            """
-            return {"charge_id": "fake-1"}
-
-        app.dependency_overrides[verified_delivery] = fake_delivery
-        settled = client.post("/webhooks/pix")
-        assert settled.json() == {"settled": "pedido-1042"}
-        assert orders.paid == {"pedido-1042"}
+        replay = client.post("/webhooks/pix")
+        assert replay.json() == {"settled": None}
 ```
 
-As duas respostas, rodando:
+As três respostas, rodando:
 
 ```text
 POST /api/checkout/pedido-1042 -> 201 {'order_id': 'pedido-1042', 'amount_cents': 1990, 'br_code': '000201fake-1', 'qr_code_image_url': None, 'qr_code_base64': None}
 POST /webhooks/pix -> 200 {'settled': 'pedido-1042'}
+POST /webhooks/pix -> 200 {'settled': None}
 ```
 
-São dois overrides, e eles são diferentes de propósito. O **provider**
+A terceira linha é a reentrega: o fake responde `PAID` de novo na releitura,
+mas `paid_at` já está preenchido e o `claim_once` devolve `False`.
+
+São três overrides, e eles são diferentes de propósito. O **provider**
 troca o provedor inteiro pelo fake. A **entrega verificada** troca só o
 verificador — porque assinar é a parte que o fake não tem como imitar, e
-fingir a verificação em teste é melhor do que desligá-la em produção.
+fingir a verificação em teste é melhor do que desligá-la em produção. A
+**sessão** aponta para um SQLite num diretório temporário: o `claim_once` é
+um `UPDATE` de verdade, e testá-lo contra um dict não provaria nada.
 
 !!! tip "O que o type-checker cobra do seu fake"
     A linha `provider: PixProvider = FakePixProvider()` é o que faz o
@@ -697,13 +924,14 @@ fingir a verificação em teste é melhor do que desligá-la em produção.
     campo:
 
     ```text
-    tests/fakes.py:39: error: "str" has no attribute "amount_cents"  [attr-defined]
-    tests/test_checkout.py:18: error: Incompatible types in assignment (expression has type "FakePixProvider", variable has type "PixProvider")  [assignment]
-    tests/test_checkout.py:18: note: Following member(s) of "FakePixProvider" have conflicts:
-    tests/test_checkout.py:18: note:     Expected:
-    tests/test_checkout.py:18: note:         def create_pix_charge(self, request: PixChargeRequest) -> Coroutine[Any, Any, PixCharge]
-    tests/test_checkout.py:18: note:     Got:
-    tests/test_checkout.py:18: note:         def create_pix_charge(self, request: str) -> Coroutine[Any, Any, PixCharge]
+    tests/fakes.py:43: error: "str" has no attribute "reference"  [attr-defined]
+    tests/fakes.py:44: error: "str" has no attribute "amount_cents"  [attr-defined]
+    tests/test_checkout.py:21: error: Incompatible types in assignment (expression has type "FakePixProvider", variable has type "PixProvider")  [assignment]
+    tests/test_checkout.py:21: note: Following member(s) of "FakePixProvider" have conflicts:
+    tests/test_checkout.py:21: note:     Expected:
+    tests/test_checkout.py:21: note:         def create_pix_charge(self, request: PixChargeRequest) -> Coroutine[Any, Any, PixCharge]
+    tests/test_checkout.py:21: note:     Got:
+    tests/test_checkout.py:21: note:         def create_pix_charge(self, request: str) -> Coroutine[Any, Any, PixCharge]
     ```
 
     Sem a anotação, `dependency_overrides` aceita qualquer callable e o
@@ -751,7 +979,8 @@ def liberar_pedido(charge: PixCharge) -> bool:
     """Decide whether the order can be released.
 
     Args:
-        charge (PixCharge): The charge, in canonical shape.
+        charge (PixCharge): The charge as get_pix_charge re-read it, never
+            the copy a webhook delivered.
 
     Returns:
         bool: Whether the money is in.
@@ -792,20 +1021,24 @@ from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixWebhookEvent
 
 
 def tratar(provider: PixProvider, delivery: OpenPixWebhookEvent) -> str | None:
-    """Turn a verified delivery into an action.
+    """Find which order a verified delivery is about.
 
     Args:
         provider (PixProvider): The provider that verified the delivery.
         delivery (OpenPixWebhookEvent): The verified event.
 
     Returns:
-        str | None: The reference of the order that was paid, if any.
+        str | None: The reference of the order to re-check, if any.
     """
     event = provider.parse_webhook(delivery)
     if event.type is PixEventType.CHARGE_PAID and event.charge is not None:
         return event.charge.reference
     return None
 ```
+
+O que sai daí é **qual pedido conferir**, não um pedido pago. Liberar é o
+`settle` do [passo 4](#passo-4-o-service-que-so-fala-contrato): relê a
+cobrança com `confirm_pix_payment` e marca sob `claim_once`.
 
 Um evento que o SDK não classifica vira `PixEventType.UNKNOWN` **com o nome
 original preservado** em `provider_event_name`. Ele fica visível, não
@@ -1057,5 +1290,10 @@ type-checker exige de você. Se um método sair com a assinatura errada,
   é `Any`, então reanote o tipo na leitura.
 - O router devolve schema seu, não `PixCharge`: a cobrança canônica carrega
   `raw` (o payload do provedor, `customer` incluído) e `provider_charge_id`.
-- No teste, `dependency_overrides` troca o provider pelo fake e a entrega
-  verificada por um stub — dois overrides, e a suíte roda sem rede.
+- O webhook avisa, a API confirma: o `settle` relê a cobrança pelo
+  `provider_charge_id` guardado com `confirm_pix_payment` (deste pedido,
+  `PAID`, valor igual) e libera sob `claim_once`, então a reentrega não
+  paga duas vezes.
+- No teste, `dependency_overrides` troca o provider pelo fake, a entrega
+  verificada por um stub e a sessão por um SQLite temporário — três
+  overrides, e a suíte roda sem rede.

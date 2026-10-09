@@ -49,7 +49,7 @@ from src.core.settings import settings
 file: UploadFile = ...  # comes from the endpoint signature
 
 
-minio = AsyncMinIOClient(**settings.minio_kwargs())
+minio = AsyncMinIOClient(**settings.storage_kwargs())
 uploads = UploadUtils(minio, max_size_bytes=10 * 1024 * 1024)
 
 
@@ -233,7 +233,7 @@ from tempest_fastapi_sdk import AsyncMinIOClient, UploadUtils
 from src.core.settings import settings
 
 if settings.UPLOAD_BACKEND == "minio":
-    uploads = UploadUtils(AsyncMinIOClient(**settings.minio_kwargs()))
+    uploads = UploadUtils(AsyncMinIOClient(**settings.storage_kwargs()))
 else:
     uploads = UploadUtils(settings.UPLOAD_DIR)
 ```

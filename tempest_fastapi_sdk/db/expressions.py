@@ -36,7 +36,10 @@ from datetime import date
 from typing import Any, cast
 
 from sqlalchemy import and_, func, not_, or_
+from sqlalchemy.orm import QueryableAttribute
 from sqlalchemy.sql.elements import ColumnElement
+
+from tempest_fastapi_sdk.exceptions.validation import UnknownFilterKeyException
 
 #: Suffix-to-operator map for ``<column>__<op>`` comparison filters.
 COMPARISON_OPS: dict[str, Callable[[Any, Any], Any]] = {
@@ -46,6 +49,27 @@ COMPARISON_OPS: dict[str, Callable[[Any, Any], Any]] = {
     "lte": operator.le,
     "ne": operator.ne,
 }
+
+#: Every ``<column>__<op>`` suffix the filter engine understands. A suffix
+#: outside this set raises :class:`UnknownFilterKeyException` instead of
+#: being dropped.
+FILTER_OPERATORS: frozenset[str] = frozenset(
+    {
+        *COMPARISON_OPS,
+        "in",
+        "notin",
+        "not_in",
+        "between",
+        "iexact",
+        "like",
+        "ilike",
+        "isnull",
+        "contains",
+        "icontains",
+        "startswith",
+        "endswith",
+    },
+)
 
 
 class DroppedFilterWarning(UserWarning):
@@ -106,6 +130,45 @@ def _as_membership(value: Any) -> list[Any] | None:
     if isinstance(value, Iterable):
         return list(value)
     return None
+
+
+def resolve_filter_key(model: type[Any], field: str) -> tuple[Any, str | None]:
+    """Split a ``filters`` key into its model attribute and operator.
+
+    ``"user_id"`` resolves to ``(Model.user_id, None)`` and
+    ``"user_id__gte"`` to ``(Model.user_id, "gte")``. The attribute must be
+    SQL-expressible: a mapped column, a relationship, a
+    ``column_property`` or the class-level expression of a
+    ``hybrid_property``. A plain Python attribute — a method, a
+    ``@property``, a class constant — does not qualify, because comparing
+    it to a value has no SQL reading.
+
+    This is the check :func:`build_filter_condition` runs on every key, so
+    configuration that carries filter keys (an admin ``Lens``, say) can
+    run it once at startup instead of on the first request.
+
+    Args:
+        model (type[Any]): The model class the key belongs to.
+        field (str): The filter key, optionally ``<column>__<op>``.
+
+    Returns:
+        tuple[Any, str | None]: The resolved attribute and the operator
+            suffix, or ``None`` as the suffix for a bare column.
+
+    Raises:
+        UnknownFilterKeyException: When the column part names no
+            SQL-expressible attribute of ``model``, or the suffix is not in
+            :data:`FILTER_OPERATORS`. ``filter_key`` is the full key.
+    """
+    base, op = field, None
+    if "__" in field:
+        base, _, op = field.rpartition("__")
+        if op not in FILTER_OPERATORS:
+            raise UnknownFilterKeyException(field)
+    attribute = getattr(model, base, None)
+    if not isinstance(attribute, (QueryableAttribute, ColumnElement)):
+        raise UnknownFilterKeyException(field)
+    return attribute, op
 
 
 def _suffix_condition(column: Any, op: str, value: Any) -> Any:
@@ -201,8 +264,12 @@ def build_filter_condition(
       ``range`` / generator / ``dict`` view) → ``.in_(value)``.
     * otherwise → equality.
 
-    An unknown column or an unknown operator yields ``None`` (the caller
-    skips the condition).
+    An unknown column or an unknown operator raises
+    :class:`UnknownFilterKeyException` naming the key. Both used to yield
+    ``None``, which the caller skipped: ``{"usr_id": 1234}`` matched every
+    row on a read, and every row in the table on ``bulk_update`` /
+    ``delete_many`` (measured on SQLite, #465). A typo has no safe reading,
+    so it is refused before any statement is built.
 
     ``None`` used to be dropped the same way, which was the wrong
     default in the worst direction: ``{"left_at": None}`` — the obvious
@@ -225,32 +292,32 @@ def build_filter_condition(
         value (Any): The value to compare against.
 
     Returns:
-        ColumnElement[bool] | None: The condition, or ``None`` to skip.
+        ColumnElement[bool] | None: The condition, or ``None`` to skip —
+            only for ``None`` on an operator that cannot express it, or an
+            ill-formed ``between`` value.
+
+    Raises:
+        UnknownFilterKeyException: When the column (the part before
+            ``__``) is not an SQL-expressible attribute of ``model``, or
+            the suffix is not in :data:`FILTER_OPERATORS`.
 
     Notes:
         ``isnull`` is handled first, because it legitimately carries a
         boolean that may be ``False`` — and ``{"col__isnull": False}``
         must stay ``IS NOT NULL`` rather than being read as "no filter".
     """
-    if "__" in field and field.rpartition("__")[2] == "isnull":
-        base = field.rpartition("__")[0]
-        column = getattr(model, base, None)
-        if column is None:
-            return None
-        return cast(
-            "ColumnElement[bool]",
-            column.is_(None) if value else column.isnot(None),
-        )
-
     condition: Any
-    if "__" in field:
-        base, _, op = field.rpartition("__")
-        op_column = getattr(model, base, None)
-        if op_column is None:
-            return None
+    column, op = resolve_filter_key(model, field)
+    if op is not None:
+        if op == "isnull":
+            return cast(
+                "ColumnElement[bool]",
+                column.is_(None) if value else column.isnot(None),
+            )
         if value is None:
             if op == "ne":
-                return cast("ColumnElement[bool]", op_column.isnot(None))
+                return cast("ColumnElement[bool]", column.isnot(None))
+            base = field.rpartition("__")[0]
             warnings.warn(
                 f"filter {field!r} was given None, which has no meaning for "
                 f"the {op!r} operator, so the condition is dropped and the "
@@ -261,13 +328,10 @@ def build_filter_condition(
                 stacklevel=3,
             )
             return None
-        condition = _suffix_condition(op_column, op, value)
+        condition = _suffix_condition(column, op, value)
         if condition is None:
             return None
     else:
-        column = getattr(model, field, None)
-        if column is None:
-            return None
         if value is None:
             return cast("ColumnElement[bool]", column.is_(None))
         if field == "name" and isinstance(value, str):
@@ -440,11 +504,13 @@ class Q:
         ``None`` on a bare column is ``col IS NULL`` and on ``__ne`` is
         ``col IS NOT NULL``.
 
-        What is skipped is an unknown column, an unknown operator, and
-        a ``None`` given to an operator that cannot express it
-        (``__gt``, ``__between``, ``__in`` and friends) — the last of
-        those emits :class:`DroppedFilterWarning` naming the key. A
-        node whose conditions all resolve to nothing returns ``None``.
+        An unknown column or an unknown operator raises
+        :class:`UnknownFilterKeyException` — on ``~Q(usr_id=1)`` a dropped
+        condition would otherwise have negated nothing. What is still
+        skipped is a ``None`` given to an operator that cannot express it
+        (``__gt``, ``__between``, ``__in`` and friends), with a
+        :class:`DroppedFilterWarning` naming the key. A node whose
+        conditions all resolve to nothing returns ``None``.
 
         Args:
             model (type[Any]): The model class to bind columns to.
@@ -452,6 +518,10 @@ class Q:
         Returns:
             ColumnElement[bool] | None: The combined clause, or ``None``
             when the node carries no usable condition.
+
+        Raises:
+            UnknownFilterKeyException: When a condition names a column
+                ``model`` does not have, or an unknown operator.
         """
         clauses: list[ColumnElement[bool]] = []
         for field, value in self.conditions.items():
@@ -483,9 +553,11 @@ hand-written ``and_`` — flow into ``list`` / ``paginate`` /
 
 __all__: list[str] = [
     "COMPARISON_OPS",
+    "FILTER_OPERATORS",
     "F",
     "Q",
     "WhereClause",
     "build_filter_condition",
     "escape_like",
+    "resolve_filter_key",
 ]

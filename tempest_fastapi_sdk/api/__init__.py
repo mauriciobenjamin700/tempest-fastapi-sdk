@@ -10,6 +10,9 @@ from tempest_fastapi_sdk.api.cookies import (
     set_cookie as set_cookie,
 )
 from tempest_fastapi_sdk.api.dependencies import (
+    key_by_body_field as key_by_body_field,
+)
+from tempest_fastapi_sdk.api.dependencies import (
     make_bearer_token_dependency as make_bearer_token_dependency,
 )
 from tempest_fastapi_sdk.api.dependencies import (
@@ -17,6 +20,9 @@ from tempest_fastapi_sdk.api.dependencies import (
 )
 from tempest_fastapi_sdk.api.dependencies import (
     make_permission_dependency as make_permission_dependency,
+)
+from tempest_fastapi_sdk.api.dependencies import (
+    make_rate_limit_dependency as make_rate_limit_dependency,
 )
 from tempest_fastapi_sdk.api.dependencies import (
     make_role_dependency as make_role_dependency,
@@ -274,10 +280,16 @@ from tempest_fastapi_sdk.api.routers import (
     HealthCheck as HealthCheck,
 )
 from tempest_fastapi_sdk.api.routers import (
+    LogReadResult as LogReadResult,
+)
+from tempest_fastapi_sdk.api.routers import (
     LogSource as LogSource,
 )
 from tempest_fastapi_sdk.api.routers import (
     PrometheusMiddleware as PrometheusMiddleware,
+)
+from tempest_fastapi_sdk.api.routers import (
+    clear_log_files as clear_log_files,
 )
 from tempest_fastapi_sdk.api.routers import (
     make_health_router as make_health_router,
@@ -293,6 +305,9 @@ from tempest_fastapi_sdk.api.routers import (
 )
 from tempest_fastapi_sdk.api.routers import (
     make_tool_spec_router as make_tool_spec_router,
+)
+from tempest_fastapi_sdk.api.routers import (
+    read_log_entries as read_log_entries,
 )
 from tempest_fastapi_sdk.api.routers import (
     render_entries_json as render_entries_json,
@@ -374,6 +389,7 @@ __all__: list[str] = [
     "HoneypotBanMiddleware",
     "IdempotencyMiddleware",
     "IdempotencyStore",
+    "LogReadResult",
     "LogSource",
     "MemoryBanStore",
     "MemoryIdempotencyStore",
@@ -419,12 +435,14 @@ __all__: list[str] = [
     "app_exception_handler",
     "apply_cors",
     "clear_cookie",
+    "clear_log_files",
     "declared_raises",
     "describe_validation_envelope",
     "error_responses",
     "generate_csrf_token",
     "generate_oauth_state",
     "instrument_sqlalchemy_engine",
+    "key_by_body_field",
     "key_by_header",
     "key_by_ip",
     "key_by_jwt_claim",
@@ -440,6 +458,7 @@ __all__: list[str] = [
     "make_permission_dependency",
     "make_prometheus_registry",
     "make_prometheus_router",
+    "make_rate_limit_dependency",
     "make_role_dependency",
     "make_signed_path_dependency",
     "make_spa_router",
@@ -450,6 +469,7 @@ __all__: list[str] = [
     "plan_by_header",
     "plan_by_jwt_claim",
     "raises",
+    "read_log_entries",
     "redact_database_errors",
     "register_exception_handlers",
     "render_entries_json",

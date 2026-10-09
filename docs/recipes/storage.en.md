@@ -20,29 +20,77 @@ The `minio` package is lazy-loaded — it only imports when `AsyncMinIOClient` i
 ```python
 from tempest_fastapi_sdk import (
     BaseAppSettings,
-    MinIOSettings,
     ServerSettings,
+    StorageSettings,
 )
 
 
 class Settings(
     ServerSettings,
-    MinIOSettings,
+    StorageSettings,
     BaseAppSettings,
 ):
-    """Service settings — inherits MinIO defaults."""
+    """Service settings — inherits the storage defaults (local MinIO)."""
 ```
 
 `.env`:
 
 ```bash
-MINIO_ENDPOINT=minio.internal:9000
-MINIO_ACCESS_KEY=...
-MINIO_SECRET_KEY=...
-MINIO_SECURE=true
-MINIO_REGION=us-east-1
-MINIO_DEFAULT_BUCKET=uploads
+STORAGE_ENDPOINT=minio.internal:9000
+STORAGE_ACCESS_KEY=...
+STORAGE_SECRET_KEY=...
+STORAGE_SECURE=true
+STORAGE_REGION=us-east-1
+STORAGE_DEFAULT_BUCKET=uploads
 ```
+
+The mixin talks to **any** S3-compatible storage (AWS S3, MinIO, R2, B2,
+Wasabi, Spaces) — the `MinIO` in `AsyncMinIOClient` is the library the client
+uses, not a requirement on the server. That is why the variables are named
+`STORAGE_*`.
+
+### Coming from `MinIOSettings`
+
+Until now the mixin was called `MinIOSettings` and the variables were
+`MINIO_*`. Nothing breaks on the switch:
+
+- **The old variables keep working.** Each field reads `STORAGE_X` first and
+  falls back to `MINIO_X` when the new one is not set — in the environment and
+  in the `.env`.
+- **`MinIOSettings` stays importable**, as a deprecated subclass of
+  `StorageSettings`: composing or instantiating it emits `DeprecationWarning`,
+  and the `settings.MINIO_*` attributes keep answering.
+- **`minio_kwargs()` still exists** and returns the same dict as
+  `storage_kwargs()`.
+
+| Old variable | New variable |
+| --- | --- |
+| `MINIO_ENDPOINT` | `STORAGE_ENDPOINT` |
+| `MINIO_ACCESS_KEY` | `STORAGE_ACCESS_KEY` |
+| `MINIO_SECRET_KEY` | `STORAGE_SECRET_KEY` |
+| `MINIO_SECURE` | `STORAGE_SECURE` |
+| `MINIO_REGION` | `STORAGE_REGION` |
+| `MINIO_DEFAULT_BUCKET` | `STORAGE_DEFAULT_BUCKET` |
+| `MINIO_PUBLIC_ENDPOINT` | `STORAGE_PUBLIC_ENDPOINT` |
+| `MINIO_PUBLIC_SECURE` | `STORAGE_PUBLIC_SECURE` |
+
+!!! warning "Both names with different values stop the boot"
+    With `STORAGE_ENDPOINT=minio:9000` in the environment and a forgotten
+    `MINIO_ENDPOINT=localhost:9000` in the `.env`, building the settings raises
+    `SettingsError` naming the pair (`STORAGE_ENDPOINT and MINIO_ENDPOINT`),
+    without printing any value. Without this check `AliasChoices` would keep
+    the new name silently and the old one would look configured. Both names
+    with the **same** value are accepted, for the migration window. Remove the
+    old name to fix it.
+
+    This also applies if you regenerate only the `docker-compose.yaml` with
+    `tempest`: the generated block now writes `STORAGE_ENDPOINT`, and a
+    different `MINIO_ENDPOINT` in the `.env` the container reads is refused.
+
+!!! tip "In production"
+    With [`EnvironmentSettings`](system-checks.md#production-guard-environmentsettings)
+    and `ENV=production`, the boot refuses the default `minioadmin` keys,
+    `STORAGE_SECURE=false` and an explicit `STORAGE_PUBLIC_SECURE=false`.
 
 ## Wiring into `create_app()`
 
@@ -56,10 +104,10 @@ from tempest_fastapi_sdk import AsyncMinIOClient
 from src.core.settings import settings
 
 
-# settings.minio_kwargs() maps MINIO_* and STORAGE_ACCEL_* -> endpoint,
+# settings.storage_kwargs() maps the STORAGE_* fields -> endpoint,
 # access_key, secret_key, default_bucket, secure, region, public_endpoint,
 # public_secure, accel_redirect and accel_prefix: nothing to repeat by hand.
-storage = AsyncMinIOClient(**settings.minio_kwargs())
+storage = AsyncMinIOClient(**settings.storage_kwargs())
 
 
 @asynccontextmanager
@@ -211,12 +259,12 @@ only ever sees the backend's domain.
 #### Switch it by configuration
 
 Both modes come out of **the same route**. `serve_object` picks according to
-what the client got in its constructor, and `MinIOSettings` maps two new
+what the client got in its constructor, and `StorageSettings` maps two new
 variables:
 
 ```bash
 # .env
-MINIO_ENDPOINT=bucket:9000          # INTERNAL endpoint: the SDK signs against it
+STORAGE_ENDPOINT=bucket:9000          # INTERNAL endpoint: the SDK signs against it
 STORAGE_ACCEL_REDIRECT=true         # false (default) = proxy through the app
 STORAGE_ACCEL_PREFIX=/_bucket/      # nginx's internal location
 ```
@@ -229,7 +277,7 @@ from tempest_fastapi_sdk import AsyncMinIOClient, guess_media_type
 from src.core.settings import settings
 
 router = APIRouter()
-storage = AsyncMinIOClient(**settings.minio_kwargs())
+storage = AsyncMinIOClient(**settings.storage_kwargs())
 
 
 @router.get("/files/{key:path}")
@@ -263,7 +311,7 @@ With `STORAGE_ACCEL_REDIRECT=false`, it is the previous section's
     `storage.accel_redirect_response(key, internal_prefix="/_bucket/",
     expires=timedelta(minutes=5), filename=..., media_type=...,
     as_attachment=False, cache_control=...)`. It **never** uses
-    `MINIO_PUBLIC_ENDPOINT`: the URL is signed against `MINIO_ENDPOINT`, the
+    `STORAGE_PUBLIC_ENDPOINT`: the URL is signed against `STORAGE_ENDPOINT`, the
     host nginx is going to call.
 
 #### The nginx block
@@ -304,7 +352,7 @@ Each line of `location /_bucket/` has a reason:
   Without it, the prefix goes along, MinIO reads `_bucket` as the bucket name
   and answers `400 InvalidBucketName`.
 - **`proxy_set_header Host bucket:9000;`** — the SigV4 signature covers
-  `Host`. It has to be the `MINIO_ENDPOINT` that signed the URL. The danger is
+  `Host`. It has to be the `STORAGE_ENDPOINT` that signed the URL. The danger is
   inheritance: a `proxy_set_header` defined at `server` level (the
   `Host $host` nearly every config has for the app) is inherited by any
   `location` that defines none. The bucket then receives
@@ -600,21 +648,21 @@ async def get_download_url(key: str) -> dict[str, str]:
 
 Common production shape: the backend talks to MinIO over a **fast private network** (`servus-storage:9000`, no TLS), but the **browser** can't reach that host — it needs a **public HTTPS** host. If you sign the presigned URL with the internal endpoint, the link carries `servus-storage:9000` and the browser can't open it.
 
-Fix: `MINIO_PUBLIC_ENDPOINT`. Presigned URLs (`presigned_get_url` / `presigned_put_url`) are then **signed against the public host**, while **every server→MinIO operation keeps using the internal endpoint**.
+Fix: `STORAGE_PUBLIC_ENDPOINT`. Presigned URLs (`presigned_get_url` / `presigned_put_url`) are then **signed against the public host**, while **every server→MinIO operation keeps using the internal endpoint**.
 
 ```bash
 # .env
-MINIO_ENDPOINT=servus-storage:9000            # internal Docker network (ops)
-MINIO_SECURE=false
-MINIO_PUBLIC_ENDPOINT=https://storage.example.com   # browser (presigned)
-# MINIO_PUBLIC_SECURE=true                     # optional; https:// already implies it
+STORAGE_ENDPOINT=servus-storage:9000            # internal Docker network (ops)
+STORAGE_SECURE=false
+STORAGE_PUBLIC_ENDPOINT=https://storage.example.com   # browser (presigned)
+# STORAGE_PUBLIC_SECURE=true                     # optional; https:// already implies it
 ```
 
 !!! info "Why two clients, not a host replace"
     A presigned URL is SigV4-signed including the `Host` header. Rewriting the host **after** signing invalidates the signature. So the SDK keeps a second `minio.Minio` (same credentials) whose only job is to **sign** against the public host — the internal `AsyncMinIOClient.client` still does put/get/stat/ensure_bucket over the private network.
 
-!!! tip "Without `MINIO_PUBLIC_ENDPOINT`"
-    Unchanged behaviour: presigned URLs are signed with `MINIO_ENDPOINT` (single-endpoint mode). The split is fully opt-in.
+!!! tip "Without `STORAGE_PUBLIC_ENDPOINT`"
+    Unchanged behaviour: presigned URLs are signed with `STORAGE_ENDPOINT` (single-endpoint mode). The split is fully opt-in.
 
 The public host's proxy must route to the **MinIO S3 API (port 9000)** over TLS and forward the correct `Host` (the signature validates it).
 
@@ -667,7 +715,7 @@ from tempest_fastapi_sdk import AsyncMinIOClient, PutObjectItem
 
 from src.core.settings import settings
 
-storage = AsyncMinIOClient(**settings.minio_kwargs())
+storage = AsyncMinIOClient(**settings.storage_kwargs())
 
 # In your code these come off disk (`Path(...).read_bytes()`) or from the upload.
 thumb_a = b"\xff\xd8\xff\xdb bytes of the first JPEG"
@@ -708,6 +756,40 @@ async def list_files(prefix: str = "") -> list[str]:
 
 `list_objects` returns `[]` when nothing matches — aligned with the SDK convention ("no match is not an error").
 
+### Batch delete
+
+`remove_objects` deletes many keys with S3's `DeleteObjects` — one request
+per 1000 keys instead of one `DELETE` per object — and returns only what the
+store refused:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import AsyncMinIOClient
+
+storage = AsyncMinIOClient(
+    endpoint="localhost:9000",
+    access_key="minioadmin",
+    secret_key="minioadmin",
+    default_bucket="uploads",
+)
+
+
+async def main() -> None:
+    """Delete everything under a prefix."""
+    keys = await storage.list_objects("tmp/")
+    errors = await storage.remove_objects(keys)
+    for error in errors:
+        print(error.key, error.code, error.message)
+
+
+asyncio.run(main())
+```
+
+An empty list is success. To delete **a data subject's files** (LGPD), use
+`SubjectObjectStorage.delete_all` — see
+[Data subject export and erasure](subject-data.md).
+
 ### Copy / move
 
 ```python
@@ -717,7 +799,7 @@ from tempest_fastapi_sdk import AsyncMinIOClient
 
 from src.core.settings import settings
 
-storage = AsyncMinIOClient(**settings.minio_kwargs())
+storage = AsyncMinIOClient(**settings.storage_kwargs())
 
 
 async def main() -> None:
@@ -749,7 +831,7 @@ asyncio.run(main())
 - To have nginx deliver instead of the app, `serve_object` with
   `STORAGE_ACCEL_REDIRECT=true` answers `X-Accel-Redirect`; the internal
   `location` needs `proxy_pass` with a trailing slash, `Host` equal to
-  `MINIO_ENDPOINT` and the security `add_header` lines — nginx does not
+  `STORAGE_ENDPOINT` and the security `add_header` lines — nginx does not
   forward the app's.
 - For the browser to open a private file through **the app's route**, sign
   the path in the mapper with `sign_path` and guard the route with

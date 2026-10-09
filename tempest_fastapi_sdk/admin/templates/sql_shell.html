@@ -66,8 +66,8 @@
   </div>
 
   {% if result.columns %}
-  <div class="tempest-admin-sql__grid-wrap">
-    <table class="tempest-admin-sql__grid">
+  <div class="tempest-admin-table-wrap tempest-admin-sql__grid-wrap">
+    <table class="tempest-admin-list__table tempest-admin-sql__grid">
       <thead>
         <tr>
           {% for column in result.columns %}

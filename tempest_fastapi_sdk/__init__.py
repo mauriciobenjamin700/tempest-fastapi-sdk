@@ -160,6 +160,9 @@ from tempest_fastapi_sdk.api import (
     IdempotencyStore as IdempotencyStore,
 )
 from tempest_fastapi_sdk.api import (
+    LogReadResult as LogReadResult,
+)
+from tempest_fastapi_sdk.api import (
     LogSource as LogSource,
 )
 from tempest_fastapi_sdk.api import (
@@ -289,6 +292,9 @@ from tempest_fastapi_sdk.api import (
     clear_cookie as clear_cookie,
 )
 from tempest_fastapi_sdk.api import (
+    clear_log_files as clear_log_files,
+)
+from tempest_fastapi_sdk.api import (
     declared_raises as declared_raises,
 )
 from tempest_fastapi_sdk.api import (
@@ -305,6 +311,9 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.api import (
     instrument_sqlalchemy_engine as instrument_sqlalchemy_engine,
+)
+from tempest_fastapi_sdk.api import (
+    key_by_body_field as key_by_body_field,
 )
 from tempest_fastapi_sdk.api import (
     key_by_header as key_by_header,
@@ -352,6 +361,9 @@ from tempest_fastapi_sdk.api import (
     make_prometheus_router as make_prometheus_router,
 )
 from tempest_fastapi_sdk.api import (
+    make_rate_limit_dependency as make_rate_limit_dependency,
+)
+from tempest_fastapi_sdk.api import (
     make_role_dependency as make_role_dependency,
 )
 from tempest_fastapi_sdk.api import (
@@ -380,6 +392,9 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.api import (
     raises as raises,
+)
+from tempest_fastapi_sdk.api import (
+    read_log_entries as read_log_entries,
 )
 from tempest_fastapi_sdk.api import (
     redact_database_errors as redact_database_errors,
@@ -702,13 +717,31 @@ from tempest_fastapi_sdk.checks import (
 from tempest_fastapi_sdk.controllers import BaseController as BaseController
 from tempest_fastapi_sdk.controllers import Controller as Controller
 from tempest_fastapi_sdk.core import (
+    BEARER_PATTERN as BEARER_PATTERN,
+)
+from tempest_fastapi_sdk.core import (
     DEFAULT_LOG_BACKUP_COUNT as DEFAULT_LOG_BACKUP_COUNT,
 )
 from tempest_fastapi_sdk.core import (
     DEFAULT_LOG_MAX_BYTES as DEFAULT_LOG_MAX_BYTES,
 )
 from tempest_fastapi_sdk.core import (
+    DEFAULT_REDACT_KEYS as DEFAULT_REDACT_KEYS,
+)
+from tempest_fastapi_sdk.core import (
+    DEFAULT_REDACT_PATTERNS as DEFAULT_REDACT_PATTERNS,
+)
+from tempest_fastapi_sdk.core import (
+    EMAIL_PATTERN as EMAIL_PATTERN,
+)
+from tempest_fastapi_sdk.core import (
     HTTP_500_MARKER as HTTP_500_MARKER,
+)
+from tempest_fastapi_sdk.core import (
+    JWT_PATTERN as JWT_PATTERN,
+)
+from tempest_fastapi_sdk.core import (
+    REDACTED as REDACTED,
 )
 from tempest_fastapi_sdk.core import (
     BaseIntEnum as BaseIntEnum,
@@ -721,6 +754,12 @@ from tempest_fastapi_sdk.core import (
 )
 from tempest_fastapi_sdk.core import (
     Locale as Locale,
+)
+from tempest_fastapi_sdk.core import (
+    RedactionFilter as RedactionFilter,
+)
+from tempest_fastapi_sdk.core import (
+    RedactionPolicy as RedactionPolicy,
 )
 from tempest_fastapi_sdk.core import (
     clear_request_id as clear_request_id,
@@ -765,6 +804,9 @@ from tempest_fastapi_sdk.db import (
     DEFAULT_AUDIT_REDACT as DEFAULT_AUDIT_REDACT,
 )
 from tempest_fastapi_sdk.db import (
+    DEFAULT_REVISION_HOOKS as DEFAULT_REVISION_HOOKS,
+)
+from tempest_fastapi_sdk.db import (
     DEFAULT_SYNC_WATERMARK_LAG as DEFAULT_SYNC_WATERMARK_LAG,
 )
 from tempest_fastapi_sdk.db import (
@@ -793,6 +835,12 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     AuditMixin as AuditMixin,
+)
+from tempest_fastapi_sdk.db import (
+    AuditRequestContext as AuditRequestContext,
+)
+from tempest_fastapi_sdk.db import (
+    AuditRequestMixin as AuditRequestMixin,
 )
 from tempest_fastapi_sdk.db import (
     BackupToolMissingError as BackupToolMissingError,
@@ -847,6 +895,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     DestructiveMigrationError as DestructiveMigrationError,
+)
+from tempest_fastapi_sdk.db import (
+    DropEnumTypeOp as DropEnumTypeOp,
 )
 from tempest_fastapi_sdk.db import (
     DroppedFilterWarning as DroppedFilterWarning,
@@ -948,6 +999,9 @@ from tempest_fastapi_sdk.db import (
     diff_snapshots as diff_snapshots,
 )
 from tempest_fastapi_sdk.db import (
+    drop_enum_types_on_downgrade as drop_enum_types_on_downgrade,
+)
+from tempest_fastapi_sdk.db import (
     enable_sqlite_foreign_keys as enable_sqlite_foreign_keys,
 )
 from tempest_fastapi_sdk.db import (
@@ -1026,6 +1080,9 @@ from tempest_fastapi_sdk.db import (
     require_sqlite_foreign_keys_off as require_sqlite_foreign_keys_off,
 )
 from tempest_fastapi_sdk.db import (
+    run_alembic_env as run_alembic_env,
+)
+from tempest_fastapi_sdk.db import (
     savepoint as savepoint,
 )
 from tempest_fastapi_sdk.db import (
@@ -1099,6 +1156,9 @@ from tempest_fastapi_sdk.exceptions import (
 )
 from tempest_fastapi_sdk.exceptions import (
     UnauthorizedException as UnauthorizedException,
+)
+from tempest_fastapi_sdk.exceptions import (
+    UnknownFilterKeyException as UnknownFilterKeyException,
 )
 from tempest_fastapi_sdk.exceptions import (
     ValidationException as ValidationException,
@@ -1323,6 +1383,9 @@ from tempest_fastapi_sdk.settings import (
     EmailSettings as EmailSettings,
 )
 from tempest_fastapi_sdk.settings import (
+    EnvironmentSettings as EnvironmentSettings,
+)
+from tempest_fastapi_sdk.settings import (
     FirebaseSettings as FirebaseSettings,
 )
 from tempest_fastapi_sdk.settings import (
@@ -1371,6 +1434,9 @@ from tempest_fastapi_sdk.settings import (
     SessionSettings as SessionSettings,
 )
 from tempest_fastapi_sdk.settings import (
+    StorageSettings as StorageSettings,
+)
+from tempest_fastapi_sdk.settings import (
     TaskIQSettings as TaskIQSettings,
 )
 from tempest_fastapi_sdk.settings import (
@@ -1405,6 +1471,9 @@ from tempest_fastapi_sdk.sse import (
 )
 from tempest_fastapi_sdk.storage import (
     AsyncMinIOClient as AsyncMinIOClient,
+)
+from tempest_fastapi_sdk.storage import (
+    ObjectDeleteError as ObjectDeleteError,
 )
 from tempest_fastapi_sdk.storage import (
     ObjectStat as ObjectStat,
@@ -1875,7 +1944,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
 )
 
-__version__: str = "0.308.0"
+__version__: str = "0.309.0"
 
 from tempest_fastapi_sdk.api import (
     OAuthAudienceVerifier as OAuthAudienceVerifier,
@@ -1970,6 +2039,7 @@ __all__: list[str] = [
     "AUDIT_REDACTED",
     "AUTH_DEFAULT_DISPLAY_NAME",
     "BASE_COLUMN_ORDER",
+    "BEARER_PATTERN",
     "CENT",
     "CEP",
     "CEP_PATTERN",
@@ -1995,17 +2065,22 @@ __all__: list[str] = [
     "DEFAULT_MAX_CURSOR_LIMIT",
     "DEFAULT_MAX_PAGE_SIZE",
     "DEFAULT_MAX_RECORDS_PER_FILE",
+    "DEFAULT_REDACT_KEYS",
+    "DEFAULT_REDACT_PATTERNS",
+    "DEFAULT_REVISION_HOOKS",
     "DEFAULT_SPA_CONTENT_SECURITY_POLICY",
     "DEFAULT_SPA_SECURITY_HEADERS",
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "DEFAULT_SYNC_WATERMARK_LAG",
     "DOCX_MEDIA_TYPE",
+    "EMAIL_PATTERN",
     "ENUM_TYPE_SUFFIX",
     "HEARTBEAT_TIMEOUT_CODE",
     "HTTP_500_MARKER",
     "HUNDRED",
     "IDEMPOTENCY_HEADER",
     "INLINE_SAFE_MEDIA_TYPES",
+    "JWT_PATTERN",
     "LEGACY_NAMING_CONVENTION",
     "LOCALE_QUERY_PARAM",
     "MFA_TOKEN_TYPE",
@@ -2013,6 +2088,7 @@ __all__: list[str] = [
     "PHONE_BR_PATTERN",
     "PPTX_MEDIA_TYPE",
     "RAISES_ATTRIBUTE",
+    "REDACTED",
     "REFRESH_TOKEN_TYPE",
     "REQUEST_ID_HEADER",
     "SIGNUP_PROTECTED_FIELDS",
@@ -2052,6 +2128,8 @@ __all__: list[str] = [
     "AttemptThrottle",
     "AuditAction",
     "AuditMixin",
+    "AuditRequestContext",
+    "AuditRequestMixin",
     "AuthCookieConfig",
     "AuthExceptions",
     "AuthSettings",
@@ -2119,6 +2197,7 @@ __all__: list[str] = [
     "DeviceService",
     "DiskMetrics",
     "DownloadUtils",
+    "DropEnumTypeOp",
     "DroppedFilterWarning",
     "EmailChangeConfirmSchema",
     "EmailChangeRequestSchema",
@@ -2131,6 +2210,7 @@ __all__: list[str] = [
     "EnumColumnRef",
     "EnumTypeState",
     "EnvFeatureFlagBackend",
+    "EnvironmentSettings",
     "ErrorEnvelopeMiddleware",
     "ErrorResponseSchema",
     "EventStream",
@@ -2198,6 +2278,7 @@ __all__: list[str] = [
     "LocaleColumnMixin",
     "LocaleField",
     "LogEntrySchema",
+    "LogReadResult",
     "LogSettings",
     "LogSource",
     "LogUtils",
@@ -2260,6 +2341,7 @@ __all__: list[str] = [
     "OAuthUser",
     "OIDCProvider",
     "OIDCTokenVerifier",
+    "ObjectDeleteError",
     "ObjectStat",
     "OpenPixSettings",
     "OrderByNotAllowedException",
@@ -2318,6 +2400,8 @@ __all__: list[str] = [
     "RatingField",
     "RatioField",
     "RedactedError",
+    "RedactionFilter",
+    "RedactionPolicy",
     "RedisBanStore",
     "RedisFeatureFlagBackend",
     "RedisIdempotencyStore",
@@ -2366,6 +2450,7 @@ __all__: list[str] = [
     "StateBR",
     "StaticCredentialAuthenticator",
     "StaticRateLimitPolicy",
+    "StorageSettings",
     "StoredFileServiceMixin",
     "SupportsPresign",
     "SupportsUpload",
@@ -2389,6 +2474,7 @@ __all__: list[str] = [
     "TooManyRequestsException",
     "UFField",
     "UnauthorizedException",
+    "UnknownFilterKeyException",
     "UnsupportedBackupBackendError",
     "UploadResult",
     "UploadSettings",
@@ -2443,6 +2529,7 @@ __all__: list[str] = [
     "city_choices",
     "clear_auth_cookies",
     "clear_cookie",
+    "clear_log_files",
     "clear_request_id",
     "coerce_flag",
     "compose_hooks",
@@ -2460,6 +2547,7 @@ __all__: list[str] = [
     "detect_pix_key_type",
     "diff_snapshots",
     "discover_models",
+    "drop_enum_types_on_downgrade",
     "enable_sqlite_foreign_keys",
     "enable_sqlite_savepoints",
     "enable_sqlite_wal",
@@ -2503,6 +2591,7 @@ __all__: list[str] = [
     "is_valid_phone_br",
     "is_valid_pix_key",
     "is_valid_uf",
+    "key_by_body_field",
     "key_by_header",
     "key_by_ip",
     "key_by_jwt_claim",
@@ -2529,6 +2618,7 @@ __all__: list[str] = [
     "make_prometheus_registry",
     "make_prometheus_router",
     "make_push_router",
+    "make_rate_limit_dependency",
     "make_role_dependency",
     "make_session_dependency",
     "make_session_router",
@@ -2573,6 +2663,7 @@ __all__: list[str] = [
     "plan_by_jwt_claim",
     "quantize_money",
     "raises",
+    "read_log_entries",
     "read_upload_capped",
     "redact_database_errors",
     "redact_snapshot",
@@ -2595,6 +2686,7 @@ __all__: list[str] = [
     "requires",
     "resolve_locale",
     "revoke_user_refresh_tokens",
+    "run_alembic_env",
     "run_checks",
     "run_server",
     "run_system_checks",

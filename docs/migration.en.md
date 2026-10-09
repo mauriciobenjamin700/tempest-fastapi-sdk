@@ -2,6 +2,79 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.309.0 — other behaviour changes
+
+Besides the `filters` key refusal (next section), 0.309.0 brings these
+changes that may need an adjustment:
+
+1. **`JobStore.reclaim_stale()` returns `ReclaimedJobs`, not `int`.**
+   `if await store.reclaim_stale():` keeps working (`__len__`); code that
+   compares against a number or adds the return reads `.total` instead.
+2. **`make_auth_router` throttles login by default**: 5 wrong passwords for
+   the same email within 900 s become `429`. Pass `login_throttle=False` to
+   turn it off, or your own `AttemptThrottle` for another budget.
+3. **`make_prometheus_router(dependencies=[require_x_token])` is refused** at
+   construction with `TypeError`. Use
+   `dependencies=[make_token_dependency(secret)]`, which reads the `X-Token`
+   header.
+4. **Readiness has a timeout**: every `make_health_router` check gets
+   `timeout=3.0` s by default and running past it counts as a failure. A
+   slower check needs a larger `timeout=` (or `None`).
+5. **`MinIOSettings` is deprecated** in favour of `StorageSettings`
+   (`STORAGE_*`). The `MINIO_*` names are still read; setting both names of a
+   pair to **different** values fails the boot. When you regenerate
+   `docker-compose.yaml` (which now writes `STORAGE_*`), drop the old
+   `MINIO_*` from `.env` or keep both at the same value.
+6. **`test_session` / `test_database` are deprecated**: switch to
+   `make_test_session` / `make_test_database` (same signature).
+
+## 0.309.0 — an unknown `filters` key raises
+
+A `filters` key that is not a column of the model (`{"usr_id": 1}`) or a
+suffix that is not an operator (`{"user_id__bogus": 1}`) used to be ignored
+in silence — and with only the wrong key in the dict, `delete_many` and
+`bulk_update` changed the whole table. Now every method that takes
+`filters`, `Q`, `BaseService`, `BaseController` and `TenantScopedRepository`
+raise `UnknownFilterKeyException` (422, `code="UNKNOWN_FILTER_KEY"`,
+`details={"filter": <key>}`) before any statement runs.
+
+Who is affected: anyone who passed, on purpose or unknowingly, a key the
+model cannot resolve. The most common case is a filter schema with a
+non-column field (`search`, `include_archived`) forwarded whole through
+`get_conditions()`: a request that fills that field now answers 422.
+
+### What to do
+
+1. **Non-column schema field**: take it out of the dict before forwarding
+   and handle it in the service.
+
+    ```python
+    from typing import Any
+
+    from tempest_fastapi_sdk import BasePaginationFilterSchema
+
+
+    class TicketFilterSchema(BasePaginationFilterSchema):
+        status: str | None = None
+        search: str | None = None
+
+
+    def split_conditions(f: TicketFilterSchema) -> tuple[dict[str, Any], str | None]:
+        """Separate the column filters from the free-text term."""
+        conditions = f.get_conditions()
+        search = conditions.pop("search", None)
+        return conditions, search
+    ```
+
+2. **Admin**: `list_filter`, `search_fields` and every `Lens`' `filters` are
+   now checked when the `AdminModel` is built. A wrong name becomes a
+   `ValueError` at boot (`AdminModel lens 'Open' filters on keys Ticket
+   cannot resolve: stauts`); fix the name.
+
+3. **Code that wanted "everything"** on purpose through a nonexistent key:
+   pass `{}` (or no key), which still adds no condition. `bulk_update` keeps
+   refusing an empty mapping.
+
 ## 0.308.0 — the `tempest` CLI became the `[cli]` extra
 
 `tempest-cli` left the base package's dependencies, together with `typer` and

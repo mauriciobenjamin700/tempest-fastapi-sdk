@@ -194,7 +194,13 @@ app.include_router(
 - `GET  /admin/m/{slug}/{identity}` — detail view com botões Edit/Delete.
 - `GET/POST /admin/m/{slug}/{identity}/edit` — **editar** registro (quando `can_edit`).
 - `POST /admin/m/{slug}/{identity}/delete` — **excluir** registro (quando `can_delete`).
-- `GET  /admin/static/{path}` — assets CSS/HTMX embutidos.
+- `GET  /admin/static/{path}` — o CSS embutido do painel (`admin.css`).
+- `GET  /admin/_ssr/htmx.js` — o HTMX empacotado no SDK (`ssr/_static/htmx.min.js`), servido sem sessão porque a página de login também o carrega. O caminho segue o `prefix`: com `prefix="/backoffice"`, vira `/backoffice/_ssr/htmx.js`.
+
+!!! info "O painel não depende de terceiro para renderizar"
+    Nenhuma página do admin busca script, folha de estilo ou fonte fora da sua aplicação: o `<script>` do HTMX aponta para `{prefix}/_ssr/htmx.js`, que serve byte a byte o arquivo empacotado no wheel. A exceção é o que você mesmo configurar: `favicon_url`, `logo_url` e `custom_css_url` do `AdminTheme` são carregados de onde apontarem. Indisponibilidade ou adulteração de uma CDN não alcança a origem do admin, que é a mesma do `POST /admin/sql` e do CRUD. Funciona só com o extra `[admin]` — o `[ssr]` não é necessário.
+
+    **CSP continua sendo um passo à parte.** O admin não envia `Content-Security-Policy`, e ainda usa `<style>` inline (o tema do `AdminTheme`), um `<script>` inline na list view, um `onclick` no autocomplete de FK e atributos `style=` nas barras de progresso. Servir o HTMX localmente tira a dependência de terceiro, mas não basta para uma política `script-src 'self'` sem `'unsafe-inline'`: com ela, essas partes param de funcionar.
 
 !!! info "Escrita (CRUD) + permissões"
     Create/edit/delete são controlados por flags no `AdminModel`: `can_create` / `can_edit` / `can_delete` (todas `True` por default; uma view desativada responde `404`). Todo POST de escrita carrega o token CSRF da sessão, validado no servidor (`403` em mismatch). Os **widgets de campo** são derivados do tipo da coluna — texto / textarea (strings longas) / number / checkbox / `datetime-local` / date / `select` para enums — com validação de obrigatórios + erros por campo re-renderizados no formulário. Escrita que o **banco** recusa (unique, FK, `NOT NULL`) volta pelo mesmo caminho: `400` com a mensagem do repositório (`Conflict creating <Model>`) no topo do form, nunca `500`.

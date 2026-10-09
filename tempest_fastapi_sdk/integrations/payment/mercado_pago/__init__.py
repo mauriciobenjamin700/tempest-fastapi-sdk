@@ -111,6 +111,9 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
     DEFAULT_SIGNATURE_VERSIONS as DEFAULT_SIGNATURE_VERSIONS,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
+    MERCADO_PAGO_DATA_ID_QUERY as MERCADO_PAGO_DATA_ID_QUERY,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
     MERCADO_PAGO_REQUEST_ID_HEADER as MERCADO_PAGO_REQUEST_ID_HEADER,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
@@ -124,6 +127,9 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
     build_manifest as build_manifest,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
+    make_mercado_pago_webhook_dependency as make_mercado_pago_webhook_dependency,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
     parse_signature_header as parse_signature_header,
@@ -142,6 +148,7 @@ if TYPE_CHECKING:
 _HAND_WRITTEN: tuple[str, ...] = (
     "DEFAULT_BASE_URL",
     "DEFAULT_SIGNATURE_VERSIONS",
+    "MERCADO_PAGO_DATA_ID_QUERY",
     "MERCADO_PAGO_REQUEST_ID_HEADER",
     "MERCADO_PAGO_SIGNATURE_HEADER",
     "PAYMENTS_PATH",
@@ -156,6 +163,7 @@ _HAND_WRITTEN: tuple[str, ...] = (
     "format_amount",
     "from_cents",
     "get_pix_payment",
+    "make_mercado_pago_webhook_dependency",
     "parse_pix_payment",
     "parse_signature_header",
     "sign_manifest",
@@ -243,6 +251,7 @@ def __dir__() -> list[str]:
 __all__: list[str] = [
     "DEFAULT_BASE_URL",
     "DEFAULT_SIGNATURE_VERSIONS",
+    "MERCADO_PAGO_DATA_ID_QUERY",
     "MERCADO_PAGO_REQUEST_ID_HEADER",
     "MERCADO_PAGO_SIGNATURE_HEADER",
     "PAYMENTS_PATH",
@@ -581,6 +590,7 @@ __all__: list[str] = [
     "format_amount",
     "from_cents",
     "get_pix_payment",
+    "make_mercado_pago_webhook_dependency",
     "parse_pix_payment",
     "parse_signature_header",
     "sign_manifest",

@@ -493,6 +493,7 @@ come back here to plug in each capability as you need it.
 | **[CLI »](cli.md)** | `tempest new` / `db` (+ `seed`) / `user` / `secrets rotate` / `lint` / `fix` / `format` / `type` / `test` / `check` |
 | **[Comments + ratings »](reviews.md)** | `ReviewService`, `make_reviews_router`, 0–5 star scores with aggregation, threaded comments |
 | **[Computer vision (ONNX) »](vision.md)** | `Detector` / `Classifier` / `Segmenter` + prediction schemas |
+| **[Data subject export and erasure (LGPD) »](subject-data.md)** | `SubjectGraph` (the tables a subject's `DELETE` reaches by cascade, derived from `MetaData`), `export` without secret columns, `violations` + `assert_subject_graph_valid` as a CI guard, `SubjectObjectStorage` (per-subject prefix, batch `delete_all`) |
 | **[Database »](database.md)** | `BaseModel`, `AsyncDatabaseManager`, `BaseRepository` (CRUD + filters + bulk), offset/cursor pagination, mixins, `AlembicHelper`, `SlowQueryLogger` |
 | **[Downloads »](downloads.md)** | `DownloadUtils` — `file_response`, `stream`, `build_content_disposition`, path-traversal safe |
 | **[Enum columns (safe on both databases) »](enum-columns.md)** | `Mapped[MyEnum]` storing the `value`, native `ENUM` on PostgreSQL and a `CHECK` on SQLite, `enum_column()`, `op.replace_enum` + `sync_enum_types` for the migration autogenerate cannot see |
@@ -514,7 +515,7 @@ come back here to plug in each capability as you need it.
 | **[Jobs (long work with status) »](jobs.md)** | `BaseJobModel` + `JobStore` — one row per unit of work, `claim`/`succeed`/`fail`, `watch` for the screen, `reclaim_stale`; cooperative cancellation (`cancel` + `run_cancellable`); `StageMap` for several stages on the record itself |
 | **[Logging »](logging.md)** | `LogUtils`, structured JSON logging, request-ID propagation |
 | **[Management commands (tempest &lt;cmd&gt;) »](management-commands.md)** | register your own commands on the project's `tempest` CLI |
-| **[Mercado Pago (Pix, cards, boleto) »](mercado-pago.md)** | `MercadoPagoClient` (143 operations generated from the provider's own OpenAPI), `to_cents` / `from_cents` (reais, not cents), `verify_signature`, `MercadoPagoSettings`, `x_idempotency_key` per call |
+| **[Mercado Pago (Pix, cards, boleto) »](mercado-pago.md)** | `MercadoPagoClient` (143 operations generated from the provider's own OpenAPI), `to_cents` / `from_cents` (reais, not cents), `make_mercado_pago_webhook_dependency`, `MercadoPagoSettings`, `x_idempotency_key` per call |
 | **[Metrics »](metrics.md)** | `MetricsUtils` — CPU / RAM / disk / GPU snapshots |
 | **[MFA (TOTP / 2FA) »](mfa.md)** | `MFAMixin`, `TOTPHelper`, enroll/confirm/verify/disable endpoints on `make_auth_router`, recovery codes |
 | **[Migrations »](migrations.md)** | `AlembicHelper.sync_schema()` / `adopt()` / `base_revision()` / `has_existing_schema()` — how the schema comes into being, adopting a pre-Alembic database, and why `create_tables()` + `stamp("head")` breaks silently |
@@ -528,7 +529,7 @@ come back here to plug in each capability as you need it.
 | **[OpenPix (subscriptions and plans) »](openpix-subscriptions.md)** | `SubscriptionPayload`, `RECURRENT` vs `PIX_RECURRING` (Pix Automático), lifecycle and instalments, the plan that lives in your database |
 | **[PDF generation »](pdf.md)** | `PdfRenderer`, five bundled documents (receipt/quote/report/contract/voucher) with Pydantic schemas, `make_pdf_router`, `tempest pdf render`, asset policy |
 | **[Permission guards (@requires) »](permission-guards.md)** | `@requires` plus `(user) -> user` guards (with an optional `meta: dict[str, Any]` via `meta=` / `include_args=`), `TempestPermissionError`, `GuardContractWarning`, `tempest permissions --check` |
-| **[Pix protocol (one contract, many providers) »](pix-protocol.md)** | `PixProvider` (Protocol: `create` / `get` / `cancel` / `parse_webhook`), `PixCharge` / `PixChargeRequest` / `PixPayer` field by field, canonical `PaymentStatus` beside the raw `provider_status`, the six `PixEventType`s, `OpenPixPixProvider` — plus how to write your own adapter, with an in-memory fake for testing without a network |
+| **[Pix protocol (one contract, many providers) »](pix-protocol.md)** | `PixProvider` (Protocol: `create` / `get` / `cancel` / `parse_webhook`), `PixCharge` / `PixChargeRequest` / `PixPayer` field by field, canonical `PaymentStatus` beside the raw `provider_status`, the six `PixEventType`s, `OpenPixPixProvider`, `confirm_pix_payment` + `claim_once` to release an order only after reading the charge back, and only once — plus how to write your own adapter, with an in-memory fake for testing without a network |
 | **[Push (web + mobile) »](push.md)** | `DeviceService`, `PushDispatcher`, `WebPushTransport` / `FCMTransport`, `BaseDeviceTokenModel`, `make_push_router` — one call for browsers and phones, with unified pruning of dead devices |
 | **[Query plans (EXPLAIN) »](query-plans.md)** | `explain_queries()` captures the block and explains on exit, `EXPLAIN ANALYZE` on PostgreSQL / `EXPLAIN QUERY PLAN` on SQLite, writes never re-executed, `report.slowest` |
 | **[Queue & Tasks »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, transactional outbox |
@@ -550,7 +551,7 @@ come back here to plug in each capability as you need it.
 | **[Stripe (cards + subscriptions) »](stripe.md)** | `StripeClient`, `stripe_http_client`, `to_minor_units` / `from_minor_units`, `make_stripe_webhook_dependency`, `StripeEvent` — form-encoded writes, idempotency by default, zero-decimal currencies |
 | **[System checks (check-config) »](system-checks.md)** | `run_system_checks`, `@check`, `CheckMessage`, `tempest check-config` — validate settings before serving |
 | **[tempestweb frontend + SDK »](tempestweb-frontend.md)** | tempestweb frontend calling the SDK backend: `tempestweb.native.http`, `Idempotency-Key` + `IdempotencyMiddleware`, retry, same origin vs CORS |
-| **[Testing »](testing.md)** | `test_session`, `test_database`, in-memory SQLite, pytest fixtures |
+| **[Testing »](testing.md)** | `make_test_session`, `make_test_database`, in-memory SQLite, pytest fixtures |
 | **[Text search (LIKE + full-text) »](text-search.md)** | portable `search()` (escaped ILIKE, `AND` across words), `full_text_search()` with `websearch_to_tsquery` + `ts_rank` on PostgreSQL, `TextSearchLanguage` / `TextSearchWeight` / `TokenMatch`, conditions that feed `where=` |
 | **[Transactional email »](email.md)** | `EmailUtils` — SMTP, text/HTML body, attachments, Jinja2 templates |
 | **[Transactional outbox »](outbox.md)** | `BaseOutboxModel`, `OutboxRelay`, `save_with_outbox` — reliable events |

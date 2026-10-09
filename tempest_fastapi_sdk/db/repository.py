@@ -26,7 +26,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
-from tempest_fastapi_sdk.db.audit import BaseAuditLogModel, snapshot_model
+from tempest_fastapi_sdk.db.audit import (
+    AuditRequestContext,
+    BaseAuditLogModel,
+    snapshot_model,
+)
 from tempest_fastapi_sdk.db.explain import ExplainReport, explain_queries
 from tempest_fastapi_sdk.db.expressions import (
     F,
@@ -217,8 +221,26 @@ class BaseRepository(Generic[ModelType]):
     any mapped column still sorts — the historical behavior — but the
     refusal no longer publishes the mapper's column list.
 
-    The default filter logic supports equality on every column plus
-    the following conventions:
+    Every ``filters`` argument is a mapping from column name to the value
+    that column must hold, and the pairs are ANDed:
+    ``{"user_id": 1234, "is_active": True}`` selects the rows where
+    ``user_id = 1234`` **and** ``is_active`` is true. A plain value is
+    exact equality — on a string column that includes case, so
+    ``{"status": "OPEN"}`` does not match ``"open"`` (measured on SQLite).
+    An empty mapping adds no condition.
+
+    A key the model has no SQL-expressible attribute for — a typo such as
+    ``{"usr_id": 1234}``, or an unknown operator suffix such as
+    ``{"user_id__bogus": 1}`` — raises
+    :class:`~tempest_fastapi_sdk.UnknownFilterKeyException` (422,
+    ``code="UNKNOWN_FILTER_KEY"``, ``details={"filter": <key>}``) before
+    any statement runs, in every method that takes ``filters`` and in
+    :class:`Q`. Until #465 the key was dropped in silence: with only a
+    misspelled key, :meth:`list` and :meth:`count` matched every row, and
+    :meth:`bulk_update` and :meth:`delete_many` changed every row in the
+    table.
+
+    On top of equality, the following conventions apply:
 
     * ``name`` (string) → case-insensitive ``ILIKE %value%`` search.
     * ``bool`` values → ``.is_(value)`` (correct SQL boolean check).
@@ -660,7 +682,12 @@ class BaseRepository(Generic[ModelType]):
         Args:
             query: The SQLAlchemy ``Select``, ``Delete`` or
                 ``Update`` to mutate.
-            filters (dict[str, Any]): The column-value pairs to apply.
+            filters (dict[str, Any]): Column name to the value it must match, ANDed
+                together, e.g. ``{"user_id": 1234, "is_active": True}``. A list is
+                ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>`` key
+                applies an operator (``{"price__gte": 10}``); every convention is
+                listed on this class. An unknown column or operator raises
+                ``UnknownFilterKeyException``.
 
         Returns:
             The same query with the additional ``WHERE`` clauses.
@@ -945,7 +972,12 @@ class BaseRepository(Generic[ModelType]):
         """Return the single record matching ``filters``.
 
         Args:
-            filters (dict[str, Any]): The column-value pairs.
+            filters (dict[str, Any]): Column name to the value it must match, ANDed
+                together, e.g. ``{"user_id": 1234, "is_active": True}``. A list is
+                ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>`` key
+                applies an operator (``{"price__gte": 10}``); every convention is
+                listed on this class. An unknown column or operator raises
+                ``UnknownFilterKeyException``.
             for_update (bool): Whether to acquire a row-level lock
                 (``SELECT ... FOR UPDATE``). Defaults to ``False``.
             with_ (list[str] | None): Relationship paths to eager-load
@@ -985,7 +1017,12 @@ class BaseRepository(Generic[ModelType]):
         Unlike :meth:`get`, never raises when nothing matches.
 
         Args:
-            filters (dict[str, Any]): The column-value pairs.
+            filters (dict[str, Any]): Column name to the value it must match, ANDed
+                together, e.g. ``{"user_id": 1234, "is_active": True}``. A list is
+                ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>`` key
+                applies an operator (``{"price__gte": 10}``); every convention is
+                listed on this class. An unknown column or operator raises
+                ``UnknownFilterKeyException``.
             for_update (bool): Whether to acquire a row-level lock.
             with_ (list[str] | None): Relationship paths to eager-load;
                 see :meth:`get`.
@@ -1084,7 +1121,12 @@ class BaseRepository(Generic[ModelType]):
         fully loaded.
 
         Args:
-            filters (dict[str, Any]): The filter conditions.
+            filters (dict[str, Any]): Column name to the value it must match, ANDed
+                together, e.g. ``{"user_id": 1234, "is_active": True}``. A list is
+                ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>`` key
+                applies an operator (``{"price__gte": 10}``); every convention is
+                listed on this class. An unknown column or operator raises
+                ``UnknownFilterKeyException``.
             where (WhereClause | None): A :class:`Q` condition tree ANDed with
                 ``filters``.
 
@@ -1113,8 +1155,13 @@ class BaseRepository(Generic[ModelType]):
         to exclude yet) it behaves exactly like :meth:`exists`.
 
         Args:
-            filters (dict[str, Any]): The column-value pairs to match
-                (e.g. ``{"phone": "+5511..."}``).
+            filters (dict[str, Any]): Column name to the value it must match, ANDed
+                together, e.g. ``{"user_id": 1234, "is_active": True}``. A list is
+                ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>`` key
+                applies an operator (``{"price__gte": 10}``); every convention is
+                listed on this class. An unknown column or operator raises
+                ``UnknownFilterKeyException``. For this check the usual shape is one
+                unique column, ``{"phone": "+5511..."}``.
             exclude_id (UUID | None): The primary key to exclude from the
                 match (typically the row being updated). ``None`` excludes
                 nothing.
@@ -1139,7 +1186,12 @@ class BaseRepository(Generic[ModelType]):
         need one row but want to control ordering.
 
         Args:
-            filters (dict[str, Any] | None): The filter conditions.
+            filters (dict[str, Any] | None): Column name to the value it must match,
+                ANDed together, e.g. ``{"user_id": 1234, "is_active": True}``. A
+                list is ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>``
+                key applies an operator (``{"price__gte": 10}``); every convention
+                is listed on this class. An unknown column or operator
+                raises ``UnknownFilterKeyException``.
             order_by: A SQLAlchemy column expression to order by.
                 ``None`` keeps insertion order.
             ascending (bool): Whether to order ascending.
@@ -1181,7 +1233,12 @@ class BaseRepository(Generic[ModelType]):
         with the SDK collection convention.
 
         Args:
-            filters (dict[str, Any] | None): The filter conditions.
+            filters (dict[str, Any] | None): Column name to the value it must match,
+                ANDed together, e.g. ``{"user_id": 1234, "is_active": True}``. A
+                list is ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>``
+                key applies an operator (``{"price__gte": 10}``); every convention
+                is listed on this class. An unknown column or operator
+                raises ``UnknownFilterKeyException``.
             order_by: A SQLAlchemy column expression (e.g.
                 ``MyModel.name``). ``None`` keeps insertion order.
             ascending (bool): Whether to order ascending. Ignored
@@ -1246,8 +1303,12 @@ class BaseRepository(Generic[ModelType]):
                 as mapped attributes (``UserModel.name``).
             token_match (TokenMatch): Whether every token must match
                 (default) or any single one is enough.
-            filters (dict[str, Any] | None): Extra conditions ANDed with
-                the search, using the usual filter conventions.
+            filters (dict[str, Any] | None): Extra conditions ANDed with the search,
+                column name to value, e.g. ``{"user_id": 1234, "is_active": True}``.
+                A list is ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>``
+                key applies an operator (``{"price__gte": 10}``); every convention
+                is listed on this class. An unknown column or operator
+                raises ``UnknownFilterKeyException``.
             where (WhereClause | None): A further condition ANDed in.
             order_by: A SQLAlchemy column expression. ``None`` keeps
                 insertion order — this layer has no relevance score to
@@ -1317,7 +1378,12 @@ class BaseRepository(Generic[ModelType]):
                 term in a body is this parameter.
             token_match (TokenMatch): Used only on the fallback path;
                 PostgreSQL already treats separate words as ``AND``.
-            filters (dict[str, Any] | None): Extra conditions ANDed in.
+            filters (dict[str, Any] | None): Extra conditions ANDed in, column name
+                to value, e.g. ``{"user_id": 1234, "is_active": True}``. A list is
+                ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>`` key
+                applies an operator (``{"price__gte": 10}``); every convention is
+                listed on this class. An unknown column or operator raises
+                ``UnknownFilterKeyException``.
             where (WhereClause | None): A further condition ANDed in.
             order_by: An explicit ordering that **replaces** the
                 relevance ranking. Leave it ``None`` to rank.
@@ -1389,7 +1455,12 @@ class BaseRepository(Generic[ModelType]):
             rank (ColumnElement[Any] | None): Relevance expression to
                 order by, descending. ``None`` leaves ordering to
                 ``order_by``.
-            filters (dict[str, Any] | None): Extra filter conditions.
+            filters (dict[str, Any] | None): Extra conditions ANDed in, column name
+                to value, e.g. ``{"user_id": 1234, "is_active": True}``. A list is
+                ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>`` key
+                applies an operator (``{"price__gte": 10}``); every convention is
+                listed on this class. An unknown column or operator raises
+                ``UnknownFilterKeyException``.
             where (WhereClause | None): A further condition ANDed in.
             order_by: Explicit ordering, applied when ``rank`` is
                 ``None``.
@@ -1436,7 +1507,12 @@ class BaseRepository(Generic[ModelType]):
         queries with joins still report a correct total.
 
         Args:
-            filters (dict[str, Any] | None): Filter conditions.
+            filters (dict[str, Any] | None): Column name to the value it must match,
+                ANDed together, e.g. ``{"user_id": 1234, "is_active": True}``. A
+                list is ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>``
+                key applies an operator (``{"price__gte": 10}``); every convention
+                is listed on this class. An unknown column or operator
+                raises ``UnknownFilterKeyException``.
             order_by (str | None): Column name to order by, or
                 ``None`` to fall back to ``created_at desc``.
             page (int): The 1-indexed page number.
@@ -1521,7 +1597,12 @@ class BaseRepository(Generic[ModelType]):
         which is what keeps the predicate valid on PostgreSQL.
 
         Args:
-            filters (dict[str, Any] | None): Filter conditions.
+            filters (dict[str, Any] | None): Column name to the value it must match,
+                ANDed together, e.g. ``{"user_id": 1234, "is_active": True}``. A
+                list is ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>``
+                key applies an operator (``{"price__gte": 10}``); every convention
+                is listed on this class. An unknown column or operator
+                raises ``UnknownFilterKeyException``.
             cursor (str | None): Opaque cursor from the previous page;
                 ``None`` requests the first page.
             limit (int): Maximum items to return in this page.
@@ -1660,11 +1741,14 @@ class BaseRepository(Generic[ModelType]):
             since (datetime | None): Only rows whose ``order_by`` column
                 is strictly greater than this are returned. ``None``
                 returns every row (initial full sync).
-            filters (dict[str, Any] | None): Extra equality/operator
-                filters applied on top — typically the tenant/owner
-                scope, e.g. ``{"user_id": user_id}``. Do NOT pass an
-                owner-less filter set: this method never scopes by
-                itself.
+            filters (dict[str, Any] | None): Extra conditions applied on top, column
+                name to value, e.g. ``{"user_id": 1234, "is_active": True}``. A list
+                is ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>`` key
+                applies an operator (``{"price__gte": 10}``); every convention is
+                listed on this class. An unknown column or operator raises
+                ``UnknownFilterKeyException``. Typically the tenant/owner scope,
+                ``{"user_id": user_id}``. Do NOT pass an owner-less filter set: this
+                method never scopes by itself.
             cursor (str | None): Opaque cursor from the previous page;
                 ``None`` requests the first page.
             limit (int): Maximum items per page. Defaults to ``50``.
@@ -1860,6 +1944,11 @@ class BaseRepository(Generic[ModelType]):
         *,
         actor: str | None = None,
         context: dict[str, Any] | None = None,
+        event: str | None = None,
+        ip: str | None = None,
+        user_agent: str | None = None,
+        request_context: AuditRequestContext | None = None,
+        actor_id: UUID | None = None,
     ) -> ModelType:
         """Insert ``model`` and a ``create`` audit row in one transaction.
 
@@ -1872,13 +1961,26 @@ class BaseRepository(Generic[ModelType]):
             actor (str | None): Who performed the create (user id,
                 e-mail, ``"system"``, ...).
             context (dict[str, Any] | None): Extra metadata (request id,
-                ip, reason, ...).
+                reason, ...).
+            event (str | None): Domain event name (``"consent.granted"``);
+                needs :class:`~tempest_fastapi_sdk.db.audit.AuditRequestMixin`
+                on the audit model.
+            ip (str | None): Client IP; needs ``AuditRequestMixin``.
+            user_agent (str | None): User agent; needs ``AuditRequestMixin``.
+            request_context (AuditRequestContext | None): ``ip`` and
+                ``user_agent`` from
+                :meth:`~tempest_fastapi_sdk.db.audit.AuditRequestContext.from_request`;
+                mutually exclusive with both.
+            actor_id (UUID | None): The author's id, for an audit model
+                that declares an ``actor_id`` column.
 
         Returns:
             ModelType: The instance after ``refresh``.
 
         Raises:
             RuntimeError: When no ``audit_model`` was configured.
+            ValueError: When an origin value targets a column the audit
+                model does not have (the transaction is rolled back).
             ConflictException: On integrity violations (the whole
                 transaction is rolled back).
         """
@@ -1886,7 +1988,16 @@ class BaseRepository(Generic[ModelType]):
         try:
             self.session.add(model)
             await self.session.flush()
-            entry = audit_model.for_create(model, actor=actor, context=context)
+            entry = audit_model.for_create(
+                model,
+                actor=actor,
+                context=context,
+                event=event,
+                ip=ip,
+                user_agent=user_agent,
+                request_context=request_context,
+                actor_id=actor_id,
+            )
             self.session.add(entry)
             await self._commit()
             await self.session.refresh(model)
@@ -1912,6 +2023,11 @@ class BaseRepository(Generic[ModelType]):
         *,
         actor: str | None = None,
         context: dict[str, Any] | None = None,
+        event: str | None = None,
+        ip: str | None = None,
+        user_agent: str | None = None,
+        request_context: AuditRequestContext | None = None,
+        actor_id: UUID | None = None,
     ) -> ModelType:
         """Persist mutations on ``model`` and an ``update`` audit row.
 
@@ -1924,12 +2040,25 @@ class BaseRepository(Generic[ModelType]):
             before (dict[str, Any]): The pre-mutation snapshot.
             actor (str | None): Who performed the update.
             context (dict[str, Any] | None): Extra metadata.
+            event (str | None): Domain event name (``"consent.granted"``);
+                needs :class:`~tempest_fastapi_sdk.db.audit.AuditRequestMixin`
+                on the audit model.
+            ip (str | None): Client IP; needs ``AuditRequestMixin``.
+            user_agent (str | None): User agent; needs ``AuditRequestMixin``.
+            request_context (AuditRequestContext | None): ``ip`` and
+                ``user_agent`` from
+                :meth:`~tempest_fastapi_sdk.db.audit.AuditRequestContext.from_request`;
+                mutually exclusive with both.
+            actor_id (UUID | None): The author's id, for an audit model
+                that declares an ``actor_id`` column.
 
         Returns:
             ModelType: The instance after ``refresh``.
 
         Raises:
             RuntimeError: When no ``audit_model`` was configured.
+            ValueError: When an origin value targets a column the audit
+                model does not have.
             ConflictException: On integrity violations.
         """
         audit_model = self._require_audit_model()
@@ -1939,6 +2068,11 @@ class BaseRepository(Generic[ModelType]):
                 before,
                 actor=actor,
                 context=context,
+                event=event,
+                ip=ip,
+                user_agent=user_agent,
+                request_context=request_context,
+                actor_id=actor_id,
             )
             self.session.add(entry)
             await self._commit()
@@ -1964,6 +2098,11 @@ class BaseRepository(Generic[ModelType]):
         *,
         actor: str | None = None,
         context: dict[str, Any] | None = None,
+        event: str | None = None,
+        ip: str | None = None,
+        user_agent: str | None = None,
+        request_context: AuditRequestContext | None = None,
+        actor_id: UUID | None = None,
     ) -> None:
         """Delete ``model`` and write a ``delete`` audit row in one tx.
 
@@ -1974,16 +2113,105 @@ class BaseRepository(Generic[ModelType]):
             model (ModelType): The session-attached instance to delete.
             actor (str | None): Who performed the delete.
             context (dict[str, Any] | None): Extra metadata.
+            event (str | None): Domain event name (``"consent.granted"``);
+                needs :class:`~tempest_fastapi_sdk.db.audit.AuditRequestMixin`
+                on the audit model.
+            ip (str | None): Client IP; needs ``AuditRequestMixin``.
+            user_agent (str | None): User agent; needs ``AuditRequestMixin``.
+            request_context (AuditRequestContext | None): ``ip`` and
+                ``user_agent`` from
+                :meth:`~tempest_fastapi_sdk.db.audit.AuditRequestContext.from_request`;
+                mutually exclusive with both.
+            actor_id (UUID | None): The author's id, for an audit model
+                that declares an ``actor_id`` column.
 
         Raises:
             RuntimeError: When no ``audit_model`` was configured.
+            ValueError: When an origin value targets a column the audit
+                model does not have.
         """
         audit_model = self._require_audit_model()
         try:
-            entry = audit_model.for_delete(model, actor=actor, context=context)
+            entry = audit_model.for_delete(
+                model,
+                actor=actor,
+                context=context,
+                event=event,
+                ip=ip,
+                user_agent=user_agent,
+                request_context=request_context,
+                actor_id=actor_id,
+            )
             await self.session.delete(model)
             self.session.add(entry)
             await self._commit()
+        except Exception:
+            await self._rollback_after_failure()
+            raise
+
+    async def record_event(
+        self,
+        event: str,
+        *,
+        subject: ModelType | None = None,
+        changes: dict[str, Any] | None = None,
+        actor: str | None = None,
+        context: dict[str, Any] | None = None,
+        ip: str | None = None,
+        user_agent: str | None = None,
+        request_context: AuditRequestContext | None = None,
+        actor_id: UUID | None = None,
+    ) -> BaseAuditLogModel:
+        """Write an ``event`` audit row — a domain event with no mutation.
+
+        For facts that change no row of this repository's model ("consent
+        granted", "export requested", "login failed"). ``entity`` is this
+        repository's model name; ``entity_id`` is ``subject``'s id, or
+        ``""`` when the event concerns no single row. Commits like the
+        other write methods — or only flushes inside an open
+        :meth:`transaction` block / with ``autocommit=False``.
+
+        Args:
+            event (str): Domain event name (``"export.requested"``).
+            subject (ModelType | None): The row the event concerns.
+            changes (dict[str, Any] | None): Optional payload; stored as
+                ``{}`` when ``None``.
+            actor (str | None): Who triggered the event.
+            context (dict[str, Any] | None): Extra metadata.
+            ip (str | None): Client IP.
+            user_agent (str | None): User agent.
+            request_context (AuditRequestContext | None): ``ip`` and
+                ``user_agent`` together; mutually exclusive with both.
+            actor_id (UUID | None): The author's id, for an audit model
+                that declares an ``actor_id`` column.
+
+        Returns:
+            BaseAuditLogModel: The persisted audit row.
+
+        Raises:
+            RuntimeError: When no ``audit_model`` was configured.
+            ValueError: When the audit model lacks
+                :class:`~tempest_fastapi_sdk.db.audit.AuditRequestMixin`
+                (the event name has nowhere to go), or another origin value
+                targets a missing column.
+        """
+        audit_model = self._require_audit_model()
+        entry = audit_model.for_event(
+            event,
+            entity=self.model.__name__,
+            entity_id="" if subject is None else str(getattr(subject, "id", "")),
+            changes=changes,
+            actor=actor,
+            context=context,
+            ip=ip,
+            user_agent=user_agent,
+            request_context=request_context,
+            actor_id=actor_id,
+        )
+        try:
+            self.session.add(entry)
+            await self._commit()
+            return entry
         except Exception:
             await self._rollback_after_failure()
             raise
@@ -2072,9 +2300,15 @@ class BaseRepository(Generic[ModelType]):
         1}`` decrements atomically, with no read-modify-write race.
 
         Args:
-            filters (dict[str, Any]): Filter conditions identifying
-                the rows to mutate. An empty mapping is rejected to
-                prevent accidental table-wide updates.
+            filters (dict[str, Any]): Column name to the value identifying the rows
+                to mutate, ANDed together, e.g.
+                ``{"user_id": 1234, "is_active": True}``. A list is ``IN``, ``None``
+                is ``IS NULL``, and a ``<column>__<op>`` key applies an operator
+                (``{"price__gte": 10}``); every convention is listed on this class.
+                An unknown column or operator raises ``UnknownFilterKeyException``
+                before the statement runs, so a typo never widens the write.
+                An empty mapping is rejected to prevent accidental table-wide
+                updates.
             values (dict[str, Any]): Column-value pairs to set on the
                 matching rows. An :class:`F` value is resolved to a SQL
                 expression against this repository's model.
@@ -2128,9 +2362,13 @@ class BaseRepository(Generic[ModelType]):
         ``RETURNING`` needs PostgreSQL, or SQLite 3.35 or newer.
 
         Args:
-            filters (dict[str, Any]): Filter conditions identifying the
-                rows to mutate, with the same conventions as :meth:`list`
-                (``column__gte``, ``None`` as ``IS NULL``, ...).
+            filters (dict[str, Any]): Column name to the value identifying the rows
+                to mutate, ANDed together, e.g.
+                ``{"user_id": 1234, "is_active": True}``. A list is ``IN``, ``None``
+                is ``IS NULL``, and a ``<column>__<op>`` key applies an operator
+                (``{"price__gte": 10}``); every convention is listed on this class.
+                An unknown column or operator raises ``UnknownFilterKeyException``
+                before the statement runs, so a typo never widens the write.
             values (dict[str, Any]): Column-value pairs to set. An
                 :class:`F` value is resolved against this repository's
                 model, so the new value is computed by the database.
@@ -2186,7 +2424,13 @@ class BaseRepository(Generic[ModelType]):
         read before the commit, because a cursor cannot be read after it.
 
         Args:
-            filters (dict[str, Any]): Filter conditions.
+            filters (dict[str, Any]): Column name to the value it must match, ANDed
+                together, e.g. ``{"user_id": 1234, "is_active": True}``. A list is
+                ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>`` key
+                applies an operator (``{"price__gte": 10}``); every convention is
+                listed on this class. An unknown column or operator raises
+                ``UnknownFilterKeyException`` before the statement runs, so a typo
+                never widens the write.
             values (dict[str, Any]): Column-value pairs; :class:`F` values
                 are resolved against this repository's model.
             where (WhereClause | None): Extra condition, or ``None``.
@@ -2423,8 +2667,13 @@ class BaseRepository(Generic[ModelType]):
         intentional.
 
         Args:
-            filters (dict[str, Any]): The conditions identifying the
-                rows to delete.
+            filters (dict[str, Any]): Column name to the value identifying the rows
+                to delete, ANDed together, e.g.
+                ``{"user_id": 1234, "is_active": True}``. A list is ``IN``, ``None``
+                is ``IS NULL``, and a ``<column>__<op>`` key applies an operator
+                (``{"price__gte": 10}``); every convention is listed on this class.
+                An unknown column or operator raises ``UnknownFilterKeyException``
+                before the statement runs, so a typo never widens the write.
             where (WhereClause | None): A :class:`Q` condition tree ANDed with
                 ``filters``.
 
@@ -2506,7 +2755,12 @@ class BaseRepository(Generic[ModelType]):
         """Count the rows matching ``filters``.
 
         Args:
-            filters (dict[str, Any] | None): The filter conditions.
+            filters (dict[str, Any] | None): Column name to the value it must match,
+                ANDed together, e.g. ``{"user_id": 1234, "is_active": True}``. A
+                list is ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>``
+                key applies an operator (``{"price__gte": 10}``); every convention
+                is listed on this class. An unknown column or operator
+                raises ``UnknownFilterKeyException``.
             where (WhereClause | None): A :class:`Q` condition tree ANDed with
                 ``filters``.
 

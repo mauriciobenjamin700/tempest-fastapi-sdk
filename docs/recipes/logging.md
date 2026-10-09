@@ -400,6 +400,101 @@ register_exception_handlers(app, redact_exception=redact)
     SQLAlchemy em volta dele) sai da cadeia, porque o texto dela é a mesma
     frase do servidor. O tipo dela continua no resumo, como `driver=...`.
 
+## Dado pessoal fora de toda linha — `redact=True`
+
+Serviço que trata dado pessoal precisa garantir que nenhuma linha de log
+carregue e-mail, token ou código de verificação — inclusive as que você não
+escreveu: o traceback que cita o payload, o `extra=` passado inteiro, a lib
+de terceiro que loga o header `Authorization`. `configure_logging` resolve
+isso num parâmetro:
+
+```python
+import logging
+
+from tempest_fastapi_sdk import RedactionPolicy, configure_logging
+
+policy: RedactionPolicy = RedactionPolicy(extra_keys={"cpf"})
+configure_logging(file_output=False, redact=policy)
+log: logging.Logger = logging.getLogger("app.signup")
+
+log.info(
+    "código enviado para %s",
+    "ana@example.com",
+    extra={
+        "cpf": "123.456.789-00",
+        "access_token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln",
+        "plan": "free",
+    },
+)
+try:
+    raise ValueError("usuário ana@example.com não encontrado")
+except ValueError:
+    log.exception("falha no login")
+```
+
+Saída (capturada rodando o exemplo, Python 3.11):
+
+```text
+{"timestamp": "...", "level": "INFO", "logger": "app.signup", "message": "código enviado para [REDACTED]", "cpf": "[REDACTED]", "access_token": "[REDACTED]", "plan": "free"}
+{"timestamp": "...", "level": "ERROR", "logger": "app.signup", "message": "falha no login", "exception": "Traceback (most recent call last):\n  File \"...\", line ..., in <module>\nValueError: usuário [REDACTED] não encontrado"}
+```
+
+`redact=True` usa a política default; `RedactionPolicy(...)` acrescenta o que
+é do seu domínio. O que ela faz:
+
+- **Chave sensível** — todo campo de `extra=`, e toda chave de dict passado
+  como argumento ou aninhado num valor, cujo nome contém um fragmento de
+  `DEFAULT_REDACT_KEYS` (`password`, `token`, `secret`, `authorization`,
+  `cookie`, `email`, `api_key`, ...) tem o valor trocado inteiro. O match é
+  por **substring**, em minúsculas e com `-` virando `_`: `access_token`,
+  `X-API-Key` e `Set-Cookie` casam.
+- **Padrão de texto** — mensagem, argumentos, traceback (`exc_text`),
+  `stack_info` e todo valor string passam por e-mail, `Bearer <credencial>`
+  e JWT, mais `chave=valor` / `chave: valor` quando a chave é sensível
+  (`?token=abc` na query, `{'password': 'x'}` citado numa exceção).
+- **`extra_keys` / `extra_patterns`** acrescentam sem repetir os defaults;
+  `keys` / `patterns` substituem. Padrão em string é compilado na
+  construção.
+
+O filtro vai em **todo handler** que `configure_logging` instala — stdout e
+os seis arquivos —, e não no logger: filtro de logger não roda para registro
+propagado de logger filho, filtro de handler roda. Handler que você
+pendura por conta própria (Sentry, syslog) recebe o mesmo filtro assim:
+
+```python
+import logging
+import sys
+
+from tempest_fastapi_sdk import RedactionFilter, RedactionPolicy
+
+handler: logging.Handler = logging.StreamHandler(sys.stderr)
+handler.addFilter(RedactionFilter(RedactionPolicy(extra_keys={"cpf"})))
+logging.getLogger().addHandler(handler)
+```
+
+!!! warning "O que muda no registro"
+    A redação reescreve o `LogRecord` no lugar: `msg` vira a mensagem já
+    renderizada e redigida, e `args` é limpo. Quem agrupa log pelo template
+    (`"código enviado para %s"`) passa a ver a mensagem final. E o match por
+    substring erra para o lado de esconder: `email_verified` e `token_type`
+    também saem como `[REDACTED]`.
+
+!!! info "Custo"
+    Medido com `configure_logging(file_output=False)` escrevendo em
+    `/dev/null`, 20 000 registros, melhor de 5 rodadas, Python 3.11: uma linha
+    no formato do `AccessLogMiddleware` (mensagem com 4 argumentos, 7 campos
+    de `extra=`) foi de ~13,5 µs para ~26 µs; um `logger.exception` com
+    traceback curto, de ~44 µs para ~66 µs. O registro é redigido uma vez,
+    não uma por handler. Com `redact=False` (o default) nenhum filtro é
+    instalado.
+
+O `JSONFormatter` também mudou para isso funcionar: o campo `exception` sai
+do `record.exc_text` quando um passo anterior já o renderizou — a mesma
+precedência do `logging.Formatter` da stdlib — e não do `exc_info` de novo.
+Antes, um filtro de handler que redigia o traceback era sobrescrito pelo
+texto original. Em `LogSettings`, `LOG_REDACT=true` liga a política default
+pelo `logging_kwargs()`.
+
 ## `exc_info` em todos os níveis, e o nome que o `LogRecord` não cede
 
 `debug`, `info`, `warning`, `error` e `critical` aceitam `exc_info` como
@@ -509,9 +604,11 @@ app.include_router(
 !!! warning "Segredo vazio é recusado"
     `GET /logs` expõe tracebacks e metadados de request, e `DELETE /logs`
     trunca os arquivos. Os dois exigem o header `X-Token`, comparado com
-    `token_secret` via `make_token_dependency`. Um `token_secret` vazio
-    (ou só espaço) faz o `make_logs_router` levantar `ValueError` na
-    construção: o app não sobe, em vez de subir com `/logs` aberto.
+    `token_secret` via `make_token_dependency` — ou as suas `dependencies=`
+    (ver "Atrás da sua própria auth" abaixo). Um `token_secret` vazio (ou só
+    espaço) sem `dependencies=` faz o `make_logs_router` levantar
+    `ValueError` na construção: o app não sobe, em vez de subir com `/logs`
+    aberto.
     Preencha o `TOKEN_SECRET` com `uv run tempest secrets init`.
 
     O serviço gerado pelo `tempest new` monta `/logs` só quando
@@ -616,12 +713,144 @@ paths: list[Path] = resolve_log_files("logs", "error")
 every: list[Path] = resolve_log_files("logs", "all", include_http_500=True)
 ```
 
+### Atrás da sua própria auth — `dependencies=`
+
+Serviço que já tem login próprio (Bearer JWT de admin, role, sessão) não
+precisa inventar um segredo compartilhado só para os logs. Passe a
+dependência que já protege o resto do painel em `dependencies=`, e ela vale
+para `GET` **e** `DELETE`:
+
+```python
+from fastapi import Depends, FastAPI
+
+from tempest_fastapi_sdk import (
+    JWTUtils,
+    configure_logging,
+    make_logs_router,
+    make_role_dependency,
+    register_exception_handlers,
+)
+
+configure_logging(log_dir="logs")
+
+tokens: JWTUtils = JWTUtils(secret="a-32-character-secret-for-tests!")
+require_admin = make_role_dependency(tokens, ["admin"])
+
+app: FastAPI = FastAPI()
+register_exception_handlers(app)
+app.include_router(
+    make_logs_router(log_dir="logs", dependencies=[Depends(require_admin)]),
+)
+```
+
+O que cada chamada recebe, medido com esse app:
+
+| Requisição | Resposta |
+| --- | --- |
+| sem `Authorization` | `401` (`UNAUTHORIZED`) |
+| Bearer com `roles: ["user"]` | `403` (`FORBIDDEN`) |
+| Bearer com `roles: ["admin"]` | `200`, sem `X-Token` nenhum |
+
+Cada item aceita as duas grafias, `Depends(require_admin)` ou só
+`require_admin`. O `Depends` pronto é usado como veio, não é embrulhado de
+novo.
+
+!!! info "Como `dependencies=` convive com o `X-Token`"
+    As duas peças **somam**, nunca se anulam:
+
+    - Só `dependencies=`: elas são o gate inteiro. Nenhum `X-Token` é lido, e
+      o header nem aparece no schema OpenAPI.
+    - `token_secret` **e** `dependencies=`: a requisição precisa do header
+      **e** de passar em toda dependência.
+    - Nenhuma das duas: `ValueError` na construção, como antes, a menos que
+      você passe `allow_unauthenticated=True`. Lista vazia
+      (`dependencies=[]`) não conta como gate.
+
+### Outro contrato de resposta — `read_log_entries` e `clear_log_files`
+
+O router é uma casca sobre duas funções públicas. Quando o painel precisa de
+outra forma de resposta, chame-as direto em vez de reescrever a leitura: é
+nela que mora o teto por arquivo, e um leitor feito à mão que carrega o
+arquivo inteiro funciona no diretório novo e derruba o worker no de vários
+gigabytes.
+
+As duas são síncronas (I/O de arquivo). Numa rota `async`, rode-as fora do
+event loop com `asyncio.to_thread`:
+
+```python
+import asyncio
+
+from fastapi import APIRouter, Depends, FastAPI
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk import (
+    JWTUtils,
+    LogReadResult,
+    clear_log_files,
+    make_role_dependency,
+    read_log_entries,
+)
+
+tokens: JWTUtils = JWTUtils(secret="a-32-character-secret-for-tests!")
+require_admin = make_role_dependency(tokens, ["admin"])
+
+
+class AppLogsResponseSchema(BaseModel):
+    messages: list[str]
+    truncated: bool
+
+
+router: APIRouter = APIRouter(
+    prefix="/api/admin/metrics",
+    dependencies=[Depends(require_admin)],
+)
+
+
+@router.get("/app-logs")
+async def app_logs(q: str | None = None, limit: int = 100) -> AppLogsResponseSchema:
+    result: LogReadResult = await asyncio.to_thread(
+        read_log_entries, "logs", "error", q=q
+    )
+    return AppLogsResponseSchema(
+        messages=[str(entry["message"]) for entry in result.entries[:limit]],
+        truncated=result.truncated,
+    )
+
+
+@router.delete("/app-logs")
+async def clear_app_logs() -> list[str]:
+    return await asyncio.to_thread(clear_log_files, "logs", "error")
+
+
+app: FastAPI = FastAPI()
+app.include_router(router)
+```
+
+Com um `logger.error("payment gateway timeout")` gravado, o
+`GET /api/admin/metrics/app-logs?q=timeout` de um admin respondeu:
+
+```json
+{"messages": ["payment gateway timeout"], "truncated": false}
+```
+
+e o `DELETE` respondeu `["error.log"]`.
+
+- `read_log_entries(log_dir, source="all", *, q, start, end, max_records_per_file)`
+  devolve um `LogReadResult`: `entries` já filtrados e do mais novo pro mais
+  antigo, e `truncated`, que diz se o teto cortou algum arquivo. Nada casou?
+  `entries` vem `[]`.
+- `clear_log_files(log_dir, source="all")` trunca no lugar e devolve os nomes
+  esvaziados. Em `"all"`, o `500.log` entra — a mesma regra do `DELETE /logs`.
+
 
 !!! check "Recap"
     - `configure_logging(log_dir=...)` → stdout **+** um arquivo por nível.
     - Exatidão por nível: cada arquivo só recebe a sua severidade.
     - `500.log` isola erros 500 não tratados (marcador `http_500`).
-    - `make_logs_router` serve esses arquivos paginados e autenticados.
+    - `make_logs_router` serve esses arquivos paginados e autenticados —
+      pelo `X-Token` ou pela sua própria auth em `dependencies=`.
+    - `read_log_entries` / `clear_log_files` são a leitura e a limpeza
+      sem o router, para outro contrato de resposta.
 
 ## Uma linha por request — `AccessLogMiddleware`
 
@@ -776,3 +1005,6 @@ atacante — e o log passaria a atribuir requests ao endereço que ele quis. Vej
   `on_server_error` segue recebendo a exceção original.
 - Todo nível aceita `exc_info` (`bool` ou `"auto"`); campo estruturado que
   colide com atributo do `LogRecord` é recusado na chamada, com `TypeError`.
+- Com `redact=True` (ou uma `RedactionPolicy`), todo handler redige e-mail,
+  `Bearer`, JWT e chave sensível de mensagem, `extra=`, traceback e
+  `stack_info` antes de o registro ser escrito.

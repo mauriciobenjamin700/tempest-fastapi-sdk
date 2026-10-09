@@ -1595,6 +1595,87 @@ asyncio.run(main())
     `.get_conditions()`, which returns the dict already stripped of
     `None`. The router receives the filter via `Depends()`.
 
+### An unknown key is refused
+
+A key that is not a column of the model (`{"usr_id": 1}`, a typo) or a
+suffix that is not an operator (`{"user_id__bogus": 1}`) raises
+`UnknownFilterKeyException` **before** any statement runs — in every
+method that takes `filters` (`list`, `count`, `exists`, `first`, `get`,
+`get_or_none`, `paginate`, `cursor_paginate`, `bulk_update`,
+`update_returning`, `delete_many`), in `Q`, and in the layers that only
+pass it along (`BaseService`, `BaseController`, `TenantScopedRepository`):
+
+```python
+import asyncio
+
+from sqlalchemy import String
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import Mapped, mapped_column
+from tempest_fastapi_sdk import BaseModel, BaseRepository, UnknownFilterKeyException
+
+
+class TicketModel(BaseModel):
+    __tablename__ = "tickets_unknown_key_demo"
+
+    user_id: Mapped[int] = mapped_column()
+    status: Mapped[str] = mapped_column(String(16))
+
+
+async def main() -> None:
+    """Run this example."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(TicketModel.metadata.create_all)
+    async with AsyncSession(engine) as session:
+        repo: BaseRepository[TicketModel] = BaseRepository(session, model=TicketModel)
+        for user_id in (1, 2, 3):
+            await repo.add(TicketModel(user_id=user_id, status="open"))
+        try:
+            await repo.delete_many({"usr_id": 1})
+        except UnknownFilterKeyException as exc:
+            print(exc.status_code, exc.code, exc.details)
+        try:
+            await repo.list({"user_id__bogus": 1})
+        except UnknownFilterKeyException as exc:
+            print(exc.details)
+        print(await repo.count())
+    await engine.dispose()
+
+
+asyncio.run(main())
+```
+
+Output:
+
+```text
+422 UNKNOWN_FILTER_KEY {'filter': 'usr_id'}
+{'filter': 'user_id__bogus'}
+3
+```
+
+All three rows are still there: `delete_many` deleted nothing.
+
+- `details` carries only the rejected key, never the model's column list —
+  when the dict comes from a query string, that list is a map of what to
+  probe.
+- A Python attribute with no SQL reading (a method, a `@property`, the
+  `metadata` itself) counts as unknown. A column, a `column_property` and
+  the class-level expression of a `hybrid_property` all resolve.
+- `start_in` / `end_in` remain repository sugar, not columns.
+- In the admin, `list_filter`, `search_fields` and every `Lens`' `filters`
+  are checked when the `AdminModel` is built: a typo becomes a `ValueError`
+  at boot, naming the option, instead of a 422 on the first click.
+
+!!! warning "Behavior change (#465)"
+    Up to 0.308.0 an unknown key was **silently ignored**: with only
+    `{"usr_id": 1}` in the dict, `list`/`count` returned every row and
+    `bulk_update`/`delete_many` changed the whole table. Anyone relying on
+    that — for instance a filter schema with a non-column field (`search`,
+    `include_archived`) forwarded whole through `get_conditions()` — now gets
+    a 422. Take the field out of the dict before forwarding
+    (`conditions = f.get_conditions()` then
+    `search = conditions.pop("search", None)`) and handle it in the service.
+
 ### Every paginated listing inherits the operators
 
 Because `get_conditions()` only strips the pagination keys (`page`,
@@ -2347,9 +2428,9 @@ uv run python scripts/alembic_init.py
 Creates:
 
 ```text
-alembic.ini                 # SDK-curated config (UTC, date prefix, post-write hooks)
+alembic.ini                 # SDK-curated config (UTC, date prefix, post-write hooks, prepend_sys_path)
 alembic/
-├── env.py                  # SDK template (target_metadata, compare_type, batch)
+├── env.py                  # run_alembic_env(target_metadata): hooks, compare_type, batch
 ├── script.py.mako
 └── versions/
 ```
