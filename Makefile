@@ -7,7 +7,7 @@ PACKAGE := tempest_fastapi_sdk
 PYTHON_VERSION := 3.11
 
 .DEFAULT_GOAL := help
-.PHONY: help install sync clean openpix-regen mercadopago-regen mercadopago-fetch stripe-regen stripe-fetch zap-regen zap-fetch zap-ws-regen zap-ws-fetch test test-model test-gpu cov lint fix fmt fmt-check type check ci build smoke release tag version docs docs-serve docs-build
+.PHONY: help install sync clean openpix-regen mercadopago-regen mercadopago-fetch stripe-regen stripe-fetch zap-regen zap-fetch zap-ws-regen zap-ws-fetch test test-cov test-model test-gpu cov lint fix fmt fmt-check type check ci build smoke release tag version docs docs-serve docs-build
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -22,8 +22,16 @@ sync: install ## Alias for `install`
 
 ## ---------- code quality ----------
 
-test: ## Run pytest with coverage
-	uv run pytest
+# The suite runs across every core (pytest-xdist, from the `[tests]` extra)
+# and without coverage. Measured on 2026-10-09, 12 cores: 12 262 tests in
+# 4m44s with `-n 12 --no-cov`, against ~36 min serial under coverage. The
+# coverage report moved to `test-cov`, which CI runs on one Python of the
+# matrix.
+test: ## Run pytest in parallel, without coverage
+	uv run pytest -n auto -p no:cacheprovider
+
+test-cov: ## Run pytest in parallel with the coverage report
+	uv run pytest -n auto -p no:cacheprovider --cov=$(PACKAGE) --cov-report=term-missing
 
 test-model: ## Run opt-in model smoke tests (downloads tiny weights on first run)
 	uv run pytest -m model
@@ -205,7 +213,18 @@ release: ## Bump versions, run every gate, commit and tag. Usage: make release V
 # under `uv run`, which repairs the lock on disk before the test can read
 # it, so the guard could never fail. Measured by corrupting the lock and
 # watching a bare `uv run python -c pass` put it back.
-	$(MAKE) check
+#
+# The suite runs only when no green CI run already covers HEAD: the bump
+# above changes nothing but the version strings, so a green run on HEAD (or
+# on an ancestor that differs from it only in versions) has already tested
+# what ships. scripts/release_gate.py decides; CI pending or red, or any
+# other change, falls through to `make test`.
+	$(MAKE) lint fmt-check type
+	@if sha=$$(python3 scripts/release_gate.py); then \
+		echo "Green CI run on $$sha covers this tree; skipping the local suite."; \
+	else \
+		$(MAKE) test; \
+	fi
 	$(MAKE) audit
 	$(MAKE) docs-build
 	$(MAKE) smoke

@@ -63,8 +63,11 @@ jobs:
       - name: Type check
         run: uv run mypy tempest_fastapi_sdk
 
+      # Parallel across the runner's cores (pytest-xdist). Coverage is
+      # measured once, on 3.12: it was the slowest part of the serial run
+      # and the number does not change across the matrix.
       - name: Run tests
-        run: uv run pytest
+        run: uv run pytest -n auto -p no:cacheprovider ${{ matrix.python-version == '3.12' && '--cov=tempest_fastapi_sdk --cov-report=term-missing' || '' }}
 
       - name: Build sdist and wheel
         run: uv build

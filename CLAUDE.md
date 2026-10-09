@@ -48,9 +48,12 @@ Duas consequências estruturais:
 ## Release
 
 `make release VERSION=X.Y.Z SUBJECT="<assunto>"` é a autoridade: recusa árvore
-suja e CHANGELOG sem entrada, bumpa os dois arquivos de versão, roda o gate
-inteiro (`check` + `docs-build` + `smoke`), commita e cria a tag. O push fica
-manual. A ordem em volta — CHANGELOG, docs, auditoria de prosa, confirmação
+suja e CHANGELOG sem entrada, bumpa os dois arquivos de versão, roda lint +
+format + mypy, audit, `docs-build` e `smoke`, commita e cria a tag. A suíte só
+roda quando nenhuma CI verde cobre o `HEAD` (`scripts/release_gate.py`); o
+workflow da tag aplica a mesma regra antes de publicar. Para publicar em
+minutos, commite e empurre o CHANGELOG **antes**, espere a CI dele ficar verde
+e só então rode `make release`. O push fica manual. A ordem em volta — CHANGELOG, docs, auditoria de prosa, confirmação
 antes do push — está na skill `/release`.
 
 **Docs-only pula tudo isso.** Tocou só `docs/`, `README.md`, `SHIPPED.md` ou

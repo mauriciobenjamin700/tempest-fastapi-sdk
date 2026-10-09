@@ -663,8 +663,6 @@ addopts = [
     "-ra",
     "--strict-markers",
     "--strict-config",
-    "--cov=tempest_fastapi_sdk",
-    "--cov-report=term-missing",
     "-m",
     "not model and not gpu and not docker and not network",
 ]

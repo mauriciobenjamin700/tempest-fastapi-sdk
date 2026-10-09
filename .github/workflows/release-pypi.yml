@@ -13,8 +13,13 @@ jobs:
   build:
     name: Build distributions
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
 
       - name: Install uv
         uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
@@ -85,8 +90,27 @@ jobs:
           path: ${{ runner.temp }}/pip-audit.json
           if-no-files-found: warn
 
+      # The tag commit is the version bump on top of a commit CI already
+      # tested on its push to `main`. When that run is green and nothing but
+      # the version strings changed since, the suite already ran on what
+      # ships -- running it a third time cost 33 min on v0.309.0. Any other
+      # difference, or CI pending/red, falls through to the full suite
+      # (scripts/release_gate.py, tests/test_release_gate.py).
+      - name: Check whether CI already tested this tree
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if sha=$(python scripts/release_gate.py); then
+            echo "Green CI run on $sha covers this tree; the suite is not run again."
+            echo "skip_suite=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip_suite=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run full test suite
-        run: uv run pytest
+        if: steps.gate.outputs.skip_suite != 'true'
+        run: uv run pytest -n auto -p no:cacheprovider
 
       - name: Lint + format + type check
         run: |

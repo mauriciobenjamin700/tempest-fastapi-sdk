@@ -68,7 +68,8 @@ uv sync --all-extras --group dev --group docs
 | `make fmt` | `ruff format .` (writes) |
 | `make fmt-check` | `ruff format --check .` (read-only) |
 | `make type` | `mypy tempest_fastapi_sdk` (strict) |
-| `make test` | `pytest` with coverage |
+| `make test` | `pytest` in parallel (`-n auto`), no coverage |
+| `make test-cov` | `pytest` in parallel with the coverage report |
 | `make check` | `lint + fmt-check + type + test` (stops at first failure) |
 | `make ci` | `check + build + smoke` (full CI mirror) |
 
@@ -77,7 +78,8 @@ The same gates are available through the bundled CLI: `tempest lint` / `tempest 
 ## Tests
 
 ```bash
-make test                    # default suite + coverage (no model/gpu/docker)
+make test                    # default suite in parallel, no coverage (no model/gpu/docker)
+make test-cov                # the same suite with the coverage report
 uv run pytest tests/admin    # the admin module only
 uv run pytest -k cursor      # tests matching "cursor"
 uv run pytest -x             # stop at the first failure
