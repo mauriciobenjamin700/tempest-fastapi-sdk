@@ -690,6 +690,12 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.integrations.payment.base.PayoutResult
 ::: tempest_fastapi_sdk.integrations.payment.base.PayoutStatus
 
+### `tempest_fastapi_sdk.integrations.payment.settlement`
+
+::: tempest_fastapi_sdk.integrations.payment.settlement.confirm_pix_payment
+::: tempest_fastapi_sdk.integrations.payment.settlement.PixPaymentConfirmation
+::: tempest_fastapi_sdk.integrations.payment.settlement.PixConfirmationOutcome
+
 ### `tempest_fastapi_sdk.integrations.payment.adapters`
 
 ::: tempest_fastapi_sdk.integrations.payment.adapters.openpix.OpenPixPixProvider

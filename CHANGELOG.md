@@ -64,6 +64,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   com `read_xlsx_async` o mesmo ticker rodou 473 vezes. Quatro leituras
   simultâneas levaram 25,0 s contra 21,6 s de quatro em série: o parse segura
   o GIL, então o semáforo limita memória e o pool de threads, não acelera.
+- **`confirm_pix_payment` — o webhook avisa, a API confirma (#434).**
+  `tempest_fastapi_sdk.integrations.payment.confirm_pix_payment(provider,
+  charge_id, *, reference, amount_cents)` relê a cobrança com
+  `provider.get_pix_charge` e devolve `PixPaymentConfirmation`, cujo
+  `outcome` (`PixConfirmationOutcome`) diz qual conferência decidiu:
+  `REFERENCE_MISMATCH` (a cobrança é de outro pedido), `NOT_PAID` (qualquer
+  status que não `PAID`), `AMOUNT_MISMATCH` (paga com outro valor) ou `PAID`;
+  `.paid` é `True` só no último. Erro do provedor na releitura sobe em vez de
+  virar "não pago". O helper não escreve nada — a liberação única continua
+  com `tempest_fastapi_sdk.wallet.claim_once`.
 
 ### Changed
 
@@ -123,6 +133,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/test_spreadsheet_event_loop_guard.py` troca o parser de cada
   corrotina por uma sonda que só uma task do loop libera, e prova que dispara
   com `to_thread` substituído por chamada direta (6 de 6 casos pegos).
+
+- **A receita do protocolo de Pix liberava o pedido só pelo webhook (#434).**
+  O `settle` de `docs/recipes/pix-protocol.md` (e `.en.md`) marcava o pedido
+  como pago direto do evento, sem reler a cobrança, sem conferir valor e sem
+  idempotência — o contrário do que a receita da OpenPix exige, com uma
+  assinatura RSA-1024 sem janela de validade. Agora o passo 3 mostra o
+  `OrderModel` com `paid_at` e o repositório com `claim_once`, o `settle`
+  relê com `confirm_pix_payment` pelo `provider_charge_id` guardado, e o
+  teste do passo 7 roda sobre SQLite e mostra a reentrega respondendo
+  `{"settled": null}` (medido num serviço montado com os blocos da página).
+  A receita da OpenPix aponta para o mesmo caminho.
 
 ### Documentation
 
