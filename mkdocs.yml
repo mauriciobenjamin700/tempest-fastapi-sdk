@@ -130,6 +130,7 @@ plugins:
                 - Integrated example (local marketplace): marketplace-local.md
                 - Integrated example (Pix checkout): integrated.md
               - Computer vision (ONNX): recipes/vision.md
+              - "Data subject export and erasure (LGPD)": recipes/subject-data.md
               - Database: recipes/database.md
               - Downloads: recipes/downloads.md
               - Enum columns (safe on both databases): recipes/enum-columns.md
@@ -441,6 +442,7 @@ nav:
           - "Exemplo integrado (marketplace local)": marketplace-local.md
           - "Exemplos de GenAI (fluxos)": genai-examples.md
           - "Fullstack web (SSR, WASM, server)": fullstack-web.md
+      - "Exportação e exclusão de titular (LGPD)": recipes/subject-data.md
       - "Fakes (sem provedor real)": recipes/fakes.md
       - Feature flags: recipes/feature-flags.md
       - Fila e Tarefas: recipes/queue-tasks.md

@@ -493,6 +493,7 @@ come back here to plug in each capability as you need it.
 | **[CLI »](cli.md)** | `tempest new` / `db` (+ `seed`) / `user` / `secrets rotate` / `lint` / `fix` / `format` / `type` / `test` / `check` |
 | **[Comments + ratings »](reviews.md)** | `ReviewService`, `make_reviews_router`, 0–5 star scores with aggregation, threaded comments |
 | **[Computer vision (ONNX) »](vision.md)** | `Detector` / `Classifier` / `Segmenter` + prediction schemas |
+| **[Data subject export and erasure (LGPD) »](subject-data.md)** | `SubjectGraph` (the tables a subject's `DELETE` reaches by cascade, derived from `MetaData`), `export` without secret columns, `violations` + `assert_subject_graph_valid` as a CI guard, `SubjectObjectStorage` (per-subject prefix, batch `delete_all`) |
 | **[Database »](database.md)** | `BaseModel`, `AsyncDatabaseManager`, `BaseRepository` (CRUD + filters + bulk), offset/cursor pagination, mixins, `AlembicHelper`, `SlowQueryLogger` |
 | **[Downloads »](downloads.md)** | `DownloadUtils` — `file_response`, `stream`, `build_content_disposition`, path-traversal safe |
 | **[Enum columns (safe on both databases) »](enum-columns.md)** | `Mapped[MyEnum]` storing the `value`, native `ENUM` on PostgreSQL and a `CHECK` on SQLite, `enum_column()`, `op.replace_enum` + `sync_enum_types` for the migration autogenerate cannot see |

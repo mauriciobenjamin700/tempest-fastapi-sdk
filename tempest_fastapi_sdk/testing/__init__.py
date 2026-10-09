@@ -37,9 +37,13 @@ from tempest_fastapi_sdk.testing.factories import (
 from tempest_fastapi_sdk.testing.factories import (
     seq as seq,
 )
+from tempest_fastapi_sdk.testing.privacy import (
+    assert_subject_graph_valid as assert_subject_graph_valid,
+)
 
 __all__: list[str] = [
     "ModelFactory",
+    "assert_subject_graph_valid",
     "create_test_engine",
     "create_test_session_factory",
     "drop_test_metadata",

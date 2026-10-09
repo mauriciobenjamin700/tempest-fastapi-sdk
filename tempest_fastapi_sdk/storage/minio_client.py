@@ -102,6 +102,22 @@ class PutObjectItem:
     part_size: int = 10 * 1024 * 1024
 
 
+@dataclass(frozen=True, slots=True)
+class ObjectDeleteError:
+    """One key that :meth:`AsyncMinIOClient.remove_objects` failed to delete.
+
+    Attributes:
+        key (str): Object key the store refused to delete.
+        code (str): S3 error code reported for the key (``AccessDenied``,
+            ``InternalError``, ...).
+        message (str): Human-readable message reported by the store.
+    """
+
+    key: str
+    code: str
+    message: str
+
+
 class AsyncMinIOClient:
     """Async-friendly facade over ``minio.Minio``.
 
@@ -1089,6 +1105,53 @@ class AsyncMinIOClient:
             version_id=version_id,
         )
 
+    async def remove_objects(
+        self,
+        keys: Iterable[str],
+        *,
+        bucket: str | None = None,
+    ) -> list[ObjectDeleteError]:
+        """Delete many objects with S3 batch deletes.
+
+        Uses ``Minio.remove_objects``, which sends one ``DeleteObjects``
+        request per 1000 keys instead of one ``DELETE`` per key. Duplicate
+        keys are collapsed. Keys that do not exist count as deleted (S3
+        deletes are idempotent), so they never appear in the result.
+
+        Args:
+            keys (Iterable[str]): Object keys to delete.
+            bucket (str | None): Override target bucket.
+
+        Returns:
+            list[ObjectDeleteError]: The keys the store refused to delete,
+            with the reported error. Empty list when every key was deleted.
+
+        Raises:
+            S3Error: When a whole batch request fails (auth, network,
+                bucket missing).
+        """
+        from minio.deleteobjects import DeleteObject
+
+        target = self._bucket(bucket)
+        unique = list(dict.fromkeys(keys))
+        if not unique:
+            return []
+
+        def _remove() -> list[ObjectDeleteError]:
+            return [
+                ObjectDeleteError(
+                    key=error.name or "",
+                    code=error.code or "",
+                    message=error.message or "",
+                )
+                for error in self.client.remove_objects(
+                    target,
+                    [DeleteObject(key) for key in unique],
+                )
+            ]
+
+        return await asyncio.to_thread(_remove)
+
     async def copy_object(
         self,
         source_key: str,
@@ -1344,6 +1407,7 @@ class AsyncMinIOClient:
 
 __all__: list[str] = [
     "AsyncMinIOClient",
+    "ObjectDeleteError",
     "ObjectStat",
     "PutObjectItem",
 ]

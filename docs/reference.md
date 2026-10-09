@@ -329,6 +329,20 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## Privacidade (LGPD)
+
+### `tempest_fastapi_sdk.privacy`
+
+::: tempest_fastapi_sdk.privacy
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
 ## Reconhecimento facial
 
 ### `tempest_fastapi_sdk.faces`
@@ -1075,6 +1089,7 @@ então importar o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.storage.minio_client.AsyncMinIOClient
 ::: tempest_fastapi_sdk.storage.minio_client.ObjectStat
+::: tempest_fastapi_sdk.storage.minio_client.ObjectDeleteError
 
 ### Alembic hooks
 
@@ -1235,6 +1250,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.testing.factories.seq
 ::: tempest_fastapi_sdk.testing.database.make_test_database
 ::: tempest_fastapi_sdk.testing.database.make_test_session
+::: tempest_fastapi_sdk.testing.privacy.assert_subject_graph_valid
 
 ### `tempest_fastapi_sdk.testing.fakes`
 

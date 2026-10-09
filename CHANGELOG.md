@@ -99,6 +99,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   por IP travaria o login de todo mundo. `/auth/login`, `/auth/cookie/login` e
   `/auth/signup` declaram o 429 no OpenAPI só quando o limite correspondente
   está ligado.
+- **`tempest_fastapi_sdk.privacy` — exportação e exclusão de titular (LGPD,
+  #460).** `SubjectGraph(metadata, root=..., retained=..., secret_columns=...)`
+  deriva da `MetaData` o fecho de `ON DELETE CASCADE` a partir da tabela raiz
+  do titular: `tables()` (raiz primeiro, em largura), `export(session, id)`
+  (linhas do titular por tabela, valores prontos para JSON, colunas secretas
+  fora — nome com `hash`/`secret`/`password`, `info={"secret": True}` ou
+  `secret_columns`), `count(session, id)` (prova de exclusão: tudo `0` depois
+  do `DELETE` da raiz), `condition(table, id)` (o `WHERE` por tabela, `IN
+  (SELECT ...)` aninhado pelo caminho da cascata, FK composta incluída) e
+  `violations()`, que lista toda FK para tabela do fecho que não é `CASCADE`
+  nem `SET NULL` justificado em `retained` (e entrada de `retained` velha,
+  com ação errada ou em coluna `NOT NULL`). Tabela nova com FK em cascata
+  entra na exportação sem configuração. `tempest_fastapi_sdk.testing.assert_subject_graph_valid(graph)`
+  é o guard de CI pronto. `SubjectObjectStorage(client, prefix=...)` guarda os
+  objetos do titular em `<prefix>/<id>/<nome>` (nome que sairia do prefixo é
+  `ValueError`) com `put`, `presign`, `names`, `delete` e `delete_all`, que
+  apaga o prefixo em lote e levanta `SubjectErasureError` com as chaves
+  recusadas. Medido contra MinIO real (`tests/privacy/test_storage_live.py`):
+  1203 objetos apagados em duas requisições `DeleteObjects` (1000 + 203), o
+  titular `77` e o `8` intactos. Receita: `docs/recipes/subject-data`.
+- **`AsyncMinIOClient.remove_objects(keys, *, bucket=None)`** — remoção em
+  lote via `Minio.remove_objects` (um `DeleteObjects` por 1000 chaves),
+  chaves duplicadas colapsadas, lista vazia não faz requisição. Devolve
+  `list[ObjectDeleteError]` (`key`, `code`, `message`) com o que o storage
+  recusou; lista vazia é sucesso. `ObjectDeleteError` exportado no topo e em
+  `tempest_fastapi_sdk.storage`.
 - **`expected_sha256` em `load_sklearn_artifact` e `edge_pipeline_from_pickle`
   (#440).** O chamador pina o SHA-256 que a release do modelo registrou, e a
   carga recusa com `ArtifactDigestMismatchError` (nova, subclasse de

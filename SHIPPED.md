@@ -3119,3 +3119,16 @@ trusted_ip_header=...)`. O de login por e-mail vem ligado (5 em 900 s sobre
 por causa do IP do proxy. 429 `TOO_MANY_REQUESTS` com `Retry-After`, declarado
 no OpenAPI só quando o limite está ligado. Testes:
 `tests/auth/test_login_throttle.py`.
+
+## Exportação e exclusão de titular (Unreleased, #460)
+
+`tempest_fastapi_sdk.privacy`: `SubjectGraph(metadata, root=..., retained=...,
+secret_columns=..., secret_markers=...)` com `tables()`, `export(session, id)`,
+`count(session, id)`, `condition(table, id)`, `exported_columns(table)` e
+`violations()`; `assert_subject_graph_valid` em `tempest_fastapi_sdk.testing`.
+`SubjectObjectStorage(client, prefix=..., bucket=...)` com `put`, `presign`,
+`names`, `delete`, `delete_all` (lote) e `SubjectErasureError`. No storage,
+`AsyncMinIOClient.remove_objects` + `ObjectDeleteError`. Fora: vínculo sem FK
+(audit trail, id em JSON), raiz com PK composta, busca/cache/backup. Receita
+`recipes/subject-data.md`. Testes: `tests/privacy/`,
+`tests/storage/test_minio_client.py`.
