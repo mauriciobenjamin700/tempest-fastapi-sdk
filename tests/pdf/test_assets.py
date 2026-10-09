@@ -151,3 +151,45 @@ class TestRefusalCollection:
         assert len(taken) == 2
         assert "a.test" in taken[0]
         assert policy.take_refusals() == []
+
+
+class TestForRender:
+    def test_copy_keeps_the_rules_and_starts_with_no_refusals(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Only the collector is fresh; what is allowed stays the same."""
+        policy = AssetPolicy(allow_dirs=(tmp_path,), allow_remote=True, max_bytes=7)
+        policy.refusals.append("earlier note")
+        clone = policy.for_render()
+        assert clone is not policy
+        assert clone.refusals == []
+        assert clone.refusals is not policy.refusals
+        assert clone.allow_dirs == policy.allow_dirs
+        assert clone.allow_remote is True
+        assert clone.max_bytes == 7
+
+    def test_refusals_on_the_copy_do_not_reach_the_original(self) -> None:
+        """This is what keeps concurrent renders from swapping lists."""
+        policy = AssetPolicy()
+        clone = policy.for_render()
+        with pytest.raises(AssetRefused):
+            build_url_fetcher(clone)("http://a.test/1.png")
+        assert len(clone.take_refusals()) == 1
+        assert policy.refusals == []
+
+    def test_copy_does_not_resolve_the_directories_again(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Re-running ``__post_init__`` per render would re-follow symlinks.
+
+        A directory removed after the policy was built proves the copy
+        skipped it: resolving again would raise ``ValueError``.
+        """
+        allowed = tmp_path / "assets"
+        allowed.mkdir()
+        policy = AssetPolicy(allow_dirs=(allowed,))
+        allowed.rmdir()
+        clone = policy.for_render()
+        assert clone.allow_dirs == (allowed.resolve(),)
