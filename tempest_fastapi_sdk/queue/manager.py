@@ -169,17 +169,25 @@ class AsyncQueueManager:
         """
         return self._started
 
-    async def health_check(self) -> bool:
-        """Return ``True`` when the broker is started.
+    async def health_check(self, timeout: float = 2.0) -> bool:
+        """Report whether the broker connection is alive right now.
 
-        FastStream brokers don't expose a generic ping, so we only
-        report whether the start handshake completed. Backend-specific
-        deeper checks can be layered on by the application.
+        Delegates to the FastStream broker's own ``ping(timeout)``, so a
+        connection that dropped after :meth:`connect` reports ``False``.
+        Before :meth:`connect` (or after :meth:`disconnect`) it returns
+        ``False`` without touching the network.
+
+        Args:
+            timeout (float): Seconds the ping may take before it gives up
+                and reports ``False``.
 
         Returns:
-            bool: ``True`` while the broker is started.
+            bool: ``True`` when the broker is started and its ping
+            answered within ``timeout``.
         """
-        return self._started
+        if not self._started:
+            return False
+        return bool(await self.broker.ping(timeout=timeout))
 
 
 #: Deprecated alias — the class was renamed to :class:`AsyncQueueManager`

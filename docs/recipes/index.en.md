@@ -550,7 +550,7 @@ come back here to plug in each capability as you need it.
 | **[Stripe (cards + subscriptions) »](stripe.md)** | `StripeClient`, `stripe_http_client`, `to_minor_units` / `from_minor_units`, `make_stripe_webhook_dependency`, `StripeEvent` — form-encoded writes, idempotency by default, zero-decimal currencies |
 | **[System checks (check-config) »](system-checks.md)** | `run_system_checks`, `@check`, `CheckMessage`, `tempest check-config` — validate settings before serving |
 | **[tempestweb frontend + SDK »](tempestweb-frontend.md)** | tempestweb frontend calling the SDK backend: `tempestweb.native.http`, `Idempotency-Key` + `IdempotencyMiddleware`, retry, same origin vs CORS |
-| **[Testing »](testing.md)** | `test_session`, `test_database`, in-memory SQLite, pytest fixtures |
+| **[Testing »](testing.md)** | `make_test_session`, `make_test_database`, in-memory SQLite, pytest fixtures |
 | **[Text search (LIKE + full-text) »](text-search.md)** | portable `search()` (escaped ILIKE, `AND` across words), `full_text_search()` with `websearch_to_tsquery` + `ts_rank` on PostgreSQL, `TextSearchLanguage` / `TextSearchWeight` / `TokenMatch`, conditions that feed `where=` |
 | **[Transactional email »](email.md)** | `EmailUtils` — SMTP, text/HTML body, attachments, Jinja2 templates |
 | **[Transactional outbox »](outbox.md)** | `BaseOutboxModel`, `OutboxRelay`, `save_with_outbox` — reliable events |

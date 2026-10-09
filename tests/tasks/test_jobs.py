@@ -377,11 +377,14 @@ class TestReclaimStale:
         await store.claim(job.id)
         await self._age_the_claim(jobs_db, job.id, minutes=10)
 
-        assert await store.reclaim_stale() == 1
+        reclaimed = await store.reclaim_stale()
+        assert reclaimed.requeued == [job.id]
+        assert reclaimed.failed == []
+        assert reclaimed.total == 1
 
-        reclaimed = await store.get(job.id)
-        assert reclaimed.status == JobStatus.QUEUED.value
-        assert reclaimed.started_at is None
+        row = await store.get(job.id)
+        assert row.status == JobStatus.QUEUED.value
+        assert row.started_at is None
 
     async def test_a_fresh_running_job_is_left_alone(
         self, store: JobStore[_JobModel]
@@ -389,7 +392,9 @@ class TestReclaimStale:
         job = await store.enqueue("extract")
         await store.claim(job.id)
 
-        assert await store.reclaim_stale() == 0
+        reclaimed = await store.reclaim_stale()
+        assert reclaimed.total == 0
+        assert not reclaimed
         assert (await store.get(job.id)).status == JobStatus.RUNNING.value
 
     async def test_the_attempt_budget_ends_the_loop(
