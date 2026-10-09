@@ -1992,7 +1992,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 - **Audit trail** — `BaseAuditLogModel` + `AuditAction`,
   `snapshot_model` / `diff_snapshots`, `BaseRepository` opt-in
   (`audit_model=...` + `add_audited` / `update_audited` /
-  `delete_audited`, same-tx).
+  `delete_audited`, same-tx). Opt-in `AuditRequestMixin` (`event`
+  indexed, `ip`, `user_agent` columns) + `AuditRequestContext.from_request`
+  + `record_event` / `for_event` for events without a mutation +
+  `actor_id=` for a consumer-declared author FK (#458).
 - **Admin panel** — Jinja + HTMX (`AdminSite`, `AdminModel`,
   `make_admin_router`), typed theming via `AdminTheme` (colors /
   logo / favicon / font / radius / footer / dark mode /

@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Auditoria com evento de domínio, origem da requisição e autor com FK
+  (#458).** `AuditRequestMixin` (opt-in) acrescenta à tabela de auditoria
+  as colunas `event` (`String(128)`, indexada), `ip` (`String(64)`) e
+  `user_agent` (`String(512)`). `new_entry`, `for_create` / `for_update` /
+  `for_delete` e `add_audited` / `update_audited` / `delete_audited`
+  ganham `event=`, `ip=`, `user_agent=`, `request_context=` e `actor_id=`,
+  todos keyword-only, e cada valor vai para a coluna de mesmo nome, sem
+  passar por `context`. `AuditRequestContext.from_request(request,
+  trusted_ip_header=...)` lê o IP pelo `get_client_ip` e o `User-Agent`;
+  `trusted_ip_header` não tem default, valor que não é endereço IP vira
+  `None` e `User-Agent` acima de 512 caracteres é cortado.
+  `BaseRepository.record_event(...)` e `BaseAuditLogModel.for_event(...)`
+  gravam evento sem mutação de linha (`AuditAction.EVENT`, `action="event"`,
+  `entity_id` vazio ou o id do `subject=`). O autor com FK é ponto de
+  extensão: a subclasse declara `actor_id` (ex.: `ForeignKey("users.id",
+  ondelete="SET NULL")`) e passa `actor_id=`, sem sobrescrever `new_entry`
+  — o teste apaga o usuário e lê `actor_id` `NULL` no SQLite com FK ligada.
+  **Sem migration para quem já tem a tabela:** as colunas ficam no mixin,
+  não no `BaseAuditLogModel`, e chamadas só com `actor` / `context` não
+  mudam. Acrescentar o mixin a uma tabela existente exige migration. Valor
+  passado para coluna que a tabela não tem levanta `ValueError` (a
+  transação, linha de negócio incluída, é revertida) em vez de ser
+  descartado; `request_context=` junto de `ip=` / `user_agent=` também.
+  Receita: `docs/recipes/audit-trail`, seção "Evento, origem da requisição
+  e autor".
 - **`expected_sha256` em `load_sklearn_artifact` e `edge_pipeline_from_pickle`
   (#440).** O chamador pina o SHA-256 que a release do modelo registrou, e a
   carga recusa com `ArtifactDigestMismatchError` (nova, subclasse de
