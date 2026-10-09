@@ -86,7 +86,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Run full test suite
-        run: uv run pytest
+        run: uv run pytest -n auto -p no:cacheprovider
 
       - name: Lint + format + type check
         run: |
