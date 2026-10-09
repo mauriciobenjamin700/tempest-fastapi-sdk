@@ -74,6 +74,7 @@ from tempest_fastapi_sdk.api.routers.logs import (
 from tempest_fastapi_sdk.db.expressions import escape_like
 from tempest_fastapi_sdk.db.repository import BaseRepository
 from tempest_fastapi_sdk.exceptions import AppException
+from tempest_fastapi_sdk.ssr.assets import make_htmx_router
 from tempest_fastapi_sdk.tasks.jobs import (
     CANCELLABLE_JOB_STATUSES,
     JobStatus,
@@ -102,6 +103,14 @@ ADMIN_MFA_THROTTLE_WINDOW_SECONDS: int = 900
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _STATIC_DIR = Path(__file__).parent / "static"
+
+_SCRIPTS_SUBPATH = "/_ssr"
+"""Sub-path, under the admin prefix, where the bundled HTMX is served.
+
+The admin mounts :func:`tempest_fastapi_sdk.ssr.assets.make_htmx_router`
+here, so ``base.html`` loads ``{prefix}/_ssr/htmx.js`` from the
+application itself instead of a CDN.
+"""
 
 # Max related rows loaded into a foreign-key <select>. Beyond this the
 # dropdown would be unusable (Django switches to raw-id widgets); we cap
@@ -204,6 +213,10 @@ def make_admin_router(
     * ``POST {prefix}/m/{slug}/{identity}/delete`` — delete row
       (when ``can_delete``).
     * Static files under ``{prefix}/static`` named ``admin_static``.
+    * ``GET  {prefix}/_ssr/htmx.js`` — the HTMX bundled in the SDK
+      (``ssr/_static/htmx.min.js``), served without a session because the
+      login page loads it too. No admin page fetches a script from a
+      third-party host.
 
     Args:
         site (AdminSite): The configured registry.
@@ -291,6 +304,7 @@ def make_admin_router(
     )
 
     router = APIRouter(prefix=prefix, include_in_schema=False)
+    router.include_router(make_htmx_router(prefix=_SCRIPTS_SUBPATH))
 
     @router.get("/static/{path:path}", name="admin_static")
     async def static_files(path: str) -> FileResponse:
@@ -429,6 +443,7 @@ def make_admin_router(
         context.setdefault("site", site)
         context.setdefault("messages", [])
         context.setdefault("static_url", f"{prefix}/static")
+        context.setdefault("htmx_url", f"{prefix}{_SCRIPTS_SUBPATH}/htmx.js")
         context.setdefault(
             "nav_models",
             [
