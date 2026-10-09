@@ -1,0 +1,55 @@
+name: Dependency audit
+
+# Fails when any dependency in the committed uv.lock (every extra) has a
+# known advisory (#436). It runs on the same pushes and PRs as CI, so a lock
+# change that pulls in a vulnerable version is caught on its PR -- and daily,
+# because a new advisory lands without anyone pushing: the lock that was
+# clean yesterday is not clean today, and the scheduled run is what says so
+# before the next release does. The release workflow runs the same target.
+#
+# The ignore list, and the reason behind each ignored ID, live in the
+# Makefile's `audit` target, so CI, release and `make audit` agree.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches:
+      - main
+      - "feat/**"
+      - "fix/**"
+      - "ref/**"
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    name: pip-audit (uv.lock, all extras)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+
+      - name: Verify uv.lock matches pyproject.toml
+        run: uv lock --check
+
+      - name: Audit locked dependencies for known vulnerabilities
+        run: make audit
+
+      - name: Write the audit record
+        if: always()
+        run: make audit AUDIT_ARGS="--format json --output $RUNNER_TEMP/pip-audit.json" || true
+
+      - name: Archive the audit record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit
+          path: ${{ runner.temp }}/pip-audit.json
+          if-no-files-found: warn

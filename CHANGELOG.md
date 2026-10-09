@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Gate de CVE nas dependências travadas (#436).** `make audit` exporta o
+  `uv.lock` commitado (`uv export --locked --all-extras --no-dev`) e roda
+  `pip-audit` 2.10.1 com `--strict`; qualquer advisory conhecido derruba o
+  alvo. Roda no workflow novo `Dependency audit` (push na `main`, PR e
+  diariamente às 07:00 UTC, porque advisory novo chega sem ninguém dar push),
+  no job de build do `release-pypi.yml` antes do `uv build`, e no
+  `make release`. O relatório JSON de cada execução fica arquivado como
+  artefato do run. Medido localmente: ~22 s a frio, ~1–4 s com cache.
+- **Lock atualizado para sair de 31 advisories com correção publicada.**
+  O primeiro `pip-audit` sobre o lock achou 45 advisories em 10 pacotes.
+  Subiram no lock (não no piso do `pyproject.toml`): `pyjwt` 2.13.0 → 2.15.1
+  (14 advisories), `pypdf` 6.16.2 → 6.20.0 (8), `urllib3` 2.7.0 → 2.8.0 (3),
+  `weasyprint` 69.0 → 70.0 (2), `multidict` 6.7.1 → 6.9.1, `oauthlib` 3.3.1
+  → 4.0.0, `werkzeug` 3.1.8 → 3.1.9 e `accelerate` 1.14.0 → 1.15.0 (1 cada).
+- **14 entradas ignoradas por ID, com motivo no `Makefile`.** `chromadb`
+  1.5.9 (a mais nova no PyPI em 2026-10-09, sem versão corrigida): os quatro
+  advisories miram o servidor HTTP do Chroma e o
+  `SimpleRBACAuthorizationProvider`, e o SDK só abre o `PersistentClient` /
+  `EphemeralClient` embarcado. `transformers` 4.57.6: toda correção é 5.x, e
+  o `transformers<5` do `[genai-audio]` (coqui-tts 0.27.5 ainda não importa
+  no 5.x) segura o lock; quem instala `[genai]` sem `[genai-audio]` resolve
+  5.x.
+
+### Changed
+
+- **Os quatro workflows instalam com `uv sync --locked`**, e o release roda
+  `uv lock --check` antes do build: um `uv.lock` fora do `pyproject.toml`
+  derruba o run em vez de ser re-resolvido contra o PyPI do dia.
+- **`pypa/gh-action-pypi-publish` e `astral-sh/setup-uv` fixadas por SHA**
+  com a tag em comentário (`dc37677…` = `v1.14.2`, `caf0cab…` = `v3.2.4`,
+  ambas derreferenciadas da tag anotada para o commit). O job que publica
+  tem `id-token: write`, e a referência anterior era o branch `release/v1`.
+  `.github/dependabot.yml` novo atualiza as actions semanalmente (SHA e
+  comentário).
+- **`[build-system]` declara `hatchling>=1.32.4,<2`.** O piso é a versão que
+  construiu a 0.308.0 hoje; antes, cada build resolvia o hatchling mais novo.
+- Guard novo `tests/test_supply_chain_guard.py`: `--locked` em todo
+  `uv sync` de workflow, as duas actions por SHA com tag, `uv lock --check`
+  e `make audit` antes do `uv build` no release, `schedule:` no
+  `audit.yml` e faixa no hatchling — cada checagem alimentada também com o
+  texto exato que estava na `main` antes do #436.
+
 ## [0.308.0] — 2026-10-08
 
 O CLI `tempest` sai do runtime: `tempest-cli`, `typer` e `click` viram o
