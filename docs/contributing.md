@@ -68,7 +68,7 @@ uv sync --all-extras --group dev --group docs
 | `make fmt` | `ruff format .` (escreve) |
 | `make fmt-check` | `ruff format --check .` (somente leitura) |
 | `make type` | `mypy tempest_fastapi_sdk` (strict) |
-| `make test` | `pytest` em paralelo (`-n auto`), sem cobertura |
+| `make test` | `pytest` em paralelo (um worker por núcleo lógico, `worksteal`, 1 thread de BLAS por worker), sem cobertura |
 | `make test-cov` | `pytest` em paralelo com o relatório de cobertura |
 | `make test-matrix` | a suíte em 3.11, 3.12 e 3.13, uma venv por versão |
 | `make check` | `lint + fmt-check + type + test` (para no primeiro erro) |

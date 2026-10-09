@@ -17,7 +17,9 @@ like real downstream code.
 
 from __future__ import annotations
 
+import hashlib
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, get_args
 
@@ -85,6 +87,28 @@ class TestServiceTBound:
         assert get_args(bound) == (Any, Any, Any)
 
 
+def _shared_mypy_cache(tag: str) -> Path:
+    """Return a mypy cache directory that survives between runs.
+
+    A cache under ``tmp_path`` started cold on every run and re-checked the
+    whole SDK: 38 s for this test alone in the 2026-10-09 ``--durations``
+    report. mypy's incremental mode is sound -- a changed module is
+    re-analysed -- so a persistent cache only skips work whose inputs did not
+    move. The directory is keyed on the repository path (a worktree gets its
+    own) and on ``tag`` (no two tests write the same cache concurrently),
+    the same scheme ``tests/test_docs_type_guard.py`` uses.
+
+    Args:
+        tag (str): Name of the test owning the cache.
+
+    Returns:
+        Path: The cache directory.
+    """
+    root: str = str(Path(__file__).resolve().parents[2])
+    digest: str = hashlib.sha256(root.encode("utf-8")).hexdigest()[:12]
+    return Path(tempfile.gettempdir()) / f"tempest-mypy-{digest}-{tag}"
+
+
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
 class TestDownstreamTypeChecks:
     def test_controller_accepts_service_with_concrete_update_schema(
@@ -107,11 +131,10 @@ class TestDownstreamTypeChecks:
             [
                 str(module),
                 "--strict",
-                "--no-incremental",
                 "--no-error-summary",
                 "--hide-error-context",
                 "--cache-dir",
-                str(tmp_path / ".mypy_cache"),
+                str(_shared_mypy_cache("generic-bounds")),
                 "--python-executable",
                 sys.executable,
             ]

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A suíte local caiu de ~3m30s para ~2m15s** (12 núcleos lógicos, 6
+  físicos; duas medições de cada). Quatro causas, todas medidas:
+  - `make test` usava `-n auto`, que com `psutil` instalado conta núcleos
+    **físicos** — 6 workers numa máquina de 12 lógicos. Agora é
+    `-n logical`: 2m14s e 2m21s, contra 4m11s e 4m16s com `auto` no mesmo
+    código.
+  - Cada worker abria um pool de BLAS/OpenMP do tamanho da máquina; o alvo
+    agora fixa `OMP_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1` e
+    `MKL_NUM_THREADS=1` (2m52s e 2m50s, contra 3m15s–3m38s sem o teto, com
+    12 workers).
+  - `--dist worksteal`: worker ocioso pega a fila de quem está atrasado.
+  - `tests/test_agent_docs_guard.py` percorria `.claude/worktrees/` inteiro
+    (40 worktrees, 25 GB com os `.venv`) na coleta e só depois filtrava: 33 s
+    de uma coleta de 49 s sob cProfile, pagos por worker. Agora não entra no
+    diretório e calcula a lista uma vez — coleta de 30,7 s para 7,1 s, mesma
+    lista de 7 arquivos.
+  - Os testes que rodam mypy (`test_queue_typing`, `test_generic_bounds`)
+    usam cache persistente por repositório em vez de um cache frio em
+    `tmp_path`: 21,7 s para 0,58 s com o cache quente. Provado que o cache
+    não mascara defeito: com o bound antigo do `ServiceT` reintroduzido, o
+    teste falhou com o cache quente.
+
 ## [0.310.0] — 2026-10-09
 
 Cache de geocoding (`CachedGeocodingBackend`) e o fluxo de release novo: a

@@ -29,6 +29,7 @@ describing behavior is true. That stays a human / ``docs-prose-auditor`` job.
 
 from __future__ import annotations
 
+import functools
 import pathlib
 import re
 
@@ -47,6 +48,7 @@ _LINE_SUFFIX_RE = re.compile(r":\d+(?:-\d+)?$")
 """A ``file.md:12`` / ``file.py:12-30`` citation suffix, stripped before lookup."""
 
 
+@functools.cache
 def _agent_docs() -> list[pathlib.Path]:
     """Return every agent-facing Markdown file in the repository.
 
@@ -60,6 +62,12 @@ def _agent_docs() -> list[pathlib.Path]:
     them a path that exists relative to the worktree's own root and not to
     this one. The guard reads the agent instructions of the repository it
     runs in, and a worktree is a different checkout of it.
+
+    The walk never enters ``.claude/worktrees/``: filtering the ``rglob``
+    output afterwards still walked every worktree, each with its own
+    ``.venv``. With 40 of them (25 GB) that was 33 s of a 49 s collection
+    under cProfile, paid once per xdist worker. The result is cached, since
+    the module asks for it once per parametrized test.
     """
     paths = [
         ROOT / "CLAUDE.md",
@@ -68,11 +76,17 @@ def _agent_docs() -> list[pathlib.Path]:
         ROOT / "docs" / "CLAUDE.md",
         ROOT / "tempest_fastapi_sdk" / "integrations" / "CLAUDE.md",
     ]
-    paths.extend(
-        path
-        for path in sorted((ROOT / ".claude").rglob("*.md"))
-        if "worktrees" not in path.relative_to(ROOT).parts
-    )
+    claude_dir: pathlib.Path = ROOT / ".claude"
+    found: list[pathlib.Path] = []
+    if claude_dir.is_dir():
+        for child in claude_dir.iterdir():
+            if child.name == "worktrees":
+                continue
+            if child.is_dir():
+                found.extend(child.rglob("*.md"))
+            elif child.suffix == ".md":
+                found.append(child)
+    paths.extend(sorted(found))
     return [path for path in paths if path.exists()]
 
 
