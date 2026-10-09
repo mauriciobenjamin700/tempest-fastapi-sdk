@@ -116,8 +116,103 @@ Key points:
     - `Exception` (catch-all) → SDK envelope + traceback + `500.log` (fixes Starlette's default, which returns only `"Internal Server Error"` with no log entry).
 
     Every handler honors `RequestIDMiddleware`: the log line carries the `request_id`, and the envelope exposes it under `details` so the client can correlate. Pass `log_traceback=False` when an APM (Sentry, OpenTelemetry) is already capturing the stack trace.
-- `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` mounts `GET /health/liveness` and `GET /health/readiness` (returns `503` when any check fails) at the root prefix.
+- `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` mounts `GET /health/liveness` and `GET /health/readiness` (returns `503` when any check fails) at the root prefix — see [Liveness and readiness](#liveness-and-readiness).
 - `make_token_dependency(secret)` returns an async dependency that validates `X-Token` via `hmac.compare_digest`; pass an empty string to disable in dev. The dependency lives next to the rest of the auth glue in `src/api/dependencies/auth.py` once it grows beyond the one-liner above.
+
+### Liveness and readiness
+
+They are two different questions, asked by whoever decides two different
+things:
+
+- **Liveness** — *"is the process alive?"*. When it fails, the orchestrator
+  (Kubernetes, ECS) **restarts** the container. That is why
+  `GET /health/liveness` touches no dependency at all: a Redis outage is not
+  fixed by restarting the API, and a liveness probe that depended on it would
+  take every replica down at once, in a loop.
+- **Readiness** — *"can I take traffic right now?"*. When it fails, the load
+  balancer **takes the replica out of rotation** and puts it back once it
+  passes again. This is where the database, cache and broker belong:
+  `GET /health/readiness` runs every check and answers `503` when any fails.
+
+A single `GET /health` mixes the two — it either restarts over a dependency
+or sends traffic to a replica that cannot serve it. When you ask for the
+health endpoints of a new service, ask for both.
+
+```python
+import asyncio
+
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from tempest_fastapi_sdk import make_health_router
+
+
+async def redis_check() -> bool:
+    """Answer right away: a healthy dependency."""
+    return True
+
+
+async def search_check() -> bool:
+    """Hang, like a half-open socket that never answers."""
+    await asyncio.sleep(60)
+    return True
+
+
+app = FastAPI()
+app.include_router(
+    make_health_router(
+        checks={"redis": redis_check, "search": search_check},
+        timeout=0.5,
+    ),
+)
+
+
+async def main() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        liveness = await client.get("/health/liveness")
+        readiness = await client.get("/health/readiness")
+    print(liveness.status_code, liveness.json())
+    print(readiness.status_code, readiness.json())
+
+
+asyncio.run(main())
+```
+
+Output (the whole process took 1.7 s, despite the `sleep(60)`):
+
+```text
+Health check 'search' timed out after 0.5s
+200 {'status': 'ok'}
+503 {'status': 'not_ready', 'checks': {'redis': True, 'search': False}}
+```
+
+What happens in the readiness probe:
+
+- **Checks run concurrently**, each bounded by `timeout` (default `3.0`
+  seconds; `None` disables it). One that overruns counts as a failure **for
+  itself only** — `redis` above stays `True` — and the response leaves right
+  after the `timeout`, not when the orchestrator's probe gives up. Keep
+  `timeout` below the probe timeout.
+- **The log never carries the exception message.** A check that raises logs
+  `Health check 'database' raised ConnectionRefusedError` — name and type,
+  never the text, because database and broker driver messages often carry
+  the DSN with its user and password.
+
+!!! warning "Cancellation only happens at an `await`"
+    `timeout` cancels the check at its next `await` point. A check that
+    blocks the event loop with synchronous I/O (a non-async driver, a
+    `time.sleep`) cannot be interrupted — and it stalls the whole process,
+    not just the readiness probe. Run that kind of call with
+    `asyncio.to_thread`.
+
+!!! tip "Queue"
+    `MessageBroker.health_check` runs FastStream's real `ping`, with
+    `timeout=2.0` by default — below the router's 3 s. With RabbitMQ stopped
+    after boot it returns `False`:
+    `make_health_router(checks={"queue": mq.health_check})`.
 
 
 ### Every 4xx inside the envelope
@@ -1503,7 +1598,7 @@ Each mixin owns its own env-var prefix — pick only the ones the service needs:
 | Mixin | Env vars |
 | --- | --- |
 | `ServerSettings` | `SERVER_HOST`, `SERVER_PORT`, `SERVER_RELOAD`, `SERVER_DEBUG` |
-| `LogSettings` | `LOG_LEVEL`, `LOG_JSON`, `LOG_DIR`, `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT` |
+| `LogSettings` | `LOG_LEVEL`, `LOG_JSON`, `LOG_DIR`, `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT`, `LOG_REDACT` |
 | `DatabaseSettings` | `DATABASE_URL`, `DATABASE_ECHO`, `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW`, `DATABASE_POOL_RECYCLE`, `DATABASE_SQLITE_WAL`, `DATABASE_SQLITE_BUSY_TIMEOUT`, `DATABASE_SQLITE_FOREIGN_KEYS` |
 | `RedisSettings` | `REDIS_URL`, `REDIS_DECODE_RESPONSES` |
 | `RabbitMQSettings` | `RABBITMQ_URL`, `RABBITMQ_PREFETCH_COUNT` |

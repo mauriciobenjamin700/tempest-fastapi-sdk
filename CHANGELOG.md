@@ -9,6 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Auditoria com evento de domínio, origem da requisição e autor com FK
+  (#458).** `AuditRequestMixin` (opt-in) acrescenta à tabela de auditoria
+  as colunas `event` (`String(128)`, indexada), `ip` (`String(64)`) e
+  `user_agent` (`String(512)`). `new_entry`, `for_create` / `for_update` /
+  `for_delete` e `add_audited` / `update_audited` / `delete_audited`
+  ganham `event=`, `ip=`, `user_agent=`, `request_context=` e `actor_id=`,
+  todos keyword-only, e cada valor vai para a coluna de mesmo nome, sem
+  passar por `context`. `AuditRequestContext.from_request(request,
+  trusted_ip_header=...)` lê o IP pelo `get_client_ip` e o `User-Agent`;
+  `trusted_ip_header` não tem default, valor que não é endereço IP vira
+  `None` e `User-Agent` acima de 512 caracteres é cortado.
+  `BaseRepository.record_event(...)` e `BaseAuditLogModel.for_event(...)`
+  gravam evento sem mutação de linha (`AuditAction.EVENT`, `action="event"`,
+  `entity_id` vazio ou o id do `subject=`). O autor com FK é ponto de
+  extensão: a subclasse declara `actor_id` (ex.: `ForeignKey("users.id",
+  ondelete="SET NULL")`) e passa `actor_id=`, sem sobrescrever `new_entry`
+  — o teste apaga o usuário e lê `actor_id` `NULL` no SQLite com FK ligada.
+  **Sem migration para quem já tem a tabela:** as colunas ficam no mixin,
+  não no `BaseAuditLogModel`, e chamadas só com `actor` / `context` não
+  mudam. Acrescentar o mixin a uma tabela existente exige migration. Valor
+  passado para coluna que a tabela não tem levanta `ValueError` (a
+  transação, linha de negócio incluída, é revertida) em vez de ser
+  descartado; `request_context=` junto de `ip=` / `user_agent=` também.
+  Receita: `docs/recipes/audit-trail`, seção "Evento, origem da requisição
+  e autor".
+- **`configure_logging(..., redact=True | RedactionPolicy(...))` +
+  `RedactionPolicy` / `RedactionFilter` (#445).** Com `redact` ligado, todo
+  handler que o `configure_logging` instala ganha um filtro que reescreve o
+  registro antes do formatter: chave sensível (`password`, `token`, `secret`,
+  `authorization`, `cookie`, `email`, `api_key`... — `DEFAULT_REDACT_KEYS`, por
+  substring) tem o valor trocado por `[REDACTED]` em `extra=`, em argumento
+  dict e em dict aninhado; mensagem, argumentos, traceback (`exc_text`),
+  `stack_info` e valor string passam por e-mail, `Bearer`, JWT e
+  `chave=valor` com chave sensível. O serviço acrescenta domínio com
+  `RedactionPolicy(extra_keys=..., extra_patterns=...)` sem reescrever o
+  filtro. `LogSettings.LOG_REDACT` liga a política default pelo
+  `logging_kwargs()`. Com `redact` ligado, `msg` vira a mensagem já
+  renderizada e `args` é limpo. Custo medido (20 000 registros, melhor de 5,
+  Python 3.11, saída em `/dev/null`): linha de access log de ~13,5 µs para
+  ~26 µs, `logger.exception` de ~44 µs para ~66 µs. O default `redact=False`
+  não instala filtro nenhum.
 - **`JobStore.succeed(values=...)` e `JobStore.redispatch_queued` (#459).**
   `succeed(job_id, *, result_id=None, values=None)` grava colunas que o
   projeto adicionou ao modelo de job (um `object_key`, por exemplo) no
@@ -29,7 +70,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cada envio, então cada linha sai no máximo uma vez por janela. Exceção do
   `dispatch` propaga e as linhas ainda não enviadas ficam para a próxima
   varredura. Receita: `docs/recipes/jobs`, seções 3 e 5.
-
 - **`expected_sha256` em `load_sklearn_artifact` e `edge_pipeline_from_pickle`
   (#440).** O chamador pina o SHA-256 que a release do modelo registrou, e a
   carga recusa com `ArtifactDigestMismatchError` (nova, subclasse de
@@ -150,8 +190,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `MercadoPagoWebhookEvent.event` passa de `Any | None` para
   `MercadoPagoEvent | None`, o tipo que o docstring já declarava.
 
+- **`test_session` / `test_database` viraram `make_test_session` /
+  `make_test_database` (#450).** O pytest coleta como teste toda função
+  importada num módulo de teste cujo nome comece com `test`, então
+  `from tempest_fastapi_sdk.testing import test_session` dava à suíte do
+  consumidor um item fantasma que "passava" e emitia
+  `PytestReturnNotNoneWarning` — falha de verdade sob `-W error` (medido:
+  `1 failed, 1 passed`). A própria suíte do SDK coletava os dois fantasmas em
+  `tests/testing/test_database.py`. Os nomes antigos continuam importáveis
+  como alias deprecado: cada chamada emite `DeprecationWarning` e os dois
+  carregam `__test__ = False`, então não são mais coletados. O teste roda um
+  pytest de verdade num subprocess, com `-W error`, sobre um módulo que
+  importa os quatro nomes, e falha (`2 failed, 1 passed`) quando o
+  `__test__ = False` é removido. **Quem roda `filterwarnings = ["error"]` e
+  chama o nome antigo passa a ver o `DeprecationWarning` como erro** — troque
+  o import.
+
 ### Fixed
 
+- **Readiness: checks em paralelo, com timeout, e log sem a mensagem da
+  exceção (#447).** `make_health_router` rodava os checks em série e sem
+  limite — uma dependência pendurada segurava a readiness inteira até o probe
+  desistir, e as seguintes nem rodavam — e logava `str(exc)`, que em driver de
+  banco ou broker costuma trazer a DSN com usuário e senha. Agora os checks
+  rodam com `asyncio.gather`, cada um sob `asyncio.wait_for` com o novo
+  `timeout=` (default `3.0` s; `None` desliga; zero ou negativo é
+  `ValueError`); timeout conta como falha só daquele check. O log leva só o
+  nome e o tipo (`Health check 'database' raised ConnectionRefusedError`,
+  `Health check 'search' timed out after 0.5s`). Medido: um check com
+  `sleep(60)` e `timeout=0.5` responde `503` com o outro check `True`, num
+  processo de 1,7 s. Testes: o check pendurado falha sozinho; dois checks que
+  esperam um pelo outro só passam em paralelo; com `caplog`, a senha de uma
+  DSN na mensagem não aparece. O valor devolvido por um check agora passa por
+  `bool()` antes de entrar no payload. Receita `http.md` ganhou a seção
+  "Liveness e readiness".
+- **`MessageBroker.health_check` / `AsyncQueueManager.health_check` fazem o
+  `ping` real do FastStream (#448).** Antes devolviam `self._started`, com a
+  docstring dizendo que o FastStream não tinha ping — ele tem
+  (`BrokerUsecase.ping(timeout)`, implementado por RabbitMQ, Redis, Kafka,
+  Confluent e NATS; mesma assinatura no piso `0.7.5` e na `0.7.7`, a mais
+  nova no PyPI hoje). Agora aceitam `timeout: float = 2.0` (abaixo dos 3 s do
+  router), devolvem `False` antes do `connect()` sem tocar a rede e, depois,
+  o resultado do `ping`. Medido com RabbitMQ 3 em container: `True` conectado,
+  e depois do `docker stop` `False` em 2,00 s, com a readiness respondendo
+  `503 {"queue": false}` — antes ficava `True`.
+- **`JSONFormatter` re-renderizava `exc_info` por cima do traceback já
+  redigido (#445).** O campo `exception` agora sai de `record.exc_text` quando
+  um passo anterior já o renderizou — a precedência do `logging.Formatter` da
+  stdlib — e de `exc_info` só no resto. Antes, um filtro de handler que
+  redigia o `exc_text` era ignorado: o e-mail da mensagem da exceção voltava
+  para o JSON. Quem já seta `exc_text` à mão passa a vê-lo no lugar do
+  traceback re-renderizado.
 - **`TaskQueue.from_settings(Settings())` e `@tq.task(...)` passam no
   `mypy --strict` (#449).** `TaskIQSettingsLike` declarava os campos como
   atributo simples, que num `Protocol` é **gravável**; o `BaseAppSettings` é

@@ -187,7 +187,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.checks` | System checks (Django-style config validation): `check` (register decorator), `run_checks` / `run_system_checks` (raises `SystemCheckError` on ERROR+), `CheckMessage` / `CheckLevel` + `debug`/`info`/`warning`/`error`/`critical`, `CheckRegistry` / `default_registry`; built-in settings checks + the `tempest check-config` CLI (auto-detects settings, `--tag` / `--fail-level`) |
 | `tempest_fastapi_sdk.cli` *(extra: `[cli]`; imports without it)* | `tempest` console script — `new <name>` (scaffold layered service), `lint` / `format` / `fmt-check` / `type` / `test` / `check` (run preferred quality gates), `check-config` (validate settings via the system-check framework), `version` / `--version`; plus project-registered management commands (`tempest <cmd>` from `src/commands.py` or `[tool.tempest] commands`) |
 | `tempest_fastapi_sdk.controllers` | `Controller` (root for a controller that orchestrates several services, no CRUD), `BaseController` (its one-service CRUD specialization) |
-| `tempest_fastapi_sdk.core` | `configure_logging`, `configure_root_once` (idempotent root setup — what `LogUtils` uses so `LogUtils(__name__)` per module shares one handler set), `reinitialize_logging` (re-enable every logger after Alembic's `fileConfig()` disables them), `JSONFormatter`, `get_request_id`/`set_request_id`/`clear_request_id`, `request_id_ctx`, `BaseStrEnum`, `BaseIntEnum`, `Locale` (BCP-47 locale enum), `strict_types`/`typed`/`require_annotations` |
+| `tempest_fastapi_sdk.core` | `configure_logging`, `configure_root_once` (idempotent root setup — what `LogUtils` uses so `LogUtils(__name__)` per module shares one handler set), `reinitialize_logging` (re-enable every logger after Alembic's `fileConfig()` disables them), `JSONFormatter`, `RedactionPolicy`/`RedactionFilter` (PII redaction via `configure_logging(redact=...)`), `get_request_id`/`set_request_id`/`clear_request_id`, `request_id_ctx`, `BaseStrEnum`, `BaseIntEnum`, `Locale` (BCP-47 locale enum), `strict_types`/`typed`/`require_annotations` |
 | `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseUserTokenModel`, `BaseUserRecoveryCodeModel`, `make_user_recovery_code_model`, `UserTokenPurpose`, `BaseRepository[ModelType]`, `TenantScopedRepository[ModelType]`, `AsyncDatabaseManager` (+ `is_memory_sqlite_url` / `shared_memory_url`, which give in-memory SQLite a connection per session; `transaction()`, the explicit name of the commit-on-exit `get_session_context()`; `create_tables(metadata=...)` / `drop_tables(metadata=...)` for your own `DeclarativeBase`), `session_dependency_for` (request-session dependency for a manager built on demand), `AlembicHelper` (+ `safe_upgrade`, and the first-boot bootstrap `sync_schema` / `adopt` / `base_revision` / `has_existing_schema`), `SchemaSyncOutcome`, `DestructiveMigrationError`, `AmbiguousBaseRevisionError`, `NAMING_CONVENTION`, `AuditMixin`, `SoftDeleteMixin`, `MFAMixin`, `LocaleColumnMixin`, `BASE_COLUMN_ORDER`, `reorder_base_columns_first`, `compose_hooks`, `SlowQueryLogger`, `BaseOutboxModel`, `OutboxRelay`, `OutboxStatus`, `BaseRepository.save_with_outbox`, audit trail (`BaseAuditLogModel`, `AuditAction`, `snapshot_model`, `diff_snapshots`, `BaseRepository.add_audited` / `update_audited` / `delete_audited`), eager-loading (`get`/`get_or_none`/`get_by_id`/`first`/`list` accept `with_=[...]`, dotted for nested), lifecycle signals (`RepositorySignal`, `connect` / `on_signal` / `disconnect`, `PRE_SAVE`/`POST_SAVE`/`PRE_DELETE`/`POST_DELETE`), `F` / `Q` expression wrappers (`F("stock") - 1` atomic updates; `Q(...) | Q(...)` OR/NOT via `where=`), `BaseWebPushSubscriptionModel` + `make_web_push_subscription_model`, integrity introspection (`parse_integrity_error` → `IntegrityFailure` / `IntegrityViolation`: reads a driver's rejection back into the constraint that caused it, so a service answers `409` naming the field; Postgres and SQLite, every pattern read off a real server), constraint naming (`NAMING_CONVENTION` names composite `uq`/`ix`/`fk` by every column; `LEGACY_NAMING_CONVENTION`, `ConstraintKind`, `ConstraintRename` and `legacy_constraint_renames` move an existing database to the new names) |
 | `tempest_fastapi_sdk.exceptions` | `AppException`, `NotFoundException`, `ConflictException`, `ValidationException`, `UnauthorizedException`, `ForbiddenException`, `InvalidTokenException`, `ExpiredTokenException`, `InvalidSignedURLException`, `ExpiredSignedURLException`, `FileTooLargeException`, `InvalidFileTypeException`, `TooManyRequestsException`, `InheritedErrorCodeWarning`, i18n (`MessageCatalog`, `default_message_catalog`, `parse_accept_language`, `DEFAULT_LOCALE`) |
 | `tempest_fastapi_sdk.flags` | `FeatureFlags`, `FeatureFlagBackend`, `MemoryFeatureFlagBackend`, `EnvFeatureFlagBackend`, `RedisFeatureFlagBackend`, `CompositeFeatureFlagBackend`, `make_flag_dependency`, `coerce_flag` |
@@ -1950,8 +1950,8 @@ class TestUsersAPI:
 | `create_test_session_factory(engine)` | Build a `sessionmaker` bound to the engine. |
 | `init_test_metadata(engine, metadata=None)` | Create every SQLAlchemy table on the engine (defaults to `BaseModel.metadata`). |
 | `drop_test_metadata(engine, metadata=None)` | Drop every table. |
-| `test_database(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an `async_sessionmaker[AsyncSession]` bound to a fresh engine with metadata pre-created; drops everything and disposes on exit. |
-| `test_session(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an `AsyncSession` on top of a fresh `test_database`. |
+| `make_test_database(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an `async_sessionmaker[AsyncSession]` bound to a fresh engine with metadata pre-created; drops everything and disposes on exit. |
+| `make_test_session(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an `AsyncSession` on top of a fresh `make_test_database`. |
 | `ModelFactory(session, Model, **defaults)` | Bind a model + defaults to a session; `build()` (unsaved), `create()`/`create_many(n)` (add + flush + refresh). Callable defaults/overrides get the row index. |
 | `seq(template, *, start=0)` | Index generator formatting `template` with `{n}` — `seq("user{n}@x.com")` yields unique values one per row. |
 | `fakes.FakePixProvider()` / `FakePayoutProvider()` / `FakeTextBackend()` / `FakeModerationBackend()` / `FakePushDispatcher()` / `FakeEmailUtils()` / `FakeGeocodingBackend()` / `FakeRoutingBackend()` / `FakeWebSearchBackend()` | Steerable stand-ins for the third parties a service talks to — no credential, no network. Move the state (`advance`, `flag`, `add_place`, `queue`), force the failing branch (`fail_next`), assert on what happened (`outbox`, `sent`, `charges`, `transfers`, `calls`). See the [Fakes recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fakes/). |
@@ -1963,34 +1963,34 @@ from collections.abc import AsyncGenerator
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tempest_fastapi_sdk.testing import test_database, test_session
+from tempest_fastapi_sdk.testing import make_test_database, make_test_session
 
 
 @pytest_asyncio.fixture
 async def session_factory() -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
     """Yield a session factory over a fresh in-memory SQLite database."""
-    async with test_database() as factory:
+    async with make_test_database() as factory:
         yield factory
 
 
 @pytest_asyncio.fixture
 async def session() -> AsyncGenerator[AsyncSession, None]:
     """Yield a managed AsyncSession bound to the in-memory engine."""
-    async with test_session() as s:
+    async with make_test_session() as s:
         yield s
 ```
 
-Use the one-shot `test_session()` context manager for ad-hoc tests that don't need cross-fixture sharing:
+Use the one-shot `make_test_session()` context manager for ad-hoc tests that don't need cross-fixture sharing:
 
 ```python
-from tempest_fastapi_sdk.testing import test_session
+from tempest_fastapi_sdk.testing import make_test_session
 
 from src.db.models import UserModel
 from src.db.repositories import UserRepository
 
 
 async def test_repo_directly() -> None:
-    async with test_session() as session:
+    async with make_test_session() as session:
         repo = UserRepository(session)
         await repo.add(UserModel(name="Ana", email="ana@example.com", password_hash="x"))
         assert await repo.count() == 1
@@ -2203,6 +2203,14 @@ logs/
 ```
 
 The scaffold reads the directory from `LOG_DIR` (defaults to `"logs"`; set it empty to disable file logging). Add `logs/` to `.gitignore`.
+
+Pass `redact=True` (or a `RedactionPolicy`) to keep personal data out of every line: each handler `configure_logging` installs gets a `RedactionFilter` that replaces sensitive keys (`password`, `token`, `email`, ...) in `extra=` and redacts e-mails, `Bearer` credentials and JWTs from the message, arguments and traceback. `LOG_REDACT=true` turns it on from `LogSettings`. Details and measured cost in the [logging recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/logging/).
+
+```python
+from tempest_fastapi_sdk import RedactionPolicy, configure_logging
+
+configure_logging(file_output=False, redact=RedactionPolicy(extra_keys={"cpf"}))
+```
 
 #### Reading logs over HTTP — `make_logs_router`
 
@@ -4457,7 +4465,7 @@ Pair with `@cached(redis, ttl=..., key_prefix=...)` for function-level memoizati
 | `await publish(message, *args, **kwargs)` | Forward to `broker.publish`; raises before `connect`. |
 | `async with lifespan()` | Connect on enter, disconnect on exit. |
 | `async broker_dependency()` | FastAPI `Depends`-compatible generator yielding the broker. |
-| `await health_check()` | `True` while the broker is started. |
+| `await health_check(timeout=2.0)` | `False` before `connect()`; afterwards the FastStream broker's real `ping(timeout)`, so a dropped connection reports `False`. |
 | `is_connected` (property) | Read-only state. |
 
 #### `AsyncTaskBrokerManager` *(extra: `[tasks]`)*

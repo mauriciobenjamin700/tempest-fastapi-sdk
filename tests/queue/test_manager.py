@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import AsyncMock
 
 import pytest
 from faststream.rabbit import RabbitBroker, TestRabbitBroker
@@ -83,6 +84,33 @@ class TestAsyncBrokerManager:
             assert await manager.health_check() is True
             await manager.disconnect()
         assert await manager.health_check() is False
+
+    async def test_health_check_reports_dropped_connection(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A started broker whose ping fails is reported unhealthy (#448)."""
+        broker = _make_broker()
+        manager = AsyncBrokerManager(broker)
+        ping = AsyncMock(return_value=False)
+        async with TestRabbitBroker(broker):
+            await manager.connect()
+            monkeypatch.setattr(broker, "ping", ping)
+            assert await manager.health_check(timeout=0.5) is False
+            await manager.disconnect()
+        ping.assert_awaited_once_with(timeout=0.5)
+
+    async def test_health_check_before_connect_never_pings(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Before connect() the probe answers False without touching the network."""
+        broker = _make_broker()
+        ping = AsyncMock(return_value=True)
+        monkeypatch.setattr(broker, "ping", ping)
+        manager = AsyncBrokerManager(broker)
+        assert await manager.health_check() is False
+        ping.assert_not_awaited()
 
     async def test_broker_dependency_yields_started_broker(self) -> None:
         """The FastAPI dependency yields the live broker after connect."""
