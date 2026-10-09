@@ -119,7 +119,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `MercadoPagoWebhookEvent.event` passa de `Any | None` para
   `MercadoPagoEvent | None`, o tipo que o docstring já declarava.
 
+- **`test_session` / `test_database` viraram `make_test_session` /
+  `make_test_database` (#450).** O pytest coleta como teste toda função
+  importada num módulo de teste cujo nome comece com `test`, então
+  `from tempest_fastapi_sdk.testing import test_session` dava à suíte do
+  consumidor um item fantasma que "passava" e emitia
+  `PytestReturnNotNoneWarning` — falha de verdade sob `-W error` (medido:
+  `1 failed, 1 passed`). A própria suíte do SDK coletava os dois fantasmas em
+  `tests/testing/test_database.py`. Os nomes antigos continuam importáveis
+  como alias deprecado: cada chamada emite `DeprecationWarning` e os dois
+  carregam `__test__ = False`, então não são mais coletados. O teste roda um
+  pytest de verdade num subprocess, com `-W error`, sobre um módulo que
+  importa os quatro nomes, e falha (`2 failed, 1 passed`) quando o
+  `__test__ = False` é removido. **Quem roda `filterwarnings = ["error"]` e
+  chama o nome antigo passa a ver o `DeprecationWarning` como erro** — troque
+  o import.
+
 ### Fixed
+
+- **Readiness: checks em paralelo, com timeout, e log sem a mensagem da
+  exceção (#447).** `make_health_router` rodava os checks em série e sem
+  limite — uma dependência pendurada segurava a readiness inteira até o probe
+  desistir, e as seguintes nem rodavam — e logava `str(exc)`, que em driver de
+  banco ou broker costuma trazer a DSN com usuário e senha. Agora os checks
+  rodam com `asyncio.gather`, cada um sob `asyncio.wait_for` com o novo
+  `timeout=` (default `3.0` s; `None` desliga; zero ou negativo é
+  `ValueError`); timeout conta como falha só daquele check. O log leva só o
+  nome e o tipo (`Health check 'database' raised ConnectionRefusedError`,
+  `Health check 'search' timed out after 0.5s`). Medido: um check com
+  `sleep(60)` e `timeout=0.5` responde `503` com o outro check `True`, num
+  processo de 1,7 s. Testes: o check pendurado falha sozinho; dois checks que
+  esperam um pelo outro só passam em paralelo; com `caplog`, a senha de uma
+  DSN na mensagem não aparece. O valor devolvido por um check agora passa por
+  `bool()` antes de entrar no payload. Receita `http.md` ganhou a seção
+  "Liveness e readiness".
+- **`MessageBroker.health_check` / `AsyncQueueManager.health_check` fazem o
+  `ping` real do FastStream (#448).** Antes devolviam `self._started`, com a
+  docstring dizendo que o FastStream não tinha ping — ele tem
+  (`BrokerUsecase.ping(timeout)`, implementado por RabbitMQ, Redis, Kafka,
+  Confluent e NATS; mesma assinatura no piso `0.7.5` e na `0.7.7`, a mais
+  nova no PyPI hoje). Agora aceitam `timeout: float = 2.0` (abaixo dos 3 s do
+  router), devolvem `False` antes do `connect()` sem tocar a rede e, depois,
+  o resultado do `ping`. Medido com RabbitMQ 3 em container: `True` conectado,
+  e depois do `docker stop` `False` em 2,00 s, com a readiness respondendo
+  `503 {"queue": false}` — antes ficava `True`.
 
 - **`PdfRenderer`: cada renderização relata só as próprias recusas de asset
   (#435).** A instância guardava uma `AssetPolicy` só e todas as

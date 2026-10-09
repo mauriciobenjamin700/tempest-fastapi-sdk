@@ -408,7 +408,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   against path **and** query, `BanStore`/`MemoryBanStore`/`RedisBanStore`,
   fail-open by default, client IP via `trusted_ip_header`),
   hardened static files, CORS,
-  health + tool-spec routers. **Quotas (v0.216.0):** `RateLimitRule`
+  health + tool-spec routers (readiness runs its checks concurrently, each
+  under `make_health_router(timeout=)`, and logs only the exception type —
+  #447, unreleased). **Quotas (v0.216.0):** `RateLimitRule`
   (sliding window, or **token bucket** when `burst` is set),
   `StaticRateLimitPolicy`/`PlanRateLimitPolicy` (+ `plan_by_jwt_claim`/
   `plan_by_header`/`key_by_plan_principal`) and `MemoryQuotaStore`/
@@ -2139,6 +2141,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `tests/testing/test_fakes_contract.py` compara assinatura por
   `inspect.signature`, exige `async` onde a costura é `async`, e falha quando um
   fake novo entra sem cobertura.
+- **Helpers de banco de teste (`tempest_fastapi_sdk.testing`)** —
+  `create_test_engine`, `create_test_session_factory`, `init_test_metadata`,
+  `drop_test_metadata`, `make_test_database` e `make_test_session` (#450,
+  unreleased: renomeados de `test_database` / `test_session`, que o pytest
+  coletava como teste fantasma em quem os importava; os nomes antigos ficam
+  como alias deprecado com `__test__ = False`). Guard:
+  `tests/testing/test_database.py::test_consumer_suite_collects_no_phantom_test`.
 - **CLI** — `tempest new` (scaffolds layered service +
   docker-compose + multi-stage uv `Dockerfile`/`.dockerignore`),
   `tempest generate --docker` (regen compose) / `--dockerfile`

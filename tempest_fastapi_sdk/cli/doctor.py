@@ -196,9 +196,9 @@ def _redis_check(settings: Any, timeout: float) -> CheckOutcome:
 def _rabbitmq_check(settings: Any) -> CheckOutcome:
     """Open the broker connection and close it again.
 
-    FastStream brokers expose no generic ping, so what is measured is
-    the start handshake: a broker that connects and closes is one the
-    service can publish through.
+    After the start handshake, :meth:`AsyncQueueManager.health_check`
+    runs the FastStream broker's ``ping``: a broker that connects,
+    answers the ping and closes is one the service can publish through.
 
     Args:
         settings (Any): The project's settings, or ``None``.

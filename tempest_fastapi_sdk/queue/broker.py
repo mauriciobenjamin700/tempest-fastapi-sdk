@@ -867,17 +867,30 @@ class MessageBroker:
         """
         return self._started
 
-    async def health_check(self) -> bool:
-        """Return ``True`` while the broker is started.
+    async def health_check(self, timeout: float = 2.0) -> bool:
+        """Report whether the broker connection is alive right now.
 
-        FastStream brokers expose no generic ping, so this reports
-        whether the start handshake completed — enough for a readiness
-        probe wired via ``make_health_router(checks={"queue": mq.health_check})``.
+        Delegates to the FastStream broker's own ``ping(timeout)``, which
+        every transport implements: RabbitMQ and NATS read the live
+        connection state, Redis sends a ``PING`` and Kafka asks the
+        cluster for its metadata. A connection that dropped after
+        :meth:`connect` therefore reports ``False``. Before
+        :meth:`connect` (or after :meth:`disconnect`) it returns
+        ``False`` without touching the network. Wire it into a readiness
+        probe with ``make_health_router(checks={"queue": mq.health_check})``;
+        the default ``timeout`` stays below the router's per-check bound.
+
+        Args:
+            timeout (float): Seconds the ping may take before it gives up
+                and reports ``False``.
 
         Returns:
-            bool: ``True`` while the broker is started.
+            bool: ``True`` when the broker is started and its ping
+            answered within ``timeout``.
         """
-        return self._started
+        if not self._started:
+            return False
+        return bool(await self.broker.ping(timeout=timeout))
 
 
 __all__: list[str] = [
