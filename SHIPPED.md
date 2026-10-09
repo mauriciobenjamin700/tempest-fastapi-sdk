@@ -3064,3 +3064,16 @@ handler. `data_id` vem da query porque o corpo não é assinado; tópico
 desconhecido vira `MercadoPagoEvent.UNKNOWN`, corpo não-JSON não derruba. A
 receita `mercado-pago.md` monta a rota com a fábrica. Testes:
 `tests/integrations/payment/mercado_pago/test_webhook_dependency.py`.
+
+## Exportação e exclusão de titular (Unreleased, #460)
+
+`tempest_fastapi_sdk.privacy`: `SubjectGraph(metadata, root=..., retained=...,
+secret_columns=..., secret_markers=...)` com `tables()`, `export(session, id)`,
+`count(session, id)`, `condition(table, id)`, `exported_columns(table)` e
+`violations()`; `assert_subject_graph_valid` em `tempest_fastapi_sdk.testing`.
+`SubjectObjectStorage(client, prefix=..., bucket=...)` com `put`, `presign`,
+`names`, `delete`, `delete_all` (lote) e `SubjectErasureError`. No storage,
+`AsyncMinIOClient.remove_objects` + `ObjectDeleteError`. Fora: vínculo sem FK
+(audit trail, id em JSON), raiz com PK composta, busca/cache/backup. Receita
+`recipes/subject-data.md`. Testes: `tests/privacy/`,
+`tests/storage/test_minio_client.py`.

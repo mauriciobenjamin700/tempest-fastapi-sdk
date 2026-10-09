@@ -1416,6 +1416,9 @@ from tempest_fastapi_sdk.storage import (
     AsyncMinIOClient as AsyncMinIOClient,
 )
 from tempest_fastapi_sdk.storage import (
+    ObjectDeleteError as ObjectDeleteError,
+)
+from tempest_fastapi_sdk.storage import (
     ObjectStat as ObjectStat,
 )
 from tempest_fastapi_sdk.storage import (
@@ -2270,6 +2273,7 @@ __all__: list[str] = [
     "OAuthUser",
     "OIDCProvider",
     "OIDCTokenVerifier",
+    "ObjectDeleteError",
     "ObjectStat",
     "OpenPixSettings",
     "OrderByNotAllowedException",
