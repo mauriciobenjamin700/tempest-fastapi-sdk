@@ -61,6 +61,7 @@ SKIP_MARKER: str = "protocol-shape-guard: skip"
 THIRD_PARTY_CLIENT_PROTOCOLS: dict[str, str] = {
     "ThrottleBackend": "tempest_fastapi_sdk/utils/throttle.py",
     "_RedisHashClient": "tempest_fastapi_sdk/flags/backends.py",
+    "_GeocodeRedisClient": "tempest_fastapi_sdk/geo/cache.py",
     "RedisLike": "tempest_fastapi_sdk/api/middlewares/rate_limit.py",
     "RetryLogger": "tempest_fastapi_sdk/utils/retry.py",
     "RedisLockClient": "tempest_fastapi_sdk/tasks/lock.py",

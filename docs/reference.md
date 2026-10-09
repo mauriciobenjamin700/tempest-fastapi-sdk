@@ -552,6 +552,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.geo.routing.DEFAULT_OSRM_BASE_URL
 ::: tempest_fastapi_sdk.geo.routing.DEFAULT_MODE_PROFILES
 ::: tempest_fastapi_sdk.geo.geocoding.DEFAULT_NOMINATIM_BASE_URL
+::: tempest_fastapi_sdk.geo.cache.DEFAULT_GEOCODE_CACHE_PRECISION
+::: tempest_fastapi_sdk.geo.cache.DEFAULT_GEOCODE_CACHE_TTL_SECONDS
+::: tempest_fastapi_sdk.geo.cache.DEFAULT_GEOCODE_CACHE_KEY_PREFIX
 ::: tempest_fastapi_sdk.geo.br.UF_CENTROIDS
 ::: tempest_fastapi_sdk.geo.br.CEP_PATTERN
 ---
