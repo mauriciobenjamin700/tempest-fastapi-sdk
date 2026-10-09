@@ -23,21 +23,63 @@ from tempest_fastapi_sdk import (
     PrometheusMiddleware,
     make_prometheus_registry,
     make_prometheus_router,
+    make_token_dependency,
+    register_exception_handlers,
 )
 
 
-def create_app() -> FastAPI:
+def create_app(metrics_token: str) -> FastAPI:
     app = FastAPI(title="my-service")
+    register_exception_handlers(app)
 
-    # Registry isolado por app — evita colisões com outros prometheus-client globais.
     registry = make_prometheus_registry()
 
     app.add_middleware(PrometheusMiddleware, registry=registry)
-    app.include_router(make_prometheus_router(registry=registry))
+    app.include_router(
+        make_prometheus_router(
+            registry=registry,
+            dependencies=[make_token_dependency(metrics_token)],
+        )
+    )
     return app
 ```
 
-Pronto. Depois de duas requests a uma rota `GET /api/users/{user_id}`, o `GET /metrics` devolve (trecho da saída real; as linhas `..._created` e os demais buckets foram cortados, e o `in_progress` conta o próprio scrape):
+O `make_prometheus_registry()` cria um registry isolado por app, o que evita
+colisão com outros usuários globais do `prometheus-client`. O
+`make_token_dependency(metrics_token)` protege o scrape por header: sem
+`X-Token`, ou com o valor errado, o `GET /metrics` responde `401`; com
+`X-Token: <metrics_token>`, responde `200`. O segredo viaja no header, nunca
+na URL, então não cai no log de acesso. Leia o `metrics_token` do seu
+`Settings`, não escreva no código.
+
+!!! warning "Sem `dependencies=`, o `/metrics` é público"
+    O default do `make_prometheus_router` é **sem autenticação nenhuma**:
+    `make_prometheus_router(registry=registry)` responde `200` a qualquer um
+    que alcance a porta, e os labels expõem o mapa de rotas do serviço.
+    Monte sem `dependencies=` só quando a porta já está numa rede privada que
+    só o Prometheus alcança.
+
+!!! warning "Segredo vazio desliga a checagem"
+    `make_token_dependency("")` não protege nada: com `secret` vazio, o
+    `GET /metrics` responde `200` sem header nenhum. É de propósito, para dev
+    local, mas um `METRICS_TOKEN` esquecido no ambiente de produção deixa o
+    endpoint aberto em silêncio. Garanta que o valor não é vazio no boot.
+
+!!! info "Cada item de `dependencies=` é a função, ou um `Depends(...)` pronto"
+    Passe a dependency **crua** (`[make_token_dependency(token)]`) — o router
+    envolve em `Depends` sozinho. Um `Depends(...)` / `Security(...)` já
+    montado também é aceito e anexado como está, sem ser envolvido de novo.
+    O que **não** serve é o `require_x_token`: ele é a variante imperativa
+    (`require_x_token(secret, token)`), e o FastAPI leria `secret` e `token`
+    da **query string** — todo scrape viraria `422`, e o único jeito de
+    passar seria colocar o segredo na URL. Por isso o router recusa na
+    construção:
+
+    ```text
+    TypeError: require_x_token is not a FastAPI dependency: its 'secret' and 'token' parameters would be read from the query string. Pass make_token_dependency(secret) instead, which reads the X-Token header.
+    ```
+
+Pronto. Depois de duas requests a uma rota `GET /api/users/{user_id}`, o `GET /metrics` com o header devolve (trecho da saída real; as linhas `..._created` e os demais buckets foram cortados, e o `in_progress` conta o próprio scrape):
 
 ```text
 # HELP http_requests_total HTTP requests by method, route template, and response status.
@@ -62,27 +104,38 @@ Buckets padrão (`DEFAULT_LATENCY_BUCKETS`) cobrem 5ms → 10s — adequado pra 
 
 ### Scrape config
 
-`prometheus.yml`:
+`prometheus.yml` — o `http_headers` manda o `X-Token` em todo scrape, lido de
+um arquivo para o segredo não ficar no YAML:
 
 ```yaml
 scrape_configs:
   - job_name: my-service
     metrics_path: /metrics
+    http_headers:
+      X-Token:
+        files: ["/etc/prometheus/metrics_token"]
     static_configs:
       - targets: ["my-service:8000"]
 ```
 
-Ou em compose:
+Medido no Prometheus `v3.1.0`, raspando o app acima: o job com `http_headers`
+fica `up == 1`; um job igual sem o bloco fica `up == 0`, com
+`server returned HTTP status 401 Unauthorized` na página de targets.
+
+Ou em compose (o arquivo `metrics_token` tem o mesmo valor do `METRICS_TOKEN`):
 
 ```yaml
 services:
   my-service:
     image: ...
+    environment:
+      METRICS_TOKEN: ${METRICS_TOKEN}
     ports: ["8000:8000"]
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.1.0
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./metrics_token:/etc/prometheus/metrics_token:ro
     ports: ["9090:9090"]
 ```
 
@@ -228,7 +281,7 @@ Os coletores individuais também estão disponíveis: `MetricsUtils.cpu(interval
 
 ## Recap
 
-- **Caminho #1 (`[prometheus]`)** — `PrometheusMiddleware` + `make_prometheus_router` expõem séries RED/USE (`http_requests_total`, `http_request_duration_seconds`, `http_requests_in_progress`) num `GET /metrics` pronto pra scrape. É o que você liga em produção.
+- **Caminho #1 (`[prometheus]`)** — `PrometheusMiddleware` + `make_prometheus_router` expõem séries RED/USE (`http_requests_total`, `http_request_duration_seconds`, `http_requests_in_progress`) num `GET /metrics` pronto pra scrape. É o que você liga em produção — com `dependencies=[make_token_dependency(token)]`, porque sem isso o endpoint é público.
 - **Caminho #2 (`[metrics]`)** — `MetricsUtils` entrega um snapshot instantâneo de CPU / memória / disco / GPU num endpoint custom. Sem exporter Prometheus — é a foto sob demanda do host.
 
 ## Próximos passos

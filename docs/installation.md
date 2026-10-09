@@ -40,7 +40,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[faces]` | `onnxruntime`, `pillow`, `numpy` | reconhecimento facial em ONNX Runtime, sem opencv e sem torch: `FaceRecognizer` (detectar/embutir/comparar), `compare_faces`. Modelos de 16 MB baixados por `ensure_models()`. **Nenhuma biblioteca de sistema** |
 | `[firebase]` | `firebase-admin` | verificação de ID token do Firebase: `FirebaseAuth` (init idempotente, `get_identity` / `get_uid` / `get_optional_identity`), `FirebaseIdentity`, `FirebaseUserResolver`, `FirebaseSettings`. Pesado — 33 pacotes, 52 MB medidos com `firebase-admin` 7.5.0 — e por isso **fora do `[all]`** |
 | `[genai]` | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` | GenAI local (pesado): `TextGenerator`, `Embedder`, `AIChatPipeline`, `make_genai_router` via HuggingFace/torch |
-| `[genai-audio]` | `faster-whisper`, `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `transformers<5` | STT (Whisper) + TTS (Coqui) — o runtime do Coqui vem junto desde a v0.252.0 |
+| `[genai-audio]` | `faster-whisper`, `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `transformers<5` | STT (Whisper) + TTS (Coqui) — o runtime do Coqui vem junto desde a v0.252.0. O teto `transformers<5` é intencional e rebaixa `huggingface-hub`, `tokenizers` e `diffusers`: veja [o aviso abaixo da tabela](#genai-audio-transformers-bound) |
 | `[genai-chroma]` | `chromadb` | vector store Chroma pro RAG |
 | `[genai-diarization]` | `sherpa-onnx` | diarização (quem falou quando) via `sherpa-onnx` em ONNX Runtime, sem PyTorch: `SpeakerDiarizer`, `ConversationTranscriber`. Modelos (46 MB) baixados por `ensure_models()` |
 | `[genai-hub]` | `huggingface-hub` | ciclo de vida do peso: `resolve_revision` (fixar sha), `download_model` (baixar antes de servir, com preflight de disco), `list_cached_models`/`remove_cached_model`, `tempest model pull`/`cache-list`/`cache-rm` |
@@ -99,6 +99,32 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
         "tempest-fastapi-sdk[auth,upload,postgres]>=0.171.0",
     ]
     ```
+
+<a id="genai-audio-transformers-bound"></a>
+
+!!! warning "O `[genai-audio]` fixa `transformers<5` de propósito, e isso rebaixa outros pacotes"
+    O teto não é um pino acidental. Ao carregar `TTS.api`, o `coqui-tts` importa
+    `isin_mps_friendly` de `transformers.pytorch_utils`, e esse símbolo existe na
+    transformers 5.0.0 e some da 5.1.0 em diante. Remedido em 2026-10-09 com
+    coqui-tts 0.27.5, transformers 5.19.0 e torch 2.14.0, o import ainda morre com
+    `ImportError: cannot import name 'isin_mps_friendly' from 'transformers.pytorch_utils'`.
+
+    O custo vem de a transformers 4.57.6 declarar `huggingface-hub<1.0` e
+    `tokenizers<=0.23.0`; e o `diffusers` 0.40.0 já exige `huggingface-hub>=1.23.0`.
+    Resolvido com `uv pip compile` (Python 3.12) em 2026-10-09:
+
+    | Extras | `transformers` | `huggingface-hub` | `tokenizers` | `diffusers` |
+    | --- | --- | --- | --- | --- |
+    | `[genai-audio]` | 4.57.6 | 0.36.2 | 0.22.2 | — |
+    | `[genai-audio,genai-image]` | 4.57.6 | 0.36.2 | 0.22.2 | 0.39.0 |
+    | `[genai-image]` sem o `[genai-audio]` | — | 1.33.0 | — | 0.41.0 |
+
+    O teto mora só no `[genai-audio]`: sem esse extra, ele não entra na sua resolução.
+    Precisa de `huggingface-hub` 1.x ou de um `diffusers` mais novo no mesmo ambiente
+    do `[genai-audio]`? Não relaxe o teto localmente: o SDK não testa essa
+    combinação, e o TTS deixa de importar. Abra uma
+    [issue](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues) com a
+    versão de que você precisa.
 
 !!! warning "O SDK não traz driver de banco por padrão"
     `sqlalchemy[asyncio]` é dependência core, mas o DBAPI async é escolha

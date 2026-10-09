@@ -274,10 +274,16 @@ from tempest_fastapi_sdk.api.routers import (
     HealthCheck as HealthCheck,
 )
 from tempest_fastapi_sdk.api.routers import (
+    LogReadResult as LogReadResult,
+)
+from tempest_fastapi_sdk.api.routers import (
     LogSource as LogSource,
 )
 from tempest_fastapi_sdk.api.routers import (
     PrometheusMiddleware as PrometheusMiddleware,
+)
+from tempest_fastapi_sdk.api.routers import (
+    clear_log_files as clear_log_files,
 )
 from tempest_fastapi_sdk.api.routers import (
     make_health_router as make_health_router,
@@ -293,6 +299,9 @@ from tempest_fastapi_sdk.api.routers import (
 )
 from tempest_fastapi_sdk.api.routers import (
     make_tool_spec_router as make_tool_spec_router,
+)
+from tempest_fastapi_sdk.api.routers import (
+    read_log_entries as read_log_entries,
 )
 from tempest_fastapi_sdk.api.routers import (
     render_entries_json as render_entries_json,
@@ -374,6 +383,7 @@ __all__: list[str] = [
     "HoneypotBanMiddleware",
     "IdempotencyMiddleware",
     "IdempotencyStore",
+    "LogReadResult",
     "LogSource",
     "MemoryBanStore",
     "MemoryIdempotencyStore",
@@ -419,6 +429,7 @@ __all__: list[str] = [
     "app_exception_handler",
     "apply_cors",
     "clear_cookie",
+    "clear_log_files",
     "declared_raises",
     "describe_validation_envelope",
     "error_responses",
@@ -450,6 +461,7 @@ __all__: list[str] = [
     "plan_by_header",
     "plan_by_jwt_claim",
     "raises",
+    "read_log_entries",
     "redact_database_errors",
     "register_exception_handlers",
     "render_entries_json",

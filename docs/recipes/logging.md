@@ -616,12 +616,144 @@ paths: list[Path] = resolve_log_files("logs", "error")
 every: list[Path] = resolve_log_files("logs", "all", include_http_500=True)
 ```
 
+### Atrás da sua própria auth — `dependencies=`
+
+Serviço que já tem login próprio (Bearer JWT de admin, role, sessão) não
+precisa inventar um segredo compartilhado só para os logs. Passe a
+dependência que já protege o resto do painel em `dependencies=`, e ela vale
+para `GET` **e** `DELETE`:
+
+```python
+from fastapi import Depends, FastAPI
+
+from tempest_fastapi_sdk import (
+    JWTUtils,
+    configure_logging,
+    make_logs_router,
+    make_role_dependency,
+    register_exception_handlers,
+)
+
+configure_logging(log_dir="logs")
+
+tokens: JWTUtils = JWTUtils(secret="a-32-character-secret-for-tests!")
+require_admin = make_role_dependency(tokens, ["admin"])
+
+app: FastAPI = FastAPI()
+register_exception_handlers(app)
+app.include_router(
+    make_logs_router(log_dir="logs", dependencies=[Depends(require_admin)]),
+)
+```
+
+O que cada chamada recebe, medido com esse app:
+
+| Requisição | Resposta |
+| --- | --- |
+| sem `Authorization` | `401` (`UNAUTHORIZED`) |
+| Bearer com `roles: ["user"]` | `403` (`FORBIDDEN`) |
+| Bearer com `roles: ["admin"]` | `200`, sem `X-Token` nenhum |
+
+Cada item aceita as duas grafias, `Depends(require_admin)` ou só
+`require_admin`. O `Depends` pronto é usado como veio, não é embrulhado de
+novo.
+
+!!! info "Como `dependencies=` convive com o `X-Token`"
+    As duas peças **somam**, nunca se anulam:
+
+    - Só `dependencies=`: elas são o gate inteiro. Nenhum `X-Token` é lido, e
+      o header nem aparece no schema OpenAPI.
+    - `token_secret` **e** `dependencies=`: a requisição precisa do header
+      **e** de passar em toda dependência.
+    - Nenhuma das duas: `ValueError` na construção, como antes, a menos que
+      você passe `allow_unauthenticated=True`. Lista vazia
+      (`dependencies=[]`) não conta como gate.
+
+### Outro contrato de resposta — `read_log_entries` e `clear_log_files`
+
+O router é uma casca sobre duas funções públicas. Quando o painel precisa de
+outra forma de resposta, chame-as direto em vez de reescrever a leitura: é
+nela que mora o teto por arquivo, e um leitor feito à mão que carrega o
+arquivo inteiro funciona no diretório novo e derruba o worker no de vários
+gigabytes.
+
+As duas são síncronas (I/O de arquivo). Numa rota `async`, rode-as fora do
+event loop com `asyncio.to_thread`:
+
+```python
+import asyncio
+
+from fastapi import APIRouter, Depends, FastAPI
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk import (
+    JWTUtils,
+    LogReadResult,
+    clear_log_files,
+    make_role_dependency,
+    read_log_entries,
+)
+
+tokens: JWTUtils = JWTUtils(secret="a-32-character-secret-for-tests!")
+require_admin = make_role_dependency(tokens, ["admin"])
+
+
+class AppLogsResponseSchema(BaseModel):
+    messages: list[str]
+    truncated: bool
+
+
+router: APIRouter = APIRouter(
+    prefix="/api/admin/metrics",
+    dependencies=[Depends(require_admin)],
+)
+
+
+@router.get("/app-logs")
+async def app_logs(q: str | None = None, limit: int = 100) -> AppLogsResponseSchema:
+    result: LogReadResult = await asyncio.to_thread(
+        read_log_entries, "logs", "error", q=q
+    )
+    return AppLogsResponseSchema(
+        messages=[str(entry["message"]) for entry in result.entries[:limit]],
+        truncated=result.truncated,
+    )
+
+
+@router.delete("/app-logs")
+async def clear_app_logs() -> list[str]:
+    return await asyncio.to_thread(clear_log_files, "logs", "error")
+
+
+app: FastAPI = FastAPI()
+app.include_router(router)
+```
+
+Com um `logger.error("payment gateway timeout")` gravado, o
+`GET /api/admin/metrics/app-logs?q=timeout` de um admin respondeu:
+
+```json
+{"messages": ["payment gateway timeout"], "truncated": false}
+```
+
+e o `DELETE` respondeu `["error.log"]`.
+
+- `read_log_entries(log_dir, source="all", *, q, start, end, max_records_per_file)`
+  devolve um `LogReadResult`: `entries` já filtrados e do mais novo pro mais
+  antigo, e `truncated`, que diz se o teto cortou algum arquivo. Nada casou?
+  `entries` vem `[]`.
+- `clear_log_files(log_dir, source="all")` trunca no lugar e devolve os nomes
+  esvaziados. Em `"all"`, o `500.log` entra — a mesma regra do `DELETE /logs`.
+
 
 !!! check "Recap"
     - `configure_logging(log_dir=...)` → stdout **+** um arquivo por nível.
     - Exatidão por nível: cada arquivo só recebe a sua severidade.
     - `500.log` isola erros 500 não tratados (marcador `http_500`).
-    - `make_logs_router` serve esses arquivos paginados e autenticados.
+    - `make_logs_router` serve esses arquivos paginados e autenticados —
+      pelo `X-Token` ou pela sua própria auth em `dependencies=`.
+    - `read_log_entries` / `clear_log_files` são a leitura e a limpeza
+      sem o router, para outro contrato de resposta.
 
 ## Uma linha por request — `AccessLogMiddleware`
 

@@ -10,6 +10,7 @@ import secrets
 from collections.abc import Callable
 from datetime import UTC, date, datetime, time, tzinfo
 from enum import Enum
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlencode
@@ -65,10 +66,10 @@ from tempest_fastapi_sdk.admin.sql_shell import (
 from tempest_fastapi_sdk.admin.tasks import TaskPanelService
 from tempest_fastapi_sdk.api.routers.logs import (
     LogSource,
-    _read_entries,
-    _resolve_files,
+    read_log_entries,
     render_entries_json,
     render_entries_markdown,
+    resolve_log_files,
 )
 from tempest_fastapi_sdk.db.expressions import escape_like
 from tempest_fastapi_sdk.db.repository import BaseRepository
@@ -1072,26 +1073,16 @@ def make_admin_router(
             Returns:
                 list[dict[str, Any]]: The matching records, newest first.
             """
-            files = _resolve_files(_log_base, source)
-            entries, truncated = await run_in_threadpool(_read_entries, files)
-            if truncated:
+            result = await run_in_threadpool(
+                partial(read_log_entries, _log_base, source, q=q)
+            )
+            if result.truncated:
                 logger.warning(
                     "Admin log source %r exceeds the per-file read cap; older "
                     "records were not read for this request.",
                     source,
                 )
-            needle = q.lower() if q else None
-            if needle is not None:
-                entries = [
-                    entry
-                    for entry in entries
-                    if needle in str(entry.get("message", "")).lower()
-                ]
-            entries.sort(
-                key=lambda item: str(item.get("timestamp", "")),
-                reverse=True,
-            )
-            return entries
+            return result.entries
 
         @router.get("/logs/export", name="admin_logs_export")
         async def logs_export(
@@ -1203,7 +1194,7 @@ def make_admin_router(
             window = entries[offset : offset + _logs_page_size]
 
             available = _log_base.exists() and any(
-                candidate.exists() for candidate in _resolve_files(_log_base, "all")
+                candidate.exists() for candidate in resolve_log_files(_log_base, "all")
             )
 
             kept_params = {"source": source, "q": q or ""}

@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import logging
 from collections import deque
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, params
 from starlette.concurrency import run_in_threadpool
 
 from tempest_fastapi_sdk.api.dependencies.auth import make_token_dependency
@@ -136,20 +138,6 @@ def resolve_log_files(
     if source == "500":
         return [base / HTTP_500_LOG_FILE]
     return [base / _LEVEL_FILE_BY_NAME[source]]
-
-
-def _resolve_files(log_dir: Path, source: LogSource) -> list[Path]:
-    """Resolve the log files to read for a given ``source``.
-
-    Args:
-        log_dir (Path): Directory holding the log files.
-        source (LogSource): The requested source selector.
-
-    Returns:
-        list[Path]: The files to read (existing or not — callers skip
-        missing ones).
-    """
-    return resolve_log_files(log_dir, source)
 
 
 def _read_entries(
@@ -344,19 +332,157 @@ def render_entries_json(entries: list[dict[str, Any]]) -> str:
     return json.dumps(entries, indent=2, ensure_ascii=False, default=str)
 
 
-def _truncate_files(paths: list[Path]) -> None:
-    """Empty each path in place, creating it when missing.
+@dataclass(frozen=True, slots=True)
+class LogReadResult:
+    """The outcome of :func:`read_log_entries`.
+
+    Attributes:
+        entries (list[dict[str, Any]]): The matching records, already
+            filtered and sorted newest first. Each one is the JSON object the
+            formatter wrote, verbatim — every ``extra={...}`` key included.
+            Empty when nothing matched, or when no selected file exists.
+        truncated (bool): Whether at least one selected file held more
+            records than ``max_records_per_file``, so its oldest records were
+            not read. A partial view must never read as a complete one, so
+            callers surface it (the router logs a ``WARNING``).
+    """
+
+    entries: list[dict[str, Any]] = field(default_factory=list)
+    truncated: bool = False
+
+
+def read_log_entries(
+    log_dir: str | Path,
+    source: LogSource = "all",
+    *,
+    q: str | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    max_records_per_file: int = DEFAULT_MAX_RECORDS_PER_FILE,
+) -> LogReadResult:
+    """Read, filter and sort the on-disk JSON logs, newest first.
+
+    The read behind ``GET /logs`` and the admin log page, public so a service
+    that needs another response contract does not rewrite it. Rewriting it is
+    how the per-file memory bound gets lost: a hand-written reader that loads
+    each file whole works on a fresh log directory and kills the worker on a
+    multi-gigabyte one.
+
+    Only the newest ``max_records_per_file`` records of each file are read,
+    through a bounded :class:`collections.deque`; ``truncated`` reports when
+    the bound cut a file. Missing files and malformed lines are skipped.
+
+    The function is synchronous file I/O. From an ``async`` route, run it off
+    the event loop:
+
+    ```python
+    result = await asyncio.to_thread(read_log_entries, "logs", "error")
+    ```
 
     Args:
-        paths (list[Path]): The files to truncate.
+        log_dir (str | Path): Directory holding the log files — the
+            ``log_dir`` passed to ``configure_logging``.
+        source (LogSource): Which file(s) to read. ``"all"`` merges every
+            level and leaves ``500.log`` out, since each of its records is
+            also in ``error.log``. Defaults to ``"all"``.
+        q (str | None): Case-insensitive substring the message must contain.
+        start (datetime | None): Keep records at or after this instant. A
+            value without an offset is read as UTC.
+        end (datetime | None): Keep records at or before this instant. A
+            value without an offset is read as UTC.
+        max_records_per_file (int): How many of the newest records are read
+            from each file. Defaults to :data:`DEFAULT_MAX_RECORDS_PER_FILE`.
+
+    Returns:
+        LogReadResult: The matching records, newest first, and whether the
+        per-file bound cut any file.
+    """
+    files = resolve_log_files(log_dir, source)
+    entries, truncated = _read_entries(files, max_records_per_file=max_records_per_file)
+
+    lower = _as_aware(start) if start is not None else None
+    upper = _as_aware(end) if end is not None else None
+    needle = q.lower() if q else None
+    filtered: list[dict[str, Any]] = []
+    for entry in entries:
+        if needle is not None:
+            message = str(entry.get("message", "")).lower()
+            if needle not in message:
+                continue
+        if lower is not None or upper is not None:
+            moment = _parse_timestamp(str(entry.get("timestamp", "")))
+            if moment is None:
+                continue
+            if lower is not None and moment < lower:
+                continue
+            if upper is not None and moment > upper:
+                continue
+        filtered.append(entry)
+
+    filtered.sort(key=lambda item: str(item.get("timestamp", "")), reverse=True)
+    return LogReadResult(entries=filtered, truncated=truncated)
+
+
+def clear_log_files(log_dir: str | Path, source: LogSource = "all") -> list[str]:
+    """Empty the log files a ``source`` selector points at.
+
+    The truncate behind ``DELETE /logs``, public for the same reason as
+    :func:`read_log_entries`. Files are **truncated in place**, not unlinked:
+    the handlers :func:`tempest_fastapi_sdk.configure_logging` attached hold
+    an open descriptor on each path, and deleting the file would leave them
+    writing to an inode nothing can read back. A missing file is created
+    empty, so the post-condition is the same either way.
+
+    Unlike reading, ``"all"`` covers ``500.log`` as well: a clear that left
+    the 500 stream behind is the surprising outcome.
+
+    The function is synchronous file I/O. From an ``async`` route, run it off
+    the event loop:
+
+    ```python
+    cleared = await asyncio.to_thread(clear_log_files, "logs", "info")
+    ```
+
+    Args:
+        log_dir (str | Path): Directory holding the log files.
+        source (LogSource): Which file(s) to truncate. Defaults to ``"all"``.
+
+    Returns:
+        list[str]: The names of the files that were emptied, in
+        :func:`resolve_log_files` order.
 
     Raises:
         OSError: When a path cannot be opened for writing.
     """
+    paths = resolve_log_files(log_dir, source, include_http_500=True)
     for path in paths:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as handle:
             handle.truncate(0)
+    return [path.name for path in paths]
+
+
+def _as_depends(dependency: Callable[..., Any] | params.Depends) -> params.Depends:
+    """Wrap a dependency in ``Depends`` unless it already is one.
+
+    ``dependencies=`` accepts both spellings because FastAPI's own
+    ``APIRouter(dependencies=...)`` takes ``Depends(...)`` while a bare
+    callable is the shorter form. Wrapping unconditionally turns
+    ``Depends(require_admin)`` into ``Depends(Depends(require_admin))``,
+    which FastAPI rejects at construction with ``AssertionError: A
+    parameter-less dependency must have a callable dependency``.
+
+    Args:
+        dependency (Callable[..., Any] | params.Depends): A dependency
+            callable, or a ready ``Depends(...)`` / ``Security(...)``.
+
+    Returns:
+        params.Depends: The dependency as FastAPI expects it in a route's
+        ``dependencies=`` list.
+    """
+    if isinstance(dependency, params.Depends):
+        return dependency
+    return params.Depends(dependency)
 
 
 def make_logs_router(
@@ -364,6 +490,7 @@ def make_logs_router(
     log_dir: str | Path = "logs",
     token_secret: str = "",
     allow_unauthenticated: bool = False,
+    dependencies: Sequence[Callable[..., Any] | params.Depends] | None = None,
     prefix: str = "/logs",
     tag: str = "logs",
     header_name: str = "X-Token",
@@ -375,22 +502,37 @@ def make_logs_router(
 
     Mounts ``GET <prefix>`` which reads the files produced by
     :func:`tempest_fastapi_sdk.configure_logging` (called with
-    ``log_dir=...``), filters them, and returns a
-    :class:`BasePaginationSchema` of :class:`LogEntrySchema`. Newest
-    records come first. ``DELETE <prefix>`` truncates the same files.
+    ``log_dir=...``) through :func:`read_log_entries` and returns a
+    :class:`BasePaginationSchema` of :class:`LogEntrySchema`, newest
+    records first. ``DELETE <prefix>`` empties the same files through
+    :func:`clear_log_files`. The router is a shell over those two
+    functions; a service that wants another response contract calls them
+    directly.
 
-    Both endpoints are gated by a shared-secret header via
-    :func:`make_token_dependency`, and an empty ``token_secret`` is
-    refused at construction unless ``allow_unauthenticated=True`` is
-    passed.
+    **Authentication.** Both endpoints run the same gate, built from two
+    independent pieces:
+
+    - ``token_secret`` — a shared secret checked in the ``header_name``
+      header via :func:`make_token_dependency`. An empty value turns this
+      piece off.
+    - ``dependencies`` — FastAPI dependencies of the service's own auth
+      (an admin JWT check, a role dependency). Each item is either the
+      callable or a ready ``Depends(...)`` / ``Security(...)``; both
+      spellings are accepted, and a ready one is not wrapped twice.
+
+    The pieces **add up**: with both set, a request needs the header
+    **and** has to pass every dependency. With only ``dependencies``, they
+    replace the header — no ``X-Token`` is read and none is required. With
+    neither, construction is refused unless ``allow_unauthenticated=True``.
 
     The refusal is fail-closed on purpose. ``make_token_dependency``
     reads an empty secret as "nothing to check", so a router built from
-    a settings field the environment left empty still answers ``200``
-    and the missing gate looks like a working endpoint, while ``GET``
-    hands out tracebacks and request metadata and ``DELETE`` truncates
-    the files. Raising turns that gap into a startup error, and the
-    opt-out is a named flag the reader of the call site sees.
+    a settings field the environment left empty would still answer
+    ``200`` and the missing gate would look like a working endpoint,
+    while ``GET`` hands out tracebacks and request metadata and
+    ``DELETE`` truncates the files. Raising turns that gap into a startup
+    error, and the opt-out is a named flag the reader of the call site
+    sees. An empty ``dependencies`` list does not count as a gate.
 
     Leading and trailing whitespace in ``token_secret`` is stripped
     before the check and before the comparison. A whitespace-only value
@@ -403,12 +545,18 @@ def make_logs_router(
             match the ``log_dir`` passed to ``configure_logging``.
             Defaults to ``"logs"``.
         token_secret (str): Shared secret expected in the
-            ``header_name`` header. Required unless
-            ``allow_unauthenticated`` is ``True``.
-        allow_unauthenticated (bool): Build the router without a secret,
+            ``header_name`` header. Required unless ``dependencies`` is
+            non-empty or ``allow_unauthenticated`` is ``True``.
+        allow_unauthenticated (bool): Build the router without any gate,
             answering every request that reaches it. Meant for a local
             run nothing else can reach. Has no effect when
-            ``token_secret`` is set. Defaults to ``False``.
+            ``token_secret`` or ``dependencies`` is set. Defaults to
+            ``False``.
+        dependencies (Sequence[Callable[..., Any] | params.Depends] | None):
+            Extra dependencies run on both routes, after the ``X-Token``
+            check when there is one. Callables are wrapped in ``Depends``;
+            ``Depends(...)`` / ``Security(...)`` objects are used as given.
+            Defaults to ``None``.
         prefix (str): URL prefix for the router. Defaults to
             ``"/logs"`` — mount it at the application root, not under
             ``/api``.
@@ -426,27 +574,33 @@ def make_logs_router(
         APIRouter: A router ready to ``include_router(...)`` on the app.
 
     Raises:
-        ValueError: When ``token_secret`` is empty or whitespace-only and
+        ValueError: When ``token_secret`` is empty or whitespace-only,
+            ``dependencies`` is empty or ``None``, and
             ``allow_unauthenticated`` is ``False``.
     """
     secret = token_secret.strip()
-    if not secret and not allow_unauthenticated:
+    extra = [_as_depends(dependency) for dependency in dependencies or ()]
+    if not secret and not extra and not allow_unauthenticated:
         raise ValueError(
-            "make_logs_router() needs a non-empty token_secret: "
+            "make_logs_router() needs a non-empty token_secret or dependencies: "
             f"GET {prefix} exposes tracebacks and DELETE {prefix} truncates "
             f"the log files. Pass the secret clients send in {header_name} "
-            "(set TOKEN_SECRET, e.g. with `tempest secrets init`), or pass "
+            "(set TOKEN_SECRET, e.g. with `tempest secrets init`), pass "
+            "dependencies=[...] with the service's own auth, or pass "
             "allow_unauthenticated=True for a local run nothing else reaches."
         )
     router = APIRouter(prefix=prefix, tags=[tag])
     base_dir = Path(log_dir)
-    require_token = make_token_dependency(secret, header_name=header_name)
+    gate: list[params.Depends] = []
+    if secret:
+        gate.append(Depends(make_token_dependency(secret, header_name=header_name)))
+    gate.extend(extra)
 
     @router.get(
         "",
         summary="Read structured application logs",
         response_model=BasePaginationSchema[LogEntrySchema],
-        dependencies=[Depends(require_token)],
+        dependencies=gate,
     )
     async def read_logs(
         source: LogSource = Query(
@@ -490,11 +644,18 @@ def make_logs_router(
             with pagination metadata.
         """
         size = min(page_size, max_page_size)
-        files = _resolve_files(base_dir, source)
-        entries, truncated = await run_in_threadpool(
-            partial(_read_entries, files, max_records_per_file=max_records_per_file)
+        result = await run_in_threadpool(
+            partial(
+                read_log_entries,
+                base_dir,
+                source,
+                q=q,
+                start=start,
+                end=end,
+                max_records_per_file=max_records_per_file,
+            )
         )
-        if truncated:
+        if result.truncated:
             logger.warning(
                 "Log source %r exceeds %d records per file; older records were "
                 "not read for this request.",
@@ -502,31 +663,10 @@ def make_logs_router(
                 max_records_per_file,
             )
 
-        lower = _as_aware(start) if start is not None else None
-        upper = _as_aware(end) if end is not None else None
-        needle = q.lower() if q else None
-        filtered: list[dict[str, Any]] = []
-        for entry in entries:
-            if needle is not None:
-                message = str(entry.get("message", "")).lower()
-                if needle not in message:
-                    continue
-            if lower is not None or upper is not None:
-                moment = _parse_timestamp(str(entry.get("timestamp", "")))
-                if moment is None:
-                    continue
-                if lower is not None and moment < lower:
-                    continue
-                if upper is not None and moment > upper:
-                    continue
-            filtered.append(entry)
-
-        filtered.sort(key=lambda item: str(item.get("timestamp", "")), reverse=True)
-
-        total = len(filtered)
+        total = len(result.entries)
         pages = (total + size - 1) // size if total else 0
         offset = (page - 1) * size
-        window = filtered[offset : offset + size]
+        window = result.entries[offset : offset + size]
 
         return BasePaginationSchema[LogEntrySchema](
             items=[LogEntrySchema.model_validate(item) for item in window],
@@ -540,7 +680,7 @@ def make_logs_router(
         "",
         summary="Truncate structured application logs",
         response_model=LogFilesClearedSchema,
-        dependencies=[Depends(require_token)],
+        dependencies=gate,
     )
     async def clear_logs(
         source: LogSource = Query(
@@ -555,19 +695,8 @@ def make_logs_router(
         """Empty the log files a source selector points at.
 
         The counterpart of the read endpoint, on the same files and
-        behind the same ``X-Token`` gate. Every service that shipped a
-        log viewer also shipped a way to clear it, each one re-deriving
-        the level-to-filename map that :func:`resolve_log_files` owns.
-
-        Files are **truncated in place**, not unlinked: the handlers
-        that :func:`configure_logging` attached hold an open descriptor
-        on each path, and deleting the file would leave them writing to
-        an inode nothing can read back. A missing file is created empty,
-        so the post-condition is the same either way.
-
-        Unlike reading, ``"all"`` covers ``500.log`` as well. A clear
-        that left the 500 stream behind is the surprising outcome, and
-        the response names every file it emptied.
+        behind the same gate. See :func:`clear_log_files` for why files
+        are truncated in place and why ``"all"`` covers ``500.log``.
 
         Args:
             source (LogSource): Which file(s) to truncate.
@@ -575,17 +704,19 @@ def make_logs_router(
         Returns:
             LogFilesClearedSchema: The file names that were emptied.
         """
-        paths = resolve_log_files(base_dir, source, include_http_500=True)
-        await run_in_threadpool(_truncate_files, paths)
-        return LogFilesClearedSchema(cleared=[path.name for path in paths])
+        cleared = await run_in_threadpool(clear_log_files, base_dir, source)
+        return LogFilesClearedSchema(cleared=cleared)
 
     return router
 
 
 __all__: list[str] = [
     "DEFAULT_MAX_RECORDS_PER_FILE",
+    "LogReadResult",
     "LogSource",
+    "clear_log_files",
     "make_logs_router",
+    "read_log_entries",
     "render_entries_json",
     "render_entries_markdown",
     "resolve_log_files",
