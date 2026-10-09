@@ -12,6 +12,10 @@ Layers, all sharing the same schemas:
   route geometry and distance/duration matrices; :class:`NominatimBackend`
   for forward/reverse geocoding. Both take an injected ``httpx.AsyncClient``
   (install the ``[geo]`` extra for ``httpx``); the rest imports without it.
+* **Caching**: :class:`CachedGeocodingBackend` wraps any
+  :class:`GeocodingBackend` in front of a pluggable
+  :class:`GeocodeCacheStore` — :class:`InMemoryGeocodeCacheStore` for
+  tests and dev, :class:`RedisGeocodeCacheStore` for a shared Redis.
 * **Database**: :class:`GeoPointMixin` (model) + :class:`GeoRepositoryMixin`
   (portable radius search) / :class:`PostGISRepositoryMixin` (ST_DWithin).
 * **Database**, paginated: :meth:`GeoRepositoryMixin.paginate_nearby`
@@ -34,6 +38,25 @@ from tempest_fastapi_sdk.geo.br import (
     resolve_br_coordinate as resolve_br_coordinate,
 )
 from tempest_fastapi_sdk.geo.br import uf_centroid as uf_centroid
+from tempest_fastapi_sdk.geo.cache import (
+    DEFAULT_GEOCODE_CACHE_KEY_PREFIX as DEFAULT_GEOCODE_CACHE_KEY_PREFIX,
+)
+from tempest_fastapi_sdk.geo.cache import (
+    DEFAULT_GEOCODE_CACHE_PRECISION as DEFAULT_GEOCODE_CACHE_PRECISION,
+)
+from tempest_fastapi_sdk.geo.cache import (
+    DEFAULT_GEOCODE_CACHE_TTL_SECONDS as DEFAULT_GEOCODE_CACHE_TTL_SECONDS,
+)
+from tempest_fastapi_sdk.geo.cache import (
+    CachedGeocodingBackend as CachedGeocodingBackend,
+)
+from tempest_fastapi_sdk.geo.cache import GeocodeCacheStore as GeocodeCacheStore
+from tempest_fastapi_sdk.geo.cache import (
+    InMemoryGeocodeCacheStore as InMemoryGeocodeCacheStore,
+)
+from tempest_fastapi_sdk.geo.cache import (
+    RedisGeocodeCacheStore as RedisGeocodeCacheStore,
+)
 from tempest_fastapi_sdk.geo.db import GeoPointMixin as GeoPointMixin
 from tempest_fastapi_sdk.geo.db import GeoRepositoryMixin as GeoRepositoryMixin
 from tempest_fastapi_sdk.geo.db import NearbyMatch as NearbyMatch
@@ -92,6 +115,9 @@ __all__: list[str] = [
     "CEP_PATTERN",
     "DEFAULT_CAR_SPEED_KMH",
     "DEFAULT_CIRCUITY_FACTOR",
+    "DEFAULT_GEOCODE_CACHE_KEY_PREFIX",
+    "DEFAULT_GEOCODE_CACHE_PRECISION",
+    "DEFAULT_GEOCODE_CACHE_TTL_SECONDS",
     "DEFAULT_MODE_DURATION_FACTORS",
     "DEFAULT_MODE_PROFILES",
     "DEFAULT_NOMINATIM_BASE_URL",
@@ -99,17 +125,21 @@ __all__: list[str] = [
     "EARTH_RADIUS_KM",
     "UF_CENTROIDS",
     "BoundingBox",
+    "CachedGeocodingBackend",
     "Coordinate",
     "DistanceMatrix",
     "GeoPointMixin",
     "GeoRepositoryMixin",
     "GeocodeAddress",
+    "GeocodeCacheStore",
     "GeocodeResult",
     "GeocodingBackend",
+    "InMemoryGeocodeCacheStore",
     "NearbyMatch",
     "NominatimBackend",
     "OSRMBackend",
     "PostGISRepositoryMixin",
+    "RedisGeocodeCacheStore",
     "RoutingBackend",
     "TravelEstimate",
     "TravelMode",
