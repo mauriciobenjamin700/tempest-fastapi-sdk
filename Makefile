@@ -25,13 +25,27 @@ sync: install ## Alias for `install`
 # The suite runs across every core (pytest-xdist, from the `[tests]` extra)
 # and without coverage. Measured on 2026-10-09, 12 cores: 12 262 tests in
 # 4m44s with `-n 12 --no-cov`, against ~36 min serial under coverage. The
-# coverage report moved to `test-cov`, which CI runs on one Python of the
-# matrix.
+# coverage report lives in `test-cov`. Tests run only here: the repo's CI
+# publishes and nothing else.
 test: ## Run pytest in parallel, without coverage
 	uv run pytest -n auto -p no:cacheprovider
 
 test-cov: ## Run pytest in parallel with the coverage report
 	uv run pytest -n auto -p no:cacheprovider --cov=$(PACKAGE) --cov-report=term-missing
+
+# The Python matrix CI used to run. Each version gets its own venv outside
+# the repository (an in-repo `.venv-3.x` would ship in the sdist), synced
+# from the committed lock with every extra.
+MATRIX_PYTHONS := 3.11 3.12 3.13
+MATRIX_VENVS := $(HOME)/.cache/tempest-fastapi-sdk/venvs
+
+.PHONY: test-matrix
+test-matrix: ## Run the suite on every supported Python (3.11, 3.12, 3.13)
+	@for v in $(MATRIX_PYTHONS); do \
+		echo "== Python $$v"; \
+		UV_PROJECT_ENVIRONMENT=$(MATRIX_VENVS)/$$v uv sync --locked --all-extras --python $$v --quiet || exit 1; \
+		UV_PROJECT_ENVIRONMENT=$(MATRIX_VENVS)/$$v uv run --no-sync python -m pytest -n auto -p no:cacheprovider -q || exit 1; \
+	done
 
 test-model: ## Run opt-in model smoke tests (downloads tiny weights on first run)
 	uv run pytest -m model
@@ -214,17 +228,9 @@ release: ## Bump versions, run every gate, commit and tag. Usage: make release V
 # it, so the guard could never fail. Measured by corrupting the lock and
 # watching a bare `uv run python -c pass` put it back.
 #
-# The suite runs only when no green CI run already covers HEAD: the bump
-# above changes nothing but the version strings, so a green run on HEAD (or
-# on an ancestor that differs from it only in versions) has already tested
-# what ships. scripts/release_gate.py decides; CI pending or red, or any
-# other change, falls through to `make test`.
-	$(MAKE) lint fmt-check type
-	@if sha=$$(python3 scripts/release_gate.py); then \
-		echo "Green CI run on $$sha covers this tree; skipping the local suite."; \
-	else \
-		$(MAKE) test; \
-	fi
+# `make check` here is the only place the suite runs before a tag: the
+# release workflow publishes and does not test (tests/test_release_flow_guard.py).
+	$(MAKE) check
 	$(MAKE) audit
 	$(MAKE) docs-build
 	$(MAKE) smoke

@@ -49,11 +49,11 @@ Duas consequências estruturais:
 
 `make release VERSION=X.Y.Z SUBJECT="<assunto>"` é a autoridade: recusa árvore
 suja e CHANGELOG sem entrada, bumpa os dois arquivos de versão, roda lint +
-format + mypy, audit, `docs-build` e `smoke`, commita e cria a tag. A suíte só
-roda quando nenhuma CI verde cobre o `HEAD` (`scripts/release_gate.py`); o
-workflow da tag aplica a mesma regra antes de publicar. Para publicar em
-minutos, commite e empurre o CHANGELOG **antes**, espere a CI dele ficar verde
-e só então rode `make release`. O push fica manual. A ordem em volta — CHANGELOG, docs, auditoria de prosa, confirmação
+format + mypy + a suíte em paralelo (`make check`, ~7 min), audit,
+`docs-build` e `smoke`, commita e cria a tag. **É o único lugar onde a suíte
+roda antes de uma tag**: desde 2026-10-09 a CI só publica — o workflow da tag
+confere versão e lock, audita, builda e sobe, em poucos minutos. Guard:
+`tests/test_release_flow_guard.py`. O push fica manual. A ordem em volta — CHANGELOG, docs, auditoria de prosa, confirmação
 antes do push — está na skill `/release`.
 
 **Docs-only pula tudo isso.** Tocou só `docs/`, `README.md`, `SHIPPED.md` ou
@@ -64,19 +64,21 @@ bump, sem CHANGELOG, sem tag — commit `docs: <subject>` direto na `main`
 `make check` completo é desnecessário porque nenhum Python mudou. Edição de
 docstring que muda assinatura ou comportamento **não** é docs-only.
 
-## PR com a CI verde é mergeado
+## PR com `make check` local verde é mergeado
 
-**Não peça confirmação para mergear.** PR deste repo — aberto por você ou por
-agente — que tem todos os checks `pass` (`Python 3.11`, `3.12`, `3.13`) e está
-`mergeable` é mergeado na hora com `gh pr merge <n> --merge` (merge commit, o
-padrão do histórico). Esta seção é a autorização durável; não a trate como
-algo que precisa ser renovado a cada PR.
+**A CI não testa PR** (decisão de 2026-10-09: testes só na máquina local, CI
+só publica). **Não peça confirmação para mergear.** PR deste repo — aberto por
+você ou por agente — cujo `make check` passou **localmente, sobre o branch
+atualizado com a `main`**, e que está `mergeable` é mergeado na hora com
+`gh pr merge <n> --merge` (merge commit, o padrão do histórico). Esta seção é a
+autorização durável; não a trate como algo que precisa ser renovado a cada PR.
 
-- **Verde é todo check `pass`.** Check vermelho não se mergeia por "o teste que
-  falhou não é deste PR": reexecute o job
-  (`gh api -X POST repos/<owner>/<repo>/actions/jobs/<id>/rerun`), mergeie
-  depois do verde e abra issue para o intermitente (foi assim com o
-  `test_scheduler_lease` no #309 → #322).
+- **Verde é o `make check` inteiro passando**, não "os testes da área". Teste
+  vermelho não se mergeia por "não é deste PR": rode de novo e abra issue para
+  o intermitente (foi assim com o `test_scheduler_lease` no #309 → #322).
+- **A matriz de Python é `make test-matrix`** (3.11, 3.12, 3.13, uma venv por
+  versão fora do repo). Rode antes de release que mexa em dependência ou em
+  código sensível à versão — a CI não roda mais por você.
 - **Vários PRs paralelos: um por vez.** Cada merge move o `main`; o próximo é
   atualizado com o `main` novo antes do merge. Conflito só em `CHANGELOG.md` /
   `SHIPPED.md` (entradas paralelas em `[Unreleased]`) se resolve concatenando;

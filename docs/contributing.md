@@ -40,7 +40,7 @@ Nada disso impede sua contribuição — só significa que **combinar o escopo n
 Ótimo — diga isso **na issue** e espere o "vai". Aí:
 
 - trabalhe num branch `feat/<slug>` / `fix/<slug>` a partir de `main`;
-- rode `make check` (lint + formato + mypy + testes) — o CI roda o mesmo alvo em 3.11 / 3.12 / 3.13;
+- rode `make check` (lint + formato + mypy + testes) — a CI não roda testes (só publica), então é este o gate; `make test-matrix` cobre 3.11 / 3.12 / 3.13;
 - atualize a doc PT **e** EN junto com o código, mais `CHANGELOG.md`;
 - **não** faça bump de versão nem crie tag — isso é do release;
 - um PR por assunto, com o corpo explicando o problema antes da solução.
@@ -57,7 +57,7 @@ uv sync --all-extras --group dev --group docs
 ```
 
 !!! tip "Verificação rápida"
-    `make check` roda o gate de qualidade completo (lint + checagem de formato + mypy + pytest). O CI roda o mesmo alvo em cada push, então um `make check` verde localmente significa um PR verde.
+    `make check` roda o gate de qualidade completo (lint + checagem de formato + mypy + pytest). A CI não roda testes — só publica a release —, então um `make check` verde localmente é o que torna um PR mergeável.
 
 ## Gates de qualidade
 
@@ -70,8 +70,9 @@ uv sync --all-extras --group dev --group docs
 | `make type` | `mypy tempest_fastapi_sdk` (strict) |
 | `make test` | `pytest` em paralelo (`-n auto`), sem cobertura |
 | `make test-cov` | `pytest` em paralelo com o relatório de cobertura |
+| `make test-matrix` | a suíte em 3.11, 3.12 e 3.13, uma venv por versão |
 | `make check` | `lint + fmt-check + type + test` (para no primeiro erro) |
-| `make ci` | `check + build + smoke` (espelho completo do CI) |
+| `make ci` | `check + build + smoke` (gate local completo antes de uma release) |
 
 Os mesmos gates estão disponíveis pela CLI embutida: `tempest lint` / `tempest fix` / `tempest check` funcionam em qualquer projeto consumidor também.
 
@@ -99,7 +100,7 @@ make docs-build              # build do site estático em ./site/
 Toda página vive em duas línguas (`docs/<página>.md` + `docs/<página>.en.md`) e o build roda com `--strict` — warning é erro.
 
 !!! info "A documentação é mantida organizada por regra, não por revisão"
-    Página nova exige: os **dois** arquivos (PT + `.en.md`), entrada nos **dois** navs (o `nav:` de topo e o `nav:` do locale `en` — o plugin i18n traduz rótulo mas não reordena nav compartilhado), na **posição alfabética** de cada língua, mais a linha na tabela de `docs/recipes/index.md`/`.en.md` quando for receita, e o stub em `docs/reference.md` quando expõe símbolo novo. `uv run pytest tests/test_docs_organization.py` falha se algo disso faltar ou sair de ordem — e ele roda no `make check`, logo na CI. Abas de topo, páginas de `learning/`, a trilha de `getting-started/` e o tour da landing seguem ordem didática de propósito. As edições caem no site do Pages no push para `main` via [`.github/workflows/docs.yml`](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/blob/main/.github/workflows/docs.yml).
+    Página nova exige: os **dois** arquivos (PT + `.en.md`), entrada nos **dois** navs (o `nav:` de topo e o `nav:` do locale `en` — o plugin i18n traduz rótulo mas não reordena nav compartilhado), na **posição alfabética** de cada língua, mais a linha na tabela de `docs/recipes/index.md`/`.en.md` quando for receita, e o stub em `docs/reference.md` quando expõe símbolo novo. `uv run pytest tests/test_docs_organization.py` falha se algo disso faltar ou sair de ordem — e ele roda no `make check`. Abas de topo, páginas de `learning/`, a trilha de `getting-started/` e o tour da landing seguem ordem didática de propósito. As edições caem no site do Pages no push para `main` via [`.github/workflows/docs.yml`](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/blob/main/.github/workflows/docs.yml).
 
 ## Estilo das mensagens de commit
 

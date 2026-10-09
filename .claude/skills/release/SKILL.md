@@ -65,9 +65,8 @@ make release VERSION=X.Y.Z SUBJECT="<assunto>"
 
 O target, em ordem: recusa árvore suja → recusa sem a entrada do CHANGELOG →
 faz o bump em `pyproject.toml` e `tempest_fastapi_sdk/__init__.py` → roda
-lint + fmt-check + mypy strict → roda a suíte (`make test`, em paralelo) **só
-se** `scripts/release_gate.py` não achar CI verde cobrindo o `HEAD` →
-`make audit` →
+`make check` (lint + fmt-check + mypy strict + a suíte em paralelo, com os
+guards — a CI não testa, este é o gate) → `make audit` →
 `make docs-build` (mkdocs `--strict`) → `make smoke` (instala a wheel numa venv
 limpa e importa a superfície de topo, único passo que pega defeito de
 empacotamento) → commita `feat: vX.Y.Z — <assunto>` → cria a tag local.
@@ -77,14 +76,11 @@ convenção deste repo — passe o assunto.
 
 O push fica manual de propósito.
 
-**Caminho rápido (minutos, não horas).** O gate só pula a suíte quando, entre
-o commit que a CI aprovou e a tag, mudaram **apenas** as linhas de versão —
-doc conta como mudança, porque os guards de docs leem até o CHANGELOG. Então:
-commite e empurre CHANGELOG/docs na `main` primeiro, espere a CI daquele
-commit ficar verde (`gh pr checks` / `gh run list`), e aí rode `make release`
-e empurre a tag. O workflow `release-pypi` aplica a mesma regra e publica sem
-rodar a suíte de novo. Se a CI ainda estiver rodando ou vermelha, os dois
-caem para a suíte em paralelo — mais lento, nunca menos seguro.
+**A CI só publica.** O workflow `release-pypi` confere tag × versão × lock,
+roda `make audit`, builda, faz um smoke da instalação base e sobe para o PyPI
+— poucos minutos depois do push da tag. Nada de teste lá: o `make check` do
+passo acima é a única suíte antes da tag. Release que mexe em dependência ou
+em código sensível à versão do Python roda também `make test-matrix`.
 
 ## 5. Push, com confirmação
 
