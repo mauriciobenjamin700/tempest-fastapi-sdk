@@ -828,6 +828,12 @@ from tempest_fastapi_sdk.db import (
     AuditMixin as AuditMixin,
 )
 from tempest_fastapi_sdk.db import (
+    AuditRequestContext as AuditRequestContext,
+)
+from tempest_fastapi_sdk.db import (
+    AuditRequestMixin as AuditRequestMixin,
+)
+from tempest_fastapi_sdk.db import (
     BackupToolMissingError as BackupToolMissingError,
 )
 from tempest_fastapi_sdk.db import (
@@ -2091,6 +2097,8 @@ __all__: list[str] = [
     "AttemptThrottle",
     "AuditAction",
     "AuditMixin",
+    "AuditRequestContext",
+    "AuditRequestMixin",
     "AuthCookieConfig",
     "AuthExceptions",
     "AuthSettings",

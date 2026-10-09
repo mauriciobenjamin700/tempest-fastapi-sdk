@@ -26,7 +26,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
-from tempest_fastapi_sdk.db.audit import BaseAuditLogModel, snapshot_model
+from tempest_fastapi_sdk.db.audit import (
+    AuditRequestContext,
+    BaseAuditLogModel,
+    snapshot_model,
+)
 from tempest_fastapi_sdk.db.explain import ExplainReport, explain_queries
 from tempest_fastapi_sdk.db.expressions import (
     F,
@@ -1938,6 +1942,11 @@ class BaseRepository(Generic[ModelType]):
         *,
         actor: str | None = None,
         context: dict[str, Any] | None = None,
+        event: str | None = None,
+        ip: str | None = None,
+        user_agent: str | None = None,
+        request_context: AuditRequestContext | None = None,
+        actor_id: UUID | None = None,
     ) -> ModelType:
         """Insert ``model`` and a ``create`` audit row in one transaction.
 
@@ -1950,13 +1959,26 @@ class BaseRepository(Generic[ModelType]):
             actor (str | None): Who performed the create (user id,
                 e-mail, ``"system"``, ...).
             context (dict[str, Any] | None): Extra metadata (request id,
-                ip, reason, ...).
+                reason, ...).
+            event (str | None): Domain event name (``"consent.granted"``);
+                needs :class:`~tempest_fastapi_sdk.db.audit.AuditRequestMixin`
+                on the audit model.
+            ip (str | None): Client IP; needs ``AuditRequestMixin``.
+            user_agent (str | None): User agent; needs ``AuditRequestMixin``.
+            request_context (AuditRequestContext | None): ``ip`` and
+                ``user_agent`` from
+                :meth:`~tempest_fastapi_sdk.db.audit.AuditRequestContext.from_request`;
+                mutually exclusive with both.
+            actor_id (UUID | None): The author's id, for an audit model
+                that declares an ``actor_id`` column.
 
         Returns:
             ModelType: The instance after ``refresh``.
 
         Raises:
             RuntimeError: When no ``audit_model`` was configured.
+            ValueError: When an origin value targets a column the audit
+                model does not have (the transaction is rolled back).
             ConflictException: On integrity violations (the whole
                 transaction is rolled back).
         """
@@ -1964,7 +1986,16 @@ class BaseRepository(Generic[ModelType]):
         try:
             self.session.add(model)
             await self.session.flush()
-            entry = audit_model.for_create(model, actor=actor, context=context)
+            entry = audit_model.for_create(
+                model,
+                actor=actor,
+                context=context,
+                event=event,
+                ip=ip,
+                user_agent=user_agent,
+                request_context=request_context,
+                actor_id=actor_id,
+            )
             self.session.add(entry)
             await self._commit()
             await self.session.refresh(model)
@@ -1990,6 +2021,11 @@ class BaseRepository(Generic[ModelType]):
         *,
         actor: str | None = None,
         context: dict[str, Any] | None = None,
+        event: str | None = None,
+        ip: str | None = None,
+        user_agent: str | None = None,
+        request_context: AuditRequestContext | None = None,
+        actor_id: UUID | None = None,
     ) -> ModelType:
         """Persist mutations on ``model`` and an ``update`` audit row.
 
@@ -2002,12 +2038,25 @@ class BaseRepository(Generic[ModelType]):
             before (dict[str, Any]): The pre-mutation snapshot.
             actor (str | None): Who performed the update.
             context (dict[str, Any] | None): Extra metadata.
+            event (str | None): Domain event name (``"consent.granted"``);
+                needs :class:`~tempest_fastapi_sdk.db.audit.AuditRequestMixin`
+                on the audit model.
+            ip (str | None): Client IP; needs ``AuditRequestMixin``.
+            user_agent (str | None): User agent; needs ``AuditRequestMixin``.
+            request_context (AuditRequestContext | None): ``ip`` and
+                ``user_agent`` from
+                :meth:`~tempest_fastapi_sdk.db.audit.AuditRequestContext.from_request`;
+                mutually exclusive with both.
+            actor_id (UUID | None): The author's id, for an audit model
+                that declares an ``actor_id`` column.
 
         Returns:
             ModelType: The instance after ``refresh``.
 
         Raises:
             RuntimeError: When no ``audit_model`` was configured.
+            ValueError: When an origin value targets a column the audit
+                model does not have.
             ConflictException: On integrity violations.
         """
         audit_model = self._require_audit_model()
@@ -2017,6 +2066,11 @@ class BaseRepository(Generic[ModelType]):
                 before,
                 actor=actor,
                 context=context,
+                event=event,
+                ip=ip,
+                user_agent=user_agent,
+                request_context=request_context,
+                actor_id=actor_id,
             )
             self.session.add(entry)
             await self._commit()
@@ -2042,6 +2096,11 @@ class BaseRepository(Generic[ModelType]):
         *,
         actor: str | None = None,
         context: dict[str, Any] | None = None,
+        event: str | None = None,
+        ip: str | None = None,
+        user_agent: str | None = None,
+        request_context: AuditRequestContext | None = None,
+        actor_id: UUID | None = None,
     ) -> None:
         """Delete ``model`` and write a ``delete`` audit row in one tx.
 
@@ -2052,16 +2111,105 @@ class BaseRepository(Generic[ModelType]):
             model (ModelType): The session-attached instance to delete.
             actor (str | None): Who performed the delete.
             context (dict[str, Any] | None): Extra metadata.
+            event (str | None): Domain event name (``"consent.granted"``);
+                needs :class:`~tempest_fastapi_sdk.db.audit.AuditRequestMixin`
+                on the audit model.
+            ip (str | None): Client IP; needs ``AuditRequestMixin``.
+            user_agent (str | None): User agent; needs ``AuditRequestMixin``.
+            request_context (AuditRequestContext | None): ``ip`` and
+                ``user_agent`` from
+                :meth:`~tempest_fastapi_sdk.db.audit.AuditRequestContext.from_request`;
+                mutually exclusive with both.
+            actor_id (UUID | None): The author's id, for an audit model
+                that declares an ``actor_id`` column.
 
         Raises:
             RuntimeError: When no ``audit_model`` was configured.
+            ValueError: When an origin value targets a column the audit
+                model does not have.
         """
         audit_model = self._require_audit_model()
         try:
-            entry = audit_model.for_delete(model, actor=actor, context=context)
+            entry = audit_model.for_delete(
+                model,
+                actor=actor,
+                context=context,
+                event=event,
+                ip=ip,
+                user_agent=user_agent,
+                request_context=request_context,
+                actor_id=actor_id,
+            )
             await self.session.delete(model)
             self.session.add(entry)
             await self._commit()
+        except Exception:
+            await self._rollback_after_failure()
+            raise
+
+    async def record_event(
+        self,
+        event: str,
+        *,
+        subject: ModelType | None = None,
+        changes: dict[str, Any] | None = None,
+        actor: str | None = None,
+        context: dict[str, Any] | None = None,
+        ip: str | None = None,
+        user_agent: str | None = None,
+        request_context: AuditRequestContext | None = None,
+        actor_id: UUID | None = None,
+    ) -> BaseAuditLogModel:
+        """Write an ``event`` audit row — a domain event with no mutation.
+
+        For facts that change no row of this repository's model ("consent
+        granted", "export requested", "login failed"). ``entity`` is this
+        repository's model name; ``entity_id`` is ``subject``'s id, or
+        ``""`` when the event concerns no single row. Commits like the
+        other write methods — or only flushes inside an open
+        :meth:`transaction` block / with ``autocommit=False``.
+
+        Args:
+            event (str): Domain event name (``"export.requested"``).
+            subject (ModelType | None): The row the event concerns.
+            changes (dict[str, Any] | None): Optional payload; stored as
+                ``{}`` when ``None``.
+            actor (str | None): Who triggered the event.
+            context (dict[str, Any] | None): Extra metadata.
+            ip (str | None): Client IP.
+            user_agent (str | None): User agent.
+            request_context (AuditRequestContext | None): ``ip`` and
+                ``user_agent`` together; mutually exclusive with both.
+            actor_id (UUID | None): The author's id, for an audit model
+                that declares an ``actor_id`` column.
+
+        Returns:
+            BaseAuditLogModel: The persisted audit row.
+
+        Raises:
+            RuntimeError: When no ``audit_model`` was configured.
+            ValueError: When the audit model lacks
+                :class:`~tempest_fastapi_sdk.db.audit.AuditRequestMixin`
+                (the event name has nowhere to go), or another origin value
+                targets a missing column.
+        """
+        audit_model = self._require_audit_model()
+        entry = audit_model.for_event(
+            event,
+            entity=self.model.__name__,
+            entity_id="" if subject is None else str(getattr(subject, "id", "")),
+            changes=changes,
+            actor=actor,
+            context=context,
+            ip=ip,
+            user_agent=user_agent,
+            request_context=request_context,
+            actor_id=actor_id,
+        )
+        try:
+            self.session.add(entry)
+            await self._commit()
+            return entry
         except Exception:
             await self._rollback_after_failure()
             raise

@@ -174,12 +174,17 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.outbox.OutboxStatus
 ::: tempest_fastapi_sdk.db.audit.BaseAuditLogModel
 ::: tempest_fastapi_sdk.db.audit.AuditAction
+::: tempest_fastapi_sdk.db.audit.AuditRequestMixin
+::: tempest_fastapi_sdk.db.audit.AuditRequestContext
 ::: tempest_fastapi_sdk.db.audit.snapshot_model
 ::: tempest_fastapi_sdk.db.audit.diff_snapshots
 ::: tempest_fastapi_sdk.db.audit.audit_redacted_columns
 ::: tempest_fastapi_sdk.db.audit.redact_snapshot
 ::: tempest_fastapi_sdk.db.audit.AUDIT_REDACTED
 ::: tempest_fastapi_sdk.db.audit.DEFAULT_AUDIT_REDACT
+::: tempest_fastapi_sdk.db.audit.AUDIT_EVENT_MAX_LENGTH
+::: tempest_fastapi_sdk.db.audit.AUDIT_IP_MAX_LENGTH
+::: tempest_fastapi_sdk.db.audit.AUDIT_USER_AGENT_MAX_LENGTH
 ::: tempest_fastapi_sdk.db.migrations.DestructiveMigrationError
 ::: tempest_fastapi_sdk.db.migrations.AmbiguousBaseRevisionError
 ::: tempest_fastapi_sdk.db.migrations.SchemaSyncOutcome
@@ -1225,6 +1230,8 @@ então importar o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.testing.factories.ModelFactory
 ::: tempest_fastapi_sdk.testing.factories.seq
+::: tempest_fastapi_sdk.testing.database.make_test_database
+::: tempest_fastapi_sdk.testing.database.make_test_session
 
 ### `tempest_fastapi_sdk.testing.fakes`
 
