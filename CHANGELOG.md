@@ -179,6 +179,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `{"settled": null}` (medido num serviço montado com os blocos da página).
   A receita da OpenPix aponta para o mesmo caminho.
 
+- **O console SQL do admin ganhou estilo (#438).** O `sql_shell.html` usava
+  uma família `tempest-admin-sql*` sem nenhuma regra no `admin.css`, então o
+  editor, o formulário e a grade de resultado caíam no estilo cru do
+  browser. Agora o formulário é um card com as bordas e sombra do painel, o
+  editor é monoespaçado com foco destacado, a política vira etiquetas, erro e
+  aviso usam o padrão de alerta do painel, e a grade de resultado usa o
+  `tempest-admin-table-wrap` + `tempest-admin-list__table` das listagens, com
+  cabeçalho fixo e rolagem própria (horizontal no celular, sem rolar a
+  página). Um teste confere que toda classe do template tem regra no CSS.
+
 ### Security
 
 - **Gate de CVE nas dependências travadas (#436).** `make audit` exporta o
@@ -203,6 +213,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   o `transformers<5` do `[genai-audio]` (coqui-tts 0.27.5 ainda não importa
   no 5.x) segura o lock; quem instala `[genai]` sem `[genai-audio]` resolve
   5.x.
+- **O painel admin não carrega mais script de terceiro (#433).** O
+  `base.html` buscava `https://unpkg.com/htmx.org@2.0.3` sem `integrity` em
+  toda página do admin — login, dashboard, CRUD, console SQL —, na mesma
+  origem do `POST /admin/sql`. O `make_admin_router` agora monta o
+  `make_htmx_router` do próprio SDK em `{prefix}/_ssr/htmx.js`, que serve o
+  `ssr/_static/htmx.min.js` empacotado (HTMX 2.0.10) byte a byte e sem exigir
+  sessão, porque a página de login também o carrega; o `<script>` segue o
+  `prefix` (`/backoffice/_ssr/htmx.js` com `prefix="/backoffice"`). Não exige
+  o extra `[ssr]`: medido num interpretador novo com `tempestweb` bloqueado, o
+  `make_admin_router` importa e nenhum módulo `tempestweb` é carregado.
+  `tests/admin/test_local_assets.py` falha se qualquer `src`/`href`/`action`
+  do HTML renderizado (login, dashboard, console SQL com resultado) apontar
+  para outro host — com a linha antiga de volta no `base.html`, 5 testes
+  falham. CSP continua sendo passo à parte: o admin não envia
+  `Content-Security-Policy` e ainda tem script inline (num browser com
+  `script-src 'self'`, o HTMX local carrega e o `<script>` inline da list view
+  é bloqueado).
 
 ### Documentation
 

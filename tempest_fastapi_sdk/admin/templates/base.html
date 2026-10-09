@@ -12,7 +12,7 @@
   {% if site.theme.custom_css_url %}
   <link rel="stylesheet" href="{{ site.theme.custom_css_url }}">
   {% endif %}
-  <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
+  <script src="{{ htmx_url }}" defer></script>
 </head>
 <body>
   {% if user %}

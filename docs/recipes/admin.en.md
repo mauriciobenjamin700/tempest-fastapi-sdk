@@ -211,7 +211,13 @@ app.include_router(
 - `GET  /admin/m/{slug}/{identity}` — detail view with Edit/Delete controls.
 - `GET/POST /admin/m/{slug}/{identity}/edit` — **edit** a record (when `can_edit`).
 - `POST /admin/m/{slug}/{identity}/delete` — **delete** a record (when `can_delete`).
-- `GET  /admin/static/{path}` — bundled CSS/HTMX assets.
+- `GET  /admin/static/{path}` — the panel's bundled CSS (`admin.css`).
+- `GET  /admin/_ssr/htmx.js` — the HTMX bundled in the SDK (`ssr/_static/htmx.min.js`), served without a session because the login page loads it too. The path follows `prefix`: with `prefix="/backoffice"` it becomes `/backoffice/_ssr/htmx.js`.
+
+!!! info "The panel renders without any third party"
+    No admin page fetches a script, stylesheet or font from outside your application: the HTMX `<script>` points at `{prefix}/_ssr/htmx.js`, which serves the file bundled in the wheel byte for byte. The exception is what you configure yourself: `AdminTheme`'s `favicon_url`, `logo_url` and `custom_css_url` load from wherever they point. A CDN outage or a tampered CDN file cannot reach the admin origin, which is the same origin as `POST /admin/sql` and the CRUD. It works with the `[admin]` extra alone — `[ssr]` is not needed.
+
+    **CSP is still a separate step.** The admin sends no `Content-Security-Policy`, and it still uses an inline `<style>` (the `AdminTheme` theme), an inline `<script>` on the list view, an `onclick` on the FK autocomplete and `style=` attributes on the progress bars. Serving HTMX locally removes the third-party dependency, but it is not enough for a `script-src 'self'` policy without `'unsafe-inline'`: under it, those parts stop working.
 
 !!! info "Write CRUD + permissions"
     Create/edit/delete are gated by `AdminModel` flags: `can_create` / `can_edit` / `can_delete` (all `True` by default; a disabled view returns `404`). Every write POST carries the session CSRF token, verified server-side (`403` on mismatch). **Field widgets** are derived from the column type — text / textarea (long strings) / number / checkbox / `datetime-local` / date / `select` for enums — with required-field + per-field validation errors re-rendered on the form. A write the **database** refuses (unique, FK, `NOT NULL`) comes back the same way: `400` with the repository's message (`Conflict creating <Model>`) above the form, never a `500`.

@@ -2001,6 +2001,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `AdminActionResult`), file/image upload fields (`AdminModel(
   upload_fields=[...], upload_storage=...)`), rich list filters
   (bool/enum/FK select, date-range, text — auto by column type).
+  HTMX comes from the SDK's own bundle at `{prefix}/_ssr/htmx.js`
+  (`make_htmx_router`, no session, no CDN — #433); the SQL console is
+  styled by `tempest-admin-sql*` rules in `admin.css` (#438).
 - **OpenAPI codegen (v0.161.0)** — `tempest_fastapi_sdk.openapi` +
   `tempest openapi-client <spec>`: generates Pydantic schemas **and** a
   typed HTTP client from a third party's OpenAPI 3 spec into
