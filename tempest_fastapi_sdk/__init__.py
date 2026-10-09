@@ -160,6 +160,9 @@ from tempest_fastapi_sdk.api import (
     IdempotencyStore as IdempotencyStore,
 )
 from tempest_fastapi_sdk.api import (
+    LogReadResult as LogReadResult,
+)
+from tempest_fastapi_sdk.api import (
     LogSource as LogSource,
 )
 from tempest_fastapi_sdk.api import (
@@ -289,6 +292,9 @@ from tempest_fastapi_sdk.api import (
     clear_cookie as clear_cookie,
 )
 from tempest_fastapi_sdk.api import (
+    clear_log_files as clear_log_files,
+)
+from tempest_fastapi_sdk.api import (
     declared_raises as declared_raises,
 )
 from tempest_fastapi_sdk.api import (
@@ -380,6 +386,9 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.api import (
     raises as raises,
+)
+from tempest_fastapi_sdk.api import (
+    read_log_entries as read_log_entries,
 )
 from tempest_fastapi_sdk.api import (
     redact_database_errors as redact_database_errors,
@@ -2198,6 +2207,7 @@ __all__: list[str] = [
     "LocaleColumnMixin",
     "LocaleField",
     "LogEntrySchema",
+    "LogReadResult",
     "LogSettings",
     "LogSource",
     "LogUtils",
@@ -2443,6 +2453,7 @@ __all__: list[str] = [
     "city_choices",
     "clear_auth_cookies",
     "clear_cookie",
+    "clear_log_files",
     "clear_request_id",
     "coerce_flag",
     "compose_hooks",
@@ -2573,6 +2584,7 @@ __all__: list[str] = [
     "plan_by_jwt_claim",
     "quantize_money",
     "raises",
+    "read_log_entries",
     "read_upload_capped",
     "redact_database_errors",
     "redact_snapshot",

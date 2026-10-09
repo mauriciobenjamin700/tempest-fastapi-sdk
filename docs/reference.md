@@ -308,6 +308,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx
 ::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_as
 ::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_sheets
+::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_async
+::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_as_async
+::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_sheets_async
 ::: tempest_fastapi_sdk.spreadsheet.reader.XlsxCellValue
 ::: tempest_fastapi_sdk.spreadsheet.reader.XlsxSource
 ::: tempest_fastapi_sdk.spreadsheet.reader.InvalidSpreadsheetError
@@ -317,6 +320,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_ROWS
 ::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES
 ::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_COMPRESSION_RATIO
+::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_MAX_CONCURRENT_XLSX_READS
 
 ---
 
@@ -686,6 +690,12 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.integrations.payment.base.PayoutResult
 ::: tempest_fastapi_sdk.integrations.payment.base.PayoutStatus
 
+### `tempest_fastapi_sdk.integrations.payment.settlement`
+
+::: tempest_fastapi_sdk.integrations.payment.settlement.confirm_pix_payment
+::: tempest_fastapi_sdk.integrations.payment.settlement.PixPaymentConfirmation
+::: tempest_fastapi_sdk.integrations.payment.settlement.PixConfirmationOutcome
+
 ### `tempest_fastapi_sdk.integrations.payment.adapters`
 
 ::: tempest_fastapi_sdk.integrations.payment.adapters.openpix.OpenPixPixProvider
@@ -879,6 +889,9 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.api.routers.health.make_health_router
 ::: tempest_fastapi_sdk.api.routers.logs.make_logs_router
 ::: tempest_fastapi_sdk.api.routers.logs.resolve_log_files
+::: tempest_fastapi_sdk.api.routers.logs.read_log_entries
+::: tempest_fastapi_sdk.api.routers.logs.clear_log_files
+::: tempest_fastapi_sdk.api.routers.logs.LogReadResult
 ::: tempest_fastapi_sdk.api.routers.logs.DEFAULT_MAX_RECORDS_PER_FILE
 ::: tempest_fastapi_sdk.api.routers.logs.render_entries_markdown
 ::: tempest_fastapi_sdk.api.routers.logs.render_entries_json

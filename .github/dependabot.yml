@@ -1,0 +1,21 @@
+# Keeps the workflow actions current (#436). `pypa/gh-action-pypi-publish` and
+# `astral-sh/setup-uv` are pinned by commit SHA with the tag in a trailing
+# comment; Dependabot bumps both the SHA and the comment, so pinning does not
+# freeze them.
+#
+# Python dependencies are deliberately not here. Advisories in uv.lock are
+# caught by `make audit` (the "Dependency audit" workflow, daily and on every
+# PR), and a weekly re-lock of ~320 packages would open PRs that move
+# measured claims in the docs without anyone choosing to.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: chore

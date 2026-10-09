@@ -9,6 +9,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`expected_sha256` em `load_sklearn_artifact` e `edge_pipeline_from_pickle`
+  (#440).** O chamador pina o SHA-256 que a release do modelo registrou, e a
+  carga recusa com `ArtifactDigestMismatchError` (nova, subclasse de
+  `ValueError`, exportada em `tempest_fastapi_sdk.modelops`) quando o arquivo
+  diverge — **antes** do `joblib.load`, então um pickle trocado não executa.
+  Antes, o digest só era calculado depois do unpickle e ia para o manifesto;
+  conferir contra um valor conhecido exigia o chamador fazer a comparação por
+  fora, com o código do arquivo já rodado. O arquivo é aberto uma vez: o hash
+  é calculado pelo handle e o unpickle lê do mesmo handle, então os bytes
+  conferidos são os que rodam. Formato aceito: 64 dígitos hex em qualquer
+  caixa, prefixo `sha256:` opcional, espaço nas pontas ignorado; qualquer
+  outra coisa é `ValueError` antes de abrir o arquivo. O teste usa um pickle
+  cujo unpickle cria um arquivo-marcador: com hash divergente o marcador não
+  existe, com hash certo existe (controle). Receita: `docs/recipes/modelops`,
+  seção "Pinar o hash da release".
+
+- **`AssetPolicy.for_render()`** — cópia rasa com as mesmas regras e
+  `refusals` vazia, sem rodar o `__post_init__` de novo: `allow_dirs` mantém os
+  caminhos resolvidos na construção, então symlink trocado depois não amplia a
+  política e diretório removido depois não faz a renderização levantar
+  `ValueError`. É o coletor por chamada que a docstring de `build_url_fetcher`
+  sempre pediu e que o renderizador agora usa.
+- **`make_logs_router(dependencies=...)` — logs atrás da auth do próprio
+  serviço** (#426). Antes o router só aceitava o segredo compartilhado do
+  `X-Token`, então quem protege o painel com Bearer JWT de admin não tinha
+  como usá-lo. As dependências valem para `GET` e `DELETE`; cada item é o
+  callable ou um `Depends(...)` / `Security(...)` pronto, que é usado como
+  veio (embrulhar de novo dá `AssertionError: A parameter-less dependency
+  must have a callable dependency` na construção — medido no FastAPI
+  0.141.1). Relação com o `X-Token`: as duas peças **somam**. Só
+  `dependencies` substitui o header (nenhum `X-Token` é lido nem aparece no
+  OpenAPI); `token_secret` junto exige os dois; nenhuma das duas continua
+  levantando `ValueError`, e `dependencies=[]` não conta como gate.
+- **`read_log_entries(...) -> LogReadResult` e
+  `clear_log_files(...) -> list[str]`** (#426), exportadas no topo do pacote.
+  São a leitura (teto por arquivo, flag `truncated`, filtros `q`/`start`/`end`,
+  do mais novo pro mais antigo) e o truncate no lugar que o router fazia em
+  funções privadas — quem precisava de outro contrato de resposta reescrevia
+  as duas e perdia o teto de memória. Síncronas; numa rota `async`, rode com
+  `asyncio.to_thread`. O `make_logs_router` e a página de logs do admin
+  viraram casca sobre elas (a página do admin tinha uma terceira cópia do
+  filtro e da ordenação).
+- **`read_xlsx_async`, `read_xlsx_as_async` e `read_xlsx_sheets_async`**
+  (#432) em `tempest_fastapi_sdk.spreadsheet`: os mesmos argumentos, retorno
+  e erros dos leitores síncronos, rodando numa thread (`asyncio.to_thread`)
+  atrás de um semáforo. Sem `semaphore=`, o limite é
+  `DEFAULT_MAX_CONCURRENT_XLSX_READS` (4) leituras simultâneas **por event
+  loop** — o semáforo é criado no primeiro uso de cada loop, porque um
+  `asyncio.Semaphore` de módulo, disputado em dois `asyncio.run`, levanta
+  `RuntimeError: ... is bound to a different event loop` (reproduzido). Medido
+  numa aba de 99 999 linhas (8 colunas, 4 MB): `read_xlsx` chamado dentro de
+  uma corrotina levou 5,4 s e um ticker de 10 ms rodou 1 vez no lugar de ~540;
+  com `read_xlsx_async` o mesmo ticker rodou 473 vezes. Quatro leituras
+  simultâneas levaram 25,0 s contra 21,6 s de quatro em série: o parse segura
+  o GIL, então o semáforo limita memória e o pool de threads, não acelera.
+- **`confirm_pix_payment` — o webhook avisa, a API confirma (#434).**
+  `tempest_fastapi_sdk.integrations.payment.confirm_pix_payment(provider,
+  charge_id, *, reference, amount_cents)` relê a cobrança com
+  `provider.get_pix_charge` e devolve `PixPaymentConfirmation`, cujo
+  `outcome` (`PixConfirmationOutcome`) diz qual conferência decidiu:
+  `REFERENCE_MISMATCH` (a cobrança é de outro pedido), `NOT_PAID` (qualquer
+  status que não `PAID`), `AMOUNT_MISMATCH` (paga com outro valor) ou `PAID`;
+  `.paid` é `True` só no último. Erro do provedor na releitura sobe em vez de
+  virar "não pago". O helper não escreve nada — a liberação única continua
+  com `tempest_fastapi_sdk.wallet.claim_once`.
 - **`make_mercado_pago_webhook_dependency` (#437)** — a terceira fábrica de
   webhook, no formato de `make_stripe_webhook_dependency` e
   `make_openpix_webhook_dependency`. Lê `data.id` da query string
@@ -26,8 +91,147 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A `AssetPolicy` passada em `PdfRenderer(assets=...)` não tem mais a lista
+  `refusals` lida nem limpa pelo renderizador.** Antes, toda renderização
+  esvaziava essa lista no início e no fim, então ler `policy.refusals` depois de
+  `render_*` devolvia `[]` em qualquer caso (medido: uma nota posta pelo
+  chamador antes da renderização sumia). As recusas de uma renderização
+  continuam chegando por `AssetRefused.details["refused"]` (modo estrito) e pelo
+  aviso em log (`strict_assets=False`), agora sem misturar pedidos.
+
+- **Os quatro workflows instalam com `uv sync --locked`**, e o release roda
+  `uv lock --check` antes do build: um `uv.lock` fora do `pyproject.toml`
+  derruba o run em vez de ser re-resolvido contra o PyPI do dia.
+- **`pypa/gh-action-pypi-publish` e `astral-sh/setup-uv` fixadas por SHA**
+  com a tag em comentário (`dc37677…` = `v1.14.2`, `caf0cab…` = `v3.2.4`,
+  ambas derreferenciadas da tag anotada para o commit). O job que publica
+  tem `id-token: write`, e a referência anterior era o branch `release/v1`.
+  `.github/dependabot.yml` novo atualiza as actions semanalmente (SHA e
+  comentário).
+- **`[build-system]` declara `hatchling>=1.32.4,<2`.** O piso é a versão que
+  construiu a 0.308.0 hoje; antes, cada build resolvia o hatchling mais novo.
+- Guard novo `tests/test_supply_chain_guard.py`: `--locked` em todo
+  `uv sync` de workflow, as duas actions por SHA com tag, `uv lock --check`
+  e `make audit` antes do `uv build` no release, `schedule:` no
+  `audit.yml` e faixa no hatchling — cada checagem alimentada também com o
+  texto exato que estava na `main` antes do #436.
+
 - `MercadoPagoWebhookEvent.event` passa de `Any | None` para
   `MercadoPagoEvent | None`, o tipo que o docstring já declarava.
+
+### Fixed
+
+- **`PdfRenderer`: cada renderização relata só as próprias recusas de asset
+  (#435).** A instância guardava uma `AssetPolicy` só e todas as
+  renderizações em paralelo (até `max_concurrent`, padrão 4) liam e limpavam a
+  mesma lista `refusals`. Reproduzido com intercalação forçada de duas
+  renderizações na mesma instância: o `AssetRefused.details["refused"]` de B
+  trazia a URL de A (`http://a.test/logo.png?token=secret-of-a` — o token
+  junto), e o de A caía no fallback `Error fetching "..."`; com
+  `strict_assets=False` saía uma linha de aviso só, a de B listando as duas, e
+  a recusa de A não era registrada em lugar nenhum. Agora cada renderização
+  coleta numa cópia própria da política.
+
+- **`make_prometheus_router`: o exemplo de proteção derrubava o app ou punha
+  o segredo na URL** (#439). A docstring sugeria
+  `dependencies=[Depends(require_x_token)]`, que o router envolvia de novo em
+  `Depends` e o FastAPI recusava na construção (`AssertionError: A
+  parameter-less dependency must have a callable dependency`); a forma
+  "corrigida", `dependencies=[require_x_token]`, montava, mas o FastAPI lia
+  `secret` e `token` da query string — todo scrape dava `422`, e só passava
+  com `?secret=...&token=...` na URL. Agora:
+  - item de `dependencies=` que já é `Depends(...)` / `Security(...)` é
+    anexado como está, sem envolver de novo;
+  - `require_x_token` (cru ou dentro de `Depends`) é recusado na construção
+    com `TypeError` apontando para `make_token_dependency`;
+  - a docstring e a receita `recipes/metrics` (PT + EN) montam a rota com
+    `dependencies=[make_token_dependency(metrics_token)]` — `401` sem o header
+    `X-Token`, `200` com ele —, dizem que o default é **sem autenticação**,
+    avisam que segredo vazio desliga a checagem, e o `prometheus.yml` manda o
+    header com `http_headers` (medido no Prometheus `v3.1.0`: `up == 1` com o
+    bloco, `401` e `up == 0` sem).
+  - Guard: `tests/api/test_prometheus_auth.py` executa o `create_app` da
+    receita como publicado e faz scrape com e sem header, e falha se a doc ou
+    a docstring voltarem a sugerir `Depends(require_x_token)` /
+    `dependencies=[require_x_token]`.
+
+- **Os leitores async de Google Sheets não parseiam mais no event loop**
+  (#432). `read_google_sheet` / `read_google_sheet_as` parseiam o CSV por
+  `asyncio.to_thread`, `read_google_sheet_as` valida as linhas também numa
+  thread, e `read_google_sheet_xlsx` lê a pasta por `read_xlsx_sheets_async`.
+  Antes, os três seguravam o loop do worker durante todo o parse.
+- **A receita de planilhas usava o leitor síncrono numa rota `async def`.**
+  `docs/recipes/spreadsheets.md` / `.en.md` passam a usar
+  `read_xlsx_as_async` no endpoint de importação e no script do Google, com
+  um `!!! warning` explicando por quê. Guard novo:
+  `tests/test_spreadsheet_event_loop_guard.py` troca o parser de cada
+  corrotina por uma sonda que só uma task do loop libera, e prova que dispara
+  com `to_thread` substituído por chamada direta (6 de 6 casos pegos).
+
+- **A receita do protocolo de Pix liberava o pedido só pelo webhook (#434).**
+  O `settle` de `docs/recipes/pix-protocol.md` (e `.en.md`) marcava o pedido
+  como pago direto do evento, sem reler a cobrança, sem conferir valor e sem
+  idempotência — o contrário do que a receita da OpenPix exige, com uma
+  assinatura RSA-1024 sem janela de validade. Agora o passo 3 mostra o
+  `OrderModel` com `paid_at` e o repositório com `claim_once`, o `settle`
+  relê com `confirm_pix_payment` pelo `provider_charge_id` guardado, e o
+  teste do passo 7 roda sobre SQLite e mostra a reentrega respondendo
+  `{"settled": null}` (medido num serviço montado com os blocos da página).
+  A receita da OpenPix aponta para o mesmo caminho.
+
+### Security
+
+- **Gate de CVE nas dependências travadas (#436).** `make audit` exporta o
+  `uv.lock` commitado (`uv export --locked --all-extras --no-dev`) e roda
+  `pip-audit` 2.10.1 com `--strict`; qualquer advisory conhecido derruba o
+  alvo. Roda no workflow novo `Dependency audit` (push na `main`, PR e
+  diariamente às 07:00 UTC, porque advisory novo chega sem ninguém dar push),
+  no job de build do `release-pypi.yml` antes do `uv build`, e no
+  `make release`. O relatório JSON de cada execução fica arquivado como
+  artefato do run. Medido localmente: ~22 s a frio, ~1–4 s com cache.
+- **Lock atualizado para sair de 31 advisories com correção publicada.**
+  O primeiro `pip-audit` sobre o lock achou 45 advisories em 10 pacotes.
+  Subiram no lock (não no piso do `pyproject.toml`): `pyjwt` 2.13.0 → 2.15.1
+  (14 advisories), `pypdf` 6.16.2 → 6.20.0 (8), `urllib3` 2.7.0 → 2.8.0 (3),
+  `weasyprint` 69.0 → 70.0 (2), `multidict` 6.7.1 → 6.9.1, `oauthlib` 3.3.1
+  → 4.0.0, `werkzeug` 3.1.8 → 3.1.9 e `accelerate` 1.14.0 → 1.15.0 (1 cada).
+- **14 entradas ignoradas por ID, com motivo no `Makefile`.** `chromadb`
+  1.5.9 (a mais nova no PyPI em 2026-10-09, sem versão corrigida): os quatro
+  advisories miram o servidor HTTP do Chroma e o
+  `SimpleRBACAuthorizationProvider`, e o SDK só abre o `PersistentClient` /
+  `EphemeralClient` embarcado. `transformers` 4.57.6: toda correção é 5.x, e
+  o `transformers<5` do `[genai-audio]` (coqui-tts 0.27.5 ainda não importa
+  no 5.x) segura o lock; quem instala `[genai]` sem `[genai-audio]` resolve
+  5.x.
+
+### Documentation
+
+- **Todo parâmetro `filters: dict[str, Any]` diz o que espera** (#443). As
+  docstrings do `BaseRepository`, `BaseService`, `BaseController`,
+  `TenantScopedRepository` e do `Lens` do admin descreviam o argumento como
+  "Filter conditions", sem dizer que é nome de coluna → valor. Agora cada uma
+  traz o exemplo `{"user_id": 1234, "is_active": True}`, diz que os pares são
+  ligados por `AND`, que lista vira `IN`, `None` vira `IS NULL` e
+  `<coluna>__<op>` aplica operador, e aponta para a lista completa na classe.
+  Medido numa tabela SQLite em memória e fixado em
+  `tests/db/test_filters_contract.py`: igualdade em coluna de texto respeita
+  caixa (`{"status": "OPEN"}` não casa `"open"`), e **chave que não é coluna
+  do model é ignorada sem erro nem aviso** — `{"usr_id": 1234}` fez `list` e
+  `count` devolverem todas as linhas, e `bulk_update` e `delete_many`
+  alterarem a tabela inteira. As docstrings de escrita avisam disso; o
+  comportamento não muda nesta entrada.
+- **O teto `transformers<5` do `[genai-audio]` aparece com o porquê e o
+  custo** (#441). `README.md` e `docs/installation.md` / `.en.md` diziam
+  `transformers<5` sem explicar. Agora dizem que o teto é intencional (o
+  `coqui-tts` 0.27.5 importa `isin_mps_friendly`, que some da transformers
+  5.1.0 em diante; remedido em 2026-10-09 com a 5.19.0, o `from TTS.api import
+  TTS` ainda falha com `ImportError`) e mostram o que ele rebaixa, resolvido com
+  `uv pip compile` (Python 3.12): com `[genai-audio]`, `huggingface-hub` 0.36.2
+  e `tokenizers` 0.22.2; com `[genai-audio,genai-image]`, também `diffusers`
+  0.39.0; com `[genai-image]` sozinho, `diffusers` 0.41.0 e `huggingface-hub`
+  1.33.0. O comentário do `pyproject.toml` dizia que só o lock do repositório
+  era afetado; a medição mostra que quem instala os dois extras juntos recebe
+  o mesmo `diffusers` 0.39.0, e o comentário foi corrigido.
 
 ## [0.308.0] — 2026-10-08
 

@@ -195,6 +195,14 @@ genai-audio = [
     # `huggingface-hub>=1.23.0`, so [genai-image] is held at 0.39.0 too. One
     # bound, four packages. Only the lock is affected: a consumer installing
     # [genai-image] without [genai-audio] resolves diffusers 0.40.0 fine.
+    #
+    # Re-measured 2026-10-09 (coqui-tts 0.27.5, torch 2.14.0): transformers
+    # 5.19.0 still fails the same import. `uv pip compile` on Python 3.12
+    # shows the cost reaches consumers too, not just this lock: with
+    # [genai-audio] alone hub/tokenizers resolve to 0.36.2/0.22.2, and
+    # [genai-audio,genai-image] holds diffusers at 0.39.0; [genai-image]
+    # alone resolves diffusers 0.41.0 and hub 1.33.0. docs/installation.md
+    # carries the same table for readers.
     "transformers<5",
 ]
 genai-diarization = [
@@ -340,7 +348,11 @@ Issues = "https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues"
 tempest = "tempest_fastapi_sdk.cli.entrypoint:main"
 
 [build-system]
-requires = ["hatchling"]
+# Unbounded, every build resolved the newest hatchling at that moment, so the
+# backend that produced a release was whatever PyPI served that day (#436).
+# The floor is the version measured building 0.308.0 (2026-10-09); the cap
+# keeps a hatchling 2.x out until someone builds with it on purpose.
+requires = ["hatchling>=1.32.4,<2"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]

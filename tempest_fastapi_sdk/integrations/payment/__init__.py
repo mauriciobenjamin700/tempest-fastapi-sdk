@@ -9,7 +9,10 @@ in prose instead of in the schema.
 The canonical contract lives in
 :mod:`tempest_fastapi_sdk.integrations.payment.base`: a service that wants
 to charge over Pix depends on ``PixProvider`` and gets ``PixCharge`` back,
-whichever provider is configured. The translations live in
+whichever provider is configured. Before releasing an order on a webhook,
+:func:`~tempest_fastapi_sdk.integrations.payment.settlement.confirm_pix_payment`
+re-reads the charge and checks reference, status and amount. The
+translations live in
 :mod:`tempest_fastapi_sdk.integrations.payment.adapters`.
 
 Available:
@@ -77,6 +80,15 @@ from tempest_fastapi_sdk.integrations.payment.base import (
 from tempest_fastapi_sdk.integrations.payment.base import (
     PixProvider as PixProvider,
 )
+from tempest_fastapi_sdk.integrations.payment.settlement import (
+    PixConfirmationOutcome as PixConfirmationOutcome,
+)
+from tempest_fastapi_sdk.integrations.payment.settlement import (
+    PixPaymentConfirmation as PixPaymentConfirmation,
+)
+from tempest_fastapi_sdk.integrations.payment.settlement import (
+    confirm_pix_payment as confirm_pix_payment,
+)
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.integrations.payment import adapters as adapters
@@ -113,11 +125,14 @@ __all__: list[str] = [
     "PayoutStatus",
     "PixCharge",
     "PixChargeRequest",
+    "PixConfirmationOutcome",
     "PixEventType",
     "PixPayer",
+    "PixPaymentConfirmation",
     "PixPaymentEvent",
     "PixProvider",
     "adapters",
+    "confirm_pix_payment",
     "openpix",
     "stripe",
 ]
