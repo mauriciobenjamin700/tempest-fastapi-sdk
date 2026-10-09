@@ -178,8 +178,8 @@ class TestReleaseWorkflowKeepsTheSuite:
 
     def test_suite_step_exists_and_is_gated(self) -> None:
         """Removing the suite, or skipping it unconditionally, fails here."""
-        workflow: pathlib.Path = REPO_ROOT / ".github" / "workflows" / "release-pypi.yml"
-        text: str = workflow.read_text(encoding="utf-8")
+        workflows: pathlib.Path = REPO_ROOT / ".github" / "workflows"
+        text: str = (workflows / "release-pypi.yml").read_text(encoding="utf-8")
         gate: int = text.find("python scripts/release_gate.py")
         suite: int = text.find("run: uv run pytest")
         build: int = text.find("run: uv build")
