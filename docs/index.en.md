@@ -28,7 +28,7 @@
 | `tempest_fastapi_sdk.sse` | `EventStream`, `ServerSentEvent`, `sse_response`, `SSEBroker` |
 | `tempest_fastapi_sdk.storage` | `AsyncMinIOClient`, `ObjectStat` |
 | `tempest_fastapi_sdk.tasks` | `TaskQueue` (recommended typed facade), `AsyncTaskBrokerManager`, `AsyncTaskScheduler` |
-| `tempest_fastapi_sdk.testing` | `test_session`, `test_database`, in-memory SQLite helpers |
+| `tempest_fastapi_sdk.testing` | `make_test_session`, `make_test_database`, in-memory SQLite helpers |
 | `tempest_fastapi_sdk.utils` | `PasswordUtils`, `JWTUtils`, `EmailUtils` (with `render_template`), `UploadUtils`, `LocalUploadStorage`, `MinIOUploadStorage`, `HTTPClient`, `RetryPolicy`, `MetricsUtils`, `LogUtils`, `AttemptThrottle`, `DownloadUtils`, BR helpers, opaque-token helpers |
 | `tempest_fastapi_sdk.webpush` | `WebPushDispatcher`, `WebPushPayloadSchema`, `WebPushSubscriptionSchema` |
 

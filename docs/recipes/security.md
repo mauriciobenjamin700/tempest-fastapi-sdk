@@ -6,6 +6,9 @@ Primitivos defensivos: rate-limit por falha (login/OTP), tokens opacos single-us
 
 `AttemptThrottle` conta tentativas falhas por chave (tipicamente `<endpoint>:<identificador>` — e-mail de login, alvo de reset de senha, IP, etc.). Quando o limite é cruzado, `raise_if_blocked` levanta `TooManyRequestsException` direto; ou você lê `status`/`hit` e decide o que fazer.
 
+!!! tip "Usa o `make_auth_router`? O login já vem limitado"
+    O router de auth aplica um `AttemptThrottle` por e-mail no `/auth/login` por padrão, e aceita `login_ip_throttle` e `signup_throttle` por IP. Veja [Limite de tentativas no login e no cadastro](auth-flow.md#limite-de-tentativas-no-login-e-no-cadastro). Esta seção é para o fluxo que você escreve à mão.
+
 O construtor recebe um `backend` (qualquer objeto que case com o `Protocol` `ThrottleBackend`) + `max_attempts` + `window_seconds`. Para um processo só (servidor de dev, testes) o `InMemoryThrottleBackend` bundled funciona sem Redis; ele conta por processo, então com mais de um worker use o cliente Redis do `AsyncRedisManager`.
 
 !!! check "`redis.asyncio.Redis` e `fakeredis` passam no `Protocol`, medido"
@@ -404,7 +407,7 @@ def logout(response: Response) -> None:
 
 ## Extração do IP do cliente
 
-`get_client_ip(request)` e `get_client_ip_from_scope(scope)` retornam o IP real do cliente atrás de proxies. Por design simples: a função aceita **um** nome de header confiável (`trusted_header=`) que sua infraestrutura sabe que só o edge proxy pode setar (típico: `"x-real-ip"` num Nginx, `"x-forwarded-for"` num ALB com cabeçalhos sanitizados). Sem `trusted_header=`, a função usa o peer address direto.
+`get_client_ip(request)` e `get_client_ip_from_scope(scope)` retornam o IP real do cliente atrás de proxies. Por design simples: a função aceita **um** nome de header confiável (`trusted_header=`) que sua infraestrutura sabe que só o edge proxy pode setar (típico: `"x-real-ip"` num Nginx que sobrescreve o header, `"cf-connecting-ip"` atrás do Cloudflare). Sem `trusted_header=`, a função usa o peer address direto.
 
 ```python
 from fastapi import APIRouter, Request
@@ -431,6 +434,72 @@ async def login(request: Request, payload: LoginIn) -> LoginOut:
     A defesa contra spoofing de `X-Forwarded-For` precisa acontecer no proxy (Nginx, ALB, CloudFront) — o proxy **sobrescreve** o header com o peer real antes do request bater no FastAPI. O SDK só lê o header que você confia. Se você expõe a app direto na internet, **não** passe `trusted_header=` — use o peer address.
 
 Use `get_client_ip_from_scope(scope, trusted_header=...)` em middleware ou handlers de WebSocket onde só o scope ASGI está ao alcance.
+
+### Um setting para todos: `TRUSTED_IP_HEADER`
+
+O mesmo nome de header precisa chegar a **todo** lugar que resolve o IP:
+`get_client_ip`, `RateLimitMiddleware`, `AccessLogMiddleware`,
+`HoneypotBanMiddleware`. Esquecer um deles deixa aquele um chaveado no IP do
+proxy — todo cliente vira o mesmo cliente. O `ServerSettings` modela o valor
+uma vez, em `TRUSTED_IP_HEADER`:
+
+```bash
+# .env
+TRUSTED_IP_HEADER=X-Real-IP
+```
+
+```python
+from fastapi import FastAPI, Request
+from tempest_fastapi_sdk import (
+    AccessLogMiddleware,
+    BaseAppSettings,
+    HoneypotBanMiddleware,
+    MemoryBanStore,
+    RateLimitMiddleware,
+    ServerSettings,
+    get_client_ip,
+)
+
+
+class Settings(ServerSettings, BaseAppSettings):
+    """Settings do serviço."""
+
+
+settings = Settings()
+
+app = FastAPI()
+app.add_middleware(
+    RateLimitMiddleware,
+    max_requests=100,
+    window_seconds=60.0,
+    trusted_ip_header=settings.TRUSTED_IP_HEADER,
+)
+app.add_middleware(AccessLogMiddleware, trusted_ip_header=settings.TRUSTED_IP_HEADER)
+app.add_middleware(
+    HoneypotBanMiddleware,
+    store=MemoryBanStore(),
+    trusted_ip_header=settings.TRUSTED_IP_HEADER,
+)
+
+
+@app.get("/whoami")
+async def whoami(request: Request) -> dict[str, str]:
+    """Devolve o IP que o app enxerga."""
+    return {"ip": get_client_ip(request, trusted_header=settings.TRUSTED_IP_HEADER)}
+```
+
+Com `X-Real-IP: 203.0.113.7` na requisição, `/whoami` responde
+`{"ip": "203.0.113.7"}`. O valor é normalizado para minúsculas
+(`settings.TRUSTED_IP_HEADER == "x-real-ip"`) e vazio vira `None` — o peer
+direto.
+
+!!! danger "`X-Forwarded-For` é recusado"
+    `TRUSTED_IP_HEADER=X-Forwarded-For` (ou `Forwarded`) falha na validação,
+    com a explicação na mensagem: o proxy **acrescenta** a esses headers em vez
+    de sobrescrever, então o conteúdo é o que o cliente mandou. Configure o
+    edge para sobrescrever um header de um salto só (no Nginx,
+    `proxy_set_header X-Real-IP $remote_addr`) ou use o header verificado da
+    CDN (`cf-connecting-ip`, `true-client-ip`).
 
 ## Ban de scanner (`HoneypotBanMiddleware`)
 
@@ -561,3 +630,5 @@ middleware.
   browser reenviando credencial em request que o seu serviço não iniciou.
 - `set_cookie` / `clear_cookie` já vêm com `HttpOnly`, `Secure` e `SameSite`
   seguros, e `get_client_ip` resolve o IP real atrás de proxy.
+- `TRUSTED_IP_HEADER` no `ServerSettings` leva o mesmo header a
+  `get_client_ip` e aos três middlewares, e recusa `X-Forwarded-For`.

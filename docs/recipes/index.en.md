@@ -493,6 +493,7 @@ come back here to plug in each capability as you need it.
 | **[CLI »](cli.md)** | `tempest new` / `db` (+ `seed`) / `user` / `secrets rotate` / `lint` / `fix` / `format` / `type` / `test` / `check` |
 | **[Comments + ratings »](reviews.md)** | `ReviewService`, `make_reviews_router`, 0–5 star scores with aggregation, threaded comments |
 | **[Computer vision (ONNX) »](vision.md)** | `Detector` / `Classifier` / `Segmenter` + prediction schemas |
+| **[Data subject export and erasure (LGPD) »](subject-data.md)** | `SubjectGraph` (the tables a subject's `DELETE` reaches by cascade, derived from `MetaData`), `export` without secret columns, `violations` + `assert_subject_graph_valid` as a CI guard, `SubjectObjectStorage` (per-subject prefix, batch `delete_all`) |
 | **[Database »](database.md)** | `BaseModel`, `AsyncDatabaseManager`, `BaseRepository` (CRUD + filters + bulk), offset/cursor pagination, mixins, `AlembicHelper`, `SlowQueryLogger` |
 | **[Downloads »](downloads.md)** | `DownloadUtils` — `file_response`, `stream`, `build_content_disposition`, path-traversal safe |
 | **[Enum columns (safe on both databases) »](enum-columns.md)** | `Mapped[MyEnum]` storing the `value`, native `ENUM` on PostgreSQL and a `CHECK` on SQLite, `enum_column()`, `op.replace_enum` + `sync_enum_types` for the migration autogenerate cannot see |
@@ -550,7 +551,7 @@ come back here to plug in each capability as you need it.
 | **[Stripe (cards + subscriptions) »](stripe.md)** | `StripeClient`, `stripe_http_client`, `to_minor_units` / `from_minor_units`, `make_stripe_webhook_dependency`, `StripeEvent` — form-encoded writes, idempotency by default, zero-decimal currencies |
 | **[System checks (check-config) »](system-checks.md)** | `run_system_checks`, `@check`, `CheckMessage`, `tempest check-config` — validate settings before serving |
 | **[tempestweb frontend + SDK »](tempestweb-frontend.md)** | tempestweb frontend calling the SDK backend: `tempestweb.native.http`, `Idempotency-Key` + `IdempotencyMiddleware`, retry, same origin vs CORS |
-| **[Testing »](testing.md)** | `test_session`, `test_database`, in-memory SQLite, pytest fixtures |
+| **[Testing »](testing.md)** | `make_test_session`, `make_test_database`, in-memory SQLite, pytest fixtures |
 | **[Text search (LIKE + full-text) »](text-search.md)** | portable `search()` (escaped ILIKE, `AND` across words), `full_text_search()` with `websearch_to_tsquery` + `ts_rank` on PostgreSQL, `TextSearchLanguage` / `TextSearchWeight` / `TokenMatch`, conditions that feed `where=` |
 | **[Transactional email »](email.md)** | `EmailUtils` — SMTP, text/HTML body, attachments, Jinja2 templates |
 | **[Transactional outbox »](outbox.md)** | `BaseOutboxModel`, `OutboxRelay`, `save_with_outbox` — reliable events |

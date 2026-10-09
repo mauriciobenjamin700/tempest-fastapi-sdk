@@ -17,6 +17,7 @@ import pytest
 from tempest_fastapi_sdk import (
     DEFAULT_STATIC_SECURITY_HEADERS,
     AsyncMinIOClient,
+    ObjectDeleteError,
     PutObjectItem,
 )
 
@@ -73,6 +74,8 @@ class _FakeMinio:
         self.buckets: dict[str, dict[str, _FakeObject]] = {}
         self.get_calls: list[tuple[str, int, int]] = []
         self.presign_overrides: list[dict[str, str]] = []
+        self.batch_deletes: list[list[str]] = []
+        self.refuse: set[str] = set()
 
     def bucket_exists(self, bucket: str) -> bool:
         return bucket in self.buckets
@@ -165,6 +168,18 @@ class _FakeMinio:
     ) -> None:
         del version_id
         self.buckets.get(bucket, {}).pop(key, None)
+
+    def remove_objects(self, bucket: str, delete_object_list: Any) -> Any:
+        self.batch_deletes.append([obj.name for obj in delete_object_list])
+        for obj in self.batch_deletes[-1]:
+            if obj in self.refuse:
+                continue
+            self.buckets.get(bucket, {}).pop(obj, None)
+        return iter(
+            type("E", (), {"name": key, "code": "AccessDenied", "message": "no"})()
+            for key in self.batch_deletes[-1]
+            if key in self.refuse
+        )
 
     def copy_object(
         self,
@@ -312,6 +327,36 @@ class TestObjectIO:
     ) -> None:
         await client.ensure_bucket()
         assert await client.list_objects("missing/") == []
+
+    async def test_remove_objects_is_one_batch_call(
+        self, client: AsyncMinIOClient, fake_minio: _FakeMinio
+    ) -> None:
+        await client.ensure_bucket()
+        for key in ("a/1", "a/2", "b/1"):
+            await client.put_object(key, b"x")
+        errors = await client.remove_objects(["a/1", "a/2", "a/1"])
+        assert errors == []
+        assert fake_minio.batch_deletes == [["a/1", "a/2"]]
+        assert await client.list_objects() == ["b/1"]
+
+    async def test_remove_objects_reports_refused_keys(
+        self, client: AsyncMinIOClient, fake_minio: _FakeMinio
+    ) -> None:
+        await client.ensure_bucket()
+        for key in ("a/1", "a/2"):
+            await client.put_object(key, b"x")
+        fake_minio.refuse.add("a/2")
+        errors = await client.remove_objects(["a/1", "a/2"])
+        assert errors == [
+            ObjectDeleteError(key="a/2", code="AccessDenied", message="no")
+        ]
+        assert await client.list_objects() == ["a/2"]
+
+    async def test_remove_objects_empty_skips_request(
+        self, client: AsyncMinIOClient, fake_minio: _FakeMinio
+    ) -> None:
+        assert await client.remove_objects([]) == []
+        assert fake_minio.batch_deletes == []
 
     async def test_remove_object(self, client: AsyncMinIOClient) -> None:
         await client.ensure_bucket()

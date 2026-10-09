@@ -39,10 +39,11 @@ token models and the email rendering pipeline.
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import importlib
 from collections.abc import AsyncIterator, Callable, Collection, Mapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from urllib.parse import parse_qs
 
 from fastapi import APIRouter, Request, Response, status
@@ -52,6 +53,7 @@ from sqlalchemy import inspect as sa_inspect
 
 from tempest_fastapi_sdk.api.cookies import clear_cookie, set_cookie
 from tempest_fastapi_sdk.api.dependencies import make_jwt_user_dependency
+from tempest_fastapi_sdk.api.error_docs import error_responses
 from tempest_fastapi_sdk.api.oauth import (
     OAuthAudienceVerifier,
     OAuthClient,
@@ -114,9 +116,11 @@ from tempest_fastapi_sdk.exceptions import (
     OAuthProviderDeniedException,
     OAuthProviderNotConfiguredException,
     OAuthStateMismatchException,
+    TooManyRequestsException,
     UnauthorizedException,
     ValidationException,
 )
+from tempest_fastapi_sdk.utils.client_ip import get_client_ip
 from tempest_fastapi_sdk.utils.throttle import (
     AttemptThrottle,
     InMemoryThrottleBackend,
@@ -144,6 +148,22 @@ MFA_THROTTLE_MAX_ATTEMPTS: int = 5
 
 MFA_THROTTLE_WINDOW_SECONDS: int = 900
 """Length, in seconds, of the default ``/auth/mfa/verify`` failure window."""
+
+LOGIN_THROTTLE_MAX_ATTEMPTS: int = 5
+"""Wrong passwords one e-mail may submit to ``/auth/login`` per window."""
+
+LOGIN_THROTTLE_WINDOW_SECONDS: int = 900
+"""Length, in seconds, of the default ``/auth/login`` failure window."""
+
+LOGIN_THROTTLED_MESSAGE: str = "too many login attempts, try again later"
+"""``detail`` of the login ``429``.
+
+The same text for an e-mail that exists and one that does not, so the
+refusal tells an attacker nothing about which accounts are real.
+"""
+
+SIGNUP_THROTTLED_MESSAGE: str = "too many signup attempts, try again later"
+"""``detail`` of the signup ``429``."""
 
 
 SignupHook = Callable[
@@ -272,6 +292,10 @@ def make_auth_router(
     token_strict: bool = False,
     token_legacy_claims: Collection[str] = (),
     mfa_throttle: AttemptThrottle | None = None,
+    login_throttle: AttemptThrottle | Literal[False] | None = None,
+    login_ip_throttle: AttemptThrottle | None = None,
+    signup_throttle: AttemptThrottle | None = None,
+    trusted_ip_header: str | None = None,
 ) -> APIRouter:
     """Build the bundled auth router.
 
@@ -403,6 +427,46 @@ def make_auth_router(
             the process: with more than one worker or replica, pass an
             :class:`~tempest_fastapi_sdk.AttemptThrottle` over the shared
             Redis client instead.
+        login_throttle (AttemptThrottle | Literal[False] | None): Failure
+            budget for ``POST /auth/login`` (and the cookie login), keyed
+            per normalized e-mail (``"login:<sha256 of the e-mail>"``, so
+            the backend never stores the address). Like ``mfa_throttle``,
+            each attempt reserves one unit **before** the password is
+            checked and a successful login clears the key, so only wrong
+            passwords accumulate; the attempt past ``max_attempts`` answers
+            ``429`` with ``Retry-After`` whatever the password. The key is
+            spent the same way for an e-mail that has no account, so the
+            ``429`` does not tell which addresses exist. ``None``
+            (default) builds one over an
+            :class:`~tempest_fastapi_sdk.InMemoryThrottleBackend` with
+            ``LOGIN_THROTTLE_MAX_ATTEMPTS`` (5) per
+            ``LOGIN_THROTTLE_WINDOW_SECONDS`` (900) — per process, so pass
+            one over Redis with more than one worker. ``False`` turns the
+            per-e-mail budget off (a service that limits login elsewhere).
+            Whoever knows an e-mail can spend its budget and keep its owner
+            out for one window: the trade every per-account lock makes.
+        login_ip_throttle (AttemptThrottle | None): Failure budget for the
+            login routes keyed per client IP (``"login-ip:<addr>"``), for
+            one source trying many e-mails. Counts only wrong credentials,
+            checked before the e-mail budget is spent; a success does not
+            clear it, since one valid account would otherwise reset the
+            counter between guesses. ``None`` (default) leaves it off: an
+            IP key is only meaningful once ``trusted_ip_header`` names the
+            header your edge sets — without it every client behind a proxy
+            shares the proxy's address, and one budget would lock everyone
+            out.
+        signup_throttle (AttemptThrottle | None): Budget for
+            ``POST /auth/signup`` keyed per client IP
+            (``"signup:<addr>"``). Every attempt counts, successful or not,
+            since the point is to cap account creation per source; the
+            attempt past ``max_attempts`` answers ``429`` with
+            ``Retry-After`` before the body reaches the service. ``None``
+            (default) leaves it off, for the same proxy reason as
+            ``login_ip_throttle``.
+        trusted_ip_header (str | None): Single edge-set header holding the
+            real client IP (e.g. ``"x-real-ip"``) for the IP-keyed
+            throttles. ``None`` uses the transport peer. See
+            :func:`~tempest_fastapi_sdk.get_client_ip`.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -496,6 +560,117 @@ def make_auth_router(
             window_seconds=MFA_THROTTLE_WINDOW_SECONDS,
         )
     )
+    resolved_login_throttle: AttemptThrottle | None
+    if login_throttle is False:
+        resolved_login_throttle = None
+    elif login_throttle is None:
+        resolved_login_throttle = AttemptThrottle(
+            InMemoryThrottleBackend(),
+            max_attempts=LOGIN_THROTTLE_MAX_ATTEMPTS,
+            window_seconds=LOGIN_THROTTLE_WINDOW_SECONDS,
+        )
+    else:
+        resolved_login_throttle = login_throttle
+    login_throttled = (
+        resolved_login_throttle is not None or login_ip_throttle is not None
+    )
+    login_responses: dict[int | str, dict[str, Any]] = (
+        error_responses(
+            TooManyRequestsException,
+            descriptions={
+                status.HTTP_429_TOO_MANY_REQUESTS: (
+                    "Too many failed logins for this e-mail or this client "
+                    "— retry after ``Retry-After`` seconds."
+                ),
+            },
+        )
+        if login_throttled
+        else {}
+    )
+    signup_responses: dict[int | str, dict[str, Any]] = (
+        error_responses(
+            TooManyRequestsException,
+            descriptions={
+                status.HTTP_429_TOO_MANY_REQUESTS: (
+                    "Too many signups from this client — retry after "
+                    "``Retry-After`` seconds."
+                ),
+            },
+        )
+        if signup_throttle is not None
+        else {}
+    )
+
+    def _client_ip(request: Request) -> str:
+        """Resolve the client IP the IP-keyed throttles count against.
+
+        Args:
+            request (Request): The inbound request.
+
+        Returns:
+            str: The address from ``trusted_ip_header``, or the peer.
+        """
+        return get_client_ip(request, trusted_header=trusted_ip_header)
+
+    async def _throttled_login(
+        request: Request,
+        session: AsyncSession,
+        payload: LoginSchema,
+    ) -> BaseUserModel:
+        """Run :meth:`UserAuthService.login` behind the login throttles.
+
+        Order matters. The IP budget is read first, so a blocked source
+        does not spend the e-mail budget of the address it is trying.
+        Then the e-mail budget is **reserved** before the password is
+        checked — the reservation, not a later count, is what keeps a
+        burst of concurrent guesses from all passing a "not blocked yet"
+        read together, the same reason ``mfa_verify`` reserves. Both are
+        spent identically for an e-mail without an account, so neither
+        ``429`` reveals which e-mails exist.
+
+        Args:
+            request (Request): The inbound request (client IP).
+            session (AsyncSession): The request-scoped DB session.
+            payload (LoginSchema): Email and password.
+
+        Returns:
+            BaseUserModel: The authenticated user.
+
+        Raises:
+            TooManyRequestsException: When either budget is spent.
+            UnauthorizedException: On wrong credentials (counted against
+                the IP budget).
+        """
+        ip_key = f"login-ip:{_client_ip(request)}"
+        if login_ip_throttle is not None:
+            await login_ip_throttle.raise_if_blocked(
+                ip_key,
+                message=LOGIN_THROTTLED_MESSAGE,
+            )
+        email_digest = hashlib.sha256(
+            payload.email.strip().lower().encode("utf-8"),
+        ).hexdigest()
+        email_key = f"login:{email_digest}"
+        if resolved_login_throttle is not None:
+            attempt = await resolved_login_throttle.hit(email_key)
+            if attempt.attempts > resolved_login_throttle.max_attempts:
+                raise TooManyRequestsException(
+                    message=LOGIN_THROTTLED_MESSAGE,
+                    retry_after_seconds=attempt.retry_after_seconds,
+                )
+        try:
+            user = await service.login(
+                session,
+                email=payload.email,
+                password=payload.password,
+            )
+        except UnauthorizedException:
+            if login_ip_throttle is not None:
+                await login_ip_throttle.hit(ip_key)
+            raise
+        if resolved_login_throttle is not None:
+            await resolved_login_throttle.reset(email_key)
+        return user
 
     # --- token delivery (bearer / cookie / both) ----------------------
     delivery: TokenDelivery = token_delivery or auth_settings.AUTH_TOKEN_DELIVERY
@@ -585,6 +760,7 @@ def make_auth_router(
 
     async def signup(
         payload: SignupSchema,
+        request: Request,
         session: AsyncSession = session_dep,
     ) -> SignupResponseSchema:
         """Register a new account.
@@ -608,15 +784,31 @@ def make_auth_router(
         the extra columns it writes and the row itself land in one
         transaction: a hook that raises leaves no account behind.
 
+        With ``signup_throttle`` set, the attempt is counted against the
+        client IP first and the one past the budget answers ``429``
+        before the service sees the body.
+
         Args:
             payload (SignupSchema): Email, password and optional name —
                 or a subclass of those, when ``signup_schema`` is set.
+            request (Request): The inbound request (client IP).
             session (AsyncSession): The request-scoped DB session.
 
         Returns:
             SignupResponseSchema: The created user, plus the activation
             token or JWT pair depending on the configured flow.
+
+        Raises:
+            TooManyRequestsException: When the client's signup budget is
+                spent.
         """
+        if signup_throttle is not None:
+            attempt = await signup_throttle.hit(f"signup:{_client_ip(request)}")
+            if attempt.attempts > signup_throttle.max_attempts:
+                raise TooManyRequestsException(
+                    message=SIGNUP_THROTTLED_MESSAGE,
+                    retry_after_seconds=attempt.retry_after_seconds,
+                )
         user, activation = await service.signup(
             session,
             email=payload.email,
@@ -663,6 +855,7 @@ def make_auth_router(
             "/signup",
             response_model=SignupResponseSchema,
             status_code=status.HTTP_201_CREATED,
+            responses=signup_responses,
             summary="Register a new account (email + password)",
             description=(
                 "Create a brand-new user from an email, a password and an "
@@ -685,7 +878,10 @@ def make_auth_router(
                 "``null``; when email is not configured — or "
                 "``AUTH_RETURN_TOKEN_IN_RESPONSE=True`` — the ready-to-use "
                 "``activation_url`` is returned in the body instead so you "
-                "can complete activation without SMTP."
+                "can complete activation without SMTP.\n\n"
+                "**Rate limit.** With ``signup_throttle`` configured, the "
+                "attempts past its budget for one client IP return **429** "
+                "``TOO_MANY_REQUESTS`` with ``Retry-After``."
             ),
         ),
     )(signup)
@@ -741,6 +937,7 @@ def make_auth_router(
         router.post(
             "/login",
             response_model=LoginResponseSchema,
+            responses=login_responses,
             summary="Log in with email + password → JWT pair",
             description=(
                 "Authenticate an **active** user with their email and "
@@ -757,29 +954,35 @@ def make_auth_router(
                 "return the JWT pair. Instead it returns "
                 "``mfa_required=true`` plus a short-lived ``mfa_token``; "
                 "exchange that token for the real JWT pair at "
-                "``/mfa/verify``."
+                "``/mfa/verify``.\n\n"
+                "**Rate limit.** By default the 6th wrong password for the "
+                "same e-mail inside 15 minutes — and every attempt after "
+                "it, right password included — returns **429** "
+                "``TOO_MANY_REQUESTS`` with ``Retry-After``; a successful "
+                "login clears the count. The same happens for an e-mail "
+                "with no account, so the 429 reveals nothing about which "
+                "e-mails exist. ``login_ip_throttle`` adds a per-client "
+                "budget."
             ),
         ),
     )
     async def login(
         payload: LoginSchema,
+        request: Request,
         session: AsyncSession = session_dep,
     ) -> LoginResponseSchema:
         """Authenticate and issue the JWT pair.
 
         Args:
             payload (LoginSchema): Email and password.
+            request (Request): The inbound request (client IP).
             session (AsyncSession): The request-scoped DB session.
 
         Returns:
             LoginResponseSchema: The token pair, or an MFA challenge when
             the account has TOTP enrolled.
         """
-        user = await service.login(
-            session,
-            email=payload.email,
-            password=payload.password,
-        )
+        user = await _throttled_login(request, session, payload)
         if service.is_mfa_enrolled(user):
             mfa_token = service.issue_mfa_token(user)
             await session.commit()
@@ -1213,6 +1416,7 @@ def make_auth_router(
         @router.post(
             f"{cookie_suffix}/login",
             response_model=LoginResponseSchema,
+            responses=login_responses,
             summary="Log in — set the JWT pair as HttpOnly cookies",
             description=(
                 "Same credentials check as ``POST /auth/login``, but the "
@@ -1221,19 +1425,17 @@ def make_auth_router(
                 "keeps them ``null``. The MFA branch is unchanged: when a "
                 "second factor is required the response still carries "
                 "``mfa_required=true`` + ``mfa_token`` and sets no session "
-                "cookies."
+                "cookies. Shares the login throttles with ``POST /auth/login``"
+                ": the same e-mail budget, the same **429**."
             ),
         )
         async def login_cookie(
             payload: LoginSchema,
+            request: Request,
             response: Response,
             session: AsyncSession = session_dep,
         ) -> LoginResponseSchema:
-            user = await service.login(
-                session,
-                email=payload.email,
-                password=payload.password,
-            )
+            user = await _throttled_login(request, session, payload)
             if service.is_mfa_enrolled(user):
                 mfa_token = service.issue_mfa_token(user)
                 await session.commit()

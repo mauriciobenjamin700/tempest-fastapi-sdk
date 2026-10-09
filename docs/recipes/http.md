@@ -10,6 +10,7 @@ Você vai montar aqui a superfície HTTP inteira de um serviço a partir dos pri
 - **`make_health_router` / `make_token_dependency`** — liveness/readiness + o guarda de segredo compartilhado `X-Token`.
 - **Dependências JWT / bearer / role / permission** — controle de rota por token e por papel.
 - **`RateLimitMiddleware`** — janela deslizante, chave por IP/usuário/tenant, store em memória ou Redis.
+- **`make_rate_limit_dependency`** — o mesmo limite em uma rota só, com chave que pode ler o corpo (`key_by_body_field`).
 - **`BodySizeLimitMiddleware`** — teto de bytes no corpo do request, com 413 antes de qualquer parse.
 - **`WebhookSignatureVerifier` / `RSAWebhookSignatureVerifier`** — validação de webhooks assinados (HMAC ou RSA).
 - **`build_pagination_link_header`** — header `Link` RFC 8288 no estilo GitHub.
@@ -116,8 +117,101 @@ Pontos-chave:
     - `Exception` (catch-all) → envelope SDK + traceback + `500.log` (corrige o default do Starlette, que devolve só `"Internal Server Error"` sem log).
 
     Todos os handlers respeitam `RequestIDMiddleware`: a linha de log carrega o `request_id`, e o envelope expõe ele em `details` para correlacionar com o cliente. Passe `log_traceback=False` se um APM (Sentry, OpenTelemetry) já estiver capturando a trace.
-- `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` monta `GET /health/liveness` e `GET /health/readiness` (retorna `503` quando algum check falha) no prefixo raiz.
+- `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` monta `GET /health/liveness` e `GET /health/readiness` (retorna `503` quando algum check falha) no prefixo raiz — veja [Liveness e readiness](#liveness-e-readiness).
 - `make_token_dependency(secret)` retorna uma dependência async que valida `X-Token` via `hmac.compare_digest`; passe uma string vazia para desabilitar no dev. A dependência vive ao lado do resto da cola de auth em `src/api/dependencies/auth.py` quando crescer além do one-liner acima.
+
+### Liveness e readiness
+
+São duas perguntas diferentes, feitas por quem decide coisas diferentes:
+
+- **Liveness** — *"o processo está vivo?"*. Se falha, o orquestrador
+  (Kubernetes, ECS) **reinicia** o container. Por isso `GET /health/liveness`
+  não toca dependência nenhuma: um Redis fora do ar não se resolve reiniciando
+  a API, e um liveness que dependesse dele derrubaria todas as réplicas ao
+  mesmo tempo, em loop.
+- **Readiness** — *"posso receber tráfego agora?"*. Se falha, o balanceador
+  **tira a réplica da rotação** e devolve quando voltar a passar. É aqui que
+  entram banco, cache e broker: `GET /health/readiness` roda cada check e
+  responde `503` quando algum falha.
+
+Um único `GET /health` mistura as duas coisas — ou reinicia por causa de uma
+dependência, ou manda tráfego para quem não consegue atendê-lo. Ao pedir o
+health de um serviço novo, peça os dois endpoints.
+
+```python
+import asyncio
+
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from tempest_fastapi_sdk import make_health_router
+
+
+async def redis_check() -> bool:
+    """Responde na hora: dependência saudável."""
+    return True
+
+
+async def search_check() -> bool:
+    """Pendura, como um socket meio aberto que nunca responde."""
+    await asyncio.sleep(60)
+    return True
+
+
+app = FastAPI()
+app.include_router(
+    make_health_router(
+        checks={"redis": redis_check, "search": search_check},
+        timeout=0.5,
+    ),
+)
+
+
+async def main() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        liveness = await client.get("/health/liveness")
+        readiness = await client.get("/health/readiness")
+    print(liveness.status_code, liveness.json())
+    print(readiness.status_code, readiness.json())
+
+
+asyncio.run(main())
+```
+
+Saída (o processo inteiro levou 1,7 s, apesar do `sleep(60)`):
+
+```text
+Health check 'search' timed out after 0.5s
+200 {'status': 'ok'}
+503 {'status': 'not_ready', 'checks': {'redis': True, 'search': False}}
+```
+
+O que acontece na readiness:
+
+- **Os checks rodam em paralelo**, cada um limitado por `timeout` (default
+  `3.0` segundos; `None` desliga). O que estoura conta como falha **só para
+  ele** — o `redis` acima continua `True` —, e a resposta sai logo depois do
+  `timeout`, não quando o probe do orquestrador desiste. Mantenha o `timeout`
+  abaixo do timeout do probe.
+- **O log não leva a mensagem da exceção.** Um check que levanta gera
+  `Health check 'database' raised ConnectionRefusedError` — nome e tipo, nunca
+  o texto, porque mensagem de driver de banco ou de broker costuma carregar a
+  DSN com usuário e senha.
+
+!!! warning "Cancelamento só acontece num `await`"
+    O `timeout` cancela o check no próximo ponto de `await`. Um check que
+    bloqueia o event loop com I/O síncrono (um driver não-async, um
+    `time.sleep`) não pode ser interrompido — e trava o processo inteiro, não
+    só a readiness. Rode esse tipo de chamada com `asyncio.to_thread`.
+
+!!! tip "Fila"
+    `MessageBroker.health_check` faz o `ping` real do FastStream, com
+    `timeout=2.0` por default — abaixo dos 3 s do router. Com o RabbitMQ
+    parado depois do boot, ele devolve `False`:
+    `make_health_router(checks={"queue": mq.health_check})`.
 
 
 ### Todo 4xx dentro do envelope
@@ -989,6 +1083,128 @@ True
     injetado tiram a velocidade da máquina da asserção.
 
 
+## Rate limit por rota (`make_rate_limit_dependency`)
+
+O `RateLimitMiddleware` limita o app inteiro, e o escopo dele só diminui por
+subtração (`exempt_paths`). Duas perguntas ficam de fora:
+
+- **"Só `POST /api/invites`."** Uma rota cara merece um teto que o resto do app
+  não tem.
+- **"Por e-mail convidado, não só por IP."** A chave está no **corpo**, e o
+  `key_func` do middleware recebe só o `Request`, de forma síncrona, antes de o
+  corpo ser lido.
+
+`make_rate_limit_dependency` responde as duas: é uma dependency que você pendura
+em uma rota, conta no mesmo `RateLimitStore` do middleware (memória ou Redis) e
+devolve o mesmo 429.
+
+### Limitar um endpoint por IP e por campo do corpo
+
+```python
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk import (
+    MemoryRateLimitStore,
+    key_by_body_field,
+    key_by_ip,
+    make_rate_limit_dependency,
+    register_exception_handlers,
+)
+
+
+class InviteCreateSchema(BaseModel):
+    email: str
+
+
+invite_limit = make_rate_limit_dependency(
+    MemoryRateLimitStore(),
+    max_requests=3,
+    window_seconds=3600.0,
+    key=[
+        key_by_ip(trusted_header="x-real-ip"),
+        key_by_body_field("email"),
+    ],
+)
+
+app = FastAPI()
+register_exception_handlers(app)
+
+
+@app.post("/api/invites", status_code=202, dependencies=[Depends(invite_limit)])
+async def create_invite(payload: InviteCreateSchema) -> dict[str, str]:
+    return {"invited": payload.email}
+
+
+@app.get("/api/invites")
+async def list_invites() -> list[str]:
+    return []
+
+
+client = TestClient(app)
+for ip in ("10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.4"):
+    response = client.post(
+        "/api/invites",
+        json={"email": "ana@example.com"},
+        headers={"x-real-ip": ip},
+    )
+    print(response.status_code, response.json())
+print(response.headers["retry-after"], response.headers["ratelimit-limit"])
+print(client.get("/api/invites").status_code)
+```
+
+Saída:
+
+```text
+202 {'invited': 'ana@example.com'}
+202 {'invited': 'ana@example.com'}
+202 {'invited': 'ana@example.com'}
+429 {'detail': 'Too many requests', 'code': 'TOO_MANY_REQUESTS', 'details': {'retry_after_seconds': 3600, 'limit': 3}}
+3600 3
+200
+```
+
+Quatro IPs diferentes, o mesmo e-mail: o quarto pedido cai pela chave do e-mail,
+e o `GET` da mesma URL continua livre. Pedaço por pedaço:
+
+- **`key=[...]`** — cada função devolve uma chave (ou várias, ou nenhuma), e
+  cada chave conta no mesmo store. A primeira que estoura recusa o pedido; as
+  seguintes nem são contadas, para um pedido recusado não gastar o orçamento
+  delas. Funções síncronas (`key_by_ip`, `key_by_header`, `key_by_jwt_*`) e
+  assíncronas valem igual.
+- **`key_by_body_field("email")`** — lê o campo do corpo JSON. O FastAPI lê o
+  corpo **antes** de resolver as dependencies e o Starlette guarda os bytes no
+  `Request`, então o endpoint continua recebendo o `payload` validado — a saída
+  acima é essa prova. O valor é normalizado (`strip` + minúsculas) e guardado
+  como SHA-256, para o Redis não acumular e-mail em texto puro
+  (`normalize=False`, `hash_value=False` desligam). Corpo que não é JSON, ou
+  sem o campo, não gera chave: o 422 do próprio endpoint responde esse pedido.
+- **`trusted_ip_header`** — sem `key`, a chave default é o IP resolvido por
+  esse header (`make_rate_limit_dependency(store, ..., trusted_ip_header="x-real-ip")`).
+  Com `key`, passe o header para o `key_by_ip` de dentro da lista; passar os
+  dois levanta `ValueError` na construção, em vez de ignorar o header calado.
+- **O balde é da rota.** O prefixo default de cada chave é o método e o path
+  template (`"POST /api/invites"`), então a mesma dependency em duas rotas dá um
+  orçamento para cada, `/users/1` e `/users/2` dividem o de `/users/{user_id}`,
+  e o contador nunca colide com o do middleware no mesmo Redis. Passe
+  `scope="invites"` para várias rotas dividirem um orçamento.
+
+!!! info "O mesmo 429 do middleware"
+    O corpo (`detail`, `code`, `details.retry_after_seconds`, `details.limit`) e
+    os headers (`Retry-After`, `RateLimit-Limit`, `RateLimit-Remaining`,
+    `RateLimit-Reset`) saem dos mesmos helpers que o `RateLimitMiddleware` usa
+    — `tests/api/test_rate_limit_dependency.py` compara os dois. A diferença é
+    o caminho: a dependency **levanta** `TooManyRequestsException`, então
+    precisa do `register_exception_handlers` no app, e com um `MessageCatalog`
+    registrado ali o `detail` sai traduzido pelo `code`
+    (`"Requisições em excesso"` em `pt-BR`), o que o middleware — que responde
+    fora dos handlers — não faz.
+
+!!! tip "Multi-réplica"
+    Troque `MemoryRateLimitStore()` por `RedisRateLimitStore(redis)` e todas as
+    réplicas dividem os contadores, exatamente como no middleware.
+
 ## Limite de tamanho do body (`BodySizeLimitMiddleware`)
 
 Um upload de 2 GB num endpoint que espera JSON derruba o worker antes de
@@ -1498,7 +1714,7 @@ Cada mixin é dono do seu próprio prefixo de env var — escolha só os que o s
 | Mixin | Env vars |
 | --- | --- |
 | `ServerSettings` | `SERVER_HOST`, `SERVER_PORT`, `SERVER_RELOAD`, `SERVER_DEBUG` |
-| `LogSettings` | `LOG_LEVEL`, `LOG_JSON`, `LOG_DIR`, `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT` |
+| `LogSettings` | `LOG_LEVEL`, `LOG_JSON`, `LOG_DIR`, `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT`, `LOG_REDACT` |
 | `DatabaseSettings` | `DATABASE_URL`, `DATABASE_ECHO`, `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW`, `DATABASE_POOL_RECYCLE`, `DATABASE_SQLITE_WAL`, `DATABASE_SQLITE_BUSY_TIMEOUT`, `DATABASE_SQLITE_FOREIGN_KEYS` |
 | `RedisSettings` | `REDIS_URL`, `REDIS_DECODE_RESPONSES` |
 | `RabbitMQSettings` | `RABBITMQ_URL`, `RABBITMQ_PREFETCH_COUNT` |

@@ -27,6 +27,7 @@ Since v0.31.0 the SDK ships the full local-account lifecycle — email + passwor
 1. **[Minimum setup](#minimum-setup)** — extras install + wiring four objects (`AsyncDatabaseManager`, `EmailUtils`, `UserAuthService`, `make_auth_router`).
 2. **[Concrete UserTokenModel](#concrete-usertokenmodel)** — `BaseUserTokenModel` is abstract, your project owns the concrete table.
 3. **[Endpoints](#endpoints)** — table of all endpoints + payload + behavior.
+    - **[Attempt limits](#login-and-signup-attempt-limits)** — login and signup braked against brute force, without revealing which e-mails exist.
     - **[Backend only](#backend-only-from-signup-to-a-protected-route)** — the signup → activation → login → protected route cycle without a frontend, measured with `curl`, and the same cycle in a test.
 4. **[Re-send the activation](#re-send-the-activation)** — the activation email never arrived.
 5. **[Password recovery](#password-recovery)** — the "forgot password" flow, step by step, plus changing the password while logged in.
@@ -488,6 +489,140 @@ without anyone hand-writing a schema.
 visible in OpenAPI — and its fields that are columns land on the row before the
 insert. `on_signup` is for the rest, inside the insert's transaction. Nothing
 else has to leave the SDK for your service.
+
+
+### Login and signup attempt limits
+
+Without a limit, `POST /auth/login` answers `401` to every wrong password
+forever — brute force is only a matter of patience — and `POST /auth/signup`
+creates accounts with no ceiling. The router ships both brakes, shaped like
+`mfa_throttle`:
+
+| Parameter | Key | Counts | Default |
+| --- | --- | --- | --- |
+| `login_throttle` | normalized e-mail (SHA-256) | every attempt, **cleared by a right login** | on: 5 per 900 s, in memory |
+| `login_ip_throttle` | client IP | wrong credentials only; a right login does **not** clear it | off |
+| `signup_throttle` | client IP | every attempt, right or not | off |
+
+```python
+import asyncio
+
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient, Response
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    AttemptThrottle,
+    AuthSettings,
+    BaseUserModel,
+    InMemoryThrottleBackend,
+    JWTSettings,
+    UserAuthService,
+    make_auth_router,
+    make_user_token_model,
+    register_exception_handlers,
+)
+
+
+class UserModel(BaseUserModel):
+    __tablename__ = "users"
+
+
+UserTokenModel = make_user_token_model(user_table="users")
+
+
+async def main() -> None:
+    db: AsyncDatabaseManager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.create_tables()
+    service: UserAuthService = UserAuthService(
+        db=db,
+        user_model=UserModel,
+        token_model=UserTokenModel,
+        auth_settings=AuthSettings(AUTH_AUTO_ACTIVATE=True),
+        jwt_settings=JWTSettings(),
+        email=None,
+    )
+    app: FastAPI = FastAPI()
+    register_exception_handlers(app)
+    app.include_router(
+        make_auth_router(
+            service,
+            session_factory=db.session_dependency,
+            login_ip_throttle=AttemptThrottle(
+                InMemoryThrottleBackend(), max_attempts=20, window_seconds=900
+            ),
+            signup_throttle=AttemptThrottle(
+                InMemoryThrottleBackend(), max_attempts=10, window_seconds=3600
+            ),
+            trusted_ip_header="x-real-ip",
+        )
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post(
+            "/auth/signup",
+            json={"email": "ana@example.com", "password": "senha-forte-123"},
+        )
+        for password in ["senha-errada-123"] * 5 + ["senha-forte-123"]:
+            response: Response = await client.post(
+                "/auth/login",
+                json={"email": "ana@example.com", "password": password},
+            )
+            print(response.status_code, response.headers.get("retry-after"))
+        print(response.json())
+    await db.disconnect()
+
+
+asyncio.run(main())
+```
+
+Output:
+
+```text
+401 None
+401 None
+401 None
+401 None
+401 None
+429 900
+{'detail': 'too many login attempts, try again later', 'code': 'TOO_MANY_REQUESTS', 'details': {'retry_after_seconds': 900}}
+```
+
+The sixth attempt gets `429` **with the right password**: the budget is
+reserved before the password is checked, so a burst of parallel guesses does
+not all pass a "not blocked yet" read together. A right login before the limit
+clears the e-mail's count.
+
+!!! check "The 429 does not reveal whether the e-mail exists"
+    The e-mail budget is spent the same way for an address without an account,
+    and `detail` is the same text in both cases. Whoever probes the login
+    learns they guessed too often, not which e-mails are registered.
+
+!!! warning "Why the per-IP limits ship off"
+    Behind a proxy, the IP the app sees is the **proxy's** — without
+    `trusted_ip_header`, every client lands in the same bucket, and one per-IP
+    budget locks everyone out of login (or signup) at once. Turn
+    `login_ip_throttle` and `signup_throttle` on together with the
+    `trusted_ip_header` your edge overwrites (`"x-real-ip"`), never with
+    `X-Forwarded-For`.
+
+Four more things worth knowing:
+
+- **With more than one worker, pass a shared backend.** The default counts in
+  memory, per process; `AttemptThrottle(redis, max_attempts=5,
+  window_seconds=900)` shares the counter across replicas.
+- **`login_throttle=False` turns off** the per-e-mail limit, for a service that
+  already limits login in another layer.
+- **Locking per e-mail has a cost**: whoever knows someone's e-mail can spend
+  its budget and keep the owner out for one window. That is the trade every
+  per-account lock makes; the short window is what keeps it acceptable.
+- **The rest of the router is unchanged.** `/auth/me`, `/auth/refresh` and the
+  other routes go through none of these limits, and the OpenAPI schema only
+  declares the `429` on the login routes and `/auth/signup` while the matching
+  limit is on.
+
+**Recap.** Login comes protected per e-mail with no work from you; the per-IP
+limits you turn on once you know where the real IP comes from.
 
 
 ## Backend only: from signup to a protected route

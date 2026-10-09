@@ -20,6 +20,12 @@ from tempest_fastapi_sdk.testing.database import (
     init_test_metadata as init_test_metadata,
 )
 from tempest_fastapi_sdk.testing.database import (
+    make_test_database as make_test_database,
+)
+from tempest_fastapi_sdk.testing.database import (
+    make_test_session as make_test_session,
+)
+from tempest_fastapi_sdk.testing.database import (
     test_database as test_database,
 )
 from tempest_fastapi_sdk.testing.database import (
@@ -31,13 +37,19 @@ from tempest_fastapi_sdk.testing.factories import (
 from tempest_fastapi_sdk.testing.factories import (
     seq as seq,
 )
+from tempest_fastapi_sdk.testing.privacy import (
+    assert_subject_graph_valid as assert_subject_graph_valid,
+)
 
 __all__: list[str] = [
     "ModelFactory",
+    "assert_subject_graph_valid",
     "create_test_engine",
     "create_test_session_factory",
     "drop_test_metadata",
     "init_test_metadata",
+    "make_test_database",
+    "make_test_session",
     "seq",
     "test_database",
     "test_session",
