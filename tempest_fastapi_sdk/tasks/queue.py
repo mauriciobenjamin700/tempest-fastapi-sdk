@@ -32,6 +32,7 @@ from typing import (
     ParamSpec,
     Protocol,
     TypeVar,
+    overload,
     runtime_checkable,
 )
 
@@ -143,6 +144,9 @@ in one process, so a worker-scoped hook fires there as well.
 Hook = Callable[[], Awaitable[None] | None]
 """A lifecycle callback taking no arguments. Sync or async."""
 
+HookT = TypeVar("HookT", bound=Hook)
+"""The concrete callback type, so a hook decorator hands it back unchanged."""
+
 
 @runtime_checkable
 class LifecycleResource(Protocol):
@@ -172,6 +176,15 @@ class TaskIQSettingsLike(Protocol):
     composing its own ``Settings`` from the mixins passes without an
     import cycle, and so a test can hand over a plain object.
 
+    Every member is a read-only ``@property``. A bare annotation in a
+    ``Protocol`` declares a *settable* attribute, and
+    :class:`~tempest_fastapi_sdk.settings.BaseAppSettings` is
+    ``frozen=True`` — so mypy rejected the very ``Settings`` the mixins
+    build (``expected settable variable, got read-only attribute``) and
+    the documented ``TaskQueue.from_settings(Settings())`` needed a
+    ``type: ignore``. A property accepts both the frozen settings and a
+    plain object with ordinary attributes.
+
     Attributes:
         TASKIQ_BROKER_URL (str): Broker URL. Empty selects the
             in-memory broker, which is the shape a test suite and a dev
@@ -188,10 +201,25 @@ class TaskIQSettingsLike(Protocol):
             survives; ``0`` keeps results forever.
     """
 
-    TASKIQ_BROKER_URL: str
-    TASKIQ_RESULT_BACKEND_URL: str | None
-    TASKIQ_STORE_RESULTS: bool
-    TASKIQ_RESULT_TTL_SECONDS: int
+    @property
+    def TASKIQ_BROKER_URL(self) -> str:  # noqa: N802
+        """Return the broker URL."""
+        ...
+
+    @property
+    def TASKIQ_RESULT_BACKEND_URL(self) -> str | None:  # noqa: N802
+        """Return where task results go."""
+        ...
+
+    @property
+    def TASKIQ_STORE_RESULTS(self) -> bool:  # noqa: N802
+        """Return whether results are stored at all."""
+        ...
+
+    @property
+    def TASKIQ_RESULT_TTL_SECONDS(self) -> int:  # noqa: N802
+        """Return the seconds a stored result survives."""
+        ...
 
 
 def _require_taskiq() -> Any:
@@ -679,6 +707,28 @@ class TaskQueue:
     # Task registration
     # ------------------------------------------------------------------
 
+    @overload
+    def task(
+        self,
+        func: Callable[P, Awaitable[R]],
+        *,
+        name: str | None = None,
+        retry: RetryPolicy | None = None,
+        schedule: list[dict[str, Any]] | None = None,
+        **options: Any,
+    ) -> Task[P, R]: ...
+
+    @overload
+    def task(
+        self,
+        func: None = None,
+        *,
+        name: str | None = None,
+        retry: RetryPolicy | None = None,
+        schedule: list[dict[str, Any]] | None = None,
+        **options: Any,
+    ) -> Callable[[Callable[P, Awaitable[R]]], Task[P, R]]: ...
+
     def task(
         self,
         func: Callable[P, Awaitable[R]] | None = None,
@@ -687,7 +737,7 @@ class TaskQueue:
         retry: RetryPolicy | None = None,
         schedule: list[dict[str, Any]] | None = None,
         **options: Any,
-    ) -> Any:
+    ) -> Task[P, R] | Callable[[Callable[P, Awaitable[R]]], Task[P, R]]:
         """Register an async function as a background task.
 
         Usable bare or with options::
@@ -717,7 +767,12 @@ class TaskQueue:
                 ``broker.task``.
 
         Returns:
-            Any: A :class:`Task` (bare form) or a decorator returning one.
+            Task[P, R] | Callable[[Callable[P, Awaitable[R]]], Task[P, R]]:
+            A :class:`Task` (bare form) or a decorator returning one. Both
+            forms are overloaded so the decorated name keeps the wrapped
+            function's parameters and return type — ``Any`` here made
+            ``mypy --strict`` reject ``@tq.task(...)`` as an untyped
+            decorator (``disallow_untyped_decorators``).
 
         Raises:
             ValueError: When an entry's ``cron_offset`` is a string that
@@ -984,12 +1039,28 @@ class TaskQueue:
         for event in chosen:
             self.broker.add_event_handler(event, _ignore_state)
 
+    @overload
     def on_startup(
         self,
-        handler: Hook | None = None,
+        handler: HookT,
         *,
         scope: LifecycleScope = "worker",
-    ) -> Any:
+    ) -> HookT: ...
+
+    @overload
+    def on_startup(
+        self,
+        handler: None = None,
+        *,
+        scope: LifecycleScope = "worker",
+    ) -> Callable[[HookT], HookT]: ...
+
+    def on_startup(
+        self,
+        handler: HookT | None = None,
+        *,
+        scope: LifecycleScope = "worker",
+    ) -> HookT | Callable[[HookT], HookT]:
         """Run a callback when the process this queue lives in starts.
 
         The worker has no FastAPI ``lifespan``, so without this there is
@@ -1010,7 +1081,7 @@ class TaskQueue:
         ``connect`` / ``disconnect``, :meth:`use` does both in one line.
 
         Args:
-            handler (Hook | None): The callback, when used as a bare
+            handler (HookT | None): The callback, when used as a bare
                 ``@queue.on_startup``. ``None`` when called with
                 arguments.
             scope (LifecycleScope): Which process runs it. The default
@@ -1019,10 +1090,11 @@ class TaskQueue:
                 does not open the same resource twice.
 
         Returns:
-            Any: The handler (bare form) or a decorator returning it.
+            HookT | Callable[[HookT], HookT]: The handler, unchanged (bare
+            form), or a decorator returning it.
         """
 
-        def wrap(fn: Hook) -> Hook:
+        def wrap(fn: HookT) -> HookT:
             self._register_hook("startup", fn, scope)
             return fn
 
@@ -1030,27 +1102,44 @@ class TaskQueue:
             return wrap(handler)
         return wrap
 
+    @overload
     def on_shutdown(
         self,
-        handler: Hook | None = None,
+        handler: HookT,
         *,
         scope: LifecycleScope = "worker",
-    ) -> Any:
+    ) -> HookT: ...
+
+    @overload
+    def on_shutdown(
+        self,
+        handler: None = None,
+        *,
+        scope: LifecycleScope = "worker",
+    ) -> Callable[[HookT], HookT]: ...
+
+    def on_shutdown(
+        self,
+        handler: HookT | None = None,
+        *,
+        scope: LifecycleScope = "worker",
+    ) -> HookT | Callable[[HookT], HookT]:
         """Run a callback when the process this queue lives in stops.
 
         The mirror of :meth:`on_startup`; see it for the example.
 
         Args:
-            handler (Hook | None): The callback, when used as a bare
+            handler (HookT | None): The callback, when used as a bare
                 ``@queue.on_shutdown``. ``None`` when called with
                 arguments.
             scope (LifecycleScope): Which process runs it.
 
         Returns:
-            Any: The handler (bare form) or a decorator returning it.
+            HookT | Callable[[HookT], HookT]: The handler, unchanged (bare
+            form), or a decorator returning it.
         """
 
-        def wrap(fn: Hook) -> Hook:
+        def wrap(fn: HookT) -> HookT:
             self._register_hook("shutdown", fn, scope)
             return fn
 
