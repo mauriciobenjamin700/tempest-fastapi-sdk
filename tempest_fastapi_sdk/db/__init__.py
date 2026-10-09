@@ -15,9 +15,20 @@ from tempest_fastapi_sdk.db.alembic_hooks import compose_hooks as compose_hooks
 from tempest_fastapi_sdk.db.alembic_hooks import (
     reorder_base_columns_first as reorder_base_columns_first,
 )
+from tempest_fastapi_sdk.db.audit import (
+    AUDIT_EVENT_MAX_LENGTH as AUDIT_EVENT_MAX_LENGTH,
+)
+from tempest_fastapi_sdk.db.audit import AUDIT_IP_MAX_LENGTH as AUDIT_IP_MAX_LENGTH
 from tempest_fastapi_sdk.db.audit import AUDIT_REDACTED as AUDIT_REDACTED
+from tempest_fastapi_sdk.db.audit import (
+    AUDIT_USER_AGENT_MAX_LENGTH as AUDIT_USER_AGENT_MAX_LENGTH,
+)
 from tempest_fastapi_sdk.db.audit import DEFAULT_AUDIT_REDACT as DEFAULT_AUDIT_REDACT
 from tempest_fastapi_sdk.db.audit import AuditAction as AuditAction
+from tempest_fastapi_sdk.db.audit import (
+    AuditRequestContext as AuditRequestContext,
+)
+from tempest_fastapi_sdk.db.audit import AuditRequestMixin as AuditRequestMixin
 from tempest_fastapi_sdk.db.audit import BaseAuditLogModel as BaseAuditLogModel
 from tempest_fastapi_sdk.db.audit import (
     audit_redacted_columns as audit_redacted_columns,
@@ -215,7 +226,10 @@ from tempest_fastapi_sdk.db.webpush_subscription_model import (
 )
 
 __all__: list[str] = [
+    "AUDIT_EVENT_MAX_LENGTH",
+    "AUDIT_IP_MAX_LENGTH",
     "AUDIT_REDACTED",
+    "AUDIT_USER_AGENT_MAX_LENGTH",
     "BASE_COLUMN_ORDER",
     "DEFAULT_AUDIT_REDACT",
     "DEFAULT_SYNC_WATERMARK_LAG",
@@ -228,6 +242,8 @@ __all__: list[str] = [
     "AsyncDatabaseManager",
     "AuditAction",
     "AuditMixin",
+    "AuditRequestContext",
+    "AuditRequestMixin",
     "BackupToolMissingError",
     "BaseAuditLogModel",
     "BaseDeviceTokenModel",
