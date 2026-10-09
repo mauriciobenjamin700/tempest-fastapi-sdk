@@ -9,9 +9,13 @@ would assert none of them.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
+import threading
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -451,3 +455,201 @@ class TestConcurrency:
         )
         assert all(pdf.startswith(PDF_MAGIC) for pdf in results)
         assert len({bytes(pdf) for pdf in results}) == 5
+
+
+_OWN_URL: str = "http://a.test/logo.png?token=secret-of-a"
+"""Asset render A references: a presigned-looking URL that must not leak."""
+
+_OTHER_URL: str = "http://b.test/logo.png?token=secret-of-b"
+"""Asset render B references."""
+
+_STEP_TIMEOUT: float = 10.0
+"""Seconds a forced step waits before the test fails instead of hanging."""
+
+
+def _wait(event: threading.Event, name: str) -> None:
+    """Block until a forced step happens, or fail the test.
+
+    Args:
+        event (threading.Event): The step to wait for.
+        name (str): The step, for the failure message.
+
+    Raises:
+        AssertionError: When the step never happens.
+    """
+    if not event.wait(_STEP_TIMEOUT):
+        raise AssertionError(f"forced interleaving stalled waiting for {name}")
+
+
+class _ForcedInterleaving:
+    """Wrap ``build_url_fetcher`` so two renders interleave in a fixed order.
+
+    Scheduling luck decides nothing here. The order every run takes is:
+
+    1. Render B reaches its fetch — so whatever B did *before* fetching
+       (the old renderer cleared the shared refusal list there) is done.
+    2. Render A's fetch is refused and recorded, then A holds before it
+       collects its refusals.
+    3. Render B's fetch is refused and recorded, and B finishes entirely.
+    4. Render A is released and collects.
+
+    With one refusal list shared by the instance, step 3 hands B the
+    refusal A recorded in step 2, and A finds nothing at step 4.
+
+    Attributes:
+        b_started (threading.Event): Set when B reaches its fetch.
+        a_recorded (threading.Event): Set once A's refusal is recorded.
+        b_done (threading.Event): Set by the test after B has returned.
+    """
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Install the wrapper on the renderer module.
+
+        Args:
+            monkeypatch (pytest.MonkeyPatch): Undoes the patch afterwards.
+        """
+        from tempest_fastapi_sdk.pdf import renderer as renderer_module
+        from tempest_fastapi_sdk.pdf.assets import build_url_fetcher
+
+        self.b_started: threading.Event = threading.Event()
+        self.a_recorded: threading.Event = threading.Event()
+        self.b_done: threading.Event = threading.Event()
+        real_build = build_url_fetcher
+
+        def _build(policy: AssetPolicy, *, fail_on_errors: bool = True) -> Any:
+            """Build the real fetcher and gate it by the URL being fetched.
+
+            Args:
+                policy (AssetPolicy): Forwarded to the real builder.
+                fail_on_errors (bool): Forwarded to the real builder.
+
+            Returns:
+                Any: A fetcher carrying the real one's ``_fail_on_errors``.
+            """
+            inner = real_build(policy, fail_on_errors=fail_on_errors)
+
+            def _fetch(url: str) -> Any:
+                """Fetch through the real fetcher at the forced moment.
+
+                Args:
+                    url (str): The URL the document referenced.
+
+                Returns:
+                    Any: Whatever the real fetcher returns.
+                """
+                if url == _OTHER_URL:
+                    self.b_started.set()
+                    _wait(self.a_recorded, "A's refusal")
+                    return inner(url)
+                if url == _OWN_URL:
+                    _wait(self.b_started, "B to reach its fetch")
+                    try:
+                        return inner(url)
+                    finally:
+                        self.a_recorded.set()
+                        _wait(self.b_done, "B to finish")
+                return inner(url)
+
+            _fetch._fail_on_errors = inner._fail_on_errors  # type: ignore[attr-defined]
+            return _fetch
+
+        monkeypatch.setattr(renderer_module, "build_url_fetcher", _build)
+
+    async def run(
+        self,
+        renderer: PdfRenderer,
+    ) -> tuple[bytes | BaseException, bytes | BaseException]:
+        """Render A and B concurrently in the forced order.
+
+        Args:
+            renderer (PdfRenderer): One instance, shared by both renders.
+
+        Returns:
+            tuple[bytes | BaseException, bytes | BaseException]: What A and
+            B returned or raised.
+        """
+        render_a = asyncio.create_task(
+            renderer.render_html(f'<html><body><img src="{_OWN_URL}">A</body></html>')
+        )
+        render_b = asyncio.create_task(
+            renderer.render_html(f'<html><body><img src="{_OTHER_URL}">B</body></html>')
+        )
+        outcome_b: bytes | BaseException
+        try:
+            outcome_b = await render_b
+        except BaseException as exc:
+            outcome_b = exc
+        finally:
+            self.b_done.set()
+        outcome_a: bytes | BaseException
+        try:
+            outcome_a = await render_a
+        except BaseException as exc:
+            outcome_a = exc
+        return outcome_a, outcome_b
+
+
+class TestPerRenderRefusals:
+    """Two concurrent renders on one instance each report only their own.
+
+    Regression for #435: the renderer kept one ``AssetPolicy`` per
+    instance and every render read and cleared its ``refusals`` list, so
+    one request's ``details["refused"]`` could carry another request's
+    URL — query string and token included — and a lenient render's hole
+    could vanish into another request's log line.
+    """
+
+    async def test_strict_renders_report_only_their_own_refusal(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Each ``AssetRefused`` names exactly the URL its own document used."""
+        forced = _ForcedInterleaving(monkeypatch)
+        outcome_a, outcome_b = await forced.run(PdfRenderer(max_concurrent=2))
+        assert isinstance(outcome_a, AssetRefused)
+        assert isinstance(outcome_b, AssetRefused)
+        refused_a = outcome_a.details["refused"]
+        refused_b = outcome_b.details["refused"]
+        assert len(refused_a) == 1
+        assert refused_a[0].startswith(_OWN_URL)
+        assert len(refused_b) == 1
+        assert refused_b[0].startswith(_OTHER_URL)
+
+    async def test_lenient_renders_log_only_their_own_refusal(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """With ``strict_assets=False`` no render's hole goes unrecorded."""
+        forced = _ForcedInterleaving(monkeypatch)
+        with caplog.at_level(
+            logging.WARNING, logger="tempest_fastapi_sdk.pdf.renderer"
+        ):
+            outcome_a, outcome_b = await forced.run(
+                PdfRenderer(max_concurrent=2, strict_assets=False)
+            )
+        assert isinstance(outcome_a, bytes)
+        assert outcome_a.startswith(PDF_MAGIC)
+        assert isinstance(outcome_b, bytes)
+        assert outcome_b.startswith(PDF_MAGIC)
+        lines = [
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "tempest_fastapi_sdk.pdf.renderer"
+        ]
+        assert len(lines) == 2
+        assert sum(_OWN_URL in line and _OTHER_URL not in line for line in lines) == 1
+        assert sum(_OTHER_URL in line and _OWN_URL not in line for line in lines) == 1
+
+    async def test_the_injected_policy_is_left_as_the_caller_built_it(self) -> None:
+        """The renderer neither reads nor clears the caller's own list."""
+        policy = AssetPolicy()
+        policy.refusals.append("caller's own note")
+        renderer = PdfRenderer(assets=policy)
+        with pytest.raises(AssetRefused) as excinfo:
+            await renderer.render_html(
+                f'<html><body><img src="{_OWN_URL}"></body></html>'
+            )
+        assert excinfo.value.details["refused"][0].startswith(_OWN_URL)
+        assert policy.refusals == ["caller's own note"]
+        assert renderer.assets is policy

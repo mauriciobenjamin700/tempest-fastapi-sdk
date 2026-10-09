@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`expected_sha256` em `load_sklearn_artifact` e `edge_pipeline_from_pickle`
+  (#440).** O chamador pina o SHA-256 que a release do modelo registrou, e a
+  carga recusa com `ArtifactDigestMismatchError` (nova, subclasse de
+  `ValueError`, exportada em `tempest_fastapi_sdk.modelops`) quando o arquivo
+  diverge — **antes** do `joblib.load`, então um pickle trocado não executa.
+  Antes, o digest só era calculado depois do unpickle e ia para o manifesto;
+  conferir contra um valor conhecido exigia o chamador fazer a comparação por
+  fora, com o código do arquivo já rodado. O arquivo é aberto uma vez: o hash
+  é calculado pelo handle e o unpickle lê do mesmo handle, então os bytes
+  conferidos são os que rodam. Formato aceito: 64 dígitos hex em qualquer
+  caixa, prefixo `sha256:` opcional, espaço nas pontas ignorado; qualquer
+  outra coisa é `ValueError` antes de abrir o arquivo. O teste usa um pickle
+  cujo unpickle cria um arquivo-marcador: com hash divergente o marcador não
+  existe, com hash certo existe (controle). Receita: `docs/recipes/modelops`,
+  seção "Pinar o hash da release".
+
+- **`AssetPolicy.for_render()`** — cópia rasa com as mesmas regras e
+  `refusals` vazia, sem rodar o `__post_init__` de novo: `allow_dirs` mantém os
+  caminhos resolvidos na construção, então symlink trocado depois não amplia a
+  política e diretório removido depois não faz a renderização levantar
+  `ValueError`. É o coletor por chamada que a docstring de `build_url_fetcher`
+  sempre pediu e que o renderizador agora usa.
+
+### Changed
+
+- **A `AssetPolicy` passada em `PdfRenderer(assets=...)` não tem mais a lista
+  `refusals` lida nem limpa pelo renderizador.** Antes, toda renderização
+  esvaziava essa lista no início e no fim, então ler `policy.refusals` depois de
+  `render_*` devolvia `[]` em qualquer caso (medido: uma nota posta pelo
+  chamador antes da renderização sumia). As recusas de uma renderização
+  continuam chegando por `AssetRefused.details["refused"]` (modo estrito) e pelo
+  aviso em log (`strict_assets=False`), agora sem misturar pedidos.
+
+### Fixed
+
+- **`PdfRenderer`: cada renderização relata só as próprias recusas de asset
+  (#435).** A instância guardava uma `AssetPolicy` só e todas as
+  renderizações em paralelo (até `max_concurrent`, padrão 4) liam e limpavam a
+  mesma lista `refusals`. Reproduzido com intercalação forçada de duas
+  renderizações na mesma instância: o `AssetRefused.details["refused"]` de B
+  trazia a URL de A (`http://a.test/logo.png?token=secret-of-a` — o token
+  junto), e o de A caía no fallback `Error fetching "..."`; com
+  `strict_assets=False` saía uma linha de aviso só, a de B listando as duas, e
+  a recusa de A não era registrada em lugar nenhum. Agora cada renderização
+  coleta numa cópia própria da política.
+
 ### Documentation
 
 - **Todo parâmetro `filters: dict[str, Any]` diz o que espera** (#443). As

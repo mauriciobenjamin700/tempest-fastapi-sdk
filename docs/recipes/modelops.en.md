@@ -336,6 +336,78 @@ still answer "which file produced me".
 **It refuses what cannot predict** with a direct message, instead of letting
 the failure surface inside the converter.
 
+### Pinning the release digest
+
+Recording the SHA-256 in the manifest answers "which file produced me"
+**after** the fact. To refuse a swapped `.pkl` **before** it runs, pass the
+digest your release recorded as `expected_sha256`:
+
+```python
+from sklearn.datasets import load_iris
+
+from tempest_fastapi_sdk.modelops import (
+    ArtifactDigestMismatchError,
+    EdgePackage,
+    LoadedArtifact,
+    edge_pipeline_from_pickle,
+    load_sklearn_artifact,
+)
+
+RELEASED_SHA256: str = (
+    "sha256:e7b7c9febd99888341148a95224c21d846e040c50a83d3252d5ca390447e988b"
+)
+
+X_train, y_train = load_iris(return_X_y=True)
+
+artifact: LoadedArtifact = load_sklearn_artifact(
+    "artifacts/risk.pkl",
+    expected_sha256=RELEASED_SHA256,
+)
+print(artifact.estimator_type)
+
+try:
+    package: EdgePackage = edge_pipeline_from_pickle(
+        "artifacts/risk.pkl",
+        X_train,
+        "dist/risk",
+        labels=y_train,
+        expected_sha256=RELEASED_SHA256,
+    )
+except ArtifactDigestMismatchError as exc:
+    print(exc.expected, exc.actual)
+    raise
+```
+
+The comparison runs **before** `joblib.load`. The file is opened once: the
+digest is computed through that handle and unpickling reads from the same
+handle, so the bytes that were checked are the bytes that run. When the file
+differs, the call raises `ArtifactDigestMismatchError` (a `ValueError`
+subclass, like `load_edge_package`'s digest check) and nothing is
+deserialized:
+
+```text
+refusing to load artifacts/risk.pkl: its SHA-256 is e7b7c9febd99888341148a95224c21d846e040c50a83d3252d5ca390447e988b, expected 0000000000000000000000000000000000000000000000000000000000000000. The file was replaced, truncated or is not the released artifact; it was not unpickled.
+```
+
+`edge_pipeline_from_pickle` only forwards the parameter to
+`load_sklearn_artifact`, so on a mismatch no package directory is created.
+
+**Accepted format:** 64 hexadecimal digits, upper or lower case, with an
+optional `sha256:` prefix (in any case) and surrounding whitespace ignored.
+`E7B7...`, `sha256:e7b7...` and `SHA256:E7B7...` are equivalent. Anything
+else is refused before the file is opened:
+
+```text
+expected_sha256 must be a 64-character hex digest, optionally prefixed with 'sha256:'; got 'abc'
+```
+
+!!! tip "Where the digest comes from"
+    Compute it in the same pipeline step that ran `joblib.dump`
+    (`sha256sum artifacts/risk.pkl`) and publish it with the model release —
+    in the service's configuration, the registry, the release notes. The
+    digest only protects you if it comes from somewhere other than the file
+    it checks.
+
 ## No runtime at all: the compact format
 
 ONNX in the browser costs **25.6 MB of WebAssembly** (6.0 MB gzipped) before
