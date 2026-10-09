@@ -856,6 +856,8 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_jwt_subject
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_jwt_claim
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_header
+::: tempest_fastapi_sdk.api.dependencies.rate_limit.make_rate_limit_dependency
+::: tempest_fastapi_sdk.api.dependencies.rate_limit.key_by_body_field
 ::: tempest_fastapi_sdk.api.middlewares.quota.RateLimitRule
 ::: tempest_fastapi_sdk.api.middlewares.quota.QuotaResult
 ::: tempest_fastapi_sdk.api.middlewares.quota.QuotaStore

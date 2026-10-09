@@ -3064,3 +3064,26 @@ handler. `data_id` vem da query porque o corpo não é assinado; tópico
 desconhecido vira `MercadoPagoEvent.UNKNOWN`, corpo não-JSON não derruba. A
 receita `mercado-pago.md` monta a rota com a fábrica. Testes:
 `tests/integrations/payment/mercado_pago/test_webhook_dependency.py`.
+
+## Rate limit por rota (Unreleased, #452)
+
+`make_rate_limit_dependency(store, *, max_requests, window_seconds, key=None,
+trusted_ip_header=None, scope=None, ...)` limita a rota em que é pendurada,
+contando no mesmo `RateLimitStore` do `RateLimitMiddleware` (memória ou Redis).
+`key` aceita uma ou várias funções de chave, síncronas ou assíncronas (as
+`key_by_*` do middleware servem); `key_by_body_field(field)` lê o campo do corpo
+JSON sem tirar o payload do endpoint, normalizado e em SHA-256 por padrão. O 429
+sai com os mesmos `details` e headers do middleware, montados pelos mesmos
+helpers (`_rate_limit_headers` / `_rate_limit_details`). Balde por método + path
+template da rota; `scope=` junta rotas. Testes:
+`tests/api/test_rate_limit_dependency.py` (compara os dois 429).
+
+## Login e signup com limite de tentativas (Unreleased, #456)
+
+`make_auth_router(login_throttle=..., login_ip_throttle=..., signup_throttle=...,
+trusted_ip_header=...)`. O de login por e-mail vem ligado (5 em 900 s sobre
+`InMemoryThrottleBackend`, reserva antes de conferir a senha, zera no sucesso,
+`False` desliga) e é gasto igual para e-mail sem conta; os por IP vêm desligados
+por causa do IP do proxy. 429 `TOO_MANY_REQUESTS` com `Retry-After`, declarado
+no OpenAPI só quando o limite está ligado. Testes:
+`tests/auth/test_login_throttle.py`.

@@ -10,6 +10,9 @@ from tempest_fastapi_sdk.api.cookies import (
     set_cookie as set_cookie,
 )
 from tempest_fastapi_sdk.api.dependencies import (
+    key_by_body_field as key_by_body_field,
+)
+from tempest_fastapi_sdk.api.dependencies import (
     make_bearer_token_dependency as make_bearer_token_dependency,
 )
 from tempest_fastapi_sdk.api.dependencies import (
@@ -17,6 +20,9 @@ from tempest_fastapi_sdk.api.dependencies import (
 )
 from tempest_fastapi_sdk.api.dependencies import (
     make_permission_dependency as make_permission_dependency,
+)
+from tempest_fastapi_sdk.api.dependencies import (
+    make_rate_limit_dependency as make_rate_limit_dependency,
 )
 from tempest_fastapi_sdk.api.dependencies import (
     make_role_dependency as make_role_dependency,
@@ -436,6 +442,7 @@ __all__: list[str] = [
     "generate_csrf_token",
     "generate_oauth_state",
     "instrument_sqlalchemy_engine",
+    "key_by_body_field",
     "key_by_header",
     "key_by_ip",
     "key_by_jwt_claim",
@@ -451,6 +458,7 @@ __all__: list[str] = [
     "make_permission_dependency",
     "make_prometheus_registry",
     "make_prometheus_router",
+    "make_rate_limit_dependency",
     "make_role_dependency",
     "make_signed_path_dependency",
     "make_spa_router",

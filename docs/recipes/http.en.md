@@ -10,6 +10,7 @@ Here you assemble a service's entire HTTP surface from the primitives `tempest_f
 - **`make_health_router` / `make_token_dependency`** — liveness/readiness + the `X-Token` shared-secret guard.
 - **JWT / bearer / role / permission dependencies** — gate routes by token and by role.
 - **`RateLimitMiddleware`** — sliding window, key by IP/user/tenant, memory or Redis store.
+- **`make_rate_limit_dependency`** — the same limit on one route, with a key that can read the body (`key_by_body_field`).
 - **`BodySizeLimitMiddleware`** — hard cap on the request body, answering 413 before any parsing.
 - **`WebhookSignatureVerifier` / `RSAWebhookSignatureVerifier`** — validate signed webhooks (HMAC or RSA).
 - **`build_pagination_link_header`** — GitHub-style RFC 8288 `Link` header.
@@ -988,6 +989,131 @@ True
     (#339). A negligible rate over the test's span (1 per hour) or an injected
     clock takes the machine's speed out of the assertion.
 
+
+## Per-route rate limit (`make_rate_limit_dependency`)
+
+`RateLimitMiddleware` limits the whole app, and its scope only shrinks by
+subtraction (`exempt_paths`). Two questions fall outside it:
+
+- **"Only `POST /api/invites`."** An expensive route deserves a ceiling the
+  rest of the app does not have.
+- **"Per invited e-mail, not just per IP."** The key lives in the **body**, and
+  the middleware's `key_func` only receives the `Request`, synchronously,
+  before the body is read.
+
+`make_rate_limit_dependency` answers both: it is a dependency you hang on one
+route, it counts in the same `RateLimitStore` as the middleware (memory or
+Redis) and it answers the same 429.
+
+### Limit one endpoint by IP and by a body field
+
+```python
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk import (
+    MemoryRateLimitStore,
+    key_by_body_field,
+    key_by_ip,
+    make_rate_limit_dependency,
+    register_exception_handlers,
+)
+
+
+class InviteCreateSchema(BaseModel):
+    email: str
+
+
+invite_limit = make_rate_limit_dependency(
+    MemoryRateLimitStore(),
+    max_requests=3,
+    window_seconds=3600.0,
+    key=[
+        key_by_ip(trusted_header="x-real-ip"),
+        key_by_body_field("email"),
+    ],
+)
+
+app = FastAPI()
+register_exception_handlers(app)
+
+
+@app.post("/api/invites", status_code=202, dependencies=[Depends(invite_limit)])
+async def create_invite(payload: InviteCreateSchema) -> dict[str, str]:
+    return {"invited": payload.email}
+
+
+@app.get("/api/invites")
+async def list_invites() -> list[str]:
+    return []
+
+
+client = TestClient(app)
+for ip in ("10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.4"):
+    response = client.post(
+        "/api/invites",
+        json={"email": "ana@example.com"},
+        headers={"x-real-ip": ip},
+    )
+    print(response.status_code, response.json())
+print(response.headers["retry-after"], response.headers["ratelimit-limit"])
+print(client.get("/api/invites").status_code)
+```
+
+Output:
+
+```text
+202 {'invited': 'ana@example.com'}
+202 {'invited': 'ana@example.com'}
+202 {'invited': 'ana@example.com'}
+429 {'detail': 'Too many requests', 'code': 'TOO_MANY_REQUESTS', 'details': {'retry_after_seconds': 3600, 'limit': 3}}
+3600 3
+200
+```
+
+Four different IPs, one e-mail: the fourth request falls on the e-mail key,
+and a `GET` on the same URL stays free. Piece by piece:
+
+- **`key=[...]`** — each function returns one key (or several, or none), and
+  every key counts in the same store. The first one over budget refuses the
+  request; the ones after it are not counted, so a refused request does not
+  spend their budget. Sync functions (`key_by_ip`, `key_by_header`,
+  `key_by_jwt_*`) and async ones work alike.
+- **`key_by_body_field("email")`** — reads the field off the JSON body.
+  FastAPI reads the body **before** resolving dependencies and Starlette keeps
+  the bytes on the `Request`, so the endpoint still receives its validated
+  `payload` — the output above is that proof. The value is normalized (`strip`
+  + lowercase) and stored as SHA-256, so Redis does not pile up e-mails in
+  clear text (`normalize=False`, `hash_value=False` turn that off). A body that
+  is not JSON, or lacks the field, yields no key: the endpoint's own 422
+  answers that request.
+- **`trusted_ip_header`** — without `key`, the default key is the IP resolved
+  from that header
+  (`make_rate_limit_dependency(store, ..., trusted_ip_header="x-real-ip")`).
+  With `key`, pass the header to the `key_by_ip` inside the list; passing both
+  raises `ValueError` at construction instead of silently ignoring the header.
+- **The bucket belongs to the route.** Each key is prefixed by default with the
+  method and the path template (`"POST /api/invites"`), so the same dependency
+  on two routes gives each its own budget, `/users/1` and `/users/2` share the
+  one of `/users/{user_id}`, and the counter never collides with the
+  middleware's in the same Redis. Pass `scope="invites"` to make several routes
+  share one budget.
+
+!!! info "The same 429 as the middleware"
+    The body (`detail`, `code`, `details.retry_after_seconds`,
+    `details.limit`) and the headers (`Retry-After`, `RateLimit-Limit`,
+    `RateLimit-Remaining`, `RateLimit-Reset`) come from the same helpers
+    `RateLimitMiddleware` uses — `tests/api/test_rate_limit_dependency.py`
+    compares the two. The difference is the path: the dependency **raises**
+    `TooManyRequestsException`, so the app needs `register_exception_handlers`,
+    and with a `MessageCatalog` registered there `detail` is translated by
+    `code` (`"Requisições em excesso"` under `pt-BR`), which the middleware —
+    answering outside the handlers — does not do.
+
+!!! tip "Multi-replica"
+    Swap `MemoryRateLimitStore()` for `RedisRateLimitStore(redis)` and every
+    replica shares the counters, exactly as with the middleware.
 
 ## Request body size limit (`BodySizeLimitMiddleware`)
 
