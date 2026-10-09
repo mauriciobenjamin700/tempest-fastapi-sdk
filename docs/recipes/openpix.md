@@ -392,8 +392,13 @@ Medido com esse router de pé (chave de teste, corpo assinado):
     A assinatura cobre o corpo e mais nada, então uma entrega capturada
     continua válida para sempre — e a própria OpenPix reentrega quando não
     recebe 200. Trate o handler como **idempotente**: chave pelo
-    `correlationID` e ignore o que já processou. Veja
-    [Idempotência](idempotency.md).
+    `correlationID` e ignore o que já processou. A liberação em si vai sob
+    `claim_once` (de `tempest_fastapi_sdk.wallet`), que marca o pedido com um
+    `UPDATE ... WHERE paid_at IS NULL` e devolve `False` para a segunda
+    entrega. O caminho inteiro sobre o contrato canônico — releitura com
+    `confirm_pix_payment`, conferência de status e valor, `claim_once` — está
+    no [protocolo de Pix](pix-protocol.md#passo-4-o-service-que-so-fala-contrato).
+    Veja também [Idempotência](idempotency.md).
 
 ### A conferência
 

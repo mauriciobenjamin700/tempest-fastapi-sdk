@@ -3008,3 +3008,15 @@ que sem o extra imprime a instrução e sai com 2; `tempest_fastapi_sdk.cli`
 re-exporta preguiçosamente e levanta `ImportError` com a instrução; o
 `tempest new` põe `tempest-fastapi-sdk[cli]` no grupo `dev`. Guards:
 `tests/test_cli_extra_guard.py` e `tests/cli/test_entrypoint.py`.
+
+## Confirmar o Pix antes de liberar (#434)
+
+`confirm_pix_payment(provider, charge_id, *, reference, amount_cents)` em
+`integrations.payment` relê a cobrança pelo id que o serviço guardou e
+devolve `PixPaymentConfirmation` com `outcome` (`PAID`,
+`REFERENCE_MISMATCH`, `NOT_PAID`, `AMOUNT_MISMATCH`) e `.paid`; erro do
+provedor sobe, não vira "não pago". Não escreve nada: a liberação única fica
+com `claim_once`. A receita `pix-protocol.md` liberava pelo evento do
+webhook; agora o `settle` relê com o helper e marca `paid_at` sob
+`claim_once`. Guard: `tests/integrations/payment/test_settlement.py`
+(inclui dois eventos pagos para o mesmo pedido liberando uma vez só).
