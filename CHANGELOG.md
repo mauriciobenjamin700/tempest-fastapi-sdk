@@ -55,6 +55,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a recusa de A não era registrada em lugar nenhum. Agora cada renderização
   coleta numa cópia própria da política.
 
+- **`make_prometheus_router`: o exemplo de proteção derrubava o app ou punha
+  o segredo na URL** (#439). A docstring sugeria
+  `dependencies=[Depends(require_x_token)]`, que o router envolvia de novo em
+  `Depends` e o FastAPI recusava na construção (`AssertionError: A
+  parameter-less dependency must have a callable dependency`); a forma
+  "corrigida", `dependencies=[require_x_token]`, montava, mas o FastAPI lia
+  `secret` e `token` da query string — todo scrape dava `422`, e só passava
+  com `?secret=...&token=...` na URL. Agora:
+  - item de `dependencies=` que já é `Depends(...)` / `Security(...)` é
+    anexado como está, sem envolver de novo;
+  - `require_x_token` (cru ou dentro de `Depends`) é recusado na construção
+    com `TypeError` apontando para `make_token_dependency`;
+  - a docstring e a receita `recipes/metrics` (PT + EN) montam a rota com
+    `dependencies=[make_token_dependency(metrics_token)]` — `401` sem o header
+    `X-Token`, `200` com ele —, dizem que o default é **sem autenticação**,
+    avisam que segredo vazio desliga a checagem, e o `prometheus.yml` manda o
+    header com `http_headers` (medido no Prometheus `v3.1.0`: `up == 1` com o
+    bloco, `401` e `up == 0` sem).
+  - Guard: `tests/api/test_prometheus_auth.py` executa o `create_app` da
+    receita como publicado e faz scrape com e sem header, e falha se a doc ou
+    a docstring voltarem a sugerir `Depends(require_x_token)` /
+    `dependencies=[require_x_token]`.
+
 ### Documentation
 
 - **Todo parâmetro `filters: dict[str, Any]` diz o que espera** (#443). As
