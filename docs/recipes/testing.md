@@ -144,8 +144,8 @@ class TestUsersAPI:
 | `create_test_session_factory` | `(engine) -> async_sessionmaker[AsyncSession]` | Constrói um `sessionmaker` vinculado ao engine (`expire_on_commit=False`). |
 | `init_test_metadata` | `async (engine, metadata=None) -> None` | Cria todas as tabelas (default `BaseModel.metadata`). |
 | `drop_test_metadata` | `async (engine, metadata=None) -> None` | Apaga todas as tabelas. |
-| `test_database` | `async (database_url=..., *, metadata=None) -> AsyncIterator[async_sessionmaker[AsyncSession]]` | Context manager — entrega uma **session factory** num DB recém-criado, apaga e descarta na saída. |
-| `test_session` | `async (database_url=..., *, metadata=None) -> AsyncIterator[AsyncSession]` | Context manager — entrega **um `AsyncSession`** em cima de um `test_database` novo. |
+| `make_test_database` | `async (database_url=..., *, metadata=None) -> AsyncIterator[async_sessionmaker[AsyncSession]]` | Context manager — entrega uma **session factory** num DB recém-criado, apaga e descarta na saída. |
+| `make_test_session` | `async (database_url=..., *, metadata=None) -> AsyncIterator[AsyncSession]` | Context manager — entrega **um `AsyncSession`** em cima de um `make_test_database` novo. |
 
 ```python
 # tests/conftest.py
@@ -154,34 +154,34 @@ from collections.abc import AsyncGenerator
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tempest_fastapi_sdk.testing import test_database, test_session
+from tempest_fastapi_sdk.testing import make_test_database, make_test_session
 
 
 @pytest_asyncio.fixture
 async def session_factory() -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
     """Yield a session factory backed by a fresh in-memory DB per test."""
-    async with test_database() as factory:
+    async with make_test_database() as factory:
         yield factory
 
 
 @pytest_asyncio.fixture
 async def session() -> AsyncGenerator[AsyncSession, None]:
     """Yield a single AsyncSession backed by a fresh in-memory DB."""
-    async with test_session() as s:
+    async with make_test_session() as s:
         yield s
 ```
 
-Use o context manager `test_session()` para testes ad-hoc que não precisam de fixture compartilhada:
+Use o context manager `make_test_session()` para testes ad-hoc que não precisam de fixture compartilhada:
 
 ```python
-from tempest_fastapi_sdk.testing import test_session
+from tempest_fastapi_sdk.testing import make_test_session
 
 from src.db.models import UserModel
 from src.db.repositories import UserRepository
 
 
 async def test_repo_directly() -> None:
-    async with test_session() as session:
+    async with make_test_session() as session:
         repo = UserRepository(session)
         await repo.add(
             UserModel(
@@ -193,9 +193,22 @@ async def test_repo_directly() -> None:
         assert await repo.count() == 1
 ```
 
+!!! warning "`test_session` e `test_database` viraram `make_test_session` e `make_test_database`"
+    O pytest coleta como teste **toda função importada** num módulo de teste
+    cujo nome comece com `test`. Com os nomes antigos, um
+    `from tempest_fastapi_sdk.testing import test_session` fazia a suíte
+    ganhar um item fantasma, `test_x.py::test_session`, que "passava" sem
+    testar nada e emitia `PytestReturnNotNoneWarning` — falha de verdade em
+    quem roda com `-W error` ou `filterwarnings = ["error"]`.
+
+    Os nomes antigos continuam importáveis como alias deprecado: cada
+    chamada emite `DeprecationWarning`, e os dois carregam `__test__ = False`,
+    então o pytest não os coleta mais. Troque o import pelo nome novo; o
+    alias sai numa versão futura.
+
 ### O engine de teste confere chave estrangeira
 
-`create_test_engine` — e com ele `test_database` e `test_session` — monta o
+`create_test_engine` — e com ele `make_test_database` e `make_test_session` — monta o
 engine SQLite com a mesma configuração do `AsyncDatabaseManager`, menos o WAL:
 
 - **chave estrangeira conferida** (`PRAGMA foreign_keys=ON` em toda
@@ -215,7 +228,7 @@ from sqlalchemy import ForeignKey
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from tempest_fastapi_sdk.testing import test_session
+from tempest_fastapi_sdk.testing import make_test_session
 
 
 class Base(DeclarativeBase):
@@ -240,14 +253,14 @@ class Member(Base):
 
 
 async def test_member_needs_an_existing_org() -> None:
-    async with test_session(metadata=Base.metadata) as session:
+    async with make_test_session(metadata=Base.metadata) as session:
         session.add(Member(id=1, org_id=999))
         with pytest.raises(IntegrityError, match="FOREIGN KEY"):
             await session.commit()
 
 
 async def test_member_of_a_seeded_org() -> None:
-    async with test_session(metadata=Base.metadata) as session:
+    async with make_test_session(metadata=Base.metadata) as session:
         session.add(Org(id=1))
         await session.flush()
         session.add(Member(id=1, org_id=1))
@@ -411,7 +424,7 @@ tempest test "tests/test_scheduler.py::test_lease_expires"
     - Use `httpx.AsyncClient` + `ASGITransport`, nunca o `TestClient` síncrono.
     - A fixture `db` cria um SQLite em memória por teste com `create_tables()` / `drop_tables()` — **sem argumentos**, elas usam `BaseModel.metadata` internamente.
     - `dependency_overrides` troca o banco de produção pelo de teste no `client`.
-    - Os helpers de `tempest_fastapi_sdk.testing` (`test_database` / `test_session`) dão fixtures prontas quando você não precisa de um `AsyncDatabaseManager` completo.
+    - Os helpers de `tempest_fastapi_sdk.testing` (`make_test_database` / `make_test_session`) dão fixtures prontas quando você não precisa de um `AsyncDatabaseManager` completo.
     - `tempest test --fast` roda a suíte em paralelo com o extra `[tests]`; teste que só falha ali se confere rodando-o sozinho.
 
 **Próximo passo:** veja a [receita de banco de dados](database.md) para os padrões de `BaseRepository` e migrations que esses testes exercitam.
@@ -423,7 +436,7 @@ tempest test "tests/test_scheduler.py::test_lease_expires"
 - As fixtures compartilhadas ficam no `conftest.py` do seu projeto — o SDK
   entrega os helpers, não as fixtures, para não exigir `pytest` importável em
   runtime de produção.
-- `create_test_engine`, `test_database` e `test_session` cobrem o caso em que
+- `create_test_engine`, `make_test_database` e `make_test_session` cobrem o caso em que
   você não quer um `AsyncDatabaseManager` inteiro (sem `lifespan`, sem probe de
   health) — e conferem chave estrangeira, então o teste semeia o pai antes do
   filho.

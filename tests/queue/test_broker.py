@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import AsyncMock, call
 
 import pytest
 from faststream.rabbit import RabbitBroker, TestRabbitBroker
@@ -56,6 +57,35 @@ class TestMessageBroker:
             assert await mq.health_check() is True
             await mq.disconnect()
         assert mq.is_connected is False
+
+    async def test_health_check_reports_dropped_connection(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A started broker whose ping fails is reported unhealthy (#448)."""
+        broker = _raw()
+        mq = MessageBroker(broker)
+        ping = AsyncMock(return_value=False)
+        async with TestRabbitBroker(broker):
+            await mq.connect()
+            monkeypatch.setattr(broker, "ping", ping)
+            assert mq.is_connected is True
+            assert await mq.health_check() is False
+            assert await mq.health_check(timeout=0.5) is False
+            await mq.disconnect()
+        assert ping.await_args_list == [call(timeout=2.0), call(timeout=0.5)]
+
+    async def test_health_check_before_connect_never_pings(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Before connect() the probe answers False without touching the network."""
+        broker = _raw()
+        ping = AsyncMock(return_value=True)
+        monkeypatch.setattr(broker, "ping", ping)
+        mq = MessageBroker(broker)
+        assert await mq.health_check() is False
+        ping.assert_not_awaited()
 
     async def test_lifespan_yields_self(self) -> None:
         broker = _raw()

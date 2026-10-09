@@ -174,12 +174,17 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.outbox.OutboxStatus
 ::: tempest_fastapi_sdk.db.audit.BaseAuditLogModel
 ::: tempest_fastapi_sdk.db.audit.AuditAction
+::: tempest_fastapi_sdk.db.audit.AuditRequestMixin
+::: tempest_fastapi_sdk.db.audit.AuditRequestContext
 ::: tempest_fastapi_sdk.db.audit.snapshot_model
 ::: tempest_fastapi_sdk.db.audit.diff_snapshots
 ::: tempest_fastapi_sdk.db.audit.audit_redacted_columns
 ::: tempest_fastapi_sdk.db.audit.redact_snapshot
 ::: tempest_fastapi_sdk.db.audit.AUDIT_REDACTED
 ::: tempest_fastapi_sdk.db.audit.DEFAULT_AUDIT_REDACT
+::: tempest_fastapi_sdk.db.audit.AUDIT_EVENT_MAX_LENGTH
+::: tempest_fastapi_sdk.db.audit.AUDIT_IP_MAX_LENGTH
+::: tempest_fastapi_sdk.db.audit.AUDIT_USER_AGENT_MAX_LENGTH
 ::: tempest_fastapi_sdk.db.migrations.DestructiveMigrationError
 ::: tempest_fastapi_sdk.db.migrations.AmbiguousBaseRevisionError
 ::: tempest_fastapi_sdk.db.migrations.SchemaSyncOutcome
@@ -321,6 +326,20 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES
 ::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_COMPRESSION_RATIO
 ::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_MAX_CONCURRENT_XLSX_READS
+
+---
+
+## Privacidade (LGPD)
+
+### `tempest_fastapi_sdk.privacy`
+
+::: tempest_fastapi_sdk.privacy
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
 
 ---
 
@@ -533,6 +552,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.tasks.queue.Hook
 ::: tempest_fastapi_sdk.tasks.jobs.TERMINAL_JOB_STATUSES
 ::: tempest_fastapi_sdk.tasks.jobs.STALE_JOB_ERROR
+::: tempest_fastapi_sdk.tasks.jobs.STORE_OWNED_JOB_COLUMNS
 ::: tempest_fastapi_sdk.tasks.jobs.make_job_admin_model
 
 ---
@@ -856,6 +876,8 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_jwt_subject
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_jwt_claim
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_header
+::: tempest_fastapi_sdk.api.dependencies.rate_limit.make_rate_limit_dependency
+::: tempest_fastapi_sdk.api.dependencies.rate_limit.key_by_body_field
 ::: tempest_fastapi_sdk.api.middlewares.quota.RateLimitRule
 ::: tempest_fastapi_sdk.api.middlewares.quota.QuotaResult
 ::: tempest_fastapi_sdk.api.middlewares.quota.QuotaStore
@@ -1067,6 +1089,7 @@ então importar o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.storage.minio_client.AsyncMinIOClient
 ::: tempest_fastapi_sdk.storage.minio_client.ObjectStat
+::: tempest_fastapi_sdk.storage.minio_client.ObjectDeleteError
 
 ### Alembic hooks
 
@@ -1226,6 +1249,9 @@ então importar o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.testing.factories.ModelFactory
 ::: tempest_fastapi_sdk.testing.factories.seq
+::: tempest_fastapi_sdk.testing.database.make_test_database
+::: tempest_fastapi_sdk.testing.database.make_test_session
+::: tempest_fastapi_sdk.testing.privacy.assert_subject_graph_valid
 
 ### `tempest_fastapi_sdk.testing.fakes`
 
@@ -1273,6 +1299,14 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.log.LogUtils
 ::: tempest_fastapi_sdk.core.logging.configure_root_once
 ::: tempest_fastapi_sdk.core.logging.reinitialize_logging
+::: tempest_fastapi_sdk.core.redaction.RedactionPolicy
+::: tempest_fastapi_sdk.core.redaction.RedactionFilter
+::: tempest_fastapi_sdk.core.redaction.REDACTED
+::: tempest_fastapi_sdk.core.redaction.DEFAULT_REDACT_KEYS
+::: tempest_fastapi_sdk.core.redaction.DEFAULT_REDACT_PATTERNS
+::: tempest_fastapi_sdk.core.redaction.EMAIL_PATTERN
+::: tempest_fastapi_sdk.core.redaction.BEARER_PATTERN
+::: tempest_fastapi_sdk.core.redaction.JWT_PATTERN
 ::: tempest_fastapi_sdk.utils.throttle.AttemptThrottle
 ::: tempest_fastapi_sdk.utils.throttle.InMemoryThrottleBackend
 ::: tempest_fastapi_sdk.utils.signed_url.sign_path

@@ -756,6 +756,40 @@ async def list_files(prefix: str = "") -> list[str]:
 
 `list_objects` returns `[]` when nothing matches — aligned with the SDK convention ("no match is not an error").
 
+### Batch delete
+
+`remove_objects` deletes many keys with S3's `DeleteObjects` — one request
+per 1000 keys instead of one `DELETE` per object — and returns only what the
+store refused:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import AsyncMinIOClient
+
+storage = AsyncMinIOClient(
+    endpoint="localhost:9000",
+    access_key="minioadmin",
+    secret_key="minioadmin",
+    default_bucket="uploads",
+)
+
+
+async def main() -> None:
+    """Delete everything under a prefix."""
+    keys = await storage.list_objects("tmp/")
+    errors = await storage.remove_objects(keys)
+    for error in errors:
+        print(error.key, error.code, error.message)
+
+
+asyncio.run(main())
+```
+
+An empty list is success. To delete **a data subject's files** (LGPD), use
+`SubjectObjectStorage.delete_all` — see
+[Data subject export and erasure](subject-data.md).
+
 ### Copy / move
 
 ```python

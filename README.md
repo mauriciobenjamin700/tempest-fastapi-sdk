@@ -187,7 +187,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.checks` | System checks (Django-style config validation): `check` (register decorator), `run_checks` / `run_system_checks` (raises `SystemCheckError` on ERROR+), `CheckMessage` / `CheckLevel` + `debug`/`info`/`warning`/`error`/`critical`, `CheckRegistry` / `default_registry`; built-in settings checks + the `tempest check-config` CLI (auto-detects settings, `--tag` / `--fail-level`) |
 | `tempest_fastapi_sdk.cli` *(extra: `[cli]`; imports without it)* | `tempest` console script — `new <name>` (scaffold layered service), `lint` / `format` / `fmt-check` / `type` / `test` / `check` (run preferred quality gates), `check-config` (validate settings via the system-check framework), `version` / `--version`; plus project-registered management commands (`tempest <cmd>` from `src/commands.py` or `[tool.tempest] commands`) |
 | `tempest_fastapi_sdk.controllers` | `Controller` (root for a controller that orchestrates several services, no CRUD), `BaseController` (its one-service CRUD specialization) |
-| `tempest_fastapi_sdk.core` | `configure_logging`, `configure_root_once` (idempotent root setup — what `LogUtils` uses so `LogUtils(__name__)` per module shares one handler set), `reinitialize_logging` (re-enable every logger after Alembic's `fileConfig()` disables them), `JSONFormatter`, `get_request_id`/`set_request_id`/`clear_request_id`, `request_id_ctx`, `BaseStrEnum`, `BaseIntEnum`, `Locale` (BCP-47 locale enum), `strict_types`/`typed`/`require_annotations` |
+| `tempest_fastapi_sdk.core` | `configure_logging`, `configure_root_once` (idempotent root setup — what `LogUtils` uses so `LogUtils(__name__)` per module shares one handler set), `reinitialize_logging` (re-enable every logger after Alembic's `fileConfig()` disables them), `JSONFormatter`, `RedactionPolicy`/`RedactionFilter` (PII redaction via `configure_logging(redact=...)`), `get_request_id`/`set_request_id`/`clear_request_id`, `request_id_ctx`, `BaseStrEnum`, `BaseIntEnum`, `Locale` (BCP-47 locale enum), `strict_types`/`typed`/`require_annotations` |
 | `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseUserTokenModel`, `BaseUserRecoveryCodeModel`, `make_user_recovery_code_model`, `UserTokenPurpose`, `BaseRepository[ModelType]`, `TenantScopedRepository[ModelType]`, `AsyncDatabaseManager` (+ `is_memory_sqlite_url` / `shared_memory_url`, which give in-memory SQLite a connection per session; `transaction()`, the explicit name of the commit-on-exit `get_session_context()`; `create_tables(metadata=...)` / `drop_tables(metadata=...)` for your own `DeclarativeBase`), `session_dependency_for` (request-session dependency for a manager built on demand), `AlembicHelper` (+ `safe_upgrade`, and the first-boot bootstrap `sync_schema` / `adopt` / `base_revision` / `has_existing_schema`), `SchemaSyncOutcome`, `DestructiveMigrationError`, `AmbiguousBaseRevisionError`, `NAMING_CONVENTION`, `AuditMixin`, `SoftDeleteMixin`, `MFAMixin`, `LocaleColumnMixin`, `BASE_COLUMN_ORDER`, `reorder_base_columns_first`, `compose_hooks`, `SlowQueryLogger`, `BaseOutboxModel`, `OutboxRelay`, `OutboxStatus`, `BaseRepository.save_with_outbox`, audit trail (`BaseAuditLogModel`, `AuditAction`, `snapshot_model`, `diff_snapshots`, `BaseRepository.add_audited` / `update_audited` / `delete_audited`), eager-loading (`get`/`get_or_none`/`get_by_id`/`first`/`list` accept `with_=[...]`, dotted for nested), lifecycle signals (`RepositorySignal`, `connect` / `on_signal` / `disconnect`, `PRE_SAVE`/`POST_SAVE`/`PRE_DELETE`/`POST_DELETE`), `F` / `Q` expression wrappers (`F("stock") - 1` atomic updates; `Q(...) | Q(...)` OR/NOT via `where=`), `BaseWebPushSubscriptionModel` + `make_web_push_subscription_model`, integrity introspection (`parse_integrity_error` → `IntegrityFailure` / `IntegrityViolation`: reads a driver's rejection back into the constraint that caused it, so a service answers `409` naming the field; Postgres and SQLite, every pattern read off a real server), constraint naming (`NAMING_CONVENTION` names composite `uq`/`ix`/`fk` by every column; `LEGACY_NAMING_CONVENTION`, `ConstraintKind`, `ConstraintRename` and `legacy_constraint_renames` move an existing database to the new names) |
 | `tempest_fastapi_sdk.exceptions` | `AppException`, `NotFoundException`, `ConflictException`, `ValidationException`, `UnauthorizedException`, `ForbiddenException`, `InvalidTokenException`, `ExpiredTokenException`, `InvalidSignedURLException`, `ExpiredSignedURLException`, `FileTooLargeException`, `InvalidFileTypeException`, `TooManyRequestsException`, `InheritedErrorCodeWarning`, i18n (`MessageCatalog`, `default_message_catalog`, `parse_accept_language`, `DEFAULT_LOCALE`) |
 | `tempest_fastapi_sdk.flags` | `FeatureFlags`, `FeatureFlagBackend`, `MemoryFeatureFlagBackend`, `EnvFeatureFlagBackend`, `RedisFeatureFlagBackend`, `CompositeFeatureFlagBackend`, `make_flag_dependency`, `coerce_flag` |
@@ -209,8 +209,9 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.sse` | `EventStream` (bounded queue + `overflow` backpressure), `SSEBroker` (multi-worker fan-out via Redis, `.response()` lifecycle helper), `ServerSentEvent`, `sse_response` (`on_disconnect=` cleanup) |
 | `tempest_fastapi_sdk.ssr` *(extra: `[ssr]`)* | `Page` (typed component base), `html_response` (widget tree → `HTMLResponse`, full document or HTMX fragment), `make_htmx_router` (serves bundled HTMX and the `data-confirm` listener locally, no CDN); `htmx()` / `aria()` / `data()` / `confirm()` (typed builders for the `hx-*` / `aria-*` / `data-*` `attrs` map); `FlashMiddleware` + `flash` / `get_flashes` (signed read-once flash cookie), `redirect_back` (Referer validated against host and prefix), `register_html_error_handlers` (error page on GET, flash + 303 on POST, JSON kept for the API); `make_web_app_router` (serve a compiled static/wasm `tempestweb build` as a router, SPA history fallback), `build_web_app` (host a server-mode build as a WS/SSE sub-app, `theme=` handing a palette to every session's `App`, which the components its `view` builds resolve against), `detect_build_mode` |
 | `tempest_fastapi_sdk.ui` *(extra: `[ssr]`)* | The interface layer, mirroring a service's `src/ui/`: `ui.pages` (`Page` with class-level `stylesheets` / `head` / `title_suffix`, `ErrorPage`), `ui.layout` (`Shell` with `width="full"`, `Grid`), `ui.components` (`Card`, `Alert`, `DataTable`, `TableColumn`, `Pagination`, `EmptyState`, `FlashMessages`, `NavBar`, `component_stylesheet`), `ui.forms` (`form_for`, `form_spec_for`, `render_form`, `parse_form`, `form_dependency`, `FormResult`, `form_stylesheet` — a form generated from a Pydantic schema and read back into it, hidden fields and `UploadFile` uploads included), `ui.css` (`StyleSheet`, `Rule`, `Media`, `ThemeTokens`, `cls`, `make_css_router`, `StyleSheet.url`), `app_stylesheet` |
-| `tempest_fastapi_sdk.storage` *(extra: `[minio]`)* | `AsyncMinIOClient` (+ batch `presigned_get_urls` / `put_objects` / `get_objects_bytes`; download through the app with `download_response(key, request=...)`, which honours `Range` and revalidation, `accel_redirect_response` for nginx `X-Accel-Redirect`, and `serve_object`, which picks between them by the constructor's `accel_redirect` — `STORAGE_ACCEL_REDIRECT` / `STORAGE_ACCEL_PREFIX` through `storage_kwargs()`), `ObjectStat`, `PutObjectItem` — async MinIO/S3 facade |
-| `tempest_fastapi_sdk.tasks` *(extra: `[tasks]`)* | `TaskQueue` (typed TaskIQ facade — `.rabbitmq`/`.redis`/`.memory`, `@tq.task` → `Task.enqueue`/`.run`, `@tq.cron`/`@tq.interval`, `start_scheduler`), `Task`; class-based tasks (`TaskDef` + `@task_method` + `TaskQueue.register`); cron helpers (`Cron` / `CronOffset` / `Weekday` + `daily`/`weekdays`/`every_n_minutes`/… builders); **jobs** — `BaseJobModel` + `JobStore` (one row per unit of long work: `enqueue`/`claim`/`succeed`/`fail`, `watch` for the screen, `reclaim_stale`); **cancellation** — `JobStore.cancel`/`cancellation_watch` + `run_cancellable` (cooperative: the request writes `CANCELLED`, the worker aborts the in-flight call at a checkpoint) + `JobCancelledError`; **per-record pipelines** — `StageMap`/`StageStatus` (several independent stages on the record the screen already fetches, with an ownership check before writing); `AsyncTaskBrokerManager` / `AsyncTaskScheduler` (legacy wrappers) |
+| `tempest_fastapi_sdk.storage` *(extra: `[minio]`)* | `AsyncMinIOClient` (+ batch `presigned_get_urls` / `put_objects` / `get_objects_bytes`; download through the app with `download_response(key, request=...)`, which honours `Range` and revalidation, `accel_redirect_response` for nginx `X-Accel-Redirect`, and `serve_object`, which picks between them by the constructor's `accel_redirect` — `STORAGE_ACCEL_REDIRECT` / `STORAGE_ACCEL_PREFIX` through `storage_kwargs()`), `ObjectStat`, `PutObjectItem`, batch delete `remove_objects` → `ObjectDeleteError` — async MinIO/S3 facade |
+| `tempest_fastapi_sdk.privacy` *(`SubjectObjectStorage` needs `[minio]`)* | Data subject export and erasure (LGPD art. 18): `SubjectGraph` derives from `MetaData` the tables a delete of the subject's root row reaches by `ON DELETE CASCADE` — `tables()`, `export(session, id)` (JSON-ready rows, secret columns left out), `count(session, id)`, `condition(table, id)`, and `violations()` listing every foreign key into the closure that neither cascades nor is a justified `SET NULL` in `retained` (`tempest_fastapi_sdk.testing.assert_subject_graph_valid` makes it a CI guard); `SubjectObjectStorage` keeps a subject's objects under `<prefix>/<id>/` and `delete_all` erases the prefix in S3 batch deletes (`SubjectErasureError` lists refused keys) |
+| `tempest_fastapi_sdk.tasks` *(extra: `[tasks]`)* | `TaskQueue` (typed TaskIQ facade — `.rabbitmq`/`.redis`/`.memory`, `@tq.task` → `Task.enqueue`/`.run`, `@tq.cron`/`@tq.interval`, `start_scheduler`), `Task`; class-based tasks (`TaskDef` + `@task_method` + `TaskQueue.register`); cron helpers (`Cron` / `CronOffset` / `Weekday` + `daily`/`weekdays`/`every_n_minutes`/… builders); **jobs** — `BaseJobModel` + `JobStore` (one row per unit of long work: `enqueue`/`claim`/`succeed`/`fail`, `watch` for the screen, `reclaim_stale` + `redispatch_queued`, `succeed(values=...)` for project columns); **cancellation** — `JobStore.cancel`/`cancellation_watch` + `run_cancellable` (cooperative: the request writes `CANCELLED`, the worker aborts the in-flight call at a checkpoint) + `JobCancelledError`; **per-record pipelines** — `StageMap`/`StageStatus` (several independent stages on the record the screen already fetches, with an ownership check before writing); `AsyncTaskBrokerManager` / `AsyncTaskScheduler` (legacy wrappers) |
 | `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils` (root-scoped by default, `error_500` for the SDK's own `500.log`, `exc_info` — `bool` or `"auto"` — on every level method, and a `TypeError` naming any field that shadows a `LogRecord` attribute), `RetryPolicy`, `RetryLogger`, `async_retry`, `AttemptThrottle`/`ThrottleBackend`/`ThrottleStatus`/`InMemoryThrottleBackend`, `generate_opaque_token`/`hash_opaque_token`/`verify_opaque_token`, `sign_path`/`verify_path` (short-lived signed URLs for the app's own routes, stdlib only), `get_client_ip`/`get_client_ip_from_scope`, `ACCESS_TOKEN_TYPE`/`REFRESH_TOKEN_TYPE`/`MFA_TOKEN_TYPE`/`token_type_allowed`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `TOTPHelper` *(extra: `[mfa]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils`/`sniff_mime` *(extra: `[upload]`)*, `DownloadUtils`/`build_content_disposition`/`INLINE_SAFE_MEDIA_TYPES` *(no extra)*, `FileStoreUtils` — unified upload+download+presign facade *(extra: `[upload]` local / `[minio]` MinIO)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, validated field types (`PositiveIntField`, `NonNegativeIntField`, `CentsField`, `PortField`, `PositiveFloatField`, `NonNegativeFloatField`, `PercentField`, `RatingField`, `RatioField`, `LatitudeField`, `LongitudeField`, `PriceField`, `NonEmptyStrField`, `SlugField`, `HexColorField`, `LocaleField`), BR regex helpers (`CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `MobilePhoneBRField`, `CEPField`, `PixKeyField` — old names without the suffix kept as deprecated aliases — `PixKeyType`/`detect_pix_key_type`/`is_valid_pix_key`, `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`), BR states/cities (`UF`, `Region`, `StateBR`, `CityBR`, `ChoiceBR`, `UFField`, `CityNameField`, `list_states`, `get_state`, `cities_by_uf`, `states_by_region`, `uf_choices`/`region_choices`/`city_choices`, `is_valid_uf`/`normalize_uf`, `is_valid_city`/`normalize_city`) |
 | `tempest_fastapi_sdk.utils.http_client` *(extra: `[http]`)* | `HTTPClient`, `CircuitOpenError`, `REQUEST_ID_HEADER` — typed httpx wrapper. `RetryPolicy` now lives in `tempest_fastapi_sdk.utils.retry` (the backoff curve is not an HTTP idea), still importable from here; `async_retry`, which applies a policy to any coroutine, is new there and imports from `tempest_fastapi_sdk.utils` — its `logger=` is typed `RetryLogger`, a `Protocol` with `warning`/`error`, so a `logging.Logger` and a `LogUtils` are both accepted |
 | `tempest_fastapi_sdk.utils.storage_backends` *(extra: `[upload]`)* | `UploadStorage` protocol, `LocalUploadStorage`, `MinIOUploadStorage`, `UploadResult`, `ContentValidator` |
@@ -1950,8 +1951,8 @@ class TestUsersAPI:
 | `create_test_session_factory(engine)` | Build a `sessionmaker` bound to the engine. |
 | `init_test_metadata(engine, metadata=None)` | Create every SQLAlchemy table on the engine (defaults to `BaseModel.metadata`). |
 | `drop_test_metadata(engine, metadata=None)` | Drop every table. |
-| `test_database(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an `async_sessionmaker[AsyncSession]` bound to a fresh engine with metadata pre-created; drops everything and disposes on exit. |
-| `test_session(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an `AsyncSession` on top of a fresh `test_database`. |
+| `make_test_database(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an `async_sessionmaker[AsyncSession]` bound to a fresh engine with metadata pre-created; drops everything and disposes on exit. |
+| `make_test_session(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an `AsyncSession` on top of a fresh `make_test_database`. |
 | `ModelFactory(session, Model, **defaults)` | Bind a model + defaults to a session; `build()` (unsaved), `create()`/`create_many(n)` (add + flush + refresh). Callable defaults/overrides get the row index. |
 | `seq(template, *, start=0)` | Index generator formatting `template` with `{n}` — `seq("user{n}@x.com")` yields unique values one per row. |
 | `fakes.FakePixProvider()` / `FakePayoutProvider()` / `FakeTextBackend()` / `FakeModerationBackend()` / `FakePushDispatcher()` / `FakeEmailUtils()` / `FakeGeocodingBackend()` / `FakeRoutingBackend()` / `FakeWebSearchBackend()` | Steerable stand-ins for the third parties a service talks to — no credential, no network. Move the state (`advance`, `flag`, `add_place`, `queue`), force the failing branch (`fail_next`), assert on what happened (`outbox`, `sent`, `charges`, `transfers`, `calls`). See the [Fakes recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fakes/). |
@@ -1963,34 +1964,34 @@ from collections.abc import AsyncGenerator
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tempest_fastapi_sdk.testing import test_database, test_session
+from tempest_fastapi_sdk.testing import make_test_database, make_test_session
 
 
 @pytest_asyncio.fixture
 async def session_factory() -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
     """Yield a session factory over a fresh in-memory SQLite database."""
-    async with test_database() as factory:
+    async with make_test_database() as factory:
         yield factory
 
 
 @pytest_asyncio.fixture
 async def session() -> AsyncGenerator[AsyncSession, None]:
     """Yield a managed AsyncSession bound to the in-memory engine."""
-    async with test_session() as s:
+    async with make_test_session() as s:
         yield s
 ```
 
-Use the one-shot `test_session()` context manager for ad-hoc tests that don't need cross-fixture sharing:
+Use the one-shot `make_test_session()` context manager for ad-hoc tests that don't need cross-fixture sharing:
 
 ```python
-from tempest_fastapi_sdk.testing import test_session
+from tempest_fastapi_sdk.testing import make_test_session
 
 from src.db.models import UserModel
 from src.db.repositories import UserRepository
 
 
 async def test_repo_directly() -> None:
-    async with test_session() as session:
+    async with make_test_session() as session:
         repo = UserRepository(session)
         await repo.add(UserModel(name="Ana", email="ana@example.com", password_hash="x"))
         assert await repo.count() == 1
@@ -2203,6 +2204,14 @@ logs/
 ```
 
 The scaffold reads the directory from `LOG_DIR` (defaults to `"logs"`; set it empty to disable file logging). Add `logs/` to `.gitignore`.
+
+Pass `redact=True` (or a `RedactionPolicy`) to keep personal data out of every line: each handler `configure_logging` installs gets a `RedactionFilter` that replaces sensitive keys (`password`, `token`, `email`, ...) in `extra=` and redacts e-mails, `Bearer` credentials and JWTs from the message, arguments and traceback. `LOG_REDACT=true` turns it on from `LogSettings`. Details and measured cost in the [logging recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/logging/).
+
+```python
+from tempest_fastapi_sdk import RedactionPolicy, configure_logging
+
+configure_logging(file_output=False, redact=RedactionPolicy(extra_keys={"cpf"}))
+```
 
 #### Reading logs over HTTP — `make_logs_router`
 
@@ -4476,7 +4485,7 @@ Pair with `@cached(redis, ttl=..., key_prefix=...)` for function-level memoizati
 | `await publish(message, *args, **kwargs)` | Forward to `broker.publish`; raises before `connect`. |
 | `async with lifespan()` | Connect on enter, disconnect on exit. |
 | `async broker_dependency()` | FastAPI `Depends`-compatible generator yielding the broker. |
-| `await health_check()` | `True` while the broker is started. |
+| `await health_check(timeout=2.0)` | `False` before `connect()`; afterwards the FastStream broker's real `ping(timeout)`, so a dropped connection reports `False`. |
 | `is_connected` (property) | Read-only state. |
 
 #### `AsyncTaskBrokerManager` *(extra: `[tasks]`)*

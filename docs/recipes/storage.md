@@ -746,6 +746,40 @@ async def list_files(prefix: str = "") -> list[str]:
 
 `list_objects` devolve `[]` quando nada bate — em linha com a convenção do SDK ("nenhum match não é erro").
 
+### Remover em lote
+
+`remove_objects` apaga muitas chaves com o `DeleteObjects` do S3 — uma
+requisição por 1000 chaves, em vez de um `DELETE` por objeto — e devolve só o
+que o storage recusou:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import AsyncMinIOClient
+
+storage = AsyncMinIOClient(
+    endpoint="localhost:9000",
+    access_key="minioadmin",
+    secret_key="minioadmin",
+    default_bucket="uploads",
+)
+
+
+async def main() -> None:
+    """Apaga tudo sob um prefixo."""
+    keys = await storage.list_objects("tmp/")
+    errors = await storage.remove_objects(keys)
+    for error in errors:
+        print(error.key, error.code, error.message)
+
+
+asyncio.run(main())
+```
+
+Lista vazia é sucesso. Para apagar **os arquivos de um titular** (LGPD), use
+`SubjectObjectStorage.delete_all` — veja
+[Exportação e exclusão de titular](subject-data.md).
+
 ### Copiar / mover
 
 ```python

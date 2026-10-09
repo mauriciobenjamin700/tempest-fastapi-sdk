@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
@@ -114,7 +115,7 @@ async def drop_test_metadata(
 
 
 @asynccontextmanager
-async def test_database(
+async def make_test_database(
     database_url: str = "sqlite+aiosqlite:///:memory:",
     *,
     metadata: MetaData | None = None,
@@ -123,7 +124,9 @@ async def test_database(
 
     Setup creates every table, teardown drops them and disposes the
     engine. Use as an ``async with`` block in test setups that need a
-    clean database per scope.
+    clean database per scope. The name does not start with ``test``, so
+    importing it into a test module does not make pytest collect it as
+    a test.
 
     Args:
         database_url (str): SQLAlchemy URL.
@@ -143,15 +146,17 @@ async def test_database(
 
 
 @asynccontextmanager
-async def test_session(
+async def make_test_session(
     database_url: str = "sqlite+aiosqlite:///:memory:",
     *,
     metadata: MetaData | None = None,
 ) -> AsyncGenerator[AsyncSession, None]:
     """Yield a single :class:`AsyncSession` backed by a fresh database.
 
-    Convenience wrapper around :func:`test_database` for tests that
-    only need one session.
+    Convenience wrapper around :func:`make_test_database` for tests that
+    only need one session. The name does not start with ``test``, so
+    importing it into a test module does not make pytest collect it as
+    a test.
 
     Args:
         database_url (str): SQLAlchemy URL.
@@ -161,10 +166,79 @@ async def test_session(
         AsyncSession: A live session — closed automatically on exit.
     """
     async with (
-        test_database(database_url, metadata=metadata) as factory,
+        make_test_database(database_url, metadata=metadata) as factory,
         factory() as session,
     ):
         yield session
+
+
+_RENAME_REASON: str = (
+    "pytest collects any imported callable whose name starts with 'test' "
+    "as a phantom test"
+)
+"""Why the ``test_*`` helpers were renamed, quoted by both deprecation warnings."""
+
+
+def test_database(
+    database_url: str = "sqlite+aiosqlite:///:memory:",
+    *,
+    metadata: MetaData | None = None,
+) -> AbstractAsyncContextManager[async_sessionmaker[AsyncSession]]:
+    """Deprecated alias of :func:`make_test_database`.
+
+    Kept so existing imports keep working. Marked ``__test__ = False``,
+    so pytest does not collect it even while a test module imports it.
+
+    Args:
+        database_url (str): SQLAlchemy URL.
+        metadata (MetaData | None): The metadata to apply.
+
+    Returns:
+        AbstractAsyncContextManager[async_sessionmaker[AsyncSession]]:
+        The context manager :func:`make_test_database` returns.
+
+    Warns:
+        DeprecationWarning: On every call; use :func:`make_test_database`.
+    """
+    warnings.warn(
+        f"test_database() is deprecated, use make_test_database(): {_RENAME_REASON}.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return make_test_database(database_url, metadata=metadata)
+
+
+def test_session(
+    database_url: str = "sqlite+aiosqlite:///:memory:",
+    *,
+    metadata: MetaData | None = None,
+) -> AbstractAsyncContextManager[AsyncSession]:
+    """Deprecated alias of :func:`make_test_session`.
+
+    Kept so existing imports keep working. Marked ``__test__ = False``,
+    so pytest does not collect it even while a test module imports it.
+
+    Args:
+        database_url (str): SQLAlchemy URL.
+        metadata (MetaData | None): The metadata to apply.
+
+    Returns:
+        AbstractAsyncContextManager[AsyncSession]: The context manager
+        :func:`make_test_session` returns.
+
+    Warns:
+        DeprecationWarning: On every call; use :func:`make_test_session`.
+    """
+    warnings.warn(
+        f"test_session() is deprecated, use make_test_session(): {_RENAME_REASON}.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return make_test_session(database_url, metadata=metadata)
+
+
+test_database.__test__ = False  # type: ignore[attr-defined]
+test_session.__test__ = False  # type: ignore[attr-defined]
 
 
 __all__: list[str] = [
@@ -172,6 +246,8 @@ __all__: list[str] = [
     "create_test_session_factory",
     "drop_test_metadata",
     "init_test_metadata",
+    "make_test_database",
+    "make_test_session",
     "test_database",
     "test_session",
 ]

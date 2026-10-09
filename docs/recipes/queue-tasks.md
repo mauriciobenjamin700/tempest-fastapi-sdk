@@ -91,7 +91,7 @@ async def pay_order(order_id: str) -> dict[str, str]:
     - `await mq.publish("channel", modelo)` — publica; channel primeiro.
     - `mq.publish(...)` só funciona depois de `connect()` (levanta `RuntimeError` antes).
 
-Conecte no health router: `make_health_router(checks={"queue": mq.health_check})`.
+Conecte no health router: `make_health_router(checks={"queue": mq.health_check})`. O `health_check()` faz o `ping` real do FastStream (`timeout=2.0` por default) e devolve `False` antes do `connect()` ou com a conexão caída — veja [Liveness e readiness](http.md#liveness-e-readiness).
 
 ### Consumidores baseados em classe
 
@@ -1148,6 +1148,18 @@ tq: TaskQueue = TaskQueue.from_settings(settings)
 | `amqp://` / `amqps://` | RabbitMQ | no `TASKIQ_RESULT_BACKEND_URL`, se houver, com TTL |
 | vazio | in-memory — `@tq.task` continua registrando, e `enqueue` roda a tarefa neste processo em vez de entregar a um worker | in-memory |
 | qualquer outro esquema | `ValueError` nomeando o esquema | — |
+
+!!! check "Passa no `mypy --strict` sem `type: ignore`"
+    Os campos de `TaskIQSettingsLike` são `@property` (somente leitura),
+    então o `Settings` congelado que os mixins montam
+    (`class Settings(TaskIQSettings, BaseAppSettings)`) é aceito — e um
+    objeto simples de teste também. E `@tq.task` / `@tq.task(...)` devolvem
+    `Task[P, R]` com a assinatura da função: sob `--strict`, `reveal_type`
+    de uma `async def add(a: int, b: int) -> int` decorada mostra
+    `Task[[a: int, b: int], int]`, e `await add.run("x", 1)` é erro de
+    `arg-type`. Antes, `from_settings(Settings())` era recusado
+    (`expected settable variable, got read-only attribute`) e
+    `@tq.task(name=...)` era `untyped-decorator`.
 
 !!! danger "Resultado guardado tem TTL — antes não tinha"
     O `taskiq-redis` grava resultado **sem expiração** por conta própria

@@ -509,6 +509,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Erros do app (relatados pelo cliente) »](app-errors.md)** | `make_app_error_model` (FK de usuário nullable, `SET NULL`, `created_at` indexado), `AppErrorService` (trunca em vez de recusar), listagem admin opt-in, intervalo de datas semiaberto |
 | **[Erros no OpenAPI (Swagger) »](openapi-errors.md)** | `error_responses`, `@raises`, `TempestAPIRouter`, `ErrorResponseSchema`, `tempest openapi-errors --fix` |
 | **[Escolhendo o modelo »](models.md)** | `TextModel` / `EmbeddingModel` / `RerankerModel` / `VisionModel` / `ImageModel` / `SpeechToTextModel` / `TextToSpeechModel` — ids do Hub com nome, e a tabela de caso de uso por trás de cada escolha |
+| **[Exportação e exclusão de titular (LGPD) »](subject-data.md)** | `SubjectGraph` (tabelas que o `DELETE` do titular alcança por cascata, derivadas da `MetaData`), `export` sem colunas secretas, `violations` + `assert_subject_graph_valid` como guard de CI, `SubjectObjectStorage` (prefixo por titular, `delete_all` em lote) |
 | **[Fakes (sem provedor real) »](fakes.md)** | `FakePixProvider`, `FakePayoutProvider`, `FakeTextBackend`, `FakeModerationBackend`, `FakePushDispatcher`, `FakeEmailUtils`, `FakeGeocodingBackend`, `FakeRoutingBackend`, `FakeWebSearchBackend` — nove costuras sem credencial e sem rede, dirigíveis (`advance`, `flag`, `fail_next`) e inspecionáveis |
 | **[Feature flags »](feature-flags.md)** | `FeatureFlags`, backends env/Redis/composto, `make_flag_dependency` |
 | **[Fila e Tarefas »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, outbox transacional |
@@ -558,7 +559,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Sync offline-first (delta) »](offline-sync.md)** | `BaseRepository.changes_since`, `SyncFilterSchema`, `SyncPaginationSchema`, deltas por cursor + soft-delete |
 | **[System checks (check-config) »](system-checks.md)** | `run_system_checks`, `@check`, `CheckMessage`, `tempest check-config` — validar settings antes de servir |
 | **[Tempo real »](realtime.md)** | Visão geral — quando escolher SSE, WebSocket ou Web Push |
-| **[Testes »](testing.md)** | `test_session`, `test_database`, SQLite em memória, fixtures pytest |
+| **[Testes »](testing.md)** | `make_test_session`, `make_test_database`, SQLite em memória, fixtures pytest |
 | **[Tipagem (estático + runtime) »](typing.md)** | `strict_types` / `typed` / `require_annotations`, knob `[tool.tempest] typing_strictness`, ruff `ANN` |
 | **[Transações (commit e savepoint) »](transactions.md)** | `transaction()` compartilhado pela sessão, `commit()` / `flush()` / `rollback()` no repositório, `autocommit=False`, `savepoint()` para o passo recuperável |
 | **[Uploads (backends) »](uploads.md)** | `UploadUtils`, validação de extensão/MIME (`sniff_mime`), backends local / MinIO |

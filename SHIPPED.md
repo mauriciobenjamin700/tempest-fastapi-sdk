@@ -408,7 +408,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   against path **and** query, `BanStore`/`MemoryBanStore`/`RedisBanStore`,
   fail-open by default, client IP via `trusted_ip_header`),
   hardened static files, CORS,
-  health + tool-spec routers. **Quotas (v0.216.0):** `RateLimitRule`
+  health + tool-spec routers (readiness runs its checks concurrently, each
+  under `make_health_router(timeout=)`, and logs only the exception type —
+  #447, unreleased). **Quotas (v0.216.0):** `RateLimitRule`
   (sliding window, or **token bucket** when `burst` is set),
   `StaticRateLimitPolicy`/`PlanRateLimitPolicy` (+ `plan_by_jwt_claim`/
   `plan_by_header`/`key_by_plan_principal`) and `MemoryQuotaStore`/
@@ -1874,7 +1876,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   with `enqueue`, a conditional-`UPDATE` `claim` (loser gets `None`),
   `succeed`/`fail` that drop the payload, `list_recent`, `reclaim_stale`
   (bounded by `max_attempts`) and `watch()` polling without holding a
-  session. The symmetric half of the outbox: message to publish vs work
+  session. **Result columns + redispatch (#459):** `succeed(values=...)` writes
+  project columns in the same conditional `UPDATE` as `DONE` (a cancelled
+  job gets nothing; `STORE_OWNED_JOB_COLUMNS` refused), `reclaim_stale()`
+  returns `ReclaimedJobs` (requeued / failed ids) and
+  `redispatch_queued(dispatch, older_than=...)` resends `QUEUED` rows whose
+  send was lost. The symmetric half of the outbox: message to publish vs work
   to execute. **Progress (v0.242.0):** `progress` + `stage` columns,
   `report_progress()` as a conditional `UPDATE` that cannot rewind the bar
   or repaint a cancelled job, `list_recent(statuses=...)` for the one
@@ -1992,7 +1999,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 - **Audit trail** — `BaseAuditLogModel` + `AuditAction`,
   `snapshot_model` / `diff_snapshots`, `BaseRepository` opt-in
   (`audit_model=...` + `add_audited` / `update_audited` /
-  `delete_audited`, same-tx).
+  `delete_audited`, same-tx). Opt-in `AuditRequestMixin` (`event`
+  indexed, `ip`, `user_agent` columns) + `AuditRequestContext.from_request`
+  + `record_event` / `for_event` for events without a mutation +
+  `actor_id=` for a consumer-declared author FK (#458).
 - **Admin panel** — Jinja + HTMX (`AdminSite`, `AdminModel`,
   `make_admin_router`), typed theming via `AdminTheme` (colors /
   logo / favicon / font / radius / footer / dark mode /
@@ -2139,6 +2149,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `tests/testing/test_fakes_contract.py` compara assinatura por
   `inspect.signature`, exige `async` onde a costura é `async`, e falha quando um
   fake novo entra sem cobertura.
+- **Helpers de banco de teste (`tempest_fastapi_sdk.testing`)** —
+  `create_test_engine`, `create_test_session_factory`, `init_test_metadata`,
+  `drop_test_metadata`, `make_test_database` e `make_test_session` (#450,
+  unreleased: renomeados de `test_database` / `test_session`, que o pytest
+  coletava como teste fantasma em quem os importava; os nomes antigos ficam
+  como alias deprecado com `__test__ = False`). Guard:
+  `tests/testing/test_database.py::test_consumer_suite_collects_no_phantom_test`.
 - **CLI** — `tempest new` (scaffolds layered service +
   docker-compose + multi-stage uv `Dockerfile`/`.dockerignore`),
   `tempest generate --docker` (regen compose) / `--dockerfile`
@@ -3064,6 +3081,57 @@ handler. `data_id` vem da query porque o corpo não é assinado; tópico
 desconhecido vira `MercadoPagoEvent.UNKNOWN`, corpo não-JSON não derruba. A
 receita `mercado-pago.md` monta a rota com a fábrica. Testes:
 `tests/integrations/payment/mercado_pago/test_webhook_dependency.py`.
+
+## Redação de PII no log (Unreleased, #445)
+
+`configure_logging(..., redact: bool | RedactionPolicy = False)` pendura um
+`RedactionFilter` em todo handler que instala (stdout + os seis arquivos) —
+no handler, porque filtro de logger não roda para registro propagado.
+`RedactionPolicy` troca inteiro o valor de chave sensível (substring,
+`DEFAULT_REDACT_KEYS`, extensível por `extra_keys`) em `extra=`, argumento
+dict e dict aninhado, e passa mensagem, `exc_text`, `stack_info` e valor
+string por e-mail, `Bearer`, JWT e `chave=valor` sensível (`extra_patterns`
+para domínio). O `JSONFormatter` passou a preferir `record.exc_text` a
+re-renderizar `exc_info` — antes ele escrevia o traceback original por cima do
+redigido. `LOG_REDACT` em `LogSettings`. Custo medido: ~+12 µs por linha de
+access log, ~+22 µs por `logger.exception`; com `redact=False` nada é
+instalado. Testes: `tests/core/test_redaction.py`.
+
+## Rate limit por rota (Unreleased, #452)
+
+`make_rate_limit_dependency(store, *, max_requests, window_seconds, key=None,
+trusted_ip_header=None, scope=None, ...)` limita a rota em que é pendurada,
+contando no mesmo `RateLimitStore` do `RateLimitMiddleware` (memória ou Redis).
+`key` aceita uma ou várias funções de chave, síncronas ou assíncronas (as
+`key_by_*` do middleware servem); `key_by_body_field(field)` lê o campo do corpo
+JSON sem tirar o payload do endpoint, normalizado e em SHA-256 por padrão. O 429
+sai com os mesmos `details` e headers do middleware, montados pelos mesmos
+helpers (`_rate_limit_headers` / `_rate_limit_details`). Balde por método + path
+template da rota; `scope=` junta rotas. Testes:
+`tests/api/test_rate_limit_dependency.py` (compara os dois 429).
+
+## Login e signup com limite de tentativas (Unreleased, #456)
+
+`make_auth_router(login_throttle=..., login_ip_throttle=..., signup_throttle=...,
+trusted_ip_header=...)`. O de login por e-mail vem ligado (5 em 900 s sobre
+`InMemoryThrottleBackend`, reserva antes de conferir a senha, zera no sucesso,
+`False` desliga) e é gasto igual para e-mail sem conta; os por IP vêm desligados
+por causa do IP do proxy. 429 `TOO_MANY_REQUESTS` com `Retry-After`, declarado
+no OpenAPI só quando o limite está ligado. Testes:
+`tests/auth/test_login_throttle.py`.
+
+## Exportação e exclusão de titular (Unreleased, #460)
+
+`tempest_fastapi_sdk.privacy`: `SubjectGraph(metadata, root=..., retained=...,
+secret_columns=..., secret_markers=...)` com `tables()`, `export(session, id)`,
+`count(session, id)`, `condition(table, id)`, `exported_columns(table)` e
+`violations()`; `assert_subject_graph_valid` em `tempest_fastapi_sdk.testing`.
+`SubjectObjectStorage(client, prefix=..., bucket=...)` com `put`, `presign`,
+`names`, `delete`, `delete_all` (lote) e `SubjectErasureError`. No storage,
+`AsyncMinIOClient.remove_objects` + `ObjectDeleteError`. Fora: vínculo sem FK
+(audit trail, id em JSON), raiz com PK composta, busca/cache/backup. Receita
+`recipes/subject-data.md`. Testes: `tests/privacy/`,
+`tests/storage/test_minio_client.py`.
 
 ## Settings endurecido: ambiente, header de IP, storage (Unreleased, #446, #455, #457)
 
