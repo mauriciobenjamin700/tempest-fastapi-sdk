@@ -45,6 +45,30 @@ from tempest_fastapi_sdk.core.logging import (
 from tempest_fastapi_sdk.core.logging import (
     reinitialize_logging as reinitialize_logging,
 )
+from tempest_fastapi_sdk.core.redaction import (
+    BEARER_PATTERN as BEARER_PATTERN,
+)
+from tempest_fastapi_sdk.core.redaction import (
+    DEFAULT_REDACT_KEYS as DEFAULT_REDACT_KEYS,
+)
+from tempest_fastapi_sdk.core.redaction import (
+    DEFAULT_REDACT_PATTERNS as DEFAULT_REDACT_PATTERNS,
+)
+from tempest_fastapi_sdk.core.redaction import (
+    EMAIL_PATTERN as EMAIL_PATTERN,
+)
+from tempest_fastapi_sdk.core.redaction import (
+    JWT_PATTERN as JWT_PATTERN,
+)
+from tempest_fastapi_sdk.core.redaction import (
+    REDACTED as REDACTED,
+)
+from tempest_fastapi_sdk.core.redaction import (
+    RedactionFilter as RedactionFilter,
+)
+from tempest_fastapi_sdk.core.redaction import (
+    RedactionPolicy as RedactionPolicy,
+)
 from tempest_fastapi_sdk.core.typed import (
     require_annotations as require_annotations,
 )
@@ -56,13 +80,21 @@ from tempest_fastapi_sdk.core.typed import (
 )
 
 __all__: list[str] = [
+    "BEARER_PATTERN",
     "DEFAULT_LOG_BACKUP_COUNT",
     "DEFAULT_LOG_MAX_BYTES",
+    "DEFAULT_REDACT_KEYS",
+    "DEFAULT_REDACT_PATTERNS",
+    "EMAIL_PATTERN",
     "HTTP_500_MARKER",
+    "JWT_PATTERN",
+    "REDACTED",
     "BaseIntEnum",
     "BaseStrEnum",
     "JSONFormatter",
     "Locale",
+    "RedactionFilter",
+    "RedactionPolicy",
     "clear_request_id",
     "configure_logging",
     "configure_root_once",

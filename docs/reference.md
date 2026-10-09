@@ -1272,6 +1272,14 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.log.LogUtils
 ::: tempest_fastapi_sdk.core.logging.configure_root_once
 ::: tempest_fastapi_sdk.core.logging.reinitialize_logging
+::: tempest_fastapi_sdk.core.redaction.RedactionPolicy
+::: tempest_fastapi_sdk.core.redaction.RedactionFilter
+::: tempest_fastapi_sdk.core.redaction.REDACTED
+::: tempest_fastapi_sdk.core.redaction.DEFAULT_REDACT_KEYS
+::: tempest_fastapi_sdk.core.redaction.DEFAULT_REDACT_PATTERNS
+::: tempest_fastapi_sdk.core.redaction.EMAIL_PATTERN
+::: tempest_fastapi_sdk.core.redaction.BEARER_PATTERN
+::: tempest_fastapi_sdk.core.redaction.JWT_PATTERN
 ::: tempest_fastapi_sdk.utils.throttle.AttemptThrottle
 ::: tempest_fastapi_sdk.utils.throttle.InMemoryThrottleBackend
 ::: tempest_fastapi_sdk.utils.signed_url.sign_path

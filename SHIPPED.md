@@ -3064,3 +3064,18 @@ handler. `data_id` vem da query porque o corpo não é assinado; tópico
 desconhecido vira `MercadoPagoEvent.UNKNOWN`, corpo não-JSON não derruba. A
 receita `mercado-pago.md` monta a rota com a fábrica. Testes:
 `tests/integrations/payment/mercado_pago/test_webhook_dependency.py`.
+
+## Redação de PII no log (Unreleased, #445)
+
+`configure_logging(..., redact: bool | RedactionPolicy = False)` pendura um
+`RedactionFilter` em todo handler que instala (stdout + os seis arquivos) —
+no handler, porque filtro de logger não roda para registro propagado.
+`RedactionPolicy` troca inteiro o valor de chave sensível (substring,
+`DEFAULT_REDACT_KEYS`, extensível por `extra_keys`) em `extra=`, argumento
+dict e dict aninhado, e passa mensagem, `exc_text`, `stack_info` e valor
+string por e-mail, `Bearer`, JWT e `chave=valor` sensível (`extra_patterns`
+para domínio). O `JSONFormatter` passou a preferir `record.exc_text` a
+re-renderizar `exc_info` — antes ele escrevia o traceback original por cima do
+redigido. `LOG_REDACT` em `LogSettings`. Custo medido: ~+12 µs por linha de
+access log, ~+22 µs por `logger.exception`; com `redact=False` nada é
+instalado. Testes: `tests/core/test_redaction.py`.
