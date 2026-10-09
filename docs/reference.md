@@ -877,6 +877,9 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.api.routers.health.make_health_router
 ::: tempest_fastapi_sdk.api.routers.logs.make_logs_router
 ::: tempest_fastapi_sdk.api.routers.logs.resolve_log_files
+::: tempest_fastapi_sdk.api.routers.logs.read_log_entries
+::: tempest_fastapi_sdk.api.routers.logs.clear_log_files
+::: tempest_fastapi_sdk.api.routers.logs.LogReadResult
 ::: tempest_fastapi_sdk.api.routers.logs.DEFAULT_MAX_RECORDS_PER_FILE
 ::: tempest_fastapi_sdk.api.routers.logs.render_entries_markdown
 ::: tempest_fastapi_sdk.api.routers.logs.render_entries_json

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`make_logs_router(dependencies=...)` — logs atrás da auth do próprio
+  serviço** (#426). Antes o router só aceitava o segredo compartilhado do
+  `X-Token`, então quem protege o painel com Bearer JWT de admin não tinha
+  como usá-lo. As dependências valem para `GET` e `DELETE`; cada item é o
+  callable ou um `Depends(...)` / `Security(...)` pronto, que é usado como
+  veio (embrulhar de novo dá `AssertionError: A parameter-less dependency
+  must have a callable dependency` na construção — medido no FastAPI
+  0.141.1). Relação com o `X-Token`: as duas peças **somam**. Só
+  `dependencies` substitui o header (nenhum `X-Token` é lido nem aparece no
+  OpenAPI); `token_secret` junto exige os dois; nenhuma das duas continua
+  levantando `ValueError`, e `dependencies=[]` não conta como gate.
+- **`read_log_entries(...) -> LogReadResult` e
+  `clear_log_files(...) -> list[str]`** (#426), exportadas no topo do pacote.
+  São a leitura (teto por arquivo, flag `truncated`, filtros `q`/`start`/`end`,
+  do mais novo pro mais antigo) e o truncate no lugar que o router fazia em
+  funções privadas — quem precisava de outro contrato de resposta reescrevia
+  as duas e perdia o teto de memória. Síncronas; numa rota `async`, rode com
+  `asyncio.to_thread`. O `make_logs_router` e a página de logs do admin
+  viraram casca sobre elas (a página do admin tinha uma terceira cópia do
+  filtro e da ordenação).
+
 ## [0.308.0] — 2026-10-08
 
 O CLI `tempest` sai do runtime: `tempest-cli`, `typer` e `click` viram o

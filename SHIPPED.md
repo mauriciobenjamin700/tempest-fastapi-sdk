@@ -358,7 +358,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `all` covers `500.log` here and not on the read. **`LOG_MAX_BYTES` /
   `LOG_BACKUP_COUNT` + `logging_kwargs()` on `LogSettings` (v0.280.0)** — the
   rotation knobs `configure_logging` always accepted are now settable from the
-  environment.
+  environment. **`make_logs_router(dependencies=...)` + `read_log_entries()` /
+  `LogReadResult` + `clear_log_files()` (#426, unreleased)** — the logs go
+  behind the service's own auth (a callable or a ready `Depends(...)`; with
+  only `dependencies` no `X-Token` is read, with `token_secret` too both gates
+  apply, an empty list still fails closed), and the read (per-file cap,
+  `truncated` flag, filters, newest first) and the in-place truncate are public
+  sync functions the router and the admin log page are now shells over.
 - **Database error introspection** — `parse_integrity_error()` reads an
   `IntegrityError` back into the constraint that refused it
   (`IntegrityFailure` / `IntegrityViolation`), so a service answers `409`
