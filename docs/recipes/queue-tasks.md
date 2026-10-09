@@ -91,7 +91,7 @@ async def pay_order(order_id: str) -> dict[str, str]:
     - `await mq.publish("channel", modelo)` — publica; channel primeiro.
     - `mq.publish(...)` só funciona depois de `connect()` (levanta `RuntimeError` antes).
 
-Conecte no health router: `make_health_router(checks={"queue": mq.health_check})`.
+Conecte no health router: `make_health_router(checks={"queue": mq.health_check})`. O `health_check()` faz o `ping` real do FastStream (`timeout=2.0` por default) e devolve `False` antes do `connect()` ou com a conexão caída — veja [Liveness e readiness](http.md#liveness-e-readiness).
 
 ### Consumidores baseados em classe
 

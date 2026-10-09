@@ -1950,8 +1950,8 @@ class TestUsersAPI:
 | `create_test_session_factory(engine)` | Build a `sessionmaker` bound to the engine. |
 | `init_test_metadata(engine, metadata=None)` | Create every SQLAlchemy table on the engine (defaults to `BaseModel.metadata`). |
 | `drop_test_metadata(engine, metadata=None)` | Drop every table. |
-| `test_database(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an `async_sessionmaker[AsyncSession]` bound to a fresh engine with metadata pre-created; drops everything and disposes on exit. |
-| `test_session(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an `AsyncSession` on top of a fresh `test_database`. |
+| `make_test_database(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an `async_sessionmaker[AsyncSession]` bound to a fresh engine with metadata pre-created; drops everything and disposes on exit. |
+| `make_test_session(database_url="sqlite+aiosqlite:///:memory:", *, metadata=None)` | Async context manager — yields an `AsyncSession` on top of a fresh `make_test_database`. |
 | `ModelFactory(session, Model, **defaults)` | Bind a model + defaults to a session; `build()` (unsaved), `create()`/`create_many(n)` (add + flush + refresh). Callable defaults/overrides get the row index. |
 | `seq(template, *, start=0)` | Index generator formatting `template` with `{n}` — `seq("user{n}@x.com")` yields unique values one per row. |
 | `fakes.FakePixProvider()` / `FakePayoutProvider()` / `FakeTextBackend()` / `FakeModerationBackend()` / `FakePushDispatcher()` / `FakeEmailUtils()` / `FakeGeocodingBackend()` / `FakeRoutingBackend()` / `FakeWebSearchBackend()` | Steerable stand-ins for the third parties a service talks to — no credential, no network. Move the state (`advance`, `flag`, `add_place`, `queue`), force the failing branch (`fail_next`), assert on what happened (`outbox`, `sent`, `charges`, `transfers`, `calls`). See the [Fakes recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fakes/). |
@@ -1963,34 +1963,34 @@ from collections.abc import AsyncGenerator
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tempest_fastapi_sdk.testing import test_database, test_session
+from tempest_fastapi_sdk.testing import make_test_database, make_test_session
 
 
 @pytest_asyncio.fixture
 async def session_factory() -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
     """Yield a session factory over a fresh in-memory SQLite database."""
-    async with test_database() as factory:
+    async with make_test_database() as factory:
         yield factory
 
 
 @pytest_asyncio.fixture
 async def session() -> AsyncGenerator[AsyncSession, None]:
     """Yield a managed AsyncSession bound to the in-memory engine."""
-    async with test_session() as s:
+    async with make_test_session() as s:
         yield s
 ```
 
-Use the one-shot `test_session()` context manager for ad-hoc tests that don't need cross-fixture sharing:
+Use the one-shot `make_test_session()` context manager for ad-hoc tests that don't need cross-fixture sharing:
 
 ```python
-from tempest_fastapi_sdk.testing import test_session
+from tempest_fastapi_sdk.testing import make_test_session
 
 from src.db.models import UserModel
 from src.db.repositories import UserRepository
 
 
 async def test_repo_directly() -> None:
-    async with test_session() as session:
+    async with make_test_session() as session:
         repo = UserRepository(session)
         await repo.add(UserModel(name="Ana", email="ana@example.com", password_hash="x"))
         assert await repo.count() == 1
@@ -4457,7 +4457,7 @@ Pair with `@cached(redis, ttl=..., key_prefix=...)` for function-level memoizati
 | `await publish(message, *args, **kwargs)` | Forward to `broker.publish`; raises before `connect`. |
 | `async with lifespan()` | Connect on enter, disconnect on exit. |
 | `async broker_dependency()` | FastAPI `Depends`-compatible generator yielding the broker. |
-| `await health_check()` | `True` while the broker is started. |
+| `await health_check(timeout=2.0)` | `False` before `connect()`; afterwards the FastStream broker's real `ping(timeout)`, so a dropped connection reports `False`. |
 | `is_connected` (property) | Read-only state. |
 
 #### `AsyncTaskBrokerManager` *(extra: `[tasks]`)*

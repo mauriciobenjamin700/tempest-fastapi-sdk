@@ -116,8 +116,101 @@ Pontos-chave:
     - `Exception` (catch-all) → envelope SDK + traceback + `500.log` (corrige o default do Starlette, que devolve só `"Internal Server Error"` sem log).
 
     Todos os handlers respeitam `RequestIDMiddleware`: a linha de log carrega o `request_id`, e o envelope expõe ele em `details` para correlacionar com o cliente. Passe `log_traceback=False` se um APM (Sentry, OpenTelemetry) já estiver capturando a trace.
-- `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` monta `GET /health/liveness` e `GET /health/readiness` (retorna `503` quando algum check falha) no prefixo raiz.
+- `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` monta `GET /health/liveness` e `GET /health/readiness` (retorna `503` quando algum check falha) no prefixo raiz — veja [Liveness e readiness](#liveness-e-readiness).
 - `make_token_dependency(secret)` retorna uma dependência async que valida `X-Token` via `hmac.compare_digest`; passe uma string vazia para desabilitar no dev. A dependência vive ao lado do resto da cola de auth em `src/api/dependencies/auth.py` quando crescer além do one-liner acima.
+
+### Liveness e readiness
+
+São duas perguntas diferentes, feitas por quem decide coisas diferentes:
+
+- **Liveness** — *"o processo está vivo?"*. Se falha, o orquestrador
+  (Kubernetes, ECS) **reinicia** o container. Por isso `GET /health/liveness`
+  não toca dependência nenhuma: um Redis fora do ar não se resolve reiniciando
+  a API, e um liveness que dependesse dele derrubaria todas as réplicas ao
+  mesmo tempo, em loop.
+- **Readiness** — *"posso receber tráfego agora?"*. Se falha, o balanceador
+  **tira a réplica da rotação** e devolve quando voltar a passar. É aqui que
+  entram banco, cache e broker: `GET /health/readiness` roda cada check e
+  responde `503` quando algum falha.
+
+Um único `GET /health` mistura as duas coisas — ou reinicia por causa de uma
+dependência, ou manda tráfego para quem não consegue atendê-lo. Ao pedir o
+health de um serviço novo, peça os dois endpoints.
+
+```python
+import asyncio
+
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from tempest_fastapi_sdk import make_health_router
+
+
+async def redis_check() -> bool:
+    """Responde na hora: dependência saudável."""
+    return True
+
+
+async def search_check() -> bool:
+    """Pendura, como um socket meio aberto que nunca responde."""
+    await asyncio.sleep(60)
+    return True
+
+
+app = FastAPI()
+app.include_router(
+    make_health_router(
+        checks={"redis": redis_check, "search": search_check},
+        timeout=0.5,
+    ),
+)
+
+
+async def main() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        liveness = await client.get("/health/liveness")
+        readiness = await client.get("/health/readiness")
+    print(liveness.status_code, liveness.json())
+    print(readiness.status_code, readiness.json())
+
+
+asyncio.run(main())
+```
+
+Saída (o processo inteiro levou 1,7 s, apesar do `sleep(60)`):
+
+```text
+Health check 'search' timed out after 0.5s
+200 {'status': 'ok'}
+503 {'status': 'not_ready', 'checks': {'redis': True, 'search': False}}
+```
+
+O que acontece na readiness:
+
+- **Os checks rodam em paralelo**, cada um limitado por `timeout` (default
+  `3.0` segundos; `None` desliga). O que estoura conta como falha **só para
+  ele** — o `redis` acima continua `True` —, e a resposta sai logo depois do
+  `timeout`, não quando o probe do orquestrador desiste. Mantenha o `timeout`
+  abaixo do timeout do probe.
+- **O log não leva a mensagem da exceção.** Um check que levanta gera
+  `Health check 'database' raised ConnectionRefusedError` — nome e tipo, nunca
+  o texto, porque mensagem de driver de banco ou de broker costuma carregar a
+  DSN com usuário e senha.
+
+!!! warning "Cancelamento só acontece num `await`"
+    O `timeout` cancela o check no próximo ponto de `await`. Um check que
+    bloqueia o event loop com I/O síncrono (um driver não-async, um
+    `time.sleep`) não pode ser interrompido — e trava o processo inteiro, não
+    só a readiness. Rode esse tipo de chamada com `asyncio.to_thread`.
+
+!!! tip "Fila"
+    `MessageBroker.health_check` faz o `ping` real do FastStream, com
+    `timeout=2.0` por default — abaixo dos 3 s do router. Com o RabbitMQ
+    parado depois do boot, ele devolve `False`:
+    `make_health_router(checks={"queue": mq.health_check})`.
 
 
 ### Todo 4xx dentro do envelope

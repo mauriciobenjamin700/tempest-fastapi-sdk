@@ -1230,6 +1230,8 @@ então importar o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.testing.factories.ModelFactory
 ::: tempest_fastapi_sdk.testing.factories.seq
+::: tempest_fastapi_sdk.testing.database.make_test_database
+::: tempest_fastapi_sdk.testing.database.make_test_session
 
 ### `tempest_fastapi_sdk.testing.fakes`
 
