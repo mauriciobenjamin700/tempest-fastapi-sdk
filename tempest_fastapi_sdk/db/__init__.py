@@ -7,6 +7,10 @@ re-export form together with ``__all__`` so every type-checker
 a "private import usage" / "is not exported" diagnostic.
 """
 
+from tempest_fastapi_sdk.db.alembic_env import (
+    DEFAULT_REVISION_HOOKS as DEFAULT_REVISION_HOOKS,
+)
+from tempest_fastapi_sdk.db.alembic_env import run_alembic_env as run_alembic_env
 from tempest_fastapi_sdk.db.alembic_hooks import BASE_COLUMN_ORDER as BASE_COLUMN_ORDER
 from tempest_fastapi_sdk.db.alembic_hooks import (
     backfill_non_nullable_defaults as backfill_non_nullable_defaults,
@@ -61,6 +65,9 @@ from tempest_fastapi_sdk.db.device_token_model import (
     make_device_token_model as make_device_token_model,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
+    DropEnumTypeOp as DropEnumTypeOp,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
     EnumColumnRef as EnumColumnRef,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
@@ -68,6 +75,9 @@ from tempest_fastapi_sdk.db.enum_migrations import (
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
     ReplaceEnumOp as ReplaceEnumOp,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
+    drop_enum_types_on_downgrade as drop_enum_types_on_downgrade,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
     render_enum_types as render_enum_types,
@@ -218,6 +228,7 @@ __all__: list[str] = [
     "AUDIT_REDACTED",
     "BASE_COLUMN_ORDER",
     "DEFAULT_AUDIT_REDACT",
+    "DEFAULT_REVISION_HOOKS",
     "DEFAULT_SYNC_WATERMARK_LAG",
     "ENUM_TYPE_SUFFIX",
     "LEGACY_NAMING_CONVENTION",
@@ -247,6 +258,7 @@ __all__: list[str] = [
     "ConstraintRename",
     "DatabaseBackup",
     "DestructiveMigrationError",
+    "DropEnumTypeOp",
     "DroppedFilterWarning",
     "EnumColumnRef",
     "EnumTypeState",
@@ -285,6 +297,7 @@ __all__: list[str] = [
     "describe_database_error",
     "diff_snapshots",
     "disconnect",
+    "drop_enum_types_on_downgrade",
     "enable_sqlite_foreign_keys",
     "enable_sqlite_savepoints",
     "enable_sqlite_wal",
@@ -312,6 +325,7 @@ __all__: list[str] = [
     "render_enum_types",
     "reorder_base_columns_first",
     "require_sqlite_foreign_keys_off",
+    "run_alembic_env",
     "savepoint",
     "session_dependency_for",
     "shared_memory_url",

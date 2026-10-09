@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`run_alembic_env` e `DEFAULT_REVISION_HOOKS` (#451).** O corpo do
+  `env.py` que o `tempest db init` gera mudou-se para o SDK: o arquivo gerado
+  passa a ter três instruções (import de `run_alembic_env`, import do
+  `BaseModel`, a chamada). URL, hooks de revisão, `render_enum_types`, batch
+  mode, caminhos offline/online e a conexão entregue em
+  `config.attributes["connection"]` continuam iguais, agora num lugar que
+  recebe correção no upgrade do pacote. Hook próprio entra por
+  `process_revision_directives=compose_hooks(*DEFAULT_REVISION_HOOKS, meu_hook)`.
+  Receita: `docs/recipes/migrations`, seção "O `env.py` gerado".
+
+- **`op.drop_enum_type` (`DropEnumTypeOp`) e o hook
+  `drop_enum_types_on_downgrade` (#454).** A operação emite
+  `DROP TYPE IF EXISTS` no PostgreSQL e não faz nada nos outros bancos. O hook,
+  ligado no `env.py` gerado, acrescenta o drop no fim do downgrade de cada
+  tabela nova, para todo `ENUM` nativo que nenhuma tabela remanescente da
+  metadata usa — tipo compartilhado só sai com a última tabela. Medido no
+  PostgreSQL 16 (Alembic 1.19.1, SQLAlchemy 2.0.52): antes, `upgrade` →
+  `downgrade` → `upgrade` falhava com `type "user_role_enum" already exists`;
+  agora passa (`tests/db/test_alembic_env.py`, marcado `docker`).
+
 - **`expected_sha256` em `load_sklearn_artifact` e `edge_pipeline_from_pickle`
   (#440).** O chamador pina o SHA-256 que a release do modelo registrou, e a
   carga recusa com `ArtifactDigestMismatchError` (nova, subclasse de
@@ -120,6 +140,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MercadoPagoEvent | None`, o tipo que o docstring já declarava.
 
 ### Fixed
+
+- **`env.py` gerado limpo sob ruff e `alembic.ini` com `prepend_sys_path`
+  (#451).** O arquivo da 0.308.0 falhava em `ruff check --select E,W,F,I`
+  (`I001` duas vezes, `E402` no import de metadata) e trazia 21 linhas de
+  comentário inline. O novo não importa `alembic` — o diretório `alembic/` faz
+  o default do ruff (`src = [".", "src"]`) tratar o pacote como first-party e
+  o scaffold do `tempest new` como third-party, então nenhuma ordem fixa
+  passava nos dois — e sai sem erro nas duas configurações, sem comentário.
+  O `alembic.ini` gerado ganhou `prepend_sys_path = .` (o `alembic` puro, sem
+  o CLI do `tempest`, importa o pacote do serviço) e `path_separator = os`
+  (sem ele o Alembic 1.19.1 emite `DeprecationWarning`). Guard:
+  `tests/test_alembic_env_lint_guard.py`. **Projeto existente:** o `env.py`
+  antigo continua funcionando; para receber as correções, troque o conteúdo
+  pelas três instruções e acrescente as duas linhas ao `[alembic]` do ini.
+
+- **CHECK de enum duplicado no autogenerate (#453).** Sob SQLAlchemy 2.1.4 +
+  Alembic 1.20.0, o `create_table` gerado trazia dois `CheckConstraint` por
+  coluna enum, os dois renomeados pela convention para `ck_<tabela>_<enum>`, e
+  o PostgreSQL 16 recusava o segundo (`check constraint ... already exists`).
+  `render_enum_types` passa a omitir o `CHECK` ligado ao tipo (`_type_bound`);
+  o `sa.Enum(..., create_constraint=True)` da coluna o recria no SQLite, que
+  fica com exatamente um `CHECK` com o nome da convention (medido em 2.0.52 e
+  2.1.4). `CheckConstraint` declarado em `__table_args__` continua renderizado.
+  `tests/db/test_alembic_env_sqlalchemy_matrix.py` (marcado `network`) reroda
+  os testes de enum sob 2.1.4/1.20.0 — no lock (2.0.52) o próprio Alembic já
+  filtrava.
 
 - **`PdfRenderer`: cada renderização relata só as próprias recusas de asset
   (#435).** A instância guardava uma `AssetPolicy` só e todas as

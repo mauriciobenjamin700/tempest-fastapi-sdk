@@ -1561,7 +1561,7 @@ This creates:
 ```text
 alembic.ini                 # SDK-curated config (UTC timezone, date-prefixed file template)
 alembic/
-├── env.py                  # SDK template (already wires target_metadata, compare_type, batch mode)
+├── env.py                  # one call to run_alembic_env (target_metadata, hooks, compare_type, batch mode)
 ├── script.py.mako
 └── versions/
 ```

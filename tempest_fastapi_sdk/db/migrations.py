@@ -360,11 +360,15 @@ class AlembicHelper:
         """Scaffold a new Alembic environment in ``directory``.
 
         Wraps ``alembic init -t async`` and then overwrites the
-        generated ``env.py`` with the SDK's template, which already
-        wires the metadata import, sets ``compare_type`` /
-        ``compare_server_default`` and enables batch mode for SQLite.
+        generated ``env.py`` with the SDK's template: the metadata
+        import and one call to
+        :func:`~tempest_fastapi_sdk.db.alembic_env.run_alembic_env`,
+        which sets ``compare_type`` / ``compare_server_default``, batch
+        mode for SQLite and the revision hooks. The file carries no
+        ``alembic`` import, so it sorts the same under any ruff
+        first-party configuration.
 
-        Three details of the scaffold are deliberate:
+        Four details of the scaffold are deliberate:
 
         * The ini is pre-seeded at :attr:`config_path` before calling
           ``command.init``, because Alembic writes it wherever
@@ -379,6 +383,13 @@ class AlembicHelper:
           before the engine is built; pass ``db_url=`` on the
           constructor to override for a one-off (CI smoke, scripted
           migrations).
+        * The ini sets ``prepend_sys_path = .``, so the bare ``alembic``
+          CLI (``uv run alembic downgrade -1``) imports the project's
+          metadata module from the directory it runs in, without the
+          ``tempest`` CLI. ``path_separator = os`` comes with it:
+          without it Alembic 1.19.1 emits a ``DeprecationWarning`` about
+          the legacy splitting of ``prepend_sys_path``, which a
+          ``-W error`` run turns into a failure.
         * ``[post_write_hooks]`` runs ``ruff format`` **then**
           ``ruff check --fix`` over every generated revision, so the
           files autogenerate emits — long ``sa.Column`` lines, trailing
@@ -434,20 +445,23 @@ class AlembicHelper:
         )
 
         if metadata_module is None:
-            metadata_import = "target_metadata = None"
+            metadata_import = "\n"
+            target_metadata = "None"
         else:
-            metadata_import = (
-                f"from {metadata_module} import {metadata_attr}\n"
-                f"target_metadata = {metadata_attr}.metadata"
-            )
+            metadata_import = f"\nfrom {metadata_module} import {metadata_attr}\n\n"
+            target_metadata = f"{metadata_attr}.metadata"
         env_py.write_text(
-            template_text.replace("__METADATA_IMPORT__", metadata_import),
+            template_text.replace("__METADATA_IMPORT__\n", metadata_import).replace(
+                "__TARGET_METADATA__", target_metadata
+            ),
             encoding="utf-8",
         )
 
         ini_lines = [
             "[alembic]",
             f"script_location = {directory}",
+            "prepend_sys_path = .",
+            "path_separator = os",
             "sqlalchemy.url = ",
             (
                 "file_template = "

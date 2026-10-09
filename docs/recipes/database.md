@@ -2339,9 +2339,9 @@ uv run python scripts/alembic_init.py
 Cria:
 
 ```text
-alembic.ini                 # config curada pelo SDK (UTC, prefixo de data, post-write hooks)
+alembic.ini                 # config curada pelo SDK (UTC, prefixo de data, post-write hooks, prepend_sys_path)
 alembic/
-├── env.py                  # template do SDK (target_metadata, compare_type, batch)
+├── env.py                  # run_alembic_env(target_metadata): hooks, compare_type, batch
 ├── script.py.mako
 └── versions/
 ```

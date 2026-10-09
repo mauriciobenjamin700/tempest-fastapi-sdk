@@ -38,10 +38,11 @@ ALLOWLIST: dict[tuple[str, str], str] = {
     ("db/migrations.py", "AlembicHelper._read_via_async._run"): (
         "async fallback of the migration read engine; same reason as _read"
     ),
-    ("db/_alembic_templates/env.py.template", "run_async_migrations"): (
-        "the generated env.py migration engine; foreign keys must stay off "
-        "for batch mode, and a handed-over connection is checked by "
-        "require_sqlite_foreign_keys_off instead"
+    ("db/alembic_env.py", "_run_async_migrations"): (
+        "the migration engine run_alembic_env builds for the generated "
+        "env.py; foreign keys must stay off for batch mode, and a "
+        "handed-over connection is checked by require_sqlite_foreign_keys_off "
+        "instead"
     ),
 }
 """``(path relative to the package, function qualname)`` -> reason."""
