@@ -3148,3 +3148,18 @@ que fica como subclasse deprecada; `MINIO_*` continua lido como fallback.
 Testes: `tests/settings/test_environment.py`,
 `tests/settings/test_trusted_ip_header.py`,
 `tests/settings/test_storage_settings.py`.
+
+## Chave desconhecida em `filters` é recusada (Unreleased, #465)
+
+Mesma família do `None` da v0.292.0, na outra metade: chave que não é
+coluna (`{"usr_id": 1}`) ou sufixo que não é operador
+(`{"user_id__bogus": 1}`) era descartada em silêncio, e `delete_many` com só
+a chave errada apagava a tabela inteira. Agora `build_filter_condition` (e
+portanto todo método com `filters`, o `Q`, `BaseService`, `BaseController` e
+`TenantScopedRepository`) levanta `UnknownFilterKeyException` (422,
+`UNKNOWN_FILTER_KEY`, `details={"filter": <chave>}`) antes de qualquer
+statement. `resolve_filter_key` / `FILTER_OPERATORS` em
+`db.expressions` expõem a checagem isolada; o `AdminModel` a roda na
+construção sobre `list_filter`, `search_fields` e os `filters` de cada
+`Lens` (typo vira `ValueError` no boot). Teste:
+`tests/db/test_filters_contract.py`.

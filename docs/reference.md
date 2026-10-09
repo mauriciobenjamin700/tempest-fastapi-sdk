@@ -154,6 +154,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.expressions.F
 ::: tempest_fastapi_sdk.db.expressions.Q
 ::: tempest_fastapi_sdk.db.expressions.build_filter_condition
+::: tempest_fastapi_sdk.db.expressions.resolve_filter_key
+::: tempest_fastapi_sdk.db.expressions.FILTER_OPERATORS
 ::: tempest_fastapi_sdk.db.expressions.DroppedFilterWarning
 ::: tempest_fastapi_sdk.db.signals.RepositorySignal
 ::: tempest_fastapi_sdk.db.signals.connect
@@ -463,6 +465,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.validation.ValidationException
 ::: tempest_fastapi_sdk.exceptions.validation.OrderByNotAllowedException
 ::: tempest_fastapi_sdk.exceptions.validation.PageSizeTooLargeException
+::: tempest_fastapi_sdk.exceptions.validation.UnknownFilterKeyException
 ::: tempest_fastapi_sdk.exceptions.value_errors.ValidationValueError
 ::: tempest_fastapi_sdk.exceptions.too_many_requests.TooManyRequestsException
 ::: tempest_fastapi_sdk.exceptions.jwt.InvalidTokenException

@@ -184,8 +184,8 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
                 ``{"user_id": 1234, "is_active": True}``. A list is ``IN``, ``None``
                 is ``IS NULL``, and a ``<column>__<op>`` key applies an operator
                 (``{"price__gte": 10}``); every convention is listed on
-                :class:`~tempest_fastapi_sdk.BaseRepository`. A key the model has no
-                column for is ignored without error.
+                :class:`~tempest_fastapi_sdk.BaseRepository`. An unknown column or
+                operator raises ``UnknownFilterKeyException``.
             for_update (bool): Whether to lock the selected rows.
             with_ (builtins.list[str] | None): Relationship names to eager-
                 load.
@@ -216,8 +216,8 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
                 ``{"user_id": 1234, "is_active": True}``. A list is ``IN``, ``None``
                 is ``IS NULL``, and a ``<column>__<op>`` key applies an operator
                 (``{"price__gte": 10}``); every convention is listed on
-                :class:`~tempest_fastapi_sdk.BaseRepository`. A key the model has no
-                column for is ignored without error.
+                :class:`~tempest_fastapi_sdk.BaseRepository`. An unknown column or
+                operator raises ``UnknownFilterKeyException``.
             for_update (bool): Whether to lock the selected rows.
             with_ (builtins.list[str] | None): Relationship names to eager-
                 load.
@@ -245,8 +245,8 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
                 ``{"user_id": 1234, "is_active": True}``. A list is ``IN``, ``None``
                 is ``IS NULL``, and a ``<column>__<op>`` key applies an operator
                 (``{"price__gte": 10}``); every convention is listed on
-                :class:`~tempest_fastapi_sdk.BaseRepository`. A key the model has no
-                column for is ignored without error.
+                :class:`~tempest_fastapi_sdk.BaseRepository`. An unknown column or
+                operator raises ``UnknownFilterKeyException``.
             where (WhereClause | None): Extra filter narrowing the tenant-scoped query.
 
         Returns:
@@ -270,8 +270,8 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
                 ``{"user_id": 1234, "is_active": True}``. A list is ``IN``, ``None``
                 is ``IS NULL``, and a ``<column>__<op>`` key applies an operator
                 (``{"price__gte": 10}``); every convention is listed on
-                :class:`~tempest_fastapi_sdk.BaseRepository`. A key the model has no
-                column for is ignored without error.
+                :class:`~tempest_fastapi_sdk.BaseRepository`. An unknown column or
+                operator raises ``UnknownFilterKeyException``.
             order_by (Any | None): Column to sort by; ``None`` keeps the
                 repository default.
             ascending (bool): Whether to sort ascending.
@@ -307,8 +307,8 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
                 ``{"user_id": 1234, "is_active": True}``. A list is ``IN``, ``None``
                 is ``IS NULL``, and a ``<column>__<op>`` key applies an operator
                 (``{"price__gte": 10}``); every convention is listed on
-                :class:`~tempest_fastapi_sdk.BaseRepository`. A key the model has no
-                column for is ignored without error.
+                :class:`~tempest_fastapi_sdk.BaseRepository`. An unknown column or
+                operator raises ``UnknownFilterKeyException``.
             order_by (Any | None): Column to sort by; ``None`` keeps the
                 repository default.
             ascending (bool): Whether to sort ascending.
@@ -339,8 +339,8 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
                 ``{"user_id": 1234, "is_active": True}``. A list is ``IN``, ``None``
                 is ``IS NULL``, and a ``<column>__<op>`` key applies an operator
                 (``{"price__gte": 10}``); every convention is listed on
-                :class:`~tempest_fastapi_sdk.BaseRepository`. A key the model has no
-                column for is ignored without error.
+                :class:`~tempest_fastapi_sdk.BaseRepository`. An unknown column or
+                operator raises ``UnknownFilterKeyException``.
             where (WhereClause | None): Extra filter narrowing the tenant-scoped query.
 
         Returns:
@@ -370,8 +370,8 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
                 ``{"user_id": 1234, "is_active": True}``. A list is ``IN``, ``None``
                 is ``IS NULL``, and a ``<column>__<op>`` key applies an operator
                 (``{"price__gte": 10}``); every convention is listed on
-                :class:`~tempest_fastapi_sdk.BaseRepository`. A key the model has no
-                column for is ignored without error.
+                :class:`~tempest_fastapi_sdk.BaseRepository`. An unknown column or
+                operator raises ``UnknownFilterKeyException``.
             order_by (str | None): Column to sort by; ``None`` keeps the
                 repository default.
             page (int): 1-indexed page number.
@@ -416,8 +416,8 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
                 ``{"user_id": 1234, "is_active": True}``. A list is ``IN``, ``None``
                 is ``IS NULL``, and a ``<column>__<op>`` key applies an operator
                 (``{"price__gte": 10}``); every convention is listed on
-                :class:`~tempest_fastapi_sdk.BaseRepository`. A key the model has no
-                column for is ignored without error.
+                :class:`~tempest_fastapi_sdk.BaseRepository`. An unknown column or
+                operator raises ``UnknownFilterKeyException``.
             cursor (str | None): Opaque cursor from a previous page.
             limit (int): Maximum rows to return.
             order_by (str): Column to sort by; ``None`` keeps the repository
@@ -453,8 +453,8 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
                 ``{"user_id": 1234, "is_active": True}``. A list is ``IN``, ``None``
                 is ``IS NULL``, and a ``<column>__<op>`` key applies an operator
                 (``{"price__gte": 10}``); every convention is listed on
-                :class:`~tempest_fastapi_sdk.BaseRepository`. A key the model has no
-                column for is ignored without error.
+                :class:`~tempest_fastapi_sdk.BaseRepository`. An unknown column or
+                operator raises ``UnknownFilterKeyException``.
             where (WhereClause | None): Extra filter narrowing the tenant-scoped query.
 
         Returns:

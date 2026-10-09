@@ -104,8 +104,48 @@ class PageSizeTooLargeException(ValidationException):
         self.max_page_size: int = max_page_size
 
 
+class UnknownFilterKeyException(ValidationException):
+    """Raised when a ``filters`` key names no column or no operator.
+
+    A repository ``filters`` mapping is column name to value, with an
+    optional ``<column>__<op>`` suffix. A key the model has no column
+    for — a typo such as ``{"usr_id": 1234}`` — or a suffix that is not a
+    known operator — ``{"user_id__bogus": 1}`` — used to be dropped from
+    the query in silence. On a read that returned every row; on
+    ``bulk_update`` / ``delete_many`` it changed every row in the table,
+    because the mapping was not empty and so the empty-filter guard never
+    fired. The key is now refused before any statement runs.
+
+    ``details["filter"]`` carries the rejected key only. The model's
+    column list is deliberately absent: when the mapping comes from a
+    query string, that list is a map of what to probe.
+
+    Subclasses :class:`ValidationException`, so ``except
+    ValidationException`` keeps catching it and the HTTP status is 422.
+
+    Attributes:
+        filter_key (str): The rejected key, as the caller sent it.
+    """
+
+    message: str = "Unknown filter field"
+    code: str = "UNKNOWN_FILTER_KEY"
+    field: str | None = "filters"
+    details_example: ClassVar[dict[str, Any]] = {"filter": "usr_id"}
+
+    def __init__(self, filter_key: str) -> None:
+        """Initialize the refusal with the rejected key.
+
+        Args:
+            filter_key (str): The ``filters`` key the model cannot
+                resolve.
+        """
+        super().__init__(details={"filter": filter_key})
+        self.filter_key: str = filter_key
+
+
 __all__: list[str] = [
     "OrderByNotAllowedException",
     "PageSizeTooLargeException",
+    "UnknownFilterKeyException",
     "ValidationException",
 ]

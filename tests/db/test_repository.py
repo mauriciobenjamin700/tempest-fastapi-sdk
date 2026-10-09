@@ -16,6 +16,7 @@ from tempest_fastapi_sdk import (
     F,
     NotFoundException,
     SoftDeleteMixin,
+    UnknownFilterKeyException,
     ValidationException,
 )
 from tempest_fastapi_sdk.utils.datetime import utcnow
@@ -561,14 +562,14 @@ class TestComparisonOperators:
 
         assert len(result) == 3
 
-    async def test_unknown_op_suffix_is_ignored(
+    async def test_unknown_op_suffix_is_refused(
         self, sync_repo: SyncItemRepository
     ) -> None:
-        # "value__wat" is not a recognized operator and not a real
-        # column, so the condition is dropped rather than crashing.
+        """``value__wat`` is no operator, so the key is refused (#465)."""
         await sync_repo.add(SyncItem(name="a", value=1))
-        result = await sync_repo.list(filters={"value__wat": 1})
-        assert len(result) == 1
+        with pytest.raises(UnknownFilterKeyException) as exc:
+            await sync_repo.list(filters={"value__wat": 1})
+        assert exc.value.details == {"filter": "value__wat"}
 
 
 class TestCursorPaginateCustomQuery:

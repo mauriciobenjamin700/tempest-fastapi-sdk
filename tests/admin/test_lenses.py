@@ -139,3 +139,42 @@ async def test_unknown_lens_shows_all(app_lens: FastAPI) -> None:
 def test_lens_slug() -> None:
     assert Lens("Open Tickets").slug() == "open-tickets"
     assert Lens("High-Priority!").slug() == "high-priority"
+
+
+class TestFilterKeysCheckedAtConstruction:
+    """A filter key the repository would refuse fails at boot (#465)."""
+
+    def test_lens_with_unknown_column_is_refused(self) -> None:
+        """A lens typo names the lens and the key."""
+        with pytest.raises(ValueError, match=r"lens 'Open'.*stauts"):
+            AdminModel(model=Ticket, lenses=[Lens("Open", filters={"stauts": "open"})])
+
+    def test_lens_with_unknown_operator_is_refused(self) -> None:
+        """An unknown suffix on a real column is refused the same way."""
+        with pytest.raises(ValueError, match="status__bogus"):
+            AdminModel(
+                model=Ticket,
+                lenses=[Lens("Open", filters={"status__bogus": "open"})],
+            )
+
+    def test_list_filter_and_search_fields_are_checked(self) -> None:
+        """Both options end up as ``filters`` keys, so both are checked."""
+        with pytest.raises(ValueError, match=r"`list_filter`.*stauts"):
+            AdminModel(model=Ticket, list_filter=["stauts"])
+        with pytest.raises(ValueError, match=r"`search_fields`.*nmae"):
+            AdminModel(model=Ticket, search_fields=["nmae"])
+
+    def test_known_keys_and_range_sugar_pass(self) -> None:
+        """Operators, real columns and ``start_in`` / ``end_in`` are accepted."""
+        admin = AdminModel(
+            model=Ticket,
+            list_filter=["status"],
+            search_fields=["name"],
+            lenses=[
+                Lens(
+                    "Recent open",
+                    filters={"status__in": ["open"], "start_in": None, "end_in": None},
+                ),
+            ],
+        )
+        assert admin.lenses[0].name == "Recent open"

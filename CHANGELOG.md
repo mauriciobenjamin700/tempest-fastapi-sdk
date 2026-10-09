@@ -511,6 +511,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `script-src 'self'`, o HTMX local carrega e o `<script>` inline da list view
   é bloqueado).
 
+### Changed
+
+- **Breaking: chave desconhecida em `filters` levanta
+  `UnknownFilterKeyException` em vez de ser ignorada** (#465). Chave que não
+  é atributo SQL do model (`{"usr_id": 1234}`) ou sufixo que não é operador
+  (`{"user_id__bogus": 1}`) era descartada em silêncio, e com só a chave
+  errada no dict `list`/`count` devolviam todas as linhas e
+  `bulk_update`/`delete_many` alteravam a tabela inteira (3/3 linhas, fixado
+  pela versão anterior de `tests/db/test_filters_contract.py`). Agora a
+  checagem roda em `build_filter_condition`, antes de qualquer statement, e
+  vale para todo método que recebe `filters` — `list`, `count`, `exists`,
+  `first`, `get`, `get_or_none`, `paginate`, `cursor_paginate`,
+  `bulk_update`, `update_returning`, `delete_many` —, para o `Q` (inclusive
+  `~Q(usr_id=1)`, que antes negava nada) e para `BaseService`,
+  `BaseController` e `TenantScopedRepository`, que só repassam. Medido em
+  SQLite em memória: `delete_many({"usr_id": 1})` levanta e as 3 linhas
+  continuam lá; `bulk_update` e `update_returning` não alteram nenhuma.
+  A exceção nova `UnknownFilterKeyException` (exportada no topo) é subclasse
+  de `ValidationException`: 422, `code="UNKNOWN_FILTER_KEY"` (catálogo
+  PT-BR/EN), `details={"filter": <chave>}` — sem a lista de colunas do model,
+  que numa querystring seria o mapa do que sondar. Atributo Python sem
+  leitura SQL (método, `@property`, `metadata`) também é recusado; coluna,
+  `column_property` e a expressão de classe de `hybrid_property` resolvem.
+  Novos em `tempest_fastapi_sdk.db.expressions`: `resolve_filter_key` (a
+  checagem isolada) e `FILTER_OPERATORS` (os sufixos aceitos).
+  **Quem dependia do ignorar**: schema de filtro com campo que não é coluna
+  (`search`, `include_archived`) repassado inteiro por `get_conditions()`
+  passa a receber 422 — tire o campo do dict antes de repassar. No admin,
+  `list_filter`, `search_fields` e os `filters` de cada `Lens` são conferidos
+  na construção do `AdminModel`: typo vira `ValueError` no boot, nomeando a
+  opção, em vez de 422 no primeiro acesso à listagem. Receita:
+  `docs/recipes/database`, seção "Chave desconhecida é recusada".
+
 ### Documentation
 
 - **Todo parâmetro `filters: dict[str, Any]` diz o que espera** (#443). As
