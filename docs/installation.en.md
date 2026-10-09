@@ -40,7 +40,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[faces]` | `onnxruntime`, `pillow`, `numpy` | Face recognition on ONNX Runtime, no opencv and no torch: `FaceRecognizer` (detect/embed/compare), `compare_faces`. 16 MB models fetched by `ensure_models()`. **No system libraries** |
 | `[firebase]` | `firebase-admin` | Firebase ID token verification: `FirebaseAuth` (idempotent init, `get_identity` / `get_uid` / `get_optional_identity`), `FirebaseIdentity`, `FirebaseUserResolver`, `FirebaseSettings`. Heavy — 33 packages, 52 MB measured on `firebase-admin` 7.5.0 — and therefore **out of `[all]`** |
 | `[genai]` | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` | local (heavy) GenAI: `TextGenerator`, `Embedder`, `AIChatPipeline`, `make_genai_router` via HuggingFace/torch |
-| `[genai-audio]` | `faster-whisper`, `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `transformers<5` | STT (Whisper) + TTS (Coqui) — the Coqui runtime ships with it since v0.252.0 |
+| `[genai-audio]` | `faster-whisper`, `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `transformers<5` | STT (Whisper) + TTS (Coqui) — the Coqui runtime ships with it since v0.252.0. The `transformers<5` cap is intentional and holds back `huggingface-hub`, `tokenizers` and `diffusers`: see [the warning below the table](#genai-audio-transformers-bound) |
 | `[genai-chroma]` | `chromadb` | Chroma vector store for RAG |
 | `[genai-diarization]` | `sherpa-onnx` | Speaker diarization (who spoke when) via `sherpa-onnx` on ONNX Runtime, no PyTorch: `SpeakerDiarizer`, `ConversationTranscriber`. Models (46 MB) fetched by `ensure_models()` |
 | `[genai-hub]` | `huggingface-hub` | weight lifecycle: `resolve_revision` (pin a sha), `download_model` (fetch before serving, with a disk preflight), `list_cached_models`/`remove_cached_model`, `tempest model pull`/`cache-list`/`cache-rm` |
@@ -99,6 +99,33 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
         "tempest-fastapi-sdk[auth,upload,postgres]>=0.171.0",
     ]
     ```
+
+<a id="genai-audio-transformers-bound"></a>
+
+!!! warning "`[genai-audio]` caps `transformers<5` on purpose, and that holds other packages back"
+    The cap is not an accidental pin. When loading `TTS.api`, `coqui-tts` imports
+    `isin_mps_friendly` from `transformers.pytorch_utils`, and that symbol exists in
+    transformers 5.0.0 and is gone from 5.1.0 on. Re-measured on 2026-10-09 with
+    coqui-tts 0.27.5, transformers 5.19.0 and torch 2.14.0, the import still dies with
+    `ImportError: cannot import name 'isin_mps_friendly' from 'transformers.pytorch_utils'`.
+
+    The cost comes from transformers 4.57.6 declaring `huggingface-hub<1.0` and
+    `tokenizers<=0.23.0`; and `diffusers` 0.40.0 already requires
+    `huggingface-hub>=1.23.0`. Resolved with `uv pip compile` (Python 3.12) on
+    2026-10-09:
+
+    | Extras | `transformers` | `huggingface-hub` | `tokenizers` | `diffusers` |
+    | --- | --- | --- | --- | --- |
+    | `[genai-audio]` | 4.57.6 | 0.36.2 | 0.22.2 | — |
+    | `[genai-audio,genai-image]` | 4.57.6 | 0.36.2 | 0.22.2 | 0.39.0 |
+    | `[genai-image]` without `[genai-audio]` | — | 1.33.0 | — | 0.41.0 |
+
+    The cap lives only in `[genai-audio]`: if you do not install that extra, it never
+    enters your resolution. Need `huggingface-hub` 1.x or a newer `diffusers` in the
+    same environment as `[genai-audio]`? Do not relax the cap locally: the SDK does
+    not test that combination, and the TTS stops importing. Open an
+    [issue](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues) with
+    the version you need.
 
 !!! warning "The SDK ships no database driver by default"
     `sqlalchemy[asyncio]` is core, but the async DBAPI is your deploy

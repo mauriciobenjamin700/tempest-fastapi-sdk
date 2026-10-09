@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- **Todo parâmetro `filters: dict[str, Any]` diz o que espera** (#443). As
+  docstrings do `BaseRepository`, `BaseService`, `BaseController`,
+  `TenantScopedRepository` e do `Lens` do admin descreviam o argumento como
+  "Filter conditions", sem dizer que é nome de coluna → valor. Agora cada uma
+  traz o exemplo `{"user_id": 1234, "is_active": True}`, diz que os pares são
+  ligados por `AND`, que lista vira `IN`, `None` vira `IS NULL` e
+  `<coluna>__<op>` aplica operador, e aponta para a lista completa na classe.
+  Medido numa tabela SQLite em memória e fixado em
+  `tests/db/test_filters_contract.py`: igualdade em coluna de texto respeita
+  caixa (`{"status": "OPEN"}` não casa `"open"`), e **chave que não é coluna
+  do model é ignorada sem erro nem aviso** — `{"usr_id": 1234}` fez `list` e
+  `count` devolverem todas as linhas, e `bulk_update` e `delete_many`
+  alterarem a tabela inteira. As docstrings de escrita avisam disso; o
+  comportamento não muda nesta entrada.
+- **O teto `transformers<5` do `[genai-audio]` aparece com o porquê e o
+  custo** (#441). `README.md` e `docs/installation.md` / `.en.md` diziam
+  `transformers<5` sem explicar. Agora dizem que o teto é intencional (o
+  `coqui-tts` 0.27.5 importa `isin_mps_friendly`, que some da transformers
+  5.1.0 em diante; remedido em 2026-10-09 com a 5.19.0, o `from TTS.api import
+  TTS` ainda falha com `ImportError`) e mostram o que ele rebaixa, resolvido com
+  `uv pip compile` (Python 3.12): com `[genai-audio]`, `huggingface-hub` 0.36.2
+  e `tokenizers` 0.22.2; com `[genai-audio,genai-image]`, também `diffusers`
+  0.39.0; com `[genai-image]` sozinho, `diffusers` 0.41.0 e `huggingface-hub`
+  1.33.0. O comentário do `pyproject.toml` dizia que só o lock do repositório
+  era afetado; a medição mostra que quem instala os dois extras juntos recebe
+  o mesmo `diffusers` 0.39.0, e o comentário foi corrigido.
+
 ## [0.308.0] — 2026-10-08
 
 O CLI `tempest` sai do runtime: `tempest-cli`, `typer` e `click` viram o
