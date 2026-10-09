@@ -533,6 +533,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.tasks.queue.Hook
 ::: tempest_fastapi_sdk.tasks.jobs.TERMINAL_JOB_STATUSES
 ::: tempest_fastapi_sdk.tasks.jobs.STALE_JOB_ERROR
+::: tempest_fastapi_sdk.tasks.jobs.STORE_OWNED_JOB_COLUMNS
 ::: tempest_fastapi_sdk.tasks.jobs.make_job_admin_model
 
 ---

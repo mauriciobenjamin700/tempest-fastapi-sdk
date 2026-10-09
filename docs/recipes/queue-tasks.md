@@ -1149,6 +1149,18 @@ tq: TaskQueue = TaskQueue.from_settings(settings)
 | vazio | in-memory — `@tq.task` continua registrando, e `enqueue` roda a tarefa neste processo em vez de entregar a um worker | in-memory |
 | qualquer outro esquema | `ValueError` nomeando o esquema | — |
 
+!!! check "Passa no `mypy --strict` sem `type: ignore`"
+    Os campos de `TaskIQSettingsLike` são `@property` (somente leitura),
+    então o `Settings` congelado que os mixins montam
+    (`class Settings(TaskIQSettings, BaseAppSettings)`) é aceito — e um
+    objeto simples de teste também. E `@tq.task` / `@tq.task(...)` devolvem
+    `Task[P, R]` com a assinatura da função: sob `--strict`, `reveal_type`
+    de uma `async def add(a: int, b: int) -> int` decorada mostra
+    `Task[[a: int, b: int], int]`, e `await add.run("x", 1)` é erro de
+    `arg-type`. Antes, `from_settings(Settings())` era recusado
+    (`expected settable variable, got read-only attribute`) e
+    `@tq.task(name=...)` era `untyped-decorator`.
+
 !!! danger "Resultado guardado tem TTL — antes não tinha"
     O `taskiq-redis` grava resultado **sem expiração** por conta própria
     (`result_ex_time=None`, `result_px_time=None`, `keep_results=True`).

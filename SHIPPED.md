@@ -1874,7 +1874,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   with `enqueue`, a conditional-`UPDATE` `claim` (loser gets `None`),
   `succeed`/`fail` that drop the payload, `list_recent`, `reclaim_stale`
   (bounded by `max_attempts`) and `watch()` polling without holding a
-  session. The symmetric half of the outbox: message to publish vs work
+  session. **Result columns + redispatch (#459):** `succeed(values=...)` writes
+  project columns in the same conditional `UPDATE` as `DONE` (a cancelled
+  job gets nothing; `STORE_OWNED_JOB_COLUMNS` refused), `reclaim_stale()`
+  returns `ReclaimedJobs` (requeued / failed ids) and
+  `redispatch_queued(dispatch, older_than=...)` resends `QUEUED` rows whose
+  send was lost. The symmetric half of the outbox: message to publish vs work
   to execute. **Progress (v0.242.0):** `progress` + `stage` columns,
   `report_progress()` as a conditional `UPDATE` that cannot rewind the bar
   or repaint a cancelled job, `list_recent(statuses=...)` for the one

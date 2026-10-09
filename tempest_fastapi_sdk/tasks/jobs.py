@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
 from time import monotonic
@@ -57,6 +58,7 @@ from sqlalchemy import (
     String,
     Text,
     Uuid,
+    inspect,
     select,
     update,
 )
@@ -67,7 +69,13 @@ from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.utils.datetime import utcnow
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+    from collections.abc import (
+        AsyncIterator,
+        Awaitable,
+        Callable,
+        Mapping,
+        Sequence,
+    )
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -117,6 +125,83 @@ A constant rather than a per-row message because the sweep is a single
 ``UPDATE`` and interpolating each row's attempt count into it would mean
 reading the rows first — the read-then-write shape this module avoids.
 """
+
+STORE_OWNED_JOB_COLUMNS: frozenset[str] = frozenset(
+    {
+        "id",
+        "is_active",
+        "created_at",
+        "updated_at",
+        "kind",
+        "status",
+        "stage",
+        "progress",
+        "params",
+        "payload",
+        "result_id",
+        "error",
+        "attempts",
+        "max_attempts",
+        "started_at",
+        "finished_at",
+    },
+)
+"""Columns of :class:`BaseJobModel` that :meth:`JobStore.succeed` refuses in ``values``.
+
+Every column the abstract model declares — its own and the four it
+inherits from :class:`~tempest_fastapi_sdk.db.model.BaseModel`. Each one
+either is a transition the store owns (``status``, ``finished_at``,
+``progress``, ``payload``, ``attempts``), has a parameter of its own
+(``result_id``), or is identity (``id``, ``kind``, ``created_at``).
+``values`` exists for the columns a project adds on its subclass, so
+letting it reach these would make ``succeed`` able to write a ``DONE`` row
+that says ``RUNNING``. A test pins this set against a concrete model, so a
+column added to :class:`BaseJobModel` fails there instead of becoming
+writable by accident.
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class ReclaimedJobs:
+    """What :meth:`JobStore.reclaim_stale` did, row by row.
+
+    The ids are what make the sweep useful. A requeued row is ``QUEUED``
+    again, but its message is gone with the worker that died — nothing
+    sends it to a worker until somebody calls ``task.enqueue(str(id))``
+    for it, and the old ``int`` return gave the caller nothing to call
+    it with.
+
+    ``len()`` and truthiness count both lists, so ``if await
+    store.reclaim_stale():`` reads as it did when the method returned an
+    ``int``. Comparing with a number (``== 1``) or adding to one does not:
+    use :attr:`total`.
+
+    Attributes:
+        requeued (list[UUID]): Rows moved back to ``QUEUED``, in the order
+            the database returned them. Dispatch these.
+        failed (list[UUID]): Rows closed as ``FAILED`` because their claim
+            budget was spent.
+    """
+
+    requeued: list[UUID] = field(default_factory=list)
+    failed: list[UUID] = field(default_factory=list)
+
+    @property
+    def total(self) -> int:
+        """Return how many rows left ``RUNNING``.
+
+        Returns:
+            int: ``len(requeued) + len(failed)``.
+        """
+        return len(self.requeued) + len(self.failed)
+
+    def __len__(self) -> int:
+        """Return :attr:`total`, so an empty sweep is falsy.
+
+        Returns:
+            int: How many rows left ``RUNNING``.
+        """
+        return self.total
 
 
 class JobNotFoundError(LookupError):
@@ -573,6 +658,7 @@ class JobStore(Generic[JobT]):
         status: JobStatus,
         result_id: UUID | None,
         error: str | None,
+        values: Mapping[str, Any] | None = None,
     ) -> JobT:
         """Move a job to a terminal status, dropping its payload.
 
@@ -581,6 +667,9 @@ class JobStore(Generic[JobT]):
             status (JobStatus): ``DONE`` or ``FAILED``.
             result_id (UUID | None): What the work produced.
             error (str | None): Why it stopped.
+            values (Mapping[str, Any] | None): Extra project columns
+                written by the same conditional ``UPDATE``, already
+                validated by :meth:`_project_values`.
 
         Returns:
             JobT: The closed job.
@@ -605,6 +694,7 @@ class JobStore(Generic[JobT]):
                         payload=None,
                         finished_at=utcnow(),
                         **({"progress": 1.0} if status is JobStatus.DONE else {}),
+                        **(values or {}),
                     ),
                 ),
             )
@@ -619,17 +709,67 @@ class JobStore(Generic[JobT]):
                 )
             return await self._require(session, job_id)
 
-    async def succeed(self, job_id: UUID, *, result_id: UUID | None = None) -> JobT:
+    def _project_values(self, values: Mapping[str, Any]) -> dict[str, Any]:
+        """Check ``values`` names only columns the project added.
+
+        Args:
+            values (Mapping[str, Any]): Column name to value.
+
+        Returns:
+            dict[str, Any]: A copy, safe to splat into ``.values()``.
+
+        Raises:
+            ValueError: When a name is not a column of the model, or is
+                one of :data:`STORE_OWNED_JOB_COLUMNS`.
+        """
+        columns = set(inspect(self._model).column_attrs.keys())
+        unknown = sorted(name for name in values if name not in columns)
+        if unknown:
+            raise ValueError(
+                f"values names no column of {self._model.__name__}: "
+                f"{', '.join(unknown)}",
+            )
+        owned = sorted(name for name in values if name in STORE_OWNED_JOB_COLUMNS)
+        if owned:
+            raise ValueError(
+                f"values may not write columns JobStore controls: {', '.join(owned)}",
+            )
+        return dict(values)
+
+    async def succeed(
+        self,
+        job_id: UUID,
+        *,
+        result_id: UUID | None = None,
+        values: Mapping[str, Any] | None = None,
+    ) -> JobT:
         """Close a job as ``DONE``.
 
         The payload is dropped here: a table of finished jobs that still
         carries every uploaded document is a table that outgrows the
         data it was serving.
 
+        ``values`` writes the columns a project added to its job model —
+        the ``object_key`` of the file the work generated, say — in the
+        **same** conditional ``UPDATE`` that sets ``DONE``. Writing them
+        from a session of your own before calling ``succeed`` is two
+        transactions, and between them the row is ``RUNNING`` with the
+        key already set: a cancel landing there makes ``succeed`` raise
+        :class:`JobCancelledError` and leaves a cancelled row pointing at
+        a file the worker is about to delete. Here a cancelled job gets
+        nothing, because the statement that would write the values is the
+        one the cancellation refuses.
+
+        Example:
+            >>> await store.succeed(job_id, values={"object_key": key})
+
         Args:
             job_id (UUID): The job to close.
             result_id (UUID | None): The row the work produced, so the
                 interface can link straight to it.
+            values (Mapping[str, Any] | None): Project columns to write
+                with the transition, keyed by attribute name. Validated
+                before any SQL runs.
 
         Returns:
             JobT: The finished job.
@@ -637,12 +777,18 @@ class JobStore(Generic[JobT]):
         Raises:
             JobNotFoundError: When no row has that id.
             JobAlreadyFinishedError: When the job is already terminal.
+            JobCancelledError: When the job was cancelled; ``values`` is
+                not written.
+            ValueError: When ``values`` names a column the model does not
+                have, or one in :data:`STORE_OWNED_JOB_COLUMNS`.
         """
+        extra = None if values is None else self._project_values(values)
         return await self._finish(
             job_id,
             status=JobStatus.DONE,
             result_id=result_id,
             error=None,
+            values=extra,
         )
 
     async def fail(self, job_id: UUID, reason: str) -> JobT:
@@ -818,7 +964,7 @@ class JobStore(Generic[JobT]):
             stmt = stmt.order_by(self._model.created_at.desc()).limit(limit)
             return list((await session.execute(stmt)).scalars().all())
 
-    async def reclaim_stale(self) -> int:
+    async def reclaim_stale(self) -> ReclaimedJobs:
         """Readmit jobs whose worker died holding them.
 
         A ``RUNNING`` row nobody will ever finish is the failure mode a
@@ -828,18 +974,29 @@ class JobStore(Generic[JobT]):
         in which case they are closed as ``FAILED``, because a job that
         kills its worker would otherwise be readmitted forever.
 
-        Two conditional ``UPDATE`` statements over disjoint conditions,
-        deliberately with **no ``SELECT`` first**: a sweep that reads the
-        rows and then writes them is a lock promotion, which on SQLite
-        fails outright against a concurrent writer — measured, and the
-        reason ``busy_timeout`` cannot help there (see
-        :func:`~tempest_fastapi_sdk.enable_sqlite_wal`). The cost is that
-        the give-up message names the budget rather than the row's own
-        attempt count.
+        Two conditional ``UPDATE ... RETURNING id`` statements over
+        disjoint conditions, deliberately with **no ``SELECT`` first**: a
+        sweep that reads the rows and then writes them is a lock
+        promotion, which on SQLite fails outright against a concurrent
+        writer — measured, and the reason ``busy_timeout`` cannot help
+        there (see :func:`~tempest_fastapi_sdk.enable_sqlite_wal`). The
+        cost is that the give-up message names the budget rather than the
+        row's own attempt count. ``RETURNING`` needs SQLite 3.35+ or
+        PostgreSQL.
+
+        A requeued row is **not** sent to a worker by this method: its
+        message died with the worker. Dispatch the returned ids::
+
+            reclaimed = await store.reclaim_stale()
+            for job_id in reclaimed.requeued:
+                await extract_task.enqueue(str(job_id))
+
+        or let :meth:`redispatch_queued` find them on a later sweep.
 
         Returns:
-            int: How many rows left ``RUNNING`` — requeued plus given up
-            on. The two are logged separately.
+            ReclaimedJobs: The ids requeued and the ids given up on. Its
+            ``len()`` is the old ``int`` count; comparing it with a number
+            needs :attr:`ReclaimedJobs.total`.
 
         Raises:
             RuntimeError: When the store was built without
@@ -852,46 +1009,151 @@ class JobStore(Generic[JobT]):
             )
         cutoff = utcnow() - self.stale_after
         async with self._db.get_session_context() as session:
-            given_up = cast(
-                "CursorResult[Any]",
-                await session.execute(
-                    update(self._model)
-                    .where(
-                        self._model.status == JobStatus.RUNNING.value,
-                        self._model.started_at < cutoff,
-                        self._model.attempts >= self._model.max_attempts,
+            given_up: list[UUID] = list(
+                (
+                    await session.execute(
+                        update(self._model)
+                        .where(
+                            self._model.status == JobStatus.RUNNING.value,
+                            self._model.started_at < cutoff,
+                            self._model.attempts >= self._model.max_attempts,
+                        )
+                        .values(
+                            status=JobStatus.FAILED.value,
+                            error=STALE_JOB_ERROR,
+                            payload=None,
+                            finished_at=utcnow(),
+                        )
+                        .returning(self._model.id),
                     )
-                    .values(
-                        status=JobStatus.FAILED.value,
-                        error=STALE_JOB_ERROR,
-                        payload=None,
-                        finished_at=utcnow(),
-                    ),
-                ),
-            ).rowcount
-            requeued = cast(
-                "CursorResult[Any]",
-                await session.execute(
-                    update(self._model)
-                    .where(
-                        self._model.status == JobStatus.RUNNING.value,
-                        self._model.started_at < cutoff,
-                        self._model.attempts < self._model.max_attempts,
+                )
+                .scalars()
+                .all(),
+            )
+            requeued: list[UUID] = list(
+                (
+                    await session.execute(
+                        update(self._model)
+                        .where(
+                            self._model.status == JobStatus.RUNNING.value,
+                            self._model.started_at < cutoff,
+                            self._model.attempts < self._model.max_attempts,
+                        )
+                        .values(
+                            status=JobStatus.QUEUED.value,
+                            started_at=None,
+                        )
+                        .returning(self._model.id),
                     )
-                    .values(
-                        status=JobStatus.QUEUED.value,
-                        started_at=None,
-                    ),
-                ),
-            ).rowcount
-        if requeued or given_up:
+                )
+                .scalars()
+                .all(),
+            )
+        reclaimed = ReclaimedJobs(requeued=requeued, failed=given_up)
+        if reclaimed:
             logger.warning(
                 "reclaimed %d stale job(s): %d requeued, %d failed",
-                requeued + given_up,
-                requeued,
-                given_up,
+                reclaimed.total,
+                len(requeued),
+                len(given_up),
             )
-        return int(requeued + given_up)
+        return reclaimed
+
+    async def redispatch_queued(
+        self,
+        dispatch: Callable[[JobT], Awaitable[None]],
+        *,
+        older_than: float | timedelta,
+        limit: int = 100,
+    ) -> list[UUID]:
+        """Send ``QUEUED`` rows nobody touched for a while back to a worker.
+
+        The documented flow writes the row and then sends its id to the
+        queue — two steps, and the second can be lost: the broker was
+        down, the process died between them, or :meth:`reclaim_stale`
+        requeued a row whose message died with its worker. Either way the
+        row is ``QUEUED`` and nothing will ever claim it. This sweep is
+        meant to run as a scheduled task::
+
+            async def _send(job: JobModel) -> None:
+                await extract_task.enqueue(str(job.id))
+
+            @tq.interval(timedelta(minutes=5))
+            async def redispatch() -> None:
+                await store.redispatch_queued(_send, older_than=600.0)
+
+        **Sending twice is harmless.** A row whose message is merely
+        waiting in a long backlog is sent again, and both messages reach
+        :meth:`claim`; its conditional ``UPDATE`` lets exactly one of them
+        run the job and answers ``None`` to the other. Pick ``older_than``
+        above the backlog you expect so that stays rare, not to keep it
+        correct.
+
+        Age is ``updated_at``, not ``created_at``: every write to the row
+        refreshes it, and this method refreshes it after each dispatch, so
+        a row is resent at most once per ``older_than`` rather than on
+        every sweep. No session is held while ``dispatch`` runs — the
+        candidate read is its own short transaction, and the refresh is a
+        conditional ``UPDATE`` that skips a row a worker claimed in the
+        meantime.
+
+        Args:
+            dispatch (Callable[[JobT], Awaitable[None]]): Sends one job to a
+                worker — typically ``task.enqueue(str(job.id))``.
+            older_than (float | timedelta): Seconds (or a ``timedelta``) a
+                ``QUEUED`` row must sit untouched before it is resent.
+            limit (int): Most rows resent per call, oldest first. Defaults
+                to ``100``.
+
+        Returns:
+            list[UUID]: The ids handed to ``dispatch``, oldest first.
+            Empty when nothing was waiting.
+
+        Raises:
+            ValueError: When ``older_than`` or ``limit`` is not positive.
+            Exception: Whatever ``dispatch`` raises propagates. The rows
+                not yet sent keep their age, so the next sweep retries
+                them.
+        """
+        if isinstance(older_than, int | float):
+            older_than = timedelta(seconds=older_than)
+        if older_than <= timedelta(0):
+            raise ValueError("older_than must be positive")
+        if limit <= 0:
+            raise ValueError("limit must be positive")
+        cutoff = utcnow() - older_than
+        async with self._db.get_session_context() as session:
+            candidates: list[JobT] = list(
+                (
+                    await session.execute(
+                        select(self._model)
+                        .where(
+                            self._model.status == JobStatus.QUEUED.value,
+                            self._model.updated_at < cutoff,
+                        )
+                        .order_by(self._model.updated_at)
+                        .limit(limit),
+                    )
+                )
+                .scalars()
+                .all(),
+            )
+        sent: list[UUID] = []
+        for job in candidates:
+            await dispatch(job)
+            sent.append(job.id)
+            async with self._db.get_session_context() as session:
+                await session.execute(
+                    update(self._model)
+                    .where(
+                        self._model.id == job.id,
+                        self._model.status == JobStatus.QUEUED.value,
+                    )
+                    .values(updated_at=utcnow()),
+                )
+        if sent:
+            logger.info("redispatched %d queued job(s)", len(sent))
+        return sent
 
     async def watch(
         self,
@@ -1028,12 +1290,14 @@ def make_job_admin_model(
 
 __all__: list[str] = [
     "STALE_JOB_ERROR",
+    "STORE_OWNED_JOB_COLUMNS",
     "TERMINAL_JOB_STATUSES",
     "BaseJobModel",
     "JobAlreadyFinishedError",
     "JobNotFoundError",
     "JobStatus",
     "JobStore",
+    "ReclaimedJobs",
     "make_job_admin_model",
     "make_job_model",
 ]

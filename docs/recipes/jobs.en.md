@@ -164,6 +164,76 @@ Three things happening there, each for a reason:
     `busy_timeout` can rescue — see
     [Database](database.md#sqlite-with-a-worker-wal-and-the-busy-timeout).
 
+### A column of your own, written with `done`
+
+A job that generates a file has to record **where** the file went. That
+column belongs to your model, not to the SDK — and it has to reach the row
+**in the same `UPDATE`** that marks it `done`:
+
+```python
+# src/tasks/export.py
+from uuid import UUID
+
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import BaseJobModel, JobStore, TaskQueue
+
+
+class ExportJobModel(BaseJobModel):
+    """An export that produces a file for the user to download."""
+
+    __tablename__ = "export_jobs"
+
+    object_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+tq = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/", resources=[db])
+store: JobStore[ExportJobModel] = JobStore(db, model=ExportJobModel)
+
+
+async def build_archive(job_id: UUID) -> str:
+    """Generate the file and return its storage key.
+
+    Args:
+        job_id (UUID): The job that asked for the file.
+
+    Returns:
+        str: The key of the stored object.
+    """
+    return f"exports/{job_id}.zip"
+
+
+@tq.task
+async def export_data(job_id: str) -> None:
+    """Generate the file and close the job pointing at it.
+
+    Args:
+        job_id (str): The id the route sent along with the task.
+    """
+    job = await store.claim(UUID(job_id))
+    if job is None:
+        return
+    key = await build_archive(job.id)
+    await store.succeed(job.id, values={"object_key": key})
+```
+
+Why not write `object_key` from a session of your own and then call
+`succeed`? Because that is **two transactions**, and between them the row is
+`running` with the key already set. A cancel landing in that window makes
+`succeed` raise `JobCancelledError` — and leaves a `cancelled` row pointing at
+a file the worker is about to delete. With `values` the key goes into the
+same conditional `UPDATE` as `done`: a cancelled job gets nothing.
+
+!!! info "`values` only takes your own columns"
+    A name that is not a column of the model, or one the store controls
+    (`status`, `finished_at`, `result_id`, `progress`, ... — the full list
+    is `STORE_OWNED_JOB_COLUMNS`), raises `ValueError` **before** any SQL
+    runs. `result_id` has its own parameter; the rest are the transition
+    `succeed` exists to make.
+
 ## 4. The screen asking "is it done yet?"
 
 ```python
@@ -217,6 +287,8 @@ see: the task is gone, the row is not. `reclaim_stale()` readmits it:
 
 ```python
 # src/tasks/__init__.py
+from uuid import UUID
+
 from tempest_fastapi_sdk.db import AsyncDatabaseManager
 from tempest_fastapi_sdk.tasks import BaseJobModel, JobStore, TaskQueue
 
@@ -232,16 +304,69 @@ tq = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/", resources=[db])
 store: JobStore[JobModel] = JobStore(db, model=JobModel, stale_after=300.0)
 
 
+@tq.task
+async def extract_document(job_id: str) -> None:
+    """Claim the job and close the row.
+
+    Args:
+        job_id (str): The id the route sent along with the task.
+    """
+    job = await store.claim(UUID(job_id))
+    if job is None:
+        return
+    await store.succeed(job.id)
+
+
 @tq.interval(seconds=60)
 async def reclaim_jobs() -> None:
-    """Requeue what a dead worker left in RUNNING."""
-    await store.reclaim_stale()
+    """Requeue what a dead worker left in RUNNING, and send it again."""
+    reclaimed = await store.reclaim_stale()
+    for job_id in reclaimed.requeued:
+        await extract_document.enqueue(str(job_id))
+
+
+async def send_job(job: JobModel) -> None:
+    """Hand one job to the worker.
+
+    Args:
+        job (JobModel): The row going to the queue.
+    """
+    await extract_document.enqueue(str(job.id))
+
+
+@tq.interval(seconds=300)
+async def redispatch_jobs() -> None:
+    """Resend `queued` rows whose send was lost."""
+    await store.redispatch_queued(send_job, older_than=600.0)
 ```
 
 Rows whose `started_at` is older than `stale_after` go back to `queued` —
 unless they already spent their `max_attempts`, in which case they are
 closed as `failed`. Without that budget, a job that kills its worker
 would be readmitted forever.
+
+**Going back to `queued` is not enough.** That job's message died with the
+worker, and nothing in the SDK sends a `queued` row to the queue on its own —
+which is why `reclaim_stale()` returns the ids (`ReclaimedJobs.requeued` and
+`ReclaimedJobs.failed`), and `reclaim_jobs` above resends them straight away.
+
+`redispatch_queued` covers the other way a row stays `queued` forever: the
+row's `enqueue` succeeded and the task's send did not (broker down, process
+died between the two steps). It resends `queued` rows nobody touched for more
+than `older_than` (age is `updated_at`, which it refreshes on every send — so
+each row goes out at most once per window).
+
+!!! tip "Sending twice is harmless"
+    A row whose message is merely waiting in a long backlog is resent too.
+    Both messages reach `claim`, and its conditional `UPDATE` lets exactly
+    one of them run; the other gets `None` and returns. Pick an
+    `older_than` above the backlog you expect so this stays rare — not to
+    keep it correct.
+
+!!! warning "`reclaim_stale()` no longer returns an `int`"
+    It used to return the count; it now returns `ReclaimedJobs`. `len()`
+    and truthiness still work (`if await store.reclaim_stale():`), but
+    `== 1` or adding to a number does not: use `.total`.
 
 !!! info "Without `stale_after`, the method refuses"
     `JobStore(db, model=JobModel)` with no `stale_after` raises
@@ -696,7 +821,11 @@ status to answer with. Translate at the boundary with
   opens and closes its own, because a worker and a request do not share a unit
   of work.
 - `reclaim_stale` exists because a `running` row nobody will ever close is the
-  failure the queue cannot see: the process died holding the job.
+  failure the queue cannot see: the process died holding the job. It returns the
+  ids, because a `queued` row with no message never runs; `redispatch_queued`
+  resends what stayed `queued` without a send.
+- `succeed(values=...)` writes your model's column in the same `UPDATE` as
+  `done` — a cancelled job gets nothing.
 - Cancelling is cooperative: the request writes `CANCELLED` and the worker
   aborts at its next checkpoint. No broker kills in-flight work for you.
 - Status answers "is it done?"; progress answers "how much is left?". Those are

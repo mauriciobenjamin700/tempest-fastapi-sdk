@@ -1161,6 +1161,18 @@ tq: TaskQueue = TaskQueue.from_settings(settings)
 | empty | in-memory — `@tq.task` still registers, and `enqueue` runs the task in this process instead of handing it to a worker | in-memory |
 | any other scheme | `ValueError` naming the scheme | — |
 
+!!! check "Passes `mypy --strict` without `type: ignore`"
+    `TaskIQSettingsLike` declares its fields as `@property` (read-only), so
+    the frozen `Settings` the mixins build
+    (`class Settings(TaskIQSettings, BaseAppSettings)`) is accepted — and so
+    is a plain test object. And `@tq.task` / `@tq.task(...)` return
+    `Task[P, R]` carrying the function's signature: under `--strict`,
+    `reveal_type` of a decorated `async def add(a: int, b: int) -> int`
+    shows `Task[[a: int, b: int], int]`, and `await add.run("x", 1)` is an
+    `arg-type` error. Before, `from_settings(Settings())` was rejected
+    (`expected settable variable, got read-only attribute`) and
+    `@tq.task(name=...)` was an `untyped-decorator`.
+
 !!! danger "A stored result now expires — it used not to"
     `taskiq-redis` writes results with **no expiry** of its own
     (`result_ex_time=None`, `result_px_time=None`, `keep_results=True`).

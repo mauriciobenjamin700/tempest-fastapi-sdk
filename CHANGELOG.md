@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`JobStore.succeed(values=...)` e `JobStore.redispatch_queued` (#459).**
+  `succeed(job_id, *, result_id=None, values=None)` grava colunas que o
+  projeto adicionou ao modelo de job (um `object_key`, por exemplo) no
+  **mesmo** `UPDATE` condicional que marca `DONE`. Antes o worker gravava a
+  coluna numa sessão própria e depois chamava `succeed` — duas transações, e
+  um cancelamento entre elas deixava uma linha `CANCELLED` apontando para o
+  arquivo que o worker ia apagar (o teste força essa intercalação na forma
+  antiga e reproduz a linha cancelada com a chave). Agora um job cancelado
+  não recebe o valor; numa disputa `succeed` x `cancel` em duas conexões
+  SQLite liberadas por barreira (N=20, os dois desfechos apareceram), toda
+  linha terminou `DONE` com a chave ou `CANCELLED` sem ela. Nome que não é
+  coluna do modelo, ou que está em `STORE_OWNED_JOB_COLUMNS` (nova constante:
+  as colunas de `BaseJobModel`, fixadas por teste contra um modelo concreto),
+  levanta `ValueError` antes de qualquer SQL.
+  `redispatch_queued(dispatch, *, older_than, limit=100)` reenvia linhas
+  `QUEUED` cujo `updated_at` é mais velho que `older_than` — o envio à fila que
+  se perdeu depois do `enqueue` da linha — e renova o `updated_at` depois de
+  cada envio, então cada linha sai no máximo uma vez por janela. Exceção do
+  `dispatch` propaga e as linhas ainda não enviadas ficam para a próxima
+  varredura. Receita: `docs/recipes/jobs`, seções 3 e 5.
+
 - **`expected_sha256` em `load_sklearn_artifact` e `edge_pipeline_from_pickle`
   (#440).** O chamador pina o SHA-256 que a release do modelo registrou, e a
   carga recusa com `ArtifactDigestMismatchError` (nova, subclasse de
@@ -91,6 +112,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`JobStore.reclaim_stale()` devolve `ReclaimedJobs`, não `int` (#459).
+  Mudança de comportamento.** Os ids requeued e os que falharam por orçamento
+  (`.requeued`, `.failed`) são o que permite reenviar o job ao worker: a linha
+  voltava para `QUEUED`, mas a mensagem tinha morrido com o worker e nada no
+  SDK a reenviava, então o job ficava `QUEUED` para sempre. As duas
+  atualizações continuam sem `SELECT` antes (agora `UPDATE ... RETURNING id`,
+  que exige SQLite 3.35+ ou PostgreSQL). `len()` e verdade continuam valendo
+  (`if await store.reclaim_stale():`); **quem compara com número (`== 1`) ou
+  soma o retorno quebra** — use `.total`.
+
 - **A `AssetPolicy` passada em `PdfRenderer(assets=...)` não tem mais a lista
   `refusals` lida nem limpa pelo renderizador.** Antes, toda renderização
   esvaziava essa lista no início e no fim, então ler `policy.refusals` depois de
@@ -120,6 +151,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MercadoPagoEvent | None`, o tipo que o docstring já declarava.
 
 ### Fixed
+
+- **`TaskQueue.from_settings(Settings())` e `@tq.task(...)` passam no
+  `mypy --strict` (#449).** `TaskIQSettingsLike` declarava os campos como
+  atributo simples, que num `Protocol` é **gravável**; o `BaseAppSettings` é
+  `frozen=True`, então o mypy recusava o `Settings` que os próprios mixins
+  montam (`expected settable variable, got read-only attribute`) e o caminho
+  documentado exigia `type: ignore`. Os campos viraram `@property`, o que
+  aceita o settings congelado e um objeto simples de teste. `TaskQueue.task`
+  devolvia `Any`, e sob `--strict` (`disallow_untyped_decorators`)
+  `@tq.task(name=...)` era `untyped-decorator`; agora tem overloads e devolve
+  `Task[P, R]`, preservando parâmetros e retorno. `on_startup` /
+  `on_shutdown` tinham o mesmo `Any` e devolvem o próprio handler tipado.
+  Medido com mypy (config do repo, `--strict`), pyright e basedpyright sobre
+  o mesmo snippet: zero erro no caminho da receita, e `await add.run("x", 1)`
+  vira erro de `arg-type` (com `Any`, passava). Guard:
+  `tests/tasks/test_queue_typing.py`, que no código antigo falha com os três
+  erros.
 
 - **`PdfRenderer`: cada renderização relata só as próprias recusas de asset
   (#435).** A instância guardava uma `AssetPolicy` só e todas as
