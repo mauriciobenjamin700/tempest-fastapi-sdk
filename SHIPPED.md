@@ -3048,3 +3048,16 @@ com `claim_once`. A receita `pix-protocol.md` liberava pelo evento do
 webhook; agora o `settle` relê com o helper e marca `paid_at` sob
 `claim_once`. Guard: `tests/integrations/payment/test_settlement.py`
 (inclui dois eventos pagos para o mesmo pedido liberando uma vez só).
+
+## Webhook do Mercado Pago numa dependency (Unreleased, #437)
+
+`make_mercado_pago_webhook_dependency(secret, *, tolerance_seconds=None,
+versions=DEFAULT_SIGNATURE_VERSIONS, error_message=...)` fecha a terceira
+fábrica de webhook, na forma de `make_stripe_webhook_dependency` e
+`make_openpix_webhook_dependency`: lê `?data.id` (`MERCADO_PAGO_DATA_ID_QUERY`),
+`x-signature` e `x-request-id`, roda `verify_signature` e devolve
+`MercadoPagoWebhookEvent`; falha vira `UnauthorizedException` (401) antes do
+handler. `data_id` vem da query porque o corpo não é assinado; tópico
+desconhecido vira `MercadoPagoEvent.UNKNOWN`, corpo não-JSON não derruba. A
+receita `mercado-pago.md` monta a rota com a fábrica. Testes:
+`tests/integrations/payment/mercado_pago/test_webhook_dependency.py`.

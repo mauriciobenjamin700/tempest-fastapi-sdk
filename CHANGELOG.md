@@ -74,6 +74,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.paid` é `True` só no último. Erro do provedor na releitura sobe em vez de
   virar "não pago". O helper não escreve nada — a liberação única continua
   com `tempest_fastapi_sdk.wallet.claim_once`.
+- **`make_mercado_pago_webhook_dependency` (#437)** — a terceira fábrica de
+  webhook, no formato de `make_stripe_webhook_dependency` e
+  `make_openpix_webhook_dependency`. Lê `data.id` da query string
+  (`MERCADO_PAGO_DATA_ID_QUERY`, novo) e `x-signature` / `x-request-id` dos
+  headers, roda `verify_signature` e devolve um `MercadoPagoWebhookEvent`;
+  assinatura ausente ou inválida, `ts` fora de `tolerance_seconds`, ou um
+  `data.id` / `x-request-id` que a assinatura cobria e o request não trouxe
+  levantam `UnauthorizedException` — medido com `TestClient`: **401**
+  `{"detail": "Invalid Mercado Pago webhook signature", "code":
+  "UNAUTHORIZED", "details": {}}`, e o handler não roda. `data_id` sai da
+  query, não do corpo, porque o manifesto assinado não cobre o corpo. Tópico
+  que o SDK não nomeia vira `MercadoPagoEvent.UNKNOWN`; corpo que não é JSON
+  não derruba a entrega. A receita `mercado-pago.md` deixa a função que
+  terminava em `bool` e mostra a rota inteira com a fábrica.
 
 ### Changed
 
@@ -101,6 +115,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   e `make audit` antes do `uv build` no release, `schedule:` no
   `audit.yml` e faixa no hatchling — cada checagem alimentada também com o
   texto exato que estava na `main` antes do #436.
+
+- `MercadoPagoWebhookEvent.event` passa de `Any | None` para
+  `MercadoPagoEvent | None`, o tipo que o docstring já declarava.
 
 ### Fixed
 

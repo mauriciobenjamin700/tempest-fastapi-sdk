@@ -54,16 +54,27 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Coroutine, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
+
+from fastapi import Request
+
+from tempest_fastapi_sdk.exceptions import UnauthorizedException
+from tempest_fastapi_sdk.integrations.payment.mercado_pago.events import (
+    MercadoPagoEvent,
+)
 
 MERCADO_PAGO_SIGNATURE_HEADER: Final[str] = "x-signature"
 """Header carrying the timestamp and the HMAC, as ``ts=...,v1=...``."""
 
 MERCADO_PAGO_REQUEST_ID_HEADER: Final[str] = "x-request-id"
 """Header whose value is part of the signed manifest."""
+
+MERCADO_PAGO_DATA_ID_QUERY: Final[str] = "data.id"
+"""Query-string parameter carrying the resource id, part of the manifest."""
 
 DEFAULT_SIGNATURE_VERSIONS: Final[tuple[str, ...]] = ("v1",)
 """Hash versions accepted by default, in preference order.
@@ -87,17 +98,22 @@ class MercadoPagoWebhookEvent:
 
     Attributes:
         topic (str): The notification type exactly as delivered.
-        event (MercadoPagoEvent | None): The parsed topic, or ``None`` when
-            Mercado Pago sent one this SDK version does not name.
-        data_id (str): The resource id the notification points at — what
-            you re-read from the API before acting.
-        payload (dict[str, Any]): The decoded body.
+        event (MercadoPagoEvent | None): The parsed topic.
+            :attr:`MercadoPagoEvent.UNKNOWN` when Mercado Pago sent one this
+            SDK version does not name, ``None`` when the delivery carried no
+            topic at all.
+        data_id (str): The resource id the notification points at, read
+            from the ``data.id`` query parameter — the value the signature
+            covers. It is what you re-read from the API before acting.
+        payload (dict[str, Any]): The decoded body. **Not covered by the
+            signature**: the manifest signs ``data.id``, ``x-request-id``
+            and ``ts``, never the body.
         body (bytes): The raw body, byte-for-byte, for logging or a second
             verification.
     """
 
     topic: str
-    event: Any | None = None
+    event: MercadoPagoEvent | None = None
     data_id: str = ""
     payload: dict[str, Any] = field(default_factory=dict)
     body: bytes = b""
@@ -354,13 +370,119 @@ def verify_signature(
     return abs(clock() - _timestamp_seconds(parsed.timestamp)) <= tolerance_seconds
 
 
+def make_mercado_pago_webhook_dependency(
+    secret: str,
+    *,
+    tolerance_seconds: float | None = None,
+    versions: Sequence[str] = DEFAULT_SIGNATURE_VERSIONS,
+    error_message: str = "Invalid Mercado Pago webhook signature",
+) -> Callable[..., Coroutine[Any, Any, MercadoPagoWebhookEvent]]:
+    """Build a FastAPI dependency yielding a verified notification.
+
+    Args:
+        secret (str): The webhook secret from the Mercado Pago dashboard.
+            An empty secret rejects every delivery, as
+            :func:`verify_signature` does.
+        tolerance_seconds (float | None): Maximum drift between ``ts`` and
+            the clock, forwarded to :func:`verify_signature`. ``None`` — the
+            default — skips the check, matching upstream.
+        versions (Sequence[str]): Hash versions to accept, in preference
+            order. Defaults to :data:`DEFAULT_SIGNATURE_VERSIONS`.
+        error_message (str): Message on the raised
+            :class:`UnauthorizedException`.
+
+    Returns:
+        Callable[..., Coroutine[Any, Any, MercadoPagoWebhookEvent]]: An
+        async dependency that reads ``data.id`` from the query string and
+        ``x-signature`` / ``x-request-id`` from the headers, verifies them,
+        and returns a :class:`MercadoPagoWebhookEvent`.
+
+    Raises:
+        UnauthorizedException: Raised by the returned dependency when
+            ``x-signature`` is missing or the delivery does not verify —
+            including a ``data.id`` or ``x-request-id`` absent from the
+            request while the signature covered it. The route handler is
+            never called.
+
+    The signature covers ``data.id``, ``x-request-id`` and ``ts`` — **not
+    the body**. ``data_id`` on the returned event is therefore the one
+    value the provider vouched for; ``payload`` and ``topic`` came along
+    unsigned. Re-read the resource from the API by ``data_id`` before
+    acting on it.
+
+    A body that is **not JSON** does not fail the request: the delivery
+    verified, and rejecting it would discard a notification the provider
+    considers sent. ``payload`` stays empty and ``body`` carries the bytes.
+    The topic is read from the body's ``type``, falling back to the
+    ``type`` query parameter Mercado Pago also appends; a topic this SDK
+    version does not name becomes :attr:`MercadoPagoEvent.UNKNOWN` rather
+    than an error, so a provider release does not become an outage here.
+    """
+
+    async def dependency(request: Request) -> MercadoPagoWebhookEvent:
+        """Verify and parse the inbound notification.
+
+        Args:
+            request (Request): The inbound request.
+
+        Returns:
+            MercadoPagoWebhookEvent: The verified, decoded notification.
+
+        Raises:
+            UnauthorizedException: If the signature is absent or invalid.
+        """
+        signature = request.headers.get(MERCADO_PAGO_SIGNATURE_HEADER, "")
+        data_id = _normalize(request.query_params.get(MERCADO_PAGO_DATA_ID_QUERY))
+        request_id = request.headers.get(MERCADO_PAGO_REQUEST_ID_HEADER, "")
+        if not signature or not verify_signature(
+            secret=secret,
+            signature_header=signature,
+            data_id=data_id,
+            request_id=request_id,
+            versions=versions,
+            tolerance_seconds=tolerance_seconds,
+        ):
+            raise UnauthorizedException(error_message)
+
+        body = await request.body()
+        payload: dict[str, Any] = {}
+        try:
+            decoded = json.loads(body)
+        except (ValueError, UnicodeDecodeError):
+            decoded = None
+        if isinstance(decoded, dict):
+            payload = decoded
+
+        topic = _normalize(
+            str(payload.get("type") or request.query_params.get("type") or "")
+        )
+        event: MercadoPagoEvent | None = None
+        if topic:
+            event = (
+                MercadoPagoEvent.from_value(topic)
+                if MercadoPagoEvent.has_value(topic)
+                else MercadoPagoEvent.UNKNOWN
+            )
+        return MercadoPagoWebhookEvent(
+            topic=topic,
+            event=event,
+            data_id=data_id,
+            payload=payload,
+            body=body,
+        )
+
+    return dependency
+
+
 __all__: list[str] = [
     "DEFAULT_SIGNATURE_VERSIONS",
+    "MERCADO_PAGO_DATA_ID_QUERY",
     "MERCADO_PAGO_REQUEST_ID_HEADER",
     "MERCADO_PAGO_SIGNATURE_HEADER",
     "MercadoPagoWebhookEvent",
     "SignatureHeader",
     "build_manifest",
+    "make_mercado_pago_webhook_dependency",
     "parse_signature_header",
     "sign_manifest",
     "verify_signature",

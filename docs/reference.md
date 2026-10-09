@@ -771,6 +771,8 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.MercadoPagoWebhookEvent
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.SignatureHeader
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.DEFAULT_SIGNATURE_VERSIONS
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.MERCADO_PAGO_DATA_ID_QUERY
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.make_mercado_pago_webhook_dependency
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.verify_signature
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.sign_manifest
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.build_manifest

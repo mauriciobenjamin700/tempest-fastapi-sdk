@@ -282,31 +282,55 @@ API não está em discussão.
 ## Verificando o webhook
 
 ```python
-from tempest_fastapi_sdk.integrations.payment.mercado_pago import verify_signature
+from typing import Any
+
+from fastapi import APIRouter, Depends
+
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
+    MercadoPagoEvent,
+    MercadoPagoWebhookEvent,
+    make_mercado_pago_webhook_dependency,
+)
+
+from src.core.settings import settings
+
+router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+verified = make_mercado_pago_webhook_dependency(
+    settings.MERCADOPAGO_WEBHOOK_SECRET,
+    tolerance_seconds=300.0,
+)
 
 
-def notificacao_e_autentica(
-    secret: str, signature: str, data_id: str, request_id: str
-) -> bool:
-    """Check that a notification really came from Mercado Pago.
-
-    Args:
-        secret (str): The webhook secret from the dashboard.
-        signature (str): The ``x-signature`` header.
-        data_id (str): The ``data.id`` query parameter.
-        request_id (str): The ``x-request-id`` header.
-
-    Returns:
-        bool: Whether the signature matches.
-    """
-    return verify_signature(
-        secret=secret,
-        signature_header=signature,
-        data_id=data_id,
-        request_id=request_id,
-        tolerance_seconds=300.0,
-    )
+@router.post("/mercado-pago", include_in_schema=False)
+async def mercado_pago_webhook(
+    event: MercadoPagoWebhookEvent = Depends(verified),
+) -> dict[str, Any]:
+    """Recebe uma notificação já verificada."""
+    if event.event is MercadoPagoEvent.PAYMENT:
+        return {"handled": True, "payment": event.data_id}
+    return {"handled": False, "topic": event.topic}
 ```
+
+A fábrica lê `data.id` da query string e `x-signature` / `x-request-id` dos
+headers, roda `verify_signature` e entrega um `MercadoPagoWebhookEvent`. Você
+não extrai nada do request à mão, e não decide o que fazer com um `False`:
+
+- Assinatura ausente, inválida, fora da janela de `tolerance_seconds`, ou um
+  `data.id` / `x-request-id` que a assinatura cobria e o request não trouxe →
+  **401** (`{"detail": "Invalid Mercado Pago webhook signature", "code":
+  "UNAUTHORIZED", "details": {}}`), **antes** do seu handler.
+- Segredo vazio recusa tudo — "nenhum segredo configurado" não vira rota
+  aberta.
+- Tópico que este SDK não nomeia **não** derruba a rota: `event` vira
+  `MercadoPagoEvent.UNKNOWN` e `topic` guarda a string. Corpo que não é JSON
+  também não: `payload` fica vazio e `body` traz os bytes.
+
+!!! warning "A assinatura não cobre o corpo"
+    O manifesto assinado é `data.id`, `x-request-id` e `ts` — o corpo fica
+    de fora. Por isso `event.data_id` vem da **query**, que é o valor que o
+    provedor assinou, e não do `data.id` do JSON. `payload` e `topic`
+    chegaram sem assinatura: releia o recurso pela API usando `data_id`
+    antes de agir sobre ele.
 
 O algoritmo é **portado do validador do próprio Mercado Pago**
 (`mercadopago/sdk-nodejs`, `src/utils/webhook/index.ts`, commit `99857f33`),
@@ -441,4 +465,7 @@ make mercadopago-diff
 - A verificação de webhook é portada do validador do provedor, com o
   manifesto omitindo par ausente e digests conferidos contra `openssl`;
   falta só uma entrega real para confirmar. Ligue `tolerance_seconds`.
+- `make_mercado_pago_webhook_dependency` monta a rota: lê `data.id`,
+  `x-signature` e `x-request-id`, recusa com 401 antes do handler e entrega o
+  `data_id` assinado — o corpo não é assinado.
 - Notificação de QR Code não é assinada — não passe por `verify_signature`.
