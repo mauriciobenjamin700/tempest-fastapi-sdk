@@ -804,6 +804,9 @@ from tempest_fastapi_sdk.db import (
     DEFAULT_AUDIT_REDACT as DEFAULT_AUDIT_REDACT,
 )
 from tempest_fastapi_sdk.db import (
+    DEFAULT_REVISION_HOOKS as DEFAULT_REVISION_HOOKS,
+)
+from tempest_fastapi_sdk.db import (
     DEFAULT_SYNC_WATERMARK_LAG as DEFAULT_SYNC_WATERMARK_LAG,
 )
 from tempest_fastapi_sdk.db import (
@@ -892,6 +895,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     DestructiveMigrationError as DestructiveMigrationError,
+)
+from tempest_fastapi_sdk.db import (
+    DropEnumTypeOp as DropEnumTypeOp,
 )
 from tempest_fastapi_sdk.db import (
     DroppedFilterWarning as DroppedFilterWarning,
@@ -993,6 +999,9 @@ from tempest_fastapi_sdk.db import (
     diff_snapshots as diff_snapshots,
 )
 from tempest_fastapi_sdk.db import (
+    drop_enum_types_on_downgrade as drop_enum_types_on_downgrade,
+)
+from tempest_fastapi_sdk.db import (
     enable_sqlite_foreign_keys as enable_sqlite_foreign_keys,
 )
 from tempest_fastapi_sdk.db import (
@@ -1069,6 +1078,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     require_sqlite_foreign_keys_off as require_sqlite_foreign_keys_off,
+)
+from tempest_fastapi_sdk.db import (
+    run_alembic_env as run_alembic_env,
 )
 from tempest_fastapi_sdk.db import (
     savepoint as savepoint,
@@ -2055,6 +2067,7 @@ __all__: list[str] = [
     "DEFAULT_MAX_RECORDS_PER_FILE",
     "DEFAULT_REDACT_KEYS",
     "DEFAULT_REDACT_PATTERNS",
+    "DEFAULT_REVISION_HOOKS",
     "DEFAULT_SPA_CONTENT_SECURITY_POLICY",
     "DEFAULT_SPA_SECURITY_HEADERS",
     "DEFAULT_STATIC_SECURITY_HEADERS",
@@ -2184,6 +2197,7 @@ __all__: list[str] = [
     "DeviceService",
     "DiskMetrics",
     "DownloadUtils",
+    "DropEnumTypeOp",
     "DroppedFilterWarning",
     "EmailChangeConfirmSchema",
     "EmailChangeRequestSchema",
@@ -2533,6 +2547,7 @@ __all__: list[str] = [
     "detect_pix_key_type",
     "diff_snapshots",
     "discover_models",
+    "drop_enum_types_on_downgrade",
     "enable_sqlite_foreign_keys",
     "enable_sqlite_savepoints",
     "enable_sqlite_wal",
@@ -2671,6 +2686,7 @@ __all__: list[str] = [
     "requires",
     "resolve_locale",
     "revoke_user_refresh_tokens",
+    "run_alembic_env",
     "run_checks",
     "run_server",
     "run_system_checks",

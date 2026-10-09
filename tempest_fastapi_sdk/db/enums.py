@@ -134,6 +134,16 @@ class TempestEnum(SQLEnum):
         name is left alone deliberately: fixing it would mean changing
         ``NAMING_CONVENTION`` for *every* check constraint, which would
         rename constraints in migrations consumers have already applied.
+
+        The same holds for a migration written by
+        ``alembic revision --autogenerate`` through the SDK's ``env.py``:
+        :func:`~tempest_fastapi_sdk.db.enum_migrations.render_enum_types`
+        omits the ``CHECK`` the type attaches, and the
+        ``sa.Enum(..., create_constraint=True)`` rendered on the column
+        recreates it where it belongs. Without that, SQLAlchemy 2.1 with
+        Alembic 1.20.0 rendered two explicit ``CheckConstraint`` per enum
+        column, both named ``ck_<table>_<enum>`` by the convention, and
+        PostgreSQL refused the second one.
     """
 
     def __init__(self, *enums: Any, **kwargs: Any) -> None:

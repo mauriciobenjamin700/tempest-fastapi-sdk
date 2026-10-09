@@ -246,7 +246,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   carries the stale CHECK), `sync_enum_types` autogenerate hook (compares
   `pg_enum` / the CHECK — autogenerate compares neither), and
   `render_enum_types` (without it **every migration touching an enum column
-  failed on import**). Both wired into `env.py.template`. **Query plans
+  failed on import**). Both wired into `env.py.template`. **Enum CHECK +
+  downgrade (Unreleased, #453/#454):** `render_enum_types` omits the
+  type-bound CHECK (SQLAlchemy 2.1 + Alembic 1.20 rendered two, PG refused
+  the second); `op.drop_enum_type` (`DROP TYPE IF EXISTS` on PG, no-op
+  elsewhere) + `drop_enum_types_on_downgrade` hook (type leaves with the last
+  table). **Generated env.py (Unreleased, #451):** three statements calling
+  `run_alembic_env(metadata)` (body lives in `db/alembic_env.py`,
+  `DEFAULT_REVISION_HOOKS` to extend), ruff-clean under both src layouts,
+  `alembic.ini` with `prepend_sys_path = .` + `path_separator = os`.
+  **Query plans
   (v0.200.0):** `explain_queries(session)` / `repo.explain()` → typed
   `ExplainReport`/`QueryPlan`; `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` on
   PG, `EXPLAIN QUERY PLAN` on SQLite reported as `PLAN_ONLY` with `None`

@@ -190,6 +190,90 @@ dentro deste pacote, num arquivo cujos únicos imports são `alembic.op` e
 que também transforma a migration num retrato de verdade, independente do
 que o enum em Python virar depois.
 
+### Um `CHECK` só por coluna
+
+Sob SQLAlchemy 2.1, o Alembic deixa de reconhecer o `CHECK` que o tipo enum
+anexa à coluna (ele procura `constraint._create_rule.target`, que o 2.1 não
+define mais). Medido com SQLAlchemy 2.1.4 e Alembic 1.20.0, o `create_table`
+gerado saía assim (as colunas do `BaseModel` resumidas a `id`):
+
+```python
+import sqlalchemy as sa
+from alembic import op
+
+
+def upgrade() -> None:
+    """O que o autogenerate escrevia sob SQLAlchemy 2.1, sem o SDK."""
+    op.create_table(
+        "things",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column(
+            "role",
+            sa.Enum(
+                "GUARDIAN",
+                "TEEN",
+                name="user_role_enum",
+                native_enum=True,
+                create_constraint=True,
+            ),
+            nullable=False,
+        ),
+        sa.CheckConstraint("role IN ('GUARDIAN', 'TEEN')", name="user_role_enum"),
+        sa.CheckConstraint(
+            "role IN ('GUARDIAN', 'TEEN')", name=op.f("ck_things_user_role_enum")
+        ),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_things")),
+    )
+```
+
+A naming convention transforma os dois nomes em `ck_things_user_role_enum`, e
+o PostgreSQL 16 recusa o segundo:
+`check constraint "ck_things_user_role_enum" already exists`.
+
+O `render_enum_types` omite esse `CHECK` ligado ao tipo. O
+`sa.Enum(..., create_constraint=True)` da coluna já o recria onde ele faz
+sentido: no SQLite a tabela fica com exatamente um `CHECK`, chamado
+`ck_things_user_role_enum` (medido sob SQLAlchemy 2.0.52 e 2.1.4), e no
+PostgreSQL não há `CHECK` nenhum, só o tipo nativo. Um `CheckConstraint` que
+você declara em `__table_args__` não é ligado a tipo e continua sendo
+renderizado.
+
+## Downgrade derruba o tipo
+
+O downgrade que o Alembic escreve para uma tabela nova é só `op.drop_table`,
+e no PostgreSQL isso deixa o `ENUM` para trás. Medido no PostgreSQL 16: depois
+de `upgrade` → `downgrade`, o `user_role_enum` continuava em `pg_type`, e o
+`upgrade` seguinte falhava com `type "user_role_enum" already exists`.
+
+O hook `drop_enum_types_on_downgrade`, ligado no `env.py` gerado, acrescenta o
+drop do tipo no fim do downgrade:
+
+```python
+from alembic import op
+
+
+def downgrade() -> None:
+    """Downgrade gerado para duas tabelas que dividem um enum."""
+    op.drop_table("things")
+    op.drop_table("others")
+    op.drop_enum_type("user_role_enum")
+```
+
+- `op.drop_enum_type` emite `DROP TYPE IF EXISTS` no PostgreSQL e não faz
+  nada nos outros bancos — no SQLite o enum mora no `CHECK`, que sai junto
+  com a tabela.
+- Um tipo usado por duas tabelas só é derrubado pela revisão que remove a
+  última: se outra tabela do model ainda usa o tipo, o hook não acrescenta o
+  drop.
+- A decisão sai só da metadata, sem conexão, então a mesma migration roda nos
+  dois bancos. Com o hook, `upgrade` → `downgrade` → `upgrade` passa no
+  PostgreSQL 16.
+
+!!! tip "Migration escrita antes desta versão"
+    O hook só age em revisões novas. Numa migration já gerada, acrescente
+    `op.drop_enum_type("<nome>_enum")` no fim do `downgrade()`, depois dos
+    `op.drop_table` que usavam o tipo.
+
 ## Recapitulando
 
 - `Mapped[MeuEnum]` já sai seguro: `value` no banco, `ENUM` nativo no
@@ -200,3 +284,6 @@ que o enum em Python virar depois.
 - `op.replace_enum(...)` adiciona, remove e reordena numa operação só,
   dentro da transação, com `value_map=` para renomes e `downgrade`
   automático.
+- O `CHECK` ligado ao tipo não sai duplicado na migration (o
+  `render_enum_types` o omite), e o downgrade de tabela nova derruba o
+  `ENUM` do PostgreSQL com `op.drop_enum_type`.

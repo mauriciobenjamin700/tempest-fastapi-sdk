@@ -191,6 +191,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.migrations.AmbiguousBaseRevisionError
 ::: tempest_fastapi_sdk.db.migrations.SchemaSyncOutcome
 ::: tempest_fastapi_sdk.db.migrations.require_sqlite_foreign_keys_off
+::: tempest_fastapi_sdk.db.alembic_env.run_alembic_env
+::: tempest_fastapi_sdk.db.alembic_env.DEFAULT_REVISION_HOOKS
 ::: tempest_fastapi_sdk.db.connection.enable_sqlite_foreign_keys
 ::: tempest_fastapi_sdk.db.connection.enable_sqlite_savepoints
 ::: tempest_fastapi_sdk.db.connection.enable_sqlite_wal
@@ -216,6 +218,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.enum_migrations.EnumTypeState
 ::: tempest_fastapi_sdk.db.enum_migrations.render_enum_types
 ::: tempest_fastapi_sdk.db.enum_migrations.sync_enum_types
+::: tempest_fastapi_sdk.db.enum_migrations.DropEnumTypeOp
+::: tempest_fastapi_sdk.db.enum_migrations.drop_enum_types_on_downgrade
 ::: tempest_fastapi_sdk.db.explain.explain_queries
 ::: tempest_fastapi_sdk.db.explain.ExplainReport
 ::: tempest_fastapi_sdk.db.explain.QueryPlan
