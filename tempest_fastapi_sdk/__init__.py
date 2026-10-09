@@ -1110,6 +1110,9 @@ from tempest_fastapi_sdk.exceptions import (
     UnauthorizedException as UnauthorizedException,
 )
 from tempest_fastapi_sdk.exceptions import (
+    UnknownFilterKeyException as UnknownFilterKeyException,
+)
+from tempest_fastapi_sdk.exceptions import (
     ValidationException as ValidationException,
 )
 from tempest_fastapi_sdk.exceptions import (
@@ -2399,6 +2402,7 @@ __all__: list[str] = [
     "TooManyRequestsException",
     "UFField",
     "UnauthorizedException",
+    "UnknownFilterKeyException",
     "UnsupportedBackupBackendError",
     "UploadResult",
     "UploadSettings",

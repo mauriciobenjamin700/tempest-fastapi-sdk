@@ -115,6 +115,9 @@ from tempest_fastapi_sdk.exceptions.validation import (
     PageSizeTooLargeException as PageSizeTooLargeException,
 )
 from tempest_fastapi_sdk.exceptions.validation import (
+    UnknownFilterKeyException as UnknownFilterKeyException,
+)
+from tempest_fastapi_sdk.exceptions.validation import (
     ValidationException as ValidationException,
 )
 from tempest_fastapi_sdk.exceptions.value_errors import (
@@ -168,6 +171,7 @@ __all__: list[str] = [
     "PayoutUncertainException",
     "TooManyRequestsException",
     "UnauthorizedException",
+    "UnknownFilterKeyException",
     "ValidationException",
     "ValidationValueError",
     "conflict_exception",

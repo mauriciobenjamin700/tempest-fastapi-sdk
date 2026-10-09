@@ -123,8 +123,8 @@ class BaseController(Controller, Generic[ServiceT, ResponseT, UpdateT]):
                 ANDed together, e.g. ``{"user_id": 1234, "is_active": True}``. A
                 list is ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>``
                 key applies an operator (``{"price__gte": 10}``); every convention
-                is listed on :class:`~tempest_fastapi_sdk.BaseRepository`. A key the
-                model has no column for is ignored without error.
+                is listed on :class:`~tempest_fastapi_sdk.BaseRepository`.
+                An unknown column or operator raises ``UnknownFilterKeyException``.
             order_by: A SQLAlchemy column expression.
             ascending (bool): Whether to order ascending.
 
@@ -155,8 +155,8 @@ class BaseController(Controller, Generic[ServiceT, ResponseT, UpdateT]):
                 ANDed together, e.g. ``{"user_id": 1234, "is_active": True}``. A
                 list is ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>``
                 key applies an operator (``{"price__gte": 10}``); every convention
-                is listed on :class:`~tempest_fastapi_sdk.BaseRepository`. A key the
-                model has no column for is ignored without error.
+                is listed on :class:`~tempest_fastapi_sdk.BaseRepository`.
+                An unknown column or operator raises ``UnknownFilterKeyException``.
             order_by (str | None): Column name to order by.
             page (int): 1-indexed page number.
             page_size (int): Items per page.
@@ -181,8 +181,8 @@ class BaseController(Controller, Generic[ServiceT, ResponseT, UpdateT]):
                 ANDed together, e.g. ``{"user_id": 1234, "is_active": True}``. A
                 list is ``IN``, ``None`` is ``IS NULL``, and a ``<column>__<op>``
                 key applies an operator (``{"price__gte": 10}``); every convention
-                is listed on :class:`~tempest_fastapi_sdk.BaseRepository`. A key the
-                model has no column for is ignored without error.
+                is listed on :class:`~tempest_fastapi_sdk.BaseRepository`.
+                An unknown column or operator raises ``UnknownFilterKeyException``.
 
         Returns:
             int: The matching row count.
