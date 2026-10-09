@@ -1,12 +1,21 @@
 """Tests for tempest_fastapi_sdk.api.routers.logs."""
 
+import asyncio
+import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException
 from httpx import ASGITransport, AsyncClient
 
-from tempest_fastapi_sdk import configure_logging, make_logs_router
+from tempest_fastapi_sdk import (
+    LogReadResult,
+    clear_log_files,
+    configure_logging,
+    make_logs_router,
+    read_log_entries,
+)
 from tempest_fastapi_sdk.api.routers.logs import resolve_log_files
 from tempest_fastapi_sdk.core.logging import HTTP_500_LOG_FILE, HTTP_500_MARKER
 
@@ -405,3 +414,247 @@ async def test_delete_creates_a_missing_file(tmp_path: Path) -> None:
 
         assert response.status_code == 200
         assert (tmp_path / "critical.log").read_text() == ""
+
+
+def _require_admin(authorization: str = Header(default="")) -> None:
+    """Stand in for a service's own admin check (a Bearer JWT, a role).
+
+    Args:
+        authorization (str): The ``Authorization`` header.
+
+    Raises:
+        HTTPException: ``403`` unless the caller is the admin.
+    """
+    if authorization != "Bearer admin":
+        raise HTTPException(status_code=403, detail="admin only")
+
+
+ADMIN: dict[str, str] = {"Authorization": "Bearer admin"}
+
+
+def _write_records(path: Path, count: int, *, start_minute: int = 0) -> None:
+    """Write ``count`` JSON records to ``path``, one minute apart, oldest first.
+
+    Args:
+        path (Path): The log file to write.
+        count (int): How many records.
+        start_minute (int): Minute of the first record.
+    """
+    lines = [
+        json.dumps(
+            {
+                "timestamp": f"2026-01-01T00:{start_minute + index:02d}:00.000Z",
+                "level": "INFO",
+                "logger": "test",
+                "message": f"line {index}",
+            }
+        )
+        for index in range(count)
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+class TestDependencies:
+    """``dependencies=`` puts the logs behind the service's own auth."""
+
+    @pytest.mark.asyncio
+    async def test_admin_dependency_refuses_and_replaces_the_token(
+        self, tmp_path: Path
+    ) -> None:
+        """No ``token_secret``: the dependency is the whole gate.
+
+        Construction does not raise, a non-admin is refused on both verbs, and
+        the admin passes without sending any ``X-Token``.
+        """
+        _seed_logs(tmp_path)
+        app = FastAPI()
+        app.include_router(
+            make_logs_router(log_dir=tmp_path, dependencies=[Depends(_require_admin)]),
+        )
+        async with _client(app) as client:
+            denied = await client.get("/logs")
+            denied_delete = await client.delete("/logs")
+            allowed = await client.get("/logs", headers=ADMIN)
+
+            assert denied.status_code == 403
+            assert denied_delete.status_code == 403
+            assert (tmp_path / "info.log").read_text() != ""
+            assert allowed.status_code == 200
+            assert allowed.json()["total"] == 6
+
+            cleared = await client.delete("/logs", headers=ADMIN)
+
+            assert cleared.status_code == 200
+            assert (tmp_path / "info.log").read_text() == ""
+
+    @pytest.mark.asyncio
+    async def test_bare_callable_is_accepted(self, tmp_path: Path) -> None:
+        """Both spellings work; a ready ``Depends`` is not wrapped twice."""
+        app = FastAPI()
+        app.include_router(
+            make_logs_router(log_dir=tmp_path, dependencies=[_require_admin]),
+        )
+        async with _client(app) as client:
+            denied = await client.get("/logs")
+            allowed = await client.get("/logs", headers=ADMIN)
+
+        assert denied.status_code == 403
+        assert allowed.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_with_a_secret_both_gates_apply(self, tmp_path: Path) -> None:
+        """``token_secret`` and ``dependencies`` add up; neither replaces the other."""
+        app = FastAPI()
+        app.include_router(
+            make_logs_router(
+                log_dir=tmp_path,
+                token_secret="s3cret",
+                dependencies=[Depends(_require_admin)],
+            ),
+        )
+        async with _client(app) as client:
+            token_only = await client.get("/logs", headers={"X-Token": "s3cret"})
+            admin_only = await client.get("/logs", headers=ADMIN)
+            both = await client.get("/logs", headers={**ADMIN, "X-Token": "s3cret"})
+
+        assert token_only.status_code == 403
+        assert admin_only.status_code == 401
+        assert both.status_code == 200
+
+    def test_no_x_token_parameter_without_a_secret(self, tmp_path: Path) -> None:
+        """The schema does not advertise a header the routes never read."""
+        app = FastAPI()
+        app.include_router(
+            make_logs_router(log_dir=tmp_path, dependencies=[_require_admin]),
+        )
+        paths = app.openapi()["paths"]
+        for verb in ("get", "delete"):
+            names = {param["name"] for param in paths["/logs"][verb]["parameters"]}
+            assert "X-Token" not in names
+            assert "authorization" in names
+
+    def test_empty_dependencies_is_not_a_gate(self, tmp_path: Path) -> None:
+        """``dependencies=[]`` from an unset setting must still fail closed."""
+        with pytest.raises(ValueError, match="non-empty token_secret"):
+            make_logs_router(log_dir=tmp_path, dependencies=[])
+
+
+class TestReadLogEntries:
+    """The read behind ``GET /logs``, callable without the router."""
+
+    def test_per_file_cap_keeps_the_newest_and_reports_truncated(
+        self, tmp_path: Path
+    ) -> None:
+        _write_records(tmp_path / "info.log", 10)
+
+        result = read_log_entries(tmp_path, "info", max_records_per_file=3)
+
+        assert isinstance(result, LogReadResult)
+        assert result.truncated is True
+        assert [entry["message"] for entry in result.entries] == [
+            "line 9",
+            "line 8",
+            "line 7",
+        ]
+
+    def test_not_truncated_when_the_file_fits(self, tmp_path: Path) -> None:
+        _write_records(tmp_path / "info.log", 3)
+
+        result = read_log_entries(tmp_path, "info", max_records_per_file=3)
+
+        assert result.truncated is False
+        assert len(result.entries) == 3
+
+    def test_missing_directory_is_an_empty_result(self, tmp_path: Path) -> None:
+        result = read_log_entries(tmp_path / "nowhere")
+
+        assert result.entries == []
+        assert result.truncated is False
+
+    def test_all_merges_levels_newest_first(self, tmp_path: Path) -> None:
+        _write_records(tmp_path / "info.log", 2, start_minute=0)
+        _write_records(tmp_path / "error.log", 2, start_minute=10)
+
+        result = read_log_entries(str(tmp_path))
+
+        timestamps = [entry["timestamp"] for entry in result.entries]
+        assert len(timestamps) == 4
+        assert timestamps == sorted(timestamps, reverse=True)
+
+    def test_filters_by_message_and_window(self, tmp_path: Path) -> None:
+        """A naive bound is read as UTC, the same as the route's query params."""
+        _write_records(tmp_path / "info.log", 10)
+
+        result = read_log_entries(
+            tmp_path,
+            "info",
+            q="LINE",
+            start=datetime(2026, 1, 1, 0, 2),
+            end=datetime(2026, 1, 1, 0, 4, tzinfo=UTC),
+        )
+
+        assert [entry["message"] for entry in result.entries] == [
+            "line 4",
+            "line 3",
+            "line 2",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_runs_under_to_thread(self, tmp_path: Path) -> None:
+        _write_records(tmp_path / "info.log", 2)
+
+        result = await asyncio.to_thread(read_log_entries, tmp_path, "info")
+
+        assert len(result.entries) == 2
+
+
+class TestClearLogFiles:
+    """The truncate behind ``DELETE /logs``, callable without the router."""
+
+    def test_truncates_in_place_and_the_open_handler_keeps_writing(
+        self, tmp_path: Path
+    ) -> None:
+        """The handler's open descriptor still lands in the same, readable file.
+
+        Unlinking instead would leave the handler writing to an inode nothing
+        reads back; the second line would never show up in ``info.log``.
+        """
+        logger = configure_logging(
+            level="INFO",
+            logger_name="tempest.logs.router.clear_in_place",
+            log_dir=tmp_path,
+        )
+        logger.info("before the clear")
+        info_log = tmp_path / "info.log"
+        inode = info_log.stat().st_ino
+
+        cleared = clear_log_files(tmp_path, "info")
+
+        assert cleared == ["info.log"]
+        assert info_log.read_text(encoding="utf-8") == ""
+
+        logger.info("after the clear")
+
+        assert info_log.stat().st_ino == inode
+        assert "\x00" not in info_log.read_text(encoding="utf-8")
+        result = read_log_entries(tmp_path, "info")
+        assert [entry["message"] for entry in result.entries] == ["after the clear"]
+
+    def test_all_names_every_file_including_the_500_stream(
+        self, tmp_path: Path
+    ) -> None:
+        cleared = clear_log_files(tmp_path)
+
+        assert cleared == [
+            path.name
+            for path in resolve_log_files(tmp_path, "all", include_http_500=True)
+        ]
+        assert HTTP_500_LOG_FILE in cleared
+        for name in cleared:
+            assert (tmp_path / name).read_text() == ""
+
+    def test_creates_a_missing_directory(self, tmp_path: Path) -> None:
+        target = tmp_path / "fresh"
+
+        assert clear_log_files(target, "warning") == ["warning.log"]
+        assert (target / "warning.log").exists()

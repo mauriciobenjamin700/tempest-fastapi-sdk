@@ -164,6 +164,9 @@ from tempest_fastapi_sdk.modelops.monitoring import (
 from tempest_fastapi_sdk.modelops.monitoring import (
     population_stability_index as population_stability_index,
 )
+from tempest_fastapi_sdk.modelops.pickled import (
+    ArtifactDigestMismatchError as ArtifactDigestMismatchError,
+)
 from tempest_fastapi_sdk.modelops.pickled import LoadedArtifact as LoadedArtifact
 from tempest_fastapi_sdk.modelops.pickled import (
     edge_pipeline_from_pickle as edge_pipeline_from_pickle,
@@ -344,6 +347,7 @@ __all__: list[str] = [
     "PSI_SIGNIFICANT",
     "RAPL_ROOT",
     "REMOTE_PROVIDERS",
+    "ArtifactDigestMismatchError",
     "ArtifactSource",
     "BenchmarkProfile",
     "BenchmarkReport",

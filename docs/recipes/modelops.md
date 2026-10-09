@@ -334,6 +334,77 @@ meses ainda responde "qual arquivo me gerou".
 **Rejeita o que não prediz** com mensagem direta, em vez de deixar o erro
 aparecer lá no conversor.
 
+### Pinar o hash da release
+
+Gravar o SHA-256 no manifesto responde "qual arquivo me gerou" **depois** do
+fato. Para recusar um `.pkl` trocado **antes** de ele rodar, passe o hash que a
+release registrou em `expected_sha256`:
+
+```python
+from sklearn.datasets import load_iris
+
+from tempest_fastapi_sdk.modelops import (
+    ArtifactDigestMismatchError,
+    EdgePackage,
+    LoadedArtifact,
+    edge_pipeline_from_pickle,
+    load_sklearn_artifact,
+)
+
+RELEASED_SHA256: str = (
+    "sha256:e7b7c9febd99888341148a95224c21d846e040c50a83d3252d5ca390447e988b"
+)
+
+X_train, y_train = load_iris(return_X_y=True)
+
+artifact: LoadedArtifact = load_sklearn_artifact(
+    "artifacts/risk.pkl",
+    expected_sha256=RELEASED_SHA256,
+)
+print(artifact.estimator_type)
+
+try:
+    package: EdgePackage = edge_pipeline_from_pickle(
+        "artifacts/risk.pkl",
+        X_train,
+        "dist/risk",
+        labels=y_train,
+        expected_sha256=RELEASED_SHA256,
+    )
+except ArtifactDigestMismatchError as exc:
+    print(exc.expected, exc.actual)
+    raise
+```
+
+A comparação acontece **antes** do `joblib.load`. O arquivo é aberto uma vez
+só: o hash é calculado por esse handle e o unpickle lê do mesmo handle, então
+os bytes conferidos são os bytes que rodam. Com o arquivo divergente, a
+chamada levanta `ArtifactDigestMismatchError` (subclasse de `ValueError`,
+como a checagem de digest do `load_edge_package`) e nada é desserializado:
+
+```text
+refusing to load artifacts/risk.pkl: its SHA-256 is e7b7c9febd99888341148a95224c21d846e040c50a83d3252d5ca390447e988b, expected 0000000000000000000000000000000000000000000000000000000000000000. The file was replaced, truncated or is not the released artifact; it was not unpickled.
+```
+
+No `edge_pipeline_from_pickle` o parâmetro só é repassado ao
+`load_sklearn_artifact`, então em divergência nenhum diretório de pacote é
+criado.
+
+**Formato aceito:** 64 dígitos hexadecimais, maiúsculos ou minúsculos, com
+prefixo `sha256:` opcional (em qualquer caixa) e espaço nas pontas ignorado.
+`E7B7...`, `sha256:e7b7...` e `SHA256:E7B7...` valem o mesmo. Qualquer outra
+coisa é recusada antes de abrir o arquivo:
+
+```text
+expected_sha256 must be a 64-character hex digest, optionally prefixed with 'sha256:'; got 'abc'
+```
+
+!!! tip "De onde vem o hash"
+    Calcule no mesmo passo da esteira que fez o `joblib.dump`
+    (`sha256sum artifacts/risk.pkl`) e publique junto da release do modelo —
+    na configuração do serviço, no registry, na nota da release. O hash só
+    protege se vier de um lugar diferente do arquivo que ele confere.
+
 ## Sem runtime nenhum: o formato compacto
 
 ONNX no navegador custa **25,6 MB de WebAssembly** (6,0 MB gzipped) antes da

@@ -19,9 +19,11 @@ import time
 from collections.abc import Awaitable, Callable, Sequence
 from typing import TYPE_CHECKING, Any, cast
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Request, Response, params
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
+
+from tempest_fastapi_sdk.api.dependencies.auth import require_x_token
 
 if TYPE_CHECKING:
     from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
@@ -189,34 +191,95 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
             self.in_progress.labels(method=method).dec()
 
 
+def _as_route_dependency(dependency: Callable[..., Any] | params.Depends) -> Any:
+    """Normalize one ``dependencies=`` item into a FastAPI ``Depends``.
+
+    Accepts both a bare callable (wrapped here) and an item that is
+    already a ``Depends(...)`` / ``Security(...)`` (passed through
+    untouched, so it is never wrapped twice). Rejects
+    :func:`require_x_token`: it is an imperative helper whose ``secret``
+    and ``token`` parameters FastAPI would resolve as **query
+    parameters**, so every scrape answers ``422`` unless the shared
+    secret travels in the URL, where it leaks into access logs.
+
+    Args:
+        dependency (Callable[..., Any] | params.Depends): A dependency
+            callable or an existing ``Depends(...)`` marker.
+
+    Returns:
+        Any: The ``Depends`` marker to attach to the route.
+
+    Raises:
+        TypeError: When ``dependency`` is (or wraps) :func:`require_x_token`.
+    """
+    if isinstance(dependency, params.Depends):
+        marker: Any = dependency
+        target: Callable[..., Any] | None = dependency.dependency
+    else:
+        marker = Depends(dependency)
+        target = dependency
+    if target is require_x_token:
+        raise TypeError(
+            "require_x_token is not a FastAPI dependency: its 'secret' and "
+            "'token' parameters would be read from the query string. Pass "
+            "make_token_dependency(secret) instead, which reads the "
+            "X-Token header."
+        )
+    return marker
+
+
 def make_prometheus_router(
     *,
     registry: CollectorRegistry,
     path: str = "/metrics",
-    dependencies: list[Callable[..., Any]] | None = None,
+    dependencies: list[Callable[..., Any] | params.Depends] | None = None,
 ) -> APIRouter:
     """Build the ``GET /metrics`` router scraping ``registry``.
+
+    The endpoint is **unauthenticated by default**: without
+    ``dependencies`` anyone who reaches the port can scrape it, and
+    metric labels leak the service's route structure. Gate it with a
+    header-based dependency such as :func:`make_token_dependency`.
+
+    Each item of ``dependencies`` may be a bare dependency callable
+    (wrapped in ``Depends`` here) or an already-built ``Depends(...)``
+    / ``Security(...)`` marker (attached as-is, never wrapped twice).
 
     Args:
         registry (CollectorRegistry): The same registry passed to
             :class:`PrometheusMiddleware` and any custom metric.
         path (str): Endpoint path. Defaults to ``/metrics``.
-        dependencies (list | None): FastAPI dependencies to attach
-            — typically ``[Depends(require_x_token)]`` so the
-            endpoint isn't world-readable.
+        dependencies (list[Callable[..., Any] | params.Depends] | None):
+            FastAPI dependencies attached to the route. ``None``
+            (default) leaves the endpoint open.
 
     Returns:
         APIRouter: Mount with ``app.include_router(router)``.
 
     Raises:
         ImportError: When the ``[prometheus]`` extra is missing.
+        TypeError: When ``dependencies`` contains :func:`require_x_token`,
+            whose parameters FastAPI would read from the query string.
+
+    Examples:
+        >>> from tempest_fastapi_sdk import (
+        ...     make_prometheus_registry,
+        ...     make_prometheus_router,
+        ...     make_token_dependency,
+        ... )
+        >>> router = make_prometheus_router(
+        ...     registry=make_prometheus_registry(),
+        ...     dependencies=[make_token_dependency("scrape-secret")],
+        ... )
+        >>> [route.path for route in router.routes]
+        ['/metrics']
     """
     _require_prometheus()
     router = APIRouter()
 
     @router.get(
         path,
-        dependencies=[Depends(d) for d in (dependencies or [])],
+        dependencies=[_as_route_dependency(d) for d in (dependencies or [])],
         include_in_schema=False,
     )
     async def metrics() -> Response:

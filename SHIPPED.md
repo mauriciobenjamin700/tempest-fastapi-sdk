@@ -358,7 +358,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `all` covers `500.log` here and not on the read. **`LOG_MAX_BYTES` /
   `LOG_BACKUP_COUNT` + `logging_kwargs()` on `LogSettings` (v0.280.0)** — the
   rotation knobs `configure_logging` always accepted are now settable from the
-  environment.
+  environment. **`make_logs_router(dependencies=...)` + `read_log_entries()` /
+  `LogReadResult` + `clear_log_files()` (#426, unreleased)** — the logs go
+  behind the service's own auth (a callable or a ready `Depends(...)`; with
+  only `dependencies` no `X-Token` is read, with `token_secret` too both gates
+  apply, an empty list still fails closed), and the read (per-file cap,
+  `truncated` flag, filters, newest first) and the in-place truncate are public
+  sync functions the router and the admin log page are now shells over.
 - **Database error introspection** — `parse_integrity_error()` reads an
   `IntegrityError` back into the constraint that refused it
   (`IntegrityFailure` / `IntegrityViolation`), so a service answers `409`
@@ -597,6 +603,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `edge_bundle` (returns the *smallest* artifact — optimize/`.ort` grow tiny
   graphs), `uses_ml_domain` (int8 quantization does not apply to
   `ai.onnx.ml`). `hummingbird-ml` rejected: caps `onnx<=1.16.1`. **Binary-tree defect relocated (v0.201.0):** it was recorded as a `skl2onnx` conversion bug; holding `skl2onnx` 1.20.0 / `sklearn` 1.9.0 / `onnx` 1.22.0 fixed and moving only the runtime showed it is **`onnxruntime`** — error 1.0 vs `predict_proba` on 1.27.0, 9.5e-08 on 1.28.0. Floor moved to `onnxruntime>=1.28`; `BINARY_TREE_FIXED_IN_ONNXRUNTIME` still gates the export warning for a force-assembled environment.
+  **Pinned pickle digest (Unreleased, #440):** `expected_sha256` on
+  `load_sklearn_artifact` / `edge_pipeline_from_pickle`, checked before
+  `joblib.load` through the same handle that is unpickled;
+  `ArtifactDigestMismatchError(ValueError)`; hex any case, `sha256:` optional.
   **Serving (v0.189.0):** `OnnxPredictor` (resolves input/output names,
   `DEFAULT_INTRA_OP_THREADS = 1` for constrained devices, reports the
   providers *actually* in use, `reload` builds the new session before
@@ -1110,6 +1120,20 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   confere o CRC (CPython 3.11 a 3.14), então diretório central mentindo vira
   `InvalidSpreadsheetError`; XML truncado (`SyntaxError` do parser) deixou de
   escapar como `500`.
+- **Leitura de planilha sem bloquear o event loop (Unreleased, #432)** —
+  `read_xlsx_async` / `read_xlsx_as_async` / `read_xlsx_sheets_async` em
+  `tempest_fastapi_sdk.spreadsheet`: o leitor síncrono numa thread
+  (`asyncio.to_thread`) atrás de um semáforo
+  (`DEFAULT_MAX_CONCURRENT_XLSX_READS` = 4 **por event loop**, criado no
+  primeiro uso do loop; `semaphore=` troca por um do chamador). Os caminhos
+  async do `spreadsheet/google.py` deixaram de parsear no loop: o parse do
+  CSV e a validação do `read_google_sheet_as` vão por `to_thread`, o
+  `read_google_sheet_xlsx` chama `read_xlsx_sheets_async`. Receita usa a
+  variante async no endpoint de importação. Medido (99 999 linhas, 4 MB):
+  leitura síncrona numa corrotina segurou o loop 5,4 s (ticker de 10 ms: 1 de
+  ~540); a async deixou 473 ticks. Quatro leituras simultâneas: 25,0 s contra
+  21,6 s em série — o semáforo limita memória e pool de threads, não acelera.
+  Guard: `tests/test_spreadsheet_event_loop_guard.py`.
 - **Limites do leitor CSV do Google (Unreleased, #413)** — `max_bytes`
   (`DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES`, 10 MiB, pelo mesmo streaming do
   `.xlsx`) e `max_rows` (`DEFAULT_XLSX_MAX_ROWS`, 100 000, contado durante o
@@ -1188,6 +1212,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   it fetches nothing); allowed dirs are checked on the *resolved* path so `../`
   and symlinks do not escape, and `_fail_on_errors` aborts the render at the
   first refusal rather than shipping an invoice with a hole where the logo was.
+  **Refusals are per render (#435):** every render fetches through its own
+  `AssetPolicy.for_render()` copy, so concurrent renders sharing one policy
+  each report only their own URLs; the caller's `refusals` list is never
+  read or cleared.
   `logo_data_uri` accepts only `data:`; `accent_color`/`page_size`/`margin` are
   shape-constrained because they land **inside the stylesheet**.
   **Fixed while building:** the report's grand total was a `<tfoot>`

@@ -40,7 +40,9 @@ at first use, so importing this module works without it; the call raises
 
 from __future__ import annotations
 
+import asyncio
 import io
+import weakref
 import zipfile
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
@@ -152,6 +154,22 @@ times of headroom and refuses the bomb even when its total stays under
 
 _RATIO_FLOOR_BYTES: Final[int] = 1024 * 1024
 """Members smaller than this (decompressed) skip the ratio check."""
+
+DEFAULT_MAX_CONCURRENT_XLSX_READS: Final[int] = 4
+"""Reads the async readers let run at once in one event loop.
+
+``openpyxl`` parses in pure Python and holds the GIL, so the worker
+threads behind the ``*_async`` readers keep the loop answering but do not
+add throughput: concurrent reads share one core. What the limit bounds is
+memory — each read holds its whole tab, which is ~834 bytes per row by the
+measurement behind :data:`DEFAULT_XLSX_MAX_ROWS` — and the default thread
+pool, which the rest of the service shares. Pass your own
+:class:`asyncio.Semaphore` as ``semaphore`` to size it differently.
+"""
+
+_READ_SEMAPHORES: Final[
+    weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]
+] = weakref.WeakKeyDictionary()
 
 _MISSING_DEPENDENCY: Final[str] = (
     "openpyxl is required to read .xlsx files. Install the extra: "
@@ -842,7 +860,183 @@ def read_xlsx_as(
     return _validate_rows(rows, schema, omit_blank=omit_blank, row_error=row_error)
 
 
+def _read_semaphore(semaphore: asyncio.Semaphore | None) -> asyncio.Semaphore:
+    """Pick the semaphore an async read waits on.
+
+    The default one is created per running event loop, on first use, and
+    dropped with the loop. A module-level semaphore would bind to the first
+    loop that contends for it and raise ``RuntimeError`` in any other — a
+    test suite, or a worker that runs ``asyncio.run`` more than once, has
+    several.
+
+    Args:
+        semaphore (asyncio.Semaphore | None): The caller's semaphore, or
+            ``None`` for the loop-wide default.
+
+    Returns:
+        asyncio.Semaphore: ``semaphore`` when given, otherwise the running
+        loop's semaphore of :data:`DEFAULT_MAX_CONCURRENT_XLSX_READS`.
+    """
+    if semaphore is not None:
+        return semaphore
+    loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
+    shared: asyncio.Semaphore | None = _READ_SEMAPHORES.get(loop)
+    if shared is None:
+        shared = asyncio.Semaphore(DEFAULT_MAX_CONCURRENT_XLSX_READS)
+        _READ_SEMAPHORES[loop] = shared
+    return shared
+
+
+async def read_xlsx_async(
+    source: XlsxSource,
+    *,
+    sheet: str | int = 0,
+    max_rows: int | None = DEFAULT_XLSX_MAX_ROWS,
+    max_uncompressed_bytes: int | None = DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES,
+    max_compression_ratio: float | None = DEFAULT_XLSX_MAX_COMPRESSION_RATIO,
+    semaphore: asyncio.Semaphore | None = None,
+) -> list[dict[str, XlsxCellValue]]:
+    """Read one tab of an ``.xlsx`` workbook without blocking the event loop.
+
+    :func:`read_xlsx` in a worker thread, behind a semaphore. The parse is
+    CPU-bound and takes seconds on a large tab, so calling the synchronous
+    reader from a coroutine — an upload endpoint — stops every other
+    request of the worker for that long. This is the one to ``await``.
+
+    Args:
+        source (XlsxSource): The workbook as bytes, a path, or a binary
+            file object. A file object is read from the worker thread.
+        sheet (str | int): The tab's name, or its 0-based position.
+        max_rows (int | None): As in :func:`read_xlsx`.
+        max_uncompressed_bytes (int | None): As in :func:`read_xlsx`.
+        max_compression_ratio (float | None): As in :func:`read_xlsx`.
+        semaphore (asyncio.Semaphore | None): Bounds how many reads run at
+            once. ``None`` shares one semaphore of
+            :data:`DEFAULT_MAX_CONCURRENT_XLSX_READS` per event loop.
+
+    Returns:
+        list[dict[str, XlsxCellValue]]: The data rows, in sheet order.
+
+    Raises:
+        ImportError: When the ``[spreadsheet]`` extra is not installed.
+        ValueError: If a limit is zero or negative.
+        SpreadsheetTooLargeError: If the workbook passes a limit.
+        InvalidSpreadsheetError: If the source is not an ``.xlsx``.
+        SheetNotFoundError: If the workbook has no such tab.
+        FileNotFoundError: If a path does not exist.
+    """
+    async with _read_semaphore(semaphore):
+        return await asyncio.to_thread(
+            read_xlsx,
+            source,
+            sheet=sheet,
+            max_rows=max_rows,
+            max_uncompressed_bytes=max_uncompressed_bytes,
+            max_compression_ratio=max_compression_ratio,
+        )
+
+
+async def read_xlsx_sheets_async(
+    source: XlsxSource,
+    *,
+    max_rows: int | None = DEFAULT_XLSX_MAX_ROWS,
+    max_uncompressed_bytes: int | None = DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES,
+    max_compression_ratio: float | None = DEFAULT_XLSX_MAX_COMPRESSION_RATIO,
+    semaphore: asyncio.Semaphore | None = None,
+) -> dict[str, list[dict[str, XlsxCellValue]]]:
+    """Read every tab of an ``.xlsx`` workbook without blocking the event loop.
+
+    :func:`read_xlsx_sheets` in a worker thread, behind the same semaphore
+    as :func:`read_xlsx_async`.
+
+    Args:
+        source (XlsxSource): The workbook as bytes, a path, or a binary
+            file object. A file object is read from the worker thread.
+        max_rows (int | None): As in :func:`read_xlsx_sheets`.
+        max_uncompressed_bytes (int | None): As in :func:`read_xlsx_sheets`.
+        max_compression_ratio (float | None): As in :func:`read_xlsx_sheets`.
+        semaphore (asyncio.Semaphore | None): Bounds how many reads run at
+            once. ``None`` shares one semaphore of
+            :data:`DEFAULT_MAX_CONCURRENT_XLSX_READS` per event loop.
+
+    Returns:
+        dict[str, list[dict[str, XlsxCellValue]]]: The rows of each tab, in
+        tab order.
+
+    Raises:
+        ImportError: When the ``[spreadsheet]`` extra is not installed.
+        ValueError: If a limit is zero or negative.
+        SpreadsheetTooLargeError: If the workbook passes a limit.
+        InvalidSpreadsheetError: If the source is not an ``.xlsx``.
+        FileNotFoundError: If a path does not exist.
+    """
+    async with _read_semaphore(semaphore):
+        return await asyncio.to_thread(
+            read_xlsx_sheets,
+            source,
+            max_rows=max_rows,
+            max_uncompressed_bytes=max_uncompressed_bytes,
+            max_compression_ratio=max_compression_ratio,
+        )
+
+
+async def read_xlsx_as_async(
+    source: XlsxSource,
+    schema: type[ModelT],
+    *,
+    sheet: str | int = 0,
+    omit_blank: bool = True,
+    max_rows: int | None = DEFAULT_XLSX_MAX_ROWS,
+    max_uncompressed_bytes: int | None = DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES,
+    max_compression_ratio: float | None = DEFAULT_XLSX_MAX_COMPRESSION_RATIO,
+    semaphore: asyncio.Semaphore | None = None,
+) -> list[ModelT]:
+    """Read one tab and validate each row without blocking the event loop.
+
+    :func:`read_xlsx_as` in a worker thread — the parse and the row
+    validation both run there — behind the same semaphore as
+    :func:`read_xlsx_async`.
+
+    Args:
+        source (XlsxSource): The workbook as bytes, a path, or a binary
+            file object. A file object is read from the worker thread.
+        schema (type[ModelT]): The Pydantic model each row validates into.
+        sheet (str | int): The tab's name, or its 0-based position.
+        omit_blank (bool): As in :func:`read_xlsx_as`.
+        max_rows (int | None): As in :func:`read_xlsx_as`.
+        max_uncompressed_bytes (int | None): As in :func:`read_xlsx_as`.
+        max_compression_ratio (float | None): As in :func:`read_xlsx_as`.
+        semaphore (asyncio.Semaphore | None): Bounds how many reads run at
+            once. ``None`` shares one semaphore of
+            :data:`DEFAULT_MAX_CONCURRENT_XLSX_READS` per event loop.
+
+    Returns:
+        list[ModelT]: One instance per data row, in sheet order.
+
+    Raises:
+        ImportError: When the ``[spreadsheet]`` extra is not installed.
+        ValueError: If a limit is zero or negative.
+        SpreadsheetTooLargeError: If the workbook passes a limit.
+        InvalidSpreadsheetError: If the source is not an ``.xlsx``.
+        SheetNotFoundError: If the workbook has no such tab.
+        SpreadsheetRowError: On the first row that fails validation.
+        FileNotFoundError: If a path does not exist.
+    """
+    async with _read_semaphore(semaphore):
+        return await asyncio.to_thread(
+            read_xlsx_as,
+            source,
+            schema,
+            sheet=sheet,
+            omit_blank=omit_blank,
+            max_rows=max_rows,
+            max_uncompressed_bytes=max_uncompressed_bytes,
+            max_compression_ratio=max_compression_ratio,
+        )
+
+
 __all__: list[str] = [
+    "DEFAULT_MAX_CONCURRENT_XLSX_READS",
     "DEFAULT_XLSX_MAX_COMPRESSION_RATIO",
     "DEFAULT_XLSX_MAX_ROWS",
     "DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES",
@@ -854,5 +1048,8 @@ __all__: list[str] = [
     "XlsxSource",
     "read_xlsx",
     "read_xlsx_as",
+    "read_xlsx_as_async",
+    "read_xlsx_async",
     "read_xlsx_sheets",
+    "read_xlsx_sheets_async",
 ]
