@@ -1735,14 +1735,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (`GeoPointMixin` + `GeoRepositoryMixin.nearby` bbox-prefilter+haversine,
   `PostGISRepositoryMixin.nearby` ST_DWithin, `make_geo_point_model`);
   geocoding (`GeocodingBackend`/`NominatimBackend` + `GeocodeResult`);
-  **structured address (Unreleased):** both directions ask
+  **structured address (0.307.0):** both directions ask
   `addressdetails=1` and map the entry's `address` object into
   `GeocodeAddress` (`city`/`state`/`state_code`/`country`/`country_code`/
   `postcode`, every field optional and `None` when the response carries no
   address object); `city` is the first of `city`/`town`/`village`/
   `municipality` present — an order measured on recorded payloads, since one
   point can carry several;
-  **geocoding cache (Unreleased):** `CachedGeocodingBackend` wraps any
+  **geocoding cache (0.310.0):** `CachedGeocodingBackend` wraps any
   `GeocodingBackend` behind a pluggable `GeocodeCacheStore` (`get`/`set` +
   TTL) — `InMemoryGeocodeCacheStore` for tests/dev, `RedisGeocodeCacheStore`
   over a redis-subset protocol (positional, `Awaitable`, no `redis` import);

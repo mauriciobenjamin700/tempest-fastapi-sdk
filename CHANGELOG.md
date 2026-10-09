@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.310.0] — 2026-10-09
+
+Cache de geocoding (`CachedGeocodingBackend`) e o fluxo de release novo: a
+suíte roda em paralelo e só na máquina local, e a CI só publica.
+
 ### Added
 
 - **Cache de geocoding: `CachedGeocodingBackend`** — envolve qualquer
@@ -54,6 +59,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `~/.cache/tempest-fastapi-sdk/venvs`). Guard novo:
   `tests/test_release_flow_guard.py`. Na v0.309.0 o workflow da tag levou
   33 min, quase todos rodando a suíte pela terceira vez.
+- **Actions dos workflows atualizadas** (Dependabot, #472):
+  `actions/checkout` v4 → v7, `astral-sh/setup-uv` v3.2.4 → v10.2.0 (fixada
+  por SHA, `c18668ad`, conferido contra a tag), `actions/upload-artifact`
+  v4 → v6, `actions/download-artifact` v4 → v7, `actions/upload-pages-artifact`
+  v3 → v5 e `actions/deploy-pages` v4 → v5.
 
 ### Documentation
 
