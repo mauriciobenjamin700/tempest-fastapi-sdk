@@ -400,6 +400,101 @@ register_exception_handlers(app, redact_exception=redact)
     SQLAlchemy em volta dele) sai da cadeia, porque o texto dela é a mesma
     frase do servidor. O tipo dela continua no resumo, como `driver=...`.
 
+## Dado pessoal fora de toda linha — `redact=True`
+
+Serviço que trata dado pessoal precisa garantir que nenhuma linha de log
+carregue e-mail, token ou código de verificação — inclusive as que você não
+escreveu: o traceback que cita o payload, o `extra=` passado inteiro, a lib
+de terceiro que loga o header `Authorization`. `configure_logging` resolve
+isso num parâmetro:
+
+```python
+import logging
+
+from tempest_fastapi_sdk import RedactionPolicy, configure_logging
+
+policy: RedactionPolicy = RedactionPolicy(extra_keys={"cpf"})
+configure_logging(file_output=False, redact=policy)
+log: logging.Logger = logging.getLogger("app.signup")
+
+log.info(
+    "código enviado para %s",
+    "ana@example.com",
+    extra={
+        "cpf": "123.456.789-00",
+        "access_token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln",
+        "plan": "free",
+    },
+)
+try:
+    raise ValueError("usuário ana@example.com não encontrado")
+except ValueError:
+    log.exception("falha no login")
+```
+
+Saída (capturada rodando o exemplo, Python 3.11):
+
+```text
+{"timestamp": "...", "level": "INFO", "logger": "app.signup", "message": "código enviado para [REDACTED]", "cpf": "[REDACTED]", "access_token": "[REDACTED]", "plan": "free"}
+{"timestamp": "...", "level": "ERROR", "logger": "app.signup", "message": "falha no login", "exception": "Traceback (most recent call last):\n  File \"...\", line ..., in <module>\nValueError: usuário [REDACTED] não encontrado"}
+```
+
+`redact=True` usa a política default; `RedactionPolicy(...)` acrescenta o que
+é do seu domínio. O que ela faz:
+
+- **Chave sensível** — todo campo de `extra=`, e toda chave de dict passado
+  como argumento ou aninhado num valor, cujo nome contém um fragmento de
+  `DEFAULT_REDACT_KEYS` (`password`, `token`, `secret`, `authorization`,
+  `cookie`, `email`, `api_key`, ...) tem o valor trocado inteiro. O match é
+  por **substring**, em minúsculas e com `-` virando `_`: `access_token`,
+  `X-API-Key` e `Set-Cookie` casam.
+- **Padrão de texto** — mensagem, argumentos, traceback (`exc_text`),
+  `stack_info` e todo valor string passam por e-mail, `Bearer <credencial>`
+  e JWT, mais `chave=valor` / `chave: valor` quando a chave é sensível
+  (`?token=abc` na query, `{'password': 'x'}` citado numa exceção).
+- **`extra_keys` / `extra_patterns`** acrescentam sem repetir os defaults;
+  `keys` / `patterns` substituem. Padrão em string é compilado na
+  construção.
+
+O filtro vai em **todo handler** que `configure_logging` instala — stdout e
+os seis arquivos —, e não no logger: filtro de logger não roda para registro
+propagado de logger filho, filtro de handler roda. Handler que você
+pendura por conta própria (Sentry, syslog) recebe o mesmo filtro assim:
+
+```python
+import logging
+import sys
+
+from tempest_fastapi_sdk import RedactionFilter, RedactionPolicy
+
+handler: logging.Handler = logging.StreamHandler(sys.stderr)
+handler.addFilter(RedactionFilter(RedactionPolicy(extra_keys={"cpf"})))
+logging.getLogger().addHandler(handler)
+```
+
+!!! warning "O que muda no registro"
+    A redação reescreve o `LogRecord` no lugar: `msg` vira a mensagem já
+    renderizada e redigida, e `args` é limpo. Quem agrupa log pelo template
+    (`"código enviado para %s"`) passa a ver a mensagem final. E o match por
+    substring erra para o lado de esconder: `email_verified` e `token_type`
+    também saem como `[REDACTED]`.
+
+!!! info "Custo"
+    Medido com `configure_logging(file_output=False)` escrevendo em
+    `/dev/null`, 20 000 registros, melhor de 5 rodadas, Python 3.11: uma linha
+    no formato do `AccessLogMiddleware` (mensagem com 4 argumentos, 7 campos
+    de `extra=`) foi de ~13,5 µs para ~26 µs; um `logger.exception` com
+    traceback curto, de ~44 µs para ~66 µs. O registro é redigido uma vez,
+    não uma por handler. Com `redact=False` (o default) nenhum filtro é
+    instalado.
+
+O `JSONFormatter` também mudou para isso funcionar: o campo `exception` sai
+do `record.exc_text` quando um passo anterior já o renderizou — a mesma
+precedência do `logging.Formatter` da stdlib — e não do `exc_info` de novo.
+Antes, um filtro de handler que redigia o traceback era sobrescrito pelo
+texto original. Em `LogSettings`, `LOG_REDACT=true` liga a política default
+pelo `logging_kwargs()`.
+
 ## `exc_info` em todos os níveis, e o nome que o `LogRecord` não cede
 
 `debug`, `info`, `warning`, `error` e `critical` aceitam `exc_info` como
@@ -908,3 +1003,6 @@ atacante — e o log passaria a atribuir requests ao endereço que ele quis. Vej
   `on_server_error` segue recebendo a exceção original.
 - Todo nível aceita `exc_info` (`bool` ou `"auto"`); campo estruturado que
   colide com atributo do `LogRecord` é recusado na chamada, com `TypeError`.
+- Com `redact=True` (ou uma `RedactionPolicy`), todo handler redige e-mail,
+  `Bearer`, JWT e chave sensível de mensagem, `extra=`, traceback e
+  `stack_info` antes de o registro ser escrito.

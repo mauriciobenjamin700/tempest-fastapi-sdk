@@ -24,6 +24,7 @@ from tempest_fastapi_sdk import (
     OAuthSettings,
     OpenPixSettings,
     RabbitMQSettings,
+    RedactionFilter,
     RedisSettings,
     ServerSettings,
     TaskIQSettings,
@@ -595,6 +596,7 @@ class TestLogRotationSettings:
             LOG_DIR="/var/log/app",
             LOG_MAX_BYTES=5_000_000,
             LOG_BACKUP_COUNT=3,
+            LOG_REDACT=True,
         )
 
         assert settings.logging_kwargs() == {
@@ -603,6 +605,7 @@ class TestLogRotationSettings:
             "log_dir": "/var/log/app",
             "max_bytes": 5_000_000,
             "backup_count": 3,
+            "redact": True,
         }
 
     def test_the_kwargs_actually_splat(self, tmp_path: Path) -> None:
@@ -649,3 +652,19 @@ class TestLogRotationSettings:
             for handler in logger.handlers
             if isinstance(handler, logging.FileHandler)
         ]
+
+    def test_log_redact_hangs_the_filter_on_every_handler(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """``LOG_REDACT=True`` reaches ``configure_logging(redact=...)``."""
+        settings = LogSettings(LOG_DIR=str(tmp_path), LOG_REDACT=True)
+
+        logger = configure_logging(
+            logger_name="tempest.settings.redact",
+            **settings.logging_kwargs(),
+        )
+
+        assert len(logger.handlers) == 7
+        for handler in logger.handlers:
+            assert any(isinstance(f, RedactionFilter) for f in handler.filters)

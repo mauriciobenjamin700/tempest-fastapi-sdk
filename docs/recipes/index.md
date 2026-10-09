@@ -559,7 +559,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Sync offline-first (delta) »](offline-sync.md)** | `BaseRepository.changes_since`, `SyncFilterSchema`, `SyncPaginationSchema`, deltas por cursor + soft-delete |
 | **[System checks (check-config) »](system-checks.md)** | `run_system_checks`, `@check`, `CheckMessage`, `tempest check-config` — validar settings antes de servir |
 | **[Tempo real »](realtime.md)** | Visão geral — quando escolher SSE, WebSocket ou Web Push |
-| **[Testes »](testing.md)** | `test_session`, `test_database`, SQLite em memória, fixtures pytest |
+| **[Testes »](testing.md)** | `make_test_session`, `make_test_database`, SQLite em memória, fixtures pytest |
 | **[Tipagem (estático + runtime) »](typing.md)** | `strict_types` / `typed` / `require_annotations`, knob `[tool.tempest] typing_strictness`, ruff `ANN` |
 | **[Transações (commit e savepoint) »](transactions.md)** | `transaction()` compartilhado pela sessão, `commit()` / `flush()` / `rollback()` no repositório, `autocommit=False`, `savepoint()` para o passo recuperável |
 | **[Uploads (backends) »](uploads.md)** | `UploadUtils`, validação de extensão/MIME (`sniff_mime`), backends local / MinIO |

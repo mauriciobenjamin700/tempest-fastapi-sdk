@@ -9,6 +9,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Auditoria com evento de domínio, origem da requisição e autor com FK
+  (#458).** `AuditRequestMixin` (opt-in) acrescenta à tabela de auditoria
+  as colunas `event` (`String(128)`, indexada), `ip` (`String(64)`) e
+  `user_agent` (`String(512)`). `new_entry`, `for_create` / `for_update` /
+  `for_delete` e `add_audited` / `update_audited` / `delete_audited`
+  ganham `event=`, `ip=`, `user_agent=`, `request_context=` e `actor_id=`,
+  todos keyword-only, e cada valor vai para a coluna de mesmo nome, sem
+  passar por `context`. `AuditRequestContext.from_request(request,
+  trusted_ip_header=...)` lê o IP pelo `get_client_ip` e o `User-Agent`;
+  `trusted_ip_header` não tem default, valor que não é endereço IP vira
+  `None` e `User-Agent` acima de 512 caracteres é cortado.
+  `BaseRepository.record_event(...)` e `BaseAuditLogModel.for_event(...)`
+  gravam evento sem mutação de linha (`AuditAction.EVENT`, `action="event"`,
+  `entity_id` vazio ou o id do `subject=`). O autor com FK é ponto de
+  extensão: a subclasse declara `actor_id` (ex.: `ForeignKey("users.id",
+  ondelete="SET NULL")`) e passa `actor_id=`, sem sobrescrever `new_entry`
+  — o teste apaga o usuário e lê `actor_id` `NULL` no SQLite com FK ligada.
+  **Sem migration para quem já tem a tabela:** as colunas ficam no mixin,
+  não no `BaseAuditLogModel`, e chamadas só com `actor` / `context` não
+  mudam. Acrescentar o mixin a uma tabela existente exige migration. Valor
+  passado para coluna que a tabela não tem levanta `ValueError` (a
+  transação, linha de negócio incluída, é revertida) em vez de ser
+  descartado; `request_context=` junto de `ip=` / `user_agent=` também.
+  Receita: `docs/recipes/audit-trail`, seção "Evento, origem da requisição
+  e autor".
+- **`configure_logging(..., redact=True | RedactionPolicy(...))` +
+  `RedactionPolicy` / `RedactionFilter` (#445).** Com `redact` ligado, todo
+  handler que o `configure_logging` instala ganha um filtro que reescreve o
+  registro antes do formatter: chave sensível (`password`, `token`, `secret`,
+  `authorization`, `cookie`, `email`, `api_key`... — `DEFAULT_REDACT_KEYS`, por
+  substring) tem o valor trocado por `[REDACTED]` em `extra=`, em argumento
+  dict e em dict aninhado; mensagem, argumentos, traceback (`exc_text`),
+  `stack_info` e valor string passam por e-mail, `Bearer`, JWT e
+  `chave=valor` com chave sensível. O serviço acrescenta domínio com
+  `RedactionPolicy(extra_keys=..., extra_patterns=...)` sem reescrever o
+  filtro. `LogSettings.LOG_REDACT` liga a política default pelo
+  `logging_kwargs()`. Com `redact` ligado, `msg` vira a mensagem já
+  renderizada e `args` é limpo. Custo medido (20 000 registros, melhor de 5,
+  Python 3.11, saída em `/dev/null`): linha de access log de ~13,5 µs para
+  ~26 µs, `logger.exception` de ~44 µs para ~66 µs. O default `redact=False`
+  não instala filtro nenhum.
+- **`JobStore.succeed(values=...)` e `JobStore.redispatch_queued` (#459).**
+  `succeed(job_id, *, result_id=None, values=None)` grava colunas que o
+  projeto adicionou ao modelo de job (um `object_key`, por exemplo) no
+  **mesmo** `UPDATE` condicional que marca `DONE`. Antes o worker gravava a
+  coluna numa sessão própria e depois chamava `succeed` — duas transações, e
+  um cancelamento entre elas deixava uma linha `CANCELLED` apontando para o
+  arquivo que o worker ia apagar (o teste força essa intercalação na forma
+  antiga e reproduz a linha cancelada com a chave). Agora um job cancelado
+  não recebe o valor; numa disputa `succeed` x `cancel` em duas conexões
+  SQLite liberadas por barreira (N=20, os dois desfechos apareceram), toda
+  linha terminou `DONE` com a chave ou `CANCELLED` sem ela. Nome que não é
+  coluna do modelo, ou que está em `STORE_OWNED_JOB_COLUMNS` (nova constante:
+  as colunas de `BaseJobModel`, fixadas por teste contra um modelo concreto),
+  levanta `ValueError` antes de qualquer SQL.
+  `redispatch_queued(dispatch, *, older_than, limit=100)` reenvia linhas
+  `QUEUED` cujo `updated_at` é mais velho que `older_than` — o envio à fila que
+  se perdeu depois do `enqueue` da linha — e renova o `updated_at` depois de
+  cada envio, então cada linha sai no máximo uma vez por janela. Exceção do
+  `dispatch` propaga e as linhas ainda não enviadas ficam para a próxima
+  varredura. Receita: `docs/recipes/jobs`, seções 3 e 5.
+- **`make_rate_limit_dependency` — rate limit por rota, com chave que lê o
+  corpo (#452).** O `RateLimitMiddleware` limita o app inteiro e o `key_func`
+  dele é síncrono e só recebe o `Request`; não havia como dizer "só
+  `POST /api/invites`, por IP **e** por e-mail convidado". A dependency nova
+  conta no mesmo `RateLimitStore` (memória ou Redis), aceita uma ou várias
+  funções de chave (síncronas ou assíncronas — as `key_by_*` do middleware
+  servem) e recusa com `TooManyRequestsException` carregando os mesmos
+  `details` e headers (`Retry-After`, `RateLimit-*`) do middleware, montados
+  pelos mesmos helpers, agora extraídos em `rate_limit.py`. O teste compara os
+  dois 429: corpo e headers de rate limit iguais. Com um `MessageCatalog` no
+  `register_exception_handlers`, o `detail` da dependency sai traduzido pelo
+  `code` e o do middleware não (medido: `"Requisições em excesso"`). O balde é
+  prefixado por método + path template da rota, então a mesma dependency em
+  duas rotas dá um orçamento para cada; `scope=` junta. `trusted_ip_header`
+  molda a chave default e é recusado (`ValueError`) junto com `key=`.
+  `key_by_body_field("email")` lê o campo do JSON — o endpoint continua
+  recebendo o payload validado (medido: o FastAPI lê o corpo antes das
+  dependencies e o Starlette guarda os bytes), normaliza e guarda SHA-256 por
+  padrão. Receita: `docs/recipes/http`, "Limitar um endpoint por IP e por campo
+  do corpo".
+- **`login_ip_throttle`, `signup_throttle` e `trusted_ip_header` em
+  `make_auth_router` (#456).** Orçamentos por IP do cliente: o de login conta
+  só credencial errada (login certo não zera, para uma conta válida não
+  resetar o contador entre chutes) e é lido antes do orçamento do e-mail; o de
+  signup conta toda tentativa. Os dois vêm **desligados**: atrás de um proxy
+  sem `trusted_ip_header`, todo cliente divide o IP do proxy e um orçamento
+  por IP travaria o login de todo mundo. `/auth/login`, `/auth/cookie/login` e
+  `/auth/signup` declaram o 429 no OpenAPI só quando o limite correspondente
+  está ligado.
 - **`tempest_fastapi_sdk.privacy` — exportação e exclusão de titular (LGPD,
   #460).** `SubjectGraph(metadata, root=..., retained=..., secret_columns=...)`
   deriva da `MetaData` o fecho de `ON DELETE CASCADE` a partir da tabela raiz
@@ -35,7 +125,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `list[ObjectDeleteError]` (`key`, `code`, `message`) com o que o storage
   recusou; lista vazia é sucesso. `ObjectDeleteError` exportado no topo e em
   `tempest_fastapi_sdk.storage`.
-
 - **`expected_sha256` em `load_sklearn_artifact` e `edge_pipeline_from_pickle`
   (#440).** O chamador pina o SHA-256 que a release do modelo registrou, e a
   carga recusa com `ArtifactDigestMismatchError` (nova, subclasse de
@@ -118,6 +207,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`JobStore.reclaim_stale()` devolve `ReclaimedJobs`, não `int` (#459).
+  Mudança de comportamento.** Os ids requeued e os que falharam por orçamento
+  (`.requeued`, `.failed`) são o que permite reenviar o job ao worker: a linha
+  voltava para `QUEUED`, mas a mensagem tinha morrido com o worker e nada no
+  SDK a reenviava, então o job ficava `QUEUED` para sempre. As duas
+  atualizações continuam sem `SELECT` antes (agora `UPDATE ... RETURNING id`,
+  que exige SQLite 3.35+ ou PostgreSQL). `len()` e verdade continuam valendo
+  (`if await store.reclaim_stale():`); **quem compara com número (`== 1`) ou
+  soma o retorno quebra** — use `.total`.
+- **`POST /auth/login` passa a responder `429` depois de 5 senhas erradas
+  para o mesmo e-mail em 15 minutos (#456).** `make_auth_router` ganhou
+  `login_throttle`, no molde do `mfa_throttle`: cada tentativa reserva uma
+  unidade **antes** de a senha ser conferida, a sexta leva
+  `429 TOO_MANY_REQUESTS` com `Retry-After` mesmo com a senha certa, e o
+  login certo antes do limite zera a contagem. O default é um
+  `AttemptThrottle` sobre `InMemoryThrottleBackend` (5 por 900 s, por
+  processo); a chave é o SHA-256 do e-mail normalizado, gasta igual para
+  e-mail sem conta, e o `detail` é o mesmo texto nos dois casos — o 429 não
+  revela quais e-mails existem. Vale também para o login por cookie.
+  **Pode quebrar consumidor**: teste ou script que erra a senha mais de 5
+  vezes seguidas para o mesmo e-mail num router só passa a ver 429 — passe
+  `login_throttle=False` para desligar, ou um `AttemptThrottle` próprio
+  (sobre Redis, com mais de um worker). `/auth/me`, `/auth/refresh` e as
+  demais rotas não mudam.
+
 - **A `AssetPolicy` passada em `PdfRenderer(assets=...)` não tem mais a lista
   `refusals` lida nem limpa pelo renderizador.** Antes, toda renderização
   esvaziava essa lista no início e no fim, então ler `policy.refusals` depois de
@@ -146,7 +260,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `MercadoPagoWebhookEvent.event` passa de `Any | None` para
   `MercadoPagoEvent | None`, o tipo que o docstring já declarava.
 
+- **`test_session` / `test_database` viraram `make_test_session` /
+  `make_test_database` (#450).** O pytest coleta como teste toda função
+  importada num módulo de teste cujo nome comece com `test`, então
+  `from tempest_fastapi_sdk.testing import test_session` dava à suíte do
+  consumidor um item fantasma que "passava" e emitia
+  `PytestReturnNotNoneWarning` — falha de verdade sob `-W error` (medido:
+  `1 failed, 1 passed`). A própria suíte do SDK coletava os dois fantasmas em
+  `tests/testing/test_database.py`. Os nomes antigos continuam importáveis
+  como alias deprecado: cada chamada emite `DeprecationWarning` e os dois
+  carregam `__test__ = False`, então não são mais coletados. O teste roda um
+  pytest de verdade num subprocess, com `-W error`, sobre um módulo que
+  importa os quatro nomes, e falha (`2 failed, 1 passed`) quando o
+  `__test__ = False` é removido. **Quem roda `filterwarnings = ["error"]` e
+  chama o nome antigo passa a ver o `DeprecationWarning` como erro** — troque
+  o import.
+
 ### Fixed
+
+- **Readiness: checks em paralelo, com timeout, e log sem a mensagem da
+  exceção (#447).** `make_health_router` rodava os checks em série e sem
+  limite — uma dependência pendurada segurava a readiness inteira até o probe
+  desistir, e as seguintes nem rodavam — e logava `str(exc)`, que em driver de
+  banco ou broker costuma trazer a DSN com usuário e senha. Agora os checks
+  rodam com `asyncio.gather`, cada um sob `asyncio.wait_for` com o novo
+  `timeout=` (default `3.0` s; `None` desliga; zero ou negativo é
+  `ValueError`); timeout conta como falha só daquele check. O log leva só o
+  nome e o tipo (`Health check 'database' raised ConnectionRefusedError`,
+  `Health check 'search' timed out after 0.5s`). Medido: um check com
+  `sleep(60)` e `timeout=0.5` responde `503` com o outro check `True`, num
+  processo de 1,7 s. Testes: o check pendurado falha sozinho; dois checks que
+  esperam um pelo outro só passam em paralelo; com `caplog`, a senha de uma
+  DSN na mensagem não aparece. O valor devolvido por um check agora passa por
+  `bool()` antes de entrar no payload. Receita `http.md` ganhou a seção
+  "Liveness e readiness".
+- **`MessageBroker.health_check` / `AsyncQueueManager.health_check` fazem o
+  `ping` real do FastStream (#448).** Antes devolviam `self._started`, com a
+  docstring dizendo que o FastStream não tinha ping — ele tem
+  (`BrokerUsecase.ping(timeout)`, implementado por RabbitMQ, Redis, Kafka,
+  Confluent e NATS; mesma assinatura no piso `0.7.5` e na `0.7.7`, a mais
+  nova no PyPI hoje). Agora aceitam `timeout: float = 2.0` (abaixo dos 3 s do
+  router), devolvem `False` antes do `connect()` sem tocar a rede e, depois,
+  o resultado do `ping`. Medido com RabbitMQ 3 em container: `True` conectado,
+  e depois do `docker stop` `False` em 2,00 s, com a readiness respondendo
+  `503 {"queue": false}` — antes ficava `True`.
+- **`JSONFormatter` re-renderizava `exc_info` por cima do traceback já
+  redigido (#445).** O campo `exception` agora sai de `record.exc_text` quando
+  um passo anterior já o renderizou — a precedência do `logging.Formatter` da
+  stdlib — e de `exc_info` só no resto. Antes, um filtro de handler que
+  redigia o `exc_text` era ignorado: o e-mail da mensagem da exceção voltava
+  para o JSON. Quem já seta `exc_text` à mão passa a vê-lo no lugar do
+  traceback re-renderizado.
+- **`TaskQueue.from_settings(Settings())` e `@tq.task(...)` passam no
+  `mypy --strict` (#449).** `TaskIQSettingsLike` declarava os campos como
+  atributo simples, que num `Protocol` é **gravável**; o `BaseAppSettings` é
+  `frozen=True`, então o mypy recusava o `Settings` que os próprios mixins
+  montam (`expected settable variable, got read-only attribute`) e o caminho
+  documentado exigia `type: ignore`. Os campos viraram `@property`, o que
+  aceita o settings congelado e um objeto simples de teste. `TaskQueue.task`
+  devolvia `Any`, e sob `--strict` (`disallow_untyped_decorators`)
+  `@tq.task(name=...)` era `untyped-decorator`; agora tem overloads e devolve
+  `Task[P, R]`, preservando parâmetros e retorno. `on_startup` /
+  `on_shutdown` tinham o mesmo `Any` e devolvem o próprio handler tipado.
+  Medido com mypy (config do repo, `--strict`), pyright e basedpyright sobre
+  o mesmo snippet: zero erro no caminho da receita, e `await add.run("x", 1)`
+  vira erro de `arg-type` (com `Any`, passava). Guard:
+  `tests/tasks/test_queue_typing.py`, que no código antigo falha com os três
+  erros.
 
 - **`PdfRenderer`: cada renderização relata só as próprias recusas de asset
   (#435).** A instância guardava uma `AssetPolicy` só e todas as

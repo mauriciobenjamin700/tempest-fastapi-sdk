@@ -86,6 +86,9 @@ from tempest_fastapi_sdk.tasks.jobs import (
     STALE_JOB_ERROR as STALE_JOB_ERROR,
 )
 from tempest_fastapi_sdk.tasks.jobs import (
+    STORE_OWNED_JOB_COLUMNS as STORE_OWNED_JOB_COLUMNS,
+)
+from tempest_fastapi_sdk.tasks.jobs import (
     TERMINAL_JOB_STATUSES as TERMINAL_JOB_STATUSES,
 )
 from tempest_fastapi_sdk.tasks.jobs import BaseJobModel as BaseJobModel
@@ -96,6 +99,7 @@ from tempest_fastapi_sdk.tasks.jobs import JobCancelledError as JobCancelledErro
 from tempest_fastapi_sdk.tasks.jobs import JobNotFoundError as JobNotFoundError
 from tempest_fastapi_sdk.tasks.jobs import JobStatus as JobStatus
 from tempest_fastapi_sdk.tasks.jobs import JobStore as JobStore
+from tempest_fastapi_sdk.tasks.jobs import ReclaimedJobs as ReclaimedJobs
 from tempest_fastapi_sdk.tasks.jobs import (
     make_job_admin_model as make_job_admin_model,
 )
@@ -177,6 +181,7 @@ __all__: list[str] = [
     "DEFAULT_RESULT_TTL_SECONDS",
     "RUNNING_STAGE_STATUSES",
     "STALE_JOB_ERROR",
+    "STORE_OWNED_JOB_COLUMNS",
     "TERMINAL_JOB_STATUSES",
     "TERMINAL_STAGE_STATUSES",
     "AsyncTaskBrokerManager",
@@ -200,6 +205,7 @@ __all__: list[str] = [
     "PhasePlan",
     "ProgressSink",
     "ProgressTracker",
+    "ReclaimedJobs",
     "RedisLockClient",
     "RedisLockHandle",
     "RedisSchedulerLock",
