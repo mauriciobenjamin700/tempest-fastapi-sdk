@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`read_xlsx_async`, `read_xlsx_as_async` e `read_xlsx_sheets_async`**
+  (#432) em `tempest_fastapi_sdk.spreadsheet`: os mesmos argumentos, retorno
+  e erros dos leitores síncronos, rodando numa thread (`asyncio.to_thread`)
+  atrás de um semáforo. Sem `semaphore=`, o limite é
+  `DEFAULT_MAX_CONCURRENT_XLSX_READS` (4) leituras simultâneas **por event
+  loop** — o semáforo é criado no primeiro uso de cada loop, porque um
+  `asyncio.Semaphore` de módulo, disputado em dois `asyncio.run`, levanta
+  `RuntimeError: ... is bound to a different event loop` (reproduzido). Medido
+  numa aba de 99 999 linhas (8 colunas, 4 MB): `read_xlsx` chamado dentro de
+  uma corrotina levou 5,4 s e um ticker de 10 ms rodou 1 vez no lugar de ~540;
+  com `read_xlsx_async` o mesmo ticker rodou 473 vezes. Quatro leituras
+  simultâneas levaram 25,0 s contra 21,6 s de quatro em série: o parse segura
+  o GIL, então o semáforo limita memória e o pool de threads, não acelera.
+
+### Fixed
+
+- **Os leitores async de Google Sheets não parseiam mais no event loop**
+  (#432). `read_google_sheet` / `read_google_sheet_as` parseiam o CSV por
+  `asyncio.to_thread`, `read_google_sheet_as` valida as linhas também numa
+  thread, e `read_google_sheet_xlsx` lê a pasta por `read_xlsx_sheets_async`.
+  Antes, os três seguravam o loop do worker durante todo o parse.
+- **A receita de planilhas usava o leitor síncrono numa rota `async def`.**
+  `docs/recipes/spreadsheets.md` / `.en.md` passam a usar
+  `read_xlsx_as_async` no endpoint de importação e no script do Google, com
+  um `!!! warning` explicando por quê. Guard novo:
+  `tests/test_spreadsheet_event_loop_guard.py` troca o parser de cada
+  corrotina por uma sonda que só uma task do loop libera, e prova que dispara
+  com `to_thread` substituído por chamada direta (6 de 6 casos pegos).
+
 ## [0.308.0] — 2026-10-08
 
 O CLI `tempest` sai do runtime: `tempest-cli`, `typer` e `click` viram o

@@ -1110,6 +1110,20 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   confere o CRC (CPython 3.11 a 3.14), então diretório central mentindo vira
   `InvalidSpreadsheetError`; XML truncado (`SyntaxError` do parser) deixou de
   escapar como `500`.
+- **Leitura de planilha sem bloquear o event loop (Unreleased, #432)** —
+  `read_xlsx_async` / `read_xlsx_as_async` / `read_xlsx_sheets_async` em
+  `tempest_fastapi_sdk.spreadsheet`: o leitor síncrono numa thread
+  (`asyncio.to_thread`) atrás de um semáforo
+  (`DEFAULT_MAX_CONCURRENT_XLSX_READS` = 4 **por event loop**, criado no
+  primeiro uso do loop; `semaphore=` troca por um do chamador). Os caminhos
+  async do `spreadsheet/google.py` deixaram de parsear no loop: o parse do
+  CSV e a validação do `read_google_sheet_as` vão por `to_thread`, o
+  `read_google_sheet_xlsx` chama `read_xlsx_sheets_async`. Receita usa a
+  variante async no endpoint de importação. Medido (99 999 linhas, 4 MB):
+  leitura síncrona numa corrotina segurou o loop 5,4 s (ticker de 10 ms: 1 de
+  ~540); a async deixou 473 ticks. Quatro leituras simultâneas: 25,0 s contra
+  21,6 s em série — o semáforo limita memória e pool de threads, não acelera.
+  Guard: `tests/test_spreadsheet_event_loop_guard.py`.
 - **Limites do leitor CSV do Google (Unreleased, #413)** — `max_bytes`
   (`DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES`, 10 MiB, pelo mesmo streaming do
   `.xlsx`) e `max_rows` (`DEFAULT_XLSX_MAX_ROWS`, 100 000, contado durante o

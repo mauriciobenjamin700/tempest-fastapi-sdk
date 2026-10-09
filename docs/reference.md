@@ -308,6 +308,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx
 ::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_as
 ::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_sheets
+::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_async
+::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_as_async
+::: tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_sheets_async
 ::: tempest_fastapi_sdk.spreadsheet.reader.XlsxCellValue
 ::: tempest_fastapi_sdk.spreadsheet.reader.XlsxSource
 ::: tempest_fastapi_sdk.spreadsheet.reader.InvalidSpreadsheetError
@@ -317,6 +320,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_ROWS
 ::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES
 ::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_XLSX_MAX_COMPRESSION_RATIO
+::: tempest_fastapi_sdk.spreadsheet.reader.DEFAULT_MAX_CONCURRENT_XLSX_READS
 
 ---
 
