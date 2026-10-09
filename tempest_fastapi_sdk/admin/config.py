@@ -135,9 +135,13 @@ class Lens:
     Attributes:
         name (str): The lens identifier; its slug (lowercased,
             spaces→hyphens) is the ``?lens=`` value.
-        filters (dict[str, Any]): Filter conditions merged into the
-            query — same conventions as a repository filter dict
-            (``field__gte`` etc.).
+        filters (dict[str, Any]): Column name to the value the tab's rows must
+            match, ANDed into the query, e.g.
+            ``{"user_id": 1234, "is_active": True}``. A list is ``IN``, ``None`` is
+            ``IS NULL``, and a ``<column>__<op>`` key applies an operator
+            (``{"price__gte": 10}``); every convention is listed on
+            :class:`~tempest_fastapi_sdk.BaseRepository`. A key the model has no
+            column for is ignored without error.
         order_by (str | None): Column to order by; ``-col`` for
             descending. Applied unless the user clicked a column sort.
         label (str | None): Tab label; defaults to ``name``.
@@ -155,7 +159,13 @@ class Lens:
 
         Args:
             name (str): The lens identifier.
-            filters (dict[str, Any] | None): Filter conditions.
+            filters (dict[str, Any] | None): Column name to the value the tab's rows
+                must match, ANDed together, e.g.
+                ``{"user_id": 1234, "is_active": True}``. A list is ``IN``, ``None``
+                is ``IS NULL``, and a ``<column>__<op>`` key applies an operator
+                (``{"price__gte": 10}``); every convention is listed on
+                :class:`~tempest_fastapi_sdk.BaseRepository`. A key the model has no
+                column for is ignored without error.
             order_by (str | None): Ordering column (``-col`` = desc).
             label (str | None): Tab label.
         """

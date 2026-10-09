@@ -25,6 +25,16 @@ artifact on a device can be traced back to the pickle that made it. That
 asymmetry is the whole point of converting: ONNX is data, a pickle is a
 program.
 
+**Pin the digest you released.** ``expected_sha256`` makes the load refuse
+a file whose SHA-256 differs from the value your release recorded, and the
+comparison runs **before** ``joblib.load``, so a substituted pickle never
+gets to execute:
+
+    load_sklearn_artifact(
+        "artifacts/risk.pkl",
+        expected_sha256="sha256:9f2c...",
+    )
+
 **Pickles also carry no version contract you can rely on.** Measured on
 scikit-learn 1.9: a model pickled by one version and loaded by another
 produces *no* warning and stores no version field — the mismatch, when it
@@ -37,7 +47,7 @@ from __future__ import annotations
 import hashlib
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, BinaryIO
 
 from pydantic import ConfigDict, Field
 
@@ -61,6 +71,46 @@ one call that turns a model registry into a remote-code-execution surface.
 
 _HASH_CHUNK_BYTES: int = 1 << 20
 """Read size when hashing, so a large artifact is not held in memory twice."""
+
+_SHA256_PREFIX: str = "sha256:"
+"""Optional algorithm prefix accepted on ``expected_sha256``."""
+
+_SHA256_HEX_LENGTH: int = 64
+"""Length of a SHA-256 hex digest."""
+
+_HEX_DIGITS: frozenset[str] = frozenset("0123456789abcdef")
+"""Characters a lower-cased hex digest may contain."""
+
+
+class ArtifactDigestMismatchError(ValueError):
+    """The pickle on disk is not the one the caller pinned.
+
+    Raised by :func:`load_sklearn_artifact` **before** the file is
+    unpickled, so a substituted artifact never executes. Subclasses
+    ``ValueError`` to match the digest check of ``load_edge_package``.
+
+    Attributes:
+        path (str): The file that was checked.
+        expected (str): The normalised digest the caller pinned.
+        actual (str): The digest of the file on disk.
+    """
+
+    def __init__(self, path: str, expected: str, actual: str) -> None:
+        """Build the error with both digests in the message.
+
+        Args:
+            path (str): The file that was checked.
+            expected (str): The normalised digest the caller pinned.
+            actual (str): The digest of the file on disk.
+        """
+        self.path: str = path
+        self.expected: str = expected
+        self.actual: str = actual
+        super().__init__(
+            f"refusing to load {path}: its SHA-256 is {actual}, expected "
+            f"{expected}. The file was replaced, truncated or is not the "
+            "released artifact; it was not unpickled.",
+        )
 
 
 class LoadedArtifact(BaseSchema):
@@ -130,20 +180,48 @@ class LoadedArtifact(BaseSchema):
     )
 
 
-def _digest(path: Path) -> str:
-    """Return the SHA-256 of a file, read in chunks.
+def _digest(handle: BinaryIO) -> str:
+    """Return the SHA-256 of an open binary file, read in chunks.
+
+    Reads from the current position to the end; the caller rewinds before
+    reusing the handle.
 
     Args:
-        path (Path): The file to hash.
+        handle (BinaryIO): The file to hash.
 
     Returns:
         str: Hex digest.
     """
     hasher = hashlib.sha256()
-    with path.open("rb") as handle:
-        while chunk := handle.read(_HASH_CHUNK_BYTES):
-            hasher.update(chunk)
+    while chunk := handle.read(_HASH_CHUNK_BYTES):
+        hasher.update(chunk)
     return hasher.hexdigest()
+
+
+def _normalise_sha256(value: str) -> str:
+    """Bring a caller-supplied SHA-256 to lower-case bare hex.
+
+    Accepts upper or lower case and an optional ``sha256:`` prefix (in any
+    case), with surrounding whitespace ignored.
+
+    Args:
+        value (str): The digest as the caller wrote it.
+
+    Returns:
+        str: The 64-character lower-case hex digest.
+
+    Raises:
+        ValueError: When the value is not a SHA-256 hex digest.
+    """
+    normalised = value.strip().lower()
+    if normalised.startswith(_SHA256_PREFIX):
+        normalised = normalised[len(_SHA256_PREFIX) :]
+    if len(normalised) != _SHA256_HEX_LENGTH or not set(normalised) <= _HEX_DIGITS:
+        raise ValueError(
+            f"expected_sha256 must be a {_SHA256_HEX_LENGTH}-character hex "
+            f"digest, optionally prefixed with {_SHA256_PREFIX!r}; got {value!r}",
+        )
+    return normalised
 
 
 def _unwrap(loaded: Any, key: str | None, path: Path) -> Any:
@@ -195,6 +273,7 @@ def load_sklearn_artifact(
     path: str | Path,
     *,
     key: str | None = None,
+    expected_sha256: str | None = None,
 ) -> LoadedArtifact:
     """Read a fitted estimator out of a pickle, recording its provenance.
 
@@ -204,14 +283,30 @@ def load_sklearn_artifact(
         >>> artifact.estimator_type, artifact.sha256[:12]
         ('RandomForestClassifier', 'a1b2c3d4e5f6')
 
+    Pinning the digest the release recorded:
+
+        >>> artifact = load_sklearn_artifact(
+        ...     "artifacts/risk.pkl",
+        ...     expected_sha256="sha256:A1B2C3D4E5F6...",
+        ... )
+
     **This executes the code in the file.** Point it at artifacts your own
     pipeline produced, in your own build environment — never at an upload,
     and never at something a device downloaded.
+
+    The file is opened once: it is hashed through that handle, compared
+    with ``expected_sha256`` when given, and only then unpickled from the
+    same handle — so the bytes that were checked are the bytes that run,
+    even if the path is swapped for another file in between.
 
     Args:
         path (str | Path): Local path to a ``joblib`` or ``pickle`` file.
         key (str | None): Entry to take when the pickle holds a dict. Not
             needed when exactly one entry can predict.
+        expected_sha256 (str | None): The SHA-256 the file must have, as
+            hex in any case, optionally prefixed with ``sha256:``. Checked
+            before unpickling; ``None`` skips the check and only records
+            the digest.
 
     Returns:
         LoadedArtifact: The estimator plus its digest, size, the
@@ -222,7 +317,11 @@ def load_sklearn_artifact(
         ValueError: When the path looks like a URL. Downloading and loading
             in one call is the shape that turns a registry into remote code
             execution; fetch deliberately first if that is what you mean.
+            Also raised when ``expected_sha256`` is not a SHA-256 hex
+            digest.
         FileNotFoundError: When the file does not exist.
+        ArtifactDigestMismatchError: When the file's SHA-256 differs from
+            ``expected_sha256``. The file is not unpickled.
         TypeError: When the file holds something that cannot predict.
         ImportError: When ``joblib`` (which ships with scikit-learn) is
             unavailable.
@@ -234,6 +333,8 @@ def load_sklearn_artifact(
             "so this call only takes a local path you produced. Download it "
             "deliberately first if that is really what you want.",
         )
+
+    pinned = _normalise_sha256(expected_sha256) if expected_sha256 is not None else None
 
     source = Path(path)
     if not source.exists():
@@ -247,10 +348,17 @@ def load_sklearn_artifact(
             "Install with: pip install tempest-fastapi-sdk[modelops-sklearn]",
         ) from exc
 
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        loaded = joblib.load(source)
-        raised = [f"{type(item.message).__name__}: {item.message}" for item in caught]
+    with source.open("rb") as handle:
+        digest = _digest(handle)
+        if pinned is not None and digest != pinned:
+            raise ArtifactDigestMismatchError(str(source), pinned, digest)
+        handle.seek(0)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            loaded = joblib.load(handle)
+            raised = [
+                f"{type(item.message).__name__}: {item.message}" for item in caught
+            ]
 
     estimator = _unwrap(loaded, key, source)
     if not hasattr(estimator, "predict"):
@@ -265,7 +373,7 @@ def load_sklearn_artifact(
     return LoadedArtifact(
         estimator=estimator,
         source_path=str(source),
-        sha256=_digest(source),
+        sha256=digest,
         bytes=source.stat().st_size,
         sklearn_version=str(sklearn.__version__),
         estimator_type=type(estimator).__name__,
@@ -280,6 +388,7 @@ def edge_pipeline_from_pickle(
     output_dir: str | Path,
     *,
     key: str | None = None,
+    expected_sha256: str | None = None,
     feature_names: Sequence[str] | None = None,
     **kwargs: Any,
 ) -> EdgePackage:
@@ -311,6 +420,9 @@ def edge_pipeline_from_pickle(
             the drift baseline.
         output_dir (str | Path): Package directory to create.
         key (str | None): Entry to take when the pickle holds a dict.
+        expected_sha256 (str | None): The SHA-256 the pickle must have,
+            checked before it is unpickled. See
+            :func:`load_sklearn_artifact` for the accepted format.
         feature_names (Sequence[str] | None): Column order, overriding
             whatever the estimator recorded.
         **kwargs (Any): Forwarded to
@@ -325,9 +437,15 @@ def edge_pipeline_from_pickle(
         ValueError: When the path is a URL, or when the exported graph does
             not reproduce the estimator.
         FileNotFoundError: When the pickle does not exist.
+        ArtifactDigestMismatchError: When the pickle's SHA-256 differs from
+            ``expected_sha256``. Nothing is unpickled or written.
         TypeError: When the pickle holds something that cannot predict.
     """
-    artifact = load_sklearn_artifact(path, key=key)
+    artifact = load_sklearn_artifact(
+        path,
+        key=key,
+        expected_sha256=expected_sha256,
+    )
     resolved = feature_names if feature_names is not None else artifact.feature_names
     package = edge_pipeline(
         artifact.estimator,
@@ -357,6 +475,7 @@ def edge_pipeline_from_pickle(
 
 
 __all__: list[str] = [
+    "ArtifactDigestMismatchError",
     "LoadedArtifact",
     "edge_pipeline_from_pickle",
     "load_sklearn_artifact",

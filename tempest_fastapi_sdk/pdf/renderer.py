@@ -81,7 +81,10 @@ class PdfRenderer:
     Attributes:
         template_dir (Path | None): Project templates, searched first.
         assets (AssetPolicy): What a template may load. The default
-            denies every fetch.
+            denies every fetch. Only its rules are shared between
+            renders: each render collects refusals in its own
+            :meth:`~tempest_fastapi_sdk.pdf.AssetPolicy.for_render` copy,
+            so this instance's ``refusals`` is never read or cleared.
         strict_assets (bool): Whether a refused asset fails the render.
     """
 
@@ -102,7 +105,10 @@ class PdfRenderer:
             assets (AssetPolicy | None): What templates may load.
                 ``None`` builds a policy that denies every fetch, which
                 is enough for the bundled templates — their CSS is
-                inlined and images arrive as ``data:`` URIs.
+                inlined and images arrive as ``data:`` URIs. Safe to
+                share across concurrent renders: each one collects its
+                refusals in a private copy and reports them on its own
+                ``AssetRefused`` (or warning), never on this object.
             strict_assets (bool): When ``True`` (default), a refused or
                 unreachable asset raises after the page renders. The
                 renderer otherwise swallows it and returns a document
@@ -324,7 +330,11 @@ class PdfRenderer:
                 laying out a document that is already missing something;
                 with ``strict_assets=False`` the refusals are logged at
                 warning level instead, because a hole nobody is told
-                about is the worst of the three outcomes.
+                about is the worst of the three outcomes. Either way the
+                list holds this render's refusals only — they are
+                collected in a :meth:`AssetPolicy.for_render` copy, not
+                in ``self.assets``, which every concurrent render (up to
+                ``max_concurrent``) shares.
         """
         try:
             from weasyprint import HTML
@@ -343,19 +353,19 @@ class PdfRenderer:
 
         from tempest_fastapi_sdk.pdf.assets import AssetRefused
 
-        self.assets.take_refusals()
+        policy = self.assets.for_render()
         document = HTML(
             string=html,
             base_url=base_url,
             url_fetcher=build_url_fetcher(
-                self.assets,
+                policy,
                 fail_on_errors=self.strict_assets,
             ),
         )
         try:
             pdf: bytes = document.write_pdf(**options)
         except FatalURLFetchingError as exc:
-            refused = self.assets.take_refusals()
+            refused = policy.take_refusals()
             raise AssetRefused(
                 message=(
                     "the document referenced an asset that is not allowed; "
@@ -363,7 +373,7 @@ class PdfRenderer:
                 ),
                 details={"refused": refused or [str(exc)]},
             ) from exc
-        dropped = self.assets.take_refusals()
+        dropped = policy.take_refusals()
         if dropped:
             _LOGGER.warning(
                 "rendered a document with %d refused asset(s): %s",

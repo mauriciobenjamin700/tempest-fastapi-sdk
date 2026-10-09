@@ -437,6 +437,62 @@ renderer = PdfRenderer(max_concurrent=8)
 The default is 4. More workers than cores turns latency into queueing, not
 throughput.
 
+### One `AssetPolicy` for every render
+
+The same instance — and the `AssetPolicy` you handed it — serves every render
+running in parallel. Only the **rules** are shared: each render collects its
+refusals in a copy of its own (`AssetPolicy.for_render()`), so an
+`AssetRefused`'s `details["refused"]` lists only the URLs of the document
+**that** call asked for, and with `strict_assets=False` each render logs its
+own warning.
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.pdf import AssetPolicy, AssetRefused, PdfRenderer
+
+policy = AssetPolicy()
+renderer = PdfRenderer(assets=policy)
+
+
+async def render(url: str) -> list[str]:
+    try:
+        await renderer.render_html(f'<html><body><img src="{url}"></body></html>')
+    except AssetRefused as exc:
+        return list(exc.details["refused"])
+    return []
+
+
+async def main() -> None:
+    first, second = await asyncio.gather(
+        render("http://a.test/logo.png?token=a"),
+        render("http://b.test/logo.png?token=b"),
+    )
+    print(first)
+    print(second)
+    print(policy.refusals)
+
+
+asyncio.run(main())
+```
+
+```text
+['http://a.test/logo.png?token=a — remote assets are not allowed by this policy']
+['http://b.test/logo.png?token=b — remote assets are not allowed by this policy']
+[]
+```
+
+The last line shows the other half of the contract: the renderer neither reads
+nor clears the `refusals` list of the object you passed in — refusals reach you
+through `AssetRefused` (or the log, in lenient mode), never through it.
+
+!!! info "Why not a lock"
+    Up to 0.308.0 every render read and cleared the same list. With two in
+    parallel, one's error could carry the other's URL — and asset URLs often
+    carry a token in the query string — while the owner's refusal vanished.
+    A lock would only make the swap synchronous; what fixes it is giving each
+    render its own collector.
+
 ## Reading a PDF back
 
 Writing is half of it. The other half is reading — the first step of every
