@@ -27,11 +27,23 @@ sync: install ## Alias for `install`
 # 4m44s with `-n 12 --no-cov`, against ~36 min serial under coverage. The
 # coverage report lives in `test-cov`. Tests run only here: the repo's CI
 # publishes and nothing else.
+#
+# One BLAS/OpenMP thread per worker: each of the N workers otherwise opens a
+# pool the size of the machine (numpy, scipy, sklearn, torch, onnxruntime),
+# N x N threads on N cores. Measured on 12 cores, two runs each: 2m52s and
+# 2m50s with the cap, against 3m15s-3m38s without. `worksteal` hands a slow
+# worker's queue to idle ones, so the 20-40 s tests (mypy runs, docs guards)
+# stop leaving cores idle at the end. `-n logical`, not `-n auto`: with psutil
+# installed `auto` counts physical cores (6 of 12 here) -- 4m11s against
+# 2m14s on the same code.
+PYTEST_PARALLEL := OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+	uv run pytest -n logical --dist worksteal -p no:cacheprovider
+
 test: ## Run pytest in parallel, without coverage
-	uv run pytest -n auto -p no:cacheprovider
+	$(PYTEST_PARALLEL)
 
 test-cov: ## Run pytest in parallel with the coverage report
-	uv run pytest -n auto -p no:cacheprovider --cov=$(PACKAGE) --cov-report=term-missing
+	$(PYTEST_PARALLEL) --cov=$(PACKAGE) --cov-report=term-missing
 
 # The Python matrix CI used to run. Each version gets its own venv outside
 # the repository (an in-repo `.venv-3.x` would ship in the sdist), synced
@@ -44,7 +56,8 @@ test-matrix: ## Run the suite on every supported Python (3.11, 3.12, 3.13)
 	@for v in $(MATRIX_PYTHONS); do \
 		echo "== Python $$v"; \
 		UV_PROJECT_ENVIRONMENT=$(MATRIX_VENVS)/$$v uv sync --locked --all-extras --python $$v --quiet || exit 1; \
-		UV_PROJECT_ENVIRONMENT=$(MATRIX_VENVS)/$$v uv run --no-sync python -m pytest -n auto -p no:cacheprovider -q || exit 1; \
+		OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+		UV_PROJECT_ENVIRONMENT=$(MATRIX_VENVS)/$$v uv run --no-sync python -m pytest -n logical --dist worksteal -p no:cacheprovider -q || exit 1; \
 	done
 
 test-model: ## Run opt-in model smoke tests (downloads tiny weights on first run)

@@ -68,7 +68,7 @@ uv sync --all-extras --group dev --group docs
 | `make fmt` | `ruff format .` (writes) |
 | `make fmt-check` | `ruff format --check .` (read-only) |
 | `make type` | `mypy tempest_fastapi_sdk` (strict) |
-| `make test` | `pytest` in parallel (`-n auto`), no coverage |
+| `make test` | `pytest` in parallel (one worker per logical core, `worksteal`, one BLAS thread per worker), no coverage |
 | `make test-cov` | `pytest` in parallel with the coverage report |
 | `make test-matrix` | the suite on 3.11, 3.12 and 3.13, one venv per version |
 | `make check` | `lint + fmt-check + type + test` (stops at first failure) |

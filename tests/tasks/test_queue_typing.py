@@ -21,7 +21,9 @@ is the proof that the signature survived, since ``Any`` accepts that call.
 
 from __future__ import annotations
 
+import hashlib
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -91,6 +93,28 @@ reveal_type(opened)
 """Downstream code written the way the ``tasks`` recipe tells services to."""
 
 
+def _shared_mypy_cache(tag: str) -> Path:
+    """Return a mypy cache directory that survives between runs.
+
+    A cache under ``tmp_path`` started cold on every run and re-checked the
+    whole SDK: 38 s for this test alone in the 2026-10-09 ``--durations``
+    report. mypy's incremental mode is sound -- a changed module is
+    re-analysed -- so a persistent cache only skips work whose inputs did not
+    move. The directory is keyed on the repository path (a worktree gets its
+    own) and on ``tag`` (no two tests write the same cache concurrently),
+    the same scheme ``tests/test_docs_type_guard.py`` uses.
+
+    Args:
+        tag (str): Name of the test owning the cache.
+
+    Returns:
+        Path: The cache directory.
+    """
+    root: str = str(Path(__file__).resolve().parents[2])
+    digest: str = hashlib.sha256(root.encode("utf-8")).hexdigest()[:12]
+    return Path(tempfile.gettempdir()) / f"tempest-mypy-{digest}-{tag}"
+
+
 def _run_mypy(tmp_path: Path) -> list[str]:
     """Run ``mypy --strict`` over the snippet and return its findings.
 
@@ -111,7 +135,7 @@ def _run_mypy(tmp_path: Path) -> list[str]:
             "--hide-error-context",
             "--no-color-output",
             "--cache-dir",
-            str(tmp_path / ".mypy_cache"),
+            str(_shared_mypy_cache("queue-typing")),
             "--python-executable",
             sys.executable,
         ]
