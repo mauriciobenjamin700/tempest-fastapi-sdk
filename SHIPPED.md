@@ -1742,6 +1742,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   address object); `city` is the first of `city`/`town`/`village`/
   `municipality` present — an order measured on recorded payloads, since one
   point can carry several;
+  **geocoding cache (Unreleased):** `CachedGeocodingBackend` wraps any
+  `GeocodingBackend` behind a pluggable `GeocodeCacheStore` (`get`/`set` +
+  TTL) — `InMemoryGeocodeCacheStore` for tests/dev, `RedisGeocodeCacheStore`
+  over a redis-subset protocol (positional, `Awaitable`, no `redis` import);
+  `reverse` rounds the coordinate to 3 places (~111 m grid, measured; two
+  readings ~40 m apart key together, `-0.0` never splits a key) before
+  keying and before the backend call; `geocode` keys on
+  `sha256(text.strip().casefold())` with no raw text in the key; store
+  read/write failures and unparseable payloads log `WARNING` and degrade to
+  a fresh ask (only the backend's own error bubbles up), and
+  `cache_misses=False` leaves a `None` answer uncached by default;
   `OSRMBackend.matrix` (table → `DistanceMatrix`) + `route(with_geometry=True)`
   (decoded into `TravelEstimate.geometry`) + per-mode `DEFAULT_MODE_PROFILES`;
   polyline codec (`encode_polyline`/`decode_polyline`); `TravelMode.BICYCLE`/

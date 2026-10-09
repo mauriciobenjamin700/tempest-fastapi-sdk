@@ -568,8 +568,152 @@ asyncio.run(main())
 
 !!! warning "Public Nominatim usage policy"
     `nominatim.openstreetmap.org` requires a descriptive `User-Agent` and
-    caps you at ~1 req/s. On a request path, cache the result — or run your
-    own instance before scaling up.
+    caps you at ~1 req/s. On a request path, wrap the backend with
+    [`CachedGeocodingBackend`](../../../reference/#tempest_fastapi_sdk.geo.CachedGeocodingBackend)
+    — the section below builds that cache — or run your own instance before
+    scaling up.
+
+## Geocoding cache (`CachedGeocodingBackend`)
+
+That policy is why geocoding on a request path must be cached — and the rule
+holds for any address provider, paid or not: geocoding is the kind of call
+the same address asks for again. `CachedGeocodingBackend` wraps any
+[`GeocodingBackend`](../../../reference/#tempest_fastapi_sdk.geo.GeocodingBackend)
+— the `NominatimBackend`, the test's `FakeGeocodingBackend`, a paid provider
+client — and serves hits from the cache without touching the backend:
+
+```python
+import asyncio
+
+import httpx
+
+from tempest_fastapi_sdk.geo import (
+    CachedGeocodingBackend,
+    Coordinate,
+    InMemoryGeocodeCacheStore,
+    NominatimBackend,
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    async with httpx.AsyncClient() as client:
+        geocoder = NominatimBackend(http_client=client, user_agent="my-app/1.0")
+        cached = CachedGeocodingBackend(
+            backend=geocoder,
+            store=InMemoryGeocodeCacheStore(),
+        )
+        for _ in range(10):
+            await cached.reverse(Coordinate(latitude=-5.089, longitude=-42.802))
+
+
+asyncio.run(main())
+```
+
+Ten calls to the same point; only the first reaches the `NominatimBackend`.
+Keys are stable and carry no raw input — a rounded coordinate and a hashed
+text:
+
+```
+geocoding:reverse:v1:<latitude rounded to 3 places>:<longitude rounded to 3 places>
+geocoding:search:v1:<SHA-256 of the normalized text>
+```
+
+### Rounding: 3 places is a ~111 m grid
+
+`reverse` rounds the coordinate to 3 places **before** keying **and before**
+calling the backend — the exact reading lives only in the process that
+received it. The table below is the measured distance between a whole degree
+of latitude at −5° and each finer neighbour
+([`haversine_km`](../../../reference/#tempest_fastapi_sdk.geo.haversine_km)):
+
+| Places | Cell side |
+| --- | --- |
+| 0 (whole degree) | 111 km |
+| 1 | 11.1 km |
+| 2 | 1.11 km |
+| 3 | 111 m |
+| 4 | 11 m |
+| 5 | 1.1 m |
+
+Three places is ~111 m: a city block, the grain at which the same address
+resolves to the same building. Two GPS readings ~40 m apart land on the same
+key (measured), so a hit needs a third of the places — more places would
+fragment the cache without improving the answer. And `-0.0001` and `0.0001`
+both land on `0.000`: `-0.0` never splits a key into two entries.
+
+### A backend that answers nothing
+
+A backend that finds no address answers `None` — "there is no place here". By
+default that is **not** cached: Nominatim may index the place later, and the
+question costs 1 req/s. With `cache_misses=True` the wrapper stores the empty
+answer on the key and the second question costs zero — turn it on when the
+absence is stable, like an address you are certain does not exist in the
+base.
+
+### Store: memory, Redis, yours
+
+`InMemoryGeocodeCacheStore` is the store for tests and dev: a `dict` with the
+TTL checked on read — it expires in the process, not in Redis. Production
+shares the cache across replicas, in Redis:
+
+```python
+import asyncio
+
+import httpx
+
+from tempest_fastapi_sdk.cache import AsyncRedisManager
+from tempest_fastapi_sdk.geo import (
+    CachedGeocodingBackend,
+    Coordinate,
+    NominatimBackend,
+    RedisGeocodeCacheStore,
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    manager = AsyncRedisManager("redis://localhost:6379/0")
+    await manager.connect()
+    try:
+        async with httpx.AsyncClient() as client:
+            geocoder = NominatimBackend(http_client=client, user_agent="my-app/1.0")
+            cached = CachedGeocodingBackend(
+                backend=geocoder,
+                store=RedisGeocodeCacheStore(manager.client_proxy),
+            )
+            await cached.reverse(Coordinate(latitude=-5.089, longitude=-42.802))
+    finally:
+        await manager.disconnect()
+
+
+asyncio.run(main())
+```
+
+The default TTL is 30 days (`DEFAULT_GEOCODE_CACHE_TTL_SECONDS`) and the key
+prefix is `geocoding` (`DEFAULT_GEOCODE_CACHE_KEY_PREFIX`) — tune them for
+your instance with `ttl_seconds=` and `key_prefix=`. Your own store:
+implement
+[`GeocodeCacheStore`](../../../reference/#tempest_fastapi_sdk.geo.GeocodeCacheStore)
+as a class with `get(key) -> str | None` and `set(key, value, ttl_seconds)`
+— that is the whole contract.
+
+A failed cache read or write, a payload that does not parse: everything is
+logged on the `tempest_fastapi_sdk.geo.cache` logger and degrades to "ask
+again", never to an error for the request. The only exception that bubbles up
+is the backend's own — the cache does not hide what the source answered.
+
+### Recap
+
+- `CachedGeocodingBackend(backend=..., store=...)` wraps any
+  `GeocodingBackend`; only the first call per key reaches the backend.
+- `reverse` rounds the coordinate to 3 places (~111 m, measured) before
+  keying and before calling the backend; the `geocode` text enters the key
+  via SHA-256, never raw.
+- `InMemoryGeocodeCacheStore` for tests and dev; `RedisGeocodeCacheStore` for
+  a shared cache; implement `GeocodeCacheStore` for your own.
+- `cache_misses=True` starts caching "not found"; a backend failure bubbles
+  up without becoming a hit.
 
 ## Structured address (`GeocodeAddress`)
 

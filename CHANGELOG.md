@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Cache de geocoding: `CachedGeocodingBackend`** — envolve qualquer
+  `GeocodingBackend` (`NominatimBackend`, um provedor pago, o
+  `FakeGeocodingBackend` dos testes) em frente de um cache plugável com a
+  interface `GeocodeCacheStore` (`get(key) -> str | None` +
+  `set(key, value, ttl_seconds)`): `InMemoryGeocodeCacheStore` (TTL checado
+  na leitura, um `dict` do processo) para testes e dev, e
+  `RedisGeocodeCacheStore` sobre um cliente compatível com o subset de
+  `redis.asyncio.Redis` que o SDK precisa (posicional, `Awaitable`, sem
+  import de `redis`). Só a primeira chamada por chave chega ao backend; a
+  segunda vem do cache. Parâmetros keyword-only: `backend=`, `store=`,
+  `precision=3`, `ttl_seconds=2_592_000` (30 dias), `key_prefix="geocoding"`,
+  `cache_misses=False`.
+  - **Chaves estáveis e privadas.** `reverse` arredonda a coordenada a 3
+    casas (~111 m de grade, medido com `haversine_km`; duas leituras a
+    ~40 m caem na mesma chave) **antes** de chavear e **antes** de chamar o
+    backend — a leitura exata não deixa o processo, e o `-0.0` não divide a
+    chave em duas entradas. `geocode` entra na chave como
+    `sha256(texto.strip().casefold())`, nunca o texto cru. Formato:
+    `geocoding:reverse:v1:<lat>:<lon>` e `geocoding:search:v1:<sha256>`.
+  - **Falha de cache nunca é erro de request.** `get`/`set` que levantam e
+    payload que não parseia logam `WARNING` no logger
+    `tempest_fastapi_sdk.geo.cache` e caem para "perguntar de novo"; a única
+    exceção que sobe é a do próprio backend. `cache_misses=False` (default)
+    não cacheia `None` — um lugar que o Nominatim ainda não indexou pode ser
+    achado depois; com `True`, o "não encontrado" também é guardado.
+
 ### Changed
 
 - **A suíte roda em paralelo e sem cobertura por padrão.** `make test` (e,
@@ -26,6 +54,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `~/.cache/tempest-fastapi-sdk/venvs`). Guard novo:
   `tests/test_release_flow_guard.py`. Na v0.309.0 o workflow da tag levou
   33 min, quase todos rodando a suíte pela terceira vez.
+
+### Documentation
+
+- **Receita de geocoding ganha a seção "Cache de geocoding"** (`geo.md` +
+  `.en.md`): por que cachear, as chaves, a tabela de precisão medida
+  (3 casas ≈ 111 m), o `cache_misses`, e os dois stores com exemplo
+  executável. Readme e landing de receitas citam a superfície nova; a
+  referência ganha stubs para as constantes de `geo.cache`.
 
 ## [0.309.0] — 2026-10-09
 
