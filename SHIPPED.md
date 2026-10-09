@@ -603,6 +603,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `edge_bundle` (returns the *smallest* artifact — optimize/`.ort` grow tiny
   graphs), `uses_ml_domain` (int8 quantization does not apply to
   `ai.onnx.ml`). `hummingbird-ml` rejected: caps `onnx<=1.16.1`. **Binary-tree defect relocated (v0.201.0):** it was recorded as a `skl2onnx` conversion bug; holding `skl2onnx` 1.20.0 / `sklearn` 1.9.0 / `onnx` 1.22.0 fixed and moving only the runtime showed it is **`onnxruntime`** — error 1.0 vs `predict_proba` on 1.27.0, 9.5e-08 on 1.28.0. Floor moved to `onnxruntime>=1.28`; `BINARY_TREE_FIXED_IN_ONNXRUNTIME` still gates the export warning for a force-assembled environment.
+  **Pinned pickle digest (Unreleased, #440):** `expected_sha256` on
+  `load_sklearn_artifact` / `edge_pipeline_from_pickle`, checked before
+  `joblib.load` through the same handle that is unpickled;
+  `ArtifactDigestMismatchError(ValueError)`; hex any case, `sha256:` optional.
   **Serving (v0.189.0):** `OnnxPredictor` (resolves input/output names,
   `DEFAULT_INTRA_OP_THREADS = 1` for constrained devices, reports the
   providers *actually* in use, `reload` builds the new session before
@@ -1194,6 +1198,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   it fetches nothing); allowed dirs are checked on the *resolved* path so `../`
   and symlinks do not escape, and `_fail_on_errors` aborts the render at the
   first refusal rather than shipping an invoice with a hole where the logo was.
+  **Refusals are per render (#435):** every render fetches through its own
+  `AssetPolicy.for_render()` copy, so concurrent renders sharing one policy
+  each report only their own URLs; the caller's `refusals` list is never
+  read or cleared.
   `logo_data_uri` accepts only `data:`; `accent_color`/`page_size`/`margin` are
   shape-constrained because they land **inside the stylesheet**.
   **Fixed while building:** the report's grand total was a `<tfoot>`

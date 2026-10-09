@@ -7,12 +7,14 @@ mocked loader would test nothing that matters.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from tempest_fastapi_sdk.modelops import ArtifactDigestMismatchError
 from tempest_fastapi_sdk.modelops.pickled import (
     edge_pipeline_from_pickle,
     load_sklearn_artifact,
@@ -108,6 +110,169 @@ class TestLoading:
         joblib.dump([1, 2, 3], path)
         with pytest.raises(TypeError, match=r"not a fitted estimator"):
             load_sklearn_artifact(path)
+
+
+class _TouchOnUnpickle:
+    """Object whose unpickling creates a marker file.
+
+    Stands in for a hostile pickle: if the marker exists after a call, the
+    file's code ran.
+    """
+
+    def __init__(self, marker: Path) -> None:
+        """Remember where the marker goes.
+
+        Args:
+            marker (Path): File created when the pickle is loaded.
+        """
+        self.marker: Path = marker
+
+    def __reduce__(self) -> tuple[Any, tuple[Path]]:
+        """Make unpickling call ``Path.touch`` on the marker.
+
+        Returns:
+            tuple[Any, tuple[Path]]: The callable and its argument.
+        """
+        return (Path.touch, (self.marker,))
+
+
+def _sha256_of(path: Path) -> str:
+    """Return the hex SHA-256 of a file.
+
+    Args:
+        path (Path): The file to hash.
+
+    Returns:
+        str: Lower-case hex digest.
+    """
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+class TestExpectedSha256:
+    def test_a_mismatch_is_refused_before_anything_is_unpickled(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """The check is the lock that makes joblib.load acceptable."""
+        marker = tmp_path / "ran"
+        path = tmp_path / "hostile.pkl"
+        joblib.dump(_TouchOnUnpickle(marker), path)
+
+        with pytest.raises(ArtifactDigestMismatchError) as caught:
+            load_sklearn_artifact(path, expected_sha256="0" * 64)
+
+        assert not marker.exists()
+        assert caught.value.expected == "0" * 64
+        assert caught.value.actual == _sha256_of(path)
+        assert "0" * 64 in str(caught.value)
+        assert _sha256_of(path) in str(caught.value)
+
+    def test_the_same_payload_runs_when_the_digest_matches(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Control: the marker is a real signal, not one that never fires."""
+        marker = tmp_path / "ran"
+        path = tmp_path / "hostile.pkl"
+        joblib.dump(_TouchOnUnpickle(marker), path)
+
+        with pytest.raises(TypeError):
+            load_sklearn_artifact(path, expected_sha256=_sha256_of(path))
+
+        assert marker.exists()
+
+    def test_a_mismatch_never_calls_joblib_load(
+        self,
+        pickle_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        calls: list[Any] = []
+        monkeypatch.setattr(joblib, "load", lambda *args, **kwargs: calls.append(args))
+
+        with pytest.raises(ArtifactDigestMismatchError):
+            load_sklearn_artifact(pickle_path, expected_sha256="f" * 64)
+
+        assert calls == []
+
+    def test_it_is_a_value_error(self, pickle_path: Path) -> None:
+        """Same base as load_edge_package's digest check."""
+        with pytest.raises(ValueError, match="was not unpickled"):
+            load_sklearn_artifact(pickle_path, expected_sha256="a" * 64)
+
+    def test_a_matching_digest_loads_and_is_recorded(self, pickle_path: Path) -> None:
+        digest = _sha256_of(pickle_path)
+        artifact = load_sklearn_artifact(pickle_path, expected_sha256=digest)
+        assert artifact.estimator_type == "RandomForestClassifier"
+        assert artifact.sha256 == digest
+
+    @pytest.mark.parametrize(
+        "spell",
+        [
+            lambda digest: digest.upper(),
+            lambda digest: f"sha256:{digest}",
+            lambda digest: f"SHA256:{digest.upper()}",
+            lambda digest: f"  sha256:{digest}\n",
+        ],
+        ids=["upper", "prefixed", "prefixed-upper", "whitespace"],
+    )
+    def test_accepted_spellings(
+        self,
+        pickle_path: Path,
+        spell: Any,
+    ) -> None:
+        digest = _sha256_of(pickle_path)
+        artifact = load_sklearn_artifact(pickle_path, expected_sha256=spell(digest))
+        assert artifact.sha256 == digest
+
+    @pytest.mark.parametrize(
+        "value",
+        ["", "abc", "g" * 64, "sha1:" + "a" * 40, "sha256:" + "a" * 63, "a" * 65],
+    )
+    def test_a_malformed_digest_is_refused(
+        self,
+        pickle_path: Path,
+        value: str,
+    ) -> None:
+        with pytest.raises(ValueError, match="64-character hex digest"):
+            load_sklearn_artifact(pickle_path, expected_sha256=value)
+
+    def test_a_compressed_joblib_file_loads_through_the_checked_handle(
+        self,
+        tmp_path: Path,
+        estimator: Any,
+    ) -> None:
+        path = tmp_path / "risk.pkl.z"
+        joblib.dump(estimator, path, compress=3)
+        artifact = load_sklearn_artifact(path, expected_sha256=_sha256_of(path))
+        assert artifact.estimator_type == "RandomForestClassifier"
+
+    def test_the_pipeline_propagates_it(
+        self,
+        tmp_path: Path,
+        pickle_path: Path,
+        training_data: tuple[Any, Any],
+    ) -> None:
+        features, target = training_data
+        with pytest.raises(ArtifactDigestMismatchError):
+            edge_pipeline_from_pickle(
+                pickle_path,
+                features,
+                tmp_path / "dist",
+                labels=target,
+                expected_sha256="0" * 64,
+            )
+        assert not (tmp_path / "dist").exists()
+
+        digest = _sha256_of(pickle_path)
+        package = edge_pipeline_from_pickle(
+            pickle_path,
+            features,
+            tmp_path / "dist",
+            labels=target,
+            expected_sha256=f"sha256:{digest.upper()}",
+        )
+        assert package.manifest.source is not None
+        assert package.manifest.source.sha256 == digest
 
 
 class TestDictArtifacts:
