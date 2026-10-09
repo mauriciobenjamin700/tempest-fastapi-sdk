@@ -18,10 +18,10 @@ jobs:
     # every tag that reaches this workflow already passed the suite. Running
     # it again here cost 33 min on v0.309.0 and caught nothing new.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           enable-cache: true
 
@@ -80,7 +80,7 @@ jobs:
 
       - name: Archive the audit record
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: pip-audit-release
           path: ${{ runner.temp }}/pip-audit.json
@@ -123,7 +123,7 @@ jobs:
             print('Smoke OK · version =', m.__version__)"
 
       - name: Upload distributions artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: python-dist
           path: dist/
@@ -139,7 +139,7 @@ jobs:
       id-token: write
     steps:
       - name: Download distributions artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: python-dist
           path: dist
@@ -154,7 +154,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Create GitHub Release from the CHANGELOG section
         env:
