@@ -76,7 +76,7 @@ from src.db.repositories import build_registry
 # In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
-registry = build_registry(session, AsyncMinIOClient(**settings.minio_kwargs()))
+registry = build_registry(session, AsyncMinIOClient(**settings.storage_kwargs()))
 
 version_id = UUID("6f1c3d84-2a55-4d0b-9d7e-0c1a2b3c4d5e")
 
@@ -112,7 +112,7 @@ from tempest_fastapi_sdk import AsyncMinIOClient
 from src.core.settings import settings
 from tempest_fastapi_sdk.artifacts import file_digest, object_digest
 
-storage = AsyncMinIOClient(**settings.minio_kwargs())
+storage = AsyncMinIOClient(**settings.storage_kwargs())
 
 
 async def main() -> None:
@@ -150,9 +150,9 @@ from src.db.repositories import build_registry
 # In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
-registry = build_registry(session, AsyncMinIOClient(**settings.minio_kwargs()))
+registry = build_registry(session, AsyncMinIOClient(**settings.storage_kwargs()))
 
-storage = AsyncMinIOClient(**settings.minio_kwargs())
+storage = AsyncMinIOClient(**settings.storage_kwargs())
 
 
 async def main() -> None:
@@ -195,9 +195,9 @@ async def model_digest(row: ModelVersion) -> tuple[str, int]:
     return await object_digest(storage, "models", row.file_key)
 
 
-registry = build_registry(session, AsyncMinIOClient(**settings.minio_kwargs()))
+registry = build_registry(session, AsyncMinIOClient(**settings.storage_kwargs()))
 
-storage = AsyncMinIOClient(**settings.minio_kwargs())
+storage = AsyncMinIOClient(**settings.storage_kwargs())
 
 
 router = APIRouter(prefix="/models", tags=["models"])
@@ -267,9 +267,9 @@ from src.db.repositories import build_registry
 # In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
-registry = build_registry(session, AsyncMinIOClient(**settings.minio_kwargs()))
+registry = build_registry(session, AsyncMinIOClient(**settings.storage_kwargs()))
 
-storage = AsyncMinIOClient(**settings.minio_kwargs())
+storage = AsyncMinIOClient(**settings.storage_kwargs())
 
 
 router = APIRouter()

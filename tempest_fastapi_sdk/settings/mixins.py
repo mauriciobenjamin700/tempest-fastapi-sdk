@@ -33,16 +33,104 @@ box.
 
 from __future__ import annotations
 
+import warnings
+from collections.abc import Mapping
 from datetime import timedelta
-from typing import Any, Literal, TypedDict
+from typing import Any, ClassVar, Literal, Self, TypedDict
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from tempest_fastapi_sdk.core.logging import (
     DEFAULT_LOG_BACKUP_COUNT,
     DEFAULT_LOG_MAX_BYTES,
 )
 from tempest_fastapi_sdk.settings.base import BaseAppSettings
+
+_MINIO_SUBCLASS_STACKLEVEL: int = 5
+"""``stacklevel`` pointing :class:`MinIOSettings`' subclass warning at
+the ``class`` statement that composes it."""
+
+_MINIO_INSTANCE_STACKLEVEL: int = 4
+"""``stacklevel`` pointing :class:`MinIOSettings`' instance warning at
+the line that calls ``MinIOSettings(...)``."""
+
+SPOOFABLE_IP_HEADERS: frozenset[str] = frozenset({"x-forwarded-for", "forwarded"})
+"""Header names :class:`ServerSettings` refuses as ``TRUSTED_IP_HEADER``.
+
+Both are appended to hop by hop rather than overwritten, so their
+leftmost content is whatever the client sent.
+"""
+
+
+AppEnvironment = Literal["development", "test", "production"]
+"""The deployment environments :class:`EnvironmentSettings` recognises."""
+
+
+class EnvironmentSettings(BaseAppSettings):
+    """Deployment environment plus the production guard.
+
+    Compose it like any mixin. With ``ENV=production`` the settings
+    refuse to build while any composed mixin still holds a development
+    value, listing every offending field at once; with ``development``
+    or ``test`` nothing changes::
+
+        class Settings(EnvironmentSettings, DatabaseSettings, BaseAppSettings):
+            ...
+
+    What counts as a development value is declared by each mixin in its
+    :meth:`~BaseAppSettings.production_violations` override, so the
+    guard only checks the mixins the service actually lists:
+
+    * :class:`ServerSettings` — ``SERVER_DEBUG`` or ``SERVER_RELOAD`` on.
+    * :class:`DatabaseSettings` — a SQLite ``DATABASE_URL``.
+    * :class:`JWTSettings` — ``JWT_SECRET`` equal to the declared
+      placeholder.
+    * :class:`CORSSettings` — ``"*"`` in ``CORS_ORIGINS``.
+    * :class:`TokenSettings` — an empty ``TOKEN_SECRET``.
+    * :class:`TaskIQSettings` — an empty ``TASKIQ_BROKER_URL``.
+    * :class:`StorageSettings` — the MinIO default access or secret key,
+      ``STORAGE_SECURE`` off, or ``STORAGE_PUBLIC_SECURE`` explicitly
+      off.
+
+    The error message names fields and reasons, never values.
+
+    Attributes:
+        ENV (AppEnvironment): ``"development"``, ``"test"`` or
+            ``"production"``. Default: ``"development"``.
+    """
+
+    ENV: AppEnvironment = Field(
+        default="development",
+        title="Deployment environment",
+        description=(
+            "``production`` refuses to build while a composed mixin holds "
+            "a development value (SQLite, placeholder secrets, CORS "
+            "``*``, debug/reload, in-memory broker, MinIO default keys)."
+        ),
+        examples=["development", "test", "production"],
+    )
+
+    @model_validator(mode="after")
+    def _refuse_development_values_in_production(self) -> Self:
+        """Collect every mixin's violations and refuse to build on any.
+
+        Returns:
+            Self: The validated settings, unchanged.
+
+        Raises:
+            ValueError: When ``ENV`` is ``"production"`` and
+                :meth:`production_violations` returns entries. Pydantic
+                wraps it in a ``ValidationError``.
+        """
+        if self.ENV != "production":
+            return self
+        violations: list[str] = self.production_violations()
+        if violations:
+            raise ValueError(
+                "ENV=production refuses development values:\n- "
+                + "\n- ".join(sorted(violations))
+            )
+        return self
 
 
 class ServerSettings(BaseAppSettings):
@@ -56,6 +144,16 @@ class ServerSettings(BaseAppSettings):
         SERVER_PORT (int): TCP port the application listens on. Default: ``8000``.
         SERVER_RELOAD (bool): Hot-reload on file changes (dev only). Default: ``False``.
         SERVER_DEBUG (bool): Generic application debug flag. Default: ``False``.
+        TRUSTED_IP_HEADER (str | None): The single header the edge proxy
+            overwrites with the client address (``x-real-ip``,
+            ``cf-connecting-ip``), lowercased. ``None`` uses the TCP peer.
+            Pass it as ``trusted_ip_header=`` to ``RateLimitMiddleware``,
+            ``AccessLogMiddleware`` and ``HoneypotBanMiddleware``, and as
+            ``trusted_header=`` to ``get_client_ip``. ``X-Forwarded-For``
+            and ``Forwarded`` are refused. Default: ``None``.
+
+    In ``ENV=production`` (see :class:`EnvironmentSettings`)
+    ``SERVER_DEBUG`` and ``SERVER_RELOAD`` must be off.
     """
 
     SERVER_HOST: str = Field(
@@ -93,6 +191,74 @@ class ServerSettings(BaseAppSettings):
         ),
         examples=[False, True],
     )
+    TRUSTED_IP_HEADER: str | None = Field(
+        default=None,
+        title="Trusted client-IP header",
+        description=(
+            "Single header the edge proxy overwrites with the client "
+            "address on every request. ``None`` resolves the client from "
+            "the TCP peer, which behind a proxy is the proxy itself. "
+            "``X-Forwarded-For`` and ``Forwarded`` are refused: clients "
+            "append to them, so their content is client-controlled."
+        ),
+        examples=[None, "x-real-ip", "cf-connecting-ip"],
+    )
+
+    @field_validator("TRUSTED_IP_HEADER")
+    @classmethod
+    def _refuse_spoofable_ip_header(cls, value: str | None) -> str | None:
+        """Normalise the header name and refuse the spoofable ones.
+
+        Header names are case-insensitive on the wire, so the value is
+        lowercased; an empty string means "not configured" and becomes
+        ``None``.
+
+        ``X-Forwarded-For`` and ``Forwarded`` are refused because a
+        proxy **appends** to them: whatever the client sent arrives
+        intact in front of the proxy's entry, and every consumer of this
+        setting reads the header whole. Trusting one lets a client pick
+        the address it is rate limited, logged and banned under.
+
+        Args:
+            value (str | None): The configured header name.
+
+        Returns:
+            str | None: The lowercased name, or ``None`` when unset.
+
+        Raises:
+            ValueError: When the name is ``x-forwarded-for`` or
+                ``forwarded``.
+        """
+        if value is None or not value.strip():
+            return None
+        name: str = value.strip().lower()
+        if name in SPOOFABLE_IP_HEADERS:
+            raise ValueError(
+                f"TRUSTED_IP_HEADER={name!r} is refused: proxies append to "
+                f"this header instead of overwriting it, so its content is "
+                f"whatever the client sent. Configure the edge to overwrite "
+                f"a single-hop header (e.g. nginx `proxy_set_header "
+                f"X-Real-IP $remote_addr`) and name that one, or use the "
+                f"CDN's verified header (cf-connecting-ip, true-client-ip)."
+            )
+        return name
+
+    def production_violations(self) -> list[str]:
+        """Refuse the debug and reload switches in production.
+
+        Returns:
+            list[str]: The parent's entries plus one per switch left on.
+        """
+        violations: list[str] = super().production_violations()
+        if self.SERVER_DEBUG:
+            violations.append(
+                "SERVER_DEBUG: debug mode is on (verbose errors leak internals)"
+            )
+        if self.SERVER_RELOAD:
+            violations.append(
+                "SERVER_RELOAD: uvicorn auto-reload is a development feature"
+            )
+        return violations
 
 
 class LogSettings(BaseAppSettings):
@@ -308,6 +474,20 @@ class DatabaseSettings(BaseAppSettings):
             "sqlite_foreign_keys": self.DATABASE_SQLITE_FOREIGN_KEYS,
         }
 
+    def production_violations(self) -> list[str]:
+        """Refuse SQLite as the production database.
+
+        Returns:
+            list[str]: The parent's entries plus one when
+            ``DATABASE_URL`` uses a ``sqlite`` dialect.
+        """
+        violations: list[str] = super().production_violations()
+        if self.DATABASE_URL.strip().lower().startswith("sqlite"):
+            violations.append(
+                "DATABASE_URL: points at SQLite (the development default)"
+            )
+        return violations
+
 
 class RedisSettings(BaseAppSettings):
     """Redis connection configuration.
@@ -463,6 +643,25 @@ class JWTSettings(BaseAppSettings):
             "issuer": self.JWT_ISSUER,
         }
 
+    def production_violations(self) -> list[str]:
+        """Refuse the placeholder signing secret in production.
+
+        The placeholder is read from ``JWTSettings.model_fields`` — the
+        default this mixin declares — rather than from a copied literal,
+        so changing the default cannot leave the check comparing against
+        a string the SDK stopped shipping.
+
+        Returns:
+            list[str]: The parent's entries plus one when ``JWT_SECRET``
+            still equals the mixin's declared default.
+        """
+        violations: list[str] = super().production_violations()
+        if JWTSettings.model_fields["JWT_SECRET"].default == self.JWT_SECRET:
+            violations.append(
+                "JWT_SECRET: still the public placeholder declared by JWTSettings"
+            )
+        return violations
+
 
 class CORSSettings(BaseAppSettings):
     """CORS middleware configuration.
@@ -558,6 +757,20 @@ class CORSSettings(BaseAppSettings):
         description="How long the browser may cache the CORS preflight response.",
         examples=[0, 600, 3600],
     )
+
+    def production_violations(self) -> list[str]:
+        """Refuse the wildcard origin in production.
+
+        Returns:
+            list[str]: The parent's entries plus one when
+            ``CORS_ORIGINS`` contains ``"*"``.
+        """
+        violations: list[str] = super().production_violations()
+        if "*" in self.CORS_ORIGINS:
+            violations.append(
+                'CORS_ORIGINS: contains "*" (list the trusted frontend origins)'
+            )
+        return violations
 
 
 class EmailSettings(BaseAppSettings):
@@ -782,6 +995,22 @@ class TokenSettings(BaseAppSettings):
         ),
         examples=["", "internal-svc-secret-please-rotate"],
     )
+
+    def production_violations(self) -> list[str]:
+        """Refuse an empty shared secret in production.
+
+        An empty ``TOKEN_SECRET`` turns
+        :func:`~tempest_fastapi_sdk.make_token_dependency` into a gate
+        that lets every request through.
+
+        Returns:
+            list[str]: The parent's entries plus one when
+            ``TOKEN_SECRET`` is empty.
+        """
+        violations: list[str] = super().production_violations()
+        if not self.TOKEN_SECRET.strip():
+            violations.append("TOKEN_SECRET: empty, which disables the X-Token check")
+        return violations
 
 
 class WebPushSettings(BaseAppSettings):
@@ -1077,6 +1306,25 @@ class TaskIQSettings(BaseAppSettings):
         ),
         examples=[86400, 3600, 0],
     )
+
+    def production_violations(self) -> list[str]:
+        """Refuse an empty broker URL in production.
+
+        :meth:`~tempest_fastapi_sdk.tasks.TaskQueue.from_settings` turns
+        an empty ``TASKIQ_BROKER_URL`` into the in-memory broker, whose
+        enqueue runs the task inside the web process instead of handing
+        it to a worker.
+
+        Returns:
+            list[str]: The parent's entries plus one when
+            ``TASKIQ_BROKER_URL`` is empty.
+        """
+        violations: list[str] = super().production_violations()
+        if not self.TASKIQ_BROKER_URL.strip():
+            violations.append(
+                "TASKIQ_BROKER_URL: empty, which selects the in-memory broker"
+            )
+        return violations
 
 
 class AuthSettings(BaseAppSettings):
@@ -2120,31 +2368,57 @@ class OAuthSettings(BaseAppSettings):
         }
 
 
-class MinIOSettings(BaseAppSettings):
-    """MinIO / S3-compatible object storage configuration.
+class StorageSettings(BaseAppSettings):
+    """S3-compatible object storage configuration.
 
-    Consumed by :class:`tempest_fastapi_sdk.AsyncMinIOClient`. The
-    same shape works for any S3-compatible target (AWS S3, MinIO,
-    Backblaze B2, Cloudflare R2, Wasabi, DigitalOcean Spaces).
+    Consumed by :class:`tempest_fastapi_sdk.AsyncMinIOClient`, which
+    speaks the S3 API to any compatible target (AWS S3, MinIO, Backblaze
+    B2, Cloudflare R2, Wasabi, DigitalOcean Spaces) — the ``MinIO`` in
+    the client's name is the library it uses, not a requirement on the
+    server.
 
     Each attribute below is also the name of the environment variable
-    that sets it (matched case-sensitively, no prefix).
+    that sets it (matched case-sensitively, no prefix). Every field that
+    used to be ``MINIO_*`` (when this mixin was ``MinIOSettings``) still
+    reads the old name as a fallback through
+    ``validation_alias=AliasChoices(new, old)``; the pairs are listed in
+    :attr:`DEPRECATED_ENV_ALIASES`. Setting both names of a pair to
+    different values refuses to build — see
+    :func:`~tempest_fastapi_sdk.settings.reject_conflicting_env_aliases`.
+    The pydantic mypy plugin flags each ``AliasChoices`` field as a
+    "required dynamic alias" (``pydantic-alias``) and is silenced on
+    those lines rather than with ``validate_by_name=True``: that flag
+    would merge into the consumer's composed ``Settings`` and make every
+    aliased field of theirs readable from the environment by its field
+    name as well.
+
+    The defaults are a local MinIO's (``minioadmin``/``minioadmin`` over
+    plain HTTP). In ``ENV=production`` (see :class:`EnvironmentSettings`)
+    those keys, ``STORAGE_SECURE=False`` and an explicit
+    ``STORAGE_PUBLIC_SECURE=False`` are refused.
 
     Attributes:
-        MINIO_ENDPOINT (str): ``host[:port]`` without scheme.
-            Default: ``"localhost:9000"``.
-        MINIO_ACCESS_KEY (str): S3 access key / IAM user.
-            Default: ``"minioadmin"``.
-        MINIO_SECRET_KEY (str): S3 secret key. Default: ``"minioadmin"``.
-        MINIO_SECURE (bool): Use HTTPS when ``True``. Default: ``False``.
-        MINIO_REGION (str): S3 region. Default: ``"us-east-1"``.
-        MINIO_DEFAULT_BUCKET (str): Bucket ensured and used as the implicit
-            target. Default: ``"uploads"``.
-        MINIO_PUBLIC_ENDPOINT (str | None): Public host presigned URLs are
-            signed against, when the browser can't reach ``MINIO_ENDPOINT``
-            directly. ``None`` reuses ``MINIO_ENDPOINT``. Default: ``None``.
-        MINIO_PUBLIC_SECURE (bool | None): HTTPS for the public endpoint;
-            ``None`` falls back to ``MINIO_SECURE``. Default: ``None``.
+        STORAGE_ENDPOINT (str): ``host[:port]`` without scheme. Old name
+            ``MINIO_ENDPOINT``. Default: ``"localhost:9000"``.
+        STORAGE_ACCESS_KEY (str): S3 access key / IAM user. Old name
+            ``MINIO_ACCESS_KEY``. Default: ``"minioadmin"``.
+        STORAGE_SECRET_KEY (str): S3 secret key. Old name
+            ``MINIO_SECRET_KEY``. Default: ``"minioadmin"``.
+        STORAGE_SECURE (bool): Use HTTPS when ``True``. Old name
+            ``MINIO_SECURE``. Default: ``False``.
+        STORAGE_REGION (str): S3 region. Old name ``MINIO_REGION``.
+            Default: ``"us-east-1"``.
+        STORAGE_DEFAULT_BUCKET (str): Bucket ensured and used as the
+            implicit target. Old name ``MINIO_DEFAULT_BUCKET``.
+            Default: ``"uploads"``.
+        STORAGE_PUBLIC_ENDPOINT (str | None): Public host presigned URLs
+            are signed against, when the browser can't reach
+            ``STORAGE_ENDPOINT`` directly. ``None`` reuses
+            ``STORAGE_ENDPOINT``. Old name ``MINIO_PUBLIC_ENDPOINT``.
+            Default: ``None``.
+        STORAGE_PUBLIC_SECURE (bool | None): HTTPS for the public
+            endpoint; ``None`` falls back to ``STORAGE_SECURE``. Old name
+            ``MINIO_PUBLIC_SECURE``. Default: ``None``.
         STORAGE_ACCEL_REDIRECT (bool): ``True`` makes
             ``AsyncMinIOClient.serve_object`` answer with
             ``X-Accel-Redirect`` for nginx instead of proxying the bytes.
@@ -2153,9 +2427,21 @@ class MinIOSettings(BaseAppSettings):
             ``X-Accel-Redirect`` points into. Default: ``"/_bucket/"``.
     """
 
-    MINIO_ENDPOINT: str = Field(
+    DEPRECATED_ENV_ALIASES: ClassVar[Mapping[str, str]] = {
+        "MINIO_ENDPOINT": "STORAGE_ENDPOINT",
+        "MINIO_ACCESS_KEY": "STORAGE_ACCESS_KEY",
+        "MINIO_SECRET_KEY": "STORAGE_SECRET_KEY",
+        "MINIO_SECURE": "STORAGE_SECURE",
+        "MINIO_REGION": "STORAGE_REGION",
+        "MINIO_DEFAULT_BUCKET": "STORAGE_DEFAULT_BUCKET",
+        "MINIO_PUBLIC_ENDPOINT": "STORAGE_PUBLIC_ENDPOINT",
+        "MINIO_PUBLIC_SECURE": "STORAGE_PUBLIC_SECURE",
+    }
+
+    STORAGE_ENDPOINT: str = Field(  # type: ignore[pydantic-alias]
         default="localhost:9000",
-        title="MinIO endpoint",
+        validation_alias=AliasChoices("STORAGE_ENDPOINT", "MINIO_ENDPOINT"),
+        title="Storage endpoint",
         description="``host[:port]`` without scheme.",
         examples=[
             "localhost:9000",
@@ -2163,20 +2449,23 @@ class MinIOSettings(BaseAppSettings):
             "s3.amazonaws.com",
         ],
     )
-    MINIO_ACCESS_KEY: str = Field(
+    STORAGE_ACCESS_KEY: str = Field(  # type: ignore[pydantic-alias]
         default="minioadmin",
+        validation_alias=AliasChoices("STORAGE_ACCESS_KEY", "MINIO_ACCESS_KEY"),
         title="Access key",
         description="S3 access key / IAM user.",
         examples=["minioadmin", "AKIAIOSFODNN7EXAMPLE"],
     )
-    MINIO_SECRET_KEY: str = Field(
+    STORAGE_SECRET_KEY: str = Field(  # type: ignore[pydantic-alias]
         default="minioadmin",
+        validation_alias=AliasChoices("STORAGE_SECRET_KEY", "MINIO_SECRET_KEY"),
         title="Secret key",
         description="S3 secret key — keep out of source.",
         examples=["minioadmin", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"],
     )
-    MINIO_SECURE: bool = Field(
+    STORAGE_SECURE: bool = Field(  # type: ignore[pydantic-alias]
         default=False,
+        validation_alias=AliasChoices("STORAGE_SECURE", "MINIO_SECURE"),
         title="Use HTTPS",
         description=(
             "Use HTTPS when ``True``. Default ``False`` because local "
@@ -2184,8 +2473,9 @@ class MinIOSettings(BaseAppSettings):
         ),
         examples=[False, True],
     )
-    MINIO_REGION: str = Field(
+    STORAGE_REGION: str = Field(  # type: ignore[pydantic-alias]
         default="us-east-1",
+        validation_alias=AliasChoices("STORAGE_REGION", "MINIO_REGION"),
         title="S3 region",
         description=(
             "S3 region. MinIO defaults to ``us-east-1``; AWS deployments "
@@ -2193,8 +2483,9 @@ class MinIOSettings(BaseAppSettings):
         ),
         examples=["us-east-1", "us-west-2", "eu-west-1", "sa-east-1"],
     )
-    MINIO_DEFAULT_BUCKET: str = Field(
+    STORAGE_DEFAULT_BUCKET: str = Field(  # type: ignore[pydantic-alias]
         default="uploads",
+        validation_alias=AliasChoices("STORAGE_DEFAULT_BUCKET", "MINIO_DEFAULT_BUCKET"),
         title="Default bucket name",
         description=(
             "Bucket created by :meth:`AsyncMinIOClient.ensure_bucket` "
@@ -2202,30 +2493,34 @@ class MinIOSettings(BaseAppSettings):
         ),
         examples=["uploads", "media", "user-content"],
     )
-    MINIO_PUBLIC_ENDPOINT: str | None = Field(
+    STORAGE_PUBLIC_ENDPOINT: str | None = Field(  # type: ignore[pydantic-alias]
         default=None,
+        validation_alias=AliasChoices(
+            "STORAGE_PUBLIC_ENDPOINT", "MINIO_PUBLIC_ENDPOINT"
+        ),
         title="Public endpoint for presigned URLs",
         description=(
             "Split-endpoint mode: when set, presigned upload/download "
             "URLs are signed against **this** host while every "
-            "server-side operation keeps using ``MINIO_ENDPOINT``. Use it "
-            "when the backend reaches MinIO over a fast private network "
-            "(e.g. ``servus-storage:9000``) but the browser must hit a "
-            "public, TLS-terminated host (e.g. "
+            "server-side operation keeps using ``STORAGE_ENDPOINT``. Use "
+            "it when the backend reaches the storage over a fast private "
+            "network (e.g. ``servus-storage:9000``) but the browser must "
+            "hit a public, TLS-terminated host (e.g. "
             "``storage.example.com``). ``None`` (default) signs presigned "
-            "URLs with ``MINIO_ENDPOINT`` — unchanged single-endpoint "
+            "URLs with ``STORAGE_ENDPOINT`` — unchanged single-endpoint "
             "behaviour."
         ),
         examples=[None, "storage.example.com", "https://storage.example.com"],
     )
-    MINIO_PUBLIC_SECURE: bool | None = Field(
+    STORAGE_PUBLIC_SECURE: bool | None = Field(  # type: ignore[pydantic-alias]
         default=None,
+        validation_alias=AliasChoices("STORAGE_PUBLIC_SECURE", "MINIO_PUBLIC_SECURE"),
         title="Use HTTPS for the public endpoint",
         description=(
             "Whether the public endpoint uses HTTPS. ``None`` (default) "
-            "falls back to ``MINIO_SECURE``. Set explicitly when the "
+            "falls back to ``STORAGE_SECURE``. Set explicitly when the "
             "private endpoint is plain HTTP but the public one is HTTPS. "
-            "A ``https://`` scheme on ``MINIO_PUBLIC_ENDPOINT`` also "
+            "A ``https://`` scheme on ``STORAGE_PUBLIC_ENDPOINT`` also "
             "implies HTTPS."
         ),
         examples=[None, True, False],
@@ -2250,30 +2545,185 @@ class MinIOSettings(BaseAppSettings):
         description=(
             "Prefix of the ``X-Accel-Redirect`` value — the nginx "
             "``location`` marked ``internal`` that proxies to "
-            "``MINIO_ENDPOINT``. Must start with ``/``."
+            "``STORAGE_ENDPOINT``. Must start with ``/``."
         ),
         examples=["/_bucket/", "/_media/"],
     )
 
-    def minio_kwargs(self) -> dict[str, Any]:
+    def storage_kwargs(self) -> dict[str, Any]:
         """Map these settings onto :class:`AsyncMinIOClient` kwargs.
 
         Returns:
             dict[str, Any]: Keyword arguments ready to splat into
-            ``AsyncMinIOClient(**settings.minio_kwargs())``.
+            ``AsyncMinIOClient(**settings.storage_kwargs())``.
         """
         return {
-            "endpoint": self.MINIO_ENDPOINT,
-            "access_key": self.MINIO_ACCESS_KEY,
-            "secret_key": self.MINIO_SECRET_KEY,
-            "default_bucket": self.MINIO_DEFAULT_BUCKET,
-            "secure": self.MINIO_SECURE,
-            "region": self.MINIO_REGION,
-            "public_endpoint": self.MINIO_PUBLIC_ENDPOINT,
-            "public_secure": self.MINIO_PUBLIC_SECURE,
+            "endpoint": self.STORAGE_ENDPOINT,
+            "access_key": self.STORAGE_ACCESS_KEY,
+            "secret_key": self.STORAGE_SECRET_KEY,
+            "default_bucket": self.STORAGE_DEFAULT_BUCKET,
+            "secure": self.STORAGE_SECURE,
+            "region": self.STORAGE_REGION,
+            "public_endpoint": self.STORAGE_PUBLIC_ENDPOINT,
+            "public_secure": self.STORAGE_PUBLIC_SECURE,
             "accel_redirect": self.STORAGE_ACCEL_REDIRECT,
             "accel_prefix": self.STORAGE_ACCEL_PREFIX,
         }
+
+    def minio_kwargs(self) -> dict[str, Any]:
+        """Return :meth:`storage_kwargs` under its pre-rename name.
+
+        Kept so code written against ``MinIOSettings`` keeps working
+        after composing :class:`StorageSettings`; the output is the same
+        dictionary.
+
+        Returns:
+            dict[str, Any]: Same as :meth:`storage_kwargs`.
+        """
+        return self.storage_kwargs()
+
+    def production_violations(self) -> list[str]:
+        """Refuse the local MinIO credentials and plain HTTP in production.
+
+        The defaults compared against are read from
+        ``StorageSettings.model_fields``, so they follow the declared
+        default instead of a copied literal. ``STORAGE_PUBLIC_SECURE``
+        is only refused when explicitly ``False``: ``None`` inherits
+        ``STORAGE_SECURE``, which is checked on its own.
+
+        Returns:
+            list[str]: The parent's entries plus one per offending field.
+        """
+        violations: list[str] = super().production_violations()
+        fields = StorageSettings.model_fields
+        if fields["STORAGE_ACCESS_KEY"].default == self.STORAGE_ACCESS_KEY:
+            violations.append("STORAGE_ACCESS_KEY: still the MinIO default credential")
+        if fields["STORAGE_SECRET_KEY"].default == self.STORAGE_SECRET_KEY:
+            violations.append("STORAGE_SECRET_KEY: still the MinIO default credential")
+        if not self.STORAGE_SECURE:
+            violations.append("STORAGE_SECURE: storage traffic over plain HTTP")
+        if self.STORAGE_PUBLIC_SECURE is False:
+            violations.append("STORAGE_PUBLIC_SECURE: presigned URLs over plain HTTP")
+        return violations
+
+
+class MinIOSettings(StorageSettings):
+    """Deprecated name of :class:`StorageSettings`.
+
+    Composing it (or instantiating it directly) emits a
+    ``DeprecationWarning``; switch the base to :class:`StorageSettings`.
+    The environment variables need no change — ``MINIO_*`` keeps working
+    on both classes — and the ``MINIO_*`` attributes below keep code that
+    reads ``settings.MINIO_ENDPOINT`` working until it moves to the
+    ``STORAGE_*`` attributes.
+    """
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Warn when a class lists ``MinIOSettings`` as a direct base.
+
+        Only direct bases warn, so a subclass of an already-composed
+        ``Settings`` does not repeat the warning.
+
+        Args:
+            **kwargs (Any): Class-creation keyword arguments, forwarded
+                to the parent hook.
+        """
+        super().__init_subclass__(**kwargs)
+        if MinIOSettings in cls.__bases__:
+            warnings.warn(
+                f"{cls.__name__}: MinIOSettings is deprecated, compose "
+                f"StorageSettings instead. MINIO_* environment variables "
+                f"keep working.",
+                DeprecationWarning,
+                stacklevel=_MINIO_SUBCLASS_STACKLEVEL,
+            )
+
+    def model_post_init(self, context: Any, /) -> None:
+        """Warn when ``MinIOSettings`` itself is instantiated.
+
+        Args:
+            context (Any): Pydantic's post-init context, forwarded.
+        """
+        super().model_post_init(context)
+        if type(self) is MinIOSettings:
+            warnings.warn(
+                "MinIOSettings is deprecated, use StorageSettings instead. "
+                "MINIO_* environment variables keep working.",
+                DeprecationWarning,
+                stacklevel=_MINIO_INSTANCE_STACKLEVEL,
+            )
+
+    @property
+    def MINIO_ENDPOINT(self) -> str:  # noqa: N802
+        """Deprecated read of :attr:`StorageSettings.STORAGE_ENDPOINT`.
+
+        Returns:
+            str: The storage endpoint.
+        """
+        return self.STORAGE_ENDPOINT
+
+    @property
+    def MINIO_ACCESS_KEY(self) -> str:  # noqa: N802
+        """Deprecated read of :attr:`StorageSettings.STORAGE_ACCESS_KEY`.
+
+        Returns:
+            str: The access key.
+        """
+        return self.STORAGE_ACCESS_KEY
+
+    @property
+    def MINIO_SECRET_KEY(self) -> str:  # noqa: N802
+        """Deprecated read of :attr:`StorageSettings.STORAGE_SECRET_KEY`.
+
+        Returns:
+            str: The secret key.
+        """
+        return self.STORAGE_SECRET_KEY
+
+    @property
+    def MINIO_SECURE(self) -> bool:  # noqa: N802
+        """Deprecated read of :attr:`StorageSettings.STORAGE_SECURE`.
+
+        Returns:
+            bool: Whether the endpoint uses HTTPS.
+        """
+        return self.STORAGE_SECURE
+
+    @property
+    def MINIO_REGION(self) -> str:  # noqa: N802
+        """Deprecated read of :attr:`StorageSettings.STORAGE_REGION`.
+
+        Returns:
+            str: The S3 region.
+        """
+        return self.STORAGE_REGION
+
+    @property
+    def MINIO_DEFAULT_BUCKET(self) -> str:  # noqa: N802
+        """Deprecated read of :attr:`StorageSettings.STORAGE_DEFAULT_BUCKET`.
+
+        Returns:
+            str: The default bucket.
+        """
+        return self.STORAGE_DEFAULT_BUCKET
+
+    @property
+    def MINIO_PUBLIC_ENDPOINT(self) -> str | None:  # noqa: N802
+        """Deprecated read of :attr:`StorageSettings.STORAGE_PUBLIC_ENDPOINT`.
+
+        Returns:
+            str | None: The public endpoint, or ``None``.
+        """
+        return self.STORAGE_PUBLIC_ENDPOINT
+
+    @property
+    def MINIO_PUBLIC_SECURE(self) -> bool | None:  # noqa: N802
+        """Deprecated read of :attr:`StorageSettings.STORAGE_PUBLIC_SECURE`.
+
+        Returns:
+            bool | None: HTTPS for the public endpoint, or ``None``.
+        """
+        return self.STORAGE_PUBLIC_SECURE
 
 
 SessionCookieSameSite = Literal["lax", "strict", "none"]
@@ -2913,10 +3363,13 @@ class HostBridgeSettings(BaseAppSettings):
 
 
 __all__: list[str] = [
+    "SPOOFABLE_IP_HEADERS",
+    "AppEnvironment",
     "AuthSettings",
     "CORSSettings",
     "DatabaseSettings",
     "EmailSettings",
+    "EnvironmentSettings",
     "FirebaseSettings",
     "GenAISettings",
     "HostBridgeSettings",
@@ -2931,6 +3384,7 @@ __all__: list[str] = [
     "RedisSettings",
     "ServerSettings",
     "SessionSettings",
+    "StorageSettings",
     "TaskIQSettings",
     "TokenSettings",
     "UploadSettings",

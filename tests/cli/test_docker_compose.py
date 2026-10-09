@@ -198,7 +198,7 @@ class TestProdProfile:
         assert environment["REDIS_URL"] == "redis://redis:6379/0"
         assert "@rabbitmq:5672/" in environment["RABBITMQ_URL"]
         assert "@rabbitmq:5672/" in environment["TASKIQ_BROKER_URL"]
-        assert environment["MINIO_ENDPOINT"] == "minio:9000"
+        assert environment["STORAGE_ENDPOINT"] == "minio:9000"
 
     def test_bind_is_pinned_inside_the_container(self) -> None:
         environment: dict[str, str] = _services("", port=9123)["api"]["environment"]
@@ -276,9 +276,9 @@ class TestEnvBlockFor:
         out = env_block_for("minio")
         assert "MINIO_ROOT_USER" in out
         assert "MINIO_ROOT_PASSWORD" in out
-        assert "MINIO_ENDPOINT" in out
-        assert "MINIO_ACCESS_KEY" in out
-        assert "MINIO_DEFAULT_BUCKET" in out
+        assert "STORAGE_ENDPOINT" in out
+        assert "STORAGE_ACCESS_KEY" in out
+        assert "STORAGE_DEFAULT_BUCKET" in out
 
     def test_postgres_credentials_always_present(self) -> None:
         out = env_block_for("")

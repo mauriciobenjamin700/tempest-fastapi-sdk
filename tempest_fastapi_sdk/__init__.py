@@ -1332,6 +1332,9 @@ from tempest_fastapi_sdk.settings import (
     EmailSettings as EmailSettings,
 )
 from tempest_fastapi_sdk.settings import (
+    EnvironmentSettings as EnvironmentSettings,
+)
+from tempest_fastapi_sdk.settings import (
     FirebaseSettings as FirebaseSettings,
 )
 from tempest_fastapi_sdk.settings import (
@@ -1378,6 +1381,9 @@ from tempest_fastapi_sdk.settings import (
 )
 from tempest_fastapi_sdk.settings import (
     SessionSettings as SessionSettings,
+)
+from tempest_fastapi_sdk.settings import (
+    StorageSettings as StorageSettings,
 )
 from tempest_fastapi_sdk.settings import (
     TaskIQSettings as TaskIQSettings,
@@ -2140,6 +2146,7 @@ __all__: list[str] = [
     "EnumColumnRef",
     "EnumTypeState",
     "EnvFeatureFlagBackend",
+    "EnvironmentSettings",
     "ErrorEnvelopeMiddleware",
     "ErrorResponseSchema",
     "EventStream",
@@ -2376,6 +2383,7 @@ __all__: list[str] = [
     "StateBR",
     "StaticCredentialAuthenticator",
     "StaticRateLimitPolicy",
+    "StorageSettings",
     "StoredFileServiceMixin",
     "SupportsPresign",
     "SupportsUpload",

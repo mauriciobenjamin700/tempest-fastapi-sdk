@@ -31,6 +31,17 @@ settings = Settings()
 """
 
 _MINIO_SETTINGS = """
+from tempest_fastapi_sdk.settings import ServerSettings, StorageSettings
+
+
+class Settings(ServerSettings, StorageSettings):
+    pass
+
+
+settings = Settings()
+"""
+
+_LEGACY_MINIO_SETTINGS = """
 from tempest_fastapi_sdk.settings import MinIOSettings, ServerSettings
 
 
@@ -258,7 +269,7 @@ def minio_project(
     monkeypatch: pytest.MonkeyPatch,
     forget_project: None,
 ) -> Path:
-    """Stand inside a project composing ``MinIOSettings``."""
+    """Stand inside a project composing ``StorageSettings``."""
     _write_project(tmp_path, _MINIO_SETTINGS)
     monkeypatch.chdir(tmp_path)
     return tmp_path
@@ -360,4 +371,25 @@ class TestStorage:
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, ["storage", "ls"])
         assert result.exit_code == 2
-        assert "MinIOSettings" in result.stderr
+        assert "StorageSettings" in result.stderr
+
+    def test_project_on_the_deprecated_minio_settings_still_works(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        forget_project: None,
+        store: type[_FakeStore],
+    ) -> None:
+        """A project still composing ``MinIOSettings`` keeps the CLI.
+
+        The command looks for ``storage_kwargs``, which the deprecated
+        class inherits, so the rename does not strand older projects.
+        """
+        _write_project(tmp_path, _LEGACY_MINIO_SETTINGS)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("MINIO_DEFAULT_BUCKET", "legacy")
+        _FakeStore.buckets = ["legacy"]
+        with pytest.warns(DeprecationWarning, match="MinIOSettings is deprecated"):
+            result = runner.invoke(app, ["storage", "check"])
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "legacy exists" in result.stdout

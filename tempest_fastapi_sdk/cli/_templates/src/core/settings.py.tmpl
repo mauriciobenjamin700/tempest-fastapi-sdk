@@ -7,6 +7,7 @@ from tempest_fastapi_sdk import (
     BaseAppSettings,
     CORSSettings,
     DatabaseSettings,
+    EnvironmentSettings,
     JWTSettings,
     LogSettings,
     ServerSettings,
@@ -16,6 +17,7 @@ from tempest_fastapi_sdk import (
 
 
 class Settings(
+    EnvironmentSettings,
     ServerSettings,
     LogSettings,
     DatabaseSettings,
@@ -26,6 +28,10 @@ class Settings(
     BaseAppSettings,
 ):
     """Service-wide settings backed by the ``.env`` file.
+
+    ``ENV=production`` refuses to boot while a mixin still holds a
+    development value (SQLite, the placeholder ``JWT_SECRET``, an empty
+    ``TOKEN_SECRET``, CORS ``*``, debug/reload, an empty broker URL).
 
     Attributes:
         TITLE (str): API title shown in the OpenAPI docs and the admin

@@ -45,7 +45,7 @@ from src.core.settings import settings
 router = APIRouter()
 
 
-minio = AsyncMinIOClient(**settings.minio_kwargs())
+minio = AsyncMinIOClient(**settings.storage_kwargs())
 downloads = DownloadUtils(minio)
 
 
