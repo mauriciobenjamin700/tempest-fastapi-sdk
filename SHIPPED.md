@@ -3132,3 +3132,19 @@ secret_columns=..., secret_markers=...)` com `tables()`, `export(session, id)`,
 (audit trail, id em JSON), raiz com PK composta, busca/cache/backup. Receita
 `recipes/subject-data.md`. Testes: `tests/privacy/`,
 `tests/storage/test_minio_client.py`.
+
+## Settings endurecido: ambiente, header de IP, storage (Unreleased, #446, #455, #457)
+
+`BaseAppSettings` liga `hide_input_in_errors=True` (erro de boot não ecoa o
+ambiente) e ganha dois pontos de extensão: `production_violations()`
+(cooperativo, cada mixin declara seus valores de desenvolvimento) e
+`DEPRECATED_ENV_ALIASES` + `reject_conflicting_env_aliases` (nome antigo e
+novo com valores diferentes derrubam o boot). `EnvironmentSettings` (`ENV`)
+recusa construir em `production` listando os campos — Server, Database, JWT,
+CORS, Token, TaskIQ e Storage participam. `ServerSettings.TRUSTED_IP_HEADER`
+modela o header de borda e recusa `x-forwarded-for`/`forwarded`.
+`StorageSettings` (`STORAGE_*`, `storage_kwargs()`) substitui `MinIOSettings`,
+que fica como subclasse deprecada; `MINIO_*` continua lido como fallback.
+Testes: `tests/settings/test_environment.py`,
+`tests/settings/test_trusted_ip_header.py`,
+`tests/settings/test_storage_settings.py`.

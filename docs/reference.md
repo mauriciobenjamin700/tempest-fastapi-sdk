@@ -1145,6 +1145,7 @@ então importar o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.settings.base.BaseAppSettings
 ::: tempest_fastapi_sdk.settings.base.AppSettingsMeta
+::: tempest_fastapi_sdk.settings.base.reject_conflicting_env_aliases
 ::: tempest_fastapi_sdk.settings.mixins
 
 ---

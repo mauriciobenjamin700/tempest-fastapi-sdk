@@ -193,10 +193,10 @@ class TestMixinDefaults:
         assert WebPushSettings().enabled is False
         assert WebPushSettings(VAPID_PRIVATE_KEY="k").enabled is True
 
-    def test_minio_kwargs_splats_into_client(self) -> None:
-        from tempest_fastapi_sdk import AsyncMinIOClient, MinIOSettings
+    def test_storage_kwargs_splats_into_client(self) -> None:
+        from tempest_fastapi_sdk import AsyncMinIOClient, StorageSettings
 
-        kwargs = MinIOSettings().minio_kwargs()
+        kwargs = StorageSettings().storage_kwargs()
         assert set(kwargs) == {
             "endpoint",
             "access_key",
@@ -211,17 +211,17 @@ class TestMixinDefaults:
         }
         assert AsyncMinIOClient(**kwargs) is not None
 
-    def test_minio_accel_settings_reach_the_client(self) -> None:
-        from tempest_fastapi_sdk import AsyncMinIOClient, MinIOSettings
+    def test_storage_accel_settings_reach_the_client(self) -> None:
+        from tempest_fastapi_sdk import AsyncMinIOClient, StorageSettings
 
-        settings = MinIOSettings(
+        settings = StorageSettings(
             STORAGE_ACCEL_REDIRECT=True, STORAGE_ACCEL_PREFIX="/_media/"
         )
-        client = AsyncMinIOClient(**settings.minio_kwargs())
+        client = AsyncMinIOClient(**settings.storage_kwargs())
         assert client.accel_redirect is True
         assert client.accel_prefix == "/_media/"
-        assert MinIOSettings().STORAGE_ACCEL_REDIRECT is False
-        assert MinIOSettings().STORAGE_ACCEL_PREFIX == "/_bucket/"
+        assert StorageSettings().STORAGE_ACCEL_REDIRECT is False
+        assert StorageSettings().STORAGE_ACCEL_PREFIX == "/_bucket/"
 
     def test_upload_settings_defaults(self) -> None:
         settings = UploadSettings()

@@ -150,6 +150,139 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 atinge o `fail_level` (padrão `ERROR`); `run_checks` faz o mesmo mas só
 devolve a lista, sem levantar.
 
+## Guard de produção: `EnvironmentSettings`
+
+Os checks acima **avisam**. Para o que nunca pode subir em produção — SQLite,
+o `JWT_SECRET` placeholder, CORS `*` — avisar não basta: o deploy precisa
+cair. É isso que o mixin `EnvironmentSettings` faz. Ele traz o campo `ENV`
+(`development`, `test` ou `production`) e, com `ENV=production`, recusa
+construir o settings enquanto algum mixin composto guardar valor de
+desenvolvimento:
+
+```python
+import os
+
+from pydantic import ValidationError
+from tempest_fastapi_sdk import (
+    BaseAppSettings,
+    DatabaseSettings,
+    EnvironmentSettings,
+    JWTSettings,
+    ServerSettings,
+)
+
+
+class Settings(
+    EnvironmentSettings,
+    ServerSettings,
+    DatabaseSettings,
+    JWTSettings,
+    BaseAppSettings,
+):
+    """Settings do serviço, com o guard de produção."""
+
+
+os.environ["ENV"] = "production"
+
+try:
+    Settings()
+except ValidationError as exc:
+    print(exc)
+```
+
+Sem `DATABASE_URL` nem `JWT_SECRET` no ambiente, a saída lista **todos** os
+campos de uma vez — pelo nome, nunca pelo valor:
+
+```text
+1 validation error for Settings
+  Value error, ENV=production refuses development values:
+- DATABASE_URL: points at SQLite (the development default)
+- JWT_SECRET: still the public placeholder declared by JWTSettings [type=value_error]
+```
+
+Com `ENV=development` (o default) ou `ENV=test`, nada muda.
+
+### O que cada mixin recusa
+
+O guard só olha os mixins que você compõe. Cada um declara as próprias
+regras no método `production_violations()`:
+
+| Mixin | Recusado em produção |
+| --- | --- |
+| `ServerSettings` | `SERVER_DEBUG=true`, `SERVER_RELOAD=true` |
+| `DatabaseSettings` | `DATABASE_URL` com dialeto `sqlite` |
+| `JWTSettings` | `JWT_SECRET` igual ao default declarado no mixin |
+| `CORSSettings` | `"*"` em `CORS_ORIGINS` |
+| `TokenSettings` | `TOKEN_SECRET` vazio (desliga o `X-Token`) |
+| `TaskIQSettings` | `TASKIQ_BROKER_URL` vazio (cai no broker em memória) |
+| `StorageSettings` | chaves `minioadmin` do default, `STORAGE_SECURE=false`, `STORAGE_PUBLIC_SECURE=false` explícito |
+
+!!! info "O placeholder vem do mixin, não de um literal"
+    O `JWT_SECRET` é comparado com `JWTSettings.model_fields["JWT_SECRET"].default`.
+    Se o default mudar, a checagem acompanha.
+
+### Acrescentando (ou dispensando) uma regra
+
+`production_violations()` é cooperativo: sobrescreva no seu `Settings`,
+chame `super()` e trabalhe sobre a lista. Assim você soma uma regra do
+serviço — ou tira uma que aceitou de propósito, como SQLite num serviço de
+nó único:
+
+```python
+import os
+
+from pydantic import Field, ValidationError
+from tempest_fastapi_sdk import BaseAppSettings, DatabaseSettings, EnvironmentSettings
+
+
+class Settings(EnvironmentSettings, DatabaseSettings, BaseAppSettings):
+    """Serviço de nó único: SQLite em produção é decisão tomada."""
+
+    PUBLIC_URL: str = Field(default="http://localhost:8000")
+
+    def production_violations(self) -> list[str]:
+        """Aceita SQLite e exige HTTPS na URL pública.
+
+        Returns:
+            list[str]: As violações dos mixins, menos a do SQLite, mais a
+            regra do serviço.
+        """
+        violations: list[str] = [
+            entry
+            for entry in super().production_violations()
+            if not entry.startswith("DATABASE_URL:")
+        ]
+        if not self.PUBLIC_URL.startswith("https://"):
+            violations.append("PUBLIC_URL: not HTTPS")
+        return violations
+
+
+os.environ["ENV"] = "production"
+
+try:
+    Settings()
+except ValidationError as exc:
+    print(exc)
+
+os.environ["PUBLIC_URL"] = "https://api.example.com"
+print(Settings().ENV)
+```
+
+```text
+1 validation error for Settings
+  Value error, ENV=production refuses development values:
+- PUBLIC_URL: not HTTPS [type=value_error]
+production
+```
+
+!!! tip "Erro de validação não imprime o ambiente"
+    O `BaseAppSettings` liga `hide_input_in_errors=True`.
+    Num `BaseSettings` o *input* de um erro é o ambiente inteiro — um campo
+    obrigatório faltando imprimia `input_value={'JWT_SECRET': ...}` no
+    traceback do boot. Agora a mensagem traz só o campo e o motivo. Quem
+    quiser o input de volta sobrescreve `hide_input_in_errors` no próprio
+    `model_config`.
+
 ## Recap
 
 - `tempest check-config` roda os checks contra suas settings; sai ≠ 0 no
@@ -158,3 +291,7 @@ devolve a lista, sem levantar.
 - `@check("tag")` registra o seu; `debug`/`info`/`warning`/`error`/
   `critical` montam a mensagem.
 - `run_system_checks(settings)` no lifespan aborta um boot mal-configurado.
+- `EnvironmentSettings` com `ENV=production` **derruba** o boot enquanto um
+  mixin composto guardar valor de desenvolvimento, listando os campos sem
+  imprimir valor; `production_violations()` + `super()` soma ou dispensa
+  regra.

@@ -411,7 +411,7 @@ def logout(response: Response) -> None:
 
 ## Client IP extraction
 
-`get_client_ip(request)` and `get_client_ip_from_scope(scope)` return the real client IP behind proxies. By a simple design: the function accepts **one** trusted header name (`trusted_header=`) that your infrastructure guarantees only the edge proxy can set (typical: `"x-real-ip"` behind Nginx, `"x-forwarded-for"` behind an ALB with sanitized headers). Without `trusted_header=`, the function falls back to the peer address.
+`get_client_ip(request)` and `get_client_ip_from_scope(scope)` return the real client IP behind proxies. By a simple design: the function accepts **one** trusted header name (`trusted_header=`) that your infrastructure guarantees only the edge proxy can set (typical: `"x-real-ip"` behind an Nginx that overwrites it, `"cf-connecting-ip"` behind Cloudflare). Without `trusted_header=`, the function falls back to the peer address.
 
 ```python
 from fastapi import APIRouter, Request
@@ -438,6 +438,72 @@ async def login(request: Request, payload: LoginIn) -> LoginOut:
     Defense against `X-Forwarded-For` spoofing must happen at the proxy (Nginx, ALB, CloudFront) — the proxy **overwrites** the header with the real peer before the request hits FastAPI. The SDK only reads the header you trust. If you expose the app directly to the internet, **do not** pass `trusted_header=` — fall back to the peer address.
 
 Use `get_client_ip_from_scope(scope, trusted_header=...)` in middleware or WebSocket handlers where only the ASGI scope is reachable.
+
+### One setting for all of them: `TRUSTED_IP_HEADER`
+
+The same header name has to reach **every** place that resolves the IP:
+`get_client_ip`, `RateLimitMiddleware`, `AccessLogMiddleware`,
+`HoneypotBanMiddleware`. Forgetting one leaves that one keyed on the proxy's
+address — every client becomes the same client. `ServerSettings` models the
+value once, as `TRUSTED_IP_HEADER`:
+
+```bash
+# .env
+TRUSTED_IP_HEADER=X-Real-IP
+```
+
+```python
+from fastapi import FastAPI, Request
+from tempest_fastapi_sdk import (
+    AccessLogMiddleware,
+    BaseAppSettings,
+    HoneypotBanMiddleware,
+    MemoryBanStore,
+    RateLimitMiddleware,
+    ServerSettings,
+    get_client_ip,
+)
+
+
+class Settings(ServerSettings, BaseAppSettings):
+    """Service settings."""
+
+
+settings = Settings()
+
+app = FastAPI()
+app.add_middleware(
+    RateLimitMiddleware,
+    max_requests=100,
+    window_seconds=60.0,
+    trusted_ip_header=settings.TRUSTED_IP_HEADER,
+)
+app.add_middleware(AccessLogMiddleware, trusted_ip_header=settings.TRUSTED_IP_HEADER)
+app.add_middleware(
+    HoneypotBanMiddleware,
+    store=MemoryBanStore(),
+    trusted_ip_header=settings.TRUSTED_IP_HEADER,
+)
+
+
+@app.get("/whoami")
+async def whoami(request: Request) -> dict[str, str]:
+    """Return the IP the app sees."""
+    return {"ip": get_client_ip(request, trusted_header=settings.TRUSTED_IP_HEADER)}
+```
+
+With `X-Real-IP: 203.0.113.7` on the request, `/whoami` answers
+`{"ip": "203.0.113.7"}`. The value is lowercased
+(`settings.TRUSTED_IP_HEADER == "x-real-ip"`) and an empty one becomes `None` —
+the direct peer.
+
+!!! danger "`X-Forwarded-For` is refused"
+    `TRUSTED_IP_HEADER=X-Forwarded-For` (or `Forwarded`) fails validation, with
+    the reason in the message: a proxy **appends** to these headers instead of
+    overwriting them, so their content is whatever the client sent. Configure
+    the edge to overwrite a single-hop header (on Nginx,
+    `proxy_set_header X-Real-IP $remote_addr`) or use the CDN's verified header
+    (`cf-connecting-ip`, `true-client-ip`).
 
 ## Scanner bans (`HoneypotBanMiddleware`)
 
@@ -569,3 +635,5 @@ service) drops in without touching the middleware.
   the browser replaying a credential on a request your service did not start.
 - `set_cookie` / `clear_cookie` default to `HttpOnly`, `Secure` and a safe
   `SameSite`, and `get_client_ip` resolves the real client IP behind a proxy.
+- `TRUSTED_IP_HEADER` on `ServerSettings` carries the same header to
+  `get_client_ip` and the three middlewares, and refuses `X-Forwarded-For`.

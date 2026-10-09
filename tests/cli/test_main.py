@@ -165,7 +165,7 @@ class TestNew:
         env = (tmp_path / "demo_svc" / ".env.example").read_text()
         assert "REDIS_URL" in env
         assert "RABBITMQ_URL" in env
-        assert "MINIO_ENDPOINT" in env
+        assert "STORAGE_ENDPOINT" in env
         assert "SMTP_HOST=localhost" in env
         assert "SMTP_USE_TLS=false" in env
 

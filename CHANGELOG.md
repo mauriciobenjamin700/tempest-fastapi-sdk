@@ -125,6 +125,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `list[ObjectDeleteError]` (`key`, `code`, `message`) com o que o storage
   recusou; lista vazia é sucesso. `ObjectDeleteError` exportado no topo e em
   `tempest_fastapi_sdk.storage`.
+- **`EnvironmentSettings` — guard de produção que derruba o boot (#446).**
+  Mixin com `ENV: Literal["development", "test", "production"]` (default
+  `development`). Com `ENV=production`, a construção do settings levanta
+  `ValidationError` listando, numa mensagem só e pelo nome (nunca pelo
+  valor), todo campo de desenvolvimento dos mixins compostos: `SERVER_DEBUG` /
+  `SERVER_RELOAD` ligados, `DATABASE_URL` SQLite, `JWT_SECRET` igual ao default
+  declarado em `JWTSettings.model_fields` (não a um literal copiado), `"*"` em
+  `CORS_ORIGINS`, `TOKEN_SECRET` vazio, `TASKIQ_BROKER_URL` vazio (broker em
+  memória), chaves `minioadmin` do storage, `STORAGE_SECURE=false` e
+  `STORAGE_PUBLIC_SECURE=false` explícito. Cada mixin declara as próprias
+  regras num hook cooperativo novo, `BaseAppSettings.production_violations()`;
+  o serviço soma regra ou dispensa uma (SQLite num nó único) sobrescrevendo e
+  chamando `super()`. Em `development`/`test` nada muda. Receita:
+  `docs/recipes/system-checks`, seção "Guard de produção". Testes:
+  `tests/settings/test_environment.py`.
+- **`ServerSettings.TRUSTED_IP_HEADER` (#455).** O header de borda que
+  `get_client_ip(trusted_header=)`, `RateLimitMiddleware`,
+  `AccessLogMiddleware` e `HoneypotBanMiddleware` (`trusted_ip_header=`)
+  recebem, modelado uma vez e lido do ambiente. Default `None` (peer TCP);
+  normalizado para minúsculas; vazio vira `None`. `x-forwarded-for` e
+  `forwarded` (qualquer caixa) falham na validação com o motivo na mensagem:
+  o proxy acrescenta a esses headers, então o conteúdo é o que o cliente
+  mandou. Os middlewares e `get_client_ip` continuam recebendo o parâmetro
+  explícito. Constante `SPOOFABLE_IP_HEADERS` exportada. Receita:
+  `docs/recipes/security`, "Um setting para todos". Testes:
+  `tests/settings/test_trusted_ip_header.py` (rate limit e access log com o
+  mesmo valor veem o IP do header).
+- **`StorageSettings` — o mixin de storage S3 com nome de S3 (#457).** Campos
+  `STORAGE_ENDPOINT`, `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY`,
+  `STORAGE_SECURE`, `STORAGE_REGION`, `STORAGE_DEFAULT_BUCKET`,
+  `STORAGE_PUBLIC_ENDPOINT`, `STORAGE_PUBLIC_SECURE` (mais os
+  `STORAGE_ACCEL_*` que já existiam) e `storage_kwargs()`. Cada campo lê o
+  nome antigo `MINIO_*` como fallback via
+  `validation_alias=AliasChoices(new, old)` — no ambiente e no `.env`.
+  `minio_kwargs()` continua e devolve o mesmo dicionário. Testes:
+  `tests/settings/test_storage_settings.py`.
+- **`BaseAppSettings.DEPRECATED_ENV_ALIASES` +
+  `reject_conflicting_env_aliases`.** Mapa nome antigo → nome novo, coletado
+  pelo MRO. O `settings_customise_sources` do `BaseAppSettings` (novo; mantém
+  a ordem padrão do pydantic-settings) recusa com `SettingsError` quando os
+  dois nomes de um par estão definidos com valores diferentes, entre ambiente
+  e `.env` somados — sem a checagem o `AliasChoices` ficaria com o nome novo
+  em silêncio. Mesmo valor nos dois é aceito (janela de migração). A
+  mensagem nomeia os pares, nunca os valores. `Settings` que sobrescreve
+  `settings_customise_sources` perde a checagem, a menos que chame a função.
 - **`expected_sha256` em `load_sklearn_artifact` e `edge_pipeline_from_pickle`
   (#440).** O chamador pina o SHA-256 que a release do modelo registrou, e a
   carga recusa com `ArtifactDigestMismatchError` (nova, subclasse de
@@ -231,6 +276,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `login_throttle=False` para desligar, ou um `AttemptThrottle` próprio
   (sobre Redis, com mais de um worker). `/auth/me`, `/auth/refresh` e as
   demais rotas não mudam.
+- **`BaseAppSettings` liga `hide_input_in_errors=True` (#446).** Num
+  `BaseSettings` o input de um erro de validação é o ambiente inteiro: um
+  campo obrigatório faltando imprimia `input_value={'JWT_SECRET': ...}` no
+  traceback do boot, e um valor malformado (uma URL com senha) era ecoado.
+  Agora a mensagem traz só campo e motivo. Quem dependia do input no erro
+  sobrescreve `hide_input_in_errors` no próprio `model_config`.
+- **O scaffold do `tempest new` compõe `EnvironmentSettings`** e o
+  `.env.example` traz `ENV=development` e um `# TRUSTED_IP_HEADER=x-real-ip`
+  comentado. O `create_app` gerado não monta rate limit nem access log, então
+  não há onde repassar o header.
+- **`tempest docker-compose` / `tempest new --extras minio` escrevem
+  `STORAGE_*`** no bloco do app e no `.env.example` (as `MINIO_ROOT_*` do
+  container continuam). `tempest storage` procura `storage_kwargs()` e
+  `tempest doctor` lê `STORAGE_*` (aceitando `MINIO_ENDPOINT` no ambiente);
+  projeto ainda em `MinIOSettings` continua funcionando. **Atenção:** quem
+  regenerar só o compose de um projeto cujo `.env` ainda tem um
+  `MINIO_ENDPOINT` diferente do `STORAGE_ENDPOINT` gerado tem o boot recusado
+  pela checagem de nomes conflitantes — remova o nome antigo.
 
 - **A `AssetPolicy` passada em `PdfRenderer(assets=...)` não tem mais a lista
   `refusals` lida nem limpa pelo renderizador.** Antes, toda renderização
@@ -275,6 +338,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `__test__ = False` é removido. **Quem roda `filterwarnings = ["error"]` e
   chama o nome antigo passa a ver o `DeprecationWarning` como erro** — troque
   o import.
+
+### Deprecated
+
+- **`MinIOSettings` → `StorageSettings` (#457).** Continua importável como
+  subclasse de `StorageSettings`; listar como base direta (ou instanciar)
+  emite `DeprecationWarning` apontando para a linha do consumidor, e os
+  atributos `settings.MINIO_*` continuam respondendo (propriedades de
+  leitura). As variáveis `MINIO_*` continuam valendo nas duas classes. Com
+  `filterwarnings = ["error"]` o warning vira erro na definição da classe:
+  troque a base para `StorageSettings` (as variáveis de ambiente não mudam).
 
 ### Fixed
 
