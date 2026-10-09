@@ -247,11 +247,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `pg_enum` / the CHECK — autogenerate compares neither), and
   `render_enum_types` (without it **every migration touching an enum column
   failed on import**). Both wired into `env.py.template`. **Enum CHECK +
-  downgrade (Unreleased, #453/#454):** `render_enum_types` omits the
+  downgrade (0.309.0, #453/#454):** `render_enum_types` omits the
   type-bound CHECK (SQLAlchemy 2.1 + Alembic 1.20 rendered two, PG refused
   the second); `op.drop_enum_type` (`DROP TYPE IF EXISTS` on PG, no-op
   elsewhere) + `drop_enum_types_on_downgrade` hook (type leaves with the last
-  table). **Generated env.py (Unreleased, #451):** three statements calling
+  table). **Generated env.py (0.309.0, #451):** three statements calling
   `run_alembic_env(metadata)` (body lives in `db/alembic_env.py`,
   `DEFAULT_REVISION_HOOKS` to extend), ruff-clean under both src layouts,
   `alembic.ini` with `prepend_sys_path = .` + `path_separator = os`.
@@ -614,7 +614,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `edge_bundle` (returns the *smallest* artifact — optimize/`.ort` grow tiny
   graphs), `uses_ml_domain` (int8 quantization does not apply to
   `ai.onnx.ml`). `hummingbird-ml` rejected: caps `onnx<=1.16.1`. **Binary-tree defect relocated (v0.201.0):** it was recorded as a `skl2onnx` conversion bug; holding `skl2onnx` 1.20.0 / `sklearn` 1.9.0 / `onnx` 1.22.0 fixed and moving only the runtime showed it is **`onnxruntime`** — error 1.0 vs `predict_proba` on 1.27.0, 9.5e-08 on 1.28.0. Floor moved to `onnxruntime>=1.28`; `BINARY_TREE_FIXED_IN_ONNXRUNTIME` still gates the export warning for a force-assembled environment.
-  **Pinned pickle digest (Unreleased, #440):** `expected_sha256` on
+  **Pinned pickle digest (0.309.0, #440):** `expected_sha256` on
   `load_sklearn_artifact` / `edge_pipeline_from_pickle`, checked before
   `joblib.load` through the same handle that is unpickled;
   `ArtifactDigestMismatchError(ValueError)`; hex any case, `sha256:` optional.
@@ -1131,7 +1131,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   confere o CRC (CPython 3.11 a 3.14), então diretório central mentindo vira
   `InvalidSpreadsheetError`; XML truncado (`SyntaxError` do parser) deixou de
   escapar como `500`.
-- **Leitura de planilha sem bloquear o event loop (Unreleased, #432)** —
+- **Leitura de planilha sem bloquear o event loop (0.309.0, #432)** —
   `read_xlsx_async` / `read_xlsx_as_async` / `read_xlsx_sheets_async` em
   `tempest_fastapi_sdk.spreadsheet`: o leitor síncrono numa thread
   (`asyncio.to_thread`) atrás de um semáforo
@@ -3078,7 +3078,7 @@ webhook; agora o `settle` relê com o helper e marca `paid_at` sob
 `claim_once`. Guard: `tests/integrations/payment/test_settlement.py`
 (inclui dois eventos pagos para o mesmo pedido liberando uma vez só).
 
-## Webhook do Mercado Pago numa dependency (Unreleased, #437)
+## Webhook do Mercado Pago numa dependency (0.309.0, #437)
 
 `make_mercado_pago_webhook_dependency(secret, *, tolerance_seconds=None,
 versions=DEFAULT_SIGNATURE_VERSIONS, error_message=...)` fecha a terceira
@@ -3091,7 +3091,7 @@ desconhecido vira `MercadoPagoEvent.UNKNOWN`, corpo não-JSON não derruba. A
 receita `mercado-pago.md` monta a rota com a fábrica. Testes:
 `tests/integrations/payment/mercado_pago/test_webhook_dependency.py`.
 
-## Redação de PII no log (Unreleased, #445)
+## Redação de PII no log (0.309.0, #445)
 
 `configure_logging(..., redact: bool | RedactionPolicy = False)` pendura um
 `RedactionFilter` em todo handler que instala (stdout + os seis arquivos) —
@@ -3106,7 +3106,7 @@ redigido. `LOG_REDACT` em `LogSettings`. Custo medido: ~+12 µs por linha de
 access log, ~+22 µs por `logger.exception`; com `redact=False` nada é
 instalado. Testes: `tests/core/test_redaction.py`.
 
-## Rate limit por rota (Unreleased, #452)
+## Rate limit por rota (0.309.0, #452)
 
 `make_rate_limit_dependency(store, *, max_requests, window_seconds, key=None,
 trusted_ip_header=None, scope=None, ...)` limita a rota em que é pendurada,
@@ -3119,7 +3119,7 @@ helpers (`_rate_limit_headers` / `_rate_limit_details`). Balde por método + pat
 template da rota; `scope=` junta rotas. Testes:
 `tests/api/test_rate_limit_dependency.py` (compara os dois 429).
 
-## Login e signup com limite de tentativas (Unreleased, #456)
+## Login e signup com limite de tentativas (0.309.0, #456)
 
 `make_auth_router(login_throttle=..., login_ip_throttle=..., signup_throttle=...,
 trusted_ip_header=...)`. O de login por e-mail vem ligado (5 em 900 s sobre
@@ -3129,7 +3129,7 @@ por causa do IP do proxy. 429 `TOO_MANY_REQUESTS` com `Retry-After`, declarado
 no OpenAPI só quando o limite está ligado. Testes:
 `tests/auth/test_login_throttle.py`.
 
-## Exportação e exclusão de titular (Unreleased, #460)
+## Exportação e exclusão de titular (0.309.0, #460)
 
 `tempest_fastapi_sdk.privacy`: `SubjectGraph(metadata, root=..., retained=...,
 secret_columns=..., secret_markers=...)` com `tables()`, `export(session, id)`,
@@ -3142,7 +3142,7 @@ secret_columns=..., secret_markers=...)` com `tables()`, `export(session, id)`,
 `recipes/subject-data.md`. Testes: `tests/privacy/`,
 `tests/storage/test_minio_client.py`.
 
-## Settings endurecido: ambiente, header de IP, storage (Unreleased, #446, #455, #457)
+## Settings endurecido: ambiente, header de IP, storage (0.309.0, #446, #455, #457)
 
 `BaseAppSettings` liga `hide_input_in_errors=True` (erro de boot não ecoa o
 ambiente) e ganha dois pontos de extensão: `production_violations()`
@@ -3158,7 +3158,7 @@ Testes: `tests/settings/test_environment.py`,
 `tests/settings/test_trusted_ip_header.py`,
 `tests/settings/test_storage_settings.py`.
 
-## Chave desconhecida em `filters` é recusada (Unreleased, #465)
+## Chave desconhecida em `filters` é recusada (0.309.0, #465)
 
 Mesma família do `None` da v0.292.0, na outra metade: chave que não é
 coluna (`{"usr_id": 1}`) ou sufixo que não é operador

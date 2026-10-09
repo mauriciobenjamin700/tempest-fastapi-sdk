@@ -2,7 +2,33 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
-## Next release — an unknown `filters` key raises
+## 0.309.0 — other behaviour changes
+
+Besides the `filters` key refusal (next section), 0.309.0 brings these
+changes that may need an adjustment:
+
+1. **`JobStore.reclaim_stale()` returns `ReclaimedJobs`, not `int`.**
+   `if await store.reclaim_stale():` keeps working (`__len__`); code that
+   compares against a number or adds the return reads `.total` instead.
+2. **`make_auth_router` throttles login by default**: 5 wrong passwords for
+   the same email within 900 s become `429`. Pass `login_throttle=False` to
+   turn it off, or your own `AttemptThrottle` for another budget.
+3. **`make_prometheus_router(dependencies=[require_x_token])` is refused** at
+   construction with `TypeError`. Use
+   `dependencies=[make_token_dependency(secret)]`, which reads the `X-Token`
+   header.
+4. **Readiness has a timeout**: every `make_health_router` check gets
+   `timeout=3.0` s by default and running past it counts as a failure. A
+   slower check needs a larger `timeout=` (or `None`).
+5. **`MinIOSettings` is deprecated** in favour of `StorageSettings`
+   (`STORAGE_*`). The `MINIO_*` names are still read; setting both names of a
+   pair to **different** values fails the boot. When you regenerate
+   `docker-compose.yaml` (which now writes `STORAGE_*`), drop the old
+   `MINIO_*` from `.env` or keep both at the same value.
+6. **`test_session` / `test_database` are deprecated**: switch to
+   `make_test_session` / `make_test_database` (same signature).
+
+## 0.309.0 — an unknown `filters` key raises
 
 A `filters` key that is not a column of the model (`{"usr_id": 1}`) or a
 suffix that is not an operator (`{"user_id__bogus": 1}`) used to be ignored

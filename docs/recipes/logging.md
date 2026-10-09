@@ -604,9 +604,11 @@ app.include_router(
 !!! warning "Segredo vazio é recusado"
     `GET /logs` expõe tracebacks e metadados de request, e `DELETE /logs`
     trunca os arquivos. Os dois exigem o header `X-Token`, comparado com
-    `token_secret` via `make_token_dependency`. Um `token_secret` vazio
-    (ou só espaço) faz o `make_logs_router` levantar `ValueError` na
-    construção: o app não sobe, em vez de subir com `/logs` aberto.
+    `token_secret` via `make_token_dependency` — ou as suas `dependencies=`
+    (ver "Atrás da sua própria auth" abaixo). Um `token_secret` vazio (ou só
+    espaço) sem `dependencies=` faz o `make_logs_router` levantar
+    `ValueError` na construção: o app não sobe, em vez de subir com `/logs`
+    aberto.
     Preencha o `TOKEN_SECRET` com `uv run tempest secrets init`.
 
     O serviço gerado pelo `tempest new` monta `/logs` só quando

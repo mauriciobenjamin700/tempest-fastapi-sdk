@@ -607,9 +607,10 @@ app.include_router(
 !!! warning "An empty secret is refused"
     `GET /logs` exposes tracebacks and request metadata, and
     `DELETE /logs` truncates the files. Both require the `X-Token` header,
-    compared against `token_secret` via `make_token_dependency`. An empty
-    (or whitespace-only) `token_secret` makes `make_logs_router` raise
-    `ValueError` at construction: the app fails to start instead of
+    compared against `token_secret` via `make_token_dependency` — or your
+    own `dependencies=` (see "Behind your own auth" below). An empty (or
+    whitespace-only) `token_secret` without `dependencies=` makes
+    `make_logs_router` raise `ValueError` at construction: the app fails to start instead of
     starting with `/logs` open. Fill `TOKEN_SECRET` with
     `uv run tempest secrets init`.
 

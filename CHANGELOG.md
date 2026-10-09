@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.309.0] — 2026-10-09
+
+Rodada de 29 issues: chave desconhecida em `filters` passa a levantar
+(**breaking**), guard de produção nos settings (`EnvironmentSettings`),
+`StorageSettings` no lugar de `MinIOSettings`, limite de tentativas no login e
+rate limit por rota, redação de PII no logging, exportação e exclusão de
+titular (LGPD), auditoria com evento/IP/user agent, `env.py` do Alembic dentro
+do SDK, leitores de planilha async, gate de CVE na CI e as fábricas de
+webhook completas (Mercado Pago). Guia de migração: `docs/migration.md`,
+seções 0.309.0.
+
 ### Added
 
 - **Auditoria com evento de domínio, origem da requisição e autor com FK
@@ -271,6 +282,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking: chave desconhecida em `filters` levanta
+  `UnknownFilterKeyException` em vez de ser ignorada** (#465). Chave que não
+  é atributo SQL do model (`{"usr_id": 1234}`) ou sufixo que não é operador
+  (`{"user_id__bogus": 1}`) era descartada em silêncio, e com só a chave
+  errada no dict `list`/`count` devolviam todas as linhas e
+  `bulk_update`/`delete_many` alteravam a tabela inteira (3/3 linhas, fixado
+  pela versão anterior de `tests/db/test_filters_contract.py`). Agora a
+  checagem roda em `build_filter_condition`, antes de qualquer statement, e
+  vale para todo método que recebe `filters` — `list`, `count`, `exists`,
+  `first`, `get`, `get_or_none`, `paginate`, `cursor_paginate`,
+  `bulk_update`, `update_returning`, `delete_many` —, para o `Q` (inclusive
+  `~Q(usr_id=1)`, que antes negava nada) e para `BaseService`,
+  `BaseController` e `TenantScopedRepository`, que só repassam. Medido em
+  SQLite em memória: `delete_many({"usr_id": 1})` levanta e as 3 linhas
+  continuam lá; `bulk_update` e `update_returning` não alteram nenhuma.
+  A exceção nova `UnknownFilterKeyException` (exportada no topo) é subclasse
+  de `ValidationException`: 422, `code="UNKNOWN_FILTER_KEY"` (catálogo
+  PT-BR/EN), `details={"filter": <chave>}` — sem a lista de colunas do model,
+  que numa querystring seria o mapa do que sondar. Atributo Python sem
+  leitura SQL (método, `@property`, `metadata`) também é recusado; coluna,
+  `column_property` e a expressão de classe de `hybrid_property` resolvem.
+  Novos em `tempest_fastapi_sdk.db.expressions`: `resolve_filter_key` (a
+  checagem isolada) e `FILTER_OPERATORS` (os sufixos aceitos).
+  **Quem dependia do ignorar**: schema de filtro com campo que não é coluna
+  (`search`, `include_archived`) repassado inteiro por `get_conditions()`
+  passa a receber 422 — tire o campo do dict antes de repassar. No admin,
+  `list_filter`, `search_fields` e os `filters` de cada `Lens` são conferidos
+  na construção do `AdminModel`: typo vira `ValueError` no boot, nomeando a
+  opção, em vez de 422 no primeiro acesso à listagem. Receita:
+  `docs/recipes/database`, seção "Chave desconhecida é recusada".
+
 - **`JobStore.reclaim_stale()` devolve `ReclaimedJobs`, não `int` (#459).
   Mudança de comportamento.** Os ids requeued e os que falharam por orçamento
   (`.requeued`, `.failed`) são o que permite reenviar o job ao worker: a linha
@@ -529,7 +571,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (14 advisories), `pypdf` 6.16.2 → 6.20.0 (8), `urllib3` 2.7.0 → 2.8.0 (3),
   `weasyprint` 69.0 → 70.0 (2), `multidict` 6.7.1 → 6.9.1, `oauthlib` 3.3.1
   → 4.0.0, `werkzeug` 3.1.8 → 3.1.9 e `accelerate` 1.14.0 → 1.15.0 (1 cada).
-- **14 entradas ignoradas por ID, com motivo no `Makefile`.** `chromadb`
+- **14 entradas ignoradas — 10 IDs distintos, porque o pip-audit lista alguns
+  IDs do `transformers` mais de uma vez —, com motivo no `Makefile`.** `chromadb`
   1.5.9 (a mais nova no PyPI em 2026-10-09, sem versão corrigida): os quatro
   advisories miram o servidor HTTP do Chroma e o
   `SimpleRBACAuthorizationProvider`, e o SDK só abre o `PersistentClient` /
@@ -555,39 +598,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `script-src 'self'`, o HTMX local carrega e o `<script>` inline da list view
   é bloqueado).
 
-### Changed
-
-- **Breaking: chave desconhecida em `filters` levanta
-  `UnknownFilterKeyException` em vez de ser ignorada** (#465). Chave que não
-  é atributo SQL do model (`{"usr_id": 1234}`) ou sufixo que não é operador
-  (`{"user_id__bogus": 1}`) era descartada em silêncio, e com só a chave
-  errada no dict `list`/`count` devolviam todas as linhas e
-  `bulk_update`/`delete_many` alteravam a tabela inteira (3/3 linhas, fixado
-  pela versão anterior de `tests/db/test_filters_contract.py`). Agora a
-  checagem roda em `build_filter_condition`, antes de qualquer statement, e
-  vale para todo método que recebe `filters` — `list`, `count`, `exists`,
-  `first`, `get`, `get_or_none`, `paginate`, `cursor_paginate`,
-  `bulk_update`, `update_returning`, `delete_many` —, para o `Q` (inclusive
-  `~Q(usr_id=1)`, que antes negava nada) e para `BaseService`,
-  `BaseController` e `TenantScopedRepository`, que só repassam. Medido em
-  SQLite em memória: `delete_many({"usr_id": 1})` levanta e as 3 linhas
-  continuam lá; `bulk_update` e `update_returning` não alteram nenhuma.
-  A exceção nova `UnknownFilterKeyException` (exportada no topo) é subclasse
-  de `ValidationException`: 422, `code="UNKNOWN_FILTER_KEY"` (catálogo
-  PT-BR/EN), `details={"filter": <chave>}` — sem a lista de colunas do model,
-  que numa querystring seria o mapa do que sondar. Atributo Python sem
-  leitura SQL (método, `@property`, `metadata`) também é recusado; coluna,
-  `column_property` e a expressão de classe de `hybrid_property` resolvem.
-  Novos em `tempest_fastapi_sdk.db.expressions`: `resolve_filter_key` (a
-  checagem isolada) e `FILTER_OPERATORS` (os sufixos aceitos).
-  **Quem dependia do ignorar**: schema de filtro com campo que não é coluna
-  (`search`, `include_archived`) repassado inteiro por `get_conditions()`
-  passa a receber 422 — tire o campo do dict antes de repassar. No admin,
-  `list_filter`, `search_fields` e os `filters` de cada `Lens` são conferidos
-  na construção do `AdminModel`: typo vira `ValueError` no boot, nomeando a
-  opção, em vez de 422 no primeiro acesso à listagem. Receita:
-  `docs/recipes/database`, seção "Chave desconhecida é recusada".
-
 ### Documentation
 
 - **Todo parâmetro `filters: dict[str, Any]` diz o que espera** (#443). As
@@ -599,11 +609,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `<coluna>__<op>` aplica operador, e aponta para a lista completa na classe.
   Medido numa tabela SQLite em memória e fixado em
   `tests/db/test_filters_contract.py`: igualdade em coluna de texto respeita
-  caixa (`{"status": "OPEN"}` não casa `"open"`), e **chave que não é coluna
-  do model é ignorada sem erro nem aviso** — `{"usr_id": 1234}` fez `list` e
-  `count` devolverem todas as linhas, e `bulk_update` e `delete_many`
-  alterarem a tabela inteira. As docstrings de escrita avisam disso; o
-  comportamento não muda nesta entrada.
+  caixa (`{"status": "OPEN"}` não casa `"open"`). A medição também mostrou
+  que chave que não é coluna era ignorada em silêncio — é o defeito que a
+  entrada **Breaking** de `### Changed` (#465) corrige: agora ela levanta
+  `UnknownFilterKeyException`.
 - **O teto `transformers<5` do `[genai-audio]` aparece com o porquê e o
   custo** (#441). `README.md` e `docs/installation.md` / `.en.md` diziam
   `transformers<5` sem explicar. Agora dizem que o teto é intencional (o
