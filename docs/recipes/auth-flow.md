@@ -27,6 +27,7 @@ Desde v0.31.0 o SDK fornece o ciclo completo de conta local — signup com email
 1. **[Setup mínimo](#setup-minimo)** — instalação dos extras + wiring de quatro objetos (`AsyncDatabaseManager`, `EmailUtils`, `UserAuthService`, `make_auth_router`).
 2. **[UserTokenModel concreto](#usertokenmodel-concreto)** — `BaseUserTokenModel` é abstrato, projeto cria a tabela final.
 3. **[Endpoints](#endpoints)** — tabela de todos os endpoints + payload + comportamento.
+    - **[Limite de tentativas](#limite-de-tentativas-no-login-e-no-cadastro)** — o login e o cadastro com freio contra força bruta, sem revelar quais e-mails existem.
     - **[Só o backend](#so-o-backend-do-cadastro-a-rota-protegida)** — o ciclo cadastro → ativação → login → rota protegida sem frontend, medido com `curl`, e o mesmo ciclo num teste.
 4. **[Reenviar a ativação](#reenviar-a-ativacao)** — o e-mail de ativação não chegou.
 5. **[Recuperação de senha](#recuperacao-de-senha)** — o fluxo "esqueci a senha", passo a passo, mais trocar a senha logado.
@@ -482,6 +483,137 @@ ninguém escrever schema à mão.
 `SignupSchema`, visível no OpenAPI —, e os campos dele que são coluna entram na
 linha antes do insert. `on_signup` é para o resto, dentro da transação do
 insert. Nada mais precisa sair do SDK para o seu serviço.
+
+
+### Limite de tentativas no login e no cadastro
+
+Sem limite, `POST /auth/login` responde `401` a cada senha errada para sempre —
+força bruta é só questão de paciência — e `POST /auth/signup` cria conta sem
+teto. O router já traz os dois freios, no molde do `mfa_throttle`:
+
+| Parâmetro | Chave | Conta | Default |
+| --- | --- | --- | --- |
+| `login_throttle` | e-mail normalizado (SHA-256) | toda tentativa, **zerada no login certo** | ligado: 5 por 900 s, em memória |
+| `login_ip_throttle` | IP do cliente | só credencial errada; login certo **não** zera | desligado |
+| `signup_throttle` | IP do cliente | toda tentativa, certa ou não | desligado |
+
+```python
+import asyncio
+
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient, Response
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    AttemptThrottle,
+    AuthSettings,
+    BaseUserModel,
+    InMemoryThrottleBackend,
+    JWTSettings,
+    UserAuthService,
+    make_auth_router,
+    make_user_token_model,
+    register_exception_handlers,
+)
+
+
+class UserModel(BaseUserModel):
+    __tablename__ = "users"
+
+
+UserTokenModel = make_user_token_model(user_table="users")
+
+
+async def main() -> None:
+    db: AsyncDatabaseManager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.create_tables()
+    service: UserAuthService = UserAuthService(
+        db=db,
+        user_model=UserModel,
+        token_model=UserTokenModel,
+        auth_settings=AuthSettings(AUTH_AUTO_ACTIVATE=True),
+        jwt_settings=JWTSettings(),
+        email=None,
+    )
+    app: FastAPI = FastAPI()
+    register_exception_handlers(app)
+    app.include_router(
+        make_auth_router(
+            service,
+            session_factory=db.session_dependency,
+            login_ip_throttle=AttemptThrottle(
+                InMemoryThrottleBackend(), max_attempts=20, window_seconds=900
+            ),
+            signup_throttle=AttemptThrottle(
+                InMemoryThrottleBackend(), max_attempts=10, window_seconds=3600
+            ),
+            trusted_ip_header="x-real-ip",
+        )
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post(
+            "/auth/signup",
+            json={"email": "ana@example.com", "password": "senha-forte-123"},
+        )
+        for password in ["senha-errada-123"] * 5 + ["senha-forte-123"]:
+            response: Response = await client.post(
+                "/auth/login",
+                json={"email": "ana@example.com", "password": password},
+            )
+            print(response.status_code, response.headers.get("retry-after"))
+        print(response.json())
+    await db.disconnect()
+
+
+asyncio.run(main())
+```
+
+Saída:
+
+```text
+401 None
+401 None
+401 None
+401 None
+401 None
+429 900
+{'detail': 'too many login attempts, try again later', 'code': 'TOO_MANY_REQUESTS', 'details': {'retry_after_seconds': 900}}
+```
+
+A sexta tentativa leva `429` **com a senha certa**: o orçamento é reservado
+antes de a senha ser conferida, então uma rajada de chutes em paralelo não
+passa toda junta por um "ainda não bloqueado". O login certo antes do limite
+zera a contagem do e-mail.
+
+!!! check "O 429 não revela se o e-mail existe"
+    O orçamento do e-mail é gasto do mesmo jeito para um endereço sem conta, e o
+    `detail` é o mesmo texto nos dois casos. Quem sonda o login aprende que
+    errou demais, não quais e-mails estão cadastrados.
+
+!!! warning "Por que os limites por IP vêm desligados"
+    Atrás de um proxy, o IP que o app vê é o do **proxy** — sem
+    `trusted_ip_header`, todo cliente cai no mesmo balde, e um orçamento por IP
+    trava o login (ou o cadastro) de todo mundo de uma vez. Ligue
+    `login_ip_throttle` e `signup_throttle` junto com o `trusted_ip_header` que
+    a sua borda sobrescreve (`"x-real-ip"`), nunca com `X-Forwarded-For`.
+
+Mais quatro coisas que valem saber:
+
+- **Com mais de um worker, passe um backend compartilhado.** O default conta
+  em memória, por processo; `AttemptThrottle(redis, max_attempts=5,
+  window_seconds=900)` divide o contador entre réplicas.
+- **`login_throttle=False` desliga** o limite por e-mail, para quem já limita
+  o login em outra camada.
+- **Bloquear por e-mail tem custo**: quem conhece o e-mail de alguém consegue
+  gastar o orçamento e deixar o dono de fora por uma janela. É a troca de todo
+  bloqueio por conta; a janela curta é o que a deixa aceitável.
+- **O resto do router não muda.** `/auth/me`, `/auth/refresh` e as demais rotas
+  não passam por nenhum desses limites, e o OpenAPI só declara o `429` nas
+  rotas de login e em `/auth/signup` quando o limite correspondente está ligado.
+
+**Recap.** O login vem protegido por e-mail sem você fazer nada; os limites por
+IP você liga quando sabe de onde vem o IP real.
 
 
 ## Só o backend: do cadastro à rota protegida

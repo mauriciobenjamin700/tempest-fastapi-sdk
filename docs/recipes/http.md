@@ -10,6 +10,7 @@ Você vai montar aqui a superfície HTTP inteira de um serviço a partir dos pri
 - **`make_health_router` / `make_token_dependency`** — liveness/readiness + o guarda de segredo compartilhado `X-Token`.
 - **Dependências JWT / bearer / role / permission** — controle de rota por token e por papel.
 - **`RateLimitMiddleware`** — janela deslizante, chave por IP/usuário/tenant, store em memória ou Redis.
+- **`make_rate_limit_dependency`** — o mesmo limite em uma rota só, com chave que pode ler o corpo (`key_by_body_field`).
 - **`BodySizeLimitMiddleware`** — teto de bytes no corpo do request, com 413 antes de qualquer parse.
 - **`WebhookSignatureVerifier` / `RSAWebhookSignatureVerifier`** — validação de webhooks assinados (HMAC ou RSA).
 - **`build_pagination_link_header`** — header `Link` RFC 8288 no estilo GitHub.
@@ -1081,6 +1082,128 @@ True
     (#339). Taxa desprezível na janela do teste (1 por hora) ou relógio
     injetado tiram a velocidade da máquina da asserção.
 
+
+## Rate limit por rota (`make_rate_limit_dependency`)
+
+O `RateLimitMiddleware` limita o app inteiro, e o escopo dele só diminui por
+subtração (`exempt_paths`). Duas perguntas ficam de fora:
+
+- **"Só `POST /api/invites`."** Uma rota cara merece um teto que o resto do app
+  não tem.
+- **"Por e-mail convidado, não só por IP."** A chave está no **corpo**, e o
+  `key_func` do middleware recebe só o `Request`, de forma síncrona, antes de o
+  corpo ser lido.
+
+`make_rate_limit_dependency` responde as duas: é uma dependency que você pendura
+em uma rota, conta no mesmo `RateLimitStore` do middleware (memória ou Redis) e
+devolve o mesmo 429.
+
+### Limitar um endpoint por IP e por campo do corpo
+
+```python
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk import (
+    MemoryRateLimitStore,
+    key_by_body_field,
+    key_by_ip,
+    make_rate_limit_dependency,
+    register_exception_handlers,
+)
+
+
+class InviteCreateSchema(BaseModel):
+    email: str
+
+
+invite_limit = make_rate_limit_dependency(
+    MemoryRateLimitStore(),
+    max_requests=3,
+    window_seconds=3600.0,
+    key=[
+        key_by_ip(trusted_header="x-real-ip"),
+        key_by_body_field("email"),
+    ],
+)
+
+app = FastAPI()
+register_exception_handlers(app)
+
+
+@app.post("/api/invites", status_code=202, dependencies=[Depends(invite_limit)])
+async def create_invite(payload: InviteCreateSchema) -> dict[str, str]:
+    return {"invited": payload.email}
+
+
+@app.get("/api/invites")
+async def list_invites() -> list[str]:
+    return []
+
+
+client = TestClient(app)
+for ip in ("10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.4"):
+    response = client.post(
+        "/api/invites",
+        json={"email": "ana@example.com"},
+        headers={"x-real-ip": ip},
+    )
+    print(response.status_code, response.json())
+print(response.headers["retry-after"], response.headers["ratelimit-limit"])
+print(client.get("/api/invites").status_code)
+```
+
+Saída:
+
+```text
+202 {'invited': 'ana@example.com'}
+202 {'invited': 'ana@example.com'}
+202 {'invited': 'ana@example.com'}
+429 {'detail': 'Too many requests', 'code': 'TOO_MANY_REQUESTS', 'details': {'retry_after_seconds': 3600, 'limit': 3}}
+3600 3
+200
+```
+
+Quatro IPs diferentes, o mesmo e-mail: o quarto pedido cai pela chave do e-mail,
+e o `GET` da mesma URL continua livre. Pedaço por pedaço:
+
+- **`key=[...]`** — cada função devolve uma chave (ou várias, ou nenhuma), e
+  cada chave conta no mesmo store. A primeira que estoura recusa o pedido; as
+  seguintes nem são contadas, para um pedido recusado não gastar o orçamento
+  delas. Funções síncronas (`key_by_ip`, `key_by_header`, `key_by_jwt_*`) e
+  assíncronas valem igual.
+- **`key_by_body_field("email")`** — lê o campo do corpo JSON. O FastAPI lê o
+  corpo **antes** de resolver as dependencies e o Starlette guarda os bytes no
+  `Request`, então o endpoint continua recebendo o `payload` validado — a saída
+  acima é essa prova. O valor é normalizado (`strip` + minúsculas) e guardado
+  como SHA-256, para o Redis não acumular e-mail em texto puro
+  (`normalize=False`, `hash_value=False` desligam). Corpo que não é JSON, ou
+  sem o campo, não gera chave: o 422 do próprio endpoint responde esse pedido.
+- **`trusted_ip_header`** — sem `key`, a chave default é o IP resolvido por
+  esse header (`make_rate_limit_dependency(store, ..., trusted_ip_header="x-real-ip")`).
+  Com `key`, passe o header para o `key_by_ip` de dentro da lista; passar os
+  dois levanta `ValueError` na construção, em vez de ignorar o header calado.
+- **O balde é da rota.** O prefixo default de cada chave é o método e o path
+  template (`"POST /api/invites"`), então a mesma dependency em duas rotas dá um
+  orçamento para cada, `/users/1` e `/users/2` dividem o de `/users/{user_id}`,
+  e o contador nunca colide com o do middleware no mesmo Redis. Passe
+  `scope="invites"` para várias rotas dividirem um orçamento.
+
+!!! info "O mesmo 429 do middleware"
+    O corpo (`detail`, `code`, `details.retry_after_seconds`, `details.limit`) e
+    os headers (`Retry-After`, `RateLimit-Limit`, `RateLimit-Remaining`,
+    `RateLimit-Reset`) saem dos mesmos helpers que o `RateLimitMiddleware` usa
+    — `tests/api/test_rate_limit_dependency.py` compara os dois. A diferença é
+    o caminho: a dependency **levanta** `TooManyRequestsException`, então
+    precisa do `register_exception_handlers` no app, e com um `MessageCatalog`
+    registrado ali o `detail` sai traduzido pelo `code`
+    (`"Requisições em excesso"` em `pt-BR`), o que o middleware — que responde
+    fora dos handlers — não faz.
+
+!!! tip "Multi-réplica"
+    Troque `MemoryRateLimitStore()` por `RedisRateLimitStore(redis)` e todas as
+    réplicas dividem os contadores, exatamente como no middleware.
 
 ## Limite de tamanho do body (`BodySizeLimitMiddleware`)
 

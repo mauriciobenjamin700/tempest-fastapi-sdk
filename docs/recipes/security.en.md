@@ -6,6 +6,9 @@ Defensive primitives: rate-limit by failure (login/OTP), opaque single-use token
 
 `AttemptThrottle` counts failed attempts per key (typically `<endpoint>:<identifier>` — login email, password-reset target, IP, etc.). When the threshold is crossed, `raise_if_blocked` throws `TooManyRequestsException` directly; or you can read `status`/`hit` and decide what to do.
 
+!!! tip "Using `make_auth_router`? Login is already limited"
+    The auth router applies a per-e-mail `AttemptThrottle` to `/auth/login` by default, and accepts per-IP `login_ip_throttle` and `signup_throttle`. See [Login and signup attempt limits](auth-flow.md#login-and-signup-attempt-limits). This section is for the flow you write by hand.
+
 The constructor takes a `backend` (anything matching the `ThrottleBackend` Protocol) + `max_attempts` + `window_seconds`. For a single process (a dev server, tests) the bundled `InMemoryThrottleBackend` works without Redis; it counts per process, so with more than one worker use the Redis client from `AsyncRedisManager`.
 
 !!! check "`redis.asyncio.Redis` and `fakeredis` satisfy the Protocol, measured"

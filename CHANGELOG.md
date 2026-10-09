@@ -70,6 +70,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cada envio, então cada linha sai no máximo uma vez por janela. Exceção do
   `dispatch` propaga e as linhas ainda não enviadas ficam para a próxima
   varredura. Receita: `docs/recipes/jobs`, seções 3 e 5.
+- **`make_rate_limit_dependency` — rate limit por rota, com chave que lê o
+  corpo (#452).** O `RateLimitMiddleware` limita o app inteiro e o `key_func`
+  dele é síncrono e só recebe o `Request`; não havia como dizer "só
+  `POST /api/invites`, por IP **e** por e-mail convidado". A dependency nova
+  conta no mesmo `RateLimitStore` (memória ou Redis), aceita uma ou várias
+  funções de chave (síncronas ou assíncronas — as `key_by_*` do middleware
+  servem) e recusa com `TooManyRequestsException` carregando os mesmos
+  `details` e headers (`Retry-After`, `RateLimit-*`) do middleware, montados
+  pelos mesmos helpers, agora extraídos em `rate_limit.py`. O teste compara os
+  dois 429: corpo e headers de rate limit iguais. Com um `MessageCatalog` no
+  `register_exception_handlers`, o `detail` da dependency sai traduzido pelo
+  `code` e o do middleware não (medido: `"Requisições em excesso"`). O balde é
+  prefixado por método + path template da rota, então a mesma dependency em
+  duas rotas dá um orçamento para cada; `scope=` junta. `trusted_ip_header`
+  molda a chave default e é recusado (`ValueError`) junto com `key=`.
+  `key_by_body_field("email")` lê o campo do JSON — o endpoint continua
+  recebendo o payload validado (medido: o FastAPI lê o corpo antes das
+  dependencies e o Starlette guarda os bytes), normaliza e guarda SHA-256 por
+  padrão. Receita: `docs/recipes/http`, "Limitar um endpoint por IP e por campo
+  do corpo".
+- **`login_ip_throttle`, `signup_throttle` e `trusted_ip_header` em
+  `make_auth_router` (#456).** Orçamentos por IP do cliente: o de login conta
+  só credencial errada (login certo não zera, para uma conta válida não
+  resetar o contador entre chutes) e é lido antes do orçamento do e-mail; o de
+  signup conta toda tentativa. Os dois vêm **desligados**: atrás de um proxy
+  sem `trusted_ip_header`, todo cliente divide o IP do proxy e um orçamento
+  por IP travaria o login de todo mundo. `/auth/login`, `/auth/cookie/login` e
+  `/auth/signup` declaram o 429 no OpenAPI só quando o limite correspondente
+  está ligado.
 - **`expected_sha256` em `load_sklearn_artifact` e `edge_pipeline_from_pickle`
   (#440).** O chamador pina o SHA-256 que a release do modelo registrou, e a
   carga recusa com `ArtifactDigestMismatchError` (nova, subclasse de
@@ -161,6 +190,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   que exige SQLite 3.35+ ou PostgreSQL). `len()` e verdade continuam valendo
   (`if await store.reclaim_stale():`); **quem compara com número (`== 1`) ou
   soma o retorno quebra** — use `.total`.
+- **`POST /auth/login` passa a responder `429` depois de 5 senhas erradas
+  para o mesmo e-mail em 15 minutos (#456).** `make_auth_router` ganhou
+  `login_throttle`, no molde do `mfa_throttle`: cada tentativa reserva uma
+  unidade **antes** de a senha ser conferida, a sexta leva
+  `429 TOO_MANY_REQUESTS` com `Retry-After` mesmo com a senha certa, e o
+  login certo antes do limite zera a contagem. O default é um
+  `AttemptThrottle` sobre `InMemoryThrottleBackend` (5 por 900 s, por
+  processo); a chave é o SHA-256 do e-mail normalizado, gasta igual para
+  e-mail sem conta, e o `detail` é o mesmo texto nos dois casos — o 429 não
+  revela quais e-mails existem. Vale também para o login por cookie.
+  **Pode quebrar consumidor**: teste ou script que erra a senha mais de 5
+  vezes seguidas para o mesmo e-mail num router só passa a ver 429 — passe
+  `login_throttle=False` para desligar, ou um `AttemptThrottle` próprio
+  (sobre Redis, com mais de um worker). `/auth/me`, `/auth/refresh` e as
+  demais rotas não mudam.
 
 - **A `AssetPolicy` passada em `PdfRenderer(assets=...)` não tem mais a lista
   `refusals` lida nem limpa pelo renderizador.** Antes, toda renderização

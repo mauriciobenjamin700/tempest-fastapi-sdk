@@ -313,6 +313,9 @@ from tempest_fastapi_sdk.api import (
     instrument_sqlalchemy_engine as instrument_sqlalchemy_engine,
 )
 from tempest_fastapi_sdk.api import (
+    key_by_body_field as key_by_body_field,
+)
+from tempest_fastapi_sdk.api import (
     key_by_header as key_by_header,
 )
 from tempest_fastapi_sdk.api import (
@@ -356,6 +359,9 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.api import (
     make_prometheus_router as make_prometheus_router,
+)
+from tempest_fastapi_sdk.api import (
+    make_rate_limit_dependency as make_rate_limit_dependency,
 )
 from tempest_fastapi_sdk.api import (
     make_role_dependency as make_role_dependency,
@@ -2554,6 +2560,7 @@ __all__: list[str] = [
     "is_valid_phone_br",
     "is_valid_pix_key",
     "is_valid_uf",
+    "key_by_body_field",
     "key_by_header",
     "key_by_ip",
     "key_by_jwt_claim",
@@ -2580,6 +2587,7 @@ __all__: list[str] = [
     "make_prometheus_registry",
     "make_prometheus_router",
     "make_push_router",
+    "make_rate_limit_dependency",
     "make_role_dependency",
     "make_session_dependency",
     "make_session_router",
