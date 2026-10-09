@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
         with:
           enable-cache: true
 
@@ -51,8 +51,39 @@ jobs:
             exit 1
           fi
 
+      # The version check above compares strings; this compares the
+      # resolution. `uv lock --check` fails when uv.lock no longer satisfies
+      # pyproject.toml, so the environment tested below and the one audited
+      # next are the committed resolution, not a re-resolve against today's
+      # PyPI (#436).
+      - name: Verify uv.lock matches pyproject.toml
+        run: uv lock --check
+
       - name: Install project with all extras
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
+
+      # A known advisory in any locked dependency fails the release before
+      # anything is built. The ignore list and the reason for each ID live in
+      # the Makefile's `audit` target -- one list for CI, release and local.
+      - name: Audit locked dependencies for known vulnerabilities
+        run: make audit
+
+      # pip-audit only writes a markdown report when it finds something, but
+      # its JSON report always lists every audited package and version --
+      # that is the record archived next to the distributions it vetted.
+      # Written to RUNNER_TEMP, never the checkout: the sdist built below
+      # ships the repository root.
+      - name: Write the audit record
+        if: always()
+        run: make audit AUDIT_ARGS="--format json --output $RUNNER_TEMP/pip-audit.json" || true
+
+      - name: Archive the audit record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-release
+          path: ${{ runner.temp }}/pip-audit.json
+          if-no-files-found: warn
 
       - name: Run full test suite
         run: uv run pytest
@@ -119,7 +150,7 @@ jobs:
           path: dist
 
       - name: Publish to PyPI (Trusted Publishing)
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 
   github_release:
     name: GitHub Release

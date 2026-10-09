@@ -62,6 +62,50 @@ check: lint fmt-check type test ## Run every gate (lint + format check + mypy + 
 
 ci: check build smoke ## Full local mirror of the GitHub Actions pipeline
 
+## ---------- supply chain ----------
+
+# The audit reads the *committed* resolution: `uv export --locked` refuses a
+# lock that no longer satisfies pyproject.toml instead of re-resolving, and
+# every extra is exported because the SDK ships them all. `--disable-pip
+# --no-deps` audits the pinned list as-is (no pip resolve), which is what
+# keeps a warm run around one second; a cold run measured ~22 s.
+# `--strict` fails when a package cannot be audited at all, so a lookup
+# failure never reads as "no advisories".
+#
+# Every ignored ID below is a decision, not a silence. Revisit each one when
+# its blocker moves:
+#
+# chromadb 1.5.9 (newest on PyPI on 2026-10-09; no fixed version exists).
+#   All four target the Chroma *server* -- its HTTP collection endpoints and
+#   SimpleRBACAuthorizationProvider. The SDK only opens the embedded
+#   PersistentClient / EphemeralClient (genai/rag/chroma.py) and never
+#   starts or exposes that server.
+#   PYSEC-2026-311, PYSEC-2026-3813, PYSEC-2026-3814, PYSEC-2026-3815
+#
+# transformers 4.57.6, held below 5 by the `transformers<5` bound of
+#   [genai-audio] (coqui-tts 0.27.5 still dies importing transformers 5.x;
+#   see the comment on that bound in pyproject.toml). Every fixed version is
+#   a 5.x, and two of the IDs list no fixed version at all. The consumer that
+#   installs [genai] without [genai-audio] resolves 5.x and is not affected
+#   by the lock. Drop these when the coqui-tts bound goes.
+#   PYSEC-2025-217, PYSEC-2026-2288, PYSEC-2026-2289, PYSEC-2026-2290,
+#   PYSEC-2026-3929, PYSEC-2026-4174
+PIP_AUDIT_VERSION := 2.10.1
+AUDIT_IGNORE := \
+	PYSEC-2026-311 PYSEC-2026-3813 PYSEC-2026-3814 PYSEC-2026-3815 \
+	PYSEC-2025-217 PYSEC-2026-2288 PYSEC-2026-2289 PYSEC-2026-2290 \
+	PYSEC-2026-3929 PYSEC-2026-4174
+AUDIT_ARGS ?=
+
+.PHONY: audit
+audit: ## Fail on any known advisory in the locked resolution (all extras, pip-audit)
+	@req=$$(mktemp) && \
+		uv export --locked --quiet --all-extras --no-dev --no-hashes --no-emit-project \
+			--format requirements-txt -o "$$req" && \
+		uvx pip-audit@$(PIP_AUDIT_VERSION) -r "$$req" --disable-pip --no-deps --strict \
+			--progress-spinner off $(foreach id,$(AUDIT_IGNORE),--ignore-vuln $(id)) $(AUDIT_ARGS); \
+		status=$$?; rm -f "$$req"; exit $$status
+
 ## ---------- packaging ----------
 
 build: ## Build sdist + wheel into dist/
@@ -162,6 +206,7 @@ release: ## Bump versions, run every gate, commit and tag. Usage: make release V
 # it, so the guard could never fail. Measured by corrupting the lock and
 # watching a bare `uv run python -c pass` put it back.
 	$(MAKE) check
+	$(MAKE) audit
 	$(MAKE) docs-build
 	$(MAKE) smoke
 	git add pyproject.toml $(PACKAGE)/__init__.py uv.lock

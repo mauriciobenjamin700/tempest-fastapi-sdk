@@ -348,7 +348,11 @@ Issues = "https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues"
 tempest = "tempest_fastapi_sdk.cli.entrypoint:main"
 
 [build-system]
-requires = ["hatchling"]
+# Unbounded, every build resolved the newest hatchling at that moment, so the
+# backend that produced a release was whatever PyPI served that day (#436).
+# The floor is the version measured building 0.308.0 (2026-10-09); the cap
+# keeps a hatchling 2.x out until someone builds with it on purpose.
+requires = ["hatchling>=1.32.4,<2"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
