@@ -619,12 +619,143 @@ paths: list[Path] = resolve_log_files("logs", "error")
 every: list[Path] = resolve_log_files("logs", "all", include_http_500=True)
 ```
 
+### Behind your own auth — `dependencies=`
+
+A service that already has its own login (an admin Bearer JWT, a role, a
+session) does not need to invent a shared secret just for the logs. Pass the
+dependency that already guards the rest of the panel in `dependencies=`, and
+it applies to `GET` **and** `DELETE`:
+
+```python
+from fastapi import Depends, FastAPI
+
+from tempest_fastapi_sdk import (
+    JWTUtils,
+    configure_logging,
+    make_logs_router,
+    make_role_dependency,
+    register_exception_handlers,
+)
+
+configure_logging(log_dir="logs")
+
+tokens: JWTUtils = JWTUtils(secret="a-32-character-secret-for-tests!")
+require_admin = make_role_dependency(tokens, ["admin"])
+
+app: FastAPI = FastAPI()
+register_exception_handlers(app)
+app.include_router(
+    make_logs_router(log_dir="logs", dependencies=[Depends(require_admin)]),
+)
+```
+
+What each call gets, measured against that app:
+
+| Request | Response |
+| --- | --- |
+| no `Authorization` | `401` (`UNAUTHORIZED`) |
+| Bearer with `roles: ["user"]` | `403` (`FORBIDDEN`) |
+| Bearer with `roles: ["admin"]` | `200`, no `X-Token` at all |
+
+Each item takes either spelling, `Depends(require_admin)` or just
+`require_admin`. A ready `Depends` is used as given, not wrapped again.
+
+!!! info "How `dependencies=` lives with `X-Token`"
+    The two pieces **add up**; neither cancels the other:
+
+    - Only `dependencies=`: they are the whole gate. No `X-Token` is read, and
+      the header does not even show up in the OpenAPI schema.
+    - `token_secret` **and** `dependencies=`: the request needs the header
+      **and** has to pass every dependency.
+    - Neither: `ValueError` at construction, as before, unless you pass
+      `allow_unauthenticated=True`. An empty list (`dependencies=[]`) does not
+      count as a gate.
+
+### Another response contract — `read_log_entries` and `clear_log_files`
+
+The router is a shell over two public functions. When the panel needs another
+response shape, call them directly instead of rewriting the read: the per-file
+cap lives there, and a hand-written reader that loads each file whole works on
+a fresh directory and kills the worker on a multi-gigabyte one.
+
+Both are synchronous (file I/O). In an `async` route, run them off the event
+loop with `asyncio.to_thread`:
+
+```python
+import asyncio
+
+from fastapi import APIRouter, Depends, FastAPI
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk import (
+    JWTUtils,
+    LogReadResult,
+    clear_log_files,
+    make_role_dependency,
+    read_log_entries,
+)
+
+tokens: JWTUtils = JWTUtils(secret="a-32-character-secret-for-tests!")
+require_admin = make_role_dependency(tokens, ["admin"])
+
+
+class AppLogsResponseSchema(BaseModel):
+    messages: list[str]
+    truncated: bool
+
+
+router: APIRouter = APIRouter(
+    prefix="/api/admin/metrics",
+    dependencies=[Depends(require_admin)],
+)
+
+
+@router.get("/app-logs")
+async def app_logs(q: str | None = None, limit: int = 100) -> AppLogsResponseSchema:
+    result: LogReadResult = await asyncio.to_thread(
+        read_log_entries, "logs", "error", q=q
+    )
+    return AppLogsResponseSchema(
+        messages=[str(entry["message"]) for entry in result.entries[:limit]],
+        truncated=result.truncated,
+    )
+
+
+@router.delete("/app-logs")
+async def clear_app_logs() -> list[str]:
+    return await asyncio.to_thread(clear_log_files, "logs", "error")
+
+
+app: FastAPI = FastAPI()
+app.include_router(router)
+```
+
+With a `logger.error("payment gateway timeout")` on disk, an admin's
+`GET /api/admin/metrics/app-logs?q=timeout` answered:
+
+```json
+{"messages": ["payment gateway timeout"], "truncated": false}
+```
+
+and the `DELETE` answered `["error.log"]`.
+
+- `read_log_entries(log_dir, source="all", *, q, start, end, max_records_per_file)`
+  returns a `LogReadResult`: `entries`, already filtered and newest first, and
+  `truncated`, which says whether the cap cut any file. Nothing matched?
+  `entries` is `[]`.
+- `clear_log_files(log_dir, source="all")` truncates in place and returns the
+  names it emptied. For `"all"`, `500.log` is included — the same rule as
+  `DELETE /logs`.
+
 
 !!! check "Recap"
     - `configure_logging(log_dir=...)` → stdout **+** one file per level.
     - Exact-level routing: each file holds only its own severity.
     - `500.log` isolates uncaught 500s (the `http_500` marker).
-    - `make_logs_router` serves those files, paginated and authenticated.
+    - `make_logs_router` serves those files, paginated and authenticated —
+      by `X-Token` or by your own auth in `dependencies=`.
+    - `read_log_entries` / `clear_log_files` are the read and the clear
+      without the router, for another response contract.
 
 ## One line per request — `AccessLogMiddleware`
 

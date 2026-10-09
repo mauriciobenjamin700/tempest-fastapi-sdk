@@ -395,7 +395,13 @@ Measured with that router running (test key, signed body):
     The signature covers the body and nothing else, so a captured delivery
     stays valid forever — and OpenPix itself redelivers when it does not get a
     200. Treat the handler as **idempotent**: key on `correlationID` and
-    ignore what you already processed. See [Idempotency](idempotency.md).
+    ignore what you already processed. The release itself goes under
+    `claim_once` (from `tempest_fastapi_sdk.wallet`), which stamps the order
+    with an `UPDATE ... WHERE paid_at IS NULL` and returns `False` to the
+    second delivery. The whole path over the canonical contract — re-read
+    with `confirm_pix_payment`, status and amount check, `claim_once` — is in
+    the [Pix protocol](pix-protocol.md#step-4-the-service-which-speaks-only-the-contract).
+    See also [Idempotency](idempotency.md).
 
 ### The confirmation
 
