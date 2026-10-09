@@ -3008,3 +3008,16 @@ que sem o extra imprime a instrução e sai com 2; `tempest_fastapi_sdk.cli`
 re-exporta preguiçosamente e levanta `ImportError` com a instrução; o
 `tempest new` põe `tempest-fastapi-sdk[cli]` no grupo `dev`. Guards:
 `tests/test_cli_extra_guard.py` e `tests/cli/test_entrypoint.py`.
+
+## Webhook do Mercado Pago numa dependency (Unreleased, #437)
+
+`make_mercado_pago_webhook_dependency(secret, *, tolerance_seconds=None,
+versions=DEFAULT_SIGNATURE_VERSIONS, error_message=...)` fecha a terceira
+fábrica de webhook, na forma de `make_stripe_webhook_dependency` e
+`make_openpix_webhook_dependency`: lê `?data.id` (`MERCADO_PAGO_DATA_ID_QUERY`),
+`x-signature` e `x-request-id`, roda `verify_signature` e devolve
+`MercadoPagoWebhookEvent`; falha vira `UnauthorizedException` (401) antes do
+handler. `data_id` vem da query porque o corpo não é assinado; tópico
+desconhecido vira `MercadoPagoEvent.UNKNOWN`, corpo não-JSON não derruba. A
+receita `mercado-pago.md` monta a rota com a fábrica. Testes:
+`tests/integrations/payment/mercado_pago/test_webhook_dependency.py`.
