@@ -156,7 +156,7 @@ tempest new my_service --extras auth,cache,minio,email
 Generates:
 
 - `postgres`, `redis`, `minio` (+ `minio-bootstrap` creating the `uploads` bucket), `mailhog`
-- `.env.example` with `REDIS_URL`, `MINIO_*`, `SMTP_HOST=localhost`, `SMTP_PORT=1025`, `SMTP_USE_TLS=false` (MailHog is plain — no STARTTLS)
+- `.env.example` with `REDIS_URL`, `MINIO_ROOT_*` (the container), `STORAGE_*` (the app), `SMTP_HOST=localhost`, `SMTP_PORT=1025`, `SMTP_USE_TLS=false` (MailHog is plain — no STARTTLS)
 
 !!! info "Credentials come from `.env`, not hardcoded in the compose"
     As of v0.37.0, no credential is written straight into
@@ -269,7 +269,7 @@ Piece by piece:
     | `DATABASE_URL` | `postgresql+asyncpg://…@postgres:5432/<db>` | always |
     | `REDIS_URL` | `redis://redis:6379/0` | `[cache]` |
     | `RABBITMQ_URL` / `TASKIQ_BROKER_URL` | `amqp://…@rabbitmq:5672/` | `[queue]` / `[tasks]` |
-    | `MINIO_ENDPOINT` | `minio:9000` | `[minio]` |
+    | `STORAGE_ENDPOINT` | `minio:9000` | `[minio]` |
 
     Without that rewrite the API does not crash — it boots **against the
     wrong thing**. The same image run with only `--env-file .env` answered
@@ -1225,13 +1225,13 @@ tempest storage presign notes/2026-09.pdf --expires 900
 tempest storage rm notes/2026-09.pdf
 ```
 
-Everything goes through `AsyncMinIOClient(**settings.minio_kwargs())`, so the
+Everything goes through `AsyncMinIOClient(**settings.storage_kwargs())`, so the
 endpoint, credentials, region and — the one that matters most — the **public
 endpoint** used to sign URLs are the service's own.
 
 !!! warning "A URL signed with the internal endpoint is valid and useless"
     Signing against `minio:9000` produces a correct URL your user's browser
-    cannot resolve. Set `MINIO_PUBLIC_ENDPOINT`; `presign` prints on `stderr`
+    cannot resolve. Set `STORAGE_PUBLIC_ENDPOINT`; `presign` prints on `stderr`
     which host it signed for, precisely so that mistake surfaces before the
     URL reaches a client.
 
@@ -1357,8 +1357,8 @@ check fails, so it works as a deployment smoke test.
     Redis nobody set up is the kind of reassurance that costs an outage.
 
     The mixin default counts as unconfigured: `EmailSettings` ships
-    `SMTP_HOST=localhost` and `MinIOSettings` ships
-    `MINIO_ENDPOINT=localhost:9000`, so a service composing the mixin without
+    `SMTP_HOST=localhost` and `StorageSettings` ships
+    `STORAGE_ENDPOINT=localhost:9000`, so a service composing the mixin without
     using the capability would look configured. The comparison is against
     `model_fields[field].default` — the same ruler `check_secrets` uses.
 

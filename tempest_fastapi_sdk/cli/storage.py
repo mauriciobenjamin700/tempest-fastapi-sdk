@@ -1,6 +1,6 @@
 """``tempest storage`` — inspect and move objects in the project's bucket.
 
-Everything here goes through ``AsyncMinIOClient(**settings.minio_kwargs())``,
+Everything here goes through ``AsyncMinIOClient(**settings.storage_kwargs())``,
 so the endpoint, credentials, region and — importantly — the *public*
 endpoint used to sign URLs are the ones the service uses. A presigned URL
 produced with the internal endpoint is valid and useless: the browser it
@@ -30,7 +30,7 @@ _BUCKET_OPTION: Any = typer.Option(
     "",
     "--bucket",
     "-b",
-    help="Bucket to act on. Defaults to MINIO_DEFAULT_BUCKET.",
+    help="Bucket to act on. Defaults to STORAGE_DEFAULT_BUCKET.",
 )
 
 
@@ -42,17 +42,18 @@ def _client_kwargs() -> dict[str, Any]:
 
     Raises:
         typer.Exit: Exit code 2 when the project composes no
-            ``MinIOSettings``.
+            ``StorageSettings`` (or its deprecated ``MinIOSettings``
+            name).
     """
     settings = load_project_settings()
-    if settings is None or not hasattr(settings, "MINIO_ENDPOINT"):
+    if settings is None or not hasattr(settings, "storage_kwargs"):
         typer.echo(
             "error: this project has no object-store settings. Compose "
-            "MinIOSettings into your Settings class.",
+            "StorageSettings into your Settings class.",
             err=True,
         )
         raise typer.Exit(2)
-    kwargs: dict[str, Any] = settings.minio_kwargs()
+    kwargs: dict[str, Any] = settings.storage_kwargs()
     return kwargs
 
 
@@ -204,7 +205,7 @@ def storage_presign(
 ) -> None:
     """Print a presigned GET URL for one object.
 
-    The URL is signed against ``MINIO_PUBLIC_ENDPOINT`` when the project
+    The URL is signed against ``STORAGE_PUBLIC_ENDPOINT`` when the project
     sets one. Without it the signature names the internal endpoint,
     which is valid and unusable from a browser that cannot resolve
     ``minio:9000`` — so the command says which host it signed for.

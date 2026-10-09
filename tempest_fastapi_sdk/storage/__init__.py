@@ -10,6 +10,9 @@ from tempest_fastapi_sdk.storage.minio_client import (
     AsyncMinIOClient as AsyncMinIOClient,
 )
 from tempest_fastapi_sdk.storage.minio_client import (
+    ObjectDeleteError as ObjectDeleteError,
+)
+from tempest_fastapi_sdk.storage.minio_client import (
     ObjectStat as ObjectStat,
 )
 from tempest_fastapi_sdk.storage.minio_client import (
@@ -18,6 +21,7 @@ from tempest_fastapi_sdk.storage.minio_client import (
 
 __all__: list[str] = [
     "AsyncMinIOClient",
+    "ObjectDeleteError",
     "ObjectStat",
     "PutObjectItem",
 ]

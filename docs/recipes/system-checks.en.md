@@ -148,6 +148,139 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 `fail_level` (default `ERROR`); `run_checks` does the same but only
 returns the list, without raising.
 
+## Production guard: `EnvironmentSettings`
+
+The checks above **warn**. For what must never reach production — SQLite,
+the placeholder `JWT_SECRET`, CORS `*` — a warning is not enough: the deploy
+has to fail. That is what the `EnvironmentSettings` mixin does. It adds the
+`ENV` field (`development`, `test` or `production`) and, with
+`ENV=production`, refuses to build the settings while any composed mixin
+still holds a development value:
+
+```python
+import os
+
+from pydantic import ValidationError
+from tempest_fastapi_sdk import (
+    BaseAppSettings,
+    DatabaseSettings,
+    EnvironmentSettings,
+    JWTSettings,
+    ServerSettings,
+)
+
+
+class Settings(
+    EnvironmentSettings,
+    ServerSettings,
+    DatabaseSettings,
+    JWTSettings,
+    BaseAppSettings,
+):
+    """Service settings, with the production guard."""
+
+
+os.environ["ENV"] = "production"
+
+try:
+    Settings()
+except ValidationError as exc:
+    print(exc)
+```
+
+With neither `DATABASE_URL` nor `JWT_SECRET` in the environment, the output
+lists **every** field at once — by name, never by value:
+
+```text
+1 validation error for Settings
+  Value error, ENV=production refuses development values:
+- DATABASE_URL: points at SQLite (the development default)
+- JWT_SECRET: still the public placeholder declared by JWTSettings [type=value_error]
+```
+
+With `ENV=development` (the default) or `ENV=test`, nothing changes.
+
+### What each mixin refuses
+
+The guard only looks at the mixins you compose. Each one declares its own
+rules in its `production_violations()` method:
+
+| Mixin | Refused in production |
+| --- | --- |
+| `ServerSettings` | `SERVER_DEBUG=true`, `SERVER_RELOAD=true` |
+| `DatabaseSettings` | a `DATABASE_URL` with a `sqlite` dialect |
+| `JWTSettings` | `JWT_SECRET` equal to the default the mixin declares |
+| `CORSSettings` | `"*"` in `CORS_ORIGINS` |
+| `TokenSettings` | an empty `TOKEN_SECRET` (turns `X-Token` off) |
+| `TaskIQSettings` | an empty `TASKIQ_BROKER_URL` (falls back to the in-memory broker) |
+| `StorageSettings` | the default `minioadmin` keys, `STORAGE_SECURE=false`, an explicit `STORAGE_PUBLIC_SECURE=false` |
+
+!!! info "The placeholder comes from the mixin, not from a literal"
+    `JWT_SECRET` is compared with `JWTSettings.model_fields["JWT_SECRET"].default`.
+    If the default changes, the check follows it.
+
+### Adding (or waiving) a rule
+
+`production_violations()` is cooperative: override it on your `Settings`,
+call `super()` and work on the list. That is how you add a rule of the
+service — or drop one you accepted on purpose, like SQLite on a single-node
+service:
+
+```python
+import os
+
+from pydantic import Field, ValidationError
+from tempest_fastapi_sdk import BaseAppSettings, DatabaseSettings, EnvironmentSettings
+
+
+class Settings(EnvironmentSettings, DatabaseSettings, BaseAppSettings):
+    """Single-node service: SQLite in production is a decision already made."""
+
+    PUBLIC_URL: str = Field(default="http://localhost:8000")
+
+    def production_violations(self) -> list[str]:
+        """Accept SQLite and require HTTPS on the public URL.
+
+        Returns:
+            list[str]: The mixins' violations, minus SQLite, plus the
+            service's own rule.
+        """
+        violations: list[str] = [
+            entry
+            for entry in super().production_violations()
+            if not entry.startswith("DATABASE_URL:")
+        ]
+        if not self.PUBLIC_URL.startswith("https://"):
+            violations.append("PUBLIC_URL: not HTTPS")
+        return violations
+
+
+os.environ["ENV"] = "production"
+
+try:
+    Settings()
+except ValidationError as exc:
+    print(exc)
+
+os.environ["PUBLIC_URL"] = "https://api.example.com"
+print(Settings().ENV)
+```
+
+```text
+1 validation error for Settings
+  Value error, ENV=production refuses development values:
+- PUBLIC_URL: not HTTPS [type=value_error]
+production
+```
+
+!!! tip "A validation error does not print the environment"
+    `BaseAppSettings` now sets `hide_input_in_errors=True`. On a
+    `BaseSettings` the *input* of an error is the whole environment — a
+    missing required field used to print `input_value={'JWT_SECRET': ...}`
+    into the boot traceback. Now the message carries only the field and the
+    reason. Set `hide_input_in_errors` in your own `model_config` to get the
+    input back.
+
 ## Recap
 
 - `tempest check-config` runs the checks against your settings; exits
@@ -156,3 +289,7 @@ returns the list, without raising.
 - `@check("tag")` registers your own; `debug`/`info`/`warning`/`error`/
   `critical` build the message.
 - `run_system_checks(settings)` in the lifespan aborts a misconfigured boot.
+- `EnvironmentSettings` with `ENV=production` **stops** the boot while a
+  composed mixin still holds a development value, listing the fields
+  without printing values; `production_violations()` + `super()` adds or
+  waives a rule.

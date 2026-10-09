@@ -10,6 +10,7 @@ Here you assemble a service's entire HTTP surface from the primitives `tempest_f
 - **`make_health_router` / `make_token_dependency`** — liveness/readiness + the `X-Token` shared-secret guard.
 - **JWT / bearer / role / permission dependencies** — gate routes by token and by role.
 - **`RateLimitMiddleware`** — sliding window, key by IP/user/tenant, memory or Redis store.
+- **`make_rate_limit_dependency`** — the same limit on one route, with a key that can read the body (`key_by_body_field`).
 - **`BodySizeLimitMiddleware`** — hard cap on the request body, answering 413 before any parsing.
 - **`WebhookSignatureVerifier` / `RSAWebhookSignatureVerifier`** — validate signed webhooks (HMAC or RSA).
 - **`build_pagination_link_header`** — GitHub-style RFC 8288 `Link` header.
@@ -116,8 +117,103 @@ Key points:
     - `Exception` (catch-all) → SDK envelope + traceback + `500.log` (fixes Starlette's default, which returns only `"Internal Server Error"` with no log entry).
 
     Every handler honors `RequestIDMiddleware`: the log line carries the `request_id`, and the envelope exposes it under `details` so the client can correlate. Pass `log_traceback=False` when an APM (Sentry, OpenTelemetry) is already capturing the stack trace.
-- `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` mounts `GET /health/liveness` and `GET /health/readiness` (returns `503` when any check fails) at the root prefix.
+- `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` mounts `GET /health/liveness` and `GET /health/readiness` (returns `503` when any check fails) at the root prefix — see [Liveness and readiness](#liveness-and-readiness).
 - `make_token_dependency(secret)` returns an async dependency that validates `X-Token` via `hmac.compare_digest`; pass an empty string to disable in dev. The dependency lives next to the rest of the auth glue in `src/api/dependencies/auth.py` once it grows beyond the one-liner above.
+
+### Liveness and readiness
+
+They are two different questions, asked by whoever decides two different
+things:
+
+- **Liveness** — *"is the process alive?"*. When it fails, the orchestrator
+  (Kubernetes, ECS) **restarts** the container. That is why
+  `GET /health/liveness` touches no dependency at all: a Redis outage is not
+  fixed by restarting the API, and a liveness probe that depended on it would
+  take every replica down at once, in a loop.
+- **Readiness** — *"can I take traffic right now?"*. When it fails, the load
+  balancer **takes the replica out of rotation** and puts it back once it
+  passes again. This is where the database, cache and broker belong:
+  `GET /health/readiness` runs every check and answers `503` when any fails.
+
+A single `GET /health` mixes the two — it either restarts over a dependency
+or sends traffic to a replica that cannot serve it. When you ask for the
+health endpoints of a new service, ask for both.
+
+```python
+import asyncio
+
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from tempest_fastapi_sdk import make_health_router
+
+
+async def redis_check() -> bool:
+    """Answer right away: a healthy dependency."""
+    return True
+
+
+async def search_check() -> bool:
+    """Hang, like a half-open socket that never answers."""
+    await asyncio.sleep(60)
+    return True
+
+
+app = FastAPI()
+app.include_router(
+    make_health_router(
+        checks={"redis": redis_check, "search": search_check},
+        timeout=0.5,
+    ),
+)
+
+
+async def main() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        liveness = await client.get("/health/liveness")
+        readiness = await client.get("/health/readiness")
+    print(liveness.status_code, liveness.json())
+    print(readiness.status_code, readiness.json())
+
+
+asyncio.run(main())
+```
+
+Output (the whole process took 1.7 s, despite the `sleep(60)`):
+
+```text
+Health check 'search' timed out after 0.5s
+200 {'status': 'ok'}
+503 {'status': 'not_ready', 'checks': {'redis': True, 'search': False}}
+```
+
+What happens in the readiness probe:
+
+- **Checks run concurrently**, each bounded by `timeout` (default `3.0`
+  seconds; `None` disables it). One that overruns counts as a failure **for
+  itself only** — `redis` above stays `True` — and the response leaves right
+  after the `timeout`, not when the orchestrator's probe gives up. Keep
+  `timeout` below the probe timeout.
+- **The log never carries the exception message.** A check that raises logs
+  `Health check 'database' raised ConnectionRefusedError` — name and type,
+  never the text, because database and broker driver messages often carry
+  the DSN with its user and password.
+
+!!! warning "Cancellation only happens at an `await`"
+    `timeout` cancels the check at its next `await` point. A check that
+    blocks the event loop with synchronous I/O (a non-async driver, a
+    `time.sleep`) cannot be interrupted — and it stalls the whole process,
+    not just the readiness probe. Run that kind of call with
+    `asyncio.to_thread`.
+
+!!! tip "Queue"
+    `MessageBroker.health_check` runs FastStream's real `ping`, with
+    `timeout=2.0` by default — below the router's 3 s. With RabbitMQ stopped
+    after boot it returns `False`:
+    `make_health_router(checks={"queue": mq.health_check})`.
 
 
 ### Every 4xx inside the envelope
@@ -989,6 +1085,131 @@ True
     clock takes the machine's speed out of the assertion.
 
 
+## Per-route rate limit (`make_rate_limit_dependency`)
+
+`RateLimitMiddleware` limits the whole app, and its scope only shrinks by
+subtraction (`exempt_paths`). Two questions fall outside it:
+
+- **"Only `POST /api/invites`."** An expensive route deserves a ceiling the
+  rest of the app does not have.
+- **"Per invited e-mail, not just per IP."** The key lives in the **body**, and
+  the middleware's `key_func` only receives the `Request`, synchronously,
+  before the body is read.
+
+`make_rate_limit_dependency` answers both: it is a dependency you hang on one
+route, it counts in the same `RateLimitStore` as the middleware (memory or
+Redis) and it answers the same 429.
+
+### Limit one endpoint by IP and by a body field
+
+```python
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk import (
+    MemoryRateLimitStore,
+    key_by_body_field,
+    key_by_ip,
+    make_rate_limit_dependency,
+    register_exception_handlers,
+)
+
+
+class InviteCreateSchema(BaseModel):
+    email: str
+
+
+invite_limit = make_rate_limit_dependency(
+    MemoryRateLimitStore(),
+    max_requests=3,
+    window_seconds=3600.0,
+    key=[
+        key_by_ip(trusted_header="x-real-ip"),
+        key_by_body_field("email"),
+    ],
+)
+
+app = FastAPI()
+register_exception_handlers(app)
+
+
+@app.post("/api/invites", status_code=202, dependencies=[Depends(invite_limit)])
+async def create_invite(payload: InviteCreateSchema) -> dict[str, str]:
+    return {"invited": payload.email}
+
+
+@app.get("/api/invites")
+async def list_invites() -> list[str]:
+    return []
+
+
+client = TestClient(app)
+for ip in ("10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.4"):
+    response = client.post(
+        "/api/invites",
+        json={"email": "ana@example.com"},
+        headers={"x-real-ip": ip},
+    )
+    print(response.status_code, response.json())
+print(response.headers["retry-after"], response.headers["ratelimit-limit"])
+print(client.get("/api/invites").status_code)
+```
+
+Output:
+
+```text
+202 {'invited': 'ana@example.com'}
+202 {'invited': 'ana@example.com'}
+202 {'invited': 'ana@example.com'}
+429 {'detail': 'Too many requests', 'code': 'TOO_MANY_REQUESTS', 'details': {'retry_after_seconds': 3600, 'limit': 3}}
+3600 3
+200
+```
+
+Four different IPs, one e-mail: the fourth request falls on the e-mail key,
+and a `GET` on the same URL stays free. Piece by piece:
+
+- **`key=[...]`** — each function returns one key (or several, or none), and
+  every key counts in the same store. The first one over budget refuses the
+  request; the ones after it are not counted, so a refused request does not
+  spend their budget. Sync functions (`key_by_ip`, `key_by_header`,
+  `key_by_jwt_*`) and async ones work alike.
+- **`key_by_body_field("email")`** — reads the field off the JSON body.
+  FastAPI reads the body **before** resolving dependencies and Starlette keeps
+  the bytes on the `Request`, so the endpoint still receives its validated
+  `payload` — the output above is that proof. The value is normalized (`strip`
+  + lowercase) and stored as SHA-256, so Redis does not pile up e-mails in
+  clear text (`normalize=False`, `hash_value=False` turn that off). A body that
+  is not JSON, or lacks the field, yields no key: the endpoint's own 422
+  answers that request.
+- **`trusted_ip_header`** — without `key`, the default key is the IP resolved
+  from that header
+  (`make_rate_limit_dependency(store, ..., trusted_ip_header="x-real-ip")`).
+  With `key`, pass the header to the `key_by_ip` inside the list; passing both
+  raises `ValueError` at construction instead of silently ignoring the header.
+- **The bucket belongs to the route.** Each key is prefixed by default with the
+  method and the path template (`"POST /api/invites"`), so the same dependency
+  on two routes gives each its own budget, `/users/1` and `/users/2` share the
+  one of `/users/{user_id}`, and the counter never collides with the
+  middleware's in the same Redis. Pass `scope="invites"` to make several routes
+  share one budget.
+
+!!! info "The same 429 as the middleware"
+    The body (`detail`, `code`, `details.retry_after_seconds`,
+    `details.limit`) and the headers (`Retry-After`, `RateLimit-Limit`,
+    `RateLimit-Remaining`, `RateLimit-Reset`) come from the same helpers
+    `RateLimitMiddleware` uses — `tests/api/test_rate_limit_dependency.py`
+    compares the two. The difference is the path: the dependency **raises**
+    `TooManyRequestsException`, so the app needs `register_exception_handlers`,
+    and with a `MessageCatalog` registered there `detail` is translated by
+    `code` (`"Requisições em excesso"` under `pt-BR`), which the middleware —
+    answering outside the handlers — does not do.
+
+!!! tip "Multi-replica"
+    Swap `MemoryRateLimitStore()` for `RedisRateLimitStore(redis)` and every
+    replica shares the counters, exactly as with the middleware.
+
 ## Request body size limit (`BodySizeLimitMiddleware`)
 
 A 2 GB upload against an endpoint that expects JSON kills the worker before
@@ -1503,7 +1724,7 @@ Each mixin owns its own env-var prefix — pick only the ones the service needs:
 | Mixin | Env vars |
 | --- | --- |
 | `ServerSettings` | `SERVER_HOST`, `SERVER_PORT`, `SERVER_RELOAD`, `SERVER_DEBUG` |
-| `LogSettings` | `LOG_LEVEL`, `LOG_JSON`, `LOG_DIR`, `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT` |
+| `LogSettings` | `LOG_LEVEL`, `LOG_JSON`, `LOG_DIR`, `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT`, `LOG_REDACT` |
 | `DatabaseSettings` | `DATABASE_URL`, `DATABASE_ECHO`, `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW`, `DATABASE_POOL_RECYCLE`, `DATABASE_SQLITE_WAL`, `DATABASE_SQLITE_BUSY_TIMEOUT`, `DATABASE_SQLITE_FOREIGN_KEYS` |
 | `RedisSettings` | `REDIS_URL`, `REDIS_DECODE_RESPONSES` |
 | `RabbitMQSettings` | `RABBITMQ_URL`, `RABBITMQ_PREFETCH_COUNT` |

@@ -91,11 +91,11 @@ def _settings_check(settings: Any) -> CheckOutcome:
     return CheckOutcome("settings", _OK, type(settings).__name__)
 
 
-def _is_untouched_default(settings: Any, field: str, env_var: str) -> bool:
+def _is_untouched_default(settings: Any, field: str, *env_vars: str) -> bool:
     """Return whether a settings field still holds the mixin's default.
 
     ``EmailSettings`` defaults ``SMTP_HOST`` to ``localhost`` and
-    ``MinIOSettings`` defaults ``MINIO_ENDPOINT`` to
+    ``StorageSettings`` defaults ``STORAGE_ENDPOINT`` to
     ``localhost:9000``, so a project that composes the mixin without
     using the capability looks configured. Connecting anyway would
     report a failure the operator never asked for — the same reasoning
@@ -105,13 +105,14 @@ def _is_untouched_default(settings: Any, field: str, env_var: str) -> bool:
     Args:
         settings (Any): The project's settings instance.
         field (str): The field name to inspect.
-        env_var (str): The environment variable that would override it.
+        *env_vars (str): Every environment variable that would override
+            it — a renamed field still reads its deprecated name.
 
     Returns:
         bool: True when the environment is silent and the value equals
         the declared default.
     """
-    if os.environ.get(env_var):
+    if any(os.environ.get(name) for name in env_vars):
         return False
     fields = getattr(type(settings), "model_fields", {})
     declared = fields.get(field)
@@ -196,9 +197,9 @@ def _redis_check(settings: Any, timeout: float) -> CheckOutcome:
 def _rabbitmq_check(settings: Any) -> CheckOutcome:
     """Open the broker connection and close it again.
 
-    FastStream brokers expose no generic ping, so what is measured is
-    the start handshake: a broker that connects and closes is one the
-    service can publish through.
+    After the start handshake, :meth:`AsyncQueueManager.health_check`
+    runs the FastStream broker's ``ping``: a broker that connects,
+    answers the ping and closes is one the service can publish through.
 
     Args:
         settings (Any): The project's settings, or ``None``.
@@ -279,19 +280,23 @@ def _minio_check(settings: Any) -> CheckOutcome:
         CheckOutcome: ``ok`` with the bucket count, ``fail`` with the
         error, or ``skip`` when MinIO is not configured.
     """
-    endpoint = getattr(settings, "MINIO_ENDPOINT", "")
+    endpoint = getattr(settings, "STORAGE_ENDPOINT", "")
     if not endpoint:
-        return CheckOutcome("minio", _SKIP, "no MINIO_ENDPOINT")
-    if _is_untouched_default(settings, "MINIO_ENDPOINT", "MINIO_ENDPOINT"):
-        return CheckOutcome("minio", _SKIP, "MINIO_ENDPOINT is still the mixin default")
+        return CheckOutcome("minio", _SKIP, "no STORAGE_ENDPOINT")
+    if _is_untouched_default(
+        settings, "STORAGE_ENDPOINT", "STORAGE_ENDPOINT", "MINIO_ENDPOINT"
+    ):
+        return CheckOutcome(
+            "minio", _SKIP, "STORAGE_ENDPOINT is still the mixin default"
+        )
     try:
         from minio import Minio
 
         client = Minio(
             endpoint,
-            access_key=getattr(settings, "MINIO_ACCESS_KEY", ""),
-            secret_key=getattr(settings, "MINIO_SECRET_KEY", ""),
-            secure=bool(getattr(settings, "MINIO_SECURE", True)),
+            access_key=getattr(settings, "STORAGE_ACCESS_KEY", ""),
+            secret_key=getattr(settings, "STORAGE_SECRET_KEY", ""),
+            secure=bool(getattr(settings, "STORAGE_SECURE", True)),
         )
         buckets = client.list_buckets()
     except ImportError:

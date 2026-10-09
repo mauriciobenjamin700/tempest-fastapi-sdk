@@ -155,7 +155,7 @@ tempest new my_service --extras auth,cache,minio,email
 Gera:
 
 - `postgres`, `redis`, `minio` (+ `minio-bootstrap` que cria o bucket `uploads`), `mailhog`
-- `.env.example` com `REDIS_URL`, `MINIO_*`, `SMTP_HOST=localhost`, `SMTP_PORT=1025`, `SMTP_USE_TLS=false` (MailHog é plain — sem STARTTLS)
+- `.env.example` com `REDIS_URL`, `MINIO_ROOT_*` (o container), `STORAGE_*` (o app), `SMTP_HOST=localhost`, `SMTP_PORT=1025`, `SMTP_USE_TLS=false` (MailHog é plain — sem STARTTLS)
 
 !!! info "Credenciais vêm do `.env`, não estão hardcoded no compose"
     A partir da v0.37.0, nenhuma credencial é gravada direto no
@@ -267,7 +267,7 @@ Pedaço por pedaço:
     | `DATABASE_URL` | `postgresql+asyncpg://…@postgres:5432/<db>` | sempre |
     | `REDIS_URL` | `redis://redis:6379/0` | `[cache]` |
     | `RABBITMQ_URL` / `TASKIQ_BROKER_URL` | `amqp://…@rabbitmq:5672/` | `[queue]` / `[tasks]` |
-    | `MINIO_ENDPOINT` | `minio:9000` | `[minio]` |
+    | `STORAGE_ENDPOINT` | `minio:9000` | `[minio]` |
 
     Sem essa reescrita a API não quebra — ela sobe **no lugar errado**. A
     mesma imagem rodada só com `--env-file .env` respondeu
@@ -1217,13 +1217,13 @@ tempest storage presign notas/2026-09.pdf --expires 900
 tempest storage rm notas/2026-09.pdf
 ```
 
-Tudo passa pelo `AsyncMinIOClient(**settings.minio_kwargs())`, então
+Tudo passa pelo `AsyncMinIOClient(**settings.storage_kwargs())`, então
 endpoint, credencial, região e — o que mais importa — o **endpoint público**
 usado para assinar URL são os do serviço.
 
 !!! warning "URL assinada com o endpoint interno é válida e inútil"
     Assinar contra `minio:9000` produz uma URL correta que o browser do
-    usuário não resolve. Configure `MINIO_PUBLIC_ENDPOINT`; o `presign`
+    usuário não resolve. Configure `STORAGE_PUBLIC_ENDPOINT`; o `presign`
     imprime, no `stderr`, para qual host ele assinou, justamente para esse
     erro aparecer antes de ir para o cliente.
 
@@ -1351,8 +1351,8 @@ quando qualquer checagem falha, então serve de smoke test de deploy.
     incidente.
 
     O default do mixin conta como "não configurado": o `EmailSettings` nasce
-    com `SMTP_HOST=localhost` e o `MinIOSettings` com
-    `MINIO_ENDPOINT=localhost:9000`, então o serviço que compõe o mixin sem
+    com `SMTP_HOST=localhost` e o `StorageSettings` com
+    `STORAGE_ENDPOINT=localhost:9000`, então o serviço que compõe o mixin sem
     usar a capacidade pareceria configurado. A comparação é contra
     `model_fields[campo].default` — a mesma régua do `check_secrets`.
 
