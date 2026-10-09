@@ -24,6 +24,7 @@ on SQLite, whose dialect drops the clause from the SQL it emits.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from uuid import UUID, uuid4
@@ -57,6 +58,23 @@ TRIALS: int = 50
 
 GAP: float = 0.02
 """Seconds the first request holds its transaction open after its write."""
+
+READ_WAIT: float = 0.5
+"""Ceiling on how long the first request waits for the second one's read.
+
+On PostgreSQL with ``FOR UPDATE`` the second read blocks until the first
+commits, so the signal never comes and the first proceeds after this.
+"""
+
+
+async def _hold_until(event: asyncio.Event) -> None:
+    """Keep the first transaction open until ``event`` fires or :data:`READ_WAIT`.
+
+    Args:
+        event (asyncio.Event): Set by the second request after its read.
+    """
+    with contextlib.suppress(TimeoutError):
+        await asyncio.wait_for(event.wait(), READ_WAIT)
 
 
 Step = Callable[[AsyncSession], Awaitable[object]]
@@ -216,7 +234,13 @@ def _debit(user_id: UUID, amount: int) -> Step:
     return step
 
 
-def _read_modify_write(user_id: UUID, amount: int, *, lock: bool) -> Step:
+def _read_modify_write(
+    user_id: UUID,
+    amount: int,
+    *,
+    lock: bool,
+    after_read: Callable[[], None] | None = None,
+) -> Step:
     """Build the shape the module replaces: read, add in Python, write back.
 
     The read and the write are separated by :data:`GAP`, so the other
@@ -226,6 +250,10 @@ def _read_modify_write(user_id: UUID, amount: int, *, lock: bool) -> Step:
         user_id (UUID): The wallet owner.
         amount (int): Cents to add.
         lock (bool): Read with ``SELECT ... FOR UPDATE``.
+        after_read (Callable[[], None] | None): Called right after the read,
+            so the harness can hold the other transaction open until this
+            one has read -- the sleep alone lost the race 1 time in 50 on a
+            loaded 4-vCPU CI runner (xdist + coverage).
 
     Returns:
         Step: The request.
@@ -238,6 +266,8 @@ def _read_modify_write(user_id: UUID, amount: int, *, lock: bool) -> Step:
         if lock:
             query = query.with_for_update()
         current = int(await session.scalar(query) or 0)
+        if after_read is not None:
+            after_read()
         await asyncio.sleep(GAP)
         await session.execute(
             update(GuardWalletUser)
@@ -423,10 +453,14 @@ class TestHarnessFires:
         try:
             for _ in range(TRIALS):
                 user_id = await seed_user(control)
+                second_read = asyncio.Event()
                 await _race(
                     control,
                     _read_modify_write(user_id, 100, lock=lock),
-                    _read_modify_write(user_id, 100, lock=lock),
+                    _read_modify_write(
+                        user_id, 100, lock=lock, after_read=second_read.set
+                    ),
+                    first_gap=lambda event=second_read: _hold_until(event),
                 )
                 if await _balance(control, user_id) != 200:
                     wrong += 1

@@ -4713,7 +4713,8 @@ tempest permissions --check --strict   # fail on warnings too
 
 ```bash
 make install     # uv sync --all-extras
-make test        # pytest with coverage
+make test        # pytest in parallel, no coverage
+make test-cov    # the same, with the coverage report
 make lint        # ruff check .
 make fmt         # ruff format .
 make type        # mypy --strict

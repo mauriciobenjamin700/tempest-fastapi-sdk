@@ -13,6 +13,10 @@ jobs:
   build:
     name: Build distributions
     runs-on: ubuntu-latest
+    # Publishing only. Tests, lint and type check run on the maintainer's
+    # machine: `make release` runs the full `make check` before it tags, so
+    # every tag that reaches this workflow already passed the suite. Running
+    # it again here cost 33 min on v0.309.0 and caught nothing new.
     steps:
       - uses: actions/checkout@v4
 
@@ -59,9 +63,6 @@ jobs:
       - name: Verify uv.lock matches pyproject.toml
         run: uv lock --check
 
-      - name: Install project with all extras
-        run: uv sync --locked --all-extras
-
       # A known advisory in any locked dependency fails the release before
       # anything is built. The ignore list and the reason for each ID live in
       # the Makefile's `audit` target -- one list for CI, release and local.
@@ -85,15 +86,6 @@ jobs:
           path: ${{ runner.temp }}/pip-audit.json
           if-no-files-found: warn
 
-      - name: Run full test suite
-        run: uv run pytest
-
-      - name: Lint + format + type check
-        run: |
-          uv run ruff check .
-          uv run ruff format --check .
-          uv run mypy tempest_fastapi_sdk
-
       - name: Build sdist and wheel
         run: uv build
 
@@ -115,10 +107,13 @@ jobs:
             assert len(template) == 1, 'env.py.template missing from wheel'; \
             print('OK')"
 
+      # Base install only: every extra is lazy-loaded, so the top-level
+      # surface imports without them, and `[all]` meant downloading torch on
+      # every release. The full `[all]` smoke runs in `make release` locally.
       - name: Smoke-install built wheel in a clean venv
         run: |
           uv venv --python 3.11 /tmp/smoke-venv
-          uv pip install --python /tmp/smoke-venv/bin/python --quiet "$(ls dist/*.whl)[all]"
+          uv pip install --python /tmp/smoke-venv/bin/python --quiet "$(ls dist/*.whl)"
           /tmp/smoke-venv/bin/python -c "import tempest_fastapi_sdk as m; \
             assert m.__version__, 'no __version__'; \
             assert m.BaseModel and m.BaseRepository and m.AsyncDatabaseManager, 'core primitives missing'; \

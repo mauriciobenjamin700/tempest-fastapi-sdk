@@ -1,23 +1,15 @@
 name: Dependency audit
 
 # Fails when any dependency in the committed uv.lock (every extra) has a
-# known advisory (#436). It runs on the same pushes and PRs as CI, so a lock
-# change that pulls in a vulnerable version is caught on its PR -- and daily,
-# because a new advisory lands without anyone pushing: the lock that was
-# clean yesterday is not clean today, and the scheduled run is what says so
-# before the next release does. The release workflow runs the same target.
+# known advisory (#436). It runs daily, not on pushes or PRs -- the repo's CI
+# only publishes; checks run locally, and `make release` runs `make audit`. The schedule stays because a new advisory lands without
+# anyone pushing: the lock that was clean yesterday is not clean today, and
+# this run is what says so before the next release does. The release
+# workflow runs the same target before it builds.
 #
 # The ignore list, and the reason behind each ignored ID, live in the
 # Makefile's `audit` target, so CI, release and `make audit` agree.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches:
-      - main
-      - "feat/**"
-      - "fix/**"
-      - "ref/**"
   schedule:
     - cron: "0 7 * * *"
   workflow_dispatch:

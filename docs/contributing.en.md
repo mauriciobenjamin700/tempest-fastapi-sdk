@@ -40,7 +40,7 @@ None of this blocks your contribution — it just means **agreeing on the scope 
 Great — say so **in the issue** and wait for the go-ahead. Then:
 
 - work on a `feat/<slug>` / `fix/<slug>` branch off `main`;
-- run `make check` (lint + format + mypy + tests) — CI runs the same target on 3.11 / 3.12 / 3.13;
+- run `make check` (lint + format + mypy + tests) — CI runs no tests (it only publishes), so this is the gate; `make test-matrix` covers 3.11 / 3.12 / 3.13;
 - update the PT **and** EN docs along with the code, plus `CHANGELOG.md`;
 - do **not** bump the version or create a tag — that belongs to the release;
 - one PR per topic, with a body that states the problem before the solution.
@@ -57,7 +57,7 @@ uv sync --all-extras --group dev --group docs
 ```
 
 !!! tip "Quick verification"
-    `make check` runs the full quality gate (lint + format check + mypy + pytest). CI runs the same target on every push, so a green `make check` locally means a green PR.
+    `make check` runs the full quality gate (lint + format check + mypy + pytest). CI runs no tests — it only publishes the release — so a green local `make check` is what makes a PR mergeable.
 
 ## Quality gates
 
@@ -68,16 +68,19 @@ uv sync --all-extras --group dev --group docs
 | `make fmt` | `ruff format .` (writes) |
 | `make fmt-check` | `ruff format --check .` (read-only) |
 | `make type` | `mypy tempest_fastapi_sdk` (strict) |
-| `make test` | `pytest` with coverage |
+| `make test` | `pytest` in parallel (`-n auto`), no coverage |
+| `make test-cov` | `pytest` in parallel with the coverage report |
+| `make test-matrix` | the suite on 3.11, 3.12 and 3.13, one venv per version |
 | `make check` | `lint + fmt-check + type + test` (stops at first failure) |
-| `make ci` | `check + build + smoke` (full CI mirror) |
+| `make ci` | `check + build + smoke` (full local gate before a release) |
 
 The same gates are available through the bundled CLI: `tempest lint` / `tempest fix` / `tempest check` work in any consumer project too.
 
 ## Tests
 
 ```bash
-make test                    # default suite + coverage (no model/gpu/docker)
+make test                    # default suite in parallel, no coverage (no model/gpu/docker)
+make test-cov                # the same suite with the coverage report
 uv run pytest tests/admin    # the admin module only
 uv run pytest -k cursor      # tests matching "cursor"
 uv run pytest -x             # stop at the first failure
@@ -97,7 +100,7 @@ make docs-build              # build the static site into ./site/
 Every page lives in two languages (`docs/<page>.md` + `docs/<page>.en.md`) and the build runs with `--strict` — a warning is an error.
 
 !!! info "The docs stay organized by rule, not by review"
-    A new page needs: **both** files (PT + `.en.md`), an entry in **both** navs (the top-level `nav:` and the `en` locale's `nav:` — the i18n plugin translates labels but cannot reorder a shared nav), at its **alphabetical position** in each language, plus a row in the `docs/recipes/index.md`/`.en.md` table when it is a recipe, and a stub in `docs/reference.md` when it exposes a new symbol. `uv run pytest tests/test_docs_organization.py` fails when any of that is missing or out of order — and it runs inside `make check`, hence in CI. Top-level tabs, `learning/` pages, the `getting-started/` track and the landing's tour follow a reading order on purpose. Edits reach the Pages site on push to `main` via [`.github/workflows/docs.yml`](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/blob/main/.github/workflows/docs.yml).
+    A new page needs: **both** files (PT + `.en.md`), an entry in **both** navs (the top-level `nav:` and the `en` locale's `nav:` — the i18n plugin translates labels but cannot reorder a shared nav), at its **alphabetical position** in each language, plus a row in the `docs/recipes/index.md`/`.en.md` table when it is a recipe, and a stub in `docs/reference.md` when it exposes a new symbol. `uv run pytest tests/test_docs_organization.py` fails when any of that is missing or out of order — and it runs inside `make check`. Top-level tabs, `learning/` pages, the `getting-started/` track and the landing's tour follow a reading order on purpose. Edits reach the Pages site on push to `main` via [`.github/workflows/docs.yml`](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/blob/main/.github/workflows/docs.yml).
 
 ## Commit message style
 

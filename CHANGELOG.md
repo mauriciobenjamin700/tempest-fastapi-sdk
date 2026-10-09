@@ -35,6 +35,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     não cacheia `None` — um lugar que o Nominatim ainda não indexou pode ser
     achado depois; com `True`, o "não encontrado" também é guardado.
 
+### Changed
+
+- **A suíte roda em paralelo e sem cobertura por padrão.** `make test` (e,
+  por ele, `make check` e `make release`) chama `pytest -n auto -p
+  no:cacheprovider`; a cobertura saiu do `addopts` do `pyproject.toml` e foi
+  para o alvo novo `make test-cov`. Medido em 2026-10-09 numa máquina de 12 núcleos:
+  12 262 testes em 4m44s com `-n 12 --no-cov`, contra ~36 min em série com
+  cobertura. Mudança só de tooling — nenhuma superfície pública muda.
+- **A CI só publica; os testes rodam na máquina local.** Saíram os
+  workflows `ci.yml` (matriz 3.11/3.12/3.13) e `nightly-model.yml`. O
+  `release-pypi.yml` confere tag × versão × lock, roda `make audit`, builda,
+  faz smoke da instalação base (sem `[all]`, que baixava torch a cada release)
+  e publica — sem suíte, lint nem mypy. O `audit.yml` passou a rodar só no
+  agendamento diário. O gate antes de uma tag é o `make check` que o
+  `make release` roda localmente (~7 min com a suíte em paralelo); a matriz
+  de Python virou `make test-matrix` (uma venv por versão em
+  `~/.cache/tempest-fastapi-sdk/venvs`). Guard novo:
+  `tests/test_release_flow_guard.py`. Na v0.309.0 o workflow da tag levou
+  33 min, quase todos rodando a suíte pela terceira vez.
+
 ### Documentation
 
 - **Receita de geocoding ganha a seção "Cache de geocoding"** (`geo.md` +

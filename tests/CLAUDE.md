@@ -51,6 +51,7 @@ Todos rodam dentro do `make check`.
 | `test_spreadsheet_event_loop_guard` | toda corrotina de `spreadsheet` que parseia ou valida (`read_xlsx_async`, `read_xlsx_as_async`, `read_xlsx_sheets_async`, o parse CSV de `read_google_sheet`, a validação de `read_google_sheet_as`, o parse de `read_google_sheet_xlsx`) roda o trabalho fora do loop: o parser vira uma sonda que só uma task do loop libera, então chamada inline fica presa até o timeout de 1 s em vez de depender de cronômetro; sonda nunca chamada falha (não passa por vacuidade); prova que dispara com `asyncio.to_thread` trocado por chamada direta e com o corpo pré-#432 do `.xlsx` | corrotina nova de `spreadsheet` que não entrou em `CASES`; parse síncrono em outro módulo |
 | `test_cli_extra_guard` | `tempest-cli` / `typer` / `click` fora de `dependencies` e dentro de `[cli]` e `[all]`; o script `tempest` aponta para `cli.entrypoint`; nenhum módulo fora de `cli/` — nem `cli/__init__`, `cli/entrypoint` ou módulo de `cli/` que o resto do pacote importa (`src_layers`) — importa um deles em nível de módulo (v0.308.0: o `tempest-cli` no base levava `ruff` à produção e travava o lock de quem fixa `ruff<0.8`) | import transitivo: módulo permitido de `cli/` que importa outro módulo de `cli/` que importa `typer` não é seguido — quem cobre os caminhos existentes é o subprocess de `tests/cli/test_entrypoint.py` |
 | `test_supply_chain_guard` | todo `uv sync` dos workflows passa `--locked`; `pypa/gh-action-pypi-publish` e `astral-sh/setup-uv` por SHA de 40 hex com `# vX.Y.Z` ao lado; o release roda `uv lock --check` e `make audit` **antes** do `uv build`; o `audit.yml` tem `schedule:`; o `make audit` exporta do lock com `--locked --all-extras`; `hatchling` com piso e teto no `[build-system]` (#436) | step desligado por `if:` que nunca vale; a lista de `--ignore-vuln` do Makefile, cujo motivo de cada ID é julgamento, não checagem |
+| `test_release_flow_guard` | `make release` roda `make check` **antes** do `git tag` (a CI não testa desde 2026-10-09, então é o único gate antes de uma tag); nenhum workflow roda `pytest`; o `release-pypi.yml` ainda builda e publica | tag criada à mão com `git tag`, fora do `make release` |
 | `test_sdist_payload` | entrada com ponto na raiz do **sdist** é allowlist com motivo — o sdist leva o repo inteiro menos um `exclude`, então diretório que uma ferramenta deixa na raiz shippa até alguém notar (`.claude/` custou 12 938 bytes, `.playwright-mcp/` custou 2 623 bytes e shippou até a 0.284.0) | arquivo não-dotted na raiz |
 | `test_wheel_payload` | payload não-`.py` da wheel é exatamente a allowlist | — |
 
@@ -117,8 +118,8 @@ se alguma thread iniciada pelo módulo ainda estiver viva.
 O lock resolve o **piso** de uma dependência; o consumidor resolve a mais
 nova. O `parse_integrity_error` passou verde no lock (SQLAlchemy 2.0.52) e
 devolvia `columns=()` para toda unique no 2.1.1 (#367). Não havia mecanismo de
-matriz de dependência no repo — a CI só varia o Python, e os testes `docker`
-nem rodam lá —, então o primeiro é o de
+matriz de dependência no repo — a matriz de Python é `make test-matrix`, local, e os testes `docker`
+só rodam com daemon —, então o primeiro é o de
 `tests/db/test_integrity_sqlalchemy_matrix.py`: um teste `docker`,
 parametrizado pelas versões, que reroda o módulo live num subprocess com
 `uv run --no-sync --with sqlalchemy==<versão> python -m pytest <módulo>`.

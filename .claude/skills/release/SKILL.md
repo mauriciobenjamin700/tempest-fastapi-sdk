@@ -65,7 +65,8 @@ make release VERSION=X.Y.Z SUBJECT="<assunto>"
 
 O target, em ordem: recusa árvore suja → recusa sem a entrada do CHANGELOG →
 faz o bump em `pyproject.toml` e `tempest_fastapi_sdk/__init__.py` → roda
-`make check` (lint + fmt-check + mypy strict + suíte, com os guards) →
+`make check` (lint + fmt-check + mypy strict + a suíte em paralelo, com os
+guards — a CI não testa, este é o gate) → `make audit` →
 `make docs-build` (mkdocs `--strict`) → `make smoke` (instala a wheel numa venv
 limpa e importa a superfície de topo, único passo que pega defeito de
 empacotamento) → commita `feat: vX.Y.Z — <assunto>` → cria a tag local.
@@ -74,6 +75,12 @@ Sem `SUBJECT` o commit sai como `chore: release vX.Y.Z`, que **não** é a
 convenção deste repo — passe o assunto.
 
 O push fica manual de propósito.
+
+**A CI só publica.** O workflow `release-pypi` confere tag × versão × lock,
+roda `make audit`, builda, faz um smoke da instalação base e sobe para o PyPI
+— poucos minutos depois do push da tag. Nada de teste lá: o `make check` do
+passo acima é a única suíte antes da tag. Release que mexe em dependência ou
+em código sensível à versão do Python roda também `make test-matrix`.
 
 ## 5. Push, com confirmação
 
