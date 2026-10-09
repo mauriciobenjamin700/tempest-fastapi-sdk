@@ -711,13 +711,31 @@ from tempest_fastapi_sdk.checks import (
 from tempest_fastapi_sdk.controllers import BaseController as BaseController
 from tempest_fastapi_sdk.controllers import Controller as Controller
 from tempest_fastapi_sdk.core import (
+    BEARER_PATTERN as BEARER_PATTERN,
+)
+from tempest_fastapi_sdk.core import (
     DEFAULT_LOG_BACKUP_COUNT as DEFAULT_LOG_BACKUP_COUNT,
 )
 from tempest_fastapi_sdk.core import (
     DEFAULT_LOG_MAX_BYTES as DEFAULT_LOG_MAX_BYTES,
 )
 from tempest_fastapi_sdk.core import (
+    DEFAULT_REDACT_KEYS as DEFAULT_REDACT_KEYS,
+)
+from tempest_fastapi_sdk.core import (
+    DEFAULT_REDACT_PATTERNS as DEFAULT_REDACT_PATTERNS,
+)
+from tempest_fastapi_sdk.core import (
+    EMAIL_PATTERN as EMAIL_PATTERN,
+)
+from tempest_fastapi_sdk.core import (
     HTTP_500_MARKER as HTTP_500_MARKER,
+)
+from tempest_fastapi_sdk.core import (
+    JWT_PATTERN as JWT_PATTERN,
+)
+from tempest_fastapi_sdk.core import (
+    REDACTED as REDACTED,
 )
 from tempest_fastapi_sdk.core import (
     BaseIntEnum as BaseIntEnum,
@@ -730,6 +748,12 @@ from tempest_fastapi_sdk.core import (
 )
 from tempest_fastapi_sdk.core import (
     Locale as Locale,
+)
+from tempest_fastapi_sdk.core import (
+    RedactionFilter as RedactionFilter,
+)
+from tempest_fastapi_sdk.core import (
+    RedactionPolicy as RedactionPolicy,
 )
 from tempest_fastapi_sdk.core import (
     clear_request_id as clear_request_id,
@@ -1985,6 +2009,7 @@ __all__: list[str] = [
     "AUDIT_REDACTED",
     "AUTH_DEFAULT_DISPLAY_NAME",
     "BASE_COLUMN_ORDER",
+    "BEARER_PATTERN",
     "CENT",
     "CEP",
     "CEP_PATTERN",
@@ -2010,17 +2035,21 @@ __all__: list[str] = [
     "DEFAULT_MAX_CURSOR_LIMIT",
     "DEFAULT_MAX_PAGE_SIZE",
     "DEFAULT_MAX_RECORDS_PER_FILE",
+    "DEFAULT_REDACT_KEYS",
+    "DEFAULT_REDACT_PATTERNS",
     "DEFAULT_SPA_CONTENT_SECURITY_POLICY",
     "DEFAULT_SPA_SECURITY_HEADERS",
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "DEFAULT_SYNC_WATERMARK_LAG",
     "DOCX_MEDIA_TYPE",
+    "EMAIL_PATTERN",
     "ENUM_TYPE_SUFFIX",
     "HEARTBEAT_TIMEOUT_CODE",
     "HTTP_500_MARKER",
     "HUNDRED",
     "IDEMPOTENCY_HEADER",
     "INLINE_SAFE_MEDIA_TYPES",
+    "JWT_PATTERN",
     "LEGACY_NAMING_CONVENTION",
     "LOCALE_QUERY_PARAM",
     "MFA_TOKEN_TYPE",
@@ -2028,6 +2057,7 @@ __all__: list[str] = [
     "PHONE_BR_PATTERN",
     "PPTX_MEDIA_TYPE",
     "RAISES_ATTRIBUTE",
+    "REDACTED",
     "REFRESH_TOKEN_TYPE",
     "REQUEST_ID_HEADER",
     "SIGNUP_PROTECTED_FIELDS",
@@ -2336,6 +2366,8 @@ __all__: list[str] = [
     "RatingField",
     "RatioField",
     "RedactedError",
+    "RedactionFilter",
+    "RedactionPolicy",
     "RedisBanStore",
     "RedisFeatureFlagBackend",
     "RedisIdempotencyStore",

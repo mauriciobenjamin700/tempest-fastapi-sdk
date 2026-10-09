@@ -34,6 +34,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   descartado; `request_context=` junto de `ip=` / `user_agent=` também.
   Receita: `docs/recipes/audit-trail`, seção "Evento, origem da requisição
   e autor".
+- **`configure_logging(..., redact=True | RedactionPolicy(...))` +
+  `RedactionPolicy` / `RedactionFilter` (#445).** Com `redact` ligado, todo
+  handler que o `configure_logging` instala ganha um filtro que reescreve o
+  registro antes do formatter: chave sensível (`password`, `token`, `secret`,
+  `authorization`, `cookie`, `email`, `api_key`... — `DEFAULT_REDACT_KEYS`, por
+  substring) tem o valor trocado por `[REDACTED]` em `extra=`, em argumento
+  dict e em dict aninhado; mensagem, argumentos, traceback (`exc_text`),
+  `stack_info` e valor string passam por e-mail, `Bearer`, JWT e
+  `chave=valor` com chave sensível. O serviço acrescenta domínio com
+  `RedactionPolicy(extra_keys=..., extra_patterns=...)` sem reescrever o
+  filtro. `LogSettings.LOG_REDACT` liga a política default pelo
+  `logging_kwargs()`. Com `redact` ligado, `msg` vira a mensagem já
+  renderizada e `args` é limpo. Custo medido (20 000 registros, melhor de 5,
+  Python 3.11, saída em `/dev/null`): linha de access log de ~13,5 µs para
+  ~26 µs, `logger.exception` de ~44 µs para ~66 µs. O default `redact=False`
+  não instala filtro nenhum.
 - **`expected_sha256` em `load_sklearn_artifact` e `edge_pipeline_from_pickle`
   (#440).** O chamador pina o SHA-256 que a release do modelo registrou, e a
   carga recusa com `ArtifactDigestMismatchError` (nova, subclasse de
@@ -188,6 +204,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   o resultado do `ping`. Medido com RabbitMQ 3 em container: `True` conectado,
   e depois do `docker stop` `False` em 2,00 s, com a readiness respondendo
   `503 {"queue": false}` — antes ficava `True`.
+- **`JSONFormatter` re-renderizava `exc_info` por cima do traceback já
+  redigido (#445).** O campo `exception` agora sai de `record.exc_text` quando
+  um passo anterior já o renderizou — a precedência do `logging.Formatter` da
+  stdlib — e de `exc_info` só no resto. Antes, um filtro de handler que
+  redigia o `exc_text` era ignorado: o e-mail da mensagem da exceção voltava
+  para o JSON. Quem já seta `exc_text` à mão passa a vê-lo no lugar do
+  traceback re-renderizado.
 
 - **`PdfRenderer`: cada renderização relata só as próprias recusas de asset
   (#435).** A instância guardava uma `AssetPolicy` só e todas as

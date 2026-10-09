@@ -111,6 +111,10 @@ class LogSettings(BaseAppSettings):
             disables rotation. Default: ``10_000_000``.
         LOG_BACKUP_COUNT (int): Rotated files kept per level.
             Default: ``5``.
+        LOG_REDACT (bool): Redact e-mails, credentials and sensitive
+            ``extra=`` keys from every record with the default
+            :class:`~tempest_fastapi_sdk.RedactionPolicy`. Default:
+            ``False``.
     """
 
     LOG_LEVEL: str = Field(
@@ -162,6 +166,18 @@ class LogSettings(BaseAppSettings):
         ),
         examples=[5, 3, 0],
     )
+    LOG_REDACT: bool = Field(
+        default=False,
+        title="Redact log records",
+        description=(
+            "Whether every handler gets a ``RedactionFilter`` with the "
+            "default ``RedactionPolicy`` (e-mails, ``Bearer`` "
+            "credentials, JWTs, and sensitive keys such as ``password``, "
+            "``token`` or ``email``). A policy with domain keys is passed "
+            "to ``configure_logging(redact=...)`` directly."
+        ),
+        examples=[False, True],
+    )
 
     def logging_kwargs(self) -> dict[str, Any]:
         """Map these settings onto :func:`configure_logging` kwargs.
@@ -184,6 +200,7 @@ class LogSettings(BaseAppSettings):
             "log_dir": self.LOG_DIR,
             "max_bytes": self.LOG_MAX_BYTES,
             "backup_count": self.LOG_BACKUP_COUNT,
+            "redact": self.LOG_REDACT,
         }
 
 
