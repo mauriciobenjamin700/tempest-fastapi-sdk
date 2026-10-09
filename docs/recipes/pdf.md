@@ -435,6 +435,62 @@ renderer = PdfRenderer(max_concurrent=8)
 
 O padrão é 4. Mais workers que núcleos vira fila, não vazão.
 
+### Uma `AssetPolicy` para todas as renderizações
+
+A mesma instância — e a `AssetPolicy` que você passou para ela — atende todas
+as renderizações em paralelo. Só as **regras** são compartilhadas: cada
+renderização coleta as recusas numa cópia própria
+(`AssetPolicy.for_render()`), então o `details["refused"]` de um
+`AssetRefused` lista só as URLs do documento que **aquela** chamada pediu, e
+com `strict_assets=False` cada renderização registra o próprio aviso.
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.pdf import AssetPolicy, AssetRefused, PdfRenderer
+
+policy = AssetPolicy()
+renderer = PdfRenderer(assets=policy)
+
+
+async def render(url: str) -> list[str]:
+    try:
+        await renderer.render_html(f'<html><body><img src="{url}"></body></html>')
+    except AssetRefused as exc:
+        return list(exc.details["refused"])
+    return []
+
+
+async def main() -> None:
+    first, second = await asyncio.gather(
+        render("http://a.test/logo.png?token=a"),
+        render("http://b.test/logo.png?token=b"),
+    )
+    print(first)
+    print(second)
+    print(policy.refusals)
+
+
+asyncio.run(main())
+```
+
+```text
+['http://a.test/logo.png?token=a — remote assets are not allowed by this policy']
+['http://b.test/logo.png?token=b — remote assets are not allowed by this policy']
+[]
+```
+
+A última linha mostra a outra metade do contrato: a lista `refusals` do objeto
+que você passou não é lida nem limpa pelo renderizador — as recusas chegam a
+você pelo `AssetRefused` (ou pelo log, no modo leniente), nunca por ali.
+
+!!! info "Por que não um lock"
+    Até a 0.308.0 todas as renderizações liam e limpavam a mesma lista. Com
+    duas em paralelo, o erro de uma podia carregar a URL da outra — e URL de
+    asset costuma levar token na query string —, enquanto a recusa da dona
+    sumia. Um lock só deixaria a troca síncrona; o que resolve é cada
+    renderização ter o próprio coletor.
+
 ## Lendo um PDF de volta
 
 Escrever é metade. A outra é ler — o primeiro passo de todo pipeline que

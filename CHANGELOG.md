@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`PdfRenderer`: cada renderização relata só as próprias recusas de asset
+  (#435).** A instância guardava uma `AssetPolicy` só e todas as
+  renderizações em paralelo (até `max_concurrent`, padrão 4) liam e limpavam a
+  mesma lista `refusals`. Reproduzido com intercalação forçada de duas
+  renderizações na mesma instância: o `AssetRefused.details["refused"]` de B
+  trazia a URL de A (`http://a.test/logo.png?token=secret-of-a` — o token
+  junto), e o de A caía no fallback `Error fetching "..."`; com
+  `strict_assets=False` saía uma linha de aviso só, a de B listando as duas, e
+  a recusa de A não era registrada em lugar nenhum. Agora cada renderização
+  coleta numa cópia própria da política.
+
+### Added
+
+- **`AssetPolicy.for_render()`** — cópia rasa com as mesmas regras e
+  `refusals` vazia, sem rodar o `__post_init__` de novo: `allow_dirs` mantém os
+  caminhos resolvidos na construção, então symlink trocado depois não amplia a
+  política e diretório removido depois não faz a renderização levantar
+  `ValueError`. É o coletor por chamada que a docstring de `build_url_fetcher`
+  sempre pediu e que o renderizador agora usa.
+
+### Changed
+
+- **A `AssetPolicy` passada em `PdfRenderer(assets=...)` não tem mais a lista
+  `refusals` lida nem limpa pelo renderizador.** Antes, toda renderização
+  esvaziava essa lista no início e no fim, então ler `policy.refusals` depois de
+  `render_*` devolvia `[]` em qualquer caso (medido: uma nota posta pelo
+  chamador antes da renderização sumia). As recusas de uma renderização
+  continuam chegando por `AssetRefused.details["refused"]` (modo estrito) e pelo
+  aviso em log (`strict_assets=False`), agora sem misturar pedidos.
+
 ## [0.308.0] — 2026-10-08
 
 O CLI `tempest` sai do runtime: `tempest-cli`, `typer` e `click` viram o

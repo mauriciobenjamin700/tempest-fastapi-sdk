@@ -24,6 +24,7 @@ still records what it dropped.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -82,8 +83,13 @@ class AssetPolicy:
             from inside your network.
         remote_timeout (float): Seconds a remote asset has to answer.
         max_bytes (int): Ceiling for a single asset.
-        refusals (list[str]): Human-readable reasons collected during a
-            render. The renderer reads and clears this per call.
+        refusals (list[str]): Human-readable reasons collected by
+            :meth:`refuse`. :class:`~tempest_fastapi_sdk.pdf.PdfRenderer`
+            never writes here: every render fetches through its own
+            :meth:`for_render` copy and reports what it refused on the
+            ``AssetRefused`` it raises (or the warning it logs), so this
+            list only fills when you call :func:`build_url_fetcher` with
+            this policy yourself.
     """
 
     allow_dirs: tuple[Path, ...] = ()
@@ -128,6 +134,30 @@ class AssetPolicy:
         self.refusals.append(note)
         raise AssetRefused(message=f"asset refused: {note}")
 
+    def for_render(self) -> AssetPolicy:
+        """Return a copy with the same rules and an empty refusal list.
+
+        A policy is configuration plus a collector, and only the
+        configuration may be shared. One instance handed to several
+        concurrent renders would let each read — and clear — the others'
+        refusals, so one request's error could carry another request's
+        URL, presigned token included. Each render fetches through its
+        own copy instead.
+
+        The copy is shallow and skips ``__post_init__``: ``allow_dirs``
+        keeps the paths resolved when this policy was built, so a
+        symlink swapped since then still cannot widen it, and a
+        directory removed since then does not make the render raise
+        ``ValueError``.
+
+        Returns:
+            AssetPolicy: A policy enforcing the same rules, whose
+            ``refusals`` belongs to the caller alone.
+        """
+        clone = copy.copy(self)
+        clone.refusals = []
+        return clone
+
     def take_refusals(self) -> list[str]:
         """Return the refusals collected so far and reset the list.
 
@@ -170,15 +200,22 @@ class AssetPolicy:
 def build_url_fetcher(policy: AssetPolicy, *, fail_on_errors: bool = True) -> Any:
     """Build the fetch callable the renderer consults for every URL.
 
+    The returned callable carries ``_fail_on_errors``, which WeasyPrint
+    reads off it to decide whether a failed fetch stops the render or is
+    only logged. Without it, a refused asset would silently become a
+    document with a hole in it.
+
     Args:
-        policy (AssetPolicy): The policy to enforce. It also collects the
-            refusals, so pass a policy per render rather than sharing one
-            across concurrent calls.
+        policy (AssetPolicy): The policy to enforce. Every refusal is
+            appended to ``policy.refusals``, so give each render its own
+            collector — :meth:`AssetPolicy.for_render` — rather than one
+            instance shared across concurrent calls.
+            :class:`~tempest_fastapi_sdk.pdf.PdfRenderer` does exactly
+            that on every render.
         fail_on_errors (bool): Sets ``_fail_on_errors`` on the returned
-            callable, which WeasyPrint reads to decide whether a failed
-            fetch aborts the render. ``True`` (default) stops at the
-            first refusal instead of laying out a document that is
-            already missing something.
+            callable. ``True`` (default) stops at the first refusal
+            instead of laying out a document that is already missing
+            something.
 
     Returns:
         Any: A ``(url) -> URLFetcherResponse`` callable matching
@@ -224,9 +261,6 @@ def build_url_fetcher(policy: AssetPolicy, *, fail_on_errors: bool = True) -> An
         policy.refuse(url, f"scheme {scheme!r} is not allowed")
         raise AssertionError("unreachable")  # pragma: no cover
 
-    # WeasyPrint reads this off the callable to decide whether a failed
-    # fetch stops the render or only logs. Without it, a refused asset
-    # silently becomes a document with a hole in it.
     _fetch._fail_on_errors = fail_on_errors  # type: ignore[attr-defined]
     return _fetch
 

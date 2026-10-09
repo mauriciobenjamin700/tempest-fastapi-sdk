@@ -1188,6 +1188,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   it fetches nothing); allowed dirs are checked on the *resolved* path so `../`
   and symlinks do not escape, and `_fail_on_errors` aborts the render at the
   first refusal rather than shipping an invoice with a hole where the logo was.
+  **Refusals are per render (#435):** every render fetches through its own
+  `AssetPolicy.for_render()` copy, so concurrent renders sharing one policy
+  each report only their own URLs; the caller's `refusals` list is never
+  read or cleared.
   `logo_data_uri` accepts only `data:`; `accent_color`/`page_size`/`margin` are
   shape-constrained because they land **inside the stylesheet**.
   **Fixed while building:** the report's grand total was a `<tfoot>`
