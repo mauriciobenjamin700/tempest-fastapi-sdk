@@ -39,7 +39,10 @@ Reading goes the other way:
 * :mod:`~tempest_fastapi_sdk.spreadsheet.reader` reads an ``.xlsx`` — an
   upload, a file, a downloaded export — one tab (:func:`read_xlsx`,
   :func:`read_xlsx_as`) or all of them (:func:`read_xlsx_sheets`), cells
-  typed as the file stores them.
+  typed as the file stores them. Inside a coroutine, ``await`` the
+  ``*_async`` variants (:func:`read_xlsx_async`, :func:`read_xlsx_as_async`,
+  :func:`read_xlsx_sheets_async`), which parse in a worker thread so the
+  event loop keeps serving other requests.
 * :mod:`~tempest_fastapi_sdk.spreadsheet.google` reads a Google Sheet
   shared as *Anyone with the link*: one tab as CSV
   (:func:`read_google_sheet`, :func:`read_google_sheet_as`), which runs on
@@ -109,6 +112,9 @@ from tempest_fastapi_sdk.spreadsheet.google import (
     read_google_sheet_xlsx as read_google_sheet_xlsx,
 )
 from tempest_fastapi_sdk.spreadsheet.reader import (
+    DEFAULT_MAX_CONCURRENT_XLSX_READS as DEFAULT_MAX_CONCURRENT_XLSX_READS,
+)
+from tempest_fastapi_sdk.spreadsheet.reader import (
     DEFAULT_XLSX_MAX_COMPRESSION_RATIO as DEFAULT_XLSX_MAX_COMPRESSION_RATIO,
 )
 from tempest_fastapi_sdk.spreadsheet.reader import (
@@ -142,7 +148,16 @@ from tempest_fastapi_sdk.spreadsheet.reader import (
     read_xlsx_as as read_xlsx_as,
 )
 from tempest_fastapi_sdk.spreadsheet.reader import (
+    read_xlsx_as_async as read_xlsx_as_async,
+)
+from tempest_fastapi_sdk.spreadsheet.reader import (
+    read_xlsx_async as read_xlsx_async,
+)
+from tempest_fastapi_sdk.spreadsheet.reader import (
     read_xlsx_sheets as read_xlsx_sheets,
+)
+from tempest_fastapi_sdk.spreadsheet.reader import (
+    read_xlsx_sheets_async as read_xlsx_sheets_async,
 )
 from tempest_fastapi_sdk.spreadsheet.styles import (
     DEFAULT_SHEET_STYLE as DEFAULT_SHEET_STYLE,
@@ -179,6 +194,7 @@ __all__: list[str] = [
     "BR_QUANTITY_FORMAT",
     "DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES",
     "DEFAULT_GOOGLE_SHEET_MAX_DOWNLOAD_BYTES",
+    "DEFAULT_MAX_CONCURRENT_XLSX_READS",
     "DEFAULT_SHEET_STYLE",
     "DEFAULT_XLSX_MAX_COMPRESSION_RATIO",
     "DEFAULT_XLSX_MAX_ROWS",
@@ -205,6 +221,9 @@ __all__: list[str] = [
     "read_google_sheet_xlsx",
     "read_xlsx",
     "read_xlsx_as",
+    "read_xlsx_as_async",
+    "read_xlsx_async",
     "read_xlsx_sheets",
+    "read_xlsx_sheets_async",
     "workbook_to_bytes",
 ]

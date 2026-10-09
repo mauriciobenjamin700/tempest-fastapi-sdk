@@ -40,6 +40,12 @@ they raise
 :class:`~tempest_fastapi_sdk.spreadsheet.reader.SpreadsheetTooLargeError`
 (``413``) instead of returning part of the sheet.
 
+Every reader here is a coroutine, and none of them parses on the event
+loop: the CSV parse and the row validation run through
+:func:`asyncio.to_thread`, and the ``.xlsx`` parse through
+:func:`~tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_sheets_async`, so
+a large tab does not stall the other requests of the worker.
+
     from pydantic import BaseModel
 
     from tempest_fastapi_sdk.spreadsheet import read_google_sheet_as
@@ -60,6 +66,7 @@ they raise
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import re
@@ -83,7 +90,7 @@ from tempest_fastapi_sdk.spreadsheet.reader import (
     _number_rows,
     _require_openpyxl,
     _validate_rows,
-    read_xlsx_sheets,
+    read_xlsx_sheets_async,
 )
 from tempest_fastapi_sdk.utils.media_types import XLSX_MEDIA_TYPE
 
@@ -478,7 +485,7 @@ async def _read_csv_rows(
     body: bytes = await _download(
         export_url, _CSV_MEDIA_TYPE, client, timeout, max_bytes
     )
-    return _parse_csv(body, max_rows)
+    return await asyncio.to_thread(_parse_csv, body, max_rows)
 
 
 async def read_google_sheet(
@@ -604,8 +611,12 @@ async def read_google_sheet_as(
             ``details["row"]`` is its number in the sheet (header = 1).
         httpx.HTTPError: If the request itself fails.
     """
-    return _validate_rows(
-        await _read_csv_rows(url, client, timeout, max_bytes, max_rows),
+    rows: list[tuple[int, dict[str, str]]] = await _read_csv_rows(
+        url, client, timeout, max_bytes, max_rows
+    )
+    return await asyncio.to_thread(
+        _validate_rows,
+        rows,
         schema,
         omit_blank=omit_blank,
         row_error=_google_row_error,
@@ -674,7 +685,8 @@ async def read_google_sheet_xlsx(
     """Read every tab of a public Google Sheet in one request, by tab name.
 
     Downloads with :func:`download_google_sheet_xlsx` and parses with
-    :func:`~tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_sheets`: each
+    :func:`~tempest_fastapi_sdk.spreadsheet.reader.read_xlsx_sheets_async`,
+    in a worker thread behind its semaphore: each
     row is a ``dict`` keyed by the tab's header row, and each cell keeps
     its type — number, ``datetime``, ``bool`` or ``str``; an empty cell is
     ``None``. A formula reads as the value Google computed.
@@ -725,7 +737,7 @@ async def read_google_sheet_xlsx(
         url, client=client, timeout=timeout, max_bytes=max_bytes
     )
     try:
-        return read_xlsx_sheets(
+        return await read_xlsx_sheets_async(
             body,
             max_rows=max_rows,
             max_uncompressed_bytes=max_uncompressed_bytes,

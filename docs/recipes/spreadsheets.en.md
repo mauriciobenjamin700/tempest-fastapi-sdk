@@ -754,7 +754,8 @@ Running it (real output):
 2026-10-02 Bolo 1 7 False
 ```
 
-And the import endpoint is the same `read_xlsx_as`, fed the upload's bytes:
+And the import endpoint uses the async variant, `read_xlsx_as_async`, fed
+the upload's bytes — same arguments, same return value, with `await`:
 
 ```python
 # app/main.py
@@ -766,7 +767,7 @@ from fastapi import FastAPI, UploadFile
 from pydantic import BaseModel
 
 from tempest_fastapi_sdk import register_exception_handlers
-from tempest_fastapi_sdk.spreadsheet import read_xlsx_as
+from tempest_fastapi_sdk.spreadsheet import read_xlsx_as_async
 
 
 class Sale(BaseModel):
@@ -787,14 +788,37 @@ register_exception_handlers(app)
 async def import_sales(upload: UploadFile) -> list[Sale]:
     """Validate the uploaded spreadsheet and return the sales read."""
     content: bytes = await upload.read()
-    return read_xlsx_as(content, Sale, sheet="Vendas")
+    return await read_xlsx_as_async(content, Sale, sheet="Vendas")
 ```
+
+!!! warning "Inside `async def`, use the `_async` variant"
+    `openpyxl` parses in pure Python, and a large tab takes seconds.
+    `read_xlsx_as` called straight from an `async def` route holds the event
+    loop the whole time — the worker stops serving **every** request, not
+    just this one. Measured here on a 99,999-row tab (8 columns, 4 MB): the
+    read took 5.4 s and a 10 ms ticker ran once instead of ~540 times; with
+    `read_xlsx_async`, the same read let the ticker run 473 times.
+
+    `read_xlsx_async`, `read_xlsx_as_async` and `read_xlsx_sheets_async` read
+    in a worker thread (`asyncio.to_thread`). The name without `_async` is
+    still right in a script, a synchronous queue task, or a `def` route.
 
 ### Piece by piece
 
 **The source.** `read_xlsx_as` takes `bytes` (the upload's
 `await upload.read()`, an HTTP response body), a path (`str` or `Path`), or
 an open binary file — `UploadFile.file` works too.
+
+**The `_async` variant.** Every `.xlsx` reader has one: `read_xlsx_async`,
+`read_xlsx_as_async` and `read_xlsx_sheets_async`. They take the same
+arguments, raise the same errors, and run the synchronous reader in a
+worker thread behind a semaphore: at most
+`DEFAULT_MAX_CONCURRENT_XLSX_READS` (4) reads at once per event loop. The
+semaphore is not there for speed — the parse holds the GIL, and measured
+here four concurrent reads took 25.0 s against 21.6 s for four in a row —
+it bounds memory (each read holds its whole tab) and keeps the thread pool
+the rest of the service shares from filling up. For a different bound, pass
+your own `semaphore=asyncio.Semaphore(n)`, shared across the calls.
 
 **The tab.** `sheet=` takes the tab's **name** or its **position** (from
 `0`; negative works). Without `sheet=`, the first tab is read. The name is
@@ -1098,7 +1122,10 @@ import asyncio
 
 from pydantic import BaseModel
 
-from tempest_fastapi_sdk.spreadsheet import download_google_sheet_xlsx, read_xlsx_as
+from tempest_fastapi_sdk.spreadsheet import (
+    download_google_sheet_xlsx,
+    read_xlsx_as_async,
+)
 
 SHEET_URL: str = (
     "https://docs.google.com/spreadsheets/d/"
@@ -1117,7 +1144,9 @@ class Product(BaseModel):
 async def main() -> None:
     """Download the workbook once and read the stock tab."""
     workbook: bytes = await download_google_sheet_xlsx(SHEET_URL)
-    products: list[Product] = read_xlsx_as(workbook, Product, sheet="Página1")
+    products: list[Product] = await read_xlsx_as_async(
+        workbook, Product, sheet="Página1"
+    )
     for product in products:
         print(product.item, product.valor, repr(product.tamanho))
 
@@ -1257,7 +1286,9 @@ for it **before** the download, so the request is not wasted.
 * `read_xlsx_as(bytes, Schema, sheet="Tab")` reads one tab of an `.xlsx`
   (upload, file, export) with **typed** cells: number, `datetime`, `bool`.
   A file that is not a spreadsheet, a missing tab and an invalid row
-  become typed `422` errors.
+  become typed `422` errors. Inside `async def`, use `read_xlsx_as_async`
+  (and `read_xlsx_async` / `read_xlsx_sheets_async`): the read moves to a
+  worker thread and the event loop keeps serving.
 * The `.xlsx` readers refuse zip bombs and huge sheets **before** spending
   the memory: `max_uncompressed_bytes` (100 MiB), `max_compression_ratio`
   (100) and `max_rows` (100,000 per tab) become `SpreadsheetTooLargeError`
