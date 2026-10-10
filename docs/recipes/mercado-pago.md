@@ -67,9 +67,13 @@ def exemplo() -> tuple[int, str]:
 ```
 
 !!! warning "A armadilha de fator 100"
-    Mercado Pago tipa dinheiro como `number` e o declara em **reais** — 39
-    propriedades monetárias na especificação, entre elas
-    `transaction_amount`, `unit_price` e `Refund.amount`.
+    Mercado Pago declara dinheiro em **reais**, de dois jeitos. Contado nos
+    componentes do documento corrigido em 2026-10-10: 21 propriedades
+    `number` / `format: float` (entre elas `PreferenceItem.unit_price`,
+    `Refund.amount`, `MerchantOrder.total_amount`) e, na API de Orders, 7
+    campos de valor como **string decimal** (`OrderRequest.total_amount`,
+    `OrderPayment.amount`, `Order.total_paid_amount`…). `to_cents` aceita os
+    dois.
 
     O OpenPix também usa `number`, mas declara em **centavos**. Mesmo tipo
     errado, unidade diferente. Trocar um pelo outro cobra R$ 1.990,00 por um
@@ -147,7 +151,7 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago import DEFAULT_BASE_U
 
 async def main() -> None:
     """Open a Pix, then charge, decline and refund a test card."""
-    payer: PixPayer = PixPayer(email=os.environ["MERCADO_PAGO_TEST_BUYER_EMAIL"])
+    payer: PixPayer = PixPayer(email="comprador@example.com")
     async with HTTPClient(
         base_url=DEFAULT_BASE_URL,
         default_headers={
@@ -238,8 +242,9 @@ O que os adapters decidem por você, cada item medido no sandbox:
 - **"Ainda não" é repetido.** Logo depois de criar, cancelar uma
   autorização respondeu `409 processor_communication_error` em 3 de 10
   tentativas, e reembolsar uma aprovação respondeu
-  `422 unprocessable_entity` em 7 de 10 — a captura assíncrona ainda
-  terminava. O adapter repete essas respostas, e só essas, com a mesma chave,
+  `422 unprocessable_entity` em 7 de 10 e
+  `409 post_processing_operation_pending` em 1 de 10 — a captura assíncrona
+  ainda terminava. O adapter repete essas respostas, e só essas, com a mesma chave,
   após 1, 2 e 4 s (`action_retry_delays=` muda ou desliga); todas as medidas
   passaram em até ~5 s.
 - **Expiração do Pix em segundos.** `expires_in` vira `PT1800S`; sem ela, a
@@ -273,7 +278,6 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
-    MercadoPagoEvent,
     MercadoPagoWebhookEvent,
     make_mercado_pago_webhook_dependency,
 )
@@ -292,8 +296,9 @@ async def mercado_pago_webhook(
     event: MercadoPagoWebhookEvent = Depends(verified),
 ) -> dict[str, Any]:
     """Recebe uma notificação já verificada."""
-    if event.event is MercadoPagoEvent.PAYMENT:
-        return {"handled": True, "payment": event.data_id}
+    action = str(event.payload.get("action") or "")
+    if event.topic == "order" or action.startswith("order."):
+        return {"handled": True, "order": event.data_id}
     return {"handled": False, "topic": event.topic}
 ```
 
@@ -310,6 +315,15 @@ não extrai nada do request à mão, e não decide o que fazer com um `False`:
 - Tópico que este SDK não nomeia **não** derruba a rota: `event` vira
   `MercadoPagoEvent.UNKNOWN` e `topic` guarda a string. Corpo que não é JSON
   também não: `payload` fica vazio e `body` traz os bytes.
+
+- Notificação de Orders deve chegar com o tópico `order` ou uma ação
+  `order.*`: o documento do provedor lista `order.created` e
+  `order.updated`, mas uma entrega real de Orders **ainda não foi observada**
+  aqui. `MercadoPagoEvent` só nomeia os tópicos que a spec declara
+  (`payment`, `merchant_order`, `point_integration_wh`), então para Orders
+  `event.event` é `UNKNOWN` — por isso o exemplo decide pelo `topic` e pela
+  ação, como faz `make_mercado_pago_webhook_delivery_dependency` (seção
+  seguinte), que além disso relê a order.
 
 !!! warning "A assinatura não cobre o corpo"
     O manifesto assinado é `data.id`, `x-request-id` e `ts` — o corpo fica

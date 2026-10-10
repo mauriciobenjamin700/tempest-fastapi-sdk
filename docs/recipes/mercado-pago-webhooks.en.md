@@ -100,7 +100,6 @@ async def notify(app: FastAPI, order_id: str, headers: dict[str, str]) -> tuple[
 async def main() -> None:
     """Create a real sandbox order, then notify the local route about it."""
     token: str = os.environ["MERCADO_PAGO_TEST_SELLER_ACCESS_TOKEN"]
-    buyer: str = os.environ["MERCADO_PAGO_TEST_BUYER_EMAIL"]
     async with HTTPClient(
         base_url=DEFAULT_BASE_URL,
         default_headers={"Authorization": f"Bearer {token}"},
@@ -108,7 +107,7 @@ async def main() -> None:
         provider = MercadoPagoPixProvider(http)
         charge = await provider.create_pix_charge(
             PixChargeRequest(
-                amount_cents=1990, reference="webhook-test-1", payer=PixPayer(email=buyer)
+                amount_cents=1990, reference="webhook-test-1", payer=PixPayer(email="buyer@example.com")
             )
         )
         app = build_app(provider)
@@ -188,7 +187,7 @@ what happens then.
 ## Level 3 — real delivery
 
 With the tunnel and the webhook configured, create an order (the script in
-[test accounts and credentials](mercado-pago-sandbox.md#step-7-check-it-worked)
+[test accounts and credentials](mercado-pago-sandbox.md#step-6-check-it-worked)
 works) and watch your service's log. On every change to the order, Mercado
 Pago should call the route with `data.id` equal to the order id.
 

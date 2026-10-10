@@ -67,9 +67,13 @@ def example() -> tuple[int, str]:
 ```
 
 !!! warning "The factor-of-100 trap"
-    Mercado Pago types money as `number` and states it in **reais** — 39
-    monetary properties in the specification, among them
-    `transaction_amount`, `unit_price` and `Refund.amount`.
+    Mercado Pago states money in **reais**, in two ways. Counted in the
+    components of the corrected document on 2026-10-10: 21 properties typed
+    `number` / `format: float` (among them `PreferenceItem.unit_price`,
+    `Refund.amount`, `MerchantOrder.total_amount`) and, on the Orders API, 7
+    amount fields as **decimal strings** (`OrderRequest.total_amount`,
+    `OrderPayment.amount`, `Order.total_paid_amount`…). `to_cents` accepts
+    both.
 
     OpenPix also uses `number`, but states **cents**. Same wrong type,
     different unit. Swapping one for the other charges R$ 1,990.00 for a
@@ -148,7 +152,7 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago import DEFAULT_BASE_U
 
 async def main() -> None:
     """Open a Pix, then charge, decline and refund a test card."""
-    payer: PixPayer = PixPayer(email=os.environ["MERCADO_PAGO_TEST_BUYER_EMAIL"])
+    payer: PixPayer = PixPayer(email="buyer@example.com")
     async with HTTPClient(
         base_url=DEFAULT_BASE_URL,
         default_headers={
@@ -240,7 +244,8 @@ What the adapters decide for you, each item measured in the sandbox:
 - **"Not yet" is retried.** Right after creating, cancelling an
   authorization answered `409 processor_communication_error` in 3 of 10
   attempts, and refunding an approval answered `422 unprocessable_entity` in
-  7 of 10 — the asynchronous capture was still finishing. The adapter retries
+  7 of 10 and `409 post_processing_operation_pending` in 1 of 10 — the
+  asynchronous capture was still finishing. The adapter retries
   those answers, and only those, with the same key, after 1, 2 and 4 s
   (`action_retry_delays=` changes or disables it); every measured one went
   through within about five seconds.
@@ -275,7 +280,6 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
-    MercadoPagoEvent,
     MercadoPagoWebhookEvent,
     make_mercado_pago_webhook_dependency,
 )
@@ -294,8 +298,9 @@ async def mercado_pago_webhook(
     event: MercadoPagoWebhookEvent = Depends(verified),
 ) -> dict[str, Any]:
     """Receive an already-verified notification."""
-    if event.event is MercadoPagoEvent.PAYMENT:
-        return {"handled": True, "payment": event.data_id}
+    action = str(event.payload.get("action") or "")
+    if event.topic == "order" or action.startswith("order."):
+        return {"handled": True, "order": event.data_id}
     return {"handled": False, "topic": event.topic}
 ```
 
@@ -314,6 +319,15 @@ you do not decide what to do with a `False`:
   becomes `MercadoPagoEvent.UNKNOWN` and `topic` keeps the string. A body
   that is not JSON does not either: `payload` stays empty and `body` carries
   the bytes.
+
+- An Orders notification should arrive with the `order` topic or an
+  `order.*` action: the provider's document lists `order.created` and
+  `order.updated`, but a live Orders delivery **has not been observed** here
+  yet. `MercadoPagoEvent` only names the topics the spec declares
+  (`payment`, `merchant_order`, `point_integration_wh`), so for Orders
+  `event.event` is `UNKNOWN` — which is why the example decides on the
+  `topic` and the action, as `make_mercado_pago_webhook_delivery_dependency`
+  (next section) does, which also re-reads the order.
 
 !!! warning "The signature does not cover the body"
     The signed manifest is `data.id`, `x-request-id` and `ts` — the body is

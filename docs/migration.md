@@ -20,11 +20,52 @@ Orders. Quem usava o caminho de Payments troca assim:
 | `PixPayment`, `Payment` | `PixCharge`, `CardCharge`, ou o `Order` gerado |
 | as 7 operações de QR presencial V1/V2 e QR dinâmico antigo | sem substituto neste SDK: a própria spec as marca `deprecated`, e a API de Orders da spec só declara `type: online` |
 
+**Removidos sem substituto direto** (o equivalente, quando existe, é o
+`Order` gerado ou os contratos `PixCharge` / `CardCharge`):
+
+- **Métodos de `MercadoPagoClient`:** `create_payment`, `search_payments`,
+  `get_payment`, `update_payment`, `cancel_payment`, `create_refund`,
+  `list_refunds`, `get_refund`, e os 7 de QR presencial —
+  `create_instore_order_v1`, `delete_instore_order_v1`,
+  `create_instore_order_v2`, `get_instore_order_v2`,
+  `delete_instore_order_v2`, `create_dynamic_qr_order`,
+  `create_qr_tramma_dynamic`.
+- **Funções e constantes:** `create_pix_payment`, `get_pix_payment`,
+  `parse_pix_payment`, `PAYMENTS_PATH`.
+- **Modelos e enums:** `PixPayment`, `PixPointOfInteraction`,
+  `PixTransactionData`, `Payment`, `PaymentRequest`, `PaymentPayer`,
+  `PaymentPayer2`, `PaymentCard`, `PaymentCardCardholder`, `PaymentItem`,
+  `PaymentAdditionalInfo`, `PaymentAdditionalInfoPayer`,
+  `PaymentAdditionalInfoShipments`, `PaymentTransactionDetails`,
+  `PaymentOperationType`, `PaymentPaymentTypeId`, `PaymentProcessingMode`,
+  `PaymentSearchResult`, `SearchPaymentsRange`, `PaymentUpdateRequest`,
+  `PaymentUpdateRequestStatus`, `CancelPaymentBody`, `RefundRequest`,
+  `CreateRefundResponse`, `CreateRefundResponseSource`, `GetRefundResponse`,
+  `GetRefundResponseSource`, `ListRefundsResponse`,
+  `ListRefundsResponseSource` e `PaymentStatus` de `mercado_pago`.
+  O `PaymentStatus` **canônico**, de `integrations.payment`, continua — é o
+  que os contratos usam.
+
+**Tipos que mudaram:**
+
+- `Order.status`, `Order.status_detail`, `OrderTransactionPayment.status` e
+  `OrderTransactionPayment.status_detail` passam de enum para `Enum | str`:
+  o sandbox devolveu valores fora da lista. Um `match` exaustivo sobre o enum
+  precisa de um ramo para a string.
+- `get_authenticated_user()` devolve `AuthenticatedUser` em vez de
+  `dict[str, Any]`: troque `user["id"]` por `user.id` (o que não foi
+  declarado está em `user.model_extra`).
+- Dois enums ganharam nome próprio: `ListPaymentMethodsResponseItemProcessingModesItem`
+  (processing mode de `list_payment_methods`) e `UpdateAdvancedPaymentBodyStatus`
+  (status do corpo de `update_advanced_payment`).
+
 Três diferenças que pedem ajuste além do nome:
 
 1. **O id muda de forma.** Uma order tem id de texto (`ORD…`), não número.
    Se você guardava o id do pagamento como inteiro, a coluna vira texto.
-2. **O webhook muda de recurso.** A notificação passa a apontar para a order.
+2. **O webhook muda de recurso.** A notificação deve passar a apontar para a
+   order — é o que o documento do provedor descreve (ações `order.created` /
+   `order.updated`); uma entrega real de Orders ainda não foi observada aqui.
    Troque a leitura manual de `data.id` por
    `make_mercado_pago_webhook_delivery_dependency`, e marque o evento de
    Order na configuração de webhooks da aplicação.

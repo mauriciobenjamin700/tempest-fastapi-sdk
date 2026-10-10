@@ -8,9 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 A integração do Mercado Pago passa a cobrar pela **API de Orders** e deixa de
-modelar o que o provedor está aposentando. Tudo abaixo foi medido no sandbox
-em 2026-10-09, com uma conta vendedora de teste (`vendor/mercadopago-evidence.md`,
-seções 8 e 9). **Quebra compatibilidade** para quem usava a API de Payments:
+modelar o que o provedor está aposentando. O que está abaixo foi medido no
+sandbox em 2026-10-09, com uma conta vendedora de teste
+(`vendor/mercadopago-evidence.md`, seções 8 e 9) — **exceto o formato da
+notificação de Orders**, que segue o documento do provedor e ainda não foi
+observado numa entrega real. **Quebra compatibilidade** para quem usava a API de Payments:
 veja o guia de migração.
 
 ### Removed

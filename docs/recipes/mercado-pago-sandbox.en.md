@@ -7,58 +7,49 @@ there: the dashboard has several credentials with similar names, and most
 combinations **do not work** for charging.
 
 This page is the path that worked, step by step, with the error each detour
-produces. At the end you will have four things:
+produces. At the end you will have two things:
 
 1. a **test seller account** (who receives);
-2. a **test buyer account** (who pays);
-3. the seller's **Access Token**, from an application of the right type;
-4. the buyer's **e-mail**.
+2. its **Access Token**, from an application of the right type.
+
+That is all. The payer can be any valid e-mail — measured, in step 5.
 
 !!! info "Measured, not deduced"
-    Every error quoted here was observed against the sandbox on 2026-10-09,
-    with the credential and body described. The record is in
-    `vendor/mercadopago-evidence.md`, sections 8.5 and 9. Mercado Pago's
-    dashboard changes from time to time: if a menu is not where this page
-    says, search for the option's name.
+    Every answer quoted here was observed against the sandbox between
+    2026-10-09 and 2026-10-10, on the Orders API, with the credential and
+    body described. The record is in `vendor/mercadopago-evidence.md`,
+    section 9. Mercado Pago's dashboard changes from time to time: if a menu
+    is not where this page says, search for the option's name.
 
 ## Why not use your own account
 
 The first temptation is the `TEST-...` token shown under "Test credentials"
-of **your** application. It reads data (`GET /v1/payments/search` answers
-`200`), but it does not charge:
+of **your** application. It reads data, but it does not charge:
 
-| Credential | Payer | What Mercado Pago answers |
+| Credential | Payer | What the Orders API answers |
 | --- | --- | --- |
-| `TEST-` from your account | no e-mail | `400 Params Error` (Pix: `500 payer_cannot_be_nil`) |
-| `TEST-` from your account | any e-mail | `400 excludes_by_rule` (Pix: `500 not_found`) |
-| `TEST-` from your account | a test buyer's e-mail | `403 Payer email forbidden` |
-| test seller's `APP_USR-`, Checkout Pro application | any | `401 Unauthorized use of live credentials` |
-| test seller's `APP_USR-`, **Checkout Transparente / Orders API** application | the test buyer's e-mail | **`201`, charge created** |
+| `TEST-` from your account | anyone, or none | `403 At least one policy returned UNAUTHORIZED.` |
+| test seller's `APP_USR-`, Checkout Pro application | any | `401 Unauthorized use of live credentials` (measured on the Payments API) |
+| test seller's `APP_USR-`, **Checkout Transparente / Orders API** application | any valid e-mail | **`201`, charge created** |
 
 Only the last row charges. The rest of this page is how to get there.
 
 !!! warning "Never use your real account's production credentials"
     The `APP_USR-...` of **your** account moves real money. Everything here
     uses the `APP_USR-...` of a **test** account, which has the same prefix
-    but moves nothing. How to check is in step 7.
+    but moves nothing. How to check is in step 6.
 
-## Step 1 — create the two test accounts
+## Step 1 — create the test seller account
 
 Log in with your normal account at
-<https://www.mercadopago.com.br/developers/panel/test-users> and create two
-accounts:
+<https://www.mercadopago.com.br/developers/panel/test-users> and create an
+account of type **Seller**, country **Brazil**. Write down what the dashboard
+shows: **username**, **password** and **User ID**.
 
-- one of type **Seller**, country **Brazil**;
-- one of type **Buyer**, country **Brazil**.
-
-For each, write down three things the dashboard shows: **username**,
-**password** and **User ID**.
-
-!!! tip "The dashboard shows no e-mail"
-    That is expected: the test accounts screen shows username and password,
-    not the e-mail. The username looks like `TESTUSER123456789` and is
-    **not** an e-mail — sent as `payer.email`, Mercado Pago answers
-    `400 payer.email must be a valid email`. The e-mail comes in step 5.
+!!! tip "What about the buyer account?"
+    Charging through the API does not need one: the order's payer can be any
+    valid e-mail (step 5). Create one only to test a screen where someone
+    logs into Mercado Pago to pay.
 
 ## Step 2 — log in as the seller
 
@@ -96,36 +87,38 @@ you want. Two paths that look right and are not:
 - **"Activate credentials"**: in a test account the option does not show,
   and it is not needed.
 
-## Step 5 — get the buyer's e-mail
-
-Close the private window, open another and log in with the **buyer's**
-username and password. Click your name in the top corner → **Your profile**
-→ **Personal data**. The e-mail is there, in the form
-`test_user_...@testuser.com`.
-
-!!! danger "Do not make the e-mail up"
-    An e-mail in the same format, but made up, does not work: with the
-    `TEST-` token it came back `403 Payer email forbidden`, and an arbitrary
-    e-mail (`@example.com`, Gmail) came back `400 excludes_by_rule`. Use the
-    one from the buyer account you created.
-
-## Step 6 — keep it outside the repository
-
-Create a file **outside** any repository, readable only by you:
+Keep the token **outside** any repository, readable only by you:
 
 ```bash
 mkdir -p ~/.config/my-service
-cat > ~/.config/my-service/mercadopago-sandbox.env <<'EOF'
-MERCADO_PAGO_TEST_SELLER_ACCESS_TOKEN=APP_USR-paste-here
-MERCADO_PAGO_TEST_BUYER_EMAIL=test_user_paste-here@testuser.com
-EOF
+printf 'MERCADO_PAGO_TEST_SELLER_ACCESS_TOKEN=APP_USR-paste-here\n' \
+  > ~/.config/my-service/mercadopago-sandbox.env
 chmod 600 ~/.config/my-service/mercadopago-sandbox.env
 ```
 
-Open the file in your editor and replace both values. Never paste the token
+Open the file in your editor and replace the value. Never paste the token
 into a chat, a commit or a log.
 
-## Step 7 — check it worked
+## Step 5 — the payer's e-mail
+
+With the right token, an order accepts **any valid e-mail** as the payer:
+`buyer@example.com`, a Gmail, a made-up `test_user_…@testuser.com` — Pix and
+card, all `201`. What it refuses is not having one:
+
+| `payer` sent | Answer |
+| --- | --- |
+| absent, or `{}` | `400 '$.payer' - minimum 1 properties allowed, but found 0 properties` |
+| only `first_name` | `400 '$.payer.email' or '$.payer.customer_id' or '$.payer.id'` |
+| the `TESTUSER…` username instead of an e-mail | `400 '$.payer.email' - does not match pattern` |
+| any valid e-mail | `201` |
+
+!!! note "If you saw other payer errors"
+    `500 payer_cannot_be_nil`, `400 excludes_by_rule` and
+    `403 Payer email forbidden` were measured on the **Payments API**
+    (`/v1/payments`), which requires an actual test buyer. If they show up,
+    the code is calling the discontinued API.
+
+## Step 6 — check it worked
 
 The script below does two things. First, it checks the token belongs to a
 **test** account — if not, it stops without charging anything. Then it
@@ -145,7 +138,6 @@ BASE_URL: str = "https://api.mercadopago.com"
 async def main() -> None:
     """Check the token is a test account, then open and cancel a Pix order."""
     token: str = os.environ["MERCADO_PAGO_TEST_SELLER_ACCESS_TOKEN"]
-    buyer: str = os.environ["MERCADO_PAGO_TEST_BUYER_EMAIL"]
     async with HTTPClient(
         base_url=BASE_URL,
         default_headers={"Authorization": f"Bearer {token}"},
@@ -163,7 +155,7 @@ async def main() -> None:
                 "processing_mode": "automatic",
                 "total_amount": "19.90",
                 "external_reference": "sandbox-check-1",
-                "payer": {"email": buyer},
+                "payer": {"email": "buyer@example.com"},
                 "transactions": {
                     "payments": [
                         {
@@ -189,14 +181,14 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-Run it with the step 6 file loaded:
+Run it with the step 4 file loaded:
 
 ```bash
 set -a; . ~/.config/my-service/mercadopago-sandbox.env; set +a
 python check_sandbox.py
 ```
 
-Expected output (measured on 2026-10-09):
+Expected output (measured on 2026-10-10):
 
 ```text
 201 action_required waiting_transfer
@@ -231,27 +223,25 @@ cardholder name written on the card decides the outcome:
 
 | Message | Likely cause | What to do |
 | --- | --- | --- |
+| `403 At least one policy returned UNAUTHORIZED.` | your account's `TEST-` token | steps 1 to 4: use the test seller's token |
 | `401 Unauthorized use of live credentials` | Checkout Pro application, or a token from another application | step 3: Checkout Transparente / Orders API application |
-| `403 Payer email forbidden` | your account's `TEST-` token with a test e-mail | steps 2 to 4: use the test seller's token |
-| `400 excludes_by_rule` | an e-mail that is not a test buyer's | step 5 |
-| `400 payer.email must be a valid email` | username (`TESTUSER...`) instead of the e-mail | step 5 |
-| `500 payer_cannot_be_nil` | Pix without `payer.email` | send the buyer's e-mail |
+| `400 '$.payer' - minimum 1 properties allowed` | an order without a payer | step 5: send an e-mail |
+| `400 '$.payer.email' - does not match pattern` | username (`TESTUSER...`) instead of the e-mail | step 5 |
 | `422 unprocessable_content` | Mastercard test card | use the Visa test card |
 | *"Não é possível utilizar credenciais de teste em um ambiente de teste"* | you opened "Test credentials" inside the test account | step 4: use the production ones |
 
 ## Recap
 
-- Two test accounts: the **seller** receives, the **buyer** pays.
-- Log into them in a private window; the verification code is the end of the
+- One **test seller** account; the buyer one is optional for the API.
+- Log into it in a private window; the verification code is the end of the
   User ID.
 - Seller's application: **Checkout Transparente**, **Orders API**.
 - Token: the test account's **Production credentials** (`APP_USR-...`).
-- E-mail: the buyer's profile, never the `TESTUSER...` username and never a
-  made-up one.
-- Keep it outside the repository, `chmod 600`, and check with the step 7
+- Payer: any valid e-mail; without one, `400`.
+- Keep it outside the repository, `chmod 600`, and check with the step 6
   script before anything else.
 - The test card that works: Visa, cardholder `APRO` approves and `OTHE`
   declines.
 
-Next: the [Mercado Pago »](mercado-pago.md) recipe, now with credentials in
-hand.
+Next: the [Mercado Pago »](mercado-pago.md) recipe, now with the credential
+in hand.

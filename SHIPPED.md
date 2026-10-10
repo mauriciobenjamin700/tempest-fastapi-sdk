@@ -1383,11 +1383,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   com requisição que não pode dar certo (corpo malformado, id inexistente),
   comparada a um path inventado sob o mesmo prefixo, porque em vários
   prefixos `401`/`403` sai antes do roteamento. Das 47 não-`GET` sem
-  evidência: 32 roteadas (`SANDBOX_ROUTED_OPERATIONS`), 4 não roteadas e
-  mantidas no cliente com `**Not routed.**` na docstring
-  (`UNROUTED_OPERATIONS`: `cancel_payment`, `update_chargeback`,
-  `create_qr_integrator_config`, `create_instore_order_v1`), 11 ainda
-  inconclusivas. `get_authenticated_user` devolve `AuthenticatedUser` (+4
+  evidência, o overlay registra 32 roteadas (`SANDBOX_ROUTED_OPERATIONS`), 4
+  não roteadas (`UNROUTED_OPERATIONS`) e 11 inconclusivas. No cliente, depois
+  da remoção da API de Payments e do QR presencial descontinuado, ficam 27
+  que perderam o `**Unverified.**`, 2 métodos com `**Not routed.**`
+  (`update_chargeback`, `create_qr_integrator_config`) e as 11 ainda
+  marcadas. `get_authenticated_user` devolve `AuthenticatedUser` (+4
   objetos aninhados), lido da resposta observada (`OBSERVED_SCHEMAS`). As
   outras seis do SDK seguem `dict[str, Any]`: o PolicyAgent deu `403` ao
   token de teste. Evidência em `vendor/mercadopago-evidence.md` §8, incluindo
