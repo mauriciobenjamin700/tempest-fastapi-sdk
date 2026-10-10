@@ -1271,6 +1271,7 @@ então importar o namespace não constrói nenhum modelo.
 ### `tempest_fastapi_sdk.testing.fakes`
 
 ::: tempest_fastapi_sdk.testing.fakes.payment.FakePixProvider
+::: tempest_fastapi_sdk.testing.fakes.payment.FakeCardProvider
 ::: tempest_fastapi_sdk.testing.fakes.payment.FakePayoutProvider
 ::: tempest_fastapi_sdk.testing.fakes.genai.FakeTextBackend
 ::: tempest_fastapi_sdk.testing.fakes.genai.FakeModerationBackend

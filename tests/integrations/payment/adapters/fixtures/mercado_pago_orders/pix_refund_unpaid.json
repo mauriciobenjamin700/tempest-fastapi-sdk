@@ -1,0 +1,11 @@
+{
+  "status": 409,
+  "body": {
+    "errors": [
+      {
+        "code": "cannot_refund_order",
+        "message": "the order cannot be refunded because the current status, 'action_required', doesn't allow refunds. The order must be in 'processed' status to be refunded."
+      }
+    ]
+  }
+}

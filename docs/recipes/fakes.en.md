@@ -77,7 +77,8 @@ someone opening a dispute. Here it is one call.
 
 | Fake | Stands in for | Its own steering |
 | --- | --- | --- |
-| `FakePixProvider` | `PixProvider` (OpenPix) | `advance(id, status)`, `charges` |
+| `FakePixProvider` | `PixProvider` (OpenPix, Mercado Pago) | `advance(id, status)`, `charges` |
+| `FakeCardProvider` | `CardProvider` (cards) | `decline_next(reason)`, `advance(id, status)`, `charges` |
 | `FakePayoutProvider` | `PayoutProvider` (Pix payouts) | `transfers`, `status=` in the constructor |
 | `FakeTextBackend` | `TextBackend` (local model) | `queue(...)`, `prompts` |
 | `FakeModerationBackend` | `ModerationBackend` | `flag(substring)`, `checked` |
@@ -91,6 +92,57 @@ All of them expose `fail_next(error)`. All but `FakeEmailUtils` also expose
 `calls` — the list of methods that ran, in order; on `FakeEmailUtils` the
 record is the `outbox` itself, because `send` is the only method it
 replaces.
+
+## Card: a decline is a result, not an exception
+
+`FakeCardProvider` follows the `CardProvider` contract. A charge is
+approved, unless `decline_next(reason)` queued a decline — which comes back
+as a `FAILED` charge, the way the real adapter returns the provider's `402`:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.integrations.payment import (
+    CardChargeRequest,
+    PaymentStatus,
+)
+from tempest_fastapi_sdk.testing.fakes import FakeCardProvider
+
+
+async def main() -> None:
+    """Decline one card, approve the next, refund it in two steps."""
+    card = FakeCardProvider()
+    request = CardChargeRequest(
+        amount_cents=10000,
+        reference="order-1",
+        card_token="tok",
+        payment_method_id="visa",
+    )
+
+    card.decline_next("rejected_by_issuer")
+    declined = await card.create_card_charge(request)
+    paid = await card.create_card_charge(request)
+    partial = await card.refund_card_charge(paid.provider_charge_id, amount_cents=3000)
+    full = await card.refund_card_charge(paid.provider_charge_id)
+
+    assert declined.status is PaymentStatus.FAILED
+    print(declined.status_detail, partial.status.value, full.status.value)
+
+
+asyncio.run(main())
+```
+
+```text
+rejected_by_issuer paid refunded
+```
+
+`capture=False` returns `AUTHORIZED`, waiting for `capture_card_charge` or
+`cancel_card_charge`. The transitions the provider refuses — capturing what
+is not authorized, refunding what was not paid, refunding more than is left
+— raise `ValueError`: the refusal branch is reachable, but the exception type
+is the fake's (the real adapter raises `httpx.HTTPStatusError`).
+`advance(id, PaymentStatus.CHARGED_BACK)` reaches a chargeback, which no
+contract method does.
 
 ## Email: an outbox instead of SMTP
 
@@ -298,7 +350,7 @@ fails with `['self', 'query', 'limit'] == ['self', 'query', 'max_results']`.
 
 ## Recap
 
-- `from tempest_fastapi_sdk.testing.fakes import Fake...` — nine seams, no
+- `from tempest_fastapi_sdk.testing.fakes import Fake...` — ten seams, no
   credentials and no network.
 - A fake is not a mock: it holds state, and you **move** that state
   (`advance`, `flag`, `add_place`, `queue`).

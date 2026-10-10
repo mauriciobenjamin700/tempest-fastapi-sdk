@@ -87,11 +87,12 @@ STATUS_MAP: Final[dict[str, PaymentStatus]] = {
 The first five are the values the document declares (``OrderStatus``); a
 test walks the generated enum and fails on a member missing here.
 ``failed`` (a declined card) and ``refunded`` were observed in the sandbox
-outside that list. Anything else — an expired Pix has not been observed —
-becomes :attr:`PaymentStatus.UNKNOWN`, with the provider's string kept.
+outside that list. Anything else becomes :attr:`PaymentStatus.UNKNOWN`, with
+the provider's string kept.
 
-``action_required`` is refined by ``status_detail``: see
-:data:`AUTHORIZED_STATUS_DETAIL`.
+Two states are refined by ``status_detail``: ``action_required`` (see
+:data:`AUTHORIZED_STATUS_DETAIL`) and ``canceled`` (see
+:data:`EXPIRED_STATUS_DETAIL`).
 """
 
 AUTHORIZED_STATUS_DETAIL: Final[str] = "waiting_capture"
@@ -99,6 +100,16 @@ AUTHORIZED_STATUS_DETAIL: Final[str] = "waiting_capture"
 
 Observed on a card order created with ``capture_mode: manual``. Without it,
 ``action_required`` waits on the payer (``waiting_transfer`` on a Pix).
+"""
+
+EXPIRED_STATUS_DETAIL: Final[str] = "expired"
+"""``status_detail`` that makes a ``canceled`` order an expiry.
+
+Observed on 2026-10-10 on a Pix order created with ``expiration_time:
+PT60S`` and read after the deadline: the order answered ``canceled`` /
+``expired``, its payment ``expired`` / ``expired``. Read as
+:attr:`PaymentStatus.EXPIRED`, not :attr:`PaymentStatus.CANCELLED` — nobody
+cancelled it, and the two are separate events in the contract.
 """
 
 STATUS_EVENT_MAP: Final[dict[PaymentStatus, PixEventType]] = {
@@ -270,11 +281,14 @@ def _status(order: Mapping[str, Any]) -> PaymentStatus:
 
     Returns:
         PaymentStatus: The mapped state; :attr:`PaymentStatus.AUTHORIZED`
-        for an ``action_required`` order waiting on capture.
+        for an ``action_required`` order waiting on capture,
+        :attr:`PaymentStatus.EXPIRED` for a ``canceled`` one that expired.
     """
     raw = order.get("status")
     if not isinstance(raw, str):
         return PaymentStatus.UNKNOWN
+    if raw == "canceled" and order.get("status_detail") == EXPIRED_STATUS_DETAIL:
+        return PaymentStatus.EXPIRED
     if raw == "action_required" and (
         order.get("status_detail") == AUTHORIZED_STATUS_DETAIL
     ):
@@ -523,8 +537,9 @@ class _OrdersClient:
                 the ``HTTPClient`` reuses across its own retries (headers are
                 merged once, before the retry loop). Pass
                 ``lambda reference: reference`` to make two creates for the
-                same reference one order — the header's contract, not
-                measured against Mercado Pago here.
+                same reference one order. Measured on 2026-10-10: the same
+                key with the same body returned the same order; with another
+                body, ``409 idempotency_key_already_used``.
             action_retry_delays (Sequence[float]): Waits, in seconds, before
                 retrying a capture, cancel or refund the provider answered
                 with one of :data:`RETRYABLE_ACTION_ERRORS` (or, on a refund,
@@ -624,6 +639,52 @@ class _OrdersClient:
             await asyncio.sleep(delay)
         response.raise_for_status()
         return _order_body(response.json())
+
+    async def _refund(
+        self, order_id: str, amount_cents: int | None
+    ) -> Mapping[str, Any]:
+        """Refund an order in full or in part, then read it back.
+
+        A partial refund addresses the order's payment (``PAY…``) with an
+        amount; a full one posts no body. The refund answer carries only the
+        order's id, status and refunds — measured on card and Pix orders, no
+        amount — so the order is read again. The refund has already happened
+        when that read runs.
+
+        Args:
+            order_id (str): The order id.
+            amount_cents (int | None): How much to refund; ``None`` refunds
+                what is left.
+
+        Returns:
+            Mapping[str, Any]: The order after the refund.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx answer — ``409
+                cannot_refund_order`` for an order that is not ``processed``,
+                such as an unpaid Pix.
+            ValueError: If a partial refund is asked of an order with no
+                payment to address.
+        """
+        body: dict[str, Any] | None = None
+        if amount_cents is not None:
+            payment_id = _as_optional_str(
+                _first_payment(await self._get(order_id)).get("id")
+            )
+            if payment_id is None:
+                raise ValueError(f"Order {order_id!r} has no payment to refund.")
+            body = {
+                "transactions": [
+                    {"id": payment_id, "amount": str(from_cents(amount_cents))}
+                ]
+            }
+        await self._action(
+            order_id,
+            "refund",
+            body,
+            retryable={**RETRYABLE_ACTION_ERRORS, **REFUND_RETRYABLE_ERRORS},
+        )
+        return await self._get(order_id)
 
     async def read_delivery(
         self, notification: MercadoPagoWebhookEvent
@@ -726,6 +787,35 @@ class MercadoPagoPixProvider(_OrdersClient):
             PixCharge: The order after cancellation, ``CANCELLED``.
         """
         return _to_pix_charge(await self._action(charge_id, "cancel"))
+
+    async def refund_pix_charge(
+        self, charge_id: str, amount_cents: int | None = None
+    ) -> PixCharge:
+        """Refund a paid Pix order in full or in part, then read it back.
+
+        Not part of :class:`~...payment.base.PixProvider`: the OpenPix adapter
+        has no refund, and a member there would break every implementation
+        of the contract.
+
+        Args:
+            charge_id (str): :attr:`PixCharge.provider_charge_id`.
+            amount_cents (int | None): How much to refund; ``None`` refunds
+                what is left.
+
+        Returns:
+            PixCharge: The order after the refund. Observed on 2026-10-10:
+            ``PAID`` with ``provider_status`` ``processed`` and the refund
+            under ``raw["transactions"]["refunds"]`` after a partial one,
+            ``REFUNDED`` after the rest.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx answer — ``409
+                cannot_refund_order`` for an unpaid order, which is cancelled,
+                not refunded.
+            ValueError: If a partial refund is asked of an order with no
+                payment to address.
+        """
+        return _to_pix_charge(await self._refund(charge_id, amount_cents))
 
     def parse_webhook(self, event: Any) -> PixPaymentEvent:
         """Turn a verified, re-read delivery into a canonical Pix event.
@@ -872,12 +962,6 @@ class MercadoPagoCardProvider(_OrdersClient):
     ) -> CardCharge:
         """Refund a card order in full or in part, then read it back.
 
-        A partial refund addresses the order's payment (``PAY…``) with an
-        amount; a full one posts no body. The refund answer carries only the
-        order's id, status and refunds — measured, no amount — so the order is
-        read again to return a whole charge. The refund has already happened when
-        that read runs.
-
         Args:
             charge_id (str): :attr:`CardCharge.provider_charge_id`.
             amount_cents (int | None): How much to refund; ``None`` refunds
@@ -893,25 +977,7 @@ class MercadoPagoCardProvider(_OrdersClient):
             ValueError: If a partial refund is asked of an order with no
                 payment to address.
         """
-        body: dict[str, Any] | None = None
-        if amount_cents is not None:
-            payment_id = _as_optional_str(
-                _first_payment(await self._get(charge_id)).get("id")
-            )
-            if payment_id is None:
-                raise ValueError(f"Order {charge_id!r} has no payment to refund.")
-            body = {
-                "transactions": [
-                    {"id": payment_id, "amount": str(from_cents(amount_cents))}
-                ]
-            }
-        await self._action(
-            charge_id,
-            "refund",
-            body,
-            retryable={**RETRYABLE_ACTION_ERRORS, **REFUND_RETRYABLE_ERRORS},
-        )
-        return _to_card_charge(await self._get(charge_id))
+        return _to_card_charge(await self._refund(charge_id, amount_cents))
 
     @staticmethod
     def charge_from_delivery(delivery: MercadoPagoOrderDelivery) -> CardCharge | None:

@@ -1,0 +1,39 @@
+{
+  "status": 200,
+  "body": {
+    "id": "ORDTST00000000000000000000000005",
+    "type": "online",
+    "processing_mode": "automatic",
+    "external_reference": "tempest-pix-exp-PT60S",
+    "total_amount": "19.90",
+    "total_paid_amount": "19.90",
+    "country_code": "BRA",
+    "user_id": "1000000001",
+    "status": "canceled",
+    "status_detail": "expired",
+    "capture_mode": "automatic_async",
+    "currency": "BRL",
+    "created_date": "2026-10-10T13:40:55.959Z",
+    "last_updated_date": "2026-10-10T13:40:58.892Z",
+    "integration_data": {
+      "application_id": "2000000002"
+    },
+    "transactions": {
+      "payments": [
+        {
+          "id": "PAY00000000000000000000000006",
+          "amount": "19.90",
+          "expiration_time": "PT60S",
+          "date_of_expiration": "2026-10-10T13:41:56.036+00:00",
+          "reference_id": "0000000000",
+          "status": "expired",
+          "status_detail": "expired",
+          "payment_method": {
+            "id": "pix",
+            "type": "bank_transfer"
+          }
+        }
+      ]
+    }
+  }
+}

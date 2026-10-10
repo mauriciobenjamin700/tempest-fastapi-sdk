@@ -233,9 +233,14 @@ O que os adapters decidem por você, cada item medido no sandbox:
   `capture_mode: manual`; a cobrança volta `AUTHORIZED` (`waiting_capture`) e
   espera `capture_card_charge` ou `cancel_card_charge`.
 - **Reembolso parcial endereça o pagamento.** Uma order tem um id (`ORD…`) e
-  o pagamento dentro dela outro (`PAY…`); `refund_card_charge` acha o
-  segundo sozinho. Sem valor, reembolsa o que sobrou. `refunded_cents`
-  soma os reembolsos processados.
+  o pagamento dentro dela outro (`PAY…`); `refund_card_charge` e
+  `refund_pix_charge` acham o segundo sozinhos. Sem valor, reembolsam o que
+  sobrou. No cartão, `refunded_cents` soma os reembolsos processados; no Pix,
+  eles ficam em `raw["transactions"]["refunds"]`.
+- **Pix só se estorna depois de pago.** Medido em 2026-10-10: o parcial
+  deixa a cobrança `PAID` (`partially_refunded`), o resto a deixa
+  `REFUNDED`. Num Pix ainda não pago, a resposta é
+  `409 cannot_refund_order`: ele se cancela, não se estorna.
 - **Capturar e reembolsar releem a order.** As duas respostas trazem só id,
   estado e transações, sem `total_amount`; o adapter faz um `GET` em seguida
   para devolver a cobrança inteira.
@@ -248,15 +253,19 @@ O que os adapters decidem por você, cada item medido no sandbox:
   após 1, 2 e 4 s (`action_retry_delays=` muda ou desliga); todas as medidas
   passaram em até ~5 s.
 - **Expiração do Pix em segundos.** `expires_in` vira `PT1800S`; sem ela, a
-  order expira em 24 horas.
+  order expira em 24 horas. Vencido o prazo, a order lê
+  `canceled` / `expired` e a cobrança vira `EXPIRED`, não `CANCELLED`
+  (medido com `PT60S`).
 - **Pagador é obrigatório.** Order sem `payer` volta
   `400 '$.payer' - minimum 1 properties allowed`.
 - **Uma chave de idempotência por chamada**, que o `HTTPClient` reaproveita
-  nos próprios retries (testado com transporte simulado; o provedor honrar a
-  chave é o contrato do header, não observado aqui). Para colapsar duas
-  chamadas do mesmo pedido, passe `idempotency_key=lambda reference: reference`.
+  nos próprios retries. O provedor honra a chave (medido em 2026-10-10): a
+  mesma chave com o mesmo corpo devolve a **mesma** order, e com outro corpo
+  volta `409 idempotency_key_already_used`. Para colapsar duas chamadas do
+  mesmo pedido, passe `idempotency_key=lambda reference: reference`.
 - **Parcelas dependem da conta.** Para a vendedora de teste, a consulta de
-  parcelas do Visa em R$ 100,00 ofereceu só 1x, e pedir 3x voltou
+  parcelas do Visa ofereceu só 1x, em R$ 100,00 e em R$ 1.000,00, e pedir 3x
+  ou 6x voltou
   `400 invalid_transaction_amount`. Consulte as parcelas
   (`get_installments`) e mande uma das oferecidas.
 
@@ -614,7 +623,8 @@ make mercadopago-diff
   provedor a está descontinuando.
 - `MercadoPagoPixProvider` e `MercadoPagoCardProvider` entregam os contratos
   canônicos: centavos, estados canônicos, recusa de cartão como resultado
-  (`402`), autorizar e capturar, reembolso parcial.
+  (`402`), autorizar e capturar, reembolso parcial de cartão e de Pix, Pix
+  vencido como `EXPIRED`.
 - Cartão exige tokenização no cliente, com a Public Key.
 - A verificação de webhook é portada do validador do provedor, com o
   manifesto omitindo par ausente e digests conferidos contra `openssl`;

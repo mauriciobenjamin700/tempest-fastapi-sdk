@@ -77,7 +77,8 @@ alguém abrindo uma disputa. Aqui é uma chamada.
 
 | Fake | Substitui | Steering próprio |
 | --- | --- | --- |
-| `FakePixProvider` | `PixProvider` (OpenPix) | `advance(id, status)`, `charges` |
+| `FakePixProvider` | `PixProvider` (OpenPix, Mercado Pago) | `advance(id, status)`, `charges` |
+| `FakeCardProvider` | `CardProvider` (cartão) | `decline_next(motivo)`, `advance(id, status)`, `charges` |
 | `FakePayoutProvider` | `PayoutProvider` (saque Pix) | `transfers`, `status=` no construtor |
 | `FakeTextBackend` | `TextBackend` (modelo local) | `queue(...)`, `prompts` |
 | `FakeModerationBackend` | `ModerationBackend` | `flag(substring)`, `checked` |
@@ -91,6 +92,58 @@ Todos expõem `fail_next(erro)`. Todos menos o `FakeEmailUtils` expõem também
 `calls` — a lista de métodos que rodaram, em ordem; no `FakeEmailUtils` o
 registro é o próprio `outbox`, porque `send` é o único método que ele
 substitui.
+
+## Cartão: recusa é resultado, não exceção
+
+`FakeCardProvider` segue o contrato `CardProvider`. A cobrança é aprovada,
+a não ser que `decline_next(motivo)` tenha enfileirado uma recusa — que
+volta como cobrança `FAILED`, do jeito que o adapter real devolve o `402` do
+provedor:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.integrations.payment import (
+    CardChargeRequest,
+    PaymentStatus,
+)
+from tempest_fastapi_sdk.testing.fakes import FakeCardProvider
+
+
+async def main() -> None:
+    """Decline one card, approve the next, refund it in two steps."""
+    card = FakeCardProvider()
+    request = CardChargeRequest(
+        amount_cents=10000,
+        reference="pedido-1",
+        card_token="tok",
+        payment_method_id="visa",
+    )
+
+    card.decline_next("rejected_by_issuer")
+    declined = await card.create_card_charge(request)
+    paid = await card.create_card_charge(request)
+    partial = await card.refund_card_charge(paid.provider_charge_id, amount_cents=3000)
+    full = await card.refund_card_charge(paid.provider_charge_id)
+
+    assert declined.status is PaymentStatus.FAILED
+    print(declined.status_detail, partial.status.value, full.status.value)
+
+
+asyncio.run(main())
+```
+
+```text
+rejected_by_issuer paid refunded
+```
+
+`capture=False` devolve `AUTHORIZED`, à espera de `capture_card_charge` ou
+`cancel_card_charge`. As transições que o provedor recusa — capturar o que
+não está autorizado, estornar o que não foi pago, estornar mais do que
+sobrou — levantam `ValueError`: o ramo de recusa é alcançável, mas o tipo da
+exceção é do fake (o adapter real levanta `httpx.HTTPStatusError`).
+`advance(id, PaymentStatus.CHARGED_BACK)` chega ao chargeback, que nenhum
+método do contrato alcança.
 
 ## Email: o outbox no lugar do SMTP
 
@@ -298,7 +351,7 @@ falha com `['self', 'query', 'limit'] == ['self', 'query', 'max_results']`.
 
 ## Recap
 
-- `from tempest_fastapi_sdk.testing.fakes import Fake...` — nove costuras, sem
+- `from tempest_fastapi_sdk.testing.fakes import Fake...` — dez costuras, sem
   credencial e sem rede.
 - Fake não é mock: guarda estado, e você **move** esse estado
   (`advance`, `flag`, `add_place`, `queue`).
