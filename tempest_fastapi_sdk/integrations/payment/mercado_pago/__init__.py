@@ -1,7 +1,7 @@
 """The whole Mercado Pago surface, ready to import.
 
 ``pip install tempest-fastapi-sdk`` and you have the Mercado Pago schemas
-and all 143 operations — Checkout Pro preferences, payments, orders,
+and all 147 operations — Checkout Pro preferences, payments, orders,
 subscriptions, Point, chargebacks — plus the pieces the specification does
 not describe.
 
@@ -28,7 +28,7 @@ on disk differ from what that script produces.
 Two halves, and it is worth knowing which is which:
 
 - **Generated** — ``MercadoPagoClient`` and the schema classes. Whatever
-  Mercado Pago's own OpenAPI says, verbatim. Unlike OpenPix, 142 of the 143
+  Mercado Pago's own OpenAPI says, verbatim. Unlike OpenPix, 146 of the 147
   operations carry an ``operationId``, so the method names are the
   provider's, not ours.
 - **Hand-written** — ``DEFAULT_BASE_URL`` (the spec declares a single

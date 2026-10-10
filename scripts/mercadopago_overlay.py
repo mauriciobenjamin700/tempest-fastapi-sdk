@@ -308,9 +308,17 @@ three that answered it were removed.
 method *and* path, so it speaks for the verb it uses and no other: measured
 :data:`PROBE_DATE`, ``GET /v1/customers`` answers `404` while
 ``POST /v1/customers`` is the endpoint the provider's SDK creates customers
-with. Sending a `POST`, `PUT` or `DELETE` to a payment API in production to
-find out whether it routes is not an acceptable way to answer the question,
-so those operations stay unverified rather than guessed at.
+with. The non-``GET`` operations were probed later, in the sandbox, with
+requests built not to succeed — :data:`SANDBOX_ROUTED_OPERATIONS` and
+:data:`UNROUTED_OPERATIONS`.
+
+**Re-evaluated on :data:`SANDBOX_PROBE_DATE`, and not all of it holds.** The
+same probe showed that on several prefixes ``401``/``403`` comes before
+routing, so a status alone is weaker than this inventory assumed: 11 of the
+entries that only this probe vouches for answer the same as a made-up path
+under their prefix, and two ``GET`` answer as unrouted. Recorded in
+``vendor/mercadopago-evidence.md`` section 8.4 and issue #488; the entries
+are unchanged until that issue decides.
 """
 
 UNVERIFIED_NOTE: str = (
@@ -431,7 +439,14 @@ two ``/point/integration-api`` refunds), or the only safe probe was the
 unauthenticated one and it matched too (the two ``DELETE .../schedule``,
 which with a token would switch a real schedule off). Those keep
 :data:`UNVERIFIED_NOTE`. Four more answered as unrouted and are in
-:data:`DEAD_OPERATIONS`.
+:data:`UNROUTED_OPERATIONS`.
+
+"Routed" here is an inference from a difference, and the strength of the
+difference varies by entry. An answer from the service itself (a body
+naming the resource, a binding error) is strong. A bare ``403`` where the
+sibling gets ``404`` shows the gateway treats the path differently from a
+made-up one, which is what a configured route looks like — but it is not
+the service answering. Each entry's text says which kind it is.
 """
 
 OBSERVED_SCHEMAS: dict[str, dict[str, Any]] = {

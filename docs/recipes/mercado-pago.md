@@ -247,8 +247,9 @@ depois da liquidação.
     Para tudo que a especificação declara, use o `Payment` gerado. O
     `PixPayment` carrega só o que um fluxo Pix lê — id, status, valor,
     expiração — mais o objeto do QR. Ele não importa os schemas gerados, de
-    propósito: ler um QR não paga os 0,76 s que construir os 323 modelos
-    custa.
+    propósito: ler um QR não paga a construção dos 328 modelos gerados
+    (~0,16 s medido em 2026-10-09, com pydantic e o pacote já importados,
+    3 execuções).
 
 ### A rota alternativa: Orders API
 
@@ -488,8 +489,10 @@ O que cada parte resolve:
   pelo `HTTPClient`. O adapter recusa antes de enviar, com `ValueError`.
 - **Uma chave de idempotência por chamada.** Cada `create_pix_charge`
   manda um `X-Idempotency-Key` novo. O `HTTPClient` monta os headers uma vez,
-  antes do retry, então um `POST` reenviado depois de um 5xx não cria um
-  segundo pagamento. Para colapsar chamadas do mesmo pedido, passe
+  antes do retry, então um `POST` reenviado depois de um 5xx leva a mesma
+  chave (testado com transporte simulado). Que o Mercado Pago honre a chave e
+  não crie um segundo pagamento é o contrato do header, ainda não observado
+  aqui. Para colapsar chamadas do mesmo pedido, passe
   `idempotency_key=lambda request: request.reference`.
 - **O webhook relê antes de virar evento.** A notificação do Mercado Pago
   assina só o `data.id`: não diz se o pagamento foi aprovado. A dependency
@@ -498,9 +501,18 @@ O que cada parte resolve:
   estado relido. Passar a notificação crua ao `parse_webhook` levanta
   `TypeError`: o único evento que ela daria é `UNKNOWN`, e um `settle` que
   espera `CHARGE_PAID` nunca liberaria nada, sem erro nenhum.
-- **Cancelar usa `PUT /v1/payments/{id}`**, com `status: cancelled`. O
-  `PUT .../cancellations` que o documento declara respondeu como rota
-  inexistente no sandbox.
+- **Cancelar usa `PUT /v1/payments/{id}`**, com `status: cancelled`. A rota
+  é uma que o SDK oficial chama; o corpo vem do guia do provedor e ainda não
+  foi observado. O `PUT .../cancellations` que o documento declara
+  respondeu como rota inexistente no sandbox.
+- **Expirado é `cancelled` + `status_detail: expired`**, segundo o guia do
+  provedor, e vira `EXPIRED`. Ainda não observado: se o provedor soletrar
+  diferente, a cobrança aparece como `CANCELLED`, nunca como paga.
+- **Dois estados não têm evento canônico.** Um pagamento relido como
+  `rejected` (`FAILED`) ou `charged_back` (`CHARGED_BACK`) vira evento
+  `UNKNOWN`, porque o contrato não tem evento para eles. O estado está em
+  `event.charge.status`: quem precisa reagir a chargeback olha a cobrança,
+  não o tipo do evento.
 
 !!! warning "O que ainda não foi medido"
     O ciclo criar → ler → cancelar ainda não rodou contra o sandbox: com o
@@ -526,11 +538,22 @@ Então nem toda operação do `MercadoPagoClient` tem o mesmo lastro. Das 147:
 
 | Balde | Qtd | O que responde por ela |
 | --- | --- | --- |
-| O SDK oficial chama | 65 | O provedor, no próprio `mercadopago` do PyPI |
-| Sondada viva | 35 | `GET` sem credencial respondeu `401`/`403`/`400` (2026-08-28) |
+| O SDK oficial chama | 65 | O provedor, no próprio `mercadopago` do PyPI (65 chamadas na 3.5.0 e na 3.6.0) |
+| Sondada viva | 35 | `GET` sem credencial respondeu `401`/`403`/`400` (2026-08-28); 11 delas não se sustentam e 2 respondem como não roteadas, ver nota abaixo |
 | Separada no sandbox | 32 | Requisição que não pode dar certo respondeu diferente de um path inventado no mesmo prefixo (2026-10-09) |
 | Não roteada | 4 | O sandbox respondeu como responde a um path que não existe |
 | Nada responde | 11 | Resposta igual à do path inventado: nenhuma sonda distingue |
+
+!!! warning "As 35 sondadas vivas foram reavaliadas"
+    O balde "sondada viva" vem de uma regra que a sondagem de 2026-10-09
+    mostrou fraca: em vários prefixos `401`/`403` sai antes do roteamento.
+    Reavaliadas com `GET` contra um path inventado no mesmo prefixo, 11 das
+    35 respondem igual ao path inventado (`/terminals/v1`, refunds de
+    `/point/integration-api`, `/users/{id}/pos`, seis subpaths de
+    `/post-purchase/v1/claims/{id}` e `GET /v1/account/release_report/{id}`)
+    e duas respondem como não roteadas (`GET /v1/account/release_report` e
+    `GET /v1/account/settlement_report`). Elas ainda não carregam marcador na
+    docstring; a decisão está na issue #488.
 
 **As 11 dizem isso na própria docstring:**
 

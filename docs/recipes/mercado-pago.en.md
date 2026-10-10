@@ -250,8 +250,9 @@ after settlement.
     For everything the specification declares, use the generated `Payment`.
     `PixPayment` carries only what a Pix flow reads — id, status, amount,
     expiration — plus the QR object. It deliberately does not import the
-    generated schemas: reading a QR should not pay the 0.76 s that building
-    the 323 models costs.
+    generated schemas: reading a QR should not pay for building the 328
+    generated models (~0.16 s measured on 2026-10-09, with pydantic and the
+    package already imported, 3 runs).
 
 ### The alternative route: Orders API
 
@@ -493,8 +494,10 @@ What each part solves:
   with `ValueError`.
 - **One idempotency key per call.** Each `create_pix_charge` sends a fresh
   `X-Idempotency-Key`. The `HTTPClient` builds headers once, before its
-  retry loop, so a `POST` resent after a 5xx does not create a second
-  payment. To collapse calls for the same order, pass
+  retry loop, so a `POST` resent after a 5xx carries the same key (tested
+  with a mock transport). That Mercado Pago honours the key and does not
+  create a second payment is the header's contract, not yet observed here.
+  To collapse calls for the same order, pass
   `idempotency_key=lambda request: request.reference`.
 - **The webhook re-reads before becoming an event.** A Mercado Pago
   notification signs only `data.id`: it does not say whether the payment
@@ -505,8 +508,17 @@ What each part solves:
   could produce is `UNKNOWN`, and a `settle` waiting for `CHARGE_PAID` would
   never release anything, with no error anywhere.
 - **Cancelling uses `PUT /v1/payments/{id}`**, with `status: cancelled`.
-  The `PUT .../cancellations` the document declares answered like a missing
-  route in the sandbox.
+  The route is one the official SDK calls; the body is the provider guide's
+  and has not been observed yet. The `PUT .../cancellations` the document
+  declares answered like a missing route in the sandbox.
+- **Expired is `cancelled` + `status_detail: expired`**, per the provider's
+  guide, and becomes `EXPIRED`. Not observed yet: if the provider spells it
+  differently, the charge shows as `CANCELLED`, never as paid.
+- **Two states have no canonical event.** A payment re-read as `rejected`
+  (`FAILED`) or `charged_back` (`CHARGED_BACK`) becomes an `UNKNOWN` event,
+  because the contract has no event for either. The state is on
+  `event.charge.status`: a service that must react to a chargeback looks at
+  the charge, not at the event type.
 
 !!! warning "What is not measured yet"
     The create → read → cancel cycle has not yet run against the sandbox:
@@ -533,11 +545,22 @@ So not every `MercadoPagoClient` operation rests on the same evidence. Of 147:
 
 | Bucket | Count | What vouches for it |
 | --- | --- | --- |
-| The official SDK calls it | 65 | The provider, in its own `mercadopago` on PyPI |
-| Probed live | 35 | An unauthenticated `GET` answered `401`/`403`/`400` (2026-08-28) |
+| The official SDK calls it | 65 | The provider, in its own `mercadopago` on PyPI (65 call sites in 3.5.0 and in 3.6.0) |
+| Probed live | 35 | An unauthenticated `GET` answered `401`/`403`/`400` (2026-08-28); 11 of them do not hold up and 2 answer as unrouted, see the note below |
 | Told apart in the sandbox | 32 | A request that cannot succeed answered differently from a made-up path under the same prefix (2026-10-09) |
 | Not routed | 4 | The sandbox answered the way it answers a path that does not exist |
 | Nothing vouches | 11 | Same answer as the made-up path: no probe tells them apart |
+
+!!! warning "The 35 probed live were re-evaluated"
+    The "probed live" bucket rests on a rule the 2026-10-09 probe showed is
+    weak: on several prefixes `401`/`403` comes before routing. Re-evaluated
+    with `GET` against a made-up path under the same prefix, 11 of the 35
+    answer the same as the made-up path (`/terminals/v1`, refunds under
+    `/point/integration-api`, `/users/{id}/pos`, six subpaths of
+    `/post-purchase/v1/claims/{id}` and `GET /v1/account/release_report/{id}`)
+    and two answer as unrouted (`GET /v1/account/release_report` and
+    `GET /v1/account/settlement_report`). They carry no marker in their
+    docstring yet; the decision is in issue #488.
 
 **The 11 say so in their own docstring:**
 

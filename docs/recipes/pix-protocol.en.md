@@ -983,7 +983,7 @@ async def main() -> None:
         candidate_percent=10,
     )
     charge = await router.create_pix_charge(
-        PixChargeRequest(amount_cents=1990, reference="order-1042"),
+        PixChargeRequest(amount_cents=1990, reference="order-1017"),
     )
     again = await router.get_pix_charge(charge.provider, charge.provider_charge_id)
     print(charge.provider, again.provider_charge_id == charge.provider_charge_id)
@@ -994,8 +994,11 @@ asyncio.run(main())
 
 Three decisions live in that object:
 
+The script prints `mercado_pago True`: `bucket("order-1017")` is `2`, below
+the slice's 10, so the charge was born at the candidate and read back there.
+
 1. **The slice is a function of the `reference`, not a coin flip.**
-   `bucket("order-1042")` is a SHA-256 reduced to `0..99`, the same in every
+   `bucket(reference)` is a SHA-256 reduced to `0..99`, the same in every
    process. The same order, reopened after a timeout, lands on the same
    provider, and raising the percentage only **adds** orders to the
    candidate's slice.

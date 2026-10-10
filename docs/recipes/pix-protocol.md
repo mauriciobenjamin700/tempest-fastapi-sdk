@@ -980,7 +980,7 @@ async def main() -> None:
         candidate_percent=10,
     )
     charge = await router.create_pix_charge(
-        PixChargeRequest(amount_cents=1990, reference="pedido-1042"),
+        PixChargeRequest(amount_cents=1990, reference="pedido-1000"),
     )
     again = await router.get_pix_charge(charge.provider, charge.provider_charge_id)
     print(charge.provider, again.provider_charge_id == charge.provider_charge_id)
@@ -991,7 +991,10 @@ asyncio.run(main())
 
 Três decisões estão nesse objeto:
 
-1. **A fatia é função da `reference`, não sorteio.** `bucket("pedido-1042")`
+O script imprime `mercado_pago True`: `bucket("pedido-1000")` é `3`, abaixo
+dos 10 da fatia, então a cobrança nasceu no candidato e foi relida lá.
+
+1. **A fatia é função da `reference`, não sorteio.** `bucket(reference)`
    é um SHA-256 reduzido a `0..99`, igual em todo processo. O mesmo pedido,
    reaberto depois de um timeout, cai no mesmo provedor, e subir a
    porcentagem só **acrescenta** pedidos à fatia do candidato.

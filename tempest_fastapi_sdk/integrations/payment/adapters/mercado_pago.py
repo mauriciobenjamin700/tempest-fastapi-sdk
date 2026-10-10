@@ -19,6 +19,14 @@ verifies the signature, fetches the payment by the signed ``data.id``, and
 hands :meth:`MercadoPagoPixProvider.parse_webhook` a
 :class:`MercadoPagoPixDelivery` that carries the charge. ``parse_webhook``
 refuses the bare notification instead of answering ``UNKNOWN`` for it.
+
+Two provider states have no canonical *event*: a payment re-read as
+``rejected`` (:attr:`PaymentStatus.FAILED`) or ``charged_back``
+(:attr:`PaymentStatus.CHARGED_BACK`) becomes
+:attr:`PixEventType.UNKNOWN`, because the contract's event list has no
+member for either. The state itself is not lost — it is on
+``event.charge.status`` — so a service that must react to a chargeback
+branches on the charge, not on the event type.
 """
 
 from __future__ import annotations
@@ -27,8 +35,10 @@ import uuid
 from collections.abc import Callable, Coroutine, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from http import HTTPStatus
 from typing import Any, Final
 
+import httpx
 from fastapi import Depends
 
 from tempest_fastapi_sdk.integrations.payment.base import (
@@ -47,7 +57,6 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago.money import (
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.pix import (
     PAYMENTS_PATH,
-    parse_pix_payment,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
     DEFAULT_SIGNATURE_VERSIONS,
@@ -245,6 +254,43 @@ def _payer(request: PixChargeRequest) -> dict[str, Any] | None:
     return block or None
 
 
+def _as_optional_str(value: object) -> str | None:
+    """Narrow a decoded JSON value to a non-empty string.
+
+    Args:
+        value (object): The value as decoded.
+
+    Returns:
+        str | None: The value when it is a non-empty string, else ``None``.
+    """
+    return value if isinstance(value, str) and value else None
+
+
+def _transaction_data(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Reach ``point_of_interaction.transaction_data`` without validating the rest.
+
+    Args:
+        payload (Mapping[str, Any]): The payment body.
+
+    Returns:
+        Mapping[str, Any]: The transaction data, or an empty mapping when
+        either level is absent or not an object.
+
+    Read by hand rather than through
+    :func:`~tempest_fastapi_sdk.integrations.payment.mercado_pago.parse_pix_payment`:
+    that view validates the whole body, so a malformed field the adapter
+    does not even use (``date_of_expiration``, ``bank_transfer_id``) would
+    raise after ``POST /v1/payments`` had already created the payment —
+    and a caller retrying with a fresh idempotency key would create a
+    second one.
+    """
+    interaction = payload.get("point_of_interaction")
+    if not isinstance(interaction, Mapping):
+        return {}
+    data = interaction.get("transaction_data")
+    return data if isinstance(data, Mapping) else {}
+
+
 def _to_pix_charge(payload: Mapping[str, Any]) -> PixCharge:
     """Map a Payments API body onto the canonical shape.
 
@@ -257,12 +303,16 @@ def _to_pix_charge(payload: Mapping[str, Any]) -> PixCharge:
         so ``raw`` keys are spelled the way Mercado Pago spells them.
 
     Raises:
-        ValueError: If the body carries no ``id`` or no readable amount.
+        ValueError: If the body carries no ``id`` or no readable amount —
+            the only two fields refused. Everything else is read leniently
+            (:func:`_parse_datetime`, :func:`_transaction_data`), because
+            on a create the payment already exists when this runs, and an
+            exception here tempts a retry that creates another.
     """
     payment_id = payload.get("id")
     if payment_id is None or isinstance(payment_id, bool):
         raise ValueError("Mercado Pago returned a payment body without an id.")
-    view = parse_pix_payment(payload)
+    transaction_data = _transaction_data(payload)
     raw_status = payload.get("status")
     reference = payload.get("external_reference")
     return PixCharge(
@@ -273,8 +323,8 @@ def _to_pix_charge(payload: Mapping[str, Any]) -> PixCharge:
         currency=str(payload.get("currency_id") or "BRL"),
         status=_to_status(raw_status, payload.get("status_detail")),
         provider_status=raw_status if isinstance(raw_status, str) else "",
-        br_code=view.qr_code,
-        qr_code_base64=view.qr_code_base64,
+        br_code=_as_optional_str(transaction_data.get("qr_code")),
+        qr_code_base64=_as_optional_str(transaction_data.get("qr_code_base64")),
         expires_at=_parse_datetime(payload.get("date_of_expiration")),
         paid_at=_parse_datetime(payload.get("date_approved")),
         raw=dict(payload),
@@ -310,6 +360,12 @@ class MercadoPagoPixProvider:
     than through the generated ``MercadoPagoClient``: the generated
     ``Payment`` model drops ``point_of_interaction`` — the specification
     does not declare it — and with it the QR this adapter exists to return.
+    Nor through :func:`~...mercado_pago.create_pix_payment` /
+    :func:`~...mercado_pago.get_pix_payment`: both answer the
+    :class:`~...mercado_pago.PixPayment` view, which keeps only the
+    Pix fields and validates the whole body, while this adapter needs the
+    body verbatim for :attr:`PixCharge.raw` and must not raise on a field
+    it does not read (see :func:`_transaction_data`).
 
     Attributes:
         provider_name (str): Always ``"mercado_pago"``.
@@ -341,10 +397,11 @@ class MercadoPagoPixProvider:
                 its retry loop, so a ``POST`` retried after a 5xx reuses
                 the key and cannot create a second payment. It does **not**
                 make two calls for the same ``reference`` collapse into one;
-                pass ``lambda request: request.reference`` for that, and
-                know that a later charge for the same reference will then
-                get the earlier payment back while the provider still
-                remembers the key.
+                pass ``lambda request: request.reference`` for that. Expect a
+                later charge for the same reference to get the earlier
+                payment back while the provider still remembers the key —
+                that is how an idempotency key is meant to behave, and it
+                is not measured against Mercado Pago here.
         """
         self._http: HTTPClient = http
         self._notification_url: str | None = notification_url
@@ -466,7 +523,10 @@ class MercadoPagoPixProvider:
 
         Returns:
             PixPaymentEvent: The event, its type read off the re-read
-            payment's state (:data:`STATUS_EVENT_MAP`).
+            payment's state (:data:`STATUS_EVENT_MAP`). ``charge`` comes
+            from the API. ``provider_event_name`` and ``raw`` come from the
+            notification body, which the signature does **not** cover:
+            log them, do not decide on them.
 
         Raises:
             TypeError: If handed anything else — in particular the bare
@@ -520,20 +580,33 @@ class MercadoPagoPixProvider:
 
         Returns:
             MercadoPagoPixDelivery: The notification and the payment, or
-            the notification alone when its topic is not ``payment`` or it
-            carried no ``data.id``.
+            the notification alone — no read, or a read that found
+            nothing — when its topic is not ``payment``, its ``data.id`` is
+            not a payment id (all digits), or the Payments API answers
+            ``404`` for it.
 
         Raises:
-            httpx.HTTPStatusError: If the read fails. The webhook route
-                then answers non-2xx and Mercado Pago retries the
-                delivery, which is the right outcome for a question the
-                provider did not answer.
+            httpx.HTTPStatusError: If the read fails with anything but
+                ``404``. The webhook route then answers non-2xx and Mercado
+                Pago retries the delivery, which is right for a question the
+                provider did not answer (5xx, timeout).
+
+        A ``404`` is an answer, not a failure, and is not retried: the
+        dashboard's "simulate notification" signs a made-up ``data.id``, and
+        the topic is read from the **unsigned** body, so a signed
+        ``merchant_order`` delivery re-sent with ``type=payment`` points at
+        an id the Payments API does not know. Raising there would make the
+        route answer 5xx to every retry, forever.
         """
-        if notification.event is not MercadoPagoEvent.PAYMENT or not (
-            notification.data_id
-        ):
+        data_id = notification.data_id
+        if notification.event is not MercadoPagoEvent.PAYMENT or not data_id.isdigit():
             return MercadoPagoPixDelivery(notification=notification)
-        charge = await self.get_pix_charge(notification.data_id)
+        try:
+            charge = await self.get_pix_charge(data_id)
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code == HTTPStatus.NOT_FOUND:
+                return MercadoPagoPixDelivery(notification=notification)
+            raise
         return MercadoPagoPixDelivery(notification=notification, charge=charge)
 
     @staticmethod

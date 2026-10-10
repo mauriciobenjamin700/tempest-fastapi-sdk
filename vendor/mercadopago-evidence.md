@@ -198,8 +198,10 @@ gerado.
 
 Credencial: access token de teste da aplicação (`TEST-…`, redigido), lido de
 `~/.config/tempest-fastapi-sdk/mercadopago-sandbox.env`, fora do repositório.
-Credencial `TEST-` pertence à conta real do integrador, mas opera no sandbox;
-nenhuma requisição abaixo podia ter efeito. Toda chamada usou `curl` contra
+Credencial `TEST-` pertence à conta real do integrador, mas opera no sandbox.
+As requisições foram **escolhidas para não poderem dar certo** (corpo
+malformado, id inexistente); o que está medido são as respostas, não a
+inocuidade. Toda chamada usou `curl` contra
 `https://api.mercadopago.com`.
 
 ### 8.1 Método: requisição que não pode dar certo, comparada a um irmão inventado
@@ -327,7 +329,8 @@ todo prefixo, e a seção 7 tirou as 35 justamente disso. Reavaliadas com `GET`
   `GET /instore/qr/seller/collectors/{id}/pos/{id}/orders`,
   `/v2/wallet_connect/agreements/{id}`, `/v1/payouts/{id}/transactions`,
   `/v1/transaction-intents/{id}`, `/users/{id}/stores/search`,
-  `/post-purchase/v1/claims/search`, os
+  `/post-purchase/v1/claims/search`, `/post-purchase/v1/claims/{id}` (A `403`;
+  irmão `/post-purchase/v1/claims/tempest-unrouted` dá `404`), os
   `release_report`/`settlement_report` de `config`, `list`, `search` e
   `task/{id}` (B `200`, ou erro do próprio serviço), e
   `/v1/account/settlement_report/{id}` (B `403` `forbidden` do serviço).
@@ -343,4 +346,27 @@ todo prefixo, e a seção 7 tirou as 35 justamente disso. Reavaliadas com `GET`
 
 Nada disso mudou o `PROBED_OPERATIONS` nesta rodada. A issue #226 pedia as 47
 não-`GET`, e rebaixar ou remover operações já sustentadas é decisão de
-superfície. Fica registrado para uma issue própria.
+superfície. Registrado na issue #488.
+
+### 8.5 Criar Pix pelo adapter (2026-10-09)
+
+`POST /v1/payments` com `payment_method_id: pix`, `transaction_amount: 19.9`
+e `X-Idempotency-Key` nova por requisição, com o token `TEST-` da aplicação
+(`curl` e `MercadoPagoPixProvider.create_pix_charge`):
+
+| `payer` enviado | Resposta |
+| --- | --- |
+| ausente | `500` `fill and validate error list: payer_cannot_be_nil` |
+| `{"first_name": "Test"}` | `500` `payer_cannot_be_nil` |
+| nickname de usuário de teste no lugar do e-mail | `400` `payer.email must be a valid email` |
+| `{"email": "buyer@example.com"}` | `500` `fill and validate error list: not_found` |
+| e-mail em formato Gmail | `500` `not_found` |
+| `test_user_0000001@testuser.com` (inventado) | `500` `not_found` |
+
+Daí o `MercadoPagoPixProvider` recusar, antes de enviar, pedido sem
+`payer.email` (`PAYER_EMAIL_REQUIRED`). O `not_found` com e-mail válido
+não está isolado: pode ser o e-mail não pertencer a um usuário de teste, a
+conta sem chave Pix, ou o token `TEST-` de aplicação. Por isso o ciclo
+criar → ler → cancelar ainda não rodou; o teste `network`
+`tests/integrations/payment/adapters/test_mercado_pago_sandbox.py` espera
+uma conta de vendedor de teste.

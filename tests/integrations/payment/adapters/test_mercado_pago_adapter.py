@@ -329,6 +329,33 @@ class TestCreate:
                 PixChargeRequest(amount_cents=100, reference="a", payer=BUYER)
             )
 
+    @pytest.mark.parametrize(
+        "field",
+        [
+            {"date_of_expiration": "garbage"},
+            {"date_approved": "garbage"},
+            {"point_of_interaction": {"transaction_data": {"bank_transfer_id": "x"}}},
+            {"point_of_interaction": "not-an-object"},
+        ],
+        ids=["expiration", "approved", "bank-transfer-id", "interaction"],
+    )
+    async def test_a_malformed_field_it_does_not_need_is_not_fatal(
+        self, field: dict[str, Any]
+    ) -> None:
+        """The payment exists once the POST answered; raising would invite a retry.
+
+        A retry sends a fresh idempotency key and creates a second Pix, so
+        only `id` and `transaction_amount` may refuse a created payment.
+        """
+        provider = _provider(Recorder(httpx.Response(201, json=_payment(**field))))
+
+        charge = await provider.create_pix_charge(
+            PixChargeRequest(amount_cents=1990, reference="order-1042", payer=BUYER)
+        )
+
+        assert charge.provider_charge_id == str(PAYMENT_ID)
+        assert charge.amount_cents == 1990
+
     async def test_an_error_status_raises(self) -> None:
         """A 400 from the provider is not swallowed into a charge."""
         provider = _provider(Recorder(httpx.Response(400, json={"message": "bad"})))
@@ -505,6 +532,44 @@ class TestParseWebhook:
         assert event.type is PixEventType.UNKNOWN
         assert event.charge is None
 
+    async def test_a_forged_created_action_does_not_hide_a_payment(self) -> None:
+        """The unsigned `action` cannot turn an approved re-read into CREATED."""
+        provider = _provider(
+            Recorder(httpx.Response(200, json=_payment(status="approved")))
+        )
+
+        delivery = await provider.read_delivery(_notification(action="payment.created"))
+
+        assert provider.parse_webhook(delivery).type is PixEventType.CHARGE_PAID
+
+    async def test_an_unknown_payment_id_is_an_answer_not_a_failure(self) -> None:
+        """404 on the re-read: no charge, no exception, so no retry loop."""
+        recorder = Recorder(httpx.Response(404, json={"message": "not found"}))
+        provider = _provider(recorder)
+
+        delivery = await provider.read_delivery(_notification())
+        event = provider.parse_webhook(delivery)
+
+        assert len(recorder.requests) == 1
+        assert delivery.charge is None
+        assert event.type is PixEventType.UNKNOWN
+
+    async def test_a_non_numeric_data_id_is_not_fetched(self) -> None:
+        """A payment id is digits; anything else is not interpolated into a path."""
+        recorder = Recorder(httpx.Response(200, json=_payment()))
+        provider = _provider(recorder)
+        notification = MercadoPagoWebhookEvent(
+            topic="payment",
+            event=MercadoPagoEvent.PAYMENT,
+            data_id="../merchant_orders/1",
+            payload={"type": "payment"},
+        )
+
+        delivery = await provider.read_delivery(notification)
+
+        assert recorder.requests == []
+        assert delivery.charge is None
+
     def test_a_delivery_built_by_hand_still_parses(self) -> None:
         """The dataclass is public so a test can build one."""
         provider = _provider(Recorder(httpx.Response(200, json=_payment())))
@@ -635,7 +700,22 @@ class TestWebhookRoute:
                 json={"type": "payment"},
             )
 
-        assert response.status_code >= 500
+        assert response.status_code == 500
+
+    def test_a_simulated_notification_is_acknowledged(self) -> None:
+        """The dashboard's test delivery signs a made-up id: 200, nothing settled."""
+        recorder = Recorder(httpx.Response(404, json={"message": "not found"}))
+        app = _app(_provider(recorder))
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/webhooks/mp?data.id=123456&type=payment",
+                headers=_signed_headers("123456"),
+                json={"action": "payment.updated", "type": "payment"},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {"settled": None}
 
 
 class TestConfirmation:

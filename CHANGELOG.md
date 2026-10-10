@@ -13,15 +13,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`integrations.payment.adapters`). Cobra, lê e cancela pelo `PixProvider`,
   como o `OpenPixPixProvider`: centavos no contrato e reais no fio (via
   `from_cents`/`to_cents`), os nove estados do Mercado Pago mapeados nos
-  canônicos (`cancelled` + `status_detail: expired` vira `EXPIRED`) e o QR
+  canônicos (`cancelled` + `status_detail: expired` vira `EXPIRED`, regra do
+  guia do provedor ainda não observada) e o QR
   lido do `point_of_interaction` que o `Payment` gerado descarta.
   - **`payer.email` é exigido antes de enviar.** Medido no sandbox em
     2026-10-09: Pix sem `payer`, ou com `payer` só com nome, volta **500**
     `payer_cannot_be_nil`. O adapter levanta `ValueError` antes da
     requisição.
   - **Uma `X-Idempotency-Key` por chamada**, reaproveitada nos retries do
-    `HTTPClient`; `idempotency_key=` troca a regra (por exemplo, pela
+    `HTTPClient` (testado com transporte simulado; o provedor honrar a chave
+    não foi observado); `idempotency_key=` troca a regra (por exemplo, pela
     `reference`).
+  - **Releitura que dá `404` não vira 5xx.** O "simular notificação" do
+    painel assina um `data.id` inventado, e o tópico vem do corpo não
+    assinado; um `404` na releitura devolve a entrega sem cobrança (evento
+    `UNKNOWN`, rota responde 200) em vez de fazer o Mercado Pago reenviar
+    para sempre. `data.id` que não é só dígitos nem é buscado.
+  - **Campo malformado que o adapter não usa não derruba a cobrança.** A
+    resposta do `create` chega depois que o pagamento já existe; só `id` e
+    `transaction_amount` são recusados, para um erro ali não induzir um
+    retry que cria um segundo Pix.
   - **Cancelamento por `PUT /v1/payments/{id}`**, não pelo
     `PUT .../cancellations`, que respondeu como rota inexistente no sandbox.
 - **`make_mercado_pago_pix_webhook_dependency` e `MercadoPagoPixDelivery`.**
@@ -55,7 +66,9 @@ ciclo com conta de vendedor de teste.
   chama e o documento omitia continuam `dict[str, Any]`: o token de teste
   recebeu `403` do PolicyAgent nelas, e não houve resposta para observar.
 - **Mercado Pago: 32 das 47 operações não-`GET` sem evidência perdem o
-  `**Unverified.**`.** Sondadas no sandbox em 2026-10-09 com requisições que
+  `**Unverified.**`.** (A mesma sondagem mostrou que 11 das 35 operações
+  `GET` "sondadas vivas" em 2026-08-28 não se sustentam e 2 respondem como
+  não roteadas; registrado na issue #488, sem mudança de código.) Sondadas no sandbox em 2026-10-09 com requisições que
   não podem dar certo (corpo JSON malformado, id inexistente), com e sem
   token. Cada uma respondeu diferente de um path inventado sob o mesmo
   prefixo. Status sozinho não contou, porque em vários prefixos um gate de

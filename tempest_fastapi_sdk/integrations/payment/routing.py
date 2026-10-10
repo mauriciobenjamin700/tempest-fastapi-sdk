@@ -23,7 +23,7 @@ Two things make that harder than picking a provider per request:
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from tempest_fastapi_sdk.integrations.payment.base import (
     PixCharge,
@@ -52,7 +52,7 @@ class PixProviderRouter:
 
     def __init__(
         self,
-        providers: Mapping[str, PixProvider] | list[PixProvider],
+        providers: Mapping[str, PixProvider] | Sequence[PixProvider],
         *,
         primary: str,
         candidate: str | None = None,
@@ -61,10 +61,10 @@ class PixProviderRouter:
         """Register the providers and the rollout.
 
         Args:
-            providers (Mapping[str, PixProvider] | list[PixProvider]): Every
+            providers (Mapping[str, PixProvider] | Sequence[PixProvider]): Every
                 provider a stored charge may belong to — including one that
                 no longer takes new charges, so its open charges can still
-                be read and cancelled. A list is keyed by each provider's
+                be read and cancelled. A sequence is keyed by each provider's
                 ``provider_name``; a mapping must use the same keys.
             primary (str): Name of the provider that takes new charges
                 outside the candidate's slice.
