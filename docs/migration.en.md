@@ -2,6 +2,34 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.312.0 — Mercado Pago: expired Pix and chargeback search
+
+Two behaviour changes, both measured in the sandbox on 2026-10-10.
+
+**An expired Pix is now `EXPIRED`.** An order Mercado Pago returns as
+`canceled` / `expired` is now `PaymentStatus.EXPIRED`, and the webhook
+delivers it as `PixEventType.CHARGE_EXPIRED`. Up to 0.311.0 it came out as
+`CANCELLED` / `CHARGE_CANCELLED`. If your service handled expiry in the
+cancellation branch, handle both:
+
+```python
+from tempest_fastapi_sdk.integrations.payment import PaymentStatus, PixCharge
+
+
+def is_closed_unpaid(charge: PixCharge) -> bool:
+    """Tell whether a Pix charge ended without being paid."""
+    return charge.status in {PaymentStatus.CANCELLED, PaymentStatus.EXPIRED}
+```
+
+**`search_chargebacks` requires `payment_id`.** The search answered `400`
+without that filter, including in the only shape the method accepted
+(`limit` / `offset`), so it never worked. Now:
+
+| Before | Now |
+| --- | --- |
+| `await client.search_chargebacks(limit=10)` → always `400` | `await client.search_chargebacks(payment_id="123")` → `ChargebackSearchResponse` |
+| `dict[str, Any]` | `found.paging.total`, `found.results` (items still `dict[str, Any]`) |
+
 ## 0.311.0 — Mercado Pago: the Payments API left the SDK
 
 Mercado Pago's dashboard labels the Payments API (`/v1/payments`) *"Esta API

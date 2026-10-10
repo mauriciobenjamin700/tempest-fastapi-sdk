@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.312.0] — 2026-10-10
+
+Seguimento da 0.311.0 no Mercado Pago: estorno de Pix, Pix vencido como
+estado próprio, `FakeCardProvider`, a busca de chargebacks que passa a
+funcionar e as operações `GET` medidas de novo. As mudanças foram medidas no
+sandbox com a vendedora de teste em 2026-10-10 (`vendor/mercadopago-evidence.md`, seções
+9.6 a 9.8). Duas mudanças de comportamento — Pix vencido e
+`search_chargebacks` —: veja o guia de migração.
+
 ### Added
 
 - `MercadoPagoPixProvider.refund_pix_charge(charge_id, amount_cents=None)`:

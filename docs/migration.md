@@ -2,6 +2,34 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.312.0 — Mercado Pago: Pix vencido e busca de chargebacks
+
+Duas mudanças de comportamento, as duas medidas no sandbox em 2026-10-10.
+
+**Pix vencido agora é `EXPIRED`.** Uma order que o Mercado Pago devolve
+`canceled` / `expired` passou a ser `PaymentStatus.EXPIRED`, e o webhook a
+entrega como `PixEventType.CHARGE_EXPIRED`. Até a 0.311.0 ela saía
+`CANCELLED` / `CHARGE_CANCELLED`. Se o seu serviço tratava o vencimento no
+ramo de cancelamento, trate os dois:
+
+```python
+from tempest_fastapi_sdk.integrations.payment import PaymentStatus, PixCharge
+
+
+def is_closed_unpaid(charge: PixCharge) -> bool:
+    """Tell whether a Pix charge ended without being paid."""
+    return charge.status in {PaymentStatus.CANCELLED, PaymentStatus.EXPIRED}
+```
+
+**`search_chargebacks` exige `payment_id`.** A busca respondia `400` sem esse
+filtro, inclusive na única forma que o método aceitava (`limit` / `offset`),
+então ela nunca funcionava. Agora:
+
+| Antes | Agora |
+| --- | --- |
+| `await client.search_chargebacks(limit=10)` → sempre `400` | `await client.search_chargebacks(payment_id="123")` → `ChargebackSearchResponse` |
+| `dict[str, Any]` | `found.paging.total`, `found.results` (itens ainda `dict[str, Any]`) |
+
 ## 0.311.0 — Mercado Pago: a API de Payments saiu do SDK
 
 O painel do Mercado Pago marca a API de Payments (`/v1/payments`) como

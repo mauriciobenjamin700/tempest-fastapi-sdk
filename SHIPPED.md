@@ -1378,7 +1378,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `test_mercado_pago_adapter.py` (fixtures reais redigidas),
   `test_mercado_pago_sandbox.py` (`network`), `test_deprecations.py`,
   `test_contract.py`, `test_routing.py`.
-- **Estorno de Pix, Pix vencido e `FakeCardProvider` (unreleased)** — issues
+- **Estorno de Pix, Pix vencido e `FakeCardProvider` (v0.312.0)** — issues
   #505, #500, #504, #501, #502. `MercadoPagoPixProvider.refund_pix_charge`
   (parcial e total, mesmo retry de "ainda não" do cartão; o refund subiu para
   o transporte comum dos dois adapters; fora do Protocol `PixProvider`,
@@ -1390,7 +1390,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   Mastercard de teste antigo. Evidência §9.6. Testes:
   `test_mercado_pago_adapter.py`, `test_contract.py`,
   `tests/testing/test_fakes_*.py`.
-- **Busca de chargebacks do Mercado Pago tipada (unreleased)** — issue #226.
+- **Busca de chargebacks do Mercado Pago tipada (v0.312.0)** — issue #226.
   `search_chargebacks(payment_id=...)` → `ChargebackSearchResponse` /
   `ChargebackSearchPaging`, do `200` observado com a vendedora de teste; sem
   `payment_id` a API responde `400`, que a forma anterior (só `limit` /
@@ -1398,14 +1398,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   continuam barrados pelo PolicyAgent antes do roteamento. Evidência §9.7.
   Testes: `test_sandbox_observations.py`, `test_generated_drift.py`.
 - **Mercado Pago: as `GET` sondadas sem credencial, medidas de novo
-  (unreleased)** — issue #488. As 34 que só o `PROBED_OPERATIONS`
+  (v0.312.0)** — issue #488. As 34 que só o `PROBED_OPERATIONS`
   sustentava, contra irmão inventado com o token da vendedora: 20 em
   `SELLER_ROUTED_GETS` (cada uma diz o que o irmão respondeu), 2 marcadas
   `**Not routed.**`, 12 marcadas `**Unverified.**`; o que sobra no
   `PROBED_OPERATIONS` o SDK oficial também chama. Evidência §9.8. Testes:
   `test_sandbox_observations.py`.
 - **Sandbox do Mercado Pago: `/users/me` tipado e as 47 classificadas
-  (unreleased)** — issue #226. Medido em 2026-10-09 com token `TEST-`, só
+  (v0.311.0)** — issue #226. Medido em 2026-10-09 com token `TEST-`, só
   com requisição que não pode dar certo (corpo malformado, id inexistente),
   comparada a um path inventado sob o mesmo prefixo, porque em vários
   prefixos `401`/`403` sai antes do roteamento. Das 47 não-`GET` sem
