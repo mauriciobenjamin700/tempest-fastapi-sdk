@@ -19,7 +19,7 @@ the resources most integrations use; our document covers far more, and most
 of what only we carry is real. What earns attention is the other direction —
 an operation the provider's own SDK calls and we do not model.
 
-What only we carry is reported in three buckets, because "only we carry it"
+What only we carry is reported in five buckets, because "only we carry it"
 is not one situation:
 
 * **The SDK calls it.** The provider vouches for it.
@@ -28,13 +28,17 @@ is not one situation:
   replies first; ``404`` means it is not routed. That is how the two
   corrections and the three removals in :mod:`mercadopago_overlay` were
   found.
-* **Nothing vouches for it.** The probe is per method *and* path, so it
-  speaks only for the verb it uses, and sending a ``POST``, ``PUT`` or
-  ``DELETE`` to a payment API in production to find out whether it routes
-  is not an acceptable way to answer the question. Those operations carry
-  the marker :data:`mercadopago_overlay.UNVERIFIED_NOTE` in their own
-  generated docstring, so a consumer reading the client can tell them
-  apart.
+* **The sandbox told it apart.** A non-``GET`` request that cannot succeed
+  (malformed body, an id that does not exist), sent with and without a
+  sandbox token, answered differently from a made-up path under the same
+  prefix — :data:`mercadopago_overlay.SANDBOX_ROUTED_OPERATIONS`.
+* **The sandbox answered it as unrouted.** Kept in the client and marked
+  with :data:`mercadopago_overlay.UNROUTED_NOTE` —
+  :data:`mercadopago_overlay.UNROUTED_OPERATIONS`.
+* **Nothing vouches for it.** Its answer matched the made-up sibling's, so
+  neither probe could tell. Those operations carry the marker
+  :data:`mercadopago_overlay.UNVERIFIED_NOTE` in their own generated
+  docstring, so a consumer reading the client can tell them apart.
 
 To re-probe, or to probe one suspect by hand:
 
@@ -60,8 +64,11 @@ import yaml
 from mercadopago_overlay import (
     PROBE_DATE,
     PROBED_OPERATIONS,
+    SANDBOX_PROBE_DATE,
+    SANDBOX_ROUTED_OPERATIONS,
     SDK_COVERAGE_DISAGREEMENTS,
     SDK_COVERAGE_URL,
+    UNROUTED_OPERATIONS,
     normalise,
 )
 from mercadopago_overlay import apply as apply_overlay
@@ -384,22 +391,32 @@ def main() -> int:
         print(f"  {method:6} {path}")
 
     extra = sorted(ours - official, key=lambda entry: (entry[1], entry[0]))
+    unrouted_keys = {normalise(e.method, e.path) for e in UNROUTED_OPERATIONS}
     probed = [entry for entry in extra if entry in PROBED_OPERATIONS]
-    unverified = [entry for entry in extra if entry not in PROBED_OPERATIONS]
+    sandbox = [entry for entry in extra if entry in SANDBOX_ROUTED_OPERATIONS]
+    unrouted = [entry for entry in extra if entry in unrouted_keys]
+    vouched = set(PROBED_OPERATIONS) | set(SANDBOX_ROUTED_OPERATIONS) | unrouted_keys
+    unverified = [entry for entry in extra if entry not in vouched]
 
     print(f"\nonly we carry these ({len(extra)}), by what vouches for them:")
     print(f"\n  probed live on {PROBE_DATE} ({len(probed)}):")
     for method, path in probed:
         print(f"    {method:6} {path:56} {PROBED_OPERATIONS[method, path]}")
 
+    print(f"\n  told apart in the sandbox on {SANDBOX_PROBE_DATE} ({len(sandbox)}):")
+    for method, path in sandbox:
+        print(f"    {method:6} {path}")
+
+    print(f"\n  answered as unrouted in the sandbox ({len(unrouted)}):")
+    for method, path in unrouted:
+        print(f"    {method:6} {path}")
+
     print(f"\n  nothing vouches for these ({len(unverified)}):")
     for method, path in unverified:
         print(f"    {method:6} {path}")
     print(
-        "\n  The probe is per method and path, so it speaks only for the verb"
-        "\n  it uses. Sending a POST, PUT or DELETE to a payment API in"
-        "\n  production to find out whether it routes is not an acceptable way"
-        "\n  to answer the question — these stay unverified, and each one is"
+        "\n  Their answer matched a made-up path under the same prefix, so"
+        "\n  neither probe could tell — these stay unverified, and each one is"
         "\n  marked in its own generated docstring."
     )
     report_sdk_coverage(official)

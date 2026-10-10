@@ -428,31 +428,80 @@ So not every `MercadoPagoClient` operation rests on the same evidence. Of 147:
 | Bucket | Count | What vouches for it |
 | --- | --- | --- |
 | The official SDK calls it | 65 | The provider, in its own `mercadopago` on PyPI |
-| Probed live | 35 | An unauthenticated request answered `401`/`403`/`400` |
-| Nothing vouches | 47 | Only the vendored document |
+| Probed live | 35 | An unauthenticated `GET` answered `401`/`403`/`400` (2026-08-28) |
+| Told apart in the sandbox | 32 | A request that cannot succeed answered differently from a made-up path under the same prefix (2026-10-09) |
+| Not routed | 4 | The sandbox answered the way it answers a path that does not exist |
+| Nothing vouches | 11 | Same answer as the made-up path: no probe tells them apart |
 
-**The 47 say so in their own docstring:**
+**The 11 say so in their own docstring:**
 
 ```
 **Unverified.** Neither the provider's SDK nor an unauthenticated probe
 covers this operation, so nothing here confirms the API routes it.
 ```
 
-!!! warning "This does not mean they are wrong"
-    It means nobody checked. They are all `POST`/`PUT`/`PATCH`/`DELETE`, and
-    that is not a coincidence: the probe that tells a live route from a dead
-    one is per **method and path**. A `404` on `GET` says nothing about a
-    `DELETE` on the same path — measured, `GET /v1/customers` answers `404`
-    while `POST /v1/customers` is where the official SDK creates customers.
+**So do the 4 unrouted ones**, with the measurement: `cancel_payment`,
+`update_chargeback`, `create_qr_integrator_config` and
+`create_instore_order_v1` carry `**Not routed.**` and what the sandbox
+answered. They stay in the client, because removing a public method is a
+separate decision, but do not expect them to work. For `cancel_payment`, the
+neighbouring route `PUT /v1/payments/{id}` (`update_payment`) is one the
+official SDK calls, and it answered from the payments service itself in the
+same probe.
 
-    Sending a `POST`, `PUT` or `DELETE` to a payment API in production just to
-    find out whether it routes is not an acceptable way to answer the
-    question. They are marked rather than guessed at.
+!!! warning "A status other than `404` does not prove a route"
+    Measured in the sandbox on 2026-10-09: on several prefixes a policy gate
+    answers **before** routing. `POST /terminals/v1/<anything>` answers `401`
+    and `POST /post-purchase/v1/claims/<id>/<anything>` answers `403`, for
+    paths that do not exist. That is why the "told apart in the sandbox"
+    bucket only counts an operation whose answer differs from a made-up path
+    under the same prefix, and the 11 that did not differ stay marked.
 
-If you use one of them and it works, that is evidence this repository does not
-have — an issue with what you observed is welcome.
+    The probe is also per **method and path**: `GET /v1/customers` answers
+    `404` while `POST /v1/customers` is where the official SDK creates
+    customers.
 
-To see the three buckets:
+If you use one of the 11 and it works, that is evidence this repository does
+not have. An issue with what you observed is welcome.
+
+### `get_authenticated_user` returns a model
+
+`GET /users/me` was observed in the sandbox, and the method answers
+`AuthenticatedUser` instead of `dict[str, Any]`. Every declared field carried
+a value in the observed response, and none is required. What is not declared
+(reputation, `status`, fields that came back `null`) stays in `model_extra`,
+nothing dropped:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
+    DEFAULT_BASE_URL,
+    AuthenticatedUser,
+    MercadoPagoClient,
+)
+
+
+async def main() -> None:
+    """Show the account the token belongs to."""
+    http: HTTPClient = HTTPClient(
+        base_url=DEFAULT_BASE_URL,
+        default_headers={"Authorization": "Bearer <your access token>"},
+    )
+    async with http:
+        user: AuthenticatedUser = await MercadoPagoClient(http).get_authenticated_user()
+    print(user.id, user.site_id, user.tags)
+
+
+asyncio.run(main())
+```
+
+The other six operations the official SDK calls and the document omitted
+(advanced payments and `search_chargebacks`) stay `dict[str, Any]`. The test
+token got `403` on them, so there was no response to observe.
+
+To see the buckets:
 
 ```bash
 make mercadopago-diff
@@ -475,3 +524,6 @@ make mercadopago-diff
   handler, and hands over the signed `data_id` — the body is not signed.
 - QR Code notifications are not signed — do not run them through
   `verify_signature`.
+- Not every operation rests on the same evidence: 11 say `**Unverified.**`
+  and 4 say `**Not routed.**` in their docstring. `get_authenticated_user`
+  returns `AuthenticatedUser`, observed in the sandbox.

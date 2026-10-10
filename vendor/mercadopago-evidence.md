@@ -135,10 +135,10 @@ POST  /v1/advanced_payments/{advanced_payment_id}/disburses
 GET   /v1/chargebacks/search
 ```
 
-**Corpo e resposta são `dict[str, Any]`.** Path e verbo são medidos; a forma
-não, e este repositório não tem credencial do Mercado Pago para observá-la.
-Declarar shape que ninguém mediu é o defeito que a v0.259.0 shippou na
-OpenPix — com a diferença de que lá nem o endpoint tinha fonte.
+**Corpo e resposta são `dict[str, Any]`, exceto `/users/me`.** Path e verbo
+são medidos; a forma, só onde o sandbox a mostrou (seção 8). Declarar shape que
+ninguém mediu é o defeito que a v0.259.0 shippou na OpenPix — com a diferença
+de que lá nem o endpoint tinha fonte.
 
 `limit` e `offset` são declarados nas duas buscas porque **todo** `/search`
 deste documento os declara. Isso é convenção do próprio documento, uma
@@ -186,7 +186,161 @@ O inventário da sondagem vive em `PROBED_OPERATIONS`, com o código que cada
 rota respondeu e a data. Contando o total: **147 operações = 65 cobertas pelo
 SDK + 35 sondadas vivas + 47 sem evidência**.
 
+**Atualizado em 2026-10-09:** a seção 8 sondou as 47 no sandbox. 32 viraram
+"roteada", 4 foram marcadas "não roteada" e 11 continuam sem evidência.
+
 Isso não torna as 47 erradas — torna visível que elas são de outra classe. A
 diferença entre operação que o provedor chama e operação que só um documento
 de origem desconhecida declara não devia ser invisível para quem lê o cliente
 gerado.
+
+## 8. Sandbox, 2026-10-09 (issue #226)
+
+Credencial: access token de teste da aplicação (`TEST-…`, redigido), lido de
+`~/.config/tempest-fastapi-sdk/mercadopago-sandbox.env`, fora do repositório.
+Credencial `TEST-` pertence à conta real do integrador, mas opera no sandbox;
+nenhuma requisição abaixo podia ter efeito. Toda chamada usou `curl` contra
+`https://api.mercadopago.com`.
+
+### 8.1 Método: requisição que não pode dar certo, comparada a um irmão inventado
+
+Para cada operação, duas requisições:
+
+- **A**: sem credencial;
+- **B**: com o token de teste.
+
+Em ambas o corpo é JSON malformado (`{`) e todo id de path é `999999999999`.
+`DELETE` vai sem corpo. Os dois `DELETE .../schedule` não têm id no path, e
+com token desligariam um agendamento real, então foram só na forma A.
+
+**Status sozinho não prova rota.** Os controles, paths inventados sob o mesmo
+prefixo, mostraram três respostas que acontecem **antes** do roteamento:
+
+| Controle (path que não existe) | A | B |
+| --- | --- | --- |
+| `POST /v1/tempest-probe-unrouted` | `404` `resource not found` (borda) | igual |
+| `PATCH /v1/customers` | `404` `Resource /customers not found.` (serviço) | `403` PolicyAgent |
+| `POST /terminals/v1/tempest-unrouted` | **`401`** `authorization value not present` | `403` PolicyAgent |
+| `POST /post-purchase/v1/claims/<id>/actions/tempest-unrouted` | **`403`** PolicyAgent | `403` PolicyAgent |
+| `POST /v1/account/release_report/tempest-unrouted` | **`403`** PolicyAgent | `404` `Resource … not found.` |
+| `POST /users/<id>/tempest-unrouted` | **`403`** HTML do proxy | igual |
+| `PUT /mpmobile/instore/qr/<id>/<id>/tempest-unrouted` | `405` HTML do proxy | igual |
+
+E com token o PolicyAgent responde `403` para a API de customers inteira,
+inclusive o `PATCH /v1/customers` que não existe. Por isso a operação só conta
+como roteada quando a resposta **difere** da do irmão inventado; cada entrada de
+`SANDBOX_ROUTED_OPERATIONS` em `scripts/mercadopago_overlay.py` diz contra o
+que foi comparada.
+
+Controles positivos (o SDK oficial chama): `POST /v1/customers` e
+`DELETE /v1/customers/<id>` → A `401`; `PUT /v1/payments/<id>` → A e B `400`
+`Bad JSON format`.
+
+### 8.2 As 47: 32 roteadas, 4 não roteadas, 11 inconclusivas
+
+**Roteadas (32)**, com o discriminador:
+
+| Operação | Evidência (vs. irmão inventado) |
+| --- | --- |
+| `PUT /checkout/preferences/{id}/expire` | B `404` *"The preference with identifier … was not found"*; irmão B `404` genérico |
+| `POST /v2/wallet_connect/agreements`, `DELETE …/agreements/{id}`, `POST …/agreements/{id}/payer_token`, `POST /v2/wallet_connect/discounts`, `POST /v2/wallet_connect/coupons` | A `403`; irmão A `404` |
+| `POST /v1/payouts`, `PUT /v1/payouts/{id}/transactions/{id}/cancel` | A `400` `Invalid site`; irmão A `404` |
+| `POST /v1/transaction-intents/process` | A `400` `Invalid site`; irmão A `405` |
+| `DELETE /instore/qr/seller/collectors/{id}/pos/{id}/orders` | B `400` `pos_obtainment_by_external_id_error`; irmão `404` |
+| `PUT /instore/qr/seller/collectors/{id}/stores/{id}/pos/{id}/orders` | B `400` *"Collector ID and Caller ID must be the same"*; irmão `404` |
+| `POST /instore/orders/{id}/confirmation`, `POST`/`PUT /instore/orders/qr/seller/collectors/{id}/pos/{id}/qrs` | A `403`; irmão A `404` |
+| `DELETE /mpmobile/instore/qr/{id}/{id}` | A `403`, B `403` `Forbidden` do serviço; irmão `404` `Route not found` |
+| `POST /users/{id}/stores` | A `400` `Malformed Json`; irmão `403` do proxy |
+| `PUT`/`DELETE /users/{id}/stores/{id}` | A `404` `store_not_found`; irmão `403` do proxy |
+| `POST /pos`, `PUT /pos/{id}`, `DELETE /pos/{id}` | A `403`; irmão A `404` |
+| `POST /v1/customers/{id}/addresses`, `PUT`/`DELETE …/addresses/{id}` | A `401`; irmão A `404` do serviço de customers |
+| `POST`/`PUT /v1/account/release_report/config`, `POST /v1/account/release_report`, `POST …/release_report/schedule` | B `400`; irmão B `404` `Resource … not found.` |
+| `POST`/`PUT /v1/account/settlement_report/config`, `POST /v1/account/settlement_report` | B `400`; irmão B `404` |
+| `POST /v1/account/settlement_report/schedule` | B `404` *"Configuration not found. Please create a configuration first."*; irmão B `404` `Resource … not found.` |
+
+Saem do `UNVERIFIED_NOTE`.
+
+**Não roteadas (4)**: ficam no cliente, marcadas com `**Not routed.**` na
+docstring (`UNROUTED_OPERATIONS`). Remover método público é decisão à parte;
+a medição vai para quem lê o cliente.
+
+| Operação | A | B |
+| --- | --- | --- |
+| `PUT /v1/chargebacks/{id}` | `404` *"Request method 'PUT' is not supported"* | igual |
+| `PUT /v1/payments/{id}/cancellations` | `404` `resource not found` (borda) | igual; `PUT /v1/payments/{id}` chega ao serviço |
+| `PATCH /instore/integrator` | `404` `resource not found` (borda) | igual; `POST` e `PUT` também |
+| `PUT /mpmobile/instore/qr/{id}/{id}` | `405` do proxy | igual; `POST` no mesmo path chega ao serviço (B `400` `invalid_caller_id`) |
+
+**Inconclusivas (11)**: resposta igual à do irmão inventado. Continuam com
+`UNVERIFIED_NOTE`.
+
+```
+POST   /point/integration-api/devices/{id}/refund          A 401, B 401 = irmão
+DELETE /point/integration-api/devices/{id}/refund/{id}     A 403, B 401 = irmão
+PATCH  /terminals/v1/setup                                  A 401, B 403 = irmão
+POST   /terminals/v1/actions                                A 401, B 403 = irmão
+POST   /terminals/v1/actions/{id}/cancel                    A 401, B 403 = irmão
+POST   /post-purchase/v1/claims/{id}/actions/send-message   A 403, B 403 = irmão
+POST   /post-purchase/v1/claims/{id}/attachments            A 403, B 403 = irmão
+POST   /post-purchase/v1/claims/{id}/actions/open-dispute   A 403, B 403 = irmão
+POST   /post-purchase/v1/claims/{id}/actions/evidences      A 403, B 403 = irmão
+DELETE /v1/account/release_report/schedule                  só A (403 = irmão)
+DELETE /v1/account/settlement_report/schedule               só A (403 = irmão)
+```
+
+### 8.3 As sete do SDK: o que deu para tipar
+
+| Operação | B (token de teste) | Resultado |
+| --- | --- | --- |
+| `GET /users/me` | `200` | **tipada**: `AuthenticatedUser` + 4 objetos aninhados |
+| `GET /v1/advanced_payments/search` | `403` PolicyAgent | `dict[str, Any]` |
+| `GET /v1/advanced_payments/{id}/refunds` | `403` PolicyAgent | `dict[str, Any]` |
+| `POST /v1/advanced_payments/{id}/refunds` | `403` PolicyAgent | `dict[str, Any]` |
+| `POST …/disbursements/{id}/refunds` | `403` PolicyAgent | `dict[str, Any]` |
+| `POST /v1/advanced_payments/{id}/disburses` | `403` PolicyAgent | `dict[str, Any]` |
+| `GET /v1/chargebacks/search` | `403` PolicyAgent | `dict[str, Any]` |
+
+O PolicyAgent barra o token `TEST-` de aplicação nessas APIs. Com o mesmo
+token, `GET /v1/payments/search` e `GET /v1/payment_methods` respondem `200`.
+Advanced payments exige aplicação marketplace com vendedor vinculado por OAuth,
+que esta conta não tem. Chargeback não se gera no sandbox, então mesmo com
+acesso a busca viria vazia. Fica para uma credencial de usuário de teste
+vendedor (`APP_USR-…` de conta com tag `test_user`).
+
+O `AuthenticatedUser` declara só campo que veio **não nulo** na resposta, com o
+tipo JSON observado, e nenhum como obrigatório, porque uma observação não diz o
+que o provedor sempre manda. Os blocos de reputação, `status`, `credit`,
+`context` e os campos que vieram `null` ficam como campo extra
+(`extra="allow"`), sem perda. A resposta redigida está em
+`tests/integrations/payment/mercado_pago/fixtures/users_me.json`: toda chave e
+todo tipo JSON mantidos, valores pessoais trocados por fictícios estáveis.
+`test_sandbox_observations.py` valida a fixture contra o modelo gerado e fixa
+que todo campo declarado aparece não nulo nela.
+
+### 8.4 As 35 "sondadas vivas" da seção 7, reavaliadas
+
+Os controles da 8.1 mostram que `401`/`403` sem credencial não prova rota em
+todo prefixo, e a seção 7 tirou as 35 justamente disso. Reavaliadas com `GET`
+(só leitura) com e sem token, contra irmãos inventados:
+
+- **Continuam sustentadas**: `/pos`, `/pos/{id}`, `/preapproval/export`,
+  `GET /instore/qr/seller/collectors/{id}/pos/{id}/orders`,
+  `/v2/wallet_connect/agreements/{id}`, `/v1/payouts/{id}/transactions`,
+  `/v1/transaction-intents/{id}`, `/users/{id}/stores/search`,
+  `/post-purchase/v1/claims/search`, os
+  `release_report`/`settlement_report` de `config`, `list`, `search` e
+  `task/{id}` (B `200`, ou erro do próprio serviço), e
+  `/v1/account/settlement_report/{id}` (B `403` `forbidden` do serviço).
+- **Evidência anterior não sustenta** (resposta igual à do irmão inventado):
+  `GET /terminals/v1/actions/{id}` e `GET /terminals/v1/list` (A `401` =
+  irmão), `GET /point/integration-api/refund/{id}` (`401` = irmão),
+  `GET /users/{id}/pos` (`403` do proxy = irmão), os seis
+  `GET /post-purchase/v1/claims/{id}/…` (`403` = irmão), e
+  `GET /v1/account/release_report/{id}` (B `404` igual ao do irmão).
+- **Respondem como não roteadas**: `GET /v1/account/release_report` → B `405`
+  *"Method 'GET' is not supported"*; `GET /v1/account/settlement_report` → B
+  `404` `Resource /account/settlement_report not found.`, igual ao irmão.
+
+Nada disso mudou o `PROBED_OPERATIONS` nesta rodada. A issue #226 pedia as 47
+não-`GET`, e rebaixar ou remover operações já sustentadas é decisão de
+superfície. Fica registrado para uma issue própria.

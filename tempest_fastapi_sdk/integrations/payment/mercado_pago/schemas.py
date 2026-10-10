@@ -714,6 +714,76 @@ class AttachClaimFileResponse(BaseSchema):
     file_name: str | None = None
 
 
+class AuthenticatedUserCompany(BaseSchema):
+    """Schema generated for AuthenticatedUserCompany.
+
+    Attributes:
+        brand_name (str | None): Undocumented in the spec.
+        corporate_name (str | None): Undocumented in the spec.
+        identification (str | None): Undocumented in the spec.
+        soft_descriptor (str | None): Undocumented in the spec.
+        city_tax_id (str | None): Undocumented in the spec.
+        state_tax_id (str | None): Undocumented in the spec.
+        cust_type_id (str | None): Undocumented in the spec.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    brand_name: str | None = None
+    corporate_name: str | None = None
+    identification: str | None = None
+    soft_descriptor: str | None = None
+    city_tax_id: str | None = None
+    state_tax_id: str | None = None
+    cust_type_id: str | None = None
+
+
+class AuthenticatedUserIdentification(BaseSchema):
+    """Schema generated for AuthenticatedUserIdentification.
+
+    Attributes:
+        type (str | None): Undocumented in the spec.
+        number (str | None): Undocumented in the spec.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    type: str | None = None
+    number: str | None = None
+
+
+class AuthenticatedUserPhone(BaseSchema):
+    """Schema generated for AuthenticatedUserPhone.
+
+    Attributes:
+        area_code (str | None): Undocumented in the spec.
+        number (str | None): Undocumented in the spec.
+        extension (str | None): Undocumented in the spec.
+        verified (bool | None): Undocumented in the spec.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    area_code: str | None = None
+    number: str | None = None
+    extension: str | None = None
+    verified: bool | None = None
+
+
+class AuthenticatedUserThumbnail(BaseSchema):
+    """Schema generated for AuthenticatedUserThumbnail.
+
+    Attributes:
+        picture_id (str | None): Undocumented in the spec.
+        picture_url (str | None): Undocumented in the spec.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    picture_id: str | None = None
+    picture_url: str | None = None
+
+
 class AuthorizedPaymentPayment(BaseSchema):
     """Schema generated for AuthorizedPaymentPayment.
 
@@ -3267,6 +3337,56 @@ class WebhookSignatureHeader(BaseSchema):
         ),
         default=None,
     )
+
+
+class AuthenticatedUser(BaseSchema):
+    """The account an access token belongs to. Every field was present in the response
+    observed on 2026-10-09; none is declared required, because one observation cannot
+    say which the provider always sends. Fields observed only as `null`, and the nested
+    reputation and status blocks, are not declared and are kept as extra fields.
+
+    Attributes:
+        id (int | None): Undocumented in the spec.
+        nickname (str | None): Undocumented in the spec.
+        registration_date (datetime | None): Undocumented in the spec.
+        first_name (str | None): Undocumented in the spec.
+        last_name (str | None): Undocumented in the spec.
+        country_id (str | None): Undocumented in the spec.
+        site_id (str | None): Undocumented in the spec.
+        email (str | None): Undocumented in the spec.
+        secure_email (str | None): Undocumented in the spec.
+        user_type (str | None): Undocumented in the spec.
+        tags (list[str]): Undocumented in the spec.
+        points (int | None): Undocumented in the spec.
+        permalink (str | None): Undocumented in the spec.
+        seller_experience (str | None): Undocumented in the spec.
+        identification (AuthenticatedUserIdentification | None): Undocumented in the
+            spec.
+        phone (AuthenticatedUserPhone | None): Undocumented in the spec.
+        thumbnail (AuthenticatedUserThumbnail | None): Undocumented in the spec.
+        company (AuthenticatedUserCompany | None): Undocumented in the spec.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    id: int | None = None
+    nickname: str | None = None
+    registration_date: datetime | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    country_id: str | None = None
+    site_id: str | None = None
+    email: str | None = None
+    secure_email: str | None = None
+    user_type: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    points: int | None = None
+    permalink: str | None = None
+    seller_experience: str | None = None
+    identification: AuthenticatedUserIdentification | None = None
+    phone: AuthenticatedUserPhone | None = None
+    thumbnail: AuthenticatedUserThumbnail | None = None
+    company: AuthenticatedUserCompany | None = None
 
 
 class AuthorizedPayment(BaseSchema):
@@ -6711,6 +6831,11 @@ __all__: list[str] = [
     "AddOrderTransactionResponse",
     "Address",
     "AttachClaimFileResponse",
+    "AuthenticatedUser",
+    "AuthenticatedUserCompany",
+    "AuthenticatedUserIdentification",
+    "AuthenticatedUserPhone",
+    "AuthenticatedUserThumbnail",
     "AuthorizedPayment",
     "AuthorizedPaymentPayment",
     "AuthorizedPaymentSearchResult",

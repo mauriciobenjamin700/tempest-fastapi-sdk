@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Mercado Pago: `get_authenticated_user` devolve `AuthenticatedUser`** em
+  vez de `dict[str, Any]` (issue #226). O modelo saiu da resposta que o
+  sandbox devolveu em 2026-10-09: todo campo declarado veio com valor, nenhum
+  é obrigatório, e o que não foi declarado (reputação, `status`, campos
+  `null`) fica em `model_extra`. Entram também `AuthenticatedUserCompany`,
+  `AuthenticatedUserIdentification`, `AuthenticatedUserPhone` e
+  `AuthenticatedUserThumbnail`. As outras seis operações que o SDK oficial
+  chama e o documento omitia continuam `dict[str, Any]`: o token de teste
+  recebeu `403` do PolicyAgent nelas, e não houve resposta para observar.
+- **Mercado Pago: 32 das 47 operações não-`GET` sem evidência perdem o
+  `**Unverified.**`.** Sondadas no sandbox em 2026-10-09 com requisições que
+  não podem dar certo (corpo JSON malformado, id inexistente), com e sem
+  token. Cada uma respondeu diferente de um path inventado sob o mesmo
+  prefixo. Status sozinho não contou, porque em vários prefixos um gate de
+  política responde `401`/`403` antes do roteamento. 11 continuam marcadas.
+- **Mercado Pago: quatro operações ganham `**Not routed.**` na docstring.**
+  `cancel_payment` (`PUT /v1/payments/{id}/cancellations`), `update_chargeback`
+  (`PUT /v1/chargebacks/{id}`), `create_qr_integrator_config`
+  (`PATCH /instore/integrator`) e `create_instore_order_v1`
+  (`PUT /mpmobile/instore/qr/{user_id}/{external_id}`) responderam no sandbox
+  como responde um path que não existe (`404` da borda, `404` *"Request method
+  'PUT' is not supported"*, `405` do proxy). Continuam no cliente; a docstring
+  traz a medição.
+
 ## [0.310.0] — 2026-10-09
 
 Cache de geocoding (`CachedGeocodingBackend`) e o fluxo de release novo: a

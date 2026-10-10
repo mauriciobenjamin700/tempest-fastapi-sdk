@@ -25,6 +25,7 @@ from .schemas import (
     AddOrderTransactionResponse,
     Address,
     AttachClaimFileResponse,
+    AuthenticatedUser,
     AuthorizedPayment,
     AuthorizedPaymentSearchResult,
     AuthorizedPaymentStatus,
@@ -479,9 +480,6 @@ class MercadoPagoClient:
 
         Expires a payment preference. Enter the preference ID and it will be expired.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             id (int): Preference ID
 
@@ -509,8 +507,10 @@ class MercadoPagoClient:
 
         Configures the integrator settings for QR in-store payments.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
+        **Not routed.** Probed against the sandbox and answered the way a path the API
+        does not route answers — measured 2026-10-09, PATCH, POST and PUT on
+        /instore/integrator all answer the edge's 404 'resource not found' with and
+        without the sandbox token. The GET on the same path was removed on 2026-08-28.
 
         Args:
             body (CreateQrIntegratorConfigBody): The request body.
@@ -543,9 +543,6 @@ class MercadoPagoClient:
 
         **Available in:** Argentina, Brazil, Mexico (MLA, MLB, MLM) **Migration guide:**
         https://www.mercadopago.com/developers/en/docs/qr-code/orders/create-order
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             user_id (int): The user_id value.
@@ -584,9 +581,6 @@ class MercadoPagoClient:
         **Available in:** Argentina, Brazil, Mexico (MLA, MLB, MLM) **Migration guide:**
         https://www.mercadopago.com/developers/en/docs/qr-code/orders/create-order
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             user_id (int): The user_id value.
             external_pos_id (str): The external_pos_id value.
@@ -622,9 +616,6 @@ class MercadoPagoClient:
 
         Confirms the cashout status for a QR-based cash withdrawal order. **Available
         in:** Argentina, Brazil (MLA, MLB)
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             merchant_order_id (str): The merchant_order_id value.
@@ -689,9 +680,6 @@ class MercadoPagoClient:
         **Migration guide:**
         https://www.mercadopago.com/developers/en/docs/qr-code/orders/create-order
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             user_id (int): The user_id value.
             external_pos_id (str): The external_pos_id value.
@@ -726,9 +714,6 @@ class MercadoPagoClient:
 
         **Migration guide:**
         https://www.mercadopago.com/developers/en/docs/qr-code/orders/create-order
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             user_id (int): The user_id value.
@@ -943,8 +928,12 @@ class MercadoPagoClient:
         **Migration guide:**
         https://www.mercadopago.com/developers/en/docs/qr-code/orders/create-order
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
+        **Not routed.** Probed against the sandbox and answered the way a path the API
+        does not route answers — measured 2026-10-09, PUT answers 405 'Not Allowed' from
+        the edge proxy with and without the sandbox token, as does PATCH. POST on the
+        same path reaches the service (400 'invalid_caller_id' with the token), but
+        turning the PUT into a POST would be a guess about the operation, so it is
+        dropped rather than moved.
 
         Args:
             user_id (int): The user_id value.
@@ -977,9 +966,6 @@ class MercadoPagoClient:
 
         **Migration guide:**
         https://www.mercadopago.com/developers/en/docs/qr-code/orders/create-order
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             user_id (int): The user_id value.
@@ -1288,9 +1274,6 @@ class MercadoPagoClient:
         Creates a point of sale in a store to receive payments for products or services.
         Each POS will have a unique QR code linked to it.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             body (PosRequest): The request body.
 
@@ -1343,9 +1326,6 @@ class MercadoPagoClient:
     ) -> Pos:
         """Update a point of sale.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             id (str): The id value.
             body (PosRequest): The request body.
@@ -1372,9 +1352,6 @@ class MercadoPagoClient:
         id: str,
     ) -> None:
         """Delete a point of sale.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             id (str): POS identifier to delete
@@ -2250,20 +2227,20 @@ class MercadoPagoClient:
         response.raise_for_status()
         return None
 
-    async def get_authenticated_user(self) -> dict[str, Any]:
+    async def get_authenticated_user(self) -> AuthenticatedUser:
         """Get the authenticated user.
 
         Returns the account the credentials belong to.
 
-        Absent from the vendored document. The response is not modelled — this
-        repository has no Mercado Pago credentials to observe its shape — so the method
-        answers `dict[str, Any]` and drops nothing.
+        Absent from the vendored document. The response is modelled from the one the
+        sandbox returned on 2026-10-09: every declared field was observed, none is
+        required, and fields not declared are kept as extra fields rather than dropped.
 
         Declared by `scripts/mercadopago_overlay.py` from mercadopago 3.5.0
         `resources/user.py:get`.
 
         Returns:
-            dict[str, Any]: The 200 response body, validated.
+            AuthenticatedUser: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2275,7 +2252,7 @@ class MercadoPagoClient:
             path,
         )
         response.raise_for_status()
-        return _validate(dict[str, Any], response.json())
+        return _validate(AuthenticatedUser, response.json())
 
     async def list_pos(
         self,
@@ -2308,9 +2285,6 @@ class MercadoPagoClient:
         body: CreateStoreBody,
     ) -> None:
         """Create a store.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             user_id (int): The user_id value.
@@ -2374,9 +2348,6 @@ class MercadoPagoClient:
     ) -> Store:
         """Update a store.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             user_id (int): The user_id value.
             id (str): The id value.
@@ -2405,9 +2376,6 @@ class MercadoPagoClient:
         id: str,
     ) -> None:
         """Delete a store.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             user_id (int): The user_id value.
@@ -2455,9 +2423,6 @@ class MercadoPagoClient:
 
         Generates a one-time releases report for the specified date range. Returns a
         task ID to poll for completion via the task endpoint.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             body (ReportRequest): The request body.
@@ -2507,9 +2472,6 @@ class MercadoPagoClient:
         Creates the configuration for automatic releases report generation. Defines
         columns, schedule frequency, file format, and optional SFTP delivery.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             body (ReportConfig): The request body.
 
@@ -2536,9 +2498,6 @@ class MercadoPagoClient:
         body: ReportConfig,
     ) -> ReportConfig:
         """Update releases report configuration.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             body (ReportConfig): The request body.
@@ -2582,9 +2541,6 @@ class MercadoPagoClient:
         """Enable automatic releases report generation.
 
         Enables scheduled report generation based on the configured frequency.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Returns:
             None: Nothing — the operation answers 200 with no body.
@@ -2738,9 +2694,6 @@ class MercadoPagoClient:
         Generates a one-time all-transactions report for the specified date range.
         Returns a task ID to poll for completion.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             body (ReportRequest): The request body.
 
@@ -2790,9 +2743,6 @@ class MercadoPagoClient:
         generation. Defines columns, schedule frequency, file format, and optional SFTP
         delivery.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             body (ReportConfig): The request body.
 
@@ -2819,9 +2769,6 @@ class MercadoPagoClient:
         body: ReportConfig,
     ) -> ReportConfig:
         """Update settlements report configuration.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             body (ReportConfig): The request body.
@@ -2863,9 +2810,6 @@ class MercadoPagoClient:
 
     async def enable_settlement_report_schedule(self) -> None:
         """Enable automatic settlements report generation.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Returns:
             None: Nothing — the operation answers 200 with no body.
@@ -3415,8 +3359,11 @@ class MercadoPagoClient:
     ) -> None:
         """Upload chargeback documentation.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
+        **Not routed.** Probed against the sandbox and answered the way a path the API
+        does not route answers — measured 2026-10-09, PUT /v1/chargebacks/<id> answers
+        404 'Request method 'PUT' is not supported' with and without the sandbox token —
+        the chargebacks service itself names the verb. mercadopago 3.5.0 chargeback.py
+        calls only search and get.
 
         Args:
             id (str): The id value.
@@ -3540,9 +3487,6 @@ class MercadoPagoClient:
 
         Adds a shipping or billing address to a customer profile.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             customer_id (str): The customer_id value.
             body (Address): The request body.
@@ -3602,9 +3546,6 @@ class MercadoPagoClient:
     ) -> Address:
         """Update a customer address.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             customer_id (str): The customer_id value.
             address_id (str): The address_id value.
@@ -3636,9 +3577,6 @@ class MercadoPagoClient:
         address_id: str,
     ) -> None:
         """Delete a customer address.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             customer_id (str): The customer_id value.
@@ -4545,8 +4483,11 @@ class MercadoPagoClient:
         that have not yet been captured or processed can be cancelled. For approved
         payments use the refunds endpoint instead.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
+        **Not routed.** Probed against the sandbox and answered the way a path the API
+        does not route answers — measured 2026-10-09, it answers the edge's 404
+        'resource not found' with and without the sandbox token, the same body a made-up
+        path gets, while PUT /v1/payments/<id> reaches the payments service (400 'Bad
+        JSON format').
 
         Args:
             id (int): Payment ID to cancel
@@ -4669,9 +4610,6 @@ class MercadoPagoClient:
 
         **Available in:** Argentina, Mexico (MLA, MLM)
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             body (CreatePayoutBody): The request body.
 
@@ -4727,9 +4665,6 @@ class MercadoPagoClient:
 
         **Available in:** Argentina, Mexico (MLA, MLM)
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             payout_id (str): The payout_id value.
             transaction_id (str): The transaction_id value.
@@ -4762,9 +4697,6 @@ class MercadoPagoClient:
         Creates a Pix or bank transfer disbursement for Brazil. The `payment_method_id`
         determines the method: - `pix` — instant Pix transfer (available 24/7) -
         `bank_transfer` — TED/DOC bank transfer **Available in:** Brazil (MLB)
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             body (ProcessTransactionIntentBody): The request body.
@@ -4824,9 +4756,6 @@ class MercadoPagoClient:
         Creates an authorization agreement for Wallet Connect. Returns an agreement
         token to redirect the payer to MP for wallet authorization. **Available in:**
         Argentina, Brazil, Mexico (MLA, MLB, MLM)
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             body (CreateWalletAgreementBody): The request body.
@@ -4912,9 +4841,6 @@ class MercadoPagoClient:
 
         **Available in:** Argentina, Brazil, Mexico (MLA, MLB, MLM)
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             agreement_id (str): The agreement_id value.
             client_id (str | None): The client.id value. Omitted from the query when
@@ -4956,9 +4882,6 @@ class MercadoPagoClient:
 
         **Available in:** Argentina, Brazil, Mexico (MLA, MLB, MLM)
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             agreement_id (str): The agreement_id value.
             body (CreateWalletPayerTokenBody): The request body.
@@ -4998,9 +4921,6 @@ class MercadoPagoClient:
 
         **Available in:** Argentina, Brazil, Mexico (MLA, MLB, MLM)
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             body (ValidateWalletCouponBody): The request body.
             x_payer_token (str): The x-payer-token value.
@@ -5036,9 +4956,6 @@ class MercadoPagoClient:
         Validates a coupon and returns discount amount and legal terms.
 
         **Available in:** Argentina, Brazil, Mexico (MLA, MLB, MLM)
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             body (CreateWalletDiscountBody): The request body.

@@ -1,0 +1,186 @@
+{
+  "id": 123456789,
+  "nickname": "TESTUSER0000001",
+  "registration_date": "2020-01-01T00:00:00.000-04:00",
+  "first_name": "Test",
+  "last_name": "User",
+  "gender": "",
+  "country_id": "BR",
+  "email": "test_user_0000001@testuser.com",
+  "identification": {
+    "number": "00000000000",
+    "type": "CPF"
+  },
+  "address": {
+    "address": null,
+    "city": null,
+    "state": null,
+    "zip_code": null
+  },
+  "phone": {
+    "area_code": "00",
+    "extension": "",
+    "number": "00000000000",
+    "verified": false
+  },
+  "alternative_phone": {
+    "area_code": "00",
+    "extension": "",
+    "number": "00000000000"
+  },
+  "user_type": "normal",
+  "tags": [
+    "normal",
+    "messages_as_seller",
+    "user_product_seller"
+  ],
+  "logo": null,
+  "points": 0,
+  "site_id": "MLB",
+  "permalink": "http://perfil.example.com/TESTUSER0000001",
+  "seller_experience": "NEWBIE",
+  "bill_data": {
+    "accept_credit_note": null
+  },
+  "seller_reputation": {
+    "level_id": null,
+    "power_seller_status": null,
+    "transactions": {
+      "canceled": 0,
+      "completed": 0,
+      "period": "historic",
+      "ratings": {
+        "negative": 0,
+        "neutral": 0,
+        "positive": 0
+      },
+      "total": 0
+    },
+    "metrics": {
+      "sales": {
+        "period": "365 days",
+        "completed": 0
+      },
+      "claims": {
+        "period": "365 days",
+        "rate": 0,
+        "value": 0
+      },
+      "delayed_handling_time": {
+        "period": "365 days",
+        "rate": 0,
+        "value": 0
+      },
+      "cancellations": {
+        "period": "365 days",
+        "rate": 0,
+        "value": 0
+      }
+    }
+  },
+  "buyer_reputation": {
+    "canceled_transactions": 0,
+    "tags": [],
+    "transactions": {
+      "canceled": {
+        "paid": null,
+        "total": null
+      },
+      "completed": null,
+      "not_yet_rated": {
+        "paid": null,
+        "total": null,
+        "units": null
+      },
+      "period": "historic",
+      "total": null,
+      "unrated": {
+        "paid": null,
+        "total": null
+      }
+    }
+  },
+  "status": {
+    "billing": {
+      "allow": false,
+      "codes": [
+        "address_pending"
+      ]
+    },
+    "buy": {
+      "allow": true,
+      "codes": [],
+      "immediate_payment": {
+        "reasons": [],
+        "required": false
+      }
+    },
+    "confirmed_email": true,
+    "shopping_cart": {
+      "buy": "allowed",
+      "sell": "allowed"
+    },
+    "immediate_payment": false,
+    "list": {
+      "allow": false,
+      "codes": [
+        "address_pending"
+      ],
+      "immediate_payment": {
+        "reasons": [],
+        "required": false
+      }
+    },
+    "mercadoenvios": "not_accepted",
+    "mercadopago_account_type": "personal",
+    "mercadopago_tc_accepted": true,
+    "required_action": null,
+    "sell": {
+      "allow": true,
+      "codes": [],
+      "immediate_payment": {
+        "reasons": [],
+        "required": false
+      }
+    },
+    "site_status": "active",
+    "user_type": "simple_registration"
+  },
+  "secure_email": "test.user.0000001@secure.example.com",
+  "company": {
+    "brand_name": "Test Brand",
+    "city_tax_id": "",
+    "corporate_name": "Test Company",
+    "identification": "00000000000000",
+    "state_tax_id": "",
+    "cust_type_id": "CO",
+    "soft_descriptor": "TESTBRAND"
+  },
+  "credit": {
+    "consumed": 0,
+    "credit_level_id": "MLB5",
+    "rank": "newbie"
+  },
+  "context": {
+    "source": "mercadolibre",
+    "flow": "buy",
+    "device": "web-desktop",
+    "ip_address": "192.0.2.1"
+  },
+  "thumbnail": {
+    "picture_id": "000000-MLA00000000000_000000",
+    "picture_url": "https://example.com/thumbnail.jpg"
+  },
+  "registration_identifiers": [
+    {
+      "user_identifier": "00000000000",
+      "registration_type": "phone_identifier",
+      "creation_date": "2020-01-01T00:00:00.000-04:00",
+      "last_updated": "2020-01-01T00:00:00.000-04:00",
+      "metadata": {
+        "country_code": "55",
+        "number": "00000000000"
+      }
+    }
+  ]
+}

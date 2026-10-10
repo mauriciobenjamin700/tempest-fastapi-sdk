@@ -381,33 +381,40 @@ class TestUnverifiedOperationsAreMarked:
         assert "GET /pos/{id}" not in report.unverified_operations
 
     def test_an_operation_with_neither_source_is_marked(self) -> None:
-        """The 47 non-`GET` operations only our document believes in."""
-        document = _document({"/pos/{id}": {"put": {"description": "Update a POS."}}})
+        """The 11 non-`GET` operations the sandbox could not tell apart either."""
+        document = _document(
+            {"/terminals/v1/actions": {"post": {"description": "Print."}}}
+        )
 
         patched, report = apply(document)
 
-        operation = patched["paths"]["/pos/{id}"]["put"]
+        operation = patched["paths"]["/terminals/v1/actions"]["post"]
         assert UNVERIFIED_NOTE.strip() in operation["description"]
-        assert "PUT /pos/{id}" in report.unverified_operations
+        assert "POST /terminals/v1/actions" in report.unverified_operations
 
     def test_applying_twice_does_not_stack_the_note(self) -> None:
         """Regeneration is idempotent, so the docstring must be too."""
-        document = _document({"/pos/{id}": {"put": {"description": "Update a POS."}}})
+        document = _document(
+            {"/terminals/v1/actions": {"post": {"description": "Print."}}}
+        )
 
         once, _ = apply(document)
         twice, report = apply(once)
 
-        description = twice["paths"]["/pos/{id}"]["put"]["description"]
+        description = twice["paths"]["/terminals/v1/actions"]["post"]["description"]
         assert description.count("**Unverified.**") == 1
         assert report.unverified_operations == ()
 
     def test_an_operation_without_a_description_still_gets_one(self) -> None:
         """The marker must not depend on the document being polite."""
-        document = _document({"/pos/{id}": {"put": {}}})
+        document = _document({"/terminals/v1/actions": {"post": {}}})
 
         patched, _ = apply(document)
 
-        assert "**Unverified.**" in patched["paths"]["/pos/{id}"]["put"]["description"]
+        assert (
+            "**Unverified.**"
+            in patched["paths"]["/terminals/v1/actions"]["post"]["description"]
+        )
 
 
 class TestTheProbeOnlySpeaksForItsOwnVerb:
@@ -441,7 +448,7 @@ class TestTheProbeOnlySpeaksForItsOwnVerb:
             MercadoPagoClient,
         )
 
-        marked = inspect.getsource(MercadoPagoClient.update_pos)
+        marked = inspect.getsource(MercadoPagoClient.create_terminal_action)
         vouched = inspect.getsource(MercadoPagoClient.get_payment)
 
         assert "**Unverified.**" in marked

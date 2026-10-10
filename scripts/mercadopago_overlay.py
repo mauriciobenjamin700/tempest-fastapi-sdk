@@ -24,11 +24,15 @@ Four kinds of correction, in the order :func:`apply` runs them:
 * **Paths the API does not route**, where the SDK spells the same operation
   differently. The SDK's spelling wins.
 * **Operations the SDK calls and the document omits.** Added with the SDK's
-  own path and verb. Their bodies and responses are ``dict[str, Any]``:
-  nobody here has credentials to observe either, and a shape nobody
-  measured is worse than no shape.
+  own path and verb. A body or response is typed only where it was
+  observed against the sandbox (:data:`OBSERVED_SCHEMAS`); the rest stay
+  ``dict[str, Any]``, because a shape nobody measured is worse than no
+  shape.
 * **Operations the document declares and the API does not route**, with no
-  counterpart in the SDK to correct them towards. Removed.
+  counterpart in the SDK to correct them towards. Removed — or, for the
+  ones the sandbox answered as unrouted (:data:`UNROUTED_OPERATIONS`), kept
+  and marked in their docstring, since removing a public method is a
+  separate decision.
 * Nothing else. An endpoint neither source knows about is not invented
   here — that is the defect v0.259.0 shipped on OpenPix and v0.260.0
   removed.
@@ -42,9 +46,16 @@ replies first, and ``404`` when it is not routed.
 **That probe is per method *and* path, so it only validates the verb it
 uses.** Measured 2026-08-28: ``GET /v1/customers`` answers ``404`` while
 ``POST /v1/customers`` is the endpoint the SDK creates customers with. A
-``GET`` probe therefore says nothing about a ``DELETE`` operation — which
-is why every removal below is a ``GET``, and why the customer correction
-rests on the SDK alone.
+``GET`` probe therefore says nothing about a ``DELETE`` operation, and the
+customer correction rests on the SDK alone.
+
+**And a status that is not ``404`` is not proof by itself.** Measured
+:data:`SANDBOX_PROBE_DATE`: on several prefixes a policy gate answers
+before routing — ``POST /terminals/v1/<anything>`` answers ``401`` and
+``POST /post-purchase/v1/claims/<id>/<anything>`` answers ``403``, for
+paths that do not exist. :data:`SANDBOX_ROUTED_OPERATIONS` therefore
+records an operation only when its answer differs from a made-up path
+under the same prefix, and says how.
 """
 
 from __future__ import annotations
@@ -315,6 +326,193 @@ point. Without it, an operation backed by the provider's own SDK and one
 backed by a document of unrecorded origin (issue #228) look identical.
 """
 
+SANDBOX_PROBE_DATE: str = "2026-10-09"
+"""When :data:`SANDBOX_ROUTED_OPERATIONS` and :data:`OBSERVED_SCHEMAS` were observed."""
+
+SANDBOX_ROUTED_OPERATIONS: dict[tuple[str, str], str] = {
+    ("PUT", "/checkout/preferences/{}/expire"): (
+        "with the sandbox token, 404 'The preference with identifier ... was "
+        "not found'; a made-up sibling answers the generic 'resource ... not "
+        "found'"
+    ),
+    ("POST", "/v2/wallet_connect/agreements"): "403 unauthenticated; sibling 404",
+    ("DELETE", "/v2/wallet_connect/agreements/{}"): (
+        "403 unauthenticated; sibling 404"
+    ),
+    ("POST", "/v2/wallet_connect/agreements/{}/payer_token"): (
+        "403 unauthenticated; sibling 404"
+    ),
+    ("POST", "/v2/wallet_connect/discounts"): "403 unauthenticated; sibling 404",
+    ("POST", "/v2/wallet_connect/coupons"): "403 unauthenticated; sibling 404",
+    ("POST", "/v1/payouts"): "400 'Invalid site' unauthenticated; sibling 404",
+    ("PUT", "/v1/payouts/{}/transactions/{}/cancel"): (
+        "400 'Invalid site' unauthenticated; sibling 404"
+    ),
+    ("POST", "/v1/transaction-intents/process"): (
+        "400 'Invalid site' unauthenticated; sibling 405"
+    ),
+    ("DELETE", "/instore/qr/seller/collectors/{}/pos/{}/orders"): (
+        "with the sandbox token, 400 'pos_obtainment_by_external_id_error'; sibling 404"
+    ),
+    ("PUT", "/instore/qr/seller/collectors/{}/stores/{}/pos/{}/orders"): (
+        "with the sandbox token, 400 'Collector ID and Caller ID must be the "
+        "same'; sibling 404"
+    ),
+    ("POST", "/instore/orders/{}/confirmation"): "403 unauthenticated; sibling 404",
+    ("POST", "/instore/orders/qr/seller/collectors/{}/pos/{}/qrs"): (
+        "403 unauthenticated; sibling 404"
+    ),
+    ("PUT", "/instore/orders/qr/seller/collectors/{}/pos/{}/qrs"): (
+        "403 unauthenticated; sibling 404"
+    ),
+    ("DELETE", "/mpmobile/instore/qr/{}/{}"): (
+        "403 unauthenticated, 403 'Forbidden' from the service with the "
+        "sandbox token; sibling 404 'Route not found'"
+    ),
+    ("POST", "/users/{}/stores"): (
+        "400 'Malformed Json' unauthenticated; sibling 403 from the edge proxy"
+    ),
+    ("PUT", "/users/{}/stores/{}"): (
+        "404 'store_not_found' unauthenticated; sibling 403 from the edge proxy"
+    ),
+    ("DELETE", "/users/{}/stores/{}"): (
+        "404 'store_not_found' unauthenticated; sibling 403 from the edge proxy"
+    ),
+    ("POST", "/pos"): "403 unauthenticated; sibling 404",
+    ("PUT", "/pos/{}"): "403 unauthenticated; sibling 404",
+    ("DELETE", "/pos/{}"): "403 unauthenticated; sibling 404",
+    ("POST", "/v1/customers/{}/addresses"): (
+        "401 unauthenticated; sibling 404 from the customers service"
+    ),
+    ("PUT", "/v1/customers/{}/addresses/{}"): (
+        "401 unauthenticated; sibling 404 from the customers service"
+    ),
+    ("DELETE", "/v1/customers/{}/addresses/{}"): (
+        "401 unauthenticated; sibling 404 from the customers service"
+    ),
+    ("POST", "/v1/account/release_report/config"): (
+        "with the sandbox token, 400; sibling 404 'Resource ... not found'"
+    ),
+    ("PUT", "/v1/account/release_report/config"): (
+        "with the sandbox token, 400; sibling 404 'Resource ... not found'"
+    ),
+    ("POST", "/v1/account/release_report"): (
+        "with the sandbox token, 400; sibling 404 'Resource ... not found'"
+    ),
+    ("POST", "/v1/account/release_report/schedule"): (
+        "with the sandbox token, 400; sibling 404 'Resource ... not found'"
+    ),
+    ("POST", "/v1/account/settlement_report/config"): (
+        "with the sandbox token, 400 'Error binding request'; sibling 404"
+    ),
+    ("PUT", "/v1/account/settlement_report/config"): (
+        "with the sandbox token, 400 'Error binding request'; sibling 404"
+    ),
+    ("POST", "/v1/account/settlement_report"): (
+        "with the sandbox token, 400; sibling 404 'Resource ... not found'"
+    ),
+    ("POST", "/v1/account/settlement_report/schedule"): (
+        "with the sandbox token, 404 'Configuration not found. Please create "
+        "a configuration first.'; sibling 404 'Resource ... not found'"
+    ),
+}
+"""Non-``GET`` operations the sandbox showed are routed, and how.
+
+Measured :data:`SANDBOX_PROBE_DATE` with requests that cannot succeed:
+every body was malformed JSON (``{``) and every path id was
+``999999999999``, sent once without credentials and once with a sandbox
+(``TEST-``) token. Each entry is recorded only when its answer differs from
+a made-up path under the same prefix (the *sibling*) — a status alone does
+not count, because some prefixes answer ``401``/``403`` before routing.
+
+Eleven of the 47 operations nothing vouched for are not here: their answer
+matched the sibling's (``/terminals/v1``, ``/post-purchase/v1/claims/{id}``,
+two ``/point/integration-api`` refunds), or the only safe probe was the
+unauthenticated one and it matched too (the two ``DELETE .../schedule``,
+which with a token would switch a real schedule off). Those keep
+:data:`UNVERIFIED_NOTE`. Four more answered as unrouted and are in
+:data:`DEAD_OPERATIONS`.
+"""
+
+OBSERVED_SCHEMAS: dict[str, dict[str, Any]] = {
+    "AuthenticatedUserIdentification": {
+        "type": "object",
+        "properties": {
+            "type": {"type": "string"},
+            "number": {"type": "string"},
+        },
+    },
+    "AuthenticatedUserPhone": {
+        "type": "object",
+        "properties": {
+            "area_code": {"type": "string"},
+            "number": {"type": "string"},
+            "extension": {"type": "string"},
+            "verified": {"type": "boolean"},
+        },
+    },
+    "AuthenticatedUserThumbnail": {
+        "type": "object",
+        "properties": {
+            "picture_id": {"type": "string"},
+            "picture_url": {"type": "string"},
+        },
+    },
+    "AuthenticatedUserCompany": {
+        "type": "object",
+        "properties": {
+            "brand_name": {"type": "string"},
+            "corporate_name": {"type": "string"},
+            "identification": {"type": "string"},
+            "soft_descriptor": {"type": "string"},
+            "city_tax_id": {"type": "string"},
+            "state_tax_id": {"type": "string"},
+            "cust_type_id": {"type": "string"},
+        },
+    },
+    "AuthenticatedUser": {
+        "type": "object",
+        "description": (
+            "The account an access token belongs to. Every field was present "
+            f"in the response observed on {SANDBOX_PROBE_DATE}; none is "
+            "declared required, because one observation cannot say which "
+            "the provider always sends. Fields observed only as `null`, and "
+            "the nested reputation and status blocks, are not declared and "
+            "are kept as extra fields."
+        ),
+        "properties": {
+            "id": {"type": "integer"},
+            "nickname": {"type": "string"},
+            "registration_date": {"type": "string", "format": "date-time"},
+            "first_name": {"type": "string"},
+            "last_name": {"type": "string"},
+            "country_id": {"type": "string"},
+            "site_id": {"type": "string"},
+            "email": {"type": "string"},
+            "secure_email": {"type": "string"},
+            "user_type": {"type": "string"},
+            "tags": {"type": "array", "items": {"type": "string"}},
+            "points": {"type": "integer"},
+            "permalink": {"type": "string"},
+            "seller_experience": {"type": "string"},
+            "identification": {
+                "$ref": "#/components/schemas/AuthenticatedUserIdentification"
+            },
+            "phone": {"$ref": "#/components/schemas/AuthenticatedUserPhone"},
+            "thumbnail": {"$ref": "#/components/schemas/AuthenticatedUserThumbnail"},
+            "company": {"$ref": "#/components/schemas/AuthenticatedUserCompany"},
+        },
+    },
+}
+"""Schemas read off responses the sandbox returned on :data:`SANDBOX_PROBE_DATE`.
+
+Each field is one that appeared with a non-null value; its type is the JSON
+type observed. The redacted payloads they were read from are the fixtures
+under ``tests/integrations/payment/mercado_pago/fixtures/``, and a test
+validates each fixture against the generated model, so a schema here that
+stops matching its observation fails offline.
+"""
+
 
 @dataclass(frozen=True)
 class PathCorrection:
@@ -361,6 +559,9 @@ class AddedOperation:
         source (str): The SDK module and method that calls it.
         query (tuple[str, ...]): Query parameters to declare.
         has_body (bool): Whether the operation takes a request body.
+        response_schema (str | None): Name of the :data:`OBSERVED_SCHEMAS`
+            entry the ``200`` response renders as, or ``None`` when the
+            response was never observed and stays ``dict[str, Any]``.
     """
 
     method: str
@@ -371,6 +572,7 @@ class AddedOperation:
     source: str
     query: tuple[str, ...] = ()
     has_body: bool = False
+    response_schema: str | None = None
 
 
 PATH_CORRECTIONS: tuple[PathCorrection, ...] = (
@@ -433,6 +635,66 @@ DEAD_OPERATIONS: tuple[DeadOperation, ...] = (
 )
 """Operations removed because the API does not route them."""
 
+UNROUTED_OPERATIONS: tuple[DeadOperation, ...] = (
+    DeadOperation(
+        method="put",
+        path="/v1/chargebacks/{id}",
+        evidence=(
+            f"measured {SANDBOX_PROBE_DATE}, PUT /v1/chargebacks/<id> answers "
+            "404 'Request method 'PUT' is not supported' with and without the "
+            "sandbox token — the chargebacks service itself names the verb. "
+            "mercadopago 3.5.0 chargeback.py calls only search and get"
+        ),
+    ),
+    DeadOperation(
+        method="put",
+        path="/v1/payments/{id}/cancellations",
+        evidence=(
+            f"measured {SANDBOX_PROBE_DATE}, it answers the edge's 404 "
+            "'resource not found' with and without the sandbox token, the "
+            "same body a made-up path gets, while PUT /v1/payments/<id> "
+            "reaches the payments service (400 'Bad JSON format')"
+        ),
+    ),
+    DeadOperation(
+        method="patch",
+        path="/instore/integrator",
+        evidence=(
+            f"measured {SANDBOX_PROBE_DATE}, PATCH, POST and PUT on "
+            "/instore/integrator all answer the edge's 404 'resource not "
+            "found' with and without the sandbox token. The GET on the same "
+            "path was removed on 2026-08-28"
+        ),
+    ),
+    DeadOperation(
+        method="put",
+        path="/mpmobile/instore/qr/{user_id}/{external_id}",
+        evidence=(
+            f"measured {SANDBOX_PROBE_DATE}, PUT answers 405 'Not Allowed' "
+            "from the edge proxy with and without the sandbox token, as does "
+            "PATCH. POST on the same path reaches the service (400 "
+            "'invalid_caller_id' with the token), but turning the PUT into a "
+            "POST would be a guess about the operation, so it is dropped "
+            "rather than moved"
+        ),
+    ),
+)
+"""Operations the sandbox answered as unrouted, kept and marked rather than removed.
+
+Measured on :data:`SANDBOX_PROBE_DATE` with their own verb, by requests that
+cannot succeed (malformed body, an id that does not exist); each answered
+the way a made-up path does. They stay in the client because removing a
+public method is a breaking change this measurement alone does not
+justify; :data:`UNROUTED_NOTE` puts the measurement in the docstring a
+consumer reads instead.
+"""
+
+UNROUTED_NOTE: str = (
+    "\n\n**Not routed.** Probed against the sandbox and answered the way a "
+    "path the API does not route answers — {evidence}."
+)
+"""Appended to an operation in :data:`UNROUTED_OPERATIONS`, filled per entry."""
+
 ADDED_OPERATIONS: tuple[AddedOperation, ...] = (
     AddedOperation(
         method="get",
@@ -441,12 +703,14 @@ ADDED_OPERATIONS: tuple[AddedOperation, ...] = (
         summary="Get the authenticated user",
         description=(
             "Returns the account the credentials belong to.\n\n"
-            "Absent from the vendored document. The response is not "
-            "modelled — this repository has no Mercado Pago credentials to "
-            "observe its shape — so the method answers `dict[str, Any]` and "
-            "drops nothing."
+            "Absent from the vendored document. The response is modelled "
+            f"from the one the sandbox returned on {SANDBOX_PROBE_DATE}: "
+            "every declared field was observed, none is required, and "
+            "fields not declared are kept as extra fields rather than "
+            "dropped."
         ),
         source="resources/user.py:get",
+        response_schema="AuthenticatedUser",
     ),
     AddedOperation(
         method="get",
@@ -564,6 +828,8 @@ class OverlayReport:
         unverified_operations (tuple[str, ...]): ``METHOD path`` per
             operation no source vouches for, each marked in its own
             description.
+        unrouted_operations (tuple[str, ...]): ``METHOD path`` per
+            operation marked with :data:`UNROUTED_NOTE`.
         collisions (tuple[str, ...]): Corrections left in place because the
             destination already declares that verb. Reported rather than
             resolved: which of the two is right is a question about the
@@ -574,6 +840,7 @@ class OverlayReport:
     added_operations: tuple[str, ...] = ()
     removed_operations: tuple[str, ...] = ()
     unverified_operations: tuple[str, ...] = ()
+    unrouted_operations: tuple[str, ...] = ()
     collisions: tuple[str, ...] = ()
 
 
@@ -602,13 +869,15 @@ def _mark_unverified(paths: dict[str, Any]) -> tuple[str, ...]:
     Returns:
         tuple[str, ...]: ``METHOD path`` for each operation marked.
 
-    Two sources can vouch for an operation: the provider's own SDK calls
-    it, or an unauthenticated probe found it routed. Everything else is
+    Three sources can vouch for an operation: the provider's own SDK calls
+    it, an unauthenticated ``GET`` probe found it routed, or the sandbox
+    probe told it apart from a made-up sibling path. Everything else is
     carried on the word of a document whose origin is unrecorded, and
     saying so in the generated docstring is the difference between an
     operation a consumer can rely on and one they should verify before
     building on.
     """
+    unrouted = {normalise(entry.method, entry.path) for entry in UNROUTED_OPERATIONS}
     marked: list[str] = []
     for path, item in paths.items():
         if not isinstance(item, dict):
@@ -617,13 +886,47 @@ def _mark_unverified(paths: dict[str, Any]) -> tuple[str, ...]:
             if method not in _VERBS or not isinstance(operation, dict):
                 continue
             key = normalise(method, str(path))
-            if key in OFFICIAL_SDK_CALLS or key in PROBED_OPERATIONS:
+            if (
+                key in OFFICIAL_SDK_CALLS
+                or key in PROBED_OPERATIONS
+                or key in SANDBOX_ROUTED_OPERATIONS
+                or key in unrouted
+            ):
                 continue
             description = str(operation.get("description") or "")
             if UNVERIFIED_NOTE.strip() in description:
                 continue
             operation["description"] = description + UNVERIFIED_NOTE
             marked.append(f"{method.upper()} {path}")
+    return tuple(marked)
+
+
+def _mark_unrouted(paths: dict[str, Any]) -> tuple[str, ...]:
+    """Append :data:`UNROUTED_NOTE` to every operation in :data:`UNROUTED_OPERATIONS`.
+
+    Args:
+        paths (dict[str, Any]): The document's ``paths`` block, patched in
+            place.
+
+    Returns:
+        tuple[str, ...]: ``METHOD path`` for each operation marked. An
+        operation already carrying the note is skipped, so applying twice
+        does not stack it.
+    """
+    marked: list[str] = []
+    for unrouted in UNROUTED_OPERATIONS:
+        item = paths.get(unrouted.path)
+        if not isinstance(item, dict):
+            continue
+        operation = item.get(unrouted.method)
+        if not isinstance(operation, dict):
+            continue
+        description = str(operation.get("description") or "")
+        if "**Not routed.**" in description:
+            continue
+        note = UNROUTED_NOTE.format(evidence=unrouted.evidence)
+        operation["description"] = description + note
+        marked.append(f"{unrouted.method.upper()} {unrouted.path}")
     return tuple(marked)
 
 
@@ -636,6 +939,11 @@ def _operation(added: AddedOperation) -> dict[str, Any]:
     Returns:
         dict[str, Any]: The operation object, ready to attach to a path.
     """
+    response: dict[str, Any] = dict(_FREE_OBJECT)
+    description = "The provider's response, unmodelled."
+    if added.response_schema is not None:
+        response = {"$ref": f"#/components/schemas/{added.response_schema}"}
+        description = f"The provider's response, as observed on {SANDBOX_PROBE_DATE}."
     parameters: list[dict[str, Any]] = []
     for name in _path_parameters(added.path):
         parameters.append(
@@ -666,8 +974,8 @@ def _operation(added: AddedOperation) -> dict[str, Any]:
         "parameters": parameters,
         "responses": {
             "200": {
-                "description": "The provider's response, unmodelled.",
-                "content": {"application/json": {"schema": dict(_FREE_OBJECT)}},
+                "description": description,
+                "content": {"application/json": {"schema": response}},
             }
         },
     }
@@ -750,6 +1058,11 @@ def apply(document: dict[str, Any]) -> tuple[dict[str, Any], OverlayReport]:
         if not any(key in _VERBS for key in item):
             paths.pop(dead.path)
 
+    schemas = patched.setdefault("components", {}).setdefault("schemas", {})
+    if isinstance(schemas, dict):
+        for name, schema in OBSERVED_SCHEMAS.items():
+            schemas.setdefault(name, copy.deepcopy(schema))
+
     added: list[str] = []
     for operation in ADDED_OPERATIONS:
         item = paths.setdefault(operation.path, {})
@@ -763,6 +1076,7 @@ def apply(document: dict[str, Any]) -> tuple[dict[str, Any], OverlayReport]:
         added_operations=tuple(added),
         removed_operations=tuple(removed),
         unverified_operations=_mark_unverified(paths),
+        unrouted_operations=_mark_unrouted(paths),
         collisions=tuple(collisions),
     )
 
@@ -770,15 +1084,20 @@ def apply(document: dict[str, Any]) -> tuple[dict[str, Any], OverlayReport]:
 __all__: list[str] = [
     "ADDED_OPERATIONS",
     "DEAD_OPERATIONS",
+    "OBSERVED_SCHEMAS",
     "OFFICIAL_SDK_CALLS",
     "OFFICIAL_SDK_VERSION",
     "PATH_CORRECTIONS",
     "PROBED_OPERATIONS",
     "PROBE_DATE",
+    "SANDBOX_PROBE_DATE",
+    "SANDBOX_ROUTED_OPERATIONS",
     "SDK_COVERAGE_DATE",
     "SDK_COVERAGE_DISAGREEMENTS",
     "SDK_COVERAGE_TOTALS",
     "SDK_COVERAGE_URL",
+    "UNROUTED_NOTE",
+    "UNROUTED_OPERATIONS",
     "UNVERIFIED_NOTE",
     "AddedOperation",
     "DeadOperation",

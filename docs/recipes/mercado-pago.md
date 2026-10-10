@@ -423,31 +423,78 @@ Então nem toda operação do `MercadoPagoClient` tem o mesmo lastro. Das 147:
 | Balde | Qtd | O que responde por ela |
 | --- | --- | --- |
 | O SDK oficial chama | 65 | O provedor, no próprio `mercadopago` do PyPI |
-| Sondada viva | 35 | Requisição sem credencial respondeu `401`/`403`/`400` |
-| Nada responde | 47 | Só o documento vendorizado |
+| Sondada viva | 35 | `GET` sem credencial respondeu `401`/`403`/`400` (2026-08-28) |
+| Separada no sandbox | 32 | Requisição que não pode dar certo respondeu diferente de um path inventado no mesmo prefixo (2026-10-09) |
+| Não roteada | 4 | O sandbox respondeu como responde a um path que não existe |
+| Nada responde | 11 | Resposta igual à do path inventado: nenhuma sonda distingue |
 
-**As 47 dizem isso na própria docstring:**
+**As 11 dizem isso na própria docstring:**
 
 ```
 **Unverified.** Neither the provider's SDK nor an unauthenticated probe
 covers this operation, so nothing here confirms the API routes it.
 ```
 
-!!! warning "Não quer dizer que estão erradas"
-    Quer dizer que ninguém verificou. São todas `POST`/`PUT`/`PATCH`/`DELETE`,
-    e isso não é coincidência: a sonda que separa rota viva de rota morta é por
-    **método e path**. Um `404` em `GET` não fala pelo `DELETE` no mesmo path —
-    medido, `GET /v1/customers` responde `404` enquanto
-    `POST /v1/customers` é onde o SDK oficial cria cliente.
+**E as 4 não roteadas também**, com a medição: `cancel_payment`,
+`update_chargeback`, `create_qr_integrator_config` e `create_instore_order_v1`
+carregam `**Not routed.**` e o que o sandbox respondeu. Elas continuam no
+cliente, porque remover método público é outra decisão, mas não espere que
+funcionem. No caso de `cancel_payment`, a rota vizinha `PUT /v1/payments/{id}`
+(`update_payment`) é chamada pelo SDK oficial e respondeu do próprio serviço de
+pagamentos na mesma sondagem.
 
-    Mandar `POST`, `PUT` ou `DELETE` para uma API de pagamento em produção só
-    para descobrir se rotea não é forma aceitável de responder a pergunta. Elas
-    ficam marcadas em vez de adivinhadas.
+!!! warning "Status diferente de `404` não prova rota"
+    Medido no sandbox em 2026-10-09: em vários prefixos um gate de política
+    responde **antes** do roteamento. `POST /terminals/v1/<qualquer-coisa>`
+    responde `401` e `POST /post-purchase/v1/claims/<id>/<qualquer-coisa>`
+    responde `403`, para paths que não existem. Por isso o balde "separada no
+    sandbox" só conta uma operação quando a resposta dela difere da de um path
+    inventado sob o mesmo prefixo, e as 11 que não diferiram ficam marcadas.
 
-Se você usa uma dessas e ela funciona, isso é evidência que o repositório não
-tem — vale abrir issue com o que você observou.
+    A sonda também é por **método e path**: `GET /v1/customers` responde `404`
+    enquanto `POST /v1/customers` é onde o SDK oficial cria cliente.
 
-Para ver os três baldes:
+Se você usa uma das 11 e ela funciona, isso é evidência que o repositório não
+tem. Vale abrir issue com o que você observou.
+
+### `get_authenticated_user` devolve um modelo
+
+`GET /users/me` foi observado no sandbox, e o método responde
+`AuthenticatedUser` em vez de `dict[str, Any]`. Todo campo declarado veio com
+valor na resposta observada, e nenhum é obrigatório. O que não foi declarado
+(reputação, `status`, campos que vieram `null`) fica em `model_extra`, sem
+perda:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
+    DEFAULT_BASE_URL,
+    AuthenticatedUser,
+    MercadoPagoClient,
+)
+
+
+async def main() -> None:
+    """Mostra a conta dona do token."""
+    http: HTTPClient = HTTPClient(
+        base_url=DEFAULT_BASE_URL,
+        default_headers={"Authorization": "Bearer <seu access token>"},
+    )
+    async with http:
+        user: AuthenticatedUser = await MercadoPagoClient(http).get_authenticated_user()
+    print(user.id, user.site_id, user.tags)
+
+
+asyncio.run(main())
+```
+
+As outras seis operações que o SDK oficial chama e o documento omitia
+(advanced payments e `search_chargebacks`) continuam `dict[str, Any]`. O token
+de teste recebeu `403` nelas, então não houve resposta para observar.
+
+Para ver os baldes:
 
 ```bash
 make mercadopago-diff
@@ -469,3 +516,6 @@ make mercadopago-diff
   `x-signature` e `x-request-id`, recusa com 401 antes do handler e entrega o
   `data_id` assinado — o corpo não é assinado.
 - Notificação de QR Code não é assinada — não passe por `verify_signature`.
+- Nem toda operação tem o mesmo lastro: 11 dizem `**Unverified.**` e 4 dizem
+  `**Not routed.**` na docstring. `get_authenticated_user` devolve
+  `AuthenticatedUser`, observado no sandbox.
