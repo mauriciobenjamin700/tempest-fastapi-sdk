@@ -13,28 +13,6 @@ em 2026-10-09, com uma conta vendedora de teste (`vendor/mercadopago-evidence.md
 seções 8 e 9). **Quebra compatibilidade** para quem usava a API de Payments:
 veja o guia de migração.
 
-### Removed
-
-- **Mercado Pago: a API de Payments (`/v1/payments`) saiu do cliente.** O
-  painel do provedor a marca *"Esta API será descontinuada em breve"* ao
-  escolher o tipo de API de uma aplicação. Saem `create_payment`,
-  `search_payments`, `get_payment`, `update_payment`, `cancel_payment`,
-  `create_refund`, `list_refunds` e `get_refund`, e os modelos que só elas
-  alcançavam (`Payment`, `PaymentRequest`, `PaymentPayer`,
-  `PaymentUpdateRequest`, `PaymentSearchResult`, `PaymentItem`,
-  `PaymentAdditionalInfo`, `RefundRequest` e os enums e respostas
-  derivados). O SDK oficial ainda chama essas 7 rotas; a regra "o que o SDK
-  chama, a gente modela" ganhou essa exceção, fixada por teste.
-- **Mercado Pago: as 7 operações de QR presencial que a própria spec marca
-  `deprecated: true`** (`create_instore_order_v1`, `delete_instore_order_v1`,
-  `create_instore_order_v2`, `get_instore_order_v2`, `delete_instore_order_v2`,
-  `create_dynamic_qr_order`, `create_qr_tramma_dynamic`).
-- **`create_pix_payment`, `get_pix_payment`, `parse_pix_payment`,
-  `PixPayment`, `PixPointOfInteraction`, `PixTransactionData` e
-  `PAYMENTS_PATH`** (`integrations.payment.mercado_pago`). Existiam para
-  recuperar o QR que o `Payment` gerado descartava; na API de Orders o QR vem
-  declarado em `transactions.payments[].payment_method`.
-
 ### Added
 
 - **`CardProvider`, `CardChargeRequest` e `CardCharge`**
@@ -86,6 +64,28 @@ veja o guia de migração.
 
 ### Changed
 
+- **A suíte local caiu de ~3m30s para ~2m15s** (12 núcleos lógicos, 6
+  físicos; duas medições de cada). Quatro causas, todas medidas:
+  - `make test` usava `-n auto`, que com `psutil` instalado conta núcleos
+    **físicos** — 6 workers numa máquina de 12 lógicos. Agora é
+    `-n logical`: 2m14s e 2m21s, contra 4m11s e 4m16s com `auto` no mesmo
+    código.
+  - Cada worker abria um pool de BLAS/OpenMP do tamanho da máquina; o alvo
+    agora fixa `OMP_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1` e
+    `MKL_NUM_THREADS=1` (2m52s e 2m50s, contra 3m15s–3m38s sem o teto, com
+    12 workers).
+  - `--dist worksteal`: worker ocioso pega a fila de quem está atrasado.
+  - `tests/test_agent_docs_guard.py` percorria `.claude/worktrees/` inteiro
+    (40 worktrees, 25 GB com os `.venv`) na coleta e só depois filtrava: 33 s
+    de uma coleta de 49 s sob cProfile, pagos por worker. Agora não entra no
+    diretório e calcula a lista uma vez — coleta de 30,7 s para 7,1 s, mesma
+    lista de 7 arquivos.
+  - Os testes que rodam mypy (`test_queue_typing`, `test_generic_bounds`)
+    usam cache persistente por repositório em vez de um cache frio em
+    `tmp_path`: 21,7 s para 0,58 s com o cache quente. Provado que o cache
+    não mascara defeito: com o bound antigo do `ServiceT` reintroduzido, o
+    teste falhou com o cache quente.
+
 - **Mercado Pago: estados de `Order` e `OrderTransactionPayment` aceitam
   qualquer string.** Antes, `create_order` levantava `ValidationError` ao
   criar um Pix (`waiting_transfer` fora do enum do pagamento), e ler uma
@@ -110,6 +110,28 @@ veja o guia de migração.
   (`update_chargeback`, `create_qr_integrator_config`) e 11 seguem marcadas.
   A mesma régua mostrou que 11 das operações `GET` "sondadas vivas" não se
   sustentam (issue #488).
+
+### Removed
+
+- **Mercado Pago: a API de Payments (`/v1/payments`) saiu do cliente.** O
+  painel do provedor a marca *"Esta API será descontinuada em breve"* ao
+  escolher o tipo de API de uma aplicação. Saem `create_payment`,
+  `search_payments`, `get_payment`, `update_payment`, `cancel_payment`,
+  `create_refund`, `list_refunds` e `get_refund`, e os modelos que só elas
+  alcançavam (`Payment`, `PaymentRequest`, `PaymentPayer`,
+  `PaymentUpdateRequest`, `PaymentSearchResult`, `PaymentItem`,
+  `PaymentAdditionalInfo`, `RefundRequest` e os enums e respostas
+  derivados). O SDK oficial ainda chama essas 7 rotas; a regra "o que o SDK
+  chama, a gente modela" ganhou essa exceção, fixada por teste.
+- **Mercado Pago: as 7 operações de QR presencial que a própria spec marca
+  `deprecated: true`** (`create_instore_order_v1`, `delete_instore_order_v1`,
+  `create_instore_order_v2`, `get_instore_order_v2`, `delete_instore_order_v2`,
+  `create_dynamic_qr_order`, `create_qr_tramma_dynamic`).
+- **`create_pix_payment`, `get_pix_payment`, `parse_pix_payment`,
+  `PixPayment`, `PixPointOfInteraction`, `PixTransactionData` e
+  `PAYMENTS_PATH`** (`integrations.payment.mercado_pago`). Existiam para
+  recuperar o QR que o `Payment` gerado descartava; na API de Orders o QR vem
+  declarado em `transactions.payments[].payment_method`.
 
 ## [0.310.0] — 2026-10-09
 
