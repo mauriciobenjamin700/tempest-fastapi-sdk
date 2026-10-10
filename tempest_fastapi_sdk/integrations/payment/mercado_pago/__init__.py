@@ -1,7 +1,7 @@
 """The whole Mercado Pago surface, ready to import.
 
 ``pip install tempest-fastapi-sdk`` and you have the Mercado Pago schemas
-and all 143 operations — Checkout Pro preferences, payments, orders,
+and all 147 operations — Checkout Pro preferences, payments, orders,
 subscriptions, Point, chargebacks — plus the pieces the specification does
 not describe.
 
@@ -28,7 +28,7 @@ on disk differ from what that script produces.
 Two halves, and it is worth knowing which is which:
 
 - **Generated** — ``MercadoPagoClient`` and the schema classes. Whatever
-  Mercado Pago's own OpenAPI says, verbatim. Unlike OpenPix, 142 of the 143
+  Mercado Pago's own OpenAPI says, verbatim. Unlike OpenPix, 146 of the 147
   operations carry an ``operationId``, so the method names are the
   provider's, not ours.
 - **Hand-written** — ``DEFAULT_BASE_URL`` (the spec declares a single
@@ -43,13 +43,13 @@ Two halves, and it is worth knowing which is which:
     inside your own code — mixing the two units up is a factor-of-100 error
     in the direction nobody notices until a customer is charged 100x.
 
-!!! warning "The Pix QR is not on the generated ``Payment``"
-    The specification never declares ``point_of_interaction`` on a payment,
-    and ``BaseSchema`` is ``extra="ignore"`` — so the QR the API returns is
-    dropped during validation, silently. Use :func:`create_pix_payment` /
-    :func:`get_pix_payment`, or :func:`parse_pix_payment` over a body you
-    already have. Details in
-    :mod:`~tempest_fastapi_sdk.integrations.payment.mercado_pago.pix`.
+!!! warning "Charge through the Orders API"
+    The provider's dashboard labels the Payments API (``/v1/payments``)
+    *"Esta API será descontinuada em breve"*, and this package no longer
+    models it. Pix and card go through ``/v1/orders`` — the
+    ``MercadoPagoPixProvider`` and ``MercadoPagoCardProvider`` adapters in
+    :mod:`tempest_fastapi_sdk.integrations.payment.adapters` do it over the
+    canonical contracts.
 
 !!! danger "The webhook signature is ported, not yet seen live"
     The vendored specification does not describe it, so the algorithm comes
@@ -85,27 +85,6 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago.money import (
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.money import (
     to_cents as to_cents,
-)
-from tempest_fastapi_sdk.integrations.payment.mercado_pago.pix import (
-    PAYMENTS_PATH as PAYMENTS_PATH,
-)
-from tempest_fastapi_sdk.integrations.payment.mercado_pago.pix import (
-    PixPayment as PixPayment,
-)
-from tempest_fastapi_sdk.integrations.payment.mercado_pago.pix import (
-    PixPointOfInteraction as PixPointOfInteraction,
-)
-from tempest_fastapi_sdk.integrations.payment.mercado_pago.pix import (
-    PixTransactionData as PixTransactionData,
-)
-from tempest_fastapi_sdk.integrations.payment.mercado_pago.pix import (
-    create_pix_payment as create_pix_payment,
-)
-from tempest_fastapi_sdk.integrations.payment.mercado_pago.pix import (
-    get_pix_payment as get_pix_payment,
-)
-from tempest_fastapi_sdk.integrations.payment.mercado_pago.pix import (
-    parse_pix_payment as parse_pix_payment,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
     DEFAULT_SIGNATURE_VERSIONS as DEFAULT_SIGNATURE_VERSIONS,
@@ -151,20 +130,13 @@ _HAND_WRITTEN: tuple[str, ...] = (
     "MERCADO_PAGO_DATA_ID_QUERY",
     "MERCADO_PAGO_REQUEST_ID_HEADER",
     "MERCADO_PAGO_SIGNATURE_HEADER",
-    "PAYMENTS_PATH",
     "MercadoPagoEvent",
     "MercadoPagoWebhookEvent",
-    "PixPayment",
-    "PixPointOfInteraction",
-    "PixTransactionData",
     "SignatureHeader",
     "build_manifest",
-    "create_pix_payment",
     "format_amount",
     "from_cents",
-    "get_pix_payment",
     "make_mercado_pago_webhook_dependency",
-    "parse_pix_payment",
     "parse_signature_header",
     "sign_manifest",
     "to_cents",
@@ -254,11 +226,15 @@ __all__: list[str] = [
     "MERCADO_PAGO_DATA_ID_QUERY",
     "MERCADO_PAGO_REQUEST_ID_HEADER",
     "MERCADO_PAGO_SIGNATURE_HEADER",
-    "PAYMENTS_PATH",
     "AddOrderTransactionBody",
     "AddOrderTransactionResponse",
     "Address",
     "AttachClaimFileResponse",
+    "AuthenticatedUser",
+    "AuthenticatedUserCompany",
+    "AuthenticatedUserIdentification",
+    "AuthenticatedUserPhone",
+    "AuthenticatedUserThumbnail",
     "AuthorizedPayment",
     "AuthorizedPaymentPayment",
     "AuthorizedPaymentSearchResult",
@@ -268,7 +244,6 @@ __all__: list[str] = [
     "AutoRecurringFrequencyType",
     "BankAccount",
     "BankAccountAccountType",
-    "CancelPaymentBody",
     "CaptureOrderResponse",
     "Card",
     "CardCardholder",
@@ -327,8 +302,6 @@ __all__: list[str] = [
     "CreatePointRefundIntentBody",
     "CreatePointRefundIntentResponse",
     "CreateQrIntegratorConfigBody",
-    "CreateRefundResponse",
-    "CreateRefundResponseSource",
     "CreateStoreBody",
     "CreateTerminalActionBody",
     "CreateTerminalActionBodyConfig",
@@ -370,8 +343,6 @@ __all__: list[str] = [
     "GetMerchantOrderResponseCollector",
     "GetMerchantOrderResponsePayer",
     "GetPointRefundIntentResponse",
-    "GetRefundResponse",
-    "GetRefundResponseSource",
     "GetTerminalActionResponse",
     "GetWalletAgreementResponse",
     "GetWalletAgreementResponseAgreementData",
@@ -384,12 +355,11 @@ __all__: list[str] = [
     "ListPaymentMethodsResponseItem",
     "ListPaymentMethodsResponseItemDeferredCapture",
     "ListPaymentMethodsResponseItemFinancialInstitutionsItem",
+    "ListPaymentMethodsResponseItemProcessingModesItem",
     "ListPaymentMethodsResponseItemStatus",
     "ListPointDevicesResponse",
     "ListPointDevicesResponseDevicesItem",
     "ListPointDevicesResponseDevicesItemOperatingMode",
-    "ListRefundsResponse",
-    "ListRefundsResponseSource",
     "ListTerminalsResponse",
     "ListTerminalsResponseTerminalsItem",
     "MediationResolution",
@@ -450,38 +420,17 @@ __all__: list[str] = [
     "Pagination",
     "Payer",
     "PayerType",
-    "Payment",
-    "PaymentAdditionalInfo",
-    "PaymentAdditionalInfoPayer",
-    "PaymentAdditionalInfoShipments",
     "PaymentAnalyticsResponse",
     "PaymentAnalyticsResponsePeriod",
-    "PaymentCard",
-    "PaymentCardCardholder",
     "PaymentFees",
-    "PaymentItem",
     "PaymentListResponse",
     "PaymentMethod",
     "PaymentMethodListResponse",
     "PaymentMethodStoreRequest",
     "PaymentMethodType",
-    "PaymentOperationType",
-    "PaymentPayer",
-    "PaymentPayer2",
-    "PaymentPaymentTypeId",
-    "PaymentProcessingMode",
-    "PaymentRequest",
     "PaymentResponse",
     "PaymentResponseStatus",
-    "PaymentSearchResult",
-    "PaymentStatus",
-    "PaymentTransactionDetails",
-    "PaymentUpdateRequest",
-    "PaymentUpdateRequestStatus",
     "Phone",
-    "PixPayment",
-    "PixPointOfInteraction",
-    "PixTransactionData",
     "Pos",
     "PosRequest",
     "Preference",
@@ -503,7 +452,6 @@ __all__: list[str] = [
     "RefundListResponse",
     "RefundOrderResponse",
     "RefundRefundMode",
-    "RefundRequest",
     "RefundResponse",
     "RefundResponseStatus",
     "RefundSource",
@@ -524,7 +472,6 @@ __all__: list[str] = [
     "SearchMerchantOrdersResponse",
     "SearchMerchantOrdersResponseCollector",
     "SearchMerchantOrdersResponsePayer",
-    "SearchPaymentsRange",
     "SearchPosResponse",
     "SearchPreferencesResponse",
     "SearchStoresResponse",
@@ -557,6 +504,7 @@ __all__: list[str] = [
     "SubscriptionSummarized",
     "SubscriptionUpdateRequest",
     "UpdateAdvancedPaymentBody",
+    "UpdateAdvancedPaymentBodyStatus",
     "UpdateAdvancedPaymentBodyWalletPayment",
     "UpdateAdvancedPaymentResponse",
     "UpdateAdvancedPaymentResponsePayer",
@@ -586,12 +534,9 @@ __all__: list[str] = [
     "WebhookNotificationType",
     "WebhookSignatureHeader",
     "build_manifest",
-    "create_pix_payment",
     "format_amount",
     "from_cents",
-    "get_pix_payment",
     "make_mercado_pago_webhook_dependency",
-    "parse_pix_payment",
     "parse_signature_header",
     "sign_manifest",
     "to_cents",

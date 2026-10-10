@@ -715,6 +715,9 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.integrations.payment.base.PixPaymentEvent
 ::: tempest_fastapi_sdk.integrations.payment.base.PaymentStatus
 ::: tempest_fastapi_sdk.integrations.payment.base.PixEventType
+::: tempest_fastapi_sdk.integrations.payment.base.CardProvider
+::: tempest_fastapi_sdk.integrations.payment.base.CardChargeRequest
+::: tempest_fastapi_sdk.integrations.payment.base.CardCharge
 ::: tempest_fastapi_sdk.integrations.payment.base.PayoutProvider
 ::: tempest_fastapi_sdk.integrations.payment.base.PayoutRequest
 ::: tempest_fastapi_sdk.integrations.payment.base.PayoutResult
@@ -726,10 +729,18 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.integrations.payment.settlement.PixPaymentConfirmation
 ::: tempest_fastapi_sdk.integrations.payment.settlement.PixConfirmationOutcome
 
+### `tempest_fastapi_sdk.integrations.payment.routing`
+
+::: tempest_fastapi_sdk.integrations.payment.routing.PixProviderRouter
+
 ### `tempest_fastapi_sdk.integrations.payment.adapters`
 
 ::: tempest_fastapi_sdk.integrations.payment.adapters.openpix.OpenPixPixProvider
 ::: tempest_fastapi_sdk.integrations.payment.adapters.openpix.OpenPixPayoutProvider
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago.MercadoPagoPixProvider
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago.MercadoPagoCardProvider
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago.MercadoPagoOrderDelivery
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago.make_mercado_pago_webhook_delivery_dependency
 
 ## WhatsApp (zap-api)
 
@@ -792,12 +803,6 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.money.to_cents
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.money.from_cents
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.money.format_amount
-::: tempest_fastapi_sdk.integrations.payment.mercado_pago.pix.PixPayment
-::: tempest_fastapi_sdk.integrations.payment.mercado_pago.pix.PixPointOfInteraction
-::: tempest_fastapi_sdk.integrations.payment.mercado_pago.pix.PixTransactionData
-::: tempest_fastapi_sdk.integrations.payment.mercado_pago.pix.create_pix_payment
-::: tempest_fastapi_sdk.integrations.payment.mercado_pago.pix.get_pix_payment
-::: tempest_fastapi_sdk.integrations.payment.mercado_pago.pix.parse_pix_payment
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.MercadoPagoWebhookEvent
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.SignatureHeader
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.DEFAULT_SIGNATURE_VERSIONS

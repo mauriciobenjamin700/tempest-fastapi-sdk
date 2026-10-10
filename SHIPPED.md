@@ -1362,6 +1362,39 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   que foi sondado, quando e com que código; `make mercadopago-diff` separa os
   baldes. Testes: `TestUnverifiedOperationsAreMarked`,
   `TestTheProbeOnlySpeaksForItsOwnVerb`.
+- **Mercado Pago pela API de Orders: Pix, cartão e rollout (unreleased)** —
+  `MercadoPagoPixProvider` e `MercadoPagoCardProvider` sobre `/v1/orders`,
+  contrato novo `CardProvider` / `CardCharge` / `CardChargeRequest`
+  (`PaymentStatus.AUTHORIZED`), `make_mercado_pago_webhook_delivery_dependency`
+  + `MercadoPagoOrderDelivery` (verifica e relê a order; notificação crua
+  recusada; `404` é resposta) e `PixProviderRouter`. A API de Payments e as 7
+  operações de QR presencial marcadas `deprecated` saíram do cliente, com os
+  modelos que só elas alcançavam; `Order` aceita os estados que o sandbox
+  devolveu fora do enum. Ciclo inteiro medido no sandbox com vendedora de
+  teste (Pix criar/ler/cancelar; cartão aprovar, recusar com 402, autorizar +
+  capturar, autorizar + cancelar, reembolso parcial e total). Receitas de
+  credenciais de teste e de teste de webhook. Falta: um Pix pago, uma entrega
+  de webhook real e o `PayoutProvider` do Mercado Pago. Testes:
+  `test_mercado_pago_adapter.py` (fixtures reais redigidas),
+  `test_mercado_pago_sandbox.py` (`network`), `test_deprecations.py`,
+  `test_contract.py`, `test_routing.py`.
+- **Sandbox do Mercado Pago: `/users/me` tipado e as 47 classificadas
+  (unreleased)** — issue #226. Medido em 2026-10-09 com token `TEST-`, só
+  com requisição que não pode dar certo (corpo malformado, id inexistente),
+  comparada a um path inventado sob o mesmo prefixo, porque em vários
+  prefixos `401`/`403` sai antes do roteamento. Das 47 não-`GET` sem
+  evidência, o overlay registra 32 roteadas (`SANDBOX_ROUTED_OPERATIONS`), 4
+  não roteadas (`UNROUTED_OPERATIONS`) e 11 inconclusivas. No cliente, depois
+  da remoção da API de Payments e do QR presencial descontinuado, ficam 27
+  que perderam o `**Unverified.**`, 2 métodos com `**Not routed.**`
+  (`update_chargeback`, `create_qr_integrator_config`) e as 11 ainda
+  marcadas. `get_authenticated_user` devolve `AuthenticatedUser` (+4
+  objetos aninhados), lido da resposta observada (`OBSERVED_SCHEMAS`). As
+  outras seis do SDK seguem `dict[str, Any]`: o PolicyAgent deu `403` ao
+  token de teste. Evidência em `vendor/mercadopago-evidence.md` §8, incluindo
+  a reavaliação das 35 sondadas de 2026-08-28. Testes:
+  `test_sandbox_observations.py`, com fixture redigida e dois testes
+  `network`.
 - **Campo declarado com o tipo errado deixa de quebrar a leitura (v0.269.0)**
   — issue #238. A Woovi devolve `expiresIn` inteiro e o documento declara
   `string`, então toda resposta de cobrança falhava na validação Pydantic —

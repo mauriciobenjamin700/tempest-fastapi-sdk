@@ -25,10 +25,10 @@ from .schemas import (
     AddOrderTransactionResponse,
     Address,
     AttachClaimFileResponse,
+    AuthenticatedUser,
     AuthorizedPayment,
     AuthorizedPaymentSearchResult,
     AuthorizedPaymentStatus,
-    CancelPaymentBody,
     CaptureOrderResponse,
     Card,
     CardToken,
@@ -55,7 +55,6 @@ from .schemas import (
     CreatePointRefundIntentBody,
     CreatePointRefundIntentResponse,
     CreateQrIntegratorConfigBody,
-    CreateRefundResponse,
     CreateStoreBody,
     CreateTerminalActionBody,
     CreateTerminalActionResponse,
@@ -75,13 +74,11 @@ from .schemas import (
     GetInstallmentsResponseItem,
     GetMerchantOrderResponse,
     GetPointRefundIntentResponse,
-    GetRefundResponse,
     GetTerminalActionResponse,
     GetWalletAgreementResponse,
     ListIdentificationTypesResponseItem,
     ListPaymentMethodsResponseItem,
     ListPointDevicesResponse,
-    ListRefundsResponse,
     ListTerminalsResponse,
     MediationResolution,
     MerchantOrderStatus,
@@ -92,24 +89,18 @@ from .schemas import (
     OrderSearchResult,
     OrderStatus,
     OrderTransactionPayment,
-    Payment,
-    PaymentRequest,
-    PaymentSearchResult,
-    PaymentUpdateRequest,
     Pos,
     PosRequest,
     Preference,
     PreferenceRequest,
     ProcessTransactionIntentBody,
     RefundOrderResponse,
-    RefundRequest,
     ReportConfig,
     ReportListResult,
     ReportRequest,
     ReportTask,
     SaveCardRequest,
     SearchMerchantOrdersResponse,
-    SearchPaymentsRange,
     SearchPosResponse,
     SearchPreferencesResponse,
     SearchStoresResponse,
@@ -479,9 +470,6 @@ class MercadoPagoClient:
 
         Expires a payment preference. Enter the preference ID and it will be expired.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             id (int): Preference ID
 
@@ -509,8 +497,10 @@ class MercadoPagoClient:
 
         Configures the integrator settings for QR in-store payments.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
+        **Not routed.** Probed against the sandbox and answered the way a path the API
+        does not route answers — measured 2026-10-09, PATCH, POST and PUT on
+        /instore/integrator all answer the edge's 404 'resource not found' with and
+        without the sandbox token. The GET on the same path was removed on 2026-08-28.
 
         Args:
             body (CreateQrIntegratorConfigBody): The request body.
@@ -532,86 +522,6 @@ class MercadoPagoClient:
         response.raise_for_status()
         return None
 
-    async def create_qr_tramma_dynamic(
-        self,
-        user_id: int,
-        external_pos_id: str,
-        *,
-        body: dict[str, Any],
-    ) -> None:
-        """Create a QR trama (deprecated Dynamic QR).
-
-        **Available in:** Argentina, Brazil, Mexico (MLA, MLB, MLM) **Migration guide:**
-        https://www.mercadopago.com/developers/en/docs/qr-code/orders/create-order
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
-        Args:
-            user_id (int): The user_id value.
-            external_pos_id (str): The external_pos_id value.
-            body (dict[str, Any]): The request body.
-
-        Returns:
-            None: Nothing — the operation answers 200 with no body.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                no error status.
-        """
-        path = (
-            f"//instore/orders/qr/seller/collectors/{_path_param(user_id)}/pos"
-            f"/{_path_param(external_pos_id)}/qrs"
-        )
-        payload = _dump(body)
-        response = await self._client.request(
-            "POST",
-            path,
-            json=payload,
-        )
-        response.raise_for_status()
-        return None
-
-    async def create_dynamic_qr_order(
-        self,
-        user_id: int,
-        external_pos_id: str,
-        *,
-        body: dict[str, Any],
-    ) -> None:
-        """Create dynamic QR order (deprecated).
-
-        **Available in:** Argentina, Brazil, Mexico (MLA, MLB, MLM) **Migration guide:**
-        https://www.mercadopago.com/developers/en/docs/qr-code/orders/create-order
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
-        Args:
-            user_id (int): The user_id value.
-            external_pos_id (str): The external_pos_id value.
-            body (dict[str, Any]): The request body.
-
-        Returns:
-            None: Nothing — the operation answers 200 with no body.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                no error status.
-        """
-        path = (
-            f"//instore/orders/qr/seller/collectors/{_path_param(user_id)}/pos"
-            f"/{_path_param(external_pos_id)}/qrs"
-        )
-        payload = _dump(body)
-        response = await self._client.request(
-            "PUT",
-            path,
-            json=payload,
-        )
-        response.raise_for_status()
-        return None
-
     async def confirm_cashout_qr(
         self,
         merchant_order_id: str,
@@ -622,9 +532,6 @@ class MercadoPagoClient:
 
         Confirms the cashout status for a QR-based cash withdrawal order. **Available
         in:** Argentina, Brazil (MLA, MLB)
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             merchant_order_id (str): The merchant_order_id value.
@@ -641,116 +548,6 @@ class MercadoPagoClient:
         payload = _dump(body)
         response = await self._client.request(
             "POST",
-            path,
-            json=payload,
-        )
-        response.raise_for_status()
-        return None
-
-    async def get_instore_order_v2(
-        self,
-        user_id: int,
-        external_pos_id: str,
-    ) -> None:
-        """Get in-store order (deprecated V2).
-
-        **Migration guide:**
-        https://www.mercadopago.com/developers/en/docs/qr-code/orders/create-order
-
-        Args:
-            user_id (int): The user_id value.
-            external_pos_id (str): The external_pos_id value.
-
-        Returns:
-            None: Nothing — the operation answers 200 with no body.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                no error status.
-        """
-        path = (
-            f"//instore/qr/seller/collectors/{_path_param(user_id)}/pos"
-            f"/{_path_param(external_pos_id)}/orders"
-        )
-        response = await self._client.request(
-            "GET",
-            path,
-        )
-        response.raise_for_status()
-        return None
-
-    async def delete_instore_order_v2(
-        self,
-        user_id: int,
-        external_pos_id: str,
-    ) -> None:
-        """Delete in-store order (deprecated V2).
-
-        **Migration guide:**
-        https://www.mercadopago.com/developers/en/docs/qr-code/orders/create-order
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
-        Args:
-            user_id (int): The user_id value.
-            external_pos_id (str): The external_pos_id value.
-
-        Returns:
-            None: Nothing — the operation answers 200 with no body.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                no error status.
-        """
-        path = (
-            f"//instore/qr/seller/collectors/{_path_param(user_id)}/pos"
-            f"/{_path_param(external_pos_id)}/orders"
-        )
-        response = await self._client.request(
-            "DELETE",
-            path,
-        )
-        response.raise_for_status()
-        return None
-
-    async def create_instore_order_v2(
-        self,
-        user_id: int,
-        external_store_id: str,
-        external_pos_id: str,
-        *,
-        body: dict[str, Any],
-    ) -> None:
-        """Create in-store order (deprecated V2).
-
-        **Migration guide:**
-        https://www.mercadopago.com/developers/en/docs/qr-code/orders/create-order
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
-        Args:
-            user_id (int): The user_id value.
-            external_store_id (str): The external_store_id value.
-            external_pos_id (str): The external_pos_id value.
-            body (dict[str, Any]): The request body.
-
-        Returns:
-            None: Nothing — the operation answers 200 with no body.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                no error status.
-        """
-        path = (
-            f"//instore/qr/seller/collectors/{_path_param(user_id)}/stores"
-            f"/{_path_param(external_store_id)}/pos/{_path_param(external_pos_id)}"
-            f"/orders"
-        )
-        payload = _dump(body)
-        response = await self._client.request(
-            "PUT",
             path,
             json=payload,
         )
@@ -927,75 +724,6 @@ class MercadoPagoClient:
             "PUT",
             path,
             json=payload,
-        )
-        response.raise_for_status()
-        return None
-
-    async def create_instore_order_v1(
-        self,
-        user_id: int,
-        external_id: str,
-        *,
-        body: dict[str, Any],
-    ) -> None:
-        """Create in-store order (deprecated V1).
-
-        **Migration guide:**
-        https://www.mercadopago.com/developers/en/docs/qr-code/orders/create-order
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
-        Args:
-            user_id (int): The user_id value.
-            external_id (str): The external_id value.
-            body (dict[str, Any]): The request body.
-
-        Returns:
-            None: Nothing — the operation answers 200 with no body.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                no error status.
-        """
-        path = f"/mpmobile/instore/qr/{_path_param(user_id)}/{_path_param(external_id)}"
-        payload = _dump(body)
-        response = await self._client.request(
-            "PUT",
-            path,
-            json=payload,
-        )
-        response.raise_for_status()
-        return None
-
-    async def delete_instore_order_v1(
-        self,
-        user_id: int,
-        external_id: str,
-    ) -> None:
-        """Delete in-store order (deprecated V1).
-
-        **Migration guide:**
-        https://www.mercadopago.com/developers/en/docs/qr-code/orders/create-order
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
-        Args:
-            user_id (int): The user_id value.
-            external_id (str): The external_id value.
-
-        Returns:
-            None: Nothing — the operation answers 200 with no body.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                no error status.
-        """
-        path = f"/mpmobile/instore/qr/{_path_param(user_id)}/{_path_param(external_id)}"
-        response = await self._client.request(
-            "DELETE",
-            path,
         )
         response.raise_for_status()
         return None
@@ -1288,9 +1016,6 @@ class MercadoPagoClient:
         Creates a point of sale in a store to receive payments for products or services.
         Each POS will have a unique QR code linked to it.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             body (PosRequest): The request body.
 
@@ -1343,9 +1068,6 @@ class MercadoPagoClient:
     ) -> Pos:
         """Update a point of sale.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             id (str): The id value.
             body (PosRequest): The request body.
@@ -1372,9 +1094,6 @@ class MercadoPagoClient:
         id: str,
     ) -> None:
         """Delete a point of sale.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             id (str): POS identifier to delete
@@ -2250,20 +1969,20 @@ class MercadoPagoClient:
         response.raise_for_status()
         return None
 
-    async def get_authenticated_user(self) -> dict[str, Any]:
+    async def get_authenticated_user(self) -> AuthenticatedUser:
         """Get the authenticated user.
 
         Returns the account the credentials belong to.
 
-        Absent from the vendored document. The response is not modelled — this
-        repository has no Mercado Pago credentials to observe its shape — so the method
-        answers `dict[str, Any]` and drops nothing.
+        Absent from the vendored document. The response is modelled from the one the
+        sandbox returned on 2026-10-09: every declared field was observed, none is
+        required, and fields not declared are kept as extra fields rather than dropped.
 
         Declared by `scripts/mercadopago_overlay.py` from mercadopago 3.5.0
         `resources/user.py:get`.
 
         Returns:
-            dict[str, Any]: The 200 response body, validated.
+            AuthenticatedUser: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2275,7 +1994,7 @@ class MercadoPagoClient:
             path,
         )
         response.raise_for_status()
-        return _validate(dict[str, Any], response.json())
+        return _validate(AuthenticatedUser, response.json())
 
     async def list_pos(
         self,
@@ -2308,9 +2027,6 @@ class MercadoPagoClient:
         body: CreateStoreBody,
     ) -> None:
         """Create a store.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             user_id (int): The user_id value.
@@ -2374,9 +2090,6 @@ class MercadoPagoClient:
     ) -> Store:
         """Update a store.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             user_id (int): The user_id value.
             id (str): The id value.
@@ -2405,9 +2118,6 @@ class MercadoPagoClient:
         id: str,
     ) -> None:
         """Delete a store.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             user_id (int): The user_id value.
@@ -2455,9 +2165,6 @@ class MercadoPagoClient:
 
         Generates a one-time releases report for the specified date range. Returns a
         task ID to poll for completion via the task endpoint.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             body (ReportRequest): The request body.
@@ -2507,9 +2214,6 @@ class MercadoPagoClient:
         Creates the configuration for automatic releases report generation. Defines
         columns, schedule frequency, file format, and optional SFTP delivery.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             body (ReportConfig): The request body.
 
@@ -2536,9 +2240,6 @@ class MercadoPagoClient:
         body: ReportConfig,
     ) -> ReportConfig:
         """Update releases report configuration.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             body (ReportConfig): The request body.
@@ -2582,9 +2283,6 @@ class MercadoPagoClient:
         """Enable automatic releases report generation.
 
         Enables scheduled report generation based on the configured frequency.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Returns:
             None: Nothing — the operation answers 200 with no body.
@@ -2738,9 +2436,6 @@ class MercadoPagoClient:
         Generates a one-time all-transactions report for the specified date range.
         Returns a task ID to poll for completion.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             body (ReportRequest): The request body.
 
@@ -2790,9 +2485,6 @@ class MercadoPagoClient:
         generation. Defines columns, schedule frequency, file format, and optional SFTP
         delivery.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             body (ReportConfig): The request body.
 
@@ -2819,9 +2511,6 @@ class MercadoPagoClient:
         body: ReportConfig,
     ) -> ReportConfig:
         """Update settlements report configuration.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             body (ReportConfig): The request body.
@@ -2863,9 +2552,6 @@ class MercadoPagoClient:
 
     async def enable_settlement_report_schedule(self) -> None:
         """Enable automatic settlements report generation.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Returns:
             None: Nothing — the operation answers 200 with no body.
@@ -3415,8 +3101,11 @@ class MercadoPagoClient:
     ) -> None:
         """Upload chargeback documentation.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
+        **Not routed.** Probed against the sandbox and answered the way a path the API
+        does not route answers — measured 2026-10-09, PUT /v1/chargebacks/<id> answers
+        404 'Request method 'PUT' is not supported' with and without the sandbox token —
+        the chargebacks service itself names the verb. mercadopago 3.5.0 chargeback.py
+        calls only search and get.
 
         Args:
             id (str): The id value.
@@ -3540,9 +3229,6 @@ class MercadoPagoClient:
 
         Adds a shipping or billing address to a customer profile.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             customer_id (str): The customer_id value.
             body (Address): The request body.
@@ -3602,9 +3288,6 @@ class MercadoPagoClient:
     ) -> Address:
         """Update a customer address.
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             customer_id (str): The customer_id value.
             address_id (str): The address_id value.
@@ -3636,9 +3319,6 @@ class MercadoPagoClient:
         address_id: str,
     ) -> None:
         """Delete a customer address.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             customer_id (str): The customer_id value.
@@ -4350,316 +4030,6 @@ class MercadoPagoClient:
         response.raise_for_status()
         return _validate(list[GetInstallmentsResponseItem], response.json())
 
-    async def create_payment(
-        self,
-        *,
-        body: PaymentRequest,
-        x_idempotency_key: UUID | None = None,
-    ) -> Payment:
-        """Create a payment.
-
-        Creates a payment. For card payments, generate a card token client-side via
-        MercadoPago.js before calling this endpoint. For cash/offline methods (Boleto,
-        OXXO, Pix), the response includes a payment URL in
-        `transaction_details.external_resource_url`. **Idempotency**: Include
-        `X-Idempotency-Key` to safely retry on network errors without risk of double
-        charges. **Recommendation**: For new integrations, prefer the Orders API (`POST
-        /v1/orders`). **Idempotent:** Supports `X-Idempotency-Key` header to safely
-        retry without duplicate charges. **Webhook events triggered:** payment,
-        merchant_order
-
-        Args:
-            body (PaymentRequest): The request body.
-            x_idempotency_key (UUID | None): Unique key per payment attempt. If you
-                retry with the same key and the original payment was processed, MP
-                returns the original result without creating a duplicate. Omitted from
-                the request headers when None.
-
-        Returns:
-            Payment: The 200 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401, 403, 422.
-        """
-        path = "/v1/payments"
-        headers: dict[str, str] = {}
-        if x_idempotency_key is not None:
-            headers["X-Idempotency-Key"] = str(x_idempotency_key)
-        payload = _dump(body)
-        response = await self._client.request(
-            "POST",
-            path,
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
-        return _validate(Payment, response.json())
-
-    async def search_payments(
-        self,
-        *,
-        sort: str,
-        criteria: SearchSubscriptionPlansCriteria,
-        external_reference: str | None = None,
-        range: SearchPaymentsRange | None = None,
-        begin_date: datetime | None = None,
-        end_date: datetime | None = None,
-        status: str | None = None,
-        store_id: str | None = None,
-        pos_id: str | None = None,
-        collector_id: str | None = None,
-        payer_id: str | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-    ) -> PaymentSearchResult:
-        """Search payments.
-
-        Args:
-            sort (str): The sort value.
-            criteria (SearchSubscriptionPlansCriteria): The criteria value.
-            external_reference (str | None): The external_reference value. Omitted from
-                the query when None.
-            range (SearchPaymentsRange | None): The range value. Omitted from the query
-                when None.
-            begin_date (datetime | None): The begin_date value. Omitted from the query
-                when None.
-            end_date (datetime | None): The end_date value. Omitted from the query when
-                None.
-            status (str | None): The status value. Omitted from the query when None.
-            store_id (str | None): The store_id value. Omitted from the query when None.
-            pos_id (str | None): The pos_id value. Omitted from the query when None.
-            collector_id (str | None): The collector.id value. Omitted from the query
-                when None.
-            payer_id (str | None): The payer.id value. Omitted from the query when None.
-            limit (int | None): The limit value. Omitted from the query when None.
-            offset (int | None): The offset value. Omitted from the query when None.
-
-        Returns:
-            PaymentSearchResult: The 200 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401, 403.
-        """
-        path = "/v1/payments/search"
-        params: dict[str, Any] = {}
-        params["sort"] = _param(sort)
-        params["criteria"] = _param(criteria)
-        if external_reference is not None:
-            params["external_reference"] = _param(external_reference)
-        if range is not None:
-            params["range"] = _param(range)
-        if begin_date is not None:
-            params["begin_date"] = _param(begin_date)
-        if end_date is not None:
-            params["end_date"] = _param(end_date)
-        if status is not None:
-            params["status"] = _param(status)
-        if store_id is not None:
-            params["store_id"] = _param(store_id)
-        if pos_id is not None:
-            params["pos_id"] = _param(pos_id)
-        if collector_id is not None:
-            params["collector.id"] = _param(collector_id)
-        if payer_id is not None:
-            params["payer.id"] = _param(payer_id)
-        if limit is not None:
-            params["limit"] = _param(limit)
-        if offset is not None:
-            params["offset"] = _param(offset)
-        response = await self._client.request(
-            "GET",
-            path,
-            params=params,
-        )
-        response.raise_for_status()
-        return _validate(PaymentSearchResult, response.json())
-
-    async def get_payment(
-        self,
-        id: int,
-    ) -> Payment:
-        """Get payment by ID.
-
-        Args:
-            id (int): Payment ID
-
-        Returns:
-            Payment: The 200 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401, 403, 404.
-        """
-        path = f"/v1/payments/{_path_param(id)}"
-        response = await self._client.request(
-            "GET",
-            path,
-        )
-        response.raise_for_status()
-        return _validate(Payment, response.json())
-
-    async def update_payment(
-        self,
-        id: int,
-        *,
-        body: PaymentUpdateRequest,
-    ) -> Payment:
-        """Update or capture a payment.
-
-        Update payment fields or capture an authorized payment. To capture an authorized
-        two-step payment: send `{"capture": true}`. To cancel an authorized payment:
-        send `{"status": "cancelled"}`.
-
-        Args:
-            id (int): The id value.
-            body (PaymentUpdateRequest): The request body.
-
-        Returns:
-            Payment: The 200 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401, 403, 404.
-        """
-        path = f"/v1/payments/{_path_param(id)}"
-        payload = _dump(body)
-        response = await self._client.request(
-            "PUT",
-            path,
-            json=payload,
-        )
-        response.raise_for_status()
-        return _validate(Payment, response.json())
-
-    async def cancel_payment(
-        self,
-        id: int,
-        *,
-        body: CancelPaymentBody,
-    ) -> Payment:
-        """Cancel a payment.
-
-        Cancels a payment that is in `pending` or `authorized` status. Only payments
-        that have not yet been captured or processed can be cancelled. For approved
-        payments use the refunds endpoint instead.
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
-        Args:
-            id (int): Payment ID to cancel
-            body (CancelPaymentBody): The request body.
-
-        Returns:
-            Payment: The 200 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401, 404, 422, 429.
-        """
-        path = f"/v1/payments/{_path_param(id)}/cancellations"
-        payload = _dump(body)
-        response = await self._client.request(
-            "PUT",
-            path,
-            json=payload,
-        )
-        response.raise_for_status()
-        return _validate(Payment, response.json())
-
-    async def list_refunds(
-        self,
-        id: int,
-    ) -> ListRefundsResponse:
-        """List refunds for a payment.
-
-        Args:
-            id (int): The id value.
-
-        Returns:
-            ListRefundsResponse: The 200 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401, 404.
-        """
-        path = f"/v1/payments/{_path_param(id)}/refunds"
-        response = await self._client.request(
-            "GET",
-            path,
-        )
-        response.raise_for_status()
-        return _validate(ListRefundsResponse, response.json())
-
-    async def create_refund(
-        self,
-        id: int,
-        *,
-        body: RefundRequest | None = None,
-        x_idempotency_key: UUID | None = None,
-    ) -> CreateRefundResponse:
-        """Create a refund.
-
-        Creates a full or partial refund for an approved payment. Omit the `amount`
-        field for a full refund. Partial refunds are supported; multiple partials are
-        allowed up to the original transaction amount. **Idempotent:** Supports
-        `X-Idempotency-Key` header to safely retry without duplicate charges.
-
-        Args:
-            id (int): Payment ID to refund
-            body (RefundRequest): The request body. Optional.
-            x_idempotency_key (UUID | None): The X-Idempotency-Key value. Omitted from
-                the request headers when None.
-
-        Returns:
-            CreateRefundResponse: The 201 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401, 404.
-        """
-        path = f"/v1/payments/{_path_param(id)}/refunds"
-        headers: dict[str, str] = {}
-        if x_idempotency_key is not None:
-            headers["X-Idempotency-Key"] = str(x_idempotency_key)
-        payload = None if body is None else _dump(body)
-        response = await self._client.request(
-            "POST",
-            path,
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
-        return _validate(CreateRefundResponse, response.json())
-
-    async def get_refund(
-        self,
-        id: int,
-        refund_id: int,
-    ) -> GetRefundResponse:
-        """Get a specific refund.
-
-        Args:
-            id (int): The id value.
-            refund_id (int): The refund_id value.
-
-        Returns:
-            GetRefundResponse: The 200 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 404.
-        """
-        path = f"/v1/payments/{_path_param(id)}/refunds/{_path_param(refund_id)}"
-        response = await self._client.request(
-            "GET",
-            path,
-        )
-        response.raise_for_status()
-        return _validate(GetRefundResponse, response.json())
-
     async def create_payout(
         self,
         *,
@@ -4668,9 +4038,6 @@ class MercadoPagoClient:
         """Create a batch of payout transactions.
 
         **Available in:** Argentina, Mexico (MLA, MLM)
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             body (CreatePayoutBody): The request body.
@@ -4727,9 +4094,6 @@ class MercadoPagoClient:
 
         **Available in:** Argentina, Mexico (MLA, MLM)
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             payout_id (str): The payout_id value.
             transaction_id (str): The transaction_id value.
@@ -4762,9 +4126,6 @@ class MercadoPagoClient:
         Creates a Pix or bank transfer disbursement for Brazil. The `payment_method_id`
         determines the method: - `pix` — instant Pix transfer (available 24/7) -
         `bank_transfer` — TED/DOC bank transfer **Available in:** Brazil (MLB)
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             body (ProcessTransactionIntentBody): The request body.
@@ -4824,9 +4185,6 @@ class MercadoPagoClient:
         Creates an authorization agreement for Wallet Connect. Returns an agreement
         token to redirect the payer to MP for wallet authorization. **Available in:**
         Argentina, Brazil, Mexico (MLA, MLB, MLM)
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             body (CreateWalletAgreementBody): The request body.
@@ -4912,9 +4270,6 @@ class MercadoPagoClient:
 
         **Available in:** Argentina, Brazil, Mexico (MLA, MLB, MLM)
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             agreement_id (str): The agreement_id value.
             client_id (str | None): The client.id value. Omitted from the query when
@@ -4956,9 +4311,6 @@ class MercadoPagoClient:
 
         **Available in:** Argentina, Brazil, Mexico (MLA, MLB, MLM)
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             agreement_id (str): The agreement_id value.
             body (CreateWalletPayerTokenBody): The request body.
@@ -4998,9 +4350,6 @@ class MercadoPagoClient:
 
         **Available in:** Argentina, Brazil, Mexico (MLA, MLB, MLM)
 
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
-
         Args:
             body (ValidateWalletCouponBody): The request body.
             x_payer_token (str): The x-payer-token value.
@@ -5036,9 +4385,6 @@ class MercadoPagoClient:
         Validates a coupon and returns discount amount and legal terms.
 
         **Available in:** Argentina, Brazil, Mexico (MLA, MLB, MLM)
-
-        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
-        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             body (CreateWalletDiscountBody): The request body.

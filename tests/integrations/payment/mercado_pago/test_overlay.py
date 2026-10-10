@@ -29,6 +29,7 @@ from mercadopago_overlay import (  # noqa: E402
     OFFICIAL_SDK_CALLS,
     PATH_CORRECTIONS,
     PROBED_OPERATIONS,
+    PROVIDER_DEPRECATED_SDK_CALLS,
     UNVERIFIED_NOTE,
     apply,
 )
@@ -270,10 +271,15 @@ class TestTheSdkIsTheAuthority:
         return found
 
     def test_every_call_the_sdk_makes_is_modelled(self) -> None:
-        """Zero in the direction that matters."""
+        """Zero in the direction that matters, except what the provider retires.
+
+        The official SDK still calls the Payments API; the provider's
+        dashboard says it is going away and this package dropped it. The
+        gap must be exactly that set, so any other omission still fails.
+        """
         missing = OFFICIAL_SDK_CALLS - self._generated_operations()
 
-        assert not missing, sorted(missing)
+        assert missing == PROVIDER_DEPRECATED_SDK_CALLS, sorted(missing)
 
     def test_the_client_exposes_the_operations_that_were_added(self) -> None:
         """The additions reach the class a consumer imports."""
@@ -361,14 +367,14 @@ class TestUnverifiedOperationsAreMarked:
     def test_an_operation_the_sdk_calls_is_not_marked(self) -> None:
         """The provider calling it is the strongest evidence available."""
         document = _document(
-            {"/v1/payments/{id}": {"get": {"description": "Get a payment."}}}
+            {"/v1/orders/{id}": {"get": {"description": "Get an order."}}}
         )
 
         patched, report = apply(document)
 
-        operation = patched["paths"]["/v1/payments/{id}"]["get"]
+        operation = patched["paths"]["/v1/orders/{id}"]["get"]
         assert UNVERIFIED_NOTE.strip() not in operation["description"]
-        assert "GET /v1/payments/{id}" not in report.unverified_operations
+        assert "GET /v1/orders/{id}" not in report.unverified_operations
 
     def test_a_probed_operation_is_not_marked(self) -> None:
         """A route that answered 401 exists, whatever the document's origin."""
@@ -381,33 +387,40 @@ class TestUnverifiedOperationsAreMarked:
         assert "GET /pos/{id}" not in report.unverified_operations
 
     def test_an_operation_with_neither_source_is_marked(self) -> None:
-        """The 47 non-`GET` operations only our document believes in."""
-        document = _document({"/pos/{id}": {"put": {"description": "Update a POS."}}})
+        """The 11 non-`GET` operations the sandbox could not tell apart either."""
+        document = _document(
+            {"/terminals/v1/actions": {"post": {"description": "Print."}}}
+        )
 
         patched, report = apply(document)
 
-        operation = patched["paths"]["/pos/{id}"]["put"]
+        operation = patched["paths"]["/terminals/v1/actions"]["post"]
         assert UNVERIFIED_NOTE.strip() in operation["description"]
-        assert "PUT /pos/{id}" in report.unverified_operations
+        assert "POST /terminals/v1/actions" in report.unverified_operations
 
     def test_applying_twice_does_not_stack_the_note(self) -> None:
         """Regeneration is idempotent, so the docstring must be too."""
-        document = _document({"/pos/{id}": {"put": {"description": "Update a POS."}}})
+        document = _document(
+            {"/terminals/v1/actions": {"post": {"description": "Print."}}}
+        )
 
         once, _ = apply(document)
         twice, report = apply(once)
 
-        description = twice["paths"]["/pos/{id}"]["put"]["description"]
+        description = twice["paths"]["/terminals/v1/actions"]["post"]["description"]
         assert description.count("**Unverified.**") == 1
         assert report.unverified_operations == ()
 
     def test_an_operation_without_a_description_still_gets_one(self) -> None:
         """The marker must not depend on the document being polite."""
-        document = _document({"/pos/{id}": {"put": {}}})
+        document = _document({"/terminals/v1/actions": {"post": {}}})
 
         patched, _ = apply(document)
 
-        assert "**Unverified.**" in patched["paths"]["/pos/{id}"]["put"]["description"]
+        assert (
+            "**Unverified.**"
+            in patched["paths"]["/terminals/v1/actions"]["post"]["description"]
+        )
 
 
 class TestTheProbeOnlySpeaksForItsOwnVerb:
@@ -441,8 +454,8 @@ class TestTheProbeOnlySpeaksForItsOwnVerb:
             MercadoPagoClient,
         )
 
-        marked = inspect.getsource(MercadoPagoClient.update_pos)
-        vouched = inspect.getsource(MercadoPagoClient.get_payment)
+        marked = inspect.getsource(MercadoPagoClient.create_terminal_action)
+        vouched = inspect.getsource(MercadoPagoClient.get_order)
 
         assert "**Unverified.**" in marked
         assert "**Unverified.**" not in vouched

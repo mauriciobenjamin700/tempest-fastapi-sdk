@@ -2,6 +2,79 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## Não lançada — Mercado Pago: a API de Payments saiu do SDK
+
+O painel do Mercado Pago marca a API de Payments (`/v1/payments`) como
+*"Esta API será descontinuada em breve"*, e o SDK passou a cobrar pela API de
+Orders. Quem usava o caminho de Payments troca assim:
+
+| Antes | Agora |
+| --- | --- |
+| `client.create_payment(body=PaymentRequest(...))` com Pix | `MercadoPagoPixProvider(http).create_pix_charge(PixChargeRequest(...))` |
+| `client.create_payment(...)` com `token` de cartão | `MercadoPagoCardProvider(http).create_card_charge(CardChargeRequest(...))` |
+| `create_pix_payment` / `get_pix_payment` / `parse_pix_payment` | `create_pix_charge` / `get_pix_charge` — o QR vem em `PixCharge.br_code` e `qr_code_base64` |
+| `client.get_payment(id)` | `get_pix_charge(order_id)` / `get_card_charge(order_id)`, ou `client.get_order(order_id)` |
+| `client.update_payment(id, body={"capture": True})` | `capture_card_charge(order_id)` |
+| `client.update_payment(id, body={"status": "cancelled"})` | `cancel_pix_charge(order_id)` / `cancel_card_charge(order_id)` |
+| `client.create_refund(id, ...)` | `refund_card_charge(order_id, amount_cents=...)` |
+| `PixPayment`, `Payment` | `PixCharge`, `CardCharge`, ou o `Order` gerado |
+| as 7 operações de QR presencial V1/V2 e QR dinâmico antigo | sem substituto neste SDK: a própria spec as marca `deprecated`, e a API de Orders da spec só declara `type: online` |
+
+**Removidos sem substituto direto** (o equivalente, quando existe, é o
+`Order` gerado ou os contratos `PixCharge` / `CardCharge`):
+
+- **Métodos de `MercadoPagoClient`:** `create_payment`, `search_payments`,
+  `get_payment`, `update_payment`, `cancel_payment`, `create_refund`,
+  `list_refunds`, `get_refund`, e os 7 de QR presencial —
+  `create_instore_order_v1`, `delete_instore_order_v1`,
+  `create_instore_order_v2`, `get_instore_order_v2`,
+  `delete_instore_order_v2`, `create_dynamic_qr_order`,
+  `create_qr_tramma_dynamic`.
+- **Funções e constantes:** `create_pix_payment`, `get_pix_payment`,
+  `parse_pix_payment`, `PAYMENTS_PATH`.
+- **Modelos e enums:** `PixPayment`, `PixPointOfInteraction`,
+  `PixTransactionData`, `Payment`, `PaymentRequest`, `PaymentPayer`,
+  `PaymentPayer2`, `PaymentCard`, `PaymentCardCardholder`, `PaymentItem`,
+  `PaymentAdditionalInfo`, `PaymentAdditionalInfoPayer`,
+  `PaymentAdditionalInfoShipments`, `PaymentTransactionDetails`,
+  `PaymentOperationType`, `PaymentPaymentTypeId`, `PaymentProcessingMode`,
+  `PaymentSearchResult`, `SearchPaymentsRange`, `PaymentUpdateRequest`,
+  `PaymentUpdateRequestStatus`, `CancelPaymentBody`, `RefundRequest`,
+  `CreateRefundResponse`, `CreateRefundResponseSource`, `GetRefundResponse`,
+  `GetRefundResponseSource`, `ListRefundsResponse`,
+  `ListRefundsResponseSource` e `PaymentStatus` de `mercado_pago`.
+  O `PaymentStatus` **canônico**, de `integrations.payment`, continua — é o
+  que os contratos usam.
+
+**Tipos que mudaram:**
+
+- `Order.status`, `Order.status_detail`, `OrderTransactionPayment.status` e
+  `OrderTransactionPayment.status_detail` passam de enum para `Enum | str`:
+  o sandbox devolveu valores fora da lista. Um `match` exaustivo sobre o enum
+  precisa de um ramo para a string.
+- `get_authenticated_user()` devolve `AuthenticatedUser` em vez de
+  `dict[str, Any]`: troque `user["id"]` por `user.id` (o que não foi
+  declarado está em `user.model_extra`).
+- Dois enums ganharam nome próprio: `ListPaymentMethodsResponseItemProcessingModesItem`
+  (processing mode de `list_payment_methods`) e `UpdateAdvancedPaymentBodyStatus`
+  (status do corpo de `update_advanced_payment`).
+
+Três diferenças que pedem ajuste além do nome:
+
+1. **O id muda de forma.** Uma order tem id de texto (`ORD…`), não número.
+   Se você guardava o id do pagamento como inteiro, a coluna vira texto.
+2. **O webhook muda de recurso.** A notificação deve passar a apontar para a
+   order — é o que o documento do provedor descreve (ações `order.created` /
+   `order.updated`); uma entrega real de Orders ainda não foi observada aqui.
+   Troque a leitura manual de `data.id` por
+   `make_mercado_pago_webhook_delivery_dependency`, e marque o evento de
+   Order na configuração de webhooks da aplicação.
+3. **A credencial precisa ser de uma aplicação "API de Orders".** Medido: a
+   aplicação Checkout Pro de uma conta vendedora de teste responde `401
+   Unauthorized use of live credentials` a cobrança direta. A receita
+   [contas e credenciais de teste](recipes/mercado-pago-sandbox.md) mostra o
+   caminho.
+
 ## 0.309.0 — outras mudanças de comportamento
 
 Além da recusa de chave em `filters` (seção abaixo), a 0.309.0 traz estas

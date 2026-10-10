@@ -2,6 +2,82 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## Unreleased — Mercado Pago: the Payments API left the SDK
+
+Mercado Pago's dashboard labels the Payments API (`/v1/payments`) *"Esta API
+será descontinuada em breve"* (this API will be discontinued soon), and the
+SDK now charges through the Orders API. If you used the Payments path,
+switch like this:
+
+| Before | Now |
+| --- | --- |
+| `client.create_payment(body=PaymentRequest(...))` with Pix | `MercadoPagoPixProvider(http).create_pix_charge(PixChargeRequest(...))` |
+| `client.create_payment(...)` with a card `token` | `MercadoPagoCardProvider(http).create_card_charge(CardChargeRequest(...))` |
+| `create_pix_payment` / `get_pix_payment` / `parse_pix_payment` | `create_pix_charge` / `get_pix_charge` — the QR is on `PixCharge.br_code` and `qr_code_base64` |
+| `client.get_payment(id)` | `get_pix_charge(order_id)` / `get_card_charge(order_id)`, or `client.get_order(order_id)` |
+| `client.update_payment(id, body={"capture": True})` | `capture_card_charge(order_id)` |
+| `client.update_payment(id, body={"status": "cancelled"})` | `cancel_pix_charge(order_id)` / `cancel_card_charge(order_id)` |
+| `client.create_refund(id, ...)` | `refund_card_charge(order_id, amount_cents=...)` |
+| `PixPayment`, `Payment` | `PixCharge`, `CardCharge`, or the generated `Order` |
+| the 7 V1/V2 in-store QR and old dynamic QR operations | no replacement in this SDK: the spec itself marks them `deprecated`, and the spec's Orders API only declares `type: online` |
+
+**Removed with no direct replacement** (the equivalent, where one exists, is
+the generated `Order` or the `PixCharge` / `CardCharge` contracts):
+
+- **`MercadoPagoClient` methods:** `create_payment`, `search_payments`,
+  `get_payment`, `update_payment`, `cancel_payment`, `create_refund`,
+  `list_refunds`, `get_refund`, and the 7 in-store QR ones —
+  `create_instore_order_v1`, `delete_instore_order_v1`,
+  `create_instore_order_v2`, `get_instore_order_v2`,
+  `delete_instore_order_v2`, `create_dynamic_qr_order`,
+  `create_qr_tramma_dynamic`.
+- **Functions and constants:** `create_pix_payment`, `get_pix_payment`,
+  `parse_pix_payment`, `PAYMENTS_PATH`.
+- **Models and enums:** `PixPayment`, `PixPointOfInteraction`,
+  `PixTransactionData`, `Payment`, `PaymentRequest`, `PaymentPayer`,
+  `PaymentPayer2`, `PaymentCard`, `PaymentCardCardholder`, `PaymentItem`,
+  `PaymentAdditionalInfo`, `PaymentAdditionalInfoPayer`,
+  `PaymentAdditionalInfoShipments`, `PaymentTransactionDetails`,
+  `PaymentOperationType`, `PaymentPaymentTypeId`, `PaymentProcessingMode`,
+  `PaymentSearchResult`, `SearchPaymentsRange`, `PaymentUpdateRequest`,
+  `PaymentUpdateRequestStatus`, `CancelPaymentBody`, `RefundRequest`,
+  `CreateRefundResponse`, `CreateRefundResponseSource`, `GetRefundResponse`,
+  `GetRefundResponseSource`, `ListRefundsResponse`,
+  `ListRefundsResponseSource`, and `mercado_pago`'s `PaymentStatus`. The
+  **canonical** `PaymentStatus`, from `integrations.payment`, stays — it is
+  what the contracts use.
+
+**Types that changed:**
+
+- `Order.status`, `Order.status_detail`, `OrderTransactionPayment.status` and
+  `OrderTransactionPayment.status_detail` go from an enum to `Enum | str`:
+  the sandbox returned values outside the list. An exhaustive `match` over
+  the enum needs a branch for the string.
+- `get_authenticated_user()` returns `AuthenticatedUser` instead of
+  `dict[str, Any]`: replace `user["id"]` with `user.id` (what is not declared
+  is in `user.model_extra`).
+- Two enums got names of their own:
+  `ListPaymentMethodsResponseItemProcessingModesItem` (the
+  `list_payment_methods` processing mode) and
+  `UpdateAdvancedPaymentBodyStatus` (the `update_advanced_payment` body
+  status).
+
+Three differences that need more than a rename:
+
+1. **The id changes shape.** An order id is text (`ORD…`), not a number. If
+   you stored the payment id as an integer, the column becomes text.
+2. **The webhook points at another resource.** The notification should now
+   name the order — that is what the provider's document describes
+   (`order.created` / `order.updated` actions); a live Orders delivery has
+   not been observed here yet. Replace manual reads of `data.id` with
+   `make_mercado_pago_webhook_delivery_dependency`, and tick the Order event
+   in the application's webhook settings.
+3. **The credential must come from an "Orders API" application.** Measured:
+   a test seller's Checkout Pro application answers `401 Unauthorized use of
+   live credentials` to a direct charge. The
+   [test accounts and credentials](recipes/mercado-pago-sandbox.md) recipe
+   shows the way.
+
 ## 0.309.0 — other behaviour changes
 
 Besides the `filters` key refusal (next section), 0.309.0 brings these

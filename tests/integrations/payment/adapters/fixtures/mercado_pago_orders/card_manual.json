@@ -1,0 +1,51 @@
+{
+  "status": 201,
+  "body": {
+    "id": "ORDTST00000000000000000000000005",
+    "type": "online",
+    "processing_mode": "automatic",
+    "external_reference": "tempest-orders-card-manual",
+    "total_amount": "100.00",
+    "total_paid_amount": "100.00",
+    "country_code": "BRA",
+    "user_id": "1000000001",
+    "status": "action_required",
+    "status_detail": "waiting_capture",
+    "capture_mode": "manual",
+    "currency": "BRL",
+    "created_date": "2026-10-10T01:58:39.396Z",
+    "last_updated_date": "2026-10-10T01:58:40.539Z",
+    "integration_data": {
+      "application_id": "2000000002"
+    },
+    "config": {
+      "online": {
+        "transaction_security": {
+          "validation": "never"
+        }
+      }
+    },
+    "transactions": {
+      "payments": [
+        {
+          "id": "PAY00000000000000000000000006",
+          "amount": "100.00",
+          "paid_amount": "100.00",
+          "reference_id": "0000000000",
+          "status": "action_required",
+          "status_detail": "waiting_capture",
+          "payment_method": {
+            "id": "visa",
+            "type": "credit_card",
+            "token": "00000000000000000000000000000000",
+            "installments": 1,
+            "installment_amount": "100.00",
+            "transaction_security": {
+              "validation": "never"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -389,6 +389,12 @@ def main() -> int:
             f"  overlay: marked {len(report.unverified_operations)} operations "
             f"as unverified (no SDK call, no probe)"
         )
+    for entry in report.deprecated_operations:
+        print(f"  overlay: deprecated {entry}")
+    if report.pruned_schemas:
+        print(f"  overlay: pruned {', '.join(report.pruned_schemas)}")
+    for entry in report.unrouted_operations:
+        print(f"  overlay: marked not routed {entry}")
     for entry in report.collisions:
         print(f"  overlay: skipped — {entry}")
     return 0

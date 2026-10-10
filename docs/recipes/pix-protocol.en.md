@@ -262,15 +262,13 @@ the `Depends`: the router receives a `PixProvider` and never learns which
 adapter arrived — that is the point, and the next section builds the whole
 service around it.
 
-!!! info "How many adapters exist today: one"
-    The SDK ships **one** ready adapter — `OpenPixPixProvider`, in
-    `integrations/payment/adapters/openpix.py`. Mercado Pago has a client,
-    schemas and `parse_pix_payment` under
-    `integrations/payment/mercado_pago/`, but **not yet** a `PixProvider`;
-    Stripe comes in through another door, because it
-    [does not do Pix](stripe.md). So the one-line switch is the design, and
-    it is real the moment the second adapter exists — writing one is the last
-    section on this page.
+!!! info "How many adapters exist today: two"
+    The SDK ships **two** ready adapters: `OpenPixPixProvider`, in
+    `integrations/payment/adapters/openpix.py`, and `MercadoPagoPixProvider`,
+    in `integrations/payment/adapters/mercado_pago.py`. Stripe comes in
+    through another door, because it [does not do Pix](stripe.md). To move
+    from one to the other without switching the first off at once, see
+    [Turning the second provider on without turning the first off](#turning-the-second-provider-on-without-turning-the-first-off).
 
 ## In your service's architecture
 
@@ -955,6 +953,79 @@ line that changes when the adapter is another one. Neither the service, nor
 the routers, nor the schemas show up in that list: that is how you measure
 whether the seam is where you think it is.
 
+### Turning the second provider on without turning the first off
+
+Switching provider in a single deploy is a bet on everything the sandbox did
+not show. The safe path is a rollout: a slice of new orders goes to the new
+provider, every charge already open keeps being read and cancelled where it
+was born, and the slice grows (or drops back to zero) without a deploy. That
+is what `PixProviderRouter` does:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.integrations.payment import (
+    PixChargeRequest,
+    PixProviderRouter,
+)
+from tempest_fastapi_sdk.testing.fakes import FakePixProvider
+
+
+async def main() -> None:
+    """Send 10% of new charges to the candidate, read each where it was born."""
+    router: PixProviderRouter = PixProviderRouter(
+        [
+            FakePixProvider(provider_name="openpix"),
+            FakePixProvider(provider_name="mercado_pago"),
+        ],
+        primary="openpix",
+        candidate="mercado_pago",
+        candidate_percent=10,
+    )
+    charge = await router.create_pix_charge(
+        PixChargeRequest(amount_cents=1990, reference="order-1017"),
+    )
+    again = await router.get_pix_charge(charge.provider, charge.provider_charge_id)
+    print(charge.provider, again.provider_charge_id == charge.provider_charge_id)
+
+
+asyncio.run(main())
+```
+
+The script prints `mercado_pago True`: `bucket("order-1017")` is `2`, below
+the slice's 10, so the charge was born at the candidate and read back there.
+
+Three decisions live in that object:
+
+1. **The slice is a function of the `reference`, not a coin flip.**
+   `bucket(reference)` is a SHA-256 reduced to `0..99`, the same in every
+   process. The same order, reopened after a timeout, lands on the same
+   provider, and raising the percentage only **adds** orders to the
+   candidate's slice.
+2. **Reads and cancellations go by the stored provider.** `get_pix_charge`
+   and `cancel_pix_charge` take `charge.provider` besides the id. That is why
+   the order stores **both** columns, `provider` and `provider_charge_id`.
+   The step 3 model stores only the id, and with two providers it needs the
+   other one.
+3. **`candidate_percent=0` is the kill switch.** Nothing new goes to the
+   candidate, and what is already there keeps being served, because the
+   provider stays registered.
+
+The router is not a `PixProvider`: the contract's `get_pix_charge` takes only
+the id, and an id alone does not say whom to ask. For `confirm_pix_payment`,
+pass `router.provider_for(order.provider)`.
+
+!!! warning "Each provider has its own webhook route"
+    Verification is per provider, and a Mercado Pago delivery **does not
+    carry the order's state**: only the id, signed. The
+    `make_mercado_pago_webhook_delivery_dependency` dependency verifies the
+    signature and re-reads the order before handing it to
+    `parse_webhook`, and the adapter's `parse_webhook` refuses the bare
+    notification. Mount `/webhooks/openpix` and `/webhooks/mercado-pago` side
+    by side, each with its own dependency, and the same `service.settle`
+    behind both. Details in
+    [Mercado Pago »](mercado-pago.md#the-webhook-through-the-contract-re-reading-the-order).
+
 ## States
 
 You branch on `PaymentStatus`, never on the provider's string:
@@ -962,6 +1033,7 @@ You branch on `PaymentStatus`, never on the provider's string:
 | canonical | means |
 | --- | --- |
 | `PENDING` | created, waiting for the payer |
+| `AUTHORIZED` | card approved by the issuer and held, not captured yet |
 | `PAID` | settled |
 | `EXPIRED` | the window closed unpaid |
 | `CANCELLED` | withdrawn by you or the provider |
@@ -1290,8 +1362,10 @@ there, and not on the day of the first charge.
 - Nothing is lost: whatever the provider says beyond the contract is in
   `raw`.
 - An adapter is a class with `provider_name` and the four methods, no
-  inheritance. The SDK ships one today (OpenPix); the in-memory fake above is
-  the one you write first, to test without a network.
+  inheritance. The SDK ships two today (OpenPix and Mercado Pago); the
+  in-memory fake above is the one you write first, to test without a network.
+- To migrate provider, `PixProviderRouter` sends a stable slice of new orders
+  to the candidate and reads each charge from the provider that created it.
 - In the architecture: the provider is assembled in `api/dependencies` and
   leaves it as a `PixProvider`. One `HTTPClient` per process, in the
   `lifespan` — and `app.state` is `Any`, so re-annotate the type on the way

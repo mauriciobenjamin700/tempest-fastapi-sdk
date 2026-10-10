@@ -1,10 +1,12 @@
 """Exact conversion between cents and the amounts Mercado Pago states.
 
-Mercado Pago types money as ``number`` with ``format: float`` and states it
-in the **major unit** — reais, not centavos. Measured on the pinned
-specification: 39 monetary properties, including
-``PaymentRequest.transaction_amount``, ``PreferenceItem.unit_price``,
-``Payment.transaction_amount_refunded`` and ``Refund.amount``.
+Mercado Pago states money in the **major unit** — reais, not centavos — in
+two shapes. Counted in the components of the corrected document on
+2026-10-10: 21 properties typed ``number`` with ``format: float`` (among them
+``PreferenceItem.unit_price``, ``Refund.amount`` and
+``MerchantOrder.total_amount``), and on the Orders API 7 amount fields typed
+as decimal **strings** (``OrderRequest.total_amount``, ``OrderPayment.amount``,
+``Order.total_paid_amount``). :func:`to_cents` accepts both.
 
 That is the mirror image of OpenPix, which states **cents** inside a float
 and therefore has :func:`~...openpix.to_cents`. Same wrong type, different

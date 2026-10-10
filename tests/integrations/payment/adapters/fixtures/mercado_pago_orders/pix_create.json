@@ -1,0 +1,42 @@
+{
+  "status": 201,
+  "body": {
+    "id": "ORDTST00000000000000000000000011",
+    "type": "online",
+    "processing_mode": "automatic",
+    "external_reference": "tempest-orders-pix",
+    "total_amount": "19.90",
+    "total_paid_amount": "19.90",
+    "country_code": "BRA",
+    "user_id": "1000000001",
+    "status": "action_required",
+    "status_detail": "waiting_transfer",
+    "capture_mode": "automatic_async",
+    "currency": "BRL",
+    "created_date": "2026-10-10T01:57:39.891Z",
+    "last_updated_date": "2026-10-10T01:57:41.086Z",
+    "integration_data": {
+      "application_id": "2000000002"
+    },
+    "transactions": {
+      "payments": [
+        {
+          "id": "PAY00000000000000000000000012",
+          "amount": "19.90",
+          "expiration_time": "PT30M",
+          "date_of_expiration": "2026-10-10T02:27:39.969+00:00",
+          "reference_id": "0000000000",
+          "status": "action_required",
+          "status_detail": "waiting_transfer",
+          "payment_method": {
+            "id": "pix",
+            "type": "bank_transfer",
+            "ticket_url": "https://www.mercadopago.com.br/sandbox/payments/0/ticket?caller_id=0&hash=00000000-0000-0000-0000-000000000000",
+            "qr_code": "00020126580014br.gov.bcb.pix0136fake-key-0000-0000-0000-000000000000520400005303986540519.905802BR5913TESTUSER00016006Cidade62070503***6304ABCD",
+            "qr_code_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+          }
+        }
+      ]
+    }
+  }
+}

@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+A integração do Mercado Pago passa a cobrar pela **API de Orders** e deixa de
+modelar o que o provedor está aposentando. O que está abaixo foi medido no
+sandbox em 2026-10-09, com uma conta vendedora de teste
+(`vendor/mercadopago-evidence.md`, seções 8 e 9) — **exceto o formato da
+notificação de Orders**, que segue o documento do provedor e ainda não foi
+observado numa entrega real. **Quebra compatibilidade** para quem usava a API de Payments:
+veja o guia de migração.
+
+### Added
+
+- **`CardProvider`, `CardChargeRequest` e `CardCharge`**
+  (`integrations.payment`): contrato canônico de cartão. Cobrar ou só
+  autorizar (`capture=False`), capturar, cancelar a autorização e reembolsar
+  em parte ou no todo. **Recusa é resultado, não exceção**: `CardCharge` com
+  `status` `FAILED` e o motivo em `status_detail`. `PaymentStatus` ganha
+  `AUTHORIZED` (aprovado pelo emissor, não capturado).
+- **`MercadoPagoPixProvider` e `MercadoPagoCardProvider`**
+  (`integrations.payment.adapters`), os dois sobre `/v1/orders`. Medido:
+  - Pix cria `action_required` / `waiting_transfer` com `qr_code` e
+    `qr_code_base64`, cancela em `canceled`; `expires_in` vai como `PT1800S`
+    e, sem ela, a order expira em 24 horas;
+  - cartão aprovado volta `processed` / `accredited`; **recusado volta HTTP
+    402** com o motivo em `errors` e a order em `data`, e o adapter devolve
+    `FAILED` / `rejected_by_issuer` em vez de levantar;
+  - `capture_mode: manual` volta `waiting_capture` (`AUTHORIZED`); capturar
+    leva a `processed`, cancelar a `canceled`;
+  - reembolso parcial endereça o pagamento (`PAY…`) com valor, o total vai
+    sem corpo; `refunded_cents` soma os processados;
+  - `capture` e `refund` respondem sem `total_amount`, então o adapter relê a
+    order para devolver a cobrança inteira;
+  - order sem `payer` volta `400`;
+  - capturar, cancelar ou reembolsar logo depois de criar às vezes responde
+    "ainda não" (`409 processor_communication_error` em 3/10 cancelamentos,
+    `422 unprocessable_entity` em 7/10 reembolsos imediatos): o adapter
+    repete essas respostas, e só essas, com a mesma chave, após 1, 2 e 4 s
+    (`action_retry_delays=`).
+  Uma `X-Idempotency-Key` por chamada, reaproveitada nos retries do
+  `HTTPClient` (testado com transporte simulado); `idempotency_key=` troca a
+  regra.
+- **`make_mercado_pago_webhook_delivery_dependency` e
+  `MercadoPagoOrderDelivery`.** A notificação assina só o `data.id`; a
+  dependency verifica a assinatura e relê a order por esse id. O tipo do
+  evento sai do estado relido, e o `parse_webhook` recusa a notificação crua
+  (`TypeError`), que só poderia virar `UNKNOWN`. `404` na releitura é
+  resposta (a simulação do painel assina um id inventado; medido: order
+  inexistente responde `404`), e id fora de `[A-Za-z0-9]+` nem é buscado.
+  `MercadoPagoCardProvider.charge_from_delivery` lê a cobrança de cartão da
+  mesma entrega.
+- **`PixProviderRouter`** (`integrations.payment`): rollout entre dois
+  provedores de Pix. Fatia estável dos pedidos novos (SHA-256 da
+  `reference`), leitura e cancelamento pelo `PixCharge.provider` guardado,
+  `candidate_percent=0` como kill switch.
+- **Receitas novas: contas e credenciais de teste do Mercado Pago** (o
+  caminho que funciona e o erro que cada desvio produz) **e testando
+  webhooks** (simulação assinada local relendo uma order real, sem URL
+  pública), nas duas línguas.
+
 ### Changed
 
 - **A suíte local caiu de ~3m30s para ~2m15s** (12 núcleos lógicos, 6
@@ -30,6 +87,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `tmp_path`: 21,7 s para 0,58 s com o cache quente. Provado que o cache
     não mascara defeito: com o bound antigo do `ServiceT` reintroduzido, o
     teste falhou com o cache quente.
+
+- **Mercado Pago: estados de `Order` e `OrderTransactionPayment` aceitam
+  qualquer string.** Antes, `create_order` levantava `ValidationError` ao
+  criar um Pix (`waiting_transfer` fora do enum do pagamento), e ler uma
+  order cancelada, reembolsada ou recusada também. O enum vira componente
+  próprio e o campo vira `Enum | str` — `OrderStatus` e companhia continuam
+  existindo. O passo foi extraído do overlay do OpenPix para
+  `scripts/overlay_enums.py` e serve aos dois.
+- **Mercado Pago: dois enums ganham nome próprio** depois que os modelos de
+  Payments saíram: o processing mode de `list_payment_methods` vira
+  `ListPaymentMethodsResponseItemProcessingModesItem` e o status do corpo de
+  `update_advanced_payment` vira `UpdateAdvancedPaymentBodyStatus`.
+- **Mercado Pago: `get_authenticated_user` devolve `AuthenticatedUser`** em
+  vez de `dict[str, Any]` (issue #226), lido da resposta observada: todo
+  campo declarado veio com valor, nenhum é obrigatório, o resto fica em
+  `model_extra`. As outras seis operações do SDK que o documento omitia
+  continuam `dict[str, Any]`.
+- **Mercado Pago: as 47 operações não-`GET` sem evidência foram
+  classificadas** com requisições que não podem dar certo, comparadas a um
+  path inventado no mesmo prefixo (status sozinho não basta: vários prefixos
+  respondem `401`/`403` antes do roteamento). Das que continuam no cliente,
+  27 perdem o `**Unverified.**`, 2 ganham `**Not routed.**`
+  (`update_chargeback`, `create_qr_integrator_config`) e 11 seguem marcadas.
+  A mesma régua mostrou que 11 das operações `GET` "sondadas vivas" não se
+  sustentam (issue #488).
+
+### Removed
+
+- **Mercado Pago: a API de Payments (`/v1/payments`) saiu do cliente.** O
+  painel do provedor a marca *"Esta API será descontinuada em breve"* ao
+  escolher o tipo de API de uma aplicação. Saem `create_payment`,
+  `search_payments`, `get_payment`, `update_payment`, `cancel_payment`,
+  `create_refund`, `list_refunds` e `get_refund`, e os modelos que só elas
+  alcançavam (`Payment`, `PaymentRequest`, `PaymentPayer`,
+  `PaymentUpdateRequest`, `PaymentSearchResult`, `PaymentItem`,
+  `PaymentAdditionalInfo`, `RefundRequest` e os enums e respostas
+  derivados). O SDK oficial ainda chama essas 7 rotas; a regra "o que o SDK
+  chama, a gente modela" ganhou essa exceção, fixada por teste.
+- **Mercado Pago: as 7 operações de QR presencial que a própria spec marca
+  `deprecated: true`** (`create_instore_order_v1`, `delete_instore_order_v1`,
+  `create_instore_order_v2`, `get_instore_order_v2`, `delete_instore_order_v2`,
+  `create_dynamic_qr_order`, `create_qr_tramma_dynamic`).
+- **`create_pix_payment`, `get_pix_payment`, `parse_pix_payment`,
+  `PixPayment`, `PixPointOfInteraction`, `PixTransactionData` e
+  `PAYMENTS_PATH`** (`integrations.payment.mercado_pago`). Existiam para
+  recuperar o QR que o `Payment` gerado descartava; na API de Orders o QR vem
+  declarado em `transactions.payments[].payment_method`.
 
 ## [0.310.0] — 2026-10-09
 

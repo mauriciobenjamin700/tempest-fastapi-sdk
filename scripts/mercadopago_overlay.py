@@ -24,11 +24,15 @@ Four kinds of correction, in the order :func:`apply` runs them:
 * **Paths the API does not route**, where the SDK spells the same operation
   differently. The SDK's spelling wins.
 * **Operations the SDK calls and the document omits.** Added with the SDK's
-  own path and verb. Their bodies and responses are ``dict[str, Any]``:
-  nobody here has credentials to observe either, and a shape nobody
-  measured is worse than no shape.
+  own path and verb. A body or response is typed only where it was
+  observed against the sandbox (:data:`OBSERVED_SCHEMAS`); the rest stay
+  ``dict[str, Any]``, because a shape nobody measured is worse than no
+  shape.
 * **Operations the document declares and the API does not route**, with no
-  counterpart in the SDK to correct them towards. Removed.
+  counterpart in the SDK to correct them towards. Removed — or, for the
+  ones the sandbox answered as unrouted (:data:`UNROUTED_OPERATIONS`), kept
+  and marked in their docstring, since removing a public method is a
+  separate decision.
 * Nothing else. An endpoint neither source knows about is not invented
   here — that is the defect v0.259.0 shipped on OpenPix and v0.260.0
   removed.
@@ -42,9 +46,16 @@ replies first, and ``404`` when it is not routed.
 **That probe is per method *and* path, so it only validates the verb it
 uses.** Measured 2026-08-28: ``GET /v1/customers`` answers ``404`` while
 ``POST /v1/customers`` is the endpoint the SDK creates customers with. A
-``GET`` probe therefore says nothing about a ``DELETE`` operation — which
-is why every removal below is a ``GET``, and why the customer correction
-rests on the SDK alone.
+``GET`` probe therefore says nothing about a ``DELETE`` operation, and the
+customer correction rests on the SDK alone.
+
+**And a status that is not ``404`` is not proof by itself.** Measured
+:data:`SANDBOX_PROBE_DATE`: on several prefixes a policy gate answers
+before routing — ``POST /terminals/v1/<anything>`` answers ``401`` and
+``POST /post-purchase/v1/claims/<id>/<anything>`` answers ``403``, for
+paths that do not exist. :data:`SANDBOX_ROUTED_OPERATIONS` therefore
+records an operation only when its answer differs from a made-up path
+under the same prefix, and says how.
 """
 
 from __future__ import annotations
@@ -53,6 +64,8 @@ import copy
 import re
 from dataclasses import dataclass
 from typing import Any
+
+from overlay_enums import lift_enum
 
 OFFICIAL_SDK_VERSION: str = "3.5.0"
 """The release of ``mercadopago`` (PyPI) :data:`OFFICIAL_SDK_CALLS` was read from.
@@ -297,9 +310,17 @@ three that answered it were removed.
 method *and* path, so it speaks for the verb it uses and no other: measured
 :data:`PROBE_DATE`, ``GET /v1/customers`` answers `404` while
 ``POST /v1/customers`` is the endpoint the provider's SDK creates customers
-with. Sending a `POST`, `PUT` or `DELETE` to a payment API in production to
-find out whether it routes is not an acceptable way to answer the question,
-so those operations stay unverified rather than guessed at.
+with. The non-``GET`` operations were probed later, in the sandbox, with
+requests built not to succeed — :data:`SANDBOX_ROUTED_OPERATIONS` and
+:data:`UNROUTED_OPERATIONS`.
+
+**Re-evaluated on :data:`SANDBOX_PROBE_DATE`, and not all of it holds.** The
+same probe showed that on several prefixes ``401``/``403`` comes before
+routing, so a status alone is weaker than this inventory assumed: 11 of the
+entries that only this probe vouches for answer the same as a made-up path
+under their prefix, and two ``GET`` answer as unrouted. Recorded in
+``vendor/mercadopago-evidence.md`` section 8.4 and issue #488; the entries
+are unchanged until that issue decides.
 """
 
 UNVERIFIED_NOTE: str = (
@@ -313,6 +334,200 @@ The generator renders an operation's description into the generated method's
 docstring, so this reaches the consumer reading the client — which is the
 point. Without it, an operation backed by the provider's own SDK and one
 backed by a document of unrecorded origin (issue #228) look identical.
+"""
+
+SANDBOX_PROBE_DATE: str = "2026-10-09"
+"""When :data:`SANDBOX_ROUTED_OPERATIONS` and :data:`OBSERVED_SCHEMAS` were observed."""
+
+SANDBOX_ROUTED_OPERATIONS: dict[tuple[str, str], str] = {
+    ("PUT", "/checkout/preferences/{}/expire"): (
+        "with the sandbox token, 404 'The preference with identifier ... was "
+        "not found'; a made-up sibling answers the generic 'resource ... not "
+        "found'"
+    ),
+    ("POST", "/v2/wallet_connect/agreements"): "403 unauthenticated; sibling 404",
+    ("DELETE", "/v2/wallet_connect/agreements/{}"): (
+        "403 unauthenticated; sibling 404"
+    ),
+    ("POST", "/v2/wallet_connect/agreements/{}/payer_token"): (
+        "403 unauthenticated; sibling 404"
+    ),
+    ("POST", "/v2/wallet_connect/discounts"): "403 unauthenticated; sibling 404",
+    ("POST", "/v2/wallet_connect/coupons"): "403 unauthenticated; sibling 404",
+    ("POST", "/v1/payouts"): "400 'Invalid site' unauthenticated; sibling 404",
+    ("PUT", "/v1/payouts/{}/transactions/{}/cancel"): (
+        "400 'Invalid site' unauthenticated; sibling 404"
+    ),
+    ("POST", "/v1/transaction-intents/process"): (
+        "400 'Invalid site' unauthenticated; sibling 405"
+    ),
+    ("DELETE", "/instore/qr/seller/collectors/{}/pos/{}/orders"): (
+        "with the sandbox token, 400 'pos_obtainment_by_external_id_error'; sibling 404"
+    ),
+    ("PUT", "/instore/qr/seller/collectors/{}/stores/{}/pos/{}/orders"): (
+        "with the sandbox token, 400 'Collector ID and Caller ID must be the "
+        "same'; sibling 404"
+    ),
+    ("POST", "/instore/orders/{}/confirmation"): "403 unauthenticated; sibling 404",
+    ("POST", "/instore/orders/qr/seller/collectors/{}/pos/{}/qrs"): (
+        "403 unauthenticated; sibling 404"
+    ),
+    ("PUT", "/instore/orders/qr/seller/collectors/{}/pos/{}/qrs"): (
+        "403 unauthenticated; sibling 404"
+    ),
+    ("DELETE", "/mpmobile/instore/qr/{}/{}"): (
+        "403 unauthenticated, 403 'Forbidden' from the service with the "
+        "sandbox token; sibling 404 'Route not found'"
+    ),
+    ("POST", "/users/{}/stores"): (
+        "400 'Malformed Json' unauthenticated; sibling 403 from the edge proxy"
+    ),
+    ("PUT", "/users/{}/stores/{}"): (
+        "404 'store_not_found' unauthenticated; sibling 403 from the edge proxy"
+    ),
+    ("DELETE", "/users/{}/stores/{}"): (
+        "404 'store_not_found' unauthenticated; sibling 403 from the edge proxy"
+    ),
+    ("POST", "/pos"): "403 unauthenticated; sibling 404",
+    ("PUT", "/pos/{}"): "403 unauthenticated; sibling 404",
+    ("DELETE", "/pos/{}"): "403 unauthenticated; sibling 404",
+    ("POST", "/v1/customers/{}/addresses"): (
+        "401 unauthenticated; sibling 404 from the customers service"
+    ),
+    ("PUT", "/v1/customers/{}/addresses/{}"): (
+        "401 unauthenticated; sibling 404 from the customers service"
+    ),
+    ("DELETE", "/v1/customers/{}/addresses/{}"): (
+        "401 unauthenticated; sibling 404 from the customers service"
+    ),
+    ("POST", "/v1/account/release_report/config"): (
+        "with the sandbox token, 400; sibling 404 'Resource ... not found'"
+    ),
+    ("PUT", "/v1/account/release_report/config"): (
+        "with the sandbox token, 400; sibling 404 'Resource ... not found'"
+    ),
+    ("POST", "/v1/account/release_report"): (
+        "with the sandbox token, 400; sibling 404 'Resource ... not found'"
+    ),
+    ("POST", "/v1/account/release_report/schedule"): (
+        "with the sandbox token, 400; sibling 404 'Resource ... not found'"
+    ),
+    ("POST", "/v1/account/settlement_report/config"): (
+        "with the sandbox token, 400 'Error binding request'; sibling 404"
+    ),
+    ("PUT", "/v1/account/settlement_report/config"): (
+        "with the sandbox token, 400 'Error binding request'; sibling 404"
+    ),
+    ("POST", "/v1/account/settlement_report"): (
+        "with the sandbox token, 400; sibling 404 'Resource ... not found'"
+    ),
+    ("POST", "/v1/account/settlement_report/schedule"): (
+        "with the sandbox token, 404 'Configuration not found. Please create "
+        "a configuration first.'; sibling 404 'Resource ... not found'"
+    ),
+}
+"""Non-``GET`` operations the sandbox showed are routed, and how.
+
+Measured :data:`SANDBOX_PROBE_DATE` with requests that cannot succeed:
+every body was malformed JSON (``{``) and every path id was
+``999999999999``, sent once without credentials and once with a sandbox
+(``TEST-``) token. Each entry is recorded only when its answer differs from
+a made-up path under the same prefix (the *sibling*) — a status alone does
+not count, because some prefixes answer ``401``/``403`` before routing.
+
+Eleven of the 47 operations nothing vouched for are not here: their answer
+matched the sibling's (``/terminals/v1``, ``/post-purchase/v1/claims/{id}``,
+two ``/point/integration-api`` refunds), or the only safe probe was the
+unauthenticated one and it matched too (the two ``DELETE .../schedule``,
+which with a token would switch a real schedule off). Those keep
+:data:`UNVERIFIED_NOTE`. Four more answered as unrouted and are in
+:data:`UNROUTED_OPERATIONS`.
+
+"Routed" here is an inference from a difference, and the strength of the
+difference varies by entry. An answer from the service itself (a body
+naming the resource, a binding error) is strong. A bare ``403`` where the
+sibling gets ``404`` shows the gateway treats the path differently from a
+made-up one, which is what a configured route looks like — but it is not
+the service answering. Each entry's text says which kind it is.
+"""
+
+OBSERVED_SCHEMAS: dict[str, dict[str, Any]] = {
+    "AuthenticatedUserIdentification": {
+        "type": "object",
+        "properties": {
+            "type": {"type": "string"},
+            "number": {"type": "string"},
+        },
+    },
+    "AuthenticatedUserPhone": {
+        "type": "object",
+        "properties": {
+            "area_code": {"type": "string"},
+            "number": {"type": "string"},
+            "extension": {"type": "string"},
+            "verified": {"type": "boolean"},
+        },
+    },
+    "AuthenticatedUserThumbnail": {
+        "type": "object",
+        "properties": {
+            "picture_id": {"type": "string"},
+            "picture_url": {"type": "string"},
+        },
+    },
+    "AuthenticatedUserCompany": {
+        "type": "object",
+        "properties": {
+            "brand_name": {"type": "string"},
+            "corporate_name": {"type": "string"},
+            "identification": {"type": "string"},
+            "soft_descriptor": {"type": "string"},
+            "city_tax_id": {"type": "string"},
+            "state_tax_id": {"type": "string"},
+            "cust_type_id": {"type": "string"},
+        },
+    },
+    "AuthenticatedUser": {
+        "type": "object",
+        "description": (
+            "The account an access token belongs to. Every field was present "
+            f"in the response observed on {SANDBOX_PROBE_DATE}; none is "
+            "declared required, because one observation cannot say which "
+            "the provider always sends. Fields observed only as `null`, and "
+            "the nested reputation and status blocks, are not declared and "
+            "are kept as extra fields."
+        ),
+        "properties": {
+            "id": {"type": "integer"},
+            "nickname": {"type": "string"},
+            "registration_date": {"type": "string", "format": "date-time"},
+            "first_name": {"type": "string"},
+            "last_name": {"type": "string"},
+            "country_id": {"type": "string"},
+            "site_id": {"type": "string"},
+            "email": {"type": "string"},
+            "secure_email": {"type": "string"},
+            "user_type": {"type": "string"},
+            "tags": {"type": "array", "items": {"type": "string"}},
+            "points": {"type": "integer"},
+            "permalink": {"type": "string"},
+            "seller_experience": {"type": "string"},
+            "identification": {
+                "$ref": "#/components/schemas/AuthenticatedUserIdentification"
+            },
+            "phone": {"$ref": "#/components/schemas/AuthenticatedUserPhone"},
+            "thumbnail": {"$ref": "#/components/schemas/AuthenticatedUserThumbnail"},
+            "company": {"$ref": "#/components/schemas/AuthenticatedUserCompany"},
+        },
+    },
+}
+"""Schemas read off responses the sandbox returned on :data:`SANDBOX_PROBE_DATE`.
+
+Each field is one that appeared with a non-null value; its type is the JSON
+type observed. The redacted payloads they were read from are the fixtures
+under ``tests/integrations/payment/mercado_pago/fixtures/``, and a test
+validates each fixture against the generated model, so a schema here that
+stops matching its observation fails offline.
 """
 
 
@@ -361,6 +576,9 @@ class AddedOperation:
         source (str): The SDK module and method that calls it.
         query (tuple[str, ...]): Query parameters to declare.
         has_body (bool): Whether the operation takes a request body.
+        response_schema (str | None): Name of the :data:`OBSERVED_SCHEMAS`
+            entry the ``200`` response renders as, or ``None`` when the
+            response was never observed and stays ``dict[str, Any]``.
     """
 
     method: str
@@ -371,6 +589,7 @@ class AddedOperation:
     source: str
     query: tuple[str, ...] = ()
     has_body: bool = False
+    response_schema: str | None = None
 
 
 PATH_CORRECTIONS: tuple[PathCorrection, ...] = (
@@ -433,6 +652,255 @@ DEAD_OPERATIONS: tuple[DeadOperation, ...] = (
 )
 """Operations removed because the API does not route them."""
 
+DEPRECATED_OPERATIONS: tuple[DeadOperation, ...] = (
+    DeadOperation(
+        method="post",
+        path="/v1/payments",
+        evidence=(
+            f"the provider's dashboard labels the Payments API \"Esta API será "
+            f'descontinuada em breve" (observed {SANDBOX_PROBE_DATE}); the '
+            "Orders API (/v1/orders) replaces it, measured end to end in the "
+            "sandbox — vendor/mercadopago-evidence.md section 9"
+        ),
+    ),
+    DeadOperation(
+        method="get",
+        path="/v1/payments/search",
+        evidence=(
+            f"the provider's dashboard labels the Payments API \"Esta API será "
+            f'descontinuada em breve" (observed {SANDBOX_PROBE_DATE}); the '
+            "Orders API (/v1/orders) replaces it, measured end to end in the "
+            "sandbox — vendor/mercadopago-evidence.md section 9"
+        ),
+    ),
+    DeadOperation(
+        method="get",
+        path="/v1/payments/{id}",
+        evidence=(
+            f"the provider's dashboard labels the Payments API \"Esta API será "
+            f'descontinuada em breve" (observed {SANDBOX_PROBE_DATE}); the '
+            "Orders API (/v1/orders) replaces it, measured end to end in the "
+            "sandbox — vendor/mercadopago-evidence.md section 9"
+        ),
+    ),
+    DeadOperation(
+        method="put",
+        path="/v1/payments/{id}",
+        evidence=(
+            f"the provider's dashboard labels the Payments API \"Esta API será "
+            f'descontinuada em breve" (observed {SANDBOX_PROBE_DATE}); the '
+            "Orders API (/v1/orders) replaces it, measured end to end in the "
+            "sandbox — vendor/mercadopago-evidence.md section 9"
+        ),
+    ),
+    DeadOperation(
+        method="put",
+        path="/v1/payments/{id}/cancellations",
+        evidence=(
+            f"the provider's dashboard labels the Payments API \"Esta API será "
+            f'descontinuada em breve" (observed {SANDBOX_PROBE_DATE}); the '
+            "Orders API (/v1/orders) replaces it, measured end to end in the "
+            "sandbox — vendor/mercadopago-evidence.md section 9"
+        ),
+    ),
+    DeadOperation(
+        method="get",
+        path="/v1/payments/{id}/refunds",
+        evidence=(
+            f"the provider's dashboard labels the Payments API \"Esta API será "
+            f'descontinuada em breve" (observed {SANDBOX_PROBE_DATE}); the '
+            "Orders API (/v1/orders) replaces it, measured end to end in the "
+            "sandbox — vendor/mercadopago-evidence.md section 9"
+        ),
+    ),
+    DeadOperation(
+        method="post",
+        path="/v1/payments/{id}/refunds",
+        evidence=(
+            f"the provider's dashboard labels the Payments API \"Esta API será "
+            f'descontinuada em breve" (observed {SANDBOX_PROBE_DATE}); the '
+            "Orders API (/v1/orders) replaces it, measured end to end in the "
+            "sandbox — vendor/mercadopago-evidence.md section 9"
+        ),
+    ),
+    DeadOperation(
+        method="get",
+        path="/v1/payments/{id}/refunds/{refund_id}",
+        evidence=(
+            f"the provider's dashboard labels the Payments API \"Esta API será "
+            f'descontinuada em breve" (observed {SANDBOX_PROBE_DATE}); the '
+            "Orders API (/v1/orders) replaces it, measured end to end in the "
+            "sandbox — vendor/mercadopago-evidence.md section 9"
+        ),
+    ),
+    DeadOperation(
+        method="get",
+        path=("/instore/qr/seller/collectors/{user_id}/pos/{external_pos_id}/orders"),
+        evidence="the vendored specification itself marks it deprecated: true",
+    ),
+    DeadOperation(
+        method="delete",
+        path=("/instore/qr/seller/collectors/{user_id}/pos/{external_pos_id}/orders"),
+        evidence="the vendored specification itself marks it deprecated: true",
+    ),
+    DeadOperation(
+        method="put",
+        path=("/mpmobile/instore/qr/{user_id}/{external_id}"),
+        evidence="the vendored specification itself marks it deprecated: true",
+    ),
+    DeadOperation(
+        method="delete",
+        path=("/mpmobile/instore/qr/{user_id}/{external_id}"),
+        evidence="the vendored specification itself marks it deprecated: true",
+    ),
+    DeadOperation(
+        method="put",
+        path=(
+            "/instore/qr/seller/collectors/{user_id}/stores/{external_store_id}/pos/{external_pos_id}/orders"
+        ),
+        evidence="the vendored specification itself marks it deprecated: true",
+    ),
+    DeadOperation(
+        method="post",
+        path=(
+            "/instore/orders/qr/seller/collectors/{user_id}/pos/{external_pos_id}/qrs"
+        ),
+        evidence="the vendored specification itself marks it deprecated: true",
+    ),
+    DeadOperation(
+        method="put",
+        path=(
+            "/instore/orders/qr/seller/collectors/{user_id}/pos/{external_pos_id}/qrs"
+        ),
+        evidence="the vendored specification itself marks it deprecated: true",
+    ),
+)
+"""Operations removed because the provider is retiring them.
+
+Two sources, both from the provider. The Payments API (``/v1/payments``
+and its refunds) is labelled *"Esta API será descontinuada em breve"* on
+the dashboard where an integration picks its API type, and the Orders API
+that replaces it was exercised end to end in the sandbox — Pix and card,
+create, read, capture, cancel, partial and full refund. The in-store QR
+operations are the ones the vendored specification itself marks
+``deprecated: true``.
+
+Removed rather than marked: a deprecated route kept in the client is a
+route a new integration builds on. The provider's own Python SDK still
+calls the Payments API, which is why :data:`PROVIDER_DEPRECATED_SDK_CALLS`
+exempts those calls from the "the SDK is the authority" rule instead of
+quietly failing it.
+"""
+
+LIFTED_ENUMS: dict[str, dict[str, str]] = {
+    "Order": {"status": "OrderStatus", "status_detail": "OrderStatusDetail"},
+    "OrderTransactionPayment": {
+        "status": "OrderTransactionPaymentStatus",
+        "status_detail": "OrderTransactionPaymentStatusDetail",
+    },
+}
+"""Order response states the document lists and the API does not stay within.
+
+Measured on :data:`SANDBOX_PROBE_DATE` (``vendor/mercadopago-evidence.md``
+section 9), every value outside the declared ``enum``:
+
+* ``Order.status``: ``failed`` (a declined card), ``refunded``;
+* ``Order.status_detail``: ``canceled``, ``failed``, ``partially_refunded``,
+  ``refunded``;
+* ``OrderTransactionPayment.status``: ``canceled``, ``failed``,
+  ``refunded``;
+* ``OrderTransactionPayment.status_detail``: ``waiting_transfer``,
+  ``canceled_transaction``, ``rejected_by_issuer``, ``refunded``.
+
+Before this lift, ``Order.model_validate`` refused the answer to **creating
+a Pix** (``waiting_transfer`` on the payment), and the reads of a cancelled,
+refunded or declined order — so ``create_order`` raised after the order
+existed. The same correction as OpenPix's ``Charge.status``
+(:func:`overlay_enums.lift_enum`): the declared values become a component of
+their own, so the generated enum class keeps its name, and the property
+accepts any string.
+"""
+
+PROVIDER_DEPRECATED_SDK_CALLS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("POST", "/v1/payments"),
+        ("GET", "/v1/payments/search"),
+        ("GET", "/v1/payments/{}"),
+        ("PUT", "/v1/payments/{}"),
+        ("GET", "/v1/payments/{}/refunds"),
+        ("POST", "/v1/payments/{}/refunds"),
+        ("GET", "/v1/payments/{}/refunds/{}"),
+    }
+)
+"""Calls :data:`OFFICIAL_SDK_CALLS` makes that this package no longer models.
+
+Every one belongs to the Payments API, removed by
+:data:`DEPRECATED_OPERATIONS`. The official SDK still ships them; the
+provider's dashboard says the API is going away. A test pins that the
+operations the SDK calls and we do not model are exactly these, so any
+other gap still fails.
+"""
+
+UNROUTED_OPERATIONS: tuple[DeadOperation, ...] = (
+    DeadOperation(
+        method="put",
+        path="/v1/chargebacks/{id}",
+        evidence=(
+            f"measured {SANDBOX_PROBE_DATE}, PUT /v1/chargebacks/<id> answers "
+            "404 'Request method 'PUT' is not supported' with and without the "
+            "sandbox token — the chargebacks service itself names the verb. "
+            "mercadopago 3.5.0 chargeback.py calls only search and get"
+        ),
+    ),
+    DeadOperation(
+        method="put",
+        path="/v1/payments/{id}/cancellations",
+        evidence=(
+            f"measured {SANDBOX_PROBE_DATE}, it answers the edge's 404 "
+            "'resource not found' with and without the sandbox token, the "
+            "same body a made-up path gets, while PUT /v1/payments/<id> "
+            "reaches the payments service (400 'Bad JSON format')"
+        ),
+    ),
+    DeadOperation(
+        method="patch",
+        path="/instore/integrator",
+        evidence=(
+            f"measured {SANDBOX_PROBE_DATE}, PATCH, POST and PUT on "
+            "/instore/integrator all answer the edge's 404 'resource not "
+            "found' with and without the sandbox token. The GET on the same "
+            "path was removed on 2026-08-28"
+        ),
+    ),
+    DeadOperation(
+        method="put",
+        path="/mpmobile/instore/qr/{user_id}/{external_id}",
+        evidence=(
+            f"measured {SANDBOX_PROBE_DATE}, PUT answers 405 'Not Allowed' "
+            "from the edge proxy with and without the sandbox token, as does "
+            "PATCH. POST on the same path reaches the service (400 "
+            "'invalid_caller_id' with the token), but turning the PUT into a "
+            "POST would be a guess about the operation, so it is dropped "
+            "rather than moved"
+        ),
+    ),
+)
+"""Operations the sandbox answered as unrouted, kept and marked rather than removed.
+
+Measured on :data:`SANDBOX_PROBE_DATE` with their own verb, by requests that
+cannot succeed (malformed body, an id that does not exist); each answered
+the way a made-up path does. They stay in the client because removing a
+public method is a breaking change this measurement alone does not
+justify; :data:`UNROUTED_NOTE` puts the measurement in the docstring a
+consumer reads instead.
+"""
+
+UNROUTED_NOTE: str = (
+    "\n\n**Not routed.** Probed against the sandbox and answered the way a "
+    "path the API does not route answers — {evidence}."
+)
+"""Appended to an operation in :data:`UNROUTED_OPERATIONS`, filled per entry."""
+
 ADDED_OPERATIONS: tuple[AddedOperation, ...] = (
     AddedOperation(
         method="get",
@@ -441,12 +909,14 @@ ADDED_OPERATIONS: tuple[AddedOperation, ...] = (
         summary="Get the authenticated user",
         description=(
             "Returns the account the credentials belong to.\n\n"
-            "Absent from the vendored document. The response is not "
-            "modelled — this repository has no Mercado Pago credentials to "
-            "observe its shape — so the method answers `dict[str, Any]` and "
-            "drops nothing."
+            "Absent from the vendored document. The response is modelled "
+            f"from the one the sandbox returned on {SANDBOX_PROBE_DATE}: "
+            "every declared field was observed, none is required, and "
+            "fields not declared are kept as extra fields rather than "
+            "dropped."
         ),
         source="resources/user.py:get",
+        response_schema="AuthenticatedUser",
     ),
     AddedOperation(
         method="get",
@@ -564,6 +1034,12 @@ class OverlayReport:
         unverified_operations (tuple[str, ...]): ``METHOD path`` per
             operation no source vouches for, each marked in its own
             description.
+        unrouted_operations (tuple[str, ...]): ``METHOD path`` per
+            operation marked with :data:`UNROUTED_NOTE`.
+        deprecated_operations (tuple[str, ...]): ``METHOD path`` per
+            operation removed by :data:`DEPRECATED_OPERATIONS`.
+        pruned_schemas (tuple[str, ...]): Component schemas only those
+            operations reached, removed with them.
         collisions (tuple[str, ...]): Corrections left in place because the
             destination already declares that verb. Reported rather than
             resolved: which of the two is right is a question about the
@@ -574,6 +1050,9 @@ class OverlayReport:
     added_operations: tuple[str, ...] = ()
     removed_operations: tuple[str, ...] = ()
     unverified_operations: tuple[str, ...] = ()
+    unrouted_operations: tuple[str, ...] = ()
+    deprecated_operations: tuple[str, ...] = ()
+    pruned_schemas: tuple[str, ...] = ()
     collisions: tuple[str, ...] = ()
 
 
@@ -602,13 +1081,15 @@ def _mark_unverified(paths: dict[str, Any]) -> tuple[str, ...]:
     Returns:
         tuple[str, ...]: ``METHOD path`` for each operation marked.
 
-    Two sources can vouch for an operation: the provider's own SDK calls
-    it, or an unauthenticated probe found it routed. Everything else is
+    Three sources can vouch for an operation: the provider's own SDK calls
+    it, an unauthenticated ``GET`` probe found it routed, or the sandbox
+    probe told it apart from a made-up sibling path. Everything else is
     carried on the word of a document whose origin is unrecorded, and
     saying so in the generated docstring is the difference between an
     operation a consumer can rely on and one they should verify before
     building on.
     """
+    unrouted = {normalise(entry.method, entry.path) for entry in UNROUTED_OPERATIONS}
     marked: list[str] = []
     for path, item in paths.items():
         if not isinstance(item, dict):
@@ -617,13 +1098,99 @@ def _mark_unverified(paths: dict[str, Any]) -> tuple[str, ...]:
             if method not in _VERBS or not isinstance(operation, dict):
                 continue
             key = normalise(method, str(path))
-            if key in OFFICIAL_SDK_CALLS or key in PROBED_OPERATIONS:
+            if (
+                key in OFFICIAL_SDK_CALLS
+                or key in PROBED_OPERATIONS
+                or key in SANDBOX_ROUTED_OPERATIONS
+                or key in unrouted
+            ):
                 continue
             description = str(operation.get("description") or "")
             if UNVERIFIED_NOTE.strip() in description:
                 continue
             operation["description"] = description + UNVERIFIED_NOTE
             marked.append(f"{method.upper()} {path}")
+    return tuple(marked)
+
+
+def _reachable_schemas(document: dict[str, Any]) -> set[str]:
+    """Name every component schema an operation reaches, transitively.
+
+    Args:
+        document (dict[str, Any]): The specification.
+
+    Returns:
+        set[str]: Names under ``components.schemas`` reachable from any
+        operation in ``paths``.
+
+    Used to prune what :data:`DEPRECATED_OPERATIONS` leaves behind, and
+    only that: :func:`apply` compares the set before and after removing
+    those operations, so a schema that was already unreferenced in the
+    vendored document stays — that is the provider's document, not a
+    consequence of this module.
+    """
+    stored = (document.get("components") or {}).get("schemas") or {}
+    found: set[str] = set()
+    pending: list[str] = list(_schema_refs(document.get("paths") or {}))
+    while pending:
+        name = pending.pop()
+        if name in found:
+            continue
+        found.add(name)
+        pending.extend(_schema_refs(stored.get(name) or {}))
+    return found
+
+
+def _schema_refs(node: object) -> list[str]:
+    """Collect the component schema names a node references.
+
+    Args:
+        node (object): Any part of the document.
+
+    Returns:
+        list[str]: Names from every ``$ref`` to ``#/components/schemas/``.
+    """
+    prefix = "#/components/schemas/"
+    names: list[str] = []
+    stack: list[object] = [node]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, dict):
+            ref = current.get("$ref")
+            if isinstance(ref, str) and ref.startswith(prefix):
+                names.append(ref.removeprefix(prefix))
+            stack.extend(current.values())
+        elif isinstance(current, list):
+            stack.extend(current)
+    return names
+
+
+def _mark_unrouted(paths: dict[str, Any]) -> tuple[str, ...]:
+    """Append :data:`UNROUTED_NOTE` to every operation in :data:`UNROUTED_OPERATIONS`.
+
+    Args:
+        paths (dict[str, Any]): The document's ``paths`` block, patched in
+            place.
+
+    Returns:
+        tuple[str, ...]: ``METHOD path`` for each operation marked. An
+        operation already carrying the note is skipped, so applying twice
+        does not stack it.
+    """
+    marked: list[str] = []
+    for unrouted in UNROUTED_OPERATIONS:
+        item = paths.get(unrouted.path)
+        if not isinstance(item, dict):
+            continue
+        operation = item.get(unrouted.method)
+        if not isinstance(operation, dict):
+            continue
+        description = str(operation.get("description") or "")
+        if "**Not routed.**" in description:
+            continue
+        note = UNROUTED_NOTE.format(evidence=unrouted.evidence)
+        operation["description"] = description + note
+        marked.append(f"{unrouted.method.upper()} {unrouted.path}")
     return tuple(marked)
 
 
@@ -636,6 +1203,11 @@ def _operation(added: AddedOperation) -> dict[str, Any]:
     Returns:
         dict[str, Any]: The operation object, ready to attach to a path.
     """
+    response: dict[str, Any] = dict(_FREE_OBJECT)
+    description = "The provider's response, unmodelled."
+    if added.response_schema is not None:
+        response = {"$ref": f"#/components/schemas/{added.response_schema}"}
+        description = f"The provider's response, as observed on {SANDBOX_PROBE_DATE}."
     parameters: list[dict[str, Any]] = []
     for name in _path_parameters(added.path):
         parameters.append(
@@ -666,8 +1238,8 @@ def _operation(added: AddedOperation) -> dict[str, Any]:
         "parameters": parameters,
         "responses": {
             "200": {
-                "description": "The provider's response, unmodelled.",
-                "content": {"application/json": {"schema": dict(_FREE_OBJECT)}},
+                "description": description,
+                "content": {"application/json": {"schema": response}},
             }
         },
     }
@@ -750,6 +1322,32 @@ def apply(document: dict[str, Any]) -> tuple[dict[str, Any], OverlayReport]:
         if not any(key in _VERBS for key in item):
             paths.pop(dead.path)
 
+    reachable_before = _reachable_schemas(patched)
+    deprecated: list[str] = []
+    for retired in DEPRECATED_OPERATIONS:
+        item = paths.get(retired.path)
+        if not isinstance(item, dict) or retired.method not in item:
+            continue
+        item.pop(retired.method)
+        deprecated.append(f"{retired.method.upper()} {retired.path}")
+        if not any(key in _VERBS for key in item):
+            paths.pop(retired.path)
+    orphaned = reachable_before - _reachable_schemas(patched)
+    components = patched.get("components")
+    if orphaned and isinstance(components, dict):
+        stored = components.get("schemas")
+        if isinstance(stored, dict):
+            for name in orphaned:
+                stored.pop(name, None)
+
+    for schema_name, properties in LIFTED_ENUMS.items():
+        lift_enum(patched, schema_name, properties)
+
+    schemas = patched.setdefault("components", {}).setdefault("schemas", {})
+    if isinstance(schemas, dict):
+        for name, schema in OBSERVED_SCHEMAS.items():
+            schemas.setdefault(name, copy.deepcopy(schema))
+
     added: list[str] = []
     for operation in ADDED_OPERATIONS:
         item = paths.setdefault(operation.path, {})
@@ -762,7 +1360,10 @@ def apply(document: dict[str, Any]) -> tuple[dict[str, Any], OverlayReport]:
         moved_paths=tuple(moved),
         added_operations=tuple(added),
         removed_operations=tuple(removed),
+        deprecated_operations=tuple(deprecated),
+        pruned_schemas=tuple(sorted(orphaned)),
         unverified_operations=_mark_unverified(paths),
+        unrouted_operations=_mark_unrouted(paths),
         collisions=tuple(collisions),
     )
 
@@ -770,15 +1371,23 @@ def apply(document: dict[str, Any]) -> tuple[dict[str, Any], OverlayReport]:
 __all__: list[str] = [
     "ADDED_OPERATIONS",
     "DEAD_OPERATIONS",
+    "DEPRECATED_OPERATIONS",
+    "LIFTED_ENUMS",
+    "OBSERVED_SCHEMAS",
     "OFFICIAL_SDK_CALLS",
     "OFFICIAL_SDK_VERSION",
     "PATH_CORRECTIONS",
     "PROBED_OPERATIONS",
     "PROBE_DATE",
+    "PROVIDER_DEPRECATED_SDK_CALLS",
+    "SANDBOX_PROBE_DATE",
+    "SANDBOX_ROUTED_OPERATIONS",
     "SDK_COVERAGE_DATE",
     "SDK_COVERAGE_DISAGREEMENTS",
     "SDK_COVERAGE_TOTALS",
     "SDK_COVERAGE_URL",
+    "UNROUTED_NOTE",
+    "UNROUTED_OPERATIONS",
     "UNVERIFIED_NOTE",
     "AddedOperation",
     "DeadOperation",

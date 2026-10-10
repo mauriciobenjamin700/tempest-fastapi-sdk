@@ -1,0 +1,51 @@
+{
+  "status": 200,
+  "body": {
+    "id": "ORDTST00000000000000000000000003",
+    "type": "online",
+    "processing_mode": "automatic",
+    "external_reference": "tempest-orders-card-manual_cancel",
+    "total_amount": "100.00",
+    "total_paid_amount": "100.00",
+    "country_code": "BRA",
+    "user_id": "1000000001",
+    "status": "canceled",
+    "status_detail": "canceled",
+    "capture_mode": "manual",
+    "currency": "BRL",
+    "created_date": "2026-10-10T01:58:41.84Z",
+    "last_updated_date": "2026-10-10T01:58:44.274Z",
+    "integration_data": {
+      "application_id": "2000000002"
+    },
+    "config": {
+      "online": {
+        "transaction_security": {
+          "validation": "never"
+        }
+      }
+    },
+    "transactions": {
+      "payments": [
+        {
+          "id": "PAY00000000000000000000000004",
+          "amount": "100.00",
+          "paid_amount": "100.00",
+          "reference_id": "0000000000",
+          "status": "canceled",
+          "status_detail": "canceled_transaction",
+          "payment_method": {
+            "id": "visa",
+            "type": "credit_card",
+            "token": "00000000000000000000000000000000",
+            "installments": 1,
+            "installment_amount": "100.00",
+            "transaction_security": {
+              "validation": "never"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

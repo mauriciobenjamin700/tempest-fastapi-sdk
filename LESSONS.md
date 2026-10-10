@@ -1149,8 +1149,10 @@ atravessa —, e nenhum era alcançável de dentro.
 Não é "fake é ruim": a suíte com stub continua, é rápida e cobre mapeamento.
 É que **toda superfície que fala com o mundo externo precisa de pelo menos
 um teste que atravesse a serialização de verdade**, e o repo já tinha o
-padrão do lado certo (`tests/integrations/payment/mercado_pago/test_pix.py`)
-sem tê-lo do lado da OpenPix.
+padrão do lado certo (o teste de Pix do Mercado Pago, que saiu com a API de
+Payments; hoje o papel é de
+`tests/integrations/payment/adapters/test_mercado_pago_adapter.py`, sobre
+respostas reais do sandbox) sem tê-lo do lado da OpenPix.
 
 Sem guard: exigiria decidir o que conta como "fronteira" para uma classe
 arbitrária. O que existe é a suíte —

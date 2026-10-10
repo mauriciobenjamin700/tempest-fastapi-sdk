@@ -52,6 +52,15 @@ from typing import TYPE_CHECKING, Any
 from tempest_fastapi_sdk.integrations.payment import openpix as openpix
 from tempest_fastapi_sdk.integrations.payment import stripe as stripe
 from tempest_fastapi_sdk.integrations.payment.base import (
+    CardCharge as CardCharge,
+)
+from tempest_fastapi_sdk.integrations.payment.base import (
+    CardChargeRequest as CardChargeRequest,
+)
+from tempest_fastapi_sdk.integrations.payment.base import (
+    CardProvider as CardProvider,
+)
+from tempest_fastapi_sdk.integrations.payment.base import (
     PaymentStatus as PaymentStatus,
 )
 from tempest_fastapi_sdk.integrations.payment.base import (
@@ -79,6 +88,9 @@ from tempest_fastapi_sdk.integrations.payment.base import (
 )
 from tempest_fastapi_sdk.integrations.payment.base import (
     PixProvider as PixProvider,
+)
+from tempest_fastapi_sdk.integrations.payment.routing import (
+    PixProviderRouter as PixProviderRouter,
 )
 from tempest_fastapi_sdk.integrations.payment.settlement import (
     PixConfirmationOutcome as PixConfirmationOutcome,
@@ -118,6 +130,9 @@ def __getattr__(name: str) -> Any:
 
 
 __all__: list[str] = [
+    "CardCharge",
+    "CardChargeRequest",
+    "CardProvider",
     "PaymentStatus",
     "PayoutProvider",
     "PayoutRequest",
@@ -131,6 +146,7 @@ __all__: list[str] = [
     "PixPaymentConfirmation",
     "PixPaymentEvent",
     "PixProvider",
+    "PixProviderRouter",
     "adapters",
     "confirm_pix_payment",
     "openpix",
