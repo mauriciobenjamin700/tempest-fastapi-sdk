@@ -2,7 +2,7 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
-## Unreleased — Mercado Pago: the Payments API left the SDK
+## 0.311.0 — Mercado Pago: the Payments API left the SDK
 
 Mercado Pago's dashboard labels the Payments API (`/v1/payments`) *"Esta API
 será descontinuada em breve"* (this API will be discontinued soon), and the

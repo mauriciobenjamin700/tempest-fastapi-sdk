@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.311.0] — 2026-10-10
+
 A integração do Mercado Pago passa a cobrar pela **API de Orders** e deixa de
 modelar o que o provedor está aposentando. O que está abaixo foi medido no
 sandbox em 2026-10-09, com uma conta vendedora de teste
