@@ -516,6 +516,7 @@ come back here to plug in each capability as you need it.
 | **[Logging »](logging.md)** | `LogUtils`, structured JSON logging, request-ID propagation |
 | **[Management commands (tempest &lt;cmd&gt;) »](management-commands.md)** | register your own commands on the project's `tempest` CLI |
 | **[Mercado Pago (Pix, cards, boleto) »](mercado-pago.md)** | `MercadoPagoClient` (147 operations generated from the provider's own OpenAPI), `MercadoPagoPixProvider` + `make_mercado_pago_pix_webhook_dependency` (Pix through the contract, a webhook that re-reads the payment), `AuthenticatedUser`, `to_cents` / `from_cents` (reais, not cents), `make_mercado_pago_webhook_dependency`, `MercadoPagoSettings`, `x_idempotency_key` per call |
+| **[Mercado Pago (test accounts and credentials) »](mercado-pago-sandbox.md)** | step by step to create a test seller and buyer, find the right token (Checkout Transparente / Orders API) and the buyer's e-mail, test cards, and the table of errors each detour produces |
 | **[Metrics »](metrics.md)** | `MetricsUtils` — CPU / RAM / disk / GPU snapshots |
 | **[MFA (TOTP / 2FA) »](mfa.md)** | `MFAMixin`, `TOTPHelper`, enroll/confirm/verify/disable endpoints on `make_auth_router`, recovery codes |
 | **[Migrations »](migrations.md)** | `AlembicHelper.sync_schema()` / `adopt()` / `base_revision()` / `has_existing_schema()` — how the schema comes into being, adopting a pre-Alembic database, and why `create_tables()` + `stamp("head")` breaks silently |

@@ -370,3 +370,59 @@ conta sem chave Pix, ou o token `TEST-` de aplicação. Por isso o ciclo
 criar → ler → cancelar ainda não rodou; o teste `network`
 `tests/integrations/payment/adapters/test_mercado_pago_sandbox.py` espera
 uma conta de vendedor de teste.
+
+## 9. API de Orders, com vendedora de teste (2026-10-09)
+
+### 9.1 Qual credencial cobra
+
+| Credencial | Pagador | Pix | Cartão |
+| --- | --- | --- | --- |
+| `TEST-` da aplicação da conta real | e-mail de comprador de teste | `500 not_found` | `403 Payer email forbidden` (4390) |
+| `TEST-` da aplicação da conta real | `buyer@example.com` | `500 not_found` | `400 excludes_by_rule` (10113) |
+| `APP_USR-` da vendedora de teste, aplicação Checkout Pro | qualquer | `401 Unauthorized use of live credentials` (7) | igual |
+| `APP_USR-` da vendedora de teste, aplicação Checkout Transparente / API de Orders | e-mail da compradora de teste | `201` | `201` |
+
+A conta vendedora foi conferida em `GET /users/me` antes de cada rodada:
+`tags` com `test_user`, `site_id: MLB`. Com o token Checkout Pro,
+`POST /checkout/preferences` respondeu `201`: o token vale, só não cobra
+direto. No painel da conta de teste, "Credenciais de teste" responde *"Não é
+possível utilizar credenciais de teste em um ambiente de teste"*, e não há
+opção de ativar credenciais de produção (relatado ao criar a aplicação). Ao
+escolher o tipo de API, o painel mostra para a API de Payments o aviso
+*"Esta API será descontinuada em breve"*.
+
+### 9.2 Pix por Orders
+
+`POST /v1/orders` com `type: online`, `processing_mode: automatic`,
+`total_amount: "19.90"` (string), `payer.email` e um pagamento
+`{amount: "19.90", expiration_time: "PT30M", payment_method: {id: pix, type: bank_transfer}}`,
+com `X-Idempotency-Key`:
+
+| Etapa | Resposta |
+| --- | --- |
+| criar | `201`, order `action_required` / `waiting_transfer`; o pagamento traz `qr_code`, `qr_code_base64`, `ticket_url` em `payment_method` e `date_of_expiration` |
+| `GET /v1/orders/{id}` | `200`, igual |
+| `POST /v1/orders/{id}/cancel` | `200`, `canceled` / `canceled`; pagamento `canceled_transaction` |
+
+O id da order é texto (`ORDTST01…`), e o do pagamento dentro dela também
+(`PAY01…`).
+
+### 9.3 Cartão por Orders
+
+Cartão tokenizado em `POST /v1/card_tokens` com o mesmo access token (o
+token sai `live_mode: true`), Visa `4235 6477 2802 5682`, `11/2030`, CVV
+`123`:
+
+| Etapa | Resposta |
+| --- | --- |
+| cobrar, titular `APRO` | `201`, `processed` / `accredited`, `capture_mode: automatic_async` |
+| cobrar, titular `OTHE` | **`402`**, `errors[0].details = ["PAY…: rejected_by_issuer"]`, a order inteira em `data` com `status: failed` |
+| `capture_mode: manual` | `201`, `action_required` / `waiting_capture` |
+| `POST /v1/orders/{id}/capture` | `200`, `processed` / `accredited` |
+| `POST /v1/orders/{id}/cancel` sobre autorização | `200`, `canceled` |
+| `POST /v1/orders/{id}/refund` com `{"transactions":[{"id":"PAY…","amount":"30.00"}]}` | `201`, `processed` / `partially_refunded` |
+| `POST /v1/orders/{id}/refund` sem corpo | `201`, `refunded` |
+| `GET` depois | `refunded`; pagamento com `refunded_amount: "100.00"` e duas entradas em `transactions.refunds` |
+
+Mastercard `5031 4332 1540 6351` com o mesmo token e corpo: `422
+unprocessable_content`, sem detalhe. Causa não isolada.

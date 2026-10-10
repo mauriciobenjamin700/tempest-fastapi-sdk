@@ -528,6 +528,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Logging »](logging.md)** | `LogUtils`, logging JSON estruturado, propagação de request-ID |
 | **[Login social (OAuth2/OIDC) »](oauth.md)** | `AUTH_OAUTH_ENABLED` + `oauth_clients=` (quatro rotas `/auth/oauth/*`), `OAuthSettings`, `make_user_oauth_account_model`, `NameMixin`, `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`, `OAuthUser`, `OAuthClient`, `generate_oauth_state` |
 | **[Management commands (tempest &lt;cmd&gt;) »](management-commands.md)** | registrar comandos próprios na CLI `tempest` do projeto |
+| **[Mercado Pago (contas e credenciais de teste) »](mercado-pago-sandbox.md)** | passo a passo para criar vendedora e compradora de teste, achar o token certo (Checkout Transparente / API de Orders) e o e-mail da compradora, cartões de teste e a tabela de erros que cada desvio produz |
 | **[Mercado Pago (Pix, cartão, boleto) »](mercado-pago.md)** | `MercadoPagoClient` (147 operações geradas da OpenAPI oficial do provedor), `MercadoPagoPixProvider` + `make_mercado_pago_pix_webhook_dependency` (Pix pelo contrato, webhook que relê o pagamento), `AuthenticatedUser`, `to_cents` / `from_cents` (reais, não centavos), `make_mercado_pago_webhook_dependency`, `MercadoPagoSettings`, `x_idempotency_key` por chamada |
 | **[Métricas »](metrics.md)** | `MetricsUtils` — snapshots de CPU / RAM / disco / GPU |
 | **[MFA (TOTP / 2FA) »](mfa.md)** | `MFAMixin`, `TOTPHelper`, endpoints enroll/confirm/verify/disable no `make_auth_router`, códigos de recuperação |
