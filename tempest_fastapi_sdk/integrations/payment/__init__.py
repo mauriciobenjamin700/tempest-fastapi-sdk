@@ -80,6 +80,9 @@ from tempest_fastapi_sdk.integrations.payment.base import (
 from tempest_fastapi_sdk.integrations.payment.base import (
     PixProvider as PixProvider,
 )
+from tempest_fastapi_sdk.integrations.payment.routing import (
+    PixProviderRouter as PixProviderRouter,
+)
 from tempest_fastapi_sdk.integrations.payment.settlement import (
     PixConfirmationOutcome as PixConfirmationOutcome,
 )
@@ -131,6 +134,7 @@ __all__: list[str] = [
     "PixPaymentConfirmation",
     "PixPaymentEvent",
     "PixProvider",
+    "PixProviderRouter",
     "adapters",
     "confirm_pix_payment",
     "openpix",

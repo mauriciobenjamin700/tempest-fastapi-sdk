@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`MercadoPagoPixProvider`: Mercado Pago pelo contrato de Pix**
+  (`integrations.payment.adapters`). Cobra, lê e cancela pelo `PixProvider`,
+  como o `OpenPixPixProvider`: centavos no contrato e reais no fio (via
+  `from_cents`/`to_cents`), os nove estados do Mercado Pago mapeados nos
+  canônicos (`cancelled` + `status_detail: expired` vira `EXPIRED`) e o QR
+  lido do `point_of_interaction` que o `Payment` gerado descarta.
+  - **`payer.email` é exigido antes de enviar.** Medido no sandbox em
+    2026-10-09: Pix sem `payer`, ou com `payer` só com nome, volta **500**
+    `payer_cannot_be_nil`. O adapter levanta `ValueError` antes da
+    requisição.
+  - **Uma `X-Idempotency-Key` por chamada**, reaproveitada nos retries do
+    `HTTPClient`; `idempotency_key=` troca a regra (por exemplo, pela
+    `reference`).
+  - **Cancelamento por `PUT /v1/payments/{id}`**, não pelo
+    `PUT .../cancellations`, que respondeu como rota inexistente no sandbox.
+- **`make_mercado_pago_pix_webhook_dependency` e `MercadoPagoPixDelivery`.**
+  A notificação do Mercado Pago assina só o `data.id` e não traz o estado do
+  pagamento. A dependency verifica a assinatura, relê o pagamento por esse id
+  e entrega a cobrança junto; o `parse_webhook` do adapter tira o tipo do
+  evento do estado relido e **recusa a notificação crua** (`TypeError`), que
+  só poderia virar `UNKNOWN` e deixaria um `settle` à espera de
+  `CHARGE_PAID` sem liberar nada.
+- **`PixProviderRouter`** (`integrations.payment`): rollout entre dois
+  provedores de Pix. Manda uma fatia estável dos pedidos novos ao candidato
+  (SHA-256 da `reference`, então o mesmo pedido cai sempre no mesmo
+  provedor, e subir a porcentagem só acrescenta pedidos à fatia) e lê ou
+  cancela cada cobrança no provedor guardado em `PixCharge.provider`.
+  `candidate_percent=0` é o kill switch.
+
+O ciclo criar → ler → cancelar ainda não rodou contra o sandbox: com o token
+`TEST-` da aplicação, criar Pix responde `500 not_found`. O teste `network`
+`tests/integrations/payment/adapters/test_mercado_pago_sandbox.py` cobre o
+ciclo com conta de vendedor de teste.
+
 ### Changed
 
 - **Mercado Pago: `get_authenticated_user` devolve `AuthenticatedUser`** em

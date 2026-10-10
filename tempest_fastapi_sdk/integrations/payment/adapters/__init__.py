@@ -15,6 +15,15 @@ every schema of every provider the SDK bundles. Measured, that is 0.5 s and
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
+        MercadoPagoPixDelivery as MercadoPagoPixDelivery,
+    )
+    from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
+        MercadoPagoPixProvider as MercadoPagoPixProvider,
+    )
+    from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
+        make_mercado_pago_pix_webhook_dependency as make_mercado_pago_pix_webhook_dependency,  # noqa: E501
+    )
     from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
         OpenPixPayoutProvider as OpenPixPayoutProvider,
     )
@@ -23,6 +32,9 @@ if TYPE_CHECKING:
     )
 
 _EXPORTS: dict[str, str] = {
+    "MercadoPagoPixDelivery": "mercado_pago",
+    "MercadoPagoPixProvider": "mercado_pago",
+    "make_mercado_pago_pix_webhook_dependency": "mercado_pago",
     "OpenPixPayoutProvider": "openpix",
     "OpenPixPixProvider": "openpix",
     "PAYOUT_REJECTED_STATUSES": "openpix",
@@ -64,4 +76,10 @@ def __dir__() -> list[str]:
     return sorted(set(_EXPORTS) | set(_EXPORTS.values()))
 
 
-__all__: list[str] = ["OpenPixPayoutProvider", "OpenPixPixProvider"]
+__all__: list[str] = [
+    "MercadoPagoPixDelivery",
+    "MercadoPagoPixProvider",
+    "OpenPixPayoutProvider",
+    "OpenPixPixProvider",
+    "make_mercado_pago_pix_webhook_dependency",
+]

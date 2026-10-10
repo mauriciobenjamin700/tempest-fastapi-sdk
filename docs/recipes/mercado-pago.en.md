@@ -410,6 +410,112 @@ def manifest_of_delivery(data_id: str, request_id: str, ts: str) -> str:
     always fail. Do not route QR Code through here — gate that path some other
     way.
 
+## Through the contract door: `MercadoPagoPixProvider`
+
+Everything above speaks Mercado Pago's language. If your service already
+speaks the [Pix protocol](pix-protocol.md), the adapter translates: cents in
+the contract, reais on the wire, the nine states folded into the canonical
+ones, and the QR read from the object the specification does not declare.
+
+```python
+from typing import Any
+
+from fastapi import Depends, FastAPI
+
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.integrations.payment import (
+    PixCharge,
+    PixChargeRequest,
+    PixEventType,
+    PixPayer,
+    confirm_pix_payment,
+)
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoPixDelivery,
+    MercadoPagoPixProvider,
+    make_mercado_pago_pix_webhook_dependency,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import DEFAULT_BASE_URL
+
+http: HTTPClient = HTTPClient(
+    base_url=DEFAULT_BASE_URL,
+    default_headers={"Authorization": "Bearer <your access token>"},
+)
+provider: MercadoPagoPixProvider = MercadoPagoPixProvider(
+    http,
+    notification_url="https://your-service.example.com/webhooks/mercado-pago",
+)
+delivery_dependency = make_mercado_pago_pix_webhook_dependency(
+    "<webhook secret>",
+    provider,
+    tolerance_seconds=300.0,
+)
+
+app: FastAPI = FastAPI()
+
+
+@app.post("/checkout/{order_id}")
+async def checkout(order_id: str) -> dict[str, Any]:
+    """Open a R$ 19.90 Pix for the order."""
+    charge: PixCharge = await provider.create_pix_charge(
+        PixChargeRequest(
+            amount_cents=1990,
+            reference=order_id,
+            payer=PixPayer(email="buyer@example.com"),
+        ),
+    )
+    return {"charge_id": charge.provider_charge_id, "br_code": charge.br_code}
+
+
+@app.post("/webhooks/mercado-pago", include_in_schema=False)
+async def webhook(
+    delivery: MercadoPagoPixDelivery = Depends(delivery_dependency),
+) -> dict[str, Any]:
+    """Release the order when the re-read confirms the payment."""
+    event = provider.parse_webhook(delivery)
+    if event.type is not PixEventType.CHARGE_PAID or event.charge is None:
+        return {"settled": None}
+    confirmation = await confirm_pix_payment(
+        provider,
+        event.charge.provider_charge_id,
+        reference=event.charge.reference,
+        amount_cents=1990,
+    )
+    return {"settled": confirmation.paid}
+```
+
+What each part solves:
+
+- **`payer.email` is required.** Measured in the sandbox on 2026-10-09: a
+  Pix without `payer`, or with a `payer` carrying only a name, comes back
+  **500** `payer_cannot_be_nil`, which reads as a provider outage and is
+  retried by the `HTTPClient` on top. The adapter refuses before sending,
+  with `ValueError`.
+- **One idempotency key per call.** Each `create_pix_charge` sends a fresh
+  `X-Idempotency-Key`. The `HTTPClient` builds headers once, before its
+  retry loop, so a `POST` resent after a 5xx does not create a second
+  payment. To collapse calls for the same order, pass
+  `idempotency_key=lambda request: request.reference`.
+- **The webhook re-reads before becoming an event.** A Mercado Pago
+  notification signs only `data.id`: it does not say whether the payment
+  was approved. The dependency verifies the signature, re-reads the payment
+  by that id, and hands over a `MercadoPagoPixDelivery` with the charge
+  inside. The event type comes from the re-read state. Passing the bare
+  notification to `parse_webhook` raises `TypeError`: the only event it
+  could produce is `UNKNOWN`, and a `settle` waiting for `CHARGE_PAID` would
+  never release anything, with no error anywhere.
+- **Cancelling uses `PUT /v1/payments/{id}`**, with `status: cancelled`.
+  The `PUT .../cancellations` the document declares answered like a missing
+  route in the sandbox.
+
+!!! warning "What is not measured yet"
+    The create → read → cancel cycle has not yet run against the sandbox:
+    with the application's `TEST-` token, creating a Pix answers
+    `500 not_found` for any payer e-mail. A live webhook delivery and an
+    expired payment have not been observed either. The
+    `tests/integrations/payment/adapters/test_mercado_pago_sandbox.py` test
+    (marked `network`) runs the cycle with a test seller account.
+
 ## Telling a trustworthy operation from an unverified one
 
 The document this SDK generates from comes from the provider: it is,
@@ -527,3 +633,6 @@ make mercadopago-diff
 - Not every operation rests on the same evidence: 11 say `**Unverified.**`
   and 4 say `**Not routed.**` in their docstring. `get_authenticated_user`
   returns `AuthenticatedUser`, observed in the sandbox.
+- Through the contract: `MercadoPagoPixProvider` requires `payer.email`, and
+  the webhook goes through `make_mercado_pago_pix_webhook_dependency`, which
+  re-reads the payment before it becomes an event.

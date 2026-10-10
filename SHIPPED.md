@@ -1362,6 +1362,21 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   que foi sondado, quando e com que código; `make mercadopago-diff` separa os
   baldes. Testes: `TestUnverifiedOperationsAreMarked`,
   `TestTheProbeOnlySpeaksForItsOwnVerb`.
+- **Mercado Pago pelo contrato de Pix + rollout entre provedores
+  (unreleased)** — `MercadoPagoPixProvider` (cobrar, ler, cancelar,
+  `parse_webhook`), `make_mercado_pago_pix_webhook_dependency` +
+  `MercadoPagoPixDelivery` (verifica a assinatura e relê o pagamento, porque a
+  notificação não traz estado; a notificação crua é recusada com `TypeError`)
+  e `PixProviderRouter` (fatia estável por SHA-256 da `reference`, leitura e
+  cancelamento pelo `PixCharge.provider` guardado, `candidate_percent=0` como
+  kill switch). Medido no sandbox: Pix sem `payer.email` volta `500
+  payer_cannot_be_nil`, e o adapter recusa antes. Falta rodar o ciclo real com
+  conta de vendedor de teste (o token `TEST-` dá `500 not_found` na criação) e
+  um `PayoutProvider` do Mercado Pago. Testes:
+  `tests/integrations/payment/adapters/test_mercado_pago_adapter.py`,
+  `tests/integrations/payment/test_routing.py`, `test_contract.py` (o adapter
+  entra no guard de assinatura e de mapeamento exaustivo) e
+  `test_mercado_pago_sandbox.py` (`network`).
 - **Sandbox do Mercado Pago: `/users/me` tipado e as 47 classificadas
   (unreleased)** — issue #226. Medido em 2026-10-09 com token `TEST-`, só
   com requisição que não pode dar certo (corpo malformado, id inexistente),

@@ -29,15 +29,24 @@ from tempest_fastapi_sdk.integrations.payment import (
     PixEventType,
     PixProvider,
 )
+from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
+    STATUS_MAP as MERCADO_PAGO_STATUS_MAP,
+)
+from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
+    MercadoPagoPixProvider,
+)
 from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
     STATUS_MAP,
     OpenPixPayoutProvider,
     OpenPixPixProvider,
 )
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
+    PaymentStatus as MercadoPagoPaymentStatus,
+)
 from tempest_fastapi_sdk.integrations.payment.openpix import ChargeStatus
 from tempest_fastapi_sdk.testing.fakes import FakePayoutProvider
 
-ADAPTERS: list[type[Any]] = [OpenPixPixProvider]
+ADAPTERS: list[type[Any]] = [OpenPixPixProvider, MercadoPagoPixProvider]
 """Every adapter that claims to implement :class:`PixProvider`."""
 
 PROTOCOL_METHODS: tuple[str, ...] = (
@@ -128,6 +137,23 @@ def test_every_openpix_status_is_mapped() -> None:
     unmapped = [status for status in ChargeStatus if status not in STATUS_MAP]
 
     assert not unmapped, f"OpenPix statuses with no canonical mapping: {unmapped}"
+
+
+def test_every_mercado_pago_status_is_mapped() -> None:
+    """No member of Mercado Pago's generated ``PaymentStatus`` falls through.
+
+    The adapter keys its map by the wire string so that importing it does
+    not build the generated schemas; this walks the generated enum instead,
+    so a regeneration that adds a state fails here.
+    """
+    unmapped = [
+        status.value
+        for status in MercadoPagoPaymentStatus
+        if status.value not in MERCADO_PAGO_STATUS_MAP
+    ]
+
+    assert not unmapped, f"Mercado Pago statuses with no mapping: {unmapped}"
+    assert set(MERCADO_PAGO_STATUS_MAP) == {s.value for s in MercadoPagoPaymentStatus}
 
 
 def test_status_mapping_targets_are_canonical() -> None:

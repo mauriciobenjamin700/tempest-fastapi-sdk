@@ -726,10 +726,17 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.integrations.payment.settlement.PixPaymentConfirmation
 ::: tempest_fastapi_sdk.integrations.payment.settlement.PixConfirmationOutcome
 
+### `tempest_fastapi_sdk.integrations.payment.routing`
+
+::: tempest_fastapi_sdk.integrations.payment.routing.PixProviderRouter
+
 ### `tempest_fastapi_sdk.integrations.payment.adapters`
 
 ::: tempest_fastapi_sdk.integrations.payment.adapters.openpix.OpenPixPixProvider
 ::: tempest_fastapi_sdk.integrations.payment.adapters.openpix.OpenPixPayoutProvider
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago.MercadoPagoPixProvider
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago.MercadoPagoPixDelivery
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago.make_mercado_pago_pix_webhook_dependency
 
 ## WhatsApp (zap-api)
 

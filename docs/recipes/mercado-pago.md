@@ -406,6 +406,110 @@ def manifesto_da_entrega(data_id: str, request_id: str, ts: str) -> str:
     assinatura e vão falhar sempre. Não passe QR Code por aqui — proteja essa
     rota de outra forma.
 
+## Pela porta do contrato: `MercadoPagoPixProvider`
+
+Tudo acima fala a língua do Mercado Pago. Se o seu serviço já fala o
+[protocolo de Pix](pix-protocol.md), o adapter traduz: centavos no contrato,
+reais no fio, os nove estados dobrados nos canônicos e o QR vindo do objeto
+que a especificação não declara.
+
+```python
+from typing import Any
+
+from fastapi import Depends, FastAPI
+
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.integrations.payment import (
+    PixCharge,
+    PixChargeRequest,
+    PixEventType,
+    PixPayer,
+    confirm_pix_payment,
+)
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoPixDelivery,
+    MercadoPagoPixProvider,
+    make_mercado_pago_pix_webhook_dependency,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import DEFAULT_BASE_URL
+
+http: HTTPClient = HTTPClient(
+    base_url=DEFAULT_BASE_URL,
+    default_headers={"Authorization": "Bearer <seu access token>"},
+)
+provider: MercadoPagoPixProvider = MercadoPagoPixProvider(
+    http,
+    notification_url="https://seu-servico.example.com/webhooks/mercado-pago",
+)
+delivery_dependency = make_mercado_pago_pix_webhook_dependency(
+    "<segredo do webhook>",
+    provider,
+    tolerance_seconds=300.0,
+)
+
+app: FastAPI = FastAPI()
+
+
+@app.post("/checkout/{order_id}")
+async def checkout(order_id: str) -> dict[str, Any]:
+    """Abre um Pix de R$ 19,90 para o pedido."""
+    charge: PixCharge = await provider.create_pix_charge(
+        PixChargeRequest(
+            amount_cents=1990,
+            reference=order_id,
+            payer=PixPayer(email="comprador@example.com"),
+        ),
+    )
+    return {"charge_id": charge.provider_charge_id, "br_code": charge.br_code}
+
+
+@app.post("/webhooks/mercado-pago", include_in_schema=False)
+async def webhook(
+    delivery: MercadoPagoPixDelivery = Depends(delivery_dependency),
+) -> dict[str, Any]:
+    """Libera o pedido quando a releitura confirma o pagamento."""
+    event = provider.parse_webhook(delivery)
+    if event.type is not PixEventType.CHARGE_PAID or event.charge is None:
+        return {"settled": None}
+    confirmation = await confirm_pix_payment(
+        provider,
+        event.charge.provider_charge_id,
+        reference=event.charge.reference,
+        amount_cents=1990,
+    )
+    return {"settled": confirmation.paid}
+```
+
+O que cada parte resolve:
+
+- **`payer.email` é obrigatório.** Medido no sandbox em 2026-10-09: um Pix
+  sem `payer`, ou com `payer` só com nome, volta **500**
+  `payer_cannot_be_nil`, que parece queda do provedor e ainda é retentado
+  pelo `HTTPClient`. O adapter recusa antes de enviar, com `ValueError`.
+- **Uma chave de idempotência por chamada.** Cada `create_pix_charge`
+  manda um `X-Idempotency-Key` novo. O `HTTPClient` monta os headers uma vez,
+  antes do retry, então um `POST` reenviado depois de um 5xx não cria um
+  segundo pagamento. Para colapsar chamadas do mesmo pedido, passe
+  `idempotency_key=lambda request: request.reference`.
+- **O webhook relê antes de virar evento.** A notificação do Mercado Pago
+  assina só o `data.id`: não diz se o pagamento foi aprovado. A dependency
+  verifica a assinatura, relê o pagamento por esse id e entrega um
+  `MercadoPagoPixDelivery` com a cobrança dentro. O tipo do evento sai do
+  estado relido. Passar a notificação crua ao `parse_webhook` levanta
+  `TypeError`: o único evento que ela daria é `UNKNOWN`, e um `settle` que
+  espera `CHARGE_PAID` nunca liberaria nada, sem erro nenhum.
+- **Cancelar usa `PUT /v1/payments/{id}`**, com `status: cancelled`. O
+  `PUT .../cancellations` que o documento declara respondeu como rota
+  inexistente no sandbox.
+
+!!! warning "O que ainda não foi medido"
+    O ciclo criar → ler → cancelar ainda não rodou contra o sandbox: com o
+    token `TEST-` da aplicação, a criação de Pix responde `500 not_found`
+    para qualquer e-mail de pagador. Também não foram observados uma entrega
+    de webhook real nem um pagamento expirado. O teste
+    `tests/integrations/payment/adapters/test_mercado_pago_sandbox.py`
+    (marcado `network`) roda o ciclo com uma conta de vendedor de teste.
+
 ## Como saber se uma operação é confiável
 
 O documento que este SDK usa vem do provedor: é, byte a byte, o `spec3.yaml`
@@ -519,3 +623,6 @@ make mercadopago-diff
 - Nem toda operação tem o mesmo lastro: 11 dizem `**Unverified.**` e 4 dizem
   `**Not routed.**` na docstring. `get_authenticated_user` devolve
   `AuthenticatedUser`, observado no sandbox.
+- Pelo contrato: `MercadoPagoPixProvider` exige `payer.email`, e o webhook
+  entra por `make_mercado_pago_pix_webhook_dependency`, que relê o pagamento
+  antes de virar evento.

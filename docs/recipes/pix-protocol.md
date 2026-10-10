@@ -260,15 +260,13 @@ produção. Num serviço FastAPI, essa função é o corpo do `Depends`: o route
 recebe `PixProvider` e nunca sabe qual adapter chegou — esse é o ponto, e a
 próxima seção monta o serviço inteiro em volta dele.
 
-!!! info "Quantos adapters existem hoje: um"
-    O SDK ships **um** adapter pronto — `OpenPixPixProvider`, em
-    `integrations/payment/adapters/openpix.py`. O Mercado Pago tem cliente,
-    schemas e `parse_pix_payment` em
-    `integrations/payment/mercado_pago/`, mas **ainda não** um
-    `PixProvider`; o Stripe entra por outro caminho, porque
-    [não faz Pix](stripe.md). Então a troca de uma linha é o desenho, e é
-    real assim que o segundo adapter existir — escrever um é a última
-    seção desta página.
+!!! info "Quantos adapters existem hoje: dois"
+    O SDK ships **dois** adapters prontos: `OpenPixPixProvider`, em
+    `integrations/payment/adapters/openpix.py`, e `MercadoPagoPixProvider`,
+    em `integrations/payment/adapters/mercado_pago.py`. O Stripe entra por
+    outro caminho, porque [não faz Pix](stripe.md). Para trocar de um para
+    o outro sem desligar o primeiro de uma vez, veja
+    [Ligando o segundo provedor sem desligar o primeiro](#ligando-o-segundo-provedor-sem-desligar-o-primeiro).
 
 ## Na arquitetura do serviço
 
@@ -952,6 +950,74 @@ muda quando o adapter for outro. Nem o service, nem os routers, nem os
 schemas aparecem nessa lista: é assim que se mede se a costura está no
 lugar.
 
+### Ligando o segundo provedor sem desligar o primeiro
+
+Trocar o provedor num deploy só é apostar em tudo que o sandbox não
+mostrou. O caminho seguro é um rollout: uma fatia dos pedidos novos vai para
+o provedor novo, toda cobrança já aberta continua sendo lida e cancelada onde
+nasceu, e a fatia cresce (ou volta a zero) sem deploy. É o que o
+`PixProviderRouter` faz:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.integrations.payment import (
+    PixChargeRequest,
+    PixProviderRouter,
+)
+from tempest_fastapi_sdk.testing.fakes import FakePixProvider
+
+
+async def main() -> None:
+    """Send 10% of new charges to the candidate, read each where it was born."""
+    router: PixProviderRouter = PixProviderRouter(
+        [
+            FakePixProvider(provider_name="openpix"),
+            FakePixProvider(provider_name="mercado_pago"),
+        ],
+        primary="openpix",
+        candidate="mercado_pago",
+        candidate_percent=10,
+    )
+    charge = await router.create_pix_charge(
+        PixChargeRequest(amount_cents=1990, reference="pedido-1042"),
+    )
+    again = await router.get_pix_charge(charge.provider, charge.provider_charge_id)
+    print(charge.provider, again.provider_charge_id == charge.provider_charge_id)
+
+
+asyncio.run(main())
+```
+
+Três decisões estão nesse objeto:
+
+1. **A fatia é função da `reference`, não sorteio.** `bucket("pedido-1042")`
+   é um SHA-256 reduzido a `0..99`, igual em todo processo. O mesmo pedido,
+   reaberto depois de um timeout, cai no mesmo provedor, e subir a
+   porcentagem só **acrescenta** pedidos à fatia do candidato.
+2. **Leitura e cancelamento vão pelo provedor guardado.** `get_pix_charge` e
+   `cancel_pix_charge` recebem `charge.provider` além do id. Por isso o
+   pedido guarda as **duas** colunas, `provider` e `provider_charge_id`. O
+   modelo do passo 3 guarda só o id, e com dois provedores ele precisa da
+   outra.
+3. **`candidate_percent=0` é o kill switch.** Nada novo vai para o candidato,
+   e o que já está lá continua sendo servido, porque o provedor segue
+   registrado.
+
+O router não é um `PixProvider`: o `get_pix_charge` do contrato recebe só o
+id, e um id sozinho não diz a quem perguntar. Para o `confirm_pix_payment`,
+passe `router.provider_for(order.provider)`.
+
+!!! warning "Cada provedor tem a sua rota de webhook"
+    A verificação é por provedor, e a entrega do Mercado Pago **não traz o
+    estado do pagamento**: só o id, assinado. A dependency
+    `make_mercado_pago_pix_webhook_dependency` verifica a assinatura e relê o
+    pagamento antes de entregar ao `parse_webhook`, e o `parse_webhook` do
+    adapter recusa a notificação crua. Monte `/webhooks/openpix` e
+    `/webhooks/mercado-pago` lado a lado, cada um com a sua dependency, e o
+    mesmo `service.settle` atrás dos dois. Detalhes em
+    [Mercado Pago »](mercado-pago.md#pela-porta-do-contrato-mercadopagopixprovider).
+
 ## Estados
 
 Você decide sobre `PaymentStatus`, não sobre a string do provedor:
@@ -1283,8 +1349,10 @@ type-checker exige de você. Se um método sair com a assinatura errada,
   original.
 - Nada se perde: o que o provedor diz a mais está em `raw`.
 - Adapter é classe com `provider_name` e os quatro métodos, sem herança.
-  Hoje o SDK ships um (OpenPix); o fake in-memory acima é o que você escreve
-  primeiro, para testar sem rede.
+  Hoje o SDK ships dois (OpenPix e Mercado Pago); o fake in-memory acima é o
+  que você escreve primeiro, para testar sem rede.
+- Para migrar de provedor, `PixProviderRouter` manda uma fatia estável dos
+  pedidos novos ao candidato e lê cada cobrança no provedor que a criou.
 - Na arquitetura: o provider é montado em `api/dependencies` e sai de lá como
   `PixProvider`. Um `HTTPClient` por processo, no `lifespan` — e `app.state`
   é `Any`, então reanote o tipo na leitura.
