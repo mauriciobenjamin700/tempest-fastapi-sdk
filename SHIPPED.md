@@ -1397,6 +1397,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `offset`) nunca evitava. Advanced payments (5) e `transaction-intents`
   continuam barrados pelo PolicyAgent antes do roteamento. Evidência §9.7.
   Testes: `test_sandbox_observations.py`, `test_generated_drift.py`.
+- **Mercado Pago: as `GET` sondadas sem credencial, medidas de novo
+  (unreleased)** — issue #488. As 34 que só o `PROBED_OPERATIONS`
+  sustentava, contra irmão inventado com o token da vendedora: 20 em
+  `SELLER_ROUTED_GETS` (cada uma diz o que o irmão respondeu), 2 marcadas
+  `**Not routed.**`, 12 marcadas `**Unverified.**`; o que sobra no
+  `PROBED_OPERATIONS` o SDK oficial também chama. Evidência §9.8. Testes:
+  `test_sandbox_observations.py`.
 - **Sandbox do Mercado Pago: `/users/me` tipado e as 47 classificadas
   (unreleased)** — issue #226. Medido em 2026-10-09 com token `TEST-`, só
   com requisição que não pode dar certo (corpo malformado, id inexistente),

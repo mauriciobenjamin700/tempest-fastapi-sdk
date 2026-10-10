@@ -69,6 +69,8 @@ from mercadopago_overlay import (
     SANDBOX_ROUTED_OPERATIONS,
     SDK_COVERAGE_DISAGREEMENTS,
     SDK_COVERAGE_URL,
+    SELLER_PROBE_DATE,
+    SELLER_ROUTED_GETS,
     UNROUTED_OPERATIONS,
     normalise,
 )
@@ -404,8 +406,14 @@ def main() -> int:
     unrouted_keys = {normalise(e.method, e.path) for e in UNROUTED_OPERATIONS}
     probed = [entry for entry in extra if entry in PROBED_OPERATIONS]
     sandbox = [entry for entry in extra if entry in SANDBOX_ROUTED_OPERATIONS]
+    seller = [entry for entry in extra if entry in SELLER_ROUTED_GETS]
     unrouted = [entry for entry in extra if entry in unrouted_keys]
-    vouched = set(PROBED_OPERATIONS) | set(SANDBOX_ROUTED_OPERATIONS) | unrouted_keys
+    vouched = (
+        set(PROBED_OPERATIONS)
+        | set(SANDBOX_ROUTED_OPERATIONS)
+        | set(SELLER_ROUTED_GETS)
+        | unrouted_keys
+    )
     unverified = [entry for entry in extra if entry not in vouched]
 
     print(f"\nonly we carry these ({len(extra)}), by what vouches for them:")
@@ -415,6 +423,10 @@ def main() -> int:
 
     print(f"\n  told apart in the sandbox on {SANDBOX_PROBE_DATE} ({len(sandbox)}):")
     for method, path in sandbox:
+        print(f"    {method:6} {path}")
+
+    print(f"\n  GET told apart in the sandbox on {SELLER_PROBE_DATE} ({len(seller)}):")
+    for method, path in seller:
         print(f"    {method:6} {path}")
 
     print(f"\n  answered as unrouted in the sandbox ({len(unrouted)}):")

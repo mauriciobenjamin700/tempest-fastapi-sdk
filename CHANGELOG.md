@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Mercado Pago: as 34 operações `GET` que só uma sondagem sem credencial
+  sustentava foram medidas de novo, com o token da vendedora de teste e cada
+  uma contra um irmão inventado (#488). 20 se distinguiram; 12 não, e agora
+  carregam `**Unverified.**` na docstring (23 no total); `get_release_report`
+  e `get_settlement_report` responderam como não roteadas e carregam
+  `**Not routed.**` (4 no total), sem sair do cliente. Nenhuma assinatura
+  muda.
 - Mercado Pago: `MercadoPagoClient.search_chargebacks` agora exige
   `payment_id` (keyword) e devolve `ChargebackSearchResponse` (`paging` +
   `results`) em vez de `dict[str, Any]`; `limit` e `offset` saíram. Medido em

@@ -40,7 +40,10 @@ if SCRIPTS not in sys.path:
 
 from mercadopago_overlay import (  # noqa: E402
     OBSERVED_SCHEMAS,
+    OFFICIAL_SDK_CALLS,
+    PROBED_OPERATIONS,
     SANDBOX_ROUTED_OPERATIONS,
+    SELLER_ROUTED_GETS,
     UNROUTED_OPERATIONS,
     UNVERIFIED_NOTE,
     apply,
@@ -212,6 +215,55 @@ class TestTheChargebackSearchIsTyped:
         assert parameters["payment_id"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
+class TestTheProbeOnlyGetsWereReEvaluated:
+    """Issue #488: the 34 `GET` only the unauthenticated probe vouched for.
+
+    Re-measured on 2026-10-10 with a test seller's token, each against an
+    invented sibling (evidence 9.8): 20 told apart, 2 unrouted, 12 that the
+    probe cannot speak for and now say so.
+    """
+
+    def test_the_34_split_20_2_12(self) -> None:
+        """Every probe-only entry landed in exactly one bucket."""
+        operations = _operations()
+        unverified_gets = {
+            key
+            for key, operation in operations.items()
+            if key[0] == "GET"
+            and UNVERIFIED_NOTE.strip() in str(operation.get("description") or "")
+        }
+        unrouted_gets = {
+            normalise(e.method, e.path)
+            for e in UNROUTED_OPERATIONS
+            if e.method == "get"
+        }
+
+        assert len(SELLER_ROUTED_GETS) == 20
+        assert unrouted_gets == {
+            ("GET", "/v1/account/release_report"),
+            ("GET", "/v1/account/settlement_report"),
+        }
+        assert len(unverified_gets) == 12
+        assert not (set(SELLER_ROUTED_GETS) & unverified_gets)
+        assert not (set(SELLER_ROUTED_GETS) & set(PROBED_OPERATIONS))
+
+    def test_what_is_left_in_the_old_probe_the_sdk_also_calls(self) -> None:
+        """The unauthenticated status no longer stands alone for any entry."""
+        operations = _operations()
+        lonely = [
+            key
+            for key in PROBED_OPERATIONS
+            if key in operations and key not in OFFICIAL_SDK_CALLS
+        ]
+
+        assert lonely == []
+
+    def test_every_entry_names_what_it_was_compared_to(self) -> None:
+        """A status alone is not evidence: each says what the sibling did."""
+        for key, evidence in SELLER_ROUTED_GETS.items():
+            assert "sibling" in evidence or "non-numeric" in evidence, key
+
+
 class TestTheSandboxClassifiedTheUnverified47:
     """32 routed, 4 unrouted, 11 still unknown: 47 in all."""
 
@@ -221,9 +273,14 @@ class TestTheSandboxClassifiedTheUnverified47:
         unverified = {
             key
             for key, operation in operations.items()
-            if UNVERIFIED_NOTE.strip() in str(operation.get("description") or "")
+            if key[0] != "GET"
+            and UNVERIFIED_NOTE.strip() in str(operation.get("description") or "")
         }
-        unrouted = {normalise(e.method, e.path) for e in UNROUTED_OPERATIONS}
+        unrouted = {
+            normalise(e.method, e.path)
+            for e in UNROUTED_OPERATIONS
+            if e.method != "get"
+        }
 
         assert len(SANDBOX_ROUTED_OPERATIONS) == 32
         assert len(unrouted) == 4
@@ -240,7 +297,7 @@ class TestTheSandboxClassifiedTheUnverified47:
             "PATCH",
             "DELETE",
         }
-        assert {e.method for e in UNROUTED_OPERATIONS} <= {"put", "patch"}
+        assert {e.method for e in UNROUTED_OPERATIONS} <= {"get", "put", "patch"}
 
     def test_every_routed_entry_names_its_discriminator(self) -> None:
         """A status alone is not evidence: each says what it was compared to."""

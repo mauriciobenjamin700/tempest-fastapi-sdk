@@ -546,3 +546,53 @@ ignorado) e tipa a resposta como `ChargebackSearchResponse` /
 `{}` e com `{"receiver": {}}`, `GET /v1/transaction-intents/123456789` e um
 path inventado sob o prefixo: `403` do PolicyAgent nos quatro. O shape do
 `receiver` não pôde ser descoberto com esta credencial.
+
+### 9.8 As 34 `GET` que só a sondagem sem credencial sustentava (2026-10-10, #488)
+
+Mesma credencial da 9.5, só `GET`, id `999999999999` (sob `/users/{id}`, o
+id da própria conta, aqui `<uid>`). Cada path comparado com um irmão
+inventado: o último segmento trocado por `tempest-unrouted`. Scripts em
+`~/.cache/tempest-fastapi-sdk/mp-sandbox/tools/probe488*.py` (fora do
+repositório). Onde o último segmento é parâmetro, o irmão cai no mesmo
+template; ali só conta uma resposta que nomeia o domínio ou o parâmetro.
+
+**Distinguidas (20) → `SELLER_ROUTED_GETS`:**
+
+| `GET` | Real | Irmão inventado |
+| --- | --- | --- |
+| `/terminals/v1/actions/{id}` | `404 order_not_found` | `404 not_found` genérico |
+| `/terminals/v1/list` | `200 {"data": {"terminals": []}, "paging": …}` | `404` |
+| `/point/integration-api/refund/{id}` | `400 Intent ID is not valid` | `404 Action not supported` |
+| `/pos` | `200` paging | `404` |
+| `/pos/{id}` | `404 pos_does_not_exist` | `404` genérico da borda |
+| `/post-purchase/v1/claims/search` | `403` PolicyAgent | `404` |
+| `/post-purchase/v1/claims/{id}` | `403` PolicyAgent | `404` |
+| `/preapproval/export` | `200`, corpo ZIP | `404` |
+| `/users/<uid>/stores/search` | `200` paging | `403` HTML do proxy |
+| `/v1/account/release_report/config` | `404 config_not_found_for_user` | `404 Resource … not found.` |
+| `/v1/account/release_report/list` | `200 []` | `404` |
+| `/v1/account/release_report/search` | `200` paging | `404` |
+| `/v1/account/release_report/task/{id}` | `403 internal_error` | `400 Failed to convert 'taskId'` (mesmo template, nomeia o parâmetro) |
+| `/v1/account/settlement_report/config` | `400`, corpo `config_not_found_for_user` | `404` vazio |
+| `/v1/account/settlement_report/list` | `200 []` | `404` vazio |
+| `/v1/account/settlement_report/search` | `200` paging | `404` vazio |
+| `/v1/account/settlement_report/task/{id}` | `400 internal_error` | `400` com campos vazios (mesmo template) |
+| `/v1/customers/{id}/addresses` | `401 access denied` | `404 Resource … not found.` |
+| `/v1/payment_methods/installments` | `400 the payment_method_id or bin are required` | `404` |
+| `/v2/wallet_connect/agreements/{id}` | `403` PolicyAgent | `404` |
+
+**Não roteadas (2) → `UNROUTED_OPERATIONS`, marcadas e mantidas:**
+`GET /v1/account/release_report` → `405 Method 'GET' is not supported`;
+`GET /v1/account/settlement_report` → `404 Resource /account/settlement_report not found.`
+— enquanto `…/list` e `…/search` de cada uma respondem `200`.
+
+**Indistinguíveis (12) → agora `**Unverified.**`:** `/users/{id}/pos`
+(HTML `403` do proxy nos dois, também com `<uid>`); os seis
+`/post-purchase/v1/claims/{id}/…` (PolicyAgent nos dois);
+`/v1/account/release_report/{id}` e `/v1/account/settlement_report/{id}`
+("não encontrado" genérico do serviço, que o irmão também recebe);
+`/v1/customers/{id}/addresses/{id}` (`401` nos dois);
+`/v1/payouts/{id}/transactions` e `/v1/transaction-intents/{id}` (PolicyAgent
+nos dois).
+
+O `PROBED_OPERATIONS` ficou só com entradas que o SDK oficial também chama.

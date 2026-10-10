@@ -529,33 +529,35 @@ Então nem toda operação do `MercadoPagoClient` tem o mesmo lastro. Das 132:
 | Balde | Qtd | O que responde por ela |
 | --- | --- | --- |
 | O SDK oficial chama | 58 | O provedor, no próprio `mercadopago` do PyPI (65 chamadas na 3.5.0 e na 3.6.0, menos as 7 da API de Payments) |
-| Sondada viva | 34 | `GET` sem credencial respondeu `401`/`403`/`400` (2026-08-28); 11 delas não se sustentam e 2 respondem como não roteadas, ver nota abaixo |
-| Separada no sandbox | 27 | Requisição que não pode dar certo respondeu diferente de um path inventado no mesmo prefixo (2026-10-09) |
-| Não roteada | 2 | O sandbox respondeu como responde a um path que não existe |
-| Nada responde | 11 | Resposta igual à do path inventado: nenhuma sonda distingue |
+| Separada no sandbox (não-`GET`) | 27 | Requisição que não pode dar certo respondeu diferente de um path inventado no mesmo prefixo (2026-10-09) |
+| Separada no sandbox (`GET`) | 20 | `GET` com o token da vendedora de teste respondeu diferente de um irmão inventado (2026-10-10) |
+| Não roteada | 4 | O sandbox respondeu como responde a um path que não existe |
+| Nada responde | 23 | Resposta igual à do path inventado: nenhuma sonda distingue |
 
-!!! warning "As sondadas vivas foram reavaliadas"
-    O balde "sondada viva" vem de uma regra que a sondagem de 2026-10-09
-    mostrou fraca: em vários prefixos `401`/`403` sai antes do roteamento.
-    Reavaliadas com `GET` contra um path inventado no mesmo prefixo, 11 das
-    34 respondem igual ao path inventado (`/terminals/v1`, refunds de
-    `/point/integration-api`, `/users/{id}/pos`, seis subpaths de
-    `/post-purchase/v1/claims/{id}` e `GET /v1/account/release_report/{id}`)
-    e duas respondem como não roteadas (`GET /v1/account/release_report` e
-    `GET /v1/account/settlement_report`). Elas ainda não carregam marcador na
-    docstring; a decisão está na issue #488.
+!!! info "Por que não existe mais o balde “sondada viva”"
+    Até a 0.311.0, 34 `GET` se apoiavam só numa requisição **sem
+    credencial** que respondeu `401`/`403`/`400` em 2026-08-28. A sondagem de
+    2026-10-09 mostrou que em vários prefixos esse status sai antes do
+    roteamento, então ele sozinho não prova rota. Em 2026-10-10 as 34 foram
+    medidas de novo, com o token da vendedora de teste e cada uma contra um
+    irmão inventado (issue #488): 20 se distinguiram, 2 responderam como não
+    roteadas (`get_release_report` e `get_settlement_report`) e 12 não se
+    distinguem — barradas pelo PolicyAgent ou pelo proxy, ou com o último
+    segmento parametrizado e um "não encontrado" genérico — e passaram a
+    carregar o marcador abaixo.
 
-**As 11 dizem isso na própria docstring:**
+**As 23 dizem isso na própria docstring:**
 
 ```
 **Unverified.** Neither the provider's SDK nor an unauthenticated probe
 covers this operation, so nothing here confirms the API routes it.
 ```
 
-**E as 2 não roteadas também**, com a medição: `update_chargeback` e
-`create_qr_integrator_config` carregam `**Not routed.**` e o que o sandbox
-respondeu. Elas continuam no cliente, porque remover método público é outra
-decisão, mas não espere que funcionem.
+**E as 4 não roteadas também**, com a medição: `update_chargeback`,
+`create_qr_integrator_config`, `get_release_report` e `get_settlement_report`
+carregam `**Not routed.**` e o que o sandbox respondeu. Elas continuam no
+cliente, porque remover método público é outra decisão, mas não espere que
+funcionem.
 
 !!! warning "Status diferente de `404` não prova rota"
     Medido no sandbox em 2026-10-09: em vários prefixos um gate de política
@@ -641,7 +643,7 @@ make mercadopago-diff
   `x-signature` e `x-request-id`, recusa com 401 antes do handler e entrega o
   `data_id` assinado — o corpo não é assinado.
 - Notificação de QR Code não é assinada — não passe por `verify_signature`.
-- Nem toda operação tem o mesmo lastro: 11 dizem `**Unverified.**` e 2 dizem
+- Nem toda operação tem o mesmo lastro: 23 dizem `**Unverified.**` e 4 dizem
   `**Not routed.**` na docstring. `get_authenticated_user` devolve
   `AuthenticatedUser`, observado no sandbox.
 - O webhook entra por `make_mercado_pago_webhook_delivery_dependency`, que

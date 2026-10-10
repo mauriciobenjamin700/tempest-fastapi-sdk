@@ -242,39 +242,11 @@ PROBED_OPERATIONS: dict[tuple[str, str], int] = {
     ("GET", "/merchant_orders/{}"): 401,
     ("GET", "/point/integration-api/devices"): 403,
     ("GET", "/point/integration-api/payment-intents/{}"): 403,
-    ("GET", "/point/integration-api/refund/{}"): 401,
-    ("GET", "/pos"): 403,
-    ("GET", "/pos/{}"): 403,
-    ("GET", "/post-purchase/v1/claims/search"): 403,
-    ("GET", "/post-purchase/v1/claims/{}"): 403,
-    ("GET", "/post-purchase/v1/claims/{}/attachments/{}"): 403,
-    ("GET", "/post-purchase/v1/claims/{}/attachments/{}/download"): 403,
-    ("GET", "/post-purchase/v1/claims/{}/evidences"): 403,
-    ("GET", "/post-purchase/v1/claims/{}/expected-resolutions"): 403,
-    ("GET", "/post-purchase/v1/claims/{}/messages"): 403,
-    ("GET", "/post-purchase/v1/claims/{}/status_history"): 403,
-    ("GET", "/preapproval/export"): 401,
     ("GET", "/preapproval/search"): 401,
     ("GET", "/preapproval/{}"): 401,
     ("GET", "/preapproval_plan/search"): 401,
     ("GET", "/preapproval_plan/{}"): 401,
-    ("GET", "/terminals/v1/actions/{}"): 401,
-    ("GET", "/terminals/v1/list"): 401,
     ("GET", "/users/me"): 403,
-    ("GET", "/users/{}/pos"): 403,
-    ("GET", "/users/{}/stores/search"): 403,
-    ("GET", "/v1/account/release_report"): 403,
-    ("GET", "/v1/account/release_report/config"): 403,
-    ("GET", "/v1/account/release_report/list"): 403,
-    ("GET", "/v1/account/release_report/search"): 403,
-    ("GET", "/v1/account/release_report/task/{}"): 403,
-    ("GET", "/v1/account/release_report/{}"): 403,
-    ("GET", "/v1/account/settlement_report"): 403,
-    ("GET", "/v1/account/settlement_report/config"): 403,
-    ("GET", "/v1/account/settlement_report/list"): 403,
-    ("GET", "/v1/account/settlement_report/search"): 403,
-    ("GET", "/v1/account/settlement_report/task/{}"): 403,
-    ("GET", "/v1/account/settlement_report/{}"): 403,
     ("GET", "/v1/advanced_payments/search"): 401,
     ("GET", "/v1/advanced_payments/{}"): 401,
     ("GET", "/v1/advanced_payments/{}/refunds"): 401,
@@ -283,22 +255,16 @@ PROBED_OPERATIONS: dict[tuple[str, str], int] = {
     ("GET", "/v1/chargebacks/{}"): 400,
     ("GET", "/v1/customers/search"): 401,
     ("GET", "/v1/customers/{}"): 401,
-    ("GET", "/v1/customers/{}/addresses"): 401,
-    ("GET", "/v1/customers/{}/addresses/{}"): 401,
     ("GET", "/v1/customers/{}/cards"): 401,
     ("GET", "/v1/customers/{}/cards/{}"): 401,
     ("GET", "/v1/identification_types"): 400,
     ("GET", "/v1/orders"): 403,
     ("GET", "/v1/orders/{}"): 403,
     ("GET", "/v1/payment_methods"): 401,
-    ("GET", "/v1/payment_methods/installments"): 401,
     ("GET", "/v1/payments/search"): 401,
     ("GET", "/v1/payments/{}"): 401,
     ("GET", "/v1/payments/{}/refunds"): 401,
     ("GET", "/v1/payments/{}/refunds/{}"): 401,
-    ("GET", "/v1/payouts/{}/transactions"): 400,
-    ("GET", "/v1/transaction-intents/{}"): 400,
-    ("GET", "/v2/wallet_connect/agreements/{}"): 403,
 }
 """Status each operation answered to an unauthenticated request.
 
@@ -314,13 +280,96 @@ with. The non-``GET`` operations were probed later, in the sandbox, with
 requests built not to succeed — :data:`SANDBOX_ROUTED_OPERATIONS` and
 :data:`UNROUTED_OPERATIONS`.
 
-**Re-evaluated on :data:`SANDBOX_PROBE_DATE`, and not all of it holds.** The
-same probe showed that on several prefixes ``401``/``403`` comes before
-routing, so a status alone is weaker than this inventory assumed: 11 of the
-entries that only this probe vouches for answer the same as a made-up path
-under their prefix, and two ``GET`` answer as unrouted. Recorded in
-``vendor/mercadopago-evidence.md`` section 8.4 and issue #488; the entries
-are unchanged until that issue decides.
+**Every entry left here is also called by the provider's SDK**, which is
+what vouches for it; the status is kept as a secondary record. The sandbox
+probe of :data:`SANDBOX_PROBE_DATE` showed that on several prefixes
+``401``/``403`` comes before routing, so a status alone does not prove a
+route. The 34 entries this probe was the only evidence for were re-measured
+on :data:`SELLER_PROBE_DATE` against an invented sibling and moved out
+(issue #488, ``vendor/mercadopago-evidence.md`` section 9.8): 20 to
+:data:`SELLER_ROUTED_GETS`, 2 to :data:`UNROUTED_OPERATIONS`, and 12 now
+carry :data:`UNVERIFIED_NOTE`.
+"""
+
+SELLER_PROBE_DATE: str = "2026-10-10"
+"""When :data:`SELLER_ROUTED_GETS` was observed."""
+
+SELLER_ROUTED_GETS: dict[tuple[str, str], str] = {
+    ("GET", "/terminals/v1/actions/{}"): (
+        "404 `order_not_found`; an invented sibling answers the edge's generic 404"
+    ),
+    ("GET", "/terminals/v1/list"): (
+        "200 with a `terminals` / `paging` envelope; an invented sibling answers 404"
+    ),
+    ("GET", "/point/integration-api/refund/{}"): (
+        "400 'Intent ID is not valid'; an invented sibling answers 404 'Action "
+        "not supported'"
+    ),
+    ("GET", "/pos"): ("200 with a paging envelope; an invented sibling answers 404"),
+    ("GET", "/pos/{}"): (
+        "404 `pos_does_not_exist`; an invented sibling answers the edge's generic 404"
+    ),
+    ("GET", "/post-purchase/v1/claims/search"): (
+        "403 from the PolicyAgent; an invented sibling answers 404"
+    ),
+    ("GET", "/post-purchase/v1/claims/{}"): (
+        "403 from the PolicyAgent; an invented sibling answers 404"
+    ),
+    ("GET", "/preapproval/export"): (
+        "200 with a ZIP body; an invented sibling answers 404"
+    ),
+    ("GET", "/users/{}/stores/search"): (
+        "200 with a paging envelope for the token's own user; an invented "
+        "sibling answers the proxy's HTML 403"
+    ),
+    ("GET", "/v1/account/release_report/config"): (
+        "404 `config_not_found_for_user`; an invented sibling answers 'Resource"
+        " … not found.'"
+    ),
+    ("GET", "/v1/account/release_report/list"): (
+        "200 `[]`; an invented sibling answers 404"
+    ),
+    ("GET", "/v1/account/release_report/search"): (
+        "200 with a paging envelope; an invented sibling answers 404"
+    ),
+    ("GET", "/v1/account/release_report/task/{}"): (
+        "403 `internal_error` for a numeric id; a non-numeric one answers 400 "
+        "'Failed to convert taskId', naming the route's parameter"
+    ),
+    ("GET", "/v1/account/settlement_report/config"): (
+        "`config_not_found_for_user`; an invented sibling answers an empty 404"
+    ),
+    ("GET", "/v1/account/settlement_report/list"): (
+        "200 `[]`; an invented sibling answers an empty 404"
+    ),
+    ("GET", "/v1/account/settlement_report/search"): (
+        "200 with a paging envelope; an invented sibling answers an empty 404"
+    ),
+    ("GET", "/v1/account/settlement_report/task/{}"): (
+        "400 `internal_error` for a numeric id; a non-numeric one answers a 400"
+        " with empty fields"
+    ),
+    ("GET", "/v1/customers/{}/addresses"): (
+        "401 'access denied'; an invented sibling answers 404 'Resource … not found.'"
+    ),
+    ("GET", "/v1/payment_methods/installments"): (
+        "400 'the payment_method_id or bin are required'; an invented sibling "
+        "answers 404"
+    ),
+    ("GET", "/v2/wallet_connect/agreements/{}"): (
+        "403 from the PolicyAgent for a numeric id; an invented sibling answers 404"
+    ),
+}
+"""``GET`` operations told apart from an invented sibling, with what each answered.
+
+Measured on :data:`SELLER_PROBE_DATE` with a test seller's production token
+(the credential that charges in the sandbox), ``GET`` only, an id of
+``999999999999`` (the token's own user id under ``/users/{id}``). The sibling
+replaces the last segment with ``tempest-unrouted``. Where that last segment
+is itself a parameter the sibling matches the same template, so only an
+answer that names the domain (``pos_does_not_exist``, ``order_not_found``)
+or the parameter counts — a generic "not found" from both does not, and
+those operations stayed unverified.
 """
 
 UNVERIFIED_NOTE: str = (
@@ -910,6 +959,25 @@ UNROUTED_OPERATIONS: tuple[DeadOperation, ...] = (
             "rather than moved"
         ),
     ),
+    DeadOperation(
+        method="get",
+        path="/v1/account/release_report",
+        evidence=(
+            f"measured {SELLER_PROBE_DATE} with a test seller's token, GET "
+            "answers 405 'Method GET is not supported' while "
+            "`/v1/account/release_report/list` and `/search` answer 200"
+        ),
+    ),
+    DeadOperation(
+        method="get",
+        path="/v1/account/settlement_report",
+        evidence=(
+            f"measured {SELLER_PROBE_DATE} with a test seller's token, GET "
+            "answers 404 'Resource /account/settlement_report not found.' "
+            "while `/v1/account/settlement_report/list` and `/search` "
+            "answer 200"
+        ),
+    ),
 )
 """Operations the sandbox answered as unrouted, kept and marked rather than removed.
 
@@ -1115,8 +1183,10 @@ def _mark_unverified(paths: dict[str, Any]) -> tuple[str, ...]:
         tuple[str, ...]: ``METHOD path`` for each operation marked.
 
     Three sources can vouch for an operation: the provider's own SDK calls
-    it, an unauthenticated ``GET`` probe found it routed, or the sandbox
-    probe told it apart from a made-up sibling path. Everything else is
+    it, an unauthenticated ``GET`` probe found it routed (only entries the
+    SDK also calls remain there), or a sandbox probe told it apart from a
+    made-up sibling path (:data:`SANDBOX_ROUTED_OPERATIONS`,
+    :data:`SELLER_ROUTED_GETS`). Everything else is
     carried on the word of a document whose origin is unrecorded, and
     saying so in the generated docstring is the difference between an
     operation a consumer can rely on and one they should verify before
@@ -1135,6 +1205,7 @@ def _mark_unverified(paths: dict[str, Any]) -> tuple[str, ...]:
                 key in OFFICIAL_SDK_CALLS
                 or key in PROBED_OPERATIONS
                 or key in SANDBOX_ROUTED_OPERATIONS
+                or key in SELLER_ROUTED_GETS
                 or key in unrouted
             ):
                 continue
@@ -1428,6 +1499,8 @@ __all__: list[str] = [
     "SDK_COVERAGE_DISAGREEMENTS",
     "SDK_COVERAGE_TOTALS",
     "SDK_COVERAGE_URL",
+    "SELLER_PROBE_DATE",
+    "SELLER_ROUTED_GETS",
     "UNROUTED_NOTE",
     "UNROUTED_OPERATIONS",
     "UNVERIFIED_NOTE",
