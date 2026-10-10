@@ -362,8 +362,11 @@ build-backend = "hatchling.build"
 # .agent-result.md are the same category on a smaller scale: the briefing an
 # agent task writes at the root of the worktree and the summary it writes back
 # (both ignored through `.git/info/exclude`, which hatchling does not read),
-# which the sdist would otherwise carry.
-exclude = [".claude", ".agent-task.md", ".agent-result.md"]
+# which the sdist would otherwise carry. The review flow leaves a third one,
+# .agent-review.md, and it failed tests/test_sdist_payload.py during a review
+# on 2026-10-10 (#503) — so the pattern covers the whole .agent-*.md family
+# instead of naming each file.
+exclude = [".claude", ".agent-*.md"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["tempest_fastapi_sdk"]
