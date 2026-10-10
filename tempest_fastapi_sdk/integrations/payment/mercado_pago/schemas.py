@@ -883,6 +883,22 @@ class CardSecurityCode(BaseSchema):
     length: int | None = Field(examples=[3], default=None)
 
 
+class ChargebackSearchPaging(BaseSchema):
+    """Schema generated for ChargebackSearchPaging.
+
+    Attributes:
+        offset (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
+        total (int | None): Undocumented in the spec.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    offset: int | None = None
+    limit: int | None = None
+    total: int | None = None
+
+
 class ClaimEvidence(BaseSchema):
     """Schema generated for ClaimEvidence.
 
@@ -3315,6 +3331,20 @@ class CardTokenRequestCardholder(BaseSchema):
         description="Payer identification document. Valid types vary by country.",
         default=None,
     )
+
+
+class ChargebackSearchResponse(BaseSchema):
+    """Schema generated for ChargebackSearchResponse.
+
+    Attributes:
+        paging (ChargebackSearchPaging | None): Undocumented in the spec.
+        results (list[dict[str, Any]]): Undocumented in the spec.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    paging: ChargebackSearchPaging | None = None
+    results: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class Claim(BaseSchema):
@@ -6151,6 +6181,8 @@ __all__: list[str] = [
     "CardTokenRequest",
     "CardTokenRequestCardholder",
     "CardTokenStatus",
+    "ChargebackSearchPaging",
+    "ChargebackSearchResponse",
     "Claim",
     "ClaimEvidence",
     "ClaimEvidenceType",

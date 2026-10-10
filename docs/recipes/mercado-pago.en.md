@@ -611,9 +611,17 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-The other six operations the official SDK calls and the document omitted
-(advanced payments and `search_chargebacks`) stay `dict[str, Any]`. The test
-token got `403` on them, so there was no response to observe.
+`search_chargebacks(payment_id=...)` returns `ChargebackSearchResponse`
+(`paging` + `results`), also observed: measured on 2026-10-10 with the test
+seller's token, the search **requires** `payment_id` — without it, even with
+only `limit` and `offset`, the answer is `400 Wrong parameters in Search
+Cases`. The items of `results` were never seen (every search came back
+empty) and stay `dict[str, Any]`.
+
+The five advanced payments operations stay `dict[str, Any]`: with the
+`TEST-` token and with the test seller's, all of them answered `403` from the
+PolicyAgent — and so did an invented path under the same prefix, so the
+policy refuses before routing and there was no response to observe.
 
 To see the buckets:
 

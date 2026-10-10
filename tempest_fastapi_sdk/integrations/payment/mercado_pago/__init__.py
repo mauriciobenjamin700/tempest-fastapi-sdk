@@ -257,6 +257,8 @@ __all__: list[str] = [
     "CardTokenRequest",
     "CardTokenRequestCardholder",
     "CardTokenStatus",
+    "ChargebackSearchPaging",
+    "ChargebackSearchResponse",
     "Claim",
     "ClaimEvidence",
     "ClaimEvidenceType",

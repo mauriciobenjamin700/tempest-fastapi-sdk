@@ -14,6 +14,7 @@ classification, so `make check` covers it without network. The tests marked
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import sys
@@ -28,6 +29,7 @@ from tempest_fastapi_sdk import HTTPClient
 from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
     DEFAULT_BASE_URL,
     AuthenticatedUser,
+    ChargebackSearchResponse,
     MercadoPagoClient,
 )
 
@@ -169,6 +171,45 @@ class TestTheAuthenticatedUserIsTyped:
         assert user.nickname == "TESTUSER0000001"
         assert seen[0].method == "GET"
         assert seen[0].url.path == "/users/me"
+
+
+class TestTheChargebackSearchIsTyped:
+    """`GET /v1/chargebacks/search` needs `payment_id` and answers an envelope.
+
+    Observed on 2026-10-10 with a test seller's token (evidence 9.7): without
+    `payment_id` the call is `400`, which the method generated before this
+    — `limit` and `offset` only — could never avoid.
+    """
+
+    async def test_the_client_sends_payment_id_and_answers_the_model(self) -> None:
+        """The observed envelope validates; `payment_id` is in the query."""
+        body: dict[str, Any] = json.loads(
+            (FIXTURES / "chargebacks_search.json").read_text(encoding="utf-8")
+        )
+        seen: list[httpx.Request] = []
+        async with _mock_client(body, seen) as http:
+            found = await MercadoPagoClient(http).search_chargebacks(
+                payment_id="123456789"
+            )
+
+        assert isinstance(found, ChargebackSearchResponse)
+        assert found.paging is not None
+        assert (found.paging.offset, found.paging.limit, found.paging.total) == (
+            0,
+            25,
+            0,
+        )
+        assert found.results == []
+        assert seen[0].url.path == "/v1/chargebacks/search"
+        assert dict(seen[0].url.params) == {"payment_id": "123456789"}
+
+    def test_payment_id_is_required_and_the_ignored_paging_is_gone(self) -> None:
+        """Keyword-only, no default; `limit` / `offset` not offered."""
+        parameters = inspect.signature(MercadoPagoClient.search_chargebacks).parameters
+
+        assert list(parameters) == ["self", "payment_id"]
+        assert parameters["payment_id"].default is inspect.Parameter.empty
+        assert parameters["payment_id"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
 class TestTheSandboxClassifiedTheUnverified47:

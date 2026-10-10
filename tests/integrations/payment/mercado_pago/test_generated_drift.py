@@ -190,7 +190,7 @@ class TestGeneratedSurface:
         assert MercadoPagoClient.__name__ == "MercadoPagoClient"
 
     def test_carries_the_whole_specification(self) -> None:
-        """303 schemas and 132 operations — the point of embedding it.
+        """305 schemas and 132 operations — the point of embedding it.
 
         The counts moved in v0.260.0, when the provider's own SDK became
         the authority on this API: seven operations it calls were added,
@@ -200,7 +200,9 @@ class TestGeneratedSurface:
         the four objects nested in it. The same day the provider's
         deprecations came out: the Payments API (8 operations) and 7
         in-store QR operations the document marks `deprecated`, taking 30
-        schemas only they reached.
+        schemas only they reached. Two joined on 2026-10-10: the
+        `/v1/chargebacks/search` envelope and its paging object, observed
+        with a test seller's token.
         """
         from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
             client,
@@ -213,7 +215,7 @@ class TestGeneratedSurface:
             if not name.startswith("_")
             and callable(getattr(client.MercadoPagoClient, name))
         ]
-        assert len(schemas.__all__) == 303
+        assert len(schemas.__all__) == 305
         assert len(operations) == 132
 
     def test_there_is_only_one_server(self) -> None:

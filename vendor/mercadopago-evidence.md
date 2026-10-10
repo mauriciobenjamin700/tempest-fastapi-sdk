@@ -512,3 +512,37 @@ sem `first_name` `APRO`. O `5474 9254 3267 0366` (BIN `547492`) volta
 `APRO`, responde `201`, `processed` / `accredited`. `debmaster` é recusado no
 schema (`payment_method.id` aceita `amex`, `elo`, `diners`, `hipercard`,
 `master`, `visa`).
+
+### 9.7 As seis operações ainda `dict`, com a vendedora de teste (2026-10-10)
+
+Mesma credencial da 9.5. Script em `~/.cache/tempest-fastapi-sdk/mp-sandbox/tools/dict_ops_probe.py`
+e `chargebacks_probe.py` (fora do repositório).
+
+| Requisição | Resposta |
+| --- | --- |
+| `GET /v1/advanced_payments/search` | `403 PA_UNAUTHORIZED_RESULT_FROM_POLICIES` |
+| `GET /v1/advanced_payments/123456789` e `…/refunds` | `403`, idem |
+| `GET /v1/advanced_payments/123456789/zz-not-a-route` (inventado) | `403`, idem |
+| `POST /v1/advanced_payments` com `{}` | `403`, idem |
+| `GET /v1/chargebacks/search` | `400 Wrong parameters in Search Cases` |
+| `GET /v1/chargebacks/search?limit=10&offset=0` | `400`, idem |
+| `GET /v1/chargebacks/search?date_created_from=2026-10-01T00:00:00.000-03:00` | `400`, idem |
+| `GET /v1/chargebacks/search?payment_id=123456789` | `200 {"paging": {"offset": 0, "limit": 25, "total": 0}, "results": []}` |
+| `GET /v1/chargebacks/search?payment_id=123456789&limit=10&offset=0` | `200`, mesmo corpo — `paging.limit` continua 25 |
+| `GET /v1/chargebacks/zz-not-a-route` (inventado) | `404 Case for zz-not-a-route doesn't exist` |
+
+Advanced payments: o path inventado responde igual aos reais, então a
+política barra antes do roteamento — nada a observar com esta credencial
+(provavelmente exige aplicação marketplace; não medido). As cinco seguem
+`dict[str, Any]`.
+
+`search_chargebacks`: a rota existe (o inventado dá `404` de outro formato),
+exige `payment_id`, e o envelope de `200` foi observado. O overlay passou a
+declarar `payment_id` obrigatório, tirou `limit` e `offset` (o `limit` foi
+ignorado) e tipa a resposta como `ChargebackSearchResponse` /
+`ChargebackSearchPaging`; os itens de `results` não foram vistos.
+
+**`transaction-intents` (#499).** `POST /v1/transaction-intents/process` com
+`{}` e com `{"receiver": {}}`, `GET /v1/transaction-intents/123456789` e um
+path inventado sob o prefixo: `403` do PolicyAgent nos quatro. O shape do
+`receiver` não pôde ser descoberto com esta credencial.
