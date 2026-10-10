@@ -13,6 +13,8 @@ from tempest_fastapi_sdk.genai.rag.schemas import SearchResult
 from tempest_fastapi_sdk.geo.enums import TravelMode
 from tempest_fastapi_sdk.geo.schemas import Coordinate
 from tempest_fastapi_sdk.integrations.payment import (
+    CardChargeRequest,
+    CardProvider,
     PaymentStatus,
     PixChargeRequest,
     PixEventType,
@@ -24,6 +26,7 @@ from tempest_fastapi_sdk.push.schemas import (
     PushPlatform,
 )
 from tempest_fastapi_sdk.testing.fakes import (
+    FakeCardProvider,
     FakeEmailUtils,
     FakeGeocodingBackend,
     FakeModerationBackend,
@@ -33,6 +36,123 @@ from tempest_fastapi_sdk.testing.fakes import (
     FakeTextBackend,
     FakeWebSearchBackend,
 )
+
+
+def _card_request(*, capture: bool = True) -> CardChargeRequest:
+    """Build a R$ 100,00 card request.
+
+    Args:
+        capture (bool): ``False`` only authorizes.
+
+    Returns:
+        CardChargeRequest: The request.
+    """
+    return CardChargeRequest(
+        amount_cents=10000,
+        reference="order-card",
+        card_token="tok",
+        payment_method_id="visa",
+        capture=capture,
+    )
+
+
+class TestFakeCardProvider:
+    """Approve, decline, authorize, capture, release, refund."""
+
+    async def test_a_charge_is_approved_by_default(self) -> None:
+        """Typed as the contract, stored, readable."""
+        provider: CardProvider = FakeCardProvider()
+
+        charge = await provider.create_card_charge(_card_request())
+        read = await provider.get_card_charge(charge.provider_charge_id)
+
+        assert charge.status is PaymentStatus.PAID
+        assert read == charge
+        assert charge.payment_method_id == "visa"
+        assert charge.installments == 1
+
+    async def test_a_queued_decline_is_returned_not_raised(self) -> None:
+        """Like the real 402: a FAILED charge with the reason."""
+        provider = FakeCardProvider()
+        provider.decline_next("cc_rejected_insufficient_amount")
+
+        declined = await provider.create_card_charge(_card_request())
+        approved = await provider.create_card_charge(_card_request())
+
+        assert declined.status is PaymentStatus.FAILED
+        assert declined.status_detail == "cc_rejected_insufficient_amount"
+        assert approved.status is PaymentStatus.PAID
+
+    async def test_authorize_then_capture_or_release(self) -> None:
+        """`capture=False` holds; capture pays, cancel releases."""
+        provider = FakeCardProvider()
+        held = await provider.create_card_charge(_card_request(capture=False))
+        other = await provider.create_card_charge(_card_request(capture=False))
+
+        captured = await provider.capture_card_charge(held.provider_charge_id)
+        released = await provider.cancel_card_charge(other.provider_charge_id)
+
+        assert held.status is PaymentStatus.AUTHORIZED
+        assert captured.status is PaymentStatus.PAID
+        assert released.status is PaymentStatus.CANCELLED
+
+    async def test_refund_in_two_steps(self) -> None:
+        """Partial keeps it PAID; the rest makes it REFUNDED."""
+        provider = FakeCardProvider()
+        charge = await provider.create_card_charge(_card_request())
+
+        partial = await provider.refund_card_charge(
+            charge.provider_charge_id, amount_cents=3000
+        )
+        full = await provider.refund_card_charge(charge.provider_charge_id)
+
+        assert partial.status is PaymentStatus.PAID
+        assert partial.status_detail == "partially_refunded"
+        assert partial.refunded_cents == 3000
+        assert full.status is PaymentStatus.REFUNDED
+        assert full.refunded_cents == 10000
+
+    @pytest.mark.parametrize(
+        "action",
+        ["capture", "cancel", "refund_unpaid", "refund_too_much"],
+    )
+    async def test_a_transition_the_provider_refuses_is_refused(
+        self, action: str
+    ) -> None:
+        """The refusal branch is reachable."""
+        provider = FakeCardProvider()
+        paid = await provider.create_card_charge(_card_request())
+        held = await provider.create_card_charge(_card_request(capture=False))
+
+        with pytest.raises(ValueError, match="Cannot"):
+            if action == "capture":
+                await provider.capture_card_charge(paid.provider_charge_id)
+            elif action == "cancel":
+                await provider.cancel_card_charge(paid.provider_charge_id)
+            elif action == "refund_unpaid":
+                await provider.refund_card_charge(held.provider_charge_id)
+            else:
+                await provider.refund_card_charge(
+                    paid.provider_charge_id, amount_cents=10001
+                )
+
+    async def test_steering_and_failures(self) -> None:
+        """`advance` reaches a chargeback; `fail_next` fails the next call."""
+        provider = FakeCardProvider(provider_name="mercado_pago")
+        charge = await provider.create_card_charge(_card_request())
+        provider.fail_next(TimeoutError())
+
+        disputed = provider.advance(
+            charge.provider_charge_id, PaymentStatus.CHARGED_BACK
+        )
+        with pytest.raises(TimeoutError):
+            await provider.get_card_charge(charge.provider_charge_id)
+
+        assert disputed.status is PaymentStatus.CHARGED_BACK
+        assert charge.provider == "mercado_pago"
+        assert provider.calls == ["create_card_charge", "get_card_charge"]
+        assert provider.charges[charge.provider_charge_id] == disputed
+
 
 RECIFE = Coordinate(latitude=-8.05, longitude=-34.9)
 OLINDA = Coordinate(latitude=-7.99, longitude=-34.85)

@@ -1,0 +1,28 @@
+{
+  "status": 201,
+  "body": {
+    "id": "ORDTST00000000000000000000000001",
+    "status": "refunded",
+    "status_detail": "refunded",
+    "transactions": {
+      "refunds": [
+        {
+          "id": "REF00000000000000000000000003",
+          "e2e_id": "2026-10-10 09:41:40.107",
+          "transaction_id": "PAY00000000000000000000000002",
+          "reference_id": "0000000000",
+          "amount": "5.00",
+          "status": "processed"
+        },
+        {
+          "id": "REF00000000000000000000000004",
+          "e2e_id": "2026-10-10 09:41:43.874",
+          "transaction_id": "PAY00000000000000000000000002",
+          "reference_id": "0000000000",
+          "amount": "14.90",
+          "status": "processed"
+        }
+      ]
+    }
+  }
+}

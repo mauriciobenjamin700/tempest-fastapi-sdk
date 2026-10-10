@@ -235,9 +235,14 @@ What the adapters decide for you, each item measured in the sandbox:
   (`waiting_capture`) and waits for `capture_card_charge` or
   `cancel_card_charge`.
 - **A partial refund addresses the payment.** An order has one id (`ORD…`)
-  and the payment inside it another (`PAY…`); `refund_card_charge` finds the
-  second on its own. Without an amount, it refunds what is left.
-  `refunded_cents` sums the processed refunds.
+  and the payment inside it another (`PAY…`); `refund_card_charge` and
+  `refund_pix_charge` find the second on their own. Without an amount, they
+  refund what is left. On a card, `refunded_cents` sums the processed
+  refunds; on a Pix, they are under `raw["transactions"]["refunds"]`.
+- **A Pix is refunded only once paid.** Measured on 2026-10-10: a partial
+  refund leaves the charge `PAID` (`partially_refunded`), the rest makes it
+  `REFUNDED`. On an unpaid Pix the answer is `409 cannot_refund_order`: it
+  is cancelled, not refunded.
 - **Capture and refund read the order back.** Both answers carry only the
   id, state and transactions, no `total_amount`; the adapter issues a `GET`
   right after to return the whole charge.
@@ -250,16 +255,19 @@ What the adapters decide for you, each item measured in the sandbox:
   (`action_retry_delays=` changes or disables it); every measured one went
   through within about five seconds.
 - **Pix expiry in seconds.** `expires_in` becomes `PT1800S`; without it, the
-  order expires in 24 hours.
+  order expires in 24 hours. Past the deadline, the order reads
+  `canceled` / `expired` and the charge becomes `EXPIRED`, not `CANCELLED`
+  (measured with `PT60S`).
 - **The payer is required.** An order without `payer` comes back
   `400 '$.payer' - minimum 1 properties allowed`.
 - **One idempotency key per call**, which the `HTTPClient` reuses across its
-  own retries (tested with a mock transport; the provider honouring the key
-  is the header's contract, not observed here). To collapse two calls for the
-  same order, pass `idempotency_key=lambda reference: reference`.
+  own retries. The provider honours the key (measured on 2026-10-10): the
+  same key with the same body returns the **same** order, and with another
+  body answers `409 idempotency_key_already_used`. To collapse two calls for
+  the same order, pass `idempotency_key=lambda reference: reference`.
 - **Installments depend on the account.** For the test seller, the Visa
-  installment options at R$ 100.00 offered only 1x, and asking for 3x came
-  back `400 invalid_transaction_amount`. Query the options
+  installment options offered only 1x, at R$ 100.00 and at R$ 1,000.00, and
+  asking for 3x or 6x came back `400 invalid_transaction_amount`. Query the options
   (`get_installments`) and send one that was offered.
 
 !!! note "The generated client, to go further"
@@ -622,7 +630,8 @@ make mercadopago-diff
   because the provider is discontinuing it.
 - `MercadoPagoPixProvider` and `MercadoPagoCardProvider` hand out the
   canonical contracts: cents, canonical states, a card decline as a result
-  (`402`), authorize and capture, partial refunds.
+  (`402`), authorize and capture, partial card and Pix refunds, an expired
+  Pix as `EXPIRED`.
 - Cards require client-side tokenization, with the Public Key.
 - Webhook verification is ported from the provider's validator, with the
   manifest omitting absent pairs and digests checked against `openssl`;

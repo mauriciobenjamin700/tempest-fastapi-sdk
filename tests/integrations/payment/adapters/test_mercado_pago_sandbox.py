@@ -10,6 +10,9 @@ Marked ``network``: out of ``make check``. They need, in the environment:
   the Orders API accepts any valid e-mail with the right seller token, so it
   defaults to ``buyer@example.com``.
 
+A Pix is paid in the sandbox by sending ``APRO`` as the payer's first name
+(``PixPayer.name`` becomes ``first_name``).
+
 Before anything is created, the token's account is read from
 ``/users/me`` and must carry the ``test_user`` tag; any other account is
 refused. Cards are tokenized here with the public test Visa — the only use
@@ -19,6 +22,7 @@ card.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import AsyncIterator
 from datetime import timedelta
@@ -127,6 +131,34 @@ async def test_pix_create_read_and_cancel(http: HTTPClient) -> None:
     assert created.qr_code_base64
     assert read.provider_charge_id == created.provider_charge_id
     assert cancelled.status is PaymentStatus.CANCELLED
+
+
+async def test_pix_paid_then_refunded_in_two_steps(http: HTTPClient) -> None:
+    """``first_name`` ``APRO`` pays the Pix; refund part, then the rest."""
+    provider = MercadoPagoPixProvider(http)
+    payer = PixPayer(email=_payer().email, name="APRO")
+
+    created = await provider.create_pix_charge(
+        PixChargeRequest(
+            amount_cents=1990, reference="tempest-sandbox-pix-paid", payer=payer
+        )
+    )
+    paid = created
+    for _ in range(10):
+        await asyncio.sleep(2)
+        paid = await provider.get_pix_charge(created.provider_charge_id)
+        if paid.status is not PaymentStatus.PENDING:
+            break
+    partial = await provider.refund_pix_charge(
+        created.provider_charge_id, amount_cents=500
+    )
+    full = await provider.refund_pix_charge(created.provider_charge_id)
+
+    assert paid.status is PaymentStatus.PAID
+    assert paid.end_to_end_id
+    assert partial.status is PaymentStatus.PAID
+    assert partial.raw["status_detail"] == "partially_refunded"
+    assert full.status is PaymentStatus.REFUNDED
 
 
 async def test_card_approved_declined_and_refunded(http: HTTPClient) -> None:

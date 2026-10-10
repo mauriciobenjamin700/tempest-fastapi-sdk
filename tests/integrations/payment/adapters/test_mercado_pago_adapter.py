@@ -329,6 +329,91 @@ class TestPix:
 
         assert _body(recorder.requests[0])["payer"] == {}
 
+    async def test_a_paid_pix_maps_into_a_paid_charge(self) -> None:
+        """Observed: `processed` / `accredited`, with the end-to-end id."""
+        provider = MercadoPagoPixProvider(_http(Recorder(response("pix_get_paid"))))
+        _, order = fixture("pix_get_paid")
+
+        charge = await provider.get_pix_charge(order["id"])
+
+        assert charge.status is PaymentStatus.PAID
+        assert charge.provider_status == "processed"
+        assert charge.end_to_end_id == "PIXPRUEBA183442965660"
+
+    async def test_an_expired_pix_is_expired_not_cancelled(self) -> None:
+        """Observed: an order past `PT60S` reads `canceled` / `expired`."""
+        provider = MercadoPagoPixProvider(_http(Recorder(response("pix_get_expired"))))
+        _, order = fixture("pix_get_expired")
+
+        charge = await provider.get_pix_charge(order["id"])
+
+        assert charge.status is PaymentStatus.EXPIRED
+        assert charge.provider_status == "canceled"
+
+    async def test_a_partial_refund_addresses_the_payment(self) -> None:
+        """Read for the `PAY…`, refund it, read the order back: still `PAID`."""
+        recorder = Recorder(
+            response("pix_get_paid"),
+            response("pix_refund_partial"),
+            response("pix_get_after_partial_refund"),
+        )
+        provider = MercadoPagoPixProvider(_http(recorder))
+        _, paid = fixture("pix_get_paid")
+        payment_id = paid["transactions"]["payments"][0]["id"]
+
+        charge = await provider.refund_pix_charge(paid["id"], amount_cents=500)
+
+        refund = recorder.requests[1]
+        assert [r.method for r in recorder.requests] == ["GET", "POST", "GET"]
+        assert refund.url.path == f"/v1/orders/{paid['id']}/refund"
+        assert _body(refund) == {"transactions": [{"id": payment_id, "amount": "5.00"}]}
+        assert charge.status is PaymentStatus.PAID
+        assert charge.amount_cents == 1990
+        assert charge.raw["status_detail"] == "partially_refunded"
+        assert charge.raw["transactions"]["refunds"][0]["amount"] == "5.00"
+
+    async def test_a_full_refund_posts_no_body_and_reads_refunded(self) -> None:
+        """No amount: what is left is refunded."""
+        recorder = Recorder(
+            response("pix_refund_rest"), response("pix_get_after_refund")
+        )
+        provider = MercadoPagoPixProvider(_http(recorder))
+        _, paid = fixture("pix_get_paid")
+
+        charge = await provider.refund_pix_charge(paid["id"])
+
+        assert [r.method for r in recorder.requests] == ["POST", "GET"]
+        assert recorder.requests[0].content == b""
+        assert charge.status is PaymentStatus.REFUNDED
+
+    async def test_a_refund_is_retried_on_not_yet_with_the_same_key(self) -> None:
+        """Same retry rule as the card refund."""
+        not_yet = httpx.Response(
+            422, json={"errors": [{"code": "unprocessable_entity"}]}
+        )
+        recorder = Recorder(
+            not_yet, response("pix_refund_rest"), response("pix_get_after_refund")
+        )
+        provider = MercadoPagoPixProvider(_http(recorder), action_retry_delays=(0.0,))
+
+        charge = await provider.refund_pix_charge("ORD1")
+
+        posts = [r for r in recorder.requests if r.method == "POST"]
+        assert len(posts) == 2
+        assert len({r.headers["X-Idempotency-Key"] for r in posts}) == 1
+        assert charge.status is PaymentStatus.REFUNDED
+
+    async def test_an_unpaid_pix_cannot_be_refunded(self) -> None:
+        """Observed: `409 cannot_refund_order`, raised at once."""
+        recorder = Recorder(response("pix_refund_unpaid"))
+        provider = MercadoPagoPixProvider(_http(recorder))
+
+        with pytest.raises(httpx.HTTPStatusError) as caught:
+            await provider.refund_pix_charge("ORD1")
+
+        assert caught.value.response.status_code == 409
+        assert len(recorder.requests) == 1
+
 
 class TestCard:
     """Cards through `/v1/orders`."""
@@ -590,6 +675,28 @@ class TestDelivery:
         assert event.charge is not None
         assert event.charge.status is PaymentStatus.CANCELLED
         assert event.provider_event_name == "order.updated"
+
+    async def test_an_expired_pix_is_charge_expired(self) -> None:
+        """`canceled` / `expired` is an expiry, not a cancellation."""
+        _, order = fixture("pix_get_expired")
+        provider = MercadoPagoPixProvider(_http(Recorder(response("pix_get_expired"))))
+
+        event = provider.parse_webhook(
+            await provider.read_delivery(_notification(order["id"]))
+        )
+
+        assert event.type is PixEventType.CHARGE_EXPIRED
+
+    async def test_a_paid_pix_is_charge_paid(self) -> None:
+        """Observed paid order."""
+        _, order = fixture("pix_get_paid")
+        provider = MercadoPagoPixProvider(_http(Recorder(response("pix_get_paid"))))
+
+        event = provider.parse_webhook(
+            await provider.read_delivery(_notification(order["id"]))
+        )
+
+        assert event.type is PixEventType.CHARGE_PAID
 
     async def test_a_pending_pix_is_charge_created(self) -> None:
         """Waiting for transfer."""

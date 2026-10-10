@@ -207,6 +207,7 @@ O titular escrito no cartão decide o resultado:
 | --- | --- | --- | --- |
 | Visa `4235 6477 2802 5682` | `11/2030` / `123` | `APRO` | `201`, `processed` / `accredited` |
 | Visa `4235 6477 2802 5682` | `11/2030` / `123` | `OTHE` | `402`, `rejected_by_issuer` |
+| Mastercard `5474 9254 3267 0366` | `11/2030` / `123` | `APRO` | `201`, `processed` / `accredited` |
 | Mastercard `5031 4332 1540 6351` | `11/2030` / `123` | `APRO` | `422 unprocessable_content` |
 
 !!! note "Recusa é HTTP 402, não erro de servidor"
@@ -214,10 +215,30 @@ O titular escrito no cartão decide o resultado:
     inteira em `data`. Trate como resposta, não como falha de rede: o pedido
     existe, foi recusado, e o motivo está ali.
 
-!!! warning "Use o Visa"
-    O Mastercard de teste que circula na documentação respondeu `422`
-    genérico na API de Orders, com o mesmo token que aprovou o Visa. O
-    motivo não foi isolado.
+!!! warning "Não use o Mastercard `5031 4332 1540 6351`"
+    Ele circula na documentação, mas o Mercado Pago não reconhece o BIN dele
+    no Brasil: `GET /v1/payment_methods/search?bins=503143&site_id=MLB`
+    volta vazio, e a order responde `422` genérico. O `5474 9254 3267 0366`
+    é reconhecido como `master` e aprova (medido em 2026-10-10).
+
+## Pix pago e Pix vencido
+
+No sandbox ninguém escaneia o QR. Para ver um Pix **pago**, mande
+`"first_name": "APRO"` no pagador, junto do e-mail:
+
+```json
+"payer": {"email": "comprador@example.com", "first_name": "APRO"}
+```
+
+A order nasce `action_required` / `waiting_transfer`, como qualquer Pix, e
+em 2 a 4 segundos passa a `processed` / `accredited`, com um `e2e_id` de
+teste. Com `first_name` `OTHE`, ou sem ele, o Pix fica esperando (observado
+por 16 segundos). Pago, ele aceita estorno parcial e total; não pago, o
+estorno responde `409 cannot_refund_order`.
+
+Para ver um Pix **vencido**, crie com `"expiration_time": "PT60S"` (o
+sandbox aceitou 60 segundos) e leia depois do prazo: a order volta
+`canceled` / `expired`, e o pagamento `expired` / `expired`.
 
 ## Erros comuns
 
@@ -227,7 +248,8 @@ O titular escrito no cartão decide o resultado:
 | `401 Unauthorized use of live credentials` | aplicação Checkout Pro, ou token de outra aplicação | passo 3: aplicação Checkout Transparente / API de Orders |
 | `400 '$.payer' - minimum 1 properties allowed` | order sem pagador | passo 5: mande um e-mail |
 | `400 '$.payer.email' - does not match pattern` | usuário (`TESTUSER...`) no lugar do e-mail | passo 5 |
-| `422 unprocessable_content` | Mastercard de teste | use o Visa de teste |
+| `422 unprocessable_content` | Mastercard `5031 4332 1540 6351` | use o `5474 9254 3267 0366` ou o Visa |
+| `409 cannot_refund_order` | estorno de Pix ainda não pago | cancele em vez de estornar; para testar estorno, pague com `APRO` |
 | *"Não é possível utilizar credenciais de teste em um ambiente de teste"* | você abriu "Credenciais de teste" dentro da conta de teste | passo 4: use as de produção |
 
 ## Recapitulando
@@ -239,7 +261,10 @@ O titular escrito no cartão decide o resultado:
 - Pagador: qualquer e-mail válido; sem ele, `400`.
 - Guarde fora do repositório, `chmod 600`, e confira com o script do passo 6
   antes de qualquer outra coisa.
-- Cartão de teste que funciona: Visa, titular `APRO` aprova e `OTHE` recusa.
+- Cartões de teste que funcionam: Visa `4235…5682` e Mastercard
+  `5474…0366`; titular `APRO` aprova e `OTHE` recusa.
+- Pix pago no sandbox: `first_name` `APRO` no pagador.
+- Pix vencido: `expiration_time` `PT60S` e espere o prazo.
 
 Próximo passo: a receita [Mercado Pago »](mercado-pago.md), agora com a
 credencial em mãos.

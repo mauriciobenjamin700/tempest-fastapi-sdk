@@ -1,0 +1,59 @@
+{
+  "status": 200,
+  "body": {
+    "id": "ORDTST00000000000000000000000001",
+    "type": "online",
+    "processing_mode": "automatic",
+    "external_reference": "tempest-pix-t-apro_first",
+    "total_amount": "19.90",
+    "total_paid_amount": "19.90",
+    "country_code": "BRA",
+    "user_id": "1000000001",
+    "status": "refunded",
+    "status_detail": "refunded",
+    "capture_mode": "automatic_async",
+    "currency": "BRL",
+    "created_date": "2026-10-10T13:41:35.821Z",
+    "last_updated_date": "2026-10-10T13:41:44.171Z",
+    "integration_data": {
+      "application_id": "2000000002"
+    },
+    "transactions": {
+      "payments": [
+        {
+          "id": "PAY00000000000000000000000002",
+          "amount": "19.90",
+          "date_of_expiration": "2026-10-11T13:41:36.125+00:00",
+          "paid_amount": "19.90",
+          "reference_id": "0000000000",
+          "refunded_amount": "19.90",
+          "status": "refunded",
+          "status_detail": "refunded",
+          "payment_method": {
+            "id": "pix",
+            "e2e_id": "PIXPRUEBA183442965660",
+            "type": "bank_transfer"
+          }
+        }
+      ],
+      "refunds": [
+        {
+          "id": "REF00000000000000000000000003",
+          "e2e_id": "2026-10-10 09:41:40.107",
+          "transaction_id": "PAY00000000000000000000000002",
+          "reference_id": "0000000000",
+          "amount": "5.00",
+          "status": "processed"
+        },
+        {
+          "id": "REF00000000000000000000000004",
+          "e2e_id": "2026-10-10 09:41:43.874",
+          "transaction_id": "PAY00000000000000000000000002",
+          "reference_id": "0000000000",
+          "amount": "14.90",
+          "status": "processed"
+        }
+      ]
+    }
+  }
+}

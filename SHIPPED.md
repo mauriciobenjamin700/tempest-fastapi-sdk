@@ -1362,7 +1362,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   que foi sondado, quando e com que código; `make mercadopago-diff` separa os
   baldes. Testes: `TestUnverifiedOperationsAreMarked`,
   `TestTheProbeOnlySpeaksForItsOwnVerb`.
-- **Mercado Pago pela API de Orders: Pix, cartão e rollout (unreleased)** —
+- **Mercado Pago pela API de Orders: Pix, cartão e rollout (v0.311.0)** —
   `MercadoPagoPixProvider` e `MercadoPagoCardProvider` sobre `/v1/orders`,
   contrato novo `CardProvider` / `CardCharge` / `CardChargeRequest`
   (`PaymentStatus.AUTHORIZED`), `make_mercado_pago_webhook_delivery_dependency`
@@ -1373,11 +1373,23 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   devolveu fora do enum. Ciclo inteiro medido no sandbox com vendedora de
   teste (Pix criar/ler/cancelar; cartão aprovar, recusar com 402, autorizar +
   capturar, autorizar + cancelar, reembolso parcial e total). Receitas de
-  credenciais de teste e de teste de webhook. Falta: um Pix pago, uma entrega
-  de webhook real e o `PayoutProvider` do Mercado Pago. Testes:
+  credenciais de teste e de teste de webhook. Falta: uma entrega de webhook
+  real e o `PayoutProvider` do Mercado Pago. Testes:
   `test_mercado_pago_adapter.py` (fixtures reais redigidas),
   `test_mercado_pago_sandbox.py` (`network`), `test_deprecations.py`,
   `test_contract.py`, `test_routing.py`.
+- **Estorno de Pix, Pix vencido e `FakeCardProvider` (unreleased)** — issues
+  #505, #500, #504, #501, #502. `MercadoPagoPixProvider.refund_pix_charge`
+  (parcial e total, mesmo retry de "ainda não" do cartão; o refund subiu para
+  o transporte comum dos dois adapters; fora do Protocol `PixProvider`,
+  porque o adapter da OpenPix não estorna). Order `canceled` / `expired` lida
+  como `EXPIRED`. `FakeCardProvider` em `testing.fakes` (`decline_next`,
+  `advance`, transições recusadas com `ValueError`). Medido no sandbox: Pix
+  pago com `first_name` `APRO`, Pix vencido com `PT60S`, estorno de Pix,
+  idempotência do provedor, parcelas (só 1x na conta de teste) e o BIN do
+  Mastercard de teste antigo. Evidência §9.6. Testes:
+  `test_mercado_pago_adapter.py`, `test_contract.py`,
+  `tests/testing/test_fakes_*.py`.
 - **Sandbox do Mercado Pago: `/users/me` tipado e as 47 classificadas
   (unreleased)** — issue #226. Medido em 2026-10-09 com token `TEST-`, só
   com requisição que não pode dar certo (corpo malformado, id inexistente),

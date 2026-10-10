@@ -44,11 +44,11 @@ from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago import OrderStatus
 from tempest_fastapi_sdk.integrations.payment.openpix import ChargeStatus
-from tempest_fastapi_sdk.testing.fakes import FakePayoutProvider
+from tempest_fastapi_sdk.testing.fakes import FakeCardProvider, FakePayoutProvider
 
 ADAPTERS: list[type[Any]] = [OpenPixPixProvider, MercadoPagoPixProvider]
 
-CARD_ADAPTERS: list[type[Any]] = [MercadoPagoCardProvider]
+CARD_ADAPTERS: list[type[Any]] = [MercadoPagoCardProvider, FakeCardProvider]
 """Every adapter that claims to implement :class:`CardProvider`."""
 
 CARD_PROTOCOL_METHODS: tuple[str, ...] = (
@@ -156,6 +156,25 @@ def test_card_adapter_signature_matches_protocol(
     assert actual_hints == expected_hints
     assert inspect.iscoroutinefunction(getattr(adapter, method_name))
     assert adapter.provider_name
+
+
+def test_pix_refund_mirrors_the_card_refund() -> None:
+    """``refund_pix_charge`` takes what ``refund_card_charge`` takes.
+
+    It is not a protocol member — the OpenPix adapter has no refund — so the
+    card contract is the reference: same parameters, same defaults, a
+    :class:`PixCharge` where the card one returns a :class:`CardCharge`.
+    """
+    expected = inspect.signature(CardProvider.refund_card_charge)
+    actual = inspect.signature(MercadoPagoPixProvider.refund_pix_charge)
+
+    assert list(actual.parameters) == list(expected.parameters)
+    for name, parameter in expected.parameters.items():
+        assert actual.parameters[name].default == parameter.default, name
+    expected_hints = get_type_hints(CardProvider.refund_card_charge)
+    actual_hints = get_type_hints(MercadoPagoPixProvider.refund_pix_charge)
+    assert actual_hints == {**expected_hints, "return": PixCharge}
+    assert inspect.iscoroutinefunction(MercadoPagoPixProvider.refund_pix_charge)
 
 
 def test_every_openpix_status_is_mapped() -> None:

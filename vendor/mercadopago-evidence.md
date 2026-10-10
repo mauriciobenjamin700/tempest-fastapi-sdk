@@ -469,3 +469,46 @@ Com o token `TEST-` da aplicação da conta real, a mesma order — sem pagador,
 com `buyer@example.com` ou com o e-mail da compradora de teste, Pix e
 cartão — responde `403 At least one policy returned UNAUTHORIZED.` nas seis
 combinações.
+
+### 9.6 Pix pago, Pix vencido, estorno de Pix, idempotência, parcelas e Mastercard (2026-10-10)
+
+Mesma credencial da 9.5. Script em `~/.cache/tempest-fastapi-sdk/mp-sandbox/tools/followups_probe*.py`
+(fora do repositório); respostas redigidas em
+`tests/integrations/payment/adapters/fixtures/mercado_pago_orders/pix_*.json`.
+
+**Pix pago (#500).** Pagador `{"email": "buyer@example.com", "first_name": "APRO"}`:
+a order nasce `action_required` / `waiting_transfer` e, relida a cada 2 s,
+aparece `processed` / `accredited` em 2 s numa rodada e em 4 s noutra (com
+`last_name` `APRO` também), com `e2e_id` `PIXPRUEBA…`. Com `first_name`
+`OTHE`, ficou `action_required` / `waiting_transfer` nas 8 leituras (16 s).
+
+**Pix vencido (#500).** `expiration_time` aceito como `PT60S`, `PT5M`,
+`PT10M` e `PT30M` — `date_of_expiration` = criação + o prazo, nos quatro. A
+order `PT60S`, relida depois do prazo: `canceled` / `expired`; o pagamento,
+`expired` / `expired`. O adapter passou a ler esse par como
+`PaymentStatus.EXPIRED` (antes: `CANCELLED`).
+
+**Estorno de Pix (#505).** Num Pix pago: `POST /v1/orders/{id}/refund` com
+`{"transactions": [{"id": "<PAY…>", "amount": "5.00"}]}` → `201`, order
+`processed` / `partially_refunded`; sem corpo, o resto → `201`, `refunded` /
+`refunded`. A resposta traz só id, estado e `transactions.refunds`, como no
+cartão. Num Pix **não** pago: `409 cannot_refund_order` — *"The order must be
+in 'processed' status to be refunded."*
+
+**Idempotência (#502).** Mesma `X-Idempotency-Key`, mesmo corpo, duas vezes:
+`201` e `201`, **o mesmo id de order**. Mesma chave com outro corpo (outro
+valor e outra referência): `409 idempotency_key_already_used`.
+
+**Parcelas (#502).** `GET /v1/payment_methods/installments?bin=423564&amount=1000&payment_method_id=visa`
+ofereceu só `[1]`. Visa `APRO` com `installments` 3 e 6 em R$ 1.000,00:
+`400 invalid_transaction_amount` nos dois. Parcelamento não é mensurável com
+esta conta de teste.
+
+**Mastercard (#501).** `GET /v1/payment_methods/search?bins=503143&site_id=MLB`
+devolve `results: []` — o BIN do `5031 4332 1540 6351` não é reconhecido no
+MLB —, e a order com `master` responde `422 unprocessable_content`, com e
+sem `first_name` `APRO`. O `5474 9254 3267 0366` (BIN `547492`) volta
+`[("master", "credit_card")]` na mesma busca, e a order com ele, titular
+`APRO`, responde `201`, `processed` / `accredited`. `debmaster` é recusado no
+schema (`payment_method.id` aceita `amex`, `elo`, `diners`, `hipercard`,
+`master`, `visa`).

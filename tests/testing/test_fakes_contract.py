@@ -23,10 +23,15 @@ from tempest_fastapi_sdk.genai.rag.search import WebSearchBackend
 from tempest_fastapi_sdk.genai.text import TextBackend
 from tempest_fastapi_sdk.geo.geocoding import GeocodingBackend
 from tempest_fastapi_sdk.geo.routing import RoutingBackend
-from tempest_fastapi_sdk.integrations.payment import PayoutProvider, PixProvider
+from tempest_fastapi_sdk.integrations.payment import (
+    CardProvider,
+    PayoutProvider,
+    PixProvider,
+)
 from tempest_fastapi_sdk.push.dispatcher import PushDispatcher
 from tempest_fastapi_sdk.testing import fakes
 from tempest_fastapi_sdk.testing.fakes import (
+    FakeCardProvider,
     FakeEmailUtils,
     FakeGeocodingBackend,
     FakeModerationBackend,
@@ -41,6 +46,7 @@ from tempest_fastapi_sdk.utils.email import EmailUtils
 
 SEAMS: list[tuple[type[Any], type[Any]]] = [
     (FakePixProvider, PixProvider),
+    (FakeCardProvider, CardProvider),
     (FakePayoutProvider, PayoutProvider),
     (FakeTextBackend, TextBackend),
     (FakeModerationBackend, ModerationBackend),

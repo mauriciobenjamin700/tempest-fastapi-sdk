@@ -207,6 +207,7 @@ cardholder name written on the card decides the outcome:
 | --- | --- | --- | --- |
 | Visa `4235 6477 2802 5682` | `11/2030` / `123` | `APRO` | `201`, `processed` / `accredited` |
 | Visa `4235 6477 2802 5682` | `11/2030` / `123` | `OTHE` | `402`, `rejected_by_issuer` |
+| Mastercard `5474 9254 3267 0366` | `11/2030` / `123` | `APRO` | `201`, `processed` / `accredited` |
 | Mastercard `5031 4332 1540 6351` | `11/2030` / `123` | `APRO` | `422 unprocessable_content` |
 
 !!! note "A decline is HTTP 402, not a server error"
@@ -214,10 +215,31 @@ cardholder name written on the card decides the outcome:
     whole order in `data`. Treat it as an answer, not as a network failure:
     the order exists, it was declined, and the reason is right there.
 
-!!! warning "Use the Visa"
-    The Mastercard test card found in the documentation answered a generic
-    `422` on the Orders API, with the same token that approved the Visa. The
-    cause was not isolated.
+!!! warning "Do not use the Mastercard `5031 4332 1540 6351`"
+    It circulates in the documentation, but Mercado Pago does not recognise
+    its BIN in Brazil: `GET /v1/payment_methods/search?bins=503143&site_id=MLB`
+    comes back empty, and the order answers a generic `422`. The
+    `5474 9254 3267 0366` is recognised as `master` and approves (measured on
+    2026-10-10).
+
+## A paid Pix and an expired Pix
+
+In the sandbox nobody scans the QR. To see a **paid** Pix, send
+`"first_name": "APRO"` in the payer, alongside the e-mail:
+
+```json
+"payer": {"email": "buyer@example.com", "first_name": "APRO"}
+```
+
+The order is born `action_required` / `waiting_transfer`, like any Pix, and
+within 2 to 4 seconds moves to `processed` / `accredited`, with a test
+`e2e_id`. With `first_name` `OTHE`, or without it, the Pix keeps waiting
+(observed for 16 seconds). Once paid, it accepts partial and full refunds;
+unpaid, a refund answers `409 cannot_refund_order`.
+
+To see an **expired** Pix, create it with `"expiration_time": "PT60S"` (the
+sandbox accepted 60 seconds) and read it after the deadline: the order comes
+back `canceled` / `expired`, and the payment `expired` / `expired`.
 
 ## Common errors
 
@@ -227,7 +249,8 @@ cardholder name written on the card decides the outcome:
 | `401 Unauthorized use of live credentials` | Checkout Pro application, or a token from another application | step 3: Checkout Transparente / Orders API application |
 | `400 '$.payer' - minimum 1 properties allowed` | an order without a payer | step 5: send an e-mail |
 | `400 '$.payer.email' - does not match pattern` | username (`TESTUSER...`) instead of the e-mail | step 5 |
-| `422 unprocessable_content` | Mastercard test card | use the Visa test card |
+| `422 unprocessable_content` | Mastercard `5031 4332 1540 6351` | use the `5474 9254 3267 0366` or the Visa |
+| `409 cannot_refund_order` | refunding a Pix not yet paid | cancel instead; to test a refund, pay it with `APRO` |
 | *"Não é possível utilizar credenciais de teste em um ambiente de teste"* | you opened "Test credentials" inside the test account | step 4: use the production ones |
 
 ## Recap
@@ -240,8 +263,10 @@ cardholder name written on the card decides the outcome:
 - Payer: any valid e-mail; without one, `400`.
 - Keep it outside the repository, `chmod 600`, and check with the step 6
   script before anything else.
-- The test card that works: Visa, cardholder `APRO` approves and `OTHE`
-  declines.
+- Test cards that work: Visa `4235…5682` and Mastercard `5474…0366`;
+  cardholder `APRO` approves and `OTHE` declines.
+- A paid Pix in the sandbox: `first_name` `APRO` in the payer.
+- An expired Pix: `expiration_time` `PT60S`, then wait out the deadline.
 
 Next: the [Mercado Pago »](mercado-pago.md) recipe, now with the credential
 in hand.

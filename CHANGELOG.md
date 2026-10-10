@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `MercadoPagoPixProvider.refund_pix_charge(charge_id, amount_cents=None)`:
+  estorno parcial ou total de um Pix pago, com o mesmo retry de "ainda não" e
+  a mesma chave entre tentativas do `refund_card_charge`. Fica fora do
+  Protocol `PixProvider`, porque o adapter da OpenPix não estorna. Medido no
+  sandbox em 2026-10-10: parcial deixa a cobrança `PAID`
+  (`partially_refunded`), o resto a deixa `REFUNDED`; num Pix não pago,
+  `409 cannot_refund_order` (#505).
+- `FakeCardProvider` em `tempest_fastapi_sdk.testing.fakes`: o contrato
+  `CardProvider` sem rede — aprova, autoriza, captura, cancela, estorna em
+  partes; `decline_next(motivo)` devolve uma cobrança `FAILED`, e
+  `advance(id, status)` chega ao chargeback (#504).
+
+### Fixed
+
+- Mercado Pago: um Pix vencido (order `canceled` / `expired`, observado com
+  `expiration_time` `PT60S`) agora é `PaymentStatus.EXPIRED` e gera
+  `PixEventType.CHARGE_EXPIRED`; antes saía `CANCELLED` (#500).
+
+### Documentation
+
+- Guia do sandbox do Mercado Pago: como ver um Pix pago (`first_name`
+  `APRO`) e um vencido; o Mastercard `5031 4332 1540 6351` responde `422`
+  porque o BIN não é reconhecido no Brasil, e o `5474 9254 3267 0366` aprova
+  (#501). Receita: o provedor honra a `X-Idempotency-Key` (mesmo corpo, mesma
+  order; outro corpo, `409 idempotency_key_already_used`) e a conta de teste
+  só oferece 1x (#502).
+
 ## [0.311.0] — 2026-10-10
 
 A integração do Mercado Pago passa a cobrar pela **API de Orders** e deixa de
