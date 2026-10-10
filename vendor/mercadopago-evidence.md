@@ -348,7 +348,11 @@ Nada disso mudou o `PROBED_OPERATIONS` nesta rodada. A issue #226 pedia as 47
 não-`GET`, e rebaixar ou remover operações já sustentadas é decisão de
 superfície. Registrado na issue #488.
 
-### 8.5 Criar Pix pelo adapter (2026-10-09)
+### 8.5 Criar Pix na API de Payments — histórico (2026-10-09)
+
+**Histórico.** Esta seção mediu a API de Payments, que o SDK deixou de modelar
+logo depois (seção 9). Fica como registro do que aquela API exigia; para a API
+de Orders, veja 9.5.
 
 `POST /v1/payments` com `payment_method_id: pix`, `transaction_amount: 19.9`
 e `X-Idempotency-Key` nova por requisição, com o token `TEST-` da aplicação
@@ -363,13 +367,12 @@ e `X-Idempotency-Key` nova por requisição, com o token `TEST-` da aplicação
 | e-mail em formato Gmail | `500` `not_found` |
 | `test_user_0000001@testuser.com` (inventado) | `500` `not_found` |
 
-Daí o `MercadoPagoPixProvider` recusar, antes de enviar, pedido sem
-`payer.email` (`PAYER_EMAIL_REQUIRED`). O `not_found` com e-mail válido
-não está isolado: pode ser o e-mail não pertencer a um usuário de teste, a
-conta sem chave Pix, ou o token `TEST-` de aplicação. Por isso o ciclo
-criar → ler → cancelar ainda não rodou; o teste `network`
-`tests/integrations/payment/adapters/test_mercado_pago_sandbox.py` espera
-uma conta de vendedor de teste.
+Na mesma API, com cartão de teste e o token `TEST-`: sem e-mail de pagador,
+`400 Params Error` (código 1); `buyer@example.com`, `400 excludes_by_rule`
+(10113); e-mail inventado no formato `@testuser.com`, `403 Payer email
+forbidden` (4390). O `not_found` do Pix com e-mail válido não foi isolado.
+O ciclo completo rodou depois, na API de Orders, com uma vendedora de teste
+(seção 9).
 
 ## 9. API de Orders, com vendedora de teste (2026-10-09)
 
@@ -442,3 +445,27 @@ O adapter repete essas respostas, e só essas (`RETRYABLE_ACTION_ERRORS`,
 mesma chave não "envenenou" a chave: as repetições acima reembolsaram.
 O mesmo levantamento achou o `GET /v1/orders/<id inexistente>` respondendo
 `404`, que é o que a simulação de notificação do painel produz na releitura.
+
+### 9.5 Pagador e credencial na API de Orders (2026-10-10)
+
+Com o token de **produção da vendedora de teste** (aplicação Checkout
+Transparente / API de Orders), Pix por `POST /v1/orders`:
+
+| `payer` enviado | Resposta |
+| --- | --- |
+| ausente | `400 required_properties` — `'$.payer' - minimum 1 properties allowed, but found 0 properties` |
+| `{}` | `400 minimum_properties`, mesmo detalhe |
+| `{"first_name": "Test"}` | `400 required_properties` — `'$.payer.email' or '$.payer.customer_id' or '$.payer.id'` |
+| `{"email": "TESTUSER0000000001"}` | `400 property_value` — `'$.payer.email' - does not match pattern` |
+| `{"email": "buyer@example.com"}` | `201`, `action_required` |
+| `{"email": "test_user_0000001@testuser.com"}` (inventado) | `201`, `action_required` |
+
+Cartão (Visa de teste, `APRO`) com `buyer@example.com` e com o
+`test_user` inventado: `201`, `processed` / `accredited` nos dois. **Na API
+de Orders, com a credencial certa, o pagador não precisa ser um comprador de
+teste.**
+
+Com o token `TEST-` da aplicação da conta real, a mesma order — sem pagador,
+com `buyer@example.com` ou com o e-mail da compradora de teste, Pix e
+cartão — responde `403 At least one policy returned UNAUTHORIZED.` nas seis
+combinações.

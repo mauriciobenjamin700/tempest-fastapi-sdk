@@ -98,7 +98,6 @@ async def notify(app: FastAPI, order_id: str, headers: dict[str, str]) -> tuple[
 async def main() -> None:
     """Create a real sandbox order, then notify the local route about it."""
     token: str = os.environ["MERCADO_PAGO_TEST_SELLER_ACCESS_TOKEN"]
-    buyer: str = os.environ["MERCADO_PAGO_TEST_BUYER_EMAIL"]
     async with HTTPClient(
         base_url=DEFAULT_BASE_URL,
         default_headers={"Authorization": f"Bearer {token}"},
@@ -106,7 +105,7 @@ async def main() -> None:
         provider = MercadoPagoPixProvider(http)
         charge = await provider.create_pix_charge(
             PixChargeRequest(
-                amount_cents=1990, reference="webhook-teste-1", payer=PixPayer(email=buyer)
+                amount_cents=1990, reference="webhook-teste-1", payer=PixPayer(email="comprador@example.com")
             )
         )
         app = build_app(provider)
@@ -183,7 +182,7 @@ que não é de nenhuma order sua, e o nível 1 mostrou o que acontece nesse caso
 ## Nível 3 — entrega real
 
 Com o túnel e o webhook configurados, crie uma order (o script de
-[contas e credenciais de teste](mercado-pago-sandbox.md#passo-7-conferir-que-deu-certo)
+[contas e credenciais de teste](mercado-pago-sandbox.md#passo-6-conferir-que-deu-certo)
 serve) e acompanhe o log do seu serviço. A cada mudança da order, o Mercado
 Pago deve chamar a rota com `data.id` igual ao id da order.
 

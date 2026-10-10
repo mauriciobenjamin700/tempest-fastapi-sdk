@@ -992,10 +992,10 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-Three decisions live in that object:
-
 The script prints `mercado_pago True`: `bucket("order-1017")` is `2`, below
 the slice's 10, so the charge was born at the candidate and read back there.
+
+Three decisions live in that object:
 
 1. **The slice is a function of the `reference`, not a coin flip.**
    `bucket(reference)` is a SHA-256 reduced to `0..99`, the same in every
@@ -1017,9 +1017,9 @@ pass `router.provider_for(order.provider)`.
 
 !!! warning "Each provider has its own webhook route"
     Verification is per provider, and a Mercado Pago delivery **does not
-    carry the payment's state**: only the id, signed. The
+    carry the order's state**: only the id, signed. The
     `make_mercado_pago_webhook_delivery_dependency` dependency verifies the
-    signature and re-reads the payment before handing it to
+    signature and re-reads the order before handing it to
     `parse_webhook`, and the adapter's `parse_webhook` refuses the bare
     notification. Mount `/webhooks/openpix` and `/webhooks/mercado-pago` side
     by side, each with its own dependency, and the same `service.settle`
@@ -1033,6 +1033,7 @@ You branch on `PaymentStatus`, never on the provider's string:
 | canonical | means |
 | --- | --- |
 | `PENDING` | created, waiting for the payer |
+| `AUTHORIZED` | card approved by the issuer and held, not captured yet |
 | `PAID` | settled |
 | `EXPIRED` | the window closed unpaid |
 | `CANCELLED` | withdrawn by you or the provider |

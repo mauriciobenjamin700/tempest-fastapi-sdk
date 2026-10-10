@@ -21,12 +21,55 @@ switch like this:
 | `PixPayment`, `Payment` | `PixCharge`, `CardCharge`, or the generated `Order` |
 | the 7 V1/V2 in-store QR and old dynamic QR operations | no replacement in this SDK: the spec itself marks them `deprecated`, and the spec's Orders API only declares `type: online` |
 
+**Removed with no direct replacement** (the equivalent, where one exists, is
+the generated `Order` or the `PixCharge` / `CardCharge` contracts):
+
+- **`MercadoPagoClient` methods:** `create_payment`, `search_payments`,
+  `get_payment`, `update_payment`, `cancel_payment`, `create_refund`,
+  `list_refunds`, `get_refund`, and the 7 in-store QR ones —
+  `create_instore_order_v1`, `delete_instore_order_v1`,
+  `create_instore_order_v2`, `get_instore_order_v2`,
+  `delete_instore_order_v2`, `create_dynamic_qr_order`,
+  `create_qr_tramma_dynamic`.
+- **Functions and constants:** `create_pix_payment`, `get_pix_payment`,
+  `parse_pix_payment`, `PAYMENTS_PATH`.
+- **Models and enums:** `PixPayment`, `PixPointOfInteraction`,
+  `PixTransactionData`, `Payment`, `PaymentRequest`, `PaymentPayer`,
+  `PaymentPayer2`, `PaymentCard`, `PaymentCardCardholder`, `PaymentItem`,
+  `PaymentAdditionalInfo`, `PaymentAdditionalInfoPayer`,
+  `PaymentAdditionalInfoShipments`, `PaymentTransactionDetails`,
+  `PaymentOperationType`, `PaymentPaymentTypeId`, `PaymentProcessingMode`,
+  `PaymentSearchResult`, `SearchPaymentsRange`, `PaymentUpdateRequest`,
+  `PaymentUpdateRequestStatus`, `CancelPaymentBody`, `RefundRequest`,
+  `CreateRefundResponse`, `CreateRefundResponseSource`, `GetRefundResponse`,
+  `GetRefundResponseSource`, `ListRefundsResponse`,
+  `ListRefundsResponseSource`, and `mercado_pago`'s `PaymentStatus`. The
+  **canonical** `PaymentStatus`, from `integrations.payment`, stays — it is
+  what the contracts use.
+
+**Types that changed:**
+
+- `Order.status`, `Order.status_detail`, `OrderTransactionPayment.status` and
+  `OrderTransactionPayment.status_detail` go from an enum to `Enum | str`:
+  the sandbox returned values outside the list. An exhaustive `match` over
+  the enum needs a branch for the string.
+- `get_authenticated_user()` returns `AuthenticatedUser` instead of
+  `dict[str, Any]`: replace `user["id"]` with `user.id` (what is not declared
+  is in `user.model_extra`).
+- Two enums got names of their own:
+  `ListPaymentMethodsResponseItemProcessingModesItem` (the
+  `list_payment_methods` processing mode) and
+  `UpdateAdvancedPaymentBodyStatus` (the `update_advanced_payment` body
+  status).
+
 Three differences that need more than a rename:
 
 1. **The id changes shape.** An order id is text (`ORD…`), not a number. If
    you stored the payment id as an integer, the column becomes text.
-2. **The webhook points at another resource.** The notification now names
-   the order. Replace manual reads of `data.id` with
+2. **The webhook points at another resource.** The notification should now
+   name the order — that is what the provider's document describes
+   (`order.created` / `order.updated` actions); a live Orders delivery has
+   not been observed here yet. Replace manual reads of `data.id` with
    `make_mercado_pago_webhook_delivery_dependency`, and tick the Order event
    in the application's webhook settings.
 3. **The credential must come from an "Orders API" application.** Measured:

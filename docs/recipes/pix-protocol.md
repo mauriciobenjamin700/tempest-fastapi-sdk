@@ -989,10 +989,10 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-Três decisões estão nesse objeto:
-
 O script imprime `mercado_pago True`: `bucket("pedido-1000")` é `3`, abaixo
 dos 10 da fatia, então a cobrança nasceu no candidato e foi relida lá.
+
+Três decisões estão nesse objeto:
 
 1. **A fatia é função da `reference`, não sorteio.** `bucket(reference)`
    é um SHA-256 reduzido a `0..99`, igual em todo processo. O mesmo pedido,
@@ -1013,9 +1013,9 @@ passe `router.provider_for(order.provider)`.
 
 !!! warning "Cada provedor tem a sua rota de webhook"
     A verificação é por provedor, e a entrega do Mercado Pago **não traz o
-    estado do pagamento**: só o id, assinado. A dependency
+    estado da order**: só o id, assinado. A dependency
     `make_mercado_pago_webhook_delivery_dependency` verifica a assinatura e relê a
-    pagamento antes de entregar ao `parse_webhook`, e o `parse_webhook` do
+    order antes de entregar ao `parse_webhook`, e o `parse_webhook` do
     adapter recusa a notificação crua. Monte `/webhooks/openpix` e
     `/webhooks/mercado-pago` lado a lado, cada um com a sua dependency, e o
     mesmo `service.settle` atrás dos dois. Detalhes em
@@ -1028,6 +1028,7 @@ Você decide sobre `PaymentStatus`, não sobre a string do provedor:
 | canônico | significa |
 | --- | --- |
 | `PENDING` | criada, esperando o pagador |
+| `AUTHORIZED` | cartão aprovado pelo emissor e retido, ainda não capturado |
 | `PAID` | liquidada |
 | `EXPIRED` | a janela fechou sem pagamento |
 | `CANCELLED` | retirada por você ou pelo provedor |

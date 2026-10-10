@@ -6,7 +6,9 @@ Marked ``network``: out of ``make check``. They need, in the environment:
   a **test seller** account's *Checkout Transparente / API de Orders*
   application (``docs/recipes/mercado-pago-sandbox.md`` walks through
   getting it);
-- ``MERCADO_PAGO_TEST_BUYER_EMAIL`` — the test buyer's e-mail.
+- ``MERCADO_PAGO_TEST_BUYER_EMAIL`` — optional: the payer e-mail. Measured,
+  the Orders API accepts any valid e-mail with the right seller token, so it
+  defaults to ``buyer@example.com``.
 
 Before anything is created, the token's account is read from
 ``/users/me`` and must carry the ``test_user`` tag; any other account is
@@ -58,8 +60,6 @@ async def http() -> AsyncIterator[HTTPClient]:
     token = os.environ.get(SELLER_TOKEN_ENV, "")
     if not token:
         pytest.skip(f"{SELLER_TOKEN_ENV} is not set")
-    if "@" not in os.environ.get(BUYER_EMAIL_ENV, ""):
-        pytest.skip(f"{BUYER_EMAIL_ENV} must hold the test buyer's e-mail")
     async with HTTPClient(
         base_url=DEFAULT_BASE_URL,
         default_headers={"Authorization": f"Bearer {token}"},
@@ -71,12 +71,13 @@ async def http() -> AsyncIterator[HTTPClient]:
 
 
 def _payer() -> PixPayer:
-    """The test buyer.
+    """The payer.
 
     Returns:
-        PixPayer: The payer, by e-mail.
+        PixPayer: ``MERCADO_PAGO_TEST_BUYER_EMAIL`` when set, else
+        ``buyer@example.com``.
     """
-    return PixPayer(email=os.environ[BUYER_EMAIL_ENV])
+    return PixPayer(email=os.environ.get(BUYER_EMAIL_ENV) or "buyer@example.com")
 
 
 async def _token(http: HTTPClient, holder: str) -> str:
