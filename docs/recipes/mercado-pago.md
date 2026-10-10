@@ -238,7 +238,7 @@ O que os adapters decidem por você, cada item medido no sandbox:
   sobrou. No cartão, `refunded_cents` soma os reembolsos processados; no Pix,
   eles ficam em `raw["transactions"]["refunds"]`.
 - **Pix só se estorna depois de pago.** Medido em 2026-10-10: o parcial
-  deixa a cobrança `PAID` (`partially_refunded`), o resto a deixa
+  deixa a cobrança `PAID` (o `status_detail` `partially_refunded` fica em `raw`), o resto a deixa
   `REFUNDED`. Num Pix ainda não pago, a resposta é
   `409 cannot_refund_order`: ele se cancela, não se estorna.
 - **Capturar e reembolsar releem a order.** As duas respostas trazem só id,

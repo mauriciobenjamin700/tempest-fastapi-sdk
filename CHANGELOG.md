@@ -23,7 +23,7 @@ sandbox com a vendedora de teste em 2026-10-10 (`vendor/mercadopago-evidence.md`
   a mesma chave entre tentativas do `refund_card_charge`. Fica fora do
   Protocol `PixProvider`, porque o adapter da OpenPix não estorna. Medido no
   sandbox em 2026-10-10: parcial deixa a cobrança `PAID`
-  (`partially_refunded`), o resto a deixa `REFUNDED`; num Pix não pago,
+  (o `partially_refunded` fica em `raw`), o resto a deixa `REFUNDED`; num Pix não pago,
   `409 cannot_refund_order` (#505).
 - `FakeCardProvider` em `tempest_fastapi_sdk.testing.fakes`: o contrato
   `CardProvider` sem rede — aprova, autoriza, captura, cancela, estorna em

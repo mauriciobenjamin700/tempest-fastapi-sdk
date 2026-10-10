@@ -240,7 +240,7 @@ What the adapters decide for you, each item measured in the sandbox:
   refund what is left. On a card, `refunded_cents` sums the processed
   refunds; on a Pix, they are under `raw["transactions"]["refunds"]`.
 - **A Pix is refunded only once paid.** Measured on 2026-10-10: a partial
-  refund leaves the charge `PAID` (`partially_refunded`), the rest makes it
+  refund leaves the charge `PAID` (the `partially_refunded` `status_detail` stays in `raw`), the rest makes it
   `REFUNDED`. On an unpaid Pix the answer is `409 cannot_refund_order`: it
   is cancelled, not refunded.
 - **Capture and refund read the order back.** Both answers carry only the
