@@ -604,9 +604,17 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-As outras seis operações que o SDK oficial chama e o documento omitia
-(advanced payments e `search_chargebacks`) continuam `dict[str, Any]`. O token
-de teste recebeu `403` nelas, então não houve resposta para observar.
+`search_chargebacks(payment_id=...)` devolve `ChargebackSearchResponse`
+(`paging` + `results`), também observado: medido em 2026-10-10 com o token da
+vendedora de teste, a busca **exige** `payment_id` — sem ele, até com só
+`limit` e `offset`, a resposta é `400 Wrong parameters in Search Cases`. Os
+itens de `results` nunca foram vistos (toda busca voltou vazia) e continuam
+`dict[str, Any]`.
+
+As cinco operações de advanced payments continuam `dict[str, Any]`: com o
+token `TEST-` e com o da vendedora de teste, todas responderam `403` do
+PolicyAgent — e um path inventado sob o mesmo prefixo também, então a
+política barra antes do roteamento e não houve resposta para observar.
 
 Para ver os baldes:
 

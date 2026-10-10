@@ -1390,6 +1390,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   Mastercard de teste antigo. Evidência §9.6. Testes:
   `test_mercado_pago_adapter.py`, `test_contract.py`,
   `tests/testing/test_fakes_*.py`.
+- **Busca de chargebacks do Mercado Pago tipada (unreleased)** — issue #226.
+  `search_chargebacks(payment_id=...)` → `ChargebackSearchResponse` /
+  `ChargebackSearchPaging`, do `200` observado com a vendedora de teste; sem
+  `payment_id` a API responde `400`, que a forma anterior (só `limit` /
+  `offset`) nunca evitava. Advanced payments (5) e `transaction-intents`
+  continuam barrados pelo PolicyAgent antes do roteamento. Evidência §9.7.
+  Testes: `test_sandbox_observations.py`, `test_generated_drift.py`.
 - **Sandbox do Mercado Pago: `/users/me` tipado e as 47 classificadas
   (unreleased)** — issue #226. Medido em 2026-10-09 com token `TEST-`, só
   com requisição que não pode dar certo (corpo malformado, id inexistente),

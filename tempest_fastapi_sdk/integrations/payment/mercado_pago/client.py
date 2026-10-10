@@ -33,6 +33,7 @@ from .schemas import (
     Card,
     CardToken,
     CardTokenRequest,
+    ChargebackSearchResponse,
     Claim,
     ClaimEvidence,
     ClaimHistoryEntry,
@@ -3030,26 +3031,27 @@ class MercadoPagoClient:
     async def search_chargebacks(
         self,
         *,
-        limit: int | None = None,
-        offset: int | None = None,
-    ) -> dict[str, Any]:
+        payment_id: str,
+    ) -> ChargebackSearchResponse:
         """Search chargebacks.
 
-        Searches chargebacks matching the given filters.
+        Searches the chargebacks of one payment.
 
-        Absent from the vendored document. `limit` and `offset` follow this document's
-        convention for a search; the remaining filters and the response are not
-        modelled.
+        Absent from the vendored document. Measured on 2026-10-10 with a test seller's
+        token: without `payment_id` the call answers `400 Wrong parameters in Search
+        Cases` (also with only `limit` and `offset`, or only a date filter); with it,
+        `200` and the paging envelope modelled here. `limit=10` came back as
+        `paging.limit` 25, so `limit` and `offset` are not declared. The items of
+        `results` were never observed — every search returned none — and stay untyped.
 
         Declared by `scripts/mercadopago_overlay.py` from mercadopago 3.5.0
         `resources/chargeback.py:search`.
 
         Args:
-            limit (int | None): The limit value. Omitted from the query when None.
-            offset (int | None): The offset value. Omitted from the query when None.
+            payment_id (str): The payment_id value.
 
         Returns:
-            dict[str, Any]: The 200 response body, validated.
+            ChargebackSearchResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -3057,17 +3059,14 @@ class MercadoPagoClient:
         """
         path = "/v1/chargebacks/search"
         params: dict[str, Any] = {}
-        if limit is not None:
-            params["limit"] = _param(limit)
-        if offset is not None:
-            params["offset"] = _param(offset)
+        params["payment_id"] = _param(payment_id)
         response = await self._client.request(
             "GET",
             path,
             params=params,
         )
         response.raise_for_status()
-        return _validate(dict[str, Any], response.json())
+        return _validate(ChargebackSearchResponse, response.json())
 
     async def get_chargeback(
         self,

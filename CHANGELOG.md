@@ -21,6 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   partes; `decline_next(motivo)` devolve uma cobrança `FAILED`, e
   `advance(id, status)` chega ao chargeback (#504).
 
+### Changed
+
+- Mercado Pago: `MercadoPagoClient.search_chargebacks` agora exige
+  `payment_id` (keyword) e devolve `ChargebackSearchResponse` (`paging` +
+  `results`) em vez de `dict[str, Any]`; `limit` e `offset` saíram. Medido em
+  2026-10-10 com o token da vendedora de teste: sem `payment_id`, a busca
+  responde `400 Wrong parameters in Search Cases` — inclusive só com `limit` e
+  `offset`, a única forma que o método aceitava, então ele nunca funcionou —,
+  e `limit=10` voltou `paging.limit` 25. Os itens de `results` não foram
+  observados e continuam `dict[str, Any]` (#226).
+
 ### Fixed
 
 - Mercado Pago: um Pix vencido (order `canceled` / `expired`, observado com

@@ -337,7 +337,7 @@ backed by a document of unrecorded origin (issue #228) look identical.
 """
 
 SANDBOX_PROBE_DATE: str = "2026-10-09"
-"""When :data:`SANDBOX_ROUTED_OPERATIONS` and :data:`OBSERVED_SCHEMAS` were observed."""
+"""When :data:`SANDBOX_ROUTED_OPERATIONS` and ``AuthenticatedUser`` were observed."""
 
 SANDBOX_ROUTED_OPERATIONS: dict[tuple[str, str], str] = {
     ("PUT", "/checkout/preferences/{}/expire"): (
@@ -451,7 +451,28 @@ made-up one, which is what a configured route looks like — but it is not
 the service answering. Each entry's text says which kind it is.
 """
 
+CHARGEBACK_PROBE_DATE: str = "2026-10-10"
+"""When ``GET /v1/chargebacks/search`` was observed with a test seller's token."""
+
 OBSERVED_SCHEMAS: dict[str, dict[str, Any]] = {
+    "ChargebackSearchPaging": {
+        "type": "object",
+        "properties": {
+            "offset": {"type": "integer"},
+            "limit": {"type": "integer"},
+            "total": {"type": "integer"},
+        },
+    },
+    "ChargebackSearchResponse": {
+        "type": "object",
+        "properties": {
+            "paging": {"$ref": "#/components/schemas/ChargebackSearchPaging"},
+            "results": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
+        },
+    },
     "AuthenticatedUserIdentification": {
         "type": "object",
         "properties": {
@@ -574,11 +595,14 @@ class AddedOperation:
         summary (str): One line, as the generator renders it.
         description (str): What it does, and what is not modelled.
         source (str): The SDK module and method that calls it.
-        query (tuple[str, ...]): Query parameters to declare.
+        query (tuple[str, ...]): Optional integer query parameters to declare.
+        required_query (tuple[str, ...]): Required string query parameters
+            to declare, for a filter the provider refuses the call without.
         has_body (bool): Whether the operation takes a request body.
         response_schema (str | None): Name of the :data:`OBSERVED_SCHEMAS`
             entry the ``200`` response renders as, or ``None`` when the
             response was never observed and stays ``dict[str, Any]``.
+        observed_on (str): When that response was observed.
     """
 
     method: str
@@ -588,8 +612,10 @@ class AddedOperation:
     description: str
     source: str
     query: tuple[str, ...] = ()
+    required_query: tuple[str, ...] = ()
     has_body: bool = False
     response_schema: str | None = None
+    observed_on: str = SANDBOX_PROBE_DATE
 
 
 PATH_CORRECTIONS: tuple[PathCorrection, ...] = (
@@ -998,13 +1024,20 @@ ADDED_OPERATIONS: tuple[AddedOperation, ...] = (
         operation_id="searchChargebacks",
         summary="Search chargebacks",
         description=(
-            "Searches chargebacks matching the given filters.\n\n"
-            "Absent from the vendored document. `limit` and `offset` follow "
-            "this document's convention for a search; the remaining filters "
-            "and the response are not modelled."
+            "Searches the chargebacks of one payment.\n\n"
+            "Absent from the vendored document. Measured on "
+            f"{CHARGEBACK_PROBE_DATE} with a test seller's token: without "
+            "`payment_id` the call answers `400 Wrong parameters in Search "
+            "Cases` (also with only `limit` and `offset`, or only a date "
+            "filter); with it, `200` and the paging envelope modelled here. "
+            "`limit=10` came back as `paging.limit` 25, so `limit` and "
+            "`offset` are not declared. The items of `results` were never "
+            "observed — every search returned none — and stay untyped."
         ),
         source="resources/chargeback.py:search",
-        query=("limit", "offset"),
+        required_query=("payment_id",),
+        response_schema="ChargebackSearchResponse",
+        observed_on=CHARGEBACK_PROBE_DATE,
     ),
 )
 """Operations the provider's SDK calls and the vendored document omits.
@@ -1207,13 +1240,22 @@ def _operation(added: AddedOperation) -> dict[str, Any]:
     description = "The provider's response, unmodelled."
     if added.response_schema is not None:
         response = {"$ref": f"#/components/schemas/{added.response_schema}"}
-        description = f"The provider's response, as observed on {SANDBOX_PROBE_DATE}."
+        description = f"The provider's response, as observed on {added.observed_on}."
     parameters: list[dict[str, Any]] = []
     for name in _path_parameters(added.path):
         parameters.append(
             {
                 "name": name,
                 "in": "path",
+                "required": True,
+                "schema": {"type": "string"},
+            }
+        )
+    for name in added.required_query:
+        parameters.append(
+            {
+                "name": name,
+                "in": "query",
                 "required": True,
                 "schema": {"type": "string"},
             }
