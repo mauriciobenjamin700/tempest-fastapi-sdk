@@ -1339,6 +1339,9 @@ class MercadoPagoClient:
     ) -> GetClaimFileResponse:
         """Get attached file metadata.
 
+        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
+        this operation, so nothing here confirms the API routes it. See issue #227.
+
         Args:
             claim_id (int): The claim_id value.
             file_name (str): The fileName value.
@@ -1367,6 +1370,9 @@ class MercadoPagoClient:
         file_name: str,
     ) -> bytes:
         """Download an attached file.
+
+        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
+        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             claim_id (int): The claim_id value.
@@ -1398,6 +1404,9 @@ class MercadoPagoClient:
     ) -> list[ClaimEvidence]:
         """Get claim evidence.
 
+        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
+        this operation, so nothing here confirms the API routes it. See issue #227.
+
         Args:
             claim_id (int): The claim_id value.
 
@@ -1424,6 +1433,9 @@ class MercadoPagoClient:
 
         Returns the possible resolution options for a claim at the mediation stage.
 
+        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
+        this operation, so nothing here confirms the API routes it. See issue #227.
+
         Args:
             claim_id (int): The claim_id value.
 
@@ -1448,6 +1460,9 @@ class MercadoPagoClient:
     ) -> list[ClaimMessage]:
         """Get claim messages.
 
+        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
+        this operation, so nothing here confirms the API routes it. See issue #227.
+
         Args:
             claim_id (int): The claim_id value.
 
@@ -1471,6 +1486,9 @@ class MercadoPagoClient:
         claim_id: int,
     ) -> list[ClaimHistoryEntry]:
         """Get claim status history.
+
+        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
+        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             claim_id (int): The claim_id value.
@@ -2003,6 +2021,9 @@ class MercadoPagoClient:
     ) -> None:
         """List POS devices for a user.
 
+        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
+        this operation, so nothing here confirms the API routes it. See issue #227.
+
         Args:
             user_id (int): The user_id value.
 
@@ -2141,6 +2162,11 @@ class MercadoPagoClient:
 
     async def get_release_report(self) -> ReportListResult:
         """Get releases report list.
+
+        **Not routed.** Probed against the sandbox and answered the way a path the API
+        does not route answers — measured 2026-10-10 with a test seller's token, GET
+        answers 405 'Method GET is not supported' while
+        `/v1/account/release_report/list` and `/search` answer 200.
 
         Returns:
             ReportListResult: The 200 response body, validated.
@@ -2390,6 +2416,9 @@ class MercadoPagoClient:
 
         Downloads the generated report CSV file by filename.
 
+        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
+        this operation, so nothing here confirms the API routes it. See issue #227.
+
         Args:
             file_name (str): The file_name value.
 
@@ -2411,6 +2440,11 @@ class MercadoPagoClient:
 
     async def get_settlement_report(self) -> ReportListResult:
         """Get settlements report list.
+
+        **Not routed.** Probed against the sandbox and answered the way a path the API
+        does not route answers — measured 2026-10-10 with a test seller's token, GET
+        answers 404 'Resource /account/settlement_report not found.' while
+        `/v1/account/settlement_report/list` and `/search` answer 200.
 
         Returns:
             ReportListResult: The 200 response body, validated.
@@ -2654,6 +2688,9 @@ class MercadoPagoClient:
         file_name: str,
     ) -> bytes:
         """Download a settlements report file.
+
+        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
+        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             file_name (str): The file_name value.
@@ -3255,6 +3292,9 @@ class MercadoPagoClient:
         address_id: str,
     ) -> Address:
         """Get a customer address.
+
+        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
+        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             customer_id (str): The customer_id value.
@@ -4066,6 +4106,9 @@ class MercadoPagoClient:
 
         **Available in:** Argentina, Mexico (MLA, MLM)
 
+        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
+        this operation, so nothing here confirms the API routes it. See issue #227.
+
         Args:
             payout_id (str): The payout_id value.
 
@@ -4153,6 +4196,9 @@ class MercadoPagoClient:
         """Get disbursement status.
 
         **Available in:** Brazil (MLB)
+
+        **Unverified.** Neither the provider's SDK nor an unauthenticated probe covers
+        this operation, so nothing here confirms the API routes it. See issue #227.
 
         Args:
             id (str): The id value.

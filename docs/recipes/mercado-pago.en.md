@@ -535,31 +535,32 @@ So not every `MercadoPagoClient` operation rests on the same evidence. Of 132:
 | Bucket | Count | What vouches for it |
 | --- | --- | --- |
 | The official SDK calls it | 58 | The provider, in its own `mercadopago` on PyPI (65 call sites in 3.5.0 and in 3.6.0, minus the 7 Payments API ones) |
-| Probed live | 34 | An unauthenticated `GET` answered `401`/`403`/`400` (2026-08-28); 11 of them do not hold up and 2 answer as unrouted, see the note below |
-| Told apart in the sandbox | 27 | A request that cannot succeed answered differently from a made-up path under the same prefix (2026-10-09) |
-| Not routed | 2 | The sandbox answered the way it answers a path that does not exist |
-| Nothing vouches | 11 | Same answer as the made-up path: no probe tells them apart |
+| Told apart in the sandbox (non-`GET`) | 27 | A request that cannot succeed answered differently from a made-up path under the same prefix (2026-10-09) |
+| Told apart in the sandbox (`GET`) | 20 | A `GET` with the test seller's token answered differently from an invented sibling (2026-10-10) |
+| Not routed | 4 | The sandbox answered the way it answers a path that does not exist |
+| Nothing vouches | 23 | Same answer as the made-up path: no probe tells them apart |
 
-!!! warning "The probed-live operations were re-evaluated"
-    The "probed live" bucket rests on a rule the 2026-10-09 probe showed is
-    weak: on several prefixes `401`/`403` comes before routing. Re-evaluated
-    with `GET` against a made-up path under the same prefix, 11 of the 34
-    answer the same as the made-up path (`/terminals/v1`, refunds under
-    `/point/integration-api`, `/users/{id}/pos`, six subpaths of
-    `/post-purchase/v1/claims/{id}` and `GET /v1/account/release_report/{id}`)
-    and two answer as unrouted (`GET /v1/account/release_report` and
-    `GET /v1/account/settlement_report`). They carry no marker in their
-    docstring yet; the decision is in issue #488.
+!!! info "Why there is no “probed live” bucket any more"
+    Up to 0.311.0, 34 `GET` rested only on an **unauthenticated** request
+    that answered `401`/`403`/`400` on 2026-08-28. The 2026-10-09 probe
+    showed that on several prefixes that status comes before routing, so on
+    its own it does not prove a route. On 2026-10-10 the 34 were measured
+    again, with the test seller's token and each against an invented sibling
+    (issue #488): 20 were told apart, 2 answered as unrouted
+    (`get_release_report` and `get_settlement_report`) and 12 cannot be told
+    apart — refused by the PolicyAgent or the proxy, or with a parameterised
+    last segment and a generic "not found" — and now carry the marker below.
 
-**The 11 say so in their own docstring:**
+**The 23 say so in their own docstring:**
 
 ```
 **Unverified.** Neither the provider's SDK nor an unauthenticated probe
 covers this operation, so nothing here confirms the API routes it.
 ```
 
-**So do the 2 unrouted ones**, with the measurement: `update_chargeback` and
-`create_qr_integrator_config` carry `**Not routed.**` and what the sandbox
+**So do the 4 unrouted ones**, with the measurement: `update_chargeback`,
+`create_qr_integrator_config`, `get_release_report` and
+`get_settlement_report` carry `**Not routed.**` and what the sandbox
 answered. They stay in the client, because removing a public method is a
 separate decision, but do not expect them to work.
 
@@ -649,8 +650,8 @@ make mercadopago-diff
   handler, and hands over the signed `data_id` — the body is not signed.
 - QR Code notifications are not signed — do not run them through
   `verify_signature`.
-- Not every operation rests on the same evidence: 11 say `**Unverified.**`
-  and 2 say `**Not routed.**` in their docstring. `get_authenticated_user`
+- Not every operation rests on the same evidence: 23 say `**Unverified.**`
+  and 4 say `**Not routed.**` in their docstring. `get_authenticated_user`
   returns `AuthenticatedUser`, observed in the sandbox.
 - The webhook goes through `make_mercado_pago_webhook_delivery_dependency`,
   which verifies the signature and re-reads the order before it becomes an
