@@ -16,13 +16,16 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
-        MercadoPagoPixDelivery as MercadoPagoPixDelivery,
+        MercadoPagoCardProvider as MercadoPagoCardProvider,
+    )
+    from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
+        MercadoPagoOrderDelivery as MercadoPagoOrderDelivery,
     )
     from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
         MercadoPagoPixProvider as MercadoPagoPixProvider,
     )
     from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
-        make_mercado_pago_pix_webhook_dependency as make_mercado_pago_pix_webhook_dependency,  # noqa: E501
+        make_mercado_pago_webhook_delivery_dependency as make_mercado_pago_webhook_delivery_dependency,  # noqa: E501
     )
     from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
         OpenPixPayoutProvider as OpenPixPayoutProvider,
@@ -32,9 +35,10 @@ if TYPE_CHECKING:
     )
 
 _EXPORTS: dict[str, str] = {
-    "MercadoPagoPixDelivery": "mercado_pago",
+    "MercadoPagoCardProvider": "mercado_pago",
+    "MercadoPagoOrderDelivery": "mercado_pago",
     "MercadoPagoPixProvider": "mercado_pago",
-    "make_mercado_pago_pix_webhook_dependency": "mercado_pago",
+    "make_mercado_pago_webhook_delivery_dependency": "mercado_pago",
     "OpenPixPayoutProvider": "openpix",
     "OpenPixPixProvider": "openpix",
     "PAYOUT_REJECTED_STATUSES": "openpix",
@@ -77,9 +81,10 @@ def __dir__() -> list[str]:
 
 
 __all__: list[str] = [
-    "MercadoPagoPixDelivery",
+    "MercadoPagoCardProvider",
+    "MercadoPagoOrderDelivery",
     "MercadoPagoPixProvider",
     "OpenPixPayoutProvider",
     "OpenPixPixProvider",
-    "make_mercado_pago_pix_webhook_dependency",
+    "make_mercado_pago_webhook_delivery_dependency",
 ]

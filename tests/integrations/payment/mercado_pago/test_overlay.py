@@ -29,6 +29,7 @@ from mercadopago_overlay import (  # noqa: E402
     OFFICIAL_SDK_CALLS,
     PATH_CORRECTIONS,
     PROBED_OPERATIONS,
+    PROVIDER_DEPRECATED_SDK_CALLS,
     UNVERIFIED_NOTE,
     apply,
 )
@@ -270,10 +271,15 @@ class TestTheSdkIsTheAuthority:
         return found
 
     def test_every_call_the_sdk_makes_is_modelled(self) -> None:
-        """Zero in the direction that matters."""
+        """Zero in the direction that matters, except what the provider retires.
+
+        The official SDK still calls the Payments API; the provider's
+        dashboard says it is going away and this package dropped it. The
+        gap must be exactly that set, so any other omission still fails.
+        """
         missing = OFFICIAL_SDK_CALLS - self._generated_operations()
 
-        assert not missing, sorted(missing)
+        assert missing == PROVIDER_DEPRECATED_SDK_CALLS, sorted(missing)
 
     def test_the_client_exposes_the_operations_that_were_added(self) -> None:
         """The additions reach the class a consumer imports."""
@@ -361,14 +367,14 @@ class TestUnverifiedOperationsAreMarked:
     def test_an_operation_the_sdk_calls_is_not_marked(self) -> None:
         """The provider calling it is the strongest evidence available."""
         document = _document(
-            {"/v1/payments/{id}": {"get": {"description": "Get a payment."}}}
+            {"/v1/orders/{id}": {"get": {"description": "Get an order."}}}
         )
 
         patched, report = apply(document)
 
-        operation = patched["paths"]["/v1/payments/{id}"]["get"]
+        operation = patched["paths"]["/v1/orders/{id}"]["get"]
         assert UNVERIFIED_NOTE.strip() not in operation["description"]
-        assert "GET /v1/payments/{id}" not in report.unverified_operations
+        assert "GET /v1/orders/{id}" not in report.unverified_operations
 
     def test_a_probed_operation_is_not_marked(self) -> None:
         """A route that answered 401 exists, whatever the document's origin."""
@@ -449,7 +455,7 @@ class TestTheProbeOnlySpeaksForItsOwnVerb:
         )
 
         marked = inspect.getsource(MercadoPagoClient.create_terminal_action)
-        vouched = inspect.getsource(MercadoPagoClient.get_payment)
+        vouched = inspect.getsource(MercadoPagoClient.get_order)
 
         assert "**Unverified.**" in marked
         assert "**Unverified.**" not in vouched

@@ -154,6 +154,7 @@ plugins:
               - Management commands (tempest <cmd>): recipes/management-commands.md
               - Mercado Pago (Pix, cards, boleto): recipes/mercado-pago.md
               - Mercado Pago (test accounts and credentials): recipes/mercado-pago-sandbox.md
+              - Mercado Pago (testing webhooks): recipes/mercado-pago-webhooks.md
               - Metrics: recipes/metrics.md
               - MFA (TOTP / 2FA): recipes/mfa.md
               - Migrations: recipes/migrations.md
@@ -464,6 +465,7 @@ nav:
       - "Management commands (tempest <cmd>)": recipes/management-commands.md
       - "Mercado Pago (contas e credenciais de teste)": recipes/mercado-pago-sandbox.md
       - "Mercado Pago (Pix, cartão, boleto)": recipes/mercado-pago.md
+      - "Mercado Pago (testando webhooks)": recipes/mercado-pago-webhooks.md
       - Métricas: recipes/metrics.md
       - MFA (TOTP / 2FA): recipes/mfa.md
       - Migrations: recipes/migrations.md

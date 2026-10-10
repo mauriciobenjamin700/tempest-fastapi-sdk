@@ -1,0 +1,19 @@
+{
+  "status": 201,
+  "body": {
+    "id": "ORDTST00000000000000000000000001",
+    "status": "processed",
+    "status_detail": "partially_refunded",
+    "transactions": {
+      "refunds": [
+        {
+          "id": "REF00000000000000000000000007",
+          "transaction_id": "PAY00000000000000000000000002",
+          "reference_id": "0000000000",
+          "amount": "30.00",
+          "status": "processed"
+        }
+      ]
+    }
+  }
+}

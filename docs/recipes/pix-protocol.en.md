@@ -1018,13 +1018,13 @@ pass `router.provider_for(order.provider)`.
 !!! warning "Each provider has its own webhook route"
     Verification is per provider, and a Mercado Pago delivery **does not
     carry the payment's state**: only the id, signed. The
-    `make_mercado_pago_pix_webhook_dependency` dependency verifies the
+    `make_mercado_pago_webhook_delivery_dependency` dependency verifies the
     signature and re-reads the payment before handing it to
     `parse_webhook`, and the adapter's `parse_webhook` refuses the bare
     notification. Mount `/webhooks/openpix` and `/webhooks/mercado-pago` side
     by side, each with its own dependency, and the same `service.settle`
     behind both. Details in
-    [Mercado Pago »](mercado-pago.md#through-the-contract-door-mercadopagopixprovider).
+    [Mercado Pago »](mercado-pago.md#the-webhook-through-the-contract-re-reading-the-order).
 
 ## States
 

@@ -1,24 +1,23 @@
-"""``MercadoPagoPixProvider`` driven over the wire.
+"""The Mercado Pago adapters, driven over the wire on bodies the sandbox sent.
 
-The transport is an ``httpx.MockTransport``, so every assertion is on bytes
-the adapter put on the wire or bytes it was handed back. The payment bodies
-below are **synthetic**: they carry only the keys the adapter reads, named
-the way the provider's own SDK names them (``transaction_amount``,
-``external_reference``, ``point_of_interaction.transaction_data``). They
-test the mapping, not the provider. What the provider really sends is pinned
-separately, from the sandbox, in ``test_mercado_pago_sandbox.py``.
+Every response here is one Mercado Pago returned to the Orders API on
+2026-10-09, redacted into ``fixtures/mercado_pago_orders/`` — ids, tokens,
+the QR, URLs and account ids replaced by stable fakes, every key, type and
+state kept (``vendor/mercadopago-evidence.md`` section 9). The transport is
+an ``httpx.MockTransport``, so what is asserted is the request the adapter
+put on the wire and how it read what came back.
 
-The webhook half mounts a route: a status code is a fact about a service,
-not about a function, and the defect this adapter is shaped around — a
-notification that carries no payment state — only shows when the delivery
-goes through the dependency the recipe tells a consumer to use.
+The webhook half mounts a route: the defect this design avoids — a
+notification that carries no state, settled on as if it did — only shows
+through the dependency a consumer mounts.
 """
 
 from __future__ import annotations
 
 import json
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -28,6 +27,7 @@ from fastapi.testclient import TestClient
 
 from tempest_fastapi_sdk import HTTPClient, register_exception_handlers
 from tempest_fastapi_sdk.integrations.payment import (
+    CardChargeRequest,
     PaymentStatus,
     PixChargeRequest,
     PixConfirmationOutcome,
@@ -36,9 +36,10 @@ from tempest_fastapi_sdk.integrations.payment import (
     confirm_pix_payment,
 )
 from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
-    MercadoPagoPixDelivery,
+    MercadoPagoCardProvider,
+    MercadoPagoOrderDelivery,
     MercadoPagoPixProvider,
-    make_mercado_pago_pix_webhook_dependency,
+    make_mercado_pago_webhook_delivery_dependency,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
     DEFAULT_BASE_URL,
@@ -48,50 +49,43 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
 )
 from tempest_fastapi_sdk.utils.retry import RetryPolicy
 
+FIXTURES: Path = Path(__file__).parent / "fixtures" / "mercado_pago_orders"
 SECRET: str = "webhook-secret"
 BUYER: PixPayer = PixPayer(email="buyer@example.com")
-PAYMENT_ID: int = 1234567890
 
 
-def _payment(**overrides: Any) -> dict[str, Any]:
-    """Build a synthetic Pix payment body.
+def fixture(name: str) -> tuple[int, Any]:
+    """Load one redacted sandbox response.
 
     Args:
-        **overrides (Any): Keys to replace or add.
+        name (str): The fixture's stem.
 
     Returns:
-        dict[str, Any]: The body.
+        tuple[int, Any]: The HTTP status and the body.
     """
-    body: dict[str, Any] = {
-        "id": PAYMENT_ID,
-        "status": "pending",
-        "status_detail": "pending_waiting_transfer",
-        "payment_method_id": "pix",
-        "transaction_amount": 19.9,
-        "currency_id": "BRL",
-        "external_reference": "order-1042",
-        "date_of_expiration": "2026-10-10T12:00:00.000-04:00",
-        "date_approved": None,
-        "point_of_interaction": {
-            "type": "CHECKOUT",
-            "transaction_data": {
-                "qr_code": "00020126580014br.gov.bcb.pix",
-                "qr_code_base64": "iVBORw0KGgo=",
-                "ticket_url": "https://example.com/ticket",
-            },
-        },
-    }
-    body.update(overrides)
-    return body
+    data = json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
+    return int(data["status"]), data["body"]
+
+
+def response(name: str) -> httpx.Response:
+    """Build the response the sandbox gave.
+
+    Args:
+        name (str): The fixture's stem.
+
+    Returns:
+        httpx.Response: Same status, same body.
+    """
+    status, body = fixture(name)
+    return httpx.Response(status, json=body)
 
 
 class Recorder:
-    """A scripted transport that keeps every request it saw.
+    """A scripted transport that keeps every request.
 
     Attributes:
         requests (list[httpx.Request]): Requests in arrival order.
-        responses (list[httpx.Response]): Answers, consumed in order; the
-            last one repeats.
+        responses (list[httpx.Response]): Answers in order; the last repeats.
     """
 
     def __init__(self, *responses: httpx.Response) -> None:
@@ -107,7 +101,7 @@ class Recorder:
         """Record and answer.
 
         Args:
-            request (httpx.Request): The request the client built.
+            request (httpx.Request): The request.
 
         Returns:
             httpx.Response: The next scripted answer.
@@ -118,336 +112,448 @@ class Recorder:
         return self.responses[0]
 
 
-def _provider(
-    recorder: Recorder,
-    *,
-    retry_policy: RetryPolicy | None = None,
-    **options: Any,
-) -> MercadoPagoPixProvider:
-    """Build the adapter over a scripted transport.
+def _http(recorder: Recorder, retry_policy: RetryPolicy | None = None) -> HTTPClient:
+    """Build a client over the scripted transport.
 
     Args:
         recorder (Recorder): The transport.
-        retry_policy (RetryPolicy | None): Retry policy for the client.
-        **options (Any): Forwarded to ``MercadoPagoPixProvider``.
+        retry_policy (RetryPolicy | None): Retry policy.
 
     Returns:
-        MercadoPagoPixProvider: The adapter.
+        HTTPClient: The client.
     """
-    http = HTTPClient(
+    return HTTPClient(
         base_url=DEFAULT_BASE_URL,
-        default_headers={"Authorization": "Bearer TEST-fake"},
+        default_headers={"Authorization": "Bearer APP_USR-fake"},
         transport=httpx.MockTransport(recorder),
         retry_policy=retry_policy,
     )
-    return MercadoPagoPixProvider(http, **options)
 
 
-class TestCreate:
-    """What goes on the wire, and what comes back."""
+def _body(request: httpx.Request) -> Any:
+    """Decode a request body.
 
-    async def test_the_request_states_reais_and_pix(self) -> None:
-        """Cents in the contract, reais on the wire, `pix` as the method."""
-        recorder = Recorder(httpx.Response(201, json=_payment()))
-        provider = _provider(recorder, notification_url="https://svc/webhooks/mp")
+    Args:
+        request (httpx.Request): The request.
+
+    Returns:
+        Any: The JSON body.
+    """
+    return json.loads(request.content)
+
+
+def _card(**overrides: Any) -> CardChargeRequest:
+    """Build a card request.
+
+    Args:
+        **overrides (Any): Fields to replace.
+
+    Returns:
+        CardChargeRequest: A R$ 100,00 Visa charge.
+    """
+    fields: dict[str, Any] = {
+        "amount_cents": 10000,
+        "reference": "r",
+        "card_token": "tok_123",
+        "payment_method_id": "visa",
+        "payer": BUYER,
+    }
+    fields.update(overrides)
+    return CardChargeRequest(**fields)
+
+
+class TestPix:
+    """Pix through `/v1/orders`."""
+
+    async def test_the_request_is_an_order_with_one_pix_payment(self) -> None:
+        """Decimal strings, `pix`/`bank_transfer`, expiry in seconds."""
+        recorder = Recorder(response("pix_create"))
+        provider = MercadoPagoPixProvider(_http(recorder))
 
         await provider.create_pix_charge(
             PixChargeRequest(
                 amount_cents=1990,
-                reference="order-1042",
-                description="Pedido 1042",
+                reference="tempest-orders-pix",
+                description="Pedido 1",
+                expires_in=timedelta(minutes=30),
                 payer=PixPayer(
+                    email="buyer@example.com",
                     name="Maria da Silva",
-                    email="maria@example.com",
                     tax_id="123.456.789-09",
                 ),
             )
         )
 
         request = recorder.requests[0]
-        body = json.loads(request.content)
+        body = _body(request)
         assert request.method == "POST"
-        assert request.url.path == "/v1/payments"
-        assert body["transaction_amount"] == 19.9
-        assert b'"transaction_amount":19.9' in request.content.replace(b" ", b"")
-        assert body["payment_method_id"] == "pix"
-        assert body["external_reference"] == "order-1042"
-        assert body["description"] == "Pedido 1042"
-        assert body["notification_url"] == "https://svc/webhooks/mp"
+        assert request.url.path == "/v1/orders"
+        assert request.headers["X-Idempotency-Key"]
+        assert body["total_amount"] == "19.90"
+        assert body["external_reference"] == "tempest-orders-pix"
+        assert body["description"] == "Pedido 1"
         assert body["payer"] == {
-            "email": "maria@example.com",
+            "email": "buyer@example.com",
             "first_name": "Maria da Silva",
             "identification": {"number": "12345678909", "type": "CPF"},
         }
+        assert body["transactions"]["payments"][0] == {
+            "amount": "19.90",
+            "expiration_time": "PT1800S",
+            "payment_method": {"id": "pix", "type": "bank_transfer"},
+        }
 
-    async def test_nothing_is_invented_for_the_payer(self) -> None:
-        """Only what the request carries; a 13-digit tax id gets no type."""
-        recorder = Recorder(httpx.Response(201, json=_payment()))
-        provider = _provider(recorder)
-
-        await provider.create_pix_charge(
-            PixChargeRequest(amount_cents=100, reference="a", payer=BUYER)
-        )
-        await provider.create_pix_charge(
-            PixChargeRequest(
-                amount_cents=100,
-                reference="b",
-                payer=PixPayer(email="buyer@example.com", tax_id="1234567890123"),
-            )
-        )
-
-        first = json.loads(recorder.requests[0].content)
-        second = json.loads(recorder.requests[1].content)
-        assert first["payer"] == {"email": "buyer@example.com"}
-        assert "notification_url" not in first
-        assert second["payer"]["identification"] == {"number": "1234567890123"}
-
-    @pytest.mark.parametrize(
-        "payer",
-        [None, PixPayer(name="Maria"), PixPayer(tax_id="12345678909")],
-        ids=["no-payer", "name-only", "tax-id-only"],
-    )
-    async def test_a_payer_without_email_is_refused_before_sending(
-        self, payer: PixPayer | None
-    ) -> None:
-        """Measured: the provider answers 500 `payer_cannot_be_nil` instead."""
-        recorder = Recorder(httpx.Response(201, json=_payment()))
-        provider = _provider(recorder)
-
-        with pytest.raises(ValueError, match=r"payer\.email"):
-            await provider.create_pix_charge(
-                PixChargeRequest(amount_cents=100, reference="a", payer=payer)
-            )
-
-        assert recorder.requests == []
-
-    async def test_expiry_is_an_absolute_utc_timestamp(self) -> None:
-        """`expires_in` becomes `date_of_expiration`, milliseconds, UTC."""
-        recorder = Recorder(httpx.Response(201, json=_payment()))
-        provider = _provider(recorder)
-        before = datetime.now(UTC)
-
-        await provider.create_pix_charge(
-            PixChargeRequest(
-                amount_cents=100,
-                reference="a",
-                expires_in=timedelta(minutes=30),
-                payer=BUYER,
-            )
-        )
-
-        sent = json.loads(recorder.requests[0].content)["date_of_expiration"]
-        deadline = datetime.fromisoformat(sent)
-        assert sent.endswith("+00:00")
-        assert len(sent.split(".")[1]) == len("000+00:00")
-        assert timedelta(minutes=29) < deadline - before < timedelta(minutes=31)
-
-    async def test_the_response_maps_into_the_contract(self) -> None:
-        """QR from the undeclared object, amount back in cents."""
-        recorder = Recorder(httpx.Response(201, json=_payment()))
-        provider = _provider(recorder)
+    async def test_the_created_order_maps_into_a_pending_charge(self) -> None:
+        """QR from the payment method, order id as the charge id."""
+        provider = MercadoPagoPixProvider(_http(Recorder(response("pix_create"))))
 
         charge = await provider.create_pix_charge(
-            PixChargeRequest(amount_cents=1990, reference="order-1042", payer=BUYER)
+            PixChargeRequest(amount_cents=1990, reference="x", payer=BUYER)
         )
 
+        _, body = fixture("pix_create")
         assert charge.provider == "mercado_pago"
-        assert charge.provider_charge_id == str(PAYMENT_ID)
-        assert charge.reference == "order-1042"
+        assert charge.provider_charge_id == body["id"]
+        assert charge.reference == "tempest-orders-pix"
         assert charge.amount_cents == 1990
         assert charge.status is PaymentStatus.PENDING
-        assert charge.provider_status == "pending"
-        assert charge.br_code == "00020126580014br.gov.bcb.pix"
-        assert charge.qr_code_base64 == "iVBORw0KGgo="
+        assert charge.provider_status == "action_required"
+        assert charge.br_code is not None
+        assert charge.br_code.startswith("000201")
+        assert charge.qr_code_base64
         assert charge.qr_code_image_url is None
-        assert charge.end_to_end_id is None
-        assert charge.raw["point_of_interaction"]["type"] == "CHECKOUT"
+        assert charge.expires_at is not None
+        assert charge.raw["transactions"]["payments"][0]["id"].startswith("PAY")
 
-    async def test_each_call_gets_its_own_idempotency_key(self) -> None:
-        """Two creates, two keys: the default does not merge orders."""
-        recorder = Recorder(httpx.Response(201, json=_payment()))
-        provider = _provider(recorder)
+    async def test_read_and_cancel(self) -> None:
+        """`GET` and `POST …/cancel` on the order id."""
+        recorder = Recorder(response("pix_get"), response("pix_cancel"))
+        provider = MercadoPagoPixProvider(_http(recorder))
+        _, created = fixture("pix_create")
 
-        for _ in range(2):
-            await provider.create_pix_charge(
-                PixChargeRequest(amount_cents=100, reference="same", payer=BUYER)
-            )
+        read = await provider.get_pix_charge(created["id"])
+        cancelled = await provider.cancel_pix_charge(created["id"])
 
-        keys = [r.headers["X-Idempotency-Key"] for r in recorder.requests]
-        assert keys[0] and keys[1]
-        assert keys[0] != keys[1]
+        assert read.status is PaymentStatus.PENDING
+        assert cancelled.status is PaymentStatus.CANCELLED
+        assert recorder.requests[0].method == "GET"
+        assert recorder.requests[0].url.path == f"/v1/orders/{created['id']}"
+        assert recorder.requests[1].method == "POST"
+        assert recorder.requests[1].url.path == f"/v1/orders/{created['id']}/cancel"
+        assert recorder.requests[1].headers["X-Idempotency-Key"]
 
-    async def test_a_transport_retry_reuses_the_key(self) -> None:
-        """A POST retried after a 500 cannot create a second payment."""
+    async def test_a_transport_retry_reuses_the_idempotency_key(self) -> None:
+        """A create retried after a 500 carries the same key."""
         recorder = Recorder(
-            httpx.Response(500, json={"message": "boom"}),
-            httpx.Response(201, json=_payment()),
+            httpx.Response(500, json={"message": "boom"}), response("pix_create")
         )
-        provider = _provider(
-            recorder,
-            retry_policy=RetryPolicy(max_attempts=2, backoff_initial_seconds=0.0),
+        provider = MercadoPagoPixProvider(
+            _http(recorder, RetryPolicy(max_attempts=2, backoff_initial_seconds=0.0))
         )
 
         await provider.create_pix_charge(
-            PixChargeRequest(amount_cents=100, reference="a", payer=BUYER)
+            PixChargeRequest(amount_cents=1990, reference="x", payer=BUYER)
         )
 
-        assert len(recorder.requests) == 2
         keys = {r.headers["X-Idempotency-Key"] for r in recorder.requests}
+        assert len(recorder.requests) == 2
         assert len(keys) == 1
 
-    async def test_the_key_can_follow_the_reference(self) -> None:
-        """Opt-in: the same order collapses onto one payment."""
-        recorder = Recorder(httpx.Response(201, json=_payment()))
-        provider = _provider(recorder, idempotency_key=lambda r: r.reference)
-
-        await provider.create_pix_charge(
-            PixChargeRequest(amount_cents=100, reference="order-9", payer=BUYER)
+    async def test_two_creates_get_two_keys_unless_told_otherwise(self) -> None:
+        """Default: one key per call. Opt-in: the key follows the reference."""
+        recorder = Recorder(response("pix_create"))
+        default = MercadoPagoPixProvider(_http(recorder))
+        by_reference = MercadoPagoPixProvider(
+            _http(recorder), idempotency_key=lambda reference: reference
         )
+        request = PixChargeRequest(amount_cents=1990, reference="order-9", payer=BUYER)
 
-        assert recorder.requests[0].headers["X-Idempotency-Key"] == "order-9"
+        await default.create_pix_charge(request)
+        await default.create_pix_charge(request)
+        await by_reference.create_pix_charge(request)
 
-    async def test_a_body_without_amount_is_refused(self) -> None:
-        """Unreadable amount is an error, never a charge of zero."""
-        body = _payment()
-        del body["transaction_amount"]
-        provider = _provider(Recorder(httpx.Response(201, json=body)))
-
-        with pytest.raises(ValueError, match="transaction_amount"):
-            await provider.create_pix_charge(
-                PixChargeRequest(amount_cents=100, reference="a", payer=BUYER)
-            )
-
-    async def test_a_fraction_of_a_cent_is_refused(self) -> None:
-        """`19.905` reais is not a whole number of cents."""
-        provider = _provider(
-            Recorder(httpx.Response(201, json=_payment(transaction_amount=19.905)))
-        )
-
-        with pytest.raises(ValueError, match="cents"):
-            await provider.create_pix_charge(
-                PixChargeRequest(amount_cents=100, reference="a", payer=BUYER)
-            )
+        keys = [r.headers["X-Idempotency-Key"] for r in recorder.requests]
+        assert keys[0] != keys[1]
+        assert keys[2] == "order-9"
 
     @pytest.mark.parametrize(
-        "field",
+        "patch",
         [
-            {"date_of_expiration": "garbage"},
-            {"date_approved": "garbage"},
-            {"point_of_interaction": {"transaction_data": {"bank_transfer_id": "x"}}},
-            {"point_of_interaction": "not-an-object"},
+            {"transactions": {"payments": [{"date_of_expiration": "garbage"}]}},
+            {"transactions": "not-an-object"},
+            {"currency": 42},
         ],
-        ids=["expiration", "approved", "bank-transfer-id", "interaction"],
+        ids=["expiry", "transactions", "currency"],
     )
     async def test_a_malformed_field_it_does_not_need_is_not_fatal(
-        self, field: dict[str, Any]
+        self, patch: dict[str, Any]
     ) -> None:
-        """The payment exists once the POST answered; raising would invite a retry.
-
-        A retry sends a fresh idempotency key and creates a second Pix, so
-        only `id` and `transaction_amount` may refuse a created payment.
-        """
-        provider = _provider(Recorder(httpx.Response(201, json=_payment(**field))))
-
-        charge = await provider.create_pix_charge(
-            PixChargeRequest(amount_cents=1990, reference="order-1042", payer=BUYER)
+        """The order exists once POST answered; raising would invite a retry."""
+        _, body = fixture("pix_create")
+        provider = MercadoPagoPixProvider(
+            _http(Recorder(httpx.Response(201, json={**body, **patch})))
         )
 
-        assert charge.provider_charge_id == str(PAYMENT_ID)
+        charge = await provider.create_pix_charge(
+            PixChargeRequest(amount_cents=1990, reference="x", payer=BUYER)
+        )
+
         assert charge.amount_cents == 1990
 
-    async def test_an_error_status_raises(self) -> None:
-        """A 400 from the provider is not swallowed into a charge."""
-        provider = _provider(Recorder(httpx.Response(400, json={"message": "bad"})))
+    async def test_an_unreadable_amount_is_refused(self) -> None:
+        """Never a charge of zero."""
+        _, body = fixture("pix_create")
+        provider = MercadoPagoPixProvider(
+            _http(Recorder(httpx.Response(201, json={**body, "total_amount": None})))
+        )
+
+        with pytest.raises(ValueError, match="total_amount"):
+            await provider.create_pix_charge(
+                PixChargeRequest(amount_cents=1990, reference="x", payer=BUYER)
+            )
+
+    async def test_an_order_without_payer_surfaces_the_provider_400(self) -> None:
+        """Measured: `'$.payer' - minimum 1 properties allowed`."""
+        recorder = Recorder(
+            httpx.Response(
+                400,
+                json={"errors": [{"code": "required_properties"}]},
+            )
+        )
+        provider = MercadoPagoPixProvider(_http(recorder))
 
         with pytest.raises(httpx.HTTPStatusError):
             await provider.create_pix_charge(
-                PixChargeRequest(amount_cents=100, reference="a", payer=BUYER)
+                PixChargeRequest(amount_cents=1990, reference="x")
             )
 
+        assert _body(recorder.requests[0])["payer"] == {}
 
-class TestStatus:
-    """The nine provider states, and the one that hides in `status_detail`."""
 
-    @pytest.mark.parametrize(
-        ("status", "detail", "expected"),
-        [
-            ("pending", "pending_waiting_transfer", PaymentStatus.PENDING),
-            ("approved", "accredited", PaymentStatus.PAID),
-            ("authorized", None, PaymentStatus.PENDING),
-            ("in_process", None, PaymentStatus.IN_ANALYSIS),
-            ("in_mediation", None, PaymentStatus.IN_ANALYSIS),
-            ("rejected", None, PaymentStatus.FAILED),
-            ("cancelled", "by_collector", PaymentStatus.CANCELLED),
-            ("cancelled", "expired", PaymentStatus.EXPIRED),
-            ("refunded", None, PaymentStatus.REFUNDED),
-            ("charged_back", None, PaymentStatus.CHARGED_BACK),
-            ("brand_new_state", None, PaymentStatus.UNKNOWN),
-        ],
-    )
-    async def test_read_maps_the_state(
-        self, status: str, detail: str | None, expected: PaymentStatus
-    ) -> None:
-        """Each state lands where the contract says, unknown stays visible."""
+class TestCard:
+    """Cards through `/v1/orders`."""
+
+    async def test_the_request_carries_the_token_not_the_card(self) -> None:
+        """Brand, token, installments; `capture_mode` only when deferring."""
+        recorder = Recorder(response("card_approved"))
+        provider = MercadoPagoCardProvider(_http(recorder))
+
+        await provider.create_card_charge(_card())
+
+        body = _body(recorder.requests[0])
+        assert body["total_amount"] == "100.00"
+        assert "capture_mode" not in body
+        assert body["transactions"]["payments"][0]["payment_method"] == {
+            "id": "visa",
+            "type": "credit_card",
+            "token": "tok_123",
+            "installments": 1,
+        }
+
+    async def test_an_approved_card_is_paid(self) -> None:
+        """`processed` / `accredited`."""
+        provider = MercadoPagoCardProvider(_http(Recorder(response("card_approved"))))
+
+        charge = await provider.create_card_charge(_card())
+
+        assert charge.status is PaymentStatus.PAID
+        assert charge.status_detail == "accredited"
+        assert charge.amount_cents == 10000
+        assert charge.refunded_cents == 0
+        assert charge.payment_method_id == "visa"
+        assert charge.installments == 1
+
+    async def test_a_decline_is_a_402_returned_not_raised(self) -> None:
+        """The order is in `data`; the reason is the payment's detail."""
+        provider = MercadoPagoCardProvider(_http(Recorder(response("card_rejected"))))
+
+        charge = await provider.create_card_charge(_card())
+
+        assert fixture("card_rejected")[0] == 402
+        assert charge.status is PaymentStatus.FAILED
+        assert charge.provider_status == "failed"
+        assert charge.status_detail == "rejected_by_issuer"
+        assert charge.reference == "tempest-orders-card-rejected"
+
+    async def test_authorize_then_capture(self) -> None:
+        """`capture=False` is `manual`; the order waits, then settles."""
+        _, manual = fixture("card_manual")
+        _, capture = fixture("card_capture")
+        read_back = {
+            **manual,
+            "status": capture["status"],
+            "status_detail": capture["status_detail"],
+            "transactions": capture["transactions"],
+        }
         recorder = Recorder(
-            httpx.Response(200, json=_payment(status=status, status_detail=detail))
+            response("card_manual"),
+            response("card_capture"),
+            httpx.Response(200, json=read_back),
         )
-        provider = _provider(recorder)
+        provider = MercadoPagoCardProvider(_http(recorder))
 
-        charge = await provider.get_pix_charge(str(PAYMENT_ID))
+        authorized = await provider.create_card_charge(_card(capture=False))
+        captured = await provider.capture_card_charge(authorized.provider_charge_id)
 
-        assert recorder.requests[0].method == "GET"
-        assert recorder.requests[0].url.path == f"/v1/payments/{PAYMENT_ID}"
-        assert charge.status is expected
-        assert charge.provider_status == status
+        assert "total_amount" not in capture
+        assert _body(recorder.requests[0])["capture_mode"] == "manual"
+        assert authorized.status is PaymentStatus.AUTHORIZED
+        assert authorized.status_detail == "waiting_capture"
+        assert recorder.requests[1].url.path.endswith("/capture")
+        assert recorder.requests[2].method == "GET"
+        assert captured.status is PaymentStatus.PAID
+        assert captured.amount_cents == 10000
 
-    async def test_paid_at_comes_from_date_approved(self) -> None:
-        """Settlement time is the provider's approval time."""
-        provider = _provider(
-            Recorder(
-                httpx.Response(
-                    200,
-                    json=_payment(
-                        status="approved",
-                        date_approved="2026-10-09T10:00:00.000-04:00",
-                    ),
-                )
-            )
+    async def test_cancel_an_authorization(self) -> None:
+        """`POST …/cancel` releases the hold."""
+        provider = MercadoPagoCardProvider(
+            _http(Recorder(response("card_cancel_auth")))
         )
 
-        charge = await provider.get_pix_charge(str(PAYMENT_ID))
+        charge = await provider.cancel_card_charge("ORD1")
 
-        assert charge.paid_at == datetime.fromisoformat("2026-10-09T10:00:00-04:00")
+        assert charge.status is PaymentStatus.CANCELLED
 
+    async def test_a_transient_409_is_retried_with_the_same_key(self) -> None:
+        """Measured 3/10 on an immediate cancel; the retry succeeded."""
+        transient = httpx.Response(
+            409,
+            json={
+                "errors": [
+                    {
+                        "code": "processor_communication_error",
+                        "message": "The operation could not be completed. "
+                        "Try again shortly.",
+                    }
+                ]
+            },
+        )
+        recorder = Recorder(transient, response("card_cancel_auth"))
+        provider = MercadoPagoCardProvider(
+            _http(recorder), action_retry_delays=(0.0, 0.0)
+        )
 
-class TestCancel:
-    """Cancellation goes through the update route, not `/cancellations`."""
+        charge = await provider.cancel_card_charge("ORD1")
 
-    async def test_cancel_puts_the_status_on_the_payment(self) -> None:
-        """`PUT /v1/payments/{id}` with `status: cancelled`."""
+        keys = {r.headers["X-Idempotency-Key"] for r in recorder.requests}
+        assert charge.status is PaymentStatus.CANCELLED
+        assert len(recorder.requests) == 2
+        assert len(keys) == 1
+
+    async def test_another_409_is_a_real_conflict(self) -> None:
+        """Only the processor code is retried."""
+        recorder = Recorder(
+            httpx.Response(409, json={"errors": [{"code": "invalid_status"}]}),
+            response("card_cancel_auth"),
+        )
+        provider = MercadoPagoCardProvider(
+            _http(recorder), action_retry_delays=(0.0, 0.0)
+        )
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await provider.cancel_card_charge("ORD1")
+
+        assert len(recorder.requests) == 1
+
+    async def test_the_retry_gives_up_after_the_last_delay(self) -> None:
+        """Bounded: delays plus the first attempt, then the 409 surfaces."""
         recorder = Recorder(
             httpx.Response(
-                200, json=_payment(status="cancelled", status_detail="by_collector")
+                409, json={"errors": [{"code": "processor_communication_error"}]}
             )
         )
-        provider = _provider(recorder)
+        provider = MercadoPagoCardProvider(
+            _http(recorder), action_retry_delays=(0.0, 0.0)
+        )
 
-        charge = await provider.cancel_pix_charge(str(PAYMENT_ID))
+        with pytest.raises(httpx.HTTPStatusError):
+            await provider.capture_card_charge("ORD1")
 
-        request = recorder.requests[0]
-        assert request.method == "PUT"
-        assert request.url.path == f"/v1/payments/{PAYMENT_ID}"
-        assert json.loads(request.content) == {"status": "cancelled"}
-        assert charge.status is PaymentStatus.CANCELLED
-        assert charge.amount_cents == 1990
+        assert len(recorder.requests) == 3
+
+    async def test_an_immediate_refund_422_is_retried(self) -> None:
+        """Measured 7/10 right after approval; all refunded within ~5 s."""
+        recorder = Recorder(
+            httpx.Response(422, json={"errors": [{"code": "unprocessable_entity"}]}),
+            response("card_refund_rest"),
+            response("card_get_after_refund"),
+        )
+        provider = MercadoPagoCardProvider(
+            _http(recorder), action_retry_delays=(0.0, 0.0)
+        )
+
+        charge = await provider.refund_card_charge("ORD1")
+
+        assert charge.status is PaymentStatus.REFUNDED
+        assert [r.method for r in recorder.requests] == ["POST", "POST", "GET"]
+
+    async def test_a_422_on_cancel_is_not_retried(self) -> None:
+        """The refund-only allowance does not leak into other actions."""
+        recorder = Recorder(
+            httpx.Response(422, json={"errors": [{"code": "unprocessable_entity"}]}),
+            response("card_cancel_auth"),
+        )
+        provider = MercadoPagoCardProvider(
+            _http(recorder), action_retry_delays=(0.0, 0.0)
+        )
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await provider.cancel_card_charge("ORD1")
+
+        assert len(recorder.requests) == 1
+
+    async def test_partial_refund_addresses_the_payment(self) -> None:
+        """Read, refund the `PAY…` id with an amount, read back."""
+        _, approved = fixture("card_approved")
+        _, refunded = fixture("card_get_after_refund")
+        partial_read = {
+            **refunded,
+            "status": "processed",
+            "status_detail": "partially_refunded",
+            "transactions": {
+                "payments": approved["transactions"]["payments"],
+                "refunds": refunded["transactions"]["refunds"][:1],
+            },
+        }
+        recorder = Recorder(
+            httpx.Response(200, json=approved),
+            response("card_refund_partial"),
+            httpx.Response(200, json=partial_read),
+        )
+        provider = MercadoPagoCardProvider(_http(recorder))
+
+        charge = await provider.refund_card_charge(approved["id"], amount_cents=3000)
+
+        payment_id = approved["transactions"]["payments"][0]["id"]
+        refund = recorder.requests[1]
+        assert refund.url.path == f"/v1/orders/{approved['id']}/refund"
+        assert _body(refund) == {
+            "transactions": [{"id": payment_id, "amount": "30.00"}]
+        }
+        assert charge.status is PaymentStatus.PAID
+        assert charge.refunded_cents == 3000
+
+    async def test_full_refund_posts_no_body(self) -> None:
+        """No amount: refund what is left, then read back."""
+        recorder = Recorder(
+            response("card_refund_rest"), response("card_get_after_refund")
+        )
+        provider = MercadoPagoCardProvider(_http(recorder))
+
+        charge = await provider.refund_card_charge("ORD1")
+
+        assert recorder.requests[0].content in (b"", b"null")
+        assert charge.status is PaymentStatus.REFUNDED
+        assert charge.refunded_cents == 10000
 
 
 def _notification(
-    *, topic: str = "payment", action: str = "payment.updated"
+    data_id: str, *, topic: str = "order", action: str = "order.updated"
 ) -> MercadoPagoWebhookEvent:
     """Build a verified notification by hand.
 
     Args:
+        data_id (str): The signed resource id.
         topic (str): The delivery's topic.
         action (str): The body's ``action``.
 
@@ -461,176 +567,161 @@ def _notification(
             if MercadoPagoEvent.has_value(topic)
             else MercadoPagoEvent.UNKNOWN
         ),
-        data_id=str(PAYMENT_ID),
-        payload={"action": action, "type": topic, "data": {"id": str(PAYMENT_ID)}},
+        data_id=data_id,
+        payload={"action": action, "type": topic, "data": {"id": data_id}},
     )
 
 
-class TestParseWebhook:
-    """The event type comes from the re-read payment, never from the body."""
+class TestDelivery:
+    """The re-read decides; the body never does."""
 
-    def test_the_bare_notification_is_refused(self) -> None:
-        """It has no state; `UNKNOWN` would silently never settle."""
-        provider = _provider(Recorder(httpx.Response(200, json=_payment())))
-
-        with pytest.raises(TypeError, match="make_mercado_pago_pix_webhook"):
-            provider.parse_webhook(_notification())
-
-    def test_anything_else_is_refused(self) -> None:
-        """A dict is not a verified delivery."""
-        provider = _provider(Recorder(httpx.Response(200, json=_payment())))
-
-        with pytest.raises(TypeError, match="MercadoPagoPixDelivery"):
-            provider.parse_webhook({"data": {"id": "1"}})
-
-    async def test_an_approved_payment_is_charge_paid(self) -> None:
-        """`payment.updated` says nothing; the re-read says paid."""
-        provider = _provider(
-            Recorder(httpx.Response(200, json=_payment(status="approved")))
+    async def test_a_cancelled_pix_is_charge_cancelled(self) -> None:
+        """Type from the re-read order."""
+        _, order = fixture("pix_get_after_cancel")
+        provider = MercadoPagoPixProvider(
+            _http(Recorder(response("pix_get_after_cancel")))
         )
-
-        delivery = await provider.read_delivery(_notification())
-        event = provider.parse_webhook(delivery)
-
-        assert event.type is PixEventType.CHARGE_PAID
-        assert event.provider_event_name == "payment.updated"
-        assert event.charge is not None
-        assert event.charge.reference == "order-1042"
-
-    async def test_a_pending_payment_on_created_is_charge_created(self) -> None:
-        """The one case where the action decides the type."""
-        provider = _provider(Recorder(httpx.Response(200, json=_payment())))
-
-        delivery = await provider.read_delivery(_notification(action="payment.created"))
-
-        assert provider.parse_webhook(delivery).type is PixEventType.CHARGE_CREATED
-
-    async def test_an_expired_payment_is_charge_expired(self) -> None:
-        """`cancelled` + `expired` is an expiry, not a cancellation."""
-        provider = _provider(
-            Recorder(
-                httpx.Response(
-                    200, json=_payment(status="cancelled", status_detail="expired")
-                )
-            )
-        )
-
-        delivery = await provider.read_delivery(_notification())
-
-        assert provider.parse_webhook(delivery).type is PixEventType.CHARGE_EXPIRED
-
-    async def test_another_topic_is_not_fetched(self) -> None:
-        """A merchant order is not a payment; no read, no charge."""
-        recorder = Recorder(httpx.Response(200, json=_payment()))
-        provider = _provider(recorder)
-
-        delivery = await provider.read_delivery(_notification(topic="merchant_order"))
-        event = provider.parse_webhook(delivery)
-
-        assert recorder.requests == []
-        assert delivery.charge is None
-        assert event.type is PixEventType.UNKNOWN
-        assert event.charge is None
-
-    async def test_a_forged_created_action_does_not_hide_a_payment(self) -> None:
-        """The unsigned `action` cannot turn an approved re-read into CREATED."""
-        provider = _provider(
-            Recorder(httpx.Response(200, json=_payment(status="approved")))
-        )
-
-        delivery = await provider.read_delivery(_notification(action="payment.created"))
-
-        assert provider.parse_webhook(delivery).type is PixEventType.CHARGE_PAID
-
-    async def test_an_unknown_payment_id_is_an_answer_not_a_failure(self) -> None:
-        """404 on the re-read: no charge, no exception, so no retry loop."""
-        recorder = Recorder(httpx.Response(404, json={"message": "not found"}))
-        provider = _provider(recorder)
-
-        delivery = await provider.read_delivery(_notification())
-        event = provider.parse_webhook(delivery)
-
-        assert len(recorder.requests) == 1
-        assert delivery.charge is None
-        assert event.type is PixEventType.UNKNOWN
-
-    async def test_a_non_numeric_data_id_is_not_fetched(self) -> None:
-        """A payment id is digits; anything else is not interpolated into a path."""
-        recorder = Recorder(httpx.Response(200, json=_payment()))
-        provider = _provider(recorder)
-        notification = MercadoPagoWebhookEvent(
-            topic="payment",
-            event=MercadoPagoEvent.PAYMENT,
-            data_id="../merchant_orders/1",
-            payload={"type": "payment"},
-        )
-
-        delivery = await provider.read_delivery(notification)
-
-        assert recorder.requests == []
-        assert delivery.charge is None
-
-    def test_a_delivery_built_by_hand_still_parses(self) -> None:
-        """The dataclass is public so a test can build one."""
-        provider = _provider(Recorder(httpx.Response(200, json=_payment())))
 
         event = provider.parse_webhook(
-            MercadoPagoPixDelivery(notification=_notification(topic="unknown_topic"))
+            await provider.read_delivery(_notification(order["id"]))
+        )
+
+        assert event.type is PixEventType.CHARGE_CANCELLED
+        assert event.charge is not None
+        assert event.charge.status is PaymentStatus.CANCELLED
+        assert event.provider_event_name == "order.updated"
+
+    async def test_a_pending_pix_is_charge_created(self) -> None:
+        """Waiting for transfer."""
+        _, order = fixture("pix_get")
+        provider = MercadoPagoPixProvider(_http(Recorder(response("pix_get"))))
+
+        event = provider.parse_webhook(
+            await provider.read_delivery(_notification(order["id"]))
+        )
+
+        assert event.type is PixEventType.CHARGE_CREATED
+
+    async def test_an_action_alone_identifies_an_order_delivery(self) -> None:
+        """Topic absent, `order.*` action present: still re-read."""
+        provider = MercadoPagoPixProvider(_http(Recorder(response("pix_get"))))
+
+        delivery = await provider.read_delivery(_notification("ORD1", topic="other"))
+
+        assert delivery.order is not None
+
+    async def test_another_resource_is_not_fetched(self) -> None:
+        """A payment notification is not an order."""
+        recorder = Recorder(response("pix_get"))
+        provider = MercadoPagoPixProvider(_http(recorder))
+
+        delivery = await provider.read_delivery(
+            _notification("123", topic="payment", action="payment.updated")
+        )
+
+        assert recorder.requests == []
+        assert provider.parse_webhook(delivery).type is PixEventType.UNKNOWN
+
+    async def test_an_id_that_is_not_an_order_id_is_not_fetched(self) -> None:
+        """Nothing but `[A-Za-z0-9]+` reaches the path."""
+        recorder = Recorder(response("pix_get"))
+        provider = MercadoPagoPixProvider(_http(recorder))
+
+        delivery = await provider.read_delivery(_notification("../payments/1"))
+
+        assert recorder.requests == []
+        assert delivery.order is None
+
+    async def test_a_404_is_an_answer_not_a_failure(self) -> None:
+        """The dashboard's simulation signs a made-up id."""
+        provider = MercadoPagoPixProvider(
+            _http(Recorder(httpx.Response(404, json={"errors": []})))
+        )
+
+        delivery = await provider.read_delivery(_notification("ORD1"))
+
+        assert delivery.order is None
+
+    async def test_a_card_order_is_not_a_pix_event(self) -> None:
+        """The Pix adapter ignores a card order; the card adapter reads it."""
+        provider = MercadoPagoPixProvider(_http(Recorder(response("card_approved"))))
+
+        delivery = await provider.read_delivery(_notification("ORD1"))
+        card = MercadoPagoCardProvider.charge_from_delivery(delivery)
+
+        assert provider.parse_webhook(delivery).charge is None
+        assert card is not None
+        assert card.status is PaymentStatus.PAID
+
+    def test_the_bare_notification_is_refused(self) -> None:
+        """It carries no state."""
+        provider = MercadoPagoPixProvider(_http(Recorder(response("pix_get"))))
+
+        with pytest.raises(TypeError, match="make_mercado_pago_webhook_delivery"):
+            provider.parse_webhook(_notification("ORD1"))
+
+    def test_a_hand_built_delivery_parses(self) -> None:
+        """The dataclass is public for tests."""
+        provider = MercadoPagoPixProvider(_http(Recorder(response("pix_get"))))
+
+        event = provider.parse_webhook(
+            MercadoPagoOrderDelivery(notification=_notification("ORD1"))
         )
 
         assert event.type is PixEventType.UNKNOWN
 
 
-def _signed_headers(data_id: str, request_id: str = "req-1") -> dict[str, str]:
+def _signed(data_id: str) -> dict[str, str]:
     """Sign a delivery the way Mercado Pago does.
 
     Args:
-        data_id (str): The ``data.id`` query value.
-        request_id (str): The ``x-request-id`` header.
+        data_id (str): The ``data.id`` value.
 
     Returns:
         dict[str, str]: ``x-signature`` and ``x-request-id``.
     """
     ts = str(int(time.time()))
     digest = sign_manifest(
-        secret=SECRET, data_id=data_id, request_id=request_id, timestamp=ts
+        secret=SECRET, data_id=data_id, request_id="req-1", timestamp=ts
     )
-    return {"x-signature": f"ts={ts},v1={digest}", "x-request-id": request_id}
+    return {"x-signature": f"ts={ts},v1={digest}", "x-request-id": "req-1"}
 
 
-def _app(provider: MercadoPagoPixProvider) -> FastAPI:
-    """Mount the webhook route the recipe builds.
+def _app(provider: MercadoPagoPixProvider, order_id: str, amount_cents: int) -> FastAPI:
+    """Mount the webhook route a service builds.
 
     Args:
         provider (MercadoPagoPixProvider): The adapter.
+        order_id (str): The order the service stored.
+        amount_cents (int): What the order costs.
 
     Returns:
         FastAPI: The app.
     """
     app = FastAPI()
     register_exception_handlers(app)
-    delivery_dependency = make_mercado_pago_pix_webhook_dependency(SECRET, provider)
+    dependency = make_mercado_pago_webhook_delivery_dependency(SECRET, provider)
 
     @app.post("/webhooks/mp")
     async def receive(
-        delivery: MercadoPagoPixDelivery = Depends(delivery_dependency),
+        delivery: MercadoPagoOrderDelivery = Depends(dependency),
     ) -> dict[str, Any]:
-        """Settle the way the recipe's service does.
+        """Settle like the recipe's service.
 
         Args:
-            delivery (MercadoPagoPixDelivery): The re-read delivery.
+            delivery (MercadoPagoOrderDelivery): The re-read delivery.
 
         Returns:
-            dict[str, Any]: What the event decided.
+            dict[str, Any]: What happened.
         """
         event = provider.parse_webhook(delivery)
         if event.type is not PixEventType.CHARGE_PAID or event.charge is None:
-            return {"settled": None}
+            return {"settled": None, "type": event.type.value}
         confirmation = await confirm_pix_payment(
             provider,
-            str(PAYMENT_ID),
-            reference="order-1042",
-            amount_cents=1990,
+            order_id,
+            reference=event.charge.reference,
+            amount_cents=amount_cents,
         )
         return {"settled": confirmation.outcome.value}
 
@@ -638,101 +729,94 @@ def _app(provider: MercadoPagoPixProvider) -> FastAPI:
 
 
 class TestWebhookRoute:
-    """The dependency verifies, re-reads, and lets the contract settle."""
+    """Signature, re-read, settlement."""
 
-    def test_a_signed_paid_delivery_settles(self) -> None:
-        """Signature, re-read, `CHARGE_PAID`, confirmation: `paid`."""
-        recorder = Recorder(httpx.Response(200, json=_payment(status="approved")))
-        app = _app(_provider(recorder))
-
-        with TestClient(app) as client:
-            response = client.post(
-                f"/webhooks/mp?data.id={PAYMENT_ID}&type=payment",
-                headers=_signed_headers(str(PAYMENT_ID)),
-                json={"action": "payment.updated", "type": "payment"},
-            )
-
-        assert response.status_code == 200
-        assert response.json() == {"settled": PixConfirmationOutcome.PAID.value}
-        assert [r.url.path for r in recorder.requests] == [
-            f"/v1/payments/{PAYMENT_ID}",
-            f"/v1/payments/{PAYMENT_ID}",
-        ]
-
-    def test_the_unsigned_body_does_not_decide(self) -> None:
-        """A body claiming `approved` changes nothing; the API said pending."""
-        recorder = Recorder(httpx.Response(200, json=_payment(status="pending")))
-        app = _app(_provider(recorder))
+    def test_a_signed_delivery_is_re_read(self) -> None:
+        """A cancelled Pix: re-read, not settled."""
+        _, order = fixture("pix_get_after_cancel")
+        recorder = Recorder(response("pix_get_after_cancel"))
+        app = _app(MercadoPagoPixProvider(_http(recorder)), order["id"], 1990)
 
         with TestClient(app) as client:
-            response = client.post(
-                f"/webhooks/mp?data.id={PAYMENT_ID}&type=payment",
-                headers=_signed_headers(str(PAYMENT_ID)),
-                json={"action": "payment.updated", "status": "approved"},
+            answer = client.post(
+                f"/webhooks/mp?data.id={order['id']}&type=order",
+                headers=_signed(order["id"]),
+                json={"action": "order.updated", "type": "order"},
             )
 
-        assert response.json() == {"settled": None}
+        assert answer.status_code == 200
+        assert answer.json() == {"settled": None, "type": "charge_cancelled"}
+        assert recorder.requests[0].url.path == f"/v1/orders/{order['id']}"
+
+    def test_a_paid_order_settles(self) -> None:
+        """`processed` re-read, then confirmed: `paid`."""
+        _, order = fixture("pix_get")
+        paid = {**order, "status": "processed", "status_detail": "accredited"}
+        app = _app(
+            MercadoPagoPixProvider(_http(Recorder(httpx.Response(200, json=paid)))),
+            order["id"],
+            1990,
+        )
+
+        with TestClient(app) as client:
+            answer = client.post(
+                f"/webhooks/mp?data.id={order['id']}&type=order",
+                headers=_signed(order["id"]),
+                json={"action": "order.updated", "type": "order"},
+            )
+
+        assert answer.json() == {"settled": PixConfirmationOutcome.PAID.value}
 
     def test_a_bad_signature_is_401_before_any_read(self) -> None:
         """No signature, no re-read."""
-        recorder = Recorder(httpx.Response(200, json=_payment(status="approved")))
-        app = _app(_provider(recorder))
+        recorder = Recorder(response("pix_get"))
+        app = _app(MercadoPagoPixProvider(_http(recorder)), "ORD1", 1990)
 
         with TestClient(app) as client:
-            response = client.post(
-                f"/webhooks/mp?data.id={PAYMENT_ID}&type=payment",
+            answer = client.post(
+                "/webhooks/mp?data.id=ORD1&type=order",
                 headers={"x-signature": "ts=1,v1=00", "x-request-id": "req-1"},
-                json={"type": "payment"},
+                json={"type": "order"},
             )
 
-        assert response.status_code == 401
+        assert answer.status_code == 401
         assert recorder.requests == []
 
-    def test_a_failed_re_read_is_not_a_2xx(self) -> None:
-        """The provider retries what the route did not acknowledge."""
-        recorder = Recorder(httpx.Response(503, json={"message": "down"}))
-        app = _app(_provider(recorder, retry_policy=RetryPolicy(max_attempts=1)))
+    def test_a_failed_re_read_is_not_acknowledged(self) -> None:
+        """5xx on the re-read: the route fails, the provider retries."""
+        app = _app(
+            MercadoPagoPixProvider(
+                _http(
+                    Recorder(httpx.Response(503, json={})), RetryPolicy(max_attempts=1)
+                )
+            ),
+            "ORD1",
+            1990,
+        )
 
         with TestClient(app, raise_server_exceptions=False) as client:
-            response = client.post(
-                f"/webhooks/mp?data.id={PAYMENT_ID}&type=payment",
-                headers=_signed_headers(str(PAYMENT_ID)),
-                json={"type": "payment"},
+            answer = client.post(
+                "/webhooks/mp?data.id=ORD1&type=order",
+                headers=_signed("ORD1"),
+                json={"type": "order"},
             )
 
-        assert response.status_code == 500
+        assert answer.status_code == 500
 
     def test_a_simulated_notification_is_acknowledged(self) -> None:
-        """The dashboard's test delivery signs a made-up id: 200, nothing settled."""
-        recorder = Recorder(httpx.Response(404, json={"message": "not found"}))
-        app = _app(_provider(recorder))
+        """404 on the re-read: 200, nothing settled, no retry loop."""
+        app = _app(
+            MercadoPagoPixProvider(_http(Recorder(httpx.Response(404, json={})))),
+            "ORD1",
+            1990,
+        )
 
         with TestClient(app) as client:
-            response = client.post(
-                "/webhooks/mp?data.id=123456&type=payment",
-                headers=_signed_headers("123456"),
-                json={"action": "payment.updated", "type": "payment"},
+            answer = client.post(
+                "/webhooks/mp?data.id=ORD9&type=order",
+                headers=_signed("ORD9"),
+                json={"action": "order.updated", "type": "order"},
             )
 
-        assert response.status_code == 200
-        assert response.json() == {"settled": None}
-
-
-class TestConfirmation:
-    """`confirm_pix_payment` works unchanged over this adapter."""
-
-    async def test_a_short_payment_is_amount_mismatch(self) -> None:
-        """Paid 19.00 for an order of 19.90 is not released."""
-        provider = _provider(
-            Recorder(
-                httpx.Response(
-                    200, json=_payment(status="approved", transaction_amount=19.0)
-                )
-            )
-        )
-
-        confirmation = await confirm_pix_payment(
-            provider, str(PAYMENT_ID), reference="order-1042", amount_cents=1990
-        )
-
-        assert confirmation.outcome is PixConfirmationOutcome.AMOUNT_MISMATCH
+        assert answer.status_code == 200
+        assert answer.json()["settled"] is None

@@ -1014,12 +1014,12 @@ passe `router.provider_for(order.provider)`.
 !!! warning "Cada provedor tem a sua rota de webhook"
     A verificação é por provedor, e a entrega do Mercado Pago **não traz o
     estado do pagamento**: só o id, assinado. A dependency
-    `make_mercado_pago_pix_webhook_dependency` verifica a assinatura e relê o
+    `make_mercado_pago_webhook_delivery_dependency` verifica a assinatura e relê a
     pagamento antes de entregar ao `parse_webhook`, e o `parse_webhook` do
     adapter recusa a notificação crua. Monte `/webhooks/openpix` e
     `/webhooks/mercado-pago` lado a lado, cada um com a sua dependency, e o
     mesmo `service.settle` atrás dos dois. Detalhes em
-    [Mercado Pago »](mercado-pago.md#pela-porta-do-contrato-mercadopagopixprovider).
+    [Mercado Pago »](mercado-pago.md#o-webhook-pelo-contrato-relendo-a-order).
 
 ## Estados
 

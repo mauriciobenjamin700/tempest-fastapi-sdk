@@ -281,6 +281,13 @@ class ListPaymentMethodsResponseItemDeferredCapture(BaseStrEnum):
     DOES_NOT_APPLY = "does_not_apply"
 
 
+class ListPaymentMethodsResponseItemProcessingModesItem(BaseStrEnum):
+    """Allowed values for ListPaymentMethodsResponseItemProcessingModesItem."""
+
+    AGGREGATOR = "aggregator"
+    GATEWAY = "gateway"
+
+
 class ListPaymentMethodsResponseItemStatus(BaseStrEnum):
     """Allowed values for ListPaymentMethodsResponseItemStatus."""
 
@@ -443,43 +450,6 @@ class PaymentMethodType(BaseStrEnum):
     CRYPTOCURRENCY = "cryptocurrency"
 
 
-class PaymentOperationType(BaseStrEnum):
-    """Allowed values for PaymentOperationType."""
-
-    REGULAR_PAYMENT = "regular_payment"
-    MONEY_TRANSFER = "money_transfer"
-    RECURRING_PAYMENT = "recurring_payment"
-    ACCOUNT_FUND = "account_fund"
-    PAYMENT_ADDITION = "payment_addition"
-    CELLPHONE_RECHARGE = "cellphone_recharge"
-    POS_PAYMENT = "pos_payment"
-    MONEY_EXCHANGE = "money_exchange"
-
-
-class PaymentPaymentTypeId(BaseStrEnum):
-    """Allowed values for PaymentPaymentTypeId."""
-
-    ACCOUNT_MONEY = "account_money"
-    TICKET = "ticket"
-    BANK_TRANSFER = "bank_transfer"
-    ATM = "atm"
-    CREDIT_CARD = "credit_card"
-    DEBIT_CARD = "debit_card"
-    PREPAID_CARD = "prepaid_card"
-    DIGITAL_CURRENCY = "digital_currency"
-    DIGITAL_WALLET = "digital_wallet"
-    VOUCHER_CARD = "voucher_card"
-    CRYPTO = "crypto"
-    PIX = "pix"
-
-
-class PaymentProcessingMode(BaseStrEnum):
-    """Allowed values for PaymentProcessingMode."""
-
-    AGGREGATOR = "aggregator"
-    GATEWAY = "gateway"
-
-
 class PaymentResponseStatus(BaseStrEnum):
     """Allowed values for PaymentResponseStatus."""
 
@@ -487,26 +457,6 @@ class PaymentResponseStatus(BaseStrEnum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
-    CANCELLED = "cancelled"
-
-
-class PaymentStatus(BaseStrEnum):
-    """Allowed values for PaymentStatus."""
-
-    PENDING = "pending"
-    APPROVED = "approved"
-    AUTHORIZED = "authorized"
-    IN_PROCESS = "in_process"
-    IN_MEDIATION = "in_mediation"
-    REJECTED = "rejected"
-    CANCELLED = "cancelled"
-    REFUNDED = "refunded"
-    CHARGED_BACK = "charged_back"
-
-
-class PaymentUpdateRequestStatus(BaseStrEnum):
-    """Allowed values for PaymentUpdateRequestStatus."""
-
     CANCELLED = "cancelled"
 
 
@@ -581,14 +531,6 @@ class ReportTaskStatus(BaseStrEnum):
     FAILED = "failed"
 
 
-class SearchPaymentsRange(BaseStrEnum):
-    """Allowed values for SearchPaymentsRange."""
-
-    DATE_CREATED = "date_created"
-    DATE_LAST_UPDATED = "date_last_updated"
-    MONEY_RELEASE_DATE = "money_release_date"
-
-
 class SearchSubscriptionPlansCriteria(BaseStrEnum):
     """Allowed values for SearchSubscriptionPlansCriteria."""
 
@@ -628,6 +570,12 @@ class SubscriptionResponseStatus(BaseStrEnum):
     PAUSED = "paused"
     CANCELLED = "cancelled"
     EXPIRED = "expired"
+
+
+class UpdateAdvancedPaymentBodyStatus(BaseStrEnum):
+    """Allowed values for UpdateAdvancedPaymentBodyStatus."""
+
+    CANCELLED = "cancelled"
 
 
 class UploadShippingEvidenceBodyType(BaseStrEnum):
@@ -833,16 +781,6 @@ class BankAccount(BaseSchema):
         description="Type of bank account",
         default=None,
     )
-
-
-class CancelPaymentBody(BaseSchema):
-    """Schema generated for CancelPaymentBody.
-
-    Attributes:
-        status (PaymentUpdateRequestStatus): Must be "cancelled"
-    """
-
-    status: PaymentUpdateRequestStatus = Field(description='Must be "cancelled"')
 
 
 class CaptureOrderResponse(BaseSchema):
@@ -1334,22 +1272,6 @@ class CreateQrIntegratorConfigBody(BaseSchema):
     notification_url: str | None = None
 
 
-class CreateRefundResponseSource(BaseSchema):
-    """Schema generated for CreateRefundResponseSource.
-
-    Attributes:
-        id (str | None): Undocumented in the spec.
-        name (str | None): Undocumented in the spec.
-        type (str | None): Undocumented in the spec.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    id: str | None = None
-    name: str | None = None
-    type: str | None = None
-
-
 class CreateStoreBody(BaseSchema):
     """Schema generated for CreateStoreBody.
 
@@ -1698,22 +1620,6 @@ class GetPointRefundIntentResponse(BaseSchema):
     amount: float | None = None
 
 
-class GetRefundResponseSource(BaseSchema):
-    """Schema generated for GetRefundResponseSource.
-
-    Attributes:
-        id (str | None): Undocumented in the spec.
-        name (str | None): Undocumented in the spec.
-        type (str | None): Undocumented in the spec.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    id: str | None = None
-    name: str | None = None
-    type: str | None = None
-
-
 class GetTerminalActionResponse(BaseSchema):
     """Schema generated for GetTerminalActionResponse.
 
@@ -1837,22 +1743,6 @@ class ListPointDevicesResponseDevicesItem(BaseSchema):
     pos_id: int | None = None
     store_id: str | None = None
     operating_mode: ListPointDevicesResponseDevicesItemOperatingMode | None = None
-
-
-class ListRefundsResponseSource(BaseSchema):
-    """Schema generated for ListRefundsResponseSource.
-
-    Attributes:
-        id (str | None): Undocumented in the spec.
-        name (str | None): Undocumented in the spec.
-        type (str | None): Undocumented in the spec.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    id: str | None = None
-    name: str | None = None
-    type: str | None = None
 
 
 class ListTerminalsResponseTerminalsItem(BaseSchema):
@@ -2312,80 +2202,6 @@ class PaymentFees(BaseSchema):
     )
 
 
-class PaymentItem(BaseSchema):
-    """Schema generated for PaymentItem.
-
-    Attributes:
-        id (str | None): Undocumented in the spec.
-        title (str | None): Undocumented in the spec.
-        description (str | None): Undocumented in the spec.
-        category_id (str | None): Undocumented in the spec.
-        quantity (int | None): Undocumented in the spec.
-        unit_price (float | None): Undocumented in the spec.
-    """
-
-    id: str | None = None
-    title: str | None = None
-    description: str | None = None
-    category_id: str | None = None
-    quantity: int | None = None
-    unit_price: float | None = None
-
-
-class PaymentTransactionDetails(BaseSchema):
-    """Schema generated for PaymentTransactionDetails.
-
-    Attributes:
-        net_received_amount (float | None): Undocumented in the spec.
-        total_paid_amount (float | None): Undocumented in the spec.
-        overpaid_amount (float | None): Undocumented in the spec.
-        external_resource_url (str | None): Boleto/OXXO/cash payment URL or barcode
-        installment_amount (float | None): Undocumented in the spec.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    net_received_amount: float | None = None
-    total_paid_amount: float | None = None
-    overpaid_amount: float | None = None
-    external_resource_url: str | None = Field(
-        description="Boleto/OXXO/cash payment URL or barcode",
-        default=None,
-    )
-    installment_amount: float | None = None
-
-
-class PaymentUpdateRequest(BaseSchema):
-    """Request body to update a payment (capture, cancel, or extend expiration).
-
-    Attributes:
-        capture (bool | None): Set true to capture an authorized payment.
-        status (PaymentUpdateRequestStatus | None): Set to cancelled to cancel an
-            authorized payment.
-        transaction_amount (float | None): Partial capture amount (must be ≤ original
-            authorized amount).
-        date_of_expiration (datetime | None): New expiration date for cash payment
-            methods.
-    """
-
-    capture: bool | None = Field(
-        description="Set true to capture an authorized payment.",
-        default=None,
-    )
-    status: PaymentUpdateRequestStatus | None = Field(
-        description="Set to cancelled to cancel an authorized payment.",
-        default=None,
-    )
-    transaction_amount: float | None = Field(
-        description="Partial capture amount (must be ≤ original authorized amount).",
-        default=None,
-    )
-    date_of_expiration: datetime | None = Field(
-        description="New expiration date for cash payment methods.",
-        default=None,
-    )
-
-
 class Phone(BaseSchema):
     """Schema generated for Phone.
 
@@ -2602,20 +2418,6 @@ class RefundOrderResponse(BaseSchema):
     status: str | None = None
     status_detail: str | None = None
     transactions: dict[str, Any] | None = None
-
-
-class RefundRequest(BaseSchema):
-    """Request body for creating a refund. Omit amount for a full refund.
-
-    Attributes:
-        amount (float | None): Amount to refund. Omit for a full refund.
-    """
-
-    amount: float | None = Field(
-        description="Amount to refund. Omit for a full refund.",
-        examples=[50.0],
-        default=None,
-    )
 
 
 class RefundResponse(BaseSchema):
@@ -3756,42 +3558,6 @@ class CreatePointPaymentIntentBody(BaseSchema):
     )
 
 
-class CreateRefundResponse(BaseSchema):
-    """Schema generated for CreateRefundResponse.
-
-    Attributes:
-        id (int | None): Undocumented in the spec.
-        payment_id (int | None): Undocumented in the spec.
-        amount (float | None): Undocumented in the spec.
-        metadata (dict[str, Any] | None): Undocumented in the spec.
-        source (CreateRefundResponseSource | None): Undocumented in the spec.
-        date_created (datetime | None): Undocumented in the spec.
-        unique_sequence_number (str | None): Undocumented in the spec.
-        refund_mode (RefundRefundMode | None): Undocumented in the spec.
-        adjustment_amount (float | None): Undocumented in the spec.
-        status (RefundStatus | None): Undocumented in the spec.
-        reason (str | None): Undocumented in the spec.
-        label (str | None): Undocumented in the spec.
-        partition_details (list[dict[str, Any]]): Undocumented in the spec.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    id: int | None = None
-    payment_id: int | None = None
-    amount: float | None = None
-    metadata: dict[str, Any] | None = None
-    source: CreateRefundResponseSource | None = None
-    date_created: datetime | None = None
-    unique_sequence_number: str | None = None
-    refund_mode: RefundRefundMode | None = None
-    adjustment_amount: float | None = None
-    status: RefundStatus | None = None
-    reason: str | None = None
-    label: str | None = None
-    partition_details: list[dict[str, Any]] = Field(default_factory=list)
-
-
 class CreateTerminalActionBody(BaseSchema):
     """Schema generated for CreateTerminalActionBody.
 
@@ -4101,42 +3867,6 @@ class GetMerchantOrderResponse(BaseSchema):
     canceled: bool | None = None
 
 
-class GetRefundResponse(BaseSchema):
-    """Schema generated for GetRefundResponse.
-
-    Attributes:
-        id (int | None): Undocumented in the spec.
-        payment_id (int | None): Undocumented in the spec.
-        amount (float | None): Undocumented in the spec.
-        metadata (dict[str, Any] | None): Undocumented in the spec.
-        source (GetRefundResponseSource | None): Undocumented in the spec.
-        date_created (datetime | None): Undocumented in the spec.
-        unique_sequence_number (str | None): Undocumented in the spec.
-        refund_mode (RefundRefundMode | None): Undocumented in the spec.
-        adjustment_amount (float | None): Undocumented in the spec.
-        status (RefundStatus | None): Undocumented in the spec.
-        reason (str | None): Undocumented in the spec.
-        label (str | None): Undocumented in the spec.
-        partition_details (list[dict[str, Any]]): Undocumented in the spec.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    id: int | None = None
-    payment_id: int | None = None
-    amount: float | None = None
-    metadata: dict[str, Any] | None = None
-    source: GetRefundResponseSource | None = None
-    date_created: datetime | None = None
-    unique_sequence_number: str | None = None
-    refund_mode: RefundRefundMode | None = None
-    adjustment_amount: float | None = None
-    status: RefundStatus | None = None
-    reason: str | None = None
-    label: str | None = None
-    partition_details: list[dict[str, Any]] = Field(default_factory=list)
-
-
 class GetWalletAgreementResponse(BaseSchema):
     """Schema generated for GetWalletAgreementResponse.
 
@@ -4200,7 +3930,8 @@ class ListPaymentMethodsResponseItem(BaseSchema):
         financial_institutions
             (list[ListPaymentMethodsResponseItemFinancialInstitutionsItem]):
             Undocumented in the spec.
-        processing_modes (list[PaymentProcessingMode]): Undocumented in the spec.
+        processing_modes (list[ListPaymentMethodsResponseItemProcessingModesItem]):
+            Undocumented in the spec.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -4228,7 +3959,9 @@ class ListPaymentMethodsResponseItem(BaseSchema):
     ] = Field(
         default_factory=list,
     )
-    processing_modes: list[PaymentProcessingMode] = Field(default_factory=list)
+    processing_modes: list[ListPaymentMethodsResponseItemProcessingModesItem] = Field(
+        default_factory=list,
+    )
 
 
 class ListPointDevicesResponse(BaseSchema):
@@ -4241,42 +3974,6 @@ class ListPointDevicesResponse(BaseSchema):
     model_config = ConfigDict(extra="allow")
 
     devices: list[ListPointDevicesResponseDevicesItem] = Field(default_factory=list)
-
-
-class ListRefundsResponse(BaseSchema):
-    """Schema generated for ListRefundsResponse.
-
-    Attributes:
-        id (int | None): Undocumented in the spec.
-        payment_id (int | None): Undocumented in the spec.
-        amount (float | None): Undocumented in the spec.
-        metadata (dict[str, Any] | None): Undocumented in the spec.
-        source (ListRefundsResponseSource | None): Undocumented in the spec.
-        date_created (datetime | None): Undocumented in the spec.
-        unique_sequence_number (str | None): Undocumented in the spec.
-        refund_mode (RefundRefundMode | None): Undocumented in the spec.
-        adjustment_amount (float | None): Undocumented in the spec.
-        status (RefundStatus | None): Undocumented in the spec.
-        reason (str | None): Undocumented in the spec.
-        label (str | None): Undocumented in the spec.
-        partition_details (list[dict[str, Any]]): Undocumented in the spec.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    id: int | None = None
-    payment_id: int | None = None
-    amount: float | None = None
-    metadata: dict[str, Any] | None = None
-    source: ListRefundsResponseSource | None = None
-    date_created: datetime | None = None
-    unique_sequence_number: str | None = None
-    refund_mode: RefundRefundMode | None = None
-    adjustment_amount: float | None = None
-    status: RefundStatus | None = None
-    reason: str | None = None
-    label: str | None = None
-    partition_details: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ListTerminalsResponse(BaseSchema):
@@ -4728,34 +4425,6 @@ class Payer(BaseSchema):
     address: Address | None = None
 
 
-class PaymentAdditionalInfoPayer(BaseSchema):
-    """Schema generated for PaymentAdditionalInfoPayer.
-
-    Attributes:
-        first_name (str | None): Undocumented in the spec.
-        last_name (str | None): Undocumented in the spec.
-        phone (Phone | None): Undocumented in the spec.
-        address (Address | None): Undocumented in the spec.
-        registration_date (datetime | None): Undocumented in the spec.
-    """
-
-    first_name: str | None = None
-    last_name: str | None = None
-    phone: Phone | None = None
-    address: Address | None = None
-    registration_date: datetime | None = None
-
-
-class PaymentAdditionalInfoShipments(BaseSchema):
-    """Schema generated for PaymentAdditionalInfoShipments.
-
-    Attributes:
-        receiver_address (Address | None): Undocumented in the spec.
-    """
-
-    receiver_address: Address | None = None
-
-
 class PaymentAnalyticsResponse(BaseSchema):
     """Schema generated for PaymentAnalyticsResponse.
 
@@ -4808,24 +4477,6 @@ class PaymentAnalyticsResponse(BaseSchema):
     )
 
 
-class PaymentCardCardholder(BaseSchema):
-    """Schema generated for PaymentCardCardholder.
-
-    Attributes:
-        name (str | None): Undocumented in the spec.
-        identification (Identification | None): Payer identification document. Valid
-            types vary by country.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    name: str | None = None
-    identification: Identification | None = Field(
-        description="Payer identification document. Valid types vary by country.",
-        default=None,
-    )
-
-
 class PaymentMethod(BaseSchema):
     """Schema generated for PaymentMethod.
 
@@ -4852,51 +4503,6 @@ class PaymentMethodListResponse(BaseSchema):
     data: list[StoredPaymentMethodResponse] = Field(
         description="List of stored payment methods",
     )
-
-
-class PaymentPayer(BaseSchema):
-    """Schema generated for PaymentPayer.
-
-    Attributes:
-        email (EmailStr): Undocumented in the spec.
-        id (str | None): MercadoPago user ID (for registered users)
-        identification (Identification | None): Payer identification document. Valid
-            types vary by country.
-        type (PayerType | None): Undocumented in the spec.
-    """
-
-    email: EmailStr = Field(examples=["customer@example.com"])
-    id: str | None = Field(
-        description="MercadoPago user ID (for registered users)",
-        default=None,
-    )
-    identification: Identification | None = Field(
-        description="Payer identification document. Valid types vary by country.",
-        default=None,
-    )
-    type: PayerType | None = None
-
-
-class PaymentPayer2(BaseSchema):
-    """Schema generated for PaymentPayer2.
-
-    Attributes:
-        id (str | None): Undocumented in the spec.
-        email (EmailStr | None): Undocumented in the spec.
-        identification (Identification | None): Payer identification document. Valid
-            types vary by country.
-        type (str | None): Undocumented in the spec.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    id: str | None = None
-    email: EmailStr | None = None
-    identification: Identification | None = Field(
-        description="Payer identification document. Valid types vary by country.",
-        default=None,
-    )
-    type: str | None = None
 
 
 class PaymentResponse(BaseSchema):
@@ -5261,13 +4867,13 @@ class UpdateAdvancedPaymentBody(BaseSchema):
 
     Attributes:
         capture (bool | None): Undocumented in the spec.
-        status (PaymentUpdateRequestStatus | None): Undocumented in the spec.
+        status (UpdateAdvancedPaymentBodyStatus | None): Undocumented in the spec.
         wallet_payment (UpdateAdvancedPaymentBodyWalletPayment | None): Undocumented in
             the spec.
     """
 
     capture: bool | None = None
-    status: PaymentUpdateRequestStatus | None = None
+    status: UpdateAdvancedPaymentBodyStatus | None = None
     wallet_payment: UpdateAdvancedPaymentBodyWalletPayment | None = None
 
 
@@ -5656,11 +5262,12 @@ class OrderTransactionPayment(BaseSchema):
         amount (str | None): Transaction amount.
         paid_amount (str | None): Amount effectively paid.
         reference_id (str | None): External reference for this transaction.
-        status (OrderTransactionPaymentStatus | None): created — transaction created;
-            processed — transaction successfully processed; action_required — integrator
-            must act (e.g. capture); processing — awaiting asynchronous result.
-        status_detail (OrderTransactionPaymentStatusDetail | None): Undocumented in the
-            spec.
+        status (OrderTransactionPaymentStatus | str | None): created — transaction
+            created; processed — transaction successfully processed; action_required —
+            integrator must act (e.g. capture); processing — awaiting asynchronous
+            result.
+        status_detail (OrderTransactionPaymentStatusDetail | str | None): Undocumented
+            in the spec.
         date_of_expiration (datetime | None): Undocumented in the spec.
         expiration_time (str | None): Expiration duration in ISO 8601 format.
         payment_method (OrderTransactionPaymentPaymentMethod | None): Undocumented in
@@ -5686,7 +5293,7 @@ class OrderTransactionPayment(BaseSchema):
         description="External reference for this transaction.",
         default=None,
     )
-    status: OrderTransactionPaymentStatus | None = Field(
+    status: OrderTransactionPaymentStatus | str | None = Field(
         description=(
             "created — transaction created; processed — transaction successfully "
             "processed; action_required — integrator must act (e.g. capture); "
@@ -5694,7 +5301,7 @@ class OrderTransactionPayment(BaseSchema):
         ),
         default=None,
     )
-    status_detail: OrderTransactionPaymentStatusDetail | None = None
+    status_detail: OrderTransactionPaymentStatusDetail | str | None = None
     date_of_expiration: datetime | None = None
     expiration_time: str | None = Field(
         description="Expiration duration in ISO 8601 format.",
@@ -5720,44 +5327,6 @@ class OrderTransactions(BaseSchema):
         ),
         default=None,
     )
-
-
-class PaymentAdditionalInfo(BaseSchema):
-    """Additional context for fraud scoring and installment calculation.
-
-    Attributes:
-        items (list[PaymentItem] | None): Undocumented in the spec.
-        payer (PaymentAdditionalInfoPayer | None): Undocumented in the spec.
-        shipments (PaymentAdditionalInfoShipments | None): Undocumented in the spec.
-    """
-
-    items: list[PaymentItem] | None = None
-    payer: PaymentAdditionalInfoPayer | None = None
-    shipments: PaymentAdditionalInfoShipments | None = None
-
-
-class PaymentCard(BaseSchema):
-    """Card data (last 4 digits only — never full PAN).
-
-    Attributes:
-        last_four_digits (str | None): Undocumented in the spec.
-        first_six_digits (str | None): Undocumented in the spec.
-        expiration_year (int | None): Undocumented in the spec.
-        expiration_month (int | None): Undocumented in the spec.
-        date_created (datetime | None): Undocumented in the spec.
-        date_last_updated (datetime | None): Undocumented in the spec.
-        cardholder (PaymentCardCardholder | None): Undocumented in the spec.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    last_four_digits: str | None = Field(examples=["4321"], default=None)
-    first_six_digits: str | None = Field(examples=["411111"], default=None)
-    expiration_year: int | None = None
-    expiration_month: int | None = None
-    date_created: datetime | None = None
-    date_last_updated: datetime | None = None
-    cardholder: PaymentCardCardholder | None = None
 
 
 class PaymentListResponse(BaseSchema):
@@ -6362,262 +5931,6 @@ class OrderTransactions2(BaseSchema):
     payments: list[OrderTransactionPayment] = Field(default_factory=list)
 
 
-class Payment(BaseSchema):
-    """A MercadoPago payment object.
-
-    Attributes:
-        id (int | None): Payment unique identifier
-        date_created (datetime | None): Undocumented in the spec.
-        date_approved (datetime | None): Undocumented in the spec.
-        date_last_updated (datetime | None): Undocumented in the spec.
-        date_of_expiration (datetime | None): Undocumented in the spec.
-        money_release_date (datetime | None): Undocumented in the spec.
-        operation_type (PaymentOperationType | None): Undocumented in the spec.
-        issuer_id (str | None): Undocumented in the spec.
-        payment_method_id (str | None): Undocumented in the spec.
-        payment_type_id (PaymentPaymentTypeId | None): Undocumented in the spec.
-        status (PaymentStatus | None): Current payment status. Key values: approved —
-            payment completed successfully; pending — awaiting payer action (e.g.,
-            Boleto payment); in_process — under review; rejected — payment declined.
-        status_detail (str | None): Detailed reason for the current status
-        currency_id (CurrencyId | None): ISO 4217 currency code for the applicable site
-        description (str | None): Undocumented in the spec.
-        payer (PaymentPayer2 | None): Undocumented in the spec.
-        metadata (dict[str, Any] | None): Undocumented in the spec.
-        additional_info (dict[str, Any] | None): Undocumented in the spec.
-        external_reference (str | None): Undocumented in the spec.
-        transaction_amount (float | None): Original payment amount (decimal, not cents)
-        transaction_amount_refunded (float | None): Total amount refunded so far
-        coupon_amount (float | None): Undocumented in the spec.
-        transaction_details (PaymentTransactionDetails | None): Undocumented in the
-            spec.
-        captured (bool | None): Undocumented in the spec.
-        binary_mode (bool | None): Undocumented in the spec.
-        statement_descriptor (str | None): Undocumented in the spec.
-        installments (int | None): Undocumented in the spec.
-        card (PaymentCard | None): Card data (last 4 digits only — never full PAN)
-        notification_url (str | None): Undocumented in the spec.
-        processing_mode (PaymentProcessingMode | None): Undocumented in the spec.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    id: int | None = Field(
-        description="Payment unique identifier",
-        examples=[1234567890],
-        default=None,
-    )
-    date_created: datetime | None = Field(
-        examples=["2024-01-15T10:30:00.000-03:00"],
-        default=None,
-    )
-    date_approved: datetime | None = None
-    date_last_updated: datetime | None = None
-    date_of_expiration: datetime | None = None
-    money_release_date: datetime | None = None
-    operation_type: PaymentOperationType | None = None
-    issuer_id: str | None = None
-    payment_method_id: str | None = Field(examples=["visa"], default=None)
-    payment_type_id: PaymentPaymentTypeId | None = None
-    status: PaymentStatus | None = Field(
-        description=(
-            "Current payment status. Key values: approved — payment completed "
-            "successfully; pending — awaiting payer action (e.g., Boleto payment); "
-            "in_process — under review; rejected — payment declined."
-        ),
-        examples=["approved"],
-        default=None,
-    )
-    status_detail: str | None = Field(
-        description="Detailed reason for the current status",
-        examples=["accredited"],
-        default=None,
-    )
-    currency_id: CurrencyId | None = Field(
-        description="ISO 4217 currency code for the applicable site",
-        examples=["BRL"],
-        default=None,
-    )
-    description: str | None = None
-    payer: PaymentPayer2 | None = None
-    metadata: dict[str, Any] | None = None
-    additional_info: dict[str, Any] | None = None
-    external_reference: str | None = None
-    transaction_amount: float | None = Field(
-        description="Original payment amount (decimal, not cents)",
-        default=None,
-    )
-    transaction_amount_refunded: float | None = Field(
-        description="Total amount refunded so far",
-        default=None,
-    )
-    coupon_amount: float | None = None
-    transaction_details: PaymentTransactionDetails | None = None
-    captured: bool | None = None
-    binary_mode: bool | None = None
-    statement_descriptor: str | None = None
-    installments: int | None = None
-    card: PaymentCard | None = Field(
-        description="Card data (last 4 digits only — never full PAN)",
-        default=None,
-    )
-    notification_url: str | None = None
-    processing_mode: PaymentProcessingMode | None = None
-
-
-class PaymentRequest(BaseSchema):
-    """Request body to create a payment. For card payments, `token` and
-    `payment_method_id` are required. For cash/offline methods, only `payment_method_id`
-    is required.
-
-    Attributes:
-        transaction_amount (float): Payment amount as a decimal number. MercadoPago does
-            NOT use integer cents — send 100.50 for R$100,50 (not 10050). CLP uses 0
-            decimal places.
-        token (str | None): Card token created client-side via MercadoPago.js / MP
-            Secure Fields. Required for credit/debit card payments. Single-use; expires
-            in 7 days.
-        description (str | None): Description of the purchased product or service
-        installments (int | None): Number of installments (1 = no installments)
-        payment_method_id (str | None): Payment method identifier. Examples: visa,
-            master, bolbradesco (Boleto), pix, oxxo, rapipago, pse. Use GET
-            /v1/payment_methods to list available methods for a given site_id.
-        issuer_id (str | None): Card issuer ID (required for some credit cards)
-        payer (PaymentPayer): Undocumented in the spec.
-        capture (bool | None): Two-step payment flow: set false to only authorize
-            (reserve funds), then PUT /v1/payments/{id} with capture=true to capture.
-            Debit cards do not support two-step capture.
-        binary_mode (bool | None): When true, payments can only be in_process → approved
-            or rejected — no pending state. Useful for in-store flows.
-        external_reference (str | None): Your internal order or reference ID. Max 256
-            chars.
-        notification_url (str | None): URL to receive IPN notifications when payment
-            status changes. DEPRECATED — use Webhooks instead.
-        statement_descriptor (str | None): Text that appears on the payer's card
-            statement. Max 22 chars.
-        callback_url (str | None): Redirect URL after bank transfer (redirect-based
-            methods only)
-        date_of_expiration (datetime | None): Expiration date for cash/offline payment
-            methods (boleto, OXXO, etc.). ISO 8601 format. Default varies by method.
-        metadata (dict[str, Any] | None): Free key-value object for your own internal
-            data (not used by MP)
-        additional_info (PaymentAdditionalInfo | None): Additional context for fraud
-            scoring and installment calculation
-        application_fee (float | None): Marketplace fee charged to the seller
-            (marketplace integrations only)
-        coupon_code (str | None): Discount coupon code
-        coupon_amount (float | None): Coupon discount value
-    """
-
-    transaction_amount: float = Field(
-        description=(
-            "Payment amount as a decimal number. MercadoPago does NOT use integer "
-            "cents — send 100.50 for R$100,50 (not 10050). CLP uses 0 decimal places."
-        ),
-        examples=[100.5],
-        ge=0.01,
-    )
-    token: str | None = Field(
-        description=(
-            "Card token created client-side via MercadoPago.js / MP Secure Fields. "
-            "Required for credit/debit card payments. Single-use; expires in 7 days."
-        ),
-        examples=["YOUR_ACCESS_TOKEN"],
-        default=None,
-    )
-    description: str | None = Field(
-        description="Description of the purchased product or service",
-        examples=["Premium subscription — 1 month"],
-        default=None,
-    )
-    installments: int | None = Field(
-        description="Number of installments (1 = no installments)",
-        examples=[1],
-        ge=1,
-        default=None,
-    )
-    payment_method_id: str | None = Field(
-        description=(
-            "Payment method identifier. Examples: visa, master, bolbradesco (Boleto), "
-            "pix, oxxo, rapipago, pse. Use GET /v1/payment_methods to list available "
-            "methods for a given site_id."
-        ),
-        examples=["visa"],
-        default=None,
-    )
-    issuer_id: str | None = Field(
-        description="Card issuer ID (required for some credit cards)",
-        examples=["310"],
-        default=None,
-    )
-    payer: PaymentPayer
-    capture: bool | None = Field(
-        description=(
-            "Two-step payment flow: set false to only authorize (reserve funds), then "
-            "PUT /v1/payments/{id} with capture=true to capture. Debit cards do not "
-            "support two-step capture."
-        ),
-        default=None,
-    )
-    binary_mode: bool | None = Field(
-        description=(
-            "When true, payments can only be in_process → approved or rejected — no "
-            "pending state. Useful for in-store flows."
-        ),
-        default=None,
-    )
-    external_reference: str | None = Field(
-        description="Your internal order or reference ID. Max 256 chars.",
-        examples=["ORDER-2024-001234"],
-        default=None,
-    )
-    notification_url: str | None = Field(
-        description=(
-            "URL to receive IPN notifications when payment status changes. DEPRECATED "
-            "— use Webhooks instead."
-        ),
-        default=None,
-    )
-    statement_descriptor: str | None = Field(
-        description="Text that appears on the payer's card statement. Max 22 chars.",
-        examples=["MYSTORE.COM"],
-        max_length=22,
-        default=None,
-    )
-    callback_url: str | None = Field(
-        description="Redirect URL after bank transfer (redirect-based methods only)",
-        default=None,
-    )
-    date_of_expiration: datetime | None = Field(
-        description=(
-            "Expiration date for cash/offline payment methods (boleto, OXXO, etc.). "
-            "ISO 8601 format. Default varies by method."
-        ),
-        examples=["2024-12-31T23:59:59.000-03:00"],
-        default=None,
-    )
-    metadata: dict[str, Any] | None = Field(
-        description="Free key-value object for your own internal data (not used by MP)",
-        default=None,
-    )
-    additional_info: PaymentAdditionalInfo | None = Field(
-        description="Additional context for fraud scoring and installment calculation",
-        default=None,
-    )
-    application_fee: float | None = Field(
-        description=(
-            "Marketplace fee charged to the seller (marketplace integrations only)"
-        ),
-        examples=[1.5],
-        default=None,
-    )
-    coupon_code: str | None = Field(description="Discount coupon code", default=None)
-    coupon_amount: float | None = Field(
-        description="Coupon discount value",
-        default=None,
-    )
-
-
 class SearchPreferencesResponse(BaseSchema):
     """Schema generated for SearchPreferencesResponse.
 
@@ -6699,12 +6012,12 @@ class Order(BaseSchema):
         type (str | None): Undocumented in the spec.
         processing_mode (OrderRequestProcessingMode | None): Undocumented in the spec.
         capture_mode (OrderRequestCaptureMode | None): Undocumented in the spec.
-        status (OrderStatus | None): created — order created, waiting for processing.
-            processed — all transactions successfully processed. action_required —
-            integrator action needed (e.g. capture an authorized payment). processing —
-            being processed; no action needed from integrator. canceled — order
-            canceled, will not be processed further.
-        status_detail (OrderStatusDetail | None): accredited — payment credited;
+        status (OrderStatus | str | None): created — order created, waiting for
+            processing. processed — all transactions successfully processed.
+            action_required — integrator action needed (e.g. capture an authorized
+            payment). processing — being processed; no action needed from integrator.
+            canceled — order canceled, will not be processed further.
+        status_detail (OrderStatusDetail | str | None): accredited — payment credited;
             waiting_payment — waiting for payer to complete offline payment;
             waiting_capture — authorized payment awaiting capture; waiting_transfer —
             waiting for bank transfer.
@@ -6736,7 +6049,7 @@ class Order(BaseSchema):
     type: str | None = Field(examples=["online"], default=None)
     processing_mode: OrderRequestProcessingMode | None = None
     capture_mode: OrderRequestCaptureMode | None = None
-    status: OrderStatus | None = Field(
+    status: OrderStatus | str | None = Field(
         description=(
             "created — order created, waiting for processing. processed — all "
             "transactions successfully processed. action_required — integrator action "
@@ -6744,16 +6057,14 @@ class Order(BaseSchema):
             "processed; no action needed from integrator. canceled — order canceled, "
             "will not be processed further."
         ),
-        examples=["processed"],
         default=None,
     )
-    status_detail: OrderStatusDetail | None = Field(
+    status_detail: OrderStatusDetail | str | None = Field(
         description=(
             "accredited — payment credited; waiting_payment — waiting for payer to "
             "complete offline payment; waiting_capture — authorized payment awaiting "
             "capture; waiting_transfer — waiting for bank transfer."
         ),
-        examples=["accredited"],
         default=None,
     )
     external_reference: str | None = None
@@ -6794,24 +6105,6 @@ class Order(BaseSchema):
     integration_data: dict[str, Any] | None = None
 
 
-class PaymentSearchResult(BaseSchema):
-    """Schema generated for PaymentSearchResult.
-
-    Attributes:
-        results (list[Payment]): Undocumented in the spec.
-        paging (Pagination | None): Pagination metadata returned in list/search
-            responses
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    results: list[Payment] = Field(default_factory=list)
-    paging: Pagination | None = Field(
-        description="Pagination metadata returned in list/search responses",
-        default=None,
-    )
-
-
 class OrderSearchResult(BaseSchema):
     """Schema generated for OrderSearchResult.
 
@@ -6845,7 +6138,6 @@ __all__: list[str] = [
     "AutoRecurringFrequencyType",
     "BankAccount",
     "BankAccountAccountType",
-    "CancelPaymentBody",
     "CaptureOrderResponse",
     "Card",
     "CardCardholder",
@@ -6904,8 +6196,6 @@ __all__: list[str] = [
     "CreatePointRefundIntentBody",
     "CreatePointRefundIntentResponse",
     "CreateQrIntegratorConfigBody",
-    "CreateRefundResponse",
-    "CreateRefundResponseSource",
     "CreateStoreBody",
     "CreateTerminalActionBody",
     "CreateTerminalActionBodyConfig",
@@ -6947,8 +6237,6 @@ __all__: list[str] = [
     "GetMerchantOrderResponseCollector",
     "GetMerchantOrderResponsePayer",
     "GetPointRefundIntentResponse",
-    "GetRefundResponse",
-    "GetRefundResponseSource",
     "GetTerminalActionResponse",
     "GetWalletAgreementResponse",
     "GetWalletAgreementResponseAgreementData",
@@ -6961,12 +6249,11 @@ __all__: list[str] = [
     "ListPaymentMethodsResponseItem",
     "ListPaymentMethodsResponseItemDeferredCapture",
     "ListPaymentMethodsResponseItemFinancialInstitutionsItem",
+    "ListPaymentMethodsResponseItemProcessingModesItem",
     "ListPaymentMethodsResponseItemStatus",
     "ListPointDevicesResponse",
     "ListPointDevicesResponseDevicesItem",
     "ListPointDevicesResponseDevicesItemOperatingMode",
-    "ListRefundsResponse",
-    "ListRefundsResponseSource",
     "ListTerminalsResponse",
     "ListTerminalsResponseTerminalsItem",
     "MediationResolution",
@@ -7024,34 +6311,16 @@ __all__: list[str] = [
     "Pagination",
     "Payer",
     "PayerType",
-    "Payment",
-    "PaymentAdditionalInfo",
-    "PaymentAdditionalInfoPayer",
-    "PaymentAdditionalInfoShipments",
     "PaymentAnalyticsResponse",
     "PaymentAnalyticsResponsePeriod",
-    "PaymentCard",
-    "PaymentCardCardholder",
     "PaymentFees",
-    "PaymentItem",
     "PaymentListResponse",
     "PaymentMethod",
     "PaymentMethodListResponse",
     "PaymentMethodStoreRequest",
     "PaymentMethodType",
-    "PaymentOperationType",
-    "PaymentPayer",
-    "PaymentPayer2",
-    "PaymentPaymentTypeId",
-    "PaymentProcessingMode",
-    "PaymentRequest",
     "PaymentResponse",
     "PaymentResponseStatus",
-    "PaymentSearchResult",
-    "PaymentStatus",
-    "PaymentTransactionDetails",
-    "PaymentUpdateRequest",
-    "PaymentUpdateRequestStatus",
     "Phone",
     "Pos",
     "PosRequest",
@@ -7074,7 +6343,6 @@ __all__: list[str] = [
     "RefundListResponse",
     "RefundOrderResponse",
     "RefundRefundMode",
-    "RefundRequest",
     "RefundResponse",
     "RefundResponseStatus",
     "RefundSource",
@@ -7095,7 +6363,6 @@ __all__: list[str] = [
     "SearchMerchantOrdersResponse",
     "SearchMerchantOrdersResponseCollector",
     "SearchMerchantOrdersResponsePayer",
-    "SearchPaymentsRange",
     "SearchPosResponse",
     "SearchPreferencesResponse",
     "SearchStoresResponse",
@@ -7127,6 +6394,7 @@ __all__: list[str] = [
     "SubscriptionSummarized",
     "SubscriptionUpdateRequest",
     "UpdateAdvancedPaymentBody",
+    "UpdateAdvancedPaymentBodyStatus",
     "UpdateAdvancedPaymentBodyWalletPayment",
     "UpdateAdvancedPaymentResponse",
     "UpdateAdvancedPaymentResponsePayer",

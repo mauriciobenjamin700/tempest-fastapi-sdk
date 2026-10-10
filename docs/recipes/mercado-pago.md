@@ -114,171 +114,156 @@ async def criar_preferencia(client: MercadoPagoClient) -> str | None:
     return preference.init_point
 ```
 
-## Checkout Transparente: cobrando sem redirect
+## Checkout Transparente: Pix e cartão pela API de Orders
 
-Pix e boleto são **inteiramente server-side** — nenhum redirecionamento:
+Sem redirecionar o comprador, a cobrança passa pela **API de Orders**
+(`/v1/orders`). A API de Payments (`/v1/payments`) aparece no painel do
+Mercado Pago com o aviso *"Esta API será descontinuada em breve"*, e este SDK
+deixou de modelá-la — o [guia de migração](../migration.md) diz o que trocar.
 
-```python
-import uuid
-
-from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
-    MercadoPagoClient,
-    PaymentPayer,
-    PaymentRequest,
-)
-
-
-async def cobrar_pix(client: MercadoPagoClient) -> str | None:
-    """Charge over Pix without sending the buyer anywhere.
-
-    Args:
-        client (MercadoPagoClient): The configured client.
-
-    Returns:
-        str | None: The payment URL for the offline method, when present.
-    """
-    payment = await client.create_payment(
-        body=PaymentRequest(
-            transaction_amount=19.9,
-            payment_method_id="pix",
-            payer=PaymentPayer(email="comprador@example.com"),
-            external_reference="pedido-1042",
-        ),
-        x_idempotency_key=uuid.uuid4(),
-    )
-    details = payment.transaction_details
-    return details.external_resource_url if details is not None else None
-```
-
-!!! tip "`x_idempotency_key` é argumento da chamada"
-    Uma chave por tentativa. Se a rede cair depois de o Mercado Pago receber
-    a requisição, repetir **com a mesma chave** devolve o pagamento original
-    em vez de criar um segundo.
-
-    Ela é argumento — e não header default do `HTTPClient` — justamente por
-    isso: um header default mandaria a mesma chave em toda cobrança, e a
-    segunda venda seria deduplicada em cima da primeira.
-
-!!! warning "Cartão tem uma parte obrigatória no cliente"
-    `create_payment` recebe o cartão como `token`, nunca como número. Quem
-    emite esse token é `POST /v1/card_tokens`, que a especificação declara
-    com `security: publicKey` — chave **pública**, feita para rodar no
-    browser ou no app.
-
-    Chamar essa rota do servidor é tecnicamente possível e coloca o seu
-    serviço no escopo do PCI DSS. Use o SDK JavaScript ou mobile do Mercado
-    Pago para obter o token, e mande só o token para o seu backend.
-
-## O QR do Pix, e o motivo de ele desaparecer
-
-O `create_payment` gerado devolve o `Payment` que a especificação declara — e
-a especificação **não** declara `point_of_interaction`, que é exatamente onde
-o copia-e-cola e a imagem do QR chegam. Como o `BaseSchema` do SDK é
-`extra="ignore"`, o objeto é descartado na validação: o QR chega no corpo
-HTTP e some no modelo, sem erro e sem log.
-
-Por isso existe `create_pix_payment`, que faz a **mesma** requisição e
-devolve um modelo que tem onde guardar o QR:
+Os dois adapters falam Orders e entregam os contratos canônicos de
+`integrations.payment`: `MercadoPagoPixProvider` (o `PixProvider`) e
+`MercadoPagoCardProvider` (o `CardProvider`). O script abaixo roda contra o
+sandbox com as credenciais da receita
+[contas e credenciais de teste](mercado-pago-sandbox.md):
 
 ```python
-import uuid
+import asyncio
+import os
+from datetime import timedelta
 
 from tempest_fastapi_sdk import HTTPClient
-from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
-    DEFAULT_BASE_URL,
-    PixPayment,
-    create_pix_payment,
+from tempest_fastapi_sdk.integrations.payment import (
+    CardChargeRequest,
+    PixChargeRequest,
+    PixPayer,
 )
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoCardProvider,
+    MercadoPagoPixProvider,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import DEFAULT_BASE_URL
 
 
-async def cobrar_pix_com_qr(access_token: str) -> PixPayment:
-    """Charge over Pix and keep the QR the generated model drops.
-
-    Args:
-        access_token (str): The Mercado Pago access token.
-
-    Returns:
-        PixPayment: The pending payment, carrying ``qr_code`` and
-        ``qr_code_base64``.
-    """
-    http: HTTPClient = HTTPClient(
+async def main() -> None:
+    """Open a Pix, then charge, decline and refund a test card."""
+    payer: PixPayer = PixPayer(email=os.environ["MERCADO_PAGO_TEST_BUYER_EMAIL"])
+    async with HTTPClient(
         base_url=DEFAULT_BASE_URL,
-        default_headers={"Authorization": f"Bearer {access_token}"},
-    )
-    return await create_pix_payment(
-        http,
-        body={
-            "transaction_amount": 19.9,
-            "payment_method_id": "pix",
-            "payer": {"email": "comprador@example.com"},
-            "external_reference": "pedido-1042",
+        default_headers={
+            "Authorization": f"Bearer {os.environ['MERCADO_PAGO_TEST_SELLER_ACCESS_TOKEN']}"
         },
-        idempotency_key=uuid.uuid4(),
-    )
+    ) as http:
+        pix = MercadoPagoPixProvider(http)
+        charge = await pix.create_pix_charge(
+            PixChargeRequest(
+                amount_cents=1990,
+                reference="pedido-1042",
+                expires_in=timedelta(minutes=30),
+                payer=payer,
+            ),
+        )
+        print("pix", charge.status.value, bool(charge.br_code))
+        print("pix", (await pix.cancel_pix_charge(charge.provider_charge_id)).status.value)
+
+        card = MercadoPagoCardProvider(http)
+        token = (
+            await http.request(
+                "POST",
+                "/v1/card_tokens",
+                json={
+                    "card_number": "4235647728025682",
+                    "expiration_month": 11,
+                    "expiration_year": 2030,
+                    "security_code": "123",
+                    "cardholder": {
+                        "name": "APRO",
+                        "identification": {"type": "CPF", "number": "12345678909"},
+                    },
+                },
+            )
+        ).json()["id"]
+        paid = await card.create_card_charge(
+            CardChargeRequest(
+                amount_cents=10000,
+                reference="pedido-1043",
+                card_token=token,
+                payment_method_id="visa",
+                payer=payer,
+            ),
+        )
+        print("card", paid.status.value, paid.status_detail)
+        refunded = await card.refund_card_charge(paid.provider_charge_id, amount_cents=3000)
+        print("card", refunded.status.value, refunded.refunded_cents)
+
+
+asyncio.run(main())
 ```
 
-O que o `PixPayment` devolvido carrega:
+Saída medida em 2026-10-09:
 
 ```text
-payment.qr_code         "00020126580014br.gov.bcb.pix0136..."   o copia-e-cola
-payment.qr_code_base64  "iVBORw0KGgoAAAANSUhEUg..."             PNG, para <img src="data:...">
-payment.ticket_url      "https://www.mercadopago.com.br/..."    página que já desenha o QR
-payment.status          "pending"                               até o pagador pagar
+pix pending True
+pix cancelled
+card paid accredited
+card paid 3000
 ```
 
-As três são propriedades **None-safe**: pagamento de cartão, ou Pix já pago,
-devolve `None` em vez de estourar — é a forma como o provedor responde
-depois da liquidação.
+!!! warning "O número do cartão não passa pelo seu servidor"
+    O script tokeniza o Visa **de teste** no servidor só porque ele não é um
+    cartão. Em produção, o front tokeniza com a **Public Key** (MercadoPago.js
+    ou o Card Payment Brick) e manda ao backend o token, a bandeira e as
+    parcelas. Receber o número no servidor coloca o serviço no escopo do PCI
+    DSS.
 
-!!! tip "Já tem o corpo em mãos? Use `parse_pix_payment`"
-    Um webhook manda você buscar o pagamento; se você já chamou pelo cliente
-    gerado e guardou o JSON cru, `parse_pix_payment(payload)` monta o mesmo
-    `PixPayment` sem repetir a requisição. Para reler pelo id existe
-    `get_pix_payment(http, payment_id)`.
+O que os adapters decidem por você, cada item medido no sandbox:
 
-!!! info "De onde vêm esses nomes de campo"
-    Não da especificação, que os omite: do SDK Node oficial do Mercado Pago
-    (`mercadopago/sdk-nodejs`, `src/clients/payment/commonTypes.ts`, commit
-    `c2d3c6ae`), onde `PointOfInteraction` e `TransactionData` estão
-    modelados. O conjunto de campos é fixado por teste, então uma mudança lá
-    aparece aqui como falha e não como valor que sumiu.
+- **Dinheiro em centavos no contrato, decimal em string no fio.** Orders
+  escreve `"19.90"`; `from_cents` / `to_cents` convertem sem passar por
+  `float`.
+- **Recusa de cartão é HTTP 402, e volta como resultado.** O corpo traz o
+  motivo em `errors` e a order em `data`. `create_card_charge` devolve um
+  `CardCharge` com `status` `FAILED` e o motivo em `status_detail`
+  (`rejected_by_issuer`), em vez de levantar.
+- **Autorizar e capturar depois.** `capture=False` manda
+  `capture_mode: manual`; a cobrança volta `AUTHORIZED` (`waiting_capture`) e
+  espera `capture_card_charge` ou `cancel_card_charge`.
+- **Reembolso parcial endereça o pagamento.** Uma order tem um id (`ORD…`) e
+  o pagamento dentro dela outro (`PAY…`); `refund_card_charge` acha o
+  segundo sozinho. Sem valor, reembolsa o que sobrou. `refunded_cents`
+  soma os reembolsos processados.
+- **Capturar e reembolsar releem a order.** As duas respostas trazem só id,
+  estado e transações, sem `total_amount`; o adapter faz um `GET` em seguida
+  para devolver a cobrança inteira.
+- **"Ainda não" é repetido.** Logo depois de criar, cancelar uma
+  autorização respondeu `409 processor_communication_error` em 3 de 10
+  tentativas, e reembolsar uma aprovação respondeu
+  `422 unprocessable_entity` em 7 de 10 — a captura assíncrona ainda
+  terminava. O adapter repete essas respostas, e só essas, com a mesma chave,
+  após 1, 2 e 4 s (`action_retry_delays=` muda ou desliga); todas as medidas
+  passaram em até ~5 s.
+- **Expiração do Pix em segundos.** `expires_in` vira `PT1800S`; sem ela, a
+  order expira em 24 horas.
+- **Pagador é obrigatório.** Order sem `payer` volta
+  `400 '$.payer' - minimum 1 properties allowed`.
+- **Uma chave de idempotência por chamada**, que o `HTTPClient` reaproveita
+  nos próprios retries (testado com transporte simulado; o provedor honrar a
+  chave é o contrato do header, não observado aqui). Para colapsar duas
+  chamadas do mesmo pedido, passe `idempotency_key=lambda reference: reference`.
+- **Parcelas dependem da conta.** Para a vendedora de teste, a consulta de
+  parcelas do Visa em R$ 100,00 ofereceu só 1x, e pedir 3x voltou
+  `400 invalid_transaction_amount`. Consulte as parcelas
+  (`get_installments`) e mande uma das oferecidas.
 
-!!! note "`PixPayment` é uma vista, não um substituto"
-    Para tudo que a especificação declara, use o `Payment` gerado. O
-    `PixPayment` carrega só o que um fluxo Pix lê — id, status, valor,
-    expiração — mais o objeto do QR. Ele não importa os schemas gerados, de
-    propósito: ler um QR não paga a construção dos 328 modelos gerados
-    (~0,16 s medido em 2026-10-09, com pydantic e o pacote já importados,
-    3 execuções).
-
-### A rota alternativa: Orders API
-
-A especificação modela o QR num lugar só, `OrderTransactionPayment`, da API
-de Orders — lá `qr_code`, `qr_code_base64`, `digitable_line` e `e2e_id` são
-declarados de verdade:
-
-```python
-from tempest_fastapi_sdk.integrations.payment.mercado_pago import MercadoPagoClient
-
-
-async def qr_do_pedido(client: MercadoPagoClient, order_id: str) -> object:
-    """Read the Pix QR data of an order.
-
-    Args:
-        client (MercadoPagoClient): The configured client.
-        order_id (str): The order identifier.
-
-    Returns:
-        object: The order, whose transactions carry ``qr_code`` and
-        ``qr_code_base64``.
-    """
-    return await client.get_order(order_id)
-```
-
-Use Orders quando a integração é nova — é a recomendação do próprio
-provedor, e o caminho tipado direto pela especificação. Use
-`create_pix_payment` quando a cobrança já roda em `/v1/payments` e trocar de
-API não está em discussão.
+!!! note "O cliente gerado, para ir além"
+    `MercadoPagoClient` traz a API de Orders inteira (`create_order`,
+    `get_order`, `capture_order`, `refund_order`, `cancel_order`, transações).
+    Os estados de `Order` e de `OrderTransactionPayment` aceitam qualquer
+    string: o sandbox devolveu `failed`, `refunded`, `waiting_transfer` e
+    `rejected_by_issuer`, que o documento não lista, e com o enum fechado
+    `create_order` levantava `ValidationError` ao criar um Pix. Lá a recusa
+    de cartão é um `402` que `raise_for_status()` transforma em exceção — é
+    o adapter que a lê como resultado.
 
 ## Verificando o webhook
 
@@ -407,12 +392,13 @@ def manifesto_da_entrega(data_id: str, request_id: str, ts: str) -> str:
     assinatura e vão falhar sempre. Não passe QR Code por aqui — proteja essa
     rota de outra forma.
 
-## Pela porta do contrato: `MercadoPagoPixProvider`
+## O webhook pelo contrato: relendo a order
 
-Tudo acima fala a língua do Mercado Pago. Se o seu serviço já fala o
-[protocolo de Pix](pix-protocol.md), o adapter traduz: centavos no contrato,
-reais no fio, os nove estados dobrados nos canônicos e o QR vindo do objeto
-que a especificação não declara.
+A notificação do Mercado Pago assina só o `data.id` — o id da order — e não
+diz se ela foi paga. Um `parse_webhook` que lesse só a notificação teria um
+evento possível, `UNKNOWN`, e um serviço que libera pedido em `CHARGE_PAID`
+nunca liberaria nada. Por isso a dependency verifica a assinatura **e** relê
+a order antes de entregar ao seu handler:
 
 ```python
 from typing import Any
@@ -421,106 +407,82 @@ from fastapi import Depends, FastAPI
 
 from tempest_fastapi_sdk import HTTPClient
 from tempest_fastapi_sdk.integrations.payment import (
-    PixCharge,
-    PixChargeRequest,
     PixEventType,
-    PixPayer,
     confirm_pix_payment,
 )
 from tempest_fastapi_sdk.integrations.payment.adapters import (
-    MercadoPagoPixDelivery,
+    MercadoPagoCardProvider,
+    MercadoPagoOrderDelivery,
     MercadoPagoPixProvider,
-    make_mercado_pago_pix_webhook_dependency,
+    make_mercado_pago_webhook_delivery_dependency,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago import DEFAULT_BASE_URL
 
 http: HTTPClient = HTTPClient(
     base_url=DEFAULT_BASE_URL,
-    default_headers={"Authorization": "Bearer <seu access token>"},
+    default_headers={"Authorization": "Bearer <access token da vendedora>"},
 )
-provider: MercadoPagoPixProvider = MercadoPagoPixProvider(
-    http,
-    notification_url="https://seu-servico.example.com/webhooks/mercado-pago",
-)
-delivery_dependency = make_mercado_pago_pix_webhook_dependency(
+pix: MercadoPagoPixProvider = MercadoPagoPixProvider(http)
+delivery_dependency = make_mercado_pago_webhook_delivery_dependency(
     "<segredo do webhook>",
-    provider,
+    pix,
     tolerance_seconds=300.0,
 )
 
 app: FastAPI = FastAPI()
 
 
-@app.post("/checkout/{order_id}")
-async def checkout(order_id: str) -> dict[str, Any]:
-    """Abre um Pix de R$ 19,90 para o pedido."""
-    charge: PixCharge = await provider.create_pix_charge(
-        PixChargeRequest(
-            amount_cents=1990,
-            reference=order_id,
-            payer=PixPayer(email="comprador@example.com"),
-        ),
-    )
-    return {"charge_id": charge.provider_charge_id, "br_code": charge.br_code}
-
-
 @app.post("/webhooks/mercado-pago", include_in_schema=False)
 async def webhook(
-    delivery: MercadoPagoPixDelivery = Depends(delivery_dependency),
+    delivery: MercadoPagoOrderDelivery = Depends(delivery_dependency),
 ) -> dict[str, Any]:
-    """Libera o pedido quando a releitura confirma o pagamento."""
-    event = provider.parse_webhook(delivery)
+    """Libera o pedido quando a order relida está paga."""
+    card = MercadoPagoCardProvider.charge_from_delivery(delivery)
+    if card is not None:
+        return {"card": card.status.value, "detail": card.status_detail}
+    event = pix.parse_webhook(delivery)
     if event.type is not PixEventType.CHARGE_PAID or event.charge is None:
         return {"settled": None}
     confirmation = await confirm_pix_payment(
-        provider,
+        pix,
         event.charge.provider_charge_id,
         reference=event.charge.reference,
-        amount_cents=1990,
+        amount_cents=event.charge.amount_cents,
     )
     return {"settled": confirmation.paid}
 ```
 
-O que cada parte resolve:
+!!! danger "No seu serviço, o id e o valor vêm do seu banco"
+    O exemplo confirma contra os dados da própria order relida, para caber
+    numa página. No serviço, `confirm_pix_payment` recebe o
+    `provider_charge_id` e o valor que **você** guardou ao abrir a cobrança —
+    é o que impede uma order de outro pedido de liberar este. O
+    [protocolo de Pix](pix-protocol.md#passo-4-o-service-que-so-fala-contrato)
+    monta o service completo.
 
-- **`payer.email` é obrigatório.** Medido no sandbox em 2026-10-09: um Pix
-  sem `payer`, ou com `payer` só com nome, volta **500**
-  `payer_cannot_be_nil`, que parece queda do provedor e ainda é retentado
-  pelo `HTTPClient`. O adapter recusa antes de enviar, com `ValueError`.
-- **Uma chave de idempotência por chamada.** Cada `create_pix_charge`
-  manda um `X-Idempotency-Key` novo. O `HTTPClient` monta os headers uma vez,
-  antes do retry, então um `POST` reenviado depois de um 5xx leva a mesma
-  chave (testado com transporte simulado). Que o Mercado Pago honre a chave e
-  não crie um segundo pagamento é o contrato do header, ainda não observado
-  aqui. Para colapsar chamadas do mesmo pedido, passe
-  `idempotency_key=lambda request: request.reference`.
-- **O webhook relê antes de virar evento.** A notificação do Mercado Pago
-  assina só o `data.id`: não diz se o pagamento foi aprovado. A dependency
-  verifica a assinatura, relê o pagamento por esse id e entrega um
-  `MercadoPagoPixDelivery` com a cobrança dentro. O tipo do evento sai do
-  estado relido. Passar a notificação crua ao `parse_webhook` levanta
-  `TypeError`: o único evento que ela daria é `UNKNOWN`, e um `settle` que
-  espera `CHARGE_PAID` nunca liberaria nada, sem erro nenhum.
-- **Cancelar usa `PUT /v1/payments/{id}`**, com `status: cancelled`. A rota
-  é uma que o SDK oficial chama; o corpo vem do guia do provedor e ainda não
-  foi observado. O `PUT .../cancellations` que o documento declara
-  respondeu como rota inexistente no sandbox.
-- **Expirado é `cancelled` + `status_detail: expired`**, segundo o guia do
-  provedor, e vira `EXPIRED`. Ainda não observado: se o provedor soletrar
-  diferente, a cobrança aparece como `CANCELLED`, nunca como paga.
-- **Dois estados não têm evento canônico.** Um pagamento relido como
-  `rejected` (`FAILED`) ou `charged_back` (`CHARGED_BACK`) vira evento
-  `UNKNOWN`, porque o contrato não tem evento para eles. O estado está em
-  `event.charge.status`: quem precisa reagir a chargeback olha a cobrança,
-  não o tipo do evento.
+O que a dependency faz, nesta ordem:
 
-!!! warning "O que ainda não foi medido"
-    O ciclo criar → ler → cancelar ainda não rodou contra o sandbox: com o
-    token `TEST-` da aplicação, a criação de Pix responde `500 not_found`
-    para qualquer e-mail de pagador. Também não foram observados uma entrega
-    de webhook real nem um pagamento expirado. O teste
-    `tests/integrations/payment/adapters/test_mercado_pago_sandbox.py`
-    (marcado `network`) roda o ciclo com uma conta de vendedor de teste.
+1. **Verifica a assinatura** (`x-signature` sobre `data.id`, `x-request-id` e
+   `ts`). Assinatura ausente ou errada é `401` antes do handler, sem
+   nenhuma requisição ao Mercado Pago.
+2. **Decide se a notificação é de uma order**: tópico `order`, ou ação
+   começando com `order.`. O documento do provedor lista `order.created` e
+   `order.updated`; uma entrega real de Orders ainda não foi observada aqui.
+3. **Confere o formato do id** (`[A-Za-z0-9]+`) antes de pôr no path.
+4. **Relê a order** por esse id. `404` é resposta, não falha: a
+   "simulação de notificação" do painel assina um id inventado, e levantar
+   ali faria o Mercado Pago reenviar para sempre. Outros erros sobem, a rota
+   responde 5xx e o Mercado Pago tenta de novo.
+
+Depois, `parse_webhook` tira o tipo do evento do **estado relido**
+(`processed` → `CHARGE_PAID`, `canceled` → `CHARGE_CANCELLED`, `refunded` →
+`CHARGE_REFUNDED`, pendente → `CHARGE_CREATED`). Passar a notificação crua
+levanta `TypeError` com a dica da dependency. Estados sem evento canônico
+(`failed`, chargeback) viram `UNKNOWN`, e o estado fica em
+`event.charge.status`.
+
+Para testar tudo isso localmente, com notificações simuladas e assinadas,
+veja [Mercado Pago: testando webhooks](mercado-pago-webhooks.md).
 
 ## Como saber se uma operação é confiável
 
@@ -534,21 +496,26 @@ operações que o SDK oficial do próprio Mercado Pago chama, e três operaçõe
 ele carrega responderam `404` quando sondadas. Rebaixar responde *"o documento
 mudou?"*, não *"esta operação existe?"*.
 
-Então nem toda operação do `MercadoPagoClient` tem o mesmo lastro. Das 147:
+O cliente também **não carrega o que o provedor está aposentando**: as 8
+operações da API de Payments e as 7 de QR presencial que a própria spec marca
+`deprecated: true`. O SDK oficial ainda chama 7 delas (as de Payments), e é a
+única lacuna permitida na regra "o que o SDK chama, a gente modela".
+
+Então nem toda operação do `MercadoPagoClient` tem o mesmo lastro. Das 132:
 
 | Balde | Qtd | O que responde por ela |
 | --- | --- | --- |
-| O SDK oficial chama | 65 | O provedor, no próprio `mercadopago` do PyPI (65 chamadas na 3.5.0 e na 3.6.0) |
-| Sondada viva | 35 | `GET` sem credencial respondeu `401`/`403`/`400` (2026-08-28); 11 delas não se sustentam e 2 respondem como não roteadas, ver nota abaixo |
-| Separada no sandbox | 32 | Requisição que não pode dar certo respondeu diferente de um path inventado no mesmo prefixo (2026-10-09) |
-| Não roteada | 4 | O sandbox respondeu como responde a um path que não existe |
+| O SDK oficial chama | 58 | O provedor, no próprio `mercadopago` do PyPI (65 chamadas na 3.5.0 e na 3.6.0, menos as 7 da API de Payments) |
+| Sondada viva | 34 | `GET` sem credencial respondeu `401`/`403`/`400` (2026-08-28); 11 delas não se sustentam e 2 respondem como não roteadas, ver nota abaixo |
+| Separada no sandbox | 27 | Requisição que não pode dar certo respondeu diferente de um path inventado no mesmo prefixo (2026-10-09) |
+| Não roteada | 2 | O sandbox respondeu como responde a um path que não existe |
 | Nada responde | 11 | Resposta igual à do path inventado: nenhuma sonda distingue |
 
-!!! warning "As 35 sondadas vivas foram reavaliadas"
+!!! warning "As sondadas vivas foram reavaliadas"
     O balde "sondada viva" vem de uma regra que a sondagem de 2026-10-09
     mostrou fraca: em vários prefixos `401`/`403` sai antes do roteamento.
     Reavaliadas com `GET` contra um path inventado no mesmo prefixo, 11 das
-    35 respondem igual ao path inventado (`/terminals/v1`, refunds de
+    34 respondem igual ao path inventado (`/terminals/v1`, refunds de
     `/point/integration-api`, `/users/{id}/pos`, seis subpaths de
     `/post-purchase/v1/claims/{id}` e `GET /v1/account/release_report/{id}`)
     e duas respondem como não roteadas (`GET /v1/account/release_report` e
@@ -562,13 +529,10 @@ Então nem toda operação do `MercadoPagoClient` tem o mesmo lastro. Das 147:
 covers this operation, so nothing here confirms the API routes it.
 ```
 
-**E as 4 não roteadas também**, com a medição: `cancel_payment`,
-`update_chargeback`, `create_qr_integrator_config` e `create_instore_order_v1`
-carregam `**Not routed.**` e o que o sandbox respondeu. Elas continuam no
-cliente, porque remover método público é outra decisão, mas não espere que
-funcionem. No caso de `cancel_payment`, a rota vizinha `PUT /v1/payments/{id}`
-(`update_payment`) é chamada pelo SDK oficial e respondeu do próprio serviço de
-pagamentos na mesma sondagem.
+**E as 2 não roteadas também**, com a medição: `update_chargeback` e
+`create_qr_integrator_config` carregam `**Not routed.**` e o que o sandbox
+respondeu. Elas continuam no cliente, porque remover método público é outra
+decisão, mas não espere que funcionem.
 
 !!! warning "Status diferente de `404` não prova rota"
     Medido no sandbox em 2026-10-09: em vários prefixos um gate de política
@@ -632,10 +596,12 @@ make mercadopago-diff
 
 - Um único host: o que separa teste de produção é o token.
 - Dinheiro em reais; converta na fronteira com `to_cents` / `from_cents`.
-- Pix e boleto são server-side; cartão exige tokenização no cliente.
-- `x_idempotency_key` é argumento por chamada, nunca header default.
-- O `Payment` gerado descarta o QR do Pix em silêncio; use
-  `create_pix_payment` / `parse_pix_payment`, ou a API de Orders.
+- Pix e cartão passam pela API de Orders; a de Payments saiu do SDK porque o
+  provedor a está descontinuando.
+- `MercadoPagoPixProvider` e `MercadoPagoCardProvider` entregam os contratos
+  canônicos: centavos, estados canônicos, recusa de cartão como resultado
+  (`402`), autorizar e capturar, reembolso parcial.
+- Cartão exige tokenização no cliente, com a Public Key.
 - A verificação de webhook é portada do validador do provedor, com o
   manifesto omitindo par ausente e digests conferidos contra `openssl`;
   falta só uma entrega real para confirmar. Ligue `tolerance_seconds`.
@@ -643,9 +609,8 @@ make mercadopago-diff
   `x-signature` e `x-request-id`, recusa com 401 antes do handler e entrega o
   `data_id` assinado — o corpo não é assinado.
 - Notificação de QR Code não é assinada — não passe por `verify_signature`.
-- Nem toda operação tem o mesmo lastro: 11 dizem `**Unverified.**` e 4 dizem
+- Nem toda operação tem o mesmo lastro: 11 dizem `**Unverified.**` e 2 dizem
   `**Not routed.**` na docstring. `get_authenticated_user` devolve
   `AuthenticatedUser`, observado no sandbox.
-- Pelo contrato: `MercadoPagoPixProvider` exige `payer.email`, e o webhook
-  entra por `make_mercado_pago_pix_webhook_dependency`, que relê o pagamento
-  antes de virar evento.
+- O webhook entra por `make_mercado_pago_webhook_delivery_dependency`, que
+  verifica a assinatura e relê a order antes de virar evento.

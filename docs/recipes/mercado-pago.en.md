@@ -114,174 +114,158 @@ async def create_preference_for(client: MercadoPagoClient) -> str | None:
     return preference.init_point
 ```
 
-## Transparent checkout: charging with no redirect
+## Checkout Transparente: Pix and card through the Orders API
 
-Pix and boleto are **entirely server-side** — no redirect at all:
+Without redirecting the buyer, a charge goes through the **Orders API**
+(`/v1/orders`). The Payments API (`/v1/payments`) shows on Mercado Pago's
+dashboard with the warning *"Esta API será descontinuada em breve"* (this API
+will be discontinued soon), and this SDK no longer models it — the
+[migration guide](../migration.md) says what to change.
 
-```python
-import uuid
-
-from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
-    MercadoPagoClient,
-    PaymentPayer,
-    PaymentRequest,
-)
-
-
-async def charge_pix(client: MercadoPagoClient) -> str | None:
-    """Charge over Pix without sending the buyer anywhere.
-
-    Args:
-        client (MercadoPagoClient): The configured client.
-
-    Returns:
-        str | None: The payment URL for the offline method, when present.
-    """
-    payment = await client.create_payment(
-        body=PaymentRequest(
-            transaction_amount=19.9,
-            payment_method_id="pix",
-            payer=PaymentPayer(email="buyer@example.com"),
-            external_reference="order-1042",
-        ),
-        x_idempotency_key=uuid.uuid4(),
-    )
-    details = payment.transaction_details
-    return details.external_resource_url if details is not None else None
-```
-
-!!! tip "`x_idempotency_key` is a call argument"
-    One key per attempt. If the network drops after Mercado Pago received
-    the request, retrying **with the same key** returns the original payment
-    instead of creating a second one.
-
-    It is an argument — rather than a default header on `HTTPClient` —
-    precisely because of that: a default header would send the same key on
-    every charge, and the second sale would be deduplicated onto the
-    first.
-
-!!! warning "Cards have a mandatory client-side step"
-    `create_payment` takes the card as a `token`, never as a number. That
-    token is issued by `POST /v1/card_tokens`, which the specification
-    declares with `security: publicKey` — a **public** key, meant to run in
-    the browser or the app.
-
-    Calling that route from your server is technically possible and puts
-    your service in PCI DSS scope. Use Mercado Pago's JavaScript or mobile
-    SDK to obtain the token, and send only the token to your backend.
-
-## The Pix QR, and why it disappears
-
-The generated `create_payment` returns the `Payment` the specification
-declares — and the specification does **not** declare
-`point_of_interaction`, which is exactly where the copy-and-paste code and
-the QR image arrive. Since the SDK's `BaseSchema` is `extra="ignore"`, that
-object is discarded during validation: the QR arrives in the HTTP body and
-vanishes in the model, with no error and nothing in a log.
-
-That is why `create_pix_payment` exists. It issues the **same** request and
-returns a model with somewhere to keep the QR:
+Both adapters speak Orders and hand out the canonical contracts of
+`integrations.payment`: `MercadoPagoPixProvider` (the `PixProvider`) and
+`MercadoPagoCardProvider` (the `CardProvider`). The script below runs against
+the sandbox with the credentials from the
+[test accounts and credentials](mercado-pago-sandbox.md) recipe:
 
 ```python
-import uuid
+import asyncio
+import os
+from datetime import timedelta
 
 from tempest_fastapi_sdk import HTTPClient
-from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
-    DEFAULT_BASE_URL,
-    PixPayment,
-    create_pix_payment,
+from tempest_fastapi_sdk.integrations.payment import (
+    CardChargeRequest,
+    PixChargeRequest,
+    PixPayer,
 )
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoCardProvider,
+    MercadoPagoPixProvider,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import DEFAULT_BASE_URL
 
 
-async def charge_pix_with_qr(access_token: str) -> PixPayment:
-    """Charge over Pix and keep the QR the generated model drops.
-
-    Args:
-        access_token (str): The Mercado Pago access token.
-
-    Returns:
-        PixPayment: The pending payment, carrying ``qr_code`` and
-        ``qr_code_base64``.
-    """
-    http: HTTPClient = HTTPClient(
+async def main() -> None:
+    """Open a Pix, then charge, decline and refund a test card."""
+    payer: PixPayer = PixPayer(email=os.environ["MERCADO_PAGO_TEST_BUYER_EMAIL"])
+    async with HTTPClient(
         base_url=DEFAULT_BASE_URL,
-        default_headers={"Authorization": f"Bearer {access_token}"},
-    )
-    return await create_pix_payment(
-        http,
-        body={
-            "transaction_amount": 19.9,
-            "payment_method_id": "pix",
-            "payer": {"email": "buyer@example.com"},
-            "external_reference": "order-1042",
+        default_headers={
+            "Authorization": f"Bearer {os.environ['MERCADO_PAGO_TEST_SELLER_ACCESS_TOKEN']}"
         },
-        idempotency_key=uuid.uuid4(),
-    )
+    ) as http:
+        pix = MercadoPagoPixProvider(http)
+        charge = await pix.create_pix_charge(
+            PixChargeRequest(
+                amount_cents=1990,
+                reference="pedido-1042",
+                expires_in=timedelta(minutes=30),
+                payer=payer,
+            ),
+        )
+        print("pix", charge.status.value, bool(charge.br_code))
+        print("pix", (await pix.cancel_pix_charge(charge.provider_charge_id)).status.value)
+
+        card = MercadoPagoCardProvider(http)
+        token = (
+            await http.request(
+                "POST",
+                "/v1/card_tokens",
+                json={
+                    "card_number": "4235647728025682",
+                    "expiration_month": 11,
+                    "expiration_year": 2030,
+                    "security_code": "123",
+                    "cardholder": {
+                        "name": "APRO",
+                        "identification": {"type": "CPF", "number": "12345678909"},
+                    },
+                },
+            )
+        ).json()["id"]
+        paid = await card.create_card_charge(
+            CardChargeRequest(
+                amount_cents=10000,
+                reference="pedido-1043",
+                card_token=token,
+                payment_method_id="visa",
+                payer=payer,
+            ),
+        )
+        print("card", paid.status.value, paid.status_detail)
+        refunded = await card.refund_card_charge(paid.provider_charge_id, amount_cents=3000)
+        print("card", refunded.status.value, refunded.refunded_cents)
+
+
+asyncio.run(main())
 ```
 
-What the returned `PixPayment` carries:
+Output measured on 2026-10-09:
 
 ```text
-payment.qr_code         "00020126580014br.gov.bcb.pix0136..."   the copy-and-paste code
-payment.qr_code_base64  "iVBORw0KGgoAAAANSUhEUg..."             PNG, for <img src="data:...">
-payment.ticket_url      "https://www.mercadopago.com.br/..."    page that already draws the QR
-payment.status          "pending"                               until the payer pays
+pix pending True
+pix cancelled
+card paid accredited
+card paid 3000
 ```
 
-All three are **None-safe** properties: a card payment, or a Pix already
-paid, returns `None` instead of raising — that is how the provider answers
-after settlement.
+!!! warning "The card number does not go through your server"
+    The script tokenizes the **test** Visa on the server only because it is
+    not a card. In production, the frontend tokenizes with the **Public Key**
+    (MercadoPago.js or the Card Payment Brick) and sends the backend the
+    token, the brand and the installments. Receiving the number on the server
+    puts the service in PCI DSS scope.
 
-!!! tip "Already holding the body? Use `parse_pix_payment`"
-    A webhook tells you to fetch the payment; if you already called through
-    the generated client and kept the raw JSON, `parse_pix_payment(payload)`
-    builds the same `PixPayment` without repeating the request. To re-read it
-    by id there is `get_pix_payment(http, payment_id)`.
+What the adapters decide for you, each item measured in the sandbox:
 
-!!! info "Where these field names come from"
-    Not from the specification, which omits them: from Mercado Pago's own
-    Node SDK (`mercadopago/sdk-nodejs`,
-    `src/clients/payment/commonTypes.ts`, commit `c2d3c6ae`), where
-    `PointOfInteraction` and `TransactionData` are modelled. The field set is
-    pinned by a test, so a change upstream shows up here as a failure rather
-    than as a value that went missing.
+- **Money in cents in the contract, decimal strings on the wire.** Orders
+  writes `"19.90"`; `from_cents` / `to_cents` convert without going through
+  `float`.
+- **A card decline is HTTP 402, and comes back as a result.** The body
+  carries the reason in `errors` and the order in `data`.
+  `create_card_charge` returns a `CardCharge` with status `FAILED` and the
+  reason in `status_detail` (`rejected_by_issuer`) instead of raising.
+- **Authorize now, capture later.** `capture=False` sends
+  `capture_mode: manual`; the charge comes back `AUTHORIZED`
+  (`waiting_capture`) and waits for `capture_card_charge` or
+  `cancel_card_charge`.
+- **A partial refund addresses the payment.** An order has one id (`ORD…`)
+  and the payment inside it another (`PAY…`); `refund_card_charge` finds the
+  second on its own. Without an amount, it refunds what is left.
+  `refunded_cents` sums the processed refunds.
+- **Capture and refund read the order back.** Both answers carry only the
+  id, state and transactions, no `total_amount`; the adapter issues a `GET`
+  right after to return the whole charge.
+- **"Not yet" is retried.** Right after creating, cancelling an
+  authorization answered `409 processor_communication_error` in 3 of 10
+  attempts, and refunding an approval answered `422 unprocessable_entity` in
+  7 of 10 — the asynchronous capture was still finishing. The adapter retries
+  those answers, and only those, with the same key, after 1, 2 and 4 s
+  (`action_retry_delays=` changes or disables it); every measured one went
+  through within about five seconds.
+- **Pix expiry in seconds.** `expires_in` becomes `PT1800S`; without it, the
+  order expires in 24 hours.
+- **The payer is required.** An order without `payer` comes back
+  `400 '$.payer' - minimum 1 properties allowed`.
+- **One idempotency key per call**, which the `HTTPClient` reuses across its
+  own retries (tested with a mock transport; the provider honouring the key
+  is the header's contract, not observed here). To collapse two calls for the
+  same order, pass `idempotency_key=lambda reference: reference`.
+- **Installments depend on the account.** For the test seller, the Visa
+  installment options at R$ 100.00 offered only 1x, and asking for 3x came
+  back `400 invalid_transaction_amount`. Query the options
+  (`get_installments`) and send one that was offered.
 
-!!! note "`PixPayment` is a view, not a replacement"
-    For everything the specification declares, use the generated `Payment`.
-    `PixPayment` carries only what a Pix flow reads — id, status, amount,
-    expiration — plus the QR object. It deliberately does not import the
-    generated schemas: reading a QR should not pay for building the 328
-    generated models (~0.16 s measured on 2026-10-09, with pydantic and the
-    package already imported, 3 runs).
-
-### The alternative route: Orders API
-
-The specification models the QR in one single place,
-`OrderTransactionPayment`, from the Orders API — there `qr_code`,
-`qr_code_base64`, `digitable_line` and `e2e_id` are genuinely declared:
-
-```python
-from tempest_fastapi_sdk.integrations.payment.mercado_pago import MercadoPagoClient
-
-
-async def order_qr(client: MercadoPagoClient, order_id: str) -> object:
-    """Read the Pix QR data of an order.
-
-    Args:
-        client (MercadoPagoClient): The configured client.
-        order_id (str): The order identifier.
-
-    Returns:
-        object: The order, whose transactions carry ``qr_code`` and
-        ``qr_code_base64``.
-    """
-    return await client.get_order(order_id)
-```
-
-Use Orders for a new integration — it is the provider's own recommendation,
-and the typed path straight through the specification. Use
-`create_pix_payment` when the charge already runs on `/v1/payments` and
-switching APIs is not on the table.
+!!! note "The generated client, to go further"
+    `MercadoPagoClient` carries the whole Orders API (`create_order`,
+    `get_order`, `capture_order`, `refund_order`, `cancel_order`,
+    transactions). The states of `Order` and `OrderTransactionPayment` accept
+    any string: the sandbox returned `failed`, `refunded`, `waiting_transfer`
+    and `rejected_by_issuer`, which the document does not list, and with the
+    closed enum `create_order` raised `ValidationError` when creating a Pix.
+    There a card decline is a `402` that `raise_for_status()` turns into an
+    exception — it is the adapter that reads it as a result.
 
 ## Verifying the webhook
 
@@ -411,12 +395,14 @@ def manifest_of_delivery(data_id: str, request_id: str, ts: str) -> str:
     always fail. Do not route QR Code through here — gate that path some other
     way.
 
-## Through the contract door: `MercadoPagoPixProvider`
+## The webhook through the contract: re-reading the order
 
-Everything above speaks Mercado Pago's language. If your service already
-speaks the [Pix protocol](pix-protocol.md), the adapter translates: cents in
-the contract, reais on the wire, the nine states folded into the canonical
-ones, and the QR read from the object the specification does not declare.
+A Mercado Pago notification signs only `data.id` — the order id — and does
+not say whether it was paid. A `parse_webhook` reading only the notification
+would have one possible event, `UNKNOWN`, and a service that releases orders
+on `CHARGE_PAID` would never release anything. That is why the dependency
+verifies the signature **and** re-reads the order before handing it to your
+handler:
 
 ```python
 from typing import Any
@@ -425,108 +411,83 @@ from fastapi import Depends, FastAPI
 
 from tempest_fastapi_sdk import HTTPClient
 from tempest_fastapi_sdk.integrations.payment import (
-    PixCharge,
-    PixChargeRequest,
     PixEventType,
-    PixPayer,
     confirm_pix_payment,
 )
 from tempest_fastapi_sdk.integrations.payment.adapters import (
-    MercadoPagoPixDelivery,
+    MercadoPagoCardProvider,
+    MercadoPagoOrderDelivery,
     MercadoPagoPixProvider,
-    make_mercado_pago_pix_webhook_dependency,
+    make_mercado_pago_webhook_delivery_dependency,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago import DEFAULT_BASE_URL
 
 http: HTTPClient = HTTPClient(
     base_url=DEFAULT_BASE_URL,
-    default_headers={"Authorization": "Bearer <your access token>"},
+    default_headers={"Authorization": "Bearer <the seller's access token>"},
 )
-provider: MercadoPagoPixProvider = MercadoPagoPixProvider(
-    http,
-    notification_url="https://your-service.example.com/webhooks/mercado-pago",
-)
-delivery_dependency = make_mercado_pago_pix_webhook_dependency(
+pix: MercadoPagoPixProvider = MercadoPagoPixProvider(http)
+delivery_dependency = make_mercado_pago_webhook_delivery_dependency(
     "<webhook secret>",
-    provider,
+    pix,
     tolerance_seconds=300.0,
 )
 
 app: FastAPI = FastAPI()
 
 
-@app.post("/checkout/{order_id}")
-async def checkout(order_id: str) -> dict[str, Any]:
-    """Open a R$ 19.90 Pix for the order."""
-    charge: PixCharge = await provider.create_pix_charge(
-        PixChargeRequest(
-            amount_cents=1990,
-            reference=order_id,
-            payer=PixPayer(email="buyer@example.com"),
-        ),
-    )
-    return {"charge_id": charge.provider_charge_id, "br_code": charge.br_code}
-
-
 @app.post("/webhooks/mercado-pago", include_in_schema=False)
 async def webhook(
-    delivery: MercadoPagoPixDelivery = Depends(delivery_dependency),
+    delivery: MercadoPagoOrderDelivery = Depends(delivery_dependency),
 ) -> dict[str, Any]:
-    """Release the order when the re-read confirms the payment."""
-    event = provider.parse_webhook(delivery)
+    """Release the order when the re-read order is paid."""
+    card = MercadoPagoCardProvider.charge_from_delivery(delivery)
+    if card is not None:
+        return {"card": card.status.value, "detail": card.status_detail}
+    event = pix.parse_webhook(delivery)
     if event.type is not PixEventType.CHARGE_PAID or event.charge is None:
         return {"settled": None}
     confirmation = await confirm_pix_payment(
-        provider,
+        pix,
         event.charge.provider_charge_id,
         reference=event.charge.reference,
-        amount_cents=1990,
+        amount_cents=event.charge.amount_cents,
     )
     return {"settled": confirmation.paid}
 ```
 
-What each part solves:
+!!! danger "In your service, the id and the amount come from your database"
+    The example confirms against the re-read order's own data, to fit on a
+    page. In a service, `confirm_pix_payment` takes the `provider_charge_id`
+    and the amount **you** stored when opening the charge — that is what
+    stops another order's charge from releasing this one. The
+    [Pix protocol](pix-protocol.md#step-4-the-service-which-speaks-only-the-contract)
+    builds the full service.
 
-- **`payer.email` is required.** Measured in the sandbox on 2026-10-09: a
-  Pix without `payer`, or with a `payer` carrying only a name, comes back
-  **500** `payer_cannot_be_nil`, which reads as a provider outage and is
-  retried by the `HTTPClient` on top. The adapter refuses before sending,
-  with `ValueError`.
-- **One idempotency key per call.** Each `create_pix_charge` sends a fresh
-  `X-Idempotency-Key`. The `HTTPClient` builds headers once, before its
-  retry loop, so a `POST` resent after a 5xx carries the same key (tested
-  with a mock transport). That Mercado Pago honours the key and does not
-  create a second payment is the header's contract, not yet observed here.
-  To collapse calls for the same order, pass
-  `idempotency_key=lambda request: request.reference`.
-- **The webhook re-reads before becoming an event.** A Mercado Pago
-  notification signs only `data.id`: it does not say whether the payment
-  was approved. The dependency verifies the signature, re-reads the payment
-  by that id, and hands over a `MercadoPagoPixDelivery` with the charge
-  inside. The event type comes from the re-read state. Passing the bare
-  notification to `parse_webhook` raises `TypeError`: the only event it
-  could produce is `UNKNOWN`, and a `settle` waiting for `CHARGE_PAID` would
-  never release anything, with no error anywhere.
-- **Cancelling uses `PUT /v1/payments/{id}`**, with `status: cancelled`.
-  The route is one the official SDK calls; the body is the provider guide's
-  and has not been observed yet. The `PUT .../cancellations` the document
-  declares answered like a missing route in the sandbox.
-- **Expired is `cancelled` + `status_detail: expired`**, per the provider's
-  guide, and becomes `EXPIRED`. Not observed yet: if the provider spells it
-  differently, the charge shows as `CANCELLED`, never as paid.
-- **Two states have no canonical event.** A payment re-read as `rejected`
-  (`FAILED`) or `charged_back` (`CHARGED_BACK`) becomes an `UNKNOWN` event,
-  because the contract has no event for either. The state is on
-  `event.charge.status`: a service that must react to a chargeback looks at
-  the charge, not at the event type.
+What the dependency does, in this order:
 
-!!! warning "What is not measured yet"
-    The create → read → cancel cycle has not yet run against the sandbox:
-    with the application's `TEST-` token, creating a Pix answers
-    `500 not_found` for any payer e-mail. A live webhook delivery and an
-    expired payment have not been observed either. The
-    `tests/integrations/payment/adapters/test_mercado_pago_sandbox.py` test
-    (marked `network`) runs the cycle with a test seller account.
+1. **Verifies the signature** (`x-signature` over `data.id`, `x-request-id`
+   and `ts`). A missing or wrong signature is `401` before the handler, with
+   no request to Mercado Pago.
+2. **Decides whether the notification is about an order**: topic `order`, or
+   an action starting with `order.`. The provider's document lists
+   `order.created` and `order.updated`; a live Orders delivery has not been
+   observed here yet.
+3. **Checks the id's shape** (`[A-Za-z0-9]+`) before putting it in a path.
+4. **Re-reads the order** by that id. `404` is an answer, not a failure: the
+   dashboard's "simulate notification" signs a made-up id, and raising there
+   would make Mercado Pago resend forever. Other errors propagate, the route
+   answers 5xx and Mercado Pago tries again.
+
+Then `parse_webhook` takes the event type from the **re-read state**
+(`processed` → `CHARGE_PAID`, `canceled` → `CHARGE_CANCELLED`, `refunded` →
+`CHARGE_REFUNDED`, pending → `CHARGE_CREATED`). Passing the bare notification
+raises `TypeError` with a hint about the dependency. States without a
+canonical event (`failed`, chargeback) become `UNKNOWN`, and the state is on
+`event.charge.status`.
+
+To test all of this locally, with simulated, signed notifications, see
+[Mercado Pago: testing webhooks](mercado-pago-webhooks.md).
 
 ## Telling a trustworthy operation from an unverified one
 
@@ -541,20 +502,26 @@ operations Mercado Pago's own SDK calls, and three operations it does carry
 answered `404` when probed. Refreshing answers *"did the document move?"*, not
 *"does this operation exist?"*.
 
-So not every `MercadoPagoClient` operation rests on the same evidence. Of 147:
+The client also **does not carry what the provider is retiring**: the 8
+Payments API operations and the 7 in-store QR ones the spec itself marks
+`deprecated: true`. The official SDK still calls 7 of them (the Payments
+ones), and that is the only gap allowed in the rule "what the SDK calls, we
+model".
+
+So not every `MercadoPagoClient` operation rests on the same evidence. Of 132:
 
 | Bucket | Count | What vouches for it |
 | --- | --- | --- |
-| The official SDK calls it | 65 | The provider, in its own `mercadopago` on PyPI (65 call sites in 3.5.0 and in 3.6.0) |
-| Probed live | 35 | An unauthenticated `GET` answered `401`/`403`/`400` (2026-08-28); 11 of them do not hold up and 2 answer as unrouted, see the note below |
-| Told apart in the sandbox | 32 | A request that cannot succeed answered differently from a made-up path under the same prefix (2026-10-09) |
-| Not routed | 4 | The sandbox answered the way it answers a path that does not exist |
+| The official SDK calls it | 58 | The provider, in its own `mercadopago` on PyPI (65 call sites in 3.5.0 and in 3.6.0, minus the 7 Payments API ones) |
+| Probed live | 34 | An unauthenticated `GET` answered `401`/`403`/`400` (2026-08-28); 11 of them do not hold up and 2 answer as unrouted, see the note below |
+| Told apart in the sandbox | 27 | A request that cannot succeed answered differently from a made-up path under the same prefix (2026-10-09) |
+| Not routed | 2 | The sandbox answered the way it answers a path that does not exist |
 | Nothing vouches | 11 | Same answer as the made-up path: no probe tells them apart |
 
-!!! warning "The 35 probed live were re-evaluated"
+!!! warning "The probed-live operations were re-evaluated"
     The "probed live" bucket rests on a rule the 2026-10-09 probe showed is
     weak: on several prefixes `401`/`403` comes before routing. Re-evaluated
-    with `GET` against a made-up path under the same prefix, 11 of the 35
+    with `GET` against a made-up path under the same prefix, 11 of the 34
     answer the same as the made-up path (`/terminals/v1`, refunds under
     `/point/integration-api`, `/users/{id}/pos`, six subpaths of
     `/post-purchase/v1/claims/{id}` and `GET /v1/account/release_report/{id}`)
@@ -569,14 +536,10 @@ So not every `MercadoPagoClient` operation rests on the same evidence. Of 147:
 covers this operation, so nothing here confirms the API routes it.
 ```
 
-**So do the 4 unrouted ones**, with the measurement: `cancel_payment`,
-`update_chargeback`, `create_qr_integrator_config` and
-`create_instore_order_v1` carry `**Not routed.**` and what the sandbox
+**So do the 2 unrouted ones**, with the measurement: `update_chargeback` and
+`create_qr_integrator_config` carry `**Not routed.**` and what the sandbox
 answered. They stay in the client, because removing a public method is a
-separate decision, but do not expect them to work. For `cancel_payment`, the
-neighbouring route `PUT /v1/payments/{id}` (`update_payment`) is one the
-official SDK calls, and it answered from the payments service itself in the
-same probe.
+separate decision, but do not expect them to work.
 
 !!! warning "A status other than `404` does not prove a route"
     Measured in the sandbox on 2026-10-09: on several prefixes a policy gate
@@ -641,10 +604,12 @@ make mercadopago-diff
 
 - One host: what separates test from production is the token.
 - Money in reais; convert at the boundary with `to_cents` / `from_cents`.
-- Pix and boleto are server-side; cards require client-side tokenization.
-- `x_idempotency_key` is a per-call argument, never a default header.
-- The generated `Payment` drops the Pix QR silently; use
-  `create_pix_payment` / `parse_pix_payment`, or the Orders API.
+- Pix and card go through the Orders API; the Payments API left the SDK
+  because the provider is discontinuing it.
+- `MercadoPagoPixProvider` and `MercadoPagoCardProvider` hand out the
+  canonical contracts: cents, canonical states, a card decline as a result
+  (`402`), authorize and capture, partial refunds.
+- Cards require client-side tokenization, with the Public Key.
 - Webhook verification is ported from the provider's validator, with the
   manifest omitting absent pairs and digests checked against `openssl`;
   only a live delivery is still missing. Turn `tolerance_seconds` on.
@@ -654,8 +619,8 @@ make mercadopago-diff
 - QR Code notifications are not signed — do not run them through
   `verify_signature`.
 - Not every operation rests on the same evidence: 11 say `**Unverified.**`
-  and 4 say `**Not routed.**` in their docstring. `get_authenticated_user`
+  and 2 say `**Not routed.**` in their docstring. `get_authenticated_user`
   returns `AuthenticatedUser`, observed in the sandbox.
-- Through the contract: `MercadoPagoPixProvider` requires `payer.email`, and
-  the webhook goes through `make_mercado_pago_pix_webhook_dependency`, which
-  re-reads the payment before it becomes an event.
+- The webhook goes through `make_mercado_pago_webhook_delivery_dependency`,
+  which verifies the signature and re-reads the order before it becomes an
+  event.

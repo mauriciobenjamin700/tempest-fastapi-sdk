@@ -64,6 +64,7 @@ import yaml
 from mercadopago_overlay import (
     PROBE_DATE,
     PROBED_OPERATIONS,
+    PROVIDER_DEPRECATED_SDK_CALLS,
     SANDBOX_PROBE_DATE,
     SANDBOX_ROUTED_OPERATIONS,
     SDK_COVERAGE_DISAGREEMENTS,
@@ -383,12 +384,21 @@ def main() -> int:
     for moved in report.moved_paths:
         print(f"  overlay: {moved}")
 
-    missing = sorted(official - ours, key=lambda entry: (entry[1], entry[0]))
+    gap = official - ours
+    retired = sorted(
+        gap & PROVIDER_DEPRECATED_SDK_CALLS, key=lambda entry: (entry[1], entry[0])
+    )
+    missing = sorted(
+        gap - PROVIDER_DEPRECATED_SDK_CALLS, key=lambda entry: (entry[1], entry[0])
+    )
     print(
         f"\nthe provider's own SDK calls these, we do not model them ({len(missing)}):"
     )
     for method, path in missing:
         print(f"  {method:6} {path}")
+    print(f"\n  retired by the provider, dropped on purpose ({len(retired)}):")
+    for method, path in retired:
+        print(f"    {method:6} {path}")
 
     extra = sorted(ours - official, key=lambda entry: (entry[1], entry[0]))
     unrouted_keys = {normalise(e.method, e.path) for e in UNROUTED_OPERATIONS}

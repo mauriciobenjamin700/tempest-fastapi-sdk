@@ -1362,21 +1362,22 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   que foi sondado, quando e com que código; `make mercadopago-diff` separa os
   baldes. Testes: `TestUnverifiedOperationsAreMarked`,
   `TestTheProbeOnlySpeaksForItsOwnVerb`.
-- **Mercado Pago pelo contrato de Pix + rollout entre provedores
-  (unreleased)** — `MercadoPagoPixProvider` (cobrar, ler, cancelar,
-  `parse_webhook`), `make_mercado_pago_pix_webhook_dependency` +
-  `MercadoPagoPixDelivery` (verifica a assinatura e relê o pagamento, porque a
-  notificação não traz estado; a notificação crua é recusada com `TypeError`)
-  e `PixProviderRouter` (fatia estável por SHA-256 da `reference`, leitura e
-  cancelamento pelo `PixCharge.provider` guardado, `candidate_percent=0` como
-  kill switch). Medido no sandbox: Pix sem `payer.email` volta `500
-  payer_cannot_be_nil`, e o adapter recusa antes. Falta rodar o ciclo real com
-  conta de vendedor de teste (o token `TEST-` dá `500 not_found` na criação) e
-  um `PayoutProvider` do Mercado Pago. Testes:
-  `tests/integrations/payment/adapters/test_mercado_pago_adapter.py`,
-  `tests/integrations/payment/test_routing.py`, `test_contract.py` (o adapter
-  entra no guard de assinatura e de mapeamento exaustivo) e
-  `test_mercado_pago_sandbox.py` (`network`).
+- **Mercado Pago pela API de Orders: Pix, cartão e rollout (unreleased)** —
+  `MercadoPagoPixProvider` e `MercadoPagoCardProvider` sobre `/v1/orders`,
+  contrato novo `CardProvider` / `CardCharge` / `CardChargeRequest`
+  (`PaymentStatus.AUTHORIZED`), `make_mercado_pago_webhook_delivery_dependency`
+  + `MercadoPagoOrderDelivery` (verifica e relê a order; notificação crua
+  recusada; `404` é resposta) e `PixProviderRouter`. A API de Payments e as 7
+  operações de QR presencial marcadas `deprecated` saíram do cliente, com os
+  modelos que só elas alcançavam; `Order` aceita os estados que o sandbox
+  devolveu fora do enum. Ciclo inteiro medido no sandbox com vendedora de
+  teste (Pix criar/ler/cancelar; cartão aprovar, recusar com 402, autorizar +
+  capturar, autorizar + cancelar, reembolso parcial e total). Receitas de
+  credenciais de teste e de teste de webhook. Falta: um Pix pago, uma entrega
+  de webhook real e o `PayoutProvider` do Mercado Pago. Testes:
+  `test_mercado_pago_adapter.py` (fixtures reais redigidas),
+  `test_mercado_pago_sandbox.py` (`network`), `test_deprecations.py`,
+  `test_contract.py`, `test_routing.py`.
 - **Sandbox do Mercado Pago: `/users/me` tipado e as 47 classificadas
   (unreleased)** — issue #226. Medido em 2026-10-09 com token `TEST-`, só
   com requisição que não pode dar certo (corpo malformado, id inexistente),

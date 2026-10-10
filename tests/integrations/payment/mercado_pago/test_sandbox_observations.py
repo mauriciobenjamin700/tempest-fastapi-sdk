@@ -214,7 +214,7 @@ class TestTheSandboxClassifiedTheUnverified47:
 
     def test_an_unrouted_operation_is_kept_and_says_so(self) -> None:
         """Removing a public method is a separate decision; the docstring warns."""
-        doc = MercadoPagoClient.cancel_payment.__doc__ or ""
+        doc = MercadoPagoClient.update_chargeback.__doc__ or ""
 
         assert "**Not routed.**" in doc
         assert "**Unverified.**" not in doc

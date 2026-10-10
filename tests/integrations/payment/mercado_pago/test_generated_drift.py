@@ -190,14 +190,17 @@ class TestGeneratedSurface:
         assert MercadoPagoClient.__name__ == "MercadoPagoClient"
 
     def test_carries_the_whole_specification(self) -> None:
-        """328 schemas and 147 operations — the point of embedding it.
+        """303 schemas and 132 operations — the point of embedding it.
 
         The counts moved in v0.260.0, when the provider's own SDK became
         the authority on this API: seven operations it calls were added,
         three the API does not route were removed, and the three removed
         ones took a response schema each with them. Five schemas joined on
         2026-10-09: the `/users/me` response observed in the sandbox, and
-        the four objects nested in it.
+        the four objects nested in it. The same day the provider's
+        deprecations came out: the Payments API (8 operations) and 7
+        in-store QR operations the document marks `deprecated`, taking 30
+        schemas only they reached.
         """
         from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
             client,
@@ -210,8 +213,8 @@ class TestGeneratedSurface:
             if not name.startswith("_")
             and callable(getattr(client.MercadoPagoClient, name))
         ]
-        assert len(schemas.__all__) == 328
-        assert len(operations) == 147
+        assert len(schemas.__all__) == 303
+        assert len(operations) == 132
 
     def test_there_is_only_one_server(self) -> None:
         """The spec declares a single host, so there is nothing to switch.
@@ -263,10 +266,10 @@ class TestLazyLoading:
         """The whole point: no submodule path, no generator run."""
         from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
             MercadoPagoClient,
-            Payment,
+            Order,
         )
 
-        assert Payment.__name__ == "Payment"
+        assert Order.__name__ == "Order"
         assert MercadoPagoClient.__name__ == "MercadoPagoClient"
 
     def test_unknown_attribute_still_raises(self) -> None:
@@ -282,5 +285,5 @@ class TestLazyLoading:
 
         names = dir(package)
         assert "to_cents" in names
-        assert "Payment" in names
+        assert "Order" in names
         assert len(names) > 300

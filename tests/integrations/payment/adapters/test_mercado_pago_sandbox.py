@@ -1,34 +1,37 @@
-"""``MercadoPagoPixProvider`` against the real sandbox.
+"""The Mercado Pago adapters against the real sandbox, over the Orders API.
 
-Every test here is marked ``network`` and stays out of ``make check``. They
-need a Mercado Pago **test** credential in the environment:
+Marked ``network``: out of ``make check``. They need, in the environment:
 
-- ``MERCADO_PAGO_TEST_SELLER_ACCESS_TOKEN`` — preferred: the access token of
-  a test seller account (``APP_USR-...`` issued to a user whose ``tags``
-  include ``test_user``);
-- otherwise ``MERCADO_PAGO_TEST_ACCESS_TOKEN`` — an application's ``TEST-``
-  token;
-- ``MERCADO_PAGO_TEST_BUYER_EMAIL`` — the payer e-mail sent on the charge.
+- ``MERCADO_PAGO_TEST_SELLER_ACCESS_TOKEN`` — the production access token of
+  a **test seller** account's *Checkout Transparente / API de Orders*
+  application (``docs/recipes/mercado-pago-sandbox.md`` walks through
+  getting it);
+- ``MERCADO_PAGO_TEST_BUYER_EMAIL`` — the test buyer's e-mail.
 
-A token that is neither ``TEST-`` nor owned by a ``test_user`` account is
-refused before any charge is created: this module creates and cancels
-payments, and doing that against a real account is not a test.
+Before anything is created, the token's account is read from
+``/users/me`` and must carry the ``test_user`` tag; any other account is
+refused. Cards are tokenized here with the public test Visa — the only use
+of a card number on a server this package condones, because it is not a
+card.
 """
 
 from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
+from datetime import timedelta
 
 import pytest
 
 from tempest_fastapi_sdk import HTTPClient
 from tempest_fastapi_sdk.integrations.payment import (
+    CardChargeRequest,
     PaymentStatus,
     PixChargeRequest,
     PixPayer,
 )
 from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
+    MercadoPagoCardProvider,
     MercadoPagoPixProvider,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago import DEFAULT_BASE_URL
@@ -36,88 +39,154 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago import DEFAULT_BASE_U
 pytestmark = pytest.mark.network
 
 SELLER_TOKEN_ENV: str = "MERCADO_PAGO_TEST_SELLER_ACCESS_TOKEN"
-APP_TOKEN_ENV: str = "MERCADO_PAGO_TEST_ACCESS_TOKEN"
 BUYER_EMAIL_ENV: str = "MERCADO_PAGO_TEST_BUYER_EMAIL"
-
-
-async def _sandbox_token() -> str:
-    """Read a test token, or skip; refuse anything that is not a test account.
-
-    Returns:
-        str: The token.
-    """
-    token = os.environ.get(SELLER_TOKEN_ENV) or os.environ.get(APP_TOKEN_ENV) or ""
-    if not token:
-        pytest.skip(f"neither {SELLER_TOKEN_ENV} nor {APP_TOKEN_ENV} is set")
-    if token.startswith("TEST-"):
-        return token
-    async with HTTPClient(
-        base_url=DEFAULT_BASE_URL,
-        default_headers={"Authorization": f"Bearer {token}"},
-    ) as http:
-        response = await http.request("GET", "/users/me")
-    response.raise_for_status()
-    tags = response.json().get("tags") or []
-    if "test_user" not in tags:
-        pytest.fail("the token does not belong to a test_user account; refusing")
-    return token
+TEST_VISA: dict[str, object] = {
+    "card_number": "4235647728025682",
+    "expiration_month": 11,
+    "expiration_year": 2030,
+    "security_code": "123",
+}
 
 
 @pytest.fixture
-async def provider() -> AsyncIterator[MercadoPagoPixProvider]:
-    """Build the adapter over the sandbox credential.
+async def http() -> AsyncIterator[HTTPClient]:
+    """A client on the test seller's token, after checking it is a test account.
 
     Yields:
-        MercadoPagoPixProvider: The adapter.
+        HTTPClient: The client.
     """
-    token = await _sandbox_token()
+    token = os.environ.get(SELLER_TOKEN_ENV, "")
+    if not token:
+        pytest.skip(f"{SELLER_TOKEN_ENV} is not set")
+    if "@" not in os.environ.get(BUYER_EMAIL_ENV, ""):
+        pytest.skip(f"{BUYER_EMAIL_ENV} must hold the test buyer's e-mail")
     async with HTTPClient(
         base_url=DEFAULT_BASE_URL,
         default_headers={"Authorization": f"Bearer {token}"},
-    ) as http:
-        yield MercadoPagoPixProvider(http)
+    ) as client:
+        me = (await client.request("GET", "/users/me")).json()
+        if "test_user" not in (me.get("tags") or []):
+            pytest.fail("the token does not belong to a test_user account; refusing")
+        yield client
 
 
 def _payer() -> PixPayer:
-    """The payer sent on every sandbox charge, or skip.
+    """The test buyer.
 
     Returns:
-        PixPayer: The test buyer's e-mail. Mercado Pago requires one on a
-        Pix payment, so without it there is nothing to test.
+        PixPayer: The payer, by e-mail.
     """
-    email = os.environ.get(BUYER_EMAIL_ENV, "")
-    if "@" not in email:
-        pytest.skip(f"{BUYER_EMAIL_ENV} must hold the test buyer's e-mail")
-    return PixPayer(email=email)
+    return PixPayer(email=os.environ[BUYER_EMAIL_ENV])
 
 
-async def test_create_read_and_cancel_a_pix_charge(
-    provider: MercadoPagoPixProvider,
-) -> None:
-    """The whole lifecycle short of payment: QR out, read back, cancelled."""
+async def _token(http: HTTPClient, holder: str) -> str:
+    """Tokenize the public test Visa.
+
+    Args:
+        http (HTTPClient): The client.
+        holder (str): Cardholder name — ``APRO`` approves, ``OTHE`` declines.
+
+    Returns:
+        str: The card token.
+    """
+    response = await http.request(
+        "POST",
+        "/v1/card_tokens",
+        json={
+            **TEST_VISA,
+            "cardholder": {
+                "name": holder,
+                "identification": {"type": "CPF", "number": "12345678909"},
+            },
+        },
+    )
+    response.raise_for_status()
+    token: str = response.json()["id"]
+    return token
+
+
+async def test_pix_create_read_and_cancel(http: HTTPClient) -> None:
+    """QR out, read back, cancelled."""
+    provider = MercadoPagoPixProvider(http)
+
     created = await provider.create_pix_charge(
         PixChargeRequest(
             amount_cents=1990,
-            reference="tempest-sandbox-lifecycle",
-            description="tempest-fastapi-sdk sandbox",
+            reference="tempest-sandbox-pix",
+            expires_in=timedelta(minutes=30),
             payer=_payer(),
         )
     )
-
-    assert created.provider == "mercado_pago"
-    assert created.status is PaymentStatus.PENDING
-    assert created.amount_cents == 1990
-    assert created.reference == "tempest-sandbox-lifecycle"
-    assert created.br_code
-    assert created.qr_code_base64
-
     read = await provider.get_pix_charge(created.provider_charge_id)
-
-    assert read.provider_charge_id == created.provider_charge_id
-    assert read.status is PaymentStatus.PENDING
-    assert read.amount_cents == 1990
-
     cancelled = await provider.cancel_pix_charge(created.provider_charge_id)
 
+    assert created.status is PaymentStatus.PENDING
+    assert created.amount_cents == 1990
+    assert created.br_code
+    assert created.qr_code_base64
+    assert read.provider_charge_id == created.provider_charge_id
     assert cancelled.status is PaymentStatus.CANCELLED
-    assert cancelled.provider_charge_id == created.provider_charge_id
+
+
+async def test_card_approved_declined_and_refunded(http: HTTPClient) -> None:
+    """Approve, refund in two steps; a decline comes back, not raised."""
+    provider = MercadoPagoCardProvider(http)
+
+    approved = await provider.create_card_charge(
+        CardChargeRequest(
+            amount_cents=10000,
+            reference="tempest-sandbox-card",
+            card_token=await _token(http, "APRO"),
+            payment_method_id="visa",
+            payer=_payer(),
+        )
+    )
+    declined = await provider.create_card_charge(
+        CardChargeRequest(
+            amount_cents=10000,
+            reference="tempest-sandbox-card-declined",
+            card_token=await _token(http, "OTHE"),
+            payment_method_id="visa",
+            payer=_payer(),
+        )
+    )
+    partial = await provider.refund_card_charge(
+        approved.provider_charge_id, amount_cents=3000
+    )
+    full = await provider.refund_card_charge(approved.provider_charge_id)
+
+    assert approved.status is PaymentStatus.PAID
+    assert declined.status is PaymentStatus.FAILED
+    assert declined.status_detail == "rejected_by_issuer"
+    assert partial.refunded_cents == 3000
+    assert full.status is PaymentStatus.REFUNDED
+    assert full.refunded_cents == 10000
+
+
+async def test_card_authorize_capture_and_release(http: HTTPClient) -> None:
+    """Authorize, capture one; authorize, cancel another."""
+    provider = MercadoPagoCardProvider(http)
+
+    def request(reference: str, token: str) -> CardChargeRequest:
+        return CardChargeRequest(
+            amount_cents=10000,
+            reference=reference,
+            card_token=token,
+            payment_method_id="visa",
+            capture=False,
+            payer=_payer(),
+        )
+
+    held = await provider.create_card_charge(
+        request("tempest-sandbox-hold", await _token(http, "APRO"))
+    )
+    captured = await provider.capture_card_charge(held.provider_charge_id)
+    released_hold = await provider.create_card_charge(
+        request("tempest-sandbox-release", await _token(http, "APRO"))
+    )
+    released = await provider.cancel_card_charge(released_hold.provider_charge_id)
+
+    assert held.status is PaymentStatus.AUTHORIZED
+    assert captured.status is PaymentStatus.PAID
+    assert captured.amount_cents == 10000
+    assert released.status is PaymentStatus.CANCELLED

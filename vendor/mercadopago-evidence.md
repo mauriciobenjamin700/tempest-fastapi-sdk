@@ -426,3 +426,19 @@ token sai `live_mode: true`), Visa `4235 6477 2802 5682`, `11/2030`, CVV
 
 Mastercard `5031 4332 1540 6351` com o mesmo token e corpo: `422
 unprocessable_content`, sem detalhe. Causa não isolada.
+
+### 9.4 Ação logo depois de criar: "ainda não"
+
+Medido em 2026-10-09, 10 tentativas de cada:
+
+| Ação imediata | Primeira resposta | Depois |
+| --- | --- | --- |
+| cancelar order `capture_mode: manual` | `409 processor_communication_error` (*"Try again shortly."*) em 3/10 | as 3 deram `200 canceled` 2 s depois |
+| reembolsar order aprovada (`automatic_async`) | `422 unprocessable_entity` em 7/10, `409 post_processing_operation_pending` em 1/10 | todas reembolsaram em até ~5 s, repetindo com a mesma `X-Idempotency-Key` |
+
+A order aprovada já aparece `processed` enquanto a captura assíncrona termina.
+O adapter repete essas respostas, e só essas (`RETRYABLE_ACTION_ERRORS`,
+`REFUND_RETRYABLE_ERRORS`), com a mesma chave, após 1, 2 e 4 s. Repetir com a
+mesma chave não "envenenou" a chave: as repetições acima reembolsaram.
+O mesmo levantamento achou o `GET /v1/orders/<id inexistente>` respondendo
+`404`, que é o que a simulação de notificação do painel produz na releitura.

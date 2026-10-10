@@ -1,0 +1,68 @@
+{
+  "status": 200,
+  "body": {
+    "id": "ORDTST00000000000000000000000001",
+    "type": "online",
+    "processing_mode": "automatic",
+    "external_reference": "tempest-orders-card-approved",
+    "total_amount": "100.00",
+    "total_paid_amount": "100.00",
+    "country_code": "BRA",
+    "user_id": "1000000001",
+    "status": "refunded",
+    "status_detail": "refunded",
+    "capture_mode": "automatic_async",
+    "currency": "BRL",
+    "created_date": "2026-10-10T01:58:35.891Z",
+    "last_updated_date": "2026-10-10T01:58:48.414Z",
+    "integration_data": {
+      "application_id": "2000000002"
+    },
+    "config": {
+      "online": {
+        "transaction_security": {
+          "validation": "never"
+        }
+      }
+    },
+    "transactions": {
+      "payments": [
+        {
+          "id": "PAY00000000000000000000000002",
+          "amount": "100.00",
+          "paid_amount": "100.00",
+          "reference_id": "0000000000",
+          "refunded_amount": "100.00",
+          "status": "refunded",
+          "status_detail": "refunded",
+          "payment_method": {
+            "id": "visa",
+            "type": "credit_card",
+            "token": "00000000000000000000000000000000",
+            "installments": 1,
+            "installment_amount": "100.00",
+            "transaction_security": {
+              "validation": "never"
+            }
+          }
+        }
+      ],
+      "refunds": [
+        {
+          "id": "REF00000000000000000000000007",
+          "transaction_id": "PAY00000000000000000000000002",
+          "reference_id": "0000000000",
+          "amount": "30.00",
+          "status": "processed"
+        },
+        {
+          "id": "REF00000000000000000000000008",
+          "transaction_id": "PAY00000000000000000000000002",
+          "reference_id": "0000000000",
+          "amount": "70.00",
+          "status": "processed"
+        }
+      ]
+    }
+  }
+}

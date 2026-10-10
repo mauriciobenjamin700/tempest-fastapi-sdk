@@ -46,6 +46,11 @@ class PaymentStatus(BaseStrEnum):
 
     Attributes:
         PENDING (str): Created and waiting for the payer.
+        AUTHORIZED (str): Approved by the card issuer and held, not
+            captured. The money has not moved: capture settles it,
+            cancelling releases the hold. Distinct from :attr:`PENDING`,
+            which waits on the payer, and from :attr:`PAID`, which is
+            settled.
         PAID (str): Settled. The money is with the receiver.
         EXPIRED (str): The window closed before payment.
         CANCELLED (str): Withdrawn by the merchant or the provider.
@@ -64,6 +69,7 @@ class PaymentStatus(BaseStrEnum):
     """
 
     PENDING = "pending"
+    AUTHORIZED = "authorized"
     PAID = "paid"
     EXPIRED = "expired"
     CANCELLED = "cancelled"
@@ -363,6 +369,179 @@ class PixProvider(Protocol):
         ...
 
 
+class CardChargeRequest(BaseSchema):
+    """What a service asks for when it charges a card.
+
+    The card itself never reaches the service: it is tokenized in the
+    browser or app with the provider's public key, and what arrives here is
+    the token. Handling the card number on a server puts that server in PCI
+    DSS scope.
+
+    Attributes:
+        amount_cents (int): The amount, in cents. With installments, the
+            amount the provider's installment options quote for the choice
+            the payer made.
+        reference (str): The identifier the service owns, as in
+            :attr:`PixChargeRequest.reference`.
+        card_token (str): The single-use token the client-side tokenizer
+            produced.
+        payment_method_id (str): The card brand as the provider names it
+            (``visa``, ``master``, ...), which the tokenizer reports.
+        installments (int): How many installments the payer chose, from
+            the options the provider offered for this card and amount.
+        capture (bool): ``True`` charges at once. ``False`` only
+            authorizes: the charge comes back
+            :attr:`PaymentStatus.AUTHORIZED` and waits for
+            :meth:`CardProvider.capture_card_charge` or
+            :meth:`CardProvider.cancel_card_charge`.
+        description (str | None): Free text, where the provider supports it.
+        payer (PixPayer | None): Who is paying. The name is historical — the
+            same payer block serves card and Pix.
+    """
+
+    amount_cents: int = Field(gt=0, description="Valor da cobrança em centavos.")
+    reference: str = Field(
+        min_length=1, description="Identificador da cobrança no lado do serviço."
+    )
+    card_token: str = Field(
+        min_length=1, description="Token do cartão gerado no cliente."
+    )
+    payment_method_id: str = Field(
+        min_length=1, description="Bandeira do cartão (visa, master, ...)."
+    )
+    installments: int = Field(default=1, ge=1, description="Número de parcelas.")
+    capture: bool = Field(default=True, description="Capturar na hora.")
+    description: str | None = Field(default=None, description="Texto da cobrança.")
+    payer: PixPayer | None = Field(default=None, description="Dados do pagador.")
+
+
+class CardCharge(_EnumSafeSchema):
+    """A card charge, in the shape every provider is mapped into.
+
+    Attributes:
+        provider (str): The provider that owns this charge.
+        provider_charge_id (str): The charge's identifier at the provider —
+            what capture, cancel and refund are addressed to.
+        reference (str): The identifier the service sent.
+        amount_cents (int): The amount charged, in cents.
+        refunded_cents (int): How much of it went back to the payer. A
+            partial refund leaves :attr:`status` at
+            :attr:`PaymentStatus.PAID` and shows here.
+        currency (str): ISO 4217 code.
+        status (PaymentStatus): The canonical state. A declined card is
+            :attr:`PaymentStatus.FAILED`, returned, not raised: the charge
+            exists at the provider, and the reason is in
+            :attr:`status_detail`.
+        provider_status (str): The provider's own status string.
+        status_detail (str | None): The provider's reason —
+            ``rejected_by_issuer``, ``waiting_capture``, ``accredited``.
+            What a service shows the payer on a decline comes from here.
+        payment_method_id (str | None): The card brand.
+        installments (int | None): How many installments were charged.
+        raw (dict[str, Any]): The provider's payload as decoded.
+    """
+
+    provider: str = Field(description="Provedor dono desta cobrança.")
+    provider_charge_id: str = Field(
+        description="Identificador da cobrança no provedor."
+    )
+    reference: str = Field(description="Identificador no lado do serviço.")
+    amount_cents: int = Field(description="Valor cobrado em centavos.")
+    refunded_cents: int = Field(default=0, description="Valor devolvido em centavos.")
+    currency: str = Field(default="BRL", description="Código ISO 4217.")
+    status: PaymentStatus = Field(description="Estado canônico da cobrança.")
+    provider_status: str = Field(description="Estado como o provedor o nomeia, cru.")
+    status_detail: str | None = Field(
+        default=None, description="Motivo do estado, como o provedor o nomeia."
+    )
+    payment_method_id: str | None = Field(default=None, description="Bandeira.")
+    installments: int | None = Field(default=None, description="Parcelas cobradas.")
+    raw: dict[str, Any] = Field(
+        default_factory=dict, description="Payload cru do provedor."
+    )
+
+
+class CardProvider(Protocol):
+    """The contract a card integration implements.
+
+    Separate from :class:`PixProvider` because a card charge has a lifecycle
+    Pix does not: it can be authorized and captured later, refunded in part,
+    and declined with a reason. Structural, like every provider seam here.
+
+    A decline is a **result**, not an exception: ``create_card_charge``
+    returns a :class:`CardCharge` with :attr:`PaymentStatus.FAILED` and the
+    reason in :attr:`CardCharge.status_detail`. Exceptions are for the call
+    itself failing — transport, an invalid request — where whether a charge
+    exists is the open question.
+
+    Attributes:
+        provider_name (str): Copied into :attr:`CardCharge.provider`.
+    """
+
+    provider_name: str
+
+    async def create_card_charge(self, request: CardChargeRequest) -> CardCharge:
+        """Charge, or only authorize, a tokenized card.
+
+        Args:
+            request (CardChargeRequest): What to charge, and how.
+
+        Returns:
+            CardCharge: The charge — :attr:`PaymentStatus.PAID`,
+            :attr:`PaymentStatus.AUTHORIZED` or :attr:`PaymentStatus.FAILED`.
+        """
+        ...
+
+    async def get_card_charge(self, charge_id: str) -> CardCharge:
+        """Read a charge back from the provider.
+
+        Args:
+            charge_id (str): :attr:`CardCharge.provider_charge_id`.
+
+        Returns:
+            CardCharge: The charge as the provider reports it now.
+        """
+        ...
+
+    async def capture_card_charge(self, charge_id: str) -> CardCharge:
+        """Settle an authorized charge.
+
+        Args:
+            charge_id (str): :attr:`CardCharge.provider_charge_id`.
+
+        Returns:
+            CardCharge: The charge after capture.
+        """
+        ...
+
+    async def cancel_card_charge(self, charge_id: str) -> CardCharge:
+        """Release an authorization that was not captured.
+
+        Args:
+            charge_id (str): :attr:`CardCharge.provider_charge_id`.
+
+        Returns:
+            CardCharge: The charge after cancellation.
+        """
+        ...
+
+    async def refund_card_charge(
+        self, charge_id: str, amount_cents: int | None = None
+    ) -> CardCharge:
+        """Give money back to the payer, in full or in part.
+
+        Args:
+            charge_id (str): :attr:`CardCharge.provider_charge_id`.
+            amount_cents (int | None): How much to refund. ``None`` refunds
+                whatever is left.
+
+        Returns:
+            CardCharge: The charge after the refund, with
+            :attr:`CardCharge.refunded_cents` updated.
+        """
+        ...
+
+
 class PayoutStatus(BaseStrEnum):
     """Where a payout stands right after the provider accepted it.
 
@@ -452,6 +631,9 @@ class PayoutProvider(Protocol):
 
 
 __all__: list[str] = [
+    "CardCharge",
+    "CardChargeRequest",
+    "CardProvider",
     "PaymentStatus",
     "PayoutProvider",
     "PayoutRequest",

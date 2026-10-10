@@ -1,0 +1,20 @@
+{
+  "status": 200,
+  "body": {
+    "id": "ORDTST00000000000000000000000005",
+    "status": "processed",
+    "status_detail": "accredited",
+    "transactions": {
+      "payments": [
+        {
+          "id": "PAY00000000000000000000000006",
+          "amount": "100.00",
+          "paid_amount": "100.00",
+          "status": "processed",
+          "status_detail": "accredited",
+          "reference_id": "0000000000"
+        }
+      ]
+    }
+  }
+}

@@ -2,6 +2,38 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## Não lançada — Mercado Pago: a API de Payments saiu do SDK
+
+O painel do Mercado Pago marca a API de Payments (`/v1/payments`) como
+*"Esta API será descontinuada em breve"*, e o SDK passou a cobrar pela API de
+Orders. Quem usava o caminho de Payments troca assim:
+
+| Antes | Agora |
+| --- | --- |
+| `client.create_payment(body=PaymentRequest(...))` com Pix | `MercadoPagoPixProvider(http).create_pix_charge(PixChargeRequest(...))` |
+| `client.create_payment(...)` com `token` de cartão | `MercadoPagoCardProvider(http).create_card_charge(CardChargeRequest(...))` |
+| `create_pix_payment` / `get_pix_payment` / `parse_pix_payment` | `create_pix_charge` / `get_pix_charge` — o QR vem em `PixCharge.br_code` e `qr_code_base64` |
+| `client.get_payment(id)` | `get_pix_charge(order_id)` / `get_card_charge(order_id)`, ou `client.get_order(order_id)` |
+| `client.update_payment(id, body={"capture": True})` | `capture_card_charge(order_id)` |
+| `client.update_payment(id, body={"status": "cancelled"})` | `cancel_pix_charge(order_id)` / `cancel_card_charge(order_id)` |
+| `client.create_refund(id, ...)` | `refund_card_charge(order_id, amount_cents=...)` |
+| `PixPayment`, `Payment` | `PixCharge`, `CardCharge`, ou o `Order` gerado |
+| as 7 operações de QR presencial V1/V2 e QR dinâmico antigo | sem substituto neste SDK: a própria spec as marca `deprecated`, e a API de Orders da spec só declara `type: online` |
+
+Três diferenças que pedem ajuste além do nome:
+
+1. **O id muda de forma.** Uma order tem id de texto (`ORD…`), não número.
+   Se você guardava o id do pagamento como inteiro, a coluna vira texto.
+2. **O webhook muda de recurso.** A notificação passa a apontar para a order.
+   Troque a leitura manual de `data.id` por
+   `make_mercado_pago_webhook_delivery_dependency`, e marque o evento de
+   Order na configuração de webhooks da aplicação.
+3. **A credencial precisa ser de uma aplicação "API de Orders".** Medido: a
+   aplicação Checkout Pro de uma conta vendedora de teste responde `401
+   Unauthorized use of live credentials` a cobrança direta. A receita
+   [contas e credenciais de teste](recipes/mercado-pago-sandbox.md) mostra o
+   caminho.
+
 ## 0.309.0 — outras mudanças de comportamento
 
 Além da recusa de chave em `filters` (seção abaixo), a 0.309.0 traz estas

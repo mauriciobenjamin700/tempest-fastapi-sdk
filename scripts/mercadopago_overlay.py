@@ -65,6 +65,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from overlay_enums import lift_enum
+
 OFFICIAL_SDK_VERSION: str = "3.5.0"
 """The release of ``mercadopago`` (PyPI) :data:`OFFICIAL_SDK_CALLS` was read from.
 
@@ -650,6 +652,195 @@ DEAD_OPERATIONS: tuple[DeadOperation, ...] = (
 )
 """Operations removed because the API does not route them."""
 
+DEPRECATED_OPERATIONS: tuple[DeadOperation, ...] = (
+    DeadOperation(
+        method="post",
+        path="/v1/payments",
+        evidence=(
+            f"the provider's dashboard labels the Payments API \"Esta API será "
+            f'descontinuada em breve" (observed {SANDBOX_PROBE_DATE}); the '
+            "Orders API (/v1/orders) replaces it, measured end to end in the "
+            "sandbox — vendor/mercadopago-evidence.md section 9"
+        ),
+    ),
+    DeadOperation(
+        method="get",
+        path="/v1/payments/search",
+        evidence=(
+            f"the provider's dashboard labels the Payments API \"Esta API será "
+            f'descontinuada em breve" (observed {SANDBOX_PROBE_DATE}); the '
+            "Orders API (/v1/orders) replaces it, measured end to end in the "
+            "sandbox — vendor/mercadopago-evidence.md section 9"
+        ),
+    ),
+    DeadOperation(
+        method="get",
+        path="/v1/payments/{id}",
+        evidence=(
+            f"the provider's dashboard labels the Payments API \"Esta API será "
+            f'descontinuada em breve" (observed {SANDBOX_PROBE_DATE}); the '
+            "Orders API (/v1/orders) replaces it, measured end to end in the "
+            "sandbox — vendor/mercadopago-evidence.md section 9"
+        ),
+    ),
+    DeadOperation(
+        method="put",
+        path="/v1/payments/{id}",
+        evidence=(
+            f"the provider's dashboard labels the Payments API \"Esta API será "
+            f'descontinuada em breve" (observed {SANDBOX_PROBE_DATE}); the '
+            "Orders API (/v1/orders) replaces it, measured end to end in the "
+            "sandbox — vendor/mercadopago-evidence.md section 9"
+        ),
+    ),
+    DeadOperation(
+        method="put",
+        path="/v1/payments/{id}/cancellations",
+        evidence=(
+            f"the provider's dashboard labels the Payments API \"Esta API será "
+            f'descontinuada em breve" (observed {SANDBOX_PROBE_DATE}); the '
+            "Orders API (/v1/orders) replaces it, measured end to end in the "
+            "sandbox — vendor/mercadopago-evidence.md section 9"
+        ),
+    ),
+    DeadOperation(
+        method="get",
+        path="/v1/payments/{id}/refunds",
+        evidence=(
+            f"the provider's dashboard labels the Payments API \"Esta API será "
+            f'descontinuada em breve" (observed {SANDBOX_PROBE_DATE}); the '
+            "Orders API (/v1/orders) replaces it, measured end to end in the "
+            "sandbox — vendor/mercadopago-evidence.md section 9"
+        ),
+    ),
+    DeadOperation(
+        method="post",
+        path="/v1/payments/{id}/refunds",
+        evidence=(
+            f"the provider's dashboard labels the Payments API \"Esta API será "
+            f'descontinuada em breve" (observed {SANDBOX_PROBE_DATE}); the '
+            "Orders API (/v1/orders) replaces it, measured end to end in the "
+            "sandbox — vendor/mercadopago-evidence.md section 9"
+        ),
+    ),
+    DeadOperation(
+        method="get",
+        path="/v1/payments/{id}/refunds/{refund_id}",
+        evidence=(
+            f"the provider's dashboard labels the Payments API \"Esta API será "
+            f'descontinuada em breve" (observed {SANDBOX_PROBE_DATE}); the '
+            "Orders API (/v1/orders) replaces it, measured end to end in the "
+            "sandbox — vendor/mercadopago-evidence.md section 9"
+        ),
+    ),
+    DeadOperation(
+        method="get",
+        path=("/instore/qr/seller/collectors/{user_id}/pos/{external_pos_id}/orders"),
+        evidence="the vendored specification itself marks it deprecated: true",
+    ),
+    DeadOperation(
+        method="delete",
+        path=("/instore/qr/seller/collectors/{user_id}/pos/{external_pos_id}/orders"),
+        evidence="the vendored specification itself marks it deprecated: true",
+    ),
+    DeadOperation(
+        method="put",
+        path=("/mpmobile/instore/qr/{user_id}/{external_id}"),
+        evidence="the vendored specification itself marks it deprecated: true",
+    ),
+    DeadOperation(
+        method="delete",
+        path=("/mpmobile/instore/qr/{user_id}/{external_id}"),
+        evidence="the vendored specification itself marks it deprecated: true",
+    ),
+    DeadOperation(
+        method="put",
+        path=(
+            "/instore/qr/seller/collectors/{user_id}/stores/{external_store_id}/pos/{external_pos_id}/orders"
+        ),
+        evidence="the vendored specification itself marks it deprecated: true",
+    ),
+    DeadOperation(
+        method="post",
+        path=(
+            "/instore/orders/qr/seller/collectors/{user_id}/pos/{external_pos_id}/qrs"
+        ),
+        evidence="the vendored specification itself marks it deprecated: true",
+    ),
+    DeadOperation(
+        method="put",
+        path=(
+            "/instore/orders/qr/seller/collectors/{user_id}/pos/{external_pos_id}/qrs"
+        ),
+        evidence="the vendored specification itself marks it deprecated: true",
+    ),
+)
+"""Operations removed because the provider is retiring them.
+
+Two sources, both from the provider. The Payments API (``/v1/payments``
+and its refunds) is labelled *"Esta API será descontinuada em breve"* on
+the dashboard where an integration picks its API type, and the Orders API
+that replaces it was exercised end to end in the sandbox — Pix and card,
+create, read, capture, cancel, partial and full refund. The in-store QR
+operations are the ones the vendored specification itself marks
+``deprecated: true``.
+
+Removed rather than marked: a deprecated route kept in the client is a
+route a new integration builds on. The provider's own Python SDK still
+calls the Payments API, which is why :data:`PROVIDER_DEPRECATED_SDK_CALLS`
+exempts those calls from the "the SDK is the authority" rule instead of
+quietly failing it.
+"""
+
+LIFTED_ENUMS: dict[str, dict[str, str]] = {
+    "Order": {"status": "OrderStatus", "status_detail": "OrderStatusDetail"},
+    "OrderTransactionPayment": {
+        "status": "OrderTransactionPaymentStatus",
+        "status_detail": "OrderTransactionPaymentStatusDetail",
+    },
+}
+"""Order response states the document lists and the API does not stay within.
+
+Measured on :data:`SANDBOX_PROBE_DATE` (``vendor/mercadopago-evidence.md``
+section 9), every value outside the declared ``enum``:
+
+* ``Order.status``: ``failed`` (a declined card), ``refunded``;
+* ``Order.status_detail``: ``canceled``, ``failed``, ``partially_refunded``,
+  ``refunded``;
+* ``OrderTransactionPayment.status``: ``canceled``, ``failed``,
+  ``refunded``;
+* ``OrderTransactionPayment.status_detail``: ``waiting_transfer``,
+  ``canceled_transaction``, ``rejected_by_issuer``, ``refunded``.
+
+Before this lift, ``Order.model_validate`` refused the answer to **creating
+a Pix** (``waiting_transfer`` on the payment), and the reads of a cancelled,
+refunded or declined order — so ``create_order`` raised after the order
+existed. The same correction as OpenPix's ``Charge.status``
+(:func:`overlay_enums.lift_enum`): the declared values become a component of
+their own, so the generated enum class keeps its name, and the property
+accepts any string.
+"""
+
+PROVIDER_DEPRECATED_SDK_CALLS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("POST", "/v1/payments"),
+        ("GET", "/v1/payments/search"),
+        ("GET", "/v1/payments/{}"),
+        ("PUT", "/v1/payments/{}"),
+        ("GET", "/v1/payments/{}/refunds"),
+        ("POST", "/v1/payments/{}/refunds"),
+        ("GET", "/v1/payments/{}/refunds/{}"),
+    }
+)
+"""Calls :data:`OFFICIAL_SDK_CALLS` makes that this package no longer models.
+
+Every one belongs to the Payments API, removed by
+:data:`DEPRECATED_OPERATIONS`. The official SDK still ships them; the
+provider's dashboard says the API is going away. A test pins that the
+operations the SDK calls and we do not model are exactly these, so any
+other gap still fails.
+"""
+
 UNROUTED_OPERATIONS: tuple[DeadOperation, ...] = (
     DeadOperation(
         method="put",
@@ -845,6 +1036,10 @@ class OverlayReport:
             description.
         unrouted_operations (tuple[str, ...]): ``METHOD path`` per
             operation marked with :data:`UNROUTED_NOTE`.
+        deprecated_operations (tuple[str, ...]): ``METHOD path`` per
+            operation removed by :data:`DEPRECATED_OPERATIONS`.
+        pruned_schemas (tuple[str, ...]): Component schemas only those
+            operations reached, removed with them.
         collisions (tuple[str, ...]): Corrections left in place because the
             destination already declares that verb. Reported rather than
             resolved: which of the two is right is a question about the
@@ -856,6 +1051,8 @@ class OverlayReport:
     removed_operations: tuple[str, ...] = ()
     unverified_operations: tuple[str, ...] = ()
     unrouted_operations: tuple[str, ...] = ()
+    deprecated_operations: tuple[str, ...] = ()
+    pruned_schemas: tuple[str, ...] = ()
     collisions: tuple[str, ...] = ()
 
 
@@ -914,6 +1111,58 @@ def _mark_unverified(paths: dict[str, Any]) -> tuple[str, ...]:
             operation["description"] = description + UNVERIFIED_NOTE
             marked.append(f"{method.upper()} {path}")
     return tuple(marked)
+
+
+def _reachable_schemas(document: dict[str, Any]) -> set[str]:
+    """Name every component schema an operation reaches, transitively.
+
+    Args:
+        document (dict[str, Any]): The specification.
+
+    Returns:
+        set[str]: Names under ``components.schemas`` reachable from any
+        operation in ``paths``.
+
+    Used to prune what :data:`DEPRECATED_OPERATIONS` leaves behind, and
+    only that: :func:`apply` compares the set before and after removing
+    those operations, so a schema that was already unreferenced in the
+    vendored document stays — that is the provider's document, not a
+    consequence of this module.
+    """
+    stored = (document.get("components") or {}).get("schemas") or {}
+    found: set[str] = set()
+    pending: list[str] = list(_schema_refs(document.get("paths") or {}))
+    while pending:
+        name = pending.pop()
+        if name in found:
+            continue
+        found.add(name)
+        pending.extend(_schema_refs(stored.get(name) or {}))
+    return found
+
+
+def _schema_refs(node: object) -> list[str]:
+    """Collect the component schema names a node references.
+
+    Args:
+        node (object): Any part of the document.
+
+    Returns:
+        list[str]: Names from every ``$ref`` to ``#/components/schemas/``.
+    """
+    prefix = "#/components/schemas/"
+    names: list[str] = []
+    stack: list[object] = [node]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, dict):
+            ref = current.get("$ref")
+            if isinstance(ref, str) and ref.startswith(prefix):
+                names.append(ref.removeprefix(prefix))
+            stack.extend(current.values())
+        elif isinstance(current, list):
+            stack.extend(current)
+    return names
 
 
 def _mark_unrouted(paths: dict[str, Any]) -> tuple[str, ...]:
@@ -1073,6 +1322,27 @@ def apply(document: dict[str, Any]) -> tuple[dict[str, Any], OverlayReport]:
         if not any(key in _VERBS for key in item):
             paths.pop(dead.path)
 
+    reachable_before = _reachable_schemas(patched)
+    deprecated: list[str] = []
+    for retired in DEPRECATED_OPERATIONS:
+        item = paths.get(retired.path)
+        if not isinstance(item, dict) or retired.method not in item:
+            continue
+        item.pop(retired.method)
+        deprecated.append(f"{retired.method.upper()} {retired.path}")
+        if not any(key in _VERBS for key in item):
+            paths.pop(retired.path)
+    orphaned = reachable_before - _reachable_schemas(patched)
+    components = patched.get("components")
+    if orphaned and isinstance(components, dict):
+        stored = components.get("schemas")
+        if isinstance(stored, dict):
+            for name in orphaned:
+                stored.pop(name, None)
+
+    for schema_name, properties in LIFTED_ENUMS.items():
+        lift_enum(patched, schema_name, properties)
+
     schemas = patched.setdefault("components", {}).setdefault("schemas", {})
     if isinstance(schemas, dict):
         for name, schema in OBSERVED_SCHEMAS.items():
@@ -1090,6 +1360,8 @@ def apply(document: dict[str, Any]) -> tuple[dict[str, Any], OverlayReport]:
         moved_paths=tuple(moved),
         added_operations=tuple(added),
         removed_operations=tuple(removed),
+        deprecated_operations=tuple(deprecated),
+        pruned_schemas=tuple(sorted(orphaned)),
         unverified_operations=_mark_unverified(paths),
         unrouted_operations=_mark_unrouted(paths),
         collisions=tuple(collisions),
@@ -1099,12 +1371,15 @@ def apply(document: dict[str, Any]) -> tuple[dict[str, Any], OverlayReport]:
 __all__: list[str] = [
     "ADDED_OPERATIONS",
     "DEAD_OPERATIONS",
+    "DEPRECATED_OPERATIONS",
+    "LIFTED_ENUMS",
     "OBSERVED_SCHEMAS",
     "OFFICIAL_SDK_CALLS",
     "OFFICIAL_SDK_VERSION",
     "PATH_CORRECTIONS",
     "PROBED_OPERATIONS",
     "PROBE_DATE",
+    "PROVIDER_DEPRECATED_SDK_CALLS",
     "SANDBOX_PROBE_DATE",
     "SANDBOX_ROUTED_OPERATIONS",
     "SDK_COVERAGE_DATE",
