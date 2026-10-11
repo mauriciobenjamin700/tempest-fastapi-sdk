@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hmac
 from collections.abc import Callable, Collection, Coroutine, Iterable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -18,6 +18,27 @@ from tempest_fastapi_sdk.utils.token_types import (
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.utils.jwt import JWTUtils
+
+
+def _resolve_tokens(
+    tokens: JWTUtils | Callable[[Request], JWTUtils], request: Request
+) -> JWTUtils:
+    """Return the ``JWTUtils`` for this request.
+
+    Args:
+        tokens (JWTUtils | Callable[[Request], JWTUtils]): The helper itself,
+            or a factory called with the request — so a dependency declared
+            at import time can read a helper built later, in ``create_app``
+            (``lambda request: request.app.state.jwt``).
+        request (Request): The request being served.
+
+    Returns:
+        JWTUtils: The helper to decode with. An object with a ``decode``
+        method is taken as the helper; anything else is called.
+    """
+    if hasattr(tokens, "decode"):
+        return cast("JWTUtils", tokens)
+    return tokens(request)
 
 
 def make_token_dependency(
@@ -88,7 +109,7 @@ async def require_x_token(
 
 
 def make_bearer_token_dependency(
-    tokens: JWTUtils,
+    tokens: JWTUtils | Callable[[Request], JWTUtils],
     *,
     soft: bool = False,
     bearer_scheme: HTTPBearer | None = None,
@@ -129,7 +150,9 @@ def make_bearer_token_dependency(
         always over TLS, and scrub the value from your log format.
 
     Args:
-        tokens (JWTUtils): The JWT helper used to verify the token.
+        tokens (JWTUtils | Callable[[Request], JWTUtils]): The JWT helper used
+            to verify the token, or a factory called with each request that
+            returns it — for a helper built after import, in ``create_app``.
         soft (bool): When ``True``, return ``None`` on missing or
             invalid tokens instead of raising. Useful for endpoints
             that work both authenticated and anonymous.
@@ -192,8 +215,9 @@ def make_bearer_token_dependency(
             if soft:
                 return None
             raise UnauthorizedException(message=error_message)
+        resolved = _resolve_tokens(tokens, request)
         if soft:
-            payload = tokens.decode_or_none(raw_token)
+            payload = resolved.decode_or_none(raw_token)
             if payload is None or not token_type_allowed(
                 payload,
                 accepted_typ,
@@ -202,7 +226,7 @@ def make_bearer_token_dependency(
             ):
                 return None
             return payload
-        payload = tokens.decode(raw_token)
+        payload = resolved.decode(raw_token)
         if not token_type_allowed(
             payload,
             accepted_typ,
@@ -220,7 +244,7 @@ def make_bearer_token_dependency(
 
 
 def make_jwt_user_dependency(
-    tokens: JWTUtils,
+    tokens: JWTUtils | Callable[[Request], JWTUtils],
     user_loader: Callable[..., Coroutine[Any, Any, Any]],
     *,
     soft: bool = False,
@@ -269,7 +293,9 @@ def make_jwt_user_dependency(
     **detached** instance.
 
     Args:
-        tokens (JWTUtils): The JWT helper used to verify the token.
+        tokens (JWTUtils | Callable[[Request], JWTUtils]): The JWT helper used
+            to verify the token, or a factory called with each request that
+            returns it — for a helper built after import, in ``create_app``.
         user_loader (Callable[..., Coroutine[Any, Any, Any]]): Async
             callable that receives the subject (typically the user id
             as a string) and returns the loaded user. When
@@ -399,7 +425,7 @@ def make_jwt_user_dependency(
 
 
 def make_role_dependency(
-    tokens: JWTUtils,
+    tokens: JWTUtils | Callable[[Request], JWTUtils],
     required_roles: Iterable[str],
     *,
     roles_claim: str = "roles",
@@ -417,7 +443,9 @@ def make_role_dependency(
     requires every listed role.
 
     Args:
-        tokens (JWTUtils): The JWT helper used to verify the token.
+        tokens (JWTUtils | Callable[[Request], JWTUtils]): The JWT helper used
+            to verify the token, or a factory called with each request that
+            returns it — for a helper built after import, in ``create_app``.
         required_roles (Iterable[str]): Roles the route accepts.
         roles_claim (str): Which JWT claim carries the roles.
             Defaults to ``"roles"``.
@@ -469,7 +497,7 @@ def make_role_dependency(
 
 
 def make_permission_dependency(
-    tokens: JWTUtils,
+    tokens: JWTUtils | Callable[[Request], JWTUtils],
     required_permissions: Iterable[str],
     *,
     permissions_claim: str = "permissions",
@@ -486,7 +514,9 @@ def make_permission_dependency(
     listed permission must be granted.
 
     Args:
-        tokens (JWTUtils): The JWT helper used to verify the token.
+        tokens (JWTUtils | Callable[[Request], JWTUtils]): The JWT helper used
+            to verify the token, or a factory called with each request that
+            returns it — for a helper built after import, in ``create_app``.
         required_permissions (Iterable[str]): Permissions the route
             requires.
         permissions_claim (str): JWT claim carrying the permissions.

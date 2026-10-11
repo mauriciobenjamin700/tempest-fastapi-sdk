@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Dependências declaradas no import, recursos criados no `create_app` (#493):
+  `make_jwt_user_dependency`, `make_bearer_token_dependency`,
+  `make_role_dependency` e `make_permission_dependency` aceitam, no lugar do
+  `JWTUtils`, uma função `(request) -> JWTUtils` chamada a cada request;
+  `make_rate_limit_dependency` aceita o mesmo para o store. E o
+  `make_auth_router` registra o `session_factory` como `Depends` de verdade
+  quando ele é uma função geradora, então um `get_session` com
+  sub-dependências funciona e o `app.dependency_overrides[get_session]` vale
+  para as rotas de auth; o callable sem argumentos de antes continua
+  funcionando. Medido: dois apps com segredos diferentes e a mesma
+  dependency de módulo recusam o token um do outro, e cada um conta o rate
+  limit no seu store.
 - `SubjectGraph(value_matches={"invites.to_email": "email"})`: coluna que
   identifica o titular por valor, e não por chave estrangeira (o convite
   enviado **ao** titular aponta para quem mandou). `condition`, `export` e

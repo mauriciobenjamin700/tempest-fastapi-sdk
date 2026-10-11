@@ -23,7 +23,7 @@ import hashlib
 import inspect
 import json
 from collections.abc import Awaitable, Callable, Coroutine, Sequence
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Request, Response
 
@@ -160,8 +160,30 @@ def _route_scope(request: Request) -> str:
     return f"{request.method} {path}"
 
 
+def _resolve_store(
+    store: RateLimitStore | Callable[[Request], RateLimitStore], request: Request
+) -> RateLimitStore:
+    """Return the counter backend for this request.
+
+    Args:
+        store (RateLimitStore | Callable[[Request], RateLimitStore]): The
+            store itself, or a factory called with the request — so a
+            dependency declared at import time counts in a store built later,
+            in ``create_app`` (``lambda request:
+            request.app.state.rate_limit_store``).
+        request (Request): The request being served.
+
+    Returns:
+        RateLimitStore: The store to count in. An object with a ``hit``
+        method is taken as the store; anything else is called.
+    """
+    if hasattr(store, "hit"):
+        return cast("RateLimitStore", store)
+    return store(request)
+
+
 def make_rate_limit_dependency(
-    store: RateLimitStore,
+    store: RateLimitStore | Callable[[Request], RateLimitStore],
     *,
     max_requests: int,
     window_seconds: float,
@@ -206,10 +228,11 @@ def make_rate_limit_dependency(
     routes to make them share a budget.
 
     Args:
-        store (RateLimitStore): Counter backend —
-            :class:`~tempest_fastapi_sdk.MemoryRateLimitStore` for one
-            process, :class:`~tempest_fastapi_sdk.RedisRateLimitStore` to
-            share counters across replicas.
+        store (RateLimitStore | Callable[[Request], RateLimitStore]): Counter
+            backend — :class:`~tempest_fastapi_sdk.MemoryRateLimitStore` for
+            one process, :class:`~tempest_fastapi_sdk.RedisRateLimitStore`
+            to share counters across replicas — or a factory called with each
+            request that returns it, for a store built after import.
         max_requests (int): Requests allowed per key inside the window.
         window_seconds (float): Sliding-window length in seconds.
         key (RateLimitKeyFunc | Sequence[RateLimitKeyFunc] | None): Key
@@ -288,9 +311,10 @@ def make_rate_limit_dependency(
         if not keys:
             return
         prefix = scope if scope is not None else _route_scope(request)
+        counter = _resolve_store(store, request)
         remaining = max_requests
         for bucket in keys:
-            result = await store.hit(
+            result = await counter.hit(
                 f"{prefix}:{bucket}",
                 max_requests,
                 window_seconds,
