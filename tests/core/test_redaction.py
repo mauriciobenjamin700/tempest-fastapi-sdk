@@ -550,3 +550,64 @@ class TestWiring:
 
         RedactionFilter(RedactionPolicy()).filter(record)
         assert record.msg == f"planted {REDACTED}"
+
+
+class TestExactKeys:
+    """``exact_keys`` matches a short name by equality (#492).
+
+    As a substring, ``code`` also matched ``status_code``, ``error_code`` and
+    ``country_code``, so an access log lost the response status; the only
+    way out was a subclass overriding ``is_sensitive_key``.
+    """
+
+    def test_the_key_matches_and_the_longer_names_do_not(self) -> None:
+        policy = RedactionPolicy(exact_keys={"code"})
+
+        assert policy.is_sensitive_key("code")
+        assert policy.is_sensitive_key("Code")
+        assert not policy.is_sensitive_key("status_code")
+        assert not policy.is_sensitive_key("country_code")
+
+    def test_free_text_keeps_the_status_code(self) -> None:
+        policy = RedactionPolicy(exact_keys={"code"})
+
+        redacted = policy.redact_text("GET /invite?code=123456 status_code=200")
+
+        assert redacted == "GET /invite?code=[REDACTED] status_code=200"
+
+    def test_extra_and_nested_dicts_are_redacted(self) -> None:
+        policy = RedactionPolicy(exact_keys={"code"})
+
+        assert policy.redact_value({"code": "123"}) == {"code": "[REDACTED]"}
+        assert policy.redact_value({"payload": {"code": "123"}}) == {
+            "payload": {"code": "[REDACTED]"}
+        }
+
+    def test_exact_keys_alone_still_scan_free_text(self) -> None:
+        """No substring fragment at all: the ``key=value`` scan still runs."""
+        policy = RedactionPolicy(keys=(), patterns=(), exact_keys={"code"})
+
+        assert policy.redact_text("code=9 status_code=200") == (
+            "code=[REDACTED] status_code=200"
+        )
+
+    def test_a_subclass_overriding_is_sensitive_key_keeps_working(self) -> None:
+        """The workaround services already ship is not broken."""
+
+        class _PinPolicy(RedactionPolicy):
+            """A service policy written before ``exact_keys`` existed."""
+
+            def is_sensitive_key(self, key: str) -> bool:
+                """Hide ``pin`` by equality, then defer to the SDK.
+
+                Args:
+                    key (str): The key to test.
+
+                Returns:
+                    bool: Whether the value is hidden.
+                """
+                return key.lower() == "pin" or super().is_sensitive_key(key)
+
+        assert _PinPolicy().redact_text("pin=1234 status_code=200") == (
+            "pin=[REDACTED] status_code=200"
+        )

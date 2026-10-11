@@ -459,6 +459,11 @@ belongs to your domain. What it does:
 - **`extra_keys` / `extra_patterns`** add without restating the defaults;
   `keys` / `patterns` replace them. String patterns are compiled at
   construction.
+- **`exact_keys`** compares by **equality**, for a short name a substring
+  would over-match: with `RedactionPolicy(exact_keys={"code"})`,
+  `"GET /invite?code=123456 status_code=200"` comes out as
+  `"GET /invite?code=[REDACTED] status_code=200"` — `code` is hidden, the
+  response status stays. It applies to `extra=` and nested dicts too.
 
 The filter goes on **every handler** `configure_logging` installs — stdout
 and the six files — and not on the logger: a logger's filters do not run for

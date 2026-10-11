@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `RedactionPolicy(exact_keys=...)`: chaves comparadas por **igualdade**
+  (depois da mesma normalização), para nome curto e comum que a substring
+  pegaria demais. Com `exact_keys={"code"}`,
+  `"GET /invite?code=123456 status_code=200"` sai
+  `"GET /invite?code=[REDACTED] status_code=200"`; antes, `extra_keys={"code"}`
+  escondia também `status_code`, e a saída era sobrescrever
+  `is_sensitive_key` numa subclasse — que continua funcionando (#492).
 - `FakeObjectStorageClient` em `tempest_fastapi_sdk.testing.fakes`: o client de
   object storage em memória, com as assinaturas e os retornos do
   `AsyncMinIOClient` (`put_object` devolve o ETag, `remove_objects` os

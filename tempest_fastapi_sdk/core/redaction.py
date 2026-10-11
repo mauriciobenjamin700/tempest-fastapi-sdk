@@ -43,6 +43,11 @@ Matching is by **substring** on the key normalized to lower case with
 ``Set-Cookie`` and ``client_secret`` all match. Substring matching errs on
 the side of hiding: ``email_verified`` and ``token_type`` are redacted too,
 which costs a field's readability and never leaks one.
+
+Substring is right for an unambiguous name (``password``). A short, common
+name such as ``code`` or ``pin`` would hide ``status_code`` and
+``country_code`` as well, so it goes in :attr:`RedactionPolicy.exact_keys`,
+compared by equality, instead.
 """
 
 EMAIL_PATTERN: re.Pattern[str] = re.compile(
@@ -168,6 +173,12 @@ class RedactionPolicy:
             :data:`DEFAULT_REDACT_KEYS`.
         extra_keys (Collection[str]): Additional key fragments, added to
             :attr:`keys`.
+        exact_keys (Collection[str]): Keys matched by **equality** after the
+            same normalization, for a short name a substring would
+            over-match: ``exact_keys={"code"}`` hides ``code`` and ``Code``
+            but leaves ``status_code`` alone. They apply everywhere the
+            fragments do — ``extra=`` fields, nested dicts and ``key=value``
+            in free text.
         patterns (Sequence[re.Pattern[str] | str]): Base text patterns.
             Defaults to :data:`DEFAULT_REDACT_PATTERNS`. Strings are
             compiled.
@@ -179,10 +190,12 @@ class RedactionPolicy:
 
     keys: Collection[str] = DEFAULT_REDACT_KEYS
     extra_keys: Collection[str] = ()
+    exact_keys: Collection[str] = ()
     patterns: Sequence[re.Pattern[str] | str] = DEFAULT_REDACT_PATTERNS
     extra_patterns: Sequence[re.Pattern[str] | str] = ()
     replacement: str = REDACTED
     _fragments: tuple[str, ...] = field(init=False, repr=False, compare=False)
+    _exact: frozenset[str] = field(init=False, repr=False, compare=False)
     _compiled: tuple[re.Pattern[str], ...] = field(
         init=False, repr=False, compare=False
     )
@@ -203,6 +216,9 @@ class RedactionPolicy:
             for pattern in (*self.patterns, *self.extra_patterns)
         )
         object.__setattr__(self, "_fragments", fragments)
+        object.__setattr__(
+            self, "_exact", frozenset(_normalize_key(key) for key in self.exact_keys)
+        )
         object.__setattr__(self, "_compiled", compiled)
         object.__setattr__(
             self, "_key_value", _build_key_value_pattern(self.replacement)
@@ -213,17 +229,20 @@ class RedactionPolicy:
         """Return whether a key's value must be redacted whole.
 
         Args:
-            key (str): The key to test. Matched by substring after
-                normalizing to lower case with ``-`` turned into ``_``.
+            key (str): The key to test, normalized to lower case with ``-``
+                turned into ``_``. It matches when it equals one of
+                :attr:`exact_keys` or contains one of the fragments.
 
         Returns:
-            bool: ``True`` when the key contains a sensitive fragment.
+            bool: ``True`` when the key is sensitive.
         """
         cached = self._key_cache.get(key)
         if cached is not None:
             return cached
         normalized = _normalize_key(key)
-        sensitive = any(fragment in normalized for fragment in self._fragments)
+        sensitive = normalized in self._exact or any(
+            fragment in normalized for fragment in self._fragments
+        )
         if len(self._key_cache) < _KEY_CACHE_LIMIT:
             self._key_cache[key] = sensitive
         return sensitive
@@ -265,7 +284,7 @@ class RedactionPolicy:
             :attr:`replacement`. The key and separator of a ``key=value``
             pair are kept, so the line still says *what* was hidden.
         """
-        if self._fragments and ("=" in text or ":" in text):
+        if (self._fragments or self._exact) and ("=" in text or ":" in text):
             text = self._key_value.sub(self._replace_pair, text)
         for pattern in self._compiled:
             text = pattern.sub(self.replacement, text)

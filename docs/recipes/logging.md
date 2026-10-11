@@ -455,6 +455,11 @@ Saída (capturada rodando o exemplo, Python 3.11):
 - **`extra_keys` / `extra_patterns`** acrescentam sem repetir os defaults;
   `keys` / `patterns` substituem. Padrão em string é compilado na
   construção.
+- **`exact_keys`** compara por **igualdade**, para nome curto que a
+  substring pegaria demais: com `RedactionPolicy(exact_keys={"code"})`,
+  `"GET /invite?code=123456 status_code=200"` sai
+  `"GET /invite?code=[REDACTED] status_code=200"` — `code` some, o status da
+  resposta fica. Vale também para `extra=` e dict aninhado.
 
 O filtro vai em **todo handler** que `configure_logging` instala — stdout e
 os seis arquivos —, e não no logger: filtro de logger não roda para registro
