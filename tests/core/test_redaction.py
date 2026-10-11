@@ -353,42 +353,101 @@ class TestIdempotence:
         assert record.getMessage() == original.getMessage()
 
 
-class TestMarkerIsNotAPrefixTest:
-    """Issue #489: a secret that starts with the marker still redacts.
+class TestMarkerAsAValueUnit:
+    """Issue #489: the marker is a value unit, not a bare prefix.
 
-    The idempotency check compared the value against ``startswith``, so a
-    replacement that is a prefix of the real value (``***`` in
-    ``password=***hunter2``) made the pair look already redacted and left
-    the secret in clear.
+    ``_KEY_VALUE_PATTERN``'s value group stops at ``]`` again — as before
+    #489 — so ``[token=abc]`` keeps its closing bracket. To still match an
+    already-redacted bracketed marker whole, the replacement is accepted as
+    one unit, so ``token=[REDACTED]`` is a single value while
+    ``token=[REDACTED]supersecret`` keeps going past the ``]`` and redacts.
     """
 
-    def test_replacement_prefix_does_not_hide_the_secret(self) -> None:
-        policy = RedactionPolicy(replacement="***")
-        assert policy.redact_text("password=***hunter2") == "password=***"
+    @pytest.mark.parametrize(
+        ("sample", "expected"),
+        [
+            ("[token=abc]", f"[token={REDACTED}]"),
+            ("cfg[token=abc] next", f"cfg[token={REDACTED}] next"),
+            ("token=[REDACTED]", "token=[REDACTED]"),
+            ("token=[REDACTED]supersecret", "token=[REDACTED]"),
+        ],
+    )
+    def test_the_default_marker_keeps_a_closing_bracket(
+        self, sample: str, expected: str
+    ) -> None:
+        assert RedactionPolicy().redact_text(sample) == expected
 
-    def test_single_char_replacement_does_not_hide_the_secret(self) -> None:
-        policy = RedactionPolicy(replacement="x")
-        assert policy.redact_text("password=xyz123") == "password=x"
+    @pytest.mark.parametrize(
+        ("replacement", "sample", "expected"),
+        [
+            ("***", "password=***hunter2", "password=***"),
+            ("x", "password=xyz123", "password=x"),
+            ("***", "password=***", "password=***"),
+        ],
+    )
+    def test_a_marker_that_prefixes_the_secret_still_redacts(
+        self, replacement: str, sample: str, expected: str
+    ) -> None:
+        assert RedactionPolicy(replacement=replacement).redact_text(sample) == expected
 
-    def test_default_bracketed_marker_does_not_hide_the_secret(self) -> None:
+    @pytest.mark.parametrize(
+        ("message", "args", "expected"),
+        [
+            ("token=%(token)s", ({"token": "abc"},), f"token={REDACTED}"),
+            (
+                "payload=%s",
+                ({"password": "x"},),
+                f"payload={{'password': '{REDACTED}'}}",
+            ),
+            ("items=%s", (["token=abc"],), f"items=['token={REDACTED}']"),
+        ],
+    )
+    def test_rendered_arguments_land_with_one_clean_marker(
+        self, message: str, args: tuple[object, ...], expected: str
+    ) -> None:
+        record = _record(message, args)
+
+        RedactionFilter().filter(record)
+
+        assert record.getMessage() == expected
+
+    def test_a_closing_bracket_stops_the_value(self) -> None:
+        """The bracket ends the value, so the one after the marker is kept."""
         policy = RedactionPolicy()
-        assert policy.redact_text("token=[REDACTED]supersecret") == "token=[REDACTED]"
 
-    def test_a_closing_bracket_after_the_marker_is_not_a_boundary(self) -> None:
-        policy = RedactionPolicy()
-        assert policy.redact_text("password=[REDACTED]]secret") == "password=[REDACTED]"
-
-    def test_a_real_value_that_is_exactly_the_marker_stays(self) -> None:
-        policy = RedactionPolicy(replacement="***")
-        once = policy.redact_text("password=***")
-        assert once == "password=***"
-        assert policy.redact_text(once) == once
+        assert (
+            policy.redact_text("password=[REDACTED]]secret")
+            == "password=[REDACTED]]secret"
+        )
 
     def test_marker_followed_by_a_delimiter_is_a_real_marker(self) -> None:
         policy = RedactionPolicy()
         assert (
             policy.redact_text("token=[REDACTED], next=1") == "token=[REDACTED], next=1"
         )
+
+    @pytest.mark.parametrize(
+        "sample",
+        [
+            "[token=abc]",
+            "cfg[token=abc] next",
+            "token=[REDACTED]",
+            "token=[REDACTED]supersecret",
+            "password=***hunter2",
+            "password=xyz123",
+            f"payload={{'password': '{REDACTED}'}}",
+            f"items=['token={REDACTED}']",
+        ],
+    )
+    @pytest.mark.parametrize("replacement", [REDACTED, "<hidden>", "[secret]"])
+    def test_redacting_twice_equals_redacting_once(
+        self, sample: str, replacement: str
+    ) -> None:
+        policy = RedactionPolicy(replacement=replacement)
+
+        once = policy.redact_text(sample)
+
+        assert policy.redact_text(once) == once
 
 
 class TestPolicy:

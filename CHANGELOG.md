@@ -37,17 +37,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   check do RabbitMQ segue sem o parâmetro `--timeout` que Redis e SMTP já
   aceitam.
 - `RedactionPolicy` vira idempotente sem deixar passar segredo nenhum: só
-  considera um valor já redigido quando o valor **inteiro** é o `replacement`
-  (marcador seguido de um delimitador de fim de valor ou do fim do texto), de
-  modo que `token=abc` → `token=[REDACTED]` e de novo → `token=[REDACTED]`,
+  considera um valor já redigido quando o valor **inteiro** é o `replacement`,
+  de modo que `token=abc` → `token=[REDACTED]` e de novo → `token=[REDACTED]`,
   enquanto um segredo que apenas **começa** pelo marcador é redigido —
   `password=***hunter2` com `replacement="***"` virava `password=***hunter2`,
   não `password=***`. A comparação crua por prefixo tratava qualquer valor
-  iniciado pelo marcador como já redigido e deixava o segredo em claro; o
-  `_KEY_VALUE_PATTERN` também deixa de parar no `]`, senão um marcador
-  entre colchetes truncava o match e o resto do valor (`token=[REDACTED]` +
-  `supersecret`) sobrevivia. `_replace_pair` compara o valor contra o
-  `replacement` com a fronteira de fim de valor (#489).
+  iniciado pelo marcador como já redigido e deixava o segredo em claro. O grupo
+  de valor do `_KEY_VALUE_PATTERN` continua parando no `]` (então `[token=abc]`
+  mantém o colchete de fechamento: `[token=[REDACTED]]`), mas passa a aceitar o
+  próprio `replacement` como unidade, de modo que um marcador entre colchetes
+  casa inteiro (`token=[REDACTED]`) e um valor real que só começa por ele
+  (`token=[REDACTED]supersecret`) segue sendo redigido por inteiro. Como o
+  padrão depende do `replacement`, ele é compilado por policy, no
+  `__post_init__`; `_replace_pair` mantém o match intacto só quando o valor é
+  **igual** ao `replacement` (#489).
 - A descoberta de settings do projeto vira uma só, compartilhada por
   `tempest db`, `tempest doctor`, `tempest user` e o `alembic/env.py` gerado
   (`tempest_fastapi_sdk.utils._settings_discovery`). Os quatro aceitam, sob
