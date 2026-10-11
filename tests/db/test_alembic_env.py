@@ -475,3 +475,21 @@ class TestBareAlembicWithoutDatabaseUrl:
         assert process.returncode != 0
         assert "boom-490-import" in process.stderr
         assert "DATABASE_URL is empty" in process.stderr
+
+    def test_factory_error_reaches_the_error_message(
+        self,
+        project: Path,
+    ) -> None:
+        """#490: a factory that raised is not swallowed into "empty"."""
+        self._write_settings(
+            project,
+            "from tempest_fastapi_sdk.settings import DatabaseSettings\n\n\n"
+            "class Settings(DatabaseSettings):\n"
+            "    pass\n\n\n"
+            "def get_settings() -> Settings:\n"
+            '    raise RuntimeError("boom-490-factory")\n',
+        )
+        process = _alembic(project, None, "current")
+        assert process.returncode != 0
+        assert "boom-490-factory" in process.stderr
+        assert "DATABASE_URL is empty" in process.stderr

@@ -53,9 +53,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   todos leem o `.env` como fallback; antes cada um só procurava a instância
   `settings` sob `src`, então um projeto escrito como a SDK documenta — só
   `get_settings()` — não migrava, não era diagnosticado e não achava o
-  usuário. `tempest doctor` passa a **falhar** (não "skip") quando o
-  `core/settings.py` existe mas não render nada, e o erro do `env.py` carrega
-  a causa do import quebrado (#490).
+  usuário. Uma instância presente ganha do factory, que nem é chamado nesse
+  caso. O factory cuja anotação de retorno é uma string (`from __future__
+  import annotations`) continua sendo achado, porque a assinatura é resolvida
+  com `eval_str=True`. `tempest doctor` passa a **falhar** (não "skip") quando
+  o `core/settings.py` existe mas não rende nada, e tanto o `detail` do doctor
+  quanto o erro do `env.py` carregam a **causa** — o import que quebrou, ou o
+  `repr` da exceção que o `get_settings()` levantou — em vez de engolir o
+  erro e reportar só "nenhum settings utilizável" (#490).
 - `alembic check` (`AlembicHelper.check()`) deixa de acusar drift fantasma logo
   depois de um `upgrade head` limpo no SQLite, em toda tabela com coluna
   enum. O comparador de `CHECK` do Alembic lia a constraint do banco mas a

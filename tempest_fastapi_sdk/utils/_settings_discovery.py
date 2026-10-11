@@ -154,34 +154,47 @@ def _is_zero_arg(value: object) -> bool:
 def _annotated_to_settings(value: object) -> bool:
     """Return whether ``value``'s return annotation is a ``BaseSettings``.
 
+    The annotation is resolved with ``eval_str=True``, so a module that
+    starts with ``from __future__ import annotations`` — where every
+    annotation is stored as a string: ``'Settings'`` — is read the same as
+    one that does not.
+
     Args:
         value (object): The candidate callable.
 
     Returns:
         bool: True when ``value`` is annotated to return a ``BaseSettings``
         subclass. An annotation that cannot be resolved (a forward
-        reference, a missing import) reads as False rather than raising.
+        reference, a missing import, a string that is not a type) reads as
+        False rather than raising.
     """
     from pydantic_settings import BaseSettings
 
     try:
-        annotation = inspect.signature(value).return_annotation  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+        annotation = inspect.signature(
+            value,  # type: ignore[arg-type]
+            eval_str=True,
+        ).return_annotation
+    except (TypeError, ValueError, NameError, SyntaxError):
         return False
     if annotation is inspect.Signature.empty:
         return False
     return bool(isinstance(annotation, type) and issubclass(annotation, BaseSettings))
 
 
-def _call_factory(value: object) -> object | None:
-    """Call a zero-arg factory, returning its result or ``None``.
+def _call_factory(value: object, name: str, notes: list[str]) -> object | None:
+    """Call a zero-arg factory, recording the cause when it raises.
 
     A factory that raises — missing environment, a validation error — is
     treated as "this candidate yielded nothing": the next source gets a
-    turn, rather than one broken accessor aborting the whole lookup.
+    turn, rather than one broken accessor aborting the whole lookup. The
+    cause is recorded, though, because the note is the only place the
+    operator learns *why* the documented accessor produced no settings.
 
     Args:
         value (object): The factory callable.
+        name (str): The attribute name, used in the failure note.
+        notes (list[str]): Collector for the diagnostics.
 
     Returns:
         object | None: Whatever the factory returned, or ``None`` when it
@@ -189,12 +202,13 @@ def _call_factory(value: object) -> object | None:
     """
     try:
         result: object = value()  # type: ignore[operator]
-    except Exception:
+    except Exception as exc:
+        notes.append(f"note: calling {name}() failed: {exc!r}")
         return None
     return result
 
 
-def _settings_factories(module: object) -> list[Any]:
+def _settings_factories(module: object, notes: list[str]) -> list[Any]:
     """Build the settings objects a module's zero-arg factories return.
 
     ``get_settings`` and ``get_config`` are tried first by name — the
@@ -204,6 +218,7 @@ def _settings_factories(module: object) -> list[Any]:
 
     Args:
         module (object): The imported ``core.settings`` module.
+        notes (list[str]): Collector for a factory that raised.
 
     Returns:
         list[Any]: Factory results, best first, skipping the ones that did
@@ -215,21 +230,27 @@ def _settings_factories(module: object) -> list[Any]:
     built: list[Any] = []
     seen: set[int] = set()
 
-    def _consider(value: object) -> None:
+    def _consider(value: object, name: str) -> None:
+        """Call one candidate factory and keep it when it built settings.
+
+        Args:
+            value (object): The attribute pulled off the settings module.
+            name (str): The attribute name, used in the failure note.
+        """
         if not callable(value) or not _is_zero_arg(value):
             return
-        result = _call_factory(value)
+        result = _call_factory(value, name, notes)
         if isinstance(result, BaseSettings) and id(result) not in seen:
             built.append(result)
             seen.add(id(result))
 
     for name in _PREFERRED_FACTORY_ATTRS:
-        _consider(members.get(name))
+        _consider(members.get(name), name)
     for name, value in members.items():
         if name.startswith("__") or name in _PREFERRED_FACTORY_ATTRS:
             continue
         if _annotated_to_settings(value):
-            _consider(value)
+            _consider(value, name)
     return built
 
 
@@ -241,10 +262,10 @@ def discover_settings(
     """Find the settings the project at ``project_root`` exposes.
 
     Each code root is probed in :data:`CODE_ROOTS` order. Under a root
-    that carries ``core/settings.py`` the module is imported and asked for
-    a ``BaseSettings`` instance first, then for a zero-arg factory that
-    returns one — in either case best first, so an instance still wins
-    over a factory.
+    that carries ``core/settings.py`` the module is asked for a
+    ``BaseSettings`` instance first; the factories are only called when the
+    module exposes none, so an instance wins over a factory and a broken
+    factory costs nothing when an instance is already in hand.
 
     Args:
         project_root (Path | None): Root to import from. Defaults to the
@@ -274,13 +295,18 @@ def discover_settings(
             continue
         modules.append(module)
         module_candidates = settings_instances(module)
-        module_candidates += _settings_factories(module)
+        if module_candidates:
+            candidates.extend(module_candidates)
+            continue
+        before = len(collector)
+        module_candidates = _settings_factories(module, collector)
         if not module_candidates:
-            collector.append(
-                f"note: {dotted} imported, but exposes no "
-                "pydantic_settings.BaseSettings instance and no zero-arg "
-                "callable returning one."
-            )
+            if len(collector) == before:
+                collector.append(
+                    f"note: {dotted} imported, but exposes no "
+                    "pydantic_settings.BaseSettings instance and no zero-arg "
+                    "callable returning one."
+                )
             continue
         candidates.extend(module_candidates)
     return SettingsDiscovery(

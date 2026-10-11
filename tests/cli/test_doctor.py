@@ -192,6 +192,22 @@ class TestSettingsDiscovery:
         assert outcomes["settings"]["status"] == "ok"
         assert outcomes["database"]["status"] == "ok"
 
+    def test_a_raising_factory_fails_with_the_cause(self, project: Path) -> None:
+        """#490: the swallowed factory error is the detail, not a generic note."""
+        self._write_settings(
+            project,
+            "from tempest_fastapi_sdk.settings import DatabaseSettings\n\n\n"
+            "class Settings(DatabaseSettings):\n"
+            "    pass\n\n\n"
+            "def get_settings() -> Settings:\n"
+            '    raise RuntimeError("boom-490-doctor")\n',
+        )
+        result = runner.invoke(app, ["doctor", "--json"])
+        outcomes = _outcomes(result.stdout)
+        assert result.exit_code == 1
+        assert outcomes["settings"]["status"] == "fail"
+        assert "boom-490-doctor" in outcomes["settings"]["detail"]
+
 
 class _OkRedisManager:
     """Pretend a Redis connection that answers ``PING``."""

@@ -31,6 +31,23 @@ _FACTORY_MODULE: str = (
     '    return Settings(DATABASE_URL="sqlite+aiosqlite:///./factory.db")\n'
 )
 
+_RAISING_FACTORY_MODULE: str = (
+    "from tempest_fastapi_sdk.settings import DatabaseSettings\n\n\n"
+    "class Settings(DatabaseSettings):\n"
+    "    pass\n\n\n"
+    "def get_settings() -> Settings:\n"
+    '    raise RuntimeError("boom-490-factory")\n'
+)
+
+_FUTURE_ANNOTATIONS_FACTORY_MODULE: str = (
+    "from __future__ import annotations\n\n"
+    "from tempest_fastapi_sdk.settings import DatabaseSettings\n\n\n"
+    "class Settings(DatabaseSettings):\n"
+    "    pass\n\n\n"
+    "def build_config() -> Settings:\n"
+    '    return Settings(DATABASE_URL="sqlite+aiosqlite:///./built.db")\n'
+)
+
 
 def _forget_project_modules() -> None:
     """Drop ``src`` / ``app`` and their submodules from the import cache."""
@@ -130,6 +147,33 @@ class TestDiscoverSettings:
         _write_settings(tmp_path, _INSTANCE_MODULE + "\n" + _FACTORY_MODULE)
         discovery = discover_settings(tmp_path)
         assert discovery.candidates[0].DATABASE_URL == "sqlite+aiosqlite:///./inst.db"
+
+    def test_a_raising_factory_is_noted_with_the_cause(self, tmp_path: Path) -> None:
+        _write_settings(tmp_path, _RAISING_FACTORY_MODULE)
+        discovery = discover_settings(tmp_path)
+        assert discovery.candidates == []
+        assert discovery.notes[-1] == (
+            "note: calling get_settings() failed: RuntimeError('boom-490-factory')"
+        )
+
+    def test_an_instance_keeps_a_broken_factory_from_running(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        _write_settings(tmp_path, _INSTANCE_MODULE + "\n" + _RAISING_FACTORY_MODULE)
+        discovery = discover_settings(tmp_path)
+        assert discovery.candidates[0].DATABASE_URL == "sqlite+aiosqlite:///./inst.db"
+        assert discovery.notes == []
+
+    def test_factory_under_future_annotations_is_discovered(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        _write_settings(tmp_path, _FUTURE_ANNOTATIONS_FACTORY_MODULE)
+        discovery = discover_settings(tmp_path)
+        assert [c.DATABASE_URL for c in discovery.candidates] == [
+            "sqlite+aiosqlite:///./built.db"
+        ]
 
     def test_missing_file_reports_nothing(self, tmp_path: Path) -> None:
         discovery = discover_settings(tmp_path)
