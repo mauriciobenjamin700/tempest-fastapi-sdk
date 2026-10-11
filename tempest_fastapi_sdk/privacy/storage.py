@@ -13,14 +13,119 @@ subject ``"10"``.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import timedelta
-from typing import TYPE_CHECKING, BinaryIO
+from typing import TYPE_CHECKING, BinaryIO, Protocol
 
 if TYPE_CHECKING:
-    from tempest_fastapi_sdk.storage.minio_client import (
-        AsyncMinIOClient,
-        ObjectDeleteError,
-    )
+    from tempest_fastapi_sdk.storage.minio_client import ObjectDeleteError
+
+
+class SubjectStorageClient(Protocol):
+    """The object-storage calls :class:`SubjectObjectStorage` makes.
+
+    :class:`~tempest_fastapi_sdk.storage.AsyncMinIOClient` satisfies it, and so
+    does :class:`~tempest_fastapi_sdk.testing.fakes.FakeObjectStorageClient`,
+    which is what lets a test build the storage without MinIO. The
+    signatures are ``AsyncMinIOClient``'s, minus the keyword arguments the
+    storage never passes.
+    """
+
+    async def put_object(
+        self,
+        key: str,
+        data: bytes | BinaryIO,
+        *,
+        bucket: str | None = None,
+        content_type: str = "application/octet-stream",
+        metadata: dict[str, str] | None = None,
+        length: int | None = None,
+    ) -> str:
+        """Upload one object.
+
+        Args:
+            key (str): Object key.
+            data (bytes | BinaryIO): The payload.
+            bucket (str | None): Override target bucket.
+            content_type (str): MIME type stored with the object.
+            metadata (dict[str, str] | None): User metadata.
+            length (int | None): Payload size, when ``data`` is a stream.
+
+        Returns:
+            str: The object's ETag.
+        """
+        ...
+
+    async def presigned_get_url(
+        self,
+        key: str,
+        *,
+        bucket: str | None = None,
+        expires: timedelta = timedelta(hours=1),
+    ) -> str:
+        """Generate a temporary download URL.
+
+        Args:
+            key (str): Object key.
+            bucket (str | None): Override source bucket.
+            expires (timedelta): URL lifetime.
+
+        Returns:
+            str: The presigned URL.
+        """
+        ...
+
+    async def list_objects(
+        self,
+        prefix: str = "",
+        *,
+        bucket: str | None = None,
+        recursive: bool = True,
+    ) -> list[str]:
+        """List object keys under ``prefix``.
+
+        Args:
+            prefix (str): Prefix filter.
+            bucket (str | None): Override source bucket.
+            recursive (bool): Descend into "subdirectories".
+
+        Returns:
+            list[str]: The matching keys.
+        """
+        ...
+
+    async def remove_object(
+        self,
+        key: str,
+        *,
+        bucket: str | None = None,
+        version_id: str | None = None,
+    ) -> None:
+        """Delete one object.
+
+        Args:
+            key (str): Object key.
+            bucket (str | None): Override target bucket.
+            version_id (str | None): Version to delete, on a versioned bucket.
+        """
+        ...
+
+    async def remove_objects(
+        self,
+        keys: Iterable[str],
+        *,
+        bucket: str | None = None,
+    ) -> list[ObjectDeleteError]:
+        """Delete many objects in batch.
+
+        Args:
+            keys (Iterable[str]): Object keys.
+            bucket (str | None): Override target bucket.
+
+        Returns:
+            list[ObjectDeleteError]: The keys the store refused to delete.
+        """
+        ...
 
 
 class SubjectErasureError(Exception):
@@ -83,7 +188,10 @@ class SubjectObjectStorage:
         1
 
     Attributes:
-        client (AsyncMinIOClient): The underlying object-storage client.
+        client (SubjectStorageClient): The underlying object-storage client
+            — an :class:`~tempest_fastapi_sdk.storage.AsyncMinIOClient`, or
+            :class:`~tempest_fastapi_sdk.testing.fakes.FakeObjectStorageClient`
+            in a test.
         prefix (str): Root prefix every subject lives under, without
             surrounding slashes.
         bucket (str | None): Bucket override; ``None`` uses the client's
@@ -92,7 +200,7 @@ class SubjectObjectStorage:
 
     def __init__(
         self,
-        client: AsyncMinIOClient,
+        client: SubjectStorageClient,
         *,
         prefix: str = "subjects",
         bucket: str | None = None,
@@ -100,7 +208,7 @@ class SubjectObjectStorage:
         """Wrap ``client``.
 
         Args:
-            client (AsyncMinIOClient): The object-storage client.
+            client (SubjectStorageClient): The object-storage client.
             prefix (str): Root prefix every subject lives under. Leading and
                 trailing slashes are stripped; inner slashes are allowed
                 (``"tenants/acme/users"``). Default ``"subjects"``.
@@ -114,7 +222,7 @@ class SubjectObjectStorage:
         cleaned = prefix.strip("/")
         for part in cleaned.split("/"):
             _segment(part, "prefix segment")
-        self.client: AsyncMinIOClient = client
+        self.client: SubjectStorageClient = client
         self.prefix: str = cleaned
         self.bucket: str | None = bucket
 
@@ -282,4 +390,5 @@ class SubjectObjectStorage:
 __all__: list[str] = [
     "SubjectErasureError",
     "SubjectObjectStorage",
+    "SubjectStorageClient",
 ]

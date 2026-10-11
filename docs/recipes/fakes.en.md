@@ -79,6 +79,7 @@ someone opening a dispute. Here it is one call.
 | --- | --- | --- |
 | `FakePixProvider` | `PixProvider` (OpenPix, Mercado Pago) | `advance(id, status)`, `charges` |
 | `FakeCardProvider` | `CardProvider` (cards) | `decline_next(reason)`, `advance(id, status)`, `charges` |
+| `FakeObjectStorageClient` | `SubjectStorageClient` (MinIO / S3) | `fail_delete(keys)`, `objects`, `deleted` |
 | `FakePayoutProvider` | `PayoutProvider` (Pix payouts) | `transfers`, `status=` in the constructor |
 | `FakeTextBackend` | `TextBackend` (local model) | `queue(...)`, `prompts` |
 | `FakeModerationBackend` | `ModerationBackend` | `flag(substring)`, `checked` |
@@ -350,7 +351,7 @@ fails with `['self', 'query', 'limit'] == ['self', 'query', 'max_results']`.
 
 ## Recap
 
-- `from tempest_fastapi_sdk.testing.fakes import Fake...` — ten seams, no
+- `from tempest_fastapi_sdk.testing.fakes import Fake...` — eleven seams, no
   credentials and no network.
 - A fake is not a mock: it holds state, and you **move** that state
   (`advance`, `flag`, `add_place`, `queue`).

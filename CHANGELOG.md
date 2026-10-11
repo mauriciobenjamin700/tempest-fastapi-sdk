@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `FakeObjectStorageClient` em `tempest_fastapi_sdk.testing.fakes`: o client de
+  object storage em memória, com as assinaturas e os retornos do
+  `AsyncMinIOClient` (`put_object` devolve o ETag, `remove_objects` os
+  `ObjectDeleteError` recusados), `objects`, `deleted` e `fail_delete(chaves)`
+  para exercitar o `SubjectErasureError`. O `SubjectObjectStorage` passa a
+  aceitar qualquer `SubjectStorageClient` — protocolo novo em
+  `tempest_fastapi_sdk.privacy`, que o `AsyncMinIOClient` já cumpre —, então o
+  fake passa no type-checker (mypy e basedpyright) (#509).
 - `RateLimitKeyFunc`, `RateLimitKeyResult`, `LOGIN_THROTTLE_MAX_ATTEMPTS`,
   `LOGIN_THROTTLE_WINDOW_SECONDS`, `MFA_THROTTLE_MAX_ATTEMPTS`,
   `MFA_THROTTLE_WINDOW_SECONDS`, `LOGIN_THROTTLED_MESSAGE` e

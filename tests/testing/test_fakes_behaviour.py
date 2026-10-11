@@ -7,6 +7,9 @@ test reach the branch the real provider will not give it on demand.
 
 from __future__ import annotations
 
+import hashlib
+from io import BytesIO
+
 import pytest
 
 from tempest_fastapi_sdk.genai.rag.schemas import SearchResult
@@ -30,6 +33,7 @@ from tempest_fastapi_sdk.testing.fakes import (
     FakeEmailUtils,
     FakeGeocodingBackend,
     FakeModerationBackend,
+    FakeObjectStorageClient,
     FakePixProvider,
     FakePushDispatcher,
     FakeRoutingBackend,
@@ -445,3 +449,52 @@ class TestFakeWebSearchBackend:
         backend = FakeWebSearchBackend()
 
         assert await backend.search("nada", max_results=5) == []
+
+
+class TestFakeObjectStorageClient:
+    """Stores bytes, reports refusals the way ``AsyncMinIOClient`` does."""
+
+    async def test_a_stream_is_read_and_the_etag_is_the_md5(self) -> None:
+        client = FakeObjectStorageClient()
+        etag = await client.put_object("k", BytesIO(b"payload"))
+
+        assert client.objects["k"] == b"payload"
+        assert etag == hashlib.md5(b"payload", usedforsecurity=False).hexdigest()
+
+    async def test_buckets_are_separate(self) -> None:
+        client = FakeObjectStorageClient(default_bucket="media")
+        await client.put_object("k", b"a")
+        await client.put_object("k", b"b", bucket="other")
+
+        assert await client.list_objects() == ["k"]
+        assert client.bucket_objects("other")["k"] == b"b"
+        assert client.objects["k"] == b"a"
+
+    async def test_remove_objects_reports_refusals_and_keeps_them(self) -> None:
+        client = FakeObjectStorageClient()
+        await client.put_object("a", b"1")
+        await client.put_object("b", b"2")
+        client.fail_delete("a")
+
+        errors = await client.remove_objects(["a", "b", "b", "missing"])
+
+        assert [(e.key, e.code) for e in errors] == [("a", "AccessDenied")]
+        assert list(client.objects) == ["a"]
+        assert client.deleted == ["b"]
+
+    async def test_remove_object_on_a_refused_key_raises(self) -> None:
+        client = FakeObjectStorageClient()
+        await client.put_object("a", b"1")
+        client.fail_delete("a")
+
+        with pytest.raises(PermissionError, match="AccessDenied"):
+            await client.remove_object("a")
+
+    async def test_fail_next_fails_the_next_call(self) -> None:
+        client = FakeObjectStorageClient()
+        client.fail_next(TimeoutError())
+
+        with pytest.raises(TimeoutError):
+            await client.list_objects()
+
+        assert client.calls == ["list_objects"]
