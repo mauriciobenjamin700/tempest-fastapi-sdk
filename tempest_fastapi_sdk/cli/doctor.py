@@ -25,6 +25,7 @@ from typing import Any
 import typer
 
 from tempest_fastapi_sdk.cli.project import load_project_settings
+from tempest_fastapi_sdk.utils._url import mask_url_password
 
 _OK: str = "ok"
 _FAIL: str = "fail"
@@ -148,7 +149,11 @@ def _database_check(settings: Any) -> CheckOutcome:
     try:
         alive, safe_url = asyncio.run(_probe())
     except Exception as exc:
-        return CheckOutcome("database", _FAIL, f"{type(exc).__name__}: {exc}")
+        return CheckOutcome(
+            "database",
+            _FAIL,
+            f"{type(exc).__name__}: {mask_url_password(str(exc))}",
+        )
     return CheckOutcome(
         "database",
         _OK if alive else _FAIL,
@@ -190,8 +195,12 @@ def _redis_check(settings: Any, timeout: float) -> CheckOutcome:
     except ImportError:
         return CheckOutcome("redis", _SKIP, "the [cache] extra is not installed")
     except Exception as exc:
-        return CheckOutcome("redis", _FAIL, f"{type(exc).__name__}: {exc}")
-    return CheckOutcome("redis", _OK if alive else _FAIL, url)
+        return CheckOutcome(
+            "redis",
+            _FAIL,
+            f"{type(exc).__name__}: {mask_url_password(str(exc))}",
+        )
+    return CheckOutcome("redis", _OK if alive else _FAIL, mask_url_password(url))
 
 
 def _rabbitmq_check(settings: Any) -> CheckOutcome:
@@ -229,8 +238,12 @@ def _rabbitmq_check(settings: Any) -> CheckOutcome:
     except ImportError:
         return CheckOutcome("rabbitmq", _SKIP, "the [queue] extra is not installed")
     except Exception as exc:
-        return CheckOutcome("rabbitmq", _FAIL, f"{type(exc).__name__}: {exc}")
-    return CheckOutcome("rabbitmq", _OK if started else _FAIL, url)
+        return CheckOutcome(
+            "rabbitmq",
+            _FAIL,
+            f"{type(exc).__name__}: {mask_url_password(str(exc))}",
+        )
+    return CheckOutcome("rabbitmq", _OK if started else _FAIL, mask_url_password(url))
 
 
 def _smtp_check(settings: Any, timeout: float) -> CheckOutcome:

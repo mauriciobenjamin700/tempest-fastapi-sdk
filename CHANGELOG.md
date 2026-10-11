@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `tempest doctor` mascara a senha da URL do RabbitMQ, do Redis e do banco
+  em todo `detail` de `CheckOutcome` — inclusive nos ramos `fail`, cuja
+  mensagem de exceção pode repetir a URL crua —, na tabela e no `--json`
+  (#491). O helper vira a única fonte da forma segura
+  (`tempest_fastapi_sdk.utils._url.mask_url_password`), que
+  `AsyncDatabaseManager.db_url_safe` passa a delegar.
+
 ## [0.312.0] — 2026-10-10
 
 Seguimento da 0.311.0 no Mercado Pago: estorno de Pix, Pix vencido como
