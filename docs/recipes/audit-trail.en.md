@@ -362,6 +362,107 @@ Piece by piece:
     For the same reason, `record_event` requires the mixin: the event name
     is what the row records.
 
+## Other domain columns — `columns=`
+
+`actor_id` is not the only column worth having in the trail: the subject the
+event is about, the tenant, the organization. Declare the column on the
+subclass and pass the value in `columns=` — `add_audited`, `update_audited`,
+`delete_audited`, `record_event`, the `for_*` builders and `new_entry` all
+take it, with no override:
+
+```python
+import asyncio
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import ForeignKey, String, delete, select
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    BaseAuditLogModel,
+    BaseModel,
+    BaseRepository,
+)
+
+
+class TeenModel(BaseModel):
+    """The data subject an event is about."""
+
+    __tablename__ = "teens"
+
+    name: Mapped[str] = mapped_column(String(64))
+
+
+class InviteModel(BaseModel):
+    """The audited business row."""
+
+    __tablename__ = "invites"
+
+    code: Mapped[str] = mapped_column(String(16))
+
+
+class AuditLogModel(BaseAuditLogModel):
+    """Audit table with a column for the subject of each entry."""
+
+    __tablename__ = "audit_log"
+
+    subject_teen_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("teens.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+
+class InviteRepository(BaseRepository[InviteModel]):
+    """Invites, audited into ``AuditLogModel``."""
+
+    def __init__(self, session: Any) -> None:
+        """Bind the session and the audit model.
+
+        Args:
+            session (Any): The request session.
+        """
+        super().__init__(session, model=InviteModel, audit_model=AuditLogModel)
+
+
+async def main() -> None:
+    """Audit an invite about a teen, then erase the teen."""
+    db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.connect()
+    await db.create_tables()
+    async with db.get_session_context() as session:
+        teen = TeenModel(name="Ana")
+        session.add(teen)
+        await session.commit()
+        await InviteRepository(session).add_audited(
+            InviteModel(code="ABC123"),
+            actor="guardian",
+            columns={"subject_teen_id": teen.id},
+        )
+        row = (await session.execute(select(AuditLogModel))).scalar_one()
+        print(row.action, row.subject_teen_id == teen.id)
+
+        await session.execute(delete(TeenModel))
+        await session.commit()
+        session.expire_all()
+        row = (await session.execute(select(AuditLogModel))).scalar_one()
+        print(row.action, row.subject_teen_id)
+    await db.disconnect()
+
+
+asyncio.run(main())
+```
+
+```text
+create True
+create None
+```
+
+The `SET NULL` FK drops the link when the subject is erased, and the entry
+stays. A key with no column on the table raises `ValueError` and rolls back
+the whole transaction, business row included; a key that already has a
+parameter of its own (`actor_id`, `event`, `entity`, `changes`... — the set
+is `AUDIT_RESERVED_COLUMNS`) is refused too.
+
 ## Standalone helpers
 
 Outside the repository, `snapshot_model(instance)` and

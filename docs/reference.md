@@ -185,6 +185,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.audit.AUDIT_REDACTED
 ::: tempest_fastapi_sdk.db.audit.DEFAULT_AUDIT_REDACT
 ::: tempest_fastapi_sdk.db.audit.AUDIT_EVENT_MAX_LENGTH
+::: tempest_fastapi_sdk.db.audit.AUDIT_RESERVED_COLUMNS
 ::: tempest_fastapi_sdk.db.audit.AUDIT_IP_MAX_LENGTH
 ::: tempest_fastapi_sdk.db.audit.AUDIT_USER_AGENT_MAX_LENGTH
 ::: tempest_fastapi_sdk.db.migrations.DestructiveMigrationError

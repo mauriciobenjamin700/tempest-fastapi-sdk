@@ -110,6 +110,14 @@ app.include_router(
 )
 ```
 
+!!! tip "O mesmo `get_session` do resto do app"
+    `session_factory` aceita a dependency de sessão que o app já usa, inclusive
+    com sub-dependências (`get_session(database=Depends(get_database))`): uma
+    função geradora (async ou não) é registrada como `Depends(session_factory)`,
+    então `app.dependency_overrides[get_session]` vale também para
+    `/auth/login` e as outras rotas de auth. Outro callable sem argumentos que
+    devolve um iterador async continua funcionando como antes.
+
 !!! warning "O service não pode morar no `app.py`"
     É tentador criar o `UserAuthService` ao lado do `app` e importá-lo de
     volta nas dependencies — e é um ciclo de import: `app.py` importa os

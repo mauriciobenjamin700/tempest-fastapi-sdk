@@ -296,6 +296,89 @@ Pedaço por pedaço:
     do `AsyncDatabaseManager` e do `tempest_fastapi_sdk.testing` já ligam o
     pragma.
 
+### Coluna binária fica fora
+
+Por padrão, coluna `LargeBinary` (e subclasses) não entra na exportação: o
+`payload` de uma tabela de job, um blob de modelo — nada disso é dado que o
+titular lê, e em base64 vira só volume no arquivo. `exclude_binary=False`
+volta a exportá-las, em base64.
+
+### Dado do titular que não chega por chave estrangeira
+
+O convite enviado **ao** titular guarda o e-mail dele em `invites.to_email`,
+mas a chave do convite aponta para quem mandou. O `DELETE` da raiz não
+alcança essa linha, e a exportação não a traz. `value_matches` declara a
+coluna que identifica o titular por valor, e `export`, `count`, `condition` e
+`erase` recebem o valor em `values=`:
+
+```python
+import asyncio
+
+from sqlalchemy import Column, ForeignKey, Integer, MetaData, String, Table, insert
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from tempest_fastapi_sdk.privacy import SubjectGraph
+from tempest_fastapi_sdk.testing import create_test_engine
+
+metadata = MetaData()
+users = Table(
+    "users",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("email", String(120)),
+)
+invites = Table(
+    "invites",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("sender_id", ForeignKey("users.id", ondelete="CASCADE")),
+    Column("to_email", String(120)),
+)
+
+graph = SubjectGraph(
+    metadata, root="users", value_matches={"invites.to_email": "email"}
+)
+
+
+async def main() -> None:
+    """Bia invites Ana; Ana's export and erasure reach that invite."""
+    engine = create_test_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(metadata.create_all)
+        await conn.execute(
+            insert(users),
+            [{"id": 1, "email": "ana@x.io"}, {"id": 2, "email": "bia@x.io"}],
+        )
+        await conn.execute(
+            insert(invites), [{"id": 1, "sender_id": 2, "to_email": "ana@x.io"}]
+        )
+    ana = {"email": "ana@x.io"}
+    async with async_sessionmaker(engine)() as session:
+        print(graph.violations())
+        print((await graph.export(session, 1, values=ana))["invites"])
+        print(await graph.count(session, 1))
+        print(await graph.erase(session, 1, values=ana))
+        await session.commit()
+    await engine.dispose()
+
+
+asyncio.run(main())
+```
+
+```text
+[]
+[{'id': 1, 'sender_id': 2, 'to_email': 'ana@x.io'}]
+{'users': 1, 'invites': 0}
+{'users': 0, 'invites': 0}
+```
+
+A terceira linha é o motivo de passar `values` também ao `count`: sem ele, a
+prova diz `0` convites com o convite ainda no banco. `erase` apaga as linhas
+casadas por valor, depois a raiz (o banco cascateia o resto), e devolve o
+`count` — sem `commit`, para você reverter se a prova não vier limpa. Entrada
+de `value_matches` fora do fecho ou com coluna inexistente aparece em
+`violations()`.
+
 ## Os arquivos do titular
 
 Linha apagada com o arquivo ainda no bucket não é exclusão. A forma barata de

@@ -36,6 +36,7 @@ Pieces:
 from __future__ import annotations
 
 import ipaddress
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
@@ -171,6 +172,33 @@ class AuditRequestContext:
             ip = None
         user_agent = request.headers.get("user-agent") or None
         return cls(ip=ip, user_agent=user_agent)
+
+
+AUDIT_RESERVED_COLUMNS: Final[frozenset[str]] = frozenset(
+    {
+        "action",
+        "actor",
+        "actor_id",
+        "changes",
+        "context",
+        "created_at",
+        "entity",
+        "entity_id",
+        "event",
+        "id",
+        "ip",
+        "is_active",
+        "updated_at",
+        "user_agent",
+    }
+)
+"""Audit columns ``columns=`` refuses to set.
+
+The columns of :class:`BaseAuditLogModel` and :class:`AuditRequestMixin`,
+plus ``actor_id``: the entry fills them itself, or takes them through a
+parameter of their own, so setting one through ``columns=`` would either be
+overwritten or bypass the validation that parameter applies.
+"""
 
 
 def _origin_columns(
@@ -432,6 +460,7 @@ class BaseAuditLogModel(BaseModel):
         user_agent: str | None = None,
         request_context: AuditRequestContext | None = None,
         actor_id: UUID | None = None,
+        columns: Mapping[str, Any] | None = None,
     ) -> BaseAuditLogModel:
         """Build an audit row (not yet added to a session).
 
@@ -449,6 +478,12 @@ class BaseAuditLogModel(BaseModel):
         "users.id", ondelete="SET NULL"), nullable=True, index=True)`` —
         and pass ``actor_id=``. No override of this method is needed.
 
+        **Any other domain column** — the subject of the event, the tenant —
+        goes the same way through ``columns={"subject_id": ...}``. A key
+        the table lacks is refused, and so is a key in
+        :data:`AUDIT_RESERVED_COLUMNS`, which the entry fills itself or
+        through a parameter of its own.
+
         Args:
             entity (str): The changed model name.
             entity_id (str): The changed row id (as text).
@@ -465,15 +500,19 @@ class BaseAuditLogModel(BaseModel):
                 ``user_agent`` together; mutually exclusive with both.
             actor_id (UUID | None): The author's id; needs an ``actor_id``
                 column on the audit table.
+            columns (Mapping[str, Any] | None): Values for domain columns the
+                audit subclass declares (``subject_id``, ``tenant_id``), each
+                written to the column of the same name.
 
         Returns:
             BaseAuditLogModel: A new instance ready to add to a session.
 
         Raises:
             ValueError: When a value is passed for a column the audit table
-                does not have, when ``request_context`` is combined with
-                ``ip`` / ``user_agent``, or when ``event`` / ``ip`` exceed
-                their column width.
+                does not have, when ``columns`` names a reserved column,
+                when ``request_context`` is combined with ``ip`` /
+                ``user_agent``, or when ``event`` / ``ip`` exceed their
+                column width.
         """
         origin = _origin_columns(
             event=event,
@@ -482,13 +521,26 @@ class BaseAuditLogModel(BaseModel):
             actor_id=actor_id,
             request_context=request_context,
         )
-        columns = {column.key for column in inspect(cls).columns}
-        missing = sorted(origin.keys() - columns)
+        table_columns = {column.key for column in inspect(cls).columns}
+        missing = sorted(origin.keys() - table_columns)
         if missing:
             raise ValueError(
                 f"{cls.__name__} has no column for: {', '.join(missing)}. "
                 "Mix AuditRequestMixin in for event/ip/user_agent, or declare "
                 "an actor_id column for actor_id.",
+            )
+        domain = dict(columns or {})
+        reserved = sorted(domain.keys() & AUDIT_RESERVED_COLUMNS)
+        if reserved:
+            raise ValueError(
+                f"columns= cannot set {', '.join(reserved)}: the audit entry "
+                "fills those itself or through their own parameter.",
+            )
+        unknown = sorted(domain.keys() - table_columns)
+        if unknown:
+            raise ValueError(
+                f"{cls.__name__} has no column for: {', '.join(unknown)}. "
+                "Declare it on the audit subclass to pass it in columns=.",
             )
         return cls(
             id=uuid4(),
@@ -499,6 +551,7 @@ class BaseAuditLogModel(BaseModel):
             actor=actor,
             context=context,
             **origin,
+            **domain,
         )
 
     @classmethod
@@ -513,6 +566,7 @@ class BaseAuditLogModel(BaseModel):
         user_agent: str | None = None,
         request_context: AuditRequestContext | None = None,
         actor_id: UUID | None = None,
+        columns: Mapping[str, Any] | None = None,
     ) -> BaseAuditLogModel:
         """Build a ``create`` entry snapshotting the new row.
 
@@ -526,6 +580,9 @@ class BaseAuditLogModel(BaseModel):
             request_context (AuditRequestContext | None): ``ip`` and
                 ``user_agent`` together.
             actor_id (UUID | None): The author's id.
+            columns (Mapping[str, Any] | None): Values for domain columns the
+                audit subclass declares (``subject_id``, ``tenant_id``), each
+                written to the column of the same name.
 
         Returns:
             BaseAuditLogModel: The audit row with ``{"after": snapshot}``.
@@ -547,6 +604,7 @@ class BaseAuditLogModel(BaseModel):
             user_agent=user_agent,
             request_context=request_context,
             actor_id=actor_id,
+            columns=columns,
         )
 
     @classmethod
@@ -562,6 +620,7 @@ class BaseAuditLogModel(BaseModel):
         user_agent: str | None = None,
         request_context: AuditRequestContext | None = None,
         actor_id: UUID | None = None,
+        columns: Mapping[str, Any] | None = None,
     ) -> BaseAuditLogModel:
         """Build an ``update`` entry diffing ``before`` against the row now.
 
@@ -582,6 +641,9 @@ class BaseAuditLogModel(BaseModel):
             request_context (AuditRequestContext | None): ``ip`` and
                 ``user_agent`` together.
             actor_id (UUID | None): The author's id.
+            columns (Mapping[str, Any] | None): Values for domain columns the
+                audit subclass declares (``subject_id``, ``tenant_id``), each
+                written to the column of the same name.
 
         Returns:
             BaseAuditLogModel: The audit row with the changed-field diff.
@@ -614,6 +676,7 @@ class BaseAuditLogModel(BaseModel):
             user_agent=user_agent,
             request_context=request_context,
             actor_id=actor_id,
+            columns=columns,
         )
 
     @classmethod
@@ -628,6 +691,7 @@ class BaseAuditLogModel(BaseModel):
         user_agent: str | None = None,
         request_context: AuditRequestContext | None = None,
         actor_id: UUID | None = None,
+        columns: Mapping[str, Any] | None = None,
     ) -> BaseAuditLogModel:
         """Build a ``delete`` entry snapshotting the row being removed.
 
@@ -641,6 +705,9 @@ class BaseAuditLogModel(BaseModel):
             request_context (AuditRequestContext | None): ``ip`` and
                 ``user_agent`` together.
             actor_id (UUID | None): The author's id.
+            columns (Mapping[str, Any] | None): Values for domain columns the
+                audit subclass declares (``subject_id``, ``tenant_id``), each
+                written to the column of the same name.
 
         Returns:
             BaseAuditLogModel: The audit row with ``{"before": snapshot}``.
@@ -662,6 +729,7 @@ class BaseAuditLogModel(BaseModel):
             user_agent=user_agent,
             request_context=request_context,
             actor_id=actor_id,
+            columns=columns,
         )
 
     @classmethod
@@ -678,6 +746,7 @@ class BaseAuditLogModel(BaseModel):
         user_agent: str | None = None,
         request_context: AuditRequestContext | None = None,
         actor_id: UUID | None = None,
+        columns: Mapping[str, Any] | None = None,
     ) -> BaseAuditLogModel:
         """Build an ``event`` entry — a domain event with no row mutation.
 
@@ -699,6 +768,9 @@ class BaseAuditLogModel(BaseModel):
             request_context (AuditRequestContext | None): ``ip`` and
                 ``user_agent`` together.
             actor_id (UUID | None): The author's id.
+            columns (Mapping[str, Any] | None): Values for domain columns the
+                audit subclass declares (``subject_id``, ``tenant_id``), each
+                written to the column of the same name.
 
         Returns:
             BaseAuditLogModel: The audit row with ``action="event"``.
@@ -719,6 +791,7 @@ class BaseAuditLogModel(BaseModel):
             user_agent=user_agent,
             request_context=request_context,
             actor_id=actor_id,
+            columns=columns,
         )
 
 
@@ -726,6 +799,7 @@ __all__: list[str] = [
     "AUDIT_EVENT_MAX_LENGTH",
     "AUDIT_IP_MAX_LENGTH",
     "AUDIT_REDACTED",
+    "AUDIT_RESERVED_COLUMNS",
     "AUDIT_USER_AGENT_MAX_LENGTH",
     "DEFAULT_AUDIT_REDACT",
     "AuditAction",

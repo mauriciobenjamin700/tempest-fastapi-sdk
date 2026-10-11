@@ -314,6 +314,106 @@ Pedaço por pedaço:
 
     Perder um fato de auditoria em silêncio seria pior do que falhar a chamada. Pelo mesmo motivo, `record_event` exige o mixin: o nome do evento é o que a linha registra.
 
+## Outras colunas de domínio — `columns=`
+
+O `actor_id` não é a única coluna que vale ter na trilha: o titular sobre quem
+o evento fala, o tenant, a organização. Declare a coluna na subclasse e passe
+o valor em `columns=` — `add_audited`, `update_audited`, `delete_audited`,
+`record_event`, os `for_*` e o `new_entry` aceitam, sem override:
+
+```python
+import asyncio
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import ForeignKey, String, delete, select
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    BaseAuditLogModel,
+    BaseModel,
+    BaseRepository,
+)
+
+
+class TeenModel(BaseModel):
+    """The data subject an event is about."""
+
+    __tablename__ = "teens"
+
+    name: Mapped[str] = mapped_column(String(64))
+
+
+class InviteModel(BaseModel):
+    """The audited business row."""
+
+    __tablename__ = "invites"
+
+    code: Mapped[str] = mapped_column(String(16))
+
+
+class AuditLogModel(BaseAuditLogModel):
+    """Audit table with a column for the subject of each entry."""
+
+    __tablename__ = "audit_log"
+
+    subject_teen_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("teens.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+
+class InviteRepository(BaseRepository[InviteModel]):
+    """Invites, audited into ``AuditLogModel``."""
+
+    def __init__(self, session: Any) -> None:
+        """Bind the session and the audit model.
+
+        Args:
+            session (Any): The request session.
+        """
+        super().__init__(session, model=InviteModel, audit_model=AuditLogModel)
+
+
+async def main() -> None:
+    """Audit an invite about a teen, then erase the teen."""
+    db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.connect()
+    await db.create_tables()
+    async with db.get_session_context() as session:
+        teen = TeenModel(name="Ana")
+        session.add(teen)
+        await session.commit()
+        await InviteRepository(session).add_audited(
+            InviteModel(code="ABC123"),
+            actor="guardian",
+            columns={"subject_teen_id": teen.id},
+        )
+        row = (await session.execute(select(AuditLogModel))).scalar_one()
+        print(row.action, row.subject_teen_id == teen.id)
+
+        await session.execute(delete(TeenModel))
+        await session.commit()
+        session.expire_all()
+        row = (await session.execute(select(AuditLogModel))).scalar_one()
+        print(row.action, row.subject_teen_id)
+    await db.disconnect()
+
+
+asyncio.run(main())
+```
+
+```text
+create True
+create None
+```
+
+A FK com `SET NULL` faz o vínculo sumir quando o titular é apagado, e a
+entrada fica. Uma chave sem coluna na tabela levanta `ValueError` e reverte a
+transação inteira, inclusive a linha de negócio; uma chave que já tem
+parâmetro próprio (`actor_id`, `event`, `entity`, `changes`... — o conjunto
+está em `AUDIT_RESERVED_COLUMNS`) também é recusada.
+
 ## Helpers avulsos
 
 Fora do repository, `snapshot_model(instance)` e `diff_snapshots(before, after)` ficam disponíveis, e `BaseAuditLogModel.for_create / for_update / for_delete` constroem a entrada (sem adicionar à sessão) quando você quer controlar a gravação manualmente.

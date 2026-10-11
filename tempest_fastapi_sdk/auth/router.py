@@ -312,7 +312,7 @@ def _accepts_keyword(func: Callable[..., object], name: str) -> bool:
 def make_auth_router(
     service: UserAuthService,
     *,
-    session_factory: Callable[[], AsyncIterator[AsyncSession]],
+    session_factory: Callable[..., AsyncIterator[AsyncSession]],
     prefix: str = "/auth",
     tags: list[str] | None = None,
     template_dir: str | None = None,
@@ -338,11 +338,16 @@ def make_auth_router(
     Args:
         service (UserAuthService): The configured service handling
             signup / activation / reset.
-        session_factory (Callable[[], AsyncIterator[AsyncSession]]):
-            FastAPI dependency yielding an async session. Typically
-            wired as ``db.session_dependency`` where ``db`` is
-            an :class:`AsyncDatabaseManager`. Used inside each
-            handler to scope the transaction to the request.
+        session_factory (Callable[..., AsyncIterator[AsyncSession]]):
+            FastAPI dependency yielding an async session — the same
+            ``get_session`` the rest of the app uses, sub-dependencies
+            included (``get_session(database=Depends(get_database))``),
+            or ``db.session_dependency`` where ``db`` is an
+            :class:`AsyncDatabaseManager`. An (async) generator function is
+            registered as ``Depends(session_factory)`` itself, so an
+            ``app.dependency_overrides[session_factory]`` reaches the auth
+            routes too; any other zero-argument callable returning an async
+            iterator is wrapped and iterated, as before.
         prefix (str): The full public path the auth routes live under;
             defaults to ``"/auth"``. Pass the whole path here
             (``prefix="/api/auth"``) rather than adding one through
@@ -564,11 +569,25 @@ def make_auth_router(
         tags=list(tags or ["auth"]),
     )
 
-    async def _session() -> AsyncIterator[AsyncSession]:
-        async for s in session_factory():
-            yield s
+    session_provider: Callable[..., Any]
+    if inspect.isasyncgenfunction(session_factory) or inspect.isgeneratorfunction(
+        session_factory
+    ):
+        session_provider = session_factory
+    else:
 
-    session_dep = Depends(_session)
+        async def _session() -> AsyncIterator[AsyncSession]:
+            """Iterate a session factory FastAPI cannot resolve itself.
+
+            Yields:
+                AsyncSession: The request's session.
+            """
+            async for s in session_factory():
+                yield s
+
+        session_provider = _session
+
+    session_dep = Depends(session_provider)
 
     auth_settings = service.auth_settings
     backend_links = auth_settings.AUTH_BACKEND_LINKS
@@ -780,7 +799,7 @@ def make_auth_router(
         cookie_name=cookies.access_name if cookie_enabled else None,
         strict=token_strict,
         legacy_claims=token_legacy_claims,
-        session_dependency=_session,
+        session_dependency=session_provider,
     )
 
     def _mount_if(

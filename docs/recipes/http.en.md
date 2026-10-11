@@ -671,6 +671,58 @@ async def update_perms(user_id: UUID) -> None:
 `soft=True` returns `None` instead of raising on missing/invalid tokens — useful for endpoints that work both authenticated and anonymous. `subject_claim` defaults to `"sub"` but can be any custom claim (`"user_id"`, `"uid"`, ...). Role dependencies accept either a string or a list of strings on the JWT claim; `require_all=True` requires every listed role/permission, `False` (default for roles, override for permissions) requires any.
 
 
+### `JWTUtils` built in `create_app`
+
+With `get_settings()` and `create_app(settings)`, the `JWTUtils` only exists
+inside `create_app` — and the module-level dependency
+(`CurrentUser = Annotated[...]`) is declared before it. Pass a function taking
+the `Request` instead of the helper: it is called on every request. It works
+for `make_jwt_user_dependency`, `make_bearer_token_dependency`,
+`make_role_dependency` and `make_permission_dependency`.
+
+```python
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, Request
+
+from tempest_fastapi_sdk import JWTUtils, make_jwt_user_dependency
+
+
+async def load_user(subject: str) -> dict[str, str]:
+    """Load the user the token names."""
+    return {"id": subject}
+
+
+def jwt_of(request: Request) -> JWTUtils:
+    """Read the helper create_app put on app.state."""
+    jwt: JWTUtils = request.app.state.jwt
+    return jwt
+
+
+CurrentUser = Annotated[
+    dict[str, str],
+    Depends(make_jwt_user_dependency(jwt_of, user_loader=load_user, strict=True)),
+]
+
+
+def create_app(secret: str) -> FastAPI:
+    """Build the app; the JWT helper only exists from here on."""
+    app = FastAPI()
+    app.state.jwt = JWTUtils(secret)
+
+    @app.get("/me")
+    async def me(user: CurrentUser) -> dict[str, str]:
+        """Return the authenticated user."""
+        return user
+
+    return app
+```
+
+Measured in `tests/api/test_lazy_dependencies.py`: two apps in one process,
+with different secrets and the **same** `CurrentUser`, each refuses (`401`)
+the other's token.
+
+
 ## Rate limit middleware
 
 
@@ -1205,6 +1257,14 @@ and a `GET` on the same URL stays free. Piece by piece:
     and with a `MessageCatalog` registered there `detail` is translated by
     `code` (`"Requisições em excesso"` under `pt-BR`), which the middleware —
     answering outside the handlers — does not do.
+
+!!! tip "A store built in `create_app`"
+    Pass a function taking the `Request` instead of the store —
+    `make_rate_limit_dependency(store_of, ...)`, with `store_of(request)`
+    returning `request.app.state.rate_limit_store` — and the dependency
+    declared at import time counts in the store of the app serving the
+    request. Measured with two apps and one dependency: each counts in its
+    own.
 
 !!! tip "Multi-replica"
     Swap `MemoryRateLimitStore()` for `RedisRateLimitStore(redis)` and every

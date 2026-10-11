@@ -296,6 +296,89 @@ Piece by piece:
     `AsyncDatabaseManager` and of `tempest_fastapi_sdk.testing` already turn
     the pragma on.
 
+### Binary columns stay out
+
+By default a `LargeBinary` column (and its subclasses) is left out of the
+export: a job table's `payload`, a model blob — none of it is data the
+subject reads, and in base64 it is only volume in the file.
+`exclude_binary=False` exports them again, base64-encoded.
+
+### Subject data that no foreign key reaches
+
+An invite sent **to** the subject keeps their e-mail in `invites.to_email`,
+but its key points at the sender. The root `DELETE` does not reach that row,
+and the export does not bring it. `value_matches` declares the column that
+identifies the subject by value, and `export`, `count`, `condition` and
+`erase` take the value in `values=`:
+
+```python
+import asyncio
+
+from sqlalchemy import Column, ForeignKey, Integer, MetaData, String, Table, insert
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from tempest_fastapi_sdk.privacy import SubjectGraph
+from tempest_fastapi_sdk.testing import create_test_engine
+
+metadata = MetaData()
+users = Table(
+    "users",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("email", String(120)),
+)
+invites = Table(
+    "invites",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("sender_id", ForeignKey("users.id", ondelete="CASCADE")),
+    Column("to_email", String(120)),
+)
+
+graph = SubjectGraph(
+    metadata, root="users", value_matches={"invites.to_email": "email"}
+)
+
+
+async def main() -> None:
+    """Bia invites Ana; Ana's export and erasure reach that invite."""
+    engine = create_test_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(metadata.create_all)
+        await conn.execute(
+            insert(users),
+            [{"id": 1, "email": "ana@x.io"}, {"id": 2, "email": "bia@x.io"}],
+        )
+        await conn.execute(
+            insert(invites), [{"id": 1, "sender_id": 2, "to_email": "ana@x.io"}]
+        )
+    ana = {"email": "ana@x.io"}
+    async with async_sessionmaker(engine)() as session:
+        print(graph.violations())
+        print((await graph.export(session, 1, values=ana))["invites"])
+        print(await graph.count(session, 1))
+        print(await graph.erase(session, 1, values=ana))
+        await session.commit()
+    await engine.dispose()
+
+
+asyncio.run(main())
+```
+
+```text
+[]
+[{'id': 1, 'sender_id': 2, 'to_email': 'ana@x.io'}]
+{'users': 1, 'invites': 0}
+{'users': 0, 'invites': 0}
+```
+
+The third line is why `count` gets `values` too: without them, the proof says
+`0` invites with the invite still stored. `erase` deletes the rows matched by
+value, then the root (the database cascades the rest), and returns `count` —
+without committing, so you can roll back when the proof is not clean. A
+`value_matches` entry outside the closure or naming a missing column shows up
+in `violations()`.
+
 ## The subject's files
 
 A deleted row whose file is still in the bucket is not erasure. The cheap way

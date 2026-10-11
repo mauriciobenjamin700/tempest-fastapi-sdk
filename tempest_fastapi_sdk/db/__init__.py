@@ -25,6 +25,9 @@ from tempest_fastapi_sdk.db.audit import (
 from tempest_fastapi_sdk.db.audit import AUDIT_IP_MAX_LENGTH as AUDIT_IP_MAX_LENGTH
 from tempest_fastapi_sdk.db.audit import AUDIT_REDACTED as AUDIT_REDACTED
 from tempest_fastapi_sdk.db.audit import (
+    AUDIT_RESERVED_COLUMNS as AUDIT_RESERVED_COLUMNS,
+)
+from tempest_fastapi_sdk.db.audit import (
     AUDIT_USER_AGENT_MAX_LENGTH as AUDIT_USER_AGENT_MAX_LENGTH,
 )
 from tempest_fastapi_sdk.db.audit import DEFAULT_AUDIT_REDACT as DEFAULT_AUDIT_REDACT
@@ -242,6 +245,7 @@ __all__: list[str] = [
     "AUDIT_EVENT_MAX_LENGTH",
     "AUDIT_IP_MAX_LENGTH",
     "AUDIT_REDACTED",
+    "AUDIT_RESERVED_COLUMNS",
     "AUDIT_USER_AGENT_MAX_LENGTH",
     "BASE_COLUMN_ORDER",
     "DEFAULT_AUDIT_REDACT",
