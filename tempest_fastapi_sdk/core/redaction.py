@@ -91,29 +91,34 @@ _PLAIN_TYPES: tuple[type, ...] = (bool, int, float, type(None))
 _EXCEPTION_FORMATTER: logging.Formatter = logging.Formatter()
 """Renders ``exc_info`` the way the stdlib formatter would."""
 
-_KEY_VALUE_PATTERN: re.Pattern[str] = re.compile(
-    r"(?<![\w-])(?P<key>[\w-]++)"
-    r"(?P<sep>[\"']?\s*[=:]\s*[\"']?)"
-    r"(?P<value>(?:(?:basic|bearer|digest|token)\s+)?[^\s\"',;&}\]]+)",
-    re.IGNORECASE,
-)
-"""Any ``key=value`` / ``key: value`` pair in free text.
 
-The key is checked against the policy in Python
-(:meth:`RedactionPolicy.is_sensitive_key`, cached) rather than folded into
-the pattern as an alternation: measured on a typical access-log line, the
-alternation form cost about 6.6 us per call against about 3.2 us for this
-one. The possessive key quantifier and the lookbehind keep the engine from
-retrying every suffix of every word.
-"""
+def _build_key_value_pattern(replacement: str) -> re.Pattern[str]:
+    """Compile the ``key=value`` / ``key: value`` pattern for a replacement.
 
-_KEY_CACHE_LIMIT: int = 4096
-"""How many distinct keys :meth:`RedactionPolicy.is_sensitive_key` remembers.
+    The value group stops at ``]`` again (as before #489), so a bracketed
+    structure like ``[token=abc]`` keeps its closing bracket. To still match
+    an already-redacted bracketed marker whole, the value group accepts the
+    replacement itself as one unit
+    (``(?:<re.escape(replacement)>|[^\\s\"',;&}\\]])+``): ``token=[REDACTED]``
+    is one value, while ``token=[REDACTED]supersecret`` keeps going past the
+    ``]`` and is redacted as a real secret. The pattern depends on
+    :attr:`RedactionPolicy.replacement`, so it is compiled per policy rather
+    than once at import.
 
-``extra=`` names repeat on every record and come from code, so a small
-cache answers almost every lookup; the limit bounds memory when keys come
-from data (the keys of a payload dict logged whole).
-"""
+    Args:
+        replacement (str): The marker a redacted value is written as.
+
+    Returns:
+        re.Pattern[str]: The compiled ``key=value`` / ``key: value`` pattern.
+    """
+    marker = f"{re.escape(replacement)}|" if replacement else ""
+    bare = r"[^\s\"',;&}\]]"
+    return re.compile(
+        r"(?<![\w-])(?P<key>[\w-]++)"
+        r"(?P<sep>[\"']?\s*[=:]\s*[\"']?)"
+        rf"(?P<value>(?:(?:basic|bearer|digest|token)\s+)?(?:{marker}{bare})+)",
+        re.IGNORECASE,
+    )
 
 
 def _normalize_key(key: str) -> str:
@@ -126,6 +131,15 @@ def _normalize_key(key: str) -> str:
         str: The key in lower case with ``-`` replaced by ``_``.
     """
     return key.lower().replace("-", "_")
+
+
+_KEY_CACHE_LIMIT: int = 4096
+"""How many distinct keys :meth:`RedactionPolicy.is_sensitive_key` remembers.
+
+``extra=`` names repeat on every record and come from code, so a small
+cache answers almost every lookup; the limit bounds memory when keys come
+from data (the keys of a payload dict logged whole).
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +186,7 @@ class RedactionPolicy:
     _compiled: tuple[re.Pattern[str], ...] = field(
         init=False, repr=False, compare=False
     )
+    _key_value: re.Pattern[str] = field(init=False, repr=False, compare=False)
     _key_cache: dict[str, bool] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -189,6 +204,9 @@ class RedactionPolicy:
         )
         object.__setattr__(self, "_fragments", fragments)
         object.__setattr__(self, "_compiled", compiled)
+        object.__setattr__(
+            self, "_key_value", _build_key_value_pattern(self.replacement)
+        )
         object.__setattr__(self, "_key_cache", {})
 
     def is_sensitive_key(self, key: str) -> bool:
@@ -213,14 +231,26 @@ class RedactionPolicy:
     def _replace_pair(self, match: re.Match[str]) -> str:
         """Redact the value of a ``key=value`` match when the key is sensitive.
 
+        The match is left intact only when the whole value **is** the
+        replacement — that is what makes redaction idempotent when the
+        message renders an already redacted argument. Any other value is a
+        real secret and is redacted whole: a bare ``startswith`` would leave
+        ``password=***hunter2`` in clear when ``replacement="***"``, and the
+        value group itself already keeps a marker that merely starts a
+        longer value (``token=[REDACTED]supersecret``) as one value.
+
         Args:
-            match (re.Match[str]): A match of :data:`_KEY_VALUE_PATTERN`.
+            match (re.Match[str]): A match of the policy's ``key=value``
+                pattern.
 
         Returns:
             str: The pair with its value replaced, or the match unchanged
-            when the key is not sensitive.
+            when the key is not sensitive — or the whole value already is
+            the replacement.
         """
         if self.is_sensitive_key(match["key"]):
+            if match["value"] == self.replacement:
+                return match[0]
             return match["key"] + match["sep"] + self.replacement
         return match[0]
 
@@ -236,7 +266,7 @@ class RedactionPolicy:
             pair are kept, so the line still says *what* was hidden.
         """
         if self._fragments and ("=" in text or ":" in text):
-            text = _KEY_VALUE_PATTERN.sub(self._replace_pair, text)
+            text = self._key_value.sub(self._replace_pair, text)
         for pattern in self._compiled:
             text = pattern.sub(self.replacement, text)
         return text

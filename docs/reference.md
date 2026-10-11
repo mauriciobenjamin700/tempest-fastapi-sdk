@@ -220,6 +220,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.enum_migrations.sync_enum_types
 ::: tempest_fastapi_sdk.db.enum_migrations.DropEnumTypeOp
 ::: tempest_fastapi_sdk.db.enum_migrations.drop_enum_types_on_downgrade
+::: tempest_fastapi_sdk.db.enum_migrations.type_bound_check_include_object
 ::: tempest_fastapi_sdk.db.explain.explain_queries
 ::: tempest_fastapi_sdk.db.explain.ExplainReport
 ::: tempest_fastapi_sdk.db.explain.QueryPlan
@@ -470,6 +471,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.validation.OrderByNotAllowedException
 ::: tempest_fastapi_sdk.exceptions.validation.PageSizeTooLargeException
 ::: tempest_fastapi_sdk.exceptions.validation.UnknownFilterKeyException
+::: tempest_fastapi_sdk.exceptions.validation.InvalidFilterValueException
 ::: tempest_fastapi_sdk.exceptions.value_errors.ValidationValueError
 ::: tempest_fastapi_sdk.exceptions.too_many_requests.TooManyRequestsException
 ::: tempest_fastapi_sdk.exceptions.jwt.InvalidTokenException

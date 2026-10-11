@@ -600,29 +600,35 @@ Alembic wrapper backed by ``AlembicHelper`` — your project's ``alembic.ini`` +
 
 1. ``--database-url`` flag.
 2. ``DATABASE_URL`` env var.
-3. A settings instance on the project's ``core/settings.py``, under either
-   code root (``src`` or ``app``). **Any**
-   ``pydantic_settings.BaseSettings`` instance qualifies: the names
-   ``settings`` and ``config`` are tried first, then the module is scanned
-   by type.
+3. Settings on the project's ``core/settings.py``, under either code root
+   (``src`` or ``app``). **Any** ``pydantic_settings.BaseSettings`` instance
+   qualifies — the names ``settings`` and ``config`` are tried first, then the
+   module is scanned by type — **or** the result of a zero-arg factory that
+   returns one (``get_settings()``, or any callable annotated to return
+   ``BaseSettings``).
 4. ``DATABASE_URL`` in the project's ``.env``.
 5. ``sqlalchemy.url`` from ``alembic.ini``.
 
-!!! tip "The instance name no longer matters"
+!!! tip "The instance name no longer matters, and the factory counts"
     Up to 0.280.0 only the name ``settings`` was accepted, and the failure was
     an ``ImportError`` swallowed by ``except Exception: return None``. A
     service naming its instance ``config`` got *"no database URL. Pass
     --database-url, set DATABASE_URL, or run inside a project with
     src/core/settings.py"* — pointing at two conditions the project already
-    satisfied. Today the instance's **type** decides, ``.env`` is read, and
-    when nothing resolves each attempt reports why on stderr:
+    satisfied. Today the instance's **type** decides, the documented
+    **factory** (``get_settings()``) is accepted, ``.env`` is read, and when
+    nothing resolves each attempt reports why on stderr:
 
     ```text
     note: importing src.core.settings failed: ImportError("cannot import name ...")
     error: no database URL. Pass --database-url, set DATABASE_URL, put it in
-           .env, or expose a settings instance with a DATABASE_URL on
+           .env, or expose settings with a DATABASE_URL on
            src/core/settings.py (or app/core/settings.py).
     ```
+
+    The same discovery is shared by ``tempest db``, ``tempest doctor``,
+    ``tempest user`` and the generated ``env.py`` — a project whose settings
+    exist only as ``get_settings()`` now migrates outside the CLI too.
 
 ```bash
 tempest db init                                  # create alembic.ini + alembic/env.py
@@ -981,7 +987,7 @@ tempest user set-password --email ana@example.com
     `error: password must be at most 72 bytes.` — before anything is
     written to the database.
 
-``DATABASE_URL`` resolves the same way as ``tempest db`` (env var > settings > alembic.ini).
+``DATABASE_URL`` resolves the same way as ``tempest db`` (env var > settings instance or factory > ``.env`` > ``alembic.ini``).
 
 #### Inspect, deactivate and delete
 

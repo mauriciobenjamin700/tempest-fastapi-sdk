@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import AsyncAdaptedQueuePool, Pool, PoolResetState
 
 from tempest_fastapi_sdk.db.model import BaseModel
+from tempest_fastapi_sdk.utils._url import mask_url_password
 
 _MEMORY_URL_MARKERS: tuple[str, ...] = (":memory:", "mode=memory")
 """Substrings that make a SQLite URL an in-memory database."""
@@ -397,8 +398,7 @@ class AsyncDatabaseManager:
         Returns:
             str: The URL safe to surface outside the manager.
         """
-        url = make_url(self._db_url)
-        return url.render_as_string(hide_password=True)
+        return mask_url_password(self._db_url)
 
     @property
     def engine(self) -> AsyncEngine:

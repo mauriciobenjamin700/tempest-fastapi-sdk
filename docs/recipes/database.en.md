@@ -1511,7 +1511,7 @@ Available `field__op` suffix operators (in `Q` **and** the dict):
 | Suffix | SQL | Example |
 |--------|-----|---------|
 | `gt` `gte` `lt` `lte` `ne` | comparison | `Q(priority__gte=5)` |
-| `in` `notin` `not_in` | `IN` / `NOT IN` (value is any non-string iterable: `list`/`set`/`tuple`/generator; `not_in` aliases `notin`) | `Q(status__in={"open", "paid"})` |
+| `in` `notin` `not_in` | `IN` / `NOT IN` (value is any non-string iterable: `list`/`set`/`tuple`/generator, or a scalar, wrapped in a one-item list; `not_in` aliases `notin`) | `Q(status__in={"open", "paid"})` |
 | `between` | `col BETWEEN lo AND hi` (value is an ordered pair `(lo, hi)` as a `list`/`tuple`) | `Q(price__between=(10, 20))` |
 | `iexact` | case-insensitive equality (`lower(col) == lower(v)`) | `Q(email__iexact="Ana@X.com")` |
 | `like` `ilike` | raw `LIKE` / `ILIKE` with the caller's own `%`/`_` wildcards, **not** escaped | `Q(sku__ilike="ab_-%")` |
@@ -1675,6 +1675,76 @@ All three rows are still there: `delete_many` deleted nothing.
     a 422. Take the field out of the dict before forwarding
     (`conditions = f.get_conditions()` then
     `search = conditions.pop("search", None)`) and handle it in the service.
+
+### A value that does not fit the operator is refused
+
+A value with the **wrong shape** for its operator — a `between` that is not
+the `(lo, hi)` pair — raises `InvalidFilterValueException` before any statement
+runs. It was the rest of the #465 defect: the condition vanished from the
+`WHERE` and, on `bulk_update`, `delete_many` and `update_returning`, the write
+hit exactly the rows the filter did **not** name.
+
+`in` is **not** on that list: a bare scalar is wrapped in a one-item list
+(`{"status__in": "open"}` → `IN ('open')`), as it always was, because the
+condition never vanished from the `WHERE`.
+
+```python
+import asyncio
+
+from sqlalchemy import String
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import Mapped, mapped_column
+from tempest_fastapi_sdk import (
+    BaseModel,
+    BaseRepository,
+    InvalidFilterValueException,
+)
+
+
+class TicketModel(BaseModel):
+    __tablename__ = "tickets_bad_value_demo"
+
+    status: Mapped[str] = mapped_column(String(16))
+
+
+async def main() -> None:
+    """Run this example."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(TicketModel.metadata.create_all)
+    async with AsyncSession(engine) as session:
+        repo: BaseRepository[TicketModel] = BaseRepository(
+            session, model=TicketModel
+        )
+        for status in ("open", "paid"):
+            await repo.add(TicketModel(status=status))
+        try:
+            await repo.delete_many({"status__between": ["open"]})
+        except InvalidFilterValueException as exc:
+            print(exc.status_code, exc.code, exc.details)
+        print(await repo.count())
+    await engine.dispose()
+
+
+asyncio.run(main())
+```
+
+Output:
+
+```text
+422 INVALID_FILTER_VALUE {'filter': 'status__between', 'value': "['open']"}
+2
+```
+
+`details["value"]` echoes a `repr` of the value, **truncated** at 64
+characters: a mistyped filter usually carries a large value (a payload, a list
+of ids), and the error is no place to repeat all of it.
+
+!!! warning "Behavior change (#484)"
+    Up to 0.312.0 a malformed `between` was **ignored** — the condition
+    disappeared from the `WHERE`. Anyone sending a wrong pair and relying on
+    that silence now gets a 422; fix the shape of the `(lo, hi)` pair. A scalar
+    in `in` is still wrapped in a one-item list, as it always was.
 
 ### Every paginated listing inherits the operators
 
@@ -2528,6 +2598,21 @@ print("Schema is in sync.")
 - name: Check migrations are in sync
   run: uv run python scripts/check_migrations.py
 ```
+
+!!! check "`check()` no longer reports phantom enum drift on SQLite (v0.313.0, #483)"
+    On SQLite an enum column is a `VARCHAR` plus a `CHECK`
+    (`ck_<table>_<enum>`). Alembic's `CHECK` comparator read the
+    constraint from the database but dropped it from the metadata side —
+    they are `_type_bound`, attached to the column type — so `check()`
+    proposed a phantom `remove_constraint` right after a clean
+    `upgrade head`, and the drift gate stayed off. `run_alembic_env`
+    passes an `include_object` that ignores that `CHECK`, keyed by
+    `(table, name)` so two tables with a same-named `CHECK` cannot hide
+    each other's drift. Real drift is still reported — a new column, and
+    also a changed enum member: `sync_enum_types` appends a
+    `replace_enum`, and `ReplaceEnumOp` gained `to_diff_tuple`, without
+    which `check()` raised `NotImplementedError` while building the diff
+    instead of reporting it.
 
 !!! info "Base columns always first"
     The SDK's `env.py` installs the `reorder_base_columns_first` hook, so

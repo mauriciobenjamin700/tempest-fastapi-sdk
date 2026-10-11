@@ -128,3 +128,261 @@ class TestReport:
         outcomes = _outcomes(runner.invoke(app, ["doctor", "--json"]).stdout)
         assert outcomes["settings"]["status"] == "skip"
         assert outcomes["config checks"]["status"] == "skip"
+
+
+class TestSettingsDiscovery:
+    """#490: a settings file that yields nothing is a failure, not a skip."""
+
+    @pytest.fixture
+    def project(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        """Stand in a bare project root, with the project modules unloaded."""
+        for name in [n for n in sys.modules if n == "src" or n.startswith("src.")]:
+            del sys.modules[name]
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        return tmp_path
+
+    def _write_settings(self, root: Path, source: str) -> None:
+        package = root / "src" / "core"
+        package.mkdir(parents=True)
+        (root / "src" / "__init__.py").write_text("", encoding="utf-8")
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        (package / "settings.py").write_text(source, encoding="utf-8")
+
+    def test_unusable_settings_file_fails_not_skips(self, project: Path) -> None:
+        """The file exists; "no core/settings.py here" would be a lie."""
+        self._write_settings(project, "VALUE = 1\n")
+        result = runner.invoke(app, ["doctor", "--json"])
+        outcomes = _outcomes(result.stdout)
+        assert result.exit_code == 1
+        assert outcomes["settings"]["status"] == "fail"
+        assert "core/settings.py here" not in outcomes["settings"]["detail"]
+
+    def test_settings_import_error_fails_with_the_cause(
+        self,
+        project: Path,
+    ) -> None:
+        self._write_settings(project, 'raise RuntimeError("boom-doctor")\n')
+        result = runner.invoke(app, ["doctor", "--json"])
+        outcomes = _outcomes(result.stdout)
+        assert result.exit_code == 1
+        assert outcomes["settings"]["status"] == "fail"
+        assert "boom-doctor" in outcomes["settings"]["detail"]
+
+    def test_get_settings_factory_is_found_and_tested(
+        self,
+        project: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._write_settings(
+            project,
+            "from tempest_fastapi_sdk.settings import DatabaseSettings\n\n\n"
+            "class Settings(DatabaseSettings):\n"
+            "    pass\n\n\n"
+            "def get_settings() -> Settings:\n"
+            "    return Settings()\n",
+        )
+        monkeypatch.setenv(
+            "DATABASE_URL",
+            f"sqlite+aiosqlite:///{project / 'factory.db'}",
+        )
+        result = runner.invoke(app, ["doctor", "--json"])
+        outcomes = _outcomes(result.stdout)
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert outcomes["settings"]["status"] == "ok"
+        assert outcomes["database"]["status"] == "ok"
+
+    def test_a_raising_factory_fails_with_the_cause(self, project: Path) -> None:
+        """#490: the swallowed factory error is the detail, not a generic note."""
+        self._write_settings(
+            project,
+            "from tempest_fastapi_sdk.settings import DatabaseSettings\n\n\n"
+            "class Settings(DatabaseSettings):\n"
+            "    pass\n\n\n"
+            "def get_settings() -> Settings:\n"
+            '    raise RuntimeError("boom-490-doctor")\n',
+        )
+        result = runner.invoke(app, ["doctor", "--json"])
+        outcomes = _outcomes(result.stdout)
+        assert result.exit_code == 1
+        assert outcomes["settings"]["status"] == "fail"
+        assert "boom-490-doctor" in outcomes["settings"]["detail"]
+
+
+class _OkRedisManager:
+    """Pretend a Redis connection that answers ``PING``."""
+
+    def __init__(self, url: str, **kwargs: object) -> None:
+        """Keep the URL the check would connect to."""
+        self.url: str = url
+
+    async def connect(self) -> None:
+        """No-op."""
+
+    async def health_check(self) -> bool:
+        """Always healthy."""
+        return True
+
+    async def disconnect(self) -> None:
+        """No-op."""
+
+
+class _FailingRedisManager(_OkRedisManager):
+    """Pretend a Redis connection that raises with the raw URL."""
+
+    async def connect(self) -> None:
+        """Refuse, quoting the URL the check passed in."""
+        raise ConnectionError(f"cannot reach {self.url}")
+
+
+class _OkRabbitBroker:
+    """Pretend a FastStream broker bound to a URL."""
+
+    def __init__(self, url: str) -> None:
+        """Keep the URL the check would bind to."""
+        self.url: str = url
+
+
+class _OkQueueManager:
+    """Pretend a queue manager that starts and answers the ping."""
+
+    def __init__(self, broker: _OkRabbitBroker) -> None:
+        """Keep the broker."""
+        self.broker: _OkRabbitBroker = broker
+
+    async def connect(self) -> None:
+        """No-op."""
+
+    async def health_check(self) -> bool:
+        """Always healthy."""
+        return True
+
+    async def disconnect(self) -> None:
+        """No-op."""
+
+
+class _FailingQueueManager(_OkQueueManager):
+    """Pretend a queue manager whose connect raises with the raw URL."""
+
+    async def connect(self) -> None:
+        """Refuse, quoting the URL the broker bound to."""
+        raise ConnectionError(f"cannot reach {self.broker.url}")
+
+
+class _OkDatabaseManager:
+    """Pretend an async DB manager that answers the health check."""
+
+    def __init__(self, url: str, **kwargs: object) -> None:
+        """Keep the URL and its mask."""
+        self.url: str = url
+        self.db_url_safe: str = _mask(url)
+
+    async def connect(self) -> None:
+        """No-op."""
+
+    async def health_check(self) -> bool:
+        """Always healthy."""
+        return True
+
+    async def disconnect(self) -> None:
+        """No-op."""
+
+
+class _FailingDatabaseManager(_OkDatabaseManager):
+    """Pretend an async DB manager whose connect raises with the raw URL."""
+
+    async def connect(self) -> None:
+        """Refuse, quoting the URL the check passed in."""
+        raise ConnectionError(f"cannot reach {self.url}")
+
+
+def _mask(url: str) -> str:
+    """Mask ``url`` the way the helpers under test must."""
+    from tempest_fastapi_sdk.utils._url import mask_url_password
+
+    return mask_url_password(url)
+
+
+def _wire(monkeypatch: pytest.MonkeyPatch, failing: bool) -> None:
+    """Export credential-carrying URLs and fake the connection layer."""
+    monkeypatch.setenv("DATABASE_URL", TestCredentialMasking._DB)
+    monkeypatch.setenv("REDIS_URL", TestCredentialMasking._REDIS)
+    monkeypatch.setenv("RABBITMQ_URL", TestCredentialMasking._RABBIT)
+    from tempest_fastapi_sdk import AsyncDatabaseManager
+    from tempest_fastapi_sdk.cache import AsyncRedisManager
+    from tempest_fastapi_sdk.queue import AsyncQueueManager
+
+    database = _FailingDatabaseManager if failing else _OkDatabaseManager
+    redis = _FailingRedisManager if failing else _OkRedisManager
+    queue = _FailingQueueManager if failing else _OkQueueManager
+    monkeypatch.setattr(AsyncDatabaseManager, "__init__", database.__init__)
+    monkeypatch.setattr(AsyncDatabaseManager, "connect", database.connect)
+    monkeypatch.setattr(AsyncDatabaseManager, "health_check", database.health_check)
+    monkeypatch.setattr(AsyncDatabaseManager, "disconnect", database.disconnect)
+    monkeypatch.setattr(AsyncRedisManager, "connect", redis.connect)
+    monkeypatch.setattr(AsyncRedisManager, "health_check", redis.health_check)
+    monkeypatch.setattr(AsyncRedisManager, "disconnect", redis.disconnect)
+    monkeypatch.setattr(AsyncQueueManager, "__init__", queue.__init__)
+    monkeypatch.setattr(AsyncQueueManager, "connect", queue.connect)
+    monkeypatch.setattr(AsyncQueueManager, "health_check", queue.health_check)
+    monkeypatch.setattr(AsyncQueueManager, "disconnect", queue.disconnect)
+    monkeypatch.setattr("faststream.rabbit.RabbitBroker", _OkRabbitBroker)
+
+
+class TestCredentialMasking:
+    """No check may print a URL password, in any mode or format."""
+
+    _DB = "postgresql+asyncpg://dbuser:db-secret-pw-491@127.0.0.1:5432/app"
+    _REDIS = "redis://:redis-secret-pw-491@127.0.0.1:6379/0"
+    _RABBIT = "amqp://guest:rabbit-secret-pw-491@127.0.0.1:5672/"
+    _SECRETS = ("db-secret-pw-491", "redis-secret-pw-491", "rabbit-secret-pw-491")
+
+    def _invoke(self, extra: list[str]) -> str:
+        """Run ``tempest doctor`` with ``extra`` flags and join both streams."""
+        result = runner.invoke(app, ["doctor", *extra])
+        assert result.exit_code in (0, 1), result.stdout + result.stderr
+        return result.stdout + result.stderr
+
+    def test_ok_table_never_prints_a_password(
+        self,
+        service: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Every ok ``CheckOutcome`` detail hides the URL passwords."""
+        _wire(monkeypatch, failing=False)
+        output = self._invoke([])
+        for secret in self._SECRETS:
+            assert secret not in output
+
+    def test_ok_json_never_prints_a_password(
+        self,
+        service: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The ``--json`` report hides the URL passwords."""
+        _wire(monkeypatch, failing=False)
+        output = self._invoke(["--json"])
+        for secret in self._SECRETS:
+            assert secret not in output
+
+    def test_fail_table_never_prints_a_password(
+        self,
+        service: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A failing probe that quotes the raw URL still hides its password."""
+        _wire(monkeypatch, failing=True)
+        output = self._invoke([])
+        for secret in self._SECRETS:
+            assert secret not in output
+
+    def test_fail_json_never_prints_a_password(
+        self,
+        service: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A failing probe that quotes the raw URL still hides it from JSON."""
+        _wire(monkeypatch, failing=True)
+        output = self._invoke(["--json"])
+        for secret in self._SECRETS:
+            assert secret not in output

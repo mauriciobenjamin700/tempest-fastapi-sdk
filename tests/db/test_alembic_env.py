@@ -27,12 +27,15 @@ import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from tempest_fastapi_sdk import AlembicHelper
+from tempest_fastapi_sdk.db.enum_migrations import type_bound_check_include_object
+from tempest_fastapi_sdk.db.model import NAMING_CONVENTION
 
 MODELS: str = '''"""Models for the generated-env tests."""
 
@@ -98,7 +101,7 @@ def _scaffold(root: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _alembic(
-    root: Path, database_url: str, *args: str
+    root: Path, database_url: str | None, *args: str
 ) -> subprocess.CompletedProcess[str]:
     """Run the bare Alembic CLI from the project root.
 
@@ -110,14 +113,20 @@ def _alembic(
 
     Args:
         root (Path): The project root.
-        database_url (str): The ``DATABASE_URL`` the env resolves.
+        database_url (str | None): The ``DATABASE_URL`` the env resolves.
+            ``None`` leaves the variable out of the child's environment,
+            so the env script has to find the URL from the project
+            itself.
         *args (str): The Alembic command and its arguments.
 
     Returns:
         subprocess.CompletedProcess[str]: The finished process.
     """
     env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
-    env["DATABASE_URL"] = database_url
+    if database_url is None:
+        env.pop("DATABASE_URL", None)
+    else:
+        env["DATABASE_URL"] = database_url
     env["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{env.get('PATH', '')}"
     return subprocess.run(
         [sys.executable, "-P", "-m", "alembic", *args],
@@ -220,6 +229,90 @@ class TestBareAlembicCli:
         assert "drop_enum_type" not in source
 
 
+_DRIFT_COLUMN: str = (
+    "    title: Mapped[str] = mapped_column(String(32), nullable=True)\n"
+)
+"""A column added to the model in the drift control."""
+
+
+def _add_drift(root: Path) -> None:
+    """Append a column to the model module so autogenerate sees real drift.
+
+    Args:
+        root (Path): The project root.
+    """
+    models = root / "envmodels" / "__init__.py"
+    text = models.read_text(encoding="utf-8")
+    text = text.replace(
+        "from sqlalchemy.orm import Mapped\n",
+        "from sqlalchemy import String\n"
+        "from sqlalchemy.orm import Mapped, mapped_column\n",
+    )
+    text = text.replace(
+        "    role: Mapped[UserRole]\n",
+        f"    role: Mapped[UserRole]\n{_DRIFT_COLUMN}",
+        1,
+    )
+    models.write_text(text, encoding="utf-8")
+
+
+def _add_enum_member(root: Path) -> None:
+    """Add a member to the shared enum so autogenerate sees real drift.
+
+    Args:
+        root (Path): The project root.
+    """
+    models = root / "envmodels" / "__init__.py"
+    text = models.read_text(encoding="utf-8")
+    text = text.replace(
+        '    TEEN = "TEEN"\n', '    TEEN = "TEEN"\n    ADULT = "ADULT"\n'
+    )
+    models.write_text(text, encoding="utf-8")
+
+
+class TestCheckOnSqlite:
+    """``alembic check`` right after ``upgrade head`` on a SQLite enum (#483).
+
+    The CHECK an ``Enum`` column carries is type-bound: Alembic reads it
+    from the database but drops it from the metadata side, so ``check``
+    used to report a phantom ``remove_constraint`` on a clean schema.
+    """
+
+    def test_check_passes_after_upgrade_head(self, project: Path) -> None:
+        url = f"sqlite+aiosqlite:///{project / 'app.db'}"
+        _ok(_alembic(project, url, "revision", "--autogenerate", "-m", "init"))
+        _ok(_alembic(project, url, "upgrade", "head"))
+
+        process = _alembic(project, url, "check")
+        _ok(process)
+        assert "No new upgrade operations detected" in process.stdout
+
+    def test_check_still_reports_real_drift(self, project: Path) -> None:
+        url = f"sqlite+aiosqlite:///{project / 'app.db'}"
+        _ok(_alembic(project, url, "revision", "--autogenerate", "-m", "init"))
+        _ok(_alembic(project, url, "upgrade", "head"))
+
+        _add_drift(project)
+
+        process = _alembic(project, url, "check")
+        assert process.returncode != 0
+        assert "add_column" in process.stdout
+        assert "remove_constraint" not in process.stdout
+
+    def test_check_reports_a_new_enum_member(self, project: Path) -> None:
+        """#483: a changed enum member is drift, reported — not a crash."""
+        url = f"sqlite+aiosqlite:///{project / 'app.db'}"
+        _ok(_alembic(project, url, "revision", "--autogenerate", "-m", "init"))
+        _ok(_alembic(project, url, "upgrade", "head"))
+
+        _add_enum_member(project)
+
+        process = _alembic(project, url, "check")
+        assert process.returncode != 0
+        assert "NotImplementedError" not in process.stderr
+        assert "replace_enum" in process.stdout
+
+
 @pytest.fixture(scope="module")
 def postgres_url() -> Iterator[str]:
     """Yield a PostgreSQL URL: ``TEST_POSTGRES_URL`` or a fresh container.
@@ -315,3 +408,172 @@ def test_upgrade_downgrade_upgrade_on_postgresql(
     _ok(_alembic(project, postgres_url, "upgrade", "head"))
     assert _enum_types(postgres_url) == ["user_role_enum"]
     _ok(_alembic(project, postgres_url, "downgrade", "base"))
+
+
+_FACTORY_SETTINGS: str = '''"""Settings module with a zero-arg factory."""
+
+from functools import lru_cache
+from pathlib import Path
+
+from tempest_fastapi_sdk.settings import DatabaseSettings
+
+_ROOT = Path(__file__).resolve().parents[2]
+
+
+class Settings(DatabaseSettings):
+    """Settings for the test service."""
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Build the settings, pointing the URL beside the project."""
+    return Settings(DATABASE_URL=f"sqlite+aiosqlite:///{_ROOT / 'via_settings.db'}")
+'''
+"""A settings module that exposes a factory and no instance.
+
+The SDK documents ``get_settings()`` as the accessor; before #490 the
+generated ``env.py`` read ``settings`` by name and found nothing here, so
+a project written that way could not migrate outside the ``tempest`` CLI.
+The URL is written into the built object (not taken from the environment)
+so its presence in the resolved URL proves the settings path, not the
+``DATABASE_URL`` variable or the ``.env`` fallback.
+"""
+
+
+class TestBareAlembicWithoutDatabaseUrl:
+    """#490: the generated ``env.py`` finds settings the CLI does.
+
+    Runs ``python -m alembic`` with no ``DATABASE_URL`` in the child's
+    environment, from the project root, so the only way the URL can be
+    resolved is through the settings module or ``.env`` the SDK writes.
+    """
+
+    def _write_settings(
+        self,
+        root: Path,
+        source: str,
+        *,
+        code_root: str = "src",
+    ) -> None:
+        """Write ``core/settings.py`` under the chosen code root.
+
+        Args:
+            root (Path): The project root.
+            source (str): The module source.
+            code_root (str): ``src`` or ``app``.
+        """
+        package: Path = root / code_root / "core"
+        package.mkdir(parents=True)
+        (root / code_root / "__init__.py").write_text("", encoding="utf-8")
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        (package / "settings.py").write_text(source, encoding="utf-8")
+
+    @pytest.mark.parametrize("code_root", ["src", "app"])
+    def test_get_settings_factory_resolves_the_url(
+        self,
+        project: Path,
+        code_root: str,
+    ) -> None:
+        """A factory-only module, no ``DATABASE_URL`` env, no ``.env``."""
+        self._write_settings(project, _FACTORY_SETTINGS, code_root=code_root)
+        _ok(_alembic(project, None, "current"))
+        assert (project / "via_settings.db").is_file()
+
+    def test_dotenv_is_read_when_the_module_has_no_settings(
+        self,
+        project: Path,
+    ) -> None:
+        """A settings file that yields nothing still leaves ``.env``."""
+        self._write_settings(project, "VALUE = 1\n")
+        (project / ".env").write_text(
+            f"DATABASE_URL=sqlite+aiosqlite:///{project / 'via_dotenv.db'}\n",
+            encoding="utf-8",
+        )
+        _ok(_alembic(project, None, "current"))
+        assert (project / "via_dotenv.db").is_file()
+
+    def test_import_error_reaches_the_error_message(
+        self,
+        project: Path,
+    ) -> None:
+        """The cause of a failed import is not swallowed into "empty"."""
+        self._write_settings(
+            project,
+            'raise RuntimeError("boom-490-import")\n',
+        )
+        process = _alembic(project, None, "current")
+        assert process.returncode != 0
+        assert "boom-490-import" in process.stderr
+        assert "DATABASE_URL is empty" in process.stderr
+
+    def test_factory_error_reaches_the_error_message(
+        self,
+        project: Path,
+    ) -> None:
+        """#490: a factory that raised is not swallowed into "empty"."""
+        self._write_settings(
+            project,
+            "from tempest_fastapi_sdk.settings import DatabaseSettings\n\n\n"
+            "class Settings(DatabaseSettings):\n"
+            "    pass\n\n\n"
+            "def get_settings() -> Settings:\n"
+            '    raise RuntimeError("boom-490-factory")\n',
+        )
+        process = _alembic(project, None, "current")
+        assert process.returncode != 0
+        assert "boom-490-factory" in process.stderr
+        assert "DATABASE_URL is empty" in process.stderr
+
+
+class TestTypeBoundCheckIncludeObject:
+    """#483: the enum-check filter is scoped to the table that declares it."""
+
+    @staticmethod
+    def _declared_check(
+        table_name: str,
+        metadata: sa.MetaData,
+    ) -> sa.CheckConstraint:
+        """Build a table whose enum column carries a type-bound check.
+
+        Args:
+            table_name (str): The table to create.
+            metadata (sa.MetaData): The metadata to attach it to.
+
+        Returns:
+            sa.CheckConstraint: The type-bound check SQLAlchemy built.
+        """
+        sa.Table(
+            table_name,
+            metadata,
+            sa.Column(
+                "kind",
+                sa.Enum(
+                    "a",
+                    "b",
+                    name=f"{table_name}_kind",
+                    create_constraint=True,
+                ),
+            ),
+        )
+        for constraint in metadata.tables[table_name].constraints:
+            if isinstance(constraint, sa.CheckConstraint) and getattr(
+                constraint, "_type_bound", False
+            ):
+                return constraint
+        raise AssertionError("the enum column declared no type-bound check")
+
+    def test_a_check_of_the_same_name_on_another_table_is_kept(self) -> None:
+        metadata = sa.MetaData(naming_convention=NAMING_CONVENTION)
+        declared = self._declared_check("alpha", metadata)
+        assert isinstance(declared.name, str)
+
+        include = type_bound_check_include_object(metadata)
+        same_table = SimpleNamespace(table=SimpleNamespace(name="alpha"))
+        other_table = SimpleNamespace(table=SimpleNamespace(name="beta"))
+
+        assert (
+            include(same_table, declared.name, "check_constraint", True, None) is False
+        )
+        assert (
+            include(other_table, declared.name, "check_constraint", True, None) is True
+        )

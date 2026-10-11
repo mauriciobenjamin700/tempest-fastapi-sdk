@@ -5,7 +5,13 @@ from sqlalchemy import Integer, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
-from tempest_fastapi_sdk import BaseModel, BaseRepository, F, Q
+from tempest_fastapi_sdk import (
+    BaseModel,
+    BaseRepository,
+    F,
+    InvalidFilterValueException,
+    Q,
+)
 
 
 class Item(BaseModel):
@@ -229,13 +235,44 @@ class TestExtendedOperators:
         rows = await repo.list({"priority__between": [2, 5]})
         assert {r.name for r in rows} == {"c"}
 
-    async def test_between_ill_formed_is_skipped(
+    async def test_between_ill_formed_is_refused(
         self, repo: BaseRepository[Item]
     ) -> None:
-        """A ``between`` value that is not a two-item pair is ignored."""
+        """A ``between`` value that is not a two-item pair is refused, not dropped."""
         await _seed(repo)
-        rows = await repo.list(where=Q(stock__between=[1]))
-        assert len(rows) == 3
+        with pytest.raises(InvalidFilterValueException) as exc:
+            await repo.list(where=Q(stock__between=[1]))
+        assert exc.value.details["filter"] == "stock__between"
+        assert len(await repo.list()) == 3
+
+    async def test_in_with_a_scalar_matches_a_single_value(
+        self, repo: BaseRepository[Item]
+    ) -> None:
+        """A scalar in ``in`` wraps to a one-item list, as it always did."""
+        await _seed(repo)
+        rows = await repo.list(where=Q(status__in="open"))
+        assert {r.name for r in rows} == {"a"}
+
+    async def test_notin_with_a_scalar_excludes_a_single_value(
+        self, repo: BaseRepository[Item]
+    ) -> None:
+        """A scalar in ``notin`` wraps too, instead of raising."""
+        await _seed(repo)
+        rows = await repo.list(where=Q(status__notin="open"))
+        assert {r.name for r in rows} == {"b", "c"}
+
+    async def test_refused_value_is_bounded_in_the_detail(
+        self, repo: BaseRepository[Item]
+    ) -> None:
+        """A large value is truncated in ``details``, not echoed whole."""
+        await _seed(repo)
+        huge = [1] * 500
+        with pytest.raises(InvalidFilterValueException) as exc:
+            await repo.list(where=Q(stock__between=huge))
+        rendered = exc.value.details["value"]
+        assert isinstance(rendered, str)
+        assert len(rendered) <= 67
+        assert rendered.endswith("...")
 
     async def test_iexact_is_case_insensitive(self, repo: BaseRepository[Item]) -> None:
         """``__iexact`` matches ignoring case, unlike plain equality."""

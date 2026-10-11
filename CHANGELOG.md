@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Um valor com a forma errada para o operador `between` passa a ser recusado
+  com `InvalidFilterValueException` (422) antes de qualquer statement, em vez
+  de ser descartado em silêncio: `{"created_at__between": x}` sem o par
+  `(lo, hi)` (#484). O descarte sumia do `WHERE` e, em `bulk_update` /
+  `delete_many` / `update_returning`, ampliava a escrita para as linhas que o
+  filtro **não** nomeava — `details["value"]` ecoa um `repr` do valor recusado,
+  truncado em 64 caracteres. O `in` / `notin` / `not_in` **não** é recusado com
+  escalar: um valor único continua virando lista de um item
+  (`{"status__in": "open"}` → `IN ('open')`), que é o que o caller pediu e
+  nunca fez a condição sumir do `WHERE`.
+
+### Fixed
+
+- `tempest doctor` mascara a senha da URL do RabbitMQ, do Redis e do banco
+  em todo `detail` de `CheckOutcome` — inclusive nos ramos `fail`, cuja
+  mensagem de exceção pode repetir a URL crua —, na tabela e no `--json`
+  (#491). A máscara passa a valer para a URL inteira: senha que contém `@`
+  (`amqp://u:p@ss@h/`), lista de hosts com credenciais por host
+  (`amqp://u:pw@h1,u:pw2@h2/`) e credencial na query (`?password=`, `?pwd=`,
+  `?secret=`) deixam de vazar, e a URL dentro de uma frase (`cannot reach
+  redis://...`) é mascarada no lugar em que aparece. O helper vira a única
+  fonte da forma segura
+  (`tempest_fastapi_sdk.utils._url.mask_url_password`), que
+  `AsyncDatabaseManager.db_url_safe` passa a delegar. O `--timeout` opcional
+  no check do RabbitMQ, citado na mesma issue, **não** foi tratado aqui: o
+  check do RabbitMQ segue sem o parâmetro `--timeout` que Redis e SMTP já
+  aceitam.
+- `RedactionPolicy` vira idempotente sem deixar passar segredo nenhum: só
+  considera um valor já redigido quando o valor **inteiro** é o `replacement`,
+  de modo que `token=abc` → `token=[REDACTED]` e de novo → `token=[REDACTED]`,
+  enquanto um segredo que apenas **começa** pelo marcador é redigido —
+  `password=***hunter2` com `replacement="***"` virava `password=***hunter2`,
+  não `password=***`. A comparação crua por prefixo tratava qualquer valor
+  iniciado pelo marcador como já redigido e deixava o segredo em claro. O grupo
+  de valor do `_KEY_VALUE_PATTERN` continua parando no `]` (então `[token=abc]`
+  mantém o colchete de fechamento: `[token=[REDACTED]]`), mas passa a aceitar o
+  próprio `replacement` como unidade, de modo que um marcador entre colchetes
+  casa inteiro (`token=[REDACTED]`) e um valor real que só começa por ele
+  (`token=[REDACTED]supersecret`) segue sendo redigido por inteiro. Como o
+  padrão depende do `replacement`, ele é compilado por policy, no
+  `__post_init__`; `_replace_pair` mantém o match intacto só quando o valor é
+  **igual** ao `replacement` (#489).
+- A descoberta de settings do projeto vira uma só, compartilhada por
+  `tempest db`, `tempest doctor`, `tempest user` e o `alembic/env.py` gerado
+  (`tempest_fastapi_sdk.utils._settings_discovery`). Os quatro aceitam, sob
+  `src` **ou** `app`, o factory zero-arg documentado (`get_settings()`, ou
+  qualquer callable anotado com retorno `BaseSettings`) além da instância, e
+  todos leem o `.env` como fallback; antes cada um só procurava a instância
+  `settings` sob `src`, então um projeto escrito como a SDK documenta — só
+  `get_settings()` — não migrava, não era diagnosticado e não achava o
+  usuário. Uma instância presente ganha do factory, que nem é chamado nesse
+  caso. O factory cuja anotação de retorno é uma string (`from __future__
+  import annotations`) continua sendo achado, porque a assinatura é resolvida
+  com `eval_str=True`. `tempest doctor` passa a **falhar** (não "skip") quando
+  o `core/settings.py` existe mas não rende nada, e tanto o `detail` do doctor
+  quanto o erro do `env.py` carregam a **causa** — o import que quebrou, ou o
+  `repr` da exceção que o `get_settings()` levantou — em vez de engolir o
+  erro e reportar só "nenhum settings utilizável" (#490).
+- `alembic check` (`AlembicHelper.check()`) deixa de acusar drift fantasma logo
+  depois de um `upgrade head` limpo no SQLite, em toda tabela com coluna
+  enum. O comparador de `CHECK` do Alembic lia a constraint do banco mas a
+  descartava do lado da metadata (são `_type_bound`, ligadas ao tipo da
+  coluna), então propunha `remove_constraint` para `ck_<tabela>_<enum>` e
+  desligava o gate de CI. O `run_alembic_env` passa agora um `include_object`
+  que ignora esse `CHECK` — chaveado por `(tabela, nome)`, não só pelo nome,
+  para que duas tabelas com um `CHECK` homônimo não escondam o drift uma da
+  outra. Drift real continua acusado, inclusive uma mudança de membro do enum:
+  `ReplaceEnumOp` ganha `to_diff_tuple`, sem o qual `alembic check` levantava
+  `NotImplementedError` ao tentar imprimir o diff em vez de reportar o drift
+  (#483).
+- Declarar um model com `Mapped[MeuEnum]` sobre `BaseModel` deixa de emitir
+  `SADeprecationWarning` por coluna a cada import, no SQLAlchemy 2.1. O
+  `TempestEnum._resolve_for_python_type` lia `SchemaType.inherit_schema` (virou
+  propriedade deprecada em 2.1) e repassava o parâmetro `inherit_schema`
+  (também deprecado); agora lê `_inherit_schema` direto e só repassa quando for
+  verdadeiro, então quem roda a suíte com `-W error` sobre 2.1 não quebra mais
+  no import dos models (#496). O DDL não muda nos dois dialetos. A suíte passa
+  a tratar `SADeprecationWarning` como erro (`filterwarnings`).
+
 ## [0.312.1] — 2026-10-11
 
 ### Fixed

@@ -673,6 +673,7 @@ timeout = 300
 timeout_method = "thread"
 filterwarnings = [
     "error::starlette.exceptions.StarletteDeprecationWarning",
+    "error::sqlalchemy.exc.SADeprecationWarning",
 ]
 markers = [
     "model: needs real model weights; opt-in, downloads on first run (make test-model)",

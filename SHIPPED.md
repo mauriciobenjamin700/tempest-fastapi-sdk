@@ -255,6 +255,28 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `run_alembic_env(metadata)` (body lives in `db/alembic_env.py`,
   `DEFAULT_REVISION_HOOKS` to extend), ruff-clean under both src layouts,
   `alembic.ini` with `prepend_sys_path = .` + `path_separator = os`.
+  **`check()` de enum no SQLite (0.313.0, #483):** `run_alembic_env` passa
+  `include_object=type_bound_check_include_object(metadata)`, que descarta do
+  lado do banco o `CHECK` cujo `(tabela, nome)` casa um `CHECK` `_type_bound`
+  da metadata — o comparador do Alembic lê a constraint refletida mas pula a da
+  metadata (`all_table_check_constraints` filtra `_type_bound`), então `check()`
+  propunha um `remove_constraint` fantasma para `ck_<tabela>_<enum>` logo depois
+  de um `upgrade head` limpo. A tabela entra na chave para que duas tabelas com
+  um `CHECK` homônimo não escondam o drift uma da outra. Drift real continua
+  acusado — inclusive a mudança de membro do enum, que faz o
+  `sync_enum_types` anexar um `ReplaceEnumOp`; sem `ReplaceEnumOp.to_diff_tuple`
+  o `check()` levantava `NotImplementedError` ao achatar as operações
+  (`UpgradeOps.as_diffs`), então o drift virava crash em vez de relatório. Não
+  foi introduzido pelo #482 (já reproduzia no `env.py` anterior). Testes:
+  `tests/db/test_alembic_env.py::TestCheckOnSqlite` e
+  `::TestTypeBoundCheckIncludeObject`.
+  **`inherit_schema` no SQLAlchemy 2.1 (0.313.0, #496):**
+  `TempestEnum._resolve_for_python_type` lê `_inherit_schema` (atributo
+  interno) em vez da propriedade deprecada e só repassa o parâmetro
+  `inherit_schema` quando verdadeiro, então `Mapped[Enum]` não emite
+  `SADeprecationWarning` no import dos models sob 2.1. A suíte roda com
+  `SADeprecationWarning` como erro (`[tool.pytest.ini_options].filterwarnings`)
+  e a matriz 2.1.4 declara o model com `warnings.simplefilter("error")`.
   **Query plans
   (v0.200.0):** `explain_queries(session)` / `repo.explain()` → typed
   `ExplainReport`/`QueryPlan`; `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` on
@@ -2240,11 +2262,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `tempest generate --docker` (regen compose) / `--dockerfile`
   (regen Dockerfile + .dockerignore) / `--src` (extra source layers),
   `tempest db init/revision/upgrade/downgrade/current/history/seed`
-  (**URL resolution fixed in v0.281.0**: the settings instance is found by
-  *type* — any `pydantic_settings.BaseSettings` — under `src` **or** `app`,
-  instead of demanding the name `settings`; `.env` is read when the
-  environment has nothing; and a failed import reports its cause on stderr
-  instead of vanishing into `except Exception: return None`),
+  (**settings resolution unified in v0.281.0 and v0.313.0**: one shared
+  discovery (`utils._settings_discovery`) finds the settings by *type* — any
+  `pydantic_settings.BaseSettings` instance — under `src` **or** `app`, *or*
+  the result of the documented zero-arg factory (`get_settings()`, or any
+  callable annotated to return `BaseSettings`), instead of demanding the name
+  `settings`; `.env` is read when the environment has nothing; and a failed
+  import reports its cause on stderr instead of vanishing into
+  `except Exception: return None`. The same discovery backs the generated
+  `env.py`, `tempest doctor` and `tempest user`; `tempest doctor` **fails**
+  rather than skips when `core/settings.py` exists but yields nothing),
   `tempest user create [--admin] [--set col=value] / list / promote /
   revoke / set-password` (**`--set` (v0.240.0)** seeds the columns a
   concrete `UserModel` adds: validated against the mapped columns,
@@ -3242,3 +3269,21 @@ statement. `resolve_filter_key` / `FILTER_OPERATORS` em
 construção sobre `list_filter`, `search_fields` e os `filters` de cada
 `Lens` (typo vira `ValueError` no boot). Teste:
 `tests/db/test_filters_contract.py`.
+
+## Valor com a forma errada é recusado (0.313.0, #484)
+
+Terceira metade da mesma família (#465, v0.309.0; `None`, v0.292.0): chave e
+operador válidos, mas **valor** incompatível com o operador. `between` sem o
+par `(lo, hi)` — `[1]`, `x`, `None` — era ignorado, a condição sumia do
+`WHERE` e, em `bulk_update` / `delete_many` / `update_returning`, a escrita
+atingia as linhas que o filtro **não** nomeava. `_suffix_condition` levanta
+`InvalidFilterValueException` (422, `INVALID_FILTER_VALUE`) antes de qualquer
+statement, carregando `details={"filter": <chave>, "value": <repr truncado>}`
+— `_brief` limita o eco a 64 caracteres porque o valor recusado costuma ser um
+payload grande. O `in` **não** é recusado com escalar: um valor único é
+embrulhado numa lista de um item (`{"status__in": "open"}` → `IN ('open')`), que
+é o que o caller pediu e nunca fez a condição sumir do `WHERE`; a recusa cobre
+só o `between` malformado. Testes: `tests/db/test_expressions.py` (recusa do
+`between`, escalar em `in` embrulha, truncamento) e
+`tests/db/test_repository.py::TestInvalidFilterValueOnWrites` (prova que nada é
+escrito).

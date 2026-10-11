@@ -109,6 +109,9 @@ from tempest_fastapi_sdk.exceptions.upload import (
     InvalidFileTypeException as InvalidFileTypeException,
 )
 from tempest_fastapi_sdk.exceptions.validation import (
+    InvalidFilterValueException as InvalidFilterValueException,
+)
+from tempest_fastapi_sdk.exceptions.validation import (
     OrderByNotAllowedException as OrderByNotAllowedException,
 )
 from tempest_fastapi_sdk.exceptions.validation import (
@@ -148,6 +151,7 @@ __all__: list[str] = [
     "InheritedErrorCodeWarning",
     "InsufficientBalanceException",
     "InvalidFileTypeException",
+    "InvalidFilterValueException",
     "InvalidSignedURLException",
     "InvalidTokenException",
     "MessageCatalog",

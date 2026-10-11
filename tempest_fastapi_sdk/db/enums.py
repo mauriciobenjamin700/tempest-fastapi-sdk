@@ -206,18 +206,26 @@ class TempestEnum(SQLEnum):
             the resulting DDL on both dialects, so a SQLAlchemy release
             that changes the hook fails the suite rather than quietly
             reverting the column to unsafe defaults.
+
+            ``inherit_schema`` is read through
+            :func:`_inherit_schema_flag` and only forwarded when true,
+            because SQLAlchemy 2.1 deprecates both the property and the
+            ``__init__`` parameter and warns on either — once per enum
+            column on every model import (#496).
         """
         if isinstance(python_type, type) and issubclass(python_type, enum.Enum):
-            return TempestEnum(
-                python_type,
-                schema=self.schema,
-                inherit_schema=self.inherit_schema,
-                metadata=self.metadata,
-                native_enum=self.native_enum,
-                create_constraint=self.create_constraint,
-                validate_strings=self.validate_strings,
-                values_callable=self.values_callable,
-            )
+            kwargs: dict[str, Any] = {
+                "metadata": self.metadata,
+                "native_enum": self.native_enum,
+                "create_constraint": self.create_constraint,
+                "validate_strings": self.validate_strings,
+                "values_callable": self.values_callable,
+            }
+            if _inherit_schema_flag(self):
+                kwargs["inherit_schema"] = True
+            else:
+                kwargs["schema"] = self.schema
+            return TempestEnum(python_type, **kwargs)
         return cast(
             "TempestEnum | None",
             super()._resolve_for_python_type(
@@ -252,6 +260,30 @@ def enum_column(
         Mapped[Any]: The mapped column declaration.
     """
     return mapped_column(TempestEnum(enum_class), **kwargs)
+
+
+def _inherit_schema_flag(type_: TempestEnum) -> bool:
+    """Read ``SchemaType.inherit_schema`` without the SQLAlchemy 2.1 warning.
+
+    SQLAlchemy 2.1 turned ``SchemaType.inherit_schema`` into a deprecated
+    property that warns on every read, and deprecated the ``inherit_schema``
+    ``__init__`` parameter. The value now lives on ``_inherit_schema``;
+    SQLAlchemy 2.0 has no such attribute and stores the public name as a
+    plain attribute that does not warn. Reading ``_inherit_schema`` first
+    and falling back to the public name keeps both series quiet — the
+    fallback is only reached on 2.0, where the property does not warn.
+
+    Args:
+        type_ (TempestEnum): The type whose flag to read, usually the
+            generic instance registered in ``BaseModel``'s annotation map.
+
+    Returns:
+        bool: Whether the type inherits its schema from the metadata.
+    """
+    value = getattr(type_, "_inherit_schema", None)
+    if value is None:
+        value = getattr(type_, "inherit_schema", False)
+    return bool(value)
 
 
 def _sole_enum_class(enums: tuple[Any, ...]) -> type[enum.Enum] | None:

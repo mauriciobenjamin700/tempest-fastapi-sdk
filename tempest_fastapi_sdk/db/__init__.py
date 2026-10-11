@@ -96,6 +96,9 @@ from tempest_fastapi_sdk.db.enum_migrations import (
 from tempest_fastapi_sdk.db.enum_migrations import (
     sync_enum_types as sync_enum_types,
 )
+from tempest_fastapi_sdk.db.enum_migrations import (
+    type_bound_check_include_object as type_bound_check_include_object,
+)
 from tempest_fastapi_sdk.db.enums import ENUM_TYPE_SUFFIX as ENUM_TYPE_SUFFIX
 from tempest_fastapi_sdk.db.enums import TempestEnum as TempestEnum
 from tempest_fastapi_sdk.db.enums import enum_column as enum_column
@@ -351,4 +354,5 @@ __all__: list[str] = [
     "to_snake_case",
     "transaction",
     "transaction_depth",
+    "type_bound_check_include_object",
 ]

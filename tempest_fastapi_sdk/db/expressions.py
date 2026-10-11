@@ -39,7 +39,10 @@ from sqlalchemy import and_, func, not_, or_
 from sqlalchemy.orm import QueryableAttribute
 from sqlalchemy.sql.elements import ColumnElement
 
-from tempest_fastapi_sdk.exceptions.validation import UnknownFilterKeyException
+from tempest_fastapi_sdk.exceptions.validation import (
+    InvalidFilterValueException,
+    UnknownFilterKeyException,
+)
 
 #: Suffix-to-operator map for ``<column>__<op>`` comparison filters.
 COMPARISON_OPS: dict[str, Callable[[Any, Any], Any]] = {
@@ -171,7 +174,7 @@ def resolve_filter_key(model: type[Any], field: str) -> tuple[Any, str | None]:
     return attribute, op
 
 
-def _suffix_condition(column: Any, op: str, value: Any) -> Any:
+def _suffix_condition(column: Any, op: str, value: Any, field: str) -> Any:
     """Build the clause for a ``<column>__<op>`` suffix (non-``isnull``).
 
     Kept explicit — a plain ``if`` per operator, no operator-name magic —
@@ -180,11 +183,13 @@ def _suffix_condition(column: Any, op: str, value: Any) -> Any:
     * ``gt`` / ``gte`` / ``lt`` / ``lte`` / ``ne`` — comparisons (from
       :data:`COMPARISON_OPS`).
     * ``in`` / ``notin`` / ``not_in`` — membership. ``not_in`` is a
-      readability alias for ``notin``. The value is any non-string iterable
-      (materialized once) or a bare scalar wrapped into a single-item list.
+      readability alias for ``notin``. A non-string iterable is
+      materialized once and used as is; a bare scalar is wrapped in a
+      one-item list, so ``{"status__in": "open"}`` becomes ``IN ('open')``
+      and the condition still narrows the ``WHERE``.
     * ``between`` — ``col BETWEEN lo AND hi``. The value must be an ordered
-      two-item ``list`` / ``tuple`` ``(lo, hi)``; anything else is skipped
-      (returns ``None``). A ``set`` is rejected because its order is undefined.
+      two-item ``list`` / ``tuple`` ``(lo, hi)``; anything else is refused. A
+      ``set`` is rejected because its order is undefined.
     * ``iexact`` — case-insensitive equality, ``lower(col) == lower(value)``.
     * ``like`` / ``ilike`` — raw ``LIKE`` / ``ILIKE`` with the caller's own
       ``%`` / ``_`` wildcards, **not** escaped. Use these when you want to
@@ -201,10 +206,15 @@ def _suffix_condition(column: Any, op: str, value: Any) -> Any:
         column (Any): The resolved model column.
         op (str): The suffix operator (``gt``/``in``/``between``/…).
         value (Any): The comparison value.
+        field (str): The full ``filters`` key, suffix included, used to name
+            the refused value in :class:`InvalidFilterValueException`.
 
     Returns:
-        Any: The SQLAlchemy clause, or ``None`` for an unknown operator or an
-            ill-formed ``between`` value.
+        Any: The SQLAlchemy clause, or ``None`` for an unknown operator.
+
+    Raises:
+        InvalidFilterValueException: When the value does not have the shape
+            the operator requires (``between`` without a two-item pair).
     """
     op_func = COMPARISON_OPS.get(op)
     if op_func is not None:
@@ -217,7 +227,7 @@ def _suffix_condition(column: Any, op: str, value: Any) -> Any:
     if op == "between":
         if isinstance(value, (list, tuple)) and len(value) == 2:
             return column.between(value[0], value[1])
-        return None
+        raise InvalidFilterValueException(field, value)
     if op == "iexact":
         return func.lower(column) == func.lower(value)
     if op == "like":
@@ -246,8 +256,8 @@ def build_filter_condition(
     * ``<column>__<op>`` suffix operator, one of:
       ``gt`` / ``gte`` / ``lt`` / ``lte`` / ``ne`` (comparison),
       ``in`` / ``notin`` / ``not_in`` (membership; value is any non-string
-      iterable — ``list`` / ``set`` / ``tuple`` / generator — or a bare
-      scalar; ``not_in`` is an alias of ``notin``),
+      iterable — ``list`` / ``set`` / ``tuple`` / generator — ``not_in`` is
+      an alias of ``notin``; a bare scalar is wrapped in a one-item list),
       ``between`` (``col BETWEEN lo AND hi``; value is an ordered two-item
       ``(lo, hi)`` ``list`` / ``tuple``),
       ``iexact`` (case-insensitive equality),
@@ -271,6 +281,13 @@ def build_filter_condition(
     ``delete_many`` (measured on SQLite, #465). A typo has no safe reading,
     so it is refused before any statement is built.
 
+    A *value* that cannot express its operator raises
+    :class:`InvalidFilterValueException` for the same reason: a malformed
+    ``between`` pair used to be dropped, so ``{"created_at__between": x}``
+    with the wrong shape widened ``bulk_update`` / ``delete_many`` /
+    ``update_returning`` to every row the filter did not name (measured on
+    SQLite, #484). A shape error is refused before any statement is built.
+
     ``None`` used to be dropped the same way, which was the wrong
     default in the worst direction: ``{"left_at": None}`` — the obvious
     spelling of "still a member" — silently matched **every** row, so
@@ -293,13 +310,15 @@ def build_filter_condition(
 
     Returns:
         ColumnElement[bool] | None: The condition, or ``None`` to skip —
-            only for ``None`` on an operator that cannot express it, or an
-            ill-formed ``between`` value.
+            only for ``None`` on an operator that cannot express it.
 
     Raises:
         UnknownFilterKeyException: When the column (the part before
             ``__``) is not an SQL-expressible attribute of ``model``, or
             the suffix is not in :data:`FILTER_OPERATORS`.
+        InvalidFilterValueException: When the value does not have the shape
+            the operator requires (``in`` without an iterable, ``between``
+            without a two-item pair).
 
     Notes:
         ``isnull`` is handled first, because it legitimately carries a
@@ -328,7 +347,7 @@ def build_filter_condition(
                 stacklevel=3,
             )
             return None
-        condition = _suffix_condition(column, op, value)
+        condition = _suffix_condition(column, op, value, field)
         if condition is None:
             return None
     else:
@@ -506,9 +525,10 @@ class Q:
 
         An unknown column or an unknown operator raises
         :class:`UnknownFilterKeyException` — on ``~Q(usr_id=1)`` a dropped
-        condition would otherwise have negated nothing. What is still
-        skipped is a ``None`` given to an operator that cannot express it
-        (``__gt``, ``__between``, ``__in`` and friends), with a
+        condition would otherwise have negated nothing. A value that cannot
+        express its operator raises :class:`InvalidFilterValueException`.
+        What is still skipped is a ``None`` given to an operator that cannot
+        express it (``__gt``, ``__between``, ``__in`` and friends), with a
         :class:`DroppedFilterWarning` naming the key. A node whose
         conditions all resolve to nothing returns ``None``.
 
@@ -522,6 +542,8 @@ class Q:
         Raises:
             UnknownFilterKeyException: When a condition names a column
                 ``model`` does not have, or an unknown operator.
+            InvalidFilterValueException: When a condition's value does not
+                have the shape its operator requires.
         """
         clauses: list[ColumnElement[bool]] = []
         for field, value in self.conditions.items():

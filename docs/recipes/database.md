@@ -1505,8 +1505,8 @@ Operadores de sufixo `campo__op` disponíveis (no `Q` **e** no dict):
 | Sufixo | SQL | Exemplo |
 |--------|-----|---------|
 | `gt` `gte` `lt` `lte` `ne` | comparação | `Q(priority__gte=5)` |
-| `in` `notin` `not_in` | `IN` / `NOT IN` (valor = qualquer iterável não-string: `list`/`set`/`tuple`/gerador; `not_in` é alias de `notin`) | `Q(status__in={"open", "paid"})` |
-| `between` | `col BETWEEN lo AND hi` (valor = par ordenado `(lo, hi)` em `list`/`tuple`) | `Q(price__between=(10, 20))` |
+| `in` `notin` `not_in` | `IN` / `NOT IN` (valor = qualquer iterável não-string: `list`/`set`/`tuple`/gerador, ou um escalar, embrulhado numa lista de um item; `not_in` é alias de `notin`) | `Q(status__in={"open", "paid"})` |
+| `between` | `col BETWEEN lo AND hi` (valor = par ordenado `(lo, hi)` em `list`/`tuple`; qualquer outro formato é recusado) | `Q(price__between=(10, 20))` |
 | `iexact` | igualdade case-insensitive (`lower(col) == lower(v)`) | `Q(email__iexact="Ana@X.com")` |
 | `like` `ilike` | `LIKE` / `ILIKE` cru, com os wildcards do chamador (`%`/`_`) **sem escape** | `Q(sku__ilike="ab_-%")` |
 | `isnull` | `IS NULL` (True) / `IS NOT NULL` (False) | `Q(closed_at__isnull=True)` |
@@ -1668,6 +1668,76 @@ As três linhas continuam lá: o `delete_many` não apagou nada.
     passa a receber 422. Tire o campo do dict antes de repassar
     (`conditions = f.get_conditions()` e depois
     `search = conditions.pop("search", None)`) e trate-o no service.
+
+### Valor que não cabe no operador é recusado
+
+Um valor com a **forma errada** para o operador — um `between` que não é o par
+`(lo, hi)` — levanta `InvalidFilterValueException` antes de qualquer statement.
+Era o restante do defeito do #465: a condição sumia do `WHERE` e, em
+`bulk_update`, `delete_many` e `update_returning`, a escrita atingia justamente
+as linhas que o filtro **não** nomeava.
+
+O `in` **não** entra nessa lista: um escalar solto é embrulhado numa lista de um
+item (`{"status__in": "open"}` → `IN ('open')`), como sempre foi, porque a
+condição não sumia do `WHERE`.
+
+```python
+import asyncio
+
+from sqlalchemy import String
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import Mapped, mapped_column
+from tempest_fastapi_sdk import (
+    BaseModel,
+    BaseRepository,
+    InvalidFilterValueException,
+)
+
+
+class TicketModel(BaseModel):
+    __tablename__ = "tickets_bad_value_demo"
+
+    status: Mapped[str] = mapped_column(String(16))
+
+
+async def main() -> None:
+    """Run this example."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(TicketModel.metadata.create_all)
+    async with AsyncSession(engine) as session:
+        repo: BaseRepository[TicketModel] = BaseRepository(
+            session, model=TicketModel
+        )
+        for status in ("open", "paid"):
+            await repo.add(TicketModel(status=status))
+        try:
+            await repo.delete_many({"status__between": ["open"]})
+        except InvalidFilterValueException as exc:
+            print(exc.status_code, exc.code, exc.details)
+        print(await repo.count())
+    await engine.dispose()
+
+
+asyncio.run(main())
+```
+
+Saída:
+
+```text
+422 INVALID_FILTER_VALUE {'filter': 'status__between', 'value': "['open']"}
+2
+```
+
+`details["value"]` ecoa um `repr` do valor, **truncado** em 64 caracteres: o
+filtro errado costuma carregar valor grande (um payload, uma lista de ids), e
+o erro não é lugar de repetir tudo.
+
+!!! warning "Mudança de comportamento (#484)"
+    Até a 0.312.0 um `between` malformado era **ignorado** — a condição
+    desaparecia do `WHERE`. Quem mandava um par errado e dependia desse
+    silêncio passa a receber 422; corrija a forma do par `(lo, hi)`. Um escalar
+    em `in` segue embrulhado numa lista de um item, como sempre foi.
 
 ### Toda paginação herda os operadores
 
@@ -2520,6 +2590,21 @@ print("Schema is in sync.")
 - name: Check migrations are in sync
   run: uv run python scripts/check_migrations.py
 ```
+
+!!! check "`check()` não acusa drift falso de enum no SQLite (v0.313.0, #483)"
+    No SQLite uma coluna enum é um `VARCHAR` mais um `CHECK`
+    (`ck_<tabela>_<enum>`). O comparador de `CHECK` do Alembic lia a
+    constraint do banco mas a descartava do lado da metadata — elas são
+    `_type_bound`, ligadas ao tipo da coluna —, então `check()` propunha
+    um `remove_constraint` fantasma logo depois de um `upgrade head`
+    limpo e o gate de drift vivia desligado. O `run_alembic_env` passa um
+    `include_object` que ignora esse `CHECK`, chaveado por `(tabela, nome)`
+    para que duas tabelas com um `CHECK` homônimo não escondam o drift uma
+    da outra. Drift real continua acusado — coluna nova, e também a
+    mudança de membro do enum: o `sync_enum_types` anexa um
+    `replace_enum`, e o `ReplaceEnumOp` ganhou `to_diff_tuple`, sem o qual
+    o `check()` levantava `NotImplementedError` ao montar o diff em vez de
+    reportá-lo.
 
 !!! info "Colunas base sempre primeiro"
     O `env.py` do SDK instala o hook `reorder_base_columns_first`, então

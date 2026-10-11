@@ -147,6 +147,116 @@ class TestSettingsInstanceName:
         )
 
 
+FACTORY_SETTINGS_MODULE: str = '''"""Service settings with a factory, no instance."""
+
+from functools import lru_cache
+
+from tempest_fastapi_sdk.settings import DatabaseSettings
+
+
+class Settings(DatabaseSettings):
+    """Settings for the test service."""
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Build the settings from an explicit URL."""
+    return Settings(DATABASE_URL="postgresql+asyncpg://u:p@localhost/factory")
+'''
+"""A settings module that exposes ``get_settings()`` and no instance.
+
+The shape the SDK documents: a cached accessor instead of a module-level
+instance. Before #490 every resolution path looked only for an instance,
+so a project written this way found nothing and reported "no
+src/core/settings.py" while the file sat in front of the operator.
+"""
+
+
+def _factory_project(root: Path, *, code_root: str = "src") -> None:
+    """Write a minimal service tree whose settings module has a factory.
+
+    Args:
+        root (Path): The project root.
+        code_root (str): ``src`` or ``app``.
+    """
+    package: Path = root / code_root / "core"
+    package.mkdir(parents=True)
+    (root / code_root / "__init__.py").write_text("")
+    (package / "__init__.py").write_text("")
+    (package / "settings.py").write_text(FACTORY_SETTINGS_MODULE)
+
+
+class TestSettingsFactory:
+    """A zero-arg factory is the documented accessor; find it too."""
+
+    @pytest.mark.parametrize("code_root", ["src", "app"])
+    def test_get_settings_resolves(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        code_root: str,
+    ) -> None:
+        _factory_project(tmp_path, code_root=code_root)
+        monkeypatch.chdir(tmp_path)
+        assert _resolve_database_url(None) == (
+            "postgresql+asyncpg://u:p@localhost/factory"
+        )
+
+    def test_factory_outranks_the_dotenv_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Step 3 before step 4 still holds for the factory shape."""
+        _factory_project(tmp_path)
+        (tmp_path / ".env").write_text("DATABASE_URL=sqlite+aiosqlite:///./raw.db\n")
+        monkeypatch.chdir(tmp_path)
+        assert _resolve_database_url(None) == (
+            "postgresql+asyncpg://u:p@localhost/factory"
+        )
+
+    def test_a_generic_annotated_factory_resolves(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Any zero-arg callable returning ``BaseSettings`` counts."""
+        package: Path = tmp_path / "src" / "core"
+        package.mkdir(parents=True)
+        (tmp_path / "src" / "__init__.py").write_text("")
+        (package / "__init__.py").write_text("")
+        (package / "settings.py").write_text(
+            "from tempest_fastapi_sdk.settings import DatabaseSettings\n\n\n"
+            "class Settings(DatabaseSettings):\n"
+            "    pass\n\n\n"
+            "def build_settings() -> Settings:\n"
+            '    return Settings(DATABASE_URL="postgresql+asyncpg://u:p@host/g")\n'
+        )
+        monkeypatch.chdir(tmp_path)
+        assert _resolve_database_url(None) == ("postgresql+asyncpg://u:p@host/g")
+
+    def test_a_raising_factory_falls_back_to_dotenv(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """One broken accessor does not abort the whole lookup."""
+        package: Path = tmp_path / "src" / "core"
+        package.mkdir(parents=True)
+        (tmp_path / "src" / "__init__.py").write_text("")
+        (package / "__init__.py").write_text("")
+        (package / "settings.py").write_text(
+            "from tempest_fastapi_sdk.settings import DatabaseSettings\n\n\n"
+            "class Settings(DatabaseSettings):\n"
+            "    pass\n\n\n"
+            "def get_settings() -> Settings:\n"
+            '    raise RuntimeError("no env")\n'
+        )
+        (tmp_path / ".env").write_text("DATABASE_URL=sqlite+aiosqlite:///./fall.db\n")
+        monkeypatch.chdir(tmp_path)
+        assert _resolve_database_url(None) == "sqlite+aiosqlite:///./fall.db"
+
+
 class TestDotenvFallback:
     """The value lives in ``.env`` in development, and is read there."""
 

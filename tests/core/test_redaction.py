@@ -63,6 +63,27 @@ def _payload(buffer: io.StringIO) -> dict[str, object]:
     return decoded
 
 
+def _record(message: str, args: tuple[object, ...] | None) -> logging.LogRecord:
+    """Build a bare ``LogRecord`` for filter-level tests.
+
+    Args:
+        message (str): The format string.
+        args (tuple[object, ...] | None): The positional arguments.
+
+    Returns:
+        logging.LogRecord: A minimal record with no exception info.
+    """
+    return logging.LogRecord(
+        "tempest.redact.t",
+        logging.INFO,
+        __file__,
+        1,
+        message,
+        args,
+        None,
+    )
+
+
 @pytest.fixture(autouse=True)
 def _reset_loggers() -> Iterator[None]:
     """Close the handlers each test installs on its ``tempest.redact.*`` logger."""
@@ -262,6 +283,171 @@ class TestExtraValues:
         assert payload["http_500"] is True
         assert payload["duration_ms"] == 1.5
         assert payload["count"] == 3
+
+
+class TestIdempotence:
+    """Issue #489: redacting the same value twice keeps one clean marker."""
+
+    def test_sensitive_mapped_argument_keeps_a_clean_marker(self) -> None:
+        """``token=%(token)s`` with a sensitive dict lands with one marker."""
+        record = _record("token=%(token)s", ({"token": "abc"},))
+
+        RedactionFilter().filter(record)
+
+        assert record.getMessage() == f"token={REDACTED}"
+
+    def test_sensitive_dict_argument_keeps_a_clean_marker(self) -> None:
+        """A whole dict as positional arg redacts without a dangling ``]``."""
+        for message, expected in (
+            ("payload=%s", f"payload={{'password': '{REDACTED}'}}"),
+            ("payload %s", f"payload {{'password': '{REDACTED}'}}"),
+        ):
+            record = _record(message, ({"password": "x"},))
+            RedactionFilter().filter(record)
+            assert record.getMessage() == expected
+
+    def test_custom_replacement_mapped_argument_keeps_a_clean_marker(self) -> None:
+        record = _record("token=%(token)s", ({"token": "abc"},))
+        RedactionFilter(RedactionPolicy(replacement="<hidden>")).filter(record)
+
+        assert record.getMessage() == "token=<hidden>"
+
+    def test_bracketed_replacement_mapped_argument_keeps_a_clean_marker(self) -> None:
+        record = _record("token=%(token)s", ({"token": "abc"},))
+        RedactionFilter(RedactionPolicy(replacement="[secret]")).filter(record)
+
+        assert record.getMessage() == "token=[secret]"
+
+    def test_default_replacement_is_idempotent(self) -> None:
+        policy = RedactionPolicy()
+
+        for sample in (
+            "token=[REDACTED]",
+            "payload={'password': '[REDACTED]'}",
+            "payload {'password': '[REDACTED]'}",
+        ):
+            once = policy.redact_text(sample)
+            assert policy.redact_text(once) == once
+
+    def test_custom_replacement_is_idempotent(self) -> None:
+        for replacement in ("<hidden>", "[secret]"):
+            policy = RedactionPolicy(replacement=replacement)
+            sample = f"token={replacement}"
+
+            once = policy.redact_text(sample)
+            assert policy.redact_text(once) == once
+
+    def test_double_filter_equals_single_filter(self) -> None:
+        """Filtering the already-filtered record changes nothing."""
+        policy = RedactionPolicy()
+        original = _record("token=%(token)s", ({"token": "abc"},))
+        RedactionFilter(policy).filter(original)
+        assert original.args is None or original.args == ()
+
+        record = _record("token=%(token)s", ({"token": "abc"},))
+        first = RedactionFilter(policy)
+        first.filter(record)
+        second = RedactionFilter(policy)
+        second.filter(record)
+
+        assert record.getMessage() == original.getMessage()
+
+
+class TestMarkerAsAValueUnit:
+    """Issue #489: the marker is a value unit, not a bare prefix.
+
+    ``_KEY_VALUE_PATTERN``'s value group stops at ``]`` again — as before
+    #489 — so ``[token=abc]`` keeps its closing bracket. To still match an
+    already-redacted bracketed marker whole, the replacement is accepted as
+    one unit, so ``token=[REDACTED]`` is a single value while
+    ``token=[REDACTED]supersecret`` keeps going past the ``]`` and redacts.
+    """
+
+    @pytest.mark.parametrize(
+        ("sample", "expected"),
+        [
+            ("[token=abc]", f"[token={REDACTED}]"),
+            ("cfg[token=abc] next", f"cfg[token={REDACTED}] next"),
+            ("token=[REDACTED]", "token=[REDACTED]"),
+            ("token=[REDACTED]supersecret", "token=[REDACTED]"),
+        ],
+    )
+    def test_the_default_marker_keeps_a_closing_bracket(
+        self, sample: str, expected: str
+    ) -> None:
+        assert RedactionPolicy().redact_text(sample) == expected
+
+    @pytest.mark.parametrize(
+        ("replacement", "sample", "expected"),
+        [
+            ("***", "password=***hunter2", "password=***"),
+            ("x", "password=xyz123", "password=x"),
+            ("***", "password=***", "password=***"),
+        ],
+    )
+    def test_a_marker_that_prefixes_the_secret_still_redacts(
+        self, replacement: str, sample: str, expected: str
+    ) -> None:
+        assert RedactionPolicy(replacement=replacement).redact_text(sample) == expected
+
+    @pytest.mark.parametrize(
+        ("message", "args", "expected"),
+        [
+            ("token=%(token)s", ({"token": "abc"},), f"token={REDACTED}"),
+            (
+                "payload=%s",
+                ({"password": "x"},),
+                f"payload={{'password': '{REDACTED}'}}",
+            ),
+            ("items=%s", (["token=abc"],), f"items=['token={REDACTED}']"),
+        ],
+    )
+    def test_rendered_arguments_land_with_one_clean_marker(
+        self, message: str, args: tuple[object, ...], expected: str
+    ) -> None:
+        record = _record(message, args)
+
+        RedactionFilter().filter(record)
+
+        assert record.getMessage() == expected
+
+    def test_a_closing_bracket_stops_the_value(self) -> None:
+        """The bracket ends the value, so the one after the marker is kept."""
+        policy = RedactionPolicy()
+
+        assert (
+            policy.redact_text("password=[REDACTED]]secret")
+            == "password=[REDACTED]]secret"
+        )
+
+    def test_marker_followed_by_a_delimiter_is_a_real_marker(self) -> None:
+        policy = RedactionPolicy()
+        assert (
+            policy.redact_text("token=[REDACTED], next=1") == "token=[REDACTED], next=1"
+        )
+
+    @pytest.mark.parametrize(
+        "sample",
+        [
+            "[token=abc]",
+            "cfg[token=abc] next",
+            "token=[REDACTED]",
+            "token=[REDACTED]supersecret",
+            "password=***hunter2",
+            "password=xyz123",
+            f"payload={{'password': '{REDACTED}'}}",
+            f"items=['token={REDACTED}']",
+        ],
+    )
+    @pytest.mark.parametrize("replacement", [REDACTED, "<hidden>", "[secret]"])
+    def test_redacting_twice_equals_redacting_once(
+        self, sample: str, replacement: str
+    ) -> None:
+        policy = RedactionPolicy(replacement=replacement)
+
+        once = policy.redact_text(sample)
+
+        assert policy.redact_text(once) == once
 
 
 class TestPolicy:

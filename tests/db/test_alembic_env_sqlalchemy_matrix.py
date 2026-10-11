@@ -33,6 +33,28 @@ MODULES: tuple[str, ...] = (
 PINS: dict[str, str] = {"sqlalchemy": "2.1.4", "alembic": "1.20.0"}
 """The first pair measured to render the duplicate ``CheckConstraint``."""
 
+ANNOTATED_ENUM_SNIPPET: str = (
+    "import enum, warnings\n"
+    "warnings.simplefilter('error')\n"
+    "from sqlalchemy.orm import Mapped, mapped_column\n"
+    "from tempest_fastapi_sdk import BaseModel\n"
+    "class Color(enum.StrEnum):\n"
+    "    RED = 'RED'\n"
+    "    BLUE = 'BLUE'\n"
+    "class Paint(BaseModel):\n"
+    "    __tablename__ = 'paint_matrix_496'\n"
+    "    color: Mapped[Color] = mapped_column()\n"
+    "type_ = Paint.__table__.c.color.type\n"
+    "print(sorted(type_.enums))\n"
+)
+"""A model with ``Mapped[Enum]`` declared under ``warnings.simplefilter`` (#496).
+
+SQLAlchemy 2.1 deprecates both ``SchemaType.inherit_schema`` and its
+``__init__`` parameter, warning per enum column on every model import.
+Declaring the model with every warning as an error reproduces that, and
+exercises the ``_resolve_for_python_type`` path the fix touches.
+"""
+
 
 def _uv_run(*command: str) -> subprocess.CompletedProcess[str]:
     """Run ``command`` with :data:`PINS` overlaid on the project.
@@ -76,6 +98,60 @@ def test_enum_autogenerate_tests_pass_under_sqlalchemy_21() -> None:
         "-m",
         "pytest",
         *MODULES,
+        "-p",
+        "no:cacheprovider",
+        "--no-cov",
+        "-q",
+    )
+    assert run.returncode == 0, f"{run.stdout}\n{run.stderr}"
+    assert " passed" in run.stdout
+
+
+@pytest.mark.network
+def test_enum_annotation_is_warning_free_under_sqlalchemy_21() -> None:
+    """A ``Mapped[Enum]`` import stays quiet on SQLAlchemy 2.1 (#496)."""
+    if shutil.which("uv") is None:
+        pytest.skip("uv not installed")
+
+    probe = _uv_run(
+        "python",
+        "-c",
+        "import alembic, sqlalchemy; "
+        "print(sqlalchemy.__version__, alembic.__version__)",
+    )
+    assert probe.returncode == 0, probe.stderr
+    assert probe.stdout.split() == [PINS["sqlalchemy"], PINS["alembic"]]
+
+    run = _uv_run("python", "-W", "error", "-c", ANNOTATED_ENUM_SNIPPET)
+    assert run.returncode == 0, f"{run.stdout}\n{run.stderr}"
+    assert run.stdout.strip() == "['BLUE', 'RED']"
+
+
+@pytest.mark.network
+def test_enum_column_tests_pass_under_sqlalchemy_21() -> None:
+    """The enum DDL/annotation suite stays green on SQLAlchemy 2.1 (#496).
+
+    The repo's ``filterwarnings`` turns ``SADeprecationWarning`` into an
+    error, so this run also proves the annotation path no longer warns
+    under 2.1 (it did, once per enum column, before the fix).
+    """
+    if shutil.which("uv") is None:
+        pytest.skip("uv not installed")
+
+    probe = _uv_run(
+        "python",
+        "-c",
+        "import alembic, sqlalchemy; "
+        "print(sqlalchemy.__version__, alembic.__version__)",
+    )
+    assert probe.returncode == 0, probe.stderr
+    assert probe.stdout.split() == [PINS["sqlalchemy"], PINS["alembic"]]
+
+    run = _uv_run(
+        "python",
+        "-m",
+        "pytest",
+        "tests/db/test_enum_column.py",
         "-p",
         "no:cacheprovider",
         "--no-cov",
