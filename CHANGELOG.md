@@ -24,7 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tempest doctor` mascara a senha da URL do RabbitMQ, do Redis e do banco
   em todo `detail` de `CheckOutcome` — inclusive nos ramos `fail`, cuja
   mensagem de exceção pode repetir a URL crua —, na tabela e no `--json`
-  (#491). O helper vira a única fonte da forma segura
+  (#491). A máscara passa a valer para a URL inteira: senha que contém `@`
+  (`amqp://u:p@ss@h/`), lista de hosts com credenciais por host
+  (`amqp://u:pw@h1,u:pw2@h2/`) e credencial na query (`?password=`, `?pwd=`,
+  `?secret=`) deixam de vazar, e a URL dentro de uma frase (`cannot reach
+  redis://...`) é mascarada no lugar em que aparece. O helper vira a única
+  fonte da forma segura
   (`tempest_fastapi_sdk.utils._url.mask_url_password`), que
   `AsyncDatabaseManager.db_url_safe` passa a delegar.
 - `RedactionPolicy` vira idempotente sem deixar passar segredo nenhum: só
