@@ -255,6 +255,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `run_alembic_env(metadata)` (body lives in `db/alembic_env.py`,
   `DEFAULT_REVISION_HOOKS` to extend), ruff-clean under both src layouts,
   `alembic.ini` with `prepend_sys_path = .` + `path_separator = os`.
+  **`check()` de enum no SQLite (0.313.0, #483):** `run_alembic_env` passa
+  `include_object=type_bound_check_include_object(metadata)`, que descarta do
+  lado do banco o `CHECK` cujo nome casa um `CHECK` `_type_bound` da metadata —
+  o comparador do Alembic lê a constraint refletida mas pula a da metadata
+  (`all_table_check_constraints` filtra `_type_bound`), então `check()` propunha
+  um `remove_constraint` fantasma para `ck_<tabela>_<enum>` logo depois de um
+  `upgrade head` limpo. Drift real continua acusado. Não foi introduzido pelo
+  #482 (já reproduzia no `env.py` anterior). Teste:
+  `tests/db/test_alembic_env.py::TestCheckOnSqlite`.
   **Query plans
   (v0.200.0):** `explain_queries(session)` / `repo.explain()` → typed
   `ExplainReport`/`QueryPlan`; `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` on

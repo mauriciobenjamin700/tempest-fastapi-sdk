@@ -1074,6 +1074,86 @@ def _sql_string(value: str) -> str:
     return f"'{escaped}'"
 
 
+def type_bound_check_include_object(
+    metadata: sa.MetaData | Sequence[sa.MetaData] | None,
+) -> Callable[[Any, str | None, str, bool, Any], bool]:
+    """Build the ``include_object`` filter that hides enum ``CHECK`` drift.
+
+    Alembic's CHECK comparison reads the constraint from the database but
+    drops it from the metadata side: it collects metadata CHECKs through
+    ``all_table_check_constraints``, which skips the ones a column's type
+    attaches (SQLAlchemy marks them ``_type_bound``). On SQLite — where an
+    ``Enum`` column is a ``VARCHAR`` plus a ``CHECK`` — the database
+    therefore always shows one constraint the metadata does not, and
+    ``alembic check`` fails on a clean ``upgrade head`` proposing
+    ``remove_constraint`` for ``ck_<table>_<enum>``.
+
+    A reflected ``CHECK`` whose name matches a type-bound CHECK declared in
+    ``metadata`` is not drift: the column type recreates it. Returning
+    ``False`` skips it; every other object is left to Alembic.
+
+    Pass it as ``include_object`` in ``context.configure``;
+    :func:`~tempest_fastapi_sdk.db.alembic_env.run_alembic_env` does.
+
+    Args:
+        metadata (sa.MetaData | Sequence[sa.MetaData] | None): The
+            autogenerate target metadata, or a sequence of metadatas.
+
+    Returns:
+        Callable[[Any, str | None, str, bool, Any], bool]: The
+        ``include_object`` callback Alembic expects.
+    """
+    names = _type_bound_check_names(metadata)
+
+    def include_object(
+        object_: Any,
+        name: str | None,
+        type_: str,
+        reflected: bool,
+        compare_to: Any,
+    ) -> bool:
+        return not (type_ == "check_constraint" and reflected and name in names)
+
+    return include_object
+
+
+def _type_bound_check_names(
+    metadata: sa.MetaData | Sequence[sa.MetaData] | None,
+) -> set[str]:
+    """Collect the names of the type-bound CHECK constraints in metadata.
+
+    ``_type_bound`` is the flag SQLAlchemy sets on the ``CheckConstraint``
+    a column's ``Enum`` or ``Boolean`` type carries; reading it is a
+    deliberate coupling, the same the renderer makes, and
+    ``tests/db/test_alembic_env.py`` pins the behaviour end to end.
+
+    Args:
+        metadata (sa.MetaData | Sequence[sa.MetaData] | None): The
+            autogenerate target metadata, or a sequence of metadatas.
+
+    Returns:
+        set[str]: The named type-bound CHECK constraint names. A
+        constraint whose name is not a string (SQLAlchemy's symbolic
+        ``NONE_NAME``) is skipped — the database has no name to match it.
+    """
+    if metadata is None:
+        return set()
+    metadatas: Sequence[sa.MetaData] = (
+        (metadata,) if isinstance(metadata, sa.MetaData) else metadata
+    )
+    names: set[str] = set()
+    for single in metadatas:
+        for table in single.tables.values():
+            for constraint in table.constraints:
+                if (
+                    isinstance(constraint, sa.CheckConstraint)
+                    and getattr(constraint, "_type_bound", False)
+                    and isinstance(constraint.name, str)
+                ):
+                    names.add(constraint.name)
+    return names
+
+
 __all__: list[str] = [
     "OLD_TYPE_SUFFIX",
     "SQLITE_DIALECT",
@@ -1085,4 +1165,5 @@ __all__: list[str] = [
     "postgresql_replace_statements",
     "render_enum_types",
     "sync_enum_types",
+    "type_bound_check_include_object",
 ]

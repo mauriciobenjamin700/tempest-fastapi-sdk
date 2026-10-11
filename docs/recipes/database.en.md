@@ -2597,6 +2597,16 @@ print("Schema is in sync.")
   run: uv run python scripts/check_migrations.py
 ```
 
+!!! check "`check()` no longer reports phantom enum drift on SQLite (v0.313.0, #483)"
+    On SQLite an enum column is a `VARCHAR` plus a `CHECK`
+    (`ck_<table>_<enum>`). Alembic's `CHECK` comparator read the
+    constraint from the database but dropped it from the metadata side —
+    they are `_type_bound`, attached to the column type — so `check()`
+    proposed a phantom `remove_constraint` right after a clean
+    `upgrade head`, and the drift gate stayed off. `run_alembic_env`
+    passes an `include_object` that ignores that `CHECK`; real drift (a
+    new column) is still reported.
+
 !!! info "Base columns always first"
     The SDK's `env.py` installs the `reorder_base_columns_first` hook, so
     every generated migration lists `id` / `is_active` / `created_at` /

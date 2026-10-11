@@ -1106,6 +1106,9 @@ from tempest_fastapi_sdk.db import (
 from tempest_fastapi_sdk.db import (
     transaction_depth as transaction_depth,
 )
+from tempest_fastapi_sdk.db import (
+    type_bound_check_include_object as type_bound_check_include_object,
+)
 from tempest_fastapi_sdk.exceptions import (
     DEFAULT_LOCALE as DEFAULT_LOCALE,
 )
@@ -2713,6 +2716,7 @@ __all__: list[str] = [
     "token_type_allowed",
     "transaction",
     "transaction_depth",
+    "type_bound_check_include_object",
     "typed",
     "uf_choices",
     "utcnow",

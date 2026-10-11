@@ -45,6 +45,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   usuário. `tempest doctor` passa a **falhar** (não "skip") quando o
   `core/settings.py` existe mas não render nada, e o erro do `env.py` carrega
   a causa do import quebrado (#490).
+- `alembic check` (`AlembicHelper.check()`) deixa de acusar drift fantasma logo
+  depois de um `upgrade head` limpo no SQLite, em toda tabela com coluna
+  enum. O comparador de `CHECK` do Alembic lia a constraint do banco mas a
+  descartava do lado da metadata (são `_type_bound`, ligadas ao tipo da
+  coluna), então propunha `remove_constraint` para `ck_<tabela>_<enum>` e
+  desligava o gate de CI. O `run_alembic_env` passa agora um `include_object`
+  que ignora esse `CHECK`; drift real continua acusado (#483).
 
 ## [0.312.0] — 2026-10-10
 

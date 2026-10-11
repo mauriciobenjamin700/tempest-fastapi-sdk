@@ -46,6 +46,7 @@ from tempest_fastapi_sdk.db.enum_migrations import (
     drop_enum_types_on_downgrade,
     render_enum_types,
     sync_enum_types,
+    type_bound_check_include_object,
 )
 from tempest_fastapi_sdk.db.migrations import require_sqlite_foreign_keys_off
 from tempest_fastapi_sdk.utils._settings_discovery import project_database_url
@@ -92,7 +93,9 @@ def run_alembic_env(
     they exist, and runs the migrations offline (``--sql``) or online
     with ``compare_type``, ``compare_server_default``, batch mode,
     :func:`~tempest_fastapi_sdk.db.enum_migrations.render_enum_types` as
-    ``render_item`` and the revision hooks.
+    ``render_item``, the enum-``CHECK`` filter as ``include_object`` (so
+    ``alembic check`` does not report drift on a clean SQLite schema) and
+    the revision hooks.
 
     The URL comes from, in order: the ``sqlalchemy.url`` already on the
     config (``--database-url``, or ``AlembicHelper(db_url=...)``); the
@@ -156,6 +159,7 @@ def run_alembic_env(
         "compare_server_default": True,
         "render_as_batch": True,
         "render_item": render_enum_types,
+        "include_object": type_bound_check_include_object(target_metadata),
         "process_revision_directives": (
             process_revision_directives or compose_hooks(*DEFAULT_REVISION_HOOKS)
         ),

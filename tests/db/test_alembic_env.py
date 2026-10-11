@@ -226,6 +226,63 @@ class TestBareAlembicCli:
         assert "drop_enum_type" not in source
 
 
+_DRIFT_COLUMN: str = (
+    "    title: Mapped[str] = mapped_column(String(32), nullable=True)\n"
+)
+"""A column added to the model in the drift control."""
+
+
+def _add_drift(root: Path) -> None:
+    """Append a column to the model module so autogenerate sees real drift.
+
+    Args:
+        root (Path): The project root.
+    """
+    models = root / "envmodels" / "__init__.py"
+    text = models.read_text(encoding="utf-8")
+    text = text.replace(
+        "from sqlalchemy.orm import Mapped\n",
+        "from sqlalchemy import String\n"
+        "from sqlalchemy.orm import Mapped, mapped_column\n",
+    )
+    text = text.replace(
+        "    role: Mapped[UserRole]\n",
+        f"    role: Mapped[UserRole]\n{_DRIFT_COLUMN}",
+        1,
+    )
+    models.write_text(text, encoding="utf-8")
+
+
+class TestCheckOnSqlite:
+    """``alembic check`` right after ``upgrade head`` on a SQLite enum (#483).
+
+    The CHECK an ``Enum`` column carries is type-bound: Alembic reads it
+    from the database but drops it from the metadata side, so ``check``
+    used to report a phantom ``remove_constraint`` on a clean schema.
+    """
+
+    def test_check_passes_after_upgrade_head(self, project: Path) -> None:
+        url = f"sqlite+aiosqlite:///{project / 'app.db'}"
+        _ok(_alembic(project, url, "revision", "--autogenerate", "-m", "init"))
+        _ok(_alembic(project, url, "upgrade", "head"))
+
+        process = _alembic(project, url, "check")
+        _ok(process)
+        assert "No new upgrade operations detected" in process.stdout
+
+    def test_check_still_reports_real_drift(self, project: Path) -> None:
+        url = f"sqlite+aiosqlite:///{project / 'app.db'}"
+        _ok(_alembic(project, url, "revision", "--autogenerate", "-m", "init"))
+        _ok(_alembic(project, url, "upgrade", "head"))
+
+        _add_drift(project)
+
+        process = _alembic(project, url, "check")
+        assert process.returncode != 0
+        assert "add_column" in process.stdout
+        assert "remove_constraint" not in process.stdout
+
+
 @pytest.fixture(scope="module")
 def postgres_url() -> Iterator[str]:
     """Yield a PostgreSQL URL: ``TEST_POSTGRES_URL`` or a fresh container.
