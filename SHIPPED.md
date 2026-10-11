@@ -264,6 +264,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `upgrade head` limpo. Drift real continua acusado. Não foi introduzido pelo
   #482 (já reproduzia no `env.py` anterior). Teste:
   `tests/db/test_alembic_env.py::TestCheckOnSqlite`.
+  **`inherit_schema` no SQLAlchemy 2.1 (0.313.0, #496):**
+  `TempestEnum._resolve_for_python_type` lê `_inherit_schema` (atributo
+  interno) em vez da propriedade deprecada e só repassa o parâmetro
+  `inherit_schema` quando verdadeiro, então `Mapped[Enum]` não emite
+  `SADeprecationWarning` no import dos models sob 2.1. A suíte roda com
+  `SADeprecationWarning` como erro (`[tool.pytest.ini_options].filterwarnings`)
+  e a matriz 2.1.4 declara o model com `warnings.simplefilter("error")`.
   **Query plans
   (v0.200.0):** `explain_queries(session)` / `repo.explain()` → typed
   `ExplainReport`/`QueryPlan`; `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` on

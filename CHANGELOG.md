@@ -52,6 +52,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   coluna), então propunha `remove_constraint` para `ck_<tabela>_<enum>` e
   desligava o gate de CI. O `run_alembic_env` passa agora um `include_object`
   que ignora esse `CHECK`; drift real continua acusado (#483).
+- Declarar um model com `Mapped[MeuEnum]` sobre `BaseModel` deixa de emitir
+  `SADeprecationWarning` por coluna a cada import, no SQLAlchemy 2.1. O
+  `TempestEnum._resolve_for_python_type` lia `SchemaType.inherit_schema` (virou
+  propriedade deprecada em 2.1) e repassava o parâmetro `inherit_schema`
+  (também deprecado); agora lê `_inherit_schema` direto e só repassa quando for
+  verdadeiro, então quem roda a suíte com `-W error` sobre 2.1 não quebra mais
+  no import dos models (#496). O DDL não muda nos dois dialetos. A suíte passa
+  a tratar `SADeprecationWarning` como erro (`filterwarnings`).
 
 ## [0.312.0] — 2026-10-10
 
