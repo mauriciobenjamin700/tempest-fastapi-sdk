@@ -57,12 +57,16 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.testing.fakes.search import (
         FakeWebSearchBackend as FakeWebSearchBackend,
     )
+    from tempest_fastapi_sdk.testing.fakes.storage import (
+        FakeObjectStorageClient as FakeObjectStorageClient,
+    )
 
 _EXPORTS: dict[str, str] = {
     "FakeCardProvider": "payment",
     "FakeEmailUtils": "email",
     "FakeGeocodingBackend": "geo",
     "FakeModerationBackend": "genai",
+    "FakeObjectStorageClient": "storage",
     "FakePayoutProvider": "payment",
     "FakePixProvider": "payment",
     "FakePushDispatcher": "push",

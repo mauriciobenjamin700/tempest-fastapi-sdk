@@ -42,6 +42,7 @@ PAYLOAD_PATTERNS: tuple[str, ...] = (
     "tempest_fastapi_sdk/cli/_templates/src/*",
     "tempest_fastapi_sdk/cli/_templates/src/*/*",
     "tempest_fastapi_sdk/db/_alembic_templates/env.py.template",
+    "tempest_fastapi_sdk/db/_alembic_templates/script.py.mako",
     "tempest_fastapi_sdk/pdf/templates/*.html",
     "tempest_fastapi_sdk/pdf/templates/*.css",
     "tempest_fastapi_sdk/ssr/_static/confirm.js",

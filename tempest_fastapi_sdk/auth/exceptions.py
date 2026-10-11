@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from tempest_fastapi_sdk.exceptions.conflict import ConflictException
 from tempest_fastapi_sdk.exceptions.forbidden import ForbiddenException
 from tempest_fastapi_sdk.exceptions.jwt import InvalidTokenException
+from tempest_fastapi_sdk.exceptions.too_many_requests import (
+    TooManyRequestsException,
+)
 from tempest_fastapi_sdk.exceptions.unauthorized import UnauthorizedException
 from tempest_fastapi_sdk.exceptions.validation import ValidationException
 
@@ -44,6 +47,33 @@ class AccountInactiveException(ForbiddenException):
 
     message: str = "Account is not active"
     code: str = "ACCOUNT_INACTIVE"
+
+
+class LoginThrottledException(TooManyRequestsException):
+    """Raised when ``POST /auth/login`` is over its attempt budget.
+
+    The same class for the per-email and the per-client budget, so the
+    answer never says which of the two ran out — saying it would tell a
+    caller that the email is being guessed at. The body is the same for an
+    email that has an account and one that does not.
+    """
+
+    message: str = "too many login attempts, try again later"
+    code: str = "LOGIN_THROTTLED"
+
+
+class SignupThrottledException(TooManyRequestsException):
+    """Raised when ``POST /auth/signup`` is over the per-client budget."""
+
+    message: str = "too many signup attempts, try again later"
+    code: str = "SIGNUP_THROTTLED"
+
+
+class MfaThrottledException(TooManyRequestsException):
+    """Raised when ``POST /auth/mfa/verify`` is over the per-account budget."""
+
+    message: str = "too many invalid MFA codes, try again later"
+    code: str = "MFA_THROTTLED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,5 +126,8 @@ class AuthExceptions:
 __all__: list[str] = [
     "AccountInactiveException",
     "AuthExceptions",
+    "LoginThrottledException",
     "MFAAlreadyEnrolledException",
+    "MfaThrottledException",
+    "SignupThrottledException",
 ]

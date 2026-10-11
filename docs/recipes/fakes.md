@@ -79,6 +79,7 @@ alguém abrindo uma disputa. Aqui é uma chamada.
 | --- | --- | --- |
 | `FakePixProvider` | `PixProvider` (OpenPix, Mercado Pago) | `advance(id, status)`, `charges` |
 | `FakeCardProvider` | `CardProvider` (cartão) | `decline_next(motivo)`, `advance(id, status)`, `charges` |
+| `FakeObjectStorageClient` | `SubjectStorageClient` (MinIO / S3) | `fail_delete(chaves)`, `objects`, `deleted` |
 | `FakePayoutProvider` | `PayoutProvider` (saque Pix) | `transfers`, `status=` no construtor |
 | `FakeTextBackend` | `TextBackend` (modelo local) | `queue(...)`, `prompts` |
 | `FakeModerationBackend` | `ModerationBackend` | `flag(substring)`, `checked` |
@@ -351,7 +352,7 @@ falha com `['self', 'query', 'limit'] == ['self', 'query', 'max_results']`.
 
 ## Recap
 
-- `from tempest_fastapi_sdk.testing.fakes import Fake...` — dez costuras, sem
+- `from tempest_fastapi_sdk.testing.fakes import Fake...` — onze costuras, sem
   credencial e sem rede.
 - Fake não é mock: guarda estado, e você **move** esse estado
   (`advance`, `flag`, `add_place`, `queue`).

@@ -19,6 +19,12 @@ from tempest_fastapi_sdk.api.dependencies.auth import (
     require_x_token as require_x_token,
 )
 from tempest_fastapi_sdk.api.dependencies.rate_limit import (
+    RateLimitKeyFunc as RateLimitKeyFunc,
+)
+from tempest_fastapi_sdk.api.dependencies.rate_limit import (
+    RateLimitKeyResult as RateLimitKeyResult,
+)
+from tempest_fastapi_sdk.api.dependencies.rate_limit import (
     key_by_body_field as key_by_body_field,
 )
 from tempest_fastapi_sdk.api.dependencies.rate_limit import (
@@ -29,6 +35,8 @@ from tempest_fastapi_sdk.api.dependencies.signed_url import (
 )
 
 __all__: list[str] = [
+    "RateLimitKeyFunc",
+    "RateLimitKeyResult",
     "key_by_body_field",
     "make_bearer_token_dependency",
     "make_jwt_user_dependency",

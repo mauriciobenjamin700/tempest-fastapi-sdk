@@ -9,10 +9,17 @@ import pytest
 
 from tempest_fastapi_sdk import AsyncMinIOClient
 from tempest_fastapi_sdk.privacy import SubjectErasureError, SubjectObjectStorage
+from tempest_fastapi_sdk.testing.fakes import FakeObjectStorageClient
 
 
 class _FakeMinio:
-    """In-memory stand-in for the ``minio.Minio`` calls the storage makes."""
+    """In-memory stand-in for the ``minio.Minio`` calls the storage makes.
+
+    Kept beside the public :class:`FakeObjectStorageClient` on purpose: this
+    one sits **under** the real ``AsyncMinIOClient``, so the tests built on
+    it also cover the wrapper's translation to ``minio``; the public fake
+    replaces the wrapper and covers what a service tests.
+    """
 
     def __init__(self) -> None:
         self.objects: dict[str, dict[str, bytes]] = {}
@@ -158,3 +165,37 @@ class TestOperations:
         await storage.put("u", "a", b"x")
         assert list(fake.objects) == ["private"]
         assert await storage.delete_all("u") == 1
+
+
+class TestWithThePublicFake:
+    """``SubjectObjectStorage`` over ``FakeObjectStorageClient`` (#509)."""
+
+    async def test_put_names_and_delete_all_leave_other_subjects_alone(self) -> None:
+        """Export and erasure without MinIO; subject 7 survives subject 42."""
+        client = FakeObjectStorageClient()
+        storage = SubjectObjectStorage(client, prefix="users")
+
+        key = await storage.put(42, "avatar.png", b"png")
+        await storage.put(7, "doc.pdf", b"pdf")
+        names = await storage.names(42)
+        removed = await storage.delete_all(42)
+
+        assert key == "users/42/avatar.png"
+        assert names == ["avatar.png"]
+        assert removed == 1
+        assert dict(client.objects) == {"users/7/doc.pdf": b"pdf"}
+        assert client.deleted == ["users/42/avatar.png"]
+
+    async def test_a_refused_key_raises_subject_erasure_error(self) -> None:
+        """The branch a real store will not give on demand."""
+        client = FakeObjectStorageClient()
+        storage = SubjectObjectStorage(client, prefix="users")
+        await storage.put(42, "a.png", b"x")
+        await storage.put(42, "b.png", b"y")
+        client.fail_delete("users/42/a.png")
+
+        with pytest.raises(SubjectErasureError) as caught:
+            await storage.delete_all(42)
+
+        assert [error.key for error in caught.value.errors] == ["users/42/a.png"]
+        assert dict(client.objects) == {"users/42/a.png": b"x"}

@@ -31,6 +31,7 @@ from tempest_fastapi_sdk.auth import guards as auth_guards
 from tempest_fastapi_sdk.auth.exceptions import (
     AuthExceptions,
     MFAAlreadyEnrolledException,
+    MfaThrottledException,
 )
 from tempest_fastapi_sdk.auth.guards import (
     GuardException,
@@ -71,7 +72,6 @@ from tempest_fastapi_sdk.exceptions import (
     OAuthEmailTakenException,
     OAuthEmailUnverifiedException,
     OAuthRegistrationDisabledException,
-    TooManyRequestsException,
     UnauthorizedException,
     ValidationException,
 )
@@ -3030,7 +3030,7 @@ class UserAuthService:
             UnauthorizedException: On bad / expired ``mfa_token``,
                 bad code, user not enrolled in MFA, or a TOTP code
                 whose step was already accepted.
-            TooManyRequestsException: When ``throttle`` has the
+            MfaThrottledException: When ``throttle`` has the
                 account's attempt budget spent (``429``, carrying
                 ``Retry-After``). Raised before the code is checked.
 
@@ -3061,7 +3061,7 @@ class UserAuthService:
         if throttle is not None:
             attempt = await throttle.hit(throttle_key)
             if attempt.attempts > throttle.max_attempts:
-                raise TooManyRequestsException(
+                raise MfaThrottledException(
                     message="too many invalid MFA codes, try again later",
                     retry_after_seconds=attempt.retry_after_seconds,
                 )

@@ -31,6 +31,9 @@ from tempest_fastapi_sdk.privacy.storage import (
 from tempest_fastapi_sdk.privacy.storage import (
     SubjectObjectStorage as SubjectObjectStorage,
 )
+from tempest_fastapi_sdk.privacy.storage import (
+    SubjectStorageClient as SubjectStorageClient,
+)
 
 __all__: list[str] = [
     "DEFAULT_SECRET_MARKERS",
@@ -38,4 +41,5 @@ __all__: list[str] = [
     "SubjectErasureError",
     "SubjectGraph",
     "SubjectObjectStorage",
+    "SubjectStorageClient",
 ]

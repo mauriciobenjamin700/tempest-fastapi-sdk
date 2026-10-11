@@ -585,7 +585,7 @@ Saída:
 401 None
 401 None
 429 900
-{'detail': 'too many login attempts, try again later', 'code': 'TOO_MANY_REQUESTS', 'details': {'retry_after_seconds': 900}}
+{'detail': 'too many login attempts, try again later', 'code': 'LOGIN_THROTTLED', 'details': {'retry_after_seconds': 900}}
 ```
 
 A sexta tentativa leva `429` **com a senha certa**: o orçamento é reservado

@@ -360,6 +360,51 @@ http://localhost:9000/uploads/users/42/docs/rg.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA
     requests (1000 + 203), nothing left under `7`'s prefix, `77` and `8`
     untouched.
 
+### Testing without MinIO
+
+`FakeObjectStorageClient` (in `tempest_fastapi_sdk.testing.fakes`) stands in
+for `AsyncMinIOClient` — `SubjectObjectStorage` accepts any
+`SubjectStorageClient`, the protocol both satisfy — and keeps everything in a
+dict. `fail_delete(key)` makes the store refuse the deletion, which is the
+`SubjectErasureError` branch a real MinIO does not hand you on demand:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.privacy import SubjectErasureError, SubjectObjectStorage
+from tempest_fastapi_sdk.testing.fakes import FakeObjectStorageClient
+
+
+async def main() -> None:
+    """Export, erase and a refused key, with no MinIO."""
+    client = FakeObjectStorageClient()
+    storage = SubjectObjectStorage(client, prefix="users")
+
+    await storage.put(42, "avatar.png", b"png")
+    await storage.put(7, "doc.pdf", b"pdf")
+    print(await storage.names(42))
+    print(await storage.delete_all(42), sorted(client.objects))
+
+    await storage.put(42, "rg.pdf", b"rg")
+    client.fail_delete("users/42/rg.pdf")
+    try:
+        await storage.delete_all(42)
+    except SubjectErasureError as error:
+        print([e.key for e in error.errors])
+
+
+asyncio.run(main())
+```
+
+```text
+['avatar.png']
+1 ['users/7/doc.pdf']
+['users/42/rg.pdf']
+```
+
+`client.objects` shows what is left in the default bucket and
+`client.deleted` what went, in order.
+
 ## Putting both together in a service
 
 Delete the files **before** the root row. If the store fails, the subject's

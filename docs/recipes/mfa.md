@@ -280,7 +280,7 @@ Desde a **0.306.0** o passo 2 do login tem dois freios que você não precisa es
 `POST /auth/mfa/verify` conta os códigos errados **por conta**, não por `mfa_token`. Depois de cinco erros em quinze minutos, a sexta tentativa responde `429` sem olhar o código, **mesmo que ele esteja certo**:
 
 ```json
-{"detail":"too many invalid MFA codes, try again later","code":"TOO_MANY_REQUESTS","details":{"retry_after_seconds":900}}
+{"detail":"too many invalid MFA codes, try again later","code":"MFA_THROTTLED","details":{"retry_after_seconds":900}}
 ```
 
 A resposta leva o header `Retry-After` com os segundos que faltam para a janela fechar. Esse é o corpo com o `register_exception_handlers` montado.

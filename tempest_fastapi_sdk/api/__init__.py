@@ -10,6 +10,12 @@ from tempest_fastapi_sdk.api.cookies import (
     set_cookie as set_cookie,
 )
 from tempest_fastapi_sdk.api.dependencies import (
+    RateLimitKeyFunc as RateLimitKeyFunc,
+)
+from tempest_fastapi_sdk.api.dependencies import (
+    RateLimitKeyResult as RateLimitKeyResult,
+)
+from tempest_fastapi_sdk.api.dependencies import (
     key_by_body_field as key_by_body_field,
 )
 from tempest_fastapi_sdk.api.dependencies import (
@@ -410,6 +416,8 @@ __all__: list[str] = [
     "QuotaStore",
     "RSAWebhookSignatureVerifier",
     "RaisesSpec",
+    "RateLimitKeyFunc",
+    "RateLimitKeyResult",
     "RateLimitMiddleware",
     "RateLimitPolicy",
     "RateLimitResult",

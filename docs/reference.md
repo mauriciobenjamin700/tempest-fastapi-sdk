@@ -893,6 +893,8 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_jwt_subject
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_jwt_claim
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_header
+::: tempest_fastapi_sdk.api.dependencies.rate_limit.RateLimitKeyFunc
+::: tempest_fastapi_sdk.api.dependencies.rate_limit.RateLimitKeyResult
 ::: tempest_fastapi_sdk.api.dependencies.rate_limit.make_rate_limit_dependency
 ::: tempest_fastapi_sdk.api.dependencies.rate_limit.key_by_body_field
 ::: tempest_fastapi_sdk.api.middlewares.quota.RateLimitRule
@@ -974,8 +976,17 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.auth.exceptions.MFAAlreadyEnrolledException
 ::: tempest_fastapi_sdk.auth.exceptions.AccountInactiveException
 ::: tempest_fastapi_sdk.auth.exceptions.AuthExceptions
+::: tempest_fastapi_sdk.auth.exceptions.LoginThrottledException
+::: tempest_fastapi_sdk.auth.exceptions.MfaThrottledException
+::: tempest_fastapi_sdk.auth.exceptions.SignupThrottledException
 ::: tempest_fastapi_sdk.auth.firebase.DEFAULT_FIREBASE_APP_NAME
 ::: tempest_fastapi_sdk.auth.router.make_auth_router
+::: tempest_fastapi_sdk.auth.router.LOGIN_THROTTLE_MAX_ATTEMPTS
+::: tempest_fastapi_sdk.auth.router.LOGIN_THROTTLE_WINDOW_SECONDS
+::: tempest_fastapi_sdk.auth.router.LOGIN_THROTTLED_MESSAGE
+::: tempest_fastapi_sdk.auth.router.MFA_THROTTLE_MAX_ATTEMPTS
+::: tempest_fastapi_sdk.auth.router.MFA_THROTTLE_WINDOW_SECONDS
+::: tempest_fastapi_sdk.auth.router.SIGNUP_THROTTLED_MESSAGE
 ::: tempest_fastapi_sdk.auth.guards.require_authenticated
 ::: tempest_fastapi_sdk.auth.guards.require_active
 ::: tempest_fastapi_sdk.auth.guards.require_admin
@@ -1274,6 +1285,7 @@ então importar o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.testing.fakes.payment.FakePixProvider
 ::: tempest_fastapi_sdk.testing.fakes.payment.FakeCardProvider
+::: tempest_fastapi_sdk.testing.fakes.storage.FakeObjectStorageClient
 ::: tempest_fastapi_sdk.testing.fakes.payment.FakePayoutProvider
 ::: tempest_fastapi_sdk.testing.fakes.genai.FakeTextBackend
 ::: tempest_fastapi_sdk.testing.fakes.genai.FakeModerationBackend
