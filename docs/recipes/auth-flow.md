@@ -424,6 +424,13 @@ na hora da montagem, não no primeiro request. Os campos novos entram no
 `/openapi.json` junto: o cliente gerado enxerga `phone` e `is_producer` sem
 ninguém escrever schema à mão.
 
+!!! tip "Se o seu service sobrescreve `signup`"
+    Declare `fields: Mapping[str, Any] | None = None` no override e repasse para
+    `super().signup(...)`: é por ele que as colunas do `signup_schema` chegam
+    antes do insert. Um override sem `fields` continua funcionando — a rota o
+    chama sem esse argumento, como antes da 0.305.0, e avisa no log, na
+    montagem do router, quais colunas ficaram para o `on_signup` preencher.
+
 ??? info "Sem router: `signup(fields=...)`"
     O mesmo caminho está no service, para quem monta a própria rota:
 

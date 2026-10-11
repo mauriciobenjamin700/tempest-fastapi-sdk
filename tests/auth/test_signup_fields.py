@@ -285,3 +285,161 @@ class TestRouterForwardsColumns:
         payload = second.json()
         assert payload["code"] == "CONFLICT"
         assert payload["details"]["columns"] == ["phone"]
+
+
+class _NicknameUser(BaseUserModel):
+    """A user with a nullable product column an ``on_signup`` hook fills."""
+
+    __tablename__ = "signup_legacy_users"
+
+    nickname: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+
+_NicknameUserToken = make_user_token_model(
+    user_table="signup_legacy_users",
+    tablename="signup_legacy_user_tokens",
+    class_name="_NicknameUserToken",
+)
+
+
+class _NicknameSignupSchema(SignupSchema):
+    """Signup body whose extra field is also a column.
+
+    Attributes:
+        nickname (str | None): A nullable column of the user model.
+    """
+
+    nickname: str | None = Field(default=None, max_length=40)
+
+
+class _LegacySignupService(UserAuthService):
+    """A service that overrides ``signup`` with the pre-0.305.0 signature.
+
+    Services written before ``fields=`` existed override ``signup`` with
+    ``email``, ``password`` and ``name`` only. The router must keep calling
+    them the way it did then.
+    """
+
+    async def signup(  # type: ignore[override]
+        self,
+        session: AsyncSession,
+        *,
+        email: str,
+        password: str,
+        name: str | None = None,
+    ) -> tuple[BaseUserModel, Any]:
+        """Delegate to the base service without ``fields``.
+
+        Args:
+            session (AsyncSession): The session.
+            email (str): Account email.
+            password (str): Plaintext password.
+            name (str | None): Display name.
+
+        Returns:
+            tuple[BaseUserModel, Any]: The user and the activation token.
+        """
+        return await super().signup(session, email=email, password=password, name=name)
+
+
+def _legacy_service() -> _LegacySignupService:
+    """Build the legacy service over the nickname model.
+
+    Returns:
+        _LegacySignupService: Activates accounts immediately.
+    """
+    return _LegacySignupService(
+        user_model=_NicknameUser,
+        token_model=_NicknameUserToken,  # type: ignore[arg-type]
+        auth_settings=AuthSettings(_env_file=None, AUTH_AUTO_ACTIVATE=True),
+        jwt_settings=JWTSettings(_env_file=None, JWT_SECRET="x" * 32),
+    )
+
+
+def _legacy_app(session: AsyncSession, **router_kwargs: Any) -> FastAPI:
+    """Mount the auth router over the legacy service.
+
+    Args:
+        session (AsyncSession): The session every request shares.
+        **router_kwargs (Any): Forwarded to ``make_auth_router``.
+
+    Returns:
+        FastAPI: The application under test.
+    """
+
+    async def _factory() -> AsyncIterator[AsyncSession]:
+        yield session
+
+    app = FastAPI()
+    register_exception_handlers(app)
+    app.include_router(
+        make_auth_router(_legacy_service(), session_factory=_factory, **router_kwargs)
+    )
+    return app
+
+
+class TestOverrideWithoutFields:
+    """A ``signup`` override that predates ``fields=`` keeps working.
+
+    Since 0.305.0 the router passed ``fields={}`` on every signup, so a
+    service overriding ``signup`` with the old signature answered every
+    ``POST /auth/signup`` with a 500 ``TypeError`` — seen in production on
+    2026-10-11 when a service jumped from before 0.305.0 to 0.312.0.
+    """
+
+    async def test_plain_signup_reaches_the_override(
+        self, session: AsyncSession
+    ) -> None:
+        """No extra field: the override is called without ``fields``."""
+        app = _legacy_app(session)
+        async with _client(app) as client:
+            response = await client.post(
+                "/auth/signup",
+                json={"email": "ana@example.com", "password": PASSWORD},
+            )
+
+        assert response.status_code == 201
+
+    async def test_extra_columns_fall_back_to_on_signup(
+        self, session: AsyncSession
+    ) -> None:
+        """A column in the schema is left to ``on_signup``, as before 0.305.0."""
+
+        async def fill_nickname(
+            hook_session: AsyncSession, user: Any, payload: Any
+        ) -> None:
+            """Write the nickname the way pre-0.305.0 services did.
+
+            Args:
+                hook_session (AsyncSession): The request session.
+                user (Any): The created user.
+                payload (Any): The validated signup body.
+            """
+            user.nickname = payload.nickname
+
+        app = _legacy_app(
+            session, signup_schema=_NicknameSignupSchema, on_signup=fill_nickname
+        )
+        async with _client(app) as client:
+            response = await client.post(
+                "/auth/signup",
+                json={
+                    "email": "ana@example.com",
+                    "password": PASSWORD,
+                    "nickname": "ana",
+                },
+            )
+
+        assert response.status_code == 201
+        user = (await session.execute(select(_NicknameUser))).scalar_one()
+        assert user.nickname == "ana"
+
+    def test_the_skipped_columns_are_named_at_router_build(
+        self, session: AsyncSession, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Mounting the router says which columns fall back to ``on_signup``."""
+        with caplog.at_level("WARNING", logger="tempest_fastapi_sdk.auth.router"):
+            _legacy_app(session, signup_schema=_NicknameSignupSchema)
+
+        assert "_LegacySignupService.signup() does not accept 'fields'" in caplog.text
+        assert "['nickname']" in caplog.text

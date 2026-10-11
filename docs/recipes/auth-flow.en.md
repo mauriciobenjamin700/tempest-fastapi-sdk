@@ -430,6 +430,14 @@ The schema **must** subclass `SignupSchema` — the route reads `email`,
 reach `/openapi.json` too: a generated client sees `phone` and `is_producer`
 without anyone hand-writing a schema.
 
+!!! tip "If your service overrides `signup`"
+    Declare `fields: Mapping[str, Any] | None = None` on the override and pass
+    it on to `super().signup(...)`: that is how the `signup_schema` columns
+    reach the row before the insert. An override without `fields` keeps
+    working — the route calls it without that argument, as before 0.305.0, and
+    logs, when the router is mounted, which columns are left for `on_signup`
+    to fill.
+
 ??? info "No router: `signup(fields=...)`"
     The same path lives on the service, for whoever builds their own route:
 
