@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `RateLimitKeyFunc`, `RateLimitKeyResult`, `LOGIN_THROTTLE_MAX_ATTEMPTS`,
+  `LOGIN_THROTTLE_WINDOW_SECONDS`, `MFA_THROTTLE_MAX_ATTEMPTS`,
+  `MFA_THROTTLE_WINDOW_SECONDS`, `LOGIN_THROTTLED_MESSAGE` e
+  `SIGNUP_THROTTLED_MESSAGE` saem do topo do pacote (os dois primeiros também de
+  `tempest_fastapi_sdk.api`, as constantes também de `tempest_fastapi_sdk.auth`).
+  Quem tipava a chave do `make_rate_limit_dependency` ou repetia o default do
+  limite de login importava do submódulo ou copiava o número. Um guard novo
+  (`tests/test_factory_param_exports_guard.py`) falha quando um tipo do SDK
+  citado na assinatura dessas factories não sai do topo (#494).
+
 ### Changed
 
 - Um valor com a forma errada para o operador `between` passa a ser recusado

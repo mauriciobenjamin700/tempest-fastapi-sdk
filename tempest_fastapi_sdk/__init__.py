@@ -214,6 +214,12 @@ from tempest_fastapi_sdk.api import (
     RaisesSpec as RaisesSpec,
 )
 from tempest_fastapi_sdk.api import (
+    RateLimitKeyFunc as RateLimitKeyFunc,
+)
+from tempest_fastapi_sdk.api import (
+    RateLimitKeyResult as RateLimitKeyResult,
+)
+from tempest_fastapi_sdk.api import (
     RateLimitMiddleware as RateLimitMiddleware,
 )
 from tempest_fastapi_sdk.api import (
@@ -451,7 +457,25 @@ from tempest_fastapi_sdk.auth import (
     LOCALE_QUERY_PARAM as LOCALE_QUERY_PARAM,
 )
 from tempest_fastapi_sdk.auth import (
+    LOGIN_THROTTLE_MAX_ATTEMPTS as LOGIN_THROTTLE_MAX_ATTEMPTS,
+)
+from tempest_fastapi_sdk.auth import (
+    LOGIN_THROTTLE_WINDOW_SECONDS as LOGIN_THROTTLE_WINDOW_SECONDS,
+)
+from tempest_fastapi_sdk.auth import (
+    LOGIN_THROTTLED_MESSAGE as LOGIN_THROTTLED_MESSAGE,
+)
+from tempest_fastapi_sdk.auth import (
+    MFA_THROTTLE_MAX_ATTEMPTS as MFA_THROTTLE_MAX_ATTEMPTS,
+)
+from tempest_fastapi_sdk.auth import (
+    MFA_THROTTLE_WINDOW_SECONDS as MFA_THROTTLE_WINDOW_SECONDS,
+)
+from tempest_fastapi_sdk.auth import (
     SIGNUP_PROTECTED_FIELDS as SIGNUP_PROTECTED_FIELDS,
+)
+from tempest_fastapi_sdk.auth import (
+    SIGNUP_THROTTLED_MESSAGE as SIGNUP_THROTTLED_MESSAGE,
 )
 from tempest_fastapi_sdk.auth import (
     SUPPORTED_LOCALES as SUPPORTED_LOCALES,
@@ -2089,6 +2113,11 @@ __all__: list[str] = [
     "JWT_PATTERN",
     "LEGACY_NAMING_CONVENTION",
     "LOCALE_QUERY_PARAM",
+    "LOGIN_THROTTLED_MESSAGE",
+    "LOGIN_THROTTLE_MAX_ATTEMPTS",
+    "LOGIN_THROTTLE_WINDOW_SECONDS",
+    "MFA_THROTTLE_MAX_ATTEMPTS",
+    "MFA_THROTTLE_WINDOW_SECONDS",
     "MFA_TOKEN_TYPE",
     "NAMING_CONVENTION",
     "PHONE_BR_PATTERN",
@@ -2098,6 +2127,7 @@ __all__: list[str] = [
     "REFRESH_TOKEN_TYPE",
     "REQUEST_ID_HEADER",
     "SIGNUP_PROTECTED_FIELDS",
+    "SIGNUP_THROTTLED_MESSAGE",
     "SNIFFABLE_MIMETYPES",
     "STATIC_CREDENTIAL_NAMESPACE",
     "SUPPORTED_LOCALES",
@@ -2399,6 +2429,8 @@ __all__: list[str] = [
     "RSAWebhookSignatureVerifier",
     "RabbitMQSettings",
     "RaisesSpec",
+    "RateLimitKeyFunc",
+    "RateLimitKeyResult",
     "RateLimitMiddleware",
     "RateLimitPolicy",
     "RateLimitResult",

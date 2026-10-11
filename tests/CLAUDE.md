@@ -28,6 +28,7 @@ Todos rodam dentro do `make check`.
 | `test_docstring_example_guard` | linha `>>>` de docstring chamando atributo privado do pacote — o ponto cego dos guards de bloco markdown, que não leem docstring | prosa que só **cita** o nome privado; tipo e nome livre do exemplo (`embedder`), que nenhum checker resolve ali |
 | `test_kwargs_guard` | função lê chave do **próprio** `**kwargs` | splat em callable que absorve a chave |
 | `test_reexport_guard` | `from x import Y as Y` + `__all__` em `__init__.py` | — |
+| `test_factory_param_exports_guard` | todo tipo definido pelo SDK que aparece na assinatura de `make_rate_limit_dependency` e `make_auth_router` sai do `__all__` do topo (#494); prova que dispara com o formato que shippou (`RateLimitKeyFunc` fora do topo) | factory pública que não está em `PUBLIC_FACTORIES`; tipo citado só no retorno |
 | `test_vacuous_guard` | teste afirma cruzar processo/réplica e não cruza | — |
 | `test_alias_guard` | `Field(alias=...)` voltando | — |
 | `test_enum_schema_guard` | todo enum anotado num campo de `BaseSchema` do pacote é `str`-based — sob `use_enum_values` o campo guarda o **valor**, então `Enum` comum faz `== Member` responder `False` e o branch nunca roda (com `StrEnum` só o `is` falha) | enum de consumidor; comparação escrita com `is` no código que o guard não lê |

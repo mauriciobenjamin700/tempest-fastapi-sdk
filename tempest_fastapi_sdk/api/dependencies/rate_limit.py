@@ -329,6 +329,8 @@ def make_rate_limit_dependency(
 
 
 __all__: list[str] = [
+    "RateLimitKeyFunc",
+    "RateLimitKeyResult",
     "key_by_body_field",
     "make_rate_limit_dependency",
 ]

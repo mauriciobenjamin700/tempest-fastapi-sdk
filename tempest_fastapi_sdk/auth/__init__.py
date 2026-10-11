@@ -85,6 +85,24 @@ from tempest_fastapi_sdk.auth.locale import negotiate_locale as negotiate_locale
 from tempest_fastapi_sdk.auth.locale import normalize_locale as normalize_locale
 from tempest_fastapi_sdk.auth.locale import resolve_locale as resolve_locale
 from tempest_fastapi_sdk.auth.locale import stamp_locale as stamp_locale
+from tempest_fastapi_sdk.auth.router import (
+    LOGIN_THROTTLE_MAX_ATTEMPTS as LOGIN_THROTTLE_MAX_ATTEMPTS,
+)
+from tempest_fastapi_sdk.auth.router import (
+    LOGIN_THROTTLE_WINDOW_SECONDS as LOGIN_THROTTLE_WINDOW_SECONDS,
+)
+from tempest_fastapi_sdk.auth.router import (
+    LOGIN_THROTTLED_MESSAGE as LOGIN_THROTTLED_MESSAGE,
+)
+from tempest_fastapi_sdk.auth.router import (
+    MFA_THROTTLE_MAX_ATTEMPTS as MFA_THROTTLE_MAX_ATTEMPTS,
+)
+from tempest_fastapi_sdk.auth.router import (
+    MFA_THROTTLE_WINDOW_SECONDS as MFA_THROTTLE_WINDOW_SECONDS,
+)
+from tempest_fastapi_sdk.auth.router import (
+    SIGNUP_THROTTLED_MESSAGE as SIGNUP_THROTTLED_MESSAGE,
+)
 from tempest_fastapi_sdk.auth.router import SignupHook as SignupHook
 from tempest_fastapi_sdk.auth.router import make_auth_router as make_auth_router
 from tempest_fastapi_sdk.auth.schemas import (
@@ -203,7 +221,13 @@ __all__: list[str] = [
     "DEFAULT_AUTH_LOCALE",
     "DEFAULT_FIREBASE_APP_NAME",
     "LOCALE_QUERY_PARAM",
+    "LOGIN_THROTTLED_MESSAGE",
+    "LOGIN_THROTTLE_MAX_ATTEMPTS",
+    "LOGIN_THROTTLE_WINDOW_SECONDS",
+    "MFA_THROTTLE_MAX_ATTEMPTS",
+    "MFA_THROTTLE_WINDOW_SECONDS",
     "SIGNUP_PROTECTED_FIELDS",
+    "SIGNUP_THROTTLED_MESSAGE",
     "SUPPORTED_LOCALES",
     "AccountInactiveException",
     "ActivationRequestSchema",
