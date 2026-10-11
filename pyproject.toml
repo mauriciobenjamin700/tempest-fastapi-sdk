@@ -378,6 +378,7 @@ exclude = ["**/CLAUDE.md"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "tempest_fastapi_sdk/db/_alembic_templates/env.py.template" = "tempest_fastapi_sdk/db/_alembic_templates/env.py.template"
+"tempest_fastapi_sdk/db/_alembic_templates/script.py.mako" = "tempest_fastapi_sdk/db/_alembic_templates/script.py.mako"
 # Bundled auth templates ship under per-locale subdirs (pt-BR/, en-US/).
 "tempest_fastapi_sdk/auth/templates/pt-BR/activation.html" = "tempest_fastapi_sdk/auth/templates/pt-BR/activation.html"
 "tempest_fastapi_sdk/auth/templates/pt-BR/password_reset.html" = "tempest_fastapi_sdk/auth/templates/pt-BR/password_reset.html"
