@@ -27,12 +27,15 @@ import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from tempest_fastapi_sdk import AlembicHelper
+from tempest_fastapi_sdk.db.enum_migrations import type_bound_check_include_object
+from tempest_fastapi_sdk.db.model import NAMING_CONVENTION
 
 MODELS: str = '''"""Models for the generated-env tests."""
 
@@ -253,6 +256,20 @@ def _add_drift(root: Path) -> None:
     models.write_text(text, encoding="utf-8")
 
 
+def _add_enum_member(root: Path) -> None:
+    """Add a member to the shared enum so autogenerate sees real drift.
+
+    Args:
+        root (Path): The project root.
+    """
+    models = root / "envmodels" / "__init__.py"
+    text = models.read_text(encoding="utf-8")
+    text = text.replace(
+        '    TEEN = "TEEN"\n', '    TEEN = "TEEN"\n    ADULT = "ADULT"\n'
+    )
+    models.write_text(text, encoding="utf-8")
+
+
 class TestCheckOnSqlite:
     """``alembic check`` right after ``upgrade head`` on a SQLite enum (#483).
 
@@ -281,6 +298,19 @@ class TestCheckOnSqlite:
         assert process.returncode != 0
         assert "add_column" in process.stdout
         assert "remove_constraint" not in process.stdout
+
+    def test_check_reports_a_new_enum_member(self, project: Path) -> None:
+        """#483: a changed enum member is drift, reported — not a crash."""
+        url = f"sqlite+aiosqlite:///{project / 'app.db'}"
+        _ok(_alembic(project, url, "revision", "--autogenerate", "-m", "init"))
+        _ok(_alembic(project, url, "upgrade", "head"))
+
+        _add_enum_member(project)
+
+        process = _alembic(project, url, "check")
+        assert process.returncode != 0
+        assert "NotImplementedError" not in process.stderr
+        assert "replace_enum" in process.stdout
 
 
 @pytest.fixture(scope="module")
@@ -493,3 +523,57 @@ class TestBareAlembicWithoutDatabaseUrl:
         assert process.returncode != 0
         assert "boom-490-factory" in process.stderr
         assert "DATABASE_URL is empty" in process.stderr
+
+
+class TestTypeBoundCheckIncludeObject:
+    """#483: the enum-check filter is scoped to the table that declares it."""
+
+    @staticmethod
+    def _declared_check(
+        table_name: str,
+        metadata: sa.MetaData,
+    ) -> sa.CheckConstraint:
+        """Build a table whose enum column carries a type-bound check.
+
+        Args:
+            table_name (str): The table to create.
+            metadata (sa.MetaData): The metadata to attach it to.
+
+        Returns:
+            sa.CheckConstraint: The type-bound check SQLAlchemy built.
+        """
+        sa.Table(
+            table_name,
+            metadata,
+            sa.Column(
+                "kind",
+                sa.Enum(
+                    "a",
+                    "b",
+                    name=f"{table_name}_kind",
+                    create_constraint=True,
+                ),
+            ),
+        )
+        for constraint in metadata.tables[table_name].constraints:
+            if isinstance(constraint, sa.CheckConstraint) and getattr(
+                constraint, "_type_bound", False
+            ):
+                return constraint
+        raise AssertionError("the enum column declared no type-bound check")
+
+    def test_a_check_of_the_same_name_on_another_table_is_kept(self) -> None:
+        metadata = sa.MetaData(naming_convention=NAMING_CONVENTION)
+        declared = self._declared_check("alpha", metadata)
+        assert isinstance(declared.name, str)
+
+        include = type_bound_check_include_object(metadata)
+        same_table = SimpleNamespace(table=SimpleNamespace(name="alpha"))
+        other_table = SimpleNamespace(table=SimpleNamespace(name="beta"))
+
+        assert (
+            include(same_table, declared.name, "check_constraint", True, None) is False
+        )
+        assert (
+            include(other_table, declared.name, "check_constraint", True, None) is True
+        )

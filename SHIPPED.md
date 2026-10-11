@@ -257,13 +257,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `alembic.ini` with `prepend_sys_path = .` + `path_separator = os`.
   **`check()` de enum no SQLite (0.313.0, #483):** `run_alembic_env` passa
   `include_object=type_bound_check_include_object(metadata)`, que descarta do
-  lado do banco o `CHECK` cujo nome casa um `CHECK` `_type_bound` da metadata —
-  o comparador do Alembic lê a constraint refletida mas pula a da metadata
-  (`all_table_check_constraints` filtra `_type_bound`), então `check()` propunha
-  um `remove_constraint` fantasma para `ck_<tabela>_<enum>` logo depois de um
-  `upgrade head` limpo. Drift real continua acusado. Não foi introduzido pelo
-  #482 (já reproduzia no `env.py` anterior). Teste:
-  `tests/db/test_alembic_env.py::TestCheckOnSqlite`.
+  lado do banco o `CHECK` cujo `(tabela, nome)` casa um `CHECK` `_type_bound`
+  da metadata — o comparador do Alembic lê a constraint refletida mas pula a da
+  metadata (`all_table_check_constraints` filtra `_type_bound`), então `check()`
+  propunha um `remove_constraint` fantasma para `ck_<tabela>_<enum>` logo depois
+  de um `upgrade head` limpo. A tabela entra na chave para que duas tabelas com
+  um `CHECK` homônimo não escondam o drift uma da outra. Drift real continua
+  acusado — inclusive a mudança de membro do enum, que faz o
+  `sync_enum_types` anexar um `ReplaceEnumOp`; sem `ReplaceEnumOp.to_diff_tuple`
+  o `check()` levantava `NotImplementedError` ao achatar as operações
+  (`UpgradeOps.as_diffs`), então o drift virava crash em vez de relatório. Não
+  foi introduzido pelo #482 (já reproduzia no `env.py` anterior). Testes:
+  `tests/db/test_alembic_env.py::TestCheckOnSqlite` e
+  `::TestTypeBoundCheckIncludeObject`.
   **`inherit_schema` no SQLAlchemy 2.1 (0.313.0, #496):**
   `TempestEnum._resolve_for_python_type` lê `_inherit_schema` (atributo
   interno) em vez da propriedade deprecada e só repassa o parâmetro

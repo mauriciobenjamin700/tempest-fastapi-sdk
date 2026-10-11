@@ -67,7 +67,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   descartava do lado da metadata (são `_type_bound`, ligadas ao tipo da
   coluna), então propunha `remove_constraint` para `ck_<tabela>_<enum>` e
   desligava o gate de CI. O `run_alembic_env` passa agora um `include_object`
-  que ignora esse `CHECK`; drift real continua acusado (#483).
+  que ignora esse `CHECK` — chaveado por `(tabela, nome)`, não só pelo nome,
+  para que duas tabelas com um `CHECK` homônimo não escondam o drift uma da
+  outra. Drift real continua acusado, inclusive uma mudança de membro do enum:
+  `ReplaceEnumOp` ganha `to_diff_tuple`, sem o qual `alembic check` levantava
+  `NotImplementedError` ao tentar imprimir o diff em vez de reportar o drift
+  (#483).
 - Declarar um model com `Mapped[MeuEnum]` sobre `BaseModel` deixa de emitir
   `SADeprecationWarning` por coluna a cada import, no SQLAlchemy 2.1. O
   `TempestEnum._resolve_for_python_type` lia `SchemaType.inherit_schema` (virou

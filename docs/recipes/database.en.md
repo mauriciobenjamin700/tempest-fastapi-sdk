@@ -2606,8 +2606,13 @@ print("Schema is in sync.")
     they are `_type_bound`, attached to the column type — so `check()`
     proposed a phantom `remove_constraint` right after a clean
     `upgrade head`, and the drift gate stayed off. `run_alembic_env`
-    passes an `include_object` that ignores that `CHECK`; real drift (a
-    new column) is still reported.
+    passes an `include_object` that ignores that `CHECK`, keyed by
+    `(table, name)` so two tables with a same-named `CHECK` cannot hide
+    each other's drift. Real drift is still reported — a new column, and
+    also a changed enum member: `sync_enum_types` appends a
+    `replace_enum`, and `ReplaceEnumOp` gained `to_diff_tuple`, without
+    which `check()` raised `NotImplementedError` while building the diff
+    instead of reporting it.
 
 !!! info "Base columns always first"
     The SDK's `env.py` installs the `reorder_base_columns_first` hook, so
