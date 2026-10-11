@@ -328,7 +328,6 @@ class TestExport:
                 "id": 10,
                 "user_id": 1,
                 "bio": "hi",
-                "avatar": "AP8=",
                 "public_id": "00000000-0000-0000-0000-000000000007",
             }
         ]
@@ -372,6 +371,149 @@ class TestExport:
             assert (await graph.count(session, 2))["order_items"] == 1
             invoice = await session.execute(metadata.tables["invoices"].select())
             assert [tuple(row) for row in invoice] == [(1, None)]
+
+
+class TestBinaryColumns:
+    """``LargeBinary`` stays out of the export by default (#507)."""
+
+    def test_binary_is_excluded_unless_asked_for(self) -> None:
+        metadata = _schema()
+        default = SubjectGraph(metadata, root="users", retained=RETAINED)
+        kept = SubjectGraph(
+            metadata, root="users", retained=RETAINED, exclude_binary=False
+        )
+
+        assert "avatar" not in default.exported_columns("profiles")
+        assert "avatar" in kept.exported_columns("profiles")
+
+    async def test_kept_binary_is_base64(self, engine: AsyncEngine) -> None:
+        metadata = _schema()
+        await _seed(engine, metadata)
+        graph = SubjectGraph(
+            metadata, root="users", retained=RETAINED, exclude_binary=False
+        )
+        async with AsyncSession(engine) as session:
+            payload = await graph.export(session, 1)
+        assert payload["profiles"][0]["avatar"] == "AP8="
+
+
+def _invite_schema() -> MetaData:
+    """Build users plus invites whose key points at the sender.
+
+    Returns:
+        MetaData: ``invites.sender_id`` cascades to ``users``; the invitee
+        is only named by ``invites.to_email``; ``invite_answers`` cascades
+        to ``invites``.
+    """
+    metadata = MetaData()
+    Table(
+        "users",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("email", String(120)),
+    )
+    Table(
+        "invites",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("sender_id", ForeignKey("users.id", ondelete="CASCADE")),
+        Column("to_email", String(120)),
+    )
+    Table(
+        "invite_answers",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("invite_id", ForeignKey("invites.id", ondelete="CASCADE")),
+        Column("answer", String(20)),
+    )
+    return metadata
+
+
+async def _seed_invites(engine: AsyncEngine, metadata: MetaData) -> None:
+    """Insert Ana (1) and Bia (2); Bia invites Ana and Cid.
+
+    Args:
+        engine (AsyncEngine): The test engine.
+        metadata (MetaData): The schema from :func:`_invite_schema`.
+    """
+    tables = metadata.tables
+    async with engine.begin() as conn:
+        await conn.run_sync(metadata.create_all)
+        await conn.execute(
+            insert(tables["users"]),
+            [{"id": 1, "email": "ana@x.io"}, {"id": 2, "email": "bia@x.io"}],
+        )
+        await conn.execute(
+            insert(tables["invites"]),
+            [
+                {"id": 1, "sender_id": 2, "to_email": "ana@x.io"},
+                {"id": 2, "sender_id": 2, "to_email": "cid@x.io"},
+            ],
+        )
+        await conn.execute(
+            insert(tables["invite_answers"]),
+            [{"id": 1, "invite_id": 1, "answer": "yes"}],
+        )
+
+
+MATCHES: dict[str, str] = {"invites.to_email": "email"}
+ANA: dict[str, str] = {"email": "ana@x.io"}
+
+
+class TestValueMatches:
+    """Rows the subject owns by value, not by foreign key (#507)."""
+
+    async def test_export_and_count_reach_the_invite_sent_to_the_subject(
+        self, engine: AsyncEngine
+    ) -> None:
+        metadata = _invite_schema()
+        await _seed_invites(engine, metadata)
+        graph = SubjectGraph(metadata, root="users", value_matches=MATCHES)
+        async with AsyncSession(engine) as session:
+            payload = await graph.export(session, 1, values=ANA)
+            without_values = await graph.count(session, 1)
+            with_values = await graph.count(session, 1, values=ANA)
+
+        assert payload["invites"] == [{"id": 1, "sender_id": 2, "to_email": "ana@x.io"}]
+        assert payload["invite_answers"] == [{"id": 1, "invite_id": 1, "answer": "yes"}]
+        assert without_values["invites"] == 0
+        assert with_values == {"users": 1, "invites": 1, "invite_answers": 1}
+
+    async def test_erase_removes_them_and_leaves_other_subjects(
+        self, engine: AsyncEngine
+    ) -> None:
+        metadata = _invite_schema()
+        await _seed_invites(engine, metadata)
+        graph = SubjectGraph(metadata, root="users", value_matches=MATCHES)
+        factory = async_sessionmaker(engine)
+        async with factory() as session:
+            proof = await graph.erase(session, 1, values=ANA)
+            await session.commit()
+        async with factory() as session:
+            invites = await session.execute(metadata.tables["invites"].select())
+            users = await session.execute(metadata.tables["users"].select())
+            remaining_invites = [tuple(row) for row in invites]
+            remaining_users = [tuple(row) for row in users]
+
+        assert set(proof.values()) == {0}
+        assert remaining_invites == [(2, 2, "cid@x.io")]
+        assert remaining_users == [(2, "bia@x.io")]
+
+    def test_violations_report_bad_entries(self) -> None:
+        metadata = _invite_schema()
+        Table("audit", metadata, Column("id", Integer, primary_key=True))
+        graph = SubjectGraph(
+            metadata,
+            root="users",
+            value_matches={"audit.email": "email", "invites.missing": "email"},
+        )
+
+        problems = graph.violations()
+
+        assert any("audit.email" in line and "closure" in line for line in problems)
+        assert any(
+            "invites.missing" in line and "no column" in line for line in problems
+        )
 
 
 class TestShapes:

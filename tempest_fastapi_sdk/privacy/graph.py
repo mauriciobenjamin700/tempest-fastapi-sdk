@@ -32,7 +32,17 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import ColumnElement, MetaData, Table, false, func, or_, select
+from sqlalchemy import (
+    ColumnElement,
+    LargeBinary,
+    MetaData,
+    Table,
+    delete,
+    false,
+    func,
+    or_,
+    select,
+)
 from sqlalchemy import tuple_ as sql_tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.schema import ForeignKeyConstraint
@@ -130,6 +140,11 @@ class SubjectGraph:
             left out of the export.
         secret_markers (tuple[str, ...]): Name substrings that mark a column
             as secret.
+        exclude_binary (bool): Whether ``LargeBinary`` columns are left out
+            of the export.
+        value_matches (dict[str, str]): ``"table.column"`` of each column
+            that identifies the subject by value, mapped to the key of the
+            ``values`` mapping its value comes from.
     """
 
     def __init__(
@@ -140,6 +155,8 @@ class SubjectGraph:
         retained: Mapping[str, str] | None = None,
         secret_columns: Mapping[str, Collection[str]] | None = None,
         secret_markers: Collection[str] = DEFAULT_SECRET_MARKERS,
+        exclude_binary: bool = True,
+        value_matches: Mapping[str, str] | None = None,
     ) -> None:
         """Derive the closure from ``metadata``.
 
@@ -162,6 +179,21 @@ class SubjectGraph:
             secret_markers (Collection[str]): Case-insensitive substrings of
                 a column name that mark it as secret. Defaults to
                 :data:`DEFAULT_SECRET_MARKERS`.
+            exclude_binary (bool): Leave ``LargeBinary`` columns (and its
+                subclasses) out of the export. A queue payload or a model
+                blob is not data the subject can read, and in base64 it is
+                only volume. ``False`` keeps them, base64-encoded.
+            value_matches (Mapping[str, str] | None): Columns that identify
+                the subject **by value** rather than by foreign key — an
+                invite sent *to* the subject keeps their e-mail in
+                ``invites.to_email`` while its key points at the sender.
+                Keys are ``"table.column"`` of a closure table, values are
+                the key of the ``values`` mapping that :meth:`condition`,
+                :meth:`export`, :meth:`count` and :meth:`erase` receive
+                (``{"invites.to_email": "email"}`` with
+                ``values={"email": "ana@example.com"}``). An entry outside
+                the closure or naming a missing column is reported by
+                :meth:`violations`.
 
         Raises:
             KeyError: When ``root`` names a table missing from ``metadata``.
@@ -184,6 +216,8 @@ class SubjectGraph:
         self.secret_markers: tuple[str, ...] = tuple(
             marker.lower() for marker in secret_markers
         )
+        self.exclude_binary: bool = exclude_binary
+        self.value_matches: dict[str, str] = dict(value_matches or {})
         self._order: list[Table] = self._closure()
         self._members: frozenset[str] = frozenset(t.name for t in self._order)
 
@@ -270,6 +304,18 @@ class SubjectGraph:
                 f"{label}: listed in retained but no foreign key from it "
                 f"points into the subject closure"
             )
+        for label in sorted(self.value_matches):
+            table_name, _, column_name = label.partition(".")
+            if table_name not in self._members:
+                problems.append(
+                    f"{label}: listed in value_matches but {table_name!r} is "
+                    f"not in the subject closure"
+                )
+            elif column_name not in self.metadata.tables[table_name].columns:
+                problems.append(
+                    f"{label}: listed in value_matches but {table_name!r} has "
+                    f"no column {column_name!r}"
+                )
         return sorted(problems)
 
     def is_secret(self, table: Table, column_name: str) -> bool:
@@ -281,13 +327,16 @@ class SubjectGraph:
 
         Returns:
             bool: ``True`` when the column is listed in ``secret_columns``,
-            carries ``info={"secret": True}``, or its name contains one of
-            ``secret_markers``.
+            carries ``info={"secret": True}``, its name contains one of
+            ``secret_markers``, or — under ``exclude_binary`` — its type is
+            ``LargeBinary``.
         """
         if column_name in self.secret_columns.get(table.name, frozenset()):
             return True
         column = table.columns[column_name]
         if column.info.get(SECRET_INFO_KEY):
+            return True
+        if self.exclude_binary and isinstance(column.type, LargeBinary):
             return True
         lowered = column_name.lower()
         return any(marker in lowered for marker in self.secret_markers)
@@ -328,7 +377,13 @@ class SubjectGraph:
             raise KeyError(f"table {name!r} is not in the subject closure")
         return self.metadata.tables[name]
 
-    def condition(self, table: str | Table, subject_id: Any) -> ColumnElement[bool]:
+    def condition(
+        self,
+        table: str | Table,
+        subject_id: Any,
+        *,
+        values: Mapping[str, Any] | None = None,
+    ) -> ColumnElement[bool]:
         """Build the ``WHERE`` clause selecting one subject's rows of a table.
 
         The root matches on its primary key. Any other table matches when
@@ -336,10 +391,15 @@ class SubjectGraph:
         that itself belongs to the subject, as a nested ``IN (SELECT ...)``.
         A row reachable only through a cycle back to its own table (a reply
         to a reply, by another subject) is not considered the subject's.
+        A table listed in ``value_matches`` also matches when its column
+        equals the given value, and so do the rows that cascade from it.
 
         Args:
             table (str | Table): A table of the closure.
             subject_id (Any): The value of the root's primary key.
+            values (Mapping[str, Any] | None): The subject's identifying
+                values, by the keys ``value_matches`` names. A key left out
+                (or ``None``) adds no match.
 
         Returns:
             ColumnElement[bool]: The clause, usable in ``select``,
@@ -348,13 +408,41 @@ class SubjectGraph:
         Raises:
             KeyError: When the table is not part of the closure.
         """
-        return self._condition(self._member(table), subject_id, frozenset())
+        return self._condition(
+            self._member(table), subject_id, frozenset(), dict(values or {})
+        )
+
+    def _value_clauses(
+        self, table: Table, values: Mapping[str, Any]
+    ) -> list[ColumnElement[bool]]:
+        """Build the by-value matches ``value_matches`` declares for a table.
+
+        Args:
+            table (Table): The table.
+            values (Mapping[str, Any]): The subject's identifying values.
+
+        Returns:
+            list[ColumnElement[bool]]: One ``column == value`` per entry of
+            this table whose value was given.
+        """
+        clauses: list[ColumnElement[bool]] = []
+        for label, key in sorted(self.value_matches.items()):
+            table_name, _, column_name = label.partition(".")
+            value = values.get(key)
+            if (
+                table_name == table.name
+                and value is not None
+                and column_name in table.columns
+            ):
+                clauses.append(table.columns[column_name] == value)
+        return clauses
 
     def _condition(
         self,
         table: Table,
         subject_id: Any,
         visiting: frozenset[str],
+        values: Mapping[str, Any],
     ) -> ColumnElement[bool]:
         """Recursive worker of :meth:`condition`.
 
@@ -363,17 +451,18 @@ class SubjectGraph:
             subject_id (Any): The root primary-key value.
             visiting (frozenset[str]): Tables on the current path, skipped
                 to stop recursion on cycles.
+            values (Mapping[str, Any]): The subject's identifying values.
 
         Returns:
             ColumnElement[bool]: The clause; ``false()`` when no acyclic
-            path reaches the root.
+            path reaches the root and no by-value match applies.
         """
         if table is self.root:
             primary_key = next(iter(self.root.primary_key.columns))
             matches_root: ColumnElement[bool] = primary_key == subject_id
             return matches_root
         path = visiting | {table.name}
-        clauses: list[ColumnElement[bool]] = []
+        clauses: list[ColumnElement[bool]] = self._value_clauses(table, values)
         for constraint in sorted(
             table.foreign_key_constraints, key=lambda c: _fk_label(c)
         ):
@@ -387,7 +476,7 @@ class SubjectGraph:
             local = list(constraint.columns)
             remote = [element.column for element in constraint.elements]
             parent_rows = select(*remote).where(
-                self._condition(parent, subject_id, path)
+                self._condition(parent, subject_id, path, values)
             )
             if len(local) == 1:
                 clauses.append(local[0].in_(parent_rows))
@@ -401,12 +490,16 @@ class SubjectGraph:
         self,
         session: AsyncSession,
         subject_id: Any,
+        *,
+        values: Mapping[str, Any] | None = None,
     ) -> dict[str, list[dict[str, Any]]]:
         """Read every row of the closure that belongs to one subject.
 
         Args:
             session (AsyncSession): An open async session.
             subject_id (Any): The value of the root's primary key.
+            values (Mapping[str, Any] | None): The subject's identifying
+                values, for the tables in ``value_matches``.
 
         Returns:
             dict[str, list[dict[str, Any]]]: Every closure table name (in
@@ -419,7 +512,7 @@ class SubjectGraph:
         for table in self._order:
             columns = [table.columns[name] for name in self.exported_columns(table)]
             statement = select(*columns).where(
-                self._condition(table, subject_id, frozenset())
+                self._condition(table, subject_id, frozenset(), dict(values or {}))
             )
             result = await session.execute(statement)
             payload[table.name] = [
@@ -432,15 +525,21 @@ class SubjectGraph:
         self,
         session: AsyncSession,
         subject_id: Any,
+        *,
+        values: Mapping[str, Any] | None = None,
     ) -> dict[str, int]:
         """Count one subject's rows per closure table.
 
         Run it after deleting the root row to prove the erasure reached
-        every table: every count must be ``0``.
+        every table: every count must be ``0``. Pass the same ``values``
+        as the export — without them, a row the subject owns only by value
+        is not counted, and the proof says ``0`` with it still stored.
 
         Args:
             session (AsyncSession): An open async session.
             subject_id (Any): The value of the root's primary key.
+            values (Mapping[str, Any] | None): The subject's identifying
+                values, for the tables in ``value_matches``.
 
         Returns:
             dict[str, int]: Every closure table name mapped to its row
@@ -451,10 +550,48 @@ class SubjectGraph:
             statement = (
                 select(func.count())
                 .select_from(table)
-                .where(self._condition(table, subject_id, frozenset()))
+                .where(
+                    self._condition(table, subject_id, frozenset(), dict(values or {}))
+                )
             )
             counts[table.name] = int((await session.execute(statement)).scalar_one())
         return counts
+
+    async def erase(
+        self,
+        session: AsyncSession,
+        subject_id: Any,
+        *,
+        values: Mapping[str, Any] | None = None,
+    ) -> dict[str, int]:
+        """Delete one subject's rows and return the proof.
+
+        Deletes the rows each ``value_matches`` entry selects (the database
+        cascades from them), then the root row (the database cascades the
+        rest of the closure), flushes, and returns :meth:`count` — which
+        should be ``0`` everywhere. It does not commit: the caller decides,
+        and can roll back when the proof is not clean.
+
+        Args:
+            session (AsyncSession): An open async session. The ``ON DELETE``
+                rules must be enforced by the connection (on SQLite, with
+                foreign keys on, which the SDK's engines turn on).
+            subject_id (Any): The value of the root's primary key.
+            values (Mapping[str, Any] | None): The subject's identifying
+                values, for the tables in ``value_matches``.
+
+        Returns:
+            dict[str, int]: :meth:`count` after the deletes.
+        """
+        given = dict(values or {})
+        for table in reversed(self._order):
+            clauses = self._value_clauses(table, given)
+            if clauses:
+                await session.execute(delete(table).where(or_(*clauses)))
+        primary_key = next(iter(self.root.primary_key.columns))
+        await session.execute(delete(self.root).where(primary_key == subject_id))
+        await session.flush()
+        return await self.count(session, subject_id, values=given)
 
 
 __all__: list[str] = [

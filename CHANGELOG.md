@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `SubjectGraph(value_matches={"invites.to_email": "email"})`: coluna que
+  identifica o titular por valor, e não por chave estrangeira (o convite
+  enviado **ao** titular aponta para quem mandou). `condition`, `export` e
+  `count` recebem `values={"email": ...}`; `erase(session, id, values=...)`
+  apaga essas linhas e a raiz e devolve a contagem; `violations()` acusa
+  entrada fora do fecho ou com coluna inexistente (#507).
 - `columns=` em `BaseAuditLogModel.new_entry`, nos `for_*`, em
   `add_audited` / `update_audited` / `delete_audited` e em `record_event`:
   cada chave vai para a coluna de mesmo nome que a subclasse de auditoria
@@ -43,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `SubjectGraph` deixa coluna `LargeBinary` fora da exportação por padrão;
+  até a 0.312.x ela saía em base64 (o `payload` de uma tabela de job, um blob
+  de modelo). `exclude_binary=False` volta ao comportamento anterior (#507).
 - `tempest db revision` (e `AlembicHelper.revision`) escreve o nome do arquivo
   em ASCII — `"Cria tabela de anotações"` vira
   `..._cria_tabela_de_anotacoes.py`, e a docstring da migration mantém a
