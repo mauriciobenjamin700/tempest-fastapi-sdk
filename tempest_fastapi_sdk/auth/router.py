@@ -42,8 +42,10 @@ from __future__ import annotations
 import hashlib
 import hmac
 import importlib
+import inspect
+import logging
 from collections.abc import AsyncIterator, Callable, Collection, Mapping
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import parse_qs
 
 from fastapi import APIRouter, Request, Response, status
@@ -271,6 +273,37 @@ def _require_jinja2() -> None:
             "not installed. Install it with "
             "`pip install tempest-fastapi-sdk[auth,email]`."
         ) from exc
+
+
+logger: logging.Logger = logging.getLogger(__name__)
+
+
+def _accepts_keyword(func: Callable[..., object], name: str) -> bool:
+    """Tell whether ``func`` can be called with the keyword ``name``.
+
+    Args:
+        func (Callable[..., object]): The callable, usually a bound method.
+        name (str): The keyword argument.
+
+    Returns:
+        bool: ``True`` when ``func`` declares ``name`` as a parameter that
+        can be passed by keyword, or takes ``**kwargs``; ``False`` when it
+        does not, or when its signature cannot be read.
+    """
+    try:
+        parameters = inspect.signature(func).parameters
+    except (TypeError, ValueError):
+        return False
+    parameter = parameters.get(name)
+    if parameter is not None:
+        return parameter.kind in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        )
+    return any(
+        candidate.kind is inspect.Parameter.VAR_KEYWORD
+        for candidate in parameters.values()
+    )
 
 
 def make_auth_router(
@@ -547,6 +580,19 @@ def make_auth_router(
             "reads 'email', 'password' and 'name' off the payload by name, "
             f"and {signup_model.__name__} does not inherit them."
         )
+    forward_signup_fields: bool = _accepts_keyword(service.signup, "fields")
+    schema_columns: frozenset[str] = signup_columns & (
+        frozenset(signup_model.model_fields) - frozenset(SignupSchema.model_fields)
+    )
+    if schema_columns and not forward_signup_fields:
+        logger.warning(
+            "%s.signup() does not accept 'fields', so the signup_schema "
+            "columns %s are not set before the insert; fill them in "
+            "on_signup, or add 'fields: Mapping[str, Any] | None = None' to "
+            "the override and pass it on to super().signup().",
+            type(service).__name__,
+            sorted(schema_columns),
+        )
     login_url = auth_settings.AUTH_LOGIN_URL
     min_length = auth_settings.AUTH_PASSWORD_MIN_LENGTH
     default_locale = auth_settings.AUTH_DEFAULT_LOCALE
@@ -809,19 +855,28 @@ def make_auth_router(
                     message=SIGNUP_THROTTLED_MESSAGE,
                     retry_after_seconds=attempt.retry_after_seconds,
                 )
-        user, activation = await service.signup(
-            session,
-            email=payload.email,
-            password=payload.password,
-            name=payload.name,
-            fields={
-                key: value
-                for key, value in payload.model_dump(
-                    exclude=set(SignupSchema.model_fields)
-                ).items()
-                if key in signup_columns
-            },
-        )
+        fields: dict[str, Any] = {
+            key: value
+            for key, value in payload.model_dump(
+                exclude=set(SignupSchema.model_fields)
+            ).items()
+            if key in signup_columns
+        }
+        if fields and forward_signup_fields:
+            user, activation = await service.signup(
+                session,
+                email=payload.email,
+                password=payload.password,
+                name=payload.name,
+                fields=fields,
+            )
+        else:
+            user, activation = await service.signup(
+                session,
+                email=payload.email,
+                password=payload.password,
+                name=payload.name,
+            )
         if on_signup is not None:
             await on_signup(session, user, payload)
         if activation is None:

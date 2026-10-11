@@ -88,6 +88,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no import dos models (#496). O DDL não muda nos dois dialetos. A suíte passa
   a tratar `SADeprecationWarning` como erro (`filterwarnings`).
 
+## [0.312.1] — 2026-10-11
+
+### Fixed
+
+- `POST /auth/signup` respondia `500 TypeError` em todo cadastro quando o
+  service sobrescrevia `signup` sem o parâmetro `fields` — a forma de antes da
+  0.305.0. Desde a 0.305.0 o `make_auth_router` passava `fields={...}` em
+  toda chamada, mesmo vazio. Visto em produção em 2026-10-11, num serviço que
+  pulou de antes da 0.305.0 direto para a 0.312.0. Agora a rota só passa
+  `fields` quando há coluna a repassar **e** o `signup` aceita o argumento;
+  um override sem ele é chamado como antes da 0.305.0, e a montagem do router
+  avisa no log quais colunas do `signup_schema` ficam para o `on_signup`.
+
 ## [0.312.0] — 2026-10-10
 
 Seguimento da 0.311.0 no Mercado Pago: estorno de Pix, Pix vencido como
