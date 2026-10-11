@@ -94,7 +94,7 @@ _EXCEPTION_FORMATTER: logging.Formatter = logging.Formatter()
 _KEY_VALUE_PATTERN: re.Pattern[str] = re.compile(
     r"(?<![\w-])(?P<key>[\w-]++)"
     r"(?P<sep>[\"']?\s*[=:]\s*[\"']?)"
-    r"(?P<value>(?:(?:basic|bearer|digest|token)\s+)?[^\s\"',;&}\]]+)",
+    r"(?P<value>(?:(?:basic|bearer|digest|token)\s+)?[^\s\"',;&}]+)",
     re.IGNORECASE,
 )
 """Any ``key=value`` / ``key: value`` pair in free text.
@@ -105,6 +105,12 @@ the pattern as an alternation: measured on a typical access-log line, the
 alternation form cost about 6.6 us per call against about 3.2 us for this
 one. The possessive key quantifier and the lookbehind keep the engine from
 retrying every suffix of every word.
+
+``]`` is **not** excluded from the value: a bracketed marker
+(``token=[REDACTED]``) has to be matched whole, otherwise the redaction of
+``token=[REDACTED]supersecret`` would stop before the ``]`` and leave the
+secret behind. A real value ends at whitespace, a quote, or one of the
+other structural delimiters regardless.
 """
 
 _KEY_CACHE_LIMIT: int = 4096
@@ -114,6 +120,30 @@ _KEY_CACHE_LIMIT: int = 4096
 cache answers almost every lookup; the limit bounds memory when keys come
 from data (the keys of a payload dict logged whole).
 """
+
+_VALUE_END_CHARS: str = " \t\n\r\f\v\"',;&}"
+"""Characters :data:`_KEY_VALUE_PATTERN`'s value group stops at.
+
+Used to tell a value that *is* the replacement from one that merely starts
+with it: the marker only means "already redacted" when nothing but one of
+these — or the end of the text — follows it. ``]`` is deliberately absent:
+it is part of the value, so a marker followed by ``]`` and then more text
+(``password=[REDACTED]]secret``) is a real secret and must be redacted.
+"""
+
+
+def _is_value_end(rest: str) -> bool:
+    """Return whether ``rest`` begins at a value boundary.
+
+    Args:
+        rest (str): The text that follows the replacement marker.
+
+    Returns:
+        bool: ``True`` when ``rest`` is empty or starts with a character
+        :data:`_KEY_VALUE_PATTERN`'s value group stops at, so the marker
+        was the whole value and not just its first characters.
+    """
+    return not rest or rest[0] in _VALUE_END_CHARS
 
 
 def _normalize_key(key: str) -> str:
@@ -213,25 +243,28 @@ class RedactionPolicy:
     def _replace_pair(self, match: re.Match[str]) -> str:
         """Redact the value of a ``key=value`` match when the key is sensitive.
 
-        The value is compared as the text that follows
-        ``match.start("value")`` — the value group itself stops at the
-        first ``]`` or quote, so a marker written earlier would be
-        truncated and re-masked into ``[REDACTED]`` with the original
-        ``]`` left behind. A value that already starts with the
-        replacement is left intact, which is what makes redaction
-        idempotent when the message renders a redacted argument.
+        A value that *is* the replacement is left intact — that is what
+        makes redaction idempotent when the message renders an already
+        redacted argument. A value that only **starts with** the
+        replacement is a real secret (``replacement="***"`` and
+        ``password=***hunter2``), so it is redacted: the test is the
+        replacement followed by a delimiter or the end of the text
+        (:func:`_is_value_end`), not a bare prefix.
 
         Args:
             match (re.Match[str]): A match of :data:`_KEY_VALUE_PATTERN`.
 
         Returns:
             str: The pair with its value replaced, or the match unchanged
-            when the key is not sensitive — or the value already is the
-            replacement.
+            when the key is not sensitive — or the whole value already is
+            the replacement.
         """
         if self.is_sensitive_key(match["key"]):
-            value_start = match.start("value")
-            if match.string[value_start:].startswith(self.replacement):
+            value = match["value"]
+            if value == self.replacement or (
+                value.startswith(self.replacement)
+                and _is_value_end(value[len(self.replacement) :])
+            ):
                 return match[0]
             return match["key"] + match["sep"] + self.replacement
         return match[0]

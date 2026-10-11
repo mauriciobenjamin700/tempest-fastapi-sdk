@@ -27,13 +27,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (#491). O helper vira a única fonte da forma segura
   (`tempest_fastapi_sdk.utils._url.mask_url_password`), que
   `AsyncDatabaseManager.db_url_safe` passa a delegar.
-- `RedactionPolicy` vira idempotente: redigir duas vezes o mesmo valor não
-  produz `[REDACTED]` com um `]` pendurado (`token=abc` → `token=[REDACTED]`,
-  e de novo → `token=[REDACTED]`), incluindo dict passado como argumento
-  posicional e `replacement` customizado com `]`. O `_KEY_VALUE_PATTERN`
-  cessa exatamente no `]`/aspas, então um marcador já escrito era truncado e
-  trocado de novo; `_replace_pair` devolve o match intacto quando o valor já
-  começa pelo `replacement` (#489).
+- `RedactionPolicy` vira idempotente sem deixar passar segredo nenhum: só
+  considera um valor já redigido quando o valor **inteiro** é o `replacement`
+  (marcador seguido de um delimitador de fim de valor ou do fim do texto), de
+  modo que `token=abc` → `token=[REDACTED]` e de novo → `token=[REDACTED]`,
+  enquanto um segredo que apenas **começa** pelo marcador é redigido —
+  `password=***hunter2` com `replacement="***"` virava `password=***hunter2`,
+  não `password=***`. A comparação crua por prefixo tratava qualquer valor
+  iniciado pelo marcador como já redigido e deixava o segredo em claro; o
+  `_KEY_VALUE_PATTERN` também deixa de parar no `]`, senão um marcador
+  entre colchetes truncava o match e o resto do valor (`token=[REDACTED]` +
+  `supersecret`) sobrevivia. `_replace_pair` compara o valor contra o
+  `replacement` com a fronteira de fim de valor (#489).
 - A descoberta de settings do projeto vira uma só, compartilhada por
   `tempest db`, `tempest doctor`, `tempest user` e o `alembic/env.py` gerado
   (`tempest_fastapi_sdk.utils._settings_discovery`). Os quatro aceitam, sob

@@ -353,6 +353,45 @@ class TestIdempotence:
         assert record.getMessage() == original.getMessage()
 
 
+class TestMarkerIsNotAPrefixTest:
+    """Issue #489: a secret that starts with the marker still redacts.
+
+    The idempotency check compared the value against ``startswith``, so a
+    replacement that is a prefix of the real value (``***`` in
+    ``password=***hunter2``) made the pair look already redacted and left
+    the secret in clear.
+    """
+
+    def test_replacement_prefix_does_not_hide_the_secret(self) -> None:
+        policy = RedactionPolicy(replacement="***")
+        assert policy.redact_text("password=***hunter2") == "password=***"
+
+    def test_single_char_replacement_does_not_hide_the_secret(self) -> None:
+        policy = RedactionPolicy(replacement="x")
+        assert policy.redact_text("password=xyz123") == "password=x"
+
+    def test_default_bracketed_marker_does_not_hide_the_secret(self) -> None:
+        policy = RedactionPolicy()
+        assert policy.redact_text("token=[REDACTED]supersecret") == "token=[REDACTED]"
+
+    def test_a_closing_bracket_after_the_marker_is_not_a_boundary(self) -> None:
+        policy = RedactionPolicy()
+        assert policy.redact_text("password=[REDACTED]]secret") == "password=[REDACTED]"
+
+    def test_a_real_value_that_is_exactly_the_marker_stays(self) -> None:
+        policy = RedactionPolicy(replacement="***")
+        once = policy.redact_text("password=***")
+        assert once == "password=***"
+        assert policy.redact_text(once) == once
+
+    def test_marker_followed_by_a_delimiter_is_a_real_marker(self) -> None:
+        policy = RedactionPolicy()
+        assert (
+            policy.redact_text("token=[REDACTED], next=1")
+            == "token=[REDACTED], next=1"
+        )
+
+
 class TestPolicy:
     def test_key_matching_is_substring_and_normalized(self) -> None:
         policy = RedactionPolicy()
