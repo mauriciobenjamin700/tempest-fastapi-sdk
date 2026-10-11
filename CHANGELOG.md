@@ -32,7 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   redis://...`) é mascarada no lugar em que aparece. O helper vira a única
   fonte da forma segura
   (`tempest_fastapi_sdk.utils._url.mask_url_password`), que
-  `AsyncDatabaseManager.db_url_safe` passa a delegar.
+  `AsyncDatabaseManager.db_url_safe` passa a delegar. O `--timeout` opcional
+  no check do RabbitMQ, citado na mesma issue, **não** foi tratado aqui: o
+  check do RabbitMQ segue sem o parâmetro `--timeout` que Redis e SMTP já
+  aceitam.
 - `RedactionPolicy` vira idempotente sem deixar passar segredo nenhum: só
   considera um valor já redigido quando o valor **inteiro** é o `replacement`
   (marcador seguido de um delimitador de fim de valor ou do fim do texto), de
