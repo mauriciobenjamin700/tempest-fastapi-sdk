@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `columns=` em `BaseAuditLogModel.new_entry`, nos `for_*`, em
+  `add_audited` / `update_audited` / `delete_audited` e em `record_event`:
+  cada chave vai para a coluna de mesmo nome que a subclasse de auditoria
+  declarar (o titular do evento, o tenant), sem sobrescrever `new_entry`. Chave
+  sem coluna levanta `ValueError` e reverte a transação, inclusive a linha de
+  negócio; chave com parâmetro próprio (`AUDIT_RESERVED_COLUMNS`: `actor_id`,
+  `event`, `entity`, `changes`...) também é recusada (#508).
 - `RedactionPolicy(exact_keys=...)`: chaves comparadas por **igualdade**
   (depois da mesma normalização), para nome curto e comum que a substring
   pegaria demais. Com `exact_keys={"code"}`,

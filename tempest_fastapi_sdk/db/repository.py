@@ -1949,6 +1949,7 @@ class BaseRepository(Generic[ModelType]):
         user_agent: str | None = None,
         request_context: AuditRequestContext | None = None,
         actor_id: UUID | None = None,
+        columns: Mapping[str, Any] | None = None,
     ) -> ModelType:
         """Insert ``model`` and a ``create`` audit row in one transaction.
 
@@ -1973,6 +1974,9 @@ class BaseRepository(Generic[ModelType]):
                 mutually exclusive with both.
             actor_id (UUID | None): The author's id, for an audit model
                 that declares an ``actor_id`` column.
+            columns (Mapping[str, Any] | None): Values for domain columns the
+                audit subclass declares (``subject_id``, ``tenant_id``), each
+                written to the column of the same name.
 
         Returns:
             ModelType: The instance after ``refresh``.
@@ -1997,6 +2001,7 @@ class BaseRepository(Generic[ModelType]):
                 user_agent=user_agent,
                 request_context=request_context,
                 actor_id=actor_id,
+                columns=columns,
             )
             self.session.add(entry)
             await self._commit()
@@ -2028,6 +2033,7 @@ class BaseRepository(Generic[ModelType]):
         user_agent: str | None = None,
         request_context: AuditRequestContext | None = None,
         actor_id: UUID | None = None,
+        columns: Mapping[str, Any] | None = None,
     ) -> ModelType:
         """Persist mutations on ``model`` and an ``update`` audit row.
 
@@ -2051,6 +2057,9 @@ class BaseRepository(Generic[ModelType]):
                 mutually exclusive with both.
             actor_id (UUID | None): The author's id, for an audit model
                 that declares an ``actor_id`` column.
+            columns (Mapping[str, Any] | None): Values for domain columns the
+                audit subclass declares (``subject_id``, ``tenant_id``), each
+                written to the column of the same name.
 
         Returns:
             ModelType: The instance after ``refresh``.
@@ -2073,6 +2082,7 @@ class BaseRepository(Generic[ModelType]):
                 user_agent=user_agent,
                 request_context=request_context,
                 actor_id=actor_id,
+                columns=columns,
             )
             self.session.add(entry)
             await self._commit()
@@ -2103,6 +2113,7 @@ class BaseRepository(Generic[ModelType]):
         user_agent: str | None = None,
         request_context: AuditRequestContext | None = None,
         actor_id: UUID | None = None,
+        columns: Mapping[str, Any] | None = None,
     ) -> None:
         """Delete ``model`` and write a ``delete`` audit row in one tx.
 
@@ -2124,6 +2135,9 @@ class BaseRepository(Generic[ModelType]):
                 mutually exclusive with both.
             actor_id (UUID | None): The author's id, for an audit model
                 that declares an ``actor_id`` column.
+            columns (Mapping[str, Any] | None): Values for domain columns the
+                audit subclass declares (``subject_id``, ``tenant_id``), each
+                written to the column of the same name.
 
         Raises:
             RuntimeError: When no ``audit_model`` was configured.
@@ -2141,6 +2155,7 @@ class BaseRepository(Generic[ModelType]):
                 user_agent=user_agent,
                 request_context=request_context,
                 actor_id=actor_id,
+                columns=columns,
             )
             await self.session.delete(model)
             self.session.add(entry)
@@ -2161,6 +2176,7 @@ class BaseRepository(Generic[ModelType]):
         user_agent: str | None = None,
         request_context: AuditRequestContext | None = None,
         actor_id: UUID | None = None,
+        columns: Mapping[str, Any] | None = None,
     ) -> BaseAuditLogModel:
         """Write an ``event`` audit row — a domain event with no mutation.
 
@@ -2184,6 +2200,9 @@ class BaseRepository(Generic[ModelType]):
                 ``user_agent`` together; mutually exclusive with both.
             actor_id (UUID | None): The author's id, for an audit model
                 that declares an ``actor_id`` column.
+            columns (Mapping[str, Any] | None): Values for domain columns the
+                audit subclass declares (``subject_id``, ``tenant_id``), each
+                written to the column of the same name.
 
         Returns:
             BaseAuditLogModel: The persisted audit row.
@@ -2207,6 +2226,7 @@ class BaseRepository(Generic[ModelType]):
             user_agent=user_agent,
             request_context=request_context,
             actor_id=actor_id,
+            columns=columns,
         )
         try:
             self.session.add(entry)

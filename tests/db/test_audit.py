@@ -303,6 +303,10 @@ class _OriginAuditLogModel(AuditRequestMixin, BaseAuditLogModel):
         nullable=True,
         index=True,
     )
+    subject_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("_test_audit_origin_user.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
 
 class _OriginGadgetRepository(BaseRepository[_GadgetModel]):
@@ -504,6 +508,62 @@ class TestAuthorForeignKey:
     def test_actor_id_on_a_table_without_the_column_is_refused(self) -> None:
         with pytest.raises(ValueError, match="actor_id"):
             _AuditLogModel.for_create(_GadgetModel(name="x"), actor_id=uuid4())
+
+
+class TestDomainColumns:
+    """``columns=`` fills any domain column the subclass declares (#508).
+
+    Up to 0.312.x only ``actor_id`` had a way in; the subject of the event or
+    the tenant needed an override of ``new_entry`` smuggling the value
+    through ``context``.
+    """
+
+    async def test_add_audited_and_record_event_fill_the_column(
+        self,
+        audit_db: AsyncDatabaseManager,
+    ) -> None:
+        """Stored by both paths, and ``SET NULL`` when the subject goes."""
+        async with audit_db.get_session_context() as session:
+            subject = _OriginUserModel(email="s@example.com")
+            session.add(subject)
+            await session.commit()
+            repo = _OriginGadgetRepository(session)
+            await repo.add_audited(
+                _GadgetModel(name="g"), columns={"subject_id": subject.id}
+            )
+            await repo.record_event(
+                "subject.exported", columns={"subject_id": subject.id}
+            )
+
+        entries = await _origin_rows(audit_db)
+        assert [entry.subject_id for entry in entries] == [subject.id, subject.id]
+
+        async with audit_db.get_session_context() as session:
+            await session.execute(delete(_OriginUserModel))
+            await session.commit()
+
+        entries = await _origin_rows(audit_db)
+        assert [entry.subject_id for entry in entries] == [None, None]
+
+    async def test_an_unknown_column_is_refused_and_nothing_is_written(
+        self,
+        audit_db: AsyncDatabaseManager,
+    ) -> None:
+        async with audit_db.get_session_context() as session:
+            with pytest.raises(ValueError, match="no column for: missing"):
+                await _OriginGadgetRepository(session).add_audited(
+                    _GadgetModel(name="g"), columns={"missing": 1}
+                )
+
+        async with audit_db.get_session_context() as session:
+            gadgets = (await session.execute(select(_GadgetModel))).scalars().all()
+        assert gadgets == []
+        assert await _origin_rows(audit_db) == []
+
+    @pytest.mark.parametrize("key", ["actor_id", "event", "entity", "changes"])
+    def test_a_column_with_its_own_parameter_is_refused(self, key: str) -> None:
+        with pytest.raises(ValueError, match=f"cannot set {key}"):
+            _OriginAuditLogModel.for_create(_GadgetModel(name="x"), columns={key: 1})
 
 
 class TestAuditRequestContextFromRequest:
