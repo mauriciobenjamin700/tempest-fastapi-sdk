@@ -387,8 +387,7 @@ class TestMarkerIsNotAPrefixTest:
     def test_marker_followed_by_a_delimiter_is_a_real_marker(self) -> None:
         policy = RedactionPolicy()
         assert (
-            policy.redact_text("token=[REDACTED], next=1")
-            == "token=[REDACTED], next=1"
+            policy.redact_text("token=[REDACTED], next=1") == "token=[REDACTED], next=1"
         )
 
 
