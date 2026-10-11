@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Um valor com a forma errada para o operador do filtro passa a ser recusado
+  com `InvalidFilterValueException` (422) antes de qualquer statement, em vez
+  de ser descartado em silêncio: `{"created_at__between": x}` sem o par
+  `(lo, hi)`, e `{"status__in": x}` com um escalar solto em vez de iterável
+  (#484). O descarte sumia do `WHERE` e, em `bulk_update` / `delete_many` /
+  `update_returning`, ampliava a escrita para as linhas que o filtro **não**
+  nomeava — `details["value"]` ecoa um `repr` do valor recusado, truncado em
+  64 caracteres. Um escalar em `in` que antes virava lista de um item precisa
+  virar `==`.
+
 ### Fixed
 
 - `tempest doctor` mascara a senha da URL do RabbitMQ, do Redis e do banco

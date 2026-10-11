@@ -143,7 +143,77 @@ class UnknownFilterKeyException(ValidationException):
         self.filter_key: str = filter_key
 
 
+_VALUE_RENDER_CAP: int = 64
+"""Longest ``repr`` echoed in an :class:`InvalidFilterValueException` detail."""
+
+
+def _brief(value: Any) -> str:
+    """Render a rejected filter value for an error detail, bounded.
+
+    The value is echoed with ``repr`` so the caller sees what was sent,
+    but truncated to :data:`_VALUE_RENDER_CAP` characters: a mistyped
+    filter rarely carries a small value (an uploaded payload, a file
+    id list), and the error is not the place to replay all of it. A
+    generator is not consumed — ``repr`` shows its address.
+
+    Args:
+        value (Any): The value that cannot express the operator.
+
+    Returns:
+        str: ``repr(value)``, with a trailing ellipsis when truncated.
+    """
+    rendered = repr(value)
+    if len(rendered) > _VALUE_RENDER_CAP:
+        return rendered[:_VALUE_RENDER_CAP] + "..."
+    return rendered
+
+
+class InvalidFilterValueException(ValidationException):
+    """Raised when a ``filters`` value cannot express its operator.
+
+    A suffix operator fixes the shape its value must have: ``between``
+    needs an ordered two-item ``(lo, hi)`` ``list`` / ``tuple``; the
+    ``in`` family needs a non-string iterable. A value that did not fit
+    used to be dropped in silence, and the condition vanishing from the
+    ``WHERE`` widened the statement instead of narrowing it — on
+    ``bulk_update`` / ``delete_many`` / ``update_returning`` that meant
+    touching every row the filter did **not** name (measured on SQLite,
+    #484). The value is now refused before any statement runs.
+
+    ``details["filter"]`` carries the rejected key (suffix included) and
+    ``details["value"]`` a bounded ``repr`` of the value — enough to spot
+    the mistake without echoing a whole payload.
+
+    Subclasses :class:`ValidationException`, so ``except
+    ValidationException`` keeps catching it and the HTTP status is 422.
+
+    Attributes:
+        filter_key (str): The rejected key, as the caller sent it.
+        value (Any): The rejected value, as the caller sent it.
+    """
+
+    message: str = "Invalid filter value"
+    code: str = "INVALID_FILTER_VALUE"
+    field: str | None = "filters"
+    details_example: ClassVar[dict[str, Any]] = {
+        "filter": "created_at__between",
+        "value": "[1]",
+    }
+
+    def __init__(self, filter_key: str, value: Any) -> None:
+        """Initialize the refusal with the rejected key and value.
+
+        Args:
+            filter_key (str): The full ``filters`` key, suffix included.
+            value (Any): The value that cannot express the operator.
+        """
+        super().__init__(details={"filter": filter_key, "value": _brief(value)})
+        self.filter_key: str = filter_key
+        self.value: Any = value
+
+
 __all__: list[str] = [
+    "InvalidFilterValueException",
     "OrderByNotAllowedException",
     "PageSizeTooLargeException",
     "UnknownFilterKeyException",

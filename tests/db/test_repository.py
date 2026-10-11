@@ -14,6 +14,7 @@ from tempest_fastapi_sdk import (
     BaseRepository,
     ConflictException,
     F,
+    InvalidFilterValueException,
     NotFoundException,
     SoftDeleteMixin,
     UnknownFilterKeyException,
@@ -369,6 +370,55 @@ class TestBulkUpdate:
     ) -> None:
         with pytest.raises(ValueError):
             await repo.bulk_update(filters={}, values={"category": "z"})
+
+
+class TestInvalidFilterValueOnWrites:
+    """A malformed operator value is refused before any write runs (#484)."""
+
+    async def _seed(self, repo: ProductRepository) -> None:
+        await repo.add_all(
+            [
+                Product(name="a", category="x"),
+                Product(name="b", category="x"),
+                Product(name="c", category="y"),
+            ]
+        )
+
+    async def test_delete_many_refuses_and_deletes_nothing(
+        self, repo: ProductRepository
+    ) -> None:
+        await self._seed(repo)
+        with pytest.raises(InvalidFilterValueException) as exc:
+            await repo.delete_many({"category__between": ["x"]})
+        assert exc.value.details["filter"] == "category__between"
+        assert await repo.count() == 3
+
+    async def test_bulk_update_refuses_and_changes_nothing(
+        self, repo: ProductRepository
+    ) -> None:
+        await self._seed(repo)
+        with pytest.raises(InvalidFilterValueException):
+            await repo.bulk_update(
+                filters={"category__in": "x"},
+                values={"category": "z"},
+            )
+        assert {p.category for p in await repo.list()} == {"x", "y"}
+
+    async def test_update_returning_refuses_and_changes_nothing(
+        self, repo: ProductRepository
+    ) -> None:
+        await self._seed(repo)
+        with pytest.raises(InvalidFilterValueException):
+            await repo.update_returning(
+                {"category__between": ["x"]},
+                {"category": "z"},
+                returning=("name",),
+            )
+        assert {p.name: p.category for p in await repo.list()} == {
+            "a": "x",
+            "b": "x",
+            "c": "y",
+        }
 
 
 class TestUpdateReturning:

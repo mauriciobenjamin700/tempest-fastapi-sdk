@@ -1134,6 +1134,9 @@ from tempest_fastapi_sdk.exceptions import (
     InvalidFileTypeException as InvalidFileTypeException,
 )
 from tempest_fastapi_sdk.exceptions import (
+    InvalidFilterValueException as InvalidFilterValueException,
+)
+from tempest_fastapi_sdk.exceptions import (
     InvalidSignedURLException as InvalidSignedURLException,
 )
 from tempest_fastapi_sdk.exceptions import (
@@ -2265,6 +2268,7 @@ __all__: list[str] = [
     "IntegrityViolation",
     "IntrospectionAuth",
     "InvalidFileTypeException",
+    "InvalidFilterValueException",
     "InvalidSignedURLException",
     "InvalidTokenException",
     "JSONFormatter",

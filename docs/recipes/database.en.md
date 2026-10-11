@@ -1676,6 +1676,74 @@ All three rows are still there: `delete_many` deleted nothing.
     (`conditions = f.get_conditions()` then
     `search = conditions.pop("search", None)`) and handle it in the service.
 
+### A value that does not fit the operator is refused
+
+A value with the **wrong shape** for its operator — a `between` that is not
+the `(lo, hi)` pair, or an `in` without an iterable (a bare scalar) — raises
+`InvalidFilterValueException` before any statement runs. It was the rest of
+the #465 defect: the condition vanished from the `WHERE` and, on
+`bulk_update`, `delete_many` and `update_returning`, the write hit exactly the
+rows the filter did **not** name.
+
+```python
+import asyncio
+
+from sqlalchemy import String
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import Mapped, mapped_column
+from tempest_fastapi_sdk import (
+    BaseModel,
+    BaseRepository,
+    InvalidFilterValueException,
+)
+
+
+class TicketModel(BaseModel):
+    __tablename__ = "tickets_bad_value_demo"
+
+    status: Mapped[str] = mapped_column(String(16))
+
+
+async def main() -> None:
+    """Run this example."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(TicketModel.metadata.create_all)
+    async with AsyncSession(engine) as session:
+        repo: BaseRepository[TicketModel] = BaseRepository(
+            session, model=TicketModel
+        )
+        for status in ("open", "paid"):
+            await repo.add(TicketModel(status=status))
+        try:
+            await repo.delete_many({"status__in": "open"})
+        except InvalidFilterValueException as exc:
+            print(exc.status_code, exc.code, exc.details)
+        print(await repo.count())
+    await engine.dispose()
+
+
+asyncio.run(main())
+```
+
+Output:
+
+```text
+422 INVALID_FILTER_VALUE {'filter': 'status__in', 'value': "'open'"}
+2
+```
+
+`details["value"]` echoes a `repr` of the value, **truncated** at 64
+characters: a mistyped filter usually carries a large value (a payload, a list
+of ids), and the error is no place to repeat all of it.
+
+!!! warning "Behavior change (#484)"
+    Up to 0.312.0 a malformed `between` was **ignored** and a scalar in `in`
+    became a one-item list — the condition disappeared from the `WHERE`.
+    Anyone sending a wrong value and relying on that silence now gets a 422.
+    Fix the shape: `==` instead of `in` for a single value, and the `(lo, hi)`
+    pair for `between`.
+
 ### Every paginated listing inherits the operators
 
 Because `get_conditions()` only strips the pagination keys (`page`,

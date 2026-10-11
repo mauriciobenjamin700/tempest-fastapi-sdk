@@ -1505,8 +1505,8 @@ Operadores de sufixo `campo__op` disponíveis (no `Q` **e** no dict):
 | Sufixo | SQL | Exemplo |
 |--------|-----|---------|
 | `gt` `gte` `lt` `lte` `ne` | comparação | `Q(priority__gte=5)` |
-| `in` `notin` `not_in` | `IN` / `NOT IN` (valor = qualquer iterável não-string: `list`/`set`/`tuple`/gerador; `not_in` é alias de `notin`) | `Q(status__in={"open", "paid"})` |
-| `between` | `col BETWEEN lo AND hi` (valor = par ordenado `(lo, hi)` em `list`/`tuple`) | `Q(price__between=(10, 20))` |
+| `in` `notin` `not_in` | `IN` / `NOT IN` (valor = qualquer iterável não-string: `list`/`set`/`tuple`/gerador; `not_in` é alias de `notin`; um escalar é recusado) | `Q(status__in={"open", "paid"})` |
+| `between` | `col BETWEEN lo AND hi` (valor = par ordenado `(lo, hi)` em `list`/`tuple`; qualquer outro formato é recusado) | `Q(price__between=(10, 20))` |
 | `iexact` | igualdade case-insensitive (`lower(col) == lower(v)`) | `Q(email__iexact="Ana@X.com")` |
 | `like` `ilike` | `LIKE` / `ILIKE` cru, com os wildcards do chamador (`%`/`_`) **sem escape** | `Q(sku__ilike="ab_-%")` |
 | `isnull` | `IS NULL` (True) / `IS NOT NULL` (False) | `Q(closed_at__isnull=True)` |
@@ -1668,6 +1668,74 @@ As três linhas continuam lá: o `delete_many` não apagou nada.
     passa a receber 422. Tire o campo do dict antes de repassar
     (`conditions = f.get_conditions()` e depois
     `search = conditions.pop("search", None)`) e trate-o no service.
+
+### Valor que não cabe no operador é recusado
+
+Um valor com a **forma errada** para o operador — um `between` que não é o par
+`(lo, hi)`, ou um `in` sem iterável (um escalar solto) — levanta
+`InvalidFilterValueException` antes de qualquer statement. Era o restante do
+defeito do #465: a condição sumia do `WHERE` e, em `bulk_update`,
+`delete_many` e `update_returning`, a escrita atingia justamente as linhas que
+o filtro **não** nomeava.
+
+```python
+import asyncio
+
+from sqlalchemy import String
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import Mapped, mapped_column
+from tempest_fastapi_sdk import (
+    BaseModel,
+    BaseRepository,
+    InvalidFilterValueException,
+)
+
+
+class TicketModel(BaseModel):
+    __tablename__ = "tickets_bad_value_demo"
+
+    status: Mapped[str] = mapped_column(String(16))
+
+
+async def main() -> None:
+    """Run this example."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(TicketModel.metadata.create_all)
+    async with AsyncSession(engine) as session:
+        repo: BaseRepository[TicketModel] = BaseRepository(
+            session, model=TicketModel
+        )
+        for status in ("open", "paid"):
+            await repo.add(TicketModel(status=status))
+        try:
+            await repo.delete_many({"status__in": "open"})
+        except InvalidFilterValueException as exc:
+            print(exc.status_code, exc.code, exc.details)
+        print(await repo.count())
+    await engine.dispose()
+
+
+asyncio.run(main())
+```
+
+Saída:
+
+```text
+422 INVALID_FILTER_VALUE {'filter': 'status__in', 'value': "'open'"}
+2
+```
+
+`details["value"]` ecoa um `repr` do valor, **truncado** em 64 caracteres: o
+filtro errado costuma carregar valor grande (um payload, uma lista de ids), e
+o erro não é lugar de repetir tudo.
+
+!!! warning "Mudança de comportamento (#484)"
+    Até a 0.312.0 um `between` malformado era **ignorado** e um escalar em
+    `in` virava lista de um item — a condição desaparecia do `WHERE`. Quem
+    mandava um valor errado e dependia desse silêncio passa a receber 422.
+    Corrija a forma do valor: `==` no lugar de `in` para um valor único, e o
+    par `(lo, hi)` para `between`.
 
 ### Toda paginação herda os operadores
 

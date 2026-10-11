@@ -3247,3 +3247,18 @@ statement. `resolve_filter_key` / `FILTER_OPERATORS` em
 construção sobre `list_filter`, `search_fields` e os `filters` de cada
 `Lens` (typo vira `ValueError` no boot). Teste:
 `tests/db/test_filters_contract.py`.
+
+## Valor com a forma errada é recusado (0.313.0, #484)
+
+Terceira metade da mesma família (#465, v0.309.0; `None`, v0.292.0): chave e
+operador válidos, mas **valor** incompatível com o operador. `between` sem o
+par `(lo, hi)` — `[1]`, `x`, `None` — era ignorado, e `in`/`notin`/`not_in`
+com escalar solto virava lista de um item; nos dois casos a condição sumia do
+`WHERE` e, em `bulk_update` / `delete_many` / `update_returning`, a escrita
+atingia as linhas que o filtro **não** nomeava. `_suffix_condition` levanta
+`InvalidFilterValueException` (422, `INVALID_FILTER_VALUE`) antes de qualquer
+statement, carregando `details={"filter": <chave>, "value": <repr truncado>}`
+— `_brief` limita o eco a 64 caracteres porque o valor recusado costuma ser um
+payload grande. Testes: `tests/db/test_expressions.py` (recusa por operador,
+truncamento) e `tests/db/test_repository.py::TestInvalidFilterValueOnWrites`
+(prova que nada é escrito).
