@@ -280,7 +280,7 @@ Since **0.306.0** step 2 of the login has two brakes you do not have to write.
 `POST /auth/mfa/verify` counts wrong codes **per account**, not per `mfa_token`. After five failures within fifteen minutes, the sixth attempt answers `429` without looking at the code, **even when it is right**:
 
 ```json
-{"detail":"too many invalid MFA codes, try again later","code":"TOO_MANY_REQUESTS","details":{"retry_after_seconds":900}}
+{"detail":"too many invalid MFA codes, try again later","code":"MFA_THROTTLED","details":{"retry_after_seconds":900}}
 ```
 
 The response carries a `Retry-After` header with the seconds left in the window. That is the body with `register_exception_handlers` mounted.

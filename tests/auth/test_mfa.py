@@ -1065,6 +1065,7 @@ class TestMFAAttemptLimit:
                 json={"mfa_token": token, "code": _next_code(secret)},
             )
             assert r.status_code == 429, r.text
+            assert r.json()["code"] == "MFA_THROTTLED"
             assert int(r.headers["Retry-After"]) > 0
 
             fresh = await _mfa_token(c, "limit@a.com")

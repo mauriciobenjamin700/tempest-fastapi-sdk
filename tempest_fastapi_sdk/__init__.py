@@ -562,6 +562,9 @@ from tempest_fastapi_sdk.auth import (
     LoginSchema as LoginSchema,
 )
 from tempest_fastapi_sdk.auth import (
+    LoginThrottledException as LoginThrottledException,
+)
+from tempest_fastapi_sdk.auth import (
     LogoutSchema as LogoutSchema,
 )
 from tempest_fastapi_sdk.auth import (
@@ -575,6 +578,9 @@ from tempest_fastapi_sdk.auth import (
 )
 from tempest_fastapi_sdk.auth import (
     MFAEnrollResponseSchema as MFAEnrollResponseSchema,
+)
+from tempest_fastapi_sdk.auth import (
+    MfaThrottledException as MfaThrottledException,
 )
 from tempest_fastapi_sdk.auth import (
     MFAVerifySchema as MFAVerifySchema,
@@ -608,6 +614,9 @@ from tempest_fastapi_sdk.auth import (
 )
 from tempest_fastapi_sdk.auth import (
     SignupSchema as SignupSchema,
+)
+from tempest_fastapi_sdk.auth import (
+    SignupThrottledException as SignupThrottledException,
 )
 from tempest_fastapi_sdk.auth import (
     TokenDelivery as TokenDelivery,
@@ -2321,6 +2330,7 @@ __all__: list[str] = [
     "LogUtils",
     "LoginResponseSchema",
     "LoginSchema",
+    "LoginThrottledException",
     "LogoutSchema",
     "LongitudeField",
     "MFAConfirmSchema",
@@ -2344,6 +2354,7 @@ __all__: list[str] = [
     "MetricTrend",
     "MetricValue",
     "MetricsUtils",
+    "MfaThrottledException",
     "MinIOSettings",
     "MinIOUploadStorage",
     "MissingSessionHandler",
@@ -2483,6 +2494,7 @@ __all__: list[str] = [
     "SignupHook",
     "SignupResponseSchema",
     "SignupSchema",
+    "SignupThrottledException",
     "SlowQueryLogger",
     "SlugField",
     "SoftDeleteMixin",

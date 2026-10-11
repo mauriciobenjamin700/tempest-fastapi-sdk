@@ -2,6 +2,25 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## Unreleased — auth 429s carry their own code
+
+The three throttles of `make_auth_router` stop answering the generic
+`TOO_MANY_REQUESTS` code, the same as any other 429 in the app:
+
+| Refusal | Before | Now |
+| --- | --- | --- |
+| login over the budget, per e-mail **or** per client | `TOO_MANY_REQUESTS` | `LOGIN_THROTTLED` (`LoginThrottledException`) |
+| signup over the budget | `TOO_MANY_REQUESTS` | `SIGNUP_THROTTLED` (`SignupThrottledException`) |
+| wrong MFA code over the budget | `TOO_MANY_REQUESTS` | `MFA_THROTTLED` (`MfaThrottledException`) |
+
+The status stays `429`, with `Retry-After` and `details.retry_after_seconds`.
+All three subclass `TooManyRequestsException`, so `except
+TooManyRequestsException` still catches them. What changes is for whoever
+compares the `code`: replace `code == "TOO_MANY_REQUESTS"` with the flow's
+code. With `default_message_catalog()`, the `detail` becomes a specific
+message (`Too many login attempts — wait a moment and try again`) instead of
+`Too many requests`.
+
 ## 0.312.0 — Mercado Pago: expired Pix and chargeback search
 
 Two behaviour changes, both measured in the sandbox on 2026-10-10.

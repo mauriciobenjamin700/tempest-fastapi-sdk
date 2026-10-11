@@ -21,6 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Os limites do `make_auth_router` respondem `429` com código próprio:
+  `LOGIN_THROTTLED` (o mesmo para o limite por e-mail e por cliente, para não
+  revelar qual estourou), `SIGNUP_THROTTLED` e `MFA_THROTTLED`, nas classes
+  `LoginThrottledException`, `SignupThrottledException` e
+  `MfaThrottledException` — todas subclasses de `TooManyRequestsException`.
+  Até a 0.312.x os três saíam com o `TOO_MANY_REQUESTS` genérico, e o cliente
+  só distinguia o limite de login pela URL; com `default_message_catalog()` o
+  `detail` vinha a tradução genérica ("Requisições em excesso"). O catálogo
+  embutido ganha a mensagem de cada fluxo em PT-BR e EN, e o OpenAPI das rotas
+  documenta o código. `AttemptThrottle.raise_if_blocked` ganha
+  `exception=` para levantar a subclasse. Veja o guia de migração (#495).
 - Um valor com a forma errada para o operador `between` passa a ser recusado
   com `InvalidFilterValueException` (422) antes de qualquer statement, em vez
   de ser descartado em silêncio: `{"created_at__between": x}` sem o par

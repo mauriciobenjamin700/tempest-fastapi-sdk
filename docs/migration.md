@@ -2,6 +2,25 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## Não lançada — o 429 do auth tem código próprio
+
+Os três limites do `make_auth_router` deixam de responder o `code` genérico
+`TOO_MANY_REQUESTS`, o mesmo de qualquer outro 429 do app:
+
+| Refuso | Antes | Agora |
+| --- | --- | --- |
+| login acima do limite, por e-mail **ou** por cliente | `TOO_MANY_REQUESTS` | `LOGIN_THROTTLED` (`LoginThrottledException`) |
+| signup acima do limite | `TOO_MANY_REQUESTS` | `SIGNUP_THROTTLED` (`SignupThrottledException`) |
+| código MFA errado acima do limite | `TOO_MANY_REQUESTS` | `MFA_THROTTLED` (`MfaThrottledException`) |
+
+O status continua `429`, com `Retry-After` e `details.retry_after_seconds`. As
+três classes herdam de `TooManyRequestsException`, então `except
+TooManyRequestsException` continua pegando. Muda para quem compara o `code`:
+troque `code == "TOO_MANY_REQUESTS"` pelo código do fluxo. Com
+`default_message_catalog()`, o `detail` passa a ser uma mensagem específica
+(`Muitas tentativas de login. Aguarde um pouco e tente de novo`) em vez de
+`Requisições em excesso`.
+
 ## 0.312.0 — Mercado Pago: Pix vencido e busca de chargebacks
 
 Duas mudanças de comportamento, as duas medidas no sandbox em 2026-10-10.

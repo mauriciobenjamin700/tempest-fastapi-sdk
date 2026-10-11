@@ -976,6 +976,9 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.auth.exceptions.MFAAlreadyEnrolledException
 ::: tempest_fastapi_sdk.auth.exceptions.AccountInactiveException
 ::: tempest_fastapi_sdk.auth.exceptions.AuthExceptions
+::: tempest_fastapi_sdk.auth.exceptions.LoginThrottledException
+::: tempest_fastapi_sdk.auth.exceptions.MfaThrottledException
+::: tempest_fastapi_sdk.auth.exceptions.SignupThrottledException
 ::: tempest_fastapi_sdk.auth.firebase.DEFAULT_FIREBASE_APP_NAME
 ::: tempest_fastapi_sdk.auth.router.make_auth_router
 ::: tempest_fastapi_sdk.auth.router.LOGIN_THROTTLE_MAX_ATTEMPTS

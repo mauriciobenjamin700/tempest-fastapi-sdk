@@ -238,12 +238,17 @@ class AttemptThrottle:
         key: str,
         *,
         message: str | None = None,
+        exception: type[TooManyRequestsException] = TooManyRequestsException,
     ) -> ThrottleStatus:
         """Raise :class:`TooManyRequestsException` when ``key`` is blocked.
 
         Args:
             key (str): The domain key.
             message (str | None): Optional override for the 429 message.
+            exception (type[TooManyRequestsException]): The class to raise —
+                a subclass carrying its own ``code`` (``LOGIN_THROTTLED``)
+                keeps the status and the ``Retry-After`` and lets the client
+                tell this refusal from any other 429.
 
         Returns:
             ThrottleStatus: The (unblocked) status when within budget.
@@ -254,7 +259,7 @@ class AttemptThrottle:
         """
         current = await self.status(key)
         if current.blocked:
-            raise TooManyRequestsException(
+            raise exception(
                 message=message,
                 retry_after_seconds=current.retry_after_seconds,
             )

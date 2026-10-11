@@ -30,8 +30,11 @@ from tempest_fastapi_sdk import (
     BaseModel,
     BaseUserModel,
     InMemoryThrottleBackend,
+    LoginThrottledException,
     TokenDelivery,
+    TooManyRequestsException,
     UserAuthService,
+    default_message_catalog,
     make_auth_router,
     make_user_token_model,
     register_exception_handlers,
@@ -106,6 +109,7 @@ def _app(
     factory: async_sessionmaker[AsyncSession],
     *,
     delivery: TokenDelivery = "bearer",
+    catalog: bool = False,
     **router_kwargs: Any,
 ) -> FastAPI:
     """Mount the auth router on a fresh application.
@@ -124,7 +128,10 @@ def _app(
             yield session
 
     app = FastAPI()
-    register_exception_handlers(app)
+    if catalog:
+        register_exception_handlers(app, catalog=default_message_catalog())
+    else:
+        register_exception_handlers(app)
     app.include_router(
         make_auth_router(_service(delivery), session_factory=sessions, **router_kwargs)
     )
@@ -171,7 +178,7 @@ class TestLoginThrottle:
             refused = await _login(client, PASSWORD)
         assert codes == [401] * 5
         assert refused.status_code == 429
-        assert refused.json()["code"] == "TOO_MANY_REQUESTS"
+        assert refused.json()["code"] == "LOGIN_THROTTLED"
         assert int(refused.headers["retry-after"]) > 0
         assert refused.json()["details"]["retry_after_seconds"] == int(
             refused.headers["retry-after"]
@@ -356,3 +363,78 @@ class TestOpenAPI:
         paths = _app(factory, login_throttle=False).openapi()["paths"]
         assert "429" not in paths["/auth/login"]["post"]["responses"]
         assert "429" not in paths["/auth/signup"]["post"]["responses"]
+
+
+class TestThrottleCodes:
+    """Each auth throttle answers its own ``code`` (#495).
+
+    Up to 0.312.x the three refusals carried the generic
+    ``TOO_MANY_REQUESTS`` of every other 429 in the app, so a client could
+    tell the login limit apart only by the URL, and a message catalog could
+    only translate the generic text.
+    """
+
+    async def test_the_ip_budget_answers_login_throttled_too(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        """Same code as the e-mail budget: the answer does not say which ran out."""
+        app = _app(factory, login_ip_throttle=_throttle(1), login_throttle=False)
+        async with _client(app) as client:
+            await _login(client, WRONG, email="a@x.com")
+            refused = await _login(client, WRONG, email="b@x.com")
+        assert refused.status_code == 429
+        assert refused.json()["code"] == "LOGIN_THROTTLED"
+        assert int(refused.headers["retry-after"]) > 0
+
+    async def test_known_and_unknown_emails_get_the_same_body(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        """Body shape, code and detail match; only the countdown may differ."""
+        async with _client(_app(factory, login_throttle=_throttle(1))) as client:
+            await _signup(client)
+            await _login(client, WRONG)
+            known = (await _login(client, WRONG)).json()
+            await _login(client, WRONG, email="ghost@example.com")
+            unknown = (await _login(client, WRONG, email="ghost@example.com")).json()
+        assert set(known) == set(unknown)
+        assert known["code"] == unknown["code"] == "LOGIN_THROTTLED"
+        assert known["detail"] == unknown["detail"]
+        assert set(known["details"]) == set(unknown["details"])
+
+    async def test_signup_answers_signup_throttled(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        app = _app(factory, signup_throttle=_throttle(1))
+        async with _client(app) as client:
+            await _signup(client, email="s1@x.com")
+            refused = await _signup(client, email="s2@x.com")
+        assert refused.status_code == 429
+        assert refused.json()["code"] == "SIGNUP_THROTTLED"
+        assert int(refused.headers["retry-after"]) > 0
+
+    async def test_the_catalog_translates_the_login_refusal_specifically(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        """PT-BR text about login, not the generic "Requisições em excesso"."""
+        app = _app(factory, catalog=True, login_throttle=_throttle(1))
+        async with _client(app) as client:
+            await _login(client, WRONG)
+            refused = await _login(client, WRONG, headers={"Accept-Language": "pt-BR"})
+        detail = refused.json()["detail"]
+        assert refused.json()["code"] == "LOGIN_THROTTLED"
+        assert "login" in detail
+        assert detail != "Requisições em excesso"
+
+    def test_the_new_classes_are_still_too_many_requests(self) -> None:
+        """``except TooManyRequestsException`` keeps catching them."""
+        assert issubclass(LoginThrottledException, TooManyRequestsException)
+        assert LoginThrottledException.status_code == 429
+
+    def test_openapi_documents_the_codes(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        paths = _app(factory, signup_throttle=_throttle(2)).openapi()["paths"]
+        login = str(paths["/auth/login"]["post"]["responses"]["429"])
+        signup = str(paths["/auth/signup"]["post"]["responses"]["429"])
+        assert "LOGIN_THROTTLED" in login
+        assert "SIGNUP_THROTTLED" in signup

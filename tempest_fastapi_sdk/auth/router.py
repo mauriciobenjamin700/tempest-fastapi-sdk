@@ -62,6 +62,10 @@ from tempest_fastapi_sdk.api.oauth import (
     OAuthTokens,
     generate_oauth_state,
 )
+from tempest_fastapi_sdk.auth.exceptions import (
+    LoginThrottledException,
+    SignupThrottledException,
+)
 from tempest_fastapi_sdk.auth.guards import require_active
 from tempest_fastapi_sdk.auth.locale import (
     LOCALE_QUERY_PARAM,
@@ -118,7 +122,6 @@ from tempest_fastapi_sdk.exceptions import (
     OAuthProviderDeniedException,
     OAuthProviderNotConfiguredException,
     OAuthStateMismatchException,
-    TooManyRequestsException,
     UnauthorizedException,
     ValidationException,
 )
@@ -622,7 +625,7 @@ def make_auth_router(
     )
     login_responses: dict[int | str, dict[str, Any]] = (
         error_responses(
-            TooManyRequestsException,
+            LoginThrottledException,
             descriptions={
                 status.HTTP_429_TOO_MANY_REQUESTS: (
                     "Too many failed logins for this e-mail or this client "
@@ -635,7 +638,7 @@ def make_auth_router(
     )
     signup_responses: dict[int | str, dict[str, Any]] = (
         error_responses(
-            TooManyRequestsException,
+            SignupThrottledException,
             descriptions={
                 status.HTTP_429_TOO_MANY_REQUESTS: (
                     "Too many signups from this client — retry after "
@@ -683,7 +686,7 @@ def make_auth_router(
             BaseUserModel: The authenticated user.
 
         Raises:
-            TooManyRequestsException: When either budget is spent.
+            LoginThrottledException: When either budget is spent.
             UnauthorizedException: On wrong credentials (counted against
                 the IP budget).
         """
@@ -692,6 +695,7 @@ def make_auth_router(
             await login_ip_throttle.raise_if_blocked(
                 ip_key,
                 message=LOGIN_THROTTLED_MESSAGE,
+                exception=LoginThrottledException,
             )
         email_digest = hashlib.sha256(
             payload.email.strip().lower().encode("utf-8"),
@@ -700,7 +704,7 @@ def make_auth_router(
         if resolved_login_throttle is not None:
             attempt = await resolved_login_throttle.hit(email_key)
             if attempt.attempts > resolved_login_throttle.max_attempts:
-                raise TooManyRequestsException(
+                raise LoginThrottledException(
                     message=LOGIN_THROTTLED_MESSAGE,
                     retry_after_seconds=attempt.retry_after_seconds,
                 )
@@ -845,13 +849,13 @@ def make_auth_router(
             token or JWT pair depending on the configured flow.
 
         Raises:
-            TooManyRequestsException: When the client's signup budget is
+            SignupThrottledException: When the client's signup budget is
                 spent.
         """
         if signup_throttle is not None:
             attempt = await signup_throttle.hit(f"signup:{_client_ip(request)}")
             if attempt.attempts > signup_throttle.max_attempts:
-                raise TooManyRequestsException(
+                raise SignupThrottledException(
                     message=SIGNUP_THROTTLED_MESSAGE,
                     retry_after_seconds=attempt.retry_after_seconds,
                 )

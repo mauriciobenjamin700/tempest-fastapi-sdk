@@ -478,6 +478,15 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
             "caractere especial"
         ),
         "OAUTH_ACCOUNT_INACTIVE": "Conta inativa",
+        "LOGIN_THROTTLED": (
+            "Muitas tentativas de login. Aguarde um pouco e tente de novo"
+        ),
+        "SIGNUP_THROTTLED": (
+            "Muitas tentativas de cadastro. Aguarde um pouco e tente de novo"
+        ),
+        "MFA_THROTTLED": (
+            "Muitos códigos de verificação inválidos. Aguarde um pouco e tente de novo"
+        ),
         "OAUTH_ACCOUNT_NOT_LINKED": ("Este provedor não está vinculado a esta conta"),
         "OAUTH_AUDIENCE_UNVERIFIABLE": (
             "Este provedor não permite verificar para qual aplicação o "
@@ -595,6 +604,11 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
             "digit and a special character"
         ),
         "OAUTH_ACCOUNT_INACTIVE": "Account is not active",
+        "LOGIN_THROTTLED": "Too many login attempts — wait a moment and try again",
+        "SIGNUP_THROTTLED": ("Too many signup attempts — wait a moment and try again"),
+        "MFA_THROTTLED": (
+            "Too many invalid verification codes — wait a moment and try again"
+        ),
         "OAUTH_ACCOUNT_NOT_LINKED": "Provider is not linked to this account",
         "OAUTH_AUDIENCE_UNVERIFIABLE": (
             "This provider cannot verify who the token was issued to"

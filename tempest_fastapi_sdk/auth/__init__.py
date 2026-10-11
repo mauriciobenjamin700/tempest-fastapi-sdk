@@ -21,7 +21,16 @@ from tempest_fastapi_sdk.auth.exceptions import (
     AuthExceptions as AuthExceptions,
 )
 from tempest_fastapi_sdk.auth.exceptions import (
+    LoginThrottledException as LoginThrottledException,
+)
+from tempest_fastapi_sdk.auth.exceptions import (
     MFAAlreadyEnrolledException as MFAAlreadyEnrolledException,
+)
+from tempest_fastapi_sdk.auth.exceptions import (
+    MfaThrottledException as MfaThrottledException,
+)
+from tempest_fastapi_sdk.auth.exceptions import (
+    SignupThrottledException as SignupThrottledException,
 )
 from tempest_fastapi_sdk.auth.firebase import (
     DEFAULT_FIREBASE_APP_NAME as DEFAULT_FIREBASE_APP_NAME,
@@ -258,6 +267,7 @@ __all__: list[str] = [
     "IntrospectionAuth",
     "LoginResponseSchema",
     "LoginSchema",
+    "LoginThrottledException",
     "LogoutSchema",
     "MFAAlreadyEnrolledException",
     "MFAConfirmSchema",
@@ -265,6 +275,7 @@ __all__: list[str] = [
     "MFAEnrollResponseSchema",
     "MFAVerifySchema",
     "MemoryWebAuthnChallengeStore",
+    "MfaThrottledException",
     "OAuthAccountSchema",
     "OAuthTokenLoginSchema",
     "OAuthUnlinkSchema",
@@ -278,6 +289,7 @@ __all__: list[str] = [
     "SignupHook",
     "SignupResponseSchema",
     "SignupSchema",
+    "SignupThrottledException",
     "TokenDelivery",
     "UserAuthService",
     "WebAuthnAuthenticateBeginSchema",
