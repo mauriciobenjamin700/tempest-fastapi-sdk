@@ -213,14 +213,26 @@ class RedactionPolicy:
     def _replace_pair(self, match: re.Match[str]) -> str:
         """Redact the value of a ``key=value`` match when the key is sensitive.
 
+        The value is compared as the text that follows
+        ``match.start("value")`` — the value group itself stops at the
+        first ``]`` or quote, so a marker written earlier would be
+        truncated and re-masked into ``[REDACTED]`` with the original
+        ``]`` left behind. A value that already starts with the
+        replacement is left intact, which is what makes redaction
+        idempotent when the message renders a redacted argument.
+
         Args:
             match (re.Match[str]): A match of :data:`_KEY_VALUE_PATTERN`.
 
         Returns:
             str: The pair with its value replaced, or the match unchanged
-            when the key is not sensitive.
+            when the key is not sensitive — or the value already is the
+            replacement.
         """
         if self.is_sensitive_key(match["key"]):
+            value_start = match.start("value")
+            if match.string[value_start:].startswith(self.replacement):
+                return match[0]
             return match["key"] + match["sep"] + self.replacement
         return match[0]
 

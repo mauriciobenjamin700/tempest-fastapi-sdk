@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (#491). O helper vira a única fonte da forma segura
   (`tempest_fastapi_sdk.utils._url.mask_url_password`), que
   `AsyncDatabaseManager.db_url_safe` passa a delegar.
+- `RedactionPolicy` vira idempotente: redigir duas vezes o mesmo valor não
+  produz `[REDACTED]` com um `]` pendurado (`token=abc` → `token=[REDACTED]`,
+  e de novo → `token=[REDACTED]`), incluindo dict passado como argumento
+  posicional e `replacement` customizado com `]`. O `_KEY_VALUE_PATTERN`
+  cessa exatamente no `]`/aspas, então um marcador já escrito era truncado e
+  trocado de novo; `_replace_pair` devolve o match intacto quando o valor já
+  começa pelo `replacement` (#489).
 
 ## [0.312.0] — 2026-10-10
 
