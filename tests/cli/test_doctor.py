@@ -130,6 +130,69 @@ class TestReport:
         assert outcomes["config checks"]["status"] == "skip"
 
 
+class TestSettingsDiscovery:
+    """#490: a settings file that yields nothing is a failure, not a skip."""
+
+    @pytest.fixture
+    def project(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        """Stand in a bare project root, with the project modules unloaded."""
+        for name in [n for n in sys.modules if n == "src" or n.startswith("src.")]:
+            del sys.modules[name]
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        return tmp_path
+
+    def _write_settings(self, root: Path, source: str) -> None:
+        package = root / "src" / "core"
+        package.mkdir(parents=True)
+        (root / "src" / "__init__.py").write_text("", encoding="utf-8")
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        (package / "settings.py").write_text(source, encoding="utf-8")
+
+    def test_unusable_settings_file_fails_not_skips(self, project: Path) -> None:
+        """The file exists; "no core/settings.py here" would be a lie."""
+        self._write_settings(project, "VALUE = 1\n")
+        result = runner.invoke(app, ["doctor", "--json"])
+        outcomes = _outcomes(result.stdout)
+        assert result.exit_code == 1
+        assert outcomes["settings"]["status"] == "fail"
+        assert "core/settings.py here" not in outcomes["settings"]["detail"]
+
+    def test_settings_import_error_fails_with_the_cause(
+        self,
+        project: Path,
+    ) -> None:
+        self._write_settings(project, 'raise RuntimeError("boom-doctor")\n')
+        result = runner.invoke(app, ["doctor", "--json"])
+        outcomes = _outcomes(result.stdout)
+        assert result.exit_code == 1
+        assert outcomes["settings"]["status"] == "fail"
+        assert "boom-doctor" in outcomes["settings"]["detail"]
+
+    def test_get_settings_factory_is_found_and_tested(
+        self,
+        project: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._write_settings(
+            project,
+            "from tempest_fastapi_sdk.settings import DatabaseSettings\n\n\n"
+            "class Settings(DatabaseSettings):\n"
+            "    pass\n\n\n"
+            "def get_settings() -> Settings:\n"
+            "    return Settings()\n",
+        )
+        monkeypatch.setenv(
+            "DATABASE_URL",
+            f"sqlite+aiosqlite:///{project / 'factory.db'}",
+        )
+        result = runner.invoke(app, ["doctor", "--json"])
+        outcomes = _outcomes(result.stdout)
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert outcomes["settings"]["status"] == "ok"
+        assert outcomes["database"]["status"] == "ok"
+
+
 class _OkRedisManager:
     """Pretend a Redis connection that answers ``PING``."""
 

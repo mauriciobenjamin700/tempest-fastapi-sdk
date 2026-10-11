@@ -2240,11 +2240,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `tempest generate --docker` (regen compose) / `--dockerfile`
   (regen Dockerfile + .dockerignore) / `--src` (extra source layers),
   `tempest db init/revision/upgrade/downgrade/current/history/seed`
-  (**URL resolution fixed in v0.281.0**: the settings instance is found by
-  *type* — any `pydantic_settings.BaseSettings` — under `src` **or** `app`,
-  instead of demanding the name `settings`; `.env` is read when the
-  environment has nothing; and a failed import reports its cause on stderr
-  instead of vanishing into `except Exception: return None`),
+  (**settings resolution unified in v0.281.0 and v0.313.0**: one shared
+  discovery (`utils._settings_discovery`) finds the settings by *type* — any
+  `pydantic_settings.BaseSettings` instance — under `src` **or** `app`, *or*
+  the result of the documented zero-arg factory (`get_settings()`, or any
+  callable annotated to return `BaseSettings`), instead of demanding the name
+  `settings`; `.env` is read when the environment has nothing; and a failed
+  import reports its cause on stderr instead of vanishing into
+  `except Exception: return None`. The same discovery backs the generated
+  `env.py`, `tempest doctor` and `tempest user`; `tempest doctor` **fails**
+  rather than skips when `core/settings.py` exists but yields nothing),
   `tempest user create [--admin] [--set col=value] / list / promote /
   revoke / set-password` (**`--set` (v0.240.0)** seeds the columns a
   concrete `UserModel` adds: validated against the mapped columns,

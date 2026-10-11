@@ -29,6 +29,11 @@ from uuid import UUID
 
 import typer
 
+from tempest_fastapi_sdk.utils._settings_discovery import (
+    discover_settings,
+    project_database_url,
+)
+
 if TYPE_CHECKING:
     from sqlalchemy import Column
 
@@ -65,34 +70,37 @@ def _stdin_is_interactive() -> bool:
 
 
 def _load_project_settings() -> Any | None:
-    """Import the project's ``settings`` object, or ``None`` when absent.
+    """Import the project's settings object, or ``None`` when absent.
 
-    The scaffolded layout puts it at ``src/core/settings.py``; the file
-    is probed before the import so a directory that simply is not a
-    Tempest project reads as "nothing to load" rather than as a broken
-    one. ``sys.path`` gains the working directory first, so the import
-    resolves against the project the operator is standing in.
+    Accepts every shape the CLI elsewhere accepts: a
+    ``pydantic_settings.BaseSettings`` instance on the module, a zero-arg
+    factory that builds one (``get_settings()``), or a plain object bound
+    to ``settings``/``config`` (a project may expose its config without
+    instantiating ``BaseSettings``). The first two are found under either
+    code root (``src`` or ``app``); the plain object only under a root
+    that carries a settings file.
 
-    Errors are deliberately **not** swallowed here: a settings module
-    that exists and raises means something different to every caller —
-    fatal when the database URL has no other source, ignorable when only
-    the password policy was being read — so each one decides.
+    Every failure reads as "nothing to load" rather than as a broken
+    project: the callers either have a fallback (the password policy) or
+    resolve the URL from ``.env`` server-side.
 
     Returns:
-        Any | None: The project's ``settings`` object, or ``None`` when
-        there is no ``src/core/settings.py`` to import.
+        Any | None: The project's settings object, or ``None`` when there
+        is nothing to load.
     """
-    cwd = Path.cwd()
-    if not (cwd / "src" / "core" / "settings.py").is_file():
-        return None
-    sys.path.insert(0, str(cwd))
-    from src.core.settings import settings  # type: ignore[import-not-found]
-
-    return settings
+    discovery = discover_settings(Path.cwd())
+    if discovery.candidates:
+        return discovery.candidates[0]
+    for module in discovery.modules:
+        for name in ("settings", "config"):
+            value = getattr(module, name, None)
+            if value is not None:
+                return value
+    return None
 
 
 def _resolve_database_url() -> str:
-    """Pull the active DB URL from env / settings / fail loudly.
+    """Pull the active DB URL from env / settings / ``.env`` / fail loudly.
 
     Returns:
         str: The resolved URL.
@@ -103,21 +111,14 @@ def _resolve_database_url() -> str:
     env = os.environ.get("DATABASE_URL")
     if env:
         return env
-    try:
-        settings = _load_project_settings()
-    except Exception as exc:
-        typer.echo(
-            f"error: could not load src.core.settings ({exc}). "
-            f"Run inside the project root or set DATABASE_URL.",
-            err=True,
-        )
-        raise typer.Exit(2) from exc
-    if settings is not None:
-        url = getattr(settings, "DATABASE_URL", None)
-        if isinstance(url, str) and url:
-            return url
+    notes: list[str] = []
+    resolved: str | None = project_database_url(Path.cwd(), notes=notes)
+    if resolved:
+        return resolved
+    for note in notes:
+        typer.echo(note, err=True)
     typer.echo(
-        "error: DATABASE_URL not set and src/core/settings.py not found. "
+        "error: DATABASE_URL not set and no usable settings or .env here. "
         "Run inside the project root or export DATABASE_URL.",
         err=True,
     )

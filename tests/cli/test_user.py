@@ -1705,3 +1705,97 @@ class TestUserSessions:
         )
         assert result.exit_code == 2
         assert "no refresh-token model" in result.stderr
+
+
+class TestUserSettingsDiscovery:
+    """#490: ``tempest user`` reads the settings shapes the SDK documents."""
+
+    def _write_settings(
+        self,
+        root: Path,
+        *,
+        code_root: str = "src",
+        factory: bool = True,
+    ) -> None:
+        package: Path = root / code_root / "core"
+        package.mkdir(parents=True)
+        (root / code_root / "__init__.py").write_text("", encoding="utf-8")
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        if factory:
+            (package / "settings.py").write_text(
+                "from tempest_fastapi_sdk.settings import DatabaseSettings\n\n\n"
+                "class Settings(DatabaseSettings):\n"
+                "    pass\n\n\n"
+                "def get_settings() -> Settings:\n"
+                "    return Settings()\n",
+                encoding="utf-8",
+            )
+        else:
+            (package / "settings.py").write_text(
+                "from types import SimpleNamespace\n"
+                'settings = SimpleNamespace(DATABASE_URL="sqlite+aiosqlite:///./plain.db")\n',
+                encoding="utf-8",
+            )
+
+    @pytest.mark.parametrize("code_root", ["src", "app"])
+    def test_get_settings_factory_resolves(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        code_root: str,
+    ) -> None:
+        from tempest_fastapi_sdk.cli.user import _resolve_database_url
+
+        self._write_settings(tmp_path, code_root=code_root)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        _forget_project_modules()
+        try:
+            assert _resolve_database_url() == "sqlite+aiosqlite:///./app.db"
+        finally:
+            _forget_project_modules()
+
+    def test_plain_settings_object_still_resolves(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A ``SimpleNamespace`` named ``settings`` predates the factory."""
+        from tempest_fastapi_sdk.cli.user import _load_project_settings
+
+        self._write_settings(tmp_path, factory=False)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        _forget_project_modules()
+        try:
+            loaded = _load_project_settings()
+        finally:
+            _forget_project_modules()
+        assert loaded is not None
+        assert loaded.DATABASE_URL == "sqlite+aiosqlite:///./plain.db"
+
+    def test_dotenv_is_read_without_a_usable_settings_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        package: Path = tmp_path / "src" / "core"
+        package.mkdir(parents=True)
+        (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        (package / "settings.py").write_text("VALUE = 1\n", encoding="utf-8")
+        (tmp_path / ".env").write_text(
+            f"DATABASE_URL=sqlite+aiosqlite:///{tmp_path / 'env.db'}\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        _forget_project_modules()
+        try:
+            from tempest_fastapi_sdk.cli.user import _resolve_database_url
+
+            assert (
+                _resolve_database_url() == f"sqlite+aiosqlite:///{tmp_path / 'env.db'}"
+            )
+        finally:
+            _forget_project_modules()

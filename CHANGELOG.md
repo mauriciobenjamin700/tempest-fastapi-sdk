@@ -22,6 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cessa exatamente no `]`/aspas, então um marcador já escrito era truncado e
   trocado de novo; `_replace_pair` devolve o match intacto quando o valor já
   começa pelo `replacement` (#489).
+- A descoberta de settings do projeto vira uma só, compartilhada por
+  `tempest db`, `tempest doctor`, `tempest user` e o `alembic/env.py` gerado
+  (`tempest_fastapi_sdk.utils._settings_discovery`). Os quatro aceitam, sob
+  `src` **ou** `app`, o factory zero-arg documentado (`get_settings()`, ou
+  qualquer callable anotado com retorno `BaseSettings`) além da instância, e
+  todos leem o `.env` como fallback; antes cada um só procurava a instância
+  `settings` sob `src`, então um projeto escrito como a SDK documenta — só
+  `get_settings()` — não migrava, não era diagnosticado e não achava o
+  usuário. `tempest doctor` passa a **falhar** (não "skip") quando o
+  `core/settings.py` existe mas não render nada, e o erro do `env.py` carrega
+  a causa do import quebrado (#490).
 
 ## [0.312.0] — 2026-10-10
 

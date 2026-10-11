@@ -98,7 +98,7 @@ def _scaffold(root: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _alembic(
-    root: Path, database_url: str, *args: str
+    root: Path, database_url: str | None, *args: str
 ) -> subprocess.CompletedProcess[str]:
     """Run the bare Alembic CLI from the project root.
 
@@ -110,14 +110,20 @@ def _alembic(
 
     Args:
         root (Path): The project root.
-        database_url (str): The ``DATABASE_URL`` the env resolves.
+        database_url (str | None): The ``DATABASE_URL`` the env resolves.
+            ``None`` leaves the variable out of the child's environment,
+            so the env script has to find the URL from the project
+            itself.
         *args (str): The Alembic command and its arguments.
 
     Returns:
         subprocess.CompletedProcess[str]: The finished process.
     """
     env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
-    env["DATABASE_URL"] = database_url
+    if database_url is None:
+        env.pop("DATABASE_URL", None)
+    else:
+        env["DATABASE_URL"] = database_url
     env["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{env.get('PATH', '')}"
     return subprocess.run(
         [sys.executable, "-P", "-m", "alembic", *args],
@@ -315,3 +321,100 @@ def test_upgrade_downgrade_upgrade_on_postgresql(
     _ok(_alembic(project, postgres_url, "upgrade", "head"))
     assert _enum_types(postgres_url) == ["user_role_enum"]
     _ok(_alembic(project, postgres_url, "downgrade", "base"))
+
+
+_FACTORY_SETTINGS: str = '''"""Settings module with a zero-arg factory."""
+
+from functools import lru_cache
+from pathlib import Path
+
+from tempest_fastapi_sdk.settings import DatabaseSettings
+
+_ROOT = Path(__file__).resolve().parents[2]
+
+
+class Settings(DatabaseSettings):
+    """Settings for the test service."""
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Build the settings, pointing the URL beside the project."""
+    return Settings(DATABASE_URL=f"sqlite+aiosqlite:///{_ROOT / 'via_settings.db'}")
+'''
+"""A settings module that exposes a factory and no instance.
+
+The SDK documents ``get_settings()`` as the accessor; before #490 the
+generated ``env.py`` read ``settings`` by name and found nothing here, so
+a project written that way could not migrate outside the ``tempest`` CLI.
+The URL is written into the built object (not taken from the environment)
+so its presence in the resolved URL proves the settings path, not the
+``DATABASE_URL`` variable or the ``.env`` fallback.
+"""
+
+
+class TestBareAlembicWithoutDatabaseUrl:
+    """#490: the generated ``env.py`` finds settings the CLI does.
+
+    Runs ``python -m alembic`` with no ``DATABASE_URL`` in the child's
+    environment, from the project root, so the only way the URL can be
+    resolved is through the settings module or ``.env`` the SDK writes.
+    """
+
+    def _write_settings(
+        self,
+        root: Path,
+        source: str,
+        *,
+        code_root: str = "src",
+    ) -> None:
+        """Write ``core/settings.py`` under the chosen code root.
+
+        Args:
+            root (Path): The project root.
+            source (str): The module source.
+            code_root (str): ``src`` or ``app``.
+        """
+        package: Path = root / code_root / "core"
+        package.mkdir(parents=True)
+        (root / code_root / "__init__.py").write_text("", encoding="utf-8")
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        (package / "settings.py").write_text(source, encoding="utf-8")
+
+    @pytest.mark.parametrize("code_root", ["src", "app"])
+    def test_get_settings_factory_resolves_the_url(
+        self,
+        project: Path,
+        code_root: str,
+    ) -> None:
+        """A factory-only module, no ``DATABASE_URL`` env, no ``.env``."""
+        self._write_settings(project, _FACTORY_SETTINGS, code_root=code_root)
+        _ok(_alembic(project, None, "current"))
+        assert (project / "via_settings.db").is_file()
+
+    def test_dotenv_is_read_when_the_module_has_no_settings(
+        self,
+        project: Path,
+    ) -> None:
+        """A settings file that yields nothing still leaves ``.env``."""
+        self._write_settings(project, "VALUE = 1\n")
+        (project / ".env").write_text(
+            f"DATABASE_URL=sqlite+aiosqlite:///{project / 'via_dotenv.db'}\n",
+            encoding="utf-8",
+        )
+        _ok(_alembic(project, None, "current"))
+        assert (project / "via_dotenv.db").is_file()
+
+    def test_import_error_reaches_the_error_message(
+        self,
+        project: Path,
+    ) -> None:
+        """The cause of a failed import is not swallowed into "empty"."""
+        self._write_settings(
+            project,
+            'raise RuntimeError("boom-490-import")\n',
+        )
+        process = _alembic(project, None, "current")
+        assert process.returncode != 0
+        assert "boom-490-import" in process.stderr
+        assert "DATABASE_URL is empty" in process.stderr

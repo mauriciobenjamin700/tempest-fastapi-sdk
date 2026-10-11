@@ -15,17 +15,26 @@ module name that could not be found — which is exactly how
 from __future__ import annotations
 
 import importlib
-import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import typer
 
+from tempest_fastapi_sdk.utils._settings_discovery import (
+    CODE_ROOTS as CODE_ROOTS,
+)
+from tempest_fastapi_sdk.utils._settings_discovery import (
+    discover_settings,
+)
+from tempest_fastapi_sdk.utils._settings_discovery import (
+    ensure_project_on_path as ensure_project_on_path,
+)
+from tempest_fastapi_sdk.utils._settings_discovery import (
+    settings_instances as settings_instances,
+)
+
 if TYPE_CHECKING:
     from fastapi import FastAPI
-
-CODE_ROOTS: tuple[str, ...] = ("src", "app")
-"""The two directory names a service may use as its code root."""
 
 _CANDIDATE_SUFFIXES: tuple[str, ...] = (
     "server:app",
@@ -36,37 +45,6 @@ _CANDIDATE_SUFFIXES: tuple[str, ...] = (
 
 _ROOTLESS_CANDIDATES: tuple[str, ...] = ("main:app",)
 """Import specs tried outside a code root (a single-module service)."""
-
-_SETTINGS_ATTRS: tuple[str, ...] = ("settings", "config")
-"""Instance names tried before scanning the settings module by type."""
-
-
-def ensure_project_on_path(project_root: Path | None = None) -> Path:
-    """Put the project root at the front of ``sys.path``.
-
-    Every command that imports ``<root>.something`` has to do this
-    **before its first import**, not before the import it cares about:
-    once ``src`` resolves to some other directory, the package object is
-    cached under that name and a later ``sys.path`` insert changes
-    nothing. The symptom is a submodule that "does not exist" while its
-    file is plainly there.
-
-    The entry is moved to the front rather than appended, because an
-    earlier entry from another project would keep winning.
-
-    Args:
-        project_root (Path | None): Root to import from. Defaults to the
-            current working directory.
-
-    Returns:
-        Path: The resolved root that was put on the path.
-    """
-    root = (project_root or Path.cwd()).resolve()
-    entry = str(root)
-    while entry in sys.path:
-        sys.path.remove(entry)
-    sys.path.insert(0, entry)
-    return root
 
 
 def _import_object(spec: str) -> Any:
@@ -195,72 +173,30 @@ def _candidates(root: Path) -> list[str]:
     return specs
 
 
-def settings_instances(module: object) -> list[Any]:
-    """List the settings instances a project module exposes.
-
-    The preferred names come first so a module holding more than one
-    instance resolves predictably; the remainder is whatever else on the
-    module is a ``BaseSettings`` instance, in definition order. The
-    instance's *type* is the real test — its *name* is a convention no
-    service signed up for.
-
-    Args:
-        module (object): The imported ``core.settings`` module.
-
-    Returns:
-        list[Any]: Candidate instances, best first. Empty when the
-        module exposes none.
-    """
-    from pydantic_settings import BaseSettings
-
-    members: dict[str, Any] = vars(module)
-    found: list[Any] = []
-    seen: set[int] = set()
-    for name in _SETTINGS_ATTRS:
-        value = members.get(name)
-        if isinstance(value, BaseSettings):
-            found.append(value)
-            seen.add(id(value))
-    for name, value in members.items():
-        if name.startswith("__") or id(value) in seen:
-            continue
-        if isinstance(value, BaseSettings):
-            found.append(value)
-            seen.add(id(value))
-    return found
-
-
 def load_project_settings(project_root: Path | None = None) -> Any | None:
-    """Import the project's settings instance, or ``None`` when absent.
+    """Import the project's settings, or ``None`` when absent.
+
+    Accepts either shape the SDK documents: a ``BaseSettings`` instance on
+    the module (``settings``, ``config``, or any other) or a zero-arg
+    factory that builds one (``get_settings()``). The result is the first
+    candidate found, best first.
 
     Args:
         project_root (Path | None): Project root to import from.
             Defaults to the current working directory.
 
     Returns:
-        Any | None: The first settings instance found under
-        ``<root>/core/settings.py``, or ``None`` when no code root has
-        one. An import that raises is reported on stderr and treated as
-        absent, because every caller of this has a fallback.
+        Any | None: The first settings object found under
+        ``<root>/core/settings.py``, or ``None`` when no code root has a
+        usable one. Diagnostics (an import that raised, a module with
+        nothing usable) go to stderr, because every caller of this has a
+        fallback.
     """
-    root = ensure_project_on_path(project_root)
-    for code_root in CODE_ROOTS:
-        if not (root / code_root / "core" / "settings.py").is_file():
-            continue
-        dotted = f"{code_root}.core.settings"
-        try:
-            module = importlib.import_module(dotted)
-        except Exception as exc:
-            typer.echo(f"note: importing {dotted} failed: {exc!r}", err=True)
-            continue
-        instances = settings_instances(module)
-        if instances:
-            return instances[0]
-        typer.echo(
-            f"note: {dotted} imported, but exposes no "
-            "pydantic_settings.BaseSettings instance.",
-            err=True,
-        )
+    discovery = discover_settings(project_root)
+    for note in discovery.notes:
+        typer.echo(note, err=True)
+    if discovery.candidates:
+        return discovery.candidates[0]
     return None
 
 

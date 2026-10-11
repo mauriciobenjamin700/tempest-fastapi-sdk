@@ -25,7 +25,6 @@ from __future__ import annotations
 import asyncio
 import configparser
 import os
-import sys
 from collections.abc import Sequence
 from logging.config import fileConfig
 from pathlib import Path
@@ -49,6 +48,7 @@ from tempest_fastapi_sdk.db.enum_migrations import (
     sync_enum_types,
 )
 from tempest_fastapi_sdk.db.migrations import require_sqlite_foreign_keys_off
+from tempest_fastapi_sdk.utils._settings_discovery import project_database_url
 
 DEFAULT_REVISION_HOOKS: Final[tuple[ProcessRevisionDirectives, ...]] = (
     reorder_base_columns_first,
@@ -96,11 +96,11 @@ def run_alembic_env(
 
     The URL comes from, in order: the ``sqlalchemy.url`` already on the
     config (``--database-url``, or ``AlembicHelper(db_url=...)``); the
-    ``DATABASE_URL`` environment variable; and
-    ``src.core.settings.settings.DATABASE_URL`` when
-    ``src/core/settings.py`` exists in the working directory, which is
-    put on ``sys.path`` first. ``alembic.ini`` never has to hold a
-    secret.
+    ``DATABASE_URL`` environment variable; a settings object on
+    ``core/settings.py`` under either code root (``src`` or ``app``) —
+    a ``BaseSettings`` instance or a zero-arg factory such as
+    ``get_settings()``; and finally ``DATABASE_URL`` in the project's
+    ``.env``. ``alembic.ini`` never has to hold a secret.
 
     Online, three entry points are checked in order:
 
@@ -128,17 +128,25 @@ def run_alembic_env(
             composes :data:`DEFAULT_REVISION_HOOKS`.
 
     Raises:
-        RuntimeError: When no source provides a database URL; in case 3;
-            and in case 1 when the connection is SQLite with
+        RuntimeError: When no source provides a database URL — the
+            message carries the cause of every attempt that failed, so an
+            import error inside ``core/settings.py`` reaches the
+            operator instead of a bare "DATABASE_URL is empty"; in case
+            3; and in case 1 when the connection is SQLite with
             ``PRAGMA foreign_keys=ON``.
     """
     config = context.config
-    url = _resolve_database_url(config)
+    notes: list[str] = []
+    url = _resolve_database_url(config, notes)
     if not url:
-        raise RuntimeError(
+        message = (
             "DATABASE_URL is empty. Set it on the environment, in "
             "src/core/settings.py, or pass --database-url to the CLI."
         )
+        causes = " ".join(note.removeprefix("note: ") for note in notes)
+        if causes:
+            message = f"{message} ({causes})"
+        raise RuntimeError(message)
     config.set_main_option("sqlalchemy.url", url)
     _configure_logging(config)
 
@@ -158,11 +166,14 @@ def run_alembic_env(
         _run_online(config, options)
 
 
-def _resolve_database_url(config: Config) -> str | None:
+def _resolve_database_url(config: Config, notes: list[str]) -> str | None:
     """Pick the database URL at runtime so secrets never sit in alembic.ini.
 
     Args:
         config (Config): The running command's Alembic config.
+        notes (list[str]): Collector for the reasons a source yielded
+            nothing, folded into :func:`run_alembic_env`'s error when no
+            source provides a URL.
 
     Returns:
         str | None: The URL, or ``None`` when no source provides one.
@@ -173,17 +184,7 @@ def _resolve_database_url(config: Config) -> str | None:
     env = os.environ.get("DATABASE_URL")
     if env:
         return env
-    cwd = Path.cwd()
-    if not (cwd / "src" / "core" / "settings.py").is_file():
-        return None
-    if str(cwd) not in sys.path:
-        sys.path.insert(0, str(cwd))
-    try:
-        from src.core.settings import settings  # type: ignore[import-not-found]
-    except Exception:
-        return None
-    url = getattr(settings, "DATABASE_URL", None)
-    return url if isinstance(url, str) and url else None
+    return project_database_url(Path.cwd(), notes=notes)
 
 
 def _configure_logging(config: Config) -> None:
