@@ -1505,7 +1505,7 @@ Operadores de sufixo `campo__op` disponíveis (no `Q` **e** no dict):
 | Sufixo | SQL | Exemplo |
 |--------|-----|---------|
 | `gt` `gte` `lt` `lte` `ne` | comparação | `Q(priority__gte=5)` |
-| `in` `notin` `not_in` | `IN` / `NOT IN` (valor = qualquer iterável não-string: `list`/`set`/`tuple`/gerador; `not_in` é alias de `notin`; um escalar é recusado) | `Q(status__in={"open", "paid"})` |
+| `in` `notin` `not_in` | `IN` / `NOT IN` (valor = qualquer iterável não-string: `list`/`set`/`tuple`/gerador, ou um escalar, embrulhado numa lista de um item; `not_in` é alias de `notin`) | `Q(status__in={"open", "paid"})` |
 | `between` | `col BETWEEN lo AND hi` (valor = par ordenado `(lo, hi)` em `list`/`tuple`; qualquer outro formato é recusado) | `Q(price__between=(10, 20))` |
 | `iexact` | igualdade case-insensitive (`lower(col) == lower(v)`) | `Q(email__iexact="Ana@X.com")` |
 | `like` `ilike` | `LIKE` / `ILIKE` cru, com os wildcards do chamador (`%`/`_`) **sem escape** | `Q(sku__ilike="ab_-%")` |
@@ -1672,11 +1672,14 @@ As três linhas continuam lá: o `delete_many` não apagou nada.
 ### Valor que não cabe no operador é recusado
 
 Um valor com a **forma errada** para o operador — um `between` que não é o par
-`(lo, hi)`, ou um `in` sem iterável (um escalar solto) — levanta
-`InvalidFilterValueException` antes de qualquer statement. Era o restante do
-defeito do #465: a condição sumia do `WHERE` e, em `bulk_update`,
-`delete_many` e `update_returning`, a escrita atingia justamente as linhas que
-o filtro **não** nomeava.
+`(lo, hi)` — levanta `InvalidFilterValueException` antes de qualquer statement.
+Era o restante do defeito do #465: a condição sumia do `WHERE` e, em
+`bulk_update`, `delete_many` e `update_returning`, a escrita atingia justamente
+as linhas que o filtro **não** nomeava.
+
+O `in` **não** entra nessa lista: um escalar solto é embrulhado numa lista de um
+item (`{"status__in": "open"}` → `IN ('open')`), como sempre foi, porque a
+condição não sumia do `WHERE`.
 
 ```python
 import asyncio
@@ -1709,7 +1712,7 @@ async def main() -> None:
         for status in ("open", "paid"):
             await repo.add(TicketModel(status=status))
         try:
-            await repo.delete_many({"status__in": "open"})
+            await repo.delete_many({"status__between": ["open"]})
         except InvalidFilterValueException as exc:
             print(exc.status_code, exc.code, exc.details)
         print(await repo.count())
@@ -1722,7 +1725,7 @@ asyncio.run(main())
 Saída:
 
 ```text
-422 INVALID_FILTER_VALUE {'filter': 'status__in', 'value': "'open'"}
+422 INVALID_FILTER_VALUE {'filter': 'status__between', 'value': "['open']"}
 2
 ```
 
@@ -1731,11 +1734,10 @@ filtro errado costuma carregar valor grande (um payload, uma lista de ids), e
 o erro não é lugar de repetir tudo.
 
 !!! warning "Mudança de comportamento (#484)"
-    Até a 0.312.0 um `between` malformado era **ignorado** e um escalar em
-    `in` virava lista de um item — a condição desaparecia do `WHERE`. Quem
-    mandava um valor errado e dependia desse silêncio passa a receber 422.
-    Corrija a forma do valor: `==` no lugar de `in` para um valor único, e o
-    par `(lo, hi)` para `between`.
+    Até a 0.312.0 um `between` malformado era **ignorado** — a condição
+    desaparecia do `WHERE`. Quem mandava um par errado e dependia desse
+    silêncio passa a receber 422; corrija a forma do par `(lo, hi)`. Um escalar
+    em `in` segue embrulhado numa lista de um item, como sempre foi.
 
 ### Toda paginação herda os operadores
 

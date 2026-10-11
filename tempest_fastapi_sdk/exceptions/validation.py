@@ -172,13 +172,15 @@ class InvalidFilterValueException(ValidationException):
     """Raised when a ``filters`` value cannot express its operator.
 
     A suffix operator fixes the shape its value must have: ``between``
-    needs an ordered two-item ``(lo, hi)`` ``list`` / ``tuple``; the
-    ``in`` family needs a non-string iterable. A value that did not fit
-    used to be dropped in silence, and the condition vanishing from the
-    ``WHERE`` widened the statement instead of narrowing it — on
-    ``bulk_update`` / ``delete_many`` / ``update_returning`` that meant
-    touching every row the filter did **not** name (measured on SQLite,
-    #484). The value is now refused before any statement runs.
+    needs an ordered two-item ``(lo, hi)`` ``list`` / ``tuple``. A value
+    that did not fit used to be dropped in silence, and the condition
+    vanishing from the ``WHERE`` widened the statement instead of
+    narrowing it — on ``bulk_update`` / ``delete_many`` /
+    ``update_returning`` that meant touching every row the filter did
+    **not** name (measured on SQLite, #484). The value is now refused
+    before any statement runs. The ``in`` family is **not** refused on a
+    scalar: a single value is wrapped in a one-item list (``{"status__in":
+    "open"}`` → ``IN ('open')``), which is what the caller asked for.
 
     ``details["filter"]`` carries the rejected key (suffix included) and
     ``details["value"]`` a bounded ``repr`` of the value — enough to spot

@@ -245,14 +245,21 @@ class TestExtendedOperators:
         assert exc.value.details["filter"] == "stock__between"
         assert len(await repo.list()) == 3
 
-    async def test_in_with_a_scalar_is_refused(
+    async def test_in_with_a_scalar_matches_a_single_value(
         self, repo: BaseRepository[Item]
     ) -> None:
-        """A scalar belongs in ``==``, not ``IN``."""
+        """A scalar in ``in`` wraps to a one-item list, as it always did."""
         await _seed(repo)
-        with pytest.raises(InvalidFilterValueException) as exc:
-            await repo.list(where=Q(status__in="open"))
-        assert exc.value.details["filter"] == "status__in"
+        rows = await repo.list(where=Q(status__in="open"))
+        assert {r.name for r in rows} == {"a"}
+
+    async def test_notin_with_a_scalar_excludes_a_single_value(
+        self, repo: BaseRepository[Item]
+    ) -> None:
+        """A scalar in ``notin`` wraps too, instead of raising."""
+        await _seed(repo)
+        rows = await repo.list(where=Q(status__notin="open"))
+        assert {r.name for r in rows} == {"b", "c"}
 
     async def test_refused_value_is_bounded_in_the_detail(
         self, repo: BaseRepository[Item]

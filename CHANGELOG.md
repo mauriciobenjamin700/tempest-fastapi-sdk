@@ -9,15 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Um valor com a forma errada para o operador do filtro passa a ser recusado
+- Um valor com a forma errada para o operador `between` passa a ser recusado
   com `InvalidFilterValueException` (422) antes de qualquer statement, em vez
   de ser descartado em silêncio: `{"created_at__between": x}` sem o par
-  `(lo, hi)`, e `{"status__in": x}` com um escalar solto em vez de iterável
-  (#484). O descarte sumia do `WHERE` e, em `bulk_update` / `delete_many` /
-  `update_returning`, ampliava a escrita para as linhas que o filtro **não**
-  nomeava — `details["value"]` ecoa um `repr` do valor recusado, truncado em
-  64 caracteres. Um escalar em `in` que antes virava lista de um item precisa
-  virar `==`.
+  `(lo, hi)` (#484). O descarte sumia do `WHERE` e, em `bulk_update` /
+  `delete_many` / `update_returning`, ampliava a escrita para as linhas que o
+  filtro **não** nomeava — `details["value"]` ecoa um `repr` do valor recusado,
+  truncado em 64 caracteres. O `in` / `notin` / `not_in` **não** é recusado com
+  escalar: um valor único continua virando lista de um item
+  (`{"status__in": "open"}` → `IN ('open')`), que é o que o caller pediu e
+  nunca fez a condição sumir do `WHERE`.
 
 ### Fixed
 

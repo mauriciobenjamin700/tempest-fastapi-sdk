@@ -1511,7 +1511,7 @@ Available `field__op` suffix operators (in `Q` **and** the dict):
 | Suffix | SQL | Example |
 |--------|-----|---------|
 | `gt` `gte` `lt` `lte` `ne` | comparison | `Q(priority__gte=5)` |
-| `in` `notin` `not_in` | `IN` / `NOT IN` (value is any non-string iterable: `list`/`set`/`tuple`/generator; `not_in` aliases `notin`) | `Q(status__in={"open", "paid"})` |
+| `in` `notin` `not_in` | `IN` / `NOT IN` (value is any non-string iterable: `list`/`set`/`tuple`/generator, or a scalar, wrapped in a one-item list; `not_in` aliases `notin`) | `Q(status__in={"open", "paid"})` |
 | `between` | `col BETWEEN lo AND hi` (value is an ordered pair `(lo, hi)` as a `list`/`tuple`) | `Q(price__between=(10, 20))` |
 | `iexact` | case-insensitive equality (`lower(col) == lower(v)`) | `Q(email__iexact="Ana@X.com")` |
 | `like` `ilike` | raw `LIKE` / `ILIKE` with the caller's own `%`/`_` wildcards, **not** escaped | `Q(sku__ilike="ab_-%")` |
@@ -1679,11 +1679,14 @@ All three rows are still there: `delete_many` deleted nothing.
 ### A value that does not fit the operator is refused
 
 A value with the **wrong shape** for its operator — a `between` that is not
-the `(lo, hi)` pair, or an `in` without an iterable (a bare scalar) — raises
-`InvalidFilterValueException` before any statement runs. It was the rest of
-the #465 defect: the condition vanished from the `WHERE` and, on
-`bulk_update`, `delete_many` and `update_returning`, the write hit exactly the
-rows the filter did **not** name.
+the `(lo, hi)` pair — raises `InvalidFilterValueException` before any statement
+runs. It was the rest of the #465 defect: the condition vanished from the
+`WHERE` and, on `bulk_update`, `delete_many` and `update_returning`, the write
+hit exactly the rows the filter did **not** name.
+
+`in` is **not** on that list: a bare scalar is wrapped in a one-item list
+(`{"status__in": "open"}` → `IN ('open')`), as it always was, because the
+condition never vanished from the `WHERE`.
 
 ```python
 import asyncio
@@ -1716,7 +1719,7 @@ async def main() -> None:
         for status in ("open", "paid"):
             await repo.add(TicketModel(status=status))
         try:
-            await repo.delete_many({"status__in": "open"})
+            await repo.delete_many({"status__between": ["open"]})
         except InvalidFilterValueException as exc:
             print(exc.status_code, exc.code, exc.details)
         print(await repo.count())
@@ -1729,7 +1732,7 @@ asyncio.run(main())
 Output:
 
 ```text
-422 INVALID_FILTER_VALUE {'filter': 'status__in', 'value': "'open'"}
+422 INVALID_FILTER_VALUE {'filter': 'status__between', 'value': "['open']"}
 2
 ```
 
@@ -1738,11 +1741,10 @@ characters: a mistyped filter usually carries a large value (a payload, a list
 of ids), and the error is no place to repeat all of it.
 
 !!! warning "Behavior change (#484)"
-    Up to 0.312.0 a malformed `between` was **ignored** and a scalar in `in`
-    became a one-item list — the condition disappeared from the `WHERE`.
-    Anyone sending a wrong value and relying on that silence now gets a 422.
-    Fix the shape: `==` instead of `in` for a single value, and the `(lo, hi)`
-    pair for `between`.
+    Up to 0.312.0 a malformed `between` was **ignored** — the condition
+    disappeared from the `WHERE`. Anyone sending a wrong pair and relying on
+    that silence now gets a 422; fix the shape of the `(lo, hi)` pair. A scalar
+    in `in` is still wrapped in a one-item list, as it always was.
 
 ### Every paginated listing inherits the operators
 

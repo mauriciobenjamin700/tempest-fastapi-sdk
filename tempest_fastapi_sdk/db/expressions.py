@@ -183,9 +183,10 @@ def _suffix_condition(column: Any, op: str, value: Any, field: str) -> Any:
     * ``gt`` / ``gte`` / ``lt`` / ``lte`` / ``ne`` — comparisons (from
       :data:`COMPARISON_OPS`).
     * ``in`` / ``notin`` / ``not_in`` — membership. ``not_in`` is a
-      readability alias for ``notin``. The value must be a non-string
-      iterable (materialized once); a bare scalar is refused, because a
-      single value belongs in ``==``, not ``IN``.
+      readability alias for ``notin``. A non-string iterable is
+      materialized once and used as is; a bare scalar is wrapped in a
+      one-item list, so ``{"status__in": "open"}`` becomes ``IN ('open')``
+      and the condition still narrows the ``WHERE``.
     * ``between`` — ``col BETWEEN lo AND hi``. The value must be an ordered
       two-item ``list`` / ``tuple`` ``(lo, hi)``; anything else is refused. A
       ``set`` is rejected because its order is undefined.
@@ -213,8 +214,7 @@ def _suffix_condition(column: Any, op: str, value: Any, field: str) -> Any:
 
     Raises:
         InvalidFilterValueException: When the value does not have the shape
-            the operator requires (``in`` without an iterable, ``between``
-            without a two-item pair).
+            the operator requires (``between`` without a two-item pair).
     """
     op_func = COMPARISON_OPS.get(op)
     if op_func is not None:
@@ -222,7 +222,7 @@ def _suffix_condition(column: Any, op: str, value: Any, field: str) -> Any:
     if op in ("in", "notin", "not_in"):
         members = _as_membership(value)
         if members is None:
-            raise InvalidFilterValueException(field, value)
+            members = [value]
         return column.in_(members) if op == "in" else column.notin_(members)
     if op == "between":
         if isinstance(value, (list, tuple)) and len(value) == 2:
@@ -257,7 +257,7 @@ def build_filter_condition(
       ``gt`` / ``gte`` / ``lt`` / ``lte`` / ``ne`` (comparison),
       ``in`` / ``notin`` / ``not_in`` (membership; value is any non-string
       iterable — ``list`` / ``set`` / ``tuple`` / generator — ``not_in`` is
-      an alias of ``notin``; a bare scalar is refused),
+      an alias of ``notin``; a bare scalar is wrapped in a one-item list),
       ``between`` (``col BETWEEN lo AND hi``; value is an ordered two-item
       ``(lo, hi)`` ``list`` / ``tuple``),
       ``iexact`` (case-insensitive equality),

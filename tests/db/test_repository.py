@@ -399,7 +399,7 @@ class TestInvalidFilterValueOnWrites:
         await self._seed(repo)
         with pytest.raises(InvalidFilterValueException):
             await repo.bulk_update(
-                filters={"category__in": "x"},
+                filters={"category__between": ["x"]},
                 values={"category": "z"},
             )
         assert {p.category for p in await repo.list()} == {"x", "y"}
