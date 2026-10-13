@@ -42,7 +42,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import importlib
-import inspect
 import logging
 from collections.abc import AsyncIterator, Callable, Collection, Mapping
 from typing import TYPE_CHECKING, Any, Literal
