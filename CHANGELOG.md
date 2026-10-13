@@ -113,6 +113,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- No PostgreSQL, `add_column` de coluna enum com tipo novo não criava o
+  `ENUM` e o `upgrade` falhava com `type ... does not exist` (#527). O hook
+  novo `create_enum_types_on_add_column` (no `DEFAULT_REVISION_HOOKS`) põe
+  `op.create_enum_type(name, values)` (`CreateEnumTypeOp`: consulta o
+  `pg_type` e só cria o que falta; no-op fora do PostgreSQL) antes do
+  `add_column`, e o `drop_enum_types_on_downgrade` passa a derrubar também o
+  tipo de coluna removida pelo downgrade, quando nenhuma coluna que sobrevive
+  o usa. Tipo que outra tabela já usa fica fora dos dois. Medido no
+  PostgreSQL 16, com SQLAlchemy 2.0.52 e 2.1.4: `upgrade` → `downgrade` →
+  `upgrade` passa nos três casos da #526.
 - No SQLite, coluna enum adicionada a tabela existente (#526): duas colunas do
   mesmo enum ganhavam `CHECK` com o mesmo nome e o batch guardava um — a
   outra aceitava qualquer valor —, e o downgrade de **toda** coluna enum

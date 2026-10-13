@@ -1113,6 +1113,145 @@ def _render_drop_enum_check(
     return f"{prefix}drop_enum_check({', '.join(parts)})"
 
 
+@Operations.register_operation("create_enum_type")
+class CreateEnumTypeOp(MigrateOperation):
+    """Create a PostgreSQL ``ENUM`` type, and do nothing on other backends.
+
+    ``op.create_table`` creates the native type of its enum columns;
+    ``op.add_column`` does not, so adding an enum column whose type is new
+    to an existing table failed with ``type "<name>" does not exist``.
+    :func:`create_enum_types_on_add_column` puts this operation ahead of
+    such an ``add_column``; it is also callable by hand as
+    ``op.create_enum_type("order_status_enum", ["open", "done"])``.
+
+    Online, the type is created only when it does not exist yet, so a type
+    another table already uses is left alone. In offline (``--sql``) mode
+    there is no connection to ask, and a plain ``CREATE TYPE`` is written.
+    SQLite has no type — the members live in a ``CHECK`` — so the operation
+    is a no-op there.
+
+    Reversible: :meth:`reverse` is :class:`DropEnumTypeOp`.
+
+    Attributes:
+        name (str): The enum type name.
+        values (tuple[str, ...]): The members, in order.
+        schema (str | None): The schema holding the type, or ``None`` for
+            the connection's search path.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        values: Sequence[str],
+        *,
+        schema: str | None = None,
+    ) -> None:
+        """Record which type to create.
+
+        Args:
+            name (str): The enum type name.
+            values (Sequence[str]): The members, in order.
+            schema (str | None): The schema holding the type.
+        """
+        self.name: str = name
+        self.values: tuple[str, ...] = tuple(values)
+        self.schema: str | None = schema
+
+    @classmethod
+    def create_enum_type(
+        cls,
+        operations: Operations,
+        name: str,
+        values: Sequence[str],
+        *,
+        schema: str | None = None,
+    ) -> None:
+        """Entry point registered as ``op.create_enum_type(...)``.
+
+        Args:
+            operations (Operations): Alembic's operations proxy.
+            name (str): The enum type name.
+            values (Sequence[str]): The members, in order.
+            schema (str | None): The schema holding the type.
+        """
+        operations.invoke(cls(name, values, schema=schema))
+
+    def reverse(self) -> DropEnumTypeOp:
+        """Return the operation that undoes this one.
+
+        Returns:
+            DropEnumTypeOp: The drop of this type.
+        """
+        return DropEnumTypeOp(self.name, schema=self.schema)
+
+    def to_diff_tuple(self) -> tuple[Any, ...]:
+        """Describe the change so ``alembic check`` can report it.
+
+        Returns:
+            tuple[Any, ...]: ``("create_enum_type", <name>, <members>)``.
+        """
+        return ("create_enum_type", self.name, self.values)
+
+
+@Operations.implementation_for(CreateEnumTypeOp)
+def _run_create_enum_type(
+    operations: Operations,
+    operation: CreateEnumTypeOp,
+) -> None:
+    """Emit ``CREATE TYPE`` on PostgreSQL when the type is missing.
+
+    Args:
+        operations (Operations): Alembic's operations proxy.
+        operation (CreateEnumTypeOp): The type to create.
+    """
+    context = operations.migration_context
+    dialect = context.dialect
+    if dialect.name != POSTGRESQL_DIALECT:
+        return
+    if not context.as_sql:
+        exists = (
+            operations.get_bind()
+            .execute(
+                sa.text(
+                    "SELECT 1 FROM pg_type t "
+                    "JOIN pg_namespace n ON n.oid = t.typnamespace "
+                    "WHERE t.typname = :name "
+                    "AND n.nspname = COALESCE(:schema, current_schema())",
+                ),
+                {"name": operation.name, "schema": operation.schema},
+            )
+            .first()
+        )
+        if exists is not None:
+            return
+    preparer = dialect.identifier_preparer
+    name = preparer.quote(operation.name)
+    if operation.schema:
+        name = f"{preparer.quote_schema(operation.schema)}.{name}"
+    labels = ", ".join(_sql_string(value) for value in operation.values)
+    operations.execute(f"CREATE TYPE {name} AS ENUM ({labels})")
+
+
+@renderers.dispatch_for(CreateEnumTypeOp)
+def _render_create_enum_type(
+    autogen_context: AutogenContext,
+    operation: CreateEnumTypeOp,
+) -> str:
+    """Render :class:`CreateEnumTypeOp` as the call that reproduces it.
+
+    Args:
+        autogen_context (AutogenContext): Alembic's rendering context.
+        operation (CreateEnumTypeOp): The operation to render.
+
+    Returns:
+        str: The ``op.create_enum_type(...)`` call.
+    """
+    parts = [repr(operation.name), repr(list(operation.values))]
+    if operation.schema:
+        parts.append(f"schema={operation.schema!r}")
+    return f"op.create_enum_type({', '.join(parts)})"
+
+
 @Operations.register_operation("drop_enum_type")
 class DropEnumTypeOp(MigrateOperation):
     """Drop a PostgreSQL ``ENUM`` type, and do nothing on other backends.
@@ -1695,24 +1834,221 @@ def _check_name(
     return str(probe.name)
 
 
+_TypeKey = tuple[str | None, str]
+"""A native enum type: ``(schema, type name)``."""
+
+_ColumnKey = tuple[str | None, str, str]
+"""A column: ``(schema, table name, column name)``."""
+
+
+@dataclass
+class _SchemaChanges:
+    """What one list of operations creates and drops.
+
+    Attributes:
+        dropped_tables (dict[tuple[str | None, str], sa.Table]): Each
+            ``drop_table``'s table, keyed by ``(schema, name)``.
+        created_tables (list[sa.Table]): Each ``create_table``'s table.
+        dropped_columns (dict[_ColumnKey, Any]): Each ``drop_column``'s
+            column type, when autogenerate recorded it, else ``None``.
+        added_columns (dict[_ColumnKey, Any]): Each ``add_column``'s
+            column type.
+    """
+
+    dropped_tables: dict[tuple[str | None, str], sa.Table]
+    created_tables: list[sa.Table]
+    dropped_columns: dict[_ColumnKey, Any]
+    added_columns: dict[_ColumnKey, Any]
+
+
+def _schema_changes(op_list: Sequence[Any]) -> _SchemaChanges:
+    """Collect the tables and columns a list of operations creates and drops.
+
+    Walks nested operation containers too — a batch block is a
+    ``ModifyTableOps`` holding its ``add_column`` / ``drop_column``.
+
+    Args:
+        op_list (Sequence[Any]): The operations to walk.
+
+    Returns:
+        _SchemaChanges: What the operations create and drop.
+    """
+    changes = _SchemaChanges({}, [], {}, {})
+
+    def _walk(items: Sequence[Any]) -> None:
+        """Record every table and column operation in ``items``.
+
+        Args:
+            items (Sequence[Any]): The operations to walk.
+        """
+        for operation in items:
+            if isinstance(operation, DropTableOp):
+                key = (operation.schema, operation.table_name)
+                changes.dropped_tables[key] = operation.to_table()
+            elif isinstance(operation, CreateTableOp):
+                changes.created_tables.append(operation.to_table())
+            elif isinstance(operation, AddColumnOp):
+                column_key = (
+                    operation.schema,
+                    operation.table_name,
+                    operation.column.name,
+                )
+                changes.added_columns[column_key] = operation.column.type
+            elif isinstance(operation, DropColumnOp):
+                column_key = (
+                    operation.schema,
+                    operation.table_name,
+                    operation.column_name,
+                )
+                try:
+                    dropped_type: Any = operation.to_column().type
+                except (AttributeError, ValueError):
+                    dropped_type = None
+                changes.dropped_columns[column_key] = dropped_type
+            nested: Any = getattr(operation, "ops", None)
+            if isinstance(nested, list):
+                _walk(nested)
+
+    _walk(op_list)
+    return changes
+
+
+def _native_enum_key(type_: Any) -> _TypeKey | None:
+    """Return ``(schema, name)`` of a named native enum type.
+
+    Args:
+        type_ (Any): A column type.
+
+    Returns:
+        _TypeKey | None: The key, or ``None`` for any other type — a
+        non-native enum is a ``VARCHAR`` plus ``CHECK`` and has no type.
+    """
+    if isinstance(type_, sa.Enum) and type_.native_enum and type_.name:
+        return (type_.schema, type_.name)
+    return None
+
+
+def _enum_holders(tables: Sequence[sa.Table]) -> dict[_TypeKey, set[_ColumnKey]]:
+    """Map every native enum type to the columns that use it.
+
+    Args:
+        tables (Sequence[sa.Table]): The metadata's tables.
+
+    Returns:
+        dict[_TypeKey, set[_ColumnKey]]: Type to the columns typed by it.
+    """
+    holders: dict[_TypeKey, set[_ColumnKey]] = {}
+    for table in tables:
+        for column in table.columns:
+            key = _native_enum_key(column.type)
+            if key is not None:
+                holders.setdefault(key, set()).add(
+                    (table.schema, table.name, column.name),
+                )
+    return holders
+
+
+def create_enum_types_on_add_column(
+    context: Any,
+    revision: str | tuple[str, ...],
+    directives: list[MigrationScript],
+) -> None:
+    """Put :class:`CreateEnumTypeOp` ahead of an ``add_column`` with a new enum.
+
+    An ``alembic revision --autogenerate`` hook. Only ``create_table``
+    creates the PostgreSQL ``ENUM`` its columns use; adding an enum column
+    whose type is new to an existing table rendered just
+    ``ALTER TABLE ... ADD COLUMN age_source age_source_enum``, which
+    failed with ``type "age_source_enum" does not exist``. For each native
+    enum type an ``add_column`` uses, the hook inserts
+    ``op.create_enum_type(name, values)`` before the operation (before the
+    whole batch block, when there is one) — unless a ``create_table`` of
+    the same revision creates it, or a column the revision does not
+    touch already uses it. The upgrade and the downgrade are both
+    handled: a downgrade that re-adds a dropped enum column recreates its
+    type the same way.
+
+    The operation checks ``pg_type`` before creating, so a type that
+    exists is never recreated, and it is a no-op outside PostgreSQL.
+
+    Args:
+        context (Any): Alembic's ``MigrationContext``.
+        revision (str | tuple[str, ...]): The revision being generated.
+        directives (list[MigrationScript]): The scripts to amend.
+    """
+    if not directives:
+        return
+    metadata = context.opts.get("target_metadata")
+    holders = _enum_holders(_metadata_tables(metadata)) if metadata is not None else {}
+    script = directives[0]
+    for container in (script.upgrade_ops, script.downgrade_ops):
+        if container is None:
+            continue
+        changes = _schema_changes(container.ops)
+        created = {
+            key for table in changes.created_tables for key in _native_enum_types(table)
+        }
+        touched = set(changes.added_columns) | set(changes.dropped_columns)
+        result: list[Any] = []
+        emitted: set[_TypeKey] = set()
+        for operation in container.ops:
+            for type_ in _added_enum_types(operation):
+                key = _native_enum_key(type_)
+                if key is None or key in created or key in emitted:
+                    continue
+                untouched = {
+                    holder
+                    for holder in holders.get(key, set())
+                    if holder not in touched
+                    and (holder[0], holder[1]) not in changes.dropped_tables
+                }
+                if untouched:
+                    continue
+                emitted.add(key)
+                result.append(
+                    CreateEnumTypeOp(key[1], list(type_.enums), schema=key[0]),
+                )
+            result.append(operation)
+        container.ops[:] = result
+
+
+def _added_enum_types(operation: Any) -> list[sa.Enum]:
+    """List the enum types the ``add_column`` operations inside ``operation`` use.
+
+    Args:
+        operation (Any): A top-level operation; a batch block is walked.
+
+    Returns:
+        list[sa.Enum]: The types, in order.
+    """
+    if isinstance(operation, AddColumnOp):
+        type_ = operation.column.type
+        return [type_] if isinstance(type_, sa.Enum) else []
+    nested: Any = getattr(operation, "ops", None)
+    if not isinstance(nested, list):
+        return []
+    return [type_ for item in nested for type_ in _added_enum_types(item)]
+
+
 def drop_enum_types_on_downgrade(
     context: Any,
     revision: str | tuple[str, ...],
     directives: list[MigrationScript],
 ) -> None:
-    """Append :class:`DropEnumTypeOp` after the tables a downgrade drops.
+    """Append :class:`DropEnumTypeOp` after the tables and columns a downgrade drops.
 
     An ``alembic revision --autogenerate`` hook. The downgrade Alembic
-    writes for a new table is only ``op.drop_table(...)``, which leaves
-    the PostgreSQL ``ENUM`` type behind, so the next ``upgrade`` fails
-    with ``type "<name>" already exists``. For every native enum type
-    used by a table this downgrade drops, the hook appends
+    writes for a new table is only ``op.drop_table(...)``, and for a new
+    column only ``drop_column(...)``; both leave the PostgreSQL ``ENUM``
+    type behind, so the next ``upgrade`` fails with
+    ``type "<name>" already exists``. For every native enum type used by a
+    table or a column this downgrade drops, the hook appends
     ``op.drop_enum_type(name)`` at the end of the downgrade — but only
-    when no table that survives the downgrade still uses it: every
-    column of the type in the metadata belongs to a dropped table, and
-    no table the downgrade recreates declares it. A type shared by two
-    tables is therefore dropped by the revision that removes the last
-    one.
+    when nothing that survives the downgrade still uses it: every column
+    of the type in the metadata is dropped (with its table or on its
+    own), and no table or column the downgrade recreates declares it. A
+    type shared by two tables is therefore dropped by the revision that
+    removes the last one.
 
     The decision is made from the metadata alone, with no database
     connection, and the operation itself is a no-op outside PostgreSQL,
@@ -1734,59 +2070,45 @@ def drop_enum_types_on_downgrade(
     if metadata is None:
         return
 
-    dropped: dict[tuple[str | None, str], sa.Table] = {}
-    recreated: list[sa.Table] = []
-    _collect_downgrade_tables(downgrade_ops.ops, dropped, recreated)
-    if not dropped:
+    changes = _schema_changes(downgrade_ops.ops)
+    if not changes.dropped_tables and not changes.dropped_columns:
         return
 
-    users: dict[tuple[str | None, str], set[tuple[str | None, str]]] = {}
     tables = _metadata_tables(metadata)
-    for table in tables:
-        for key in _native_enum_types(table):
-            users.setdefault(key, set()).add((table.schema, table.name))
-    kept = {key for table in recreated for key in _native_enum_types(table)}
+    holders = _enum_holders(tables)
+    kept = {
+        key for table in changes.created_tables for key in _native_enum_types(table)
+    }
+    kept.update(
+        key
+        for type_ in changes.added_columns.values()
+        if (key := _native_enum_key(type_)) is not None
+    )
 
-    candidates: dict[tuple[str | None, str], None] = {}
+    candidates: dict[_TypeKey, None] = {}
     by_name = {(table.schema, table.name): table for table in tables}
-    for table_key, table in dropped.items():
+    for table_key, table in changes.dropped_tables.items():
         for source in (table, by_name.get(table_key)):
             if source is not None:
                 candidates.update(dict.fromkeys(_native_enum_types(source)))
+    for (schema, table_name, column_name), type_ in changes.dropped_columns.items():
+        declared = by_name.get((schema, table_name))
+        if declared is not None and column_name in declared.c:
+            type_ = declared.c[column_name].type
+        key = _native_enum_key(type_)
+        if key is not None:
+            candidates[key] = None
 
-    for schema, name in candidates:
-        holders = users.get((schema, name), set())
-        if (schema, name) in kept or not holders <= dropped.keys():
+    for key in candidates:
+        survivors = {
+            holder
+            for holder in holders.get(key, set())
+            if holder not in changes.dropped_columns
+            and (holder[0], holder[1]) not in changes.dropped_tables
+        }
+        if key in kept or survivors:
             continue
-        downgrade_ops.ops.append(DropEnumTypeOp(name, schema=schema))
-
-
-def _collect_downgrade_tables(
-    op_list: Sequence[Any],
-    dropped: dict[tuple[str | None, str], sa.Table],
-    recreated: list[sa.Table],
-) -> None:
-    """Gather the tables a downgrade drops and the ones it recreates.
-
-    Walks nested operation containers too, so a table operation grouped
-    under another directive is not missed.
-
-    Args:
-        op_list (Sequence[Any]): The operations to walk.
-        dropped (dict[tuple[str | None, str], sa.Table]): Filled with
-            ``(schema, table name)`` to the table each ``drop_table``
-            removes.
-        recreated (list[sa.Table]): Filled with the tables each
-            ``create_table`` rebuilds.
-    """
-    for operation in op_list:
-        if isinstance(operation, DropTableOp):
-            dropped[(operation.schema, operation.table_name)] = operation.to_table()
-        elif isinstance(operation, CreateTableOp):
-            recreated.append(operation.to_table())
-        nested: Any = getattr(operation, "ops", None)
-        if isinstance(nested, list):
-            _collect_downgrade_tables(nested, dropped, recreated)
+        downgrade_ops.ops.append(DropEnumTypeOp(key[1], schema=key[0]))
 
 
 def _metadata_tables(metadata: sa.MetaData | Sequence[sa.MetaData]) -> list[sa.Table]:
@@ -2344,12 +2666,14 @@ __all__: list[str] = [
     "OLD_TYPE_SUFFIX",
     "SQLITE_DIALECT",
     "CreateEnumCheckOp",
+    "CreateEnumTypeOp",
     "DropEnumCheckOp",
     "DropEnumTypeOp",
     "EnumColumnRef",
     "EnumTypeState",
     "RenameEnumTypeOp",
     "ReplaceEnumOp",
+    "create_enum_types_on_add_column",
     "drop_enum_types_on_downgrade",
     "postgresql_replace_statements",
     "render_enum_types",

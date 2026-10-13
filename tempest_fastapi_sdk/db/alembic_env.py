@@ -43,6 +43,7 @@ from tempest_fastapi_sdk.db.alembic_hooks import (
     reorder_base_columns_first,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
+    create_enum_types_on_add_column,
     drop_enum_types_on_downgrade,
     render_enum_types,
     sqlite_enum_checks,
@@ -57,6 +58,7 @@ DEFAULT_REVISION_HOOKS: Final[tuple[ProcessRevisionDirectives, ...]] = (
     backfill_non_nullable_defaults,
     sync_enum_types,
     sqlite_enum_checks,
+    create_enum_types_on_add_column,
     drop_enum_types_on_downgrade,
 )
 """The ``process_revision_directives`` hooks every revision goes through.
@@ -78,6 +80,10 @@ In order:
   name, and the batch kept one), and every enum ``drop_column`` drops its
   ``CHECK`` first (the batch rebuilt the table with a check naming the
   dropped column). No-op on PostgreSQL.
+- ``create_enum_types_on_add_column``: an enum column added to an
+  existing table creates its PostgreSQL ``ENUM`` first — ``add_column``
+  never does, and the ``ALTER TABLE`` failed with ``type ... does not
+  exist``.
 - ``drop_enum_types_on_downgrade``: the downgrade of a new table also
   drops the PostgreSQL ``ENUM`` types no surviving table uses, so a
   ``downgrade`` followed by an ``upgrade`` does not fail with

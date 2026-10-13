@@ -930,6 +930,9 @@ from tempest_fastapi_sdk.db import (
     CreateEnumCheckOp as CreateEnumCheckOp,
 )
 from tempest_fastapi_sdk.db import (
+    CreateEnumTypeOp as CreateEnumTypeOp,
+)
+from tempest_fastapi_sdk.db import (
     DatabaseBackup as DatabaseBackup,
 )
 from tempest_fastapi_sdk.db import (
@@ -1036,6 +1039,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     compose_hooks as compose_hooks,
+)
+from tempest_fastapi_sdk.db import (
+    create_enum_types_on_add_column as create_enum_types_on_add_column,
 )
 from tempest_fastapi_sdk.db import (
     describe_database_error as describe_database_error,
@@ -2248,6 +2254,7 @@ __all__: list[str] = [
     "ConstraintRename",
     "Controller",
     "CreateEnumCheckOp",
+    "CreateEnumTypeOp",
     "CursorPaginationFilterSchema",
     "CursorPaginationSchema",
     "DatabaseBackup",
@@ -2606,6 +2613,7 @@ __all__: list[str] = [
     "configure_logging",
     "configure_root_once",
     "conflict_exception",
+    "create_enum_types_on_add_column",
     "declared_guards",
     "declared_raises",
     "decode_cursor",

@@ -82,6 +82,9 @@ from tempest_fastapi_sdk.db.enum_migrations import (
     CreateEnumCheckOp as CreateEnumCheckOp,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
+    CreateEnumTypeOp as CreateEnumTypeOp,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
     DropEnumCheckOp as DropEnumCheckOp,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
@@ -98,6 +101,9 @@ from tempest_fastapi_sdk.db.enum_migrations import (
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
     ReplaceEnumOp as ReplaceEnumOp,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
+    create_enum_types_on_add_column as create_enum_types_on_add_column,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
     drop_enum_types_on_downgrade as drop_enum_types_on_downgrade,
@@ -294,6 +300,7 @@ __all__: list[str] = [
     "ConstraintKind",
     "ConstraintRename",
     "CreateEnumCheckOp",
+    "CreateEnumTypeOp",
     "DatabaseBackup",
     "DestructiveMigrationError",
     "DropEnumCheckOp",
@@ -334,6 +341,7 @@ __all__: list[str] = [
     "clear_signals",
     "compose_hooks",
     "connect",
+    "create_enum_types_on_add_column",
     "describe_database_error",
     "diff_snapshots",
     "disconnect",

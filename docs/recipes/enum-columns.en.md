@@ -363,6 +363,61 @@ def downgrade() -> None:
     `op.drop_enum_type("<name>_enum")` at the end of `downgrade()`, after the
     `op.drop_table` calls that used the type.
 
+### Enum column with a new type
+
+`create_table` creates its columns' `ENUM`; `add_column` does not. Measured on
+PostgreSQL 16: adding `age_range: Mapped[AgeRange | None]` to an existing
+table generated only `ALTER TABLE things ADD COLUMN age_range age_range_enum`,
+and the `upgrade` failed with `type "age_range_enum" does not exist`.
+
+The `create_enum_types_on_add_column` hook, wired into the generated `env.py`,
+puts the type before the column, and `drop_enum_types_on_downgrade` drops it
+after the `drop_column`:
+
+```python
+import sqlalchemy as sa
+from alembic import op
+
+
+def upgrade() -> None:
+    """New enum column on an existing table."""
+    op.create_enum_type("age_range_enum", ["KID", "TEEN"])
+    with op.batch_alter_table("things", schema=None) as batch_op:
+        batch_op.add_column(
+            sa.Column(
+                "age_range",
+                sa.Enum(
+                    "KID",
+                    "TEEN",
+                    name="age_range_enum",
+                    native_enum=True,
+                    create_constraint=False,
+                ),
+                nullable=True,
+            )
+        )
+        batch_op.create_enum_check(
+            "age_range", ["KID", "TEEN"], name="ck_things_age_range_enum"
+        )
+
+
+def downgrade() -> None:
+    """Remove the column and, last, the type."""
+    with op.batch_alter_table("things", schema=None) as batch_op:
+        batch_op.drop_enum_check("age_range")
+        batch_op.drop_column("age_range")
+    op.drop_enum_type("age_range_enum")
+```
+
+- `op.create_enum_type` checks `pg_type` and only creates a missing type; in
+  offline (`--sql`) mode it writes the `CREATE TYPE` directly. Outside
+  PostgreSQL it does nothing.
+- A type another table already uses stays out of the migration: no
+  `create_enum_type` in the upgrade, no `drop_enum_type` in the downgrade.
+- With both hooks, `upgrade` → `downgrade` → `upgrade` passes on
+  PostgreSQL 16 in all three cases (one enum, two enums, one enum on two
+  columns), with no `CHECK` on PostgreSQL.
+
 ## Renaming the type
 
 Autogenerate does not notice a renamed type: on PostgreSQL the columns keep
@@ -419,6 +474,9 @@ def downgrade() -> None:
 - `op.replace_enum(...)` adds, removes and reorders in one operation,
   inside the transaction, with `value_map=` for renames and an automatic
   `downgrade`.
+- An enum column with a new type on an existing table gets
+  `op.create_enum_type` before the `add_column`, and the downgrade drops the
+  type after the `drop_column`.
 - On SQLite each enum column has its own `CHECK`, two of the same enum
   included, and the downgrade of an `add_column` drops the `CHECK` before the
   column.

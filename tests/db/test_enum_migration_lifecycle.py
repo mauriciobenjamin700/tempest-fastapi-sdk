@@ -14,6 +14,10 @@ available (marked ``docker``: ``make test-docker`` or
 * #526: enum columns added through ``batch_alter_table`` keep one
   ``CHECK`` each on SQLite (two columns of one enum used to share a name,
   and the batch kept one), and the downgrade that drops them runs.
+* #527: an enum column with a new type, added to an existing table, gets
+  ``op.create_enum_type`` before the ``add_column`` (PostgreSQL never
+  created the type there) and ``op.drop_enum_type`` after the downgrade's
+  ``drop_column``; a type another table uses is left alone.
 """
 
 from __future__ import annotations
@@ -40,6 +44,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from tempest_fastapi_sdk import AlembicHelper
 from tempest_fastapi_sdk.db.enum_migrations import (
+    CreateEnumTypeOp,
     EnumColumnRef,
     RenameEnumTypeOp,
     render_enum_types,
@@ -568,3 +573,125 @@ class TestEnumColumnsAddedInBatch:
         assert _sqlite_rejects(project, "age_range")
         assert _sqlite_rejects(project, "store_age_range")
         _ok(_alembic(project, url, "check"))
+
+
+SHARED_TABLE: str = '''
+
+class OtherModel(BaseModel):
+    """A second table that already uses ``AgeRange``."""
+
+    __tablename__ = "others"
+
+    age_range: Mapped[AgeRange]
+'''
+"""Appended after ``ThingModel`` so ``age_range_enum`` exists beforehand."""
+
+
+def _pg_checks(url: str) -> list[str]:
+    """List the ``CHECK`` constraints of the ``things`` table on PostgreSQL.
+
+    Args:
+        url (str): The asyncpg URL.
+
+    Returns:
+        list[str]: The constraint names.
+    """
+    (rows,) = asyncio.run(
+        _execute(
+            url,
+            "SELECT conname FROM pg_constraint "
+            "WHERE contype = 'c' AND conrelid = 'things'::regclass",
+        ),
+    )
+    return sorted(str(row[0]) for row in rows)
+
+
+class TestCreateEnumTypeOp:
+    """#527: the operation itself."""
+
+    @staticmethod
+    def _offline_sql(dialect: str, operation: CreateEnumTypeOp) -> str:
+        """Run the operation in offline mode and return the emitted SQL.
+
+        Args:
+            dialect (str): The dialect name.
+            operation (CreateEnumTypeOp): The operation to run.
+
+        Returns:
+            str: Everything written to the offline buffer.
+        """
+        buffer = StringIO()
+        context = MigrationContext.configure(
+            dialect_name=dialect,
+            opts={"as_sql": True, "output_buffer": buffer},
+        )
+        Operations(context).invoke(operation)
+        return buffer.getvalue()
+
+    def test_postgresql_offline_writes_create_type(self) -> None:
+        sql = self._offline_sql(
+            "postgresql", CreateEnumTypeOp("age_source_enum", ["STORE", "GUARDIAN"])
+        )
+        assert "CREATE TYPE age_source_enum AS ENUM ('STORE', 'GUARDIAN')" in sql
+
+    def test_sqlite_emits_nothing(self) -> None:
+        assert self._offline_sql("sqlite", CreateEnumTypeOp("x_enum", ["a"])) == ""
+
+    def test_reverse_is_the_drop(self) -> None:
+        reverse = CreateEnumTypeOp("x_enum", ["a"], schema="tenant").reverse()
+        assert (reverse.name, reverse.schema) == ("x_enum", "tenant")
+
+
+class TestEnumColumnsOnPostgresql:
+    """#527: the type of a new enum column exists before its ``ADD COLUMN``."""
+
+    @pytest.mark.docker
+    @pytest.mark.parametrize("case", sorted(ADDED_COLUMNS))
+    def test_round_trip(self, project: Path, postgres_url: str, case: str) -> None:
+        _revision(project, postgres_url, "init")
+        _ok(_alembic(project, postgres_url, "upgrade", "head"))
+        _write_models(project, ADDED_COLUMNS[case])
+        source = _revision(project, postgres_url, "add")
+        assert source.index("op.create_enum_type(") < source.index("add_column(")
+        assert source.index("drop_column(") < source.index("op.drop_enum_type(")
+
+        expected = sorted(
+            {"age_range_enum"} | ({"source_enum"} if case == "two_enums" else set())
+        )
+        _ok(_alembic(project, postgres_url, "upgrade", "head"))
+        assert _enum_types(postgres_url) == expected
+        assert _pg_checks(postgres_url) == []
+        _ok(_alembic(project, postgres_url, "check"))
+        _ok(_alembic(project, postgres_url, "downgrade", "-1"))
+        assert _enum_types(postgres_url) == []
+        _ok(_alembic(project, postgres_url, "upgrade", "head"))
+        assert _enum_types(postgres_url) == expected
+
+    @pytest.mark.docker
+    def test_a_type_another_table_uses_is_neither_created_nor_dropped(
+        self, project: Path, postgres_url: str
+    ) -> None:
+        _write_models(project, SHARED_TABLE)
+        _revision(project, postgres_url, "init")
+        _ok(_alembic(project, postgres_url, "upgrade", "head"))
+        assert _enum_types(postgres_url) == ["age_range_enum"]
+
+        _write_models(project, ADDED_COLUMNS["one_enum"] + SHARED_TABLE)
+        source = _revision(project, postgres_url, "add")
+        assert "create_enum_type" not in source
+        assert "drop_enum_type" not in source
+        _ok(_alembic(project, postgres_url, "upgrade", "head"))
+        _ok(_alembic(project, postgres_url, "downgrade", "-1"))
+        assert _enum_types(postgres_url) == ["age_range_enum"]
+        _ok(_alembic(project, postgres_url, "upgrade", "head"))
+
+    def test_sqlite_runs_the_same_migration(self, project: Path) -> None:
+        url = f"sqlite+aiosqlite:///{project / 'app.db'}"
+        _revision(project, url, "init")
+        _ok(_alembic(project, url, "upgrade", "head"))
+        _write_models(project, ADDED_COLUMNS["two_enums"])
+        source = _revision(project, url, "add")
+        assert source.count("op.create_enum_type(") == 2
+        _ok(_alembic(project, url, "upgrade", "head"))
+        _ok(_alembic(project, url, "downgrade", "-1"))
+        _ok(_alembic(project, url, "upgrade", "head"))

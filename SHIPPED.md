@@ -265,6 +265,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   SQLite): `add_column` enum ganha o `CHECK` nomeado por coluna, `drop_column`
   derruba o `CHECK` antes; segunda coluna do mesmo enum vira
   `ck_<tabela>_<enum>_<coluna>` no `TempestEnum`.
+  **Tipo de coluna enum nova (#527):** `create_enum_types_on_add_column`
+  (hook) + `op.create_enum_type` (`CREATE TYPE` só se faltar, no-op fora
+  do PG) antes do `add_column`; `drop_enum_types_on_downgrade` cobre
+  `drop_column` também.
   **`check()` de enum no SQLite (0.313.0, #483):** `run_alembic_env` passa
   `include_object=type_bound_check_include_object(metadata)`, que descarta do
   lado do banco o `CHECK` cujo `(tabela, nome)` casa um `CHECK` `_type_bound`
