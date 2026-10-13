@@ -684,7 +684,7 @@ class TestMFARouter:
                 headers={"Authorization": f"Bearer {access}"},
                 json={"code": pyotp.TOTP(secret).now()},
             )
-        assert r2.status_code == 204, r2.text
+        assert r2.status_code == 200, r2.text
 
     async def test_disable_endpoint_clears_mfa(
         self,
@@ -853,7 +853,7 @@ class TestMFAEnrollOnActiveAccount:
                 headers=bearer,
                 json={"code": pyotp.TOTP(secret).now()},
             )
-            assert r.status_code == 204, r.text
+            assert r.status_code == 200, r.text
 
             r = await c.post("/auth/mfa/enroll", headers=bearer)
             assert r.status_code == 409, r.text

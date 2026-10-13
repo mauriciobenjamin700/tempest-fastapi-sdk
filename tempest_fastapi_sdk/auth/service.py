@@ -75,6 +75,7 @@ from tempest_fastapi_sdk.exceptions import (
     UnauthorizedException,
     ValidationException,
 )
+from tempest_fastapi_sdk.utils._signature import accepts_keyword
 from tempest_fastapi_sdk.utils.datetime import utcnow
 from tempest_fastapi_sdk.utils.jwt import JWTUtils
 from tempest_fastapi_sdk.utils.opaque_token import (
@@ -90,12 +91,16 @@ from tempest_fastapi_sdk.utils.password import (
 )
 from tempest_fastapi_sdk.utils.token_types import (
     ACCESS_TOKEN_TYPE,
+    AMR_CLAIM,
+    AMR_EXTERNAL,
     MFA_TOKEN_TYPE,
+    PASSWORD_AMR,
     REFRESH_TOKEN_TYPE,
+    token_amr,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Coroutine, Mapping
+    from collections.abc import Callable, Collection, Coroutine, Mapping, Sequence
     from typing import Any
 
     from sqlalchemy import CursorResult
@@ -781,7 +786,9 @@ class UserAuthService:
         user.last_login_at = now
         await session.flush()
         await session.refresh(user)
-        access, refresh = await self.issue_token_pair(session, user)
+        access, refresh = await self._issue_pair_with_amr(
+            session, user, family_id=None, amr=(AMR_EXTERNAL,)
+        )
         return user, access, refresh
 
     def _oauth_creation_allowed(self, override: bool | None) -> bool:
@@ -1544,7 +1551,12 @@ class UserAuthService:
     # Token helpers
     # ------------------------------------------------------------------
 
-    def issue_jwt_pair(self, user: BaseUserModel) -> tuple[str, str]:
+    def issue_jwt_pair(
+        self,
+        user: BaseUserModel,
+        *,
+        amr: Sequence[str] | None = PASSWORD_AMR,
+    ) -> tuple[str, str]:
         """Return a stateless ``(access, refresh)`` JWT pair.
 
         Both tokens are signed JWTs with no DB persistence — this is
@@ -1555,16 +1567,26 @@ class UserAuthService:
 
         Args:
             user (BaseUserModel): The authenticated user.
+            amr (Sequence[str] | None): RFC 8176 methods the session was
+                authenticated with, stamped as ``amr`` on both tokens so a
+                refresh repeats them. Defaults to
+                :data:`~tempest_fastapi_sdk.PASSWORD_AMR`. ``None`` omits
+                the claim (an origin nobody recorded).
 
         Returns:
             tuple[str, str]: ``(access_token, refresh_token)`` — both
             stateless JWTs.
         """
-        access = self._encode_access(user)
-        refresh = self._encode_refresh(user)
+        access = self._encode_access(user, amr=amr)
+        refresh = self._encode_refresh(user, amr=amr)
         return access, refresh
 
-    def _encode_access(self, user: BaseUserModel) -> str:
+    def _encode_access(
+        self,
+        user: BaseUserModel,
+        *,
+        amr: Sequence[str] | None = PASSWORD_AMR,
+    ) -> str:
         """Sign a short-lived access JWT carrying ``sub`` + ``email``.
 
         The ``typ`` claim is what stops the other tokens minted with this
@@ -1572,22 +1594,63 @@ class UserAuthService:
         being replayed as an access token against a route guard that only
         reads ``sub``. See
         :mod:`tempest_fastapi_sdk.utils.token_types`.
+
+        The ``amr`` claim (RFC 8176) says how the session was authenticated,
+        which is what :func:`~tempest_fastapi_sdk.make_mfa_required_dependency`
+        reads to tell a password-only session from one that passed MFA.
+
+        Args:
+            user (BaseUserModel): The authenticated user.
+            amr (Sequence[str] | None): The methods to stamp; ``None`` omits
+                the claim.
+
+        Returns:
+            str: The signed access token.
         """
+        claims: dict[str, Any] = {
+            "sub": str(user.id),
+            "email": user.email,
+            "typ": ACCESS_TOKEN_TYPE,
+        }
+        if amr is not None:
+            claims[AMR_CLAIM] = list(amr)
         return self.jwt.encode(
-            {"sub": str(user.id), "email": user.email, "typ": ACCESS_TOKEN_TYPE},
+            claims,
             ttl=timedelta(seconds=self.jwt_settings.JWT_ACCESS_TTL_SECONDS),
         )
 
-    def _encode_refresh(self, user: BaseUserModel) -> str:
+    def _encode_refresh(
+        self,
+        user: BaseUserModel,
+        *,
+        amr: Sequence[str] | None = PASSWORD_AMR,
+    ) -> str:
         """Sign a long-lived stateless refresh JWT.
 
         Carries both ``typ`` and the historical ``refresh: True`` marker:
         the former is what the request guards check, the latter keeps a
         token issued by this version exchangeable at ``/auth/refresh`` by a
-        service still running an older SDK during a rolling deploy.
+        service still running an older SDK during a rolling deploy. The
+        ``amr`` it carries is what :meth:`refresh_tokens` copies onto the
+        next pair, so a refresh never promotes the session.
+
+        Args:
+            user (BaseUserModel): The authenticated user.
+            amr (Sequence[str] | None): The methods to stamp; ``None`` omits
+                the claim.
+
+        Returns:
+            str: The signed refresh token.
         """
+        claims: dict[str, Any] = {
+            "sub": str(user.id),
+            "refresh": True,
+            "typ": REFRESH_TOKEN_TYPE,
+        }
+        if amr is not None:
+            claims[AMR_CLAIM] = list(amr)
         return self.jwt.encode(
-            {"sub": str(user.id), "refresh": True, "typ": REFRESH_TOKEN_TYPE},
+            claims,
             ttl=timedelta(seconds=self.jwt_settings.JWT_REFRESH_TTL_SECONDS),
         )
 
@@ -1597,6 +1660,7 @@ class UserAuthService:
         user: BaseUserModel,
         *,
         family_id: UUID | None = None,
+        amr: Sequence[str] | None = PASSWORD_AMR,
     ) -> tuple[str, str]:
         """Issue an ``(access, refresh)`` pair, DB-backed when configured.
 
@@ -1620,6 +1684,13 @@ class UserAuthService:
             user (BaseUserModel): The authenticated user.
             family_id (UUID | None): Existing rotation lineage to
                 attach the new token to. ``None`` starts a new family.
+            amr (Sequence[str] | None): RFC 8176 methods the session was
+                authenticated with. Stamped as ``amr`` on the access token
+                and stored with the refresh token, so every rotation repeats
+                it. Defaults to :data:`~tempest_fastapi_sdk.PASSWORD_AMR`;
+                the bundled router passes
+                :data:`~tempest_fastapi_sdk.MFA_AMR` after the second
+                factor. ``None`` omits the claim.
 
         Returns:
             tuple[str, str]: ``(access_token, refresh_token)`` — the
@@ -1627,13 +1698,45 @@ class UserAuthService:
             on configuration. The plaintext opaque token is surfaced
             exactly once; only its hash is persisted.
         """
-        access = self._encode_access(user)
+        access = self._encode_access(user, amr=amr)
         if self.refresh_token_model is None:
-            return access, self._encode_refresh(user)
+            return access, self._encode_refresh(user, amr=amr)
         refresh = await self._issue_refresh_record(
-            session, user_id=user.id, family_id=family_id
+            session, user_id=user.id, family_id=family_id, amr=amr
         )
         return access, refresh
+
+    async def _issue_pair_with_amr(
+        self,
+        session: AsyncSession,
+        user: BaseUserModel,
+        *,
+        family_id: UUID | None,
+        amr: Sequence[str] | None,
+    ) -> tuple[str, str]:
+        """Call :meth:`issue_token_pair` with ``amr``, if the override takes it.
+
+        A subclass that overrides ``issue_token_pair`` with the signature it
+        had before ``amr`` existed would fail with ``TypeError`` on every
+        refresh and OAuth login. Calling it without the keyword falls back to
+        the override's own default — :data:`PASSWORD_AMR` when it delegates
+        to ``super()`` —, which never claims a second factor the session did
+        not prove.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            user (BaseUserModel): The authenticated user.
+            family_id (UUID | None): Rotation lineage to attach to.
+            amr (Sequence[str] | None): The methods to stamp.
+
+        Returns:
+            tuple[str, str]: ``(access_token, refresh_token)``.
+        """
+        if accepts_keyword(self.issue_token_pair, "amr"):
+            return await self.issue_token_pair(
+                session, user, family_id=family_id, amr=amr
+            )
+        return await self.issue_token_pair(session, user, family_id=family_id)
 
     async def refresh_tokens(
         self,
@@ -1694,16 +1797,21 @@ class UserAuthService:
                 raise InvalidTokenException(message="refresh token missing subject")
             user = await self.get_user(subject, session)
             require_active(user, exception=self.inactive_account_error)
-            access, refresh = self.issue_jwt_pair(user)
+            if accepts_keyword(self.issue_jwt_pair, "amr"):
+                access, refresh = self.issue_jwt_pair(user, amr=token_amr(claims))
+            else:
+                access, refresh = self.issue_jwt_pair(user)
             return user, access, refresh
 
         record = await self._lookup_refresh_record(session, refresh_token)
+        family_id = record.family_id
+        family_amr = tuple(record.amr.split()) if record.amr else None
         user = await self.get_user(record.user_id, session)
         require_active(user, exception=self.inactive_account_error)
         record.used_at = utcnow()
         await session.flush()
-        access, refresh = await self.issue_token_pair(
-            session, user, family_id=record.family_id
+        access, refresh = await self._issue_pair_with_amr(
+            session, user, family_id=family_id, amr=family_amr
         )
         return user, access, refresh
 
@@ -1791,6 +1899,7 @@ class UserAuthService:
         *,
         user_id: UUID,
         family_id: UUID | None,
+        amr: Sequence[str] | None = PASSWORD_AMR,
     ) -> str:
         """Persist a fresh opaque refresh-token row, return the plaintext.
 
@@ -1799,6 +1908,9 @@ class UserAuthService:
             user_id (UUID): Owner of the token.
             family_id (UUID | None): Rotation lineage to attach to;
                 ``None`` starts a new family.
+            amr (Sequence[str] | None): Methods the family was opened with,
+                stored space-separated so a rotation repeats them. ``None``
+                stores ``NULL``.
 
         Returns:
             str: The plaintext opaque token — surfaced once, never
@@ -1818,6 +1930,7 @@ class UserAuthService:
             family_id=family_id or uuid4(),
             expires_at=utcnow()
             + timedelta(seconds=self.jwt_settings.JWT_REFRESH_TTL_SECONDS),
+            amr=" ".join(amr) if amr else None,
         )
         session.add(record)
         await session.flush()
@@ -2912,13 +3025,36 @@ class UserAuthService:
         *,
         user: BaseUserModel,
         code: str,
+        revoke_sessions: bool = True,
     ) -> None:
         """Mark MFA as active after the user proves they can read the QR.
+
+        Turning MFA on is the moment a user suspects someone else has the
+        password, so by default every refresh token the user holds is
+        revoked in the same transaction (:meth:`revoke_user_sessions`): a
+        session opened with the password alone, before the factor existed,
+        does not get to keep refreshing past it. Access tokens already
+        issued live until their short TTL ends, and carry ``amr ==
+        ["pwd"]``, so :func:`~tempest_fastapi_sdk.make_mfa_required_dependency`
+        refuses them meanwhile. The bundled ``/auth/mfa/confirm`` route then
+        issues the caller a fresh pair with
+        :data:`~tempest_fastapi_sdk.MFA_AMR`, so the device that confirmed
+        stays signed in.
+
+        Stateless refresh tokens (no ``refresh_token_model``) have no row to
+        revoke and keep working until they expire — but they carry the
+        ``amr`` of the login that minted them, so they never mint an MFA
+        token either.
 
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             user (BaseUserModel): The user finishing enrollment.
             code (str): 6-digit code from the Authenticator app.
+            revoke_sessions (bool): Revoke every refresh token of the user
+                (default). ``False`` is the explicit opt-out, for a caller
+                that ends the sessions some other way; the tokens it keeps
+                still refresh with the ``amr`` they were born with, never
+                with ``"otp"``.
 
         Raises:
             UnauthorizedException: When the code does not match the
@@ -2941,6 +3077,8 @@ class UserAuthService:
             raise UnauthorizedException(message="invalid MFA code")
         user.totp_enabled_at = utcnow()
         await session.flush()
+        if revoke_sessions:
+            await self.revoke_user_sessions(session, user_id=user.id)
         await session.refresh(user)
 
     async def mfa_disable(

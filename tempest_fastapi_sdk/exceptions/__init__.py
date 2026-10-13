@@ -30,6 +30,9 @@ from tempest_fastapi_sdk.exceptions.factories import (
 from tempest_fastapi_sdk.exceptions.forbidden import (
     ForbiddenException as ForbiddenException,
 )
+from tempest_fastapi_sdk.exceptions.forbidden import (
+    MFARequiredException as MFARequiredException,
+)
 from tempest_fastapi_sdk.exceptions.i18n import (
     DEFAULT_LOCALE as DEFAULT_LOCALE,
 )
@@ -154,6 +157,7 @@ __all__: list[str] = [
     "InvalidFilterValueException",
     "InvalidSignedURLException",
     "InvalidTokenException",
+    "MFARequiredException",
     "MessageCatalog",
     "NotFoundException",
     "OAuthAccountInactiveException",

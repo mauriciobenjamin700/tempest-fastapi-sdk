@@ -114,6 +114,15 @@ router = make_push_router(
 Pronto: `POST /api/push/register`, `POST /api/push/unregister` e
 `GET /api/push/vapid-public-key`.
 
+!!! info "O `/unregister` só remove dispositivo do próprio usuário"
+    O token de dispositivo é credencial, mas vaza — log de terceiro, aparelho
+    compartilhado. Por isso o router passa o usuário autenticado para
+    `DeviceService.unregister(token, user_id=...)`: token de outra conta
+    continua cadastrado, e a resposta é o mesmo `200` de um token
+    desconhecido, sem revelar de quem ele é. Se você sobrescreve `unregister`
+    com a assinatura antiga (sem `user_id`), o router confere a posse por
+    `list_for_user` antes de chamar o seu override.
+
 ### 4. Notificar
 
 ```python

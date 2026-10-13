@@ -242,6 +242,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no import dos models (#496). O DDL não muda nos dois dialetos. A suíte passa
   a tratar `SADeprecationWarning` como erro (`filterwarnings`).
 
+### Security
+
+- **O `/unregister` do `make_push_router` e o `/unsubscribe` do
+  `make_web_push_router` só removem dispositivo do próprio usuário (#523).**
+  Antes, a rota exigia login mas apagava pelo token/endpoint sem olhar o dono:
+  qualquer conta autenticada que conhecesse o token de outro usuário cortava o
+  push dele, com `200` e sem aviso. Agora `DeviceService.unregister(token, *,
+  user_id=None)` e `WebPushSubscriptionService.unsubscribe(endpoint, *,
+  user_id=None)` aceitam o dono; com ele, a linha de outra conta fica intacta
+  e o retorno é `False`, o mesmo de "não existe", e os dois routers passam o
+  usuário autenticado — a resposta continua `200` nos dois casos, então a rota
+  não revela de quem é o token. Sem `user_id` o delete continua sem escopo,
+  para a poda de token recusado pelo transporte (`notify_user`, `prune`).
+  Override de `unregister`/`unsubscribe` com a assinatura antiga não quebra:
+  o router confere a posse por `list_for_user` e só então chama o override.
+  Medido em `tests/push/test_router_ownership.py` e
+  `tests/webpush/test_router_ownership.py` (o usuário B recebe `200` e a linha
+  de A continua; nos dois serviços, o atual e um override antigo).
+- **O access token diz se a sessão passou pelo MFA, e confirmar o MFA encerra
+  as sessões antigas (#525).** Antes, o token do `/auth/mfa/verify` era
+  idêntico ao de um login só com senha, e o `mfa_confirm` deixava todo refresh
+  token vivo: a sessão aberta antes do fator continuava rotacionando, com
+  `iat` posterior ao `totp_enabled_at`. Agora:
+  - todo access token carrega o claim `amr` (RFC 8176): `["pwd"]` no login com
+    senha (e signup, ativação, reset), `["pwd", "otp"]` depois de
+    `/auth/mfa/verify` ou `/auth/mfa/confirm` (código TOTP ou de recuperação),
+    `["hwk"]` no WebAuthn e `["ext"]` no OAuth. A família de refresh token
+    guarda o `amr` de origem (coluna nova `BaseUserRefreshTokenModel.amr`; no
+    modo stateless, o refresh JWT o carrega) e o `refresh` o repete, então a
+    rotação nunca promove a sessão. `issue_token_pair` e `issue_jwt_pair`
+    ganham `amr=` (default `PASSWORD_AMR`).
+  - `mfa_confirm(..., revoke_sessions=True)` revoga todos os refresh tokens do
+    usuário por padrão; `/auth/mfa/confirm` responde `200` com um par novo de
+    `amr` MFA (no corpo para bearer, em cookie no modo cookie), em vez de
+    `204`.
+  - `make_mfa_required_dependency(tokens, methods=MFA_AMR_METHODS)` recusa com
+    `403` e `code` `MFA_REQUIRED` (`MFARequiredException`) o token sem `"otp"`
+    no `amr` — inclusive o token sem `amr`, emitido antes desta versão.
+  - Exportados: `AMR_CLAIM`, `AMR_PASSWORD`, `AMR_OTP`, `AMR_HARDWARE_KEY`,
+    `AMR_EXTERNAL`, `PASSWORD_AMR`, `MFA_AMR`, `MFA_AMR_METHODS`, `token_amr`.
+  - Override de `issue_token_pair` com a assinatura antiga não quebra: router
+    e `refresh_tokens` só passam `amr` quando o override aceita, e o token sai
+    com o default dele, que nunca afirma MFA (o router avisa no log ao montar).
+
+  **Exige migration** para quem usa `refresh_token_model` — sem a coluna, o
+  signup com ativação automática respondeu `500` (medido com SQLite). Passo a
+  passo em `docs/migration.md`. Medido em `tests/auth/test_mfa_amr.py`: o
+  refresh da sessão pré-MFA responde `401` depois do confirm; com
+  `revoke_sessions=False` emite `amr == ["pwd"]`; o refresh de uma família
+  nascida no verify mantém `"otp"`.
+
 ## [0.312.1] — 2026-10-11
 
 ### Fixed
