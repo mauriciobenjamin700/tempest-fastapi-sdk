@@ -566,7 +566,7 @@ class ZapDeliveryModel(BaseModel):
     status: Mapped[str] = mapped_column(String(16))
 
 
-class ZapOutcome(BaseStrEnum):
+class ZapOutcomeEnum(BaseStrEnum):
     """O que o serviço fez com uma entrega — a resposta da rota."""
 
     STORED = "stored"
@@ -582,10 +582,10 @@ class ZapWebhookResponseSchema(BaseSchema):
     """Corpo da resposta ao gateway.
 
     Attributes:
-        outcome (ZapOutcome): O que aconteceu com a entrega.
+        outcome (ZapOutcomeEnum): O que aconteceu com a entrega.
     """
 
-    outcome: ZapOutcome
+    outcome: ZapOutcomeEnum
 
 
 class ZapInboxService:
@@ -608,7 +608,7 @@ class ZapInboxService:
         self.deliveries: BaseRepository[ZapDeliveryModel] = deliveries
         self.client: ZapClient = client
 
-    async def receive(self, message: ZapInboundMessage) -> ZapOutcome:
+    async def receive(self, message: ZapInboundMessage) -> ZapOutcomeEnum:
         """Guarda uma mensagem recebida e responde a quem escreveu.
 
         O ``UNIQUE`` em ``message_id`` é o claim: a reentrega do gateway
@@ -622,12 +622,12 @@ class ZapInboxService:
             message (ZapInboundMessage): A mensagem já validada.
 
         Returns:
-            ZapOutcome: O que aconteceu com ela.
+            ZapOutcomeEnum: O que aconteceu com ela.
         """
         if message.from_server not in (ZapJidServer.USER, ZapJidServer.LID):
-            return ZapOutcome.SKIPPED
+            return ZapOutcomeEnum.SKIPPED
         if message.media_type is not None and message.media_url is None:
-            return ZapOutcome.MEDIA_LOST
+            return ZapOutcomeEnum.MEDIA_LOST
         media_size: int | None = None
         if message.media_type is not None:
             media: bytes = await self.client.get_message_media(message.message_id)
@@ -650,23 +650,23 @@ class ZapInboxService:
                 body=SendTextRequest(to=message.chat_key, text="Recebemos, obrigado!"),
                 idempotency_key=f"reply-{message.message_id}",
             )
-        return ZapOutcome.STORED if stored else ZapOutcome.DUPLICATE
+        return ZapOutcomeEnum.STORED if stored else ZapOutcomeEnum.DUPLICATE
 
-    async def track(self, callback: ZapStatusCallback) -> ZapOutcome:
+    async def track(self, callback: ZapStatusCallback) -> ZapOutcomeEnum:
         """Aplica um status de envio só quando ele avança o guardado.
 
         Args:
             callback (ZapStatusCallback): O status já validado.
 
         Returns:
-            ZapOutcome: ``applied`` ou ``stale``.
+            ZapOutcomeEnum: ``applied`` ou ``stale``.
         """
         row: ZapDeliveryModel | None = await self.deliveries.get_or_none(
             filters={"outbound_id": callback.id}
         )
         current: str | None = row.status if row is not None else None
         if not is_forward_transition(current, callback.status):
-            return ZapOutcome.STALE
+            return ZapOutcomeEnum.STALE
         if row is None:
             await self.deliveries.add(
                 ZapDeliveryModel(outbound_id=callback.id, status=callback.status)
@@ -674,7 +674,7 @@ class ZapInboxService:
         else:
             row.status = callback.status
             await self.deliveries.update(row)
-        return ZapOutcome.APPLIED
+        return ZapOutcomeEnum.APPLIED
 
 
 class ZapWebhookController:
@@ -698,11 +698,11 @@ class ZapWebhookController:
             ZapWebhookResponseSchema: O que aconteceu, sempre com ``200``.
         """
         if delivery.inbound is not None:
-            outcome: ZapOutcome = await self.service.receive(delivery.inbound)
+            outcome: ZapOutcomeEnum = await self.service.receive(delivery.inbound)
         elif delivery.status is not None:
             outcome = await self.service.track(delivery.status)
         else:
-            outcome = ZapOutcome.IGNORED
+            outcome = ZapOutcomeEnum.IGNORED
         return ZapWebhookResponseSchema(outcome=outcome)
 
 
@@ -947,7 +947,7 @@ src/
 ├── services/
 │   └── zap_inbox.py         # ZapInboxService
 ├── schemas/
-│   └── zap.py               # ZapOutcome, ZapWebhookResponseSchema
+│   └── zap.py               # ZapOutcomeEnum, ZapWebhookResponseSchema
 └── db/
     └── models/
         └── zap.py           # ZapMessageModel, ZapDeliveryModel

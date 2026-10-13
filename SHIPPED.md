@@ -3337,3 +3337,13 @@ Comando `tempest lint-layers [TARGET]` e passo `lint-layers` no `tempest
 check` via `CheckStep` do `tempest-cli>=0.5.0`. Teste:
 `tests/cli/test_layer_lint.py` (cada regra, opt-out, descoberta, runner,
 `check` entregando o passo, scaffold e exemplos do `CLAUDE.md` limpos).
+
+## Sufixo `Enum` no `tempest check` (#518)
+
+`ENUM001` em `tempest_fastapi_sdk/cli/layer_lint.py`: classe pública que
+herda `BaseStrEnum` (direto, por alias, ou via classe do projeto por ponto
+fixo) sem nome terminado em `Enum`, varrendo todo o `src/`/`app/`.
+`ENUM_NAME_SUFFIX` é literal fixado contra `db.enums.ENUM_CLASS_SUFFIX` por
+teste. `BaseIntEnum`, `StrEnum` e `Enum` cru ficam de fora. Teste:
+`tests/cli/test_layer_lint.py::TestEnumSuffix` e os de scaffold (o exemplo
+`ProductStatusEnum` do `CLAUDE.md` gravado no projeto passa).

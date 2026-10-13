@@ -79,6 +79,26 @@ class ProductResponseSchema(BaseResponseSchema):
     price_cents: int
 ```
 
+A domain enum subclasses `BaseStrEnum` and its name **ends in `Enum`**:
+
+```python
+# src/core/enums.py
+from tempest_fastapi_sdk import BaseStrEnum
+
+
+class ProductStatusEnum(BaseStrEnum):
+    """Where a product is in its lifecycle."""
+
+    DRAFT = "draft"
+    PUBLISHED = "published"
+```
+
+The suffix is a rule, not taste: `tempest check` fails on a `BaseStrEnum`
+subclass without it (`ENUM001`), naming the class it expects. The
+database type is the same either way — `enum_type_name` drops one
+trailing `Enum`, so `ProductStatus` and `ProductStatusEnum` are both
+`product_status_enum` — which is why the rename never needs a migration.
+
 ### 2. Model (`src/db/models/`)
 
 Add the table name to `src/db/configs/names.py` first — it is the single

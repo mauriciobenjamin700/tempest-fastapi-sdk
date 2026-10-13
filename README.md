@@ -3534,7 +3534,7 @@ Full walkthrough (retry, `run()` loop, `drain_once()` for tests and cron) in the
 from tempest_fastapi_sdk import BaseIntEnum, BaseStrEnum
 
 
-class OrderStatus(BaseStrEnum):
+class OrderStatusEnum(BaseStrEnum):
     PENDING = "pending"
     PAID = "paid"
     SHIPPED = "shipped"
@@ -3546,32 +3546,32 @@ class Priority(BaseIntEnum):
     NORMAL = 1
     HIGH = 2
 
-assert OrderStatus.PENDING == "pending"          # str inheritance
-assert "paid" in OrderStatus                      # raw value membership
-assert OrderStatus("paid") is OrderStatus.PAID    # canonical lookup
+assert OrderStatusEnum.PENDING == "pending"          # str inheritance
+assert "paid" in OrderStatusEnum                      # raw value membership
+assert OrderStatusEnum("paid") is OrderStatusEnum.PAID    # canonical lookup
 assert Priority.NORMAL + 1 == Priority.HIGH       # int math
 ```
 
 Both bases add introspection + lookup helpers so you rarely reach for `enum` internals:
 
 ```python
-from src.core.constants import OrderStatus
+from src.core.constants import OrderStatusEnum
 
 
-OrderStatus.values()                       # ["pending", "paid", "shipped", "cancelled"]
-OrderStatus.keys()                         # ["PENDING", "PAID", "SHIPPED", "CANCELLED"]
-OrderStatus.to_dict()                      # {"PENDING": "pending", ...}
-OrderStatus.choices()                      # [("pending", "PENDING"), ...] — for <select>/forms
+OrderStatusEnum.values()                       # ["pending", "paid", "shipped", "cancelled"]
+OrderStatusEnum.keys()                         # ["PENDING", "PAID", "SHIPPED", "CANCELLED"]
+OrderStatusEnum.to_dict()                      # {"PENDING": "pending", ...}
+OrderStatusEnum.choices()                      # [("pending", "PENDING"), ...] — for <select>/forms
 
-OrderStatus.has_value("paid")              # True
-OrderStatus.has_key("PAID")                # True
+OrderStatusEnum.has_value("paid")              # True
+OrderStatusEnum.has_key("PAID")                # True
 
 # from_value: build a member from a raw value OR member name (exact, then
 # case-insensitive). Raises ValueError on no match, unless a default is given.
-OrderStatus.from_value("paid")             # OrderStatus.PAID  (by value)
-OrderStatus.from_value("PAID")             # OrderStatus.PAID  (by name)
-OrderStatus.from_value("paid ")            # ValueError: 'paid ' is not a valid OrderStatus
-OrderStatus.from_value("bogus", default=None)  # None — explicit fallback
+OrderStatusEnum.from_value("paid")             # OrderStatusEnum.PAID  (by value)
+OrderStatusEnum.from_value("PAID")             # OrderStatusEnum.PAID  (by name)
+OrderStatusEnum.from_value("paid ")            # ValueError: 'paid ' is not a valid OrderStatusEnum
+OrderStatusEnum.from_value("bogus", default=None)  # None — explicit fallback
 ```
 
 Because they inherit from `str` / `int`, Pydantic serializes them transparently as their underlying value and SQLAlchemy can persist them via the standard `Enum` column without an extra converter.
