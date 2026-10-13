@@ -31,20 +31,31 @@ need to be a Python identifier. Hyphens are common on existing repos
 _TEMPLATE_SUFFIX = ".tmpl"
 """Suffix stripped from every bundled template file on render."""
 
-REQUIRED_EXTRAS: frozenset[str] = frozenset({"admin", "auth"})
-"""SDK extras the scaffolded project cannot boot without.
+IMPLIED_EXTRAS: dict[str, frozenset[str]] = {"admin": frozenset({"auth"})}
+"""SDK extras another extra cannot run without, added when it is pinned.
 
-The bundled ``src/api/app.py`` always mounts the admin panel:
-``make_admin_router`` raises ``ImportError`` at app creation without
-``[admin]``, and the ``UserModelAuthBackend`` it is given hashes the
-login password through ``PasswordUtils``, which raises ``ImportError`` on
-the first admin login without ``[auth]``. ``--extras`` therefore adds to
-this set instead of replacing it.
+The admin panel the scaffold mounts with ``[admin]`` logs in through
+``UserModelAuthBackend``, which hashes the password with
+``PasswordUtils`` and raises ``ImportError`` on the first login without
+``[auth]``. So ``--extras admin`` pins ``[admin,auth]``; ``--extras auth``
+alone pins just ``[auth]`` (the ``UserModel`` and the JWT settings, no
+panel).
+"""
+
+CONDITIONAL_TEMPLATES: dict[str, str] = {"src/db/models/user.py.tmpl": "auth"}
+"""Templates written only when a flag is on, keyed by their relative path.
+
+A service without ``[auth]`` has no users, so it gets no ``UserModel`` —
+the file is skipped rather than rendered empty.
 """
 
 
 def _resolve_extras(extras: str) -> str:
-    """Merge the requested extras with :data:`REQUIRED_EXTRAS`.
+    """Normalize the requested extras and add the ones they imply.
+
+    Up to v0.312.x ``admin`` and ``auth`` were always pinned, so a service
+    without users started by dismantling the template (#522). Now they are
+    opt-in, and only :data:`IMPLIED_EXTRAS` is added on top.
 
     Args:
         extras (str): Comma-separated extras passed to ``--extras``.
@@ -52,12 +63,15 @@ def _resolve_extras(extras: str) -> str:
             how the compose and ``src`` layer generators read them.
 
     Returns:
-        str: The deduplicated union, sorted so the pinned requirement is
-        stable regardless of input order (``"cache,auth,cache"`` becomes
-        ``"admin,auth,cache"``).
+        str: The deduplicated set plus its implied extras, sorted so the
+        pinned requirement is stable regardless of input order
+        (``"cache,admin,cache"`` becomes ``"admin,auth,cache"``).
     """
     requested = {part.strip().lower() for part in extras.split(",") if part.strip()}
-    return ",".join(sorted(requested | REQUIRED_EXTRAS))
+    implied = {
+        extra for name in requested for extra in IMPLIED_EXTRAS.get(name, frozenset())
+    }
+    return ",".join(sorted(requested | implied))
 
 
 def _validate_name(name: str) -> None:
@@ -340,8 +354,9 @@ def scaffold(
             working directory.
         bind_host (str): ``HOST`` value to inject into ``.env.example``.
         bind_port (int): ``PORT`` value to inject into ``.env.example``.
-        extras (str): Comma-separated SDK extras to pin on top of
-            :data:`REQUIRED_EXTRAS`, which are always added.
+        extras (str): Comma-separated SDK extras to pin. Extras listed in
+            :data:`IMPLIED_EXTRAS` bring their requirements along
+            (``admin`` adds ``auth``); nothing else is added.
         force (bool): Overwrite the target if it already exists.
 
     Raises:
@@ -392,6 +407,9 @@ def scaffold(
     root = _templates_root()
     written: list[Path] = []
     for template in _iter_templates(root):
+        flag = CONDITIONAL_TEMPLATES.get(template.relative_to(root).as_posix())
+        if flag is not None and flag not in flags:
+            continue
         destination = _target_path(template, root, target)
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(
@@ -452,6 +470,8 @@ def scaffold(
 
 
 __all__: list[str] = [
+    "CONDITIONAL_TEMPLATES",
+    "IMPLIED_EXTRAS",
     "scaffold",
     "template_flags",
 ]

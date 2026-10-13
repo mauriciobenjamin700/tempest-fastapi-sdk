@@ -66,7 +66,7 @@ O esqueleto casa com a arquitetura em camadas documentada em [Arquitetura »](..
 my_service/
 ├── main.py                  # one-liner → src.server.run()
 ├── pyproject.toml           # fixa tempest-fastapi-sdk + ruff/mypy/pytest
-├── .env.example             # TITLE/VERSION, SERVER_*, LOG_*, DATABASE_URL, JWT_*, TOKEN_SECRET, CORS_*
+├── .env.example             # TITLE/VERSION, SERVER_*, LOG_*, DATABASE_URL, JWT_* (com [auth]), TOKEN_SECRET, CORS_*
 ├── docker-compose.yaml      # serviços baseados nos extras escolhidos
 ├── Dockerfile               # multi-stage com uv, usuário não-root
 ├── .dockerignore
@@ -86,7 +86,7 @@ my_service/
 │   ├── core/                # settings.py + exceptions.py
 │   ├── db/
 │   │   ├── configs/names.py # nomes de tabela num símbolo só
-│   │   ├── models/user.py   # UserModel
+│   │   ├── models/user.py   # UserModel — só com [auth] (ou [admin])
 │   │   └── repositories/
 │   ├── queue/               # só com o extra [queue] — broker + handlers
 │   ├── tasks/               # só com [tasks] ou [tasks-redis] — TaskQueue + jobs
@@ -111,14 +111,14 @@ my_service/
     `code` certo, listagem paginada no envelope do SDK). Um símbolo
     renomeado no SDK quebra o teste, não o projeto de quem usa.
 
-O `pyproject.toml` gerado fixa a versão atual do SDK (`tempest-fastapi-sdk[admin,auth]>=<versão>` por padrão). `admin` e `auth` são obrigatórios — o `src/api/app.py` gerado monta o painel admin, e o login dele verifica a senha pelo `PasswordUtils` — então `--extras` **soma** a eles em vez de substituí-los: `--extras cache,tasks` fixa `[admin,auth,cache,tasks]`, `--extras ""` fixa só `[admin,auth]`, e duplicatas somem com a lista saindo em ordem alfabética. O grupo `dev` ganha `tempest-fastapi-sdk[cli]>=<versão>`, para o `tempest` rodar no projeto sem entrar na imagem: o `Dockerfile` gerado instala com `uv sync --no-dev`. O `.env.example` criado usa a nomenclatura de settings da v0.8.0 (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), e `src/server.py` delega a `tempest_fastapi_sdk.run_server` para que o uvicorn seja importado de forma preguiçosa e os testes possam importar o app sem ele. Regras de validação: o nome do projeto deve casar com `^[a-z][a-z0-9_]*$` e não pode colidir com uma palavra-chave do Python, então `tempest new Bad-Name` e `tempest new class` saem com código 2 antes de qualquer arquivo ser escrito.
+O `pyproject.toml` gerado fixa a versão atual do SDK com os extras que você pediu, e só eles (`tempest-fastapi-sdk>=<versão>` sem `--extras`). `admin` e `auth` são **opt-in**: com `--extras auth` o projeto ganha o `UserModel`, o `JWTSettings` no `Settings` e o bloco `JWT_*` no `.env.example`; com `--extras admin` o `src/api/app.py` também monta o painel admin — e o `auth` entra junto, porque o login do painel verifica a senha pelo `PasswordUtils`. Sem nenhum dos dois, o serviço nasce sem tabela de usuário, sem painel e sem `bcrypt`/`PyJWT` no lock: `--extras postgres` fixa só `[postgres]`, `--extras admin,cache` fixa `[admin,auth,cache]`, e duplicatas somem com a lista saindo em ordem alfabética. Até a 0.312.x `admin` e `auth` eram fixados sempre. O grupo `dev` ganha `tempest-fastapi-sdk[cli]>=<versão>`, para o `tempest` rodar no projeto sem entrar na imagem: o `Dockerfile` gerado instala com `uv sync --no-dev`. O `.env.example` criado usa a nomenclatura de settings da v0.8.0 (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), e `src/server.py` delega a `tempest_fastapi_sdk.run_server` para que o uvicorn seja importado de forma preguiçosa e os testes possam importar o app sem ele. Regras de validação: o nome do projeto deve casar com `^[a-z][a-z0-9_]*$` e não pode colidir com uma palavra-chave do Python, então `tempest new Bad-Name` e `tempest new class` saem com código 2 antes de qualquer arquivo ser escrito.
 
 !!! tip "Título / versão da API vêm do `.env`"
     A partir da v0.48.0 o `Settings` scaffoldado carrega `TITLE`,
     `VERSION` e `DESCRIPTION`, e `src/api/app.py` os consome
     (`FastAPI(title=settings.TITLE, version=settings.VERSION,
     description=settings.DESCRIPTION)`, `make_health_router(version=
-    settings.VERSION)` e `AdminSite(title=f"{settings.TITLE} admin")`).
+    settings.VERSION)` e, com `[admin]`, `AdminSite(title=f"{settings.TITLE} admin")`).
     Ajuste o título mostrado no Swagger/ReDoc e no header do `/admin`
     direto no `.env`, sem editar código:
 

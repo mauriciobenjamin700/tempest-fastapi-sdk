@@ -288,11 +288,11 @@ def new_cmd(
             "--extras",
             help=(
                 "Comma-separated SDK extras to pin in the generated "
-                "pyproject.toml (e.g. 'cache,upload'). They are added to "
-                "'admin' and 'auth', which are always pinned because the "
-                "scaffolded app.py wires the admin panel and its login "
-                "out of the box. Duplicates are dropped and the result is "
-                "sorted."
+                "pyproject.toml (e.g. 'cache,upload'). 'auth' adds the "
+                "UserModel and the JWT settings; 'admin' mounts the admin "
+                "panel and brings 'auth' along, since its login checks the "
+                "password. Without them the service has no user table. "
+                "Duplicates are dropped and the result is sorted."
             ),
         ),
     ] = "",

@@ -7,13 +7,19 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from tempest_fastapi_sdk import (
+@@if admin@@
     AdminModel,
     AdminSite,
+@@endif@@
     RequestIDMiddleware,
+@@if admin@@
     UserModelAuthBackend,
+@@endif@@
     apply_cors,
     configure_logging,
+@@if admin@@
     make_admin_router,
+@@endif@@
     make_health_router,
     make_logs_router,
     register_exception_handlers,
@@ -21,7 +27,9 @@ from tempest_fastapi_sdk import (
 
 from src.api.dependencies import db
 from src.core.settings import settings
+@@if admin@@
 from src.db.models import UserModel
+@@endif@@
 
 configure_logging(
     level=settings.LOG_LEVEL,
@@ -47,10 +55,12 @@ def create_app() -> FastAPI:
     ``make_logs_router`` refuses an empty secret, and the generated
     ``.env.example`` ships ``TOKEN_SECRET=`` empty. Fill it with
     ``uv run tempest secrets init`` to get the endpoint.
+@@if admin@@
 
     The admin panel needs the ``[admin]`` extra and a ``UserModel`` row
-    with ``is_admin=True``; create one after the first
-    ``uv run alembic upgrade head``.
+    with ``is_admin=True``; create one with
+    ``uv run tempest user create --email <you> --admin``.
+@@endif@@
 
     Returns:
         FastAPI: A fully wired application ready for uvicorn.
@@ -76,6 +86,7 @@ def create_app() -> FastAPI:
                 token_secret=settings.TOKEN_SECRET,
             ),
         )
+@@if admin@@
 
     admin_site = AdminSite(title=f"{settings.TITLE} admin")
     admin_site.register(AdminModel(model=UserModel))
@@ -90,6 +101,7 @@ def create_app() -> FastAPI:
             log_dir=settings.LOG_DIR,
         ),
     )
+@@endif@@
 
     from src.api.routers import router as api_router
 

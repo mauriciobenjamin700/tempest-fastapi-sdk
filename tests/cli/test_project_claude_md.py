@@ -41,7 +41,7 @@ def claude_md(tmp_path_factory: pytest.TempPathFactory) -> str:
     tmp_path = tmp_path_factory.mktemp("claude-md")
     result = runner.invoke(
         cli_app,
-        ["new", "demo", "--path", str(tmp_path), "--extras", "ssr,auth"],
+        ["new", "demo", "--path", str(tmp_path), "--extras", "ssr,admin"],
     )
     assert result.exit_code == 0, result.stdout + result.stderr
     return (tmp_path / "demo" / "CLAUDE.md").read_text(encoding="utf-8")

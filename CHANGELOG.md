@@ -61,6 +61,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `tempest new` deixa de fixar `admin` e `auth` em todo projeto (#522): o
+  `pyproject.toml` gerado leva só os extras passados em `--extras`. `auth`
+  gera o `UserModel`, o `JWTSettings` no `Settings` e o bloco `JWT_*` do
+  `.env.example`; `admin` monta o painel no `app.py` e traz o `auth` junto,
+  porque o login do painel verifica a senha pelo `PasswordUtils`. Sem os
+  dois, o serviço nasce sem tabela de usuário, sem painel e sem `bcrypt` /
+  `PyJWT` no lock — medido com `tempest new x --extras postgres` + `uv sync`:
+  nenhum dos dois no `uv.lock`, o app sobe, `/health/readiness` responde 200,
+  `/admin/login` 404, e `tempest check` passa. Para o projeto de antes, passe
+  `--extras admin`. Os templates ganham blocos `@@if <extra>@@` para o que
+  depende de um extra. De carona, a docstring do `src/db/models/user.py`
+  gerado deixa de estourar 88 colunas (o `tempest check` do projeto novo
+  falhava em `E501`).
 - `SubjectGraph` deixa coluna `LargeBinary` fora da exportação por padrão;
   até a 0.312.x ela saía em base64 (o `payload` de uma tabela de job, um blob
   de modelo). `exclude_binary=False` volta ao comportamento anterior (#507).

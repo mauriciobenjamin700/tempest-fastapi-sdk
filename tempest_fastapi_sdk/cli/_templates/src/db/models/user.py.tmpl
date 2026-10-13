@@ -11,8 +11,8 @@ The class is imported by ``src.db.models.__init__`` so Alembic's
 
 The table name comes from ``src.db.configs`` rather than a literal, so
 the ``__tablename__`` here and every
-``ForeignKey(f"{USER_TABLE_NAME}.id")`` elsewhere read the same symbol — renaming the table is then one line
-instead of a grep.
+``ForeignKey(f"{USER_TABLE_NAME}.id")`` elsewhere read the same symbol —
+renaming the table is then one line instead of a grep.
 """
 
 from __future__ import annotations

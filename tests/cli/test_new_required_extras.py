@@ -172,16 +172,20 @@ _BOOT_SCRIPT = textwrap.dedent(
     asyncio.run(_create_tables())
     with TestClient(app) as client:
         assert client.get("/health/readiness").status_code == 200
-        assert client.get("/admin/login").status_code == 200
-        response = client.post(
-            "/admin/login",
-            data={{"identifier": "nobody@example.com", "password": "wrong-pass"}},
-            follow_redirects=False,
-        )
-        print("login", response.status_code)
+        if {admin!r}:
+            assert client.get("/admin/login").status_code == 200
+            response = client.post(
+                "/admin/login",
+                data={{"identifier": "nobody@example.com", "password": "wrong-pass"}},
+                follow_redirects=False,
+            )
+            print("login", response.status_code)
+        else:
+            assert client.get("/admin/login").status_code == 404
+            print("no admin")
     """
 )
-"""Boots the generated app, then submits the admin login once."""
+"""Boots the generated app, then submits the admin login once when mounted."""
 
 
 def _scaffold(tmp_path: Path, extras: str) -> tuple[Path, set[str], set[str]]:
@@ -218,6 +222,8 @@ def _boot(
     project: Path,
     tmp_path: Path,
     blocked: set[str],
+    *,
+    admin: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     """Run :data:`_BOOT_SCRIPT` for ``project`` with ``blocked`` unimportable.
 
@@ -225,11 +231,15 @@ def _boot(
         project (Path): The generated project root.
         tmp_path (Path): Scratch directory for the database and logs.
         blocked (set[str]): Top-level import names to refuse.
+        admin (bool): Whether the project mounts the admin panel, so the
+            script logs in once, or must answer ``404`` on ``/admin/login``.
 
     Returns:
         subprocess.CompletedProcess[str]: The finished interpreter run.
     """
-    script = _BOOT_SCRIPT.format(blocked=sorted(blocked), project=str(project))
+    script = _BOOT_SCRIPT.format(
+        blocked=sorted(blocked), project=str(project), admin=admin
+    )
     return subprocess.run(
         [sys.executable, "-c", script],
         cwd=project,
@@ -245,16 +255,46 @@ def _boot(
     )
 
 
-@pytest.mark.parametrize("extras", ["cache,tasks", ""])
+@pytest.mark.parametrize("extras", ["admin,cache,tasks", "admin"])
 def test_generated_app_boots_with_only_the_pinned_extras(
     tmp_path: Path,
     extras: str,
 ) -> None:
     """The app and its admin login run without any unpinned extra."""
     project, pinned, project_deps = _scaffold(tmp_path, extras)
+    assert pinned >= {"admin", "auth"}
     completed = _boot(project, tmp_path, _blocked_modules(pinned, project_deps))
     assert completed.returncode == 0, completed.stderr[-2000:]
     assert "login " in completed.stdout
+
+
+@pytest.mark.parametrize("extras", ["", "postgres"])
+def test_a_service_without_users_boots_without_admin_or_auth(
+    tmp_path: Path,
+    extras: str,
+) -> None:
+    """``admin`` and ``auth`` are opt-in: no ``UserModel``, panel or JWT (#522).
+
+    ``bcrypt`` and ``jwt`` are blocked as the consumer's venv would lack
+    them, and the app still boots.
+    """
+    project, pinned, project_deps = _scaffold(tmp_path, extras)
+    assert not pinned & {"admin", "auth"}
+    assert not (project / "src" / "db" / "models" / "user.py").exists()
+    for relative in (
+        "src/api/app.py",
+        "src/core/settings.py",
+        "src/db/models/__init__.py",
+        ".env.example",
+    ):
+        text = (project / relative).read_text(encoding="utf-8")
+        for absent in ("UserModel", "JWTSettings", "JWT_SECRET", "AdminSite"):
+            assert absent not in text, (relative, absent)
+    blocked = _blocked_modules(pinned, project_deps)
+    assert {"bcrypt", "jwt"} <= blocked
+    completed = _boot(project, tmp_path, blocked, admin=False)
+    assert completed.returncode == 0, completed.stderr[-2000:]
+    assert "no admin" in completed.stdout
 
 
 _TASKS_IMPORT_SCRIPT = textwrap.dedent(
@@ -335,7 +375,7 @@ def test_harness_reproduces_each_missing_required_extra(
     login stopped reaching ``PasswordUtils``, the boot test above would
     pass for any pinned set.
     """
-    project, pinned, project_deps = _scaffold(tmp_path, "cache,tasks")
+    project, pinned, project_deps = _scaffold(tmp_path, "admin,cache,tasks")
     blocked = _blocked_modules(pinned - {dropped}, project_deps)
     completed = _boot(project, tmp_path, blocked)
     assert completed.returncode != 0
