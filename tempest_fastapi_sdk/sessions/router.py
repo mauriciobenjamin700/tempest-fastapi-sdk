@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Request, Response, status
 
+from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
 from tempest_fastapi_sdk.sessions.dependencies import make_session_dependency
 from tempest_fastapi_sdk.sessions.schemas import (
     Session,
@@ -43,7 +44,7 @@ if TYPE_CHECKING:
 def make_session_router(
     service: SessionAuth,
     *,
-    session_factory: Callable[[], AsyncIterator[AsyncSession]],
+    session_factory: Callable[..., AsyncIterator[AsyncSession]],
     prefix: str = "/auth/session",
     tags: list[str] | None = None,
 ) -> APIRouter:
@@ -53,7 +54,7 @@ def make_session_router(
         service (SessionAuth): Configured auth service that talks
             to the store + verifies passwords against the user
             model.
-        session_factory (Callable[[], AsyncIterator[AsyncSession]]):
+        session_factory (Callable[..., AsyncIterator[AsyncSession]]):
             FastAPI dependency yielding an async SQLAlchemy session
             — typically ``db.session_dependency``.
         prefix (str): URL prefix. Defaults to ``"/auth/session"``.
@@ -77,11 +78,7 @@ def make_session_router(
     settings = service.settings
     router = APIRouter(prefix=prefix, tags=list(tags or ["session"]))
 
-    async def _session_dep() -> AsyncIterator[AsyncSession]:
-        async for s in session_factory():
-            yield s
-
-    db_dep = Depends(_session_dep)
+    db_dep = Depends(session_provider_for(session_factory))
     current_session_required = Depends(make_session_dependency(required=True))
 
     def _set_session_cookie(response: Response, plaintext: str) -> None:

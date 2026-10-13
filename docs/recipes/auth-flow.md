@@ -116,7 +116,9 @@ app.include_router(
     função geradora (async ou não) é registrada como `Depends(session_factory)`,
     então `app.dependency_overrides[get_session]` vale também para
     `/auth/login` e as outras rotas de auth. Outro callable sem argumentos que
-    devolve um iterador async continua funcionando como antes.
+    devolve um iterador async continua funcionando como antes. A mesma regra
+    vale para todo router do SDK que recebe `session_factory`: push, Web Push,
+    chat, reviews, wallet, sessões, voz e app-errors.
 
 !!! warning "O service não pode morar no `app.py`"
     É tentador criar o `UserAuthService` ao lado do `app` e importá-lo de
