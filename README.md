@@ -3829,7 +3829,7 @@ tempest new my_service --path ~/projects        # custom parent dir
 tempest new my_service \
     --bind-host 0.0.0.0 \                       # default HOST in .env.example
     --bind-port 9090 \                          # default PORT in .env.example
-    --extras upload                             # pinned on top of admin,auth
+    --extras admin,upload                       # admin brings auth; both opt-in
 tempest new my_service --force                  # overwrite existing dir
 ```
 
@@ -3863,7 +3863,7 @@ my_service/
     └── test_smoke.py        # asserts /api/ and /health/liveness boot
 ```
 
-The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sdk[auth]>=<version>` by default — change with `--extras`). The scaffolded `.env.example` uses the v0.8.0 settings naming (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), and `src/server.py` delegates to `tempest_fastapi_sdk.run_server` so uvicorn is imported lazily and tests can import the app without it. The API `title`, `version` and `description` shown in the OpenAPI docs (and the `/admin` header) come from the `TITLE` / `VERSION` / `DESCRIPTION` settings — set them in `.env`, no code edits. Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
+The generated `pyproject.toml` pins the current SDK version with exactly the extras passed to `--extras` (bare `tempest-fastapi-sdk>=<version>` without it). `admin` and `auth` are opt-in: `auth` adds the `UserModel` and `JWTSettings`, `admin` mounts the admin panel and brings `auth` along. The scaffolded `.env.example` uses the v0.8.0 settings naming (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), and `src/server.py` delegates to `tempest_fastapi_sdk.run_server` so uvicorn is imported lazily and tests can import the app without it. The API `title`, `version` and `description` shown in the OpenAPI docs (and the `/admin` header, with `[admin]`) come from the `TITLE` / `VERSION` / `DESCRIPTION` settings — set them in `.env`, no code edits. Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
 
 After scaffolding:
 

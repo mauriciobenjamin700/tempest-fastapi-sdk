@@ -29,8 +29,9 @@ from typer.testing import CliRunner
 
 from tempest_fastapi_sdk.cli.main import app
 
-PLACEHOLDER: re.Pattern[str] = re.compile(r"__[A-Z][A-Z_]{2,}__")
-"""An unrendered marker: at least four upper-case characters between ``__``.
+PLACEHOLDER: re.Pattern[str] = re.compile(r"__[A-Z][A-Z_]{2,}__|@@[a-z!][^@]*@@")
+"""An unrendered marker: at least four upper-case characters between ``__``,
+or a conditional block marker (``@@if auth@@``, ``@@endif@@``).
 
 Upper-case only, so Python's own dunders (``__init__``, ``__all__``) in the
 scaffolded source are not false positives.
@@ -80,7 +81,16 @@ def _offenders(root: Path) -> dict[str, list[str]]:
 
 @pytest.mark.parametrize(
     "extras",
-    ["", "auth,admin", "auth,admin,postgres", "auth,admin,postgres,ssr", "pdf"],
+    [
+        "",
+        "auth,admin",
+        "auth,admin,postgres",
+        "auth,admin,postgres,ssr",
+        "pdf",
+        "tasks",
+        "tasks-redis",
+        "queue,tasks-redis",
+    ],
 )
 def test_scaffold_leaves_no_placeholder(tmp_path: Path, extras: str) -> None:
     """Every generated file is fully rendered, for every extras combination.
@@ -161,3 +171,9 @@ def test_python_dunders_are_not_flagged() -> None:
     """The scaffolded source is full of them, and none is a placeholder."""
     source = "__init__\n__all__: list[str] = []\n__version__ = '1'\n__main__\n"
     assert PLACEHOLDER.findall(source) == []
+
+
+def test_the_pattern_matches_a_leaked_block_marker() -> None:
+    """A conditional block that escaped rendering is caught too."""
+    leaked = "@@if tasks-redis@@\n    TASKIQ_BROKER_URL: str\n@@endif@@\n"
+    assert PLACEHOLDER.findall(leaked) == ["@@if tasks-redis@@", "@@endif@@"]

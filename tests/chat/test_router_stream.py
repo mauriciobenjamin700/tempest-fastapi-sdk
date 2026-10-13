@@ -17,7 +17,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -95,6 +95,8 @@ class _Harness:
         sessionmaker (async_sessionmaker[AsyncSession]): Direct DB access.
         open_sessions (list[int]): One-element counter of sessions the
             router's ``session_factory`` has opened and not yet closed.
+        stream_sessions (list[int]): One-element counter of sessions the
+            router's ``stream_session_factory`` has opened, ever.
     """
 
     app: FastAPI
@@ -102,14 +104,23 @@ class _Harness:
     caller: _Caller
     sessionmaker: async_sessionmaker[AsyncSession]
     open_sessions: list[int] = field(default_factory=lambda: [0])
+    stream_sessions: list[int] = field(default_factory=lambda: [0])
 
 
-async def _build(recheck: float | None) -> tuple[_Harness, Any]:
+async def _build(
+    recheck: float | None,
+    *,
+    request_session: bool = False,
+) -> tuple[_Harness, Any]:
     """Build the app, the client and the engine.
 
     Args:
         recheck (float | None): ``membership_recheck_seconds`` for the
             router.
+        request_session (bool): Wire a ``get_session(request: Request)``
+            as ``session_factory`` — which the stream cannot call on its
+            own — and a separate ``stream_session_factory`` for the
+            re-check (#524).
 
     Returns:
         tuple[_Harness, Any]: The harness and the engine to dispose.
@@ -130,6 +141,18 @@ async def _build(recheck: float | None) -> tuple[_Harness, Any]:
             finally:
                 open_sessions[0] -= 1
 
+    stream_sessions = [0]
+
+    async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
+        assert request.url.path.startswith("/api/chat")
+        async for session in session_factory():
+            yield session
+
+    async def stream_session_factory() -> AsyncIterator[AsyncSession]:
+        stream_sessions[0] += 1
+        async for session in session_factory():
+            yield session
+
     def service_factory(session: AsyncSession) -> ChatService:
         return ChatService(
             conversations=BaseRepository(session, model=_Conversation),
@@ -142,9 +165,12 @@ async def _build(recheck: float | None) -> tuple[_Harness, Any]:
     app.include_router(
         make_chat_router(
             service_factory=service_factory,
-            session_factory=session_factory,
+            session_factory=get_session if request_session else session_factory,
             current_user_id=caller,
             membership_recheck_seconds=recheck,
+            stream_session_factory=(
+                stream_session_factory if request_session else None
+            ),
         ),
     )
     client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
@@ -154,6 +180,7 @@ async def _build(recheck: float | None) -> tuple[_Harness, Any]:
         caller=caller,
         sessionmaker=sessionmaker,
         open_sessions=open_sessions,
+        stream_sessions=stream_sessions,
     )
     return harness, engine
 
@@ -182,6 +209,19 @@ async def rechecking() -> AsyncIterator[_Harness]:
         _Harness: The app and its handles.
     """
     built, engine = await _build(recheck=0.0)
+    async with built.client:
+        yield built
+    await engine.dispose()
+
+
+@pytest.fixture
+async def rechecking_over_request_session() -> AsyncIterator[_Harness]:
+    """Yield a re-checking harness whose ``get_session`` needs the request.
+
+    Yields:
+        _Harness: The app and its handles.
+    """
+    built, engine = await _build(recheck=0.0, request_session=True)
     async with built.client:
         yield built
     await engine.dispose()
@@ -449,5 +489,37 @@ class TestStreamEndsWithTheMembership:
 
             await asyncio.wait_for(stream.finished.wait(), timeout=5)
             assert rechecking.open_sessions[0] == 0
+        finally:
+            await stream.close()
+
+    async def test_the_recheck_uses_the_stream_session_factory(
+        self,
+        rechecking_over_request_session: _Harness,
+    ) -> None:
+        """A ``get_session(request)`` serves the routes; the re-check, which
+        runs after the endpoint returned, opens its sessions through
+        ``stream_session_factory`` (#524)."""
+        harness = rechecking_over_request_session
+        conversation = await _group(harness)
+        harness.caller.user_id = BRUNO
+        stream = _OpenStream(
+            harness.app,
+            f"/api/chat/conversations/{conversation}/stream",
+        )
+        try:
+            await stream.first_frame()
+            assert stream.status == 200
+
+            async with harness.sessionmaker() as session:
+                repository = BaseRepository(session, model=_Participant)
+                row = await repository.get(
+                    {"conversation_id": UUID(conversation), "user_id": BRUNO},
+                )
+                row.left_at = utcnow()
+                await repository.update(row)
+
+            await asyncio.wait_for(stream.finished.wait(), timeout=5)
+            assert harness.stream_sessions[0] > 0
+            assert harness.open_sessions[0] == 0
         finally:
             await stream.close()

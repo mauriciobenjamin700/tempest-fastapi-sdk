@@ -4,16 +4,24 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from tempest_fastapi_sdk import (
+@@if admin@@
     AdminModel,
     AdminSite,
+@@endif@@
+    AlembicHelper,
     RequestIDMiddleware,
+@@if admin@@
     UserModelAuthBackend,
+@@endif@@
     apply_cors,
     configure_logging,
+@@if admin@@
     make_admin_router,
+@@endif@@
     make_health_router,
     make_logs_router,
     register_exception_handlers,
@@ -21,7 +29,16 @@ from tempest_fastapi_sdk import (
 
 from src.api.dependencies import db
 from src.core.settings import settings
+@@if admin@@
 from src.db.models import UserModel
+@@endif@@
+
+ALEMBIC_INI: Path = Path(__file__).resolve().parents[2] / "alembic.ini"
+"""Absolute path of the project's ``alembic.ini``.
+
+Absolute so the lifespan finds it whatever directory the process was
+started from; the ini anchors its own paths on ``%(here)s``.
+"""
 
 configure_logging(
     level=settings.LOG_LEVEL,
@@ -32,7 +49,20 @@ configure_logging(
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    """Open and close shared resources for the app lifecycle."""
+    """Migrate the schema, then open and close shared resources.
+
+    ``sync_schema_async`` handles the three states a database can be in:
+    empty (runs every revision), created before Alembic (stamps the
+    baseline, then upgrades) and already migrated (upgrades). It refuses
+    a pending migration that drops a table, column or constraint. Set
+    ``DATABASE_MIGRATE_ON_STARTUP=false`` when several replicas start
+    together and a one-off job runs ``tempest db upgrade`` instead.
+    """
+    if settings.DATABASE_MIGRATE_ON_STARTUP:
+        await AlembicHelper(
+            str(ALEMBIC_INI),
+            db_url=settings.DATABASE_URL,
+        ).sync_schema_async()
     await db.connect()
     try:
         yield
@@ -47,10 +77,12 @@ def create_app() -> FastAPI:
     ``make_logs_router`` refuses an empty secret, and the generated
     ``.env.example`` ships ``TOKEN_SECRET=`` empty. Fill it with
     ``uv run tempest secrets init`` to get the endpoint.
+@@if admin@@
 
     The admin panel needs the ``[admin]`` extra and a ``UserModel`` row
-    with ``is_admin=True``; create one after the first
-    ``uv run alembic upgrade head``.
+    with ``is_admin=True``; create one with
+    ``uv run tempest user create --email <you> --admin``.
+@@endif@@
 
     Returns:
         FastAPI: A fully wired application ready for uvicorn.
@@ -76,6 +108,7 @@ def create_app() -> FastAPI:
                 token_secret=settings.TOKEN_SECRET,
             ),
         )
+@@if admin@@
 
     admin_site = AdminSite(title=f"{settings.TITLE} admin")
     admin_site.register(AdminModel(model=UserModel))
@@ -90,6 +123,7 @@ def create_app() -> FastAPI:
             log_dir=settings.LOG_DIR,
         ),
     )
+@@endif@@
 
     from src.api.routers import router as api_router
 

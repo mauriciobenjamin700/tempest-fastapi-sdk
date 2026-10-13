@@ -118,6 +118,18 @@ target only when it configures the mappers, so a rename that misses one
 side fails at startup — or inside a migration pointing at a table that
 no longer exists — instead of where it was typed.
 
+Then write the migration — the schema only changes through one:
+
+```bash
+tempest db revision -m "add products"
+```
+
+The app applies pending revisions on startup (`sync_schema_async` in the
+lifespan of `src/api/app.py`), so the next boot creates the table. Never
+call `create_all` to get there: it adds no column to a table that already
+exists, and the next migration then runs against a schema it does not
+expect.
+
 ### 3. Repository (`src/db/repositories/`)
 
 ```python
@@ -205,6 +217,28 @@ class ProductService(BaseService[ProductRepository, ProductResponseSchema]):
 `paginate`, `count`, `exists`, `update` and `delete`, each wired to
 `repository.map_to_response`. Override one only when a domain rule
 belongs in it; add a new method for a use case the base does not cover.
+
+These are **rules**, not style — each one is a defect in review:
+
+- **Every service subclasses `BaseService[Repository, ResponseSchema]`.**
+  A service that declares `__init__(self, repository)` and rebuilds
+  `list` as `[self.repository.map_to_response(x) for x in ...]` is
+  reimplementing the base. The only exception is a service with no
+  repository at all (a static catalogue read from a file); its docstring
+  says so.
+- **No `__init__` that only stores the repository.** `BaseService`
+  already does it.
+- **One public class per module in `services/`, and no module-level
+  functions.** A helper that does not belong to the class (formatting, a
+  regex, a pure calculation) goes to `src/utils/`; three services in one
+  `feeds.py` are three modules.
+- **No repository method that only forwards to the base.** A
+  `list_all()` whose body is `return await self.list()`, or a
+  `list_ordered()` that only passes `order_by=`, is a wrapper of the SDK:
+  call `list` / `get` / `paginate` with the filters at the call site.
+  Write a repository method only for a query the base cannot express.
+
+`tempest check` does not enforce these yet — the review does.
 
 ### 5. Controller (`src/controllers/`)
 
@@ -489,7 +523,7 @@ tempest type                # mypy
 tempest test                # pytest
 
 tempest db revision -m "add products"   # autogenerate a migration
-tempest db upgrade                      # apply migrations
+tempest db upgrade                      # apply migrations (startup does it too)
 tempest generate --src                  # add layers for newly pinned extras
 tempest generate --docker               # regenerate docker-compose.yaml
 ```

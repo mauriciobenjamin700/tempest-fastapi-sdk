@@ -109,6 +109,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.error_docs.RaisesSpec
 ::: tempest_fastapi_sdk.api.error_docs.declared_raises
 ::: tempest_fastapi_sdk.api.dependencies.signed_url.make_signed_path_dependency
+::: tempest_fastapi_sdk.api.dependencies.auth.make_mfa_required_dependency
 
 ---
 
@@ -474,6 +475,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.factories.conflict_exception
 ::: tempest_fastapi_sdk.exceptions.unauthorized.UnauthorizedException
 ::: tempest_fastapi_sdk.exceptions.forbidden.ForbiddenException
+::: tempest_fastapi_sdk.exceptions.forbidden.MFARequiredException
 ::: tempest_fastapi_sdk.exceptions.validation.ValidationException
 ::: tempest_fastapi_sdk.exceptions.validation.OrderByNotAllowedException
 ::: tempest_fastapi_sdk.exceptions.validation.PageSizeTooLargeException
@@ -1319,6 +1321,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.password.DEFAULT_GENERATED_PASSWORD_LENGTH
 ::: tempest_fastapi_sdk.utils.jwt.JWTUtils
 ::: tempest_fastapi_sdk.utils.token_types.token_type_allowed
+::: tempest_fastapi_sdk.utils.token_types.token_amr
 ::: tempest_fastapi_sdk.utils.totp.TOTPHelper
 ::: tempest_fastapi_sdk.utils.email.EmailUtils
 ::: tempest_fastapi_sdk.utils.upload.UploadUtils

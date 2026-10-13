@@ -12,6 +12,7 @@ router owns only the HTTP surface and the participant guard.
 
 from __future__ import annotations
 
+import inspect
 import json
 import time
 from collections.abc import AsyncIterator, Callable
@@ -21,6 +22,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
 from tempest_fastapi_sdk.chat.schemas import (
     MESSAGES_PAGE_SIZE_MAX,
     ConversationCreateSchema,
@@ -40,7 +42,7 @@ from tempest_fastapi_sdk.exceptions import ForbiddenException, NotFoundException
 from tempest_fastapi_sdk.sse.event_stream import sse_response
 
 if TYPE_CHECKING:
-    from tempest_fastapi_sdk.sse import SSEBroker
+    pass
 
 MEMBERSHIP_RECHECK_SECONDS: float = 30.0
 """Default interval between membership re-checks on an open stream.
@@ -96,12 +98,13 @@ def _removed_user_id(chunk: bytes) -> str | None:
 def make_chat_router(
     *,
     service_factory: Callable[[AsyncSession], ChatService],
-    session_factory: Callable[[], AsyncIterator[AsyncSession]],
+    session_factory: Callable[..., AsyncIterator[AsyncSession]],
     current_user_id: Callable[..., Any],
     prefix: str = "/api/chat",
     tags: list[str] | None = None,
     max_page_size: int = MESSAGES_PAGE_SIZE_MAX,
     membership_recheck_seconds: float | None = MEMBERSHIP_RECHECK_SECONDS,
+    stream_session_factory: Callable[[], AsyncIterator[AsyncSession]] | None = None,
 ) -> APIRouter:
     """Build the chat router.
 
@@ -142,27 +145,38 @@ def make_chat_router(
       ``SSEBroker``).
 
     The stream does **not** hold a database session while it is open.
-    The participant check runs on a session of its own that is closed
-    before the first byte is streamed; a session injected with
-    ``Depends`` would stay open — connection checked out, transaction
-    begun — for as long as the client stays connected, so a few hundred
-    idle tabs would drain the pool. A dependency the caller wires into
-    ``current_user_id`` that itself takes a session is outside this
-    guarantee.
+    The participant check takes its session as
+    ``Depends(session_factory, scope="function")``, which FastAPI closes
+    when the endpoint returns, before the first byte is streamed; a
+    session with the default scope would stay open — connection checked
+    out, transaction begun — for as long as the client stays connected,
+    so a few hundred idle tabs would drain the pool. A dependency the
+    caller wires into ``current_user_id`` that itself takes a session is
+    outside this guarantee.
 
     The stream also ends when the membership does: a
     ``participant.removed`` event naming the subscriber is delivered and
     then the stream closes, and every ``membership_recheck_seconds`` —
     measured on the frames the stream yields, heartbeats included — the
     membership is read again on a short-lived session, which catches a
-    removal made outside :class:`ChatService`.
+    removal made outside :class:`ChatService`. That re-check runs while
+    the response is streaming, outside FastAPI's dependency resolution,
+    so it opens its session by calling ``stream_session_factory()`` —
+    which defaults to ``session_factory`` when that one takes no
+    parameters.
 
     Args:
         service_factory (Callable[[AsyncSession], ChatService]): Builds a
             request-scoped :class:`ChatService` from the yielded session.
-        session_factory (Callable[[], AsyncIterator[AsyncSession]]):
-            Yields a request-scoped DB session (the project's
-            ``get_session``).
+        session_factory (Callable[..., AsyncIterator[AsyncSession]]):
+            FastAPI dependency yielding a request-scoped DB session — the
+            project's ``get_session``, sub-dependencies included
+            (``get_session(request: Request)``), or
+            ``db.session_dependency``. An (async) generator function is
+            registered as ``Depends(session_factory)`` itself, so
+            ``app.dependency_overrides[session_factory]`` reaches these
+            routes; any other zero-argument callable returning an async
+            iterator is wrapped and iterated.
         current_user_id (Callable[..., Any]): FastAPI dependency resolving
             the authenticated user's :class:`~uuid.UUID`.
         prefix (str): URL prefix. Defaults to ``"/api/chat"``.
@@ -174,45 +188,82 @@ def make_chat_router(
             stream re-reads the subscriber's membership. ``None`` turns
             the re-check off, leaving only the removal event to close
             the stream. Defaults to :data:`MEMBERSHIP_RECHECK_SECONDS`.
+        stream_session_factory (Callable[[], AsyncIterator[AsyncSession]] | None):
+            Zero-argument factory the open stream calls for the
+            short-lived session of each membership re-check (for example
+            ``db.session_dependency``). ``None`` reuses
+            ``session_factory``, which then must take no parameters.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
+
+    Raises:
+        ValueError: When ``membership_recheck_seconds`` is set,
+            ``stream_session_factory`` is ``None`` and ``session_factory``
+            takes parameters — only FastAPI can fill them, and the
+            re-check runs after the endpoint returned.
     """
+    recheck_sessions: Callable[[], AsyncIterator[AsyncSession]] | None = (
+        stream_session_factory
+    )
+    if recheck_sessions is None and not inspect.signature(session_factory).parameters:
+        recheck_sessions = session_factory
+    if recheck_sessions is None and membership_recheck_seconds is not None:
+        raise ValueError(
+            "make_chat_router: session_factory takes parameters that only "
+            "FastAPI can fill, and the stream's membership re-check runs "
+            "after the endpoint returned. Pass stream_session_factory= (a "
+            "zero-argument factory such as db.session_dependency), or "
+            "membership_recheck_seconds=None.",
+        )
+
     router = APIRouter(prefix=prefix, tags=list(tags or ["chat"]))
 
-    async def _session() -> AsyncIterator[AsyncSession]:
-        async for session in session_factory():
-            yield session
+    _session = session_provider_for(session_factory)
 
     def _service(session: AsyncSession = Depends(_session)) -> ChatService:
         return service_factory(session)
 
-    async def _stream_access(
-        conversation_id: UUID,
-        user_id: UUID,
-    ) -> tuple[bool, SSEBroker | None]:
-        """Check membership on a session that is closed before returning.
+    def _stream_service(
+        session: AsyncSession = Depends(_session, scope="function"),
+    ) -> ChatService:
+        """Build the stream's service on a session closed before streaming.
 
         Args:
-            conversation_id (UUID): The conversation to subscribe to.
+            session (AsyncSession): The session FastAPI closes when the
+                stream endpoint returns.
+
+        Returns:
+            ChatService: The service for the participant check.
+        """
+        return service_factory(session)
+
+    async def _still_member(
+        sessions_factory: Callable[[], AsyncIterator[AsyncSession]],
+        conversation_id: UUID,
+        user_id: UUID,
+    ) -> bool:
+        """Re-read membership on a session that is closed before returning.
+
+        Args:
+            sessions_factory (Callable[[], AsyncIterator[AsyncSession]]):
+                Opens the short-lived session.
+            conversation_id (UUID): The subscribed conversation.
             user_id (UUID): The subscriber.
 
         Returns:
-            tuple[bool, SSEBroker | None]: Whether the user is an active
-            participant, and the service's broker.
+            bool: Whether the user is still an active participant.
         """
         allowed = False
-        broker: SSEBroker | None = None
-        sessions = session_factory()
+        sessions = sessions_factory()
         try:
             async for session in sessions:
                 service = service_factory(session)
                 allowed = await service.is_participant(conversation_id, user_id)
-                broker = service.broker
                 break
         finally:
             await _aclose(sessions)
-        return allowed, broker
+        return allowed
 
     async def _member_stream(
         chunks: AsyncIterator[bytes],
@@ -243,10 +294,13 @@ def make_chat_router(
                     return
                 elapsed = time.monotonic() - checked_at
                 if (
-                    membership_recheck_seconds is not None
+                    recheck_sessions is not None
+                    and membership_recheck_seconds is not None
                     and elapsed >= membership_recheck_seconds
                 ):
-                    allowed, _broker = await _stream_access(conversation_id, user_id)
+                    allowed = await _still_member(
+                        recheck_sessions, conversation_id, user_id
+                    )
                     checked_at = time.monotonic()
                     if not allowed:
                         return
@@ -711,15 +765,18 @@ def make_chat_router(
     async def stream_messages(
         conversation_id: UUID,
         user_id: UUID = Depends(current_user_id),
+        service: ChatService = Depends(_stream_service),
     ) -> Any:
         """Subscribe to live messages for a conversation over SSE.
 
-        Takes no session dependency on purpose: see
+        The service's session is function-scoped on purpose: see
         :func:`make_chat_router` for why the stream must not hold one.
 
         Args:
             conversation_id (UUID): The conversation to subscribe to.
             user_id (UUID): The authenticated user.
+            service (ChatService): Built on a session closed before the
+                first byte is streamed.
 
         Returns:
             Any: A ``text/event-stream`` response fanned by the broker,
@@ -729,7 +786,8 @@ def make_chat_router(
             ForbiddenException: When the caller is not a participant.
             NotFoundException: When the service has no SSE broker.
         """
-        allowed, broker = await _stream_access(conversation_id, user_id)
+        allowed = await service.is_participant(conversation_id, user_id)
+        broker = service.broker
         if not allowed:
             raise ForbiddenException(message="You are not in this conversation.")
         if broker is None:

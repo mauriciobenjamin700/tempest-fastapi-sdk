@@ -65,6 +65,59 @@ troque `code == "TOO_MANY_REQUESTS"` pelo código do fluxo. Com
 (`Muitas tentativas de login. Aguarde um pouco e tente de novo`) em vez de
 `Requisições em excesso`.
 
+## Não lançada — refresh token guarda o `amr`, e `/mfa/confirm` responde `200`
+
+O access token passou a carregar o claim `amr` (como a sessão foi autenticada),
+e o `BaseUserRefreshTokenModel` ganhou a coluna `amr` (texto, nullable) para o
+`refresh` repetir esse valor. Como a coluna é mapeada no modelo base, **migre
+o banco antes de atualizar o pacote** se você usa `refresh_token_model`: sem
+ela, toda emissão de par falha — medido com SQLite, `POST /auth/signup` com
+ativação automática respondeu `500` (`OperationalError`). Quem não passa
+`refresh_token_model` não muda nada no banco.
+
+### O que fazer
+
+1. Gere a migration (`uv run tempest db revision -m "refresh token amr"`, ou
+   `alembic revision --autogenerate`) ou escreva-a à mão, com o nome da sua
+   tabela:
+
+    ```python
+    import sqlalchemy as sa
+    from alembic import op
+
+    revision: str = "0313_refresh_token_amr"
+    down_revision: str | None = "<a revisão anterior>"
+
+
+    def upgrade() -> None:
+        """Adiciona o amr da família de refresh token."""
+        op.add_column(
+            "user_refresh_tokens",
+            sa.Column("amr", sa.String(length=64), nullable=True),
+        )
+
+
+    def downgrade() -> None:
+        """Remove o amr da família de refresh token."""
+        op.drop_column("user_refresh_tokens", "amr")
+    ```
+
+2. Rode `uv run tempest db upgrade` (ou `alembic upgrade head`) e só então faça
+   o deploy da versão nova.
+
+Linhas antigas ficam com `NULL`: o `refresh` delas emite access token **sem**
+`amr`, que `make_mfa_required_dependency` trata como "sem segundo fator".
+
+Duas mudanças de comportamento vêm junto:
+
+- **`POST /auth/mfa/confirm` responde `200` com um `LoginResponseSchema`**, não
+  mais `204`. Confirmar revoga todos os refresh tokens do usuário, e o par novo
+  no corpo (ou nos cookies, no modo cookie) é o que mantém o dispositivo
+  logado. Cliente que confere `status === 204` passa a checar `200` e guarda o
+  par novo.
+- **`mfa_confirm` revoga as sessões por padrão.** Quem chama o serviço direto e
+  precisa manter as sessões passa `revoke_sessions=False`.
+
 ## 0.312.0 — Mercado Pago: Pix vencido e busca de chargebacks
 
 Duas mudanças de comportamento, as duas medidas no sandbox em 2026-10-10.

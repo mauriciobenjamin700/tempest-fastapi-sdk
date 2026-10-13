@@ -241,6 +241,42 @@ def _require_taskiq() -> Any:
     return taskiq
 
 
+_TRANSPORT_EXTRAS: dict[str, tuple[str, str, str, str]] = {
+    "amqp": ("RabbitMQ", "[tasks]", "Redis Streams", "redis://localhost:6379/0"),
+    "redis": (
+        "Redis Streams",
+        "[tasks-redis]",
+        "RabbitMQ",
+        "amqp://guest:guest@localhost:5672/",
+    ),
+}
+"""Per scheme family: transport, its extra, the other transport and its URL shape."""
+
+
+def _missing_transport_extra(url: str, exc: ImportError, *, transport: str) -> str:
+    """Explain a missing transport extra in terms of the URL that selected it.
+
+    Args:
+        url (str): The ``TASKIQ_BROKER_URL`` value that was read.
+        exc (ImportError): The error the transport constructor raised.
+        transport (str): ``"amqp"`` or ``"redis"`` — the scheme family.
+
+    Returns:
+        str: A message naming the setting, its masked value, the extra
+        that transport needs and the URL shape of the other transport.
+    """
+    from tempest_fastapi_sdk.utils._url import mask_url_password
+
+    name, extra, other, other_url = _TRANSPORT_EXTRAS[transport]
+    return (
+        f"TASKIQ_BROKER_URL is {mask_url_password(url)!r}, which selects "
+        f"{name}, and {name} needs the {extra} extra "
+        f"(pip install tempest-fastapi-sdk{extra}). For {other}, set "
+        f"TASKIQ_BROKER_URL={other_url} instead; leave it empty for the "
+        f"in-memory broker. Underlying error: {exc}"
+    )
+
+
 class Task(Generic[P, R]):
     """A background-runnable function — the result of :meth:`TaskQueue.task`.
 
@@ -590,6 +626,13 @@ class TaskQueue:
                 transports handles. Falling back to memory here would
                 turn a typo in a deployed environment variable into a
                 queue that silently runs every task in the web process.
+            ImportError: When the transport the URL selects needs an
+                extra that is not installed. The message names
+                ``TASKIQ_BROKER_URL`` and its value (password masked),
+                because the setting is what chose the transport: a
+                project pinned to ``[tasks-redis]`` still reading the
+                ``amqp://`` default needs a different URL, not the
+                ``[tasks]`` extra.
         """
         url: str = (settings.TASKIQ_BROKER_URL or "").strip()
         if not url:
@@ -607,16 +650,26 @@ class TaskQueue:
                 if settings.TASKIQ_STORE_RESULTS
                 else False
             )
-            return cls.redis(
-                url,
-                results=derived if results is None else results,
-                result_ttl_seconds=cls._result_ttl(settings, result_ttl_seconds),
-                result_prefix=prefix,
-                resources=resources,
-                **options,
-            )
+            try:
+                return cls.redis(
+                    url,
+                    results=derived if results is None else results,
+                    result_ttl_seconds=cls._result_ttl(settings, result_ttl_seconds),
+                    result_prefix=prefix,
+                    resources=resources,
+                    **options,
+                )
+            except ImportError as exc:
+                raise ImportError(
+                    _missing_transport_extra(url, exc, transport="redis")
+                ) from exc
         if scheme in {"amqp", "amqps"}:
-            queue = cls.rabbitmq(url, resources=resources, **options)
+            try:
+                queue = cls.rabbitmq(url, resources=resources, **options)
+            except ImportError as exc:
+                raise ImportError(
+                    _missing_transport_extra(url, exc, transport="amqp")
+                ) from exc
             result_url: bool | str | None = (
                 (
                     settings.TASKIQ_RESULT_BACKEND_URL

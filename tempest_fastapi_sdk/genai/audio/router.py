@@ -20,6 +20,7 @@ from uuid import UUID
 from fastapi import APIRouter, File, Form, UploadFile, status
 from pydantic import Field
 
+from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
 from tempest_fastapi_sdk.genai.audio.schemas import DiarizedTranscription
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 from tempest_fastapi_sdk.utils.upload import read_upload_capped
@@ -118,7 +119,7 @@ def _render_profile(profile: Any) -> VoiceProfileSchema:
 
 def make_voice_router(
     *,
-    session_factory: Callable[[], AsyncIterator[AsyncSession]],
+    session_factory: Callable[..., AsyncIterator[AsyncSession]],
     transcriber: ConversationTranscriber | None = None,
     profiles: VoiceProfileService | None = None,
     current_user_id: Callable[..., Any] | None = None,
@@ -171,11 +172,7 @@ def make_voice_router(
         dependencies=list(dependencies or []),
     )
 
-    async def _session() -> AsyncIterator[AsyncSession]:
-        async for item in session_factory():
-            yield item
-
-    session_dep = Depends(_session)
+    session_dep = Depends(session_provider_for(session_factory))
 
     if transcriber is not None:
         service_transcriber = transcriber

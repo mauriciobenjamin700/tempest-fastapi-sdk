@@ -18,6 +18,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
+from tempest_fastapi_sdk.utils._signature import accepts_keyword
 from tempest_fastapi_sdk.webpush.schemas import WebPushSubscriptionSchema
 from tempest_fastapi_sdk.webpush.service import WebPushSubscriptionService
 
@@ -25,7 +27,7 @@ from tempest_fastapi_sdk.webpush.service import WebPushSubscriptionService
 def make_web_push_router(
     *,
     service_factory: Callable[[AsyncSession], WebPushSubscriptionService[Any]],
-    session_factory: Callable[[], AsyncIterator[AsyncSession]],
+    session_factory: Callable[..., AsyncIterator[AsyncSession]],
     current_user_id: Callable[..., Any],
     prefix: str = "/api/push",
     tags: list[str] | None = None,
@@ -43,7 +45,8 @@ def make_web_push_router(
       endpoint). Stores the ``User-Agent`` as the device label when
       ``store_user_agent`` is set.
     * ``POST {prefix}/unsubscribe`` -> ``service.unsubscribe`` (delete by
-      endpoint, no-op when absent).
+      endpoint, scoped to the authenticated user; no-op when absent or
+      owned by another account).
 
     Both require authentication via ``current_user_id``.
 
@@ -52,7 +55,7 @@ def make_web_push_router(
             Builds a request-scoped service from the yielded session
             (typically ``lambda s: WebPushSubscriptionService(
             BaseRepository(s, model=Model), dispatcher)``).
-        session_factory (Callable[[], AsyncIterator[AsyncSession]]): Yields
+        session_factory (Callable[..., AsyncIterator[AsyncSession]]): Yields
             a request-scoped DB session (the project's ``get_session``).
         current_user_id (Callable[..., Any]): A FastAPI dependency that
             resolves the authenticated user's :class:`~uuid.UUID`.
@@ -88,9 +91,7 @@ def make_web_push_router(
             key = vapid_public_key() if callable(vapid_public_key) else vapid_public_key
             return {"public_key": key or ""}
 
-    async def _session() -> AsyncIterator[AsyncSession]:
-        async for session in session_factory():
-            yield session
+    _session = session_provider_for(session_factory)
 
     def _service(
         session: AsyncSession = Depends(_session),
@@ -126,18 +127,33 @@ def make_web_push_router(
         user_id: UUID = Depends(current_user_id),
         service: WebPushSubscriptionService[Any] = Depends(_service),
     ) -> dict[str, str]:
-        """Remove the device subscription (idempotent).
+        """Remove the caller's own device subscription (idempotent).
+
+        The delete is scoped to ``user_id``: an endpoint registered to
+        another account is left in place and the answer is the same ``200``
+        as for an unknown endpoint, so the route never reveals who owns it.
+        A ``WebPushSubscriptionService`` subclass whose ``unsubscribe``
+        override predates the ``user_id`` keyword still gets the scoping —
+        the router checks ownership through ``list_for_user`` and calls the
+        override only for the caller's own subscription.
 
         Args:
             subscription (WebPushSubscriptionSchema): The subscription to
                 drop; only its ``endpoint`` is used.
-            user_id (UUID): The authenticated user (auth gate).
+            user_id (UUID): The authenticated user; only their
+                subscriptions can be removed.
             service (WebPushSubscriptionService): Request-scoped service.
 
         Returns:
             dict[str, str]: ``{"status": "unsubscribed"}``.
         """
-        await service.unsubscribe(subscription.endpoint)
+        endpoint = subscription.endpoint
+        if accepts_keyword(service.unsubscribe, "user_id"):
+            await service.unsubscribe(endpoint, user_id=user_id)
+        elif any(
+            row.endpoint == endpoint for row in await service.list_for_user(user_id)
+        ):
+            await service.unsubscribe(endpoint)
         return {"status": "unsubscribed"}
 
     return router

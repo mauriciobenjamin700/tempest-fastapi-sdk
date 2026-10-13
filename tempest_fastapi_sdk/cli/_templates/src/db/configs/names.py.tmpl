@@ -14,15 +14,22 @@ pointing at a table that no longer exists.
 This module imports nothing from the project, on purpose. It is only
 strings, which is what guarantees it can never take part in an import
 cycle: the models import from here, and nothing is imported back.
+@@if auth@@
 
 The user table is the one plural name here. ``USER`` is a reserved word
 in standard SQL: SQLAlchemy quotes the identifier and the application
 works, but a ``SELECT * FROM user`` typed by hand in ``psql`` would
 return the database user instead of the table, with no error at all.
+@@endif@@
 """
+@@if auth@@
 
 USER_TABLE_NAME = "users"
 
 __all__: list[str] = [
     "USER_TABLE_NAME",
 ]
+@@else@@
+
+__all__: list[str] = []
+@@endif@@

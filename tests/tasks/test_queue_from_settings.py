@@ -16,6 +16,8 @@ service rebuilt the broker itself.
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 from taskiq.brokers.inmemory_broker import InMemoryBroker
 
@@ -271,3 +273,39 @@ class TestTheUnknownSchemeStillNamesItself:
 
         with pytest.raises(ValueError, match="unsupported scheme 'kafka'"):
             TaskQueue.from_settings(Minimal())  # type: ignore[arg-type]
+
+
+class TestTheMissingExtraNamesTheUrl:
+    """The extra the transport needs is reported against the URL that chose it.
+
+    A project scaffolded with ``[tasks-redis]`` booted against the mixin's
+    ``amqp://`` default and died with "RabbitMQ tasks require the optional
+    [tasks] extra" — advice to install an extra the project never wanted,
+    with nothing pointing at the setting that made the choice (#521).
+    """
+
+    def test_amqp_without_the_tasks_extra_names_the_setting_and_value(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setitem(sys.modules, "taskiq_aio_pika", None)
+        with pytest.raises(ImportError) as caught:
+            TaskQueue.from_settings(Settings("amqp://guest:secret@rabbit:5672/"))
+        message = str(caught.value)
+        assert "TASKIQ_BROKER_URL" in message
+        assert "amqp://guest:***@rabbit:5672/" in message
+        assert "secret" not in message
+        assert "[tasks]" in message
+        assert "redis://" in message
+
+    def test_redis_without_the_tasks_redis_extra_names_the_setting_and_value(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setitem(sys.modules, "taskiq_redis", None)
+        with pytest.raises(ImportError) as caught:
+            TaskQueue.from_settings(Settings("redis://:secret@cache:6379/0"))
+        message = str(caught.value)
+        assert "TASKIQ_BROKER_URL" in message
+        assert "secret" not in message
+        assert "[tasks-redis]" in message

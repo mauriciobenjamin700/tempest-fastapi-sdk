@@ -1101,10 +1101,18 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   de serviço (SMTP fica com o `.env`), `depends_on` healthy por extra,
   healthcheck em `/health/readiness` via `urllib`. Infra publicada só em
   `127.0.0.1`; `asyncpg` vira dependência do projeto gerado. Migrations:
-  sem serviço `migrate` (o scaffold não gera Alembic) —
-  `docker compose --profile prod run --rm api tempest db upgrade`. Receita:
+  sem serviço `migrate` — a API migra no lifespan (ver abaixo). Receita:
   "Profile `prod`" em `cli.md`; teste live em
   `tests/cli/test_docker_compose_live.py`.
+- **Scaffold migrado e enxuto (unreleased, #519 #521 #522)** — o
+  `tempest new` escreve `alembic.ini` (caminhos em `%(here)s`) + `alembic/`
+  com uma revision `baseline` autogerada, e o lifespan gerado chama
+  `sync_schema_async` antes do `db.connect()` (`DATABASE_MIGRATE_ON_STARTUP`
+  desliga). `admin`/`auth` são opt-in (`IMPLIED_EXTRAS`: `admin` traz
+  `auth`); sem eles não há `UserModel`, painel nem JWT. `[tasks-redis]` gera
+  a camada `tasks`, Redis no compose e `TASKIQ_BROKER_URL=redis://` no
+  `Settings`. Templates com blocos `@@if <extra>@@`. Testes:
+  `tests/cli/test_new_required_extras.py`.
 - **Dependency de sessão com fábrica (0.303.0, #381)** —
   `make_session_dependency(session_auth=...)` aceita `SessionAuthFactory`
   (`(request) -> SessionAuth`), resolvido por request; overloads tipam
@@ -3301,3 +3309,15 @@ só o `between` malformado. Testes: `tests/db/test_expressions.py` (recusa do
 `between`, escalar em `in` embrulha, truncamento) e
 `tests/db/test_repository.py::TestInvalidFilterValueOnWrites` (prova que nada é
 escrito).
+
+## Sessão marcada com `amr` e rota que exige MFA (#525)
+
+Todo access token do `UserAuthService` carrega `amr` (RFC 8176): `["pwd"]`
+no login com senha, `["pwd", "otp"]` depois de `/auth/mfa/verify` ou
+`/auth/mfa/confirm`, `["hwk"]` no WebAuthn, `["ext"]` no OAuth. A família de
+refresh token guarda o `amr` (`BaseUserRefreshTokenModel.amr`, exige
+migration) e o `refresh` o repete. `make_mfa_required_dependency` recusa com
+`403` `MFA_REQUIRED` o token sem segundo fator (e o sem `amr`).
+`mfa_confirm` revoga os refresh tokens do usuário por padrão
+(`revoke_sessions=False` é o opt-out), e a rota devolve um par novo de MFA.
+Teste: `tests/auth/test_mfa_amr.py`.

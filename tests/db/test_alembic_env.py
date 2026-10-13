@@ -194,11 +194,50 @@ class TestBareAlembicCli:
         assert ddl.count("CHECK") == 1
         assert "CONSTRAINT ck_things_user_role_enum CHECK" in ddl
 
+    def test_the_ini_works_from_outside_the_project_root(
+        self,
+        project: Path,
+        tmp_path_factory: pytest.TempPathFactory,
+    ) -> None:
+        """Both paths in the ini are relative to the ini, not the cwd (#519).
+
+        A FastAPI lifespan calling ``AlembicHelper("<abs>/alembic.ini")``
+        runs from wherever the process was started; with
+        ``script_location = alembic`` and ``prepend_sys_path = .`` that
+        directory had to be the project root.
+        """
+        elsewhere = tmp_path_factory.mktemp("elsewhere")
+        url = f"sqlite+aiosqlite:///{project / 'app.db'}"
+        ini = str(project / "alembic.ini")
+        _ok(_alembic(project, url, "-c", ini, "revision", "--autogenerate", "-m", "x"))
+        env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+        env["DATABASE_URL"] = url
+        process = subprocess.run(
+            [sys.executable, "-P", "-m", "alembic", "-c", ini, "upgrade", "head"],
+            cwd=elsewhere,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        _ok(process)
+        with sqlite3.connect(project / "app.db") as connection:
+            tables = {
+                name
+                for (name,) in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            }
+        assert {"things", "others", "alembic_version"} <= tables
+        lines = (project / "alembic.ini").read_text(encoding="utf-8").splitlines()
+        assert "script_location = %(here)s/alembic" in lines
+        assert "prepend_sys_path = %(here)s" in lines
+
     def test_metadata_import_needs_prepend_sys_path(self, project: Path) -> None:
         """Control: without the ini line the bare CLI cannot import the models."""
         ini = project / "alembic.ini"
         lines = ini.read_text(encoding="utf-8").splitlines()
-        assert "prepend_sys_path = ." in lines
+        assert "prepend_sys_path = %(here)s" in lines
         ini.write_text(
             "\n".join(line for line in lines if not line.startswith("prepend_")),
             encoding="utf-8",

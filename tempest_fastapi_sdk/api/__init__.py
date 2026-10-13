@@ -25,6 +25,9 @@ from tempest_fastapi_sdk.api.dependencies import (
     make_jwt_user_dependency as make_jwt_user_dependency,
 )
 from tempest_fastapi_sdk.api.dependencies import (
+    make_mfa_required_dependency as make_mfa_required_dependency,
+)
+from tempest_fastapi_sdk.api.dependencies import (
     make_permission_dependency as make_permission_dependency,
 )
 from tempest_fastapi_sdk.api.dependencies import (
@@ -463,6 +466,7 @@ __all__: list[str] = [
     "make_http_exception_handler",
     "make_jwt_user_dependency",
     "make_logs_router",
+    "make_mfa_required_dependency",
     "make_permission_dependency",
     "make_prometheus_registry",
     "make_prometheus_router",

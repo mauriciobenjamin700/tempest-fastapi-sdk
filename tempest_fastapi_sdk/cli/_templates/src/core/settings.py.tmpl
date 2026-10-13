@@ -8,10 +8,14 @@ from tempest_fastapi_sdk import (
     CORSSettings,
     DatabaseSettings,
     EnvironmentSettings,
+@@if auth@@
     JWTSettings,
+@@endif@@
     LogSettings,
     ServerSettings,
+@@if taskiq@@
     TaskIQSettings,
+@@endif@@
     TokenSettings,
 )
 
@@ -21,17 +25,21 @@ class Settings(
     ServerSettings,
     LogSettings,
     DatabaseSettings,
+@@if auth@@
     JWTSettings,
+@@endif@@
     TokenSettings,
     CORSSettings,
+@@if taskiq@@
     TaskIQSettings,
+@@endif@@
     BaseAppSettings,
 ):
     """Service-wide settings backed by the ``.env`` file.
 
     ``ENV=production`` refuses to boot while a mixin still holds a
-    development value (SQLite, the placeholder ``JWT_SECRET``, an empty
-    ``TOKEN_SECRET``, CORS ``*``, debug/reload, an empty broker URL).
+    development value (SQLite, an empty ``TOKEN_SECRET``, CORS ``*``,
+    debug/reload, and each mixin's own placeholder).
 
     Attributes:
         TITLE (str): API title shown in the OpenAPI docs and the admin
@@ -40,6 +48,15 @@ class Settings(
             docs. Override via the ``DESCRIPTION`` env var.
         VERSION (str): Version surfaced in the OpenAPI docs and on the
             health router. Override via the ``VERSION`` env var.
+        DATABASE_MIGRATE_ON_STARTUP (bool): Apply pending migrations in
+            the app lifespan. Turn off when a separate job migrates.
+@@if tasks-redis@@
+        TASKIQ_BROKER_URL (str): TaskIQ broker. Defaults to the local
+            Redis, because the project pins ``[tasks-redis]``: the mixin's
+            own default is an ``amqp://`` URL, which selects RabbitMQ and
+            needs ``[tasks]``, so importing ``src.tasks`` without a
+            ``.env`` would fail.
+@@endif@@
     """
 
     TITLE: str = Field(
@@ -60,6 +77,26 @@ class Settings(
         description="Surfaced in the OpenAPI docs and the health router.",
         examples=["0.1.0"],
     )
+    DATABASE_MIGRATE_ON_STARTUP: bool = Field(
+        default=True,
+        title="Migrate on startup",
+        description=(
+            "Apply pending Alembic migrations in the app lifespan. Turn off "
+            "when several replicas start together and a job migrates."
+        ),
+        examples=[True, False],
+    )
+@@if tasks-redis@@
+    TASKIQ_BROKER_URL: str = Field(
+        default="redis://localhost:6379/0",
+        title="TaskIQ broker URL",
+        description=(
+            "redis:// selects Redis Streams ([tasks-redis]); empty selects "
+            "the in-memory broker."
+        ),
+        examples=["redis://localhost:6379/0", ""],
+    )
+@@endif@@
 
 
 settings = Settings()

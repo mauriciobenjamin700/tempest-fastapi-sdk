@@ -358,6 +358,9 @@ from tempest_fastapi_sdk.api import (
     make_logs_router as make_logs_router,
 )
 from tempest_fastapi_sdk.api import (
+    make_mfa_required_dependency as make_mfa_required_dependency,
+)
+from tempest_fastapi_sdk.api import (
     make_permission_dependency as make_permission_dependency,
 )
 from tempest_fastapi_sdk.api import (
@@ -1203,6 +1206,9 @@ from tempest_fastapi_sdk.exceptions import (
     MessageCatalog as MessageCatalog,
 )
 from tempest_fastapi_sdk.exceptions import (
+    MFARequiredException as MFARequiredException,
+)
+from tempest_fastapi_sdk.exceptions import (
     NotFoundException as NotFoundException,
 )
 from tempest_fastapi_sdk.exceptions import (
@@ -1545,6 +1551,21 @@ from tempest_fastapi_sdk.utils import (
     ACCESS_TOKEN_TYPE as ACCESS_TOKEN_TYPE,
 )
 from tempest_fastapi_sdk.utils import (
+    AMR_CLAIM as AMR_CLAIM,
+)
+from tempest_fastapi_sdk.utils import (
+    AMR_EXTERNAL as AMR_EXTERNAL,
+)
+from tempest_fastapi_sdk.utils import (
+    AMR_HARDWARE_KEY as AMR_HARDWARE_KEY,
+)
+from tempest_fastapi_sdk.utils import (
+    AMR_OTP as AMR_OTP,
+)
+from tempest_fastapi_sdk.utils import (
+    AMR_PASSWORD as AMR_PASSWORD,
+)
+from tempest_fastapi_sdk.utils import (
     CENT as CENT,
 )
 from tempest_fastapi_sdk.utils import (
@@ -1578,7 +1599,16 @@ from tempest_fastapi_sdk.utils import (
     INLINE_SAFE_MEDIA_TYPES as INLINE_SAFE_MEDIA_TYPES,
 )
 from tempest_fastapi_sdk.utils import (
+    MFA_AMR as MFA_AMR,
+)
+from tempest_fastapi_sdk.utils import (
+    MFA_AMR_METHODS as MFA_AMR_METHODS,
+)
+from tempest_fastapi_sdk.utils import (
     MFA_TOKEN_TYPE as MFA_TOKEN_TYPE,
+)
+from tempest_fastapi_sdk.utils import (
+    PASSWORD_AMR as PASSWORD_AMR,
 )
 from tempest_fastapi_sdk.utils import (
     PHONE_BR_PATTERN as PHONE_BR_PATTERN,
@@ -1944,6 +1974,9 @@ from tempest_fastapi_sdk.utils import (
     to_utc as to_utc,
 )
 from tempest_fastapi_sdk.utils import (
+    token_amr as token_amr,
+)
+from tempest_fastapi_sdk.utils import (
     token_type_allowed as token_type_allowed,
 )
 from tempest_fastapi_sdk.utils import (
@@ -2096,6 +2129,11 @@ from tempest_fastapi_sdk.utils import (
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
+    "AMR_CLAIM",
+    "AMR_EXTERNAL",
+    "AMR_HARDWARE_KEY",
+    "AMR_OTP",
+    "AMR_PASSWORD",
     "AUDIT_REDACTED",
     "AUTH_DEFAULT_DISPLAY_NAME",
     "BASE_COLUMN_ORDER",
@@ -2147,10 +2185,13 @@ __all__: list[str] = [
     "LOGIN_THROTTLED_MESSAGE",
     "LOGIN_THROTTLE_MAX_ATTEMPTS",
     "LOGIN_THROTTLE_WINDOW_SECONDS",
+    "MFA_AMR",
+    "MFA_AMR_METHODS",
     "MFA_THROTTLE_MAX_ATTEMPTS",
     "MFA_THROTTLE_WINDOW_SECONDS",
     "MFA_TOKEN_TYPE",
     "NAMING_CONVENTION",
+    "PASSWORD_AMR",
     "PHONE_BR_PATTERN",
     "PPTX_MEDIA_TYPE",
     "RAISES_ATTRIBUTE",
@@ -2362,6 +2403,7 @@ __all__: list[str] = [
     "MFADisableSchema",
     "MFAEnrollResponseSchema",
     "MFAMixin",
+    "MFARequiredException",
     "MFAVerifySchema",
     "MemoryBanStore",
     "MemoryFeatureFlagBackend",
@@ -2691,6 +2733,7 @@ __all__: list[str] = [
     "make_http_exception_handler",
     "make_jwt_user_dependency",
     "make_logs_router",
+    "make_mfa_required_dependency",
     "make_permission_checker",
     "make_permission_dependency",
     "make_prometheus_registry",
@@ -2785,6 +2828,7 @@ __all__: list[str] = [
     "supports_full_text",
     "sync_enum_types",
     "to_utc",
+    "token_amr",
     "token_type_allowed",
     "transaction",
     "transaction_depth",

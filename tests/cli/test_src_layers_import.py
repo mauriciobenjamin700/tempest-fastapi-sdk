@@ -92,3 +92,11 @@ def test_every_generated_module_imports(project: Path, extra: str) -> None:
         check=False,
     )
     assert completed.returncode == 0, f"importing {modules} failed:\n{completed.stderr}"
+
+
+def test_tasks_redis_brings_the_tasks_layer() -> None:
+    """``[tasks-redis]`` is TaskIQ too, so it gets the same layer (#521)."""
+    from tempest_fastapi_sdk.cli.src_layers import layers_for_extras
+
+    assert layers_for_extras({"tasks-redis"}) == ["tasks"]
+    assert layers_for_extras({"tasks", "tasks-redis"}) == ["tasks"]

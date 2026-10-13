@@ -578,6 +578,15 @@ def detect_source_root(target: Path) -> str:
     return "src"
 
 
+LAYER_ALIASES: dict[str, str] = {"tasks-redis": "tasks"}
+"""Extras that bring the same layer as another one, mapped to its key.
+
+``[tasks]`` and ``[tasks-redis]`` differ only in the broker transport,
+which ``TaskQueue.from_settings`` reads from ``TASKIQ_BROKER_URL`` at
+runtime, so both get the one ``tasks`` layer.
+"""
+
+
 def layers_for_extras(extras: set[str]) -> list[str]:
     """Return the sorted layer keys triggered by the given extras.
 
@@ -585,9 +594,12 @@ def layers_for_extras(extras: set[str]) -> list[str]:
         extras (set[str]): The parsed SDK extras.
 
     Returns:
-        list[str]: Extra names that contribute a source layer, sorted.
+        list[str]: Layer keys (keys of :data:`LAYER_FILES`) the extras
+        contribute, sorted and without duplicates — ``tasks`` and
+        ``tasks-redis`` together still yield one ``tasks``.
     """
-    return sorted(extras & LAYER_FILES.keys())
+    resolved = {LAYER_ALIASES.get(extra, extra) for extra in extras}
+    return sorted(resolved & LAYER_FILES.keys())
 
 
 def add_src_layers(
@@ -630,6 +642,7 @@ def add_src_layers(
 
 
 __all__: list[str] = [
+    "LAYER_ALIASES",
     "LAYER_FILES",
     "add_src_layers",
     "detect_source_root",

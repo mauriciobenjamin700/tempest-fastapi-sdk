@@ -501,6 +501,20 @@ class TestTheTokenIsTheBundledToken:
         assert rotated.status_code == 200
         assert rotated.json()["refresh_token"] != issued["refresh_token"]
 
+    async def test_social_session_is_marked_ext_across_a_refresh(
+        self, session: AsyncSession
+    ) -> None:
+        """``amr == ["ext"]`` on the login token and on the rotated one (#525)."""
+        service = _service(with_refresh_model=True)
+        async with _client(service, session) as client:
+            issued = (await _login(client)).json()
+            rotated = await client.post(
+                "/auth/refresh",
+                json={"refresh_token": issued["refresh_token"]},
+            )
+        assert service.jwt.decode(issued["access_token"])["amr"] == ["ext"]
+        assert service.jwt.decode(rotated.json()["access_token"])["amr"] == ["ext"]
+
     async def test_logout_revokes_the_social_session(
         self, session: AsyncSession
     ) -> None:

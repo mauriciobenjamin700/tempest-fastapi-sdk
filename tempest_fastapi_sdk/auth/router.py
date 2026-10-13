@@ -42,7 +42,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import importlib
-import inspect
 import logging
 from collections.abc import AsyncIterator, Callable, Collection, Mapping
 from typing import TYPE_CHECKING, Any, Literal
@@ -55,6 +54,7 @@ from sqlalchemy import inspect as sa_inspect
 
 from tempest_fastapi_sdk.api.cookies import clear_cookie, set_cookie
 from tempest_fastapi_sdk.api.dependencies import make_jwt_user_dependency
+from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
 from tempest_fastapi_sdk.api.error_docs import error_responses
 from tempest_fastapi_sdk.api.oauth import (
     OAuthAudienceVerifier,
@@ -125,10 +125,15 @@ from tempest_fastapi_sdk.exceptions import (
     UnauthorizedException,
     ValidationException,
 )
+from tempest_fastapi_sdk.utils._signature import accepts_keyword
 from tempest_fastapi_sdk.utils.client_ip import get_client_ip
 from tempest_fastapi_sdk.utils.throttle import (
     AttemptThrottle,
     InMemoryThrottleBackend,
+)
+from tempest_fastapi_sdk.utils.token_types import (
+    AMR_HARDWARE_KEY,
+    MFA_AMR,
 )
 
 if TYPE_CHECKING:
@@ -279,34 +284,6 @@ def _require_jinja2() -> None:
 
 
 logger: logging.Logger = logging.getLogger(__name__)
-
-
-def _accepts_keyword(func: Callable[..., object], name: str) -> bool:
-    """Tell whether ``func`` can be called with the keyword ``name``.
-
-    Args:
-        func (Callable[..., object]): The callable, usually a bound method.
-        name (str): The keyword argument.
-
-    Returns:
-        bool: ``True`` when ``func`` declares ``name`` as a parameter that
-        can be passed by keyword, or takes ``**kwargs``; ``False`` when it
-        does not, or when its signature cannot be read.
-    """
-    try:
-        parameters = inspect.signature(func).parameters
-    except (TypeError, ValueError):
-        return False
-    parameter = parameters.get(name)
-    if parameter is not None:
-        return parameter.kind in (
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            inspect.Parameter.KEYWORD_ONLY,
-        )
-    return any(
-        candidate.kind is inspect.Parameter.VAR_KEYWORD
-        for candidate in parameters.values()
-    )
 
 
 def make_auth_router(
@@ -569,24 +546,7 @@ def make_auth_router(
         tags=list(tags or ["auth"]),
     )
 
-    session_provider: Callable[..., Any]
-    if inspect.isasyncgenfunction(session_factory) or inspect.isgeneratorfunction(
-        session_factory
-    ):
-        session_provider = session_factory
-    else:
-
-        async def _session() -> AsyncIterator[AsyncSession]:
-            """Iterate a session factory FastAPI cannot resolve itself.
-
-            Yields:
-                AsyncSession: The request's session.
-            """
-            async for s in session_factory():
-                yield s
-
-        session_provider = _session
-
+    session_provider = session_provider_for(session_factory)
     session_dep = Depends(session_provider)
 
     auth_settings = service.auth_settings
@@ -602,7 +562,18 @@ def make_auth_router(
             "reads 'email', 'password' and 'name' off the payload by name, "
             f"and {signup_model.__name__} does not inherit them."
         )
-    forward_signup_fields: bool = _accepts_keyword(service.signup, "fields")
+    forward_signup_fields: bool = accepts_keyword(service.signup, "fields")
+    forward_amr: bool = accepts_keyword(service.issue_token_pair, "amr")
+    if not forward_amr:
+        logger.warning(
+            "%s.issue_token_pair() does not accept 'amr', so the tokens from "
+            "/mfa/verify, /mfa/confirm and /webauthn/authenticate/complete "
+            "carry the override's default amr and "
+            "make_mfa_required_dependency refuses them; add "
+            "'amr: Sequence[str] | None = PASSWORD_AMR' to the override and "
+            "pass it on to super().issue_token_pair().",
+            type(service).__name__,
+        )
     schema_columns: frozenset[str] = signup_columns & (
         frozenset(signup_model.model_fields) - frozenset(SignupSchema.model_fields)
     )
@@ -801,6 +772,27 @@ def make_auth_router(
         legacy_claims=token_legacy_claims,
         session_dependency=session_provider,
     )
+
+    async def _issue_pair(
+        session: AsyncSession,
+        user: BaseUserModel,
+        amr: tuple[str, ...],
+    ) -> tuple[str, str]:
+        """Issue a token pair stamped with ``amr``, when the service takes it.
+
+        Args:
+            session (AsyncSession): The request-scoped DB session.
+            user (BaseUserModel): The authenticated user.
+            amr (tuple[str, ...]): RFC 8176 methods the session proved.
+
+        Returns:
+            tuple[str, str]: ``(access_token, refresh_token)``. Without
+            ``amr`` support in an ``issue_token_pair`` override, the pair
+            carries the override's own default, which never claims MFA.
+        """
+        if forward_amr:
+            return await service.issue_token_pair(session, user, amr=amr)
+        return await service.issue_token_pair(session, user)
 
     def _mount_if(
         condition: bool,
@@ -1966,7 +1958,7 @@ def make_auth_router(
 
         @router.post(
             "/mfa/confirm",
-            status_code=status.HTTP_204_NO_CONTENT,
+            response_model=LoginResponseSchema,
             summary="Finish TOTP enrollment (verify the first code)",
             description=(
                 "Activate the TOTP enrollment started at "
@@ -1975,25 +1967,59 @@ def make_auth_router(
                 "Submit the 6-digit ``code`` currently shown by the "
                 "authenticator app — this proves the shared secret was "
                 "stored correctly. A wrong or expired code returns "
-                "**401** and enrollment stays inactive. On success the "
-                "endpoint returns **204** and every subsequent "
-                "``/login`` for this user becomes a two-step flow."
+                "**401** and enrollment stays inactive. On success "
+                "every subsequent ``/login`` for this user becomes a "
+                "two-step flow.\n\n"
+                "**Every other session ends.** Confirming revokes all "
+                "refresh tokens the user holds, so a session opened "
+                "with the password alone cannot keep refreshing past "
+                "the new factor. The response carries a fresh pair "
+                'whose access token has ``amr == ["pwd", "otp"]``, '
+                "so the device that confirmed stays signed in: in the "
+                "body for a bearer caller, as cookies for a caller "
+                "authenticated by the access cookie."
             ),
         )
         async def mfa_confirm(
             payload: MFAConfirmSchema,
+            request: Request,
+            response: Response,
             session: AsyncSession = session_dep,
             user: BaseUserModel = Depends(current_user_dep),
-        ) -> None:
-            """Confirm TOTP enrollment with a code from the authenticator.
+        ) -> LoginResponseSchema:
+            """Confirm TOTP enrollment and hand the caller an MFA session.
 
             Args:
                 payload (MFAConfirmSchema): The 6-digit code from the authenticator.
+                request (Request): Tells a bearer caller from a cookie one.
+                response (Response): Receives the cookies in cookie mode.
                 session (AsyncSession): The request-scoped DB session.
                 user (BaseUserModel): The authenticated caller.
+
+            Returns:
+                LoginResponseSchema: The new pair in the body for a bearer
+                caller; ``user_id`` only (tokens in cookies) for a caller
+                that authenticated with the access cookie.
             """
             await service.mfa_confirm(session, user=user, code=payload.code)
+            access, refresh = await _issue_pair(session, user, MFA_AMR)
             await session.commit()
+            bearer_caller = (
+                request.headers.get("authorization", "").lower().startswith("bearer ")
+            )
+            if cookie_enabled and not bearer_caller:
+                apply_auth_cookies(
+                    response,
+                    access_token=access,
+                    refresh_token=refresh,
+                    config=cookies,
+                )
+                return LoginResponseSchema(user_id=user.id)
+            return LoginResponseSchema(
+                user_id=user.id,
+                access_token=access,
+                refresh_token=refresh,
+            )
 
         @router.post(
             "/mfa/disable",
@@ -2076,7 +2102,7 @@ def make_auth_router(
                 recovery_code_model=recovery_code_model,
                 throttle=resolved_mfa_throttle,
             )
-            access, refresh = await service.issue_token_pair(session, user)
+            access, refresh = await _issue_pair(session, user, MFA_AMR)
             await session.commit()
             return LoginResponseSchema(
                 user_id=user.id,
@@ -2257,7 +2283,7 @@ def make_auth_router(
                 challenge_id=payload.challenge_id,
                 response=payload.credential,
             )
-            access, refresh = await service.issue_token_pair(session, user)
+            access, refresh = await _issue_pair(session, user, (AMR_HARDWARE_KEY,))
             await session.commit()
             return LoginResponseSchema(
                 user_id=user.id,

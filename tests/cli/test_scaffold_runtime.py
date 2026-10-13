@@ -125,7 +125,7 @@ def _wait_for_threads_to_end(
 
 @pytest.fixture(scope="module")
 def scaffolded(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
-    """Scaffold a project with the ``ssr`` extra and make it importable.
+    """Scaffold a project with the ``ssr`` and ``admin`` extras, importable.
 
     Module-scoped on purpose: importing the generated ``src`` package
     registers its SQLAlchemy models on the SDK's declarative base, and
@@ -152,7 +152,7 @@ def scaffolded(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
     os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"
     result = runner.invoke(
         cli_app,
-        ["new", "demo", "--path", str(tmp_path), "--extras", "ssr"],
+        ["new", "demo", "--path", str(tmp_path), "--extras", "ssr,admin"],
     )
     assert result.exit_code == 0, result.stdout + result.stderr
     project = tmp_path / "demo"
