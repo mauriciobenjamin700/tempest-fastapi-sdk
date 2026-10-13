@@ -68,6 +68,8 @@ my_service/
 ├── main.py                  # one-liner → src.server.run()
 ├── pyproject.toml           # pins tempest-fastapi-sdk + ruff/mypy/pytest
 ├── .env.example             # TITLE/VERSION, SERVER_*, LOG_*, DATABASE_URL, JWT_* (with [auth]), TOKEN_SECRET, CORS_*
+├── alembic.ini              # paths anchored on %(here)s
+├── alembic/                 # env.py + versions/ with the baseline revision
 ├── docker-compose.yaml      # services keyed to the chosen extras
 ├── Dockerfile               # multi-stage with uv, non-root user
 ├── .dockerignore
@@ -323,23 +325,29 @@ Piece by piece:
 
 ##### Migrations under the `prod` profile
 
-The scaffold does not generate Alembic, so the compose has no migration
-service: the API boots against an empty database. Create the environment
-and the first revision on the host, against the compose Postgres (which is
-at `127.0.0.1:5432`), and apply it inside the network:
+The scaffold ships `alembic.ini`, `alembic/` and a `baseline` revision (the
+tables of the models the extras brought — `users` with `[auth]`, an empty
+`upgrade()` without it), and the lifespan of the generated `src/api/app.py`
+calls `AlembicHelper(...).sync_schema_async()` before `db.connect()`. So the
+compose needs no migration service: the API migrates Postgres as it starts.
 
 ```bash
-docker compose up -d --wait
-# in .env: DATABASE_URL=postgresql+asyncpg://app:app@localhost:5432/my_service
-tempest db init
-tempest db revision -m "init"
+cp .env.example .env
 docker compose --profile prod up -d --build --wait
-docker compose --profile prod run --rm api tempest db upgrade
+curl http://127.0.0.1:8000/health/readiness
 ```
 
-`alembic/` lands in the image through `COPY . .`, and `tempest db upgrade`
-inside the container reads `DATABASE_URL` from `environment:` — so it
-migrates the compose Postgres, not the SQLite in `.env`.
+Measured with `tempest new my_service --extras admin,postgres`: the API
+answered `/health/readiness` 200, Postgres held `users` and `alembic_version`
+at the `baseline` revision, and restarting the API ran no upgrade again.
+`sync_schema_async` refuses a destructive migration (dropping a table, column
+or constraint) and handles an empty database, one created before Alembic and
+one already migrated. With several replicas starting together, turn it off
+with `DATABASE_MIGRATE_ON_STARTUP=false` and run
+`docker compose --profile prod run --rm api tempest db upgrade` as a job.
+
+A new model gets its migration with `tempest db revision -m "..."`; the next
+start applies it.
 
 Image tags are pinned by the SDK — bump them through `pyproject.toml` of the SDK, not on a per-project basis. Current versions (v0.26.0+): `postgres:18-alpine`, `redis:8-alpine`, `rabbitmq:4-management-alpine`.
 

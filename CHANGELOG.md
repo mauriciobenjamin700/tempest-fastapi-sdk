@@ -110,6 +110,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- O projeto do `tempest new` aplica as próprias migrations (#519). Até a
+  0.312.x ele não tinha `alembic/` nem `alembic.ini`, o lifespan só fazia
+  `db.connect()`, e `docker compose --profile prod up` subia a API contra um
+  Postgres sem tabela. Agora o scaffold escreve `alembic.ini` + `alembic/` e
+  autogera uma revision `baseline` com as tabelas dos models que os extras
+  trouxeram (num processo filho, contra um SQLite descartável fora do
+  projeto), e o lifespan gerado chama
+  `AlembicHelper(ALEMBIC_INI, db_url=settings.DATABASE_URL).sync_schema_async()`
+  antes do `db.connect()` — desligável com `DATABASE_MIGRATE_ON_STARTUP=false`
+  (novo campo do `Settings` gerado e do `.env.example`). Medido com
+  `tempest new x --extras admin,postgres` e `docker compose --profile prod up
+  --build --wait`: `/health/readiness` 200, `users` e `alembic_version` na
+  `baseline` no Postgres, e um restart da API não rodou upgrade de novo; e o
+  projeto sem extras, subido de outro diretório contra um SQLite vazio, ficou
+  com `alembic_version` no head.
+- `AlembicHelper.init` (e `tempest db init`) escreve `script_location =
+  %(here)s/alembic` e `prepend_sys_path = %(here)s`, ancorados no diretório
+  do ini; com `alembic` e `.` o ini só funcionava com o processo iniciado na
+  raiz do projeto (`FAILED: Path doesn't exist: alembic`). Diretório absoluto
+  continua escrito como veio (#519).
+- `AlembicHelper.revision` (e `tempest db revision`) remove, junto com o
+  marcador `# ### end Alembic commands ###`, a linha em branco que o
+  `ruff format` do hook pôs antes dele; a revision com `batch_alter_table`
+  no fim do `upgrade()` saía com três linhas em branco antes do
+  `def downgrade` e falhava no `ruff format --check` (#519).
 - `tempest new --extras tasks-redis` gera um projeto que sobe sem RabbitMQ e
   sem `.env` (#521). Até a 0.312.x o extra não gerava a camada `src/tasks/`
   (só `tasks` gerava), o `.env.example` não tinha `TASKIQ_*`, o compose não

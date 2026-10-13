@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib.resources
 import keyword
+import os
 import re
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -337,6 +342,87 @@ def _target_path(template: Path, root: Path, target: Path) -> Path:
     return target.joinpath(*parts)
 
 
+BASELINE_MESSAGE: str = "baseline"
+"""Message of the first revision ``tempest new`` writes."""
+
+_BASELINE_SCRIPT: str = """\
+import sys
+
+from tempest_fastapi_sdk import AlembicHelper
+
+AlembicHelper("alembic.ini", db_url=sys.argv[1]).revision(sys.argv[2])
+"""
+"""Autogenerates the baseline revision inside the new project."""
+
+
+def _init_migrations(target: Path) -> list[Path]:
+    """Write ``alembic.ini``, ``alembic/`` and the baseline revision.
+
+    The project is migrated from its first boot: the generated lifespan
+    calls :meth:`~tempest_fastapi_sdk.AlembicHelper.sync_schema_async`,
+    which does nothing on a tree without revisions. So the scaffold
+    autogenerates one — the tables of the models the extras brought (the
+    ``users`` table with ``[auth]``, an empty ``upgrade()`` without) —
+    against a throwaway SQLite file outside the project.
+
+    The revision runs in a child interpreter because autogenerate imports
+    the project's ``src.db.models``: in this process that would register
+    the generated models on the SDK's declarative base and leave a
+    ``src`` package in ``sys.modules`` for the next scaffold to collide
+    with. The interpreter's ``bin`` directory leads ``PATH`` so the
+    ``ruff`` post-write hooks of the ini resolve to the ``ruff`` the
+    ``[cli]`` extra installed next to ``tempest``.
+
+    A target that already holds an ``alembic.ini`` (``tempest new .``
+    over an existing repository, ``--force``) is left alone: its
+    migration history is not the scaffold's to replace.
+
+    Args:
+        target (Path): The project root.
+
+    Returns:
+        list[Path]: Every file written, the baseline revision included;
+        empty when ``alembic.ini`` already existed.
+
+    Raises:
+        typer.Exit: When the baseline revision cannot be generated; the
+            child's output is printed first.
+    """
+    from tempest_fastapi_sdk import AlembicHelper
+
+    if (target / "alembic.ini").exists():
+        return []
+    with contextlib.chdir(target):
+        AlembicHelper("alembic.ini").init(
+            directory="alembic",
+            metadata_module="src.db.models",
+        )
+    env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+    env.pop("DATABASE_URL", None)
+    env["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{env.get('PATH', '')}"
+    with tempfile.TemporaryDirectory() as scratch:
+        url = f"sqlite+aiosqlite:///{Path(scratch) / 'baseline.db'}"
+        completed = subprocess.run(
+            [sys.executable, "-c", _BASELINE_SCRIPT, url, BASELINE_MESSAGE],
+            cwd=target,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+    if completed.returncode != 0:
+        typer.echo(completed.stdout + completed.stderr, err=True)
+        typer.echo(
+            "error: could not generate the baseline migration. Fix the cause "
+            "above, then run `tempest db revision -m baseline` in the project.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    scripts = sorted(p for p in (target / "alembic").rglob("*") if p.is_file())
+    return [*scripts, target / "alembic.ini"]
+
+
 def scaffold(
     *,
     name: str,
@@ -367,7 +453,9 @@ def scaffold(
         The optional source layers triggered by the chosen extras are
         scaffolded too, so a fresh ``--extras queue`` project ships
         ``src/queue/`` rather than requiring a follow-up ``tempest generate
-        --src``.
+        --src``. ``alembic.ini`` + ``alembic/`` with a baseline revision
+        are written as well (see :func:`_init_migrations`), and the
+        generated lifespan applies them on startup.
     """
     resolved_name, target = _resolve_name_and_target(name, path)
     extras = _resolve_extras(extras)
@@ -446,6 +534,7 @@ def scaffold(
 
     layer_written, _ = add_src_layers(target, _parse_extras(extras), force=True)
     written.extend(layer_written)
+    written.extend(_init_migrations(target))
 
     cwd = Path.cwd()
     display = target.relative_to(cwd) if target.is_relative_to(cwd) else target
@@ -470,6 +559,7 @@ def scaffold(
 
 
 __all__: list[str] = [
+    "BASELINE_MESSAGE",
     "CONDITIONAL_TEMPLATES",
     "IMPLIED_EXTRAS",
     "scaffold",

@@ -48,6 +48,8 @@ class Settings(
             docs. Override via the ``DESCRIPTION`` env var.
         VERSION (str): Version surfaced in the OpenAPI docs and on the
             health router. Override via the ``VERSION`` env var.
+        DATABASE_MIGRATE_ON_STARTUP (bool): Apply pending migrations in
+            the app lifespan. Turn off when a separate job migrates.
 @@if tasks-redis@@
         TASKIQ_BROKER_URL (str): TaskIQ broker. Defaults to the local
             Redis, because the project pins ``[tasks-redis]``: the mixin's
@@ -74,6 +76,15 @@ class Settings(
         title="API version",
         description="Surfaced in the OpenAPI docs and the health router.",
         examples=["0.1.0"],
+    )
+    DATABASE_MIGRATE_ON_STARTUP: bool = Field(
+        default=True,
+        title="Migrate on startup",
+        description=(
+            "Apply pending Alembic migrations in the app lifespan. Turn off "
+            "when several replicas start together and a job migrates."
+        ),
+        examples=[True, False],
     )
 @@if tasks-redis@@
     TASKIQ_BROKER_URL: str = Field(

@@ -118,6 +118,18 @@ target only when it configures the mappers, so a rename that misses one
 side fails at startup — or inside a migration pointing at a table that
 no longer exists — instead of where it was typed.
 
+Then write the migration — the schema only changes through one:
+
+```bash
+tempest db revision -m "add products"
+```
+
+The app applies pending revisions on startup (`sync_schema_async` in the
+lifespan of `src/api/app.py`), so the next boot creates the table. Never
+call `create_all` to get there: it adds no column to a table that already
+exists, and the next migration then runs against a schema it does not
+expect.
+
 ### 3. Repository (`src/db/repositories/`)
 
 ```python
@@ -489,7 +501,7 @@ tempest type                # mypy
 tempest test                # pytest
 
 tempest db revision -m "add products"   # autogenerate a migration
-tempest db upgrade                      # apply migrations
+tempest db upgrade                      # apply migrations (startup does it too)
 tempest generate --src                  # add layers for newly pinned extras
 tempest generate --docker               # regenerate docker-compose.yaml
 ```

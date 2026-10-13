@@ -406,9 +406,14 @@ inline comments.
 
 ### The bare Alembic CLI works too
 
-The generated `alembic.ini` carries `prepend_sys_path = .`, so `uv run alembic
-upgrade head` and `uv run alembic downgrade -1` import your package from the
-directory they run in — without the `tempest` CLI. `path_separator = os` comes
+The generated `alembic.ini` carries `script_location = %(here)s/alembic` and
+`prepend_sys_path = %(here)s`, both anchored on the ini's own directory. So
+`uv run alembic upgrade head` and `uv run alembic downgrade -1` import your
+package without the `tempest` CLI, and a lifespan that passes the ini's
+absolute path (`AlembicHelper("/app/alembic.ini")`) finds the scripts whatever
+directory the process started in. Up to 0.312.x the ini carried `alembic` and
+`.`, relative to the working directory, and only worked from the project
+root. `path_separator = os` comes
 with it: without it, Alembic 1.19.1 emits a `DeprecationWarning` about the
 legacy splitting of `prepend_sys_path`, and anyone running with `-W error` (or
 `filterwarnings = ["error"]`) sees the migration fail.
@@ -465,7 +470,7 @@ Measured against PostgreSQL 16: after `upgrade head`, an
 !!! tip "Already have an `env.py` generated earlier?"
     It keeps working. To start receiving the SDK's fixes, replace its content
     with the three statements above (keeping **your** metadata import) and add
-    `prepend_sys_path = .` and `path_separator = os` to the `[alembic]` section
+    `prepend_sys_path = %(here)s` and `path_separator = os` to the `[alembic]` section
     of `alembic.ini`. Migrations already written do not change:
     `op.replace_enum` and `op.drop_enum_type` are registered when `env.py`
     imports `tempest_fastapi_sdk.db`.
@@ -556,7 +561,7 @@ columns — and columns it does not look at.
       The generated `env.py` refuses a handed-over connection with FK on.
     - The generated `env.py` is one call to `run_alembic_env`: SDK fixes
       arrive with the package upgrade, and the file passes ruff with no inline
-      comment. `prepend_sys_path = .` lets the bare Alembic CLI import your
+      comment. `prepend_sys_path = %(here)s` lets the bare Alembic CLI import your
       package.
 
 ## See also

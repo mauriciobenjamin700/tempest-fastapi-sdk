@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from tempest_fastapi_sdk import (
@@ -11,6 +12,7 @@ from tempest_fastapi_sdk import (
     AdminModel,
     AdminSite,
 @@endif@@
+    AlembicHelper,
     RequestIDMiddleware,
 @@if admin@@
     UserModelAuthBackend,
@@ -31,6 +33,13 @@ from src.core.settings import settings
 from src.db.models import UserModel
 @@endif@@
 
+ALEMBIC_INI: Path = Path(__file__).resolve().parents[2] / "alembic.ini"
+"""Absolute path of the project's ``alembic.ini``.
+
+Absolute so the lifespan finds it whatever directory the process was
+started from; the ini anchors its own paths on ``%(here)s``.
+"""
+
 configure_logging(
     level=settings.LOG_LEVEL,
     json_output=settings.LOG_JSON,
@@ -40,7 +49,20 @@ configure_logging(
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    """Open and close shared resources for the app lifecycle."""
+    """Migrate the schema, then open and close shared resources.
+
+    ``sync_schema_async`` handles the three states a database can be in:
+    empty (runs every revision), created before Alembic (stamps the
+    baseline, then upgrades) and already migrated (upgrades). It refuses
+    a pending migration that drops a table, column or constraint. Set
+    ``DATABASE_MIGRATE_ON_STARTUP=false`` when several replicas start
+    together and a one-off job runs ``tempest db upgrade`` instead.
+    """
+    if settings.DATABASE_MIGRATE_ON_STARTUP:
+        await AlembicHelper(
+            str(ALEMBIC_INI),
+            db_url=settings.DATABASE_URL,
+        ).sync_schema_async()
     await db.connect()
     try:
         yield
