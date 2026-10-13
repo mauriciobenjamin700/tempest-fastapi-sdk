@@ -757,11 +757,12 @@ data: {"id": "7d3c5f8a-...", "conversation_id": "1a2b3c4d-...", "sender_id": "7d
 
 ### The stream holds no database session
 
-The `/stream` participant check runs on a session of its own, opened by
-`session_factory` and **closed before the first byte**. A session
-injected with `Depends` would stay open — connection borrowed from the
-pool, transaction begun — for as long as the client stays connected, and
-a few hundred idle tabs would drain the pool. This covers what the router
+The `/stream` participant check takes its session from `session_factory`
+as `Depends(..., scope="function")`, which FastAPI **closes when the
+endpoint returns, before the first byte**. A session with the default
+scope would stay open — connection borrowed from the pool, transaction
+begun — for as long as the client stays connected, and a few hundred
+idle tabs would drain the pool. This covers what the router
 controls: if your `current_user_id` dependency opens a session, that one
 stays open for the life of the stream.
 
@@ -779,6 +780,17 @@ direct `UPDATE` — the stream re-reads the membership on a short-lived
 session every `membership_recheck_seconds` (`30.0` by default), counted
 on the frames it delivers, heartbeats included. `None` turns the re-read
 off and leaves only the event.
+
+!!! tip "A `get_session` with sub-dependencies and the re-read"
+    The re-read runs while the response is already streaming, outside
+    FastAPI's dependency resolution, so it opens its session by calling
+    `stream_session_factory()`. By default that is `session_factory`
+    itself, as long as it takes no parameters. If your `get_session` takes
+    `request: Request` or `Depends(get_database)`, pass a zero-argument
+    factory for the re-read (`stream_session_factory=db.session_dependency`)
+    — without it, with the re-read on, `make_chat_router` refuses the
+    configuration with a `ValueError` when the router is built, not on the
+    first stream.
 
 See the
 **[Server-Sent Events »](sse.md)** recipe for the client side and the

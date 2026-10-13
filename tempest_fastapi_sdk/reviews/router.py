@@ -15,6 +15,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
 from tempest_fastapi_sdk.reviews.schemas import (
     CommentCreateSchema,
     CommentResponseSchema,
@@ -28,7 +29,7 @@ from tempest_fastapi_sdk.reviews.service import ReviewService
 def make_reviews_router(
     *,
     service_factory: Callable[[AsyncSession], ReviewService],
-    session_factory: Callable[[], AsyncIterator[AsyncSession]],
+    session_factory: Callable[..., AsyncIterator[AsyncSession]],
     current_user_id: Callable[..., Any],
     prefix: str = "/api/reviews",
     tags: list[str] | None = None,
@@ -49,7 +50,7 @@ def make_reviews_router(
     Args:
         service_factory (Callable[[AsyncSession], ReviewService]): Builds
             a request-scoped :class:`ReviewService` from the session.
-        session_factory (Callable[[], AsyncIterator[AsyncSession]]):
+        session_factory (Callable[..., AsyncIterator[AsyncSession]]):
             Yields a request-scoped DB session.
         current_user_id (Callable[..., Any]): FastAPI dependency resolving
             the authenticated user's :class:`~uuid.UUID`.
@@ -61,9 +62,7 @@ def make_reviews_router(
     """
     router = APIRouter(prefix=prefix, tags=list(tags or ["reviews"]))
 
-    async def _session() -> AsyncIterator[AsyncSession]:
-        async for session in session_factory():
-            yield session
+    _session = session_provider_for(session_factory)
 
     def _service(session: AsyncSession = Depends(_session)) -> ReviewService:
         return service_factory(session)
