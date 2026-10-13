@@ -238,7 +238,14 @@ These are **rules**, not style — each one is a defect in review:
   call `list` / `get` / `paginate` with the filters at the call site.
   Write a repository method only for a query the base cannot express.
 
-`tempest check` does not enforce these yet — the review does.
+`tempest check` enforces all four (its `lint-layers` step, also runnable
+alone as `tempest lint-layers`), one `path:line: CODE message` line per
+violation: `SVC001` (no `BaseService`), `SVC002` (a second class or a
+module-level function in a service module), `SVC003` (an `__init__` that
+only stores the repository), `REPO001` (a repository method that only
+forwards to the base). A service that genuinely has no repository opts out
+of `SVC001` with `# tempest: no-base-service` on its `class` line — and its
+docstring says why.
 
 ### 5. Controller (`src/controllers/`)
 
@@ -516,7 +523,8 @@ uv sync                     # install dependencies
 cp .env.example .env        # first run only
 uv run python main.py       # start the service on __HOST__:__PORT__
 
-tempest check               # lint + format check + mypy + pytest
+tempest check               # lint + format check + mypy + layer rules + pytest
+tempest lint-layers         # only the services/repositories layer rules
 tempest lint                # ruff check
 tempest fmt                 # ruff format
 tempest type                # mypy

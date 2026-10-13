@@ -3321,3 +3321,19 @@ migration) e o `refresh` o repete. `make_mfa_required_dependency` recusa com
 `mfa_confirm` revoga os refresh tokens do usuário por padrão
 (`revoke_sessions=False` é o opt-out), e a rota devolve um par novo de MFA.
 Teste: `tests/auth/test_mfa_amr.py`.
+
+## Regras de camada no `tempest check` (#520)
+
+`tempest_fastapi_sdk/cli/layer_lint.py`: checker `ast` (não importa o
+projeto) das regras de `services/` e `repositories/` que o `CLAUDE.md` do
+template só enunciava. `SVC001` (classe pública sem `BaseService` — aceita
+`BaseService`, outro service do projeto por ponto fixo, ou `*Service`
+importado do `tempest_fastapi_sdk`; opt-out `# tempest: no-base-service`),
+`SVC002` (segunda classe pública ou função de módulo), `SVC003` (`__init__`
+que só guarda o repository), `REPO001` (método que só encaminha para um
+método do `BaseRepository`; override de nome da base fica de fora).
+`BASE_REPOSITORY_METHODS` é literal fixado contra a classe por teste.
+Comando `tempest lint-layers [TARGET]` e passo `lint-layers` no `tempest
+check` via `CheckStep` do `tempest-cli>=0.5.0`. Teste:
+`tests/cli/test_layer_lint.py` (cada regra, opt-out, descoberta, runner,
+`check` entregando o passo, scaffold e exemplos do `CLAUDE.md` limpos).
