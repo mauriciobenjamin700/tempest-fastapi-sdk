@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.push.schemas import DeviceRegistrationSchema
 from tempest_fastapi_sdk.push.service import DeviceService
+from tempest_fastapi_sdk.utils._signature import accepts_keyword
 
 
 def make_push_router(
@@ -37,7 +38,8 @@ def make_push_router(
       two key fields; a mobile app posts ``platform="ios"`` / ``"android"``
       with its FCM registration token.
     * ``POST {prefix}/unregister`` -> ``service.unregister`` (delete by
-      token, no-op when absent).
+      token, scoped to the authenticated user; no-op when absent or owned
+      by another account).
     * ``GET {prefix}/vapid-public-key`` -> the key the browser subscribes
       with, mounted only when ``vapid_public_key`` is given.
 
@@ -113,18 +115,31 @@ def make_push_router(
         user_id: UUID = Depends(current_user_id),
         service: DeviceService[Any] = Depends(_service),
     ) -> dict[str, str]:
-        """Remove the device (idempotent).
+        """Remove the caller's own device (idempotent).
+
+        The delete is scoped to ``user_id``: a token registered to another
+        account is left in place and the answer is the same ``200`` as for
+        an unknown token, so the route never reveals who owns a token. A
+        ``DeviceService`` subclass whose ``unregister`` override predates
+        the ``user_id`` keyword still gets the scoping — the router checks
+        ownership through ``list_for_user`` and calls the override only for
+        the caller's own device, instead of failing with ``TypeError``.
 
         Args:
             registration (DeviceRegistrationSchema): The device to drop;
                 only its ``token`` is used.
-            user_id (UUID): The authenticated user (auth gate).
+            user_id (UUID): The authenticated user; only their devices can
+                be removed.
             service (DeviceService): Request-scoped service.
 
         Returns:
             dict[str, str]: ``{"status": "unregistered"}``.
         """
-        await service.unregister(registration.token)
+        token = registration.token
+        if accepts_keyword(service.unregister, "user_id"):
+            await service.unregister(token, user_id=user_id)
+        elif any(row.token == token for row in await service.list_for_user(user_id)):
+            await service.unregister(token)
         return {"status": "unregistered"}
 
     return router

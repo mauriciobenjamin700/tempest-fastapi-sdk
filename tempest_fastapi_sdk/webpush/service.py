@@ -120,19 +120,32 @@ class WebPushSubscriptionService(Generic[SubscriptionModelT]):
         )
         return await self.repository.add(row)
 
-    async def unsubscribe(self, endpoint: str) -> bool:
+    async def unsubscribe(self, endpoint: str, *, user_id: UUID | None = None) -> bool:
         """Remove the subscription with ``endpoint``, if present.
 
         Idempotent: removing an endpoint that is not stored is a no-op.
 
+        With ``user_id`` the delete is scoped to that owner: a row holding
+        ``endpoint`` that belongs to someone else is left untouched and the
+        call answers ``False``, exactly as for an unknown endpoint, so the
+        caller cannot learn whether the endpoint is registered to another
+        account. Every request-driven path must pass it. ``None`` keeps the
+        unscoped delete for internal maintenance, such as pruning an
+        endpoint the push service answered ``404``/``410`` for.
+
         Args:
             endpoint (str): The push endpoint to drop.
+            user_id (UUID | None): The owner the row must belong to.
+                ``None`` deletes regardless of owner.
 
         Returns:
             bool: ``True`` when a row was deleted, ``False`` when none
-            matched.
+            matched (unknown endpoint, or one owned by another user).
         """
-        existing = await self.repository.get_or_none({"endpoint": endpoint})
+        filters: dict[str, Any] = {"endpoint": endpoint}
+        if user_id is not None:
+            filters["user_id"] = user_id
+        existing = await self.repository.get_or_none(filters)
         if existing is None:
             return False
         await self.repository.delete(existing.id)

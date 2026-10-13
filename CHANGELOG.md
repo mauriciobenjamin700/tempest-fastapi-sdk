@@ -163,6 +163,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no import dos models (#496). O DDL não muda nos dois dialetos. A suíte passa
   a tratar `SADeprecationWarning` como erro (`filterwarnings`).
 
+### Security
+
+- **O `/unregister` do `make_push_router` e o `/unsubscribe` do
+  `make_web_push_router` só removem dispositivo do próprio usuário (#523).**
+  Antes, a rota exigia login mas apagava pelo token/endpoint sem olhar o dono:
+  qualquer conta autenticada que conhecesse o token de outro usuário cortava o
+  push dele, com `200` e sem aviso. Agora `DeviceService.unregister(token, *,
+  user_id=None)` e `WebPushSubscriptionService.unsubscribe(endpoint, *,
+  user_id=None)` aceitam o dono; com ele, a linha de outra conta fica intacta
+  e o retorno é `False`, o mesmo de "não existe", e os dois routers passam o
+  usuário autenticado — a resposta continua `200` nos dois casos, então a rota
+  não revela de quem é o token. Sem `user_id` o delete continua sem escopo,
+  para a poda de token recusado pelo transporte (`notify_user`, `prune`).
+  Override de `unregister`/`unsubscribe` com a assinatura antiga não quebra:
+  o router confere a posse por `list_for_user` e só então chama o override.
+  Medido em `tests/push/test_router_ownership.py` e
+  `tests/webpush/test_router_ownership.py` (o usuário B recebe `200` e a linha
+  de A continua; nos dois serviços, o atual e um override antigo).
+
 ## [0.312.1] — 2026-10-11
 
 ### Fixed

@@ -125,6 +125,7 @@ from tempest_fastapi_sdk.exceptions import (
     UnauthorizedException,
     ValidationException,
 )
+from tempest_fastapi_sdk.utils._signature import accepts_keyword
 from tempest_fastapi_sdk.utils.client_ip import get_client_ip
 from tempest_fastapi_sdk.utils.throttle import (
     AttemptThrottle,
@@ -279,34 +280,6 @@ def _require_jinja2() -> None:
 
 
 logger: logging.Logger = logging.getLogger(__name__)
-
-
-def _accepts_keyword(func: Callable[..., object], name: str) -> bool:
-    """Tell whether ``func`` can be called with the keyword ``name``.
-
-    Args:
-        func (Callable[..., object]): The callable, usually a bound method.
-        name (str): The keyword argument.
-
-    Returns:
-        bool: ``True`` when ``func`` declares ``name`` as a parameter that
-        can be passed by keyword, or takes ``**kwargs``; ``False`` when it
-        does not, or when its signature cannot be read.
-    """
-    try:
-        parameters = inspect.signature(func).parameters
-    except (TypeError, ValueError):
-        return False
-    parameter = parameters.get(name)
-    if parameter is not None:
-        return parameter.kind in (
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            inspect.Parameter.KEYWORD_ONLY,
-        )
-    return any(
-        candidate.kind is inspect.Parameter.VAR_KEYWORD
-        for candidate in parameters.values()
-    )
 
 
 def make_auth_router(
@@ -602,7 +575,7 @@ def make_auth_router(
             "reads 'email', 'password' and 'name' off the payload by name, "
             f"and {signup_model.__name__} does not inherit them."
         )
-    forward_signup_fields: bool = _accepts_keyword(service.signup, "fields")
+    forward_signup_fields: bool = accepts_keyword(service.signup, "fields")
     schema_columns: frozenset[str] = signup_columns & (
         frozenset(signup_model.model_fields) - frozenset(SignupSchema.model_fields)
     )
