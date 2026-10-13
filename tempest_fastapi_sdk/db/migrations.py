@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import unicodedata
 from collections.abc import Callable
 from contextlib import redirect_stdout
@@ -189,6 +190,12 @@ def _ascii_message(message: str) -> str:
 def _finalize_revision_file(path: str | Path, message: str, written: str) -> None:
     """Restore the original message and drop the autogenerate markers.
 
+    A blank line right above a marker goes with it. The ``ruff format``
+    post-write hook runs before this, and it separates a closing ``with``
+    block from the end marker by one blank line; dropping only the marker
+    left three blank lines before ``def downgrade``, which ``ruff format
+    --check`` then rejected.
+
     Args:
         path (str | Path): The revision file Alembic wrote.
         message (str): The message the caller passed, with its accents.
@@ -199,11 +206,13 @@ def _finalize_revision_file(path: str | Path, message: str, written: str) -> Non
     text = file_path.read_text(encoding="utf-8")
     if written != message:
         text = text.replace(f'"""{written}', f'"""{message}', 1)
-    kept = [
-        line
-        for line in text.splitlines(keepends=True)
-        if line.strip() not in AUTOGENERATE_MARKERS
-    ]
+    kept: list[str] = []
+    for line in text.splitlines(keepends=True):
+        if line.strip() not in AUTOGENERATE_MARKERS:
+            kept.append(line)
+            continue
+        if kept and not kept[-1].strip():
+            kept.pop()
     file_path.write_text("".join(kept), encoding="utf-8")
 
 
@@ -309,6 +318,30 @@ def require_sqlite_foreign_keys_off(connection: Connection) -> None:
         "open their own. PRAGMA foreign_keys=OFF cannot fix an open "
         "connection: SQLite ignores it inside a transaction."
     )
+
+
+def _here_relative(directory: str, ini_path: Path) -> str:
+    """Express ``directory`` relative to the ini, through ``%(here)s``.
+
+    Alembic substitutes ``%(here)s`` with the directory of the ini file,
+    so a path written this way resolves the same from any working
+    directory. ``directory`` itself is relative to the working directory
+    (that is where ``alembic init`` creates it), so it is resolved first.
+
+    Args:
+        directory (str): The script directory, as handed to :meth:`init`.
+        ini_path (Path): Where the ini is written.
+
+    Returns:
+        str: ``directory`` unchanged when absolute; otherwise
+        ``%(here)s`` joined with its POSIX path relative to the ini.
+    """
+    if Path(directory).is_absolute():
+        return directory
+    relative = os.path.relpath(Path(directory).resolve(), ini_path.parent.resolve())
+    if relative == ".":
+        return "%(here)s"
+    return f"%(here)s/{Path(relative).as_posix()}"
 
 
 class AlembicHelper:
@@ -434,10 +467,16 @@ class AlembicHelper:
           before the engine is built; pass ``db_url=`` on the
           constructor to override for a one-off (CI smoke, scripted
           migrations).
-        * The ini sets ``prepend_sys_path = .``, so the bare ``alembic``
-          CLI (``uv run alembic downgrade -1``) imports the project's
-          metadata module from the directory it runs in, without the
-          ``tempest`` CLI. ``path_separator = os`` comes with it:
+        * Both paths in the ini are anchored on ``%(here)s``, the
+          directory holding the ini: ``script_location =
+          %(here)s/alembic`` and ``prepend_sys_path = %(here)s``. The bare
+          ``alembic`` CLI (``uv run alembic downgrade -1``) imports the
+          project's metadata module without the ``tempest`` CLI, and a
+          lifespan that passes the ini's absolute path works whatever
+          directory the process was started from — with ``alembic`` and
+          ``.`` (up to v0.312.x) it only worked from the project root
+          (#519). An absolute ``directory`` is written as given.
+          ``path_separator = os`` comes with it:
           without it Alembic 1.19.1 emits a ``DeprecationWarning`` about
           the legacy splitting of ``prepend_sys_path``, which a
           ``-W error`` run turns into a failure.
@@ -516,8 +555,8 @@ class AlembicHelper:
 
         ini_lines = [
             "[alembic]",
-            f"script_location = {directory}",
-            "prepend_sys_path = .",
+            f"script_location = {_here_relative(directory, ini_path)}",
+            "prepend_sys_path = %(here)s",
             "path_separator = os",
             "sqlalchemy.url = ",
             (

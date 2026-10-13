@@ -4,8 +4,8 @@ When ``tempest new`` scaffolds a service, only the supporting
 infrastructure the service will actually use is wired into the
 compose file. The mapping from extra → service:
 
-* ``[cache]`` → Redis 7
-* ``[queue]`` or ``[tasks]`` → RabbitMQ 3 (management UI exposed)
+* ``[cache]`` or ``[tasks-redis]`` → Redis 8
+* ``[queue]`` or ``[tasks]`` → RabbitMQ 4 (management UI exposed)
 * ``[minio]`` → MinIO + a one-shot bootstrap container that
   creates the default bucket
 * ``[email]`` → MailHog (catches outbound SMTP for dev)
@@ -47,6 +47,12 @@ RABBITMQ_IMAGE: str = "rabbitmq:4-management-alpine"
 MINIO_IMAGE: str = "quay.io/minio/minio:RELEASE.2024-12-13T22-19-12Z"
 MINIO_MC_IMAGE: str = "quay.io/minio/mc:RELEASE.2024-11-21T17-21-54Z"
 MAILHOG_IMAGE: str = "mailhog/mailhog:v1.0.1"
+
+REDIS_EXTRAS: frozenset[str] = frozenset({"cache", "tasks-redis"})
+"""Extras whose runtime talks to Redis, so the compose file ships one."""
+
+RABBITMQ_EXTRAS: frozenset[str] = frozenset({"queue", "tasks"})
+"""Extras whose runtime talks to RabbitMQ, so the compose file ships one."""
 
 
 def _parse_extras(extras: str) -> set[str]:
@@ -270,15 +276,19 @@ def _api_block(project_name: str, extras_set: set[str], port: int) -> str:
     ]
     if "cache" in extras_set:
         environment.append("      REDIS_URL: redis://redis:6379/0")
+    if extras_set & REDIS_EXTRAS:
         depends_on.append("      redis:\n        condition: service_healthy")
-    if extras_set & {"queue", "tasks"}:
+    if extras_set & RABBITMQ_EXTRAS:
         amqp = (
             "amqp://${RABBITMQ_DEFAULT_USER:-guest}:"
             "${RABBITMQ_DEFAULT_PASS:-guest}@rabbitmq:5672/"
         )
         environment.append(f"      RABBITMQ_URL: {amqp}")
-        environment.append(f"      TASKIQ_BROKER_URL: {amqp}")
+        if "tasks-redis" not in extras_set:
+            environment.append(f"      TASKIQ_BROKER_URL: {amqp}")
         depends_on.append("      rabbitmq:\n        condition: service_healthy")
+    if "tasks-redis" in extras_set:
+        environment.append("      TASKIQ_BROKER_URL: redis://redis:6379/0")
     if "minio" in extras_set:
         environment.append("      STORAGE_ENDPOINT: minio:9000")
         depends_on.append("      minio:\n        condition: service_healthy")
@@ -341,11 +351,11 @@ def generate(project_name: str, extras: str, *, port: int = 8000) -> str:
     services: list[str] = [_postgres_block(project_name)]
     volumes: list[str] = ["postgres-data"]
 
-    if "cache" in extras_set:
+    if extras_set & REDIS_EXTRAS:
         services.append(_redis_block(project_name))
         volumes.append("redis-data")
 
-    if extras_set & {"queue", "tasks"}:
+    if extras_set & RABBITMQ_EXTRAS:
         services.append(_rabbitmq_block(project_name))
         volumes.append("rabbitmq-data")
 
@@ -426,7 +436,7 @@ def env_block_for(extras: str) -> str:
             "REDIS_URL=redis://localhost:6379/0\n"
         )
 
-    if extras_set & {"queue", "tasks"}:
+    if extras_set & RABBITMQ_EXTRAS:
         blocks.append(
             "\n# RabbitMQ container credentials — read by docker compose.\n"
             "RABBITMQ_DEFAULT_USER=guest\n"
@@ -434,7 +444,18 @@ def env_block_for(extras: str) -> str:
             "RABBITMQ_DEFAULT_VHOST=/\n"
             "# Connection URLs consumed by the app (must match the creds above)\n"
             "RABBITMQ_URL=amqp://guest:guest@localhost:5672/\n"
-            "TASKIQ_BROKER_URL=amqp://guest:guest@localhost:5672/\n"
+            + (
+                ""
+                if "tasks-redis" in extras_set
+                else "TASKIQ_BROKER_URL=amqp://guest:guest@localhost:5672/\n"
+            )
+        )
+
+    if "tasks-redis" in extras_set:
+        blocks.append(
+            "\n# TaskIQ over Redis Streams ([tasks-redis]). Empty selects the\n"
+            "# in-memory broker, which runs every task inside the web process.\n"
+            "TASKIQ_BROKER_URL=redis://localhost:6379/0\n"
         )
 
     if "minio" in extras_set:
@@ -472,7 +493,9 @@ __all__: list[str] = [
     "MINIO_IMAGE",
     "MINIO_MC_IMAGE",
     "POSTGRES_IMAGE",
+    "RABBITMQ_EXTRAS",
     "RABBITMQ_IMAGE",
+    "REDIS_EXTRAS",
     "REDIS_IMAGE",
     "env_block_for",
     "generate",

@@ -6,8 +6,12 @@ into the module, keeping imports at package level like the rest of the
 project.
 """
 
+@@if auth@@
 from src.db.configs.names import USER_TABLE_NAME
 
 __all__: list[str] = [
     "USER_TABLE_NAME",
 ]
+@@else@@
+__all__: list[str] = []
+@@endif@@

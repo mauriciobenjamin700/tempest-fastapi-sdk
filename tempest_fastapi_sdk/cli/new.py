@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib.resources
 import keyword
+import os
 import re
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -31,20 +36,31 @@ need to be a Python identifier. Hyphens are common on existing repos
 _TEMPLATE_SUFFIX = ".tmpl"
 """Suffix stripped from every bundled template file on render."""
 
-REQUIRED_EXTRAS: frozenset[str] = frozenset({"admin", "auth"})
-"""SDK extras the scaffolded project cannot boot without.
+IMPLIED_EXTRAS: dict[str, frozenset[str]] = {"admin": frozenset({"auth"})}
+"""SDK extras another extra cannot run without, added when it is pinned.
 
-The bundled ``src/api/app.py`` always mounts the admin panel:
-``make_admin_router`` raises ``ImportError`` at app creation without
-``[admin]``, and the ``UserModelAuthBackend`` it is given hashes the
-login password through ``PasswordUtils``, which raises ``ImportError`` on
-the first admin login without ``[auth]``. ``--extras`` therefore adds to
-this set instead of replacing it.
+The admin panel the scaffold mounts with ``[admin]`` logs in through
+``UserModelAuthBackend``, which hashes the password with
+``PasswordUtils`` and raises ``ImportError`` on the first login without
+``[auth]``. So ``--extras admin`` pins ``[admin,auth]``; ``--extras auth``
+alone pins just ``[auth]`` (the ``UserModel`` and the JWT settings, no
+panel).
+"""
+
+CONDITIONAL_TEMPLATES: dict[str, str] = {"src/db/models/user.py.tmpl": "auth"}
+"""Templates written only when a flag is on, keyed by their relative path.
+
+A service without ``[auth]`` has no users, so it gets no ``UserModel`` —
+the file is skipped rather than rendered empty.
 """
 
 
 def _resolve_extras(extras: str) -> str:
-    """Merge the requested extras with :data:`REQUIRED_EXTRAS`.
+    """Normalize the requested extras and add the ones they imply.
+
+    Up to v0.312.x ``admin`` and ``auth`` were always pinned, so a service
+    without users started by dismantling the template (#522). Now they are
+    opt-in, and only :data:`IMPLIED_EXTRAS` is added on top.
 
     Args:
         extras (str): Comma-separated extras passed to ``--extras``.
@@ -52,12 +68,15 @@ def _resolve_extras(extras: str) -> str:
             how the compose and ``src`` layer generators read them.
 
     Returns:
-        str: The deduplicated union, sorted so the pinned requirement is
-        stable regardless of input order (``"cache,auth,cache"`` becomes
-        ``"admin,auth,cache"``).
+        str: The deduplicated set plus its implied extras, sorted so the
+        pinned requirement is stable regardless of input order
+        (``"cache,admin,cache"`` becomes ``"admin,auth,cache"``).
     """
     requested = {part.strip().lower() for part in extras.split(",") if part.strip()}
-    return ",".join(sorted(requested | REQUIRED_EXTRAS))
+    implied = {
+        extra for name in requested for extra in IMPLIED_EXTRAS.get(name, frozenset())
+    }
+    return ",".join(sorted(requested | implied))
 
 
 def _validate_name(name: str) -> None:
@@ -149,17 +168,100 @@ def _templates_root() -> Path:
     )
 
 
-def _render(content: str, context: dict[str, str]) -> str:
-    """Replace ``__KEY__`` placeholders with ``context[key]`` values.
+_BLOCK_OPEN = re.compile(r"^@@if (?P<negate>!?)(?P<flag>[a-z0-9_-]+)@@$")
+"""Opens a conditional block: ``@@if <flag>@@`` or ``@@if !<flag>@@``."""
+
+_BLOCK_ELSE = "@@else@@"
+"""Switches a conditional block to its other branch."""
+
+_BLOCK_CLOSE = "@@endif@@"
+"""Closes a conditional block."""
+
+
+def template_flags(extras: str) -> frozenset[str]:
+    """Return the flags conditional template blocks are evaluated against.
+
+    Every pinned extra is a flag under its own name. ``taskiq`` is added
+    when either TaskIQ transport (``tasks`` or ``tasks-redis``) is pinned,
+    because the settings mixin and the ``tasks`` layer are the same for
+    both — only the broker URL differs.
+
+    Args:
+        extras (str): Comma-separated extras, as pinned in the project.
+
+    Returns:
+        frozenset[str]: The flags.
+    """
+    flags = {part.strip().lower() for part in extras.split(",") if part.strip()}
+    if flags & {"tasks", "tasks-redis"}:
+        flags.add("taskiq")
+    return frozenset(flags)
+
+
+def _render_blocks(content: str, flags: frozenset[str]) -> str:
+    """Keep or drop the conditional blocks of a template.
+
+    A block is the lines between ``@@if <flag>@@`` and ``@@endif@@``, each
+    marker alone on its line; ``@@if !<flag>@@`` inverts the test and an
+    optional ``@@else@@`` carries the other branch. The marker lines
+    themselves never reach the output. Blocks do not nest — the templates
+    stay readable as the file they render to.
+
+    Args:
+        content (str): The raw template content.
+        flags (frozenset[str]): Flags that are on (see
+            :func:`template_flags`).
+
+    Returns:
+        str: The content with every block resolved.
+
+    Raises:
+        ValueError: On a nested block, an ``@@else@@`` or ``@@endif@@``
+            outside a block, or a block left open at the end of the file.
+    """
+    kept: list[str] = []
+    keeping: bool | None = None
+    for line in content.splitlines(keepends=True):
+        marker = line.strip()
+        opened = _BLOCK_OPEN.fullmatch(marker)
+        if opened:
+            if keeping is not None:
+                raise ValueError("nested @@if@@ blocks are not supported")
+            keeping = (opened["flag"] in flags) != bool(opened["negate"])
+            continue
+        if marker == _BLOCK_ELSE:
+            if keeping is None:
+                raise ValueError("@@else@@ outside an @@if@@ block")
+            keeping = not keeping
+            continue
+        if marker == _BLOCK_CLOSE:
+            if keeping is None:
+                raise ValueError("@@endif@@ outside an @@if@@ block")
+            keeping = None
+            continue
+        if keeping is None or keeping:
+            kept.append(line)
+    if keeping is not None:
+        raise ValueError("@@if@@ block left open")
+    return "".join(kept)
+
+
+def _render(
+    content: str,
+    context: dict[str, str],
+    flags: frozenset[str] = frozenset(),
+) -> str:
+    """Resolve conditional blocks, then replace ``__KEY__`` placeholders.
 
     Args:
         content (str): The raw template content.
         context (dict[str, str]): Key/value pairs to substitute.
+        flags (frozenset[str]): Flags the ``@@if@@`` blocks test.
 
     Returns:
         str: The rendered content.
     """
-    rendered = content
+    rendered = _render_blocks(content, flags)
     for key, value in context.items():
         rendered = rendered.replace(f"__{key}__", value)
     return rendered
@@ -240,6 +342,87 @@ def _target_path(template: Path, root: Path, target: Path) -> Path:
     return target.joinpath(*parts)
 
 
+BASELINE_MESSAGE: str = "baseline"
+"""Message of the first revision ``tempest new`` writes."""
+
+_BASELINE_SCRIPT: str = """\
+import sys
+
+from tempest_fastapi_sdk import AlembicHelper
+
+AlembicHelper("alembic.ini", db_url=sys.argv[1]).revision(sys.argv[2])
+"""
+"""Autogenerates the baseline revision inside the new project."""
+
+
+def _init_migrations(target: Path) -> list[Path]:
+    """Write ``alembic.ini``, ``alembic/`` and the baseline revision.
+
+    The project is migrated from its first boot: the generated lifespan
+    calls :meth:`~tempest_fastapi_sdk.AlembicHelper.sync_schema_async`,
+    which does nothing on a tree without revisions. So the scaffold
+    autogenerates one — the tables of the models the extras brought (the
+    ``users`` table with ``[auth]``, an empty ``upgrade()`` without) —
+    against a throwaway SQLite file outside the project.
+
+    The revision runs in a child interpreter because autogenerate imports
+    the project's ``src.db.models``: in this process that would register
+    the generated models on the SDK's declarative base and leave a
+    ``src`` package in ``sys.modules`` for the next scaffold to collide
+    with. The interpreter's ``bin`` directory leads ``PATH`` so the
+    ``ruff`` post-write hooks of the ini resolve to the ``ruff`` the
+    ``[cli]`` extra installed next to ``tempest``.
+
+    A target that already holds an ``alembic.ini`` (``tempest new .``
+    over an existing repository, ``--force``) is left alone: its
+    migration history is not the scaffold's to replace.
+
+    Args:
+        target (Path): The project root.
+
+    Returns:
+        list[Path]: Every file written, the baseline revision included;
+        empty when ``alembic.ini`` already existed.
+
+    Raises:
+        typer.Exit: When the baseline revision cannot be generated; the
+            child's output is printed first.
+    """
+    from tempest_fastapi_sdk import AlembicHelper
+
+    if (target / "alembic.ini").exists():
+        return []
+    with contextlib.chdir(target):
+        AlembicHelper("alembic.ini").init(
+            directory="alembic",
+            metadata_module="src.db.models",
+        )
+    env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+    env.pop("DATABASE_URL", None)
+    env["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{env.get('PATH', '')}"
+    with tempfile.TemporaryDirectory() as scratch:
+        url = f"sqlite+aiosqlite:///{Path(scratch) / 'baseline.db'}"
+        completed = subprocess.run(
+            [sys.executable, "-c", _BASELINE_SCRIPT, url, BASELINE_MESSAGE],
+            cwd=target,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+    if completed.returncode != 0:
+        typer.echo(completed.stdout + completed.stderr, err=True)
+        typer.echo(
+            "error: could not generate the baseline migration. Fix the cause "
+            "above, then run `tempest db revision -m baseline` in the project.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    scripts = sorted(p for p in (target / "alembic").rglob("*") if p.is_file())
+    return [*scripts, target / "alembic.ini"]
+
+
 def scaffold(
     *,
     name: str,
@@ -257,8 +440,9 @@ def scaffold(
             working directory.
         bind_host (str): ``HOST`` value to inject into ``.env.example``.
         bind_port (int): ``PORT`` value to inject into ``.env.example``.
-        extras (str): Comma-separated SDK extras to pin on top of
-            :data:`REQUIRED_EXTRAS`, which are always added.
+        extras (str): Comma-separated SDK extras to pin. Extras listed in
+            :data:`IMPLIED_EXTRAS` bring their requirements along
+            (``admin`` adds ``auth``); nothing else is added.
         force (bool): Overwrite the target if it already exists.
 
     Raises:
@@ -269,7 +453,9 @@ def scaffold(
         The optional source layers triggered by the chosen extras are
         scaffolded too, so a fresh ``--extras queue`` project ships
         ``src/queue/`` rather than requiring a follow-up ``tempest generate
-        --src``.
+        --src``. ``alembic.ini`` + ``alembic/`` with a baseline revision
+        are written as well (see :func:`_init_migrations`), and the
+        generated lifespan applies them on startup.
     """
     resolved_name, target = _resolve_name_and_target(name, path)
     extras = _resolve_extras(extras)
@@ -305,13 +491,17 @@ def scaffold(
         **_spa_context(detect_spa_dir(target)),
     }
 
+    flags = template_flags(extras)
     root = _templates_root()
     written: list[Path] = []
     for template in _iter_templates(root):
+        flag = CONDITIONAL_TEMPLATES.get(template.relative_to(root).as_posix())
+        if flag is not None and flag not in flags:
+            continue
         destination = _target_path(template, root, target)
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(
-            _render(template.read_text(encoding="utf-8"), context),
+            _render(template.read_text(encoding="utf-8"), context, flags),
             encoding="utf-8",
         )
         written.append(destination)
@@ -344,6 +534,7 @@ def scaffold(
 
     layer_written, _ = add_src_layers(target, _parse_extras(extras), force=True)
     written.extend(layer_written)
+    written.extend(_init_migrations(target))
 
     cwd = Path.cwd()
     display = target.relative_to(cwd) if target.is_relative_to(cwd) else target
@@ -368,7 +559,11 @@ def scaffold(
 
 
 __all__: list[str] = [
+    "BASELINE_MESSAGE",
+    "CONDITIONAL_TEMPLATES",
+    "IMPLIED_EXTRAS",
     "scaffold",
+    "template_flags",
 ]
 
 
@@ -378,6 +573,7 @@ def __getattr__(item: str) -> Any:  # pragma: no cover - typer test helper
         "_build_sdk_dep",
         "_iter_templates",
         "_render",
+        "_render_blocks",
         "_resolve_name_and_target",
         "_resolve_target",
         "_target_path",

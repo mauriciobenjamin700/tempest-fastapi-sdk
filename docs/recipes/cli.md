@@ -66,7 +66,9 @@ O esqueleto casa com a arquitetura em camadas documentada em [Arquitetura »](..
 my_service/
 ├── main.py                  # one-liner → src.server.run()
 ├── pyproject.toml           # fixa tempest-fastapi-sdk + ruff/mypy/pytest
-├── .env.example             # TITLE/VERSION, SERVER_*, LOG_*, DATABASE_URL, JWT_*, TOKEN_SECRET, CORS_*
+├── .env.example             # TITLE/VERSION, SERVER_*, LOG_*, DATABASE_URL, JWT_* (com [auth]), TOKEN_SECRET, CORS_*
+├── alembic.ini              # caminhos ancorados em %(here)s
+├── alembic/                 # env.py + versions/ com a revision baseline
 ├── docker-compose.yaml      # serviços baseados nos extras escolhidos
 ├── Dockerfile               # multi-stage com uv, usuário não-root
 ├── .dockerignore
@@ -86,10 +88,10 @@ my_service/
 │   ├── core/                # settings.py + exceptions.py
 │   ├── db/
 │   │   ├── configs/names.py # nomes de tabela num símbolo só
-│   │   ├── models/user.py   # UserModel
+│   │   ├── models/user.py   # UserModel — só com [auth] (ou [admin])
 │   │   └── repositories/
 │   ├── queue/               # só com o extra [queue] — broker + handlers
-│   ├── tasks/               # só com o extra [tasks] — TaskQueue + jobs
+│   ├── tasks/               # só com [tasks] ou [tasks-redis] — TaskQueue + jobs
 │   ├── ui/                  # só com o extra [ssr] — pages/layout/components/styles
 │   └── utils/
 └── tests/
@@ -111,14 +113,14 @@ my_service/
     `code` certo, listagem paginada no envelope do SDK). Um símbolo
     renomeado no SDK quebra o teste, não o projeto de quem usa.
 
-O `pyproject.toml` gerado fixa a versão atual do SDK (`tempest-fastapi-sdk[admin,auth]>=<versão>` por padrão). `admin` e `auth` são obrigatórios — o `src/api/app.py` gerado monta o painel admin, e o login dele verifica a senha pelo `PasswordUtils` — então `--extras` **soma** a eles em vez de substituí-los: `--extras cache,tasks` fixa `[admin,auth,cache,tasks]`, `--extras ""` fixa só `[admin,auth]`, e duplicatas somem com a lista saindo em ordem alfabética. O grupo `dev` ganha `tempest-fastapi-sdk[cli]>=<versão>`, para o `tempest` rodar no projeto sem entrar na imagem: o `Dockerfile` gerado instala com `uv sync --no-dev`. O `.env.example` criado usa a nomenclatura de settings da v0.8.0 (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), e `src/server.py` delega a `tempest_fastapi_sdk.run_server` para que o uvicorn seja importado de forma preguiçosa e os testes possam importar o app sem ele. Regras de validação: o nome do projeto deve casar com `^[a-z][a-z0-9_]*$` e não pode colidir com uma palavra-chave do Python, então `tempest new Bad-Name` e `tempest new class` saem com código 2 antes de qualquer arquivo ser escrito.
+O `pyproject.toml` gerado fixa a versão atual do SDK com os extras que você pediu, e só eles (`tempest-fastapi-sdk>=<versão>` sem `--extras`). `admin` e `auth` são **opt-in**: com `--extras auth` o projeto ganha o `UserModel`, o `JWTSettings` no `Settings` e o bloco `JWT_*` no `.env.example`; com `--extras admin` o `src/api/app.py` também monta o painel admin — e o `auth` entra junto, porque o login do painel verifica a senha pelo `PasswordUtils`. Sem nenhum dos dois, o serviço nasce sem tabela de usuário, sem painel e sem `bcrypt`/`PyJWT` no lock: `--extras postgres` fixa só `[postgres]`, `--extras admin,cache` fixa `[admin,auth,cache]`, e duplicatas somem com a lista saindo em ordem alfabética. Até a 0.312.x `admin` e `auth` eram fixados sempre. O grupo `dev` ganha `tempest-fastapi-sdk[cli]>=<versão>`, para o `tempest` rodar no projeto sem entrar na imagem: o `Dockerfile` gerado instala com `uv sync --no-dev`. O `.env.example` criado usa a nomenclatura de settings da v0.8.0 (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), e `src/server.py` delega a `tempest_fastapi_sdk.run_server` para que o uvicorn seja importado de forma preguiçosa e os testes possam importar o app sem ele. Regras de validação: o nome do projeto deve casar com `^[a-z][a-z0-9_]*$` e não pode colidir com uma palavra-chave do Python, então `tempest new Bad-Name` e `tempest new class` saem com código 2 antes de qualquer arquivo ser escrito.
 
 !!! tip "Título / versão da API vêm do `.env`"
     A partir da v0.48.0 o `Settings` scaffoldado carrega `TITLE`,
     `VERSION` e `DESCRIPTION`, e `src/api/app.py` os consome
     (`FastAPI(title=settings.TITLE, version=settings.VERSION,
     description=settings.DESCRIPTION)`, `make_health_router(version=
-    settings.VERSION)` e `AdminSite(title=f"{settings.TITLE} admin")`).
+    settings.VERSION)` e, com `[admin]`, `AdminSite(title=f"{settings.TITLE} admin")`).
     Ajuste o título mostrado no Swagger/ReDoc e no header do `/admin`
     direto no `.env`, sem editar código:
 
@@ -135,7 +137,7 @@ Desde a v0.25.0 o scaffold gera um `docker-compose.yaml` com **apenas** os servi
 | Extra | Container subido | Porta(s) publicada(s) em `127.0.0.1` |
 |-------|------------------|--------------------------------------|
 | (sempre) | `postgres:18-alpine` | 5432 |
-| `[cache]` | `redis:8-alpine` | 6379 |
+| `[cache]` / `[tasks-redis]` | `redis:8-alpine` | 6379 |
 | `[queue]` / `[tasks]` | `rabbitmq:4-management-alpine` | 5672 (AMQP) + 15672 (UI) |
 | `[minio]` | `quay.io/minio/minio` + bootstrap mc | 9000 (API) + 9001 (Console) |
 | `[email]` | `mailhog/mailhog` | 1025 (SMTP) + 8025 (UI) |
@@ -267,6 +269,7 @@ Pedaço por pedaço:
     | `DATABASE_URL` | `postgresql+asyncpg://…@postgres:5432/<db>` | sempre |
     | `REDIS_URL` | `redis://redis:6379/0` | `[cache]` |
     | `RABBITMQ_URL` / `TASKIQ_BROKER_URL` | `amqp://…@rabbitmq:5672/` | `[queue]` / `[tasks]` |
+    | `TASKIQ_BROKER_URL` | `redis://redis:6379/0` | `[tasks-redis]` (vence o `amqp://` do `[tasks]`) |
     | `STORAGE_ENDPOINT` | `minio:9000` | `[minio]` |
 
     Sem essa reescrita a API não quebra — ela sobe **no lugar errado**. A
@@ -319,23 +322,29 @@ Pedaço por pedaço:
 
 ##### Migrations no profile `prod`
 
-O scaffold não gera Alembic, então o compose não tem um serviço de migration:
-a API sobe com o banco vazio. Crie o ambiente e a primeira revision no host,
-contra o Postgres do compose (que está em `127.0.0.1:5432`), e aplique dentro
-da rede:
+O scaffold já vem com `alembic.ini`, `alembic/` e uma revision `baseline`
+(as tabelas dos models que os extras trouxeram — `users` com `[auth]`, um
+`upgrade()` vazio sem ele), e o lifespan do `src/api/app.py` gerado chama
+`AlembicHelper(...).sync_schema_async()` antes do `db.connect()`. Então o
+compose não precisa de serviço de migration: a API migra o Postgres ao subir.
 
 ```bash
-docker compose up -d --wait
-# no .env: DATABASE_URL=postgresql+asyncpg://app:app@localhost:5432/my_service
-tempest db init
-tempest db revision -m "init"
+cp .env.example .env
 docker compose --profile prod up -d --build --wait
-docker compose --profile prod run --rm api tempest db upgrade
+curl http://127.0.0.1:8000/health/readiness
 ```
 
-O `alembic/` entra na imagem pelo `COPY . .`, e o `tempest db upgrade` dentro
-do container lê o `DATABASE_URL` do `environment:` — ou seja, migra o
-Postgres do compose, não o SQLite do `.env`.
+Medido com `tempest new my_service --extras admin,postgres`: a API respondeu
+`/health/readiness` 200, o Postgres ficou com `users` e `alembic_version` na
+revision `baseline`, e reiniciar a API não rodou nenhum upgrade de novo.
+O `sync_schema_async` recusa migration destrutiva (drop de tabela, coluna ou
+constraint) e trata banco vazio, banco criado antes do Alembic e banco já
+migrado. Com várias réplicas subindo juntas, desligue com
+`DATABASE_MIGRATE_ON_STARTUP=false` e rode
+`docker compose --profile prod run --rm api tempest db upgrade` num job.
+
+Model novo ganha migration com `tempest db revision -m "..."`; a próxima
+subida aplica.
 
 As tags das imagens são fixadas — atualize por `pyproject.toml` da SDK, não no projeto gerado. Versões atuais (v0.26.0+): `postgres:18-alpine`, `redis:8-alpine`, `rabbitmq:4-management-alpine`.
 
@@ -512,7 +521,9 @@ Mapeamento extra → camada gerada:
 | Extra | Arquivos criados (sob `src/` ou `app/`) |
 |-------|------------------------------------------|
 | `[queue]` | `queue/__init__.py` (`RabbitBroker` + `AsyncQueueManager` + `get_broker`), `queue/handlers.py` (subscriber de exemplo) |
-| `[tasks]` | `tasks/__init__.py` (`tq = TaskQueue.from_settings(settings)` + `broker`/`scheduler` para a CLI do TaskIQ + `get_task_queue`), `tasks/jobs.py` (task de exemplo com `@tq.task`) |
+| `[tasks]` / `[tasks-redis]` | `tasks/__init__.py` (`tq = TaskQueue.from_settings(settings)` + `broker`/`scheduler` para a CLI do TaskIQ + `get_task_queue`), `tasks/jobs.py` (task de exemplo com `@tq.task`) |
+
+Os dois extras geram a mesma camada: o transporte sai do `TASKIQ_BROKER_URL` em runtime. Com `[tasks-redis]`, o `tempest new` também declara `TASKIQ_BROKER_URL` no `Settings` com default `redis://localhost:6379/0` e escreve a mesma URL no `.env.example`, porque o default do mixin é `amqp://`, que escolhe o RabbitMQ e exige `[tasks]`. Se mesmo assim a URL apontar para um transporte cujo extra não está instalado, o `ImportError` do `TaskQueue.from_settings` nomeia o `TASKIQ_BROKER_URL`, o valor lido (senha mascarada) e a URL do outro transporte.
 
 A raiz (`src` ou `app`) é detectada automaticamente, e os imports gerados (`from src.queue import broker`) já apontam pra ela. A operação é **idempotente**: arquivos existentes são **mantidos** a menos que você passe `--force`, então um handler editado à mão nunca é sobrescrito silenciosamente — o arquivo irmão que ainda não existe é criado normalmente. Extras sem camada associada (ex.: só `[cache]`) não geram nada e o comando avisa.
 

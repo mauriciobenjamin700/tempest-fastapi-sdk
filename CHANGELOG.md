@@ -61,6 +61,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- O `CLAUDE.md` que o `tempest new` gera escreve as regras da camada de
+  service como regra, e não só como exemplo (#520): todo service herda
+  `BaseService` (exceção: service sem repository, dito na docstring), nenhum
+  `__init__` que só guarda o repository, uma classe pública por módulo de
+  `services/` sem função solta (helper vai para `src/utils/`), e nenhum
+  método de repository que só repassa para `list` / `get` / `paginate`. O
+  `tempest check` ainda não as aplica: o gate mora no `tempest-cli`, que não
+  conhece o SDK.
+- `tempest new` deixa de fixar `admin` e `auth` em todo projeto (#522): o
+  `pyproject.toml` gerado leva só os extras passados em `--extras`. `auth`
+  gera o `UserModel`, o `JWTSettings` no `Settings` e o bloco `JWT_*` do
+  `.env.example`; `admin` monta o painel no `app.py` e traz o `auth` junto,
+  porque o login do painel verifica a senha pelo `PasswordUtils`. Sem os
+  dois, o serviço nasce sem tabela de usuário, sem painel e sem `bcrypt` /
+  `PyJWT` no lock — medido com `tempest new x --extras postgres` + `uv sync`:
+  nenhum dos dois no `uv.lock`, o app sobe, `/health/readiness` responde 200,
+  `/admin/login` 404, e `tempest check` passa. Para o projeto de antes, passe
+  `--extras admin`. Os templates ganham blocos `@@if <extra>@@` para o que
+  depende de um extra. De carona, a docstring do `src/db/models/user.py`
+  gerado deixa de estourar 88 colunas (o `tempest check` do projeto novo
+  falhava em `E501`).
 - `SubjectGraph` deixa coluna `LargeBinary` fora da exportação por padrão;
   até a 0.312.x ela saía em base64 (o `payload` de uma tabela de job, um blob
   de modelo). `exclude_binary=False` volta ao comportamento anterior (#507).
@@ -97,6 +118,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- O projeto do `tempest new` aplica as próprias migrations (#519). Até a
+  0.312.x ele não tinha `alembic/` nem `alembic.ini`, o lifespan só fazia
+  `db.connect()`, e `docker compose --profile prod up` subia a API contra um
+  Postgres sem tabela. Agora o scaffold escreve `alembic.ini` + `alembic/` e
+  autogera uma revision `baseline` com as tabelas dos models que os extras
+  trouxeram (num processo filho, contra um SQLite descartável fora do
+  projeto), e o lifespan gerado chama
+  `AlembicHelper(ALEMBIC_INI, db_url=settings.DATABASE_URL).sync_schema_async()`
+  antes do `db.connect()` — desligável com `DATABASE_MIGRATE_ON_STARTUP=false`
+  (novo campo do `Settings` gerado e do `.env.example`). Medido com
+  `tempest new x --extras admin,postgres` e `docker compose --profile prod up
+  --build --wait`: `/health/readiness` 200, `users` e `alembic_version` na
+  `baseline` no Postgres, e um restart da API não rodou upgrade de novo; e o
+  projeto sem extras, subido de outro diretório contra um SQLite vazio, ficou
+  com `alembic_version` no head.
+- `AlembicHelper.init` (e `tempest db init`) escreve `script_location =
+  %(here)s/alembic` e `prepend_sys_path = %(here)s`, ancorados no diretório
+  do ini; com `alembic` e `.` o ini só funcionava com o processo iniciado na
+  raiz do projeto (`FAILED: Path doesn't exist: alembic`). Diretório absoluto
+  continua escrito como veio (#519).
+- `AlembicHelper.revision` (e `tempest db revision`) remove, junto com o
+  marcador `# ### end Alembic commands ###`, a linha em branco que o
+  `ruff format` do hook pôs antes dele; a revision com `batch_alter_table`
+  no fim do `upgrade()` saía com três linhas em branco antes do
+  `def downgrade` e falhava no `ruff format --check` (#519).
+- `tempest new --extras tasks-redis` gera um projeto que sobe sem RabbitMQ e
+  sem `.env` (#521). Até a 0.312.x o extra não gerava a camada `src/tasks/`
+  (só `tasks` gerava), o `.env.example` não tinha `TASKIQ_*`, o compose não
+  tinha Redis, e o `Settings` herdava o default `amqp://` do `TaskIQSettings`
+  — o import de um `TaskQueue.from_settings(settings)` morria com
+  `ImportError: RabbitMQ tasks require the optional [tasks] extra`. Agora
+  `[tasks-redis]` gera a mesma camada `tasks`, o `Settings` gerado declara
+  `TASKIQ_BROKER_URL` com default `redis://localhost:6379/0`, o
+  `.env.example` traz a mesma URL e o compose sobe o Redis e aponta a API
+  para `redis://redis:6379/0`. Projeto sem extra de tasks deixa de herdar o
+  `TaskIQSettings`. Medido num projeto gerado e sincronizado com `uv sync`
+  (sem `taskiq_aio_pika` instalado): `from src.tasks import broker` devolve um
+  `RedisStreamBroker`, e `tempest check` passa. E o `ImportError` do
+  `TaskQueue.from_settings` passa a nomear o `TASKIQ_BROKER_URL`, o valor lido
+  (senha mascarada), o extra que aquele transporte exige e a URL do outro
+  transporte, em vez de só mandar instalar `[tasks]`.
 - O `session_factory` de `make_push_router`, `make_web_push_router`,
   `make_chat_router`, `make_reviews_router`, `make_wallet_router`,
   `make_session_router`, `make_voice_router` e `make_app_error_router` vira

@@ -137,7 +137,6 @@ def _blocked_modules(pinned: set[str], project_deps: set[str]) -> set[str]:
 
 _BOOT_SCRIPT = textwrap.dedent(
     """
-    import asyncio
     import importlib.abc
     import sys
 
@@ -154,34 +153,43 @@ _BOOT_SCRIPT = textwrap.dedent(
     sys.meta_path.insert(0, _Blocker())
     sys.path.insert(0, {project!r})
 
+    import sqlite3
+
+    from alembic.script import ScriptDirectory
     from fastapi.testclient import TestClient
-    from sqlalchemy.ext.asyncio import create_async_engine
 
-    from src.core.settings import settings
-    from src.db.models import BaseModel
+    from src.api.app import ALEMBIC_INI
     from src.server import app
+    from tempest_fastapi_sdk import AlembicHelper
 
-
-    async def _create_tables():
-        engine = create_async_engine(settings.DATABASE_URL)
-        async with engine.begin() as conn:
-            await conn.run_sync(BaseModel.metadata.create_all)
-        await engine.dispose()
-
-
-    asyncio.run(_create_tables())
     with TestClient(app) as client:
         assert client.get("/health/readiness").status_code == 200
-        assert client.get("/admin/login").status_code == 200
-        response = client.post(
-            "/admin/login",
-            data={{"identifier": "nobody@example.com", "password": "wrong-pass"}},
-            follow_redirects=False,
-        )
-        print("login", response.status_code)
+        if {admin!r}:
+            assert client.get("/admin/login").status_code == 200
+            response = client.post(
+                "/admin/login",
+                data={{"identifier": "nobody@example.com", "password": "wrong-pass"}},
+                follow_redirects=False,
+            )
+            print("login", response.status_code)
+        else:
+            assert client.get("/admin/login").status_code == 404
+            print("no admin")
+    config = AlembicHelper(str(ALEMBIC_INI)).config
+    (head,) = ScriptDirectory.from_config(config).get_heads()
+    with sqlite3.connect({database!r}) as connection:
+        query = "SELECT version_num FROM alembic_version"
+        (stamped,) = connection.execute(query).fetchone()
+    assert stamped == head, (stamped, head)
+    print("migrated", head)
     """
 )
-"""Boots the generated app, then submits the admin login once."""
+"""Boots the generated app against an empty SQLite file.
+
+No table is created by hand: the lifespan migrates (#519), so the admin
+login only finds its ``users`` table if the baseline revision ran. After
+shutdown ``alembic_version`` must hold the head of the generated tree.
+"""
 
 
 def _scaffold(tmp_path: Path, extras: str) -> tuple[Path, set[str], set[str]]:
@@ -218,6 +226,9 @@ def _boot(
     project: Path,
     tmp_path: Path,
     blocked: set[str],
+    *,
+    admin: bool = True,
+    cwd: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run :data:`_BOOT_SCRIPT` for ``project`` with ``blocked`` unimportable.
 
@@ -225,17 +236,27 @@ def _boot(
         project (Path): The generated project root.
         tmp_path (Path): Scratch directory for the database and logs.
         blocked (set[str]): Top-level import names to refuse.
+        admin (bool): Whether the project mounts the admin panel, so the
+            script logs in once, or must answer ``404`` on ``/admin/login``.
+        cwd (Path | None): Directory the interpreter starts in; the
+            project root when ``None``.
 
     Returns:
         subprocess.CompletedProcess[str]: The finished interpreter run.
     """
-    script = _BOOT_SCRIPT.format(blocked=sorted(blocked), project=str(project))
+    database = tmp_path / "boot.db"
+    script = _BOOT_SCRIPT.format(
+        blocked=sorted(blocked),
+        project=str(project),
+        admin=admin,
+        database=str(database),
+    )
     return subprocess.run(
         [sys.executable, "-c", script],
-        cwd=project,
+        cwd=cwd or project,
         env={
             "PATH": "",
-            "DATABASE_URL": f"sqlite+aiosqlite:///{tmp_path / 'boot.db'}",
+            "DATABASE_URL": f"sqlite+aiosqlite:///{database}",
             "LOG_DIR": str(tmp_path / "logs"),
         },
         capture_output=True,
@@ -245,16 +266,108 @@ def _boot(
     )
 
 
-@pytest.mark.parametrize("extras", ["cache,tasks", ""])
+@pytest.mark.parametrize("extras", ["admin,cache,tasks", "admin"])
 def test_generated_app_boots_with_only_the_pinned_extras(
     tmp_path: Path,
     extras: str,
 ) -> None:
     """The app and its admin login run without any unpinned extra."""
     project, pinned, project_deps = _scaffold(tmp_path, extras)
+    assert pinned >= {"admin", "auth"}
     completed = _boot(project, tmp_path, _blocked_modules(pinned, project_deps))
     assert completed.returncode == 0, completed.stderr[-2000:]
     assert "login " in completed.stdout
+    assert "migrated " in completed.stdout
+
+
+@pytest.mark.parametrize("extras", ["", "postgres"])
+def test_a_service_without_users_boots_without_admin_or_auth(
+    tmp_path: Path,
+    extras: str,
+) -> None:
+    """``admin`` and ``auth`` are opt-in: no ``UserModel``, panel or JWT (#522).
+
+    ``bcrypt`` and ``jwt`` are blocked as the consumer's venv would lack
+    them, and the app still boots.
+    """
+    project, pinned, project_deps = _scaffold(tmp_path, extras)
+    assert not pinned & {"admin", "auth"}
+    assert not (project / "src" / "db" / "models" / "user.py").exists()
+    for relative in (
+        "src/api/app.py",
+        "src/core/settings.py",
+        "src/db/models/__init__.py",
+        ".env.example",
+    ):
+        text = (project / relative).read_text(encoding="utf-8")
+        for absent in ("UserModel", "JWTSettings", "JWT_SECRET", "AdminSite"):
+            assert absent not in text, (relative, absent)
+    blocked = _blocked_modules(pinned, project_deps)
+    assert {"bcrypt", "jwt"} <= blocked
+    completed = _boot(project, tmp_path, blocked, admin=False)
+    assert completed.returncode == 0, completed.stderr[-2000:]
+    assert "no admin" in completed.stdout
+    assert "migrated " in completed.stdout
+
+
+_TASKS_IMPORT_SCRIPT = textwrap.dedent(
+    """
+    import importlib.abc
+    import sys
+
+    BLOCKED = frozenset({blocked!r})
+
+
+    class _Blocker(importlib.abc.MetaPathFinder):
+        def find_spec(self, fullname, path=None, target=None):
+            if fullname.partition(".")[0] in BLOCKED:
+                raise ModuleNotFoundError(f"No module named {{fullname!r}}")
+            return None
+
+
+    sys.meta_path.insert(0, _Blocker())
+    sys.path.insert(0, {project!r})
+
+    from src.tasks import broker
+    from src.tasks.jobs import example_job
+
+    print("broker", type(broker).__name__, callable(example_job.enqueue))
+    """
+)
+"""Imports the generated task layer the way the API and the worker do."""
+
+
+def test_tasks_redis_project_imports_its_tasks_without_env_or_rabbitmq(
+    tmp_path: Path,
+) -> None:
+    """``--extras tasks-redis`` boots on Redis, with no ``.env`` at all (#521).
+
+    The mixin's ``TASKIQ_BROKER_URL`` default is an ``amqp://`` URL; a
+    project pinned to ``[tasks-redis]`` used to read it, pick RabbitMQ and
+    die asking for ``[tasks]``. The module runs with ``taskiq_aio_pika``
+    unimportable, as in the consumer's venv, and without any environment
+    variable naming the broker.
+    """
+    project, pinned, project_deps = _scaffold(tmp_path, "tasks-redis")
+    assert (project / "src" / "tasks" / "jobs.py").is_file()
+    assert not (project / ".env").exists()
+    blocked = _blocked_modules(pinned, project_deps)
+    assert "taskiq_aio_pika" in blocked
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _TASKS_IMPORT_SCRIPT.format(blocked=sorted(blocked), project=str(project)),
+        ],
+        cwd=project,
+        env={"PATH": "", "LOG_DIR": ""},
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr[-2000:]
+    assert "broker RedisStreamBroker" in completed.stdout
 
 
 @pytest.mark.parametrize(
@@ -275,8 +388,43 @@ def test_harness_reproduces_each_missing_required_extra(
     login stopped reaching ``PasswordUtils``, the boot test above would
     pass for any pinned set.
     """
-    project, pinned, project_deps = _scaffold(tmp_path, "cache,tasks")
+    project, pinned, project_deps = _scaffold(tmp_path, "admin,cache,tasks")
     blocked = _blocked_modules(pinned - {dropped}, project_deps)
     completed = _boot(project, tmp_path, blocked)
     assert completed.returncode != 0
     assert message in completed.stderr
+
+
+def test_the_app_migrates_when_started_outside_the_project_root(
+    tmp_path: Path,
+) -> None:
+    """The lifespan finds ``alembic.ini`` and its scripts from any cwd (#519)."""
+    project, pinned, project_deps = _scaffold(tmp_path, "admin")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    completed = _boot(
+        project,
+        tmp_path,
+        _blocked_modules(pinned, project_deps),
+        cwd=elsewhere,
+    )
+    assert completed.returncode == 0, completed.stderr[-2000:]
+    assert "migrated " in completed.stdout
+
+
+def test_the_scaffold_ships_a_lint_clean_baseline(tmp_path: Path) -> None:
+    """The baseline revision passes the project's own ``ruff`` gate (#519)."""
+    project, _, _ = _scaffold(tmp_path, "admin")
+    (revision,) = (project / "alembic" / "versions").glob("*_baseline.py")
+    assert 'op.create_table(\n        "users"' in revision.read_text(encoding="utf-8")
+    ruff = Path(sys.executable).parent / "ruff"
+    for args in (["format", "--check", "alembic"], ["check", "alembic"]):
+        completed = subprocess.run(
+            [str(ruff), *args],
+            cwd=project,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr

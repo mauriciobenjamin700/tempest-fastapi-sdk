@@ -403,9 +403,14 @@ configuração inteira do scaffold): zero erro e zero comentário inline.
 
 ### O CLI puro do Alembic também funciona
 
-O `alembic.ini` gerado traz `prepend_sys_path = .`, então `uv run alembic
-upgrade head` e `uv run alembic downgrade -1` importam o seu pacote a partir
-do diretório onde rodam — sem o CLI do `tempest`. Junto vem
+O `alembic.ini` gerado traz `script_location = %(here)s/alembic` e
+`prepend_sys_path = %(here)s`, os dois ancorados no diretório do próprio ini.
+Então `uv run alembic upgrade head` e `uv run alembic downgrade -1` importam o
+seu pacote sem o CLI do `tempest`, e um lifespan que passa o caminho absoluto
+do ini (`AlembicHelper("/app/alembic.ini")`) acha os scripts qualquer que
+seja o diretório onde o processo subiu. Até a 0.312.x o ini trazia `alembic`
+e `.`, relativos ao diretório atual, e só funcionava rodado da raiz do
+projeto. Junto vem
 `path_separator = os`: sem ele, o Alembic 1.19.1 emite um
 `DeprecationWarning` sobre o jeito antigo de separar o `prepend_sys_path`, e
 quem roda com `-W error` (ou `filterwarnings = ["error"]`) vê a migration
@@ -463,7 +468,7 @@ Medido contra PostgreSQL 16: depois do `upgrade head`, um
 !!! tip "Já tem um `env.py` gerado antes?"
     Ele continua funcionando. Para passar a receber as correções do SDK,
     troque o conteúdo pelas três instruções acima (mantendo o **seu** import
-    de metadata) e acrescente `prepend_sys_path = .` e `path_separator = os`
+    de metadata) e acrescente `prepend_sys_path = %(here)s` e `path_separator = os`
     à seção `[alembic]` do `alembic.ini`. As migrations já escritas não
     mudam: `op.replace_enum` e `op.drop_enum_type` são registrados quando o
     `env.py` importa `tempest_fastapi_sdk.db`.
@@ -552,7 +557,7 @@ nenhuma tabela, mas possivelmente várias colunas — e coluna ele não olha.
       gerado recusa conexão entregue com a FK ligada.
     - O `env.py` gerado é uma chamada a `run_alembic_env`: correção do SDK
       chega no upgrade do pacote, e o arquivo passa no ruff sem comentário
-      inline. `prepend_sys_path = .` deixa o CLI puro do Alembic importar o
+      inline. `prepend_sys_path = %(here)s` deixa o CLI puro do Alembic importar o
       seu pacote.
 
 ## Veja também

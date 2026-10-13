@@ -8,10 +8,14 @@ model you create.
 """
 
 from tempest_fastapi_sdk import BaseModel
+@@if auth@@
 
 from src.db.models.user import UserModel
+@@endif@@
 
 __all__: list[str] = [
     "BaseModel",
+@@if auth@@
     "UserModel",
+@@endif@@
 ]

@@ -6,6 +6,7 @@ import tomllib
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from typer.testing import CliRunner
 
 from tempest_fastapi_sdk import __version__
@@ -174,7 +175,7 @@ class TestNew:
         assert result.exit_code == 0
         pyproject = (tmp_path / "demo_svc" / "pyproject.toml").read_text()
         assert 'name = "demo_svc"' in pyproject
-        assert "tempest-fastapi-sdk[admin,auth]>=" in pyproject
+        assert f'"tempest-fastapi-sdk>={__version__}"' in pyproject
         env = (tmp_path / "demo_svc" / ".env.example").read_text()
         assert "SERVER_HOST=127.0.0.1" in env
         assert "SERVER_PORT=8000" in env
@@ -197,7 +198,7 @@ class TestNew:
         )
         assert result.exit_code == 0
         pyproject = (tmp_path / "demo_svc" / "pyproject.toml").read_text()
-        assert "tempest-fastapi-sdk[admin,auth,upload]>=" in pyproject
+        assert "tempest-fastapi-sdk[auth,upload]>=" in pyproject
         env = (tmp_path / "demo_svc" / ".env.example").read_text()
         assert "SERVER_HOST=0.0.0.0" in env
         assert "SERVER_PORT=9090" in env
@@ -260,21 +261,28 @@ class TestNew:
         assert "[tool.hatch" not in pyproject
         assert "package = false" in pyproject
 
-    def test_empty_extras_pins_only_the_required_ones(self, tmp_path: Path) -> None:
-        """``--extras ""`` still pins what the scaffolded app.py imports (#389)."""
+    def test_empty_extras_pins_no_extra(self, tmp_path: Path) -> None:
+        """``--extras ""`` pins the bare SDK: admin and auth are opt-in (#522)."""
         result = runner.invoke(
             app,
             ["new", "demo_svc", "--path", str(tmp_path), "--extras", ""],
         )
         assert result.exit_code == 0
         pyproject = (tmp_path / "demo_svc" / "pyproject.toml").read_text()
-        assert "tempest-fastapi-sdk[admin,auth]>=" in pyproject
+        assert f'"tempest-fastapi-sdk>={__version__}"' in pyproject
 
-    def test_extras_add_to_the_required_ones(self, tmp_path: Path) -> None:
-        """``--extras cache,tasks`` must not drop ``admin`` and ``auth`` (#389)."""
+    def test_admin_brings_auth_along(self, tmp_path: Path) -> None:
+        """The admin login hashes through ``PasswordUtils`` (#389, #522)."""
         result = runner.invoke(
             app,
-            ["new", "demo_svc", "--path", str(tmp_path), "--extras", "cache,tasks"],
+            [
+                "new",
+                "demo_svc",
+                "--path",
+                str(tmp_path),
+                "--extras",
+                "admin,cache,tasks",
+            ],
         )
         assert result.exit_code == 0, result.stdout + result.stderr
         target = tmp_path / "demo_svc"
@@ -297,7 +305,7 @@ class TestNew:
         )
         assert result.exit_code == 0, result.stdout + result.stderr
         pyproject = (tmp_path / "demo_svc" / "pyproject.toml").read_text()
-        assert "tempest-fastapi-sdk[admin,auth,cache,tasks]>=" in pyproject
+        assert "tempest-fastapi-sdk[auth,cache,tasks]>=" in pyproject
 
     def test_scaffolds_queue_layer_for_queue_extra(self, tmp_path: Path) -> None:
         result = runner.invoke(
@@ -366,13 +374,16 @@ class TestScaffoldHelpers:
         assert new._build_sdk_dep("") == f"tempest-fastapi-sdk>={__version__}"
         assert new._build_sdk_dep(" , ") == f"tempest-fastapi-sdk>={__version__}"
 
-    def test_resolve_extras_always_includes_the_required_ones(self) -> None:
+    def test_resolve_extras_adds_only_what_an_extra_implies(self) -> None:
+        """``admin`` and ``auth`` are opt-in; ``admin`` brings ``auth`` (#522)."""
         from tempest_fastapi_sdk.cli import new
 
-        assert frozenset({"admin", "auth"}) == new.REQUIRED_EXTRAS
-        assert new._resolve_extras("") == "admin,auth"
-        assert new._resolve_extras("cache,tasks") == "admin,auth,cache,tasks"
-        assert new._resolve_extras("auth,cache,auth") == "admin,auth,cache"
+        assert {"admin": frozenset({"auth"})} == new.IMPLIED_EXTRAS
+        assert new._resolve_extras("") == ""
+        assert new._resolve_extras("postgres") == "postgres"
+        assert new._resolve_extras("cache,tasks") == "cache,tasks"
+        assert new._resolve_extras("admin") == "admin,auth"
+        assert new._resolve_extras("auth,cache,auth") == "auth,cache"
         assert new._resolve_extras("tasks,cache") == new._resolve_extras("cache,tasks")
 
     def test_render_replaces_placeholders(self) -> None:
@@ -383,3 +394,34 @@ class TestScaffoldHelpers:
             {"PROJECT_NAME": "demo_svc", "HOST": "0.0.0.0"},
         )
         assert rendered == "name=demo_svc host=0.0.0.0"
+
+    def test_render_keeps_only_the_blocks_whose_flag_is_on(self) -> None:
+        from tempest_fastapi_sdk.cli import new
+
+        template = (
+            "a\n@@if auth@@\nb\n@@else@@\nc\n@@endif@@\n@@if !auth@@\nd\n@@endif@@\ne\n"
+        )
+        assert new._render(template, {}, frozenset({"auth"})) == "a\nb\ne\n"
+        assert new._render(template, {}, frozenset()) == "a\nc\nd\ne\n"
+
+    @pytest.mark.parametrize(
+        "template",
+        [
+            "@@if a@@\n@@if b@@\n@@endif@@\n@@endif@@\n",
+            "@@endif@@\n",
+            "@@else@@\n",
+            "@@if a@@\nx\n",
+        ],
+    )
+    def test_render_refuses_a_malformed_block(self, template: str) -> None:
+        from tempest_fastapi_sdk.cli import new
+
+        with pytest.raises(ValueError):
+            new._render(template, {}, frozenset())
+
+    def test_taskiq_flag_covers_both_transports(self) -> None:
+        from tempest_fastapi_sdk.cli import new
+
+        assert "taskiq" in new.template_flags("tasks")
+        assert "taskiq" in new.template_flags("cache, Tasks-Redis")
+        assert "taskiq" not in new.template_flags("cache,queue")

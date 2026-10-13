@@ -41,7 +41,7 @@ def claude_md(tmp_path_factory: pytest.TempPathFactory) -> str:
     tmp_path = tmp_path_factory.mktemp("claude-md")
     result = runner.invoke(
         cli_app,
-        ["new", "demo", "--path", str(tmp_path), "--extras", "ssr,auth"],
+        ["new", "demo", "--path", str(tmp_path), "--extras", "ssr,admin"],
     )
     assert result.exit_code == 0, result.stdout + result.stderr
     return (tmp_path / "demo" / "CLAUDE.md").read_text(encoding="utf-8")
@@ -87,6 +87,23 @@ def test_states_the_rules_that_keep_services_uniform(claude_md: str) -> None:
         "tempest check",
         "Do not reimplement",
         "__all__",
+    ):
+        assert rule in claude_md
+
+
+def test_states_the_service_layer_rules(claude_md: str) -> None:
+    """The service rules are written as rules, not left to the example (#520).
+
+    A service built from this file reimplemented ``BaseService``, wrapped
+    ``BaseRepository.list`` and kept helpers beside three services in one
+    module, because the only mention of ``BaseService`` was an example.
+    """
+    for rule in (
+        "Every service subclasses `BaseService[Repository, ResponseSchema]`",
+        "No `__init__` that only stores the repository",
+        "One public class per module in `services/`",
+        "goes to `src/utils/`",
+        "No repository method that only forwards to the base",
     ):
         assert rule in claude_md
 
