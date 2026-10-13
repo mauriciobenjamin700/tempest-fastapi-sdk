@@ -927,10 +927,16 @@ from tempest_fastapi_sdk.db import (
     ConstraintRename as ConstraintRename,
 )
 from tempest_fastapi_sdk.db import (
+    CreateEnumCheckOp as CreateEnumCheckOp,
+)
+from tempest_fastapi_sdk.db import (
     DatabaseBackup as DatabaseBackup,
 )
 from tempest_fastapi_sdk.db import (
     DestructiveMigrationError as DestructiveMigrationError,
+)
+from tempest_fastapi_sdk.db import (
+    DropEnumCheckOp as DropEnumCheckOp,
 )
 from tempest_fastapi_sdk.db import (
     DropEnumTypeOp as DropEnumTypeOp,
@@ -1132,6 +1138,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     snapshot_model as snapshot_model,
+)
+from tempest_fastapi_sdk.db import (
+    sqlite_enum_checks as sqlite_enum_checks,
 )
 from tempest_fastapi_sdk.db import (
     supports_full_text as supports_full_text,
@@ -2238,6 +2247,7 @@ __all__: list[str] = [
     "ConstraintKind",
     "ConstraintRename",
     "Controller",
+    "CreateEnumCheckOp",
     "CursorPaginationFilterSchema",
     "CursorPaginationSchema",
     "DatabaseBackup",
@@ -2249,6 +2259,7 @@ __all__: list[str] = [
     "DeviceService",
     "DiskMetrics",
     "DownloadUtils",
+    "DropEnumCheckOp",
     "DropEnumTypeOp",
     "DroppedFilterWarning",
     "EmailChangeConfirmSchema",
@@ -2758,6 +2769,7 @@ __all__: list[str] = [
     "sign_path",
     "snapshot_model",
     "sniff_mime",
+    "sqlite_enum_checks",
     "sse_response",
     "stamp_locale",
     "states_by_region",

@@ -79,6 +79,12 @@ from tempest_fastapi_sdk.db.device_token_model import (
     make_device_token_model as make_device_token_model,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
+    CreateEnumCheckOp as CreateEnumCheckOp,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
+    DropEnumCheckOp as DropEnumCheckOp,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
     DropEnumTypeOp as DropEnumTypeOp,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
@@ -98,6 +104,9 @@ from tempest_fastapi_sdk.db.enum_migrations import (
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
     render_enum_types as render_enum_types,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
+    sqlite_enum_checks as sqlite_enum_checks,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
     sync_enum_types as sync_enum_types,
@@ -284,8 +293,10 @@ __all__: list[str] = [
     "ColumnRef",
     "ConstraintKind",
     "ConstraintRename",
+    "CreateEnumCheckOp",
     "DatabaseBackup",
     "DestructiveMigrationError",
+    "DropEnumCheckOp",
     "DropEnumTypeOp",
     "DroppedFilterWarning",
     "EnumColumnRef",
@@ -359,6 +370,7 @@ __all__: list[str] = [
     "session_dependency_for",
     "shared_memory_url",
     "snapshot_model",
+    "sqlite_enum_checks",
     "supports_full_text",
     "sync_enum_types",
     "to_snake_case",

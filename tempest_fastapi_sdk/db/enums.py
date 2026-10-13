@@ -43,6 +43,7 @@ from __future__ import annotations
 import enum
 from typing import Any, Final, cast
 
+from sqlalchemy import CheckConstraint, Column, MetaData, String, Table
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -157,13 +158,16 @@ class TempestEnum(SQLEnum):
 
     Notes:
         That name is derived from the **enum type**, not the column, so
-        two columns of the same enum in one table produce two ``CHECK``
-        constraints sharing a name. PostgreSQL never sees it — it uses
-        the native type and emits no ``CHECK`` at all — and SQLite
-        accepts the duplicate, so both supported backends are fine. The
-        name is left alone deliberately: fixing it would mean changing
-        ``NAMING_CONVENTION`` for *every* check constraint, which would
-        rename constraints in migrations consumers have already applied.
+        two columns of the same enum in one table would produce two
+        ``CHECK`` constraints sharing a name. SQLite accepts that in
+        ``CREATE TABLE``, but Alembic's batch mode keys constraints by
+        name and keeps only one, so the other column silently accepted
+        any value after the next rebuild (#526). The second and later
+        columns of one enum in a table therefore get
+        ``ck_<table>_<enum>_<column>``; the first keeps
+        ``ck_<table>_<enum>``, as does every table with one column per
+        enum, so no constraint already applied changes name.
+        ``NAMING_CONVENTION`` itself is untouched.
 
         The same holds for a migration written by
         ``alembic revision --autogenerate`` through the SDK's ``env.py``:
@@ -197,6 +201,46 @@ class TempestEnum(SQLEnum):
         if enum_class is not None:
             kwargs.setdefault("name", enum_type_name(enum_class))
         super().__init__(*enums, **kwargs)
+
+    def _set_table(self, column: Any, table: Any) -> None:
+        """Attach to ``table``, naming this column's ``CHECK`` per column on a clash.
+
+        SQLAlchemy names the type-bound ``CHECK`` after the enum, so a
+        second column of the same enum in the table gets a check under
+        the same name as the first. When that happens the new check is
+        renamed to ``<enum>_<column>`` and passed through the table's
+        naming convention again, so the SDK's convention renders
+        ``ck_<table>_<enum>_<column>``.
+
+        Args:
+            column (Any): The column this type was attached to.
+            table (Any): The table holding the column.
+
+        Notes:
+            This overrides a private SQLAlchemy hook, like
+            :meth:`_resolve_for_python_type`, because it is where the
+            check is created. ``tests/db/test_enum_column.py`` pins the
+            resulting names, so a SQLAlchemy release that changes the
+            hook fails the suite.
+        """
+        before = set(table.constraints)
+        super()._set_table(column, table)  # type: ignore[no-untyped-call]
+        for check in set(table.constraints) - before:
+            if not isinstance(check, CheckConstraint) or not isinstance(
+                check.name, str
+            ):
+                continue
+            clash = any(
+                other is not check
+                and isinstance(other, CheckConstraint)
+                and getattr(other, "_type_bound", False)
+                and other.name == check.name
+                for other in table.constraints
+            )
+            if clash:
+                check.name = _convention_check_name(
+                    table, column.name, f"{self.name}_{column.name}"
+                )
 
     def _resolve_for_python_type(
         self,
@@ -290,6 +334,33 @@ def enum_column(
         Mapped[Any]: The mapped column declaration.
     """
     return mapped_column(TempestEnum(enum_class), **kwargs)
+
+
+def _convention_check_name(table: Any, column: str, constraint_name: str) -> Any:
+    """Apply ``table``'s naming convention to a ``CHECK`` name.
+
+    SQLAlchemy computes the name on a scratch table that carries the same
+    convention, so every token the convention uses resolves exactly as it
+    would on the real table.
+
+    Args:
+        table (Any): The table whose convention applies.
+        column (str): The column the check constrains.
+        constraint_name (str): The name before the convention.
+
+    Returns:
+        Any: The converted name (a ``conv``), or ``constraint_name`` when
+        the table has no ``ck`` convention.
+    """
+    scratch = Table(
+        table.name,
+        MetaData(naming_convention=dict(table.metadata.naming_convention)),
+        Column(column, String()),
+        schema=table.schema,
+    )
+    probe = CheckConstraint(scratch.c[column].is_not(None), name=constraint_name)
+    scratch.append_constraint(probe)
+    return probe.name
 
 
 def _inherit_schema_flag(type_: TempestEnum) -> bool:

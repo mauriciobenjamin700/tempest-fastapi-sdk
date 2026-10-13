@@ -113,6 +113,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- No SQLite, coluna enum adicionada a tabela existente (#526): duas colunas do
+  mesmo enum ganhavam `CHECK` com o mesmo nome e o batch guardava um — a
+  outra aceitava qualquer valor —, e o downgrade de **toda** coluna enum
+  adicionada falhava com `no such column`. O hook novo `sqlite_enum_checks`
+  (no `DEFAULT_REVISION_HOOKS`) escreve `batch_op.create_enum_check(...)`
+  depois de cada `add_column` enum e `batch_op.drop_enum_check(...)` antes de
+  cada `drop_column`; as duas operações (`CreateEnumCheckOp`,
+  `DropEnumCheckOp`) não fazem nada fora do SQLite. A segunda coluna de um
+  enum numa tabela passa a ter `ck_<tabela>_<enum>_<coluna>` (no
+  `TempestEnum` e na migration); a primeira mantém `ck_<tabela>_<enum>`.
+  Medido nos três casos da issue, com SQLAlchemy 2.0.52 e 2.1.4: `upgrade` →
+  `downgrade` → `upgrade` passa e valor fora do enum é recusado em cada coluna.
+- `op.replace_enum` no SQLite mantém o nome do `CHECK` da coluna e não
+  renomeia mais os outros `CHECK` da tabela para `ck_<tabela>_ck_<tabela>_...`
+  (a reflexão rodava sob a naming convention).
 - O `sync_enum_types` escreve o reverso do `op.replace_enum` no `downgrade`;
   até aqui o `downgrade` gerado ficava vazio e deixava o tipo com os membros
   novos.

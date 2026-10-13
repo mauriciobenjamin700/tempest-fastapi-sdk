@@ -457,11 +457,44 @@ class TestCheckColumnMatch:
                 old_values=["KID", "TEEN"],
                 columns=[EnumColumnRef(table="ages", column="age_range")],
             )
-            sqltexts = [
-                check["sqltext"]
+            checks = {
+                check["name"]: check["sqltext"]
                 for check in sa.inspect(connection).get_check_constraints("ages")
-            ]
-        assert any(text.startswith("store_age_range IN") for text in sqltexts)
+            }
+        assert checks["ck_ages_store_range_enum"].startswith("store_age_range IN")
+        assert "'ADULT'" in checks["ck_ages_age_range_enum"]
+        assert len(checks) == 2
+
+    def test_replacing_keeps_a_per_column_check_name(self) -> None:
+        """#526: the rebuilt check keeps the name the column's check had."""
+        engine = create_engine("sqlite://")
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "CREATE TABLE ages (id INTEGER PRIMARY KEY, "
+                "age_range VARCHAR(4), store_age_range VARCHAR(4), "
+                "CONSTRAINT ck_ages_age_range_enum "
+                "CHECK (age_range IN ('KID', 'TEEN')), "
+                "CONSTRAINT ck_ages_age_range_enum_store_age_range "
+                "CHECK (store_age_range IN ('KID', 'TEEN')))"
+            )
+            Operations(MigrationContext.configure(connection)).replace_enum(  # type: ignore[attr-defined]
+                "age_range_enum",
+                new_values=["KID", "TEEN", "ADULT"],
+                old_values=["KID", "TEEN"],
+                columns=[
+                    EnumColumnRef(table="ages", column="age_range"),
+                    EnumColumnRef(table="ages", column="store_age_range"),
+                ],
+            )
+            checks = {
+                check["name"]: check["sqltext"]
+                for check in sa.inspect(connection).get_check_constraints("ages")
+            }
+        assert set(checks) == {
+            "ck_ages_age_range_enum",
+            "ck_ages_age_range_enum_store_age_range",
+        }
+        assert all("'ADULT'" in text for text in checks.values())
 
 
 class TestEnumTypeState:

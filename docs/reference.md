@@ -220,6 +220,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.enum_migrations.EnumTypeState
 ::: tempest_fastapi_sdk.db.enum_migrations.render_enum_types
 ::: tempest_fastapi_sdk.db.enum_migrations.sync_enum_types
+::: tempest_fastapi_sdk.db.enum_migrations.CreateEnumCheckOp
+::: tempest_fastapi_sdk.db.enum_migrations.DropEnumCheckOp
+::: tempest_fastapi_sdk.db.enum_migrations.sqlite_enum_checks
 ::: tempest_fastapi_sdk.db.enum_migrations.DropEnumTypeOp
 ::: tempest_fastapi_sdk.db.enum_migrations.drop_enum_types_on_downgrade
 ::: tempest_fastapi_sdk.db.enum_migrations.type_bound_check_include_object

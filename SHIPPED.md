@@ -260,6 +260,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `_enum_enum`); `op.rename_enum_type` (PG `ALTER TYPE ... RENAME`, SQLite
   renomeia o `CHECK`) detectado pelo `sync_enum_types`, que também passou a
   escrever o reverso de `replace_enum`/`rename_enum_type` no downgrade.
+  **CHECK por coluna no batch do SQLite (#526):** `sqlite_enum_checks`
+  (hook) + `op.create_enum_check`/`op.drop_enum_check` (no-op fora do
+  SQLite): `add_column` enum ganha o `CHECK` nomeado por coluna, `drop_column`
+  derruba o `CHECK` antes; segunda coluna do mesmo enum vira
+  `ck_<tabela>_<enum>_<coluna>` no `TempestEnum`.
   **`check()` de enum no SQLite (0.313.0, #483):** `run_alembic_env` passa
   `include_object=type_bound_check_include_object(metadata)`, que descarta do
   lado do banco o `CHECK` cujo `(tabela, nome)` casa um `CHECK` `_type_bound`

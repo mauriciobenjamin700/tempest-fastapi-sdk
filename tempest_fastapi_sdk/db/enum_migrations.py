@@ -50,12 +50,16 @@ from typing import Any, Final
 import sqlalchemy as sa
 from alembic.autogenerate import renderers
 from alembic.autogenerate.api import AutogenContext
-from alembic.operations import MigrateOperation, Operations
+from alembic.autogenerate.render import _alembic_autogenerate_prefix
+from alembic.operations import BatchOperations, MigrateOperation, Operations
 from alembic.operations.ops import (
+    AddColumnOp,
     AlterColumnOp,
     CreateTableOp,
+    DropColumnOp,
     DropTableOp,
     MigrationScript,
+    ModifyTableOps,
 )
 from sqlalchemy.sql.elements import conv
 
@@ -427,10 +431,17 @@ def _sqlite_rebuild(
     reflection brings the **old** ``CHECK`` along — so a plain
     ``batch_alter_table`` rebuilds the table with the stale constraint
     still attached and the migration appears to do nothing. The table is
-    therefore reflected here, the enum's own check removed from the copy,
-    and the result handed to Alembic as ``copy_from``, which is the
+    therefore reflected here, the column's enum check replaced in the
+    copy, and the result handed to Alembic as ``copy_from``, which is the
     documented way to tell batch mode exactly what the new table should
     look like.
+
+    The replacement keeps the old check's name, so a column whose check
+    is ``ck_<table>_<enum>_<column>`` keeps it; only a column with no
+    enum check yet gets ``ck_<table>_<enum>``. The table is reflected into
+    a ``MetaData`` without a naming convention: the SDK's ``ck`` template
+    embeds ``%(constraint_name)s``, and reflecting under it rewrote every
+    **other** check of the table to ``ck_<table>_ck_<table>_...``.
 
     Args:
         operations (Operations): Alembic's operations proxy.
@@ -443,14 +454,22 @@ def _sqlite_rebuild(
         *values,
         name=enum_name,
         native_enum=True,
-        create_constraint=True,
+        create_constraint=False,
     )
-    metadata = sa.MetaData(naming_convention=NAMING_CONVENTION)
-    table = sa.Table(ref.table, metadata, autoload_with=connection)
+    table = sa.Table(ref.table, sa.MetaData(), autoload_with=connection)
+    name: str | None = None
     for constraint in list(table.constraints):
         if _is_enum_check(constraint, ref.column):
+            name = name or (str(constraint.name) if constraint.name else None)
             table.constraints.discard(constraint)
     table.c[ref.column].type = enum_type
+    if name is None:
+        name = _check_name(dict(NAMING_CONVENTION), ref.table, ref.column, enum_type)
+    labels = ", ".join(_sql_string(value) for value in values)
+    column = connection.dialect.identifier_preparer.quote(ref.column)
+    table.append_constraint(
+        sa.CheckConstraint(sa.text(f"{column} IN ({labels})"), name=conv(name)),
+    )
 
     with operations.batch_alter_table(ref.table, copy_from=table) as batch:
         batch.alter_column(ref.column, type_=enum_type)
@@ -751,6 +770,349 @@ def _render_rename_enum_type(
     return f"op.rename_enum_type({', '.join(parts)})"
 
 
+@Operations.register_operation("create_enum_check")
+@BatchOperations.register_operation("create_enum_check", "batch_create_enum_check")
+class CreateEnumCheckOp(MigrateOperation):
+    """Create the ``CHECK`` that enforces an enum column on SQLite.
+
+    SQLite has no enum type: the members live in a ``CHECK`` named by the
+    naming convention. Left to ``sa.Enum(create_constraint=True)`` inside
+    ``batch_alter_table``, that check is named after the **type**, so two
+    columns of one enum produce two checks under one name and the batch,
+    which keys constraints by name, keeps only the last — the other column
+    then accepts any value, with nothing reporting it. This operation names
+    the check explicitly, per column.
+
+    It is a no-op on every other backend: PostgreSQL enforces the members
+    through the native type and carries no ``CHECK``.
+
+    :func:`sqlite_enum_checks` emits it after every enum ``add_column``
+    (and after a ``create_table`` whose columns share an enum); it is also
+    callable by hand as ``op.create_enum_check(...)`` or, inside a batch,
+    ``batch_op.create_enum_check(...)``.
+
+    Attributes:
+        table_name (str): The table holding the column.
+        column_name (str): The enum column.
+        values (tuple[str, ...]): The members the check allows.
+        name (str): The constraint name, used as given.
+        schema (str | None): The table's schema.
+    """
+
+    def __init__(
+        self,
+        table_name: str,
+        column_name: str,
+        values: Sequence[str],
+        *,
+        name: str,
+        schema: str | None = None,
+    ) -> None:
+        """Record which check to create.
+
+        Args:
+            table_name (str): The table holding the column.
+            column_name (str): The enum column.
+            values (Sequence[str]): The members the check allows.
+            name (str): The constraint name, used as given (the naming
+                convention is not applied a second time).
+            schema (str | None): The table's schema.
+        """
+        self.table_name: str = table_name
+        self.column_name: str = column_name
+        self.values: tuple[str, ...] = tuple(values)
+        self.name: str = name
+        self.schema: str | None = schema
+
+    @classmethod
+    def create_enum_check(
+        cls,
+        operations: Operations,
+        table_name: str,
+        column_name: str,
+        values: Sequence[str],
+        *,
+        name: str,
+        schema: str | None = None,
+    ) -> None:
+        """Entry point registered as ``op.create_enum_check(...)``.
+
+        Args:
+            operations (Operations): Alembic's operations proxy.
+            table_name (str): The table holding the column.
+            column_name (str): The enum column.
+            values (Sequence[str]): The members the check allows.
+            name (str): The constraint name.
+            schema (str | None): The table's schema.
+        """
+        operations.invoke(
+            cls(table_name, column_name, values, name=name, schema=schema),
+        )
+
+    @classmethod
+    def batch_create_enum_check(
+        cls,
+        operations: BatchOperations,
+        column_name: str,
+        values: Sequence[str],
+        *,
+        name: str,
+    ) -> None:
+        """Entry point registered as ``batch_op.create_enum_check(...)``.
+
+        Args:
+            operations (BatchOperations): Alembic's batch proxy.
+            column_name (str): The enum column.
+            values (Sequence[str]): The members the check allows.
+            name (str): The constraint name.
+        """
+        operations.invoke(
+            cls(
+                operations.impl.table_name,
+                column_name,
+                values,
+                name=name,
+                schema=operations.impl.schema,
+            ),
+        )
+
+    def reverse(self) -> DropEnumCheckOp:
+        """Return the operation that undoes this one.
+
+        Returns:
+            DropEnumCheckOp: The drop of this column's enum check.
+        """
+        return DropEnumCheckOp(self.table_name, self.column_name, schema=self.schema)
+
+    def to_diff_tuple(self) -> tuple[Any, ...]:
+        """Describe the change so ``alembic check`` can report it.
+
+        Returns:
+            tuple[Any, ...]: ``("create_enum_check", <table>, <column>)``.
+        """
+        return ("create_enum_check", self.table_name, self.column_name)
+
+
+@Operations.implementation_for(CreateEnumCheckOp)
+def _run_create_enum_check(
+    operations: Operations | BatchOperations,
+    operation: CreateEnumCheckOp,
+) -> None:
+    """Add the check on SQLite, through a batch; skip every other backend.
+
+    Inside a ``batch_alter_table`` the constraint joins the batch's own
+    rebuild; outside one, a batch is opened for it, because SQLite cannot
+    ``ALTER TABLE ... ADD CONSTRAINT``.
+
+    Args:
+        operations (Operations): Alembic's operations proxy, or the batch
+            proxy when invoked as ``batch_op.create_enum_check``.
+        operation (CreateEnumCheckOp): The check to create.
+    """
+    dialect = operations.migration_context.dialect
+    if dialect.name != SQLITE_DIALECT:
+        return
+    labels = ", ".join(_sql_string(value) for value in operation.values)
+    condition = (
+        f"{dialect.identifier_preparer.quote(operation.column_name)} IN ({labels})"
+    )
+    if isinstance(operations, BatchOperations):
+        operations.create_check_constraint(conv(operation.name), condition)
+        return
+    with operations.batch_alter_table(
+        operation.table_name, schema=operation.schema
+    ) as batch:
+        batch.create_check_constraint(conv(operation.name), condition)
+
+
+@Operations.register_operation("drop_enum_check")
+@BatchOperations.register_operation("drop_enum_check", "batch_drop_enum_check")
+class DropEnumCheckOp(MigrateOperation):
+    """Drop the SQLite ``CHECK`` of an enum column, before dropping the column.
+
+    SQLite's batch mode copies every reflected ``CHECK`` into the rebuilt
+    table and cannot tell which column a check text names, so
+    ``batch_op.drop_column("age_range")`` rebuilt the table with
+    ``CHECK (age_range IN (...))`` still attached and failed with
+    ``no such column: age_range`` — the downgrade of every enum
+    ``add_column`` broke. This operation reads the table's checks, picks the
+    ones in the generated ``<column> IN (...)`` shape for this column, and
+    drops them by name, whatever name they carry.
+
+    It is a no-op on every other backend. :func:`sqlite_enum_checks` emits it
+    before every enum ``drop_column``.
+
+    Attributes:
+        table_name (str): The table holding the column.
+        column_name (str): The enum column.
+        schema (str | None): The table's schema.
+    """
+
+    def __init__(
+        self,
+        table_name: str,
+        column_name: str,
+        *,
+        schema: str | None = None,
+    ) -> None:
+        """Record which column's check to drop.
+
+        Args:
+            table_name (str): The table holding the column.
+            column_name (str): The enum column.
+            schema (str | None): The table's schema.
+        """
+        self.table_name: str = table_name
+        self.column_name: str = column_name
+        self.schema: str | None = schema
+
+    @classmethod
+    def drop_enum_check(
+        cls,
+        operations: Operations,
+        table_name: str,
+        column_name: str,
+        *,
+        schema: str | None = None,
+    ) -> None:
+        """Entry point registered as ``op.drop_enum_check(...)``.
+
+        Args:
+            operations (Operations): Alembic's operations proxy.
+            table_name (str): The table holding the column.
+            column_name (str): The enum column.
+            schema (str | None): The table's schema.
+        """
+        operations.invoke(cls(table_name, column_name, schema=schema))
+
+    @classmethod
+    def batch_drop_enum_check(
+        cls,
+        operations: BatchOperations,
+        column_name: str,
+    ) -> None:
+        """Entry point registered as ``batch_op.drop_enum_check(...)``.
+
+        Args:
+            operations (BatchOperations): Alembic's batch proxy.
+            column_name (str): The enum column.
+        """
+        operations.invoke(
+            cls(
+                operations.impl.table_name,
+                column_name,
+                schema=operations.impl.schema,
+            ),
+        )
+
+    def to_diff_tuple(self) -> tuple[Any, ...]:
+        """Describe the change so ``alembic check`` can report it.
+
+        Returns:
+            tuple[Any, ...]: ``("drop_enum_check", <table>, <column>)``.
+        """
+        return ("drop_enum_check", self.table_name, self.column_name)
+
+
+@Operations.implementation_for(DropEnumCheckOp)
+def _run_drop_enum_check(
+    operations: Operations | BatchOperations,
+    operation: DropEnumCheckOp,
+) -> None:
+    """Drop the column's enum checks on SQLite; skip every other backend.
+
+    Args:
+        operations (Operations): Alembic's operations proxy, or the batch
+            proxy when invoked as ``batch_op.drop_enum_check``.
+        operation (DropEnumCheckOp): The drop to perform.
+
+    Raises:
+        NotImplementedError: On SQLite in offline (``--sql``) mode, where
+            the checks cannot be read.
+    """
+    context = operations.migration_context
+    if context.dialect.name != SQLITE_DIALECT:
+        return
+    if context.as_sql:
+        raise NotImplementedError(
+            "drop_enum_check needs a live connection on SQLite: it reads the "
+            "table's CHECK constraints to find the ones naming the column.",
+        )
+    inspector = sa.inspect(operations.get_bind())
+    names = list(
+        dict.fromkeys(
+            str(check["name"])
+            for check in inspector.get_check_constraints(
+                operation.table_name, schema=operation.schema
+            )
+            if check.get("name")
+            and _check_column(str(check.get("sqltext") or "")) == operation.column_name
+            and _parse_check_values(str(check.get("sqltext") or "")) is not None
+        ),
+    )
+    if not names:
+        return
+    if isinstance(operations, BatchOperations):
+        for name in names:
+            operations.drop_constraint(conv(name), type_="check")
+        return
+    with operations.batch_alter_table(
+        operation.table_name, schema=operation.schema
+    ) as batch:
+        for name in names:
+            batch.drop_constraint(conv(name), type_="check")
+
+
+@renderers.dispatch_for(CreateEnumCheckOp)
+def _render_create_enum_check(
+    autogen_context: AutogenContext,
+    operation: CreateEnumCheckOp,
+) -> str:
+    """Render :class:`CreateEnumCheckOp`, as ``batch_op.`` inside a batch.
+
+    Args:
+        autogen_context (AutogenContext): Alembic's rendering context.
+        operation (CreateEnumCheckOp): The operation to render.
+
+    Returns:
+        str: The ``create_enum_check(...)`` call.
+    """
+    prefix = _alembic_autogenerate_prefix(autogen_context)
+    parts = [] if prefix == "batch_op." else [repr(operation.table_name)]
+    parts.extend(
+        [
+            repr(operation.column_name),
+            repr(list(operation.values)),
+            f"name={operation.name!r}",
+        ],
+    )
+    if operation.schema and prefix != "batch_op.":
+        parts.append(f"schema={operation.schema!r}")
+    return f"{prefix}create_enum_check({', '.join(parts)})"
+
+
+@renderers.dispatch_for(DropEnumCheckOp)
+def _render_drop_enum_check(
+    autogen_context: AutogenContext,
+    operation: DropEnumCheckOp,
+) -> str:
+    """Render :class:`DropEnumCheckOp`, as ``batch_op.`` inside a batch.
+
+    Args:
+        autogen_context (AutogenContext): Alembic's rendering context.
+        operation (DropEnumCheckOp): The operation to render.
+
+    Returns:
+        str: The ``drop_enum_check(...)`` call.
+    """
+    prefix = _alembic_autogenerate_prefix(autogen_context)
+    parts = [] if prefix == "batch_op." else [repr(operation.table_name)]
+    parts.append(repr(operation.column_name))
+    if operation.schema and prefix != "batch_op.":
+        parts.append(f"schema={operation.schema!r}")
+    return f"{prefix}drop_enum_check({', '.join(parts)})"
+
+
 @Operations.register_operation("drop_enum_type")
 class DropEnumTypeOp(MigrateOperation):
     """Drop a PostgreSQL ``ENUM`` type, and do nothing on other backends.
@@ -1042,6 +1404,295 @@ def _drop_enum_type_swaps(op_list: list[Any], names: set[str]) -> None:
         operation.modify_type = None
         if not operation.has_changes():
             op_list.remove(operation)
+
+
+def sqlite_enum_checks(
+    context: Any,
+    revision: str | tuple[str, ...],
+    directives: list[MigrationScript],
+) -> None:
+    """Give every enum column its own SQLite ``CHECK``, and drop it with the column.
+
+    An ``alembic revision --autogenerate`` hook, for the two places where
+    the ``CHECK`` an ``sa.Enum(create_constraint=True)`` carries goes wrong
+    under the batch mode the SDK's ``env.py`` turns on:
+
+    * **Adding a column.** The check is named after the enum type, so two
+      columns of one enum get two checks under one name, and the batch
+      keeps one. Every enum ``add_column`` is rewritten to
+      ``create_constraint=False`` and followed by
+      :class:`CreateEnumCheckOp`, named as the model's metadata names that
+      column's check — ``ck_<table>_<enum>``, or ``ck_<table>_<enum>_<column>``
+      for the second and later columns of one enum in a table
+      (:class:`~tempest_fastapi_sdk.db.enums.TempestEnum`). A
+      ``create_table`` whose columns share an enum gets the same treatment
+      for those later columns.
+    * **Dropping a column.** The batch copies the reflected check that
+      names the column into the rebuilt table, which then fails with
+      ``no such column``. Every enum ``drop_column`` is preceded by
+      :class:`DropEnumCheckOp`.
+
+    Both operations are no-ops outside SQLite, so the same migration runs on
+    PostgreSQL with no ``CHECK`` at all. Both the upgrade and the downgrade
+    are rewritten. Compose it with the other hooks through
+    :func:`~tempest_fastapi_sdk.db.alembic_hooks.compose_hooks`.
+
+    Args:
+        context (Any): Alembic's ``MigrationContext``.
+        revision (str | tuple[str, ...]): The revision being generated.
+        directives (list[MigrationScript]): The scripts to amend.
+    """
+    if not directives:
+        return
+    metadata = context.opts.get("target_metadata")
+    check_names = _declared_check_names(metadata) if metadata is not None else {}
+    convention = _naming_convention(metadata)
+    script = directives[0]
+    for container in (script.upgrade_ops, script.downgrade_ops):
+        if container is not None:
+            container.ops[:] = _with_enum_checks(
+                container.ops, None, check_names, convention
+            )
+
+
+def _with_enum_checks(
+    op_list: Sequence[Any],
+    batch_table: str | None,
+    check_names: dict[EnumColumnRef, str],
+    convention: dict[Any, Any],
+) -> list[Any]:
+    """Rewrite one list of operations for :func:`sqlite_enum_checks`.
+
+    Args:
+        op_list (Sequence[Any]): The operations, top level or inside one
+            ``ModifyTableOps`` (a batch block).
+        batch_table (str | None): The batch's table, or ``None`` at top
+            level.
+        check_names (dict[EnumColumnRef, str]): The metadata's check name
+            per enum column.
+        convention (dict[Any, Any]): The metadata's naming convention, for
+            columns the metadata no longer declares.
+
+    Returns:
+        list[Any]: The rewritten operations.
+    """
+    result: list[Any] = []
+    for operation in op_list:
+        if isinstance(operation, ModifyTableOps):
+            operation.ops[:] = _with_enum_checks(
+                operation.ops, operation.table_name, check_names, convention
+            )
+            result.append(operation)
+        elif isinstance(operation, AddColumnOp):
+            enum_type = _checked_enum(operation.column.type)
+            if enum_type is None:
+                result.append(operation)
+                continue
+            operation.column = _without_check(operation.column, enum_type)
+            ref = EnumColumnRef(
+                table=operation.table_name, column=operation.column.name
+            )
+            name = check_names.get(ref) or _check_name(
+                convention, operation.table_name, operation.column.name, enum_type
+            )
+            result.extend(
+                [
+                    operation,
+                    CreateEnumCheckOp(
+                        operation.table_name,
+                        operation.column.name,
+                        enum_type.enums,
+                        name=name,
+                        schema=operation.schema,
+                    ),
+                ],
+            )
+        elif isinstance(operation, DropColumnOp):
+            if _dropped_enum(operation) is not None:
+                result.append(
+                    DropEnumCheckOp(
+                        operation.table_name,
+                        operation.column_name,
+                        schema=operation.schema,
+                    ),
+                )
+            result.append(operation)
+        elif isinstance(operation, CreateTableOp) and batch_table is None:
+            result.append(operation)
+            result.extend(_split_shared_enum_checks(operation, check_names, convention))
+        else:
+            result.append(operation)
+    return result
+
+
+def _split_shared_enum_checks(
+    operation: CreateTableOp,
+    check_names: dict[EnumColumnRef, str],
+    convention: dict[Any, Any],
+) -> list[CreateEnumCheckOp]:
+    """Give the later columns of a shared enum in a new table their own check.
+
+    The rendered ``sa.Enum`` names every column's check after the type, so
+    the second column of one enum would reuse the first one's name — which
+    SQLite accepts in ``CREATE TABLE``, and the next batch on the table then
+    loses. Those columns are rewritten to ``create_constraint=False`` and
+    get a :class:`CreateEnumCheckOp` each, under the metadata's name.
+
+    Args:
+        operation (CreateTableOp): The table being created; edited in place.
+        check_names (dict[EnumColumnRef, str]): The metadata's check name
+            per enum column.
+        convention (dict[Any, Any]): The metadata's naming convention.
+
+    Returns:
+        list[CreateEnumCheckOp]: The checks to create after the table.
+    """
+    seen: set[str] = set()
+    created: list[CreateEnumCheckOp] = []
+    columns = list(operation.columns)
+    for index, item in enumerate(columns):
+        if not isinstance(item, sa.Column):
+            continue
+        enum_type = _checked_enum(item.type)
+        if enum_type is None or enum_type.name is None:
+            continue
+        if enum_type.name not in seen:
+            seen.add(enum_type.name)
+            continue
+        ref = EnumColumnRef(table=operation.table_name, column=item.name)
+        name = check_names.get(ref) or _check_name(
+            convention,
+            operation.table_name,
+            item.name,
+            enum_type,
+            per_column=True,
+        )
+        columns[index] = _without_check(item, enum_type)
+        created.append(
+            CreateEnumCheckOp(
+                operation.table_name,
+                item.name,
+                enum_type.enums,
+                name=name,
+                schema=operation.schema,
+            ),
+        )
+    operation.columns = columns
+    return created
+
+
+def _checked_enum(type_: Any) -> sa.Enum | None:
+    """Return ``type_`` when it is an enum that carries a ``CHECK``.
+
+    Args:
+        type_ (Any): A column type.
+
+    Returns:
+        sa.Enum | None: The enum, or ``None`` for any other type or an
+        enum created with ``create_constraint=False``.
+    """
+    if isinstance(type_, sa.Enum) and type_.create_constraint:
+        return type_
+    return None
+
+
+def _dropped_enum(operation: DropColumnOp) -> sa.Enum | None:
+    """Return the enum type of the column a ``drop_column`` removes.
+
+    Args:
+        operation (DropColumnOp): The drop.
+
+    Returns:
+        sa.Enum | None: The type, when autogenerate recorded the column
+        and it is an enum that carries a ``CHECK``.
+    """
+    try:
+        column = operation.to_column()
+    except (AttributeError, ValueError):
+        return None
+    return _checked_enum(column.type)
+
+
+def _without_check(column: sa.Column[Any], enum_type: sa.Enum) -> sa.Column[Any]:
+    """Copy ``column`` with an equal enum type that carries no ``CHECK``.
+
+    A copy, because the column of an autogenerated operation is the
+    model's own ``Column``.
+
+    Args:
+        column (sa.Column[Any]): The column to copy.
+        enum_type (sa.Enum): Its enum type.
+
+    Returns:
+        sa.Column[Any]: The copy, typed ``create_constraint=False``.
+    """
+    copy = column._copy()
+    copy.type = sa.Enum(
+        *enum_type.enums,
+        name=enum_type.name,
+        schema=enum_type.schema,
+        native_enum=enum_type.native_enum,
+        create_constraint=False,
+    )
+    return copy
+
+
+def _naming_convention(
+    metadata: sa.MetaData | Sequence[sa.MetaData] | None,
+) -> dict[Any, Any]:
+    """Return the naming convention of the target metadata.
+
+    Args:
+        metadata (sa.MetaData | Sequence[sa.MetaData] | None): The target
+            metadata.
+
+    Returns:
+        dict[Any, Any]: The first metadata's convention, or the SDK's
+        :data:`~tempest_fastapi_sdk.db.model.NAMING_CONVENTION` when there
+        is none.
+    """
+    if isinstance(metadata, sa.MetaData):
+        return dict(metadata.naming_convention)
+    if metadata:
+        return dict(metadata[0].naming_convention)
+    return dict(NAMING_CONVENTION)
+
+
+def _check_name(
+    convention: dict[Any, Any],
+    table: str,
+    column: str,
+    enum_type: sa.Enum,
+    *,
+    per_column: bool = False,
+) -> str:
+    """Name an enum check the way the naming convention would.
+
+    Used for a column the metadata does not declare (a downgrade re-adding
+    a column the upgrade removed). The name comes from SQLAlchemy applying
+    ``convention`` to a scratch table, not from a template rebuilt here.
+
+    Args:
+        convention (dict[Any, Any]): The naming convention.
+        table (str): The table name.
+        column (str): The column name.
+        enum_type (sa.Enum): The column's enum type.
+        per_column (bool): Whether the column shares its enum with an
+            earlier column of the table, which suffixes the column name.
+
+    Returns:
+        str: The constraint name.
+    """
+    base = enum_type.name or column
+    constraint_name = f"{base}_{column}" if per_column else base
+    scratch = sa.Table(
+        table,
+        sa.MetaData(naming_convention=convention),
+        sa.Column(column, sa.String()),
+    )
+    probe = sa.CheckConstraint(scratch.c[column].is_not(None), name=constraint_name)
+    scratch.append_constraint(probe)
+    return str(probe.name)
 
 
 def drop_enum_types_on_downgrade(
@@ -1692,6 +2343,8 @@ def _type_bound_check_names(
 __all__: list[str] = [
     "OLD_TYPE_SUFFIX",
     "SQLITE_DIALECT",
+    "CreateEnumCheckOp",
+    "DropEnumCheckOp",
     "DropEnumTypeOp",
     "EnumColumnRef",
     "EnumTypeState",
@@ -1700,6 +2353,7 @@ __all__: list[str] = [
     "drop_enum_types_on_downgrade",
     "postgresql_replace_statements",
     "render_enum_types",
+    "sqlite_enum_checks",
     "sync_enum_types",
     "type_bound_check_include_object",
 ]

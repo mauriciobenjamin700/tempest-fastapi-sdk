@@ -29,6 +29,7 @@ from tempest_fastapi_sdk.db.enums import (
     enum_type_name,
     enum_values,
 )
+from tempest_fastapi_sdk.db.model import NAMING_CONVENTION
 
 
 class OrderStatus(BaseStrEnum):
@@ -213,3 +214,64 @@ class TestStringValuesForm:
     def test_explicit_keywords_beat_the_defaults(self) -> None:
         column_type = TempestEnum(OrderStatus, name="custom_name")
         assert column_type.name == "custom_name"
+
+
+def _shipments(*columns: str) -> sa.Table:
+    """Build a table with one ``OrderStatus`` column per name.
+
+    Args:
+        *columns (str): The column names, in declaration order.
+
+    Returns:
+        sa.Table: The table, under the SDK naming convention.
+    """
+    metadata = sa.MetaData(naming_convention=NAMING_CONVENTION)
+    return sa.Table(
+        "shipments",
+        metadata,
+        *(sa.Column(name, TempestEnum(OrderStatus)) for name in columns),
+    )
+
+
+def _check_names(table: sa.Table) -> dict[str, str]:
+    """Map each column to the name of its type-bound check.
+
+    Args:
+        table (sa.Table): The table to read.
+
+    Returns:
+        dict[str, str]: Column name to check name.
+    """
+    return {
+        next(iter(check.columns)).name: str(check.name)
+        for check in table.constraints
+        if isinstance(check, sa.CheckConstraint)
+    }
+
+
+class TestCheckNamePerColumn:
+    """#526: two columns of one enum in a table get two check names."""
+
+    def test_one_column_keeps_the_type_name(self) -> None:
+        assert _check_names(_shipments("status")) == {
+            "status": "ck_shipments_order_status_enum"
+        }
+
+    def test_a_second_column_is_suffixed_and_the_first_is_untouched(self) -> None:
+        assert _check_names(_shipments("status", "previous_status")) == {
+            "status": "ck_shipments_order_status_enum",
+            "previous_status": "ck_shipments_order_status_enum_previous_status",
+        }
+
+    def test_sqlite_ddl_carries_both_checks(self) -> None:
+        table = _shipments("status", "previous_status")
+        ddl = str(CreateTable(table).compile(dialect=sqlite.dialect()))
+        assert "ck_shipments_order_status_enum CHECK (status IN" in ddl
+        assert (
+            "ck_shipments_order_status_enum_previous_status CHECK (previous_status IN"
+        ) in ddl
+
+    def test_a_copied_table_keeps_the_names(self) -> None:
+        table = _shipments("status", "previous_status")
+        copy = table.to_metadata(sa.MetaData(naming_convention=NAMING_CONVENTION))
+        assert _check_names(copy) == _check_names(table)
