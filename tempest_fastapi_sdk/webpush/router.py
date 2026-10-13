@@ -18,6 +18,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
 from tempest_fastapi_sdk.utils._signature import accepts_keyword
 from tempest_fastapi_sdk.webpush.schemas import WebPushSubscriptionSchema
 from tempest_fastapi_sdk.webpush.service import WebPushSubscriptionService
@@ -26,7 +27,7 @@ from tempest_fastapi_sdk.webpush.service import WebPushSubscriptionService
 def make_web_push_router(
     *,
     service_factory: Callable[[AsyncSession], WebPushSubscriptionService[Any]],
-    session_factory: Callable[[], AsyncIterator[AsyncSession]],
+    session_factory: Callable[..., AsyncIterator[AsyncSession]],
     current_user_id: Callable[..., Any],
     prefix: str = "/api/push",
     tags: list[str] | None = None,
@@ -54,7 +55,7 @@ def make_web_push_router(
             Builds a request-scoped service from the yielded session
             (typically ``lambda s: WebPushSubscriptionService(
             BaseRepository(s, model=Model), dispatcher)``).
-        session_factory (Callable[[], AsyncIterator[AsyncSession]]): Yields
+        session_factory (Callable[..., AsyncIterator[AsyncSession]]): Yields
             a request-scoped DB session (the project's ``get_session``).
         current_user_id (Callable[..., Any]): A FastAPI dependency that
             resolves the authenticated user's :class:`~uuid.UUID`.
@@ -90,9 +91,7 @@ def make_web_push_router(
             key = vapid_public_key() if callable(vapid_public_key) else vapid_public_key
             return {"public_key": key or ""}
 
-    async def _session() -> AsyncIterator[AsyncSession]:
-        async for session in session_factory():
-            yield session
+    _session = session_provider_for(session_factory)
 
     def _service(
         session: AsyncSession = Depends(_session),

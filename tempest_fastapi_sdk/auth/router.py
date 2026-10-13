@@ -55,6 +55,7 @@ from sqlalchemy import inspect as sa_inspect
 
 from tempest_fastapi_sdk.api.cookies import clear_cookie, set_cookie
 from tempest_fastapi_sdk.api.dependencies import make_jwt_user_dependency
+from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
 from tempest_fastapi_sdk.api.error_docs import error_responses
 from tempest_fastapi_sdk.api.oauth import (
     OAuthAudienceVerifier,
@@ -546,24 +547,7 @@ def make_auth_router(
         tags=list(tags or ["auth"]),
     )
 
-    session_provider: Callable[..., Any]
-    if inspect.isasyncgenfunction(session_factory) or inspect.isgeneratorfunction(
-        session_factory
-    ):
-        session_provider = session_factory
-    else:
-
-        async def _session() -> AsyncIterator[AsyncSession]:
-            """Iterate a session factory FastAPI cannot resolve itself.
-
-            Yields:
-                AsyncSession: The request's session.
-            """
-            async for s in session_factory():
-                yield s
-
-        session_provider = _session
-
+    session_provider = session_provider_for(session_factory)
     session_dep = Depends(session_provider)
 
     auth_settings = service.auth_settings

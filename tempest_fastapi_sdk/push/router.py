@@ -17,6 +17,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
 from tempest_fastapi_sdk.push.schemas import DeviceRegistrationSchema
 from tempest_fastapi_sdk.push.service import DeviceService
 from tempest_fastapi_sdk.utils._signature import accepts_keyword
@@ -25,7 +26,7 @@ from tempest_fastapi_sdk.utils._signature import accepts_keyword
 def make_push_router(
     *,
     service_factory: Callable[[AsyncSession], DeviceService[Any]],
-    session_factory: Callable[[], AsyncIterator[AsyncSession]],
+    session_factory: Callable[..., AsyncIterator[AsyncSession]],
     current_user_id: Callable[..., Any],
     prefix: str = "/api/push",
     tags: list[str] | None = None,
@@ -48,7 +49,7 @@ def make_push_router(
     Args:
         service_factory (Callable[[AsyncSession], DeviceService]): Builds a
             request-scoped service from the yielded session.
-        session_factory (Callable[[], AsyncIterator[AsyncSession]]): Yields
+        session_factory (Callable[..., AsyncIterator[AsyncSession]]): Yields
             a request-scoped DB session (the project's ``get_session``).
         current_user_id (Callable[..., Any]): FastAPI dependency resolving
             the authenticated user's :class:`~uuid.UUID`.
@@ -82,9 +83,7 @@ def make_push_router(
             key = vapid_public_key() if callable(vapid_public_key) else vapid_public_key
             return {"public_key": key or ""}
 
-    async def _session() -> AsyncIterator[AsyncSession]:
-        async for session in session_factory():
-            yield session
+    _session = session_provider_for(session_factory)
 
     def _service(session: AsyncSession = Depends(_session)) -> DeviceService[Any]:
         return service_factory(session)

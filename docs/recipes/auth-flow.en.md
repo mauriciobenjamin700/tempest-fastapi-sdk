@@ -117,7 +117,9 @@ app.include_router(
     `Depends(session_factory)`, so `app.dependency_overrides[get_session]`
     reaches `/auth/login` and the other auth routes too. Any other
     zero-argument callable returning an async iterator keeps working as
-    before.
+    before. The same rule holds for every SDK router that takes a
+    `session_factory`: push, Web Push, chat, reviews, wallet, sessions,
+    voice and app-errors.
 
 !!! warning "The service cannot live in `app.py`"
     It is tempting to build the `UserAuthService` next to the `app` and
