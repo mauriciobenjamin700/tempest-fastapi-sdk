@@ -131,6 +131,10 @@ from tempest_fastapi_sdk.utils.throttle import (
     AttemptThrottle,
     InMemoryThrottleBackend,
 )
+from tempest_fastapi_sdk.utils.token_types import (
+    AMR_HARDWARE_KEY,
+    MFA_AMR,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -576,6 +580,17 @@ def make_auth_router(
             f"and {signup_model.__name__} does not inherit them."
         )
     forward_signup_fields: bool = accepts_keyword(service.signup, "fields")
+    forward_amr: bool = accepts_keyword(service.issue_token_pair, "amr")
+    if not forward_amr:
+        logger.warning(
+            "%s.issue_token_pair() does not accept 'amr', so the tokens from "
+            "/mfa/verify, /mfa/confirm and /webauthn/authenticate/complete "
+            "carry the override's default amr and "
+            "make_mfa_required_dependency refuses them; add "
+            "'amr: Sequence[str] | None = PASSWORD_AMR' to the override and "
+            "pass it on to super().issue_token_pair().",
+            type(service).__name__,
+        )
     schema_columns: frozenset[str] = signup_columns & (
         frozenset(signup_model.model_fields) - frozenset(SignupSchema.model_fields)
     )
@@ -774,6 +789,27 @@ def make_auth_router(
         legacy_claims=token_legacy_claims,
         session_dependency=session_provider,
     )
+
+    async def _issue_pair(
+        session: AsyncSession,
+        user: BaseUserModel,
+        amr: tuple[str, ...],
+    ) -> tuple[str, str]:
+        """Issue a token pair stamped with ``amr``, when the service takes it.
+
+        Args:
+            session (AsyncSession): The request-scoped DB session.
+            user (BaseUserModel): The authenticated user.
+            amr (tuple[str, ...]): RFC 8176 methods the session proved.
+
+        Returns:
+            tuple[str, str]: ``(access_token, refresh_token)``. Without
+            ``amr`` support in an ``issue_token_pair`` override, the pair
+            carries the override's own default, which never claims MFA.
+        """
+        if forward_amr:
+            return await service.issue_token_pair(session, user, amr=amr)
+        return await service.issue_token_pair(session, user)
 
     def _mount_if(
         condition: bool,
@@ -1939,7 +1975,7 @@ def make_auth_router(
 
         @router.post(
             "/mfa/confirm",
-            status_code=status.HTTP_204_NO_CONTENT,
+            response_model=LoginResponseSchema,
             summary="Finish TOTP enrollment (verify the first code)",
             description=(
                 "Activate the TOTP enrollment started at "
@@ -1948,25 +1984,59 @@ def make_auth_router(
                 "Submit the 6-digit ``code`` currently shown by the "
                 "authenticator app — this proves the shared secret was "
                 "stored correctly. A wrong or expired code returns "
-                "**401** and enrollment stays inactive. On success the "
-                "endpoint returns **204** and every subsequent "
-                "``/login`` for this user becomes a two-step flow."
+                "**401** and enrollment stays inactive. On success "
+                "every subsequent ``/login`` for this user becomes a "
+                "two-step flow.\n\n"
+                "**Every other session ends.** Confirming revokes all "
+                "refresh tokens the user holds, so a session opened "
+                "with the password alone cannot keep refreshing past "
+                "the new factor. The response carries a fresh pair "
+                'whose access token has ``amr == ["pwd", "otp"]``, '
+                "so the device that confirmed stays signed in: in the "
+                "body for a bearer caller, as cookies for a caller "
+                "authenticated by the access cookie."
             ),
         )
         async def mfa_confirm(
             payload: MFAConfirmSchema,
+            request: Request,
+            response: Response,
             session: AsyncSession = session_dep,
             user: BaseUserModel = Depends(current_user_dep),
-        ) -> None:
-            """Confirm TOTP enrollment with a code from the authenticator.
+        ) -> LoginResponseSchema:
+            """Confirm TOTP enrollment and hand the caller an MFA session.
 
             Args:
                 payload (MFAConfirmSchema): The 6-digit code from the authenticator.
+                request (Request): Tells a bearer caller from a cookie one.
+                response (Response): Receives the cookies in cookie mode.
                 session (AsyncSession): The request-scoped DB session.
                 user (BaseUserModel): The authenticated caller.
+
+            Returns:
+                LoginResponseSchema: The new pair in the body for a bearer
+                caller; ``user_id`` only (tokens in cookies) for a caller
+                that authenticated with the access cookie.
             """
             await service.mfa_confirm(session, user=user, code=payload.code)
+            access, refresh = await _issue_pair(session, user, MFA_AMR)
             await session.commit()
+            bearer_caller = (
+                request.headers.get("authorization", "").lower().startswith("bearer ")
+            )
+            if cookie_enabled and not bearer_caller:
+                apply_auth_cookies(
+                    response,
+                    access_token=access,
+                    refresh_token=refresh,
+                    config=cookies,
+                )
+                return LoginResponseSchema(user_id=user.id)
+            return LoginResponseSchema(
+                user_id=user.id,
+                access_token=access,
+                refresh_token=refresh,
+            )
 
         @router.post(
             "/mfa/disable",
@@ -2049,7 +2119,7 @@ def make_auth_router(
                 recovery_code_model=recovery_code_model,
                 throttle=resolved_mfa_throttle,
             )
-            access, refresh = await service.issue_token_pair(session, user)
+            access, refresh = await _issue_pair(session, user, MFA_AMR)
             await session.commit()
             return LoginResponseSchema(
                 user_id=user.id,
@@ -2230,7 +2300,7 @@ def make_auth_router(
                 challenge_id=payload.challenge_id,
                 response=payload.credential,
             )
-            access, refresh = await service.issue_token_pair(session, user)
+            access, refresh = await _issue_pair(session, user, (AMR_HARDWARE_KEY,))
             await session.commit()
             return LoginResponseSchema(
                 user_id=user.id,

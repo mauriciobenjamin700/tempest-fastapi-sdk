@@ -3287,3 +3287,15 @@ só o `between` malformado. Testes: `tests/db/test_expressions.py` (recusa do
 `between`, escalar em `in` embrulha, truncamento) e
 `tests/db/test_repository.py::TestInvalidFilterValueOnWrites` (prova que nada é
 escrito).
+
+## Sessão marcada com `amr` e rota que exige MFA (#525)
+
+Todo access token do `UserAuthService` carrega `amr` (RFC 8176): `["pwd"]`
+no login com senha, `["pwd", "otp"]` depois de `/auth/mfa/verify` ou
+`/auth/mfa/confirm`, `["hwk"]` no WebAuthn, `["ext"]` no OAuth. A família de
+refresh token guarda o `amr` (`BaseUserRefreshTokenModel.amr`, exige
+migration) e o `refresh` o repete. `make_mfa_required_dependency` recusa com
+`403` `MFA_REQUIRED` o token sem segundo fator (e o sem `amr`).
+`mfa_confirm` revoga os refresh tokens do usuário por padrão
+(`revoke_sessions=False` é o opt-out), e a rota devolve um par novo de MFA.
+Teste: `tests/auth/test_mfa_amr.py`.

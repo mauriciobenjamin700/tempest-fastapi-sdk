@@ -9,10 +9,15 @@ from typing import TYPE_CHECKING, Any, cast
 from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from tempest_fastapi_sdk.exceptions.forbidden import ForbiddenException
+from tempest_fastapi_sdk.exceptions.forbidden import (
+    ForbiddenException,
+    MFARequiredException,
+)
 from tempest_fastapi_sdk.exceptions.unauthorized import UnauthorizedException
 from tempest_fastapi_sdk.utils.token_types import (
     ACCESS_TOKEN_TYPE,
+    MFA_AMR_METHODS,
+    token_amr,
     token_type_allowed,
 )
 
@@ -424,6 +429,93 @@ def make_jwt_user_dependency(
     return dependency
 
 
+def make_mfa_required_dependency(
+    tokens: JWTUtils | Callable[[Request], JWTUtils],
+    *,
+    methods: Collection[str] = MFA_AMR_METHODS,
+    bearer_scheme: HTTPBearer | None = None,
+    cookie_name: str | None = None,
+    strict: bool = False,
+    legacy_claims: Collection[str] = (),
+    unauthorized_message: str = "Authorization token is missing or invalid",
+    forbidden_message: str = MFARequiredException.message,
+) -> Callable[..., Coroutine[Any, Any, dict[str, Any]]]:
+    """Build a FastAPI dependency that admits only sessions that passed MFA.
+
+    Reads the access token the same way :func:`make_bearer_token_dependency`
+    does and checks its ``amr`` claim (RFC 8176), which
+    :class:`~tempest_fastapi_sdk.UserAuthService` stamps on every access
+    token: ``["pwd"]`` after a password login, ``["pwd", "otp"]`` after
+    ``/auth/mfa/verify`` or ``/auth/mfa/confirm``. The token passes when
+    ``amr`` holds at least one of ``methods``.
+
+    A token **without** ``amr`` — minted before the claim existed, or by a
+    refresh of a session whose origin was never recorded — is refused, so
+    the rollout window never counts an unknown session as MFA. Those
+    sessions get in again by running the two-step login.
+
+    Use it next to the dependency that loads the user, on the routes where
+    a stolen password must not be enough::
+
+        require_mfa = make_mfa_required_dependency(jwt)
+
+        @router.post("/staff", dependencies=[Depends(require_mfa)])
+        async def create_staff(...) -> ...: ...
+
+    Args:
+        tokens (JWTUtils | Callable[[Request], JWTUtils]): The JWT helper used
+            to verify the token, or a factory called with each request that
+            returns it.
+        methods (Collection[str]): ``amr`` values that count as a second
+            factor. Defaults to :data:`~tempest_fastapi_sdk.MFA_AMR_METHODS`
+            (``{"otp"}``, which covers TOTP and recovery codes). Add
+            ``"hwk"`` when your WebAuthn ceremony requires user
+            verification and a passkey login should satisfy the gate.
+        bearer_scheme (HTTPBearer | None): Override the bearer scheme.
+        cookie_name (str | None): When set, fall back to this cookie for the
+            access token if the ``Authorization`` header is absent — the
+            cookie delivery mode of :func:`~tempest_fastapi_sdk.make_auth_router`.
+        strict (bool): Forwarded to :func:`make_bearer_token_dependency`.
+        legacy_claims (Collection[str]): Forwarded to
+            :func:`make_bearer_token_dependency`.
+        unauthorized_message (str): Message of the
+            :class:`UnauthorizedException` raised when the token is missing
+            or invalid.
+        forbidden_message (str): Message of the
+            :class:`~tempest_fastapi_sdk.MFARequiredException` (``403``,
+            code ``MFA_REQUIRED``) raised when the token is valid but no
+            second factor is recorded on it.
+
+    Returns:
+        Callable[..., Coroutine[Any, Any, dict[str, Any]]]: An async FastAPI
+        dependency yielding the decoded claims of an MFA session.
+    """
+    accepted: frozenset[str] = frozenset(methods)
+    decode_bearer = make_bearer_token_dependency(
+        tokens,
+        bearer_scheme=bearer_scheme,
+        cookie_name=cookie_name,
+        strict=strict,
+        legacy_claims=legacy_claims,
+        error_message=unauthorized_message,
+    )
+
+    async def _require_mfa(
+        payload: dict[str, Any] | None = Depends(decode_bearer),
+    ) -> dict[str, Any]:
+        if payload is None:
+            raise UnauthorizedException(message=unauthorized_message)
+        amr = token_amr(payload)
+        if amr is None or accepted.isdisjoint(amr):
+            raise MFARequiredException(message=forbidden_message)
+        return payload
+
+    _require_mfa.__doc__ = (
+        f"Require an access token whose amr has one of {sorted(accepted)}."
+    )
+    return _require_mfa
+
+
 def make_role_dependency(
     tokens: JWTUtils | Callable[[Request], JWTUtils],
     required_roles: Iterable[str],
@@ -547,6 +639,7 @@ def make_permission_dependency(
 __all__: list[str] = [
     "make_bearer_token_dependency",
     "make_jwt_user_dependency",
+    "make_mfa_required_dependency",
     "make_permission_dependency",
     "make_role_dependency",
     "make_token_dependency",

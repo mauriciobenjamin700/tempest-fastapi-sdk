@@ -21,6 +21,60 @@ code. With `default_message_catalog()`, the `detail` becomes a specific
 message (`Too many login attempts — wait a moment and try again`) instead of
 `Too many requests`.
 
+## Unreleased — the refresh token stores the `amr`, and `/mfa/confirm` answers `200`
+
+The access token now carries the `amr` claim (how the session was
+authenticated), and `BaseUserRefreshTokenModel` gained the `amr` column (text,
+nullable) so `refresh` can repeat it. Because the column is mapped on the base
+model, **migrate the database before upgrading the package** if you use
+`refresh_token_model`: without it every pair issuance fails — measured with
+SQLite, `POST /auth/signup` with auto-activation answered `500`
+(`OperationalError`). Without `refresh_token_model` nothing changes in the
+database.
+
+### What to do
+
+1. Generate the migration (`uv run tempest db revision -m "refresh token amr"`,
+   or `alembic revision --autogenerate`) or write it by hand, with your table
+   name:
+
+    ```python
+    import sqlalchemy as sa
+    from alembic import op
+
+    revision: str = "0313_refresh_token_amr"
+    down_revision: str | None = "<the previous revision>"
+
+
+    def upgrade() -> None:
+        """Add the refresh-token family amr."""
+        op.add_column(
+            "user_refresh_tokens",
+            sa.Column("amr", sa.String(length=64), nullable=True),
+        )
+
+
+    def downgrade() -> None:
+        """Drop the refresh-token family amr."""
+        op.drop_column("user_refresh_tokens", "amr")
+    ```
+
+2. Run `uv run tempest db upgrade` (or `alembic upgrade head`) and only then
+   deploy the new version.
+
+Old rows keep `NULL`: their `refresh` issues an access token **without** `amr`,
+which `make_mfa_required_dependency` treats as "no second factor".
+
+Two behavior changes come with it:
+
+- **`POST /auth/mfa/confirm` answers `200` with a `LoginResponseSchema`**, no
+  longer `204`. Confirming revokes every refresh token of the user, and the new
+  pair in the body (or in the cookies, in cookie mode) is what keeps the device
+  signed in. A client that checks `status === 204` now checks `200` and stores
+  the new pair.
+- **`mfa_confirm` revokes the sessions by default.** A caller of the service
+  that must keep them passes `revoke_sessions=False`.
+
 ## 0.312.0 — Mercado Pago: expired Pix and chargeback search
 
 Two behaviour changes, both measured in the sandbox on 2026-10-10.
