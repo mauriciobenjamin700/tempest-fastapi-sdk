@@ -9,11 +9,12 @@ Desde **v0.35.0** o fluxo de auth bundled suporta **autenticação de dois fator
 3. **[Wiring](#wiring)** — passar `recovery_code_model` pro `make_auth_router`.
 4. **[Os quatro endpoints](#endpoints)** — enroll / confirm / verify / disable.
 5. **[Login de dois passos](#login-de-dois-passos)** — como `POST /auth/login` muda quando MFA está ativo.
-6. **[Settings (`AuthSettings`)](#settings)** — flag a flag.
-7. **[Limite de tentativas](#limite-de-tentativas)** — `429` depois de cinco erros, e código TOTP de uso único.
-8. **[Usando só o `UserAuthService` (sem o router)](#service-direto)** — pra quem monta os próprios endpoints.
-9. **[Segurança](#seguranca)**.
-10. **[Próximos passos](#proximos-passos)**.
+6. **[Rotas que exigem MFA](#rotas-que-exigem-mfa)** — o claim `amr` e `make_mfa_required_dependency`.
+7. **[Settings (`AuthSettings`)](#settings)** — flag a flag.
+8. **[Limite de tentativas](#limite-de-tentativas)** — `429` depois de cinco erros, e código TOTP de uso único.
+9. **[Usando só o `UserAuthService` (sem o router)](#service-direto)** — pra quem monta os próprios endpoints.
+10. **[Segurança](#seguranca)**.
+11. **[Próximos passos](#proximos-passos)**.
 
 ---
 
@@ -155,7 +156,7 @@ Os quatro só são montados quando `AUTH_MFA_ENABLED=True`:
 | Método | Path | Auth | Body / Output | Comportamento |
 |--------|------|------|---------------|---------------|
 | POST | `/auth/mfa/enroll` | Bearer JWT | — → `MFAEnrollResponseSchema` | Gera segredo + URI do QR + N recovery codes. **Mostrados só uma vez.** Não ativa MFA ainda. Com MFA já ativo, responde `409` (`MFA_ALREADY_ENROLLED`) e não muda nada. |
-| POST | `/auth/mfa/confirm` | Bearer JWT | `MFAConfirmSchema` | Confirma o enrollment com o primeiro código. A partir daqui MFA está ativo. |
+| POST | `/auth/mfa/confirm` | Bearer JWT | `MFAConfirmSchema` → `LoginResponseSchema` | Confirma o enrollment com o primeiro código. A partir daqui MFA está ativo. Revoga os refresh tokens do usuário e devolve um par novo com `amr` de MFA ([detalhes](#confirmar-o-mfa-encerra-as-outras-sessoes)). |
 | POST | `/auth/mfa/verify` | — | `MFAVerifySchema` → `LoginResponseSchema` | Passo 2 do login: troca `mfa_token` + código pelo JWT pair. Cinco códigos errados por conta em 15 min dão `429` ([limite de tentativas](#limite-de-tentativas)). |
 | POST | `/auth/mfa/disable` | Bearer JWT | `MFADisableSchema` | Desliga MFA. Exige senha **e** código ativo (TOTP ou recovery). |
 
@@ -177,7 +178,7 @@ print(data["recovery_codes"])     # mostre pro usuário salvar OFFLINE
 # 2. Usuário escaneia o QR no Authenticator e digita o código gerado:
 code = input("Código do Authenticator: ")
 httpx.post(f"{BASE}/auth/mfa/confirm", headers=headers, json={"code": code})
-# 204 No Content → MFA ativo
+# 200 → MFA ativo; o corpo traz um par novo, e o refresh token antigo morreu
 ```
 
 !!! danger "Os recovery codes aparecem UMA vez"
@@ -247,6 +248,70 @@ sequenceDiagram
         API->>F: 200 {access_token, refresh_token, mfa_required: false}
     end
 ```
+
+## Rotas que exigem MFA
+
+Ligar o MFA protege o **login**. Uma rota sensível (criar outro staff, trocar
+dado bancário) quer saber outra coisa: **esta sessão** passou pelo segundo
+fator? Para isso todo access token do SDK carrega o claim `amr` (RFC 8176):
+
+| Como a sessão começou | `amr` |
+| --- | --- |
+| `POST /auth/login` só com senha (e signup, ativação, reset de senha) | `["pwd"]` |
+| `POST /auth/mfa/verify` (código TOTP ou recovery code) | `["pwd", "otp"]` |
+| `POST /auth/mfa/confirm` (o par novo que ele devolve) | `["pwd", "otp"]` |
+| `POST /auth/webauthn/authenticate/complete` | `["hwk"]` |
+| login social (`/auth/oauth/...`) | `["ext"]` |
+
+O `refresh` repete o `amr` da família — ele fica gravado na linha do refresh
+token (ou no próprio refresh JWT, no modo stateless) —, então rotacionar nunca
+promove uma sessão de senha a MFA. `make_mfa_required_dependency` lê esse claim:
+
+```python
+# src/api/routers/staff.py
+from typing import Any
+
+from fastapi import APIRouter, Depends
+
+from tempest_fastapi_sdk import JWTUtils, make_mfa_required_dependency
+
+jwt = JWTUtils("troque-por-um-segredo-de-32-bytes-ou-mais")
+require_mfa = make_mfa_required_dependency(jwt)
+
+router = APIRouter(prefix="/staff", tags=["staff"])
+
+
+@router.post("/invite")
+async def invite_staff(claims: dict[str, Any] = Depends(require_mfa)) -> dict[str, str]:
+    """Só uma sessão que passou pelo segundo fator convida outro staff."""
+    return {"invited_by": str(claims["sub"])}
+```
+
+Token só com senha recebe `403` com `code` `MFA_REQUIRED`
+(`MFARequiredException`); sem token, `401`. Token **sem** `amr` — emitido antes
+desta versão — também recebe `403`: a janela de rollout nunca conta sessão
+desconhecida como MFA, e o usuário sai dela refazendo o login de dois passos.
+
+!!! info "Passkey conta como MFA?"
+    Por padrão, não: o default de `methods=` é `{"otp"}`. Se o seu
+    `AUTH_WEBAUTHN_USER_VERIFICATION` é `"required"`, o passkey já prova posse
+    **e** um fator local, e você pode aceitá-lo com
+    `make_mfa_required_dependency(jwt, methods={"otp", "hwk"})`.
+
+### Confirmar o MFA encerra as outras sessões
+
+Quem liga o MFA costuma ligar porque desconfia que alguém tem a senha. Por
+isso `mfa_confirm` revoga **todos** os refresh tokens do usuário na mesma
+transação: uma sessão aberta só com senha, antes do fator existir, recebe `401`
+no próximo `/auth/refresh`. O dispositivo que confirmou não perde nada — a rota
+`/auth/mfa/confirm` responde `200` com um par novo, já com `amr` de MFA (no
+corpo para quem chamou com bearer, em cookie para quem chamou pelo cookie de
+acesso).
+
+Chamando o serviço direto, o opt-out é explícito:
+`mfa_confirm(session, user=user, code=code, revoke_sessions=False)`. A sessão
+que sobra continua `["pwd"]`, nunca `"otp"`. Access token já emitido vive até o
+TTL curto acabar, mas também é `["pwd"]`, então a dependência acima o recusa.
 
 ---
 
@@ -403,6 +468,9 @@ Superfície completa:
 - `/auth/mfa/verify` responde `429` depois de cinco códigos errados por conta
   em 15 minutos, e cada código TOTP vale um login. Com mais de um worker,
   passe `mfa_throttle=` sobre o Redis.
+- O access token diz como a sessão começou (`amr`), e
+  `make_mfa_required_dependency` recusa com `403` `MFA_REQUIRED` a que não
+  passou pelo segundo fator. Confirmar o MFA encerra as outras sessões.
 
 ## Próximos passos
 

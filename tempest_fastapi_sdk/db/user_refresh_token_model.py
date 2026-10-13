@@ -73,6 +73,12 @@ class BaseUserRefreshTokenModel(BaseModel):
             explicitly revoked (logout or family-wide reuse
             kill). Non-null means the token is dead regardless of
             its expiry.
+        amr (str | None): Space-separated RFC 8176 methods the family was
+            authenticated with (``"pwd"``, ``"pwd otp"``, ``"ext"``,
+            ``"hwk"``), copied onto every token minted by rotating it, so a
+            refresh never promotes a session to MFA. ``NULL`` on a row
+            written before the column existed: the access tokens it mints
+            carry no ``amr`` and count as "no second factor".
     """
 
     __abstract__ = True
@@ -111,6 +117,12 @@ class BaseUserRefreshTokenModel(BaseModel):
         nullable=True,
         default=None,
         doc="UTC timestamp the token was revoked (logout / reuse kill).",
+    )
+    amr: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        default=None,
+        doc="Space-separated RFC 8176 methods the family was opened with.",
     )
 
 

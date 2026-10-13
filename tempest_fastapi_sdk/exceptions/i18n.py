@@ -569,6 +569,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "MFA_ALREADY_ENROLLED": (
             "O MFA já está ativo — desative-o antes de cadastrar de novo"
         ),
+        "MFA_REQUIRED": "Esta operação exige uma sessão que passou pelo MFA",
         "VOICE_CONSENT_REQUIRED": ("O cadastro de voz exige consentimento gravado"),
     },
     "en-US": {
@@ -677,6 +678,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "MFA_ALREADY_ENROLLED": (
             "MFA is already active — disable it before enrolling again"
         ),
+        "MFA_REQUIRED": "This operation requires a session that passed MFA",
         "VOICE_CONSENT_REQUIRED": "Voice enrolment requires recorded consent",
     },
 }

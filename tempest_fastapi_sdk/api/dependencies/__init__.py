@@ -7,6 +7,9 @@ from tempest_fastapi_sdk.api.dependencies.auth import (
     make_jwt_user_dependency as make_jwt_user_dependency,
 )
 from tempest_fastapi_sdk.api.dependencies.auth import (
+    make_mfa_required_dependency as make_mfa_required_dependency,
+)
+from tempest_fastapi_sdk.api.dependencies.auth import (
     make_permission_dependency as make_permission_dependency,
 )
 from tempest_fastapi_sdk.api.dependencies.auth import (
@@ -40,6 +43,7 @@ __all__: list[str] = [
     "key_by_body_field",
     "make_bearer_token_dependency",
     "make_jwt_user_dependency",
+    "make_mfa_required_dependency",
     "make_permission_dependency",
     "make_rate_limit_dependency",
     "make_role_dependency",

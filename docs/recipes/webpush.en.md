@@ -182,7 +182,7 @@ The service exposes:
 | Method | What it does |
 | --- | --- |
 | `subscribe(user_id, subscription, *, user_agent=None)` | Persist the subscription, **idempotent by `endpoint`** — re-subscribe updates, never duplicates. |
-| `unsubscribe(endpoint)` | Remove the subscription (no-op when absent). |
+| `unsubscribe(endpoint, *, user_id=None)` | Remove the subscription (no-op when absent). With `user_id` it only deletes a subscription owned by that user — another account's stays put and the answer is `False`, the same as "absent". Every request-driven path passes `user_id`. |
 | `list_for_user(user_id)` | List the user's devices. |
 | `prune(endpoints)` | Delete the subscriptions for those endpoints — the list `send_many` returns. Returns how many rows were removed; an unknown endpoint is skipped. |
 | `notify_user(user_id, payload)` | Send to every device and **prune the dead ones** (404/410) before returning. Returns how many received it. |
@@ -220,9 +220,11 @@ class WebPushController:
         require_active(user)
         await self.service.subscribe(user.id, subscription, user_agent=user_agent)
 
-    async def unsubscribe(self, subscription: WebPushSubscriptionSchema) -> None:
-        """Remove the device by endpoint (no-op when absent)."""
-        await self.service.unsubscribe(subscription.endpoint)
+    async def unsubscribe(
+        self, user: UserModel, subscription: WebPushSubscriptionSchema
+    ) -> None:
+        """Remove the user's own device (no-op when absent or someone else's)."""
+        await self.service.unsubscribe(subscription.endpoint, user_id=user.id)
 ```
 
 ### 5. DI providers — one layer per file
@@ -331,10 +333,11 @@ async def subscribe(
 @router.post("/unsubscribe", status_code=status.HTTP_200_OK)
 async def unsubscribe(
     subscription: WebPushSubscriptionSchema,
+    user: UserModel = Depends(get_current_user),
     controller: WebPushController = Depends(get_webpush_controller),
 ) -> dict[str, str]:
-    """Receive the onUnsubscribe and remove the device."""
-    await controller.unsubscribe(subscription)
+    """Receive the onUnsubscribe and remove the authenticated user's device."""
+    await controller.unsubscribe(user, subscription)
     return {"status": "unsubscribed"}
 ```
 
@@ -444,7 +447,10 @@ app.include_router(
 ```
 
 The request `User-Agent` becomes the device label (`store_user_agent=True`,
-the default). Both endpoints require authentication via `current_user_id`.
+the default). Both endpoints require authentication via `current_user_id`,
+and `/unsubscribe` only removes **the caller's own** subscription: another
+account's endpoint stays registered and the answer is the same `200` as for an
+unknown endpoint, so the route never reveals who owns it.
 
 ## Send a notification (dispatcher directly)
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Iterable
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 from uuid import UUID
 
 from tempest_fastapi_sdk.db.device_token_model import BaseDeviceTokenModel
@@ -137,18 +137,34 @@ class DeviceService(Generic[DeviceModelT]):
         )
         return await self.repository.add(row)
 
-    async def unregister(self, token: str) -> bool:
+    async def unregister(self, token: str, *, user_id: UUID | None = None) -> bool:
         """Remove the device with ``token``, if present.
 
         Idempotent: unregistering an unknown token is a no-op.
 
+        With ``user_id`` the delete is scoped to that owner: a row holding
+        ``token`` that belongs to someone else is left untouched and the
+        call answers ``False``, exactly as for an unknown token, so the
+        caller cannot learn whether the token is registered to another
+        account. Every request-driven path must pass it — the device token
+        is a credential, and any authenticated account that learned one
+        could otherwise cut another user's notifications. ``None`` keeps
+        the unscoped delete for internal maintenance, such as pruning a
+        token the transport disowned.
+
         Args:
             token (str): The device token / endpoint to drop.
+            user_id (UUID | None): The owner the row must belong to.
+                ``None`` deletes regardless of owner.
 
         Returns:
-            bool: ``True`` when a row was deleted.
+            bool: ``True`` when a row was deleted, ``False`` when none
+            matched (unknown token, or one owned by another user).
         """
-        existing = await self.repository.get_or_none({"token": token})
+        filters: dict[str, Any] = {"token": token}
+        if user_id is not None:
+            filters["user_id"] = user_id
+        existing = await self.repository.get_or_none(filters)
         if existing is None:
             return False
         await self.repository.delete(existing.id)

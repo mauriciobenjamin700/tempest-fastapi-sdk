@@ -95,9 +95,68 @@ def token_type_allowed(
     return not strict
 
 
+AMR_CLAIM: str = "amr"
+"""Claim listing how the session was authenticated (RFC 8176, ``amr``)."""
+
+AMR_PASSWORD: str = "pwd"
+"""``amr`` value for a password check (RFC 8176)."""
+
+AMR_OTP: str = "otp"
+"""``amr`` value for a one-time code — a TOTP code or a single-use
+recovery code, both of which RFC 8176 files under "one-time password"."""
+
+AMR_HARDWARE_KEY: str = "hwk"
+"""``amr`` value for a WebAuthn assertion (RFC 8176: proof of possession of
+a hardware-secured key)."""
+
+AMR_EXTERNAL: str = "ext"
+"""``amr`` value for a session that an OAuth provider authenticated. Not in
+the RFC 8176 registry: the SDK cannot see which methods the provider used,
+so it records only that the proof happened elsewhere."""
+
+PASSWORD_AMR: tuple[str, ...] = (AMR_PASSWORD,)
+"""``amr`` of a session opened with the password alone."""
+
+MFA_AMR: tuple[str, ...] = (AMR_PASSWORD, AMR_OTP)
+"""``amr`` of a session that passed the password and the second factor."""
+
+MFA_AMR_METHODS: frozenset[str] = frozenset({AMR_OTP})
+"""The ``amr`` values that prove a second factor by default."""
+
+
+def token_amr(payload: Mapping[str, Any]) -> tuple[str, ...] | None:
+    """Return the ``amr`` methods of a decoded token.
+
+    Args:
+        payload (Mapping[str, Any]): Decoded, signature-verified claims.
+
+    Returns:
+        tuple[str, ...] | None: The methods, in the order they were
+        stamped. ``None`` when the claim is absent or is not a list of
+        strings — a token minted before the claim existed, or by someone
+        else. Callers treat ``None`` as "no second factor proven", so the
+        rollout window never counts an unknown session as MFA.
+    """
+    raw = payload.get(AMR_CLAIM)
+    if not isinstance(raw, list | tuple):
+        return None
+    if not all(isinstance(method, str) for method in raw):
+        return None
+    return tuple(raw)
+
+
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
+    "AMR_CLAIM",
+    "AMR_EXTERNAL",
+    "AMR_HARDWARE_KEY",
+    "AMR_OTP",
+    "AMR_PASSWORD",
+    "MFA_AMR",
+    "MFA_AMR_METHODS",
     "MFA_TOKEN_TYPE",
+    "PASSWORD_AMR",
     "REFRESH_TOKEN_TYPE",
+    "token_amr",
     "token_type_allowed",
 ]

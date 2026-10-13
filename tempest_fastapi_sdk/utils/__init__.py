@@ -381,10 +381,37 @@ from tempest_fastapi_sdk.utils.token_types import (
     ACCESS_TOKEN_TYPE as ACCESS_TOKEN_TYPE,
 )
 from tempest_fastapi_sdk.utils.token_types import (
+    AMR_CLAIM as AMR_CLAIM,
+)
+from tempest_fastapi_sdk.utils.token_types import (
+    AMR_EXTERNAL as AMR_EXTERNAL,
+)
+from tempest_fastapi_sdk.utils.token_types import (
+    AMR_HARDWARE_KEY as AMR_HARDWARE_KEY,
+)
+from tempest_fastapi_sdk.utils.token_types import (
+    AMR_OTP as AMR_OTP,
+)
+from tempest_fastapi_sdk.utils.token_types import (
+    AMR_PASSWORD as AMR_PASSWORD,
+)
+from tempest_fastapi_sdk.utils.token_types import (
+    MFA_AMR as MFA_AMR,
+)
+from tempest_fastapi_sdk.utils.token_types import (
+    MFA_AMR_METHODS as MFA_AMR_METHODS,
+)
+from tempest_fastapi_sdk.utils.token_types import (
     MFA_TOKEN_TYPE as MFA_TOKEN_TYPE,
 )
 from tempest_fastapi_sdk.utils.token_types import (
+    PASSWORD_AMR as PASSWORD_AMR,
+)
+from tempest_fastapi_sdk.utils.token_types import (
     REFRESH_TOKEN_TYPE as REFRESH_TOKEN_TYPE,
+)
+from tempest_fastapi_sdk.utils.token_types import (
+    token_amr as token_amr,
 )
 from tempest_fastapi_sdk.utils.token_types import (
     token_type_allowed as token_type_allowed,
@@ -408,6 +435,11 @@ from tempest_fastapi_sdk.utils.upload import (
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
+    "AMR_CLAIM",
+    "AMR_EXTERNAL",
+    "AMR_HARDWARE_KEY",
+    "AMR_OTP",
+    "AMR_PASSWORD",
     "CENT",
     "CEP",
     "CEP_PATTERN",
@@ -420,7 +452,10 @@ __all__: list[str] = [
     "DOCX_MEDIA_TYPE",
     "HUNDRED",
     "INLINE_SAFE_MEDIA_TYPES",
+    "MFA_AMR",
+    "MFA_AMR_METHODS",
     "MFA_TOKEN_TYPE",
+    "PASSWORD_AMR",
     "PHONE_BR_PATTERN",
     "PPTX_MEDIA_TYPE",
     "REFRESH_TOKEN_TYPE",
@@ -545,6 +580,7 @@ __all__: list[str] = [
     "sniff_mime",
     "states_by_region",
     "to_utc",
+    "token_amr",
     "token_type_allowed",
     "uf_choices",
     "utcnow",
