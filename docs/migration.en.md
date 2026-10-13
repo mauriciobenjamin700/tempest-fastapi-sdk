@@ -2,6 +2,50 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## Unreleased — a class ending in `Enum` no longer doubles the type suffix
+
+`enum_type_name` drops one trailing `Enum` from the class name before
+appending `_enum`. Only enums with that suffix change:
+
+| Class | Before | Now |
+| --- | --- | --- |
+| `CandidateSlugEnum` | `candidate_slug_enum_enum` | `candidate_slug_enum` |
+| `OrderStatus` | `order_status_enum` | `order_status_enum` (same) |
+
+The database keeps the old name until a migration renames the type, and on
+PostgreSQL the model now writes the new name in every `INSERT`, `UPDATE` and
+`WHERE` on the column. Measured on PostgreSQL 16 with asyncpg, before the
+migration: `type "candidate_slug_enum" does not exist` on all three.
+
+### What to do
+
+1. Upgrade the SDK and run `tempest db revision --autogenerate -m "rename enum types"`.
+   `sync_enum_types` detects the renamed type (on PostgreSQL through
+   `information_schema`, on SQLite through the `CHECK` name) and writes one
+   `op.rename_enum_type` per type, with the reverse in `downgrade`:
+
+    ```python
+    from alembic import op
+
+    from tempest_fastapi_sdk.db.enum_migrations import EnumColumnRef
+
+
+    def upgrade() -> None:
+        """Rename the enum type to the name without the doubled suffix."""
+        op.rename_enum_type(
+            "candidate_slug_enum_enum",
+            "candidate_slug_enum",
+            columns=[EnumColumnRef(table="candidates", column="slug")],
+        )
+    ```
+
+2. Apply the migration **before** the new code serves traffic (the deploy's
+   `alembic upgrade head` already does). `tempest db check` fails while the
+   migration is missing, so CI catches the omission.
+
+To keep the old name on a column, pass it explicitly:
+`mapped_column(TempestEnum(CandidateSlugEnum, name="candidate_slug_enum_enum"))`.
+
 ## Unreleased — auth 429s carry their own code
 
 The three throttles of `make_auth_router` stop answering the generic

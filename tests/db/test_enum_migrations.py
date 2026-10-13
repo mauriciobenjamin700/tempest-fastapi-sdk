@@ -354,6 +354,24 @@ class TestDetection:
         assert operation.new_values == NEW_VALUES
         assert operation.old_values == OLD_VALUES
 
+    def test_the_downgrade_reverses_the_replacement(
+        self, connection: Connection
+    ) -> None:
+        """#518: the generated downgrade used to be empty."""
+        metadata = sa.MetaData()
+        sa.Table(
+            STATUS_TABLE,
+            metadata,
+            sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("status", TempestEnum(*NEW_VALUES, name=STATUS_TYPE)),
+        )
+        script = _run_sync_enum_types(connection, metadata)
+        assert script is not None
+        (operation,) = script.downgrade_ops.ops
+        assert isinstance(operation, ReplaceEnumOp)
+        assert operation.new_values == OLD_VALUES
+        assert operation.old_values == NEW_VALUES
+
     def test_unchanged_members_produce_nothing(self, connection: Connection) -> None:
         metadata = sa.MetaData()
         sa.Table(
@@ -408,6 +426,75 @@ def _run_sync_enum_types(
     )
     sync_enum_types(context, "test", [script])
     return script
+
+
+class TestCheckColumnMatch:
+    """The enum CHECK of one column is never taken for another's (#518)."""
+
+    def test_the_column_is_read_from_the_start_of_the_expression(self) -> None:
+        from tempest_fastapi_sdk.db.enum_migrations import _check_column
+
+        assert _check_column("store_age_range IN ('KID', 'TEEN')") == (
+            "store_age_range"
+        )
+        assert _check_column("\"order\" IN ('a')") == "order"
+        assert _check_column("length(status) > 0") is None
+
+    def test_replacing_one_column_keeps_the_neighbours_check(self) -> None:
+        engine = create_engine("sqlite://")
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "CREATE TABLE ages (id INTEGER PRIMARY KEY, "
+                "age_range VARCHAR(4), store_age_range VARCHAR(4), "
+                "CONSTRAINT ck_ages_age_range_enum "
+                "CHECK (age_range IN ('KID', 'TEEN')), "
+                "CONSTRAINT ck_ages_store_range_enum "
+                "CHECK (store_age_range IN ('KID', 'TEEN')))"
+            )
+            Operations(MigrationContext.configure(connection)).replace_enum(  # type: ignore[attr-defined]
+                "age_range_enum",
+                new_values=["KID", "TEEN", "ADULT"],
+                old_values=["KID", "TEEN"],
+                columns=[EnumColumnRef(table="ages", column="age_range")],
+            )
+            checks = {
+                check["name"]: check["sqltext"]
+                for check in sa.inspect(connection).get_check_constraints("ages")
+            }
+        assert checks["ck_ages_store_range_enum"].startswith("store_age_range IN")
+        assert "'ADULT'" in checks["ck_ages_age_range_enum"]
+        assert len(checks) == 2
+
+    def test_replacing_keeps_a_per_column_check_name(self) -> None:
+        """#526: the rebuilt check keeps the name the column's check had."""
+        engine = create_engine("sqlite://")
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "CREATE TABLE ages (id INTEGER PRIMARY KEY, "
+                "age_range VARCHAR(4), store_age_range VARCHAR(4), "
+                "CONSTRAINT ck_ages_age_range_enum "
+                "CHECK (age_range IN ('KID', 'TEEN')), "
+                "CONSTRAINT ck_ages_age_range_enum_store_age_range "
+                "CHECK (store_age_range IN ('KID', 'TEEN')))"
+            )
+            Operations(MigrationContext.configure(connection)).replace_enum(  # type: ignore[attr-defined]
+                "age_range_enum",
+                new_values=["KID", "TEEN", "ADULT"],
+                old_values=["KID", "TEEN"],
+                columns=[
+                    EnumColumnRef(table="ages", column="age_range"),
+                    EnumColumnRef(table="ages", column="store_age_range"),
+                ],
+            )
+            checks = {
+                check["name"]: check["sqltext"]
+                for check in sa.inspect(connection).get_check_constraints("ages")
+            }
+        assert set(checks) == {
+            "ck_ages_age_range_enum",
+            "ck_ages_age_range_enum_store_age_range",
+        }
+        assert all("'ADULT'" in text for text in checks.values())
 
 
 class TestEnumTypeState:

@@ -616,3 +616,25 @@ class TestTypeBoundCheckIncludeObject:
         assert (
             include(other_table, declared.name, "check_constraint", True, None) is True
         )
+
+    def test_an_enum_check_under_another_name_is_hidden(self) -> None:
+        """#518: a renamed type leaves the reflected check under the old name."""
+        metadata = sa.MetaData(naming_convention=NAMING_CONVENTION)
+        self._declared_check("alpha", metadata)
+
+        include = type_bound_check_include_object(metadata)
+        stale = SimpleNamespace(
+            table=SimpleNamespace(name="alpha"), sqltext="kind IN ('a', 'b')"
+        )
+        business = SimpleNamespace(
+            table=SimpleNamespace(name="alpha"), sqltext="length(kind) > 0"
+        )
+        other_column = SimpleNamespace(
+            table=SimpleNamespace(name="alpha"), sqltext="other IN ('a')"
+        )
+
+        assert include(stale, "ck_alpha_old_kind", "check_constraint", True, None) is (
+            False
+        )
+        assert include(business, "ck_alpha_rule", "check_constraint", True, None)
+        assert include(other_column, "ck_alpha_x", "check_constraint", True, None)

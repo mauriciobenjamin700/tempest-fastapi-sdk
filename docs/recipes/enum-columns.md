@@ -47,6 +47,9 @@ Os três defaults trocados:
 3. **Nome de tipo sem colisão.** O default nomearia o tipo do PostgreSQL
    como `orderstatus`; o SDK usa `order_status_enum`, porque tipo e
    tabela dividem o mesmo namespace.
+   Um `Enum` no fim do nome da classe sai antes do sufixo:
+   `OrderStatusEnum` também vira `order_status_enum`, e não
+   `order_status_enum_enum`. Com ou sem o sufixo na classe, o tipo é o mesmo.
 
 !!! info "A ordem de declaração vira a ordem do tipo"
     O PostgreSQL ordena uma coluna `ENUM` pela ordem dos labels, não pelo
@@ -238,6 +241,87 @@ PostgreSQL não há `CHECK` nenhum, só o tipo nativo. Um `CheckConstraint` que
 você declara em `__table_args__` não é ligado a tipo e continua sendo
 renderizado.
 
+## Coluna enum numa tabela que já existe
+
+No SQLite o `env.py` do SDK gera toda alteração de tabela dentro de
+`batch_alter_table`, que reconstrói a tabela copiando os `CHECK` que reflete.
+Duas coisas davam errado ali, medidas com SQLAlchemy 2.0.52 e 2.1.4:
+
+- **Duas colunas do mesmo enum perdiam um `CHECK`.** O nome do `CHECK` sai do
+  tipo, então as duas ganhavam `ck_things_age_range_enum`; o batch guarda as
+  constraints por nome e ficava com uma. A outra coluna aceitava qualquer
+  valor, sem aviso.
+- **O downgrade de toda coluna enum adicionada quebrava.** O `drop_column`
+  reconstruía a tabela com o `CHECK` que cita a coluna removida, e o SQLite
+  recusava com `no such column: age_range`.
+
+O hook `sqlite_enum_checks`, ligado no `env.py` gerado, reescreve a migration:
+
+```python
+import sqlalchemy as sa
+from alembic import op
+
+
+def upgrade() -> None:
+    """Duas colunas do mesmo enum, cada uma com o seu CHECK."""
+    with op.batch_alter_table("things", schema=None) as batch_op:
+        batch_op.add_column(
+            sa.Column(
+                "age_range",
+                sa.Enum(
+                    "KID",
+                    "TEEN",
+                    name="age_range_enum",
+                    native_enum=True,
+                    create_constraint=False,
+                ),
+                nullable=True,
+            )
+        )
+        batch_op.create_enum_check(
+            "age_range", ["KID", "TEEN"], name="ck_things_age_range_enum"
+        )
+        batch_op.add_column(
+            sa.Column(
+                "store_age_range",
+                sa.Enum(
+                    "KID",
+                    "TEEN",
+                    name="age_range_enum",
+                    native_enum=True,
+                    create_constraint=False,
+                ),
+                nullable=True,
+            )
+        )
+        batch_op.create_enum_check(
+            "store_age_range",
+            ["KID", "TEEN"],
+            name="ck_things_age_range_enum_store_age_range",
+        )
+
+
+def downgrade() -> None:
+    """Derruba o CHECK de cada coluna antes da coluna."""
+    with op.batch_alter_table("things", schema=None) as batch_op:
+        batch_op.drop_enum_check("store_age_range")
+        batch_op.drop_column("store_age_range")
+        batch_op.drop_enum_check("age_range")
+        batch_op.drop_column("age_range")
+```
+
+- A primeira coluna de um enum numa tabela mantém `ck_<tabela>_<enum>`; a
+  segunda em diante ganha `ck_<tabela>_<enum>_<coluna>`. O `TempestEnum` dá o
+  mesmo nome no model, então tabela com uma coluna por enum não muda de nome.
+- `create_enum_check` e `drop_enum_check` não fazem nada fora do SQLite: no
+  PostgreSQL a mesma migration roda sem `CHECK` nenhum, só com o tipo nativo.
+- `drop_enum_check` acha o `CHECK` pela forma (`<coluna> IN (...)`), não pelo
+  nome, então também limpa o de uma tabela criada antes desta versão.
+
+!!! tip "Migration escrita antes desta versão"
+    No `downgrade()`, acrescente `batch_op.drop_enum_check("<coluna>")` antes
+    de cada `batch_op.drop_column("<coluna>")` de coluna enum.
+
 ## Downgrade derruba o tipo
 
 O downgrade que o Alembic escreve para uma tabela nova é só `op.drop_table`,
@@ -274,16 +358,122 @@ def downgrade() -> None:
     `op.drop_enum_type("<nome>_enum")` no fim do `downgrade()`, depois dos
     `op.drop_table` que usavam o tipo.
 
+### Coluna enum com tipo novo
+
+O `create_table` cria o `ENUM` das colunas dele; o `add_column` não. Medido no
+PostgreSQL 16: acrescentar `age_range: Mapped[AgeRange | None]` a uma tabela
+que já existia gerava só o `ALTER TABLE things ADD COLUMN age_range
+age_range_enum`, e o `upgrade` falhava com `type "age_range_enum" does not
+exist`.
+
+O hook `create_enum_types_on_add_column`, ligado no `env.py` gerado, põe o tipo
+antes da coluna, e o `drop_enum_types_on_downgrade` o derruba depois do
+`drop_column`:
+
+```python
+import sqlalchemy as sa
+from alembic import op
+
+
+def upgrade() -> None:
+    """Coluna enum nova numa tabela que já existe."""
+    op.create_enum_type("age_range_enum", ["KID", "TEEN"])
+    with op.batch_alter_table("things", schema=None) as batch_op:
+        batch_op.add_column(
+            sa.Column(
+                "age_range",
+                sa.Enum(
+                    "KID",
+                    "TEEN",
+                    name="age_range_enum",
+                    native_enum=True,
+                    create_constraint=False,
+                ),
+                nullable=True,
+            )
+        )
+        batch_op.create_enum_check(
+            "age_range", ["KID", "TEEN"], name="ck_things_age_range_enum"
+        )
+
+
+def downgrade() -> None:
+    """Remove a coluna e, por último, o tipo."""
+    with op.batch_alter_table("things", schema=None) as batch_op:
+        batch_op.drop_enum_check("age_range")
+        batch_op.drop_column("age_range")
+    op.drop_enum_type("age_range_enum")
+```
+
+- `op.create_enum_type` consulta o `pg_type` e só cria o tipo que falta; no
+  modo offline (`--sql`) escreve o `CREATE TYPE` direto. Fora do PostgreSQL
+  não faz nada.
+- Tipo que outra tabela já usa não entra na migration: nem `create_enum_type`
+  no upgrade, nem `drop_enum_type` no downgrade.
+- Com os dois hooks, `upgrade` → `downgrade` → `upgrade` passa no PostgreSQL 16
+  nos três casos (um enum, dois enums, o mesmo enum em duas colunas), sem
+  nenhum `CHECK` no PostgreSQL.
+
+## Renomear o tipo
+
+O autogenerate não percebe um tipo renomeado: no PostgreSQL as colunas
+continuam apontando para o tipo antigo, e o model escreve o nome novo em todo
+statement que converte para ele. Renomear a classe do enum muda o nome do tipo,
+e o mesmo aconteceu com toda classe terminada em `Enum` quando o SDK parou de
+dobrar o sufixo.
+
+O `sync_enum_types` detecta o caso e escreve `op.rename_enum_type`:
+
+```python
+from alembic import op
+
+from tempest_fastapi_sdk.db.enum_migrations import EnumColumnRef
+
+
+def upgrade() -> None:
+    """Renomeia o tipo sem recriar o banco."""
+    op.rename_enum_type(
+        "candidate_slug_enum_enum",
+        "candidate_slug_enum",
+        columns=[EnumColumnRef(table="candidates", column="slug")],
+    )
+
+
+def downgrade() -> None:
+    """Volta ao nome antigo."""
+    op.rename_enum_type(
+        "candidate_slug_enum",
+        "candidate_slug_enum_enum",
+        columns=[EnumColumnRef(table="candidates", column="slug")],
+    )
+```
+
+- No PostgreSQL vira `ALTER TYPE candidate_slug_enum_enum RENAME TO
+  candidate_slug_enum`. As linhas ficam onde estão; o `columns=` não é lido.
+- No SQLite não existe tipo: o nome mora no `CHECK` de cada coluna
+  (`ck_candidates_candidate_slug_enum_enum`). A tabela de cada coluna listada
+  é reconstruída com o `CHECK` renomeado, para o `alembic check` não acusar
+  a diferença.
+- A detecção só age quando todas as colunas do tipo concordam sobre o nome
+  antigo, e quando o nome antigo não é mais declarado por nenhum model.
+  Fora disso, nada é gerado.
+
 ## Recapitulando
 
 - `Mapped[MeuEnum]` já sai seguro: `value` no banco, `ENUM` nativo no
   PostgreSQL, `CHECK` no SQLite, nome de tipo sem colisão.
 - `enum_column()` para quando a coluna precisa de `default`, `index`, etc.
+- `OrderStatus` e `OrderStatusEnum` dão o mesmo tipo, `order_status_enum`;
+  um tipo renomeado vira `op.rename_enum_type` no autogenerate.
 - Mudança de membro é mudança de schema, e o `sync_enum_types` a detecta
   onde o autogenerate é cego.
 - `op.replace_enum(...)` adiciona, remove e reordena numa operação só,
   dentro da transação, com `value_map=` para renomes e `downgrade`
   automático.
+- Coluna enum com tipo novo numa tabela existente ganha `op.create_enum_type`
+  antes do `add_column`, e o downgrade derruba o tipo depois do `drop_column`.
+- No SQLite cada coluna enum tem o seu `CHECK`, inclusive duas do mesmo enum,
+  e o downgrade de `add_column` derruba o `CHECK` antes da coluna.
 - O `CHECK` ligado ao tipo não sai duplicado na migration (o
   `render_enum_types` o omite), e o downgrade de tabela nova derruba o
   `ENUM` do PostgreSQL com `op.drop_enum_type`.

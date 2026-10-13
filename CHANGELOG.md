@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `op.rename_enum_type(old, new, columns=[...])` (`RenameEnumTypeOp`):
+  `ALTER TYPE ... RENAME TO` no PostgreSQL; no SQLite reconstrói a tabela de
+  cada coluna com o `CHECK` renomeado. O `sync_enum_types` detecta o tipo
+  renomeado no autogenerate (PostgreSQL pelo `udt_name` das colunas, SQLite
+  pelo nome do `CHECK`), escreve a operação com o reverso no `downgrade` e
+  descarta o `alter_column` de tipo que o Alembic propunha no PostgreSQL —
+  que falhava com `type ... does not exist`. Medido: `upgrade` → `check` →
+  `downgrade` no SQLite e no PostgreSQL 16, com as linhas preservadas (#518).
 - Dependências declaradas no import, recursos criados no `create_app` (#493):
   `make_jwt_user_dependency`, `make_bearer_token_dependency`,
   `make_role_dependency` e `make_permission_dependency` aceitam, no lugar do
@@ -61,6 +69,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Quebra compatibilidade:** `enum_type_name` tira um `Enum` do fim do nome
+  da classe antes de acrescentar `_enum` — `CandidateSlugEnum` vira
+  `candidate_slug_enum`, e não mais `candidate_slug_enum_enum`; `OrderStatus`
+  continua `order_status_enum` (#518). No PostgreSQL, o model atualizado
+  contra um banco ainda com o nome antigo falha em todo `INSERT`, `UPDATE` e
+  `WHERE` da coluna com `type "candidate_slug_enum" does not exist` (medido no
+  PostgreSQL 16 com asyncpg) até a migration de rename rodar. Veja o guia de
+  migração.
 - O `CLAUDE.md` que o `tempest new` gera escreve as regras da camada de
   service como regra, e não só como exemplo (#520): todo service herda
   `BaseService` (exceção: service sem repository, dito na docstring), nenhum
@@ -118,6 +134,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- No PostgreSQL, `add_column` de coluna enum com tipo novo não criava o
+  `ENUM` e o `upgrade` falhava com `type ... does not exist` (#527). O hook
+  novo `create_enum_types_on_add_column` (no `DEFAULT_REVISION_HOOKS`) põe
+  `op.create_enum_type(name, values)` (`CreateEnumTypeOp`: consulta o
+  `pg_type` e só cria o que falta; no-op fora do PostgreSQL) antes do
+  `add_column`, e o `drop_enum_types_on_downgrade` passa a derrubar também o
+  tipo de coluna removida pelo downgrade, quando nenhuma coluna que sobrevive
+  o usa. Tipo que outra tabela já usa fica fora dos dois. Medido no
+  PostgreSQL 16, com SQLAlchemy 2.0.52 e 2.1.4: `upgrade` → `downgrade` →
+  `upgrade` passa nos três casos da #526.
+- No SQLite, coluna enum adicionada a tabela existente (#526): duas colunas do
+  mesmo enum ganhavam `CHECK` com o mesmo nome e o batch guardava um — a
+  outra aceitava qualquer valor —, e o downgrade de **toda** coluna enum
+  adicionada falhava com `no such column`. O hook novo `sqlite_enum_checks`
+  (no `DEFAULT_REVISION_HOOKS`) escreve `batch_op.create_enum_check(...)`
+  depois de cada `add_column` enum e `batch_op.drop_enum_check(...)` antes de
+  cada `drop_column`; as duas operações (`CreateEnumCheckOp`,
+  `DropEnumCheckOp`) não fazem nada fora do SQLite. A segunda coluna de um
+  enum numa tabela passa a ter `ck_<tabela>_<enum>_<coluna>` (no
+  `TempestEnum` e na migration); a primeira mantém `ck_<tabela>_<enum>`.
+  Medido nos três casos da issue, com SQLAlchemy 2.0.52 e 2.1.4: `upgrade` →
+  `downgrade` → `upgrade` passa e valor fora do enum é recusado em cada coluna.
+- `op.replace_enum` no SQLite mantém o nome do `CHECK` da coluna e não
+  renomeia mais os outros `CHECK` da tabela para `ck_<tabela>_ck_<tabela>_...`
+  (a reflexão rodava sob a naming convention).
+- O `sync_enum_types` escreve o reverso do `op.replace_enum` no `downgrade`;
+  até aqui o `downgrade` gerado ficava vazio e deixava o tipo com os membros
+  novos.
+- O `include_object` do `env.py` esconde também o `CHECK` de enum refletido
+  sob outro nome numa coluna enum declarada — antes o `alembic check`
+  propunha `remove_constraint` para o `CHECK` que protege a coluna.
+- O `CHECK` de enum é reconhecido pela coluna no começo da expressão: o
+  teste por substring confundia `age_range` com `store_age_range`.
 - O projeto do `tempest new` aplica as próprias migrations (#519). Até a
   0.312.x ele não tinha `alembic/` nem `alembic.ini`, o lifespan só fazia
   `db.connect()`, e `docker compose --profile prod up` subia a API contra um

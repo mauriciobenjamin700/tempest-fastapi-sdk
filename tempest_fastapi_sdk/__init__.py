@@ -846,6 +846,9 @@ from tempest_fastapi_sdk.db import (
     DEFAULT_SYNC_WATERMARK_LAG as DEFAULT_SYNC_WATERMARK_LAG,
 )
 from tempest_fastapi_sdk.db import (
+    ENUM_CLASS_SUFFIX as ENUM_CLASS_SUFFIX,
+)
+from tempest_fastapi_sdk.db import (
     ENUM_TYPE_SUFFIX as ENUM_TYPE_SUFFIX,
 )
 from tempest_fastapi_sdk.db import (
@@ -927,10 +930,19 @@ from tempest_fastapi_sdk.db import (
     ConstraintRename as ConstraintRename,
 )
 from tempest_fastapi_sdk.db import (
+    CreateEnumCheckOp as CreateEnumCheckOp,
+)
+from tempest_fastapi_sdk.db import (
+    CreateEnumTypeOp as CreateEnumTypeOp,
+)
+from tempest_fastapi_sdk.db import (
     DatabaseBackup as DatabaseBackup,
 )
 from tempest_fastapi_sdk.db import (
     DestructiveMigrationError as DestructiveMigrationError,
+)
+from tempest_fastapi_sdk.db import (
+    DropEnumCheckOp as DropEnumCheckOp,
 )
 from tempest_fastapi_sdk.db import (
     DropEnumTypeOp as DropEnumTypeOp,
@@ -976,6 +988,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     QueryPlan as QueryPlan,
+)
+from tempest_fastapi_sdk.db import (
+    RenameEnumTypeOp as RenameEnumTypeOp,
 )
 from tempest_fastapi_sdk.db import (
     ReplaceEnumOp as ReplaceEnumOp,
@@ -1027,6 +1042,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     compose_hooks as compose_hooks,
+)
+from tempest_fastapi_sdk.db import (
+    create_enum_types_on_add_column as create_enum_types_on_add_column,
 )
 from tempest_fastapi_sdk.db import (
     describe_database_error as describe_database_error,
@@ -1129,6 +1147,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     snapshot_model as snapshot_model,
+)
+from tempest_fastapi_sdk.db import (
+    sqlite_enum_checks as sqlite_enum_checks,
 )
 from tempest_fastapi_sdk.db import (
     supports_full_text as supports_full_text,
@@ -2151,6 +2172,7 @@ __all__: list[str] = [
     "DEFAULT_SYNC_WATERMARK_LAG",
     "DOCX_MEDIA_TYPE",
     "EMAIL_PATTERN",
+    "ENUM_CLASS_SUFFIX",
     "ENUM_TYPE_SUFFIX",
     "HEARTBEAT_TIMEOUT_CODE",
     "HTTP_500_MARKER",
@@ -2272,6 +2294,8 @@ __all__: list[str] = [
     "ConstraintKind",
     "ConstraintRename",
     "Controller",
+    "CreateEnumCheckOp",
+    "CreateEnumTypeOp",
     "CursorPaginationFilterSchema",
     "CursorPaginationSchema",
     "DatabaseBackup",
@@ -2283,6 +2307,7 @@ __all__: list[str] = [
     "DeviceService",
     "DiskMetrics",
     "DownloadUtils",
+    "DropEnumCheckOp",
     "DropEnumTypeOp",
     "DroppedFilterWarning",
     "EmailChangeConfirmSchema",
@@ -2505,6 +2530,7 @@ __all__: list[str] = [
     "RedisWebAuthnChallengeStore",
     "RefreshSchema",
     "Region",
+    "RenameEnumTypeOp",
     "ReplaceEnumOp",
     "RepositorySignal",
     "RequestIDMiddleware",
@@ -2629,6 +2655,7 @@ __all__: list[str] = [
     "configure_logging",
     "configure_root_once",
     "conflict_exception",
+    "create_enum_types_on_add_column",
     "declared_guards",
     "declared_raises",
     "decode_cursor",
@@ -2793,6 +2820,7 @@ __all__: list[str] = [
     "sign_path",
     "snapshot_model",
     "sniff_mime",
+    "sqlite_enum_checks",
     "sse_response",
     "stamp_locale",
     "states_by_region",

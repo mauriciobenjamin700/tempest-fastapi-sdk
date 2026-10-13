@@ -79,6 +79,15 @@ from tempest_fastapi_sdk.db.device_token_model import (
     make_device_token_model as make_device_token_model,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
+    CreateEnumCheckOp as CreateEnumCheckOp,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
+    CreateEnumTypeOp as CreateEnumTypeOp,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
+    DropEnumCheckOp as DropEnumCheckOp,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
     DropEnumTypeOp as DropEnumTypeOp,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
@@ -88,7 +97,13 @@ from tempest_fastapi_sdk.db.enum_migrations import (
     EnumTypeState as EnumTypeState,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
+    RenameEnumTypeOp as RenameEnumTypeOp,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
     ReplaceEnumOp as ReplaceEnumOp,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
+    create_enum_types_on_add_column as create_enum_types_on_add_column,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
     drop_enum_types_on_downgrade as drop_enum_types_on_downgrade,
@@ -97,11 +112,15 @@ from tempest_fastapi_sdk.db.enum_migrations import (
     render_enum_types as render_enum_types,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
+    sqlite_enum_checks as sqlite_enum_checks,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
     sync_enum_types as sync_enum_types,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
     type_bound_check_include_object as type_bound_check_include_object,
 )
+from tempest_fastapi_sdk.db.enums import ENUM_CLASS_SUFFIX as ENUM_CLASS_SUFFIX
 from tempest_fastapi_sdk.db.enums import ENUM_TYPE_SUFFIX as ENUM_TYPE_SUFFIX
 from tempest_fastapi_sdk.db.enums import TempestEnum as TempestEnum
 from tempest_fastapi_sdk.db.enums import enum_column as enum_column
@@ -251,6 +270,7 @@ __all__: list[str] = [
     "DEFAULT_AUDIT_REDACT",
     "DEFAULT_REVISION_HOOKS",
     "DEFAULT_SYNC_WATERMARK_LAG",
+    "ENUM_CLASS_SUFFIX",
     "ENUM_TYPE_SUFFIX",
     "LEGACY_NAMING_CONVENTION",
     "NAMING_CONVENTION",
@@ -279,8 +299,11 @@ __all__: list[str] = [
     "ColumnRef",
     "ConstraintKind",
     "ConstraintRename",
+    "CreateEnumCheckOp",
+    "CreateEnumTypeOp",
     "DatabaseBackup",
     "DestructiveMigrationError",
+    "DropEnumCheckOp",
     "DropEnumTypeOp",
     "DroppedFilterWarning",
     "EnumColumnRef",
@@ -297,6 +320,7 @@ __all__: list[str] = [
     "OutboxStatus",
     "Q",
     "QueryPlan",
+    "RenameEnumTypeOp",
     "ReplaceEnumOp",
     "RepositorySignal",
     "SchemaSyncOutcome",
@@ -317,6 +341,7 @@ __all__: list[str] = [
     "clear_signals",
     "compose_hooks",
     "connect",
+    "create_enum_types_on_add_column",
     "describe_database_error",
     "diff_snapshots",
     "disconnect",
@@ -353,6 +378,7 @@ __all__: list[str] = [
     "session_dependency_for",
     "shared_memory_url",
     "snapshot_model",
+    "sqlite_enum_checks",
     "supports_full_text",
     "sync_enum_types",
     "to_snake_case",
