@@ -159,6 +159,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `TaskQueue.from_settings` passa a nomear o `TASKIQ_BROKER_URL`, o valor lido
   (senha mascarada), o extra que aquele transporte exige e a URL do outro
   transporte, em vez de só mandar instalar `[tasks]`.
+- O `session_factory` de `make_push_router`, `make_web_push_router`,
+  `make_chat_router`, `make_reviews_router`, `make_wallet_router`,
+  `make_session_router`, `make_voice_router` e `make_app_error_router` vira
+  `Depends` de verdade, pela mesma regra que a #493 pôs no
+  `make_auth_router` — agora num helper só
+  (`api/dependencies/_session.py`). Um `get_session(request: Request)` ou com
+  `Depends(get_database)` atende o request (antes: `500` nos sete
+  primeiros, medido em `tests/api/test_session_provider.py`), e
+  `app.dependency_overrides[get_session]` vale para as rotas deles. O
+  `db.session_dependency` e o callable sem argumentos de antes seguem
+  funcionando — no `make_app_error_router`, que registrava
+  `Depends(session_factory)` direto, o callable sem argumentos passou a
+  funcionar. O `make_chat_router` ganha `stream_session_factory=` para a
+  releitura de participação do stream, que roda fora da resolução de
+  dependências; com um `session_factory` que recebe parâmetro e a releitura
+  ligada, ele recusa a montagem com `ValueError`. Guard novo:
+  `tests/test_session_factory_guard.py` (#524).
 - `tempest doctor` mascara a senha da URL do RabbitMQ, do Redis e do banco
   em todo `detail` de `CheckOutcome` — inclusive nos ramos `fail`, cuja
   mensagem de exceção pode repetir a URL crua —, na tabela e no `--json`

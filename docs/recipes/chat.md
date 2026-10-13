@@ -754,9 +754,10 @@ data: {"id": "7d3c5f8a-...", "conversation_id": "1a2b3c4d-...", "sender_id": "7d
 
 ### O stream não segura sessão de banco
 
-A checagem de participante do `/stream` roda numa sessão própria, aberta
-pelo `session_factory` e **fechada antes do primeiro byte**. Uma sessão
-injetada por `Depends` ficaria aberta — conexão emprestada do pool,
+A checagem de participante do `/stream` recebe a sessão do
+`session_factory` como `Depends(..., scope="function")`, que o FastAPI
+**fecha quando o endpoint retorna, antes do primeiro byte**. Uma sessão
+com o escopo padrão ficaria aberta — conexão emprestada do pool,
 transação começada — enquanto o cliente continuasse conectado, e algumas
 centenas de abas ociosas esgotariam o pool. Isso vale para o que o
 router controla: se a sua dependência `current_user_id` abre sessão, ela
@@ -775,6 +776,17 @@ direto —, o stream relê a participação numa sessão curta a cada
 `membership_recheck_seconds` (`30.0` por padrão), contados nos frames que
 ele entrega, heartbeat incluído. `None` desliga a releitura e deixa só o
 evento.
+
+!!! tip "`get_session` com sub-dependências e a releitura"
+    A releitura roda com a resposta já saindo, fora da resolução de
+    dependências do FastAPI, então ela abre a sessão chamando
+    `stream_session_factory()`. Por padrão esse é o próprio
+    `session_factory`, desde que ele não receba parâmetro. Se o seu
+    `get_session` recebe `request: Request` ou `Depends(get_database)`,
+    passe um factory sem argumentos para a releitura
+    (`stream_session_factory=db.session_dependency`) — sem ele, com a
+    releitura ligada, o `make_chat_router` recusa a configuração com
+    `ValueError` na montagem, e não no primeiro stream.
 
 Veja a receita de
 **[Server-Sent Events »](sse.md)** para o lado do cliente e a ponte

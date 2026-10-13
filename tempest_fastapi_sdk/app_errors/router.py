@@ -14,6 +14,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 
+from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
 from tempest_fastapi_sdk.app_errors.schemas import (
     AppErrorFilterSchema,
     AppErrorReportSchema,
@@ -27,7 +28,7 @@ from tempest_fastapi_sdk.schemas.pagination import BasePaginationSchema
 def make_app_error_router(
     *,
     service_factory: Callable[..., AppErrorService],
-    session_factory: Callable[[], AsyncIterator[Any]],
+    session_factory: Callable[..., AsyncIterator[Any]],
     current_user_id_optional: Callable[..., Any] | None = None,
     admin_dependency: Callable[..., Any] | None = None,
     prefix: str = "/api/app-errors",
@@ -44,7 +45,7 @@ def make_app_error_router(
     Args:
         service_factory (Callable[..., AppErrorService]): Builds a
             request-scoped :class:`AppErrorService` from the session.
-        session_factory (Callable[[], AsyncIterator[Any]]): Yields a
+        session_factory (Callable[..., AsyncIterator[Any]]): Yields a
             request-scoped database session.
         current_user_id_optional (Callable[..., Any] | None): Dependency
             resolving the caller's id, or ``None`` when the request carries
@@ -78,6 +79,7 @@ def make_app_error_router(
         for this prefix.
     """
     router = APIRouter(prefix=prefix, tags=tags or ["app-errors"])
+    session_provider = session_provider_for(session_factory)
 
     @router.post(
         "",
@@ -87,7 +89,7 @@ def make_app_error_router(
     )
     async def report_app_error(
         data: AppErrorReportSchema,
-        session: Any = Depends(session_factory),
+        session: Any = Depends(session_provider),
         user_id: Any = (
             Depends(current_user_id_optional)
             if current_user_id_optional is not None
@@ -126,7 +128,7 @@ def make_app_error_router(
             page_size: int = Query(
                 default=20, ge=1, le=200, description="Itens por página."
             ),
-            session: Any = Depends(session_factory),
+            session: Any = Depends(session_provider),
         ) -> BasePaginationSchema[AppErrorResponseSchema]:
             """Page through the stored reports, newest first.
 

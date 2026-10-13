@@ -22,6 +22,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
 from tempest_fastapi_sdk.integrations.payment.base import (
     PayoutProvider,
 )
@@ -40,7 +41,7 @@ from tempest_fastapi_sdk.wallet.service import WalletService
 def make_wallet_router(
     *,
     service_factory: Callable[[AsyncSession], WalletService],
-    session_factory: Callable[[], AsyncIterator[AsyncSession]],
+    session_factory: Callable[..., AsyncIterator[AsyncSession]],
     current_user_id: Callable[..., Any],
     payout_provider: Callable[..., Any],
     pix_destination: Callable[..., Any],
@@ -59,7 +60,7 @@ def make_wallet_router(
     Args:
         service_factory (Callable[[AsyncSession], WalletService]): Builds a
             request-scoped :class:`WalletService` from the session.
-        session_factory (Callable[[], AsyncIterator[AsyncSession]]): Yields
+        session_factory (Callable[..., AsyncIterator[AsyncSession]]): Yields
             a request-scoped DB session.
         current_user_id (Callable[..., Any]): FastAPI dependency resolving
             the authenticated user's :class:`~uuid.UUID`.
@@ -76,9 +77,7 @@ def make_wallet_router(
     """
     router = APIRouter(prefix=prefix, tags=list(tags or ["wallet"]))
 
-    async def _session() -> AsyncIterator[AsyncSession]:
-        async for session in session_factory():
-            yield session
+    _session = session_provider_for(session_factory)
 
     def _service(session: AsyncSession = Depends(_session)) -> WalletService:
         return service_factory(session)
