@@ -58,6 +58,17 @@ called ``status``. The suffix makes ``OrderStatus`` become
 ``\\dT`` output and in a migration diff.
 """
 
+ENUM_CLASS_SUFFIX: Final[str] = "Enum"
+"""Class-name suffix :func:`enum_type_name` drops before naming the type.
+
+A project that names its enums ``CandidateSlugEnum`` would otherwise get
+``candidate_slug_enum_enum``: the class suffix and
+:data:`ENUM_TYPE_SUFFIX` say the same thing twice. Dropping one trailing
+``Enum`` makes ``CandidateSlugEnum`` and ``CandidateSlug`` produce the
+same type name, so adopting or dropping the suffix in a later refactor
+no longer renames the database type.
+"""
+
 
 def enum_values(enum_class: type[enum.Enum]) -> list[str]:
     """Return the member **values** of ``enum_class``, in declaration order.
@@ -84,15 +95,34 @@ def enum_type_name(enum_class: type[enum.Enum]) -> str:
     Deterministic because the name has to match across three places that
     never see each other: the model's DDL, the migration that creates the
     type, and the migration that later replaces it. ``OrderStatus``
-    becomes ``order_status_enum``.
+    becomes ``order_status_enum``, and so does ``OrderStatusEnum``: one
+    trailing :data:`ENUM_CLASS_SUFFIX` is dropped before the suffix is
+    appended, so the class suffix and the type suffix never stack into
+    ``order_status_enum_enum``. A class called exactly ``Enum`` keeps its
+    name.
+
+    Notes:
+        Until the suffix was dropped, a class ending in ``Enum`` produced
+        the doubled name. A database created then still holds it, and
+        PostgreSQL refuses every statement that casts to the new name
+        (``type "order_status_enum" does not exist``) until the type is
+        renamed. :func:`~tempest_fastapi_sdk.db.enum_migrations.sync_enum_types`
+        detects the rename on autogenerate and emits
+        :class:`~tempest_fastapi_sdk.db.enum_migrations.RenameEnumTypeOp`;
+        a column that has to keep the old name passes it explicitly,
+        ``mapped_column(TempestEnum(OrderStatusEnum, name="order_status_enum_enum"))``.
 
     Args:
         enum_class (type[enum.Enum]): The enum to name.
 
     Returns:
-        str: The snake-cased class name plus :data:`ENUM_TYPE_SUFFIX`.
+        str: The snake-cased class name, without one trailing
+        :data:`ENUM_CLASS_SUFFIX`, plus :data:`ENUM_TYPE_SUFFIX`.
     """
-    return f"{to_snake_case(enum_class.__name__)}{ENUM_TYPE_SUFFIX}"
+    base = enum_class.__name__
+    if base.endswith(ENUM_CLASS_SUFFIX) and base != ENUM_CLASS_SUFFIX:
+        base = base[: -len(ENUM_CLASS_SUFFIX)]
+    return f"{to_snake_case(base)}{ENUM_TYPE_SUFFIX}"
 
 
 class TempestEnum(SQLEnum):
@@ -309,6 +339,7 @@ def _sole_enum_class(enums: tuple[Any, ...]) -> type[enum.Enum] | None:
 
 
 __all__: list[str] = [
+    "ENUM_CLASS_SUFFIX",
     "ENUM_TYPE_SUFFIX",
     "TempestEnum",
     "enum_column",

@@ -215,6 +215,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.enums.enum_values
 ::: tempest_fastapi_sdk.db.enums.enum_type_name
 ::: tempest_fastapi_sdk.db.enum_migrations.ReplaceEnumOp
+::: tempest_fastapi_sdk.db.enum_migrations.RenameEnumTypeOp
 ::: tempest_fastapi_sdk.db.enum_migrations.EnumColumnRef
 ::: tempest_fastapi_sdk.db.enum_migrations.EnumTypeState
 ::: tempest_fastapi_sdk.db.enum_migrations.render_enum_types

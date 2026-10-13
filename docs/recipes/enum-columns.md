@@ -47,6 +47,9 @@ Os três defaults trocados:
 3. **Nome de tipo sem colisão.** O default nomearia o tipo do PostgreSQL
    como `orderstatus`; o SDK usa `order_status_enum`, porque tipo e
    tabela dividem o mesmo namespace.
+   Um `Enum` no fim do nome da classe sai antes do sufixo:
+   `OrderStatusEnum` também vira `order_status_enum`, e não
+   `order_status_enum_enum`. Com ou sem o sufixo na classe, o tipo é o mesmo.
 
 !!! info "A ordem de declaração vira a ordem do tipo"
     O PostgreSQL ordena uma coluna `ENUM` pela ordem dos labels, não pelo
@@ -274,11 +277,57 @@ def downgrade() -> None:
     `op.drop_enum_type("<nome>_enum")` no fim do `downgrade()`, depois dos
     `op.drop_table` que usavam o tipo.
 
+## Renomear o tipo
+
+O autogenerate não percebe um tipo renomeado: no PostgreSQL as colunas
+continuam apontando para o tipo antigo, e o model escreve o nome novo em todo
+statement que converte para ele. Renomear a classe do enum muda o nome do tipo,
+e o mesmo aconteceu com toda classe terminada em `Enum` quando o SDK parou de
+dobrar o sufixo.
+
+O `sync_enum_types` detecta o caso e escreve `op.rename_enum_type`:
+
+```python
+from alembic import op
+
+from tempest_fastapi_sdk.db.enum_migrations import EnumColumnRef
+
+
+def upgrade() -> None:
+    """Renomeia o tipo sem recriar o banco."""
+    op.rename_enum_type(
+        "candidate_slug_enum_enum",
+        "candidate_slug_enum",
+        columns=[EnumColumnRef(table="candidates", column="slug")],
+    )
+
+
+def downgrade() -> None:
+    """Volta ao nome antigo."""
+    op.rename_enum_type(
+        "candidate_slug_enum",
+        "candidate_slug_enum_enum",
+        columns=[EnumColumnRef(table="candidates", column="slug")],
+    )
+```
+
+- No PostgreSQL vira `ALTER TYPE candidate_slug_enum_enum RENAME TO
+  candidate_slug_enum`. As linhas ficam onde estão; o `columns=` não é lido.
+- No SQLite não existe tipo: o nome mora no `CHECK` de cada coluna
+  (`ck_candidates_candidate_slug_enum_enum`). A tabela de cada coluna listada
+  é reconstruída com o `CHECK` renomeado, para o `alembic check` não acusar
+  a diferença.
+- A detecção só age quando todas as colunas do tipo concordam sobre o nome
+  antigo, e quando o nome antigo não é mais declarado por nenhum model.
+  Fora disso, nada é gerado.
+
 ## Recapitulando
 
 - `Mapped[MeuEnum]` já sai seguro: `value` no banco, `ENUM` nativo no
   PostgreSQL, `CHECK` no SQLite, nome de tipo sem colisão.
 - `enum_column()` para quando a coluna precisa de `default`, `index`, etc.
+- `OrderStatus` e `OrderStatusEnum` dão o mesmo tipo, `order_status_enum`;
+  um tipo renomeado vira `op.rename_enum_type` no autogenerate.
 - Mudança de membro é mudança de schema, e o `sync_enum_types` a detecta
   onde o autogenerate é cego.
 - `op.replace_enum(...)` adiciona, remove e reordena numa operação só,

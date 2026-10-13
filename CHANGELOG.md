@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `op.rename_enum_type(old, new, columns=[...])` (`RenameEnumTypeOp`):
+  `ALTER TYPE ... RENAME TO` no PostgreSQL; no SQLite reconstrói a tabela de
+  cada coluna com o `CHECK` renomeado. O `sync_enum_types` detecta o tipo
+  renomeado no autogenerate (PostgreSQL pelo `udt_name` das colunas, SQLite
+  pelo nome do `CHECK`), escreve a operação com o reverso no `downgrade` e
+  descarta o `alter_column` de tipo que o Alembic propunha no PostgreSQL —
+  que falhava com `type ... does not exist`. Medido: `upgrade` → `check` →
+  `downgrade` no SQLite e no PostgreSQL 16, com as linhas preservadas (#518).
 - Dependências declaradas no import, recursos criados no `create_app` (#493):
   `make_jwt_user_dependency`, `make_bearer_token_dependency`,
   `make_role_dependency` e `make_permission_dependency` aceitam, no lugar do
@@ -61,6 +69,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Quebra compatibilidade:** `enum_type_name` tira um `Enum` do fim do nome
+  da classe antes de acrescentar `_enum` — `CandidateSlugEnum` vira
+  `candidate_slug_enum`, e não mais `candidate_slug_enum_enum`; `OrderStatus`
+  continua `order_status_enum` (#518). No PostgreSQL, o model atualizado
+  contra um banco ainda com o nome antigo falha em todo `INSERT`, `UPDATE` e
+  `WHERE` da coluna com `type "candidate_slug_enum" does not exist` (medido no
+  PostgreSQL 16 com asyncpg) até a migration de rename rodar. Veja o guia de
+  migração.
 - `SubjectGraph` deixa coluna `LargeBinary` fora da exportação por padrão;
   até a 0.312.x ela saía em base64 (o `payload` de uma tabela de job, um blob
   de modelo). `exclude_binary=False` volta ao comportamento anterior (#507).
@@ -97,6 +113,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- O `sync_enum_types` escreve o reverso do `op.replace_enum` no `downgrade`;
+  até aqui o `downgrade` gerado ficava vazio e deixava o tipo com os membros
+  novos.
+- O `include_object` do `env.py` esconde também o `CHECK` de enum refletido
+  sob outro nome numa coluna enum declarada — antes o `alembic check`
+  propunha `remove_constraint` para o `CHECK` que protege a coluna.
+- O `CHECK` de enum é reconhecido pela coluna no começo da expressão: o
+  teste por substring confundia `age_range` com `store_age_range`.
 - `tempest doctor` mascara a senha da URL do RabbitMQ, do Redis e do banco
   em todo `detail` de `CheckOutcome` — inclusive nos ramos `fail`, cuja
   mensagem de exceção pode repetir a URL crua —, na tabela e no `--json`

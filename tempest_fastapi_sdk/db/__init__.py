@@ -88,6 +88,9 @@ from tempest_fastapi_sdk.db.enum_migrations import (
     EnumTypeState as EnumTypeState,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
+    RenameEnumTypeOp as RenameEnumTypeOp,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
     ReplaceEnumOp as ReplaceEnumOp,
 )
 from tempest_fastapi_sdk.db.enum_migrations import (
@@ -102,6 +105,7 @@ from tempest_fastapi_sdk.db.enum_migrations import (
 from tempest_fastapi_sdk.db.enum_migrations import (
     type_bound_check_include_object as type_bound_check_include_object,
 )
+from tempest_fastapi_sdk.db.enums import ENUM_CLASS_SUFFIX as ENUM_CLASS_SUFFIX
 from tempest_fastapi_sdk.db.enums import ENUM_TYPE_SUFFIX as ENUM_TYPE_SUFFIX
 from tempest_fastapi_sdk.db.enums import TempestEnum as TempestEnum
 from tempest_fastapi_sdk.db.enums import enum_column as enum_column
@@ -251,6 +255,7 @@ __all__: list[str] = [
     "DEFAULT_AUDIT_REDACT",
     "DEFAULT_REVISION_HOOKS",
     "DEFAULT_SYNC_WATERMARK_LAG",
+    "ENUM_CLASS_SUFFIX",
     "ENUM_TYPE_SUFFIX",
     "LEGACY_NAMING_CONVENTION",
     "NAMING_CONVENTION",
@@ -297,6 +302,7 @@ __all__: list[str] = [
     "OutboxStatus",
     "Q",
     "QueryPlan",
+    "RenameEnumTypeOp",
     "ReplaceEnumOp",
     "RepositorySignal",
     "SchemaSyncOutcome",

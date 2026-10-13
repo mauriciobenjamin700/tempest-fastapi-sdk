@@ -255,6 +255,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `run_alembic_env(metadata)` (body lives in `db/alembic_env.py`,
   `DEFAULT_REVISION_HOOKS` to extend), ruff-clean under both src layouts,
   `alembic.ini` with `prepend_sys_path = .` + `path_separator = os`.
+  **Nome do tipo e rename (#518):** `enum_type_name` tira um `Enum` final
+  da classe (`CandidateSlugEnum` → `candidate_slug_enum`, sem
+  `_enum_enum`); `op.rename_enum_type` (PG `ALTER TYPE ... RENAME`, SQLite
+  renomeia o `CHECK`) detectado pelo `sync_enum_types`, que também passou a
+  escrever o reverso de `replace_enum`/`rename_enum_type` no downgrade.
   **`check()` de enum no SQLite (0.313.0, #483):** `run_alembic_env` passa
   `include_object=type_bound_check_include_object(metadata)`, que descarta do
   lado do banco o `CHECK` cujo `(tabela, nome)` casa um `CHECK` `_type_bound`

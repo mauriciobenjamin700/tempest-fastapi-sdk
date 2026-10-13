@@ -52,11 +52,12 @@ from alembic.autogenerate import renderers
 from alembic.autogenerate.api import AutogenContext
 from alembic.operations import MigrateOperation, Operations
 from alembic.operations.ops import (
+    AlterColumnOp,
     CreateTableOp,
     DropTableOp,
     MigrationScript,
-    UpgradeOps,
 )
+from sqlalchemy.sql.elements import conv
 
 from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.db.model import NAMING_CONVENTION
@@ -86,6 +87,18 @@ guess.
 """
 
 _SQL_STRING_RE = re.compile(r"'((?:[^']|'')*)'")
+
+_CHECK_COLUMN_RE = re.compile(
+    r'^\s*\(?\s*(?:"(?P<quoted>(?:[^"]|"")+)"|(?P<bare>[^\s"(]+))\s+IN\s*\(',
+    re.IGNORECASE,
+)
+"""Matches the column an enum ``CHECK`` constrains: ``status IN (``.
+
+Anchored at the start of the expression, so the check of
+``store_age_range`` is never mistaken for the check of ``age_range`` —
+a substring test matched both, and a rebuild aimed at one column dropped
+the other's check with it.
+"""
 
 
 @dataclass(frozen=True)
@@ -461,7 +474,27 @@ def _is_enum_check(constraint: sa.Constraint, column: str) -> bool:
     if not isinstance(constraint, sa.CheckConstraint):
         return False
     sqltext = str(constraint.sqltext)
-    return column in sqltext and _parse_check_values(sqltext) is not None
+    return _check_column(sqltext) == column and _parse_check_values(sqltext) is not None
+
+
+def _check_column(sqltext: str) -> str | None:
+    """Return the column an enum ``CHECK`` expression constrains.
+
+    Args:
+        sqltext (str): The constraint's SQL text, as SQLAlchemy emits it
+            or as the inspector reflects it.
+
+    Returns:
+        str | None: The column name, unquoted, or ``None`` when the text
+        does not start with ``<column> IN (``.
+    """
+    match = _CHECK_COLUMN_RE.match(sqltext)
+    if match is None:
+        return None
+    quoted = match.group("quoted")
+    if quoted is not None:
+        return quoted.replace('""', '"')
+    return match.group("bare")
 
 
 @renderers.dispatch_for(ReplaceEnumOp)
@@ -498,6 +531,224 @@ def _render_replace_enum(
     if operation.value_map:
         parts.append(f"value_map={operation.value_map!r}")
     return f"op.replace_enum({', '.join(parts)})"
+
+
+@Operations.register_operation("rename_enum_type")
+class RenameEnumTypeOp(MigrateOperation):
+    """Rename an enum type, keeping its members and every column's data.
+
+    ``alembic revision --autogenerate`` never notices a renamed type: on
+    PostgreSQL the columns keep pointing at the old ``pg_type`` row and
+    the model points at a name that does not exist, so every statement
+    that casts to it fails with ``type "<new>" does not exist``.
+    :func:`sync_enum_types` detects the rename and emits this operation;
+    it is also callable by hand as
+    ``op.rename_enum_type("candidate_slug_enum_enum", "candidate_slug_enum",
+    columns=[...])``.
+
+    * **PostgreSQL**: ``ALTER TYPE <old> RENAME TO <new>``. The columns
+      follow the type, so ``columns`` is not needed there.
+    * **SQLite**: there is no type; the name lives in each column's
+      ``CHECK`` (``ck_<table>_<old>``). Every listed column's table is
+      rebuilt with the check renamed, so the name matches what the model
+      declares and ``alembic check`` stops reporting it.
+
+    Reversible: :meth:`reverse` swaps the two names.
+
+    Attributes:
+        old_name (str): The type name the database holds today.
+        new_name (str): The type name the model declares.
+        columns (tuple[EnumColumnRef, ...]): Columns typed by the enum,
+            read on SQLite only.
+        schema (str | None): The PostgreSQL schema holding the type, or
+            ``None`` for the connection's search path.
+    """
+
+    def __init__(
+        self,
+        old_name: str,
+        new_name: str,
+        *,
+        columns: Sequence[EnumColumnRef] = (),
+        schema: str | None = None,
+    ) -> None:
+        """Record which type to rename.
+
+        Args:
+            old_name (str): The type name the database holds today.
+            new_name (str): The type name the model declares.
+            columns (Sequence[EnumColumnRef]): Columns typed by the enum.
+            schema (str | None): The PostgreSQL schema holding the type.
+        """
+        self.old_name: str = old_name
+        self.new_name: str = new_name
+        self.columns: tuple[EnumColumnRef, ...] = tuple(columns)
+        self.schema: str | None = schema
+
+    @classmethod
+    def rename_enum_type(
+        cls,
+        operations: Operations,
+        old_name: str,
+        new_name: str,
+        *,
+        columns: Sequence[EnumColumnRef] = (),
+        schema: str | None = None,
+    ) -> None:
+        """Entry point registered as ``op.rename_enum_type(...)``.
+
+        Args:
+            operations (Operations): Alembic's operations proxy.
+            old_name (str): The type name the database holds today.
+            new_name (str): The type name the model declares.
+            columns (Sequence[EnumColumnRef]): Columns typed by the enum.
+            schema (str | None): The PostgreSQL schema holding the type.
+        """
+        operations.invoke(
+            cls(old_name, new_name, columns=columns, schema=schema),
+        )
+
+    def reverse(self) -> RenameEnumTypeOp:
+        """Return the operation that undoes this one.
+
+        Returns:
+            RenameEnumTypeOp: The same rename with the names swapped.
+        """
+        return RenameEnumTypeOp(
+            self.new_name,
+            self.old_name,
+            columns=self.columns,
+            schema=self.schema,
+        )
+
+    def to_diff_tuple(self) -> tuple[Any, ...]:
+        """Describe the change so ``alembic check`` can report it.
+
+        Returns:
+            tuple[Any, ...]: ``("rename_enum_type", <old>, <new>)``.
+        """
+        return ("rename_enum_type", self.old_name, self.new_name)
+
+
+@Operations.implementation_for(RenameEnumTypeOp)
+def _run_rename_enum_type(
+    operations: Operations,
+    operation: RenameEnumTypeOp,
+) -> None:
+    """Rename the PostgreSQL type, or the SQLite checks that carry its name.
+
+    Args:
+        operations (Operations): Alembic's operations proxy.
+        operation (RenameEnumTypeOp): The rename to perform.
+
+    Raises:
+        NotImplementedError: On SQLite in offline (``--sql``) mode, where
+            the table cannot be reflected to rebuild it.
+    """
+    dialect = operations.migration_context.dialect
+    if dialect.name == POSTGRESQL_DIALECT:
+        preparer = dialect.identifier_preparer
+        old_name = preparer.quote(operation.old_name)
+        if operation.schema:
+            old_name = f"{preparer.quote_schema(operation.schema)}.{old_name}"
+        new_name = preparer.quote(operation.new_name)
+        operations.execute(f"ALTER TYPE {old_name} RENAME TO {new_name}")
+        return
+    if dialect.name != SQLITE_DIALECT:
+        return
+    if operations.migration_context.as_sql:
+        raise NotImplementedError(
+            "rename_enum_type needs a live connection on SQLite: the enum name "
+            "lives in each column's CHECK, and renaming it rebuilds the table "
+            "from its reflected definition.",
+        )
+    for ref in operation.columns:
+        _sqlite_rename_check(operations, ref, operation.old_name, operation.new_name)
+
+
+def _sqlite_rename_check(
+    operations: Operations,
+    ref: EnumColumnRef,
+    old_name: str,
+    new_name: str,
+) -> None:
+    """Rebuild a SQLite table so ``ref``'s enum check carries ``new_name``.
+
+    The check keeps its expression; only the enum name embedded in the
+    constraint name changes, at its last occurrence, so the rest of the
+    name the naming convention produced (``ck_<table>_`` and a
+    ``_<column>`` suffix) is preserved. A check whose name does not carry
+    ``old_name`` is left alone.
+
+    The table is reflected into a ``MetaData`` **without** a naming
+    convention: the SDK's ``ck`` template embeds ``%(constraint_name)s``,
+    so reflecting under it rewrites every reflected check name a second
+    time (``ck_things_ck_things_other_enum``).
+
+    Args:
+        operations (Operations): Alembic's operations proxy.
+        ref (EnumColumnRef): The column whose check to rename.
+        old_name (str): The enum name the check carries today.
+        new_name (str): The enum name it should carry.
+    """
+    connection = operations.get_bind()
+    table = sa.Table(ref.table, sa.MetaData(), autoload_with=connection)
+    renamed = False
+    for constraint in list(table.constraints):
+        if not isinstance(constraint, sa.CheckConstraint) or not _is_enum_check(
+            constraint, ref.column
+        ):
+            continue
+        name = constraint.name
+        if not isinstance(name, str) or old_name not in name:
+            continue
+        cut = name.rfind(old_name)
+        target = f"{name[:cut]}{new_name}{name[cut + len(old_name) :]}"
+        table.constraints.discard(constraint)
+        table.append_constraint(
+            sa.CheckConstraint(
+                sa.text(str(constraint.sqltext)),
+                name=conv(target),
+            ),
+        )
+        renamed = True
+    if not renamed:
+        return
+    with operations.batch_alter_table(
+        ref.table,
+        copy_from=table,
+        recreate="always",
+    ):
+        pass
+
+
+@renderers.dispatch_for(RenameEnumTypeOp)
+def _render_rename_enum_type(
+    autogen_context: AutogenContext,
+    operation: RenameEnumTypeOp,
+) -> str:
+    """Render :class:`RenameEnumTypeOp` as the call that reproduces it.
+
+    Args:
+        autogen_context (AutogenContext): Alembic's rendering context.
+        operation (RenameEnumTypeOp): The operation to render.
+
+    Returns:
+        str: The ``op.rename_enum_type(...)`` call.
+    """
+    parts = [repr(operation.old_name), repr(operation.new_name)]
+    if operation.columns:
+        autogen_context.imports.add(
+            "from tempest_fastapi_sdk.db.enum_migrations import EnumColumnRef",
+        )
+        columns = ", ".join(
+            f"EnumColumnRef(table={ref.table!r}, column={ref.column!r})"
+            for ref in operation.columns
+        )
+        parts.append(f"columns=[{columns}]")
+    if operation.schema:
+        parts.append(f"schema={operation.schema!r}")
+    return f"op.rename_enum_type({', '.join(parts)})"
 
 
 @Operations.register_operation("drop_enum_type")
@@ -675,6 +926,16 @@ def sync_enum_types(
     PostgreSQL is read from ``pg_enum``; SQLite from the generated
     ``CHECK`` constraint, and only when it still has the generated shape.
 
+    A **renamed** type is detected too, and emitted as
+    :class:`RenameEnumTypeOp` ahead of any replacement — the case
+    :func:`~tempest_fastapi_sdk.db.enums.enum_type_name` creates for a
+    class ending in ``Enum``, whose type used to be
+    ``<name>_enum_enum``. On PostgreSQL the declared type is missing and
+    every column it types is still typed by one other existing enum that
+    the metadata no longer declares; on SQLite the column's enum
+    ``CHECK`` carries a name that differs from the declared one only
+    where the enum name sits.
+
     Args:
         context (Any): Alembic's ``MigrationContext``.
         revision (str | tuple[str, ...]): The revision being generated.
@@ -695,34 +956,92 @@ def sync_enum_types(
 
     declared = _declared_enum_types(metadata)
     existing = _existing_enum_types(connection, declared)
+    renamed = _renamed_enum_types(
+        connection, declared, existing, _declared_check_names(metadata)
+    )
 
     for name, wanted in declared.items():
+        old_name = renamed.get(name)
         current = existing.get(name)
+        if old_name is not None:
+            _drop_enum_type_swaps(script.upgrade_ops.ops, {old_name, name})
+            if script.downgrade_ops is not None:
+                _drop_enum_type_swaps(script.downgrade_ops.ops, {old_name, name})
+            _append_with_reverse(
+                script,
+                RenameEnumTypeOp(old_name, name, columns=wanted.columns),
+            )
+            current = current or existing.get(old_name)
         if current is None or current.values == wanted.values:
             continue
-        _append_replacement(script.upgrade_ops, wanted, current)
+        _append_with_reverse(
+            script,
+            ReplaceEnumOp(
+                wanted.name,
+                new_values=wanted.values,
+                old_values=current.values,
+                columns=wanted.columns,
+            ),
+        )
 
 
-def _append_replacement(
-    upgrade_ops: UpgradeOps,
-    wanted: EnumTypeState,
-    current: EnumTypeState,
+def _append_with_reverse(
+    script: MigrationScript,
+    operation: RenameEnumTypeOp | ReplaceEnumOp,
 ) -> None:
-    """Add one replacement to the generated upgrade operations.
+    """Append an operation to the upgrade and its reverse to the downgrade.
+
+    The reverse goes to the **front** of the downgrade, so operations
+    appended in order are undone in the opposite order, before anything
+    autogenerate reversed. Without it the downgrade of a revision that
+    renamed or replaced a type was empty, and ``downgrade`` left the
+    database on the new definition while marking it as the old one.
 
     Args:
-        upgrade_ops (UpgradeOps): The upgrade section to extend.
-        wanted (EnumTypeState): What the metadata declares.
-        current (EnumTypeState): What the database currently holds.
+        script (MigrationScript): The script being generated.
+        operation (RenameEnumTypeOp | ReplaceEnumOp): The operation.
     """
-    upgrade_ops.ops.append(
-        ReplaceEnumOp(
-            wanted.name,
-            new_values=wanted.values,
-            old_values=current.values,
-            columns=wanted.columns,
-        ),
-    )
+    assert script.upgrade_ops is not None
+    script.upgrade_ops.ops.append(operation)
+    if script.downgrade_ops is not None:
+        script.downgrade_ops.ops.insert(0, operation.reverse())
+
+
+def _drop_enum_type_swaps(op_list: list[Any], names: set[str]) -> None:
+    """Remove autogenerate's type change between two names of one enum.
+
+    On PostgreSQL, autogenerate compares an ``Enum`` column by type name
+    and proposes ``alter_column(type_=...)`` from the old name to the new
+    one — which fails with ``type "<new>" does not exist``, because the
+    type is renamed, not created. :class:`RenameEnumTypeOp` replaces it,
+    so the swap is dropped (an ``alter_column`` that also changes
+    something else keeps that part), and a batch block left empty goes
+    with it.
+
+    Args:
+        op_list (list[Any]): The operations to edit in place.
+        names (set[str]): The old and the new type name.
+    """
+    for operation in list(op_list):
+        nested: Any = getattr(operation, "ops", None)
+        if isinstance(nested, list):
+            _drop_enum_type_swaps(nested, names)
+            if not nested:
+                op_list.remove(operation)
+            continue
+        if not isinstance(operation, AlterColumnOp):
+            continue
+        before = operation.existing_type
+        after = operation.modify_type
+        if not (
+            isinstance(before, sa.Enum)
+            and isinstance(after, sa.Enum)
+            and {before.name, after.name} == names
+        ):
+            continue
+        operation.modify_type = None
+        if not operation.has_changes():
+            op_list.remove(operation)
 
 
 def drop_enum_types_on_downgrade(
@@ -974,7 +1293,7 @@ def _existing_enum_types_sqlite(
                 continue
             for constraint in inspector.get_check_constraints(ref.table):
                 sqltext = constraint.get("sqltext") or ""
-                if not sqltext.strip().startswith(ref.column):
+                if _check_column(sqltext) != ref.column:
                     continue
                 values = _parse_check_values(sqltext)
                 if values is None:
@@ -986,6 +1305,160 @@ def _existing_enum_types_sqlite(
                 )
                 break
     return found
+
+
+def _declared_check_names(
+    metadata: sa.MetaData | Sequence[sa.MetaData],
+) -> dict[EnumColumnRef, str]:
+    """Map each enum column to the name of the ``CHECK`` its type attaches.
+
+    Args:
+        metadata (sa.MetaData | Sequence[sa.MetaData]): The target
+            metadata.
+
+    Returns:
+        dict[EnumColumnRef, str]: The type-bound check name per column,
+        as the naming convention rendered it.
+    """
+    names: dict[EnumColumnRef, str] = {}
+    for table in _metadata_tables(metadata):
+        for constraint in table.constraints:
+            if not (
+                isinstance(constraint, sa.CheckConstraint)
+                and getattr(constraint, "_type_bound", False)
+                and isinstance(constraint.name, str)
+            ):
+                continue
+            for column in constraint.columns:
+                ref = EnumColumnRef(table=table.name, column=column.name)
+                names[ref] = str(constraint.name)
+    return names
+
+
+def _renamed_enum_types(
+    connection: sa.Connection,
+    declared: dict[str, EnumTypeState],
+    existing: dict[str, EnumTypeState],
+    check_names: dict[EnumColumnRef, str],
+) -> dict[str, str]:
+    """Find declared enum types the database still holds under another name.
+
+    Args:
+        connection (sa.Connection): The live migration connection.
+        declared (dict[str, EnumTypeState]): What the metadata declares.
+        existing (dict[str, EnumTypeState]): What the database holds.
+        check_names (dict[EnumColumnRef, str]): The declared check name
+            per enum column, read on SQLite.
+
+    Returns:
+        dict[str, str]: Declared type name to the name the database holds.
+        A type whose columns disagree, or whose old name is still declared
+        by the metadata, is left out rather than guessed.
+    """
+    dialect = connection.dialect.name
+    if dialect == POSTGRESQL_DIALECT:
+        found = _renamed_enum_types_postgresql(connection, declared, existing)
+    elif dialect == SQLITE_DIALECT:
+        found = _renamed_enum_types_sqlite(connection, declared, check_names)
+    else:
+        return {}
+    return {
+        new: old for new, old in found.items() if old != new and old not in declared
+    }
+
+
+def _renamed_enum_types_postgresql(
+    connection: sa.Connection,
+    declared: dict[str, EnumTypeState],
+    existing: dict[str, EnumTypeState],
+) -> dict[str, str]:
+    """Read which existing enum type the columns of a missing type use.
+
+    Args:
+        connection (sa.Connection): The live migration connection.
+        declared (dict[str, EnumTypeState]): What the metadata declares.
+        existing (dict[str, EnumTypeState]): The enum types in ``pg_enum``.
+
+    Returns:
+        dict[str, str]: Declared type name to the existing type every one
+        of its columns uses today.
+    """
+    renamed: dict[str, str] = {}
+    for name, wanted in declared.items():
+        if name in existing:
+            continue
+        used: set[str] = set()
+        for ref in wanted.columns:
+            row = connection.execute(
+                sa.text(
+                    "SELECT udt_name FROM information_schema.columns "
+                    "WHERE table_name = :table AND column_name = :column",
+                ),
+                {"table": ref.table, "column": ref.column},
+            ).first()
+            if row is not None:
+                used.add(str(row[0]))
+        if len(used) == 1:
+            (old_name,) = used
+            if old_name in existing:
+                renamed[name] = old_name
+    return renamed
+
+
+def _renamed_enum_types_sqlite(
+    connection: sa.Connection,
+    declared: dict[str, EnumTypeState],
+    check_names: dict[EnumColumnRef, str],
+) -> dict[str, str]:
+    """Read the enum name each column's SQLite ``CHECK`` still carries.
+
+    The declared check name is split around the declared enum name; a
+    reflected check on the same column with the same prefix and suffix
+    but something else in the middle carries the old enum name. A column
+    that already has a check under the declared name, or whose check
+    already ends with the declared enum name (a database created under a
+    naming convention the metadata does not declare), is not renamed.
+
+    Args:
+        connection (sa.Connection): The live migration connection.
+        declared (dict[str, EnumTypeState]): What the metadata declares.
+        check_names (dict[EnumColumnRef, str]): The declared check name
+            per enum column.
+
+    Returns:
+        dict[str, str]: Declared type name to the old name its checks
+        carry, when every column agrees.
+    """
+    inspector = sa.inspect(connection)
+    tables = set(inspector.get_table_names())
+    renamed: dict[str, str] = {}
+    for name, wanted in declared.items():
+        old_names: set[str] = set()
+        for ref in wanted.columns:
+            expected = check_names.get(ref)
+            if ref.table not in tables or expected is None or name not in expected:
+                continue
+            cut = expected.rfind(name)
+            prefix, suffix = expected[:cut], expected[cut + len(name) :]
+            reflected = [
+                str(constraint.get("name") or "")
+                for constraint in inspector.get_check_constraints(ref.table)
+                if _check_column(str(constraint.get("sqltext") or "")) == ref.column
+            ]
+            if expected in reflected:
+                continue
+            for current in reflected:
+                if current.endswith(f"{name}{suffix}"):
+                    continue
+                if (
+                    current.startswith(prefix)
+                    and current.endswith(suffix)
+                    and len(current) > len(prefix) + len(suffix)
+                ):
+                    old_names.add(current[len(prefix) : len(current) - len(suffix)])
+        if len(old_names) == 1:
+            renamed[name] = old_names.pop()
+    return renamed
 
 
 def _parse_check_values(sqltext: str) -> tuple[str, ...] | None:
@@ -1112,6 +1585,15 @@ def type_bound_check_include_object(
     match on the name alone would hide one table's drift behind the
     other's.
 
+    A reflected enum-shaped ``CHECK`` (``<column> IN (...)``) on a column
+    the metadata types with a check-carrying enum is hidden too, whatever
+    its name. Its name can legitimately differ from the declared one —
+    after :func:`~tempest_fastapi_sdk.db.enums.enum_type_name` stopped
+    doubling the ``_enum`` suffix, or in a table an older SDK rebuilt —
+    and the name-only match then proposed ``remove_constraint`` for the
+    check that enforces the column. Renames and member changes are
+    :func:`sync_enum_types`' job, which reads the same check.
+
     Pass it as ``include_object`` in ``context.configure``;
     :func:`~tempest_fastapi_sdk.db.alembic_env.run_alembic_env` does.
 
@@ -1124,6 +1606,11 @@ def type_bound_check_include_object(
         ``include_object`` callback Alembic expects.
     """
     names = _type_bound_check_names(metadata)
+    columns = (
+        {(ref.table, ref.column) for ref in _declared_check_names(metadata)}
+        if metadata is not None
+        else set()
+    )
 
     def include_object(
         object_: Any,
@@ -1145,14 +1632,19 @@ def type_bound_check_include_object(
 
         Returns:
             bool: ``False`` to hide a reflected check that belongs to the
-            same table and name as a declared type-bound check; ``True``
+            same table and name as a declared type-bound check, or that
+            is the enum check of a declared enum column; ``True``
             otherwise.
         """
         if type_ != "check_constraint" or not reflected:
             return True
         table = getattr(object_, "table", None)
         table_name = getattr(table, "name", None)
-        return (table_name, name) not in names
+        if (table_name, name) in names:
+            return False
+        sqltext = getattr(object_, "sqltext", None)
+        column = _check_column(str(sqltext)) if sqltext is not None else None
+        return (table_name, column) not in columns
 
     return include_object
 
@@ -1203,6 +1695,7 @@ __all__: list[str] = [
     "DropEnumTypeOp",
     "EnumColumnRef",
     "EnumTypeState",
+    "RenameEnumTypeOp",
     "ReplaceEnumOp",
     "drop_enum_types_on_downgrade",
     "postgresql_replace_statements",

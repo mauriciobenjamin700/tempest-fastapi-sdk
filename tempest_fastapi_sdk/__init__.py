@@ -843,6 +843,9 @@ from tempest_fastapi_sdk.db import (
     DEFAULT_SYNC_WATERMARK_LAG as DEFAULT_SYNC_WATERMARK_LAG,
 )
 from tempest_fastapi_sdk.db import (
+    ENUM_CLASS_SUFFIX as ENUM_CLASS_SUFFIX,
+)
+from tempest_fastapi_sdk.db import (
     ENUM_TYPE_SUFFIX as ENUM_TYPE_SUFFIX,
 )
 from tempest_fastapi_sdk.db import (
@@ -973,6 +976,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     QueryPlan as QueryPlan,
+)
+from tempest_fastapi_sdk.db import (
+    RenameEnumTypeOp as RenameEnumTypeOp,
 )
 from tempest_fastapi_sdk.db import (
     ReplaceEnumOp as ReplaceEnumOp,
@@ -2113,6 +2119,7 @@ __all__: list[str] = [
     "DEFAULT_SYNC_WATERMARK_LAG",
     "DOCX_MEDIA_TYPE",
     "EMAIL_PATTERN",
+    "ENUM_CLASS_SUFFIX",
     "ENUM_TYPE_SUFFIX",
     "HEARTBEAT_TIMEOUT_CODE",
     "HTTP_500_MARKER",
@@ -2463,6 +2470,7 @@ __all__: list[str] = [
     "RedisWebAuthnChallengeStore",
     "RefreshSchema",
     "Region",
+    "RenameEnumTypeOp",
     "ReplaceEnumOp",
     "RepositorySignal",
     "RequestIDMiddleware",

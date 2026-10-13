@@ -2,6 +2,50 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## Não lançada — classe terminada em `Enum` não dobra mais o sufixo do tipo
+
+`enum_type_name` tira um `Enum` do fim do nome da classe antes de acrescentar
+`_enum`. Só muda quem tem enum com esse sufixo:
+
+| Classe | Antes | Agora |
+| --- | --- | --- |
+| `CandidateSlugEnum` | `candidate_slug_enum_enum` | `candidate_slug_enum` |
+| `OrderStatus` | `order_status_enum` | `order_status_enum` (igual) |
+
+O banco continua com o nome antigo até uma migration renomear o tipo, e no
+PostgreSQL o model passa a escrever o nome novo em todo `INSERT`, `UPDATE` e
+`WHERE` com a coluna. Medido no PostgreSQL 16 com asyncpg, antes da migration:
+`type "candidate_slug_enum" does not exist` nos três.
+
+### O que fazer
+
+1. Atualize o SDK e rode `tempest db revision --autogenerate -m "renomeia tipos de enum"`.
+   O `sync_enum_types` detecta o tipo renomeado (no PostgreSQL pelo
+   `information_schema`, no SQLite pelo nome do `CHECK`) e escreve um
+   `op.rename_enum_type` por tipo, com o reverso no `downgrade`:
+
+    ```python
+    from alembic import op
+
+    from tempest_fastapi_sdk.db.enum_migrations import EnumColumnRef
+
+
+    def upgrade() -> None:
+        """Renomeia o tipo do enum para o nome sem o sufixo dobrado."""
+        op.rename_enum_type(
+            "candidate_slug_enum_enum",
+            "candidate_slug_enum",
+            columns=[EnumColumnRef(table="candidates", column="slug")],
+        )
+    ```
+
+2. Aplique a migration **antes** de o código novo atender tráfego (o `alembic
+   upgrade head` do deploy já faz isso). `tempest db check` falha enquanto a
+   migration não existir, então a CI pega o esquecimento.
+
+Para manter o nome antigo numa coluna, passe-o explícito:
+`mapped_column(TempestEnum(CandidateSlugEnum, name="candidate_slug_enum_enum"))`.
+
 ## Não lançada — o 429 do auth tem código próprio
 
 Os três limites do `make_auth_router` deixam de responder o `code` genérico
