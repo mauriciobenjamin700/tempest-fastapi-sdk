@@ -303,3 +303,31 @@ class TestEnvBlockFor:
         assert "SMTP_USE_SSL=false" in out
         assert "EMAIL_HOST" not in out
         assert "EMAIL_USE_STARTTLS" not in out
+
+
+class TestTasksRedis:
+    """``[tasks-redis]`` gets Redis, not the RabbitMQ ``[tasks]`` gets (#521)."""
+
+    def test_compose_ships_redis_and_no_rabbitmq(self) -> None:
+        services = _services("tasks-redis")
+        assert "redis" in services
+        assert "rabbitmq" not in services
+
+    def test_api_reaches_the_broker_over_the_compose_network(self) -> None:
+        api = _services("tasks-redis")["api"]
+        assert api["environment"]["TASKIQ_BROKER_URL"] == "redis://redis:6379/0"
+        assert "redis" in api["depends_on"]
+        assert "RABBITMQ_URL" not in api["environment"]
+
+    def test_env_example_points_taskiq_at_redis(self) -> None:
+        out = env_block_for("tasks-redis")
+        assert "TASKIQ_BROKER_URL=redis://localhost:6379/0" in out
+        assert "amqp://" not in out
+
+    def test_queue_next_to_tasks_redis_keeps_taskiq_on_redis(self) -> None:
+        out = env_block_for("queue,tasks-redis")
+        assert "RABBITMQ_URL=amqp://" in out
+        assert "TASKIQ_BROKER_URL=amqp://" not in out
+        assert "TASKIQ_BROKER_URL=redis://localhost:6379/0" in out
+        env = _services("queue,tasks-redis")["api"]["environment"]
+        assert env["TASKIQ_BROKER_URL"] == "redis://redis:6379/0"

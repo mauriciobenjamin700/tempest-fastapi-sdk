@@ -6,6 +6,7 @@ import tomllib
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from typer.testing import CliRunner
 
 from tempest_fastapi_sdk import __version__
@@ -383,3 +384,34 @@ class TestScaffoldHelpers:
             {"PROJECT_NAME": "demo_svc", "HOST": "0.0.0.0"},
         )
         assert rendered == "name=demo_svc host=0.0.0.0"
+
+    def test_render_keeps_only_the_blocks_whose_flag_is_on(self) -> None:
+        from tempest_fastapi_sdk.cli import new
+
+        template = (
+            "a\n@@if auth@@\nb\n@@else@@\nc\n@@endif@@\n@@if !auth@@\nd\n@@endif@@\ne\n"
+        )
+        assert new._render(template, {}, frozenset({"auth"})) == "a\nb\ne\n"
+        assert new._render(template, {}, frozenset()) == "a\nc\nd\ne\n"
+
+    @pytest.mark.parametrize(
+        "template",
+        [
+            "@@if a@@\n@@if b@@\n@@endif@@\n@@endif@@\n",
+            "@@endif@@\n",
+            "@@else@@\n",
+            "@@if a@@\nx\n",
+        ],
+    )
+    def test_render_refuses_a_malformed_block(self, template: str) -> None:
+        from tempest_fastapi_sdk.cli import new
+
+        with pytest.raises(ValueError):
+            new._render(template, {}, frozenset())
+
+    def test_taskiq_flag_covers_both_transports(self) -> None:
+        from tempest_fastapi_sdk.cli import new
+
+        assert "taskiq" in new.template_flags("tasks")
+        assert "taskiq" in new.template_flags("cache, Tasks-Redis")
+        assert "taskiq" not in new.template_flags("cache,queue")

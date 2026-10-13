@@ -97,6 +97,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `tempest new --extras tasks-redis` gera um projeto que sobe sem RabbitMQ e
+  sem `.env` (#521). Até a 0.312.x o extra não gerava a camada `src/tasks/`
+  (só `tasks` gerava), o `.env.example` não tinha `TASKIQ_*`, o compose não
+  tinha Redis, e o `Settings` herdava o default `amqp://` do `TaskIQSettings`
+  — o import de um `TaskQueue.from_settings(settings)` morria com
+  `ImportError: RabbitMQ tasks require the optional [tasks] extra`. Agora
+  `[tasks-redis]` gera a mesma camada `tasks`, o `Settings` gerado declara
+  `TASKIQ_BROKER_URL` com default `redis://localhost:6379/0`, o
+  `.env.example` traz a mesma URL e o compose sobe o Redis e aponta a API
+  para `redis://redis:6379/0`. Projeto sem extra de tasks deixa de herdar o
+  `TaskIQSettings`. Medido num projeto gerado e sincronizado com `uv sync`
+  (sem `taskiq_aio_pika` instalado): `from src.tasks import broker` devolve um
+  `RedisStreamBroker`, e `tempest check` passa. E o `ImportError` do
+  `TaskQueue.from_settings` passa a nomear o `TASKIQ_BROKER_URL`, o valor lido
+  (senha mascarada), o extra que aquele transporte exige e a URL do outro
+  transporte, em vez de só mandar instalar `[tasks]`.
 - `tempest doctor` mascara a senha da URL do RabbitMQ, do Redis e do banco
   em todo `detail` de `CheckOutcome` — inclusive nos ramos `fail`, cuja
   mensagem de exceção pode repetir a URL crua —, na tabela e no `--json`

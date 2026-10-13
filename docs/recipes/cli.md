@@ -89,7 +89,7 @@ my_service/
 │   │   ├── models/user.py   # UserModel
 │   │   └── repositories/
 │   ├── queue/               # só com o extra [queue] — broker + handlers
-│   ├── tasks/               # só com o extra [tasks] — TaskQueue + jobs
+│   ├── tasks/               # só com [tasks] ou [tasks-redis] — TaskQueue + jobs
 │   ├── ui/                  # só com o extra [ssr] — pages/layout/components/styles
 │   └── utils/
 └── tests/
@@ -135,7 +135,7 @@ Desde a v0.25.0 o scaffold gera um `docker-compose.yaml` com **apenas** os servi
 | Extra | Container subido | Porta(s) publicada(s) em `127.0.0.1` |
 |-------|------------------|--------------------------------------|
 | (sempre) | `postgres:18-alpine` | 5432 |
-| `[cache]` | `redis:8-alpine` | 6379 |
+| `[cache]` / `[tasks-redis]` | `redis:8-alpine` | 6379 |
 | `[queue]` / `[tasks]` | `rabbitmq:4-management-alpine` | 5672 (AMQP) + 15672 (UI) |
 | `[minio]` | `quay.io/minio/minio` + bootstrap mc | 9000 (API) + 9001 (Console) |
 | `[email]` | `mailhog/mailhog` | 1025 (SMTP) + 8025 (UI) |
@@ -267,6 +267,7 @@ Pedaço por pedaço:
     | `DATABASE_URL` | `postgresql+asyncpg://…@postgres:5432/<db>` | sempre |
     | `REDIS_URL` | `redis://redis:6379/0` | `[cache]` |
     | `RABBITMQ_URL` / `TASKIQ_BROKER_URL` | `amqp://…@rabbitmq:5672/` | `[queue]` / `[tasks]` |
+    | `TASKIQ_BROKER_URL` | `redis://redis:6379/0` | `[tasks-redis]` (vence o `amqp://` do `[tasks]`) |
     | `STORAGE_ENDPOINT` | `minio:9000` | `[minio]` |
 
     Sem essa reescrita a API não quebra — ela sobe **no lugar errado**. A
@@ -512,7 +513,9 @@ Mapeamento extra → camada gerada:
 | Extra | Arquivos criados (sob `src/` ou `app/`) |
 |-------|------------------------------------------|
 | `[queue]` | `queue/__init__.py` (`RabbitBroker` + `AsyncQueueManager` + `get_broker`), `queue/handlers.py` (subscriber de exemplo) |
-| `[tasks]` | `tasks/__init__.py` (`tq = TaskQueue.from_settings(settings)` + `broker`/`scheduler` para a CLI do TaskIQ + `get_task_queue`), `tasks/jobs.py` (task de exemplo com `@tq.task`) |
+| `[tasks]` / `[tasks-redis]` | `tasks/__init__.py` (`tq = TaskQueue.from_settings(settings)` + `broker`/`scheduler` para a CLI do TaskIQ + `get_task_queue`), `tasks/jobs.py` (task de exemplo com `@tq.task`) |
+
+Os dois extras geram a mesma camada: o transporte sai do `TASKIQ_BROKER_URL` em runtime. Com `[tasks-redis]`, o `tempest new` também declara `TASKIQ_BROKER_URL` no `Settings` com default `redis://localhost:6379/0` e escreve a mesma URL no `.env.example`, porque o default do mixin é `amqp://`, que escolhe o RabbitMQ e exige `[tasks]`. Se mesmo assim a URL apontar para um transporte cujo extra não está instalado, o `ImportError` do `TaskQueue.from_settings` nomeia o `TASKIQ_BROKER_URL`, o valor lido (senha mascarada) e a URL do outro transporte.
 
 A raiz (`src` ou `app`) é detectada automaticamente, e os imports gerados (`from src.queue import broker`) já apontam pra ela. A operação é **idempotente**: arquivos existentes são **mantidos** a menos que você passe `--force`, então um handler editado à mão nunca é sobrescrito silenciosamente — o arquivo irmão que ainda não existe é criado normalmente. Extras sem camada associada (ex.: só `[cache]`) não geram nada e o comando avisa.
 

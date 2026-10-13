@@ -90,7 +90,7 @@ my_service/
 │   │   ├── models/user.py   # UserModel
 │   │   └── repositories/
 │   ├── queue/               # only with the [queue] extra — broker + handlers
-│   ├── tasks/               # only with the [tasks] extra — TaskQueue + jobs
+│   ├── tasks/               # only with [tasks] or [tasks-redis] — TaskQueue + jobs
 │   ├── ui/                  # only with the [ssr] extra — pages/layout/components/styles
 │   └── utils/
 └── tests/
@@ -136,7 +136,7 @@ Since v0.25.0 the scaffold generates a `docker-compose.yaml` carrying **only** t
 | Extra | Container | Port(s) published on `127.0.0.1` |
 |-------|-----------|----------------------------------|
 | (always) | `postgres:18-alpine` | 5432 |
-| `[cache]` | `redis:8-alpine` | 6379 |
+| `[cache]` / `[tasks-redis]` | `redis:8-alpine` | 6379 |
 | `[queue]` / `[tasks]` | `rabbitmq:4-management-alpine` | 5672 (AMQP) + 15672 (UI) |
 | `[minio]` | `quay.io/minio/minio` + bootstrap mc | 9000 (API) + 9001 (Console) |
 | `[email]` | `mailhog/mailhog` | 1025 (SMTP) + 8025 (UI) |
@@ -269,6 +269,7 @@ Piece by piece:
     | `DATABASE_URL` | `postgresql+asyncpg://…@postgres:5432/<db>` | always |
     | `REDIS_URL` | `redis://redis:6379/0` | `[cache]` |
     | `RABBITMQ_URL` / `TASKIQ_BROKER_URL` | `amqp://…@rabbitmq:5672/` | `[queue]` / `[tasks]` |
+    | `TASKIQ_BROKER_URL` | `redis://redis:6379/0` | `[tasks-redis]` (wins over the `amqp://` of `[tasks]`) |
     | `STORAGE_ENDPOINT` | `minio:9000` | `[minio]` |
 
     Without that rewrite the API does not crash — it boots **against the
@@ -516,7 +517,9 @@ Extra → generated layer mapping:
 | Extra | Files created (under `src/` or `app/`) |
 |-------|------------------------------------------|
 | `[queue]` | `queue/__init__.py` (`RabbitBroker` + `AsyncQueueManager` + `get_broker`), `queue/handlers.py` (example subscriber) |
-| `[tasks]` | `tasks/__init__.py` (`tq = TaskQueue.from_settings(settings)` + `broker`/`scheduler` for the TaskIQ CLI + `get_task_queue`), `tasks/jobs.py` (example task with `@tq.task`) |
+| `[tasks]` / `[tasks-redis]` | `tasks/__init__.py` (`tq = TaskQueue.from_settings(settings)` + `broker`/`scheduler` for the TaskIQ CLI + `get_task_queue`), `tasks/jobs.py` (example task with `@tq.task`) |
+
+Both extras generate the same layer: the transport comes from `TASKIQ_BROKER_URL` at runtime. With `[tasks-redis]`, `tempest new` also declares `TASKIQ_BROKER_URL` on `Settings` with a `redis://localhost:6379/0` default and writes the same URL to `.env.example`, because the mixin's default is `amqp://`, which selects RabbitMQ and needs `[tasks]`. If the URL still points at a transport whose extra is not installed, the `ImportError` from `TaskQueue.from_settings` names `TASKIQ_BROKER_URL`, the value it read (password masked) and the URL shape of the other transport.
 
 The source root (`src` or `app`) is auto-detected, and generated imports (`from src.queue import broker`) already point at it. The operation is **idempotent**: existing files are **kept** unless you pass `--force`, so a hand-edited handler is never clobbered silently — a sibling file that doesn't exist yet is still written. Extras with no associated layer (e.g. just `[cache]`) generate nothing and the command says so.
 

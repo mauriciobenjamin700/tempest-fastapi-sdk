@@ -11,7 +11,9 @@ from tempest_fastapi_sdk import (
     JWTSettings,
     LogSettings,
     ServerSettings,
+@@if taskiq@@
     TaskIQSettings,
+@@endif@@
     TokenSettings,
 )
 
@@ -24,7 +26,9 @@ class Settings(
     JWTSettings,
     TokenSettings,
     CORSSettings,
+@@if taskiq@@
     TaskIQSettings,
+@@endif@@
     BaseAppSettings,
 ):
     """Service-wide settings backed by the ``.env`` file.
@@ -40,6 +44,13 @@ class Settings(
             docs. Override via the ``DESCRIPTION`` env var.
         VERSION (str): Version surfaced in the OpenAPI docs and on the
             health router. Override via the ``VERSION`` env var.
+@@if tasks-redis@@
+        TASKIQ_BROKER_URL (str): TaskIQ broker. Defaults to the local
+            Redis, because the project pins ``[tasks-redis]``: the mixin's
+            own default is an ``amqp://`` URL, which selects RabbitMQ and
+            needs ``[tasks]``, so importing ``src.tasks`` without a
+            ``.env`` would fail.
+@@endif@@
     """
 
     TITLE: str = Field(
@@ -60,6 +71,17 @@ class Settings(
         description="Surfaced in the OpenAPI docs and the health router.",
         examples=["0.1.0"],
     )
+@@if tasks-redis@@
+    TASKIQ_BROKER_URL: str = Field(
+        default="redis://localhost:6379/0",
+        title="TaskIQ broker URL",
+        description=(
+            "redis:// selects Redis Streams ([tasks-redis]); empty selects "
+            "the in-memory broker."
+        ),
+        examples=["redis://localhost:6379/0", ""],
+    )
+@@endif@@
 
 
 settings = Settings()

@@ -257,6 +257,66 @@ def test_generated_app_boots_with_only_the_pinned_extras(
     assert "login " in completed.stdout
 
 
+_TASKS_IMPORT_SCRIPT = textwrap.dedent(
+    """
+    import importlib.abc
+    import sys
+
+    BLOCKED = frozenset({blocked!r})
+
+
+    class _Blocker(importlib.abc.MetaPathFinder):
+        def find_spec(self, fullname, path=None, target=None):
+            if fullname.partition(".")[0] in BLOCKED:
+                raise ModuleNotFoundError(f"No module named {{fullname!r}}")
+            return None
+
+
+    sys.meta_path.insert(0, _Blocker())
+    sys.path.insert(0, {project!r})
+
+    from src.tasks import broker
+    from src.tasks.jobs import example_job
+
+    print("broker", type(broker).__name__, callable(example_job.enqueue))
+    """
+)
+"""Imports the generated task layer the way the API and the worker do."""
+
+
+def test_tasks_redis_project_imports_its_tasks_without_env_or_rabbitmq(
+    tmp_path: Path,
+) -> None:
+    """``--extras tasks-redis`` boots on Redis, with no ``.env`` at all (#521).
+
+    The mixin's ``TASKIQ_BROKER_URL`` default is an ``amqp://`` URL; a
+    project pinned to ``[tasks-redis]`` used to read it, pick RabbitMQ and
+    die asking for ``[tasks]``. The module runs with ``taskiq_aio_pika``
+    unimportable, as in the consumer's venv, and without any environment
+    variable naming the broker.
+    """
+    project, pinned, project_deps = _scaffold(tmp_path, "tasks-redis")
+    assert (project / "src" / "tasks" / "jobs.py").is_file()
+    assert not (project / ".env").exists()
+    blocked = _blocked_modules(pinned, project_deps)
+    assert "taskiq_aio_pika" in blocked
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _TASKS_IMPORT_SCRIPT.format(blocked=sorted(blocked), project=str(project)),
+        ],
+        cwd=project,
+        env={"PATH": "", "LOG_DIR": ""},
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr[-2000:]
+    assert "broker RedisStreamBroker" in completed.stdout
+
+
 @pytest.mark.parametrize(
     ("dropped", "message"),
     [

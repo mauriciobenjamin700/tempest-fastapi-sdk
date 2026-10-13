@@ -149,17 +149,100 @@ def _templates_root() -> Path:
     )
 
 
-def _render(content: str, context: dict[str, str]) -> str:
-    """Replace ``__KEY__`` placeholders with ``context[key]`` values.
+_BLOCK_OPEN = re.compile(r"^@@if (?P<negate>!?)(?P<flag>[a-z0-9_-]+)@@$")
+"""Opens a conditional block: ``@@if <flag>@@`` or ``@@if !<flag>@@``."""
+
+_BLOCK_ELSE = "@@else@@"
+"""Switches a conditional block to its other branch."""
+
+_BLOCK_CLOSE = "@@endif@@"
+"""Closes a conditional block."""
+
+
+def template_flags(extras: str) -> frozenset[str]:
+    """Return the flags conditional template blocks are evaluated against.
+
+    Every pinned extra is a flag under its own name. ``taskiq`` is added
+    when either TaskIQ transport (``tasks`` or ``tasks-redis``) is pinned,
+    because the settings mixin and the ``tasks`` layer are the same for
+    both — only the broker URL differs.
+
+    Args:
+        extras (str): Comma-separated extras, as pinned in the project.
+
+    Returns:
+        frozenset[str]: The flags.
+    """
+    flags = {part.strip().lower() for part in extras.split(",") if part.strip()}
+    if flags & {"tasks", "tasks-redis"}:
+        flags.add("taskiq")
+    return frozenset(flags)
+
+
+def _render_blocks(content: str, flags: frozenset[str]) -> str:
+    """Keep or drop the conditional blocks of a template.
+
+    A block is the lines between ``@@if <flag>@@`` and ``@@endif@@``, each
+    marker alone on its line; ``@@if !<flag>@@`` inverts the test and an
+    optional ``@@else@@`` carries the other branch. The marker lines
+    themselves never reach the output. Blocks do not nest — the templates
+    stay readable as the file they render to.
+
+    Args:
+        content (str): The raw template content.
+        flags (frozenset[str]): Flags that are on (see
+            :func:`template_flags`).
+
+    Returns:
+        str: The content with every block resolved.
+
+    Raises:
+        ValueError: On a nested block, an ``@@else@@`` or ``@@endif@@``
+            outside a block, or a block left open at the end of the file.
+    """
+    kept: list[str] = []
+    keeping: bool | None = None
+    for line in content.splitlines(keepends=True):
+        marker = line.strip()
+        opened = _BLOCK_OPEN.fullmatch(marker)
+        if opened:
+            if keeping is not None:
+                raise ValueError("nested @@if@@ blocks are not supported")
+            keeping = (opened["flag"] in flags) != bool(opened["negate"])
+            continue
+        if marker == _BLOCK_ELSE:
+            if keeping is None:
+                raise ValueError("@@else@@ outside an @@if@@ block")
+            keeping = not keeping
+            continue
+        if marker == _BLOCK_CLOSE:
+            if keeping is None:
+                raise ValueError("@@endif@@ outside an @@if@@ block")
+            keeping = None
+            continue
+        if keeping is None or keeping:
+            kept.append(line)
+    if keeping is not None:
+        raise ValueError("@@if@@ block left open")
+    return "".join(kept)
+
+
+def _render(
+    content: str,
+    context: dict[str, str],
+    flags: frozenset[str] = frozenset(),
+) -> str:
+    """Resolve conditional blocks, then replace ``__KEY__`` placeholders.
 
     Args:
         content (str): The raw template content.
         context (dict[str, str]): Key/value pairs to substitute.
+        flags (frozenset[str]): Flags the ``@@if@@`` blocks test.
 
     Returns:
         str: The rendered content.
     """
-    rendered = content
+    rendered = _render_blocks(content, flags)
     for key, value in context.items():
         rendered = rendered.replace(f"__{key}__", value)
     return rendered
@@ -305,13 +388,14 @@ def scaffold(
         **_spa_context(detect_spa_dir(target)),
     }
 
+    flags = template_flags(extras)
     root = _templates_root()
     written: list[Path] = []
     for template in _iter_templates(root):
         destination = _target_path(template, root, target)
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(
-            _render(template.read_text(encoding="utf-8"), context),
+            _render(template.read_text(encoding="utf-8"), context, flags),
             encoding="utf-8",
         )
         written.append(destination)
@@ -369,6 +453,7 @@ def scaffold(
 
 __all__: list[str] = [
     "scaffold",
+    "template_flags",
 ]
 
 
@@ -378,6 +463,7 @@ def __getattr__(item: str) -> Any:  # pragma: no cover - typer test helper
         "_build_sdk_dep",
         "_iter_templates",
         "_render",
+        "_render_blocks",
         "_resolve_name_and_target",
         "_resolve_target",
         "_target_path",
