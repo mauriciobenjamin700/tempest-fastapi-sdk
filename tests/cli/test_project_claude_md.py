@@ -91,6 +91,23 @@ def test_states_the_rules_that_keep_services_uniform(claude_md: str) -> None:
         assert rule in claude_md
 
 
+def test_states_the_service_layer_rules(claude_md: str) -> None:
+    """The service rules are written as rules, not left to the example (#520).
+
+    A service built from this file reimplemented ``BaseService``, wrapped
+    ``BaseRepository.list`` and kept helpers beside three services in one
+    module, because the only mention of ``BaseService`` was an example.
+    """
+    for rule in (
+        "Every service subclasses `BaseService[Repository, ResponseSchema]`",
+        "No `__init__` that only stores the repository",
+        "One public class per module in `services/`",
+        "goes to `src/utils/`",
+        "No repository method that only forwards to the base",
+    ):
+        assert rule in claude_md
+
+
 def test_documents_the_ui_layer(claude_md: str) -> None:
     for symbol in ("form_for", "parse_form", "STYLESHEET", "Stack", "body()"):
         assert symbol in claude_md

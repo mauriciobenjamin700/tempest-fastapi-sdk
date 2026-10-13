@@ -61,6 +61,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- O `CLAUDE.md` que o `tempest new` gera escreve as regras da camada de
+  service como regra, e não só como exemplo (#520): todo service herda
+  `BaseService` (exceção: service sem repository, dito na docstring), nenhum
+  `__init__` que só guarda o repository, uma classe pública por módulo de
+  `services/` sem função solta (helper vai para `src/utils/`), e nenhum
+  método de repository que só repassa para `list` / `get` / `paginate`. O
+  `tempest check` ainda não as aplica: o gate mora no `tempest-cli`, que não
+  conhece o SDK.
 - `tempest new` deixa de fixar `admin` e `auth` em todo projeto (#522): o
   `pyproject.toml` gerado leva só os extras passados em `--extras`. `auth`
   gera o `UserModel`, o `JWTSettings` no `Settings` e o bloco `JWT_*` do
