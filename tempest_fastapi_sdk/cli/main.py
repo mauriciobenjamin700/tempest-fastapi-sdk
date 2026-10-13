@@ -11,6 +11,7 @@ from tempest_fastapi_sdk.cli.entrypoint import raise_for_missing_cli_extra
 try:
     import click
     import typer
+    from tempest_cli import CheckStep
     from tempest_cli.main import register_commands
     from typer.core import TyperGroup
 except ModuleNotFoundError as exc:
@@ -28,6 +29,7 @@ from tempest_fastapi_sdk.cli.doctor import doctor_command
 from tempest_fastapi_sdk.cli.email import email_app
 from tempest_fastapi_sdk.cli.flags import flags_app
 from tempest_fastapi_sdk.cli.integrations import integrations_app
+from tempest_fastapi_sdk.cli.layer_lint import run_lint_layers
 from tempest_fastapi_sdk.cli.model import model_app
 from tempest_fastapi_sdk.cli.openapi_export import openapi_export_command
 from tempest_fastapi_sdk.cli.pdf import pdf_app
@@ -194,10 +196,16 @@ app.command("serve")(serve_command)
 app.command("shell")(shell_command)
 app.command("doctor")(doctor_command)
 
-# The quality gate lives in `tempest-cli`, a framework-agnostic package.
-# Registering it here is what keeps `tempest check` and `tempest-cli check`
-# the same commands rather than two copies that drift.
-register_commands(app)
+LINT_LAYERS_STEP: CheckStep = CheckStep(name="lint-layers", run=run_lint_layers)
+"""The layer rules, run by ``tempest check`` between ``mypy`` and ``pytest``.
+
+The quality gate lives in ``tempest-cli``, which knows nothing about
+FastAPI; registering it here with this step is what keeps ``tempest
+check`` and ``tempest-cli check`` one implementation, with the SDK's
+own rules added on top.
+"""
+
+register_commands(app, extra_steps=(LINT_LAYERS_STEP,))
 
 
 def _print_version(value: bool) -> None:
@@ -726,6 +734,35 @@ def openapi_errors_cmd(
     if not check:
         raise typer.Exit(0)
     raise typer.Exit(1 if undocumented_total or not allow_unreachable else 0)
+
+
+@app.command("lint-layers")
+def lint_layers_cmd(
+    target: Annotated[
+        str,
+        typer.Argument(
+            help="Project root, or its src/ / app/ directory. "
+            "Defaults to the current directory."
+        ),
+    ] = ".",
+) -> None:
+    """Check the services and repositories layers against the SDK's rules.
+
+    Reads the source with ``ast`` (the project is never imported) and
+    prints one ``path:line: CODE message`` line per violation. SVC001: a
+    public class in services/ does not inherit BaseService (a service
+    with no repository opts out with ``# tempest: no-base-service`` on
+    its class line). SVC002: a services/ module with a second public
+    class or a module-level function. SVC003: a service ``__init__``
+    that only stores the repository. REPO001: a repository method that
+    only forwards to a BaseRepository method.
+
+    ``tempest check`` runs the same rules as its ``lint-layers`` step.
+
+    Raises:
+        typer.Exit: Exit code 1 when any rule is violated, 0 otherwise.
+    """
+    raise typer.Exit(run_lint_layers(target))
 
 
 @app.command("permissions")

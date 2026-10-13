@@ -1780,7 +1780,7 @@ tempest test                                    # pytest
 tempest test tests/api/                         # pytest com filtro de caminho
 tempest test --fast                             # pytest -n auto -p no:cacheprovider  (pytest-xdist)
 tempest test --fast -w 4                        # quatro workers
-tempest check                                   # lint + fmt-check + type + test, para no primeiro erro
+tempest check                                   # lint + fmt-check + type + lint-layers + test, para no primeiro erro
 tempest check --fast                            # o mesmo gate, com o passo de teste em paralelo
 ```
 
@@ -1814,6 +1814,85 @@ Todo comando retorna o exit code da ferramenta subjacente, então `tempest check
 error: 'ruff' was not found in this project's environment, on PATH, and 'uv' is unavailable to run it. Install it with 'uv add --dev ruff' — or the whole set with 'uv add --dev "tempest-cli[tools]"' — and retry.
 ```
 
+### Regras de camada — `tempest lint-layers`
+
+O `CLAUDE.md` que o `tempest new` escreve diz como um service e um
+repository têm forma. Prosa não é gate: um serviço com dez services sem
+`BaseService`, repositories embrulhando o `list` do SDK e funções soltas
+num `services/feeds.py` passou `ruff`, `mypy` e `pytest` limpos (#520).
+O `tempest lint-layers` é o gate dessas regras — e o `tempest check` o roda
+como passo próprio, depois do `mypy` e antes do `pytest`:
+
+```bash
+tempest lint-layers            # o projeto do diretório atual (lê src/ ou app/)
+tempest lint-layers src        # o diretório de código direto
+```
+
+Ele lê o código com `ast` e **nunca importa o projeto**, então roda mesmo
+com import quebrado. Cada violação é uma linha `arquivo:linha: CÓDIGO
+mensagem`, e a mensagem diz o que mudar:
+
+| Código | Onde | O que acusa |
+| --- | --- | --- |
+| `SVC001` | `services/` | classe pública que não herda `BaseService` (direto, via outro service do projeto ou via um `*Service` importado do `tempest_fastapi_sdk`) |
+| `SVC002` | `services/` | segunda classe pública no módulo, ou qualquer função de módulo — helper vai para `utils/` |
+| `SVC003` | `services/` | `__init__` que só chama `super().__init__` com os próprios parâmetros e/ou guarda `self.repository` |
+| `REPO001` | `repositories/` | método cujo corpo é só `return [await] self.<método do BaseRepository>(...)` |
+
+Os três casos do #520, num projeto gerado pelo `tempest new`, saem assim
+no `tempest check` (trecho da saída real; exit code `1`):
+
+```text
+$ mypy --disallow-untyped-defs --disallow-incomplete-defs .
+Success: no issues found in 29 source files
+$ lint-layers
+src/db/repositories/news.py:18: REPO001 `NewsRepository.list_all` only forwards to BaseRepository.list; delete it and call `repository.list(...)` with those arguments at the call site.
+src/services/feeds.py:9: SVC002 module-level function `page_envelope` in services/; move it to utils/, or make it a method of the service that uses it.
+src/services/feeds.py:24: SVC001 `NewsService` does not inherit BaseService; subclass `BaseService[Repository, ResponseSchema]` and drop what it reimplements. A service with no repository opts out with `# tempest: no-base-service` on the class line; a type that is not a service belongs in schemas/ or core/.
+src/services/feeds.py:27: SVC003 `NewsService.__init__` only stores the repository, which BaseService already does; delete it.
+src/services/feeds.py:37: SVC002 `TrendService` shares this module with `NewsService`; one public class per module in services/ — move it to its own file.
+14 layer finding(s).
+```
+
+O projeto como o `tempest new` gera passa limpo, e continua limpo com os
+exemplos de `ProductService` / `ProductRepository` do `CLAUDE.md` copiados
+para dentro dele — o teste da suíte faz exatamente isso.
+
+!!! tip "Service sem repository: opt-out explícito"
+    Um service que não tem repository para entregar ao `BaseService` (um
+    catálogo estático lido de arquivo, uma fachada sobre API externa)
+    marca a linha do `class` com `# tempest: no-base-service`. O marcador
+    tira a classe do `SVC001` e do `SVC003`; o `SVC002` continua valendo.
+
+    ```python
+    # src/services/catalogue.py
+    import json
+    from pathlib import Path
+
+
+    class CatalogueService:  # tempest: no-base-service
+        """Catálogo estático lido de um JSON — não há repository."""
+
+        def __init__(self, path: Path) -> None:
+            self.items: list[dict[str, str]] = json.loads(path.read_text())
+    ```
+
+    É um comentário, não um atributo de classe, porque é uma instrução para
+    o checker e nada em runtime lê — o mesmo motivo de `# noqa` ser
+    comentário.
+
+!!! info "O que o `REPO001` deixa passar de propósito"
+    Um método que **sobrescreve** um nome do `BaseRepository` (`delete`
+    encaminhando para `soft_delete`) é política, não wrapper: quem chama
+    `service.delete` passa a apagar logicamente. E um método que chama
+    outro método definido na própria classe não é wrapper do SDK.
+
+!!! note "Requer `tempest-cli>=0.5.0`"
+    O passo entra no `tempest check` pelo `extra_steps` do
+    `register_commands`, que chegou no `tempest-cli` 0.5.0 — o piso que o
+    extra `[cli]` declara. O `tempest-cli check` sozinho, sem o SDK, não
+    conhece estas regras: elas são do SDK.
+
 ---
 
 ## Recap
@@ -1821,7 +1900,7 @@ error: 'ruff' was not found in this project's environment, on PATH, and 'uv' is 
 O `tempest` cobre o ciclo inteiro — do scaffold (`new`),
 passando pela infra (`generate --docker` / `--dockerfile` / `--src`),
 migrações (`db`), usuários (`user`) e segredos (`secrets`), até os gates
-de qualidade (`lint` / `fix` / `type` / `test` / `check`).
+de qualidade (`lint` / `fix` / `type` / `test` / `check`), com as regras de camada do SDK (`lint-layers`) dentro do `check`.
 
 ## Próximos passos
 

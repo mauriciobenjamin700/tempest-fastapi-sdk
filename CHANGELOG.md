@@ -66,8 +66,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   limite de login importava do submódulo ou copiava o número. Um guard novo
   (`tests/test_factory_param_exports_guard.py`) falha quando um tipo do SDK
   citado na assinatura dessas factories não sai do topo (#494).
+- `tempest lint-layers [TARGET]` e o passo `lint-layers` do `tempest check`
+  (entre o `mypy` e o `pytest`): regras estáticas das camadas `services/` e
+  `repositories/`, lidas por `ast` sem importar o projeto, uma linha
+  `arquivo:linha: CÓDIGO mensagem` por violação e exit code `1`. `SVC001`
+  classe pública em `services/` que não herda `BaseService` (opt-out com
+  `# tempest: no-base-service` na linha do `class`); `SVC002` segunda classe
+  pública ou função de módulo num módulo de service; `SVC003` `__init__` que
+  só guarda o repository; `REPO001` método de repository que só encaminha
+  para um método do `BaseRepository`. Medido num projeto do `tempest new` com
+  os três casos do #520: `ruff` e `mypy` limpos, 14 achados no
+  `lint-layers`; o scaffold puro e o scaffold com os exemplos do `CLAUDE.md`
+  passam limpos. O `CLAUDE.md` do template troca o aviso de que o check não
+  aplicava as regras pela lista dos códigos (#520).
 
 ### Changed
+
+- O extra `[cli]` (e o `[all]`) passa a exigir `tempest-cli>=0.5.0`, a versão
+  que ganhou `CheckStep` e o `extra_steps` do `register_commands` — é por ali
+  que o `lint-layers` entra no `tempest check` (#520).
 
 - **Quebra compatibilidade:** `enum_type_name` tira um `Enum` do fim do nome
   da classe antes de acrescentar `_enum` — `CandidateSlugEnum` vira
