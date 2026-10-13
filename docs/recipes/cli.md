@@ -1820,7 +1820,7 @@ O `CLAUDE.md` que o `tempest new` escreve diz como um service e um
 repository têm forma. Prosa não é gate: um serviço com dez services sem
 `BaseService`, repositories embrulhando o `list` do SDK e funções soltas
 num `services/feeds.py` passou `ruff`, `mypy` e `pytest` limpos (#520).
-O `tempest lint-layers` é o gate dessas regras — e o `tempest check` o roda
+O `tempest lint-layers` é o gate dessas regras (e da convenção de nome de enum) — e o `tempest check` o roda
 como passo próprio, depois do `mypy` e antes do `pytest`:
 
 ```bash
@@ -1838,6 +1838,7 @@ mensagem`, e a mensagem diz o que mudar:
 | `SVC002` | `services/` | segunda classe pública no módulo, ou qualquer função de módulo — helper vai para `utils/` |
 | `SVC003` | `services/` | `__init__` que só chama `super().__init__` com os próprios parâmetros e/ou guarda `self.repository` |
 | `REPO001` | `repositories/` | método cujo corpo é só `return [await] self.<método do BaseRepository>(...)` |
+| `ENUM001` | todo o código | classe pública que herda `BaseStrEnum` (direto ou via outra classe do projeto) e cujo nome não termina em `Enum` — a mensagem diz o nome esperado; renomear não pede migration, porque o `enum_type_name` tira um `Enum` final (#518) |
 
 Os três casos do #520, num projeto gerado pelo `tempest new`, saem assim
 no `tempest check` (trecho da saída real; exit code `1`):

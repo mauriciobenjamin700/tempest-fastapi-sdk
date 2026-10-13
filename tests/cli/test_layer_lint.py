@@ -22,6 +22,7 @@ from typer.testing import CliRunner
 from tempest_fastapi_sdk.cli import layer_lint
 from tempest_fastapi_sdk.cli.layer_lint import (
     BASE_REPOSITORY_METHODS,
+    ENUM_NAME_SUFFIX,
     NO_BASE_SERVICE_MARKER,
     LayerFinding,
     lint_layers,
@@ -30,6 +31,7 @@ from tempest_fastapi_sdk.cli.layer_lint import (
 )
 from tempest_fastapi_sdk.cli.main import LINT_LAYERS_STEP
 from tempest_fastapi_sdk.cli.main import app as cli_app
+from tempest_fastapi_sdk.db.enums import ENUM_CLASS_SUFFIX
 from tempest_fastapi_sdk.db.repository import BaseRepository
 
 runner = CliRunner()
@@ -474,6 +476,97 @@ class TestRepositoryWrapper:
         assert public == BASE_REPOSITORY_METHODS
 
 
+class TestEnumSuffix:
+    """``ENUM001``: a ``BaseStrEnum`` subclass name ends in ``Enum`` (#518)."""
+
+    def test_flags_a_direct_subclass_with_the_expected_name(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "src/core/enums.py",
+            """
+            from tempest_fastapi_sdk import BaseStrEnum
+
+
+            class OrderStatus(BaseStrEnum):
+                \"\"\"Order lifecycle.\"\"\"
+
+                OPEN = "open"
+
+
+            class PartyEnum(BaseStrEnum):
+                \"\"\"Already suffixed.\"\"\"
+
+                LEFT = "left"
+            """,
+        )
+        findings = lint_layers(tmp_path)
+        assert _codes(findings) == [("enums.py", 4, "ENUM001")]
+        assert "rename it to `OrderStatusEnum`" in findings[0].message
+        assert "no migration is needed" in findings[0].message
+
+    def test_follows_an_alias_and_a_project_base(self, tmp_path: Path) -> None:
+        """Inheritance resolves to a fixed point across files and aliases."""
+        _write(
+            tmp_path,
+            "src/schemas/a_status.py",
+            """
+            from src.core.base import DomainEnum
+
+
+            class Status(DomainEnum):
+                \"\"\"Two levels below BaseStrEnum.\"\"\"
+
+                ON = "on"
+            """,
+        )
+        _write(
+            tmp_path,
+            "src/core/base.py",
+            """
+            from tempest_fastapi_sdk.core.enums import BaseStrEnum as StrBase
+
+
+            class DomainEnum(StrBase):
+                \"\"\"Project base without members.\"\"\"
+
+
+            class _Hidden(StrBase):
+                \"\"\"Private: names no database type.\"\"\"
+            """,
+        )
+        assert _codes(lint_layers(tmp_path)) == [("a_status.py", 4, "ENUM001")]
+
+    def test_leaves_other_enums_alone(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "app/core/enums.py",
+            """
+            from enum import Enum, StrEnum
+
+            from tempest_fastapi_sdk import BaseIntEnum
+
+
+            class Color(StrEnum):
+                RED = "red"
+
+
+            class Shape(Enum):
+                CIRCLE = 1
+
+
+            class Priority(BaseIntEnum):
+                LOW = 1
+            """,
+        )
+        assert lint_layers(tmp_path) == []
+
+    def test_suffix_matches_enum_type_name(self) -> None:
+        """The checker's suffix is the one ``enum_type_name`` strips."""
+        assert ENUM_NAME_SUFFIX == ENUM_CLASS_SUFFIX
+
+
 class TestDiscovery:
     """Where the checker looks, and what it never reads."""
 
@@ -593,6 +686,7 @@ class TestScaffold:
             written.append(_write(project, relative, source))
         assert project / "src/services/product.py" in written
         assert project / "src/db/repositories/product.py" in written
+        assert project / "src/core/enums.py" in written
         assert lint_layers(project) == []
 
     def test_claude_md_documents_the_gate(self, project: Path) -> None:
@@ -606,5 +700,6 @@ class TestScaffold:
             "SVC002",
             "SVC003",
             "REPO001",
+            "ENUM001",
         ):
             assert needle in document

@@ -11,14 +11,14 @@ from sqlalchemy.orm import Mapped
 from tempest_fastapi_sdk import BaseModel, BaseStrEnum
 
 
-class OrderStatus(BaseStrEnum):
+class OrderStatusEnum(BaseStrEnum):
     OPEN = "open"
     IN_PROGRESS = "in_progress"
     DONE = "done"
 
 
 class OrderModel(BaseModel):
-    status: Mapped[OrderStatus]
+    status: Mapped[OrderStatusEnum]
 ```
 
 Sem nenhuma configuração, essa anotação produz:
@@ -45,11 +45,23 @@ Os três defaults trocados:
    aceita em silêncio. Um bug que o banco pegaria em produção passaria na
    suíte.
 3. **Nome de tipo sem colisão.** O default nomearia o tipo do PostgreSQL
-   como `orderstatus`; o SDK usa `order_status_enum`, porque tipo e
+   como `orderstatusenum`; o SDK usa `order_status_enum`, porque tipo e
    tabela dividem o mesmo namespace.
    Um `Enum` no fim do nome da classe sai antes do sufixo:
    `OrderStatusEnum` também vira `order_status_enum`, e não
    `order_status_enum_enum`. Com ou sem o sufixo na classe, o tipo é o mesmo.
+
+!!! tip "A convenção é o sufixo `Enum`, e o `tempest check` a aplica"
+    Todo `BaseStrEnum` do projeto termina em `Enum`. O passo `lint-layers`
+    do `tempest check` (e o `tempest lint-layers` sozinho) acusa a classe
+    sem o sufixo como `ENUM001`, dizendo o nome esperado:
+
+    ```text
+    src/core/enums.py:12: ENUM001 `Party` inherits BaseStrEnum; rename it to `PartyEnum`. The database type name does not change (enum_type_name drops one trailing `Enum`), so no migration is needed.
+    ```
+
+    Renomear não pede migration: `Party` e `PartyEnum` dão o mesmo tipo,
+    `party_enum`. Detalhes na [receita da CLI](cli.md#regras-de-camada-tempest-lint-layers).
 
 !!! info "A ordem de declaração vira a ordem do tipo"
     O PostgreSQL ordena uma coluna `ENUM` pela ordem dos labels, não pelo
@@ -67,15 +79,15 @@ from sqlalchemy.orm import Mapped
 from tempest_fastapi_sdk import BaseModel, BaseStrEnum, enum_column
 
 
-class OrderStatus(BaseStrEnum):
+class OrderStatusEnum(BaseStrEnum):
     OPEN = "open"
     IN_PROGRESS = "in_progress"
     DONE = "done"
 
 
 class OrderModel(BaseModel):
-    status: Mapped[OrderStatus] = enum_column(
-        OrderStatus, default=OrderStatus.OPEN, index=True
+    status: Mapped[OrderStatusEnum] = enum_column(
+        OrderStatusEnum, default=OrderStatusEnum.OPEN, index=True
     )
 ```
 

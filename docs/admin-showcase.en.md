@@ -34,7 +34,7 @@ from tempest_fastapi_sdk import BaseAuditLogModel, BaseModel, BaseUserModel
 from tempest_fastapi_sdk.core import BaseStrEnum
 
 
-class OrderStatus(BaseStrEnum):
+class OrderStatusEnum(BaseStrEnum):
     PENDING = "pending"
     PAID = "paid"
     SHIPPED = "shipped"
@@ -68,8 +68,8 @@ class Product(BaseModel):
 class Order(BaseModel):
     __tablename__ = "orders"
     customer_email: Mapped[str] = mapped_column(String(255), nullable=False)
-    status: Mapped[OrderStatus] = mapped_column(
-        String(16), nullable=False, default=OrderStatus.PENDING
+    status: Mapped[OrderStatusEnum] = mapped_column(
+        String(16), nullable=False, default=OrderStatusEnum.PENDING
     )
     placed_at: Mapped[dt.datetime | None] = mapped_column(nullable=True)
 
@@ -99,7 +99,7 @@ from tempest_fastapi_sdk import (
     MetricValue,
 )
 
-from src.db.models import Order, OrderStatus, Product
+from src.db.models import Order, OrderStatusEnum, Product
 
 
 async def total_products(session: AsyncSession) -> MetricValue:
@@ -109,8 +109,8 @@ async def total_products(session: AsyncSession) -> MetricValue:
 
 async def paid_vs_pending(session: AsyncSession) -> MetricTrend:
     repo = BaseRepository(session, model=Order)
-    paid = await repo.count({"status": OrderStatus.PAID.value})
-    pending = await repo.count({"status": OrderStatus.PENDING.value})
+    paid = await repo.count({"status": OrderStatusEnum.PAID.value})
+    pending = await repo.count({"status": OrderStatusEnum.PENDING.value})
     return MetricTrend(value=float(paid), previous=float(pending), unit="orders")
 
 
@@ -118,7 +118,7 @@ async def orders_by_status(session: AsyncSession) -> MetricPartition:
     repo = BaseRepository(session, model=Order)
     segments = [
         (status.value, float(await repo.count({"status": status.value})))
-        for status in OrderStatus
+        for status in OrderStatusEnum
     ]
     return MetricPartition(segments=segments)
 ```

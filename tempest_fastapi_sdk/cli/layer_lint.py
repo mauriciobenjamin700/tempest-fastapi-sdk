@@ -1,4 +1,4 @@
-"""Static rules for the ``services`` and ``repositories`` layers.
+"""Static rules for the ``services`` / ``repositories`` layers and enum names.
 
 The ``CLAUDE.md`` that ``tempest new`` writes lists how a service and a
 repository are shaped: every service subclasses :class:`BaseService`, a
@@ -32,6 +32,12 @@ The rules:
   :class:`BaseRepository` method on ``self``. A method that overrides a
   base name (``delete`` forwarding to ``soft_delete``) is a policy, not a
   wrapper, and is left alone.
+* ``ENUM001`` — a public class anywhere in the source root that inherits
+  ``BaseStrEnum`` (directly, or through a project class that does) and
+  whose name does not end in ``Enum`` (#518). Renaming is free on the
+  database side: ``enum_type_name`` drops one trailing ``Enum``, so
+  ``OrderStatus`` and ``OrderStatusEnum`` both map to
+  ``order_status_enum``.
 
 The opt-out is a comment, not a class attribute, because it is an
 instruction to this checker and nothing at runtime reads it; the same
@@ -119,6 +125,18 @@ SERVICES_DIR: str = "services"
 
 REPOSITORIES_DIR: str = "repositories"
 """Directory name whose modules the ``REPO*`` rules read."""
+
+ENUM_NAME_SUFFIX: str = "Enum"
+"""Suffix every ``BaseStrEnum`` subclass name ends in (``ENUM001``).
+
+The same string :data:`tempest_fastapi_sdk.db.enums.ENUM_CLASS_SUFFIX`
+strips before naming the database type; kept as a literal so the checker
+never imports SQLAlchemy, and pinned to that constant by
+``tests/cli/test_layer_lint.py``.
+"""
+
+STR_ENUM_BASE: str = "BaseStrEnum"
+"""The SDK base class whose subclasses ``ENUM001`` reads."""
 
 SKIPPED_DIRS: frozenset[str] = frozenset(
     {"tests", "node_modules", "__pycache__", "site-packages"}
@@ -217,6 +235,28 @@ def _layer_dirs(root: Path, name: str) -> Iterator[Path]:
         if child.name in SKIPPED_DIRS:
             continue
         yield from _layer_dirs(child, name)
+
+
+def _source_files(root: Path) -> Iterator[Path]:
+    """Yield every ``.py`` file under ``root``, skipping what is never source.
+
+    Hidden directories and the ones in :data:`SKIPPED_DIRS` are not
+    descended into, the same way :func:`_layer_dirs` walks.
+
+    Args:
+        root (Path): Directory to walk.
+
+    Yields:
+        Path: Each Python file, in sorted order.
+    """
+    for child in sorted(root.iterdir()):
+        if child.name.startswith("."):
+            continue
+        if child.is_dir():
+            if child.name not in SKIPPED_DIRS:
+                yield from _source_files(child)
+        elif child.suffix == ".py":
+            yield child
 
 
 def _python_files(directories: Iterable[Path]) -> list[Path]:
@@ -663,6 +703,66 @@ def _check_repositories(modules: list[_ParsedModule]) -> list[LayerFinding]:
     return findings
 
 
+def _check_enums(modules: list[_ParsedModule]) -> list[LayerFinding]:
+    """Apply ``ENUM001`` to every module of the source root.
+
+    A class is a string enum when a base resolves to ``BaseStrEnum`` —
+    under any alias it was imported with — or to a project class that
+    already is one; the set is grown to a fixed point so file order does
+    not matter. Only public classes are reported: a private intermediate
+    base names no database type.
+
+    Args:
+        modules (list[_ParsedModule]): Every module under the scan roots.
+
+    Returns:
+        list[LayerFinding]: The violations, in file and line order.
+    """
+    classes: list[tuple[_ParsedModule, ast.ClassDef, list[str]]] = []
+    str_enums: set[str] = set()
+    for parsed in modules:
+        sdk_names = _sdk_imports(parsed.tree)
+        for node in parsed.tree.body:
+            if not isinstance(node, ast.ClassDef):
+                continue
+            bases = [
+                name
+                for expression in node.bases
+                if (name := _base_name(expression)) is not None
+            ]
+            if any(sdk_names.get(base, base) == STR_ENUM_BASE for base in bases):
+                str_enums.add(node.name)
+            classes.append((parsed, node, bases))
+    changed = True
+    while changed:
+        changed = False
+        for _parsed, node, bases in classes:
+            if node.name not in str_enums and any(base in str_enums for base in bases):
+                str_enums.add(node.name)
+                changed = True
+    findings: list[LayerFinding] = []
+    for parsed, node, _bases in classes:
+        if node.name.startswith("_") or node.name not in str_enums:
+            continue
+        if node.name.endswith(ENUM_NAME_SUFFIX):
+            continue
+        expected = f"{node.name}{ENUM_NAME_SUFFIX}"
+        findings.append(
+            LayerFinding(
+                path=parsed.path,
+                line=node.lineno,
+                code="ENUM001",
+                message=(
+                    f"`{node.name}` inherits BaseStrEnum; rename it to "
+                    f"`{expected}`. The database type name does not change "
+                    f"(enum_type_name drops one trailing `Enum`), so no "
+                    f"migration is needed."
+                ),
+            )
+        )
+    return findings
+
+
 def lint_layers(target: Path) -> list[LayerFinding]:
     """Run every layer rule over a project.
 
@@ -674,7 +774,7 @@ def lint_layers(target: Path) -> list[LayerFinding]:
     Returns:
         list[LayerFinding]: Every violation, sorted by file and line.
         Empty for a clean project and for one with no ``services/`` or
-        ``repositories/`` directory.
+        ``repositories/`` directory and no ``BaseStrEnum`` subclass.
     """
     roots = scan_roots(target)
     services: list[Path] = []
@@ -688,9 +788,16 @@ def lint_layers(target: Path) -> list[LayerFinding]:
     repository_modules = [
         parsed for path in _python_files(repositories) if (parsed := _parse(path))
     ]
+    source_modules = [
+        parsed
+        for root in roots
+        for path in _source_files(root)
+        if (parsed := _parse(path))
+    ]
     findings = [
         *_check_services(service_modules),
         *_check_repositories(repository_modules),
+        *_check_enums(source_modules),
     ]
     return sorted(findings, key=lambda item: (str(item.path), item.line, item.code))
 
@@ -722,11 +829,13 @@ def run_lint_layers(target: str, *, stream: TextIO | None = None) -> int:
 
 __all__: list[str] = [
     "BASE_REPOSITORY_METHODS",
+    "ENUM_NAME_SUFFIX",
     "NO_BASE_SERVICE_MARKER",
     "REPOSITORIES_DIR",
     "SERVICES_DIR",
     "SKIPPED_DIRS",
     "SOURCE_ROOTS",
+    "STR_ENUM_BASE",
     "LayerFinding",
     "lint_layers",
     "run_lint_layers",

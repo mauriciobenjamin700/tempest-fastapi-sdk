@@ -746,7 +746,7 @@ def lint_layers_cmd(
         ),
     ] = ".",
 ) -> None:
-    """Check the services and repositories layers against the SDK's rules.
+    """Check the services, repositories and enum names against the SDK's rules.
 
     Reads the source with ``ast`` (the project is never imported) and
     prints one ``path:line: CODE message`` line per violation. SVC001: a
@@ -755,7 +755,8 @@ def lint_layers_cmd(
     its class line). SVC002: a services/ module with a second public
     class or a module-level function. SVC003: a service ``__init__``
     that only stores the repository. REPO001: a repository method that
-    only forwards to a BaseRepository method.
+    only forwards to a BaseRepository method. ENUM001: a BaseStrEnum
+    subclass whose name does not end in ``Enum``.
 
     ``tempest check`` runs the same rules as its ``lint-layers`` step.
 

@@ -79,6 +79,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `lint-layers`; o scaffold puro e o scaffold com os exemplos do `CLAUDE.md`
   passam limpos. O `CLAUDE.md` do template troca o aviso de que o check não
   aplicava as regras pela lista dos códigos (#520).
+- `ENUM001` no `tempest lint-layers` / passo `lint-layers` do `tempest check`:
+  classe pública que herda `BaseStrEnum` — direto, por alias de import ou via
+  outra classe do projeto (resolvido por ponto fixo) — e cujo nome não termina
+  em `Enum`. A mensagem diz o nome esperado e que renomear não pede migration:
+  medido, `enum_type_name(Party)` e `enum_type_name(PartyEnum)` dão os dois
+  `party_enum`. Varre todo o `src/` ou `app/`, não só uma camada. O
+  `CLAUDE.md` do template ganha a convenção com um exemplo
+  (`ProductStatusEnum`), e os exemplos das docs e do README que declaravam
+  `OrderStatus` / `ZapOutcome` passam a usar o sufixo. Medido num projeto do
+  `tempest new`: limpo como gerado; `class Party(BaseStrEnum)` faz o
+  `tempest check` parar no `lint-layers` com uma linha e exit 1 (#518).
 
 ### Changed
 
