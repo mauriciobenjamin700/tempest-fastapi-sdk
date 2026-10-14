@@ -3347,3 +3347,19 @@ fixo) sem nome terminado em `Enum`, varrendo todo o `src/`/`app/`.
 teste. `BaseIntEnum`, `StrEnum` e `Enum` cru ficam de fora. Teste:
 `tests/cli/test_layer_lint.py::TestEnumSuffix` e os de scaffold (o exemplo
 `ProductStatusEnum` do `CLAUDE.md` gravado no projeto passa).
+
+## `VERSION` sai do `pyproject.toml` (#536)
+
+O `Settings` que o `tempest new` gera lia `VERSION` de um default fixo
+(`"0.1.0"`) e o `.env.example` trazia uma terceira cópia — copiar
+`.env.example` para `.env` congelava a versão pela env. Agora o `VERSION` sai
+de `[project].version` via `read_project_version` (novo helper público em
+`tempest_fastapi_sdk.settings`, re-exportado no topo), com o caminho ancorado
+em `Path(__file__).resolve().parents[2] / "pyproject.toml"` — não no cwd,
+então o serviço publicado acha a versão de qualquer diretório (o #519 fez o
+mesmo com o `alembic.ini`). A env `VERSION` continua vencendo, e sem argumento
+o helper sobe diretórios a partir de `Path.cwd()`. Medido: num projeto gerado
+com `version = "7.7.7"`, `app.openapi()["info"]["version"]` e
+`GET /health/readiness` devolvem `7.7.7`; `VERSION=9.9.9` no ambiente
+sobrepõe. Testes: `tests/settings/test_version.py` e
+`tests/cli/test_scaffold_project_version.py`.

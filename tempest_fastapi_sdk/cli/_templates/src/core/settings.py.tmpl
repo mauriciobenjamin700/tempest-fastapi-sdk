@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic import Field
 from tempest_fastapi_sdk import (
     BaseAppSettings,
@@ -17,7 +19,16 @@ from tempest_fastapi_sdk import (
     TaskIQSettings,
 @@endif@@
     TokenSettings,
+    read_project_version,
 )
+
+PYPROJECT_PATH: Path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+"""Absolute path of the project's ``pyproject.toml``.
+
+Anchored on this file, not on the working directory: the app lifespan and
+Alembic can run from another directory, and the version must still come
+from the project that owns this settings module.
+"""
 
 
 class Settings(
@@ -47,7 +58,9 @@ class Settings(
         DESCRIPTION (str): Optional API description shown in the OpenAPI
             docs. Override via the ``DESCRIPTION`` env var.
         VERSION (str): Version surfaced in the OpenAPI docs and on the
-            health router. Override via the ``VERSION`` env var.
+            health router. Read from ``[project].version`` in
+            ``pyproject.toml`` — the single source of truth — unless the
+            ``VERSION`` env var overrides it.
         DATABASE_MIGRATE_ON_STARTUP (bool): Apply pending migrations in
             the app lifespan. Turn off when a separate job migrates.
 @@if tasks-redis@@
@@ -72,9 +85,13 @@ class Settings(
         examples=["Backend API for __PROJECT_NAME__."],
     )
     VERSION: str = Field(
-        default="0.1.0",
+        default_factory=lambda: read_project_version(PYPROJECT_PATH),
         title="API version",
-        description="Surfaced in the OpenAPI docs and the health router.",
+        description=(
+            "Surfaced in the OpenAPI docs and the health router. Defaults "
+            "to [project].version in pyproject.toml; set the VERSION env "
+            "var to override it."
+        ),
         examples=["0.1.0"],
     )
     DATABASE_MIGRATE_ON_STARTUP: bool = Field(
