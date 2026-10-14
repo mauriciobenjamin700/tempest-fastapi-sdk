@@ -118,6 +118,28 @@ Duas mudanças de comportamento vêm junto:
 - **`mfa_confirm` revoga as sessões por padrão.** Quem chama o serviço direto e
   precisa manter as sessões passa `revoke_sessions=False`.
 
+### O reset de senha e a reativação por link pedem o segundo fator
+
+`POST /auth/password-reset/confirm` e `POST /auth/activate/{token}` passam a
+espelhar o `/auth/login`: quando a conta tem TOTP inscrito, não devolvem o par
+— devolvem `mfa_required=true` + `mfa_token`, e o par só sai do
+`/auth/mfa/verify`, com `amr` de MFA. A senha é trocada de todo jeito.
+
+Cliente que chamava o `confirm` (ou o `activate` de uma conta reativada) e
+guardava `access_token` direto precisa tratar o desafio: se `mfa_required` for
+`true`, peça o código e faça o `/auth/mfa/verify`. Conta sem MFA não muda —
+continua recebendo o par na própria resposta. Ativar uma conta recém-cadastrada
+também não muda: ela nunca tem fator.
+
+`ActivationResponseSchema` ganhou `mfa_required` / `mfa_token`, e
+`access_token` / `refresh_token` passaram a ser opcionais (`str | None`), como
+no `LoginResponseSchema`. Quem lê o par de uma ativação de conta nova não muda
+nada.
+
+O reset de senha continua **sem** revogar as sessões já abertas: um refresh
+token emitido antes do reset segue válido depois dele. Não mudou nesta versão —
+se expulsar um invasor for o objetivo do reset, revogue as sessões você mesmo.
+
 ## 0.312.0 — Mercado Pago: Pix vencido e busca de chargebacks
 
 Duas mudanças de comportamento, as duas medidas no sandbox em 2026-10-10.

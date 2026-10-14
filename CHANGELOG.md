@@ -321,6 +321,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **O reset de senha e a reativação por link pedem o segundo fator quando a
+  conta tem MFA (#534).** Antes, `POST /auth/password-reset/confirm` consumia
+  o token, gravava a senha nova e emitia o par direto, sem olhar
+  `is_mfa_enrolled` — quem controlava a caixa de e-mail da vítima entrava sem
+  o TOTP, exatamente o cenário (e-mail comprometido) que o MFA existe para
+  cobrir. Agora, com TOTP inscrito e `AUTH_MFA_ENABLED=True`, a rota responde
+  como o `/login`: `mfa_required=true` + `mfa_token`, sem par; o cliente
+  conclui em `/auth/mfa/verify`, que emite o par com `amr` de MFA. A senha é
+  trocada de todo jeito. Conta sem MFA mantém a resposta de antes (par com
+  `amr == ["pwd"]`).
+- **`POST /auth/activate/{token}` segue a mesma regra (#534).** Um token de
+  ativação normalmente pertence a uma conta recém-cadastrada, sem fator — e
+  aí nada muda. Mas o `/activation/request` emite link para **qualquer**
+  conta inativa, inclusive uma que tinha TOTP e foi desativada (o CLI do SDK
+  desativa via `is_active`); nesse caso a rota passa a responder o desafio
+  MFA (`mfa_required=true` + `mfa_token`) em vez do par, e o par sai do
+  `/auth/mfa/verify`. `ActivationResponseSchema` ganha `mfa_required` /
+  `mfa_token`, e `access_token` / `refresh_token` passam a ser opcionais,
+  espelhando o `LoginResponseSchema`.
+- Override de `issue_token_pair`/`confirm_password_reset` com a assinatura
+  antiga continua funcionando: `is_mfa_enrolled` e `issue_mfa_token` são
+  métodos de `UserAuthService`, herdados por qualquer subclasse. Medido em
+  `tests/auth/test_password_reset_mfa.py` (4 testes: reset com e sem MFA,
+  reativação de conta com MFA e ativação de conta nova). O reset de senha
+  **não** derruba as sessões já abertas — medido: um refresh token emitido
+  antes do reset continua trocando por um par novo depois dele; fora do
+  escopo desta correção.
 - **O `/unregister` do `make_push_router` e o `/unsubscribe` do
   `make_web_push_router` só removem dispositivo do próprio usuário (#523).**
   Antes, a rota exigia login mas apagava pelo token/endpoint sem olhar o dono:

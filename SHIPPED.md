@@ -3310,6 +3310,19 @@ só o `between` malformado. Testes: `tests/db/test_expressions.py` (recusa do
 `tests/db/test_repository.py::TestInvalidFilterValueOnWrites` (prova que nada é
 escrito).
 
+## Reset de senha e reativação pedem o segundo fator (#534)
+
+`POST /auth/password-reset/confirm` e `POST /auth/activate/{token}` passam a
+espelhar o `/login`: com TOTP inscrito e `AUTH_MFA_ENABLED=True`, respondem
+`mfa_required=true` + `mfa_token` em vez do par, e o par sai do
+`/auth/mfa/verify`. Antes, o reset emitia o par direto — quem controlava a
+caixa de e-mail entrava sem o fator. O `activate` cobre a conta reativada por
+`/auth/activation/request` que tinha MFA (conta recém-cadastrada não tem
+fator, não muda). `ActivationResponseSchema` ganhou `mfa_required` /
+`mfa_token`, com `access_token` / `refresh_token` opcionais. O reset continua
+**sem** revogar sessões abertas (medido; inalterado, fora de escopo). Teste:
+`tests/auth/test_password_reset_mfa.py`.
+
 ## Sessão marcada com `amr` e rota que exige MFA (#525)
 
 Todo access token do `UserAuthService` carrega `amr` (RFC 8176): `["pwd"]`

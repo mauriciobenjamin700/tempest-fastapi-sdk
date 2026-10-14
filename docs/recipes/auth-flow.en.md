@@ -187,12 +187,12 @@ uv run tempest db upgrade
 | Method | Path | Body / Output | Behavior |
 |--------|------|---------------|----------|
 | POST | `/auth/signup` | `SignupSchema` → `SignupResponseSchema` | Creates user. Not mounted when `AUTH_SIGNUP_ENABLED=false` (v0.272.0+). Emits email (modes A/B) **or** returns the link in the body (mode C). With `AUTH_AUTO_ACTIVATE=True`, the user is born active and the JWT pair returns immediately (mode D). |
-| POST | `/auth/activate/{token}` | — → `ActivationResponseSchema` | Consumes token + sets `is_active=True` + issues JWT pair. |
+| POST | `/auth/activate/{token}` | — → `ActivationResponseSchema` | Consumes token + sets `is_active=True` + issues JWT pair. A **freshly signed-up** account has no factor, so nothing changes; but if the token came from `/auth/activation/request` for a deactivated account that had MFA enrolled, it answers the challenge (`mfa_required=true` + `mfa_token`) instead of the pair. |
 | POST | `/auth/activation/request` *(v0.297.0+)* | `ActivationRequestSchema` → `ActivationResendResponseSchema` | **Unauthenticated.** Re-issues the activation link for an account that never activated. Always 202 + generic body. |
 | POST | `/auth/login` | `LoginSchema` → `LoginResponseSchema` | Email + password → JWT pair. Generic errors (no account enumeration). |
 | GET | `/auth/me` *(v0.198.0+)* | — → `AuthUserSchema` | **Authenticated.** Returns the account owning the bearer token. Never serializes the password hash: the handler returns the whole model and the `response_model` filters. Swap in your own schema with `me_response_model=` to expose extra columns. |
 | POST | `/auth/password-reset/request` | `PasswordResetRequestSchema` → `PasswordResetResponseSchema` | Always HTTP 202 + generic body. Link via email (A/B) or body (C). |
-| POST | `/auth/password-reset/confirm` | `PasswordResetConfirmSchema` → `LoginResponseSchema` | Consumes token + writes new password + issues JWT pair. |
+| POST | `/auth/password-reset/confirm` | `PasswordResetConfirmSchema` → `LoginResponseSchema` | Consumes token + writes new password + issues JWT pair. With MFA enrolled on the account, it answers the challenge (`mfa_required=true` + `mfa_token`) instead of the pair — finish at `/auth/mfa/verify`. |
 | POST | `/auth/password-change` | `PasswordChangeSchema` → `204` | **Authenticated** (bearer token). Change your own password: confirm the current password + write the new one. No email token. |
 | POST | `/auth/email-change/request` *(v0.92.0+)* | `EmailChangeRequestSchema` → `EmailChangeResponseSchema` | **Authenticated.** Confirm the current password + email a confirmation link to the **new** address. Always 202. |
 | POST | `/auth/email-change/confirm` *(v0.92.0+)* | `EmailChangeConfirmSchema` → `EmailChangeResponseSchema` | Consume the token + apply the new email + (optionally) notify the old address. |
@@ -1180,6 +1180,30 @@ curl -X POST localhost:8000/auth/password-reset/confirm \
   "mfa_token": null
 }
 ```
+
+!!! warning "An account with MFA ends the reset at `/auth/mfa/verify`"
+    When the account has TOTP enrolled (and `AUTH_MFA_ENABLED=True`), the
+    `confirm` does **not** return the pair — it returns `mfa_required=true`
+    + `mfa_token`, exactly like `/login`. That is what keeps a compromised
+    mailbox from skipping the second factor: the password is replaced, but
+    the session is only born after the code. Finish the login by sending
+    the `mfa_token` and the TOTP code:
+
+    ```bash
+    curl -X POST localhost:8000/auth/mfa/verify \
+      -H "Content-Type: application/json" \
+      -d '{"mfa_token": "eyJ…", "code": "123456"}'
+    ```
+
+    The pair that comes back carries `amr == ["pwd", "otp"]`. See the
+    [MFA recipe](mfa.md).
+
+!!! note "The reset does not drop sessions already open"
+    Changing the password this way does **not** revoke the refresh tokens
+    that already existed: a session opened before the reset stays valid.
+    If the point of the reset is to kick an intruder out, revoke the
+    sessions yourself (`revoke_user_sessions` / the `logout` of the
+    suspect session).
 
 !!! check "Errors you'll see"
     - Unknown / already-used / expired token → **401** with `code: "INVALID_TOKEN"` and a `detail` naming the reason (unknown token: `token not recognized`).
