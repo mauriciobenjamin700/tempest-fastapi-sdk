@@ -2,7 +2,7 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
-## Não lançada — classe terminada em `Enum` não dobra mais o sufixo do tipo
+## 0.313.0 — classe terminada em `Enum` não dobra mais o sufixo do tipo
 
 `enum_type_name` tira um `Enum` do fim do nome da classe antes de acrescentar
 `_enum`. Só muda quem tem enum com esse sufixo:
@@ -46,7 +46,7 @@ PostgreSQL o model passa a escrever o nome novo em todo `INSERT`, `UPDATE` e
 Para manter o nome antigo numa coluna, passe-o explícito:
 `mapped_column(TempestEnum(CandidateSlugEnum, name="candidate_slug_enum_enum"))`.
 
-## Não lançada — o 429 do auth tem código próprio
+## 0.313.0 — o 429 do auth tem código próprio
 
 Os três limites do `make_auth_router` deixam de responder o `code` genérico
 `TOO_MANY_REQUESTS`, o mesmo de qualquer outro 429 do app:
@@ -65,7 +65,7 @@ troque `code == "TOO_MANY_REQUESTS"` pelo código do fluxo. Com
 (`Muitas tentativas de login. Aguarde um pouco e tente de novo`) em vez de
 `Requisições em excesso`.
 
-## Não lançada — refresh token guarda o `amr`, e `/mfa/confirm` responde `200`
+## 0.313.0 — refresh token guarda o `amr`, e `/mfa/confirm` responde `200`
 
 O access token passou a carregar o claim `amr` (como a sessão foi autenticada),
 e o `BaseUserRefreshTokenModel` ganhou a coluna `amr` (texto, nullable) para o
