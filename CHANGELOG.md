@@ -340,14 +340,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `/auth/mfa/verify`. `ActivationResponseSchema` ganha `mfa_required` /
   `mfa_token`, e `access_token` / `refresh_token` passam a ser opcionais,
   espelhando o `LoginResponseSchema`.
+- **O reset de senha revoga as sessões já abertas (#534).** `confirm` gravava
+  a senha nova e deixava todo refresh token o usuário tinha ainda trocando por
+  par novo — trocar a credencial não expulsava quem já estava dentro. Agora
+  `UserAuthService.confirm_password_reset` ganha
+  `revoke_sessions: bool = True` e chama `revoke_user_sessions` na mesma
+  transação que grava o hash, o mesmo default do `/auth/mfa/confirm` e do
+  `tempest user set-password` (cujo `--keep-sessions` é o opt-out explícito).
+  O router não passa nada; quem chama o service com `revoke_sessions=False`
+  mantém as sessões de propósito. Refresh token stateless (sem
+  `refresh_token_model`) não tem linha a revogar e segue válido até expirar.
+  Medido: refresh token DB-backed emitido antes do reset responde **401** na
+  troca seguinte depois da correção (antes respondia **200**); com
+  `revoke_sessions=False` continua trocando (
+  `tests/auth/test_password_reset_revoke.py`).
 - Override de `issue_token_pair`/`confirm_password_reset` com a assinatura
   antiga continua funcionando: `is_mfa_enrolled` e `issue_mfa_token` são
-  métodos de `UserAuthService`, herdados por qualquer subclasse. Medido em
-  `tests/auth/test_password_reset_mfa.py` (4 testes: reset com e sem MFA,
-  reativação de conta com MFA e ativação de conta nova). O reset de senha
-  **não** derruba as sessões já abertas — medido: um refresh token emitido
-  antes do reset continua trocando por um par novo depois dele; fora do
-  escopo desta correção.
+  métodos de `UserAuthService`, herdados por qualquer subclasse, e o router
+  chama `confirm_password_reset` sem o `revoke_sessions` novo, que cai no
+  default seguro. Medido em `tests/auth/test_password_reset_mfa.py` (4 testes:
+  reset com e sem MFA, reativação de conta com MFA e ativação de conta nova) e
+  em `tests/auth/test_password_reset_revoke.py` (override antigo delega e
+  ainda revoga).
 - **O `/unregister` do `make_push_router` e o `/unsubscribe` do
   `make_web_push_router` só removem dispositivo do próprio usuário (#523).**
   Antes, a rota exigia login mas apagava pelo token/endpoint sem olhar o dono:

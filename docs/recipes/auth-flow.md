@@ -190,7 +190,7 @@ uv run tempest db upgrade
 | POST | `/auth/login` | `LoginSchema` → `LoginResponseSchema` | Email + senha → JWT pair. Erros genéricos (não enumera contas). |
 | GET | `/auth/me` *(v0.198.0+)* | — → `AuthUserSchema` | **Autenticado.** Devolve a conta dona do bearer token. Nunca serializa o hash da senha: o handler entrega o modelo inteiro e o `response_model` filtra. Troque o schema por um seu com `me_response_model=` pra expor colunas próprias. |
 | POST | `/auth/password-reset/request` | `PasswordResetRequestSchema` → `PasswordResetResponseSchema` | Sempre HTTP 202 + corpo genérico. Link via e-mail (A/B) ou no body (C). |
-| POST | `/auth/password-reset/confirm` | `PasswordResetConfirmSchema` → `LoginResponseSchema` | Consome token + grava nova senha + emite JWT pair. Com MFA inscrito na conta, responde o desafio (`mfa_required=true` + `mfa_token`) em vez do par — conclua em `/auth/mfa/verify`. |
+| POST | `/auth/password-reset/confirm` | `PasswordResetConfirmSchema` → `LoginResponseSchema` | Consome token + grava nova senha + revoga as sessões + emite JWT pair. Com MFA inscrito na conta, responde o desafio (`mfa_required=true` + `mfa_token`) em vez do par — conclua em `/auth/mfa/verify`. |
 | POST | `/auth/password-change` | `PasswordChangeSchema` → `204` | **Autenticado** (bearer token). Troca a própria senha: confirma a senha atual + grava a nova. Sem token de e-mail. |
 | POST | `/auth/email-change/request` *(v0.92.0+)* | `EmailChangeRequestSchema` → `EmailChangeResponseSchema` | **Autenticado.** Confirma a senha atual + envia link de confirmação pro **novo** e-mail. Sempre 202. |
 | POST | `/auth/email-change/confirm` *(v0.92.0+)* | `EmailChangeConfirmSchema` → `EmailChangeResponseSchema` | Consome o token + aplica o novo e-mail + (opcional) avisa o e-mail antigo. |
@@ -1181,11 +1181,14 @@ curl -X POST localhost:8000/auth/password-reset/confirm \
     O par que sai daí carrega `amr == ["pwd", "otp"]`. Veja a
     [receita de MFA](mfa.md).
 
-!!! note "O reset não derruba as sessões já abertas"
-    Trocar a senha por este caminho **não** revoga os refresh tokens que
-    já existiam: uma sessão aberta antes do reset continua válida. Se a
-    motivação do reset é expulsar um invasor, revogue as sessões você
-    mesmo (`revoke_user_sessions` / o `logout` da sessão suspeita).
+!!! note "O reset derruba as sessões já abertas"
+    Rotacionar credencial encerra o que foi aberto com a antiga: trocar a
+    senha por este caminho **revoga** os refresh tokens que já existiam,
+    na mesma transação que grava o hash — uma sessão aberta antes do reset
+    deixa de trocar o refresh token. (Access tokens já emitidos valem até
+    o TTL curtinho.) É o mesmo default do `/auth/mfa/confirm` e do
+    `tempest user set-password`; quem chama o service com
+    `revoke_sessions=False` abre mão disso de propósito.
 
 !!! check "Erros que você vai ver"
     - Token desconhecido / já usado / expirado → **401** com `code: "INVALID_TOKEN"` e um `detail` que diz o motivo (token desconhecido: `token not recognized`).

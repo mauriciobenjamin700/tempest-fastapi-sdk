@@ -139,10 +139,16 @@ a factor.
 `LoginResponseSchema`. Reading the pair from a fresh-account activation is
 unchanged.
 
-Password reset still does **not** revoke sessions already open: a refresh
-token issued before the reset stays valid after it. That did not change in
-this version — if kicking an intruder out is the point of the reset, revoke
-the sessions yourself.
+Password reset now **revokes sessions already open**, in the same transaction
+that writes the hash, the way `/auth/mfa/confirm` and `tempest user
+set-password` already did: a DB-backed refresh token issued before the reset
+can no longer be exchanged for a fresh pair (it answers 401). Access tokens
+already issued still live until their TTL. A caller of
+`UserAuthService.confirm_password_reset` that needs to keep the sessions passes
+`revoke_sessions=False` — an old override signature is still called by the
+router, and delegates to the default that revokes. A stateless refresh token
+(no `refresh_token_model`) has no row to revoke and stays valid until it
+expires.
 
 ## 0.312.0 — Mercado Pago: expired Pix and chargeback search
 

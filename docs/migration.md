@@ -136,9 +136,15 @@ também não muda: ela nunca tem fator.
 no `LoginResponseSchema`. Quem lê o par de uma ativação de conta nova não muda
 nada.
 
-O reset de senha continua **sem** revogar as sessões já abertas: um refresh
-token emitido antes do reset segue válido depois dele. Não mudou nesta versão —
-se expulsar um invasor for o objetivo do reset, revogue as sessões você mesmo.
+O reset de senha agora **revoga as sessões já abertas** na mesma transação que
+grava o hash, como o `/auth/mfa/confirm` e o `tempest user set-password` já
+faziam: um refresh token DB-backed emitido antes do reset deixa de trocar por
+par novo (responde 401). Access tokens já emitidos ainda valem até o TTL. Quem
+chamava `UserAuthService.confirm_password_reset` e precisa manter as sessões
+passa `revoke_sessions=False` — assinatura antiga de override continua sendo
+chamada pelo router, e delega para o default que revoga. Refresh token
+stateless (sem `refresh_token_model`) não tem linha a revogar e segue valendo
+até expirar.
 
 ## 0.312.0 — Mercado Pago: Pix vencido e busca de chargebacks
 
