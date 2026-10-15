@@ -1,6 +1,6 @@
 {
   "env": {
-    "UV_PYTHON": "3.11"
+    "UV_PYTHON": "3.12"
   },
   "permissions": {
     "allow": [
