@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   já estava a `UP046`: reescrever genéricos é outra decisão. O override do
   mypy para `librosa`, que só existia por causa do alvo 3.11, saiu.
 
-## [0.313.0] — 2026-10-13
+## [0.313.0] — 2026-10-15
 
 ### Added
 
