@@ -210,10 +210,24 @@ class ActivationResponseSchema(BaseSchema):
     front-end can complete the post-confirmation redirect in one
     round-trip.
 
+    Two shapes packed into one schema, as in
+    :class:`LoginResponseSchema`. A fresh signup has no factor, so
+    it never branches; but ``/activation/request`` can issue a link
+    for a deactivated account that *does* have TOTP enrolled, and
+    then the route follows ``/login`` and answers ``mfa_required``.
+
     Attributes:
         user_id (UUID): UUID of the freshly-activated user.
-        access_token (str): Short-lived JWT.
-        refresh_token (str): Long-lived JWT.
+        access_token (str | None): Short-lived JWT — ``None`` when
+            ``mfa_required=True``.
+        refresh_token (str | None): Long-lived JWT — ``None`` when
+            ``mfa_required=True``.
+        mfa_required (bool): When ``True``, the caller must submit
+            the TOTP code via ``POST /auth/mfa/verify`` to complete
+            the login.
+        mfa_token (str | None): Short-lived JWT the caller passes
+            back to ``POST /auth/mfa/verify`` together with the TOTP
+            code. Populated only when ``mfa_required=True``.
     """
 
     user_id: UUID = Field(
@@ -221,15 +235,43 @@ class ActivationResponseSchema(BaseSchema):
         description="UUID of the activated user.",
         examples=["7d8e4d5a-9f4b-4c3a-bd0a-1234567890ab"],
     )
-    access_token: str = Field(
+    access_token: str | None = Field(
+        default=None,
         title="JWT access token",
-        description="Short-lived bearer token issued on successful activation.",
-        examples=["eyJhbGciOi…"],
+        description=(
+            "Short-lived bearer token issued on successful activation. "
+            "``None`` when ``mfa_required=True``."
+        ),
+        examples=["eyJhbGciOi…", None],
     )
-    refresh_token: str = Field(
+    refresh_token: str | None = Field(
+        default=None,
         title="JWT refresh token",
-        description="Long-lived token for the refresh endpoint.",
-        examples=["eyJhbGciOi…"],
+        description=(
+            "Long-lived token for the refresh endpoint. ``None`` when "
+            "``mfa_required=True``."
+        ),
+        examples=["eyJhbGciOi…", None],
+    )
+    mfa_required: bool = Field(
+        default=False,
+        title="MFA step required",
+        description=(
+            "When ``True``, the caller must complete step 2 via "
+            "``POST /auth/mfa/verify``. ``False`` (default) signals a "
+            "fully authenticated response — the JWT pair is in the body."
+        ),
+        examples=[False, True],
+    )
+    mfa_token: str | None = Field(
+        default=None,
+        title="Intermediate MFA token",
+        description=(
+            "Short-lived JWT carried back to ``POST /auth/mfa/verify`` "
+            "together with the TOTP code. Populated only when "
+            "``mfa_required=True``."
+        ),
+        examples=[None, "eyJhbGciOi…"],
     )
 
 

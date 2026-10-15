@@ -2,7 +2,7 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
-## Não lançada — classe terminada em `Enum` não dobra mais o sufixo do tipo
+## 0.313.0 — classe terminada em `Enum` não dobra mais o sufixo do tipo
 
 `enum_type_name` tira um `Enum` do fim do nome da classe antes de acrescentar
 `_enum`. Só muda quem tem enum com esse sufixo:
@@ -46,7 +46,7 @@ PostgreSQL o model passa a escrever o nome novo em todo `INSERT`, `UPDATE` e
 Para manter o nome antigo numa coluna, passe-o explícito:
 `mapped_column(TempestEnum(CandidateSlugEnum, name="candidate_slug_enum_enum"))`.
 
-## Não lançada — o 429 do auth tem código próprio
+## 0.313.0 — o 429 do auth tem código próprio
 
 Os três limites do `make_auth_router` deixam de responder o `code` genérico
 `TOO_MANY_REQUESTS`, o mesmo de qualquer outro 429 do app:
@@ -65,7 +65,7 @@ troque `code == "TOO_MANY_REQUESTS"` pelo código do fluxo. Com
 (`Muitas tentativas de login. Aguarde um pouco e tente de novo`) em vez de
 `Requisições em excesso`.
 
-## Não lançada — refresh token guarda o `amr`, e `/mfa/confirm` responde `200`
+## 0.313.0 — refresh token guarda o `amr`, e `/mfa/confirm` responde `200`
 
 O access token passou a carregar o claim `amr` (como a sessão foi autenticada),
 e o `BaseUserRefreshTokenModel` ganhou a coluna `amr` (texto, nullable) para o
@@ -117,6 +117,34 @@ Duas mudanças de comportamento vêm junto:
   par novo.
 - **`mfa_confirm` revoga as sessões por padrão.** Quem chama o serviço direto e
   precisa manter as sessões passa `revoke_sessions=False`.
+
+### O reset de senha e a reativação por link pedem o segundo fator
+
+`POST /auth/password-reset/confirm` e `POST /auth/activate/{token}` passam a
+espelhar o `/auth/login`: quando a conta tem TOTP inscrito, não devolvem o par
+— devolvem `mfa_required=true` + `mfa_token`, e o par só sai do
+`/auth/mfa/verify`, com `amr` de MFA. A senha é trocada de todo jeito.
+
+Cliente que chamava o `confirm` (ou o `activate` de uma conta reativada) e
+guardava `access_token` direto precisa tratar o desafio: se `mfa_required` for
+`true`, peça o código e faça o `/auth/mfa/verify`. Conta sem MFA não muda —
+continua recebendo o par na própria resposta. Ativar uma conta recém-cadastrada
+também não muda: ela nunca tem fator.
+
+`ActivationResponseSchema` ganhou `mfa_required` / `mfa_token`, e
+`access_token` / `refresh_token` passaram a ser opcionais (`str | None`), como
+no `LoginResponseSchema`. Quem lê o par de uma ativação de conta nova não muda
+nada.
+
+O reset de senha agora **revoga as sessões já abertas** na mesma transação que
+grava o hash, como o `/auth/mfa/confirm` e o `tempest user set-password` já
+faziam: um refresh token DB-backed emitido antes do reset deixa de trocar por
+par novo (responde 401). Access tokens já emitidos ainda valem até o TTL. Quem
+chamava `UserAuthService.confirm_password_reset` e precisa manter as sessões
+passa `revoke_sessions=False` — assinatura antiga de override continua sendo
+chamada pelo router, e delega para o default que revoga. Refresh token
+stateless (sem `refresh_token_model`) não tem linha a revogar e segue valendo
+até expirar.
 
 ## 0.312.0 — Mercado Pago: Pix vencido e busca de chargebacks
 

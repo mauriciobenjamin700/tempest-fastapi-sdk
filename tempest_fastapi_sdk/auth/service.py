@@ -1137,13 +1137,30 @@ class UserAuthService:
         *,
         token: str,
         new_password: str,
+        revoke_sessions: bool = True,
     ) -> BaseUserModel:
         """Consume a reset token and replace the user's password.
+
+        A reset is usually run because the old password is no longer
+        trusted, so by default every refresh token the user holds is
+        revoked in the same transaction (:meth:`revoke_user_sessions`) —
+        a session opened with the password alone does not survive the
+        rotation, exactly as in :meth:`mfa_confirm`. Access tokens
+        already issued live until their short TTL ends. The bundled
+        ``/auth/password-reset/confirm`` route keeps that default; the
+        hash is written and the sessions are killed together, so a
+        failure on either side rolls both back.
+
+        Stateless refresh tokens (no ``refresh_token_model``) have no row
+        to revoke and keep working until they expire.
 
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             token (str): Plaintext token from the reset URL.
             new_password (str): Plaintext replacement password.
+            revoke_sessions (bool): Revoke every refresh token of the user
+                (default). ``False`` is the explicit opt-out, for a caller
+                that ends the sessions some other way.
 
         Returns:
             BaseUserModel: The user whose password was rotated.
@@ -1168,6 +1185,8 @@ class UserAuthService:
             )
         user.hashed_password = self.passwords.hash(new_password)
         await session.flush()
+        if revoke_sessions:
+            await self.revoke_user_sessions(session, user_id=user.id)
         await session.refresh(user)
         return user
 

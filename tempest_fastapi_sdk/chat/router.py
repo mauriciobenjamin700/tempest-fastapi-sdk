@@ -245,6 +245,18 @@ def make_chat_router(
     ) -> bool:
         """Re-read membership on a session that is closed before returning.
 
+        The factory is closed the way FastAPI closes a dependency: it is
+        resumed after its ``yield`` until it stops, so its cleanup runs
+        before this returns. Closing it with ``aclose()`` alone throws
+        ``GeneratorExit`` at the ``yield``, which does not reach a
+        generator the factory itself iterates — the common
+        ``async for session in get_session(): yield session`` — and that
+        inner session stayed open until the event loop's async-generator
+        finaliser got to the orphaned generator: every frame the stream
+        sent went out with it still open, on 3.11, 3.12 and 3.13 alike.
+        ``aclose()`` still runs when the check raises, or when the
+        factory yields a second time.
+
         Args:
             sessions_factory (Callable[[], AsyncIterator[AsyncSession]]):
                 Opens the short-lived session.
@@ -257,10 +269,11 @@ def make_chat_router(
         allowed = False
         sessions = sessions_factory()
         try:
-            async for session in sessions:
+            session = await anext(sessions, None)
+            if session is not None:
                 service = service_factory(session)
                 allowed = await service.is_participant(conversation_id, user_id)
-                break
+                await anext(sessions, None)
         finally:
             await _aclose(sessions)
         return allowed
