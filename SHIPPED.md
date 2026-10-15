@@ -1104,7 +1104,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   sem serviço `migrate` — a API migra no lifespan (ver abaixo). Receita:
   "Profile `prod`" em `cli.md`; teste live em
   `tests/cli/test_docker_compose_live.py`.
-- **Scaffold migrado e enxuto (unreleased, #519 #521 #522)** — o
+- **Scaffold migrado e enxuto (0.313.0, #519 #521 #522)** — o
   `tempest new` escreve `alembic.ini` (caminhos em `%(here)s`) + `alembic/`
   com uma revision `baseline` autogerada, e o lifespan gerado chama
   `sync_schema_async` antes do `db.connect()` (`DATABASE_MIGRATE_ON_STARTUP`
@@ -3309,6 +3309,28 @@ só o `between` malformado. Testes: `tests/db/test_expressions.py` (recusa do
 `between`, escalar em `in` embrulha, truncamento) e
 `tests/db/test_repository.py::TestInvalidFilterValueOnWrites` (prova que nada é
 escrito).
+
+## Reset de senha e reativação pedem o segundo fator, e o reset revoga sessões (#534)
+
+`POST /auth/password-reset/confirm` e `POST /auth/activate/{token}` passam a
+espelhar o `/login`: com TOTP inscrito e `AUTH_MFA_ENABLED=True`, respondem
+`mfa_required=true` + `mfa_token` em vez do par, e o par sai do
+`/auth/mfa/verify`. Antes, o reset emitia o par direto — quem controlava a
+caixa de e-mail entrava sem o fator. O `activate` cobre a conta reativada por
+`/auth/activation/request` que tinha MFA (conta recém-cadastrada não tem
+fator, não muda). `ActivationResponseSchema` ganhou `mfa_required` /
+`mfa_token`, com `access_token` / `refresh_token` opcionais.
+
+Na mesma investigação, a outra metade do mesmo buraco: **o reset não derrubava
+sessão**. Medido — refresh token emitido antes do reset continuava trocando por
+par novo depois. O SDK já tinha a regra em dois lugares (`mfa_confirm` e
+`tempest user set-password`): todo caminho que rotaciona credencial revoga as
+sessões por default, com opt-out explícito. `confirm_password_reset` passou a
+seguir a mesma: keyword-only `revoke_sessions: bool = True`, chamando
+`revoke_user_sessions` na transação que grava o hash; o router não passa nada.
+O default agora deixa de fora quem chama o service com `revoke_sessions=False`.
+Testes: `tests/auth/test_password_reset_mfa.py` e
+`tests/auth/test_password_reset_revoke.py`.
 
 ## Sessão marcada com `amr` e rota que exige MFA (#525)
 
