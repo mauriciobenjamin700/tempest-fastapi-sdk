@@ -233,18 +233,32 @@ class _OpenStream:
     Attributes:
         status (int | None): The response status, once started.
         chunks (list[bytes]): Body chunks received so far.
+        open_at_frames (list[int]): Sessions open at the instant each
+            body chunk was sent, when a counter was given.
         finished (asyncio.Event): Set when the body's last chunk arrived.
     """
 
-    def __init__(self, app: FastAPI, path: str) -> None:
+    def __init__(
+        self,
+        app: FastAPI,
+        path: str,
+        *,
+        open_sessions: list[int] | None = None,
+    ) -> None:
         """Start the request as a background task.
 
         Args:
             app (FastAPI): The ASGI app.
             path (str): The request path.
+            open_sessions (list[int] | None): The harness's open-session
+                counter, read at the instant each frame is sent — while
+                the stream is open, not after it ended — into
+                ``open_at_frames``.
         """
         self.status: int | None = None
         self.chunks: list[bytes] = []
+        self.open_at_frames: list[int] = []
+        self._open_sessions: list[int] | None = open_sessions
         self.finished: asyncio.Event = asyncio.Event()
         self._started: asyncio.Event = asyncio.Event()
         self._disconnect: asyncio.Event = asyncio.Event()
@@ -292,6 +306,8 @@ class _OpenStream:
             body = message.get("body", b"")
             if body:
                 self.chunks.append(body)
+                if self._open_sessions is not None:
+                    self.open_at_frames.append(self._open_sessions[0])
             if not message.get("more_body", False):
                 self.finished.set()
 
@@ -475,6 +491,7 @@ class TestStreamEndsWithTheMembership:
         stream = _OpenStream(
             rechecking.app,
             f"/api/chat/conversations/{conversation}/stream",
+            open_sessions=rechecking.open_sessions,
         )
         try:
             await stream.first_frame()
@@ -488,6 +505,7 @@ class TestStreamEndsWithTheMembership:
                 await repository.update(row)
 
             await asyncio.wait_for(stream.finished.wait(), timeout=5)
+            assert stream.open_at_frames == [0] * len(stream.open_at_frames)
             assert rechecking.open_sessions[0] == 0
         finally:
             await stream.close()
@@ -498,17 +516,31 @@ class TestStreamEndsWithTheMembership:
     ) -> None:
         """A ``get_session(request)`` serves the routes; the re-check, which
         runs after the endpoint returned, opens its sessions through
-        ``stream_session_factory`` (#524)."""
+        ``stream_session_factory`` (#524).
+
+        That factory delegates to another generator
+        (``async for session in session_factory(): yield session``), and
+        the open-session count is read at the instant each frame is
+        sent. Closing it with ``aclose()`` alone left the inner session
+        open at every frame on 3.11, 3.12 and 3.13; read only after the
+        stream ended, the same defect passed on 3.11 and failed on 3.12
+        and 3.13, by one event-loop tick."""
         harness = rechecking_over_request_session
         conversation = await _group(harness)
         harness.caller.user_id = BRUNO
         stream = _OpenStream(
             harness.app,
             f"/api/chat/conversations/{conversation}/stream",
+            open_sessions=harness.open_sessions,
         )
         try:
             await stream.first_frame()
             assert stream.status == 200
+            for _ in range(250):
+                if len(stream.open_at_frames) >= 3:
+                    break
+                await asyncio.sleep(0.01)
+            assert len(stream.open_at_frames) >= 3
 
             async with harness.sessionmaker() as session:
                 repository = BaseRepository(session, model=_Participant)
@@ -519,7 +551,8 @@ class TestStreamEndsWithTheMembership:
                 await repository.update(row)
 
             await asyncio.wait_for(stream.finished.wait(), timeout=5)
-            assert harness.stream_sessions[0] > 0
+            assert harness.stream_sessions[0] >= len(stream.open_at_frames)
+            assert stream.open_at_frames == [0] * len(stream.open_at_frames)
             assert harness.open_sessions[0] == 0
         finally:
             await stream.close()
