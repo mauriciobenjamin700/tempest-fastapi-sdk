@@ -10,12 +10,19 @@ the tests drive an ``httpx.MockTransport``, so what they pin is the request
 this class builds and the response it reads, not any live provider. A
 provider that deviates from the format deviates from these tests too.
 
-:class:`OpenAICompatGenerator` satisfies
-:class:`~tempest_fastapi_sdk.genai.text.TextBackend` — the protocol's own
-docstring names "a hosted API" as the case it is meant to be filled with —
-so it drops into :func:`~tempest_fastapi_sdk.genai.make_genai_router` and
-:class:`~tempest_fastapi_sdk.genai.AIChatPipeline` beside the local
-``TextGenerator`` and the ``OllamaGenerator``.
+:class:`OpenAICompatGenerator` satisfies the same protocols as the
+``OllamaGenerator`` —
+:class:`~tempest_fastapi_sdk.genai.text.TextBackend`,
+:class:`~tempest_fastapi_sdk.genai.text.StructuredTextBackend`
+(``chat_structured``) and the agent's
+:class:`~tempest_fastapi_sdk.agents.ToolCallingBackend`
+(``chat_with_tools``) — so it drops into
+:func:`~tempest_fastapi_sdk.genai.make_genai_router`,
+:class:`~tempest_fastapi_sdk.genai.AIChatPipeline` and
+:class:`~tempest_fastapi_sdk.agents.Agent` beside the local backends.
+:class:`OpenAICompatEmbedder` does the same for
+:class:`~tempest_fastapi_sdk.genai.rag.SupportsEmbed`. Errors are raised as
+the typed :class:`~tempest_fastapi_sdk.genai.HostedAPIError` family.
 
 Two things it does that the local backends cannot:
 
@@ -37,7 +44,7 @@ that wrapped it would bring its own bounds and buy nothing.
 Example:
 
     >>> gen = OpenAICompatGenerator(
-    ...     "deepseek-chat",
+    ...     "deepseek-flash",
     ...     api_key="sk-...",
     ...     base_url="https://api.deepseek.com",
     ... )
@@ -47,20 +54,59 @@ Example:
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import AsyncIterator, Iterable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
+import httpx
+
+from tempest_fastapi_sdk.genai.hosted import (
+    HostedAPIError,
+    hosted_error,
+    raise_for_hosted_status,
+    sse_data,
+)
+from tempest_fastapi_sdk.genai.structured import StructuredT, parse_structured
 from tempest_fastapi_sdk.genai.tokens import TokenUsage
 
 if TYPE_CHECKING:
-    import httpx
-
     from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
     from tempest_fastapi_sdk.genai.schemas import GenerationConfig
     from tempest_fastapi_sdk.utils.http_client import HTTPClient, RetryPolicy
 
 DEFAULT_OPENAI_URL: str = "https://api.openai.com/v1"
-"""Where the wire format originates; override for any other provider."""
+"""Where the wire format originates; override for any other provider.
+
+The ``servers`` entry of the official OpenAPI document
+(https://github.com/openai/openai-openapi).
+"""
+
+DEFAULT_DEEPSEEK_URL: str = "https://api.deepseek.com"
+"""DeepSeek's OpenAI-format API root.
+
+From https://api-docs.deepseek.com/, which posts to
+``https://api.deepseek.com/chat/completions``.
+"""
+
+DEFAULT_DEEPSEEK_MODEL: str = "deepseek-flash"
+"""DeepSeek's default model id.
+
+The ``model`` field of https://api-docs.deepseek.com/api/create-chat-completion
+accepts ``deepseek-flash`` or ``deepseek-v4-pro`` when this was written.
+"""
+
+StructuredOutputMode = Literal["json_schema", "json_object"]
+"""How :meth:`OpenAICompatGenerator.chat_structured` asks for JSON.
+
+``"json_schema"`` sends the schema as ``response_format`` (the
+``ResponseFormatJsonSchema`` of the OpenAI spec). ``"json_object"`` asks only
+for *some* JSON object and states the schema in a system turn — for a
+provider whose ``response_format`` has no ``json_schema`` type, like DeepSeek
+(https://api-docs.deepseek.com/guides/json_mode).
+"""
+
+_SCHEMA_NAME_INVALID = re.compile(r"[^a-zA-Z0-9_-]")
+"""Characters a ``json_schema.name`` may not contain (``a-z A-Z 0-9 _ -``)."""
 
 # GenerationConfig speaks HuggingFace; the wire format speaks OpenAI. Only
 # the names differ — the meaning is the same on both sides.
@@ -111,12 +157,15 @@ class OpenAICompatGenerator:
         retry_policy: RetryPolicy | None = None,
         metrics: GenAIMetrics | None = None,
         forward_params: Iterable[str] = (),
+        provider: str = "openai-compatible",
+        max_tokens_field: str = "max_tokens",
+        structured_output: StructuredOutputMode = "json_schema",
     ) -> None:
         """Configure the client. No network call happens here.
 
         Args:
             model (str): Model name as the provider spells it
-                (``"gpt-4o-mini"``, ``"deepseek-chat"``, ...).
+                (``"deepseek-flash"``, ...).
             api_key (str): Bearer token. Empty raises immediately rather
                 than deferring to a 401 from inside whatever background job
                 makes the first call — the failure is a configuration
@@ -158,6 +207,17 @@ class OpenAICompatGenerator:
                 for one, documents ``top_k`` and ``repetition_penalty``.
                 Empty by default: those fields are dropped, because a
                 strict provider (OpenAI, as reported) refuses the body.
+            provider (str): Label carried by the errors this instance raises
+                (``"openai"``, ``"deepseek"``, ...), so a log line says which
+                account failed.
+            max_tokens_field (str): Body field that ``max_new_tokens`` maps
+                to. ``"max_tokens"`` by default, which DeepSeek and most
+                compatible servers read; the OpenAI spec marks ``max_tokens``
+                deprecated in favor of ``max_completion_tokens``, which
+                ``HostedGenAISettings.openai_kwargs()`` selects.
+            structured_output (StructuredOutputMode): How
+                :meth:`chat_structured` asks for JSON — ``"json_schema"``
+                (OpenAI) or ``"json_object"`` (DeepSeek).
 
         Raises:
             ValueError: When ``api_key`` is empty.
@@ -175,6 +235,9 @@ class OpenAICompatGenerator:
         self._extra_body = dict(extra_body or {})
         self._extra_headers = dict(extra_headers or {})
         self._forward_params: frozenset[str] = frozenset(forward_params)
+        self.provider = provider
+        self.max_tokens_field = max_tokens_field
+        self.structured_output: StructuredOutputMode = structured_output
         self._client: HTTPClient | None = http_client
         self._owns_client: bool = http_client is None
         self._transport = transport
@@ -275,7 +338,7 @@ class OpenAICompatGenerator:
 
         body: dict[str, Any] = dict(self._extra_body)
         body["model"] = self.model
-        body["messages"] = messages
+        body["messages"] = _wire_messages(messages)
         body["stream"] = stream
         for name, value in params.items():
             if value is None or (name == "stop" and not value):
@@ -288,7 +351,10 @@ class OpenAICompatGenerator:
                 ):
                     body["temperature"] = 0.0
                 continue
-            body[_PARAM_NAMES.get(name, name)] = value
+            wire = _PARAM_NAMES.get(name, name)
+            if name == "max_new_tokens":
+                wire = self.max_tokens_field
+            body[wire] = value
         return body
 
     async def _post(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -301,17 +367,19 @@ class OpenAICompatGenerator:
             dict[str, Any]: The decoded JSON response.
 
         Raises:
-            httpx.HTTPStatusError: Propagated unchanged for an error status
-                (401 bad key, 429 rate limit, 5xx provider outage). The
-                caller decides how to log and whether to retry; translating
-                it here would hide the status code that says which.
+            HostedAPIError: For an error status — a
+                :class:`~tempest_fastapi_sdk.genai.HostedAuthenticationError`
+                (401/403), :class:`~tempest_fastapi_sdk.genai.HostedRateLimitError`
+                (429) or :class:`~tempest_fastapi_sdk.genai.HostedServerError`
+                (5xx). All are ``httpx.HTTPStatusError``, which is what this
+                method raised before, so existing handlers keep catching them.
         """
         response = await self._http().post(
             f"{self.base_url}/chat/completions",
             json=body,
             headers=self._headers(),
         )
-        response.raise_for_status()
+        raise_for_hosted_status(self.provider, response)
         decoded: dict[str, Any] = response.json()
         return decoded
 
@@ -446,6 +514,10 @@ class OpenAICompatGenerator:
 
         Yields:
             str: Content deltas, in order.
+
+        Raises:
+            HostedAPIError: A typed subclass when the stream cannot be
+                opened (bad key, rate limit, outage).
         """
         body = self._body(
             [{"role": "user", "content": prompt}],
@@ -453,15 +525,126 @@ class OpenAICompatGenerator:
             kwargs,
             stream=True,
         )
-        async for line in self._http().stream(
-            "POST",
-            f"{self.base_url}/chat/completions",
-            json=body,
-            headers=self._headers(),
-        ):
-            chunk = _sse_delta(line)
-            if chunk:
-                yield chunk
+        try:
+            async for line in self._http().stream(
+                "POST",
+                f"{self.base_url}/chat/completions",
+                json=body,
+                headers=self._headers(),
+            ):
+                chunk = _sse_delta(line)
+                if chunk:
+                    yield chunk
+        except HostedAPIError:
+            raise
+        except httpx.HTTPStatusError as exc:
+            raise hosted_error(self.provider, exc.response) from exc
+
+    async def chat_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        *,
+        config: GenerationConfig | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Generate a reply that may call tools (the ``ToolCallingBackend`` method).
+
+        ``tools`` is the ``{"type": "function", "function": {...}}`` list the
+        :class:`~tempest_fastapi_sdk.agents.Agent` builds, which is already
+        the wire shape. The reply's ``tool_calls`` come back as the provider
+        sent them — ``arguments`` a JSON **string**, per the
+        ``ChatCompletionMessageToolCall`` schema of the OpenAI spec — so the
+        assistant turn the agent appends is replayed unchanged on the next
+        call.
+
+        Args:
+            messages (list[dict[str, Any]]): The conversation so far,
+                including assistant turns with ``tool_calls`` and
+                ``role: tool`` results.
+            tools (list[dict[str, Any]]): Function specs.
+            config (GenerationConfig | None): Typed generation parameters.
+            **kwargs (Any): Per-call parameters, winning over ``config``
+                (``tool_choice``, for one).
+
+        Returns:
+            dict[str, Any]: ``{"role": "assistant", "content": <text>,
+            "tool_calls": [...]}`` — ``content`` is ``""`` when the provider
+            sent ``null``, and ``tool_calls`` is ``[]`` when it asked for none.
+        """
+        body = self._body(messages, config, kwargs, stream=False)
+        if tools:
+            body["tools"] = tools
+        payload = await self._post(body)
+        choices = payload.get("choices") or []
+        first: dict[str, Any] = (choices[0].get("message") if choices else None) or {}
+        message: dict[str, Any] = dict(first)
+        message["role"] = "assistant"
+        message["content"] = str(message.get("content") or "")
+        message["tool_calls"] = list(message.get("tool_calls") or [])
+        return message
+
+    async def chat_structured(
+        self,
+        messages: list[dict[str, Any]],
+        schema: type[StructuredT],
+        *,
+        config: GenerationConfig | None = None,
+        **kwargs: Any,
+    ) -> StructuredT:
+        """Generate a reply constrained to a Pydantic ``schema``.
+
+        With ``structured_output="json_schema"`` the schema goes out as
+        ``response_format`` (``{"type": "json_schema", "json_schema":
+        {"name", "schema"}}``), named after the model class. ``strict`` is
+        left at the spec's default (``false``): strict mode accepts only a
+        subset of JSON Schema, and a Pydantic model with defaults can fall
+        outside it. With ``"json_object"`` the provider is asked for a JSON
+        object and the schema is stated in a trailing system turn — DeepSeek's
+        JSON mode requires the word "json" in the prompt
+        (https://api-docs.deepseek.com/guides/json_mode). Either way the reply
+        is validated here against ``schema``.
+
+        Args:
+            messages (list[dict[str, Any]]): Chat turns; put the instruction
+                in a ``system`` turn and the content in ``user``.
+            schema (type[StructuredT]): The Pydantic model to produce.
+            config (GenerationConfig | None): Typed generation parameters.
+            **kwargs (Any): Per-call parameters, winning over ``config``.
+
+        Returns:
+            StructuredT: The validated instance.
+
+        Raises:
+            TypeError: When ``response_format`` is passed as a keyword — the
+                schema argument is what sets it.
+            ValueError: When the reply carries no JSON object (DeepSeek
+                documents that JSON mode can return empty content).
+            pydantic.ValidationError: When the JSON fails ``schema``.
+        """
+        if "response_format" in kwargs:
+            raise TypeError(
+                "chat_structured() sets response_format from the schema "
+                "argument; passing it as a keyword would replace it.",
+            )
+        json_schema = schema.model_json_schema()
+        if self.structured_output == "json_object":
+            instruction = (
+                "Answer with a single JSON object that validates against this "
+                f"JSON schema, and nothing else:\n{json.dumps(json_schema)}"
+            )
+            turns = [*messages, {"role": "system", "content": instruction}]
+            body = self._body(turns, config, kwargs, stream=False)
+            body["response_format"] = {"type": "json_object"}
+        else:
+            body = self._body(messages, config, kwargs, stream=False)
+            name = _SCHEMA_NAME_INVALID.sub("_", schema.__name__)[:64] or "schema"
+            body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": name, "schema": json_schema},
+            }
+        payload = await self._post(body)
+        return parse_structured(self._content(payload), schema)
 
     async def aclose(self) -> None:
         """Close the HTTP client when this instance owns it.
@@ -487,15 +670,8 @@ def _sse_delta(line: str) -> str:
     Returns:
         str: The delta content, or ``""`` when this line carries none.
     """
-    stripped = line.strip()
-    if not stripped.startswith("data:"):
-        return ""
-    payload = stripped[len("data:") :].strip()
-    if not payload or payload == "[DONE]":
-        return ""
-    try:
-        decoded = json.loads(payload)
-    except ValueError:
+    decoded = sse_data(line)
+    if decoded is None:
         return ""
     choices = decoded.get("choices") or []
     if not choices:
@@ -504,7 +680,192 @@ def _sse_delta(line: str) -> str:
     return str(delta.get("content") or "")
 
 
+def _wire_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Bring tool-call history into the shape the OpenAI wire format requires.
+
+    The spec types a tool call's ``arguments`` as a JSON **string** and
+    requires ``type: "function"``; a conversation started on another backend
+    (Ollama, ``AnthropicGenerator``) carries ``arguments`` as a dict and may
+    omit ``type``. Turns without ``tool_calls`` are passed through as the
+    same objects.
+
+    Args:
+        messages (list[dict[str, Any]]): The conversation.
+
+    Returns:
+        list[dict[str, Any]]: The conversation, with tool calls normalized.
+    """
+    out: list[dict[str, Any]] = []
+    for message in messages:
+        calls = message.get("tool_calls")
+        if not calls:
+            out.append(message)
+            continue
+        normalized: list[dict[str, Any]] = []
+        for call in calls:
+            function = dict(call.get("function") or {})
+            arguments = function.get("arguments")
+            if not isinstance(arguments, str):
+                function["arguments"] = json.dumps(arguments or {})
+            entry = dict(call)
+            entry["type"] = entry.get("type") or "function"
+            entry["function"] = function
+            normalized.append(entry)
+        out.append({**message, "tool_calls": normalized})
+    return out
+
+
+class OpenAICompatEmbedder:
+    """Embeddings over an OpenAI-compatible ``/embeddings`` endpoint.
+
+    Satisfies :class:`~tempest_fastapi_sdk.genai.rag.SupportsEmbed`, so it
+    takes the place of :class:`~tempest_fastapi_sdk.genai.OllamaEmbedder` in
+    a :class:`~tempest_fastapi_sdk.genai.rag.Retriever`. The request and
+    response shapes are the ``CreateEmbeddingRequest`` /
+    ``CreateEmbeddingResponse`` schemas of the official OpenAPI document
+    (https://github.com/openai/openai-openapi): ``input`` is a list of at most
+    2048 strings, and each returned item carries its ``index``.
+
+    Attributes:
+        model (str): The embedding model id.
+        base_url (str): API root, without a trailing slash.
+        dimensions (int | None): Requested vector size, for models that
+            accept one.
+    """
+
+    def __init__(
+        self,
+        model: str,
+        *,
+        api_key: str,
+        base_url: str = DEFAULT_OPENAI_URL,
+        timeout: float = 60.0,
+        dimensions: int | None = None,
+        extra_headers: dict[str, str] | None = None,
+        http_client: HTTPClient | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
+        retry_policy: RetryPolicy | None = None,
+        provider: str = "openai-compatible",
+    ) -> None:
+        """Configure the client. No network call happens here.
+
+        Args:
+            model (str): Embedding model id, e.g. ``"text-embedding-3-small"``
+                (the example the OpenAI spec uses).
+            api_key (str): Bearer token. Empty raises here.
+            base_url (str): API root; ``/embeddings`` is appended.
+            timeout (float): Per-request HTTP timeout in seconds.
+            dimensions (int | None): Sent as ``dimensions`` when set.
+            extra_headers (dict[str, str] | None): Headers added to every
+                request; ``Authorization`` always comes from ``api_key``.
+            http_client (HTTPClient | None): An injected client; one is
+                created lazily and owned by this instance when ``None``.
+            transport (httpx.AsyncBaseTransport | None): Transport for the
+                lazily-created client (tests). Ignored with ``http_client``.
+            retry_policy (RetryPolicy | None): Retry configuration for the
+                lazily-created client; ``None`` uses the ``HTTPClient``
+                defaults.
+            provider (str): Label carried by the errors this raises.
+
+        Raises:
+            ValueError: When ``api_key`` is empty.
+        """
+        if not api_key:
+            raise ValueError(
+                "OpenAICompatEmbedder requires an api_key; it was empty.",
+            )
+        self.model = model
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.dimensions = dimensions
+        self.provider = provider
+        self._api_key = api_key
+        self._extra_headers = dict(extra_headers or {})
+        self._client: HTTPClient | None = http_client
+        self._owns_client: bool = http_client is None
+        self._transport = transport
+        self._retry_policy = retry_policy
+
+    def _http(self) -> HTTPClient:
+        """Return the HTTP client, creating an owned one on first use.
+
+        Returns:
+            HTTPClient: The resilient client used for API requests.
+        """
+        if self._client is None:
+            from tempest_fastapi_sdk.utils.http_client import HTTPClient
+
+            self._client = HTTPClient(
+                timeout=self.timeout,
+                transport=self._transport,
+                retry_policy=self._retry_policy,
+            )
+        return self._client
+
+    def unload(self) -> None:
+        """No-op unload hook, for the registry's ``Unloadable`` protocol."""
+        return None
+
+    async def aclose(self) -> None:
+        """Close the HTTP client when this instance owns it."""
+        if self._client is not None and self._owns_client:
+            await self._client.aclose()
+            self._client = None
+
+    async def embed(
+        self,
+        texts: str | list[str],
+        *,
+        batch_size: int = 256,
+    ) -> list[list[float]]:
+        """Embed one or many texts into vectors.
+
+        Args:
+            texts (str | list[str]): A single text or a list of texts.
+            batch_size (int): Texts per request, at most 2048 (the spec's
+                ``maxItems`` for ``input``).
+
+        Returns:
+            list[list[float]]: One vector per input text, in input order —
+            ordered by the returned ``index``, not by arrival. ``[]`` for
+            empty input.
+
+        Raises:
+            ValueError: When ``batch_size`` is outside ``1..2048``.
+            HostedAPIError: A typed subclass for any error status.
+        """
+        if not 1 <= batch_size <= 2048:
+            raise ValueError("batch_size must be between 1 and 2048")
+        items = [texts] if isinstance(texts, str) else list(texts)
+        if not items:
+            return []
+        headers = dict(self._extra_headers)
+        headers["Authorization"] = f"Bearer {self._api_key}"
+        vectors: list[list[float]] = []
+        for start in range(0, len(items), batch_size):
+            batch = items[start : start + batch_size]
+            body: dict[str, Any] = {"model": self.model, "input": batch}
+            if self.dimensions is not None:
+                body["dimensions"] = self.dimensions
+            response = await self._http().post(
+                f"{self.base_url}/embeddings",
+                json=body,
+                headers=headers,
+            )
+            raise_for_hosted_status(self.provider, response)
+            data: list[dict[str, Any]] = response.json().get("data") or []
+            ordered = sorted(data, key=lambda item: int(item.get("index", 0)))
+            vectors.extend(
+                [float(x) for x in item.get("embedding") or []] for item in ordered
+            )
+        return vectors
+
+
 __all__: list[str] = [
+    "DEFAULT_DEEPSEEK_MODEL",
+    "DEFAULT_DEEPSEEK_URL",
     "DEFAULT_OPENAI_URL",
+    "OpenAICompatEmbedder",
     "OpenAICompatGenerator",
+    "StructuredOutputMode",
 ]

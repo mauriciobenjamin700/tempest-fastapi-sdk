@@ -227,6 +227,16 @@ faces = [
 genai-ollama = [
     "httpx>=0.28.1",
 ]
+genai-hosted = [
+    # Anthropic, OpenAI and DeepSeek over plain HTTP. httpx is already a base
+    # dependency; the extra exists so a service names the capability it uses,
+    # the same way [genai-ollama] does. The vendor SDKs are deliberately not
+    # here: anthropic 1.15.0 and openai 3.31.0 both require httpx2 (a second
+    # HTTP stack, which the SDK's HTTPClient and httpx.MockTransport do not
+    # reach) plus jiter/anyio/sniffio with upper bounds, for one POST and an
+    # SSE reader.
+    "httpx>=0.28.1",
+]
 genai-chroma = [
     "chromadb>=1.5.9",
 ]
