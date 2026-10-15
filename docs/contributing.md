@@ -40,7 +40,7 @@ Nada disso impede sua contribuição — só significa que **combinar o escopo n
 Ótimo — diga isso **na issue** e espere o "vai". Aí:
 
 - trabalhe num branch `feat/<slug>` / `fix/<slug>` a partir de `main`;
-- rode `make check` (lint + formato + mypy + testes) — a CI não roda testes (só publica), então é este o gate; `make test-matrix` cobre 3.11 / 3.12 / 3.13;
+- rode `make check` (lint + formato + mypy + testes) — a CI não roda testes (só publica), então é este o gate; `make test-matrix` cobre 3.12 / 3.13 / 3.14;
 - atualize a doc PT **e** EN junto com o código, mais `CHANGELOG.md`;
 - **não** faça bump de versão nem crie tag — isso é do release;
 - um PR por assunto, com o corpo explicando o problema antes da solução.
@@ -70,7 +70,7 @@ uv sync --all-extras --group dev --group docs
 | `make type` | `mypy tempest_fastapi_sdk` (strict) |
 | `make test` | `pytest` em paralelo (um worker por núcleo lógico, `worksteal`, 1 thread de BLAS por worker), sem cobertura |
 | `make test-cov` | `pytest` em paralelo com o relatório de cobertura |
-| `make test-matrix` | a suíte em 3.11, 3.12 e 3.13, uma venv por versão |
+| `make test-matrix` | a suíte em 3.12, 3.13 e 3.14, uma venv por versão |
 | `make check` | `lint + fmt-check + type + test` (para no primeiro erro) |
 | `make ci` | `check + build + smoke` (gate local completo antes de uma release) |
 

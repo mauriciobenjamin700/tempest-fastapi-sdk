@@ -48,7 +48,7 @@ _SUMMARY: str = (
     "generative AI (local LLM, embeddings, RAG, speech), geolocation, "
     "Brazilian document/phone/PIX validation, and a `tempest` CLI that "
     "scaffolds services and generates typed clients from an OpenAPI spec. "
-    "Python >= 3.11."
+    "Python >= 3.12."
 )
 """One paragraph giving a model the whole mental model up front."""
 
