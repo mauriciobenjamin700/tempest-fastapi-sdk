@@ -35,6 +35,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Anthropic e o `event: error` que chega no meio do stream), com `provider`,
   `error_type`, `detail` e `request_id`.
 
+### Changed
+
+- `OpenAICompatGenerator` levanta a família `HostedAPIError` em vez de
+  `httpx.HTTPStatusError` cru. Toda classe nova herda de
+  `httpx.HTTPStatusError`, então `except httpx.HTTPStatusError` continua
+  pegando tudo. Histórico de conversa com `tool_calls` de outro backend
+  (`arguments` como dict) é serializado para a string que o formato OpenAI
+  exige antes do envio.
+
+## [0.313.0] — 2026-10-13
+
+### Added
+
+- `read_project_version(pyproject_path=None)` em
+  `tempest_fastapi_sdk.settings`: devolve `[project].version` do
+  `pyproject.toml` como `str` (via `tomllib`). Sem argumento sobe a partir de
+  `Path.cwd()` até achar o arquivo; ausente, o `FileNotFoundError` cita os
+  caminhos procurados, e sem `[project].version` (inclusive com
+  `dynamic = ["version"]`) o `ValueError` cita o arquivo. Re-exportado no
+  `__init__.py` do pacote e no de topo (#536).
+
 - `op.rename_enum_type(old, new, columns=[...])` (`RenameEnumTypeOp`):
   `ALTER TYPE ... RENAME TO` no PostgreSQL; no SQLite reconstrói a tabela de
   cada coluna com o `CHECK` renomeado. O `sync_enum_types` detecta o tipo
@@ -119,12 +140,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `OpenAICompatGenerator` levanta a família `HostedAPIError` em vez de
-  `httpx.HTTPStatusError` cru. Toda classe nova herda de
-  `httpx.HTTPStatusError`, então `except httpx.HTTPStatusError` continua
-  pegando tudo. Histórico de conversa com `tool_calls` de outro backend
-  (`arguments` como dict) é serializado para a string que o formato OpenAI
-  exige antes do envio.
+- O `VERSION` do `Settings` que o `tempest new` gera sai de
+  `[project].version` no `pyproject.toml`, lido por `read_project_version`
+  num `default_factory` com o caminho ancorado no próprio `settings.py` e não
+  no cwd, então o serviço publicado
+  roda de qualquer diretório e a versão continua sendo a do projeto. A linha
+  `VERSION=0.1.0` do `.env.example` gerado vira comentário (override
+  opcional), já que copiar `.env.example` para `.env` congelava a versão pela
+  env; a env `VERSION` segue vencendo quando definida (#536).
 
 - O extra `[cli]` (e o `[all]`) passa a exigir `tempest-cli>=0.5.0`, a versão
   que ganhou `CheckStep` e o `extra_steps` do `register_commands` — é por ali
@@ -144,8 +167,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `__init__` que só guarda o repository, uma classe pública por módulo de
   `services/` sem função solta (helper vai para `src/utils/`), e nenhum
   método de repository que só repassa para `list` / `get` / `paginate`. O
-  `tempest check` ainda não as aplica: o gate mora no `tempest-cli`, que não
-  conhece o SDK.
+  `tempest check` as aplica pelo passo `lint-layers` (ver Added).
 - `tempest new` deixa de fixar `admin` e `auth` em todo projeto (#522): o
   `pyproject.toml` gerado leva só os extras passados em `--extras`. `auth`
   gera o `UserModel`, o `JWTSettings` no `Settings` e o bloco `JWT_*` do
@@ -286,6 +308,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dependências; com um `session_factory` que recebe parâmetro e a releitura
   ligada, ele recusa a montagem com `ValueError`. Guard novo:
   `tests/test_session_factory_guard.py` (#524).
+- A releitura de participação do stream do `make_chat_router` fechava a
+  factory de sessão com `aclose()`, que joga `GeneratorExit` no `yield` e
+  não alcança um gerador que a factory itera por dentro
+  (`async for session in get_session(): yield session`). A sessão interna
+  ficava aberta até o finalizador de async generators do event loop chegar
+  nela: medido com a contagem lida no instante de cada frame, todo frame do
+  stream saía com uma sessão aberta, em Python 3.11, 3.12 e 3.13. Agora a
+  factory é retomada depois do `yield` até terminar — como o FastAPI fecha
+  uma dependência —, e a limpeza dela roda antes do próximo frame; o
+  `aclose()` continua valendo quando a checagem levanta. Uma factory que é
+  ela mesma o gerador (`db.session_dependency`) já fechava na hora.
 - `tempest doctor` mascara a senha da URL do RabbitMQ, do Redis e do banco
   em todo `detail` de `CheckOutcome` — inclusive nos ramos `fail`, cuja
   mensagem de exceção pode repetir a URL crua —, na tabela e no `--json`
@@ -354,6 +387,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **O reset de senha e a reativação por link pedem o segundo fator quando a
+  conta tem MFA (#534).** Antes, `POST /auth/password-reset/confirm` consumia
+  o token, gravava a senha nova e emitia o par direto, sem olhar
+  `is_mfa_enrolled` — quem controlava a caixa de e-mail da vítima entrava sem
+  o TOTP, exatamente o cenário (e-mail comprometido) que o MFA existe para
+  cobrir. Agora, com TOTP inscrito e `AUTH_MFA_ENABLED=True`, a rota responde
+  como o `/login`: `mfa_required=true` + `mfa_token`, sem par; o cliente
+  conclui em `/auth/mfa/verify`, que emite o par com `amr` de MFA. A senha é
+  trocada de todo jeito. Conta sem MFA mantém a resposta de antes (par com
+  `amr == ["pwd"]`).
+- **`POST /auth/activate/{token}` segue a mesma regra (#534).** Um token de
+  ativação normalmente pertence a uma conta recém-cadastrada, sem fator — e
+  aí nada muda. Mas o `/activation/request` emite link para **qualquer**
+  conta inativa, inclusive uma que tinha TOTP e foi desativada (o CLI do SDK
+  desativa via `is_active`); nesse caso a rota passa a responder o desafio
+  MFA (`mfa_required=true` + `mfa_token`) em vez do par, e o par sai do
+  `/auth/mfa/verify`. `ActivationResponseSchema` ganha `mfa_required` /
+  `mfa_token`, e `access_token` / `refresh_token` passam a ser opcionais,
+  espelhando o `LoginResponseSchema`.
+- **O reset de senha revoga as sessões já abertas (#534).** `confirm` gravava
+  a senha nova e deixava todo refresh token o usuário tinha ainda trocando por
+  par novo — trocar a credencial não expulsava quem já estava dentro. Agora
+  `UserAuthService.confirm_password_reset` ganha
+  `revoke_sessions: bool = True` e chama `revoke_user_sessions` na mesma
+  transação que grava o hash, o mesmo default do `/auth/mfa/confirm` e do
+  `tempest user set-password` (cujo `--keep-sessions` é o opt-out explícito).
+  O router não passa nada; quem chama o service com `revoke_sessions=False`
+  mantém as sessões de propósito. Refresh token stateless (sem
+  `refresh_token_model`) não tem linha a revogar e segue válido até expirar.
+  Medido: refresh token DB-backed emitido antes do reset responde **401** na
+  troca seguinte depois da correção (antes respondia **200**); com
+  `revoke_sessions=False` continua trocando (
+  `tests/auth/test_password_reset_revoke.py`).
+- Override de `issue_token_pair`/`confirm_password_reset` com a assinatura
+  antiga continua funcionando: `is_mfa_enrolled` e `issue_mfa_token` são
+  métodos de `UserAuthService`, herdados por qualquer subclasse, e o router
+  chama `confirm_password_reset` sem o `revoke_sessions` novo, que cai no
+  default seguro. Medido em `tests/auth/test_password_reset_mfa.py` (4 testes:
+  reset com e sem MFA, reativação de conta com MFA e ativação de conta nova) e
+  em `tests/auth/test_password_reset_revoke.py` (override antigo delega e
+  ainda revoga).
 - **O `/unregister` do `make_push_router` e o `/unsubscribe` do
   `make_web_push_router` só removem dispositivo do próprio usuário (#523).**
   Antes, a rota exigia login mas apagava pelo token/endpoint sem olhar o dono:

@@ -257,11 +257,17 @@ fator? Para isso todo access token do SDK carrega o claim `amr` (RFC 8176):
 
 | Como a sessão começou | `amr` |
 | --- | --- |
-| `POST /auth/login` só com senha (e signup, ativação, reset de senha) | `["pwd"]` |
+| `POST /auth/login` só com senha (e signup, e a ativação/reset de uma conta **sem** MFA) | `["pwd"]` |
 | `POST /auth/mfa/verify` (código TOTP ou recovery code) | `["pwd", "otp"]` |
 | `POST /auth/mfa/confirm` (o par novo que ele devolve) | `["pwd", "otp"]` |
 | `POST /auth/webauthn/authenticate/complete` | `["hwk"]` |
 | login social (`/auth/oauth/...`) | `["ext"]` |
+
+Numa conta **com MFA inscrito**, o `/auth/password-reset/confirm` e o
+`/auth/activate/{token}` (de uma conta reativada) não emitem par: respondem o
+desafio `mfa_required=true` + `mfa_token`, e o par só sai do
+`/auth/mfa/verify`, com `amr == ["pwd", "otp"]`. É o mesmo tratamento do
+`/auth/login` — um e-mail comprometido não pode ser atalho pro segundo fator.
 
 O `refresh` repete o `amr` da família — ele fica gravado na linha do refresh
 token (ou no próprio refresh JWT, no modo stateless) —, então rotacionar nunca
