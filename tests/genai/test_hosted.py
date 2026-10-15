@@ -317,7 +317,9 @@ class TestOpenAICompatTools:
             {
                 "role": "assistant",
                 "content": "",
-                "tool_calls": [{"id": "c1", "function": {"name": "f", "arguments": {}}}],
+                "tool_calls": [
+                    {"id": "c1", "function": {"name": "f", "arguments": {}}}
+                ],
             },
             {"role": "tool", "content": "r", "tool_call_id": "c1"},
         ]

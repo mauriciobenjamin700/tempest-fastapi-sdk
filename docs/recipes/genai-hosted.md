@@ -357,7 +357,7 @@ entregue.
 
 !!! tip "Retry já vem embutido"
 
-    O cliente HTTP do SDK repete `429` e `5xx` com backoff exponencial — no
+    O cliente HTTP do SDK repete `429`, `500`, `502`, `503` e `504` com backoff exponencial — no
     `AnthropicGenerator`, o `529` também. O que ele **não** repete é timeout
     de leitura: o provedor aborta a geração quando o cliente desiste, e a
     repetição recomeçaria do zero.

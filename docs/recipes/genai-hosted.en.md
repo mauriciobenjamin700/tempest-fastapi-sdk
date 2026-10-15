@@ -358,7 +358,7 @@ stays yielded.
 
 !!! tip "Retry is built in"
 
-    The SDK's HTTP client retries `429` and `5xx` with exponential backoff —
+    The SDK's HTTP client retries `429`, `500`, `502`, `503` and `504` with exponential backoff —
     on `AnthropicGenerator`, `529` too. What it does **not** retry is a read
     timeout: the provider aborts the generation when the client gives up, and
     the retry would start it again from zero.
