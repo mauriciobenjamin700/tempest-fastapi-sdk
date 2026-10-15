@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Provedores hospedados intercambiáveis com o Ollama (#539). O
+  `AnthropicGenerator` fala a Messages API (`POST /v1/messages`, headers
+  `x-api-key` + `anthropic-version`, SSE tipado, `tool_use`/`tool_result`,
+  `output_config.format`) e cumpre os mesmos protocolos que o
+  `OllamaGenerator` — `TextBackend`, `StructuredTextBackend` e o
+  `ToolCallingBackend` do `Agent` —, traduzindo `system`, `tool_calls` e
+  resultados de ferramenta nos dois sentidos. O `OpenAICompatGenerator` ganhou
+  `chat_with_tools` e `chat_structured` (`response_format` `json_schema`, ou
+  `json_object` para o DeepSeek, `structured_output=`), `provider=` e
+  `max_tokens_field=`; o `OpenAICompatEmbedder` novo cumpre o `SupportsEmbed`
+  sobre `/embeddings`. O mixin `HostedGenAISettings` traz
+  `ANTHROPIC_*`/`OPENAI_*`/`DEEPSEEK_*` (`API_KEY`, `BASE_URL`, `MODEL`) e
+  `anthropic_kwargs()` / `openai_kwargs()` / `deepseek_kwargs()`. Extra
+  `[genai-hosted]` (só `httpx`, que já é base). Sem SDK de fornecedor: o
+  `anthropic` 1.15.0 e o `openai` 3.31.0 exigem `httpx2` e trazem tetos de
+  versão por um POST e um leitor de SSE. Os testes rodam sobre
+  `httpx.MockTransport` reproduzindo as respostas documentadas — nenhuma
+  chamada a provedor real foi feita; o comportamento contra as APIs vivas é o
+  que a documentação de cada uma descreve. Receita:
+  `docs/recipes/genai-hosted.md`.
+- Erros tipados dos backends hospedados: `HostedAPIError` e as subclasses
+  `HostedAuthenticationError` (401/403), `HostedRateLimitError` (429, com
+  `retry_after` do header) e `HostedServerError` (5xx, incluindo o 529 da
+  Anthropic e o `event: error` que chega no meio do stream), com `provider`,
+  `error_type`, `detail` e `request_id`.
+
 - `op.rename_enum_type(old, new, columns=[...])` (`RenameEnumTypeOp`):
   `ALTER TYPE ... RENAME TO` no PostgreSQL; no SQLite reconstrói a tabela de
   cada coluna com o `CHECK` renomeado. O `sync_enum_types` detecta o tipo
@@ -92,6 +118,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tempest check` parar no `lint-layers` com uma linha e exit 1 (#518).
 
 ### Changed
+
+- `OpenAICompatGenerator` levanta a família `HostedAPIError` em vez de
+  `httpx.HTTPStatusError` cru. Toda classe nova herda de
+  `httpx.HTTPStatusError`, então `except httpx.HTTPStatusError` continua
+  pegando tudo. Histórico de conversa com `tool_calls` de outro backend
+  (`arguments` como dict) é serializado para a string que o formato OpenAI
+  exige antes do envio.
 
 - O extra `[cli]` (e o `[all]`) passa a exigir `tempest-cli>=0.5.0`, a versão
   que ganhou `CheckStep` e o `extra_steps` do `register_commands` — é por ali

@@ -43,6 +43,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[genai-audio]` | `faster-whisper`, `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `transformers<5` | STT (Whisper) + TTS (Coqui) — the Coqui runtime ships with it since v0.252.0. The `transformers<5` cap is intentional and holds back `huggingface-hub`, `tokenizers` and `diffusers`: see [the warning below the table](#genai-audio-transformers-bound) |
 | `[genai-chroma]` | `chromadb` | Chroma vector store for RAG |
 | `[genai-diarization]` | `sherpa-onnx` | Speaker diarization (who spoke when) via `sherpa-onnx` on ONNX Runtime, no PyTorch: `SpeakerDiarizer`, `ConversationTranscriber`. Models (46 MB) fetched by `ensure_models()` |
+| `[genai-hosted]` | `httpx` (already in the base package) | hosted providers: `AnthropicGenerator`, `OpenAICompatGenerator` (OpenAI, DeepSeek), `OpenAICompatEmbedder`, `HostedGenAISettings`. No vendor SDK |
 | `[genai-hub]` | `huggingface-hub` | weight lifecycle: `resolve_revision` (pin a sha), `download_model` (fetch before serving, with a disk preflight), `list_cached_models`/`remove_cached_model`, `tempest model pull`/`cache-list`/`cache-rm` |
 | `[genai-image]` | `diffusers`, `pillow` | local image generation: `ImageGenerator` (`generate` text→image, `edit` image→image), `ImageGenerationConfig`, `POST /image` route |
 | `[genai-ollama]` | `httpx` | Ollama backend: `OllamaGenerator`, `OllamaEmbedder` |
