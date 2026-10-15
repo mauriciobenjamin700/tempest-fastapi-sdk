@@ -2,7 +2,7 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
-## Unreleased — a class ending in `Enum` no longer doubles the type suffix
+## 0.313.0 — a class ending in `Enum` no longer doubles the type suffix
 
 `enum_type_name` drops one trailing `Enum` from the class name before
 appending `_enum`. Only enums with that suffix change:
@@ -46,7 +46,7 @@ migration: `type "candidate_slug_enum" does not exist` on all three.
 To keep the old name on a column, pass it explicitly:
 `mapped_column(TempestEnum(CandidateSlugEnum, name="candidate_slug_enum_enum"))`.
 
-## Unreleased — auth 429s carry their own code
+## 0.313.0 — auth 429s carry their own code
 
 The three throttles of `make_auth_router` stop answering the generic
 `TOO_MANY_REQUESTS` code, the same as any other 429 in the app:
@@ -65,7 +65,7 @@ code. With `default_message_catalog()`, the `detail` becomes a specific
 message (`Too many login attempts — wait a moment and try again`) instead of
 `Too many requests`.
 
-## Unreleased — the refresh token stores the `amr`, and `/mfa/confirm` answers `200`
+## 0.313.0 — the refresh token stores the `amr`, and `/mfa/confirm` answers `200`
 
 The access token now carries the `amr` claim (how the session was
 authenticated), and `BaseUserRefreshTokenModel` gained the `amr` column (text,

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.313.0] — 2026-10-13
+
 ### Added
 
 - `op.rename_enum_type(old, new, columns=[...])` (`RenameEnumTypeOp`):
@@ -111,8 +113,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `__init__` que só guarda o repository, uma classe pública por módulo de
   `services/` sem função solta (helper vai para `src/utils/`), e nenhum
   método de repository que só repassa para `list` / `get` / `paginate`. O
-  `tempest check` ainda não as aplica: o gate mora no `tempest-cli`, que não
-  conhece o SDK.
+  `tempest check` as aplica pelo passo `lint-layers` (ver Added).
 - `tempest new` deixa de fixar `admin` e `auth` em todo projeto (#522): o
   `pyproject.toml` gerado leva só os extras passados em `--extras`. `auth`
   gera o `UserModel`, o `JWTSettings` no `Settings` e o bloco `JWT_*` do
@@ -253,6 +254,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dependências; com um `session_factory` que recebe parâmetro e a releitura
   ligada, ele recusa a montagem com `ValueError`. Guard novo:
   `tests/test_session_factory_guard.py` (#524).
+- A releitura de participação do stream do `make_chat_router` fechava a
+  factory de sessão com `aclose()`, que joga `GeneratorExit` no `yield` e
+  não alcança um gerador que a factory itera por dentro
+  (`async for session in get_session(): yield session`). A sessão interna
+  ficava aberta até o finalizador de async generators do event loop chegar
+  nela: medido com a contagem lida no instante de cada frame, todo frame do
+  stream saía com uma sessão aberta, em Python 3.11, 3.12 e 3.13. Agora a
+  factory é retomada depois do `yield` até terminar — como o FastAPI fecha
+  uma dependência —, e a limpeza dela roda antes do próximo frame; o
+  `aclose()` continua valendo quando a checagem levanta. Uma factory que é
+  ela mesma o gerador (`db.session_dependency`) já fechava na hora.
 - `tempest doctor` mascara a senha da URL do RabbitMQ, do Redis e do banco
   em todo `detail` de `CheckOutcome` — inclusive nos ramos `fail`, cuja
   mensagem de exceção pode repetir a URL crua —, na tabela e no `--json`

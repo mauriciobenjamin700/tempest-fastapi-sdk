@@ -1104,7 +1104,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   sem serviço `migrate` — a API migra no lifespan (ver abaixo). Receita:
   "Profile `prod`" em `cli.md`; teste live em
   `tests/cli/test_docker_compose_live.py`.
-- **Scaffold migrado e enxuto (unreleased, #519 #521 #522)** — o
+- **Scaffold migrado e enxuto (0.313.0, #519 #521 #522)** — o
   `tempest new` escreve `alembic.ini` (caminhos em `%(here)s`) + `alembic/`
   com uma revision `baseline` autogerada, e o lifespan gerado chama
   `sync_schema_async` antes do `db.connect()` (`DATABASE_MIGRATE_ON_STARTUP`
