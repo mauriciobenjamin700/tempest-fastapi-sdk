@@ -3289,6 +3289,104 @@ class MercadoPagoSettings(BaseAppSettings):
         }
 
 
+class RevenueCatSettings(BaseAppSettings):
+    """RevenueCat credentials: two webhook secrets and one API key.
+
+    The webhook secrets authenticate *RevenueCat* to you; the API key
+    authenticates *you* to RevenueCat, for the reconciliation read. All three
+    are documented on https://www.revenuecat.com/docs/integrations/webhooks
+    and https://www.revenuecat.com/docs/api-v1.
+
+    Each attribute below is also the name of the environment variable that
+    sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        REVENUECAT_WEBHOOK_SECRET (str): The ``Authorization`` header value
+            typed in the dashboard's webhook integration. Default ``""`` —
+            and an empty value makes the webhook refuse every delivery,
+            rather than accept every one.
+        REVENUECAT_WEBHOOK_SIGNING_SECRET (str): The HMAC signing secret,
+            when "HMAC webhook signing" is enabled on the integration. Empty
+            means signing is not checked.
+        REVENUECAT_API_KEY (str): A **secret** API key (``sk_...``) for
+            ``GET /v1/subscribers``. Empty disables reconciliation.
+    """
+
+    REVENUECAT_WEBHOOK_SECRET: str = Field(
+        default="",
+        title="RevenueCat webhook authorization value",
+        description=(
+            "Value configured as the webhook's authorization header in the "
+            "RevenueCat dashboard. Empty rejects every delivery."
+        ),
+        examples=[""],
+    )
+    REVENUECAT_WEBHOOK_SIGNING_SECRET: str = Field(
+        default="",
+        title="RevenueCat webhook HMAC signing secret",
+        description=(
+            "Signing secret shown once when HMAC webhook signing is enabled. "
+            "Empty skips the signature check."
+        ),
+        examples=[""],
+    )
+    REVENUECAT_API_KEY: str = Field(
+        default="",
+        title="RevenueCat secret API key",
+        description=(
+            "Secret API key sent as ``Authorization: Bearer <key>`` to the "
+            "REST API v1. Never ship it in the app."
+        ),
+        examples=["", "sk_…"],
+    )
+
+    def revenuecat_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto the ``HTTPClient`` the client wraps.
+
+        Returns:
+            dict[str, Any]: ``base_url`` and the ``Authorization`` header,
+            ready for::
+
+                client = RevenueCatClient(HTTPClient(**settings.revenuecat_kwargs()))
+        """
+        from tempest_fastapi_sdk.integrations.subscriptions.revenuecat.client import (
+            REVENUECAT_API_BASE_URL,
+        )
+
+        return {
+            "base_url": REVENUECAT_API_BASE_URL,
+            "default_headers": {
+                "Authorization": f"Bearer {self.REVENUECAT_API_KEY}",
+                "Accept": "application/json",
+            },
+        }
+
+    def production_violations(self) -> list[str]:
+        """Refuse a production boot that would reject every webhook.
+
+        An empty ``REVENUECAT_WEBHOOK_SECRET`` is safe — the endpoint
+        refuses everything — but in production it means every purchase,
+        renewal and expiration is answered ``401`` and dropped after
+        RevenueCat's last retry. That is an outage, so it fails the boot.
+        Checked only when no signing secret is set either: a service that
+        authenticates by HMAC alone is configured.
+
+        Returns:
+            list[str]: The parent's entries, plus one when neither webhook
+            secret is set.
+        """
+        violations: list[str] = super().production_violations()
+        if (
+            not self.REVENUECAT_WEBHOOK_SECRET
+            and not self.REVENUECAT_WEBHOOK_SIGNING_SECRET
+        ):
+            violations.append(
+                "REVENUECAT_WEBHOOK_SECRET: empty, so every RevenueCat webhook "
+                "is refused"
+            )
+        return violations
+
+
 class HostBridgeSettings(BaseAppSettings):
     """Host control configuration, consumed by ``HostBridge``.
 

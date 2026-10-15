@@ -60,6 +60,9 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.testing.fakes.storage import (
         FakeObjectStorageClient as FakeObjectStorageClient,
     )
+    from tempest_fastapi_sdk.testing.fakes.subscriptions import (
+        FakeRevenueCatClient as FakeRevenueCatClient,
+    )
 
 _EXPORTS: dict[str, str] = {
     "FakeCardProvider": "payment",
@@ -70,6 +73,7 @@ _EXPORTS: dict[str, str] = {
     "FakePayoutProvider": "payment",
     "FakePixProvider": "payment",
     "FakePushDispatcher": "push",
+    "FakeRevenueCatClient": "subscriptions",
     "FakeRoutingBackend": "geo",
     "FakeTextBackend": "genai",
     "FakeWebSearchBackend": "search",

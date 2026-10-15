@@ -846,6 +846,12 @@ from tempest_fastapi_sdk.db import (
     DEFAULT_SYNC_WATERMARK_LAG as DEFAULT_SYNC_WATERMARK_LAG,
 )
 from tempest_fastapi_sdk.db import (
+    DEFAULT_WEBHOOK_BACKOFF_SECONDS as DEFAULT_WEBHOOK_BACKOFF_SECONDS,
+)
+from tempest_fastapi_sdk.db import (
+    DEFAULT_WEBHOOK_MAX_ATTEMPTS as DEFAULT_WEBHOOK_MAX_ATTEMPTS,
+)
+from tempest_fastapi_sdk.db import (
     ENUM_CLASS_SUFFIX as ENUM_CLASS_SUFFIX,
 )
 from tempest_fastapi_sdk.db import (
@@ -856,6 +862,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     NAMING_CONVENTION as NAMING_CONVENTION,
+)
+from tempest_fastapi_sdk.db import (
+    STALE_WEBHOOK_ERROR as STALE_WEBHOOK_ERROR,
 )
 from tempest_fastapi_sdk.db import (
     WITHHELD_NOTICE as WITHHELD_NOTICE,
@@ -918,6 +927,9 @@ from tempest_fastapi_sdk.db import (
     BaseWebAuthnCredentialModel as BaseWebAuthnCredentialModel,
 )
 from tempest_fastapi_sdk.db import (
+    BaseWebhookEventModel as BaseWebhookEventModel,
+)
+from tempest_fastapi_sdk.db import (
     BaseWebPushSubscriptionModel as BaseWebPushSubscriptionModel,
 )
 from tempest_fastapi_sdk.db import (
@@ -964,6 +976,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     F as F,
+)
+from tempest_fastapi_sdk.db import (
+    InboxDrainReport as InboxDrainReport,
 )
 from tempest_fastapi_sdk.db import (
     IntegrityFailure as IntegrityFailure,
@@ -1030,6 +1045,12 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     UtcDateTime as UtcDateTime,
+)
+from tempest_fastapi_sdk.db import (
+    WebhookEventStatusEnum as WebhookEventStatusEnum,
+)
+from tempest_fastapi_sdk.db import (
+    WebhookInbox as WebhookInbox,
 )
 from tempest_fastapi_sdk.db import (
     WhereClause as WhereClause,
@@ -1114,6 +1135,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     make_web_push_subscription_model as make_web_push_subscription_model,
+)
+from tempest_fastapi_sdk.db import (
+    make_webhook_event_model as make_webhook_event_model,
 )
 from tempest_fastapi_sdk.db import (
     on_signal as on_signal,
@@ -1483,6 +1507,9 @@ from tempest_fastapi_sdk.settings import (
 )
 from tempest_fastapi_sdk.settings import (
     RedisSettings as RedisSettings,
+)
+from tempest_fastapi_sdk.settings import (
+    RevenueCatSettings as RevenueCatSettings,
 )
 from tempest_fastapi_sdk.settings import (
     ServerSettings as ServerSettings,
@@ -2170,6 +2197,8 @@ __all__: list[str] = [
     "DEFAULT_SPA_SECURITY_HEADERS",
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "DEFAULT_SYNC_WATERMARK_LAG",
+    "DEFAULT_WEBHOOK_BACKOFF_SECONDS",
+    "DEFAULT_WEBHOOK_MAX_ATTEMPTS",
     "DOCX_MEDIA_TYPE",
     "EMAIL_PATTERN",
     "ENUM_CLASS_SUFFIX",
@@ -2201,6 +2230,7 @@ __all__: list[str] = [
     "SIGNUP_PROTECTED_FIELDS",
     "SIGNUP_THROTTLED_MESSAGE",
     "SNIFFABLE_MIMETYPES",
+    "STALE_WEBHOOK_ERROR",
     "STATIC_CREDENTIAL_NAMESPACE",
     "SUPPORTED_LOCALES",
     "UF",
@@ -2266,6 +2296,7 @@ __all__: list[str] = [
     "BaseVoiceProfileModel",
     "BaseWebAuthnCredentialModel",
     "BaseWebPushSubscriptionModel",
+    "BaseWebhookEventModel",
     "BodySizeLimitMiddleware",
     "BulkEmailReport",
     "BusinessMetrics",
@@ -2369,6 +2400,7 @@ __all__: list[str] = [
     "IdempotencyMiddleware",
     "IdempotencyStore",
     "InMemoryThrottleBackend",
+    "InboxDrainReport",
     "InheritedErrorCodeWarning",
     "Inline",
     "InsufficientBalanceException",
@@ -2538,6 +2570,7 @@ __all__: list[str] = [
     "ResponseCacheStore",
     "RetryLogger",
     "RetryPolicy",
+    "RevenueCatSettings",
     "SSEBroker",
     "SSEData",
     "SameSite",
@@ -2628,6 +2661,8 @@ __all__: list[str] = [
     "WebSocketHub",
     "WebSocketSettings",
     "WebhookDelivery",
+    "WebhookEventStatusEnum",
+    "WebhookInbox",
     "WebhookSender",
     "WebhookSignatureVerifier",
     "WhereClause",
@@ -2757,6 +2792,7 @@ __all__: list[str] = [
     "make_web_authn_credential_model",
     "make_web_push_router",
     "make_web_push_subscription_model",
+    "make_webhook_event_model",
     "make_websocket_router",
     "modify_dict",
     "negotiate_locale",
