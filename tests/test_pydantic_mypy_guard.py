@@ -83,7 +83,7 @@ def test_the_guard_fires_on_the_shape_that_shipped() -> None:
     """
     shipped = (
         "[tool.mypy]\n"
-        'python_version = "3.11"\n'
+        'python_version = "3.12"\n'
         "strict = true\n"
         'plugins = ["pydantic.mypy"]\n'
     )
@@ -114,6 +114,6 @@ def test_the_fixed_form_passes() -> None:
 
 def test_a_project_without_the_plugin_is_left_alone() -> None:
     """The guard asks for the setting only where the plugin runs."""
-    plain = '[tool.mypy]\npython_version = "3.11"\nstrict = true\n'
+    plain = '[tool.mypy]\npython_version = "3.12"\nstrict = true\n'
 
     assert not _violations(plain)
