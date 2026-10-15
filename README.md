@@ -96,7 +96,7 @@ dependencies = [
 ]
 ```
 
-Requires Python `>=3.11`.
+Requires Python `>=3.12` (3.12, 3.13 and 3.14). Python 3.11 stays on 0.313.x — see the [migration guide](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/).
 
 The `tempest` command (`tempest new`, `tempest check`, `tempest db`, ...) is the `[cli]` extra since 0.308.0 — a dev tool, kept out of the base so a service does not ship `ruff` to production:
 
@@ -4736,7 +4736,7 @@ uv run mypy tempest_fastapi_sdk
 uv build
 ```
 
-The CI gate (`.github/workflows/ci.yml`) runs the equivalent of `make ci` on every push and pull request against `main`. The wheel-build smoke step installs the freshly built artifact into a clean virtualenv on each Python of the matrix (3.11, 3.12, 3.13; `make smoke` locally uses 3.11) and imports the top-level surface to guard against the empty-wheel / missing-package-data class of bugs.
+CI runs no tests: `make check` locally is the gate, and `make test-matrix` runs the suite on 3.12, 3.13 and 3.14, one venv per version. `make smoke` installs the freshly built wheel into a clean 3.12 virtualenv (the floor) and imports the top-level surface to guard against the empty-wheel / missing-package-data class of bugs; the tag workflow repeats that smoke before publishing.
 
 ---
 
