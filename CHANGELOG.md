@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `read_project_version(pyproject_path=None)` em
+  `tempest_fastapi_sdk.settings`: devolve `[project].version` do
+  `pyproject.toml` como `str` (via `tomllib`). Sem argumento sobe a partir de
+  `Path.cwd()` até achar o arquivo; ausente, o `FileNotFoundError` cita os
+  caminhos procurados, e sem `[project].version` (inclusive com
+  `dynamic = ["version"]`) o `ValueError` cita o arquivo. Re-exportado no
+  `__init__.py` do pacote e no de topo (#536).
+
 - `op.rename_enum_type(old, new, columns=[...])` (`RenameEnumTypeOp`):
   `ALTER TYPE ... RENAME TO` no PostgreSQL; no SQLite reconstrói a tabela de
   cada coluna com o `CHECK` renomeado. O `sync_enum_types` detecta o tipo
@@ -94,6 +102,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tempest check` parar no `lint-layers` com uma linha e exit 1 (#518).
 
 ### Changed
+
+- O `VERSION` do `Settings` que o `tempest new` gera sai de
+  `[project].version` no `pyproject.toml`, lido por `read_project_version`
+  num `default_factory` com o caminho ancorado no próprio `settings.py` e não
+  no cwd, então o serviço publicado
+  roda de qualquer diretório e a versão continua sendo a do projeto. A linha
+  `VERSION=0.1.0` do `.env.example` gerado vira comentário (override
+  opcional), já que copiar `.env.example` para `.env` congelava a versão pela
+  env; a env `VERSION` segue vencendo quando definida (#536).
 
 - O extra `[cli]` (e o `[all]`) passa a exigir `tempest-cli>=0.5.0`, a versão
   que ganhou `CheckStep` e o `extra_steps` do `register_commands` — é por ali

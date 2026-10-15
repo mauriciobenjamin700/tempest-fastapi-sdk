@@ -67,7 +67,7 @@ The skeleton matches the layered architecture documented in [Architecture »](..
 my_service/
 ├── main.py                  # one-liner → src.server.run()
 ├── pyproject.toml           # pins tempest-fastapi-sdk + ruff/mypy/pytest
-├── .env.example             # TITLE/VERSION, SERVER_*, LOG_*, DATABASE_URL, JWT_* (with [auth]), TOKEN_SECRET, CORS_*
+├── .env.example             # TITLE/DESCRIPTION, SERVER_*, LOG_*, DATABASE_URL, JWT_* (with [auth]), TOKEN_SECRET, CORS_*
 ├── alembic.ini              # paths anchored on %(here)s
 ├── alembic/                 # env.py + versions/ with the baseline revision
 ├── docker-compose.yaml      # services keyed to the chosen extras
@@ -116,19 +116,28 @@ my_service/
 
 The generated `pyproject.toml` pins the current SDK version with the extras you asked for, and only those (`tempest-fastapi-sdk>=<version>` without `--extras`). `admin` and `auth` are **opt-in**: `--extras auth` gives the project the `UserModel`, `JWTSettings` on `Settings` and the `JWT_*` block in `.env.example`; `--extras admin` also makes `src/api/app.py` mount the admin panel — and brings `auth` along, because the panel's login checks the password through `PasswordUtils`. With neither, the service starts with no user table, no panel and no `bcrypt`/`PyJWT` in the lock: `--extras postgres` pins just `[postgres]`, `--extras admin,cache` pins `[admin,auth,cache]`, and duplicates are dropped with the list sorted alphabetically. Up to 0.312.x `admin` and `auth` were always pinned. The `dev` group gets `tempest-fastapi-sdk[cli]>=<version>`, so `tempest` runs in the project without entering the image: the generated `Dockerfile` installs with `uv sync --no-dev`. The scaffolded `.env.example` uses the v0.8.0 settings naming (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), and `src/server.py` delegates to `tempest_fastapi_sdk.run_server` so uvicorn is imported lazily and tests can import the app without it. Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
 
-!!! tip "API title / version come from `.env`"
+!!! tip "API title, description and version"
     Since v0.48.0 the scaffolded `Settings` carries `TITLE`, `VERSION`
     and `DESCRIPTION`, and `src/api/app.py` consumes them
     (`FastAPI(title=settings.TITLE, version=settings.VERSION,
     description=settings.DESCRIPTION)`, `make_health_router(version=
     settings.VERSION)` and, with `[admin]`, `AdminSite(title=f"{settings.TITLE} admin")`).
-    Tune the title shown in Swagger/ReDoc and the `/admin` header from
-    `.env`, no code edits:
+
+    The version has a **single source**: `Settings.VERSION` comes from
+    `[project].version` in `pyproject.toml`, read by
+    [`read_project_version`](../../../reference/#tempest_fastapi_sdk.settings.version.read_project_version).
+    The path is anchored on `settings.py` itself (not the cwd), so the
+    value is the project's even when it runs from another directory;
+    bumping the release is editing `pyproject.toml`, and
+    `/health/readiness` and the OpenAPI `info.version` follow. Title and
+    description stay in `.env`, and the `VERSION` env var still overrides
+    the file when you need to publish a version other than the committed
+    one:
 
     ```bash
     TITLE=My API
-    VERSION=1.2.0
     DESCRIPTION=Payments API for product X.
+    # VERSION=1.2.0  # optional: overrides [project].version
     ```
 
 ### Extras-driven `docker-compose.yaml`
