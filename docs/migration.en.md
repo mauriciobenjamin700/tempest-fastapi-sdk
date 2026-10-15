@@ -119,6 +119,37 @@ Two behavior changes come with it:
 - **`mfa_confirm` revokes the sessions by default.** A caller of the service
   that must keep them passes `revoke_sessions=False`.
 
+### Password reset and link reactivation now ask for the second factor
+
+`POST /auth/password-reset/confirm` and `POST /auth/activate/{token}` now
+mirror `/auth/login`: when the account has TOTP enrolled, they do not return
+the pair — they return `mfa_required=true` + `mfa_token`, and the pair only
+comes out of `/auth/mfa/verify`, with the MFA `amr`. The password is replaced
+either way.
+
+A client that called the `confirm` (or the `activate` of a reactivated
+account) and stored `access_token` directly must handle the challenge: if
+`mfa_required` is `true`, prompt for the code and call `/auth/mfa/verify`. An
+account without MFA is unchanged — it still receives the pair in the response
+itself. Activating a freshly signed-up account is unchanged too: it never has
+a factor.
+
+`ActivationResponseSchema` gained `mfa_required` / `mfa_token`, and
+`access_token` / `refresh_token` became optional (`str | None`), as in
+`LoginResponseSchema`. Reading the pair from a fresh-account activation is
+unchanged.
+
+Password reset now **revokes sessions already open**, in the same transaction
+that writes the hash, the way `/auth/mfa/confirm` and `tempest user
+set-password` already did: a DB-backed refresh token issued before the reset
+can no longer be exchanged for a fresh pair (it answers 401). Access tokens
+already issued still live until their TTL. A caller of
+`UserAuthService.confirm_password_reset` that needs to keep the sessions passes
+`revoke_sessions=False` — an old override signature is still called by the
+router, and delegates to the default that revokes. A stateless refresh token
+(no `refresh_token_model`) has no row to revoke and stays valid until it
+expires.
+
 ## 0.312.0 — Mercado Pago: expired Pix and chargeback search
 
 Two behaviour changes, both measured in the sandbox on 2026-10-10.
