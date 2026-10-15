@@ -454,3 +454,651 @@ session lives in the provider and the repositories, never in the controller.
     repository by annotation would need its forward references resolved.
     Review is what enforces the rule.
 
+## Service, repository and controller patterns
+
+The sections above say **what** each layer inherits. This one answers the
+questions the first real service raises: where the mapper lives, what to do
+when a service needs **two** repositories, how the `session`, the settings
+and the mailer reach the controller, where the permission check runs, and
+what the router returns.
+
+All of it in one complete example — copy it into a file and run
+`uv run python app.py`. In a project each class lives in its own layer
+(`db/models/`, `schemas/`, `core/exceptions.py`, `db/repositories/`,
+`services/`, `controllers/`, `api/dependencies/controllers.py`,
+`api/routers/`); here they sit together so the example runs on its own.
+
+```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, FastAPI, status
+from fastapi.testclient import TestClient
+from pydantic import Field
+from sqlalchemy import ForeignKey, String
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    BaseAppSettings,
+    BaseController,
+    BaseModel,
+    BaseRepository,
+    BaseResponseSchema,
+    BaseSchema,
+    BaseService,
+    NotFoundException,
+    ValidationException,
+    register_exception_handlers,
+)
+
+
+class Settings(BaseAppSettings):
+    """Service configuration."""
+
+    MAX_PRICE_CENTS: int = 100_000
+
+
+class CategoryModel(BaseModel):
+    """A catalogue category."""
+
+    name: Mapped[str] = mapped_column(String(64))
+
+
+class ProductModel(BaseModel):
+    """A product, always inside a category."""
+
+    name: Mapped[str] = mapped_column(String(64))
+    price_cents: Mapped[int]
+    category_id: Mapped[UUID] = mapped_column(ForeignKey("category.id"))
+
+
+class ProductCreateSchema(BaseSchema):
+    """Product creation payload."""
+
+    name: str = Field(min_length=1, max_length=64)
+    price_cents: int = Field(gt=0)
+    category_id: UUID
+
+
+class ProductResponseSchema(BaseResponseSchema):
+    """A product as the API returns it."""
+
+    name: str
+    price_cents: int
+    category_id: UUID
+
+
+class CategoryNotFoundError(NotFoundException):
+    """The given category does not exist."""
+
+    code: str = "CATEGORY_NOT_FOUND"
+
+
+class ProductNotFoundError(NotFoundException):
+    """The given product does not exist."""
+
+    code: str = "PRODUCT_NOT_FOUND"
+
+
+class ProductPriceAboveLimitError(ValidationException):
+    """The price is above the configured ceiling."""
+
+    code: str = "PRODUCT_PRICE_ABOVE_LIMIT"
+
+
+class CategoryRepository(BaseRepository[CategoryModel]):
+    """Data access for categories."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Bind the repository to the session.
+
+        Args:
+            session (AsyncSession): The request-scoped session.
+        """
+        super().__init__(
+            session,
+            model=CategoryModel,
+            not_found_exception=CategoryNotFoundError,
+        )
+
+
+class ProductRepository(BaseRepository[ProductModel]):
+    """Data access for products; owns the response mapper."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Bind the repository to the session.
+
+        Args:
+            session (AsyncSession): The request-scoped session.
+        """
+        super().__init__(
+            session,
+            model=ProductModel,
+            not_found_exception=ProductNotFoundError,
+        )
+
+    def map_to_response(self, instance: ProductModel) -> ProductResponseSchema:
+        """Map a row to the response schema.
+
+        Args:
+            instance (ProductModel): The ORM row.
+
+        Returns:
+            ProductResponseSchema: The product, ready for the API.
+        """
+        return ProductResponseSchema.model_validate(instance)
+
+
+class ProductService(BaseService[ProductRepository, ProductResponseSchema]):
+    """Business rules for products."""
+
+    def __init__(
+        self,
+        repository: ProductRepository,
+        *,
+        categories: CategoryRepository,
+        max_price_cents: int,
+    ) -> None:
+        """Take the main repository plus what the creation rule reads.
+
+        Args:
+            repository (ProductRepository): The resource's own repository.
+            categories (CategoryRepository): Read to validate the category.
+            max_price_cents (int): Price ceiling, taken from the settings.
+        """
+        super().__init__(repository)
+        self.categories: CategoryRepository = categories
+        self.max_price_cents: int = max_price_cents
+
+    async def create(self, data: ProductCreateSchema) -> ProductResponseSchema:
+        """Create a product in an existing category, under the price ceiling.
+
+        Args:
+            data (ProductCreateSchema): The creation payload.
+
+        Returns:
+            ProductResponseSchema: The created product.
+
+        Raises:
+            CategoryNotFoundError: When the category does not exist.
+            ProductPriceAboveLimitError: When the price is above the ceiling.
+        """
+        await self.categories.get_by_id(data.category_id)
+        if data.price_cents > self.max_price_cents:
+            raise ProductPriceAboveLimitError(
+                details={"max_price_cents": self.max_price_cents},
+            )
+        instance = self.repository.map_to_model(data.to_dict())
+        instance = await self.repository.add(instance)
+        return self.repository.map_to_response(instance)
+
+
+class ProductController(BaseController[ProductService, ProductResponseSchema]):
+    """Product use cases; a pass-through for now."""
+
+    async def create(self, data: ProductCreateSchema) -> ProductResponseSchema:
+        """Create a product.
+
+        Args:
+            data (ProductCreateSchema): The creation payload.
+
+        Returns:
+            ProductResponseSchema: The created product.
+        """
+        return await self.service.create(data)
+
+
+settings: Settings = Settings()
+db: AsyncDatabaseManager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+
+
+def get_settings() -> Settings:
+    """Return the process settings.
+
+    Returns:
+        Settings: The single instance, replaceable through ``dependency_overrides``.
+    """
+    return settings
+
+
+def get_product_controller(
+    session: AsyncSession = Depends(db.session_dependency),
+    app_settings: Settings = Depends(get_settings),
+) -> ProductController:
+    """Build repository, service and controller for one request.
+
+    Args:
+        session (AsyncSession): The request-scoped session.
+        app_settings (Settings): The process settings.
+
+    Returns:
+        ProductController: The controller bound to that session.
+    """
+    service = ProductService(
+        ProductRepository(session),
+        categories=CategoryRepository(session),
+        max_price_cents=app_settings.MAX_PRICE_CENTS,
+    )
+    return ProductController(service)
+
+
+router: APIRouter = APIRouter(prefix="/api/products", tags=["products"])
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+async def create_product(
+    data: ProductCreateSchema,
+    controller: ProductController = Depends(get_product_controller),
+) -> ProductResponseSchema:
+    """Create a product.
+
+    Args:
+        data (ProductCreateSchema): The creation payload.
+        controller (ProductController): Injected by the provider.
+
+    Returns:
+        ProductResponseSchema: The created product.
+    """
+    return await controller.create(data)
+
+
+@router.get("/{product_id}")
+async def get_product(
+    product_id: UUID,
+    controller: ProductController = Depends(get_product_controller),
+) -> ProductResponseSchema:
+    """Fetch a product by id.
+
+    Args:
+        product_id (UUID): The product id.
+        controller (ProductController): Injected by the provider.
+
+    Returns:
+        ProductResponseSchema: The product.
+    """
+    return await controller.get_by_id(product_id)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Create the tables and one sample category.
+
+    Args:
+        app (FastAPI): The application.
+
+    Yields:
+        None: While the application runs.
+    """
+    await db.create_tables()
+    async with db.get_session_context() as session:
+        session.add(CategoryModel(id=UUID(int=1), name="Books"))
+        await session.commit()
+    yield
+    await db.disconnect()
+
+
+app: FastAPI = FastAPI(lifespan=lifespan)
+register_exception_handlers(app)
+app.include_router(router)
+
+
+with TestClient(app) as client:
+    created = client.post(
+        "/api/products",
+        json={"name": "Dune", "price_cents": 5990, "category_id": str(UUID(int=1))},
+    )
+    print(created.status_code, created.json()["name"])
+    fetched = client.get(f"/api/products/{created.json()['id']}")
+    print(fetched.status_code, fetched.json()["price_cents"])
+    missing = client.post(
+        "/api/products",
+        json={"name": "Dune", "price_cents": 5990, "category_id": str(UUID(int=2))},
+    )
+    print(missing.status_code, missing.json()["code"])
+    too_high = client.post(
+        "/api/products",
+        json={"name": "Rare", "price_cents": 500_000, "category_id": str(UUID(int=1))},
+    )
+    print(too_high.status_code, too_high.json()["code"], too_high.json()["details"])
+    app.dependency_overrides[get_settings] = lambda: Settings(MAX_PRICE_CENTS=1_000)
+    capped = client.post(
+        "/api/products",
+        json={"name": "Dune", "price_cents": 5990, "category_id": str(UUID(int=1))},
+    )
+    print(capped.status_code, capped.json()["details"])
+```
+
+```text
+201 Dune
+200 5990
+404 CATEGORY_NOT_FOUND
+422 PRODUCT_PRICE_ABOVE_LIMIT {'max_price_cents': 100000}
+422 {'max_price_cents': 1000}
+```
+
+Let's take it piece by piece.
+
+### The mapper lives in the repository
+
+`ProductRepository.map_to_response` is the resource's **only** translation
+from ORM row to response schema. `BaseService` calls it on every path that
+returns mapped data — `get_by_id`, `get_or_none`, `list`, `paginate` and
+`update` — so the example's `get_product` works without a line of service
+code: the inherited `get_by_id` loads the row and runs it through the mapper.
+
+The contract, as the code stands today:
+
+| `BaseRepository` method | Base default | Who calls it |
+| --- | --- | --- |
+| `map_to_response(instance)` | raises `NotImplementedError("Subclasses must implement map_to_response")` | `BaseService.get_by_id` / `get_or_none` / `list` / `paginate` / `update` |
+| `map_to_model(data)` | `self.model(**data)` | your service, when creating (`self.repository.map_to_model(data.to_dict())`) |
+| `map_to_schema(instance)` | raises `NotImplementedError` | nothing in the SDK; it exists for your code |
+
+It is not abstract in the `abc` sense: a repository without the mapper
+instantiates fine, and `count`, `exists` and `delete` work. The failure shows
+up on the first call that maps — over HTTP, a `500`. So every repository
+handed to a `BaseService` implements `map_to_response`; the example's
+`CategoryRepository` does not, because no `BaseService` receives it — the
+`ProductService` only calls `get_by_id` on it, which returns the row
+unmapped.
+
+!!! tip "`async` mapper"
+    When mapping needs an `await` (loading a relationship, say), declare
+    `async def map_to_response`. `BaseService` awaits the result when it is
+    awaitable — nothing to override in the service.
+
+Why the repository and not a service helper: the mapper sits next to the
+query that loaded the row, and `BaseService` can only hand you the inherited
+CRUD because it knows where to find it. A service that rewrites `list` as
+`[self.repository.map_to_response(x) for x in ...]` is reimplementing the
+base.
+
+### One repository per service — and when there are several
+
+`BaseService[RepositoryT, ResponseT, UpdateT]` takes **one** repository in
+`__init__`: the one for the resource whose CRUD it inherits. The third
+generic parameter is optional (see [the tip above](#controllers-services-layering)).
+When a use case needs more data, the question is *whose rule it is*:
+
+| Situation | Where the second repository goes |
+| --- | --- |
+| The rule belongs to this resource and only **reads** or **writes alongside** other data — checking the category exists, writing an order and its items | a keyword-only parameter of the service's `__init__`, after `super().__init__(repository)` — like `categories` in the example |
+| The other data has rules of its own and already has a service | the **controller** receives both services and orchestrates (see [`Controller`](#a-controller-that-orchestrates-controller)) |
+| The service has no repository at all (a static catalogue, a facade over an external API) | no `BaseService`; mark the class with `# tempest: no-base-service` |
+
+`ProductService.__init__` adds dependencies, so it is not the redundant
+`__init__` that `SVC003` flags — that rule only flags one that stores the
+repository and nothing else.
+
+!!! warning "Two writes, one transaction"
+    Every `BaseRepository` write method `COMMIT`s on its own. When the rule
+    writes through two repositories, wrap both writes in `async with
+    self.repository.transaction():`. The block covers every repository on
+    the **same** `AsyncSession` — and the provider is what guarantees that,
+    by building both on the request's session. Details in
+    [Transactions](recipes/transactions.md).
+
+### Controllers arrive through `Depends` providers
+
+`get_product_controller` is the only place that knows how to build the
+graph: it opens the request's session, reads the settings, builds both
+repositories, the service and the controller. The router only declares
+`controller: ProductController = Depends(get_product_controller)`.
+
+In a project the providers live in `src/api/dependencies/controllers.py`,
+and the process-wide resources (`db`, storage, mailer) in
+`src/api/dependencies/resources.py`. Each of the provider's inputs is
+another `Depends`, never a module import read in the middle of the body —
+that is what makes the example's last request work: a
+`dependency_overrides[get_settings]` changed the price ceiling without
+touching the router, the controller or the service. The mailer works the
+same way:
+
+```python
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import EmailUtils
+
+from src.api.dependencies.resources import get_mailer, get_session
+from src.controllers import InviteController
+from src.core.settings import Settings, get_settings
+from src.db.repositories import InviteRepository
+from src.services import InviteService
+
+
+def get_invite_controller(
+    session: AsyncSession = Depends(get_session),
+    mailer: EmailUtils = Depends(get_mailer),
+    settings: Settings = Depends(get_settings),
+) -> InviteController:
+    """Build the invite controller for one request.
+
+    Args:
+        session (AsyncSession): The request-scoped session.
+        mailer (EmailUtils): The process-wide mailer.
+        settings (Settings): The process settings.
+
+    Returns:
+        InviteController: The controller wired to those resources.
+    """
+    service = InviteService(
+        InviteRepository(session),
+        mailer=mailer,
+        code_secret=settings.INVITE_CODE_SECRET,
+    )
+    return InviteController(service)
+```
+
+What the provider prevents is the router building the controller —
+`InviteController(session, mailer=mailer, code_secret=settings.X)` inside the
+handler. There the router learns about the session, the settings and three
+class signatures, and every endpoint that uses the controller repeats the
+wiring.
+
+!!! note "What `tempest new` generates today"
+    The scaffold writes `src/api/dependencies/resources.py` with `db`,
+    `get_db` and `get_session`; `get_storage` and `get_mailer` ship
+    **commented out**, to uncomment with the `[minio]` and `[email]` extras.
+    `src/api/dependencies/controllers.py` is **not** generated — the
+    project's `CLAUDE.md` teaches creating it with the first provider. There
+    is no `get_settings` either: the template exposes `settings` as a module
+    object in `src/core/settings.py`. To swap settings through
+    `dependency_overrides`, as the example does, declare the function
+    yourself.
+
+### Guards: route dependency or `@requires` on the method
+
+The SDK gives you two places to check permissions, and they answer
+different questions:
+
+| Tool | Question | Where it runs |
+| --- | --- | --- |
+| `make_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency` | "who is calling?" / "does the token carry this role or permission?" | route dependency, before the handler |
+| `@requires(guard, ...)` with `require_authenticated`, `require_active`, `require_admin`, `make_flag_guard` or a guard of your own | "does this already-loaded user satisfy this invariant?" | any function that receives the user — handler, controller or service |
+
+The path that keeps rules out of the router: **authentication in the
+dependency, the invariant on the use-case method**. The dependency resolves
+the user and the router passes it along; `@requires` sits on the controller
+method, so whoever calls the use case — an HTTP route, a queue consumer, a
+CLI command — goes through the same check.
+
+```python
+import asyncio
+from uuid import UUID
+
+from sqlalchemy import String
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import (
+    AppException,
+    AsyncDatabaseManager,
+    BaseController,
+    BaseModel,
+    BaseRepository,
+    BaseResponseSchema,
+    BaseService,
+    BaseUserModel,
+    requires,
+)
+from tempest_fastapi_sdk.auth import require_admin
+
+
+class AccountModel(BaseUserModel):
+    """An account that calls the API."""
+
+
+class ProductModel(BaseModel):
+    """A catalogue product."""
+
+    name: Mapped[str] = mapped_column(String(64))
+
+
+class ProductResponseSchema(BaseResponseSchema):
+    """A product as the API returns it."""
+
+    name: str
+
+
+class ProductRepository(BaseRepository[ProductModel]):
+    """Data access for products."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Bind the repository to the session.
+
+        Args:
+            session (AsyncSession): The active session.
+        """
+        super().__init__(session, model=ProductModel)
+
+    def map_to_response(self, instance: ProductModel) -> ProductResponseSchema:
+        """Map a row to the response schema.
+
+        Args:
+            instance (ProductModel): The ORM row.
+
+        Returns:
+            ProductResponseSchema: The product, ready for the API.
+        """
+        return ProductResponseSchema.model_validate(instance)
+
+
+class ProductService(BaseService[ProductRepository, ProductResponseSchema]):
+    """Business rules for products."""
+
+
+class ProductController(BaseController[ProductService, ProductResponseSchema]):
+    """Product use cases."""
+
+    @requires(require_admin)
+    async def remove(self, product_id: UUID, user: AccountModel) -> None:
+        """Delete a product; administrators only.
+
+        Args:
+            product_id (UUID): The product to delete.
+            user (AccountModel): The caller, already authenticated.
+        """
+        await self.service.delete(product_id)
+
+
+async def main() -> None:
+    """Call the use case as a regular account, then as an administrator."""
+    db: AsyncDatabaseManager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.create_tables()
+    admin = AccountModel(email="ana@example.com", hashed_password="x", is_admin=True)
+    member = AccountModel(email="bia@example.com", hashed_password="x", is_admin=False)
+    async with db.get_session_context() as session:
+        repository = ProductRepository(session)
+        product = await repository.add(ProductModel(name="Dune"))
+        controller = ProductController(ProductService(repository))
+        try:
+            await controller.remove(product.id, member)
+        except AppException as exc:
+            print(exc.status_code, exc.code)
+        await controller.remove(product.id, admin)
+        print("left:", await controller.count())
+    await db.disconnect()
+
+
+asyncio.run(main())
+```
+
+```text
+403 FORBIDDEN
+left: 0
+```
+
+The guard found the user by annotation (`AccountModel` inherits
+`BaseUserModel`), refused the regular account by raising
+`ForbiddenException` — which `register_exception_handlers` turns into the
+`403` envelope — and let the administrator through. The full guard contract,
+`meta=` and the `tempest permissions` linter are in
+[Permission guards](recipes/permission-guards.md).
+
+### The router returns a schema
+
+Every handler in the example annotates its return with the response schema
+(`-> ProductResponseSchema`) and returns what the controller handed back.
+With the mapper in the repository, the schema leaves the service ready — the
+router imports nothing from `db/` and never sees an ORM row. FastAPI uses
+the return annotation as the `response_model`, so OpenAPI documents the
+schema without a repeated `response_model=` on the decorator.
+
+### What `tempest lint-layers` checks
+
+Some of these rules have a gate; some do not. `tempest lint-layers` (and the
+`lint-layers` step of `tempest check`) reads the code with `ast` and flags:
+
+| Code | What it flags |
+| --- | --- |
+| `SVC001` | a public class in `services/` that does not inherit `BaseService` |
+| `SVC002` | a second public class or a module-level function in a `services/` file |
+| `SVC003` | a service `__init__` that only stores the repository |
+| `REPO001` | a repository method that only forwards to a `BaseRepository` method |
+| `ENUM001` | a `BaseStrEnum` whose name does not end in `Enum` |
+
+Run over a `src/` with a `FamilyService` whose `__init__` only calls
+`super().__init__(repository)`, a `ProductService` like the example's and a
+`class UserRole(BaseStrEnum)`, the result is this (paths shortened):
+
+```text
+src/core/enums.py:4: ENUM001 `UserRole` inherits BaseStrEnum; rename it to `UserRoleEnum`. The database type name does not change (enum_type_name drops one trailing `Enum`), so no migration is needed.
+src/services/family.py:5: SVC003 `FamilyService.__init__` only stores the repository, which BaseService already does; delete it.
+```
+
+`ProductService`, which adds `categories` and `max_price_cents`, passes
+clean. About `ENUM001`: from v0.313.0 `enum_type_name` drops one trailing
+`Enum` from the class name before appending `_enum`, so `UserRole` and
+`UserRoleEnum` map to the same `user_role_enum` type — renaming the class to
+the suffix needs no `TempestEnum(UserRoleEnum, name="user_role_enum")` on
+every column. A database created earlier, with the doubled name, is covered
+in [Enum columns › Renaming the type](recipes/enum-columns.md#renaming-the-type).
+
+**No gate yet**, so review carries them: a controller built inside the
+router instead of coming from a provider, a guard applied in the wrong
+place, and a router returning an ORM model. `lint-layers` only reads
+`services/`, `repositories/` and the enums. Full table and the opt-out in
+[CLI › Layer rules](recipes/cli.md#layer-rules-tempest-lint-layers).
+
+### Recap
+
+- **Mapper in the repository.** `map_to_response` is required on every
+  repository handed to a `BaseService`; it may be `async`.
+- **One repository per `BaseService`.** Extra data this resource's rule
+  reads or writes alongside comes in as a keyword-only `__init__` parameter;
+  a resource with rules of its own has its own service, and the controller
+  orchestrates.
+- **Writes through two repositories** go inside
+  `self.repository.transaction()`, on the same session.
+- **The controller comes from a provider** in
+  `api/dependencies/controllers.py`, which receives session, settings and
+  mailer through `Depends`.
+- **Authentication in the route dependency; the invariant with
+  `@requires`** on the use-case method.
+- **The router returns a schema**, annotated on the return.
+- `tempest lint-layers` checks `SVC001`–`SVC003`, `REPO001` and `ENUM001`;
+  the rest is review.
