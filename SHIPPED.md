@@ -3347,3 +3347,25 @@ fixo) sem nome terminado em `Enum`, varrendo todo o `src/`/`app/`.
 teste. `BaseIntEnum`, `StrEnum` e `Enum` cru ficam de fora. Teste:
 `tests/cli/test_layer_lint.py::TestEnumSuffix` e os de scaffold (o exemplo
 `ProductStatusEnum` do `CLAUDE.md` gravado no projeto passa).
+
+## Inbox de webhook e assinatura in-app pelo RevenueCat (#528)
+
+`tempest_fastapi_sdk/db/webhook_inbox.py`: `BaseWebhookEventModel` (unique
+`(provider, external_id)` declarado na base) + `WebhookInbox` — `record`
+(`ON CONFLICT DO NOTHING`, reenvio devolve `None`), `claim` condicional,
+`process` com handler e marca `processed` na mesma transação, `fail` com
+backoff exponencial até `max_attempts` → `FAILED`, `reclaim_stale`,
+`drain_once`. Genérico: serve para Stripe, OpenPix, Mercado Pago e zap-api,
+que até aqui deixavam a persistência ao consumidor.
+
+`tempest_fastapi_sdk/integrations/subscriptions/revenuecat/`: autenticação
+(header `Authorization` + HMAC opcional, segredo vazio recusa tudo), router
+que grava no inbox e responde `200`, modelos do evento e do customer info v1
+(`subscriber_attributes` fora do `model_dump`), `normalize` sobre os 21 tipos
+documentados, `RevenueCatClient.get_subscriber`, `RevenueCatSettings`,
+`FakeRevenueCatClient`, entrada `revenuecat` no `tempest integrations list`
+(sem `verify`: a rota é "Get or Create"). Escrito à mão: o OpenAPI v1 que o
+RevenueCat publica tem `paths: {}` (baixado em 2026-10-15). Páginas de webhook
+em `vendor/revenuecat-*.md`, sha256 fixado. Fora: REST API v2 e o mapeamento
+de estado para entitlement (fica no serviço). Testes:
+`tests/db/test_webhook_inbox.py`, `tests/integrations/subscriptions/revenuecat/`.

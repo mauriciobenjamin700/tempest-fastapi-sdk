@@ -175,6 +175,14 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.outbox.BaseOutboxModel
 ::: tempest_fastapi_sdk.db.outbox.OutboxRelay
 ::: tempest_fastapi_sdk.db.outbox.OutboxStatus
+::: tempest_fastapi_sdk.db.webhook_inbox.BaseWebhookEventModel
+::: tempest_fastapi_sdk.db.webhook_inbox.WebhookInbox
+::: tempest_fastapi_sdk.db.webhook_inbox.WebhookEventStatusEnum
+::: tempest_fastapi_sdk.db.webhook_inbox.InboxDrainReport
+::: tempest_fastapi_sdk.db.webhook_inbox.make_webhook_event_model
+::: tempest_fastapi_sdk.db.webhook_inbox.DEFAULT_WEBHOOK_MAX_ATTEMPTS
+::: tempest_fastapi_sdk.db.webhook_inbox.DEFAULT_WEBHOOK_BACKOFF_SECONDS
+::: tempest_fastapi_sdk.db.webhook_inbox.STALE_WEBHOOK_ERROR
 ::: tempest_fastapi_sdk.db.audit.BaseAuditLogModel
 ::: tempest_fastapi_sdk.db.audit.AuditAction
 ::: tempest_fastapi_sdk.db.audit.AuditRequestMixin
@@ -838,6 +846,43 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.integrations.payment.openpix.webhooks.make_openpix_webhook_dependency
 ::: tempest_fastapi_sdk.integrations.payment.openpix.webhooks.webhook_verifier
 ::: tempest_fastapi_sdk.integrations.payment.openpix.webhooks.decode_public_key
+
+## RevenueCat
+
+### `tempest_fastapi_sdk.integrations.subscriptions.revenuecat`
+
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.client.RevenueCatClient
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.client.revenuecat_http_client
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.client.REVENUECAT_API_BASE_URL
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.webhooks.make_revenuecat_webhook_router
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.webhooks.make_revenuecat_webhook_dependency
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.webhooks.RevenueCatWebhookDelivery
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.webhooks.RevenueCatWebhookAck
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.webhooks.SecretSource
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.webhooks.verify_authorization
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.webhooks.verify_signature
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.webhooks.sign_payload
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.webhooks.parse_signature_header
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.webhooks.parse_webhook
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.webhooks.REVENUECAT_PROVIDER
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.webhooks.REVENUECAT_AUTHORIZATION_HEADER
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.webhooks.REVENUECAT_SIGNATURE_HEADER
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.webhooks.DEFAULT_SIGNATURE_TOLERANCE_SECONDS
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.snapshot.normalize
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.snapshot.SubscriptionSnapshot
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.snapshot.SubscriptionStatusEnum
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.schemas.RevenueCatWebhook
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.schemas.RevenueCatEvent
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.schemas.RevenueCatExperiment
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.schemas.RevenueCatCustomerInfo
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.schemas.RevenueCatSubscriber
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.schemas.RevenueCatSubscription
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.schemas.RevenueCatEntitlement
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.events.RevenueCatEventTypeEnum
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.events.RevenueCatPeriodTypeEnum
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.events.RevenueCatEnvironmentEnum
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.events.RevenueCatStoreEnum
+::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.events.RevenueCatReasonEnum
 
 ## OpenAPI code generation
 

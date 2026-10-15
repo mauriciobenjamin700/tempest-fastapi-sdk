@@ -176,6 +176,7 @@ plugins:
               - Real-time: recipes/realtime.md
               - "Receiving WhatsApp messages (zap-api)": recipes/zap-inbound.md
               - Refresh tokens (rotation/revocation): recipes/refresh-tokens.md
+              - "RevenueCat (in-app subscriptions)": recipes/revenuecat.md
               - Safe deploys (migrations + shutdown): recipes/deploy-safety.md
               - Security: recipes/security.md
               - Self-hosted generative AI: recipes/genai.md
@@ -486,6 +487,7 @@ nav:
       - "Receber mensagens do WhatsApp (zap-api)": recipes/zap-inbound.md
       - "Reconhecimento facial": recipes/faces.md
       - "Refresh tokens (rotação/revogação)": recipes/refresh-tokens.md
+      - "RevenueCat (assinatura in-app)": recipes/revenuecat.md
       - Segurança: recipes/security.md
       - "Server-Sent Events (SSE)": recipes/sse.md
       - Sessões server-side: recipes/sessions.md

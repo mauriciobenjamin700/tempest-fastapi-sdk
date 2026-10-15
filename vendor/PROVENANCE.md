@@ -37,6 +37,9 @@ completa em [`openpix-evidence.md`](openpix-evidence.md).
 | `openpix-openapi.json` | `https://api.woovi.com/api/openapi.json` | 2026-08-28 | `9b14fb336276` | 1.318.389 |
 | `mercadopago-openapi.yaml` | `https://raw.githubusercontent.com/mercadopago/openapi/main/spec3.yaml` | 2026-08-30 | `893ec14bfd91` | 260.935 |
 | `stripe-api-facts.yaml` | derivado de `https://raw.githubusercontent.com/stripe/openapi/master/openapi/spec3.yaml` | ver `api_version` no próprio arquivo | `171c35ef4e09` | 7.965 |
+| `revenuecat-webhooks.md` | `https://www.revenuecat.com/docs/integrations/webhooks.md` | 2026-10-15 | `6afa1311aae8` | 12.570 |
+| `revenuecat-webhook-event-types.md` | `https://www.revenuecat.com/docs/integrations/webhooks/event-types-and-fields.md` | 2026-10-15 | `e34cfe97441a` | 50.707 |
+| `revenuecat-webhook-sample-events.md` | `https://www.revenuecat.com/docs/integrations/webhooks/sample-events.md` | 2026-10-15 | `4c08ea30c7a1` | 27.741 |
 
 ## `openpix-openapi.json`
 
@@ -205,6 +208,25 @@ gerar um enum.
 É o único dos três que registra a origem em código (`SPEC_URL`,
 `scripts/regen_stripe.py:49`) e o único com alvo de refresh que busca de
 fato. É o padrão que os outros dois devem seguir.
+
+## `revenuecat-*.md`
+
+Três páginas da documentação de webhooks do RevenueCat, na versão Markdown
+que o próprio site serve ao acrescentar `.md` à URL (o `llms.txt` deles
+anuncia esse formato). Guardadas como servidas, sem reformatação. Não geram
+código: são a fonte dos valores escritos à mão em
+`tempest_fastapi_sdk/integrations/subscriptions/revenuecat/`, e
+`tests/integrations/subscriptions/revenuecat/test_vendored_docs.py` fixa o
+sha256 de cada uma, compara `RevenueCatEventTypeEnum` e
+`RevenueCatReasonEnum` com as listas da página e parseia os 20 exemplos de
+`sample-events`.
+
+Por que não há OpenAPI aqui: o documento que a referência v1 linka
+(`https://www.revenuecat.com/docs/redocusaurus/openapi-v1.yaml`, baixado em
+2026-10-15, 4.157 bytes) declara `paths: {}` — nenhuma operação para gerar.
+
+Refresh: `curl -sL <url> -o vendor/<arquivo>` para cada linha do inventário,
+atualizar a tabela e o `PINNED_SHA256` do teste, e consertar o que falhar.
 
 ## Pendências
 
