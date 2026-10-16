@@ -81,13 +81,12 @@ from fastapi import APIRouter, Depends
 from tempest_fastapi_sdk import error_responses, requires
 from tempest_fastapi_sdk.auth import require_active
 
-from src.api.dependencies import get_current_user
+from src.api.dependencies import get_current_user, get_order_controller
 from src.api.guards import order_owner
 from src.controllers import OrderController
 from src.core.exceptions import NotOrderOwnerException
 from src.db.models import UserModel
 
-controller = OrderController(...)
 router = APIRouter()
 
 
@@ -99,12 +98,14 @@ router = APIRouter()
 async def delete_order(
     order_id: UUID,
     user: UserModel = Depends(get_current_user),
+    controller: OrderController = Depends(get_order_controller),
 ) -> None:
     """Delete an order the caller owns.
 
     Args:
         order_id (UUID): The order to delete.
         user (UserModel): The authenticated, active, owning user.
+        controller (OrderController): Injected by the provider.
     """
     await controller.delete(order_id)
 ```
