@@ -34,6 +34,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `retry_after` do header) e `HostedServerError` (5xx, incluindo o 529 da
   Anthropic e o `event: error` que chega no meio do stream), com `provider`,
   `error_type`, `detail` e `request_id`.
+- `WebhookInbox` + `BaseWebhookEventModel` (`tempest_fastapi_sdk.db`): inbox
+  genérico de webhook. `record(provider, external_id, event_type, payload)` é
+  `INSERT ... ON CONFLICT DO NOTHING` no PostgreSQL e no SQLite (reenvio
+  devolve `None`), `claim` é um `UPDATE` condicional (de dois workers, um
+  ganha), `process(id, handler)` roda o handler na transação que marca
+  `processed` (efeito e marca juntos), `fail` volta com backoff exponencial e
+  vira `FAILED` ao atingir `max_attempts`, saindo da varredura;
+  `reclaim_stale` readmite claim de worker morto dentro do mesmo orçamento;
+  `drain_once(handler)` é o corpo da varredura agendada (#528).
+- `integrations.subscriptions.revenuecat` (#528), escrito da documentação
+  oficial do RevenueCat (páginas versionadas em `vendor/` com sha256 fixado
+  por teste): `make_revenuecat_webhook_router` (autentica pelo header
+  `Authorization` do painel e, opcionalmente, pelo HMAC
+  `X-RevenueCat-Webhook-Signature`; `hmac.compare_digest`; segredo vazio
+  recusa tudo; grava no `WebhookInbox` por `event.id` e responde `200`, com
+  `on_recorded` para enfileirar), `make_revenuecat_webhook_dependency`,
+  `RevenueCatWebhook`/`RevenueCatEvent` (`extra="allow"`,
+  `subscriber_attributes` fora do `model_dump`), `RevenueCatEventTypeEnum`
+  com os 21 tipos documentados (comparado com a página por teste),
+  `normalize(event) -> SubscriptionSnapshot` (`SubscriptionStatusEnum`; tipo
+  desconhecido vira `UNKNOWN`), `RevenueCatClient.get_subscriber`
+  (`GET /v1/subscribers/{app_user_id}`), `RevenueCatSettings`
+  (`REVENUECAT_WEBHOOK_SECRET`, `REVENUECAT_WEBHOOK_SIGNING_SECRET`,
+  `REVENUECAT_API_KEY`, `revenuecat_kwargs()`; `ENV=production` recusa os
+  dois segredos de webhook vazios) e `FakeRevenueCatClient`. Nenhum extra
+  novo. Nada foi medido contra conta real do RevenueCat.
 
 ### Changed
 
@@ -67,32 +93,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `WebhookInbox` + `BaseWebhookEventModel` (`tempest_fastapi_sdk.db`): inbox
-  genérico de webhook. `record(provider, external_id, event_type, payload)` é
-  `INSERT ... ON CONFLICT DO NOTHING` no PostgreSQL e no SQLite (reenvio
-  devolve `None`), `claim` é um `UPDATE` condicional (de dois workers, um
-  ganha), `process(id, handler)` roda o handler na transação que marca
-  `processed` (efeito e marca juntos), `fail` volta com backoff exponencial e
-  vira `FAILED` ao atingir `max_attempts`, saindo da varredura;
-  `reclaim_stale` readmite claim de worker morto dentro do mesmo orçamento;
-  `drain_once(handler)` é o corpo da varredura agendada (#528).
-- `integrations.subscriptions.revenuecat` (#528), escrito da documentação
-  oficial do RevenueCat (páginas versionadas em `vendor/` com sha256 fixado
-  por teste): `make_revenuecat_webhook_router` (autentica pelo header
-  `Authorization` do painel e, opcionalmente, pelo HMAC
-  `X-RevenueCat-Webhook-Signature`; `hmac.compare_digest`; segredo vazio
-  recusa tudo; grava no `WebhookInbox` por `event.id` e responde `200`, com
-  `on_recorded` para enfileirar), `make_revenuecat_webhook_dependency`,
-  `RevenueCatWebhook`/`RevenueCatEvent` (`extra="allow"`,
-  `subscriber_attributes` fora do `model_dump`), `RevenueCatEventTypeEnum`
-  com os 21 tipos documentados (comparado com a página por teste),
-  `normalize(event) -> SubscriptionSnapshot` (`SubscriptionStatusEnum`; tipo
-  desconhecido vira `UNKNOWN`), `RevenueCatClient.get_subscriber`
-  (`GET /v1/subscribers/{app_user_id}`), `RevenueCatSettings`
-  (`REVENUECAT_WEBHOOK_SECRET`, `REVENUECAT_WEBHOOK_SIGNING_SECRET`,
-  `REVENUECAT_API_KEY`, `revenuecat_kwargs()`; `ENV=production` recusa os
-  dois segredos de webhook vazios) e `FakeRevenueCatClient`. Nenhum extra
-  novo. Nada foi medido contra conta real do RevenueCat.
 - `read_project_version(pyproject_path=None)` em
   `tempest_fastapi_sdk.settings`: devolve `[project].version` do
   `pyproject.toml` como `str` (via `tomllib`). Sem argumento sobe a partir de
