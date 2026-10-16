@@ -514,6 +514,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (`None` is not a yes — GitHub's `GET /user` never says), and the identity
   keyed on `(provider, subject)`. Account creation defaults to inheriting
   `AUTH_SIGNUP_ENABLED`, so the v0.272.0 kill-switch closes this door too.
+- **Social login asks an account with TOTP for the second factor
+  (unreleased, after 0.313.0)** — issue #543. The callback and
+  `/auth/oauth/{provider}/token` call `authenticate_oauth` (resolves, issues
+  nothing) and branch on `is_mfa_enrolled` like `/login`; `/mfa/verify`
+  stamps `second_factor_amr(mfa_token)` — the first step the `mfa_token`
+  records plus `otp`, so `["ext", "otp"]` here. Tests:
+  `tests/auth/test_oauth_mfa.py`; the routes are `gated` in
+  `tests/test_mfa_token_paths_guard.py`.
 - **Offline verification of OIDC realm tokens (v0.297.0)** — issue #288.
   `OIDCTokenVerifier(issuer, jwks_url, algorithms=("RS256",), ...)` plugs
   into `OIDCProvider(token_verifier=...)`, which then reads the audience and

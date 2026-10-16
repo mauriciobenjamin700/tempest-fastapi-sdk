@@ -89,6 +89,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   já estava a `UP046`: reescrever genéricos é outra decisão. O override do
   mypy para `librosa`, que só existia por causa do alvo 3.11, saiu.
 
+### Security
+
+- **O login social de conta com TOTP pede o segundo fator** (#543).
+  `GET /auth/oauth/{provider}/callback` e `POST /auth/oauth/{provider}/token`
+  emitiam o par direto a partir da palavra do provedor, e a conta pulava o
+  fator que tinha inscrito. Agora respondem como o `/auth/login`:
+  `mfa_required=true` + `mfa_token`, sem par e sem cookie de sessão, em
+  qualquer `AUTH_TOKEN_DELIVERY`; o `/auth/mfa/verify` emite o par com
+  `amr == ["ext", "otp"]`, que passa no `make_mfa_required_dependency`. Conta
+  sem MFA não muda (`["ext"]`). O `mfa_token` passa a carregar o `amr` do
+  primeiro passo (`issue_mfa_token(user, amr=...)`) e o
+  `UserAuthService.second_factor_amr(mfa_token)` monta o `amr` da sessão
+  verificada — primeiro passo + `otp`, sem repetir. Para decidir antes de
+  emitir, as rotas chamam o novo `UserAuthService.authenticate_oauth`
+  (resolve a conta sem emitir); o `login_with_oauth` continua emitindo o par e
+  agora delega a ele. Override de `login_with_oauth` deixa de ser chamado pelas
+  rotas, e override de `issue_mfa_token` sem `amr=` volta ao
+  `["pwd", "otp"]`; o router loga um aviso ao ser montado nos dois casos. O
+  `tests/test_mfa_token_paths_guard.py` passa a exigir as duas rotas como
+  `gated`. Migração: `docs/migration.md`.
+
 ### Tests
 
 - **Todo caminho do `make_auth_router` que emite par de tokens passa por uma

@@ -259,17 +259,20 @@ carries the `amr` claim (RFC 8176):
 | How the session started | `amr` |
 | --- | --- |
 | `POST /auth/login` with the password alone (and signup, and the activation/reset of an account **without** MFA) | `["pwd"]` |
-| `POST /auth/mfa/verify` (TOTP code or recovery code) | `["pwd", "otp"]` |
+| `POST /auth/mfa/verify` (TOTP code or recovery code) | the first step + `"otp"`: `["pwd", "otp"]` after `/auth/login`, `["ext", "otp"]` after a social login |
 | `POST /auth/mfa/confirm` (the new pair it returns) | `["pwd", "otp"]` |
 | `POST /auth/webauthn/authenticate/complete` | `["hwk"]` |
-| social login (`/auth/oauth/...`) | `["ext"]` |
+| social login (`/auth/oauth/...`) of an account **without** MFA | `["ext"]` |
 
 On an account **with MFA enrolled**, `/auth/password-reset/confirm` and
 `/auth/activate/{token}` (for a reactivated account) do not issue a pair:
 they answer the `mfa_required=true` + `mfa_token` challenge, and the pair
 only comes out of `/auth/mfa/verify`, with `amr == ["pwd", "otp"]`. It is
 the same treatment as `/auth/login` — a compromised mailbox must not be a
-shortcut past the second factor.
+shortcut past the second factor. Since v0.314.0 social login follows the same
+rule: the callback and `/auth/oauth/{provider}/token` of an account with TOTP
+answer the challenge, and `/auth/mfa/verify` issues `["ext", "otp"]` (see the
+[social login recipe](oauth.md)).
 
 `refresh` repeats the family's `amr` — it is stored on the refresh-token row
 (or inside the refresh JWT itself, in stateless mode) —, so a rotation never

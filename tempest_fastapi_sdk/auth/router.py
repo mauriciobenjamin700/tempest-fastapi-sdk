@@ -132,6 +132,7 @@ from tempest_fastapi_sdk.utils.throttle import (
     InMemoryThrottleBackend,
 )
 from tempest_fastapi_sdk.utils.token_types import (
+    AMR_EXTERNAL,
     AMR_HARDWARE_KEY,
     MFA_AMR,
 )
@@ -201,6 +202,30 @@ their own schema — and push every consumer into a ``cast`` for no gain:
 the SDK can only ever pass those two objects, so the narrowing is sound
 and it is the consumer, not the SDK, that knows the real types.
 """
+
+
+def _overridden_below(cls: type, overridden: str, reference: str) -> bool:
+    """Tell whether ``cls`` redefines ``overridden`` below ``reference``.
+
+    Walks the MRO instead of comparing to ``UserAuthService`` so the router
+    keeps importing the service only for type checking.
+
+    Args:
+        cls (type): The service class.
+        overridden (str): The method a subclass may have redefined.
+        reference (str): The method that must be redefined with it.
+
+    Returns:
+        bool: ``True`` when the class that defines ``overridden`` comes
+        earlier in the MRO than the one that defines ``reference`` — an
+        override of the first that left the second alone.
+    """
+    mro = cls.__mro__
+    owner = next((c for c in mro if overridden in c.__dict__), None)
+    anchor = next((c for c in mro if reference in c.__dict__), None)
+    if owner is None or anchor is None:
+        return False
+    return mro.index(owner) < mro.index(anchor)
 
 
 async def _reload_if_expired(session: AsyncSession, user: BaseUserModel) -> None:
@@ -574,6 +599,24 @@ def make_auth_router(
             "pass it on to super().issue_token_pair().",
             type(service).__name__,
         )
+    forward_mfa_amr: bool = accepts_keyword(service.issue_mfa_token, "amr")
+    if not forward_mfa_amr:
+        logger.warning(
+            "%s.issue_mfa_token() does not accept 'amr', so /mfa/verify "
+            "stamps ['pwd', 'otp'] on every session it opens, including the "
+            "ones that began with a social login; add "
+            "'amr: Sequence[str] | None = PASSWORD_AMR' to the override and "
+            "pass it on to super().issue_mfa_token().",
+            type(service).__name__,
+        )
+    if _overridden_below(type(service), "login_with_oauth", "authenticate_oauth"):
+        logger.warning(
+            "%s overrides login_with_oauth(), which the OAuth routes no "
+            "longer call: they call authenticate_oauth() and ask an account "
+            "with TOTP enrolled for the second factor before issuing. Move "
+            "the override to authenticate_oauth().",
+            type(service).__name__,
+        )
     schema_columns: frozenset[str] = signup_columns & (
         frozenset(signup_model.model_fields) - frozenset(SignupSchema.model_fields)
     )
@@ -793,6 +836,23 @@ def make_auth_router(
         if forward_amr:
             return await service.issue_token_pair(session, user, amr=amr)
         return await service.issue_token_pair(session, user)
+
+    def _challenge(user: BaseUserModel, amr: tuple[str, ...]) -> str:
+        """Mint the ``mfa_token`` of step one, stamped with ``amr``.
+
+        Args:
+            user (BaseUserModel): The account that passed step one.
+            amr (tuple[str, ...]): RFC 8176 methods step one proved; they
+                lead the ``amr`` of the pair ``/mfa/verify`` issues.
+
+        Returns:
+            str: The short-lived ``mfa_token``. Without ``amr`` support in
+            an ``issue_mfa_token`` override, the token carries none and the
+            verified session falls back to ``["pwd", "otp"]``.
+        """
+        if forward_mfa_amr:
+            return service.issue_mfa_token(user, amr=amr)
+        return service.issue_mfa_token(user)
 
     def _mount_if(
         condition: bool,
@@ -2138,7 +2198,9 @@ def make_auth_router(
                 recovery_code_model=recovery_code_model,
                 throttle=resolved_mfa_throttle,
             )
-            access, refresh = await _issue_pair(session, user, MFA_AMR)
+            access, refresh = await _issue_pair(
+                session, user, service.second_factor_amr(payload.mfa_token)
+            )
             await session.commit()
             return LoginResponseSchema(
                 user_id=user.id,
@@ -2595,11 +2657,20 @@ def make_auth_router(
                 )
             tokens = await client.exchange_code(code)
             profile = await client.fetch_user(tokens)
-            user, access, refresh = await service.login_with_oauth(
+            user = await service.authenticate_oauth(
                 session,
                 profile,
                 locale=_page_locale(request),
             )
+            if service.is_mfa_enrolled(user):
+                mfa_token = _challenge(user, (AMR_EXTERNAL,))
+                await session.commit()
+                return LoginResponseSchema(
+                    user_id=user.id,
+                    mfa_required=True,
+                    mfa_token=mfa_token,
+                )
+            access, refresh = await _issue_pair(session, user, (AMR_EXTERNAL,))
             await session.commit()
             if cookie_enabled:
                 apply_auth_cookies(
@@ -2694,11 +2765,20 @@ def make_auth_router(
             )
             await client.verify_token_audience(tokens)
             profile = await client.fetch_user(tokens)
-            user, access, refresh = await service.login_with_oauth(
+            user = await service.authenticate_oauth(
                 session,
                 profile,
                 locale=_page_locale(request),
             )
+            if service.is_mfa_enrolled(user):
+                mfa_token = _challenge(user, (AMR_EXTERNAL,))
+                await session.commit()
+                return LoginResponseSchema(
+                    user_id=user.id,
+                    mfa_required=True,
+                    mfa_token=mfa_token,
+                )
+            access, refresh = await _issue_pair(session, user, (AMR_EXTERNAL,))
             await session.commit()
             if cookie_enabled:
                 apply_auth_cookies(

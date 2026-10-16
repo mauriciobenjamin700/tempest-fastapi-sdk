@@ -241,7 +241,7 @@ OAUTH_GOOGLE_CLIENT_SECRET=GOCSPX-...
 | Método | Rota | O que faz |
 | --- | --- | --- |
 | `GET` | `/auth/oauth/{provider}/login` | Sorteia o `state`, grava no cookie `HttpOnly` e redireciona **302** para o provedor |
-| `GET` | `/auth/oauth/{provider}/callback` | Confere o `state`, troca o `code`, resolve a identidade e devolve o par JWT |
+| `GET` | `/auth/oauth/{provider}/callback` | Confere o `state`, troca o `code`, resolve a identidade e devolve o par JWT — ou o desafio de MFA, se a conta tem TOTP *(v0.314.0+)* |
 | `POST` | `/auth/oauth/{provider}/token` | *(v0.278.0+)* Recebe um access token que o app já tem na mão, confere para qual aplicação ele foi emitido e devolve a mesma sessão |
 | `GET` | `/auth/oauth/accounts` | Autenticado. Lista os provedores ligados à conta |
 | `POST` | `/auth/oauth/accounts/unlink` | Autenticado. Desliga um provedor |
@@ -499,7 +499,9 @@ jwt: JWTUtils = JWTUtils(secret="a-32-character-secret-for-tests!")
 access_token: str = "<o access_token que o callback devolveu>"
 payload: dict[str, object] = jwt.decode(access_token)
 print(sorted(payload))
-# ['email', 'exp', 'iat', 'sub', 'typ']
+# ['amr', 'email', 'exp', 'iat', 'sub', 'typ']
+print(payload["amr"])
+# ['ext']
 print(token_type_allowed(payload, [ACCESS_TOKEN_TYPE], strict=True))
 # True
 ```
@@ -508,6 +510,31 @@ Com o `refresh_token_model` ligado, o refresh do login social é opaco,
 persistido, de uso único, entra na mesma família de rotação, é coberto pela
 detecção de reuso e morre no `POST /auth/logout` — nada disso existe num token
 assinado à mão.
+
+### Conta com TOTP: o login social também pede o código *(v0.314.0+)*
+
+O provedor prova **quem** a pessoa é, não o código no celular dela. Se a conta
+resolvida tem TOTP inscrito (e `AUTH_MFA_ENABLED=True`), o callback e o
+`POST /auth/oauth/{provider}/token` respondem como o `/auth/login`: **sem par e
+sem cookie de sessão**, com o desafio no corpo — em qualquer
+`AUTH_TOKEN_DELIVERY`, igual ao `/auth/cookie/login`:
+
+```json
+{"user_id": "0e5cf2fc-…", "access_token": null, "refresh_token": null, "mfa_required": true, "mfa_token": "eyJ…"}
+```
+
+O cliente pede o código e conclui no `/auth/mfa/verify`, que emite o par com
+`amr == ["ext", "otp"]` — os dois métodos que de fato rodaram (RFC 8176 pede
+que o claim liste os métodos usados; `pwd` seria falso, ninguém digitou
+senha). Esse par passa no `make_mfa_required_dependency`, e o `refresh` repete
+o `amr`. Conta **sem** MFA não muda: o par sai na própria resposta, com
+`amr == ["ext"]`, que o `make_mfa_required_dependency` recusa.
+
+!!! warning "Override de `login_with_oauth`"
+    As rotas chamam `UserAuthService.authenticate_oauth` (resolve a conta, sem
+    emitir nada) e decidem a MFA antes de emitir. Um override de
+    `login_with_oauth` deixa de ser chamado por elas — o router avisa no log
+    ao ser montado. Mova a lógica para `authenticate_oauth`.
 
 ## 8. Contas ligadas: listar e desligar
 
