@@ -156,7 +156,7 @@ tempest db current             # mostra revisão atual
 tempest db history             # log de revisões
 tempest user create --email admin@local --admin   # `--email` obrigatório; senha pedida interativamente
 tempest user list --admin      # lista somente os admins (omita `--admin` pra listar todos)
-tempest fix                    # ruff check --fix . + ruff format .
+tempest fix                    # ruff check --fix-only . + ruff format . + ruff check .
 tempest check                  # lint + fmt-check + mypy + pytest
 ```
 
