@@ -3,7 +3,7 @@ name = "__PROJECT_NAME__"
 version = "0.1.0"
 description = "FastAPI service scaffolded with tempest-fastapi-sdk."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 authors = [{ name = "you", email = "you@example.com" }]
 dependencies = [
     "__SDK_DEP__",
@@ -41,7 +41,7 @@ package = false
 
 [tool.ruff]
 line-length = 88
-target-version = "py311"
+target-version = "py312"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -66,7 +66,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
 

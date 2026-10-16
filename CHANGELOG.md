@@ -7,9 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.313.0] — 2026-10-13
+### Changed
+
+- **Quebra de compatibilidade: Python 3.11 deixa de ser suportado.**
+  `requires-python` sobe para `>=3.12` e as versões suportadas passam a ser
+  3.12, 3.13 e 3.14 (classifiers, `make test-matrix`, smoke da wheel no
+  piso 3.12 no `make smoke` e no `release-pypi.yml`). Quem está em 3.11 fica
+  na 0.313.x; o passo a passo está no guia de migração. Medido: num
+  interpretador 3.11 o `uv` recusa o projeto com `The requested interpreter
+  resolved to Python 3.11.12, which is incompatible with the project's Python
+  requirement: >=3.12` (#547).
+- O `uv.lock` perdeu o split do 3.11: saíram `tomli`, `async-timeout` e
+  `audioread`, e `numpy` (2.5.2), `scipy` (1.18.1) e `librosa` (1.0.0)
+  ficaram com uma versão só. Todos os extras instalam e importam em 3.14
+  (`uv sync --locked --all-extras --python 3.14`, CPython 3.14.6), sem
+  marcador de ambiente.
+- ruff mira `py312` e mypy `python_version = "3.12"`, no SDK e no
+  `pyproject.toml` gerado pelo `tempest new`. As regras PEP 695 que o alvo
+  novo liga (`UP047`, 32 ocorrências, e `UP040`, 4) ficam desligadas, como
+  já estava a `UP046`: reescrever genéricos é outra decisão. O override do
+  mypy para `librosa`, que só existia por causa do alvo 3.11, saiu.
+
+## [0.313.0] — 2026-10-15
 
 ### Added
+
+- `read_project_version(pyproject_path=None)` em
+  `tempest_fastapi_sdk.settings`: devolve `[project].version` do
+  `pyproject.toml` como `str` (via `tomllib`). Sem argumento sobe a partir de
+  `Path.cwd()` até achar o arquivo; ausente, o `FileNotFoundError` cita os
+  caminhos procurados, e sem `[project].version` (inclusive com
+  `dynamic = ["version"]`) o `ValueError` cita o arquivo. Re-exportado no
+  `__init__.py` do pacote e no de topo (#536).
 
 - `op.rename_enum_type(old, new, columns=[...])` (`RenameEnumTypeOp`):
   `ALTER TYPE ... RENAME TO` no PostgreSQL; no SQLite reconstrói a tabela de
@@ -94,6 +123,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tempest check` parar no `lint-layers` com uma linha e exit 1 (#518).
 
 ### Changed
+
+- O `VERSION` do `Settings` que o `tempest new` gera sai de
+  `[project].version` no `pyproject.toml`, lido por `read_project_version`
+  num `default_factory` com o caminho ancorado no próprio `settings.py` e não
+  no cwd, então o serviço publicado
+  roda de qualquer diretório e a versão continua sendo a do projeto. A linha
+  `VERSION=0.1.0` do `.env.example` gerado vira comentário (override
+  opcional), já que copiar `.env.example` para `.env` congelava a versão pela
+  env; a env `VERSION` segue vencendo quando definida (#536).
 
 - O extra `[cli]` (e o `[all]`) passa a exigir `tempest-cli>=0.5.0`, a versão
   que ganhou `CheckStep` e o `extra_steps` do `register_commands` — é por ali
@@ -333,6 +371,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **O reset de senha e a reativação por link pedem o segundo fator quando a
+  conta tem MFA (#534).** Antes, `POST /auth/password-reset/confirm` consumia
+  o token, gravava a senha nova e emitia o par direto, sem olhar
+  `is_mfa_enrolled` — quem controlava a caixa de e-mail da vítima entrava sem
+  o TOTP, exatamente o cenário (e-mail comprometido) que o MFA existe para
+  cobrir. Agora, com TOTP inscrito e `AUTH_MFA_ENABLED=True`, a rota responde
+  como o `/login`: `mfa_required=true` + `mfa_token`, sem par; o cliente
+  conclui em `/auth/mfa/verify`, que emite o par com `amr` de MFA. A senha é
+  trocada de todo jeito. Conta sem MFA mantém a resposta de antes (par com
+  `amr == ["pwd"]`).
+- **`POST /auth/activate/{token}` segue a mesma regra (#534).** Um token de
+  ativação normalmente pertence a uma conta recém-cadastrada, sem fator — e
+  aí nada muda. Mas o `/activation/request` emite link para **qualquer**
+  conta inativa, inclusive uma que tinha TOTP e foi desativada (o CLI do SDK
+  desativa via `is_active`); nesse caso a rota passa a responder o desafio
+  MFA (`mfa_required=true` + `mfa_token`) em vez do par, e o par sai do
+  `/auth/mfa/verify`. `ActivationResponseSchema` ganha `mfa_required` /
+  `mfa_token`, e `access_token` / `refresh_token` passam a ser opcionais,
+  espelhando o `LoginResponseSchema`.
+- **O reset de senha revoga as sessões já abertas (#534).** `confirm` gravava
+  a senha nova e deixava todo refresh token o usuário tinha ainda trocando por
+  par novo — trocar a credencial não expulsava quem já estava dentro. Agora
+  `UserAuthService.confirm_password_reset` ganha
+  `revoke_sessions: bool = True` e chama `revoke_user_sessions` na mesma
+  transação que grava o hash, o mesmo default do `/auth/mfa/confirm` e do
+  `tempest user set-password` (cujo `--keep-sessions` é o opt-out explícito).
+  O router não passa nada; quem chama o service com `revoke_sessions=False`
+  mantém as sessões de propósito. Refresh token stateless (sem
+  `refresh_token_model`) não tem linha a revogar e segue válido até expirar.
+  Medido: refresh token DB-backed emitido antes do reset responde **401** na
+  troca seguinte depois da correção (antes respondia **200**); com
+  `revoke_sessions=False` continua trocando (
+  `tests/auth/test_password_reset_revoke.py`).
+- Override de `issue_token_pair`/`confirm_password_reset` com a assinatura
+  antiga continua funcionando: `is_mfa_enrolled` e `issue_mfa_token` são
+  métodos de `UserAuthService`, herdados por qualquer subclasse, e o router
+  chama `confirm_password_reset` sem o `revoke_sessions` novo, que cai no
+  default seguro. Medido em `tests/auth/test_password_reset_mfa.py` (4 testes:
+  reset com e sem MFA, reativação de conta com MFA e ativação de conta nova) e
+  em `tests/auth/test_password_reset_revoke.py` (override antigo delega e
+  ainda revoga).
 - **O `/unregister` do `make_push_router` e o `/unsubscribe` do
   `make_web_push_router` só removem dispositivo do próprio usuário (#523).**
   Antes, a rota exigia login mas apagava pelo token/endpoint sem olhar o dono:

@@ -185,12 +185,12 @@ uv run tempest db upgrade
 | Método | Path | Body / Output | Comportamento |
 |--------|------|---------------|---------------|
 | POST | `/auth/signup` | `SignupSchema` → `SignupResponseSchema` | Cria user. Não montado quando `AUTH_SIGNUP_ENABLED=false` (v0.272.0+). Emite e-mail (modos A/B) **ou** devolve link no body (modo C). Se `AUTH_AUTO_ACTIVATE=True`, user nasce ativo e JWT pair volta direto (modo D). |
-| POST | `/auth/activate/{token}` | — → `ActivationResponseSchema` | Consome token + `is_active=True` + emite JWT pair. |
+| POST | `/auth/activate/{token}` | — → `ActivationResponseSchema` | Consome token + `is_active=True` + emite JWT pair. Conta **recém-cadastrada** não tem fator, então nada muda; mas se o token veio de `/auth/activation/request` para uma conta desativada que tinha MFA inscrito, responde o desafio (`mfa_required=true` + `mfa_token`) em vez do par. |
 | POST | `/auth/activation/request` *(v0.297.0+)* | `ActivationRequestSchema` → `ActivationResendResponseSchema` | **Não autenticado.** Reemite o link de ativação de uma conta que nunca ativou. Sempre 202 + corpo genérico. |
 | POST | `/auth/login` | `LoginSchema` → `LoginResponseSchema` | Email + senha → JWT pair. Erros genéricos (não enumera contas). |
 | GET | `/auth/me` *(v0.198.0+)* | — → `AuthUserSchema` | **Autenticado.** Devolve a conta dona do bearer token. Nunca serializa o hash da senha: o handler entrega o modelo inteiro e o `response_model` filtra. Troque o schema por um seu com `me_response_model=` pra expor colunas próprias. |
 | POST | `/auth/password-reset/request` | `PasswordResetRequestSchema` → `PasswordResetResponseSchema` | Sempre HTTP 202 + corpo genérico. Link via e-mail (A/B) ou no body (C). |
-| POST | `/auth/password-reset/confirm` | `PasswordResetConfirmSchema` → `LoginResponseSchema` | Consome token + grava nova senha + emite JWT pair. |
+| POST | `/auth/password-reset/confirm` | `PasswordResetConfirmSchema` → `LoginResponseSchema` | Consome token + grava nova senha + revoga as sessões + emite JWT pair. Com MFA inscrito na conta, responde o desafio (`mfa_required=true` + `mfa_token`) em vez do par — conclua em `/auth/mfa/verify`. |
 | POST | `/auth/password-change` | `PasswordChangeSchema` → `204` | **Autenticado** (bearer token). Troca a própria senha: confirma a senha atual + grava a nova. Sem token de e-mail. |
 | POST | `/auth/email-change/request` *(v0.92.0+)* | `EmailChangeRequestSchema` → `EmailChangeResponseSchema` | **Autenticado.** Confirma a senha atual + envia link de confirmação pro **novo** e-mail. Sempre 202. |
 | POST | `/auth/email-change/confirm` *(v0.92.0+)* | `EmailChangeConfirmSchema` → `EmailChangeResponseSchema` | Consome o token + aplica o novo e-mail + (opcional) avisa o e-mail antigo. |
@@ -1163,6 +1163,32 @@ curl -X POST localhost:8000/auth/password-reset/confirm \
   "mfa_token": null
 }
 ```
+
+!!! warning "Conta com MFA: o reset termina no `/auth/mfa/verify`"
+    Se a conta tem TOTP inscrito (e `AUTH_MFA_ENABLED=True`), o
+    `confirm` **não** devolve o par — devolve `mfa_required=true` +
+    `mfa_token`, igual ao `/login`. É o que impede um e-mail
+    comprometido de pular o segundo fator: a senha é trocada, mas a
+    sessão só nasce depois do código. Conclua o login mandando o
+    `mfa_token` e o código TOTP:
+
+    ```bash
+    curl -X POST localhost:8000/auth/mfa/verify \
+      -H "Content-Type: application/json" \
+      -d '{"mfa_token": "eyJ…", "code": "123456"}'
+    ```
+
+    O par que sai daí carrega `amr == ["pwd", "otp"]`. Veja a
+    [receita de MFA](mfa.md).
+
+!!! note "O reset derruba as sessões já abertas"
+    Rotacionar credencial encerra o que foi aberto com a antiga: trocar a
+    senha por este caminho **revoga** os refresh tokens que já existiam,
+    na mesma transação que grava o hash — uma sessão aberta antes do reset
+    deixa de trocar o refresh token. (Access tokens já emitidos valem até
+    o TTL curtinho.) É o mesmo default do `/auth/mfa/confirm` e do
+    `tempest user set-password`; quem chama o service com
+    `revoke_sessions=False` abre mão disso de propósito.
 
 !!! check "Erros que você vai ver"
     - Token desconhecido / já usado / expirado → **401** com `code: "INVALID_TOKEN"` e um `detail` que diz o motivo (token desconhecido: `token not recognized`).

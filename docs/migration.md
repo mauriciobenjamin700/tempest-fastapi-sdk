@@ -2,6 +2,33 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.314.0 — Python 3.12 passa a ser o mínimo
+
+O SDK deixa de suportar Python 3.11. O `requires-python` sobe para `>=3.12`, e
+as versões suportadas passam a ser **3.12, 3.13 e 3.14**.
+
+Quem está em 3.11 **fica na 0.313.x**: o instalador descarta as releases cujo
+`requires-python` exclui o interpretador. Pedir a versão nova num ambiente 3.11
+falha antes de instalar qualquer coisa. Medido com o `uv`:
+
+```text
+error: The requested interpreter resolved to Python 3.11.12, which is incompatible with the project's Python requirement: `>=3.12` (from `project.requires-python`)
+```
+
+### O que fazer
+
+1. Suba o interpretador do serviço para 3.12 ou mais novo
+   (`uv python pin 3.13`, a imagem base do `Dockerfile`, o runtime da CI).
+2. Ajuste o `requires-python` do seu `pyproject.toml` para `>=3.12`. O
+   `tempest new` já gera assim, com `target-version = "py312"` no ruff e
+   `python_version = "3.12"` no mypy.
+3. Rode `uv lock` e `uv sync`. Com o piso novo o lock deixa de carregar o
+   split do 3.11: no lock do próprio SDK saíram `tomli`, `async-timeout` e
+   `audioread`, e `numpy`, `scipy` e `librosa` passaram a ter uma versão só.
+
+Para continuar em 3.11 por enquanto, fixe a faixa:
+`uv add "tempest-fastapi-sdk>=0.313.0,<0.314.0"`.
+
 ## 0.313.0 — classe terminada em `Enum` não dobra mais o sufixo do tipo
 
 `enum_type_name` tira um `Enum` do fim do nome da classe antes de acrescentar
@@ -117,6 +144,34 @@ Duas mudanças de comportamento vêm junto:
   par novo.
 - **`mfa_confirm` revoga as sessões por padrão.** Quem chama o serviço direto e
   precisa manter as sessões passa `revoke_sessions=False`.
+
+### O reset de senha e a reativação por link pedem o segundo fator
+
+`POST /auth/password-reset/confirm` e `POST /auth/activate/{token}` passam a
+espelhar o `/auth/login`: quando a conta tem TOTP inscrito, não devolvem o par
+— devolvem `mfa_required=true` + `mfa_token`, e o par só sai do
+`/auth/mfa/verify`, com `amr` de MFA. A senha é trocada de todo jeito.
+
+Cliente que chamava o `confirm` (ou o `activate` de uma conta reativada) e
+guardava `access_token` direto precisa tratar o desafio: se `mfa_required` for
+`true`, peça o código e faça o `/auth/mfa/verify`. Conta sem MFA não muda —
+continua recebendo o par na própria resposta. Ativar uma conta recém-cadastrada
+também não muda: ela nunca tem fator.
+
+`ActivationResponseSchema` ganhou `mfa_required` / `mfa_token`, e
+`access_token` / `refresh_token` passaram a ser opcionais (`str | None`), como
+no `LoginResponseSchema`. Quem lê o par de uma ativação de conta nova não muda
+nada.
+
+O reset de senha agora **revoga as sessões já abertas** na mesma transação que
+grava o hash, como o `/auth/mfa/confirm` e o `tempest user set-password` já
+faziam: um refresh token DB-backed emitido antes do reset deixa de trocar por
+par novo (responde 401). Access tokens já emitidos ainda valem até o TTL. Quem
+chamava `UserAuthService.confirm_password_reset` e precisa manter as sessões
+passa `revoke_sessions=False` — assinatura antiga de override continua sendo
+chamada pelo router, e delega para o default que revoga. Refresh token
+stateless (sem `refresh_token_model`) não tem linha a revogar e segue valendo
+até expirar.
 
 ## 0.312.0 — Mercado Pago: Pix vencido e busca de chargebacks
 

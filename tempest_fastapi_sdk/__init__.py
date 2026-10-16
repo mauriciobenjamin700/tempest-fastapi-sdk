@@ -1517,6 +1517,9 @@ from tempest_fastapi_sdk.settings import (
 from tempest_fastapi_sdk.settings import (
     WebSocketSettings as WebSocketSettings,
 )
+from tempest_fastapi_sdk.settings import (
+    read_project_version as read_project_version,
+)
 from tempest_fastapi_sdk.sse import (
     EventStream as EventStream,
 )
@@ -2037,7 +2040,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
 )
 
-__version__: str = "0.312.1"
+__version__: str = "0.313.0"
 
 from tempest_fastapi_sdk.api import (
     OAuthAudienceVerifier as OAuthAudienceVerifier,
@@ -2785,6 +2788,7 @@ __all__: list[str] = [
     "quantize_money",
     "raises",
     "read_log_entries",
+    "read_project_version",
     "read_upload_capped",
     "redact_database_errors",
     "redact_snapshot",

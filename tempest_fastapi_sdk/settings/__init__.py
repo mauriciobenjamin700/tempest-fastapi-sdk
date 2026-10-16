@@ -59,6 +59,9 @@ from tempest_fastapi_sdk.settings.mixins import TokenSettings as TokenSettings
 from tempest_fastapi_sdk.settings.mixins import UploadSettings as UploadSettings
 from tempest_fastapi_sdk.settings.mixins import WebPushSettings as WebPushSettings
 from tempest_fastapi_sdk.settings.mixins import WebSocketSettings as WebSocketSettings
+from tempest_fastapi_sdk.settings.version import (
+    read_project_version as read_project_version,
+)
 
 __all__: list[str] = [
     "SPOOFABLE_IP_HEADERS",
@@ -93,5 +96,6 @@ __all__: list[str] = [
     "UploadSettings",
     "WebPushSettings",
     "WebSocketSettings",
+    "read_project_version",
     "reject_conflicting_env_aliases",
 ]

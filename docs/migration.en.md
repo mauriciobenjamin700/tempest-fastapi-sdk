@@ -2,6 +2,34 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.314.0 — Python 3.12 is the new minimum
+
+The SDK drops Python 3.11. `requires-python` moves to `>=3.12`, and the
+supported versions become **3.12, 3.13 and 3.14**.
+
+If you are on 3.11 you **stay on 0.313.x**: the installer skips releases whose
+`requires-python` excludes the interpreter. Asking for the new version in a
+3.11 environment fails before anything is installed. Measured with `uv`:
+
+```text
+error: The requested interpreter resolved to Python 3.11.12, which is incompatible with the project's Python requirement: `>=3.12` (from `project.requires-python`)
+```
+
+### What to do
+
+1. Move the service interpreter to 3.12 or newer (`uv python pin 3.13`, the
+   `Dockerfile` base image, the CI runtime).
+2. Set the `requires-python` of your `pyproject.toml` to `>=3.12`.
+   `tempest new` already generates it that way, with `target-version = "py312"`
+   for ruff and `python_version = "3.12"` for mypy.
+3. Run `uv lock` and `uv sync`. With the new floor the lock stops carrying the
+   3.11 split: the SDK's own lock dropped `tomli`, `async-timeout` and
+   `audioread`, and `numpy`, `scipy` and `librosa` went down to one version
+   each.
+
+To stay on 3.11 for now, pin the range:
+`uv add "tempest-fastapi-sdk>=0.313.0,<0.314.0"`.
+
 ## 0.313.0 — a class ending in `Enum` no longer doubles the type suffix
 
 `enum_type_name` drops one trailing `Enum` from the class name before
@@ -118,6 +146,37 @@ Two behavior changes come with it:
   the new pair.
 - **`mfa_confirm` revokes the sessions by default.** A caller of the service
   that must keep them passes `revoke_sessions=False`.
+
+### Password reset and link reactivation now ask for the second factor
+
+`POST /auth/password-reset/confirm` and `POST /auth/activate/{token}` now
+mirror `/auth/login`: when the account has TOTP enrolled, they do not return
+the pair — they return `mfa_required=true` + `mfa_token`, and the pair only
+comes out of `/auth/mfa/verify`, with the MFA `amr`. The password is replaced
+either way.
+
+A client that called the `confirm` (or the `activate` of a reactivated
+account) and stored `access_token` directly must handle the challenge: if
+`mfa_required` is `true`, prompt for the code and call `/auth/mfa/verify`. An
+account without MFA is unchanged — it still receives the pair in the response
+itself. Activating a freshly signed-up account is unchanged too: it never has
+a factor.
+
+`ActivationResponseSchema` gained `mfa_required` / `mfa_token`, and
+`access_token` / `refresh_token` became optional (`str | None`), as in
+`LoginResponseSchema`. Reading the pair from a fresh-account activation is
+unchanged.
+
+Password reset now **revokes sessions already open**, in the same transaction
+that writes the hash, the way `/auth/mfa/confirm` and `tempest user
+set-password` already did: a DB-backed refresh token issued before the reset
+can no longer be exchanged for a fresh pair (it answers 401). Access tokens
+already issued still live until their TTL. A caller of
+`UserAuthService.confirm_password_reset` that needs to keep the sessions passes
+`revoke_sessions=False` — an old override signature is still called by the
+router, and delegates to the default that revokes. A stateless refresh token
+(no `refresh_token_model`) has no row to revoke and stays valid until it
+expires.
 
 ## 0.312.0 — Mercado Pago: expired Pix and chargeback search
 

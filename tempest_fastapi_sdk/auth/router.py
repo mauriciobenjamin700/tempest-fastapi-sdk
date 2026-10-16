@@ -970,6 +970,13 @@ def make_auth_router(
             "response carries a fresh ``access_token`` + "
             "``refresh_token`` pair so the user never has to type their "
             "password again right after confirming.\n\n"
+            "**MFA.** An activation token normally belongs to an account "
+            "that just signed up, so there is no factor to prove. It can "
+            "also be issued by ``/activation/request`` for a deactivated "
+            "account, and that account may have TOTP enrolled. In that "
+            "case — and only then — the route answers like ``/login``: "
+            "``mfa_required=true`` plus a short-lived ``mfa_token`` "
+            "instead of the pair, exchanged at ``/mfa/verify``.\n\n"
             "The token is rejected with **400** when it is unknown, "
             "already used, or past its ``AUTH_ACTIVATION_TTL_SECONDS`` "
             "expiry.\n\n"
@@ -991,9 +998,21 @@ def make_auth_router(
             session (AsyncSession): The request-scoped DB session.
 
         Returns:
-            ActivationResponseSchema: The activated user.
+            ActivationResponseSchema: The activated user with the JWT
+            pair, or an MFA challenge when the reactivated account has
+            TOTP enrolled.
         """
         user = await service.activate(session, token=token)
+        if service.is_mfa_enrolled(user):
+            mfa_token = service.issue_mfa_token(user)
+            await session.commit()
+            return ActivationResponseSchema(
+                user_id=user.id,
+                access_token=None,
+                refresh_token=None,
+                mfa_required=True,
+                mfa_token=mfa_token,
+            )
         access, refresh = await service.issue_token_pair(session, user)
         await session.commit()
         return ActivationResponseSchema(
@@ -1148,6 +1167,13 @@ def make_auth_router(
             "On success the password is updated **and the user is "
             "logged in** — the response carries a fresh "
             "``access_token`` + ``refresh_token`` pair.\n\n"
+            "**MFA.** When the account has finished TOTP enrollment "
+            "(and ``AUTH_MFA_ENABLED=True``) the reset does *not* "
+            "return the JWT pair, exactly like ``/login``. A stolen "
+            "mailbox would otherwise be enough to walk past the second "
+            "factor — the very scenario MFA exists for. Instead the "
+            "response carries ``mfa_required=true`` plus a short-lived "
+            "``mfa_token``; exchange it for the pair at ``/mfa/verify``.\n\n"
             "!!! note\n"
             "    When ``AUTH_BACKEND_LINKS=True`` the SDK also mounts "
             "    **GET/POST** ``/password-reset/{token}`` that render a "
@@ -1164,6 +1190,16 @@ def make_auth_router(
             token=payload.token,
             new_password=payload.new_password,
         )
+        if service.is_mfa_enrolled(user):
+            mfa_token = service.issue_mfa_token(user)
+            await session.commit()
+            return LoginResponseSchema(
+                user_id=user.id,
+                access_token=None,
+                refresh_token=None,
+                mfa_required=True,
+                mfa_token=mfa_token,
+            )
         access, refresh = await service.issue_token_pair(session, user)
         await session.commit()
         return LoginResponseSchema(
