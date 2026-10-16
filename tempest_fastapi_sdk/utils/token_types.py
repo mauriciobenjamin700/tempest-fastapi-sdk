@@ -114,6 +114,15 @@ AMR_EXTERNAL: str = "ext"
 the RFC 8176 registry: the SDK cannot see which methods the provider used,
 so it records only that the proof happened elsewhere."""
 
+AMR_EMAIL_LINK: str = "email"
+"""``amr`` value for a session opened by a single-use emailed link — account
+activation or password reset. Not in the RFC 8176 registry, like
+:data:`AMR_EXTERNAL`: the request proved control of the mailbox, not
+knowledge of the password, and RFC 8176 has no value for that. Kept out of
+:data:`MFA_AMR_METHODS`, so ``make_mfa_required_dependency`` refuses it, and
+deliberately not ``otp``: a link is one factor, and calling it a one-time
+password would let it pass the second-factor gate."""
+
 PASSWORD_AMR: tuple[str, ...] = (AMR_PASSWORD,)
 """``amr`` of a session opened with the password alone."""
 
@@ -148,6 +157,7 @@ def token_amr(payload: Mapping[str, Any]) -> tuple[str, ...] | None:
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
     "AMR_CLAIM",
+    "AMR_EMAIL_LINK",
     "AMR_EXTERNAL",
     "AMR_HARDWARE_KEY",
     "AMR_OTP",

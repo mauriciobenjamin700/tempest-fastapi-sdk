@@ -242,7 +242,7 @@ OAUTH_GOOGLE_CLIENT_SECRET=GOCSPX-...
 | Method | Route | What it does |
 | --- | --- | --- |
 | `GET` | `/auth/oauth/{provider}/login` | Mints the `state`, writes it to an `HttpOnly` cookie and redirects **302** to the provider |
-| `GET` | `/auth/oauth/{provider}/callback` | Checks the `state`, trades the `code`, resolves the identity and returns the JWT pair |
+| `GET` | `/auth/oauth/{provider}/callback` | Checks the `state`, trades the `code`, resolves the identity and returns the JWT pair — or the MFA challenge, when the account has TOTP *(v0.314.0+)* |
 | `POST` | `/auth/oauth/{provider}/token` | *(v0.278.0+)* Takes an access token the app already holds, checks which application it was issued to, and returns the same session |
 | `GET` | `/auth/oauth/accounts` | Authenticated. Lists the providers linked to the account |
 | `POST` | `/auth/oauth/accounts/unlink` | Authenticated. Detaches one provider |
@@ -504,7 +504,9 @@ jwt: JWTUtils = JWTUtils(secret="a-32-character-secret-for-tests!")
 access_token: str = "<the access_token the callback returned>"
 payload: dict[str, object] = jwt.decode(access_token)
 print(sorted(payload))
-# ['email', 'exp', 'iat', 'sub', 'typ']
+# ['amr', 'email', 'exp', 'iat', 'sub', 'typ']
+print(payload["amr"])
+# ['ext']
 print(token_type_allowed(payload, [ACCESS_TOKEN_TYPE], strict=True))
 # True
 ```
@@ -513,6 +515,32 @@ With `refresh_token_model` wired, the social login's refresh token is opaque,
 persisted, single-use, joins the same rotation family, is covered by reuse
 detection and dies on `POST /auth/logout` — none of which exists in a
 hand-signed token.
+
+### Account with TOTP: social login asks for the code too *(v0.314.0+)*
+
+The provider proves **who** the person is, not the code on their phone. When
+the resolved account has TOTP enrolled (and `AUTH_MFA_ENABLED=True`), the
+callback and `POST /auth/oauth/{provider}/token` answer like `/auth/login`:
+**no pair and no session cookie**, with the challenge in the body — under any
+`AUTH_TOKEN_DELIVERY`, the same as `/auth/cookie/login`:
+
+```json
+{"user_id": "0e5cf2fc-…", "access_token": null, "refresh_token": null, "mfa_required": true, "mfa_token": "eyJ…"}
+```
+
+The client asks for the code and finishes at `/auth/mfa/verify`, which issues
+the pair with `amr == ["ext", "otp"]` — the two methods that actually ran
+(RFC 8176 asks the claim to list the methods used; `pwd` would be false,
+nobody typed a password). That pair passes `make_mfa_required_dependency`, and
+`refresh` repeats the `amr`. An account **without** MFA does not change: the
+pair comes in the same response, with `amr == ["ext"]`, which
+`make_mfa_required_dependency` refuses.
+
+!!! warning "Overriding `login_with_oauth`"
+    The routes call `UserAuthService.authenticate_oauth` (resolves the
+    account, issues nothing) and decide on MFA before issuing. An override of
+    `login_with_oauth` is no longer called by them — the router logs a
+    warning when it is built. Move the logic to `authenticate_oauth`.
 
 ## 8. Linked accounts: list and unlink
 

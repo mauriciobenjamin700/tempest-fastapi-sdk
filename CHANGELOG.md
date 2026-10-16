@@ -88,6 +88,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   novo liga (`UP047`, 32 ocorrências, e `UP040`, 4) ficam desligadas, como
   já estava a `UP046`: reescrever genéricos é outra decisão. O override do
   mypy para `librosa`, que só existia por causa do alvo 3.11, saiu.
+- **Ativação e reset por link carimbam `amr=["email"]`, não `["pwd"]`**
+  (#543). Nenhum dos dois confere senha: a ativação não recebe nenhuma, e o
+  reset prova a caixa de e-mail antes de gravar a nova. A constante pública
+  `AMR_EMAIL_LINK = "email"` (topo e `tempest_fastapi_sdk.utils`) fica fora
+  do registro da RFC 8176, como o `ext`, e fora de `MFA_AMR_METHODS` — o
+  `make_mfa_required_dependency` continua recusando. Com TOTP inscrito, o
+  `/auth/mfa/verify` desse desafio emite `["email", "otp"]`; o `refresh`
+  repete o `amr` da origem (DB-backed e stateless). Override de
+  `issue_token_pair` sem `amr=` segue com o default dele. Quem lia
+  `"pwd" in amr` passa a ver `"email"` nesses caminhos:
+  `docs/migration.md`.
 - Retornos do `tasks` que eram `Any` com tipo conhecido agora são o tipo do
   TaskIQ (#550), importado sob `TYPE_CHECKING` — `import tempest_fastapi_sdk`
   e `import tempest_fastapi_sdk.tasks` continuam funcionando sem o extra
@@ -111,6 +122,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   define no override), o `_entry` interno do `register` (passthrough) e
   `TaskQueue.register`, que devolve `Task` ou `dict[str, Task]` conforme a
   forma da definição — a união obrigaria um `isinstance` em todo call site.
+
+### Security
+
+- **O login social de conta com TOTP pede o segundo fator** (#543).
+  `GET /auth/oauth/{provider}/callback` e `POST /auth/oauth/{provider}/token`
+  emitiam o par direto a partir da palavra do provedor, e a conta pulava o
+  fator que tinha inscrito. Agora respondem como o `/auth/login`:
+  `mfa_required=true` + `mfa_token`, sem par e sem cookie de sessão, em
+  qualquer `AUTH_TOKEN_DELIVERY`; o `/auth/mfa/verify` emite o par com
+  `amr == ["ext", "otp"]`, que passa no `make_mfa_required_dependency`. Conta
+  sem MFA não muda (`["ext"]`). O `mfa_token` passa a carregar o `amr` do
+  primeiro passo (`issue_mfa_token(user, amr=...)`) e o
+  `UserAuthService.second_factor_amr(mfa_token)` monta o `amr` da sessão
+  verificada — primeiro passo + `otp`, sem repetir. Para decidir antes de
+  emitir, as rotas chamam o novo `UserAuthService.authenticate_oauth`
+  (resolve a conta sem emitir); o `login_with_oauth` continua emitindo o par e
+  agora delega a ele. Override de `login_with_oauth` deixa de ser chamado pelas
+  rotas, e override de `issue_mfa_token` sem `amr=` volta ao
+  `["pwd", "otp"]`; o router loga um aviso ao ser montado nos dois casos. O
+  `tests/test_mfa_token_paths_guard.py` passa a exigir as duas rotas como
+  `gated`. Migração: `docs/migration.md`.
 
 ### Tests
 

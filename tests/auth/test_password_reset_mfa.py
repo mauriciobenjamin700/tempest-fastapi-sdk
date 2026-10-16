@@ -36,7 +36,8 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from tempest_fastapi_sdk import (
-    MFA_AMR,
+    AMR_EMAIL_LINK,
+    AMR_OTP,
     BaseModel,
     BaseUserModel,
     MFAMixin,
@@ -330,7 +331,10 @@ class TestPasswordResetWithMfa:
                 },
             )
             assert verified.status_code == 200, verified.text
-        assert _amr(service, verified.json()["access_token"]) == MFA_AMR
+        assert _amr(service, verified.json()["access_token"]) == (
+            AMR_EMAIL_LINK,
+            AMR_OTP,
+        )
 
     async def test_a_legacy_service_override_still_gets_the_challenge(
         self, session: AsyncSession
@@ -440,7 +444,10 @@ class TestReactivationWithMfa:
                 },
             )
             assert verified.status_code == 200, verified.text
-        assert _amr(service, verified.json()["access_token"]) == MFA_AMR
+        assert _amr(service, verified.json()["access_token"]) == (
+            AMR_EMAIL_LINK,
+            AMR_OTP,
+        )
 
     async def test_activating_a_fresh_account_still_returns_the_pair(
         self, session: AsyncSession

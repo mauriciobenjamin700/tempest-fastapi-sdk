@@ -93,6 +93,7 @@ from tempest_fastapi_sdk.utils.token_types import (
     ACCESS_TOKEN_TYPE,
     AMR_CLAIM,
     AMR_EXTERNAL,
+    AMR_OTP,
     MFA_TOKEN_TYPE,
     PASSWORD_AMR,
     REFRESH_TOKEN_TYPE,
@@ -702,6 +703,12 @@ class UserAuthService:
         ``POST /auth/password-reset/request``, which needs no new flow
         because the email is already on the row.
 
+        This method always issues the pair, ``amr=["ext"]``, whether or
+        not the account has TOTP enrolled. The bundled router no longer
+        calls it: it calls :meth:`authenticate_oauth` and asks an enrolled
+        account for the second factor first. Call it directly only where
+        that is the decision you want.
+
         Args:
             session (AsyncSession): Active SQLAlchemy session. Rows are
                 added and flushed; the caller owns the commit.
@@ -741,6 +748,65 @@ class UserAuthService:
                 next step for the user, this one has none.
             OAuthRegistrationDisabledException: When the identity is
                 unknown and account creation is disabled.
+            OAuthAccountInactiveException: When the resolved account is
+                inactive.
+        """
+        user = await self.authenticate_oauth(
+            session,
+            profile,
+            locale=locale,
+            link_by_verified_email=link_by_verified_email,
+            allow_account_creation=allow_account_creation,
+        )
+        access, refresh = await self._issue_pair_with_amr(
+            session, user, family_id=None, amr=(AMR_EXTERNAL,)
+        )
+        return user, access, refresh
+
+    async def authenticate_oauth(
+        self,
+        session: AsyncSession,
+        profile: OAuthUser,
+        *,
+        locale: str,
+        link_by_verified_email: bool | None = None,
+        allow_account_creation: bool | None = None,
+    ) -> BaseUserModel:
+        """Resolve a third-party identity to a local user, issuing nothing.
+
+        Everything :meth:`login_with_oauth` does except minting the pair:
+        the ``(provider, subject)`` lookup, the verified-email link, the
+        account creation, the ``last_login_at`` stamps. The bundled router
+        calls this one so it can ask for the second factor of an account
+        with TOTP enrolled before any session exists, exactly like
+        ``POST /auth/login``. See :meth:`login_with_oauth` for the
+        resolution order and its reasons.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session. Rows are
+                added and flushed; the caller owns the commit.
+            profile (OAuthUser): The identity the provider returned,
+                normalized by the client.
+            locale (str): Canonical locale for this request; picks the
+                placeholder display name of a created account.
+            link_by_verified_email (bool | None): Override for
+                ``AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL``.
+            allow_account_creation (bool | None): Override for
+                ``AUTH_OAUTH_ALLOW_ACCOUNT_CREATION``.
+
+        Returns:
+            BaseUserModel: The authenticated, active user.
+
+        Raises:
+            RuntimeError: When the service was built without an
+                ``oauth_account_model``.
+            OAuthEmailMissingException: When the provider returned no email.
+            OAuthEmailTakenException: When the email belongs to another
+                account and linking is not allowed.
+            OAuthEmailUnverifiedException: When linking was allowed but the
+                provider did not state it verified the address.
+            OAuthRegistrationDisabledException: When the identity is unknown
+                and account creation is disabled.
             OAuthAccountInactiveException: When the resolved account is
                 inactive.
         """
@@ -786,10 +852,7 @@ class UserAuthService:
         user.last_login_at = now
         await session.flush()
         await session.refresh(user)
-        access, refresh = await self._issue_pair_with_amr(
-            session, user, family_id=None, amr=(AMR_EXTERNAL,)
-        )
-        return user, access, refresh
+        return user
 
     def _oauth_creation_allowed(self, override: bool | None) -> bool:
         """Resolve whether the callback may create an account.
@@ -2937,30 +3000,69 @@ class UserAuthService:
             return False
         return getattr(user, "totp_enabled_at", None) is not None
 
-    def issue_mfa_token(self, user: BaseUserModel) -> str:
+    def issue_mfa_token(
+        self,
+        user: BaseUserModel,
+        *,
+        amr: Sequence[str] | None = PASSWORD_AMR,
+    ) -> str:
         """Mint the short-lived JWT that bridges step 1 and step 2 of login.
 
-        The token proves the password step only. Its ``typ`` claim keeps a
+        The token proves the first step only. Its ``typ`` claim keeps a
         route guard from accepting it as an access token, which would let a
         caller who knows just the password skip the second factor
         entirely.
 
         Args:
             user (BaseUserModel): The user to inspect.
+            amr (Sequence[str] | None): RFC 8176 methods the first step
+                proved — :data:`~tempest_fastapi_sdk.PASSWORD_AMR` after
+                ``/auth/login``, ``["ext"]`` after a social login,
+                ``["email"]`` after an activation or reset link. Stored as
+                the token's ``amr`` claim, which :meth:`second_factor_amr`
+                reads back at ``/auth/mfa/verify``. ``None`` omits it.
 
         Returns:
             str: The generated value.
         """
+        claims: dict[str, Any] = {
+            "sub": str(user.id),
+            "purpose": "mfa_pending",
+            "typ": MFA_TOKEN_TYPE,
+        }
+        if amr:
+            claims[AMR_CLAIM] = list(amr)
         return self.jwt.encode(
-            {
-                "sub": str(user.id),
-                "purpose": "mfa_pending",
-                "typ": MFA_TOKEN_TYPE,
-            },
+            claims,
             ttl=timedelta(
                 seconds=self.auth_settings.AUTH_MFA_TOKEN_TTL_SECONDS,
             ),
         )
+
+    def second_factor_amr(self, mfa_token: str) -> tuple[str, ...]:
+        """Return the ``amr`` of the session ``/auth/mfa/verify`` opens.
+
+        The first-step methods recorded in ``mfa_token`` by
+        :meth:`issue_mfa_token`, followed by ``otp`` — so a password login
+        becomes :data:`~tempest_fastapi_sdk.MFA_AMR` (``["pwd", "otp"]``), a
+        social login ``["ext", "otp"]`` and an emailed link
+        ``["email", "otp"]``. Each value names a method that actually ran,
+        which is what RFC 8176 asks of the claim. A token minted without
+        the claim (by an ``issue_mfa_token`` override written before it
+        existed) falls back to ``["pwd"]`` as the first step, the
+        behavior of every release before this one.
+
+        Call it only after :meth:`mfa_verify` accepted the token: it
+        decodes without re-checking the purpose.
+
+        Args:
+            mfa_token (str): The token :meth:`mfa_verify` just accepted.
+
+        Returns:
+            tuple[str, ...]: The methods to stamp on the new pair.
+        """
+        first = token_amr(self.jwt.decode(mfa_token)) or PASSWORD_AMR
+        return (*(method for method in first if method != AMR_OTP), AMR_OTP)
 
     async def mfa_enroll(
         self,

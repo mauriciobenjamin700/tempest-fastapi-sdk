@@ -30,6 +30,52 @@ error: The requested interpreter resolved to Python 3.11.12, which is incompatib
 To stay on 3.11 for now, pin the range:
 `uv add "tempest-fastapi-sdk>=0.313.0,<0.314.0"`.
 
+## 0.314.0 — social login of an account with TOTP asks for the second factor
+
+`GET /auth/oauth/{provider}/callback` and `POST /auth/oauth/{provider}/token`
+now mirror `/auth/login`. When the resolved account has TOTP enrolled (and
+`AUTH_MFA_ENABLED=True`), the response carries **no pair and no session
+cookie**: it carries `mfa_required=true` + `mfa_token`, and the pair only comes
+out of `/auth/mfa/verify`, with `amr == ["ext", "otp"]`. Through 0.313.x the
+provider was enough, and the account skipped the factor it had enrolled.
+
+### What to do
+
+1. In the social-login client, handle the challenge as in the password login:
+   when `mfa_required` is `true`, ask for the code and call
+   `POST /auth/mfa/verify` with the `mfa_token`. An account without MFA does
+   not change — the pair stays in the same response, with `amr == ["ext"]`.
+2. If you override `UserAuthService.login_with_oauth`, move the logic to the
+   new `authenticate_oauth` (resolves the account, issues nothing). The routes
+   no longer call `login_with_oauth`, and the router logs a warning when it is
+   built and finds the override. Calling `login_with_oauth` directly still
+   issues the pair without asking about MFA.
+3. If you override `issue_mfa_token`, accept the new
+   `amr: Sequence[str] | None = PASSWORD_AMR` and pass it on to `super()`.
+   Without it the token carries no first step, and `/auth/mfa/verify` falls
+   back to the earlier `["pwd", "otp"]` — the router logs a warning too.
+
+## 0.314.0 — activation and reset links stamp `amr=["email"]`
+
+The pair `POST /auth/activate/{token}` and `POST /auth/password-reset/confirm`
+issue to an account **without** MFA now carries `amr == ["email"]`
+(`AMR_EMAIL_LINK`) instead of `["pwd"]`: neither checks a password. With TOTP
+enrolled, `/auth/mfa/verify` on that challenge issues `["email", "otp"]`.
+`refresh` repeats the origin's `amr`, so the session stays `["email"]` after a
+rotation.
+
+### What to do
+
+- Code that reads `"pwd" in amr` as "this session started at a login" now sees
+  `"email"` on these two paths. If your rule is "any single-factor session",
+  compare against `AMR_EMAIL_LINK` as well; if it is "the password was
+  checked", the change is the fix you wanted.
+- `make_mfa_required_dependency` does not change: `email` is not in
+  `MFA_AMR_METHODS`, and the gate refuses the pair as it refused `["pwd"]`.
+- An `issue_token_pair` override without `amr=` is still called without the
+  keyword, and the pair carries the override's default (`["pwd"]` when it
+  delegates to `super()`), as before.
+
 ## 0.313.0 — a class ending in `Enum` no longer doubles the type suffix
 
 `enum_type_name` drops one trailing `Enum` from the class name before
