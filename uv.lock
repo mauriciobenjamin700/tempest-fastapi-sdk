@@ -6091,15 +6091,15 @@ wheels = [
 
 [[package]]
 name = "tempest-cli"
-version = "0.5.0"
+version = "0.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ruff" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/99/5d/8a0594fb6f6ad86b79f727088e73a4f2f8bdf4924f79d49522775bb2fbbd/tempest_cli-0.5.0.tar.gz", hash = "sha256:e79c6f69a86460d54de43a8cdf443b3efe74f0f1c9f642e37d334c52f270c088", size = 151396, upload-time = "2026-10-13T23:31:42.659Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/87/00/699124dab2bbfe7bbd247be325e5632902816ad3347b65637434b836ffed/tempest_cli-0.5.1.tar.gz", hash = "sha256:44ed67f2d8862bd8078b119360e8a8ae19c4c4a24c2f6d4691b6acc16d461ac2", size = 168595, upload-time = "2026-10-16T01:01:37.077Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/85/43/fa0416501d0f9e6576e98cd0f04038f3b9e32e59b867aec34757b01e002f/tempest_cli-0.5.0-py3-none-any.whl", hash = "sha256:b311c9239ba27c6c3162aac5d331de67188ddda52693549ff604af3edb43954d", size = 33218, upload-time = "2026-10-13T23:31:41.245Z" },
+    { url = "https://files.pythonhosted.org/packages/63/eb/826683aff6e4ba7363d17e1df869548339749c21e7c4c6d90119fd584c3f/tempest_cli-0.5.1-py3-none-any.whl", hash = "sha256:18050e4729a1ecb7b5067ede873deb0ac315620bf4419587da673b605822405d", size = 43341, upload-time = "2026-10-16T01:01:35.62Z" },
 ]
 
 [[package]]
@@ -6562,8 +6562,8 @@ requires-dist = [
     { name = "taskiq-aio-pika", marker = "extra == 'tasks'", specifier = ">=0.6.0" },
     { name = "taskiq-redis", marker = "extra == 'all'", specifier = ">=1.2.3" },
     { name = "taskiq-redis", marker = "extra == 'tasks-redis'", specifier = ">=1.2.3" },
-    { name = "tempest-cli", marker = "extra == 'all'", specifier = ">=0.5.0" },
-    { name = "tempest-cli", marker = "extra == 'cli'", specifier = ">=0.5.0" },
+    { name = "tempest-cli", marker = "extra == 'all'", specifier = ">=0.5.1" },
+    { name = "tempest-cli", marker = "extra == 'cli'", specifier = ">=0.5.1" },
     { name = "tempestweb", marker = "extra == 'all'", specifier = ">=0.127.0" },
     { name = "tempestweb", marker = "extra == 'ssr'", specifier = ">=0.127.0" },
     { name = "tokenizers", marker = "extra == 'genai-onnx'", specifier = ">=0.22.2" },

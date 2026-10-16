@@ -2390,7 +2390,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (`load_project_commands()`); `TempestConfig` no longer carries
   `commands`. `tempest_fastapi_sdk.cli.lint` / `.pr_prompt` remain as
   re-exports. Reason, measured: reaching those commands here cost 38.7 MB
-  of dependencies and ~0.5 s of import per invocation.
+  of dependencies and ~0.5 s of import per invocation. Floor
+  `tempest-cli>=0.5.1` (unreleased): `tempest fix` reports on the formatted
+  file, shortens long comments and plain strings under an AST-identity
+  check, and names the `E501` it cannot fix. Recipe: `docs/recipes/cli.md`.
 
 The whole Tier S / Tier A / Tier B backlog that used to live here is
 **shipped**, and so is the five-item next-version plan that followed it
@@ -3016,7 +3019,7 @@ medido com `curl`, pelos dois caminhos (JSON e link `GET`), e num teste com
   `pytest-xdist>=3.8.0`, sem teto próprio; herda `pytest<10` do
   `pytest-asyncio` 1.4.0 e `pluggy<2` do `pytest`. Fora do `[all]`.
 - **`tempest test --fast` / `tempest check --fast`** — a flag é do
-  `tempest-cli` 0.4.0, e o piso do SDK é `>=0.4.0`. Roda `pytest -n <workers> -p no:cacheprovider`,
+  `tempest-cli` 0.4.0; o piso do SDK hoje é `>=0.5.1`. Roda `pytest -n <workers> -p no:cacheprovider`,
   `-w N` escolhe os workers (`auto` por padrão), e sem pytest-xdist no
   ambiente do pytest sai `127` com a instrução de instalação. Receita:
   `docs/recipes/testing.md#a-suite-em-paralelo-tempest-test-fast`.
