@@ -1,0 +1,33 @@
+"""Controller factories — one ``get_<x>_controller`` per controller.
+
+A router never builds a controller: it declares
+``controller: XController = Depends(get_x_controller)``, and the factory
+here is the only place that knows how to assemble the graph. Every input
+of a factory (the request session, the settings, the mailer) is itself a
+``Depends``, never a module import read in the body, so
+``app.dependency_overrides`` can replace any of them in a test.
+"""
+
+from __future__ import annotations
+
+from fastapi import Depends
+
+from src.controllers import ServiceInfoController
+from src.core.settings import Settings, get_settings
+
+
+def get_service_info_controller(
+    settings: Settings = Depends(get_settings),
+) -> ServiceInfoController:
+    """Build the controller behind the placeholder root endpoint.
+
+    Args:
+        settings (Settings): The process settings.
+
+    Returns:
+        ServiceInfoController: The controller bound to the service title.
+    """
+    return ServiceInfoController(title=settings.TITLE)
+
+
+__all__: list[str] = ["get_service_info_controller"]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 from pydantic import Field
@@ -9,12 +10,18 @@ from tempest_fastapi_sdk import (
     BaseAppSettings,
     CORSSettings,
     DatabaseSettings,
+@@if email@@
+    EmailSettings,
+@@endif@@
     EnvironmentSettings,
 @@if auth@@
     JWTSettings,
 @@endif@@
     LogSettings,
     ServerSettings,
+@@if minio@@
+    StorageSettings,
+@@endif@@
 @@if taskiq@@
     TaskIQSettings,
 @@endif@@
@@ -41,6 +48,12 @@ class Settings(
 @@endif@@
     TokenSettings,
     CORSSettings,
+@@if email@@
+    EmailSettings,
+@@endif@@
+@@if minio@@
+    StorageSettings,
+@@endif@@
 @@if taskiq@@
     TaskIQSettings,
 @@endif@@
@@ -116,7 +129,31 @@ class Settings(
 @@endif@@
 
 
-settings = Settings()
+@lru_cache
+def get_settings() -> Settings:
+    """Return the process-wide settings, built once from the environment.
+
+    Declare ``settings: Settings = Depends(get_settings)`` in a
+    dependency factory instead of importing :data:`settings` there: a
+    test then swaps the values with
+    ``app.dependency_overrides[get_settings] = lambda: Settings(...)``
+    without touching routers, controllers or services. The cache makes
+    every call return the same instance; ``get_settings.cache_clear()``
+    drops it so the next call re-reads the environment.
+
+    Returns:
+        Settings: The cached instance.
+    """
+    return Settings()
 
 
-__all__: list[str] = ["Settings", "settings"]
+settings: Settings = get_settings()
+"""The same instance :func:`get_settings` returns.
+
+Kept for import-time wiring that runs outside a request — the resource
+singletons, logging, the lifespan, ``server.py`` and Alembic's
+``env.py`` — where there is no ``Depends`` to resolve.
+"""
+
+
+__all__: list[str] = ["Settings", "get_settings", "settings"]

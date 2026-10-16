@@ -897,15 +897,20 @@ O que a fábrica evita é o router montando o controller —
 handler. Ali o router passa a conhecer sessão, settings e a assinatura de
 três classes, e cada endpoint que usa o controller repete a montagem.
 
-!!! note "O que o `tempest new` gera hoje"
-    O scaffold escreve `src/api/dependencies/resources.py` com `db`,
-    `get_db` e `get_session`; `get_storage` e `get_mailer` vêm **comentados**,
-    para descomentar com os extras `[minio]` e `[email]`. O
-    `src/api/dependencies/controllers.py` **não** é gerado — o `CLAUDE.md`
-    do projeto ensina a criá-lo com a primeira fábrica. Também não há
-    `get_settings`: o template expõe `settings` como objeto de módulo em
-    `src/core/settings.py`. Para trocar settings por
-    `dependency_overrides`, como no exemplo, declare a função você mesmo.
+!!! note "O que o `tempest new` gera"
+    O scaffold já sai neste formato. `src/api/dependencies/controllers.py`
+    traz `get_service_info_controller`, a fábrica do `GET /api/`
+    placeholder, que recebe `Settings` por `Depends(get_settings)`; o router
+    declara `controller: ServiceInfoController = Depends(get_service_info_controller)`.
+    `src/core/settings.py` expõe `get_settings()` com `@lru_cache` — o
+    `settings` de módulo continua lá, é a mesma instância, para o que roda
+    fora de requisição (recursos, logging, lifespan, `server.py`, Alembic).
+    `src/api/dependencies/resources.py` traz `db`, `get_db` e `get_session`
+    sempre, `get_mailer` só com `[email]` e `get_storage` só com `[minio]`
+    — e, com eles, o `EmailSettings` / `StorageSettings` no `Settings`. O
+    `tests/test_smoke.py` gerado troca o `TITLE` por
+    `dependency_overrides[get_settings]` e confere que o `GET /api/`
+    responde o valor novo.
 
 ### Guards: dependência no router ou `@requires` no método
 

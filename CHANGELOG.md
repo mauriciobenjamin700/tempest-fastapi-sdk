@@ -36,6 +36,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Template do `tempest new` alinhado ao padrão de
+  [Arquitetura › Padrões de service, repository e controller](docs/architecture.md).
+  O projeto gerado traz `src/api/dependencies/controllers.py` com
+  `get_service_info_controller`, a fábrica do `GET /api/` placeholder, e o
+  router recebe o `ServiceInfoController` por `Depends` em vez de devolver um
+  `dict` montado no handler (a resposta continua `{"service": "<TITLE>"}`,
+  agora como `ServiceInfoSchema`). `src/core/settings.py` ganha
+  `get_settings()` com `@lru_cache`, que a fábrica recebe por
+  `Depends(get_settings)` — então `app.dependency_overrides[get_settings]`
+  troca as settings sem tocar router nem controller; o `settings` de módulo
+  continua sendo a mesma instância para recursos, lifespan, `server.py` e
+  Alembic. `get_mailer` e `get_storage` deixam de vir comentados em
+  `resources.py`: saem só com `[email]` / `[minio]`, junto com o
+  `EmailSettings` / `StorageSettings` no `Settings` e o re-export em
+  `src/api/dependencies/__init__.py`. O `CLAUDE.md` gerado ensina a
+  **acrescentar** fábricas ao `controllers.py` existente, importar
+  `get_product_controller` do pacote `src.api.dependencies` e ganha a seção
+  de guards (autenticação na dependência da rota, invariante com `@requires`
+  no método do controller). Medido gerando projetos padrão, `--extras email`,
+  `--extras minio` e `--extras admin` fora do repo: `tempest check` (ruff,
+  format, mypy, lint-layers, pytest com 3 testes) verde nos quatro e
+  `GET /health/readiness` 200 com o app de pé. Projeto já gerado não muda;
+  para adotar, copie os três módulos novos (`controllers.py`,
+  `controllers/service_info.py`, `schemas/service_info.py`) e a função
+  `get_settings`.
 - O extra `[cli]` (e o `[all]`) passa a exigir `tempest-cli>=0.5.1`, e o lock
   sobe de 0.5.0 para 0.5.1. O que chega ao `tempest fix` do consumidor, segundo
   o CHANGELOG do `tempest-cli` 0.5.1: as passadas viram `ruff check --fix-only`,

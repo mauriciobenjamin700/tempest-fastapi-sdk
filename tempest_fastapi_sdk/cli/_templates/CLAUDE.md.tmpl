@@ -29,7 +29,7 @@ Extras enabled in this project: `__SDK_EXTRAS__`
 ```text
 src/
 ├── api/routers/       # HTTP verbs, status codes, Depends. No business logic.
-├── api/dependencies/  # Depends providers + infra singletons (db, storage, mailer)
+├── api/dependencies/  # controller factories + infra singletons (db, storage, mailer)
 ├── controllers/       # Orchestration across services. No DB access.
 ├── services/          # Business rules. Calls repositories.
 ├── db/repositories/   # SQLAlchemy async queries. No business rules.
@@ -298,6 +298,10 @@ keeps the import graph identical across services.
 
 ### 6. Dependency provider (`src/api/dependencies/controllers.py`)
 
+The scaffold already ships this module with `get_service_info_controller`,
+the factory behind `GET /api/`. **Add** one factory per controller next to
+it — never build a controller inside a router:
+
 ```python
 # src/api/dependencies/controllers.py
 from fastapi import Depends
@@ -323,13 +327,23 @@ def get_product_controller(
     return ProductController(ProductService(ProductRepository(session)))
 ```
 
+Every input of a factory is another `Depends` — `get_session`,
+`get_settings` (from `src.core.settings`, as `get_service_info_controller`
+uses it), and `get_mailer` / `get_storage` from
+`src/api/dependencies/resources.py` when the `[email]` / `[minio]` extras
+are pinned — never a module-level `settings` or singleton read in the
+body. That is what lets a test swap any of them with
+`app.dependency_overrides[get_settings] = lambda: Settings(...)` without
+touching the router, the controller or the service. Re-export the factory
+from `src/api/dependencies/__init__.py`.
+
 ### 7. Router (`src/api/routers/`)
 
 ```python
 # src/api/routers/product.py
 from fastapi import APIRouter, Depends, status
 
-from src.api.dependencies.controllers import get_product_controller
+from src.api.dependencies import get_product_controller
 from src.controllers import ProductController
 from src.schemas import ProductCreateSchema, ProductResponseSchema
 
@@ -368,8 +382,50 @@ Two router rules are gated by the same `lint-layers` step:
   `models/`), at any depth: `list[ProductModel]` counts. Return the
   response schema the repository maps to. There is no opt-out.
 
-Where `@requires` sits is review, not a rule: it is valid on the route and
-on the controller method alike.
+Where `@requires` sits is review, not a rule: the decorator works on a
+route handler too, so a check could not tell the convention below from
+correct code.
+
+## Guards: authentication in the route, invariants with `@requires`
+
+Two places check permissions, and they answer different questions:
+
+- **"Who is calling?"** — `make_token_dependency`,
+  `make_jwt_user_dependency`, `make_role_dependency`,
+  `make_permission_dependency`. A route dependency, resolved before the
+  handler; the router passes the user it resolved on to the controller.
+- **"Does this user, already loaded, pass this invariant?"** —
+  `@requires(guard, ...)` with `require_authenticated`, `require_active`,
+  `require_admin`, `make_flag_guard` or a guard of your own. It goes on
+  the **controller method** of the use case, so every caller — HTTP
+  route, queue consumer, CLI command — goes through the same check.
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk import BaseUserModel, requires
+from tempest_fastapi_sdk.auth import require_admin
+
+
+class ProductAdminActions:
+    """The use case shape: the guard sits on the method, not the route."""
+
+    @requires(require_admin)
+    async def remove(self, product_id: UUID, user: BaseUserModel) -> None:
+        """Delete a product; administrators only.
+
+        Args:
+            product_id (UUID): The product to delete.
+            user (BaseUserModel): The caller, already authenticated.
+        """
+```
+
+The guard finds the user by its annotation (a `BaseUserModel` subclass)
+and raises `ForbiddenException`, which the registered handlers turn into
+the `403` envelope. `tempest permissions` checks every `@requires` against
+its contract statically (a guard list left empty, no parameter annotated
+with a user model, a guard that returns `bool` instead of raising), so
+`tempest permissions` belongs in CI next to `tempest check`.
 
 ## Errors: raise, never build a response
 
@@ -412,7 +468,7 @@ Use the SDK envelope; do not invent a page shape.
 from fastapi import APIRouter, Depends
 from tempest_fastapi_sdk import BasePaginationFilterSchema, BasePaginationSchema
 
-from src.api.dependencies.controllers import get_product_controller
+from src.api.dependencies import get_product_controller
 from src.controllers import ProductController
 from src.schemas import ProductResponseSchema
 
