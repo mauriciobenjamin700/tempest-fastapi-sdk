@@ -899,16 +899,21 @@ handler. There the router learns about the session, the settings and three
 class signatures, and every endpoint that uses the controller repeats the
 wiring.
 
-!!! note "What `tempest new` generates today"
-    The scaffold writes `src/api/dependencies/resources.py` with `db`,
-    `get_db` and `get_session`; `get_storage` and `get_mailer` ship
-    **commented out**, to uncomment with the `[minio]` and `[email]` extras.
-    `src/api/dependencies/controllers.py` is **not** generated — the
-    project's `CLAUDE.md` teaches creating it with the first provider. There
-    is no `get_settings` either: the template exposes `settings` as a module
-    object in `src/core/settings.py`. To swap settings through
-    `dependency_overrides`, as the example does, declare the function
-    yourself.
+!!! note "What `tempest new` generates"
+    The scaffold already ships this shape. `src/api/dependencies/controllers.py`
+    holds `get_service_info_controller`, the factory behind the placeholder
+    `GET /api/`, which receives `Settings` through `Depends(get_settings)`;
+    the router declares
+    `controller: ServiceInfoController = Depends(get_service_info_controller)`.
+    `src/core/settings.py` exposes `get_settings()` with `@lru_cache` — the
+    module-level `settings` stays, as the same instance, for what runs
+    outside a request (resources, logging, the lifespan, `server.py`,
+    Alembic). `src/api/dependencies/resources.py` always holds `db`,
+    `get_db` and `get_session`, `get_mailer` only with `[email]` and
+    `get_storage` only with `[minio]` — along with `EmailSettings` /
+    `StorageSettings` on `Settings`. The generated `tests/test_smoke.py`
+    swaps `TITLE` through `dependency_overrides[get_settings]` and checks
+    that `GET /api/` answers the new value.
 
 ### Guards: route dependency or `@requires` on the method
 
