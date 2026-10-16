@@ -6,8 +6,8 @@ tells your backend through a **webhook** on every change (purchase, renewal,
 cancellation, expiration...). The backend needs three things every service
 ended up writing by hand:
 
-1. **Authenticate** the webhook — and refuse everything when the secret is
-   not configured.
+1. **Authenticate** the webhook — and refuse everything when no secret is
+   configured.
 2. **Record the event exactly once**, answer `200` fast and process later —
    RevenueCat retries, and sometimes sends the same event twice.
 3. **Give up on a poisoned event** after N attempts, instead of retrying it on
@@ -239,17 +239,20 @@ settings = RevenueCatSettings()
 router = make_revenuecat_webhook_router(
     inbox=inbox,
     secret=settings.REVENUECAT_WEBHOOK_SECRET,
-    signing_secret=settings.REVENUECAT_WEBHOOK_SIGNING_SECRET or None,
+    signing_secret=settings.REVENUECAT_WEBHOOK_SIGNING_SECRET,
 )
 ```
 
-With both configured, a delivery must pass both. Rules the SDK applies and the
-tests pin:
+A secret is configured when it holds a value. Every filled secret is
+checked, and with both filled a delivery must pass both; an empty one only
+turns its own check off. That is why the same code serves "header only",
+"HMAC only" and "both", changing nothing but the environment variables.
+Rules the SDK applies and the tests pin:
 
 - constant-time comparison (`hmac.compare_digest`);
 - the `Authorization` header is accepted with or without a `Bearer ` prefix;
-- **an empty secret refuses everything** — a forgotten environment variable
-  does not turn into an open endpoint;
+- **no filled secret refuses everything** (`401`) — a forgotten environment
+  variable does not turn into an open endpoint;
 - `secret=None` together with `signing_secret=None` raises `ValueError` when
   the router is built: there is no unauthenticated route;
 - an HMAC signature outside the 5-minute window is refused. According to the
@@ -259,6 +262,8 @@ tests pin:
 !!! info "Per-request secret"
     `secret` and `signing_secret` also accept a `Callable[[Request], str]` —
     useful for rotation or for a service with several RevenueCat projects.
+    Emptiness is read per request: a function returning `""` turns that
+    check off for that delivery only.
 
 ### 3. The inbox: once, with an attempt budget
 
@@ -413,8 +418,8 @@ customer as the real endpoint would.
 
 | Variable | What for | Empty means |
 | --- | --- | --- |
-| `REVENUECAT_WEBHOOK_SECRET` | the dashboard's *authorization header* value | every delivery is refused (`401`) |
-| `REVENUECAT_WEBHOOK_SIGNING_SECRET` | the HMAC secret, when enabled | the signature is not checked |
+| `REVENUECAT_WEBHOOK_SECRET` | the dashboard's *authorization header* value | the `Authorization` header is not checked; with `REVENUECAT_WEBHOOK_SIGNING_SECRET` empty too, every delivery is refused (`401`) |
+| `REVENUECAT_WEBHOOK_SIGNING_SECRET` | the HMAC secret, when enabled | the signature is not checked; with `REVENUECAT_WEBHOOK_SECRET` empty too, every delivery is refused (`401`) |
 | `REVENUECAT_API_KEY` | secret key (`sk_...`) for `GET /v1/subscribers` | the call goes out with an empty `Bearer `; the reference documents `401` for an invalid key |
 
 Composed with `EnvironmentSettings`, `RevenueCatSettings` fails the boot under
@@ -430,7 +435,8 @@ ValidationError 1 validation error for Settings
 ## Recap
 
 - `make_revenuecat_webhook_router` authenticates, records in the inbox and
-  answers `200`; an empty secret refuses everything.
+  answers `200`; every filled secret is checked, and with none filled every
+  delivery is refused.
 - `WebhookInbox` records each event once, processes it under a claim, commits
   the effect with the mark, and stops at `max_attempts` — and works for any
   provider.

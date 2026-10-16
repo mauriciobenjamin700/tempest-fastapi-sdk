@@ -514,20 +514,18 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (`None` is not a yes — GitHub's `GET /user` never says), and the identity
   keyed on `(provider, subject)`. Account creation defaults to inheriting
   `AUTH_SIGNUP_ENABLED`, so the v0.272.0 kill-switch closes this door too.
-- **Social login asks an account with TOTP for the second factor
-  (unreleased, after 0.313.0)** — issue #543. The callback and
-  `/auth/oauth/{provider}/token` call `authenticate_oauth` (resolves, issues
-  nothing) and branch on `is_mfa_enrolled` like `/login`; `/mfa/verify`
-  stamps `second_factor_amr(mfa_token)` — the first step the `mfa_token`
-  records plus `otp`, so `["ext", "otp"]` here. Tests:
-  `tests/auth/test_oauth_mfa.py`; the routes are `gated` in
-  `tests/test_mfa_token_paths_guard.py`.
-- **Emailed links stamp `amr=["email"]` (unreleased, after 0.313.0)** —
-  issue #543. `/activate` and `/password-reset/confirm` issue
-  `AMR_EMAIL_LINK` instead of `["pwd"]` (no password is checked on either);
-  with TOTP the challenge verifies to `["email", "otp"]`. Outside
-  `MFA_AMR_METHODS`, so the gate still refuses it. Tests:
-  `tests/auth/test_email_link_amr.py`.
+- **Login social pede o segundo fator à conta com TOTP (0.314.0, #543)** —
+  o callback e o `/auth/oauth/{provider}/token` chamam `authenticate_oauth`
+  (resolve a conta, não emite nada) e ramificam em `is_mfa_enrolled` como o
+  `/login`; o `/mfa/verify` carimba `second_factor_amr(mfa_token)` — o
+  primeiro passo que o `mfa_token` registra mais `otp`, então
+  `["ext", "otp"]` aqui. Testes: `tests/auth/test_oauth_mfa.py`; as rotas
+  estão como `gated` em `tests/test_mfa_token_paths_guard.py`.
+- **Link enviado por e-mail carimba `amr=["email"]` (0.314.0, #543)** — o
+  `/activate` e o `/password-reset/confirm` emitem `AMR_EMAIL_LINK` em vez
+  de `["pwd"]` (nenhum dos dois confere senha); com TOTP, o desafio verifica
+  para `["email", "otp"]`. Fica fora de `MFA_AMR_METHODS`, então o gate de
+  MFA continua recusando. Testes: `tests/auth/test_email_link_amr.py`.
 - **Offline verification of OIDC realm tokens (v0.297.0)** — issue #288.
   `OIDCTokenVerifier(issuer, jwks_url, algorithms=("RS256",), ...)` plugs
   into `OIDCProvider(token_verifier=...)`, which then reads the audience and
@@ -832,7 +830,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `BatchScheduler` resolves every future on every path; per-tokenizer
   lm-format-enforcer index cache; `truncate_messages` keeps tool calls with
   their results; `HTTPClient.stream` no longer replays after the first line.
-- **Provedores hospedados (#539, extra `[genai-hosted]`)** —
+- **Provedores hospedados (0.314.0, #539, extra `[genai-hosted]`)** —
   `AnthropicGenerator` (Messages API) e `OpenAICompatGenerator` (OpenAI,
   DeepSeek) nos mesmos protocolos do `OllamaGenerator`: `generate`/`chat`/
   `stream`, `chat_with_tools` (o `Agent` roda sobre qualquer um), e
@@ -3337,7 +3335,7 @@ só o `between` malformado. Testes: `tests/db/test_expressions.py` (recusa do
 `tests/db/test_repository.py::TestInvalidFilterValueOnWrites` (prova que nada é
 escrito).
 
-## Reset de senha e reativação pedem o segundo fator, e o reset revoga sessões (#534)
+## Reset de senha e reativação pedem o segundo fator, e o reset revoga sessões (0.314.0, #534)
 
 `POST /auth/password-reset/confirm` e `POST /auth/activate/{token}` passam a
 espelhar o `/login`: com TOTP inscrito e `AUTH_MFA_ENABLED=True`, respondem
@@ -3397,7 +3395,7 @@ teste. `BaseIntEnum`, `StrEnum` e `Enum` cru ficam de fora. Teste:
 `tests/cli/test_layer_lint.py::TestEnumSuffix` e os de scaffold (o exemplo
 `ProductStatusEnum` do `CLAUDE.md` gravado no projeto passa).
 
-## Inbox de webhook e assinatura in-app pelo RevenueCat (#528)
+## Inbox de webhook e assinatura in-app pelo RevenueCat (0.314.0, #528)
 
 `tempest_fastapi_sdk/db/webhook_inbox.py`: `BaseWebhookEventModel` (unique
 `(provider, external_id)` declarado na base) + `WebhookInbox` — `record`
@@ -3408,7 +3406,9 @@ backoff exponencial até `max_attempts` → `FAILED`, `reclaim_stale`,
 que até aqui deixavam a persistência ao consumidor.
 
 `tempest_fastapi_sdk/integrations/subscriptions/revenuecat/`: autenticação
-(header `Authorization` + HMAC opcional, segredo vazio recusa tudo), router
+(header `Authorization` + HMAC opcional; cada segredo preenchido é
+conferido, o vazio desliga só a própria checagem, e nenhum preenchido recusa
+tudo), router
 que grava no inbox e responde `200`, modelos do evento e do customer info v1
 (`subscriber_attributes` fora do `model_dump`), `normalize` sobre os 21 tipos
 documentados, `RevenueCatClient.get_subscriber`, `RevenueCatSettings`,

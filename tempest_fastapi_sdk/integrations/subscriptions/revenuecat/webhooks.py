@@ -16,10 +16,15 @@ both described on https://www.revenuecat.com/docs/integrations/webhooks:
   POST".
 
 :func:`make_revenuecat_webhook_dependency` checks whichever you configure —
-both, when both are set. The comparison is constant time
-(:func:`hmac.compare_digest`) and **an empty secret refuses every delivery**:
-an unset environment variable must not turn the endpoint into one that
-accepts anything.
+both, when both are set. A secret counts as configured when it resolves to a
+non-empty value for the request at hand, so an empty
+``REVENUECAT_WEBHOOK_SECRET`` next to a filled signing secret means "HMAC
+only", exactly as
+:meth:`~tempest_fastapi_sdk.settings.RevenueCatSettings.production_violations`
+reads it. The comparison is constant time (:func:`hmac.compare_digest`) and
+**when neither secret resolves to a value, every delivery is refused**: an
+unset environment variable must not turn the endpoint into one that accepts
+anything.
 
 The same page says RevenueCat retries a non-``200`` answer "up to 5 times"
 (after 5, 10, 20, 40 and 80 minutes), disconnects after 60 seconds, and
@@ -246,6 +251,23 @@ def _resolve(source: SecretSource, request: Request) -> str:
     return source(request) if callable(source) else source
 
 
+def _is_configured(secret: str) -> bool:
+    """Tell whether a resolved secret holds a value.
+
+    The single rule both checks share: a secret is configured when, with
+    whitespace and an optional ``Bearer `` prefix removed, something is
+    left. ``""``, ``"  "`` and ``"Bearer "`` are all unconfigured. The prefix
+    never appears in a signing secret, so stripping it there changes nothing.
+
+    Args:
+        secret (str): The secret resolved for this request.
+
+    Returns:
+        bool: ``True`` when the secret holds a value.
+    """
+    return bool(_without_bearer(secret))
+
+
 def make_revenuecat_webhook_dependency(
     secret: SecretSource | None,
     *,
@@ -255,12 +277,20 @@ def make_revenuecat_webhook_dependency(
 ) -> Callable[..., Coroutine[Any, Any, RevenueCatWebhookDelivery]]:
     """Build a FastAPI dependency that authenticates and parses a delivery.
 
+    Each secret is resolved per request, and every one that resolves to a
+    value must pass. So ``secret=""`` with a filled ``signing_secret`` is
+    HMAC only, and the reverse is ``Authorization`` only — the reading
+    :class:`~tempest_fastapi_sdk.settings.RevenueCatSettings` applies at boot.
+    When neither resolves to a value the request is refused: emptiness fails
+    closed, it never opens the endpoint.
+
     Args:
         secret (SecretSource | None): The ``Authorization`` value configured
             in the dashboard, or a function returning it per request.
-            ``None`` skips this check — allowed only with ``signing_secret``.
+            ``None`` or a value that resolves to empty skips this check.
         signing_secret (SecretSource | None): The HMAC signing secret, when
-            signing is enabled on the integration.
+            signing is enabled on the integration. ``None`` or a value that
+            resolves to empty skips this check.
         tolerance_seconds (int): Signature timestamp window, in seconds.
         error_message (str): Message of the 401.
 
@@ -272,7 +302,8 @@ def make_revenuecat_webhook_dependency(
         ValueError: When both ``secret`` and ``signing_secret`` are
             ``None`` — that endpoint would accept anyone.
         UnauthorizedException: (401, from the dependency) When a configured
-            check fails: header missing, wrong, or the secret empty.
+            check fails (header missing or wrong), or when neither secret
+            resolves to a value for this request.
         ValidationException: (422, from the dependency) When an
             authenticated body is not a valid event.
     """
@@ -296,15 +327,21 @@ def make_revenuecat_webhook_dependency(
             ValidationException: If the body is not a valid event.
         """
         body = await request.body()
-        if secret is not None and not verify_authorization(
+        authorization = "" if secret is None else _resolve(secret, request)
+        signing = "" if signing_secret is None else _resolve(signing_secret, request)
+        checks_authorization = _is_configured(authorization)
+        checks_signature = _is_configured(signing)
+        if not checks_authorization and not checks_signature:
+            raise UnauthorizedException(error_message)
+        if checks_authorization and not verify_authorization(
             request.headers.get(REVENUECAT_AUTHORIZATION_HEADER, ""),
-            _resolve(secret, request),
+            authorization,
         ):
             raise UnauthorizedException(error_message)
-        if signing_secret is not None and not verify_signature(
+        if checks_signature and not verify_signature(
             body,
             request.headers.get(REVENUECAT_SIGNATURE_HEADER, ""),
-            _resolve(signing_secret, request),
+            signing,
             tolerance_seconds=tolerance_seconds,
         ):
             raise UnauthorizedException(error_message)
