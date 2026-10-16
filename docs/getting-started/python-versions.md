@@ -7,23 +7,24 @@ Com o `uv` instalado ([página anterior](uv.md)), o Python deixa de ser algo que
 O SDK declara o piso no `pyproject.toml`:
 
 ```toml
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 ```
 
-Isso significa: **3.11 é o mínimo**, e qualquer versão acima serve. A política completa:
+Isso significa: **3.12 é o mínimo**. A política completa:
 
 | Python | Status |
 | --- | --- |
+| 3.14 | Suportado |
 | 3.13 | Suportado — a versão do `.python-version` do repositório |
-| 3.12 | Suportado |
-| 3.11 | Suportado (mínimo) |
+| 3.12 | Suportado (mínimo) |
+| 3.11 | Não suportado desde a 0.314.0 — fica na 0.313.x ([migração](../migration.md)) |
 | 3.10 e anteriores | Não suportado |
 
 !!! tip "Na dúvida, use 3.13"
     É a que o `.python-version` do repositório fixa, então é onde o SDK é
-    desenvolvido. O CI roda o gate inteiro (lint, tipos, testes e o smoke da
-    wheel) nas três versões a cada push na `main` e em todo PR, uma job por
-    versão. Use 3.11 só quando algo fora do seu controle exigir (uma imagem Docker antiga, um servidor legado).
+    desenvolvido. A suíte inteira roda nas três versões suportadas com
+    `make test-matrix`, uma venv por versão. Use 3.12 só quando algo fora do
+    seu controle exigir (uma imagem Docker antiga, um servidor legado).
 
 !!! info "Como o Python numera versões"
     `3.13.2` é `major.minor.patch`. Quem quebra compatibilidade é o **minor** (3.12 → 3.13); o patch (3.13.1 → 3.13.2) só corrige bugs e segurança. Por isso a gente fixa "3.13" e deixa o patch flutuar. O calendário de suporte de cada versão está em <https://devguide.python.org/versions/>.
@@ -39,7 +40,7 @@ A saída lista tudo que o `uv` conhece — versões já baixadas por ele, versõ
 ```text
 cpython-3.13.2-linux-x86_64-gnu     /home/você/.local/share/uv/python/cpython-3.13.2/bin/python3.13
 cpython-3.12.9-linux-x86_64-gnu     <download available>
-cpython-3.11.11-linux-x86_64-gnu    /usr/bin/python3.11
+cpython-3.14.6-linux-x86_64-gnu     /usr/bin/python3.14
 ```
 
 Só o que já está instalado:
@@ -57,7 +58,7 @@ uv python install 3.13
 Pode instalar várias de uma vez — útil para testar o mesmo código nas três versões suportadas:
 
 ```bash
-uv python install 3.11 3.12 3.13
+uv python install 3.12 3.13 3.14
 ```
 
 !!! note "Isso não mexe no Python do sistema"
@@ -88,7 +89,7 @@ Iniciante confunde os dois o tempo todo. A diferença:
 
 | Arquivo | Diz o quê | Quem lê |
 | --- | --- | --- |
-| `pyproject.toml` → `requires-python` | a **faixa** que o código suporta, ex. `>=3.11` | quem instala o seu pacote (inclusive o PyPI) |
+| `pyproject.toml` → `requires-python` | a **faixa** que o código suporta, ex. `>=3.12` | quem instala o seu pacote (inclusive o PyPI) |
 | `.python-version` | a versão **exata** que este checkout usa, ex. `3.13` | o `uv`, na sua máquina e na CI |
 
 Um é contrato público, o outro é preferência local. Ambos convivem.
@@ -106,29 +107,30 @@ Isso cria `.venv/` usando 3.12, ignorando o `.python-version` só desta vez. Na 
 ## Rode algo em outra versão, pontualmente
 
 ```bash
-uv run --python 3.11 python -c "import sys; print(sys.version)"
+uv run --python 3.12 python -c "import sys; print(sys.version)"
 ```
 
 Ou via variável de ambiente, que vale para o comando inteiro:
 
 ```bash
-UV_PYTHON=3.11 uv run pytest
+UV_PYTHON=3.12 uv run pytest
 ```
 
 !!! example "É assim que o SDK roda os próprios gates"
-    O CI do `tempest-fastapi-sdk` roda uma job por versão (3.11, 3.12 e 3.13)
-    com `UV_PYTHON` apontando para ela. É o `UV_PYTHON` que faz a matriz valer:
-    ele tem precedência sobre o `.python-version` (que fixa 3.13), e sem ele as
-    três jobs montavam o mesmo venv 3.13. O `make release` local roda o
+    O `make test-matrix` do `tempest-fastapi-sdk` roda a suíte uma vez por
+    versão (3.12, 3.13 e 3.14), cada uma com `--python` apontando para ela e
+    numa venv própria. Escolher o interpretador explicitamente é o que faz a
+    matriz valer: sem isso o `.python-version` (que fixa 3.13) ganha, e as três
+    rodadas montam o mesmo venv 3.13. O `make release` local roda o
     `make check` no Python do `.python-version` e o smoke da wheel num venv
-    3.11, o piso.
+    3.12, o piso.
 
 ## Teste nas três versões suportadas
 
 Vale para qualquer serviço que você publique:
 
 ```bash
-for v in 3.11 3.12 3.13; do
+for v in 3.12 3.13 3.14; do
     echo "=== Python $v ==="
     UV_PYTHON=$v uv run --isolated pytest -q
 done
@@ -139,7 +141,7 @@ O `--isolated` faz o `uv` montar um ambiente temporário por rodada, em vez de r
 ## Remova o que não usa
 
 ```bash
-uv python uninstall 3.11
+uv python uninstall 3.12
 ```
 
 ## Quando der errado
@@ -164,8 +166,8 @@ uv python uninstall 3.11
     uv python pin 3.13
     ```
 
-??? failure "`The requested interpreter resolved to Python 3.10.x, which is incompatible with the project`"
-    A versão resolvida está abaixo do `requires-python`. É o SDK protegendo você de instalar algo que não roda. Instale e fixe uma versão suportada (3.11+).
+??? failure "`The requested interpreter resolved to Python 3.11.x, which is incompatible with the project`"
+    A versão resolvida está abaixo do `requires-python`. É o SDK protegendo você de instalar algo que não roda. Instale e fixe uma versão suportada (3.12+).
 
 ## Recapitulando
 

@@ -470,6 +470,10 @@ until the last token, or until one token after you close the iterator).
 
 ## Hosted backend (DeepSeek, Groq, OpenRouter, vLLM...)
 
+!!! tip "Anthropic, OpenAI and DeepSeek"
+
+    This section covers `OpenAICompatGenerator` itself. For Claude (`AnthropicGenerator`), tool calling, structured output, embeddings, settings (`HostedGenAISettings`) and typed errors, see [Hosted generative AI](genai-hosted.md).
+
 Not every service wants to hold weights: sometimes the budget that matters
 is **cost per token**, not RAM. OpenAI's `/chat/completions` format became
 the common denominator — DeepSeek, Groq, Together, OpenRouter, Mistral,
@@ -482,7 +486,7 @@ import asyncio
 from tempest_fastapi_sdk.genai import OpenAICompatGenerator
 
 gen = OpenAICompatGenerator(
-    "deepseek-chat",
+    "deepseek-flash",
     api_key="sk-...",                        # never hardcoded: read it from settings
     base_url="https://api.deepseek.com",
 )
@@ -516,7 +520,7 @@ import asyncio
 from tempest_fastapi_sdk.genai import OpenAICompatGenerator, TokenUsage
 
 gen = OpenAICompatGenerator(
-    "deepseek-chat",
+    "deepseek-flash",
     api_key="sk-...",
     base_url="https://api.deepseek.com",
 )
@@ -561,7 +565,7 @@ import asyncio
 from tempest_fastapi_sdk.genai import OpenAICompatGenerator, TokenUsage
 
 gen = OpenAICompatGenerator(
-    "deepseek-chat",
+    "deepseek-flash",
     api_key="sk-...",
     base_url="https://api.deepseek.com",
 )
@@ -605,7 +609,7 @@ accidentally redirect the call to another model.
 from tempest_fastapi_sdk.genai import OpenAICompatGenerator
 
 gen = OpenAICompatGenerator(
-    "deepseek-chat",
+    "deepseek-flash",
     api_key="sk-...",
     base_url="https://api.deepseek.com",
     extra_body={"thinking": {"type": "disabled"}},
@@ -2461,7 +2465,7 @@ class Task(BaseModel):
 
 
 gen = OpenAICompatGenerator(
-    "deepseek-chat",
+    "deepseek-flash",
     api_key="sk-...",
     base_url="https://api.deepseek.com",
 )

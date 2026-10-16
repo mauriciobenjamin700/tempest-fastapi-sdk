@@ -4,7 +4,7 @@
 # Override defaults: `make release VERSION=0.2.0`.
 
 PACKAGE := tempest_fastapi_sdk
-PYTHON_VERSION := 3.11
+PYTHON_VERSION := 3.12
 
 .DEFAULT_GOAL := help
 .PHONY: help install sync clean openpix-regen mercadopago-regen mercadopago-fetch stripe-regen stripe-fetch zap-regen zap-fetch zap-ws-regen zap-ws-fetch test test-cov test-model test-gpu cov lint fix fmt fmt-check type check ci build smoke release tag version docs docs-serve docs-build
@@ -48,11 +48,11 @@ test-cov: ## Run pytest in parallel with the coverage report
 # The Python matrix CI used to run. Each version gets its own venv outside
 # the repository (an in-repo `.venv-3.x` would ship in the sdist), synced
 # from the committed lock with every extra.
-MATRIX_PYTHONS := 3.11 3.12 3.13
+MATRIX_PYTHONS := 3.12 3.13 3.14
 MATRIX_VENVS := $(HOME)/.cache/tempest-fastapi-sdk/venvs
 
 .PHONY: test-matrix
-test-matrix: ## Run the suite on every supported Python (3.11, 3.12, 3.13)
+test-matrix: ## Run the suite on every supported Python (3.12, 3.13, 3.14)
 	@for v in $(MATRIX_PYTHONS); do \
 		echo "== Python $$v"; \
 		UV_PROJECT_ENVIRONMENT=$(MATRIX_VENVS)/$$v uv sync --locked --all-extras --python $$v --quiet || exit 1; \

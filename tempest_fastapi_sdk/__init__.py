@@ -1485,6 +1485,9 @@ from tempest_fastapi_sdk.settings import (
     HostBridgeSettings as HostBridgeSettings,
 )
 from tempest_fastapi_sdk.settings import (
+    HostedGenAISettings as HostedGenAISettings,
+)
+from tempest_fastapi_sdk.settings import (
     JWTSettings as JWTSettings,
 )
 from tempest_fastapi_sdk.settings import (
@@ -2067,7 +2070,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
 )
 
-__version__: str = "0.312.1"
+__version__: str = "0.313.0"
 
 from tempest_fastapi_sdk.api import (
     OAuthAudienceVerifier as OAuthAudienceVerifier,
@@ -2400,6 +2403,7 @@ __all__: list[str] = [
     "HexColorField",
     "HoneypotBanMiddleware",
     "HostBridgeSettings",
+    "HostedGenAISettings",
     "IdempotencyMiddleware",
     "IdempotencyStore",
     "InMemoryThrottleBackend",

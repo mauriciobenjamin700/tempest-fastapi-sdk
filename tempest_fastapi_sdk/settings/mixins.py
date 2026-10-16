@@ -3136,6 +3136,160 @@ class GenAISettings(BaseAppSettings):
     )
 
 
+class HostedGenAISettings(BaseAppSettings):
+    """Keys, endpoints and models of the hosted generation providers.
+
+    Kept apart from :class:`GenAISettings`, which is about local weights: a
+    service that only calls a hosted API has no cache directory to declare,
+    and one that runs both composes the two.
+
+    Each ``*_kwargs()`` returns what the matching backend's constructor
+    takes, so building it is a splat::
+
+        AnthropicGenerator(**settings.anthropic_kwargs())
+        OpenAICompatGenerator(**settings.openai_kwargs())
+        OpenAICompatGenerator(**settings.deepseek_kwargs())
+
+    The mapping is also where the per-provider wire differences live: the
+    OpenAI kwargs send ``max_new_tokens`` as ``max_completion_tokens`` (the
+    OpenAI spec marks ``max_tokens`` deprecated) and ask for JSON with
+    ``json_schema``; the DeepSeek kwargs keep ``max_tokens`` and use
+    ``json_object``, the only JSON mode DeepSeek documents
+    (https://api-docs.deepseek.com/guides/json_mode).
+
+    An empty key is not rejected here — a service may configure one provider
+    and not the others — but the backend constructor raises ``ValueError``
+    on it, and :meth:`openai_kwargs` raises when ``OPENAI_MODEL`` is unset.
+
+    Each attribute is also the name of the environment variable that sets it
+    (case-sensitive, no prefix).
+
+    Attributes:
+        ANTHROPIC_API_KEY (str): Anthropic API key. Default: ``""``.
+        ANTHROPIC_BASE_URL (str): API root; ``/v1/messages`` is appended.
+            Default: ``"https://api.anthropic.com"``.
+        ANTHROPIC_MODEL (str): Model id. Default: ``"claude-opus-5-5"``.
+        OPENAI_API_KEY (str): OpenAI API key. Default: ``""``.
+        OPENAI_BASE_URL (str): API root; ``/chat/completions`` is appended.
+            Default: ``"https://api.openai.com/v1"``.
+        OPENAI_MODEL (str): Model id. No default: OpenAI model ids are not
+            hard-coded in this SDK. Default: ``""``.
+        DEEPSEEK_API_KEY (str): DeepSeek API key. Default: ``""``.
+        DEEPSEEK_BASE_URL (str): API root. Default:
+            ``"https://api.deepseek.com"``.
+        DEEPSEEK_MODEL (str): Model id. Default: ``"deepseek-flash"``.
+    """
+
+    ANTHROPIC_API_KEY: str = Field(
+        default="",
+        title="Anthropic API key",
+        description="Sent as the ``x-api-key`` header of the Messages API.",
+        examples=["", "sk-ant-..."],
+    )
+    ANTHROPIC_BASE_URL: str = Field(
+        default="https://api.anthropic.com",
+        title="Anthropic API root",
+        description="Requests go to ``{ANTHROPIC_BASE_URL}/v1/messages``.",
+        examples=["https://api.anthropic.com"],
+    )
+    ANTHROPIC_MODEL: str = Field(
+        default="claude-opus-5-5",
+        title="Anthropic model",
+        description="Model id passed to ``AnthropicGenerator``.",
+        examples=["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+    )
+    OPENAI_API_KEY: str = Field(
+        default="",
+        title="OpenAI API key",
+        description="Sent as ``Authorization: Bearer``.",
+        examples=["", "sk-..."],
+    )
+    OPENAI_BASE_URL: str = Field(
+        default="https://api.openai.com/v1",
+        title="OpenAI API root",
+        description="Requests go to ``{OPENAI_BASE_URL}/chat/completions``.",
+        examples=["https://api.openai.com/v1"],
+    )
+    OPENAI_MODEL: str = Field(
+        default="",
+        title="OpenAI model",
+        description=(
+            "Model id passed to ``OpenAICompatGenerator``. Required by "
+            "``openai_kwargs()``; there is no default."
+        ),
+        examples=[""],
+    )
+    DEEPSEEK_API_KEY: str = Field(
+        default="",
+        title="DeepSeek API key",
+        description="Sent as ``Authorization: Bearer``.",
+        examples=["", "sk-..."],
+    )
+    DEEPSEEK_BASE_URL: str = Field(
+        default="https://api.deepseek.com",
+        title="DeepSeek API root",
+        description="Requests go to ``{DEEPSEEK_BASE_URL}/chat/completions``.",
+        examples=["https://api.deepseek.com"],
+    )
+    DEEPSEEK_MODEL: str = Field(
+        default="deepseek-flash",
+        title="DeepSeek model",
+        description="Model id passed to ``OpenAICompatGenerator``.",
+        examples=["deepseek-flash", "deepseek-v4-pro"],
+    )
+
+    def anthropic_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto ``AnthropicGenerator``.
+
+        Returns:
+            dict[str, Any]: ``model``, ``api_key`` and ``base_url``.
+        """
+        return {
+            "model": self.ANTHROPIC_MODEL,
+            "api_key": self.ANTHROPIC_API_KEY,
+            "base_url": self.ANTHROPIC_BASE_URL,
+        }
+
+    def openai_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto ``OpenAICompatGenerator`` for OpenAI.
+
+        Returns:
+            dict[str, Any]: ``model``, ``api_key``, ``base_url``,
+            ``provider="openai"``, ``max_tokens_field="max_completion_tokens"``
+            and ``structured_output="json_schema"``.
+
+        Raises:
+            ValueError: When ``OPENAI_MODEL`` is empty.
+        """
+        if not self.OPENAI_MODEL:
+            raise ValueError(
+                "OPENAI_MODEL is empty; set it to the OpenAI model id to call.",
+            )
+        return {
+            "model": self.OPENAI_MODEL,
+            "api_key": self.OPENAI_API_KEY,
+            "base_url": self.OPENAI_BASE_URL,
+            "provider": "openai",
+            "max_tokens_field": "max_completion_tokens",
+            "structured_output": "json_schema",
+        }
+
+    def deepseek_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto ``OpenAICompatGenerator`` for DeepSeek.
+
+        Returns:
+            dict[str, Any]: ``model``, ``api_key``, ``base_url``,
+            ``provider="deepseek"`` and ``structured_output="json_object"``.
+        """
+        return {
+            "model": self.DEEPSEEK_MODEL,
+            "api_key": self.DEEPSEEK_API_KEY,
+            "base_url": self.DEEPSEEK_BASE_URL,
+            "provider": "deepseek",
+            "structured_output": "json_object",
+        }
+
+
 class OpenPixSettings(BaseAppSettings):
     """OpenPix / Woovi credentials and environment.
 
@@ -3488,6 +3642,7 @@ __all__: list[str] = [
     "FirebaseSettings",
     "GenAISettings",
     "HostBridgeSettings",
+    "HostedGenAISettings",
     "JWTSettings",
     "LogSettings",
     "MercadoPagoSettings",

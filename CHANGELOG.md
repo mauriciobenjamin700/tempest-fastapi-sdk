@@ -7,7 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.313.0] — 2026-10-13
+### Added
+
+- Provedores hospedados intercambiáveis com o Ollama (#539). O
+  `AnthropicGenerator` fala a Messages API (`POST /v1/messages`, headers
+  `x-api-key` + `anthropic-version`, SSE tipado, `tool_use`/`tool_result`,
+  `output_config.format`) e cumpre os mesmos protocolos que o
+  `OllamaGenerator` — `TextBackend`, `StructuredTextBackend` e o
+  `ToolCallingBackend` do `Agent` —, traduzindo `system`, `tool_calls` e
+  resultados de ferramenta nos dois sentidos. O `OpenAICompatGenerator` ganhou
+  `chat_with_tools` e `chat_structured` (`response_format` `json_schema`, ou
+  `json_object` para o DeepSeek, `structured_output=`), `provider=` e
+  `max_tokens_field=`; o `OpenAICompatEmbedder` novo cumpre o `SupportsEmbed`
+  sobre `/embeddings`. O mixin `HostedGenAISettings` traz
+  `ANTHROPIC_*`/`OPENAI_*`/`DEEPSEEK_*` (`API_KEY`, `BASE_URL`, `MODEL`) e
+  `anthropic_kwargs()` / `openai_kwargs()` / `deepseek_kwargs()`. Extra
+  `[genai-hosted]` (só `httpx`, que já é base). Sem SDK de fornecedor: o
+  `anthropic` 1.15.0 e o `openai` 3.31.0 exigem `httpx2` e trazem tetos de
+  versão por um POST e um leitor de SSE. Os testes rodam sobre
+  `httpx.MockTransport` reproduzindo as respostas documentadas — nenhuma
+  chamada a provedor real foi feita; o comportamento contra as APIs vivas é o
+  que a documentação de cada uma descreve. Receita:
+  `docs/recipes/genai-hosted.md`.
+- Erros tipados dos backends hospedados: `HostedAPIError` e as subclasses
+  `HostedAuthenticationError` (401/403), `HostedRateLimitError` (429, com
+  `retry_after` do header) e `HostedServerError` (5xx, incluindo o 529 da
+  Anthropic e o `event: error` que chega no meio do stream), com `provider`,
+  `error_type`, `detail` e `request_id`.
+
+### Changed
+
+- `OpenAICompatGenerator` levanta a família `HostedAPIError` em vez de
+  `httpx.HTTPStatusError` cru. Toda classe nova herda de
+  `httpx.HTTPStatusError`, então `except httpx.HTTPStatusError` continua
+  pegando tudo. Histórico de conversa com `tool_calls` de outro backend
+  (`arguments` como dict) é serializado para a string que o formato OpenAI
+  exige antes do envio.
+
+- **Quebra de compatibilidade: Python 3.11 deixa de ser suportado.**
+  `requires-python` sobe para `>=3.12` e as versões suportadas passam a ser
+  3.12, 3.13 e 3.14 (classifiers, `make test-matrix`, smoke da wheel no
+  piso 3.12 no `make smoke` e no `release-pypi.yml`). Quem está em 3.11 fica
+  na 0.313.x; o passo a passo está no guia de migração. Medido: num
+  interpretador 3.11 o `uv` recusa o projeto com `The requested interpreter
+  resolved to Python 3.11.12, which is incompatible with the project's Python
+  requirement: >=3.12` (#547).
+- O `uv.lock` perdeu o split do 3.11: saíram `tomli`, `async-timeout` e
+  `audioread`, e `numpy` (2.5.2), `scipy` (1.18.1) e `librosa` (1.0.0)
+  ficaram com uma versão só. Todos os extras instalam e importam em 3.14
+  (`uv sync --locked --all-extras --python 3.14`, CPython 3.14.6), sem
+  marcador de ambiente.
+- ruff mira `py312` e mypy `python_version = "3.12"`, no SDK e no
+  `pyproject.toml` gerado pelo `tempest new`. As regras PEP 695 que o alvo
+  novo liga (`UP047`, 32 ocorrências, e `UP040`, 4) ficam desligadas, como
+  já estava a `UP046`: reescrever genéricos é outra decisão. O override do
+  mypy para `librosa`, que só existia por causa do alvo 3.11, saiu.
+
+## [0.313.0] — 2026-10-15
 
 ### Added
 

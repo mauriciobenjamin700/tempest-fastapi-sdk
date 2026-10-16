@@ -6,7 +6,7 @@
 pip install tempest-fastapi-sdk
 ```
 
-Requer **Python 3.11+**.
+Requer **Python 3.12+** (3.12, 3.13 e 3.14).
 
 !!! tip "Use o `uv`"
     `uv add tempest-fastapi-sdk` é mais rápido e já escreve no `pyproject.toml` para você.
@@ -43,6 +43,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[genai-audio]` | `faster-whisper`, `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `transformers<5` | STT (Whisper) + TTS (Coqui) — o runtime do Coqui vem junto desde a v0.252.0. O teto `transformers<5` é intencional e rebaixa `huggingface-hub`, `tokenizers` e `diffusers`: veja [o aviso abaixo da tabela](#genai-audio-transformers-bound) |
 | `[genai-chroma]` | `chromadb` | vector store Chroma pro RAG |
 | `[genai-diarization]` | `sherpa-onnx` | diarização (quem falou quando) via `sherpa-onnx` em ONNX Runtime, sem PyTorch: `SpeakerDiarizer`, `ConversationTranscriber`. Modelos (46 MB) baixados por `ensure_models()` |
+| `[genai-hosted]` | `httpx` (já vem no pacote base) | provedores hospedados: `AnthropicGenerator`, `OpenAICompatGenerator` (OpenAI, DeepSeek), `OpenAICompatEmbedder`, `HostedGenAISettings`. Nenhum SDK de fornecedor |
 | `[genai-hub]` | `huggingface-hub` | ciclo de vida do peso: `resolve_revision` (fixar sha), `download_model` (baixar antes de servir, com preflight de disco), `list_cached_models`/`remove_cached_model`, `tempest model pull`/`cache-list`/`cache-rm` |
 | `[genai-image]` | `diffusers`, `pillow` | geração de imagem local: `ImageGenerator` (`generate` texto→imagem, `edit` imagem→imagem), `ImageGenerationConfig`, rota `POST /image` |
 | `[genai-ollama]` | `httpx` | backend Ollama: `OllamaGenerator`, `OllamaEmbedder` |
@@ -171,7 +172,8 @@ python -c "import tempest_fastapi_sdk; print(tempest_fastapi_sdk.__version__)"
 
 | Python | Status |
 | --- | --- |
-| 3.13 | Matriz principal do CI |
-| 3.12 | Suportado |
-| 3.11 | Suportado (mínimo) |
+| 3.14 | Suportado |
+| 3.13 | Suportado — a versão do `.python-version` do repositório |
+| 3.12 | Suportado (mínimo) |
+| 3.11 | Não suportado desde a 0.314.0 — fica na 0.313.x ([migração](migration.md)) |
 | 3.10 e anteriores | Não suportado (usa a sintaxe ``X | None`` do PEP 604) |

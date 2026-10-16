@@ -1,9 +1,9 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.312.1"
+version = "0.313.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [
     { name = "Mauricio Benjamin", email = "mauricio.benjamin@reloverelations.com" },
@@ -24,9 +24,9 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
@@ -225,6 +225,16 @@ faces = [
     "numpy>=2.4.6",
 ]
 genai-ollama = [
+    "httpx>=0.28.1",
+]
+genai-hosted = [
+    # Anthropic, OpenAI and DeepSeek over plain HTTP. httpx is already a base
+    # dependency; the extra exists so a service names the capability it uses,
+    # the same way [genai-ollama] does. The vendor SDKs are deliberately not
+    # here: anthropic 1.15.0 and openai 3.31.0 both require httpx2 (a second
+    # HTTP stack, which the SDK's HTTPClient and httpx.MockTransport do not
+    # reach) plus jiter/anyio/sniffio with upper bounds, for one POST and an
+    # SSE reader.
     "httpx>=0.28.1",
 ]
 genai-chroma = [
@@ -468,7 +478,7 @@ docs = [
 
 [tool.ruff]
 line-length = 88
-target-version = "py311"
+target-version = "py312"
 src = [".", "tests"]
 # ruff 0.16 started formatting code blocks inside Markdown. Left off here:
 # the docs deliberately align trailing comments into columns for teaching,
@@ -496,6 +506,12 @@ ignore = [
     "B008",
     "B006",
     "UP046",
+    # PEP 695 syntax (``def f[T](...)``, ``type X = ...``). Raising the floor
+    # to 3.12 made both rules fire: 32 UP047 + 4 UP040 hits in the package on
+    # the day of the switch. Rewriting them is a separate decision from
+    # dropping 3.11, so they stay off -- like UP046 above -- until then.
+    "UP040",
+    "UP047",
     # ``Any`` is a legitimate annotation. We enforce that things ARE
     # annotated, never that they avoid ``Any`` -- so ANN401 stays off.
     "ANN401",
@@ -524,7 +540,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
@@ -626,32 +642,15 @@ module = [
 ]
 ignore_missing_imports = true
 
-# numpy (pulled in transitively via ort-vision-sdk) ships stubs that use
-# the 3.12+ ``type X = ...`` statement, which mypy rejects while targeting
-# python_version 3.11. We never type-check against numpy internals, so skip
-# following its stubs entirely.
+# numpy (pulled in transitively via ort-vision-sdk) is not type-checked: we
+# never check against numpy internals, so skip following its stubs entirely.
+# It started as a 3.11 workaround (the stubs use the 3.12 ``type X = ...``
+# statement); with the 3.12 floor that reason is gone, but dropping the
+# override makes mypy follow the stubs and fail on
+# genai/audio/diarization.py (``no-any-return``), so it stays. The librosa
+# override that had only the 3.11 reason was removed with the floor.
 [[tool.mypy.overrides]]
 module = ["numpy", "numpy.*"]
-follow_imports = "skip"
-follow_imports_for_stubs = true
-ignore_errors = true
-ignore_missing_imports = true
-
-# librosa (transitive, via [genai-audio]) is the same story as numpy above,
-# and it only appears once the floors move: librosa 1.0.0 requires Python
-# >=3.12 while 0.11.0 requires >=3.8, so the lock carries both and only the
-# 3.12+ split resolves the newer one. That one uses the 3.12 ``type X = ...``
-# statement, which mypy rejects while targeting python_version 3.11:
-#
-#   librosa/beat.py:26: error: Type statement is only supported in Python
-#   3.12 and greater  [syntax]
-#
-# Measured the hard way in v0.283.0: the gate ran green locally on 3.11,
-# where the lock gives librosa 0.11.0, and failed in CI on 3.13. A local
-# `make check` is not evidence about CI when a dependency resolves per
-# Python split -- check `uv.lock` for a second version of the package first.
-[[tool.mypy.overrides]]
-module = ["librosa", "librosa.*"]
 follow_imports = "skip"
 follow_imports_for_stubs = true
 ignore_errors = true

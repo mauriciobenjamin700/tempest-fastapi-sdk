@@ -129,7 +129,7 @@ stt = SpeechToText(
 )
 
 llm = OpenAICompatGenerator(
-    "deepseek-chat",
+    "deepseek-flash",
     api_key="sk-...",
     base_url="https://api.deepseek.com/v1",
 )
