@@ -1138,7 +1138,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   a camada `tasks`, Redis no compose e `TASKIQ_BROKER_URL=redis://` no
   `Settings`. Templates com blocos `@@if <extra>@@`. Testes:
   `tests/cli/test_new_required_extras.py`.
-- **Scaffold com fábricas de controller (Unreleased)** — o `tempest new`
+- **Scaffold com fábricas de controller (0.315.0)** — o `tempest new`
   gera `src/api/dependencies/controllers.py` (`get_service_info_controller`,
   recebida pelo router do `GET /api/` por `Depends`), `get_settings()` com
   `@lru_cache` em `src/core/settings.py` (sobrescrevível por
@@ -2397,7 +2397,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `commands`. `tempest_fastapi_sdk.cli.lint` / `.pr_prompt` remain as
   re-exports. Reason, measured: reaching those commands here cost 38.7 MB
   of dependencies and ~0.5 s of import per invocation. Floor
-  `tempest-cli>=0.5.1` (unreleased): `tempest fix` reports on the formatted
+  `tempest-cli>=0.5.1` (0.315.0): `tempest fix` reports on the formatted
   file, shortens long comments and plain strings under an AST-identity
   check, and names the `E501` it cannot fix. Recipe: `docs/recipes/cli.md`.
 
