@@ -83,25 +83,31 @@ ID token já inicializou — uma service account carregada, duas features.
 ### 3. O serviço e a rota
 
 ```python
-# src/api/routers/push.py
+# src/api/dependencies/services.py
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tempest_fastapi_sdk import BaseRepository, DeviceService, make_push_router
+from tempest_fastapi_sdk import BaseRepository, DeviceService
 
-from src.api.dependencies.auth import current_user_id
 from src.api.dependencies.push import transports
-from src.core.settings import settings
 from src.db.models import DeviceModel
-from src.db.session import get_session
 
 
 def device_service(session: AsyncSession) -> DeviceService[Any]:
     """Constrói o serviço de aparelhos para a requisição."""
     repository: BaseRepository[Any] = BaseRepository(session, model=DeviceModel)
     return DeviceService(repository, transports)
+```
 
+```python
+# src/api/routers/push.py
+from tempest_fastapi_sdk import make_push_router
+
+from src.api.dependencies.auth import current_user_id
+from src.api.dependencies.services import device_service
+from src.core.settings import settings
+from src.db.session import get_session
 
 router = make_push_router(
     service_factory=device_service,

@@ -1881,23 +1881,31 @@ class AuthService:
 ```
 
 ```python
-# src/api/routers/auth.py
-from fastapi import APIRouter, Depends
+# src/api/dependencies/services.py
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.app import db
 from src.core.security import passwords, tokens
-from src.schemas.auth import LoginSchema, TokenResponseSchema
 from src.services.auth import AuthService
-
-
-router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def get_auth_service(
     session: AsyncSession = Depends(db.session_dependency),
 ) -> AuthService:
     return AuthService(session, passwords, tokens)
+```
+
+```python
+# src/api/routers/auth.py
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.services import get_auth_service
+from src.schemas.auth import LoginSchema, TokenResponseSchema
+from src.services.auth import AuthService
+
+
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=TokenResponseSchema)

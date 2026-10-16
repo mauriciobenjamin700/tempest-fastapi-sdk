@@ -370,6 +370,22 @@ async def create_product(
 Mount it in `src/api/routers/__init__.py`, then re-export the new symbols
 from every `__init__.py` you touched.
 
+Two router rules are gated by the same `lint-layers` step:
+
+- `RTR001` — a `*Controller(...)` or `*Service(...)` call anywhere in
+  `src/api/routers/` (route body, helper, module level). The construction
+  belongs in the provider of step 6; the route receives it through
+  `Depends`. A call that has to stay in the router module opts out with
+  `# tempest: router-builds` on its line.
+- `RTR002` — a route whose return annotation or `response_model=` names an
+  ORM model (imported from a `models` module, or a class defined under
+  `models/`), at any depth: `list[ProductModel]` counts. Return the
+  response schema the repository maps to. There is no opt-out.
+
+Where `@requires` sits is review, not a rule: the decorator works on a
+route handler too, so a check could not tell the convention below from
+correct code.
+
 ## Guards: authentication in the route, invariants with `@requires`
 
 Two places check permissions, and they answer different questions:
@@ -599,7 +615,7 @@ cp .env.example .env        # first run only
 uv run python main.py       # start the service on __HOST__:__PORT__
 
 tempest check               # lint + format check + mypy + layer rules + pytest
-tempest lint-layers         # only the services/repositories layer rules
+tempest lint-layers         # only the layer rules (services, repositories, routers, enums)
 tempest lint                # ruff check
 tempest fmt                 # ruff format
 tempest type                # mypy
