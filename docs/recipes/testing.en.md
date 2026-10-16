@@ -368,7 +368,7 @@ serial-run affair.
 !!! info "`--fast` comes from `tempest-cli` 0.4.0"
     The `test` and `check` commands belong to
     [`tempest-cli`](https://pypi.org/project/tempest-cli/), which the SDK
-    mounts on its own CLI. The SDK's `[cli]` extra declares `tempest-cli>=0.4.0`,
+    mounts on its own CLI. The SDK's `[cli]` extra declares `tempest-cli>=0.5.1`,
     so the flag comes with it. With `tempest-cli` 0.3.0 pinned separately in your project,
     `tempest test --fast` exits with `No such option: --fast` (exit 2).
 
