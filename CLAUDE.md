@@ -76,7 +76,7 @@ autorização durável; não a trate como algo que precisa ser renovado a cada P
 - **Verde é o `make check` inteiro passando**, não "os testes da área". Teste
   vermelho não se mergeia por "não é deste PR": rode de novo e abra issue para
   o intermitente (foi assim com o `test_scheduler_lease` no #309 → #322).
-- **A matriz de Python é `make test-matrix`** (3.11, 3.12, 3.13, uma venv por
+- **A matriz de Python é `make test-matrix`** (3.12, 3.13, 3.14, uma venv por
   versão fora do repo). Rode antes de release que mexa em dependência ou em
   código sensível à versão — a CI não roda mais por você.
 - **Vários PRs paralelos: um por vez.** Cada merge move o `main`; o próximo é
