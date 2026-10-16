@@ -253,6 +253,30 @@ from tempest_fastapi_sdk.db.voice_profile_model import (
 from tempest_fastapi_sdk.db.voice_profile_model import (
     make_voice_profile_model as make_voice_profile_model,
 )
+from tempest_fastapi_sdk.db.webhook_inbox import (
+    DEFAULT_WEBHOOK_BACKOFF_SECONDS as DEFAULT_WEBHOOK_BACKOFF_SECONDS,
+)
+from tempest_fastapi_sdk.db.webhook_inbox import (
+    DEFAULT_WEBHOOK_MAX_ATTEMPTS as DEFAULT_WEBHOOK_MAX_ATTEMPTS,
+)
+from tempest_fastapi_sdk.db.webhook_inbox import (
+    STALE_WEBHOOK_ERROR as STALE_WEBHOOK_ERROR,
+)
+from tempest_fastapi_sdk.db.webhook_inbox import (
+    BaseWebhookEventModel as BaseWebhookEventModel,
+)
+from tempest_fastapi_sdk.db.webhook_inbox import (
+    InboxDrainReport as InboxDrainReport,
+)
+from tempest_fastapi_sdk.db.webhook_inbox import (
+    WebhookEventStatusEnum as WebhookEventStatusEnum,
+)
+from tempest_fastapi_sdk.db.webhook_inbox import (
+    WebhookInbox as WebhookInbox,
+)
+from tempest_fastapi_sdk.db.webhook_inbox import (
+    make_webhook_event_model as make_webhook_event_model,
+)
 from tempest_fastapi_sdk.db.webpush_subscription_model import (
     BaseWebPushSubscriptionModel as BaseWebPushSubscriptionModel,
 )
@@ -270,10 +294,13 @@ __all__: list[str] = [
     "DEFAULT_AUDIT_REDACT",
     "DEFAULT_REVISION_HOOKS",
     "DEFAULT_SYNC_WATERMARK_LAG",
+    "DEFAULT_WEBHOOK_BACKOFF_SECONDS",
+    "DEFAULT_WEBHOOK_MAX_ATTEMPTS",
     "ENUM_CLASS_SUFFIX",
     "ENUM_TYPE_SUFFIX",
     "LEGACY_NAMING_CONVENTION",
     "NAMING_CONVENTION",
+    "STALE_WEBHOOK_ERROR",
     "WITHHELD_NOTICE",
     "AlembicHelper",
     "AmbiguousBaseRevisionError",
@@ -296,6 +323,7 @@ __all__: list[str] = [
     "BaseVoiceProfileModel",
     "BaseWebAuthnCredentialModel",
     "BaseWebPushSubscriptionModel",
+    "BaseWebhookEventModel",
     "ColumnRef",
     "ConstraintKind",
     "ConstraintRename",
@@ -311,6 +339,7 @@ __all__: list[str] = [
     "ExplainDetail",
     "ExplainReport",
     "F",
+    "InboxDrainReport",
     "IntegrityFailure",
     "IntegrityViolation",
     "LocaleColumnMixin",
@@ -335,6 +364,8 @@ __all__: list[str] = [
     "UnsupportedBackupBackendError",
     "UserTokenPurpose",
     "UtcDateTime",
+    "WebhookEventStatusEnum",
+    "WebhookInbox",
     "WhereClause",
     "audit_redacted_columns",
     "backfill_non_nullable_defaults",
@@ -367,6 +398,7 @@ __all__: list[str] = [
     "make_voice_profile_model",
     "make_web_authn_credential_model",
     "make_web_push_subscription_model",
+    "make_webhook_event_model",
     "on_signal",
     "parse_integrity_error",
     "redact_snapshot",

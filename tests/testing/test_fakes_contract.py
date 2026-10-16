@@ -28,6 +28,7 @@ from tempest_fastapi_sdk.integrations.payment import (
     PayoutProvider,
     PixProvider,
 )
+from tempest_fastapi_sdk.integrations.subscriptions.revenuecat import RevenueCatClient
 from tempest_fastapi_sdk.privacy import SubjectStorageClient
 from tempest_fastapi_sdk.push.dispatcher import PushDispatcher
 from tempest_fastapi_sdk.testing import fakes
@@ -40,6 +41,7 @@ from tempest_fastapi_sdk.testing.fakes import (
     FakePayoutProvider,
     FakePixProvider,
     FakePushDispatcher,
+    FakeRevenueCatClient,
     FakeRoutingBackend,
     FakeTextBackend,
     FakeWebSearchBackend,
@@ -58,6 +60,7 @@ SEAMS: list[tuple[type[Any], type[Any]]] = [
     (FakeWebSearchBackend, WebSearchBackend),
     (FakeEmailUtils, EmailUtils),
     (FakeObjectStorageClient, SubjectStorageClient),
+    (FakeRevenueCatClient, RevenueCatClient),
 ]
 """Every fake, beside the seam it stands in for."""
 

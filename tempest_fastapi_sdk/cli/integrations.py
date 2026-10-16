@@ -72,6 +72,14 @@ INTEGRATIONS: tuple[Integration, ...] = (
         "get_authenticated_user",
     ),
     Integration(
+        "revenuecat",
+        "tempest_fastapi_sdk.integrations.subscriptions.revenuecat:RevenueCatClient",
+        "RevenueCatSettings",
+        "revenuecat_kwargs",
+        "REVENUECAT_API_KEY",
+        "",
+    ),
+    Integration(
         "stripe",
         "tempest_fastapi_sdk.integrations.payment.stripe:StripeClient",
         "",
@@ -94,7 +102,9 @@ INTEGRATIONS: tuple[Integration, ...] = (
 offers: OpenPix's ``GET /company`` and Mercado Pago's
 ``GET /users/me`` both take no argument and touch no money. Zap's
 ``health`` needs no credential at all, so verifying it measures
-reachability, not authorization.
+reachability, not authorization. RevenueCat has no verify method: its one read,
+``GET /subscribers/{app_user_id}``, is documented as "Get or Create
+Customer", so verifying a key with it would create a customer.
 """
 
 

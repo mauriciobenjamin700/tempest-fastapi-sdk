@@ -45,6 +45,9 @@ from tempest_fastapi_sdk.settings.mixins import OpenPixSettings as OpenPixSettin
 from tempest_fastapi_sdk.settings.mixins import PushSettings as PushSettings
 from tempest_fastapi_sdk.settings.mixins import RabbitMQSettings as RabbitMQSettings
 from tempest_fastapi_sdk.settings.mixins import RedisSettings as RedisSettings
+from tempest_fastapi_sdk.settings.mixins import (
+    RevenueCatSettings as RevenueCatSettings,
+)
 from tempest_fastapi_sdk.settings.mixins import ServerSettings as ServerSettings
 from tempest_fastapi_sdk.settings.mixins import (
     SessionCookieDeleteKwargs as SessionCookieDeleteKwargs,
@@ -89,6 +92,7 @@ __all__: list[str] = [
     "PushSettings",
     "RabbitMQSettings",
     "RedisSettings",
+    "RevenueCatSettings",
     "ServerSettings",
     "SessionCookieDeleteKwargs",
     "SessionCookieKwargs",

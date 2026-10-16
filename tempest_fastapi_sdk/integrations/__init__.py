@@ -1,9 +1,10 @@
 """Ready-made clients for third-party services.
 
 Everything under here talks to somebody else's API. The grouping is by
-**what the third party does** (``payment``, ``messaging``, and whatever
-follows), not by vendor name, so a service that swaps providers changes one
-import segment instead of hunting through a flat namespace.
+**what the third party does** (``payment``, ``messaging``,
+``subscriptions``, and whatever follows), not by vendor name, so a service
+that swaps providers changes one import segment instead of hunting through a
+flat namespace.
 
 Each integration is a subpackage that ships the provider's whole surface —
 generated from their OpenAPI specification and checked in — next to the
@@ -25,5 +26,6 @@ imported by ``import tempest_fastapi_sdk``; reach for the provider you use.
 
 from tempest_fastapi_sdk.integrations import messaging as messaging
 from tempest_fastapi_sdk.integrations import payment as payment
+from tempest_fastapi_sdk.integrations import subscriptions as subscriptions
 
-__all__: list[str] = ["messaging", "payment"]
+__all__: list[str] = ["messaging", "payment", "subscriptions"]
