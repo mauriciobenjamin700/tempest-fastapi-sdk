@@ -99,6 +99,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `issue_token_pair` sem `amr=` segue com o default dele. Quem lia
   `"pwd" in amr` passa a ver `"email"` nesses caminhos:
   `docs/migration.md`.
+- Retornos do `tasks` que eram `Any` com tipo conhecido agora são o tipo do
+  TaskIQ (#550), importado sob `TYPE_CHECKING` — `import tempest_fastapi_sdk`
+  e `import tempest_fastapi_sdk.tasks` continuam funcionando sem o extra
+  `[tasks]` (medido numa venv sem `taskiq`). `TaskQueue.scheduler` →
+  `TaskiqScheduler`, então `scheduler = tq.scheduler` sai tipado sem anotação;
+  `Task.enqueue` → `AsyncTaskiqTask[R]`, com o `R` do retorno da função
+  (`wait_result()` devolve `TaskiqResult[R]`); `AsyncTaskScheduler.cron` /
+  `interval` / `schedule` → o decorator de `broker.task`, então o nome
+  decorado vira `AsyncTaskiqDecoratedTask[P, R]` e deixa de ser
+  `untyped-decorator` sob `mypy --strict`; `TaskMetrics.middleware` e
+  `make_dead_letter_middleware` → `TaskiqMiddleware`; `make_job_admin_model`
+  → `AdminModel[Any]`; `make_requeue_action` →
+  `Callable[[AdminActionContext], Awaitable[AdminActionResult | None]]`.
+  `AsyncTaskBrokerManager.task` trocou `*args, **kwargs` por
+  `task_name` + `**labels` com os dois overloads do `AsyncBroker.task`
+  (`@manager.task` e `@manager.task(task_name=...)` seguem iguais em
+  runtime). Estreitar `Any` pode fazer código de consumidor que passava no
+  mypy por causa dele passar a falhar — é o caso de quem chamava a task
+  decorada com argumento errado. Conferido no piso (`taskiq` 0.12.6) e na
+  0.13.0. Ficam `Any` de propósito: `TaskDef.run` (retorno que o usuário
+  define no override), o `_entry` interno do `register` (passthrough) e
+  `TaskQueue.register`, que devolve `Task` ou `dict[str, Task]` conforme a
+  forma da definição — a união obrigaria um `isinstance` em todo call site.
 
 ### Security
 

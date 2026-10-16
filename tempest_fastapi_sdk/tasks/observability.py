@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from taskiq import TaskiqMessage, TaskiqResult
+    from taskiq import TaskiqMessage, TaskiqMiddleware, TaskiqResult
 
 
 def _require_prometheus() -> Any:
@@ -203,16 +203,19 @@ class TaskMetrics:
         self._runs.labels(task=task, status=status).inc()
         self._duration.labels(task=task).observe(duration_seconds)
 
-    def middleware(self) -> Any:
+    def middleware(self) -> TaskiqMiddleware:
         """Build the TaskIQ middleware that records this bundle.
 
         Returns:
-            Any: A ``TaskiqMiddleware`` instance (needs the ``[tasks]`` extra).
+            TaskiqMiddleware: The middleware instance (needs the ``[tasks]``
+            extra).
         """
-        taskiq = _require_taskiq()
+        _require_taskiq()
+        from taskiq import TaskiqMiddleware
+
         metrics = self
 
-        class _TaskMetricsMiddleware(taskiq.TaskiqMiddleware):  # type: ignore[misc,name-defined]
+        class _TaskMetricsMiddleware(TaskiqMiddleware):
             """Records run count + duration on every task's ``post_execute``."""
 
             async def post_execute(
@@ -234,7 +237,7 @@ def make_dead_letter_middleware(
     sink: DeadLetterSink,
     *,
     default_max_retries: int = 3,
-) -> Any:
+) -> TaskiqMiddleware:
     """Build a TaskIQ middleware routing terminally-failed tasks to ``sink``.
 
     Args:
@@ -244,11 +247,13 @@ def make_dead_letter_middleware(
             retries without setting their own ``max_retries``.
 
     Returns:
-        Any: A ``TaskiqMiddleware`` instance (needs the ``[tasks]`` extra).
+        TaskiqMiddleware: The middleware instance (needs the ``[tasks]``
+        extra).
     """
-    taskiq = _require_taskiq()
+    _require_taskiq()
+    from taskiq import TaskiqMiddleware
 
-    class _DeadLetterMiddleware(taskiq.TaskiqMiddleware):  # type: ignore[misc,name-defined]
+    class _DeadLetterMiddleware(TaskiqMiddleware):
         """Calls ``sink`` once, on a task's final (non-retried) failure."""
 
         async def on_error(
