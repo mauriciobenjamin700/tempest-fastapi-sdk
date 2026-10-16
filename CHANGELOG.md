@@ -36,6 +36,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Funções genéricas na sintaxe do Python 3.12 (PEP 695, `def f[T](...)`):
+  as 32 ocorrências que o ruff acusava com `UP047`, e a regra saiu do
+  `ignore`. Mudança interna para quem chama: `mypy --strict` e
+  `basedpyright` sobre um consumidor de `within_radius`, `nearest`,
+  `parse_structured`, `parse_structured_list`, `require_authenticated`,
+  `read_xlsx_as`, `typed_tool`, `form_dependency`, `parse_form`,
+  `run_cancellable`, `strict_types`, `typed` e `require_annotations` dão o
+  mesmo resultado antes e depois, e `typing.get_type_hints` sobre as 20
+  funções públicas convertidas falha nas mesmas 4 (import só de
+  `TYPE_CHECKING`) que já falhavam. Os `TypeVar` de módulo que ficaram sem uso
+  saíram; o `StructuredT` fica, porque os geradores do `genai` o importam.
+  Única saída visível: o `tempest openapi-client` passa a emitir
+  `def _validate[_T](...)` no cliente gerado, sem o `_T = TypeVar("_T")` de
+  módulo — os clientes OpenPix, Mercado Pago e zap foram regenerados.
+- `UP046` (classes genéricas) e `UP040` (`type X = ...`) continuam no
+  `ignore`, com o motivo medido no `pyproject.toml`: na classe, a variância
+  passa a ser inferida (um `FormResult[Sub]` congelado vira aceito onde se
+  pede `FormResult[Base]`) e `get_type_hints` num método levanta `NameError`
+  em 3.12, 3.13 e 3.14; no alias, os quatro (`SSEData`, `Widget`,
+  `GuardException`, `ShellSource`) são exportados e o `TypeAliasType` muda o
+  valor em runtime (`get_args` vazio) e vira componente `$ref` nomeado no
+  OpenAPI do consumidor.
 - Template do `tempest new` alinhado ao padrão de
   [Arquitetura › Padrões de service, repository e controller](docs/architecture.md).
   O projeto gerado traz `src/api/dependencies/controllers.py` com

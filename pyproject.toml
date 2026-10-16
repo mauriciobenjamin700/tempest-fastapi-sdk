@@ -505,13 +505,26 @@ select = [
 ignore = [
     "B008",
     "B006",
+    # PEP 695 generic functions (UP047) are applied. The class and alias
+    # forms stay off because each one changes what the consumer gets.
+    #
+    # UP046 (``class C(Generic[T])`` -> ``class C[T]``): variance stops
+    # being invariant by default and becomes inferred -- a frozen dataclass
+    # like ``FormResult`` turns covariant, so ``FormResult[Sub]`` starts
+    # passing where ``FormResult[Base]`` is expected under mypy and
+    # basedpyright. And under ``from __future__ import annotations`` the
+    # class parameter is not a module global any more, so
+    # ``typing.get_type_hints`` on a method raises ``NameError`` where the
+    # old form returned the TypeVar (measured on 3.12.7, 3.13.3 and 3.14.6),
+    # which is what consumer code introspecting our methods would hit.
     "UP046",
-    # PEP 695 syntax (``def f[T](...)``, ``type X = ...``). Raising the floor
-    # to 3.12 made both rules fire: 32 UP047 + 4 UP040 hits in the package on
-    # the day of the switch. Rewriting them is a separate decision from
-    # dropping 3.11, so they stay off -- like UP046 above -- until then.
+    # UP040 (``X: TypeAlias = ...`` -> ``type X = ...``): all four aliases
+    # are exported (``SSEData``, ``Widget``, ``GuardException``,
+    # ``ShellSource``). A ``type`` statement makes the value a
+    # ``TypeAliasType``: ``get_args`` returns ``()``, it no longer compares
+    # equal to the union, and pydantic/FastAPI (2.13.5 / 0.141.1) emit it as
+    # a named ``$ref`` component, so a consumer's OpenAPI document changes.
     "UP040",
-    "UP047",
     # ``Any`` is a legitimate annotation. We enforce that things ARE
     # annotated, never that they avoid ``Any`` -- so ANN401 stays off.
     "ANN401",

@@ -58,15 +58,13 @@ import asyncio
 import contextlib
 import inspect
 import logging
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import threading
     from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
-
-ResultT = TypeVar("ResultT")
 
 DEFAULT_POLL_SECONDS: float = 2.0
 """How often :func:`run_cancellable` re-reads the cancellation predicate.
@@ -91,7 +89,7 @@ class StageInterruptedError(Exception):
     """
 
 
-async def run_cancellable(
+async def run_cancellable[ResultT](
     work: Awaitable[ResultT],
     *,
     interrupted: Callable[[], Awaitable[bool]],

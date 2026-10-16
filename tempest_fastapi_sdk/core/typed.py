@@ -32,15 +32,12 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
-from typing import TypeVar
 
 from pydantic import ConfigDict
 from pydantic import validate_call as _validate_call
 
-F = TypeVar("F", bound=Callable[..., object])
 
-
-def strict_types(func: F) -> F:
+def strict_types[F: Callable[..., object]](func: F) -> F:
     """Validate argument and return values with **no type coercion**.
 
     Wraps ``func`` so that, on every call, each argument and the return
@@ -77,7 +74,7 @@ def strict_types(func: F) -> F:
     return wrapped
 
 
-def typed(func: F) -> F:
+def typed[F: Callable[..., object]](func: F) -> F:
     """Validate argument and return values, **coercing** when safe.
 
     Like :func:`strict_types`, but in Pydantic's default (lax) mode:
@@ -108,7 +105,7 @@ def typed(func: F) -> F:
     return wrapped
 
 
-def require_annotations(func: F) -> F:
+def require_annotations[F: Callable[..., object]](func: F) -> F:
     """Require every parameter and the return to be annotated.
 
     Unlike :func:`strict_types` / :func:`typed`, this does **not**

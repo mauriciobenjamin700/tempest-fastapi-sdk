@@ -244,7 +244,7 @@ def _coerce(
     return raw
 
 
-async def parse_form(
+async def parse_form[T: BaseModel](
     schema: type[T],
     request: Any,
     *,
@@ -366,7 +366,7 @@ async def parse_form(
     return FormResult(value=value, values=raw_values)
 
 
-def form_dependency(
+def form_dependency[T: BaseModel](
     schema: type[T],
     *,
     include: Sequence[str] = (),

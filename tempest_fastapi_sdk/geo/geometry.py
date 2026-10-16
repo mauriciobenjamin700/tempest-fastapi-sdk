@@ -18,15 +18,12 @@ from math import (
     radians,
     sin,
 )
-from typing import TypeVar
 
 from tempest_fastapi_sdk.geo.distance import EARTH_RADIUS_KM, haversine_km
 from tempest_fastapi_sdk.geo.schemas import BoundingBox, Coordinate
 
-T = TypeVar("T")
 
-
-def _as_coordinate(item: T, key: Callable[[T], Coordinate] | None) -> Coordinate:
+def _as_coordinate[T](item: T, key: Callable[[T], Coordinate] | None) -> Coordinate:
     """Return the coordinate of ``item`` via ``key`` (or ``item`` itself)."""
     if key is not None:
         return key(item)
@@ -74,7 +71,7 @@ def bounding_box(center: Coordinate, radius_km: float) -> BoundingBox:
     )
 
 
-def within_radius(
+def within_radius[T](
     center: Coordinate,
     points: Iterable[T],
     radius_km: float,
@@ -104,7 +101,7 @@ def within_radius(
     ]
 
 
-def nearest(
+def nearest[T](
     center: Coordinate,
     points: Iterable[T],
     *,

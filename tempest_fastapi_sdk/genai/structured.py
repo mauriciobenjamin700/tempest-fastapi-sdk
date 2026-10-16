@@ -344,7 +344,9 @@ def _extract_json(text: str) -> Any:
     return decoded
 
 
-def parse_structured(text: str, schema: type[StructuredT]) -> StructuredT:
+def parse_structured[StructuredT: BaseModel](
+    text: str, schema: type[StructuredT]
+) -> StructuredT:
     """Parse and validate a model completion into a ``schema`` instance.
 
     Args:
@@ -442,7 +444,7 @@ def extract_json_object(text: str) -> dict[str, Any] | None:
     return decoded if isinstance(decoded, dict) else None
 
 
-def parse_structured_list(
+def parse_structured_list[StructuredT: BaseModel](
     text: str,
     schema: type[StructuredT],
     *,
@@ -508,7 +510,7 @@ class StructuredFormatError(ValueError):
         )
 
 
-async def generate_structured_list(
+async def generate_structured_list[StructuredT: BaseModel](
     backend: SupportsGenerate,
     prompt: str,
     schema: type[StructuredT],

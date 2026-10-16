@@ -24,7 +24,7 @@ import re
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Protocol, TypeVar, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from tempest_fastapi_sdk.genai.generation_cache import (
     AsyncGenerationCache,
@@ -48,8 +48,6 @@ from tempest_fastapi_sdk.genai.structured import (
 )
 from tempest_fastapi_sdk.genai.tracing import genai_span
 from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
-
-_ResultT = TypeVar("_ResultT")
 
 _QUANTIZATIONS: frozenset[ModelDtype] = frozenset({ModelDtype.INT8, ModelDtype.INT4})
 
@@ -226,12 +224,12 @@ def _decoding_executor(
     )
 
 
-async def _decode_in_thread(
-    work: Callable[[threading.Event], _ResultT],
+async def _decode_in_thread[ResultT](
+    work: Callable[[threading.Event], ResultT],
     stop_event: threading.Event | None,
     *,
     executor: ThreadPoolExecutor | None = None,
-) -> _ResultT:
+) -> ResultT:
     """Run blocking decoding in a worker thread that stops when cancelled.
 
     ``asyncio.to_thread`` cannot interrupt the thread it starts: cancelling

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 from enum import Enum
-from typing import Any, TypeVar
+from typing import Any
 from urllib.parse import quote
 from uuid import UUID
 
@@ -214,11 +214,7 @@ def _dump(payload: Any) -> Any:
     return payload
 
 
-_T = TypeVar("_T")
-"""The response type a call was declared to return."""
-
-
-def _validate(annotation: type[_T], data: Any) -> _T:
+def _validate[T](annotation: type[T], data: Any) -> T:
     """Validate a response body against the generated annotation.
 
     Args:

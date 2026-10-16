@@ -239,7 +239,9 @@ class BatchScheduler(Generic[ItemT, ResultT]):
             await self._worker
 
 
-def _fail_all(futures: list[asyncio.Future[ResultT]], error: BaseException) -> None:
+def _fail_all[ResultT](
+    futures: list[asyncio.Future[ResultT]], error: BaseException
+) -> None:
     """Set ``error`` on every future that is still pending.
 
     Args:
@@ -251,7 +253,7 @@ def _fail_all(futures: list[asyncio.Future[ResultT]], error: BaseException) -> N
             future.set_exception(error)
 
 
-def _cancel_all(futures: list[asyncio.Future[ResultT]]) -> None:
+def _cancel_all[ResultT](futures: list[asyncio.Future[ResultT]]) -> None:
     """Cancel every future that is still pending.
 
     Args:

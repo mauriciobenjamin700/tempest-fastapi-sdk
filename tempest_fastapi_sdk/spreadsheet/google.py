@@ -71,7 +71,7 @@ import csv
 import io
 import re
 from collections.abc import Iterator
-from typing import Any, Final, Literal, TypeVar
+from typing import Any, Final, Literal
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
@@ -93,8 +93,6 @@ from tempest_fastapi_sdk.spreadsheet.reader import (
     read_xlsx_sheets_async,
 )
 from tempest_fastapi_sdk.utils.media_types import XLSX_MEDIA_TYPE
-
-ModelT = TypeVar("ModelT", bound=BaseModel)
 
 _GOOGLE_SHEETS_HOST: Final[str] = "docs.google.com"
 _CSV_MEDIA_TYPE: Final[str] = "text/csv"
@@ -559,7 +557,7 @@ def _google_row_error(row_number: int, errors: list[dict[str, Any]]) -> AppExcep
     )
 
 
-async def read_google_sheet_as(
+async def read_google_sheet_as[ModelT: BaseModel](
     url: str,
     schema: type[ModelT],
     *,
