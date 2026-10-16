@@ -1783,7 +1783,7 @@ The project comes before the CLI's own environment on purpose: under `uv tool in
 
 ```bash
 tempest lint                                    # ruff check .
-tempest fix                                     # ruff check --fix . + ruff format .   (writes)
+tempest fix                                     # ruff check --fix-only . + ruff format . + ruff check .   (writes)
 tempest fix --unsafe                            # also apply ruff's --unsafe-fixes
 tempest format                                  # ruff format .          (writes)
 tempest fmt-check                               # ruff format --check .   (read-only)
@@ -1804,19 +1804,65 @@ it, and what to do with a test that fails only in parallel, is in the
 
 `tempest fix` is the one-shot "organize the project" pass — sorts and dedupes imports, drops unused imports, normalizes string quotes, removes trailing whitespace, then runs `ruff format` to align indentation, line length, blank lines and trailing newlines. Run it before pushing when CI keeps catching style nits.
 
-!!! info "`ruff format` always runs — even with leftover errors"
-    `ruff check --fix` exits non-zero whenever **any** violation it
-    cannot autofix is left (an over-length string/comment, an undefined
-    name, …). `tempest fix` runs `ruff format` anyway, so a single
-    unfixable line never blocks formatting the whole file — long **code**
-    lines still get wrapped and extra blank lines removed. The lint exit
-    code is still surfaced afterwards, so CI keeps failing on the real
-    leftovers.
+!!! info "The report comes from the formatted file (`tempest-cli` 0.5.1)"
+    `tempest fix` runs three passes: `ruff check --fix-only`, `ruff format`
+    and finally `ruff check`, which is where the report and the exit code
+    come from. A violation the formatter resolved no longer shows up or
+    fails the command. Whatever is left after formatting still exits
+    non-zero, so CI keeps failing on the real leftovers.
 
-!!! warning "Long strings and comments are never wrapped"
-    Neither `ruff format` nor `tempest fix` wraps long **string literals
-    or comments** — same behavior as Black. Those `E501` lines stay and
-    must be shortened by hand or silenced with `# noqa: E501`.
+!!! tip "Long comments and strings are shortened, with an AST proof (`tempest-cli` 0.5.1)"
+    `ruff format` never breaks a comment or a string literal — same as
+    Black. After it, `tempest fix` wraps each `E501` comment at the limit
+    (a trailing comment moves above its line) and splits each plain string
+    literal at its spaces into implicitly concatenated parts inside
+    parentheses. Every edit is kept only when the file's AST is identical
+    before and after, so the program cannot change. With
+    `line-length = 88`, this:
+
+    ```python
+    """Long lines."""
+
+    MESSAGE: str = "this is a deliberately long plain string literal that goes well beyond the configured line length limit"
+
+
+    def f() -> int:
+        """Return one."""
+        return 1  # this trailing comment is deliberately long so that it overflows the configured line length
+    ```
+
+    becomes this:
+
+    ```python
+    """Long lines."""
+
+    MESSAGE: str = (
+        "this is a deliberately long plain string literal that goes well beyond the "
+        "configured line length limit"
+    )
+
+
+    def f() -> int:
+        """Return one."""
+        # this trailing comment is deliberately long so that it overflows the configured
+        # line length
+        return 1
+    ```
+
+    Tool pragmas (`noqa`, `type: ignore`, `fmt:`, …), f-strings,
+    triple-quoted strings and words longer than a line are left alone. For
+    those lines — and for what the formatter has nowhere to break, such as
+    a dotted name — `tempest fix` names the overflowing token, its kind and
+    the action that resolves it, and splits the leftovers into those with
+    no autofix and those `tempest fix --unsafe` would fix. A long f-string,
+    for instance, comes out like this (exit 1):
+
+    ```text
+    1 line(s) still too long after ruff format — the line-length setting was applied; the formatter has nowhere to break these:
+      src/longs.py:4 [string] ` this is a deliberately long f-string literal that goes well beyond the limit`
+        ruff format does not split string literals, and fix could not split this one safely (an f-string, a triple-quoted string, or a word longer than a line). Break it into implicitly concatenated parts inside parentheses.
+    1 residual violation(s): 1 with no autofix (edit by hand).
+    ```
 
 Every command returns the underlying tool's exit code, so `tempest check` is safe to wire into CI (`tempest check || exit 1`) or pre-commit hooks. When none of the five steps finds the tool, the wrapper exits with `127` instead of failing silently, naming what to install:
 
@@ -1902,8 +1948,8 @@ into it — the suite's test does exactly that.
 
 !!! note "Requires `tempest-cli>=0.5.0`"
     The step reaches `tempest check` through `register_commands`'
-    `extra_steps`, which arrived in `tempest-cli` 0.5.0 — the floor the
-    `[cli]` extra declares. `tempest-cli check` alone, without the SDK,
+    `extra_steps`, which arrived in `tempest-cli` 0.5.0; the `[cli]` extra
+    declares `tempest-cli>=0.5.1`, so it comes with it. `tempest-cli check` alone, without the SDK,
     does not know these rules: they belong to the SDK.
 
 ---
