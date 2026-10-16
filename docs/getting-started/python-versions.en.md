@@ -7,24 +7,25 @@ With `uv` installed ([previous page](uv.md)), Python stops being something you "
 The SDK declares its floor in `pyproject.toml`:
 
 ```toml
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 ```
 
-That means: **3.11 is the minimum**, and anything above works. The full policy:
+That means: **3.12 is the minimum**. The full policy:
 
 | Python | Status |
 | --- | --- |
+| 3.14 | Supported |
 | 3.13 | Supported — the version the repository's `.python-version` pins |
-| 3.12 | Supported |
-| 3.11 | Supported (minimum) |
+| 3.12 | Supported (minimum) |
+| 3.11 | Not supported since 0.314.0 — stays on 0.313.x ([migration](../migration.md)) |
 | 3.10 and older | Not supported |
 
 !!! tip "When in doubt, use 3.13"
     It is the one the repository's `.python-version` pins, so it is where the
-    SDK is developed. CI runs the whole gate (lint, types, tests and the
-    wheel smoke) on all three versions on every push to `main` and every PR,
-    one job per version.
-    Reach for 3.11 only when something outside your control forces it (an old Docker image, a legacy server).
+    SDK is developed. The whole suite runs on all three supported versions
+    through `make test-matrix`, one venv per version. Reach for 3.12 only when
+    something outside your control forces it (an old Docker image, a legacy
+    server).
 
 !!! info "How Python numbers releases"
     `3.13.2` is `major.minor.patch`. Compatibility breaks land in the **minor** (3.12 → 3.13); the patch (3.13.1 → 3.13.2) only fixes bugs and security issues. That is why we pin "3.13" and let the patch float. Each version's support window is at <https://devguide.python.org/versions/>.
@@ -40,7 +41,7 @@ The output lists everything `uv` knows about — versions it downloaded, version
 ```text
 cpython-3.13.2-linux-x86_64-gnu     /home/you/.local/share/uv/python/cpython-3.13.2/bin/python3.13
 cpython-3.12.9-linux-x86_64-gnu     <download available>
-cpython-3.11.11-linux-x86_64-gnu    /usr/bin/python3.11
+cpython-3.14.6-linux-x86_64-gnu     /usr/bin/python3.14
 ```
 
 Only what is already installed:
@@ -58,7 +59,7 @@ uv python install 3.13
 You can install several at once — handy for testing the same code on all three supported versions:
 
 ```bash
-uv python install 3.11 3.12 3.13
+uv python install 3.12 3.13 3.14
 ```
 
 !!! note "This does not touch your system Python"
@@ -89,7 +90,7 @@ Beginners mix these up constantly. The difference:
 
 | File | States | Who reads it |
 | --- | --- | --- |
-| `pyproject.toml` → `requires-python` | the **range** the code supports, e.g. `>=3.11` | whoever installs your package (PyPI included) |
+| `pyproject.toml` → `requires-python` | the **range** the code supports, e.g. `>=3.12` | whoever installs your package (PyPI included) |
 | `.python-version` | the **exact** version this checkout uses, e.g. `3.13` | `uv`, on your machine and in CI |
 
 One is a public contract, the other a local preference. They coexist.
@@ -107,29 +108,30 @@ That creates `.venv/` on 3.12, ignoring `.python-version` just this once. In pra
 ## Run something on another version, one-off
 
 ```bash
-uv run --python 3.11 python -c "import sys; print(sys.version)"
+uv run --python 3.12 python -c "import sys; print(sys.version)"
 ```
 
 Or through an environment variable, which applies to the whole command:
 
 ```bash
-UV_PYTHON=3.11 uv run pytest
+UV_PYTHON=3.12 uv run pytest
 ```
 
 !!! example "This is how the SDK runs its own gates"
-    The `tempest-fastapi-sdk` CI runs one job per version (3.11, 3.12 and
-    3.13) with `UV_PYTHON` pointing at it. `UV_PYTHON` is what makes the
-    matrix real: it outranks `.python-version` (which pins 3.13), and without
-    it the three jobs built the same 3.13 venv. The local `make release` runs
+    The `tempest-fastapi-sdk` `make test-matrix` runs the suite once per
+    version (3.12, 3.13 and 3.14), each with `--python` pointing at it and in
+    its own venv. Naming the interpreter explicitly is what makes the matrix
+    real: without it `.python-version` (which pins 3.13) wins, and the three
+    rounds build the same 3.13 venv. The local `make release` runs
     `make check` on the `.python-version` interpreter and the wheel smoke in
-    a 3.11 venv, the floor.
+    a 3.12 venv, the floor.
 
 ## Test on all three supported versions
 
 Works for any service you publish:
 
 ```bash
-for v in 3.11 3.12 3.13; do
+for v in 3.12 3.13 3.14; do
     echo "=== Python $v ==="
     UV_PYTHON=$v uv run --isolated pytest -q
 done
@@ -140,7 +142,7 @@ done
 ## Remove what you do not use
 
 ```bash
-uv python uninstall 3.11
+uv python uninstall 3.12
 ```
 
 ## When it goes wrong
@@ -165,8 +167,8 @@ uv python uninstall 3.11
     uv python pin 3.13
     ```
 
-??? failure "`The requested interpreter resolved to Python 3.10.x, which is incompatible with the project`"
-    The resolved version is below `requires-python`. That is the SDK protecting you from installing something that will not run. Install and pin a supported version (3.11+).
+??? failure "`The requested interpreter resolved to Python 3.11.x, which is incompatible with the project`"
+    The resolved version is below `requires-python`. That is the SDK protecting you from installing something that will not run. Install and pin a supported version (3.12+).
 
 ## Recap
 

@@ -2,7 +2,7 @@
 
 > Blocos compartilhados de FastAPI / SQLAlchemy / Pydantic usados em todos os serviços backend do Tempest. **Comece todo projeto com a mesma fundação opinativa já pronta.**
 
-![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![PyPI](https://img.shields.io/pypi/v/tempest-fastapi-sdk)
+![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![PyPI](https://img.shields.io/pypi/v/tempest-fastapi-sdk)
 
 ---
 
@@ -123,7 +123,7 @@ uv run pytest
 
 | Superfície | Estado |
 | --- | --- |
-| Python | 3.11 / 3.12 / 3.13 (matriz testada no CI) |
+| Python | 3.12 / 3.13 / 3.14 (matriz testada com `make test-matrix`) |
 | Testes | 10.400+ casos de pytest e 90 % de cobertura (linhas + branches) na v0.302.0 (medidos, sem gate de cobertura no CI) |
 | Type-checking | `mypy --strict`, `py.typed` distribuído (PEP 561) |
 | Lint / format | `ruff` (check + fix + format) |

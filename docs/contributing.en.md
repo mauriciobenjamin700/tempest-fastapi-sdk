@@ -40,7 +40,7 @@ None of this blocks your contribution — it just means **agreeing on the scope 
 Great — say so **in the issue** and wait for the go-ahead. Then:
 
 - work on a `feat/<slug>` / `fix/<slug>` branch off `main`;
-- run `make check` (lint + format + mypy + tests) — CI runs no tests (it only publishes), so this is the gate; `make test-matrix` covers 3.11 / 3.12 / 3.13;
+- run `make check` (lint + format + mypy + tests) — CI runs no tests (it only publishes), so this is the gate; `make test-matrix` covers 3.12 / 3.13 / 3.14;
 - update the PT **and** EN docs along with the code, plus `CHANGELOG.md`;
 - do **not** bump the version or create a tag — that belongs to the release;
 - one PR per topic, with a body that states the problem before the solution.
@@ -70,7 +70,7 @@ uv sync --all-extras --group dev --group docs
 | `make type` | `mypy tempest_fastapi_sdk` (strict) |
 | `make test` | `pytest` in parallel (one worker per logical core, `worksteal`, one BLAS thread per worker), no coverage |
 | `make test-cov` | `pytest` in parallel with the coverage report |
-| `make test-matrix` | the suite on 3.11, 3.12 and 3.13, one venv per version |
+| `make test-matrix` | the suite on 3.12, 3.13 and 3.14, one venv per version |
 | `make check` | `lint + fmt-check + type + test` (stops at first failure) |
 | `make ci` | `check + build + smoke` (full local gate before a release) |
 

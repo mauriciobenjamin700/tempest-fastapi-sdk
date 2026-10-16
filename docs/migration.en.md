@@ -2,6 +2,34 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.314.0 — Python 3.12 is the new minimum
+
+The SDK drops Python 3.11. `requires-python` moves to `>=3.12`, and the
+supported versions become **3.12, 3.13 and 3.14**.
+
+If you are on 3.11 you **stay on 0.313.x**: the installer skips releases whose
+`requires-python` excludes the interpreter. Asking for the new version in a
+3.11 environment fails before anything is installed. Measured with `uv`:
+
+```text
+error: The requested interpreter resolved to Python 3.11.12, which is incompatible with the project's Python requirement: `>=3.12` (from `project.requires-python`)
+```
+
+### What to do
+
+1. Move the service interpreter to 3.12 or newer (`uv python pin 3.13`, the
+   `Dockerfile` base image, the CI runtime).
+2. Set the `requires-python` of your `pyproject.toml` to `>=3.12`.
+   `tempest new` already generates it that way, with `target-version = "py312"`
+   for ruff and `python_version = "3.12"` for mypy.
+3. Run `uv lock` and `uv sync`. With the new floor the lock stops carrying the
+   3.11 split: the SDK's own lock dropped `tomli`, `async-timeout` and
+   `audioread`, and `numpy`, `scipy` and `librosa` went down to one version
+   each.
+
+To stay on 3.11 for now, pin the range:
+`uv add "tempest-fastapi-sdk>=0.313.0,<0.314.0"`.
+
 ## 0.313.0 — a class ending in `Enum` no longer doubles the type suffix
 
 `enum_type_name` drops one trailing `Enum` from the class name before

@@ -44,7 +44,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`arguments` como dict) é serializado para a string que o formato OpenAI
   exige antes do envio.
 
-## [0.313.0] — 2026-10-13
+- **Quebra de compatibilidade: Python 3.11 deixa de ser suportado.**
+  `requires-python` sobe para `>=3.12` e as versões suportadas passam a ser
+  3.12, 3.13 e 3.14 (classifiers, `make test-matrix`, smoke da wheel no
+  piso 3.12 no `make smoke` e no `release-pypi.yml`). Quem está em 3.11 fica
+  na 0.313.x; o passo a passo está no guia de migração. Medido: num
+  interpretador 3.11 o `uv` recusa o projeto com `The requested interpreter
+  resolved to Python 3.11.12, which is incompatible with the project's Python
+  requirement: >=3.12` (#547).
+- O `uv.lock` perdeu o split do 3.11: saíram `tomli`, `async-timeout` e
+  `audioread`, e `numpy` (2.5.2), `scipy` (1.18.1) e `librosa` (1.0.0)
+  ficaram com uma versão só. Todos os extras instalam e importam em 3.14
+  (`uv sync --locked --all-extras --python 3.14`, CPython 3.14.6), sem
+  marcador de ambiente.
+- ruff mira `py312` e mypy `python_version = "3.12"`, no SDK e no
+  `pyproject.toml` gerado pelo `tempest new`. As regras PEP 695 que o alvo
+  novo liga (`UP047`, 32 ocorrências, e `UP040`, 4) ficam desligadas, como
+  já estava a `UP046`: reescrever genéricos é outra decisão. O override do
+  mypy para `librosa`, que só existia por causa do alvo 3.11, saiu.
+
+## [0.313.0] — 2026-10-15
 
 ### Added
 

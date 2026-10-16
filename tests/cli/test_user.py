@@ -935,9 +935,15 @@ def _count_active_refresh_tokens(database_url: str) -> int:
 
 
 def _forget_project_modules() -> None:
-    """Drop the fake project packages so the next test re-imports its own."""
+    """Drop the fake project packages so the next test re-imports its own.
+
+    Both code roots are dropped: a test parametrised over ``app`` that ran
+    after another file left ``app.core.settings`` in ``sys.modules`` read
+    that file's settings instead of its own, which only surfaced when
+    xdist put the two on the same worker.
+    """
     for name in list(sys.modules):
-        if name == "src" or name.startswith("src."):
+        if name in {"src", "app"} or name.startswith(("src.", "app.")):
             del sys.modules[name]
 
 

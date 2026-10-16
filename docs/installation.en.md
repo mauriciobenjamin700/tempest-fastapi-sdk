@@ -6,7 +6,7 @@
 pip install tempest-fastapi-sdk
 ```
 
-Requires **Python 3.11+**.
+Requires **Python 3.12+** (3.12, 3.13 and 3.14).
 
 !!! tip "Use `uv` instead"
     `uv add tempest-fastapi-sdk` is faster and writes to `pyproject.toml` for you.
@@ -173,7 +173,8 @@ python -c "import tempest_fastapi_sdk; print(tempest_fastapi_sdk.__version__)"
 
 | Python | Status |
 | --- | --- |
-| 3.13 | Primary CI matrix |
-| 3.12 | Supported |
-| 3.11 | Supported (minimum) |
+| 3.14 | Supported |
+| 3.13 | Supported — the version the repository's `.python-version` pins |
+| 3.12 | Supported (minimum) |
+| 3.11 | Not supported since 0.314.0 — stays on 0.313.x ([migration](migration.md)) |
 | 3.10 and older | Not supported (uses ``X | None`` PEP 604 syntax) |
