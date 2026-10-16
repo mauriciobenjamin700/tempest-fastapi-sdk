@@ -29,6 +29,52 @@ error: The requested interpreter resolved to Python 3.11.12, which is incompatib
 Para continuar em 3.11 por enquanto, fixe a faixa:
 `uv add "tempest-fastapi-sdk>=0.313.0,<0.314.0"`.
 
+## 0.314.0 — login social de conta com TOTP pede o segundo fator
+
+`GET /auth/oauth/{provider}/callback` e `POST /auth/oauth/{provider}/token`
+passam a espelhar o `/auth/login`. Quando a conta resolvida tem TOTP inscrito
+(e `AUTH_MFA_ENABLED=True`), a resposta **não traz o par nem cookie de
+sessão**: traz `mfa_required=true` + `mfa_token`, e o par só sai do
+`/auth/mfa/verify`, com `amr == ["ext", "otp"]`. Até a 0.313.x o provedor
+bastava, e a conta pulava o fator que tinha inscrito.
+
+### O que fazer
+
+1. No cliente do login social, trate o desafio como no login por senha: se
+   `mfa_required` for `true`, peça o código e faça
+   `POST /auth/mfa/verify` com o `mfa_token`. Conta sem MFA não muda — o par
+   continua na própria resposta, com `amr == ["ext"]`.
+2. Se você sobrescreve `UserAuthService.login_with_oauth`, mova a lógica para
+   o novo `authenticate_oauth` (resolve a conta sem emitir nada). As rotas não
+   chamam mais `login_with_oauth`, e o router loga um aviso ao ser montado
+   quando acha o override. Chamar `login_with_oauth` direto continua emitindo
+   o par sem perguntar pela MFA.
+3. Se você sobrescreve `issue_mfa_token`, aceite o novo
+   `amr: Sequence[str] | None = PASSWORD_AMR` e repasse ao `super()`. Sem ele
+   o token sai sem o primeiro passo, e o `/auth/mfa/verify` volta ao
+   `["pwd", "otp"]` de antes — o router também avisa no log.
+
+## 0.314.0 — ativação e reset por link carimbam `amr=["email"]`
+
+O par que `POST /auth/activate/{token}` e `POST /auth/password-reset/confirm`
+emitem para conta **sem** MFA passa a sair com `amr == ["email"]`
+(`AMR_EMAIL_LINK`), não mais `["pwd"]`: nenhum dos dois confere senha. Com
+TOTP inscrito, o `/auth/mfa/verify` desse desafio emite `["email", "otp"]`. O
+`refresh` repete o `amr` da origem, então a sessão continua `["email"]` depois
+de rotacionar.
+
+### O que fazer
+
+- Código que lê `"pwd" in amr` como "esta sessão começou num login" passa a
+  ver `"email"` nesses dois caminhos. Se a sua regra é "qualquer sessão de um
+  fator", compare com `AMR_EMAIL_LINK` também; se é "a senha foi conferida",
+  a mudança é a correção que você queria.
+- `make_mfa_required_dependency` não muda: `email` não está em
+  `MFA_AMR_METHODS`, e o gate recusa o par como recusava o `["pwd"]`.
+- Override de `issue_token_pair` sem `amr=` continua sendo chamado sem a
+  keyword, e o par sai com o default do override (`["pwd"]`, se delega ao
+  `super()`), como antes.
+
 ## 0.313.0 — classe terminada em `Enum` não dobra mais o sufixo do tipo
 
 `enum_type_name` tira um `Enum` do fim do nome da classe antes de acrescentar

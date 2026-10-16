@@ -200,7 +200,7 @@ uv run tempest db upgrade
 | POST | `/auth/email-verify/confirm` *(v0.92.0+)* | `EmailChangeConfirmSchema` → `EmailChangeResponseSchema` | Consume the token + mark the account active. |
 | POST | `/auth/email-recovery/request` *(v0.92.0+, opt-in)* | `EmailRecoveryRequestSchema` → `EmailChangeResponseSchema` | **Unauthenticated.** Recover an account whose mailbox is lost: password (+ MFA if enrolled). Only mounted with `AUTH_EMAIL_RECOVERY_ENABLED=True`. Always 202. |
 | GET | `/auth/oauth/{provider}/login` *(v0.273.0+)* | — → `302` | Mints the `state`, writes it to an `HttpOnly` cookie and redirects to the provider. Mounted only with `AUTH_OAUTH_ENABLED=true`. See the [social-login recipe](oauth.en.md). |
-| GET | `/auth/oauth/{provider}/callback` *(v0.273.0+)* | — → `LoginResponseSchema` | Checks the `state`, trades the `code`, resolves `(provider, subject)` in the database and issues **the same JWT pair** as `/auth/login` — `typ`, opaque refresh, rotation and `/auth/logout` included. |
+| GET | `/auth/oauth/{provider}/callback` *(v0.273.0+)* | — → `LoginResponseSchema` | Checks the `state`, trades the `code`, resolves `(provider, subject)` in the database and issues **the same JWT pair** as `/auth/login` — `typ`, opaque refresh, rotation and `/auth/logout` included. An account with TOTP gets the challenge (`mfa_required=true` + `mfa_token`), as at `/auth/login` *(v0.314.0+)*. |
 | GET | `/auth/oauth/accounts` *(v0.273.0+)* | — → `list[OAuthAccountSchema]` | **Authenticated.** Providers linked to the account. An empty list is a 200, not a 404. |
 | POST | `/auth/oauth/accounts/unlink` *(v0.273.0+)* | `OAuthUnlinkSchema` → `204` | **Authenticated.** Detaches one provider. 404 when it is not linked to this account. |
 | POST | `/auth/refresh` *(v0.65.0+)* | `RefreshSchema` → `LoginResponseSchema` | Exchange a valid **refresh token** for a fresh JWT pair. **No email/password.** Rejects a replayed access token (401) and inactive accounts (403). |
@@ -1195,7 +1195,8 @@ curl -X POST localhost:8000/auth/password-reset/confirm \
       -d '{"mfa_token": "eyJ…", "code": "123456"}'
     ```
 
-    The pair that comes back carries `amr == ["pwd", "otp"]`. See the
+    The pair that comes back carries `amr == ["email", "otp"]`; without MFA,
+    the pair from `confirm` itself carries `["email"]` *(v0.314.0+)*. See the
     [MFA recipe](mfa.md).
 
 !!! note "The reset drops sessions already open"

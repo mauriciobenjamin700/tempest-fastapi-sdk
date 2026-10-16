@@ -384,6 +384,9 @@ from tempest_fastapi_sdk.utils.token_types import (
     AMR_CLAIM as AMR_CLAIM,
 )
 from tempest_fastapi_sdk.utils.token_types import (
+    AMR_EMAIL_LINK as AMR_EMAIL_LINK,
+)
+from tempest_fastapi_sdk.utils.token_types import (
     AMR_EXTERNAL as AMR_EXTERNAL,
 )
 from tempest_fastapi_sdk.utils.token_types import (
@@ -436,6 +439,7 @@ from tempest_fastapi_sdk.utils.upload import (
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
     "AMR_CLAIM",
+    "AMR_EMAIL_LINK",
     "AMR_EXTERNAL",
     "AMR_HARDWARE_KEY",
     "AMR_OTP",

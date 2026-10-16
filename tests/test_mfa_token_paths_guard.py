@@ -18,9 +18,6 @@ issuer. Each one must be in :data:`ALLOWLIST` under a category:
   factor can be enrolled yet.
 * ``rotation`` — ``refresh_tokens`` rotates an existing session and repeats
   its stored ``amr``; it opens nothing new.
-* ``external-idp`` — the provider authenticated the session; the pair is
-  stamped ``amr=["ext"]``, which ``make_mfa_required_dependency`` refuses by
-  default.
 * ``helper`` — ``_issue_pair`` itself, whose callers are classified above.
 
 The scan is by AST, not over a mounted router, because most routes are
@@ -102,11 +99,11 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "a WebAuthn assertion; issues with amr=['hwk']",
     ),
     "oauth_callback": (
-        "external-idp",
-        "the provider authenticated the session; login_with_oauth stamps "
-        "amr=['ext'], refused by make_mfa_required_dependency by default",
+        "gated",
+        "the provider proves the identity, not the second factor; an account "
+        "with TOTP enrolled gets the mfa_token like /login",
     ),
-    "oauth_token": ("external-idp", "same as oauth_callback, token-in-hand"),
+    "oauth_token": ("gated", "same as oauth_callback, token-in-hand"),
 }
 """Function name inside ``make_auth_router`` -> ``(category, reason)``."""
 
@@ -282,7 +279,14 @@ def test_every_issuing_path_is_classified() -> None:
 def test_the_scan_sees_every_path_the_issue_names() -> None:
     """The routes of #543 are found, and found gated."""
     by_name = {path.name: path for path in issuing_paths(ROUTER.read_text("utf-8"))}
-    for name in ("login", "login_cookie", "activate", "password_reset_confirm"):
+    for name in (
+        "login",
+        "login_cookie",
+        "activate",
+        "password_reset_confirm",
+        "oauth_callback",
+        "oauth_token",
+    ):
         assert by_name[name].gated, name
 
 
