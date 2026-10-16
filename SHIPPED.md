@@ -818,6 +818,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `BatchScheduler` resolves every future on every path; per-tokenizer
   lm-format-enforcer index cache; `truncate_messages` keeps tool calls with
   their results; `HTTPClient.stream` no longer replays after the first line.
+- **Provedores hospedados (#539, extra `[genai-hosted]`)** —
+  `AnthropicGenerator` (Messages API) e `OpenAICompatGenerator` (OpenAI,
+  DeepSeek) nos mesmos protocolos do `OllamaGenerator`: `generate`/`chat`/
+  `stream`, `chat_with_tools` (o `Agent` roda sobre qualquer um), e
+  `chat_structured`; `OpenAICompatEmbedder` para o `Retriever`.
+  `HostedGenAISettings` (`ANTHROPIC_*`, `OPENAI_*`, `DEEPSEEK_*` +
+  `*_kwargs()`), erros tipados `HostedAPIError` /
+  `HostedAuthenticationError` / `HostedRateLimitError` /
+  `HostedServerError` (subclasses de `httpx.HTTPStatusError`). Sobre
+  `httpx`, sem `anthropic`/`openai` (ambos exigem `httpx2`). Embedding
+  Anthropic/DeepSeek fica fora: nenhum dos dois documenta endpoint. O
+  "OpenAI-compatible client deliberately skipped" acima foi revertido por
+  esta entrega. Receita: `docs/recipes/genai-hosted.md`.
 - **Reconhecimento facial (v0.223.0, extra `[faces]`)** —
   `tempest_fastapi_sdk.faces`: `FaceRecognizer` (`detect` sem biometria /
   `recognize` / `embed_face` que recusa entrada ruim), `compare_faces`,

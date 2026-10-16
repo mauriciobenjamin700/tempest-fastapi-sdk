@@ -31,6 +31,9 @@ from tempest_fastapi_sdk.settings.mixins import GenAISettings as GenAISettings
 from tempest_fastapi_sdk.settings.mixins import (
     HostBridgeSettings as HostBridgeSettings,
 )
+from tempest_fastapi_sdk.settings.mixins import (
+    HostedGenAISettings as HostedGenAISettings,
+)
 from tempest_fastapi_sdk.settings.mixins import JWTSettings as JWTSettings
 from tempest_fastapi_sdk.settings.mixins import LogSettings as LogSettings
 from tempest_fastapi_sdk.settings.mixins import (
@@ -76,6 +79,7 @@ __all__: list[str] = [
     "FirebaseSettings",
     "GenAISettings",
     "HostBridgeSettings",
+    "HostedGenAISettings",
     "JWTSettings",
     "LogSettings",
     "MercadoPagoSettings",

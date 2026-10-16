@@ -7,6 +7,21 @@ only needed to probe real GPUs and (later) run inference.
 """
 
 from tempest_fastapi_sdk.genai.admin import make_model_cards as make_model_cards
+from tempest_fastapi_sdk.genai.anthropic import (
+    ANTHROPIC_VERSION as ANTHROPIC_VERSION,
+)
+from tempest_fastapi_sdk.genai.anthropic import (
+    DEFAULT_ANTHROPIC_MAX_TOKENS as DEFAULT_ANTHROPIC_MAX_TOKENS,
+)
+from tempest_fastapi_sdk.genai.anthropic import (
+    DEFAULT_ANTHROPIC_MODEL as DEFAULT_ANTHROPIC_MODEL,
+)
+from tempest_fastapi_sdk.genai.anthropic import (
+    DEFAULT_ANTHROPIC_URL as DEFAULT_ANTHROPIC_URL,
+)
+from tempest_fastapi_sdk.genai.anthropic import (
+    AnthropicGenerator as AnthropicGenerator,
+)
 from tempest_fastapi_sdk.genai.batching import BatchScheduler as BatchScheduler
 from tempest_fastapi_sdk.genai.catalog import EmbeddingModel as EmbeddingModel
 from tempest_fastapi_sdk.genai.catalog import ImageModel as ImageModel
@@ -66,6 +81,14 @@ from tempest_fastapi_sdk.genai.hardware import (
 from tempest_fastapi_sdk.genai.hardware import (
     recommend as recommend,
 )
+from tempest_fastapi_sdk.genai.hosted import HostedAPIError as HostedAPIError
+from tempest_fastapi_sdk.genai.hosted import (
+    HostedAuthenticationError as HostedAuthenticationError,
+)
+from tempest_fastapi_sdk.genai.hosted import (
+    HostedRateLimitError as HostedRateLimitError,
+)
+from tempest_fastapi_sdk.genai.hosted import HostedServerError as HostedServerError
 from tempest_fastapi_sdk.genai.hub import CachedModel as CachedModel
 from tempest_fastapi_sdk.genai.hub import CachedRevision as CachedRevision
 from tempest_fastapi_sdk.genai.hub import ModelRef as ModelRef
@@ -98,10 +121,22 @@ from tempest_fastapi_sdk.genai.ollama import OllamaError as OllamaError
 from tempest_fastapi_sdk.genai.ollama import OllamaGenerator as OllamaGenerator
 from tempest_fastapi_sdk.genai.onnx_embed import OnnxEmbedder as OnnxEmbedder
 from tempest_fastapi_sdk.genai.openai_compat import (
+    DEFAULT_DEEPSEEK_MODEL as DEFAULT_DEEPSEEK_MODEL,
+)
+from tempest_fastapi_sdk.genai.openai_compat import (
+    DEFAULT_DEEPSEEK_URL as DEFAULT_DEEPSEEK_URL,
+)
+from tempest_fastapi_sdk.genai.openai_compat import (
     DEFAULT_OPENAI_URL as DEFAULT_OPENAI_URL,
 )
 from tempest_fastapi_sdk.genai.openai_compat import (
+    OpenAICompatEmbedder as OpenAICompatEmbedder,
+)
+from tempest_fastapi_sdk.genai.openai_compat import (
     OpenAICompatGenerator as OpenAICompatGenerator,
+)
+from tempest_fastapi_sdk.genai.openai_compat import (
+    StructuredOutputMode as StructuredOutputMode,
 )
 from tempest_fastapi_sdk.genai.pipeline import AIChatPipeline as AIChatPipeline
 from tempest_fastapi_sdk.genai.pipeline import AIChatResult as AIChatResult
@@ -202,11 +237,18 @@ from tempest_fastapi_sdk.genai.vision_text import (
 )
 
 __all__: list[str] = [
+    "ANTHROPIC_VERSION",
+    "DEFAULT_ANTHROPIC_MAX_TOKENS",
+    "DEFAULT_ANTHROPIC_MODEL",
+    "DEFAULT_ANTHROPIC_URL",
+    "DEFAULT_DEEPSEEK_MODEL",
+    "DEFAULT_DEEPSEEK_URL",
     "DEFAULT_OLLAMA_URL",
     "DEFAULT_OPENAI_URL",
     "AIChatPipeline",
     "AIChatResult",
     "AIUsageStore",
+    "AnthropicGenerator",
     "AsyncEmbeddingCache",
     "AsyncGenerationCache",
     "BaseAIUsageModel",
@@ -227,6 +269,10 @@ __all__: list[str] = [
     "GenerationConfig",
     "GenerationStoppedError",
     "HardwareInfo",
+    "HostedAPIError",
+    "HostedAuthenticationError",
+    "HostedRateLimitError",
+    "HostedServerError",
     "ImageGenerationConfig",
     "ImageGenerator",
     "ImageModel",
@@ -244,6 +290,7 @@ __all__: list[str] = [
     "OllamaError",
     "OllamaGenerator",
     "OnnxEmbedder",
+    "OpenAICompatEmbedder",
     "OpenAICompatGenerator",
     "RedisEmbeddingCache",
     "RedisGenerationCache",
@@ -253,6 +300,7 @@ __all__: list[str] = [
     "SpeechToTextModel",
     "StreamModeration",
     "StructuredFormatError",
+    "StructuredOutputMode",
     "StructuredTextBackend",
     "SubjectUsage",
     "TextBackend",

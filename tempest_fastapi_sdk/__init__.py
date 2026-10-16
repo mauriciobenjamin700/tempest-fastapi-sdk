@@ -1461,6 +1461,9 @@ from tempest_fastapi_sdk.settings import (
     HostBridgeSettings as HostBridgeSettings,
 )
 from tempest_fastapi_sdk.settings import (
+    HostedGenAISettings as HostedGenAISettings,
+)
+from tempest_fastapi_sdk.settings import (
     JWTSettings as JWTSettings,
 )
 from tempest_fastapi_sdk.settings import (
@@ -2369,6 +2372,7 @@ __all__: list[str] = [
     "HexColorField",
     "HoneypotBanMiddleware",
     "HostBridgeSettings",
+    "HostedGenAISettings",
     "IdempotencyMiddleware",
     "IdempotencyStore",
     "InMemoryThrottleBackend",
