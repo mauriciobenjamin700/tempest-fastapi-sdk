@@ -210,7 +210,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   what lets a web process and a `taskiq worker` share one file — measured
   across two processes, the rollback journal fails the writer with
   `database is locked` where WAL commits at once. **SQLite foreign keys
-  (#395, unreleased):** every SQLite engine `AsyncDatabaseManager` and
+  (#395, v0.304.0):** every SQLite engine `AsyncDatabaseManager` and
   `create_test_engine` build runs `PRAGMA foreign_keys=ON` from a `connect`
   listener (`sqlite_foreign_keys=` / `DATABASE_SQLITE_FOREIGN_KEYS` /
   `create_test_engine(foreign_keys=)`, public `enable_sqlite_foreign_keys`),
@@ -223,7 +223,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `tests/db/test_sqlite_foreign_keys.py`,
   `tests/db/test_migrations_foreign_keys.py`,
   `tests/test_engine_configuration_guard.py`. **Refused `COMMIT` (#411,
-  unreleased):** `enable_sqlite_savepoints` also registers a pool `reset`
+  v0.304.0):** `enable_sqlite_savepoints` also registers a pool `reset`
   listener that rolls back when the driver is still `in_transaction`, so a
   `COMMIT` refused with `database is locked` no longer returns the
   connection to the pool inside its `BEGIN`. Guard:
@@ -404,7 +404,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `LOG_BACKUP_COUNT` + `logging_kwargs()` on `LogSettings` (v0.280.0)** — the
   rotation knobs `configure_logging` always accepted are now settable from the
   environment. **`make_logs_router(dependencies=...)` + `read_log_entries()` /
-  `LogReadResult` + `clear_log_files()` (#426, unreleased)** — the logs go
+  `LogReadResult` + `clear_log_files()` (#426, v0.309.0)** — the logs go
   behind the service's own auth (a callable or a ready `Depends(...)`; with
   only `dependencies` no `X-Token` is read, with `token_secret` too both gates
   apply, an empty list still fails closed), and the read (per-file cap,
@@ -455,7 +455,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   hardened static files, CORS,
   health + tool-spec routers (readiness runs its checks concurrently, each
   under `make_health_router(timeout=)`, and logs only the exception type —
-  #447, unreleased). **Quotas (v0.216.0):** `RateLimitRule`
+  #447, v0.309.0). **Quotas (v0.216.0):** `RateLimitRule`
   (sliding window, or **token bucket** when `burst` is set),
   `StaticRateLimitPolicy`/`PlanRateLimitPolicy` (+ `plan_by_jwt_claim`/
   `plan_by_header`/`key_by_plan_principal`) and `MemoryQuotaStore`/
@@ -706,7 +706,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   in slices. **Shipped (v0.96):** hardware capacity check — `probe_hardware`
   → `HardwareInfo` (CPU/RAM/CUDA-VRAM/MPS/disk, degrades without
   psutil/torch; since v0.303.2 RAM falls back to
-  `/proc/meminfo` on Linux without psutil; since #398 (unreleased) both
+  `/proc/meminfo` on Linux without psutil; since #398 (v0.304.0) both
   sources are clamped on Linux to the process's cgroup memory limit (v2
   `memory.max` / v1 `memory.limit_in_bytes`, over the ancestry; available
   = `limit - (usage - (file - shmem))`, measured against real OOM kills)
@@ -1169,7 +1169,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   latência mediana de 11,91 s (22,73 s). Sem knob de threads
   (`torch.set_num_threads` é global). Receita: "Vários pedidos ao mesmo
   tempo em CPU" em `genai.md`; nota em `agents.md`.
-- **Leitura de `.xlsx` (Unreleased, `[spreadsheet]`)** —
+- **Leitura de `.xlsx` (v0.304.0, `[spreadsheet]`)** —
   `read_xlsx` / `read_xlsx_as` / `read_xlsx_sheets` em
   `tempest_fastapi_sdk.spreadsheet` (`spreadsheet/reader.py`): bytes, caminho
   ou arquivo binário (upload), uma aba por nome/posição ou todas, célula
@@ -1186,7 +1186,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   inexistente `404` HTML; o Google grava o resultado de toda fórmula (as
   975 de 1 429 que chegam `None` são resultado `""`); número vem `int` ou
   `float` na mesma coluna, data vem `datetime`, porcentagem vem razão.
-- **Limites do leitor de `.xlsx` (Unreleased, #404)** — `max_uncompressed_bytes`
+- **Limites do leitor de `.xlsx` (v0.304.0, #404)** — `max_uncompressed_bytes`
   (100 MiB, soma do diretório central do ZIP), `max_compression_ratio` (100,
   por parte de ≥1 MiB) e `max_rows` (100 000 por aba, conferido em streaming)
   em `read_xlsx` / `read_xlsx_as` / `read_xlsx_sheets` / `read_google_sheet_xlsx`;
@@ -1214,7 +1214,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   ~540); a async deixou 473 ticks. Quatro leituras simultâneas: 25,0 s contra
   21,6 s em série — o semáforo limita memória e pool de threads, não acelera.
   Guard: `tests/test_spreadsheet_event_loop_guard.py`.
-- **Limites do leitor CSV do Google (Unreleased, #413)** — `max_bytes`
+- **Limites do leitor CSV do Google (v0.304.0, #413)** — `max_bytes`
   (`DEFAULT_GOOGLE_CSV_MAX_DOWNLOAD_BYTES`, 10 MiB, pelo mesmo streaming do
   `.xlsx`) e `max_rows` (`DEFAULT_XLSX_MAX_ROWS`, 100 000, contado durante o
   parse) em `read_google_sheet` / `read_google_sheet_as`; mesmo
@@ -2300,7 +2300,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 - **Helpers de banco de teste (`tempest_fastapi_sdk.testing`)** —
   `create_test_engine`, `create_test_session_factory`, `init_test_metadata`,
   `drop_test_metadata`, `make_test_database` e `make_test_session` (#450,
-  unreleased: renomeados de `test_database` / `test_session`, que o pytest
+  v0.309.0: renomeados de `test_database` / `test_session`, que o pytest
   coletava como teste fantasma em quem os importava; os nomes antigos ficam
   como alias deprecado com `__test__ = False`). Guard:
   `tests/testing/test_database.py::test_consumer_suite_collects_no_phantom_test`.
@@ -2602,7 +2602,7 @@ e por isso o pacote não modela:
 Cada uma é uma linha na spec do gateway, e nenhuma exige mudança aqui —
 `make zap-regen` passa a expor assim que forem declaradas.
 
-**Enums do webhook (#417, `[Unreleased]`).** Todo valor que o consumidor do
+**Enums do webhook (#417, v0.304.0).** Todo valor que o consumidor do
 webhook comparava como string tem enum: `ZapWebhookEvent`,
 `ZapInboundMediaType`, `ZapOutboundKind` (valores de `ZapStatusCallback.kind`,
 que segue `str` para tipo novo do gateway não derrubar o status) e
