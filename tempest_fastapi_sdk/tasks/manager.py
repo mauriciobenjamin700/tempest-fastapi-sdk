@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, overload
 
 if TYPE_CHECKING:
     from taskiq import AsyncBroker, AsyncTaskiqDecoratedTask
 
 logger = logging.getLogger(__name__)
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 
 def _require_taskiq() -> Any:
@@ -97,27 +100,49 @@ class AsyncTaskBrokerManager:
         await self.broker.shutdown()
         self._started = False
 
+    @overload
     def task(
         self,
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
+        task_name: Callable[_P, _R],
+        **labels: Any,
+    ) -> AsyncTaskiqDecoratedTask[_P, _R]: ...
+
+    @overload
+    def task(
+        self,
+        task_name: str | None = None,
+        **labels: Any,
+    ) -> Callable[[Callable[_P, _R]], AsyncTaskiqDecoratedTask[_P, _R]]: ...
+
+    def task(
+        self,
+        task_name: Callable[_P, _R] | str | None = None,
+        **labels: Any,
+    ) -> (
+        AsyncTaskiqDecoratedTask[_P, _R]
+        | Callable[[Callable[_P, _R]], AsyncTaskiqDecoratedTask[_P, _R]]
+    ):
         """Forward to ``broker.task`` so callers don't import TaskIQ.
 
         Can be used as either ``@manager.task`` or
-        ``@manager.task(task_name="...")``.
+        ``@manager.task(task_name="...")``. Both forms mirror the overloads
+        of ``AsyncBroker.task``, so the decorated name keeps the
+        function's parameters and return type.
 
         Args:
-            *args (Any): Positional arguments forwarded to
-                ``AsyncBroker.task``.
-            **kwargs (Any): Keyword arguments forwarded to
-                ``AsyncBroker.task``.
+            task_name (Callable[_P, _R] | str | None): The function itself
+                (bare ``@manager.task``) or the task-name override
+                (``@manager.task(task_name="...")``).
+            **labels (Any): TaskIQ labels forwarded to ``AsyncBroker.task``.
 
         Returns:
-            Any: The decorated task (or the decorator factory when
-            invoked with keyword arguments only).
+            AsyncTaskiqDecoratedTask[_P, _R] | Callable[[Callable[_P, _R]],
+            AsyncTaskiqDecoratedTask[_P, _R]]: The decorated task (bare
+            form), or the decorator that produces one.
         """
-        return self.broker.task(*args, **kwargs)
+        if callable(task_name):
+            return self.broker.task(task_name, **labels)
+        return self.broker.task(task_name=task_name, **labels)
 
     def register_task(
         self,
