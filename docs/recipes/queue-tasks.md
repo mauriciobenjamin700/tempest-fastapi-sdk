@@ -921,6 +921,8 @@ async def to_dlq(dead_letter: DeadLetter) -> None:
 tq.dead_letter(to_dlq, default_max_retries=3)
 ```
 
+Qualquer função `async` que receba um `DeadLetter` serve de sink, com o nome de parâmetro que você quiser — `async def to_dlq(letter: DeadLetter)` passa no mypy e no basedpyright do mesmo jeito.
+
 !!! tip "Combine com o retry"
     Passe o **mesmo** `default_max_retries` pro `enable_retries` e pro `dead_letter`: assim o ponto de "retries esgotados" bate pras tarefas que não definem `max_retries` próprio. A ordem de instalação não importa — o dead-letter decide sozinho lendo as labels da mensagem.
 

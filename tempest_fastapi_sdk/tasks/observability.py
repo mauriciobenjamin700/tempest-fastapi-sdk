@@ -118,9 +118,15 @@ class DeadLetterSink(Protocol):
     :class:`~tempest_fastapi_sdk.queue.MessageBroker` channel, a database
     table, a log line, an alert. The sink is called at most once per task
     invocation, only after retries (if any) are exhausted.
+
+    The parameter is positional-only, so a plain function works whatever
+    it names it — ``async def sink(letter: DeadLetter) -> None`` is a
+    ``DeadLetterSink``. Both checkers compare parameter names when matching
+    a function against a callback protocol; with a named parameter mypy and
+    basedpyright rejected every sink not spelled ``dead_letter``.
     """
 
-    async def __call__(self, dead_letter: DeadLetter) -> None:
+    async def __call__(self, dead_letter: DeadLetter, /) -> None:
         """Handle one terminally-failed task call.
 
         Args:

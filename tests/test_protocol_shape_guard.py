@@ -43,11 +43,22 @@ That rule only applies where we do not own the implementer, so the second
 guard walks an explicit list rather than every protocol in the package —
 a protocol our own classes implement is free to name its parameters, because
 the names are ours to keep in sync.
+
+The third rule is the callback case, and it needs no list. A protocol with a
+``__call__`` member is implemented by a plain function the consumer writes,
+and here mypy checks names too: ``DeadLetterSink`` and ``AgentRunSink``
+shipped as ``__call__(self, dead_letter)`` / ``__call__(self, run)``, and
+``async def sink(letter: DeadLetter)`` was an ``arg-type`` error under mypy
+and an error under basedpyright 1.40.2 (#555). So every callback protocol in
+the package must take its required parameters positionally.
 """
 
 from __future__ import annotations
 
 import ast
+import hashlib
+import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -462,3 +473,181 @@ def test_a_plain_class_is_not_a_protocol(tmp_path: Path) -> None:
     )
 
     assert not _erased_protocol_members(module)
+
+
+def _named_call_parameters(path: Path) -> list[str]:
+    """Find callback protocols whose ``__call__`` names a required parameter.
+
+    A protocol with a ``__call__`` member is a callback type: the implementer
+    is usually a plain function, written by the consumer, and both mypy and
+    basedpyright compare parameter **names** when they match a function
+    against it. So unlike :func:`_named_parameters` this rule needs no list —
+    every callback protocol in the package is in scope, a new one included.
+
+    Args:
+        path (Path): The module to inspect.
+
+    Returns:
+        list[str]: One ``file:line ClassName.__call__(param)`` entry per
+        required parameter that is not positional-only. ``self`` and
+        keyword-only parameters are excluded: a keyword-only name is a
+        contract the caller spells out, not one the implementer guesses.
+    """
+    source = path.read_text(encoding="utf-8")
+    problems: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        if "Protocol" not in _base_names(node):
+            continue
+        for member in node.body:
+            if not isinstance(member, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            if member.name != "__call__":
+                continue
+            named = member.args.args
+            required = named[: len(named) - len(member.args.defaults)]
+            for arg in required:
+                if arg.arg == "self":
+                    continue
+                problems.append(
+                    f"{_label(path)}:{arg.lineno} {node.name}.__call__({arg.arg})"
+                )
+    return problems
+
+
+def test_callback_protocols_are_positional_only() -> None:
+    """A consumer's sink is accepted whatever it calls its parameter (#555)."""
+    problems: list[str] = []
+    for path in sorted(PACKAGE_ROOT.rglob("*.py")):
+        problems.extend(_named_call_parameters(path))
+    assert not problems, (
+        "a callback protocol whose `__call__` names its parameters rejects "
+        "every function that names them differently, under mypy and "
+        "basedpyright alike; add `/`:\n  " + "\n  ".join(problems)
+    )
+
+
+def test_the_callback_guard_fires_on_the_shape_that_shipped(
+    tmp_path: Path,
+) -> None:
+    """``DeadLetterSink`` and ``AgentRunSink`` shipped exactly like this.
+
+    Args:
+        tmp_path (Path): pytest's per-test temporary directory.
+    """
+    module = tmp_path / "shipped_sinks.py"
+    module.write_text(
+        "from typing import Protocol\n\n\n"
+        "class DeadLetterSink(Protocol):\n"
+        "    async def __call__(self, dead_letter: object) -> None:\n"
+        '        """Handle one dead letter."""\n'
+        "        ...\n\n\n"
+        "class AgentRunSink(Protocol):\n"
+        "    async def __call__(self, run: object) -> None:\n"
+        '        """Handle one run."""\n'
+        "        ...\n",
+        encoding="utf-8",
+    )
+
+    assert _named_call_parameters(module) == [
+        f"{module}:5 DeadLetterSink.__call__(dead_letter)",
+        f"{module}:11 AgentRunSink.__call__(run)",
+    ]
+
+
+def test_the_callback_guard_passes_the_fixed_shapes(tmp_path: Path) -> None:
+    """``/``, and an optional or keyword-only parameter, are left alone.
+
+    Args:
+        tmp_path (Path): pytest's per-test temporary directory.
+    """
+    module = tmp_path / "fixed_sinks.py"
+    module.write_text(
+        "from typing import Protocol\n\n\n"
+        "class Sink(Protocol):\n"
+        "    async def __call__(\n"
+        "        self, item: object, /, retries: int = 0, *, tag: str\n"
+        "    ) -> None:\n"
+        '        """Handle one item."""\n'
+        "        ...\n\n\n"
+        "class Other(Protocol):\n"
+        "    def send(self, item: object) -> None:\n"
+        '        """Not a callback protocol."""\n'
+        "        ...\n",
+        encoding="utf-8",
+    )
+
+    assert not _named_call_parameters(module)
+
+
+SINK_CONSUMER_SNIPPET: str = '''
+from tempest_fastapi_sdk.agents import AgentRun, AgentRunSink, InMemoryAgentRunSink
+from tempest_fastapi_sdk.tasks import (
+    DeadLetter,
+    DeadLetterSink,
+    make_dead_letter_middleware,
+)
+
+
+async def letter_sink(letter: DeadLetter) -> None:
+    """A sink naming its parameter its own way."""
+
+
+async def named_sink(dead_letter: DeadLetter) -> None:
+    """A sink using the protocol's own name."""
+
+
+async def store_run(finished: AgentRun) -> None:
+    """A run sink naming its parameter its own way."""
+
+
+class ClassSink:
+    """A class implementer, the shape the SDK's own sinks use."""
+
+    async def __call__(self, dead_letter: DeadLetter) -> None:
+        """Handle one dead letter."""
+
+
+dead: DeadLetterSink = letter_sink
+same: DeadLetterSink = named_sink
+by_class: DeadLetterSink = ClassSink()
+runs: AgentRunSink = store_run
+buffered: AgentRunSink = InMemoryAgentRunSink()
+make_dead_letter_middleware(letter_sink)
+'''
+"""A consumer's sinks: renamed parameters, the protocol's name, a class."""
+
+
+def test_a_renamed_sink_type_checks(tmp_path: Path) -> None:
+    """``async def sink(letter: DeadLetter)`` is a ``DeadLetterSink`` under mypy.
+
+    Before #555 every renamed line here was an ``assignment`` /
+    ``arg-type`` error. basedpyright is not a dev dependency, so its half
+    was measured by hand (``uvx basedpyright@1.40.2``: three errors before,
+    zero after) and is recorded in the PR rather than asserted here.
+
+    Args:
+        tmp_path (Path): pytest's per-test temporary directory.
+    """
+    mypy_api = pytest.importorskip("mypy.api", reason="mypy is a dev-group dependency")
+    module = tmp_path / "consumer_sinks.py"
+    module.write_text(SINK_CONSUMER_SNIPPET, encoding="utf-8")
+    root: str = str(PACKAGE_ROOT.parent)
+    digest: str = hashlib.sha256(root.encode("utf-8")).hexdigest()[:12]
+    cache: Path = Path(tempfile.gettempdir()) / f"tempest-mypy-{digest}-sinks"
+    stdout, _stderr, _status = mypy_api.run(
+        [
+            str(module),
+            "--strict",
+            "--no-error-summary",
+            "--hide-error-context",
+            "--no-color-output",
+            "--cache-dir",
+            str(cache),
+            "--python-executable",
+            sys.executable,
+        ]
+    )
+    errors = [line for line in stdout.splitlines() if ": error:" in line]
+    assert not errors, "\n".join(errors)
