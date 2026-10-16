@@ -79,6 +79,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from tempest_fastapi_sdk.admin import AdminModel
     from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
 
 logger = logging.getLogger("tempest_fastapi_sdk.tasks.jobs")
@@ -1240,7 +1241,7 @@ def make_job_admin_model(
     model: type[BaseJobModel],
     *,
     can_delete: bool = False,
-) -> Any:
+) -> AdminModel[Any]:
     """Build a read-mostly :class:`AdminModel` over a job table.
 
     Register the result on your
@@ -1261,9 +1262,10 @@ def make_job_admin_model(
             ``False``.
 
     Returns:
-        Any: A preconfigured ``AdminModel`` — annotated loosely because
-        importing the admin package at module scope would make ``tasks``
-        depend on it, and the admin is optional.
+        AdminModel[Any]: A preconfigured admin registration (no
+        create/edit). The admin package is imported under
+        ``TYPE_CHECKING`` and inside the function, so ``tasks`` still
+        imports without it.
     """
     from sqlalchemy import desc
 

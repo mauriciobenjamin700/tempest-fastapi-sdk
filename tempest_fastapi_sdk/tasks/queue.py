@@ -87,7 +87,7 @@ def _redis_result_backend(
     result_ttl_seconds: int,
     result_prefix: str,
     missing_extra_hint: str,
-) -> Any:
+) -> AsyncResultBackend[Any]:
     """Build a Redis result backend with a bounded footprint.
 
     Args:
@@ -101,7 +101,9 @@ def _redis_result_backend(
             point.
 
     Returns:
-        Any: A ``taskiq_redis.RedisAsyncResultBackend``.
+        AsyncResultBackend[Any]: A ``taskiq_redis.RedisAsyncResultBackend``.
+        ``Any`` stays in the result type because the backend stores the
+        return value of whichever task wrote it.
 
     Raises:
         ImportError: When ``taskiq_redis`` is not installed.
@@ -110,15 +112,21 @@ def _redis_result_backend(
         from taskiq_redis import RedisAsyncResultBackend
     except ImportError as exc:
         raise ImportError(missing_extra_hint) from exc
-    return RedisAsyncResultBackend(
+    backend: AsyncResultBackend[Any] = RedisAsyncResultBackend(
         url,
         result_ex_time=result_ttl_seconds or None,
         prefix_str=result_prefix or None,
     )
+    return backend
 
 
 if TYPE_CHECKING:
-    from taskiq import AsyncBroker
+    from taskiq import (
+        AsyncBroker,
+        AsyncResultBackend,
+        AsyncTaskiqTask,
+        TaskiqScheduler,
+    )
 
     from tempest_fastapi_sdk.tasks.observability import (
         DeadLetterSink,
@@ -309,7 +317,7 @@ class Task(Generic[P, R]):
         self.taskiq_task: Any = taskiq_task
         self._func: Callable[P, Awaitable[R]] = func
 
-    async def enqueue(self, *args: P.args, **kwargs: P.kwargs) -> Any:
+    async def enqueue(self, *args: P.args, **kwargs: P.kwargs) -> AsyncTaskiqTask[R]:
         """Send this call to a worker and return without waiting for it.
 
         Args:
@@ -317,10 +325,12 @@ class Task(Generic[P, R]):
             **kwargs (P.kwargs): Keyword arguments for the task.
 
         Returns:
-            Any: A TaskIQ task handle. ``await handle.wait_result()`` to
-            block for the return value when a result backend is wired.
+            AsyncTaskiqTask[R]: The TaskIQ task handle, typed by the wrapped
+            function's return value. ``await handle.wait_result()`` blocks
+            for a ``TaskiqResult[R]`` when a result backend is wired.
         """
-        return await self.taskiq_task.kiq(*args, **kwargs)
+        handle: AsyncTaskiqTask[R] = await self.taskiq_task.kiq(*args, **kwargs)
+        return handle
 
     async def run(self, *args: P.args, **kwargs: P.kwargs) -> R:
         """Run the task body inline (no broker) and return its value.
@@ -951,7 +961,7 @@ class TaskQueue:
     # ------------------------------------------------------------------
 
     @property
-    def scheduler(self) -> Any:
+    def scheduler(self) -> TaskiqScheduler:
         """Return the underlying TaskIQ scheduler (for the CLI).
 
         Lazily built on first access. Point the standalone scheduler
@@ -961,7 +971,8 @@ class TaskQueue:
         myapp.tasks:scheduler``.
 
         Returns:
-            Any: The ``taskiq.TaskiqScheduler`` instance.
+            TaskiqScheduler: The underlying TaskIQ scheduler, so
+            ``scheduler = tq.scheduler`` is typed without an annotation.
         """
         return self._ensure_scheduler().scheduler
 

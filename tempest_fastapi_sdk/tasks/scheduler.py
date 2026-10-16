@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from tempest_fastapi_sdk.tasks.cron import (
     normalize_cron_offset,
@@ -20,6 +20,9 @@ if TYPE_CHECKING:
     from taskiq.scheduler.scheduler import TaskiqScheduler
 
 logger = logging.getLogger(__name__)
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 
 def _require_taskiq() -> Any:
@@ -135,7 +138,7 @@ class AsyncTaskScheduler:
         cron_offset: str | timedelta | None = None,
         task_name: str | None = None,
         **labels: Any,
-    ) -> Any:
+    ) -> Callable[[Callable[_P, _R]], AsyncTaskiqDecoratedTask[_P, _R]]:
         """Register a task to run on a cron schedule.
 
         Args:
@@ -150,7 +153,9 @@ class AsyncTaskScheduler:
                 ``broker.task``.
 
         Returns:
-            Any: The decorated task callable.
+            Callable[[Callable[_P, _R]], AsyncTaskiqDecoratedTask[_P, _R]]:
+            The decorator ``broker.task`` returns; the decorated name keeps
+            the function's parameters and return type.
         """
         from tempest_fastapi_sdk.core import BaseStrEnum
 
@@ -166,7 +171,7 @@ class AsyncTaskScheduler:
         *,
         task_name: str | None = None,
         **labels: Any,
-    ) -> Any:
+    ) -> Callable[[Callable[_P, _R]], AsyncTaskiqDecoratedTask[_P, _R]]:
         """Register a task to run every ``seconds`` interval.
 
         Args:
@@ -179,7 +184,9 @@ class AsyncTaskScheduler:
                 ``broker.task``.
 
         Returns:
-            Any: The decorated task callable.
+            Callable[[Callable[_P, _R]], AsyncTaskiqDecoratedTask[_P, _R]]:
+            The decorator ``broker.task`` returns; the decorated name keeps
+            the function's parameters and return type.
         """
         delta: timedelta = (
             seconds if isinstance(seconds, timedelta) else timedelta(seconds=seconds)
@@ -193,7 +200,7 @@ class AsyncTaskScheduler:
         *,
         task_name: str | None = None,
         **labels: Any,
-    ) -> Any:
+    ) -> Callable[[Callable[_P, _R]], AsyncTaskiqDecoratedTask[_P, _R]]:
         """Register a task with a raw TaskIQ schedule spec.
 
         Use this when you need ``time`` (one-shot at a specific
@@ -214,7 +221,9 @@ class AsyncTaskScheduler:
                 ``broker.task``.
 
         Returns:
-            Any: The decorated task callable.
+            Callable[[Callable[_P, _R]], AsyncTaskiqDecoratedTask[_P, _R]]:
+            The decorator ``broker.task`` returns; the decorated name keeps
+            the function's parameters and return type.
 
         Raises:
             ValueError: When an entry's ``cron_offset`` is a string that

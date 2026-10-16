@@ -37,7 +37,13 @@ from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.tasks.observability import DeadLetter
 
 if TYPE_CHECKING:
-    from tempest_fastapi_sdk.admin import AdminModel
+    from collections.abc import Awaitable, Callable
+
+    from tempest_fastapi_sdk.admin import (
+        AdminActionContext,
+        AdminActionResult,
+        AdminModel,
+    )
     from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
     from tempest_fastapi_sdk.tasks.queue import TaskQueue
 
@@ -230,7 +236,7 @@ def make_requeue_action(
     *,
     label: str = "Requeue task",
     delete_after: bool = True,
-) -> Any:
+) -> Callable[[AdminActionContext], Awaitable[AdminActionResult | None]]:
     """Build an admin bulk action that re-enqueues selected dead letters.
 
     Each selected row is re-enqueued on ``tq``'s broker with its stored
@@ -243,10 +249,11 @@ def make_requeue_action(
         delete_after (bool): Delete a row once its call is re-enqueued.
 
     Returns:
-        Any: An ``@admin_action``-decorated handler (needs the admin module).
+        Callable[[AdminActionContext], Awaitable[AdminActionResult | None]]:
+        An ``@admin_action``-decorated handler, ready for
+        ``AdminModel(actions=[...])`` (needs the admin module).
     """
     from tempest_fastapi_sdk.admin import (
-        AdminActionContext,
         AdminActionResult,
         admin_action,
     )

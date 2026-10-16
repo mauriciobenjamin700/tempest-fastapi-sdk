@@ -17,6 +17,13 @@ The test runs mypy over a snippet shaped like a downstream service and
 asserts the exact diagnostics: none where the recipe is followed, and an
 ``arg-type`` error where a call contradicts the decorated signature — which
 is the proof that the signature survived, since ``Any`` accepts that call.
+
+A second snippet pins the return types the rest of ``tasks`` hands a
+consumer (issue #550): ``TaskQueue.scheduler`` was ``-> Any``, so the
+recipe's ``scheduler = tq.scheduler`` came out untyped. ``assert_type`` is
+an *exact* match, so a return that slides back to ``Any`` fails it; the
+snippet carries one deliberate ``assert_type`` on an ``Any`` value as the
+control that the check is not vacuous.
 """
 
 from __future__ import annotations
@@ -92,6 +99,100 @@ reveal_type(opened)
 '''
 """Downstream code written the way the ``tasks`` recipe tells services to."""
 
+RETURN_TYPES_SNIPPET: str = '''
+from collections.abc import Awaitable, Callable
+from typing import Any, assert_type
+
+from taskiq import AsyncTaskiqTask, InMemoryBroker, TaskiqMiddleware, TaskiqScheduler
+
+from tempest_fastapi_sdk.admin import AdminActionContext, AdminActionResult, AdminModel
+from tempest_fastapi_sdk.tasks import (
+    AsyncTaskBrokerManager,
+    AsyncTaskScheduler,
+    BaseJobModel,
+    DeadLetter,
+    TaskMetrics,
+    TaskQueue,
+    make_dead_letter_middleware,
+    make_job_admin_model,
+    make_requeue_action,
+)
+
+tq: TaskQueue = TaskQueue.memory()
+scheduler = tq.scheduler
+assert_type(scheduler, TaskiqScheduler)
+
+
+@tq.task
+async def add(a: int, b: int) -> int:
+    """A queue task."""
+    return a + b
+
+
+async def enqueue() -> None:
+    """Enqueue and keep the result type on the handle."""
+    handle = await add.enqueue(1, 2)
+    assert_type(handle, AsyncTaskiqTask[int])
+
+
+broker: InMemoryBroker = InMemoryBroker()
+manager: AsyncTaskBrokerManager = AsyncTaskBrokerManager(broker)
+periodic: AsyncTaskScheduler = AsyncTaskScheduler(broker)
+
+
+@manager.task
+async def bare(x: int) -> str:
+    """Bare manager decorator."""
+    return str(x)
+
+
+@manager.task(task_name="named")
+async def named(x: int) -> str:
+    """Manager decorator with options."""
+    return str(x)
+
+
+@periodic.cron("* * * * *")
+async def tick(n: int) -> None:
+    """Cron task."""
+
+
+@periodic.interval(seconds=5)
+async def every(n: int) -> None:
+    """Interval task."""
+
+
+@periodic.schedule([{"cron": "* * * * *"}])
+async def raw(n: int) -> None:
+    """Raw-schedule task."""
+
+
+async def sink(dead_letter: DeadLetter) -> None:
+    """A dead-letter sink."""
+
+
+def wiring(metrics: TaskMetrics, model: type[BaseJobModel]) -> None:
+    """The factories whose results a service passes on."""
+    assert_type(make_dead_letter_middleware(sink), TaskiqMiddleware)
+    assert_type(metrics.middleware(), TaskiqMiddleware)
+    assert_type(make_job_admin_model(model), AdminModel[Any])
+    assert_type(
+        make_requeue_action(tq),
+        Callable[[AdminActionContext], Awaitable[AdminActionResult | None]],
+    )
+
+
+untyped: Any = None
+assert_type(untyped, TaskiqScheduler)  # MARK-WRONG
+
+reveal_type(bare)
+reveal_type(named)
+reveal_type(tick)
+reveal_type(every)
+reveal_type(raw)
+'''
+"""Downstream code reading every typed return of ``tasks`` (issue #550)."""
+
 
 def _shared_mypy_cache(tag: str) -> Path:
     """Return a mypy cache directory that survives between runs.
@@ -115,18 +216,24 @@ def _shared_mypy_cache(tag: str) -> Path:
     return Path(tempfile.gettempdir()) / f"tempest-mypy-{digest}-{tag}"
 
 
-def _run_mypy(tmp_path: Path) -> list[str]:
-    """Run ``mypy --strict`` over the snippet and return its findings.
+def _run_mypy(
+    tmp_path: Path,
+    snippet: str = DOWNSTREAM_SNIPPET,
+    tag: str = "queue-typing",
+) -> list[str]:
+    """Run ``mypy --strict`` over a snippet and return its findings.
 
     Args:
         tmp_path (Path): A scratch directory for the module and the cache.
+        snippet (str): The downstream module to check.
+        tag (str): Cache name; distinct per test so no two runs share one.
 
     Returns:
         list[str]: One line per finding, ``file:line: severity: message``.
     """
     mypy_api = pytest.importorskip("mypy.api", reason="mypy is a dev-group dependency")
     module: Path = tmp_path / "downstream_tasks.py"
-    module.write_text(DOWNSTREAM_SNIPPET, encoding="utf-8")
+    module.write_text(snippet, encoding="utf-8")
     stdout, stderr, _status = mypy_api.run(
         [
             str(module),
@@ -135,7 +242,7 @@ def _run_mypy(tmp_path: Path) -> list[str]:
             "--hide-error-context",
             "--no-color-output",
             "--cache-dir",
-            str(_shared_mypy_cache("queue-typing")),
+            str(_shared_mypy_cache(tag)),
             "--python-executable",
             sys.executable,
         ]
@@ -144,13 +251,16 @@ def _run_mypy(tmp_path: Path) -> list[str]:
     return [line for line in stdout.splitlines() if "downstream_tasks.py" in line]
 
 
-def _wrong_line() -> int:
+def _wrong_line(snippet: str = DOWNSTREAM_SNIPPET) -> int:
     """Return the 1-based snippet line carrying the deliberate mistake.
 
+    Args:
+        snippet (str): The snippet holding a ``MARK-WRONG`` line.
+
     Returns:
-        int: The line number mypy reports for the ``arg-type`` error.
+        int: The line number mypy reports for the deliberate error.
     """
-    for number, line in enumerate(DOWNSTREAM_SNIPPET.splitlines(), start=1):
+    for number, line in enumerate(snippet.splitlines(), start=1):
         if "MARK-WRONG" in line:
             return number
     raise AssertionError("snippet lost its MARK-WRONG line")
@@ -174,3 +284,34 @@ def test_recipe_type_checks_and_keeps_the_task_signature(tmp_path: Path) -> None
     assert 'Task[[a: int, b: int], int]"' in reveals[0]
     assert 'Task[[a: int, b: int], int]"' in reveals[1]
     assert "def () -> typing.Coroutine[Any, Any, None]" in reveals[2]
+
+
+def test_tasks_returns_are_concrete_not_any(tmp_path: Path) -> None:
+    """Every narrowed ``tasks`` return reaches the consumer as its real type.
+
+    The only error is the control on the ``MARK-WRONG`` line, which shows
+    ``assert_type`` rejects ``Any``; a narrowed return that regresses to
+    ``Any`` adds an ``assert-type`` error of its own. The decorators are read
+    through ``reveal_type`` because ``assert_type`` cannot spell a
+    ``ParamSpec`` with parameter names.
+
+    Args:
+        tmp_path (Path): Pytest's scratch directory.
+    """
+    findings: list[str] = _run_mypy(tmp_path, RETURN_TYPES_SNIPPET, "tasks-returns")
+    errors: list[str] = [line for line in findings if ": error:" in line]
+    reveals: list[str] = [line for line in findings if "Revealed type" in line]
+
+    assert len(errors) == 1, "\n".join(errors)
+    assert f":{_wrong_line(RETURN_TYPES_SNIPPET)}:" in errors[0]
+    assert 'Expression is of type "Any"' in errors[0]
+
+    decorated: str = (
+        "taskiq.decor.AsyncTaskiqDecoratedTask"
+        "[[{}: int], typing.Coroutine[Any, Any, {}]]"
+    )
+    assert len(reveals) == 5, "\n".join(findings)
+    assert decorated.format("x", "str") in reveals[0]
+    assert decorated.format("x", "str") in reveals[1]
+    for line in reveals[2:]:
+        assert decorated.format("n", "None") in line, line

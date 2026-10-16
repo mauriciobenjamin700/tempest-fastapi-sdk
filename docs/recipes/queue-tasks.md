@@ -999,7 +999,7 @@ taskiq worker    src.tasks:broker
 taskiq scheduler src.tasks:scheduler
 ```
 
-`tq.broker` é o broker TaskIQ (conhece todas as tarefas registradas); `tq.scheduler` é o `TaskiqScheduler` interno.
+`tq.broker` é o broker TaskIQ (conhece todas as tarefas registradas); `tq.scheduler` é o `TaskiqScheduler` interno. Os dois já saem tipados (`AsyncBroker` e `TaskiqScheduler`), então `broker = tq.broker` e `scheduler = tq.scheduler` dispensam anotação — e você não precisa importar nada do `taskiq` para isso.
 
 !!! warning "`src.tasks:tq.broker` não funciona"
     A CLI faz `getattr(module, "tq.broker")` e levanta
