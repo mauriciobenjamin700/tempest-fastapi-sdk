@@ -24,6 +24,7 @@ from tempest_fastapi_sdk.cli.layer_lint import (
     BASE_REPOSITORY_METHODS,
     ENUM_NAME_SUFFIX,
     NO_BASE_SERVICE_MARKER,
+    ROUTER_BUILDS_MARKER,
     LayerFinding,
     lint_layers,
     run_lint_layers,
@@ -567,6 +568,250 @@ class TestEnumSuffix:
         assert ENUM_NAME_SUFFIX == ENUM_CLASS_SUFFIX
 
 
+INLINE_ROUTER = """
+    from fastapi import APIRouter, Depends
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from src.api.dependencies.resources import get_session
+    from src.controllers import ProductController
+    from src.db.repositories import ProductRepository
+    from src.schemas import ProductResponseSchema
+    from src.services import ProductService
+
+    router: APIRouter = APIRouter(prefix="/products")
+
+
+    @router.get("/{product_id}")
+    async def get_product(
+        product_id: int,
+        session: AsyncSession = Depends(get_session),
+    ) -> ProductResponseSchema:
+        \"\"\"Read a product.\"\"\"
+        controller = ProductController(ProductService(ProductRepository(session)))
+        return await controller.get_by_id(product_id)
+"""
+
+
+class TestRouterBuildsController:
+    """``RTR001``: a controller or service constructed inside ``routers/``."""
+
+    def test_flags_the_controller_built_in_the_route(self, tmp_path: Path) -> None:
+        """Both classes of the nested construction are reported, once each."""
+        _write(tmp_path, "src/api/routers/product.py", INLINE_ROUTER)
+        findings = lint_layers(tmp_path)
+        assert _codes(findings) == [
+            ("product.py", 19, "RTR001"),
+            ("product.py", 19, "RTR001"),
+        ]
+        messages = sorted(finding.message for finding in findings)
+        assert messages[0].startswith("`ProductController(...)` is built inside")
+        assert "api/dependencies/controllers.py" in messages[0]
+        assert messages[1].startswith("`ProductService(...)` is built inside")
+        assert "api/dependencies/services.py" in messages[1]
+
+    def test_flags_a_provider_and_a_module_level_instance(self, tmp_path: Path) -> None:
+        """The provider the HTTP recipe used to keep in the router module."""
+        _write(
+            tmp_path,
+            "src/api/routers/auth.py",
+            """
+            from fastapi import APIRouter, Depends
+            from sqlalchemy.ext.asyncio import AsyncSession
+
+            from src.services import auth
+
+            router = APIRouter(prefix="/auth")
+            shared = auth.AuthService()
+
+
+            def get_auth_service(
+                session: AsyncSession = Depends(get_session),
+            ) -> auth.AuthService:
+                return auth.AuthService(session)
+            """,
+        )
+        assert _codes(lint_layers(tmp_path)) == [
+            ("auth.py", 7, "RTR001"),
+            ("auth.py", 13, "RTR001"),
+        ]
+
+    def test_depends_on_a_provider_is_clean(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "src/api/routers/product.py",
+            """
+            from fastapi import APIRouter, Depends, HTTPException
+
+            from src.api.dependencies.controllers import get_product_controller
+            from src.controllers import ProductController
+            from src.schemas import ProductResponseSchema
+
+            router: APIRouter = APIRouter(prefix="/products")
+
+
+            @router.get("/{product_id}")
+            async def get_product(
+                product_id: int,
+                controller: ProductController = Depends(get_product_controller),
+            ) -> ProductResponseSchema:
+                if product_id < 0:
+                    raise HTTPException(status_code=404)
+                return await controller.get_by_id(product_id)
+
+
+            def build_product_service() -> None:
+                get_product_service()
+            """,
+        )
+        assert lint_layers(tmp_path) == []
+
+    def test_construction_outside_routers_is_not_read(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "src/api/dependencies/controllers.py",
+            """
+            def get_product_controller() -> ProductController:
+                return ProductController(ProductService(ProductRepository()))
+            """,
+        )
+        assert lint_layers(tmp_path) == []
+
+    def test_marker_opts_out_one_call(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "src/api/routers/push.py",
+            f"""
+            from tempest_fastapi_sdk import make_push_router
+
+            router = make_push_router(
+                service=DeviceService(transports),  {ROUTER_BUILDS_MARKER}
+            )
+            other = ReportService()
+            """,
+        )
+        assert _codes(lint_layers(tmp_path)) == [("push.py", 6, "RTR001")]
+
+
+class TestRouterReturnsModel:
+    """``RTR002``: a route whose declared response is an ORM model."""
+
+    def test_flags_the_return_annotation(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "src/api/routers/product.py",
+            """
+            from fastapi import APIRouter
+
+            from src.db.models import ProductModel
+
+            router = APIRouter()
+
+
+            @router.get("/{product_id}")
+            async def get_product(product_id: int) -> ProductModel:
+                ...
+            """,
+        )
+        findings = lint_layers(tmp_path)
+        assert _codes(findings) == [("product.py", 9, "RTR002")]
+        assert findings[0].message.startswith(
+            "route `get_product` returns the ORM model `ProductModel` "
+            "(return annotation)"
+        )
+
+    def test_flags_nested_union_string_and_response_model(self, tmp_path: Path) -> None:
+        """The model is found at any depth and under either declaration."""
+        _write(tmp_path, "src/db/models/order.py", "class Order: ...\n")
+        _write(
+            tmp_path,
+            "src/api/routers/order.py",
+            """
+            from typing import Annotated
+
+            from fastapi import APIRouter
+
+            from src import db
+            from src.db import Order
+            from src.db.models.user import UserModel as Account
+
+            router = APIRouter()
+
+
+            @router.get("/")
+            async def list_orders() -> list[Annotated[Order, "x"]] | None:
+                ...
+
+
+            @router.post("/", response_model=db.Order)
+            async def create_order() -> "Account":
+                ...
+
+
+            @router.api_route("/raw", methods=["GET"], response_model=Account)
+            def raw() -> dict[str, Account]:
+                ...
+            """,
+        )
+        findings = lint_layers(tmp_path)
+        assert _codes(findings) == [
+            ("order.py", 13, "RTR002"),
+            ("order.py", 18, "RTR002"),
+            ("order.py", 18, "RTR002"),
+            ("order.py", 23, "RTR002"),
+        ]
+        assert "`Order` (response_model=)" in findings[2].message
+
+    def test_leaves_schemas_and_non_routes_alone(self, tmp_path: Path) -> None:
+        """A schema of the same name, a helper and a route with no model."""
+        _write(tmp_path, "src/db/models/product.py", "class Product: ...\n")
+        _write(
+            tmp_path,
+            "src/api/routers/product.py",
+            """
+            from fastapi import APIRouter
+
+            from src.db.models import ProductModel
+            from src.schemas import Product, ProductResponseSchema
+
+            router = APIRouter()
+
+
+            def to_model(data: ProductResponseSchema) -> ProductModel:
+                ...
+
+
+            @router.get("/{product_id}")
+            async def get_product(product_id: int) -> Product:
+                ...
+
+
+            @router.get("/", response_model=list[ProductResponseSchema])
+            async def list_products():
+                ...
+
+
+            @staticmethod
+            def unrelated() -> ProductModel:
+                ...
+            """,
+        )
+        assert lint_layers(tmp_path) == []
+
+    def test_models_outside_routers_are_not_read(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "src/api/dependencies/auth.py",
+            """
+            from src.db.models import UserModel
+
+
+            @router.get("/me")
+            async def me() -> UserModel: ...
+            """,
+        )
+        assert lint_layers(tmp_path) == []
+
+
 class TestDiscovery:
     """Where the checker looks, and what it never reads."""
 
@@ -687,7 +932,27 @@ class TestScaffold:
         assert project / "src/services/product.py" in written
         assert project / "src/db/repositories/product.py" in written
         assert project / "src/core/enums.py" in written
+        assert project / "src/api/routers/product.py" in written
         assert lint_layers(project) == []
+
+    def test_claude_md_router_built_inline_is_flagged(self, project: Path) -> None:
+        """The template's router, rewritten to build the controller, fails.
+
+        Proves ``RTR001`` reads the router the template teaches: the same
+        block with the ``Depends`` provider swapped for the construction
+        the provider holds.
+        """
+        document = (project / "CLAUDE.md").read_text(encoding="utf-8")
+        blocks = {relative: source for source, relative in _BLOCK.findall(document)}
+        router = blocks["src/api/routers/product.py"]
+        broken = router.replace(
+            "Depends(get_product_controller)",
+            "ProductController(ProductService(ProductRepository(session)))",
+        )
+        assert broken != router
+        written = _write(project / "broken", "src/api/routers/product.py", broken)
+        codes = [finding.code for finding in lint_layers(written.parents[3])]
+        assert codes == ["RTR001", "RTR001"]
 
     def test_claude_md_documents_the_gate(self, project: Path) -> None:
         """The template names the step, every code and the opt-out marker."""
@@ -701,5 +966,8 @@ class TestScaffold:
             "SVC003",
             "REPO001",
             "ENUM001",
+            "RTR001",
+            "RTR002",
+            ROUTER_BUILDS_MARKER,
         ):
             assert needle in document

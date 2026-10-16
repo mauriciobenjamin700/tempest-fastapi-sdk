@@ -3394,6 +3394,21 @@ check` via `CheckStep` do `tempest-cli>=0.5.0`. Teste:
 `tests/cli/test_layer_lint.py` (cada regra, opt-out, descoberta, runner,
 `check` entregando o passo, scaffold e exemplos do `CLAUDE.md` limpos).
 
+## Regras de router no `tempest check`
+
+`RTR001` e `RTR002` em `tempest_fastapi_sdk/cli/layer_lint.py`, sobre os
+módulos de `routers/`. `RTR001`: chamada a classe `*Controller`/`*Service`
+em qualquer ponto do módulo (opt-out por linha `# tempest: router-builds`).
+`RTR002`: rota `@<router>.<método>` cuja anotação de retorno ou
+`response_model=` cita model ORM (import de módulo com segmento `models`, ou
+classe de um diretório `models/` não importada de `schemas`), em qualquer
+profundidade; sem opt-out. Onde o `@requires` fica **não** virou regra: é
+válido na rota e no controller. Pontos cegos documentados na docstring do
+módulo e em `docs/recipes/cli.md`. Teste:
+`tests/cli/test_layer_lint.py::TestRouterBuildsController`,
+`::TestRouterReturnsModel` e o router do `CLAUDE.md` reescrito para montar o
+controller (`TestScaffold`).
+
 ## Sufixo `Enum` no `tempest check` (#518)
 
 `ENUM001` em `tempest_fastapi_sdk/cli/layer_lint.py`: classe pública que
