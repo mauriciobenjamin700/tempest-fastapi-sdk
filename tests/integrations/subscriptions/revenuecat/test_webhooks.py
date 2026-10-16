@@ -225,6 +225,120 @@ class TestSignature:
         assert verify_signature(body, header, "", now=1_000) is False
 
 
+class TestEmptySecretMeansUnconfigured:
+    """An empty secret skips its check; no secret with a value refuses all.
+
+    The recipe passes ``secret=settings.REVENUECAT_WEBHOOK_SECRET``, which is
+    ``""`` (not ``None``) in a service that authenticates by HMAC alone, and
+    ``RevenueCatSettings.production_violations`` accepts that configuration.
+    Before this rule the empty ``secret`` still ran the ``Authorization``
+    check and refused every correctly signed delivery.
+    """
+
+    async def test_an_empty_authorization_secret_leaves_hmac_only(self) -> None:
+        body = _body()
+        header = sign_payload(body, SIGNING, timestamp=int(time.time()))
+
+        response = await _post(
+            _dependency_app(secret="", signing_secret=SIGNING),
+            body,
+            {REVENUECAT_SIGNATURE_HEADER: header},
+        )
+
+        assert response.status_code == 200
+
+    async def test_hmac_only_still_refuses_a_bad_signature(self) -> None:
+        body = _body()
+        header = sign_payload(body, "other", timestamp=int(time.time()))
+
+        response = await _post(
+            _dependency_app(secret="", signing_secret=SIGNING),
+            body,
+            {REVENUECAT_SIGNATURE_HEADER: header, "Authorization": "anything"},
+        )
+
+        assert response.status_code == 401
+
+    async def test_an_empty_signing_secret_leaves_authorization_only(self) -> None:
+        app = _dependency_app(secret="abc", signing_secret="")
+
+        ok = await _post(app, _body(), {"Authorization": "abc"})
+        refused = await _post(app, _body(), {"Authorization": "nope"})
+
+        assert ok.status_code == 200
+        assert refused.status_code == 401
+
+    @pytest.mark.parametrize("empty", ["", " ", "Bearer "])
+    async def test_both_empty_refuses_even_a_signed_delivery(self, empty: str) -> None:
+        body = _body()
+        header = sign_payload(body, empty, timestamp=int(time.time()))
+
+        response = await _post(
+            _dependency_app(secret=empty, signing_secret=empty),
+            body,
+            {REVENUECAT_SIGNATURE_HEADER: header, "Authorization": empty},
+        )
+
+        assert response.status_code == 401
+
+    async def test_both_configured_requires_both(self) -> None:
+        body = _body()
+        header = sign_payload(body, SIGNING, timestamp=int(time.time()))
+        app = _dependency_app(secret=SECRET, signing_secret=SIGNING)
+
+        only_hmac = await _post(app, body, {REVENUECAT_SIGNATURE_HEADER: header})
+        only_authorization = await _post(app, body, {"Authorization": SECRET})
+        both = await _post(
+            app, body, {REVENUECAT_SIGNATURE_HEADER: header, "Authorization": SECRET}
+        )
+
+        assert only_hmac.status_code == 401
+        assert only_authorization.status_code == 401
+        assert both.status_code == 200
+
+    async def test_emptiness_is_read_per_request(self) -> None:
+        def per_tenant(request: Request) -> str:
+            return "" if request.headers.get("X-Tenant") == "hmac" else SECRET
+
+        body = _body()
+        header = sign_payload(body, SIGNING, timestamp=int(time.time()))
+        app = _dependency_app(secret=per_tenant, signing_secret=SIGNING)
+
+        hmac_tenant = await _post(
+            app, body, {REVENUECAT_SIGNATURE_HEADER: header, "X-Tenant": "hmac"}
+        )
+        both_tenant = await _post(
+            app, body, {REVENUECAT_SIGNATURE_HEADER: header, "X-Tenant": "both"}
+        )
+
+        assert hmac_tenant.status_code == 200
+        assert both_tenant.status_code == 401
+
+    async def test_the_router_built_like_the_recipe_accepts_hmac_only(
+        self, inbox: WebhookInbox[_RevenueCatInbox]
+    ) -> None:
+        app = FastAPI()
+        register_exception_handlers(app)
+        app.include_router(
+            make_revenuecat_webhook_router(
+                inbox=inbox, secret="", signing_secret=SIGNING
+            )
+        )
+        body = _body("evt-hmac-only")
+        header = sign_payload(body, SIGNING, timestamp=int(time.time()))
+
+        response = await _post(
+            app, body, {REVENUECAT_SIGNATURE_HEADER: header}, path=ROUTE
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"recorded": True, "event_id": "evt-hmac-only"}
+
+    def test_two_none_still_fails_at_construction(self) -> None:
+        with pytest.raises(ValueError, match="accept any request"):
+            make_revenuecat_webhook_dependency(None, signing_secret=None)
+
+
 class TestBody:
     """An authenticated body that is not an event."""
 

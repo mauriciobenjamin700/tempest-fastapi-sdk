@@ -6,7 +6,7 @@ backend por **webhook** a cada mudança (compra, renovação, cancelamento,
 expiração...). O backend precisa de três coisas que todo serviço acabava
 escrevendo à mão:
 
-1. **Autenticar** o webhook — e recusar tudo quando o segredo não está
+1. **Autenticar** o webhook — e recusar tudo quando nenhum segredo está
    configurado.
 2. **Gravar o evento uma vez só**, responder `200` rápido e processar
    depois — o RevenueCat reenvia, e às vezes manda o mesmo evento duas vezes.
@@ -239,17 +239,20 @@ settings = RevenueCatSettings()
 router = make_revenuecat_webhook_router(
     inbox=inbox,
     secret=settings.REVENUECAT_WEBHOOK_SECRET,
-    signing_secret=settings.REVENUECAT_WEBHOOK_SIGNING_SECRET or None,
+    signing_secret=settings.REVENUECAT_WEBHOOK_SIGNING_SECRET,
 )
 ```
 
-Com os dois configurados, a entrega precisa passar nos dois. Regras que o SDK
-aplica e que os testes fixam:
+Um segredo está configurado quando tem valor. Cada segredo preenchido é
+conferido, e com os dois preenchidos a entrega precisa passar nos dois; o que
+estiver vazio só desliga a própria checagem. Por isso o mesmo código serve
+para "só header", "só HMAC" e "os dois", trocando apenas as variáveis de
+ambiente. Regras que o SDK aplica e que os testes fixam:
 
 - comparação em tempo constante (`hmac.compare_digest`);
 - o header `Authorization` vale com ou sem o prefixo `Bearer `;
-- **segredo vazio recusa tudo** — uma variável de ambiente esquecida não vira
-  um endpoint aberto;
+- **nenhum segredo preenchido recusa tudo** (`401`) — uma variável de
+  ambiente esquecida não vira um endpoint aberto;
 - `secret=None` e `signing_secret=None` juntos levantam `ValueError` na
   montagem: não existe rota sem autenticação;
 - a assinatura HMAC fora da janela de 5 minutos é recusada. Segundo a
@@ -259,7 +262,8 @@ aplica e que os testes fixam:
 !!! info "Segredo por requisição"
     `secret` e `signing_secret` também aceitam uma função
     `Callable[[Request], str]` — útil para rotação ou para um serviço com
-    vários projetos RevenueCat.
+    vários projetos RevenueCat. O vazio é lido por requisição: a função que
+    devolve `""` desliga aquela checagem só naquela entrega.
 
 ### 3. O inbox: uma vez, com teto de tentativas
 
@@ -412,8 +416,8 @@ criar o cliente como o endpoint real faria.
 
 | Variável | Para quê | Vazia significa |
 | --- | --- | --- |
-| `REVENUECAT_WEBHOOK_SECRET` | valor do *authorization header* do painel | toda entrega é recusada (`401`) |
-| `REVENUECAT_WEBHOOK_SIGNING_SECRET` | segredo do HMAC, se ativado | assinatura não é conferida |
+| `REVENUECAT_WEBHOOK_SECRET` | valor do *authorization header* do painel | o header `Authorization` não é conferido; com `REVENUECAT_WEBHOOK_SIGNING_SECRET` também vazia, toda entrega é recusada (`401`) |
+| `REVENUECAT_WEBHOOK_SIGNING_SECRET` | segredo do HMAC, se ativado | a assinatura não é conferida; com `REVENUECAT_WEBHOOK_SECRET` também vazia, toda entrega é recusada (`401`) |
 | `REVENUECAT_API_KEY` | chave secreta (`sk_...`) para `GET /v1/subscribers` | a chamada sai com `Bearer ` vazio; a referência documenta `401` para chave inválida |
 
 Composto com `EnvironmentSettings`, `RevenueCatSettings` derruba o boot com
@@ -429,7 +433,8 @@ ValidationError 1 validation error for Settings
 ## Recap
 
 - `make_revenuecat_webhook_router` autentica, grava no inbox e responde
-  `200`; segredo vazio recusa tudo.
+  `200`; cada segredo preenchido é conferido, e sem nenhum preenchido toda
+  entrega é recusada.
 - `WebhookInbox` grava cada evento uma vez, processa com claim, junta efeito
   e marca na mesma transação e para em `max_attempts` — e serve para qualquer
   provedor.

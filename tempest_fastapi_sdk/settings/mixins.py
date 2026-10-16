@@ -3456,12 +3456,14 @@ class RevenueCatSettings(BaseAppSettings):
 
     Attributes:
         REVENUECAT_WEBHOOK_SECRET (str): The ``Authorization`` header value
-            typed in the dashboard's webhook integration. Default ``""`` —
-            and an empty value makes the webhook refuse every delivery,
-            rather than accept every one.
+            typed in the dashboard's webhook integration. Default ``""``.
+            Empty means the header is not checked; with the signing secret
+            empty too, the webhook refuses every delivery rather than accept
+            every one.
         REVENUECAT_WEBHOOK_SIGNING_SECRET (str): The HMAC signing secret,
             when "HMAC webhook signing" is enabled on the integration. Empty
-            means signing is not checked.
+            means signing is not checked; with ``REVENUECAT_WEBHOOK_SECRET``
+            empty too, every delivery is refused.
         REVENUECAT_API_KEY (str): A **secret** API key (``sk_...``) for
             ``GET /v1/subscribers``. Empty disables reconciliation.
     """
@@ -3471,7 +3473,8 @@ class RevenueCatSettings(BaseAppSettings):
         title="RevenueCat webhook authorization value",
         description=(
             "Value configured as the webhook's authorization header in the "
-            "RevenueCat dashboard. Empty rejects every delivery."
+            "RevenueCat dashboard. Empty skips the header check; with the "
+            "signing secret empty too, every delivery is rejected."
         ),
         examples=[""],
     )
@@ -3518,12 +3521,13 @@ class RevenueCatSettings(BaseAppSettings):
     def production_violations(self) -> list[str]:
         """Refuse a production boot that would reject every webhook.
 
-        An empty ``REVENUECAT_WEBHOOK_SECRET`` is safe — the endpoint
-        refuses everything — but in production it means every purchase,
-        renewal and expiration is answered ``401`` and dropped after
-        RevenueCat's last retry. That is an outage, so it fails the boot.
-        Checked only when no signing secret is set either: a service that
-        authenticates by HMAC alone is configured.
+        With both webhook secrets empty the endpoint refuses everything —
+        safe, but in production it means every purchase, renewal and
+        expiration is answered ``401`` and dropped after RevenueCat's last
+        retry. That is an outage, so it fails the boot. Either secret alone
+        is a configured service: the webhook dependency checks each filled
+        secret and skips an empty one, so HMAC alone (or the header alone)
+        authenticates.
 
         Returns:
             list[str]: The parent's entries, plus one when neither webhook

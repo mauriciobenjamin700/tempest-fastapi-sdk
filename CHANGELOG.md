@@ -47,8 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   oficial do RevenueCat (páginas versionadas em `vendor/` com sha256 fixado
   por teste): `make_revenuecat_webhook_router` (autentica pelo header
   `Authorization` do painel e, opcionalmente, pelo HMAC
-  `X-RevenueCat-Webhook-Signature`; `hmac.compare_digest`; segredo vazio
-  recusa tudo; grava no `WebhookInbox` por `event.id` e responde `200`, com
+  `X-RevenueCat-Webhook-Signature`; `hmac.compare_digest`; cada segredo
+  preenchido é conferido e o vazio desliga só a própria checagem, então
+  `secret=""` com `signing_secret` preenchido é só HMAC; nenhum preenchido
+  recusa tudo com `401`; grava no `WebhookInbox` por `event.id` e responde `200`, com
   `on_recorded` para enfileirar), `make_revenuecat_webhook_dependency`,
   `RevenueCatWebhook`/`RevenueCatEvent` (`extra="allow"`,
   `subscriber_attributes` fora do `model_dump`), `RevenueCatEventTypeEnum`
@@ -57,8 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   desconhecido vira `UNKNOWN`), `RevenueCatClient.get_subscriber`
   (`GET /v1/subscribers/{app_user_id}`), `RevenueCatSettings`
   (`REVENUECAT_WEBHOOK_SECRET`, `REVENUECAT_WEBHOOK_SIGNING_SECRET`,
-  `REVENUECAT_API_KEY`, `revenuecat_kwargs()`; `ENV=production` recusa os
-  dois segredos de webhook vazios) e `FakeRevenueCatClient`. Nenhum extra
+  `REVENUECAT_API_KEY`, `revenuecat_kwargs()`; `ENV=production` recusa o
+  boot quando nenhum dos dois segredos de webhook está preenchido) e `FakeRevenueCatClient`. Nenhum extra
   novo. Nada foi medido contra conta real do RevenueCat.
 
 ### Changed
