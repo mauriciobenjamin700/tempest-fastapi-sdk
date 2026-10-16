@@ -1,0 +1,23 @@
+"""``ServiceInfoSchema`` — the payload of the placeholder root endpoint."""
+
+from __future__ import annotations
+
+from pydantic import Field
+from tempest_fastapi_sdk import BaseSchema
+
+
+class ServiceInfoSchema(BaseSchema):
+    """What ``GET /api/`` answers: the name the service runs under.
+
+    Attributes:
+        service (str): The service title, read from the ``TITLE`` setting.
+    """
+
+    service: str = Field(
+        title="Service",
+        description="The service title, read from the TITLE setting.",
+        examples=["__PROJECT_NAME__"],
+    )
+
+
+__all__: list[str] = ["ServiceInfoSchema"]

@@ -241,6 +241,12 @@ def _write_domain_from_claude_md(project: Path) -> None:
     edited on the way in — an example that no longer works fails the
     test that follows.
 
+    The packages the scaffold already fills (``schemas``, ``controllers``,
+    ``api/dependencies``, whose ``controllers.py`` holds the root
+    endpoint's factory) are extended rather than replaced, as the recipe
+    tells the reader to do: replacing them would drop the
+    ``ServiceInfo*`` symbols ``src.api.routers`` imports.
+
     Blocks are located by that header rather than by position: indexing
     them made adding one block to the recipe break every later mapping,
     silently writing the wrong file into the project under test.
@@ -312,6 +318,7 @@ def _write_domain_from_claude_md(project: Path) -> None:
         encoding="utf-8",
     )
 
+    appended = {"src/api/dependencies/controllers.py"}
     written = {
         path: code
         for path, code in by_path.items()
@@ -321,18 +328,11 @@ def _write_domain_from_claude_md(project: Path) -> None:
     for relative, code in written.items():
         destination = project.joinpath(*relative.split("/"))
         destination.parent.mkdir(parents=True, exist_ok=True)
+        if relative in appended:
+            code = destination.read_text(encoding="utf-8") + "\n\n" + code
         destination.write_text(code, encoding="utf-8")
 
     for relative, content in {
-        "src/schemas/__init__.py": (
-            "from src.schemas.product import (\n"
-            "    ProductCreateSchema as ProductCreateSchema,\n"
-            ")\n"
-            "from src.schemas.product import (\n"
-            "    ProductResponseSchema as ProductResponseSchema,\n"
-            ")\n\n"
-            '__all__: list[str] = ["ProductCreateSchema", "ProductResponseSchema"]\n'
-        ),
         "src/db/repositories/__init__.py": (
             "from src.db.repositories.product import (\n"
             "    ProductRepository as ProductRepository,\n"
@@ -343,14 +343,37 @@ def _write_domain_from_claude_md(project: Path) -> None:
             "from src.services.product import ProductService as ProductService\n\n"
             '__all__: list[str] = ["ProductService"]\n'
         ),
+    }.items():
+        project.joinpath(*relative.split("/")).write_text(content, encoding="utf-8")
+
+    for relative, addition in {
+        "src/schemas/__init__.py": (
+            "from src.schemas.product import (\n"
+            "    ProductCreateSchema as ProductCreateSchema,\n"
+            ")\n"
+            "from src.schemas.product import (\n"
+            "    ProductResponseSchema as ProductResponseSchema,\n"
+            ")\n\n"
+            '__all__ = [*__all__, "ProductCreateSchema", "ProductResponseSchema"]\n'
+        ),
         "src/controllers/__init__.py": (
             "from src.controllers.product import (\n"
             "    ProductController as ProductController,\n"
             ")\n\n"
-            '__all__: list[str] = ["ProductController"]\n'
+            '__all__ = [*__all__, "ProductController"]\n'
+        ),
+        "src/api/dependencies/__init__.py": (
+            "from src.api.dependencies.controllers import (\n"
+            "    get_product_controller as get_product_controller,\n"
+            ")\n\n"
+            '__all__ = [*__all__, "get_product_controller"]\n'
         ),
     }.items():
-        project.joinpath(*relative.split("/")).write_text(content, encoding="utf-8")
+        destination = project.joinpath(*relative.split("/"))
+        destination.write_text(
+            destination.read_text(encoding="utf-8") + "\n" + addition,
+            encoding="utf-8",
+        )
 
     models_init = project / "src" / "db" / "models" / "__init__.py"
     models_init.write_text(

@@ -1,18 +1,28 @@
 """Mounted business routers — extend ``router`` with your endpoints."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import get_service_info_controller
+from src.controllers import ServiceInfoController
+from src.schemas import ServiceInfoSchema
 
 router = APIRouter()
 
 
 @router.get("/", tags=["root"])
-async def index() -> dict[str, str]:
+async def index(
+    controller: ServiceInfoController = Depends(get_service_info_controller),
+) -> ServiceInfoSchema:
     """Placeholder root endpoint returning the service name.
 
+    Args:
+        controller (ServiceInfoController): Built per request by
+            :func:`~src.api.dependencies.get_service_info_controller`.
+
     Returns:
-        dict[str, str]: A simple greeting payload.
+        ServiceInfoSchema: The service title.
     """
-    return {"service": "__PROJECT_NAME__"}
+    return await controller.describe()
 
 
 __all__: list[str] = ["router"]

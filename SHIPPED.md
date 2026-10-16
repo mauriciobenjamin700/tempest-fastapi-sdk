@@ -1138,6 +1138,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   a camada `tasks`, Redis no compose e `TASKIQ_BROKER_URL=redis://` no
   `Settings`. Templates com blocos `@@if <extra>@@`. Testes:
   `tests/cli/test_new_required_extras.py`.
+- **Scaffold com fábricas de controller (Unreleased)** — o `tempest new`
+  gera `src/api/dependencies/controllers.py` (`get_service_info_controller`,
+  recebida pelo router do `GET /api/` por `Depends`), `get_settings()` com
+  `@lru_cache` em `src/core/settings.py` (sobrescrevível por
+  `dependency_overrides`) e `get_mailer` / `get_storage` só com
+  `[email]` / `[minio]`. Testes: `tests/cli/test_scaffold_dependencies.py`.
 - **Dependency de sessão com fábrica (0.303.0, #381)** —
   `make_session_dependency(session_auth=...)` aceita `SessionAuthFactory`
   (`(request) -> SessionAuth`), resolvido por request; overloads tipam
