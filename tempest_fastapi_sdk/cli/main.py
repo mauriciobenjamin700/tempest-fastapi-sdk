@@ -746,7 +746,7 @@ def lint_layers_cmd(
         ),
     ] = ".",
 ) -> None:
-    """Check the services, repositories and enum names against the SDK's rules.
+    """Check services, repositories, routers and enum names against the SDK's rules.
 
     Reads the source with ``ast`` (the project is never imported) and
     prints one ``path:line: CODE message`` line per violation. SVC001: a
@@ -756,7 +756,10 @@ def lint_layers_cmd(
     class or a module-level function. SVC003: a service ``__init__``
     that only stores the repository. REPO001: a repository method that
     only forwards to a BaseRepository method. ENUM001: a BaseStrEnum
-    subclass whose name does not end in ``Enum``.
+    subclass whose name does not end in ``Enum``. RTR001: a
+    ``*Controller`` / ``*Service`` class called inside routers/ (opt out
+    with ``# tempest: router-builds`` on the line). RTR002: a route whose
+    return annotation or ``response_model`` names an ORM model.
 
     ``tempest check`` runs the same rules as its ``lint-layers`` step.
 

@@ -1847,6 +1847,8 @@ mensagem`, e a mensagem diz o que mudar:
 | `SVC003` | `services/` | `__init__` que só chama `super().__init__` com os próprios parâmetros e/ou guarda `self.repository` |
 | `REPO001` | `repositories/` | método cujo corpo é só `return [await] self.<método do BaseRepository>(...)` |
 | `ENUM001` | todo o código | classe pública que herda `BaseStrEnum` (direto ou via outra classe do projeto) e cujo nome não termina em `Enum` — a mensagem diz o nome esperado; renomear não pede migration, porque o `enum_type_name` tira um `Enum` final (#518) |
+| `RTR001` | `routers/` | chamada a uma classe `*Controller` ou `*Service` (nome com inicial maiúscula) em qualquer ponto do módulo — corpo de rota, função auxiliar, nível de módulo. A construção vai para um provider em `api/dependencies/controllers.py` e chega à rota por `Depends` |
+| `RTR002` | `routers/` | rota (`@<router>.get` / `post` / `put` / `patch` / `delete` / `head` / `options` / `trace` / `api_route`) cuja anotação de retorno ou `response_model=` cita um model ORM, em qualquer profundidade (`list[ProductModel]`, `Optional[ProductModel]`, união com `None`) |
 
 Os três casos do #520, num projeto gerado pelo `tempest new`, saem assim
 no `tempest check` (trecho da saída real; exit code `1`):
@@ -1864,8 +1866,9 @@ src/services/feeds.py:37: SVC002 `TrendService` shares this module with `NewsSer
 ```
 
 O projeto como o `tempest new` gera passa limpo, e continua limpo com os
-exemplos de `ProductService` / `ProductRepository` do `CLAUDE.md` copiados
-para dentro dele — o teste da suíte faz exatamente isso.
+exemplos de `ProductService` / `ProductRepository` / router de produto do
+`CLAUDE.md` copiados para dentro dele — o teste da suíte faz exatamente
+isso.
 
 !!! tip "Service sem repository: opt-out explícito"
     Um service que não tem repository para entregar ao `BaseService` (um
@@ -1895,6 +1898,91 @@ para dentro dele — o teste da suíte faz exatamente isso.
     encaminhando para `soft_delete`) é política, não wrapper: quem chama
     `service.delete` passa a apagar logicamente. E um método que chama
     outro método definido na própria classe não é wrapper do SDK.
+
+#### Router: controller por `Depends`, resposta em schema
+
+As duas regras de `routers/` cobrem os desvios que mais aparecem num
+router: montar o controller na mão dentro da rota e devolver a linha ORM.
+Este router, escrito num projeto do `tempest new`, faz os dois:
+
+```python
+# src/api/routers/product.py
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.api.dependencies.resources import get_session
+from src.controllers import ProductController
+from src.db.models import ProductModel
+from src.db.repositories import ProductRepository
+from src.services import ProductService
+
+router: APIRouter = APIRouter(prefix="/products", tags=["products"])
+
+
+@router.get("/{product_id}")
+async def get_product(
+    product_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> ProductModel:
+    """Read a product."""
+    controller = ProductController(ProductService(ProductRepository(session)))
+    return await controller.get_by_id(product_id)
+```
+
+O `tempest lint-layers` sai com exit code `1` e três linhas (saída real):
+
+```text
+src/api/routers/product.py:14: RTR002 route `get_product` returns the ORM model `ProductModel` (return annotation); return the response schema the repository maps it to (`map_to_response`) and annotate the route with that schema.
+src/api/routers/product.py:19: RTR001 `ProductController(...)` is built inside a router; move the construction to a provider in api/dependencies/controllers.py and receive it in the route as `Depends(get_...)`. A call that has to stay opts out with `# tempest: router-builds` on its line.
+src/api/routers/product.py:19: RTR001 `ProductService(...)` is built inside a router; move the construction to a provider in api/dependencies/services.py and receive it in the route as `Depends(get_...)`. A call that has to stay opts out with `# tempest: router-builds` on its line.
+3 layer finding(s).
+```
+
+A correção é a forma que o `CLAUDE.md` do projeto ensina: o provider
+`get_product_controller` em `src/api/dependencies/controllers.py` monta a
+cadeia, a rota recebe `controller: ProductController =
+Depends(get_product_controller)` e anota o retorno com
+`ProductResponseSchema`.
+
+**O que conta como model ORM.** Um nome importado de um módulo cujo
+caminho tem o segmento `models` (`src.db.models`, `src.db.models.user`),
+ou uma classe pública definida num diretório `models/` do projeto — desde
+que a rota não a importe de um módulo `schemas`. Um schema que por acaso
+tem o mesmo nome de um model continua limpo.
+
+!!! tip "Construção que precisa ficar no router: `# tempest: router-builds`"
+    O marcador é a exceção que você assume por escrito, para a review ler
+    o motivo. Ele vale para as chamadas daquela linha, não para o módulo
+    inteiro:
+
+    ```python
+    # src/api/routers/reports.py
+    from fastapi import APIRouter
+
+    from src.services import ReportService
+
+    report_service: ReportService = ReportService()  # tempest: router-builds
+    router: APIRouter = APIRouter(prefix="/reports")
+    ```
+
+    O `RTR002` não tem opt-out: a correção tem uma forma só — devolver o
+    schema que o `map_to_response` do repository produz.
+
+!!! warning "O que as regras de router não veem"
+    Elas leem sintaxe e nunca importam o projeto, então ficam de fora:
+    rota sem anotação de retorno e sem `response_model=`; model guardado
+    fora de qualquer `models/` e importado de módulo sem esse segmento; as
+    bases ORM do próprio SDK (`BaseUserModel`) usadas direto na rota;
+    controller montado por alias (`factory = ProductController; factory()`)
+    ou classe cujo nome não termina em `Controller` / `Service`.
+
+    **Onde o `@requires` fica não é regra.** A receita de
+    [guards de permissão](permission-guards.md) aplica o `@requires` na
+    rota como primeira forma, e o próprio `requires` documenta handler de
+    rota, método de controller e de service como lugares válidos. Acusar o
+    `@requires` na rota acusaria a documentação do SDK; a escolha entre os
+    dois lugares é revisão — o critério está em
+    [Arquitetura › Guards](../architecture.md#guards-dependencia-no-router-ou-requires-no-metodo).
 
 !!! note "Requer `tempest-cli>=0.5.0`"
     O passo entra no `tempest check` pelo `extra_steps` do

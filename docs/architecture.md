@@ -1056,6 +1056,8 @@ Parte destas regras tem gate; parte não. O `tempest lint-layers` (e o passo
 | `SVC003` | `__init__` de service que só guarda o repository |
 | `REPO001` | método de repository que só repassa para um método do `BaseRepository` |
 | `ENUM001` | `BaseStrEnum` cujo nome não termina em `Enum` |
+| `RTR001` | classe `*Controller` / `*Service` chamada dentro de `routers/` em vez de chegar por `Depends` |
+| `RTR002` | rota cuja anotação de retorno ou `response_model=` cita um model ORM |
 
 Rodado sobre um `src/` com um `FamilyService` cujo `__init__` só chama
 `super().__init__(repository)`, um `ProductService` como o do exemplo e um
@@ -1074,10 +1076,18 @@ classe para o sufixo não pede `TempestEnum(UserRoleEnum, name="user_role_enum")
 em cada coluna. Banco criado antes, com o nome dobrado, está em
 [Colunas enum › Renomear o tipo](recipes/enum-columns.md#renomear-o-tipo).
 
-Ficam **sem gate**, por enquanto, e dependem de revisão: controller montado
-dentro do router em vez de vir de fábrica, guard aplicado no lugar errado e
-router devolvendo model ORM. O `lint-layers` só lê `services/`,
-`repositories/` e os enums. Tabela completa e o opt-out em
+Troque o `Depends(get_product_controller)` do router por
+`ProductController(ProductService(ProductRepository(session)))` e a mesma
+execução acusa `RTR001` naquela linha, uma vez por classe montada; anote a
+rota com `-> ProductModel` e ela acusa `RTR002`.
+
+Fica **sem gate**, de propósito, uma regra: onde o guard fica. O
+`@requires` vale tanto no handler da rota quanto no método do controller —
+a receita de [guards de permissão](recipes/permission-guards.md) usa a rota
+como primeira forma —, então uma checagem que acusasse a rota acusaria
+código correto. Escolher o método do controller, como acima, é revisão.
+Tabela completa, o opt-out `# tempest: router-builds` e o que as regras de
+router não veem em
 [CLI › Regras de camada](recipes/cli.md#regras-de-camada-tempest-lint-layers).
 
 ### Recap
@@ -1094,5 +1104,5 @@ router devolvendo model ORM. O `lint-layers` só lê `services/`,
 - **Autenticação na dependência da rota; invariante com `@requires`** no
   método do caso de uso.
 - **Router devolve schema**, anotado no retorno.
-- `tempest lint-layers` confere `SVC001`–`SVC003`, `REPO001` e `ENUM001`; o
-  resto é revisão.
+- `tempest lint-layers` confere `SVC001`–`SVC003`, `REPO001`, `ENUM001`,
+  `RTR001` e `RTR002`; onde o guard fica é revisão.

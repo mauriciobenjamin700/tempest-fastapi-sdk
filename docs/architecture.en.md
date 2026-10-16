@@ -1060,6 +1060,8 @@ Some of these rules have a gate; some do not. `tempest lint-layers` (and the
 | `SVC003` | a service `__init__` that only stores the repository |
 | `REPO001` | a repository method that only forwards to a `BaseRepository` method |
 | `ENUM001` | a `BaseStrEnum` whose name does not end in `Enum` |
+| `RTR001` | a `*Controller` / `*Service` class called inside `routers/` instead of arriving through `Depends` |
+| `RTR002` | a route whose return annotation or `response_model=` names an ORM model |
 
 Run over a `src/` with a `FamilyService` whose `__init__` only calls
 `super().__init__(repository)`, a `ProductService` like the example's and a
@@ -1078,10 +1080,17 @@ the suffix needs no `TempestEnum(UserRoleEnum, name="user_role_enum")` on
 every column. A database created earlier, with the doubled name, is covered
 in [Enum columns › Renaming the type](recipes/enum-columns.md#renaming-the-type).
 
-**No gate yet**, so review carries them: a controller built inside the
-router instead of coming from a provider, a guard applied in the wrong
-place, and a router returning an ORM model. `lint-layers` only reads
-`services/`, `repositories/` and the enums. Full table and the opt-out in
+Replace the router's `Depends(get_product_controller)` with
+`ProductController(ProductService(ProductRepository(session)))` and the
+same run reports `RTR001` on that line, once per class built; annotate the
+route with `-> ProductModel` and it reports `RTR002`.
+
+**No gate**, on purpose, for one rule: where the guard sits. `@requires` is
+valid on the route handler and on the controller method alike — the
+[permission guards](recipes/permission-guards.md) recipe uses the route as
+its first form — so a check that flagged the route would flag correct code.
+Choosing the controller method, as above, is review. Full table, the
+`# tempest: router-builds` opt-out and what the router rules cannot see in
 [CLI › Layer rules](recipes/cli.md#layer-rules-tempest-lint-layers).
 
 ### Recap
@@ -1100,5 +1109,5 @@ place, and a router returning an ORM model. `lint-layers` only reads
 - **Authentication in the route dependency; the invariant with
   `@requires`** on the use-case method.
 - **The router returns a schema**, annotated on the return.
-- `tempest lint-layers` checks `SVC001`–`SVC003`, `REPO001` and `ENUM001`;
-  the rest is review.
+- `tempest lint-layers` checks `SVC001`–`SVC003`, `REPO001`, `ENUM001`,
+  `RTR001` and `RTR002`; where the guard sits is review.

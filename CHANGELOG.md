@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `RTR001` e `RTR002` no `tempest lint-layers` / passo `lint-layers` do
+  `tempest check`, lidos por `ast` nos módulos de `routers/`. `RTR001`:
+  chamada a uma classe `*Controller` ou `*Service` em qualquer ponto do
+  módulo (corpo de rota, função auxiliar, nível de módulo) — a mensagem manda
+  a construção para um provider em `api/dependencies/controllers.py` (ou
+  `services.py`) e a rota receber por `Depends`; opt-out por chamada com
+  `# tempest: router-builds` na linha. `RTR002`: rota (`@<router>.get` /
+  `post` / `put` / `patch` / `delete` / `head` / `options` / `trace` /
+  `api_route`) cuja anotação de retorno ou `response_model=` cita um model
+  ORM em qualquer profundidade (`list[...]`, `Optional[...]`, união,
+  `Annotated`, anotação em string); conta como model o nome importado de
+  módulo com segmento `models` ou a classe pública definida num diretório
+  `models/` do projeto, exceto quando importada de módulo `schemas`. Sem
+  opt-out. Medido: um router com
+  `ProductController(ProductService(ProductRepository(session)))` e
+  `-> ProductModel` num projeto do `tempest new` dá três achados e exit 1; o
+  scaffold puro e o scaffold com os exemplos do `CLAUDE.md` passam limpos; os
+  78 blocos de router das docs, cada um num projeto próprio, só disparam nos
+  dois exemplos que mostram o defeito de propósito. "Guard no lugar errado"
+  fica sem regra, de propósito: o `@requires` é válido na rota e no método do
+  controller, e a receita de guards de permissão usa a rota como primeira
+  forma. O `CLAUDE.md` do template documenta os dois códigos e o marcador.
+  As receitas de HTTP e de push passam a montar o service em
+  `src/api/dependencies/services.py` em vez de no módulo do router.
+
 ## [0.314.0] — 2026-10-16
 
 ### Added

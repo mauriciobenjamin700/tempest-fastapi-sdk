@@ -1,4 +1,4 @@
-"""Static rules for the ``services`` / ``repositories`` layers and enum names.
+"""Static rules for the ``services`` / ``repositories`` / ``routers`` layers.
 
 The ``CLAUDE.md`` that ``tempest new`` writes lists how a service and a
 repository are shaped: every service subclasses :class:`BaseService`, a
@@ -38,6 +38,37 @@ The rules:
   database side: ``enum_type_name`` drops one trailing ``Enum``, so
   ``OrderStatus`` and ``OrderStatusEnum`` both map to
   ``order_status_enum``.
+* ``RTR001`` — a module in ``routers/`` calls a ``*Controller`` or
+  ``*Service`` class (a name that starts upper case and ends in one of
+  those suffixes), anywhere in the module: in a route body, in a helper
+  provider, at module level. The controller comes from a provider in
+  ``api/dependencies/controllers.py`` and reaches the route through
+  ``Depends``; a call that genuinely has to stay opts out with the
+  :data:`ROUTER_BUILDS_MARKER` comment on its line.
+* ``RTR002`` — a route function in ``routers/`` (decorated with
+  ``@<router>.get`` / ``post`` / ``put`` / ``patch`` / ``delete`` /
+  ``head`` / ``options`` / ``trace`` / ``api_route``) whose return
+  annotation or ``response_model=`` names an ORM model, at any depth of a
+  subscript or union (``list[ProductModel]``, ``ProductModel | None``).
+  A name is an ORM model when it is imported from a module with a
+  ``models`` segment in its dotted path (``src.db.models``,
+  ``..models.product``), or when it is a class defined in a ``models/``
+  directory of the project and not imported from a ``schemas`` module.
+  There is no opt-out: the fix — return the response schema the
+  repository maps to — has one shape.
+
+What the router rules cannot see, because they read syntax and never
+import the project: a route with no return annotation and no
+``response_model``; a model kept outside any ``models/`` directory and
+imported from a module without that segment; the SDK's own abstract ORM
+bases (``BaseUserModel``) used directly; a controller built through an
+alias (``factory = ProductController; factory()``) or a class whose name
+does not end in ``Controller`` / ``Service``. Where a permission guard
+sits (``@requires`` on the route or on the controller method) is not a
+rule: the ``authz`` recipe applies ``@requires`` to the route handler as
+its first form, and ``requires`` documents route handlers, controller
+and service methods alike, so flagging the route would contradict the
+SDK's own documentation.
 
 The opt-out is a comment, not a class attribute, because it is an
 instruction to this checker and nothing at runtime reads it; the same
@@ -60,6 +91,22 @@ For a service that has no repository to hand to ``BaseService`` (a static
 catalogue read from a file, a facade over an external API). It also
 skips ``SVC003`` for that class, since its ``__init__`` is its own.
 """
+
+ROUTER_BUILDS_MARKER: str = "# tempest: router-builds"
+"""Comment on a call line that exempts that call from ``RTR001``.
+
+For a construction that has to happen in the router module — an SDK
+router factory that takes an instance at import time, say. The marker
+names the exception; review reads why.
+"""
+
+ROUTE_DECORATORS: frozenset[str] = frozenset(
+    {"get", "post", "put", "patch", "delete", "head", "options", "trace", "api_route"}
+)
+"""Attribute names that make ``@<router>.<name>(...)`` a route (``RTR002``)."""
+
+CONSTRUCTED_SUFFIXES: tuple[str, ...] = ("Controller", "Service")
+"""Class-name suffixes ``RTR001`` reports when called in ``routers/``."""
 
 BASE_REPOSITORY_METHODS: frozenset[str] = frozenset(
     {
@@ -134,6 +181,19 @@ strips before naming the database type; kept as a literal so the checker
 never imports SQLAlchemy, and pinned to that constant by
 ``tests/cli/test_layer_lint.py``.
 """
+
+ROUTERS_DIR: str = "routers"
+"""Directory name whose modules the ``RTR*`` rules read."""
+
+MODELS_DIR: str = "models"
+"""Directory name whose classes ``RTR002`` treats as ORM models.
+
+Also the module path segment that marks an import as a model
+(``from src.db.models import ProductModel``).
+"""
+
+SCHEMAS_SEGMENT: str = "schemas"
+"""Module path segment that marks an import as a schema, never a model."""
 
 STR_ENUM_BASE: str = "BaseStrEnum"
 """The SDK base class whose subclasses ``ENUM001`` reads."""
@@ -763,6 +823,244 @@ def _check_enums(modules: list[_ParsedModule]) -> list[LayerFinding]:
     return findings
 
 
+def _call_name(call: ast.Call) -> str | None:
+    """Return the bare name a call's callee refers to.
+
+    Args:
+        call (ast.Call): The call.
+
+    Returns:
+        str | None: ``Name`` for ``Name(...)`` and ``attr`` for
+        ``module.attr(...)``; ``None`` for anything else.
+    """
+    function = call.func
+    if isinstance(function, ast.Name):
+        return function.id
+    if isinstance(function, ast.Attribute):
+        return function.attr
+    return None
+
+
+def _is_constructed_class(name: str) -> bool:
+    """Tell whether a callee name is a controller or service class.
+
+    Args:
+        name (str): The bare callee name.
+
+    Returns:
+        bool: True for a name that starts upper case and ends in a suffix
+        of :data:`CONSTRUCTED_SUFFIXES`. ``get_product_service`` is a
+        provider, not a class, and is left alone.
+    """
+    return name[:1].isupper() and name.endswith(CONSTRUCTED_SUFFIXES)
+
+
+def _spans_marker(parsed: _ParsedModule, node: ast.expr, marker: str) -> bool:
+    """Tell whether any source line an expression spans holds ``marker``.
+
+    Args:
+        parsed (_ParsedModule): The module the expression is in.
+        node (ast.expr): The expression.
+        marker (str): The opt-out comment.
+
+    Returns:
+        bool: True when a line from the expression's first line to its
+        last holds the marker.
+    """
+    last = node.end_lineno or node.lineno
+    return any(marker in line for line in parsed.lines[node.lineno - 1 : last])
+
+
+def _check_router_constructions(modules: list[_ParsedModule]) -> list[LayerFinding]:
+    """Apply ``RTR001`` to the ``routers/`` modules.
+
+    Args:
+        modules (list[_ParsedModule]): Every module in ``routers/``.
+
+    Returns:
+        list[LayerFinding]: The violations, in file and line order.
+    """
+    findings: list[LayerFinding] = []
+    for parsed in modules:
+        for node in ast.walk(parsed.tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = _call_name(node)
+            if name is None or not _is_constructed_class(name):
+                continue
+            if _spans_marker(parsed, node, ROUTER_BUILDS_MARKER):
+                continue
+            provider = "controllers" if name.endswith("Controller") else "services"
+            findings.append(
+                LayerFinding(
+                    path=parsed.path,
+                    line=node.lineno,
+                    code="RTR001",
+                    message=(
+                        f"`{name}(...)` is built inside a router; move the "
+                        f"construction to a provider in "
+                        f"api/dependencies/{provider}.py and receive it in the "
+                        f"route as `Depends(get_...)`. A call that has to stay "
+                        f"opts out with `{ROUTER_BUILDS_MARKER}` on its line."
+                    ),
+                )
+            )
+    return findings
+
+
+def _module_has_segment(module: str | None, segment: str) -> bool:
+    """Tell whether a dotted module path has ``segment`` as one of its parts.
+
+    Args:
+        module (str | None): ``ImportFrom.module`` (``None`` for
+            ``from . import x``).
+        segment (str): The part to look for.
+
+    Returns:
+        bool: True when a dot-separated part equals ``segment``.
+    """
+    return module is not None and segment in module.split(".")
+
+
+def _model_names(parsed: _ParsedModule, project_models: set[str]) -> set[str]:
+    """Resolve which names of a router module refer to ORM models.
+
+    Args:
+        parsed (_ParsedModule): The router module.
+        project_models (set[str]): Public classes defined in the
+            project's ``models/`` directories.
+
+    Returns:
+        set[str]: Local names imported from a module with a ``models``
+        segment, plus every project model name this module does not
+        import from a ``schemas`` module.
+    """
+    from_models: set[str] = set()
+    from_schemas: set[str] = set()
+    for node in ast.walk(parsed.tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        for alias in node.names:
+            local = alias.asname or alias.name
+            if _module_has_segment(node.module, MODELS_DIR):
+                from_models.add(local)
+            elif _module_has_segment(node.module, SCHEMAS_SEGMENT):
+                from_schemas.add(local)
+    return from_models | (project_models - from_schemas)
+
+
+def _annotation_names(expression: ast.expr | None) -> Iterator[str]:
+    """Yield every class name an annotation mentions, at any depth.
+
+    Descends into subscripts (``list[X]``, ``Annotated[X, ...]``), unions
+    written with ``|``, the tuple of a multi-argument subscript and
+    string annotations, which are parsed.
+
+    Args:
+        expression (ast.expr | None): The annotation.
+
+    Yields:
+        str: The bare name of each ``Name`` and ``Attribute`` node.
+    """
+    if expression is None:
+        return
+    if isinstance(expression, ast.Constant) and isinstance(expression.value, str):
+        try:
+            parsed = ast.parse(expression.value, mode="eval")
+        except SyntaxError:
+            return
+        yield from _annotation_names(parsed.body)
+    elif isinstance(expression, ast.Name):
+        yield expression.id
+    elif isinstance(expression, ast.Attribute):
+        yield expression.attr
+    elif isinstance(expression, ast.Subscript):
+        yield from _annotation_names(expression.value)
+        yield from _annotation_names(expression.slice)
+    elif isinstance(expression, ast.BinOp):
+        yield from _annotation_names(expression.left)
+        yield from _annotation_names(expression.right)
+    elif isinstance(expression, ast.Tuple | ast.List):
+        for element in expression.elts:
+            yield from _annotation_names(element)
+
+
+def _route_decorator(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> ast.Call | None:
+    """Return the ``@<router>.<method>(...)`` decorator of a route function.
+
+    Args:
+        function (ast.FunctionDef | ast.AsyncFunctionDef): The function.
+
+    Returns:
+        ast.Call | None: The first decorator call whose attribute is in
+        :data:`ROUTE_DECORATORS`; ``None`` when the function is no route.
+    """
+    for decorator in function.decorator_list:
+        if (
+            isinstance(decorator, ast.Call)
+            and isinstance(decorator.func, ast.Attribute)
+            and decorator.func.attr in ROUTE_DECORATORS
+        ):
+            return decorator
+    return None
+
+
+def _check_router_returns(
+    modules: list[_ParsedModule], project_models: set[str]
+) -> list[LayerFinding]:
+    """Apply ``RTR002`` to the ``routers/`` modules.
+
+    Args:
+        modules (list[_ParsedModule]): Every module in ``routers/``.
+        project_models (set[str]): Public classes defined in the
+            project's ``models/`` directories.
+
+    Returns:
+        list[LayerFinding]: The violations, in file and line order.
+    """
+    findings: list[LayerFinding] = []
+    for parsed in modules:
+        models = _model_names(parsed, project_models)
+        if not models:
+            continue
+        for function in ast.walk(parsed.tree):
+            if not isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            decorator = _route_decorator(function)
+            if decorator is None:
+                continue
+            sources: list[tuple[str, ast.expr | None]] = [
+                ("return annotation", function.returns),
+                *(
+                    ("response_model=", keyword.value)
+                    for keyword in decorator.keywords
+                    if keyword.arg == "response_model"
+                ),
+            ]
+            reported: set[str] = set()
+            for where, expression in sources:
+                for name in _annotation_names(expression):
+                    if name not in models or name in reported:
+                        continue
+                    reported.add(name)
+                    findings.append(
+                        LayerFinding(
+                            path=parsed.path,
+                            line=function.lineno,
+                            code="RTR002",
+                            message=(
+                                f"route `{function.name}` returns the ORM model "
+                                f"`{name}` ({where}); return the response schema "
+                                f"the repository maps it to (`map_to_response`) "
+                                f"and annotate the route with that schema."
+                            ),
+                        )
+                    )
+    return findings
+
+
 def lint_layers(target: Path) -> list[LayerFinding]:
     """Run every layer rule over a project.
 
@@ -773,21 +1071,35 @@ def lint_layers(target: Path) -> list[LayerFinding]:
 
     Returns:
         list[LayerFinding]: Every violation, sorted by file and line.
-        Empty for a clean project and for one with no ``services/`` or
-        ``repositories/`` directory and no ``BaseStrEnum`` subclass.
+        Empty for a clean project and for one with no ``services/``,
+        ``repositories/`` or ``routers/`` directory and no
+        ``BaseStrEnum`` subclass.
     """
     roots = scan_roots(target)
     services: list[Path] = []
     repositories: list[Path] = []
+    routers: list[Path] = []
+    models: list[Path] = []
     for root in roots:
         services.extend(_layer_dirs(root, SERVICES_DIR))
         repositories.extend(_layer_dirs(root, REPOSITORIES_DIR))
+        routers.extend(_layer_dirs(root, ROUTERS_DIR))
+        models.extend(_layer_dirs(root, MODELS_DIR))
     service_modules = [
         parsed for path in _python_files(services) if (parsed := _parse(path))
     ]
     repository_modules = [
         parsed for path in _python_files(repositories) if (parsed := _parse(path))
     ]
+    router_modules = [
+        parsed for path in _python_files(routers) if (parsed := _parse(path))
+    ]
+    project_models = {
+        node.name
+        for path in _python_files(models)
+        if (parsed := _parse(path))
+        for node in _public_classes(parsed.tree)
+    }
     source_modules = [
         parsed
         for root in roots
@@ -798,6 +1110,8 @@ def lint_layers(target: Path) -> list[LayerFinding]:
         *_check_services(service_modules),
         *_check_repositories(repository_modules),
         *_check_enums(source_modules),
+        *_check_router_constructions(router_modules),
+        *_check_router_returns(router_modules, project_models),
     ]
     return sorted(findings, key=lambda item: (str(item.path), item.line, item.code))
 
@@ -829,9 +1143,15 @@ def run_lint_layers(target: str, *, stream: TextIO | None = None) -> int:
 
 __all__: list[str] = [
     "BASE_REPOSITORY_METHODS",
+    "CONSTRUCTED_SUFFIXES",
     "ENUM_NAME_SUFFIX",
+    "MODELS_DIR",
     "NO_BASE_SERVICE_MARKER",
     "REPOSITORIES_DIR",
+    "ROUTERS_DIR",
+    "ROUTER_BUILDS_MARKER",
+    "ROUTE_DECORATORS",
+    "SCHEMAS_SEGMENT",
     "SERVICES_DIR",
     "SKIPPED_DIRS",
     "SOURCE_ROOTS",
