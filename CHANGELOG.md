@@ -89,6 +89,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   já estava a `UP046`: reescrever genéricos é outra decisão. O override do
   mypy para `librosa`, que só existia por causa do alvo 3.11, saiu.
 
+### Tests
+
+- **Todo caminho do `make_auth_router` que emite par de tokens passa por uma
+  allowlist com categoria** (#543). `tests/test_mfa_token_paths_guard.py` lê
+  `auth/router.py` por AST e lista cada função que chama um emissor
+  (`issue_token_pair`, `_issue_pair`, `login_with_oauth`, `refresh_tokens`,
+  …). Cada uma precisa estar na allowlist como `gated` (retorna de um
+  `if service.is_mfa_enrolled(...)` **antes** de emitir, como o `/login`),
+  `completes-mfa` (`/mfa/verify`, `/mfa/confirm`, WebAuthn — e emite por
+  `_issue_pair`, que carimba o `amr`), `new-account` (`signup`), `rotation`
+  (`/refresh`) ou `external-idp` (OAuth, `amr=["ext"]`). Rota nova fora da
+  lista, rota `gated` sem o desvio ou com o desvio depois da emissão, e
+  entrada velha falham; o guard prova que dispara com o `/activate` e o
+  `/password-reset/confirm` como shipparam até a 0.312.0. Sem mudança de
+  código entregue: o `/activate` e o `/password-reset/confirm` já respondiam
+  `mfa_required` desde a 0.313.0 (#534).
+- `tests/auth/test_mfa_token_paths.py` mede os caminhos que a #543 citava e a
+  #534 não cobria: o `GET /auth/activate/{token}` e o
+  `POST /auth/password-reset/{token}` do `AUTH_BACKEND_LINKS` renderizam a
+  página sem token no corpo e sem `Set-Cookie`, mesmo com
+  `AUTH_TOKEN_DELIVERY="both"`, e o login seguinte pede o segundo fator; o par
+  que o `/activate` entrega a conta nova (sem fator inscrito) e o par de um
+  login social de conta com TOTP são recusados pelo
+  `make_mfa_required_dependency` com `403 MFA_REQUIRED`.
+
 ## [0.313.0] — 2026-10-15
 
 ### Added
