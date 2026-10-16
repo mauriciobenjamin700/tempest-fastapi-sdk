@@ -34,7 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   para adotar, copie os três módulos novos (`controllers.py`,
   `controllers/service_info.py`, `schemas/service_info.py`) e a função
   `get_settings`.
-
 - O extra `[cli]` (e o `[all]`) passa a exigir `tempest-cli>=0.5.1`, e o lock
   sobe de 0.5.0 para 0.5.1. O que chega ao `tempest fix` do consumidor, segundo
   o CHANGELOG do `tempest-cli` 0.5.1: as passadas viram `ruff check --fix-only`,
