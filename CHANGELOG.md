@@ -123,6 +123,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `TaskQueue.register`, que devolve `Task` ou `dict[str, Task]` conforme a
   forma da definição — a união obrigaria um `isinstance` em todo call site.
 
+### Fixed
+
+- `DeadLetterSink` e `AgentRunSink` recusavam todo sink cujo parâmetro não
+  se chamasse `dead_letter` / `run` (#555). Os dois são protocolos de
+  callback, e ao casar uma função com um deles mypy e basedpyright comparam
+  o nome do parâmetro: `async def sink(letter: DeadLetter) -> None` dava
+  `arg-type` em `make_dead_letter_middleware(sink)` / `tq.dead_letter(sink)`
+  no mypy e erro no basedpyright 1.40.2 (medido: 3 erros em cada checker
+  num snippet de consumidor, zero depois). O parâmetro do `__call__` agora é
+  posicional (`/`), como o `FlagGuard` já fazia. Implementação que já usava o
+  nome do protocolo, função ou classe, continua aceita. Varredura do pacote:
+  são os únicos protocolos com `__call__` que nomeavam parâmetro obrigatório.
+  Guard: `tests/test_protocol_shape_guard.py` passa a cobrir todo protocolo de
+  callback do pacote, sem lista.
+
 ### Security
 
 - **O login social de conta com TOTP pede o segundo fator** (#543).

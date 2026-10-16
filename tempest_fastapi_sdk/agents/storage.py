@@ -41,9 +41,14 @@ class AgentRunSink(Protocol):
     Called once per run, after the answer is assembled. The agent
     swallows whatever this raises — a storage failure must not turn a
     completed run into a failed request.
+
+    The parameter is positional-only, so a plain function works whatever
+    it names it — ``async def store(finished: AgentRun) -> None`` is an
+    ``AgentRunSink``. With a named parameter mypy and basedpyright rejected
+    every sink not spelled ``run``.
     """
 
-    async def __call__(self, run: AgentRun) -> None:
+    async def __call__(self, run: AgentRun, /) -> None:
         """Handle one finished run.
 
         Args:
