@@ -1195,7 +1195,8 @@ curl -X POST localhost:8000/auth/password-reset/confirm \
       -d '{"mfa_token": "eyJ…", "code": "123456"}'
     ```
 
-    The pair that comes back carries `amr == ["pwd", "otp"]`. See the
+    The pair that comes back carries `amr == ["email", "otp"]`; without MFA,
+    the pair from `confirm` itself carries `["email"]` *(v0.314.0+)*. See the
     [MFA recipe](mfa.md).
 
 !!! note "The reset drops sessions already open"

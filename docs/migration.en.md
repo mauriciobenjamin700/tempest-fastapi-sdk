@@ -55,6 +55,27 @@ provider was enough, and the account skipped the factor it had enrolled.
    Without it the token carries no first step, and `/auth/mfa/verify` falls
    back to the earlier `["pwd", "otp"]` — the router logs a warning too.
 
+## 0.314.0 — activation and reset links stamp `amr=["email"]`
+
+The pair `POST /auth/activate/{token}` and `POST /auth/password-reset/confirm`
+issue to an account **without** MFA now carries `amr == ["email"]`
+(`AMR_EMAIL_LINK`) instead of `["pwd"]`: neither checks a password. With TOTP
+enrolled, `/auth/mfa/verify` on that challenge issues `["email", "otp"]`.
+`refresh` repeats the origin's `amr`, so the session stays `["email"]` after a
+rotation.
+
+### What to do
+
+- Code that reads `"pwd" in amr` as "this session started at a login" now sees
+  `"email"` on these two paths. If your rule is "any single-factor session",
+  compare against `AMR_EMAIL_LINK` as well; if it is "the password was
+  checked", the change is the fix you wanted.
+- `make_mfa_required_dependency` does not change: `email` is not in
+  `MFA_AMR_METHODS`, and the gate refuses the pair as it refused `["pwd"]`.
+- An `issue_token_pair` override without `amr=` is still called without the
+  keyword, and the pair carries the override's default (`["pwd"]` when it
+  delegates to `super()`), as before.
+
 ## 0.313.0 — a class ending in `Enum` no longer doubles the type suffix
 
 `enum_type_name` drops one trailing `Enum` from the class name before

@@ -522,6 +522,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   records plus `otp`, so `["ext", "otp"]` here. Tests:
   `tests/auth/test_oauth_mfa.py`; the routes are `gated` in
   `tests/test_mfa_token_paths_guard.py`.
+- **Emailed links stamp `amr=["email"]` (unreleased, after 0.313.0)** —
+  issue #543. `/activate` and `/password-reset/confirm` issue
+  `AMR_EMAIL_LINK` instead of `["pwd"]` (no password is checked on either);
+  with TOTP the challenge verifies to `["email", "otp"]`. Outside
+  `MFA_AMR_METHODS`, so the gate still refuses it. Tests:
+  `tests/auth/test_email_link_amr.py`.
 - **Offline verification of OIDC realm tokens (v0.297.0)** — issue #288.
   `OIDCTokenVerifier(issuer, jwks_url, algorithms=("RS256",), ...)` plugs
   into `OIDCProvider(token_verifier=...)`, which then reads the audience and

@@ -39,9 +39,8 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from tempest_fastapi_sdk import (
+    AMR_EMAIL_LINK,
     AMR_EXTERNAL,
-    AMR_HARDWARE_KEY,
-    AMR_OTP,
     BaseModel,
     BaseUserModel,
     MFAMixin,
@@ -318,8 +317,8 @@ class TestSingleFactorPairsAreRefusedByTheMfaGate:
         """The STAFF scenario of #543: a new account activated by link.
 
         No factor is enrolled yet, so ``/activate`` returns the pair. The
-        pair carries no second-factor method, and the MFA gate refuses it
-        with ``403 MFA_REQUIRED``.
+        pair is stamped ``amr=["email"]`` — no password was presented — and
+        the MFA gate refuses it with ``403 MFA_REQUIRED``.
         """
         service = _service()
         async with _client(service, session) as client:
@@ -330,12 +329,11 @@ class TestSingleFactorPairsAreRefusedByTheMfaGate:
             token = _token_from_url(signed_up.json()["activation_url"])
             activated = await client.post(f"/auth/activate/{token}")
             access: str = activated.json()["access_token"]
-            amr = token_amr(service.jwt.decode(access)) or ()
+            amr = token_amr(service.jwt.decode(access))
             gated = await client.get(
                 "/staff", headers={"Authorization": f"Bearer {access}"}
             )
-        assert AMR_OTP not in amr
-        assert AMR_HARDWARE_KEY not in amr
+        assert amr == (AMR_EMAIL_LINK,)
         assert gated.status_code == 403, gated.text
         assert gated.json()["code"] == "MFA_REQUIRED"
 

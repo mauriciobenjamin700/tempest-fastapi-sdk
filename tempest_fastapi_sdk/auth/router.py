@@ -132,6 +132,7 @@ from tempest_fastapi_sdk.utils.throttle import (
     InMemoryThrottleBackend,
 )
 from tempest_fastapi_sdk.utils.token_types import (
+    AMR_EMAIL_LINK,
     AMR_EXTERNAL,
     AMR_HARDWARE_KEY,
     MFA_AMR,
@@ -604,7 +605,7 @@ def make_auth_router(
         logger.warning(
             "%s.issue_mfa_token() does not accept 'amr', so /mfa/verify "
             "stamps ['pwd', 'otp'] on every session it opens, including the "
-            "ones that began with a social login; add "
+            "ones that began with a social login or an emailed link; add "
             "'amr: Sequence[str] | None = PASSWORD_AMR' to the override and "
             "pass it on to super().issue_mfa_token().",
             type(service).__name__,
@@ -1064,7 +1065,7 @@ def make_auth_router(
         """
         user = await service.activate(session, token=token)
         if service.is_mfa_enrolled(user):
-            mfa_token = service.issue_mfa_token(user)
+            mfa_token = _challenge(user, (AMR_EMAIL_LINK,))
             await session.commit()
             return ActivationResponseSchema(
                 user_id=user.id,
@@ -1073,7 +1074,7 @@ def make_auth_router(
                 mfa_required=True,
                 mfa_token=mfa_token,
             )
-        access, refresh = await service.issue_token_pair(session, user)
+        access, refresh = await _issue_pair(session, user, (AMR_EMAIL_LINK,))
         await session.commit()
         return ActivationResponseSchema(
             user_id=user.id,
@@ -1251,7 +1252,7 @@ def make_auth_router(
             new_password=payload.new_password,
         )
         if service.is_mfa_enrolled(user):
-            mfa_token = service.issue_mfa_token(user)
+            mfa_token = _challenge(user, (AMR_EMAIL_LINK,))
             await session.commit()
             return LoginResponseSchema(
                 user_id=user.id,
@@ -1260,7 +1261,7 @@ def make_auth_router(
                 mfa_required=True,
                 mfa_token=mfa_token,
             )
-        access, refresh = await service.issue_token_pair(session, user)
+        access, refresh = await _issue_pair(session, user, (AMR_EMAIL_LINK,))
         await session.commit()
         return LoginResponseSchema(
             user_id=user.id,

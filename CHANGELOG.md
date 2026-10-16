@@ -88,6 +88,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   novo liga (`UP047`, 32 ocorrências, e `UP040`, 4) ficam desligadas, como
   já estava a `UP046`: reescrever genéricos é outra decisão. O override do
   mypy para `librosa`, que só existia por causa do alvo 3.11, saiu.
+- **Ativação e reset por link carimbam `amr=["email"]`, não `["pwd"]`**
+  (#543). Nenhum dos dois confere senha: a ativação não recebe nenhuma, e o
+  reset prova a caixa de e-mail antes de gravar a nova. A constante pública
+  `AMR_EMAIL_LINK = "email"` (topo e `tempest_fastapi_sdk.utils`) fica fora
+  do registro da RFC 8176, como o `ext`, e fora de `MFA_AMR_METHODS` — o
+  `make_mfa_required_dependency` continua recusando. Com TOTP inscrito, o
+  `/auth/mfa/verify` desse desafio emite `["email", "otp"]`; o `refresh`
+  repete o `amr` da origem (DB-backed e stateless). Override de
+  `issue_token_pair` sem `amr=` segue com o default dele. Quem lia
+  `"pwd" in amr` passa a ver `"email"` nesses caminhos:
+  `docs/migration.md`.
 
 ### Security
 

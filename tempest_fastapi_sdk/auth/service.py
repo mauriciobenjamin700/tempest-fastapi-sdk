@@ -3017,7 +3017,8 @@ class UserAuthService:
             user (BaseUserModel): The user to inspect.
             amr (Sequence[str] | None): RFC 8176 methods the first step
                 proved — :data:`~tempest_fastapi_sdk.PASSWORD_AMR` after
-                ``/auth/login``, ``["ext"]`` after a social login. Stored as
+                ``/auth/login``, ``["ext"]`` after a social login,
+                ``["email"]`` after an activation or reset link. Stored as
                 the token's ``amr`` claim, which :meth:`second_factor_amr`
                 reads back at ``/auth/mfa/verify``. ``None`` omits it.
 
@@ -3044,7 +3045,8 @@ class UserAuthService:
         The first-step methods recorded in ``mfa_token`` by
         :meth:`issue_mfa_token`, followed by ``otp`` — so a password login
         becomes :data:`~tempest_fastapi_sdk.MFA_AMR` (``["pwd", "otp"]``), a
-        social login ``["ext", "otp"]``. Each value names a method that actually ran,
+        social login ``["ext", "otp"]`` and an emailed link
+        ``["email", "otp"]``. Each value names a method that actually ran,
         which is what RFC 8176 asks of the claim. A token minted without
         the claim (by an ``issue_mfa_token`` override written before it
         existed) falls back to ``["pwd"]`` as the first step, the
