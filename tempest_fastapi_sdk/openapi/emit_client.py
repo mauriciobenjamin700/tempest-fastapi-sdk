@@ -522,7 +522,7 @@ def _import_block(client: ClientIR) -> list[str]:
     stdlib: dict[str, list[str]] = {
         "datetime": ["date", "datetime", "time"],
         "enum": ["Enum"],
-        "typing": ["Any", "TypeVar"],
+        "typing": ["Any"],
     }
     if _uses(rendered, "Decimal"):
         stdlib["decimal"] = ["Decimal"]
@@ -683,11 +683,7 @@ def emit_client(client: ClientIR, *, schemas_module: str = "schemas") -> str:
             "    return payload",
             "",
             "",
-            '_T = TypeVar("_T")',
-            '"""The response type a call was declared to return."""',
-            "",
-            "",
-            "def _validate(annotation: type[_T], data: Any) -> _T:",
+            "def _validate[_T](annotation: type[_T], data: Any) -> _T:",
             '    """Validate a response body against the generated annotation.',
             "",
             "    Args:",

@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any, TypeVar, get_type_hints
+from typing import TYPE_CHECKING, Any, get_type_hints
 
 from pydantic import BaseModel, ValidationError
 
@@ -39,8 +39,6 @@ from tempest_fastapi_sdk.agents.tools import (
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
-
-ArgsT = TypeVar("ArgsT", bound=BaseModel)
 
 #: A handler taking a validated args model plus the run context.
 TypedHandler = Callable[[Any, AgentContext], Awaitable[ToolReturn]]
@@ -236,7 +234,7 @@ def _explain(error: ValidationError) -> str:
     return "; ".join(parts)
 
 
-def typed_tool(
+def typed_tool[ArgsT: BaseModel](
     name: str,
     description: str,
     model: type[ArgsT],

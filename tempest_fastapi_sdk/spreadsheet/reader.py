@@ -48,7 +48,7 @@ from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import datetime, time, timedelta
 from os import PathLike
-from typing import IO, TYPE_CHECKING, Any, Final, TypeVar
+from typing import IO, TYPE_CHECKING, Any, Final
 
 from pydantic import BaseModel, ValidationError
 
@@ -57,9 +57,6 @@ from tempest_fastapi_sdk.exceptions.upload import FileTooLargeException
 
 if TYPE_CHECKING:
     from openpyxl.workbook import Workbook
-
-ModelT = TypeVar("ModelT", bound=BaseModel)
-CellT = TypeVar("CellT")
 
 XlsxCellValue = str | int | float | bool | datetime | time | timedelta | None
 """What a cell of a read ``.xlsx`` holds.
@@ -281,7 +278,7 @@ def _is_blank(value: object) -> bool:
     return value is None or value == ""
 
 
-def _number_rows(
+def _number_rows[CellT](
     header: Sequence[str],
     records: Iterable[Sequence[CellT]],
     pad: CellT,
@@ -345,7 +342,7 @@ def _number_rows(
     return rows
 
 
-def _validate_rows(
+def _validate_rows[CellT, ModelT: BaseModel](
     rows: Iterable[tuple[int, dict[str, CellT]]],
     schema: type[ModelT],
     *,
@@ -776,7 +773,7 @@ def read_xlsx_sheets(
         return sheets
 
 
-def read_xlsx_as(
+def read_xlsx_as[ModelT: BaseModel](
     source: XlsxSource,
     schema: type[ModelT],
     *,
@@ -980,7 +977,7 @@ async def read_xlsx_sheets_async(
         )
 
 
-async def read_xlsx_as_async(
+async def read_xlsx_as_async[ModelT: BaseModel](
     source: XlsxSource,
     schema: type[ModelT],
     *,

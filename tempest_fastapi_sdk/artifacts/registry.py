@@ -167,7 +167,7 @@ class ArtifactRegistry(Generic[TModel]):
         return target
 
 
-async def build_manifest_entries(
+async def build_manifest_entries[TModel: ArtifactVersionMixin](
     registry: ArtifactRegistry[TModel],
     *,
     digest_source: Callable[[TModel], Awaitable[tuple[str, int]]],

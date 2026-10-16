@@ -22,7 +22,7 @@ has to know about the other::
     raise BudgetNotFoundException(message="custom")   # from the repository
 """
 
-from typing import Any, TypeVar, cast
+from typing import Any, cast
 
 from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.exceptions.conflict import ConflictException
@@ -39,8 +39,6 @@ DEFAULT_CONFLICT_TEMPLATE: str = "{subject} {identifier} already exists."
 
 DEFAULT_CONFLICT_TEMPLATE_ANONYMOUS: str = "{subject} already exists."
 """Conflict message used when no identifier is given."""
-
-ExceptionT = TypeVar("ExceptionT", bound=AppException)
 
 
 def _class_name(code: str, name: str | None) -> str:
@@ -62,7 +60,7 @@ def _class_name(code: str, name: str | None) -> str:
     return "".join(part.capitalize() for part in parts) + "Exception"
 
 
-def _build(
+def _build[ExceptionT: AppException](
     base: type[ExceptionT],
     code: str,
     subject: str,

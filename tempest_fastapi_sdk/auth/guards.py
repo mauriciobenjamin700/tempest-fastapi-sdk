@@ -59,24 +59,6 @@ if TYPE_CHECKING:
 
 UserT = TypeVar("UserT", bound="BaseUserModel")
 
-SubjectT = TypeVar("SubjectT")
-"""Whatever a dependency resolved a caller to, user model or not.
-
-:func:`require_authenticated` reads no attribute off its argument — it
-only rejects ``None`` — and the SDK hands out subjects that are not user
-models: ``FirebaseAuth.get_optional_identity`` yields a
-``FirebaseIdentity``, and the Firebase recipe guards it with this
-function. Bound to ``BaseUserModel``, that documented call resolved
-``UserT`` to ``None`` and failed under mypy.
-
-Unbound means literally unbound: ``require_authenticated("")`` type-checks
-and hands back a ``str``. That is the honest reading of a function whose
-whole body is ``if user is None: raise``, and the checking is bought back
-where the subject *is* known — :meth:`UserAuthService.require_authenticated`
-keeps the ``UserT`` bound. The siblings below keep it too, because they read
-``is_active`` / ``is_admin``.
-"""
-
 GuardException: TypeAlias = Callable[[], AppException]
 """Type of the ``exception=`` seam: a zero-argument factory.
 
@@ -109,12 +91,28 @@ class FlagGuard(Protocol):
         ...
 
 
-def require_authenticated(
+def require_authenticated[SubjectT](
     user: SubjectT | None,
     *,
     exception: GuardException | None = None,
 ) -> SubjectT:
     """Assert that a subject is authenticated (non-``None``).
+
+    ``SubjectT`` is whatever a dependency resolved a caller to, user model
+    or not. This function reads no attribute off its argument — it only
+    rejects ``None`` — and the SDK hands out subjects that are not user
+    models: ``FirebaseAuth.get_optional_identity`` yields a
+    ``FirebaseIdentity``, and the Firebase recipe guards it with this
+    function. Bound to ``BaseUserModel``, that documented call resolved
+    the type parameter to ``None`` and failed under mypy.
+
+    Unbound means literally unbound: ``require_authenticated("")``
+    type-checks and hands back a ``str``. That is the honest reading of a
+    function whose whole body is ``if user is None: raise``, and the
+    checking is bought back where the subject *is* known —
+    :meth:`UserAuthService.require_authenticated` keeps the
+    ``BaseUserModel`` bound, and so do :func:`require_active` /
+    :func:`require_admin`, because they read ``is_active`` / ``is_admin``.
 
     Args:
         user (SubjectT | None): The subject resolved from the request —
@@ -210,7 +208,7 @@ def make_flag_guard(
     return _guard
 
 
-def require_active(
+def require_active[UserT: "BaseUserModel"](
     user: UserT | None,
     *,
     exception: GuardException | None = None,
@@ -245,7 +243,7 @@ def require_active(
     return authenticated
 
 
-def require_admin(
+def require_admin[UserT: "BaseUserModel"](
     user: UserT | None,
     *,
     exception: GuardException | None = None,

@@ -154,7 +154,7 @@ def _instruction(output: type[BaseModel], tool_name: str) -> str:
     )
 
 
-async def run_structured(
+async def run_structured[OutputT: BaseModel](
     agent: Agent,
     goal: str,
     output: type[OutputT],
@@ -262,7 +262,7 @@ async def run_structured(
     )
 
 
-async def _extract(
+async def _extract[OutputT: BaseModel](
     agent: Agent,
     text: str,
     output: type[OutputT],
@@ -328,7 +328,7 @@ async def _extract(
     return None, "the answer was prose and could not be converted to the schema"
 
 
-def _from_text(
+def _from_text[OutputT: BaseModel](
     text: str,
     output: type[OutputT],
 ) -> tuple[OutputT | None, str | None]:
