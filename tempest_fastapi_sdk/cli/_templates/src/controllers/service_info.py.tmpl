@@ -1,0 +1,39 @@
+"""``ServiceInfoController`` — the placeholder root endpoint's use case."""
+
+from __future__ import annotations
+
+from tempest_fastapi_sdk import Controller
+
+from src.schemas import ServiceInfoSchema
+
+
+class ServiceInfoController(Controller):
+    """Describe the running service.
+
+    The smallest controller that shows the wiring every domain follows:
+    built by a factory in ``src.api.dependencies.controllers`` from values
+    the factory received through ``Depends``, and handed to the router
+    already assembled. It has no service because it reads no data — a
+    domain controller subclasses ``BaseController[Service, Schema]``
+    instead. Replace it, or delete it with its route, once the first real
+    endpoint lands.
+    """
+
+    def __init__(self, title: str) -> None:
+        """Bind the controller to the service title.
+
+        Args:
+            title (str): The name the service runs under.
+        """
+        self.title: str = title
+
+    async def describe(self) -> ServiceInfoSchema:
+        """Return the service description.
+
+        Returns:
+            ServiceInfoSchema: The title, as the root endpoint serves it.
+        """
+        return ServiceInfoSchema(service=self.title)
+
+
+__all__: list[str] = ["ServiceInfoController"]

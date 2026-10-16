@@ -81,11 +81,11 @@ my_service/
 │   ├── api/
 │   │   ├── app.py           # create_app() conecta middleware + handlers do SDK
 │   │   ├── routers/         # __init__.py com o GET /api/ placeholder
-│   │   └── dependencies/    # auth.py (require_token) + resources.py (db, get_db, get_session)
+│   │   └── dependencies/    # auth.py (require_token) + resources.py (db, get_session, get_mailer/get_storage por extra) + controllers.py (fábricas)
 │   ├── controllers/         # orquestração entre services
 │   ├── services/            # lógica de negócio
 │   ├── schemas/             # DTOs Pydantic
-│   ├── core/                # settings.py + exceptions.py
+│   ├── core/                # settings.py (settings + get_settings) + exceptions.py
 │   ├── db/
 │   │   ├── configs/names.py # nomes de tabela num símbolo só
 │   │   ├── models/user.py   # UserModel — só com [auth] (ou [admin])

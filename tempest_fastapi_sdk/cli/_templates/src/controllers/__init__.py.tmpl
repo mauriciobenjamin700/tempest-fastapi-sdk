@@ -1,1 +1,7 @@
 """Controllers — orchestration between routers and services."""
+
+from src.controllers.service_info import (
+    ServiceInfoController as ServiceInfoController,
+)
+
+__all__: list[str] = ["ServiceInfoController"]
