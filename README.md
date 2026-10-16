@@ -3883,7 +3883,7 @@ The lint commands shell out to the project's tooling. They look for the executab
 
 ```bash
 tempest lint                                    # ruff check .
-tempest fix                                     # ruff check --fix . + ruff format .   (writes)
+tempest fix                                     # ruff check --fix-only . + ruff format . + ruff check .   (writes)
 tempest fix --unsafe                            # also apply ruff's --unsafe-fixes
 tempest format                                  # ruff format .          (writes)
 tempest fmt-check                               # ruff format --check .   (read-only)

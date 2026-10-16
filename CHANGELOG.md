@@ -35,6 +35,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `controllers/service_info.py`, `schemas/service_info.py`) e a função
   `get_settings`.
 
+- O extra `[cli]` (e o `[all]`) passa a exigir `tempest-cli>=0.5.1`, e o lock
+  sobe de 0.5.0 para 0.5.1. O que chega ao `tempest fix` do consumidor, segundo
+  o CHANGELOG do `tempest-cli` 0.5.1: as passadas viram `ruff check --fix-only`,
+  `ruff format` e só então `ruff check`, então relatório e exit code saem do
+  arquivo já formatado — antes, uma violação que o formatter resolvia ainda
+  aparecia e ainda derrubava o comando; cada comentário `E501` é quebrado no
+  limite (o do fim da linha sobe para cima dela) e cada string literal simples
+  é dividida em partes concatenadas entre parênteses, com a edição mantida só
+  quando a AST do arquivo fica idêntica; e o `E501` que sobra (nome pontilhado,
+  f-string, string com aspas triplas, pragma, palavra maior que a linha) sai
+  nomeado com o token que estoura, o tipo e a ação que resolve, separado entre
+  sem autofix e corrigível por `fix --unsafe`. O exit code não muda: a
+  pendência ainda falha o CI. Medido num projeto do `tempest new` com
+  `line-length = 88`: um comentário e uma string longos foram encurtados (saída
+  0) e uma f-string longa saiu explicada (saída 1). A receita da CLI
+  (`docs/recipes/cli.md`) trocou o aviso "strings e comentários longos não
+  quebram", que deixou de ser verdade, pelo comportamento novo. O
+  `tempest fix` não mudou nada no próprio repositório nem num projeto recém
+  gerado, e o `make check` do SDK roda `ruff`/`mypy`/`pytest` direto, sem o
+  `tempest check`, então o gate do SDK não muda.
+
 ## [0.314.0] — 2026-10-16
 
 ### Added

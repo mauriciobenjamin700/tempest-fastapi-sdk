@@ -1779,7 +1779,7 @@ O projeto vem antes do ambiente da CLI de propósito: com `uv tool install`, a C
 
 ```bash
 tempest lint                                    # ruff check .
-tempest fix                                     # ruff check --fix . + ruff format .   (escreve)
+tempest fix                                     # ruff check --fix-only . + ruff format . + ruff check .   (escreve)
 tempest fix --unsafe                            # também aplica os --unsafe-fixes do ruff
 tempest format                                  # ruff format .          (escreve)
 tempest fmt-check                               # ruff format --check .   (somente leitura)
@@ -1800,21 +1800,64 @@ teste que só falha em paralelo, está na
 
 `tempest fix` é a passada única de "organize o projeto" — ordena e remove imports duplicados, descarta imports não usados, normaliza aspas de strings, remove espaços em branco no fim das linhas e então roda `ruff format` para alinhar indentação, comprimento de linha, linhas em branco e a quebra de linha final. Rode-o antes do push quando o CI fica pegando detalhes de estilo.
 
-!!! info "O `ruff format` roda sempre — mesmo com erros restantes"
-    O `ruff check --fix` sai com código ≠ 0 quando sobra **qualquer**
-    violação que ele não consegue corrigir sozinho (uma string ou
-    comentário longo demais, um nome indefinido, …). O `tempest fix`
-    roda o `ruff format` mesmo assim, então uma única linha não-corrigível
-    não impede a formatação do arquivo inteiro — as linhas de **código**
-    longas continuam sendo quebradas e as linhas em branco extras
-    removidas. O exit code do lint ainda é propagado depois, então o CI
-    continua falhando nas pendências reais.
+!!! info "O relatório sai do arquivo já formatado (`tempest-cli` 0.5.1)"
+    O `tempest fix` roda três passadas: `ruff check --fix-only`,
+    `ruff format` e, por fim, `ruff check`, que é de onde saem o relatório
+    e o exit code. Uma violação que o formatter resolveu não aparece mais
+    nem derruba o comando. O que sobra depois da formatação continua saindo
+    com código ≠ 0, então o CI segue falhando nas pendências reais.
 
-!!! warning "Strings e comentários longos não quebram"
-    Nem o `ruff format` nem o `tempest fix` quebram **strings literais ou
-    comentários** longos — comportamento idêntico ao Black. Essas linhas
-    `E501` permanecem e precisam ser encurtadas à mão ou silenciadas com
-    `# noqa: E501`.
+!!! tip "Comentários e strings longos são encurtados, com prova de AST (`tempest-cli` 0.5.1)"
+    O `ruff format` não quebra comentário nem string literal — igual ao
+    Black. Depois dele, o `tempest fix` quebra cada comentário `E501` no
+    limite (um comentário no fim da linha sobe para cima dela) e divide cada
+    string literal simples nos espaços, em partes concatenadas dentro de
+    parênteses. Cada edição só fica quando a AST do arquivo é idêntica antes
+    e depois, então o programa não muda. Com `line-length = 88`, isto:
+
+    ```python
+    """Long lines."""
+
+    MESSAGE: str = "this is a deliberately long plain string literal that goes well beyond the configured line length limit"
+
+
+    def f() -> int:
+        """Return one."""
+        return 1  # this trailing comment is deliberately long so that it overflows the configured line length
+    ```
+
+    vira isto:
+
+    ```python
+    """Long lines."""
+
+    MESSAGE: str = (
+        "this is a deliberately long plain string literal that goes well beyond the "
+        "configured line length limit"
+    )
+
+
+    def f() -> int:
+        """Return one."""
+        # this trailing comment is deliberately long so that it overflows the configured
+        # line length
+        return 1
+    ```
+
+    Pragma de ferramenta (`noqa`, `type: ignore`, `fmt:`, …), f-string,
+    string com aspas triplas e palavra maior que uma linha ficam como estão.
+    Para essas linhas — e para o que o formatter não tem onde quebrar, como
+    um nome pontilhado — o `tempest fix` nomeia o token que estoura, o tipo
+    e a ação que resolve, e separa as pendências entre as que não têm
+    autofix e as que o `tempest fix --unsafe` corrigiria. Uma f-string
+    longa, por exemplo, sai assim (saída 1):
+
+    ```text
+    1 line(s) still too long after ruff format — the line-length setting was applied; the formatter has nowhere to break these:
+      src/longs.py:4 [string] ` this is a deliberately long f-string literal that goes well beyond the limit`
+        ruff format does not split string literals, and fix could not split this one safely (an f-string, a triple-quoted string, or a word longer than a line). Break it into implicitly concatenated parts inside parentheses.
+    1 residual violation(s): 1 with no autofix (edit by hand).
+    ```
 
 Todo comando retorna o exit code da ferramenta subjacente, então `tempest check` é seguro para conectar ao CI (`tempest check || exit 1`) ou a hooks de pre-commit. Quando nenhum dos cinco passos acha a ferramenta, o wrapper sai com `127` em vez de falhar silenciosamente, dizendo o que instalar:
 
@@ -1898,8 +1941,8 @@ para dentro dele — o teste da suíte faz exatamente isso.
 
 !!! note "Requer `tempest-cli>=0.5.0`"
     O passo entra no `tempest check` pelo `extra_steps` do
-    `register_commands`, que chegou no `tempest-cli` 0.5.0 — o piso que o
-    extra `[cli]` declara. O `tempest-cli check` sozinho, sem o SDK, não
+    `register_commands`, que chegou no `tempest-cli` 0.5.0; o extra `[cli]`
+    declara `tempest-cli>=0.5.1`, então ele já vem. O `tempest-cli check` sozinho, sem o SDK, não
     conhece estas regras: elas são do SDK.
 
 ---
