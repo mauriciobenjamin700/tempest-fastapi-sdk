@@ -883,10 +883,31 @@ tempest user set-password --email ana@example.com \
 # Troca a senha e deixa as sessões vivas (opt-out explícito)
 tempest user set-password --email ana@example.com --keep-sessions
 
+# Primeira conta privilegiada já com MFA + evento de auditoria na mesma transação
+tempest user create --email staff@example.com --admin --require-mfa \
+    --audit-model src.db.models:AuditLogModel --event staff.bootstrapped
+
 # Lista
 tempest user list                                # todos
 tempest user list --admin                        # só admins
 ```
+
+!!! info "Conta com MFA: `--require-mfa` e `set-password`"
+    `create --require-mfa` inscreve o segundo fator **antes** do commit:
+    mostra a URI `otpauth://` e o segredo, pede o código do app
+    Authenticator (até 3 tentativas) e só grava com código válido — sem ele,
+    sai com código 1 e nenhuma linha é escrita. Exige `MFAMixin` no
+    `UserModel` e a tabela de recovery codes (`--recovery-code-model`,
+    default `src.db.models:UserRecoveryCodeModel`); os recovery codes saem
+    uma vez, depois do commit. `--audit-model` (um `BaseAuditLogModel` com
+    `AuditRequestMixin`) grava `record_event` na mesma transação, com o nome
+    de `--event` (default `user.created`); sem ele, o comando avisa no stderr
+    que nenhum evento foi gravado.
+
+    `set-password` numa conta com MFA ativo (e `AUTH_MFA_ENABLED` ligado,
+    como no login) pede o código — TOTP ou recovery code — e troca a senha
+    por `UserAuthService.change_password_with_mfa`. Passo a passo na
+    [receita de MFA](mfa.md#bootstrap-da-primeira-conta-privilegiada).
 
 !!! tip "`UserModel` com coluna própria obrigatória: use `--set`"
     O `create` preenche `email`, `hashed_password`, `is_admin` e

@@ -503,6 +503,35 @@ It is not a login: no token pair is minted and `last_login_at` does not change. 
 !!! tip "From the terminal"
     `tempest user set-password` uses this method when the account has MFA active — see [CLI »](cli.md).
 
+
+### Bootstrapping the first privileged account
+
+The route that creates staff can require MFA (`make_mfa_required_dependency`), but the **first** privileged account has nobody to invite it: it is born from the terminal. `tempest user create --require-mfa` makes sure it never exists without a second factor:
+
+```bash
+tempest user create --email staff@example.com --admin --require-mfa \
+    --audit-model src.db.models:AuditLogModel --event staff.bootstrapped
+```
+
+```text
+Add this account to the authenticator app:
+  otpauth URI: otpauth://totp/Tempest:staff%40example.com?secret=GGZPWWOVQ6QIXMCMDOARELP3SR7JF424&issuer=Tempest
+  secret:      GGZPWWOVQ6QIXMCMDOARELP3SR7JF424
+Code from the authenticator app: 123456
+Created admin: staff@example.com (id=2ced9167-4e7a-4dc5-8626-72b64ff7e4a7)
+MFA active. Recovery codes (shown once, store them now):
+  _MqMXAW-jzw
+  ...
+```
+
+Piece by piece:
+
+1. The user is inserted, `mfa_enroll` issues the secret and recovery codes, and `mfa_confirm` checks the code — all in **one transaction**, committed only with a valid code. Three wrong codes: it exits with code 1 and nothing is written.
+2. `--audit-model` writes `record_event` (`actor="cli"`, `changes` with `email`, `is_admin` and `mfa_enrolled`) in that same transaction. The model needs `AuditRequestMixin` — the `event` column holds the name. Without `--audit-model`, the command goes on and says on stderr that no event was recorded: a project without an audit table can still bootstrap.
+3. The recovery-code table comes from `--recovery-code-model` (default `src.db.models:UserRecoveryCodeModel`), and the `UserModel` needs `MFAMixin`; with either missing, the command exits with code 2 before writing.
+
+Afterwards, `tempest user set-password --email staff@example.com` on that account asks for the code (TOTP or recovery code) and changes the password through `change_password_with_mfa`. With `AUTH_MFA_ENABLED` off, neither login nor `set-password` asks for the factor.
+
 ---
 
 ## Security

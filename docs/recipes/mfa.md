@@ -499,6 +499,35 @@ Não é login: nenhum par de token é emitido e `last_login_at` não muda. Sem `
 !!! tip "No terminal"
     `tempest user set-password` usa este método quando a conta tem MFA ativo — veja [CLI »](cli.md).
 
+
+### Bootstrap da primeira conta privilegiada
+
+A rota que cria staff pode exigir MFA (`make_mfa_required_dependency`), mas a **primeira** conta privilegiada não tem quem a convide: nasce pelo terminal. `tempest user create --require-mfa` garante que ela nunca exista sem segundo fator:
+
+```bash
+tempest user create --email staff@example.com --admin --require-mfa \
+    --audit-model src.db.models:AuditLogModel --event staff.bootstrapped
+```
+
+```text
+Add this account to the authenticator app:
+  otpauth URI: otpauth://totp/Tempest:staff%40example.com?secret=GGZPWWOVQ6QIXMCMDOARELP3SR7JF424&issuer=Tempest
+  secret:      GGZPWWOVQ6QIXMCMDOARELP3SR7JF424
+Code from the authenticator app: 123456
+Created admin: staff@example.com (id=2ced9167-4e7a-4dc5-8626-72b64ff7e4a7)
+MFA active. Recovery codes (shown once, store them now):
+  _MqMXAW-jzw
+  ...
+```
+
+Peça a peça:
+
+1. O usuário é inserido, o `mfa_enroll` gera segredo e recovery codes e o `mfa_confirm` confere o código — tudo **numa transação só**, que só faz commit com código válido. Três códigos errados: sai com código 1 e nada é gravado.
+2. `--audit-model` grava `record_event` (`actor="cli"`, `changes` com `email`, `is_admin` e `mfa_enrolled`) nessa mesma transação. O model precisa de `AuditRequestMixin` — é a coluna `event` que guarda o nome. Sem `--audit-model`, o comando segue e avisa no stderr que nenhum evento foi gravado: projeto sem tabela de auditoria ainda consegue fazer o bootstrap.
+3. A tabela de recovery codes vem de `--recovery-code-model` (default `src.db.models:UserRecoveryCodeModel`), e o `UserModel` precisa de `MFAMixin`; faltando qualquer um, o comando sai com código 2 antes de escrever.
+
+Depois, `tempest user set-password --email staff@example.com` nessa conta pede o código (TOTP ou recovery code) e troca a senha por `change_password_with_mfa`. Com `AUTH_MFA_ENABLED` desligado, nem o login nem o `set-password` pedem o fator.
+
 ---
 
 ## Segurança

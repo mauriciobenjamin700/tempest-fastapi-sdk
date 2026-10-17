@@ -886,10 +886,31 @@ tempest user set-password --email ana@example.com \
 # Replace the password and leave the sessions alive (explicit opt-out)
 tempest user set-password --email ana@example.com --keep-sessions
 
+# First privileged account born with MFA + audit event in the same transaction
+tempest user create --email staff@example.com --admin --require-mfa \
+    --audit-model src.db.models:AuditLogModel --event staff.bootstrapped
+
 # List
 tempest user list                                # everyone
 tempest user list --admin                        # admins only
 ```
+
+!!! info "Accounts with MFA: `--require-mfa` and `set-password`"
+    `create --require-mfa` enrolls the second factor **before** the commit:
+    it prints the `otpauth://` URI and the secret, asks for a code from the
+    Authenticator app (up to 3 tries) and writes only with a valid one —
+    without it, it exits with code 1 and no row is written. It needs
+    `MFAMixin` on the `UserModel` and the recovery-code table
+    (`--recovery-code-model`, default `src.db.models:UserRecoveryCodeModel`);
+    the recovery codes are printed once, after the commit. `--audit-model` (a
+    `BaseAuditLogModel` with `AuditRequestMixin`) writes `record_event` in the
+    same transaction, named by `--event` (default `user.created`); without it,
+    the command says on stderr that no event was recorded.
+
+    `set-password` on an account with MFA active (and `AUTH_MFA_ENABLED` on,
+    as at login) asks for the code — TOTP or recovery code — and changes the
+    password through `UserAuthService.change_password_with_mfa`. Step by step
+    in the [MFA recipe](mfa.md#bootstrapping-the-first-privileged-account).
 
 !!! tip "A `UserModel` with a required column of its own: use `--set`"
     `create` fills `email`, `hashed_password`, `is_admin` and

@@ -24,6 +24,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   orçamento do segundo passo do login. Revoga as sessões por padrão; não
   emite token nem toca `last_login_at`. Sem `recovery_code_model`, só TOTP.
   Testes: `tests/auth/test_change_password_mfa.py`.
+- `tempest user create --require-mfa` (#565): inscreve o segundo fator antes
+  do commit — mostra a URI `otpauth://` e o segredo, pede o código do app
+  (até 3 tentativas) e só grava com código válido; sem ele sai com código 1
+  e nada é escrito. Usa `mfa_enroll`/`mfa_confirm` do `UserAuthService`,
+  exige `MFAMixin` no `UserModel` e a tabela de recovery codes
+  (`--recovery-code-model`, default `src.db.models:UserRecoveryCodeModel`);
+  os recovery codes saem uma vez, depois do commit. `--audit-model` (um
+  `BaseAuditLogModel` com `AuditRequestMixin`) grava `record_event`
+  (`actor="cli"`) na mesma transação, com o nome de `--event` (default
+  `user.created`) — vale também sem `--require-mfa`. Sem `--audit-model`, o
+  `--require-mfa` segue e avisa no stderr que nenhum evento foi gravado.
+- `tempest user set-password` numa conta com MFA ativo (e `AUTH_MFA_ENABLED`
+  ligado) pede o código — TOTP ou recovery code (`--recovery-code-model`,
+  mesmo default, opcional aqui) — e troca a senha por
+  `change_password_with_mfa`; três códigos errados saem com código 1 sem
+  tocar a senha. Testes: `tests/cli/test_user_mfa.py`.
 
 ## [0.315.0] — 2026-10-16
 
