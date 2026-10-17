@@ -396,7 +396,7 @@ Two places check permissions, and they answer different questions:
   handler; the router passes the user it resolved on to the controller.
 - **"Does this user, already loaded, pass this invariant?"** —
   `@requires(guard, ...)` with `require_authenticated`, `require_active`,
-  `require_admin`, `make_flag_guard` or a guard of your own. It goes on
+  `require_admin`, `make_flag_guard`, `make_value_guard` or a guard of your own. It goes on
   the **controller method** of the use case, so every caller — HTTP
   route, queue consumer, CLI command — goes through the same check.
 
