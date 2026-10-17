@@ -15,7 +15,7 @@ The schemas split into two groups:
   field carries ``title``, ``description`` and ``examples``
   metadata.
 * **Service-level value objects** (``ActivationToken``,
-  ``PasswordResetToken``) returned by
+  ``ActivationWithheld``, ``PasswordResetToken``) returned by
   :class:`tempest_fastapi_sdk.UserAuthService` to the caller —
   carry the one-time plaintext token alongside the rendered URL
   and expiry so the caller can either mail it, log it, or hand
@@ -661,6 +661,33 @@ class ActivationToken(BaseSchema):
         title="Expires at",
         description="UTC timestamp the token becomes invalid.",
         examples=["2026-06-11T16:00:00Z"],
+    )
+
+
+class ActivationWithheld(BaseSchema):
+    """Service-level result of a signup whose activation link was withheld.
+
+    Returned by :meth:`UserAuthService.signup` in place of an
+    :class:`ActivationToken` when ``AUTH_AUTO_ACTIVATE`` is false and the
+    ``refuses_email_link`` predicate matches the account just inserted.
+    The account exists and is inactive, but no activation token was
+    persisted and no email was sent: a link would only fail with
+    ``EMAIL_LINK_FORBIDDEN`` when used. Activate such an account out of
+    band (``tempest user activate``, an admin action).
+
+    It is a distinct type, and not ``None``, because ``None`` already
+    means "born active" to every caller of ``signup`` — the router mints a
+    JWT pair on it. Reading this value as ``None`` would log an inactive
+    account in.
+
+    Attributes:
+        user_id (UUID): UUID of the inactive account.
+    """
+
+    user_id: UUID = Field(
+        title="User id",
+        description="UUID of the inactive account that received no link.",
+        examples=["7d8e4d5a-9f4b-4c3a-bd0a-1234567890ab"],
     )
 
 
@@ -1382,6 +1409,7 @@ __all__: list[str] = [
     "ActivationResendResponseSchema",
     "ActivationResponseSchema",
     "ActivationToken",
+    "ActivationWithheld",
     "AuthUserSchema",
     "EmailChangeConfirmSchema",
     "EmailChangeRequestSchema",

@@ -499,6 +499,9 @@ from tempest_fastapi_sdk.auth import (
     ActivationToken as ActivationToken,
 )
 from tempest_fastapi_sdk.auth import (
+    ActivationWithheld as ActivationWithheld,
+)
+from tempest_fastapi_sdk.auth import (
     AuthCookieConfig as AuthCookieConfig,
 )
 from tempest_fastapi_sdk.auth import (
@@ -2263,6 +2266,7 @@ __all__: list[str] = [
     "ActivationResendResponseSchema",
     "ActivationResponseSchema",
     "ActivationToken",
+    "ActivationWithheld",
     "AdminAccessPolicy",
     "AdminAction",
     "AdminActionContext",

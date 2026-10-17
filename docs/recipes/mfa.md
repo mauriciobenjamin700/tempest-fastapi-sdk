@@ -580,11 +580,31 @@ Quando o predicado casa:
   do fluxo com status `403`. O `GET` do formulário de reset nem mostra o
   formulário (e, como só espia o token, não o consome).
 
-!!! note "O `signup` não consulta o predicado"
-    Com `AUTH_AUTO_ACTIVATE=false`, o cadastro ainda manda o link de
-    ativação — e, para uma conta recusada, esse link responde `403`. Crie
-    essas contas já ativas, pelo terminal: `tempest user create` grava a
-    conta ativa e `tempest user activate` ativa uma existente.
+- **`POST /auth/signup` com `AUTH_AUTO_ACTIVATE=false`** cria a conta
+  inativa e **não** grava token de ativação nem manda e-mail. A resposta é o
+  mesmo `201` de um cadastro pendente comum (`activation_required=true`,
+  `activation_url=null`, sem par de JWT): só o `user_id` muda. Ative essa
+  conta por fora — `tempest user activate`, ou crie-a já ativa com
+  `tempest user create`.
+
+O predicado vê a linha recém-inserida, com as colunas do `signup_schema`
+já preenchidas e **antes** do `on_signup`: o que ele lê precisa estar no
+corpo do cadastro, não ser escrito pelo hook.
+
+!!! note "Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta o predicado"
+    A conta já nasce ativa e não depende de link nenhum, então o `signup`
+    devolve o par de JWT como sempre. Os fluxos de reset continuam fechados
+    para ela.
+
+!!! warning "No modo dev, o corpo diferencia"
+    Com `AUTH_RETURN_TOKEN_IN_RESPONSE=true` (ou sem `EmailUtils`) o
+    cadastro comum devolve o `activation_url` no corpo, e o recusado devolve
+    `null` — o mesmo que o `POST /auth/activation/request` já faz nesse
+    modo. A resposta idêntica vale quando o link vai por e-mail.
+
+Quem chama `UserAuthService.signup` direto recebe, no segundo item da
+tupla, `None` (conta nasceu ativa), um `ActivationToken` (link emitido) ou
+um `ActivationWithheld` (link retido). Só o `None` autoriza emitir JWT.
 
 !!! tip "Trocar o código"
     Como `account_inactive`, `email_link_forbidden` é um campo de
@@ -630,8 +650,9 @@ Quando o predicado casa:
   `make_mfa_required_dependency` recusa com `403` `MFA_REQUIRED` a que não
   passou pelo segundo fator. Confirmar o MFA encerra as outras sessões.
 - `refuses_email_link=` fecha o fluxo de link por e-mail para contas como
-  operadores: o pedido responde igual a um endereço desconhecido, e a
-  confirmação devolve `403` `EMAIL_LINK_FORBIDDEN` sem trocar a senha.
+  operadores: o pedido responde igual a um endereço desconhecido, a
+  confirmação devolve `403` `EMAIL_LINK_FORBIDDEN` sem trocar a senha, e o
+  cadastro cria a conta inativa sem mandar link.
 
 ## Próximos passos
 

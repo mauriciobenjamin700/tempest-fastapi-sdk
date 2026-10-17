@@ -1226,7 +1226,9 @@ curl -X POST localhost:8000/auth/password-reset/confirm \
     activation one) for accounts chosen by a predicate — an operator, a
     staff member. The `request` answers the same `202` and sends no email;
     confirmation returns **403** `EMAIL_LINK_FORBIDDEN` without changing the
-    password. See the [MFA recipe](mfa.md#email-link-refusal).
+    password; and `signup` creates the account inactive without persisting
+    or sending an activation link, with the same response as an ordinary
+    pending signup. See the [MFA recipe](mfa.md#email-link-refusal).
 
 ??? note "No front-end? Backend-rendered HTML pages (Mode E)"
     With `AUTH_BACKEND_LINKS=True` the SDK mounts **GET/POST**

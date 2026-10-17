@@ -3498,7 +3498,11 @@ volta) e deixam senha e `is_active` intactos. As páginas de
 `AUTH_BACKEND_LINKS=true` renderizam a página de erro com `403`; o `GET` do
 formulário de reset consulta `UserAuthService.email_link_refused` e não
 mostra o formulário. A classe é `EmailLinkForbiddenException`, trocável em
-`AuthExceptions` como `account_inactive`, com tradução PT-BR e EN. O `signup`
-não consulta o predicado (o router lê `activation is None` como conta
-auto-ativada). Default `None` mantém o comportamento anterior. Testes:
+`AuthExceptions` como `account_inactive`, com tradução PT-BR e EN. Com
+`AUTH_AUTO_ACTIVATE=false` o `signup` também consulta o predicado (#573): a
+conta recusada nasce inativa, sem token nem e-mail, e o service devolve
+`ActivationWithheld` em vez de `None` — `None` continua significando só "nasceu
+ativa", que é o que autoriza o router a emitir JWT; a resposta HTTP é a de um
+cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
+(a conta não depende de link). Default `None` mantém o comportamento anterior. Testes:
 `tests/auth/test_email_link_refusal.py`.

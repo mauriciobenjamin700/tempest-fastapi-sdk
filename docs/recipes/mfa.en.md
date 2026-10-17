@@ -585,12 +585,32 @@ When the predicate matches:
   page with status `403`. The reset form `GET` does not even show the form
   (and, since it only peeks the token, does not consume it).
 
-!!! note "`signup` does not consult the predicate"
-    With `AUTH_AUTO_ACTIVATE=false`, signup still mails the activation
-    link — and, for a refused account, that link answers `403`. Create
-    those accounts already active, from the terminal: `tempest user create`
-    writes the account active and `tempest user activate` activates an
-    existing one.
+- **`POST /auth/signup` with `AUTH_AUTO_ACTIVATE=false`** creates the
+  account inactive and persists **no** activation token and sends no email.
+  The response is the same `201` as an ordinary pending signup
+  (`activation_required=true`, `activation_url=null`, no JWT pair): only the
+  `user_id` differs. Activate that account out of band —
+  `tempest user activate`, or create it already active with
+  `tempest user create`.
+
+The predicate sees the freshly inserted row, with the `signup_schema`
+columns already set and **before** `on_signup` runs: what it reads has to
+come in the signup body, not be written by the hook.
+
+!!! note "With `AUTH_AUTO_ACTIVATE=true` signup does not consult the predicate"
+    The account is born active and depends on no link, so `signup` returns
+    the JWT pair as always. The reset flows stay closed for it.
+
+!!! warning "In dev mode, the body tells them apart"
+    With `AUTH_RETURN_TOKEN_IN_RESPONSE=true` (or no `EmailUtils`) an
+    ordinary signup returns the `activation_url` in the body and a refused
+    one returns `null` — the same thing `POST /auth/activation/request`
+    already does in that mode. The identical response holds when the link
+    goes out by email.
+
+Callers of `UserAuthService.signup` get, in the second tuple item, `None`
+(the account was born active), an `ActivationToken` (link issued) or an
+`ActivationWithheld` (link withheld). Only `None` authorizes minting JWTs.
 
 !!! tip "Swap the code"
     Like `account_inactive`, `email_link_forbidden` is a field of
@@ -637,8 +657,9 @@ When the predicate matches:
   `make_mfa_required_dependency` refuses with `403` `MFA_REQUIRED` the one
   that never passed the second factor. Confirming MFA ends the other sessions.
 - `refuses_email_link=` closes the emailed-link flow for accounts such as
-  operators: the request answers like an unknown address, and confirmation
-  returns `403` `EMAIL_LINK_FORBIDDEN` without changing the password.
+  operators: the request answers like an unknown address, confirmation
+  returns `403` `EMAIL_LINK_FORBIDDEN` without changing the password, and
+  signup creates the account inactive without sending a link.
 
 ## Next steps
 
