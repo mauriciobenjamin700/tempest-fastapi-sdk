@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AuthExceptions`, como `account_inactive`), com tradução PT-BR e EN no
   catálogo padrão. O `signup` não consulta o predicado. Default `None`
   mantém o comportamento anterior.
+- `make_value_guard(column, allowed, *, exception, unauthenticated=None)`
+  (#567): irmão do `make_flag_guard` para coluna de valor (`role == STAFF`),
+  com a mesma forma (`FlagGuard`, `exception=` / `unauthenticated=`). Compara
+  por valor — membro de enum dos dois lados vira `.value` —, e coluna `NULL`,
+  valor fora do conjunto e model sem a coluna recebem o 403 do projeto. Testes
+  em `tests/auth/test_guards.py`, incluindo uma rota real.
 
 ## [0.315.0] — 2026-10-16
 

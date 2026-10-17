@@ -36,16 +36,18 @@ message, which is English here while the rest of the auth flow ships
 pt-BR by default (:mod:`tempest_fastapi_sdk.auth.locale`).
 
 So every guard takes ``exception=`` (its own refusal) and
-``unauthenticated=`` (the ``None`` case it delegates), and
-:func:`make_flag_guard` builds a guard for any boolean column — the
-``is_producer`` / ``is_staff`` flags the SDK does not model and the
-project was hand-writing anyway. Defaults are unchanged, so nothing that
-worked before behaves differently.
+``unauthenticated=`` (the ``None`` case it delegates), and the factories
+cover the columns the SDK does not model: :func:`make_flag_guard` for a
+boolean flag (``is_producer`` / ``is_staff``) and :func:`make_value_guard`
+for a column whose value must be one of a set (``role == Role.STAFF``) —
+both shapes projects were hand-writing anyway. Defaults are unchanged, so
+nothing that worked before behaves differently.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Collection
+from enum import Enum
 from typing import TYPE_CHECKING, Protocol, TypeAlias, TypeVar
 
 from tempest_fastapi_sdk.exceptions import (
@@ -72,7 +74,7 @@ produce.
 
 
 class FlagGuard(Protocol):
-    """The callable :func:`make_flag_guard` returns.
+    """The callable :func:`make_flag_guard` and :func:`make_value_guard` return.
 
     Generic in the user type per call, so a guard built once still
     narrows ``UserModel | None`` to ``UserModel`` at each call site
@@ -208,6 +210,98 @@ def make_flag_guard(
     return _guard
 
 
+def make_value_guard(
+    column: str,
+    allowed: Collection[Enum | str],
+    *,
+    exception: GuardException,
+    unauthenticated: GuardException | None = None,
+) -> FlagGuard:
+    """Build a guard asserting that a value column on the user is allowed.
+
+    The sibling of :func:`make_flag_guard` for the columns that are not
+    booleans: a role stored as an enum (``role == Role.STAFF``), a plan,
+    a tier — the checks a project was writing by hand anyway, and with
+    its own exception, which is the part that could not be reused before.
+
+    ```python
+    from enum import StrEnum
+
+    from tempest_fastapi_sdk import ForbiddenException, make_value_guard
+
+
+    class Role(StrEnum):
+        MEMBER = "member"
+        STAFF = "staff"
+
+
+    class UserIsNotStaffError(ForbiddenException):
+        message: str = "Only staff can access this resource"
+        code: str = "USER_IS_NOT_STAFF"
+
+
+    require_staff = make_value_guard(
+        "role",
+        {Role.STAFF},
+        exception=UserIsNotStaffError,
+    )
+    ```
+
+    The comparison is by value, not by identity: enum members are
+    reduced to their ``.value`` on both sides, so a column holding the
+    raw ``"staff"`` passes a guard declared with ``{Role.STAFF}`` even
+    when ``Role`` is a plain ``Enum`` rather than a ``StrEnum``. The
+    ``allowed`` collection is copied when the guard is built. The attribute is read with
+    ``getattr(user, column, None)``: a model that does not declare the
+    column, a ``NULL`` one, and a value outside ``allowed`` are all
+    refused with the same exception rather than raising
+    ``AttributeError``.
+
+    Args:
+        column (str): Name of the attribute holding the value.
+        allowed (Collection[Enum | str]): The values that pass. Enum
+            members or plain strings; both compare by value.
+        exception (GuardException): Factory for the refusal when the
+            value is not in ``allowed``. Required: a guard whose whole
+            point is the project's own ``code`` should not have a
+            generic default to fall back to silently.
+        unauthenticated (GuardException | None): Factory for the
+            ``user is None`` case. ``None`` (default) delegates to
+            :func:`require_authenticated`'s own default.
+
+    Returns:
+        FlagGuard: A guard taking ``UserT | None`` and returning
+        ``UserT``.
+    """
+
+    permitted: tuple[object, ...] = tuple(
+        item.value if isinstance(item, Enum) else item for item in allowed
+    )
+
+    def _guard(user: UserT | None) -> UserT:
+        """Assert ``column`` on ``user``.
+
+        Args:
+            user (UserT | None): The user resolved from the request.
+
+        Returns:
+            UserT: The authenticated user carrying an allowed value.
+
+        Raises:
+            AppException: When the user is absent or the value is not
+                allowed.
+        """
+        authenticated = require_authenticated(user, exception=unauthenticated)
+        value: object = getattr(authenticated, column, None)
+        if isinstance(value, Enum):
+            value = value.value
+        if value not in permitted:
+            raise exception()
+        return authenticated
+
+    return _guard
+
+
 def require_active[UserT: "BaseUserModel"](
     user: UserT | None,
     *,
@@ -282,6 +376,7 @@ __all__: list[str] = [
     "FlagGuard",
     "GuardException",
     "make_flag_guard",
+    "make_value_guard",
     "require_active",
     "require_admin",
     "require_authenticated",

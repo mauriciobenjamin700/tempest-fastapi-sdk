@@ -920,7 +920,7 @@ perguntas diferentes:
 | Ferramenta | Pergunta | Onde roda |
 | --- | --- | --- |
 | `make_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency` | "quem chama?" / "o token carrega este papel ou esta permissão?" | dependência de rota, antes do handler |
-| `@requires(guard, ...)` com `require_authenticated`, `require_active`, `require_admin`, `make_flag_guard` ou um guard seu | "este usuário, já carregado, passa por esta invariante?" | qualquer função que recebe o usuário — handler, controller ou service |
+| `@requires(guard, ...)` com `require_authenticated`, `require_active`, `require_admin`, `make_flag_guard`, `make_value_guard` ou um guard seu | "este usuário, já carregado, passa por esta invariante?" | qualquer função que recebe o usuário — handler, controller ou service |
 
 O caminho que mantém o router sem regra: **autenticação na dependência,
 invariante no método do caso de uso**. A dependência resolve o usuário e o
