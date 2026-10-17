@@ -40,6 +40,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mesmo default, opcional aqui) — e troca a senha por
   `change_password_with_mfa`; três códigos errados saem com código 1 sem
   tocar a senha. Testes: `tests/cli/test_user_mfa.py`.
+- `UserAuthService(refuses_email_link=...)`: predicado por conta que fecha
+  os fluxos de link por e-mail (recuperação de senha e ativação). Quando
+  casa, `POST /auth/password-reset/request` e
+  `POST /auth/activation/request` respondem o mesmo `202` genérico e não
+  gravam token nem mandam e-mail; a confirmação (`/password-reset/confirm`,
+  `/activate/{token}`) devolve **403** com o código `EMAIL_LINK_FORBIDDEN`,
+  consome e commita o token e deixa senha e `is_active` intactos. As
+  páginas de `AUTH_BACKEND_LINKS=true` (`GET /auth/activate/{token}`,
+  `GET`/`POST /auth/password-reset/{token}`) renderizam a página de erro
+  com status `403`, e o `GET` do formulário de reset não mostra o
+  formulário. A classe é `EmailLinkForbiddenException` (trocável em
+  `AuthExceptions`, como `account_inactive`), com tradução PT-BR e EN no
+  catálogo padrão. O `signup` não consulta o predicado. Default `None`
+  mantém o comportamento anterior.
 - `make_value_guard(column, allowed, *, exception, unauthenticated=None)`
   (#567): irmão do `make_flag_guard` para coluna de valor (`role == STAFF`),
   com a mesma forma (`FlagGuard`, `exception=` / `unauthenticated=`). Compara

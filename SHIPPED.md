@@ -3482,3 +3482,23 @@ código válido. Sem `--audit-model`: segue, com aviso no stderr. E
 `set-password` em conta com MFA ativo pede o código e passa por
 `change_password_with_mfa`. Teste: `tests/cli/test_user_mfa.py`.
 
+## Link de e-mail recusado por conta (#566)
+
+`UserAuthService(refuses_email_link=...)`: predicado por conta que fecha os
+fluxos de link por e-mail — recuperação de senha e ativação. Um operador, um
+staff, uma conta de serviço: quem lê a caixa não deveria conseguir, sozinho,
+trocar a senha ou ativar a conta. Quando o predicado casa,
+`POST /auth/password-reset/request` e `POST /auth/activation/request`
+respondem o mesmo `202` de um endereço desconhecido, sem gravar
+token nem mandar e-mail; `POST /auth/password-reset/confirm` e
+`POST /auth/activate/{token}` respondem **403** `EMAIL_LINK_FORBIDDEN`,
+consomem e **commitam** o token (`_refuse_email_link`, mesmo raciocínio do
+`_revoke_on_replay`: sem o commit o rollback do request traria o link de
+volta) e deixam senha e `is_active` intactos. As páginas de
+`AUTH_BACKEND_LINKS=true` renderizam a página de erro com `403`; o `GET` do
+formulário de reset consulta `UserAuthService.email_link_refused` e não
+mostra o formulário. A classe é `EmailLinkForbiddenException`, trocável em
+`AuthExceptions` como `account_inactive`, com tradução PT-BR e EN. O `signup`
+não consulta o predicado (o router lê `activation is None` como conta
+auto-ativada). Default `None` mantém o comportamento anterior. Testes:
+`tests/auth/test_email_link_refusal.py`.

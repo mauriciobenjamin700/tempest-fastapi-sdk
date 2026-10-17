@@ -13,8 +13,9 @@ Since **v0.35.0** the bundled auth flow supports **two-factor authentication** w
 7. **[Settings (`AuthSettings`)](#settings)** — flag by flag.
 8. **[Attempt limit](#attempt-limit)** — `429` after five failures, and single-use TOTP codes.
 9. **[Using just `UserAuthService` (no router)](#service-direct)** — for hand-rolled endpoints.
-10. **[Security](#security)**.
-11. **[Next steps](#next-steps)**.
+10. **[Accounts that do not use emailed links](#email-link-refusal)** — `refuses_email_link` for operators and staff.
+11. **[Security](#security)**.
+12. **[Next steps](#next-steps)**.
 
 ---
 
@@ -534,6 +535,72 @@ Afterwards, `tempest user set-password --email staff@example.com` on that accoun
 
 ---
 
+## Accounts that do not use emailed links *(v0.316.0+)* { #email-link-refusal }
+
+An operator, a staff account, a service account: whoever reads the inbox
+should not be able, on their own, to change the password or activate the
+account. With MFA enrolled the link no longer *logs in* (it answers the
+challenge), but it still **changes the password** — and whoever controls
+the inbox locks the owner out. The SDK accepts a per-account predicate
+that closes both link flows:
+
+```python
+# src/api/app.py
+
+from tempest_fastapi_sdk import UserAuthService
+
+from src.core.settings import settings
+from src.db.models import UserModel, UserTokenModel
+
+
+def refuses_email_link(user: UserModel) -> bool:
+    """Operators never use emailed links."""
+    return user.is_admin
+
+
+auth_service = UserAuthService(
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+    refuses_email_link=refuses_email_link,
+)
+```
+
+The predicate receives an instance of **your** `UserModel` (so it can be
+typed against it) and returns a `bool` — `True` refuses. The
+`refuses_email_link=None` default keeps the previous behavior.
+
+When the predicate matches:
+
+- **`POST /auth/password-reset/request` and `POST /auth/activation/request`**
+  answer the same `202` with the same body as an unknown address, and
+  persist **no** token and send no email. The refusal cannot be enumerated.
+- **`POST /auth/password-reset/confirm` and `POST /auth/activate/{token}`**
+  answer `403` with the code `EMAIL_LINK_FORBIDDEN`. The token is consumed
+  and the spend is **committed** before the error (the link never works
+  again), and the password and `is_active` stay intact.
+- **The HTML pages of `AUTH_BACKEND_LINKS=true`** — `GET /auth/activate/{token}`,
+  `GET` and `POST /auth/password-reset/{token}` — render the flow's error
+  page with status `403`. The reset form `GET` does not even show the form
+  (and, since it only peeks the token, does not consume it).
+
+!!! note "`signup` does not consult the predicate"
+    With `AUTH_AUTO_ACTIVATE=false`, signup still mails the activation
+    link — and, for a refused account, that link answers `403`. Create
+    those accounts already active, from the terminal: `tempest user create`
+    writes the account active and `tempest user activate` activates an
+    existing one.
+
+!!! tip "Swap the code"
+    Like `account_inactive`, `email_link_forbidden` is a field of
+    `AuthExceptions`: pass a subclass with your own `code` so the consumer
+    keeps reacting to what it already knows. The body translation
+    (`EMAIL_LINK_FORBIDDEN`, PT-BR and EN in the default catalog) still
+    applies.
+
+---
+
 ## Security
 
 - **TOTP secret persisted on the `UserModel`.** Consider encrypting the `totp_secret` column at rest (Postgres `pgcrypto` or an application-level Fernet wrapper).
@@ -569,6 +636,9 @@ Afterwards, `tempest user set-password --email staff@example.com` on that accoun
 - The access token says how the session started (`amr`), and
   `make_mfa_required_dependency` refuses with `403` `MFA_REQUIRED` the one
   that never passed the second factor. Confirming MFA ends the other sessions.
+- `refuses_email_link=` closes the emailed-link flow for accounts such as
+  operators: the request answers like an unknown address, and confirmation
+  returns `403` `EMAIL_LINK_FORBIDDEN` without changing the password.
 
 ## Next steps
 

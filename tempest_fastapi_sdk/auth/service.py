@@ -103,7 +103,7 @@ from tempest_fastapi_sdk.utils.token_types import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Coroutine, Mapping, Sequence
-    from typing import Any
+    from typing import Any, NoReturn
 
     from sqlalchemy import CursorResult
 
@@ -224,6 +224,7 @@ class UserAuthService:
         refresh_token_model: type[BaseUserRefreshTokenModel] | None = None,
         oauth_account_model: type[BaseUserOAuthAccountModel] | None = None,
         exceptions: AuthExceptions | None = None,
+        refuses_email_link: Callable[[Any], bool] | None = None,
     ) -> None:
         """Initialize the service.
 
@@ -267,6 +268,19 @@ class UserAuthService:
                 single-use link. Pass your own subclasses to keep the
                 ``code`` your clients already handle. ``None`` (default)
                 raises the SDK's own classes.
+            refuses_email_link (Callable[[Any], bool] | None): Predicate
+                deciding, per account, whether the *emailed* link flows
+                are closed to it — an operator or staff member whose
+                mailbox must not be enough to rotate the password or
+                reactivate the account. Called with the service's own
+                ``user_model`` instance; ``True`` means refused, so a
+                privileged account passes ``lambda user: user.is_staff``.
+                The argument is ``Any`` for the same reason as
+                ``on_signup``'s: callable parameters are contravariant, so
+                a signature naming ``BaseUserModel`` would reject the
+                predicate everyone writes (typed against their own model).
+                ``None`` (default) keeps every account on the current
+                behavior. See :class:`EmailLinkForbiddenException`.
         """
         self.exceptions: AuthExceptions = exceptions or AuthExceptions()
         self.user_model: type[BaseUserModel] = user_model
@@ -286,6 +300,7 @@ class UserAuthService:
         self.oauth_account_model: type[BaseUserOAuthAccountModel] | None = (
             oauth_account_model
         )
+        self.refuses_email_link: Callable[[Any], bool] | None = refuses_email_link
 
     # ------------------------------------------------------------------
     # Signup
@@ -494,6 +509,10 @@ class UserAuthService:
         Raises:
             InvalidTokenException: When the token is malformed,
                 expired, already used, or doesn't match a row.
+            ForbiddenException: When ``refuses_email_link`` matches the
+                account — ``exceptions.email_link_forbidden``. The token
+                is consumed, the spend is committed, and ``is_active`` is
+                left untouched.
         """
         record = await self._consume_token(
             session,
@@ -505,6 +524,8 @@ class UserAuthService:
             raise self.exceptions.invalid_token(
                 message="token references a missing user"
             )
+        if self.email_link_refused(user):
+            await self._refuse_email_link(session)
         user.is_active = True
         await session.flush()
         await session.refresh(user)
@@ -532,7 +553,9 @@ class UserAuthService:
         surfaced, and the route answers ``202`` either way. An active
         account is deliberately *not* re-activated or re-mailed — the link
         would authorize nothing and the mail would only tell a stranger
-        that the address has an account here.
+        that the address has an account here. An account the predicate
+        ``refuses_email_link`` matches is answered the same way: no token,
+        no mail, ``None``.
 
         Args:
             session (AsyncSession): Active SQLAlchemy session.
@@ -551,7 +574,7 @@ class UserAuthService:
             )
         )
         user: BaseUserModel | None = user_result.scalar_one_or_none()
-        if user is None or user.is_active:
+        if user is None or user.is_active or self.email_link_refused(user):
             return None
 
         activation = await self._issue_token(
@@ -1155,7 +1178,10 @@ class UserAuthService:
         still respond ``202`` to avoid leaking account
         existence. Sends the email (when ``EmailUtils`` is wired)
         or returns the token for inline display per the
-        ``AUTH_RETURN_TOKEN_IN_RESPONSE`` flag.
+        ``AUTH_RETURN_TOKEN_IN_RESPONSE`` flag. An account the
+        ``refuses_email_link`` predicate matches is answered
+        exactly like an unknown address: no token is minted, no
+        mail goes out, and ``None`` comes back.
 
         Args:
             session (AsyncSession): Active SQLAlchemy session.
@@ -1174,7 +1200,7 @@ class UserAuthService:
         )
         user_obj = user_result.scalar_one_or_none()
         user: BaseUserModel | None = user_obj
-        if user is None:
+        if user is None or self.email_link_refused(user):
             return None
 
         reset = await self._issue_token(
@@ -1235,6 +1261,11 @@ class UserAuthService:
                 when the token points to a user that no longer exists —
                 for the caller that is a link that does not work, as in
                 :meth:`activate` and :meth:`confirm_email_change`.
+            ForbiddenException: ``exceptions.email_link_forbidden`` —
+                ``403`` — when the ``refuses_email_link`` predicate
+                matches the account. The token is spent and the spend is
+                committed, so the link cannot be retried; the password
+                hash is left untouched.
         """
         self._enforce_password_policy(new_password)
         record = await self._consume_token(
@@ -1247,6 +1278,8 @@ class UserAuthService:
             raise self.exceptions.invalid_token(
                 message="token references a missing user"
             )
+        if self.email_link_refused(user):
+            await self._refuse_email_link(session)
         user.hashed_password = self.passwords.hash(new_password)
         await session.flush()
         if revoke_sessions:
@@ -2655,6 +2688,61 @@ class UserAuthService:
             stmt = stmt.where(self.user_model.id != exclude_user_id)
         result = await session.execute(stmt)
         return result.scalar_one_or_none() is not None
+
+    def email_link_refused(self, user: BaseUserModel) -> bool:
+        """Return whether the emailed link flows are closed for ``user``.
+
+        The gate behind ``refuses_email_link``: every request and confirm
+        method that would mint or spend an activation or password-reset
+        link asks here first, and so does the backend-rendered reset form
+        (``AUTH_BACKEND_LINKS=True``), which only peeks the token and
+        would otherwise show a form whose submit is bound to fail. The
+        argument is the service's own ``user_model`` instance, which is
+        what the configured predicate was written against.
+
+        Args:
+            user (BaseUserModel): The account the link points at.
+
+        Returns:
+            bool: ``True`` when the account refuses emailed links. Always
+            ``False`` under the default ``refuses_email_link=None``.
+        """
+        predicate = self.refuses_email_link
+        if predicate is None:
+            return False
+        return predicate(user)
+
+    async def _refuse_email_link(
+        self,
+        session: AsyncSession,
+    ) -> NoReturn:
+        """Persist the spent token, then raise the typed ``403``.
+
+        Called only after :meth:`_consume_token` staged the ``used_at``
+        write in the caller's session. The raise travels out through the
+        request's session dependency, whose teardown rolls the unit of
+        work back — without the commit the token would come back to life
+        and a leaked link would stay redeemable. Same reasoning as
+        :meth:`_revoke_on_replay`: a flush is not enough once the caller
+        raises. The consumed token is the only write these methods stage
+        before the refusal, so nothing else rides along.
+
+        The class comes from ``self.exceptions.email_link_forbidden`` so a
+        product keeps the ``code`` its clients already handle, and the
+        ``message_key`` pins the SDK's translation even when the class is
+        swapped.
+
+        Args:
+            session (AsyncSession): Active session holding the staged
+                token consumption.
+
+        Raises:
+            ForbiddenException: ``exceptions.email_link_forbidden`` with
+                the ``EMAIL_LINK_FORBIDDEN`` message key (``403`` by
+                default).
+        """
+        await session.commit()
+        raise self.exceptions.email_link_forbidden(message_key="EMAIL_LINK_FORBIDDEN")
 
     async def _consume_token(
         self,

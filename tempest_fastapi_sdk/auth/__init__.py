@@ -21,6 +21,9 @@ from tempest_fastapi_sdk.auth.exceptions import (
     AuthExceptions as AuthExceptions,
 )
 from tempest_fastapi_sdk.auth.exceptions import (
+    EmailLinkForbiddenException as EmailLinkForbiddenException,
+)
+from tempest_fastapi_sdk.auth.exceptions import (
     LoginThrottledException as LoginThrottledException,
 )
 from tempest_fastapi_sdk.auth.exceptions import (
@@ -254,6 +257,7 @@ __all__: list[str] = [
     "EmailChangeRequestSchema",
     "EmailChangeResponseSchema",
     "EmailChangeToken",
+    "EmailLinkForbiddenException",
     "EmailRecoveryRequestSchema",
     "EmailVerificationToken",
     "FirebaseAuth",

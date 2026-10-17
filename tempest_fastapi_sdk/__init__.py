@@ -520,6 +520,9 @@ from tempest_fastapi_sdk.auth import (
     EmailChangeToken as EmailChangeToken,
 )
 from tempest_fastapi_sdk.auth import (
+    EmailLinkForbiddenException as EmailLinkForbiddenException,
+)
+from tempest_fastapi_sdk.auth import (
     EmailRecoveryRequestSchema as EmailRecoveryRequestSchema,
 )
 from tempest_fastapi_sdk.auth import (
@@ -2361,6 +2364,7 @@ __all__: list[str] = [
     "EmailChangeRequestSchema",
     "EmailChangeResponseSchema",
     "EmailChangeToken",
+    "EmailLinkForbiddenException",
     "EmailRecoveryRequestSchema",
     "EmailSettings",
     "EmailUtils",

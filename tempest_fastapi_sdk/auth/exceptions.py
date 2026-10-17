@@ -64,6 +64,27 @@ class AccountInactiveException(ForbiddenException):
     code: str = "ACCOUNT_INACTIVE"
 
 
+class EmailLinkForbiddenException(ForbiddenException):
+    """Raised when a refused account tries to spend an emailed link.
+
+    Some accounts — an operator, a staff member — should never be driven
+    by an emailed link at all: whoever reads the mailbox could otherwise
+    open ``/password-reset/confirm`` (or ``/activate``) and rotate the
+    password, locking the owner out even without the second factor. The
+    refusal is opted into per account through
+    ``UserAuthService(refuses_email_link=...)``.
+
+    When the predicate matches, the *request* routes answer the same
+    ``202`` as an unknown address and mint no token, so the refusal is not
+    enumerable; the *confirm* routes raise this class — ``403`` — after
+    consuming the token and before touching the password, so a link that
+    leaked anyway authorizes nothing.
+    """
+
+    message: str = "This account does not accept email links"
+    code: str = "EMAIL_LINK_FORBIDDEN"
+
+
 class LoginThrottledException(TooManyRequestsException):
     """Raised when ``POST /auth/login`` is over its attempt budget.
 
@@ -127,11 +148,15 @@ class AuthExceptions:
             (activation, password reset, email change or verification)
             that is unknown, used, expired, or points to a user that no
             longer exists. Refresh tokens are not covered.
+        email_link_forbidden (type[ForbiddenException]): An account
+            matched by ``UserAuthService(refuses_email_link=...)`` tries
+            to spend an activation or password-reset link.
     """
 
     invalid_credentials: type[UnauthorizedException] = UnauthorizedException
     account_inactive: type[ForbiddenException] = AccountInactiveException
     email_taken: type[ConflictException] = ConflictException
+    email_link_forbidden: type[ForbiddenException] = EmailLinkForbiddenException
     password_too_short: type[ValidationException] = ValidationException
     password_too_long: type[ValidationException] = ValidationException
     password_too_weak: type[ValidationException] = ValidationException
@@ -141,6 +166,7 @@ class AuthExceptions:
 __all__: list[str] = [
     "AccountInactiveException",
     "AuthExceptions",
+    "EmailLinkForbiddenException",
     "LoginThrottledException",
     "MFAAlreadyEnrolledException",
     "MFANotEnrolledException",
