@@ -1750,6 +1750,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `OpenPixEnvironment` so `settings` never drags the lazy `integrations`
   namespace in — the enum is imported inside the method, keeping one source of
   truth for the hosts.
+- **Web app revalidation + immutable paths (unreleased)** —
+  `make_web_app_router` answers `If-None-Match` (weak comparison, lists,
+  `*`) and, absent it, `If-Modified-Since` with an empty `304` carrying
+  `ETag`/`Cache-Control`/security headers — assets, `index.html`, the SPA
+  fallback and `build_web_app`'s shell — and serves `HEAD`.
+  `immutable=[<globs>]` plus an optional `immutable.json`
+  (`{"immutable": [<globs>]}`) at the build root send
+  `public, max-age=31536000, immutable`; fixed-name entry points never.
+  No compression in the router: nginx `gzip on` (measured weakening the
+  ETag, 304 still holds).
 - **Versioned CSS URL, body font, full-width shell, rich table cells
   (v0.301.0; #341, #350, #346)** — `StyleSheet.url(path)` /
   `StyleSheet.version()` give the content-versioned link

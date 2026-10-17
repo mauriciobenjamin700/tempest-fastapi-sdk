@@ -673,7 +673,8 @@ mid client-side route works).
 !!! tip "Transparent, no magic"
     - `index.html` and `sw.js` are always sent `Cache-Control: no-cache`
       (a redeploy is seen immediately); other assets use
-      `asset_cache_control` (default `public, max-age=3600`).
+      `asset_cache_control` (default `public, max-age=3600`), except the
+      immutable paths (below).
     - Correct MIME for files `mimetypes` may not know (`.wasm` →
       `application/wasm`, `.mjs`/`.js` → `text/javascript`,
       `.webmanifest`).
@@ -682,6 +683,76 @@ mid client-side route works).
     - **No CSP is imposed** — it is first-party code and Pyodide needs
       `wasm-unsafe-eval`; pass `security_headers=` to add your own.
     - Path traversal (`../`) is blocked.
+
+#### Revalidation and immutable paths
+
+Every file response carries `ETag` and `Last-Modified`, and the router
+answers revalidation: a `GET` (or `HEAD`) whose `If-None-Match` matches —
+weak comparison, comma-separated list or `*` — or, without it, whose
+`If-Modified-Since` is not older than `Last-Modified` gets
+**`304 Not Modified`** with no body and the same `ETag` and
+`Cache-Control`. That holds for assets, for `index.html` and for the SPA
+fallback. So `asset_cache_control="no-cache"` means "ask before using",
+not "download everything again": on each visit the browser sends one
+conditional request per file and gets an empty `304` while nothing
+changed.
+
+To go further and not even ask, declare the **content-addressed** paths —
+the ones whose name changes whenever their bytes do — and they are sent
+with `Cache-Control: public, max-age=31536000, immutable`:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.ssr import make_web_app_router
+
+app = FastAPI()
+app.include_router(
+    make_web_app_router(
+        "dist/wasm",
+        asset_cache_control="no-cache",
+        immutable=["client-*/**", "tempestweb-pkg.*.zip"],
+    ),
+)
+```
+
+Patterns are relative to the build root: `**` crosses directories, `*`
+and `?` stay within one segment. Everything else keeps
+`asset_cache_control`.
+
+The build can also declare its own immutable paths in an `immutable.json`
+file at its root (`immutable_manifest=` changes the name; `None` turns the
+lookup off). The format is an object with one list of patterns, in the
+dialect above; other keys are ignored:
+
+```json
+{"immutable": ["client-3f2a9c/**", "tempestweb-pkg.3f2a9c.zip"]}
+```
+
+The file's patterns add to `immutable=`. It is read once, when the router
+is built; a malformed manifest fails the boot with `ValueError` instead of
+silently caching nothing.
+
+!!! warning "An entry point is never immutable"
+    `index.html`, `sw.js`, `bootstrap.js`, `register.js`,
+    `manifest.webmanifest` and the manifest itself are referenced by a
+    fixed name — the name does not change when the content does — so they
+    never get `immutable`, not even with `immutable=["**"]`. The shell
+    (generated or `shell=`) is always sent `no-cache`.
+
+!!! info "Compression belongs in the proxy"
+    The router does not compress. A wasm build's text assets shrink well
+    under gzip (in tempestweb 0.127.0's scaffold, 646 KB become 222 KB),
+    but `tempestweb-pkg.zip` is already compressed (467 KB become 454 KB).
+    The right place is the nginx in front (`gzip on;` with `gzip_types`
+    including `text/javascript` and `application/wasm`): it compresses
+    outside the Python process and weakens the compressed response's
+    `ETag` (`W/"..."`, measured on nginx 1.27), as RFC 9110 asks of a
+    strong validator — and the `304` still holds, because the router's
+    comparison is weak. Starlette's
+    `GZipMiddleware` also works with this router — the `304` still
+    holds —, but it compresses every response of the application and
+    keeps the same strong `ETag` on both encodings.
 
 ### Server-mode app (`build_web_app`)
 
