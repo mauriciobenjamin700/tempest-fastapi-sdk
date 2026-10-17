@@ -1206,7 +1206,9 @@ curl -X POST localhost:8000/auth/password-reset/confirm \
     O `UserAuthService(refuses_email_link=...)` fecha este fluxo (e o de
     ativação) para contas escolhidas por um predicado — um operador, um
     staff. O `request` responde o mesmo `202` e não manda e-mail; a
-    confirmação devolve **403** `EMAIL_LINK_FORBIDDEN` sem trocar a senha.
+    confirmação devolve **403** `EMAIL_LINK_FORBIDDEN` sem trocar a senha; e
+    o `signup` cria a conta inativa sem gravar nem mandar link de ativação,
+    com a mesma resposta de um cadastro pendente comum.
     Veja a [receita de MFA](mfa.md#email-link-refusal).
 
 ??? note "Sem front-end? Páginas HTML pelo backend (Modo E)"

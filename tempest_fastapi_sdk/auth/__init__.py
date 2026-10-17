@@ -131,6 +131,9 @@ from tempest_fastapi_sdk.auth.schemas import (
     ActivationResponseSchema as ActivationResponseSchema,
 )
 from tempest_fastapi_sdk.auth.schemas import ActivationToken as ActivationToken
+from tempest_fastapi_sdk.auth.schemas import (
+    ActivationWithheld as ActivationWithheld,
+)
 from tempest_fastapi_sdk.auth.schemas import AuthUserSchema as AuthUserSchema
 from tempest_fastapi_sdk.auth.schemas import (
     EmailChangeConfirmSchema as EmailChangeConfirmSchema,
@@ -250,6 +253,7 @@ __all__: list[str] = [
     "ActivationResendResponseSchema",
     "ActivationResponseSchema",
     "ActivationToken",
+    "ActivationWithheld",
     "AuthCookieConfig",
     "AuthExceptions",
     "AuthUserSchema",

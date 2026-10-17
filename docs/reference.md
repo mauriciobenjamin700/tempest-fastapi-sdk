@@ -1060,6 +1060,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.auth.schemas.PasswordResetResponseSchema
 ::: tempest_fastapi_sdk.auth.schemas.PasswordResetConfirmSchema
 ::: tempest_fastapi_sdk.auth.schemas.ActivationToken
+::: tempest_fastapi_sdk.auth.schemas.ActivationWithheld
 ::: tempest_fastapi_sdk.auth.schemas.PasswordResetToken
 ::: tempest_fastapi_sdk.auth.schemas.MFAEnrollResponseSchema
 ::: tempest_fastapi_sdk.auth.schemas.MFAConfirmSchema

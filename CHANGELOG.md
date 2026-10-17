@@ -70,8 +70,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   com status `403`, e o `GET` do formulário de reset não mostra o
   formulário. A classe é `EmailLinkForbiddenException` (trocável em
   `AuthExceptions`, como `account_inactive`), com tradução PT-BR e EN no
-  catálogo padrão. O `signup` não consulta o predicado. Default `None`
-  mantém o comportamento anterior.
+  catálogo padrão. Default `None` mantém o comportamento anterior.
+- `POST /auth/signup` com `AUTH_AUTO_ACTIVATE=false` consulta o
+  `refuses_email_link` (#573): a conta recusada nasce inativa, sem token de
+  ativação gravado e sem e-mail, e a resposta é o mesmo `201` de um cadastro
+  pendente comum (`activation_required=true`, `activation_url=null`, sem par
+  de JWT) — só o `user_id` muda. Antes, o cadastro mandava um link que só
+  falhava no uso. `UserAuthService.signup` passa a devolver, no segundo item
+  da tupla, o novo `ActivationWithheld(user_id)` (exportado no topo e em
+  `tempest_fastapi_sdk.auth`) nesse caso, e o router só emite JWT para
+  `None`; quem chama o `signup` direto e lê `.url` do segundo item precisa
+  tratar o tipo novo. Com `AUTH_AUTO_ACTIVATE=true` o predicado não é
+  consultado no cadastro: a conta nasce ativa e não depende de link. No modo
+  que devolve o link no corpo (`AUTH_RETURN_TOKEN_IN_RESPONSE`, ou sem
+  `EmailUtils`), o recusado recebe `activation_url=null`, como o
+  `/activation/request` já fazia. Override de `signup` sem `fields` que
+  repassa para o `super()` continua funcionando. Testes em
+  `tests/auth/test_email_link_refusal.py::TestSignupWithholdsActivation`.
 - `make_value_guard(column, allowed, *, exception, unauthenticated=None)`
   (#567): irmão do `make_flag_guard` para coluna de valor (`role == STAFF`),
   com a mesma forma (`FlagGuard`, `exception=` / `unauthenticated=`). Compara

@@ -77,6 +77,7 @@ from tempest_fastapi_sdk.auth.schemas import (
     ActivationRequestSchema,
     ActivationResendResponseSchema,
     ActivationResponseSchema,
+    ActivationWithheld,
     AuthUserSchema,
     EmailChangeConfirmSchema,
     EmailChangeRequestSchema,
@@ -927,6 +928,16 @@ def make_auth_router(
         client IP first and the one past the budget answers ``429``
         before the service sees the body.
 
+        Only ``None`` from :meth:`UserAuthService.signup` mints the JWT
+        pair. :class:`ActivationWithheld` — the ``refuses_email_link``
+        predicate matched the new account — answers exactly like a pending
+        signup whose link was emailed (``activation_required=true``,
+        ``activation_url=null``), so the response does not tell a refused
+        account apart. In the surfacing modes
+        (``AUTH_RETURN_TOKEN_IN_RESPONSE``, or no ``EmailUtils``) the
+        normal body carries the link and this one carries ``null``, like
+        ``/activation/request`` already does.
+
         Args:
             payload (SignupSchema): Email, password and optional name —
                 or a subclass of those, when ``signup_schema`` is set.
@@ -985,8 +996,11 @@ def make_auth_router(
         await session.commit()
         return_url = (
             activation.url
-            if service.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE
-            or service.email is None
+            if not isinstance(activation, ActivationWithheld)
+            and (
+                service.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE
+                or service.email is None
+            )
             else None
         )
         return SignupResponseSchema(

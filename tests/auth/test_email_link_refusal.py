@@ -27,6 +27,8 @@ from sqlalchemy.ext.asyncio import (
 
 import tempest_fastapi_sdk
 from tempest_fastapi_sdk import (
+    ActivationToken,
+    ActivationWithheld,
     AuthExceptions,
     BaseModel,
     BaseUserModel,
@@ -213,7 +215,7 @@ class TestTheExceptionIsPublic:
         _, activation = await issuer.signup(
             session, email=REFUSED_EMAIL, password=PASSWORD
         )
-        assert activation is not None
+        assert isinstance(activation, ActivationToken)
         await session.commit()
         async with _client(guard, session) as client:
             refused = await client.post(f"/auth/activate/{activation.token}")
@@ -236,7 +238,7 @@ class TestTheExceptionIsPublic:
         _, activation = await issuer.signup(
             session, email=REFUSED_EMAIL, password=PASSWORD
         )
-        assert activation is not None
+        assert isinstance(activation, ActivationToken)
         await session.commit()
         async with _client(guard, session, catalog=True) as client:
             refused = await client.post(
@@ -255,7 +257,7 @@ class TestPredicateIsConsulted:
         await service.signup(session, email=REFUSED_EMAIL, password=PASSWORD)
         await session.commit()
         activation = await service.request_activation(session, email=REFUSED_EMAIL)
-        assert activation is not None
+        assert isinstance(activation, ActivationToken)
 
     async def test_it_receives_the_service_user_model(
         self, session: AsyncSession
@@ -279,9 +281,14 @@ class TestRequestMintsNothing:
     async def test_activation_request_mints_nothing_for_a_refused_account(
         self, session: AsyncSession
     ) -> None:
-        """The resend is short-circuited before the token insert."""
+        """The resend is short-circuited before the token insert.
+
+        The account is created by a service without the predicate, so it
+        holds the signup token a pre-#566 deployment would have issued.
+        """
+        issuer = _service(auto_activate=False, return_token=True)
         service = _service(refuses=_locked, auto_activate=False, return_token=True)
-        await service.signup(session, email=REFUSED_EMAIL, password=PASSWORD)
+        await issuer.signup(session, email=REFUSED_EMAIL, password=PASSWORD)
         await session.commit()
         before = await _count_tokens(session)
         assert before == 1
@@ -390,7 +397,7 @@ class TestConfirmReturns403Json:
         user, activation = await issuer.signup(
             session, email=REFUSED_EMAIL, password=PASSWORD
         )
-        assert activation is not None
+        assert isinstance(activation, ActivationToken)
         await session.commit()
         async with _client(guard, session) as client:
             refused = await client.post(f"/auth/activate/{activation.token}")
@@ -440,7 +447,7 @@ class TestConfirmReturns403Html:
         user, activation = await issuer.signup(
             session, email=REFUSED_EMAIL, password=PASSWORD
         )
-        assert activation is not None
+        assert isinstance(activation, ActivationToken)
         await session.commit()
         async with _client(guard, session) as client:
             refused = await client.get(f"/auth/activate/{activation.token}")
@@ -575,3 +582,171 @@ class TestNormalAccountIsUntouched:
                 json={"token": reset_token, "new_password": NEW_PASSWORD},
             )
         assert confirmed.status_code == 200, confirmed.text
+
+
+class TestSignupWithholdsActivation:
+    """Signup of an account the predicate refuses (issue #573).
+
+    Before the fix, ``AUTH_AUTO_ACTIVATE=false`` minted and mailed the
+    activation link at signup, and that link only failed on use (``403``).
+    The signup now creates the account inactive, persists no token, sends
+    no mail and answers the same ``201`` a normal pending signup gets.
+    """
+
+    async def test_service_returns_the_withheld_marker(
+        self, session: AsyncSession
+    ) -> None:
+        """No token row, no mail, and a value that is not ``None``."""
+        mail = FakeEmailUtils()
+        service = _service(
+            refuses=_locked, auto_activate=False, return_token=False, email=mail
+        )
+        user, activation = await service.signup(
+            session, email=REFUSED_EMAIL, password=PASSWORD
+        )
+        assert isinstance(activation, ActivationWithheld)
+        assert activation.user_id == user.id
+        assert user.is_active is False
+        assert await _count_tokens(session) == 0
+        assert mail.outbox == []
+
+    async def test_service_still_issues_for_a_normal_account(
+        self, session: AsyncSession
+    ) -> None:
+        """The control: the predicate missing keeps the token and the mail."""
+        mail = FakeEmailUtils()
+        service = _service(
+            refuses=_locked, auto_activate=False, return_token=False, email=mail
+        )
+        _, activation = await service.signup(
+            session, email=OPEN_EMAIL, password=PASSWORD
+        )
+        assert isinstance(activation, ActivationToken)
+        assert await _count_tokens(session) == 1
+        assert [message.to[0] for message in mail.outbox] == [OPEN_EMAIL]
+
+    async def test_http_response_is_indistinguishable(
+        self, session: AsyncSession
+    ) -> None:
+        """Same status and body bytes, modulo the user id; no JWT pair."""
+        mail = FakeEmailUtils()
+        service = _service(
+            refuses=_locked, auto_activate=False, return_token=False, email=mail
+        )
+        async with _client(service, session) as client:
+            refused = await client.post(
+                "/auth/signup", json={"email": REFUSED_EMAIL, "password": PASSWORD}
+            )
+            normal = await client.post(
+                "/auth/signup", json={"email": OPEN_EMAIL, "password": PASSWORD}
+            )
+        assert refused.status_code == normal.status_code == 201, refused.text
+        refused_id = refused.json()["user_id"].encode()
+        normal_id = normal.json()["user_id"].encode()
+        assert refused.content.replace(refused_id, b"") == normal.content.replace(
+            normal_id, b""
+        )
+        assert refused.json()["access_token"] is None
+        assert refused.json()["refresh_token"] is None
+        assert [message.to[0] for message in mail.outbox] == [OPEN_EMAIL]
+        assert await _count_tokens(session) == 1
+        refused_user = (
+            await session.execute(
+                select(_RefuseUser).where(_RefuseUser.email == REFUSED_EMAIL)
+            )
+        ).scalar_one()
+        assert refused_user.is_active is False
+
+    async def test_surfacing_mode_returns_no_link(self, session: AsyncSession) -> None:
+        """With links surfaced in the body, the refused account gets none."""
+        service = _service(refuses=_locked, auto_activate=False, return_token=True)
+        async with _client(service, session) as client:
+            refused = await client.post(
+                "/auth/signup", json={"email": REFUSED_EMAIL, "password": PASSWORD}
+            )
+        assert refused.status_code == 201, refused.text
+        assert refused.json()["activation_required"] is True
+        assert refused.json()["activation_url"] is None
+        assert refused.json()["access_token"] is None
+        assert await _count_tokens(session) == 0
+
+    async def test_auto_activate_ignores_the_predicate(
+        self, session: AsyncSession
+    ) -> None:
+        """An account born active depends on no link: signup is unchanged."""
+        seen: list[BaseUserModel] = []
+
+        def _record(user: BaseUserModel) -> bool:
+            """Record the call and refuse every account.
+
+            Args:
+                user (BaseUserModel): The account being classified.
+
+            Returns:
+                bool: Always ``True``.
+            """
+            seen.append(user)
+            return True
+
+        service = _service(refuses=_record, auto_activate=True)
+        async with _client(service, session) as client:
+            created = await client.post(
+                "/auth/signup", json={"email": REFUSED_EMAIL, "password": PASSWORD}
+            )
+        assert created.status_code == 201, created.text
+        assert created.json()["activation_required"] is False
+        assert created.json()["access_token"]
+        assert seen == []
+
+    async def test_an_old_signup_override_keeps_working(
+        self, session: AsyncSession
+    ) -> None:
+        """An override without ``fields`` that forwards to ``super`` is fine."""
+
+        class _Legacy(UserAuthService):
+            async def signup(  # type: ignore[override]
+                self,
+                session: AsyncSession,
+                *,
+                email: str,
+                password: str,
+                name: str | None = None,
+            ) -> tuple[BaseUserModel, Any]:
+                """Forward the pre-0.305.0 keywords only.
+
+                Args:
+                    session (AsyncSession): Active session.
+                    email (str): Account email.
+                    password (str): Plaintext password.
+                    name (str | None): Optional display name.
+
+                Returns:
+                    tuple[BaseUserModel, Any]: Whatever ``super`` returned.
+                """
+                return await super().signup(
+                    session, email=email, password=password, name=name
+                )
+
+        mail = FakeEmailUtils()
+        legacy = _Legacy(
+            user_model=_RefuseUser,
+            token_model=_RefuseUserToken,
+            auth_settings=AuthSettings(
+                _env_file=None,
+                AUTH_AUTO_ACTIVATE=False,
+                AUTH_RETURN_TOKEN_IN_RESPONSE=False,
+            ),
+            jwt_settings=JWTSettings(_env_file=None, JWT_SECRET="x" * 32),
+            email=mail,
+            refresh_token_model=_RefuseRefreshToken,
+            refuses_email_link=_locked,
+        )
+        async with _client(legacy, session) as client:
+            created = await client.post(
+                "/auth/signup", json={"email": REFUSED_EMAIL, "password": PASSWORD}
+            )
+        assert created.status_code == 201, created.text
+        assert created.json()["activation_required"] is True
+        assert created.json()["access_token"] is None
+        assert mail.outbox == []
+        assert await _count_tokens(session) == 0

@@ -50,6 +50,7 @@ from tempest_fastapi_sdk.auth.locale import (
 )
 from tempest_fastapi_sdk.auth.schemas import (
     ActivationToken,
+    ActivationWithheld,
     EmailChangeToken,
     EmailVerificationToken,
     PasswordResetToken,
@@ -314,15 +315,27 @@ class UserAuthService:
         password: str,
         name: str | None = None,
         fields: Mapping[str, Any] | None = None,
-    ) -> tuple[BaseUserModel, ActivationToken | None]:
+    ) -> tuple[BaseUserModel, ActivationToken | ActivationWithheld | None]:
         """Create a user row and (optionally) issue an activation token.
 
-        When ``AUTH_AUTO_ACTIVATE`` is true, the user is marked
-        ``is_active=True`` immediately and ``None`` is returned in
-        the second tuple slot — the caller can mint JWTs right
-        away. Otherwise the user is inserted with ``is_active=False``
-        and an activation token is returned for the caller to mail
-        or echo back.
+        The second tuple slot says how the account gets active, and each
+        of its three values means one thing only:
+
+        * ``None`` — ``AUTH_AUTO_ACTIVATE`` is true and the user is born
+          ``is_active=True``; the caller can mint JWTs right away. The
+          ``refuses_email_link`` predicate is not consulted, because an
+          account born active depends on no link.
+        * :class:`ActivationToken` — the user is inserted with
+          ``is_active=False`` and an activation token is persisted (and
+          mailed, when ``EmailUtils`` is wired) for the caller to surface.
+        * :class:`ActivationWithheld` — the user is inserted with
+          ``is_active=False`` but ``refuses_email_link`` matches the new
+          row, so no token is persisted and no mail is sent: the link
+          would only answer ``EMAIL_LINK_FORBIDDEN`` when used. The
+          predicate sees the row as inserted, with ``fields`` applied and
+          before any ``on_signup`` hook of the router runs. The caller
+          must not mint JWTs for it, and should answer the way it answers
+          a pending signup, so the refusal cannot be enumerated.
 
         Args:
             session (AsyncSession): Active SQLAlchemy session.
@@ -340,9 +353,10 @@ class UserAuthService:
                 nothing extra.
 
         Returns:
-            tuple[BaseUserModel, ActivationToken | None]: The
-            persisted user and (when activation is required) the
-            token to surface.
+            tuple[BaseUserModel, ActivationToken | ActivationWithheld | None]:
+            The persisted user and how it gets active — ``None`` when born
+            active, the token to surface, or the marker that the link was
+            withheld.
 
         Raises:
             ValueError: When ``fields`` names something that is not a
@@ -390,6 +404,8 @@ class UserAuthService:
 
         if self.auth_settings.AUTH_AUTO_ACTIVATE:
             return user, None
+        if self.email_link_refused(user):
+            return user, ActivationWithheld(user_id=user.id)
 
         activation = await self._issue_token(
             session,
@@ -2692,9 +2708,10 @@ class UserAuthService:
     def email_link_refused(self, user: BaseUserModel) -> bool:
         """Return whether the emailed link flows are closed for ``user``.
 
-        The gate behind ``refuses_email_link``: every request and confirm
-        method that would mint or spend an activation or password-reset
-        link asks here first, and so does the backend-rendered reset form
+        The gate behind ``refuses_email_link``: :meth:`signup` (when it
+        would mint the first activation link) and every request and
+        confirm method that would mint or spend an activation or
+        password-reset link ask here first, and so does the backend-rendered reset form
         (``AUTH_BACKEND_LINKS=True``), which only peeks the token and
         would otherwise show a form whose submit is bound to fail. The
         argument is the service's own ``user_model`` instance, which is
