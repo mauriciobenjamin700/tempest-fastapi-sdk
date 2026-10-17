@@ -1202,6 +1202,13 @@ curl -X POST localhost:8000/auth/password-reset/confirm \
     `reset_url` volta **no corpo** do `request` em vez de ir por e-mail —
     você dispara o fluxo inteiro sem inbox. Em produção ele fica `null`.
 
+!!! tip "Conta que não usa link de e-mail *(v0.316.0+)*"
+    O `UserAuthService(refuses_email_link=...)` fecha este fluxo (e o de
+    ativação) para contas escolhidas por um predicado — um operador, um
+    staff. O `request` responde o mesmo `202` e não manda e-mail; a
+    confirmação devolve **403** `EMAIL_LINK_FORBIDDEN` sem trocar a senha.
+    Veja a [receita de MFA](mfa.md#email-link-refusal).
+
 ??? note "Sem front-end? Páginas HTML pelo backend (Modo E)"
     Com `AUTH_BACKEND_LINKS=True` o SDK monta **GET/POST**
     `/auth/password-reset/{token}`: o link do e-mail aponta pro backend,

@@ -471,6 +471,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "ACCOUNT_INACTIVE": (
             "Esta conta está desativada — fale com o suporte para reativá-la"
         ),
+        "EMAIL_LINK_FORBIDDEN": "Esta conta não aceita links por e-mail",
         "PASSWORD_TOO_SHORT": "A senha precisa ter pelo menos {min_length} caracteres",
         "PASSWORD_TOO_LONG": "A senha pode ter no máximo {max_bytes} bytes",
         "PASSWORD_TOO_WEAK": (
@@ -598,6 +599,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "ACCOUNT_INACTIVE": (
             "This account is deactivated — contact support to reactivate it"
         ),
+        "EMAIL_LINK_FORBIDDEN": "This account does not accept email links",
         "PASSWORD_TOO_SHORT": "Password must be at least {min_length} characters",
         "PASSWORD_TOO_LONG": "Password must be at most {max_bytes} bytes",
         "PASSWORD_TOO_WEAK": (

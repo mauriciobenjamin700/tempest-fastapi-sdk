@@ -799,14 +799,31 @@ def make_auth_router(
             default=default_locale,
         )
 
-    def _render_error(template: str, reason: str, locale: str) -> HTMLResponse:
+    def _render_error(
+        template: str,
+        reason: str,
+        locale: str,
+        status_code: int = 400,
+    ) -> HTMLResponse:
+        """Render one of the backend-links error pages.
+
+        Args:
+            template (str): The error template to render.
+            reason (str): The message the page shows.
+            locale (str): The page language.
+            status_code (int): The HTTP status; ``400`` for a bad link,
+                ``403`` for an account that refuses emailed links.
+
+        Returns:
+            HTMLResponse: The rendered page.
+        """
         html = render_auth_page(
             template,
             {"reason": reason, "login_url": login_url},
             template_dir=template_dir,
             locale=locale,
         )
-        return HTMLResponse(content=html, status_code=400)
+        return HTMLResponse(content=html, status_code=status_code)
 
     current_user_dep = make_jwt_user_dependency(
         service.jwt,
@@ -1724,6 +1741,13 @@ def make_auth_router(
                     reason=exc.message,
                     locale=locale,
                 )
+            except service.exceptions.email_link_forbidden as exc:
+                return _render_error(
+                    auth_settings.AUTH_ACTIVATION_ERROR_TEMPLATE,
+                    reason=exc.message,
+                    locale=locale,
+                    status_code=exc.status_code,
+                )
             await session.commit()
             await _reload_if_expired(session, user)
             locale = _page_locale(request, user)
@@ -1773,6 +1797,14 @@ def make_auth_router(
                     locale=locale,
                 )
             locale = _page_locale(request, user)
+            if service.email_link_refused(user):
+                refusal = service.exceptions.email_link_forbidden()
+                return _render_error(
+                    auth_settings.AUTH_PASSWORD_RESET_ERROR_TEMPLATE,
+                    reason=refusal.message,
+                    locale=locale,
+                    status_code=refusal.status_code,
+                )
             html = render_auth_page(
                 auth_settings.AUTH_PASSWORD_RESET_FORM_TEMPLATE,
                 {
@@ -1854,6 +1886,13 @@ def make_auth_router(
                     auth_settings.AUTH_PASSWORD_RESET_ERROR_TEMPLATE,
                     reason=exc.message,
                     locale=locale,
+                )
+            except service.exceptions.email_link_forbidden as exc:
+                return _render_error(
+                    auth_settings.AUTH_PASSWORD_RESET_ERROR_TEMPLATE,
+                    reason=exc.message,
+                    locale=locale,
+                    status_code=exc.status_code,
                 )
             except ValidationException as exc:
                 await session.rollback()
