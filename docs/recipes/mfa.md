@@ -13,8 +13,9 @@ Desde **v0.35.0** o fluxo de auth bundled suporta **autenticação de dois fator
 7. **[Settings (`AuthSettings`)](#settings)** — flag a flag.
 8. **[Limite de tentativas](#limite-de-tentativas)** — `429` depois de cinco erros, e código TOTP de uso único.
 9. **[Usando só o `UserAuthService` (sem o router)](#service-direto)** — pra quem monta os próprios endpoints.
-10. **[Segurança](#seguranca)**.
-11. **[Próximos passos](#proximos-passos)**.
+10. **[Conta que não usa link de e-mail](#email-link-refusal)** — `refuses_email_link` para operador e staff.
+11. **[Segurança](#seguranca)**.
+12. **[Próximos passos](#proximos-passos)**.
 
 ---
 
@@ -457,6 +458,69 @@ Superfície completa:
 
 ---
 
+## Conta que não usa link de e-mail *(v0.316.0+)* { #email-link-refusal }
+
+Um operador, uma conta de staff, uma conta de serviço: quem lê a caixa de
+entrada não deveria conseguir, sozinho, trocar a senha ou ativar a conta.
+Com MFA inscrito o link já não *entra* (responde o desafio), mas ainda
+**troca a senha** — e quem controla a caixa trava o dono para fora. O SDK
+aceita um predicado por conta que fecha os dois fluxos de link:
+
+```python
+# src/api/app.py
+
+from tempest_fastapi_sdk import UserAuthService
+
+from src.core.settings import settings
+from src.db.models import UserModel, UserTokenModel
+
+
+def refuses_email_link(user: UserModel) -> bool:
+    """Operadores nunca usam link de e-mail."""
+    return user.is_admin
+
+
+auth_service = UserAuthService(
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+    refuses_email_link=refuses_email_link,
+)
+```
+
+O predicado recebe a instância do **seu** `UserModel` (por isso pode ser
+tipado contra ele) e devolve `bool` — `True` recusa. O default
+`refuses_email_link=None` mantém o comportamento de sempre.
+
+Quando o predicado casa:
+
+- **`POST /auth/password-reset/request` e `POST /auth/activation/request`**
+  respondem o mesmo `202` com o mesmo corpo de um endereço desconhecido, e
+  **não** gravam token nem mandam e-mail. A recusa não é enumerável.
+- **`POST /auth/password-reset/confirm` e `POST /auth/activate/{token}`**
+  respondem `403` com o código `EMAIL_LINK_FORBIDDEN`. O token é consumido
+  e o consumo é **commitado** antes do erro (o link não volta a valer), e a
+  senha e o `is_active` ficam intactos.
+- **As páginas HTML de `AUTH_BACKEND_LINKS=true`** — `GET /auth/activate/{token}`,
+  `GET` e `POST /auth/password-reset/{token}` — renderizam a página de erro
+  do fluxo com status `403`. O `GET` do formulário de reset nem mostra o
+  formulário (e, como só espia o token, não o consome).
+
+!!! note "O `signup` não consulta o predicado"
+    Com `AUTH_AUTO_ACTIVATE=false`, o cadastro ainda manda o link de
+    ativação — e, para uma conta recusada, esse link responde `403`. Crie
+    essas contas já ativas, pelo terminal: `tempest user create` grava a
+    conta ativa e `tempest user activate` ativa uma existente.
+
+!!! tip "Trocar o código"
+    Como `account_inactive`, `email_link_forbidden` é um campo de
+    `AuthExceptions`: passe uma subclasse com o seu `code` para o
+    consumidor continuar reagindo ao que já conhece. A tradução do corpo
+    (`EMAIL_LINK_FORBIDDEN`, PT-BR e EN no catálogo padrão) continua valendo.
+
+---
+
 ## Segurança
 
 - **Segredo TOTP persistido no `UserModel`.** Considere criptografar a coluna `totp_secret` em repouso (Postgres `pgcrypto` ou um wrapper Fernet no nível da aplicação).
@@ -491,6 +555,9 @@ Superfície completa:
 - O access token diz como a sessão começou (`amr`), e
   `make_mfa_required_dependency` recusa com `403` `MFA_REQUIRED` a que não
   passou pelo segundo fator. Confirmar o MFA encerra as outras sessões.
+- `refuses_email_link=` fecha o fluxo de link por e-mail para contas como
+  operadores: o pedido responde igual a um endereço desconhecido, e a
+  confirmação devolve `403` `EMAIL_LINK_FORBIDDEN` sem trocar a senha.
 
 ## Próximos passos
 

@@ -1221,6 +1221,13 @@ curl -X POST localhost:8000/auth/password-reset/confirm \
     email — you can drive the whole flow with no inbox. In production it
     stays `null`.
 
+!!! tip "Accounts that do not use emailed links *(v0.316.0+)*"
+    `UserAuthService(refuses_email_link=...)` closes this flow (and the
+    activation one) for accounts chosen by a predicate — an operator, a
+    staff member. The `request` answers the same `202` and sends no email;
+    confirmation returns **403** `EMAIL_LINK_FORBIDDEN` without changing the
+    password. See the [MFA recipe](mfa.md#email-link-refusal).
+
 ??? note "No front-end? Backend-rendered HTML pages (Mode E)"
     With `AUTH_BACKEND_LINKS=True` the SDK mounts **GET/POST**
     `/auth/password-reset/{token}`: the emailed link points at the
