@@ -258,6 +258,41 @@ igual aos do SDK.
     declara `is_producer` recebe **403**, não um `AttributeError` que viraria
     500 — uma coluna ausente e uma coluna `False` significam a mesma coisa aqui.
 
+Quando o papel não é um booleano, e sim um **valor** guardado numa coluna
+(`role == Role.STAFF`), use `make_value_guard`. Mesmo contrato do
+`make_flag_guard`, com a coleção de valores aceitos no lugar do "é verdadeiro":
+
+```python
+from enum import StrEnum
+
+from tempest_fastapi_sdk import ForbiddenException, make_value_guard
+
+
+class Role(StrEnum):
+    MEMBER = "member"
+    STAFF = "staff"
+
+
+class UserIsNotStaffError(ForbiddenException):
+    """The project's own staff refusal."""
+
+    message: str = "Apenas a equipe pode acessar este recurso"
+    code: str = "USER_IS_NOT_STAFF"
+
+
+require_staff = make_value_guard(
+    "role",
+    {Role.STAFF},
+    exception=UserIsNotStaffError,
+)
+```
+
+!!! tip "Compara por valor, e recusa o que não reconhece"
+    Membro de enum dos dois lados é reduzido ao `.value`, então a coluna
+    guardando `"staff"` passa por um guard declarado com `{Role.STAFF}` mesmo
+    num `Enum` que não é `StrEnum`. Coluna `NULL`, valor fora do conjunto e
+    model sem a coluna recebem o mesmo **403** com o `code` do projeto.
+
 ## Metadata: um guard genérico, vários call sites
 
 Um guard pode declarar um **segundo parâmetro** `meta: dict[str, Any]`. É isso que transforma um guard genérico numa checagem específica por rota — em vez de escrever `manager_only`, `auditor_only`, `admin_only`, você escreve `has_role` uma vez e cada call site diz qual papel exige.

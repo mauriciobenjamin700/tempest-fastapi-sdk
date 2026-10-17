@@ -2108,6 +2108,9 @@ from tempest_fastapi_sdk.auth import (
 from tempest_fastapi_sdk.auth import (
     make_flag_guard as make_flag_guard,
 )
+from tempest_fastapi_sdk.auth import (
+    make_value_guard as make_value_guard,
+)
 from tempest_fastapi_sdk.db import (
     BaseUserOAuthAccountModel as BaseUserOAuthAccountModel,
 )
@@ -2803,6 +2806,7 @@ __all__: list[str] = [
     "make_user_refresh_token_model",
     "make_user_token_model",
     "make_validation_exception_handler",
+    "make_value_guard",
     "make_voice_profile_model",
     "make_web_authn_credential_model",
     "make_web_push_router",

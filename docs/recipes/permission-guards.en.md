@@ -259,6 +259,43 @@ the same way the SDK's do.
     would become a 500 — a missing column and a `False` one mean the same thing
     here.
 
+When the role is not a boolean but a **value** stored in a column
+(`role == Role.STAFF`), use `make_value_guard`. Same contract as
+`make_flag_guard`, with the collection of accepted values instead of "is
+truthy":
+
+```python
+from enum import StrEnum
+
+from tempest_fastapi_sdk import ForbiddenException, make_value_guard
+
+
+class Role(StrEnum):
+    MEMBER = "member"
+    STAFF = "staff"
+
+
+class UserIsNotStaffError(ForbiddenException):
+    """The project's own staff refusal."""
+
+    message: str = "Only staff can access this resource"
+    code: str = "USER_IS_NOT_STAFF"
+
+
+require_staff = make_value_guard(
+    "role",
+    {Role.STAFF},
+    exception=UserIsNotStaffError,
+)
+```
+
+!!! tip "Compares by value, and refuses what it does not recognise"
+    Enum members on both sides are reduced to their `.value`, so a column
+    holding `"staff"` passes a guard declared with `{Role.STAFF}` even on an
+    `Enum` that is not a `StrEnum`. A `NULL` column, a value outside the set
+    and a model without the column all get the same **403** with the project's
+    `code`.
+
 ## Metadata: one generic guard, many call sites
 
 A guard may declare a **second parameter** `meta: dict[str, Any]`. That is what turns a generic guard into a specific check per route — instead of writing `manager_only`, `auditor_only`, `admin_only`, you write `has_role` once and each call site says which role it requires.

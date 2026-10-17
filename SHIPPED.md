@@ -580,7 +580,8 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   **(#254)** `require_active` / `require_admin` / `require_authenticated`
   take `exception=` and `unauthenticated=` (free functions and the
   `UserAuthService` mirrors), plus `make_flag_guard(attr, exception=...)`
-  for the flags the SDK does not model. The generic `code="FORBIDDEN"` was
+  for the flags the SDK does not model (and `make_value_guard(column,
+  allowed, exception=...)` for value columns, #567). The generic `code="FORBIDDEN"` was
   what made them unadoptable by the service that followed the SDK's own
   advice and declared `USER_IS_NOT_ADMIN`.
   **(#255)** Ten typed OAuth refusals, each with its own `code`. The pair

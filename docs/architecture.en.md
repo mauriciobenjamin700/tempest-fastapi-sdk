@@ -923,7 +923,7 @@ different questions:
 | Tool | Question | Where it runs |
 | --- | --- | --- |
 | `make_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency` | "who is calling?" / "does the token carry this role or permission?" | route dependency, before the handler |
-| `@requires(guard, ...)` with `require_authenticated`, `require_active`, `require_admin`, `make_flag_guard` or a guard of your own | "does this already-loaded user satisfy this invariant?" | any function that receives the user — handler, controller or service |
+| `@requires(guard, ...)` with `require_authenticated`, `require_active`, `require_admin`, `make_flag_guard`, `make_value_guard` or a guard of your own | "does this already-loaded user satisfy this invariant?" | any function that receives the user — handler, controller or service |
 
 The path that keeps rules out of the router: **authentication in the
 dependency, the invariant on the use-case method**. The dependency resolves
