@@ -416,7 +416,7 @@ A gravação é um `UPDATE` condicional: quem decide é a linha no banco, não o
 
 ## Service direto
 
-Se você monta os próprios endpoints (sem `make_auth_router`), os seis métodos do `UserAuthService` cobrem o ciclo inteiro:
+Se você monta os próprios endpoints (sem `make_auth_router`), os métodos do `UserAuthService` cobrem o ciclo inteiro:
 
 ```python
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -455,6 +455,79 @@ Superfície completa:
 | `mfa_confirm` | `(session, *, user, code) -> None` | Ativa MFA. |
 | `mfa_verify` | `(session, *, mfa_token, code, recovery_code_model, throttle=None) -> UserModel` | Usuário autenticado (mint o JWT depois). |
 | `mfa_disable` | `(session, *, user, password, code, recovery_code_model) -> None` | Limpa segredo + códigos. |
+| `change_password_with_mfa` | `(session, *, user, code, new_password, recovery_code_model=None, revoke_sessions=True, throttle=None) -> UserModel` | Troca a senha provando o fator. Levanta `MFANotEnrolledException` em conta sem MFA. |
+
+
+### Trocar a senha provando o fator
+
+A conta de equipe esqueceu a senha, e o link de reset por e-mail não serve — a caixa é compartilhada, ou o e-mail é justamente o que não se confia. Se a pessoa ainda tem o app Authenticator (ou um recovery code), o fator é a prova: `change_password_with_mfa` troca a senha sem a senha atual e sem link.
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import UserAuthService
+
+from src.db.models import UserModel, UserRecoveryCodeModel
+
+
+async def reset_staff_password(
+    service: UserAuthService,
+    session: AsyncSession,
+    user: UserModel,
+    code: str,
+    new_password: str,
+) -> None:
+    """Troca a senha de uma conta com MFA ativo, provando o fator."""
+    await service.change_password_with_mfa(
+        session,
+        user=user,
+        code=code,
+        new_password=new_password,
+        recovery_code_model=UserRecoveryCodeModel,
+    )
+    await session.commit()
+```
+
+O que o método garante, nesta ordem:
+
+1. **Conta sem MFA ativo é recusada** com `MFANotEnrolledException` (`422`, `code="MFA_NOT_ENROLLED"`) — inclusive com o kill-switch `AUTH_MFA_ENABLED` desligado, que faz toda conta ler como "sem MFA", igual ao login.
+2. **Senha fora da política é recusada antes do código ser conferido** (`ValidationException`), então uma senha fraca não queima um recovery code.
+3. **O código é conferido pela mesma rotina do `mfa_verify`**: o TOTP é de uso único e o recovery code ganha `used_at`. Código errado levanta `UnauthorizedException` (`"invalid MFA code"`).
+4. **As sessões são revogadas por padrão**, na mesma transação, como no `confirm_password_reset`. `revoke_sessions=False` é a saída explícita.
+
+Não é login: nenhum par de token é emitido e `last_login_at` não muda. Sem `recovery_code_model`, só código TOTP é aceito. Passe `throttle=` para limitar tentativas: a chave é `mfa:{user_id}`, a mesma do `mfa_verify`, então os erros aqui e no segundo passo do login gastam um orçamento só.
+
+!!! tip "No terminal"
+    `tempest user set-password` usa este método quando a conta tem MFA ativo — veja [CLI »](cli.md).
+
+
+### Bootstrap da primeira conta privilegiada
+
+A rota que cria staff pode exigir MFA (`make_mfa_required_dependency`), mas a **primeira** conta privilegiada não tem quem a convide: nasce pelo terminal. `tempest user create --require-mfa` garante que ela nunca exista sem segundo fator:
+
+```bash
+tempest user create --email staff@example.com --admin --require-mfa \
+    --audit-model src.db.models:AuditLogModel --event staff.bootstrapped
+```
+
+```text
+Add this account to the authenticator app:
+  otpauth URI: otpauth://totp/Tempest:staff%40example.com?secret=GGZPWWOVQ6QIXMCMDOARELP3SR7JF424&issuer=Tempest
+  secret:      GGZPWWOVQ6QIXMCMDOARELP3SR7JF424
+Code from the authenticator app: 123456
+Created admin: staff@example.com (id=2ced9167-4e7a-4dc5-8626-72b64ff7e4a7)
+MFA active. Recovery codes (shown once, store them now):
+  _MqMXAW-jzw
+  ...
+```
+
+Peça a peça:
+
+1. O usuário é inserido, o `mfa_enroll` gera segredo e recovery codes e o `mfa_confirm` confere o código — tudo **numa transação só**, que só faz commit com código válido. Três códigos errados: sai com código 1 e nada é gravado.
+2. `--audit-model` grava `record_event` (`actor="cli"`, `changes` com `email`, `is_admin` e `mfa_enrolled`) nessa mesma transação. O model precisa de `AuditRequestMixin` — é a coluna `event` que guarda o nome. Sem `--audit-model`, o comando segue e avisa no stderr que nenhum evento foi gravado: projeto sem tabela de auditoria ainda consegue fazer o bootstrap.
+3. A tabela de recovery codes vem de `--recovery-code-model` (default `src.db.models:UserRecoveryCodeModel`), e o `UserModel` precisa de `MFAMixin`; faltando qualquer um, o comando sai com código 2 antes de escrever.
+
+Depois, `tempest user set-password --email staff@example.com` nessa conta pede o código (TOTP ou recovery code) e troca a senha por `change_password_with_mfa`. Com `AUTH_MFA_ENABLED` desligado, nem o login nem o `set-password` pedem o fator.
 
 ---
 
@@ -545,8 +618,9 @@ Quando o predicado casa:
 - Com MFA ativo, `POST /auth/login` deixa de devolver o par de JWT: devolve
   `mfa_required=True` e um token intermediário, e o segundo passo troca código
   por JWT.
-- Quem monta os próprios endpoints usa os seis métodos do `UserAuthService`
-  direto, sem o router.
+- Quem monta os próprios endpoints usa os métodos do `UserAuthService`
+  direto, sem o router. `change_password_with_mfa` troca a senha provando o
+  fator, sem link de e-mail e sem emitir token.
 - O segredo TOTP fica no `UserModel` — considere criptografar a coluna em
   repouso.
 - `/auth/mfa/verify` responde `429` depois de cinco códigos errados por conta

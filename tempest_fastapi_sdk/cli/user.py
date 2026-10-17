@@ -35,9 +35,17 @@ from tempest_fastapi_sdk.utils._settings_discovery import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from sqlalchemy import Column
 
-    from tempest_fastapi_sdk import BaseUserModel, BaseUserRefreshTokenModel
+    from tempest_fastapi_sdk import (
+        BaseAuditLogModel,
+        BaseUserModel,
+        BaseUserRecoveryCodeModel,
+        BaseUserRefreshTokenModel,
+        UserAuthService,
+    )
     from tempest_fastapi_sdk.utils.password import PasswordPolicy
 
 _OWN_FLAG_COLUMNS: dict[str, str] = {
@@ -275,6 +283,200 @@ def _find_default_refresh_token_model() -> type[BaseUserRefreshTokenModel] | Non
     return model
 
 
+_DEFAULT_RECOVERY_CODE_MODEL: str = "src.db.models:UserRecoveryCodeModel"
+"""Dotted spec tried when ``--recovery-code-model`` is omitted.
+
+The name the MFA recipe gives the table ``make_user_recovery_code_model``
+builds. ``create --require-mfa`` needs it (enrolling issues the codes) and
+fails naming the flag when it is absent; ``set-password`` only uses it to
+accept a recovery code in place of a TOTP code, so there the lookup may come
+back empty.
+"""
+
+MFA_CODE_ATTEMPTS: int = 3
+"""How many codes ``create --require-mfa`` and ``set-password`` read before giving up.
+
+Three covers a code typed across a step boundary and a mistyped digit; past
+that the run exits with code 1 and nothing is written, so a fourth try is a
+fresh command, not a loop an unattended terminal can spin in.
+"""
+
+DEFAULT_USER_CREATED_EVENT: str = "user.created"
+"""Event name ``create`` records when ``--audit-model`` is given without ``--event``."""
+
+
+def _load_recovery_code_model(dotted: str) -> type[BaseUserRecoveryCodeModel]:
+    """Import the project's concrete recovery-code model via dotted spec.
+
+    Args:
+        dotted (str): ``"module.path:ClassName"`` for the concrete
+            :class:`BaseUserRecoveryCodeModel` subclass.
+
+    Returns:
+        type[BaseUserRecoveryCodeModel]: The concrete model class.
+
+    Raises:
+        typer.Exit: When the import fails or the class is not a
+            :class:`BaseUserRecoveryCodeModel` subclass.
+    """
+    from tempest_fastapi_sdk import (
+        BaseUserRecoveryCodeModel as _BaseUserRecoveryCodeModel,
+    )
+
+    model = _import_symbol(dotted, "--recovery-code-model")
+    if not isinstance(model, type) or not issubclass(
+        model,
+        _BaseUserRecoveryCodeModel,
+    ):
+        typer.echo(
+            f"error: {dotted} is not a BaseUserRecoveryCodeModel subclass.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    return model
+
+
+def _find_default_recovery_code_model() -> type[BaseUserRecoveryCodeModel] | None:
+    """Import :data:`_DEFAULT_RECOVERY_CODE_MODEL`, or return ``None``.
+
+    The tolerant counterpart of :func:`_load_recovery_code_model`, for the
+    caller that can work without the table: every failure — absent module,
+    absent attribute, wrong base — reads as "no recovery codes here".
+
+    Returns:
+        type[BaseUserRecoveryCodeModel] | None: The conventional model, or
+        ``None`` when the project has none at that path.
+    """
+    from tempest_fastapi_sdk import (
+        BaseUserRecoveryCodeModel as _BaseUserRecoveryCodeModel,
+    )
+
+    module_path, _, class_name = _DEFAULT_RECOVERY_CODE_MODEL.partition(":")
+    sys.path.insert(0, str(Path.cwd()))
+    try:
+        module = importlib.import_module(module_path)
+    except ImportError:
+        return None
+    model = getattr(module, class_name, None)
+    if not isinstance(model, type) or not issubclass(
+        model,
+        _BaseUserRecoveryCodeModel,
+    ):
+        return None
+    return model
+
+
+def _load_audit_model(dotted: str) -> type[BaseAuditLogModel]:
+    """Import the project's audit-log model via dotted spec.
+
+    ``record_event`` stores the event name in the ``event`` column that
+    :class:`~tempest_fastapi_sdk.AuditRequestMixin` adds, so a model
+    without the mixin is refused here, before anything is written, rather
+    than by a ``ValueError`` after the user row is already flushed.
+
+    Args:
+        dotted (str): ``"module.path:ClassName"`` for the concrete
+            :class:`BaseAuditLogModel` subclass.
+
+    Returns:
+        type[BaseAuditLogModel]: The concrete audit model.
+
+    Raises:
+        typer.Exit: When the import fails, the class is not a
+            :class:`BaseAuditLogModel` subclass, or it lacks
+            :class:`~tempest_fastapi_sdk.AuditRequestMixin`.
+    """
+    from tempest_fastapi_sdk import AuditRequestMixin as _AuditRequestMixin
+    from tempest_fastapi_sdk import BaseAuditLogModel as _BaseAuditLogModel
+
+    model = _import_symbol(dotted, "--audit-model")
+    if not isinstance(model, type) or not issubclass(model, _BaseAuditLogModel):
+        typer.echo(
+            f"error: {dotted} is not a BaseAuditLogModel subclass.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    if not issubclass(model, _AuditRequestMixin):
+        typer.echo(
+            f"error: {dotted} has no 'event' column; compose "
+            "AuditRequestMixin into it to record events.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    return model
+
+
+def _build_auth_service(
+    user_model: type[BaseUserModel],
+    refresh_token_model: type[BaseUserRefreshTokenModel] | None,
+) -> UserAuthService:
+    """Build the ``UserAuthService`` the MFA paths of the CLI run through.
+
+    Enrolling, confirming and the MFA password change are the service's own
+    methods, so the CLI calls them instead of re-deriving the TOTP rules.
+    The settings are the project's when its settings object composes
+    :class:`~tempest_fastapi_sdk.AuthSettings` (and
+    :class:`~tempest_fastapi_sdk.JWTSettings`); otherwise each mixin is read
+    from the environment on its own, which is where ``AUTH_MFA_ENABLED`` and
+    ``AUTH_MFA_ISSUER`` live in a project that never composed them.
+
+    ``token_model`` is the abstract :class:`BaseUserTokenModel`: the service
+    requires one, and none of the methods the CLI calls (``mfa_enroll``,
+    ``mfa_confirm``, ``is_mfa_enrolled``, ``change_password_with_mfa``)
+    reads the single-use-link table.
+
+    Args:
+        user_model (type[BaseUserModel]): The concrete user model.
+        refresh_token_model (type[BaseUserRefreshTokenModel] | None): The
+            project's refresh-token table, or ``None``.
+
+    Returns:
+        UserAuthService: The service wired for the CLI.
+    """
+    from tempest_fastapi_sdk import (
+        AuthSettings,
+        BaseUserTokenModel,
+        JWTSettings,
+        UserAuthService,
+    )
+
+    try:
+        settings = _load_project_settings()
+    except Exception:
+        settings = None
+    auth_settings = settings if isinstance(settings, AuthSettings) else AuthSettings()
+    jwt_settings = settings if isinstance(settings, JWTSettings) else JWTSettings()
+    return UserAuthService(
+        user_model=user_model,
+        token_model=BaseUserTokenModel,
+        auth_settings=auth_settings,
+        jwt_settings=jwt_settings,
+        refresh_token_model=refresh_token_model,
+    )
+
+
+async def _read_mfa_code(attempt: Callable[[str], Awaitable[bool]]) -> bool:
+    """Prompt for codes until ``attempt`` accepts one or the budget runs out.
+
+    Args:
+        attempt (Callable[[str], Awaitable[bool]]): Takes the typed code and
+            answers whether it was accepted.
+
+    Returns:
+        bool: ``True`` when a code was accepted within
+        :data:`MFA_CODE_ATTEMPTS` tries.
+    """
+    for remaining in range(MFA_CODE_ATTEMPTS - 1, -1, -1):
+        code = str(typer.prompt("Code from the authenticator app")).strip()
+        if await attempt(code):
+            return True
+        typer.echo(
+            f"error: invalid MFA code ({remaining} attempt(s) left).",
+            err=True,
+        )
+    return False
+
+
 _POLICY_SETTINGS_FIELDS: tuple[str, ...] = (
     "AUTH_PASSWORD_MIN_LENGTH",
     "AUTH_PASSWORD_MAX_BYTES",
@@ -379,8 +581,19 @@ async def _create_user(
     password: str,
     is_admin: bool,
     extra: dict[str, Any] | None = None,
-) -> str:
+    recovery_code_model: type[BaseUserRecoveryCodeModel] | None = None,
+    audit_model: type[BaseAuditLogModel] | None = None,
+    event: str = DEFAULT_USER_CREATED_EVENT,
+) -> tuple[str, list[str]]:
     """Insert one user row, return its id as a string.
+
+    With ``recovery_code_model`` the second factor is enrolled before
+    anything is committed: the secret and its ``otpauth://`` URI are printed,
+    the operator types a code from the authenticator app (up to
+    :data:`MFA_CODE_ATTEMPTS` times), and only an accepted code lets the row
+    reach the database. With ``audit_model`` a ``record_event`` row is
+    written in that same transaction, so the account and its audit entry
+    land together or not at all.
 
     Args:
         database_url (str): The resolved database URL.
@@ -390,15 +603,27 @@ async def _create_user(
         is_admin (bool): Whether the user may log in to ``/admin``.
         extra (dict[str, Any] | None): Values for the model's own
             columns, already validated and converted.
+        recovery_code_model (type[BaseUserRecoveryCodeModel] | None): The
+            project's recovery-code table; given, MFA is enrolled and
+            confirmed before the commit.
+        audit_model (type[BaseAuditLogModel] | None): The project's audit
+            table; given, ``event`` is recorded for the new user.
+        event (str): The audit event name.
 
     Returns:
-        str: The new row's id.
+        tuple[str, list[str]]: The new row's id and the plaintext recovery
+        codes (empty without MFA), to be shown once.
 
     Raises:
         ConflictException: When the insert is rejected by the database.
+        typer.Exit: With code 1 when no valid MFA code was typed; nothing
+            is written.
     """
-    from tempest_fastapi_sdk import AsyncDatabaseManager
-    from tempest_fastapi_sdk.exceptions import ConflictException
+    from tempest_fastapi_sdk import AsyncDatabaseManager, BaseRepository
+    from tempest_fastapi_sdk.exceptions import (
+        ConflictException,
+        UnauthorizedException,
+    )
 
     db = AsyncDatabaseManager(database_url)
     await db.connect()
@@ -413,6 +638,67 @@ async def _create_user(
             user.set_password(password)
             session.add(user)
             try:
+                await session.flush()
+            except Exception as exc:
+                await session.rollback()
+                raise ConflictException(
+                    message=f"could not insert user: {exc}",
+                ) from exc
+            codes: list[str] = []
+            if recovery_code_model is not None:
+                service = _build_auth_service(user_model, None)
+                secret, uri, codes = await service.mfa_enroll(
+                    session,
+                    user=user,
+                    recovery_code_model=recovery_code_model,
+                )
+                typer.echo("Add this account to the authenticator app:")
+                typer.echo(f"  otpauth URI: {uri}")
+                typer.echo(f"  secret:      {secret}")
+
+                async def confirm(code: str) -> bool:
+                    """Confirm the enrollment with ``code``.
+
+                    Args:
+                        code (str): The code the operator typed.
+
+                    Returns:
+                        bool: Whether the service accepted it.
+                    """
+                    try:
+                        await service.mfa_confirm(
+                            session,
+                            user=user,
+                            code=code,
+                            revoke_sessions=False,
+                        )
+                    except UnauthorizedException:
+                        return False
+                    return True
+
+                if not await _read_mfa_code(confirm):
+                    typer.echo(
+                        "error: no valid MFA code, nothing was written.",
+                        err=True,
+                    )
+                    raise typer.Exit(1)
+            if audit_model is not None:
+                await BaseRepository(
+                    session,
+                    model=user_model,
+                    audit_model=audit_model,
+                    autocommit=False,
+                ).record_event(
+                    event,
+                    subject=user,
+                    actor="cli",
+                    changes={
+                        "email": user.email,
+                        "is_admin": is_admin,
+                        "mfa_enrolled": recovery_code_model is not None,
+                    },
+                )
+            try:
                 await session.commit()
             except Exception as exc:
                 await session.rollback()
@@ -420,7 +706,7 @@ async def _create_user(
                     message=f"could not insert user: {exc}",
                 ) from exc
             await session.refresh(user)
-            return str(user.id)
+            return str(user.id), codes
     finally:
         await db.disconnect()
 
@@ -473,6 +759,7 @@ async def _set_user_password(
     email: str,
     password: str,
     refresh_token_model: type[BaseUserRefreshTokenModel] | None,
+    recovery_code_model: type[BaseUserRecoveryCodeModel] | None = None,
 ) -> tuple[str, int] | None:
     """Re-hash one user's password, found by email, and kill its sessions.
 
@@ -480,6 +767,15 @@ async def _set_user_password(
     the two land together: a commit that wrote the password but not the
     revocation would leave every stolen refresh token exchangeable
     against an account whose owner believes it was just secured.
+
+    An account with MFA active (and the ``AUTH_MFA_ENABLED`` kill-switch on,
+    as at login) is changed through
+    :meth:`~tempest_fastapi_sdk.UserAuthService.change_password_with_mfa`:
+    the operator types a TOTP code — or a recovery code, when
+    ``recovery_code_model`` is known — up to :data:`MFA_CODE_ATTEMPTS`
+    times, and without an accepted one nothing is written. Only an account
+    with ``totp_enabled_at`` set builds the service at all, so a project
+    without MFA never has its settings read here.
 
     Args:
         database_url (str): The resolved database URL.
@@ -489,15 +785,26 @@ async def _set_user_password(
         refresh_token_model (type[BaseUserRefreshTokenModel] | None):
             The project's concrete refresh-token table, or ``None`` to
             leave existing sessions alone.
+        recovery_code_model (type[BaseUserRecoveryCodeModel] | None): The
+            project's recovery-code table, or ``None`` to accept TOTP codes
+            only.
 
     Returns:
         tuple[str, int] | None: The user's id and how many refresh
         tokens were revoked, or ``None`` when no user matches the email.
+
+    Raises:
+        typer.Exit: With code 1 when the account has MFA active and no
+            valid code was typed.
     """
     from sqlalchemy import select
 
     from tempest_fastapi_sdk import AsyncDatabaseManager
     from tempest_fastapi_sdk.auth.service import revoke_user_refresh_tokens
+    from tempest_fastapi_sdk.exceptions import (
+        UnauthorizedException,
+        ValidationException,
+    )
 
     db = AsyncDatabaseManager(database_url)
     await db.connect()
@@ -509,7 +816,51 @@ async def _set_user_password(
             user = result.scalar_one_or_none()
             if user is None:
                 return None
-            user.set_password(password)
+            service = (
+                _build_auth_service(user_model, None)
+                if getattr(user, "totp_enabled_at", None) is not None
+                else None
+            )
+            if service is not None and service.is_mfa_enrolled(user):
+
+                async def change(code: str) -> bool:
+                    """Change the password on proof of ``code``.
+
+                    Args:
+                        code (str): The code the operator typed.
+
+                    Returns:
+                        bool: Whether the service accepted it.
+
+                    Raises:
+                        typer.Exit: With code 2 when the project's
+                            ``AuthSettings`` policy refuses the password.
+                    """
+                    try:
+                        await service.change_password_with_mfa(
+                            session,
+                            user=user,
+                            code=code,
+                            new_password=password,
+                            recovery_code_model=recovery_code_model,
+                            revoke_sessions=False,
+                        )
+                    except UnauthorizedException:
+                        return False
+                    except ValidationException as exc:
+                        typer.echo(f"error: {exc.message}.", err=True)
+                        raise typer.Exit(2) from exc
+                    return True
+
+                typer.echo(f"{email.lower()} has MFA active.")
+                if not await _read_mfa_code(change):
+                    typer.echo(
+                        "error: no valid MFA code, the password was not changed.",
+                        err=True,
+                    )
+                    raise typer.Exit(1)
+            else:
+                user.set_password(password)
             revoked = 0
             if refresh_token_model is not None:
                 revoked = await revoke_user_refresh_tokens(
@@ -1076,6 +1427,41 @@ def user_create(
             "columns those flags own."
         ),
     ),
+    require_mfa: bool = typer.Option(
+        False,
+        "--require-mfa",
+        help=(
+            "Enroll a TOTP second factor before committing: prints the "
+            "otpauth URI and secret, asks for a code from the authenticator "
+            "app (3 tries) and writes nothing without a valid one."
+        ),
+    ),
+    recovery_code_model: str | None = typer.Option(
+        None,
+        "--recovery-code-model",
+        help=(
+            "Dotted spec for the concrete recovery-code model (needed by "
+            f"--require-mfa). Omitted, {_DEFAULT_RECOVERY_CODE_MODEL!r} is "
+            "used."
+        ),
+    ),
+    audit_model: str | None = typer.Option(
+        None,
+        "--audit-model",
+        help=(
+            "Dotted spec for the audit-log model (BaseAuditLogModel + "
+            "AuditRequestMixin). Given, an audit event is recorded in the "
+            "same transaction as the user."
+        ),
+    ),
+    event: str | None = typer.Option(
+        None,
+        "--event",
+        help=(
+            "Name of the audit event (needs --audit-model). Default: "
+            f"{DEFAULT_USER_CREATED_EVENT!r}."
+        ),
+    ),
 ) -> None:
     """Create one user row + print its id.
 
@@ -1100,7 +1486,26 @@ def user_create(
         the ones still missing are prompted for, and a non-interactive
         run exits with code 2 naming them instead of letting the database
         reject the insert.
+
+        ``--require-mfa`` bootstraps an account that never exists without
+        its second factor: the ``UserModel`` must compose ``MFAMixin``, the
+        enrollment runs through ``UserAuthService.mfa_enroll`` /
+        ``mfa_confirm`` inside the insert's transaction, and the recovery
+        codes are printed once, after the commit. Without a valid code in
+        three tries the run exits with code 1 and no row is written.
+
+        ``--audit-model`` records an audit event (``--event``, default
+        ``user.created``) with ``BaseRepository.record_event`` in the same
+        transaction. Omitted, no event is written, and ``--require-mfa``
+        says so on stderr rather than failing — a project without an audit
+        table can still bootstrap its first MFA account.
     """
+    if event is not None and audit_model is None:
+        typer.echo("error: --event needs --audit-model.", err=True)
+        raise typer.Exit(2)
+    if recovery_code_model is not None and not require_mfa:
+        typer.echo("error: --recovery-code-model needs --require-mfa.", err=True)
+        raise typer.Exit(2)
     password = _read_password(password)
 
     if is_admin is None:
@@ -1114,6 +1519,29 @@ def user_create(
 
     database_url = _resolve_database_url()
     user_model = _load_user_model(model)
+    codes_model: type[BaseUserRecoveryCodeModel] | None = None
+    if require_mfa:
+        if not hasattr(user_model, "totp_enabled_at"):
+            typer.echo(
+                f"error: {user_model.__name__} has no MFA columns; compose "
+                "MFAMixin into it to use --require-mfa.",
+                err=True,
+            )
+            raise typer.Exit(2)
+        codes_model = (
+            _load_recovery_code_model(recovery_code_model)
+            if recovery_code_model
+            else _find_default_recovery_code_model()
+        )
+        if codes_model is None:
+            typer.echo(
+                "error: --require-mfa needs a recovery-code model and there is "
+                f"none at {_DEFAULT_RECOVERY_CODE_MODEL!r}. Pass "
+                "--recovery-code-model.",
+                err=True,
+            )
+            raise typer.Exit(2)
+    audit = _load_audit_model(audit_model) if audit_model else None
     extra = _fill_required_columns(
         user_model,
         _parse_set_options(user_model, set_values),
@@ -1121,7 +1549,7 @@ def user_create(
     from tempest_fastapi_sdk.exceptions import ConflictException
 
     try:
-        user_id = asyncio.run(
+        user_id, codes = asyncio.run(
             _create_user(
                 database_url,
                 user_model,
@@ -1129,6 +1557,9 @@ def user_create(
                 password=password,
                 is_admin=is_admin,
                 extra=extra,
+                recovery_code_model=codes_model,
+                audit_model=audit,
+                event=event or DEFAULT_USER_CREATED_EVENT,
             )
         )
     except ConflictException as exc:
@@ -1136,6 +1567,15 @@ def user_create(
         raise typer.Exit(1) from exc
     role = "admin" if is_admin else "user"
     typer.echo(f"Created {role}: {email} (id={user_id})")
+    if codes:
+        typer.echo("MFA active. Recovery codes (shown once, store them now):")
+        for code in codes:
+            typer.echo(f"  {code}")
+    if require_mfa and audit is None:
+        typer.echo(
+            "note: no --audit-model given, so no audit event was recorded.",
+            err=True,
+        )
 
 
 @user_app.command("list")
@@ -1206,6 +1646,16 @@ def user_set_password(
             "stays exchangeable after the password changes."
         ),
     ),
+    recovery_code_model: str | None = typer.Option(
+        None,
+        "--recovery-code-model",
+        help=(
+            "Dotted spec for the concrete recovery-code model, so an account "
+            "with MFA active can prove the factor with a recovery code. "
+            f"Omitted, {_DEFAULT_RECOVERY_CODE_MODEL!r} is tried; without it "
+            "only TOTP codes are accepted."
+        ),
+    ),
 ) -> None:
     """Replace an existing user's password, found by email.
 
@@ -1232,10 +1682,18 @@ def user_set_password(
         of the two happened, so a run that left sessions alive is never
         silent about it.
 
+        An account with MFA active (and ``AUTH_MFA_ENABLED`` on, as at
+        login) must prove the factor: the command asks for a code from the
+        authenticator app — or a recovery code — up to three times and
+        changes the password through
+        ``UserAuthService.change_password_with_mfa``. Without a valid code
+        it exits with code 1 and nothing is written.
+
     Raises:
-        typer.Exit: With code 1 when no user matches the email, or code
-            2 when the password is rejected, the two flags contradict
-            each other, or a dotted spec cannot be resolved.
+        typer.Exit: With code 1 when no user matches the email or no valid
+            MFA code was typed, or code 2 when the password is rejected,
+            the two flags contradict each other, or a dotted spec cannot be
+            resolved.
     """
     if keep_sessions and refresh_token_model:
         typer.echo(
@@ -1253,6 +1711,11 @@ def user_set_password(
             if refresh_token_model
             else _find_default_refresh_token_model()
         )
+    codes_model = (
+        _load_recovery_code_model(recovery_code_model)
+        if recovery_code_model
+        else _find_default_recovery_code_model()
+    )
     password = _read_password(password)
     outcome = asyncio.run(
         _set_user_password(
@@ -1261,6 +1724,7 @@ def user_set_password(
             email=email,
             password=password,
             refresh_token_model=token_model,
+            recovery_code_model=codes_model,
         )
     )
     if outcome is None:

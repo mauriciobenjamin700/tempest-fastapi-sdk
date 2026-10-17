@@ -31,6 +31,7 @@ from tempest_fastapi_sdk.auth import guards as auth_guards
 from tempest_fastapi_sdk.auth.exceptions import (
     AuthExceptions,
     MFAAlreadyEnrolledException,
+    MFANotEnrolledException,
     MfaThrottledException,
 )
 from tempest_fastapi_sdk.auth.guards import (
@@ -3418,6 +3419,101 @@ class UserAuthService:
             await throttle.reset(throttle_key)
         user.last_login_at = utcnow()
         await session.flush()
+        await session.refresh(user)
+        return user
+
+    async def change_password_with_mfa(
+        self,
+        session: AsyncSession,
+        *,
+        user: BaseUserModel,
+        code: str,
+        new_password: str,
+        recovery_code_model: type[BaseUserRecoveryCodeModel] | None = None,
+        revoke_sessions: bool = True,
+        throttle: AttemptThrottle | None = None,
+    ) -> BaseUserModel:
+        """Replace the password of an MFA account on proof of the second factor.
+
+        The path for the account whose reset e-mail cannot be reached (or
+        must not be trusted) while its owner still holds the authenticator
+        app or a recovery code: the factor is the proof, in place of the
+        current password :meth:`change_password` asks for and of the link
+        :meth:`confirm_password_reset` consumes.
+
+        The checks run cheapest-first and the factor is spent last: the
+        account must have MFA active, then the new password must pass the
+        policy, and only then is ``code`` verified — so a password the
+        policy refuses never burns a recovery code. ``code`` is checked by
+        the same routine :meth:`mfa_verify` and :meth:`mfa_disable` use: a
+        TOTP code is single-use (its step is recorded) and a recovery code
+        is stamped ``used_at``.
+
+        Unlike :meth:`mfa_verify` this is not a login: no token pair is
+        minted and ``last_login_at`` is left alone. By default every refresh
+        token of the user is revoked in the same transaction
+        (:meth:`revoke_user_sessions`), as in :meth:`confirm_password_reset`.
+        The caller owns the commit.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            user (BaseUserModel): The account whose password is replaced.
+            code (str): A 6-digit TOTP code, or one of the plaintext
+                recovery codes handed out at enrollment.
+            new_password (str): Plaintext replacement password.
+            recovery_code_model (type[BaseUserRecoveryCodeModel] | None):
+                The project's concrete recovery-code model. ``None``
+                (default) accepts TOTP codes only — a recovery code then
+                reads as a wrong code.
+            revoke_sessions (bool): Revoke every refresh token of the user
+                (default). ``False`` is the explicit opt-out, for a caller
+                that ends the sessions some other way.
+            throttle (AttemptThrottle | None): Failure budget, keyed on
+                ``f"mfa:{user_id}"`` — the same key :meth:`mfa_verify`
+                uses, so guesses here and at the login step draw on one
+                budget. Reserved before the code is checked and reset on
+                success. ``None`` (default) leaves the call unthrottled.
+
+        Returns:
+            BaseUserModel: The user whose password was rotated.
+
+        Raises:
+            MFANotEnrolledException: When the account has no active
+                second factor (or the ``AUTH_MFA_ENABLED`` kill-switch is
+                off); nothing is spent.
+            ValidationException: When ``new_password`` breaks the policy;
+                the code is not checked, so it is not spent.
+            MfaThrottledException: When ``throttle`` has the account's
+                attempt budget spent. Raised before the code is checked.
+            UnauthorizedException: When ``code`` matches neither an unspent
+                TOTP step nor an unused recovery code.
+        """
+        if not self.is_mfa_enrolled(user):
+            raise MFANotEnrolledException()
+        self._enforce_password_policy(new_password)
+        user = await self._attach(session, user)
+        throttle_key = f"mfa:{user.id}"
+        if throttle is not None:
+            attempt = await throttle.hit(throttle_key)
+            if attempt.attempts > throttle.max_attempts:
+                raise MfaThrottledException(
+                    message="too many invalid MFA codes, try again later",
+                    retry_after_seconds=attempt.retry_after_seconds,
+                )
+        if recovery_code_model is None:
+            accepted = await self._claim_totp_step(session, user, code)
+        else:
+            accepted = await self._verify_mfa_code(
+                session, user, code, recovery_code_model
+            )
+        if not accepted:
+            raise UnauthorizedException(message="invalid MFA code")
+        if throttle is not None:
+            await throttle.reset(throttle_key)
+        user.hashed_password = self.passwords.hash(new_password)
+        await session.flush()
+        if revoke_sessions:
+            await self.revoke_user_sessions(session, user_id=user.id)
         await session.refresh(user)
         return user
 

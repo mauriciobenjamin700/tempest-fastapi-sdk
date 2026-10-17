@@ -3460,6 +3460,28 @@ com `version = "7.7.7"`, `app.openapi()["info"]["version"]` e
 sobrepõe. Testes: `tests/settings/test_version.py` e
 `tests/cli/test_scaffold_project_version.py`.
 
+## Troca de senha provando o fator (#564)
+
+`UserAuthService.change_password_with_mfa` é o caminho público para a conta
+com MFA que esqueceu a senha e não pode usar o link de e-mail — o
+`homework_api` (7rc/homework_api#33) reimplementava isso sobre
+`_verify_mfa_code` e `_enforce_password_policy`, privados que quebram em
+silêncio a cada refactor. Ordem: MFA ativo (`MFANotEnrolledException`,
+`MFA_NOT_ENROLLED`) → política → código (mesma rotina do `mfa_verify`,
+mesma chave de throttle `mfa:{user_id}`) → hash → revogação (default).
+Não é login: sem par de token, sem `last_login_at`. Teste:
+`tests/auth/test_change_password_mfa.py`.
+
+## Bootstrap de conta privilegiada com MFA pela CLI (#565)
+
+`tempest user create --require-mfa` fecha o buraco do bootstrap: a primeira
+conta de staff nascia sem segundo fator (o `homework_api` escreveu um
+`create-staff` próprio por isso). Insert + `mfa_enroll` + `mfa_confirm` +
+`record_event` (`--audit-model`/`--event`) numa transação só, commit só com
+código válido. Sem `--audit-model`: segue, com aviso no stderr. E
+`set-password` em conta com MFA ativo pede o código e passa por
+`change_password_with_mfa`. Teste: `tests/cli/test_user_mfa.py`.
+
 ## Link de e-mail recusado por conta (#566)
 
 `UserAuthService(refuses_email_link=...)`: predicado por conta que fecha os

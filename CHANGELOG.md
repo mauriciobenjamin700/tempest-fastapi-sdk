@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `UserAuthService.change_password_with_mfa(session, *, user, code,
+  new_password, recovery_code_model=None, revoke_sessions=True,
+  throttle=None)` (#564): troca a senha de conta com MFA ativo provando o
+  fator (TOTP ou recovery code), sem senha atual e sem link de e-mail.
+  Recusa conta sem MFA ativo — inclusive com `AUTH_MFA_ENABLED` desligado —
+  com a nova `MFANotEnrolledException` (`422`, `code="MFA_NOT_ENROLLED"`,
+  subclasse de `ValidationException`, exportada no topo e em
+  `tempest_fastapi_sdk.auth`, com tradução PT-BR e EN no catálogo padrão);
+  confere a política de senha **antes** do
+  código, então senha fraca não queima recovery code; confere o código pela
+  rotina do `mfa_verify` (TOTP de uso único, recovery code ganha `used_at`)
+  e responde `UnauthorizedException("invalid MFA code")` no erro. `throttle=`
+  usa a chave `mfa:{user_id}`, a mesma do `mfa_verify`: erro aqui gasta o
+  orçamento do segundo passo do login. Revoga as sessões por padrão; não
+  emite token nem toca `last_login_at`. Sem `recovery_code_model`, só TOTP.
+  Testes: `tests/auth/test_change_password_mfa.py`.
+- `tempest user create --require-mfa` (#565): inscreve o segundo fator antes
+  do commit — mostra a URI `otpauth://` e o segredo, pede o código do app
+  (até 3 tentativas) e só grava com código válido; sem ele sai com código 1
+  e nada é escrito. Usa `mfa_enroll`/`mfa_confirm` do `UserAuthService`,
+  exige `MFAMixin` no `UserModel` e a tabela de recovery codes
+  (`--recovery-code-model`, default `src.db.models:UserRecoveryCodeModel`);
+  os recovery codes saem uma vez, depois do commit. `--audit-model` (um
+  `BaseAuditLogModel` com `AuditRequestMixin`) grava `record_event`
+  (`actor="cli"`) na mesma transação, com o nome de `--event` (default
+  `user.created`) — vale também sem `--require-mfa`. Sem `--audit-model`, o
+  `--require-mfa` segue e avisa no stderr que nenhum evento foi gravado.
+- `tempest user set-password` numa conta com MFA ativo (e `AUTH_MFA_ENABLED`
+  ligado) pede o código — TOTP ou recovery code (`--recovery-code-model`,
+  mesmo default, opcional aqui) — e troca a senha por
+  `change_password_with_mfa`; três códigos errados saem com código 1 sem
+  tocar a senha. Testes: `tests/cli/test_user_mfa.py`.
 - `UserAuthService(refuses_email_link=...)`: predicado por conta que fecha
   os fluxos de link por e-mail (recuperação de senha e ativação). Quando
   casa, `POST /auth/password-reset/request` e

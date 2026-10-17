@@ -30,6 +30,9 @@ from tempest_fastapi_sdk.auth.exceptions import (
     MFAAlreadyEnrolledException as MFAAlreadyEnrolledException,
 )
 from tempest_fastapi_sdk.auth.exceptions import (
+    MFANotEnrolledException as MFANotEnrolledException,
+)
+from tempest_fastapi_sdk.auth.exceptions import (
     MfaThrottledException as MfaThrottledException,
 )
 from tempest_fastapi_sdk.auth.exceptions import (
@@ -278,6 +281,7 @@ __all__: list[str] = [
     "MFAConfirmSchema",
     "MFADisableSchema",
     "MFAEnrollResponseSchema",
+    "MFANotEnrolledException",
     "MFAVerifySchema",
     "MemoryWebAuthnChallengeStore",
     "MfaThrottledException",
