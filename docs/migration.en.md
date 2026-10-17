@@ -2,6 +2,45 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.316.0 — `set-password` asks for the factor on an MFA account
+
+`tempest user set-password` on an account with MFA active (and
+`AUTH_MFA_ENABLED=True`) now asks for the code — TOTP or recovery code — and
+changes the password through `UserAuthService.change_password_with_mfa`.
+Without a valid code in three attempts the command exits with code 1 and the
+password is left unchanged. Up to 0.315.x the command changed the password
+without asking for the factor.
+
+### What to do
+
+1. A script or CI job that runs `set-password` without a terminal on an MFA
+   account stops working: nobody is there to type the code.
+2. To recover someone who lost the phone **and** the recovery codes, run
+   `tempest user mfa-reset --email <e>` (`--yes` outside a terminal) and then
+   `set-password`. See [the MFA recipe](recipes/mfa.md#mfa-reset).
+3. To accept a recovery code the command needs the recovery-code table
+   (`--recovery-code-model`, default `src.db.models:UserRecoveryCodeModel`).
+
+## 0.316.0 — the second item of `UserAuthService.signup` can be `ActivationWithheld`
+
+The tuple `signup` returns now has three shapes for its second item: `None`
+(the account was born active), `ActivationToken` (the link was issued) and
+the new `ActivationWithheld(user_id)` (the link was withheld). The third only
+comes out with `AUTH_AUTO_ACTIVATE=false` **and**
+`UserAuthService(refuses_email_link=...)` refusing the new account; without
+the predicate, runtime behaviour is unchanged. The SDK router already handles
+the new type.
+
+### What to do
+
+1. If you call `signup` directly and read `.url` or `.token` from the second
+   item, check `isinstance(activation, ActivationToken)` first: with
+   `ActivationWithheld` the account exists, inactive and without a link. mypy
+   reports `union-attr` where that check is missing.
+2. Only `None` authorises issuing the JWT pair right after signup.
+3. If you override `signup` and forward to `super()`, adjust the return
+   annotation.
+
 ## 0.314.0 — Python 3.12 is the new minimum
 
 The SDK drops Python 3.11. `requires-python` moves to `>=3.12`, and the

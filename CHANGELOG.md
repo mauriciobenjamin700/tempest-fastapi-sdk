@@ -96,6 +96,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   valor fora do conjunto e model sem a coluna recebem o 403 do projeto. Testes
   em `tests/auth/test_guards.py`, incluindo uma rota real.
 
+### Changed
+
+- **Quebra compatibilidade:** `tempest user set-password` em conta com MFA
+  ativo passa a exigir o fator (TOTP ou recovery code); sem código válido em
+  três tentativas sai com código 1 e a senha não muda. Para quem perdeu o
+  fator, `tempest user mfa-reset`. Migração: `docs/migration.md`.
+- **Quebra compatibilidade (tipo):** o segundo item de
+  `UserAuthService.signup` passa a ser
+  `ActivationToken | ActivationWithheld | None`. Quem lê `.url` sem testar
+  `ActivationToken` toma `union-attr` no mypy. Migração: `docs/migration.md`.
+- Docs: receitas de Kestra e n8n (#551, #552) — disparar flow/workflow com
+  `HTTPClient`, a ferramenta chamando rota protegida por
+  `make_token_dependency`, e entrega garantida com `OutboxRelay` +
+  `WebhookInbox`. Exemplos executados contra Kestra 2.0.6 e n8n 2.43.7 em
+  Docker. Sem código novo no pacote.
+
 ## [0.315.0] — 2026-10-16
 
 ### Added

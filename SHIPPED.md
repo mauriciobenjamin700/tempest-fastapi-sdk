@@ -3518,3 +3518,12 @@ ativa", que é o que autoriza o router a emitir JWT; a resposta HTTP é a de um
 cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
 (a conta não depende de link). Default `None` mantém o comportamento anterior. Testes:
 `tests/auth/test_email_link_refusal.py`.
+
+## Receitas de automação, v0.316.0 (2026-10-17)
+
+- **Kestra e n8n (#551, #552)** — análise publicada nas issues concluiu que
+  nenhuma das duas pede módulo novo: o SDK já cobre os dois sentidos
+  (`HTTPClient` dispara, `make_token_dependency` recebe, `OutboxRelay` +
+  `WebhookInbox` garantem entrega). Viraram receitas bilíngues
+  (`docs/recipes/kestra.md`, `docs/recipes/n8n.md`) com exemplos executados
+  contra Kestra 2.0.6 e n8n 2.43.7 em Docker.

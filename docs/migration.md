@@ -2,6 +2,43 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.316.0 — `set-password` pede o fator em conta com MFA
+
+`tempest user set-password` numa conta com MFA ativo (e `AUTH_MFA_ENABLED=True`)
+passa a pedir o código — TOTP ou recovery code — e troca a senha por
+`UserAuthService.change_password_with_mfa`. Sem código válido em três
+tentativas, o comando sai com código 1 e a senha não muda. Até a 0.315.x o
+comando trocava a senha sem pedir o fator.
+
+### O que fazer
+
+1. Script ou CI que roda `set-password` sem terminal numa conta com MFA deixa
+   de funcionar: não há quem digite o código.
+2. Para recuperar quem perdeu o celular **e** os recovery codes, rode
+   `tempest user mfa-reset --email <e>` (`--yes` fora de terminal) e depois
+   `set-password`. Veja [a receita de MFA](recipes/mfa.md#mfa-reset).
+3. Para aceitar recovery code, o comando precisa da tabela de recovery codes
+   (`--recovery-code-model`, default `src.db.models:UserRecoveryCodeModel`).
+
+## 0.316.0 — o segundo item do `UserAuthService.signup` pode ser `ActivationWithheld`
+
+A tupla devolvida por `signup` passa a ter três formas no segundo item:
+`None` (a conta nasceu ativa), `ActivationToken` (o link foi emitido) e o novo
+`ActivationWithheld(user_id)` (o link foi retido). O terceiro só sai com
+`AUTH_AUTO_ACTIVATE=false` **e** `UserAuthService(refuses_email_link=...)`
+recusando a conta nova; sem o predicado, o comportamento em runtime é o de
+antes. O router do SDK já trata o tipo novo.
+
+### O que fazer
+
+1. Se você chama `signup` direto e lê `.url` ou `.token` do segundo item,
+   teste `isinstance(activation, ActivationToken)` antes: com
+   `ActivationWithheld` a conta existe, inativa e sem link. O mypy acusa
+   `union-attr` onde isso falta.
+2. Só `None` autoriza emitir o par de JWT logo após o cadastro.
+3. Se você sobrescreve `signup` e repassa ao `super()`, ajuste a anotação de
+   retorno.
+
 ## 0.314.0 — Python 3.12 passa a ser o mínimo
 
 O SDK deixa de suportar Python 3.11. O `requires-python` sobe para `>=3.12`, e
