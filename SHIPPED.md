@@ -3482,6 +3482,18 @@ código válido. Sem `--audit-model`: segue, com aviso no stderr. E
 `set-password` em conta com MFA ativo pede o código e passa por
 `change_password_with_mfa`. Teste: `tests/cli/test_user_mfa.py`.
 
+## Reset de MFA pelo operador (#574)
+
+Depois do #565, `set-password` pede o fator — e quem perdeu o celular **e**
+os recovery codes ficava sem saída. `UserAuthService.mfa_reset` é a limpeza
+do `mfa_disable` sem a prova (o `mfa_disable` agora delega a ela), mais
+revogação de sessões por padrão. `tempest user mfa-reset --email <e>` é o
+comando explícito e auditado (decisão: não flag de bypass no
+`set-password`): confirmação ou `--yes`, `--keep-sessions` explícito,
+`record_event` (`--audit-model`/`--event`, default `user.mfa_reset`) na
+mesma transação, código 2 em conta sem MFA. Teste:
+`tests/cli/test_user_mfa.py`.
+
 ## Link de e-mail recusado por conta (#566)
 
 `UserAuthService(refuses_email_link=...)`: predicado por conta que fecha os

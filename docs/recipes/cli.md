@@ -887,12 +887,17 @@ tempest user set-password --email ana@example.com --keep-sessions
 tempest user create --email staff@example.com --admin --require-mfa \
     --audit-model src.db.models:AuditLogModel --event staff.bootstrapped
 
+# Conta que perdeu o celular e os recovery codes: remove o segundo fator,
+# derruba as sessões e audita na mesma transação
+tempest user mfa-reset --email staff@example.com \
+    --audit-model src.db.models:AuditLogModel
+
 # Lista
 tempest user list                                # todos
 tempest user list --admin                        # só admins
 ```
 
-!!! info "Conta com MFA: `--require-mfa` e `set-password`"
+!!! info "Conta com MFA: `--require-mfa`, `set-password` e `mfa-reset`"
     `create --require-mfa` inscreve o segundo fator **antes** do commit:
     mostra a URI `otpauth://` e o segredo, pede o código do app
     Authenticator (até 3 tentativas) e só grava com código válido — sem ele,
@@ -908,6 +913,10 @@ tempest user list --admin                        # só admins
     como no login) pede o código — TOTP ou recovery code — e troca a senha
     por `UserAuthService.change_password_with_mfa`. Passo a passo na
     [receita de MFA](mfa.md#bootstrap-da-primeira-conta-privilegiada).
+
+    Quem perdeu o celular **e** os recovery codes não tem código para dar:
+    `mfa-reset` é a saída — veja
+    [Recuperando quem perdeu o segundo fator](#mfa-reset) abaixo.
 
 !!! tip "`UserModel` com coluna própria obrigatória: use `--set`"
     O `create` preenche `email`, `hashed_password`, `is_admin` e
@@ -1024,6 +1033,33 @@ tempest user set-password --email ana@example.com
     escrita no banco.
 
 Resolução do `DATABASE_URL` igual ao `tempest db` (env var > instância ou factory de settings > `.env` > `alembic.ini`).
+
+#### Recuperando quem perdeu o segundo fator — `tempest user mfa-reset` { #mfa-reset }
+
+Conta com MFA ativo cujo dono perdeu o celular **e** os recovery codes: o `set-password` pede o código, e não há código para dar. O `mfa-reset` remove o fator **sem prova** — por isso pede confirmação e grava quem fez.
+
+```bash
+tempest user mfa-reset --email staff@example.com \
+    --audit-model src.db.models:AuditLogModel
+# Remove the second factor of staff@example.com? It will log in with the password alone until it enrolls again. [y/N]: y
+# MFA reset for staff@example.com (id=2ced...)
+# Revoked 2 active refresh token(s).
+
+# Fora de um terminal (CI, script): --yes é obrigatório
+tempest user mfa-reset --email staff@example.com --yes \
+    --audit-model src.db.models:AuditLogModel --event support.mfa_recovered
+
+# Remove o fator e deixa as sessões vivas (opt-out explícito)
+tempest user mfa-reset --email staff@example.com --yes --keep-sessions
+```
+
+- Roda `UserAuthService.mfa_reset`: limpa `totp_secret`, `totp_enabled_at` e `totp_last_step` e apaga os recovery codes (`--recovery-code-model`, default `src.db.models:UserRecoveryCodeModel`; sem tabela, sai com código 2 nomeando a flag).
+- **Revoga as sessões por padrão**, na mesma transação, com as mesmas regras do `set-password`: `--refresh-token-model` (default `src.db.models:UserRefreshTokenModel`), `--keep-sessions` como saída explícita, e as duas juntas recusadas com código 2.
+- `--audit-model` (com `AuditRequestMixin`) grava `record_event` na **mesma transação**, com o nome de `--event` (default `user.mfa_reset`); se a escrita da auditoria falha, o reset volta junto. Sem `--audit-model`, o comando avisa no stderr que nenhum evento foi gravado. `--event` sem `--audit-model` sai com código 2.
+- Sem confirmação nada muda: fora de terminal, sem `--yes`, sai com código 1; no terminal, responder `n` também sai com 1.
+- Conta **sem MFA ativo** sai com código 2 (`has no MFA active, nothing to reset.`); `UserModel` sem `MFAMixin` também, antes de abrir o banco. Email desconhecido sai com 1 e `no user found`.
+
+Depois do reset a conta entra só com a senha até se inscrever de novo, e o `set-password` deixa de pedir código. A receita de MFA detalha o caminho, inclusive a chamada direta no código: [Conta que perdeu o segundo fator](mfa.md#mfa-reset).
 
 #### Inspecionar, desativar e apagar
 
