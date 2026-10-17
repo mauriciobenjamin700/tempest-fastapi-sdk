@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Recusa conta sem MFA ativo — inclusive com `AUTH_MFA_ENABLED` desligado —
   com a nova `MFANotEnrolledException` (`422`, `code="MFA_NOT_ENROLLED"`,
   subclasse de `ValidationException`, exportada no topo e em
-  `tempest_fastapi_sdk.auth`); confere a política de senha **antes** do
+  `tempest_fastapi_sdk.auth`, com tradução PT-BR e EN no catálogo padrão);
+  confere a política de senha **antes** do
   código, então senha fraca não queima recovery code; confere o código pela
   rotina do `mfa_verify` (TOTP de uso único, recovery code ganha `used_at`)
   e responde `UnauthorizedException("invalid MFA code")` no erro. `throttle=`
