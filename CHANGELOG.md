@@ -41,6 +41,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mesmo default, opcional aqui) — e troca a senha por
   `change_password_with_mfa`; três códigos errados saem com código 1 sem
   tocar a senha. Testes: `tests/cli/test_user_mfa.py`.
+- `UserAuthService.mfa_reset(session, *, user, recovery_code_model,
+  revoke_sessions=True) -> int` (#574): desliga o MFA **sem prova** —
+  limpa `totp_secret`, `totp_enabled_at` e `totp_last_step`, apaga os
+  recovery codes e revoga as sessões por padrão, devolvendo quantas caíram.
+  Caminho de operador para quem perdeu o celular e os recovery codes;
+  conta sem MFA ativo levanta `ValidationException("MFA not active")`. O
+  `mfa_disable` passa a delegar a limpeza a ele depois de conferir senha e
+  código (sem revogar sessões, como antes).
+- `tempest user mfa-reset --email <e>` (#574): o lado da CLI do
+  `mfa_reset`. Exige confirmação (prompt no terminal, `--yes` fora dele;
+  sem ela sai com código 1 e nada muda), revoga as sessões por padrão
+  (`--refresh-token-model`, `--keep-sessions` explícito, as duas juntas
+  recusadas com código 2) e grava `record_event` (`--audit-model` com
+  `AuditRequestMixin`, `--event` default `user.mfa_reset`, `actor="cli"`)
+  na mesma transação — se a auditoria falha, o reset volta junto. Sem
+  `--audit-model`, avisa no stderr. Conta sem MFA ativo, ou `UserModel` sem
+  `MFAMixin`, sai com código 2. Testes: `tests/cli/test_user_mfa.py`.
 - `UserAuthService(refuses_email_link=...)`: predicado por conta que fecha
   os fluxos de link por e-mail (recuperação de senha e ativação). Quando
   casa, `POST /auth/password-reset/request` e

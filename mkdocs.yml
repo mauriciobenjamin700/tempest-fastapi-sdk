@@ -151,6 +151,7 @@ plugins:
               - Integration client (OpenAPI): recipes/openapi-client.md
               - Introspection auth (resource server): recipes/introspection-auth.md
               - Jobs (long work with status): recipes/jobs.md
+              - Kestra (workflow orchestrator): recipes/kestra.md
               - Logging: recipes/logging.md
               - Management commands (tempest <cmd>): recipes/management-commands.md
               - Mercado Pago (Pix, cards, boleto): recipes/mercado-pago.md
@@ -162,6 +163,7 @@ plugins:
               - "Model weights (Hub lifecycle)": recipes/model-weights.md
               - "Modelops (export, bench, quantization)": recipes/modelops.md
               - Multi-tenant: recipes/multi-tenant.md
+              - n8n (workflow automation): recipes/n8n.md
               - Object-level permissions: recipes/authz.md
               - Observability (tracing): recipes/observability.md
               - Offline-first sync (delta): recipes/offline-sync.md
@@ -464,6 +466,7 @@ nav:
       - "IA generativa self-hosted": recipes/genai.md
       - Idempotência: recipes/idempotency.md
       - "Jobs (trabalho longo com status)": recipes/jobs.md
+      - Kestra (orquestrador de workflows): recipes/kestra.md
       - Logging: recipes/logging.md
       - "Login social (OAuth2/OIDC)": recipes/oauth.md
       - "Management commands (tempest <cmd>)": recipes/management-commands.md
@@ -475,6 +478,7 @@ nav:
       - Migrations: recipes/migrations.md
       - "Modelops (export, bench, quantização)": recipes/modelops.md
       - Multi-tenant: recipes/multi-tenant.md
+      - n8n (automação de workflows): recipes/n8n.md
       - "Observabilidade (tracing)": recipes/observability.md
       - "OpenPix (assinaturas e planos)": recipes/openpix-subscriptions.md
       - "OpenPix (Pix via Woovi)": recipes/openpix.md

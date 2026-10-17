@@ -3343,6 +3343,58 @@ class UserAuthService:
             raise ValidationException(message="MFA not active")
         if not await self._verify_mfa_code(session, user, code, recovery_code_model):
             raise UnauthorizedException(message="invalid MFA code")
+        await self.mfa_reset(
+            session,
+            user=user,
+            recovery_code_model=recovery_code_model,
+            revoke_sessions=False,
+        )
+
+    async def mfa_reset(
+        self,
+        session: AsyncSession,
+        *,
+        user: BaseUserModel,
+        recovery_code_model: type[BaseUserRecoveryCodeModel],
+        revoke_sessions: bool = True,
+    ) -> int:
+        """Switch MFA off for ``user`` without proof of the factor.
+
+        The operator's recovery path for an account whose owner lost both
+        the authenticator and the recovery codes: :meth:`mfa_disable` cannot
+        help them, because it asks for exactly what they lost. Nothing here
+        is verified — no password, no code — so it belongs behind an
+        operator boundary (``tempest user mfa-reset``, an admin action),
+        never on a route the account holder reaches. The caller owns the
+        commit and should record an audit event in the same transaction.
+
+        The secret, ``totp_enabled_at`` and ``totp_last_step`` are cleared
+        and every recovery code of the user is deleted, exactly as
+        :meth:`mfa_disable` does after its checks. The check for an active
+        factor reads the column, not :meth:`is_mfa_enrolled`, so it holds
+        with the ``AUTH_MFA_ENABLED`` kill-switch off.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session. The changes
+                are flushed, not committed.
+            user (BaseUserModel): The user whose second factor is removed.
+            recovery_code_model (type[BaseUserRecoveryCodeModel]): The
+                project's concrete recovery-code model, whose rows for
+                ``user`` are deleted.
+            revoke_sessions (bool): Revoke every refresh token of the user
+                through :meth:`revoke_user_sessions` (default): whoever holds
+                the lost device may hold a live session too. ``False`` is
+                the explicit opt-out.
+
+        Returns:
+            int: How many refresh-token rows were revoked — ``0`` with
+            ``revoke_sessions=False`` or without a ``refresh_token_model``.
+
+        Raises:
+            ValidationException: When MFA is not active for ``user``.
+        """
+        if not user.totp_secret or not user.totp_enabled_at:
+            raise ValidationException(message="MFA not active")
         user = await self._attach(session, user)
         user.totp_secret = None
         user.totp_enabled_at = None
@@ -3353,7 +3405,11 @@ class UserAuthService:
             ),
         )
         await session.flush()
+        revoked = 0
+        if revoke_sessions:
+            revoked = await self.revoke_user_sessions(session, user_id=user.id)
         await session.refresh(user)
+        return revoked
 
     async def mfa_verify(
         self,

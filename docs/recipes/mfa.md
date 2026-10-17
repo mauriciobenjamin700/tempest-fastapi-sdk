@@ -455,6 +455,7 @@ Superfície completa:
 | `mfa_confirm` | `(session, *, user, code) -> None` | Ativa MFA. |
 | `mfa_verify` | `(session, *, mfa_token, code, recovery_code_model, throttle=None) -> UserModel` | Usuário autenticado (mint o JWT depois). |
 | `mfa_disable` | `(session, *, user, password, code, recovery_code_model) -> None` | Limpa segredo + códigos. |
+| `mfa_reset` | `(session, *, user, recovery_code_model, revoke_sessions=True) -> int` | Limpa segredo + códigos **sem prova** e revoga as sessões; devolve quantas caíram. Caminho de operador — veja [Conta que perdeu o segundo fator](#mfa-reset). |
 | `change_password_with_mfa` | `(session, *, user, code, new_password, recovery_code_model=None, revoke_sessions=True, throttle=None) -> UserModel` | Troca a senha provando o fator. Levanta `MFANotEnrolledException` em conta sem MFA. |
 
 
@@ -528,6 +529,60 @@ Peça a peça:
 3. A tabela de recovery codes vem de `--recovery-code-model` (default `src.db.models:UserRecoveryCodeModel`), e o `UserModel` precisa de `MFAMixin`; faltando qualquer um, o comando sai com código 2 antes de escrever.
 
 Depois, `tempest user set-password --email staff@example.com` nessa conta pede o código (TOTP ou recovery code) e troca a senha por `change_password_with_mfa`. Com `AUTH_MFA_ENABLED` desligado, nem o login nem o `set-password` pedem o fator.
+
+### Conta que perdeu o segundo fator { #mfa-reset }
+
+O dono da conta perdeu o celular **e** os recovery codes. O `disable` pede senha e código; o `set-password` da CLI pede o código. Nenhum dos dois ajuda — e é assim que deve ser, porque pedir o fator é o ponto. A saída é do operador, explícita e auditada:
+
+```bash
+tempest user mfa-reset --email staff@example.com \
+    --audit-model src.db.models:AuditLogModel
+```
+
+```text
+Remove the second factor of staff@example.com? It will log in with the password alone until it enrolls again. [y/N]: y
+MFA reset for staff@example.com (id=2ced9167-4e7a-4dc5-8626-72b64ff7e4a7)
+Revoked 2 active refresh token(s).
+```
+
+Peça a peça:
+
+1. **Confirmação obrigatória.** Num terminal, o comando pergunta; fora dele (CI, pipe), exige `--yes` e sai com código 1 sem ele. Recusou a pergunta, nada muda.
+2. **O reset é o `UserAuthService.mfa_reset`**: limpa `totp_secret`, `totp_enabled_at` e `totp_last_step` e apaga **todos** os recovery codes do usuário — a mesma limpeza do `mfa_disable`, sem a prova.
+3. **As sessões caem por padrão**, na mesma transação: quem ficou com o celular perdido pode ter uma sessão viva também. `--keep-sessions` é a saída explícita; a tabela vem de `--refresh-token-model` (default `src.db.models:UserRefreshTokenModel`).
+4. **`--audit-model` grava `record_event` na mesma transação** (`actor="cli"`, `changes` com `mfa_enabled` e `sessions_revoked`), com o nome de `--event` (default `user.mfa_reset`). Se a escrita da auditoria falha, o reset volta junto. Sem `--audit-model`, o comando segue e avisa no stderr que nenhum evento foi gravado.
+5. **Conta sem MFA ativo sai com código 2** e `has no MFA active, nothing to reset.` — nada é escrito, nem o evento.
+
+Depois do reset a conta entra só com a senha, até inscrever o fator de novo — e o `set-password` deixa de pedir código. Se a senha também se perdeu, rode os dois, nessa ordem.
+
+Do código, sem a CLI — num painel de suporte, por exemplo, atrás da sua própria checagem de permissão:
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import UserAuthService
+
+from src.db.models import UserModel, UserRecoveryCodeModel
+
+
+async def support_mfa_reset(
+    service: UserAuthService,
+    session: AsyncSession,
+    user: UserModel,
+) -> int:
+    """Remove o segundo fator de uma conta que o perdeu. Retorna as sessões revogadas."""
+    revoked = await service.mfa_reset(
+        session,
+        user=user,
+        recovery_code_model=UserRecoveryCodeModel,
+    )
+    await session.commit()
+    return revoked
+```
+
+!!! warning "`mfa_reset` não prova nada"
+    Não confere senha nem código: é um caminho de operador. Nunca o exponha numa rota que o próprio dono da conta alcança — aí ele vira o atalho que o `disable` existe para impedir. Grave o evento de auditoria na mesma transação.
+
 
 ---
 
@@ -641,6 +696,9 @@ um `ActivationWithheld` (link retido). Só o `None` autoriza emitir JWT.
 - Quem monta os próprios endpoints usa os métodos do `UserAuthService`
   direto, sem o router. `change_password_with_mfa` troca a senha provando o
   fator, sem link de e-mail e sem emitir token.
+- Quem perdeu o celular **e** os recovery codes volta pelo operador:
+  `tempest user mfa-reset` (ou `mfa_reset` no código) remove o fator sem
+  prova, com confirmação, auditoria na mesma transação e sessões revogadas.
 - O segredo TOTP fica no `UserModel` — considere criptografar a coluna em
   repouso.
 - `/auth/mfa/verify` responde `429` depois de cinco códigos errados por conta
