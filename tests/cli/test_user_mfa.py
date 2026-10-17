@@ -1,9 +1,11 @@
-"""``tempest user create --require-mfa`` and ``set-password`` with MFA (#565).
+"""``tempest user create --require-mfa``, ``set-password`` and ``mfa-reset``.
 
 The bootstrap of the first privileged account: the row, its second factor
-and its audit event land in one transaction, or nothing lands at all. And
-the operator-side password change asks for the factor of an account that
-has one, through ``UserAuthService.change_password_with_mfa``.
+and its audit event land in one transaction, or nothing lands at all. The
+operator-side password change asks for the factor of an account that has
+one, through ``UserAuthService.change_password_with_mfa`` (#565). And
+``mfa-reset`` is the operator's way back for an account that lost the
+factor: confirmed, audited in the same transaction, sessions revoked.
 """
 
 from __future__ import annotations
@@ -12,7 +14,9 @@ import asyncio
 import sys
 import time
 import types
+import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -347,18 +351,6 @@ class TestCreateAuditWithoutMfa:
 
 
 class TestSetPasswordWithMfa:
-    def _enrolled(self) -> list[str]:
-        """Bootstrap the MFA account and return its recovery codes.
-
-        Returns:
-            list[str]: The plaintext recovery codes printed by ``create``.
-        """
-        result = _create(code_input=f"{_code()}\n")
-        assert result.exit_code == 0, result.stdout + result.stderr
-        lines = result.stdout.splitlines()
-        start = next(i for i, line in enumerate(lines) if "Recovery codes" in line)
-        return [line.strip() for line in lines[start + 1 :] if line.startswith("  ")]
-
     def _set_password(self, *extra: str, code_input: str) -> Any:
         """Run ``set-password`` for the MFA account.
 
@@ -401,7 +393,7 @@ class TestSetPasswordWithMfa:
         return str(_scalar(url, select(_CLIMfaUserModel.hashed_password)))
 
     def test_totp_code_changes_the_password(self, project_db: str) -> None:
-        self._enrolled()
+        _enroll()
 
         result = self._set_password(code_input=f"{_code(1)}\n")
 
@@ -410,7 +402,7 @@ class TestSetPasswordWithMfa:
         assert PasswordUtils().verify(NEW_PASSWORD, self._hash(project_db))
 
     def test_recovery_code_changes_the_password(self, project_db: str) -> None:
-        codes = self._enrolled()
+        codes = _enroll()
 
         result = self._set_password(code_input=f"{codes[0]}\n")
 
@@ -418,7 +410,7 @@ class TestSetPasswordWithMfa:
         assert PasswordUtils().verify(NEW_PASSWORD, self._hash(project_db))
 
     def test_no_valid_code_leaves_the_password(self, project_db: str) -> None:
-        self._enrolled()
+        _enroll()
         before = self._hash(project_db)
 
         result = self._set_password(code_input="000000\n111111\n222222\n")
@@ -432,7 +424,7 @@ class TestSetPasswordWithMfa:
         project_db: str,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        self._enrolled()
+        _enroll()
         monkeypatch.setenv("AUTH_MFA_ENABLED", "false")
 
         result = self._set_password(code_input="")
@@ -440,3 +432,397 @@ class TestSetPasswordWithMfa:
         assert result.exit_code == 0, result.stdout + result.stderr
         assert "has MFA active" not in result.stdout
         assert PasswordUtils().verify(NEW_PASSWORD, self._hash(project_db))
+
+
+def _enroll() -> list[str]:
+    """Bootstrap the MFA account and return its recovery codes.
+
+    Returns:
+        list[str]: The plaintext recovery codes printed by ``create``.
+    """
+    result = _create(code_input=f"{_code()}\n")
+    assert result.exit_code == 0, result.stdout + result.stderr
+    lines = result.stdout.splitlines()
+    start = next(i for i, line in enumerate(lines) if "Recovery codes" in line)
+    return [line.strip() for line in lines[start + 1 :] if line.startswith("  ")]
+
+
+def _open_session(url: str) -> None:
+    """Insert one live refresh token for the MFA account.
+
+    Args:
+        url (str): The database URL.
+    """
+
+    async def _run() -> None:
+        engine = create_async_engine(url)
+        async with engine.begin() as conn:
+            user_id = (await conn.execute(select(_CLIMfaUserModel.id))).scalar()
+            await conn.execute(
+                _CLIMfaRefreshToken.__table__.insert().values(
+                    id=uuid.uuid4(),
+                    user_id=user_id,
+                    token_hash=uuid.uuid4().hex,
+                    family_id=uuid.uuid4(),
+                    expires_at=datetime.now(UTC) + timedelta(days=1),
+                ),
+            )
+        await engine.dispose()
+
+    asyncio.run(_run())
+
+
+def _live_sessions(url: str) -> int:
+    """Count the refresh tokens of the MFA account that are not revoked.
+
+    Args:
+        url (str): The database URL.
+
+    Returns:
+        int: How many tokens are still exchangeable.
+    """
+    return int(
+        _scalar(
+            url,
+            select(func.count())
+            .select_from(_CLIMfaRefreshToken)
+            .where(_CLIMfaRefreshToken.revoked_at.is_(None)),
+        ),
+    )
+
+
+def _mfa_reset(*extra: str, email: str = "staff@example.com") -> Any:
+    """Run ``tempest user mfa-reset`` against the test models.
+
+    Args:
+        *extra (str): Extra CLI arguments.
+        email (str): The account to reset.
+
+    Returns:
+        Any: The ``CliRunner`` result.
+    """
+    return runner.invoke(
+        app,
+        [
+            "user",
+            "mfa-reset",
+            "--email",
+            email,
+            "--model",
+            MODEL,
+            "--recovery-code-model",
+            CODES,
+            *extra,
+        ],
+    )
+
+
+class TestMfaReset:
+    def test_reset_clears_the_factor_and_the_recovery_codes(
+        self,
+        project_db: str,
+    ) -> None:
+        _enroll()
+
+        result = _mfa_reset("--yes", "--refresh-token-model", TOKENS)
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "MFA reset for staff@example.com" in result.stdout
+        assert _scalar(project_db, select(_CLIMfaUserModel.totp_enabled_at)) is None
+        assert _scalar(project_db, select(_CLIMfaUserModel.totp_secret)) is None
+        assert _count(project_db, _CLIMfaRecoveryCode) == 0
+
+    def test_sessions_are_revoked_by_default(self, project_db: str) -> None:
+        _enroll()
+        _open_session(project_db)
+
+        result = _mfa_reset("--yes", "--refresh-token-model", TOKENS)
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "Revoked 1 active refresh token(s)." in result.stdout
+        assert _live_sessions(project_db) == 0
+
+    def test_keep_sessions_leaves_them_alive(self, project_db: str) -> None:
+        _enroll()
+        _open_session(project_db)
+
+        result = _mfa_reset("--yes", "--keep-sessions")
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "--keep-sessions given" in result.stderr
+        assert _live_sessions(project_db) == 1
+        assert _scalar(project_db, select(_CLIMfaUserModel.totp_enabled_at)) is None
+
+    def test_keep_sessions_contradicts_refresh_token_model(
+        self,
+        project_db: str,
+    ) -> None:
+        _enroll()
+
+        result = _mfa_reset(
+            "--yes",
+            "--keep-sessions",
+            "--refresh-token-model",
+            TOKENS,
+        )
+
+        assert result.exit_code == 2
+        assert "contradict" in result.stderr
+        assert _scalar(project_db, select(_CLIMfaUserModel.totp_enabled_at))
+
+    def test_event_is_recorded_with_the_reset(self, project_db: str) -> None:
+        _enroll()
+
+        result = _mfa_reset(
+            "--yes",
+            "--refresh-token-model",
+            TOKENS,
+            "--audit-model",
+            AUDIT,
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        user_id = _scalar(project_db, select(_CLIMfaUserModel.id))
+        assert _scalar(project_db, select(_CLIMfaAuditLog.event)) == "user.mfa_reset"
+        assert _scalar(project_db, select(_CLIMfaAuditLog.entity_id)) == str(user_id)
+        assert _scalar(project_db, select(_CLIMfaAuditLog.actor)) == "cli"
+        assert "no audit event" not in result.stderr
+
+    def test_failed_audit_write_rolls_the_reset_back(
+        self,
+        project_db: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from tempest_fastapi_sdk import BaseRepository
+
+        _enroll()
+        _open_session(project_db)
+
+        async def _boom(*args: Any, **kwargs: Any) -> Any:
+            """Fail the audit write after the reset was flushed.
+
+            Args:
+                *args (Any): Ignored.
+                **kwargs (Any): Ignored.
+
+            Raises:
+                RuntimeError: Always.
+            """
+            raise RuntimeError("audit table is down")
+
+        monkeypatch.setattr(BaseRepository, "record_event", _boom)
+
+        result = _mfa_reset(
+            "--yes",
+            "--refresh-token-model",
+            TOKENS,
+            "--audit-model",
+            AUDIT,
+        )
+
+        assert isinstance(result.exception, RuntimeError)
+        assert _scalar(project_db, select(_CLIMfaUserModel.totp_enabled_at))
+        assert _count(project_db, _CLIMfaRecoveryCode) > 0
+        assert _live_sessions(project_db) == 1
+
+    def test_custom_event_name(self, project_db: str) -> None:
+        _enroll()
+
+        result = _mfa_reset(
+            "--yes",
+            "--keep-sessions",
+            "--audit-model",
+            AUDIT,
+            "--event",
+            "support.mfa_recovered",
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert _scalar(project_db, select(_CLIMfaAuditLog.event)) == (
+            "support.mfa_recovered"
+        )
+
+    def test_without_audit_model_it_says_so(self, project_db: str) -> None:
+        _enroll()
+
+        result = _mfa_reset("--yes", "--keep-sessions")
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "no audit event was recorded" in result.stderr
+
+    def test_event_without_audit_model_is_refused(self, project_db: str) -> None:
+        _enroll()
+
+        result = _mfa_reset("--yes", "--event", "x")
+
+        assert result.exit_code == 2
+        assert "--event needs --audit-model" in result.stderr
+        assert _scalar(project_db, select(_CLIMfaUserModel.totp_enabled_at))
+
+    def test_without_confirmation_nothing_changes(self, project_db: str) -> None:
+        _enroll()
+
+        result = _mfa_reset("--refresh-token-model", TOKENS)
+
+        assert result.exit_code == 1
+        assert "--yes" in result.stderr
+        assert _scalar(project_db, select(_CLIMfaUserModel.totp_enabled_at))
+        assert _count(project_db, _CLIMfaRecoveryCode) > 0
+
+    def test_declined_prompt_changes_nothing(
+        self,
+        project_db: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from tempest_fastapi_sdk.cli import user as user_mod
+
+        _enroll()
+        monkeypatch.setattr(user_mod, "_stdin_is_interactive", lambda: True)
+
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "mfa-reset",
+                "--email",
+                "staff@example.com",
+                "--model",
+                MODEL,
+                "--recovery-code-model",
+                CODES,
+            ],
+            input="n\n",
+        )
+
+        assert result.exit_code == 1
+        assert "Aborted." in result.stderr
+        assert _scalar(project_db, select(_CLIMfaUserModel.totp_enabled_at))
+
+    def test_accepted_prompt_resets(
+        self,
+        project_db: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from tempest_fastapi_sdk.cli import user as user_mod
+
+        _enroll()
+        monkeypatch.setattr(user_mod, "_stdin_is_interactive", lambda: True)
+
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "mfa-reset",
+                "--email",
+                "staff@example.com",
+                "--model",
+                MODEL,
+                "--recovery-code-model",
+                CODES,
+                "--keep-sessions",
+            ],
+            input="y\n",
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert _scalar(project_db, select(_CLIMfaUserModel.totp_enabled_at)) is None
+
+    def test_account_without_mfa_exits_with_code_2(self, project_db: str) -> None:
+        created = runner.invoke(
+            app,
+            [
+                "user",
+                "create",
+                "--email",
+                "plain@example.com",
+                "--password",
+                PASSWORD,
+                "--no-admin",
+                "--model",
+                MODEL,
+            ],
+        )
+        assert created.exit_code == 0, created.stdout + created.stderr
+
+        result = _mfa_reset(
+            "--yes",
+            "--audit-model",
+            AUDIT,
+            email="plain@example.com",
+        )
+
+        assert result.exit_code == 2
+        assert "has no MFA active" in result.stderr
+        assert _count(project_db, _CLIMfaAuditLog) == 0
+
+    def test_unknown_email_exits_with_code_1(self, project_db: str) -> None:
+        result = _mfa_reset("--yes", email="ghost@example.com")
+
+        assert result.exit_code == 1
+        assert "no user found" in result.stderr
+
+    def test_model_without_mfa_columns_is_refused(self, project_db: str) -> None:
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "mfa-reset",
+                "--email",
+                "staff@example.com",
+                "--yes",
+                "--model",
+                "cli_mfa_user_model:_CLIPlainUserModel",
+            ],
+        )
+
+        assert result.exit_code == 2
+        assert "no MFA columns" in result.stderr
+
+    def test_missing_recovery_code_model_names_the_flag(
+        self,
+        project_db: str,
+    ) -> None:
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "mfa-reset",
+                "--email",
+                "staff@example.com",
+                "--yes",
+                "--model",
+                MODEL,
+            ],
+        )
+
+        assert result.exit_code == 2
+        assert "--recovery-code-model" in result.stderr
+
+    def test_set_password_needs_no_code_after_the_reset(
+        self,
+        project_db: str,
+    ) -> None:
+        _enroll()
+        reset = _mfa_reset("--yes", "--keep-sessions")
+        assert reset.exit_code == 0, reset.stdout + reset.stderr
+
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "set-password",
+                "--email",
+                "staff@example.com",
+                "--password",
+                NEW_PASSWORD,
+                "--model",
+                MODEL,
+                "--keep-sessions",
+            ],
+            input="",
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "has MFA active" not in result.stdout
+        hashed = str(_scalar(project_db, select(_CLIMfaUserModel.hashed_password)))
+        assert PasswordUtils().verify(NEW_PASSWORD, hashed)

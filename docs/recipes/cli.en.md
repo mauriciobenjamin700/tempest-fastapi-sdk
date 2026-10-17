@@ -890,12 +890,17 @@ tempest user set-password --email ana@example.com --keep-sessions
 tempest user create --email staff@example.com --admin --require-mfa \
     --audit-model src.db.models:AuditLogModel --event staff.bootstrapped
 
+# Account that lost the phone and the recovery codes: remove the second
+# factor, end the sessions and audit it in the same transaction
+tempest user mfa-reset --email staff@example.com \
+    --audit-model src.db.models:AuditLogModel
+
 # List
 tempest user list                                # everyone
 tempest user list --admin                        # admins only
 ```
 
-!!! info "Accounts with MFA: `--require-mfa` and `set-password`"
+!!! info "Accounts with MFA: `--require-mfa`, `set-password` and `mfa-reset`"
     `create --require-mfa` enrolls the second factor **before** the commit:
     it prints the `otpauth://` URI and the secret, asks for a code from the
     Authenticator app (up to 3 tries) and writes only with a valid one —
@@ -911,6 +916,10 @@ tempest user list --admin                        # admins only
     as at login) asks for the code — TOTP or recovery code — and changes the
     password through `UserAuthService.change_password_with_mfa`. Step by step
     in the [MFA recipe](mfa.md#bootstrapping-the-first-privileged-account).
+
+    Whoever lost the phone **and** the recovery codes has no code to give:
+    `mfa-reset` is the way back — see
+    [Recovering an account that lost its second factor](#mfa-reset) below.
 
 !!! tip "A `UserModel` with a required column of its own: use `--set`"
     `create` fills `email`, `hashed_password`, `is_admin` and
@@ -1029,6 +1038,33 @@ tempest user set-password --email ana@example.com
     written to the database.
 
 ``DATABASE_URL`` resolves the same way as ``tempest db`` (env var > settings instance or factory > ``.env`` > ``alembic.ini``).
+
+#### Recovering an account that lost its second factor — `tempest user mfa-reset` { #mfa-reset }
+
+An account with MFA active whose owner lost the phone **and** the recovery codes: `set-password` asks for the code, and there is no code to give. `mfa-reset` removes the factor **without proof** — so it asks for confirmation and records who did it.
+
+```bash
+tempest user mfa-reset --email staff@example.com \
+    --audit-model src.db.models:AuditLogModel
+# Remove the second factor of staff@example.com? It will log in with the password alone until it enrolls again. [y/N]: y
+# MFA reset for staff@example.com (id=2ced...)
+# Revoked 2 active refresh token(s).
+
+# Outside a terminal (CI, a script): --yes is required
+tempest user mfa-reset --email staff@example.com --yes \
+    --audit-model src.db.models:AuditLogModel --event support.mfa_recovered
+
+# Remove the factor and leave the sessions alive (explicit opt-out)
+tempest user mfa-reset --email staff@example.com --yes --keep-sessions
+```
+
+- It runs `UserAuthService.mfa_reset`: clears `totp_secret`, `totp_enabled_at` and `totp_last_step` and deletes the recovery codes (`--recovery-code-model`, default `src.db.models:UserRecoveryCodeModel`; without a table, it exits with code 2 naming the flag).
+- **It revokes the sessions by default**, in the same transaction, with the same rules as `set-password`: `--refresh-token-model` (default `src.db.models:UserRefreshTokenModel`), `--keep-sessions` as the explicit opt-out, and both together refused with code 2.
+- `--audit-model` (with `AuditRequestMixin`) writes `record_event` in the **same transaction**, named by `--event` (default `user.mfa_reset`); if the audit write fails, the reset rolls back with it. Without `--audit-model`, the command says on stderr that no event was recorded. `--event` without `--audit-model` exits with code 2.
+- Without confirmation nothing changes: outside a terminal, without `--yes`, it exits with code 1; in a terminal, answering `n` exits with 1 too.
+- An account **without MFA active** exits with code 2 (`has no MFA active, nothing to reset.`); a `UserModel` without `MFAMixin` does too, before the database is opened. An unknown email exits with 1 and `no user found`.
+
+After the reset the account logs in with the password alone until it enrolls again, and `set-password` stops asking for a code. The MFA recipe walks the path, including the direct call from code: [An account that lost its second factor](mfa.md#mfa-reset).
 
 #### Inspect, deactivate and delete
 

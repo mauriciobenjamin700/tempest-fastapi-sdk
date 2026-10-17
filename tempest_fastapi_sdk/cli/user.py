@@ -304,6 +304,9 @@ fresh command, not a loop an unattended terminal can spin in.
 DEFAULT_USER_CREATED_EVENT: str = "user.created"
 """Event name ``create`` records when ``--audit-model`` is given without ``--event``."""
 
+DEFAULT_USER_MFA_RESET_EVENT: str = "user.mfa_reset"
+"""Event ``mfa-reset`` records when ``--audit-model`` is given without ``--event``."""
+
 
 def _load_recovery_code_model(dotted: str) -> type[BaseUserRecoveryCodeModel]:
     """Import the project's concrete recovery-code model via dotted spec.
@@ -422,8 +425,8 @@ def _build_auth_service(
 
     ``token_model`` is the abstract :class:`BaseUserTokenModel`: the service
     requires one, and none of the methods the CLI calls (``mfa_enroll``,
-    ``mfa_confirm``, ``is_mfa_enrolled``, ``change_password_with_mfa``)
-    reads the single-use-link table.
+    ``mfa_confirm``, ``is_mfa_enrolled``, ``change_password_with_mfa``,
+    ``mfa_reset``) reads the single-use-link table.
 
     Args:
         user_model (type[BaseUserModel]): The concrete user model.
@@ -870,6 +873,98 @@ async def _set_user_password(
                 )
             await session.commit()
             await session.refresh(user)
+            return str(user.id), revoked
+    finally:
+        await db.disconnect()
+
+
+async def _reset_user_mfa(
+    database_url: str,
+    user_model: type[BaseUserModel],
+    *,
+    email: str,
+    recovery_code_model: type[BaseUserRecoveryCodeModel],
+    refresh_token_model: type[BaseUserRefreshTokenModel] | None,
+    audit_model: type[BaseAuditLogModel] | None = None,
+    event: str = DEFAULT_USER_MFA_RESET_EVENT,
+) -> tuple[str, int] | None:
+    """Switch one user's MFA off, found by email, without proof of the factor.
+
+    Runs :meth:`~tempest_fastapi_sdk.UserAuthService.mfa_reset`, which
+    clears the TOTP columns and deletes the recovery codes; with
+    ``refresh_token_model`` it also revokes every refresh token of the
+    user. With ``audit_model`` a ``record_event`` row is written before the
+    single commit, so the reset and its audit entry land together or not
+    at all.
+
+    Args:
+        database_url (str): The resolved database URL.
+        user_model (type[BaseUserModel]): The concrete user model, with
+            :class:`~tempest_fastapi_sdk.MFAMixin` composed in.
+        email (str): Email of the user (normalized to lower).
+        recovery_code_model (type[BaseUserRecoveryCodeModel]): The
+            project's recovery-code table, whose rows for the user are
+            deleted.
+        refresh_token_model (type[BaseUserRefreshTokenModel] | None): The
+            project's refresh-token table, or ``None`` to leave existing
+            sessions alone.
+        audit_model (type[BaseAuditLogModel] | None): The project's audit
+            table; given, ``event`` is recorded for the user.
+        event (str): The audit event name.
+
+    Returns:
+        tuple[str, int] | None: The user's id and how many refresh tokens
+        were revoked, or ``None`` when no user matches the email.
+
+    Raises:
+        typer.Exit: With code 2 when the account has no MFA active; nothing
+            is written.
+    """
+    from sqlalchemy import select
+
+    from tempest_fastapi_sdk import AsyncDatabaseManager, BaseRepository
+    from tempest_fastapi_sdk.exceptions import ValidationException
+
+    db = AsyncDatabaseManager(database_url)
+    await db.connect()
+    try:
+        async with db.get_session_context() as session:
+            result = await session.execute(
+                select(user_model).where(user_model.email == email.lower()),
+            )
+            user = result.scalar_one_or_none()
+            if user is None:
+                return None
+            service = _build_auth_service(user_model, refresh_token_model)
+            try:
+                revoked = await service.mfa_reset(
+                    session,
+                    user=user,
+                    recovery_code_model=recovery_code_model,
+                    revoke_sessions=refresh_token_model is not None,
+                )
+            except ValidationException as exc:
+                typer.echo(
+                    f"error: {email.lower()} has no MFA active, nothing to reset.",
+                    err=True,
+                )
+                raise typer.Exit(2) from exc
+            if audit_model is not None:
+                await BaseRepository(
+                    session,
+                    model=user_model,
+                    audit_model=audit_model,
+                    autocommit=False,
+                ).record_event(
+                    event,
+                    subject=user,
+                    actor="cli",
+                    changes={
+                        "mfa_enabled": False,
+                        "sessions_revoked": revoked,
+                    },
+                )
+            await session.commit()
             return str(user.id), revoked
     finally:
         await db.disconnect()
@@ -1748,6 +1843,189 @@ def user_set_password(
         "lives elsewhere.",
         err=True,
     )
+
+
+@user_app.command("mfa-reset")
+def user_mfa_reset(
+    email: str = typer.Option(
+        ...,
+        "--email",
+        "-e",
+        help="Email of the user whose second factor is being removed.",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Confirm the reset. Required outside an interactive terminal.",
+    ),
+    model: str = typer.Option(
+        "src.db.models:UserModel",
+        "--model",
+        help="Dotted spec for the concrete UserModel (with MFAMixin).",
+    ),
+    recovery_code_model: str | None = typer.Option(
+        None,
+        "--recovery-code-model",
+        help=(
+            "Dotted spec for the concrete recovery-code model, whose rows "
+            f"for the user are deleted. Omitted, {_DEFAULT_RECOVERY_CODE_MODEL!r} "
+            "is tried."
+        ),
+    ),
+    refresh_token_model: str | None = typer.Option(
+        None,
+        "--refresh-token-model",
+        help=(
+            "Dotted spec for the concrete refresh-token model. Omitted, "
+            f"{_DEFAULT_REFRESH_TOKEN_MODEL!r} is tried, so the user's "
+            "sessions are revoked along with the factor whenever the "
+            "project has that table."
+        ),
+    ),
+    keep_sessions: bool = typer.Option(
+        False,
+        "--keep-sessions",
+        help=(
+            "Do not revoke anything: every refresh token the user holds "
+            "stays exchangeable after the factor is removed."
+        ),
+    ),
+    audit_model: str | None = typer.Option(
+        None,
+        "--audit-model",
+        help=(
+            "Dotted spec for the audit-log model (with AuditRequestMixin). "
+            "Given, the reset is recorded in the same transaction."
+        ),
+    ),
+    event: str | None = typer.Option(
+        None,
+        "--event",
+        help=(
+            "Audit event name. Needs --audit-model; defaults to "
+            f"{DEFAULT_USER_MFA_RESET_EVENT!r}."
+        ),
+    ),
+) -> None:
+    """Remove the second factor of an account that lost it, found by email.
+
+    The operator's way back in for a user who lost both the authenticator
+    and the recovery codes: ``set-password`` asks for the factor of an
+    account with MFA active, and ``UserAuthService.mfa_disable`` asks for
+    the password and a code, so neither helps. This command proves nothing
+    — it runs ``UserAuthService.mfa_reset``, which clears the TOTP secret
+    and ``totp_enabled_at`` and deletes every recovery code — so it asks
+    for confirmation and records who did it.
+
+    Notes:
+        The user's refresh tokens are revoked **by default**, in the same
+        transaction: whoever has the lost device may hold a live session
+        too. ``--keep-sessions`` is the explicit opt-out. After the reset
+        the account logs in with the password alone until it enrolls
+        again.
+
+        With ``--audit-model`` the event (``--event``, default
+        ``user.mfa_reset``) is written in the same transaction as the
+        reset, so one never lands without the other. Without it the reset
+        still runs and says on stderr that nothing was recorded.
+
+        Every dotted spec is resolved before the confirmation, so a typo
+        costs one error message rather than a confirmed command that was
+        never going to run.
+
+    Raises:
+        typer.Exit: With code 1 when no user matches the email or the
+            reset is not confirmed; code 2 when the account has no MFA
+            active, the model has no MFA columns, no recovery-code model
+            resolves, two flags contradict each other, or a dotted spec
+            cannot be resolved.
+    """
+    if event is not None and audit_model is None:
+        typer.echo("error: --event needs --audit-model.", err=True)
+        raise typer.Exit(2)
+    if keep_sessions and refresh_token_model:
+        typer.echo(
+            "error: --keep-sessions and --refresh-token-model contradict "
+            "each other. Pass one or neither.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    database_url = _resolve_database_url()
+    user_model = _load_user_model(model)
+    if not hasattr(user_model, "totp_enabled_at"):
+        typer.echo(
+            f"error: {user_model.__name__} has no MFA columns; there is no "
+            "second factor to reset.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    codes_model = (
+        _load_recovery_code_model(recovery_code_model)
+        if recovery_code_model
+        else _find_default_recovery_code_model()
+    )
+    if codes_model is None:
+        typer.echo(
+            "error: mfa-reset needs a recovery-code model and there is none "
+            f"at {_DEFAULT_RECOVERY_CODE_MODEL!r}. Pass --recovery-code-model.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    token_model: type[BaseUserRefreshTokenModel] | None = None
+    if not keep_sessions:
+        token_model = _resolve_refresh_token_model(refresh_token_model or "")
+    audit = _load_audit_model(audit_model) if audit_model else None
+    if not yes:
+        if not _stdin_is_interactive():
+            typer.echo(
+                "error: resetting MFA removes the account's second factor. "
+                "Pass --yes to confirm.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        if not typer.confirm(
+            f"Remove the second factor of {email.lower()}? It will log in "
+            "with the password alone until it enrolls again.",
+        ):
+            typer.echo("Aborted.", err=True)
+            raise typer.Exit(1)
+    outcome = asyncio.run(
+        _reset_user_mfa(
+            database_url,
+            user_model,
+            email=email,
+            recovery_code_model=codes_model,
+            refresh_token_model=token_model,
+            audit_model=audit,
+            event=event or DEFAULT_USER_MFA_RESET_EVENT,
+        )
+    )
+    if outcome is None:
+        typer.echo(f"error: no user found with email {email!r}.", err=True)
+        raise typer.Exit(1)
+    user_id, revoked = outcome
+    typer.echo(f"MFA reset for {email.lower()} (id={user_id})")
+    if token_model is not None:
+        typer.echo(f"Revoked {revoked} active refresh token(s).")
+    elif keep_sessions:
+        typer.echo(
+            "note: --keep-sessions given, so every refresh token the user "
+            "holds is still exchangeable.",
+            err=True,
+        )
+    else:
+        typer.echo(
+            f"note: no refresh-token model at {_DEFAULT_REFRESH_TOKEN_MODEL!r}, "
+            "so no session was revoked. Pass --refresh-token-model if yours "
+            "lives elsewhere.",
+            err=True,
+        )
+    if audit is None:
+        typer.echo(
+            "note: no --audit-model given, so no audit event was recorded.",
+            err=True,
+        )
 
 
 def _resolve_refresh_token_model(

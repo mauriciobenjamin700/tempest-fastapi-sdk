@@ -4027,6 +4027,7 @@ tempest user promote --email ana@example.com          # grant /admin access (is_
 tempest user revoke  --email ana@example.com          # revoke it (is_admin=False)
 tempest user set-password --email ana@example.com     # prompt, hash, revoke sessions
 tempest user set-password --email ana@example.com --keep-sessions
+tempest user mfa-reset --email staff@example.com      # lost phone + codes: drop MFA, revoke sessions
 tempest user list                                     # everyone
 tempest user list --admin                             # admins only
 tempest user show --email ana@example.com             # the whole row (hash redacted)
@@ -4042,6 +4043,8 @@ tempest user delete --email ana@example.com --yes     # irreversible, removes th
 When `tempest user create` runs in an interactive terminal **without** `--admin`/`--no-admin`, it asks `Should this user be an administrator? [y/N]`. Non-interactive runs (CI, pipes) skip the prompt and create a regular user. `promote` / `revoke` look the user up by email (case-insensitive) and exit `1` with `no user found` when nothing matches.
 
 `tempest user set-password` replaces an existing user's password, hashing with the model's own `set_password`. Because changing the hash does not end a session on its own, it also revokes the user's DB-backed refresh tokens **in the same transaction** — resolving `src.db.models:UserRefreshTokenModel` by default, `--refresh-token-model` for a table elsewhere, `--keep-sessions` to opt out. Every path reports which of the two happened. From code, the same revocation is `await service.revoke_user_sessions(session, user_id=user.id)`.
+
+`tempest user mfa-reset` is the way back for an account that lost both the authenticator and the recovery codes, which `set-password` cannot help since it asks for the factor. It runs `UserAuthService.mfa_reset` (clears the TOTP columns and deletes the recovery codes, without proof), revokes the sessions by default (`--keep-sessions` to opt out), requires confirmation (`--yes` outside a TTY), and with `--audit-model` records `user.mfa_reset` (or `--event`) in the same transaction. An account without MFA active exits `2`.
 
 Both `create` and `set-password` validate the plaintext with `check_password_policy` against the project's `AUTH_PASSWORD_*` settings (or the `PasswordPolicy` defaults: 12 characters minimum, 72 **bytes** maximum — the unit bcrypt counts), so the CLI accepts exactly the passwords `signup` and the admin panel accept.
 
