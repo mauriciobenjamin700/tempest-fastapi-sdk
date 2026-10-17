@@ -12,17 +12,24 @@ either way, which is exactly why the defect survived.
 
 from __future__ import annotations
 
+from enum import Enum, StrEnum
+
 import pytest
-from sqlalchemy import Boolean
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import Boolean, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
     BaseUserModel,
     UserAuthService,
     make_flag_guard,
+    make_value_guard,
+    register_exception_handlers,
     require_active,
     require_admin,
     require_authenticated,
+    requires,
 )
 from tempest_fastapi_sdk.exceptions import (
     ForbiddenException,
@@ -219,3 +226,170 @@ class TestMakeFlagGuard:
         assert guard(admin) is admin
         with pytest.raises(ForbiddenException):
             guard(_user(is_admin=False))
+
+
+class _Role(StrEnum):
+    """A project's roles, the column shape the flag guard cannot cover."""
+
+    MEMBER: str = "member"
+    STAFF: str = "staff"
+
+
+class _UserIsNotStaffError(ForbiddenException):
+    """A project's own staff refusal, carrying its ``code`` and pt-BR message."""
+
+    message: str = "Apenas a equipe pode acessar este recurso"
+    code: str = "USER_IS_NOT_STAFF"
+
+
+class _RoleUser(BaseUserModel):
+    __tablename__ = "guard_role_users"
+
+    role: Mapped[str | None] = mapped_column(String, default="member")
+
+
+def _role_user(role: str | None) -> _RoleUser:
+    """Build a transient user whose role column holds ``role``.
+
+    Args:
+        role (str | None): The stored value, raw string or enum member.
+
+    Returns:
+        _RoleUser: The user.
+    """
+    user = _RoleUser(email="r@a.com", hashed_password="x")
+    user.role = role
+    return user
+
+
+class TestMakeValueGuard:
+    """The columns that are not booleans — a role stored as a value."""
+
+    def test_allowed_raw_value_returns_the_user_narrowed(self) -> None:
+        """A plain ``"staff"`` passes a guard declared with the member.
+
+        The stored value and the allowed member are distinct objects that
+        only compare equal — identity would refuse here.
+        """
+        require_staff = make_value_guard(
+            "role", {_Role.STAFF}, exception=_UserIsNotStaffError
+        )
+        user = _role_user("staff")
+        assert require_staff(user) is user
+
+    def test_allowed_enum_member_passes_too(self) -> None:
+        require_staff = make_value_guard(
+            "role", {_Role.STAFF}, exception=_UserIsNotStaffError
+        )
+        user = _role_user(_Role.STAFF)
+        assert require_staff(user) is user
+
+    def test_plain_enum_compares_by_value(self) -> None:
+        """A non-``str`` ``Enum`` member still matches the raw stored value."""
+
+        class _Tier(Enum):
+            FREE = "free"
+            PRO = "pro"
+
+        require_pro = make_value_guard(
+            "role", {_Tier.PRO}, exception=_UserIsNotStaffError
+        )
+        user = _role_user("pro")
+        assert require_pro(user) is user
+        with pytest.raises(ForbiddenException):
+            require_pro(_role_user("free"))
+
+    def test_disallowed_value_raises_the_project_refusal(self) -> None:
+        """Status, code and pt-BR message all come from the given class."""
+        require_staff = make_value_guard(
+            "role", {_Role.STAFF}, exception=_UserIsNotStaffError
+        )
+        with pytest.raises(ForbiddenException) as caught:
+            require_staff(_role_user(_Role.MEMBER))
+        assert caught.value.code == "USER_IS_NOT_STAFF"
+        assert caught.value.status_code == 403
+        assert "equipe" in caught.value.message
+
+    def test_null_column_is_refused(self) -> None:
+        require_staff = make_value_guard(
+            "role", {_Role.STAFF}, exception=_UserIsNotStaffError
+        )
+        with pytest.raises(ForbiddenException) as caught:
+            require_staff(_role_user(None))
+        assert caught.value.code == "USER_IS_NOT_STAFF"
+
+    def test_value_outside_the_enum_is_refused(self) -> None:
+        """A value that is not even one of the enum's is still a 403."""
+        require_staff = make_value_guard(
+            "role", {_Role.STAFF}, exception=_UserIsNotStaffError
+        )
+        with pytest.raises(ForbiddenException) as caught:
+            require_staff(_role_user("guest"))
+        assert caught.value.code == "USER_IS_NOT_STAFF"
+
+    def test_a_model_without_the_column_is_refused_not_crashed(self) -> None:
+        """A missing column means "this user does not have the value"."""
+        require_staff = make_value_guard(
+            "role", {_Role.STAFF}, exception=_UserIsNotStaffError
+        )
+        with pytest.raises(ForbiddenException):
+            require_staff(_user())
+
+    def test_none_delegates_to_require_authenticated(self) -> None:
+        require_staff = make_value_guard(
+            "role",
+            {_Role.STAFF},
+            exception=_UserIsNotStaffError,
+            unauthenticated=_NotSignedInError,
+        )
+        with pytest.raises(UnauthorizedException) as caught:
+            require_staff(None)
+        assert caught.value.code == "NOT_SIGNED_IN"
+
+
+class TestValueGuardOnARealRoute:
+    """The refusal must reach the wire with the project's code, not ``FORBIDDEN``."""
+
+    def test_route_denies_with_the_project_code_and_allows(self) -> None:
+        require_staff = make_value_guard(
+            "role", {_Role.STAFF}, exception=_UserIsNotStaffError
+        )
+        app = FastAPI()
+        register_exception_handlers(app)
+        state: dict[str, _RoleUser] = {"user": _role_user(_Role.MEMBER)}
+
+        def get_current_user() -> _RoleUser:
+            """Return the user the test installed.
+
+            Returns:
+                _RoleUser: The current user.
+            """
+            return state["user"]
+
+        @app.get("/staff-only")
+        @requires(require_staff)
+        async def staff_only(
+            user: _RoleUser = Depends(get_current_user),
+        ) -> dict[str, str]:
+            """Answer only for staff.
+
+            Args:
+                user (_RoleUser): The authenticated user.
+
+            Returns:
+                dict[str, str]: The caller's email.
+            """
+            return {"email": user.email}
+
+        client = TestClient(app)
+
+        denied = client.get("/staff-only")
+        assert denied.status_code == 403
+        body = denied.json()
+        assert body["code"] == "USER_IS_NOT_STAFF"
+        assert "equipe" in body["detail"]
+
+        state["user"] = _role_user(_Role.STAFF)
+        allowed = client.get("/staff-only")
+        assert allowed.status_code == 200
+        assert allowed.json() == {"email": "r@a.com"}

@@ -1045,6 +1045,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.auth.guards.require_active
 ::: tempest_fastapi_sdk.auth.guards.require_admin
 ::: tempest_fastapi_sdk.auth.guards.make_flag_guard
+::: tempest_fastapi_sdk.auth.guards.make_value_guard
 ::: tempest_fastapi_sdk.auth.guards.FlagGuard
 ::: tempest_fastapi_sdk.auth.schemas.SignupSchema
 ::: tempest_fastapi_sdk.auth.schemas.SignupResponseSchema
