@@ -30,6 +30,21 @@ class MFAAlreadyEnrolledException(ConflictException):
     code: str = "MFA_ALREADY_ENROLLED"
 
 
+class MFANotEnrolledException(ValidationException):
+    """Raised when a flow that proves the second factor meets an account without one.
+
+    :meth:`~tempest_fastapi_sdk.UserAuthService.change_password_with_mfa`
+    rotates the password on the strength of a TOTP or recovery code; an
+    account with no active factor has nothing to prove, so it is refused
+    rather than silently downgraded to a password change with no proof.
+    The ``AUTH_MFA_ENABLED`` kill-switch counts: with it off, every account
+    reads as not enrolled, exactly as at login.
+    """
+
+    message: str = "MFA is not active for this account"
+    code: str = "MFA_NOT_ENROLLED"
+
+
 class AccountInactiveException(ForbiddenException):
     """Raised when the right password opens a deactivated account.
 
@@ -128,6 +143,7 @@ __all__: list[str] = [
     "AuthExceptions",
     "LoginThrottledException",
     "MFAAlreadyEnrolledException",
+    "MFANotEnrolledException",
     "MfaThrottledException",
     "SignupThrottledException",
 ]

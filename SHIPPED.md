@@ -3458,3 +3458,16 @@ com `version = "7.7.7"`, `app.openapi()["info"]["version"]` e
 `GET /health/readiness` devolvem `7.7.7`; `VERSION=9.9.9` no ambiente
 sobrepõe. Testes: `tests/settings/test_version.py` e
 `tests/cli/test_scaffold_project_version.py`.
+
+## Troca de senha provando o fator (#564)
+
+`UserAuthService.change_password_with_mfa` é o caminho público para a conta
+com MFA que esqueceu a senha e não pode usar o link de e-mail — o
+`homework_api` (7rc/homework_api#33) reimplementava isso sobre
+`_verify_mfa_code` e `_enforce_password_policy`, privados que quebram em
+silêncio a cada refactor. Ordem: MFA ativo (`MFANotEnrolledException`,
+`MFA_NOT_ENROLLED`) → política → código (mesma rotina do `mfa_verify`,
+mesma chave de throttle `mfa:{user_id}`) → hash → revogação (default).
+Não é login: sem par de token, sem `last_login_at`. Teste:
+`tests/auth/test_change_password_mfa.py`.
+

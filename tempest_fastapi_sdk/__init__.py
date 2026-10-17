@@ -583,6 +583,9 @@ from tempest_fastapi_sdk.auth import (
     MFAEnrollResponseSchema as MFAEnrollResponseSchema,
 )
 from tempest_fastapi_sdk.auth import (
+    MFANotEnrolledException as MFANotEnrolledException,
+)
+from tempest_fastapi_sdk.auth import (
     MfaThrottledException as MfaThrottledException,
 )
 from tempest_fastapi_sdk.auth import (
@@ -2446,6 +2449,7 @@ __all__: list[str] = [
     "MFADisableSchema",
     "MFAEnrollResponseSchema",
     "MFAMixin",
+    "MFANotEnrolledException",
     "MFARequiredException",
     "MFAVerifySchema",
     "MemoryBanStore",

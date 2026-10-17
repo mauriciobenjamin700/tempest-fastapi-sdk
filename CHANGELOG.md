@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `UserAuthService.change_password_with_mfa(session, *, user, code,
+  new_password, recovery_code_model=None, revoke_sessions=True,
+  throttle=None)` (#564): troca a senha de conta com MFA ativo provando o
+  fator (TOTP ou recovery code), sem senha atual e sem link de e-mail.
+  Recusa conta sem MFA ativo — inclusive com `AUTH_MFA_ENABLED` desligado —
+  com a nova `MFANotEnrolledException` (`422`, `code="MFA_NOT_ENROLLED"`,
+  subclasse de `ValidationException`, exportada no topo e em
+  `tempest_fastapi_sdk.auth`); confere a política de senha **antes** do
+  código, então senha fraca não queima recovery code; confere o código pela
+  rotina do `mfa_verify` (TOTP de uso único, recovery code ganha `used_at`)
+  e responde `UnauthorizedException("invalid MFA code")` no erro. `throttle=`
+  usa a chave `mfa:{user_id}`, a mesma do `mfa_verify`: erro aqui gasta o
+  orçamento do segundo passo do login. Revoga as sessões por padrão; não
+  emite token nem toca `last_login_at`. Sem `recovery_code_model`, só TOTP.
+  Testes: `tests/auth/test_change_password_mfa.py`.
+
 ## [0.315.0] — 2026-10-16
 
 ### Added
