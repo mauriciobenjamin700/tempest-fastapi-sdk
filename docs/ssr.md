@@ -674,7 +674,8 @@ meio de uma rota client-side funciona).
 !!! tip "Transparente, sem mágica"
     - `index.html` e `sw.js` saem sempre com `Cache-Control: no-cache`
       (um redeploy é visto na hora); os demais assets usam
-      `asset_cache_control` (padrão `public, max-age=3600`).
+      `asset_cache_control` (padrão `public, max-age=3600`), salvo os
+      caminhos imutáveis (abaixo).
     - MIME correto pros arquivos que o `mimetypes` não conhece
       (`.wasm` → `application/wasm`, `.mjs`/`.js` → `text/javascript`,
       `.webmanifest`).
@@ -683,6 +684,74 @@ meio de uma rota client-side funciona).
     - **Nenhum CSP é imposto** — é código first-party e o Pyodide precisa
       de `wasm-unsafe-eval`; passe `security_headers=` pra adicionar o seu.
     - Traversal de caminho (`../`) é bloqueado.
+
+#### Revalidação e caminhos imutáveis
+
+Toda resposta de arquivo sai com `ETag` e `Last-Modified`, e o router
+responde à revalidação: um `GET` (ou `HEAD`) com `If-None-Match` que casa
+— comparação fraca, lista separada por vírgula ou `*` — ou, sem ele, com
+`If-Modified-Since` não anterior ao `Last-Modified` recebe
+**`304 Not Modified`** sem corpo, com o mesmo `ETag` e `Cache-Control`.
+Vale para os assets, para o `index.html` e para o fallback do SPA. Por
+isso `asset_cache_control="no-cache"` significa "pergunte antes de usar",
+e não "baixe tudo de novo": a cada visita o navegador manda uma requisição
+condicional por arquivo e recebe um `304` vazio enquanto nada mudou.
+
+Para ir além e nem perguntar, declare os caminhos **endereçados por
+conteúdo** — aqueles cujo nome muda sempre que os bytes mudam — e eles
+saem com `Cache-Control: public, max-age=31536000, immutable`:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.ssr import make_web_app_router
+
+app = FastAPI()
+app.include_router(
+    make_web_app_router(
+        "dist/wasm",
+        asset_cache_control="no-cache",
+        immutable=["client-*/**", "tempestweb-pkg.*.zip"],
+    ),
+)
+```
+
+Os padrões são relativos à raiz do build: `**` atravessa diretórios, `*` e
+`?` ficam dentro de um segmento. Todo o resto continua com
+`asset_cache_control`.
+
+O build também pode declarar os próprios caminhos imutáveis num arquivo
+`immutable.json` na raiz (`immutable_manifest=` troca o nome; `None`
+desliga a leitura). O formato é um objeto com uma lista de padrões, no
+mesmo dialeto acima; outras chaves são ignoradas:
+
+```json
+{"immutable": ["client-3f2a9c/**", "tempestweb-pkg.3f2a9c.zip"]}
+```
+
+Os padrões do arquivo se somam aos de `immutable=`. O arquivo é lido uma
+vez, quando o router é montado; manifesto malformado derruba o boot com
+`ValueError` em vez de cachear nada em silêncio.
+
+!!! warning "Ponto de entrada nunca é imutável"
+    `index.html`, `sw.js`, `bootstrap.js`, `register.js`,
+    `manifest.webmanifest` e o próprio manifesto são referenciados por nome
+    fixo — o nome não muda quando o conteúdo muda — então nunca recebem
+    `immutable`, nem com `immutable=["**"]`. O shell (gerado ou `shell=`)
+    sai sempre `no-cache`.
+
+!!! info "Compressão fica no proxy"
+    O router não comprime. Os assets de texto de um build wasm encolhem
+    bem com gzip (no scaffold do tempestweb 0.127.0, 646 KB viram 222 KB),
+    mas o `tempestweb-pkg.zip` já é comprimido (467 KB viram 454 KB). O
+    lugar certo é o nginx na frente (`gzip on;` com `gzip_types` incluindo
+    `text/javascript` e `application/wasm`): ele comprime fora do processo
+    Python e enfraquece o `ETag` da resposta comprimida (`W/"..."`, medido
+    no nginx 1.27), como a RFC 9110 pede para validador forte — e o `304`
+    continua valendo, porque a comparação do router é fraca. O `GZipMiddleware` do Starlette também
+    funciona com este router — o `304` continua valendo —, mas comprime
+    toda resposta da aplicação e mantém o mesmo `ETag` forte nas duas
+    codificações.
 
 ### App server-mode (`build_web_app`)
 

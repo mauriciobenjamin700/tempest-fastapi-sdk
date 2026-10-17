@@ -93,6 +93,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   por valor — membro de enum dos dois lados vira `.value` —, e coluna `NULL`,
   valor fora do conjunto e model sem a coluna recebem o 403 do projeto. Testes
   em `tests/auth/test_guards.py`, incluindo uma rota real.
+- `make_web_app_router(..., immutable=[...], immutable_manifest="immutable.json")`:
+  caminhos endereçados por conteúdo saem com
+  `Cache-Control: public, max-age=31536000, immutable`; o resto continua com
+  `asset_cache_control`. `immutable` são globs relativos à raiz do build
+  (`**` atravessa diretórios, `*` / `?` ficam num segmento); o manifesto é um
+  JSON opcional na raiz do build, `{"immutable": [<globs>]}`, lido uma vez na
+  montagem do router, somado a `immutable=`, e malformado derruba o boot com
+  `ValueError`. `index.html`, `sw.js`, `bootstrap.js`, `register.js`,
+  `manifest.webmanifest` e o próprio manifesto nunca ficam imutáveis, nem com
+  `immutable=["**"]`.
+- O router estático responde `HEAD` (antes: `405`), fora do schema OpenAPI.
+
+### Fixed
+
+- `make_web_app_router` e o shell do `build_web_app` respondem à revalidação.
+  O `ETag` e o `Last-Modified` já saíam em toda resposta, mas um `GET` com
+  `If-None-Match` igual recebia `200` com o corpo inteiro — então
+  `asset_cache_control="no-cache"` virava "baixar tudo a cada visita"
+  (~1,19 MB / ~85 arquivos por carga num celular, medido no
+  tempest-webtunnel). Agora `If-None-Match` (comparação fraca, lista, `*`) ou,
+  sem ele, `If-Modified-Since` não anterior ao `Last-Modified` dá
+  `304 Not Modified` vazio, com `ETag`, `Cache-Control` e os
+  `security_headers`; vale para assets, `index.html` e o fallback do SPA.
+  Medido atrás de um nginx 1.27 com `gzip on`: o `ETag` chega fraco
+  (`W/"..."`) e o `304` continua.
+- `shell=Path(...)` com nome diferente de `index.html` saía com
+  `asset_cache_control` em vez de `no-cache`; o shell sobrescrito sai sempre
+  `no-cache`. E `GET /index.html` serve o `shell=` quando há um, em vez do
+  documento gerado.
 
 ## [0.315.0] — 2026-10-16
 
