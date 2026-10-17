@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.316.0] — 2026-10-17
+
 ### Added
 
 - `UserAuthService.change_password_with_mfa(session, *, user, code,
