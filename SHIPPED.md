@@ -185,7 +185,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   predates Alembic and one already migrated apart, reporting which path
   it took via `SchemaSyncOutcome`; `adopt()` stamps the **base** (never
   `head`), `base_revision()` and `has_existing_schema()` are the two
-  questions behind it. Exists because `create_tables()` + `stamp("head")`
+  questions behind it. On an empty database the whole tree runs without the
+  destructive guard (no data to lose), so a past `drop_column` never blocks
+  a first boot; the other two states keep it. Exists because `create_tables()` + `stamp("head")`
   is a plausible bootstrap that leaves an old schema with Alembic
   declaring itself up to date — recipe `docs/recipes/migrations.md`.
   **Async callers (#323):** every `AlembicHelper` method that runs

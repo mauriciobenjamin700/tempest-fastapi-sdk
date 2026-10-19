@@ -144,7 +144,7 @@ funcionando** — não precisa regenerar.
 
 | Estado inicial | O que roda | Retorno |
 | --- | --- | --- |
-| Banco vazio | `safe_upgrade()` — a revision base cria as tabelas | `SchemaSyncOutcome.SYNCED` |
+| Banco vazio | `upgrade()` — a revision base cria as tabelas, sem o guard destrutivo | `SchemaSyncOutcome.SYNCED` |
 | Banco que **precede** o Alembic | carimba a **base**, depois `safe_upgrade()` | `SchemaSyncOutcome.ADOPTED` |
 | Banco já sob o Alembic | `safe_upgrade()` | `SchemaSyncOutcome.SYNCED` |
 | Projeto ainda sem nenhuma revision | nada | `SchemaSyncOutcome.NO_MIGRATIONS` |
@@ -152,6 +152,14 @@ funcionando** — não precisa regenerar.
 O banco vazio é o caso fácil, e é o que faz o resto funcionar: o schema que a
 revision base constrói é, por construção, **o mesmo** que as revisions
 seguintes assumem estar alterando — porque veio delas.
+
+!!! note "Banco vazio passa pelo `drop_column` do histórico"
+    Num banco sem stamp e sem tabela da aplicação, **toda** revision está
+    pendente. O guard do `safe_upgrade` olha o código delas, não o banco: um
+    projeto que algum dia apagou uma coluna seria recusado na primeira
+    subida, antes de criar uma tabela sequer. Por isso esse caminho roda
+    `upgrade()` direto — não há linha para apagar. Nos outros dois estados o
+    banco tem dado, e o guard vale como sempre.
 
 ## Por que `create_tables()` não serve
 
@@ -540,6 +548,9 @@ nenhuma tabela, mas possivelmente várias colunas — e coluna ele não olha.
 !!! check "Recap"
     - `sync_schema()` é o bootstrap inteiro: distingue banco vazio, banco que
       precede o Alembic e banco já migrado, e devolve qual caminho tomou.
+    - No banco vazio a árvore inteira roda sem o guard destrutivo (não há
+      dado a perder); com tabela da aplicação, `drop_*` pendente ainda
+      levanta `DestructiveMigrationError` sem `force=True`.
     - De código async (lifespan, endpoint), chame o par `_async`
       (`await helper.sync_schema_async()`); o método síncrono levanta com um
       loop rodando, nomeando o `_async` a usar.
