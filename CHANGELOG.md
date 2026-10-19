@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.316.1] — 2026-10-19
+
 ### Fixed
 
 - `AlembicHelper.sync_schema()` / `sync_schema_async()` não recusam mais a
