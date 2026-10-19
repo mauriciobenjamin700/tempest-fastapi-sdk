@@ -252,6 +252,37 @@ class TestSyncSchema:
         assert helper.sync_schema() is SchemaSyncOutcome.NO_MIGRATIONS
         assert helper.current() is None
 
+    def test_empty_database_runs_a_tree_that_drops_on_the_way(
+        self,
+        two_revisions: AlembicHelper,
+        db_path: Path,
+    ) -> None:
+        """A fresh database has no data, so a past ``drop_*`` is not refused.
+
+        Every revision is pending on an empty database, and a project whose
+        history ever dropped a column could not boot for the first time:
+        the source scan found the drop and ``sync_schema`` raised before
+        creating a single table.
+        """
+        add_revision(two_revisions, "drop body", "op.drop_column('messages', 'body')")
+
+        assert two_revisions.sync_schema() is SchemaSyncOutcome.SYNCED
+        assert columns(db_path, "messages") == {"id", "edited_at"}
+        assert two_revisions.current() == two_revisions.heads()[0]
+
+    def test_pre_alembic_schema_with_a_pending_drop_is_still_refused(
+        self,
+        two_revisions: AlembicHelper,
+        db_path: Path,
+    ) -> None:
+        """A database with application tables keeps the guard on its data."""
+        add_revision(two_revisions, "drop body", "op.drop_column('messages', 'body')")
+        write_legacy_schema(db_path)
+
+        with pytest.raises(DestructiveMigrationError):
+            two_revisions.sync_schema()
+        assert "body" in columns(db_path, "messages")
+
     def test_destructive_migration_is_still_refused(
         self,
         two_revisions: AlembicHelper,
