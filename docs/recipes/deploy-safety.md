@@ -11,6 +11,9 @@ pendente for destrutiva. Ele varre o `def upgrade()` de cada revision
 pendente atrás de chamadas que apagam dados — `op.drop_table`,
 `op.drop_column`, `op.drop_constraint` (e variantes `batch_op`) — e, se
 achar alguma, levanta `DestructiveMigrationError` **sem tocar no banco**.
+O `sync_schema()` usa o mesmo guard, exceto num banco vazio (sem stamp e sem
+tabela da aplicação), onde não há dado a perder e a árvore inteira roda — ver
+[Migrações](migrations.md#os-tres-estados-que-ele-distingue).
 
 ```python
 from tempest_fastapi_sdk import AlembicHelper, DestructiveMigrationError

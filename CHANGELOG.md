@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `AlembicHelper.sync_schema()` / `sync_schema_async()` não recusam mais a
+  primeira subida de projeto cujo histórico apaga coluna, tabela ou
+  constraint. Num banco vazio (sem stamp em `alembic_version` e sem tabela da
+  aplicação) toda revision está pendente, e a varredura de código do
+  `safe_upgrade` levantava `DestructiveMigrationError` antes de criar uma
+  tabela sequer — então um lifespan que migra ao subir nunca levantava uma
+  instalação nova. Esse caminho agora roda `upgrade()` direto, porque não há
+  linha a perder; banco que precede o Alembic ou já migrado continua com o
+  guard (`force=True` ainda obrigatório). Medido em PostgreSQL 16 com a árvore
+  de um serviço de 12 revisions, duas delas com `drop_column` no `upgrade()`.
+
 ## [0.316.0] — 2026-10-17
 
 ### Added

@@ -146,7 +146,7 @@ to regenerate it.
 
 | Starting state | What runs | Return |
 | --- | --- | --- |
-| Empty database | `safe_upgrade()` — the base revision creates the tables | `SchemaSyncOutcome.SYNCED` |
+| Empty database | `upgrade()` — the base revision creates the tables, without the destructive guard | `SchemaSyncOutcome.SYNCED` |
 | Database that **predates** Alembic | stamps the **base**, then `safe_upgrade()` | `SchemaSyncOutcome.ADOPTED` |
 | Database already under Alembic | `safe_upgrade()` | `SchemaSyncOutcome.SYNCED` |
 | Project with no revisions yet | nothing | `SchemaSyncOutcome.NO_MIGRATIONS` |
@@ -154,6 +154,14 @@ to regenerate it.
 The empty database is the easy case, and it is what makes the rest work: the
 schema the base revision builds is, by construction, **the same one** later
 revisions assume they are altering — because it came from them.
+
+!!! note "An empty database goes through the history's `drop_column`"
+    On a database with no stamp and no application table, **every** revision
+    is pending. The `safe_upgrade` guard reads their source, not the
+    database: a project that ever dropped a column would be refused on its
+    first boot, before a single table exists. That is why this path runs
+    `upgrade()` directly — there is no row to delete. In the other two states
+    the database holds data, and the guard applies as always.
 
 ## Why `create_tables()` is not the answer
 
@@ -546,6 +554,9 @@ columns — and columns it does not look at.
     - `sync_schema()` is the whole bootstrap: it tells an empty database, a
       pre-Alembic one and an already-migrated one apart, and reports which path
       it took.
+    - On an empty database the whole tree runs without the destructive guard
+      (there is no data to lose); with an application table, a pending
+      `drop_*` still raises `DestructiveMigrationError` without `force=True`.
     - From async code (lifespan, endpoint), call the `_async` twin
       (`await helper.sync_schema_async()`); the sync method raises with a loop
       running, naming the `_async` one to use.

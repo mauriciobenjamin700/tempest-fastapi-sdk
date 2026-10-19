@@ -11,6 +11,9 @@ migration is destructive. It scans each pending revision's `def upgrade()`
 for data-deleting calls — `op.drop_table`, `op.drop_column`,
 `op.drop_constraint` (and `batch_op` variants) — and, if it finds one,
 raises `DestructiveMigrationError` **without touching the database**.
+`sync_schema()` uses the same guard, except on an empty database (no stamp and
+no application table), where there is no data to lose and the whole tree runs —
+see [Migrations](migrations.en.md#the-three-states-it-tells-apart).
 
 ```python
 from tempest_fastapi_sdk import AlembicHelper, DestructiveMigrationError

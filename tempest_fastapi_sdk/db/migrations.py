@@ -1069,9 +1069,13 @@ class AlembicHelper:
 
         The three states this distinguishes:
 
-        * **Empty database** — no stamp; ``safe_upgrade`` runs the whole
-          tree, and the schema the baseline builds is by construction the
-          one later revisions expect to alter.
+        * **Empty database** — no stamp and no application table;
+          ``upgrade`` runs the whole tree, and the schema the baseline
+          builds is by construction the one later revisions expect to
+          alter. The destructive guard is skipped here: every revision is
+          pending, so a ``drop_column`` anywhere in the project's history
+          would otherwise refuse the very first boot, and there is no row
+          for it to destroy.
         * **Database that predates Alembic** — :meth:`adopt` stamps the
           base, then ``safe_upgrade`` runs everything after it.
         * **Database already under Alembic** — ``safe_upgrade`` alone.
@@ -1081,14 +1085,16 @@ class AlembicHelper:
 
         Args:
             force (bool): Passed to :meth:`safe_upgrade`. Destructive
-                migrations are refused without it.
+                migrations are refused without it, except on an empty
+                database.
 
         Returns:
             SchemaSyncOutcome: Which of the three paths ran.
 
         Raises:
             DestructiveMigrationError: When a pending migration drops a
-                table, column or constraint and ``force`` is ``False``.
+                table, column or constraint, the database already holds
+                application tables and ``force`` is ``False``.
             AmbiguousBaseRevisionError: When adoption is needed but the
                 tree has no single root to stamp.
             RuntimeError: When ``sqlalchemy.url`` is not configured, or when
@@ -1098,6 +1104,9 @@ class AlembicHelper:
         _refuse_running_loop("sync_schema")
         if not self.heads():
             return SchemaSyncOutcome.NO_MIGRATIONS
+        if self.current() is None and not self.has_existing_schema():
+            self.upgrade()
+            return SchemaSyncOutcome.SYNCED
         adopted = self.adopt()
         self.safe_upgrade(force=force)
         return SchemaSyncOutcome.ADOPTED if adopted else SchemaSyncOutcome.SYNCED
@@ -1116,7 +1125,8 @@ class AlembicHelper:
 
         Raises:
             DestructiveMigrationError: When a pending migration drops a
-                table, column or constraint and ``force`` is ``False``.
+                table, column or constraint, the database already holds
+                application tables and ``force`` is ``False``.
             AmbiguousBaseRevisionError: When adoption is needed but the
                 tree has no single root to stamp.
             RuntimeError: When ``sqlalchemy.url`` is not configured.
