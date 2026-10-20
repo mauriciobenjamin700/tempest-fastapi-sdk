@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.318.0] — 2026-10-20
+
 ### Added
 
 - `configure_logging(rotate_when=..., rotate_interval=1)`: rotação por tempo.

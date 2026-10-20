@@ -2,6 +2,37 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.318.0 — log readers, empty `log_dir`, header IP and the `/admin` login
+
+Four behavior changes, no signature changes.
+
+1. **Log readers read the backups.** `GET /logs`, `/admin/logs` and
+   `read_log_entries` now also read rotated files (`info.log.1`,
+   `info.log.2026-10-20`), and `total` counts the backups. `DELETE /logs`
+   still only truncates the live file; to delete the backups, use
+   `DELETE /logs?delete_backups=true` (or
+   `clear_log_files(..., delete_backups=True)`).
+2. **An empty `log_dir` is an error.** `make_logs_router(log_dir="")`,
+   `clear_log_files("")` and `resolve_log_files("")` raise `ValueError`;
+   before, `Path("")` resolved to the working directory.
+   `read_log_entries("")` returns nothing. When file logging is off, do not
+   mount the logs router with `settings.LOG_DIR`.
+3. **The trusted IP header must hold an IP.** `get_client_ip` and
+   `get_client_ip_from_scope` validate the value with `ipaddress`; anything
+   else falls back to the connection's address. This affects rate limits,
+   login throttles and auditing. The edge proxy must **overwrite** the
+   header, not append to it.
+4. **`/admin/login` has an attempt budget.** 5 failures per identifier every
+   900 s by default, in memory; the per-IP budget (20 / 900 s) only turns on
+   with `trusted_ip_header`. With more than one process, pass
+   `login_throttle=` / `login_ip_throttle=` over Redis; `False` turns it off.
+
+### What to do
+
+- Dashboards or scripts counting `/logs` lines should expect larger numbers.
+- Mount the logs router conditionally when `LOG_DIR` can be empty.
+- Check that the proxy writes the real IP into the configured header.
+
 ## 0.316.0 — `set-password` asks for the factor on an MFA account
 
 `tempest user set-password` on an account with MFA active (and

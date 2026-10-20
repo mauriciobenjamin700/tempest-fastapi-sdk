@@ -2,6 +2,38 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.318.0 — leitores de log, `log_dir` vazio, IP do header e login do `/admin`
+
+Quatro mudanças de comportamento sem troca de assinatura.
+
+1. **Leitores de log leem os backups.** `GET /logs`, `/admin/logs` e
+   `read_log_entries` passam a ler também os arquivos rotacionados
+   (`info.log.1`, `info.log.2026-10-20`), e o `total` soma os backups. O
+   `DELETE /logs` continua só truncando o arquivo corrente; para apagar os
+   backups, `DELETE /logs?delete_backups=true` (ou
+   `clear_log_files(..., delete_backups=True)`).
+2. **`log_dir` vazio é erro.** `make_logs_router(log_dir="")`,
+   `clear_log_files("")` e `resolve_log_files("")` levantam `ValueError`; antes
+   `Path("")` resolvia para o diretório corrente. `read_log_entries("")`
+   devolve vazio. Quem passa `settings.LOG_DIR` com o log em arquivo desligado
+   não monta o router de logs.
+3. **O header de IP confiável precisa ser um IP.** `get_client_ip` e
+   `get_client_ip_from_scope` validam o valor com `ipaddress`; o que não é IP
+   cai no endereço da conexão. Afeta rate limit, throttles de login e
+   auditoria. O proxy de borda precisa **sobrescrever** o header, não
+   acrescentar a ele.
+4. **`/admin/login` tem limite de tentativas.** 5 falhas por identificador a
+   cada 900 s, por padrão, em memória; o limite por IP (20 / 900 s) só liga com
+   `trusted_ip_header`. Com mais de um processo, passe `login_throttle=` /
+   `login_ip_throttle=` sobre o Redis; `False` desliga.
+
+### O que fazer
+
+- Painel ou script que conta linhas de `/logs` espera números maiores.
+- Troque `make_logs_router(log_dir=settings.LOG_DIR)` por uma montagem
+  condicional quando `LOG_DIR` pode ser vazio.
+- Confira que o proxy grava o IP real no header configurado.
+
 ## 0.316.0 — `set-password` pede o fator em conta com MFA
 
 `tempest user set-password` numa conta com MFA ativo (e `AUTH_MFA_ENABLED=True`)
