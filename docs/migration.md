@@ -2,6 +2,21 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.319.0 — contagem do `bulk_create_values` e do `bulk_upsert`
+
+`bulk_create_values` e `bulk_upsert` (modo `"update"`) devolvem `0` quando o
+banco informa `0`; até a 0.318.x um `rowcount` zero virava `len(rows)`.
+`bulk_upsert(update_columns=[])` levanta `ValueError` apontando para
+`on_conflict="nothing"`.
+
+### O que fazer
+
+- Código que tratava o retorno como "sempre o tamanho do lote" passa a
+  receber o número real.
+- Para inserir ignorando o que já existe, use
+  `bulk_upsert(..., on_conflict="nothing")` (ou `returning_ids=True` para
+  saber quais linhas foram criadas).
+
 ## 0.318.0 — leitores de log, `log_dir` vazio, IP do header e login do `/admin`
 
 Quatro mudanças de comportamento sem troca de assinatura.

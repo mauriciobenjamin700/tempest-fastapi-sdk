@@ -2,6 +2,21 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.319.0 — counts from `bulk_create_values` and `bulk_upsert`
+
+`bulk_create_values` and `bulk_upsert` (`"update"` mode) return `0` when the
+database reports `0`; up to 0.318.x a zero `rowcount` became `len(rows)`.
+`bulk_upsert(update_columns=[])` raises `ValueError` pointing to
+`on_conflict="nothing"`.
+
+### What to do
+
+- Code that treated the result as "always the batch size" now gets the real
+  number.
+- To insert while skipping what already exists, use
+  `bulk_upsert(..., on_conflict="nothing")` (or `returning_ids=True` to learn
+  which rows were created).
+
 ## 0.318.0 — log readers, empty `log_dir`, header IP and the `/admin` login
 
 Four behavior changes, no signature changes.
