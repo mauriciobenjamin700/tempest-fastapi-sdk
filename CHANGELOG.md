@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.318.0] — 2026-10-20
+
 ### Added
 
 - `configure_logging(rotate_when=..., rotate_interval=1)`: rotação por tempo.
@@ -105,6 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **`pillow` mínimo sobe para 13.0.0** (extras que trazem Pillow): a 12.3.0 tem oito CVEs divulgados em 2026-10-20 (CVE-2026-112395, -112397, -112400, -112404, -112895, -112896, -112897, -112899). O lock também passa a `certifi` 2026.10.19 (GHSA-6q48-6c7w-9gw2).
 - `make_admin_router` ganha orçamento de falhas no `POST /admin/login`:
   `login_throttle` (por identificador, chave `login_throttle_key`,
   5 tentativas / 900 s, ligado por padrão) e `login_ip_throttle` (por IP,
