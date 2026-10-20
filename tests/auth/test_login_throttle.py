@@ -308,6 +308,32 @@ class TestLoginIpThrottle:
         assert refused.status_code == 429
 
 
+class TestIpHeaderMustBeAnAddress:
+    """A garbage header value cannot mint a fresh IP budget per request."""
+
+    async def test_rotating_garbage_counts_against_the_peer(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        app = _app(
+            factory,
+            login_ip_throttle=_throttle(3),
+            trusted_ip_header="x-real-ip",
+        )
+        async with _client(app) as client:
+            codes = [
+                (
+                    await _login(
+                        client,
+                        WRONG,
+                        email=f"u{n}@x.com",
+                        headers={"x-real-ip": f"spoof-{n}"},
+                    )
+                ).status_code
+                for n in range(4)
+            ]
+        assert codes == [401, 401, 401, 429]
+
+
 class TestSignupThrottle:
     """The per-client signup budget, off by default."""
 

@@ -3,15 +3,22 @@
 from __future__ import annotations
 
 import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
     AdminAuthError,
+    AdminModel,
+    AdminSite,
+    AsyncDatabaseManager,
+    BaseModel,
     BaseUserModel,
     MFAMixin,
     UserModelAuthBackend,
+    make_admin_router,
 )
 from tempest_fastapi_sdk.utils.datetime import utcnow
 
@@ -183,3 +190,50 @@ class TestRequireMfa:
             await backend.authenticate(
                 session, identifier="s@example.com", password="pw"
             )
+
+
+class Gadget(BaseModel):
+    """A model to register on the admin site."""
+
+    __tablename__ = "admin_role_mfa_gadget"
+
+
+async def test_unenrolled_operator_sees_the_refusal_on_the_login_page() -> None:
+    """What the operator gets in the browser: the login page, ``401``.
+
+    The admin has no enrollment screen, so the message is the whole
+    signal; enrollment happens through ``/auth/mfa/*`` or the CLI.
+    """
+    db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.connect()
+    await db.create_tables()
+    try:
+        async with db.get_session_context() as session:
+            await _add(session, "a@example.com", is_admin=True)
+        site = AdminSite(title="MFA required")
+        site.register(AdminModel(model=Gadget, list_display=[Gadget.id]))
+        app = FastAPI()
+        app.include_router(
+            make_admin_router(
+                site,
+                db=db,
+                auth_backend=UserModelAuthBackend(RoleUser, require_mfa=True),
+                secret_key="x" * 48,
+                cookie_secure=False,
+                show_metrics=False,
+            )
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/admin/login",
+                data={"identifier": "a@example.com", "password": "pw"},
+                follow_redirects=False,
+            )
+        assert response.status_code == 401
+        assert "MFA enrollment required for /admin" in response.text
+        assert "set-cookie" not in response.headers
+    finally:
+        await db.drop_tables()
+        await db.disconnect()

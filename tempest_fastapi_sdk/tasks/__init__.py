@@ -83,10 +83,19 @@ from tempest_fastapi_sdk.tasks.heartbeat import (
     DEFAULT_HEARTBEAT_EVERY as DEFAULT_HEARTBEAT_EVERY,
 )
 from tempest_fastapi_sdk.tasks.heartbeat import (
+    HEARTBEAT_FILE_MODE as HEARTBEAT_FILE_MODE,
+)
+from tempest_fastapi_sdk.tasks.heartbeat import (
+    HEARTBEAT_FUTURE_TOLERANCE_SECONDS as HEARTBEAT_FUTURE_TOLERANCE_SECONDS,
+)
+from tempest_fastapi_sdk.tasks.heartbeat import (
     HEARTBEAT_SCHEDULE_ID as HEARTBEAT_SCHEDULE_ID,
 )
 from tempest_fastapi_sdk.tasks.heartbeat import (
     HEARTBEAT_TASK_NAME as HEARTBEAT_TASK_NAME,
+)
+from tempest_fastapi_sdk.tasks.heartbeat import (
+    HeartbeatLoop as HeartbeatLoop,
 )
 from tempest_fastapi_sdk.tasks.heartbeat import (
     HeartbeatWriter as HeartbeatWriter,
@@ -99,6 +108,9 @@ from tempest_fastapi_sdk.tasks.heartbeat import (
 )
 from tempest_fastapi_sdk.tasks.heartbeat import (
     read_heartbeat as read_heartbeat,
+)
+from tempest_fastapi_sdk.tasks.heartbeat import (
+    validate_max_age as validate_max_age,
 )
 from tempest_fastapi_sdk.tasks.heartbeat import (
     write_heartbeat as write_heartbeat,
@@ -204,6 +216,8 @@ __all__: list[str] = [
     "DEFAULT_POLL_SECONDS",
     "DEFAULT_RESULT_PREFIX",
     "DEFAULT_RESULT_TTL_SECONDS",
+    "HEARTBEAT_FILE_MODE",
+    "HEARTBEAT_FUTURE_TOLERANCE_SECONDS",
     "HEARTBEAT_SCHEDULE_ID",
     "HEARTBEAT_TASK_NAME",
     "RUNNING_STAGE_STATUSES",
@@ -220,6 +234,7 @@ __all__: list[str] = [
     "DbDeadLetterSink",
     "DeadLetter",
     "DeadLetterSink",
+    "HeartbeatLoop",
     "HeartbeatWriter",
     "Hook",
     "JobAlreadyFinishedError",
@@ -270,6 +285,7 @@ __all__: list[str] = [
     "run_cancellable",
     "task_inventory",
     "task_method",
+    "validate_max_age",
     "weekdays",
     "weekends",
     "weekly",

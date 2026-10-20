@@ -180,6 +180,45 @@ def _as_aware(moment: datetime) -> datetime:
     return moment
 
 
+def is_log_dir_unset(log_dir: str | Path) -> bool:
+    """Return whether ``log_dir`` is the empty string that disables files.
+
+    ``configure_logging(log_dir="")`` (and ``LOG_DIR=""``) means "no file
+    logging". Handed to :class:`~pathlib.Path`, the same empty string
+    becomes ``.``, the current working directory — so a reader would list
+    whatever ``*.log`` sits there, and a clear would truncate it. Only a
+    ``str`` can be empty this way; a ``Path`` was built deliberately.
+
+    Args:
+        log_dir (str | Path): The configured directory.
+
+    Returns:
+        bool: ``True`` for an empty or whitespace-only string.
+    """
+    return isinstance(log_dir, str) and not log_dir.strip()
+
+
+def _require_log_dir(log_dir: str | Path, *, caller: str) -> Path:
+    """Turn ``log_dir`` into a path, refusing the empty string.
+
+    Args:
+        log_dir (str | Path): The configured directory.
+        caller (str): Function name for the error message.
+
+    Returns:
+        Path: The directory.
+
+    Raises:
+        ValueError: When ``log_dir`` is an empty or whitespace-only string.
+    """
+    if is_log_dir_unset(log_dir):
+        raise ValueError(
+            f"{caller}: log_dir is empty, which means file logging is off; "
+            f"refusing to use the current working directory instead"
+        )
+    return Path(log_dir)
+
+
 def resolve_log_files(
     log_dir: str | Path,
     source: LogSource,
@@ -209,8 +248,13 @@ def resolve_log_files(
     Returns:
         list[Path]: The files the selector covers, existing or not —
         callers decide whether a missing file is skipped or created.
+
+    Raises:
+        ValueError: When ``log_dir`` is an empty string (file logging
+            off), which :class:`~pathlib.Path` would turn into the current
+            working directory.
     """
-    base = Path(log_dir)
+    base = _require_log_dir(log_dir, caller="resolve_log_files")
     if source == "all":
         names = list(LEVEL_LOG_FILES.values())
         if include_http_500:
@@ -520,8 +564,11 @@ def read_log_entries(
 
     Returns:
         LogReadResult: The matching records, newest first, and whether the
-        per-file bound cut any file.
+        per-file bound cut any file. An empty ``log_dir`` string (file
+        logging off) reads as no files — never as the current directory.
     """
+    if is_log_dir_unset(log_dir):
+        return LogReadResult()
     files = resolve_log_files(log_dir, source)
     entries, truncated = _read_entries(files, max_records_per_file=max_records_per_file)
 
@@ -548,7 +595,12 @@ def read_log_entries(
     return LogReadResult(entries=filtered, truncated=truncated)
 
 
-def clear_log_files(log_dir: str | Path, source: LogSource = "all") -> list[str]:
+def clear_log_files(
+    log_dir: str | Path,
+    source: LogSource = "all",
+    *,
+    delete_backups: bool = False,
+) -> list[str]:
     """Empty the log files a ``source`` selector points at.
 
     The truncate behind ``DELETE /logs``, public for the same reason as
@@ -562,9 +614,12 @@ def clear_log_files(log_dir: str | Path, source: LogSource = "all") -> list[str]
     the 500 stream behind is the surprising outcome.
 
     Rotated backups (:func:`rotated_log_files` — ``info.log.1`` or
-    ``info.log.2026-10-20``) are **deleted**: no handler holds them open,
-    and since :func:`read_log_entries` reads them, leaving them would make
-    a cleared page show the previous periods again.
+    ``info.log.2026-10-20``) are left alone by default, as they always
+    were: deleting them is unrecoverable, and a caller that only meant
+    "start a clean view" should not lose a week of history. Since
+    :func:`read_log_entries` reads them, the page keeps showing the older
+    periods after a default clear. Pass ``delete_backups=True`` to remove
+    them too — no handler holds them open, so unlinking is safe.
 
     The function is synchronous file I/O. From an ``async`` route, run it off
     the event loop:
@@ -576,16 +631,23 @@ def clear_log_files(log_dir: str | Path, source: LogSource = "all") -> list[str]
     Args:
         log_dir (str | Path): Directory holding the log files.
         source (LogSource): Which file(s) to truncate. Defaults to ``"all"``.
+        delete_backups (bool): Also delete the rotated backups of each
+            file. Defaults to ``False``.
 
     Returns:
         list[str]: The names of the files that were emptied, in
-        :func:`resolve_log_files` order, each followed by the names of the
-        backups deleted next to it.
+        :func:`resolve_log_files` order — each followed, under
+        ``delete_backups=True``, by the names of the backups deleted next
+        to it.
 
     Raises:
+        ValueError: When ``log_dir`` is an empty string (file logging
+            off) — truncating the current working directory's files is
+            never the intent.
         OSError: When a path cannot be opened for writing, or a backup
             cannot be deleted.
     """
+    _require_log_dir(log_dir, caller="clear_log_files")
     paths = resolve_log_files(log_dir, source, include_http_500=True)
     cleared: list[str] = []
     for path in paths:
@@ -593,6 +655,8 @@ def clear_log_files(log_dir: str | Path, source: LogSource = "all") -> list[str]
         with path.open("w", encoding="utf-8") as handle:
             handle.truncate(0)
         cleared.append(path.name)
+        if not delete_backups:
+            continue
         for backup in rotated_log_files(path):
             with contextlib.suppress(FileNotFoundError):
                 backup.unlink()
@@ -714,8 +778,11 @@ def make_logs_router(
     Raises:
         ValueError: When ``token_secret`` is empty or whitespace-only,
             ``dependencies`` is empty or ``None``, and
-            ``allow_unauthenticated`` is ``False``.
+            ``allow_unauthenticated`` is ``False``. Also when ``log_dir``
+            is an empty string — file logging is off, and the router would
+            otherwise read and truncate the current working directory.
     """
+    _require_log_dir(log_dir, caller="make_logs_router")
     secret = token_secret.strip()
     extra = [_as_depends(dependency) for dependency in dependencies or ()]
     if not secret and not extra and not allow_unauthenticated:
@@ -829,6 +896,14 @@ def make_logs_router(
                 "only the latter."
             ),
         ),
+        delete_backups: bool = Query(
+            default=False,
+            description=(
+                "Also delete the rotated backups (info.log.1, "
+                "info.log.2026-10-20, ...). Off by default: deleting them "
+                "cannot be undone."
+            ),
+        ),
     ) -> LogFilesClearedSchema:
         """Empty the log files a source selector points at.
 
@@ -838,11 +913,15 @@ def make_logs_router(
 
         Args:
             source (LogSource): Which file(s) to truncate.
+            delete_backups (bool): Also delete the rotated backups.
 
         Returns:
-            LogFilesClearedSchema: The file names that were emptied.
+            LogFilesClearedSchema: The file names that were emptied or
+            deleted.
         """
-        cleared = await run_in_threadpool(clear_log_files, base_dir, source)
+        cleared = await run_in_threadpool(
+            partial(clear_log_files, base_dir, source, delete_backups=delete_backups)
+        )
         return LogFilesClearedSchema(cleared=cleared)
 
     return router
@@ -853,6 +932,7 @@ __all__: list[str] = [
     "LogReadResult",
     "LogSource",
     "clear_log_files",
+    "is_log_dir_unset",
     "make_logs_router",
     "read_log_entries",
     "render_entries_json",

@@ -10,10 +10,12 @@ from httpx import ASGITransport, AsyncClient
 
 from tempest_fastapi_sdk import (
     clear_log_files,
+    is_log_dir_unset,
     make_logs_router,
     read_log_entries,
     rotated_log_files,
 )
+from tempest_fastapi_sdk.api.routers.logs import resolve_log_files
 
 
 def _write(path: Path, *messages: str, mtime: float | None = None) -> None:
@@ -116,8 +118,17 @@ class TestReadLogEntries:
 
 
 class TestClearLogFiles:
-    def test_clear_deletes_backups_and_keeps_decoys(self, rotated_dir: Path) -> None:
+    def test_default_keeps_the_backups(self, rotated_dir: Path) -> None:
+        """Deleting history is unrecoverable, so it is opt-in."""
         cleared = clear_log_files(rotated_dir, "info")
+        assert cleared == ["info.log"]
+        assert (rotated_dir / "info.log").read_text() == ""
+        assert len(rotated_log_files(rotated_dir / "info.log")) == 4
+
+    def test_delete_backups_removes_them_and_keeps_decoys(
+        self, rotated_dir: Path
+    ) -> None:
+        cleared = clear_log_files(rotated_dir, "info", delete_backups=True)
         assert cleared == [
             "info.log",
             "info.log.1",
@@ -125,10 +136,77 @@ class TestClearLogFiles:
             "info.log.2026-10-20",
             "info.log.2026-10-19_13-05-00",
         ]
-        assert (rotated_dir / "info.log").read_text() == ""
         assert rotated_log_files(rotated_dir / "info.log") == []
         assert (rotated_dir / "info.log.gz").exists()
         assert read_log_entries(rotated_dir, "info").entries == []
+
+
+class TestEmptyLogDirNeverMeansTheCurrentDirectory:
+    """``log_dir=""`` is "file logging off", not ``Path("")`` == ``.``."""
+
+    @pytest.fixture
+    def cwd_with_logs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        """Chdir into a directory that holds an ``info.log``.
+
+        Args:
+            tmp_path (Path): pytest's temporary directory.
+            monkeypatch (pytest.MonkeyPatch): To change directory.
+
+        Returns:
+            Path: The directory.
+        """
+        _write(tmp_path / "info.log", "in the cwd")
+        monkeypatch.chdir(tmp_path)
+        return tmp_path
+
+    def test_readers_see_no_files(self, cwd_with_logs: Path) -> None:
+        assert read_log_entries("", "info").entries == []
+        assert read_log_entries("  ", "all").entries == []
+        assert is_log_dir_unset("") is True
+        assert is_log_dir_unset(Path("logs")) is False
+
+    def test_clear_refuses(self, cwd_with_logs: Path) -> None:
+        with pytest.raises(ValueError, match="log_dir is empty"):
+            clear_log_files("", "info")
+        assert (cwd_with_logs / "info.log").read_text() != ""
+
+    def test_resolve_refuses(self, cwd_with_logs: Path) -> None:
+        with pytest.raises(ValueError, match="log_dir is empty"):
+            resolve_log_files("", "info")
+
+    def test_router_refuses_at_construction(self, cwd_with_logs: Path) -> None:
+        with pytest.raises(ValueError, match="log_dir is empty"):
+            make_logs_router(log_dir="", allow_unauthenticated=True)
+
+
+def _logs_app(log_dir: Path) -> FastAPI:
+    """Mount an ungated logs router.
+
+    Args:
+        log_dir (Path): The log directory.
+
+    Returns:
+        FastAPI: The app.
+    """
+    app = FastAPI()
+    app.include_router(make_logs_router(log_dir=log_dir, allow_unauthenticated=True))
+    return app
+
+
+@pytest.mark.asyncio
+async def test_delete_route_keeps_backups_unless_asked(rotated_dir: Path) -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=_logs_app(rotated_dir)), base_url="http://test"
+    ) as client:
+        kept = await client.delete("/logs", params={"source": "info"})
+        assert kept.json()["cleared"] == ["info.log"]
+        assert len(rotated_log_files(rotated_dir / "info.log")) == 4
+        removed = await client.delete(
+            "/logs", params={"source": "info", "delete_backups": "true"}
+        )
+    assert removed.status_code == 200
+    assert "info.log.1" in removed.json()["cleared"]
+    assert rotated_log_files(rotated_dir / "info.log") == []
 
 
 @pytest.mark.asyncio

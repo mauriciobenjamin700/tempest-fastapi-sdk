@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from taskiq.abc.schedule_source import ScheduleSource
+from taskiq.exceptions import ScheduledTaskCancelledError
 from taskiq.scheduler.scheduled_task import ScheduledTask
 
 from tempest_fastapi_sdk.tasks.heartbeat.files import (
@@ -22,18 +23,24 @@ from tempest_fastapi_sdk.tasks.heartbeat.files import (
 
 
 class HeartbeatScheduleSource(ScheduleSource):
-    """Schedule the heartbeat task and record each send.
+    """Beat the scheduler heartbeat from inside TaskIQ's scheduler loop.
 
     TaskIQ's scheduler loop (``taskiq.cli.scheduler.run.SchedulerLoop``,
     taskiq 0.12) wakes every ``loop_interval`` (one second by default),
     asks each schedule whether it is due and, for a due one, calls
-    ``TaskiqScheduler.on_ready``: ``pre_send`` on the source, the broker
-    publish, then ``post_send``. This source owns exactly one interval
-    schedule — the heartbeat task — and writes the scheduler heartbeat in
-    ``post_send``, so the file is rewritten once per ``every`` and only
-    when the loop is running **and** the publish succeeded. A stuck loop
-    or a broker the scheduler can no longer publish to both leave the
-    file to age.
+    ``TaskiqScheduler.on_ready``, whose first step is ``pre_send`` on the
+    schedule's source. This source owns exactly one interval schedule;
+    its ``pre_send`` writes the heartbeat file and then raises
+    ``ScheduledTaskCancelledError``, which ``on_ready`` catches as "do not
+    publish". The file is therefore rewritten once per ``every`` while the
+    loop is ticking, and **nothing** reaches the broker — no message
+    piles up in a queue no worker consumes, and no worker heartbeat
+    depends on it (workers beat on their own, see
+    :class:`~tempest_fastapi_sdk.tasks.heartbeat.HeartbeatLoop`).
+
+    The trade: a fresh file proves the loop runs, not that the scheduler
+    can still publish to the broker. Pair it with a broker check if that
+    matters.
 
     ``get_schedules`` is not the hook, although it looks like one: the
     loop calls it once at startup and then every ``update_interval``
@@ -43,36 +50,26 @@ class HeartbeatScheduleSource(ScheduleSource):
     Attributes:
         schedule (ScheduledTask): The heartbeat schedule this source
             returns.
-        writer (HeartbeatWriter | None): Writes the scheduler heartbeat;
-            ``None`` when only the worker heartbeat is enabled and the
-            source exists just to send the task.
+        writer (HeartbeatWriter): Writes the scheduler heartbeat.
     """
 
-    def __init__(
-        self,
-        *,
-        every: timedelta,
-        writer: HeartbeatWriter | None,
-        task_name: str = HEARTBEAT_TASK_NAME,
-    ) -> None:
+    def __init__(self, *, every: timedelta, writer: HeartbeatWriter) -> None:
         """Initialize the source.
 
         Args:
             every (timedelta): The heartbeat period; whole seconds, at
                 least one (TaskIQ refuses anything else).
-            writer (HeartbeatWriter | None): The scheduler heartbeat
-                writer, or ``None``.
-            task_name (str): The task the schedule sends.
+            writer (HeartbeatWriter): The scheduler heartbeat writer.
         """
         self.schedule: ScheduledTask = ScheduledTask(
-            task_name=task_name,
+            task_name=HEARTBEAT_TASK_NAME,
             labels={},
             args=[],
             kwargs={},
             schedule_id=HEARTBEAT_SCHEDULE_ID,
             interval=every,
         )
-        self.writer: HeartbeatWriter | None = writer
+        self.writer: HeartbeatWriter = writer
 
     async def get_schedules(self) -> list[ScheduledTask]:
         """Return the heartbeat schedule.
@@ -82,14 +79,20 @@ class HeartbeatScheduleSource(ScheduleSource):
         """
         return [self.schedule]
 
-    def post_send(self, task: ScheduledTask) -> None:
-        """Write the scheduler heartbeat after the heartbeat was published.
+    def pre_send(self, task: ScheduledTask) -> None:
+        """Write the scheduler heartbeat, then cancel the send.
 
         Args:
-            task (ScheduledTask): The schedule that was just sent.
+            task (ScheduledTask): The schedule that is due.
+
+        Raises:
+            ScheduledTaskCancelledError: Always, for the heartbeat
+                schedule, so ``on_ready`` publishes nothing.
         """
-        if self.writer is not None and task.schedule_id == self.schedule.schedule_id:
-            self.writer.write()
+        if task.schedule_id != self.schedule.schedule_id:
+            return
+        self.writer.write()
+        raise ScheduledTaskCancelledError
 
 
 __all__: list[str] = ["HeartbeatScheduleSource"]

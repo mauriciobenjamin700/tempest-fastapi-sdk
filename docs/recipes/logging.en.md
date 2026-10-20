@@ -773,15 +773,25 @@ The response names what it emptied:
     **does** include it, because a clear that left the 500 stream behind is
     the surprising outcome.
 
-!!! info "Truncates the current file, deletes the backups"
+!!! info "Truncates, never unlinks — except the backups, if you ask"
     The handlers `configure_logging` installed hold an open descriptor on each
     path. Removing the file would leave them writing to an inode nothing can
     read back — the endpoint would look like it worked exactly once. A missing
     file is created empty, so the post-condition is the same.
 
-    Rotated backups (`info.log.1`, `info.log.2026-10-20`) are held open by no
-    one, and the read includes them: so they are **deleted**, and listed in
+    Rotated backups (`info.log.1`, `info.log.2026-10-20`) are left **intact**
+    by default: deleted history does not come back. Since the read includes
+    them, the page keeps showing the earlier periods after a clear. To delete
+    them too, ask explicitly — `DELETE /logs?delete_backups=true` or
+    `clear_log_files(..., delete_backups=True)` — and they are listed in
     `cleared` right after their level's file.
+
+!!! warning "An empty `log_dir` never becomes the current directory"
+    `LOG_DIR=""` turns file logging off, but `Path("")` is `.`. So
+    `make_logs_router(log_dir="")` and `clear_log_files("")` raise
+    `ValueError`, the read (`read_log_entries("")`) returns nothing, and the
+    `/admin/logs` page shows the empty state — none of them reads or
+    truncates the `*.log` of wherever the process was started.
 
 Anything that needs the paths outside a route — an archiving job, a collector,
 a counter — uses the same resolver the router uses, instead of re-deriving the

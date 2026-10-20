@@ -773,15 +773,26 @@ A resposta nomeia o que foi esvaziado:
     **inclui**, porque um clear que deixasse o stream de 500 para trás é o
     desfecho que surpreende.
 
-!!! info "Trunca o arquivo corrente, apaga os backups"
+!!! info "Trunca, nunca apaga — salvo os backups, se você pedir"
     Os handlers que o `configure_logging` instalou seguram um descritor aberto
     em cada caminho. Remover o arquivo os deixaria escrevendo num inode que
     nada consegue ler de volta — o endpoint pareceria funcionar exatamente uma
     vez. Arquivo ausente é criado vazio, então a pós-condição é a mesma.
 
-    Os backups rotacionados (`info.log.1`, `info.log.2026-10-20`) ninguém
-    segura aberto, e a leitura os inclui: por isso eles são **apagados**, e
-    aparecem na lista `cleared` logo depois do arquivo do nível.
+    Os backups rotacionados (`info.log.1`, `info.log.2026-10-20`) ficam
+    **intactos** por padrão: apagar histórico não tem volta. Como a leitura
+    os inclui, a página continua mostrando os períodos anteriores depois de
+    um clear. Para apagá-los também, peça explicitamente —
+    `DELETE /logs?delete_backups=true` ou
+    `clear_log_files(..., delete_backups=True)` —, e eles aparecem em
+    `cleared` logo depois do arquivo do nível.
+
+!!! warning "`log_dir` vazio nunca vira o diretório corrente"
+    `LOG_DIR=""` desliga o log em arquivo, mas `Path("")` é `.`. Por isso
+    `make_logs_router(log_dir="")` e `clear_log_files("")` levantam
+    `ValueError`, a leitura (`read_log_entries("")`) devolve nada, e a página
+    `/admin/logs` mostra o estado vazio — nenhum deles lê ou trunca o
+    `*.log` de onde o processo foi iniciado.
 
 Quem precisa dos caminhos fora de uma rota — um job de arquivamento, um
 coletor, um contador — usa o mesmo resolvedor que o router usa, em vez de

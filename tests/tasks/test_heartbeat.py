@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import subprocess
 import sys
 import time
@@ -11,17 +12,23 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from taskiq.exceptions import ScheduledTaskCancelledError
+from taskiq.message import BrokerMessage
 from taskiq.scheduler.scheduled_task import ScheduledTask
 
 from tempest_fastapi_sdk.settings import TaskIQSettings
 from tempest_fastapi_sdk.tasks import (
+    HEARTBEAT_FILE_MODE,
+    HEARTBEAT_FUTURE_TOLERANCE_SECONDS,
     HEARTBEAT_SCHEDULE_ID,
     HEARTBEAT_TASK_NAME,
+    HeartbeatLoop,
     HeartbeatWriter,
     TaskQueue,
     heartbeat_age,
     is_heartbeat_fresh,
     read_heartbeat,
+    validate_max_age,
     write_heartbeat,
 )
 from tempest_fastapi_sdk.tasks.heartbeat import main
@@ -105,6 +112,52 @@ class TestFiles:
         assert heartbeat_age(tmp_path / "garbage") is None
         assert is_heartbeat_fresh(tmp_path / "missing", 90) is False
         assert is_heartbeat_fresh(tmp_path / "garbage", 90) is False
+
+
+class TestGuards:
+    """Future timestamps, impossible ``max_age`` and file permissions."""
+
+    def test_written_file_is_world_readable(self, tmp_path: Path) -> None:
+        """mkstemp's 0600 would lock out a checker running as another user."""
+        write_heartbeat(tmp_path / "hb")
+        assert (tmp_path / "hb").stat().st_mode & 0o777 == HEARTBEAT_FILE_MODE
+
+    def test_small_future_skew_is_tolerated(self, tmp_path: Path) -> None:
+        now = datetime(2026, 10, 20, 12, 0, 0, tzinfo=UTC)
+        write_heartbeat(tmp_path / "hb", now=now + timedelta(seconds=3))
+        assert is_heartbeat_fresh(tmp_path / "hb", 90, now=now) is True
+
+    def test_far_future_is_not_fresh(self, tmp_path: Path) -> None:
+        now = datetime(2026, 10, 20, 12, 0, 0, tzinfo=UTC)
+        ahead = HEARTBEAT_FUTURE_TOLERANCE_SECONDS + 1
+        write_heartbeat(tmp_path / "hb", now=now + timedelta(seconds=ahead))
+        assert is_heartbeat_fresh(tmp_path / "hb", 90, now=now) is False
+
+    def test_checker_refuses_a_future_file(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_heartbeat(tmp_path / "hb", now=datetime.now(UTC) + timedelta(hours=2))
+        assert main([str(tmp_path / "hb"), "--max-age", "90"]) == 1
+        assert "in the future" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("max_age", [0.0, -1.0, math.nan, math.inf])
+    def test_impossible_max_age_raises(self, tmp_path: Path, max_age: float) -> None:
+        write_heartbeat(tmp_path / "hb")
+        with pytest.raises(ValueError, match="max_age must be"):
+            is_heartbeat_fresh(tmp_path / "hb", max_age)
+        with pytest.raises(ValueError, match="max_age must be"):
+            validate_max_age(max_age)
+
+    @pytest.mark.parametrize("max_age", ["0", "-5", "nan", "inf"])
+    def test_checker_refuses_impossible_max_age(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        max_age: str,
+    ) -> None:
+        write_heartbeat(tmp_path / "hb")
+        assert main([str(tmp_path / "hb"), f"--max-age={max_age}"]) == 1
+        assert "invalid --max-age" in capsys.readouterr().err
 
 
 class TestWriter:
@@ -202,57 +255,140 @@ class TestChecker:
         assert missing.stderr.startswith("unhealthy:")
 
 
-class TestEnableHeartbeat:
-    def test_registers_the_task_and_attaches_the_source(self, tmp_path: Path) -> None:
-        queue = TaskQueue.memory()
-        queue.enable_heartbeat(
-            worker_file=tmp_path / "w",
-            scheduler_file=tmp_path / "s",
-            every=timedelta(seconds=5),
-        )
-        assert queue.broker.find_task(HEARTBEAT_TASK_NAME) is not None
-        sources = _sources(queue)
-        assert len(sources) == 1
-        assert sources[0].schedule.interval == timedelta(seconds=5)
-        assert sources[0].schedule.task_name == HEARTBEAT_TASK_NAME
+class KickRecorder:
+    """Stand-in for ``broker.kick`` that records every publish.
 
-    @pytest.mark.asyncio
-    async def test_the_worker_task_writes_the_worker_file(self, tmp_path: Path) -> None:
+    Attributes:
+        sent (list[str]): Task names published.
+    """
+
+    def __init__(self) -> None:
+        """Start with nothing sent."""
+        self.sent: list[str] = []
+
+    async def __call__(self, message: BrokerMessage) -> None:
+        """Record one publish.
+
+        Args:
+            message (BrokerMessage): The message the kicker built.
+        """
+        self.sent.append(message.task_name)
+
+
+async def wait_for_files(*paths: Path, timeout: float = 10) -> None:
+    """Poll until every path exists, or the deadline passes.
+
+    Args:
+        *paths (Path): The files to wait for.
+        timeout (float): Seconds before giving up.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if all(path.exists() for path in paths):
+            return
+        await asyncio.sleep(0.05)
+
+
+class TestWorkerHeartbeat:
+    """Each worker process beats on its own, through no broker."""
+
+    def test_registers_no_task(self, tmp_path: Path) -> None:
         queue = TaskQueue.memory()
         queue.enable_heartbeat(worker_file=tmp_path / "w")
-        task = queue.broker.find_task(HEARTBEAT_TASK_NAME)
-        assert task is not None
-        await queue.connect()
-        try:
-            await (await task.kiq()).wait_result(timeout=5)
-        finally:
-            await queue.disconnect()
-        assert is_heartbeat_fresh(tmp_path / "w", 60)
-        assert not (tmp_path / "s").exists()
+        assert queue.broker.find_task(HEARTBEAT_TASK_NAME) is None
+        assert queue.worker_heartbeat is not None
+        assert _sources(queue) == []
 
     @pytest.mark.asyncio
-    async def test_a_failed_worker_write_does_not_fail_the_task(
+    async def test_beats_on_worker_startup_without_any_scheduler(
         self, tmp_path: Path
     ) -> None:
+        """No scheduler runs here; the worker file still stays fresh."""
         queue = TaskQueue.memory()
-        queue.enable_heartbeat(worker_file=tmp_path / "read-only" / "w")
-        task = queue.broker.find_task(HEARTBEAT_TASK_NAME)
-        assert task is not None
+        queue.enable_heartbeat(worker_file=tmp_path / "w", every=timedelta(seconds=1))
         await queue.connect()
         try:
-            result = await (await task.kiq()).wait_result(timeout=5)
+            await wait_for_files(tmp_path / "w")
+            first = read_heartbeat(tmp_path / "w")
+            deadline = time.monotonic() + 5
+            while (
+                read_heartbeat(tmp_path / "w") == first and time.monotonic() < deadline
+            ):
+                await asyncio.sleep(0.05)
+            second = read_heartbeat(tmp_path / "w")
         finally:
             await queue.disconnect()
-        assert result.is_err is False
+        assert first is not None
+        assert second is not None
+        assert second > first
 
-    def test_post_send_writes_the_scheduler_file(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_shutdown_stops_the_loop(self, tmp_path: Path) -> None:
+        queue = TaskQueue.memory()
+        queue.enable_heartbeat(worker_file=tmp_path / "w", every=timedelta(seconds=1))
+        await queue.connect()
+        await wait_for_files(tmp_path / "w")
+        await queue.disconnect()
+        loop = queue.worker_heartbeat
+        assert loop is not None
+        assert loop._task is None
+        (tmp_path / "w").unlink()
+        await asyncio.sleep(1.5)
+        assert not (tmp_path / "w").exists()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_write_keeps_the_loop_running(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        directory = tmp_path / "later"
+        queue = TaskQueue.memory()
+        queue.enable_heartbeat(worker_file=directory / "w", every=timedelta(seconds=1))
+        with caplog.at_level(logging.WARNING):
+            await queue.connect()
+            try:
+                await asyncio.sleep(0.2)
+                directory.mkdir()
+                await wait_for_files(directory / "w")
+            finally:
+                await queue.disconnect()
+        assert is_heartbeat_fresh(directory / "w", 10)
+        assert len([r for r in caplog.records if "heartbeat" in r.getMessage()]) == 1
+
+    @pytest.mark.asyncio
+    async def test_loop_start_is_idempotent(self, tmp_path: Path) -> None:
+        loop = HeartbeatLoop(HeartbeatWriter(tmp_path / "w"), 60)
+        await loop.start()
+        task = loop._task
+        await loop.start()
+        assert loop._task is task
+        await loop.stop()
+        await loop.stop()
+        assert loop._task is None
+
+
+class TestSchedulerHeartbeat:
+    """The scheduler beats from its loop and publishes nothing."""
+
+    def test_attaches_the_source(self, tmp_path: Path) -> None:
+        queue = TaskQueue.memory()
+        queue.enable_heartbeat(
+            scheduler_file=tmp_path / "s", every=timedelta(seconds=5)
+        )
+        sources = _sources(queue)
+        assert len(sources) == 1
+        assert sources[0] in queue.scheduler.sources
+        assert sources[0].schedule.interval == timedelta(seconds=5)
+        assert queue.worker_heartbeat is None
+
+    def test_pre_send_writes_then_cancels(self, tmp_path: Path) -> None:
         queue = TaskQueue.memory()
         queue.enable_heartbeat(scheduler_file=tmp_path / "s")
         source = _sources(queue)[0]
-        source.post_send(source.schedule)
+        with pytest.raises(ScheduledTaskCancelledError):
+            source.pre_send(source.schedule)
         assert is_heartbeat_fresh(tmp_path / "s", 60)
 
-    def test_post_send_ignores_other_schedules(self, tmp_path: Path) -> None:
+    def test_pre_send_ignores_other_schedules(self, tmp_path: Path) -> None:
         queue = TaskQueue.memory()
         queue.enable_heartbeat(scheduler_file=tmp_path / "s")
         other = ScheduledTask(
@@ -263,47 +399,64 @@ class TestEnableHeartbeat:
             interval=5,
             schedule_id="other",
         )
-        _sources(queue)[0].post_send(other)
+        _sources(queue)[0].pre_send(other)
         assert not (tmp_path / "s").exists()
 
-    def test_a_failed_scheduler_write_does_not_raise(self, tmp_path: Path) -> None:
+    def test_a_failed_write_still_cancels_and_does_not_raise_oserror(
+        self, tmp_path: Path
+    ) -> None:
         queue = TaskQueue.memory()
         queue.enable_heartbeat(scheduler_file=tmp_path / "absent" / "s")
         source = _sources(queue)[0]
-        source.post_send(source.schedule)
+        with pytest.raises(ScheduledTaskCancelledError):
+            source.pre_send(source.schedule)
         assert not (tmp_path / "absent").exists()
 
     @pytest.mark.asyncio
     async def test_schedule_is_the_heartbeat_interval(self, tmp_path: Path) -> None:
         queue = TaskQueue.memory()
-        queue.enable_heartbeat(worker_file=tmp_path / "w", every=timedelta(seconds=7))
+        queue.enable_heartbeat(
+            scheduler_file=tmp_path / "s", every=timedelta(seconds=7)
+        )
         schedules = await _sources(queue)[0].get_schedules()
         assert [(s.schedule_id, s.interval) for s in schedules] == [
             (HEARTBEAT_SCHEDULE_ID, timedelta(seconds=7))
         ]
 
     @pytest.mark.asyncio
-    async def test_the_scheduler_loop_drives_both_files(self, tmp_path: Path) -> None:
-        """TaskIQ's own loop sends the beat; worker and scheduler both write."""
+    async def test_the_scheduler_loop_writes_and_publishes_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """TaskIQ's own loop drives the beat; the broker never sees it."""
         queue = TaskQueue.memory()
         queue.enable_heartbeat(
             worker_file=tmp_path / "w",
             scheduler_file=tmp_path / "s",
             every=timedelta(seconds=1),
         )
+        recorder = KickRecorder()
+        monkeypatch.setattr(queue.broker, "kick", recorder)
         await queue.connect()
         await queue.start_scheduler()
         try:
-            deadline = time.monotonic() + 10
-            while time.monotonic() < deadline:
-                if (tmp_path / "w").exists() and (tmp_path / "s").exists():
-                    break
+            await wait_for_files(tmp_path / "w", tmp_path / "s")
+            first = read_heartbeat(tmp_path / "s")
+            deadline = time.monotonic() + 5
+            while (
+                read_heartbeat(tmp_path / "s") == first and time.monotonic() < deadline
+            ):
                 await asyncio.sleep(0.05)
+            second = read_heartbeat(tmp_path / "s")
         finally:
             await queue.disconnect()
+        assert first is not None
+        assert second is not None
+        assert second > first
         assert is_heartbeat_fresh(tmp_path / "w", 10)
-        assert is_heartbeat_fresh(tmp_path / "s", 10)
+        assert recorder.sent == []
 
+
+class TestEnableHeartbeatArguments:
     def test_needs_a_file(self) -> None:
         with pytest.raises(ValueError, match="worker_file, scheduler_file or both"):
             TaskQueue.memory().enable_heartbeat()
@@ -323,19 +476,18 @@ class TestEnableHeartbeat:
 class TestFromSettings:
     def test_empty_files_leave_the_heartbeat_off(self) -> None:
         queue = TaskQueue.from_settings(HeartbeatSettings())
-        assert queue.broker.find_task(HEARTBEAT_TASK_NAME) is None
+        assert queue.worker_heartbeat is None
         assert _sources(queue) == []
 
-    def test_a_file_enables_it(self, tmp_path: Path) -> None:
+    def test_scheduler_file_attaches_the_source(self, tmp_path: Path) -> None:
         queue = TaskQueue.from_settings(
             HeartbeatSettings(scheduler=str(tmp_path / "s"), seconds=12)
         )
-        assert queue.broker.find_task(HEARTBEAT_TASK_NAME) is not None
         sources = _sources(queue)
         assert len(sources) == 1
         assert sources[0].schedule.interval == timedelta(seconds=12)
-        assert sources[0].writer is not None
         assert sources[0].writer.path == tmp_path / "s"
+        assert queue.worker_heartbeat is None
 
     def test_pydantic_settings_from_the_environment(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -346,10 +498,11 @@ class TestFromSettings:
         settings = TaskIQSettings()
         assert settings.TASKIQ_SCHEDULER_HEARTBEAT_FILE == ""
         queue = TaskQueue.from_settings(settings)
-        sources = _sources(queue)
-        assert len(sources) == 1
-        assert sources[0].schedule.interval == timedelta(seconds=15)
-        assert sources[0].writer is None
+        assert _sources(queue) == []
+        loop = queue.worker_heartbeat
+        assert loop is not None
+        assert loop.every == 15
+        assert loop.writer.path == tmp_path / "w"
 
     def test_settings_defaults(self) -> None:
         settings = TaskIQSettings()

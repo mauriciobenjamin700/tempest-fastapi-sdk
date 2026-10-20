@@ -1044,13 +1044,15 @@ and export; "All" clears it.
 
 ##### Login failure budget
 
-`POST /admin/login` counts wrong attempts against two budgets, on by default —
-every admin already mounted gets the protection with no configuration:
+`POST /admin/login` counts wrong attempts against two budgets. The
+identifier one is on by default — every admin already mounted gets the
+protection with no configuration — and the IP one turns itself on as soon as
+you say which header carries the client IP:
 
 | Parameter | Key | Default | Cleared when |
 | --- | --- | --- | --- |
 | `login_throttle` | `login:<sha256 of the normalized identifier>` (`login_throttle_key`, the same as `/auth/login`) | 5 attempts / 900 s | the login succeeds |
-| `login_ip_throttle` | `admin-login-ip:<client ip>` | 20 failures / 900 s | never — it expires with the window |
+| `login_ip_throttle` | `admin-login-ip:<client ip>` | 20 failures / 900 s **with** `trusted_ip_header`; off without it | never — it expires with the window |
 
 Once either is spent, the form comes back as `429` with `Retry-After`
 **before** the password is checked — the right password gets the same answer,
@@ -1087,11 +1089,22 @@ router = make_admin_router(
 )
 ```
 
-!!! warning "Behind a proxy, say which header is the client IP"
-    Without `trusted_ip_header` the IP is the connection peer — behind nginx,
-    nginx itself, and every operator shares one budget of 20. Pass the header
-    your edge **overwrites** (`x-real-ip`, `cf-connecting-ip`); without it
-    configured, a header the client sends is ignored.
+!!! warning "Without `trusted_ip_header`, the IP budget is off"
+    Without the header the IP is the connection peer — behind nginx, nginx
+    itself. An IP budget on there would be one budget for every operator, and
+    twenty bad logins from **anyone** would lock everyone out for 15 minutes.
+    So the default only turns it on with `trusted_ip_header` (the header your
+    edge **overwrites**: `x-real-ip`, `cf-connecting-ip`). A
+    `login_ip_throttle` passed explicitly always applies. The header's value
+    must be **one** IP address (`parse_client_ip`); a list, a port, a name or
+    arbitrary text falls back to the connection peer, so a client cannot mint
+    a fresh budget per request.
+
+!!! note "The per-identifier budget also locks out the account's owner"
+    Whoever knows an operator's e-mail can spend their 5 attempts and keep
+    them out for one window, even with the right password — the trade every
+    per-account lock makes, and the same as `/auth/login`. The `429` clears
+    by itself when the window expires.
 
 !!! info "The default counts per process"
     The default budgets live in an `InMemoryThrottleBackend`: with more than
@@ -1237,6 +1250,15 @@ Pass `auth_backend` to `make_admin_router(...)` as usual. What changes:
   user to `/admin/login` on the next request.
 - `is_authorized` is synchronous on purpose: it receives the already-loaded
   row and must not hit the database.
+
+!!! warning "The admin has no MFA enrollment screen"
+    With `require_mfa=True`, someone who has not turned on the second factor
+    sees `MFA enrollment required for /admin` on the login page itself
+    (status `401`) and does not get in. Enrollment happens **outside** the
+    admin: through the `POST /auth/mfa/enroll` + `POST /auth/mfa/confirm`
+    routes of `make_auth_router` (see [MFA](mfa.md)), or when the account is
+    created from the CLI, with `tempest user create --require-mfa`. Once
+    enrolled, the next admin login asks for the TOTP code at `/admin/mfa`.
 
 #### 6. Task panel — what is scheduled and what ran
 

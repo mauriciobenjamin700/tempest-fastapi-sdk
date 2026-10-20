@@ -16,6 +16,9 @@ from tempest_fastapi_sdk.utils.client_ip import (
 from tempest_fastapi_sdk.utils.client_ip import (
     get_client_ip_from_scope as get_client_ip_from_scope,
 )
+from tempest_fastapi_sdk.utils.client_ip import (
+    parse_client_ip as parse_client_ip,
+)
 from tempest_fastapi_sdk.utils.currency import CENT as CENT
 from tempest_fastapi_sdk.utils.currency import HUNDRED as HUNDRED
 from tempest_fastapi_sdk.utils.currency import (
@@ -579,6 +582,7 @@ __all__: list[str] = [
     "normalize_pix_key",
     "normalize_uf",
     "only_digits",
+    "parse_client_ip",
     "parse_currency_br",
     "parse_phone_br",
     "quantize_money",

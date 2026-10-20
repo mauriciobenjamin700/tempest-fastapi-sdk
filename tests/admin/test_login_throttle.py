@@ -297,33 +297,49 @@ class TestIpBudget:
             await built.db.disconnect()
 
 
-class TestDefaults:
-    async def test_default_identifier_budget_is_five(self) -> None:
-        db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
-        await db.connect()
-        await db.create_tables()
-        async with db.get_session_context() as session:
-            user = ThrottleUser(
-                email="root@example.com", hashed_password="", is_admin=True
-            )
+async def _build_defaults(trusted_ip_header: str | None = None) -> Harness:
+    """Build an admin app with the router's default throttles.
+
+    Args:
+        trusted_ip_header (str | None): Forwarded to the router.
+
+    Returns:
+        Harness: The app; its throttle attributes are unused placeholders.
+    """
+    db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.connect()
+    await db.create_tables()
+    async with db.get_session_context() as session:
+        for email in ("root@example.com", "ops@example.com"):
+            user = ThrottleUser(email=email, hashed_password="", is_admin=True)
             user.set_password("hunter2")
             session.add(user)
-            await session.commit()
-        site = AdminSite(title="Defaults")
-        site.register(AdminModel(model=ThrottleThing, list_display=[ThrottleThing.id]))
-        app = FastAPI()
-        app.include_router(
-            make_admin_router(
-                site,
-                db=db,
-                auth_backend=UserModelAuthBackend(ThrottleUser),
-                secret_key=SECRET,
-                cookie_secure=False,
-                show_metrics=False,
-            )
+        await session.commit()
+    site = AdminSite(title="Defaults")
+    site.register(AdminModel(model=ThrottleThing, list_display=[ThrottleThing.id]))
+    app = FastAPI()
+    app.include_router(
+        make_admin_router(
+            site,
+            db=db,
+            auth_backend=UserModelAuthBackend(ThrottleUser),
+            secret_key=SECRET,
+            cookie_secure=False,
+            show_metrics=False,
+            trusted_ip_header=trusted_ip_header,
         )
+    )
+    unused = AttemptThrottle(
+        InMemoryThrottleBackend(), max_attempts=1, window_seconds=1
+    )
+    return Harness(app, db, unused, unused)
+
+
+class TestDefaults:
+    async def test_default_identifier_budget_is_five(self) -> None:
+        built = await _build_defaults()
         try:
-            async with _client(app) as client:
+            async with _client(built.app) as client:
                 statuses = [
                     (await _login(client, "root@example.com", "wrong")).status_code
                     for _ in range(5)
@@ -332,8 +348,60 @@ class TestDefaults:
             assert statuses == [401] * 5
             assert blocked.status_code == 429
         finally:
-            await db.drop_tables()
-            await db.disconnect()
+            await built.db.drop_tables()
+            await built.db.disconnect()
+
+    async def test_ip_budget_is_off_without_a_trusted_header(self) -> None:
+        """Behind a proxy every operator shares one peer address.
+
+        A default-on IP budget there let anyone lock every operator out
+        with twenty bad logins.
+        """
+        built = await _build_defaults()
+        try:
+            async with _client(built.app) as client:
+                for n in range(25):
+                    await _login(client, f"ghost{n}@example.com", "x")
+                ok = await _login(client, "ops@example.com", "hunter2")
+            assert ok.status_code == 303
+        finally:
+            await built.db.drop_tables()
+            await built.db.disconnect()
+
+    async def test_ip_budget_defaults_to_twenty_with_a_trusted_header(self) -> None:
+        built = await _build_defaults(trusted_ip_header="x-real-ip")
+        headers = {"x-real-ip": "203.0.113.7"}
+        try:
+            async with _client(built.app) as client:
+                for n in range(20):
+                    await _login(client, f"ghost{n}@example.com", "x", headers)
+                blocked = await _login(client, "ops@example.com", "hunter2", headers)
+                other = await _login(
+                    client, "ops@example.com", "hunter2", {"x-real-ip": "198.51.100.1"}
+                )
+            assert blocked.status_code == 429
+            assert other.status_code == 303
+        finally:
+            await built.db.drop_tables()
+            await built.db.disconnect()
+
+    async def test_garbage_header_counts_against_the_peer(self) -> None:
+        built = await _build(
+            identifier_budget=100, ip_budget=2, trusted_ip_header="x-real-ip"
+        )
+        try:
+            async with _client(built.app) as client:
+                for n in range(2):
+                    await _login(
+                        client, "ghost@example.com", "x", {"x-real-ip": f"junk-{n}"}
+                    )
+                blocked = await _login(
+                    client, "root@example.com", "hunter2", {"x-real-ip": "junk-9"}
+                )
+            assert blocked.status_code == 429
+        finally:
+            await built.db.drop_tables()
+            await built.db.disconnect()
 
     async def test_false_turns_both_budgets_off(self) -> None:
         built = await _build(login_throttle=False, login_ip_throttle=False)

@@ -1022,13 +1022,15 @@ volta ao padrão.
 
 ##### Orçamento de falhas no login
 
-`POST /admin/login` conta tentativas erradas em dois orçamentos, ligados por
-padrão — todo admin já montado ganha a proteção sem configurar nada:
+`POST /admin/login` conta tentativas erradas em dois orçamentos. O do
+identificador vem ligado por padrão — todo admin já montado ganha a
+proteção sem configurar nada —, e o do IP liga sozinho assim que você diz
+qual header carrega o IP do cliente:
 
 | Parâmetro | Chave | Padrão | Zera quando |
 | --- | --- | --- | --- |
 | `login_throttle` | `login:<sha256 do identificador normalizado>` (`login_throttle_key`, a mesma do `/auth/login`) | 5 tentativas / 900 s | o login dá certo |
-| `login_ip_throttle` | `admin-login-ip:<ip do cliente>` | 20 falhas / 900 s | nunca — expira com a janela |
+| `login_ip_throttle` | `admin-login-ip:<ip do cliente>` | 20 falhas / 900 s **com** `trusted_ip_header`; desligado sem ele | nunca — expira com a janela |
 
 Esgotado qualquer um, o formulário volta com `429` e `Retry-After` **antes**
 de a senha ser conferida — a senha certa recebe a mesma resposta, então o
@@ -1066,11 +1068,22 @@ router = make_admin_router(
 )
 ```
 
-!!! warning "Atrás de proxy, diga qual header é o IP do cliente"
-    Sem `trusted_ip_header`, o IP é o par da conexão — atrás de nginx, o do
-    próprio nginx, e todo operador divide um orçamento de 20. Passe o header
-    que a sua borda **sobrescreve** (`x-real-ip`, `cf-connecting-ip`); sem
-    ele configurado, um header mandado pelo cliente é ignorado.
+!!! warning "Sem `trusted_ip_header`, o orçamento por IP fica desligado"
+    Sem o header, o IP é o par da conexão — atrás de nginx, o do próprio
+    nginx. Um orçamento por IP ligado ali seria um só para todos os
+    operadores, e vinte logins errados de **qualquer um** trancariam todo
+    mundo por 15 minutos. Por isso o padrão só o liga com `trusted_ip_header`
+    (o header que a sua borda **sobrescreve**: `x-real-ip`,
+    `cf-connecting-ip`). Um `login_ip_throttle` passado explicitamente vale
+    sempre. O valor do header precisa ser **um** endereço IP
+    (`parse_client_ip`); lista, porta, nome ou texto qualquer cai no par da
+    conexão, então um cliente não fabrica um orçamento novo por request.
+
+!!! note "O orçamento por identificador também tranca o dono da conta"
+    Quem sabe o e-mail de um operador pode gastar as 5 tentativas dele e
+    deixá-lo de fora por uma janela, mesmo com a senha certa — a troca que
+    todo bloqueio por conta faz, e a mesma do `/auth/login`. O `429` volta
+    sozinho quando a janela expira.
 
 !!! info "O padrão conta por processo"
     Os orçamentos padrão vivem num `InMemoryThrottleBackend`: com mais de um
@@ -1215,6 +1228,15 @@ Passe `auth_backend` ao `make_admin_router(...)` como de costume. O que muda:
   manda para `/admin/login` no request seguinte.
 - `is_authorized` é síncrono de propósito: recebe a linha já carregada e não
   deve ir ao banco.
+
+!!! warning "O admin não tem tela de inscrição em MFA"
+    Com `require_mfa=True`, quem ainda não ativou o segundo fator vê, na
+    própria página de login, `MFA enrollment required for /admin` (status
+    `401`), e não entra. A inscrição acontece **fora** do admin: pelas rotas
+    `POST /auth/mfa/enroll` + `POST /auth/mfa/confirm` do
+    `make_auth_router` (veja [MFA](mfa.md)), ou na criação da conta pelo
+    CLI, com `tempest user create --require-mfa`. Feita a inscrição, o
+    próximo login no admin pede o código TOTP em `/admin/mfa`.
 
 #### 6. Painel de tasks — o que está agendado e o que rodou
 

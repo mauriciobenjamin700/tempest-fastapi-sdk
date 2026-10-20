@@ -43,7 +43,7 @@ from tempest_fastapi_sdk.tasks.cron import (
 )
 from tempest_fastapi_sdk.tasks.heartbeat import (
     DEFAULT_HEARTBEAT_EVERY,
-    HEARTBEAT_TASK_NAME,
+    HeartbeatLoop,
     HeartbeatWriter,
 )
 from tempest_fastapi_sdk.tasks.lock import (
@@ -438,6 +438,7 @@ class TaskQueue:
         self._scheduler: AsyncTaskScheduler | None = None
         self._lock_url: str | None = lock_url
         self._heartbeat_enabled: bool = False
+        self.worker_heartbeat: HeartbeatLoop | None = None
         if resources:
             self.use(*resources)
 
@@ -1023,43 +1024,43 @@ class TaskQueue:
     ) -> None:
         """Make the worker and the scheduler prove they are alive.
 
-        Registers the internal task :data:`HEARTBEAT_TASK_NAME` and a
-        schedule source that sends it every ``every`` from the scheduler.
-
-        * ``worker_file`` — the **worker** rewrites it with the current
-          UTC time each time it runs the heartbeat task. A fresh file
-          proves the whole path: the scheduler sent the task, the broker
-          delivered it, and a worker had a free slot to run it. It also
-          means the worker heartbeat needs the scheduler: with no
-          scheduler process running, the file goes stale and the worker
-          reads as unhealthy.
-        * ``scheduler_file`` — the **scheduler** rewrites it each time it
-          has published the heartbeat task (``post_send`` of the source,
-          called by TaskIQ's loop right after the publish). A fresh file
-          proves the loop is ticking and can still reach the broker.
+        * ``worker_file`` — each **worker process** rewrites it with the
+          current UTC time every ``every``, from an asyncio task started
+          on the worker's startup event and cancelled on its shutdown
+          (:class:`~tempest_fastapi_sdk.tasks.heartbeat.HeartbeatLoop`).
+          The beat is local: it goes through no broker and no scheduler,
+          so every replica keeps its own file fresh however the broker
+          spreads tasks between them. A fresh file proves the process is
+          alive and its event loop is not blocked; a task that blocks
+          the loop with synchronous work stops the beat.
+        * ``scheduler_file`` — the **scheduler** rewrites it once per
+          ``every`` from inside TaskIQ's scheduler loop, through the
+          ``pre_send`` of a schedule source attached to :attr:`scheduler`
+          (:class:`~tempest_fastapi_sdk.tasks.heartbeat.source.HeartbeatScheduleSource`).
+          The send is then cancelled, so nothing is published. A fresh
+          file proves the loop is ticking — not that the scheduler can
+          still publish.
 
         Both are written atomically (temporary file plus
-        :func:`os.replace`). A failed write — read-only filesystem,
-        missing directory — logs one warning and never fails the task or
-        the scheduler; the stale file is the signal.
+        :func:`os.replace`, mode ``0644``). A failed write — read-only
+        filesystem, missing directory — logs one warning and never stops
+        the worker or the scheduler; the stale file is the signal.
 
-        The source is attached to :attr:`scheduler`, so ``taskiq
-        scheduler myapp.tasks:scheduler`` picks it up with no extra
-        wiring. Call this **in the module both processes import**, before
-        binding ``scheduler = tq.scheduler``: the worker needs the task
-        registered, the scheduler needs the source, and a process only
-        writes the file that belongs to it. Configuring both paths in
-        both containers is therefore safe, and it is the simplest setup —
-        the scheduler only sends the heartbeat when it has called this
-        method as well.
+        Call this in the module the worker and the scheduler import,
+        before binding ``scheduler = tq.scheduler``; ``taskiq scheduler
+        myapp.tasks:scheduler`` then picks the source up with no extra
+        wiring. Each process only writes the file that belongs to it, so
+        configuring both paths in both containers is safe. With
+        :meth:`memory` the worker events fire on :meth:`connect`, so the
+        worker loop runs in that process too.
 
         Check the file from the container with
         ``python -m tempest_fastapi_sdk.tasks.heartbeat <file> --max-age
         <seconds>``, using a ``max_age`` of about three times ``every``.
 
         Args:
-            worker_file (str | Path | None): Heartbeat file the worker
-                writes; ``None`` writes none.
+            worker_file (str | Path | None): Heartbeat file each worker
+                process writes; ``None`` writes none.
             scheduler_file (str | Path | None): Heartbeat file the
                 scheduler writes; ``None`` writes none.
             every (timedelta): Heartbeat period. Whole seconds, at least
@@ -1083,23 +1084,21 @@ class TaskQueue:
             )
         if self._heartbeat_enabled:
             raise RuntimeError("enable_heartbeat() was already called on this queue")
-        from tempest_fastapi_sdk.tasks.heartbeat.source import (
-            HeartbeatScheduleSource,
-        )
+        if worker_file:
+            loop = HeartbeatLoop(HeartbeatWriter(worker_file), seconds)
+            self._register_hook("startup", loop.start, "worker")
+            self._register_hook("shutdown", loop.stop, "worker")
+            self.worker_heartbeat = loop
+        if scheduler_file:
+            from tempest_fastapi_sdk.tasks.heartbeat.source import (
+                HeartbeatScheduleSource,
+            )
 
-        worker_writer = HeartbeatWriter(worker_file) if worker_file else None
-
-        async def heartbeat() -> None:
-            """Write the worker heartbeat, when this process has one."""
-            if worker_writer is not None:
-                worker_writer.write()
-
-        self.broker.task(task_name=HEARTBEAT_TASK_NAME)(heartbeat)
-        source = HeartbeatScheduleSource(
-            every=timedelta(seconds=int(seconds)),
-            writer=HeartbeatWriter(scheduler_file) if scheduler_file else None,
-        )
-        self._ensure_scheduler().sources.append(source)
+            source = HeartbeatScheduleSource(
+                every=timedelta(seconds=int(seconds)),
+                writer=HeartbeatWriter(scheduler_file),
+            )
+            self._ensure_scheduler().sources.append(source)
         self._heartbeat_enabled = True
 
     @property

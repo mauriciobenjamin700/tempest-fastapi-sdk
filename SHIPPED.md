@@ -3547,15 +3547,20 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   (`TimedRotatingFileHandler`, UTC). "Uma semana" é
   `LOG_ROTATE_WHEN=midnight` + `LOG_BACKUP_COUNT=7`. Os leitores
   (`read_log_entries`, `/logs`, `/admin/logs`) leem os backups dos dois
-  formatos via `rotated_log_files`; `clear_log_files` os apaga.
+  formatos via `rotated_log_files`; `clear_log_files(delete_backups=True)`
+  os apaga (default: mantém). `log_dir=""` nunca vira o cwd.
 - **Heartbeat de worker e scheduler** — `TaskQueue.enable_heartbeat` /
   `TASKIQ_WORKER_HEARTBEAT_FILE` + `TASKIQ_SCHEDULER_HEARTBEAT_FILE` +
   `TASKIQ_HEARTBEAT_SECONDS`, checado por
   `python -m tempest_fastapi_sdk.tasks.heartbeat <arquivo> --max-age <s>`
-  (só stdlib). O scheduler escreve no `post_send` da
-  `HeartbeatScheduleSource` (`tasks/heartbeat/source.py`), não no
+  (só stdlib). O worker bate de um `HeartbeatLoop` local a cada processo
+  (startup/shutdown do worker), sem broker — por isso funciona com N
+  réplicas. O scheduler escreve no `pre_send` da `HeartbeatScheduleSource`
+  (`tasks/heartbeat/source.py`) e cancela o envio, não publica nada; não usa
   `get_schedules`, que o loop do TaskIQ só chama a cada `update_interval`
   (60 s). Receita com compose medido em `docs/recipes/queue-tasks.md`.
 - **Admin** — `UserModelAuthBackend.is_authorized` (autorizar por papel) e
   `require_mfa=True`; `make_admin_router(login_throttle=...,
-  login_ip_throttle=..., trusted_ip_header=...)`, ligados por padrão.
+  login_ip_throttle=..., trusted_ip_header=...)` — identificador ligado por
+  padrão, IP só com `trusted_ip_header`. `get_client_ip` só aceita um IP
+  válido do header.

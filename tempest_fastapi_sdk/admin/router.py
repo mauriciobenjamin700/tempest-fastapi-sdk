@@ -66,6 +66,7 @@ from tempest_fastapi_sdk.admin.sql_shell import (
 from tempest_fastapi_sdk.admin.tasks import TaskPanelService
 from tempest_fastapi_sdk.api.routers.logs import (
     LogSource,
+    is_log_dir_unset,
     read_log_entries,
     render_entries_json,
     render_entries_markdown,
@@ -321,13 +322,13 @@ def make_admin_router(
             identifiers. Read before the identifier budget is spent and
             counted only on a refused login; a success does not clear it,
             since one valid account would otherwise reset the counter
-            between guesses. ``None`` (default) allows
+            between guesses. ``None`` (default) turns it on with
             ``ADMIN_LOGIN_IP_THROTTLE_MAX_ATTEMPTS`` (20) per 900 s in
-            memory. Unlike ``make_auth_router``, where the IP budget is
-            off by default, ``/admin`` has it on: its users are a handful
-            of operators, not the public. Behind a proxy set
-            ``trusted_ip_header``, or every client shares the proxy's
-            address and its budget. ``False`` turns it off.
+            memory **only when** ``trusted_ip_header`` is set, and leaves
+            it off otherwise: behind a reverse proxy without that header
+            every operator shares the proxy's address, and twenty bad
+            logins from anyone would lock all of them out. A throttle
+            passed explicitly always applies. ``False`` turns it off.
         trusted_ip_header (str | None): Single edge-set header holding the
             real client IP (e.g. ``"x-real-ip"``) for ``login_ip_throttle``.
             ``None`` uses the transport peer. See
@@ -370,16 +371,19 @@ def make_admin_router(
             window_seconds=ADMIN_LOGIN_THROTTLE_WINDOW_SECONDS,
         )
     )
-    resolved_login_ip_throttle: AttemptThrottle | None = (
-        None
-        if login_ip_throttle is False
-        else login_ip_throttle
-        or AttemptThrottle(
+    resolved_login_ip_throttle: AttemptThrottle | None
+    if login_ip_throttle is False:
+        resolved_login_ip_throttle = None
+    elif login_ip_throttle is not None:
+        resolved_login_ip_throttle = login_ip_throttle
+    elif trusted_ip_header:
+        resolved_login_ip_throttle = AttemptThrottle(
             InMemoryThrottleBackend(),
             max_attempts=ADMIN_LOGIN_IP_THROTTLE_MAX_ATTEMPTS,
             window_seconds=ADMIN_LOGIN_THROTTLE_WINDOW_SECONDS,
         )
-    )
+    else:
+        resolved_login_ip_throttle = None
 
     router = APIRouter(prefix=prefix, include_in_schema=False)
     router.include_router(make_htmx_router(prefix=_SCRIPTS_SUBPATH))
@@ -1190,6 +1194,7 @@ def make_admin_router(
 
     if show_logs:
         _log_base = Path(log_dir)
+        _logs_off = is_log_dir_unset(log_dir)
         _logs_page_size = 50
         _logs_export_max = 500
 
@@ -1210,6 +1215,8 @@ def make_admin_router(
             Returns:
                 list[dict[str, Any]]: The matching records, newest first.
             """
+            if _logs_off:
+                return []
             result = await run_in_threadpool(
                 partial(read_log_entries, _log_base, source, q=q)
             )
@@ -1330,9 +1337,13 @@ def make_admin_router(
             offset = (page - 1) * _logs_page_size
             window = entries[offset : offset + _logs_page_size]
 
-            available = _log_base.exists() and any(
-                candidate.exists() or bool(rotated_log_files(candidate))
-                for candidate in resolve_log_files(_log_base, "all")
+            available = (
+                not _logs_off
+                and _log_base.exists()
+                and any(
+                    candidate.exists() or bool(rotated_log_files(candidate))
+                    for candidate in resolve_log_files(_log_base, "all")
+                )
             )
 
             kept_params = {"source": source, "q": q or ""}

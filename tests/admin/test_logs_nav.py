@@ -48,7 +48,7 @@ def _client(app: FastAPI) -> AsyncClient:
 async def _build_app(
     *,
     show_logs: bool,
-    log_dir: Path,
+    log_dir: str | Path,
 ) -> tuple[FastAPI, AsyncDatabaseManager]:
     db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
     await db.connect()
@@ -237,6 +237,37 @@ async def test_logs_page_reads_timed_rotation_backups(tmp_path: Path) -> None:
         assert response.status_code == 200
         assert "order placed yesterday" in response.text
         assert "No log files found" not in response.text
+    finally:
+        await db.drop_tables()
+        await db.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_empty_log_dir_never_reads_the_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``log_dir=""`` means file logging is off, not ``Path("")`` == ``.``."""
+    (tmp_path / "info.log").write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-10-20T00:00:00Z",
+                "level": "INFO",
+                "logger": "app",
+                "message": "record sitting in the cwd",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    app, db = await _build_app(show_logs=True, log_dir="")
+    try:
+        async with _client(app) as client:
+            await _login(client)
+            response = await client.get("/admin/logs")
+        assert response.status_code == 200
+        assert "record sitting in the cwd" not in response.text
+        assert "No log files found" in response.text
     finally:
         await db.drop_tables()
         await db.disconnect()

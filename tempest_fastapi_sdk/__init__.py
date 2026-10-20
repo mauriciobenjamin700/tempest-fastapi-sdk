@@ -319,6 +319,9 @@ from tempest_fastapi_sdk.api import (
     instrument_sqlalchemy_engine as instrument_sqlalchemy_engine,
 )
 from tempest_fastapi_sdk.api import (
+    is_log_dir_unset as is_log_dir_unset,
+)
+from tempest_fastapi_sdk.api import (
     key_by_body_field as key_by_body_field,
 )
 from tempest_fastapi_sdk.api import (
@@ -2004,6 +2007,9 @@ from tempest_fastapi_sdk.utils import (
     only_digits as only_digits,
 )
 from tempest_fastapi_sdk.utils import (
+    parse_client_ip as parse_client_ip,
+)
+from tempest_fastapi_sdk.utils import (
     parse_currency_br as parse_currency_br,
 )
 from tempest_fastapi_sdk.utils import (
@@ -2775,6 +2781,7 @@ __all__: list[str] = [
     "heartbeat",
     "in_transaction",
     "instrument_sqlalchemy_engine",
+    "is_log_dir_unset",
     "is_memory_sqlite_url",
     "is_valid_cep",
     "is_valid_city",
@@ -2853,6 +2860,7 @@ __all__: list[str] = [
     "on_signal",
     "only_digits",
     "parse_accept_language",
+    "parse_client_ip",
     "parse_currency_br",
     "parse_integrity_error",
     "parse_phone_br",

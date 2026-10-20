@@ -2,7 +2,7 @@
 
 A container healthcheck for a worker can only ask the broker whether it
 is reachable (:meth:`~tempest_fastapi_sdk.tasks.TaskQueue.health_check`),
-and a worker stuck on a hung task, or a scheduler whose loop stopped,
+and a worker whose event loop is blocked, or a scheduler whose loop stopped,
 still has a perfectly reachable broker. A heartbeat file closes that gap:
 the process proves it is doing its job by rewriting a timestamp, and the
 healthcheck asks how old the timestamp is.
@@ -26,10 +26,19 @@ from tempest_fastapi_sdk.tasks.heartbeat.files import (
     DEFAULT_HEARTBEAT_EVERY as DEFAULT_HEARTBEAT_EVERY,
 )
 from tempest_fastapi_sdk.tasks.heartbeat.files import (
+    HEARTBEAT_FILE_MODE as HEARTBEAT_FILE_MODE,
+)
+from tempest_fastapi_sdk.tasks.heartbeat.files import (
+    HEARTBEAT_FUTURE_TOLERANCE_SECONDS as HEARTBEAT_FUTURE_TOLERANCE_SECONDS,
+)
+from tempest_fastapi_sdk.tasks.heartbeat.files import (
     HEARTBEAT_SCHEDULE_ID as HEARTBEAT_SCHEDULE_ID,
 )
 from tempest_fastapi_sdk.tasks.heartbeat.files import (
     HEARTBEAT_TASK_NAME as HEARTBEAT_TASK_NAME,
+)
+from tempest_fastapi_sdk.tasks.heartbeat.files import (
+    HeartbeatLoop as HeartbeatLoop,
 )
 from tempest_fastapi_sdk.tasks.heartbeat.files import (
     HeartbeatWriter as HeartbeatWriter,
@@ -47,17 +56,24 @@ from tempest_fastapi_sdk.tasks.heartbeat.files import (
     read_heartbeat as read_heartbeat,
 )
 from tempest_fastapi_sdk.tasks.heartbeat.files import (
+    validate_max_age as validate_max_age,
+)
+from tempest_fastapi_sdk.tasks.heartbeat.files import (
     write_heartbeat as write_heartbeat,
 )
 
 __all__: list[str] = [
     "DEFAULT_HEARTBEAT_EVERY",
+    "HEARTBEAT_FILE_MODE",
+    "HEARTBEAT_FUTURE_TOLERANCE_SECONDS",
     "HEARTBEAT_SCHEDULE_ID",
     "HEARTBEAT_TASK_NAME",
+    "HeartbeatLoop",
     "HeartbeatWriter",
     "heartbeat_age",
     "is_heartbeat_fresh",
     "main",
     "read_heartbeat",
+    "validate_max_age",
     "write_heartbeat",
 ]

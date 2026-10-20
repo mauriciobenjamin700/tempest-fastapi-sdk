@@ -409,6 +409,8 @@ def logout(response: Response) -> None:
 
 `get_client_ip(request)` e `get_client_ip_from_scope(scope)` retornam o IP real do cliente atrás de proxies. Por design simples: a função aceita **um** nome de header confiável (`trusted_header=`) que sua infraestrutura sabe que só o edge proxy pode setar (típico: `"x-real-ip"` num Nginx que sobrescreve o header, `"cf-connecting-ip"` atrás do Cloudflare). Sem `trusted_header=`, a função usa o peer address direto.
 
+O valor do header precisa ser **um** endereço IP (`parse_client_ip`, sobre `ipaddress.ip_address`), e volta na forma canônica (`2001:0db8::1` vira `2001:db8::1`). Lista, porta, hostname ou texto qualquer cai no peer address — sem isso, um cliente que a borda esqueceu de sanitizar mandava um valor novo a cada request e ganhava um orçamento de rate limit novo a cada vez.
+
 ```python
 from fastapi import APIRouter, Request
 

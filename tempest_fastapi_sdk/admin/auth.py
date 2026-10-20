@@ -238,10 +238,15 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
             mfa_window (int): TOTP clock-drift tolerance in 30s steps.
             require_mfa (bool): Refuse ``/admin`` to an account without
                 MFA enrolled (:meth:`mfa_enabled`). Login answers
-                ``"MFA enrollment required for /admin"`` — only after the
-                password is right, like the other account checks — and
-                :meth:`load_principal` drops the session of an account
-                whose MFA was turned off after it signed in. Default
+                ``"MFA enrollment required for /admin"`` (``401``, on the
+                login page) — only after the password is right, like the
+                other account checks — and :meth:`load_principal` drops
+                the session of an account whose MFA was turned off after
+                it signed in. The admin has **no** enrollment screen:
+                enrollment happens out of band, through the
+                ``/auth/mfa/enroll`` + ``/auth/mfa/confirm`` routes of
+                :func:`~tempest_fastapi_sdk.make_auth_router` or
+                ``tempest user create --require-mfa`` on the CLI. Default
                 ``False``: MFA is asked for only from accounts that
                 enrolled.
 

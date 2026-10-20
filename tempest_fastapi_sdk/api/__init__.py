@@ -301,6 +301,9 @@ from tempest_fastapi_sdk.api.routers import (
     clear_log_files as clear_log_files,
 )
 from tempest_fastapi_sdk.api.routers import (
+    is_log_dir_unset as is_log_dir_unset,
+)
+from tempest_fastapi_sdk.api.routers import (
     make_health_router as make_health_router,
 )
 from tempest_fastapi_sdk.api.routers import (
@@ -456,6 +459,7 @@ __all__: list[str] = [
     "generate_csrf_token",
     "generate_oauth_state",
     "instrument_sqlalchemy_engine",
+    "is_log_dir_unset",
     "key_by_body_field",
     "key_by_header",
     "key_by_ip",
