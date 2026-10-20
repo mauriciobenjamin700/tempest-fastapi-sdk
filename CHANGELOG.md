@@ -37,6 +37,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   levantava o `ValueError` interno do SQLAlchemy (`set parameter dictionary
   must not be empty`); agora levanta um `ValueError` que aponta para
   `on_conflict="nothing"`.
+- `TaskQueue.use(*resources)` (e `resources=[...]` dos construtores)
+  registrava `resource.connect` / `resource.disconnect` como método ligado no
+  momento do registro, em geral no import do módulo. Um teste do consumidor que
+  fazia `monkeypatch` de `MessageBroker.connect` na classe depois disso era
+  ignorado: no `TaskQueue.memory()`, o `connect()` rodava os hooks de startup
+  do worker e o `connect` real tentava o RabbitMQ em `127.0.0.1:5672`. O
+  método agora é resolvido quando o hook dispara, então patch na classe ou na
+  instância vale; a ordem (abre da esquerda para a direita, fecha ao contrário)
+  e o `scope` não mudam.
 
 ## [0.318.0] — 2026-10-20
 

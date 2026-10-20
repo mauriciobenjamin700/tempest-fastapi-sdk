@@ -182,6 +182,51 @@ class LifecycleResource(Protocol):
         ...
 
 
+class _ResourceHook:
+    """A lifecycle hook that looks the resource's method up when it fires.
+
+    :meth:`TaskQueue.use` runs at import time, typically in the module
+    that builds the queue. Registering ``resource.connect`` there would
+    capture the bound method of that moment, so a test that later patches
+    ``MessageBroker.connect`` on the class (or ``broker.connect`` on the
+    instance) would be ignored and the real method would still open
+    RabbitMQ. Resolving ``getattr(resource, name)`` on every call makes
+    such a patch apply, as it does for any other call site.
+
+    Attributes:
+        resource (LifecycleResource): The resource the hook opens or
+            closes.
+        name (Literal["connect", "disconnect"]): The method to call.
+    """
+
+    def __init__(
+        self,
+        resource: LifecycleResource,
+        name: Literal["connect", "disconnect"],
+    ) -> None:
+        """Hold the resource and the method name.
+
+        Args:
+            resource (LifecycleResource): The resource.
+            name (Literal["connect", "disconnect"]): The method to call.
+        """
+        self.resource: LifecycleResource = resource
+        self.name: Literal["connect", "disconnect"] = name
+
+    def __call__(self) -> Awaitable[None] | None:
+        """Call the resource's method as it is defined right now.
+
+        Returns:
+            Awaitable[None] | None: Whatever the method returns, for the
+            caller to await.
+        """
+        method: Callable[[], Awaitable[None] | None] = getattr(
+            self.resource,
+            self.name,
+        )
+        return method()
+
+
 class TaskIQSettingsLike(Protocol):
     """The two settings fields :meth:`TaskQueue.from_settings` reads.
 
@@ -1369,7 +1414,10 @@ class TaskQueue:
 
         They are opened left to right and closed right to left, so a
         resource that depends on an earlier one still has it while
-        closing.
+        closing. ``connect`` / ``disconnect`` are looked up when the
+        hook fires, not when ``use`` runs, so patching them later — on
+        the class or on the instance, as a test does to keep the
+        in-memory queue off a real broker — takes effect.
 
         Args:
             *resources (LifecycleResource): The resources to manage.
@@ -1377,9 +1425,13 @@ class TaskQueue:
                 :meth:`on_startup`.
         """
         for resource in resources:
-            self._register_hook("startup", resource.connect, scope)
+            self._register_hook("startup", _ResourceHook(resource, "connect"), scope)
         for resource in reversed(resources):
-            self._register_hook("shutdown", resource.disconnect, scope)
+            self._register_hook(
+                "shutdown",
+                _ResourceHook(resource, "disconnect"),
+                scope,
+            )
 
     # ------------------------------------------------------------------
     # Lifecycle
