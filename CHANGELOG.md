@@ -7,6 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `configure_logging(rotate_when=..., rotate_interval=1)`: rotação por tempo.
+  Com `rotate_when` (`"midnight"`, `"H"`, `"D"`, `"W0"`–`"W6"`, `"S"`, `"M"`,
+  sem diferenciar maiúscula), todo handler de arquivo vira um
+  `TimedRotatingFileHandler(utc=True, encoding="utf-8")`, `backup_count` passa
+  a contar períodos e `max_bytes` é ignorado. Uma semana:
+  `rotate_when="midnight", backup_count=7` — dez viradas seguidas deixam
+  exatamente os sete dias mais novos (`info.log.2026-10-20`, …). Unidade
+  inválida levanta `ValueError` antes de trocar os handlers
+  (`validate_rotate_when`, `LOG_ROTATE_WHEN_CHOICES`, exportados no topo). O
+  `LogUtils` repassa os dois argumentos. Testes:
+  `tests/core/test_logging_time_rotation.py`.
+- `LogSettings.LOG_ROTATE_WHEN` (default `""`, rotação por tamanho) e
+  `LOG_ROTATE_INTERVAL` (default `1`), levados por `logging_kwargs()`;
+  unidade inválida derruba o boot na validação do `Settings`.
+- `rotated_log_files(path)`: lista os backups de um arquivo de log, do mais
+  novo pro mais antigo, nos dois formatos (`info.log.1` e
+  `info.log.2026-10-20` / `info.log.2026-10-20_13`). Testes:
+  `tests/api/test_logs_rotated_backups.py`.
+- Heartbeat de worker e scheduler para healthcheck de container:
+  `TaskQueue.enable_heartbeat(*, worker_file=None, scheduler_file=None,
+  every=timedelta(seconds=30))` registra a tarefa interna `tempest:heartbeat`
+  e pendura no `tq.scheduler` uma fonte de agenda que a envia a cada `every`.
+  O worker grava `worker_file` ao executar a tarefa (prova scheduler → broker
+  → worker); o scheduler grava `scheduler_file` no `post_send`, logo depois de
+  publicar (prova que o loop gira e publica). Escrita atômica (temporário +
+  `os.replace`); falha de escrita loga um `WARNING` e nunca derruba a tarefa
+  nem o scheduler. Medido com `taskiq worker` + `taskiq scheduler` sobre
+  Redis: os dois arquivos reescritos a cada `every`.
+- `python -m tempest_fastapi_sdk.tasks.heartbeat <arquivo> --max-age <s>`:
+  sai `0` com heartbeat fresco e `1` com arquivo velho, ausente, ilegível ou
+  argumento errado (nunca o `2` que o Docker reserva), imprimindo uma linha
+  com o motivo. Só biblioteca padrão — roda com o pacote base, sem `[tasks]`
+  nem `[cli]` (medido numa `python:3.13-slim` com só o wheel base). Funções:
+  `heartbeat_age`, `is_heartbeat_fresh`, `read_heartbeat`, `write_heartbeat`,
+  `HeartbeatWriter` (em `tempest_fastapi_sdk.tasks`).
+- `TaskIQSettings.TASKIQ_WORKER_HEARTBEAT_FILE`,
+  `TASKIQ_SCHEDULER_HEARTBEAT_FILE` (default `""`, desligado) e
+  `TASKIQ_HEARTBEAT_SECONDS` (default `30`); `TaskQueue.from_settings` chama
+  `enable_heartbeat` quando um dos arquivos está preenchido. Testes:
+  `tests/tasks/test_heartbeat.py`.
+- `UserModelAuthBackend.is_authorized(user) -> bool` (default
+  `bool(user.is_admin)`): a decisão de quem entra no `/admin`, consultada por
+  `authenticate` e por `load_principal`. Serviço que autoriza por papel
+  sobrescreve só ela, sem reescrever a checagem de senha resistente a timing.
+- `UserModelAuthBackend(require_mfa=True)`: conta autorizada e ativa sem MFA
+  é recusada no login com `"MFA enrollment required for /admin"` — depois da
+  senha, como as outras recusas — e `load_principal` derruba a sessão de quem
+  desligou o MFA depois de entrar. Testes:
+  `tests/admin/test_auth_role_and_mfa.py`.
+- `login_throttle_key(identifier)`: a chave `login:<sha256>` do orçamento de
+  login por identificador, agora compartilhada por `/auth/login` e
+  `/admin/login`.
+
+### Changed
+
+- `read_log_entries`, `GET /logs` e a página `/admin/logs` leem também os
+  backups rotacionados (`info.log.1`, `info.log.2026-10-20`), do mais novo
+  pro mais antigo. O teto `max_records_per_file` (20 000 por padrão) passa a
+  valer para o arquivo do nível **somado** aos backups, e backups mais velhos
+  nem são abertos depois de alcançado. Antes só o arquivo corrente era lido —
+  sob rotação por tempo, a página ficaria vazia logo depois da meia-noite. A
+  página do admin não cai mais no estado vazio quando só há backups.
+- `clear_log_files` / `DELETE /logs` apagam os backups rotacionados (além de
+  truncar o arquivo corrente) e os listam em `cleared` — sem isso, a leitura
+  nova mostraria de volta os períodos anteriores depois de um clear.
+- O `app.py` gerado pelo `tempest new` chama
+  `configure_logging(**settings.logging_kwargs())`; antes passava só
+  `LOG_LEVEL`, `LOG_JSON` e `LOG_DIR`, e `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT` e
+  `LOG_REDACT` não tinham efeito no serviço gerado. O `.env.example` comenta
+  a receita de uma semana.
+
+### Security
+
+- `make_admin_router` ganha orçamento de falhas no `POST /admin/login`,
+  ligado por padrão: `login_throttle` (por identificador, chave
+  `login_throttle_key`, 5 tentativas / 900 s) e `login_ip_throttle` (por IP,
+  20 falhas / 900 s), ambos `AttemptThrottle | False | None`, mais
+  `trusted_ip_header` para resolver o IP como o `make_auth_router`
+  (`get_client_ip`). Esgotado, o login volta com `429` e `Retry-After`
+  **antes** de a senha ser conferida (a senha certa recebe a mesma resposta).
+  Mesma ordem do `/auth/login`: IP lido primeiro, identificador reservado
+  antes da senha, login certo zera o identificador e não o IP. Antes só o
+  `/admin/mfa` tinha limite, e a senha do admin podia ser testada sem teto.
+  Os padrões contam por processo (`InMemoryThrottleBackend`); com mais de um
+  worker passe um `AttemptThrottle` sobre o Redis. Testes:
+  `tests/admin/test_login_throttle.py`.
+
 ## [0.316.1] — 2026-10-19
 
 ### Fixed

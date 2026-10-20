@@ -206,3 +206,37 @@ async def test_logs_route_absent_when_disabled(app_no_logs: FastAPI) -> None:
         await _login(client)
         response = await client.get("/admin/logs", follow_redirects=False)
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_logs_page_reads_timed_rotation_backups(tmp_path: Path) -> None:
+    """A day rotated away by ``rotate_when="midnight"`` still shows up.
+
+    The live file can be empty right after midnight; the page must not
+    fall into the empty state while yesterday's backup holds records.
+    """
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    (log_dir / "info.log.2026-10-19").write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-10-19T23:59:00Z",
+                "level": "INFO",
+                "logger": "app.orders",
+                "message": "order placed yesterday",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    app, db = await _build_app(show_logs=True, log_dir=log_dir)
+    try:
+        async with _client(app) as client:
+            await _login(client)
+            response = await client.get("/admin/logs")
+        assert response.status_code == 200
+        assert "order placed yesterday" in response.text
+        assert "No log files found" not in response.text
+    finally:
+        await db.drop_tables()
+        await db.disconnect()

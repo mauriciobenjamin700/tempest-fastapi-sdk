@@ -377,6 +377,9 @@ from tempest_fastapi_sdk.utils.throttle import (
 from tempest_fastapi_sdk.utils.throttle import (
     ThrottleStatus as ThrottleStatus,
 )
+from tempest_fastapi_sdk.utils.throttle import (
+    login_throttle_key as login_throttle_key,
+)
 from tempest_fastapi_sdk.utils.token_types import (
     ACCESS_TOKEN_TYPE as ACCESS_TOKEN_TYPE,
 )
@@ -564,6 +567,7 @@ __all__: list[str] = [
     "is_valid_pix_key",
     "is_valid_uf",
     "list_states",
+    "login_throttle_key",
     "modify_dict",
     "normalize_cep",
     "normalize_city",

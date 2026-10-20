@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
+import re
 from collections import deque
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -57,6 +59,85 @@ _LEVEL_FILE_BY_NAME: dict[str, str] = {
     logging.getLevelName(levelno).lower(): filename
     for levelno, filename in LEVEL_LOG_FILES.items()
 }
+
+
+_NUMBERED_BACKUP = re.compile(r"^\d+$")
+"""Suffix ``RotatingFileHandler`` gives a backup: ``info.log.1``, ``.2``..."""
+
+_TIMED_BACKUP = re.compile(r"^\d{4}-\d{2}-\d{2}(?:_\d{2}(?:-\d{2}(?:-\d{2})?)?)?$")
+"""Suffix ``TimedRotatingFileHandler`` gives a backup.
+
+Ported from the ``suffix`` formats of
+``logging.handlers.TimedRotatingFileHandler.__init__`` (CPython 3.13):
+``%Y-%m-%d_%H-%M-%S`` for ``S``, ``%Y-%m-%d_%H-%M`` for ``M``,
+``%Y-%m-%d_%H`` for ``H`` and ``%Y-%m-%d`` for ``D``, ``MIDNIGHT`` and
+``W0``-``W6``. Anchored on both ends so ``info.log.gz`` or an editor's
+``info.log.swp`` is never read as a backup.
+"""
+
+
+def rotated_log_files(path: str | Path) -> list[Path]:
+    """List the rotated backups of one log file, newest first.
+
+    :func:`~tempest_fastapi_sdk.configure_logging` rotates either by size
+    (``info.log.1`` is the newest backup, higher numbers are older) or by
+    time (``info.log.2026-10-20``, ``info.log.2026-10-20_13`` for hourly
+    rotation; later dates are newer). Both shapes are listed, so a reader
+    sees the same history whichever mode wrote it — and a directory that
+    switched modes keeps showing the files the old mode left behind.
+
+    Order is by modification time, newest first, which is correct across
+    both naming schemes; files with the same modification time fall back
+    to the scheme's own order (lower number first, later date first).
+
+    Args:
+        path (str | Path): The live log file (``logs/info.log``). It does
+            not need to exist.
+
+    Returns:
+        list[Path]: The existing backups, newest first. Empty when the
+        directory or the backups do not exist.
+    """
+    live = Path(path)
+    parent = live.parent
+    if not parent.is_dir():
+        return []
+    prefix = f"{live.name}."
+    found: list[tuple[float, int, str, Path]] = []
+    for candidate in parent.iterdir():
+        name = candidate.name
+        if not name.startswith(prefix):
+            continue
+        suffix = name[len(prefix) :]
+        if _NUMBERED_BACKUP.fullmatch(suffix):
+            rank = int(suffix)
+            tiebreak = ""
+        elif _TIMED_BACKUP.fullmatch(suffix):
+            rank = 0
+            tiebreak = suffix
+        else:
+            continue
+        try:
+            if not candidate.is_file():
+                continue
+            mtime = candidate.stat().st_mtime
+        except OSError:
+            continue
+        found.append((mtime, rank, tiebreak, candidate))
+    found.sort(key=lambda item: (-item[0], item[1], _reverse_key(item[2])))
+    return [item[3] for item in found]
+
+
+def _reverse_key(value: str) -> tuple[int, ...]:
+    """Sort key that orders strings descending inside an ascending sort.
+
+    Args:
+        value (str): The string to invert.
+
+    Returns:
+        tuple[int, ...]: Negated code points, so a later date sorts first.
+    """
+    return tuple(-ord(char) for char in value)
 
 
 def _parse_timestamp(value: str) -> datetime | None:
@@ -140,26 +221,62 @@ def resolve_log_files(
     return [base / _LEVEL_FILE_BY_NAME[source]]
 
 
+def _read_newest(path: Path, limit: int) -> tuple[list[dict[str, Any]], int]:
+    """Read the newest ``limit`` JSON records of one physical file.
+
+    Args:
+        path (Path): The file to read.
+        limit (int): How many of its newest records to keep.
+
+    Returns:
+        tuple[list[dict[str, Any]], int]: The kept records, oldest first,
+        and how many records the file holds in total.
+    """
+    window: deque[dict[str, Any]] = deque(maxlen=limit)
+    seen = 0
+    with path.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                parsed = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                seen += 1
+                window.append(parsed)
+    return list(window), seen
+
+
 def _read_entries(
     files: list[Path],
     *,
     max_records_per_file: int = DEFAULT_MAX_RECORDS_PER_FILE,
 ) -> tuple[list[dict[str, Any]], bool]:
-    """Read and JSON-parse the newest lines of each file in ``files``.
+    """Read and JSON-parse the newest lines of each log in ``files``.
 
-    Malformed lines and missing files are skipped silently so a single
-    corrupt line never breaks the endpoint.
+    Each path is a live log file; its rotated backups
+    (:func:`rotated_log_files`, size- or time-based) are read after it,
+    newest first, so the history a rotation moved aside is not lost to
+    the reader. Malformed lines and missing files are skipped silently so
+    a single corrupt line never breaks the endpoint.
 
-    Only the last ``max_records_per_file`` records of each file are kept,
-    streamed through a bounded :class:`collections.deque`. The endpoint sorts
-    newest-first and paginates, so older records were never reachable
-    anyway — but reading the whole file to find that out meant a service with
-    a multi-gigabyte log directory pinned that much memory per request, and
-    the worker died before answering.
+    The cap holds per live file **including its backups**: at most
+    ``max_records_per_file`` records come out of ``info.log`` and all of
+    ``info.log.*`` together, streamed through a bounded
+    :class:`collections.deque`, and older backups are not opened once the
+    cap is reached. The endpoint sorts newest-first and paginates, so
+    older records were never reachable anyway — but reading the whole
+    history to find that out meant a service with a multi-gigabyte log
+    directory pinned that much memory per request, and the worker died
+    before answering. Seven daily backups would otherwise multiply that
+    by eight.
 
     Args:
-        files (list[Path]): The log files to read.
-        max_records_per_file (int): Cap on records kept per file.
+        files (list[Path]): The live log files to read.
+        max_records_per_file (int): Cap on records kept per live file,
+            its backups included.
 
     Returns:
         tuple[list[dict[str, Any]], bool]: The parsed records across all
@@ -168,26 +285,29 @@ def _read_entries(
     """
     entries: list[dict[str, Any]] = []
     truncated = False
-    for file_path in files:
-        if not file_path.exists():
-            continue
-        window: deque[dict[str, Any]] = deque(maxlen=max_records_per_file)
-        seen = 0
-        with file_path.open("r", encoding="utf-8") as handle:
-            for raw_line in handle:
-                line = raw_line.strip()
-                if not line:
-                    continue
-                try:
-                    parsed = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(parsed, dict):
-                    seen += 1
-                    window.append(parsed)
-        if seen > max_records_per_file:
-            truncated = True
-        entries.extend(window)
+    for live in files:
+        family = (
+            [live, *rotated_log_files(live)]
+            if live.exists()
+            else rotated_log_files(live)
+        )
+        remaining = max_records_per_file
+        for index, file_path in enumerate(family):
+            if remaining <= 0:
+                truncated = True
+                break
+            try:
+                kept, seen = _read_newest(file_path, remaining)
+            except FileNotFoundError:
+                continue
+            entries.extend(kept)
+            remaining -= len(kept)
+            if seen > len(kept):
+                truncated = True
+                break
+            if remaining <= 0 and index + 1 < len(family):
+                truncated = True
+                break
     return entries, truncated
 
 
@@ -368,9 +488,13 @@ def read_log_entries(
     each file whole works on a fresh log directory and kills the worker on a
     multi-gigabyte one.
 
-    Only the newest ``max_records_per_file`` records of each file are read,
-    through a bounded :class:`collections.deque`; ``truncated`` reports when
-    the bound cut a file. Missing files and malformed lines are skipped.
+    Each level file is read together with its rotated backups
+    (:func:`rotated_log_files`): ``info.log.1`` under size-based rotation,
+    ``info.log.2026-10-20`` under ``configure_logging(rotate_when=...)``.
+    Only the newest ``max_records_per_file`` records of each level file,
+    backups included, are read through a bounded
+    :class:`collections.deque`; ``truncated`` reports when the bound cut a
+    file. Missing files and malformed lines are skipped.
 
     The function is synchronous file I/O. From an ``async`` route, run it off
     the event loop:
@@ -391,7 +515,8 @@ def read_log_entries(
         end (datetime | None): Keep records at or before this instant. A
             value without an offset is read as UTC.
         max_records_per_file (int): How many of the newest records are read
-            from each file. Defaults to :data:`DEFAULT_MAX_RECORDS_PER_FILE`.
+            from each level file, its rotated backups included. Defaults to
+            :data:`DEFAULT_MAX_RECORDS_PER_FILE`.
 
     Returns:
         LogReadResult: The matching records, newest first, and whether the
@@ -436,6 +561,11 @@ def clear_log_files(log_dir: str | Path, source: LogSource = "all") -> list[str]
     Unlike reading, ``"all"`` covers ``500.log`` as well: a clear that left
     the 500 stream behind is the surprising outcome.
 
+    Rotated backups (:func:`rotated_log_files` — ``info.log.1`` or
+    ``info.log.2026-10-20``) are **deleted**: no handler holds them open,
+    and since :func:`read_log_entries` reads them, leaving them would make
+    a cleared page show the previous periods again.
+
     The function is synchronous file I/O. From an ``async`` route, run it off
     the event loop:
 
@@ -449,17 +579,25 @@ def clear_log_files(log_dir: str | Path, source: LogSource = "all") -> list[str]
 
     Returns:
         list[str]: The names of the files that were emptied, in
-        :func:`resolve_log_files` order.
+        :func:`resolve_log_files` order, each followed by the names of the
+        backups deleted next to it.
 
     Raises:
-        OSError: When a path cannot be opened for writing.
+        OSError: When a path cannot be opened for writing, or a backup
+            cannot be deleted.
     """
     paths = resolve_log_files(log_dir, source, include_http_500=True)
+    cleared: list[str] = []
     for path in paths:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as handle:
             handle.truncate(0)
-    return [path.name for path in paths]
+        cleared.append(path.name)
+        for backup in rotated_log_files(path):
+            with contextlib.suppress(FileNotFoundError):
+                backup.unlink()
+            cleared.append(backup.name)
+    return cleared
 
 
 def _as_depends(dependency: Callable[..., Any] | params.Depends) -> params.Depends:
@@ -720,4 +858,5 @@ __all__: list[str] = [
     "render_entries_json",
     "render_entries_markdown",
     "resolve_log_files",
+    "rotated_log_files",
 ]

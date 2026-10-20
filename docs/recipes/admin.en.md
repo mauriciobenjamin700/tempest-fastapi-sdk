@@ -1042,6 +1042,64 @@ and export; "All" clears it.
     this flag to `DEBUG` — turning debug on in production is worse than the
     original problem.
 
+##### Login failure budget
+
+`POST /admin/login` counts wrong attempts against two budgets, on by default —
+every admin already mounted gets the protection with no configuration:
+
+| Parameter | Key | Default | Cleared when |
+| --- | --- | --- | --- |
+| `login_throttle` | `login:<sha256 of the normalized identifier>` (`login_throttle_key`, the same as `/auth/login`) | 5 attempts / 900 s | the login succeeds |
+| `login_ip_throttle` | `admin-login-ip:<client ip>` | 20 failures / 900 s | never — it expires with the window |
+
+Once either is spent, the form comes back as `429` with `Retry-After`
+**before** the password is checked — the right password gets the same answer,
+so the `429` is no oracle. An unknown identifier spends its budget the same
+way, and the `429` does not tell which addresses exist. The order is
+`make_auth_router`'s: the IP budget is read first (a blocked IP does not spend
+the identifier's), and the identifier's is **reserved** before the password,
+so a concurrent burst cannot all slip through a "not blocked yet" read.
+
+```python
+from redis.asyncio import Redis
+
+from tempest_fastapi_sdk import (
+    AttemptThrottle,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+
+from src.admin.site import site
+from src.api.dependencies import db
+from src.core.settings import settings
+from src.db.models import UserModel
+
+redis: Redis = Redis.from_url(settings.REDIS_URL)
+
+router = make_admin_router(
+    site,
+    db=db,
+    auth_backend=UserModelAuthBackend(UserModel),
+    secret_key=settings.JWT_SECRET,
+    login_throttle=AttemptThrottle(redis, max_attempts=5, window_seconds=900),
+    login_ip_throttle=AttemptThrottle(redis, max_attempts=20, window_seconds=900),
+    trusted_ip_header="x-real-ip",
+)
+```
+
+!!! warning "Behind a proxy, say which header is the client IP"
+    Without `trusted_ip_header` the IP is the connection peer — behind nginx,
+    nginx itself, and every operator shares one budget of 20. Pass the header
+    your edge **overwrites** (`x-real-ip`, `cf-connecting-ip`); without it
+    configured, a header the client sends is ignored.
+
+!!! info "The default counts per process"
+    The default budgets live in an `InMemoryThrottleBackend`: with more than
+    one worker each has its own, and the ceiling becomes `5 * workers`. For a
+    real ceiling pass an `AttemptThrottle` over Redis, as above. `False` turns
+    a budget off (`login_ip_throttle=False`), for a service that already limits
+    login in another layer.
+
 #### 5. Plug in a custom auth backend
 
 `AdminAuthBackend` is an ABC that is **generic in the principal** — the value `authenticate` returns and every other method consumes. Swap the default for LDAP / OAuth / external IAM by subclassing, and name your principal in the parameter:
@@ -1131,6 +1189,54 @@ Pass the instance via `auth_backend=` and the rest of the admin pipeline (sessio
     (`AdminAuthBackend[MyRow]`), or keep the exact previous behaviour with
     `AdminAuthBackend[Any]`. The `pyproject.toml` that `tempest new` writes sets
     `strict = true`.
+
+##### Authorize by role and require MFA
+
+When who gets into `/admin` is decided by a column of yours (`role ==
+"STAFF"`) rather than `is_admin`, do not rewrite `authenticate` /
+`load_principal` — that is where the timing-safe password check lives.
+Override only `is_authorized`, which both consult:
+
+```python
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseUserModel, MFAMixin, UserModelAuthBackend
+
+
+class UserModel(MFAMixin, BaseUserModel):
+    """The service's account, with its own role."""
+
+    __tablename__ = "users"
+
+    role: Mapped[str] = mapped_column(String(16), default="MEMBER")
+
+
+class StaffAdminBackend(UserModelAuthBackend):
+    """Opens /admin to staff, and only with MFA on."""
+
+    def is_authorized(self, user: BaseUserModel) -> bool:
+        """Staff get in, whether or not is_admin is set."""
+        return isinstance(user, UserModel) and user.role == "STAFF"
+
+
+auth_backend: StaffAdminBackend = StaffAdminBackend(UserModel, require_mfa=True)
+```
+
+Pass `auth_backend` to `make_admin_router(...)` as usual. What changes:
+
+- **The password still comes first.** A wrong password answers `"Invalid
+  credentials"` for any account; only someone with the right password reads
+  `"This account is not authorized for /admin"` (wrong role) or `"MFA
+  enrollment required for /admin"` (no MFA).
+- **`require_mfa=True`** refuses at login an authorized, active account that
+  has not enrolled MFA (`mfa_enabled` false) — instead of letting it in on the
+  password alone.
+- **It holds for the session too.** `load_principal` checks the same two rules
+  on every request: a revoked role, or MFA turned off after login, sends the
+  user to `/admin/login` on the next request.
+- `is_authorized` is synchronous on purpose: it receives the already-loaded
+  row and must not hit the database.
 
 #### 6. Task panel — what is scheduled and what ran
 

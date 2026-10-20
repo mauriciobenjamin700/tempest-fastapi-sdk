@@ -23,6 +23,7 @@ import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -39,6 +40,11 @@ from typing import (
 from tempest_fastapi_sdk.tasks.cron import (
     normalize_cron_offset,
     normalize_schedule,
+)
+from tempest_fastapi_sdk.tasks.heartbeat import (
+    DEFAULT_HEARTBEAT_EVERY,
+    HEARTBEAT_TASK_NAME,
+    HeartbeatWriter,
 )
 from tempest_fastapi_sdk.tasks.lock import (
     DEFAULT_LOCK_TTL_SECONDS,
@@ -431,6 +437,7 @@ class TaskQueue:
         self._started: bool = False
         self._scheduler: AsyncTaskScheduler | None = None
         self._lock_url: str | None = lock_url
+        self._heartbeat_enabled: bool = False
         if resources:
             self.use(*resources)
 
@@ -593,6 +600,15 @@ class TaskQueue:
         the answer has to be a broker that still registers
         ``@tq.task``, not a parse error on an empty string.
 
+        Heartbeat files are read from the settings too:
+        ``TASKIQ_WORKER_HEARTBEAT_FILE`` / ``TASKIQ_SCHEDULER_HEARTBEAT_FILE``
+        (empty, the default, leaves that heartbeat off) and
+        ``TASKIQ_HEARTBEAT_SECONDS``. When either file is set,
+        :meth:`enable_heartbeat` is called. They are read with
+        ``getattr`` and a default, because :class:`TaskIQSettingsLike`
+        keeps its four members — adding three to the protocol would
+        reject the plain objects that satisfy it today.
+
         Example:
 
             >>> from tempest_fastapi_sdk.settings import TaskIQSettings
@@ -651,7 +667,9 @@ class TaskQueue:
                 " enqueue runs the task synchronously in this process instead"
                 " of handing it to a worker.",
             )
-            return cls.memory(resources=resources)
+            return cls._with_settings_heartbeat(
+                cls.memory(resources=resources), settings
+            )
         prefix: str = DEFAULT_RESULT_PREFIX if result_prefix is None else result_prefix
         scheme: str = url.split("://", 1)[0].lower()
         if scheme in {"redis", "rediss", "unix"}:
@@ -661,7 +679,7 @@ class TaskQueue:
                 else False
             )
             try:
-                return cls.redis(
+                redis_queue = cls.redis(
                     url,
                     results=derived if results is None else results,
                     result_ttl_seconds=cls._result_ttl(settings, result_ttl_seconds),
@@ -673,6 +691,7 @@ class TaskQueue:
                 raise ImportError(
                     _missing_transport_extra(url, exc, transport="redis")
                 ) from exc
+            return cls._with_settings_heartbeat(redis_queue, settings)
         if scheme in {"amqp", "amqps"}:
             try:
                 queue = cls.rabbitmq(url, resources=resources, **options)
@@ -695,13 +714,48 @@ class TaskQueue:
                     result_ttl_seconds=cls._result_ttl(settings, result_ttl_seconds),
                     result_prefix=prefix,
                 )
-            return queue
+            return cls._with_settings_heartbeat(queue, settings)
         raise ValueError(
             f"TASKIQ_BROKER_URL has an unsupported scheme {scheme!r}. "
             f"Use redis:// or rediss:// for Redis Streams, amqp:// or "
             f"amqps:// for RabbitMQ, or leave it empty for the in-memory "
             f"broker.",
         )
+
+    @staticmethod
+    def _with_settings_heartbeat(queue: TaskQueue, settings: object) -> TaskQueue:
+        """Enable the heartbeat the settings ask for, if any.
+
+        Args:
+            queue (TaskQueue): The queue :meth:`from_settings` built.
+            settings (object): The settings object; the three heartbeat
+                fields are optional on it.
+
+        Returns:
+            TaskQueue: ``queue``, with the heartbeat enabled when either
+            file setting is non-empty.
+        """
+        worker_file: str = str(
+            getattr(settings, "TASKIQ_WORKER_HEARTBEAT_FILE", "") or ""
+        ).strip()
+        scheduler_file: str = str(
+            getattr(settings, "TASKIQ_SCHEDULER_HEARTBEAT_FILE", "") or ""
+        ).strip()
+        if not worker_file and not scheduler_file:
+            return queue
+        seconds: int = int(
+            getattr(
+                settings,
+                "TASKIQ_HEARTBEAT_SECONDS",
+                int(DEFAULT_HEARTBEAT_EVERY.total_seconds()),
+            )
+        )
+        queue.enable_heartbeat(
+            worker_file=worker_file or None,
+            scheduler_file=scheduler_file or None,
+            every=timedelta(seconds=seconds),
+        )
+        return queue
 
     def _attach_redis_results(
         self,
@@ -959,6 +1013,94 @@ class TaskQueue:
     # ------------------------------------------------------------------
     # Scheduling (periodic tasks)
     # ------------------------------------------------------------------
+
+    def enable_heartbeat(
+        self,
+        *,
+        worker_file: str | Path | None = None,
+        scheduler_file: str | Path | None = None,
+        every: timedelta = DEFAULT_HEARTBEAT_EVERY,
+    ) -> None:
+        """Make the worker and the scheduler prove they are alive.
+
+        Registers the internal task :data:`HEARTBEAT_TASK_NAME` and a
+        schedule source that sends it every ``every`` from the scheduler.
+
+        * ``worker_file`` — the **worker** rewrites it with the current
+          UTC time each time it runs the heartbeat task. A fresh file
+          proves the whole path: the scheduler sent the task, the broker
+          delivered it, and a worker had a free slot to run it. It also
+          means the worker heartbeat needs the scheduler: with no
+          scheduler process running, the file goes stale and the worker
+          reads as unhealthy.
+        * ``scheduler_file`` — the **scheduler** rewrites it each time it
+          has published the heartbeat task (``post_send`` of the source,
+          called by TaskIQ's loop right after the publish). A fresh file
+          proves the loop is ticking and can still reach the broker.
+
+        Both are written atomically (temporary file plus
+        :func:`os.replace`). A failed write — read-only filesystem,
+        missing directory — logs one warning and never fails the task or
+        the scheduler; the stale file is the signal.
+
+        The source is attached to :attr:`scheduler`, so ``taskiq
+        scheduler myapp.tasks:scheduler`` picks it up with no extra
+        wiring. Call this **in the module both processes import**, before
+        binding ``scheduler = tq.scheduler``: the worker needs the task
+        registered, the scheduler needs the source, and a process only
+        writes the file that belongs to it. Configuring both paths in
+        both containers is therefore safe, and it is the simplest setup —
+        the scheduler only sends the heartbeat when it has called this
+        method as well.
+
+        Check the file from the container with
+        ``python -m tempest_fastapi_sdk.tasks.heartbeat <file> --max-age
+        <seconds>``, using a ``max_age`` of about three times ``every``.
+
+        Args:
+            worker_file (str | Path | None): Heartbeat file the worker
+                writes; ``None`` writes none.
+            scheduler_file (str | Path | None): Heartbeat file the
+                scheduler writes; ``None`` writes none.
+            every (timedelta): Heartbeat period. Whole seconds, at least
+                one — TaskIQ's interval schedules accept nothing else.
+
+        Raises:
+            ValueError: When neither file is given, or ``every`` is not a
+                whole number of seconds of at least one.
+            RuntimeError: When the heartbeat was already enabled on this
+                queue.
+        """
+        if worker_file is None and scheduler_file is None:
+            raise ValueError(
+                "enable_heartbeat() needs worker_file, scheduler_file or both",
+            )
+        seconds = every.total_seconds()
+        if seconds < 1 or seconds != int(seconds):
+            raise ValueError(
+                f"enable_heartbeat(every=...) must be a whole number of seconds "
+                f"of at least 1, got {seconds:g}s",
+            )
+        if self._heartbeat_enabled:
+            raise RuntimeError("enable_heartbeat() was already called on this queue")
+        from tempest_fastapi_sdk.tasks.heartbeat.source import (
+            HeartbeatScheduleSource,
+        )
+
+        worker_writer = HeartbeatWriter(worker_file) if worker_file else None
+
+        async def heartbeat() -> None:
+            """Write the worker heartbeat, when this process has one."""
+            if worker_writer is not None:
+                worker_writer.write()
+
+        self.broker.task(task_name=HEARTBEAT_TASK_NAME)(heartbeat)
+        source = HeartbeatScheduleSource(
+            every=timedelta(seconds=int(seconds)),
+            writer=HeartbeatWriter(scheduler_file) if scheduler_file else None,
+        )
+        self._ensure_scheduler().sources.append(source)
+        self._heartbeat_enabled = True
 
     @property
     def scheduler(self) -> TaskiqScheduler:

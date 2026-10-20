@@ -70,6 +70,7 @@ from tempest_fastapi_sdk.api.routers.logs import (
     render_entries_json,
     render_entries_markdown,
     resolve_log_files,
+    rotated_log_files,
 )
 from tempest_fastapi_sdk.db.expressions import escape_like
 from tempest_fastapi_sdk.db.repository import BaseRepository
@@ -79,9 +80,11 @@ from tempest_fastapi_sdk.tasks.jobs import (
     CANCELLABLE_JOB_STATUSES,
     JobStatus,
 )
+from tempest_fastapi_sdk.utils.client_ip import get_client_ip
 from tempest_fastapi_sdk.utils.throttle import (
     AttemptThrottle,
     InMemoryThrottleBackend,
+    login_throttle_key,
 )
 
 if TYPE_CHECKING:
@@ -100,6 +103,26 @@ The same budget ``make_auth_router`` applies to ``/auth/mfa/verify``.
 
 ADMIN_MFA_THROTTLE_WINDOW_SECONDS: int = 900
 """Length, in seconds, of the default admin ``/mfa`` failure window."""
+
+ADMIN_LOGIN_THROTTLE_MAX_ATTEMPTS: int = 5
+"""Password attempts one identifier may spend on ``/login`` per window.
+
+The same budget ``make_auth_router`` applies to ``/auth/login``.
+"""
+
+ADMIN_LOGIN_IP_THROTTLE_MAX_ATTEMPTS: int = 20
+"""Failed ``/login`` attempts one client IP may make per window.
+
+Four identifiers' worth of the per-identifier budget: enough for a team
+behind one office NAT to mistype, low enough that spraying one password
+across a list of addresses stops after twenty.
+"""
+
+ADMIN_LOGIN_THROTTLE_WINDOW_SECONDS: int = 900
+"""Length, in seconds, of the default admin ``/login`` failure windows."""
+
+ADMIN_LOGIN_THROTTLED_MESSAGE: str = "Too many failed logins, try again later"
+"""Error shown on the login page when a ``/login`` budget is spent."""
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _STATIC_DIR = Path(__file__).parent / "static"
@@ -186,6 +209,9 @@ def make_admin_router(
     sql_shell: SqlShellService | None = None,
     tasks: TaskPanelService[Any] | None = None,
     mfa_throttle: AttemptThrottle | None = None,
+    login_throttle: AttemptThrottle | Literal[False] | None = None,
+    login_ip_throttle: AttemptThrottle | Literal[False] | None = None,
+    trusted_ip_header: str | None = None,
 ) -> APIRouter:
     """Build the FastAPI router that mounts the admin site.
 
@@ -274,6 +300,38 @@ def make_admin_router(
             :class:`~tempest_fastapi_sdk.InMemoryThrottleBackend`, which
             counts per process: behind more than one worker, pass an
             :class:`~tempest_fastapi_sdk.AttemptThrottle` on Redis.
+        login_throttle (AttemptThrottle | Literal[False] | None): Failure
+            budget for ``POST {prefix}/login`` per identifier, keyed
+            ``"login:<sha256 of the normalized identifier>"``
+            (:func:`~tempest_fastapi_sdk.login_throttle_key`, the key
+            ``make_auth_router`` uses). Each attempt reserves one unit
+            **before** the password is checked and a successful login
+            clears the key, so only failures accumulate; the attempt past
+            ``max_attempts`` re-renders the login page with ``429`` and
+            ``Retry-After`` whatever the password, so the response is no
+            oracle. Spent the same way for an identifier with no account.
+            ``None`` (default) allows ``ADMIN_LOGIN_THROTTLE_MAX_ATTEMPTS``
+            (5) per ``ADMIN_LOGIN_THROTTLE_WINDOW_SECONDS`` (900) on an
+            :class:`~tempest_fastapi_sdk.InMemoryThrottleBackend` — per
+            process, so pass one on Redis behind more than one worker.
+            ``False`` turns it off.
+        login_ip_throttle (AttemptThrottle | Literal[False] | None):
+            Failure budget for ``POST {prefix}/login`` per client IP
+            (``"admin-login-ip:<addr>"``), for one source trying many
+            identifiers. Read before the identifier budget is spent and
+            counted only on a refused login; a success does not clear it,
+            since one valid account would otherwise reset the counter
+            between guesses. ``None`` (default) allows
+            ``ADMIN_LOGIN_IP_THROTTLE_MAX_ATTEMPTS`` (20) per 900 s in
+            memory. Unlike ``make_auth_router``, where the IP budget is
+            off by default, ``/admin`` has it on: its users are a handful
+            of operators, not the public. Behind a proxy set
+            ``trusted_ip_header``, or every client shares the proxy's
+            address and its budget. ``False`` turns it off.
+        trusted_ip_header (str | None): Single edge-set header holding the
+            real client IP (e.g. ``"x-real-ip"``) for ``login_ip_throttle``.
+            ``None`` uses the transport peer. See
+            :func:`~tempest_fastapi_sdk.get_client_ip`.
 
     Returns:
         APIRouter: A router ready to attach via ``app.include_router``.
@@ -301,6 +359,26 @@ def make_admin_router(
         InMemoryThrottleBackend(),
         max_attempts=ADMIN_MFA_THROTTLE_MAX_ATTEMPTS,
         window_seconds=ADMIN_MFA_THROTTLE_WINDOW_SECONDS,
+    )
+    resolved_login_throttle: AttemptThrottle | None = (
+        None
+        if login_throttle is False
+        else login_throttle
+        or AttemptThrottle(
+            InMemoryThrottleBackend(),
+            max_attempts=ADMIN_LOGIN_THROTTLE_MAX_ATTEMPTS,
+            window_seconds=ADMIN_LOGIN_THROTTLE_WINDOW_SECONDS,
+        )
+    )
+    resolved_login_ip_throttle: AttemptThrottle | None = (
+        None
+        if login_ip_throttle is False
+        else login_ip_throttle
+        or AttemptThrottle(
+            InMemoryThrottleBackend(),
+            max_attempts=ADMIN_LOGIN_IP_THROTTLE_MAX_ATTEMPTS,
+            window_seconds=ADMIN_LOGIN_THROTTLE_WINDOW_SECONDS,
+        )
     )
 
     router = APIRouter(prefix=prefix, include_in_schema=False)
@@ -789,6 +867,25 @@ def make_admin_router(
             {"user": None, "error": None, "next": next or ""},
         )
 
+    def _login_throttled(request: Request, retry_after_seconds: int) -> Response:
+        """Re-render the login form as ``429`` with ``Retry-After``.
+
+        Args:
+            request (Request): The inbound request.
+            retry_after_seconds (int): Seconds until the budget resets.
+
+        Returns:
+            Response: The login page carrying the throttle message.
+        """
+        blocked = _render(
+            request,
+            "login.html",
+            {"user": None, "error": ADMIN_LOGIN_THROTTLED_MESSAGE},
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+        blocked.headers["Retry-After"] = str(max(retry_after_seconds, 1))
+        return blocked
+
     @router.post("/login", name="admin_login")
     async def login_submit(
         request: Request,
@@ -804,10 +901,31 @@ def make_admin_router(
             password (str): The submitted password.
             db_session (AsyncSession): The DB session.
 
+        The two login budgets run in the order ``make_auth_router`` uses
+        for ``/auth/login``. The IP budget is read first, so a blocked
+        source does not spend the budget of the identifier it is
+        trying. The identifier budget is then **reserved** before the
+        password is checked — a burst of concurrent guesses cannot all
+        pass a "not blocked yet" read together. A refused login counts
+        against the IP; a successful one clears the identifier's key.
+
         Returns:
             Response: Redirect to the dashboard on success; rendered
-            login form with an error message on failure.
+            login form with an error message on failure, ``429`` with
+            ``Retry-After`` when a budget is spent.
         """
+        ip_key = (
+            f"admin-login-ip:{get_client_ip(request, trusted_header=trusted_ip_header)}"
+        )
+        if resolved_login_ip_throttle is not None:
+            ip_status = await resolved_login_ip_throttle.status(ip_key)
+            if ip_status.blocked:
+                return _login_throttled(request, ip_status.retry_after_seconds)
+        identifier_key = login_throttle_key(identifier)
+        if resolved_login_throttle is not None:
+            attempt = await resolved_login_throttle.hit(identifier_key)
+            if attempt.attempts > resolved_login_throttle.max_attempts:
+                return _login_throttled(request, attempt.retry_after_seconds)
         try:
             principal = await auth_backend.authenticate(
                 db_session,
@@ -815,12 +933,16 @@ def make_admin_router(
                 password=password,
             )
         except AdminAuthError as exc:
+            if resolved_login_ip_throttle is not None:
+                await resolved_login_ip_throttle.hit(ip_key)
             return _render(
                 request,
                 "login.html",
                 {"user": None, "error": exc.message},
                 status_code=exc.status_code,
             )
+        if resolved_login_throttle is not None:
+            await resolved_login_throttle.reset(identifier_key)
         pending = auth_backend.mfa_enabled(principal)
         session = AdminSession(
             principal_id=auth_backend.principal_id(principal),
@@ -1209,7 +1331,8 @@ def make_admin_router(
             window = entries[offset : offset + _logs_page_size]
 
             available = _log_base.exists() and any(
-                candidate.exists() for candidate in resolve_log_files(_log_base, "all")
+                candidate.exists() or bool(rotated_log_files(candidate))
+                for candidate in resolve_log_files(_log_base, "all")
             )
 
             kept_params = {"source": source, "q": q or ""}

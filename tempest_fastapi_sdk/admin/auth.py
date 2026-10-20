@@ -210,6 +210,12 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
     ``is_admin=True`` and ``is_active=True``. The
     :attr:`last_login_at` column is stamped on every successful login.
 
+    Who counts as an admin is :meth:`is_authorized` — ``is_admin`` by
+    default. A service that authorizes by its own role column overrides
+    that one method instead of re-implementing :meth:`authenticate` and
+    :meth:`load_principal`, which is where the timing-safe password
+    check lives.
+
     Args:
         user_model (type[BaseUserModel]): The concrete model class.
             Must be a subclass of :class:`BaseUserModel`.
@@ -221,6 +227,7 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         *,
         mfa_issuer: str = "Admin",
         mfa_window: int = 1,
+        require_mfa: bool = False,
     ) -> None:
         """Initialize the backend.
 
@@ -229,6 +236,14 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
             mfa_issuer (str): Issuer label used when verifying TOTP
                 codes (matches what the authenticator app stored).
             mfa_window (int): TOTP clock-drift tolerance in 30s steps.
+            require_mfa (bool): Refuse ``/admin`` to an account without
+                MFA enrolled (:meth:`mfa_enabled`). Login answers
+                ``"MFA enrollment required for /admin"`` — only after the
+                password is right, like the other account checks — and
+                :meth:`load_principal` drops the session of an account
+                whose MFA was turned off after it signed in. Default
+                ``False``: MFA is asked for only from accounts that
+                enrolled.
 
         Raises:
             TypeError: When ``user_model`` is not a subclass of
@@ -243,7 +258,29 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         self.user_model: type[BaseUserModel] = user_model
         self.mfa_issuer: str = mfa_issuer
         self.mfa_window: int = mfa_window
+        self.require_mfa: bool = require_mfa
         self._password_utils: PasswordUtils | None = None
+
+    def is_authorized(self, user: BaseUserModel) -> bool:
+        """Whether ``user`` may use ``/admin``.
+
+        The single authorization decision both :meth:`authenticate` and
+        :meth:`load_principal` consult, so a revoked role ends the next
+        request's session as well as the next login. Override it to
+        authorize by something other than ``is_admin`` — a role column,
+        a group membership already loaded on the row. It runs only for
+        an active account whose password was right, and must not touch
+        the database (it is synchronous on purpose: the row is already
+        loaded).
+
+        Args:
+            user (BaseUserModel): The loaded account.
+
+        Returns:
+            bool: ``True`` to let the account in. Default:
+            ``bool(user.is_admin)``.
+        """
+        return bool(user.is_admin)
 
     async def authenticate(
         self,
@@ -261,10 +298,12 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         and every
         wrong password — unknown, non-admin, disabled or admin account —
         is refused with the same ``"Invalid credentials"``. Only a caller
-        who already knows the password learns that the account is disabled
-        or not an admin. Checking ``is_active`` and ``is_admin`` first let
-        anyone with a list of addresses read which ones are admins, and
-        which are disabled, off the error message and the response time.
+        who already knows the password learns that the account is disabled,
+        not authorized (:meth:`is_authorized`) or, under
+        ``require_mfa=True``, missing MFA enrollment. Checking
+        ``is_active`` and ``is_admin`` first let anyone with a list of
+        addresses read which ones are admins, and which are disabled, off
+        the error message and the response time.
 
         Args:
             session (AsyncSession): A live DB session.
@@ -292,8 +331,10 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
             raise AdminAuthError("Invalid credentials")
         if not user.is_active:
             raise AdminAuthError("Account disabled")
-        if not user.is_admin:
+        if not self.is_authorized(user):
             raise AdminAuthError("This account is not authorized for /admin")
+        if self.require_mfa and not self.mfa_enabled(user):
+            raise AdminAuthError("MFA enrollment required for /admin")
         user.last_login_at = utcnow()
         await session.commit()
         await session.refresh(user)
@@ -307,7 +348,8 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         """Reload the user by ID, ensuring they still qualify for admin.
 
         Returns ``None`` when the user no longer exists, has been
-        soft-deleted, or had ``is_admin`` revoked.
+        deactivated, is no longer :meth:`is_authorized`, or — under
+        ``require_mfa=True`` — turned MFA off after signing in.
 
         Args:
             session (AsyncSession): A live DB session.
@@ -324,7 +366,9 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
             select(self.user_model).where(self.user_model.id == uid)
         )
         user = result.scalar_one_or_none()
-        if user is None or not user.is_active or not user.is_admin:
+        if user is None or not user.is_active or not self.is_authorized(user):
+            return None
+        if self.require_mfa and not self.mfa_enabled(user):
             return None
         return user
 

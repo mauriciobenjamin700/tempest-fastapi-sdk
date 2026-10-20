@@ -596,6 +596,8 @@ class TestLogRotationSettings:
             LOG_DIR="/var/log/app",
             LOG_MAX_BYTES=5_000_000,
             LOG_BACKUP_COUNT=3,
+            LOG_ROTATE_WHEN="midnight",
+            LOG_ROTATE_INTERVAL=2,
             LOG_REDACT=True,
         )
 
@@ -605,6 +607,8 @@ class TestLogRotationSettings:
             "log_dir": "/var/log/app",
             "max_bytes": 5_000_000,
             "backup_count": 3,
+            "rotate_when": "midnight",
+            "rotate_interval": 2,
             "redact": True,
         }
 

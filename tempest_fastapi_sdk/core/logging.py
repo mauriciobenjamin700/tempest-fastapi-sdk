@@ -5,7 +5,7 @@ import json
 import logging
 import sys
 from datetime import UTC, datetime
-from logging.handlers import RotatingFileHandler
+from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +46,20 @@ DEFAULT_LOG_BACKUP_COUNT: int = 5
 
 Five rotated files plus the one being written is roughly 60 MB per level
 at the default :data:`DEFAULT_LOG_MAX_BYTES`.
+"""
+
+LOG_ROTATE_WHEN_CHOICES: frozenset[str] = frozenset(
+    {"S", "M", "H", "D", "MIDNIGHT", *(f"W{day}" for day in range(7))}
+)
+"""Every ``when`` that :class:`logging.handlers.TimedRotatingFileHandler` accepts.
+
+Ported from the branches of ``TimedRotatingFileHandler.__init__`` in the
+CPython standard library (read on 3.13): ``S``, ``M``, ``H``, ``D``,
+``MIDNIGHT`` and ``W0``-``W6`` (``W0`` is Monday), compared after
+``when.upper()``. Anything else makes the handler raise
+``ValueError`` — but only when the handler is built, which is after
+:func:`configure_logging` has already removed the previous handlers, so
+the check runs here first.
 """
 
 HTTP_500_LOG_FILE: str = "500.log"
@@ -183,18 +197,57 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(payload, default=str, ensure_ascii=False)
 
 
+def validate_rotate_when(when: str) -> str:
+    """Check a time-rotation ``when`` before any handler is built.
+
+    The standard library validates ``when`` only inside
+    ``TimedRotatingFileHandler.__init__``. :func:`configure_logging`
+    removes the logger's current handlers before it opens new ones, so a
+    typo caught that late would leave the process with no file handlers
+    and a traceback in the middle of boot. Validating first keeps the
+    failure at the call, with the accepted values in the message.
+
+    Args:
+        when (str): The rotation unit, case-insensitive — one of
+            :data:`LOG_ROTATE_WHEN_CHOICES` (``"midnight"``, ``"H"``,
+            ``"W0"``, ...).
+
+    Returns:
+        str: ``when`` unchanged, so the handler sees what the caller
+        wrote.
+
+    Raises:
+        ValueError: When ``when`` is not one of the accepted values.
+    """
+    if when.upper() not in LOG_ROTATE_WHEN_CHOICES:
+        accepted = ", ".join(sorted(LOG_ROTATE_WHEN_CHOICES))
+        raise ValueError(
+            f"invalid log rotation when={when!r}; expected one of {accepted} "
+            f"(case-insensitive, W0 is Monday)"
+        )
+    return when
+
+
 def _rotating_handler(
     path: Path,
     *,
     max_bytes: int,
     backup_count: int,
+    rotate_when: str | None = None,
+    rotate_interval: int = 1,
 ) -> logging.Handler:
     """Open one log file, rotating unless the caller opted out.
 
     Args:
         path (Path): The file to write.
         max_bytes (int): Rotation threshold; ``0`` means never rotate.
+            Ignored when ``rotate_when`` is set.
         backup_count (int): Rotated files to keep.
+        rotate_when (str | None): Time-based rotation unit. When set, the
+            handler is a ``TimedRotatingFileHandler`` (UTC) and size plays
+            no part.
+        rotate_interval (int): How many ``rotate_when`` units between
+            rotations.
 
     Returns:
         logging.Handler: A ``RotatingFileHandler``, or a plain
@@ -203,6 +256,15 @@ def _rotating_handler(
         what a caller reading ``logging.root.handlers`` expects to find
         when they asked for no rotation.
     """
+    if rotate_when:
+        return TimedRotatingFileHandler(
+            path,
+            when=rotate_when,
+            interval=rotate_interval,
+            backupCount=backup_count,
+            utc=True,
+            encoding="utf-8",
+        )
     if max_bytes <= 0:
         return logging.FileHandler(path, encoding="utf-8")
     return RotatingFileHandler(
@@ -218,6 +280,8 @@ def _build_file_handlers(
     *,
     max_bytes: int = DEFAULT_LOG_MAX_BYTES,
     backup_count: int = DEFAULT_LOG_BACKUP_COUNT,
+    rotate_when: str | None = None,
+    rotate_interval: int = 1,
 ) -> list[logging.Handler]:
     """Build the per-level and 500-isolation file handlers.
 
@@ -245,6 +309,9 @@ def _build_file_handlers(
         max_bytes (int): Size at which a file rotates. ``0`` disables
             rotation, for hosts where ``logrotate`` or a sidecar owns it.
         backup_count (int): How many rotated files to keep per level.
+        rotate_when (str | None): Time-based rotation unit; replaces
+            size-based rotation when set.
+        rotate_interval (int): Units of ``rotate_when`` between rotations.
 
     Returns:
         list[logging.Handler]: The configured file handlers.
@@ -267,6 +334,8 @@ def _build_file_handlers(
                 log_dir / filename,
                 max_bytes=max_bytes,
                 backup_count=backup_count,
+                rotate_when=rotate_when,
+                rotate_interval=rotate_interval,
             )
             file_handler.setLevel(logging.DEBUG)
             file_handler.addFilter(_ExactLevelFilter(levelno))
@@ -277,6 +346,8 @@ def _build_file_handlers(
             log_dir / HTTP_500_LOG_FILE,
             max_bytes=max_bytes,
             backup_count=backup_count,
+            rotate_when=rotate_when,
+            rotate_interval=rotate_interval,
         )
         http_500_handler.setLevel(logging.DEBUG)
         http_500_handler.addFilter(_Http500Filter())
@@ -301,6 +372,8 @@ def configure_logging(
     file_output: bool = True,
     max_bytes: int = DEFAULT_LOG_MAX_BYTES,
     backup_count: int = DEFAULT_LOG_BACKUP_COUNT,
+    rotate_when: str | None = None,
+    rotate_interval: int = 1,
     redact: bool | RedactionPolicy = False,
 ) -> logging.Logger:
     """Install a structured stdout handler on the root (or named) logger.
@@ -353,7 +426,25 @@ def configure_logging(
             choice: the service that never thought about log growth is
             exactly the one that fills the disk.
         backup_count (int): Rotated files kept per level (default ``5``,
-            so roughly 60 MB per level at the default size).
+            so roughly 60 MB per level at the default size). Under
+            time-based rotation it is the number of past periods kept:
+            ``rotate_when="midnight"`` with ``backup_count=7`` keeps the
+            current day plus the seven before it.
+        rotate_when (str | None): Rotate by time instead of size. One of
+            :data:`LOG_ROTATE_WHEN_CHOICES`, case-insensitive
+            (``"midnight"``, ``"H"``, ``"D"``, ``"W0"``...). When set,
+            every file handler is a
+            :class:`~logging.handlers.TimedRotatingFileHandler` with
+            ``utc=True`` and ``max_bytes`` is **ignored** — a file is
+            never cut by size, so a burst of logging inside one period
+            grows that period's file. Rotated files are named with the
+            period's UTC start (``info.log.2026-10-20``, or
+            ``info.log.2026-10-20_13`` for ``"H"``) and are read by
+            :func:`~tempest_fastapi_sdk.read_log_entries` like
+            ``info.log.1`` is. ``None`` or ``""`` (default) keeps
+            size-based rotation.
+        rotate_interval (int): How many ``rotate_when`` units make one
+            period (default ``1``). Must be at least ``1``.
         redact (bool | RedactionPolicy): When truthy, attach a
             :class:`~tempest_fastapi_sdk.RedactionFilter` to **every**
             handler installed here — on the handler and not on the logger,
@@ -380,6 +471,9 @@ def configure_logging(
         ValueError: When both ``stdout=False`` and ``file_output=False``
             are passed — that would silence every handler and leave
             the application blind, which is almost always a mistake.
+            Also when ``rotate_when`` is not an accepted unit or
+            ``rotate_interval`` is below ``1``; both are checked before
+            any existing handler is removed.
 
     Notes:
         Existing handlers are **closed** before being removed, not just
@@ -400,6 +494,13 @@ def configure_logging(
             "configure_logging: stdout=False and file_output=False "
             "would silence every handler. Pick at least one."
         )
+    if rotate_when:
+        validate_rotate_when(rotate_when)
+        if rotate_interval < 1:
+            raise ValueError(
+                f"configure_logging: rotate_interval must be at least 1, "
+                f"got {rotate_interval}"
+            )
 
     redaction_filter: RedactionFilter | None = None
     if isinstance(redact, RedactionPolicy):
@@ -435,6 +536,8 @@ def configure_logging(
                 Path(log_dir),
                 max_bytes=max_bytes,
                 backup_count=backup_count,
+                rotate_when=rotate_when or None,
+                rotate_interval=rotate_interval,
             )
         except OSError as exc:
             msg = (
@@ -524,8 +627,10 @@ __all__: list[str] = [
     "HTTP_500_LOG_FILE",
     "HTTP_500_MARKER",
     "LEVEL_LOG_FILES",
+    "LOG_ROTATE_WHEN_CHOICES",
     "JSONFormatter",
     "configure_logging",
     "configure_root_once",
     "reinitialize_logging",
+    "validate_rotate_when",
 ]

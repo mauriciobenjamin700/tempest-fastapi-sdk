@@ -30,6 +30,9 @@ from tempest_fastapi_sdk.api.routers.logs import (
 from tempest_fastapi_sdk.api.routers.logs import (
     render_entries_markdown as render_entries_markdown,
 )
+from tempest_fastapi_sdk.api.routers.logs import (
+    rotated_log_files as rotated_log_files,
+)
 from tempest_fastapi_sdk.api.routers.metrics import (
     DEFAULT_LATENCY_BUCKETS as DEFAULT_LATENCY_BUCKETS,
 )
@@ -66,4 +69,5 @@ __all__: list[str] = [
     "read_log_entries",
     "render_entries_json",
     "render_entries_markdown",
+    "rotated_log_files",
 ]

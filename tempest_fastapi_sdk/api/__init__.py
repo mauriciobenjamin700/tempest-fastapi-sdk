@@ -324,6 +324,9 @@ from tempest_fastapi_sdk.api.routers import (
 from tempest_fastapi_sdk.api.routers import (
     render_entries_markdown as render_entries_markdown,
 )
+from tempest_fastapi_sdk.api.routers import (
+    rotated_log_files as rotated_log_files,
+)
 from tempest_fastapi_sdk.api.server import run_server as run_server
 from tempest_fastapi_sdk.api.spa import (
     DEFAULT_ASSET_CACHE_CONTROL as DEFAULT_ASSET_CACHE_CONTROL,
@@ -487,6 +490,7 @@ __all__: list[str] = [
     "render_entries_json",
     "render_entries_markdown",
     "require_x_token",
+    "rotated_log_files",
     "run_server",
     "set_cookie",
     "setup_tracing",

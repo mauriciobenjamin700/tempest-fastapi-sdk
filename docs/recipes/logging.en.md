@@ -173,9 +173,10 @@ configure_logging(level="INFO", max_bytes=0)
     directory had grown to gigabytes answered with a dead worker. This is the
     writing half.
 
-    Rotated files (`info.log.1`, `info.log.2`, …) are **not** read by `/logs`:
-    the endpoint reads the exact names, so it shows the current window. Longer
-    retention is a collector's job.
+    Rotated files (`info.log.1`, `info.log.2`, …) **are** read by `/logs` and
+    by the `/admin/logs` page, together with the current file and inside the
+    same 20k-records-per-level ceiling. Longer retention than that is a
+    collector's job.
 
 !!! warning "Don't disable both"
     `configure_logging(stdout=False, file_output=False)` raises
@@ -258,9 +259,79 @@ configure_logging(**config.logging_kwargs())
 | `LOG_DIR` | `logs` | Directory for the files; empty disables file logging. |
 | `LOG_MAX_BYTES` | `10000000` | Size at which each file rotates; `0` disables rotation. |
 | `LOG_BACKUP_COUNT` | `5` | Generations kept per level. |
+| `LOG_ROTATE_WHEN` | empty | Rotate by time (`midnight`, `H`, `D`, `W0`–`W6`, `S`, `M`); empty keeps size-based rotation. |
+| `LOG_ROTATE_INTERVAL` | `1` | How many `LOG_ROTATE_WHEN` units make one period. |
 
 The disk budget is `LOG_MAX_BYTES * (LOG_BACKUP_COUNT + 1)` per level, times
-the six files.
+the six files — under size-based rotation.
+
+### Rotate by time — keep one week
+
+A byte ceiling answers "how much disk", not "how much time". When the
+question is "I want exactly the last week of logs", rotate by time:
+`rotate_when` swaps every file handler for a `TimedRotatingFileHandler`
+(always UTC), and `backup_count` starts counting **periods**.
+
+```python
+from tempest_fastapi_sdk import configure_logging
+
+configure_logging(
+    level="INFO",
+    log_dir="logs",
+    rotate_when="midnight",
+    backup_count=7,
+)
+```
+
+From the environment, with the `LogSettings` of the previous section:
+
+```bash
+LOG_ROTATE_WHEN=midnight
+LOG_BACKUP_COUNT=7
+```
+
+At UTC midnight the day's file becomes a backup named after the period's
+date, and the oldest one past the seventh is deleted:
+
+```text
+logs/
+├── info.log              # today
+├── info.log.2026-10-19   # yesterday
+├── info.log.2026-10-18
+│   ...
+└── info.log.2026-10-13   # seven days ago — the eighth goes at the next rollover
+```
+
+Checked in `tests/core/test_logging_time_rotation.py`: ten rollovers in a row
+with `backup_count=7` leave exactly the seven newest days.
+
+| `rotate_when` | Period | Backup name |
+| --- | --- | --- |
+| `"S"` / `"M"` / `"H"` | second / minute / hour | `info.log.2026-10-20_13-05-00` / `info.log.2026-10-20_13-05` / `info.log.2026-10-20_13` |
+| `"D"` | 24 h from startup | `info.log.2026-10-20` |
+| `"midnight"` | day, rolling at UTC midnight | `info.log.2026-10-20` |
+| `"W0"`–`"W6"` | week, rolling on that day (`W0` = Monday) | `info.log.2026-10-20` |
+
+`rotate_interval` multiplies the unit: `rotate_when="H", rotate_interval=6`
+rotates every six hours.
+
+!!! warning "Under time-based rotation, `max_bytes` is ignored"
+    A period's file is never cut by size: a burst of logging inside one day
+    grows that day's file. If the volume per period is not predictable, prefer
+    size-based rotation (the default) or leave retention to the host's
+    `logrotate`.
+
+!!! check "An invalid unit fails at the call, not at the first log"
+    `configure_logging(rotate_when="daily")` raises `ValueError` listing the
+    accepted units (`validate_rotate_when`) **before** removing the current
+    handlers — and `LOG_ROTATE_WHEN=daily` fails the boot in `Settings`
+    validation.
+
+!!! info "Readers see both backup shapes"
+    `read_log_entries`, `GET /logs` and the `/admin/logs` page read the current
+    file and its backups — `info.log.1` or `info.log.2026-10-20` — newest
+    first (`rotated_log_files`). A directory that switched modes keeps showing
+    what the previous mode left behind.
 
 
 ## Reporting a 500 of your own — `error_500`
@@ -666,8 +737,9 @@ Query parameters:
 | `page` / `page_size` | integers | Pagination (1-indexed). |
 
 !!! info "The read is bounded per file"
-    Each request reads the **newest 20,000 records** of every selected file
-    (`DEFAULT_MAX_RECORDS_PER_FILE`), not the whole file. The endpoint sorts
+    Each request reads the **newest 20,000 records** of every selected level
+    (`DEFAULT_MAX_RECORDS_PER_FILE`) — the current file and its rotated
+    backups together, newest first — not the whole history. The endpoint sorts
     newest-first and paginates, so what was left out was unreachable anyway —
     and without the bound a multi-gigabyte log directory went into memory whole
     on every request, taking the worker down before it answered. Tune it with
@@ -701,11 +773,15 @@ The response names what it emptied:
     **does** include it, because a clear that left the 500 stream behind is
     the surprising outcome.
 
-!!! info "Truncates, never unlinks"
+!!! info "Truncates the current file, deletes the backups"
     The handlers `configure_logging` installed hold an open descriptor on each
     path. Removing the file would leave them writing to an inode nothing can
     read back — the endpoint would look like it worked exactly once. A missing
     file is created empty, so the post-condition is the same.
+
+    Rotated backups (`info.log.1`, `info.log.2026-10-20`) are held open by no
+    one, and the read includes them: so they are **deleted**, and listed in
+    `cleared` right after their level's file.
 
 Anything that needs the paths outside a route — an archiving job, a collector,
 a counter — uses the same resolver the router uses, instead of re-deriving the

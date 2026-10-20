@@ -1020,6 +1020,65 @@ volta ao padrão.
     `cookie_secure=False`, ciente de que a sessão vai sem `Secure`. Não amarre
     esse flag ao `DEBUG` — ligar debug em produção é pior que o problema original.
 
+##### Orçamento de falhas no login
+
+`POST /admin/login` conta tentativas erradas em dois orçamentos, ligados por
+padrão — todo admin já montado ganha a proteção sem configurar nada:
+
+| Parâmetro | Chave | Padrão | Zera quando |
+| --- | --- | --- | --- |
+| `login_throttle` | `login:<sha256 do identificador normalizado>` (`login_throttle_key`, a mesma do `/auth/login`) | 5 tentativas / 900 s | o login dá certo |
+| `login_ip_throttle` | `admin-login-ip:<ip do cliente>` | 20 falhas / 900 s | nunca — expira com a janela |
+
+Esgotado qualquer um, o formulário volta com `429` e `Retry-After` **antes**
+de a senha ser conferida — a senha certa recebe a mesma resposta, então o
+`429` não vira oráculo. O identificador desconhecido gasta o orçamento do
+mesmo jeito, e o `429` não conta quais endereços existem. A ordem é a do
+`make_auth_router`: o orçamento do IP é lido primeiro (um IP bloqueado não
+gasta o do identificador), e o do identificador é **reservado** antes da
+senha, para uma rajada concorrente não passar inteira por um "ainda não
+bloqueado".
+
+```python
+from redis.asyncio import Redis
+
+from tempest_fastapi_sdk import (
+    AttemptThrottle,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+
+from src.admin.site import site
+from src.api.dependencies import db
+from src.core.settings import settings
+from src.db.models import UserModel
+
+redis: Redis = Redis.from_url(settings.REDIS_URL)
+
+router = make_admin_router(
+    site,
+    db=db,
+    auth_backend=UserModelAuthBackend(UserModel),
+    secret_key=settings.JWT_SECRET,
+    login_throttle=AttemptThrottle(redis, max_attempts=5, window_seconds=900),
+    login_ip_throttle=AttemptThrottle(redis, max_attempts=20, window_seconds=900),
+    trusted_ip_header="x-real-ip",
+)
+```
+
+!!! warning "Atrás de proxy, diga qual header é o IP do cliente"
+    Sem `trusted_ip_header`, o IP é o par da conexão — atrás de nginx, o do
+    próprio nginx, e todo operador divide um orçamento de 20. Passe o header
+    que a sua borda **sobrescreve** (`x-real-ip`, `cf-connecting-ip`); sem
+    ele configurado, um header mandado pelo cliente é ignorado.
+
+!!! info "O padrão conta por processo"
+    Os orçamentos padrão vivem num `InMemoryThrottleBackend`: com mais de um
+    worker, cada um tem o seu, e o teto vira `5 * workers`. Para um teto de
+    verdade, passe um `AttemptThrottle` sobre o Redis, como acima. `False`
+    desliga um orçamento (`login_ip_throttle=False`), para quem já limita o
+    login em outra camada.
+
 #### 5. Plugue um backend de auth customizado
 
 `AdminAuthBackend` é uma ABC **genérica no principal** — o valor que `authenticate` devolve e que todo o resto dos métodos consome. Troque o default por LDAP / OAuth / IAM externo subclasseando, e diga no parâmetro qual é o seu principal:
@@ -1109,6 +1168,53 @@ Passe a instância via `auth_backend=` e o resto do pipeline do admin (sessões,
     (`AdminAuthBackend[MinhaLinha]`) ou, para manter exatamente o comportamento
     anterior, `AdminAuthBackend[Any]`. O `pyproject.toml` que o `tempest new`
     escreve tem `strict = true`.
+
+##### Autorizar por papel e exigir MFA
+
+Quando quem entra no `/admin` é decidido por uma coluna sua (`role ==
+"STAFF"`) e não por `is_admin`, não reescreva `authenticate` /
+`load_principal` — é ali que mora a checagem de senha resistente a timing.
+Sobrescreva só `is_authorized`, que os dois consultam:
+
+```python
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseUserModel, MFAMixin, UserModelAuthBackend
+
+
+class UserModel(MFAMixin, BaseUserModel):
+    """Conta do serviço, com papel próprio."""
+
+    __tablename__ = "users"
+
+    role: Mapped[str] = mapped_column(String(16), default="MEMBER")
+
+
+class StaffAdminBackend(UserModelAuthBackend):
+    """Libera o /admin para a equipe, e só com MFA ativa."""
+
+    def is_authorized(self, user: BaseUserModel) -> bool:
+        """Entra quem tem papel STAFF, tenha ou não is_admin."""
+        return isinstance(user, UserModel) and user.role == "STAFF"
+
+
+auth_backend: StaffAdminBackend = StaffAdminBackend(UserModel, require_mfa=True)
+```
+
+Passe `auth_backend` ao `make_admin_router(...)` como de costume. O que muda:
+
+- **A senha continua primeiro.** Senha errada responde `"Invalid credentials"`
+  para qualquer conta; só quem acertou a senha lê `"This account is not
+  authorized for /admin"` (papel errado) ou `"MFA enrollment required for
+  /admin"` (sem MFA).
+- **`require_mfa=True`** recusa no login a conta autorizada e ativa que não
+  ativou MFA (`mfa_enabled` falso) — em vez de deixá-la entrar só com a senha.
+- **Vale para a sessão também.** `load_principal` consulta os mesmos dois
+  critérios a cada request: papel revogado, ou MFA desligada depois do login,
+  manda para `/admin/login` no request seguinte.
+- `is_authorized` é síncrono de propósito: recebe a linha já carregada e não
+  deve ir ao banco.
 
 #### 6. Painel de tasks — o que está agendado e o que rodou
 
