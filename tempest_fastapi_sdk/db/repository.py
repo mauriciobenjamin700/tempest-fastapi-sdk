@@ -8,7 +8,17 @@ from contextlib import AbstractAsyncContextManager
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from enum import Enum
-from typing import Any, ClassVar, Generic, List, NoReturn, TypeVar, cast
+from typing import (
+    Any,
+    ClassVar,
+    Generic,
+    List,
+    Literal,
+    NoReturn,
+    TypeVar,
+    cast,
+    overload,
+)
 from uuid import UUID
 
 from sqlalchemy import (
@@ -2511,13 +2521,23 @@ class BaseRepository(Generic[ModelType]):
         you have a large batch (≥ 50 rows) and don't need the ORM
         instances back; the round-trip count drops from ``N`` to ``1``.
 
+        A conflict on any unique constraint fails the whole statement
+        with the repository's conflict exception and rolls the session
+        back (unless an open :meth:`transaction` block owns the
+        rollback). When a conflict is the expected outcome, use
+        :meth:`bulk_upsert` with ``on_conflict="nothing"`` instead.
+
         Args:
             rows (list[dict[str, Any]]): One mapping per row,
                 keyed by column name (not attribute name; usually
                 they match for SDK models).
 
         Returns:
-            int: Number of rows inserted (``len(rows)`` on success).
+            int: The driver's row count for the statement — the number
+            of rows inserted, which is ``len(rows)`` unless a trigger
+            skipped some. A count of ``0`` is returned as ``0``; only a
+            driver that reports ``-1`` (count unknown) falls back to
+            ``len(rows)``.
 
         Raises:
             ConflictException: On unique / FK violations.
@@ -2529,7 +2549,7 @@ class BaseRepository(Generic[ModelType]):
             query = insert(self.model).values(rows)
             result = cast(CursorResult[Any], await self.session.execute(query))
             await self._commit()
-            return result.rowcount or len(rows)
+            return self._reported_rowcount(result, fallback=len(rows))
         except IntegrityError as exc:
             await self._rollback_after_failure()
             logger.warning(
@@ -2544,20 +2564,88 @@ class BaseRepository(Generic[ModelType]):
             await self._rollback_after_failure()
             raise
 
+    @staticmethod
+    def _reported_rowcount(result: CursorResult[Any], *, fallback: int) -> int:
+        """Return the driver's row count, keeping a real ``0``.
+
+        ``rowcount`` is ``-1`` when the driver cannot tell (SQLite does
+        this for a statement with ``RETURNING``). Only that case uses
+        ``fallback``: the earlier ``result.rowcount or fallback`` turned
+        a genuine ``0`` into ``fallback`` as well.
+
+        Args:
+            result (CursorResult[Any]): The executed statement's result.
+            fallback (int): The count to report when the driver answers
+                ``-1``.
+
+        Returns:
+            int: ``result.rowcount`` when it is ``>= 0``, else
+            ``fallback``.
+        """
+        count = result.rowcount
+        return count if count >= 0 else fallback
+
+    @overload
     async def bulk_upsert(
         self,
         rows: List[dict[str, Any]],
         *,
         conflict_columns: List[str],
         update_columns: List[str] | None = None,
-    ) -> int:
-        """Issue an ``INSERT ... ON CONFLICT DO UPDATE`` in one round-trip.
+        on_conflict: Literal["update", "nothing"] = "update",
+        returning_ids: Literal[False] = False,
+    ) -> int: ...
+
+    @overload
+    async def bulk_upsert(
+        self,
+        rows: List[dict[str, Any]],
+        *,
+        conflict_columns: List[str],
+        update_columns: List[str] | None = None,
+        on_conflict: Literal["update", "nothing"] = "update",
+        returning_ids: Literal[True],
+    ) -> List[UUID]: ...
+
+    async def bulk_upsert(
+        self,
+        rows: List[dict[str, Any]],
+        *,
+        conflict_columns: List[str],
+        update_columns: List[str] | None = None,
+        on_conflict: Literal["update", "nothing"] = "update",
+        returning_ids: bool = False,
+    ) -> int | List[UUID]:
+        """Insert many rows in one round-trip, resolving key conflicts.
 
         Picks the dialect-specific upsert syntax automatically —
         Postgres (``postgresql.insert``) and SQLite
         (``sqlite.insert``) are supported. Other dialects raise
         :class:`NotImplementedError` so the caller can fall back to
         a transactional ``SELECT FOR UPDATE`` loop.
+
+        ``on_conflict`` picks what a row whose ``conflict_columns``
+        already exist does:
+
+        * ``"update"`` (the default) issues
+          ``ON CONFLICT (...) DO UPDATE SET ...``: the existing row is
+          rewritten with the incoming values of ``update_columns``.
+        * ``"nothing"`` issues ``ON CONFLICT (...) DO NOTHING``: the
+          existing row is left untouched and the incoming one is
+          dropped. This is the idempotent insert — running the same
+          batch twice, or from two sessions at once, creates each key
+          exactly once and never fails on that key. The conflict is
+          resolved by the database, so no exception is raised and no
+          rollback happens: the caller's transaction stays intact.
+          Measured on PostgreSQL 16 and SQLite 3.47: a second session
+          inserting the same keys waits for the first to commit, then
+          skips them.
+
+        Only a conflict on ``conflict_columns`` is resolved. A
+        violation of any other constraint (another unique index, a
+        foreign key, ``NOT NULL``) still fails the statement with the
+        repository's conflict exception, as :meth:`bulk_create_values`
+        does.
 
         Args:
             rows (list[dict[str, Any]]): One mapping per row.
@@ -2566,20 +2654,56 @@ class BaseRepository(Generic[ModelType]):
                 typically the natural-key columns (e.g.
                 ``["sku"]``). Must be backed by a UNIQUE index.
             update_columns (list[str] | None): Columns to refresh
-                on conflict. ``None`` updates every column except
-                ``conflict_columns`` and the primary key.
+                on conflict, for ``on_conflict="update"``. ``None``
+                updates every column except ``conflict_columns`` and
+                the primary key. Must be ``None`` (or empty) with
+                ``on_conflict="nothing"``, which updates nothing.
+            on_conflict (Literal["update", "nothing"]): ``"update"``
+                rewrites the conflicting row, ``"nothing"`` keeps it.
+            returning_ids (bool): ``False`` returns a count. ``True``
+                adds ``RETURNING id`` and returns the primary keys
+                instead: with ``"nothing"`` they are exactly the rows
+                this call created (what a caller needs to publish one
+                event per new row); with ``"update"`` they are every
+                row inserted **or** updated, since neither dialect
+                tells the two apart portably. The order is the
+                database's, not necessarily the order of ``rows``.
 
         Returns:
-            int: Total rows touched (inserted + updated).
+            int | list[UUID]: With ``returning_ids=False``, a count.
+            For ``"update"`` it is the driver's row count, which on
+            PostgreSQL and SQLite is rows inserted plus rows updated
+            (a conflicting row counts once). For ``"nothing"`` it is
+            the number of rows actually inserted — ``0`` when every key
+            already existed — taken from ``RETURNING`` so it does not
+            depend on the driver's ``rowcount``. With
+            ``returning_ids=True``, the list of primary keys described
+            above.
 
         Raises:
-            ConflictException: On non-recoverable integrity errors.
+            ConflictException: On integrity errors other than the
+                resolved conflict on ``conflict_columns``.
             NotImplementedError: When the active SQLAlchemy dialect
                 has no native upsert.
-            ValueError: When ``rows`` is empty.
+            ValueError: When ``rows`` is empty; when ``on_conflict`` is
+                not ``"update"`` / ``"nothing"``; when ``"nothing"`` is
+                given a non-empty ``update_columns`` (a column list that
+                would be ignored is almost always a mistaken call); or
+                when ``"update"`` resolves to no column to update — use
+                ``"nothing"`` for that.
         """
         if not rows:
             raise ValueError("bulk_upsert requires at least one row.")
+        if on_conflict not in ("update", "nothing"):
+            raise ValueError(
+                f"bulk_upsert: on_conflict must be 'update' or 'nothing', "
+                f"got {on_conflict!r}.",
+            )
+        if on_conflict == "nothing" and update_columns:
+            raise ValueError(
+                "bulk_upsert: update_columns has no effect with "
+                "on_conflict='nothing'; drop it, or use on_conflict='update'.",
+            )
 
         bind = self.session.get_bind()
         dialect_name = bind.dialect.name
@@ -2600,22 +2724,35 @@ class BaseRepository(Generic[ModelType]):
                 f"tempest-fastapi-sdk/issues."
             )
 
-        if update_columns is None:
-            pk_columns = {col.name for col in self.model.__table__.primary_key}
-            skip = set(conflict_columns) | pk_columns
-            update_columns = [
-                col.name for col in self.model.__table__.columns if col.name not in skip
-            ]
-        update_set = {col: getattr(stmt.excluded, col) for col in update_columns}
-        stmt = stmt.on_conflict_do_update(
-            index_elements=conflict_columns,
-            set_=update_set,
-        )
+        if on_conflict == "nothing":
+            stmt = stmt.on_conflict_do_nothing(index_elements=conflict_columns)
+        else:
+            if update_columns is None:
+                pk_columns = {col.name for col in self.model.__table__.primary_key}
+                skip = set(conflict_columns) | pk_columns
+                update_columns = [
+                    col.name
+                    for col in self.model.__table__.columns
+                    if col.name not in skip
+                ]
+            if not update_columns:
+                raise ValueError(
+                    "bulk_upsert: no column to update on conflict; "
+                    "use on_conflict='nothing' to keep existing rows.",
+                )
+            update_set = {col: getattr(stmt.excluded, col) for col in update_columns}
+            stmt = stmt.on_conflict_do_update(
+                index_elements=conflict_columns,
+                set_=update_set,
+            )
+        use_returning = returning_ids or on_conflict == "nothing"
+        if use_returning:
+            stmt = stmt.returning(self.model.id)
 
         try:
             result = cast(CursorResult[Any], await self.session.execute(stmt))
+            ids: List[UUID] = list(result.scalars().all()) if use_returning else []
             await self._commit()
-            return result.rowcount or len(rows)
         except IntegrityError as exc:
             await self._rollback_after_failure()
             logger.warning(
@@ -2629,6 +2766,11 @@ class BaseRepository(Generic[ModelType]):
         except Exception:
             await self._rollback_after_failure()
             raise
+        if returning_ids:
+            return ids
+        if use_returning:
+            return len(ids)
+        return self._reported_rowcount(result, fallback=len(rows))
 
     async def delete(self, id: UUID) -> None:
         """Delete a single row by its primary key.
