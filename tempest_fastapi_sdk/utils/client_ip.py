@@ -20,12 +20,40 @@ Rules of thumb:
   (``CF-Connecting-IP``, ``True-Client-IP``, …) — never blind
   ``X-Forwarded-For`` parsing.
 - No proxy: leave ``trusted_header=None`` to use the peer address.
+
+The header's value must parse as one IP address
+(:func:`ipaddress.ip_address`); anything else — a list, a port, a
+hostname, arbitrary text — falls back to the transport peer. Without
+that, a client the edge forgot to sanitize could send a fresh string
+per request and get a fresh rate-limit budget each time, and every one
+of those strings became a key in an in-memory store. The address is
+returned in its canonical form, so ``2001:0db8::1`` and ``2001:db8::1``
+are one client.
 """
+
+import ipaddress
 
 from starlette.requests import Request
 from starlette.types import Scope
 
 _UNKNOWN: str = "unknown"
+
+
+def parse_client_ip(value: str) -> str | None:
+    """Return ``value`` as a canonical IP address, or ``None``.
+
+    Args:
+        value (str): A header value claimed to be one client address.
+
+    Returns:
+        str | None: The canonical form (``ipaddress.ip_address`` rendered
+        back to text) after stripping whitespace, or ``None`` when the
+        value is not exactly one IPv4 or IPv6 address.
+    """
+    try:
+        return str(ipaddress.ip_address(value.strip()))
+    except ValueError:
+        return None
 
 
 def get_client_ip(
@@ -43,12 +71,15 @@ def get_client_ip(
 
     Returns:
         str: The resolved client IP, or ``"unknown"`` when neither the
-            trusted header nor the transport peer is available.
+            trusted header nor the transport peer is available. A header
+            value that is not one IP address is ignored (see
+            :func:`parse_client_ip`).
     """
     if trusted_header:
         value = request.headers.get(trusted_header)
-        if value:
-            return value.strip()
+        parsed = parse_client_ip(value) if value else None
+        if parsed is not None:
+            return parsed
     return request.client.host if request.client else _UNKNOWN
 
 
@@ -70,13 +101,16 @@ def get_client_ip_from_scope(
 
     Returns:
         str: The resolved client IP, or ``"unknown"`` when unavailable.
+            A header value that is not one IP address is ignored.
     """
     if trusted_header:
         wanted = trusted_header.lower().encode("latin-1")
         for key, raw in scope.get("headers") or []:
             if key.lower() == wanted and raw:
-                decoded: str = raw.decode("latin-1")
-                return decoded.strip()
+                parsed = parse_client_ip(raw.decode("latin-1"))
+                if parsed is not None:
+                    return parsed
+                break
     client = scope.get("client")
     if client and len(client) >= 1 and client[0]:
         host: str = client[0]
@@ -87,4 +121,5 @@ def get_client_ip_from_scope(
 __all__: list[str] = [
     "get_client_ip",
     "get_client_ip_from_scope",
+    "parse_client_ip",
 ]

@@ -1010,6 +1010,206 @@ taskiq scheduler src.tasks:scheduler
     (`tq.scheduler`, `scheduler.scheduler`). Hence the `broker = tq.broker`
     above.
 
+## Worker and scheduler healthcheck
+
+The healthcheck `TaskQueue` already had (`health_check`) only asks whether the
+broker is up. A worker stuck on a task that never finishes, or a scheduler
+whose loop stopped, still has a perfectly reachable broker — and the container
+stays `healthy`. A **heartbeat** closes that gap: the process proves it is
+doing its job by rewriting a file with the current time, and the healthcheck
+asks how many seconds old that file is.
+
+Turn it on from the environment — `from_settings` calls `enable_heartbeat`
+when either file is set:
+
+```python
+# src/tasks.py
+from tempest_fastapi_sdk.settings import TaskIQSettings
+from tempest_fastapi_sdk.tasks import TaskQueue
+
+
+class Settings(TaskIQSettings):
+    """Worker and scheduler configuration."""
+
+
+tq: TaskQueue = TaskQueue.from_settings(Settings())
+
+broker = tq.broker
+scheduler = tq.scheduler
+```
+
+| Variable | Default | What it decides |
+| --- | --- | --- |
+| `TASKIQ_WORKER_HEARTBEAT_FILE` | empty | File each **worker** process rewrites every period. |
+| `TASKIQ_SCHEDULER_HEARTBEAT_FILE` | empty | File the **scheduler** rewrites every period, from inside its loop. |
+| `TASKIQ_HEARTBEAT_SECONDS` | `30` | Heartbeat period. |
+
+Both empty (the default) leaves everything as it was: no extra loop, no file.
+Each process only writes the file that belongs to it, so both variables can go
+on both containers (as the compose below does).
+
+Or explicitly, without settings:
+
+```python
+from datetime import timedelta
+
+from tempest_fastapi_sdk.tasks import TaskQueue
+
+tq: TaskQueue = TaskQueue.redis("redis://localhost:6379/0")
+tq.enable_heartbeat(
+    worker_file="/tmp/worker.heartbeat",
+    scheduler_file="/tmp/scheduler.heartbeat",
+    every=timedelta(seconds=30),
+)
+
+broker = tq.broker
+scheduler = tq.scheduler
+```
+
+### What each file proves
+
+- **Worker** — each worker process starts, on TaskIQ's startup event, an
+  asyncio task that rewrites the file every `every` (`HeartbeatLoop`), and
+  cancels it on shutdown. The beat is **local**: it goes through neither the
+  broker nor the scheduler, so each replica keeps its own file fresh whichever
+  replica the broker picks for each task. A fresh file proves the process is
+  alive and its event loop is not blocked — a task that blocks the loop with
+  synchronous work stops the beat. A task that awaits forever without
+  blocking the loop does not; that is a task-timeout problem.
+- **Scheduler** — TaskIQ's loop wakes every second; when the heartbeat is
+  due it calls the `pre_send` of the schedule source `enable_heartbeat`
+  attaches to `tq.scheduler`. `pre_send` writes the file and **cancels** the
+  send (`ScheduledTaskCancelledError`): nothing is published to the broker. A
+  fresh file proves the loop is ticking — not that the scheduler can still
+  publish.
+
+Measured with real `taskiq worker` + `taskiq scheduler` over Redis, in
+Compose, with `TASKIQ_HEARTBEAT_SECONDS=5` and **two** worker replicas: each
+replica and the scheduler rewrote its file every 5 s; the `taskiq` stream in
+Redis stayed at `XLEN 0` (the heartbeat publishes nothing); with the
+scheduler stopped, both replicas stayed `healthy` for over 100 s.
+
+!!! note "With `--workers N`, the file proves at least one process"
+    `taskiq worker` starts several child processes (`--workers`), and each
+    has its own heartbeat loop writing to the container's one file. One stuck
+    child with another alive keeps the file fresh.
+
+!!! info "Two TaskIQ `INFO` lines per scheduler beat"
+    TaskIQ's scheduler logs `Sending task tempest:heartbeat ...` and
+    `Scheduled task tempest:heartbeat has been cancelled.` every period. It is
+    the loop saying it went by; no message leaves.
+
+!!! check "A failed write never takes anything down"
+    The files are written atomically (temporary file + `os.replace`), with
+    mode `0644` so a checker running as another user on a shared volume can
+    read them, and the healthcheck never reads a half-written file. When a
+    write fails (read-only filesystem, missing directory), **one** `WARNING`
+    is logged and the worker and the scheduler carry on; the stale file is the
+    signal.
+
+### The checker
+
+```bash
+python -m tempest_fastapi_sdk.tasks.heartbeat /tmp/worker.heartbeat --max-age 90
+```
+
+It exits `0` when the file exists and the time recorded in it is less than
+`--max-age` seconds old, and `1` otherwise — stale, missing, unreadable, more
+than 5 s **in the future** (`HEARTBEAT_FUTURE_TOLERANCE_SECONDS`: a broken
+clock or a forged file must not look healthy for hours) or bad arguments,
+including a `--max-age` that is not a finite number above zero; never `2`,
+which Docker reserves. It prints one line with the reason:
+
+```text
+healthy: heartbeat /tmp/worker.heartbeat is 0.2s old (max 90s)
+unhealthy: heartbeat /tmp/worker.heartbeat is 10.4s old (max 6s)
+```
+
+It only uses the standard library: it runs with the base package installed,
+without the `[tasks]` or `[cli]` extras (measured on a `python:3.13-slim`
+image with only the base wheel). In code, the same test is
+`is_heartbeat_fresh(path, max_age)` and `heartbeat_age(path)`.
+
+!!! tip "`--max-age` of about three periods"
+    With `TASKIQ_HEARTBEAT_SECONDS=30`, use `--max-age 90`: one late heartbeat
+    (busy worker, GC, clock) does not become a false alarm.
+
+### In `docker-compose.yml`
+
+```yaml
+x-tasks-env: &tasks-env
+  TASKIQ_BROKER_URL: redis://redis:6379/0
+  TASKIQ_WORKER_HEARTBEAT_FILE: /tmp/worker.heartbeat
+  TASKIQ_SCHEDULER_HEARTBEAT_FILE: /tmp/scheduler.heartbeat
+  TASKIQ_HEARTBEAT_SECONDS: "30"
+
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  scheduler:
+    build: .
+    command: ["taskiq", "scheduler", "src.tasks:scheduler"]
+    environment: *tasks-env
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "tempest_fastapi_sdk.tasks.heartbeat",
+             "/tmp/scheduler.heartbeat", "--max-age", "90"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  worker:
+    build: .
+    command: ["taskiq", "worker", "src.tasks:broker"]
+    environment: *tasks-env
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "tempest_fastapi_sdk.tasks.heartbeat",
+             "/tmp/worker.heartbeat", "--max-age", "90"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  api:
+    build: .
+    command: ["python", "main.py"]
+    depends_on:
+      worker:
+        condition: service_healthy
+```
+
+`start_period` covers startup (importing the service before the first beat).
+Each check takes about a second (it imports the SDK), hence `timeout: 10s`.
+
+!!! danger "Plain Docker does **not** restart an `unhealthy` container"
+    The healthcheck **marks** the container (`docker ps` shows `(unhealthy)`);
+    the `restart:` policy only acts when the process **exits**. Measured with
+    Docker 29.6.1 and Compose 5.3.0: with the worker's processes frozen
+    (`SIGSTOP`), the replica turned `unhealthy` in ~20 s and stayed that way,
+    `RestartCount` at `0`, despite `restart: unless-stopped` — the other
+    replica stayed `healthy`. What the healthcheck feeds is:
+
+    - `depends_on: condition: service_healthy` — the `api` above only starts
+      once the worker has proven it is alive;
+    - `docker ps` / `docker inspect` — the state is visible to whoever
+      operates it;
+    - your monitoring (alerting on `unhealthy` containers), or an orchestrator
+      that acts on it — Swarm and Kubernetes (through a `livenessProbe`)
+      replace the container; Docker alone does not.
+
 ## The scheduler in the FastAPI lifespan — with one replica scheduling
 
 A small deployment does not want a second process just for cron.
@@ -1289,6 +1489,7 @@ The full guide — model, producer service with `save_with_outbox`, retention an
 - **`MessageBroker`** — typed, transport-agnostic pub/sub over FastStream: `@mq.on("channel")` + `await mq.publish("channel", model)`. At-least-once fan-out across services.
 - **`TaskQueue`** — tasks over TaskIQ: `@tq.task` → `await task.enqueue(...)` (to the worker) or `await task.run(...)` (inline). `.memory()` for tests.
 - **`@tq.cron` / `@tq.interval`** — periodic on the same object; `start_scheduler()` in dev, standalone CLI in production.
+- **Heartbeat** — `TASKIQ_WORKER_HEARTBEAT_FILE` / `TASKIQ_SCHEDULER_HEARTBEAT_FILE` + `python -m tempest_fastapi_sdk.tasks.heartbeat` in the `HEALTHCHECK`; Docker marks the container `unhealthy`, it does not restart it. The worker beat is local to each replica.
 - **Cron without syntax** — `Cron` / `CronOffset` / `Weekday` + helpers (`daily`, `weekdays`, `every_n_minutes`, …) to schedule by name; `CronOffset.BRASILIA` instead of `"-03:00"`.
 - **Styles** — decorators (`@mq.on`, `@tq.task`, `@tq.cron`) **or** classes (`Consumer` + `mq.register`, `TaskDef` + `tq.register`); both coexist.
 - **Outbox** — `BaseOutboxModel` + `OutboxRelay` + `save_with_outbox`, with the relay's `publish` pointing at `MessageBroker`. See [Outbox](outbox.md).

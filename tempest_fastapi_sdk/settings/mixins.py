@@ -43,6 +43,7 @@ from pydantic import AliasChoices, Field, field_validator, model_validator
 from tempest_fastapi_sdk.core.logging import (
     DEFAULT_LOG_BACKUP_COUNT,
     DEFAULT_LOG_MAX_BYTES,
+    validate_rotate_when,
 )
 from tempest_fastapi_sdk.settings.base import BaseAppSettings
 
@@ -277,6 +278,12 @@ class LogSettings(BaseAppSettings):
             disables rotation. Default: ``10_000_000``.
         LOG_BACKUP_COUNT (int): Rotated files kept per level.
             Default: ``5``.
+        LOG_ROTATE_WHEN (str): Rotate by time instead of size —
+            ``midnight``, ``H``, ``D``, ``W0``-``W6``, ``S`` or ``M``
+            (case-insensitive). Empty keeps size-based rotation.
+            Default: ``""``.
+        LOG_ROTATE_INTERVAL (int): Units of ``LOG_ROTATE_WHEN`` per
+            period. Default: ``1``.
         LOG_REDACT (bool): Redact e-mails, credentials and sensitive
             ``extra=`` keys from every record with the default
             :class:`~tempest_fastapi_sdk.RedactionPolicy`. Default:
@@ -332,6 +339,30 @@ class LogSettings(BaseAppSettings):
         ),
         examples=[5, 3, 0],
     )
+    LOG_ROTATE_WHEN: str = Field(
+        default="",
+        title="Time-based log rotation",
+        description=(
+            "Rotate by time instead of size: ``midnight``, ``H``, ``D``, "
+            "``W0``-``W6`` (``W0`` is Monday), ``S`` or ``M``, "
+            "case-insensitive, always in UTC. When set, ``LOG_MAX_BYTES`` is "
+            "ignored and ``LOG_BACKUP_COUNT`` counts past periods: "
+            "``midnight`` with ``LOG_BACKUP_COUNT=7`` keeps one week. Empty "
+            "keeps size-based rotation."
+        ),
+        examples=["", "midnight", "H", "W0"],
+    )
+    LOG_ROTATE_INTERVAL: int = Field(
+        default=1,
+        ge=1,
+        title="Time-based rotation interval",
+        description=(
+            "How many ``LOG_ROTATE_WHEN`` units make one period — ``6`` "
+            "with ``H`` rotates every six hours. Ignored when "
+            "``LOG_ROTATE_WHEN`` is empty."
+        ),
+        examples=[1, 6],
+    )
     LOG_REDACT: bool = Field(
         default=False,
         title="Redact log records",
@@ -345,6 +376,26 @@ class LogSettings(BaseAppSettings):
         examples=[False, True],
     )
 
+    @field_validator("LOG_ROTATE_WHEN")
+    @classmethod
+    def _check_rotate_when(cls, value: str) -> str:
+        """Refuse an unknown rotation unit at boot, not at the first log.
+
+        Args:
+            value (str): The configured unit; empty means size-based.
+
+        Returns:
+            str: The value, stripped.
+
+        Raises:
+            ValueError: When the unit is not one
+                :class:`~logging.handlers.TimedRotatingFileHandler` accepts.
+        """
+        stripped = value.strip()
+        if stripped:
+            validate_rotate_when(stripped)
+        return stripped
+
     def logging_kwargs(self) -> dict[str, Any]:
         """Map these settings onto :func:`configure_logging` kwargs.
 
@@ -354,7 +405,9 @@ class LogSettings(BaseAppSettings):
         an error.
 
         ``log_dir`` is passed through as-is, including the empty string,
-        which :func:`configure_logging` reads as "no file logging".
+        which :func:`configure_logging` reads as "no file logging". An
+        empty ``LOG_ROTATE_WHEN`` becomes ``rotate_when=None``
+        (size-based rotation).
 
         Returns:
             dict[str, Any]: Keyword arguments ready to splat into
@@ -366,6 +419,8 @@ class LogSettings(BaseAppSettings):
             "log_dir": self.LOG_DIR,
             "max_bytes": self.LOG_MAX_BYTES,
             "backup_count": self.LOG_BACKUP_COUNT,
+            "rotate_when": self.LOG_ROTATE_WHEN or None,
+            "rotate_interval": self.LOG_ROTATE_INTERVAL,
             "redact": self.LOG_REDACT,
         }
 
@@ -1279,6 +1334,13 @@ class TaskIQSettings(BaseAppSettings):
         TASKIQ_RESULT_TTL_SECONDS (int): Seconds a stored result
             survives. Default: ``86400`` (one day); ``0`` keeps results
             forever, which is what ``taskiq_redis`` does on its own.
+        TASKIQ_WORKER_HEARTBEAT_FILE (str): File the worker rewrites each
+            time it runs the heartbeat task; empty disables it.
+            Default: ``""``.
+        TASKIQ_SCHEDULER_HEARTBEAT_FILE (str): File the scheduler
+            rewrites each time it sends the heartbeat task; empty
+            disables it. Default: ``""``.
+        TASKIQ_HEARTBEAT_SECONDS (int): Heartbeat period. Default: ``30``.
     """
 
     TASKIQ_BROKER_URL: str = Field(
@@ -1322,6 +1384,38 @@ class TaskIQSettings(BaseAppSettings):
             "permanent key per execution."
         ),
         examples=[86400, 3600, 0],
+    )
+    TASKIQ_WORKER_HEARTBEAT_FILE: str = Field(
+        default="",
+        title="Worker heartbeat file",
+        description=(
+            "File the worker rewrites with the current UTC time each time "
+            "it runs the heartbeat task the scheduler sends every "
+            "``TASKIQ_HEARTBEAT_SECONDS``. A container healthcheck reads it "
+            "with ``python -m tempest_fastapi_sdk.tasks.heartbeat``. Empty "
+            "turns the worker heartbeat off."
+        ),
+        examples=["", "/tmp/worker.heartbeat"],
+    )
+    TASKIQ_SCHEDULER_HEARTBEAT_FILE: str = Field(
+        default="",
+        title="Scheduler heartbeat file",
+        description=(
+            "File the scheduler rewrites each time it publishes the "
+            "heartbeat task. Empty turns the scheduler heartbeat off; "
+            "when both files are empty no heartbeat task is registered."
+        ),
+        examples=["", "/tmp/scheduler.heartbeat"],
+    )
+    TASKIQ_HEARTBEAT_SECONDS: int = Field(
+        default=30,
+        ge=1,
+        title="Heartbeat period (seconds)",
+        description=(
+            "Seconds between two heartbeats. The healthcheck's ``--max-age`` "
+            "should be about three times this value."
+        ),
+        examples=[30, 60],
     )
 
     def production_violations(self) -> list[str]:

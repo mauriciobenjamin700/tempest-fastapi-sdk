@@ -79,6 +79,42 @@ from tempest_fastapi_sdk.tasks.dead_letter import (
 from tempest_fastapi_sdk.tasks.dead_letter import (
     task_inventory as task_inventory,
 )
+from tempest_fastapi_sdk.tasks.heartbeat import (
+    DEFAULT_HEARTBEAT_EVERY as DEFAULT_HEARTBEAT_EVERY,
+)
+from tempest_fastapi_sdk.tasks.heartbeat import (
+    HEARTBEAT_FILE_MODE as HEARTBEAT_FILE_MODE,
+)
+from tempest_fastapi_sdk.tasks.heartbeat import (
+    HEARTBEAT_FUTURE_TOLERANCE_SECONDS as HEARTBEAT_FUTURE_TOLERANCE_SECONDS,
+)
+from tempest_fastapi_sdk.tasks.heartbeat import (
+    HEARTBEAT_SCHEDULE_ID as HEARTBEAT_SCHEDULE_ID,
+)
+from tempest_fastapi_sdk.tasks.heartbeat import (
+    HEARTBEAT_TASK_NAME as HEARTBEAT_TASK_NAME,
+)
+from tempest_fastapi_sdk.tasks.heartbeat import (
+    HeartbeatLoop as HeartbeatLoop,
+)
+from tempest_fastapi_sdk.tasks.heartbeat import (
+    HeartbeatWriter as HeartbeatWriter,
+)
+from tempest_fastapi_sdk.tasks.heartbeat import (
+    heartbeat_age as heartbeat_age,
+)
+from tempest_fastapi_sdk.tasks.heartbeat import (
+    is_heartbeat_fresh as is_heartbeat_fresh,
+)
+from tempest_fastapi_sdk.tasks.heartbeat import (
+    read_heartbeat as read_heartbeat,
+)
+from tempest_fastapi_sdk.tasks.heartbeat import (
+    validate_max_age as validate_max_age,
+)
+from tempest_fastapi_sdk.tasks.heartbeat import (
+    write_heartbeat as write_heartbeat,
+)
 from tempest_fastapi_sdk.tasks.jobs import (
     CANCELLABLE_JOB_STATUSES as CANCELLABLE_JOB_STATUSES,
 )
@@ -174,11 +210,16 @@ from tempest_fastapi_sdk.tasks.stages import StageStatus as StageStatus
 
 __all__: list[str] = [
     "CANCELLABLE_JOB_STATUSES",
+    "DEFAULT_HEARTBEAT_EVERY",
     "DEFAULT_LOCK_NAME",
     "DEFAULT_LOCK_TTL_SECONDS",
     "DEFAULT_POLL_SECONDS",
     "DEFAULT_RESULT_PREFIX",
     "DEFAULT_RESULT_TTL_SECONDS",
+    "HEARTBEAT_FILE_MODE",
+    "HEARTBEAT_FUTURE_TOLERANCE_SECONDS",
+    "HEARTBEAT_SCHEDULE_ID",
+    "HEARTBEAT_TASK_NAME",
     "RUNNING_STAGE_STATUSES",
     "STALE_JOB_ERROR",
     "STORE_OWNED_JOB_COLUMNS",
@@ -193,6 +234,8 @@ __all__: list[str] = [
     "DbDeadLetterSink",
     "DeadLetter",
     "DeadLetterSink",
+    "HeartbeatLoop",
+    "HeartbeatWriter",
     "Hook",
     "JobAlreadyFinishedError",
     "JobCancelledError",
@@ -226,7 +269,9 @@ __all__: list[str] = [
     "daily",
     "every_minute",
     "every_n_minutes",
+    "heartbeat_age",
     "hourly",
+    "is_heartbeat_fresh",
     "make_dead_letter_admin_model",
     "make_dead_letter_middleware",
     "make_dead_letter_model",
@@ -236,10 +281,13 @@ __all__: list[str] = [
     "monthly",
     "normalize_cron_offset",
     "normalize_schedule",
+    "read_heartbeat",
     "run_cancellable",
     "task_inventory",
     "task_method",
+    "validate_max_age",
     "weekdays",
     "weekends",
     "weekly",
+    "write_heartbeat",
 ]

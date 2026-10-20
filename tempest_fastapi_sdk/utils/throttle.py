@@ -24,6 +24,7 @@ Example:
     await throttle.reset(key)                     # success clears it
 """
 
+import hashlib
 import math
 import time
 from collections.abc import Awaitable, Callable
@@ -266,6 +267,25 @@ class AttemptThrottle:
         return current
 
 
+def login_throttle_key(identifier: str) -> str:
+    """Return the per-identifier login throttle key for ``identifier``.
+
+    ``"login:<sha256 of the stripped, lowercased identifier>"`` — hashed so
+    the throttle backend (often a shared Redis) never stores the address,
+    and normalized so ``Root@Example.com`` and ``root@example.com`` spend
+    one budget. Shared by ``POST /auth/login`` and ``POST /admin/login``,
+    which is what keeps the two from drifting into two key shapes.
+
+    Args:
+        identifier (str): The submitted login identifier (an e-mail).
+
+    Returns:
+        str: The throttle key.
+    """
+    digest = hashlib.sha256(identifier.strip().lower().encode("utf-8")).hexdigest()
+    return f"login:{digest}"
+
+
 class InMemoryThrottleBackend:
     """Process-local :class:`ThrottleBackend` — no Redis, no network.
 
@@ -424,4 +444,5 @@ __all__: list[str] = [
     "InMemoryThrottleBackend",
     "ThrottleBackend",
     "ThrottleStatus",
+    "login_throttle_key",
 ]

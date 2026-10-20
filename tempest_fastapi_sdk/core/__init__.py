@@ -34,6 +34,9 @@ from tempest_fastapi_sdk.core.logging import (
     HTTP_500_MARKER as HTTP_500_MARKER,
 )
 from tempest_fastapi_sdk.core.logging import (
+    LOG_ROTATE_WHEN_CHOICES as LOG_ROTATE_WHEN_CHOICES,
+)
+from tempest_fastapi_sdk.core.logging import (
     JSONFormatter as JSONFormatter,
 )
 from tempest_fastapi_sdk.core.logging import (
@@ -44,6 +47,9 @@ from tempest_fastapi_sdk.core.logging import (
 )
 from tempest_fastapi_sdk.core.logging import (
     reinitialize_logging as reinitialize_logging,
+)
+from tempest_fastapi_sdk.core.logging import (
+    validate_rotate_when as validate_rotate_when,
 )
 from tempest_fastapi_sdk.core.redaction import (
     BEARER_PATTERN as BEARER_PATTERN,
@@ -88,6 +94,7 @@ __all__: list[str] = [
     "EMAIL_PATTERN",
     "HTTP_500_MARKER",
     "JWT_PATTERN",
+    "LOG_ROTATE_WHEN_CHOICES",
     "REDACTED",
     "BaseIntEnum",
     "BaseStrEnum",
@@ -106,4 +113,5 @@ __all__: list[str] = [
     "set_request_id",
     "strict_types",
     "typed",
+    "validate_rotate_when",
 ]

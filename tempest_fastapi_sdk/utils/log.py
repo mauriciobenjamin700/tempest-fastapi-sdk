@@ -107,6 +107,8 @@ class LogUtils:
         file_output: bool = True,
         max_bytes: int = DEFAULT_LOG_MAX_BYTES,
         backup_count: int = DEFAULT_LOG_BACKUP_COUNT,
+        rotate_when: str | None = None,
+        rotate_interval: int = 1,
         scope: Literal["root", "logger"] = "root",
     ) -> None:
         """Configure and bind a logger to this instance.
@@ -141,6 +143,10 @@ class LogUtils:
             max_bytes (int): Size at which each file rotates. ``0``
                 disables rotation.
             backup_count (int): Rotated files kept per level.
+            rotate_when (str | None): Rotate by time instead of size
+                (``"midnight"``, ``"H"``, ...); ``max_bytes`` is then
+                ignored. See :func:`configure_logging`.
+            rotate_interval (int): Units of ``rotate_when`` per period.
             scope (Literal["root", "logger"]): Which logger receives the
                 handlers. ``"root"`` (default) configures the root
                 logger once per process and binds ``name`` to propagate
@@ -158,6 +164,8 @@ class LogUtils:
             "file_output": file_output,
             "max_bytes": max_bytes,
             "backup_count": backup_count,
+            "rotate_when": rotate_when,
+            "rotate_interval": rotate_interval,
         }
         if scope == "root":
             configure_root_once(**options)
@@ -176,6 +184,8 @@ class LogUtils:
         file_output: bool = True,
         max_bytes: int = DEFAULT_LOG_MAX_BYTES,
         backup_count: int = DEFAULT_LOG_BACKUP_COUNT,
+        rotate_when: str | None = None,
+        rotate_interval: int = 1,
     ) -> logging.Logger:
         """Imperative shortcut for :func:`configure_logging`.
 
@@ -198,6 +208,9 @@ class LogUtils:
             max_bytes (int): Size at which each file rotates. ``0``
                 disables rotation.
             backup_count (int): Rotated files kept per level.
+            rotate_when (str | None): Rotate by time instead of size;
+                ``max_bytes`` is then ignored.
+            rotate_interval (int): Units of ``rotate_when`` per period.
 
         Returns:
             logging.Logger: The configured logger.
@@ -211,6 +224,8 @@ class LogUtils:
             file_output=file_output,
             max_bytes=max_bytes,
             backup_count=backup_count,
+            rotate_when=rotate_when,
+            rotate_interval=rotate_interval,
         )
 
     @staticmethod

@@ -172,9 +172,10 @@ configure_logging(level="INFO", max_bytes=0)
     com diretório de log em gigabytes respondeu com worker morto. Isto é o lado
     de quem escreve.
 
-    Os arquivos rotacionados (`info.log.1`, `info.log.2`, …) **não** são lidos
-    pelo `/logs`: o endpoint lê os nomes exatos, então ele mostra a janela
-    corrente. Retenção mais longa é trabalho de coletor.
+    Os arquivos rotacionados (`info.log.1`, `info.log.2`, …) **são** lidos
+    pelo `/logs` e pela página `/admin/logs`, junto do arquivo corrente e
+    dentro do mesmo teto de 20 mil registros por nível. Retenção mais longa
+    que isso é trabalho de coletor.
 
 !!! warning "Não desligue os dois"
     `configure_logging(stdout=False, file_output=False)` lança
@@ -255,9 +256,80 @@ configure_logging(**config.logging_kwargs())
 | `LOG_DIR` | `logs` | Diretório dos arquivos; vazio desliga o log em arquivo. |
 | `LOG_MAX_BYTES` | `10000000` | Tamanho em que cada arquivo rotaciona; `0` desliga a rotação. |
 | `LOG_BACKUP_COUNT` | `5` | Gerações mantidas por nível. |
+| `LOG_ROTATE_WHEN` | vazio | Rotaciona por tempo (`midnight`, `H`, `D`, `W0`–`W6`, `S`, `M`); vazio mantém a rotação por tamanho. |
+| `LOG_ROTATE_INTERVAL` | `1` | Quantas unidades de `LOG_ROTATE_WHEN` formam um período. |
 
 O orçamento de disco é `LOG_MAX_BYTES * (LOG_BACKUP_COUNT + 1)` por nível,
-vezes os seis arquivos.
+vezes os seis arquivos — sob rotação por tamanho.
+
+### Rotacionar por tempo — manter uma semana
+
+Teto em bytes responde "quanto disco", não "quanto tempo". Quando a
+pergunta é "quero exatamente a última semana de logs", rotacione por
+tempo: `rotate_when` troca cada handler de arquivo por um
+`TimedRotatingFileHandler` (sempre em UTC), e `backup_count` passa a
+contar **períodos**.
+
+```python
+from tempest_fastapi_sdk import configure_logging
+
+configure_logging(
+    level="INFO",
+    log_dir="logs",
+    rotate_when="midnight",
+    backup_count=7,
+)
+```
+
+Pelo ambiente, com o `LogSettings` da seção anterior:
+
+```bash
+LOG_ROTATE_WHEN=midnight
+LOG_BACKUP_COUNT=7
+```
+
+À meia-noite UTC o arquivo do dia vira um backup com a data do período no
+nome, e o mais antigo além do sétimo é apagado:
+
+```text
+logs/
+├── info.log              # hoje
+├── info.log.2026-10-19   # ontem
+├── info.log.2026-10-18
+│   ...
+└── info.log.2026-10-13   # sete dias atrás — o oitavo some na próxima virada
+```
+
+Conferido em `tests/core/test_logging_time_rotation.py`: dez viradas
+seguidas com `backup_count=7` deixam exatamente os sete dias mais novos.
+
+| `rotate_when` | Período | Nome do backup |
+| --- | --- | --- |
+| `"S"` / `"M"` / `"H"` | segundo / minuto / hora | `info.log.2026-10-20_13-05-00` / `info.log.2026-10-20_13-05` / `info.log.2026-10-20_13` |
+| `"D"` | 24 h a partir da subida | `info.log.2026-10-20` |
+| `"midnight"` | dia, virando à meia-noite UTC | `info.log.2026-10-20` |
+| `"W0"`–`"W6"` | semana, virando no dia indicado (`W0` = segunda) | `info.log.2026-10-20` |
+
+`rotate_interval` multiplica a unidade: `rotate_when="H", rotate_interval=6`
+rotaciona a cada seis horas.
+
+!!! warning "Sob rotação por tempo, `max_bytes` é ignorado"
+    O arquivo do período nunca é cortado por tamanho: uma rajada de log
+    dentro de um dia faz o arquivo daquele dia crescer. Se o volume por
+    período não for previsível, prefira a rotação por tamanho (o default)
+    ou deixe a retenção com o `logrotate` do host.
+
+!!! check "Unidade inválida falha na hora, não no primeiro log"
+    `configure_logging(rotate_when="daily")` levanta `ValueError` listando as
+    unidades aceitas (`validate_rotate_when`) **antes** de remover os
+    handlers atuais — e `LOG_ROTATE_WHEN=daily` derruba o boot na validação
+    do `Settings`.
+
+!!! info "Os leitores enxergam os dois formatos de backup"
+    `read_log_entries`, o `GET /logs` e a página `/admin/logs` leem o arquivo
+    corrente e seus backups — `info.log.1` ou `info.log.2026-10-20` —, do mais
+    novo pro mais antigo (`rotated_log_files`). Um diretório que trocou de
+    modo continua mostrando o que o modo anterior deixou.
 
 
 ## Reportando um 500 seu — `error_500`
@@ -663,8 +735,10 @@ Parâmetros de query:
 | `page` / `page_size` | inteiros | Paginação (1-indexada). |
 
 !!! info "A leitura é limitada por arquivo"
-    Cada request lê os **20 000 registros mais recentes** de cada arquivo
-    selecionado (`DEFAULT_MAX_RECORDS_PER_FILE`), não o arquivo inteiro. O
+    Cada request lê os **20 000 registros mais recentes** de cada nível
+    selecionado (`DEFAULT_MAX_RECORDS_PER_FILE`) — o arquivo corrente e os
+    backups rotacionados somados, do mais novo pro mais antigo —, não o
+    histórico inteiro. O
     endpoint ordena do mais novo pro mais antigo e pagina, então o que ficou de
     fora não era alcançável de qualquer forma — e sem o limite um diretório de
     log de vários gigabytes ia inteiro pra memória a cada request, derrubando o
@@ -699,11 +773,26 @@ A resposta nomeia o que foi esvaziado:
     **inclui**, porque um clear que deixasse o stream de 500 para trás é o
     desfecho que surpreende.
 
-!!! info "Trunca, nunca apaga"
+!!! info "Trunca, nunca apaga — salvo os backups, se você pedir"
     Os handlers que o `configure_logging` instalou seguram um descritor aberto
     em cada caminho. Remover o arquivo os deixaria escrevendo num inode que
     nada consegue ler de volta — o endpoint pareceria funcionar exatamente uma
     vez. Arquivo ausente é criado vazio, então a pós-condição é a mesma.
+
+    Os backups rotacionados (`info.log.1`, `info.log.2026-10-20`) ficam
+    **intactos** por padrão: apagar histórico não tem volta. Como a leitura
+    os inclui, a página continua mostrando os períodos anteriores depois de
+    um clear. Para apagá-los também, peça explicitamente —
+    `DELETE /logs?delete_backups=true` ou
+    `clear_log_files(..., delete_backups=True)` —, e eles aparecem em
+    `cleared` logo depois do arquivo do nível.
+
+!!! warning "`log_dir` vazio nunca vira o diretório corrente"
+    `LOG_DIR=""` desliga o log em arquivo, mas `Path("")` é `.`. Por isso
+    `make_logs_router(log_dir="")` e `clear_log_files("")` levantam
+    `ValueError`, a leitura (`read_log_entries("")`) devolve nada, e a página
+    `/admin/logs` mostra o estado vazio — nenhum deles lê ou trunca o
+    `*.log` de onde o processo foi iniciado.
 
 Quem precisa dos caminhos fora de uma rota — um job de arquivamento, um
 coletor, um contador — usa o mesmo resolvedor que o router usa, em vez de

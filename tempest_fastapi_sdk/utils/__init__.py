@@ -16,6 +16,9 @@ from tempest_fastapi_sdk.utils.client_ip import (
 from tempest_fastapi_sdk.utils.client_ip import (
     get_client_ip_from_scope as get_client_ip_from_scope,
 )
+from tempest_fastapi_sdk.utils.client_ip import (
+    parse_client_ip as parse_client_ip,
+)
 from tempest_fastapi_sdk.utils.currency import CENT as CENT
 from tempest_fastapi_sdk.utils.currency import HUNDRED as HUNDRED
 from tempest_fastapi_sdk.utils.currency import (
@@ -377,6 +380,9 @@ from tempest_fastapi_sdk.utils.throttle import (
 from tempest_fastapi_sdk.utils.throttle import (
     ThrottleStatus as ThrottleStatus,
 )
+from tempest_fastapi_sdk.utils.throttle import (
+    login_throttle_key as login_throttle_key,
+)
 from tempest_fastapi_sdk.utils.token_types import (
     ACCESS_TOKEN_TYPE as ACCESS_TOKEN_TYPE,
 )
@@ -564,6 +570,7 @@ __all__: list[str] = [
     "is_valid_pix_key",
     "is_valid_uf",
     "list_states",
+    "login_throttle_key",
     "modify_dict",
     "normalize_cep",
     "normalize_city",
@@ -575,6 +582,7 @@ __all__: list[str] = [
     "normalize_pix_key",
     "normalize_uf",
     "only_digits",
+    "parse_client_ip",
     "parse_currency_br",
     "parse_phone_br",
     "quantize_money",

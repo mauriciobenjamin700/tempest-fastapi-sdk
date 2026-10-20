@@ -319,6 +319,9 @@ from tempest_fastapi_sdk.api import (
     instrument_sqlalchemy_engine as instrument_sqlalchemy_engine,
 )
 from tempest_fastapi_sdk.api import (
+    is_log_dir_unset as is_log_dir_unset,
+)
+from tempest_fastapi_sdk.api import (
     key_by_body_field as key_by_body_field,
 )
 from tempest_fastapi_sdk.api import (
@@ -419,6 +422,9 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.api import (
     require_x_token as require_x_token,
+)
+from tempest_fastapi_sdk.api import (
+    rotated_log_files as rotated_log_files,
 )
 from tempest_fastapi_sdk.api import (
     run_server as run_server,
@@ -786,6 +792,9 @@ from tempest_fastapi_sdk.core import (
     JWT_PATTERN as JWT_PATTERN,
 )
 from tempest_fastapi_sdk.core import (
+    LOG_ROTATE_WHEN_CHOICES as LOG_ROTATE_WHEN_CHOICES,
+)
+from tempest_fastapi_sdk.core import (
     REDACTED as REDACTED,
 )
 from tempest_fastapi_sdk.core import (
@@ -838,6 +847,9 @@ from tempest_fastapi_sdk.core import (
 )
 from tempest_fastapi_sdk.core import (
     typed as typed,
+)
+from tempest_fastapi_sdk.core import (
+    validate_rotate_when as validate_rotate_when,
 )
 from tempest_fastapi_sdk.db import (
     AUDIT_REDACTED as AUDIT_REDACTED,
@@ -1959,6 +1971,9 @@ from tempest_fastapi_sdk.utils import (
     list_states as list_states,
 )
 from tempest_fastapi_sdk.utils import (
+    login_throttle_key as login_throttle_key,
+)
+from tempest_fastapi_sdk.utils import (
     modify_dict as modify_dict,
 )
 from tempest_fastapi_sdk.utils import (
@@ -1990,6 +2005,9 @@ from tempest_fastapi_sdk.utils import (
 )
 from tempest_fastapi_sdk.utils import (
     only_digits as only_digits,
+)
+from tempest_fastapi_sdk.utils import (
+    parse_client_ip as parse_client_ip,
 )
 from tempest_fastapi_sdk.utils import (
     parse_currency_br as parse_currency_br,
@@ -2236,6 +2254,7 @@ __all__: list[str] = [
     "LOGIN_THROTTLED_MESSAGE",
     "LOGIN_THROTTLE_MAX_ATTEMPTS",
     "LOGIN_THROTTLE_WINDOW_SECONDS",
+    "LOG_ROTATE_WHEN_CHOICES",
     "MFA_AMR",
     "MFA_AMR_METHODS",
     "MFA_THROTTLE_MAX_ATTEMPTS",
@@ -2762,6 +2781,7 @@ __all__: list[str] = [
     "heartbeat",
     "in_transaction",
     "instrument_sqlalchemy_engine",
+    "is_log_dir_unset",
     "is_memory_sqlite_url",
     "is_valid_cep",
     "is_valid_city",
@@ -2781,6 +2801,7 @@ __all__: list[str] = [
     "legacy_constraint_renames",
     "like_search_condition",
     "list_states",
+    "login_throttle_key",
     "make_activate_artifact_action",
     "make_admin_router",
     "make_app_exception_handler",
@@ -2839,6 +2860,7 @@ __all__: list[str] = [
     "on_signal",
     "only_digits",
     "parse_accept_language",
+    "parse_client_ip",
     "parse_currency_br",
     "parse_integrity_error",
     "parse_phone_br",
@@ -2871,6 +2893,7 @@ __all__: list[str] = [
     "requires",
     "resolve_locale",
     "revoke_user_refresh_tokens",
+    "rotated_log_files",
     "run_alembic_env",
     "run_checks",
     "run_server",
@@ -2900,6 +2923,7 @@ __all__: list[str] = [
     "typed",
     "uf_choices",
     "utcnow",
+    "validate_rotate_when",
     "verify_opaque_token",
     "verify_path",
 ]

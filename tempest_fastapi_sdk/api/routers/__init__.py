@@ -19,6 +19,9 @@ from tempest_fastapi_sdk.api.routers.logs import (
     clear_log_files as clear_log_files,
 )
 from tempest_fastapi_sdk.api.routers.logs import (
+    is_log_dir_unset as is_log_dir_unset,
+)
+from tempest_fastapi_sdk.api.routers.logs import (
     make_logs_router as make_logs_router,
 )
 from tempest_fastapi_sdk.api.routers.logs import (
@@ -29,6 +32,9 @@ from tempest_fastapi_sdk.api.routers.logs import (
 )
 from tempest_fastapi_sdk.api.routers.logs import (
     render_entries_markdown as render_entries_markdown,
+)
+from tempest_fastapi_sdk.api.routers.logs import (
+    rotated_log_files as rotated_log_files,
 )
 from tempest_fastapi_sdk.api.routers.metrics import (
     DEFAULT_LATENCY_BUCKETS as DEFAULT_LATENCY_BUCKETS,
@@ -58,6 +64,7 @@ __all__: list[str] = [
     "LogSource",
     "PrometheusMiddleware",
     "clear_log_files",
+    "is_log_dir_unset",
     "make_health_router",
     "make_logs_router",
     "make_prometheus_registry",
@@ -66,4 +73,5 @@ __all__: list[str] = [
     "read_log_entries",
     "render_entries_json",
     "render_entries_markdown",
+    "rotated_log_files",
 ]

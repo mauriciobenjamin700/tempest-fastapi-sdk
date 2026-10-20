@@ -40,11 +40,7 @@ Absolute so the lifespan finds it whatever directory the process was
 started from; the ini anchors its own paths on ``%(here)s``.
 """
 
-configure_logging(
-    level=settings.LOG_LEVEL,
-    json_output=settings.LOG_JSON,
-    log_dir=settings.LOG_DIR,
-)
+configure_logging(**settings.logging_kwargs())
 
 
 @asynccontextmanager

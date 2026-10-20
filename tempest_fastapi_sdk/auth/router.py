@@ -39,7 +39,6 @@ token models and the email rendering pipeline.
 
 from __future__ import annotations
 
-import hashlib
 import hmac
 import importlib
 import logging
@@ -131,6 +130,7 @@ from tempest_fastapi_sdk.utils.client_ip import get_client_ip
 from tempest_fastapi_sdk.utils.throttle import (
     AttemptThrottle,
     InMemoryThrottleBackend,
+    login_throttle_key,
 )
 from tempest_fastapi_sdk.utils.token_types import (
     AMR_EMAIL_LINK,
@@ -732,10 +732,7 @@ def make_auth_router(
                 message=LOGIN_THROTTLED_MESSAGE,
                 exception=LoginThrottledException,
             )
-        email_digest = hashlib.sha256(
-            payload.email.strip().lower().encode("utf-8"),
-        ).hexdigest()
-        email_key = f"login:{email_digest}"
+        email_key = login_throttle_key(payload.email)
         if resolved_login_throttle is not None:
             attempt = await resolved_login_throttle.hit(email_key)
             if attempt.attempts > resolved_login_throttle.max_attempts:
