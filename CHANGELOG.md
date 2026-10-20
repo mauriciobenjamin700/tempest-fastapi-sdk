@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `BaseRepository.bulk_upsert(..., on_conflict="nothing")`: inserção
+  idempotente com `INSERT ... ON CONFLICT (...) DO NOTHING`, no PostgreSQL e no
+  SQLite (#581). A linha que já existe fica intacta, o conflito é resolvido
+  pelo banco sem exceção nem rollback (a transação de quem chamou continua
+  inteira) e o retorno é o número de linhas **realmente inseridas**, contado
+  pelo `RETURNING` da chave primária (`0` quando todas já existiam). Duas
+  sessões inserindo as mesmas chaves não duplicam nem falham: a segunda espera
+  o `COMMIT` da primeira e pula as chaves dela — medido no PostgreSQL 16 e no
+  SQLite 3.47. Só o conflito em `conflict_columns` é ignorado; outra
+  constraint continua levantando a exceção de conflito. `update_columns` não
+  vazio com `"nothing"` levanta `ValueError`.
+- `bulk_upsert(..., returning_ids=True)` devolve `list[UUID]` em vez da
+  contagem: com `"nothing"`, exatamente os `id`s criados por esta chamada (para
+  publicar um evento por linha nova); com `"update"`, os inseridos **ou**
+  atualizados. Sem as opções novas, a assinatura e o retorno (`int`) não mudam.
+
+### Fixed
+
+- `bulk_upsert` e `bulk_create_values` devolviam `result.rowcount or
+  len(rows)`, que transformava um `0` real em `len(rows)`. Agora o `rowcount`
+  do driver é devolvido como veio, e só `-1` (contagem desconhecida) cai para
+  `len(rows)`. No modo `"update"` o número é inseridas + atualizadas (medido:
+  `rowcount` 2 para uma linha nova e uma em conflito, no PostgreSQL e no
+  SQLite).
+- `bulk_upsert(update_columns=[])` (modo `"update"` sem coluna a atualizar)
+  levantava o `ValueError` interno do SQLAlchemy (`set parameter dictionary
+  must not be empty`); agora levanta um `ValueError` que aponta para
+  `on_conflict="nothing"`.
+- `TaskQueue.use(*resources)` (e `resources=[...]` dos construtores)
+  registrava `resource.connect` / `resource.disconnect` como método ligado no
+  momento do registro, em geral no import do módulo. Um teste do consumidor que
+  fazia `monkeypatch` de `MessageBroker.connect` na classe depois disso era
+  ignorado: no `TaskQueue.memory()`, o `connect()` rodava os hooks de startup
+  do worker e o `connect` real tentava o RabbitMQ em `127.0.0.1:5672`. O
+  método agora é resolvido quando o hook dispara, então patch na classe ou na
+  instância vale; a ordem (abre da esquerda para a direita, fecha ao contrário)
+  e o `scope` não mudam.
+
 ## [0.318.0] — 2026-10-20
 
 ### Added

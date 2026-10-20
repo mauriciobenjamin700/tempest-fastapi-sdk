@@ -185,6 +185,59 @@ class TestResources:
 
         assert log == ["connect:db", "disconnect:db"]
 
+    async def test_a_class_patch_made_after_use_applies(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Patching the class after ``use`` replaces the real methods.
+
+        ``use`` runs at import time; a consumer test patches
+        ``MessageBroker.connect`` afterwards so the in-memory queue does
+        not reach RabbitMQ. With the bound method captured at
+        registration, the real ``connect`` still ran.
+        """
+        log: list[str] = []
+        queue = TaskQueue.memory()
+        queue.use(FakeResource("db", log))
+
+        async def patched_connect(self: FakeResource) -> None:
+            self.log.append(f"patched-connect:{self.name}")
+
+        async def patched_disconnect(self: FakeResource) -> None:
+            self.log.append(f"patched-disconnect:{self.name}")
+
+        monkeypatch.setattr(FakeResource, "connect", patched_connect)
+        monkeypatch.setattr(FakeResource, "disconnect", patched_disconnect)
+
+        await queue.connect()
+        await queue.disconnect()
+
+        assert log == ["patched-connect:db", "patched-disconnect:db"]
+
+    async def test_an_instance_patch_made_after_use_applies(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Patching one instance after ``use`` applies to that instance only."""
+        log: list[str] = []
+        db = FakeResource("db", log)
+        queue = TaskQueue.memory(resources=[db, FakeResource("broker", log)])
+
+        async def patched_connect() -> None:
+            log.append("patched-connect:db")
+
+        monkeypatch.setattr(db, "connect", patched_connect)
+
+        await queue.connect()
+        await queue.disconnect()
+
+        assert log == [
+            "patched-connect:db",
+            "connect:broker",
+            "disconnect:broker",
+            "disconnect:db",
+        ]
+
     def test_the_database_manager_satisfies_the_protocol(self) -> None:
         """The protocol exists so the SDK never names its own classes."""
         from tempest_fastapi_sdk.db import AsyncDatabaseManager

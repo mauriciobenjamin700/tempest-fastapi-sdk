@@ -174,7 +174,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   dying on `cannot start a transaction within a transaction` without giving
   up savepoint atomicity; `poolclass=` from the caller is never
   overridden), `BaseRepository[T]` with
-  bulk ops (`bulk_create_values`, `bulk_upsert`, `bulk_update`,
+  bulk ops (`bulk_create_values`, `bulk_upsert` — `on_conflict="update"` or
+  the idempotent `"nothing"`, `returning_ids=True` for the created ids, #581 —,
+  `bulk_update`,
   `add_all`, etc.), `AlembicHelper`, `BaseModel`, audit /
   soft-delete mixins, `reorder_base_columns_first` Alembic
   hook so generated migrations ship `id`/`is_active`/
