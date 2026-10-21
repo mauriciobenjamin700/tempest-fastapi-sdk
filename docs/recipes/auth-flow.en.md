@@ -1960,9 +1960,23 @@ SMTP_PORT=587
 SMTP_USERNAME=postmaster@mg.example.com
 SMTP_PASSWORD=...                          # secret, don't commit
 SMTP_FROM_ADDR=noreply@yourdomain.com
-AUTH_ACTIVATION_URL_TEMPLATE=https://app.example.com/activate?token={token}
-AUTH_PASSWORD_RESET_URL_TEMPLATE=https://app.example.com/reset?token={token}
+AUTH_ACTIVATION_URL_TEMPLATE=https://app.yourdomain.com/activate?token={token}
+AUTH_PASSWORD_RESET_URL_TEMPLATE=https://app.yourdomain.com/reset?token={token}
+AUTH_EMAIL_CHANGE_URL_TEMPLATE=https://app.yourdomain.com/confirm-email?token={token}
+AUTH_EMAIL_VERIFICATION_URL_TEMPLATE=https://app.yourdomain.com/verify-email?token={token}
 ```
+
+!!! warning "In production every mailed link must be `https` and public"
+    With `ENV=production` (and e-mail switched on), `AuthSettings` refuses
+    the boot when any of the four templates that go into an e-mail —
+    `AUTH_ACTIVATION_URL_TEMPLATE`, `AUTH_PASSWORD_RESET_URL_TEMPLATE`,
+    `AUTH_EMAIL_CHANGE_URL_TEMPLATE`, `AUTH_EMAIL_VERIFICATION_URL_TEMPLATE`
+    — points at a host nobody outside can reach (`localhost`, `127.0.0.1`,
+    `::1`, `0.0.0.0`, or a reserved domain such as `example.com` and
+    `*.test`) or uses plain `http://` (the token travels in the URL). The
+    defaults (`http://localhost:3000/...`) fail both rules, so set **all
+    four**, even for flows you don't use yet. With `EMAIL_ENABLED=false`
+    the rule does not apply: the link never leaves.
 
 Flow: signup → real email lands in the inbox → user clicks → frontend calls `POST /auth/activate/{token}` → login.
 
@@ -2038,8 +2052,10 @@ AUTH_AUTO_ACTIVATE=false
 AUTH_RETURN_TOKEN_IN_RESPONSE=false
 
 # IMPORTANT: URL templates point at the BACKEND, not the frontend.
-AUTH_ACTIVATION_URL_TEMPLATE=https://api.example.com/auth/activate/{token}
-AUTH_PASSWORD_RESET_URL_TEMPLATE=https://api.example.com/auth/password-reset/{token}
+AUTH_ACTIVATION_URL_TEMPLATE=https://api.yourdomain.com/auth/activate/{token}
+AUTH_PASSWORD_RESET_URL_TEMPLATE=https://api.yourdomain.com/auth/password-reset/{token}
+AUTH_EMAIL_CHANGE_URL_TEMPLATE=https://api.yourdomain.com/auth/email-change/{token}
+AUTH_EMAIL_VERIFICATION_URL_TEMPLATE=https://api.yourdomain.com/auth/email-verify/{token}
 
 # Optional: your login URL. When set, the backend-rendered success/error
 # pages display a "Go to login" button. When null, the button is hidden

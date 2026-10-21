@@ -38,6 +38,7 @@ import warnings
 from collections.abc import Mapping
 from datetime import timedelta
 from typing import Any, ClassVar, Literal, Self, TypedDict
+from urllib.parse import urlsplit
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
@@ -99,6 +100,78 @@ _PLACEHOLDER_EMAIL_SUFFIXES: tuple[str, ...] = (
     ".test",
 )
 """Reserved top-level domains (RFC 2606 / RFC 6761) refused as sender domain."""
+
+AUTH_EMAIL_LINK_FIELDS: tuple[str, ...] = (
+    "AUTH_ACTIVATION_URL_TEMPLATE",
+    "AUTH_PASSWORD_RESET_URL_TEMPLATE",
+    "AUTH_EMAIL_CHANGE_URL_TEMPLATE",
+    "AUTH_EMAIL_VERIFICATION_URL_TEMPLATE",
+)
+"""``AuthSettings`` fields whose rendered URL travels inside an auth e-mail.
+
+These are every ``url_template`` the ``UserAuthService`` passes when it
+issues a mailed token. ``AUTH_LOGIN_URL`` is not here: it is a button on
+a backend-rendered page, never part of an e-mail.
+"""
+
+
+def is_reserved_domain(domain: str) -> bool:
+    """Tell whether a DNS name can never be a real public host.
+
+    True for ``example.com``, ``example.net``, ``example.org`` and
+    ``localhost`` (and their subdomains), and for anything under the
+    reserved top-level domains ``.example``, ``.invalid``, ``.localhost``
+    and ``.test`` (RFC 2606 / RFC 6761). Shared by the
+    ``SMTP_FROM_ADDR`` rule of :class:`EmailSettings` and the e-mail link
+    rule of :class:`AuthSettings`.
+
+    Args:
+        domain (str): The host name, any case; a trailing dot is ignored.
+
+    Returns:
+        bool: ``True`` for a reserved name.
+    """
+    name = domain.strip().lower().rstrip(".")
+    return any(
+        name == reserved or name.endswith(f".{reserved}")
+        for reserved in _PLACEHOLDER_EMAIL_DOMAINS
+    ) or name.endswith(_PLACEHOLDER_EMAIL_SUFFIXES)
+
+
+def email_link_violation(field: str, template: str) -> str | None:
+    """Judge one e-mail link template for a production deployment.
+
+    The link is read by a real person on another machine, and the token
+    travels in the URL, so two things are refused: a scheme other than
+    ``https`` (``http://`` exposes the token on the wire), and a host
+    nobody else can reach — empty, ``localhost``, a loopback or
+    unspecified IP (``127.0.0.1``, ``::1``, ``0.0.0.0``), or a reserved
+    name (:func:`is_reserved_domain`). The ``{token}`` placeholder is
+    replaced before parsing.
+
+    Args:
+        field (str): The settings field name, used in the message.
+        template (str): The configured URL template.
+
+    Returns:
+        str | None: A ``"FIELD: reason"`` entry naming the field and never
+        the value, or ``None`` when the template is acceptable.
+    """
+    parts = urlsplit(template.strip().replace("{token}", "token"))
+    host: str = (parts.hostname or "").lower()
+    unreachable = not host or is_reserved_domain(host)
+    if not unreachable:
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            pass
+        else:
+            unreachable = address.is_loopback or address.is_unspecified
+    if unreachable:
+        return f"{field}: e-mailed link points at a local or reserved host"
+    if parts.scheme.lower() != "https":
+        return f"{field}: e-mailed link is not https (the token travels in the URL)"
+    return None
 
 
 _PRIVATE_STORAGE_NETWORKS: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = (
@@ -1120,11 +1193,7 @@ class EmailSettings(BaseAppSettings):
         if (
             fields["SMTP_FROM_ADDR"].default == self.SMTP_FROM_ADDR
             or not domain
-            or any(
-                domain == reserved or domain.endswith(f".{reserved}")
-                for reserved in _PLACEHOLDER_EMAIL_DOMAINS
-            )
-            or domain.endswith(_PLACEHOLDER_EMAIL_SUFFIXES)
+            or is_reserved_domain(domain)
         ):
             violations.append(
                 "SMTP_FROM_ADDR: empty or a reserved placeholder domain that "
@@ -1984,6 +2053,32 @@ class AuthSettings(BaseAppSettings):
         ),
         examples=[True, False],
     )
+
+    def production_violations(self) -> list[str]:
+        """Refuse e-mailed links that a real user could not open.
+
+        Every field in :data:`AUTH_EMAIL_LINK_FIELDS` is checked with
+        :func:`email_link_violation`: the host must be reachable from
+        outside (not ``localhost``, loopback, ``0.0.0.0`` or a reserved
+        name) and the scheme must be ``https``. The defaults
+        (``http://localhost:3000/...``) fail both.
+
+        Skipped when the e-mail integration cannot send — ``EMAIL_ENABLED``
+        off on a composed :class:`EmailSettings` — because the link then
+        never leaves the process. Without ``EmailSettings`` composed the
+        attribute is absent and the check applies.
+
+        Returns:
+            list[str]: The parent's entries plus at most one per template.
+        """
+        violations: list[str] = super().production_violations()
+        if getattr(self, "EMAIL_ENABLED", True) is False:
+            return violations
+        for field in AUTH_EMAIL_LINK_FIELDS:
+            entry = email_link_violation(field, getattr(self, field))
+            if entry is not None:
+                violations.append(entry)
+        return violations
 
     @field_validator("AUTH_DEFAULT_LOCALE")
     @classmethod

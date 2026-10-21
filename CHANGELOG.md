@@ -49,6 +49,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Regra nova de produção** no `AuthSettings` (com `ENV=production` e o
+  e-mail ligado — `EMAIL_ENABLED` ausente conta como ligado): os quatro
+  templates de link que vão no e-mail (`AUTH_ACTIVATION_URL_TEMPLATE`,
+  `AUTH_PASSWORD_RESET_URL_TEMPLATE`, `AUTH_EMAIL_CHANGE_URL_TEMPLATE`,
+  `AUTH_EMAIL_VERIFICATION_URL_TEMPLATE`) são recusados com host local ou
+  inalcançável (`localhost`, loopback, `0.0.0.0`, vazio, domínio reservado
+  como `example.com`/`*.test`) ou esquema diferente de `https` (o token
+  viaja na URL). Medido de ponta a ponta antes da regra: em produção o
+  e-mail de ativação saía com `http://localhost:3000/activate?token=...`.
+  **Ação para quem atualiza:** os defaults (`http://localhost:3000/...`)
+  caem nas duas regras — configure os quatro templates, ou
+  `EMAIL_ENABLED=false`.
+
 - `FirebaseSettings.enabled` e `PushSettings.mobile_enabled` agora são
   `FIREBASE_ENABLED and <credencial presente>`.
 - **Regra nova de produção** no `EmailSettings` (com `EMAIL_ENABLED=true` e

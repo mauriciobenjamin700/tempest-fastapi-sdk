@@ -1936,9 +1936,23 @@ SMTP_PORT=587
 SMTP_USERNAME=postmaster@mg.example.com
 SMTP_PASSWORD=...                          # secret, não commitar
 SMTP_FROM_ADDR=noreply@seudominio.com.br
-AUTH_ACTIVATION_URL_TEMPLATE=https://app.example.com/activate?token={token}
-AUTH_PASSWORD_RESET_URL_TEMPLATE=https://app.example.com/reset?token={token}
+AUTH_ACTIVATION_URL_TEMPLATE=https://app.seudominio.com.br/activate?token={token}
+AUTH_PASSWORD_RESET_URL_TEMPLATE=https://app.seudominio.com.br/reset?token={token}
+AUTH_EMAIL_CHANGE_URL_TEMPLATE=https://app.seudominio.com.br/confirm-email?token={token}
+AUTH_EMAIL_VERIFICATION_URL_TEMPLATE=https://app.seudominio.com.br/verify-email?token={token}
 ```
+
+!!! warning "Em produção, todo link do e-mail precisa ser `https` e público"
+    Com `ENV=production` (e o e-mail ligado), o `AuthSettings` recusa o
+    boot quando algum dos quatro templates que vão no e-mail —
+    `AUTH_ACTIVATION_URL_TEMPLATE`, `AUTH_PASSWORD_RESET_URL_TEMPLATE`,
+    `AUTH_EMAIL_CHANGE_URL_TEMPLATE`, `AUTH_EMAIL_VERIFICATION_URL_TEMPLATE`
+    — aponta para host que ninguém de fora alcança (`localhost`,
+    `127.0.0.1`, `::1`, `0.0.0.0`, ou domínio reservado como `example.com`
+    e `*.test`) ou usa `http://` puro (o token viaja na URL). Os defaults
+    (`http://localhost:3000/...`) caem nas duas regras, então configure
+    **os quatro**, mesmo os de fluxo que você ainda não usa. Com
+    `EMAIL_ENABLED=false` a regra não se aplica: o link nunca sai.
 
 Fluxo: signup → e-mail real chega no inbox → usuário clica → frontend chama `POST /auth/activate/{token}` → login.
 
@@ -2014,8 +2028,10 @@ AUTH_AUTO_ACTIVATE=false
 AUTH_RETURN_TOKEN_IN_RESPONSE=false
 
 # IMPORTANTE: URL templates apontam pro BACKEND, não pro frontend.
-AUTH_ACTIVATION_URL_TEMPLATE=https://api.example.com/auth/activate/{token}
-AUTH_PASSWORD_RESET_URL_TEMPLATE=https://api.example.com/auth/password-reset/{token}
+AUTH_ACTIVATION_URL_TEMPLATE=https://api.seudominio.com.br/auth/activate/{token}
+AUTH_PASSWORD_RESET_URL_TEMPLATE=https://api.seudominio.com.br/auth/password-reset/{token}
+AUTH_EMAIL_CHANGE_URL_TEMPLATE=https://api.seudominio.com.br/auth/email-change/{token}
+AUTH_EMAIL_VERIFICATION_URL_TEMPLATE=https://api.seudominio.com.br/auth/email-verify/{token}
 
 # Opcional: URL do seu login. Quando setado, aparece um botão "Ir pro login"
 # nas páginas de success/error renderizadas pelo backend. Quando null,

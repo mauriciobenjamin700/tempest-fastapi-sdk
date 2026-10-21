@@ -3594,3 +3594,8 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `tests/push/test_fcm_disabled.py`,
   `tests/auth/test_email_integration_disabled.py`,
   `tests/exceptions/test_integration_disabled.py`.
+- **Links de e-mail em produção** — `AuthSettings.production_violations`
+  recusa os quatro `AUTH_*_URL_TEMPLATE` mandados por e-mail com host
+  local/reservado ou sem `https` (pula com `EMAIL_ENABLED=false`).
+  `is_reserved_domain` é compartilhado com a regra do `SMTP_FROM_ADDR`.
+  Testes: `tests/settings/test_auth_link_guard.py`.
