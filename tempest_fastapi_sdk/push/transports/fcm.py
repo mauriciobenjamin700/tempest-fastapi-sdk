@@ -13,16 +13,20 @@ the extra absent and only building an :class:`FCMTransport` needs it.
 from __future__ import annotations
 
 import asyncio
+import logging
 import warnings
 from typing import Any
 
 from tempest_fastapi_sdk.auth.firebase import FirebaseAuth, FirebaseCredentialError
+from tempest_fastapi_sdk.exceptions import IntegrationDisabledException
 from tempest_fastapi_sdk.push.dispatcher import PushDeviceGoneError, PushError
 from tempest_fastapi_sdk.push.schemas import (
     PushDevice,
     PushPayloadSchema,
     PushPlatform,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _require_firebase_messaging() -> tuple[Any, Any, Any]:
@@ -57,8 +61,18 @@ class FCMTransport:
     service that calls ``firebase_admin.initialize_app()`` itself still
     works.
 
+    Built on a :class:`~tempest_fastapi_sdk.auth.FirebaseAuth` whose
+    integration is switched off (``FIREBASE_ENABLED=false``, so
+    ``enabled=False``), the transport claims **no** platform and logs one
+    warning when it is built: a
+    :class:`~tempest_fastapi_sdk.push.DeviceService` routing through it
+    skips every mobile device (reported in ``PushFanoutResult.skipped``)
+    instead of failing the fan-out. Calling :meth:`send` on it directly
+    raises ``IntegrationDisabledException``.
+
     Attributes:
-        platforms (frozenset[str]): ``{"ios", "android"}``.
+        platforms (frozenset[str]): ``{"ios", "android"}``, or empty when
+            the Firebase integration is switched off.
         dry_run (bool): When ``True``, FCM validates the message and
             reports the result without waking any device. Useful to prove
             wiring in staging without notifying real users.
@@ -85,16 +99,29 @@ class FCMTransport:
             dry_run (bool): Send messages in FCM's validate-only mode.
 
         Raises:
-            ImportError: When the optional ``[firebase]`` extra is missing.
+            ImportError: When the optional ``[firebase]`` extra is missing
+                (not checked when ``auth`` is disabled).
             FirebaseCredentialError: When neither ``auth`` nor ``app`` was
                 given and no default Firebase app has been initialized.
         """
-        firebase_admin, messaging, exceptions = _require_firebase_messaging()
-        self._messaging: Any = messaging
-        self._exceptions: Any = exceptions
         self.dry_run: bool = dry_run
+        self.enabled: bool = auth is None or auth.enabled
+        if not self.enabled:
+            self.platforms = frozenset()
+            self._messaging: Any = None
+            self._exceptions: Any = None
+            self._app: Any = None
+            logger.warning(
+                "FCM transport built with the Firebase integration switched "
+                "off: mobile pushes are discarded",
+                extra={"integration": "firebase"},
+            )
+            return
+        firebase_admin, messaging, exceptions = _require_firebase_messaging()
+        self._messaging = messaging
+        self._exceptions = exceptions
         if auth is not None:
-            self._app: Any = auth.app
+            self._app = auth.app
         elif app is not None:
             self._app = app
         else:
@@ -173,9 +200,14 @@ class FCMTransport:
             payload (PushPayloadSchema): The notification to deliver.
 
         Raises:
+            IntegrationDisabledException: When the transport was built on a
+                disabled ``FirebaseAuth``. A ``DeviceService`` never routes
+                here in that case, because the transport claims no platform.
             PushDeviceGoneError: When FCM disowns the token.
             PushError: For any other delivery failure.
         """
+        if not self.enabled:
+            raise IntegrationDisabledException("firebase")
         messaging = self._messaging
         message = self._build_message(device, payload)
         try:

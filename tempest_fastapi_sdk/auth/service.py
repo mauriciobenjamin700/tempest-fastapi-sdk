@@ -66,6 +66,7 @@ from tempest_fastapi_sdk.db.user_token_model import (
 from tempest_fastapi_sdk.exceptions import (
     ConflictException,
     ForbiddenException,
+    IntegrationDisabledException,
     InvalidTokenException,
     NotFoundException,
     OAuthAccountInactiveException,
@@ -359,6 +360,10 @@ class UserAuthService:
             withheld.
 
         Raises:
+            IntegrationDisabledException: When ``AUTH_AUTO_ACTIVATE`` is
+                off and the e-mail integration is switched off — see
+                :meth:`require_mail_delivery`. Raised before any row is
+                written.
             ValueError: When ``fields`` names something that is not a
                 column of ``user_model``, or a protected column; and when
                 the insert is refused because a ``NOT NULL`` column got no
@@ -371,6 +376,8 @@ class UserAuthService:
                 carries what the server named; the session must then be
                 rolled back before reuse, as after any failed flush.
         """
+        if not self.auth_settings.AUTH_AUTO_ACTIVATE:
+            self.require_mail_delivery()
         extra = dict(fields or {})
         self._check_signup_fields(extra)
         self._enforce_password_policy(password)
@@ -582,7 +589,12 @@ class UserAuthService:
             surfaces the link (``AUTH_RETURN_TOKEN_IN_RESPONSE``, or no
             ``EmailUtils`` wired) and the account was indeed pending;
             ``None`` otherwise.
+
+        Raises:
+            IntegrationDisabledException: When the e-mail integration is
+                switched off — see :meth:`require_mail_delivery`.
         """
+        self.require_mail_delivery()
         normalized = email.strip().lower()
         user_result = await session.execute(
             select(self.user_model).where(
@@ -1207,7 +1219,13 @@ class UserAuthService:
             PasswordResetToken | None: The token bundle when the
             caller is configured to surface the link, ``None``
             when the link is meant to live only in the email.
+
+        Raises:
+            IntegrationDisabledException: When the e-mail integration is
+                switched off — see :meth:`require_mail_delivery`. Raised
+                before the lookup, for known and unknown addresses alike.
         """
+        self.require_mail_delivery()
         normalized = email.strip().lower()
         user_result = await session.execute(
             select(self.user_model).where(
@@ -1421,10 +1439,13 @@ class UserAuthService:
             email.
 
         Raises:
+            IntegrationDisabledException: When the e-mail integration is
+                switched off — see :meth:`require_mail_delivery`.
             UnauthorizedException: When ``current_password`` is wrong.
             ValidationException: When ``new_email`` equals the current one.
             ConflictException: When ``new_email`` is already in use.
         """
+        self.require_mail_delivery()
         if not self.passwords.verify(current_password, user.hashed_password):
             raise UnauthorizedException(message="current password is incorrect")
         normalized = new_email.strip().lower()
@@ -1481,7 +1502,14 @@ class UserAuthService:
             InvalidTokenException: On bad / expired / spent tokens, a
                 missing payload, or a missing user.
             ConflictException: When the target email was taken meanwhile.
+            IntegrationDisabledException: When
+                ``AUTH_EMAIL_CHANGE_NOTIFY_OLD`` is on and the e-mail
+                integration is switched off — see
+                :meth:`require_mail_delivery`. Raised before the token is
+                consumed, so the link keeps working once e-mail is back.
         """
+        if self.auth_settings.AUTH_EMAIL_CHANGE_NOTIFY_OLD:
+            self.require_mail_delivery(carries_token=False)
         record = await self._consume_token(
             session,
             token=token,
@@ -1529,7 +1557,12 @@ class UserAuthService:
             EmailVerificationToken | None: The token bundle when the
             caller surfaces the link, ``None`` when it only travels by
             email.
+
+        Raises:
+            IntegrationDisabledException: When the e-mail integration is
+                switched off — see :meth:`require_mail_delivery`.
         """
+        self.require_mail_delivery()
         bundle = await self._issue_token(
             session,
             user_id=user.id,
@@ -1629,7 +1662,11 @@ class UserAuthService:
                 for an MFA-enrolled account, or ``new_email`` equals the
                 current one.
             ConflictException: When ``new_email`` is already in use.
+            IntegrationDisabledException: When the e-mail integration is
+                switched off — see :meth:`require_mail_delivery`. Raised
+                before the lookup, so it reveals nothing about the account.
         """
+        self.require_mail_delivery()
         normalized_old = email.strip().lower()
         result = await session.execute(
             select(self.user_model).where(self.user_model.email == normalized_old),
@@ -2896,6 +2933,46 @@ class UserAuthService:
         if expires_at < now:
             raise self.exceptions.invalid_token(message="token expired")
         return record
+
+    def require_mail_delivery(self, *, carries_token: bool = True) -> None:
+        """Refuse an operation whose e-mail could never go out.
+
+        The flows that hand a link by e-mail (signup without
+        ``AUTH_AUTO_ACTIVATE``, activation re-send, password reset, e-mail
+        change and verification, e-mail recovery) call this **before**
+        reading or writing anything. With the e-mail integration switched
+        off (an :class:`EmailUtils` built with ``enabled=False``, which is
+        what ``EmailUtils(**settings.email_kwargs())`` gives under
+        ``EMAIL_ENABLED=false``) the request is answered ``503
+        INTEGRATION_DISABLED`` and nothing is created: an account whose
+        activation link can never arrive is never inserted, and a reset
+        request never mints a token nobody receives.
+
+        Nothing is refused when no mail would be sent anyway — no
+        ``EmailUtils`` wired, or ``AUTH_RETURN_TOKEN_IN_RESPONSE`` on for
+        a flow whose link travels in the response. A mailer without an
+        ``enabled`` attribute (a test double written before the flag
+        existed) counts as enabled.
+
+        The check runs before the account lookup, so a refused reset
+        answers the same for a known and an unknown address.
+
+        Args:
+            carries_token (bool): ``True`` (default) for a mail carrying a
+                link, which ``AUTH_RETURN_TOKEN_IN_RESPONSE`` replaces by
+                the response body. ``False`` for the security notice to
+                the old address after an e-mail change, which that flag
+                does not cover.
+
+        Raises:
+            IntegrationDisabledException: When the wired mailer is
+                disabled and the operation would need it.
+        """
+        if self.email is None or getattr(self.email, "enabled", True):
+            return
+        if carries_token and self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE:
+            return
+        raise IntegrationDisabledException("email")
 
     async def _maybe_send_activation_email(
         self,

@@ -45,6 +45,9 @@ from tempest_fastapi_sdk.exceptions.i18n import (
 from tempest_fastapi_sdk.exceptions.i18n import (
     parse_accept_language as parse_accept_language,
 )
+from tempest_fastapi_sdk.exceptions.integration import (
+    IntegrationDisabledException as IntegrationDisabledException,
+)
 from tempest_fastapi_sdk.exceptions.jwt import (
     ExpiredTokenException as ExpiredTokenException,
 )
@@ -153,6 +156,7 @@ __all__: list[str] = [
     "ForbiddenException",
     "InheritedErrorCodeWarning",
     "InsufficientBalanceException",
+    "IntegrationDisabledException",
     "InvalidFileTypeException",
     "InvalidFilterValueException",
     "InvalidSignedURLException",

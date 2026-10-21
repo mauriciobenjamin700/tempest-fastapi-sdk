@@ -215,7 +215,9 @@ regras no método `production_violations()`:
 | `CORSSettings` | `"*"` em `CORS_ORIGINS` |
 | `TokenSettings` | `TOKEN_SECRET` vazio (desliga o `X-Token`) |
 | `TaskIQSettings` | `TASKIQ_BROKER_URL` vazio (cai no broker em memória) |
-| `StorageSettings` | chaves `minioadmin` do default, `STORAGE_SECURE=false`, `STORAGE_PUBLIC_SECURE=false` explícito |
+| `StorageSettings` | chaves `minioadmin` do default, `STORAGE_SECURE=false` (exceto bucket privado atrás de endpoint público HTTPS — veja [Storage](storage.md#bucket-privado-atras-de-https)), `STORAGE_PUBLIC_SECURE=false` explícito |
+| `EmailSettings` | host `mailpit`/`mailhog`, loopback na porta `1025`, `SMTP_HOST` default sem `SMTP_USERNAME`, `SMTP_FROM_ADDR` default ou com domínio reservado |
+| `RevenueCatSettings` | os dois segredos de webhook vazios |
 
 !!! info "O placeholder vem do mixin, não de um literal"
     O `JWT_SECRET` é comparado com `JWTSettings.model_fields["JWT_SECRET"].default`.
@@ -283,6 +285,159 @@ production
     quiser o input de volta sobrescreve `hide_input_in_errors` no próprio
     `model_config`.
 
+### Ligar e desligar integrações (deploy por partes)
+
+Nem todo serviço sobe para produção com tudo pronto. O banco e o JWT estão
+configurados, mas o bucket S3, o SMTP e a conta do Firebase chegam numa
+fase seguinte. Sem saída, o guard recusa o boot por causa das integrações
+que você **ainda nem usa** — e a tentação é preencher valor falso só para
+passar, que é exatamente o que o guard existe para impedir.
+
+A saída explícita é um interruptor por integração:
+
+| Mixin | Interruptor | Default |
+| --- | --- | --- |
+| `StorageSettings` | `STORAGE_ENABLED` | `true` |
+| `EmailSettings` | `EMAIL_ENABLED` | `true` |
+| `FirebaseSettings` | `FIREBASE_ENABLED` | `true` |
+| `RevenueCatSettings` | `REVENUECAT_ENABLED` | `true` |
+
+Com o interruptor em `false`, três coisas acontecem, sempre juntas:
+
+1. O guard **pula** as regras daquele mixin — o boot passa.
+2. O nome da integração aparece em `settings.disabled_integrations()`, para
+   você logar no boot ou mostrar no readiness. Desligar nunca é invisível.
+3. O cliente construído a partir das mesmas settings **recusa toda
+   chamada** com `503 INTEGRATION_DISABLED`, em vez de tentar falar com
+   o default de desenvolvimento.
+
+Um `.env` de produção com banco e JWT prontos, e o resto desligado:
+
+```text
+ENV=production
+DATABASE_URL=postgresql+asyncpg://app:s3nha@db:5432/app
+JWT_SECRET=troque-por-um-segredo-longo-de-verdade-0123456789
+STORAGE_ENABLED=false
+EMAIL_ENABLED=false
+FIREBASE_ENABLED=false
+```
+
+E o serviço, sem nenhum `if` sobre os interruptores — a mesma linha de
+construção de sempre:
+
+```python
+import logging
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from tempest_fastapi_sdk import (
+    AsyncMinIOClient,
+    BaseAppSettings,
+    DatabaseSettings,
+    EmailSettings,
+    EmailUtils,
+    EnvironmentSettings,
+    FirebaseSettings,
+    JWTSettings,
+    StorageSettings,
+    register_exception_handlers,
+)
+
+logger = logging.getLogger("app")
+
+
+class Settings(
+    EnvironmentSettings,
+    DatabaseSettings,
+    JWTSettings,
+    StorageSettings,
+    EmailSettings,
+    FirebaseSettings,
+    BaseAppSettings,
+):
+    """Settings do serviço: banco e JWT prontos, o resto ainda não."""
+
+
+settings = Settings()
+print("desligadas:", sorted(settings.disabled_integrations()))
+print("push mobile:", settings.enabled)
+
+storage = AsyncMinIOClient(**settings.storage_kwargs())
+mailer = EmailUtils(**settings.email_kwargs())
+
+app = FastAPI()
+register_exception_handlers(app)
+
+
+@app.post("/avatar")
+async def upload_avatar() -> dict[str, str]:
+    """Grava o avatar no bucket."""
+    await storage.put_object("avatar.png", b"\x89PNG")
+    return {"status": "ok"}
+
+
+response = TestClient(app).post("/avatar")
+print(response.status_code, response.json())
+```
+
+O boot passa, e a rota que usa o bucket responde `503` com o nome da
+integração:
+
+```text
+desligadas: ['email', 'firebase', 'storage']
+push mobile: False
+503 {'detail': 'The storage integration is disabled in this environment', 'code': 'INTEGRATION_DISABLED', 'details': {'integration': 'storage'}}
+```
+
+Troque `STORAGE_ENABLED=false` por `true` sem configurar o bucket, e o
+boot volta a cair, como antes:
+
+```text
+- STORAGE_ACCESS_KEY: still the MinIO default credential
+- STORAGE_SECRET_KEY: still the MinIO default credential
+- STORAGE_SECURE: storage traffic over plain HTTP (allowed only for a private STORAGE_ENDPOINT behind an HTTPS STORAGE_PUBLIC_ENDPOINT) [type=value_error]
+```
+
+O que cada integração faz quando desligada:
+
+| Integração | Construção | Em uso |
+| --- | --- | --- |
+| `storage` | `AsyncMinIOClient(**settings.storage_kwargs())` recebe `enabled=False`; não cria (nem importa) o cliente `minio` | toda operação — inclusive o atributo `client` — levanta `IntegrationDisabledException`; um `SubjectObjectStorage` por cima herda a recusa |
+| `email` | `EmailUtils(**settings.email_kwargs())` recebe `enabled=False`; não exige o extra `[email]` | `send` e `send_many` levantam `IntegrationDisabledException` antes de montar a mensagem; `render_template` continua funcionando |
+| `firebase` | `settings.enabled` (e `PushSettings.mobile_enabled`) vira `False`; `firebase_kwargs()` devolve só `{"enabled": False}` | `FirebaseAuth` não inicializa app e responde `503` em `verify` e nas dependências; um `FCMTransport` sobre ele não reivindica plataforma: o push mobile é **descartado** (o `DeviceService` pula o aparelho) e o transporte loga um aviso ao ser construído |
+| `revenuecat` | só o guard e o `disabled_integrations()` mudam | o webhook continua lendo os próprios segredos: com os dois vazios, segue recusando toda entrega com `401` |
+
+!!! info "A chave `enabled` só aparece com a integração desligada"
+    `storage_kwargs()` e `email_kwargs()` acrescentam `enabled=False`
+    **apenas** quando o interruptor está em `false`. Com o default, o
+    dicionário é exatamente o de antes — quem faz splat dele numa classe
+    própria não quebra ao atualizar o SDK.
+
+!!! warning "O e-mail ligado ganhou regra de produção"
+    Com `EMAIL_ENABLED=true` e `ENV=production`, o guard agora recusa o
+    que só pode ser desenvolvimento: `SMTP_HOST` cujo primeiro rótulo é
+    `mailpit` ou `mailhog`; `SMTP_PORT=1025` junto de host de loopback
+    (`localhost`, `127.0.0.1`, `::1`) — a porta que o Mailpit publica e a
+    que o `tempest new` escreve; `SMTP_HOST` ainda no default declarado
+    (`localhost`) sem `SMTP_USERNAME`; e `SMTP_FROM_ADDR` igual ao default
+    declarado, vazio, sem `@`, ou com
+    domínio reservado (`example.com`, `example.net`, `example.org`,
+    `localhost` e seus subdomínios, ou qualquer coisa sob `.example`, `.invalid`,
+    `.localhost`, `.test`). O default `noreply@example.com` está nessa
+    lista. Um relay local (Postfix repassando ao provedor) segue subindo
+    com `SMTP_USERNAME` preenchido, ou endereçado como `127.0.0.1` em outra
+    porta que não `1025`. O Gmail (`smtp.gmail.com:587`, STARTTLS, senha de
+    app em `SMTP_USERNAME`/`SMTP_PASSWORD`, remetente real) passa sem
+    violação.
+    Serviço que compõe `EmailSettings` sem configurar o SMTP passa a
+    precisar de `EMAIL_ENABLED=false` para subir em produção.
+
+O fluxo de autenticação também respeita o interruptor do e-mail: com
+`EmailUtils(enabled=False)` ligado ao `UserAuthService`, toda rota do
+`make_auth_router` que enviaria um link responde `503
+INTEGRATION_DISABLED` **antes** de gravar qualquer coisa — veja
+[Fluxo de autenticação](auth-flow.md#e-mail-desligado).
+
 ## Recap
 
 - `tempest check-config` roda os checks contra suas settings; sai ≠ 0 no
@@ -295,3 +450,7 @@ production
   mixin composto guardar valor de desenvolvimento, listando os campos sem
   imprimir valor; `production_violations()` + `super()` soma ou dispensa
   regra.
+- `STORAGE_ENABLED`, `EMAIL_ENABLED`, `FIREBASE_ENABLED` e
+  `REVENUECAT_ENABLED` em `false` desligam a integração: o guard a pula,
+  `disabled_integrations()` a nomeia e o cliente construído das settings
+  responde `503 INTEGRATION_DISABLED` em toda chamada.

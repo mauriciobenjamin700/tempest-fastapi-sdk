@@ -62,7 +62,8 @@ def email_test(
 
     Raises:
         typer.Exit: Exit code 2 when the project composes no
-            ``EmailSettings`` or the ``[email]`` extra is missing; code
+            ``EmailSettings``, ``EMAIL_ENABLED`` is off, or the ``[email]``
+            extra is missing; code
             1 when the server refuses the message, carrying its reply.
     """
     settings = load_project_settings()
@@ -77,6 +78,13 @@ def email_test(
         raise typer.Exit(2)
 
     kwargs: dict[str, Any] = settings.email_kwargs()
+    if kwargs.get("enabled") is False:
+        typer.echo(
+            "error: EMAIL_ENABLED=false — the e-mail integration is switched "
+            "off in this environment, so nothing was sent.",
+            err=True,
+        )
+        raise typer.Exit(2)
     text = body or (
         f"Sent by 'tempest email test' through {kwargs['host']}:{kwargs['port']}."
     )

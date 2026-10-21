@@ -432,6 +432,15 @@ ValidationError 1 validation error for Settings
 - REVENUECAT_WEBHOOK_SECRET: empty, so every RevenueCat webhook is refused
 ```
 
+## RevenueCat switched off (`REVENUECAT_ENABLED=false`)
+
+`REVENUECAT_ENABLED=false` makes the production guard skip the
+both-secrets-empty rule and puts `"revenuecat"` in
+`settings.disabled_integrations()`. That is all: the webhook dependency
+reads the secrets, not the flag, so with both empty it keeps refusing
+every delivery with `401` — nothing is accepted silently. See
+[Switching integrations on and off](system-checks.md#switching-integrations-on-and-off-phased-deploys).
+
 ## Recap
 
 - `make_revenuecat_webhook_router` authenticates, records in the inbox and

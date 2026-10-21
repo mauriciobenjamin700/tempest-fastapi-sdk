@@ -116,12 +116,14 @@ class BaseAppSettings(BaseSettings, metaclass=AppSettingsMeta):
       (a URL carrying a password) is echoed as is. Override it in your
       own ``model_config`` to get the input back.
 
-    Two extension points live here because every mixin needs them:
+    Three extension points live here because every mixin needs them:
 
     * :meth:`production_violations` — the cooperative hook
       :class:`~tempest_fastapi_sdk.settings.EnvironmentSettings` calls
       when ``ENV=production``. Each mixin overrides it, calls
       ``super()`` and appends the development values it owns.
+    * :meth:`disabled_integrations` — the same cooperative shape, for
+      the integrations a ``<NAME>_ENABLED`` flag switched off.
     * :attr:`DEPRECATED_ENV_ALIASES` — old environment variable names a
       mixin still accepts (through ``validation_alias=AliasChoices``)
       after a rename. :meth:`settings_customise_sources` refuses to
@@ -210,6 +212,32 @@ class BaseAppSettings(BaseSettings, metaclass=AppSettingsMeta):
 
         Returns:
             list[str]: One ``"FIELD: reason"`` entry per violation.
+        """
+        return []
+
+    def disabled_integrations(self) -> list[str]:
+        """List the integrations this settings object switched off.
+
+        The companion of :meth:`production_violations` for deployments
+        that ship in phases. A mixin modelling a third-party integration
+        (``StorageSettings``, ``EmailSettings``, ``FirebaseSettings``,
+        ``RevenueCatSettings``) declares a ``<NAME>_ENABLED`` flag; with
+        it off, the mixin's production checks are skipped and its name
+        is appended here, so the switch is never invisible: log the list
+        at boot, or show it in a readiness detail.
+
+        Composed the same way as :meth:`production_violations` — each
+        mixin overrides it **cooperatively**, calls ``super()`` first and
+        appends its own name. The base contributes nothing.
+
+        Returns:
+            list[str]: Integration names (``"storage"``, ``"email"``,
+            ``"firebase"``, ``"revenuecat"``), one per switched-off mixin.
+            The order follows the cooperative ``super()`` chain and is not
+            part of the contract — compare as a set. These are the same
+            strings an
+            :class:`~tempest_fastapi_sdk.exceptions.IntegrationDisabledException`
+            carries in ``details["integration"]``.
         """
         return []
 

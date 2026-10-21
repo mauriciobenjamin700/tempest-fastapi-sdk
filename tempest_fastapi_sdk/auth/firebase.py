@@ -54,6 +54,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from tempest_fastapi_sdk.exceptions import (
     ForbiddenException,
+    IntegrationDisabledException,
     UnauthorizedException,
 )
 
@@ -285,6 +286,7 @@ class FirebaseAuth:
         app_name: str = DEFAULT_FIREBASE_APP_NAME,
         check_revoked: bool = False,
         clock_skew_seconds: int = 0,
+        enabled: bool = True,
     ) -> None:
         """Initialize the authenticator, creating or reusing a Firebase app.
 
@@ -311,22 +313,37 @@ class FirebaseAuth:
                 request once the certificates are cached).
             clock_skew_seconds (int): Seconds of tolerance for the
                 token's ``iat`` / ``exp`` claims. Defaults to ``0``.
+            enabled (bool): ``False`` builds an authenticator for an
+                integration switched off by ``FIREBASE_ENABLED=false``: no
+                app is initialized (the ``[firebase]`` extra is not even
+                imported), :meth:`verify` and the dependencies built on it
+                raise
+                :class:`~tempest_fastapi_sdk.exceptions.IntegrationDisabledException`
+                (``503``, ``details={"integration": "firebase"}``), and an
+                :class:`~tempest_fastapi_sdk.push.FCMTransport` built on it
+                claims no platform. ``FirebaseSettings.firebase_kwargs``
+                passes it. Defaults to ``True``.
 
         Raises:
             ImportError: When the optional ``[firebase]`` extra is not
-                installed.
+                installed and ``enabled`` is ``True``.
             FirebaseCredentialError: When the credential cannot be built
                 or the app cannot be initialized.
         """
-        firebase_admin, firebase_credentials, firebase_auth = _require_firebase_admin()
+        self.enabled: bool = enabled
         self.app_name: str = app_name
         self.check_revoked: bool = check_revoked
         self.clock_skew_seconds: int = clock_skew_seconds
         self._credentials_path: str | Path | None = credentials_path
         self._credentials_json: str | None = credentials_json
         self._project_id: str | None = project_id
-        self._auth: Any = firebase_auth
-        self._app: Any = self._get_or_create_app(firebase_admin, firebase_credentials)
+        self._auth: Any = None
+        self._app: Any = None
+        if not enabled:
+            return
+        firebase_admin, firebase_credentials, firebase_auth = _require_firebase_admin()
+        self._auth = firebase_auth
+        self._app = self._get_or_create_app(firebase_admin, firebase_credentials)
 
     @property
     def app(self) -> Any:
@@ -338,7 +355,12 @@ class FirebaseAuth:
 
         Returns:
             Any: The ``firebase_admin.App`` bound to :attr:`app_name`.
+
+        Raises:
+            IntegrationDisabledException: When built with ``enabled=False``.
         """
+        if not self.enabled:
+            raise IntegrationDisabledException("firebase")
         return self._app
 
     def _build_credential(self, firebase_credentials: Any) -> Any:
@@ -445,6 +467,8 @@ class FirebaseAuth:
             FirebaseIdentity: The verified identity.
 
         Raises:
+            IntegrationDisabledException: When built with ``enabled=False``
+                (``503``); nothing is verified.
             FirebaseTokenRevokedError: When the token was revoked
                 (``check_revoked=True`` only).
             FirebaseTokenExpiredError: When the token has expired.
@@ -456,6 +480,8 @@ class FirebaseAuth:
                 bad signature, targets another project, or carries no
                 subject claim.
         """
+        if not self.enabled:
+            raise IntegrationDisabledException("firebase")
         try:
             claims: Mapping[str, Any] = await asyncio.to_thread(
                 self._auth.verify_id_token,
@@ -493,11 +519,16 @@ class FirebaseAuth:
             FirebaseIdentity: The verified identity.
 
         Raises:
+            IntegrationDisabledException: When built with ``enabled=False``
+                — checked first, so a request without a token gets the same
+                ``503`` as one with a token.
             FirebaseTokenMissingError: When no credentials were supplied.
             UnauthorizedException: Any of the verification failures
                 documented on :meth:`verify`.
             FirebaseUserDisabledError: When the user is disabled (403).
         """
+        if not self.enabled:
+            raise IntegrationDisabledException("firebase")
         if credentials is None:
             raise FirebaseTokenMissingError()
         return await self.verify(credentials.credentials)
@@ -531,9 +562,13 @@ class FirebaseAuth:
             when the request carried no usable token.
 
         Raises:
+            IntegrationDisabledException: When built with ``enabled=False``;
+                a disabled integration is not an anonymous caller.
             FirebaseUserDisabledError: When the token verifies but the
                 Firebase user is disabled (403).
         """
+        if not self.enabled:
+            raise IntegrationDisabledException("firebase")
         if credentials is None:
             return None
         try:

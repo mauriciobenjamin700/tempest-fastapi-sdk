@@ -33,6 +33,7 @@ box.
 
 from __future__ import annotations
 
+import ipaddress
 import warnings
 from collections.abc import Mapping
 from datetime import timedelta
@@ -60,6 +61,61 @@ SPOOFABLE_IP_HEADERS: frozenset[str] = frozenset({"x-forwarded-for", "forwarded"
 
 Both are appended to hop by hop rather than overwritten, so their
 leftmost content is whatever the client sent.
+"""
+
+
+_DEV_SMTP_HOSTS: frozenset[str] = frozenset({"mailpit", "mailhog"})
+"""First DNS labels of the development mail catchers ``EmailSettings`` refuses.
+
+Matched against the first label of ``SMTP_HOST``, so ``mailpit`` (the
+compose service name) and ``mailpit.internal`` both count.
+"""
+
+_LOOPBACK_SMTP_HOSTS: frozenset[str] = frozenset({"localhost", "127.0.0.1", "::1"})
+"""Loopback hosts. Refused only together with :data:`_DEV_SMTP_PORT`.
+
+``localhost`` alone is a legitimate production shape (a local relay such
+as Postfix forwarding to the provider), so it is never refused by itself.
+"""
+
+_DEV_SMTP_PORT: int = 1025
+"""SMTP port Mailpit and MailHog publish, and the one ``tempest new`` writes."""
+
+_PLACEHOLDER_EMAIL_DOMAINS: frozenset[str] = frozenset(
+    {"example.com", "example.net", "example.org", "localhost"}
+)
+"""Sender domains that can never be a real ``From``: RFC 2606 / RFC 6761.
+
+The first three are reserved for documentation, ``localhost`` resolves
+to the machine itself. ``SMTP_FROM_ADDR`` defaults to
+``noreply@example.com`` and the ``tempest new`` ``.env`` writes
+``noreply@localhost``.
+"""
+
+_PLACEHOLDER_EMAIL_SUFFIXES: tuple[str, ...] = (
+    ".example",
+    ".invalid",
+    ".localhost",
+    ".test",
+)
+"""Reserved top-level domains (RFC 2606 / RFC 6761) refused as sender domain."""
+
+
+_PRIVATE_STORAGE_NETWORKS: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+)
+"""Networks ``StorageSettings`` treats as a private ``STORAGE_ENDPOINT``.
+
+RFC 1918, loopback, link-local and IPv6 ULA. Narrower than
+``ipaddress``' own ``is_private``, which also counts documentation and
+benchmarking ranges.
 """
 
 
@@ -92,6 +148,15 @@ class EnvironmentSettings(BaseAppSettings):
     * :class:`StorageSettings` — the MinIO default access or secret key,
       ``STORAGE_SECURE`` off, or ``STORAGE_PUBLIC_SECURE`` explicitly
       off.
+    * :class:`EmailSettings` — a Mailpit/MailHog host, loopback on port
+      ``1025``, or a placeholder ``SMTP_FROM_ADDR`` domain.
+    * :class:`RevenueCatSettings` — both webhook secrets empty.
+
+    A third-party integration can be switched off instead of configured
+    (``STORAGE_ENABLED``, ``EMAIL_ENABLED``, ``FIREBASE_ENABLED``,
+    ``REVENUECAT_ENABLED`` set to ``false``): its checks are skipped, the
+    boot succeeds, and :meth:`~BaseAppSettings.disabled_integrations`
+    names it so the app can log the switch.
 
     The error message names fields and reasons, never values.
 
@@ -870,8 +935,48 @@ class EmailSettings(BaseAppSettings):
             (SMTPS, port 465). Default: ``False``.
         SMTP_TIMEOUT_SECONDS (float): Network timeout for SMTP operations.
             Default: ``30.0``.
+        EMAIL_ENABLED (bool): Kill-switch for the whole integration.
+            ``False`` skips the production checks below, lists
+            ``"email"`` in :meth:`disabled_integrations` and makes
+            :meth:`email_kwargs` build an :class:`EmailUtils` whose every
+            send raises ``IntegrationDisabledException`` (``503``).
+            Default: ``True``.
+
+    In ``ENV=production`` (see :class:`EnvironmentSettings`), with
+    ``EMAIL_ENABLED`` on, three values are refused because they can only
+    be a development setup:
+
+    * ``SMTP_HOST`` whose first DNS label is ``mailpit`` or ``mailhog``;
+    * ``SMTP_PORT=1025`` together with a loopback ``SMTP_HOST``
+      (``localhost``, ``127.0.0.1``, ``::1``) — the port Mailpit and
+      MailHog publish;
+    * ``SMTP_HOST`` still at its declared default (``localhost``) with no
+      ``SMTP_USERNAME`` — an unauthenticated default is the development
+      catcher, not a configured relay. A local relay keeps booting by
+      setting ``SMTP_USERNAME`` or addressing it as ``127.0.0.1``;
+    * ``SMTP_FROM_ADDR`` that is empty, has no ``@``, or whose domain is
+      reserved and can never send real mail: ``example.com``,
+      ``example.net``, ``example.org`` or ``localhost`` (and any
+      subdomain of them), or anything under ``.example``, ``.invalid``,
+      ``.localhost`` or ``.test``. The declared default
+      (``noreply@example.com``) is refused by itself as well.
+
+    Gmail (``smtp.gmail.com:587``, STARTTLS, an app password in
+    ``SMTP_USERNAME``/``SMTP_PASSWORD``, a real ``SMTP_FROM_ADDR``)
+    produces no violation.
     """
 
+    EMAIL_ENABLED: bool = Field(
+        default=True,
+        title="Email integration enabled",
+        description=(
+            "Kill-switch for outgoing e-mail. ``false`` skips the "
+            "production checks of the SMTP fields and makes every send "
+            "answer ``503 INTEGRATION_DISABLED`` — for a deployment that "
+            "ships before SMTP is configured."
+        ),
+        examples=[True, False],
+    )
     SMTP_HOST: str = Field(
         default="localhost",
         title="SMTP server host",
@@ -951,6 +1056,13 @@ class EmailSettings(BaseAppSettings):
         * ``SMTP_USE_SSL`` (implicit TLS from connect, port 465) maps to
           ``use_tls``.
 
+        With ``EMAIL_ENABLED`` off the dictionary also carries
+        ``enabled=False``, so the same construction line builds a mailer
+        that refuses every send with ``IntegrationDisabledException``
+        instead of connecting to the development default. The key is
+        absent while the integration is on, so the dictionary of a
+        deployment that never touches the flag is unchanged.
+
         Returns:
             dict[str, Any]: Keyword arguments ready to splat into
             ``EmailUtils(**settings.email_kwargs())``.
@@ -960,7 +1072,7 @@ class EmailSettings(BaseAppSettings):
             >>> from tempest_fastapi_sdk import EmailUtils
             >>> mailer = EmailUtils(**settings.email_kwargs())
         """
-        return {
+        kwargs: dict[str, Any] = {
             "host": self.SMTP_HOST,
             "port": self.SMTP_PORT,
             "from_addr": self.SMTP_FROM_ADDR,
@@ -970,6 +1082,66 @@ class EmailSettings(BaseAppSettings):
             "use_starttls": self.SMTP_USE_TLS,
             "timeout": self.SMTP_TIMEOUT_SECONDS,
         }
+        if not self.EMAIL_ENABLED:
+            kwargs["enabled"] = False
+        return kwargs
+
+    def production_violations(self) -> list[str]:
+        """Refuse a development mail catcher or a placeholder sender.
+
+        Skipped entirely when ``EMAIL_ENABLED`` is off. The declared
+        defaults compared against are read from
+        ``EmailSettings.model_fields``, not copied literals. ``localhost``
+        is refused only paired with port ``1025`` or as the untouched
+        default without ``SMTP_USERNAME``, so an authenticated local relay
+        (or one addressed as ``127.0.0.1``) keeps booting. The rule is
+        listed in the class docstring.
+
+        Returns:
+            list[str]: The parent's entries plus one per offending field.
+        """
+        violations: list[str] = super().production_violations()
+        if not self.EMAIL_ENABLED:
+            return violations
+        fields = EmailSettings.model_fields
+        host: str = self.SMTP_HOST.strip().lower()
+        if host.split(".", 1)[0] in _DEV_SMTP_HOSTS:
+            violations.append("SMTP_HOST: a development mail catcher")
+        elif host in _LOOPBACK_SMTP_HOSTS and self.SMTP_PORT == _DEV_SMTP_PORT:
+            violations.append(
+                "SMTP_PORT: loopback on 1025 is the Mailpit/MailHog development pair"
+            )
+        elif fields["SMTP_HOST"].default == self.SMTP_HOST and not self.SMTP_USERNAME:
+            violations.append(
+                "SMTP_HOST: still the declared default, with no SMTP_USERNAME"
+            )
+        sender: str = self.SMTP_FROM_ADDR.strip().lower()
+        domain: str = sender.rpartition("@")[2] if "@" in sender else ""
+        if (
+            fields["SMTP_FROM_ADDR"].default == self.SMTP_FROM_ADDR
+            or not domain
+            or any(
+                domain == reserved or domain.endswith(f".{reserved}")
+                for reserved in _PLACEHOLDER_EMAIL_DOMAINS
+            )
+            or domain.endswith(_PLACEHOLDER_EMAIL_SUFFIXES)
+        ):
+            violations.append(
+                "SMTP_FROM_ADDR: empty or a reserved placeholder domain that "
+                "cannot send real mail"
+            )
+        return violations
+
+    def disabled_integrations(self) -> list[str]:
+        """Append ``"email"`` when ``EMAIL_ENABLED`` is off.
+
+        Returns:
+            list[str]: The parent's entries, plus ``"email"`` when off.
+        """
+        disabled: list[str] = super().disabled_integrations()
+        if not self.EMAIL_ENABLED:
+            disabled.append("email")
+        return disabled
 
 
 class UploadSettings(BaseAppSettings):
@@ -1190,8 +1362,27 @@ class FirebaseSettings(BaseAppSettings):
             file. Default: ``""``.
         FIREBASE_CREDENTIALS_JSON (str): The service-account JSON inline.
             Default: ``""``.
+        FIREBASE_ENABLED (bool): Kill-switch for the whole integration.
+            ``False`` makes :attr:`enabled` answer ``False`` whatever the
+            credentials say (so push wiring gated on it builds no FCM
+            transport), lists ``"firebase"`` in
+            :meth:`disabled_integrations`, and makes
+            :meth:`firebase_kwargs` build a ``FirebaseAuth`` that never
+            initializes an app and refuses every verification with
+            ``IntegrationDisabledException`` (``503``). Default: ``True``.
     """
 
+    FIREBASE_ENABLED: bool = Field(
+        default=True,
+        title="Firebase integration enabled",
+        description=(
+            "Kill-switch for Firebase (ID token verification and FCM push). "
+            "``false`` reports the integration as off even with credentials "
+            "set: push is discarded and verification answers ``503 "
+            "INTEGRATION_DISABLED``."
+        ),
+        examples=[True, False],
+    )
     FIREBASE_PROJECT_ID: str = Field(
         default="",
         title="Firebase project id",
@@ -1224,10 +1415,18 @@ class FirebaseSettings(BaseAppSettings):
         variable leaves the corresponding constructor default in place
         instead of configuring an empty path.
 
+        With ``FIREBASE_ENABLED`` off the result is ``{"enabled": False}``
+        and nothing else: the credentials are not forwarded, so the
+        ``FirebaseAuth`` it builds never initializes an app (nor falls
+        back to an application-default credential) and refuses every
+        verification with ``IntegrationDisabledException``.
+
         Returns:
             dict[str, Any]: Keyword arguments ready to splat into
             ``FirebaseAuth(**settings.firebase_kwargs())``.
         """
+        if not self.FIREBASE_ENABLED:
+            return {"enabled": False}
         kwargs: dict[str, Any] = {}
         if self.FIREBASE_CREDENTIALS_JSON:
             kwargs["credentials_json"] = self.FIREBASE_CREDENTIALS_JSON
@@ -1239,18 +1438,33 @@ class FirebaseSettings(BaseAppSettings):
 
     @property
     def enabled(self) -> bool:
-        """Whether an explicit Firebase service account is configured.
+        """Whether Firebase is switched on and has an explicit service account.
 
-        ``False`` does **not** mean verification is impossible: an
-        application-default credential (``GOOGLE_APPLICATION_CREDENTIALS``
-        or the metadata server on Google infrastructure) still works.
-        Use this to gate wiring in projects that must run without
-        Firebase at all.
+        ``False`` when ``FIREBASE_ENABLED`` is off, whatever the
+        credentials say. With the flag on, ``False`` does **not** mean
+        verification is impossible: an application-default credential
+        (``GOOGLE_APPLICATION_CREDENTIALS`` or the metadata server on
+        Google infrastructure) still works. Use this to gate wiring in
+        projects that must run without Firebase at all.
 
         Returns:
-            bool: ``True`` when a credentials path or inline JSON is set.
+            bool: ``True`` when ``FIREBASE_ENABLED`` is on and a
+            credentials path or inline JSON is set.
         """
-        return bool(self.FIREBASE_CREDENTIALS_JSON or self.FIREBASE_CREDENTIALS_PATH)
+        return self.FIREBASE_ENABLED and bool(
+            self.FIREBASE_CREDENTIALS_JSON or self.FIREBASE_CREDENTIALS_PATH
+        )
+
+    def disabled_integrations(self) -> list[str]:
+        """Append ``"firebase"`` when ``FIREBASE_ENABLED`` is off.
+
+        Returns:
+            list[str]: The parent's entries, plus ``"firebase"`` when off.
+        """
+        disabled: list[str] = super().disabled_integrations()
+        if not self.FIREBASE_ENABLED:
+            disabled.append("firebase")
+        return disabled
 
 
 class PushSettings(WebPushSettings, FirebaseSettings):
@@ -1290,16 +1504,20 @@ class PushSettings(WebPushSettings, FirebaseSettings):
 
     @property
     def mobile_enabled(self) -> bool:
-        """Whether an explicit Firebase service account is configured.
+        """Whether Firebase is switched on and has an explicit service account.
 
+        ``False`` when ``FIREBASE_ENABLED`` is off. With the flag on,
         ``False`` does not mean FCM is impossible — an
         application-default credential still works. It means this process
         was not handed one explicitly.
 
         Returns:
-            bool: ``True`` when a credentials path or inline JSON is set.
+            bool: ``True`` when ``FIREBASE_ENABLED`` is on and a
+            credentials path or inline JSON is set.
         """
-        return bool(self.FIREBASE_CREDENTIALS_JSON or self.FIREBASE_CREDENTIALS_PATH)
+        return self.FIREBASE_ENABLED and bool(
+            self.FIREBASE_CREDENTIALS_JSON or self.FIREBASE_CREDENTIALS_PATH
+        )
 
     @property
     def enabled(self) -> bool:
@@ -2506,7 +2724,10 @@ class StorageSettings(BaseAppSettings):
     The defaults are a local MinIO's (``minioadmin``/``minioadmin`` over
     plain HTTP). In ``ENV=production`` (see :class:`EnvironmentSettings`)
     those keys, ``STORAGE_SECURE=False`` and an explicit
-    ``STORAGE_PUBLIC_SECURE=False`` are refused.
+    ``STORAGE_PUBLIC_SECURE=False`` are refused — except that
+    ``STORAGE_SECURE=False`` is accepted for the split-endpoint shape
+    described in :meth:`private_plain_http_allowed` (a private bucket
+    behind an HTTPS public endpoint).
 
     Attributes:
         STORAGE_ENDPOINT (str): ``host[:port]`` without scheme. Old name
@@ -2536,6 +2757,12 @@ class StorageSettings(BaseAppSettings):
             Default: ``False``.
         STORAGE_ACCEL_PREFIX (str): nginx ``internal`` location the
             ``X-Accel-Redirect`` points into. Default: ``"/_bucket/"``.
+        STORAGE_ENABLED (bool): Kill-switch for the whole integration.
+            ``False`` skips the production checks above, lists
+            ``"storage"`` in :meth:`disabled_integrations` and makes
+            :meth:`storage_kwargs` build an ``AsyncMinIOClient`` whose
+            every operation raises ``IntegrationDisabledException``
+            (``503``). Default: ``True``.
     """
 
     DEPRECATED_ENV_ALIASES: ClassVar[Mapping[str, str]] = {
@@ -2549,6 +2776,17 @@ class StorageSettings(BaseAppSettings):
         "MINIO_PUBLIC_SECURE": "STORAGE_PUBLIC_SECURE",
     }
 
+    STORAGE_ENABLED: bool = Field(
+        default=True,
+        title="Storage integration enabled",
+        description=(
+            "Kill-switch for object storage. ``false`` skips the production "
+            "checks of the ``STORAGE_*`` fields and makes every storage "
+            "operation answer ``503 INTEGRATION_DISABLED`` — for a deployment "
+            "that ships before the bucket exists."
+        ),
+        examples=[True, False],
+    )
     STORAGE_ENDPOINT: str = Field(  # type: ignore[pydantic-alias]
         default="localhost:9000",
         validation_alias=AliasChoices("STORAGE_ENDPOINT", "MINIO_ENDPOINT"),
@@ -2664,11 +2902,18 @@ class StorageSettings(BaseAppSettings):
     def storage_kwargs(self) -> dict[str, Any]:
         """Map these settings onto :class:`AsyncMinIOClient` kwargs.
 
+        With ``STORAGE_ENABLED`` off the dictionary also carries
+        ``enabled=False``, so the same construction line builds a client
+        that refuses every operation with ``IntegrationDisabledException``
+        instead of reaching the development endpoint. The key is absent
+        while the integration is on, so the dictionary of a deployment
+        that never touches the flag is unchanged.
+
         Returns:
             dict[str, Any]: Keyword arguments ready to splat into
             ``AsyncMinIOClient(**settings.storage_kwargs())``.
         """
-        return {
+        kwargs: dict[str, Any] = {
             "endpoint": self.STORAGE_ENDPOINT,
             "access_key": self.STORAGE_ACCESS_KEY,
             "secret_key": self.STORAGE_SECRET_KEY,
@@ -2680,6 +2925,9 @@ class StorageSettings(BaseAppSettings):
             "accel_redirect": self.STORAGE_ACCEL_REDIRECT,
             "accel_prefix": self.STORAGE_ACCEL_PREFIX,
         }
+        if not self.STORAGE_ENABLED:
+            kwargs["enabled"] = False
+        return kwargs
 
     def minio_kwargs(self) -> dict[str, Any]:
         """Return :meth:`storage_kwargs` under its pre-rename name.
@@ -2702,20 +2950,94 @@ class StorageSettings(BaseAppSettings):
         is only refused when explicitly ``False``: ``None`` inherits
         ``STORAGE_SECURE``, which is checked on its own.
 
+        Skipped entirely when ``STORAGE_ENABLED`` is off.
+
         Returns:
             list[str]: The parent's entries plus one per offending field.
         """
         violations: list[str] = super().production_violations()
+        if not self.STORAGE_ENABLED:
+            return violations
         fields = StorageSettings.model_fields
         if fields["STORAGE_ACCESS_KEY"].default == self.STORAGE_ACCESS_KEY:
             violations.append("STORAGE_ACCESS_KEY: still the MinIO default credential")
         if fields["STORAGE_SECRET_KEY"].default == self.STORAGE_SECRET_KEY:
             violations.append("STORAGE_SECRET_KEY: still the MinIO default credential")
-        if not self.STORAGE_SECURE:
-            violations.append("STORAGE_SECURE: storage traffic over plain HTTP")
+        if not self.STORAGE_SECURE and not self.private_plain_http_allowed():
+            violations.append(
+                "STORAGE_SECURE: storage traffic over plain HTTP (allowed only "
+                "for a private STORAGE_ENDPOINT behind an HTTPS "
+                "STORAGE_PUBLIC_ENDPOINT)"
+            )
         if self.STORAGE_PUBLIC_SECURE is False:
             violations.append("STORAGE_PUBLIC_SECURE: presigned URLs over plain HTTP")
         return violations
+
+    @staticmethod
+    def is_private_endpoint(endpoint: str) -> bool:
+        """Tell whether a ``host[:port]`` endpoint is reachable only privately.
+
+        Private means a single-label hostname (a Docker service name such
+        as ``bucket``, or ``localhost``), or an IP in
+        :data:`_PRIVATE_STORAGE_NETWORKS` (RFC 1918, loopback, link-local,
+        IPv6 ULA). A scheme and a path, if present, are ignored; an IPv6
+        address may come bracketed (``[fd00::1]:9000``).
+
+        Args:
+            endpoint (str): The endpoint, as ``STORAGE_ENDPOINT`` holds it.
+
+        Returns:
+            bool: ``True`` for a private host, ``False`` for anything with
+            a dot that is not a private IP (a public DNS name).
+        """
+        value = endpoint.strip().lower().split("://", 1)[-1].split("/", 1)[0]
+        if value.startswith("["):
+            host = value[1:].split("]", 1)[0]
+        elif value.count(":") == 1:
+            host = value.split(":", 1)[0]
+        else:
+            host = value
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            return bool(host) and "." not in host
+        return any(address in network for network in _PRIVATE_STORAGE_NETWORKS)
+
+    def private_plain_http_allowed(self) -> bool:
+        """Whether ``STORAGE_SECURE=False`` is the split-endpoint shape.
+
+        Plain HTTP between the app and the bucket is a legitimate
+        production setup when the bucket is only reachable on a private
+        network (``STORAGE_ENDPOINT=bucket:9000`` inside a compose
+        network) and clients only ever see presigned URLs signed for an
+        HTTPS public host. All three must hold:
+
+        * ``STORAGE_ENDPOINT`` is private (:meth:`is_private_endpoint`);
+        * ``STORAGE_PUBLIC_ENDPOINT`` is set;
+        * the public scheme is HTTPS — ``STORAGE_PUBLIC_SECURE=True``, or
+          ``None`` with an ``https://`` public endpoint (what
+          ``AsyncMinIOClient`` resolves the same way).
+
+        Returns:
+            bool: ``True`` when plain HTTP is confined to the private hop.
+        """
+        public = self.STORAGE_PUBLIC_ENDPOINT
+        if not public or not self.is_private_endpoint(self.STORAGE_ENDPOINT):
+            return False
+        if self.STORAGE_PUBLIC_SECURE is not None:
+            return self.STORAGE_PUBLIC_SECURE
+        return public.strip().lower().startswith("https://")
+
+    def disabled_integrations(self) -> list[str]:
+        """Append ``"storage"`` when ``STORAGE_ENABLED`` is off.
+
+        Returns:
+            list[str]: The parent's entries, plus ``"storage"`` when off.
+        """
+        disabled: list[str] = super().disabled_integrations()
+        if not self.STORAGE_ENABLED:
+            disabled.append("storage")
+        return disabled
 
 
 class MinIOSettings(StorageSettings):
@@ -3560,7 +3882,24 @@ class RevenueCatSettings(BaseAppSettings):
             empty too, every delivery is refused.
         REVENUECAT_API_KEY (str): A **secret** API key (``sk_...``) for
             ``GET /v1/subscribers``. Empty disables reconciliation.
+        REVENUECAT_ENABLED (bool): Kill-switch for the whole integration.
+            ``False`` skips the production check below and lists
+            ``"revenuecat"`` in :meth:`disabled_integrations`. Nothing
+            else changes: the webhook dependency reads its secrets, not
+            this flag, so with both secrets empty it keeps refusing every
+            delivery with ``401``. Default: ``True``.
     """
+
+    REVENUECAT_ENABLED: bool = Field(
+        default=True,
+        title="RevenueCat integration enabled",
+        description=(
+            "Kill-switch for RevenueCat. ``false`` skips the production "
+            "check that refuses empty webhook secrets, for a deployment that "
+            "ships before the store integration is configured."
+        ),
+        examples=[True, False],
+    )
 
     REVENUECAT_WEBHOOK_SECRET: str = Field(
         default="",
@@ -3623,11 +3962,15 @@ class RevenueCatSettings(BaseAppSettings):
         secret and skips an empty one, so HMAC alone (or the header alone)
         authenticates.
 
+        Skipped entirely when ``REVENUECAT_ENABLED`` is off.
+
         Returns:
             list[str]: The parent's entries, plus one when neither webhook
             secret is set.
         """
         violations: list[str] = super().production_violations()
+        if not self.REVENUECAT_ENABLED:
+            return violations
         if (
             not self.REVENUECAT_WEBHOOK_SECRET
             and not self.REVENUECAT_WEBHOOK_SIGNING_SECRET
@@ -3637,6 +3980,17 @@ class RevenueCatSettings(BaseAppSettings):
                 "is refused"
             )
         return violations
+
+    def disabled_integrations(self) -> list[str]:
+        """Append ``"revenuecat"`` when ``REVENUECAT_ENABLED`` is off.
+
+        Returns:
+            list[str]: The parent's entries, plus ``"revenuecat"`` when off.
+        """
+        disabled: list[str] = super().disabled_integrations()
+        if not self.REVENUECAT_ENABLED:
+            disabled.append("revenuecat")
+        return disabled
 
 
 class HostBridgeSettings(BaseAppSettings):

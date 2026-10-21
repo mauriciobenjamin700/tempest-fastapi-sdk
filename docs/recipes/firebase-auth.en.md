@@ -412,6 +412,18 @@ async def test_expired_token(monkeypatch: pytest.MonkeyPatch) -> None:
     is rejected **without touching the network** (measured): the
     verifier checks the structure before fetching any certificate.
 
+## Firebase switched off (`FIREBASE_ENABLED=false`)
+
+`FIREBASE_ENABLED=false` makes `settings.enabled` answer `False` even with
+a credential set, and `firebase_kwargs()` return only
+`{"enabled": False}`. The `FirebaseAuth(**settings.firebase_kwargs())`
+initializes no app (nor falls back to the environment's default
+credential) and answers `IntegrationDisabledException` (`503`,
+`details={"integration": "firebase"}`) from `verify` and from the
+`get_identity`, `get_optional_identity` and `get_uid` dependencies —
+before even checking for a token. See
+[Switching integrations on and off](system-checks.md#switching-integrations-on-and-off-phased-deploys).
+
 ## Recap
 
 - `FirebaseAuth` verifies **Firebase ID tokens**; Firebase issues them,

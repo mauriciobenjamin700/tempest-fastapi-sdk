@@ -1236,6 +1236,9 @@ from tempest_fastapi_sdk.exceptions import (
     InheritedErrorCodeWarning as InheritedErrorCodeWarning,
 )
 from tempest_fastapi_sdk.exceptions import (
+    IntegrationDisabledException as IntegrationDisabledException,
+)
+from tempest_fastapi_sdk.exceptions import (
     InvalidFileTypeException as InvalidFileTypeException,
 )
 from tempest_fastapi_sdk.exceptions import (
@@ -2448,6 +2451,7 @@ __all__: list[str] = [
     "InheritedErrorCodeWarning",
     "Inline",
     "InsufficientBalanceException",
+    "IntegrationDisabledException",
     "IntegrityFailure",
     "IntegrityViolation",
     "IntrospectionAuth",
