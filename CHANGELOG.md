@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.321.0] — 2026-10-21
+
 ### Added
 
 - Upload direto sob o prefixo do titular no `SubjectObjectStorage`:
@@ -42,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SubjectObjectStorage` deixa de passar no type-checker até ganhar os três —
   em runtime nada muda enquanto os métodos novos do storage não forem
   chamados.
+
+### Security
+
+- Piso do `pypdf` (extra `pdf-read` e os que o incluem) sobe para `>=6.21.1`:
+  CVE-2026-113786, CVE-2026-113792 e CVE-2026-113793 em 6.20.0. Lock em 6.21.2.
 
 ## [0.320.0] — 2026-10-20
 
