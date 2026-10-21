@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.321.0] — 2026-10-21
+
 ### Added
 
 - Upload direto sob o prefixo do titular no `SubjectObjectStorage`:

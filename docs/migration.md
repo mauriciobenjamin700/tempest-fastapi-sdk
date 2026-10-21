@@ -2,6 +2,23 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.321.0 — `SubjectStorageClient` ganha três métodos
+
+O protocolo `SubjectStorageClient` (o tipo do `client` do
+`SubjectObjectStorage`) passa a declarar `presigned_put_url`, `stat_object`
+e `stream_object`, que o `SubjectObjectStorage` usa no upload direto
+(`presign_put`, `stat`, `read`). `AsyncMinIOClient` e
+`FakeObjectStorageClient` já implementam os três.
+
+### O que fazer
+
+- Cliente próprio que implementa o protocolo: implemente os três métodos,
+  com as assinaturas do `AsyncMinIOClient` (sem o `chunk_size` do
+  `stream_object`). Sem eles, o type-checker recusa o cliente.
+- Código que chamava `storage.client.presigned_put_url(storage.key(...))`,
+  `stat_object` ou `stream_object` direto pode trocar por `presign_put`,
+  `stat` e `read(max_bytes=...)`, que fixam o prefixo do titular.
+
 ## 0.320.0 — guard de produção do e-mail e dos links
 
 Com `ENV=production` e o e-mail ligado (`EMAIL_ENABLED` ausente conta como

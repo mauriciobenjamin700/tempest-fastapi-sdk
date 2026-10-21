@@ -2,6 +2,22 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.321.0 — `SubjectStorageClient` gains three methods
+
+The `SubjectStorageClient` protocol (the type of `SubjectObjectStorage.client`)
+now declares `presigned_put_url`, `stat_object` and `stream_object`, which
+`SubjectObjectStorage` uses for direct upload (`presign_put`, `stat`, `read`).
+`AsyncMinIOClient` and `FakeObjectStorageClient` already implement all three.
+
+### What to do
+
+- A custom client implementing the protocol: add the three methods, with
+  `AsyncMinIOClient`'s signatures (without `stream_object`'s `chunk_size`).
+  Without them, the type checker rejects the client.
+- Code calling `storage.client.presigned_put_url(storage.key(...))`,
+  `stat_object` or `stream_object` directly can switch to `presign_put`,
+  `stat` and `read(max_bytes=...)`, which pin the subject prefix.
+
 ## 0.320.0 — production guard for e-mail and links
 
 With `ENV=production` and e-mail on (a missing `EMAIL_ENABLED` counts as on),
