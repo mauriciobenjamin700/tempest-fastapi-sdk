@@ -8,6 +8,7 @@ test reach the branch the real provider will not give it on demand.
 from __future__ import annotations
 
 import hashlib
+from datetime import timedelta
 from io import BytesIO
 
 import pytest
@@ -40,6 +41,7 @@ from tempest_fastapi_sdk.testing.fakes import (
     FakeTextBackend,
     FakeWebSearchBackend,
 )
+from tempest_fastapi_sdk.testing.fakes.storage import FAKE_STREAM_CHUNK_SIZE
 
 
 def _card_request(*, capture: bool = True) -> CardChargeRequest:
@@ -489,6 +491,98 @@ class TestFakeObjectStorageClient:
 
         with pytest.raises(PermissionError, match="AccessDenied"):
             await client.remove_object("a")
+
+    async def test_presigned_put_url_is_deterministic(self) -> None:
+        client = FakeObjectStorageClient(default_bucket="media")
+
+        url = await client.presigned_put_url("k/a.jpg", expires=timedelta(minutes=2))
+
+        assert url == "https://fake-storage/media/k/a.jpg?method=PUT&expires=120"
+
+    async def test_stat_object_reports_the_put(self) -> None:
+        client = FakeObjectStorageClient()
+        await client.put_object(
+            "k", b"payload", content_type="image/png", metadata={"a": "b"}
+        )
+
+        stat = await client.stat_object("k")
+
+        assert stat.size == 7
+        assert stat.content_type == "image/png"
+        assert stat.metadata == {"a": "b"}
+        assert stat.etag == hashlib.md5(b"payload", usedforsecurity=False).hexdigest()
+        assert stat.bucket == "fake-bucket"
+
+    async def test_stream_object_honors_offset_and_length(self) -> None:
+        client = FakeObjectStorageClient()
+        await client.put_object("k", b"0123456789")
+
+        whole = [chunk async for chunk in await client.stream_object("k")]
+        part = [
+            chunk async for chunk in await client.stream_object("k", offset=2, length=3)
+        ]
+        tail = [
+            chunk
+            async for chunk in await client.stream_object("k", offset=8, length=50)
+        ]
+
+        assert b"".join(whole) == b"0123456789"
+        assert part == [b"234"]
+        assert tail == [b"89"]
+
+    async def test_stream_object_chunks_large_objects(self) -> None:
+        client = FakeObjectStorageClient()
+        await client.put_object("k", b"x" * (FAKE_STREAM_CHUNK_SIZE + 1))
+
+        chunks = [chunk async for chunk in await client.stream_object("k")]
+
+        assert [len(c) for c in chunks] == [FAKE_STREAM_CHUNK_SIZE, 1]
+
+    @pytest.mark.parametrize(("offset", "length"), [(-1, None), (0, 0)])
+    async def test_stream_object_refuses_a_bad_range(
+        self, offset: int, length: int | None
+    ) -> None:
+        client = FakeObjectStorageClient()
+        await client.put_object("k", b"x")
+
+        with pytest.raises(ValueError):
+            await client.stream_object("k", offset=offset, length=length)
+
+    async def test_a_missing_key_raises_file_not_found(self) -> None:
+        client = FakeObjectStorageClient()
+
+        with pytest.raises(FileNotFoundError, match="NoSuchKey: k"):
+            await client.stat_object("k")
+        with pytest.raises(FileNotFoundError, match="NoSuchKey: k"):
+            await client.stream_object("k")
+
+    async def test_a_deleted_key_is_missing_for_stat(self) -> None:
+        client = FakeObjectStorageClient()
+        await client.put_object("k", b"x")
+        await client.remove_objects(["k"])
+
+        with pytest.raises(FileNotFoundError):
+            await client.stat_object("k")
+
+    async def test_fail_next_covers_the_upload_calls(self) -> None:
+        client = FakeObjectStorageClient()
+        await client.put_object("k", b"x")
+        client.fail_next(TimeoutError())
+        client.fail_next(ConnectionError())
+        client.fail_next(OSError())
+
+        with pytest.raises(TimeoutError):
+            await client.presigned_put_url("k")
+        with pytest.raises(ConnectionError):
+            await client.stat_object("k")
+        with pytest.raises(OSError):
+            await client.stream_object("k")
+
+        assert client.calls[-3:] == [
+            "presigned_put_url",
+            "stat_object",
+            "stream_object",
+        ]
 
     async def test_fail_next_fails_the_next_call(self) -> None:
         client = FakeObjectStorageClient()

@@ -1,10 +1,13 @@
-"""``SubjectObjectStorage.delete_all`` against a real MinIO.
+"""``SubjectObjectStorage`` against a real MinIO.
 
 Opt-in (``make test-docker``). The offline fake proves the call shape; this
 proves the store agrees: a subject with more than 1000 objects (more than one
 ``DeleteObjects`` request) is erased completely, and neither a subject whose
 id shares the prefix (``"7"`` vs ``"77"``) nor another subject loses an
-object.
+object. The direct-upload trio is measured too: a ``PUT`` to the URL
+``presign_put`` signs lands under the subject prefix, ``stat`` reports it,
+``read(max_bytes=...)`` sends a ``Range`` and gets only that slice back, and
+a missing object surfaces as the client's ``S3Error`` (``NoSuchKey``).
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from collections.abc import Iterator
 
 import httpx
 import pytest
+from minio.error import S3Error
 
 from tempest_fastapi_sdk import AsyncMinIOClient, PutObjectItem
 from tempest_fastapi_sdk.privacy import SubjectObjectStorage
@@ -142,3 +146,60 @@ async def test_delete_all_erases_only_the_subject(minio_endpoint: str) -> None:
     assert await storage.names(77) == ["keep.bin"]
     assert await storage.names(8) == ["keep.bin"]
     assert await storage.delete_all(7) == 0
+
+
+async def test_direct_upload_is_verified_with_a_bounded_read(
+    minio_endpoint: str,
+) -> None:
+    """A presigned PUT lands under the prefix; ``read`` caps what crosses."""
+    client = AsyncMinIOClient(
+        endpoint=minio_endpoint,
+        access_key="minioadmin",
+        secret_key="minioadmin",
+        default_bucket="uploads",
+    )
+    await client.ensure_bucket()
+    storage = SubjectObjectStorage(client, prefix="users")
+    payload = bytes(range(256)) * 40
+
+    url = await storage.presign_put(42, "ev/a.bin")
+    async with httpx.AsyncClient() as http:
+        uploaded = await http.put(
+            url, content=payload, headers={"Content-Type": "image/jpeg"}
+        )
+    stat = await storage.stat(42, "ev/a.bin")
+
+    ranges: list[dict[str, object]] = []
+    real_get = client.client.get_object
+
+    def _get_spy(bucket: str, key: str, **kwargs: object) -> object:
+        """Record the range ``Minio.get_object`` was asked for.
+
+        Args:
+            bucket (str): Bucket name.
+            key (str): Object key.
+            **kwargs (object): Forwarded to ``Minio.get_object``.
+
+        Returns:
+            object: The real response.
+        """
+        ranges.append(kwargs)
+        return real_get(bucket, key, **kwargs)  # type: ignore[arg-type]
+
+    client.client.get_object = _get_spy  # type: ignore[method-assign,assignment]
+    head = await storage.read(42, "ev/a.bin", max_bytes=101)
+    whole = await storage.read(42, "ev/a.bin")
+
+    assert uploaded.status_code == 200
+    assert await storage.names(42) == ["ev/a.bin"]
+    assert (stat.size, stat.content_type) == (len(payload), "image/jpeg")
+    assert head == payload[:101]
+    assert whole == payload
+    assert ranges == [{"offset": 0, "length": 101}, {}]
+    with pytest.raises(S3Error) as missing:
+        await storage.stat(42, "ev/never.bin")
+    assert missing.value.code == "NoSuchKey"
+    with pytest.raises(S3Error) as missing_read:
+        await storage.read(42, "ev/never.bin", max_bytes=10)
+    assert missing_read.value.code == "NoSuchKey"
+    assert await storage.delete_all(42) == 1

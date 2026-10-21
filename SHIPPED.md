@@ -3304,7 +3304,9 @@ secret_columns=..., secret_markers=...)` com `tables()`, `export(session, id)`,
 `count(session, id)`, `condition(table, id)`, `exported_columns(table)` e
 `violations()`; `assert_subject_graph_valid` em `tempest_fastapi_sdk.testing`.
 `SubjectObjectStorage(client, prefix=..., bucket=...)` com `put`, `presign`,
-`names`, `delete`, `delete_all` (lote) e `SubjectErasureError`. No storage,
+`names`, `delete`, `delete_all` (lote) e `SubjectErasureError`; upload direto
+com `presign_put`, `stat` e `read(max_bytes=...)` (leitura com `Range`)
+na release seguinte à 0.320.0. No storage,
 `AsyncMinIOClient.remove_objects` + `ObjectDeleteError`. Fora: vínculo sem FK
 (audit trail, id em JSON), raiz com PK composta, busca/cache/backup. Receita
 `recipes/subject-data.md`. Testes: `tests/privacy/`,

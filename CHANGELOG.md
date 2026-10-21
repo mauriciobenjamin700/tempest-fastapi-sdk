@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Upload direto sob o prefixo do titular no `SubjectObjectStorage`:
+  `presign_put(subject_id, name, *, expires=timedelta(minutes=15))` assina o
+  `PUT` de `key(subject_id, name)`; `stat(subject_id, name)` devolve o
+  `ObjectStat`; `read(subject_id, name, *, max_bytes=None)` lê o objeto e,
+  com `max_bytes`, pede ao storage só esse tanto (leitura com `Range` pelo
+  `stream_object(..., length=max_bytes)`) e para de ler ali mesmo se o
+  storage mandar mais — passe `limite + 1` e compare o tamanho para saber se
+  o objeto passou do limite sem trazê-lo inteiro. `max_bytes` menor que `1`
+  é `ValueError`. Os três validam nome e titular como o `put` e o `presign`,
+  propagam o erro do cliente sem tradução (`S3Error` com `NoSuchKey` para
+  objeto que não existe, medido contra MinIO em
+  `tests/privacy/test_storage_live.py`) e, com o storage desligado
+  (`STORAGE_ENABLED=false`), recusam com `IntegrationDisabledException`. O
+  consumidor deixa de chamar `storage.client.presigned_put_url(storage.key(...))`
+  à mão, que contornava o escopo por titular.
+- `FakeObjectStorageClient` ganhou `presigned_put_url` (URL determinística
+  `https://fake-storage/<bucket>/<key>?method=PUT&expires=<s>`),
+  `stat_object` (tamanho, ETag MD5 e o content type/metadata dados ao
+  `put_object`, que agora são guardados; `raw` é `None`) e `stream_object`
+  (respeita `offset`/`length`, em pedaços de `FAKE_STREAM_CHUNK_SIZE`).
+  Chave inexistente nos dois últimos levanta `FileNotFoundError`
+  (`"NoSuchKey: <key>"`), no lugar do `S3Error` do cliente real. O
+  `fail_next` cobre as três chamadas.
+
+### Changed
+
+- **O protocolo `SubjectStorageClient` ganhou três membros:**
+  `presigned_put_url`, `stat_object` e `stream_object` (assinaturas do
+  `AsyncMinIOClient`). `AsyncMinIOClient` e `FakeObjectStorageClient` já
+  cumprem. Um cliente próprio que implemente o protocolo e seja passado ao
+  `SubjectObjectStorage` deixa de passar no type-checker até ganhar os três —
+  em runtime nada muda enquanto os métodos novos do storage não forem
+  chamados.
+
 ## [0.320.0] — 2026-10-20
 
 ### Added

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import timedelta
 from typing import Any
 
 import pytest
 
-from tempest_fastapi_sdk import AsyncMinIOClient
+from tempest_fastapi_sdk import AsyncMinIOClient, IntegrationDisabledException
 from tempest_fastapi_sdk.privacy import SubjectErasureError, SubjectObjectStorage
 from tempest_fastapi_sdk.testing.fakes import FakeObjectStorageClient
 
@@ -26,6 +27,7 @@ class _FakeMinio:
         self.batches: list[list[str]] = []
         self.single_deletes: list[str] = []
         self.refuse: set[str] = set()
+        self.reads: list[tuple[str, dict[str, Any]]] = []
 
     def put_object(
         self,
@@ -70,6 +72,64 @@ class _FakeMinio:
 
     def presigned_get_object(self, bucket: str, key: str, expires: timedelta) -> str:
         return f"https://fake/{bucket}/{key}?exp={int(expires.total_seconds())}"
+
+    def presigned_put_object(self, bucket: str, key: str, expires: timedelta) -> str:
+        return f"https://fake/{bucket}/{key}?put&exp={int(expires.total_seconds())}"
+
+    def stat_object(self, bucket: str, key: str) -> Any:
+        data = self.objects[bucket][key]
+        return type(
+            "S",
+            (),
+            {
+                "size": len(data),
+                "etag": '"e"',
+                "content_type": "image/jpeg",
+                "last_modified": None,
+                "metadata": {"x-amz-meta-origin": "app"},
+            },
+        )()
+
+    def get_object(self, bucket: str, key: str, **range_: Any) -> Any:
+        """Serve the ``Range`` slice, recording what was asked for."""
+        self.reads.append((key, range_))
+        data = self.objects[bucket][key]
+        offset = range_.get("offset", 0)
+        length = range_.get("length", 0)
+        return _FakeResponse(data[offset : offset + length] if length else data)
+
+
+class _FakeResponse:
+    """The ``urllib3`` response ``Minio.get_object`` returns, reduced."""
+
+    def __init__(self, data: bytes) -> None:
+        self.data = data
+        self.closed = False
+
+    def read(self, size: int) -> bytes:
+        chunk, self.data = self.data[:size], self.data[size:]
+        return chunk
+
+    def close(self) -> None:
+        self.closed = True
+
+    def release_conn(self) -> None:
+        return None
+
+
+class _RangeIgnoringClient(FakeObjectStorageClient):
+    """A store that answers a ``Range`` read with the whole object."""
+
+    async def stream_object(
+        self,
+        key: str,
+        *,
+        bucket: str | None = None,
+        offset: int = 0,
+        length: int | None = None,
+    ) -> AsyncIterator[bytes]:
+        del offset, length
+        return await super().stream_object(key, bucket=bucket)
 
 
 @pytest.fixture
@@ -159,6 +219,35 @@ class TestOperations:
         await storage.delete(1, "a")
         assert fake.single_deletes == ["users/1/a"]
 
+    async def test_presign_put_signs_the_subject_key(
+        self, storage: SubjectObjectStorage
+    ) -> None:
+        url = await storage.presign_put(1, "ev/a.jpg", expires=timedelta(minutes=5))
+        default = await storage.presign_put(1, "ev/a.jpg")
+        assert url == "https://fake/media/users/1/ev/a.jpg?put&exp=300"
+        assert default.endswith("exp=900")
+
+    async def test_stat_reads_the_subject_key(
+        self, storage: SubjectObjectStorage
+    ) -> None:
+        await storage.put(1, "a.jpg", b"12345")
+        stat = await storage.stat(1, "a.jpg")
+        assert (stat.bucket, stat.key, stat.size) == ("media", "users/1/a.jpg", 5)
+        assert stat.content_type == "image/jpeg"
+        assert stat.metadata == {"origin": "app"}
+
+    async def test_read_with_max_bytes_sends_a_range(
+        self, storage: SubjectObjectStorage, fake: _FakeMinio
+    ) -> None:
+        """Only ``max_bytes`` cross the wire: ``get_object`` gets the range."""
+        await storage.put(1, "a.jpg", b"0123456789")
+        assert await storage.read(1, "a.jpg", max_bytes=4) == b"0123"
+        assert await storage.read(1, "a.jpg") == b"0123456789"
+        assert fake.reads == [
+            ("users/1/a.jpg", {"offset": 0, "length": 4}),
+            ("users/1/a.jpg", {}),
+        ]
+
     async def test_bucket_override(self, fake: _FakeMinio) -> None:
         client = AsyncMinIOClient("fake:9000", "ak", "sk", default_bucket="media")
         storage = SubjectObjectStorage(client, bucket="private")
@@ -199,3 +288,123 @@ class TestWithThePublicFake:
 
         assert [error.key for error in caught.value.errors] == ["users/42/a.png"]
         assert dict(client.objects) == {"users/42/a.png": b"x"}
+
+
+class TestDirectUpload:
+    """``presign_put``, ``stat`` and ``read`` over the public fake."""
+
+    async def test_presign_put_is_scoped_to_the_subject(self) -> None:
+        client = FakeObjectStorageClient()
+        storage = SubjectObjectStorage(client, prefix="teens", bucket="ev")
+
+        url = await storage.presign_put(42, "uploads/a.jpg")
+
+        assert (
+            url
+            == "https://fake-storage/ev/teens/42/uploads/a.jpg?method=PUT&expires=900"
+        )
+        assert client.calls == ["presigned_put_url"]
+
+    @pytest.mark.parametrize("name", ["", "/abs", "../7/a.jpg", "a/../../7/x"])
+    async def test_a_name_leaving_the_prefix_is_refused(self, name: str) -> None:
+        client = FakeObjectStorageClient()
+        storage = SubjectObjectStorage(client, prefix="teens")
+
+        with pytest.raises(ValueError, match="name segment"):
+            await storage.presign_put(42, name)
+        with pytest.raises(ValueError, match="name segment"):
+            await storage.stat(42, name)
+        with pytest.raises(ValueError, match="name segment"):
+            await storage.read(42, name)
+        assert client.calls == []
+
+    async def test_stat_reports_what_was_put(self) -> None:
+        client = FakeObjectStorageClient()
+        storage = SubjectObjectStorage(client, prefix="teens")
+        await storage.put(42, "a.jpg", b"jpeg!", content_type="image/jpeg")
+
+        stat = await storage.stat(42, "a.jpg")
+
+        assert (stat.key, stat.size, stat.content_type) == (
+            "teens/42/a.jpg",
+            5,
+            "image/jpeg",
+        )
+
+    async def test_read_whole_and_capped(self) -> None:
+        client = FakeObjectStorageClient()
+        storage = SubjectObjectStorage(client, prefix="teens")
+        await storage.put(42, "a.bin", b"x" * 100)
+
+        assert await storage.read(42, "a.bin") == b"x" * 100
+        assert await storage.read(42, "a.bin", max_bytes=11) == b"x" * 11
+        assert await storage.read(42, "a.bin", max_bytes=500) == b"x" * 100
+
+    async def test_limit_plus_one_detects_an_oversized_object(self) -> None:
+        """The documented recipe: ``limit + 1`` bytes tell "too large" apart."""
+        client = FakeObjectStorageClient()
+        storage = SubjectObjectStorage(client, prefix="teens")
+        limit = 10
+        await storage.put(42, "fits.bin", b"a" * limit)
+        await storage.put(42, "big.bin", b"b" * 10_000)
+
+        fits = await storage.read(42, "fits.bin", max_bytes=limit + 1)
+        big = await storage.read(42, "big.bin", max_bytes=limit + 1)
+
+        assert len(fits) == limit
+        assert len(big) == limit + 1
+
+    async def test_read_stops_at_max_bytes_when_the_store_ignores_range(self) -> None:
+        """Memory stays bounded even if the store answers with everything."""
+        client = _RangeIgnoringClient()
+        storage = SubjectObjectStorage(client, prefix="teens")
+        await storage.put(42, "big.bin", b"z" * (3 * 64 * 1024))
+
+        data = await storage.read(42, "big.bin", max_bytes=10)
+
+        assert data == b"z" * 10
+
+    @pytest.mark.parametrize("max_bytes", [0, -1])
+    async def test_max_bytes_must_be_positive(self, max_bytes: int) -> None:
+        client = FakeObjectStorageClient()
+        storage = SubjectObjectStorage(client, prefix="teens")
+
+        with pytest.raises(ValueError, match="max_bytes"):
+            await storage.read(42, "a.bin", max_bytes=max_bytes)
+        assert client.calls == []
+
+    async def test_a_missing_object_propagates_the_client_error(self) -> None:
+        client = FakeObjectStorageClient()
+        storage = SubjectObjectStorage(client, prefix="teens")
+
+        with pytest.raises(FileNotFoundError, match=r"NoSuchKey: teens/42/a\.jpg"):
+            await storage.stat(42, "a.jpg")
+        with pytest.raises(FileNotFoundError, match="NoSuchKey"):
+            await storage.read(42, "a.jpg", max_bytes=5)
+
+    async def test_another_subject_is_never_read(self) -> None:
+        client = FakeObjectStorageClient()
+        storage = SubjectObjectStorage(client, prefix="teens")
+        await storage.put(7, "a.jpg", b"seven")
+
+        with pytest.raises(FileNotFoundError):
+            await storage.read(77, "a.jpg")
+        assert await storage.read(7, "a.jpg") == b"seven"
+
+    async def test_disabled_storage_refuses_with_503(self) -> None:
+        client = AsyncMinIOClient(
+            endpoint="localhost:9000",
+            access_key="minioadmin",
+            secret_key="minioadmin",
+            enabled=False,
+        )
+        storage = SubjectObjectStorage(client, prefix="teens")
+
+        with pytest.raises(IntegrationDisabledException) as put_error:
+            await storage.presign_put(42, "a.jpg")
+        with pytest.raises(IntegrationDisabledException):
+            await storage.stat(42, "a.jpg")
+        with pytest.raises(IntegrationDisabledException):
+            await storage.read(42, "a.jpg", max_bytes=10)
+        assert put_error.value.status_code == 503
+        assert put_error.value.details == {"integration": "storage"}

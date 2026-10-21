@@ -488,6 +488,111 @@ asyncio.run(main())
 `client.objects` shows what is left in the default bucket and
 `client.deleted` what went, in order.
 
+### Direct upload under the subject prefix
+
+Evidence photo, document, avatar: the app uploads the file **straight to
+S3**, without the bytes crossing the API. The server signs the URL, the app
+does the `PUT`, and the server then checks what arrived before accepting it.
+All three pieces live on `SubjectObjectStorage`, under the same subject
+prefix — so the uploaded file also shows up in `names` and in `delete_all`:
+
+- **`presign_put(subject_id, name, expires=...)`** returns the `PUT` URL of
+  `key(subject_id, name)`. Defaults to 15 minutes, the same as
+  `AsyncMinIOClient.presigned_put_url`.
+- **`stat(subject_id, name)`** returns the `ObjectStat` (size, content type,
+  ETag, metadata) without downloading the object.
+- **`read(subject_id, name, max_bytes=...)`** reads the object. With
+  `max_bytes`, it asks the store for only that much (a `Range` read) and
+  stops reading there even if the store sends more.
+
+```python
+import asyncio
+from uuid import uuid4
+
+from tempest_fastapi_sdk.privacy import SubjectObjectStorage
+from tempest_fastapi_sdk.testing.fakes import FakeObjectStorageClient
+
+MAX_PHOTO_BYTES: int = 5 * 1024 * 1024
+JPEG_MAGIC: bytes = b"\xff\xd8\xff"
+
+client = FakeObjectStorageClient()
+storage = SubjectObjectStorage(client, prefix="users")
+
+
+async def start_upload(user_id: int) -> tuple[str, str]:
+    """Sign the PUT of a name the server chose."""
+    name = f"uploads/{uuid4().hex}.jpg"
+    return name, await storage.presign_put(user_id, name)
+
+
+async def accept_upload(user_id: int, name: str) -> str | None:
+    """Check what the app uploaded and keep it under a final name."""
+    stat = await storage.stat(user_id, name)
+    if stat.size > MAX_PHOTO_BYTES:
+        return None
+    data = await storage.read(user_id, name, max_bytes=MAX_PHOTO_BYTES + 1)
+    if len(data) > MAX_PHOTO_BYTES or not data.startswith(JPEG_MAGIC):
+        return None
+    key = await storage.put(
+        user_id, "photos/latest.jpg", data, content_type="image/jpeg"
+    )
+    await storage.delete(user_id, name)
+    return key
+
+
+async def main() -> None:
+    """Direct upload, verification and acceptance, with no MinIO."""
+    name, url = await start_upload(42)
+    print(storage.key(42, name) in url, "method=PUT" in url)
+    await client.put_object(
+        storage.key(42, name), JPEG_MAGIC + b"photo", content_type="image/jpeg"
+    )
+    print(await accept_upload(42, name))
+    print(await storage.names(42))
+
+    name, _ = await start_upload(42)
+    await client.put_object(storage.key(42, name), b"x" * (MAX_PHOTO_BYTES + 1))
+    print(await accept_upload(42, name))
+
+
+asyncio.run(main())
+```
+
+```text
+True True
+users/42/photos/latest.jpg
+['photos/latest.jpg']
+None
+```
+
+- **The server picks the name** (`uploads/<uuid>.jpg`). The app never sends
+  a key or a prefix: the URL only reaches the subject prefix the server
+  signed.
+- **Here `client.put_object` plays the app.** In production it is an HTTP
+  `PUT` to the URL, with the file as the body.
+- **`stat` first, bounded `read` after.** `stat` turns down the large file
+  without downloading anything. But between `stat` and `read` the object can
+  be swapped for another one (the URL is still valid), so `read` asks for
+  `MAX_PHOTO_BYTES + 1`: `len(data) > MAX_PHOTO_BYTES` means "too large",
+  without ever pulling the rest into memory.
+- **The URL signs neither size nor content type.** The app sends whatever it
+  wants; the check decides (here, size and the start of a JPEG). That is why
+  the checked bytes go to a final name with `put`, and the provisional
+  upload goes away with `delete`.
+- **A missing object** (the app asked for the URL and never uploaded) makes
+  `stat` and `read` raise the client's error, untranslated: `S3Error` (code
+  `NoSuchKey`) from `AsyncMinIOClient`, `FileNotFoundError` from
+  `FakeObjectStorageClient`.
+- **Storage disabled** (`STORAGE_ENABLED=false`): all three raise
+  `IntegrationDisabledException` (`503`), like `put` and `delete_all`.
+
+!!! warning "`SubjectStorageClient` change"
+    The protocol gained `presigned_put_url`, `stat_object` and
+    `stream_object`. `AsyncMinIOClient` and `FakeObjectStorageClient` already
+    satisfy it; your own client implementing the protocol must add all three
+    to keep passing the type-checker.
+
+
 ## Putting both together in a service
 
 Delete the files **before** the root row. If the store fails, the subject's
@@ -596,3 +701,6 @@ nested `IN (SELECT ...)` along the cascade path. It works in `select`,
   nothing is left.
 - `SubjectObjectStorage` keeps files under `<prefix>/<id>/` and `delete_all`
   deletes the prefix in batch, without touching another subject.
+- Direct upload: `presign_put` signs the `PUT` under the subject prefix,
+  `stat` and `read(max_bytes=limit + 1)` check what arrived without pulling a
+  large file whole into memory.

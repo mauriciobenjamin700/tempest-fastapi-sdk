@@ -9,16 +9,35 @@ delete, which is what makes ``delete_all`` raise ``SubjectErasureError``.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable, Mapping
-from datetime import timedelta
+from collections.abc import AsyncIterator, Iterable, Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import BinaryIO
 
-from tempest_fastapi_sdk.storage.minio_client import ObjectDeleteError
+from tempest_fastapi_sdk.storage.minio_client import ObjectDeleteError, ObjectStat
 from tempest_fastapi_sdk.testing.fakes._control import _Steerable
 
 DEFAULT_FAKE_BUCKET: str = "fake-bucket"
 """Bucket an operation lands in when it passes no ``bucket``."""
+
+FAKE_STREAM_CHUNK_SIZE: int = 64 * 1024
+"""Chunk size of ``stream_object``, the ``AsyncMinIOClient`` default."""
+
+
+@dataclass(frozen=True, slots=True)
+class _StoredObject:
+    """What the fake keeps beside an object's bytes.
+
+    Attributes:
+        content_type (str): The MIME type given to ``put_object``.
+        metadata (dict[str, str]): The user metadata given to ``put_object``.
+        last_modified (datetime): When ``put_object`` stored it, in UTC.
+    """
+
+    content_type: str
+    metadata: dict[str, str]
+    last_modified: datetime
 
 
 class FakeObjectStorageClient(_Steerable):
@@ -57,6 +76,7 @@ class FakeObjectStorageClient(_Steerable):
         self.default_bucket: str = default_bucket
         self.deleted: list[str] = []
         self._buckets: dict[str, dict[str, bytes]] = {}
+        self._stored: dict[tuple[str, str], _StoredObject] = {}
         self._refused: set[str] = set()
 
     @property
@@ -120,9 +140,10 @@ class FakeObjectStorageClient(_Steerable):
             key (str): Object key.
             data (bytes | BinaryIO): The payload; a stream is read to the end.
             bucket (str | None): Target bucket.
-            content_type (str): Accepted for signature parity; not stored.
-            metadata (dict[str, str] | None): Accepted for signature parity;
-                not stored.
+            content_type (str): MIME type, reported back by
+                :meth:`stat_object`.
+            metadata (dict[str, str] | None): User metadata, reported back
+                by :meth:`stat_object`.
             length (int | None): Accepted for signature parity; the fake
                 reads the whole stream.
 
@@ -136,7 +157,30 @@ class FakeObjectStorageClient(_Steerable):
         self._record("put_object")
         payload = data if isinstance(data, bytes) else data.read()
         self._bucket(bucket)[key] = payload
+        self._stored[(bucket or self.default_bucket, key)] = _StoredObject(
+            content_type=content_type,
+            metadata=dict(metadata or {}),
+            last_modified=datetime.now(UTC),
+        )
         return hashlib.md5(payload, usedforsecurity=False).hexdigest()
+
+    def _payload(self, key: str, bucket: str | None) -> bytes:
+        """Return a stored object's bytes, or fail the way S3 does.
+
+        Args:
+            key (str): Object key.
+            bucket (str | None): Source bucket.
+
+        Returns:
+            bytes: The payload.
+
+        Raises:
+            FileNotFoundError: When ``key`` is not stored in ``bucket``.
+        """
+        payload = self._bucket(bucket).get(key)
+        if payload is None:
+            raise FileNotFoundError(f"NoSuchKey: {key}")
+        return payload
 
     async def presigned_get_url(
         self,
@@ -164,6 +208,126 @@ class FakeObjectStorageClient(_Steerable):
             f"https://fake-storage/{bucket or self.default_bucket}/{key}"
             f"?expires={seconds}"
         )
+
+    async def presigned_put_url(
+        self,
+        key: str,
+        *,
+        bucket: str | None = None,
+        expires: timedelta = timedelta(minutes=15),
+    ) -> str:
+        """Build a fake upload URL.
+
+        Nothing listens on it: a test that needs the object stored calls
+        :meth:`put_object` with the key the URL names, standing in for the
+        client's ``PUT``.
+
+        Args:
+            key (str): Destination object key.
+            bucket (str | None): Target bucket.
+            expires (timedelta): URL lifetime, echoed in the URL.
+
+        Returns:
+            str: ``https://fake-storage/<bucket>/<key>?method=PUT&expires=<seconds>``.
+
+        Raises:
+            BaseException: Whatever :meth:`fail_next` queued.
+        """
+        self._record("presigned_put_url")
+        seconds = int(expires.total_seconds())
+        return (
+            f"https://fake-storage/{bucket or self.default_bucket}/{key}"
+            f"?method=PUT&expires={seconds}"
+        )
+
+    async def stat_object(
+        self,
+        key: str,
+        *,
+        bucket: str | None = None,
+    ) -> ObjectStat:
+        """Describe a stored object.
+
+        Args:
+            key (str): Object key.
+            bucket (str | None): Source bucket.
+
+        Returns:
+            ObjectStat: Size, MD5 ETag, the content type and metadata given
+            to :meth:`put_object`, and when it was stored. ``raw`` is
+            ``None``: there is no ``minio`` object behind the fake.
+
+        Raises:
+            FileNotFoundError: When ``key`` is not stored.
+            BaseException: Whatever :meth:`fail_next` queued.
+        """
+        self._record("stat_object")
+        target = bucket or self.default_bucket
+        payload = self._payload(key, bucket)
+        stored = self._stored[(target, key)]
+        return ObjectStat(
+            bucket=target,
+            key=key,
+            size=len(payload),
+            etag=hashlib.md5(payload, usedforsecurity=False).hexdigest(),
+            content_type=stored.content_type,
+            last_modified=stored.last_modified,
+            metadata=dict(stored.metadata),
+            raw=None,  # type: ignore[arg-type]
+        )
+
+    async def stream_object(
+        self,
+        key: str,
+        *,
+        bucket: str | None = None,
+        offset: int = 0,
+        length: int | None = None,
+    ) -> AsyncIterator[bytes]:
+        """Open a stored object, or one byte range of it, as a chunk stream.
+
+        The range is cut before streaming, the way a ``Range`` request makes
+        the store send only that slice: a ``length`` past the end yields what
+        exists.
+
+        Args:
+            key (str): Object key.
+            bucket (str | None): Source bucket.
+            offset (int): First byte to read.
+            length (int | None): How many bytes to read from ``offset``;
+                ``None`` reads to the end.
+
+        Returns:
+            AsyncIterator[bytes]: Chunks of at most
+            :data:`FAKE_STREAM_CHUNK_SIZE` bytes.
+
+        Raises:
+            ValueError: When ``offset`` is negative or ``length`` is not
+                positive, as ``AsyncMinIOClient.stream_object`` refuses them.
+            FileNotFoundError: When ``key`` is not stored.
+            BaseException: Whatever :meth:`fail_next` queued.
+        """
+        self._record("stream_object")
+        if offset < 0:
+            raise ValueError("offset must be zero or positive")
+        if length is not None and length < 1:
+            raise ValueError("length must be at least 1; pass None to read to the end")
+        payload = self._payload(key, bucket)
+        end = len(payload) if length is None else offset + length
+        return self._chunks(payload[offset:end])
+
+    @staticmethod
+    async def _chunks(payload: bytes) -> AsyncIterator[bytes]:
+        """Yield ``payload`` in :data:`FAKE_STREAM_CHUNK_SIZE` pieces.
+
+        Args:
+            payload (bytes): The bytes to stream.
+
+        Yields:
+            bytes: The next chunk.
+        """
+        for start in range(0, len(payload), FAKE_STREAM_CHUNK_SIZE):
+            yield payload[start : start + FAKE_STREAM_CHUNK_SIZE]
 
     async def list_objects(
         self,
@@ -211,6 +375,7 @@ class FakeObjectStorageClient(_Steerable):
         if key in self._refused:
             raise PermissionError(f"AccessDenied: {key}")
         if self._bucket(bucket).pop(key, None) is not None:
+            self._stored.pop((bucket or self.default_bucket, key), None)
             self.deleted.append(key)
 
     async def remove_objects(
@@ -245,11 +410,13 @@ class FakeObjectStorageClient(_Steerable):
                     )
                 )
             elif store.pop(key, None) is not None:
+                self._stored.pop((bucket or self.default_bucket, key), None)
                 self.deleted.append(key)
         return errors
 
 
 __all__: list[str] = [
     "DEFAULT_FAKE_BUCKET",
+    "FAKE_STREAM_CHUNK_SIZE",
     "FakeObjectStorageClient",
 ]
