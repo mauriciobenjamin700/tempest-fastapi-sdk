@@ -2,6 +2,27 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.320.0 — production guard for e-mail and links
+
+With `ENV=production` and e-mail on (a missing `EMAIL_ENABLED` counts as on),
+two new rules fail the boot:
+
+- `EmailSettings`: a dev `SMTP_HOST` (`mailpit`, `mailhog`, port `1025` on
+  loopback, the declared default without `SMTP_USERNAME`) and an
+  `SMTP_FROM_ADDR` left at the default (`noreply@example.com`), empty,
+  without `@`, or on a reserved domain.
+- `AuthSettings`: the four `AUTH_*_URL_TEMPLATE` (activation, reset, e-mail
+  change and verification) with a local/reserved host or a scheme other than
+  `https`. The `http://localhost:3000/...` defaults hit this rule.
+
+### What to do
+
+- Configure a real SMTP and an `SMTP_FROM_ADDR` on your own domain (Gmail
+  with an app password on `smtp.gmail.com:587` passes).
+- Configure the four templates with `https://` and the app's domain.
+- Or, if e-mail is not ready yet, set `EMAIL_ENABLED=false`: the boot passes
+  and the routes that send e-mail answer `503 INTEGRATION_DISABLED`.
+
 ## 0.319.0 — counts from `bulk_create_values` and `bulk_upsert`
 
 `bulk_create_values` and `bulk_upsert` (`"update"` mode) return `0` when the
