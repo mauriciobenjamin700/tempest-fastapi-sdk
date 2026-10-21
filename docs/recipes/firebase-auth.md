@@ -410,6 +410,17 @@ async def test_expired_token(monkeypatch: pytest.MonkeyPatch) -> None:
     **sem tocar a rede** (medido): o verificador confere a estrutura
     antes de qualquer busca de certificado.
 
+## Firebase desligado (`FIREBASE_ENABLED=false`)
+
+`FIREBASE_ENABLED=false` faz `settings.enabled` responder `False` mesmo com
+credencial preenchida, e `firebase_kwargs()` devolver só
+`{"enabled": False}`. O `FirebaseAuth(**settings.firebase_kwargs())` não
+inicializa app nenhum (nem cai na credencial padrão do ambiente) e
+responde `IntegrationDisabledException` (`503`,
+`details={"integration": "firebase"}`) em `verify` e nas dependências
+`get_identity`, `get_optional_identity` e `get_uid` — antes até de olhar
+se veio token. Veja [Ligar e desligar integrações](system-checks.md#ligar-e-desligar-integracoes-deploy-por-partes).
+
 ## Recap
 
 - `FirebaseAuth` verifica **ID token do Firebase**; quem emite o token é

@@ -491,6 +491,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.validation.InvalidFilterValueException
 ::: tempest_fastapi_sdk.exceptions.value_errors.ValidationValueError
 ::: tempest_fastapi_sdk.exceptions.too_many_requests.TooManyRequestsException
+::: tempest_fastapi_sdk.exceptions.integration.IntegrationDisabledException
 ::: tempest_fastapi_sdk.exceptions.jwt.InvalidTokenException
 ::: tempest_fastapi_sdk.exceptions.jwt.ExpiredTokenException
 ::: tempest_fastapi_sdk.exceptions.signed_url.InvalidSignedURLException

@@ -296,6 +296,24 @@ class PasswordResetService:
         )
 ```
 
+## E-mail desligado (`EMAIL_ENABLED=false`)
+
+Com `EMAIL_ENABLED=true` e `ENV=production`, o guard recusa o que só pode
+ser desenvolvimento: host `mailpit`/`mailhog`, `localhost` na porta `1025`,
+o `SMTP_HOST` default (`localhost`) sem `SMTP_USERNAME`, e `SMTP_FROM_ADDR`
+default (`noreply@example.com`), vazio ou com domínio reservado. Um relay
+local autenticado passa, e o Gmail (`smtp.gmail.com:587`, STARTTLS, senha
+de app, remetente real) também.
+
+Ainda sem SMTP? `EMAIL_ENABLED=false` pula essas regras, e o mesmo
+`EmailUtils(**settings.email_kwargs())` passa a recusar `send` e
+`send_many` com `IntegrationDisabledException` (`503`,
+`details={"integration": "email"}`) antes de montar a mensagem.
+`render_template` segue funcionando, e o extra `[email]` não é exigido. O
+fluxo de auth recusa o cadastro **antes** de criar a conta — veja
+[E-mail desligado](auth-flow.md#e-mail-desligado) e
+[Ligar e desligar integrações](system-checks.md#ligar-e-desligar-integracoes-deploy-por-partes).
+
 ## Recap
 
 - Instale `[email]` e componha `EmailSettings` no seu `Settings`.

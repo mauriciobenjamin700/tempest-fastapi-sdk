@@ -29,6 +29,8 @@ from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, BinaryIO, TypeVar
 
+from tempest_fastapi_sdk.exceptions.integration import IntegrationDisabledException
+
 if TYPE_CHECKING:
     from minio import Minio
     from minio.datatypes import Object as _MinioObject
@@ -155,6 +157,7 @@ class AsyncMinIOClient:
         public_secure: bool | None = None,
         accel_redirect: bool = False,
         accel_prefix: str = "/_bucket/",
+        enabled: bool = True,
     ) -> None:
         """Initialize the client.
 
@@ -192,12 +195,20 @@ class AsyncMinIOClient:
                 ``X-Accel-Redirect`` points into, and the default
                 ``internal_prefix`` of :meth:`accel_redirect_response`.
                 Must start with ``/``. Default ``"/_bucket/"``.
+            enabled (bool): ``False`` builds a client for an integration
+                switched off by ``STORAGE_ENABLED=false``: no ``minio``
+                client is created (nor imported), and every operation —
+                anything that reaches :attr:`client` — raises
+                :class:`~tempest_fastapi_sdk.exceptions.IntegrationDisabledException`
+                (``503``, ``details={"integration": "storage"}``).
+                ``StorageSettings.storage_kwargs`` passes it. Default
+                ``True``.
 
         Raises:
             ValueError: When ``accel_prefix`` does not start with ``/``.
             ImportError: When the ``minio`` package is not
-                installed. Install the ``[minio]`` extra:
-                ``pip install tempest-fastapi-sdk[minio]``.
+                installed and ``enabled`` is ``True``. Install the
+                ``[minio]`` extra: ``pip install tempest-fastapi-sdk[minio]``.
 
         Notes:
             In split-endpoint mode a second client is built with the
@@ -207,6 +218,20 @@ class AsyncMinIOClient:
             rewriting the host afterwards would invalidate the
             signature.
         """
+        self.enabled: bool = enabled
+        self.accel_redirect: bool = accel_redirect
+        self.accel_prefix: str = self._check_accel_prefix(accel_prefix)
+        self.endpoint: str = endpoint
+        self.default_bucket: str = default_bucket
+        self.region: str = region
+        self.secure: bool = secure
+        self._minio: Minio | None = None
+        self._presign_minio: Minio | None = None
+        self.public_endpoint: str | None = None
+        self.public_secure: bool = secure
+        if not enabled:
+            return
+
         try:
             from minio import Minio
         except ImportError as exc:  # pragma: no cover - exercised via extras
@@ -215,13 +240,7 @@ class AsyncMinIOClient:
                 "Install with: pip install tempest-fastapi-sdk[minio]"
             ) from exc
 
-        self.accel_redirect: bool = accel_redirect
-        self.accel_prefix: str = self._check_accel_prefix(accel_prefix)
-        self.endpoint: str = endpoint
-        self.default_bucket: str = default_bucket
-        self.region: str = region
-        self.secure: bool = secure
-        self.client: Minio = Minio(
+        self._minio = Minio(
             endpoint,
             access_key=access_key,
             secret_key=secret_key,
@@ -230,15 +249,14 @@ class AsyncMinIOClient:
             session_token=session_token,
         )
 
-        self.public_endpoint: str | None = None
-        self._presign_client: Minio = self.client
+        self._presign_minio = self._minio
         if public_endpoint:
             host, resolved_secure = self._split_public_endpoint(
                 public_endpoint, default_secure=secure, override=public_secure
             )
             self.public_endpoint = host
-            self.public_secure: bool = resolved_secure
-            self._presign_client = Minio(
+            self.public_secure = resolved_secure
+            self._presign_minio = Minio(
                 host,
                 access_key=access_key,
                 secret_key=secret_key,
@@ -246,8 +264,43 @@ class AsyncMinIOClient:
                 region=region,
                 session_token=session_token,
             )
-        else:
-            self.public_secure = secure
+
+    @property
+    def client(self) -> Minio:
+        """Return the underlying ``minio.Minio`` used for server-side calls.
+
+        Every operation of this class goes through it (or through
+        :attr:`_presign_client`), which is what makes a disabled client
+        refuse all of them at one point.
+
+        Returns:
+            Minio: The configured ``minio`` client.
+
+        Raises:
+            IntegrationDisabledException: When the client was built with
+                ``enabled=False``.
+        """
+        if self._minio is None:
+            raise IntegrationDisabledException("storage")
+        return self._minio
+
+    @property
+    def _presign_client(self) -> Minio:
+        """Return the client that signs presigned URLs.
+
+        The same object as :attr:`client` unless ``public_endpoint`` was
+        given, in which case it signs against the public host.
+
+        Returns:
+            Minio: The signing client.
+
+        Raises:
+            IntegrationDisabledException: When the client was built with
+                ``enabled=False``.
+        """
+        if self._presign_minio is None:
+            raise IntegrationDisabledException("storage")
+        return self._presign_minio
 
     @staticmethod
     def _check_accel_prefix(prefix: str) -> str:

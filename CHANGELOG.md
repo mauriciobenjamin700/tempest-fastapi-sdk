@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Interruptor por integração para deploy por partes: `STORAGE_ENABLED`
+  (`StorageSettings`), `EMAIL_ENABLED` (`EmailSettings`), `FIREBASE_ENABLED`
+  (`FirebaseSettings`) e `REVENUECAT_ENABLED` (`RevenueCatSettings`), todos
+  com default `true` — nada muda para quem não mexe neles. Em `false`, o
+  `production_violations()` do mixin não contribui nada (o boot com
+  `ENV=production` passa) e o nome da integração aparece no hook cooperativo
+  novo `BaseAppSettings.disabled_integrations()`, para logar no boot ou
+  mostrar no readiness.
+- `IntegrationDisabledException` (topo do pacote): `503`,
+  `code="INTEGRATION_DISABLED"`, `details={"integration": "<nome>"}`, com
+  entrada no catálogo pt-BR/en-US. É o que toda chamada a uma integração
+  desligada levanta.
+- `AsyncMinIOClient(enabled=False)`, `EmailUtils(enabled=False)` e
+  `FirebaseAuth(enabled=False)`: constroem sem o extra correspondente e
+  recusam toda operação com `IntegrationDisabledException`. No
+  `AsyncMinIOClient` a recusa está no atributo `client` (e no cliente de
+  assinatura), então nenhuma operação escapa e um `SubjectObjectStorage` por
+  cima herda. `storage_kwargs()` e `email_kwargs()` acrescentam
+  `enabled=False` **só** com a integração desligada (o dicionário default é
+  o de antes); `firebase_kwargs()` desligado devolve `{"enabled": False}` e
+  não repassa credencial.
+- `EmailUtils.require_enabled()` e `UserAuthService.require_mail_delivery()`.
+  O `make_auth_router` responde `503 INTEGRATION_DISABLED` antes de gravar
+  qualquer coisa em `/signup` (com `AUTH_AUTO_ACTIVATE=false`),
+  `/activation/request`, `/password-reset/request`, `/email-change/request`,
+  `/email-verify/request`, `/email-recovery/request` e — com
+  `AUTH_EMAIL_CHANGE_NOTIFY_OLD=true` — `/email-change/confirm` (antes de
+  consumir o token). Nada é recusado sem mailer ou com
+  `AUTH_RETURN_TOKEN_IN_RESPONSE=true`, quando o link vai no corpo. Mailer
+  sem atributo `enabled` (dublê de teste) conta como ligado.
+- `FCMTransport` construído sobre um `FirebaseAuth` desligado não reivindica
+  plataforma: o `DeviceService` pula os aparelhos mobile (push descartado) e
+  o transporte loga um aviso ao ser construído; `send` direto levanta
+  `IntegrationDisabledException`.
+- `tempest email test` e `tempest storage ...` saem com código 2 e mensagem
+  clara com a integração desligada; o `tempest doctor` pula a sonda de SMTP e
+  de storage.
+
+### Changed
+
+- **Regra nova de produção** no `AuthSettings` (com `ENV=production` e o
+  e-mail ligado — `EMAIL_ENABLED` ausente conta como ligado): os quatro
+  templates de link que vão no e-mail (`AUTH_ACTIVATION_URL_TEMPLATE`,
+  `AUTH_PASSWORD_RESET_URL_TEMPLATE`, `AUTH_EMAIL_CHANGE_URL_TEMPLATE`,
+  `AUTH_EMAIL_VERIFICATION_URL_TEMPLATE`) são recusados com host local ou
+  inalcançável (`localhost`, loopback, `0.0.0.0`, vazio, domínio reservado
+  como `example.com`/`*.test`) ou esquema diferente de `https` (o token
+  viaja na URL). Medido de ponta a ponta antes da regra: em produção o
+  e-mail de ativação saía com `http://localhost:3000/activate?token=...`.
+  **Ação para quem atualiza:** os defaults (`http://localhost:3000/...`)
+  caem nas duas regras — configure os quatro templates, ou
+  `EMAIL_ENABLED=false`.
+
+- `FirebaseSettings.enabled` e `PushSettings.mobile_enabled` agora são
+  `FIREBASE_ENABLED and <credencial presente>`.
+- **Regra nova de produção** no `EmailSettings` (com `EMAIL_ENABLED=true` e
+  `ENV=production`): recusa `SMTP_HOST` cujo primeiro rótulo é `mailpit` ou
+  `mailhog`; `SMTP_PORT=1025` com host de loopback (`localhost`,
+  `127.0.0.1`, `::1`); `SMTP_HOST` ainda no default declarado sem
+  `SMTP_USERNAME`; e `SMTP_FROM_ADDR` igual ao default declarado (lido do
+  `model_fields`), vazio, sem `@`, ou de domínio reservado (`example.com`,
+  `example.net`, `example.org`, `localhost` e subdomínios, ou sob
+  `.example`, `.invalid`, `.localhost`, `.test`). Relay local autenticado
+  passa; Gmail (`smtp.gmail.com:587`, STARTTLS, senha de app) passa sem
+  violação. **Ação para quem atualiza:** um
+  serviço com `ENV=production` que compõe `EmailSettings` sem configurar o
+  SMTP — incluindo o default `noreply@example.com` — deixa de subir; defina
+  `SMTP_FROM_ADDR` real ou `EMAIL_ENABLED=false`.
+- `StorageSettings.production_violations` aceita `STORAGE_SECURE=false`
+  no formato de endpoint dividido: `STORAGE_ENDPOINT` privado (nome sem
+  ponto como o serviço do compose, `localhost`, loopback, IP RFC 1918,
+  link-local ou IPv6 ULA) **e** `STORAGE_PUBLIC_ENDPOINT` preenchido **e**
+  esquema público HTTPS (`STORAGE_PUBLIC_SECURE=true`, ou `None` com
+  `https://`). Fora disso a violação continua, agora nomeando a saída.
+  Helpers públicos `StorageSettings.is_private_endpoint` e
+  `private_plain_http_allowed`. Receita com compose + nginx (preservar o
+  `Host`, bloquear o caminho de admin) em `docs/recipes/storage.md`.
+
 ## [0.319.0] — 2026-10-20
 
 ### Added

@@ -430,6 +430,14 @@ ValidationError 1 validation error for Settings
 - REVENUECAT_WEBHOOK_SECRET: empty, so every RevenueCat webhook is refused
 ```
 
+## RevenueCat desligado (`REVENUECAT_ENABLED=false`)
+
+`REVENUECAT_ENABLED=false` faz o guard de produção pular a regra dos dois
+segredos vazios e põe `"revenuecat"` em `settings.disabled_integrations()`.
+Só isso: a dependency do webhook lê os segredos, não a flag, então com os
+dois vazios ela continua recusando toda entrega com `401` — nada é aceito
+em silêncio. Veja [Ligar e desligar integrações](system-checks.md#ligar-e-desligar-integracoes-deploy-por-partes).
+
 ## Recap
 
 - `make_revenuecat_webhook_router` autentica, grava no inbox e responde

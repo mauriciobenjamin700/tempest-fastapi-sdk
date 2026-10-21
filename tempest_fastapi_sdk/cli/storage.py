@@ -43,7 +43,7 @@ def _client_kwargs() -> dict[str, Any]:
     Raises:
         typer.Exit: Exit code 2 when the project composes no
             ``StorageSettings`` (or its deprecated ``MinIOSettings``
-            name).
+            name), or when ``STORAGE_ENABLED`` is off.
     """
     settings = load_project_settings()
     if settings is None or not hasattr(settings, "storage_kwargs"):
@@ -54,6 +54,13 @@ def _client_kwargs() -> dict[str, Any]:
         )
         raise typer.Exit(2)
     kwargs: dict[str, Any] = settings.storage_kwargs()
+    if kwargs.get("enabled") is False:
+        typer.echo(
+            "error: STORAGE_ENABLED=false — the object-store integration is "
+            "switched off in this environment.",
+            err=True,
+        )
+        raise typer.Exit(2)
     return kwargs
 
 

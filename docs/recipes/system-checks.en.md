@@ -213,7 +213,10 @@ rules in its `production_violations()` method:
 | `CORSSettings` | `"*"` in `CORS_ORIGINS` |
 | `TokenSettings` | an empty `TOKEN_SECRET` (turns `X-Token` off) |
 | `TaskIQSettings` | an empty `TASKIQ_BROKER_URL` (falls back to the in-memory broker) |
-| `StorageSettings` | the default `minioadmin` keys, `STORAGE_SECURE=false`, an explicit `STORAGE_PUBLIC_SECURE=false` |
+| `StorageSettings` | the default `minioadmin` keys, `STORAGE_SECURE=false` (except a private bucket behind an HTTPS public endpoint — see [Storage](storage.md#private-bucket-behind-https)), an explicit `STORAGE_PUBLIC_SECURE=false` |
+| `EmailSettings` | a `mailpit`/`mailhog` host, loopback on port `1025`, the default `SMTP_HOST` with no `SMTP_USERNAME`, the default `SMTP_FROM_ADDR` or one on a reserved domain |
+| `RevenueCatSettings` | both webhook secrets empty |
+| `AuthSettings` | an e-mail link template (`AUTH_*_URL_TEMPLATE`) on a local/reserved host or plain `http://` (with e-mail on) |
 
 !!! info "The placeholder comes from the mixin, not from a literal"
     `JWT_SECRET` is compared with `JWTSettings.model_fields["JWT_SECRET"].default`.
@@ -281,6 +284,160 @@ production
     reason. Set `hide_input_in_errors` in your own `model_config` to get the
     input back.
 
+### Switching integrations on and off (phased deploys)
+
+Not every service reaches production with everything ready. The database
+and the JWT are configured, but the S3 bucket, SMTP and the Firebase
+account arrive in a later phase. Left alone, the guard refuses the boot
+over integrations you **don't even use yet** — and the temptation is to
+fill in fake values just to get past it, which is exactly what the guard
+exists to prevent.
+
+The explicit way out is one switch per integration:
+
+| Mixin | Switch | Default |
+| --- | --- | --- |
+| `StorageSettings` | `STORAGE_ENABLED` | `true` |
+| `EmailSettings` | `EMAIL_ENABLED` | `true` |
+| `FirebaseSettings` | `FIREBASE_ENABLED` | `true` |
+| `RevenueCatSettings` | `REVENUECAT_ENABLED` | `true` |
+
+With a switch set to `false`, three things happen, always together:
+
+1. The guard **skips** that mixin's rules — the boot succeeds.
+2. The integration's name shows up in `settings.disabled_integrations()`,
+   for you to log at boot or show in readiness. Switching off is never
+   invisible.
+3. The client built from the same settings **refuses every call** with
+   `503 INTEGRATION_DISABLED`, instead of trying to reach the development
+   default.
+
+A production `.env` with the database and JWT ready, and the rest off:
+
+```text
+ENV=production
+DATABASE_URL=postgresql+asyncpg://app:s3nha@db:5432/app
+JWT_SECRET=replace-with-a-real-long-secret-0123456789abcdef
+STORAGE_ENABLED=false
+EMAIL_ENABLED=false
+FIREBASE_ENABLED=false
+```
+
+And the service, without a single `if` on the switches — the same
+construction line as always:
+
+```python
+import logging
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from tempest_fastapi_sdk import (
+    AsyncMinIOClient,
+    BaseAppSettings,
+    DatabaseSettings,
+    EmailSettings,
+    EmailUtils,
+    EnvironmentSettings,
+    FirebaseSettings,
+    JWTSettings,
+    StorageSettings,
+    register_exception_handlers,
+)
+
+logger = logging.getLogger("app")
+
+
+class Settings(
+    EnvironmentSettings,
+    DatabaseSettings,
+    JWTSettings,
+    StorageSettings,
+    EmailSettings,
+    FirebaseSettings,
+    BaseAppSettings,
+):
+    """Service settings: database and JWT ready, the rest not yet."""
+
+
+settings = Settings()
+print("disabled:", sorted(settings.disabled_integrations()))
+print("mobile push:", settings.enabled)
+
+storage = AsyncMinIOClient(**settings.storage_kwargs())
+mailer = EmailUtils(**settings.email_kwargs())
+
+app = FastAPI()
+register_exception_handlers(app)
+
+
+@app.post("/avatar")
+async def upload_avatar() -> dict[str, str]:
+    """Store the avatar in the bucket."""
+    await storage.put_object("avatar.png", b"\x89PNG")
+    return {"status": "ok"}
+
+
+response = TestClient(app).post("/avatar")
+print(response.status_code, response.json())
+```
+
+The boot succeeds, and the route that uses the bucket answers `503`
+naming the integration:
+
+```text
+disabled: ['email', 'firebase', 'storage']
+mobile push: False
+503 {'detail': 'The storage integration is disabled in this environment', 'code': 'INTEGRATION_DISABLED', 'details': {'integration': 'storage'}}
+```
+
+Flip `STORAGE_ENABLED=false` to `true` without configuring the bucket,
+and the boot fails again, as before:
+
+```text
+- STORAGE_ACCESS_KEY: still the MinIO default credential
+- STORAGE_SECRET_KEY: still the MinIO default credential
+- STORAGE_SECURE: storage traffic over plain HTTP (allowed only for a private STORAGE_ENDPOINT behind an HTTPS STORAGE_PUBLIC_ENDPOINT) [type=value_error]
+```
+
+What each integration does when switched off:
+
+| Integration | Construction | In use |
+| --- | --- | --- |
+| `storage` | `AsyncMinIOClient(**settings.storage_kwargs())` receives `enabled=False`; no `minio` client is created (or imported) | every operation — the `client` attribute included — raises `IntegrationDisabledException`; a `SubjectObjectStorage` on top inherits the refusal |
+| `email` | `EmailUtils(**settings.email_kwargs())` receives `enabled=False`; the `[email]` extra is not required | `send` and `send_many` raise `IntegrationDisabledException` before building the message; `render_template` keeps working |
+| `firebase` | `settings.enabled` (and `PushSettings.mobile_enabled`) becomes `False`; `firebase_kwargs()` returns only `{"enabled": False}` | `FirebaseAuth` initializes no app and answers `503` from `verify` and the dependencies; an `FCMTransport` on top claims no platform: mobile push is **discarded** (the `DeviceService` skips the device) and the transport logs one warning when built |
+| `revenuecat` | only the guard and `disabled_integrations()` change | the webhook keeps reading its own secrets: with both empty it keeps refusing every delivery with `401` |
+
+!!! info "The `enabled` key only appears with the integration off"
+    `storage_kwargs()` and `email_kwargs()` add `enabled=False` **only**
+    when the switch is `false`. With the default the dictionary is exactly
+    what it was — code that splats it into its own class does not break
+    on upgrade.
+
+!!! warning "E-mail switched on gained a production rule"
+    With `EMAIL_ENABLED=true` and `ENV=production`, the guard now refuses
+    what can only be a development setup: an `SMTP_HOST` whose first label
+    is `mailpit` or `mailhog`; `SMTP_PORT=1025` together with a loopback
+    host (`localhost`, `127.0.0.1`, `::1`) — the port Mailpit publishes and
+    the one `tempest new` writes; `SMTP_HOST` still at its declared default
+    (`localhost`) with no `SMTP_USERNAME`; and an `SMTP_FROM_ADDR` equal to
+    the declared default, empty,
+    has no `@`, or uses a reserved domain (`example.com`, `example.net`,
+    `example.org`, `localhost` and their subdomains, or anything under `.example`, `.invalid`,
+    `.localhost`, `.test`). The default `noreply@example.com` is on that
+    list. A local relay (Postfix forwarding to the provider) keeps
+    booting with `SMTP_USERNAME` set, or addressed as `127.0.0.1` on a port
+    other than `1025`. Gmail (`smtp.gmail.com:587`, STARTTLS, an app
+    password in `SMTP_USERNAME`/`SMTP_PASSWORD`, a real sender) passes with
+    no violation. A
+    service that composes `EmailSettings` without configuring SMTP now
+    needs `EMAIL_ENABLED=false` to boot in production.
+
+The auth flow honours the e-mail switch too: with `EmailUtils(enabled=False)`
+wired into `UserAuthService`, every `make_auth_router` route that would
+send a link answers `503 INTEGRATION_DISABLED` **before** writing
+anything — see [Auth flow](auth-flow.md#email-disabled).
+
 ## Recap
 
 - `tempest check-config` runs the checks against your settings; exits
@@ -293,3 +450,7 @@ production
   composed mixin still holds a development value, listing the fields
   without printing values; `production_violations()` + `super()` adds or
   waives a rule.
+- `STORAGE_ENABLED`, `EMAIL_ENABLED`, `FIREBASE_ENABLED` and
+  `REVENUECAT_ENABLED` set to `false` switch the integration off: the
+  guard skips it, `disabled_integrations()` names it, and the client built
+  from the settings answers `503 INTEGRATION_DISABLED` on every call.

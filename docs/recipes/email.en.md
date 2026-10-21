@@ -296,6 +296,24 @@ class PasswordResetService:
         )
 ```
 
+## E-mail switched off (`EMAIL_ENABLED=false`)
+
+With `EMAIL_ENABLED=true` and `ENV=production`, the guard refuses what can
+only be a development setup: a `mailpit`/`mailhog` host, `localhost` on
+port `1025`, the default `SMTP_HOST` (`localhost`) with no `SMTP_USERNAME`,
+and the default `SMTP_FROM_ADDR` (`noreply@example.com`), an empty one or
+one on a reserved domain. An authenticated local relay passes, and so does
+Gmail (`smtp.gmail.com:587`, STARTTLS, app password, real sender).
+
+No SMTP yet? `EMAIL_ENABLED=false` skips those rules, and the same
+`EmailUtils(**settings.email_kwargs())` then refuses `send` and
+`send_many` with `IntegrationDisabledException` (`503`,
+`details={"integration": "email"}`) before building the message.
+`render_template` keeps working, and the `[email]` extra is not required.
+The auth flow refuses the signup **before** creating the account — see
+[Email disabled](auth-flow.md#email-disabled) and
+[Switching integrations on and off](system-checks.md#switching-integrations-on-and-off-phased-deploys).
+
 ## Recap
 
 - Install `[email]` and compose `EmailSettings` into your `Settings`.

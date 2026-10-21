@@ -17,6 +17,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, Any
 
+from tempest_fastapi_sdk.exceptions.integration import IntegrationDisabledException
+
 if TYPE_CHECKING:
     import jinja2
 
@@ -156,6 +158,8 @@ class EmailUtils:
             after connect (port 587 style). Opportunistic — the upgrade
             happens only when the server advertises STARTTLS, so a plain
             server (e.g. MailHog) is left as-is instead of raising.
+        enabled (bool): ``False`` when the e-mail integration is switched
+            off; every send then raises ``IntegrationDisabledException``.
     """
 
     def __init__(
@@ -170,6 +174,7 @@ class EmailUtils:
         use_starttls: bool = True,
         timeout: float = 30.0,
         template_dir: str | Path | None = None,
+        enabled: bool = True,
     ) -> None:
         """Initialize.
 
@@ -193,20 +198,30 @@ class EmailUtils:
                 templates can be opted into later, and the directory is
                 only loaded on first render. Requires the ``[email]``
                 extra (Jinja2 ships alongside aiosmtplib).
+            enabled (bool): ``False`` builds a mailer for an integration
+                switched off by ``EMAIL_ENABLED=false``: :meth:`send` and
+                :meth:`send_many` raise
+                :class:`~tempest_fastapi_sdk.exceptions.IntegrationDisabledException`
+                (``503``, ``details={"integration": "email"}``) before
+                building any message, and the ``[email]`` extra is not
+                required. :meth:`render_template` keeps working.
+                ``EmailSettings.email_kwargs`` passes it. Default ``True``.
 
         Raises:
-            ImportError: When the ``[email]`` extra is not installed.
+            ImportError: When the ``[email]`` extra is not installed and
+                ``enabled`` is ``True``.
 
         Notes:
             Jinja environments are memoized one per resolved locale, plus a
             ``None`` key for locale-less renders, and built lazily on first
             use.
         """
-        if _aiosmtplib is None:
+        if enabled and _aiosmtplib is None:
             raise ImportError(
                 "EmailUtils requires the [email] extra. "
                 "Install with `pip install tempest-fastapi-sdk[email]`."
             )
+        self.enabled: bool = enabled
         self.host: str = host
         self.port: int = port
         self.from_addr: str = from_addr
@@ -219,6 +234,21 @@ class EmailUtils:
             Path(template_dir) if template_dir is not None else None
         )
         self._jinja_envs: dict[str | None, jinja2.Environment] = {}
+
+    def require_enabled(self) -> None:
+        """Refuse to go on when the e-mail integration is switched off.
+
+        Called first by :meth:`send` and :meth:`send_many`. Code that has
+        to decide **before** a side effect whether a mail can go out — the
+        auth service refuses a signup that would need an activation link —
+        calls it directly.
+
+        Raises:
+            IntegrationDisabledException: When the mailer was built with
+                ``enabled=False``.
+        """
+        if not self.enabled:
+            raise IntegrationDisabledException("email")
 
     def _build_message(
         self,
@@ -302,6 +332,8 @@ class EmailUtils:
                 this message.
 
         Raises:
+            IntegrationDisabledException: When the mailer was built with
+                ``enabled=False``. Nothing is sent.
             aiosmtplib.errors.SMTPException: Re-raised on any SMTP
                 error so callers can branch on the specific failure.
 
@@ -314,6 +346,7 @@ class EmailUtils:
             instead. ``use_tls`` (implicit TLS / SMTPS) is mutually exclusive
             with STARTTLS, so the upgrade is disabled in that case.
         """
+        self.require_enabled()
         recipients: list[str] = [to] if isinstance(to, str) else list(to)
         cc_list: list[str] = list(cc or [])
         bcc_list: list[str] = list(bcc or [])
@@ -409,6 +442,8 @@ class EmailUtils:
             gave.
 
         Raises:
+            IntegrationDisabledException: When the mailer was built with
+                ``enabled=False``. Nothing is sent.
             aiosmtplib.errors.SMTPException: Only for a failure of the
                 operation itself — the host does not resolve, the
                 connection is refused, authentication is rejected. A
@@ -417,6 +452,7 @@ class EmailUtils:
             ValueError: When ``batch_size`` or ``max_concurrency`` is not
                 positive, which would otherwise deliver nothing at all.
         """
+        self.require_enabled()
         if batch_size <= 0 or max_concurrency <= 0:
             raise ValueError(
                 "send_many: batch_size and max_concurrency must be positive; "

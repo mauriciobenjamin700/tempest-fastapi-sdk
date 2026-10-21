@@ -3566,3 +3566,36 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   login_ip_throttle=..., trusted_ip_header=...)` — identificador ligado por
   padrão, IP só com `trusted_ip_header`. `get_client_ip` só aceita um IP
   válido do header.
+
+## Interruptor por integração, Unreleased
+
+- **`STORAGE_ENABLED`, `EMAIL_ENABLED`, `FIREBASE_ENABLED`,
+  `REVENUECAT_ENABLED`** (default `true`) — deploy por partes. Desligado, o
+  `production_violations()` do mixin devolve `[]` e o nome entra em
+  `BaseAppSettings.disabled_integrations()` (hook cooperativo, mesma forma do
+  `production_violations`). `storage_kwargs()`/`email_kwargs()` passam
+  `enabled=False` (só quando desligado) e `firebase_kwargs()` vira
+  `{"enabled": False}`: `AsyncMinIOClient`, `EmailUtils` e `FirebaseAuth`
+  constroem sem o extra e recusam toda operação com
+  `IntegrationDisabledException` (`503`, `INTEGRATION_DISABLED`,
+  `details.integration`). `FirebaseSettings.enabled`/`mobile_enabled` seguem a
+  flag; `FCMTransport` sobre auth desligado não reivindica plataforma (push
+  descartado, um aviso no log). `UserAuthService.require_mail_delivery()` faz
+  as rotas de e-mail do `make_auth_router` responderem `503` antes de gravar.
+  Regra nova de produção do `EmailSettings` ligado: host `mailpit`/`mailhog`,
+  loopback:1025, `SMTP_HOST` default sem usuário, `SMTP_FROM_ADDR` default,
+  vazio ou de domínio reservado (Gmail passa). `STORAGE_SECURE=false` passa
+  com bucket privado atrás de `STORAGE_PUBLIC_ENDPOINT` HTTPS
+  (`StorageSettings.private_plain_http_allowed`). RevenueCat só
+  muda guard e listagem. Receita: `docs/recipes/system-checks.md`
+  ("Ligar e desligar integrações"). Testes:
+  `tests/settings/test_integration_flags.py`,
+  `tests/storage/test_disabled_client.py`, `tests/utils/test_email_disabled.py`,
+  `tests/push/test_fcm_disabled.py`,
+  `tests/auth/test_email_integration_disabled.py`,
+  `tests/exceptions/test_integration_disabled.py`.
+- **Links de e-mail em produção** — `AuthSettings.production_violations`
+  recusa os quatro `AUTH_*_URL_TEMPLATE` mandados por e-mail com host
+  local/reservado ou sem `https` (pula com `EMAIL_ENABLED=false`).
+  `is_reserved_domain` é compartilhado com a regra do `SMTP_FROM_ADDR`.
+  Testes: `tests/settings/test_auth_link_guard.py`.

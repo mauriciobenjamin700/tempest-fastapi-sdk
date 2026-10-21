@@ -816,6 +816,127 @@ asyncio.run(main())
 - When you need operations **outside** the listed surface (SSE-KMS, S3 v2 ACLs, bucket replication). Use `storage.client.<method>` directly — `minio-py` stays accessible.
 - For huge resumable uploads (> 5 GiB) — `minio-py` does multipart automatically but doesn't support `tus` or resume. Consider `tus.io` separately.
 
+## Private bucket behind HTTPS
+
+In production the guard refuses `STORAGE_SECURE=false` — with one
+exception, for a common deployment shape: the S3-compatible server runs as
+a container on the compose's private network (`STORAGE_ENDPOINT=bucket:9000`,
+plain HTTP inside the network), and clients only ever see presigned URLs
+for a public host whose TLS nginx terminates. Plain HTTP stays on the
+private hop, and the guard accepts it when **all three** hold:
+
+1. `STORAGE_ENDPOINT`'s host is private — a dot-less name (the Docker
+   service name), `localhost`, a loopback, or an RFC 1918 IP (`10.x`,
+   `172.16–31.x`, `192.168.x`), link-local or IPv6 ULA;
+2. `STORAGE_PUBLIC_ENDPOINT` is set;
+3. the public scheme is HTTPS — `STORAGE_PUBLIC_SECURE=true` (or a
+   `STORAGE_PUBLIC_ENDPOINT` starting with `https://`).
+
+Miss one and the violation stays, with a message naming the way out:
+
+```text
+- STORAGE_SECURE: storage traffic over plain HTTP (allowed only for a private STORAGE_ENDPOINT behind an HTTPS STORAGE_PUBLIC_ENDPOINT) [type=value_error]
+```
+
+The production `.env`:
+
+```text
+ENV=production
+STORAGE_ENDPOINT=bucket:9000
+STORAGE_SECURE=false
+STORAGE_PUBLIC_ENDPOINT=storage.example.com
+STORAGE_PUBLIC_SECURE=true
+STORAGE_ACCESS_KEY=app-key
+STORAGE_SECRET_KEY=app-secret-value
+```
+
+```python
+from tempest_fastapi_sdk import (
+    AsyncMinIOClient,
+    BaseAppSettings,
+    EnvironmentSettings,
+    StorageSettings,
+)
+
+
+class Settings(EnvironmentSettings, StorageSettings, BaseAppSettings):
+    """Bucket on the compose's private network, public URLs over HTTPS."""
+
+
+settings = Settings()
+print(settings.production_violations())
+storage = AsyncMinIOClient(**settings.storage_kwargs())
+print(storage.endpoint, storage.secure, storage.public_endpoint, storage.public_secure)
+```
+
+```text
+[]
+bucket:9000 False storage.example.com True
+```
+
+The app talks to `bucket:9000` over HTTP; presigned URLs are signed for
+`storage.example.com` over HTTPS. The compose does not publish the
+bucket's port — only nginx reaches it:
+
+```yaml
+services:
+  bucket:
+    image: mauriciobenjamin700/tempest-bucket:latest
+    expose:
+      - "9000"
+  api:
+    build: .
+    env_file: .env
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+```
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name storage.example.com;
+    ssl_certificate     /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+
+    location /minio/ {
+        return 403;
+    }
+
+    location / {
+        proxy_pass http://bucket:9000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        client_max_body_size 100m;
+    }
+}
+```
+
+!!! warning "The `Host` must arrive untouched"
+    SigV4 signs the `Host` header: the URL was signed for
+    `storage.example.com`, so the bucket must receive that same `Host`.
+    Hence `proxy_set_header Host $host` — without it nginx sends
+    `bucket:9000` and every presigned URL answers `SignatureDoesNotMatch`.
+    And do not expose the admin API: block the server's admin path
+    (`/minio/` on MinIO and compatibles) and never publish the console
+    port.
+
+## Storage switched off (`STORAGE_ENABLED=false`)
+
+Going to production before the bucket exists? `STORAGE_ENABLED=false`
+makes the production guard skip the `STORAGE_*` rules, and the same
+`AsyncMinIOClient(**settings.storage_kwargs())` then refuses **every**
+operation — the `client` attribute included — with
+`IntegrationDisabledException` (`503`, `code="INTEGRATION_DISABLED"`,
+`details={"integration": "storage"}`). A `SubjectObjectStorage` on top
+inherits the refusal. No `if` in your code, and no `[minio]` extra needed
+while the integration is off. The complete example is in
+[Switching integrations on and off](system-checks.md#switching-integrations-on-and-off-phased-deploys).
+
 ## Recap
 
 - `AsyncMinIOClient` is an async facade over the official `minio` package,

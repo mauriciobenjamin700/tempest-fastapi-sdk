@@ -36,6 +36,7 @@ Since v0.31.0 the SDK ships the full local-account lifecycle — email + passwor
 8. **[Email anatomy: how link, template and URL fit together](#email-anatomy)** — disambiguates the three concepts that confuse readers the most.
 9. **[Email and page language (i18n)](#email-and-page-language-i18n)** — default language, per-user preference and your own translation.
 10. **[Five operating modes](#five-operating-modes)** — production, dev with local SMTP (Mailhog / smtp4dev), dev without SMTP, CI without activation, and **backend-only** (links and pages served directly by the backend).
+    - **[Email disabled](#email-disabled)** — `EMAIL_ENABLED=false` in a phased deploy: the routes that would mail a link answer `503` before writing.
 11. **[Token delivery](#token-delivery)** — bearer, cookie or both.
 12. **[Mailhog vs smtp4dev — which to pick for local dev](#mailhog-vs-smtp4dev)** — comparison + copy-paste docker-compose snippets.
 13. **[Customizing email templates](#customizing-templates)** — override `activation.html` and `password_reset.html` + variables exposed to the Jinja2 context.
@@ -1958,10 +1959,24 @@ SMTP_HOST=smtp.mailgun.org
 SMTP_PORT=587
 SMTP_USERNAME=postmaster@mg.example.com
 SMTP_PASSWORD=...                          # secret, don't commit
-SMTP_FROM_ADDR=noreply@example.com
-AUTH_ACTIVATION_URL_TEMPLATE=https://app.example.com/activate?token={token}
-AUTH_PASSWORD_RESET_URL_TEMPLATE=https://app.example.com/reset?token={token}
+SMTP_FROM_ADDR=noreply@yourdomain.com
+AUTH_ACTIVATION_URL_TEMPLATE=https://app.yourdomain.com/activate?token={token}
+AUTH_PASSWORD_RESET_URL_TEMPLATE=https://app.yourdomain.com/reset?token={token}
+AUTH_EMAIL_CHANGE_URL_TEMPLATE=https://app.yourdomain.com/confirm-email?token={token}
+AUTH_EMAIL_VERIFICATION_URL_TEMPLATE=https://app.yourdomain.com/verify-email?token={token}
 ```
+
+!!! warning "In production every mailed link must be `https` and public"
+    With `ENV=production` (and e-mail switched on), `AuthSettings` refuses
+    the boot when any of the four templates that go into an e-mail —
+    `AUTH_ACTIVATION_URL_TEMPLATE`, `AUTH_PASSWORD_RESET_URL_TEMPLATE`,
+    `AUTH_EMAIL_CHANGE_URL_TEMPLATE`, `AUTH_EMAIL_VERIFICATION_URL_TEMPLATE`
+    — points at a host nobody outside can reach (`localhost`, `127.0.0.1`,
+    `::1`, `0.0.0.0`, or a reserved domain such as `example.com` and
+    `*.test`) or uses plain `http://` (the token travels in the URL). The
+    defaults (`http://localhost:3000/...`) fail both rules, so set **all
+    four**, even for flows you don't use yet. With `EMAIL_ENABLED=false`
+    the rule does not apply: the link never leaves.
 
 Flow: signup → real email lands in the inbox → user clicks → frontend calls `POST /auth/activate/{token}` → login.
 
@@ -2037,8 +2052,10 @@ AUTH_AUTO_ACTIVATE=false
 AUTH_RETURN_TOKEN_IN_RESPONSE=false
 
 # IMPORTANT: URL templates point at the BACKEND, not the frontend.
-AUTH_ACTIVATION_URL_TEMPLATE=https://api.example.com/auth/activate/{token}
-AUTH_PASSWORD_RESET_URL_TEMPLATE=https://api.example.com/auth/password-reset/{token}
+AUTH_ACTIVATION_URL_TEMPLATE=https://api.yourdomain.com/auth/activate/{token}
+AUTH_PASSWORD_RESET_URL_TEMPLATE=https://api.yourdomain.com/auth/password-reset/{token}
+AUTH_EMAIL_CHANGE_URL_TEMPLATE=https://api.yourdomain.com/auth/email-change/{token}
+AUTH_EMAIL_VERIFICATION_URL_TEMPLATE=https://api.yourdomain.com/auth/email-verify/{token}
 
 # Optional: your login URL. When set, the backend-rendered success/error
 # pages display a "Go to login" button. When null, the button is hidden
@@ -2047,7 +2064,7 @@ AUTH_LOGIN_URL=https://app.example.com/login
 
 SMTP_HOST=smtp.mailgun.org
 SMTP_PORT=587
-SMTP_FROM_ADDR=noreply@example.com
+SMTP_FROM_ADDR=noreply@yourdomain.com
 ```
 
 !!! danger "Link returns 404? Align the template with the router's mount prefix"
@@ -2168,6 +2185,115 @@ app.include_router(
 The **JSON** endpoints (`POST /auth/activate/{token}`, `POST /auth/password-reset/confirm`) are still mounted — you can mix Mode E with SPA endpoints.
 
 ---
+
+## Email disabled
+
+In a phased deploy SMTP may arrive after everything else
+(`EMAIL_ENABLED=false`, see
+[Switching integrations on and off](system-checks.md#switching-integrations-on-and-off-phased-deploys)).
+The risk here is concrete: with `AUTH_AUTO_ACTIVATE=false`, a signup
+creates the inactive account and mails the activation link — which never
+arrives. The account is stuck, and its address stays "taken" forever.
+
+That is why `UserAuthService` checks the mailer **before** writing
+anything. With `EmailUtils(**settings.email_kwargs())` built under
+`EMAIL_ENABLED=false`, every route that would mail a link answers `503
+INTEGRATION_DISABLED`:
+
+```python
+import asyncio
+
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    AuthSettings,
+    BaseUserModel,
+    EmailSettings,
+    EmailUtils,
+    JWTSettings,
+    UserAuthService,
+    make_auth_router,
+    make_user_token_model,
+    register_exception_handlers,
+)
+
+
+class Settings(EmailSettings, JWTSettings, AuthSettings):
+    """Settings with e-mail not configured yet."""
+
+
+class UserModel(BaseUserModel):
+    """The accounts table."""
+
+    __tablename__ = "users"
+
+
+UserTokenModel = make_user_token_model(user_table="users")
+
+settings: Settings = Settings(
+    EMAIL_ENABLED=False,
+    AUTH_AUTO_ACTIVATE=False,
+    JWT_SECRET="replace-with-a-real-long-secret-0123456789abcdef",
+)
+db: AsyncDatabaseManager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+auth_service: UserAuthService = UserAuthService(
+    db=db,
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+    email=EmailUtils(**settings.email_kwargs()),
+)
+
+app: FastAPI = FastAPI()
+register_exception_handlers(app)
+app.include_router(make_auth_router(auth_service, session_factory=db.session_dependency))
+
+
+async def main() -> None:
+    """Try a signup with e-mail switched off."""
+    await db.connect()
+    await db.create_tables()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/auth/signup",
+            json={"email": "ana@acme.com.br", "password": "strong-pass-123"},
+        )
+    print(response.status_code, response.json())
+    await db.disconnect()
+
+
+asyncio.run(main())
+```
+
+```text
+503 {'detail': 'The email integration is disabled in this environment', 'code': 'INTEGRATION_DISABLED', 'details': {'integration': 'email'}}
+```
+
+No row was written: neither the account nor the token. The refused routes
+are the ones that send mail — `/signup` (only with
+`AUTH_AUTO_ACTIVATE=false`), `/activation/request`,
+`/password-reset/request`, `/email-change/request`,
+`/email-verify/request`, `/email-recovery/request` and, with
+`AUTH_EMAIL_CHANGE_NOTIFY_OLD=true`, `/email-change/confirm` (before the
+token is consumed, so it still works once e-mail is back). Login, refresh,
+logout and MFA are unaffected.
+
+!!! info "When disabled e-mail refuses nothing"
+    With no mailer (`email=None`) or `AUTH_RETURN_TOKEN_IN_RESPONSE=true`
+    the link travels in the response body, so there is no mail to send
+    and the flow runs as always. Same for a signup with
+    `AUTH_AUTO_ACTIVATE=true`: the account is born active and needs no
+    link.
+
+!!! tip "The refusal comes before the lookup"
+    On `/password-reset/request` and `/email-recovery/request` the `503`
+    is raised before the account is looked up, so a known and an unknown
+    address get the same answer — the switch never becomes an enumeration
+    oracle.
 
 ## Token delivery
 

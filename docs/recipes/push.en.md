@@ -394,6 +394,18 @@ are **different wire fields** (`{"token": ...}` vs `{"fid": ...}`), and an
 FCM registration token belongs in `token`. Following the deprecation
 literally would send the wrong field.
 
+## Mobile push switched off (`FIREBASE_ENABLED=false`)
+
+Push does not raise: with `FIREBASE_ENABLED=false`, `settings.enabled`
+(and `PushSettings.mobile_enabled`) answers `False`, so wiring that
+already reads that flag builds no `FCMTransport` and `DeviceService` skips
+mobile devices (they show up in `PushFanoutResult.skipped`). If the
+transport is built anyway on a `FirebaseAuth(**settings.firebase_kwargs())`,
+it claims no platform, logs one warning when built, and the outcome is
+the same: mobile push is discarded. Only a direct call to
+`FCMTransport.send` raises `IntegrationDisabledException`. See
+[Switching integrations on and off](system-checks.md#switching-integrations-on-and-off-phased-deploys).
+
 ## Recap
 
 - One `PushDispatcher` (`Protocol`), two transports: `WebPushTransport`

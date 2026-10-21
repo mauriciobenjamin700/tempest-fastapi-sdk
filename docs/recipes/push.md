@@ -389,6 +389,19 @@ dois são **campos de wire diferentes** (`{"token": ...}` vs
 `{"fid": ...}`), e um token de registro do FCM pertence a `token`. Seguir
 a depreciação ao pé da letra mandaria o campo errado.
 
+## Push mobile desligado (`FIREBASE_ENABLED=false`)
+
+Push não levanta: com `FIREBASE_ENABLED=false`, `settings.enabled` (e
+`PushSettings.mobile_enabled`) responde `False`, então o wiring que já
+consulta essa flag não monta `FCMTransport` e o `DeviceService` pula os
+aparelhos mobile (eles aparecem em `PushFanoutResult.skipped`). Se o
+transporte for montado mesmo assim sobre um
+`FirebaseAuth(**settings.firebase_kwargs())`, ele não reivindica
+plataforma nenhuma, loga um aviso ao ser construído, e o resultado é o
+mesmo: o push mobile é descartado. Só uma chamada direta a
+`FCMTransport.send` levanta `IntegrationDisabledException`. Veja
+[Ligar e desligar integrações](system-checks.md#ligar-e-desligar-integracoes-deploy-por-partes).
+
 ## Recap
 
 - Um `PushDispatcher` (`Protocol`), dois transportes: `WebPushTransport`

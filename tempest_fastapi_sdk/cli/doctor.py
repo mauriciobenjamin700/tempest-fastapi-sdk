@@ -275,10 +275,12 @@ def _smtp_check(settings: Any, timeout: float) -> CheckOutcome:
     Returns:
         CheckOutcome: ``ok`` naming host and port, ``fail`` with the
         error, or ``skip`` when the project composes no
-        ``EmailSettings``.
+        ``EmailSettings`` or switched it off (``EMAIL_ENABLED=false``).
     """
     host = getattr(settings, "SMTP_HOST", "")
     port = getattr(settings, "SMTP_PORT", 0)
+    if getattr(settings, "EMAIL_ENABLED", True) is False:
+        return CheckOutcome("smtp", _SKIP, "EMAIL_ENABLED=false")
     if not host:
         return CheckOutcome("smtp", _SKIP, "no SMTP_HOST")
     if _is_untouched_default(settings, "SMTP_HOST", "SMTP_HOST"):
@@ -310,9 +312,12 @@ def _minio_check(settings: Any) -> CheckOutcome:
 
     Returns:
         CheckOutcome: ``ok`` with the bucket count, ``fail`` with the
-        error, or ``skip`` when MinIO is not configured.
+        error, or ``skip`` when MinIO is not configured or switched off
+        (``STORAGE_ENABLED=false``).
     """
     endpoint = getattr(settings, "STORAGE_ENDPOINT", "")
+    if getattr(settings, "STORAGE_ENABLED", True) is False:
+        return CheckOutcome("minio", _SKIP, "STORAGE_ENABLED=false")
     if not endpoint:
         return CheckOutcome("minio", _SKIP, "no STORAGE_ENDPOINT")
     if _is_untouched_default(
