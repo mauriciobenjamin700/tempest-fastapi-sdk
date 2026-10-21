@@ -13,12 +13,12 @@ subject ``"10"``.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import AsyncIterator, Iterable
 from datetime import timedelta
 from typing import TYPE_CHECKING, BinaryIO, Protocol
 
 if TYPE_CHECKING:
-    from tempest_fastapi_sdk.storage.minio_client import ObjectDeleteError
+    from tempest_fastapi_sdk.storage.minio_client import ObjectDeleteError, ObjectStat
 
 
 class SubjectStorageClient(Protocol):
@@ -72,6 +72,64 @@ class SubjectStorageClient(Protocol):
 
         Returns:
             str: The presigned URL.
+        """
+        ...
+
+    async def presigned_put_url(
+        self,
+        key: str,
+        *,
+        bucket: str | None = None,
+        expires: timedelta = timedelta(minutes=15),
+    ) -> str:
+        """Generate a temporary upload URL.
+
+        Args:
+            key (str): Destination object key.
+            bucket (str | None): Override target bucket.
+            expires (timedelta): URL lifetime.
+
+        Returns:
+            str: The presigned URL accepting a ``PUT``.
+        """
+        ...
+
+    async def stat_object(
+        self,
+        key: str,
+        *,
+        bucket: str | None = None,
+    ) -> ObjectStat:
+        """Fetch an object's metadata without downloading it.
+
+        Args:
+            key (str): Object key.
+            bucket (str | None): Override source bucket.
+
+        Returns:
+            ObjectStat: Size, content type, ETag and user metadata.
+        """
+        ...
+
+    async def stream_object(
+        self,
+        key: str,
+        *,
+        bucket: str | None = None,
+        offset: int = 0,
+        length: int | None = None,
+    ) -> AsyncIterator[bytes]:
+        """Open an object, or one byte range of it, as a chunk stream.
+
+        Args:
+            key (str): Object key.
+            bucket (str | None): Override source bucket.
+            offset (int): First byte to read.
+            length (int | None): How many bytes to read from ``offset``;
+                ``None`` reads to the end.
+
+        Returns:
+            AsyncIterator[bytes]: The chunks, in order.
         """
         ...
 
@@ -184,6 +242,10 @@ class SubjectObjectStorage:
         'users/42/avatar.png'
         >>> await storage.presign(user_id, "avatar.png")
         'https://...'
+        >>> await storage.presign_put(user_id, "upload.jpg")
+        'https://...'
+        >>> await storage.read(user_id, "upload.jpg", max_bytes=1_048_577)
+        b'...'
         >>> await storage.delete_all(user_id)
         1
 
@@ -327,6 +389,123 @@ class SubjectObjectStorage:
             bucket=self.bucket,
             expires=expires,
         )
+
+    async def presign_put(
+        self,
+        subject_id: object,
+        name: str,
+        *,
+        expires: timedelta = timedelta(minutes=15),
+    ) -> str:
+        """Generate a temporary upload URL for one subject's object.
+
+        The client ``PUT``s the bytes straight to the store, so they never
+        cross the API process. The URL only reaches
+        ``key(subject_id, name)``: the subject prefix is fixed by the server
+        when it signs, never by the uploader. Nothing about the payload is
+        signed — size and content type are whatever the client sends — so
+        verify the object with :meth:`stat` and :meth:`read` before trusting
+        it.
+
+        Args:
+            subject_id (object): The subject id.
+            name (str): Object name relative to the subject's prefix.
+            expires (timedelta): URL lifetime; at most 7 days. Default 15
+                minutes, the same as
+                :meth:`~tempest_fastapi_sdk.storage.AsyncMinIOClient.presigned_put_url`.
+
+        Returns:
+            str: Presigned PUT URL.
+
+        Raises:
+            ValueError: When the subject id or name is invalid.
+            IntegrationDisabledException: When the client was built with
+                ``enabled=False``.
+        """
+        return await self.client.presigned_put_url(
+            self.key(subject_id, name),
+            bucket=self.bucket,
+            expires=expires,
+        )
+
+    async def stat(self, subject_id: object, name: str) -> ObjectStat:
+        """Fetch one subject's object metadata without downloading it.
+
+        Args:
+            subject_id (object): The subject id.
+            name (str): Object name relative to the subject's prefix.
+
+        Returns:
+            ObjectStat: Size, content type, ETag and user metadata, as the
+            store reports them.
+
+        Raises:
+            ValueError: When the subject id or name is invalid.
+            S3Error: When the object is missing or the request fails;
+                propagated unchanged from the client
+                (``FakeObjectStorageClient`` raises
+                :class:`FileNotFoundError` instead).
+            IntegrationDisabledException: When the client was built with
+                ``enabled=False``.
+        """
+        return await self.client.stat_object(
+            self.key(subject_id, name), bucket=self.bucket
+        )
+
+    async def read(
+        self,
+        subject_id: object,
+        name: str,
+        *,
+        max_bytes: int | None = None,
+    ) -> bytes:
+        """Read one subject's object into memory, optionally capped.
+
+        With ``max_bytes``, only the first ``max_bytes`` bytes are requested
+        from the store (a ``Range`` read through
+        :meth:`~tempest_fastapi_sdk.storage.AsyncMinIOClient.stream_object`),
+        and reading stops there even if the store answers with more. An
+        object that was swapped for a larger one after a :meth:`stat` never
+        enters memory whole.
+
+        To detect "too large", pass ``limit + 1`` and compare the length:
+        ``len(data) > limit`` means the object exceeds ``limit``, without
+        reading the rest of it.
+
+        Args:
+            subject_id (object): The subject id.
+            name (str): Object name relative to the subject's prefix.
+            max_bytes (int | None): Read at most this many bytes. ``None``
+                (default) reads the whole object.
+
+        Returns:
+            bytes: The object's bytes, or its first ``max_bytes`` bytes.
+
+        Raises:
+            ValueError: When the subject id or name is invalid, or
+                ``max_bytes`` is not positive.
+            S3Error: When the object is missing or the request fails;
+                propagated unchanged from the client
+                (``FakeObjectStorageClient`` raises
+                :class:`FileNotFoundError` instead).
+            IntegrationDisabledException: When the client was built with
+                ``enabled=False``.
+        """
+        if max_bytes is not None and max_bytes < 1:
+            raise ValueError(f"max_bytes must be at least 1, got {max_bytes}")
+        stream = await self.client.stream_object(
+            self.key(subject_id, name),
+            bucket=self.bucket,
+            length=max_bytes,
+        )
+        buffer = bytearray()
+        async for chunk in stream:
+            buffer.extend(chunk)
+            if max_bytes is not None and len(buffer) >= max_bytes:
+                break
+        if max_bytes is not None:
+            del buffer[max_bytes:]
+        return bytes(buffer)
 
     async def names(self, subject_id: object) -> list[str]:
         """List every object name of a subject.
