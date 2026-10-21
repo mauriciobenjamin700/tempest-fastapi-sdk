@@ -2,6 +2,26 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.320.0 — guard de produção do e-mail e dos links
+
+Com `ENV=production` e o e-mail ligado (`EMAIL_ENABLED` ausente conta como
+ligado), duas regras novas derrubam o boot:
+
+- `EmailSettings`: `SMTP_HOST` de dev (`mailpit`, `mailhog`, porta `1025` em
+  loopback, default declarado sem `SMTP_USERNAME`) e `SMTP_FROM_ADDR` no
+  default (`noreply@example.com`), vazio, sem `@` ou de domínio reservado.
+- `AuthSettings`: os quatro `AUTH_*_URL_TEMPLATE` (ativação, reset, troca e
+  verificação de e-mail) com host local/reservado ou esquema diferente de
+  `https`. Os defaults `http://localhost:3000/...` caem aqui.
+
+### O que fazer
+
+- Configure SMTP real e `SMTP_FROM_ADDR` com domínio seu (Gmail com senha de
+  app em `smtp.gmail.com:587` passa).
+- Configure os quatro templates com `https://` e o domínio do app.
+- Ou, se o e-mail ainda não está pronto, `EMAIL_ENABLED=false`: o boot passa
+  e as rotas que mandam e-mail respondem `503 INTEGRATION_DISABLED`.
+
 ## 0.319.0 — contagem do `bulk_create_values` e do `bulk_upsert`
 
 `bulk_create_values` e `bulk_upsert` (modo `"update"`) devolvem `0` quando o
