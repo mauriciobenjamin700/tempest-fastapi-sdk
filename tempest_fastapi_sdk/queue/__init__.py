@@ -33,6 +33,9 @@ from tempest_fastapi_sdk.queue.reliability import (
 )
 from tempest_fastapi_sdk.queue.reliability import retry_queues as retry_queues
 from tempest_fastapi_sdk.queue.topology import DeadLetterSpec as DeadLetterSpec
+from tempest_fastapi_sdk.queue.topology import ExchangeBinding as ExchangeBinding
+from tempest_fastapi_sdk.queue.topology import ExchangeKind as ExchangeKind
+from tempest_fastapi_sdk.queue.topology import ExchangeSpec as ExchangeSpec
 from tempest_fastapi_sdk.queue.topology import QueueSpec as QueueSpec
 from tempest_fastapi_sdk.queue.topology import QueueType as QueueType
 from tempest_fastapi_sdk.queue.topology import Transport as Transport
@@ -52,6 +55,9 @@ __all__: list[str] = [
     "DeadLetterSpec",
     "DedupState",
     "DedupStore",
+    "ExchangeBinding",
+    "ExchangeKind",
+    "ExchangeSpec",
     "MemoryDedupStore",
     "MessageBroker",
     "Publisher",

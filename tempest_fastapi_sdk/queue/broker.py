@@ -31,14 +31,21 @@ from tempest_fastapi_sdk.queue.dedup import (
 from tempest_fastapi_sdk.queue.publisher import Publisher
 from tempest_fastapi_sdk.queue.reliability import (
     DEFAULT_MAX_ATTEMPTS,
+    DEFAULT_REPLAY_LIMIT,
+    RetryTopology,
     make_dead_letter_middleware,
+    replay_headers,
 )
 from tempest_fastapi_sdk.queue.topology import (
+    QUEUE_TYPE_ARG,
+    ExchangeSpec,
     QueueSpec,
     Transport,
+    UnsupportedTopologyError,
     channel_name,
     detect_transport,
     resolve_channel,
+    to_rabbit_exchange,
 )
 from tempest_fastapi_sdk.queue.tracing import inject_context, make_tracing_middleware
 
@@ -201,6 +208,46 @@ def _with_prefetch(
     return options
 
 
+def _replay_route(
+    source: QueueSpec | RetryTopology | str,
+    into: str | None,
+) -> tuple[str, str]:
+    """Resolve where :meth:`MessageBroker.replay_dead_letters` reads and writes.
+
+    Args:
+        source (QueueSpec | RetryTopology | str): The replay source.
+        into (str | None): The explicit destination, for a bare name.
+
+    Returns:
+        tuple[str, str]: ``(dead_letter_queue, origin_queue)``.
+
+    Raises:
+        ValueError: When the source and ``into`` disagree on who names
+            the destination, or the spec names no dead-letter queue.
+    """
+    if isinstance(source, str):
+        if into is None:
+            raise ValueError(
+                f"replay_dead_letters({source!r}) needs into=: a bare "
+                "dead-letter queue does not say where its messages came from.",
+            )
+        return source, into
+    if into is not None:
+        raise ValueError(
+            "into= is only for a bare queue name; the spec or topology "
+            "already names the origin queue.",
+        )
+    if isinstance(source, RetryTopology):
+        return source.dead.name, source.main.name
+    if source.dead_letter is None or source.dead_letter.queue is None:
+        raise ValueError(
+            f"QueueSpec({source.name!r}) names no dead-letter queue to "
+            "replay from; build it with QueueSpec.consumer(..., "
+            "dead_letter_exchange=...) or set DeadLetterSpec.queue.",
+        )
+    return source.dead_letter.queue, source.name
+
+
 class MessageBroker:
     """Typed, transport-agnostic publish/subscribe over FastStream.
 
@@ -268,6 +315,7 @@ class MessageBroker:
         self._started: bool = False
         self._declare_topology: bool = declare_topology
         self._specs: dict[str, QueueSpec] = {}
+        self._declared_exchanges: set[str] = set()
 
     @property
     def transport(self) -> Transport:
@@ -298,6 +346,43 @@ class MessageBroker:
         if isinstance(channel, QueueSpec):
             self._specs[channel.name] = channel
         return resolved
+
+    def _subscriber_options(
+        self,
+        channel: str | QueueSpec,
+        options: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Add the exchange a bound spec subscribes through.
+
+        FastStream binds a ``RabbitQueue`` carrying a ``routing_key`` only
+        when the subscriber (or publisher) is also handed the exchange; the
+        queue on its own is declared on the default exchange and receives
+        nothing published to the shared one.
+
+        Args:
+            channel (str | QueueSpec): The channel being bound.
+            options (dict[str, Any]): The subscriber options assembled so
+                far, mutated in place.
+
+        Returns:
+            dict[str, Any]: The same mapping.
+
+        Raises:
+            ValueError: When the spec carries a binding and ``exchange=``
+                is passed as well — two exchanges for one queue is a
+                contradiction, not an override.
+        """
+        if not isinstance(channel, QueueSpec) or channel.binding is None:
+            return options
+        if "exchange" in options:
+            raise ValueError(
+                f"QueueSpec({channel.name!r}) is bound to exchange "
+                f"{channel.binding.exchange.name!r}; drop the exchange= "
+                "option, or the binding.",
+            )
+        if self.transport is Transport.RABBITMQ:
+            options["exchange"] = to_rabbit_exchange(channel.binding.exchange)
+        return options
 
     @property
     def specs(self) -> dict[str, QueueSpec]:
@@ -452,9 +537,13 @@ class MessageBroker:
                 ...
 
         Args:
-            channel (str): The logical channel to subscribe to. Maps to a
-                queue (RabbitMQ), topic (Kafka), subject (NATS) or channel
-                (Redis) under the hood.
+            channel (str | QueueSpec): The logical channel to subscribe
+                to. Maps to a queue (RabbitMQ), topic (Kafka), subject
+                (NATS) or channel (Redis) under the hood. A spec with a
+                :class:`~tempest_fastapi_sdk.queue.ExchangeBinding`
+                (see :meth:`QueueSpec.consumer
+                <tempest_fastapi_sdk.queue.QueueSpec.consumer>`) declares
+                its exchange and binds the queue to it.
             prefetch (int | None): Caps how many unacknowledged
                 messages the broker pushes to **this consumer**,
                 overriding the connection-wide cap set on
@@ -466,15 +555,19 @@ class MessageBroker:
             Callable[[Handler], Handler]: The subscriber decorator.
         """
         _with_prefetch(options, prefetch, "channel")
+        bound = self._bind(channel)
+        self._subscriber_options(channel, options)
         return cast(
             "Callable[[Handler], Handler]",
-            self.broker.subscriber(self._bind(channel), **options),
+            self.broker.subscriber(bound, **options),
         )
 
     async def publish(
         self,
         channel: str | QueueSpec,
         message: Any,
+        *,
+        exchange: ExchangeSpec | str | None = None,
         **options: Any,
     ) -> Any:
         """Publish ``message`` to ``channel``.
@@ -485,8 +578,21 @@ class MessageBroker:
                 it. Publishing only needs the name, so a spec here is
                 accepted for symmetry with :meth:`on` — the topology is
                 applied where the queue is declared, not per message.
+                With ``exchange``, the channel is the **routing key**.
             message (Any): The payload. A Pydantic model or ``dict`` is
                 serialized to JSON; ``str`` / ``bytes`` are sent as-is.
+            exchange (ExchangeSpec | str | None): Publish to this exchange
+                instead of straight to the queue named ``channel``, so
+                every queue bound under that key gets a copy. An
+                :class:`~tempest_fastapi_sdk.queue.ExchangeSpec` is
+                declared on the first publish to it and not again in this
+                process; publishing to an exchange that does not exist is
+                an AMQP channel error, so a relay that runs before any
+                consumer would otherwise depend on someone else having
+                declared it. A bare name is passed through **undeclared**
+                — the exchange already exists (``amq.topic``, or one the
+                infrastructure owns) and its type is not ours to assert.
+                RabbitMQ only.
             **options (Any): Extra transport-specific publish options
                 forwarded to FastStream (e.g. ``headers=``,
                 ``correlation_id=``). ``message_id`` is filled with a
@@ -502,6 +608,8 @@ class MessageBroker:
 
         Raises:
             RuntimeError: When :meth:`connect` has not been called yet.
+            UnsupportedTopologyError: When ``exchange`` is given on a
+                transport without exchanges.
         """
         if not self._started:
             raise RuntimeError(
@@ -511,7 +619,35 @@ class MessageBroker:
             options.setdefault("message_id", str(uuid4()))
         if _publish_accepts(self.broker.publish, "headers"):
             options["headers"] = inject_context(dict(options.get("headers") or {}))
-        return await self.broker.publish(message, channel_name(channel), **options)
+        if exchange is None:
+            return await self.broker.publish(message, channel_name(channel), **options)
+        if self.transport is not Transport.RABBITMQ:
+            raise UnsupportedTopologyError(
+                f"publish(exchange=...) needs AMQP exchanges; the "
+                f"{self.transport.value} transport has none.",
+            )
+        if isinstance(exchange, ExchangeSpec):
+            await self._declare_exchange_once(exchange)
+            target: Any = to_rabbit_exchange(exchange)
+        else:
+            target = exchange
+        return await self.broker.publish(
+            message,
+            exchange=target,
+            routing_key=channel_name(channel),
+            **options,
+        )
+
+    async def _declare_exchange_once(self, exchange: ExchangeSpec) -> None:
+        """Declare ``exchange`` the first time this process publishes to it.
+
+        Args:
+            exchange (ExchangeSpec): The exchange to declare.
+        """
+        if exchange.name in self._declared_exchanges:
+            return
+        await self.broker.declare_exchange(to_rabbit_exchange(exchange))
+        self._declared_exchanges.add(exchange.name)
 
     async def declare_retry_topology(self, topology: Any) -> None:
         """Declare and **bind** the three queues of a retry chain.
@@ -683,6 +819,7 @@ class MessageBroker:
         for sub in consumer.subscriptions():
             bound = self._bind(sub.channel)
             options = _with_prefetch(dict(sub.options), sub.prefetch, "channel")
+            self._subscriber_options(sub.channel, options)
             handler = (
                 _schema_entry(sub.handler, sub.schema)
                 if sub.schema is not None
@@ -704,7 +841,11 @@ class MessageBroker:
         Returns:
             Any: A FastStream publisher object bound to ``channel``.
         """
-        return self.broker.publisher(self._bind(channel), **options)
+        bound = self._bind(channel)
+        return self.broker.publisher(
+            bound,
+            **self._subscriber_options(channel, dict(options)),
+        )
 
     def publisher_for(
         self,
@@ -768,23 +909,34 @@ class MessageBroker:
 
         Idempotent — safe to call from the FastAPI lifespan and again
         elsewhere; extra calls are no-ops while the broker is alive.
+
+        On RabbitMQ the connection is opened and :meth:`declare_topology`
+        runs **before** the subscribers start. The other order left a
+        window in which a consumer was already receiving and its
+        dead-letter exchange did not exist yet: a message rejected in it
+        was routed nowhere and dropped.
         """
         if self._started:
             return
+        if self._declare_topology and self.transport is Transport.RABBITMQ:
+            await self.broker.connect()
+            await self.declare_topology()
         await self.broker.start()
         self._started = True
-        if self._declare_topology:
-            await self.declare_topology()
 
     async def declare_topology(self) -> list[str]:
-        """Declare the dead-letter exchanges the registered specs name.
+        """Declare the dead-letter exchanges and queues the specs name.
 
         A queue carrying ``x-dead-letter-exchange`` is declared happily
         by RabbitMQ even when that exchange does not exist — and then
         every rejected message is dropped at routing time, silently. The
-        exchange has to exist for the setting to mean anything, so
-        :meth:`connect` calls this unless the broker was built with
-        ``declare_topology=False``.
+        same happens when the exchange exists and **no queue is bound**
+        to it: routing finds no destination and the message is gone. So
+        the exchange is declared, and a spec whose
+        :class:`~tempest_fastapi_sdk.queue.DeadLetterSpec` names a
+        ``queue`` gets that queue declared and bound under its routing
+        key. :meth:`connect` calls this before the subscribers start,
+        unless the broker was built with ``declare_topology=False``.
 
         Idempotent: declaring an exchange that already exists with the
         same properties is a no-op in AMQP. Only durable topic exchanges
@@ -818,7 +970,126 @@ class MessageBroker:
                 ),
             )
             logger.info("Declared dead-letter exchange %s", name)
+        for spec in self._specs.values():
+            dead_letter = spec.dead_letter
+            if dead_letter is None or dead_letter.queue is None:
+                continue
+            declared = await self.broker.declare_queue(
+                rabbit.RabbitQueue(
+                    dead_letter.queue,
+                    durable=True,
+                    arguments={QUEUE_TYPE_ARG: spec.queue_type.value},
+                ),
+            )
+            await declared.bind(
+                dead_letter.exchange,
+                routing_key=dead_letter.routing_key,
+            )
+            logger.info(
+                "Bound dead-letter queue %s to %s (routing key %s)",
+                dead_letter.queue,
+                dead_letter.exchange,
+                dead_letter.routing_key,
+            )
         return exchanges
+
+    async def replay_dead_letters(
+        self,
+        source: QueueSpec | RetryTopology | str,
+        *,
+        into: str | None = None,
+        limit: int = DEFAULT_REPLAY_LIMIT,
+    ) -> int:
+        """Move dead-lettered messages back to the queue they failed on.
+
+        For after the fix: each message is read from the dead-letter
+        queue, republished **straight to the origin queue** through the
+        default exchange — never to the shared exchange, which would hand
+        a second copy to every other consumer of the event — and only
+        then acknowledged. A publish that fails puts the message back on
+        the dead-letter queue and stops the run, so a message is never
+        acknowledged without having been delivered somewhere. The origin
+        queue is checked first: through the default exchange, a publish to
+        a queue that does not exist raises nothing — the broker hands the
+        message back as unroutable — and acking after it would lose it.
+
+        What travels: the body as bytes, ``message_id`` (the
+        deduplication key, so a consumer with
+        :meth:`deduplicate` still recognises it), ``content_type``,
+        ``correlation_id`` and the headers, persisted. The broker's
+        ``x-death`` bookkeeping is dropped: the retry middleware counts
+        attempts from it, and a replayed message that kept it would be
+        given up on at its first failure instead of getting a fresh
+        budget.
+
+        Args:
+            source (QueueSpec | RetryTopology | str): Where the dead
+                messages are. A spec built with a dead-letter ``queue``
+                (as :meth:`QueueSpec.consumer
+                <tempest_fastapi_sdk.queue.QueueSpec.consumer>` builds
+                it) replays that queue into the spec's own; a
+                :class:`~tempest_fastapi_sdk.queue.RetryTopology` replays
+                its ``.dead`` queue into its main one; a bare name is the
+                dead-letter queue itself and needs ``into``.
+            into (str | None): The queue to return messages to. Only for
+                a bare name; the other forms already say.
+            limit (int): Most messages to move in this call. A message
+                that fails again lands back on the dead-letter queue
+                behind the others, so without a cap a still-broken
+                consumer turns the replay into a loop.
+
+        Returns:
+            int: How many messages went back.
+
+        Raises:
+            ValueError: When ``limit`` is not positive, when a bare name
+                comes without ``into`` (or a spec/topology with it), or
+                when the spec names no dead-letter queue.
+            NotImplementedError: On a transport without queues to read
+                from.
+            RuntimeError: When :meth:`connect` has not been called yet.
+            aiormq.exceptions.ChannelNotFoundEntity: When the dead-letter
+                queue or the origin queue does not exist. Nothing is read.
+        """
+        if limit < 1:
+            raise ValueError(f"limit must be at least 1, got {limit!r}.")
+        dead, origin = _replay_route(source, into)
+        if self.transport is not Transport.RABBITMQ:
+            raise NotImplementedError(
+                "Replaying dead letters needs AMQP queues; the "
+                f"{self.transport.value} transport has none.",
+            )
+        if not self._started:
+            raise RuntimeError(
+                "MessageBroker.connect() must be called before replaying.",
+            )
+        rabbit = _require("faststream.rabbit", "queue")
+        await self.broker.declare_queue(rabbit.RabbitQueue(origin, declare=False))
+        queue = await self.broker.declare_queue(
+            rabbit.RabbitQueue(dead, declare=False),
+        )
+        moved = 0
+        while moved < limit:
+            raw = await queue.get(no_ack=False, fail=False)
+            if raw is None:
+                break
+            try:
+                await self.broker.publish(
+                    raw.body,
+                    routing_key=origin,
+                    persist=True,
+                    message_id=raw.message_id,
+                    correlation_id=raw.correlation_id,
+                    content_type=raw.content_type,
+                    headers=replay_headers(raw.headers),
+                )
+            except BaseException:
+                await raw.nack(requeue=True)
+                raise
+            await raw.ack()
+            moved += 1
+        logger.info("Replayed %d message(s) from %s into %s", moved, dead, origin)
+        return moved
 
     async def disconnect(self) -> None:
         """Stop the broker and release its connections."""

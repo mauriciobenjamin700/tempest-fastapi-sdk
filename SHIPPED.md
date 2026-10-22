@@ -3617,3 +3617,17 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `tests/auth/test_email_delivery_failure.py`,
   `tests/settings/test_integration_flags.py` (`TestEmailTLSModeRule`),
   `tests/cli/test_email_storage.py`.
+- **Fan-out por consumidor, DLQ declarada antes dos assinantes e replay,
+  Unreleased (#592)** — `QueueSpec.consumer(consumer, channel, exchange=...,
+  dead_letter_exchange=...)` monta a fila `<consumer>.<channel>` ligada ao
+  exchange pela chave do evento (`ExchangeSpec`, `ExchangeBinding`,
+  `ExchangeKind`), com dead-letter chaveado pelo nome da fila e
+  `DeadLetterSpec.queue` (`<fila>.dlq`). `declare_topology()` declara e liga a
+  DLQ, e o `connect()` roda isso **antes** do `start()`.
+  `MessageBroker.publish(..., exchange=ExchangeSpec | str)` tipado, declarando
+  o `ExchangeSpec` uma vez por processo. `replay_dead_letters(spec |
+  RetryTopology | nome, into=, limit=)` devolve à fila de origem pelo exchange
+  padrão, `ack` depois do publish, sem os headers de morte. Receita:
+  `docs/recipes/queue-tasks.md` ("Fan-out" e "Reprocessar a dead-letter
+  queue"). Testes: `tests/queue/test_fanout.py`,
+  `tests/queue/test_fanout_live.py` (RabbitMQ real, `make test-docker`).

@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `QueueSpec.consumer(consumer, channel, *, exchange, dead_letter_exchange=None,
+  queue_type=...)`: a fila `<consumer>.<channel>`, ligada ao exchange pela
+  chave do evento, para cada consumidor receber a sua cópia em vez de
+  disputar uma fila só. Com `dead_letter_exchange`, a rejeição vai para
+  `<consumer>.<channel>.dlq`, chaveada pelo nome da fila (#592).
+- `ExchangeSpec`, `ExchangeBinding` e `ExchangeKind`, exportados de
+  `tempest_fastapi_sdk.queue`; `QueueSpec.binding` liga a fila a um exchange.
+  Pedido em transporte sem exchange levanta `UnsupportedTopologyError`.
+- `DeadLetterSpec.queue`: a fila de dead-letter que o `declare_topology()`
+  declara e liga ao exchange pela `routing_key` (obrigatória junto).
+- `MessageBroker.publish(..., exchange=...)` tipado: com `ExchangeSpec`, o
+  exchange é declarado na primeira publicação do processo; com nome solto,
+  passa sem declarar. O canal vira a routing key.
+- `MessageBroker.replay_dead_letters(source, *, into=None, limit=1000)`:
+  devolve mensagens da DLQ (de um `QueueSpec`, da `.dead` de uma
+  `RetryTopology` ou de um nome com `into=`) direto para a fila de origem,
+  com `ack` só depois do publish, preservando corpo, `message_id`,
+  `content_type`, `correlation_id` e headers, sem os headers `x-death` /
+  `x-first-death-*` / `x-last-death-*`. Confere a fila de origem antes de
+  ler.
+
+### Fixed
+
+- O `MessageBroker.connect()` declara a topologia de dead-letter **antes** de
+  subir os consumidores no RabbitMQ. Antes, uma mensagem que já esperava na
+  fila e era rejeitada na primeira entrega ia para um exchange ainda
+  inexistente e se perdia (medido contra RabbitMQ 4, 3 de 3) (#592).
+
 ## [0.322.0] — 2026-10-21
 
 ### Added

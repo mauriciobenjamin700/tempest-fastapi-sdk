@@ -59,6 +59,34 @@ calls, which is why it is a parameter.
 DEFAULT_MAX_ATTEMPTS: Final[int] = 3
 """How many times a message is delivered before it is given up on."""
 
+DEFAULT_REPLAY_LIMIT: Final[int] = 1000
+"""Messages :meth:`~tempest_fastapi_sdk.queue.MessageBroker.replay_dead_letters`
+moves per call when no ``limit`` is given.
+
+A bound on one run, not a measurement: enough to drain the backlog of a
+consumer that was broken for a while, small enough that replaying into a
+consumer that is **still** broken does not spin on the same messages.
+"""
+
+DEATH_HEADERS: Final[frozenset[str]] = frozenset(
+    {
+        "x-death",
+        "x-first-death-exchange",
+        "x-first-death-queue",
+        "x-first-death-reason",
+        "x-last-death-exchange",
+        "x-last-death-queue",
+        "x-last-death-reason",
+    },
+)
+"""Headers RabbitMQ writes when it dead-letters a message.
+
+Measured, not recalled: a message rejected on ``rabbitmq:4-alpine`` comes
+out of the dead-letter queue with exactly these ``x-`` headers added, and
+``tests/queue/test_fanout_live.py`` (``make test-docker``) fails if a
+broker adds one more or one fewer.
+"""
+
 EXPIRED_REASON: Final[str] = "expired"
 """``x-death`` reason recorded when a message is dead-lettered by a TTL.
 
@@ -249,6 +277,26 @@ def delivery_attempt(message: Any) -> int:
         if isinstance(count, int):
             total += count
     return total + 1
+
+
+def replay_headers(headers: Any) -> dict[str, Any]:
+    """Copy a dead-lettered message's headers without the death record.
+
+    The record is what :func:`delivery_attempt` counts from. A replayed
+    message is a fresh attempt after a fix, so it starts with a fresh
+    budget rather than being given up on at its first failure.
+
+    Args:
+        headers (Any): The message headers, or ``None``.
+
+    Returns:
+        dict[str, Any]: Every header except :data:`DEATH_HEADERS`.
+    """
+    return {
+        key: value
+        for key, value in dict(headers or {}).items()
+        if key not in DEATH_HEADERS
+    }
 
 
 def _message_channel(message: Any) -> str:
@@ -463,7 +511,9 @@ class QueueMetrics:
 
 __all__: list[str] = [
     "DEAD_SUFFIX",
+    "DEATH_HEADERS",
     "DEFAULT_MAX_ATTEMPTS",
+    "DEFAULT_REPLAY_LIMIT",
     "DEFAULT_RETRY_DELAY_MS",
     "EXPIRED_REASON",
     "RETRY_SUFFIX",
@@ -472,5 +522,6 @@ __all__: list[str] = [
     "RetryTopology",
     "delivery_attempt",
     "make_dead_letter_middleware",
+    "replay_headers",
     "retry_queues",
 ]
