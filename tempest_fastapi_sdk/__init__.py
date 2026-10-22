@@ -1221,6 +1221,9 @@ from tempest_fastapi_sdk.exceptions import (
     ConflictException as ConflictException,
 )
 from tempest_fastapi_sdk.exceptions import (
+    EmailDeliveryException as EmailDeliveryException,
+)
+from tempest_fastapi_sdk.exceptions import (
     ExpiredSignedURLException as ExpiredSignedURLException,
 )
 from tempest_fastapi_sdk.exceptions import (
@@ -2390,6 +2393,7 @@ __all__: list[str] = [
     "EmailChangeRequestSchema",
     "EmailChangeResponseSchema",
     "EmailChangeToken",
+    "EmailDeliveryException",
     "EmailLinkForbiddenException",
     "EmailRecoveryRequestSchema",
     "EmailSettings",

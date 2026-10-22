@@ -15,6 +15,7 @@ from typing import Any, ClassVar
 import pytest
 from typer.testing import CliRunner
 
+from tempest_fastapi_sdk import EmailDeliveryException
 from tempest_fastapi_sdk.cli.main import app
 
 runner = CliRunner()
@@ -162,6 +163,26 @@ class TestEmailTest:
         assert result.exit_code == 1
         assert "SMTP_USE_TLS" in result.stderr
         assert "SMTP_USE_SSL" in result.stderr
+
+    def test_refusal_shows_the_smtp_cause_not_the_503(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        forget_project: None,
+        mailer: type[_FakeMailer],
+    ) -> None:
+        """``send`` raises ``EmailDeliveryException``; the reply is its cause."""
+        _write_project(tmp_path, _EMAIL_SETTINGS)
+        monkeypatch.chdir(tmp_path)
+        failure = EmailDeliveryException()
+        failure.__cause__ = ConnectionError(
+            "[SSL: WRONG_VERSION_NUMBER] wrong version number"
+        )
+        mailer.failure = failure
+
+        result = runner.invoke(app, ["email", "test", "--to", "ana@example.com"])
+        assert result.exit_code == 1
+        assert "ConnectionError: [SSL: WRONG_VERSION_NUMBER]" in result.stderr
 
     def test_project_without_email_settings_exits_two(
         self,

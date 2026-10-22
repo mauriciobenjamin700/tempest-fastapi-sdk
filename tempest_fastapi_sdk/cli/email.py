@@ -16,6 +16,7 @@ from typing import Any
 import typer
 
 from tempest_fastapi_sdk.cli.project import load_project_settings
+from tempest_fastapi_sdk.exceptions.integration import EmailDeliveryException
 
 email_app: typer.Typer = typer.Typer(
     name="email",
@@ -64,7 +65,10 @@ def email_test(
         typer.Exit: Exit code 2 when the project composes no
             ``EmailSettings``, ``EMAIL_ENABLED`` is off, or the ``[email]``
             extra is missing; code
-            1 when the server refuses the message, carrying its reply.
+            1 when the server refuses the message, carrying its reply —
+            the ``aiosmtplib`` error chained under the
+            ``EmailDeliveryException`` ``send`` raises, so the TLS
+            mismatch still reads ``[SSL: WRONG_VERSION_NUMBER]``.
     """
     settings = load_project_settings()
     missing = [field for field in _REQUIRED_FIELDS if not hasattr(settings, field)]
@@ -110,9 +114,14 @@ def email_test(
         )
         raise typer.Exit(2) from exc
     except Exception as exc:
+        reason: BaseException = (
+            exc.__cause__
+            if isinstance(exc, EmailDeliveryException) and exc.__cause__ is not None
+            else exc
+        )
         typer.echo(
             f"error: {kwargs['host']}:{kwargs['port']} refused the message — "
-            f"{type(exc).__name__}: {exc}",
+            f"{type(reason).__name__}: {reason}",
             err=True,
         )
         typer.echo(

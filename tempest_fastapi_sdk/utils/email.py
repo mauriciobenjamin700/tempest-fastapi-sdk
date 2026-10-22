@@ -10,14 +10,18 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from email.message import EmailMessage
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NoReturn
 
-from tempest_fastapi_sdk.exceptions.integration import IntegrationDisabledException
+from tempest_fastapi_sdk.exceptions.integration import (
+    EmailDeliveryException,
+    IntegrationDisabledException,
+)
 
 if TYPE_CHECKING:
     import jinja2
@@ -54,6 +58,9 @@ concurrency is what a provider answers with throttling or a closed socket.
 
 _PERMANENT_FLOOR: int = 500
 """SMTP codes at or above this are permanent (``5xx``) refusals."""
+
+_LOGGER: logging.Logger = logging.getLogger(__name__)
+"""Where a transport failure is logged, once, before it is translated."""
 
 
 @dataclass(frozen=True)
@@ -334,8 +341,16 @@ class EmailUtils:
         Raises:
             IntegrationDisabledException: When the mailer was built with
                 ``enabled=False``. Nothing is sent.
-            aiosmtplib.errors.SMTPException: Re-raised on any SMTP
-                error so callers can branch on the specific failure.
+            EmailDeliveryException: When the transport fails — the host
+                does not resolve, the connection is refused or times out,
+                the TLS handshake fails, the login is rejected, or the
+                server refuses the message (``503 EMAIL_UNAVAILABLE``).
+                The original ``aiosmtplib`` / ``OSError`` is chained as
+                ``__cause__``, so the SMTP reply code stays reachable.
+                Logged once at ``ERROR`` first — see :meth:`_raise_delivery_failed`.
+            OSError: When an ``attachments`` path cannot be read. That
+                is the caller's input, not the transport, so it is not
+                translated.
 
         Notes:
             STARTTLS is negotiated **opportunistically**: aiosmtplib upgrades
@@ -366,17 +381,66 @@ class EmailUtils:
         start_tls: bool | None = (
             None if (self.use_starttls and not self.use_tls) else False
         )
-        await _aiosmtplib.send(
-            message,
-            hostname=self.host,
-            port=self.port,
-            username=self._username,
-            password=self._password,
-            use_tls=self.use_tls,
-            start_tls=start_tls,
-            timeout=self._timeout,
-            recipients=recipients + cc_list + bcc_list,
+        try:
+            await _aiosmtplib.send(
+                message,
+                hostname=self.host,
+                port=self.port,
+                username=self._username,
+                password=self._password,
+                use_tls=self.use_tls,
+                start_tls=start_tls,
+                timeout=self._timeout,
+                recipients=recipients + cc_list + bcc_list,
+            )
+        except (_aiosmtplib.SMTPException, OSError) as exc:
+            self._raise_delivery_failed(exc)
+
+    def _raise_delivery_failed(self, exc: BaseException) -> NoReturn:
+        """Log a transport failure once and raise ``EmailDeliveryException``.
+
+        The record names only the SMTP host and port, never a recipient
+        or a credential. A failure the server answered (an
+        ``SMTPResponseException`` or ``SMTPRecipientsRefused``) is logged
+        with its class and reply code but **without** the traceback: the
+        reply text, and the exception's ``args``, can quote the refused
+        address. Every other failure — DNS, refused connection, timeout,
+        TLS handshake — carries ``exc_info``, which is where the
+        diagnosis lives (``[SSL: WRONG_VERSION_NUMBER]`` is implicit TLS
+        against a STARTTLS port).
+
+        The raised exception chains ``exc`` only when it carries no
+        server reply: a refusal is raised ``from None``, so the generic
+        ``AppException`` handler — which logs every 5xx with ``exc_info``
+        — never prints the reply text or the refused address either.
+
+        Args:
+            exc (BaseException): The ``aiosmtplib`` error or ``OSError``
+                the transport raised.
+
+        Raises:
+            EmailDeliveryException: Always — the ``503 EMAIL_UNAVAILABLE``.
+        """
+        assert _aiosmtplib is not None, "guarded by __init__"
+        answered: bool = isinstance(
+            exc, (_aiosmtplib.SMTPResponseException, _aiosmtplib.SMTPRecipientsRefused)
         )
+        _LOGGER.error(
+            "SMTP delivery failed on %s:%s (%s)",
+            self.host,
+            self.port,
+            type(exc).__name__,
+            exc_info=None if answered else exc,
+            extra={
+                "smtp_host": self.host,
+                "smtp_port": self.port,
+                "smtp_error": type(exc).__name__,
+                "smtp_code": getattr(exc, "code", None),
+            },
+        )
+        if answered:
+            raise EmailDeliveryException() from None
+        raise EmailDeliveryException() from exc
 
     async def send_many(
         self,
@@ -444,11 +508,16 @@ class EmailUtils:
         Raises:
             IntegrationDisabledException: When the mailer was built with
                 ``enabled=False``. Nothing is sent.
-            aiosmtplib.errors.SMTPException: Only for a failure of the
-                operation itself — the host does not resolve, the
-                connection is refused, authentication is rejected. A
-                failure that belongs to one recipient is reported, never
-                raised.
+            EmailDeliveryException: Only for a failure of the operation
+                itself — the host does not resolve, the connection is
+                refused or times out, the TLS handshake fails,
+                authentication is rejected, the server drops the
+                connection mid-batch. Same ``503 EMAIL_UNAVAILABLE`` as
+                :meth:`send`, with the ``aiosmtplib`` / ``OSError`` chained
+                as ``__cause__``. A failure that belongs to one recipient
+                is reported, never raised. Batches already delivered when
+                another batch fails are not reported: the raise replaces
+                the report.
             ValueError: When ``batch_size`` or ``max_concurrency`` is not
                 positive, which would otherwise deliver nothing at all.
         """
@@ -513,8 +582,8 @@ class EmailUtils:
             batch.
 
         Raises:
-            aiosmtplib.errors.SMTPException: When the connection or the
-                login fails — that is the operation failing, not one
+            EmailDeliveryException: When the connection, the login or the
+                session fails — that is the operation failing, not one
                 recipient.
         """
         assert _aiosmtplib is not None, "guarded by __init__"
@@ -529,7 +598,10 @@ class EmailUtils:
             start_tls=None if (self.use_starttls and not self.use_tls) else False,
             timeout=self._timeout,
         )
-        await client.connect()
+        try:
+            await client.connect()
+        except (_aiosmtplib.SMTPException, OSError) as exc:
+            self._raise_delivery_failed(exc)
         try:
             if self._username is not None and self._password is not None:
                 await client.login(self._username, self._password)
@@ -569,6 +641,8 @@ class EmailUtils:
                     )
                 else:
                     delivered += 1
+        except (_aiosmtplib.SMTPException, OSError) as exc:
+            self._raise_delivery_failed(exc)
         finally:
             with contextlib.suppress(Exception):
                 await client.quit()

@@ -25,6 +25,24 @@ mailer = EmailUtils(**settings.email_kwargs())
 `SMTP_USE_TLS` (STARTTLS, porta 587) → `use_starttls`; `SMTP_USE_SSL`
 (TLS desde o início, porta 465) → `use_tls`.
 
+### `SMTP_USE_TLS` ou `SMTP_USE_SSL`: quem manda é a porta
+
+Os dois nomes confundem, e trocar um pelo outro quebra **todo** envio. A
+porta decide:
+
+| `SMTP_PORT` | Modo | `SMTP_USE_TLS` | `SMTP_USE_SSL` |
+| --- | --- | --- | --- |
+| `587` | STARTTLS: conecta em texto e faz upgrade | `true` | `false` |
+| `465` | TLS implícito (SMTPS): cifrado desde o primeiro byte | `false` | `true` |
+
+`SMTP_USE_SSL=true` na `587` é o erro clássico: o cliente abre o handshake
+TLS, o servidor responde o banner `220` em texto, e o envio falha com
+`[SSL: WRONG_VERSION_NUMBER]`. Com `ENV=production` e o e-mail ligado, o
+guard **recusa o boot** nas três combinações que não funcionam:
+`SMTP_USE_SSL` e `SMTP_USE_TLS` os dois `true`, `SMTP_USE_SSL=true` na
+`587`, e `SMTP_USE_TLS=true` na `465`. Outras portas (um relay próprio na
+`2525`, por exemplo) não são julgadas.
+
 !!! tip "STARTTLS vs SSL/TLS — oportunístico por padrão"
     Porta **587** → `SMTP_USE_TLS=true` (default): conecta em texto e faz
     upgrade via STARTTLS. Porta **465** → `SMTP_USE_SSL=true`: conecta já
@@ -137,8 +155,24 @@ asyncio.run(main())
 
 Parâmetros opcionais por mensagem: `cc`, `bcc`, `attachments`
 (`Iterable[Path]`), `reply_to` e `from_addr` (sobrescreve o remetente
-padrão). Qualquer erro SMTP é re-levantado como
-`aiosmtplib.errors.SMTPException` para o chamador tratar.
+padrão). Toda falha de transporte — host que não resolve, conexão
+recusada ou que estoura o timeout, handshake TLS quebrado, login negado,
+mensagem recusada pelo servidor — levanta `EmailDeliveryException`
+(`503`, `code="EMAIL_UNAVAILABLE"`). Falha de rede ou de TLS leva o erro
+original do `aiosmtplib` em `__cause__`; recusa respondida pelo servidor
+(login negado, destinatário recusado) sai `from None`, porque a resposta
+pode citar o endereço — e o handler de `AppException` loga todo 5xx com o
+traceback. Antes de levantar, o `EmailUtils` loga uma vez em `ERROR` com
+`smtp_host`, `smtp_port`, `smtp_error` e `smtp_code` (o código SMTP da
+recusa), nunca o destinatário. Erro que é seu — um anexo que não existe, argumento
+inválido — sai com o tipo original.
+
+!!! warning "Quem pegava `aiosmtplib.SMTPException` precisa pegar a nova"
+    `send` não deixa mais escapar erro do `aiosmtplib`. Um
+    `except aiosmtplib.SMTPException` em volta do envio não pega mais
+    nada; troque por `except EmailDeliveryException` (de
+    `tempest_fastapi_sdk`). O código SMTP da recusa fica no log
+    (`smtp_code`), não na exceção.
 
 ## Enviar para muita gente: `send_many`
 
@@ -196,8 +230,10 @@ O que isso faz que o `for user in users: await mailer.send(...)` não faz:
     número que o provedor limita.
 
 !!! warning "Só falha de operação levanta"
-    Host que não resolve, conexão recusada, autenticação negada: isso levanta,
-    porque nada foi enviado. Recusa de **um** destinatário nunca levanta — ela
+    Host que não resolve, conexão recusada, autenticação negada: isso levanta
+    `EmailDeliveryException`, como no `send`, porque a operação falhou. Os
+    lotes que já tinham saído não aparecem em relatório nenhum — a exceção
+    toma o lugar dele. Recusa de **um** destinatário nunca levanta — ela
     é o relatório. `5xx` significa que a caixa não existe (pode podar da sua
     base); `4xx` significa cheia ou greylisted (reenfileire). Recusa sem código
     entra como transitória: o erro barato é tentar de novo, não apagar
@@ -256,15 +292,19 @@ asyncio.run(main())
 
 Serviço que manda um link de reset com um JWT de vida curta. Note que
 `request_reset` retorna em silêncio para um email não cadastrado — evita
-enumeração de contas.
+enumeração de contas. Pelo mesmo motivo ele engole a falha de envio: um
+`503` só para contas que existem diria quais endereços estão cadastrados.
 
 ```python
 # src/services/password_reset.py
+import logging
 from datetime import timedelta
 
-from tempest_fastapi_sdk import EmailUtils, JWTUtils
+from tempest_fastapi_sdk import EmailDeliveryException, EmailUtils, JWTUtils
 
 from src.db.repositories import UserRepository
+
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class PasswordResetService:
@@ -288,20 +328,25 @@ class PasswordResetService:
             ttl=timedelta(minutes=15),
         )
         reset_url: str = f"https://app.example.com/reset-password?token={token}"
-        await self.mailer.send(
-            to=user.email,
-            subject="Redefina sua senha",
-            body=f"Abra para redefinir: {reset_url}",
-            html=f'<p>Clique <a href="{reset_url}">aqui</a> para redefinir.</p>',
-        )
+        try:
+            await self.mailer.send(
+                to=user.email,
+                subject="Redefina sua senha",
+                body=f"Abra para redefinir: {reset_url}",
+                html=f'<p>Clique <a href="{reset_url}">aqui</a> para redefinir.</p>',
+            )
+        except EmailDeliveryException:
+            logger.error("Link de reset não enviado; resposta mantida igual")
 ```
 
 ## E-mail desligado (`EMAIL_ENABLED=false`)
 
 Com `EMAIL_ENABLED=true` e `ENV=production`, o guard recusa o que só pode
 ser desenvolvimento: host `mailpit`/`mailhog`, `localhost` na porta `1025`,
-o `SMTP_HOST` default (`localhost`) sem `SMTP_USERNAME`, e `SMTP_FROM_ADDR`
-default (`noreply@example.com`), vazio ou com domínio reservado. Um relay
+o `SMTP_HOST` default (`localhost`) sem `SMTP_USERNAME`, `SMTP_FROM_ADDR`
+default (`noreply@example.com`), vazio ou com domínio reservado, e o modo
+TLS trocado com a porta (veja
+[quem manda é a porta](#smtp_use_tls-ou-smtp_use_ssl-quem-manda-e-a-porta)). Um relay
 local autenticado passa, e o Gmail (`smtp.gmail.com:587`, STARTTLS, senha
 de app, remetente real) também.
 
@@ -321,3 +366,5 @@ fluxo de auth recusa o cadastro **antes** de criar a conta — veja
 - `body` texto é obrigatório; `html` é a alternativa multipart opcional.
 - `render_template()` (com `template_dir`) gera o HTML a partir de Jinja2.
 - O fluxo bundled de auth já envia ativação/reset com templates sobrescrevíveis.
+- Porta `587` pede `SMTP_USE_TLS=true`; `465` pede `SMTP_USE_SSL=true` — o guard de produção recusa o par trocado.
+- Falha de SMTP levanta `EmailDeliveryException` (`503 EMAIL_UNAVAILABLE`); veja [SMTP fora do ar](auth-flow.md#smtp-fora-do-ar) para o que cada rota de auth responde.

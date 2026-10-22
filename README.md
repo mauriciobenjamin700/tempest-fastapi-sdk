@@ -1474,10 +1474,12 @@ mailer = EmailUtils(
 ```python
 # src/services/password_reset.py
 
+import logging
 from datetime import timedelta
 from uuid import UUID
 
 from tempest_fastapi_sdk import (
+    EmailDeliveryException,
     EmailUtils,
     InvalidTokenException,
     JWTUtils,
@@ -1486,6 +1488,8 @@ from tempest_fastapi_sdk import (
 )
 
 from src.db.repositories import UserRepository
+
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class PasswordResetService:
@@ -1503,7 +1507,10 @@ class PasswordResetService:
         """Send a password-reset link to `email`.
 
         Always returns silently — don't reveal whether the email
-        is registered or not (avoids account enumeration).
+        is registered or not (avoids account enumeration). That
+        includes an SMTP failure: `send` raises
+        `EmailDeliveryException` (503), which only a registered
+        address could trigger, so it is logged, not raised.
         """
         user = await self.repo.get_or_none({"email": email})
         if user is None:
@@ -1513,12 +1520,15 @@ class PasswordResetService:
             ttl=timedelta(minutes=15),
         )
         reset_url = f"https://my-app.com/reset-password?token={token}"
-        await self.mailer.send(
-            to=user.email,
-            subject="Reset your password",
-            body=f"Click here to reset your password: {reset_url}",
-            html=f'<p>Click <a href="{reset_url}">here</a> to reset.</p>',
-        )
+        try:
+            await self.mailer.send(
+                to=user.email,
+                subject="Reset your password",
+                body=f"Click here to reset your password: {reset_url}",
+                html=f'<p>Click <a href="{reset_url}">here</a> to reset.</p>',
+            )
+        except EmailDeliveryException:
+            logger.error("Reset link not sent; answer kept the same")
 
     async def consume_reset(
         self,
@@ -2321,7 +2331,7 @@ Each mixin owns its own env-var prefix — pick only the ones the service needs:
 | `WebPushSettings` | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `WEBPUSH_DEFAULT_TTL_SECONDS` |
 | `StorageSettings` | `STORAGE_ENABLED`, `STORAGE_ENDPOINT`, `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY`, `STORAGE_SECURE`, `STORAGE_REGION`, `STORAGE_DEFAULT_BUCKET`, `STORAGE_PUBLIC_ENDPOINT`, `STORAGE_PUBLIC_SECURE`, `STORAGE_ACCEL_REDIRECT`, `STORAGE_ACCEL_PREFIX` |
 
-**Production guard.** Compose `EnvironmentSettings` and set `ENV=production`: the settings then refuse to build while any composed mixin still holds a development value — SQLite in `DATABASE_URL`, the placeholder `JWT_SECRET`, `"*"` in `CORS_ORIGINS`, an empty `TOKEN_SECRET`, `SERVER_DEBUG` / `SERVER_RELOAD` on, an empty `TASKIQ_BROKER_URL` (the in-memory broker), the `minioadmin` storage keys or `STORAGE_SECURE=false`, a Mailpit/MailHog SMTP host or a placeholder `SMTP_FROM_ADDR` (`noreply@example.com`). Every offending field is listed in one error, by name, never by value. Each mixin declares its own rules in `production_violations()`; override it (calling `super()`) to add a rule of yours or drop one you accepted on purpose. `BaseAppSettings` also sets `hide_input_in_errors=True`, so no validation error echoes the environment. An integration that ships later is switched off instead of faked: `STORAGE_ENABLED`, `EMAIL_ENABLED`, `FIREBASE_ENABLED` or `REVENUECAT_ENABLED` set to `false` skips that mixin's rules, lists it in `settings.disabled_integrations()`, and makes the client built from the same settings (`AsyncMinIOClient(**settings.storage_kwargs())`, `EmailUtils(**settings.email_kwargs())`, `FirebaseAuth(**settings.firebase_kwargs())`) refuse every call with `IntegrationDisabledException` — `503`, `code="INTEGRATION_DISABLED"`.
+**Production guard.** Compose `EnvironmentSettings` and set `ENV=production`: the settings then refuse to build while any composed mixin still holds a development value — SQLite in `DATABASE_URL`, the placeholder `JWT_SECRET`, `"*"` in `CORS_ORIGINS`, an empty `TOKEN_SECRET`, `SERVER_DEBUG` / `SERVER_RELOAD` on, an empty `TASKIQ_BROKER_URL` (the in-memory broker), the `minioadmin` storage keys or `STORAGE_SECURE=false`, a Mailpit/MailHog SMTP host, a placeholder `SMTP_FROM_ADDR` (`noreply@example.com`), or a TLS mode swapped with the port (`SMTP_USE_SSL=true` on `587`, `SMTP_USE_TLS=true` on `465`, or both on). Every offending field is listed in one error, by name, never by value. Each mixin declares its own rules in `production_violations()`; override it (calling `super()`) to add a rule of yours or drop one you accepted on purpose. `BaseAppSettings` also sets `hide_input_in_errors=True`, so no validation error echoes the environment. An integration that ships later is switched off instead of faked: `STORAGE_ENABLED`, `EMAIL_ENABLED`, `FIREBASE_ENABLED` or `REVENUECAT_ENABLED` set to `false` skips that mixin's rules, lists it in `settings.disabled_integrations()`, and makes the client built from the same settings (`AsyncMinIOClient(**settings.storage_kwargs())`, `EmailUtils(**settings.email_kwargs())`, `FirebaseAuth(**settings.firebase_kwargs())`) refuse every call with `IntegrationDisabledException` — `503`, `code="INTEGRATION_DISABLED"`.
 
 **`MinIOSettings` → `StorageSettings`.** The storage mixin speaks to any S3-compatible target, so its variables are now `STORAGE_*`. The old `MINIO_*` names keep working — each field reads `STORAGE_X` first and falls back to `MINIO_X` — and setting both names of a pair to different values refuses to boot instead of silently picking one. `MinIOSettings` stays importable as a deprecated subclass (it emits `DeprecationWarning` and keeps the `settings.MINIO_*` attributes); `minio_kwargs()` returns the same dict as the new `storage_kwargs()`.
 

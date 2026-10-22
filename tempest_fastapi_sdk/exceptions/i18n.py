@@ -575,6 +575,9 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "INTEGRATION_DISABLED": (
             "A integração {integration} está desligada neste ambiente"
         ),
+        "EMAIL_UNAVAILABLE": (
+            "Não foi possível falar com o servidor de e-mail; tente de novo mais tarde"
+        ),
         "VOICE_CONSENT_REQUIRED": ("O cadastro de voz exige consentimento gravado"),
     },
     "en-US": {
@@ -688,6 +691,9 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "MFA_REQUIRED": "This operation requires a session that passed MFA",
         "INTEGRATION_DISABLED": (
             "The {integration} integration is disabled in this environment"
+        ),
+        "EMAIL_UNAVAILABLE": (
+            "The e-mail server could not be reached; try again later"
         ),
         "VOICE_CONSENT_REQUIRED": "Voice enrolment requires recorded consent",
     },

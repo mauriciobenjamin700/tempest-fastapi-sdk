@@ -37,6 +37,7 @@ Since v0.31.0 the SDK ships the full local-account lifecycle — email + passwor
 9. **[Email and page language (i18n)](#email-and-page-language-i18n)** — default language, per-user preference and your own translation.
 10. **[Five operating modes](#five-operating-modes)** — production, dev with local SMTP (Mailhog / smtp4dev), dev without SMTP, CI without activation, and **backend-only** (links and pages served directly by the backend).
     - **[Email disabled](#email-disabled)** — `EMAIL_ENABLED=false` in a phased deploy: the routes that would mail a link answer `503` before writing.
+    - **[SMTP server down](#smtp-server-down)** — e-mail configured and failing: `503 EMAIL_UNAVAILABLE` writing nothing, and `202` where the answer must not reveal the account.
 11. **[Token delivery](#token-delivery)** — bearer, cookie or both.
 12. **[Mailhog vs smtp4dev — which to pick for local dev](#mailhog-vs-smtp4dev)** — comparison + copy-paste docker-compose snippets.
 13. **[Customizing email templates](#customizing-templates)** — override `activation.html` and `password_reset.html` + variables exposed to the Jinja2 context.
@@ -2294,6 +2295,140 @@ logout and MFA are unaffected.
     is raised before the account is looked up, so a known and an unknown
     address get the same answer — the switch never becomes an enumeration
     oracle.
+
+## SMTP server down
+
+`EMAIL_ENABLED=false` is choosing to run without e-mail. The opposite case
+is e-mail that is **configured and failing**: the host does not resolve,
+the connection is refused, the TLS handshake breaks (`SMTP_USE_SSL=true`
+on port `587` answers `[SSL: WRONG_VERSION_NUMBER]` on every send), the
+login is rejected. Before, that surfaced as an `aiosmtplib` error and the
+route answered a bare `500`, with the traceback logged as an unhandled
+exception.
+
+Now `EmailUtils.send` turns every transport failure into
+`EmailDeliveryException` — `503`, `code="EMAIL_UNAVAILABLE"`, no
+`details` — and each auth flow decides what to do with it:
+
+```python
+import asyncio
+
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    AuthSettings,
+    BaseUserModel,
+    EmailSettings,
+    EmailUtils,
+    JWTSettings,
+    UserAuthService,
+    make_auth_router,
+    make_user_token_model,
+    register_exception_handlers,
+)
+
+
+class Settings(EmailSettings, JWTSettings, AuthSettings):
+    """Settings with an SMTP server that does not answer."""
+
+
+class UserModel(BaseUserModel):
+    """The accounts table."""
+
+    __tablename__ = "users"
+
+
+UserTokenModel = make_user_token_model(user_table="users")
+
+settings: Settings = Settings(
+    SMTP_HOST="127.0.0.1",
+    SMTP_PORT=2525,
+    SMTP_TIMEOUT_SECONDS=5.0,
+    AUTH_AUTO_ACTIVATE=False,
+    JWT_SECRET="replace-with-a-real-long-secret-0123456789",
+)
+db: AsyncDatabaseManager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+auth_service: UserAuthService = UserAuthService(
+    db=db,
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+    email=EmailUtils(**settings.email_kwargs()),
+)
+
+app: FastAPI = FastAPI()
+register_exception_handlers(app)
+app.include_router(make_auth_router(auth_service, session_factory=db.session_dependency))
+
+
+async def main() -> None:
+    """Try a signup with the SMTP server down."""
+    await db.connect()
+    await db.create_tables()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/auth/signup",
+            json={"email": "ana@acme.com.br", "password": "strong-pass-123"},
+        )
+    print(response.status_code, response.json())
+    await db.disconnect()
+
+
+asyncio.run(main())
+```
+
+```text
+503 {'detail': 'The e-mail server could not be reached; try again later', 'code': 'EMAIL_UNAVAILABLE', 'details': {}}
+```
+
+No row was written: the flush of the account and its token never reached
+the commit, and the request session discarded both. The same address can
+sign up again once the server is back.
+
+### What each route answers
+
+| Route | With SMTP failing | What is stored |
+| --- | --- | --- |
+| `/signup` | `503 EMAIL_UNAVAILABLE` | nothing: no account, no token |
+| `/email-change/request` | `503 EMAIL_UNAVAILABLE` | nothing; an earlier pending link keeps working |
+| `/email-change/confirm` (with `AUTH_EMAIL_CHANGE_NOTIFY_OLD=true`) | `503 EMAIL_UNAVAILABLE` | nothing: the address does not change and the same link confirms later |
+| `/email-verify/request` | `503 EMAIL_UNAVAILABLE` | nothing |
+| `/email-recovery/request` (password and MFA correct) | `503 EMAIL_UNAVAILABLE` | nothing |
+| `/activation/request` | `202`, the same answer as an unknown address | nothing; the earlier link keeps working |
+| `/password-reset/request` | `202`, the same answer as an unknown address | nothing; the earlier link keeps working |
+
+The rule is what the response already reveals. Signup already answers
+`409` for an address in use; e-mail change and verification require a
+login; e-mail recovery reaches the send only after the password (and MFA)
+matched — the same point where a taken `new_email` answers `409`. On
+those routes the `503` tells the caller nothing new.
+
+!!! warning "Reset and activation re-send keep answering `202`"
+    These two routes answer the same for a registered and an unknown
+    address, on purpose. If the send failure became a `503`, it would show
+    up only for accounts that exist — and the route would become an
+    enumeration oracle. So the failure is **logged at `ERROR`** (without
+    the address) and the answer stays `202`. The token is stored only
+    **after** the mail went out, so the failure writes nothing and the
+    earlier pending link is not invalidated.
+
+!!! info "What reaches the log"
+    `EmailUtils` logs once, at `ERROR`, with `smtp_host` and `smtp_port`
+    — never the recipient nor the credential. A network or TLS failure
+    carries the traceback (that is where the diagnosis lives); a refusal
+    the server answered (a `550` for one recipient, say) does not,
+    because the reply text can quote the address. For the same reason,
+    only a network or TLS failure is chained as `__cause__`; a refusal is
+    raised `from None`, so the handler that logs every 5xx has nothing to
+    print.
+
+When you call `UserAuthService` outside `make_auth_router`, the rule is
+the one for any error after a flush: roll the session back before reusing
+it. The router does that on its own, because it never reaches the commit.
 
 ## Token delivery
 
