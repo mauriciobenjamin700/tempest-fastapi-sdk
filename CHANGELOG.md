@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `parse_client_ip` (e com ele `get_client_ip` / `get_client_ip_from_scope`)
+  rende o IPv6 mapeado de IPv4 como `::ffff:1.2.3.4` em todo Python. No 3.12 o
+  `str()` do `ipaddress` dava `::ffff:102:304`, e réplicas em versões
+  diferentes contavam o mesmo cliente em dois buckets de rate limit (#593).
+
 ## [0.322.0] — 2026-10-21
 
 ### Added
