@@ -24,8 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transporte (DNS, conexão recusada ou com timeout, handshake TLS, login
   negado, mensagem recusada) em vez de deixar escapar o erro do
   `aiosmtplib` — **quem pega `aiosmtplib.SMTPException` em volta do envio
-  precisa pegar `EmailDeliveryException`**; o erro original fica em
-  `__cause__`. Antes de levantar, loga uma vez em `ERROR` com `smtp_host` e
+  precisa pegar `EmailDeliveryException`**; falha de rede ou TLS encadeia o
+  erro original em `__cause__`, e recusa respondida pelo servidor sai
+  `from None` (a resposta pode citar o endereço, e o handler de
+  `AppException` loga todo 5xx com traceback). Antes de levantar, loga uma vez em `ERROR` com `smtp_host` e
   `smtp_port` (nunca destinatário nem credencial; recusa respondida pelo
   servidor vai sem traceback, porque a resposta pode citar o endereço).
   Erro do chamador (anexo que não existe, `ValueError`) segue com o tipo

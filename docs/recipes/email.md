@@ -158,18 +158,21 @@ Parâmetros opcionais por mensagem: `cc`, `bcc`, `attachments`
 padrão). Toda falha de transporte — host que não resolve, conexão
 recusada ou que estoura o timeout, handshake TLS quebrado, login negado,
 mensagem recusada pelo servidor — levanta `EmailDeliveryException`
-(`503`, `code="EMAIL_UNAVAILABLE"`), com o erro original do `aiosmtplib`
-encadeado em `__cause__` (o código SMTP continua lá). Antes de levantar, o
-`EmailUtils` loga uma vez em `ERROR` com `smtp_host` e `smtp_port`, nunca
-o destinatário. Erro que é seu — um anexo que não existe, argumento
+(`503`, `code="EMAIL_UNAVAILABLE"`). Falha de rede ou de TLS leva o erro
+original do `aiosmtplib` em `__cause__`; recusa respondida pelo servidor
+(login negado, destinatário recusado) sai `from None`, porque a resposta
+pode citar o endereço — e o handler de `AppException` loga todo 5xx com o
+traceback. Antes de levantar, o `EmailUtils` loga uma vez em `ERROR` com
+`smtp_host`, `smtp_port`, `smtp_error` e `smtp_code` (o código SMTP da
+recusa), nunca o destinatário. Erro que é seu — um anexo que não existe, argumento
 inválido — sai com o tipo original.
 
 !!! warning "Quem pegava `aiosmtplib.SMTPException` precisa pegar a nova"
     `send` não deixa mais escapar erro do `aiosmtplib`. Um
     `except aiosmtplib.SMTPException` em volta do envio não pega mais
     nada; troque por `except EmailDeliveryException` (de
-    `tempest_fastapi_sdk`) e, se precisar do código SMTP, leia
-    `exc.__cause__`.
+    `tempest_fastapi_sdk`). O código SMTP da recusa fica no log
+    (`smtp_code`), não na exceção.
 
 ## Enviar para muita gente: `send_many`
 

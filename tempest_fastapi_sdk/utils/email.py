@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from email.message import EmailMessage
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from tempest_fastapi_sdk.exceptions.integration import (
     EmailDeliveryException,
@@ -347,7 +347,7 @@ class EmailUtils:
                 server refuses the message (``503 EMAIL_UNAVAILABLE``).
                 The original ``aiosmtplib`` / ``OSError`` is chained as
                 ``__cause__``, so the SMTP reply code stays reachable.
-                Logged once at ``ERROR`` first — see :meth:`_delivery_failed`.
+                Logged once at ``ERROR`` first — see :meth:`_raise_delivery_failed`.
             OSError: When an ``attachments`` path cannot be read. That
                 is the caller's input, not the transport, so it is not
                 translated.
@@ -394,10 +394,10 @@ class EmailUtils:
                 recipients=recipients + cc_list + bcc_list,
             )
         except (_aiosmtplib.SMTPException, OSError) as exc:
-            raise self._delivery_failed(exc) from exc
+            self._raise_delivery_failed(exc)
 
-    def _delivery_failed(self, exc: BaseException) -> EmailDeliveryException:
-        """Log a transport failure once and build the exception to raise.
+    def _raise_delivery_failed(self, exc: BaseException) -> NoReturn:
+        """Log a transport failure once and raise ``EmailDeliveryException``.
 
         The record names only the SMTP host and port, never a recipient
         or a credential. A failure the server answered (an
@@ -409,13 +409,17 @@ class EmailUtils:
         diagnosis lives (``[SSL: WRONG_VERSION_NUMBER]`` is implicit TLS
         against a STARTTLS port).
 
+        The raised exception chains ``exc`` only when it carries no
+        server reply: a refusal is raised ``from None``, so the generic
+        ``AppException`` handler — which logs every 5xx with ``exc_info``
+        — never prints the reply text or the refused address either.
+
         Args:
             exc (BaseException): The ``aiosmtplib`` error or ``OSError``
                 the transport raised.
 
-        Returns:
-            EmailDeliveryException: The ``503 EMAIL_UNAVAILABLE`` the caller
-            raises, chaining ``exc``.
+        Raises:
+            EmailDeliveryException: Always — the ``503 EMAIL_UNAVAILABLE``.
         """
         assert _aiosmtplib is not None, "guarded by __init__"
         answered: bool = isinstance(
@@ -434,7 +438,9 @@ class EmailUtils:
                 "smtp_code": getattr(exc, "code", None),
             },
         )
-        return EmailDeliveryException()
+        if answered:
+            raise EmailDeliveryException() from None
+        raise EmailDeliveryException() from exc
 
     async def send_many(
         self,
@@ -595,7 +601,7 @@ class EmailUtils:
         try:
             await client.connect()
         except (_aiosmtplib.SMTPException, OSError) as exc:
-            raise self._delivery_failed(exc) from exc
+            self._raise_delivery_failed(exc)
         try:
             if self._username is not None and self._password is not None:
                 await client.login(self._username, self._password)
@@ -636,7 +642,7 @@ class EmailUtils:
                 else:
                     delivered += 1
         except (_aiosmtplib.SMTPException, OSError) as exc:
-            raise self._delivery_failed(exc) from exc
+            self._raise_delivery_failed(exc)
         finally:
             with contextlib.suppress(Exception):
                 await client.quit()

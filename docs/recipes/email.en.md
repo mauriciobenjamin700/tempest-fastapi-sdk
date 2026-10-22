@@ -159,18 +159,21 @@ Optional per-message parameters: `cc`, `bcc`, `attachments`
 sender). Every transport failure — a host that does not resolve, a
 connection refused or timed out, a broken TLS handshake, a rejected login,
 a message the server refuses — raises `EmailDeliveryException` (`503`,
-`code="EMAIL_UNAVAILABLE"`), with the original `aiosmtplib` error chained
-as `__cause__` (the SMTP code is still there). Before raising,
-`EmailUtils` logs once at `ERROR` with `smtp_host` and `smtp_port`, never
-the recipient. An error that is yours — a missing attachment, a bad
+`code="EMAIL_UNAVAILABLE"`). A network or TLS failure chains the original
+`aiosmtplib` error as `__cause__`; a refusal the server answered (rejected
+login, refused recipient) is raised `from None`, because the reply can
+quote the address — and the `AppException` handler logs every 5xx with
+its traceback. Before raising, `EmailUtils` logs once at `ERROR` with
+`smtp_host`, `smtp_port`, `smtp_error` and `smtp_code` (the refusal's SMTP
+code), never the recipient. An error that is yours — a missing attachment, a bad
 argument — keeps its own type.
 
 !!! warning "Code catching `aiosmtplib.SMTPException` must catch the new one"
     `send` no longer lets an `aiosmtplib` error escape. An
     `except aiosmtplib.SMTPException` around the send catches nothing
     now; switch to `except EmailDeliveryException` (from
-    `tempest_fastapi_sdk`) and read `exc.__cause__` when you need the SMTP
-    code.
+    `tempest_fastapi_sdk`). A refusal's SMTP code is in the log
+    (`smtp_code`), not on the exception.
 
 ## Sending to many: `send_many`
 

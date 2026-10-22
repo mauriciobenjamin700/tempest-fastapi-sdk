@@ -2421,8 +2421,10 @@ those routes the `503` tells the caller nothing new.
     — never the recipient nor the credential. A network or TLS failure
     carries the traceback (that is where the diagnosis lives); a refusal
     the server answered (a `550` for one recipient, say) does not,
-    because the reply text can quote the address. The original error is
-    chained as `__cause__`.
+    because the reply text can quote the address. For the same reason,
+    only a network or TLS failure is chained as `__cause__`; a refusal is
+    raised `from None`, so the handler that logs every 5xx has nothing to
+    print.
 
 When you call `UserAuthService` outside `make_auth_router`, the rule is
 the one for any error after a flush: roll the session back before reusing

@@ -2392,8 +2392,10 @@ Nessas rotas o `503` não conta nada que o chamador não soubesse.
     `smtp_port` — nunca o destinatário nem a credencial. Falha de rede ou
     de TLS leva o traceback (é ali que mora o diagnóstico); recusa
     respondida pelo servidor (`550` para um destinatário, por exemplo)
-    não leva, porque o texto da resposta pode citar o endereço. A causa
-    original fica encadeada em `__cause__`.
+    não leva, porque o texto da resposta pode citar o endereço. Pelo
+    mesmo motivo, só a falha de rede ou de TLS fica encadeada em
+    `__cause__`; a recusa sai `from None`, e o handler que loga todo 5xx
+    não tem o que imprimir.
 
 Ao chamar o `UserAuthService` fora do `make_auth_router`, a regra é a de
 qualquer erro depois de um `flush`: faça `rollback` da sessão antes de

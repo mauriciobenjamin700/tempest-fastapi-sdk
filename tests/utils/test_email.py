@@ -1,6 +1,7 @@
 """Tests for tempest_fastapi_sdk.utils.email.EmailUtils."""
 
 import logging
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -470,7 +471,12 @@ class TestTransportFailure:
     async def test_refused_recipient_is_logged_without_the_address(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """A server reply can quote the address, so it carries no traceback."""
+        """A server reply can quote the address: no traceback, no chained cause.
+
+        The exception is raised ``from None``, so the ``AppException``
+        handler that logs every 5xx with ``exc_info`` cannot print the
+        reply either.
+        """
         server = TinySMTP(refuse={"dead@acme.com": (550, "No such user here")})
         port = await server.start()
         mailer = EmailUtils(
@@ -483,7 +489,11 @@ class TestTransportFailure:
         finally:
             await server.stop()
 
-        assert isinstance(caught.value.__cause__, aiosmtplib.SMTPRecipientsRefused)
+        assert caught.value.__cause__ is None
+        assert caught.value.__suppress_context__ is True
+        rendered = "".join(traceback.format_exception(caught.value))
+        assert "SMTPRecipientsRefused" not in rendered
+        assert "No such user" not in rendered
         (record,) = caplog.records
         assert record.exc_info is None
         assert "dead@acme.com" not in caplog.text
