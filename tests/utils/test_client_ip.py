@@ -82,6 +82,11 @@ class TestHeaderValueMustBeAnAddress:
         assert self._resolve(" 203.0.113.7 ") == ("203.0.113.7", "203.0.113.7")
         assert self._resolve("2001:0db8:0000::0001") == ("2001:db8::1", "2001:db8::1")
 
+    def test_ipv4_mapped_is_dotted_on_every_python(self) -> None:
+        """Python 3.12 renders it ``::ffff:102:304``; 3.13+ dotted."""
+        assert parse_client_ip("::ffff:102:304") == "::ffff:1.2.3.4"
+        assert parse_client_ip("::FFFF:1.2.3.4%eth0") == "::ffff:1.2.3.4%eth0"
+
     def test_parse_client_ip(self) -> None:
         assert parse_client_ip("::FFFF:1.2.3.4") == "::ffff:1.2.3.4"
         assert parse_client_ip("10.0.0.1") == "10.0.0.1"

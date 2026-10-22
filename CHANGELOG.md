@@ -20,13 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DeadLetterSpec.queue`: a fila de dead-letter que o `declare_topology()`
   declara e liga ao exchange pela `routing_key` (obrigatória junto).
 - `MessageBroker.publish(..., exchange=...)` tipado: com `ExchangeSpec`, o
-  exchange é declarado na primeira publicação do processo; com nome solto,
+  exchange é declarado na primeira publicação da conexão; com nome solto,
   passa sem declarar. O canal vira a routing key.
 - `MessageBroker.replay_dead_letters(source, *, into=None, limit=1000)`:
   devolve mensagens da DLQ (de um `QueueSpec`, da `.dead` de uma
   `RetryTopology` ou de um nome com `into=`) direto para a fila de origem,
   com `ack` só depois do publish, preservando corpo, `message_id`,
-  `content_type`, `correlation_id` e headers, sem os headers `x-death` /
+  `content_type`, `content_encoding`, `correlation_id`, `priority`,
+  `timestamp`, `type`, `reply_to` e headers, sem os headers `x-death` /
   `x-first-death-*` / `x-last-death-*`. Confere a fila de origem antes de
   ler.
 
@@ -40,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recusada pelo broker (`PRECONDITION_FAILED` numa fila que existe com outros
   argumentos) agora falha o `connect()` antes de qualquer consumidor subir, e
   a conexão aberta para ela é fechada.
+- `parse_client_ip` (e com ele `get_client_ip` / `get_client_ip_from_scope`)
+  rende o IPv6 mapeado de IPv4 como `::ffff:1.2.3.4` em todo Python. No 3.12 o
+  `str()` do `ipaddress` dava `::ffff:102:304`, e réplicas em versões
+  diferentes contavam o mesmo cliente em dois buckets de rate limit (#593).
 
 ## [0.322.0] — 2026-10-21
 
