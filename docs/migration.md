@@ -2,6 +2,23 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.323.0 — a topologia de dead-letter sobe antes dos consumidores
+
+No RabbitMQ, o `MessageBroker.connect()` agora abre a conexão, roda o
+`declare_topology()` e só então sobe os consumidores. Antes a declaração vinha
+depois, e uma mensagem rejeitada nesse intervalo se perdia.
+
+### O que fazer
+
+- Fila que já existe no broker com argumentos diferentes dos do `QueueSpec`
+  (uma DLQ criada à mão com outro `x-queue-type` ou com `x-message-ttl`) faz o
+  `connect()` falhar com `PRECONDITION_FAILED - inequivalent arg ...` antes de
+  qualquer consumidor rodar. Alinhe o `QueueSpec` com o que existe, apague a
+  fila, ou passe `declare_topology=False` e cuide da topologia fora.
+- `publish(..., exchange=...)` agora é parâmetro nomeado e o canal vira a
+  routing key: quem passava `routing_key=` junto via `**options` recebe
+  `ValueError` — passe a chave como canal.
+
 ## 0.322.0 — falha de SMTP vira `503 EMAIL_UNAVAILABLE` e o guard confere TLS × porta
 
 `EmailUtils.send` e `send_many` passam a levantar `EmailDeliveryException`

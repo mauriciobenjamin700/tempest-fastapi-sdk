@@ -380,7 +380,7 @@ homework.events --task.completed--> rules.task.completed        --rejection--> h
 
 - **The queue is named `<consumer>.<channel>`** and bound to the exchange under `task.completed`. `@mq.on` hands the exchange to FastStream, which declares it and binds the queue when the consumer starts.
 - **Dead letters are keyed by the queue name**, not by the event key — the event key is the same for every consumer, and a DLQ bound by it would collect everyone's failures. The gamification failure lands in `gamification.task.completed.dlq` only.
-- **`publish(..., exchange=...)`** uses the channel as the routing key (passing a consumer's own `QueueSpec` publishes by the event key, not by the queue name). An `ExchangeSpec` is declared on the first publish and not again in the process — the outbox relay can run before any consumer has declared the exchange. A bare name (`exchange="amq.topic"`) is passed through **undeclared**: the exchange exists already and its type is not ours to assert.
+- **`publish(..., exchange=...)`** uses the channel as the routing key (passing a consumer's own `QueueSpec` publishes by the event key, not by the queue name). An `ExchangeSpec` is declared on the connection's first publish and not again until `disconnect()` — the outbox relay can run before any consumer has declared the exchange. A bare name (`exchange="amq.topic"`) is passed through **undeclared**: the exchange exists already and its type is not ours to assert.
 
 !!! tip "No `dead_letter_exchange`, no dead letter"
     `QueueSpec.consumer("rules", "task.completed", exchange=EVENTS)` builds the queue and the binding only. As with any `QueueSpec` without `dead_letter`, the rejection is discarded.

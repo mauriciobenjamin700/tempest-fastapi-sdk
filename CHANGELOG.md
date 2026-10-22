@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.323.0] — 2026-10-22
+
 ### Added
 
 - `QueueSpec.consumer(consumer, channel, *, exchange, dead_letter_exchange=None,

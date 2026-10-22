@@ -3625,7 +3625,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `DeadLetterSpec.queue` (`<fila>.dlq`). `declare_topology()` declara e liga a
   DLQ, e o `connect()` roda isso **antes** do `start()`.
   `MessageBroker.publish(..., exchange=ExchangeSpec | str)` tipado, declarando
-  o `ExchangeSpec` uma vez por processo. `replay_dead_letters(spec |
+  o `ExchangeSpec` uma vez por conexão. `replay_dead_letters(spec |
   RetryTopology | nome, into=, limit=)` devolve à fila de origem pelo exchange
   padrão, `ack` depois do publish, sem os headers de morte. Receita:
   `docs/recipes/queue-tasks.md` ("Fan-out" e "Reprocessar a dead-letter

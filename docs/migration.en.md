@@ -2,6 +2,24 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.323.0 — the dead-letter topology comes up before the consumers
+
+On RabbitMQ, `MessageBroker.connect()` now opens the connection, runs
+`declare_topology()` and only then starts the consumers. The declaration used
+to come after, and a message rejected in that window was lost.
+
+### What to do
+
+- A queue that already exists on the broker with arguments other than the
+  `QueueSpec`'s (a DLQ created by hand with another `x-queue-type` or with
+  `x-message-ttl`) makes `connect()` fail with `PRECONDITION_FAILED -
+  inequivalent arg ...` before any consumer runs. Align the `QueueSpec` with
+  what exists, delete the queue, or pass `declare_topology=False` and manage
+  the topology outside.
+- `publish(..., exchange=...)` is now a named parameter and the channel becomes
+  the routing key: passing `routing_key=` alongside through `**options` raises
+  `ValueError` — pass the key as the channel.
+
 ## 0.322.0 — SMTP failure becomes `503 EMAIL_UNAVAILABLE` and the guard checks TLS × port
 
 `EmailUtils.send` and `send_many` now raise `EmailDeliveryException`

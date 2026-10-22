@@ -379,7 +379,7 @@ homework.events --task.completed--> rules.task.completed        --rejeição--> 
 
 - **A fila se chama `<consumidor>.<canal>`** e é ligada ao exchange pela chave `task.completed`. O `@mq.on` entrega o exchange ao FastStream, que o declara e faz o binding quando o consumidor sobe.
 - **A dead-letter é chaveada pelo nome da fila**, não pela chave do evento — a chave do evento é a mesma para todos os consumidores, e uma DLQ ligada por ela juntaria as falhas de todos. A falha da gamificação cai só em `gamification.task.completed.dlq`.
-- **`publish(..., exchange=...)`** usa o canal como routing key (passar o próprio `QueueSpec` do consumidor publica pela chave do evento, não pelo nome da fila). Um `ExchangeSpec` é declarado na primeira publicação e não de novo no processo — o relay do outbox pode rodar antes de qualquer consumidor ter declarado o exchange. Um nome solto (`exchange="amq.topic"`) passa **sem** declarar: o exchange já existe e o tipo dele não é nosso para afirmar.
+- **`publish(..., exchange=...)`** usa o canal como routing key (passar o próprio `QueueSpec` do consumidor publica pela chave do evento, não pelo nome da fila). Um `ExchangeSpec` é declarado na primeira publicação da conexão e não de novo até o `disconnect()` — o relay do outbox pode rodar antes de qualquer consumidor ter declarado o exchange. Um nome solto (`exchange="amq.topic"`) passa **sem** declarar: o exchange já existe e o tipo dele não é nosso para afirmar.
 
 !!! tip "Sem `dead_letter_exchange`, sem dead-letter"
     `QueueSpec.consumer("rules", "task.completed", exchange=EVENTS)` monta só a fila e o binding. Como em qualquer `QueueSpec` sem `dead_letter`, a rejeição é descartada.
