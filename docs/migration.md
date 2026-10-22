@@ -2,6 +2,29 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.322.0 — falha de SMTP vira `503 EMAIL_UNAVAILABLE` e o guard confere TLS × porta
+
+`EmailUtils.send` e `send_many` passam a levantar `EmailDeliveryException`
+(`503`, `code="EMAIL_UNAVAILABLE"`) em toda falha de transporte, no lugar do
+erro do `aiosmtplib`. Com `ENV=production` e o e-mail ligado, o
+`EmailSettings` recusa o modo TLS trocado com a porta.
+
+### O que fazer
+
+- Código que pegava `aiosmtplib.SMTPException` (ou `OSError`) em volta do
+  envio: pegue `EmailDeliveryException` (exportada no topo do pacote). Falha
+  de rede ou TLS traz o erro original em `__cause__`; recusa respondida pelo
+  servidor sai `from None`.
+- Confira `SMTP_PORT`, `SMTP_USE_TLS` e `SMTP_USE_SSL` antes de subir em
+  produção: `587` pede `SMTP_USE_TLS=true` e `SMTP_USE_SSL=false`; `465`
+  pede `SMTP_USE_SSL=true` e `SMTP_USE_TLS=false`. Os dois ligados também
+  derrubam o boot.
+- Cliente do `make_auth_router`: `/signup`, `/email-change/*`,
+  `/email-verify/request` e `/email-recovery/request` podem responder
+  `503 EMAIL_UNAVAILABLE` (nada gravado; pode tentar de novo).
+  `/activation/request` e `/password-reset/request` seguem no `202` de
+  sempre.
+
 ## 0.321.0 — `SubjectStorageClient` ganha três métodos
 
 O protocolo `SubjectStorageClient` (o tipo do `client` do

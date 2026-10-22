@@ -2,6 +2,29 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.322.0 — SMTP failure becomes `503 EMAIL_UNAVAILABLE` and the guard checks TLS × port
+
+`EmailUtils.send` and `send_many` now raise `EmailDeliveryException`
+(`503`, `code="EMAIL_UNAVAILABLE"`) on every transport failure instead of the
+`aiosmtplib` error. With `ENV=production` and e-mail enabled,
+`EmailSettings` refuses a TLS mode that does not match the port.
+
+### What to do
+
+- Code that caught `aiosmtplib.SMTPException` (or `OSError`) around a send:
+  catch `EmailDeliveryException` (exported at the package top level). A
+  network or TLS failure carries the original error in `__cause__`; a refusal
+  answered by the server is raised `from None`.
+- Check `SMTP_PORT`, `SMTP_USE_TLS` and `SMTP_USE_SSL` before deploying to
+  production: `587` needs `SMTP_USE_TLS=true` and `SMTP_USE_SSL=false`;
+  `465` needs `SMTP_USE_SSL=true` and `SMTP_USE_TLS=false`. Both enabled
+  also fails the boot.
+- `make_auth_router` clients: `/signup`, `/email-change/*`,
+  `/email-verify/request` and `/email-recovery/request` may answer
+  `503 EMAIL_UNAVAILABLE` (nothing stored; safe to retry).
+  `/activation/request` and `/password-reset/request` keep their usual
+  `202`.
+
 ## 0.321.0 — `SubjectStorageClient` gains three methods
 
 The `SubjectStorageClient` protocol (the type of `SubjectObjectStorage.client`)
