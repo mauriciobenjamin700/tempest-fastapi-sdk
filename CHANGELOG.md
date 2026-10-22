@@ -52,6 +52,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `str()` do `ipaddress` dava `::ffff:102:304`, e réplicas em versões
   diferentes contavam o mesmo cliente em dois buckets de rate limit (#593).
 
+### Security
+
+- `uv.lock` sobe os pacotes `opentelemetry-*` para 1.45.1 / 0.66b1, fora da
+  `opentelemetry-api` 1.44.0 (CVE-2026-114603, apontada pelo `make audit`).
+  Os pisos do extra `[otel]` não mudam (`>=1.44.0`); quem resolve o extra hoje
+  já recebe a versão corrigida, e quem fixa o lock próprio deve subir a
+  `opentelemetry-api` para `>=1.45.1`.
+
 ## [0.322.0] — 2026-10-21
 
 ### Added
