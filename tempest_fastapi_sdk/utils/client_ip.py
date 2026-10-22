@@ -39,8 +39,18 @@ from starlette.types import Scope
 _UNKNOWN: str = "unknown"
 
 
+IPV4_MAPPED_PREFIX: str = "::ffff:"
+"""Prefix of an IPv4-mapped IPv6 address in its canonical text form."""
+
+
 def parse_client_ip(value: str) -> str | None:
     """Return ``value`` as a canonical IP address, or ``None``.
+
+    An IPv4-mapped IPv6 address is rendered with the IPv4 part dotted
+    (``::ffff:1.2.3.4``) on every Python version. ``str()`` of the
+    address does that only from Python 3.13 on; 3.12 renders the same
+    address as ``::ffff:102:304``, so two replicas on different Pythons
+    keyed one client under two rate-limit buckets.
 
     Args:
         value (str): A header value claimed to be one client address.
@@ -51,9 +61,13 @@ def parse_client_ip(value: str) -> str | None:
         value is not exactly one IPv4 or IPv6 address.
     """
     try:
-        return str(ipaddress.ip_address(value.strip()))
+        address = ipaddress.ip_address(value.strip())
     except ValueError:
         return None
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        scope = f"%{address.scope_id}" if address.scope_id else ""
+        return f"{IPV4_MAPPED_PREFIX}{address.ipv4_mapped}{scope}"
+    return str(address)
 
 
 def get_client_ip(
