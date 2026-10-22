@@ -1656,6 +1656,12 @@ from tempest_fastapi_sdk.utils import (
     DOCX_MEDIA_TYPE as DOCX_MEDIA_TYPE,
 )
 from tempest_fastapi_sdk.utils import (
+    HEIC_BRANDS as HEIC_BRANDS,
+)
+from tempest_fastapi_sdk.utils import (
+    HEIF_STRUCTURAL_BRANDS as HEIF_STRUCTURAL_BRANDS,
+)
+from tempest_fastapi_sdk.utils import (
     HUNDRED as HUNDRED,
 )
 from tempest_fastapi_sdk.utils import (
@@ -1765,6 +1771,9 @@ from tempest_fastapi_sdk.utils import (
 )
 from tempest_fastapi_sdk.utils import (
     HTTPClient as HTTPClient,
+)
+from tempest_fastapi_sdk.utils import (
+    ImageMediaType as ImageMediaType,
 )
 from tempest_fastapi_sdk.utils import (
     InMemoryThrottleBackend as InMemoryThrottleBackend,
@@ -2250,6 +2259,8 @@ __all__: list[str] = [
     "ENUM_CLASS_SUFFIX",
     "ENUM_TYPE_SUFFIX",
     "HEARTBEAT_TIMEOUT_CODE",
+    "HEIC_BRANDS",
+    "HEIF_STRUCTURAL_BRANDS",
     "HTTP_500_MARKER",
     "HUNDRED",
     "IDEMPOTENCY_HEADER",
@@ -2450,6 +2461,7 @@ __all__: list[str] = [
     "HostedGenAISettings",
     "IdempotencyMiddleware",
     "IdempotencyStore",
+    "ImageMediaType",
     "InMemoryThrottleBackend",
     "InboxDrainReport",
     "InheritedErrorCodeWarning",

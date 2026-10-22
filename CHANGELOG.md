@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ImageMediaType` (`tempest_fastapi_sdk.utils.media_types`, também no
+  topo): enum dos tipos de imagem que o `sniff_mime` reconhece (`JPEG`,
+  `PNG`, `GIF`, `BMP`, `WEBP`, `HEIC`). Como tipo de campo Pydantic aceita
+  a entrada sem diferenciar maiúsculas, com espaço em volta, e os aliases
+  `image/jpg`, `image/pjpeg` e `image/x-png`; valor desconhecido é o `422`
+  normal (`enum`), e o JSON Schema lista os valores canônicos. `.extension`
+  dá a extensão do arquivo e `.matches(data)` confere os bytes contra o tipo
+  declarado pelo `sniff_mime`.
+- `HEIC_BRANDS` e `HEIF_STRUCTURAL_BRANDS` (`tempest_fastapi_sdk.utils.upload`,
+  também no topo): as marcas `ftyp` de HEIC portadas do
+  `heif_get_file_mime_type` do libheif.
+
+### Changed
+
+- `sniff_mime` reconhece HEIC (`image/heic`): `ftyp` em `prefix[4:8]` e marca
+  principal em `HEIC_BRANDS`, ou `mif1`/`msf1` com uma marca compatível em
+  `HEIC_BRANDS`. AVIF (`avif`, `avis`, ou `mif1` só com marcas AV1) continua
+  `None`. `SNIFFABLE_MIMETYPES` ganha `image/heic`, então
+  `UploadUtils(verify_magic_bytes=True)` passa a aceitar HEIC declarado como
+  `image/heic`, que antes era recusado (`415`) por assinatura desconhecida.
+
 ## [0.323.0] — 2026-10-22
 
 ### Added

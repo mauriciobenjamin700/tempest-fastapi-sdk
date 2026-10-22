@@ -223,6 +223,120 @@ uploads = UploadUtils(
     when the allow-list was not configured, instead of refusing every upload
     with 415.
 
+## A photo with a declared type — `ImageMediaType`
+
+Sometimes the file does not go through `UploadUtils`: the route reads the
+bytes, pairs them with the type the app declared in a field and stores them
+elsewhere. The check `verify_magic_bytes` would have made is then yours — and
+it tends to be written by hand: a `field_validator` doing `strip().lower()`,
+an allowlist of strings, a type → extension dict and a function comparing
+signatures.
+
+`ImageMediaType` is all of that as a field type. Its members are exactly the
+image types `sniff_mime` recognizes from the bytes: `JPEG`, `PNG`, `GIF`,
+`BMP`, `WEBP` and `HEIC`.
+
+```python
+from pydantic import BaseModel, ValidationError
+
+from tempest_fastapi_sdk import ImageMediaType
+
+
+class EvidencePhotoSchema(BaseModel):
+    """Photo the client is about to upload."""
+
+    content_type: ImageMediaType
+
+
+photo: EvidencePhotoSchema = EvidencePhotoSchema.model_validate(
+    {"content_type": " Image/JPG "},
+)
+print(photo.content_type)
+print(photo.content_type.extension)
+
+try:
+    EvidencePhotoSchema.model_validate({"content_type": "image/avif"})
+except ValidationError as exc:
+    print(exc.errors()[0]["type"])
+```
+
+Output:
+
+```text
+image/jpeg
+jpg
+enum
+```
+
+- Input is matched **case-insensitively** and with surrounding whitespace
+  stripped; the aliases `UploadUtils` already accepts (`image/jpg`,
+  `image/pjpeg` → JPEG, `image/x-png` → PNG) become the canonical member.
+- An unknown value is Pydantic's usual `enum` error — `422` in a route —, and
+  the JSON Schema (hence the `openapi.json`) lists the six canonical values.
+- `.extension` gives the file extension (`"jpg"`, `"png"`, `"gif"`, `"bmp"`,
+  `"webp"`, `"heic"`).
+
+### Checking the bytes against the declared type
+
+The declared type belongs to the client. `.matches(data)` asks `sniff_mime`
+what the bytes **are** and compares it with the member:
+
+```python
+from typing import Annotated
+from uuid import uuid4
+
+from fastapi import FastAPI, Form, UploadFile
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk import (
+    ImageMediaType,
+    InvalidFileTypeException,
+    read_upload_capped,
+    register_exception_handlers,
+)
+
+MAX_PHOTO_BYTES: int = 10 * 1024 * 1024
+
+
+class PhotoResponseSchema(BaseModel):
+    """Where the photo was stored, and as what."""
+
+    key: str
+    content_type: ImageMediaType
+
+
+app = FastAPI()
+register_exception_handlers(app)
+
+
+@app.post("/photos")
+async def upload_photo(
+    content_type: Annotated[ImageMediaType, Form()],
+    file: UploadFile,
+) -> PhotoResponseSchema:
+    """Accept a photo only when its bytes are the type it declares."""
+    data: bytes = await read_upload_capped(file, max_bytes=MAX_PHOTO_BYTES)
+    if not content_type.matches(data):
+        raise InvalidFileTypeException(field="content_type")
+    key: str = f"photos/{uuid4()}.{content_type.extension}"
+    return PhotoResponseSchema(key=key, content_type=content_type)
+```
+
+With a HEIC photo declared as `" Image/HEIC "`, the route answers `200` with
+the key `photos/<uuid>.heic`. The same JPEG declared as `image/jpg` passes; as
+`image/png`, it is refused with `415 INVALID_FILE_TYPE`. `image/avif` never
+reaches the function body: `422` from validation.
+
+!!! info "HEIC from the bytes"
+    A HEIC file is an ISO-BMFF `ftyp` box: `ftyp` at bytes 4 to 8 and the
+    major brand at bytes 8 to 12. `sniff_mime` recognizes the HEVC brands in
+    `HEIC_BRANDS` (`heic`, `heix`, `heim`, `heis`, `hevc`, `hevx`, `hevm`,
+    `hevs`, ported from libheif's `heif_get_file_mime_type`). The neutral
+    brands `mif1`/`msf1` (`HEIF_STRUCTURAL_BRANDS`) count as HEIC only when a
+    compatible brand of the box is HEVC — which is how an AVIF, which uses
+    the same container and often declares `mif1`, does **not** pass as HEIC.
+    Pass at least the first 32 bytes so the compatible brands fit.
+
 ## Switching via settings
 
 Choose the constructor argument from a flag on your `Settings` — no manual
@@ -372,6 +486,9 @@ straight to MinIO via a presigned URL. See
   lets you configure it per environment.
 - A file that is served back: `allowed_extensions` + `verify_magic_bytes=True`
   + `allowed_mimetypes`, so the content matches the type.
+- Bytes that skip `UploadUtils`: `ImageMediaType` as the field type (accepts
+  aliases and any case, `422` for the rest) and `.matches(data)` so the bytes
+  match the declared type — HEIC included.
 - `save()` takes FastAPI's `UploadFile` and returns the **key**; the key is what
   you store in the database, not the path.
 - `replace` covers the swapped avatar without leaving an orphan, and

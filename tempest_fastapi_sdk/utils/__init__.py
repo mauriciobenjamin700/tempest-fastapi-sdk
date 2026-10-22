@@ -185,6 +185,9 @@ from tempest_fastapi_sdk.utils.media_types import (
     XLSX_MEDIA_TYPE as XLSX_MEDIA_TYPE,
 )
 from tempest_fastapi_sdk.utils.media_types import (
+    ImageMediaType as ImageMediaType,
+)
+from tempest_fastapi_sdk.utils.media_types import (
     guess_media_type as guess_media_type,
 )
 from tempest_fastapi_sdk.utils.metrics import (
@@ -427,6 +430,12 @@ from tempest_fastapi_sdk.utils.token_types import (
 )
 from tempest_fastapi_sdk.utils.totp import TOTPHelper as TOTPHelper
 from tempest_fastapi_sdk.utils.upload import (
+    HEIC_BRANDS as HEIC_BRANDS,
+)
+from tempest_fastapi_sdk.utils.upload import (
+    HEIF_STRUCTURAL_BRANDS as HEIF_STRUCTURAL_BRANDS,
+)
+from tempest_fastapi_sdk.utils.upload import (
     SNIFFABLE_MIMETYPES as SNIFFABLE_MIMETYPES,
 )
 from tempest_fastapi_sdk.utils.upload import (
@@ -460,6 +469,8 @@ __all__: list[str] = [
     "CPF_PATTERN",
     "DEFAULT_GENERATED_PASSWORD_LENGTH",
     "DOCX_MEDIA_TYPE",
+    "HEIC_BRANDS",
+    "HEIF_STRUCTURAL_BRANDS",
     "HUNDRED",
     "INLINE_SAFE_MEDIA_TYPES",
     "MFA_AMR",
@@ -499,6 +510,7 @@ __all__: list[str] = [
     "GPUMetrics",
     "HTTPClient",
     "HexColorField",
+    "ImageMediaType",
     "InMemoryThrottleBackend",
     "JWTUtils",
     "LatitudeField",
