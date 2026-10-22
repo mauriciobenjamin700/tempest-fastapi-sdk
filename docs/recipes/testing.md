@@ -7,6 +7,16 @@ pytest + pytest-asyncio + SQLite em memória + `httpx.AsyncClient`.
 !!! tip "Por que `AsyncClient` em vez de `TestClient`?"
     `fastapi.testclient.TestClient` é síncrono — não suporta `async with`. Para testar endpoints async sem dor, use `httpx.AsyncClient(transport=ASGITransport(app=app))`, que monta o app via ASGI no mesmo event-loop dos seus testes. Os exemplos abaixo seguem esse padrão.
 
+!!! note "`from src... import` em qualquer subpasta de `tests/`"
+    O `pyproject.toml` que o `tempest new` gera traz `pythonpath = ["."]` no `[tool.pytest.ini_options]`. Sem isso, o pytest põe no `sys.path` a primeira pasta **sem** `__init__.py` acima do arquivo de teste: `tests/repositories/test_user.py` sem `tests/repositories/__init__.py`, ou `pytest tests/repositories`, falha na coleta com `ModuleNotFoundError: No module named 'src'`. Projeto gerado antes da 0.323.0 ganha a linha à mão:
+
+    ```toml
+    [tool.pytest.ini_options]
+    asyncio_mode = "auto"
+    pythonpath = ["."]
+    testpaths = ["tests"]
+    ```
+
 ## Fixtures compartilhadas
 
 ```python

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- O `pyproject.toml` do `tempest new` traz `pythonpath = ["."]` no
+  `[tool.pytest.ini_options]`. Sem ele, teste numa subpasta de `tests/` sem
+  `__init__.py` (ou `pytest tests/<pasta>`) falhava na coleta com
+  `ModuleNotFoundError: No module named 'src'` (#572).
+
 ## [0.322.0] — 2026-10-21
 
 ### Added
