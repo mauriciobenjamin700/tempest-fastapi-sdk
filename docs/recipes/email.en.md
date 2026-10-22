@@ -26,6 +26,24 @@ mailer = EmailUtils(**settings.email_kwargs())
 `SMTP_USE_TLS` (STARTTLS, port 587) → `use_starttls`; `SMTP_USE_SSL`
 (implicit TLS from connect, port 465) → `use_tls`.
 
+### `SMTP_USE_TLS` or `SMTP_USE_SSL`: the port decides
+
+The two names are easy to mix up, and swapping them breaks **every** send.
+The port decides:
+
+| `SMTP_PORT` | Mode | `SMTP_USE_TLS` | `SMTP_USE_SSL` |
+| --- | --- | --- | --- |
+| `587` | STARTTLS: connect in clear text, then upgrade | `true` | `false` |
+| `465` | Implicit TLS (SMTPS): encrypted from the first byte | `false` | `true` |
+
+`SMTP_USE_SSL=true` on `587` is the classic mistake: the client opens a
+TLS handshake, the server answers its `220` banner in clear text, and the
+send fails with `[SSL: WRONG_VERSION_NUMBER]`. With `ENV=production` and
+e-mail on, the guard **refuses to boot** on the three combinations that
+cannot work: `SMTP_USE_SSL` and `SMTP_USE_TLS` both `true`,
+`SMTP_USE_SSL=true` on `587`, and `SMTP_USE_TLS=true` on `465`. Other ports
+(your own relay on `2525`, say) are not judged.
+
 !!! tip "STARTTLS vs SSL/TLS — opportunistic by default"
     Port **587** → `SMTP_USE_TLS=true` (default): connect in clear text and
     upgrade via STARTTLS. Port **465** → `SMTP_USE_SSL=true`: connect
@@ -138,8 +156,21 @@ asyncio.run(main())
 
 Optional per-message parameters: `cc`, `bcc`, `attachments`
 (`Iterable[Path]`), `reply_to`, and `from_addr` (overrides the default
-sender). Any SMTP error is re-raised as
-`aiosmtplib.errors.SMTPException` for the caller to handle.
+sender). Every transport failure — a host that does not resolve, a
+connection refused or timed out, a broken TLS handshake, a rejected login,
+a message the server refuses — raises `EmailDeliveryException` (`503`,
+`code="EMAIL_UNAVAILABLE"`), with the original `aiosmtplib` error chained
+as `__cause__` (the SMTP code is still there). Before raising,
+`EmailUtils` logs once at `ERROR` with `smtp_host` and `smtp_port`, never
+the recipient. An error that is yours — a missing attachment, a bad
+argument — keeps its own type.
+
+!!! warning "Code catching `aiosmtplib.SMTPException` must catch the new one"
+    `send` no longer lets an `aiosmtplib` error escape. An
+    `except aiosmtplib.SMTPException` around the send catches nothing
+    now; switch to `except EmailDeliveryException` (from
+    `tempest_fastapi_sdk`) and read `exc.__cause__` when you need the SMTP
+    code.
 
 ## Sending to many: `send_many`
 
@@ -198,7 +229,9 @@ What it does that `for user in users: await mailer.send(...)` does not:
 
 !!! warning "Only an operation failure raises"
     Host that will not resolve, connection refused, authentication rejected:
-    those raise, because nothing was sent. A refusal of **one** recipient never
+    those raise `EmailDeliveryException`, as in `send`, because the operation
+    failed. Batches already delivered are not reported anywhere — the
+    exception takes the report's place. A refusal of **one** recipient never
     raises — it is the report. `5xx` means the mailbox does not exist (prune it
     from your base); `4xx` means full or greylisted (requeue). A refusal with no
     code is filed as transient: the cheap mistake is retrying, not deleting a
@@ -256,15 +289,20 @@ asyncio.run(main())
 
 A service that sends a reset link with a short-lived JWT. Note that
 `request_reset` returns silently for an unregistered email — this avoids
-account enumeration.
+account enumeration. For the same reason it swallows a send failure: a
+`503` only for accounts that exist would tell which addresses are
+registered.
 
 ```python
 # src/services/password_reset.py
+import logging
 from datetime import timedelta
 
-from tempest_fastapi_sdk import EmailUtils, JWTUtils
+from tempest_fastapi_sdk import EmailDeliveryException, EmailUtils, JWTUtils
 
 from src.db.repositories import UserRepository
+
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class PasswordResetService:
@@ -288,12 +326,15 @@ class PasswordResetService:
             ttl=timedelta(minutes=15),
         )
         reset_url: str = f"https://app.example.com/reset-password?token={token}"
-        await self.mailer.send(
-            to=user.email,
-            subject="Reset your password",
-            body=f"Open to reset: {reset_url}",
-            html=f'<p>Click <a href="{reset_url}">here</a> to reset.</p>',
-        )
+        try:
+            await self.mailer.send(
+                to=user.email,
+                subject="Reset your password",
+                body=f"Open to reset: {reset_url}",
+                html=f'<p>Click <a href="{reset_url}">here</a> to reset.</p>',
+            )
+        except EmailDeliveryException:
+            logger.error("Reset link not sent; answer kept the same")
 ```
 
 ## E-mail switched off (`EMAIL_ENABLED=false`)
@@ -301,8 +342,9 @@ class PasswordResetService:
 With `EMAIL_ENABLED=true` and `ENV=production`, the guard refuses what can
 only be a development setup: a `mailpit`/`mailhog` host, `localhost` on
 port `1025`, the default `SMTP_HOST` (`localhost`) with no `SMTP_USERNAME`,
-and the default `SMTP_FROM_ADDR` (`noreply@example.com`), an empty one or
-one on a reserved domain. An authenticated local relay passes, and so does
+the default `SMTP_FROM_ADDR` (`noreply@example.com`), an empty one or one
+on a reserved domain, and a TLS mode swapped with the port (see
+[the port decides](#smtp_use_tls-or-smtp_use_ssl-the-port-decides)). An authenticated local relay passes, and so does
 Gmail (`smtp.gmail.com:587`, STARTTLS, app password, real sender).
 
 No SMTP yet? `EMAIL_ENABLED=false` skips those rules, and the same
@@ -321,3 +363,5 @@ The auth flow refuses the signup **before** creating the account — see
 - The text `body` is required; `html` is the optional multipart alternative.
 - `render_template()` (with `template_dir`) builds the HTML from Jinja2.
 - The bundled auth flow already sends activation/reset with overridable templates.
+- Port `587` needs `SMTP_USE_TLS=true`; `465` needs `SMTP_USE_SSL=true` — the production guard refuses the swapped pair.
+- An SMTP failure raises `EmailDeliveryException` (`503 EMAIL_UNAVAILABLE`); see [SMTP server down](auth-flow.md#smtp-server-down) for what each auth route answers.

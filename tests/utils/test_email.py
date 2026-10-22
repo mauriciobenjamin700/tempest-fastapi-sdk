@@ -1,13 +1,19 @@
 """Tests for tempest_fastapi_sdk.utils.email.EmailUtils."""
 
-import asyncio
+import logging
 from pathlib import Path
 from typing import Any
 
+import aiosmtplib
 import pytest
 
 import tempest_fastapi_sdk.utils.email as email_module
-from tempest_fastapi_sdk import EmailUtils
+from tempest_fastapi_sdk import (
+    EmailDeliveryException,
+    EmailUtils,
+    IntegrationDisabledException,
+)
+from tests.utils.smtp_server import TinySMTP
 
 
 class FakeSendCalls:
@@ -282,106 +288,12 @@ class TestRenderTemplate:
         )
 
 
-class _TinySMTP:
-    """A real SMTP server, small enough to live in a test file.
-
-    The bulk path is about the *protocol*: how many connections it opens,
-    and what it does with a per-recipient refusal. A monkeypatched
-    `aiosmtplib.send` can answer neither, so this speaks the handful of
-    verbs aiosmtplib needs over a real socket and counts what arrives.
-    """
-
-    def __init__(self, refuse: dict[str, tuple[int, str]] | None = None) -> None:
-        """Initialize.
-
-        Args:
-            refuse (dict[str, tuple[int, str]] | None): Addresses to answer
-                with ``(code, message)`` at ``RCPT TO`` instead of ``250``.
-        """
-        self.refuse: dict[str, tuple[int, str]] = refuse or {}
-        self.delivered: list[str] = []
-        self.connections: int = 0
-        self.server: asyncio.AbstractServer | None = None
-        self.port: int = 0
-
-    async def start(self) -> int:
-        """Listen on an ephemeral port.
-
-        Returns:
-            int: The port the server bound to.
-        """
-        self.server = await asyncio.start_server(self._handle, "127.0.0.1", 0)
-        self.port = int(self.server.sockets[0].getsockname()[1])
-        return self.port
-
-    async def stop(self) -> None:
-        """Close the listening socket."""
-        if self.server is not None:
-            self.server.close()
-            await self.server.wait_closed()
-
-    async def _handle(
-        self,
-        reader: asyncio.StreamReader,
-        writer: asyncio.StreamWriter,
-    ) -> None:
-        """Serve one connection until QUIT.
-
-        Args:
-            reader (asyncio.StreamReader): Client stream.
-            writer (asyncio.StreamWriter): Server stream.
-        """
-        self.connections += 1
-        writer.write(b"220 tiny ESMTP\r\n")
-        await writer.drain()
-        pending: list[str] = []
-        while True:
-            line = await reader.readline()
-            if not line:
-                break
-            command = line.decode("utf-8", "replace").strip()
-            upper = command.upper()
-            if upper.startswith(("HELO", "EHLO")):
-                writer.write(b"250-tiny\r\n250 SIZE 10240000\r\n")
-            elif upper.startswith("MAIL FROM"):
-                writer.write(b"250 OK\r\n")
-            elif upper.startswith("RCPT TO"):
-                address = command.split("<", 1)[-1].split(">", 1)[0]
-                if address in self.refuse:
-                    code, text = self.refuse[address]
-                    writer.write(f"{code} {text}\r\n".encode())
-                else:
-                    pending.append(address)
-                    writer.write(b"250 OK\r\n")
-            elif upper == "DATA":
-                writer.write(b"354 End data with <CR><LF>.<CR><LF>\r\n")
-                await writer.drain()
-                while True:
-                    chunk = await reader.readline()
-                    if chunk in (b".\r\n", b".\n", b""):
-                        break
-                self.delivered.extend(pending)
-                pending = []
-                writer.write(b"250 Message accepted\r\n")
-            elif upper == "QUIT":
-                writer.write(b"221 Bye\r\n")
-                await writer.drain()
-                break
-            elif upper == "RSET":
-                pending = []
-                writer.write(b"250 OK\r\n")
-            else:
-                writer.write(b"250 OK\r\n")
-            await writer.drain()
-        writer.close()
-
-
 class TestSendMany:
     async def _serve(
         self,
         refuse: dict[str, tuple[int, str]] | None = None,
-    ) -> tuple[_TinySMTP, EmailUtils]:
-        server = _TinySMTP(refuse=refuse)
+    ) -> tuple[TinySMTP, EmailUtils]:
+        server = TinySMTP(refuse=refuse)
         port = await server.start()
         mailer = EmailUtils(
             host="127.0.0.1",
@@ -493,14 +405,130 @@ class TestSendMany:
         finally:
             await server.stop()
 
-    async def test_connection_failure_still_raises(self) -> None:
-        """A failure of the operation is not a per-recipient failure."""
+    async def test_connection_failure_raises_email_unavailable(self) -> None:
+        """A failure of the operation is not a per-recipient failure.
+
+        Implicit TLS against a plaintext server fails the handshake on the
+        first batch: the whole send raises, translated like :meth:`send`.
+        """
+        server = TinySMTP()
+        port = await server.start()
         mailer = EmailUtils(
             host="127.0.0.1",
-            port=1,
+            port=port,
             from_addr="no-reply@tempest.dev",
-            use_starttls=False,
-            timeout=2.0,
+            use_tls=True,
+            timeout=5.0,
         )
-        with pytest.raises(Exception):  # noqa: B017 — aiosmtplib's connect errors
-            await mailer.send_many(["a@x.com"], subject="s", body="b")
+        try:
+            with pytest.raises(EmailDeliveryException) as caught:
+                await mailer.send_many(["a@x.com"], subject="s", body="b")
+        finally:
+            await server.stop()
+
+        assert isinstance(caught.value.__cause__, aiosmtplib.SMTPConnectError)
+        assert server.delivered == []
+
+
+class TestTransportFailure:
+    """``send`` answers ``503 EMAIL_UNAVAILABLE`` instead of an aiosmtplib error."""
+
+    async def test_implicit_tls_on_a_starttls_port_is_the_incident(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """``SMTP_USE_SSL=true`` against a plaintext greeting.
+
+        Reproduces the consumer incident (``smtp.gmail.com:587`` with
+        ``SMTP_USE_SSL=true``): the TLS handshake reads the plaintext
+        ``220`` banner and fails with ``WRONG_VERSION_NUMBER``.
+        """
+        server = TinySMTP()
+        port = await server.start()
+        mailer = EmailUtils(
+            "127.0.0.1", port, from_addr="no-reply@tempest.dev", use_tls=True
+        )
+        caplog.set_level(logging.ERROR, logger="tempest_fastapi_sdk.utils.email")
+        try:
+            with pytest.raises(EmailDeliveryException) as caught:
+                await mailer.send("ana@acme.com", "Hi", "Body")
+        finally:
+            await server.stop()
+
+        exc = caught.value
+        assert exc.status_code == 503
+        assert exc.code == "EMAIL_UNAVAILABLE"
+        assert exc.details == {}
+        assert isinstance(exc.__cause__, aiosmtplib.SMTPConnectError)
+        assert "WRONG_VERSION_NUMBER" in str(exc.__cause__)
+        (record,) = caplog.records
+        assert record.levelno == logging.ERROR
+        assert record.exc_info is not None
+        assert record.__dict__["smtp_host"] == "127.0.0.1"
+        assert record.__dict__["smtp_port"] == port
+        assert "ana@acme.com" not in caplog.text
+
+    async def test_refused_recipient_is_logged_without_the_address(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A server reply can quote the address, so it carries no traceback."""
+        server = TinySMTP(refuse={"dead@acme.com": (550, "No such user here")})
+        port = await server.start()
+        mailer = EmailUtils(
+            "127.0.0.1", port, from_addr="no-reply@tempest.dev", use_starttls=False
+        )
+        caplog.set_level(logging.ERROR, logger="tempest_fastapi_sdk.utils.email")
+        try:
+            with pytest.raises(EmailDeliveryException) as caught:
+                await mailer.send("dead@acme.com", "Hi", "Body")
+        finally:
+            await server.stop()
+
+        assert isinstance(caught.value.__cause__, aiosmtplib.SMTPRecipientsRefused)
+        (record,) = caplog.records
+        assert record.exc_info is None
+        assert "dead@acme.com" not in caplog.text
+
+    async def test_os_error_is_translated(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A socket error that aiosmtplib lets through is a transport failure."""
+
+        async def unreachable(*_args: Any, **_kwargs: Any) -> None:
+            raise ConnectionResetError("reset by peer")
+
+        monkeypatch.setattr(email_module._aiosmtplib, "send", unreachable)
+        mailer = EmailUtils("smtp.example.com", 587, from_addr="bot@example.com")
+        with pytest.raises(EmailDeliveryException) as caught:
+            await mailer.send("u@example.com", "Hi", "Body")
+        assert isinstance(caught.value.__cause__, ConnectionResetError)
+
+    async def test_programming_errors_are_not_translated(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Only the transport is wrapped; a bug keeps its own type."""
+
+        async def broken(*_args: Any, **_kwargs: Any) -> None:
+            raise ValueError("bad argument")
+
+        monkeypatch.setattr(email_module._aiosmtplib, "send", broken)
+        mailer = EmailUtils("smtp.example.com", 587, from_addr="bot@example.com")
+        with pytest.raises(ValueError, match="bad argument"):
+            await mailer.send("u@example.com", "Hi", "Body")
+
+    async def test_unreadable_attachment_is_the_callers_error(
+        self, fake_send: FakeSendCalls, tmp_path: Path
+    ) -> None:
+        """``FileNotFoundError`` is an ``OSError``, but it is not the transport."""
+        mailer = EmailUtils("smtp.example.com", 587, from_addr="bot@example.com")
+        with pytest.raises(FileNotFoundError):
+            await mailer.send(
+                "u@example.com", "Hi", "Body", attachments=[tmp_path / "missing"]
+            )
+        assert fake_send.calls == []
+
+    async def test_disabled_mailer_still_answers_integration_disabled(self) -> None:
+        mailer = EmailUtils(
+            "smtp.example.com", 587, from_addr="bot@example.com", enabled=False
+        )
+        with pytest.raises(IntegrationDisabledException):
+            await mailer.send("u@example.com", "Hi", "Body")

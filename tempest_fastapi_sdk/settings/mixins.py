@@ -82,6 +82,12 @@ as Postfix forwarding to the provider), so it is never refused by itself.
 _DEV_SMTP_PORT: int = 1025
 """SMTP port Mailpit and MailHog publish, and the one ``tempest new`` writes."""
 
+_STARTTLS_SMTP_PORT: int = 587
+"""Submission port (RFC 6409): plain connect, then STARTTLS — ``SMTP_USE_TLS``."""
+
+_IMPLICIT_TLS_SMTP_PORT: int = 465
+"""Submissions port (RFC 8314): TLS from the first byte — ``SMTP_USE_SSL``."""
+
 _PLACEHOLDER_EMAIL_DOMAINS: frozenset[str] = frozenset(
     {"example.com", "example.net", "example.org", "localhost"}
 )
@@ -1032,7 +1038,13 @@ class EmailSettings(BaseAppSettings):
       ``example.net``, ``example.org`` or ``localhost`` (and any
       subdomain of them), or anything under ``.example``, ``.invalid``,
       ``.localhost`` or ``.test``. The declared default
-      (``noreply@example.com``) is refused by itself as well.
+      (``noreply@example.com``) is refused by itself as well;
+    * a TLS mode that contradicts itself or the port: ``SMTP_USE_SSL``
+      and ``SMTP_USE_TLS`` both on; ``SMTP_USE_SSL=true`` on ``587``
+      (implicit TLS against the STARTTLS port — the handshake fails with
+      ``[SSL: WRONG_VERSION_NUMBER]`` on every send); ``SMTP_USE_TLS=true``
+      on ``465`` (STARTTLS against a port that expects TLS from the first
+      byte). Other ports are not judged: a custom relay picks its own.
 
     Gmail (``smtp.gmail.com:587``, STARTTLS, an app password in
     ``SMTP_USERNAME``/``SMTP_PASSWORD``, a real ``SMTP_FROM_ADDR``)
@@ -1160,7 +1172,7 @@ class EmailSettings(BaseAppSettings):
         return kwargs
 
     def production_violations(self) -> list[str]:
-        """Refuse a development mail catcher or a placeholder sender.
+        """Refuse a dev mail catcher, a placeholder sender or a TLS mismatch.
 
         Skipped entirely when ``EMAIL_ENABLED`` is off. The declared
         defaults compared against are read from
@@ -1199,7 +1211,43 @@ class EmailSettings(BaseAppSettings):
                 "SMTP_FROM_ADDR: empty or a reserved placeholder domain that "
                 "cannot send real mail"
             )
+        violations.extend(self._tls_mode_violations())
         return violations
+
+    def _tls_mode_violations(self) -> list[str]:
+        """Refuse a TLS mode that cannot work on the configured port.
+
+        ``SMTP_USE_TLS`` is STARTTLS (``587``) and ``SMTP_USE_SSL`` is
+        implicit TLS (``465``) — the names follow the SMTP settings
+        convention, and the swap is easy to make. Each mismatch makes
+        every send fail at connect time, which surfaces only on the first
+        mail, so it is refused at boot. Only ``587`` and ``465`` are
+        judged; any other port is a relay that documents its own mode.
+
+        Returns:
+            list[str]: At most one entry, naming the field to change and
+            the value the port needs.
+        """
+        if self.SMTP_USE_SSL and self.SMTP_USE_TLS:
+            return [
+                "SMTP_USE_SSL: both SMTP_USE_SSL and SMTP_USE_TLS are true; "
+                "turn one off — 587 needs SMTP_USE_TLS=true and "
+                "SMTP_USE_SSL=false, 465 needs SMTP_USE_SSL=true and "
+                "SMTP_USE_TLS=false"
+            ]
+        if self.SMTP_USE_SSL and self.SMTP_PORT == _STARTTLS_SMTP_PORT:
+            return [
+                "SMTP_USE_SSL: implicit TLS on 587, the STARTTLS port; 587 "
+                "needs SMTP_USE_TLS=true and SMTP_USE_SSL=false (or move "
+                "to SMTP_PORT=465)"
+            ]
+        if self.SMTP_USE_TLS and self.SMTP_PORT == _IMPLICIT_TLS_SMTP_PORT:
+            return [
+                "SMTP_USE_TLS: STARTTLS on 465, the implicit-TLS port; 465 "
+                "needs SMTP_USE_SSL=true and SMTP_USE_TLS=false (or move "
+                "to SMTP_PORT=587)"
+            ]
+        return []
 
     def disabled_integrations(self) -> list[str]:
         """Append ``"email"`` when ``EMAIL_ENABLED`` is off.

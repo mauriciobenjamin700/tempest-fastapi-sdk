@@ -3601,3 +3601,19 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   local/reservado ou sem `https` (pula com `EMAIL_ENABLED=false`).
   `is_reserved_domain` é compartilhado com a regra do `SMTP_FROM_ADDR`.
   Testes: `tests/settings/test_auth_link_guard.py`.
+- **SMTP fora do ar vira `503 EMAIL_UNAVAILABLE`, Unreleased** —
+  `EmailUtils.send` e `send_many` traduzem falha de transporte
+  (`aiosmtplib.SMTPException`, `OSError`, timeout, TLS) em
+  `EmailDeliveryException` (`503`, sem `details`, causa encadeada), logando
+  uma vez em `ERROR` só com host e porta. No `make_auth_router`: cadastro,
+  troca/confirmação/verificação de e-mail e recuperação (depois da senha)
+  respondem `503` e o rollback leva tudo; reenvio de ativação e reset de
+  senha respondem o `202` de sempre, logam e não gravam token
+  (`UserAuthService._issue_token_after_mail` manda antes de gravar). Regra de
+  produção do `EmailSettings`: `SMTP_USE_SSL` + `SMTP_USE_TLS`,
+  `SMTP_USE_SSL` na 587, `SMTP_USE_TLS` na 465. Receitas:
+  `docs/recipes/email.md`, `docs/recipes/auth-flow.md` ("SMTP fora do ar").
+  Testes: `tests/utils/test_email.py` (`TestTransportFailure`),
+  `tests/auth/test_email_delivery_failure.py`,
+  `tests/settings/test_integration_flags.py` (`TestEmailTLSModeRule`),
+  `tests/cli/test_email_storage.py`.

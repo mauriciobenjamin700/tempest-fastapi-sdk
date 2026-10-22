@@ -1038,6 +1038,10 @@ def make_auth_router(
                 "``AUTH_RETURN_TOKEN_IN_RESPONSE=True`` — the ready-to-use "
                 "``activation_url`` is returned in the body instead so you "
                 "can complete activation without SMTP.\n\n"
+                "**SMTP failure.** When the activation mail cannot be "
+                "sent, the response is **503** ``EMAIL_UNAVAILABLE`` and "
+                "no account is created — the same address can sign up "
+                "again once the server is back.\n\n"
                 "**Rate limit.** With ``signup_throttle`` configured, the "
                 "attempts past its budget for one client IP return **429** "
                 "``TOO_MANY_REQUESTS`` with ``Retry-After``."
@@ -1194,7 +1198,9 @@ def make_auth_router(
             "**Always returns 202** with the same generic message for an "
             "unknown address, an already-active account and a genuine "
             "re-send, so probing it cannot enumerate accounts. An active "
-            "account is not re-mailed: the link would authorize nothing."
+            "account is not re-mailed: the link would authorize nothing. "
+            "A mail the SMTP server does not take still answers **202**: "
+            "the failure is logged server-side and no token is stored."
         ),
     )
     async def activation_request(
@@ -1218,7 +1224,10 @@ def make_auth_router(
             "**Always returns 202** with the same generic message "
             "whether or not the email matches a real account — this "
             "prevents attackers from enumerating which emails are "
-            "registered by probing this endpoint.\n\n"
+            "registered by probing this endpoint. That includes a reset "
+            "mail the SMTP server does not take: it is logged "
+            "server-side, no token is stored, and the answer stays "
+            "**202**.\n\n"
             "When a matching account exists a single-use reset token is "
             "issued (valid for ``AUTH_PASSWORD_RESET_TTL_SECONDS``). "
             "When ``EmailUtils`` is wired the reset link is **emailed** "
@@ -1383,7 +1392,9 @@ def make_auth_router(
             "``POST /auth/email-change/confirm``. When "
             "``AUTH_RETURN_TOKEN_IN_RESPONSE=True`` or the ``[email]`` "
             "extra is absent, the ready-to-use ``confirm_url`` is "
-            "returned in the body instead of emailed."
+            "returned in the body instead of emailed. A confirmation mail "
+            "the SMTP server does not take answers **503** "
+            "``EMAIL_UNAVAILABLE`` and stores no token."
         ),
     )
     async def email_change_request(
@@ -1413,7 +1424,9 @@ def make_auth_router(
             "already-used or expired token returns **400**; a target "
             "address taken in the meantime returns **409**.\n\n"
             "When ``AUTH_EMAIL_CHANGE_NOTIFY_OLD=True`` a security notice "
-            "is sent to the previous address on success.\n\n"
+            "is sent to the previous address on success; when that notice "
+            "cannot be sent the answer is **503** ``EMAIL_UNAVAILABLE``, "
+            "the address is not changed and the link stays valid.\n\n"
             "!!! note\n"
             "    When ``AUTH_BACKEND_LINKS=True`` the SDK also mounts "
             "    **GET** ``/email-change/{token}`` that renders a "
@@ -1442,7 +1455,9 @@ def make_auth_router(
             "bearer ``access_token``). No address change — confirming the "
             "link marks the account active. Useful when the original "
             "activation email was lost. The link is emailed, or returned "
-            "as ``confirm_url`` when ``AUTH_RETURN_TOKEN_IN_RESPONSE=True``."
+            "as ``confirm_url`` when ``AUTH_RETURN_TOKEN_IN_RESPONSE=True``. "
+            "A mail the SMTP server does not take answers **503** "
+            "``EMAIL_UNAVAILABLE`` and stores no token."
         ),
     )
     async def email_verify_request(
@@ -1496,7 +1511,10 @@ def make_auth_router(
                 "**Always returns 202** with the same generic message for "
                 "every soft failure (unknown email, wrong password, "
                 "missing/invalid MFA code) so the endpoint can't be used to "
-                "enumerate accounts."
+                "enumerate accounts. Once identity is proven, a confirmation "
+                "mail the SMTP server does not take answers **503** "
+                "``EMAIL_UNAVAILABLE`` (like a taken ``new_email`` answers "
+                "**409**) and stores no token."
             ),
         ),
     )

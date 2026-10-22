@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `EmailDeliveryException` (`503`, `code="EMAIL_UNAVAILABLE"`, sem
+  `details`), exportada no topo ao lado da `IntegrationDisabledException`,
+  com mensagem no catálogo em pt-BR e en-US. Distingue o e-mail configurado
+  e falhando do e-mail desligado (`INTEGRATION_DISABLED`).
+- Regra de produção do `EmailSettings` (com `EMAIL_ENABLED` ligado):
+  `SMTP_USE_SSL` e `SMTP_USE_TLS` os dois `true`, `SMTP_USE_SSL=true` com
+  `SMTP_PORT=587` e `SMTP_USE_TLS=true` com `SMTP_PORT=465` viram violação,
+  e a mensagem diz o par que a porta pede. Outras portas não são julgadas.
+
+### Changed
+
+- `EmailUtils.send` levanta `EmailDeliveryException` em toda falha de
+  transporte (DNS, conexão recusada ou com timeout, handshake TLS, login
+  negado, mensagem recusada) em vez de deixar escapar o erro do
+  `aiosmtplib` — **quem pega `aiosmtplib.SMTPException` em volta do envio
+  precisa pegar `EmailDeliveryException`**; o erro original fica em
+  `__cause__`. Antes de levantar, loga uma vez em `ERROR` com `smtp_host` e
+  `smtp_port` (nunca destinatário nem credencial; recusa respondida pelo
+  servidor vai sem traceback, porque a resposta pode citar o endereço).
+  Erro do chamador (anexo que não existe, `ValueError`) segue com o tipo
+  original. `send_many` levanta a mesma exceção para falha da operação
+  (conexão, login, queda no meio do lote); recusa por destinatário continua
+  no relatório.
+- Rotas do `make_auth_router` com o SMTP falhando: `/signup`,
+  `/email-change/request`, `/email-change/confirm` (aviso ao endereço
+  antigo), `/email-verify/request` e `/email-recovery/request` (depois da
+  senha e do MFA) respondem `503 EMAIL_UNAVAILABLE` em vez de `500`, sem
+  gravar nada — a confirmação de troca mantém o e-mail antigo e o link
+  válido. `/activation/request` e `/password-reset/request` continuam
+  respondendo o `202` de sempre (um `503` só para conta existente seria
+  oráculo de enumeração): a falha é logada e o token só é gravado depois
+  que o e-mail sai, então o link pendente anterior não é invalidado.
+- **Serviço com o modo TLS trocado com a porta deixa de subir em
+  `ENV=production`** (a regra nova acima). Antes de atualizar, confira
+  `SMTP_PORT`/`SMTP_USE_TLS`/`SMTP_USE_SSL`: `587` pede `SMTP_USE_TLS=true`
+  e `SMTP_USE_SSL=false`; `465` pede o contrário.
+- `tempest email test` mostra o erro SMTP encadeado (por exemplo
+  `[SSL: WRONG_VERSION_NUMBER]`) em vez da mensagem genérica do `503`.
+
 ## [0.321.0] — 2026-10-21
 
 ### Added

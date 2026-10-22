@@ -46,6 +46,9 @@ from tempest_fastapi_sdk.exceptions.i18n import (
     parse_accept_language as parse_accept_language,
 )
 from tempest_fastapi_sdk.exceptions.integration import (
+    EmailDeliveryException as EmailDeliveryException,
+)
+from tempest_fastapi_sdk.exceptions.integration import (
     IntegrationDisabledException as IntegrationDisabledException,
 )
 from tempest_fastapi_sdk.exceptions.jwt import (
@@ -150,6 +153,7 @@ __all__: list[str] = [
     "DEFAULT_NOT_FOUND_TEMPLATE_ANONYMOUS",
     "AppException",
     "ConflictException",
+    "EmailDeliveryException",
     "ExpiredSignedURLException",
     "ExpiredTokenException",
     "FileTooLargeException",

@@ -19,6 +19,7 @@ the rest of the SDK so the same code runs against any
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
@@ -65,6 +66,7 @@ from tempest_fastapi_sdk.db.user_token_model import (
 )
 from tempest_fastapi_sdk.exceptions import (
     ConflictException,
+    EmailDeliveryException,
     ForbiddenException,
     IntegrationDisabledException,
     InvalidTokenException,
@@ -125,6 +127,9 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.utils.email import EmailUtils
     from tempest_fastapi_sdk.utils.throttle import AttemptThrottle
 
+
+_LOGGER: logging.Logger = logging.getLogger(__name__)
+"""Where an enumeration-safe flow records the mail it could not send."""
 
 SIGNUP_PROTECTED_FIELDS: frozenset[str] = frozenset(
     {"id", "email", "hashed_password", "is_active", "is_admin"}
@@ -364,6 +369,13 @@ class UserAuthService:
                 off and the e-mail integration is switched off — see
                 :meth:`require_mail_delivery`. Raised before any row is
                 written.
+            EmailDeliveryException: When the activation mail could not be
+                sent (``503 EMAIL_UNAVAILABLE``). The user and token rows
+                are flushed but not committed, so the caller's rollback
+                drops them — ``make_auth_router`` never reaches its commit
+                and the request session discards both. Signup already
+                answers ``409`` for a taken address, so the ``503`` tells
+                a caller nothing it could not learn there.
             ValueError: When ``fields`` names something that is not a
                 column of ``user_model``, or a protected column; and when
                 the insert is refused because a ``NOT NULL`` column got no
@@ -580,6 +592,14 @@ class UserAuthService:
         ``refuses_email_link`` matches is answered the same way: no token,
         no mail, ``None``.
 
+        A mail the SMTP server does not take is answered the same way too:
+        the :class:`~tempest_fastapi_sdk.exceptions.EmailDeliveryException`
+        is logged at ``ERROR`` and swallowed, nothing is stored (the
+        previous link keeps working), and ``None`` comes back — a ``503``
+        here would exist only for registered pending accounts, which is
+        the enumeration this flow avoids. See
+        :meth:`_issue_token_after_mail`.
+
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             email (str): Account email, matched case-insensitively.
@@ -588,7 +608,7 @@ class UserAuthService:
             ActivationToken | None: The token bundle when the caller
             surfaces the link (``AUTH_RETURN_TOKEN_IN_RESPONSE``, or no
             ``EmailUtils`` wired) and the account was indeed pending;
-            ``None`` otherwise.
+            ``None`` otherwise, including when the mail failed.
 
         Raises:
             IntegrationDisabledException: When the e-mail integration is
@@ -605,14 +625,16 @@ class UserAuthService:
         if user is None or user.is_active or self.email_link_refused(user):
             return None
 
-        activation = await self._issue_token(
+        activation = await self._issue_token_after_mail(
             session,
-            user_id=user.id,
+            user=user,
             purpose=UserTokenPurpose.ACTIVATION,
             ttl_seconds=self.auth_settings.AUTH_ACTIVATION_TTL_SECONDS,
             url_template=self.auth_settings.AUTH_ACTIVATION_URL_TEMPLATE,
+            mail=self._maybe_send_activation_email,
         )
-        await self._maybe_send_activation_email(user, activation)
+        if activation is None:
+            return None
 
         if self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE or self.email is None:
             return ActivationToken(
@@ -1211,6 +1233,14 @@ class UserAuthService:
         exactly like an unknown address: no token is minted, no
         mail goes out, and ``None`` comes back.
 
+        A mail the SMTP server does not take is answered like an
+        unknown address too: the
+        :class:`~tempest_fastapi_sdk.exceptions.EmailDeliveryException`
+        is logged at ``ERROR`` and swallowed, no token is stored (a
+        previous link keeps working), and ``None`` comes back — a
+        ``503`` only for registered addresses would be an enumeration
+        oracle. See :meth:`_issue_token_after_mail`.
+
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             email (str): Account email.
@@ -1237,14 +1267,16 @@ class UserAuthService:
         if user is None or self.email_link_refused(user):
             return None
 
-        reset = await self._issue_token(
+        reset = await self._issue_token_after_mail(
             session,
-            user_id=user.id,
+            user=user,
             purpose=UserTokenPurpose.PASSWORD_RESET,
             ttl_seconds=self.auth_settings.AUTH_PASSWORD_RESET_TTL_SECONDS,
             url_template=self.auth_settings.AUTH_PASSWORD_RESET_URL_TEMPLATE,
+            mail=self._maybe_send_password_reset_email,
         )
-        await self._maybe_send_password_reset_email(user, reset)
+        if reset is None:
+            return None
 
         if self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE or self.email is None:
             return PasswordResetToken(
@@ -1444,6 +1476,12 @@ class UserAuthService:
             UnauthorizedException: When ``current_password`` is wrong.
             ValidationException: When ``new_email`` equals the current one.
             ConflictException: When ``new_email`` is already in use.
+            EmailDeliveryException: When the confirmation mail could not
+                be sent (``503 EMAIL_UNAVAILABLE``). The token row is
+                flushed but not committed, so the caller's rollback drops
+                it and a pending link from an earlier request survives.
+                The caller is authenticated, so there is nothing to
+                enumerate.
         """
         self.require_mail_delivery()
         if not self.passwords.verify(current_password, user.hashed_password):
@@ -1507,6 +1545,14 @@ class UserAuthService:
                 integration is switched off — see
                 :meth:`require_mail_delivery`. Raised before the token is
                 consumed, so the link keeps working once e-mail is back.
+            EmailDeliveryException: When ``AUTH_EMAIL_CHANGE_NOTIFY_OLD``
+                is on and the notice to the old address could not be sent
+                (``503 EMAIL_UNAVAILABLE``). The new address and the token
+                spend are flushed but not committed: the caller's rollback
+                undoes both, so the account keeps its old address and the
+                same link can be confirmed again once the server is back.
+                The change is never applied without the notice the
+                setting promises.
         """
         if self.auth_settings.AUTH_EMAIL_CHANGE_NOTIFY_OLD:
             self.require_mail_delivery(carries_token=False)
@@ -1561,6 +1607,10 @@ class UserAuthService:
         Raises:
             IntegrationDisabledException: When the e-mail integration is
                 switched off — see :meth:`require_mail_delivery`.
+            EmailDeliveryException: When the mail could not be sent
+                (``503 EMAIL_UNAVAILABLE``). The token row is flushed but
+                not committed, so the caller's rollback drops it. The
+                caller is authenticated, so there is nothing to enumerate.
         """
         self.require_mail_delivery()
         bundle = await self._issue_token(
@@ -1665,6 +1715,15 @@ class UserAuthService:
             IntegrationDisabledException: When the e-mail integration is
                 switched off — see :meth:`require_mail_delivery`. Raised
                 before the lookup, so it reveals nothing about the account.
+            EmailDeliveryException: When the confirmation mail could not
+                be sent (``503 EMAIL_UNAVAILABLE``). Unlike the soft
+                failures this is raised, not turned into ``None``: the
+                send happens only after the password (and the MFA code,
+                when enrolled) matched, so the ``503`` is answered only
+                to someone who already proved the account is theirs —
+                the same point where a taken ``new_email`` answers
+                ``409``. The token row is flushed but not committed, so
+                the caller's rollback drops it.
         """
         self.require_mail_delivery()
         normalized_old = email.strip().lower()
@@ -2648,10 +2707,64 @@ class UserAuthService:
             tuple[str, str, datetime]: The plaintext token (surfaced
             exactly once), the rendered URL, and the expiry.
         """
-        if self.auth_settings.AUTH_SINGLE_ACTIVE_TOKEN:
-            await self._burn_pending_tokens(session, user_id=user_id, purpose=purpose)
+        plain, digest, url, expires_at = self._mint_token(
+            ttl_seconds=ttl_seconds,
+            url_template=url_template,
+        )
+        await self._store_token(
+            session,
+            user_id=user_id,
+            purpose=purpose,
+            digest=digest,
+            expires_at=expires_at,
+            payload=payload,
+        )
+        return plain, url, expires_at
+
+    def _mint_token(
+        self,
+        *,
+        ttl_seconds: int,
+        url_template: str,
+    ) -> tuple[str, str, str, datetime]:
+        """Generate a token in memory, without touching the database.
+
+        Args:
+            ttl_seconds (int): Token lifetime in seconds.
+            url_template (str): URL template with a ``{token}`` slot.
+
+        Returns:
+            tuple[str, str, str, datetime]: The plaintext token, its
+            digest (what :meth:`_store_token` persists), the rendered URL
+            and the expiry.
+        """
         plain, digest = generate_opaque_token(48)
         expires_at = utcnow() + timedelta(seconds=ttl_seconds)
+        return plain, digest, url_template.replace("{token}", plain), expires_at
+
+    async def _store_token(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: UUID,
+        purpose: UserTokenPurpose,
+        digest: str,
+        expires_at: datetime,
+        payload: str | None = None,
+    ) -> None:
+        """Persist a minted token, superseding the pending ones first.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session. Flushed,
+                not committed.
+            user_id (UUID): The user the token authorizes.
+            purpose (UserTokenPurpose): What the token authorizes.
+            digest (str): The digest :meth:`_mint_token` returned.
+            expires_at (datetime): The expiry :meth:`_mint_token` returned.
+            payload (str | None): Optional flow context stored on the row.
+        """
+        if self.auth_settings.AUTH_SINGLE_ACTIVE_TOKEN:
+            await self._burn_pending_tokens(session, user_id=user_id, purpose=purpose)
         record = self.token_model(
             user_id=user_id,
             token_hash=digest,
@@ -2661,7 +2774,76 @@ class UserAuthService:
         )
         session.add(record)
         await session.flush()
-        url = url_template.replace("{token}", plain)
+
+    async def _issue_token_after_mail(
+        self,
+        session: AsyncSession,
+        *,
+        user: BaseUserModel,
+        purpose: UserTokenPurpose,
+        ttl_seconds: int,
+        url_template: str,
+        mail: Callable[
+            [BaseUserModel, tuple[str, str, datetime]], Coroutine[Any, Any, None]
+        ],
+    ) -> tuple[str, str, datetime] | None:
+        """Mail a link first and persist its token only once it went out.
+
+        The issuing path of the flows that answer the same for a known and
+        an unknown address (:meth:`request_activation`,
+        :meth:`request_password_reset`). There a failed send must not
+        change the response — ``503`` for a real account against ``202``
+        for a stranger would tell which addresses are registered — so the
+        :class:`~tempest_fastapi_sdk.exceptions.EmailDeliveryException` is
+        caught, logged at ``ERROR`` with the flow only (never the address)
+        and turned into ``None``, the same value an unknown address
+        produces.
+
+        The order is what keeps that failure free of writes: the token is
+        generated in memory, mailed, and only then stored — superseding
+        the pending ones. A send that fails therefore leaves the database
+        as it was, the previous link included, with no savepoint and no
+        rollback of the caller's transaction. A store that fails after the
+        mail went out leaves a link that answers ``invalid token``, the
+        same outcome as a commit that fails after the send in the other
+        flows.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            user (BaseUserModel): The account the link is for.
+            purpose (UserTokenPurpose): What the token authorizes.
+            ttl_seconds (int): Token lifetime in seconds.
+            url_template (str): URL template with a ``{token}`` slot.
+            mail (Callable[[BaseUserModel, tuple[str, str, datetime]],
+                Coroutine[Any, Any, None]]): The ``_maybe_send_*`` method
+                that renders and sends the link.
+
+        Returns:
+            tuple[str, str, datetime] | None: ``(plain, url, expires_at)``
+            of the stored token, or ``None`` when the mail could not go
+            out and nothing was stored.
+        """
+        plain, digest, url, expires_at = self._mint_token(
+            ttl_seconds=ttl_seconds,
+            url_template=url_template,
+        )
+        try:
+            await mail(user, (plain, url, expires_at))
+        except EmailDeliveryException:
+            _LOGGER.error(
+                "Auth %s link could not be mailed; answered like an unknown "
+                "address and stored no token",
+                purpose.value,
+                extra={"auth_flow": purpose.value},
+            )
+            return None
+        await self._store_token(
+            session,
+            user_id=user.id,
+            purpose=purpose,
+            digest=digest,
+            expires_at=expires_at,
+        )
         return plain, url, expires_at
 
     async def _burn_pending_tokens(

@@ -255,6 +255,106 @@ class TestEmailProductionRule:
         assert "mailpit" not in joined.lower().replace("mailpit/mailhog", "")
 
 
+class TestEmailTLSModeRule:
+    """``SMTP_USE_TLS`` is STARTTLS (587), ``SMTP_USE_SSL`` is implicit TLS (465).
+
+    The swap is the incident this rule exists for: ``SMTP_USE_SSL=true``
+    on ``smtp.gmail.com:587`` failed every send with ``[SSL:
+    WRONG_VERSION_NUMBER]``, and nothing noticed until the first signup.
+    """
+
+    @staticmethod
+    def violations(**values: object) -> list[str]:
+        """Return the e-mail violations for an otherwise valid relay.
+
+        Args:
+            **values (object): ``SMTP_*`` overrides.
+
+        Returns:
+            list[str]: The full violation messages.
+        """
+        settings = EmailSettings(
+            SMTP_HOST="smtp.gmail.com",
+            SMTP_USERNAME="noreply@acme.com.br",
+            SMTP_FROM_ADDR=REAL_SENDER,
+            **values,  # type: ignore[arg-type]
+        )
+        return settings.production_violations()
+
+    @pytest.mark.parametrize(
+        ("port", "use_tls", "use_ssl"),
+        [(587, True, False), (465, False, True)],
+    )
+    def test_gmail_pairs_are_accepted(
+        self, port: int, use_tls: bool, use_ssl: bool
+    ) -> None:
+        assert (
+            self.violations(SMTP_PORT=port, SMTP_USE_TLS=use_tls, SMTP_USE_SSL=use_ssl)
+            == []
+        )
+
+    def test_implicit_tls_on_587_is_the_incident(self) -> None:
+        (message,) = self.violations(
+            SMTP_PORT=587, SMTP_USE_TLS=False, SMTP_USE_SSL=True
+        )
+        assert message.startswith("SMTP_USE_SSL:")
+        assert "587 needs SMTP_USE_TLS=true and SMTP_USE_SSL=false" in message
+
+    def test_starttls_on_465_is_refused(self) -> None:
+        (message,) = self.violations(
+            SMTP_PORT=465, SMTP_USE_TLS=True, SMTP_USE_SSL=False
+        )
+        assert message.startswith("SMTP_USE_TLS:")
+        assert "465 needs SMTP_USE_SSL=true and SMTP_USE_TLS=false" in message
+
+    def test_the_declared_defaults_on_465_are_refused(self) -> None:
+        """``SMTP_USE_TLS`` defaults to ``true``: moving only the port fails."""
+        assert [v.split(":")[0] for v in self.violations(SMTP_PORT=465)] == [
+            "SMTP_USE_TLS"
+        ]
+
+    @pytest.mark.parametrize("port", [587, 465, 2525])
+    def test_both_modes_on_are_refused_on_any_port(self, port: int) -> None:
+        (message,) = self.violations(
+            SMTP_PORT=port, SMTP_USE_TLS=True, SMTP_USE_SSL=True
+        )
+        assert message.startswith("SMTP_USE_SSL:")
+        assert "SMTP_USE_TLS" in message
+
+    @pytest.mark.parametrize(
+        ("port", "use_tls", "use_ssl"),
+        [(2525, True, False), (2525, False, True), (25, False, False)],
+    )
+    def test_other_ports_are_not_judged(
+        self, port: int, use_tls: bool, use_ssl: bool
+    ) -> None:
+        """A custom relay documents its own mode."""
+        assert (
+            self.violations(SMTP_PORT=port, SMTP_USE_TLS=use_tls, SMTP_USE_SSL=use_ssl)
+            == []
+        )
+
+    def test_disabled_email_skips_the_rule(self) -> None:
+        settings = EmailSettings(EMAIL_ENABLED=False, SMTP_PORT=587, SMTP_USE_SSL=True)
+        assert settings.production_violations() == []
+
+    def test_environment_guard_refuses_the_boot(self) -> None:
+        """The rule reaches ``ENV=production`` like the other e-mail rules."""
+
+        class Prod(EnvironmentSettings, EmailSettings):
+            """Production settings with the incident's ``.env``."""
+
+        with pytest.raises(ValidationError, match="SMTP_USE_SSL"):
+            Prod(
+                ENV="production",
+                SMTP_HOST="smtp.gmail.com",
+                SMTP_PORT=587,
+                SMTP_USE_SSL=True,
+                SMTP_USERNAME="noreply@acme.com.br",
+                SMTP_FROM_ADDR=REAL_SENDER,
+            )
+
+
 class TestFirebaseEnabled:
     """``enabled`` follows the flag, whatever the credentials say."""
 
