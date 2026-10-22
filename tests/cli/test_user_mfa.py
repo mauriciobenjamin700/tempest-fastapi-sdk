@@ -102,12 +102,15 @@ sys.modules["cli_mfa_user_model"] = _module
 def project_db(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    isolated_project_imports: None,
 ) -> Iterator[str]:
     """Fresh on-disk SQLite, a fixed TOTP secret and the kill-switch on.
 
     Args:
         tmp_path (Path): Per-test directory, used as the project root.
         monkeypatch (pytest.MonkeyPatch): Environment patcher.
+        isolated_project_imports (None): Keeps an earlier test's project
+            off ``sys.path``.
 
     Yields:
         str: The database URL.

@@ -94,6 +94,7 @@ sys.modules["cli_user_model"] = _module
 def project_db(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    isolated_project_imports: None,
 ) -> Iterator[str]:
     """Fresh on-disk SQLite + the URL pointing at it."""
     monkeypatch.chdir(tmp_path)
