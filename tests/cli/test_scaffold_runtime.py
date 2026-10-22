@@ -19,6 +19,7 @@ import asyncio
 import importlib
 import os
 import re
+import subprocess
 import sys
 import textwrap
 import threading
@@ -558,3 +559,43 @@ def test_generated_env_example_leaves_the_token_secret_empty(
     lines = (scaffolded / ".env.example").read_text(encoding="utf-8").splitlines()
 
     assert "TOKEN_SECRET=" in lines
+
+
+def test_generated_pytest_config_imports_src_from_a_nested_test_dir(
+    scaffolded: Path,
+) -> None:
+    """``pytest tests/<dir>`` finds ``src`` without an ``__init__.py`` (#572).
+
+    Pytest's default ``prepend`` import mode puts the first directory
+    **without** an ``__init__.py`` on ``sys.path``, so the scaffold's own
+    ``tests/test_smoke.py`` imports ``src`` only because ``tests/`` is a
+    package. A test in a subdirectory without one — or a run pointed
+    straight at it — puts that subdirectory on the path instead, and the
+    import fails at collection. ``pythonpath = ["."]`` puts the project
+    root there for every layout.
+
+    Runs the ``pytest`` script rather than ``python -m pytest``: ``-m``
+    puts the working directory on ``sys.path`` itself and would pass with
+    the setting missing.
+    """
+    nested = scaffolded / "tests" / "nested"
+    nested.mkdir(exist_ok=True)
+    (nested / "test_imports_src.py").write_text(
+        "from src.core.settings import Settings\n"
+        "\n"
+        "\n"
+        "def test_settings_import() -> None:\n"
+        "    assert Settings is not None\n",
+        encoding="utf-8",
+    )
+    pytest_script = Path(sys.executable).with_name("pytest")
+    completed = subprocess.run(
+        [str(pytest_script), "-q", "-p", "no:cacheprovider", "tests/nested"],
+        cwd=scaffolded,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env={key: value for key, value in os.environ.items() if key != "PYTHONPATH"},
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "1 passed" in completed.stdout
