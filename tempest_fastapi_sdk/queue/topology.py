@@ -60,6 +60,9 @@ MAX_LENGTH_ARG: Final[str] = "x-max-length"
 QUEUE_TYPE_ARG: Final[str] = "x-queue-type"
 """AMQP argument selecting the queue implementation (classic/quorum)."""
 
+DEAD_LETTER_QUEUE_SUFFIX: Final[str] = ".dlq"
+"""Suffix :meth:`QueueSpec.consumer` gives the dead-letter queue it names."""
+
 
 class Transport(BaseStrEnum):
     """Which broker a :class:`QueueSpec` is being translated for.
@@ -98,6 +101,68 @@ class QueueType(BaseStrEnum):
     QUORUM = "quorum"
 
 
+class ExchangeKind(BaseStrEnum):
+    """AMQP exchange type.
+
+    Mirrors ``faststream.rabbit.ExchangeType`` value for value, so the
+    topology module imports nothing from FastStream and stays importable
+    without the ``[queue]`` extra.
+
+    Attributes:
+        TOPIC: Routes by pattern (``task.*``). The default, because it
+            subsumes a direct exchange — an exact key is a pattern with
+            no wildcards — and lets a consumer subscribe to a family of
+            events later without re-declaring anything.
+        DIRECT: Routes by exact key.
+        FANOUT: Ignores the key; every bound queue gets a copy.
+        HEADERS: Routes by message headers.
+    """
+
+    TOPIC = "topic"
+    DIRECT = "direct"
+    FANOUT = "fanout"
+    HEADERS = "headers"
+
+
+@dataclass(frozen=True)
+class ExchangeSpec:
+    """An exchange to publish to or bind a queue to.
+
+    Attributes:
+        name (str): The exchange name.
+        kind (ExchangeKind): The exchange type.
+        durable (bool): Whether it survives a broker restart. ``True``,
+            because a non-durable exchange vanishes on restart and takes
+            every binding to it along, so the queues behind it stop
+            receiving with nothing reporting it.
+    """
+
+    name: str
+    kind: ExchangeKind = ExchangeKind.TOPIC
+    durable: bool = True
+
+
+@dataclass(frozen=True)
+class ExchangeBinding:
+    """Bind a queue to an exchange under a routing key.
+
+    This is what turns one published event into one copy **per
+    consumer**: each consumer's queue is bound to the same exchange with
+    the same key, and the broker delivers to every bound queue. Without
+    a binding, two consumers subscribing to the same queue name share one
+    queue and split the messages between them instead.
+
+    Attributes:
+        exchange (ExchangeSpec): The exchange to bind to. Declared when
+            the subscriber starts.
+        routing_key (str): The key (a pattern, on a topic exchange) the
+            queue receives.
+    """
+
+    exchange: ExchangeSpec
+    routing_key: str
+
+
 _TRANSPORT_MARKERS: Final[tuple[tuple[str, Transport], ...]] = (
     ("rabbit", Transport.RABBITMQ),
     ("redis", Transport.REDIS),
@@ -133,18 +198,48 @@ class DeadLetterSpec:
     Without it, a rejected message is discarded — which is the default
     and is silent.
 
+    Naming a :attr:`queue` makes the topology complete: the exchange
+    **and** that queue are declared and bound before any subscriber
+    starts, so a message rejected on the first delivery already has
+    somewhere to go. Leave it ``None`` when something else consumes the
+    exchange — the delayed-retry chain of
+    :func:`~tempest_fastapi_sdk.queue.retry_queues` is the case: its
+    retry queue is bound there, and a second queue under the same key
+    would receive a duplicate of every failure.
+
     Attributes:
         exchange (str): The exchange rejected messages are published to.
-            It must exist; see
+            Declared by
             :meth:`~tempest_fastapi_sdk.queue.MessageBroker.declare_topology`.
         routing_key (str | None): Routing key to use when dead-lettering.
-            ``None`` keeps the message's original key, which is usually
-            what you want — it lets one dead-letter exchange fan out to
-            per-queue dead-letter queues without extra configuration.
+            ``None`` keeps the message's original key. With fan-out that
+            key is the **event's**, shared by every consumer of it, so a
+            dead-letter queue bound by it would collect the failures of
+            all of them; :meth:`QueueSpec.consumer` sets it to the queue
+            name instead.
+        queue (str | None): The dead-letter queue to declare and bind to
+            :attr:`exchange` under :attr:`routing_key`, or ``None`` to
+            declare only the exchange. Requires :attr:`routing_key`: an
+            unset key binds nothing predictable.
     """
 
     exchange: str
     routing_key: str | None = None
+    queue: str | None = None
+
+    def __post_init__(self) -> None:
+        """Reject a dead-letter queue with no key to bind it by.
+
+        Raises:
+            ValueError: When :attr:`queue` is set and
+                :attr:`routing_key` is not.
+        """
+        if self.queue is not None and self.routing_key is None:
+            raise ValueError(
+                f"DeadLetterSpec(queue={self.queue!r}) needs a routing_key: "
+                "the queue is bound by it, and the original key of a "
+                "fanned-out event is shared by every consumer of it.",
+            )
 
 
 @dataclass(frozen=True)
@@ -168,6 +263,10 @@ class QueueSpec:
         max_length (int | None): Cap the queue at this many messages;
             overflow is dead-lettered when :attr:`dead_letter` is set.
         queue_type (QueueType): Classic or quorum.
+        binding (ExchangeBinding | None): Bind the queue to an exchange
+            under a routing key, so it receives its own copy of what is
+            published there. ``None`` leaves the queue on the default
+            exchange, reachable by its name only.
     """
 
     name: str
@@ -177,6 +276,65 @@ class QueueSpec:
     max_priority: int | None = None
     max_length: int | None = None
     queue_type: QueueType = QueueType.CLASSIC
+    binding: ExchangeBinding | None = None
+
+    @classmethod
+    def consumer(
+        cls,
+        consumer: str,
+        channel: str,
+        *,
+        exchange: ExchangeSpec | str,
+        dead_letter_exchange: str | None = None,
+        queue_type: QueueType = QueueType.CLASSIC,
+    ) -> QueueSpec:
+        """Build one consumer's queue for an event published to ``exchange``.
+
+        The fan-out shape: every module that reacts to ``channel`` gets
+        its own durable queue, ``<consumer>.<channel>``, bound to the
+        shared exchange under ``channel`` — so each receives a copy
+        instead of competing for one.
+
+        With ``dead_letter_exchange``, a rejected message is routed there
+        under the **queue name** (not the event key, which every consumer
+        shares) into ``<consumer>.<channel>.dlq``, and both are declared
+        before the subscribers start. Replay it with
+        :meth:`~tempest_fastapi_sdk.queue.MessageBroker.replay_dead_letters`,
+        which returns it to this queue only.
+
+        Args:
+            consumer (str): The consuming module, e.g. ``"gamification"``.
+            channel (str): The event's routing key, e.g.
+                ``"task.completed"``.
+            exchange (ExchangeSpec | str): The exchange the event is
+                published to. A bare name is a durable topic exchange.
+            dead_letter_exchange (str | None): Exchange rejected messages
+                go to, or ``None`` to discard them.
+            queue_type (QueueType): Classic or quorum.
+
+        Returns:
+            QueueSpec: The spec to pass to
+            :meth:`~tempest_fastapi_sdk.queue.MessageBroker.on`.
+        """
+        name = f"{consumer}.{channel}"
+        target = (
+            exchange if isinstance(exchange, ExchangeSpec) else ExchangeSpec(exchange)
+        )
+        dead_letter = (
+            DeadLetterSpec(
+                exchange=dead_letter_exchange,
+                routing_key=name,
+                queue=f"{name}{DEAD_LETTER_QUEUE_SUFFIX}",
+            )
+            if dead_letter_exchange is not None
+            else None
+        )
+        return cls(
+            name=name,
+            dead_letter=dead_letter,
+            queue_type=queue_type,
+            binding=ExchangeBinding(exchange=target, routing_key=channel),
+        )
 
     def __post_init__(self) -> None:
         """Reject combinations the broker itself would refuse.
@@ -330,10 +488,39 @@ def to_rabbit_queue(spec: QueueSpec) -> Any:
     from tempest_fastapi_sdk.queue.broker import _require
 
     rabbit = _require("faststream.rabbit", "queue")
+    if spec.binding is None:
+        return rabbit.RabbitQueue(
+            spec.name,
+            durable=spec.durable,
+            arguments=rabbit_arguments(spec),
+        )
     return rabbit.RabbitQueue(
         spec.name,
         durable=spec.durable,
+        routing_key=spec.binding.routing_key,
         arguments=rabbit_arguments(spec),
+    )
+
+
+def to_rabbit_exchange(exchange: ExchangeSpec) -> Any:
+    """Translate ``exchange`` into a ``faststream.rabbit.RabbitExchange``.
+
+    Args:
+        exchange (ExchangeSpec): The exchange to translate.
+
+    Returns:
+        Any: The ``RabbitExchange`` to hand FastStream.
+
+    Raises:
+        ImportError: When the ``[queue]`` extra is not installed.
+    """
+    from tempest_fastapi_sdk.queue.broker import _require
+
+    rabbit = _require("faststream.rabbit", "queue")
+    return rabbit.RabbitExchange(
+        exchange.name,
+        type=rabbit.ExchangeType(exchange.kind.value),
+        durable=exchange.durable,
     )
 
 
@@ -364,12 +551,16 @@ def resolve_channel(channel: str | QueueSpec, transport: Transport) -> Any:
 
 __all__: list[str] = [
     "DEAD_LETTER_EXCHANGE_ARG",
+    "DEAD_LETTER_QUEUE_SUFFIX",
     "DEAD_LETTER_ROUTING_KEY_ARG",
     "MAX_LENGTH_ARG",
     "MAX_PRIORITY_ARG",
     "MESSAGE_TTL_ARG",
     "QUEUE_TYPE_ARG",
     "DeadLetterSpec",
+    "ExchangeBinding",
+    "ExchangeKind",
+    "ExchangeSpec",
     "QueueSpec",
     "QueueType",
     "Transport",
@@ -379,6 +570,7 @@ __all__: list[str] = [
     "rabbit_arguments",
     "require_supported",
     "resolve_channel",
+    "to_rabbit_exchange",
     "to_rabbit_queue",
     "unsupported_fields",
 ]

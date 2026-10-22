@@ -539,6 +539,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.queue.consumer.Subscription
 ::: tempest_fastapi_sdk.queue.topology.QueueSpec
 ::: tempest_fastapi_sdk.queue.topology.DeadLetterSpec
+::: tempest_fastapi_sdk.queue.topology.ExchangeSpec
+::: tempest_fastapi_sdk.queue.topology.ExchangeBinding
+::: tempest_fastapi_sdk.queue.topology.ExchangeKind
 ::: tempest_fastapi_sdk.queue.topology.QueueType
 ::: tempest_fastapi_sdk.queue.topology.Transport
 ::: tempest_fastapi_sdk.queue.topology.UnsupportedTopologyError

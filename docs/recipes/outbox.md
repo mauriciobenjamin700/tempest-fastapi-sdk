@@ -94,7 +94,7 @@ Cada evento publicado vira `status="sent"` com `sent_at` preenchido.
     Passar `publish=mq.publish` direto é recusado na construção:
 
     ```text
-    TypeError: publish=MessageBroker.publish(channel: 'str | QueueSpec', message: 'Any', **options: 'Any') -> 'Any' cannot be called as publish(event): missing a required argument: 'message'. OutboxRelay calls publish(event) with ONE argument, the outbox row. ...
+    TypeError: publish=MessageBroker.publish(channel: 'str | QueueSpec', message: 'Any', *, exchange: 'ExchangeSpec | str | None' = None, **options: 'Any') -> 'Any' cannot be called as publish(event): missing a required argument: 'message'. OutboxRelay calls publish(event) with ONE argument, the outbox row. ...
     ```
 
     Antes dessa checagem o relay aceitava, e o `TypeError` de cada chamada
