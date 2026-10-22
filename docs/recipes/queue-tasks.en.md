@@ -380,7 +380,7 @@ homework.events --task.completed--> rules.task.completed        --rejection--> h
 
 - **The queue is named `<consumer>.<channel>`** and bound to the exchange under `task.completed`. `@mq.on` hands the exchange to FastStream, which declares it and binds the queue when the consumer starts.
 - **Dead letters are keyed by the queue name**, not by the event key — the event key is the same for every consumer, and a DLQ bound by it would collect everyone's failures. The gamification failure lands in `gamification.task.completed.dlq` only.
-- **`publish(..., exchange=...)`** uses the channel as the routing key. An `ExchangeSpec` is declared on the first publish and not again in the process — the outbox relay can run before any consumer has declared the exchange. A bare name (`exchange="amq.topic"`) is passed through **undeclared**: the exchange exists already and its type is not ours to assert.
+- **`publish(..., exchange=...)`** uses the channel as the routing key (passing a consumer's own `QueueSpec` publishes by the event key, not by the queue name). An `ExchangeSpec` is declared on the first publish and not again in the process — the outbox relay can run before any consumer has declared the exchange. A bare name (`exchange="amq.topic"`) is passed through **undeclared**: the exchange exists already and its type is not ours to assert.
 
 !!! tip "No `dead_letter_exchange`, no dead letter"
     `QueueSpec.consumer("rules", "task.completed", exchange=EVENTS)` builds the queue and the binding only. As with any `QueueSpec` without `dead_letter`, the rejection is discarded.
@@ -407,7 +407,8 @@ async def replay(mq: MessageBroker) -> int:
 
 - **Back to the owner only.** The message is republished straight to the origin queue through the default exchange, never to the shared exchange — which would hand the rules engine a second copy.
 - **The `ack` comes after the publish.** If the publish fails, the message goes back to the DLQ (`nack(requeue=True)`) and the call raises. The origin queue is checked before the first read: measured, publishing through the default exchange to a queue that does not exist **raises nothing** — the broker returns the message as unroutable — and acking after that would lose it.
-- **What travels:** body, `message_id` (the `deduplicate` key), `content_type`, `correlation_id` and the headers, with `persist=True`. The `x-death` / `x-first-death-*` / `x-last-death-*` headers the broker writes when dead-lettering are **left behind**: the retry middleware counts attempts from them, and the replayed message gets a fresh budget.
+- **What travels:** body, `message_id` (the `deduplicate` key), `content_type`, `content_encoding`, `correlation_id`, `priority`, `timestamp`, `type`, `reply_to` and the headers, with `persist=True`. `expiration`, `app_id` and `user_id` stay behind: the replay is a new delivery. The `x-death` / `x-first-death-*` / `x-last-death-*` headers the broker writes when dead-lettering are **left behind**: the retry middleware counts attempts from them, and the replayed message gets a fresh budget.
+- **At least once, not exactly once.** If the publish succeeds and the `ack` after it fails (the connection drops between them), the message sits on the origin queue **and** on the DLQ, and the next replay delivers it again. A consumer with `deduplicate` skips the second copy by its `message_id`.
 - **`limit` caps one run.** A message that fails again goes to the back of the DLQ; without a cap, a consumer that is still broken would turn the replay into a loop.
 
 The same call takes the `RetryTopology` from `retry_queues` (reads `.dead`, returns to the main queue) or the bare DLQ name with an explicit destination:
@@ -432,6 +433,9 @@ async def replay_by_name(mq: MessageBroker) -> int:
     """Topology built outside the SDK: say where from and where to."""
     return await mq.replay_dead_letters("legacy.dlq", into="legacy")
 ```
+
+!!! warning "A queue that already exists with other arguments"
+    Declaring is idempotent only with the **same** arguments. A DLQ created by hand beforehand (another `x-queue-type`, an `x-message-ttl`) makes `connect()` fail with `PRECONDITION_FAILED - inequivalent arg ...` before any consumer starts. Align the `QueueSpec` with what exists, delete the queue, or use `declare_topology=False` and manage the topology outside.
 
 ### A field the transport cannot express **raises**
 

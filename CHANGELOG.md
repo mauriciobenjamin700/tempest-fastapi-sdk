@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   subir os consumidores no RabbitMQ. Antes, uma mensagem que já esperava na
   fila e era rejeitada na primeira entrega ia para um exchange ainda
   inexistente e se perdia (medido contra RabbitMQ 4, 3 de 3) (#592).
+  Consequência para quem já usa `QueueSpec(dead_letter=...)`: uma declaração
+  recusada pelo broker (`PRECONDITION_FAILED` numa fila que existe com outros
+  argumentos) agora falha o `connect()` antes de qualquer consumidor subir, e
+  a conexão aberta para ela é fechada.
 
 ## [0.322.0] — 2026-10-21
 

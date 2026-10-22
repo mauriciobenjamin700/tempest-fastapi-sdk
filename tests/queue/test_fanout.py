@@ -455,3 +455,63 @@ class TestReplayHeaders:
 
     def test_no_headers_is_an_empty_table(self) -> None:
         assert replay_headers(None) == {}
+
+
+class TestReviewFindings:
+    """Defects a review found before merge, pinned."""
+
+    async def test_publishing_a_bound_spec_routes_by_the_event_key(self) -> None:
+        """The queue name matches no binding; the message reached nobody."""
+        mq, recorder = _recorded()
+        mq._started = True
+        spec = QueueSpec.consumer("g", "task.completed", exchange="events")
+        await mq.publish(spec, "t", exchange=ExchangeSpec("events"))
+        assert recorder.published[0][1]["routing_key"] == "task.completed"
+
+    async def test_a_routing_key_option_is_refused_with_exchange(self) -> None:
+        mq, _ = _recorded()
+        mq._started = True
+        with pytest.raises(ValueError, match="routing_key"):
+            await mq.publish(
+                "task.completed",
+                "t",
+                exchange=ExchangeSpec("events"),
+                routing_key="other",
+            )
+
+    async def test_disconnect_forgets_declared_exchanges(self) -> None:
+        mq, recorder = _recorded()
+        stopped: list[bool] = []
+
+        async def stop() -> None:
+            stopped.append(True)
+
+        object.__setattr__(recorder, "stop", stop)
+        await mq.connect()
+        await mq.publish("c", "t", exchange=ExchangeSpec("events"))
+        await mq.disconnect()
+        await mq.connect()
+        await mq.publish("c", "t", exchange=ExchangeSpec("events"))
+        assert [exchange.name for exchange in recorder.exchanges] == [
+            "events",
+            "events",
+        ]
+
+    async def test_a_refused_declaration_closes_the_connection(self) -> None:
+        mq, recorder = _recorded()
+        stopped: list[bool] = []
+
+        async def stop() -> None:
+            stopped.append(True)
+
+        async def refuse(exchange: Any) -> None:
+            raise RuntimeError("PRECONDITION_FAILED")
+
+        object.__setattr__(recorder, "stop", stop)
+        object.__setattr__(recorder, "declare_exchange", refuse)
+        mq._bind(QueueSpec.consumer("g", "c", exchange="e", dead_letter_exchange="dlx"))
+        with pytest.raises(RuntimeError, match="PRECONDITION_FAILED"):
+            await mq.connect()
+        assert stopped == [True]
+        assert "start" not in recorder.calls
+        assert mq.is_connected is False

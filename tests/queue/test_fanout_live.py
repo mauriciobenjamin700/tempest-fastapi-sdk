@@ -507,3 +507,40 @@ class TestReplay:
             with pytest.raises(ChannelNotFoundEntity):
                 await mq.replay_dead_letters(dead, into=f"missing.{names['events']}")
         assert await _depth(inspector, dead) == 1
+
+
+class TestRefusedDeclaration:
+    """A DLQ that exists with other arguments stops connect() up front."""
+
+    async def test_precondition_failed_surfaces_before_any_consumer(
+        self,
+        amqp_url: str,
+        names: dict[str, str],
+        inspector: Any,
+    ) -> None:
+        from aiormq.exceptions import ChannelPreconditionFailed
+
+        spec = QueueSpec.consumer(
+            f"legacy-{names['id']}",
+            "task.completed",
+            exchange=ExchangeSpec(names["events"]),
+            dead_letter_exchange=names["dlx"],
+        )
+        assert spec.dead_letter is not None
+        assert spec.dead_letter.queue is not None
+        await inspector.declare_queue(
+            spec.dead_letter.queue,
+            durable=True,
+            arguments={"x-message-ttl": 60_000},
+        )
+        mq = MessageBroker.rabbitmq(amqp_url, logger=None)
+        consumed: list[str] = []
+
+        @mq.on(spec)
+        async def handle(body: str) -> None:
+            consumed.append(body)
+
+        with pytest.raises(ChannelPreconditionFailed, match="inequivalent arg"):
+            await mq.connect()
+        assert mq.is_connected is False
+        assert consumed == []

@@ -379,7 +379,7 @@ homework.events --task.completed--> rules.task.completed        --rejeição--> 
 
 - **A fila se chama `<consumidor>.<canal>`** e é ligada ao exchange pela chave `task.completed`. O `@mq.on` entrega o exchange ao FastStream, que o declara e faz o binding quando o consumidor sobe.
 - **A dead-letter é chaveada pelo nome da fila**, não pela chave do evento — a chave do evento é a mesma para todos os consumidores, e uma DLQ ligada por ela juntaria as falhas de todos. A falha da gamificação cai só em `gamification.task.completed.dlq`.
-- **`publish(..., exchange=...)`** usa o canal como routing key. Um `ExchangeSpec` é declarado na primeira publicação e não de novo no processo — o relay do outbox pode rodar antes de qualquer consumidor ter declarado o exchange. Um nome solto (`exchange="amq.topic"`) passa **sem** declarar: o exchange já existe e o tipo dele não é nosso para afirmar.
+- **`publish(..., exchange=...)`** usa o canal como routing key (passar o próprio `QueueSpec` do consumidor publica pela chave do evento, não pelo nome da fila). Um `ExchangeSpec` é declarado na primeira publicação e não de novo no processo — o relay do outbox pode rodar antes de qualquer consumidor ter declarado o exchange. Um nome solto (`exchange="amq.topic"`) passa **sem** declarar: o exchange já existe e o tipo dele não é nosso para afirmar.
 
 !!! tip "Sem `dead_letter_exchange`, sem dead-letter"
     `QueueSpec.consumer("rules", "task.completed", exchange=EVENTS)` monta só a fila e o binding. Como em qualquer `QueueSpec` sem `dead_letter`, a rejeição é descartada.
@@ -406,7 +406,8 @@ async def replay(mq: MessageBroker) -> int:
 
 - **Volta só para o dono.** A mensagem é republicada direto na fila de origem pelo exchange padrão, nunca no exchange compartilhado — que entregaria uma segunda cópia ao motor de regras.
 - **O `ack` vem depois do publish.** Se o publish falha, a mensagem volta para a DLQ (`nack(requeue=True)`) e a chamada levanta. A fila de origem é conferida antes da primeira leitura: medido, publicar pelo exchange padrão numa fila que não existe **não levanta** — o broker devolve a mensagem como não roteável —, e o `ack` depois disso a perderia.
-- **O que viaja:** corpo, `message_id` (a chave do `deduplicate`), `content_type`, `correlation_id` e os headers, com `persist=True`. Os headers `x-death` / `x-first-death-*` / `x-last-death-*` que o broker escreve ao fazer o dead-letter **ficam para trás**: o middleware de retry conta tentativas por eles, e a mensagem reprocessada ganha orçamento novo.
+- **O que viaja:** corpo, `message_id` (a chave do `deduplicate`), `content_type`, `content_encoding`, `correlation_id`, `priority`, `timestamp`, `type`, `reply_to` e os headers, com `persist=True`. `expiration`, `app_id` e `user_id` ficam: o replay é uma entrega nova. Os headers `x-death` / `x-first-death-*` / `x-last-death-*` que o broker escreve ao fazer o dead-letter **ficam para trás**: o middleware de retry conta tentativas por eles, e a mensagem reprocessada ganha orçamento novo.
+- **Pelo menos uma vez, não exatamente uma.** Se o publish passa e o `ack` seguinte falha (a conexão cai entre os dois), a mensagem fica na fila de origem **e** na DLQ, e o próximo replay a entrega de novo. Consumidor com `deduplicate` pula a segunda cópia pelo `message_id`.
 - **`limit` limita uma rodada.** Mensagem que falha de novo volta para o fim da DLQ; sem teto, um consumidor ainda quebrado transformaria o replay num laço.
 
 A mesma chamada aceita a `RetryTopology` do `retry_queues` (lê a `.dead`, devolve para a fila principal) ou o nome cru da DLQ com o destino explícito:
@@ -431,6 +432,9 @@ async def replay_by_name(mq: MessageBroker) -> int:
     """Topologia montada fora do SDK: diga de onde e para onde."""
     return await mq.replay_dead_letters("legacy.dlq", into="legacy")
 ```
+
+!!! warning "Fila que já existe com outros argumentos"
+    Declarar é idempotente só com os **mesmos** argumentos. Uma DLQ criada à mão antes (outro `x-queue-type`, um `x-message-ttl`) faz o `connect()` falhar com `PRECONDITION_FAILED - inequivalent arg ...` antes de qualquer consumidor subir. Ou alinhe o `QueueSpec` com o que existe, ou apague a fila, ou use `declare_topology=False` e cuide da topologia fora.
 
 ### Campo que o transporte não expressa **levanta**
 

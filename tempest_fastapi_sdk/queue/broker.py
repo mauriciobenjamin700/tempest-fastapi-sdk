@@ -208,6 +208,22 @@ def _with_prefetch(
     return options
 
 
+def _routing_key(channel: str | QueueSpec) -> str:
+    """Return the key a publish to an exchange routes by.
+
+    Args:
+        channel (str | QueueSpec): A bare key, or a spec.
+
+    Returns:
+        str: The binding's event key for a bound spec — the queue name
+        ``<consumer>.<channel>`` matches no binding, and a publish by it
+        reaches nobody — otherwise the channel name.
+    """
+    if isinstance(channel, QueueSpec) and channel.binding is not None:
+        return channel.binding.routing_key
+    return channel_name(channel)
+
+
 def _replay_route(
     source: QueueSpec | RetryTopology | str,
     into: str | None,
@@ -246,6 +262,26 @@ def _replay_route(
             "dead_letter_exchange=...) or set DeadLetterSpec.queue.",
         )
     return source.dead_letter.queue, source.name
+
+
+async def _requeue(raw: Any) -> None:
+    """Put a message back on the queue it was read from, best effort.
+
+    Called while another exception is propagating, so a failure here is
+    logged rather than raised: raising would replace the error that
+    explains why the replay stopped. The broker requeues an unacked
+    message by itself when the channel closes, so a lost ``nack`` delays
+    the message rather than losing it.
+
+    Args:
+        raw (Any): The ``aio_pika`` incoming message.
+    """
+    try:
+        await raw.nack(requeue=True)
+    except Exception:
+        logger.exception(
+            "Could not requeue %s; the broker will on close", raw.message_id
+        )
 
 
 class MessageBroker:
@@ -578,15 +614,18 @@ class MessageBroker:
                 it. Publishing only needs the name, so a spec here is
                 accepted for symmetry with :meth:`on` — the topology is
                 applied where the queue is declared, not per message.
-                With ``exchange``, the channel is the **routing key**.
+                With ``exchange``, the channel is the **routing key**: a
+                bare string as given, or the event key of a spec's
+                :class:`~tempest_fastapi_sdk.queue.ExchangeBinding` (not
+                the queue name, which no binding routes by).
             message (Any): The payload. A Pydantic model or ``dict`` is
                 serialized to JSON; ``str`` / ``bytes`` are sent as-is.
             exchange (ExchangeSpec | str | None): Publish to this exchange
                 instead of straight to the queue named ``channel``, so
                 every queue bound under that key gets a copy. An
                 :class:`~tempest_fastapi_sdk.queue.ExchangeSpec` is
-                declared on the first publish to it and not again in this
-                process; publishing to an exchange that does not exist is
+                declared on the first publish to it and not again until
+                :meth:`disconnect`; publishing to an exchange that does not exist is
                 an AMQP channel error, so a relay that runs before any
                 consumer would otherwise depend on someone else having
                 declared it. A bare name is passed through **undeclared**
@@ -610,6 +649,8 @@ class MessageBroker:
             RuntimeError: When :meth:`connect` has not been called yet.
             UnsupportedTopologyError: When ``exchange`` is given on a
                 transport without exchanges.
+            ValueError: When ``exchange`` comes with a ``routing_key=``
+                option, which would contradict the channel.
         """
         if not self._started:
             raise RuntimeError(
@@ -626,6 +667,11 @@ class MessageBroker:
                 f"publish(exchange=...) needs AMQP exchanges; the "
                 f"{self.transport.value} transport has none.",
             )
+        if "routing_key" in options:
+            raise ValueError(
+                "publish(exchange=...) takes the routing key from the "
+                "channel; drop the routing_key= option.",
+            )
         if isinstance(exchange, ExchangeSpec):
             await self._declare_exchange_once(exchange)
             target: Any = to_rabbit_exchange(exchange)
@@ -634,12 +680,12 @@ class MessageBroker:
         return await self.broker.publish(
             message,
             exchange=target,
-            routing_key=channel_name(channel),
+            routing_key=_routing_key(channel),
             **options,
         )
 
     async def _declare_exchange_once(self, exchange: ExchangeSpec) -> None:
-        """Declare ``exchange`` the first time this process publishes to it.
+        """Declare ``exchange`` the first time this connection publishes to it.
 
         Args:
             exchange (ExchangeSpec): The exchange to declare.
@@ -914,13 +960,20 @@ class MessageBroker:
         runs **before** the subscribers start. The other order left a
         window in which a consumer was already receiving and its
         dead-letter exchange did not exist yet: a message rejected in it
-        was routed nowhere and dropped.
+        was routed nowhere and dropped. A declaration the broker refuses
+        (``PRECONDITION_FAILED`` on a queue that exists with other
+        arguments) therefore surfaces before any consumer runs, and the
+        connection opened for it is closed before the error propagates.
         """
         if self._started:
             return
         if self._declare_topology and self.transport is Transport.RABBITMQ:
             await self.broker.connect()
-            await self.declare_topology()
+            try:
+                await self.declare_topology()
+            except BaseException:
+                await self.broker.stop()
+                raise
         await self.broker.start()
         self._started = True
 
@@ -1016,11 +1069,23 @@ class MessageBroker:
         What travels: the body as bytes, ``message_id`` (the
         deduplication key, so a consumer with
         :meth:`deduplicate` still recognises it), ``content_type``,
-        ``correlation_id`` and the headers, persisted. The broker's
-        ``x-death`` bookkeeping is dropped: the retry middleware counts
-        attempts from it, and a replayed message that kept it would be
-        given up on at its first failure instead of getting a fresh
-        budget.
+        ``content_encoding``, ``correlation_id``, ``priority``,
+        ``timestamp``, ``type``, ``reply_to`` and the headers, persisted.
+        ``expiration``, ``app_id`` and ``user_id`` do not: a replay is a
+        new delivery, not a resurrection of the old one's lifetime;
+        FastStream's publish takes no ``app_id``; and the broker checks
+        ``user_id`` against the replaying connection's login, so the
+        original's would be refused. The broker's ``x-death``
+        bookkeeping is dropped: the retry middleware counts attempts from
+        it, and a replayed message that kept it would be given up on at
+        its first failure instead of getting a fresh budget.
+
+        At least once, not exactly once: when the publish succeeds and the
+        ``ack`` that follows fails (the connection drops between them),
+        the message is both back on the origin queue and still on the
+        dead-letter queue, and the next replay delivers it again. A
+        consumer with :meth:`deduplicate` skips the second copy by its
+        ``message_id``.
 
         Args:
             source (QueueSpec | RetryTopology | str): Where the dead
@@ -1081,10 +1146,15 @@ class MessageBroker:
                     message_id=raw.message_id,
                     correlation_id=raw.correlation_id,
                     content_type=raw.content_type,
+                    content_encoding=raw.content_encoding,
                     headers=replay_headers(raw.headers),
+                    priority=raw.priority,
+                    timestamp=raw.timestamp,
+                    message_type=raw.type,
+                    reply_to=raw.reply_to,
                 )
             except BaseException:
-                await raw.nack(requeue=True)
+                await _requeue(raw)
                 raise
             await raw.ack()
             moved += 1
@@ -1092,11 +1162,17 @@ class MessageBroker:
         return moved
 
     async def disconnect(self) -> None:
-        """Stop the broker and release its connections."""
+        """Stop the broker and release its connections.
+
+        Forgets which exchanges :meth:`publish` declared, so the next
+        :meth:`connect` declares them again rather than trusting a
+        connection that is gone.
+        """
         if not self._started:
             return
         await self.broker.stop()
         self._started = False
+        self._declared_exchanges.clear()
 
     @asynccontextmanager
     async def lifespan(self) -> AsyncGenerator[MessageBroker, None]:
