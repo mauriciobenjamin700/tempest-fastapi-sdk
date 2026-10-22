@@ -43,8 +43,37 @@ _MAGIC_SIGNATURES: tuple[tuple[bytes, str], ...] = (
     (b"%PDF-", "application/pdf"),
 )
 
+HEIC_BRANDS: frozenset[bytes] = frozenset(
+    {b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx", b"hevm", b"hevs"},
+)
+"""ISO-BMFF ``ftyp`` brands of an HEVC-coded HEIF file (HEIC).
+
+Ported from libheif's ``heif_get_file_mime_type``
+(``libheif/api/libheif/heif_brands.cc``, commit ``1b2a9a8``), which maps
+``heic``/``heix``/``heim``/``heis`` to ``image/heic`` and
+``hevc``/``hevx``/``hevm``/``hevs`` to ``image/heic-sequence``: the
+HEVC-coded brands of HEIF (ISO/IEC 23008-12). :func:`sniff_mime` folds
+both groups into ``image/heic``, so an image sequence
+declared as ``image/heic`` is not refused as a contradiction.
+
+AV1 brands (``avif``, ``avis``) are deliberately absent: an AVIF file is
+a HEIF container too, but not HEIC.
+"""
+
+HEIF_STRUCTURAL_BRANDS: frozenset[bytes] = frozenset({b"mif1", b"msf1"})
+"""Codec-neutral HEIF brands (image item, image sequence).
+
+Ported from libheif's ``heif_get_file_mime_type``
+(``libheif/api/libheif/heif_brands.cc``, commit ``1b2a9a8``), which reports
+them as the generic ``image/heif``/``image/heif-sequence``. Some encoders
+write one of them as the major brand of an HEIC file, and others of an
+AVIF file, so on their own they do not say which codec is inside:
+:func:`sniff_mime` reports ``image/heic`` for them only when a compatible
+brand of the ``ftyp`` box is in :data:`HEIC_BRANDS`.
+"""
+
 SNIFFABLE_MIMETYPES: frozenset[str] = frozenset(
-    {mime for _signature, mime in _MAGIC_SIGNATURES} | {"image/webp"},
+    {mime for _signature, mime in _MAGIC_SIGNATURES} | {"image/webp", "image/heic"},
 )
 """The MIME types :func:`sniff_mime` can recognize from the bytes.
 
@@ -86,14 +115,23 @@ def sniff_mime(prefix: bytes) -> str | None:
     the declared type (or an allow-list) to reject content/declaration
     mismatches such as an HTML payload uploaded as ``image/jpeg``.
 
-    Recognizes JPEG, PNG, GIF, BMP, WebP and PDF. Returns ``None`` for
-    anything else (text, archives, office documents, audio/video
-    containers, …) — absence of a match means "not one of the sniffable
-    binary formats", not "invalid".
+    Recognizes JPEG, PNG, GIF, BMP, WebP, HEIC and PDF. Returns ``None``
+    for anything else (text, archives, office documents, audio/video
+    containers, AVIF, …) — absence of a match means "not one of the
+    sniffable binary formats", not "invalid".
+
+    HEIC is an ISO-BMFF ``ftyp`` box: ``prefix[4:8]`` is ``ftyp`` and
+    ``prefix[8:12]`` the major brand. A major brand in
+    :data:`HEIC_BRANDS` is HEIC; a codec-neutral one
+    (:data:`HEIF_STRUCTURAL_BRANDS`) is HEIC only when a compatible brand
+    of the box (from byte 16 up to the box size) is in
+    :data:`HEIC_BRANDS`. An AVIF file (major brand ``avif``, or ``mif1``
+    with only AV1 compatible brands) returns ``None``.
 
     Args:
-        prefix (bytes): The first bytes of the file (≥12 bytes
-            recommended so the WebP ``RIFF…WEBP`` marker can be checked;
+        prefix (bytes): The first bytes of the file (≥32 bytes
+            recommended so the WebP ``RIFF…WEBP`` marker and the
+            compatible brands of an HEIF ``ftyp`` box can be checked;
             shorter inputs still match the fixed-prefix signatures).
 
     Returns:
@@ -105,7 +143,34 @@ def sniff_mime(prefix: bytes) -> str | None:
             return mime
     if prefix[:4] == b"RIFF" and prefix[8:12] == b"WEBP":
         return "image/webp"
+    if prefix[4:8] == b"ftyp" and _is_heic_ftyp(prefix):
+        return "image/heic"
     return None
+
+
+def _is_heic_ftyp(prefix: bytes) -> bool:
+    """Tell whether an ISO-BMFF ``ftyp`` box declares an HEIC file.
+
+    Args:
+        prefix (bytes): The first bytes of the file, already known to
+            carry ``ftyp`` at ``prefix[4:8]``.
+
+    Returns:
+        bool: ``True`` when the major brand is in :data:`HEIC_BRANDS`, or
+        when it is in :data:`HEIF_STRUCTURAL_BRANDS` and a compatible
+        brand (read up to the box size, bounded by ``prefix``) is in
+        :data:`HEIC_BRANDS`.
+    """
+    major = prefix[8:12]
+    if major in HEIC_BRANDS:
+        return True
+    if major not in HEIF_STRUCTURAL_BRANDS:
+        return False
+    box_end = min(int.from_bytes(prefix[:4], "big"), len(prefix))
+    return any(
+        prefix[offset : offset + 4] in HEIC_BRANDS
+        for offset in range(16, box_end - 3, 4)
+    )
 
 
 class UploadUtils:
@@ -657,6 +722,8 @@ async def read_upload_capped(
 
 
 __all__: list[str] = [
+    "HEIC_BRANDS",
+    "HEIF_STRUCTURAL_BRANDS",
     "SNIFFABLE_MIMETYPES",
     "UPLOAD_READ_CHUNK_BYTES",
     "UploadUtils",

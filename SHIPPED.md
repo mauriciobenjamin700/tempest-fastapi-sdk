@@ -1967,6 +1967,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   — a unified facade bundling upload + download + presign over one
   shared backend (`uploader`/`downloader`/`backend`/`client` escape
   hatches).
+  **(unreleased)** `sniff_mime` recognizes HEIC (`HEIC_BRANDS`, from
+  libheif; `mif1`/`msf1` only with an HEVC compatible brand, so AVIF stays
+  out) and `ImageMediaType` is the field type for a declared image
+  `Content-Type` (aliases, any case, `.extension`, `.matches(data)`).
 - **MinIO / S3** — `AsyncMinIOClient` via `[minio]` extra
   (bucket lifecycle, object I/O, streaming download, presigned
   URLs). **(v0.302.0, #361)** `download_response(key, request=...)`

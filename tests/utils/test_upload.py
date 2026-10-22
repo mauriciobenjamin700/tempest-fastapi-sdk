@@ -8,6 +8,9 @@ from fastapi import UploadFile
 from starlette.datastructures import Headers
 
 from tempest_fastapi_sdk import (
+    HEIC_BRANDS,
+    HEIF_STRUCTURAL_BRANDS,
+    SNIFFABLE_MIMETYPES,
     UPLOAD_READ_CHUNK_BYTES,
     FileTooLargeException,
     InvalidFileTypeException,
@@ -24,6 +27,23 @@ _PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 _GIF = b"GIF89a" + b"\x00" * 16
 _WEBP = b"RIFF\x24\x00\x00\x00WEBPVP8 " + b"\x00" * 8
 _PDF = b"%PDF-1.7\n" + b"\x00" * 16
+
+# First 40 bytes of an 8x8 image saved by pillow-heif 1.8.1 (libheif 1.23.6,
+# x265) as HEIF and by Pillow 13.0.0 as AVIF.
+_HEIC_PILLOW_HEIF = (
+    b"\x00\x00\x00\x1cftypheic\x00\x00\x00\x00mif1heicmiaf"
+    b"\x00\x00\x01|meta\x00\x00\x00\x00"
+)
+_AVIF_PILLOW = (
+    b"\x00\x00\x00 ftypavif\x00\x00\x00\x00avifmif1miafMA1B\x00\x00\x00\xebmeta"
+)
+
+
+def _ftyp(major: bytes, *compatible: bytes) -> bytes:
+    """Build an ISO-BMFF ``ftyp`` box followed by the start of a ``meta`` box."""
+    size = 16 + 4 * len(compatible)
+    box = size.to_bytes(4, "big") + b"ftyp" + major + b"\x00\x00\x00\x00"
+    return box + b"".join(compatible) + b"\x00\x00\x01\x00meta"
 
 
 def _make_upload(
@@ -111,6 +131,45 @@ class TestValidation:
         # Partial file must be cleaned up on overflow.
         leftovers = list(tmp_path.iterdir())
         assert leftovers == []
+
+
+class TestHeicVerification:
+    async def test_verify_magic_bytes_accepts_declared_heic(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Before ``sniff_mime`` knew HEIC, this upload was a 415."""
+        utils = UploadUtils(
+            tmp_path,
+            allowed_mimetypes={"image/heic"},
+            verify_magic_bytes=True,
+        )
+        key = await utils.save(
+            _make_upload(
+                _HEIC_PILLOW_HEIF,
+                filename="photo.heic",
+                content_type="image/heic",
+            ),
+        )
+        assert (tmp_path / key).read_bytes() == _HEIC_PILLOW_HEIF
+
+    async def test_verify_magic_bytes_rejects_avif_declared_as_heic(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        utils = UploadUtils(
+            tmp_path,
+            allowed_mimetypes={"image/heic"},
+            verify_magic_bytes=True,
+        )
+        with pytest.raises(InvalidFileTypeException):
+            await utils.save(
+                _make_upload(
+                    _AVIF_PILLOW,
+                    filename="photo.heic",
+                    content_type="image/heic",
+                ),
+            )
 
 
 class TestUnrestrictedSentinels:
@@ -218,6 +277,63 @@ class TestSniffMime:
 
     def test_recognizes_pdf(self) -> None:
         assert sniff_mime(_PDF) == "application/pdf"
+
+    def test_recognizes_heic_written_by_libheif(self) -> None:
+        assert sniff_mime(_HEIC_PILLOW_HEIF) == "image/heic"
+
+    def test_heic_brands_are_the_hevc_brands_of_libheif(self) -> None:
+        """Pinned against libheif's ``heif_get_file_mime_type`` (commit 1b2a9a8)."""
+        assert (
+            frozenset(
+                {
+                    b"heic",
+                    b"heix",
+                    b"heim",
+                    b"heis",
+                    b"hevc",
+                    b"hevx",
+                    b"hevm",
+                    b"hevs",
+                },
+            )
+            == HEIC_BRANDS
+        )
+        assert frozenset({b"mif1", b"msf1"}) == HEIF_STRUCTURAL_BRANDS
+
+    @pytest.mark.parametrize("brand", sorted(HEIC_BRANDS))
+    def test_recognizes_every_heic_major_brand(self, brand: bytes) -> None:
+        assert sniff_mime(_ftyp(brand, b"mif1", brand)) == "image/heic"
+
+    @pytest.mark.parametrize("structural", sorted(HEIF_STRUCTURAL_BRANDS))
+    def test_structural_major_brand_with_heic_compatible_brand(
+        self,
+        structural: bytes,
+    ) -> None:
+        assert sniff_mime(_ftyp(structural, structural, b"heic")) == "image/heic"
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            _AVIF_PILLOW,
+            _ftyp(b"avif", b"avif", b"mif1", b"miaf"),
+            _ftyp(b"avis", b"avis", b"msf1", b"miaf"),
+            _ftyp(b"mif1", b"mif1", b"avif", b"miaf"),
+            _ftyp(b"msf1", b"msf1", b"avis"),
+            _ftyp(b"mif1"),
+            _ftyp(b"isom", b"isom", b"mp41"),
+        ],
+    )
+    def test_avif_and_other_iso_bmff_are_not_heic(self, payload: bytes) -> None:
+        """AVIF shares the HEIF container (and often ``mif1``) but is not HEIC."""
+        assert sniff_mime(payload) is None
+
+    def test_compatible_brands_past_the_box_size_are_ignored(self) -> None:
+        """A ``heic`` inside the next box does not make a bare ``mif1`` HEIC."""
+        payload = b"\x00\x00\x00\x10ftypmif1\x00\x00\x00\x00heic"
+        assert sniff_mime(payload) is None
+
+    def test_sniffable_mimetypes_lists_heic(self) -> None:
+        assert "image/heic" in SNIFFABLE_MIMETYPES
 
     @pytest.mark.parametrize(
         "payload",
