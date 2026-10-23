@@ -63,6 +63,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.discovery.discover_models
 ::: tempest_fastapi_sdk.admin.session.AdminSession
 ::: tempest_fastapi_sdk.admin.session.SignedCookieSessionStore
+::: tempest_fastapi_sdk.admin.session.AdminLoginCSRF
 
 ---
 
@@ -1344,6 +1345,9 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.testing.database.make_test_database
 ::: tempest_fastapi_sdk.testing.database.make_test_session
 ::: tempest_fastapi_sdk.testing.privacy.assert_subject_graph_valid
+::: tempest_fastapi_sdk.testing.admin.admin_login
+::: tempest_fastapi_sdk.testing.admin.admin_login_sync
+::: tempest_fastapi_sdk.testing.admin.admin_csrf_token
 
 ### `tempest_fastapi_sdk.testing.fakes`
 

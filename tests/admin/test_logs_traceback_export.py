@@ -33,6 +33,7 @@ from tempest_fastapi_sdk.api.routers.logs import (
     render_entries_json,
     render_entries_markdown,
 )
+from tempest_fastapi_sdk.testing import admin_login
 
 SECRET = "x" * 48
 
@@ -56,10 +57,7 @@ def _client(app: FastAPI) -> AsyncClient:
 
 async def _login(client: AsyncClient) -> None:
     """Authenticate as the seeded admin so the session cookie is set."""
-    await client.post(
-        "/admin/login",
-        data={"identifier": "root@example.com", "password": "hunter2"},
-    )
+    await admin_login(client, "root@example.com", "hunter2")
 
 
 def _write_logs(log_dir: Path) -> None:

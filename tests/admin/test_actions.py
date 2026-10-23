@@ -24,6 +24,7 @@ from tempest_fastapi_sdk import (
     make_admin_router,
 )
 from tempest_fastapi_sdk.admin.actions import resolve_admin_action
+from tempest_fastapi_sdk.testing import admin_login
 
 
 class ActionUser(BaseUserModel):
@@ -90,10 +91,7 @@ def _client(app: FastAPI) -> AsyncClient:
 
 
 async def _login(client: AsyncClient) -> None:
-    await client.post(
-        "/admin/login",
-        data={"identifier": "root@example.com", "password": "hunter2"},
-    )
+    await admin_login(client, "root@example.com", "hunter2")
 
 
 class TestActionRegistration:

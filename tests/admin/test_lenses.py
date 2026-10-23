@@ -20,6 +20,7 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
     make_admin_router,
 )
+from tempest_fastapi_sdk.testing import admin_login
 
 
 class LensUser(BaseUserModel):
@@ -84,9 +85,7 @@ def _client(app: FastAPI) -> AsyncClient:
 
 
 async def _login(client: AsyncClient) -> None:
-    await client.post(
-        "/admin/login", data={"identifier": "root@x.com", "password": "pw"}
-    )
+    await admin_login(client, "root@x.com", "pw")
 
 
 @pytest.mark.asyncio

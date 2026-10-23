@@ -21,6 +21,7 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
     make_admin_router,
 )
+from tempest_fastapi_sdk.testing import admin_login
 
 
 class RoleUser(BaseUserModel):
@@ -90,7 +91,7 @@ def _client(app: FastAPI) -> AsyncClient:
 
 
 async def _login(client: AsyncClient, email: str) -> None:
-    await client.post("/admin/login", data={"identifier": email, "password": "pw"})
+    await admin_login(client, email, "pw")
 
 
 class TestSupportRole:

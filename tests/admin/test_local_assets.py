@@ -32,6 +32,7 @@ from tempest_fastapi_sdk import BaseUserModel
 from tempest_fastapi_sdk.admin import AdminSite, SqlShellService, make_admin_router
 from tempest_fastapi_sdk.admin.auth import UserModelAuthBackend
 from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
+from tempest_fastapi_sdk.testing import admin_login_sync
 
 _ADMIN_DIR = Path(__file__).resolve().parents[2] / "tempest_fastapi_sdk" / "admin"
 """The admin package directory, where the template and the stylesheet live."""
@@ -182,7 +183,7 @@ def signed_in(admin_app: FastAPI) -> TestClient:
         TestClient: The authenticated client.
     """
     client = TestClient(admin_app)
-    client.post("/admin/login", data={"identifier": "ops@x.com", "password": "pw"})
+    admin_login_sync(client, "ops@x.com", "pw")
     return client
 
 

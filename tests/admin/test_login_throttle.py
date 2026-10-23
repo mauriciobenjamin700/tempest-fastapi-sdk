@@ -21,6 +21,7 @@ from tempest_fastapi_sdk import (
     login_throttle_key,
     make_admin_router,
 )
+from tempest_fastapi_sdk.testing import admin_login
 
 SECRET = "x" * 48
 
@@ -142,12 +143,7 @@ async def _login(
     password: str,
     headers: dict[str, str] | None = None,
 ) -> Response:
-    return await client.post(
-        "/admin/login",
-        data={"identifier": identifier, "password": password},
-        headers=headers or {},
-        follow_redirects=False,
-    )
+    return await admin_login(client, identifier, password, headers=headers or {})
 
 
 class TestIdentifierBudget:
@@ -163,7 +159,7 @@ class TestIdentifierBudget:
         assert blocked.status_code == 429
         assert int(blocked.headers["Retry-After"]) > 0
         assert "Too many failed logins" in blocked.text
-        assert "set-cookie" not in blocked.headers
+        assert "tempest_admin=" not in blocked.headers.get("set-cookie", "")
 
     async def test_budget_is_keyed_on_the_normalized_identifier(
         self, harness: Harness

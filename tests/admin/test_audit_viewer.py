@@ -22,6 +22,7 @@ from tempest_fastapi_sdk import (
     make_admin_router,
 )
 from tempest_fastapi_sdk.db.audit import snapshot_model
+from tempest_fastapi_sdk.testing import admin_login
 
 
 class AuditUser(BaseUserModel):
@@ -89,10 +90,7 @@ def _client(app: FastAPI) -> AsyncClient:
 
 
 async def _login(client: AsyncClient) -> None:
-    await client.post(
-        "/admin/login",
-        data={"identifier": "root@example.com", "password": "hunter2"},
-    )
+    await admin_login(client, "root@example.com", "hunter2")
 
 
 @pytest.mark.asyncio
@@ -146,9 +144,7 @@ async def test_history_absent_without_audit_model() -> None:
         )
     )
     async with _client(app) as client:
-        await client.post(
-            "/admin/login", data={"identifier": "a@b.com", "password": "pw"}
-        )
+        await admin_login(client, "a@b.com", "pw")
         response = await client.get(f"/admin/m/{AuditedThing.__tablename__}/{thing_id}")
 
     assert response.status_code == 200

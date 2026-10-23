@@ -53,6 +53,7 @@ from tempest_fastapi_sdk.admin.forms import (
 )
 from tempest_fastapi_sdk.admin.permissions import AdminAccessPolicy, AdminPermission
 from tempest_fastapi_sdk.admin.session import (
+    AdminLoginCSRF,
     AdminSession,
     SessionStore,
     SignedCookieSessionStore,
@@ -124,6 +125,14 @@ ADMIN_LOGIN_THROTTLE_WINDOW_SECONDS: int = 900
 
 ADMIN_LOGIN_THROTTLED_MESSAGE: str = "Too many failed logins, try again later"
 """Error shown on the login page when a ``/login`` budget is spent."""
+
+ADMIN_LOGIN_CSRF_MESSAGE: str = "The sign-in form expired, please try again"
+"""Error shown when a ``/login`` submit carries no valid CSRF token.
+
+Worded for the honest case — a form left open past its window, or a page
+restored from the browser cache after the cookie expired — since the
+cross-site case never sees the page.
+"""
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _STATIC_DIR = Path(__file__).parent / "static"
@@ -354,6 +363,7 @@ def make_admin_router(
         secure=cookie_secure,
         path=prefix,
     )
+    login_csrf = AdminLoginCSRF(secret_key, secure=cookie_secure, path=prefix)
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
     templates.env.filters["pluralize"] = _pluralize
     resolved_mfa_throttle: AttemptThrottle = mfa_throttle or AttemptThrottle(
@@ -864,12 +874,41 @@ def make_admin_router(
             HTMLResponse: The rendered login template.
         """
         if store.load(request) is not None:
-            return _render(request, "login.html", {"user": None})
-        return _render(
+            return _render_login(request, {"user": None})
+        return _render_login(
             request,
-            "login.html",
             {"user": None, "error": None, "next": next or ""},
         )
+
+    def _render_login(
+        request: Request,
+        context: dict[str, Any],
+        *,
+        status_code: int = 200,
+    ) -> HTMLResponse:
+        """Render ``login.html`` with a CSRF token in the form and the cookie.
+
+        Every render of the login page goes through here — the plain form,
+        a wrong password, a spent budget, an expired form — so whichever
+        page the operator submits next carries a token the submit accepts.
+
+        Args:
+            request (Request): The inbound request.
+            context (dict[str, Any]): Template variables.
+            status_code (int): HTTP status code.
+
+        Returns:
+            HTMLResponse: The login page, with the token cookie set.
+        """
+        token = login_csrf.issue(request)
+        response = _render(
+            request,
+            "login.html",
+            {**context, "csrf_token": token},
+            status_code=status_code,
+        )
+        login_csrf.attach(response, token)
+        return response
 
     def _login_throttled(request: Request, retry_after_seconds: int) -> Response:
         """Re-render the login form as ``429`` with ``Retry-After``.
@@ -881,9 +920,8 @@ def make_admin_router(
         Returns:
             Response: The login page carrying the throttle message.
         """
-        blocked = _render(
+        blocked = _render_login(
             request,
-            "login.html",
             {"user": None, "error": ADMIN_LOGIN_THROTTLED_MESSAGE},
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         )
@@ -895,6 +933,7 @@ def make_admin_router(
         request: Request,
         identifier: str = Form(...),
         password: str = Form(...),
+        csrf_token: str = Form(""),
         db_session: AsyncSession = Depends(_db_session),
     ) -> Response:
         """Verify credentials and issue the session cookie.
@@ -903,7 +942,15 @@ def make_admin_router(
             request (Request): The inbound request.
             identifier (str): The email submitted in the form.
             password (str): The submitted password.
+            csrf_token (str): The pre-login token from the form's hidden
+                field; empty when the field is missing, which is refused
+                like a wrong one rather than as a ``422``.
             db_session (AsyncSession): The DB session.
+
+        The CSRF token is checked first, before either budget and before
+        the password: a cross-site submit must not spend the operator's
+        attempts, and must not learn whether the credentials work. It is
+        refused with ``403`` and the form re-rendered with a fresh token.
 
         The two login budgets run in the order ``make_auth_router`` uses
         for ``/auth/login``. The IP budget is read first, so a blocked
@@ -916,8 +963,15 @@ def make_admin_router(
         Returns:
             Response: Redirect to the dashboard on success; rendered
             login form with an error message on failure, ``429`` with
-            ``Retry-After`` when a budget is spent.
+            ``Retry-After`` when a budget is spent, ``403`` when the CSRF
+            token is missing, expired or does not match its cookie.
         """
+        if not login_csrf.verify(request, csrf_token):
+            return _render_login(
+                request,
+                {"user": None, "error": ADMIN_LOGIN_CSRF_MESSAGE},
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
         ip_key = (
             f"admin-login-ip:{get_client_ip(request, trusted_header=trusted_ip_header)}"
         )
@@ -939,9 +993,8 @@ def make_admin_router(
         except AdminAuthError as exc:
             if resolved_login_ip_throttle is not None:
                 await resolved_login_ip_throttle.hit(ip_key)
-            return _render(
+            return _render_login(
                 request,
-                "login.html",
                 {"user": None, "error": exc.message},
                 status_code=exc.status_code,
             )
@@ -959,6 +1012,7 @@ def make_admin_router(
             status_code=status.HTTP_303_SEE_OTHER,
         )
         store.save(response, session)
+        login_csrf.clear(response)
         return response
 
     @router.post("/logout", name="admin_logout")

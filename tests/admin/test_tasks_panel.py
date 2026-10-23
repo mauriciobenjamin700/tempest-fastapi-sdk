@@ -38,6 +38,7 @@ from tempest_fastapi_sdk.tasks import (
     TaskQueue,
     make_job_model,
 )
+from tempest_fastapi_sdk.testing import admin_login
 
 SECRET = "x" * 48
 
@@ -184,11 +185,7 @@ async def _login(client: AsyncClient) -> None:
     Args:
         client (AsyncClient): The open client to authenticate.
     """
-    await client.post(
-        "/admin/login",
-        data={"identifier": "root@example.com", "password": "hunter2"},
-        follow_redirects=False,
-    )
+    await admin_login(client, "root@example.com", "hunter2")
 
 
 class TestServiceShape:

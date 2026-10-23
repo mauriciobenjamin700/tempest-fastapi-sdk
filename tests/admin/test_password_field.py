@@ -32,6 +32,7 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
     make_admin_router,
 )
+from tempest_fastapi_sdk.testing import admin_login
 
 
 class PanelUser(BaseUserModel):
@@ -119,10 +120,7 @@ async def _login_csrf(client: AsyncClient, path: str = f"/admin/m/{_SLUG}/new") 
     Returns:
         str: The CSRF token.
     """
-    await client.post(
-        "/admin/login",
-        data={"identifier": "root@example.com", "password": "hunter2hunter2"},
-    )
+    await admin_login(client, "root@example.com", "hunter2hunter2")
     page = await client.get(path)
     match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
     assert match is not None
@@ -184,13 +182,7 @@ class TestCreate:
     ) -> None:
         application, _ = app
         async with _client(application) as client:
-            await client.post(
-                "/admin/login",
-                data={
-                    "identifier": "root@example.com",
-                    "password": "hunter2hunter2",
-                },
-            )
+            await admin_login(client, "root@example.com", "hunter2hunter2")
             form = await client.get(f"/admin/m/{_SLUG}/new")
 
         assert 'type="password" name="hashed_password"' in form.text

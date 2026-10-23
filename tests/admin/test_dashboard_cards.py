@@ -21,6 +21,7 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
     make_admin_router,
 )
+from tempest_fastapi_sdk.testing import admin_login
 
 
 class CardUser(BaseUserModel):
@@ -89,10 +90,7 @@ def _client(app: FastAPI) -> AsyncClient:
 @pytest.mark.asyncio
 async def test_dashboard_renders_cards(app_cards: FastAPI) -> None:
     async with _client(app_cards) as client:
-        await client.post(
-            "/admin/login",
-            data={"identifier": "root@example.com", "password": "hunter2"},
-        )
+        await admin_login(client, "root@example.com", "hunter2")
         response = await client.get("/admin/")
 
     assert response.status_code == 200
@@ -119,10 +117,7 @@ async def test_broken_card_is_logged_with_traceback(
     app_cards: FastAPI, caplog: pytest.LogCaptureFixture
 ) -> None:
     async with _client(app_cards) as client:
-        await client.post(
-            "/admin/login",
-            data={"identifier": "root@example.com", "password": "hunter2"},
-        )
+        await admin_login(client, "root@example.com", "hunter2")
         with caplog.at_level(logging.ERROR, logger="tempest_fastapi_sdk.admin.router"):
             response = await client.get("/admin/")
 
