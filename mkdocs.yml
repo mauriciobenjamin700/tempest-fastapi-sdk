@@ -184,6 +184,7 @@ plugins:
               - Security: recipes/security.md
               - Self-hosted generative AI: recipes/genai.md
               - Server-Sent Events (SSE): recipes/sse.md
+              - Server-side login and signup: recipes/auth-pages.md
               - Server-side sessions: recipes/sessions.md
               - "Social login (OAuth2/OIDC)": recipes/oauth.md
               - Spreadsheets (.xlsx): recipes/spreadsheets.md
@@ -468,6 +469,7 @@ nav:
       - "Jobs (trabalho longo com status)": recipes/jobs.md
       - Kestra (orquestrador de workflows): recipes/kestra.md
       - Logging: recipes/logging.md
+      - Login e cadastro server-side: recipes/auth-pages.md
       - "Login social (OAuth2/OIDC)": recipes/oauth.md
       - "Management commands (tempest <cmd>)": recipes/management-commands.md
       - "Mercado Pago (contas e credenciais de teste)": recipes/mercado-pago-sandbox.md

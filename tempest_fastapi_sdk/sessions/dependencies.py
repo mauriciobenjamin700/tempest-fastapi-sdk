@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Literal, overload
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Literal, overload
+from urllib.parse import quote
 
-from fastapi import HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 
-from tempest_fastapi_sdk.exceptions import UnauthorizedException
+from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
+from tempest_fastapi_sdk.exceptions import ForbiddenException, UnauthorizedException
+from tempest_fastapi_sdk.utils.token_types import AMR_OTP
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from tempest_fastapi_sdk.db.user_model import BaseUserModel
     from tempest_fastapi_sdk.sessions.schemas import Session
     from tempest_fastapi_sdk.sessions.service import SessionAuth
 
@@ -193,9 +199,138 @@ def make_session_dependency(
     return _resolver
 
 
+def redirect_to_login(
+    login_path: str,
+    *,
+    status_code: int = status.HTTP_303_SEE_OTHER,
+) -> MissingSessionHandler:
+    """Build an ``on_missing`` handler that sends the browser to the login.
+
+    Unlike :func:`redirect_to`, it carries the requested path and query
+    along as ``?next=``, so the login page can bring the user back. The
+    login pages of :func:`~tempest_fastapi_sdk.make_auth_pages_router`
+    only follow a ``next`` that is a path on the same site.
+
+    Args:
+        login_path (str): The login page, e.g. ``"/login"``.
+        status_code (int): Redirect status, ``303`` by default.
+
+    Returns:
+        MissingSessionHandler: A handler for ``on_missing=``.
+
+    Raises:
+        ValueError: When ``status_code`` is not a ``3xx`` status.
+    """
+    if not 300 <= status_code < 400:
+        raise ValueError(f"redirect_to_login needs a 3xx status, got {status_code}")
+
+    def _handler(request: Request) -> Exception:
+        """Return the redirect carrying the requested path as ``next``.
+
+        Args:
+            request (Request): The request that carried no live session.
+
+        Returns:
+            Exception: An ``HTTPException`` with ``Location``.
+        """
+        target = request.url.path
+        if request.url.query:
+            target = f"{target}?{request.url.query}"
+        location = f"{login_path}?next={quote(target, safe='/')}"
+        return HTTPException(status_code=status_code, headers={"Location": location})
+
+    return _handler
+
+
+def make_session_user_dependency[UserT: BaseUserModel](
+    user_model: type[UserT],
+    session_factory: Callable[..., AsyncIterator[AsyncSession]],
+    *,
+    session_auth: SessionAuth | SessionAuthFactory,
+    on_missing: MissingSessionHandler | None = None,
+    require_mfa: bool = False,
+) -> Callable[..., Awaitable[UserT]]:
+    """Build a dependency returning the **user** of the request's session.
+
+    :func:`make_session_dependency` returns the :class:`Session`; a page
+    usually wants the account. This one resolves the cookie, then reloads
+    the row on the request's DB session — the same provider the routes
+    use, so the instance stays attached — on **every** request: an account
+    deactivated or deleted after the login loses access on its next click,
+    not when the session expires.
+
+    Args:
+        user_model (type[UserT]): The concrete user model.
+        session_factory (Callable[..., AsyncIterator[AsyncSession]]): The
+            request-scoped DB session provider.
+        session_auth (SessionAuth | SessionAuthFactory): Resolves the
+            cookie, as in :func:`make_session_dependency`.
+        on_missing (MissingSessionHandler | None): Exception for no
+            session, or a session whose account is gone or inactive —
+            :func:`redirect_to_login` for pages. ``None`` raises
+            :class:`UnauthorizedException` (``401``).
+        require_mfa (bool): Also require the session to have passed the
+            second factor (``otp`` in :attr:`Session.amr`); a session
+            without it is refused with ``403``, the same answer
+            ``make_mfa_required_dependency`` gives a token.
+
+    Returns:
+        Callable[..., Awaitable[UserT]]: An async FastAPI dependency.
+    """
+    resolve_session = make_session_dependency(
+        required=False,
+        session_auth=session_auth,
+    )
+    session_provider = session_provider_for(session_factory)
+
+    def _missing(request: Request) -> Exception:
+        """Build the refusal for a request without a usable session.
+
+        Args:
+            request (Request): The inbound request.
+
+        Returns:
+            Exception: ``on_missing(request)`` or a ``401``.
+        """
+        if on_missing is not None:
+            return on_missing(request)
+        return UnauthorizedException(message="session required")
+
+    async def _dependency(
+        request: Request,
+        db: Any = Depends(session_provider),
+    ) -> UserT:
+        """Return the active account behind the request's session.
+
+        Args:
+            request (Request): The inbound request.
+            db (Any): The request-scoped ``AsyncSession``.
+
+        Returns:
+            UserT: The account.
+
+        Raises:
+            Exception: :func:`_missing` without a usable session.
+            ForbiddenException: With ``require_mfa`` and no ``otp``.
+        """
+        session = await resolve_session(request)
+        if session is None:
+            raise _missing(request)
+        user: UserT | None = await db.get(user_model, session.user_id)
+        if user is None or not user.is_active:
+            raise _missing(request)
+        if require_mfa and AMR_OTP not in session.amr:
+            raise ForbiddenException(message="this action requires MFA")
+        return user
+
+    return _dependency
+
+
 __all__: list[str] = [
     "MissingSessionHandler",
     "SessionAuthFactory",
     "make_session_dependency",
+    "make_session_user_dependency",
     "redirect_to",
+    "redirect_to_login",
 ]

@@ -3659,3 +3659,11 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   logam em teste pelo formulário. Receita: `docs/recipes/admin.md` ("Defaults
   de segurança de sessão", "Logar em teste"). Testes:
   `tests/admin/test_login_csrf.py`.
+- **Login e cadastro server-side, Unreleased (#602)** —
+  `make_auth_pages_router` (login, `/login/mfa`, signup gerado do
+  `signup_schema`, `/activate/{token}` que abre a sessão, reenvio, logout) sobre
+  `UserAuthService` + `SessionAuth`; `make_session_user_dependency` /
+  `redirect_to_login`; `FormCSRF` (double-submit por campo) e `is_local_path`;
+  `Session.amr`. Throttle de login extraído para `auth/_login_flow.py`.
+  Receita: `docs/recipes/auth-pages.md`. Testes:
+  `tests/auth/test_auth_pages.py`.

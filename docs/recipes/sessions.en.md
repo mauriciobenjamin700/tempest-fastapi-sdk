@@ -10,7 +10,7 @@ Since v0.34.0 the SDK ships the full **server-side session** auth lifecycle — 
 | Cookie size | ~500 B – 1 KB (JWT) | 64 B (opaque id) |
 | Revocation | wait for token to expire (~1h typical) | **instant** (delete the row) |
 | Global logout | needs a blocklist or JWT_SECRET rotation | `revoke_all(user_id)` in one call |
-| CSRF | needs custom bearer header | HttpOnly cookie + native double-submit token |
+| CSRF | needs custom bearer header | HttpOnly cookie; the token comes from `CSRFMiddleware` (header) or `FormCSRF` (form field, used by the [login pages](auth-pages.md)) — the `sessions` module ships none of its own |
 | Multi-device UI ("signed in on 3 devices") | no state → impossible without extra work | `list_sessions(user_id)` is trivial |
 | Multi-replica | trivial (verify-only) | requires Redis (or sticky sessions) |
 | Per-request latency | none (CPU decode) | 1 Redis hit (~0.5ms LAN) |

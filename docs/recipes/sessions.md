@@ -10,7 +10,7 @@ Desde v0.34.0 o SDK fornece o ciclo completo de autenticação baseada em **sess
 | Cookie size | ~500 B – 1 KB (JWT) | 64 B (opaque id) |
 | Revogação | espera token expirar (~1h típico) | **instantânea** (delete da row) |
 | Logout global | precisa de blocklist ou rotacionar JWT_SECRET | `revoke_all(user_id)` num call |
-| CSRF | precisa de header bearer custom | cookie HttpOnly + double-submit token nativo |
+| CSRF | precisa de header bearer custom | cookie HttpOnly; o token vem do `CSRFMiddleware` (header) ou do `FormCSRF` (campo de formulário, usado pelas [páginas de login](auth-pages.md)) — o módulo `sessions` não traz um próprio |
 | Multi-device UI ("logado em 3 lugares") | sem state → impossível direto | `list_sessions(user_id)` trivial |
 | Multi-replica | trivial (verify-only) | exige Redis (ou sticky) |
 | Latência por request | nenhuma DB (decode CPU) | 1 hit Redis (~0.5ms LAN) |

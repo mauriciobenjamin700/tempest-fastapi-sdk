@@ -319,9 +319,33 @@ AUTH_EMAIL_MESSAGES: dict[str, dict[str, str]] = {
 AUTH_PAGE_MESSAGES: dict[str, dict[str, str]] = {
     "pt-BR": {
         "passwords_do_not_match": "As senhas não coincidem.",
+        "field_email": "E-mail",
+        "field_password": "Senha",
+        "field_name": "Nome",
+        "email_taken": "Já existe uma conta com esse e-mail.",
+        "form_expired": "O formulário expirou. Tente de novo.",
+        "invalid_credentials": "E-mail ou senha inválidos.",
+        "too_many_attempts": "Muitas tentativas. Aguarde um pouco e tente de novo.",
+        "invalid_mfa_code": "Código inválido.",
+        "mfa_expired": "A etapa de verificação expirou. Entre de novo.",
+        "email_unavailable": (
+            "Não foi possível enviar o e-mail agora. Tente de novo em instantes."
+        ),
     },
     "en-US": {
         "passwords_do_not_match": "Passwords do not match.",
+        "field_email": "E-mail",
+        "field_password": "Password",
+        "field_name": "Name",
+        "email_taken": "An account with this e-mail already exists.",
+        "form_expired": "The form expired. Please try again.",
+        "invalid_credentials": "Invalid e-mail or password.",
+        "too_many_attempts": "Too many attempts. Wait a moment and try again.",
+        "invalid_mfa_code": "Invalid code.",
+        "mfa_expired": "The verification step expired. Please sign in again.",
+        "email_unavailable": (
+            "The e-mail could not be sent right now. Try again shortly."
+        ),
     },
 }
 
@@ -363,7 +387,13 @@ def auth_page_message(locale: str, key: str) -> str:
     Args:
         locale (str): A canonical supported locale. Unknown locales fall
             back to :data:`DEFAULT_AUTH_LOCALE`.
-        key (str): Currently ``"passwords_do_not_match"``.
+        key (str): A key of :data:`AUTH_PAGE_MESSAGES` —
+            ``"passwords_do_not_match"``, ``"form_expired"``,
+            ``"invalid_credentials"``, ``"too_many_attempts"``,
+            ``"invalid_mfa_code"``, ``"mfa_expired"``,
+            ``"email_unavailable"``, ``"email_taken"``, or
+            ``"field_<name>"`` for the labels of the base signup fields
+            (``email``, ``password``, ``name``).
 
     Returns:
         str: The localized string.

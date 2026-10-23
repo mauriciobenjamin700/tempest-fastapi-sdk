@@ -1825,6 +1825,24 @@ class AuthSettings(BaseAppSettings):
             page template. Default: ``"password_reset_success.html"``.
         AUTH_PASSWORD_RESET_ERROR_TEMPLATE (str): Backend reset error page
             template. Default: ``"password_reset_error.html"``.
+        AUTH_PAGES_PREFIX (str): Mount prefix of
+            ``make_auth_pages_router``. Default: ``""`` (site root).
+        AUTH_PAGES_LOGIN_REDIRECT (str): Path the pages redirect to after a
+            login without ``next``. Default: ``"/"``.
+        AUTH_PAGES_LOGOUT_REDIRECT (str | None): Path after logout; ``None``
+            goes to the login page. Default: ``None``.
+        AUTH_LOGIN_PAGE_TEMPLATE (str): Login page template.
+            Default: ``"login.html"``.
+        AUTH_LOGIN_MFA_PAGE_TEMPLATE (str): Second-factor page template.
+            Default: ``"login_mfa.html"``.
+        AUTH_SIGNUP_PAGE_TEMPLATE (str): Signup page template.
+            Default: ``"signup.html"``.
+        AUTH_SIGNUP_DONE_TEMPLATE (str): "Check your e-mail" page template.
+            Default: ``"signup_done.html"``.
+        AUTH_ACTIVATION_REQUEST_PAGE_TEMPLATE (str): Resend-activation page
+            template. Default: ``"activation_request.html"``.
+        AUTH_ACTIVATION_REQUEST_DONE_TEMPLATE (str): Resend-activation
+            confirmation template. Default: ``"activation_request_done.html"``.
         AUTH_MFA_ENABLED (bool): Kill-switch enabling the MFA endpoints and
             TOTP login flow. Default: ``False``.
         AUTH_MFA_ISSUER (str): Issuer label shown in the Authenticator app.
@@ -2149,8 +2167,10 @@ class AuthSettings(BaseAppSettings):
         description=(
             "Jinja2 template rendered by "
             "``GET /auth/activate/{token}`` on success. Resolved "
-            "against ``EmailUtils.template_dir``; SDK ships a "
-            "default you can shadow."
+            "against the ``template_dir`` passed to "
+            "``make_auth_router`` (per-locale folder first), then the "
+            "SDK's bundled copy; ship a file of the same name to "
+            "shadow it."
         ),
         examples=["activation_success.html"],
     )
@@ -2192,6 +2212,137 @@ class AuthSettings(BaseAppSettings):
         ),
         examples=["password_reset_error.html"],
     )
+    AUTH_PAGES_PREFIX: str = Field(
+        default="",
+        title="Mount prefix of the server-side auth pages",
+        description=(
+            "Where ``make_auth_pages_router`` mounts ``/login``, "
+            "``/signup``, ``/activate/{token}``, ``/logout`` and the rest. "
+            "Empty (the default) mounts them at the site root. It must "
+            "not be the JSON router's prefix (``/auth`` by default): both "
+            "would answer ``POST {prefix}/login``. An empty string or a "
+            "path starting with ``/`` and not ending with one."
+        ),
+        examples=["", "/account"],
+    )
+    AUTH_PAGES_LOGIN_REDIRECT: str = Field(
+        default="/",
+        title="Where the pages send the browser after signing in",
+        description=(
+            "Used when the login form carries no ``next``. Must be a "
+            "path on this site (``/dashboard``); an absolute URL or a "
+            "``//host`` path is refused at boot, so the redirect can "
+            "never leave the site."
+        ),
+        examples=["/", "/dashboard"],
+    )
+    AUTH_PAGES_LOGOUT_REDIRECT: str | None = Field(
+        default=None,
+        title="Where the pages send the browser after signing out",
+        description=(
+            "A path on this site. ``None`` (the default) goes back to the login page."
+        ),
+        examples=[None, "/"],
+    )
+    AUTH_LOGIN_PAGE_TEMPLATE: str = Field(
+        default="login.html",
+        title="Server-side login page template",
+        description=(
+            "Rendered by ``GET {AUTH_PAGES_PREFIX}/login`` and by every "
+            "refused submit. Resolved like the other auth pages: the "
+            "router's ``template_dir`` (per-locale folder first), then "
+            "the bundled copy."
+        ),
+        examples=["login.html"],
+    )
+    AUTH_LOGIN_MFA_PAGE_TEMPLATE: str = Field(
+        default="login_mfa.html",
+        title="Server-side second-factor page template",
+        description=(
+            "Rendered by ``GET {AUTH_PAGES_PREFIX}/login/mfa``: the TOTP "
+            "or recovery-code step of an account with MFA enrolled."
+        ),
+        examples=["login_mfa.html"],
+    )
+    AUTH_SIGNUP_PAGE_TEMPLATE: str = Field(
+        default="signup.html",
+        title="Server-side signup page template",
+        description=(
+            "Rendered by ``GET {AUTH_PAGES_PREFIX}/signup``; the fields "
+            "come from the router's ``signup_schema``."
+        ),
+        examples=["signup.html"],
+    )
+    AUTH_SIGNUP_DONE_TEMPLATE: str = Field(
+        default="signup_done.html",
+        title="Server-side 'check your e-mail' page template",
+        description=(
+            "Rendered after a signup that waits for activation. A signup "
+            "with ``AUTH_AUTO_ACTIVATE`` opens the session instead."
+        ),
+        examples=["signup_done.html"],
+    )
+    AUTH_ACTIVATION_REQUEST_PAGE_TEMPLATE: str = Field(
+        default="activation_request.html",
+        title="Server-side 'resend the activation link' page template",
+        description="Rendered by ``GET {AUTH_PAGES_PREFIX}/activation/request``.",
+        examples=["activation_request.html"],
+    )
+    AUTH_ACTIVATION_REQUEST_DONE_TEMPLATE: str = Field(
+        default="activation_request_done.html",
+        title="Server-side 'link sent if the account exists' page template",
+        description=(
+            "Rendered after every resend request, with or without an "
+            "account behind the e-mail, so the page does not tell them "
+            "apart."
+        ),
+        examples=["activation_request_done.html"],
+    )
+
+    @field_validator("AUTH_PAGES_PREFIX")
+    @classmethod
+    def _check_pages_prefix(cls, value: str) -> str:
+        """Refuse a prefix that would not compose into a path.
+
+        Args:
+            value (str): The configured prefix.
+
+        Returns:
+            str: The prefix, unchanged.
+
+        Raises:
+            ValueError: When it is neither empty nor ``/segment``.
+        """
+        if value and (not value.startswith("/") or value.endswith("/")):
+            raise ValueError(
+                "AUTH_PAGES_PREFIX must be empty or start with '/' and not "
+                f"end with one, got {value!r}"
+            )
+        return value
+
+    @field_validator("AUTH_PAGES_LOGIN_REDIRECT", "AUTH_PAGES_LOGOUT_REDIRECT")
+    @classmethod
+    def _check_pages_redirect(cls, value: str | None) -> str | None:
+        """Refuse a redirect target that can leave the site.
+
+        Args:
+            value (str | None): The configured target.
+
+        Returns:
+            str | None: The target, unchanged.
+
+        Raises:
+            ValueError: When it is not a path on this site.
+        """
+        from tempest_fastapi_sdk.auth.form_csrf import is_local_path
+
+        if value is not None and not is_local_path(value):
+            raise ValueError(
+                "auth page redirects must be a path on this site, such as "
+                f"'/dashboard', got {value!r}"
+            )
+        return value
+
     AUTH_EMAIL_CHANGE_TTL_SECONDS: int = Field(
         default=3_600,
         ge=60,

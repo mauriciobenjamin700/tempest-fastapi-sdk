@@ -71,6 +71,8 @@ from tempest_fastapi_sdk.auth.firebase import (
 from tempest_fastapi_sdk.auth.firebase import (
     FirebaseUserResolver as FirebaseUserResolver,
 )
+from tempest_fastapi_sdk.auth.form_csrf import FormCSRF as FormCSRF
+from tempest_fastapi_sdk.auth.form_csrf import is_local_path as is_local_path
 from tempest_fastapi_sdk.auth.guards import FlagGuard as FlagGuard
 from tempest_fastapi_sdk.auth.guards import GuardException as GuardException
 from tempest_fastapi_sdk.auth.guards import make_flag_guard as make_flag_guard
@@ -101,6 +103,9 @@ from tempest_fastapi_sdk.auth.locale import negotiate_locale as negotiate_locale
 from tempest_fastapi_sdk.auth.locale import normalize_locale as normalize_locale
 from tempest_fastapi_sdk.auth.locale import resolve_locale as resolve_locale
 from tempest_fastapi_sdk.auth.locale import stamp_locale as stamp_locale
+from tempest_fastapi_sdk.auth.pages import (
+    make_auth_pages_router as make_auth_pages_router,
+)
 from tempest_fastapi_sdk.auth.router import (
     LOGIN_THROTTLE_MAX_ATTEMPTS as LOGIN_THROTTLE_MAX_ATTEMPTS,
 )
@@ -275,6 +280,7 @@ __all__: list[str] = [
     "FirebaseUserDisabledError",
     "FirebaseUserResolver",
     "FlagGuard",
+    "FormCSRF",
     "GuardException",
     "IntrospectionAuth",
     "LoginResponseSchema",
@@ -317,6 +323,8 @@ __all__: list[str] = [
     "clear_auth_cookies",
     "default_display_name",
     "format_expires_at",
+    "is_local_path",
+    "make_auth_pages_router",
     "make_auth_router",
     "make_flag_guard",
     "make_value_guard",

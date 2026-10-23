@@ -42,6 +42,12 @@ class Session(BaseSchema):
         data (dict[str, Any]): Arbitrary JSON-serializable bag —
             shopping cart id, last-seen route, locale preference,
             etc.
+        amr (list[str]): RFC 8176 authentication methods the session was
+            opened with — ``["pwd"]`` for a password, ``["email"]`` for an
+            activation link, ``[..., "otp"]`` once the second factor was
+            checked. Empty for a session opened before the field existed or
+            by code that does not set it, which a dependency requiring MFA
+            reads as "no second factor".
     """
 
     session_id: str = Field(
@@ -101,6 +107,15 @@ class Session(BaseSchema):
             "writes the contents."
         ),
         examples=[{}, {"cart_id": "01HE…", "locale": "pt-BR"}],
+    )
+    amr: list[str] = Field(
+        default_factory=list,
+        title="Authentication methods",
+        description=(
+            "RFC 8176 ``amr`` values the session was opened with: ``pwd``, "
+            "``email``, ``otp``. Empty when the opener did not record them."
+        ),
+        examples=[[], ["pwd"], ["pwd", "otp"]],
     )
 
 

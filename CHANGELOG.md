@@ -29,6 +29,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `register_quality_gate` em `tempest_fastapi_sdk.cli.main`;
   `CLI_OPS_EXTRA_MODULES`, `CLI_GATE_MODULES` e `CLI_GATE_HINT` em
   `tempest_fastapi_sdk.cli.entrypoint`.
+- `make_auth_pages_router`: login, MFA, cadastro, ativação, reenvio do link e
+  logout como páginas HTML sem JavaScript, sobre o mesmo `UserAuthService` e
+  uma sessão `SessionAuth` (opaca, revogável). Templates Jinja2 em pt-BR e
+  en-US, sobrescrevíveis por `template_dir`; CSRF por campo de formulário em
+  todo POST, login incluído; `next` só para caminho do próprio site; o link de
+  ativação abre a sessão (`amr=["email"]`); conta com MFA passa por
+  `/login/mfa`, com a etapa pendente em cookie `HttpOnly` (#602).
+- `make_session_user_dependency(user_model, session_factory, *, session_auth,
+  on_missing=None, require_mfa=False)`: devolve o usuário ativo da sessão,
+  relido a cada request; `redirect_to_login(login_path)` redireciona com
+  `?next=`.
+- `FormCSRF` e `is_local_path` (`tempest_fastapi_sdk.auth`): o double-submit
+  por campo de formulário (cookie com prefixo `__Host-` quando `Secure`, que
+  um subdomínio irmão não consegue plantar) e o filtro de redirect que as
+  páginas usam.
+- `Session.amr`: os métodos com que a sessão foi aberta (`pwd`, `email`,
+  `otp`); vazio quando quem abriu não registrou.
+- Settings `AUTH_PAGES_PREFIX` (padrão `""`), `AUTH_PAGES_LOGIN_REDIRECT`,
+  `AUTH_PAGES_LOGOUT_REDIRECT` (validados como caminho do próprio site) e os
+  nomes dos seis templates das páginas.
 
 ### Changed
 
@@ -44,6 +64,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sem `typer`/`click`, o `tempest` imprime `error: missing typer, click.` e a
   instrução nomeia o `[cli-ops]` e o `[cli]`; antes listava também o
   `tempest_cli` e só o `[cli]`.
+- O throttle de login (`IP` lido antes, e-mail reservado antes da senha) mora
+  em `tempest_fastapi_sdk.auth._login_flow.throttled_login`, compartilhado
+  pelo `make_auth_router` e pelas páginas; o comportamento do JSON não muda.
+
+### Fixed
+
+- A descrição de `AUTH_ACTIVATION_SUCCESS_TEMPLATE` dizia que o template era
+  resolvido contra o `EmailUtils.template_dir`; é contra o `template_dir` do
+  router. A receita de sessões dizia que o módulo `sessions` tinha CSRF
+  double-submit nativo; não tem.
 
 ### Security
 
