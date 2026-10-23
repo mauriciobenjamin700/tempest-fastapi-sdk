@@ -19,8 +19,6 @@ from __future__ import annotations
 import contextlib
 import re
 
-from sqlalchemy.engine import make_url
-
 _URL_PATTERN: re.Pattern[str] = re.compile(
     r"(?P<scheme>[A-Za-z][A-Za-z0-9+.\-]*://)(?P<authority>[^/?#\s]*)"
 )
@@ -104,7 +102,15 @@ def mask_url_password(url: str) -> str:
 
     Returns:
         str: The URL safe to surface outside the process.
+
+    Notes:
+        SQLAlchemy is imported here, not at module level: ``tempest doctor``
+        imports this module to mask URLs in its report, and a module-level
+        import made every ``tempest`` command pay for SQLAlchemy at startup
+        (#611).
     """
+    from sqlalchemy.engine import make_url
+
     with contextlib.suppress(Exception):
         url = make_url(url).render_as_string(hide_password=True)
     url = _mask_credentials(url)

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `import tempest_fastapi_sdk` não importa mais o SDK inteiro: a raiz e
+  `tempest_fastapi_sdk.utils` carregam os nomes sob demanda (PEP 562). Medido
+  neste repositório: a raiz carrega 1 módulo em vez de 269 mais SQLAlchemy,
+  FastAPI, Alembic, Jinja2 e bcrypt (0,85 s → 0,004 s), e `tempest --help` cai
+  de 0,94 s para 0,14 s, `tempest version` de 0,91 s para 0,09 s (melhor de 5).
+  `from tempest_fastapi_sdk import X`, `tempest_fastapi_sdk.db.X` depois de um
+  `import tempest_fastapi_sdk` e o `__all__` funcionam como antes; o mypy e o
+  basedpyright strict de um consumidor dão a mesma saída, linha a linha. Para
+  isso o `cli/email.py` e o `utils/_url.py` importam a exceção e o SQLAlchemy
+  dentro da função (#611).
+
 ### Fixed
 
 - `tempest_fastapi_sdk.testing.admin_login` / `admin_login_sync` eram tipados

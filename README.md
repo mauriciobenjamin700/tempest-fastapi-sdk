@@ -172,7 +172,7 @@ pip install "tempest-fastapi-sdk[all]"            # or pull everything
 
 > **The SDK ships no database driver by default.** `sqlalchemy[asyncio]` is core, but the async DBAPI is your deploy choice — add `[sqlite]` (`aiosqlite`, dev default) or `[postgres]` (`asyncpg`, production). Without one, the engine raises `ModuleNotFoundError` for the driver on first connection. Services scaffolded with `tempest new` already pin both `aiosqlite` and `asyncpg` in `pyproject.toml` (the latter backs the generated compose's `prod` profile).
 
-Since `0.7.1` every optional dependency is imported lazily at first instantiation, so `import tempest_fastapi_sdk` works with any subset of extras — instantiating a helper whose extra is missing raises `ImportError` with a clear hint pointing at the right one.
+Since `0.7.1` every optional dependency is imported lazily at first instantiation, so `import tempest_fastapi_sdk` works with any subset of extras — instantiating a helper whose extra is missing raises `ImportError` with a clear hint pointing at the right one. Since `0.326.0` the SDK's own modules load on demand too: `import tempest_fastapi_sdk` loads one module instead of 269 plus SQLAlchemy, FastAPI, Alembic, Jinja2 and bcrypt, and `tempest --help` went from 0.94 s to 0.14 s (best of 5, measured on this repo). `from tempest_fastapi_sdk import X` and strict type checking work as before.
 
 ---
 

@@ -138,7 +138,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
     `docker-compose.yaml` gerado usa.
 
 !!! info "Imports preguiçosos"
-    Desde a 0.7.1 toda dependência opcional é importada de forma preguiçosa na primeira instanciação, então `import tempest_fastapi_sdk` funciona mesmo quando só um subconjunto de extras está instalado. Instanciar um helper cujo extra está faltando levanta `ImportError` com uma dica clara apontando para o extra certo.
+    Desde a 0.7.1 toda dependência opcional é importada de forma preguiçosa na primeira instanciação, então `import tempest_fastapi_sdk` funciona mesmo quando só um subconjunto de extras está instalado. Instanciar um helper cujo extra está faltando levanta `ImportError` com uma dica clara apontando para o extra certo. Desde a 0.326.0 os módulos do próprio SDK também carregam sob demanda: `import tempest_fastapi_sdk` carrega um módulo em vez de 269 mais SQLAlchemy, FastAPI, Alembic, Jinja2 e bcrypt, e o `tempest --help` caiu de 0,94 s para 0,14 s (melhor de 5, medido neste repositório). `from tempest_fastapi_sdk import X` e a checagem de tipos strict funcionam como antes.
 
 ## CLI
 

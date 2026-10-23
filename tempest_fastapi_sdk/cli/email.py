@@ -16,7 +16,6 @@ from typing import Any
 import typer
 
 from tempest_fastapi_sdk.cli.project import load_project_settings
-from tempest_fastapi_sdk.exceptions.integration import EmailDeliveryException
 
 email_app: typer.Typer = typer.Typer(
     name="email",
@@ -69,7 +68,15 @@ def email_test(
             the ``aiosmtplib`` error chained under the
             ``EmailDeliveryException`` ``send`` raises, so the TLS
             mismatch still reads ``[SSL: WRONG_VERSION_NUMBER]``.
+
+    Notes:
+        ``EmailDeliveryException`` is imported in the body: the SDK's
+        exceptions subclass FastAPI's ``HTTPException``, and a module-level
+        import made every ``tempest`` command load FastAPI at startup
+        (#611).
     """
+    from tempest_fastapi_sdk.exceptions.integration import EmailDeliveryException
+
     settings = load_project_settings()
     missing = [field for field in _REQUIRED_FIELDS if not hasattr(settings, field)]
     if settings is None or missing:

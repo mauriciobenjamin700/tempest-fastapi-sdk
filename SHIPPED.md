@@ -3673,3 +3673,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   em `tempest_fastapi_sdk.testing`), genéricos na resposta. Teste:
   `tests/testing/test_admin_login_typing.py` (mypy `--strict` sobre o uso de
   cada cliente).
+- **Import preguiçoso da raiz, Unreleased (#611)** — `__init__` da raiz e de
+  `utils` em PEP 562 (`_LAZY_ATTRIBUTES` + `__getattr__` escondido do checker
+  + imports em `TYPE_CHECKING`); `tempest --help` 0,94 s → 0,14 s. Guard:
+  `tests/test_lazy_init_guard.py`.
