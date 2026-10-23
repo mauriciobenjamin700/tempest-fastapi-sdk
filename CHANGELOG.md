@@ -87,6 +87,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   token novo, sem gastar tentativa nem gravar sessão. Com `cookie_secure=True`
   sobre HTTP puro, todo submit passa a dar `403` (antes: `303` e volta ao
   login) (#603).
+- `uv.lock` sobe o `brotli` (trazido pelo `fonttools` do extra `[pdf]`) de
+  1.2.0 para 1.2.1, fora da PYSEC-2026-4322 apontada pelo `make audit`. Nenhum
+  piso muda: quem resolve o extra hoje já recebe a versão corrigida.
 
 ## [0.324.0] — 2026-10-22
 
