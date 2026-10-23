@@ -676,6 +676,9 @@ from tempest_fastapi_sdk.auth import (
     format_expires_at as format_expires_at,
 )
 from tempest_fastapi_sdk.auth import (
+    make_auth_pages_router as make_auth_pages_router,
+)
+from tempest_fastapi_sdk.auth import (
     make_auth_router as make_auth_router,
 )
 from tempest_fastapi_sdk.auth import (
@@ -1479,7 +1482,13 @@ from tempest_fastapi_sdk.sessions import (
     make_session_router as make_session_router,
 )
 from tempest_fastapi_sdk.sessions import (
+    make_session_user_dependency as make_session_user_dependency,
+)
+from tempest_fastapi_sdk.sessions import (
     redirect_to as redirect_to,
+)
+from tempest_fastapi_sdk.sessions import (
+    redirect_to_login as redirect_to_login,
 )
 from tempest_fastapi_sdk.settings import (
     AppSettingsMeta as AppSettingsMeta,
@@ -2825,6 +2834,7 @@ __all__: list[str] = [
     "make_activate_artifact_action",
     "make_admin_router",
     "make_app_exception_handler",
+    "make_auth_pages_router",
     "make_auth_router",
     "make_bearer_token_dependency",
     "make_csrf_token_dependency",
@@ -2845,6 +2855,7 @@ __all__: list[str] = [
     "make_role_dependency",
     "make_session_dependency",
     "make_session_router",
+    "make_session_user_dependency",
     "make_signed_path_dependency",
     "make_spa_router",
     "make_token_dependency",
@@ -2895,6 +2906,7 @@ __all__: list[str] = [
     "redact_database_errors",
     "redact_snapshot",
     "redirect_to",
+    "redirect_to_login",
     "region_choices",
     "register_check",
     "register_exception_handlers",

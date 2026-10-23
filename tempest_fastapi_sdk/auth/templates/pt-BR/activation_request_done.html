@@ -1,0 +1,8 @@
+{% extends "_auth_layout.html" %}
+{% block lang %}pt-BR{% endblock %}
+{% block title %}Verifique sua caixa de entrada{% endblock %}
+{% block content %}
+  <h1>Verifique sua caixa de entrada</h1>
+  <p>Se existir uma conta pendente de ativação para esse e-mail, enviamos um novo link.</p>
+  <nav class="auth-links"><a href="{{ prefix }}/login{{ lang_query }}">Voltar para o login</a></nav>
+{% endblock %}

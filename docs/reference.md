@@ -1042,6 +1042,9 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.auth.exceptions.SignupThrottledException
 ::: tempest_fastapi_sdk.auth.firebase.DEFAULT_FIREBASE_APP_NAME
 ::: tempest_fastapi_sdk.auth.router.make_auth_router
+::: tempest_fastapi_sdk.auth.pages.make_auth_pages_router
+::: tempest_fastapi_sdk.auth.form_csrf.FormCSRF
+::: tempest_fastapi_sdk.auth.form_csrf.is_local_path
 ::: tempest_fastapi_sdk.auth.router.LOGIN_THROTTLE_MAX_ATTEMPTS
 ::: tempest_fastapi_sdk.auth.router.LOGIN_THROTTLE_WINDOW_SECONDS
 ::: tempest_fastapi_sdk.auth.router.LOGIN_THROTTLED_MESSAGE
@@ -1166,6 +1169,8 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.sessions.middleware.SessionMiddleware
 ::: tempest_fastapi_sdk.sessions.dependencies.make_session_dependency
 ::: tempest_fastapi_sdk.sessions.dependencies.redirect_to
+::: tempest_fastapi_sdk.sessions.dependencies.redirect_to_login
+::: tempest_fastapi_sdk.sessions.dependencies.make_session_user_dependency
 ::: tempest_fastapi_sdk.sessions.dependencies.MissingSessionHandler
 ::: tempest_fastapi_sdk.sessions.dependencies.SessionAuthFactory
 ::: tempest_fastapi_sdk.sessions.store.SessionStore

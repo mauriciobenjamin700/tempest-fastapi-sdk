@@ -34,7 +34,13 @@ from tempest_fastapi_sdk.sessions.dependencies import (
     make_session_dependency as make_session_dependency,
 )
 from tempest_fastapi_sdk.sessions.dependencies import (
+    make_session_user_dependency as make_session_user_dependency,
+)
+from tempest_fastapi_sdk.sessions.dependencies import (
     redirect_to as redirect_to,
+)
+from tempest_fastapi_sdk.sessions.dependencies import (
+    redirect_to_login as redirect_to_login,
 )
 from tempest_fastapi_sdk.sessions.middleware import (
     SessionMiddleware as SessionMiddleware,
@@ -78,5 +84,7 @@ __all__: list[str] = [
     "StaticCredentialAuthenticator",
     "make_session_dependency",
     "make_session_router",
+    "make_session_user_dependency",
     "redirect_to",
+    "redirect_to_login",
 ]

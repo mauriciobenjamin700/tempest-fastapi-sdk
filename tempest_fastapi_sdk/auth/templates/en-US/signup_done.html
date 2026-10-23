@@ -1,0 +1,9 @@
+{% extends "_auth_layout.html" %}
+{% block lang %}en-US{% endblock %}
+{% block title %}Check your e-mail{% endblock %}
+{% block content %}
+  <h1>Check your e-mail</h1>
+  <p>We sent an activation link to <strong>{{ email }}</strong>. Open it to activate your account.</p>
+  {% if activation_url %}<p>Activation link (environment without e-mail): <a href="{{ activation_url }}">{{ activation_url }}</a></p>{% endif %}
+  <nav class="auth-links"><a href="{{ prefix }}/activation/request{{ lang_query }}">Didn't get the activation e-mail?</a></nav>
+{% endblock %}

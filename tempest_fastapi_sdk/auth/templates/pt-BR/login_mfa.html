@@ -1,0 +1,18 @@
+{% extends "_auth_layout.html" %}
+{% block lang %}pt-BR{% endblock %}
+{% block title %}Verificação em duas etapas{% endblock %}
+{% block content %}
+  <h1>Verificação em duas etapas</h1>
+  <p>Digite o código do seu aplicativo autenticador ou um código de recuperação.</p>
+  {% if error %}<p class="auth-alert" role="alert" id="form-error">{{ error }}</p>{% endif %}
+  <form method="post" action="{{ prefix }}/login/mfa{{ lang_query }}" class="auth-form" novalidate>
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+    <input type="hidden" name="next" value="{{ next }}">
+    <div class="auth-field">
+      <label for="code">Código</label>
+      <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" required{% if error %} aria-invalid="true" aria-describedby="form-error"{% endif %} autofocus>
+    </div>
+    <button type="submit" class="auth-button">Verificar</button>
+  </form>
+  <nav class="auth-links"><a href="{{ prefix }}/login{{ lang_query }}">Voltar para o login</a></nav>
+{% endblock %}

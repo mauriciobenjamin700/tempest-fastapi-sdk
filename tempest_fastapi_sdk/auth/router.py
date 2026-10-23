@@ -61,6 +61,7 @@ from tempest_fastapi_sdk.api.oauth import (
     OAuthTokens,
     generate_oauth_state,
 )
+from tempest_fastapi_sdk.auth._login_flow import throttled_login
 from tempest_fastapi_sdk.auth.exceptions import (
     LoginThrottledException,
     SignupThrottledException,
@@ -130,7 +131,6 @@ from tempest_fastapi_sdk.utils.client_ip import get_client_ip
 from tempest_fastapi_sdk.utils.throttle import (
     AttemptThrottle,
     InMemoryThrottleBackend,
-    login_throttle_key,
 )
 from tempest_fastapi_sdk.utils.token_types import (
     AMR_EMAIL_LINK,
@@ -703,14 +703,9 @@ def make_auth_router(
     ) -> BaseUserModel:
         """Run :meth:`UserAuthService.login` behind the login throttles.
 
-        Order matters. The IP budget is read first, so a blocked source
-        does not spend the e-mail budget of the address it is trying.
-        Then the e-mail budget is **reserved** before the password is
-        checked — the reservation, not a later count, is what keeps a
-        burst of concurrent guesses from all passing a "not blocked yet"
-        read together, the same reason ``mfa_verify`` reserves. Both are
-        spent identically for an e-mail without an account, so neither
-        ``429`` reveals which e-mails exist.
+        The rule lives in :func:`~tempest_fastapi_sdk.auth._login_flow.throttled_login`,
+        shared with ``make_auth_pages_router`` so the HTML login is not a
+        way around this route's budgets.
 
         Args:
             request (Request): The inbound request (client IP).
@@ -719,40 +714,17 @@ def make_auth_router(
 
         Returns:
             BaseUserModel: The authenticated user.
-
-        Raises:
-            LoginThrottledException: When either budget is spent.
-            UnauthorizedException: On wrong credentials (counted against
-                the IP budget).
         """
-        ip_key = f"login-ip:{_client_ip(request)}"
-        if login_ip_throttle is not None:
-            await login_ip_throttle.raise_if_blocked(
-                ip_key,
-                message=LOGIN_THROTTLED_MESSAGE,
-                exception=LoginThrottledException,
-            )
-        email_key = login_throttle_key(payload.email)
-        if resolved_login_throttle is not None:
-            attempt = await resolved_login_throttle.hit(email_key)
-            if attempt.attempts > resolved_login_throttle.max_attempts:
-                raise LoginThrottledException(
-                    message=LOGIN_THROTTLED_MESSAGE,
-                    retry_after_seconds=attempt.retry_after_seconds,
-                )
-        try:
-            user = await service.login(
-                session,
-                email=payload.email,
-                password=payload.password,
-            )
-        except UnauthorizedException:
-            if login_ip_throttle is not None:
-                await login_ip_throttle.hit(ip_key)
-            raise
-        if resolved_login_throttle is not None:
-            await resolved_login_throttle.reset(email_key)
-        return user
+        return await throttled_login(
+            service,
+            session,
+            email=payload.email,
+            password=payload.password,
+            client_ip=_client_ip(request),
+            login_throttle=resolved_login_throttle,
+            login_ip_throttle=login_ip_throttle,
+            throttled_message=LOGIN_THROTTLED_MESSAGE,
+        )
 
     # --- token delivery (bearer / cookie / both) ----------------------
     delivery: TokenDelivery = token_delivery or auth_settings.AUTH_TOKEN_DELIVERY

@@ -1,0 +1,8 @@
+{% extends "_auth_layout.html" %}
+{% block lang %}en-US{% endblock %}
+{% block title %}Check your inbox{% endblock %}
+{% block content %}
+  <h1>Check your inbox</h1>
+  <p>If there is an account waiting for activation under that e-mail, we sent a new link.</p>
+  <nav class="auth-links"><a href="{{ prefix }}/login{{ lang_query }}">Back to sign in</a></nav>
+{% endblock %}
