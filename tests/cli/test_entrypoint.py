@@ -7,7 +7,7 @@ CLI is optional now, and these tests pin the halves of that promise — the
 package imports without it, and the script explains what to install instead
 of printing a traceback.
 
-Since v0.324.0 there are two installs: ``[cli-ops]`` (``typer`` + ``click``),
+Since v0.325.0 there are two installs: ``[cli-ops]`` (``typer`` + ``click``),
 for a server, and ``[cli]`` (``[cli-ops]`` + ``tempest-cli``), for
 development. Under ``[cli-ops]`` the operation commands and the project's own
 commands run, and the quality-gate commands answer with the ``[cli]`` hint.

@@ -6,7 +6,7 @@ here. These tests cover what stayed, and that the symbols which moved are
 still importable from their old home — a project pinning the SDK must not
 have to touch its imports.
 
-Since v0.324.0 finding the project is the SDK's own code again, ported from
+Since v0.325.0 finding the project is the SDK's own code again, ported from
 ``tempest-cli`` so the ``[cli-ops]`` extra (no ``tempest-cli``) can mount the
 project's commands. The parity tests below fail on drift upstream.
 """
@@ -94,7 +94,7 @@ class TestMovedSymbolsStayImportable:
 
 
 class TestPortedFromTempestCli:
-    """``find_pyproject`` and the table lookup, owned by the SDK since v0.324.0."""
+    """``find_pyproject`` and the table lookup, owned by the SDK since v0.325.0."""
 
     def test_pyproject_filename_is_pinned(self) -> None:
         assert PYPROJECT_FILENAME == "pyproject.toml"

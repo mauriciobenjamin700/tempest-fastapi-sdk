@@ -6,7 +6,7 @@ formatter in production, and a project pinning ``ruff<0.8`` in its dev group
 could not lock at all (measured with ``uv lock`` on a copy of a real
 service). v0.308.0 moved the CLI into the ``[cli]`` extra, together with
 ``typer`` and ``click``, which nothing outside ``tempest_fastapi_sdk/cli/``
-imports. v0.324.0 split off ``[cli-ops]`` (``typer`` + ``click`` only), so a
+imports. v0.325.0 split off ``[cli-ops]`` (``typer`` + ``click`` only), so a
 server image can run ``tempest doctor`` / ``db`` / ``shell`` and the
 project's own commands without ``tempest-cli`` and its ``ruff``.
 
