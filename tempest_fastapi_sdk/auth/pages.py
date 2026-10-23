@@ -563,6 +563,7 @@ def make_auth_pages_router(
         email: str = "",
         next_value: str = "",
         error_key: str | None = None,
+        error: str | None = None,
         status_code: int = status.HTTP_200_OK,
     ) -> HTMLResponse:
         """Render the login form.
@@ -572,6 +573,7 @@ def make_auth_pages_router(
             email (str): E-mail to keep in the field.
             next_value (str): A safe ``next`` or ``""``.
             error_key (str | None): Message key to show.
+            error (str | None): Message text to show, when there is no key.
             status_code (int): HTTP status.
 
         Returns:
@@ -584,11 +586,25 @@ def make_auth_pages_router(
             {
                 "email": email,
                 "next": next_value,
-                "error": auth_page_message(locale, error_key) if error_key else None,
+                "error": auth_page_message(locale, error_key) if error_key else error,
             },
             status_code=status_code,
             locale=locale,
         )
+
+    def _service_message(exc: AppException, locale: str) -> str:
+        """Localize a refusal the service raised, through the SDK catalog.
+
+        Args:
+            exc (AppException): The refusal.
+            locale (str): The page language.
+
+        Returns:
+            str: The catalog's message for its key, or its own message.
+        """
+        key = exc.message_key or exc.code
+        resolved = catalog.resolve(key, locale, exc.message_params) if key else None
+        return resolved or exc.message
 
     @router.get("/login", response_class=HTMLResponse)
     async def login_form(request: Request, next: str | None = None) -> HTMLResponse:
@@ -617,7 +633,9 @@ def make_auth_pages_router(
         Returns:
             Response: ``303`` onward, or the login page with ``403`` (form
             expired), ``401`` (wrong credentials, generic), ``429``
-            (budget spent, with ``Retry-After``) or the service's status.
+            (budget spent, with ``Retry-After``) or the status of any other
+            refusal the service raises — ``403`` for an inactive account
+            under ``AUTH_REVEAL_INACTIVE_ACCOUNT`` — with its message.
         """
         form = await _read_form_fields(request)
         email = form.get("email", "").strip()
@@ -659,6 +677,15 @@ def make_auth_pages_router(
                 next_value=next_value,
                 error_key="invalid_credentials",
                 status_code=status.HTTP_401_UNAUTHORIZED,
+            )
+        except AppException as exc:
+            await session.rollback()
+            return _login_page(
+                request,
+                email=email,
+                next_value=next_value,
+                error=_service_message(exc, _locale(request)),
+                status_code=exc.status_code,
             )
         response = await _finish_login(request, user, PASSWORD_AMR, next_value)
         await session.commit()
@@ -914,9 +941,7 @@ def make_auth_pages_router(
             except AppException as exc:
                 await session.rollback()
                 key = exc.message_key or exc.code
-                message = (
-                    catalog.resolve(key, locale, exc.message_params) if key else None
-                ) or exc.message
+                message = _service_message(exc, locale)
                 if key and key.startswith("PASSWORD_"):
                     return _signup_page(
                         request,

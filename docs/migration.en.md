@@ -2,6 +2,30 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.325.0 — CSRF on the admin login and the `[cli-ops]` extra
+
+`POST /admin/login` now requires the `csrf_token` that `GET /admin/login`
+issues. The CLI gains the `[cli-ops]` extra, without the quality gate.
+
+### What to do
+
+- A test that signs in to the admin by posting only the credentials
+  (`client.post("/admin/login", data={"identifier": ..., "password": ...})`)
+  now gets `403`. Switch to `tempest_fastapi_sdk.testing.admin_login`
+  (async) or `admin_login_sync` (`TestClient`), which load the form and send
+  the token. With `cookie_secure=True`, give the client
+  `base_url="https://..."`: the token cookie is `Secure`.
+- An admin served over plain HTTP with `cookie_secure=True` (which already
+  could not keep a session) now refuses every login with `403` "The sign-in
+  form expired". The fix is the same as before: HTTPS in front, or
+  `cookie_secure=False`.
+- Code that read `tempest_fastapi_sdk.cli.main.LINT_LAYERS_STEP` must handle
+  `None` (without `tempest-cli` installed). `find_pyproject`, from
+  `tempest_fastapi_sdk.cli.config`, is now the SDK's own; the other config
+  names stay importable from the same place.
+- Optional: `tempest` in production can swap `[cli]` for `[cli-ops]`, which
+  installs neither `ruff` nor `tempest-cli`. Keep `[cli]` in the `dev` group.
+
 ## 0.323.0 — the dead-letter topology comes up before the consumers
 
 On RabbitMQ, `MessageBroker.connect()` now opens the connection, runs
