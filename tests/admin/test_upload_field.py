@@ -21,6 +21,7 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
     make_admin_router,
 )
+from tempest_fastapi_sdk.testing import admin_login
 from tempest_fastapi_sdk.utils import LocalUploadStorage
 
 
@@ -83,10 +84,7 @@ def _client(app: FastAPI) -> AsyncClient:
 
 
 async def _login_csrf(client: AsyncClient) -> str:
-    await client.post(
-        "/admin/login",
-        data={"identifier": "root@example.com", "password": "hunter2"},
-    )
+    await admin_login(client, "root@example.com", "hunter2")
     form = await client.get(f"/admin/m/{_SLUG}/new")
     match = re.search(r'name="csrf_token" value="([^"]+)"', form.text)
     assert match is not None
@@ -100,10 +98,7 @@ class TestUploadField:
     ) -> None:
         app, _ = app_with_upload
         async with _client(app) as client:
-            await client.post(
-                "/admin/login",
-                data={"identifier": "root@example.com", "password": "hunter2"},
-            )
+            await admin_login(client, "root@example.com", "hunter2")
             form = await client.get(f"/admin/m/{_SLUG}/new")
         assert 'enctype="multipart/form-data"' in form.text
         assert 'type="file" name="attachment"' in form.text

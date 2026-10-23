@@ -20,6 +20,7 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
     make_admin_router,
 )
+from tempest_fastapi_sdk.testing import admin_login
 
 
 class RouterUser(BaseUserModel):
@@ -109,11 +110,7 @@ async def test_login_then_dashboard(
 ) -> None:
     app, _db, _user = app_with_admin
     async with _client(app) as client:
-        login = await client.post(
-            "/admin/login",
-            data={"identifier": "root@example.com", "password": "hunter2"},
-            follow_redirects=False,
-        )
+        login = await admin_login(client, "root@example.com", "hunter2")
         assert login.status_code == 303
         assert "tempest_admin" in login.headers.get("set-cookie", "")
 
@@ -129,10 +126,7 @@ async def test_login_wrong_password_returns_401(
 ) -> None:
     app, _db, _user = app_with_admin
     async with _client(app) as client:
-        response = await client.post(
-            "/admin/login",
-            data={"identifier": "root@example.com", "password": "WRONG"},
-        )
+        response = await admin_login(client, "root@example.com", "WRONG")
     assert response.status_code == 401
     assert "Invalid credentials" in response.text
 
@@ -143,10 +137,7 @@ async def test_list_view_paginates(
 ) -> None:
     app, _db, _user = app_with_admin
     async with _client(app) as client:
-        await client.post(
-            "/admin/login",
-            data={"identifier": "root@example.com", "password": "hunter2"},
-        )
+        await admin_login(client, "root@example.com", "hunter2")
         response = await client.get(f"/admin/m/{WidgetModel.__tablename__}/")
     assert response.status_code == 200
     assert "widget-0" in response.text
@@ -159,10 +150,7 @@ async def test_list_view_search(
 ) -> None:
     app, _db, _user = app_with_admin
     async with _client(app) as client:
-        await client.post(
-            "/admin/login",
-            data={"identifier": "root@example.com", "password": "hunter2"},
-        )
+        await admin_login(client, "root@example.com", "hunter2")
         response = await client.get(f"/admin/m/{WidgetModel.__tablename__}/?q=widget-1")
     assert response.status_code == 200
     assert "widget-1" in response.text
@@ -180,10 +168,7 @@ async def test_detail_view(
         widget_id = str(widget.id)
 
     async with _client(app) as client:
-        await client.post(
-            "/admin/login",
-            data={"identifier": "root@example.com", "password": "hunter2"},
-        )
+        await admin_login(client, "root@example.com", "hunter2")
         response = await client.get(f"/admin/m/{WidgetModel.__tablename__}/{widget_id}")
     assert response.status_code == 200
     assert widget_id in response.text
@@ -197,10 +182,7 @@ async def test_detail_view_404(
 
     app, _db, _user = app_with_admin
     async with _client(app) as client:
-        await client.post(
-            "/admin/login",
-            data={"identifier": "root@example.com", "password": "hunter2"},
-        )
+        await admin_login(client, "root@example.com", "hunter2")
         response = await client.get(f"/admin/m/{WidgetModel.__tablename__}/{uuid4()}")
     assert response.status_code == 404
 
@@ -225,10 +207,7 @@ async def test_dashboard_shows_model_counts_and_metrics(
 ) -> None:
     app, _db, _user = app_with_admin
     async with _client(app) as client:
-        await client.post(
-            "/admin/login",
-            data={"identifier": "root@example.com", "password": "hunter2"},
-        )
+        await admin_login(client, "root@example.com", "hunter2")
         dash = await client.get("/admin/")
     assert dash.status_code == 200
     # per-model count badge (3 widgets seeded)
@@ -264,10 +243,7 @@ async def test_dashboard_metrics_can_be_disabled() -> None:
     )
     try:
         async with _client(app) as client:
-            await client.post(
-                "/admin/login",
-                data={"identifier": "nm@example.com", "password": "hunter2"},
-            )
+            await admin_login(client, "nm@example.com", "hunter2")
             dash = await client.get("/admin/")
         assert dash.status_code == 200
         assert "System metrics" not in dash.text
@@ -280,10 +256,7 @@ async def test_dashboard_metrics_can_be_disabled() -> None:
 
 
 async def _login(client: AsyncClient) -> None:
-    await client.post(
-        "/admin/login",
-        data={"identifier": "root@example.com", "password": "hunter2"},
-    )
+    await admin_login(client, "root@example.com", "hunter2")
 
 
 @pytest.mark.asyncio
@@ -748,10 +721,7 @@ async def test_fk_field_renders_select_and_saves() -> None:
     )
     try:
         async with _client(app) as client:
-            await client.post(
-                "/admin/login",
-                data={"identifier": "fk@example.com", "password": "hunter2"},
-            )
+            await admin_login(client, "fk@example.com", "hunter2")
             form = await client.get("/admin/m/admin_fk_product/new")
             assert form.status_code == 200
             # FK renders a <select> listing the related row by its label.
@@ -820,10 +790,7 @@ async def test_create_stamps_audit_and_detail_shows_actor() -> None:
     )
     try:
         async with _client(app) as client:
-            await client.post(
-                "/admin/login",
-                data={"identifier": "root@example.com", "password": "hunter2"},
-            )
+            await admin_login(client, "root@example.com", "hunter2")
             form = await client.get("/admin/m/admin_audited/new")
             token = _csrf_from(form.text)
             await client.post(
@@ -903,10 +870,7 @@ async def test_permissions_disable_write_views() -> None:
     )
     try:
         async with _client(app) as client:
-            await client.post(
-                "/admin/login",
-                data={"identifier": "ro@example.com", "password": "hunter2"},
-            )
+            await admin_login(client, "ro@example.com", "hunter2")
             listing = await client.get(f"/admin/m/{_SLUG}/")
             assert listing.status_code == 200
             assert "+ New" not in listing.text

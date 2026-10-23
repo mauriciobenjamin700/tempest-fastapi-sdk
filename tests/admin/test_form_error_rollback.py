@@ -31,6 +31,7 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
     make_admin_router,
 )
+from tempest_fastapi_sdk.testing import admin_login
 
 
 class RollbackUser(BaseUserModel):
@@ -163,10 +164,7 @@ async def _login(client: AsyncClient) -> None:
     Args:
         client (AsyncClient): The open client.
     """
-    await client.post(
-        "/admin/login",
-        data={"identifier": "root@example.com", "password": "hunter2"},
-    )
+    await admin_login(client, "root@example.com", "hunter2")
 
 
 @pytest.mark.asyncio

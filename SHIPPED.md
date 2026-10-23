@@ -3651,3 +3651,11 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `docs/recipes/queue-tasks.md` ("Fan-out" e "Reprocessar a dead-letter
   queue"). Testes: `tests/queue/test_fanout.py`,
   `tests/queue/test_fanout_live.py` (RabbitMQ real, `make test-docker`).
+- **CSRF no login do admin, Unreleased (#603)** — `POST /admin/login` exige o
+  `csrf_token` que o `GET /admin/login` emite (`AdminLoginCSRF`: cookie
+  assinado de 1 h, salt próprio, independente do `SessionStore`), conferido
+  antes do throttle e da senha; recusa é `403` re-renderizado, sem gastar
+  tentativa. `tempest_fastapi_sdk.testing.admin_login` / `admin_login_sync`
+  logam em teste pelo formulário. Receita: `docs/recipes/admin.md` ("Defaults
+  de segurança de sessão", "Logar em teste"). Testes:
+  `tests/admin/test_login_csrf.py`.

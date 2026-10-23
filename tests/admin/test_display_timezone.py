@@ -39,6 +39,7 @@ from tempest_fastapi_sdk.admin.forms import (
     parse_submission,
     to_display_timezone,
 )
+from tempest_fastapi_sdk.testing import admin_login
 
 SAO_PAULO = "America/Sao_Paulo"
 
@@ -303,11 +304,7 @@ async def _signed_in(app: FastAPI) -> AsyncIterator[AsyncClient]:
         transport=ASGITransport(app=app),
         base_url="http://test",
     ) as client:
-        await client.post(
-            "/admin/login",
-            data={"identifier": "root@example.com", "password": "hunter2"},
-            follow_redirects=False,
-        )
+        await admin_login(client, "root@example.com", "hunter2")
         yield client
 
 

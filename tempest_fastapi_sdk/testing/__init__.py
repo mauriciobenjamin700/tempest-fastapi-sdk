@@ -7,6 +7,13 @@ pulling test dependencies into production runtimes. Wrap them in
 project's ``conftest.py``.
 """
 
+from tempest_fastapi_sdk.testing.admin import (
+    admin_csrf_token as admin_csrf_token,
+)
+from tempest_fastapi_sdk.testing.admin import admin_login as admin_login
+from tempest_fastapi_sdk.testing.admin import (
+    admin_login_sync as admin_login_sync,
+)
 from tempest_fastapi_sdk.testing.database import (
     create_test_engine as create_test_engine,
 )
@@ -43,6 +50,9 @@ from tempest_fastapi_sdk.testing.privacy import (
 
 __all__: list[str] = [
     "ModelFactory",
+    "admin_csrf_token",
+    "admin_login",
+    "admin_login_sync",
     "assert_subject_graph_valid",
     "create_test_engine",
     "create_test_session_factory",

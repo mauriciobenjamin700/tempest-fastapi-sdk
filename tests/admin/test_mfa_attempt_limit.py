@@ -24,6 +24,7 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
     make_admin_router,
 )
+from tempest_fastapi_sdk.testing import admin_login
 from tempest_fastapi_sdk.utils.datetime import utcnow
 from tests.admin.test_mfa import SECRET, MfaUser, Thing, _csrf_from
 
@@ -79,11 +80,7 @@ async def _challenge(client: AsyncClient) -> str:
     Returns:
         str: The CSRF token of the pending session.
     """
-    login = await client.post(
-        "/admin/login",
-        data={"identifier": "root@example.com", "password": PASSWORD},
-        follow_redirects=False,
-    )
+    login = await admin_login(client, "root@example.com", PASSWORD)
     assert login.headers["location"] == "/admin/mfa"
     page = await client.get("/admin/mfa")
     return _csrf_from(page.text)

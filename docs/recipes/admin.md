@@ -995,15 +995,20 @@ volta ao padrão.
 - `SameSite=Lax` (`"lax"`/`"strict"`/`"none"` aceitos).
 - Tempo de vida padrão `8h`; cookies expirados ou adulterados são rejeitados silenciosamente.
 - O cookie não basta: toda rota autenticada relê o principal pelo `auth_backend` a cada request. Conta apagada, desativada ou sem `is_admin` depois do login é mandada para `/admin/login` (`303`) já no request seguinte, sem esperar o cookie expirar.
-- Um token CSRF por sessão é gerado no login e exigido por todo POST de formulário (login, logout, criar, editar, excluir, ações em massa, execução no console SQL, cancelamento de task).
+- Um token CSRF por sessão é gerado no login e exigido por todo POST de formulário da sessão (logout, criar, editar, excluir, ações em massa, execução no console SQL, cancelamento de task).
+- O formulário de login roda antes de existir sessão e carrega um token próprio: o `GET /admin/login` grava um cookie assinado de 1 h (`tempest_admin_login_csrf`, com salt distinto do da sessão) e repete o token num campo hidden. O `POST` compara os dois em tempo constante **antes** do orçamento de falhas e da senha, e recusa com `403` — a página volta com um token novo, e a recusa não gasta tentativa. Sem isso, uma página de outro site faria o navegador do operador logar na conta **do atacante** (login CSRF); `SameSite=Lax` não impede, porque restringe o cookie que o POST envia, não o que a resposta grava.
 - `secret_key` deve ter ao menos 32 bytes — chaves curtas levantam `ValueError` no momento da construção.
 
-!!! danger "Login em loop? É o `Secure` do cookie sobre HTTP puro"
-    Se o `POST /admin/login` responde `303` (parece sucesso), mas o `GET /admin/`
+!!! danger "Login recusado ou em loop? É o `Secure` do cookie sobre HTTP puro"
+    Se todo `POST /admin/login` responde `403` com *The sign-in form expired,
+    please try again*, o cookie do token do formulário **não está voltando**. Se
+    responde `303` (parece sucesso), mas o `GET /admin/`
     seguinte redireciona de volta pro login — repetindo pra sempre — o cookie de
-    sessão **não está voltando**. Causa quase certa: `cookie_secure=True` enquanto
-    o admin é servido por **HTTP puro** (sem TLS na frente). O browser recusa
-    gravar um cookie `Secure` em conexão não-HTTPS, então nenhuma sessão persiste.
+    sessão é que não volta. Nos dois casos a causa quase certa é a mesma:
+    `cookie_secure=True` enquanto o admin é servido por **HTTP puro** (sem TLS na
+    frente). O browser recusa gravar um cookie `Secure` em conexão não-HTTPS, e os
+    dois cookies do admin (o do token de login e o da sessão) seguem o
+    `cookie_secure`.
 
     ```python
     # ❌ Atado a DEBUG: em produção DEBUG=false → cookie_secure=True,
@@ -1019,6 +1024,31 @@ volta ao padrão.
     claro. **Paliativo** só quando o admin roda mesmo em HTTP (intranet, MVP):
     `cookie_secure=False`, ciente de que a sessão vai sem `Secure`. Não amarre
     esse flag ao `DEBUG` — ligar debug em produção é pior que o problema original.
+
+##### Logar em teste
+
+Como o `POST /admin/login` exige o token do formulário, teste que posta só as credenciais leva `403`. `tempest_fastapi_sdk.testing` faz o que o navegador faz — abre o formulário, lê o hidden (o cookie fica no jar do cliente) e envia:
+
+```python
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from tempest_fastapi_sdk.testing import admin_login
+
+
+async def test_dashboard_after_login(app: FastAPI) -> None:
+    """Loga pelo formulário, como o navegador faz, e abre o painel."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="https://test") as client:
+        response = await admin_login(client, "root@example.com", "hunter2")
+        assert response.status_code == 303
+        assert (await client.get("/admin/")).status_code == 200
+```
+
+Com `TestClient`, use `admin_login_sync(client, ...)`. Os dois recebem `prefix=` quando o admin não está em `/admin`, e `headers=` para, por exemplo, o header de IP confiável.
+
+!!! tip "`https://` na `base_url`"
+    Com `cookie_secure=True` (o padrão), os cookies do admin saem `Secure`, e o cliente HTTP do teste só os devolve sobre `https://`. Use `base_url="https://test"`, ou monte o router com `cookie_secure=False` no teste.
 
 ##### Orçamento de falhas no login
 
