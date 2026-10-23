@@ -33,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cliente passado. `httpx`, `httpx2` e `TestClient` passam sem `cast` no mypy
   e no basedpyright strict (#610).
 
+### Security
+
+- `uv.lock` sobe o `filelock` de 3.32.5 para 4.2.4 (CVE-2026-112940) e o
+  `setuptools` de 84.0.0 para 84.2.1 (GHSA-xmj3-9gf7-h52w), apontados pelo
+  `make audit`. Os dois só entram pelos extras de GenAI (`torch`,
+  `transformers`, `huggingface-hub`, `diffusers`, `tensorboard`); nenhum piso
+  muda, e as suítes de `genai` e `modelops` passam com as versões novas.
+
 ## [0.325.0] — 2026-10-23
 
 ### Added
