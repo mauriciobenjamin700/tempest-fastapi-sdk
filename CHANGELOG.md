@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.324.0] — 2026-10-22
-
 ### Added
 
 - `tempest_fastapi_sdk.testing.admin_login` / `admin_login_sync` (e
@@ -19,33 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AdminLoginCSRF` (`tempest_fastapi_sdk.admin`): o token CSRF do formulário
   de login, em cookie assinado (`tempest_admin_login_csrf`, 1 h, salt próprio)
   independente do `SessionStore` configurado.
-
-### Security
-
-- `POST /admin/login` confere CSRF (login CSRF). O token nasce no
-  `GET /admin/login`, vai num campo hidden do `login.html` e num cookie
-  assinado, e é comparado em tempo constante **antes** do orçamento de falhas
-  e da senha. Sem ele, uma página de outro site fazia o navegador do operador
-  logar na conta do atacante. Recusa: `403` com a página re-renderizada e um
-  token novo, sem gastar tentativa nem gravar sessão. Com `cookie_secure=True`
-  sobre HTTP puro, todo submit passa a dar `403` (antes: `303` e volta ao
-  login) (#603).
-
-## [0.324.0] — 2026-10-22
-
-### Added
-
-- `ImageMediaType` (`tempest_fastapi_sdk.utils.media_types`, também no
-  topo): enum dos tipos de imagem que o `sniff_mime` reconhece (`JPEG`,
-  `PNG`, `GIF`, `BMP`, `WEBP`, `HEIC`). Como tipo de campo Pydantic aceita
-  a entrada sem diferenciar maiúsculas, com espaço em volta, e os aliases
-  `image/jpg`, `image/pjpeg` e `image/x-png`; valor desconhecido é o `422`
-  normal (`enum`), e o JSON Schema lista os valores canônicos. `.extension`
-  dá a extensão do arquivo e `.matches(data)` confere os bytes contra o tipo
-  declarado pelo `sniff_mime`.
-- `HEIC_BRANDS` e `HEIF_STRUCTURAL_BRANDS` (`tempest_fastapi_sdk.utils.upload`,
-  também no topo): as marcas `ftyp` de HEIC portadas do
-  `heif_get_file_mime_type` do libheif.
 - Extra `[cli-ops]` (`typer` + `click`): o comando `tempest` sem o gate de
   qualidade, para a imagem de produção (#601). `doctor`, `db`, `shell`,
   `user`, `routes` e os comandos de `[tool.tempest] commands` rodam sem
@@ -73,6 +44,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sem `typer`/`click`, o `tempest` imprime `error: missing typer, click.` e a
   instrução nomeia o `[cli-ops]` e o `[cli]`; antes listava também o
   `tempest_cli` e só o `[cli]`.
+
+### Security
+
+- `POST /admin/login` confere CSRF (login CSRF). O token nasce no
+  `GET /admin/login`, vai num campo hidden do `login.html` e num cookie
+  assinado, e é comparado em tempo constante **antes** do orçamento de falhas
+  e da senha. Sem ele, uma página de outro site fazia o navegador do operador
+  logar na conta do atacante. Recusa: `403` com a página re-renderizada e um
+  token novo, sem gastar tentativa nem gravar sessão. Com `cookie_secure=True`
+  sobre HTTP puro, todo submit passa a dar `403` (antes: `303` e volta ao
+  login) (#603).
+
+## [0.324.0] — 2026-10-22
+
+### Added
+
+- `ImageMediaType` (`tempest_fastapi_sdk.utils.media_types`, também no
+  topo): enum dos tipos de imagem que o `sniff_mime` reconhece (`JPEG`,
+  `PNG`, `GIF`, `BMP`, `WEBP`, `HEIC`). Como tipo de campo Pydantic aceita
+  a entrada sem diferenciar maiúsculas, com espaço em volta, e os aliases
+  `image/jpg`, `image/pjpeg` e `image/x-png`; valor desconhecido é o `422`
+  normal (`enum`), e o JSON Schema lista os valores canônicos. `.extension`
+  dá a extensão do arquivo e `.matches(data)` confere os bytes contra o tipo
+  declarado pelo `sniff_mime`.
+- `HEIC_BRANDS` e `HEIF_STRUCTURAL_BRANDS` (`tempest_fastapi_sdk.utils.upload`,
+  também no topo): as marcas `ftyp` de HEIC portadas do
+  `heif_get_file_mime_type` do libheif.
+
+### Changed
 
 - `sniff_mime` reconhece HEIC (`image/heic`): `ftyp` em `prefix[4:8]` e marca
   principal em `HEIC_BRANDS`, ou `mif1`/`msf1` com uma marca compatível em
