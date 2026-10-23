@@ -631,12 +631,6 @@ if not TYPE_CHECKING:
     def __getattr__(name: str) -> Any:
         """Import an exported name on first access and cache it.
 
-        Args:
-            name (str): The attribute being looked up.
-
-        Returns:
-            Any: The object the defining submodule exports under ``name``.
-
         Defined only when not type checking: a module-level ``__getattr__``
         makes a checker type **every** unknown attribute as ``Any``, so a
         misspelled ``tempest_fastapi_sdk.X`` would stop being an error in
@@ -647,6 +641,12 @@ if not TYPE_CHECKING:
         as the eager imports used to leave every submodule reachable as an
         attribute (``tempest_fastapi_sdk.db.BaseModel`` after a bare
         ``import tempest_fastapi_sdk``).
+
+        Args:
+            name (str): The attribute being looked up.
+
+        Returns:
+            Any: The object the defining submodule exports under ``name``.
 
         Raises:
             AttributeError: When ``name`` is not exported here.
