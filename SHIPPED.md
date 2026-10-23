@@ -3238,6 +3238,22 @@ re-exporta preguiçosamente e levanta `ImportError` com a instrução; o
 `tempest new` põe `tempest-fastapi-sdk[cli]` no grupo `dev`. Guards:
 `tests/test_cli_extra_guard.py` e `tests/cli/test_entrypoint.py`.
 
+## `tempest` no servidor sem `ruff`: o extra `[cli-ops]`, Unreleased (#601)
+
+`[cli-ops]` = `typer` + `click`; `[cli]` = o mesmo mais `tempest-cli`. Com só
+o `[cli-ops]`, `doctor`, `db`, `shell`, `user`, `routes` e os
+`[tool.tempest] commands` rodam; os oito comandos do gate
+(`QUALITY_GATE_COMMANDS`, portado do `register_commands` do `tempest-cli`)
+viram placeholders que saem com 2 e o `CLI_GATE_HINT`. `find_pyproject` e
+`load_tempest_table` são do SDK (stdlib), e o resto do `tempest_cli.config`
+é re-exportado sob demanda. Medido num venv limpo com a wheel: `import ruff`
+e `import tempest_cli` falham, e `uv sync --no-dev` com `[cli-ops]` no runtime
+e `[cli]` no `dev` deixa a imagem sem `tempest-cli` nem `ruff`. Guards:
+`tests/test_cli_extra_guard.py` (`TestOperationCliImportsTheGateLazily`,
+forma dos dois extras) e `tests/cli/test_entrypoint.py`
+(`TestWithTheOpsExtraOnly`, paridade de `QUALITY_GATE_COMMANDS`);
+`tests/cli/test_config.py` fixa o que foi portado.
+
 ## Confirmar o Pix antes de liberar (#434)
 
 `confirm_pix_payment(provider, charge_id, *, reference, amount_cents)` em

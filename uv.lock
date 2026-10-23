@@ -6254,6 +6254,10 @@ cli = [
     { name = "tempest-cli" },
     { name = "typer" },
 ]
+cli-ops = [
+    { name = "click" },
+    { name = "typer" },
+]
 email = [
     { name = "aiosmtplib" },
     { name = "email-validator" },
@@ -6514,6 +6518,7 @@ requires-dist = [
     { name = "chromadb", marker = "extra == 'genai-chroma'", specifier = ">=1.5.9" },
     { name = "click", marker = "extra == 'all'", specifier = ">=8.5.0" },
     { name = "click", marker = "extra == 'cli'", specifier = ">=8.5.0" },
+    { name = "click", marker = "extra == 'cli-ops'", specifier = ">=8.5.0" },
     { name = "coqui-tts", marker = "extra == 'genai-audio'", specifier = ">=0.27.5" },
     { name = "cryptography", marker = "extra == 'all'", specifier = ">=50.0.1" },
     { name = "cryptography", marker = "extra == 'oidc'", specifier = ">=50.0.1" },
@@ -6637,12 +6642,13 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'genai-audio'", specifier = "<5" },
     { name = "typer", marker = "extra == 'all'", specifier = ">=0.27.2" },
     { name = "typer", marker = "extra == 'cli'", specifier = ">=0.27.2" },
+    { name = "typer", marker = "extra == 'cli-ops'", specifier = ">=0.27.2" },
     { name = "weasyprint", marker = "extra == 'all'", specifier = ">=69.0" },
     { name = "weasyprint", marker = "extra == 'pdf'", specifier = ">=69.0" },
     { name = "websockets", marker = "extra == 'all'", specifier = ">=17.1" },
     { name = "websockets", marker = "extra == 'websocket'", specifier = ">=17.1" },
 ]
-provides-extras = ["cli", "auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "tasks-redis", "admin", "admin-sql", "minio", "http", "oidc", "openapi", "prometheus", "mfa", "webauthn", "firebase", "pdf", "pdf-read", "pdf-layout", "spreadsheet", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-diarization", "faces", "genai-ollama", "genai-hosted", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-compose", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "tests", "all"]
+provides-extras = ["cli-ops", "cli", "auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "tasks-redis", "admin", "admin-sql", "minio", "http", "oidc", "openapi", "prometheus", "mfa", "webauthn", "firebase", "pdf", "pdf-read", "pdf-layout", "spreadsheet", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-diarization", "faces", "genai-ollama", "genai-hosted", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-compose", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "tests", "all"]
 
 [package.metadata.requires-dev]
 dev = [

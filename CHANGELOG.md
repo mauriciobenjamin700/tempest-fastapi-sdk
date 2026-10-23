@@ -20,8 +20,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `HEIC_BRANDS` e `HEIF_STRUCTURAL_BRANDS` (`tempest_fastapi_sdk.utils.upload`,
   também no topo): as marcas `ftyp` de HEIC portadas do
   `heif_get_file_mime_type` do libheif.
+- Extra `[cli-ops]` (`typer` + `click`): o comando `tempest` sem o gate de
+  qualidade, para a imagem de produção (#601). `doctor`, `db`, `shell`,
+  `user`, `routes` e os comandos de `[tool.tempest] commands` rodam sem
+  `tempest-cli` e sem `ruff`; `lint`, `fix`, `format`, `fmt-check`, `type`,
+  `test`, `check` e `pr-prompt` continuam no `tempest --help` e, chamados,
+  saem com código 2 e a instrução do `[cli]` (`CLI_GATE_HINT`), sem
+  traceback. O `[cli]` não muda: é o `[cli-ops]` mais o `tempest-cli`.
+- `tempest_fastapi_sdk.cli.config.load_tempest_table` e as constantes
+  `PYPROJECT_FILENAME` / `TEMPEST_TABLE_PATH`; `QUALITY_GATE_COMMANDS` e
+  `register_quality_gate` em `tempest_fastapi_sdk.cli.main`;
+  `CLI_OPS_EXTRA_MODULES`, `CLI_GATE_MODULES` e `CLI_GATE_HINT` em
+  `tempest_fastapi_sdk.cli.entrypoint`.
 
 ### Changed
+
+- `find_pyproject` (`tempest_fastapi_sdk.cli.config`) é do SDK, portado do
+  `tempest-cli`, e não mais re-export dele: descobrir o projeto e ler os
+  `commands` usa só a stdlib. `TempestConfig`, `TypingStrictness`,
+  `DEFAULT_TYPING_STRICTNESS` e `load_tempest_config` continuam importáveis
+  do mesmo lugar, resolvidos sob demanda do `tempest_cli.config`; sem o
+  `[cli]`, ler um deles levanta `ImportError` com a instrução do `[cli]`, e
+  importar o módulo não levanta mais.
+- `LINT_LAYERS_STEP` (`tempest_fastapi_sdk.cli.main`) é `None` quando o
+  `tempest-cli` não está instalado.
+- Sem `typer`/`click`, o `tempest` imprime `error: missing typer, click.` e a
+  instrução nomeia o `[cli-ops]` e o `[cli]`; antes listava também o
+  `tempest_cli` e só o `[cli]`.
 
 - `sniff_mime` reconhece HEIC (`image/heic`): `ftyp` em `prefix[4:8]` e marca
   principal em `HEIC_BRANDS`, ou `mif1`/`msf1` com uma marca compatível em
