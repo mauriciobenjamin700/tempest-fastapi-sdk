@@ -139,7 +139,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
     `docker-compose.yaml`'s `prod` profile uses.
 
 !!! info "Lazy imports"
-    Since 0.7.1 every optional dependency is imported lazily at first instantiation, so `import tempest_fastapi_sdk` works even when only a subset of extras is installed. Instantiating a helper whose extra is missing raises `ImportError` with a clear hint pointing at the right extra.
+    Since 0.7.1 every optional dependency is imported lazily at first instantiation, so `import tempest_fastapi_sdk` works even when only a subset of extras is installed. Instantiating a helper whose extra is missing raises `ImportError` with a clear hint pointing at the right extra. Since 0.326.0 the SDK's own modules load on demand too: `import tempest_fastapi_sdk` loads one module instead of 269 plus SQLAlchemy, FastAPI, Alembic, Jinja2 and bcrypt, and `tempest --help` went from 0.94 s to 0.14 s (best of 5, measured on this repository). `from tempest_fastapi_sdk import X` and strict type checking work as before.
 
 ## CLI
 
