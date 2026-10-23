@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.326.0] — 2026-10-23
+
 ### Changed
 
 - `import tempest_fastapi_sdk` não importa mais o SDK inteiro: a raiz e
