@@ -135,6 +135,44 @@ As páginas abrem uma sessão **opaca**: o cookie carrega um id aleatório, e o 
 
 Nenhuma rota de página aparece no OpenAPI (`include_in_schema=False`).
 
+!!! warning "Montou também o `make_auth_router`? Compartilhe o orçamento"
+    Cada router cria o próprio `AttemptThrottle` em memória quando você não passa um. Com os dois montados, um e-mail ganharia as tentativas de `/auth/login` **e** as de `/login`. Passe a mesma instância aos dois (e, com mais de um worker, um backend Redis):
+
+    ```python
+    from fastapi import FastAPI
+
+    from tempest_fastapi_sdk import (
+        AttemptThrottle,
+        InMemoryThrottleBackend,
+        make_auth_pages_router,
+        make_auth_router,
+    )
+
+    from app import auth_service, db, session_auth
+
+    app = FastAPI()
+
+    login_throttle = AttemptThrottle(
+        InMemoryThrottleBackend(), max_attempts=5, window_seconds=900
+    )
+
+    app.include_router(
+        make_auth_router(
+            auth_service,
+            session_factory=db.session_dependency,
+            login_throttle=login_throttle,
+        )
+    )
+    app.include_router(
+        make_auth_pages_router(
+            auth_service,
+            db.session_dependency,
+            session_auth=session_auth,
+            login_throttle=login_throttle,
+        )
+    )
+    ```
+
 ### O link de ativação aponta para a página
 
 `AUTH_ACTIVATION_URL_TEMPLATE` é a URL que vai no e-mail. Aponte para o `GET /activate/{token}` das páginas, no domínio público do serviço:
@@ -146,7 +184,7 @@ AUTH_ACTIVATION_URL_TEMPLATE=https://app.example.com/activate/{token}
 Quem clica fica ativado **e logado** (`amr=["email"]`). Uma conta com MFA vai para `/login/mfa` antes da sessão abrir.
 
 !!! info "Por que o link já loga"
-    É a escolha que poupa um passo: o e-mail acabou de provar que a pessoa controla aquela caixa. A contrapartida é a de todo *magic link* — quem recebe o link de outra pessoa entra na conta dela. O token é de uso único e expira em `AUTH_ACTIVATION_TTL_SECONDS`.
+    É a escolha que poupa um passo: o e-mail acabou de provar que a pessoa controla aquela caixa. A contrapartida é a de todo *magic link*, nas duas direções. Quem recebe o link de outra pessoa entra na conta dela. E um atacante pode cadastrar uma conta, não ativar, e mandar **o próprio** link para alguém: quem clica fica logado na conta do atacante e pode digitar ali dados que ele depois lê (o *login CSRF* do formulário, por outro caminho). O token é de uso único e expira em `AUTH_ACTIVATION_TTL_SECONDS`. Se esse risco pesa no seu produto, mostre de que conta se trata logo após a ativação.
 
 ### Protegendo suas rotas
 
@@ -161,6 +199,8 @@ Com `AUTH_MFA_ENABLED=true`, passe o modelo de códigos de recuperação:
 
 ```python
 from tempest_fastapi_sdk import make_auth_pages_router, make_user_recovery_code_model
+
+from app import auth_service, db, session_auth
 
 UserRecoveryCodeModel = make_user_recovery_code_model(user_table="users")
 
@@ -182,6 +222,8 @@ O formulário de `/signup` é gerado do `signup_schema`, o mesmo do `make_auth_r
 from pydantic import Field
 
 from tempest_fastapi_sdk import SignupSchema, make_auth_pages_router
+
+from app import auth_service, db, session_auth
 
 
 class ProductSignupSchema(SignupSchema):
@@ -228,11 +270,12 @@ Para mudar só o visual, sobrescreva o `_auth_layout.html`: todas as páginas es
 
 Cada item abaixo tem teste em `tests/auth/test_auth_pages.py`.
 
-- **CSRF em todo POST, inclusive o login.** Token aleatório num cookie `HttpOnly` e repetido num campo hidden, comparados em tempo constante (*double-submit*). Sem ele, uma página de outro site poderia logar o navegador da vítima na conta do atacante (*login CSRF*). A recusa vem antes de tudo e não gasta tentativa.
+- **CSRF em todo POST, inclusive o login.** Token aleatório num cookie `HttpOnly` e repetido num campo hidden, comparados em tempo constante (*double-submit*). Sem ele, uma página de outro site poderia logar o navegador da vítima na conta do atacante (*login CSRF*). A recusa vem antes de tudo e não gasta tentativa. Com cookie `Secure`, o nome leva o prefixo `__Host-`, que o navegador só aceita sem `Domain`: um subdomínio irmão não consegue plantar o cookie (e o campo) para passar na checagem.
 - **`next` sem open redirect.** Só caminho do próprio site (`/x`). `https://...`, `//host` e `/\host` são ignorados, e a redireção vai para o `AUTH_PAGES_LOGIN_REDIRECT`. Os redirects dos settings são validados na subida.
 - **Recusa genérica.** Senha errada, conta inexistente e conta inativa respondem a mesma página `401` ("E-mail ou senha inválidos.").
-- **Orçamentos.** Login por e-mail (o mesmo padrão da API JSON, compartilhado pelo mesmo código) e por IP (`login_ip_throttle`), cadastro e reenvio por IP, MFA por conta. O `429` re-renderiza a página com `Retry-After`.
-- **Reenvio sem enumeração.** `/activation/request` mostra a mesma página com ou sem conta.
+- **Orçamentos.** Login por e-mail (a mesma regra da API JSON, pelo mesmo código) e por IP (`login_ip_throttle`), cadastro e reenvio por IP, MFA por conta. O `429` re-renderiza a página com `Retry-After`.
+- **Reenvio sem enumeração pelo conteúdo.** `/activation/request` mostra a mesma página com ou sem conta. O **tempo** difere: só uma conta pendente espera o envio do e-mail — a API JSON tem a mesma característica.
+- **O cadastro revela e-mail já usado.** Um e-mail existente volta `409` no campo, como na API JSON. Se isso importa no seu produto, desligue o cadastro público (`AUTH_SIGNUP_ENABLED=false`).
 - **Sessão.** Rotação no login (`SESSION_ROTATE_ON_LOGIN`), revogação real no logout.
 
 !!! note "E o formulário de redefinir senha?"

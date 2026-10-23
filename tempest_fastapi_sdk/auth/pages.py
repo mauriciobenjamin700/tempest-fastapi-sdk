@@ -8,11 +8,14 @@ the same :class:`~tempest_fastapi_sdk.UserAuthService` and an opaque,
 revocable :class:`~tempest_fastapi_sdk.SessionAuth` session.
 
 Every rule the JSON routes enforce holds here too, because both call the
-same code: the login budgets (the shared ``throttled_login``), the
+same code: the login budget rule (the shared ``throttled_login``), the
 generic refusal for a wrong password or an inactive account, the
 second-factor anti-replay and budget of :meth:`UserAuthService.mfa_verify`,
 the signup kill-switch and the resend answer that does not tell accounts
-apart. What the pages add is what HTML needs: a CSRF field on every form
+apart by content. The *budget itself* is one only when both routers are
+handed the same :class:`~tempest_fastapi_sdk.AttemptThrottle` instance —
+each builds its own in-memory one by default. What the pages add is what
+HTML needs: a CSRF field on every form
 (:class:`~tempest_fastapi_sdk.auth.form_csrf.FormCSRF`, login included),
 a ``next`` that can only point back into the site, and the MFA step held
 in an ``HttpOnly`` cookie rather than the URL.
@@ -22,6 +25,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
 from typing import TYPE_CHECKING, Any, Final
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -57,6 +61,7 @@ from tempest_fastapi_sdk.auth.schemas import ActivationWithheld, SignupSchema
 from tempest_fastapi_sdk.exceptions import (
     AppException,
     ConflictException,
+    IntegrationDisabledException,
     InvalidTokenException,
     UnauthorizedException,
 )
@@ -86,9 +91,11 @@ if TYPE_CHECKING:
 AUTH_PAGES_MFA_COOKIE: Final[str] = "tempest_auth_mfa"
 """Cookie holding the pending second-factor token between the two steps.
 
-``HttpOnly`` and scoped to the pages prefix: the token is a short-lived
-JWT that proves the password step, so it never goes in a URL, where
-history, logs and ``Referer`` would keep it.
+``HttpOnly`` and scoped to ``{AUTH_PAGES_PREFIX}/login``, the one path
+that reads it (``/login/mfa``): the token is a short-lived JWT that
+proves the password step, so it never goes in a URL — where history,
+logs and ``Referer`` would keep it — nor along with every other request
+to the site.
 """
 
 ACTIVATION_THROTTLE_MAX_ATTEMPTS: Final[int] = 5
@@ -254,7 +261,9 @@ def make_auth_pages_router(
         on_signup (SignupHook | None): Runs after the insert, before the
             commit, as in the JSON route.
         login_throttle (AttemptThrottle | None): Per-e-mail budget; the
-            JSON route's default when ``None``.
+            JSON route's default when ``None``. Mounted next to
+            ``make_auth_router``, pass both the **same** instance, or each
+            router keeps a budget of its own and an e-mail gets both.
         login_ip_throttle (AttemptThrottle | None): Per-IP budget; off
             when ``None``.
         signup_throttle (AttemptThrottle | None): Per-IP signup budget;
@@ -322,6 +331,7 @@ def make_auth_pages_router(
     )
     catalog = default_message_catalog()
     login_path = f"{prefix}/login"
+    mfa_cookie_path = login_path
     mfa_path = f"{prefix}/login/mfa"
     logout_target = settings.AUTH_PAGES_LOGOUT_REDIRECT or login_path
 
@@ -488,7 +498,7 @@ def make_auth_pages_router(
             httponly=True,
             secure=session_settings.SESSION_COOKIE_SECURE,
             samesite=session_settings.SESSION_COOKIE_SAMESITE,
-            path=prefix or "/",
+            path=mfa_cookie_path,
         )
 
     def _step_still_valid(mfa_token: str) -> bool:
@@ -519,7 +529,7 @@ def make_auth_pages_router(
         Returns:
             RedirectResponse: The redirect.
         """
-        query = f"?next={next_value}" if next_value else ""
+        query = f"?next={quote(next_value, safe='/')}" if next_value else ""
         return _redirect(f"{mfa_path}{query}")
 
     async def _finish_login(
@@ -743,12 +753,12 @@ def make_auth_pages_router(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 locale=locale,
             )
-            expired.delete_cookie(AUTH_PAGES_MFA_COOKIE, path=prefix or "/")
+            expired.delete_cookie(AUTH_PAGES_MFA_COOKIE, path=mfa_cookie_path)
             return expired
         amr = service.second_factor_amr(mfa_token)
         response = _redirect(next_value or settings.AUTH_PAGES_LOGIN_REDIRECT)
         await _open_session(request, response, user, amr)
-        response.delete_cookie(AUTH_PAGES_MFA_COOKIE, path=prefix or "/")
+        response.delete_cookie(AUTH_PAGES_MFA_COOKIE, path=mfa_cookie_path)
         await session.commit()
         return response
 
@@ -1036,8 +1046,15 @@ def make_auth_pages_router(
             session (AsyncSession): The DB session.
 
         Returns:
-            Response: The confirmation page; the form with ``403`` or
-            ``429``.
+            Response: The confirmation page; the form with ``403``,
+            ``429`` or ``503`` (e-mail integration switched off).
+
+        Notes:
+            The page is the same with or without an account, but not the
+            time: :meth:`UserAuthService.request_activation` sends the mail
+            inline, only for a pending account, so that answer waits on the
+            SMTP server. The JSON ``/activation/request`` has the same
+            property.
         """
         form = await _read_form_fields(request)
         email = form.get("email", "").strip()
@@ -1061,7 +1078,15 @@ def make_auth_pages_router(
             page.headers["Retry-After"] = str(max(attempt.retry_after_seconds, 1))
             return page
         if email:
-            await service.request_activation(session, email=email)
+            try:
+                await service.request_activation(session, email=email)
+            except IntegrationDisabledException:
+                return _resend_page(
+                    request,
+                    email=email,
+                    error_key="email_unavailable",
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
             await session.commit()
         return _page(
             request,

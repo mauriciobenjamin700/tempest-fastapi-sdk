@@ -12,6 +12,7 @@ import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pyotp
@@ -22,8 +23,10 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from tempest_fastapi_sdk import (
+    AttemptThrottle,
     BaseModel,
     BaseUserModel,
+    InMemoryThrottleBackend,
     MemorySessionStore,
     MFAMixin,
     SessionAuth,
@@ -85,6 +88,7 @@ async def _build(
     tmp_path: Path,
     *,
     secure_cookies: bool = False,
+    login_ip_throttle: AttemptThrottle | None = None,
     **auth: Any,
 ) -> Harness:
     """Build an app with the pages and two protected routes.
@@ -92,6 +96,7 @@ async def _build(
     Args:
         tmp_path (Path): Where the SQLite file lives.
         secure_cookies (bool): ``SESSION_COOKIE_SECURE``.
+        login_ip_throttle (AttemptThrottle | None): Forwarded to the router.
         **auth (Any): ``AuthSettings`` overrides.
 
     Returns:
@@ -131,6 +136,7 @@ async def _build(
             session_factory,
             session_auth=session_auth,
             recovery_code_model=PagesRecoveryCode,
+            login_ip_throttle=login_ip_throttle,
         )
     )
     current_user = Depends(
@@ -166,8 +172,8 @@ async def harness(tmp_path: Path) -> Harness:
     return await _build(tmp_path)
 
 
-def _client(app: FastAPI) -> AsyncClient:
-    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+def _client(app: FastAPI, scheme: str = "http") -> AsyncClient:
+    return AsyncClient(transport=ASGITransport(app=app), base_url=f"{scheme}://test")
 
 
 def _token(html: str) -> str:
@@ -738,3 +744,181 @@ class TestSafety:
 
     def test_the_pages_stay_out_of_openapi(self, harness: Harness) -> None:
         assert harness.app.openapi()["paths"].keys() == {"/me", "/vault"}
+
+
+class TestReviewFindings:
+    """Gaps a review found before merge, pinned."""
+
+    async def test_secure_cookies_use_the_host_prefix(self, tmp_path: Path) -> None:
+        """A sibling subdomain cannot plant a ``__Host-`` cookie."""
+        harness = await _build(tmp_path, secure_cookies=True)
+        await _account(harness)
+        async with _client(harness.app, "https") as client:
+            page = await client.get("/login")
+            response = await _form(
+                client, "/login", email="ana@example.com", password=PASSWORD
+            )
+        assert f"__Host-{FORM_CSRF_COOKIE}=" in page.headers["set-cookie"]
+        assert "Path=/" in page.headers["set-cookie"]
+        assert response.status_code == 303
+
+    async def test_a_planted_unprefixed_cookie_does_not_pass(
+        self, tmp_path: Path
+    ) -> None:
+        """The plain name is what a sibling host could set; it is not read."""
+        harness = await _build(tmp_path, secure_cookies=True)
+        await _account(harness)
+        async with _client(harness.app, "https") as client:
+            client.cookies.set(FORM_CSRF_COOKIE, "planted", path="/")
+            response = await client.post(
+                "/login",
+                data={
+                    "csrf_token": "planted",
+                    "email": "ana@example.com",
+                    "password": PASSWORD,
+                },
+            )
+        assert response.status_code == 403
+
+    async def test_the_mfa_step_cookie_stays_on_the_login_path(
+        self, harness: Harness
+    ) -> None:
+        await _enroll(harness)
+        async with _client(harness.app) as client:
+            response = await _form(
+                client, "/login", email="ana@example.com", password=PASSWORD
+            )
+        cookie = next(
+            value
+            for value in response.headers.get_list("set-cookie")
+            if value.startswith(f"{AUTH_PAGES_MFA_COOKIE}=")
+        )
+        assert "Path=/login" in cookie
+
+    async def test_next_with_a_query_survives_the_mfa_step(
+        self, harness: Harness
+    ) -> None:
+        secret = await _enroll(harness)
+        code = pyotp.TOTP(secret).at(int(time.time()) + 30)
+        async with _client(harness.app) as client:
+            step = await _form(
+                client,
+                "/login",
+                email="ana@example.com",
+                password=PASSWORD,
+                next="/me?a=1&b=2",
+            )
+            page = await client.get(step.headers["location"])
+            done = await client.post(
+                "/login/mfa",
+                data={
+                    "csrf_token": _token(page.text),
+                    "code": code,
+                    "next": "/me?a=1&b=2",
+                },
+            )
+        assert step.headers["location"] == "/login/mfa?next=/me%3Fa%3D1%26b%3D2"
+        assert 'value="/me?a=1&amp;b=2"' in page.text
+        assert done.headers["location"] == "/me?a=1&b=2"
+
+    @pytest.mark.parametrize("path", ["/login/mfa", "/activation/request"])
+    async def test_every_form_refuses_a_post_without_the_token(
+        self, harness: Harness, path: str
+    ) -> None:
+        await _enroll(harness)
+        async with _client(harness.app) as client:
+            await _form(client, "/login", email="ana@example.com", password=PASSWORD)
+            response = await client.post(path, data={"code": "1", "email": "x@x.io"})
+        assert response.status_code == 403
+
+    async def test_the_mfa_budget_answers_429(self, harness: Harness) -> None:
+        await _enroll(harness)
+        async with _client(harness.app) as client:
+            await _form(client, "/login", email="ana@example.com", password=PASSWORD)
+            for _ in range(5):
+                await _form(client, "/login/mfa", code="000000")
+            blocked = await _form(client, "/login/mfa", code="000000")
+        assert blocked.status_code == 429
+        assert int(blocked.headers["Retry-After"]) > 0
+
+    async def test_the_signup_budget_answers_429(self, harness: Harness) -> None:
+        async with _client(harness.app) as client:
+            for index in range(10):
+                await _form(
+                    client, "/signup", email=f"u{index}@example.com", password="x"
+                )
+            blocked = await _form(
+                client, "/signup", email="last@example.com", password=PASSWORD
+            )
+        assert blocked.status_code == 429
+
+    async def test_the_ip_budget_applies_to_the_pages(self, tmp_path: Path) -> None:
+        throttle = AttemptThrottle(
+            InMemoryThrottleBackend(), max_attempts=2, window_seconds=900
+        )
+        harness = await _build(tmp_path, login_ip_throttle=throttle)
+        await _account(harness)
+        async with _client(harness.app) as client:
+            for email in ("a@example.com", "b@example.com"):
+                await _form(client, "/login", email=email, password="nope-nope-123")
+            blocked = await _form(
+                client, "/login", email="ana@example.com", password=PASSWORD
+            )
+        assert blocked.status_code == 429
+
+    async def test_one_throttle_shared_by_both_routers_is_one_budget(
+        self, harness: Harness
+    ) -> None:
+        """What the recipe tells you to do when both routers are mounted."""
+        from tempest_fastapi_sdk import make_auth_router
+
+        shared = AttemptThrottle(
+            InMemoryThrottleBackend(), max_attempts=3, window_seconds=900
+        )
+        await _account(harness)
+
+        async def session_factory() -> AsyncIterator[AsyncSession]:
+            async with harness.factory() as session:
+                yield session
+
+        app = FastAPI()
+        register_exception_handlers(app)
+        app.include_router(
+            make_auth_router(
+                harness.service,
+                session_factory=session_factory,
+                recovery_code_model=PagesRecoveryCode,
+                login_throttle=shared,
+            )
+        )
+        app.include_router(
+            make_auth_pages_router(
+                harness.service,
+                session_factory,
+                session_auth=harness.session_auth,
+                recovery_code_model=PagesRecoveryCode,
+                login_throttle=shared,
+            )
+        )
+        async with _client(app) as client:
+            for _ in range(3):
+                await client.post(
+                    "/auth/login",
+                    json={"email": "ana@example.com", "password": "nope-nope-123"},
+                )
+            blocked = await _form(
+                client, "/login", email="ana@example.com", password=PASSWORD
+            )
+        assert blocked.status_code == 429
+
+    async def test_resend_with_the_mailer_off_renders_the_page(
+        self, harness: Harness
+    ) -> None:
+        await _account(harness, "pending@example.com", active=False)
+        harness.service.email = SimpleNamespace(enabled=False)  # type: ignore[assignment]
+        async with _client(harness.app) as client:
+            response = await _form(
+                client, "/activation/request", email="pending@example.com"
+            )
+        assert response.status_code == 503
+        assert "<form" in response.text

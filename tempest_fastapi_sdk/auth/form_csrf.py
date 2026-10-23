@@ -13,8 +13,18 @@ neither read it nor learn the token to put in the field.
 
 It covers the forms that run **before** a session exists — login,
 signup, the resend form — which is exactly where a session-bound token
-cannot help (login CSRF), and keeps working after login for logout and
-the password-reset form.
+cannot help (login CSRF), and keeps working after login for logout.
+
+The weakness of a plain double-submit is a cookie someone else can
+**set**: a sibling subdomain (``evil.example.com`` for
+``app.example.com``) can plant a cookie of its choosing for the parent
+domain, together with a field of the same value, and pass the check.
+Signing the token would not help — the attacker gets a validly signed
+one by loading the form themselves. What does is the ``__Host-`` cookie
+prefix, which a browser only accepts with ``Secure``, ``Path=/`` and no
+``Domain``, so no other host can set it. :class:`FormCSRF` uses it
+whenever the cookie is ``Secure``; over plain HTTP (local development)
+the prefix is not allowed and the plain name is used.
 """
 
 from __future__ import annotations
@@ -42,12 +52,18 @@ later submit is refused and the form comes back with a fresh token.
 FORM_CSRF_TOKEN_BYTES: Final[int] = 32
 """Entropy of a token, as passed to :func:`secrets.token_urlsafe`."""
 
+HOST_COOKIE_PREFIX: Final[str] = "__Host-"
+"""Cookie-name prefix a browser accepts only with ``Secure``, ``Path=/``
+and no ``Domain`` (RFC 6265bis, "Cookie Name Prefixes")."""
+
 
 class FormCSRF:
     """Double-submit CSRF token for HTML forms.
 
     Attributes:
-        cookie_name (str): Name of the cookie holding the token.
+        cookie_name (str): Name of the cookie holding the token —
+            prefixed with :data:`HOST_COOKIE_PREFIX` when ``secure`` and
+            ``path`` is ``/``.
         secure (bool): Whether the cookie is flagged ``Secure``.
         samesite (Literal["lax", "strict", "none"]): ``SameSite`` policy.
         path (str): Cookie path.
@@ -75,7 +91,11 @@ class FormCSRF:
                 password-reset form share one token.
             max_age_seconds (int): Cookie lifetime.
         """
-        self.cookie_name: str = cookie_name
+        self.cookie_name: str = (
+            f"{HOST_COOKIE_PREFIX}{cookie_name}"
+            if secure and path == "/"
+            else cookie_name
+        )
         self.secure: bool = secure
         self.samesite: Literal["lax", "strict", "none"] = samesite
         self.path: str = path
@@ -155,6 +175,7 @@ __all__: list[str] = [
     "FORM_CSRF_FIELD",
     "FORM_CSRF_MAX_AGE_SECONDS",
     "FORM_CSRF_TOKEN_BYTES",
+    "HOST_COOKIE_PREFIX",
     "FormCSRF",
     "is_local_path",
 ]
