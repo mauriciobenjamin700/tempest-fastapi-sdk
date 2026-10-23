@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `tempest_fastapi_sdk.testing.admin_login` / `admin_login_sync` eram tipados
+  com `httpx.AsyncClient` / `httpx.Client`, e o `mypy --strict` do consumidor
+  recusava o `TestClient` do Starlette, que herda do `httpx2.Client` quando o
+  `httpx2` está instalado (e o `httpx2.AsyncClient`). Agora recebem
+  `AsyncFormClient` / `SyncFormClient` — `Protocol`s públicos com o que os
+  helpers usam, genéricos na resposta — e devolvem o tipo de resposta do
+  cliente passado. `httpx`, `httpx2` e `TestClient` passam sem `cast` no mypy
+  e no basedpyright strict (#610).
+
 ## [0.325.0] — 2026-10-23
 
 ### Added

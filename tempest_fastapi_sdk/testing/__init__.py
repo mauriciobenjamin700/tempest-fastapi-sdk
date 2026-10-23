@@ -8,6 +8,11 @@ project's ``conftest.py``.
 """
 
 from tempest_fastapi_sdk.testing.admin import (
+    AsyncFormClient as AsyncFormClient,
+)
+from tempest_fastapi_sdk.testing.admin import FormResponse as FormResponse
+from tempest_fastapi_sdk.testing.admin import SyncFormClient as SyncFormClient
+from tempest_fastapi_sdk.testing.admin import (
     admin_csrf_token as admin_csrf_token,
 )
 from tempest_fastapi_sdk.testing.admin import admin_login as admin_login
@@ -49,7 +54,10 @@ from tempest_fastapi_sdk.testing.privacy import (
 )
 
 __all__: list[str] = [
+    "AsyncFormClient",
+    "FormResponse",
     "ModelFactory",
+    "SyncFormClient",
     "admin_csrf_token",
     "admin_login",
     "admin_login_sync",

@@ -1353,6 +1353,9 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.testing.admin.admin_login
 ::: tempest_fastapi_sdk.testing.admin.admin_login_sync
 ::: tempest_fastapi_sdk.testing.admin.admin_csrf_token
+::: tempest_fastapi_sdk.testing.admin.SyncFormClient
+::: tempest_fastapi_sdk.testing.admin.AsyncFormClient
+::: tempest_fastapi_sdk.testing.admin.FormResponse
 
 ### `tempest_fastapi_sdk.testing.fakes`
 
