@@ -87,8 +87,8 @@ class FormCSRF:
                 behind HTTPS; a ``Secure`` cookie is not sent back over
                 plain HTTP, which makes every submit fail.
             samesite (Literal["lax", "strict", "none"]): ``SameSite``.
-            path (str): Cookie path. ``/`` lets the auth pages and the
-                password-reset form share one token.
+            path (str): Cookie path. ``/``, the only path the ``__Host-``
+                prefix allows.
             max_age_seconds (int): Cookie lifetime.
         """
         self.cookie_name: str = (

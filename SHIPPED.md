@@ -3238,7 +3238,7 @@ re-exporta preguiçosamente e levanta `ImportError` com a instrução; o
 `tempest new` põe `tempest-fastapi-sdk[cli]` no grupo `dev`. Guards:
 `tests/test_cli_extra_guard.py` e `tests/cli/test_entrypoint.py`.
 
-## `tempest` no servidor sem `ruff`: o extra `[cli-ops]`, Unreleased (#601)
+## `tempest` no servidor sem `ruff`: o extra `[cli-ops]`, v0.325.0 (#601)
 
 `[cli-ops]` = `typer` + `click`; `[cli]` = o mesmo mais `tempest-cli`. Com só
 o `[cli-ops]`, `doctor`, `db`, `shell`, `user`, `routes` e os
@@ -3564,7 +3564,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   (`docs/recipes/kestra.md`, `docs/recipes/n8n.md`) com exemplos executados
   contra Kestra 2.0.6 e n8n 2.43.7 em Docker.
 
-## Operação de worker e logs, Unreleased
+## Operação de worker e logs, v0.318.0
 
 - **Rotação de log por tempo** — `configure_logging(rotate_when=...,
   rotate_interval=...)` / `LOG_ROTATE_WHEN` + `LOG_ROTATE_INTERVAL`
@@ -3589,7 +3589,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   padrão, IP só com `trusted_ip_header`. `get_client_ip` só aceita um IP
   válido do header.
 
-## Interruptor por integração, Unreleased
+## Interruptor por integração, v0.320.0
 
 - **`STORAGE_ENABLED`, `EMAIL_ENABLED`, `FIREBASE_ENABLED`,
   `REVENUECAT_ENABLED`** (default `true`) — deploy por partes. Desligado, o
@@ -3621,7 +3621,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   local/reservado ou sem `https` (pula com `EMAIL_ENABLED=false`).
   `is_reserved_domain` é compartilhado com a regra do `SMTP_FROM_ADDR`.
   Testes: `tests/settings/test_auth_link_guard.py`.
-- **SMTP fora do ar vira `503 EMAIL_UNAVAILABLE`, Unreleased** —
+- **SMTP fora do ar vira `503 EMAIL_UNAVAILABLE`, v0.322.0** —
   `EmailUtils.send` e `send_many` traduzem falha de transporte
   (`aiosmtplib.SMTPException`, `OSError`, timeout, TLS) em
   `EmailDeliveryException` (`503`, sem `details`, causa encadeada), logando
@@ -3638,7 +3638,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `tests/settings/test_integration_flags.py` (`TestEmailTLSModeRule`),
   `tests/cli/test_email_storage.py`.
 - **Fan-out por consumidor, DLQ declarada antes dos assinantes e replay,
-  Unreleased (#592)** — `QueueSpec.consumer(consumer, channel, exchange=...,
+  v0.323.0 (#592)** — `QueueSpec.consumer(consumer, channel, exchange=...,
   dead_letter_exchange=...)` monta a fila `<consumer>.<channel>` ligada ao
   exchange pela chave do evento (`ExchangeSpec`, `ExchangeBinding`,
   `ExchangeKind`), com dead-letter chaveado pelo nome da fila e
@@ -3651,7 +3651,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `docs/recipes/queue-tasks.md` ("Fan-out" e "Reprocessar a dead-letter
   queue"). Testes: `tests/queue/test_fanout.py`,
   `tests/queue/test_fanout_live.py` (RabbitMQ real, `make test-docker`).
-- **CSRF no login do admin, Unreleased (#603)** — `POST /admin/login` exige o
+- **CSRF no login do admin, v0.325.0 (#603)** — `POST /admin/login` exige o
   `csrf_token` que o `GET /admin/login` emite (`AdminLoginCSRF`: cookie
   assinado de 1 h, salt próprio, independente do `SessionStore`), conferido
   antes do throttle e da senha; recusa é `403` re-renderizado, sem gastar
@@ -3659,7 +3659,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   logam em teste pelo formulário. Receita: `docs/recipes/admin.md` ("Defaults
   de segurança de sessão", "Logar em teste"). Testes:
   `tests/admin/test_login_csrf.py`.
-- **Login e cadastro server-side, Unreleased (#602)** —
+- **Login e cadastro server-side, v0.325.0 (#602)** —
   `make_auth_pages_router` (login, `/login/mfa`, signup gerado do
   `signup_schema`, `/activate/{token}` que abre a sessão, reenvio, logout) sobre
   `UserAuthService` + `SessionAuth`; `make_session_user_dependency` /

@@ -3826,7 +3826,7 @@ Use `get_client_ip_from_scope(scope, trusted_header=...)` from middleware or web
 
 ### Command-line interface recipe
 
-Installing `tempest-fastapi-sdk[cli]` exposes a `tempest` console script (the base install registers the script too, but without the `[cli]` extra it only prints the install line and exits with code 2). It does two jobs: bootstrap a new layered service from the SDK's preferred skeleton, and run the four quality gates (`ruff check`, `ruff format`, `mypy`, `pytest`) without copy-pasting the same commands into every project.
+Installing `tempest-fastapi-sdk[cli]` exposes a `tempest` console script (the base install registers the script too, but without `typer`/`click` it only prints the install line and exits with code 2). `[cli-ops]` installs the operation commands alone (`doctor`, `db`, `shell`, `user`, project commands), without `tempest-cli` or `ruff`, for a production image; there the quality-gate commands explain that they need `[cli]`. It does two jobs: bootstrap a new layered service from the SDK's preferred skeleton, and run the four quality gates (`ruff check`, `ruff format`, `mypy`, `pytest`) without copy-pasting the same commands into every project.
 
 ```bash
 tempest --help                                  # list every command

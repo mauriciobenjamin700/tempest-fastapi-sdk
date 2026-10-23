@@ -922,3 +922,21 @@ class TestReviewFindings:
             )
         assert response.status_code == 503
         assert "<form" in response.text
+
+
+class TestRevealInactiveAccount:
+    """``AUTH_REVEAL_INACTIVE_ACCOUNT`` answers with the page, not JSON."""
+
+    async def test_the_inactive_refusal_renders_the_login_page(
+        self, tmp_path: Path
+    ) -> None:
+        harness = await _build(tmp_path, AUTH_REVEAL_INACTIVE_ACCOUNT=True)
+        await _account(harness, active=False)
+        async with _client(harness.app) as client:
+            response = await _form(
+                client, "/login", email="ana@example.com", password=PASSWORD
+            )
+        assert response.status_code == 403
+        assert response.headers["content-type"].startswith("text/html")
+        assert "<form" in response.text
+        assert _session_cookie(response) is None
