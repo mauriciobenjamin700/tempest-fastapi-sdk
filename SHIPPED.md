@@ -3238,6 +3238,22 @@ re-exporta preguiçosamente e levanta `ImportError` com a instrução; o
 `tempest new` põe `tempest-fastapi-sdk[cli]` no grupo `dev`. Guards:
 `tests/test_cli_extra_guard.py` e `tests/cli/test_entrypoint.py`.
 
+## `tempest` no servidor sem `ruff`: o extra `[cli-ops]`, Unreleased (#601)
+
+`[cli-ops]` = `typer` + `click`; `[cli]` = o mesmo mais `tempest-cli`. Com só
+o `[cli-ops]`, `doctor`, `db`, `shell`, `user`, `routes` e os
+`[tool.tempest] commands` rodam; os oito comandos do gate
+(`QUALITY_GATE_COMMANDS`, portado do `register_commands` do `tempest-cli`)
+viram placeholders que saem com 2 e o `CLI_GATE_HINT`. `find_pyproject` e
+`load_tempest_table` são do SDK (stdlib), e o resto do `tempest_cli.config`
+é re-exportado sob demanda. Medido num venv limpo com a wheel: `import ruff`
+e `import tempest_cli` falham, e `uv sync --no-dev` com `[cli-ops]` no runtime
+e `[cli]` no `dev` deixa a imagem sem `tempest-cli` nem `ruff`. Guards:
+`tests/test_cli_extra_guard.py` (`TestOperationCliImportsTheGateLazily`,
+forma dos dois extras) e `tests/cli/test_entrypoint.py`
+(`TestWithTheOpsExtraOnly`, paridade de `QUALITY_GATE_COMMANDS`);
+`tests/cli/test_config.py` fixa o que foi portado.
+
 ## Confirmar o Pix antes de liberar (#434)
 
 `confirm_pix_payment(provider, charge_id, *, reference, amount_cents)` em
@@ -3635,6 +3651,14 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `docs/recipes/queue-tasks.md` ("Fan-out" e "Reprocessar a dead-letter
   queue"). Testes: `tests/queue/test_fanout.py`,
   `tests/queue/test_fanout_live.py` (RabbitMQ real, `make test-docker`).
+- **CSRF no login do admin, Unreleased (#603)** — `POST /admin/login` exige o
+  `csrf_token` que o `GET /admin/login` emite (`AdminLoginCSRF`: cookie
+  assinado de 1 h, salt próprio, independente do `SessionStore`), conferido
+  antes do throttle e da senha; recusa é `403` re-renderizado, sem gastar
+  tentativa. `tempest_fastapi_sdk.testing.admin_login` / `admin_login_sync`
+  logam em teste pelo formulário. Receita: `docs/recipes/admin.md` ("Defaults
+  de segurança de sessão", "Logar em teste"). Testes:
+  `tests/admin/test_login_csrf.py`.
 - **Login e cadastro server-side, Unreleased (#602)** —
   `make_auth_pages_router` (login, `/login/mfa`, signup gerado do
   `signup_schema`, `/activate/{token}` que abre a sessão, reenvio, logout) sobre

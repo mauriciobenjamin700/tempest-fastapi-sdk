@@ -21,6 +21,7 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
     make_admin_router,
 )
+from tempest_fastapi_sdk.testing import admin_login
 
 SECRET = "x" * 48
 
@@ -78,10 +79,7 @@ async def _build_app(
 
 
 async def _login(client: AsyncClient) -> None:
-    await client.post(
-        "/admin/login",
-        data={"identifier": "root@example.com", "password": "hunter2"},
-    )
+    await admin_login(client, "root@example.com", "hunter2")
 
 
 @pytest.fixture

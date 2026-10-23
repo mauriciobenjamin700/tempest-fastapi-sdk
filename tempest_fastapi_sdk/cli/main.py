@@ -4,19 +4,25 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Annotated, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
-from tempest_fastapi_sdk.cli.entrypoint import raise_for_missing_cli_extra
+from tempest_fastapi_sdk.cli.entrypoint import (
+    CLI_EXTRA_EXIT_CODE,
+    CLI_GATE_HINT,
+    CLI_GATE_MODULES,
+    raise_for_missing_cli_extra,
+)
 
 try:
     import click
     import typer
-    from tempest_cli import CheckStep
-    from tempest_cli.main import register_commands
     from typer.core import TyperGroup
 except ModuleNotFoundError as exc:
     raise_for_missing_cli_extra(exc)
     raise
+
+if TYPE_CHECKING:
+    from tempest_cli import CheckStep
 
 from tempest_fastapi_sdk.cli import generate as generate_module
 from tempest_fastapi_sdk.cli import new as new_module
@@ -163,8 +169,8 @@ app: typer.Typer = typer.Typer(
     name="tempest",
     cls=FullHelpTyperGroup,
     help=(
-        "Tempest FastAPI SDK CLI — scaffold projects and run the SDK's "
-        "preferred quality gates (ruff, mypy, pytest)."
+        "Tempest FastAPI SDK CLI — scaffold projects, operate a service and "
+        "run the SDK's preferred quality gates (ruff, mypy, pytest)."
     ),
     no_args_is_help=True,
     add_completion=False,
@@ -196,16 +202,108 @@ app.command("serve")(serve_command)
 app.command("shell")(shell_command)
 app.command("doctor")(doctor_command)
 
-LINT_LAYERS_STEP: CheckStep = CheckStep(name="lint-layers", run=run_lint_layers)
+QUALITY_GATE_COMMANDS: tuple[str, ...] = (
+    "lint",
+    "fix",
+    "format",
+    "fmt-check",
+    "type",
+    "test",
+    "check",
+    "pr-prompt",
+)
+"""Commands ``tempest-cli`` registers on the app, in registration order.
+
+Ported from tempest-cli's ``register_commands``. Without the ``[cli]``
+extra each name is still registered, answering with :data:`CLI_GATE_HINT`
+instead of disappearing into Click's "No such command".
+"""
+
+_GATE_PLACEHOLDER_HELP: str = (
+    r"Quality gate command; needs the \[cli] extra (tempest-cli and ruff)."
+)
+"""Help line of a quality-gate command when ``tempest-cli`` is missing.
+
+The backslash escapes Rich markup: the app renders help with
+``rich_markup_mode="rich"``, which would otherwise read ``[cli]`` as a
+style tag and drop it.
+"""
+
+
+def _gate_placeholder(ctx: typer.Context) -> None:
+    """Explain that a quality-gate command needs the ``[cli]`` extra.
+
+    Registered under every :data:`QUALITY_GATE_COMMANDS` name when
+    ``tempest_cli`` cannot be imported. Any argument or option is accepted
+    and ignored, so ``tempest lint src --fix`` reaches the hint instead of
+    a usage error about an option the placeholder does not declare.
+
+    Args:
+        ctx (typer.Context): The invocation context, whose extra arguments
+            are discarded.
+
+    Raises:
+        typer.Exit: Always, with :data:`CLI_EXTRA_EXIT_CODE`.
+    """
+    typer.secho(
+        f"error: tempest {ctx.info_name} is not available. {CLI_GATE_HINT}",
+        err=True,
+        fg="red",
+    )
+    raise typer.Exit(CLI_EXTRA_EXIT_CODE)
+
+
+def register_quality_gate(target: typer.Typer) -> CheckStep | None:
+    """Register the quality gate on ``target``, or placeholders without it.
+
+    With ``tempest-cli`` installed (the ``[cli]`` extra), its
+    ``register_commands`` adds every :data:`QUALITY_GATE_COMMANDS` entry and
+    ``tempest check`` runs the SDK's layer rules as an extra step between
+    ``mypy`` and ``pytest``. With only ``[cli-ops]``, each name is
+    registered as :func:`_gate_placeholder`, and the operation commands
+    are untouched.
+
+    Args:
+        target (typer.Typer): The application to register on.
+
+    Returns:
+        CheckStep | None: The ``lint-layers`` step handed to the gate, or
+        ``None`` when ``tempest-cli`` is not installed.
+
+    Raises:
+        ModuleNotFoundError: When ``tempest_cli`` is installed but fails
+            because some *other* module is missing — a broken install the
+            hint would not fix.
+    """
+    try:
+        from tempest_cli import CheckStep
+        from tempest_cli.main import register_commands
+    except ModuleNotFoundError as exc:
+        if (exc.name or "").partition(".")[0] not in CLI_GATE_MODULES:
+            raise
+        for name in QUALITY_GATE_COMMANDS:
+            target.command(
+                name,
+                help=_GATE_PLACEHOLDER_HELP,
+                context_settings={
+                    "allow_extra_args": True,
+                    "ignore_unknown_options": True,
+                },
+            )(_gate_placeholder)
+        return None
+    step = CheckStep(name="lint-layers", run=run_lint_layers)
+    register_commands(target, extra_steps=(step,))
+    return step
+
+
+LINT_LAYERS_STEP: CheckStep | None = register_quality_gate(app)
 """The layer rules, run by ``tempest check`` between ``mypy`` and ``pytest``.
 
 The quality gate lives in ``tempest-cli``, which knows nothing about
 FastAPI; registering it here with this step is what keeps ``tempest
 check`` and ``tempest-cli check`` one implementation, with the SDK's
-own rules added on top.
+own rules added on top. ``None`` when the ``[cli]`` extra is missing.
 """
-
-register_commands(app, extra_steps=(LINT_LAYERS_STEP,))
 
 
 def _print_version(value: bool) -> None:

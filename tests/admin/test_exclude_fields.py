@@ -37,6 +37,7 @@ from tempest_fastapi_sdk import (
 )
 from tempest_fastapi_sdk.admin.forms import fk_label
 from tempest_fastapi_sdk.db.audit import AUDIT_REDACTED, snapshot_model
+from tempest_fastapi_sdk.testing import admin_login
 
 
 class ExcludeUser(BaseUserModel):
@@ -212,10 +213,7 @@ async def _logged_in(app: FastAPI) -> AsyncIterator[AsyncClient]:
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
-        await client.post(
-            "/admin/login",
-            data={"identifier": "root@example.com", "password": "hunter2hunter2"},
-        )
+        await admin_login(client, "root@example.com", "hunter2hunter2")
         yield client
 
 

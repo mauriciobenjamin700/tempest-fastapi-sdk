@@ -1,7 +1,7 @@
 # CLI
 
 
-Instalar o `tempest-fastapi-sdk[cli]` expõe um console script `tempest`. Ele faz dois trabalhos: criar um novo serviço em camadas a partir do esqueleto preferido do SDK e rodar os quatro gates de qualidade (`ruff check`, `ruff format`, `mypy`, `pytest`) sem copiar e colar os mesmos comandos em cada projeto.
+Instalar o `tempest-fastapi-sdk[cli]` (ou o `[cli-ops]`, no servidor) expõe um console script `tempest`. Ele faz dois trabalhos: criar um novo serviço em camadas a partir do esqueleto preferido do SDK e rodar os quatro gates de qualidade (`ruff check`, `ruff format`, `mypy`, `pytest`) sem copiar e colar os mesmos comandos em cada projeto.
 
 ```bash
 tempest --help                                  # lista todos os comandos
@@ -9,8 +9,9 @@ tempest --version                               # mostra a versão do SDK
 ```
 
 !!! info "A CLI é o extra `[cli]` (desde a 0.308.0)"
-    O `tempest` é ferramenta de desenvolvimento, então mora num extra e não
-    no pacote base. Instale do jeito que você usa:
+    O `tempest` mora num extra, e não no pacote base. Em desenvolvimento,
+    instale do jeito que você usa (para o servidor, veja
+    [`[cli-ops]`](#servidor-x-desenvolvimento-cli-ops-e-cli)):
 
     ```bash
     uv tool install "tempest-fastapi-sdk[cli]"   # comando global
@@ -22,20 +23,23 @@ tempest --version                               # mostra a versão do SDK
     o SDK levava um formatador para produção, e um projeto que fixa
     `ruff<0.8` no grupo dev nem conseguia resolver o lock.
 
-    Sem o extra, o script continua instalado e explica o que falta, com
-    saída 2 e sem traceback:
+    Sem nenhum dos dois extras, o script continua instalado e explica o que
+    falta, com saída 2 e sem traceback:
 
     ```text
     $ tempest --help
-    error: missing tempest_cli, typer, click. The tempest CLI needs the optional [cli] extra. Install it with:
-      uv add --dev "tempest-fastapi-sdk[cli]"   (in a project)
+    error: missing typer, click. The tempest CLI needs the optional [cli-ops] or [cli] extra. Install it with:
+      uv add "tempest-fastapi-sdk[cli-ops]"   (on a server, without ruff)
+      uv add --dev "tempest-fastapi-sdk[cli]"   (in development, with the gate)
       uv tool install "tempest-fastapi-sdk[cli]"   (as a global command)
     ```
 
-    `import tempest_fastapi_sdk` não precisa do extra; ler
-    `tempest_fastapi_sdk.cli.app` (ou importar `tempest_fastapi_sdk.cli.main`,
-    `.config`, `.lint`, `.pr_prompt`) sem ele levanta `ImportError` com a
-    mesma instrução.
+    `import tempest_fastapi_sdk` não precisa de extra nenhum; ler
+    `tempest_fastapi_sdk.cli.app` (ou importar `tempest_fastapi_sdk.cli.main`)
+    sem o `typer` levanta `ImportError` com essa instrução. Importar
+    `.lint` ou `.pr_prompt`, ou ler `TempestConfig` /
+    `load_tempest_config` de `tempest_fastapi_sdk.cli.config`, sem o
+    `tempest-cli` levanta `ImportError` apontando o `[cli]`.
 
 !!! tip "Erro de uso? O help completo aparece junto"
     Quando você digita um comando inexistente, uma opção inválida ou
@@ -49,6 +53,73 @@ tempest --version                               # mostra a versão do SDK
     # ... help completo do `user create` (todas as opções) ...
     # Error: Missing option '--email' / '-e'.
     ```
+
+### Servidor x desenvolvimento: `[cli-ops]` e `[cli]`
+
+O `tempest` faz dois tipos de trabalho, e eles moram em ambientes diferentes:
+
+- **Operar o serviço** — `tempest doctor`, `tempest db`,
+  `tempest shell`, `tempest user`, `tempest routes` e os comandos do próprio
+  projeto (`[tool.tempest] commands`). Isso você quer **no servidor**, com a
+  configuração e a rede de lá.
+- **O gate de qualidade** — `lint`, `fix`, `format`, `fmt-check`, `type`,
+  `test`, `check` e `pr-prompt`. Isso é `ruff`, `mypy` e `pytest`, e mora
+  **no desenvolvimento e na CI**.
+
+Por isso existem dois extras:
+
+| Extra | Traz | Onde usar |
+| --- | --- | --- |
+| `[cli-ops]` | `typer`, `click` | dependência de runtime, na imagem de produção |
+| `[cli]` | `[cli-ops]` + `tempest-cli` (que exige `ruff`) | grupo `dev` e `uv tool install` |
+
+O `[cli]` contém o `[cli-ops]`, então o projeto declara os dois sem conflito:
+
+```toml
+[project]
+dependencies = [
+    "tempest-fastapi-sdk[cli-ops,postgres]",
+]
+
+[dependency-groups]
+dev = [
+    "tempest-fastapi-sdk[cli]",
+]
+```
+
+Com `uv sync --no-dev` (o que o `Dockerfile` gerado roda), a imagem fica com
+o `tempest` e sem `tempest-cli` nem `ruff`. Num venv limpo com só o
+`[cli-ops]`, `import ruff` e `import tempest_cli` falham, e o resto funciona:
+
+```text
+$ tempest doctor
+OK    python         3.12.7 (...)
+OK    sdk            tempest-fastapi-sdk <versão>
+SKIP  settings       no <root>/core/settings.py here — run inside the project root
+...
+$ tempest staff-create ana@example.com      # de [tool.tempest] commands
+staff created: ana@example.com
+```
+
+Os comandos do gate continuam listados no `tempest --help` — com a ajuda
+`Quality gate command; needs the [cli] extra (tempest-cli and ruff).` — e,
+chamados, explicam o que falta em vez de sumir num `No such command`. Saem
+com código 2, sem traceback, com qualquer argumento que você tenha passado:
+
+```text
+$ tempest lint
+error: tempest lint is not available. The quality gate (lint, fix, format, fmt-check, type, test, check, pr-prompt) needs the optional [cli] extra, which adds tempest-cli and ruff. Install it with:
+  uv add --dev "tempest-fastapi-sdk[cli]"   (in a project)
+  uv tool install "tempest-fastapi-sdk[cli]"   (as a global command)
+```
+
+!!! info "Detalhes técnicos"
+    A leitura do `[tool.tempest]` que acha o projeto e os `commands`
+    (`find_pyproject`, `load_tempest_table`, `load_project_commands` em
+    `tempest_fastapi_sdk.cli.config`) é código do SDK, só com a stdlib,
+    portada do `tempest-cli`. O `typing_strictness` e as flags de
+    `ruff`/`mypy` continuam sendo do `tempest-cli` e só carregam quando um
+    comando do gate roda.
 
 ### Gerar um novo serviço
 

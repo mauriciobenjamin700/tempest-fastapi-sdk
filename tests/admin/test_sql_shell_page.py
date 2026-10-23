@@ -22,6 +22,7 @@ from tempest_fastapi_sdk.admin.sql_shell import (
     SqlShellService,
 )
 from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
+from tempest_fastapi_sdk.testing import admin_login_sync
 
 _CSRF_INPUT = re.compile(r'name="csrf_token" value="([^"]+)"')
 """The hidden CSRF input the console form carries."""
@@ -88,7 +89,7 @@ async def console() -> AsyncIterator[tuple[TestClient, list[SqlAudit], Any]]:
         ),
     )
     client = TestClient(app)
-    client.post("/admin/login", data={"identifier": "ops@x.com", "password": "pw"})
+    admin_login_sync(client, "ops@x.com", "pw")
     yield client, audits, shell
     await db.disconnect()
 
@@ -276,6 +277,6 @@ class TestMutatingPolicyWarning:
             ),
         )
         client = TestClient(app)
-        client.post("/admin/login", data={"identifier": "w@x.com", "password": "pw"})
+        admin_login_sync(client, "w@x.com", "pw")
         assert "can modify data" in client.get("/admin/sql").text
         await db.disconnect()

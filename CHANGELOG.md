@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tempest_fastapi_sdk.testing.admin_login` / `admin_login_sync` (e
+  `admin_csrf_token`): logam no admin pelo formulário, como o navegador —
+  abrem `GET {prefix}/login`, leem o `csrf_token` do campo hidden e o enviam
+  com as credenciais. Teste que posta só `identifier` e `password` passa a
+  levar `403` (#603).
+- `AdminLoginCSRF` (`tempest_fastapi_sdk.admin`): o token CSRF do formulário
+  de login, em cookie assinado (`tempest_admin_login_csrf`, 1 h, salt próprio)
+  independente do `SessionStore` configurado.
+- Extra `[cli-ops]` (`typer` + `click`): o comando `tempest` sem o gate de
+  qualidade, para a imagem de produção (#601). `doctor`, `db`, `shell`,
+  `user`, `routes` e os comandos de `[tool.tempest] commands` rodam sem
+  `tempest-cli` e sem `ruff`; `lint`, `fix`, `format`, `fmt-check`, `type`,
+  `test`, `check` e `pr-prompt` continuam no `tempest --help` e, chamados,
+  saem com código 2 e a instrução do `[cli]` (`CLI_GATE_HINT`), sem
+  traceback. O `[cli]` não muda: é o `[cli-ops]` mais o `tempest-cli`.
+- `tempest_fastapi_sdk.cli.config.load_tempest_table` e as constantes
+  `PYPROJECT_FILENAME` / `TEMPEST_TABLE_PATH`; `QUALITY_GATE_COMMANDS` e
+  `register_quality_gate` em `tempest_fastapi_sdk.cli.main`;
+  `CLI_OPS_EXTRA_MODULES`, `CLI_GATE_MODULES` e `CLI_GATE_HINT` em
+  `tempest_fastapi_sdk.cli.entrypoint`.
 - `make_auth_pages_router`: login, MFA, cadastro, ativação, reenvio do link e
   logout como páginas HTML sem JavaScript, sobre o mesmo `UserAuthService` e
   uma sessão `SessionAuth` (opaca, revogável). Templates Jinja2 em pt-BR e
@@ -30,6 +50,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `find_pyproject` (`tempest_fastapi_sdk.cli.config`) é do SDK, portado do
+  `tempest-cli`, e não mais re-export dele: descobrir o projeto e ler os
+  `commands` usa só a stdlib. `TempestConfig`, `TypingStrictness`,
+  `DEFAULT_TYPING_STRICTNESS` e `load_tempest_config` continuam importáveis
+  do mesmo lugar, resolvidos sob demanda do `tempest_cli.config`; sem o
+  `[cli]`, ler um deles levanta `ImportError` com a instrução do `[cli]`, e
+  importar o módulo não levanta mais.
+- `LINT_LAYERS_STEP` (`tempest_fastapi_sdk.cli.main`) é `None` quando o
+  `tempest-cli` não está instalado.
+- Sem `typer`/`click`, o `tempest` imprime `error: missing typer, click.` e a
+  instrução nomeia o `[cli-ops]` e o `[cli]`; antes listava também o
+  `tempest_cli` e só o `[cli]`.
 - O throttle de login (`IP` lido antes, e-mail reservado antes da senha) mora
   em `tempest_fastapi_sdk.auth._login_flow.throttled_login`, compartilhado
   pelo `make_auth_router` e pelas páginas; o comportamento do JSON não muda.
@@ -40,6 +72,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolvido contra o `EmailUtils.template_dir`; é contra o `template_dir` do
   router. A receita de sessões dizia que o módulo `sessions` tinha CSRF
   double-submit nativo; não tem.
+
+### Security
+
+- `POST /admin/login` confere CSRF (login CSRF). O token nasce no
+  `GET /admin/login`, vai num campo hidden do `login.html` e num cookie
+  assinado, e é comparado em tempo constante **antes** do orçamento de falhas
+  e da senha. Sem ele, uma página de outro site fazia o navegador do operador
+  logar na conta do atacante. Recusa: `403` com a página re-renderizada e um
+  token novo, sem gastar tentativa nem gravar sessão. Com `cookie_secure=True`
+  sobre HTTP puro, todo submit passa a dar `403` (antes: `303` e volta ao
+  login) (#603).
 
 ## [0.324.0] — 2026-10-22
 

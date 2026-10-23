@@ -890,6 +890,7 @@ class TestRunner:
         monkeypatch.setattr(tempest_cli.lint, "run_full_check", fake_full_check)
         result = runner.invoke(cli_app, ["check", str(tmp_path)])
         assert result.exit_code == 0, result.stdout
+        assert LINT_LAYERS_STEP is not None
         assert seen["steps"] == [LINT_LAYERS_STEP]
         assert LINT_LAYERS_STEP.name == "lint-layers"
         assert LINT_LAYERS_STEP.run is layer_lint.run_lint_layers

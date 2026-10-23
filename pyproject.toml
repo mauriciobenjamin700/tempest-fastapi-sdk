@@ -45,6 +45,12 @@ dependencies = [
 # gate) requires `ruff>=0.8.0` at runtime: in the base, every service that
 # imports the SDK shipped a formatter to production and inherited its floor.
 # `typer` and `click` are imported only under `tempest_fastapi_sdk/cli/`.
+# `cli-ops` is the server install (operation commands, no ruff); `cli` is
+# `cli-ops` plus the quality gate, spelled out so the floors stay equal.
+cli-ops = [
+    "typer>=0.27.2",
+    "click>=8.5.0",
+]
 cli = [
     "tempest-cli>=0.5.1",
     "typer>=0.27.2",
