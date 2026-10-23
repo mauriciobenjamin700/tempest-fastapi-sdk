@@ -7,11 +7,12 @@ scaffolding (``tempest new``) and the quality gates the SDK expects
 / ``check``).
 
 Every name below is re-exported **lazily**: the CLI needs the ``[cli]``
-extra (``tempest-cli``, ``typer``, ``click``), while helpers in this
+extra (``tempest-cli``, ``typer``, ``click``) — or ``[cli-ops]`` (``typer``,
+``click``) for everything but the quality gate — while helpers in this
 package such as :mod:`tempest_fastapi_sdk.cli.src_layers` are imported by
 the base package. Importing this package is therefore always safe;
-reading one of the names without the extra raises an ``ImportError``
-carrying the install line.
+reading one of the names without the extra it needs raises an
+``ImportError`` carrying the install line.
 """
 
 from __future__ import annotations

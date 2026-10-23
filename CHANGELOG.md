@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.324.0] — 2026-10-22
-
 ### Added
 
 - `tempest_fastapi_sdk.testing.admin_login` / `admin_login_sync` (e
@@ -19,6 +17,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AdminLoginCSRF` (`tempest_fastapi_sdk.admin`): o token CSRF do formulário
   de login, em cookie assinado (`tempest_admin_login_csrf`, 1 h, salt próprio)
   independente do `SessionStore` configurado.
+- Extra `[cli-ops]` (`typer` + `click`): o comando `tempest` sem o gate de
+  qualidade, para a imagem de produção (#601). `doctor`, `db`, `shell`,
+  `user`, `routes` e os comandos de `[tool.tempest] commands` rodam sem
+  `tempest-cli` e sem `ruff`; `lint`, `fix`, `format`, `fmt-check`, `type`,
+  `test`, `check` e `pr-prompt` continuam no `tempest --help` e, chamados,
+  saem com código 2 e a instrução do `[cli]` (`CLI_GATE_HINT`), sem
+  traceback. O `[cli]` não muda: é o `[cli-ops]` mais o `tempest-cli`.
+- `tempest_fastapi_sdk.cli.config.load_tempest_table` e as constantes
+  `PYPROJECT_FILENAME` / `TEMPEST_TABLE_PATH`; `QUALITY_GATE_COMMANDS` e
+  `register_quality_gate` em `tempest_fastapi_sdk.cli.main`;
+  `CLI_OPS_EXTRA_MODULES`, `CLI_GATE_MODULES` e `CLI_GATE_HINT` em
+  `tempest_fastapi_sdk.cli.entrypoint`.
+
+### Changed
+
+- `find_pyproject` (`tempest_fastapi_sdk.cli.config`) é do SDK, portado do
+  `tempest-cli`, e não mais re-export dele: descobrir o projeto e ler os
+  `commands` usa só a stdlib. `TempestConfig`, `TypingStrictness`,
+  `DEFAULT_TYPING_STRICTNESS` e `load_tempest_config` continuam importáveis
+  do mesmo lugar, resolvidos sob demanda do `tempest_cli.config`; sem o
+  `[cli]`, ler um deles levanta `ImportError` com a instrução do `[cli]`, e
+  importar o módulo não levanta mais.
+- `LINT_LAYERS_STEP` (`tempest_fastapi_sdk.cli.main`) é `None` quando o
+  `tempest-cli` não está instalado.
+- Sem `typer`/`click`, o `tempest` imprime `error: missing typer, click.` e a
+  instrução nomeia o `[cli-ops]` e o `[cli]`; antes listava também o
+  `tempest_cli` e só o `[cli]`.
 
 ### Security
 

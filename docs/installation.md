@@ -11,8 +11,8 @@ Requer **Python 3.12+** (3.12, 3.13 e 3.14).
 !!! tip "Use o `uv`"
     `uv add tempest-fastapi-sdk` é mais rápido e já escreve no `pyproject.toml` para você.
 
-!!! info "O comando `tempest` é o extra `[cli]`"
-    Desde a 0.308.0 a CLI (`tempest new`, `tempest check`, `tempest db`, …) não vem no pacote base — ela traz o `ruff`, que não tem lugar na imagem de produção. Instale como ferramenta: `uv tool install "tempest-fastapi-sdk[cli]"`, ou no grupo dev do projeto: `uv add --dev "tempest-fastapi-sdk[cli]"`.
+!!! info "O comando `tempest` é o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Desde a 0.308.0 a CLI (`tempest new`, `tempest check`, `tempest db`, …) não vem no pacote base — o gate de qualidade traz o `ruff`, que não tem lugar na imagem de produção. Em desenvolvimento, instale como ferramenta: `uv tool install "tempest-fastapi-sdk[cli]"`, ou no grupo dev do projeto: `uv add --dev "tempest-fastapi-sdk[cli]"`. Para ter o `tempest` no servidor (`doctor`, `db`, `shell` e os comandos do projeto), use o `[cli-ops]`, que não traz `tempest-cli` nem `ruff`: `uv add "tempest-fastapi-sdk[cli-ops]"`.
 
 !!! info "Primeira vez com Python moderno?"
     Esta página assume que você já tem um ambiente pronto. Se não tem, siga a trilha para iniciantes, que começa do zero absoluto: **[Instalar o uv »](getting-started/uv.md)** → **[Escolher a versão do Python »](getting-started/python-versions.md)** → **[Seu primeiro projeto »](getting-started/first-project.md)** → **[Documentação oficial de referência »](getting-started/references.md)**.
@@ -27,7 +27,8 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[admin-sql]` | `sqlglot` | console SQL do admin: `SqlShellService` + `SqlShellPolicy` (capacidades, tabelas permitidas/negadas, teto de linhas), análise real do statement, auditoria de toda tentativa |
 | `[auth]` | `bcrypt`, `PyJWT` | `PasswordUtils`, `JWTUtils`, fluxo bundled `UserAuthService` + `make_auth_router` |
 | `[cache]` | `redis` | `AsyncRedisManager` + `@cached` + `RedisIdempotencyStore` |
-| `[cli]` | `tempest-cli` (que exige `ruff`), `typer`, `click` | o comando `tempest` (`new`, `check`, `db`, …). Ferramenta de dev: `uv add --dev "tempest-fastapi-sdk[cli]"` ou `uv tool install "tempest-fastapi-sdk[cli]"`. Sem ele, o `tempest` imprime a instrução de instalação e sai com código 2. Entra no `[all]`. [Receita](recipes/cli.md) |
+| `[cli]` | `tempest-cli` (que exige `ruff`), `typer`, `click` | o comando `tempest` inteiro (`new`, `check`, `db`, …), gate de qualidade incluído. Ferramenta de dev: `uv add --dev "tempest-fastapi-sdk[cli]"` ou `uv tool install "tempest-fastapi-sdk[cli]"`. Sem ele nem o `[cli-ops]`, o `tempest` imprime a instrução de instalação e sai com código 2. Entra no `[all]`. [Receita](recipes/cli.md) |
+| `[cli-ops]` | `typer`, `click` | o comando `tempest` sem o gate, para o servidor: `doctor`, `db`, `shell`, `user`, `routes` e os `[tool.tempest] commands` rodam; `tempest lint` e os outros comandos do gate saem com código 2 apontando o `[cli]`. Sem `tempest-cli`, sem `ruff`. O `[cli]` já o contém. [Receita](recipes/cli.md#servidor-x-desenvolvimento-cli-ops-e-cli) |
 | `[genai-onnx]` | `onnxruntime`, `tokenizers` | inferência de modelo local exportado para ONNX, sem PyTorch no runtime |
 | `[genai-structured]` | `lm-format-enforcer` | saída estruturada garantida por gramática: o modelo local só consegue emitir JSON que casa com o schema |
 | `[genai-vlm]` | `pillow`, `torchvision` | modelo de visão-linguagem local: descrever imagem, responder pergunta sobre imagem |
