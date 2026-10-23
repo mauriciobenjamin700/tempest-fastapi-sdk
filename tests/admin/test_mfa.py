@@ -19,6 +19,7 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
     make_admin_router,
 )
+from tempest_fastapi_sdk.testing import admin_login
 from tempest_fastapi_sdk.utils.datetime import utcnow
 
 SECRET = "x" * 48
@@ -77,11 +78,7 @@ async def test_non_mfa_user_logs_in_directly() -> None:
     app, db, _secret = await _build_app(with_mfa=False)
     try:
         async with _client(app) as client:
-            login = await client.post(
-                "/admin/login",
-                data={"identifier": "root@example.com", "password": "hunter2"},
-                follow_redirects=False,
-            )
+            login = await admin_login(client, "root@example.com", "hunter2")
             assert login.status_code == 303
             assert login.headers["location"] == "/admin/"
             dash = await client.get("/admin/")
@@ -96,11 +93,7 @@ async def test_mfa_user_is_challenged_then_admitted() -> None:
     app, db, secret = await _build_app(with_mfa=True)
     try:
         async with _client(app) as client:
-            login = await client.post(
-                "/admin/login",
-                data={"identifier": "root@example.com", "password": "hunter2"},
-                follow_redirects=False,
-            )
+            login = await admin_login(client, "root@example.com", "hunter2")
             # Password OK but redirected to the MFA challenge, not the app.
             assert login.status_code == 303
             assert login.headers["location"] == "/admin/mfa"
@@ -143,10 +136,7 @@ async def test_mfa_csrf_mismatch_403() -> None:
     app, db, secret = await _build_app(with_mfa=True)
     try:
         async with _client(app) as client:
-            await client.post(
-                "/admin/login",
-                data={"identifier": "root@example.com", "password": "hunter2"},
-            )
+            await admin_login(client, "root@example.com", "hunter2")
             response = await client.post(
                 "/admin/mfa",
                 data={"csrf_token": "bogus", "code": pyotp.TOTP(secret).now()},

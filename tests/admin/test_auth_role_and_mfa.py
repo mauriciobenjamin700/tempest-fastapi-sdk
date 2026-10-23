@@ -20,6 +20,7 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
     make_admin_router,
 )
+from tempest_fastapi_sdk.testing import admin_login
 from tempest_fastapi_sdk.utils.datetime import utcnow
 
 
@@ -226,14 +227,10 @@ async def test_unenrolled_operator_sees_the_refusal_on_the_login_page() -> None:
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
         ) as client:
-            response = await client.post(
-                "/admin/login",
-                data={"identifier": "a@example.com", "password": "pw"},
-                follow_redirects=False,
-            )
+            response = await admin_login(client, "a@example.com", "pw")
         assert response.status_code == 401
         assert "MFA enrollment required for /admin" in response.text
-        assert "set-cookie" not in response.headers
+        assert "tempest_admin=" not in response.headers.get("set-cookie", "")
     finally:
         await db.drop_tables()
         await db.disconnect()

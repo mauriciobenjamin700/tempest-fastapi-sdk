@@ -23,6 +23,7 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
     make_admin_router,
 )
+from tempest_fastapi_sdk.testing import admin_login
 
 
 class WidgetUser(BaseUserModel):
@@ -73,9 +74,7 @@ def _client(app: FastAPI) -> AsyncClient:
 
 
 async def _login_csrf(client: AsyncClient) -> str:
-    await client.post(
-        "/admin/login", data={"identifier": "root@x.com", "password": "pw"}
-    )
+    await admin_login(client, "root@x.com", "pw")
     page = await client.get(f"/admin/m/{_SLUG}/new")
     match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
     assert match is not None
@@ -88,9 +87,7 @@ async def test_new_form_renders_json_and_time(
 ) -> None:
     app, _ = app_widgets
     async with _client(app) as client:
-        await client.post(
-            "/admin/login", data={"identifier": "root@x.com", "password": "pw"}
-        )
+        await admin_login(client, "root@x.com", "pw")
         page = await client.get(f"/admin/m/{_SLUG}/new")
     assert page.status_code == 200
     assert "tempest-admin-form__json" in page.text
@@ -160,9 +157,7 @@ async def test_edit_prefills_pretty_json_and_time(
         row_id = str(row.id)
 
     async with _client(app) as client:
-        await client.post(
-            "/admin/login", data={"identifier": "root@x.com", "password": "pw"}
-        )
+        await admin_login(client, "root@x.com", "pw")
         page = await client.get(f"/admin/m/{_SLUG}/{row_id}/edit")
     body = page.text
     # JSON pretty-printed (indented) in the textarea — the quotes are
@@ -182,9 +177,7 @@ async def test_detail_pretty_prints_json(
         row_id = str(row.id)
 
     async with _client(app) as client:
-        await client.post(
-            "/admin/login", data={"identifier": "root@x.com", "password": "pw"}
-        )
+        await admin_login(client, "root@x.com", "pw")
         page = await client.get(f"/admin/m/{_SLUG}/{row_id}")
     body = page.text
     # Detail renders JSON in a monospaced <pre>, pretty-printed.

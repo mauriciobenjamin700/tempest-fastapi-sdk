@@ -34,6 +34,7 @@ from tempest_fastapi_sdk.admin.permissions import (
 )
 from tempest_fastapi_sdk.admin.permissions import AdminPermission as AdminPermission
 from tempest_fastapi_sdk.admin.router import make_admin_router as make_admin_router
+from tempest_fastapi_sdk.admin.session import AdminLoginCSRF as AdminLoginCSRF
 from tempest_fastapi_sdk.admin.session import AdminSession as AdminSession
 from tempest_fastapi_sdk.admin.session import SessionStore as SessionStore
 from tempest_fastapi_sdk.admin.session import (
@@ -62,6 +63,7 @@ __all__: list[str] = [
     "AdminActionResult",
     "AdminAuthBackend",
     "AdminAuthError",
+    "AdminLoginCSRF",
     "AdminModel",
     "AdminPermission",
     "AdminSession",

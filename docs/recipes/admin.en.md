@@ -1015,16 +1015,20 @@ and export; "All" clears it.
 - `SameSite=Lax` (`"lax"`/`"strict"`/`"none"` accepted).
 - Default lifetime `8h`; expired or tampered cookies are rejected silently.
 - The cookie is not enough on its own: every authenticated route reloads the principal through the `auth_backend` on each request. An account deleted, deactivated or stripped of `is_admin` after the login is sent to `/admin/login` (`303`) on the very next request, without waiting for the cookie to expire.
-- Per-session CSRF token is generated at login and required by every form POST (login, logout, create, edit, delete, bulk actions, SQL console runs, task cancellation).
+- Per-session CSRF token is generated at login and required by every session form POST (logout, create, edit, delete, bulk actions, SQL console runs, task cancellation).
+- The login form runs before any session exists and carries a token of its own: `GET /admin/login` sets a signed 1 h cookie (`tempest_admin_login_csrf`, with a salt distinct from the session's) and repeats the token in a hidden field. The `POST` compares the two in constant time **before** the failure budget and the password, and refuses with `403` — the page comes back with a fresh token, and the refusal spends no attempt. Without it, a page on another site could make the operator's browser sign in to the **attacker's** account (login CSRF); `SameSite=Lax` does not prevent that, because it restricts the cookie the POST sends, not the one the response sets.
 - `secret_key` must be at least 32 bytes — short keys raise `ValueError` at construction time.
 
-!!! danger "Login looping? It's the cookie `Secure` flag over plain HTTP"
-    If `POST /admin/login` returns `303` (looks like success), but the following
-    `GET /admin/` redirects back to the login — forever — the session cookie is
-    **not coming back**. Almost-certain cause: `cookie_secure=True` while the
-    admin is served over **plain HTTP** (no TLS terminator in front). The browser
-    refuses to store a `Secure` cookie on a non-HTTPS connection, so no session
-    ever persists.
+!!! danger "Login refused or looping? It's the cookie `Secure` flag over plain HTTP"
+    If every `POST /admin/login` returns `403` with *The sign-in form expired,
+    please try again*, the login form's token cookie is **not coming back**. If
+    it returns `303` (looks like success), but the following
+    `GET /admin/` redirects back to the login — forever — it is the session
+    cookie that is not coming back. Either way the almost-certain cause is the
+    same: `cookie_secure=True` while the admin is served over **plain HTTP** (no
+    TLS terminator in front). The browser refuses to store a `Secure` cookie on a
+    non-HTTPS connection, and both admin cookies (the login token's and the
+    session's) follow `cookie_secure`.
 
     ```python
     # ❌ Tied to DEBUG: in production DEBUG=false → cookie_secure=True,
@@ -1041,6 +1045,31 @@ and export; "All" clears it.
     `cookie_secure=False`, aware the session ships without `Secure`. Don't tie
     this flag to `DEBUG` — turning debug on in production is worse than the
     original problem.
+
+##### Signing in from a test
+
+Since `POST /admin/login` requires the form's token, a test that posts the credentials alone gets `403`. `tempest_fastapi_sdk.testing` does what a browser does — loads the form, reads the hidden field (the cookie lands in the client's jar) and submits it:
+
+```python
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from tempest_fastapi_sdk.testing import admin_login
+
+
+async def test_dashboard_after_login(app: FastAPI) -> None:
+    """Sign in through the form, as a browser does, and open the panel."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="https://test") as client:
+        response = await admin_login(client, "root@example.com", "hunter2")
+        assert response.status_code == 303
+        assert (await client.get("/admin/")).status_code == 200
+```
+
+With `TestClient`, use `admin_login_sync(client, ...)`. Both take `prefix=` when the admin is not mounted at `/admin`, and `headers=` for, say, the trusted client-IP header.
+
+!!! tip "`https://` in the `base_url`"
+    With `cookie_secure=True` (the default), the admin cookies are `Secure`, and the test's HTTP client only sends them back over `https://`. Use `base_url="https://test"`, or mount the router with `cookie_secure=False` in the test.
 
 ##### Login failure budget
 

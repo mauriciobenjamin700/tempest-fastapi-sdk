@@ -161,16 +161,13 @@ _BOOT_SCRIPT = textwrap.dedent(
     from src.api.app import ALEMBIC_INI
     from src.server import app
     from tempest_fastapi_sdk import AlembicHelper
+    from tempest_fastapi_sdk.testing import admin_login_sync
 
-    with TestClient(app) as client:
+    with TestClient(app, base_url="https://testserver") as client:
         assert client.get("/health/readiness").status_code == 200
         if {admin!r}:
             assert client.get("/admin/login").status_code == 200
-            response = client.post(
-                "/admin/login",
-                data={{"identifier": "nobody@example.com", "password": "wrong-pass"}},
-                follow_redirects=False,
-            )
+            response = admin_login_sync(client, "nobody@example.com", "wrong-pass")
             print("login", response.status_code)
         else:
             assert client.get("/admin/login").status_code == 404

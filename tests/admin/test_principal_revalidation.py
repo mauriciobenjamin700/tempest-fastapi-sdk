@@ -37,6 +37,7 @@ from tempest_fastapi_sdk.admin import SqlShellService, TaskPanelService
 from tempest_fastapi_sdk.admin.router import make_admin_router
 from tempest_fastapi_sdk.admin.sql_shell import SqlAudit
 from tempest_fastapi_sdk.tasks import JobStatus, JobStore, make_job_model
+from tempest_fastapi_sdk.testing import admin_login_sync
 
 SECRET = "x" * 48
 
@@ -174,10 +175,7 @@ async def panel(tmp_path: Path) -> AsyncIterator[Panel]:
         )
     )
     client = TestClient(app, follow_redirects=False)
-    login = client.post(
-        "/admin/login",
-        data={"identifier": "root@example.com", "password": "hunter2"},
-    )
+    login = admin_login_sync(client, "root@example.com", "hunter2")
     assert login.status_code == 303, login.text
     assert client.get("/admin/").status_code == 200
     yield Panel(client=client, db=db, store=store, audits=audits)

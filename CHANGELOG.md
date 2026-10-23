@@ -11,6 +11,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tempest_fastapi_sdk.testing.admin_login` / `admin_login_sync` (e
+  `admin_csrf_token`): logam no admin pelo formulário, como o navegador —
+  abrem `GET {prefix}/login`, leem o `csrf_token` do campo hidden e o enviam
+  com as credenciais. Teste que posta só `identifier` e `password` passa a
+  levar `403` (#603).
+- `AdminLoginCSRF` (`tempest_fastapi_sdk.admin`): o token CSRF do formulário
+  de login, em cookie assinado (`tempest_admin_login_csrf`, 1 h, salt próprio)
+  independente do `SessionStore` configurado.
+
+### Security
+
+- `POST /admin/login` confere CSRF (login CSRF). O token nasce no
+  `GET /admin/login`, vai num campo hidden do `login.html` e num cookie
+  assinado, e é comparado em tempo constante **antes** do orçamento de falhas
+  e da senha. Sem ele, uma página de outro site fazia o navegador do operador
+  logar na conta do atacante. Recusa: `403` com a página re-renderizada e um
+  token novo, sem gastar tentativa nem gravar sessão. Com `cookie_secure=True`
+  sobre HTTP puro, todo submit passa a dar `403` (antes: `303` e volta ao
+  login) (#603).
+
+## [0.324.0] — 2026-10-22
+
+### Added
+
 - `ImageMediaType` (`tempest_fastapi_sdk.utils.media_types`, também no
   topo): enum dos tipos de imagem que o `sniff_mime` reconhece (`JPEG`,
   `PNG`, `GIF`, `BMP`, `WEBP`, `HEIC`). Como tipo de campo Pydantic aceita

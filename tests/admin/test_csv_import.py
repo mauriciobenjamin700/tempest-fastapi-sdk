@@ -21,6 +21,7 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
     make_admin_router,
 )
+from tempest_fastapi_sdk.testing import admin_login
 
 
 class ImportUser(BaseUserModel):
@@ -70,10 +71,7 @@ def _client(app: FastAPI) -> AsyncClient:
 
 
 async def _login_csrf(client: AsyncClient) -> str:
-    await client.post(
-        "/admin/login",
-        data={"identifier": "root@example.com", "password": "hunter2"},
-    )
+    await admin_login(client, "root@example.com", "hunter2")
     page = await client.get(f"/admin/m/{_SLUG}/import")
     match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
     assert match is not None
@@ -86,10 +84,7 @@ async def test_import_page_renders(
 ) -> None:
     app, _db = app_import
     async with _client(app) as client:
-        await client.post(
-            "/admin/login",
-            data={"identifier": "root@example.com", "password": "hunter2"},
-        )
+        await admin_login(client, "root@example.com", "hunter2")
         page = await client.get(f"/admin/m/{_SLUG}/import")
     assert page.status_code == 200
     assert "Expected header columns" in page.text
@@ -169,9 +164,7 @@ async def test_import_disabled_404(
         )
     )
     async with _client(app) as client:
-        await client.post(
-            "/admin/login", data={"identifier": "a@b.com", "password": "pw"}
-        )
+        await admin_login(client, "a@b.com", "pw")
         resp = await client.get(f"/admin/m/{_SLUG}/import")
     assert resp.status_code == 404
     await db.drop_tables()
