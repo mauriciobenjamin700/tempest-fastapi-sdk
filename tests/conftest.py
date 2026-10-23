@@ -37,6 +37,20 @@ def _newest_docs_input_mtime() -> float:
     return newest
 
 
+DOCS_BUILD_COMMAND: list[str] = [
+    "uv",
+    "run",
+    "--isolated",
+    "--group",
+    "docs",
+    "mkdocs",
+    "build",
+    "--strict",
+    "-q",
+]
+"""How :func:`built_site` builds the site, isolated from the test environment."""
+
+
 @pytest.fixture(scope="session")
 def built_site() -> Path:
     """Build the docs once per session and return the site directory.
@@ -46,6 +60,14 @@ def built_site() -> Path:
     ``docs``-marked tests with a list of "missing" pages that were in fact
     present — a false regression report that costs far more than the rebuild
     it saves. CI never hit it because CI starts with no ``site/`` at all.
+
+    The build runs in an ephemeral environment (``uv run --isolated``), never
+    in the one the suite is running in. A plain ``uv run`` syncs the project
+    environment it inherits: under ``make test-matrix`` that is the matrix
+    venv, and with ``UV_PYTHON`` pointing at another Python it recreated the
+    3.13 venv as 3.12 with only the default groups in the middle of the run —
+    every other worker lost ``aiosqlite`` and the extras, and the matrix
+    reported 637 failures and 2142 errors that the code did not have.
 
     Returns:
         Path: The built ``site/`` directory.
@@ -57,7 +79,7 @@ def built_site() -> Path:
     fresh = stamp.exists() and stamp.stat().st_mtime >= _newest_docs_input_mtime()
     if not fresh:
         completed = subprocess.run(
-            ["uv", "run", "--group", "docs", "mkdocs", "build", "--strict", "-q"],
+            DOCS_BUILD_COMMAND,
             cwd=ROOT,
             capture_output=True,
             text=True,

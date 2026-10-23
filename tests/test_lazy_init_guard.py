@@ -163,6 +163,62 @@ class TestSubmoduleAttributes:
             tempest_fastapi_sdk.not_a_module  # noqa: B018
 
 
+CONSUMER: str = """
+import tempest_fastapi_sdk as sdk
+from tempest_fastapi_sdk.utils import PasswordUtils
+
+reveal_type(sdk.BaseRepository)
+reveal_type(PasswordUtils)
+missing = sdk.NotARealName
+"""
+"""What a consumer's checker reads through the lazy packages."""
+
+
+def _mypy_strict(source: str, workdir: Path) -> str:
+    """Run ``mypy --strict`` over ``source`` and return its output.
+
+    Args:
+        source (str): The consumer module.
+        workdir (Path): Where to write it and keep the cache.
+
+    Returns:
+        str: mypy's stdout.
+    """
+    from mypy import api as mypy_api
+
+    module = workdir / "consumer.py"
+    module.write_text(source, encoding="utf-8")
+    stdout, _stderr, _status = mypy_api.run(
+        [
+            "--strict",
+            "--no-error-summary",
+            "--no-color-output",
+            "--cache-dir",
+            str(workdir / ".mypy_cache"),
+            str(module),
+        ]
+    )
+    return stdout
+
+
+class TestTypeCheckers:
+    """The lazy packages type the same as the eager ones did.
+
+    The shape checks above read the file; this runs a checker the way a
+    consumer does, because a visible ``__getattr__`` was measured to make
+    ``sdk.NotARealName`` pass and real names resolve to ``Any``.
+    """
+
+    def test_an_unknown_name_is_an_error_and_real_names_are_typed(
+        self, tmp_path: Path
+    ) -> None:
+        output = _mypy_strict(CONSUMER, tmp_path)
+        assert 'has no attribute "NotARealName"' in output
+        revealed = [line for line in output.splitlines() if "Revealed type" in line]
+        assert len(revealed) == 2
+        assert all('"Any"' not in line for line in revealed)
+
+
 class TestGuardFires:
     """The shape checks catch the forms that would ship broken."""
 
