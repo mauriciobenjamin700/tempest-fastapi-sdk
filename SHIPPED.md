@@ -3667,3 +3667,9 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `Session.amr`. Throttle de login extraído para `auth/_login_flow.py`.
   Receita: `docs/recipes/auth-pages.md`. Testes:
   `tests/auth/test_auth_pages.py`.
+- **Helpers de login do admin aceitam `httpx2`/`TestClient` no strict,
+  Unreleased (#610)** — `admin_login` / `admin_login_sync` tipados por
+  `AsyncFormClient` / `SyncFormClient` / `FormResponse` (`Protocol`s públicos
+  em `tempest_fastapi_sdk.testing`), genéricos na resposta. Teste:
+  `tests/testing/test_admin_login_typing.py` (mypy `--strict` sobre o uso de
+  cada cliente).

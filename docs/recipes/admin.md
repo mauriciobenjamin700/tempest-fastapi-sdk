@@ -1045,7 +1045,7 @@ async def test_dashboard_after_login(app: FastAPI) -> None:
         assert (await client.get("/admin/")).status_code == 200
 ```
 
-Com `TestClient`, use `admin_login_sync(client, ...)`. Os dois recebem `prefix=` quando o admin não está em `/admin`, e `headers=` para, por exemplo, o header de IP confiável.
+Com `TestClient`, use `admin_login_sync(client, ...)`. Os dois aceitam `httpx` e `httpx2` (de que o `TestClient` do Starlette herda quando o `httpx2` está instalado) sem `cast`, e devolvem a resposta no tipo do cliente que você passou. Os dois recebem `prefix=` quando o admin não está em `/admin`, e `headers=` para, por exemplo, o header de IP confiável.
 
 !!! tip "`https://` na `base_url`"
     Com `cookie_secure=True` (o padrão), os cookies do admin saem `Secure`, e o cliente HTTP do teste só os devolve sobre `https://`. Use `base_url="https://test"`, ou monte o router com `cookie_secure=False` no teste.

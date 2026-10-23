@@ -79,6 +79,8 @@ THIRD_PARTY_CLIENT_PROTOCOLS: dict[str, str] = {
     "RedisLockHandle": "tempest_fastapi_sdk/tasks/lock.py",
     "ChatBackend": "tempest_fastapi_sdk/agents/protocols.py",
     "ToolCallingBackend": "tempest_fastapi_sdk/agents/protocols.py",
+    "SyncFormClient": "tempest_fastapi_sdk/testing/admin.py",
+    "AsyncFormClient": "tempest_fastapi_sdk/testing/admin.py",
 }
 """Protocols describing a client we do not own, by defining module.
 
