@@ -71,9 +71,11 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -126,6 +128,11 @@ _FINGERPRINT: str = hashlib.sha256(str(DOCS_ROOT).encode("utf-8")).hexdigest()[:
 
 CACHE_DIR: Path = Path(tempfile.gettempdir()) / f"tempest-docs-mypy-{_FINGERPRINT}"
 """Shared mypy cache, so only the snippets are ever re-analyzed."""
+
+RESULTS_DIR: Path = (
+    Path(tempfile.gettempdir()) / f"tempest-docs-mypy-results-{_FINGERPRINT}"
+)
+"""Findings of the docs-wide run, shared by every xdist worker of a checkout."""
 
 
 @dataclass(frozen=True)
@@ -383,6 +390,80 @@ def _findings(paths: list[Path], tag: str) -> list[str]:
     return sorted(problems)
 
 
+def _inputs_digest() -> str:
+    """Fingerprint everything the docs-wide findings depend on.
+
+    The pages, the package they import, the type-checker configuration and
+    the lock, plus the interpreter and environment running the check — a
+    run under another Python or venv resolves other stubs and may find
+    other errors. Hashing the ~800 files takes about 20 ms.
+
+    Returns:
+        str: A short hex digest naming the findings file.
+    """
+    digest = hashlib.sha256()
+    package = DOCS_ROOT / "tempest_fastapi_sdk"
+    inputs = sorted(
+        [
+            *_markdown_files(),
+            *package.rglob("*.py"),
+            DOCS_ROOT / "pyproject.toml",
+            DOCS_ROOT / "uv.lock",
+        ]
+    )
+    for path in inputs:
+        digest.update(str(path.relative_to(DOCS_ROOT)).encode("utf-8"))
+        digest.update(path.read_bytes())
+    digest.update(sys.version.encode("utf-8"))
+    digest.update(sys.prefix.encode("utf-8"))
+    return digest.hexdigest()[:16]
+
+
+def _shared_findings() -> list[str]:
+    """Return the docs-wide findings, computing them once per checkout.
+
+    A session fixture is per **process**: under ``pytest -n logical`` every
+    worker that draws one of the parametrized cases below runs its own
+    docs-wide mypy, all at the same time and against one cache directory.
+    Measured on this repo: 2.19 GB peak and 48 s for a cold run (400 MB and
+    2 s warm), so a cold ``make check`` on 12 workers asked for up to twelve
+    of those at once (#598).
+
+    The first worker to take the lock runs mypy and writes the findings
+    under :func:`_inputs_digest`; the others wait on the lock and read the
+    file. Any change to a page, the package, the config or the environment
+    yields another digest, so a stale result is never read. Findings of
+    earlier digests are pruned.
+
+    Without ``fcntl`` (Windows) every process computes its own, as before.
+
+    Returns:
+        list[str]: ``page:line: message`` findings, sorted.
+    """
+    try:
+        import fcntl
+    except ImportError:
+        return _findings(_markdown_files(), tag="docs")
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    result = RESULTS_DIR / f"{_inputs_digest()}.json"
+    with (RESULTS_DIR / "lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            if result.exists():
+                findings: list[str] = json.loads(result.read_text(encoding="utf-8"))
+                return findings
+            computed = _findings(_markdown_files(), tag="docs")
+            partial = result.with_suffix(f".{os.getpid()}.tmp")
+            partial.write_text(json.dumps(computed), encoding="utf-8")
+            partial.replace(result)
+            for stale in RESULTS_DIR.glob("*.json"):
+                if stale != result:
+                    stale.unlink(missing_ok=True)
+            return computed
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
 @pytest.fixture(scope="session")
 def documented_type_errors() -> dict[str, list[str]]:
     """Type-check the whole site once and group the findings by page.
@@ -390,10 +471,11 @@ def documented_type_errors() -> dict[str, list[str]]:
     Returns:
         dict[str, list[str]]: ``{page label: findings}``. One mypy run
         serves every parametrized case below — per-page runs would pay the
-        import graph 114 times.
+        import graph 114 times — and, through :func:`_shared_findings`,
+        every xdist worker too.
     """
     grouped: dict[str, list[str]] = {}
-    for problem in _findings(_markdown_files(), tag="docs"):
+    for problem in _shared_findings():
         grouped.setdefault(problem.split(":", 1)[0], []).append(problem)
     return grouped
 
@@ -577,3 +659,49 @@ def test_findings_survive_a_coloured_environment(
 
     assert problems, "a coloured mypy output parsed to zero findings"
     assert not any("\x1b[" in problem for problem in problems)
+
+
+class TestSharedRun:
+    """The docs-wide findings are computed once and never read stale."""
+
+    def test_the_digest_is_stable(self) -> None:
+        assert _inputs_digest() == _inputs_digest()
+
+    def test_a_page_edit_changes_the_digest(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A cached result must not answer for a page that changed."""
+        before = _inputs_digest()
+        page = _markdown_files()[0]
+        original = Path.read_bytes
+
+        def edited(path: Path) -> bytes:
+            data = original(path)
+            return data + b"\n<!-- edited -->" if path == page else data
+
+        monkeypatch.setattr(Path, "read_bytes", edited)
+        assert _inputs_digest() != before
+
+    def test_another_environment_changes_the_digest(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        before = _inputs_digest()
+        monkeypatch.setattr(sys, "prefix", "/elsewhere/venv")
+        assert _inputs_digest() != before
+
+    def test_a_second_call_reads_the_stored_findings(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """What every worker after the first does."""
+        calls: list[str] = []
+
+        def fake_findings(paths: list[Path], tag: str) -> list[str]:
+            calls.append(tag)
+            return ["page.md:1: finding"]
+
+        monkeypatch.setattr(sys.modules[__name__], "RESULTS_DIR", tmp_path / "results")
+        monkeypatch.setattr(sys.modules[__name__], "_findings", fake_findings)
+        first = _shared_findings()
+        second = _shared_findings()
+        assert first == second == ["page.md:1: finding"]
+        assert calls == ["docs"]
