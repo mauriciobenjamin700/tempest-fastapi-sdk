@@ -41,7 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   relido a cada request; `redirect_to_login(login_path)` redireciona com
   `?next=`.
 - `FormCSRF` e `is_local_path` (`tempest_fastapi_sdk.auth`): o double-submit
-  por campo de formulário e o filtro de redirect que as páginas usam.
+  por campo de formulário (cookie com prefixo `__Host-` quando `Secure`, que
+  um subdomínio irmão não consegue plantar) e o filtro de redirect que as
+  páginas usam.
 - `Session.amr`: os métodos com que a sessão foi aberta (`pwd`, `email`,
   `otp`); vazio quando quem abriu não registrou.
 - Settings `AUTH_PAGES_PREFIX` (padrão `""`), `AUTH_PAGES_LOGIN_REDIRECT`,
