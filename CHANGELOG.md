@@ -9,66 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `tempest lint-layers` ganha as regras da suíte, como **aviso** (#616):
-  `TST001` (docstring de teste sem `Cenário:` e `Esperado:`), `TST002`
-  (teste que não confere nada), `TST003` (`pytest.raises(Exception)` ou
-  `BaseException`) e `TST004` (id de `parametrize` com valor sorteado no
-  import — medido com `pytest -n 2`: `str(uuid4())`, `random.randint()` e
-  afins abortam o xdist; `uuid4()` cru passa e não é acusado). Os três
-  testes do `tempest new` atual saem como `TST001` até o scaffold mudar.
-
-### Added
-
-- `tempest lint-layers` ganha `RTR003` (mais de um `APIRouter` num módulo de
-  `routers/`) e `RTR004` (`prefix` `/api` em `APIRouter`/`include_router`
-  fora de `build_api_router`), como **aviso** (#616). O `create_app` do
-  `tempest new` atual sai como `RTR004` até o scaffold mudar.
-
-### Added
-
-- `tempest lint-layers` ganha `IMP001` (`__init__.py` importando vizinho com
-  import absoluto) e `IMP002` (import pelo submódulo de um nome que um pacote
-  acima reexporta, resolvido por `ast` e de forma transitiva, inclusive
-  `import *`), como **aviso** (#616). O `tempest new` atual gera 19 `IMP001` e
-  8 `IMP002`, que somem quando o scaffold mudar.
-
-### Added
-
-- `tempest lint-layers` ganha `STR001` (função definida dentro de função) e
-  `STR002` (função de módulo `_nome`), como **aviso**, lendo o código e o
-  `tests/` do projeto (#616).
-
-### Fixed
-
-- `tempest lint-layers` só procura `tests/architecture_exceptions.py` no
-  diretório de cima quando o alvo é a raiz de código (`src`/`app`); com o
-  alvo na raiz do projeto, um `tests/` do monorepo em volta não entra mais.
-
-### Added
-
-- `tempest lint-layers` ganha `DI001` (`AsyncSession` no `__init__` de
-  service ou controller), `DI002` (service recebendo `*Service`, controller
-  recebendo `*Controller`) e `DI003` (`from_session` em qualquer lugar), como
-  **aviso** (#616).
-
-### Changed
-
-- A receita de agentes com banco monta o service numa função
-  `build_catalog_service(session)` em vez do classmethod `from_session`, e
-  deixa de recomendar `from_session` como convenção: o composition root com
-  funções `build_*` é a forma que o `DI003` cobra.
-
-### Added
-
-- `tempest lint-layers` ganha três regras, como **aviso** (#616): `LAY001`
-  (segunda classe ou função de módulo em `controllers/`, `repositories/` ou
-  `models/`; `services/` continua no `SVC002`), `LAY002` (módulo na raiz da
-  camada em vez de `<camada>/<contexto>/`) e `REPO002` (repository
-  importando outro `*Repository`; base de classe passa). O `tempest new`
-  ainda gera `controllers/service_info.py` e `db/models/user.py` na raiz da
-  camada, que saem como `LAY002` até o scaffold mudar.
-
-### Added
+- `image_media_type_field(*allowed, title=..., description=..., examples=...)`
+  restringe um campo `ImageMediaType` aos tipos listados e publica só esses
+  no JSON Schema (`enum`), com descrição e exemplo derivados da lista. A
+  normalização do enum roda antes; tipo conhecido fora da lista é
+  `value_error` (`422` numa rota) com os permitidos na mensagem. A restrição
+  é `AllowedImageMediaTypes`, exportada também (#615).
+- `CursorPaginationFilterSchema.ascending` ganha `examples=[False, True]`,
+  como o `BasePaginationFilterSchema` já tinha (#615).
 
 - `tempest lint-layers` ganha severidade, seleção de regra e exceções
   declaradas (#616, primeira parte). Toda regra tem severidade em
@@ -83,16 +31,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   e `EXC002` (aviso), entrada que não casa com nenhuma violação. As regras
   existentes continuam erro, e a saída delas não muda.
 
-### Added
+- `tempest lint-layers` ganha três regras, como **aviso** (#616): `LAY001`
+  (segunda classe ou função de módulo em `controllers/`, `repositories/` ou
+  `models/`; `services/` continua no `SVC002`), `LAY002` (módulo na raiz da
+  camada em vez de `<camada>/<contexto>/`) e `REPO002` (repository
+  importando outro `*Repository`; base de classe passa). O `tempest new`
+  ainda gera `controllers/service_info.py` e `db/models/user.py` na raiz da
+  camada, que saem como `LAY002` até o scaffold mudar.
 
-- `image_media_type_field(*allowed, title=..., description=..., examples=...)`
-  restringe um campo `ImageMediaType` aos tipos listados e publica só esses
-  no JSON Schema (`enum`), com descrição e exemplo derivados da lista. A
-  normalização do enum roda antes; tipo conhecido fora da lista é
-  `value_error` (`422` numa rota) com os permitidos na mensagem. A restrição
-  é `AllowedImageMediaTypes`, exportada também (#615).
-- `CursorPaginationFilterSchema.ascending` ganha `examples=[False, True]`,
-  como o `BasePaginationFilterSchema` já tinha (#615).
+- `tempest lint-layers` ganha `DI001` (`AsyncSession` no `__init__` de
+  service ou controller), `DI002` (service recebendo `*Service`, controller
+  recebendo `*Controller`) e `DI003` (`from_session` em qualquer lugar), como
+  **aviso** (#616).
+
+- `tempest lint-layers` ganha `STR001` (função definida dentro de função) e
+  `STR002` (função de módulo `_nome`), como **aviso**, lendo o código e o
+  `tests/` do projeto (#616).
+
+- `tempest lint-layers` ganha `IMP001` (`__init__.py` importando vizinho com
+  import absoluto) e `IMP002` (import pelo submódulo de um nome que um pacote
+  acima reexporta, resolvido por `ast` e de forma transitiva, inclusive
+  `import *`), como **aviso** (#616). O `tempest new` atual gera 19 `IMP001` e
+  8 `IMP002`, que somem quando o scaffold mudar.
+
+- `tempest lint-layers` ganha `RTR003` (mais de um `APIRouter` num módulo de
+  `routers/`) e `RTR004` (`prefix` `/api` em `APIRouter`/`include_router`
+  fora de `build_api_router`), como **aviso** (#616). O `create_app` do
+  `tempest new` atual sai como `RTR004` até o scaffold mudar.
+
+- `tempest lint-layers` ganha as regras da suíte, como **aviso** (#616):
+  `TST001` (docstring de teste sem `Cenário:` e `Esperado:`), `TST002`
+  (teste que não confere nada), `TST003` (`pytest.raises(Exception)` ou
+  `BaseException`) e `TST004` (id de `parametrize` com valor sorteado no
+  import — medido com `pytest -n 2`: `str(uuid4())`, `random.randint()` e
+  afins abortam o xdist; `uuid4()` cru passa e não é acusado). Os três
+  testes do `tempest new` atual saem como `TST001` até o scaffold mudar.
+
+### Changed
+
+- A receita de agentes com banco monta o service numa função
+  `build_catalog_service(session)` em vez do classmethod `from_session`, e
+  deixa de recomendar `from_session` como convenção: o composition root com
+  funções `build_*` é a forma que o `DI003` cobra.
+
+### Fixed
+
+- `tempest lint-layers` só procura `tests/architecture_exceptions.py` no
+  diretório de cima quando o alvo é a raiz de código (`src`/`app`); com o
+  alvo na raiz do projeto, um `tests/` do monorepo em volta não entra mais.
 
 ## [0.326.0] — 2026-10-23
 
