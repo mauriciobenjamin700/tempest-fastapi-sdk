@@ -2279,6 +2279,45 @@ ARCHITECTURE_EXCEPTIONS: dict[str, str] = {
     composition root and reuse it in all of those places and in the test
     suite. The [agents with a database](agents-db.md) recipe shows the shape.
 
+#### Nested function and private helper (warning)
+
+These two rules read the source **and the suite** (`tests/` beside
+`src/`). In the transport service, most occurrences were in the tests.
+
+| Code | What it reports |
+| --- | --- |
+| `STR001` | a function defined inside another function — including inside a method or a local class. A callback that keeps state becomes a class with `__call__`; one that only binds an argument becomes `functools.partial` over a module-level function |
+| `STR002` | a module-level function whose name starts with a single `_` (`__getattr__` and methods pass). It becomes a method of the class that uses it, a public function in `utils/` or, in the suite, a fixture or a public helper module |
+
+With these two files (real output):
+
+```python
+# src/utils/retry.py
+from collections.abc import Awaitable, Callable
+
+
+def with_retry(attempts: int) -> Callable[[], Awaitable[None]]:
+    """Repeat the call until it succeeds."""
+
+    async def wrapper() -> None:
+        """Try again."""
+
+    return wrapper
+```
+
+```python
+# tests/test_app.py
+def _make_payload() -> dict[str, str]:
+    """Build the request body."""
+    return {"name": "Picos"}
+```
+
+```text
+src/utils/retry.py:7: STR001 (warning) `with_retry.wrapper` is defined inside a function; a callback that keeps state becomes a class with `__call__`, and one that binds an argument goes through functools.partial over a module-level function.
+tests/test_app.py:1: STR002 (warning) module-level `_make_payload` is a helper with no home; make it a method of the class that uses it or a public function in utils/ (in tests: a fixture or a public helper module).
+2 layer finding(s): 0 error(s), 2 warning(s).
+```
+
 #### Warning, error and declared exception
 
 Every rule has a severity. An **error** fails the step (exit code `1`); a

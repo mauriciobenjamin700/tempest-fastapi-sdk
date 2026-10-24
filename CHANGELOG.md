@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tempest lint-layers` ganha `STR001` (função definida dentro de função) e
+  `STR002` (função de módulo `_nome`), como **aviso**, lendo o código e o
+  `tests/` do projeto (#616).
+
+### Fixed
+
+- `tempest lint-layers` só procura `tests/architecture_exceptions.py` no
+  diretório de cima quando o alvo é a raiz de código (`src`/`app`); com o
+  alvo na raiz do projeto, um `tests/` do monorepo em volta não entra mais.
+
+### Added
+
 - `tempest lint-layers` ganha `DI001` (`AsyncSession` no `__init__` de
   service ou controller), `DI002` (service recebendo `*Service`, controller
   recebendo `*Controller`) e `DI003` (`from_session` em qualquer lugar), como
