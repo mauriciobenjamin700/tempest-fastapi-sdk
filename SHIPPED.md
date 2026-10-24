@@ -3471,6 +3471,15 @@ Avisos `LAY001` (uma classe por módulo e nenhuma função de módulo em
 passa). Teste: `tests/cli/test_layer_lint_layout.py`. Dívida do scaffold
 fixada em `SCAFFOLD_LAYOUT_DEBT` (`tests/cli/test_layer_lint.py`).
 
+## Injeção no `lint-layers` (#616, parte 3)
+
+Avisos `DI001` (`AsyncSession` em `__init__` de service/controller),
+`DI002` (colaborador da mesma camada: `*Service` em service, `*Controller` em
+controller; o subject é `Classe.parâmetro`, para exceção mirar um só) e
+`DI003` (`from_session`, função ou método, em todo o código). A receita
+`agents-db` passou a montar por `build_catalog_service`. Teste:
+`tests/cli/test_layer_lint_injection.py`.
+
 ## Sufixo `Enum` no `tempest check` (#518)
 
 `ENUM001` em `tempest_fastapi_sdk/cli/layer_lint.py`: classe pública que

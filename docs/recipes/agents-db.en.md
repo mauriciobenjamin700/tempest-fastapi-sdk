@@ -37,7 +37,7 @@ need one.
 
 ## The file that runs
 
-```python title="catalog_setup.py" hl_lines="14 35 38 69 70"
+```python title="catalog_setup.py" hl_lines="14 52 54 69 70"
 import asyncio
 from typing import Any
 from uuid import UUID
@@ -72,11 +72,6 @@ class CatalogService:
         """Store the repository the service delegates to."""
         self.repository = repository
 
-    @classmethod
-    def from_session(cls, session: AsyncSession) -> "CatalogService":
-        """Assemble the service over a single database session."""
-        return cls(BaseRepository(session, model=ServiceModel))
-
     async def search(
         self,
         city: str | None,
@@ -94,6 +89,11 @@ class CatalogService:
         return list(page["items"])
 
 
+def build_catalog_service(session: AsyncSession) -> CatalogService:
+    """Assemble the service over a single database session."""
+    return CatalogService(BaseRepository(session, model=ServiceModel))
+
+
 class SearchArgs(BaseSchema):
     """Arguments the model may choose when searching the catalogue."""
 
@@ -107,7 +107,7 @@ class SearchArgs(BaseSchema):
 async def search_services(args: SearchArgs, _context: AgentContext) -> str:
     """Search the catalogue and describe the matches in one line each."""
     async with db.get_session_context() as session:
-        catalog = CatalogService.from_session(session)
+        catalog = build_catalog_service(session)
         found = await catalog.search(args.city, limit=5)
 
     if not found:
@@ -164,14 +164,17 @@ created once, at import time, and is the same object for every agent run. It
 opens no connection at that point — the engine comes up on the first session
 requested, or on `connect()` in the lifespan.
 
-**`from_session` belongs to your application, not to the SDK.** The highlighted
-classmethod is the only place that knows which repositories that service needs.
-Here it is one; in a real service it is several — which is precisely why the SDK
-cannot offer a generic `from_session`. Only you know the list.
+**Assembly belongs to your application, not to the SDK — nor to the
+service.** The highlighted function, `build_catalog_service`, is the only place
+that knows which repositories that service needs. Here it is one; in a real
+service it is several — which is precisely why the SDK cannot offer a generic
+assembly. Only you know the list.
 
-It is worth adopting as a project convention: **every service gets a
-`from_session`**, and becomes assemblable by any consumer that has no request —
-agent, task, consumer, script, seed.
+In a project, these `build_*` functions live together in a composition root
+(`src/scripts/composition.py`), reused by every consumer that has no request —
+agent, task, consumer, script, seed — and by the test suite. The service does
+not get a `from_session` that assembles itself: `tempest lint-layers` reports
+that method as `DI003`.
 
 **The `async with` sits inside the tool.** That line is what defines the
 session's lifetime, and the next section is entirely about it.
@@ -314,7 +317,7 @@ And the tool reads from there, never from the arguments:
 ```python title="owner_tool.py" hl_lines="17 23"
 from pydantic import Field
 
-from catalog_setup import CatalogService, db
+from catalog_setup import build_catalog_service, db
 from tempest_fastapi_sdk.agents import AgentContext, AgentToolError, tool
 from tempest_fastapi_sdk.schemas import BaseSchema
 
@@ -333,7 +336,7 @@ async def get_my_services(args: MyServicesArgs, context: AgentContext) -> str:
         raise AgentToolError("no authenticated user in this run")
 
     async with db.get_session_context() as session:
-        catalog = CatalogService.from_session(session)
+        catalog = build_catalog_service(session)
         found = await catalog.search(args.city, limit=5, owner_id=user_id)
 
     return "\n".join(f"- {item.name} ({item.city})" for item in found) or "Nothing of yours here."
@@ -449,8 +452,9 @@ publishes it in its answer. Build the string from the fields that may be read.
 - **`get_session_context` commits** on exit; in a writing tool that is one
   transaction per call, and writes that must land together belong to the same
   tool.
-- **`from_session` is your application's convention** — only it knows how to
-  assemble the service, and it serves every consumer without a request.
+- **Assembly lives in a `build_*` function**, outside the service — only the
+  application knows how to assemble it, and the same function serves every
+  consumer without a request.
 - **One `AsyncDatabaseManager` per process**, with `disconnect()` in the
   lifespan.
 - **`context` carries what the model must not choose** — above all, who is

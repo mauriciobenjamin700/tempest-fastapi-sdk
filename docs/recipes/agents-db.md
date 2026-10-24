@@ -37,7 +37,7 @@ sessão quando precisam.
 
 ## O arquivo que roda
 
-```python title="catalog_setup.py" hl_lines="14 35 38 69 70"
+```python title="catalog_setup.py" hl_lines="14 52 54 69 70"
 import asyncio
 from typing import Any
 from uuid import UUID
@@ -72,11 +72,6 @@ class CatalogService:
         """Store the repository the service delegates to."""
         self.repository = repository
 
-    @classmethod
-    def from_session(cls, session: AsyncSession) -> "CatalogService":
-        """Assemble the service over a single database session."""
-        return cls(BaseRepository(session, model=ServiceModel))
-
     async def search(
         self,
         city: str | None,
@@ -94,6 +89,11 @@ class CatalogService:
         return list(page["items"])
 
 
+def build_catalog_service(session: AsyncSession) -> CatalogService:
+    """Assemble the service over a single database session."""
+    return CatalogService(BaseRepository(session, model=ServiceModel))
+
+
 class SearchArgs(BaseSchema):
     """Arguments the model may choose when searching the catalogue."""
 
@@ -107,7 +107,7 @@ class SearchArgs(BaseSchema):
 async def search_services(args: SearchArgs, _context: AgentContext) -> str:
     """Search the catalogue and describe the matches in one line each."""
     async with db.get_session_context() as session:
-        catalog = CatalogService.from_session(session)
+        catalog = build_catalog_service(session)
         found = await catalog.search(args.city, limit=5)
 
     if not found:
@@ -164,14 +164,17 @@ vez, na importação, e é o mesmo objeto para todas as execuções do agente. E
 não abre conexão nesse momento — a engine sobe na primeira sessão pedida, ou
 no `connect()` do lifespan.
 
-**`from_session` é da sua aplicação, não do SDK.** O classmethod destacado é o
-único lugar que sabe de quais repositórios aquele service precisa. No exemplo é
-um só; num service real são vários, e é justamente por isso que o SDK não
-consegue oferecer um `from_session` genérico — só você conhece a lista.
+**A montagem é da sua aplicação, não do SDK — nem do service.** A função
+destacada, `build_catalog_service`, é o único lugar que sabe de quais
+repositórios aquele service precisa. No exemplo é um só; num service real são
+vários, e é justamente por isso que o SDK não consegue oferecer uma montagem
+genérica — só você conhece a lista.
 
-Vale a pena adotar isso como convenção do projeto: **todo service ganha um
-`from_session`**, e passa a ser montável por qualquer consumidor que não tenha
-requisição — agente, task, consumer, script, seed.
+Num projeto, essas funções `build_*` moram juntas num composition root
+(`src/scripts/composition.py`), reutilizado por todo consumidor que não tem
+requisição — agente, task, consumer, script, seed — e pela suíte de testes. O
+service não ganha um `from_session` que se monta sozinho: o
+`tempest lint-layers` acusa esse método como `DI003`.
 
 **O `async with` fica dentro da ferramenta.** Essa é a linha que define o
 tempo de vida da sessão, e a próxima seção é inteira sobre ela.
@@ -314,7 +317,7 @@ E a ferramenta lê de lá, nunca dos argumentos:
 ```python title="owner_tool.py" hl_lines="17 23"
 from pydantic import Field
 
-from catalog_setup import CatalogService, db
+from catalog_setup import build_catalog_service, db
 from tempest_fastapi_sdk.agents import AgentContext, AgentToolError, tool
 from tempest_fastapi_sdk.schemas import BaseSchema
 
@@ -333,7 +336,7 @@ async def get_my_services(args: MyServicesArgs, context: AgentContext) -> str:
         raise AgentToolError("no authenticated user in this run")
 
     async with db.get_session_context() as session:
-        catalog = CatalogService.from_session(session)
+        catalog = build_catalog_service(session)
         found = await catalog.search(args.city, limit=5, owner_id=user_id)
 
     return "\n".join(f"- {item.name} ({item.city})" for item in found) or "Nada seu por aqui."
@@ -449,8 +452,9 @@ aquilo na resposta. Monte a string com os campos que podem ser lidos.
 - **`get_session_context` faz commit** ao sair; numa ferramenta de escrita
   isso é uma transação por chamada, e escritas que precisam cair juntas
   pertencem à mesma ferramenta.
-- **`from_session` é convenção da sua aplicação** — só ela sabe montar o
-  service, e isso serve a todo consumidor sem requisição.
+- **A montagem fica numa função `build_*`**, fora do service — só a
+  aplicação sabe montá-lo, e a mesma função serve a todo consumidor sem
+  requisição.
 - **Um `AsyncDatabaseManager` por processo**, com `disconnect()` no lifespan.
 - **`context` carrega o que o modelo não pode escolher** — antes de tudo, quem
   está perguntando. `make_agent_router` só semeia `context.owner`, via `owner=`.
