@@ -3453,6 +3453,14 @@ módulo e em `docs/recipes/cli.md`. Teste:
 `::TestRouterReturnsModel` e o router do `CLAUDE.md` reescrito para montar o
 controller (`TestScaffold`).
 
+## Metadado de schema (#616)
+
+`testing.assert_schema_metadata` / `schema_metadata_findings`: campo folha com
+`title`+`description`+`examples`, campo que guarda schema só com os dois
+primeiros, achado na classe declarante (MRO). `tempest lint-schemas` importa o
+pacote (o único check que importa o projeto). O scaffold gera
+`tests/test_schemas.py`. Teste: `tests/testing/test_schema_metadata.py`.
+
 ## Scaffold na arquitetura da #616
 
 `tempest new` gera pacotes de contexto (`controllers/system/`,

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `tempest_fastapi_sdk.testing.assert_schema_metadata(modulo)` (e
+  `schema_metadata_findings`, `SchemaMetadataFinding`) acusa campo de schema
+  exportado sem `title`, `description` e `examples`; o campo que guarda outro
+  schema precisa só dos dois primeiros, e cada campo sai uma vez, na classe
+  que o declara (#616). `tempest lint-schemas [MODULO]` imprime a mesma lista
+  importando `src.schemas` (ou `app.schemas`): exit `1` com achado, `2` se o
+  pacote não importa. O `tempest new` passa a gerar `tests/test_schemas.py`
+  chamando o assert, e os schemas da receita do `CLAUDE.md` já trazem os três.
+
 ### Changed
 
 - O projeto do `tempest new` sai na arquitetura da #616 e passa em todas as

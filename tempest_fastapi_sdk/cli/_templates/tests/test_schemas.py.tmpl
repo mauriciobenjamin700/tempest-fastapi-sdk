@@ -1,0 +1,14 @@
+"""Every exported schema field documents itself in the OpenAPI document."""
+
+import src.schemas
+from tempest_fastapi_sdk.testing import assert_schema_metadata
+
+
+def test_exported_schemas_carry_metadata() -> None:
+    """Cenário: os schemas que ``src.schemas`` exporta.
+
+    Esperado: todo campo traz ``title``, ``description`` e ``examples`` (o
+    campo que guarda outro schema, só os dois primeiros) — é o que o
+    cliente lê no ``openapi.json``.
+    """
+    assert_schema_metadata(src.schemas)

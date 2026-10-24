@@ -104,7 +104,10 @@ produces a service that looks unlike every other Tempest service.
 ### 1. Schema (`src/schemas/`)
 
 Every field carries `title`, `description` and `examples` — they are what
-the OpenAPI document shows the client:
+the OpenAPI document shows the client. A field holding another schema needs
+only `title` and `description`. `tests/test_schemas.py` enforces it with
+`assert_schema_metadata(src.schemas)`, and `tempest lint-schemas` lists
+what is missing:
 
 ```python
 # src/schemas/product.py
@@ -853,6 +856,7 @@ uv run python main.py       # start the service on __HOST__:__PORT__
 tempest check               # lint + format check + mypy + layer rules + pytest
 tempest lint-layers         # only the layer rules, errors and warnings
 tempest lint-layers --rule IMP002   # one rule, while migrating
+tempest lint-schemas        # schema fields without title/description/examples
 tempest lint                # ruff check
 tempest fmt                 # ruff format
 tempest type                # mypy

@@ -434,6 +434,15 @@ def test_claude_md_recipe_produces_a_working_domain(scaffolded: Path) -> None:
     assert duplicate.json()["code"] == "PRODUCT_NAME_TAKEN"
 
 
+def test_claude_md_recipe_schemas_carry_their_metadata(scaffolded: Path) -> None:
+    """The recipe's schemas pass the check the scaffold's own suite runs."""
+    from tempest_fastapi_sdk.testing import assert_schema_metadata
+
+    schemas = importlib.import_module("src.schemas")
+    assert {"ProductCreateSchema", "ProductResponseSchema"} <= set(schemas.__all__)
+    assert_schema_metadata(schemas)
+
+
 def test_claude_md_pagination_block_matches_the_sdk_envelope(
     scaffolded: Path,
 ) -> None:

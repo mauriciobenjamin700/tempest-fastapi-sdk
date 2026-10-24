@@ -834,6 +834,41 @@ def openapi_errors_cmd(
     raise typer.Exit(1 if undocumented_total or not allow_unreachable else 0)
 
 
+@app.command("lint-schemas")
+def lint_schemas_cmd(
+    module: Annotated[
+        str | None,
+        typer.Argument(
+            help="Dotted schemas package to check. Defaults to src.schemas "
+            "(app.schemas in an app/ project)."
+        ),
+    ] = None,
+    root: Annotated[
+        str,
+        typer.Option("--root", help="Project root put on sys.path for the import."),
+    ] = ".",
+) -> None:
+    """Report exported schema fields without title, description and examples.
+
+    Imports the schemas package (unlike ``lint-layers``, which only reads
+    source) and prints ``module.Class.field: missing ...`` per field. A
+    field holding another schema needs only ``title`` and ``description``.
+    Inside the suite, ``tempest_fastapi_sdk.testing.assert_schema_metadata``
+    runs the same check.
+
+    Args:
+        module (str | None): The package to check.
+        root (str): The project root.
+
+    Raises:
+        typer.Exit: 1 when a field is undocumented, 2 when the package does
+            not import, 0 otherwise.
+    """
+    from tempest_fastapi_sdk.cli.schema_lint import run_lint_schemas
+
+    raise typer.Exit(run_lint_schemas(module, root=root))
+
+
 @app.command("lint-layers")
 def lint_layers_cmd(
     target: Annotated[
