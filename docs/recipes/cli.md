@@ -113,6 +113,33 @@ error: tempest lint is not available. The quality gate (lint, fix, format, fmt-c
   uv tool install "tempest-fastapi-sdk[cli]"   (as a global command)
 ```
 
+!!! tip "Pré-compile o bytecode na imagem: `UV_COMPILE_BYTECODE=1`"
+    O `uv` não compila os `.pyc` ao instalar, então o Python compila cada módulo
+    na primeira vez que o importa. Se o container roda com um usuário sem
+    permissão de escrita no `site-packages` — o caso comum numa imagem com
+    usuário não-root —, os `.pyc` nunca são gravados e **toda** execução paga
+    essa compilação, não só a primeira. Medido com
+    `tempest-fastapi-sdk[cli-ops]==0.326.0`, `tempest --help`, 3 rodadas de
+    cada:
+
+    | Instalação | 1ª execução | Seguintes |
+    | --- | --- | --- |
+    | sem `UV_COMPILE_BYTECODE` | ~0,34 s | ~0,14 s |
+    | sem, com `site-packages` só leitura | ~0,34 s | ~0,34 s |
+    | com `UV_COMPILE_BYTECODE=1` | ~0,14 s | ~0,14 s |
+
+    O `Dockerfile` que o `tempest new` gera já liga a variável. Num Dockerfile
+    seu, ou num `uv pip install` / `uv tool install`, ligue-a no passo de
+    instalação, para a compilação acontecer uma vez, no build:
+
+    ```dockerfile
+    ENV UV_COMPILE_BYTECODE=1
+    RUN uv sync --locked --no-dev
+    ```
+
+    O mecanismo é o mesmo para todo módulo que a app importa ao subir, não só
+    para o `tempest`.
+
 !!! info "Detalhes técnicos"
     A leitura do `[tool.tempest]` que acha o projeto e os `commands`
     (`find_pyproject`, `load_tempest_table`, `load_project_commands` em

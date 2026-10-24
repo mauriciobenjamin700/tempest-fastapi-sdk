@@ -115,6 +115,33 @@ error: tempest lint is not available. The quality gate (lint, fix, format, fmt-c
   uv tool install "tempest-fastapi-sdk[cli]"   (as a global command)
 ```
 
+!!! tip "Precompile the bytecode in the image: `UV_COMPILE_BYTECODE=1`"
+    `uv` does not compile `.pyc` files on install, so Python compiles each
+    module the first time it imports it. If the container runs as a user that
+    cannot write to `site-packages` — the usual case in an image with a
+    non-root user —, the `.pyc` files are never written and **every** run pays
+    that compilation, not just the first. Measured with
+    `tempest-fastapi-sdk[cli-ops]==0.326.0`, `tempest --help`, 3 runs of each:
+
+    | Install | 1st run | Later runs |
+    | --- | --- | --- |
+    | without `UV_COMPILE_BYTECODE` | ~0.34 s | ~0.14 s |
+    | without, read-only `site-packages` | ~0.34 s | ~0.34 s |
+    | with `UV_COMPILE_BYTECODE=1` | ~0.14 s | ~0.14 s |
+
+    The `Dockerfile` that `tempest new` writes already sets the variable. In
+    a Dockerfile of your own, or with `uv pip install` / `uv tool install`,
+    set it on the install step, so the compilation happens once, at build
+    time:
+
+    ```dockerfile
+    ENV UV_COMPILE_BYTECODE=1
+    RUN uv sync --locked --no-dev
+    ```
+
+    The mechanism is the same for every module the app imports at startup,
+    not only for `tempest`.
+
 !!! info "Technical details"
     Reading `[tool.tempest]` to find the project and its `commands`
     (`find_pyproject`, `load_tempest_table`, `load_project_commands` in
