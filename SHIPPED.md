@@ -3504,6 +3504,15 @@ atribuído) e `RTR004` (`prefix` `/api` ou abaixo em `APIRouter`/
 `include_router` fora de `build_api_router`, em todo o código; subject a
 função que envolve). Teste: `tests/cli/test_layer_lint_routers.py`.
 
+## Suíte no `lint-layers` (#616, parte 7)
+
+Avisos sobre os arquivos coletados de `tests/`: `TST001` (docstring com
+`Cenário:` e `Esperado:`), `TST002` (teste sem `assert`, `raises`/`warns` ou
+`assert*`), `TST003` (`raises` de `Exception`/`BaseException`) e `TST004` (id
+de `parametrize` com valor sorteado; `NONDETERMINISTIC_CALLS` sempre,
+`NONDETERMINISTIC_OBJECTS` só quando viram texto ou entram em `ids=`/`id=` —
+fronteira medida com `pytest -n 2`). Teste: `tests/cli/test_layer_lint_tests.py`.
+
 ## Sufixo `Enum` no `tempest check` (#518)
 
 `ENUM001` em `tempest_fastapi_sdk/cli/layer_lint.py`: classe pública que

@@ -2423,6 +2423,61 @@ def build_api_router() -> APIRouter:
     prefix="/api")` and prints as `RTR004` until the scaffold gets
     `routers/api.py`.
 
+#### The shape of the suite (warning)
+
+The four `TST` rules read the files pytest collects in the project's
+`tests/` (`test_*.py` and `*_test.py`):
+
+| Code | What it reports |
+| --- | --- |
+| `TST001` | a test (module-level `test*` or a `test*` method of a `Test*` class) whose docstring does not carry `Cenário:` **and** `Esperado:` — the situation the test builds and what it proves |
+| `TST002` | a test that checks nothing: no `assert`, no `with pytest.raises` / `warns` / `deprecated_call`, no `assert*` call (`mock.assert_awaited_once()`) |
+| `TST003` | `pytest.raises(Exception)` or `BaseException`, alone or in a tuple — any bug passes |
+| `TST004` | a `parametrize` whose id holds a value drawn at import |
+
+This file has all four (real output):
+
+```python
+# tests/test_orders.py
+from uuid import uuid4
+
+import pytest
+
+
+@pytest.mark.parametrize("order_id", [str(uuid4())])
+def test_order_is_created(order_id: str) -> None:
+    """The order is created."""
+    with pytest.raises(Exception):
+        int(order_id)
+
+
+def test_receipt_is_sent() -> None:
+    """Cenário: um pedido pago.
+
+    Esperado: o recibo sai sem erro.
+    """
+    str(uuid4())
+```
+
+```text
+tests/test_orders.py:6: TST004 (warning) parametrize puts a `uuid4()` drawn at import into the test id; each pytest-xdist worker collects different ids and the run aborts — use fixed literals.
+tests/test_orders.py:7: TST001 (warning) `test_order_is_created` docstring lacks Cenário:, Esperado:; say the situation the test builds (Cenário:) and what it proves (Esperado:).
+tests/test_orders.py:9: TST003 (warning) pytest.raises(Exception) passes for any bug; name the exception the code raises (and `match=` its message when it matters).
+tests/test_orders.py:13: TST002 (warning) `test_receipt_is_sent` checks nothing (no assert, no pytest.raises, no assert_* call); a test that cannot fail proves nothing.
+4 layer finding(s): 0 error(s), 4 warning(s).
+```
+
+!!! info "When a drawn value breaks `pytest -n`"
+    Each pytest-xdist worker imports the module on its own. When a test id
+    depends on a drawn value, each worker collects different ids and the
+    run aborts with "Different tests were collected". Measured with
+    `pytest -n 2`: `random.randint()`, `time.time()`,
+    `secrets.token_hex()`, `os.urandom()`, `str(uuid4())`, `uuid4().hex`,
+    `f"{uuid4()}"` and `pytest.param(..., id=str(uuid4()))` abort. A **bare**
+    `uuid4()` or `datetime.now()` passes — pytest ids those objects by
+    position (`v0`, `v1`) —, which is why `TST004` only reports them once
+    they become text or sit in `ids=` / `id=`.
+
 #### Warning, error and declared exception
 
 Every rule has a severity. An **error** fails the step (exit code `1`); a

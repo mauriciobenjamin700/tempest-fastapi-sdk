@@ -114,6 +114,24 @@ The rules:
   ``build_api_router`` function (``routers/api.py``). The ``/api`` prefix
   is set once; a domain router declares only its own prefix.
 
+* ``TST001`` (warning) — a test (``test*`` at module level, or a
+  ``test*`` method of a ``Test*`` class, in a ``test_*.py`` /
+  ``*_test.py`` file of ``tests/``) whose docstring does not carry both
+  ``Cenário:`` and ``Esperado:``: what situation it builds and what it
+  proves.
+* ``TST002`` (warning) — a test that checks nothing: no ``assert``, no
+  ``with pytest.raises`` / ``warns`` / ``deprecated_call`` and no call to
+  an ``assert*`` function or method (``mock.assert_awaited_once()``).
+* ``TST003`` (warning) — ``pytest.raises(Exception)`` or
+  ``BaseException``, alone or in a tuple: any bug passes it.
+* ``TST004`` (warning) — a ``parametrize`` whose test id holds a value
+  drawn at import: ``random.randint()``, ``time.time()``,
+  ``secrets.token_hex()`` anywhere in the values, or ``uuid4()`` /
+  ``datetime.now()`` once they become text (``str(uuid4())``,
+  ``uuid4().hex``, under ``ids=`` / ``id=``). Each pytest-xdist worker
+  imports the module on its own, collects different ids, and the run
+  aborts. A bare ``uuid4()`` value is ided by position and passes.
+
 ``tests/`` is the project's suite: ``<target>/tests``, or the one beside
 a source-root target (``tempest lint-layers src`` reads ``./tests``).
 
@@ -299,6 +317,60 @@ API_PREFIX: str = "/api"
 API_ROUTER_BUILDER: str = "build_api_router"
 """The function that mounts every domain router under :data:`API_PREFIX`."""
 
+TEST_DOCSTRING_MARKERS: tuple[str, ...] = ("Cenário:", "Esperado:")
+"""Labels every test docstring carries (``TST001``)."""
+
+CHECKING_CONTEXTS: frozenset[str] = frozenset({"raises", "warns", "deprecated_call"})
+"""``with`` callees that count as a test's check (``TST002``)."""
+
+BROAD_EXCEPTIONS: frozenset[str] = frozenset({"Exception", "BaseException"})
+"""Exception names ``pytest.raises`` must not be given (``TST003``)."""
+
+NONDETERMINISTIC_CALLS: frozenset[str] = frozenset(
+    {
+        "choice",
+        "choices",
+        "randint",
+        "random",
+        "randrange",
+        "sample",
+        "time",
+        "token_bytes",
+        "token_hex",
+        "token_urlsafe",
+        "uniform",
+        "urandom",
+    }
+)
+"""Callees whose value pytest prints into the test id (``TST004``).
+
+They return ``str`` / ``bytes`` / numbers, which pytest renders as the id
+itself, so two pytest-xdist workers collect different tests. Measured
+with ``pytest -n 2``: ``random.randint()``, ``time.time()``,
+``secrets.token_hex()`` and ``os.urandom()`` all abort the run with
+"Different tests were collected".
+"""
+
+NONDETERMINISTIC_OBJECTS: frozenset[str] = frozenset(
+    {"now", "today", "utcnow", "uuid1", "uuid4"}
+)
+"""Callees that return an object pytest ids by position (``v0``, ``v1``).
+
+A bare ``uuid4()`` or ``datetime.now()`` value collects the same ids on
+every worker (measured), so ``TST004`` reports them only once they reach
+the id: under ``ids=`` / ``id=``, or wrapped (``str(uuid4())``,
+``uuid4().hex``, ``f"{uuid4()}"``), each of which aborted ``pytest -n 2``.
+"""
+
+PARAMETRIZE_CONTAINERS: tuple[type[ast.AST], ...] = (
+    ast.List,
+    ast.Tuple,
+    ast.Set,
+    ast.Dict,
+    ast.Starred,
+)
+"""Parents that keep a value an object for pytest's id (``TST004``)."""
+
 TESTS_DIR: str = "tests"
 """The suite directory, beside the source root, that ``STR*`` also reads."""
 
@@ -354,6 +426,10 @@ RULES: dict[str, LayerRule] = {
         LayerRule("IMP002", "warning", "submodule import of a re-exported name"),
         LayerRule("RTR003", "warning", "more than one APIRouter in a module"),
         LayerRule("RTR004", "warning", "/api prefix outside build_api_router"),
+        LayerRule("TST001", "warning", "test docstring without Cenário/Esperado"),
+        LayerRule("TST002", "warning", "test that checks nothing"),
+        LayerRule("TST003", "warning", "pytest.raises(Exception)"),
+        LayerRule("TST004", "warning", "non-deterministic parametrize value"),
         LayerRule("EXC001", "error", "declared exception the checker cannot use"),
         LayerRule("EXC002", "warning", "declared exception that matches no finding"),
     )
@@ -1759,6 +1835,259 @@ def _check_api_prefix(modules: list[_ParsedModule]) -> list[LayerFinding]:
     return findings
 
 
+def _is_test_file(path: Path) -> bool:
+    """Tell whether pytest collects a file by its default pattern.
+
+    Args:
+        path (Path): The file.
+
+    Returns:
+        bool: True for ``test_*.py`` and ``*_test.py``.
+    """
+    return path.name.startswith("test_") or path.stem.endswith("_test")
+
+
+def _test_functions(
+    module: ast.Module,
+) -> Iterator[tuple[ast.FunctionDef | ast.AsyncFunctionDef, str]]:
+    """Yield the tests pytest collects from a module, with their names.
+
+    Args:
+        module (ast.Module): The parsed test module.
+
+    Yields:
+        tuple[ast.FunctionDef | ast.AsyncFunctionDef, str]: Each
+        module-level ``test*`` function and each ``test*`` method of a
+        ``Test*`` class, named ``test`` or ``Class.test``.
+    """
+    for node in module.body:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            if node.name.startswith("test"):
+                yield node, node.name
+        elif isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
+            for member in node.body:
+                if isinstance(
+                    member, ast.FunctionDef | ast.AsyncFunctionDef
+                ) and member.name.startswith("test"):
+                    yield member, f"{node.name}.{member.name}"
+
+
+def _checks_something(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Tell whether a test body holds any check.
+
+    Args:
+        function (ast.FunctionDef | ast.AsyncFunctionDef): The test.
+
+    Returns:
+        bool: True when the body has an ``assert``, a ``with`` over one of
+        :data:`CHECKING_CONTEXTS`, or a call to an ``assert*`` callable.
+    """
+    for node in ast.walk(function):
+        if isinstance(node, ast.Assert):
+            return True
+        if isinstance(node, ast.With | ast.AsyncWith):
+            for item in node.items:
+                context = item.context_expr
+                if (
+                    isinstance(context, ast.Call)
+                    and _call_name(context) in CHECKING_CONTEXTS
+                ):
+                    return True
+        if isinstance(node, ast.Call):
+            name = _call_name(node)
+            if name is not None and name.lower().startswith("assert"):
+                return True
+    return False
+
+
+def _broad_raises(call: ast.Call) -> str | None:
+    """Return the broad exception a ``raises(...)`` call is given, if any.
+
+    Args:
+        call (ast.Call): A call named ``raises``.
+
+    Returns:
+        str | None: ``Exception`` / ``BaseException`` when the first
+        argument is one of them or a tuple holding one; ``None`` otherwise.
+    """
+    if not call.args:
+        return None
+    first = call.args[0]
+    candidates = first.elts if isinstance(first, ast.Tuple) else [first]
+    for candidate in candidates:
+        name = _base_name(candidate)
+        if name in BROAD_EXCEPTIONS:
+            return name
+    return None
+
+
+def _reaches_the_id(node: ast.Call, parents: dict[ast.AST, ast.AST]) -> bool:
+    """Tell whether an object-returning call ends up as text in the id.
+
+    Args:
+        node (ast.Call): A :data:`NONDETERMINISTIC_OBJECTS` call.
+        parents (dict[ast.AST, ast.AST]): Child to parent, within the
+            ``parametrize`` arguments.
+
+    Returns:
+        bool: False when its parent is a container of values or a
+        positional argument of ``pytest.param``; True for anything that
+        turns it into text or a number first.
+    """
+    parent = parents.get(node)
+    if parent is None or isinstance(parent, PARAMETRIZE_CONTAINERS):
+        return False
+    return not (
+        isinstance(parent, ast.Call)
+        and _call_name(parent) == "param"
+        and node in parent.args
+    )
+
+
+def _nondeterministic_call(call: ast.Call) -> str | None:
+    """Return the first random value that reaches a ``parametrize`` id.
+
+    Args:
+        call (ast.Call): The ``parametrize(...)`` call.
+
+    Returns:
+        str | None: The callee name, or ``None`` when every id is the
+        same on every import.
+    """
+    values: list[ast.expr] = [
+        *call.args[1:],
+        *(keyword.value for keyword in call.keywords if keyword.arg == "argvalues"),
+    ]
+    ids: list[ast.expr] = [
+        keyword.value for keyword in call.keywords if keyword.arg == "ids"
+    ]
+    for source, is_id in (
+        *((value, False) for value in values),
+        *((i, True) for i in ids),
+    ):
+        parents: dict[ast.AST, ast.AST] = {
+            child: node
+            for node in ast.walk(source)
+            for child in ast.iter_child_nodes(node)
+        }
+        for node in ast.walk(source):
+            if not isinstance(node, ast.Call):
+                continue
+            name = _call_name(node)
+            in_id = is_id or any(
+                isinstance(ancestor, ast.keyword) and ancestor.arg == "id"
+                for ancestor in _ancestors(node, parents)
+            )
+            if name in NONDETERMINISTIC_CALLS:
+                return name
+            if name in NONDETERMINISTIC_OBJECTS and (
+                in_id or _reaches_the_id(node, parents)
+            ):
+                return name
+    return None
+
+
+def _ancestors(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> Iterator[ast.AST]:
+    """Yield the ancestors of a node, nearest first.
+
+    Args:
+        node (ast.AST): The node.
+        parents (dict[ast.AST, ast.AST]): Child to parent.
+
+    Yields:
+        ast.AST: Each ancestor up to the root of ``parents``.
+    """
+    current = parents.get(node)
+    while current is not None:
+        yield current
+        current = parents.get(current)
+
+
+def _check_tests(modules: list[_ParsedModule]) -> list[LayerFinding]:
+    """Apply ``TST001`` to ``TST004`` to the project's test files.
+
+    Args:
+        modules (list[_ParsedModule]): Every module under ``tests/``.
+
+    Returns:
+        list[LayerFinding]: The violations, in file and line order.
+    """
+    findings: list[LayerFinding] = []
+    for parsed in modules:
+        if not _is_test_file(parsed.path):
+            continue
+        for function, name in _test_functions(parsed.tree):
+            docstring = ast.get_docstring(function) or ""
+            missing = [
+                marker for marker in TEST_DOCSTRING_MARKERS if marker not in docstring
+            ]
+            if missing:
+                findings.append(
+                    LayerFinding(
+                        path=parsed.path,
+                        line=function.lineno,
+                        code="TST001",
+                        subject=name,
+                        message=(
+                            f"`{name}` docstring lacks {', '.join(missing)}; say "
+                            f"the situation the test builds (Cenário:) and what "
+                            f"it proves (Esperado:)."
+                        ),
+                    )
+                )
+            if not _checks_something(function):
+                findings.append(
+                    LayerFinding(
+                        path=parsed.path,
+                        line=function.lineno,
+                        code="TST002",
+                        subject=name,
+                        message=(
+                            f"`{name}` checks nothing (no assert, no "
+                            f"pytest.raises, no assert_* call); a test that "
+                            f"cannot fail proves nothing."
+                        ),
+                    )
+                )
+        for call in (
+            node for node in ast.walk(parsed.tree) if isinstance(node, ast.Call)
+        ):
+            callee = _call_name(call)
+            if callee == "raises" and (broad := _broad_raises(call)) is not None:
+                findings.append(
+                    LayerFinding(
+                        path=parsed.path,
+                        line=call.lineno,
+                        code="TST003",
+                        subject=broad,
+                        message=(
+                            f"pytest.raises({broad}) passes for any bug; name the "
+                            f"exception the code raises (and `match=` its "
+                            f"message when it matters)."
+                        ),
+                    )
+                )
+            elif (
+                callee == "parametrize"
+                and (random_call := _nondeterministic_call(call)) is not None
+            ):
+                findings.append(
+                    LayerFinding(
+                        path=parsed.path,
+                        line=call.lineno,
+                        code="TST004",
+                        subject=random_call,
+                        message=(
+                            f"parametrize puts a `{random_call}()` drawn at import "
+                            f"into the test id; each pytest-xdist worker collects "
+                            f"different ids and the run aborts — use fixed "
+                            f"literals."
+                        ),
+                    )
+                )
+    return findings
+
+
 def _dotted_name(path: Path, root: Path) -> str | None:
     """Return the import path of a module relative to the project root.
 
@@ -2277,6 +2606,7 @@ def lint_layers(
             *_check_imports([*source_modules, *test_modules], project_root(target)),
             *_check_router_count(router_modules),
             *_check_api_prefix(source_modules),
+            *_check_tests(test_modules),
         )
         if finding.code in selected
     ]
@@ -2377,6 +2707,8 @@ __all__: list[str] = [
     "API_PREFIX",
     "API_ROUTER_BUILDER",
     "BASE_REPOSITORY_METHODS",
+    "BROAD_EXCEPTIONS",
+    "CHECKING_CONTEXTS",
     "CONSTRUCTED_SUFFIXES",
     "CONTROLLERS_DIR",
     "ENUM_NAME_SUFFIX",
@@ -2384,7 +2716,10 @@ __all__: list[str] = [
     "EXCEPTIONS_PATH",
     "LAYER_DIRS",
     "MODELS_DIR",
+    "NONDETERMINISTIC_CALLS",
+    "NONDETERMINISTIC_OBJECTS",
     "NO_BASE_SERVICE_MARKER",
+    "PARAMETRIZE_CONTAINERS",
     "REPOSITORIES_DIR",
     "REPOSITORY_SUFFIX",
     "ROUTERS_DIR",
@@ -2402,6 +2737,7 @@ __all__: list[str] = [
     "STR_ENUM_BASE",
     "SUBJECT_SEPARATOR",
     "TESTS_DIR",
+    "TEST_DOCSTRING_MARKERS",
     "DeclaredException",
     "LayerFinding",
     "LayerRule",
