@@ -100,7 +100,9 @@ plugins:
               - Pick your Python version: getting-started/python-versions.md
               - Your first project: getting-started/first-project.md
               - Official reference docs: getting-started/references.md
-            - Architecture: architecture.md
+            - Architecture:
+              - architecture.md
+              - Recommended architecture: recommended-architecture.md
             - Tutorial: tutorial.md
             - Recipes:
               - recipes/index.md
@@ -232,6 +234,7 @@ plugins:
             Início: Home
             Instalação: Installation
             Arquitetura: Architecture
+            "Arquitetura recomendada": "Recommended architecture"
             Tutorial: Tutorial
             Exemplos: Examples
             "Fullstack web (SSR, WASM, server)": "Fullstack web (SSR, WASM, server)"
@@ -404,7 +407,9 @@ nav:
       - "Escolher a versão do Python": getting-started/python-versions.md
       - "Seu primeiro projeto": getting-started/first-project.md
       - "Documentação oficial de referência": getting-started/references.md
-  - Arquitetura: architecture.md
+  - Arquitetura:
+      - architecture.md
+      - "Arquitetura recomendada": recommended-architecture.md
   - Tutorial: tutorial.md
   - Receitas:
       - recipes/index.md

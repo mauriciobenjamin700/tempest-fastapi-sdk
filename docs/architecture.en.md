@@ -59,14 +59,15 @@ The repository **MUST** be a [`BaseRepository[ModelType]`][tempest_fastapi_sdk.B
     │   ├── routers/                 # HTTP endpoints, no business logic
     │   ├── dependencies/            # PACKAGE (auth.py + resources.py + controllers.py / services.py)
     │   └── docs/                    # OpenAPI customization
-    ├── controllers/                 # Orchestrate between services
-    ├── services/                    # Business logic layer
+    ├── controllers/<context>/       # Orchestrate between services — one class per module
+    ├── services/<context>/          # Business logic layer
     ├── schemas/                     # Pydantic v2 request/response DTOs
-    ├── core/                        # settings.py + constants + exceptions + logging
+    ├── scripts/                     # composition.py (build_*) + the work tasks run
+    ├── core/                        # settings.py + enums.py + types.py + exceptions.py
     ├── db/ (optional)
     │   ├── configs/names.py         # table names, single source
-    │   ├── models/                  # SQLAlchemy ORM models
-    │   └── repositories/            # Data access layer
+    │   ├── models/<context>/        # SQLAlchemy ORM models
+    │   └── repositories/<context>/  # Data access layer
     ├── ui/ (optional)               # interface layer — only with the [ssr] extra
     │   ├── pages/                   # one class per screen
     │   ├── layout/                  # the chrome every page inherits
@@ -74,8 +75,14 @@ The repository **MUST** be a [`BaseRepository[ModelType]`][tempest_fastapi_sdk.B
     │   └── styles.py                # the service's typed stylesheet
     ├── utils/ (optional)            # Shared stateless helpers
     ├── queue/ (optional)            # FastStream consumers/publishers
-    └── tasks/ (optional)            # TaskIQ background tasks
+    └── tasks/ (optional)            # TaskIQ: queue, names, dispatch, worker + registration modules
 ```
+
+Each `<context>` is a subpackage per domain (`products/`, `orders/`), with
+one class per module, and every `__init__.py` re-exports with a relative
+import. Why each of these shapes, with the wrong and the right example and
+the `tempest check` code that enforces it, is in
+[Recommended architecture](recommended-architecture.md).
 
 !!! tip "`db/configs/names.py` rules out a class of error"
     Holding each table name in a constant makes `__tablename__` and the
@@ -1058,7 +1065,8 @@ schema without a repeated `response_model=` on the decorator.
 ### What `tempest lint-layers` checks
 
 Some of these rules have a gate; some do not. `tempest lint-layers` (and the
-`lint-layers` step of `tempest check`) reads the code with `ast` and flags:
+`lint-layers` step of `tempest check`) reads the code with `ast` and flags,
+as an **error**:
 
 | Code | What it flags |
 | --- | --- |
@@ -1069,6 +1077,11 @@ Some of these rules have a gate; some do not. `tempest lint-layers` (and the
 | `ENUM001` | a `BaseStrEnum` whose name does not end in `Enum` |
 | `RTR001` | a `*Controller` / `*Service` class called inside `routers/` instead of arriving through `Depends` |
 | `RTR002` | a route whose return annotation or `response_model=` names an ORM model |
+
+The file-shape rules — context package, import through the layer, what
+services and controllers receive, one router per file, the suite — enter as
+**warnings** (`LAY*`, `IMP*`, `DI*`, `REPO002`, `RTR003`/`RTR004`, `STR*`,
+`TST*`) and are in [Recommended architecture](recommended-architecture.md).
 
 Run over a `src/` with a `FamilyService` whose `__init__` only calls
 `super().__init__(repository)`, a `ProductService` like the example's and a
@@ -1117,4 +1130,6 @@ Choosing the controller method, as above, is review. Full table, the
   `@requires`** on the use-case method.
 - **The router returns a schema**, annotated on the return.
 - `tempest lint-layers` checks `SVC001`–`SVC003`, `REPO001`, `ENUM001`,
-  `RTR001` and `RTR002`; where the guard sits is review.
+  `RTR001` and `RTR002` as errors, and the file-shape rules of
+  [Recommended architecture](recommended-architecture.md) as warnings; where
+  the guard sits is review.

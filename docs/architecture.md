@@ -59,14 +59,15 @@ O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[Mode
     │   ├── routers/                 # endpoints HTTP, sem lógica de negócio
     │   ├── dependencies/            # PACOTE (auth.py + resources.py + controllers.py / services.py)
     │   └── docs/                    # customização do OpenAPI
-    ├── controllers/                 # orquestra entre services
-    ├── services/                    # camada de lógica de negócio
+    ├── controllers/<contexto>/      # orquestra entre services — uma classe por módulo
+    ├── services/<contexto>/         # camada de lógica de negócio
     ├── schemas/                     # DTOs de request/response Pydantic v2
-    ├── core/                        # settings.py + constants + exceptions + logging
+    ├── scripts/                     # composition.py (build_*) + o trabalho que as tasks rodam
+    ├── core/                        # settings.py + enums.py + types.py + exceptions.py
     ├── db/ (opcional)
     │   ├── configs/names.py         # nomes das tabelas, fonte única
-    │   ├── models/                  # modelos ORM SQLAlchemy
-    │   └── repositories/            # camada de acesso a dados
+    │   ├── models/<contexto>/       # modelos ORM SQLAlchemy
+    │   └── repositories/<contexto>/ # camada de acesso a dados
     ├── ui/ (opcional)               # camada de interface — só com o extra [ssr]
     │   ├── pages/                   # uma classe por tela
     │   ├── layout/                  # o chrome que toda página herda
@@ -74,8 +75,14 @@ O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[Mode
     │   └── styles.py                # a folha de estilo tipada do serviço
     ├── utils/ (opcional)            # helpers stateless compartilhados
     ├── queue/ (opcional)            # consumers/publishers FastStream
-    └── tasks/ (opcional)            # tarefas em background TaskIQ
+    └── tasks/ (opcional)            # TaskIQ: queue, names, dispatch, worker + módulos de registro
 ```
+
+Cada `<contexto>` é um subpacote por domínio (`products/`, `orders/`), com
+uma classe por módulo, e todo `__init__.py` reexporta com import relativo. O
+porquê de cada uma dessas formas, com o exemplo errado e o certo e o código
+do `tempest check` que a cobra, está em
+[Arquitetura recomendada](recommended-architecture.md).
 
 !!! tip "`db/configs/names.py` evita uma classe de erro"
     Guardar o nome de cada tabela numa constante faz o `__tablename__` e
@@ -1055,7 +1062,8 @@ retorno como `response_model`, então o OpenAPI documenta o schema sem
 ### O que o `tempest lint-layers` confere
 
 Parte destas regras tem gate; parte não. O `tempest lint-layers` (e o passo
-`lint-layers` do `tempest check`) lê o código com `ast` e acusa:
+`lint-layers` do `tempest check`) lê o código com `ast` e acusa, como
+**erro**:
 
 | Código | O que acusa |
 | --- | --- |
@@ -1066,6 +1074,11 @@ Parte destas regras tem gate; parte não. O `tempest lint-layers` (e o passo
 | `ENUM001` | `BaseStrEnum` cujo nome não termina em `Enum` |
 | `RTR001` | classe `*Controller` / `*Service` chamada dentro de `routers/` em vez de chegar por `Depends` |
 | `RTR002` | rota cuja anotação de retorno ou `response_model=` cita um model ORM |
+
+As regras de forma de arquivo — pacote de contexto, import pela camada, o
+que service e controller recebem, um router por arquivo, a suíte — entram
+como **aviso** (`LAY*`, `IMP*`, `DI*`, `REPO002`, `RTR003`/`RTR004`, `STR*`,
+`TST*`) e estão em [Arquitetura recomendada](recommended-architecture.md).
 
 Rodado sobre um `src/` com um `FamilyService` cujo `__init__` só chama
 `super().__init__(repository)`, um `ProductService` como o do exemplo e um
@@ -1113,4 +1126,6 @@ router não veem em
   método do caso de uso.
 - **Router devolve schema**, anotado no retorno.
 - `tempest lint-layers` confere `SVC001`–`SVC003`, `REPO001`, `ENUM001`,
-  `RTR001` e `RTR002`; onde o guard fica é revisão.
+  `RTR001` e `RTR002` como erro, e as regras de forma de arquivo da
+  [Arquitetura recomendada](recommended-architecture.md) como aviso; onde o
+  guard fica é revisão.

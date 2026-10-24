@@ -2,6 +2,21 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.327.0 — regras de arquitetura da #616, como aviso
+
+Nada muda no código que você já tem: as regras novas do `tempest check`
+(`LAY*`, `IMP*`, `DI*`, `REPO002`, `RTR003`/`RTR004`, `STR*`, `TST*`) entram
+como **aviso** e só derrubam o gate com `layers_strict = true`.
+
+### O que fazer
+
+1. Rode `tempest lint-layers` e conte os avisos por código.
+2. Siga a ordem e as armadilhas de
+   [Arquitetura recomendada › Migrando um serviço existente](recommended-architecture.md#migrando-um-servico-existente),
+   uma família por PR, com `tempest lint-layers --rule <CÓDIGO>`.
+3. Quando uma família zerar, ligue `layers_strict = true` em
+   `[tool.tempest]`.
+
 ## 0.325.0 — CSRF no login do admin e o extra `[cli-ops]`
 
 O `POST /admin/login` passa a exigir o `csrf_token` que o `GET /admin/login`

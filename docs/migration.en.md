@@ -2,6 +2,21 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.327.0 — the #616 architecture rules, as warnings
+
+Nothing changes in the code you already have: the new `tempest check` rules
+(`LAY*`, `IMP*`, `DI*`, `REPO002`, `RTR003`/`RTR004`, `STR*`, `TST*`) enter as
+**warnings** and fail the gate only with `layers_strict = true`.
+
+### What to do
+
+1. Run `tempest lint-layers` and count the warnings per code.
+2. Follow the order and the traps in
+   [Recommended architecture › Migrating an existing service](recommended-architecture.md#migrating-an-existing-service),
+   one family per PR, with `tempest lint-layers --rule <CODE>`.
+3. Once a family reaches zero, turn on `layers_strict = true` under
+   `[tool.tempest]`.
+
 ## 0.325.0 — CSRF on the admin login and the `[cli-ops]` extra
 
 `POST /admin/login` now requires the `csrf_token` that `GET /admin/login`
