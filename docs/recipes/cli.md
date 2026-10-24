@@ -2188,6 +2188,32 @@ tem o mesmo nome de um model continua limpo.
     declara `tempest-cli>=0.5.1`, então ele já vem. O `tempest-cli check` sozinho, sem o SDK, não
     conhece estas regras: elas são do SDK.
 
+#### Camada em pacote de contexto (aviso)
+
+Três regras cobram a forma das quatro camadas — `controllers/`,
+`services/`, `repositories/` e `models/`. Entram como **aviso**:
+
+| Código | Onde | O que acusa |
+| --- | --- | --- |
+| `LAY001` | `controllers/`, `repositories/`, `models/` | segunda classe no módulo (qualquer nome, privada também) ou função de módulo. Em `services/` quem acusa é o `SVC002`, como erro |
+| `LAY002` | as quatro camadas | módulo direto na raiz da camada: `models/route.py` vai para `models/<contexto>/route.py`. Qualquer nome de contexto vale; `__init__.py` fica de fora |
+| `REPO002` | `repositories/` | import de um nome `*Repository` de outro módulo de repository (import absoluto com segmento `repositories`, ou relativo). Nome usado só como base de classe — o repository base do projeto — passa |
+
+Um `models/route.py` com dois models e um repository que importa outro
+saem assim (saída real, exit code `0`, porque são só avisos):
+
+```text
+src/db/models/route.py:1: LAY002 (warning) models/route.py sits at the root of the layer; move it to models/<context>/route.py (a subpackage per domain context, re-exported by models/__init__.py).
+src/db/models/route.py:5: LAY001 (warning) `StopModel` shares this module with `RouteModel`; one class per module in models/ — move it to its own file in the same context package.
+src/db/repositories/orders/order.py:1: REPO002 (warning) imports `CustomerRepository` from another repository; a repository reads its own tables (join in the query) and a service combines two repositories.
+3 layer finding(s): 0 error(s), 3 warning(s).
+```
+
+!!! note "O `tempest new` ainda gera módulo na raiz da camada"
+    O scaffold atual escreve `controllers/service_info.py` e
+    `db/models/user.py` direto na camada, e cada um sai como `LAY002`. O
+    scaffold passa a gerar pacotes de contexto na próxima parte da #616.
+
 #### Aviso, erro e exceção declarada
 
 Toda regra tem uma severidade. **Erro** derruba o passo (exit code `1`);

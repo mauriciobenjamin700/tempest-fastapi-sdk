@@ -38,7 +38,7 @@ class NewsService:
 def page_envelope() -> None:
     pass
 """
-"""``SVC001`` on line 1 and ``SVC002`` on line 5 of ``src/services/news.py``."""
+"""``SVC001`` on line 1 and ``SVC002`` on line 5 of ``src/services/news/news.py``."""
 
 
 def _write(root: Path, relative: str, source: str) -> Path:
@@ -98,7 +98,7 @@ def project(tmp_path: Path) -> Path:
     Returns:
         Path: The project root.
     """
-    _write(tmp_path, "src/services/news.py", SERVICE)
+    _write(tmp_path, "src/services/news/news.py", SERVICE)
     return tmp_path
 
 
@@ -124,18 +124,18 @@ class TestDeclaredExceptions:
     def test_a_path_entry_excuses_every_finding_of_that_code(
         self, project: Path
     ) -> None:
-        _exceptions(project, '"SVC001 src/services/news.py": "static catalogue",')
+        _exceptions(project, '"SVC001 src/services/news/news.py": "static catalogue",')
         assert _codes(lint_layers(project)) == [("news.py", 5, "SVC002")]
 
     def test_a_subject_narrows_the_entry(self, project: Path) -> None:
         _exceptions(
             project,
-            '"SVC002 src/services/news.py::page_envelope": "kept for the export",',
+            '"SVC002 src/services/news/news.py::page_envelope": "kept for the export",',
         )
         assert _codes(lint_layers(project)) == [("news.py", 1, "SVC001")]
 
     def test_a_wrong_subject_excuses_nothing_and_is_stale(self, project: Path) -> None:
-        _exceptions(project, '"SVC002 src/services/news.py::other": "typo",')
+        _exceptions(project, '"SVC002 src/services/news/news.py::other": "typo",')
         assert _codes(lint_layers(project)) == [
             ("news.py", 1, "SVC001"),
             ("news.py", 5, "SVC002"),
@@ -143,17 +143,17 @@ class TestDeclaredExceptions:
         ]
 
     def test_a_source_root_target_reads_the_parent_tests(self, project: Path) -> None:
-        _exceptions(project, '"SVC001 src/services/news.py": "static catalogue",')
+        _exceptions(project, '"SVC001 src/services/news/news.py": "static catalogue",')
         assert find_exceptions_file(project / "src") == project / EXCEPTIONS_PATH
         assert _codes(lint_layers(project / "src")) == [("news.py", 5, "SVC002")]
 
     @pytest.mark.parametrize(
         ("entry", "fragment"),
         [
-            ('"SVC001 src/services/news.py": "",', "needs a reason"),
-            ('"SVC001 src/services/news.py": REASON,', "needs a reason"),
-            ('"SVC999 src/services/news.py": "why",', "unknown rule code `SVC999`"),
-            ('"EXC002 src/services/news.py": "why",', "unknown rule code `EXC002`"),
+            ('"SVC001 src/services/news/news.py": "",', "needs a reason"),
+            ('"SVC001 src/services/news/news.py": REASON,', "needs a reason"),
+            ('"SVC999 src/services/news/news.py": "why",', "code `SVC999`"),
+            ('"EXC002 src/services/news/news.py": "why",', "code `EXC002`"),
             ('"SVC001": "why",', "is not `<CODE> <path>`"),
             ("**OTHER,", "string literal"),
         ],
@@ -173,8 +173,8 @@ class TestDeclaredExceptions:
         path = _exceptions(
             project,
             """
-            "SVC001 src/services/news.py": "first",
-            "SVC001 src/services/news.py": "second",
+            "SVC001 src/services/news/news.py": "first",
+            "SVC001 src/services/news/news.py": "second",
             """,
         )
         entries, problems = read_exceptions(path)
@@ -226,7 +226,7 @@ class TestRuleSelection:
     def test_an_unusable_entry_shows_whatever_the_selection(
         self, project: Path
     ) -> None:
-        _exceptions(project, '"SVC001 src/services/news.py": "",')
+        _exceptions(project, '"SVC001 src/services/news/news.py": "",')
         assert ("architecture_exceptions.py", 2, "EXC001") in _codes(
             lint_layers(project, rules={"SVC002"})
         )
@@ -239,8 +239,8 @@ class TestRunner:
         _exceptions(
             project,
             """
-            "SVC001 src/services/news.py": "static catalogue",
-            "SVC002 src/services/news.py": "export helper",
+            "SVC001 src/services/news/news.py": "static catalogue",
+            "SVC002 src/services/news/news.py": "export helper",
             "REPO001 src/db/repositories/gone.py": "removed",
             """,
         )
@@ -257,8 +257,8 @@ class TestRunner:
         _exceptions(
             project,
             """
-            "SVC001 src/services/news.py": "static catalogue",
-            "SVC002 src/services/news.py": "export helper",
+            "SVC001 src/services/news/news.py": "static catalogue",
+            "SVC002 src/services/news/news.py": "export helper",
             "REPO001 src/db/repositories/gone.py": "removed",
             """,
         )
@@ -266,7 +266,7 @@ class TestRunner:
 
     def test_strict_comes_from_the_pyproject(self, project: Path) -> None:
         _exceptions(project, '"REPO001 src/db/repositories/gone.py": "removed",')
-        _write(project, "src/services/news.py", "")
+        _write(project, "src/services/news/news.py", "")
         assert run_lint_layers(str(project), stream=io.StringIO()) == 0
         _write(project, "pyproject.toml", "[tool.tempest]\nlayers_strict = true\n")
         assert run_lint_layers(str(project), stream=io.StringIO()) == 1
@@ -291,7 +291,7 @@ class TestRunner:
         assert "SVC002" in only.stdout
         assert "SVC001" not in only.stdout
         _exceptions(project, '"REPO001 src/db/repositories/gone.py": "removed",')
-        _write(project, "src/services/news.py", "")
+        _write(project, "src/services/news/news.py", "")
         lenient = runner.invoke(cli_app, ["lint-layers"])
         strict = runner.invoke(cli_app, ["lint-layers", "--strict"])
         assert (lenient.exit_code, strict.exit_code) == (0, 1)

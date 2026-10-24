@@ -56,6 +56,22 @@ The rules:
   directory of the project and not imported from a ``schemas`` module.
   There is no opt-out: the fix — return the response schema the
   repository maps to — has one shape.
+* ``LAY001`` (warning) — a module of a layer directory
+  (:data:`LAYER_DIRS`: ``controllers/``, ``services/``,
+  ``repositories/``, ``models/``) that defines a second class, of any
+  name, or a module-level function. ``services/`` is left to ``SVC002``,
+  which already reports the same thing there as an error.
+* ``LAY002`` (warning) — a module directly under a layer directory
+  instead of under a context subpackage: ``services/order.py`` belongs in
+  ``services/<context>/order.py``. Any context name is accepted;
+  ``__init__.py`` is exempt.
+* ``REPO002`` (warning) — a module in ``repositories/`` imports a
+  ``*Repository`` name from another repository module (an absolute import
+  whose path has a ``repositories`` segment, or a relative import). A
+  repository that needs another table's rows joins in its own query; the
+  orchestration between two repositories belongs to a service. A name the
+  module only uses as a base class (a project base repository) is left
+  alone.
 
 What the router rules cannot see, because they read syntax and never
 import the project: a route with no return annotation and no
@@ -215,6 +231,15 @@ Also the module path segment that marks an import as a model
 SCHEMAS_SEGMENT: str = "schemas"
 """Module path segment that marks an import as a schema, never a model."""
 
+LAYER_DIRS: tuple[str, ...] = ("controllers", "services", "repositories", "models")
+"""Layer directories whose modules hold one class under a context package.
+
+Read by ``LAY001`` and ``LAY002``.
+"""
+
+REPOSITORY_SUFFIX: str = "Repository"
+"""Name suffix ``REPO002`` treats as a repository class."""
+
 STR_ENUM_BASE: str = "BaseStrEnum"
 """The SDK base class whose subclasses ``ENUM001`` reads."""
 
@@ -252,6 +277,9 @@ RULES: dict[str, LayerRule] = {
         LayerRule("ENUM001", "error", "BaseStrEnum subclass not named *Enum"),
         LayerRule("RTR001", "error", "controller or service built inside routers/"),
         LayerRule("RTR002", "error", "route that returns an ORM model"),
+        LayerRule("LAY001", "warning", "second class or a function in a layer module"),
+        LayerRule("LAY002", "warning", "layer module outside a context package"),
+        LayerRule("REPO002", "warning", "repository importing another repository"),
         LayerRule("EXC001", "error", "declared exception the checker cannot use"),
         LayerRule("EXC002", "warning", "declared exception that matches no finding"),
     )
@@ -1195,6 +1223,145 @@ def _check_router_returns(
     return findings
 
 
+def _check_layer_shape(
+    layers: dict[str, list[Path]],
+) -> list[LayerFinding]:
+    """Apply ``LAY001`` and ``LAY002`` to the layer directories.
+
+    Args:
+        layers (dict[str, list[Path]]): Each :data:`LAYER_DIRS` name to
+            the directories of that name found under the scan roots.
+
+    Returns:
+        list[LayerFinding]: The violations, in file and line order.
+    """
+    findings: list[LayerFinding] = []
+    for name, directories in layers.items():
+        for directory in directories:
+            for path in _python_files([directory]):
+                if path.name == "__init__.py":
+                    continue
+                if path.parent == directory:
+                    findings.append(
+                        LayerFinding(
+                            path=path,
+                            line=1,
+                            code="LAY002",
+                            message=(
+                                f"{name}/{path.name} sits at the root of the "
+                                f"layer; move it to {name}/<context>/{path.name} "
+                                f"(a subpackage per domain context, re-exported "
+                                f"by {name}/__init__.py)."
+                            ),
+                        )
+                    )
+                if name == SERVICES_DIR:
+                    continue
+                parsed = _parse(path)
+                if parsed is not None:
+                    findings.extend(_extra_members(parsed, name))
+    return findings
+
+
+def _extra_members(parsed: _ParsedModule, layer: str) -> Iterator[LayerFinding]:
+    """Yield ``LAY001`` for each class after the first and each function.
+
+    Args:
+        parsed (_ParsedModule): A module of a layer directory.
+        layer (str): The layer directory name, for the message.
+
+    Yields:
+        LayerFinding: One finding per extra member.
+    """
+    classes = [node for node in parsed.tree.body if isinstance(node, ast.ClassDef)]
+    for extra in classes[1:]:
+        yield LayerFinding(
+            path=parsed.path,
+            line=extra.lineno,
+            code="LAY001",
+            subject=extra.name,
+            message=(
+                f"`{extra.name}` shares this module with `{classes[0].name}`; "
+                f"one class per module in {layer}/ — move it to its own file "
+                f"in the same context package."
+            ),
+        )
+    for statement in parsed.tree.body:
+        if not isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        if statement.name.startswith("__") and statement.name.endswith("__"):
+            continue
+        yield LayerFinding(
+            path=parsed.path,
+            line=statement.lineno,
+            code="LAY001",
+            subject=statement.name,
+            message=(
+                f"module-level function `{statement.name}` in {layer}/; make it "
+                f"a method of the class that uses it, or move it to utils/."
+            ),
+        )
+
+
+def _base_names(module: ast.Module) -> set[str]:
+    """Collect every name used as a class base anywhere in a module.
+
+    Args:
+        module (ast.Module): The parsed module.
+
+    Returns:
+        set[str]: The bare base names.
+    """
+    return {
+        name
+        for node in ast.walk(module)
+        if isinstance(node, ast.ClassDef)
+        for expression in node.bases
+        if (name := _base_name(expression)) is not None
+    }
+
+
+def _check_repository_imports(modules: list[_ParsedModule]) -> list[LayerFinding]:
+    """Apply ``REPO002`` to the ``repositories/`` modules.
+
+    Args:
+        modules (list[_ParsedModule]): Every module in ``repositories/``.
+
+    Returns:
+        list[LayerFinding]: The violations, in file and line order.
+    """
+    findings: list[LayerFinding] = []
+    for parsed in modules:
+        if parsed.path.name == "__init__.py":
+            continue
+        bases = _base_names(parsed.tree)
+        for node in ast.walk(parsed.tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.level == 0 and not _module_has_segment(
+                node.module, REPOSITORIES_DIR
+            ):
+                continue
+            for alias in node.names:
+                local = alias.asname or alias.name
+                if not alias.name.endswith(REPOSITORY_SUFFIX) or local in bases:
+                    continue
+                findings.append(
+                    LayerFinding(
+                        path=parsed.path,
+                        line=node.lineno,
+                        code="REPO002",
+                        subject=alias.name,
+                        message=(
+                            f"imports `{alias.name}` from another repository; a "
+                            f"repository reads its own tables (join in the "
+                            f"query) and a service combines two repositories."
+                        ),
+                    )
+                )
+    return findings
+
+
 def find_exceptions_file(target: Path) -> Path | None:
     """Locate the project's :data:`EXCEPTIONS_PATH` for a check target.
 
@@ -1446,7 +1613,10 @@ def lint_layers(
     repositories: list[Path] = []
     routers: list[Path] = []
     models: list[Path] = []
+    layers: dict[str, list[Path]] = {name: [] for name in LAYER_DIRS}
     for root in roots:
+        for name in LAYER_DIRS:
+            layers[name].extend(_layer_dirs(root, name))
         services.extend(_layer_dirs(root, SERVICES_DIR))
         repositories.extend(_layer_dirs(root, REPOSITORIES_DIR))
         routers.extend(_layer_dirs(root, ROUTERS_DIR))
@@ -1481,6 +1651,8 @@ def lint_layers(
             *_check_enums(source_modules),
             *_check_router_constructions(router_modules),
             *_check_router_returns(router_modules, project_models),
+            *_check_layer_shape(layers),
+            *_check_repository_imports(repository_modules),
         )
         if finding.code in selected
     ]
@@ -1583,9 +1755,11 @@ __all__: list[str] = [
     "ENUM_NAME_SUFFIX",
     "EXCEPTIONS_NAME",
     "EXCEPTIONS_PATH",
+    "LAYER_DIRS",
     "MODELS_DIR",
     "NO_BASE_SERVICE_MARKER",
     "REPOSITORIES_DIR",
+    "REPOSITORY_SUFFIX",
     "ROUTERS_DIR",
     "ROUTER_BUILDS_MARKER",
     "ROUTE_DECORATORS",

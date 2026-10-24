@@ -875,6 +875,11 @@ def lint_layers_cmd(
     with ``# tempest: router-builds`` on the line). RTR002: a route whose
     return annotation or ``response_model`` names an ORM model.
 
+    Warnings (#616): LAY001, a second class or a module-level function in
+    a controllers/, repositories/ or models/ module; LAY002, a module at
+    the root of a layer instead of in a context package; REPO002, a
+    repository importing another repository.
+
     A warning prints ``(warning)`` after its code and fails only a strict
     run. An exception kept on purpose is an entry of the
     ``ARCHITECTURE_EXCEPTIONS`` dict in ``tests/architecture_exceptions.py``
