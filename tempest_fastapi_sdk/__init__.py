@@ -1713,6 +1713,12 @@ if TYPE_CHECKING:
         AsyncMinIOClient as AsyncMinIOClient,
     )
     from tempest_fastapi_sdk.storage import (
+        LocalObjectNotFoundError as LocalObjectNotFoundError,
+    )
+    from tempest_fastapi_sdk.storage import (
+        LocalObjectStorageClient as LocalObjectStorageClient,
+    )
+    from tempest_fastapi_sdk.storage import (
         ObjectDeleteError as ObjectDeleteError,
     )
     from tempest_fastapi_sdk.storage import (
@@ -1720,6 +1726,9 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.storage import (
         PutObjectItem as PutObjectItem,
+    )
+    from tempest_fastapi_sdk.storage import (
+        make_local_storage_router as make_local_storage_router,
     )
     from tempest_fastapi_sdk.utils import (
         ACCESS_TOKEN_TYPE as ACCESS_TOKEN_TYPE,
@@ -2786,6 +2795,9 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "ObjectDeleteError": "tempest_fastapi_sdk.storage",
     "ObjectStat": "tempest_fastapi_sdk.storage",
     "PutObjectItem": "tempest_fastapi_sdk.storage",
+    "LocalObjectNotFoundError": "tempest_fastapi_sdk.storage",
+    "LocalObjectStorageClient": "tempest_fastapi_sdk.storage",
+    "make_local_storage_router": "tempest_fastapi_sdk.storage",
     "ACCESS_TOKEN_TYPE": "tempest_fastapi_sdk.utils",
     "AMR_CLAIM": "tempest_fastapi_sdk.utils",
     "AMR_EMAIL_LINK": "tempest_fastapi_sdk.utils",
@@ -3308,6 +3320,8 @@ __all__: list[str] = [
     "LatitudeField",
     "Lens",
     "Liveness",
+    "LocalObjectNotFoundError",
+    "LocalObjectStorageClient",
     "LocalUploadStorage",
     "Locale",
     "LocaleColumnMixin",
@@ -3663,6 +3677,7 @@ __all__: list[str] = [
     "make_health_router",
     "make_http_exception_handler",
     "make_jwt_user_dependency",
+    "make_local_storage_router",
     "make_logs_router",
     "make_mfa_required_dependency",
     "make_permission_checker",

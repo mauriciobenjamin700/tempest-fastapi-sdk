@@ -777,92 +777,19 @@ class AsyncMinIOClient:
         Raises:
             S3Error: When the object is missing or the request fails.
         """
-        from starlette.responses import StreamingResponse
+        from tempest_fastapi_sdk.storage._download import object_download_response
 
-        from tempest_fastapi_sdk.utils._http_cache import (
-            ByteRange,
-            RangeNotSatisfiableError,
-            format_http_date,
-            if_range_allows,
-            is_not_modified,
-            resolve_byte_range,
-        )
-        from tempest_fastapi_sdk.utils.download import (
-            _with_security_headers,
-            build_content_disposition,
-        )
-        from tempest_fastapi_sdk.utils.media_types import guess_media_type
-
-        stat = await self.stat_object(key, bucket=bucket)
-        download_name = filename or key.rsplit("/", 1)[-1]
-        resolved_media_type = (
-            media_type
-            or stat.content_type
-            or guess_media_type(download_name)
-            or "application/octet-stream"
-        )
-        etag = f'"{stat.etag}"' if stat.etag else None
-        response_headers: dict[str, str] = _with_security_headers(headers)
-        response_headers["accept-ranges"] = "bytes"
-        if etag is not None:
-            response_headers["etag"] = etag
-        if stat.last_modified is not None:
-            response_headers["last-modified"] = format_http_date(stat.last_modified)
-        if cache_control is not None:
-            response_headers["cache-control"] = cache_control
-
-        byte_range: ByteRange | None = None
-        if request is not None:
-            if is_not_modified(
-                if_none_match=request.headers.get("if-none-match"),
-                if_modified_since=request.headers.get("if-modified-since"),
-                etag=etag,
-                last_modified=stat.last_modified,
-            ):
-                return StreamingResponse(
-                    content=iter(()), status_code=304, headers=response_headers
-                )
-            if if_range_allows(
-                request.headers.get("if-range"),
-                etag=etag,
-                last_modified=stat.last_modified,
-            ):
-                try:
-                    byte_range = resolve_byte_range(
-                        request.headers.get("range"), stat.size
-                    )
-                except RangeNotSatisfiableError as exc:
-                    response_headers["content-range"] = exc.content_range()
-                    return StreamingResponse(
-                        content=iter(()), status_code=416, headers=response_headers
-                    )
-
-        response_headers["content-disposition"] = build_content_disposition(
-            download_name, as_attachment=as_attachment, media_type=resolved_media_type
-        )
-        if byte_range is not None:
-            response_headers["content-range"] = byte_range.content_range()
-            response_headers["content-length"] = str(byte_range.length)
-            partial = await self.stream_object(
-                key,
-                bucket=bucket,
-                chunk_size=chunk_size,
-                offset=byte_range.start,
-                length=byte_range.length,
-            )
-            return StreamingResponse(
-                content=partial,
-                status_code=206,
-                media_type=resolved_media_type,
-                headers=response_headers,
-            )
-        if stat.size:
-            response_headers["content-length"] = str(stat.size)
-        body = await self.stream_object(key, bucket=bucket, chunk_size=chunk_size)
-        return StreamingResponse(
-            content=body,
-            media_type=resolved_media_type,
-            headers=response_headers,
+        return await object_download_response(
+            self,
+            key,
+            request=request,
+            bucket=bucket,
+            filename=filename,
+            media_type=media_type,
+            as_attachment=as_attachment,
+            chunk_size=chunk_size,
+            cache_control=cache_control,
+            headers=headers,
         )
 
     async def accel_redirect_response(

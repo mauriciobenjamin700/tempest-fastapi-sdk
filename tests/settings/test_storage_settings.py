@@ -7,10 +7,19 @@ import warnings
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 from pydantic_settings import SettingsError
 
-from tempest_fastapi_sdk import BaseAppSettings, MinIOSettings, StorageSettings
+from tempest_fastapi_sdk import (
+    AsyncMinIOClient,
+    BaseAppSettings,
+    EnvironmentSettings,
+    LocalObjectStorageClient,
+    MinIOSettings,
+    StorageSettings,
+)
 from tempest_fastapi_sdk.settings import reject_conflicting_env_aliases
+from tempest_fastapi_sdk.settings.mixins import DEV_LOCAL_STORAGE_SIGNING_SECRET
 
 RENAMES: dict[str, tuple[str, object]] = {
     "ENDPOINT": ("s3.amazonaws.com", "s3.amazonaws.com"),
@@ -207,3 +216,80 @@ class TestDeprecatedClass:
 
     def test_minio_settings_is_a_storage_settings(self) -> None:
         assert issubclass(MinIOSettings, StorageSettings)
+
+
+class TestLocalBackend:
+    def test_s3_is_the_default_backend(self) -> None:
+        settings = StorageSettings()
+        assert settings.STORAGE_BACKEND == "s3"
+        assert isinstance(settings.build_storage_client(), AsyncMinIOClient)
+
+    def test_local_backend_builds_the_local_client(
+        self, monkeypatch: pytest.MonkeyPatch, isolated_env: Path
+    ) -> None:
+        monkeypatch.setenv("STORAGE_BACKEND", "local")
+        monkeypatch.setenv("STORAGE_LOCAL_DIR", str(isolated_env / "store"))
+        monkeypatch.setenv("STORAGE_LOCAL_PUBLIC_URL", "https://api.example.com")
+        monkeypatch.setenv("STORAGE_LOCAL_ROUTE_PREFIX", "/api/storage")
+        monkeypatch.setenv("STORAGE_LOCAL_MAX_UPLOAD_BYTES", "1024")
+        monkeypatch.setenv("STORAGE_DEFAULT_BUCKET", "media")
+        client = StorageSettings().build_storage_client()
+        assert isinstance(client, LocalObjectStorageClient)
+        assert client.base_dir == (isolated_env / "store").resolve()
+        assert (client.public_url, client.route_prefix) == (
+            "https://api.example.com",
+            "/api/storage",
+        )
+        assert (client.default_bucket, client.max_upload_bytes) == ("media", 1024)
+
+    def test_disabled_flag_reaches_the_local_client(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("STORAGE_BACKEND", "local")
+        monkeypatch.setenv("STORAGE_ENABLED", "false")
+        assert StorageSettings().local_storage_kwargs()["enabled"] is False
+        assert (
+            "enabled"
+            not in StorageSettings(STORAGE_ENABLED=True).local_storage_kwargs()
+        )
+
+    def test_unknown_backend_is_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("STORAGE_BACKEND", "ftp")
+        with pytest.raises(ValidationError):
+            StorageSettings()
+
+    def test_local_production_checks_replace_the_s3_ones(self) -> None:
+        settings = StorageSettings(STORAGE_BACKEND="local")
+        assert settings.production_violations() == [
+            "STORAGE_LOCAL_SIGNING_SECRET: empty or still the development placeholder",
+            "STORAGE_LOCAL_PUBLIC_URL: local links over plain HTTP",
+            "STORAGE_LOCAL_DIR: relative path (use an absolute one)",
+        ]
+
+    def test_configured_local_backend_passes(self) -> None:
+        settings = StorageSettings(
+            STORAGE_BACKEND="local",
+            STORAGE_LOCAL_SIGNING_SECRET="a-long-random-production-secret",
+            STORAGE_LOCAL_PUBLIC_URL="https://api.example.com",
+            STORAGE_LOCAL_DIR="/var/lib/app/storage",
+        )
+        assert settings.production_violations() == []
+
+    def test_disabled_storage_skips_the_local_checks(self) -> None:
+        settings = StorageSettings(STORAGE_BACKEND="local", STORAGE_ENABLED=False)
+        assert settings.production_violations() == []
+
+    def test_production_refuses_the_local_placeholder(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        class Composed(EnvironmentSettings, StorageSettings):
+            """Environment guard plus storage, as a service composes them."""
+
+        monkeypatch.setenv("ENV", "production")
+        monkeypatch.setenv("STORAGE_BACKEND", "local")
+        monkeypatch.setenv("STORAGE_LOCAL_PUBLIC_URL", "https://api.example.com")
+        monkeypatch.setenv("STORAGE_LOCAL_DIR", "/var/lib/app/storage")
+        with pytest.raises(ValidationError) as caught:
+            Composed()
+        assert "STORAGE_LOCAL_SIGNING_SECRET" in str(caught.value)
+        assert DEV_LOCAL_STORAGE_SIGNING_SECRET not in str(caught.value)

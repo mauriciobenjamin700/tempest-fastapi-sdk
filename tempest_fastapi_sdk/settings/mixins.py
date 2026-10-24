@@ -37,7 +37,7 @@ import ipaddress
 import warnings
 from collections.abc import Mapping
 from datetime import timedelta
-from typing import Any, ClassVar, Literal, Self, TypedDict
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, TypedDict
 from urllib.parse import urlsplit
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
@@ -48,6 +48,25 @@ from tempest_fastapi_sdk.core.logging import (
     validate_rotate_when,
 )
 from tempest_fastapi_sdk.settings.base import BaseAppSettings
+
+if TYPE_CHECKING:
+    from tempest_fastapi_sdk.storage import (
+        AsyncMinIOClient,
+        LocalObjectStorageClient,
+    )
+
+DEFAULT_LOCAL_STORAGE_ROUTE_PREFIX: str = "/storage"
+"""Path the signed local-storage routes live under by default."""
+
+DEFAULT_LOCAL_MAX_UPLOAD_BYTES: int = 25 * 1024 * 1024
+"""Largest body the signed local-storage ``PUT`` accepts by default (25 MiB)."""
+
+DEV_LOCAL_STORAGE_SIGNING_SECRET: str = "tempest-local-storage-dev-only"
+"""Development placeholder of ``STORAGE_LOCAL_SIGNING_SECRET``.
+
+Public on purpose: the production guard refuses it, so a deployment that
+forgot to set the secret fails to boot instead of signing forgeable links.
+"""
 
 _MINIO_SUBCLASS_STACKLEVEL: int = 5
 """``stacklevel`` pointing :class:`MinIOSettings`' subclass warning at
@@ -3057,6 +3076,25 @@ class StorageSettings(BaseAppSettings):
             :meth:`storage_kwargs` build an ``AsyncMinIOClient`` whose
             every operation raises ``IntegrationDisabledException``
             (``503``). Default: ``True``.
+        STORAGE_BACKEND (Literal["s3", "local"]): Where objects live.
+            ``"s3"`` (default) is an S3-compatible store through
+            :class:`AsyncMinIOClient`; ``"local"`` is a directory of the
+            server through :class:`LocalObjectStorageClient`, with links
+            signed to the app's own routes. :meth:`build_storage_client`
+            picks the client from it.
+        STORAGE_LOCAL_DIR (str): Root directory of the local store.
+            Default: ``"var/storage"`` (relative to the working directory;
+            production requires an absolute path).
+        STORAGE_LOCAL_PUBLIC_URL (str): Scheme and host the browser reaches
+            the app at; local links start with it. Default:
+            ``"http://127.0.0.1:8000"``.
+        STORAGE_LOCAL_ROUTE_PREFIX (str): Path the signed local routes are
+            mounted at, as the app sees it. Default: ``"/storage"``.
+        STORAGE_LOCAL_SIGNING_SECRET (str): Secret the local links are
+            signed with. Default: a development placeholder, refused in
+            production.
+        STORAGE_LOCAL_MAX_UPLOAD_BYTES (int): Largest body the signed local
+            ``PUT`` accepts. Default: 25 MiB.
     """
 
     DEPRECATED_ENV_ALIASES: ClassVar[Mapping[str, str]] = {
@@ -3192,6 +3230,114 @@ class StorageSettings(BaseAppSettings):
         ),
         examples=["/_bucket/", "/_media/"],
     )
+    STORAGE_BACKEND: Literal["s3", "local"] = Field(
+        default="s3",
+        title="Storage backend",
+        description=(
+            "``s3`` (default) stores objects in an S3-compatible service; "
+            "``local`` stores them in ``STORAGE_LOCAL_DIR`` on this server "
+            "and signs links to the app's own routes. Use ``local`` only for "
+            "a single host: another machine never sees the files."
+        ),
+        examples=["s3", "local"],
+    )
+    STORAGE_LOCAL_DIR: str = Field(
+        default="var/storage",
+        title="Local storage directory",
+        description=(
+            "Root directory of the local store. Mount it on a persistent "
+            "volume shared by every process that reads or writes objects "
+            "(the API and the worker), and back it up."
+        ),
+        examples=["var/storage", "/var/lib/app/storage"],
+    )
+    STORAGE_LOCAL_PUBLIC_URL: str = Field(
+        default="http://127.0.0.1:8000",
+        title="Public URL of the app, for local links",
+        description=(
+            "Scheme and host the browser reaches the app at. Local download "
+            "and upload links start with it; production requires https."
+        ),
+        examples=["http://127.0.0.1:8000", "https://api.example.com"],
+    )
+    STORAGE_LOCAL_ROUTE_PREFIX: str = Field(
+        default=DEFAULT_LOCAL_STORAGE_ROUTE_PREFIX,
+        title="Route prefix of the local links",
+        description=(
+            "Path the signed local routes are mounted at, as the app sees it "
+            "in ``request.scope['path']`` — include a parent prefix such as "
+            "``/api``. Must start with ``/``."
+        ),
+        examples=["/storage", "/api/storage"],
+    )
+    STORAGE_LOCAL_SIGNING_SECRET: str = Field(
+        default=DEV_LOCAL_STORAGE_SIGNING_SECRET,
+        title="Signing secret of the local links",
+        description=(
+            "Secret the local download and upload links are signed with. The "
+            "default is a public development placeholder, refused in "
+            "production; reusing ``JWT_SECRET`` is safe (the signature is "
+            "domain-separated)."
+        ),
+        examples=["change-me-to-a-long-random-string"],
+    )
+    STORAGE_LOCAL_MAX_UPLOAD_BYTES: int = Field(
+        default=DEFAULT_LOCAL_MAX_UPLOAD_BYTES,
+        ge=1,
+        title="Largest local upload, in bytes",
+        description=(
+            "Largest body the signed local ``PUT`` accepts; a bigger one is "
+            "cut while it streams and answered ``413``."
+        ),
+        examples=[DEFAULT_LOCAL_MAX_UPLOAD_BYTES, 5 * 1024 * 1024],
+    )
+
+    def local_storage_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto :class:`LocalObjectStorageClient` kwargs.
+
+        With ``STORAGE_ENABLED`` off the dictionary carries
+        ``enabled=False``, as :meth:`storage_kwargs` does for S3.
+
+        Returns:
+            dict[str, Any]: Keyword arguments ready to splat into
+            ``LocalObjectStorageClient(**settings.local_storage_kwargs())``.
+        """
+        kwargs: dict[str, Any] = {
+            "base_dir": self.STORAGE_LOCAL_DIR,
+            "public_url": self.STORAGE_LOCAL_PUBLIC_URL,
+            "signing_secret": self.STORAGE_LOCAL_SIGNING_SECRET,
+            "default_bucket": self.STORAGE_DEFAULT_BUCKET,
+            "route_prefix": self.STORAGE_LOCAL_ROUTE_PREFIX,
+            "max_upload_bytes": self.STORAGE_LOCAL_MAX_UPLOAD_BYTES,
+        }
+        if not self.STORAGE_ENABLED:
+            kwargs["enabled"] = False
+        return kwargs
+
+    def build_storage_client(self) -> AsyncMinIOClient | LocalObjectStorageClient:
+        """Build the object-storage client ``STORAGE_BACKEND`` names.
+
+        Both clients satisfy
+        :class:`~tempest_fastapi_sdk.privacy.SubjectStorageClient`, so the
+        rest of the service does not care which one it got. With ``local``,
+        mount :func:`~tempest_fastapi_sdk.storage.make_local_storage_router`
+        so the links it signs have a route to land on.
+
+        Returns:
+            AsyncMinIOClient | LocalObjectStorageClient: The client, built
+            from :meth:`storage_kwargs` or :meth:`local_storage_kwargs`.
+
+        Raises:
+            ImportError: For ``s3`` without the ``[minio]`` extra.
+        """
+        from tempest_fastapi_sdk.storage import (
+            AsyncMinIOClient,
+            LocalObjectStorageClient,
+        )
+
+        if self.STORAGE_BACKEND == "local":
+            return LocalObjectStorageClient(**self.local_storage_kwargs())
+        return AsyncMinIOClient(**self.storage_kwargs())
 
     def storage_kwargs(self) -> dict[str, Any]:
         """Map these settings onto :class:`AsyncMinIOClient` kwargs.
@@ -3244,13 +3390,18 @@ class StorageSettings(BaseAppSettings):
         is only refused when explicitly ``False``: ``None`` inherits
         ``STORAGE_SECURE``, which is checked on its own.
 
-        Skipped entirely when ``STORAGE_ENABLED`` is off.
+        Skipped entirely when ``STORAGE_ENABLED`` is off. With
+        ``STORAGE_BACKEND=local`` the S3 fields are not checked — nothing
+        reads them — and :meth:`local_storage_violations` runs instead.
 
         Returns:
             list[str]: The parent's entries plus one per offending field.
         """
         violations: list[str] = super().production_violations()
         if not self.STORAGE_ENABLED:
+            return violations
+        if self.STORAGE_BACKEND == "local":
+            violations.extend(self.local_storage_violations())
             return violations
         fields = StorageSettings.model_fields
         if fields["STORAGE_ACCESS_KEY"].default == self.STORAGE_ACCESS_KEY:
@@ -3265,6 +3416,31 @@ class StorageSettings(BaseAppSettings):
             )
         if self.STORAGE_PUBLIC_SECURE is False:
             violations.append("STORAGE_PUBLIC_SECURE: presigned URLs over plain HTTP")
+        return violations
+
+    def local_storage_violations(self) -> list[str]:
+        """List what the local backend cannot ship to production with.
+
+        * ``STORAGE_LOCAL_SIGNING_SECRET`` still the development placeholder
+          (anyone could forge a link) or empty;
+        * ``STORAGE_LOCAL_PUBLIC_URL`` not ``https`` (the signed link travels
+          in the clear);
+        * ``STORAGE_LOCAL_DIR`` relative (it would follow the working
+          directory, which differs between the API and the worker).
+
+        Returns:
+            list[str]: One entry per offending field; empty when none.
+        """
+        violations: list[str] = []
+        if self.STORAGE_LOCAL_SIGNING_SECRET in {"", DEV_LOCAL_STORAGE_SIGNING_SECRET}:
+            violations.append(
+                "STORAGE_LOCAL_SIGNING_SECRET: empty or still the development "
+                "placeholder"
+            )
+        if urlsplit(self.STORAGE_LOCAL_PUBLIC_URL).scheme != "https":
+            violations.append("STORAGE_LOCAL_PUBLIC_URL: local links over plain HTTP")
+        if not self.STORAGE_LOCAL_DIR.startswith("/"):
+            violations.append("STORAGE_LOCAL_DIR: relative path (use an absolute one)")
         return violations
 
     @staticmethod
