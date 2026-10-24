@@ -191,6 +191,7 @@ plugins:
               - SSR (typed pages): ssr.md
               - "SSR actions (confirmation, flash, redirect back)": recipes/ssr-actions.md
               - Storage (MinIO/S3): recipes/storage.md
+              - Storage on local disk: recipes/local-storage.md
               - Stripe (cards + subscriptions): recipes/stripe.md
               - System checks (check-config): recipes/system-checks.md
               - tempestweb frontend + SDK: recipes/tempestweb-frontend.md
@@ -503,6 +504,7 @@ nav:
       - "SPA React no FastAPI": recipes/react-spa.md
       - "SSR (páginas tipadas)": ssr.md
       - Storage (MinIO/S3): recipes/storage.md
+      - Storage em disco local: recipes/local-storage.md
       - "Stripe (cartão + assinatura)": recipes/stripe.md
       - Sync offline-first (delta): recipes/offline-sync.md
       - "System checks (check-config)": recipes/system-checks.md

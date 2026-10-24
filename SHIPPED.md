@@ -3749,3 +3749,21 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `utils` em PEP 562 (`_LAZY_ATTRIBUTES` + `__getattr__` escondido do checker
   + imports em `TYPE_CHECKING`); `tempest --help` 0,94 s → 0,14 s. Guard:
   `tests/test_lazy_init_guard.py`.
+- **Storage em disco local, Unreleased** — `LocalObjectStorageClient`
+  (`storage/local_client.py`, sem extra) implementa o `SubjectStorageClient`
+  inteiro sobre um diretório: `objects/<bucket>/<key>`, metadado (content type,
+  metadata, ETag MD5) em `meta/<bucket>/<key>.meta.json`, escrita em `tmp/` +
+  `os.replace`, chave e bucket validados e resolvidos dentro da base (symlink
+  para fora é recusado), `LocalObjectNotFoundError` (`FileNotFoundError`,
+  `code="NoSuchKey"`), `enabled=False` → `503`. Os links "presigned" apontam
+  para a própria API (`sign_path`, propósitos separados para `GET` e `PUT`) e
+  o `make_local_storage_router` os serve (`GET` pelo mesmo
+  `object_download_response` do `AsyncMinIOClient.download_response`, com
+  `Range`; `PUT` com teto em stream, `413` sem deixar arquivo).
+  `StorageSettings` ganha `STORAGE_BACKEND` (`s3`/`local`), os
+  `STORAGE_LOCAL_*`, `local_storage_kwargs()`, `build_storage_client()` e
+  `local_storage_violations()` (segredo de dev, URL sem https, diretório
+  relativo; as regras de S3 não rodam no backend local). Receita:
+  `docs/recipes/local-storage.md`. Testes:
+  `tests/storage/test_local_client.py`, `tests/storage/test_local_router.py`,
+  `tests/settings/test_storage_settings.py::TestLocalBackend`.

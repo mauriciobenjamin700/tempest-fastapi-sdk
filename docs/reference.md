@@ -1187,6 +1187,9 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.storage.minio_client.AsyncMinIOClient
 ::: tempest_fastapi_sdk.storage.minio_client.ObjectStat
 ::: tempest_fastapi_sdk.storage.minio_client.ObjectDeleteError
+::: tempest_fastapi_sdk.storage.local_client.LocalObjectStorageClient
+::: tempest_fastapi_sdk.storage.local_client.LocalObjectNotFoundError
+::: tempest_fastapi_sdk.storage.local_router.make_local_storage_router
 
 ### Alembic hooks
 

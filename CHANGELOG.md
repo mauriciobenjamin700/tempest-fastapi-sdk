@@ -16,6 +16,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a tarefa foi registrada (retry, `timeout`, `ack_type`); sem ele, a política
   de retry não se aplicava a uma chamada mandada pelo nome. Medido com Redis
   real e dois processos: 2 tentativas com o middleware, 1 sem.
+- `LocalObjectStorageClient` guarda objetos num diretório do servidor e
+  responde às mesmas chamadas que o `SubjectObjectStorage` faz no
+  `AsyncMinIOClient` (`put_object`, `stat_object`, `stream_object`,
+  `list_objects`, `remove_object`, `remove_objects`, `presigned_get_url`,
+  `presigned_put_url`), além de `write_stream` e `download_response`. Escrita
+  atômica (arquivo temporário + `os.replace`), content type, metadata e ETag
+  (MD5) num arquivo de metadado à parte, chave que sairia do diretório
+  recusada com `ValueError` e objeto ausente como `LocalObjectNotFoundError`
+  (`FileNotFoundError` com `code="NoSuchKey"`). Os links "presigned" apontam
+  para a própria API, assinados com `sign_path` e com propósitos distintos
+  para download e upload. Não pede extra.
+- `make_local_storage_router(client)` serve esses links: `GET` com o content
+  type gravado, `Range` e validadores (o mesmo código do
+  `AsyncMinIOClient.download_response`, agora em `object_download_response`);
+  `PUT` grava o corpo cru com o `Content-Type` da requisição e corta em
+  `max_upload_bytes` enquanto lê (`413 FILE_TOO_LARGE`, sem deixar arquivo).
+  Link adulterado, sem assinatura ou de outro propósito dá
+  `403 SIGNED_URL_INVALID`; expirado, `403 SIGNED_URL_EXPIRED`. As rotas ficam
+  fora do OpenAPI.
+- `StorageSettings` ganha `STORAGE_BACKEND` (`s3`, o padrão, ou `local`),
+  `STORAGE_LOCAL_DIR`, `STORAGE_LOCAL_PUBLIC_URL`, `STORAGE_LOCAL_ROUTE_PREFIX`,
+  `STORAGE_LOCAL_SIGNING_SECRET` e `STORAGE_LOCAL_MAX_UPLOAD_BYTES`, com
+  `local_storage_kwargs()` e `build_storage_client()`, que escolhe o cliente
+  pelo backend. Com `ENV=production` e `STORAGE_BACKEND=local`, o boot recusa
+  o segredo de desenvolvimento, `STORAGE_LOCAL_PUBLIC_URL` sem `https` e
+  `STORAGE_LOCAL_DIR` relativo, e deixa de cobrar as credenciais de S3.
+- Receita "Storage em disco local" (`docs/recipes/local-storage.md`).
+
+### Changed
+
+- `AsyncMinIOClient.download_response` delega para
+  `object_download_response`, compartilhado com o cliente local. A resposta
+  não muda.
 
 ## [0.327.0] — 2026-10-24
 
