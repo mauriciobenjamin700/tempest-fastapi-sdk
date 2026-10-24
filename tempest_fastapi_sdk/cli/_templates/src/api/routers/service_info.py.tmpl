@@ -1,0 +1,30 @@
+"""``GET /api/`` — the placeholder root endpoint, one router per module."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import get_service_info_controller
+from src.controllers import ServiceInfoController
+from src.schemas import ServiceInfoSchema
+
+router: APIRouter = APIRouter(tags=["root"])
+
+
+@router.get("/")
+async def index(
+    controller: ServiceInfoController = Depends(get_service_info_controller),
+) -> ServiceInfoSchema:
+    """Placeholder root endpoint returning the service name.
+
+    Args:
+        controller (ServiceInfoController): Built per request by
+            :func:`~src.api.dependencies.get_service_info_controller`.
+
+    Returns:
+        ServiceInfoSchema: The service title.
+    """
+    return await controller.describe()
+
+
+__all__: list[str] = ["router"]

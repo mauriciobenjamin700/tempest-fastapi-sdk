@@ -119,7 +119,7 @@ def test_router_receives_its_controller_from_a_factory(tmp_path: Path) -> None:
         "Depends(get_settings)",
     ]
 
-    router = (project / "src" / "api" / "routers" / "__init__.py").read_text(
+    router = (project / "src" / "api" / "routers" / "service_info.py").read_text(
         encoding="utf-8",
     )
     assert "Depends(get_service_info_controller)" in router

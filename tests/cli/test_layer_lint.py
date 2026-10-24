@@ -13,7 +13,6 @@ import inspect
 import io
 import re
 import textwrap
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +25,7 @@ from tempest_fastapi_sdk.cli.layer_lint import (
     ENUM_NAME_SUFFIX,
     NO_BASE_SERVICE_MARKER,
     ROUTER_BUILDS_MARKER,
+    RULES,
     LayerFinding,
     lint_layers,
     run_lint_layers,
@@ -38,7 +38,7 @@ from tempest_fastapi_sdk.db.repository import BaseRepository
 
 runner = CliRunner()
 
-_BLOCK = re.compile(r"```python\n(# (src/[\w/]+\.py)\n.*?)```", re.DOTALL)
+_BLOCK = re.compile(r"```python\n(# ((?:src|tests)/[\w/]+\.py)\n.*?)```", re.DOTALL)
 
 
 RULES_UNDER_TEST: frozenset[str] = frozenset(
@@ -48,21 +48,6 @@ RULES_UNDER_TEST: frozenset[str] = frozenset(
 
 Their fixtures keep the flat ``services/news.py`` shape the issue that
 introduced each rule describes, which ``LAY002`` would also report.
-"""
-
-SCAFFOLD_LAYOUT_DEBT: dict[str, int] = {
-    "IMP001": 19,
-    "IMP002": 8,
-    "LAY002": 2,
-    "RTR004": 1,
-    "TST001": 3,
-}
-"""Warnings ``tempest new`` still produces, counted per code.
-
-The scaffold moves to the #616 layout (context packages, relative
-``__init__`` imports, layer-package imports) in the next part of the
-issue; this then becomes empty, and a new warning shows up as a diff here.
-Every one of them is a warning: the scaffold has no error.
 """
 
 
@@ -958,25 +943,46 @@ class TestScaffold:
     """The project ``tempest new`` writes passes its own rules."""
 
     def test_scaffold_is_clean(self, project: Path) -> None:
+        """Every rule, errors and warnings, on ``auth,queue,tasks,ssr``."""
         assert (project / "src" / "services").is_dir()
         assert (project / "src" / "db" / "repositories").is_dir()
-        findings = lint_layers(project)
-        assert {finding.severity for finding in findings} <= {"warning"}
-        assert dict(Counter(finding.code for finding in findings)) == (
-            SCAFFOLD_LAYOUT_DEBT
-        )
+        assert lint_layers(project) == []
+
+    @pytest.mark.parametrize(
+        "extras",
+        ["", "admin,email,minio,cache,tasks-redis"],
+        ids=["no-extras", "infra-extras"],
+    )
+    def test_scaffold_is_clean_under_other_extras(
+        self, tmp_path: Path, extras: str
+    ) -> None:
+        """The conditional templates (no ``auth``, admin, mailer, storage)."""
+        arguments = ["new", "demo", "--path", str(tmp_path)]
+        if extras:
+            arguments += ["--extras", extras]
+        result = runner.invoke(cli_app, arguments)
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert lint_layers(tmp_path / "demo") == []
 
     def test_claude_md_examples_are_clean(self, project: Path) -> None:
-        """Every ``# src/...`` block of the template, written to disk, passes."""
+        """Every ``# src/...`` and ``# tests/...`` block, written to disk, passes."""
         written = []
         document = (project / "CLAUDE.md").read_text(encoding="utf-8")
         for source, relative in _BLOCK.findall(document):
             written.append(_write(project, relative, source))
-        assert project / "src/services/product.py" in written
-        assert project / "src/db/repositories/product.py" in written
-        assert project / "src/core/enums.py" in written
-        assert project / "src/api/routers/product.py" in written
-        assert _lint(project) == []
+        for relative in (
+            "src/services/products/product.py",
+            "src/db/repositories/products/product.py",
+            "src/db/models/products/product.py",
+            "src/controllers/products/product.py",
+            "src/scripts/composition.py",
+            "src/core/enums.py",
+            "src/api/routers/product.py",
+            "src/api/routers/api.py",
+            "tests/test_products.py",
+        ):
+            assert project / relative in written
+        assert lint_layers(project) == []
 
     def test_claude_md_router_built_inline_is_flagged(self, project: Path) -> None:
         """The template's router, rewritten to build the controller, fails.
@@ -998,19 +1004,14 @@ class TestScaffold:
         assert codes == ["RTR001", "RTR001"]
 
     def test_claude_md_documents_the_gate(self, project: Path) -> None:
-        """The template names the step, every code and the opt-out marker."""
+        """The template names the step, every rule code and both markers."""
         document = (project / "CLAUDE.md").read_text(encoding="utf-8")
         assert "does not enforce these yet" not in document
         for needle in (
             "tempest lint-layers",
+            "tests/architecture_exceptions.py",
             NO_BASE_SERVICE_MARKER,
-            "SVC001",
-            "SVC002",
-            "SVC003",
-            "REPO001",
-            "ENUM001",
-            "RTR001",
-            "RTR002",
             ROUTER_BUILDS_MARKER,
+            *(code for code in RULES if not code.startswith("EXC") or code == "EXC002"),
         ):
             assert needle in document

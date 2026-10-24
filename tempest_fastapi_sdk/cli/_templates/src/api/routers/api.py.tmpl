@@ -1,0 +1,29 @@
+"""The API router: every domain router, mounted once under ``/api``.
+
+``/api`` is set here and nowhere else. A domain router declares only its
+own prefix (``APIRouter(prefix="/products")``) and is included below;
+``tempest check`` reports a ``/api`` prefix anywhere else (``RTR004``).
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter
+
+from .service_info import router as service_info_router
+
+API_PREFIX: str = "/api"
+"""Prefix every business route lives under."""
+
+
+def build_api_router() -> APIRouter:
+    """Assemble the router ``create_app`` mounts.
+
+    Returns:
+        APIRouter: ``/api`` with every domain router included.
+    """
+    api: APIRouter = APIRouter(prefix=API_PREFIX)
+    api.include_router(service_info_router)
+    return api
+
+
+__all__: list[str] = ["API_PREFIX", "build_api_router"]

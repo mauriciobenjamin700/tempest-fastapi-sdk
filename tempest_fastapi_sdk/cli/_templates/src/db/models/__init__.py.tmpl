@@ -2,15 +2,17 @@
 
 Alembic's ``--autogenerate`` walks ``BaseModel.metadata`` at
 revision time. Models that aren't imported here are invisible to
-the metadata, so their tables never end up in the migration. Add
-``from src.db.models.<file> import <ModelClass>`` for every new
-model you create.
+the metadata, so their tables never end up in the migration. Each
+domain context is a subpackage (``users/``, ``products/``) holding one
+model per module and re-exporting them; add
+``from .<context> import <ModelClass> as <ModelClass>`` here for every
+new one.
 """
 
-from tempest_fastapi_sdk import BaseModel
+from tempest_fastapi_sdk import BaseModel as BaseModel
 @@if auth@@
 
-from src.db.models.user import UserModel
+from .users import UserModel as UserModel
 @@endif@@
 
 __all__: list[str] = [

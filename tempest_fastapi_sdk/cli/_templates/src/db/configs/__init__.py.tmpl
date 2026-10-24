@@ -7,7 +7,7 @@ project.
 """
 
 @@if auth@@
-from src.db.configs.names import USER_TABLE_NAME
+from .names import USER_TABLE_NAME as USER_TABLE_NAME
 
 __all__: list[str] = [
     "USER_TABLE_NAME",

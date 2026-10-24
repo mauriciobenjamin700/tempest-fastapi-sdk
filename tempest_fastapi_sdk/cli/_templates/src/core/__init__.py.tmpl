@@ -1,7 +1,11 @@
-"""Settings, exceptions and logging."""
+"""Settings, enums, types, exceptions and logging.
 
-from src.core.settings import Settings as Settings
-from src.core.settings import get_settings as get_settings
-from src.core.settings import settings as settings
+The settings are re-exported here (``from src.core import settings``);
+``enums``, ``types`` and ``exceptions`` are imported by module.
+"""
+
+from .settings import Settings as Settings
+from .settings import get_settings as get_settings
+from .settings import settings as settings
 
 __all__: list[str] = ["Settings", "get_settings", "settings"]

@@ -289,7 +289,7 @@ def test_a_service_without_users_boots_without_admin_or_auth(
     """
     project, pinned, project_deps = _scaffold(tmp_path, extras)
     assert not pinned & {"admin", "auth"}
-    assert not (project / "src" / "db" / "models" / "user.py").exists()
+    assert not (project / "src" / "db" / "models" / "users").exists()
     for relative in (
         "src/api/app.py",
         "src/core/settings.py",
@@ -325,10 +325,10 @@ _TASKS_IMPORT_SCRIPT = textwrap.dedent(
     sys.meta_path.insert(0, _Blocker())
     sys.path.insert(0, {project!r})
 
-    from src.tasks import broker
-    from src.tasks.jobs import example_job
+    from src.tasks.worker import broker
+    from src.tasks.example import run_example_task
 
-    print("broker", type(broker).__name__, callable(example_job.enqueue))
+    print("broker", type(broker).__name__, callable(run_example_task.enqueue))
     """
 )
 """Imports the generated task layer the way the API and the worker do."""
@@ -346,7 +346,7 @@ def test_tasks_redis_project_imports_its_tasks_without_env_or_rabbitmq(
     variable naming the broker.
     """
     project, pinned, project_deps = _scaffold(tmp_path, "tasks-redis")
-    assert (project / "src" / "tasks" / "jobs.py").is_file()
+    assert (project / "src" / "tasks" / "worker.py").is_file()
     assert not (project / ".env").exists()
     blocked = _blocked_modules(pinned, project_deps)
     assert "taskiq_aio_pika" in blocked

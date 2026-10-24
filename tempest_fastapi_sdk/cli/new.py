@@ -47,7 +47,10 @@ alone pins just ``[auth]`` (the ``UserModel`` and the JWT settings, no
 panel).
 """
 
-CONDITIONAL_TEMPLATES: dict[str, str] = {"src/db/models/user.py.tmpl": "auth"}
+CONDITIONAL_TEMPLATES: dict[str, str] = {
+    "src/db/models/users/__init__.py.tmpl": "auth",
+    "src/db/models/users/user.py.tmpl": "auth",
+}
 """Templates written only when a flag is on, keyed by their relative path.
 
 A service without ``[auth]`` has no users, so it gets no ``UserModel`` —

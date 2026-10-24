@@ -28,15 +28,17 @@ Extras enabled in this project: `__SDK_EXTRAS__`
 
 ```text
 src/
-├── api/routers/       # HTTP verbs, status codes, Depends. No business logic.
-├── api/dependencies/  # controller factories + infra singletons (db, storage, mailer)
-├── controllers/       # Orchestration across services. No DB access.
-├── services/          # Business rules. Calls repositories.
-├── db/repositories/   # SQLAlchemy async queries. No business rules.
-├── db/models/         # ORM models
-├── schemas/           # Pydantic DTOs (request/response)
-├── core/              # settings, constants, exceptions, logging
-└── ui/ (with [ssr])   # pages, layout, components, styles — HTML only
+├── api/routers/            # one router per module; /api set once in routers/api.py
+├── api/dependencies/       # request providers (get_<x>_controller) + infra singletons
+├── controllers/<context>/  # orchestration across services. No DB access.
+├── services/<context>/     # business rules. Calls repositories.
+├── db/repositories/<context>/  # SQLAlchemy async queries. No business rules.
+├── db/models/<context>/    # ORM models
+├── schemas/                # Pydantic DTOs (request/response)
+├── scripts/                # composition root (build_*) + work tasks run
+├── core/                   # settings, enums, types, exceptions
+├── tasks/ (with [tasks])   # task registration, names, dispatcher, worker
+└── ui/ (with [ssr])        # pages, layout, components, styles — HTML only
 ```
 
 The dependency direction is one-way, and it is the whole contract:
@@ -44,39 +46,100 @@ The dependency direction is one-way, and it is the whole contract:
 | Layer | May import | Never imports |
 | --- | --- | --- |
 | `api/routers` | `controllers`, `schemas`, `ui` | `db`, `services` directly |
+| `api/dependencies` | `scripts`, `controllers`, `core` | `db/models` |
 | `ui` | `schemas`, other parts of `ui` | `controllers`, `services`, `db` |
 | `controllers` | `services`, `schemas` | `db`, `ui` |
-| `services` | `db/repositories`, `schemas` | HTTP types, `ui` |
-| `db/repositories` | `db/models`, `schemas` | business rules, HTTP |
+| `services` | `db/repositories`, `schemas` | HTTP types, `ui`, other services |
+| `db/repositories` | `db/models`, `schemas` | other repositories, business rules, HTTP |
 
 **A router that opens a session, or a service that builds an
 `HTTPException`, is a defect** — fix the layering, do not add a
 workaround.
 
+### Context packages
+
+Every module of `controllers/`, `services/`, `db/repositories/` and
+`db/models/` lives in a **context subpackage** and holds **one class**:
+`services/products/product.py` defines `ProductService` and nothing else.
+Contexts this project starts with:
+
+- `system` — what the service says about itself (`ServiceInfoController`).
+@@if auth@@
+- `users` — accounts and their access (`UserModel`).
+@@endif@@
+
+A new domain is a new context: a plural noun (`products`, `orders`,
+`billing`), created in each layer it touches. Any name is accepted; the
+list above is where to start, not a limit.
+
+Every context package re-exports its classes **relatively**, and so does
+the layer package above it:
+
+```python
+# src/services/products/__init__.py
+from .product import ProductService as ProductService
+
+__all__: list[str] = ["ProductService"]
+```
+
+Outside an `__init__.py`, import from the **layer package**
+(`from src.services import ProductService`), never from the module the
+class lives in.
+
+### Composition root
+
+`src/scripts/composition.py` is the one place the object graph is
+assembled: one `build_*` function per entry point, taking only what the
+caller holds (a session, the settings). The request providers in
+`src/api/dependencies/controllers.py` call them with what `Depends`
+resolved; a task, a queue subscriber, a seed script and the test suite
+call the same functions. **No class assembles itself** — there is no
+`from_session`.
+
 ## Adding a feature: the exact order
 
-Every new domain follows these seven steps, in this order. Skipping one
+Every new domain follows these steps, in this order. Skipping one
 produces a service that looks unlike every other Tempest service.
 
 ### 1. Schema (`src/schemas/`)
 
+Every field carries `title`, `description` and `examples` — they are what
+the OpenAPI document shows the client:
+
 ```python
 # src/schemas/product.py
+from pydantic import Field
 from tempest_fastapi_sdk import BaseResponseSchema, BaseSchema
 
 
 class ProductCreateSchema(BaseSchema):
     """Payload accepted when creating a product."""
 
-    name: str
-    price_cents: int
+    name: str = Field(
+        title="Name",
+        description="Name shown to the customer; unique.",
+        examples=["Camisa"],
+    )
+    price_cents: int = Field(
+        title="Price",
+        description="Price in cents.",
+        examples=[4990],
+    )
 
 
 class ProductResponseSchema(BaseResponseSchema):
     """Product returned by the API."""
 
-    name: str
-    price_cents: int
+    name: str = Field(
+        title="Name",
+        description="Name shown to the customer.",
+        examples=["Camisa"],
+    )
+    price_cents: int = Field(
+        title="Price",
+        description="Price in cents.",
+        examples=[4990],
+    )
 ```
 
 A domain enum subclasses `BaseStrEnum` and its name **ends in `Enum`**:
@@ -99,7 +162,7 @@ database type is the same either way — `enum_type_name` drops one
 trailing `Enum`, so `ProductStatus` and `ProductStatusEnum` are both
 `product_status_enum` — which is why the rename never needs a migration.
 
-### 2. Model (`src/db/models/`)
+### 2. Model (`src/db/models/products/`)
 
 Add the table name to `src/db/configs/names.py` first — it is the single
 source of truth, and the model reads it from there:
@@ -110,7 +173,7 @@ PRODUCT_TABLE_NAME = "products"
 ```
 
 ```python
-# src/db/models/product.py
+# src/db/models/products/product.py
 from sqlalchemy.orm import Mapped, mapped_column
 from tempest_fastapi_sdk import BaseModel
 
@@ -126,8 +189,17 @@ class ProductModel(BaseModel):
     price_cents: Mapped[int] = mapped_column(default=0)
 ```
 
-Re-export the constant from `src/db/configs/__init__.py` so models
-import it at package level.
+```python
+# src/db/models/products/__init__.py
+from .product import ProductModel as ProductModel
+
+__all__: list[str] = ["ProductModel"]
+```
+
+Re-export the model from `src/db/models/__init__.py`
+(`from .products import ProductModel as ProductModel`) — Alembic only sees
+the models that package imports — and the table name from
+`src/db/configs/__init__.py`.
 
 `BaseModel` already provides `id`, `created_at` and `updated_at` — never
 redeclare them.
@@ -150,10 +222,10 @@ call `create_all` to get there: it adds no column to a table that already
 exists, and the next migration then runs against a schema it does not
 expect.
 
-### 3. Repository (`src/db/repositories/`)
+### 3. Repository (`src/db/repositories/products/`)
 
 ```python
-# src/db/repositories/product.py
+# src/db/repositories/products/product.py
 from sqlalchemy.ext.asyncio import AsyncSession
 from tempest_fastapi_sdk import BaseRepository
 
@@ -190,6 +262,13 @@ class ProductRepository(BaseRepository[ProductModel]):
         return ProductResponseSchema.model_validate(instance)
 ```
 
+```python
+# src/db/repositories/products/__init__.py
+from .product import ProductRepository as ProductRepository
+
+__all__: list[str] = ["ProductRepository"]
+```
+
 `map_to_response` is the **one method every repository must implement** —
 the base class raises `NotImplementedError` otherwise, and the service
 layer calls it on every read.
@@ -198,12 +277,14 @@ You inherit `add`, `get`, `get_by_id`, `get_or_none`, `first`, `list`,
 `paginate`, `cursor_paginate`, `update`, `delete`, `soft_delete`,
 `count`, `exists`, `search`, `full_text_search`, the `bulk_*` family and
 `transaction` / `savepoint`. **Write a new method only for a query those
-cannot express.**
+cannot express.** A repository never imports another repository: a query
+over two tables joins in its own `select()`, and combining two
+repositories is a service's job.
 
-### 4. Service (`src/services/`)
+### 4. Service (`src/services/products/`)
 
 ```python
-# src/services/product.py
+# src/services/products/product.py
 from tempest_fastapi_sdk import BaseService
 
 from src.core.exceptions import ProductNameTakenError
@@ -233,6 +314,13 @@ class ProductService(BaseService[ProductRepository, ProductResponseSchema]):
         return self.repository.map_to_response(instance)
 ```
 
+```python
+# src/services/products/__init__.py
+from .product import ProductService as ProductService
+
+__all__: list[str] = ["ProductService"]
+```
+
 `BaseService` already gives you `get_by_id`, `get_or_none`, `list`,
 `paginate`, `count`, `exists`, `update` and `delete`, each wired to
 `repository.map_to_response`. Override one only when a domain rule
@@ -241,13 +329,13 @@ belongs in it; add a new method for a use case the base does not cover.
 These are **rules**, not style — each one is a defect in review:
 
 - **Every service subclasses `BaseService[Repository, ResponseSchema]`.**
-  A service that declares `__init__(self, repository)` and rebuilds
-  `list` as `[self.repository.map_to_response(x) for x in ...]` is
-  reimplementing the base. The only exception is a service with no
-  repository at all (a static catalogue read from a file); its docstring
-  says so.
+  The only exception is a service with no repository at all (a static
+  catalogue read from a file); it says so with
+  `# tempest: no-base-service` on its `class` line.
 - **No `__init__` that only stores the repository.** `BaseService`
   already does it.
+- **A service receives repositories, never the `AsyncSession` and never
+  another service.** Combining two services is the controller's job.
 - **One public class per module in `services/`, and no module-level
   functions.** A helper that does not belong to the class (formatting, a
   regex, a pure calculation) goes to `src/utils/`; three services in one
@@ -256,21 +344,11 @@ These are **rules**, not style — each one is a defect in review:
   `list_all()` whose body is `return await self.list()`, or a
   `list_ordered()` that only passes `order_by=`, is a wrapper of the SDK:
   call `list` / `get` / `paginate` with the filters at the call site.
-  Write a repository method only for a query the base cannot express.
 
-`tempest check` enforces all four (its `lint-layers` step, also runnable
-alone as `tempest lint-layers`), one `path:line: CODE message` line per
-violation: `SVC001` (no `BaseService`), `SVC002` (a second class or a
-module-level function in a service module), `SVC003` (an `__init__` that
-only stores the repository), `REPO001` (a repository method that only
-forwards to the base). A service that genuinely has no repository opts out
-of `SVC001` with `# tempest: no-base-service` on its `class` line — and its
-docstring says why.
-
-### 5. Controller (`src/controllers/`)
+### 5. Controller (`src/controllers/products/`)
 
 ```python
-# src/controllers/product.py
+# src/controllers/products/product.py
 from tempest_fastapi_sdk import BaseController
 
 from src.schemas import ProductCreateSchema, ProductResponseSchema
@@ -292,15 +370,45 @@ class ProductController(BaseController[ProductService, ProductResponseSchema]):
         return await self.service.create(data)
 ```
 
+```python
+# src/controllers/products/__init__.py
+from .product import ProductController as ProductController
+
+__all__: list[str] = ["ProductController"]
+```
+
 Keep the controller **even when every method is a pass-through** — it is
 the seam where cross-service coordination lands later, and its presence
-keeps the import graph identical across services.
+keeps the import graph identical across services. A controller receives
+services, never the session and never another controller.
 
-### 6. Dependency provider (`src/api/dependencies/controllers.py`)
+### 6. Composition and provider
 
-The scaffold already ships this module with `get_service_info_controller`,
-the factory behind `GET /api/`. **Add** one factory per controller next to
-it — never build a controller inside a router:
+Assemble the graph once, in the composition root — **add** the builder
+next to `build_service_info_controller`:
+
+```python
+# src/scripts/composition.py
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.controllers import ProductController
+from src.db.repositories import ProductRepository
+from src.services import ProductService
+
+
+def build_product_controller(session: AsyncSession) -> ProductController:
+    """Assemble the product controller over one session.
+
+    Args:
+        session (AsyncSession): The session the repository reads through.
+
+    Returns:
+        ProductController: The controller, fully wired.
+    """
+    return ProductController(ProductService(ProductRepository(session)))
+```
+
+Then the request provider, next to `get_service_info_controller`:
 
 ```python
 # src/api/dependencies/controllers.py
@@ -309,8 +417,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.dependencies.resources import get_session
 from src.controllers import ProductController
-from src.db.repositories import ProductRepository
-from src.services import ProductService
+from src.scripts import build_product_controller
 
 
 def get_product_controller(
@@ -324,20 +431,23 @@ def get_product_controller(
     Returns:
         ProductController: A controller wired to that session.
     """
-    return ProductController(ProductService(ProductRepository(session)))
+    return build_product_controller(session)
 ```
 
-Every input of a factory is another `Depends` — `get_session`,
-`get_settings` (from `src.core.settings`, as `get_service_info_controller`
-uses it), and `get_mailer` / `get_storage` from
+Every input of a provider is another `Depends` — `get_session`,
+`get_settings` (from `src.core`, as `get_service_info_controller` uses
+it), and `get_mailer` / `get_storage` from
 `src/api/dependencies/resources.py` when the `[email]` / `[minio]` extras
 are pinned — never a module-level `settings` or singleton read in the
 body. That is what lets a test swap any of them with
 `app.dependency_overrides[get_settings] = lambda: Settings(...)` without
-touching the router, the controller or the service. Re-export the factory
-from `src/api/dependencies/__init__.py`.
+touching the router, the controller or the service. Re-export the
+builder from `src/scripts/__init__.py` and the provider from
+`src/api/dependencies/__init__.py`.
 
 ### 7. Router (`src/api/routers/`)
+
+One router per module, declaring only its own prefix:
 
 ```python
 # src/api/routers/product.py
@@ -367,24 +477,116 @@ async def create_product(
     return await controller.create(data)
 ```
 
-Mount it in `src/api/routers/__init__.py`, then re-export the new symbols
-from every `__init__.py` you touched.
+Mount it in `build_api_router`, the only place `/api` is written:
 
-Two router rules are gated by the same `lint-layers` step:
+```python
+# src/api/routers/api.py
+from fastapi import APIRouter
 
-- `RTR001` — a `*Controller(...)` or `*Service(...)` call anywhere in
-  `src/api/routers/` (route body, helper, module level). The construction
-  belongs in the provider of step 6; the route receives it through
-  `Depends`. A call that has to stay in the router module opts out with
-  `# tempest: router-builds` on its line.
-- `RTR002` — a route whose return annotation or `response_model=` names an
-  ORM model (imported from a `models` module, or a class defined under
-  `models/`), at any depth: `list[ProductModel]` counts. Return the
-  response schema the repository maps to. There is no opt-out.
+from .product import router as product_router
+from .service_info import router as service_info_router
 
-Where `@requires` sits is review, not a rule: the decorator works on a
-route handler too, so a check could not tell the convention below from
-correct code.
+API_PREFIX: str = "/api"
+"""Prefix every business route lives under."""
+
+
+def build_api_router() -> APIRouter:
+    """Assemble the router ``create_app`` mounts.
+
+    Returns:
+        APIRouter: ``/api`` with every domain router included.
+    """
+    api: APIRouter = APIRouter(prefix=API_PREFIX)
+    api.include_router(service_info_router)
+    api.include_router(product_router)
+    return api
+
+
+__all__: list[str] = ["API_PREFIX", "build_api_router"]
+```
+
+### 8. Tests (`tests/`)
+
+Every test says, in its docstring, the situation it builds and what it
+proves, and checks something:
+
+```python
+# tests/test_products.py
+from fastapi.testclient import TestClient
+
+from src.api.app import create_app
+
+
+def test_a_duplicate_name_is_refused() -> None:
+    """Cenário: dois produtos criados com o mesmo nome.
+
+    Esperado: o segundo responde ``409`` com ``PRODUCT_NAME_TAKEN``.
+    """
+    with TestClient(create_app()) as client:
+        payload = {"name": "Camisa", "price_cents": 4990}
+        assert client.post("/api/products", json=payload).status_code == 201
+        duplicate = client.post("/api/products", json=payload)
+    assert duplicate.status_code == 409
+    assert duplicate.json()["code"] == "PRODUCT_NAME_TAKEN"
+```
+
+Name the exception a test expects (`pytest.raises(ProductNotFoundError)`,
+never `Exception`), and keep `parametrize` values literal: a `uuid4()`
+turned into text in an id makes each `pytest -n` worker collect different
+tests.
+
+## What `tempest check` enforces
+
+`tempest check` runs `tempest lint-layers` between `mypy` and `pytest`;
+run it alone while you work. Each violation prints as
+`path:line: CODE message`, and the message says what to change. An
+**error** fails the gate; a **warning** prints `(warning)` and fails only
+with `--strict` or `layers_strict = true` under `[tool.tempest]`.
+
+| Code | Severity | Reports |
+| --- | --- | --- |
+| `SVC001` | error | a public class in `services/` without `BaseService` |
+| `SVC002` | error | a second public class or a module-level function in `services/` |
+| `SVC003` | error | a service `__init__` that only stores the repository |
+| `REPO001` | error | a repository method that only forwards to the base |
+| `ENUM001` | error | a `BaseStrEnum` subclass not named `*Enum` |
+| `RTR001` | error | a `*Controller(...)` / `*Service(...)` built inside `routers/` |
+| `RTR002` | error | a route that returns an ORM model |
+| `LAY001` | warning | a second class or a module-level function in `controllers/`, `repositories/` or `models/` |
+| `LAY002` | warning | a module at the root of a layer, outside a context package |
+| `REPO002` | warning | a repository importing another repository |
+| `DI001` | warning | `AsyncSession` in a service or controller `__init__` |
+| `DI002` | warning | a service taking a `*Service`, or a controller taking a `*Controller` |
+| `DI003` | warning | a `from_session` anywhere |
+| `STR001` | warning | a function defined inside another function (source and tests) |
+| `STR002` | warning | a module-level `_name` function (source and tests) |
+| `IMP001` | warning | an absolute import of a neighbour in `__init__.py` |
+| `IMP002` | warning | importing a submodule for a name a package above re-exports |
+| `RTR003` | warning | more than one `APIRouter` in a routers module |
+| `RTR004` | warning | a `/api` prefix outside `build_api_router` |
+| `TST001` | warning | a test docstring without `Cenário:` and `Esperado:` |
+| `TST002` | warning | a test that checks nothing |
+| `TST003` | warning | `pytest.raises(Exception)` |
+| `TST004` | warning | a `parametrize` id holding a value drawn at import |
+
+Migrate a rule at a time with `tempest lint-layers --rule <CODE>`.
+
+**An exception you keep on purpose is declared, with its reason**, in
+`tests/architecture_exceptions.py` — reviewed in the diff like code:
+
+```python
+ARCHITECTURE_EXCEPTIONS: dict[str, str] = {
+    "DI002 src/services/wallet/settlement.py::SettlementService.wallet_service": (
+        "the settlement and the wallet credit land in the same transaction"
+    ),
+}
+```
+
+The key is `"<CODE> <path>"` or `"<CODE> <path>::<subject>"`; an entry
+that no longer matches anything is reported (`EXC002`), so an exception
+does not outlive the code it excused. Two markers still work on their
+line: `# tempest: no-base-service` (`SVC001`) and
+`# tempest: router-builds` (`RTR001`).
 
 ## Guards: authentication in the route, invariants with `@requires`
 
@@ -563,6 +765,36 @@ like*.
 - HTML routes live in `api/routers/web.py` with
   `include_in_schema=False`, so they never pollute the OpenAPI schema.
 
+@@if tasks@@
+## Background tasks (`src/tasks/`)
+
+A task module is **registration only**: the decorator, a name and a
+schedule from `src/tasks/names.py`, and a body that calls the work in
+`src/scripts/`. The API never imports a task module — it enqueues through
+`TaskDispatcher` (`src/tasks/dispatch.py`), by name:
+
+```python
+from fastapi import Depends
+
+from src.tasks import TaskDispatcher, get_task_dispatcher
+
+
+async def run_now(dispatcher: TaskDispatcher = Depends(get_task_dispatcher)) -> None:
+    """Ask the worker to run the example task."""
+    await dispatcher.example("payload")
+```
+
+- A name (`*_TASK_NAME`) and a schedule (`*_SCHEDULE`, built with
+  `every_n_minutes` / `daily` / `weekly`) are constants in `names.py`,
+  which imports nothing from the project. **A task keeps its name for
+  life**: messages already queued under an old name are dropped.
+- A new task module is imported by `src/tasks/worker.py`, or it never
+  registers. The worker runs `taskiq worker src.tasks.worker:broker`; the
+  scheduler, `taskiq scheduler src.tasks.worker:scheduler`.
+- The retry policy a task is registered with still applies to a call sent
+  by name — the worker restores the task's labels.
+
+@@endif@@
 ## Do not reimplement these
 
 | You are about to write | Use instead |
@@ -594,15 +826,19 @@ than forking the concept — and open an issue upstream for the missing
 - **Full type annotations** on every function, method, parameter and
   module-level variable — including `-> None`.
 - **Google-style docstrings in English** on every module, class, function
-  and method: description, `Args`, `Returns`, `Raises`.
+  and method: description, `Args`, `Returns`, `Raises`. Test docstrings
+  carry `Cenário:` and `Esperado:`.
 - **No explanatory inline comments.** The *why* belongs in the docstring.
   Only machine-directed markers (`# noqa`, `# type: ignore`) stay inline.
+- **No function defined inside another**, and no module-level `_helper`.
+  A callback that keeps state is a class with `__call__`; one that binds
+  an argument is `functools.partial` over a module-level function.
 - **`async` by default** for anything doing I/O. SQLAlchemy 2.0 style
   (`select()`), never `session.query()`.
-- **Re-export from every `__init__.py`** using `from x import Y as Y`
-  plus an explicit `__all__: list[str]`, and import from the package
-  level (`from src.schemas import ProductCreateSchema`), never from the
-  submodule.
+- **Re-export from every `__init__.py`** using a relative
+  `from .x import Y as Y` plus an explicit `__all__: list[str]`, and
+  import from the package level (`from src.schemas import
+  ProductCreateSchema`), never from the submodule.
 - Collections default to empty: `Field(default_factory=list)` in
   schemas, `Query(default_factory=list)` for repeated query parameters.
 - Routers return schemas, never ORM models.
@@ -615,7 +851,8 @@ cp .env.example .env        # first run only
 uv run python main.py       # start the service on __HOST__:__PORT__
 
 tempest check               # lint + format check + mypy + layer rules + pytest
-tempest lint-layers         # only the layer rules (services, repositories, routers, enums)
+tempest lint-layers         # only the layer rules, errors and warnings
+tempest lint-layers --rule IMP002   # one rule, while migrating
 tempest lint                # ruff check
 tempest fmt                 # ruff format
 tempest type                # mypy
@@ -632,13 +869,14 @@ does not pass it is not done.
 
 ## Definition of done
 
-- [ ] The change lives in the layer that owns it.
+- [ ] The change lives in the layer that owns it, in its context package.
 - [ ] Every new function, method and class is typed and documented.
 - [ ] New public symbols are re-exported from their `__init__.py` and
       listed in `__all__`.
 - [ ] Domain errors raise SDK exceptions; collections return `[]`.
 - [ ] Tests cover the new behaviour (`pytest` + `pytest-asyncio`,
-      in-memory SQLite, external services mocked).
-- [ ] `tempest check` passes.
+      in-memory SQLite, external services mocked), each with
+      `Cenário:` / `Esperado:`.
+- [ ] `tempest check` passes, with no new warning.
 - [ ] A schema, endpoint or env var changed? `README.md` and
       `.env.example` were updated in the same commit.

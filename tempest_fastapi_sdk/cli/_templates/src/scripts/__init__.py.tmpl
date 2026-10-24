@@ -1,0 +1,9 @@
+"""Code that runs outside a request: the composition root and task scripts.
+
+Import the builders from this package:
+``from src.scripts import build_service_info_controller``.
+"""
+
+from .composition import build_service_info_controller as build_service_info_controller
+
+__all__: list[str] = ["build_service_info_controller"]

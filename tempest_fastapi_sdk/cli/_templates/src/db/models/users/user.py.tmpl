@@ -6,7 +6,7 @@ never created. This module ships the minimum viable subclass; add
 your own columns here (avatar, locale, last_active_at, …) as the
 service grows.
 
-The class is imported by ``src.db.models.__init__`` so Alembic's
+The class is re-exported by ``src.db.models.users`` and ``src.db.models`` so Alembic's
 ``--autogenerate`` picks it up via ``BaseModel.metadata``.
 
 The table name comes from ``src.db.configs`` rather than a literal, so
