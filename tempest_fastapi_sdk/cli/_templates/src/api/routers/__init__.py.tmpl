@@ -1,28 +1,9 @@
-"""Mounted business routers — extend ``router`` with your endpoints."""
+"""HTTP routers — one module per domain, mounted by :func:`build_api_router`.
 
-from fastapi import APIRouter, Depends
+Import the builder from this package:
+``from src.api.routers import build_api_router``.
+"""
 
-from src.api.dependencies import get_service_info_controller
-from src.controllers import ServiceInfoController
-from src.schemas import ServiceInfoSchema
+from .api import build_api_router as build_api_router
 
-router = APIRouter()
-
-
-@router.get("/", tags=["root"])
-async def index(
-    controller: ServiceInfoController = Depends(get_service_info_controller),
-) -> ServiceInfoSchema:
-    """Placeholder root endpoint returning the service name.
-
-    Args:
-        controller (ServiceInfoController): Built per request by
-            :func:`~src.api.dependencies.get_service_info_controller`.
-
-    Returns:
-        ServiceInfoSchema: The service title.
-    """
-    return await controller.describe()
-
-
-__all__: list[str] = ["router"]
+__all__: list[str] = ["build_api_router"]

@@ -2,10 +2,13 @@
 
 A router never builds a controller: it declares
 ``controller: XController = Depends(get_x_controller)``, and the factory
-here is the only place that knows how to assemble the graph. Every input
-of a factory (the request session, the settings, the mailer) is itself a
-``Depends``, never a module import read in the body, so
-``app.dependency_overrides`` can replace any of them in a test.
+here resolves the request's inputs and hands them to the matching
+``build_*`` function of :mod:`src.scripts.composition`, the one place
+that knows how the graph is assembled — the same function a task, a
+consumer or a test calls outside a request. Every input of a factory
+(the request session, the settings, the mailer) is itself a ``Depends``,
+never a module import read in the body, so ``app.dependency_overrides``
+can replace any of them in a test.
 """
 
 from __future__ import annotations
@@ -13,7 +16,8 @@ from __future__ import annotations
 from fastapi import Depends
 
 from src.controllers import ServiceInfoController
-from src.core.settings import Settings, get_settings
+from src.core import Settings, get_settings
+from src.scripts import build_service_info_controller
 
 
 def get_service_info_controller(
@@ -27,7 +31,7 @@ def get_service_info_controller(
     Returns:
         ServiceInfoController: The controller bound to the service title.
     """
-    return ServiceInfoController(title=settings.TITLE)
+    return build_service_info_controller(settings)
 
 
 __all__: list[str] = ["get_service_info_controller"]

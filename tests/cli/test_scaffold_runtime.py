@@ -243,10 +243,12 @@ def _write_domain_from_claude_md(project: Path) -> None:
     test that follows.
 
     The packages the scaffold already fills (``schemas``, ``controllers``,
-    ``api/dependencies``, whose ``controllers.py`` holds the root
-    endpoint's factory) are extended rather than replaced, as the recipe
-    tells the reader to do: replacing them would drop the
-    ``ServiceInfo*`` symbols ``src.api.routers`` imports.
+    ``scripts``, ``api/dependencies``, whose ``controllers.py`` holds the
+    root endpoint's provider and ``composition.py`` its builder) are
+    extended rather than replaced, as the recipe tells the reader to do:
+    replacing them would drop the ``ServiceInfo*`` symbols the root
+    router imports. ``src/api/routers/api.py`` is written whole, as the
+    recipe shows it.
 
     Blocks are located by that header rather than by position: indexing
     them made adding one block to the recipe break every later mapping,
@@ -306,8 +308,9 @@ def _write_domain_from_claude_md(project: Path) -> None:
     configs_init.write_text(
         configs_init.read_text(encoding="utf-8")
         .replace(
-            "from src.db.configs.names import USER_TABLE_NAME",
-            "from src.db.configs.names import PRODUCT_TABLE_NAME, USER_TABLE_NAME",
+            "from .names import USER_TABLE_NAME as USER_TABLE_NAME",
+            "from .names import PRODUCT_TABLE_NAME as PRODUCT_TABLE_NAME\n"
+            "from .names import USER_TABLE_NAME as USER_TABLE_NAME",
         )
         .replace(
             '__all__: list[str] = [\n    "USER_TABLE_NAME",\n]',
@@ -319,7 +322,7 @@ def _write_domain_from_claude_md(project: Path) -> None:
         encoding="utf-8",
     )
 
-    appended = {"src/api/dependencies/controllers.py"}
+    appended = {"src/api/dependencies/controllers.py", "src/scripts/composition.py"}
     written = {
         path: code
         for path, code in by_path.items()
@@ -335,13 +338,11 @@ def _write_domain_from_claude_md(project: Path) -> None:
 
     for relative, content in {
         "src/db/repositories/__init__.py": (
-            "from src.db.repositories.product import (\n"
-            "    ProductRepository as ProductRepository,\n"
-            ")\n\n"
+            "from .products import ProductRepository as ProductRepository\n\n"
             '__all__: list[str] = ["ProductRepository"]\n'
         ),
         "src/services/__init__.py": (
-            "from src.services.product import ProductService as ProductService\n\n"
+            "from .products import ProductService as ProductService\n\n"
             '__all__: list[str] = ["ProductService"]\n'
         ),
     }.items():
@@ -349,25 +350,29 @@ def _write_domain_from_claude_md(project: Path) -> None:
 
     for relative, addition in {
         "src/schemas/__init__.py": (
-            "from src.schemas.product import (\n"
-            "    ProductCreateSchema as ProductCreateSchema,\n"
-            ")\n"
-            "from src.schemas.product import (\n"
-            "    ProductResponseSchema as ProductResponseSchema,\n"
-            ")\n\n"
+            "from .product import ProductCreateSchema as ProductCreateSchema\n"
+            "from .product import ProductResponseSchema as ProductResponseSchema\n\n"
             '__all__ = [*__all__, "ProductCreateSchema", "ProductResponseSchema"]\n'
         ),
         "src/controllers/__init__.py": (
-            "from src.controllers.product import (\n"
-            "    ProductController as ProductController,\n"
-            ")\n\n"
+            "from .products import ProductController as ProductController\n\n"
             '__all__ = [*__all__, "ProductController"]\n'
         ),
+        "src/scripts/__init__.py": (
+            "from .composition import (\n"
+            "    build_product_controller as build_product_controller,\n"
+            ")\n\n"
+            '__all__ = [*__all__, "build_product_controller"]\n'
+        ),
         "src/api/dependencies/__init__.py": (
-            "from src.api.dependencies.controllers import (\n"
+            "from .controllers import (\n"
             "    get_product_controller as get_product_controller,\n"
             ")\n\n"
             '__all__ = [*__all__, "get_product_controller"]\n'
+        ),
+        "src/db/models/__init__.py": (
+            "from .products import ProductModel as ProductModel\n\n"
+            '__all__ = [*__all__, "ProductModel"]\n'
         ),
     }.items():
         destination = project.joinpath(*relative.split("/"))
@@ -375,14 +380,6 @@ def _write_domain_from_claude_md(project: Path) -> None:
             destination.read_text(encoding="utf-8") + "\n" + addition,
             encoding="utf-8",
         )
-
-    models_init = project / "src" / "db" / "models" / "__init__.py"
-    models_init.write_text(
-        models_init.read_text(encoding="utf-8")
-        + "\nfrom src.db.models.product import ProductModel as ProductModel\n"
-        + '\n__all__ = [*__all__, "ProductModel"]\n',
-        encoding="utf-8",
-    )
 
     exceptions = project / "src" / "core" / "exceptions.py"
     exceptions.write_text(
@@ -407,7 +404,7 @@ def test_claude_md_recipe_produces_a_working_domain(scaffolded: Path) -> None:
     from tempest_fastapi_sdk import BaseModel, register_exception_handlers
 
     resources = importlib.import_module("src.api.dependencies.resources")
-    router = importlib.import_module("src.api.routers.product").router
+    api_router = importlib.import_module("src.api.routers").build_api_router()
 
     async def prepare() -> None:
         """Connect the manager and create the tables."""
@@ -419,7 +416,7 @@ def test_claude_md_recipe_produces_a_working_domain(scaffolded: Path) -> None:
 
     app = FastAPI()
     register_exception_handlers(app)
-    app.include_router(router, prefix="/api")
+    app.include_router(api_router)
     client = TestClient(app)
 
     created = client.post(
@@ -444,7 +441,7 @@ def test_claude_md_pagination_block_matches_the_sdk_envelope(
     from tempest_fastapi_sdk import BaseModel, register_exception_handlers
 
     resources = importlib.import_module("src.api.dependencies.resources")
-    router = importlib.import_module("src.api.routers.product").router
+    api_router = importlib.import_module("src.api.routers").build_api_router()
 
     async def prepare() -> None:
         """Connect the manager and create the tables."""
@@ -456,7 +453,7 @@ def test_claude_md_pagination_block_matches_the_sdk_envelope(
 
     app = FastAPI()
     register_exception_handlers(app)
-    app.include_router(router, prefix="/api")
+    app.include_router(api_router)
     client = TestClient(app)
     for index in range(3):
         client.post(
@@ -488,7 +485,7 @@ def test_table_names_come_from_one_symbol(scaffolded: Path) -> None:
     assert UserModel.__tablename__ is USER_TABLE_NAME
     assert UserModel.__table__.name == "users"
 
-    source = (scaffolded / "src" / "db" / "models" / "user.py").read_text()
+    source = (scaffolded / "src" / "db" / "models" / "users" / "user.py").read_text()
     assert "__tablename__ = USER_TABLE_NAME" in source
     assert '__tablename__ = "users"' not in source
 
@@ -581,7 +578,7 @@ def test_generated_pytest_config_imports_src_from_a_nested_test_dir(
     nested = scaffolded / "tests" / "nested"
     nested.mkdir(exist_ok=True)
     (nested / "test_imports_src.py").write_text(
-        "from src.core.settings import Settings\n"
+        "from src.core import Settings\n"
         "\n"
         "\n"
         "def test_settings_import() -> None:\n"

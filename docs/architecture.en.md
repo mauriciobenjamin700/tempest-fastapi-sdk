@@ -902,8 +902,10 @@ wiring.
 !!! note "What `tempest new` generates"
     The scaffold already ships this shape. `src/api/dependencies/controllers.py`
     holds `get_service_info_controller`, the factory behind the placeholder
-    `GET /api/`, which receives `Settings` through `Depends(get_settings)`;
-    the router declares
+    `GET /api/`, which receives `Settings` through `Depends(get_settings)`
+    and builds the controller with `build_service_info_controller` from
+    `src/scripts/composition.py`, the composition root a task, a script and
+    a test call too; the router (`src/api/routers/service_info.py`) declares
     `controller: ServiceInfoController = Depends(get_service_info_controller)`.
     `src/core/settings.py` exposes `get_settings()` with `@lru_cache` — the
     module-level `settings` stays, as the same instance, for what runs

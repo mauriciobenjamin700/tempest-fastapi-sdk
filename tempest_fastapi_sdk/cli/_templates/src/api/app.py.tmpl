@@ -28,7 +28,8 @@ from tempest_fastapi_sdk import (
 )
 
 from src.api.dependencies import db
-from src.core.settings import settings
+from src.api.routers import build_api_router
+from src.core import settings
 @@if admin@@
 from src.db.models import UserModel
 @@endif@@
@@ -121,8 +122,6 @@ def create_app() -> FastAPI:
     )
 @@endif@@
 
-    from src.api.routers import router as api_router
-
-    app.include_router(api_router, prefix="/api")
+    app.include_router(build_api_router())
 
     return app

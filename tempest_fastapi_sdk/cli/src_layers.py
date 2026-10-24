@@ -96,19 +96,20 @@ __all__: list[str] = ["handle_example"]
 
 
 _TASKS_INIT = '''\
-"""TaskIQ background-task wiring for this service.
+"""TaskIQ background tasks: the queue, the task names and the dispatcher.
 
-A single :class:`TaskQueue` owns the broker for the whole process.
-Request handlers enqueue jobs with ``await my_task.enqueue(...)``; a
-worker process consumes them.
+Task modules are **registration only**: ``tasks/example.py`` declares the
+task, its name and schedule come from :mod:`__ROOT__.tasks.names`, and
+its body calls a script in ``__ROOT__/scripts/``. Only the worker imports
+the task modules (:mod:`__ROOT__.tasks.worker`); the API enqueues by
+name through :class:`TaskDispatcher`, so it never pulls a task's
+dependencies into a request process.
 
 The transport comes from ``TASKIQ_BROKER_URL``: ``redis://`` selects
 Redis Streams, ``amqp://`` selects RabbitMQ, and an **empty** value
-selects the in-memory broker, so a dev box or a test suite without a
-broker still registers every ``@tq.task``.
+selects the in-memory broker.
 
-Wire it up in ``api/app.py``, which is what actually opens the queue —
-nothing here connects on import::
+Open the queue in ``api/app.py`` — nothing here connects on import::
 
     from collections.abc import AsyncGenerator
     from contextlib import asynccontextmanager
@@ -127,79 +128,213 @@ nothing here connects on import::
         finally:
             await db.disconnect()
 
-That opens the broker only. To run the periodic scheduler here instead
-of in a second process, ask for it — ``tq.lifespan(scheduler=True)``.
-It holds a lease, so scaling the API to N replicas still fires each
-schedule once, and it needs Redis to hold that lease: either as the
-broker (``TASKIQ_BROKER_URL=redis://...``) or as
-``TASKIQ_RESULT_BACKEND_URL``. Without one it refuses at startup and
-says so, rather than firing every schedule once per replica.
+Run the worker and the scheduler as their own processes::
 
-The other way round is the standalone process:
-``taskiq scheduler __ROOT__.tasks:scheduler``.
+    taskiq worker __ROOT__.tasks.worker:broker
+    taskiq scheduler __ROOT__.tasks.worker:scheduler
 """
+
+from .dispatch import TaskDispatcher as TaskDispatcher
+from .dispatch import get_task_dispatcher as get_task_dispatcher
+from .names import EXAMPLE_SCHEDULE as EXAMPLE_SCHEDULE
+from .names import EXAMPLE_TASK_NAME as EXAMPLE_TASK_NAME
+from .queue import get_task_queue as get_task_queue
+from .queue import tq as tq
+
+__all__: list[str] = [
+    "EXAMPLE_SCHEDULE",
+    "EXAMPLE_TASK_NAME",
+    "TaskDispatcher",
+    "get_task_dispatcher",
+    "get_task_queue",
+    "tq",
+]
+'''
+
+
+_TASKS_QUEUE = '''\
+"""The process-wide task queue every task registers against."""
 
 from __future__ import annotations
 
 from tempest_fastapi_sdk.tasks import TaskQueue
 
-from __ROOT__.core.settings import settings
+from __ROOT__.core import settings
 
 tq: TaskQueue = TaskQueue.from_settings(settings)
-"""Process-wide task queue; tasks register against it."""
-
-broker = tq.broker
-"""Bound for ``taskiq worker __ROOT__.tasks:broker``.
-
-The TaskIQ CLI resolves ``module:attr`` with a plain ``getattr``, so
-``__ROOT__.tasks:tq.broker`` raises ``AttributeError``.
-"""
-
-scheduler = tq.scheduler
-"""Bound for ``taskiq scheduler __ROOT__.tasks:scheduler``, same reason."""
+"""Process-wide task queue; the API sends through it, the worker runs it."""
 
 
 def get_task_queue() -> TaskQueue:
     """Return the process-wide task queue.
 
     Returns:
-        TaskQueue: The shared queue (connected during the app
-        lifespan).
+        TaskQueue: The shared queue (connected during the app lifespan).
     """
     return tq
 
 
-__all__: list[str] = ["broker", "get_task_queue", "scheduler", "tq"]
+__all__: list[str] = ["get_task_queue", "tq"]
 '''
 
 
-_TASKS_JOBS = '''\
-"""TaskIQ background jobs for this service.
+_TASKS_NAMES = '''\
+"""Task names and schedules — the strings the API and the worker share.
 
-Jobs are declared against the shared :data:`tq` so they register on
-startup. Enqueue them from a request handler with
-``await example_job.enqueue("payload")``.
+This module imports nothing from the project, so the API can read a name
+without importing the task that owns it. A name is the contract between
+the two processes: renaming one strands every message already queued
+under the old name, so a task keeps its name for life.
 """
 
 from __future__ import annotations
 
-from __ROOT__.tasks import tq
+from tempest_fastapi_sdk.tasks import daily
+
+EXAMPLE_TASK_NAME: str = "example:run"
+"""Registered name of :func:`__ROOT__.tasks.example.run_example_task`."""
+
+EXAMPLE_SCHEDULE: str = daily(hour=3)
+"""When the scheduler fires the example task: every day at 03:00."""
 
 
-@tq.task
-async def example_job(payload: str) -> str:
-    """Process one background job.
+__all__: list[str] = ["EXAMPLE_SCHEDULE", "EXAMPLE_TASK_NAME"]
+'''
+
+
+_TASKS_EXAMPLE = '''\
+"""Registration of the example task — no logic lives here.
+
+The body calls the script that does the work, so the same code runs from
+the worker, from a one-off command and from a test without a broker.
+"""
+
+from __future__ import annotations
+
+from __ROOT__.scripts.example import run_example
+from __ROOT__.tasks.names import EXAMPLE_SCHEDULE, EXAMPLE_TASK_NAME
+from __ROOT__.tasks.queue import tq
+
+
+@tq.cron(EXAMPLE_SCHEDULE, name=EXAMPLE_TASK_NAME)
+async def run_example_task(payload: str = "scheduled") -> str:
+    """Run the example script in the worker.
 
     Args:
-        payload (str): Arbitrary job input.
+        payload (str): Input for the script; the scheduled run passes
+            none and gets the default.
 
     Returns:
-        str: A short result string echoing the processed payload.
+        str: What the script returned.
+    """
+    return await run_example(payload)
+
+
+__all__: list[str] = ["run_example_task"]
+'''
+
+
+_TASKS_DISPATCH = '''\
+"""The dispatcher: how the API enqueues work without importing a task.
+
+Each method sends one task by its name from :mod:`__ROOT__.tasks.names`
+(:meth:`TaskQueue.enqueue_by_name`). The worker restores the labels the
+task was registered with, so a retry policy still applies.
+"""
+
+from __future__ import annotations
+
+from tempest_fastapi_sdk.tasks import TaskQueue
+
+from __ROOT__.tasks.names import EXAMPLE_TASK_NAME
+from __ROOT__.tasks.queue import tq
+
+
+class TaskDispatcher:
+    """Enqueues the service's tasks by name.
+
+    Attributes:
+        queue (TaskQueue): The queue the calls are sent through.
+    """
+
+    def __init__(self, queue: TaskQueue) -> None:
+        """Bind the dispatcher to a queue.
+
+        Args:
+            queue (TaskQueue): The queue the calls are sent through.
+        """
+        self.queue: TaskQueue = queue
+
+    async def example(self, payload: str) -> None:
+        """Ask the worker to run the example task.
+
+        Args:
+            payload (str): Input for the example script.
+        """
+        await self.queue.enqueue_by_name(EXAMPLE_TASK_NAME, payload)
+
+
+def get_task_dispatcher() -> TaskDispatcher:
+    """Return a dispatcher over the process-wide queue (a ``Depends`` provider).
+
+    Returns:
+        TaskDispatcher: The dispatcher.
+    """
+    return TaskDispatcher(tq)
+
+
+__all__: list[str] = ["TaskDispatcher", "get_task_dispatcher"]
+'''
+
+
+_TASKS_WORKER = '''\
+"""Worker entry point: imports every task module so the tasks register.
+
+The TaskIQ CLI resolves ``module:attr`` with a plain ``getattr``, so the
+broker and the scheduler are bound to names of their own::
+
+    taskiq worker __ROOT__.tasks.worker:broker
+    taskiq scheduler __ROOT__.tasks.worker:scheduler
+
+Only the worker and the scheduler import this module; the API never
+does. A new task module is imported here, or it never registers.
+"""
+
+from __future__ import annotations
+
+from __ROOT__.tasks import example as example
+from __ROOT__.tasks.queue import tq
+
+broker = tq.broker
+"""Bound for ``taskiq worker __ROOT__.tasks.worker:broker``."""
+
+scheduler = tq.scheduler
+"""Bound for ``taskiq scheduler __ROOT__.tasks.worker:scheduler``."""
+
+
+__all__: list[str] = ["broker", "example", "scheduler"]
+'''
+
+
+_SCRIPTS_EXAMPLE = '''\
+"""The example task's work, callable with or without a worker."""
+
+from __future__ import annotations
+
+
+async def run_example(payload: str) -> str:
+    """Process one example payload.
+
+    Args:
+        payload (str): Arbitrary input.
+
+    Returns:
+        str: A short result echoing the processed payload.
     """
     return f"processed: {payload}"
 
 
-__all__: list[str] = ["example_job"]
+__all__: list[str] = ["run_example"]
 '''
 
 
@@ -224,9 +359,11 @@ in ``schemas/`` with ``tempest_fastapi_sdk.ui.forms.form_for``, and read
 the submission back with ``parse_form``.
 """
 
-from __ROOT__.ui.layout import BasePage
-from __ROOT__.ui.pages import HomePage
-from __ROOT__.ui.styles import CSS_PATH, CSS_URL, STYLESHEET
+from .layout import BasePage as BasePage
+from .pages import HomePage as HomePage
+from .styles import CSS_PATH as CSS_PATH
+from .styles import CSS_URL as CSS_URL
+from .styles import STYLESHEET as STYLESHEET
 
 __all__: list[str] = ["CSS_PATH", "CSS_URL", "STYLESHEET", "BasePage", "HomePage"]
 '''
@@ -318,7 +455,7 @@ __all__: list[str] = ["CSS_PATH", "CSS_URL", "STYLESHEET", "THEME"]
 _UI_LAYOUT_INIT = '''\
 """Layout: the chrome every page of this service inherits."""
 
-from __ROOT__.ui.layout.base import BasePage
+from .base import BasePage as BasePage
 
 __all__: list[str] = ["BasePage"]
 '''
@@ -382,7 +519,7 @@ The SDK ships the common ones (``Card``, ``Alert``, ``DataTable``,
 specific to this service.
 """
 
-from __ROOT__.ui.components.stat import Stat
+from .stat import Stat as Stat
 
 __all__: list[str] = ["Stat"]
 '''
@@ -436,7 +573,7 @@ in ``body()``. Routers construct it with data a controller already
 loaded — pages never query anything themselves.
 """
 
-from __ROOT__.ui.pages.home import HomePage
+from .home import HomePage as HomePage
 
 __all__: list[str] = ["HomePage"]
 '''
@@ -555,7 +692,12 @@ LAYER_FILES: dict[str, dict[str, str]] = {
     },
     "tasks": {
         "tasks/__init__.py": _TASKS_INIT,
-        "tasks/jobs.py": _TASKS_JOBS,
+        "tasks/queue.py": _TASKS_QUEUE,
+        "tasks/names.py": _TASKS_NAMES,
+        "tasks/example.py": _TASKS_EXAMPLE,
+        "tasks/dispatch.py": _TASKS_DISPATCH,
+        "tasks/worker.py": _TASKS_WORKER,
+        "scripts/example.py": _SCRIPTS_EXAMPLE,
     },
 }
 """Maps each layer-bearing extra to the files it contributes."""

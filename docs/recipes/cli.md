@@ -174,22 +174,23 @@ my_service/
 ├── README.md
 ├── CLAUDE.md                # regras do projeto para agentes de IA e humanos
 ├── src/
-│   ├── __init__.py          # re-exporta run de src.server
+│   ├── __init__.py          # re-exporta run de .server
 │   ├── server.py            # app no nível do módulo + run() via run_server
 │   ├── api/
-│   │   ├── app.py           # create_app() conecta middleware + handlers do SDK
-│   │   ├── routers/         # __init__.py com o GET /api/ placeholder
-│   │   └── dependencies/    # auth.py (require_token) + resources.py (db, get_session, get_mailer/get_storage por extra) + controllers.py (fábricas)
-│   ├── controllers/         # orquestração entre services
-│   ├── services/            # lógica de negócio
+│   │   ├── app.py           # create_app() conecta middleware, handlers e build_api_router()
+│   │   ├── routers/         # api.py (build_api_router, o único /api) + service_info.py (GET /api/)
+│   │   └── dependencies/    # auth.py + resources.py (db, get_session, get_mailer/get_storage por extra) + controllers.py (providers)
+│   ├── controllers/system/  # ServiceInfoController — um pacote por contexto, uma classe por módulo
+│   ├── services/            # lógica de negócio, em services/<contexto>/
 │   ├── schemas/             # DTOs Pydantic
-│   ├── core/                # settings.py (settings + get_settings) + exceptions.py
+│   ├── scripts/             # composition.py — o composition root (build_*)
+│   ├── core/                # settings.py + enums.py + types.py + exceptions.py
 │   ├── db/
 │   │   ├── configs/names.py # nomes de tabela num símbolo só
-│   │   ├── models/user.py   # UserModel — só com [auth] (ou [admin])
+│   │   ├── models/users/    # UserModel — só com [auth] (ou [admin])
 │   │   └── repositories/
 │   ├── queue/               # só com o extra [queue] — broker + handlers
-│   ├── tasks/               # só com [tasks] ou [tasks-redis] — TaskQueue + jobs
+│   ├── tasks/               # só com [tasks] ou [tasks-redis] — queue, names, dispatch, worker + uma task de exemplo
 │   ├── ui/                  # só com o extra [ssr] — pages/layout/components/styles
 │   └── utils/
 └── tests/
@@ -627,7 +628,7 @@ Mapeamento extra → camada gerada:
 | Extra | Arquivos criados (sob `src/` ou `app/`) |
 |-------|------------------------------------------|
 | `[queue]` | `queue/__init__.py` (`RabbitBroker` + `AsyncQueueManager` + `get_broker`), `queue/handlers.py` (subscriber de exemplo) |
-| `[tasks]` / `[tasks-redis]` | `tasks/__init__.py` (`tq = TaskQueue.from_settings(settings)` + `broker`/`scheduler` para a CLI do TaskIQ + `get_task_queue`), `tasks/jobs.py` (task de exemplo com `@tq.task`) |
+| `[tasks]` / `[tasks-redis]` | `tasks/queue.py` (`tq = TaskQueue.from_settings(settings)` + `get_task_queue`), `tasks/names.py` (`EXAMPLE_TASK_NAME`, `EXAMPLE_SCHEDULE`; não importa nada do projeto), `tasks/example.py` (só o registro: `@tq.cron(EXAMPLE_SCHEDULE, name=EXAMPLE_TASK_NAME)` chamando `scripts/example.py`), `tasks/dispatch.py` (`TaskDispatcher`: a API enfileira pelo nome, com `enqueue_by_name`), `tasks/worker.py` (importa as tasks; `broker`/`scheduler` para `taskiq worker src.tasks.worker:broker`), `tasks/__init__.py` (reexporta fila, nomes e dispatcher — nunca uma task) |
 
 Os dois extras geram a mesma camada: o transporte sai do `TASKIQ_BROKER_URL` em runtime. Com `[tasks-redis]`, o `tempest new` também declara `TASKIQ_BROKER_URL` no `Settings` com default `redis://localhost:6379/0` e escreve a mesma URL no `.env.example`, porque o default do mixin é `amqp://`, que escolhe o RabbitMQ e exige `[tasks]`. Se mesmo assim a URL apontar para um transporte cujo extra não está instalado, o `ImportError` do `TaskQueue.from_settings` nomeia o `TASKIQ_BROKER_URL`, o valor lido (senha mascarada) e a URL do outro transporte.
 
@@ -2209,12 +2210,13 @@ src/db/repositories/orders/order.py:1: REPO002 (warning) imports `CustomerReposi
 3 layer finding(s): 0 error(s), 3 warning(s).
 ```
 
-!!! note "O `tempest new` ainda gera módulo na raiz da camada"
-    O scaffold atual escreve `controllers/service_info.py` direto na
-    camada, e ele sai como `LAY002`; com o extra `auth`, o
-    `db/models/user.py` também (medido sem extras, com `sqlite` e com
-    `auth,queue,tasks,ssr`). O scaffold passa a gerar pacotes de contexto
-    na próxima parte da #616.
+!!! check "O projeto do `tempest new` passa em todas"
+    O scaffold já sai em pacotes de contexto (`controllers/system/`,
+    `db/models/users/`), com `__init__` relativo, `/api` só no
+    `build_api_router` e testes com `Cenário:`/`Esperado:`: o
+    `tempest lint-layers` não acusa nada, nem aviso (medido sem extras, com
+    `auth,queue,tasks,ssr` e com `admin,email,minio,cache,tasks-redis`; o
+    `tests/cli/test_layer_lint.py` fixa os três).
 
 #### O que service e controller recebem (aviso)
 
@@ -2411,11 +2413,6 @@ def build_api_router() -> APIRouter:
     api.include_router(admin_orders_router)
     return api
 ```
-
-!!! note "O `tempest new` ainda põe `/api` no `create_app`"
-    O `src/api/app.py` do scaffold faz `app.include_router(api_router,
-    prefix="/api")` e sai como `RTR004` até o scaffold ganhar o
-    `routers/api.py`.
 
 #### A forma da suíte (aviso)
 

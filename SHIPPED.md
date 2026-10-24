@@ -3453,6 +3453,20 @@ módulo e em `docs/recipes/cli.md`. Teste:
 `::TestRouterReturnsModel` e o router do `CLAUDE.md` reescrito para montar o
 controller (`TestScaffold`).
 
+## Scaffold na arquitetura da #616
+
+`tempest new` gera pacotes de contexto (`controllers/system/`,
+`db/models/users/`), `__init__` relativos, `routers/api.py` com
+`build_api_router` (único `/api`), `scripts/composition.py` (`build_*` usados
+pelo provider de request), `core/enums.py` + `core/types.py`, testes com
+`Cenário:`/`Esperado:`. Camada `[tasks]`: `queue`/`names`/`example`/
+`dispatch`/`worker` + `scripts/example.py`, envio por `enqueue_by_name`. O
+`CLAUDE.md.tmpl` traz a receita por contexto e a tabela de todos os códigos.
+Zero achados do `lint-layers` em três combinações de extras, fixado em
+`tests/cli/test_layer_lint.py::TestScaffold`; a receita do `CLAUDE.md` roda
+de ponta a ponta em `tests/cli/test_scaffold_runtime.py` (montada pelo
+`build_api_router`).
+
 ## Severidade, `--rule` e exceções declaradas no `lint-layers` (#616, parte 1)
 
 `layer_lint.RULES` dá severidade a todo código: erro derruba, aviso sai com

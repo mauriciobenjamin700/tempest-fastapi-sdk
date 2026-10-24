@@ -1,0 +1,30 @@
+"""Composition root — the one place the object graph is assembled.
+
+One ``build_*`` function per entry point, taking only what the caller
+already holds (a session, the settings) and returning the object fully
+wired. The request providers in :mod:`src.api.dependencies.controllers`
+call these with what ``Depends`` resolved; a task, a queue subscriber,
+an error middleware, a seed script and the test suite call the same
+functions, so the graph is written once. No class assembles itself
+(``tempest check`` reports a ``from_session``, ``DI003``).
+"""
+
+from __future__ import annotations
+
+from src.controllers import ServiceInfoController
+from src.core import Settings
+
+
+def build_service_info_controller(settings: Settings) -> ServiceInfoController:
+    """Assemble the controller of the root endpoint.
+
+    Args:
+        settings (Settings): The process settings.
+
+    Returns:
+        ServiceInfoController: The controller bound to the service title.
+    """
+    return ServiceInfoController(title=settings.TITLE)
+
+
+__all__: list[str] = ["build_service_info_controller"]

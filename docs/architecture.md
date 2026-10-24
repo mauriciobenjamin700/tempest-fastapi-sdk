@@ -900,7 +900,10 @@ três classes, e cada endpoint que usa o controller repete a montagem.
 !!! note "O que o `tempest new` gera"
     O scaffold já sai neste formato. `src/api/dependencies/controllers.py`
     traz `get_service_info_controller`, a fábrica do `GET /api/`
-    placeholder, que recebe `Settings` por `Depends(get_settings)`; o router
+    placeholder, que recebe `Settings` por `Depends(get_settings)` e monta o
+    controller com o `build_service_info_controller` de
+    `src/scripts/composition.py`, o composition root que task, script e
+    teste também chamam; o router (`src/api/routers/service_info.py`)
     declara `controller: ServiceInfoController = Depends(get_service_info_controller)`.
     `src/core/settings.py` expõe `get_settings()` com `@lru_cache` — o
     `settings` de módulo continua lá, é a mesma instância, para o que roda

@@ -11,12 +11,13 @@ class ServiceInfoController(Controller):
     """Describe the running service.
 
     The smallest controller that shows the wiring every domain follows:
-    built by a factory in ``src.api.dependencies.controllers`` from values
-    the factory received through ``Depends``, and handed to the router
-    already assembled. It has no service because it reads no data — a
-    domain controller subclasses ``BaseController[Service, Schema]``
-    instead. Replace it, or delete it with its route, once the first real
-    endpoint lands.
+    assembled by ``build_service_info_controller`` in
+    ``src.scripts.composition``, called by the request factory in
+    ``src.api.dependencies.controllers`` with values it received through
+    ``Depends``, and handed to the router already built. It has no
+    service because it reads no data — a domain controller subclasses
+    ``BaseController[Service, Schema]`` instead. Replace it, or delete it
+    with its route, once the first real endpoint lands.
     """
 
     def __init__(self, title: str) -> None:

@@ -198,8 +198,16 @@ class TestGenerateSrc:
         assert result.exit_code == 0, result.stdout + result.stderr
         assert (tmp_path / "src" / "queue" / "__init__.py").is_file()
         assert (tmp_path / "src" / "queue" / "handlers.py").is_file()
-        assert (tmp_path / "src" / "tasks" / "__init__.py").is_file()
-        assert (tmp_path / "src" / "tasks" / "jobs.py").is_file()
+        for relative in (
+            "tasks/__init__.py",
+            "tasks/queue.py",
+            "tasks/names.py",
+            "tasks/example.py",
+            "tasks/dispatch.py",
+            "tasks/worker.py",
+            "scripts/example.py",
+        ):
+            assert (tmp_path / "src").joinpath(*relative.split("/")).is_file()
         handlers = (tmp_path / "src" / "queue" / "handlers.py").read_text()
         assert "from src.queue import broker" in handlers
 
@@ -218,7 +226,7 @@ class TestGenerateSrc:
         ):
             assert (tmp_path / "src").joinpath(*relative.split("/")).is_file()
         assert (
-            "from src.ui.pages import HomePage"
+            "from .pages import HomePage as HomePage"
             in (tmp_path / "src" / "ui" / "__init__.py").read_text()
         )
 
@@ -273,8 +281,9 @@ class TestGenerateSrc:
         (tmp_path / "app").mkdir()
         result = runner.invoke(app, ["generate", "--src", "--path", str(tmp_path)])
         assert result.exit_code == 0
-        jobs = (tmp_path / "app" / "tasks" / "jobs.py").read_text()
-        assert "from app.tasks import tq" in jobs
+        example = (tmp_path / "app" / "tasks" / "example.py").read_text()
+        assert "from app.tasks.queue import tq" in example
+        assert "from app.scripts.example import run_example" in example
 
     def test_extras_override(self, tmp_path: Path) -> None:
         _seed_project(tmp_path, name="svc", extras="auth")

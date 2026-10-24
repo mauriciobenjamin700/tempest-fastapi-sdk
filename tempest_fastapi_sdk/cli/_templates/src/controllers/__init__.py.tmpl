@@ -1,7 +1,10 @@
-"""Controllers — orchestration between routers and services."""
+"""Controllers — orchestration between routers and services.
 
-from src.controllers.service_info import (
-    ServiceInfoController as ServiceInfoController,
-)
+One subpackage per domain context (``system/``, ``products/``, ...), one
+class per module inside it. Import controllers from this package:
+``from src.controllers import ServiceInfoController``.
+"""
+
+from .system import ServiceInfoController as ServiceInfoController
 
 __all__: list[str] = ["ServiceInfoController"]

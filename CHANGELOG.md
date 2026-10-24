@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- O projeto do `tempest new` sai na arquitetura da #616 e passa em todas as
+  regras do `tempest lint-layers`, erros e avisos (medido sem extras, com
+  `auth,queue,tasks,ssr` e com `admin,email,minio,cache,tasks-redis`):
+  - camadas em pacote de contexto, uma classe por módulo:
+    `controllers/system/service_info.py`, `db/models/users/user.py`;
+  - `__init__.py` reexporta com import relativo; fora dele, import pelo
+    pacote da camada (`from src.core import settings`);
+  - `routers/api.py` com `build_api_router()`, o único lugar com `/api`;
+    `routers/service_info.py` é o router do `GET /api/`;
+  - `scripts/composition.py` com os `build_*` — o provider de request chama
+    o mesmo builder que task e teste chamam;
+  - `core/enums.py` e `core/types.py`;
+  - testes com `Cenário:`/`Esperado:` na docstring.
+- `tempest new --extras tasks` (e `tempest generate --src`) gera a camada de
+  tasks em `queue.py` / `names.py` / `example.py` / `dispatch.py` /
+  `worker.py`, mais `scripts/example.py`: a task é só registro, nome e
+  agenda são constantes que não importam o projeto, a API enfileira pelo
+  `TaskDispatcher` sem importar a task, e o worker roda
+  `taskiq worker src.tasks.worker:broker`. Substitui `tasks/jobs.py` e o
+  `broker` em `src.tasks`.
+- O `CLAUDE.md` gerado ensina o layout novo: pacotes de contexto, composition
+  root, a receita com teste no formato `Cenário:`/`Esperado:`, a tabela de
+  todos os códigos do `tempest check` com severidade e o arquivo de exceções
+  declaradas.
+
 ### Added
 
 - `TaskQueue.enqueue_by_name(name, *args, **kwargs)` manda uma chamada pelo
