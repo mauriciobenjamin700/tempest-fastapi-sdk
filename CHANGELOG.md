@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tempest lint-layers` ganha as regras da suíte, como **aviso** (#616):
+  `TST001` (docstring de teste sem `Cenário:` e `Esperado:`), `TST002`
+  (teste que não confere nada), `TST003` (`pytest.raises(Exception)` ou
+  `BaseException`) e `TST004` (id de `parametrize` com valor sorteado no
+  import — medido com `pytest -n 2`: `str(uuid4())`, `random.randint()` e
+  afins abortam o xdist; `uuid4()` cru passa e não é acusado). Os três
+  testes do `tempest new` atual saem como `TST001` até o scaffold mudar.
+
+### Added
+
 - `tempest lint-layers` ganha `RTR003` (mais de um `APIRouter` num módulo de
   `routers/`) e `RTR004` (`prefix` `/api` em `APIRouter`/`include_router`
   fora de `build_api_router`), como **aviso** (#616). O `create_app` do

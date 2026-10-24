@@ -2414,6 +2414,61 @@ def build_api_router() -> APIRouter:
     prefix="/api")` e sai como `RTR004` até o scaffold ganhar o
     `routers/api.py`.
 
+#### A forma da suíte (aviso)
+
+As quatro regras `TST` leem os arquivos que o pytest coleta no `tests/` do
+projeto (`test_*.py` e `*_test.py`):
+
+| Código | O que acusa |
+| --- | --- |
+| `TST001` | teste (`test*` de módulo ou método `test*` de classe `Test*`) cuja docstring não traz `Cenário:` **e** `Esperado:` — a situação que o teste monta e o que ele prova |
+| `TST002` | teste que não confere nada: sem `assert`, sem `with pytest.raises` / `warns` / `deprecated_call`, sem chamada `assert*` (`mock.assert_awaited_once()`) |
+| `TST003` | `pytest.raises(Exception)` ou `BaseException`, sozinho ou em tupla — qualquer bug passa |
+| `TST004` | `parametrize` cujo id leva um valor sorteado no import |
+
+Este arquivo tem as quatro (saída real):
+
+```python
+# tests/test_orders.py
+from uuid import uuid4
+
+import pytest
+
+
+@pytest.mark.parametrize("order_id", [str(uuid4())])
+def test_order_is_created(order_id: str) -> None:
+    """The order is created."""
+    with pytest.raises(Exception):
+        int(order_id)
+
+
+def test_receipt_is_sent() -> None:
+    """Cenário: um pedido pago.
+
+    Esperado: o recibo sai sem erro.
+    """
+    str(uuid4())
+```
+
+```text
+tests/test_orders.py:6: TST004 (warning) parametrize puts a `uuid4()` drawn at import into the test id; each pytest-xdist worker collects different ids and the run aborts — use fixed literals.
+tests/test_orders.py:7: TST001 (warning) `test_order_is_created` docstring lacks Cenário:, Esperado:; say the situation the test builds (Cenário:) and what it proves (Esperado:).
+tests/test_orders.py:9: TST003 (warning) pytest.raises(Exception) passes for any bug; name the exception the code raises (and `match=` its message when it matters).
+tests/test_orders.py:13: TST002 (warning) `test_receipt_is_sent` checks nothing (no assert, no pytest.raises, no assert_* call); a test that cannot fail proves nothing.
+4 layer finding(s): 0 error(s), 4 warning(s).
+```
+
+!!! info "Quando o valor sorteado quebra o `pytest -n`"
+    Cada worker do pytest-xdist importa o módulo por conta própria. Se o id
+    do teste depende de um valor sorteado, cada worker coleta ids
+    diferentes e a execução aborta com "Different tests were collected".
+    Medido com `pytest -n 2`: `random.randint()`, `time.time()`,
+    `secrets.token_hex()`, `os.urandom()`, `str(uuid4())`, `uuid4().hex`,
+    `f"{uuid4()}"` e `pytest.param(..., id=str(uuid4()))` abortam. Um
+    `uuid4()` ou `datetime.now()` **cru** passa — o pytest dá a esses
+    objetos o id pela posição (`v0`, `v1`) —, e por isso o `TST004` só os
+    acusa quando viram texto ou entram em `ids=` / `id=`.
+
 #### Aviso, erro e exceção declarada
 
 Toda regra tem uma severidade. **Erro** derruba o passo (exit code `1`);

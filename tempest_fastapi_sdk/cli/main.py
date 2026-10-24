@@ -886,7 +886,10 @@ def lint_layers_cmd(
     source and in ``tests/``. IMP001, an absolute import of a neighbour in
     ``__init__.py``; IMP002, a submodule import of a name a package above
     re-exports. RTR003, a second ``APIRouter`` in a routers/ module;
-    RTR004, a ``/api`` prefix outside ``build_api_router``.
+    RTR004, a ``/api`` prefix outside ``build_api_router``. In the suite:
+    TST001, a test docstring without ``Cenário:`` and ``Esperado:``;
+    TST002, a test that checks nothing; TST003, ``pytest.raises(Exception)``;
+    TST004, a ``parametrize`` id holding a value drawn at import.
 
     A warning prints ``(warning)`` after its code and fails only a strict
     run. An exception kept on purpose is an entry of the

@@ -55,6 +55,7 @@ SCAFFOLD_LAYOUT_DEBT: dict[str, int] = {
     "IMP002": 8,
     "LAY002": 2,
     "RTR004": 1,
+    "TST001": 3,
 }
 """Warnings ``tempest new`` still produces, counted per code.
 
