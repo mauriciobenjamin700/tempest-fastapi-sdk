@@ -84,6 +84,17 @@ The rules:
   graph; assembly lives in the request providers
   (``api/dependencies/``) and, outside a request, in one composition
   root of ``build_*`` functions.
+* ``STR001`` (warning) — a function defined inside another function, in
+  the source root and in ``tests/``. A callback that needs state becomes
+  a callable object (a class with ``__call__``); one that needs an
+  argument bound goes through :func:`functools.partial`.
+* ``STR002`` (warning) — a module-level function whose name starts with a
+  single ``_``, in the source root and in ``tests/``. A helper with no
+  home: a method of the class that uses it, a public function in
+  ``utils/``, or, in the suite, a fixture.
+
+``tests/`` is the project's suite: ``<target>/tests``, or the one beside
+a source-root target (``tempest lint-layers src`` reads ``./tests``).
 
 What the router rules cannot see, because they read syntax and never
 import the project: a route with no return annotation and no
@@ -258,6 +269,9 @@ SESSION_TYPE: str = "AsyncSession"
 SELF_ASSEMBLY_METHOD: str = "from_session"
 """Function name ``DI003`` reports."""
 
+TESTS_DIR: str = "tests"
+"""The suite directory, beside the source root, that ``STR*`` also reads."""
+
 REPOSITORY_SUFFIX: str = "Repository"
 """Name suffix ``REPO002`` treats as a repository class."""
 
@@ -304,6 +318,8 @@ RULES: dict[str, LayerRule] = {
         LayerRule("DI001", "warning", "AsyncSession in a service or controller"),
         LayerRule("DI002", "warning", "collaborator of the same layer injected"),
         LayerRule("DI003", "warning", "from_session self-assembly"),
+        LayerRule("STR001", "warning", "function defined inside a function"),
+        LayerRule("STR002", "warning", "private module-level function"),
         LayerRule("EXC001", "error", "declared exception the checker cannot use"),
         LayerRule("EXC002", "warning", "declared exception that matches no finding"),
     )
@@ -1513,6 +1529,19 @@ def _check_self_assembly(modules: list[_ParsedModule]) -> list[LayerFinding]:
     return findings
 
 
+def project_root(target: Path) -> Path:
+    """Return the project root a check target belongs to.
+
+    Args:
+        target (Path): The path handed to ``tempest lint-layers``.
+
+    Returns:
+        Path: The parent of a source-root target (``src`` / ``app``),
+        ``target`` itself otherwise.
+    """
+    return target.parent if target.name in SOURCE_ROOTS else target
+
+
 def find_exceptions_file(target: Path) -> Path | None:
     """Locate the project's :data:`EXCEPTIONS_PATH` for a check target.
 
@@ -1520,15 +1549,86 @@ def find_exceptions_file(target: Path) -> Path | None:
         target (Path): The path handed to ``tempest lint-layers``.
 
     Returns:
-        Path | None: ``target/tests/architecture_exceptions.py`` or, for a
-        source-root target, the one under its parent; ``None`` when
-        neither exists.
+        Path | None: :data:`EXCEPTIONS_PATH` under :func:`project_root`,
+        or ``None`` when it does not exist.
     """
-    for base in (target, target.parent):
-        candidate = base / EXCEPTIONS_PATH
-        if candidate.is_file():
-            return candidate
-    return None
+    candidate = project_root(target) / EXCEPTIONS_PATH
+    return candidate if candidate.is_file() else None
+
+
+def _nested_functions(
+    node: ast.AST, owner: str | None, inside_function: bool
+) -> Iterator[tuple[ast.FunctionDef | ast.AsyncFunctionDef, str]]:
+    """Yield each function defined inside another function, with its path.
+
+    Args:
+        node (ast.AST): The node to descend from.
+        owner (str | None): The dotted name of the enclosing definitions.
+        inside_function (bool): Whether ``node`` sits in a function body.
+
+    Yields:
+        tuple[ast.FunctionDef | ast.AsyncFunctionDef, str]: The nested
+        function and its dotted name (``outer.inner``).
+    """
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            name = f"{owner}.{child.name}" if owner else child.name
+            is_function = not isinstance(child, ast.ClassDef)
+            if not isinstance(child, ast.ClassDef) and inside_function:
+                yield child, name
+            yield from _nested_functions(child, name, inside_function or is_function)
+        else:
+            yield from _nested_functions(child, owner, inside_function)
+
+
+def _check_structure(modules: list[_ParsedModule]) -> list[LayerFinding]:
+    """Apply ``STR001`` and ``STR002`` to source and test modules.
+
+    Args:
+        modules (list[_ParsedModule]): Every module under the scan roots
+            and the project's ``tests/``.
+
+    Returns:
+        list[LayerFinding]: The violations, in file and line order.
+    """
+    findings: list[LayerFinding] = []
+    for parsed in modules:
+        for function, name in _nested_functions(parsed.tree, None, False):
+            findings.append(
+                LayerFinding(
+                    path=parsed.path,
+                    line=function.lineno,
+                    code="STR001",
+                    subject=name,
+                    message=(
+                        f"`{name}` is defined inside a function; a callback "
+                        f"that keeps state becomes a class with `__call__`, and "
+                        f"one that binds an argument goes through "
+                        f"functools.partial over a module-level function."
+                    ),
+                )
+            )
+        for statement in parsed.tree.body:
+            if not isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            name = statement.name
+            if not name.startswith("_") or name.startswith("__"):
+                continue
+            findings.append(
+                LayerFinding(
+                    path=parsed.path,
+                    line=statement.lineno,
+                    code="STR002",
+                    subject=name,
+                    message=(
+                        f"module-level `{name}` is a helper with no home; make "
+                        f"it a method of the class that uses it or a public "
+                        f"function in utils/ (in tests: a fixture or a public "
+                        f"helper module)."
+                    ),
+                )
+            )
+    return findings
 
 
 def _exceptions_dict(module: ast.Module) -> ast.Dict | None:
@@ -1798,6 +1898,12 @@ def lint_layers(
         for path in _source_files(root)
         if (parsed := _parse(path))
     ]
+    tests_root = project_root(target) / TESTS_DIR
+    test_modules = (
+        [parsed for path in _source_files(tests_root) if (parsed := _parse(path))]
+        if tests_root.is_dir()
+        else []
+    )
     selected = set(RULES) if rules is None else {*rules, "EXC001", "EXC002"}
     findings = [
         finding
@@ -1811,6 +1917,7 @@ def lint_layers(
             *_check_repository_imports(repository_modules),
             *_check_injection(service_modules, controller_modules),
             *_check_self_assembly(source_modules),
+            *_check_structure([*source_modules, *test_modules]),
         )
         if finding.code in selected
     ]
@@ -1932,12 +2039,14 @@ __all__: list[str] = [
     "STRICT_CONFIG_KEY",
     "STR_ENUM_BASE",
     "SUBJECT_SEPARATOR",
+    "TESTS_DIR",
     "DeclaredException",
     "LayerFinding",
     "LayerRule",
     "Severity",
     "find_exceptions_file",
     "lint_layers",
+    "project_root",
     "read_exceptions",
     "run_lint_layers",
     "scan_roots",

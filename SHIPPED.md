@@ -3480,6 +3480,14 @@ controller; o subject é `Classe.parâmetro`, para exceção mirar um só) e
 `agents-db` passou a montar por `build_catalog_service`. Teste:
 `tests/cli/test_layer_lint_injection.py`.
 
+## Estrutura no `lint-layers` (#616, parte 4)
+
+Avisos `STR001` (função aninhada, subject pontuado `outer.inner`) e `STR002`
+(função de módulo `_nome`), sobre o código **e** o `tests/` do projeto
+(`project_root`: o pai de um alvo `src`/`app`, o próprio alvo senão — o
+arquivo de exceções segue a mesma raiz). Teste:
+`tests/cli/test_layer_lint_structure.py`.
+
 ## Sufixo `Enum` no `tempest check` (#518)
 
 `ENUM001` em `tempest_fastapi_sdk/cli/layer_lint.py`: classe pública que

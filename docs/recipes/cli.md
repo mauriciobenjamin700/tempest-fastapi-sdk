@@ -2271,6 +2271,45 @@ ARCHITECTURE_EXCEPTIONS: dict[str, str] = {
     root e reutilize-o em todos esses lugares e na suíte. A receita de
     [agentes com banco](agents-db.md) mostra a forma.
 
+#### Função aninhada e helper privado (aviso)
+
+Estas duas regras leem o código **e a suíte** (`tests/` ao lado do
+`src/`). No transport, a maior parte das ocorrências estava nos testes.
+
+| Código | O que acusa |
+| --- | --- |
+| `STR001` | função definida dentro de outra função — inclusive dentro de método ou de classe local. Callback que guarda estado vira classe com `__call__`; o que só fixa um argumento vira `functools.partial` sobre uma função de módulo |
+| `STR002` | função de módulo cujo nome começa com um `_` só (`__getattr__` e métodos passam). Vira método da classe que a usa, função pública em `utils/` ou, na suíte, fixture ou módulo de helper público |
+
+Com estes dois arquivos (saída real):
+
+```python
+# src/utils/retry.py
+from collections.abc import Awaitable, Callable
+
+
+def with_retry(attempts: int) -> Callable[[], Awaitable[None]]:
+    """Repete a chamada até dar certo."""
+
+    async def wrapper() -> None:
+        """Tenta de novo."""
+
+    return wrapper
+```
+
+```python
+# tests/test_app.py
+def _make_payload() -> dict[str, str]:
+    """Monta o corpo da requisição."""
+    return {"name": "Picos"}
+```
+
+```text
+src/utils/retry.py:7: STR001 (warning) `with_retry.wrapper` is defined inside a function; a callback that keeps state becomes a class with `__call__`, and one that binds an argument goes through functools.partial over a module-level function.
+tests/test_app.py:1: STR002 (warning) module-level `_make_payload` is a helper with no home; make it a method of the class that uses it or a public function in utils/ (in tests: a fixture or a public helper module).
+2 layer finding(s): 0 error(s), 2 warning(s).
+```
+
 #### Aviso, erro e exceção declarada
 
 Toda regra tem uma severidade. **Erro** derruba o passo (exit code `1`);
