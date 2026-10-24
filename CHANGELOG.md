@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.328.0] — 2026-10-24
+
 ### Added
 
 - `TaskQueue.enqueue_by_name(name, *args, **kwargs)` manda uma chamada pelo
