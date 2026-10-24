@@ -2195,6 +2195,33 @@ happens to share a model's name stays clean.
     declares `tempest-cli>=0.5.1`, so it comes with it. `tempest-cli check` alone, without the SDK,
     does not know these rules: they belong to the SDK.
 
+#### Layer in a context package (warning)
+
+Three rules check the shape of the four layers — `controllers/`,
+`services/`, `repositories/` and `models/`. They enter as **warnings**:
+
+| Code | Where | What it reports |
+| --- | --- | --- |
+| `LAY001` | `controllers/`, `repositories/`, `models/` | a second class in the module (any name, private ones too) or a module-level function. In `services/` `SVC002` reports it, as an error |
+| `LAY002` | all four layers | a module directly at the layer root: `models/route.py` goes to `models/<context>/route.py`. Any context name is fine; `__init__.py` is exempt |
+| `REPO002` | `repositories/` | an import of a `*Repository` name from another repository module (an absolute import with a `repositories` segment, or a relative one). A name used only as a class base — the project's base repository — passes |
+
+A `models/route.py` with two models and a repository importing another
+print (real output, exit code `0`, since they are only warnings):
+
+```text
+src/db/models/route.py:1: LAY002 (warning) models/route.py sits at the root of the layer; move it to models/<context>/route.py (a subpackage per domain context, re-exported by models/__init__.py).
+src/db/models/route.py:5: LAY001 (warning) `StopModel` shares this module with `RouteModel`; one class per module in models/ — move it to its own file in the same context package.
+src/db/repositories/orders/order.py:1: REPO002 (warning) imports `CustomerRepository` from another repository; a repository reads its own tables (join in the query) and a service combines two repositories.
+3 layer finding(s): 0 error(s), 3 warning(s).
+```
+
+!!! note "`tempest new` still writes modules at the layer root"
+    The current scaffold writes `controllers/service_info.py` and
+    `db/models/user.py` straight into the layer, and each prints as
+    `LAY002`. The scaffold moves to context packages in the next part of
+    #616.
+
 #### Warning, error and declared exception
 
 Every rule has a severity. An **error** fails the step (exit code `1`); a

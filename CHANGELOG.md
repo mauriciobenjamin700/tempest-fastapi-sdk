@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tempest lint-layers` ganha três regras, como **aviso** (#616): `LAY001`
+  (segunda classe ou função de módulo em `controllers/`, `repositories/` ou
+  `models/`; `services/` continua no `SVC002`), `LAY002` (módulo na raiz da
+  camada em vez de `<camada>/<contexto>/`) e `REPO002` (repository
+  importando outro `*Repository`; base de classe passa). O `tempest new`
+  ainda gera `controllers/service_info.py` e `db/models/user.py` na raiz da
+  camada, que saem como `LAY002` até o scaffold mudar.
+
+### Added
+
 - `tempest lint-layers` ganha severidade, seleção de regra e exceções
   declaradas (#616, primeira parte). Toda regra tem severidade em
   `layer_lint.RULES`: erro derruba o passo, aviso sai com `(warning)` e não

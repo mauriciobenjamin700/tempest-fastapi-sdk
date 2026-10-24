@@ -40,6 +40,38 @@ runner = CliRunner()
 _BLOCK = re.compile(r"```python\n(# (src/[\w/]+\.py)\n.*?)```", re.DOTALL)
 
 
+RULES_UNDER_TEST: frozenset[str] = frozenset(
+    {"SVC001", "SVC002", "SVC003", "REPO001", "ENUM001", "RTR001", "RTR002"}
+)
+"""The rules this file pins; the #616 families have their own test files.
+
+Their fixtures keep the flat ``services/news.py`` shape the issue that
+introduced each rule describes, which ``LAY002`` would also report.
+"""
+
+SCAFFOLD_LAYOUT_DEBT: list[tuple[str, int, str]] = [
+    ("service_info.py", 1, "LAY002"),
+    ("user.py", 1, "LAY002"),
+]
+"""Warnings ``tempest new`` still produces until it writes context packages.
+
+The scaffold moves to ``<layer>/<context>/`` in the next part of #616;
+this list then becomes empty, and a new warning shows up as a diff here.
+"""
+
+
+def _lint(target: Path) -> list[LayerFinding]:
+    """Run only :data:`RULES_UNDER_TEST` over ``target``.
+
+    Args:
+        target (Path): The project root.
+
+    Returns:
+        list[LayerFinding]: The findings of the rules this file pins.
+    """
+    return lint_layers(target, rules=RULES_UNDER_TEST)
+
+
 def _write(root: Path, relative: str, source: str) -> Path:
     """Write a dedented source file under ``root``.
 
@@ -101,7 +133,7 @@ class TestServiceInheritsBaseService:
                     return []
             """,
         )
-        findings = lint_layers(tmp_path)
+        findings = _lint(tmp_path)
         assert _codes(findings) == [("news.py", 1, "SVC001")]
         assert "BaseService[Repository, ResponseSchema]" in findings[0].message
         assert NO_BASE_SERVICE_MARKER in findings[0].message
@@ -121,7 +153,7 @@ class TestServiceInheritsBaseService:
                 \"\"\"Orders.\"\"\"
             """,
         )
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
     def test_accepts_a_subclass_of_a_project_service(self, tmp_path: Path) -> None:
         """Resolution reaches a fixed point whatever the file order."""
@@ -137,7 +169,7 @@ class TestServiceInheritsBaseService:
             """,
         )
         _write(tmp_path, "src/services/product.py", GOOD_SERVICE)
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
     def test_accepts_an_sdk_service_base(self, tmp_path: Path) -> None:
         _write(
@@ -151,7 +183,7 @@ class TestServiceInheritsBaseService:
                 \"\"\"Signup and login, extended.\"\"\"
             """,
         )
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
     def test_a_service_named_class_from_elsewhere_is_not_accepted(
         self, tmp_path: Path
@@ -167,7 +199,7 @@ class TestServiceInheritsBaseService:
                 \"\"\"News.\"\"\"
             """,
         )
-        assert _codes(lint_layers(tmp_path)) == [("news.py", 4, "SVC001")]
+        assert _codes(_lint(tmp_path)) == [("news.py", 4, "SVC001")]
 
     def test_marker_opts_out(self, tmp_path: Path) -> None:
         _write(
@@ -182,7 +214,7 @@ class TestServiceInheritsBaseService:
                     self.path = path
             """,
         )
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
     def test_marker_on_a_split_header(self, tmp_path: Path) -> None:
         _write(
@@ -195,7 +227,7 @@ class TestServiceInheritsBaseService:
                 \"\"\"Static catalogue.\"\"\"
             """,
         )
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
     def test_marker_inside_the_body_does_not_count(self, tmp_path: Path) -> None:
         _write(
@@ -208,7 +240,7 @@ class TestServiceInheritsBaseService:
                 path = "x"  {NO_BASE_SERVICE_MARKER}
             """,
         )
-        assert _codes(lint_layers(tmp_path)) == [("catalogue.py", 1, "SVC001")]
+        assert _codes(_lint(tmp_path)) == [("catalogue.py", 1, "SVC001")]
 
     def test_private_class_is_not_checked(self, tmp_path: Path) -> None:
         _write(
@@ -221,7 +253,7 @@ class TestServiceInheritsBaseService:
         \"\"\"Internal row shape.\"\"\"
 """,
         )
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
 
 class TestOneServicePerModule:
@@ -264,7 +296,7 @@ class TestOneServicePerModule:
                 \"\"\"Fact checks.\"\"\"
             """,
         )
-        findings = lint_layers(tmp_path)
+        findings = _lint(tmp_path)
         assert _codes(findings) == [
             ("feeds.py", 6, "SVC002"),
             ("feeds.py", 11, "SVC002"),
@@ -289,7 +321,7 @@ class TestOneServicePerModule:
         return name.lower()
 """,
         )
-        assert [finding.code for finding in lint_layers(tmp_path)] == ["SVC002"]
+        assert [finding.code for finding in _lint(tmp_path)] == ["SVC002"]
 
     def test_module_dunder_getattr_is_allowed(self, tmp_path: Path) -> None:
         _write(
@@ -304,7 +336,7 @@ class TestOneServicePerModule:
                 raise AttributeError(name)
             """,
         )
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
 
 class TestRedundantInit:
@@ -339,7 +371,7 @@ class TestRedundantInit:
                     {body}
             """,
         )
-        findings = lint_layers(tmp_path)
+        findings = _lint(tmp_path)
         assert _codes(findings) == [("product.py", 7, "SVC003")]
         assert "delete it" in findings[0].message
 
@@ -372,7 +404,7 @@ class TestRedundantInit:
                     {body}
             """,
         )
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
     def test_opted_out_service_keeps_its_init(self, tmp_path: Path) -> None:
         _write(
@@ -387,7 +419,7 @@ class TestRedundantInit:
                     self.repository = repository
             """,
         )
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
 
 class TestRepositoryWrapper:
@@ -418,7 +450,7 @@ class TestRepositoryWrapper:
                     return self.list(filters)
             """,
         )
-        findings = lint_layers(tmp_path)
+        findings = _lint(tmp_path)
         assert _codes(findings) == [
             ("news.py", 9, "REPO001"),
             ("news.py", 13, "REPO001"),
@@ -461,7 +493,7 @@ class TestRepositoryWrapper:
                     return await self.session.list()
             """,
         )
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
     def test_base_method_list_matches_base_repository(self) -> None:
         """A method added to the base must reach the rule, not slip past it."""
@@ -502,7 +534,7 @@ class TestEnumSuffix:
                 LEFT = "left"
             """,
         )
-        findings = lint_layers(tmp_path)
+        findings = _lint(tmp_path)
         assert _codes(findings) == [("enums.py", 4, "ENUM001")]
         assert "rename it to `OrderStatusEnum`" in findings[0].message
         assert "no migration is needed" in findings[0].message
@@ -537,7 +569,7 @@ class TestEnumSuffix:
                 \"\"\"Private: names no database type.\"\"\"
             """,
         )
-        assert _codes(lint_layers(tmp_path)) == [("a_status.py", 4, "ENUM001")]
+        assert _codes(_lint(tmp_path)) == [("a_status.py", 4, "ENUM001")]
 
     def test_leaves_other_enums_alone(self, tmp_path: Path) -> None:
         _write(
@@ -561,7 +593,7 @@ class TestEnumSuffix:
                 LOW = 1
             """,
         )
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
     def test_suffix_matches_enum_type_name(self) -> None:
         """The checker's suffix is the one ``enum_type_name`` strips."""
@@ -598,7 +630,7 @@ class TestRouterBuildsController:
     def test_flags_the_controller_built_in_the_route(self, tmp_path: Path) -> None:
         """Both classes of the nested construction are reported, once each."""
         _write(tmp_path, "src/api/routers/product.py", INLINE_ROUTER)
-        findings = lint_layers(tmp_path)
+        findings = _lint(tmp_path)
         assert _codes(findings) == [
             ("product.py", 19, "RTR001"),
             ("product.py", 19, "RTR001"),
@@ -630,7 +662,7 @@ class TestRouterBuildsController:
                 return auth.AuthService(session)
             """,
         )
-        assert _codes(lint_layers(tmp_path)) == [
+        assert _codes(_lint(tmp_path)) == [
             ("auth.py", 7, "RTR001"),
             ("auth.py", 13, "RTR001"),
         ]
@@ -663,7 +695,7 @@ class TestRouterBuildsController:
                 get_product_service()
             """,
         )
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
     def test_construction_outside_routers_is_not_read(self, tmp_path: Path) -> None:
         _write(
@@ -674,7 +706,7 @@ class TestRouterBuildsController:
                 return ProductController(ProductService(ProductRepository()))
             """,
         )
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
     def test_marker_opts_out_one_call(self, tmp_path: Path) -> None:
         _write(
@@ -689,7 +721,7 @@ class TestRouterBuildsController:
             other = ReportService()
             """,
         )
-        assert _codes(lint_layers(tmp_path)) == [("push.py", 6, "RTR001")]
+        assert _codes(_lint(tmp_path)) == [("push.py", 6, "RTR001")]
 
 
 class TestRouterReturnsModel:
@@ -712,7 +744,7 @@ class TestRouterReturnsModel:
                 ...
             """,
         )
-        findings = lint_layers(tmp_path)
+        findings = _lint(tmp_path)
         assert _codes(findings) == [("product.py", 9, "RTR002")]
         assert findings[0].message.startswith(
             "route `get_product` returns the ORM model `ProductModel` "
@@ -752,7 +784,7 @@ class TestRouterReturnsModel:
                 ...
             """,
         )
-        findings = lint_layers(tmp_path)
+        findings = _lint(tmp_path)
         assert _codes(findings) == [
             ("order.py", 13, "RTR002"),
             ("order.py", 18, "RTR002"),
@@ -795,7 +827,7 @@ class TestRouterReturnsModel:
                 ...
             """,
         )
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
     def test_models_outside_routers_are_not_read(self, tmp_path: Path) -> None:
         _write(
@@ -809,7 +841,7 @@ class TestRouterReturnsModel:
             async def me() -> UserModel: ...
             """,
         )
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
 
 class TestDiscovery:
@@ -819,12 +851,12 @@ class TestDiscovery:
         _write(
             tmp_path, "app/billing/services/invoice.py", "class InvoiceService: ...\n"
         )
-        assert _codes(lint_layers(tmp_path)) == [("invoice.py", 1, "SVC001")]
+        assert _codes(_lint(tmp_path)) == [("invoice.py", 1, "SVC001")]
 
     def test_target_may_be_the_source_root(self, tmp_path: Path) -> None:
         _write(tmp_path, "src/services/invoice.py", "class InvoiceService: ...\n")
         assert scan_roots(tmp_path / "src") == [tmp_path / "src"]
-        assert len(lint_layers(tmp_path / "src")) == 1
+        assert len(_lint(tmp_path / "src")) == 1
 
     def test_virtualenv_and_tests_are_never_read(self, tmp_path: Path) -> None:
         for relative in (
@@ -833,15 +865,15 @@ class TestDiscovery:
             "node_modules/a/services/x.py",
         ):
             _write(tmp_path, relative, "class XService: ...\n")
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
     def test_a_file_that_does_not_parse_is_skipped(self, tmp_path: Path) -> None:
         _write(tmp_path, "src/services/broken.py", "class (:\n")
-        assert lint_layers(tmp_path) == []
+        assert _lint(tmp_path) == []
 
     def test_no_layers_is_clean(self, tmp_path: Path) -> None:
-        assert lint_layers(tmp_path) == []
-        assert lint_layers(tmp_path / "missing") == []
+        assert _lint(tmp_path) == []
+        assert _lint(tmp_path / "missing") == []
 
 
 class TestRunner:
@@ -850,12 +882,12 @@ class TestRunner:
     def test_prints_one_line_per_finding_and_fails(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _write(tmp_path, "src/services/news.py", "class NewsService: ...\n")
+        _write(tmp_path, "src/services/news/news.py", "class NewsService: ...\n")
         monkeypatch.chdir(tmp_path)
         stream = io.StringIO()
         assert run_lint_layers(".", stream=stream) == 1
         lines = stream.getvalue().splitlines()
-        assert lines[0].startswith("src/services/news.py:1: SVC001 `NewsService`")
+        assert lines[0].startswith("src/services/news/news.py:1: SVC001 `NewsService`")
         assert lines[-1] == "1 layer finding(s)."
 
     def test_clean_project_passes(self, tmp_path: Path) -> None:
@@ -869,10 +901,10 @@ class TestRunner:
         monkeypatch.chdir(tmp_path)
         clean = runner.invoke(cli_app, ["lint-layers", str(tmp_path)])
         assert clean.exit_code == 0, clean.stdout
-        _write(tmp_path, "src/services/news.py", "class NewsService: ...\n")
+        _write(tmp_path, "src/services/news/news.py", "class NewsService: ...\n")
         dirty = runner.invoke(cli_app, ["lint-layers"])
         assert dirty.exit_code == 1
-        assert "src/services/news.py:1: SVC001" in dirty.stdout
+        assert "src/services/news/news.py:1: SVC001" in dirty.stdout
 
     def test_check_runs_the_step(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -922,7 +954,7 @@ class TestScaffold:
     def test_scaffold_is_clean(self, project: Path) -> None:
         assert (project / "src" / "services").is_dir()
         assert (project / "src" / "db" / "repositories").is_dir()
-        assert lint_layers(project) == []
+        assert _codes(lint_layers(project)) == SCAFFOLD_LAYOUT_DEBT
 
     def test_claude_md_examples_are_clean(self, project: Path) -> None:
         """Every ``# src/...`` block of the template, written to disk, passes."""
@@ -934,7 +966,7 @@ class TestScaffold:
         assert project / "src/db/repositories/product.py" in written
         assert project / "src/core/enums.py" in written
         assert project / "src/api/routers/product.py" in written
-        assert lint_layers(project) == []
+        assert _lint(project) == []
 
     def test_claude_md_router_built_inline_is_flagged(self, project: Path) -> None:
         """The template's router, rewritten to build the controller, fails.

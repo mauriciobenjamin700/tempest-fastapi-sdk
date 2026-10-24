@@ -3462,6 +3462,15 @@ entrada que não casa. Regras existentes seguem erro. Teste:
 `tests/cli/test_layer_lint_exceptions.py`. As famílias novas da #616
 (`LAY`, `DI`, `STR`, `IMP`, `RTR003+`, `TST`) entram como aviso sobre esta base.
 
+## Forma de camada no `lint-layers` (#616, parte 2)
+
+Avisos `LAY001` (uma classe por módulo e nenhuma função de módulo em
+`controllers/`, `repositories/`, `models/`), `LAY002` (módulo em
+`<camada>/<contexto>/`, nunca na raiz das quatro camadas de `LAYER_DIRS`) e
+`REPO002` (repository não importa repository; nome usado só como base
+passa). Teste: `tests/cli/test_layer_lint_layout.py`. Dívida do scaffold
+fixada em `SCAFFOLD_LAYOUT_DEBT` (`tests/cli/test_layer_lint.py`).
+
 ## Sufixo `Enum` no `tempest check` (#518)
 
 `ENUM001` em `tempest_fastapi_sdk/cli/layer_lint.py`: classe pública que
