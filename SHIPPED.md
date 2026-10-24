@@ -3448,6 +3448,20 @@ módulo e em `docs/recipes/cli.md`. Teste:
 `::TestRouterReturnsModel` e o router do `CLAUDE.md` reescrito para montar o
 controller (`TestScaffold`).
 
+## Severidade, `--rule` e exceções declaradas no `lint-layers` (#616, parte 1)
+
+`layer_lint.RULES` dá severidade a todo código: erro derruba, aviso sai com
+`(warning)` e só derruba em modo estrito (`--strict`, ou
+`[tool.tempest] layers_strict = true`, que o `tempest check` lê). `--rule`
+(repetível) seleciona códigos; código desconhecido sai com `2`. Exceções
+num lugar só: dict `ARCHITECTURE_EXCEPTIONS` em
+`tests/architecture_exceptions.py`, chave `"<CÓDIGO> <caminho>[::<alvo>]"`,
+valor o motivo, lido por `ast`. `LayerFinding.subject` é o alvo. `EXC001`
+(erro, mesmo sob `--rule`) acusa entrada inutilizável; `EXC002` (aviso),
+entrada que não casa. Regras existentes seguem erro. Teste:
+`tests/cli/test_layer_lint_exceptions.py`. As famílias novas da #616
+(`LAY`, `DI`, `STR`, `IMP`, `RTR003+`, `TST`) entram como aviso sobre esta base.
+
 ## Sufixo `Enum` no `tempest check` (#518)
 
 `ENUM001` em `tempest_fastapi_sdk/cli/layer_lint.py`: classe pública que

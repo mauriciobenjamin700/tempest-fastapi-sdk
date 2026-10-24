@@ -2188,6 +2188,78 @@ tem o mesmo nome de um model continua limpo.
     declara `tempest-cli>=0.5.1`, então ele já vem. O `tempest-cli check` sozinho, sem o SDK, não
     conhece estas regras: elas são do SDK.
 
+#### Aviso, erro e exceção declarada
+
+Toda regra tem uma severidade. **Erro** derruba o passo (exit code `1`);
+**aviso** sai com `(warning)` depois do código e não derruba. Regra nova
+entra como aviso numa release e vira erro na seguinte — assim um serviço
+existente tem uma release inteira para migrar. Para migrar uma regra por
+vez, selecione-a com `--rule` (repetível, aceita minúsculas):
+
+```bash
+tempest lint-layers --rule SVC002              # só uma regra
+tempest lint-layers --rule SVC002 --rule RTR001
+tempest lint-layers --strict                   # aviso também derruba
+```
+
+O `tempest check` roda o passo sem `--rule`. Para o gate derrubar em aviso
+também, ligue no `pyproject.toml` — o `--strict`/`--no-strict` da linha de
+comando vence a config:
+
+```toml
+[tool.tempest]
+layers_strict = true
+```
+
+**Exceção que o projeto assume fica num lugar só**, com motivo, revisada no
+diff como código: o dict `ARCHITECTURE_EXCEPTIONS` em
+`tests/architecture_exceptions.py`. A chave é `"<CÓDIGO> <caminho>"` (todas
+as violações daquele código no arquivo) ou `"<CÓDIGO> <caminho>::<alvo>"`
+(só a que fala daquele nome — a classe, `Classe.método` ou a função). O
+caminho é relativo à raiz do projeto. O arquivo também é lido com `ast`,
+nunca importado:
+
+```python
+"""Exceções de arquitetura que o projeto assume, cada uma com motivo."""
+
+ARCHITECTURE_EXCEPTIONS: dict[str, str] = {
+    "SVC001 src/services/catalogue.py::CatalogueService": (
+        "catálogo estático, sem repository para o BaseService"
+    ),
+    "REPO001 src/db/repositories/legacy.py": "wrapper mantido até a 2.0",
+}
+```
+
+Com esse arquivo, um `src/services/catalogue.py` que define
+`CatalogueService` (sem `BaseService`) e uma função de módulo
+`load_items`, e nenhum `legacy.py`, o `tempest lint-layers` sai assim
+(saída real, exit code `1` por causa do `SVC002`):
+
+```text
+src/services/catalogue.py:5: SVC002 module-level function `load_items` in services/; move it to utils/, or make it a method of the service that uses it.
+tests/architecture_exceptions.py:7: EXC002 (warning) `REPO001 src/db/repositories/legacy.py` matches no finding; the code it excused is gone or moved — delete the entry, or fix its path.
+2 layer finding(s): 1 error(s), 1 warning(s).
+```
+
+O `SVC001` do `CatalogueService` sumiu, porque a exceção o cobre. A entrada
+de `REPO001` não casa com nada e vira o aviso `EXC002`: exceção não
+sobrevive ao código que ela desculpava.
+
+| Código | Severidade | O que acusa |
+| --- | --- | --- |
+| `EXC001` | erro, sempre (mesmo com `--rule`) | entrada que o checker não consegue usar: chave fora da forma, código desconhecido, motivo vazio ou que não é string literal, chave repetida, arquivo sem o dict |
+| `EXC002` | aviso | entrada que não desculpa nenhuma violação — o código mudou ou o caminho está errado |
+
+`--rule` com código desconhecido sai com exit code `2` e a lista dos
+códigos válidos.
+
+!!! tip "Marcador ou exceção declarada?"
+    Os marcadores `# tempest: no-base-service` e
+    `# tempest: router-builds` continuam valendo. A exceção declarada serve
+    para qualquer regra, inclusive as que não têm marcador, e junta num
+    arquivo só o que antes ficava espalhado — a review lê o motivo de
+    todas de uma vez.
+
 ---
 
 ## Recap

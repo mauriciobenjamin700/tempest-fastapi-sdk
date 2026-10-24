@@ -843,6 +843,22 @@ def lint_layers_cmd(
             "Defaults to the current directory."
         ),
     ] = ".",
+    rule: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--rule",
+            help="Report only this rule code (repeatable), to migrate one "
+            "rule at a time.",
+        ),
+    ] = None,
+    strict: Annotated[
+        bool | None,
+        typer.Option(
+            "--strict/--no-strict",
+            help="Fail on warnings too. Defaults to [tool.tempest] "
+            "layers_strict, false when absent.",
+        ),
+    ] = None,
 ) -> None:
     """Check services, repositories, routers and enum names against the SDK's rules.
 
@@ -859,12 +875,26 @@ def lint_layers_cmd(
     with ``# tempest: router-builds`` on the line). RTR002: a route whose
     return annotation or ``response_model`` names an ORM model.
 
+    A warning prints ``(warning)`` after its code and fails only a strict
+    run. An exception kept on purpose is an entry of the
+    ``ARCHITECTURE_EXCEPTIONS`` dict in ``tests/architecture_exceptions.py``
+    (``"<CODE> <path>[::<subject>]": "<reason>"``); EXC001 reports an entry
+    that cannot be used and EXC002 one that matches no finding.
+
     ``tempest check`` runs the same rules as its ``lint-layers`` step.
 
+    Args:
+        target (str): The path to check.
+        rule (list[str] | None): Rule codes to report; all when absent.
+        strict (bool | None): Whether warnings fail the run; ``None``
+            reads ``[tool.tempest] layers_strict``.
+
     Raises:
-        typer.Exit: Exit code 1 when any rule is violated, 0 otherwise.
+        typer.Exit: Exit code 1 when an error (or, strict, any finding)
+            is reported, 2 for an unknown rule code or an invalid
+            ``layers_strict``, 0 otherwise.
     """
-    raise typer.Exit(run_lint_layers(target))
+    raise typer.Exit(run_lint_layers(target, rules=rule, strict=strict))
 
 
 @app.command("permissions")
