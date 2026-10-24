@@ -3488,6 +3488,15 @@ Avisos `STR001` (função aninhada, subject pontuado `outer.inner`) e `STR002`
 arquivo de exceções segue a mesma raiz). Teste:
 `tests/cli/test_layer_lint_structure.py`.
 
+## Imports no `lint-layers` (#616, parte 5)
+
+Avisos `IMP001` (`__init__` com import absoluto do próprio pacote) e `IMP002`
+(submódulo importado quando um pacote acima reexporta o nome; índice de
+exports por `ast` com `import *` e corte de ciclo; sugere o pacote mais alto
+que não contém o módulo importador). Teste:
+`tests/cli/test_layer_lint_imports.py`. Dívida do scaffold em
+`SCAFFOLD_LAYOUT_DEBT` (contagem por código).
+
 ## Sufixo `Enum` no `tempest check` (#518)
 
 `ENUM001` em `tempest_fastapi_sdk/cli/layer_lint.py`: classe pública que

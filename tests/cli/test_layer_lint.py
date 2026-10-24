@@ -13,6 +13,7 @@ import inspect
 import io
 import re
 import textwrap
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -49,14 +50,13 @@ Their fixtures keep the flat ``services/news.py`` shape the issue that
 introduced each rule describes, which ``LAY002`` would also report.
 """
 
-SCAFFOLD_LAYOUT_DEBT: list[tuple[str, int, str]] = [
-    ("service_info.py", 1, "LAY002"),
-    ("user.py", 1, "LAY002"),
-]
-"""Warnings ``tempest new`` still produces until it writes context packages.
+SCAFFOLD_LAYOUT_DEBT: dict[str, int] = {"IMP001": 19, "IMP002": 8, "LAY002": 2}
+"""Warnings ``tempest new`` still produces, counted per code.
 
-The scaffold moves to ``<layer>/<context>/`` in the next part of #616;
-this list then becomes empty, and a new warning shows up as a diff here.
+The scaffold moves to the #616 layout (context packages, relative
+``__init__`` imports, layer-package imports) in the next part of the
+issue; this then becomes empty, and a new warning shows up as a diff here.
+Every one of them is a warning: the scaffold has no error.
 """
 
 
@@ -954,7 +954,11 @@ class TestScaffold:
     def test_scaffold_is_clean(self, project: Path) -> None:
         assert (project / "src" / "services").is_dir()
         assert (project / "src" / "db" / "repositories").is_dir()
-        assert _codes(lint_layers(project)) == SCAFFOLD_LAYOUT_DEBT
+        findings = lint_layers(project)
+        assert {finding.severity for finding in findings} <= {"warning"}
+        assert dict(Counter(finding.code for finding in findings)) == (
+            SCAFFOLD_LAYOUT_DEBT
+        )
 
     def test_claude_md_examples_are_clean(self, project: Path) -> None:
         """Every ``# src/...`` block of the template, written to disk, passes."""
