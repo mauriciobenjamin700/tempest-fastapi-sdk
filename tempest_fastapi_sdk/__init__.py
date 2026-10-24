@@ -1821,6 +1821,9 @@ if TYPE_CHECKING:
         XLSX_MEDIA_TYPE as XLSX_MEDIA_TYPE,
     )
     from tempest_fastapi_sdk.utils import (
+        AllowedImageMediaTypes as AllowedImageMediaTypes,
+    )
+    from tempest_fastapi_sdk.utils import (
         AttemptThrottle as AttemptThrottle,
     )
     from tempest_fastapi_sdk.utils import (
@@ -2076,6 +2079,9 @@ if TYPE_CHECKING:
         hash_opaque_token as hash_opaque_token,
     )
     from tempest_fastapi_sdk.utils import (
+        image_media_type_field as image_media_type_field,
+    )
+    from tempest_fastapi_sdk.utils import (
         is_valid_cep as is_valid_cep,
     )
     from tempest_fastapi_sdk.utils import (
@@ -2238,6 +2244,8 @@ if TYPE_CHECKING:
 __version__: str = "0.326.0"
 
 _LAZY_ATTRIBUTES: dict[str, str] = {
+    "AllowedImageMediaTypes": "tempest_fastapi_sdk.utils",
+    "image_media_type_field": "tempest_fastapi_sdk.utils",
     "AdminAccessPolicy": "tempest_fastapi_sdk.admin",
     "AdminAction": "tempest_fastapi_sdk.admin",
     "AdminActionContext": "tempest_fastapi_sdk.admin",
@@ -3132,6 +3140,7 @@ __all__: list[str] = [
     "AdminSite",
     "AdminTheme",
     "AlembicHelper",
+    "AllowedImageMediaTypes",
     "AmbiguousBaseRevisionError",
     "AppException",
     "AppSettingsMeta",
@@ -3617,6 +3626,7 @@ __all__: list[str] = [
     "has_perm",
     "hash_opaque_token",
     "heartbeat",
+    "image_media_type_field",
     "in_transaction",
     "instrument_sqlalchemy_engine",
     "is_log_dir_unset",

@@ -444,6 +444,7 @@ class CursorPaginationFilterSchema(BaseSchema):
             "Whether to sort ascending. Defaults to False so newest "
             "rows are returned first."
         ),
+        examples=[False, True],
         default=False,
     )
 

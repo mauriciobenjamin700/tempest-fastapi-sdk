@@ -63,6 +63,9 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.utils.email import EmailUtils as EmailUtils
     from tempest_fastapi_sdk.utils.email import FailedRecipient as FailedRecipient
     from tempest_fastapi_sdk.utils.fields import (
+        AllowedImageMediaTypes as AllowedImageMediaTypes,
+    )
+    from tempest_fastapi_sdk.utils.fields import (
         CentsField as CentsField,
     )
     from tempest_fastapi_sdk.utils.fields import (
@@ -118,6 +121,9 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.utils.fields import (
         SlugField as SlugField,
+    )
+    from tempest_fastapi_sdk.utils.fields import (
+        image_media_type_field as image_media_type_field,
     )
     from tempest_fastapi_sdk.utils.file_store import FileStoreUtils as FileStoreUtils
     from tempest_fastapi_sdk.utils.forms import form_encode as form_encode
@@ -464,6 +470,8 @@ if TYPE_CHECKING:
 
 
 _LAZY_ATTRIBUTES: dict[str, str] = {
+    "AllowedImageMediaTypes": "tempest_fastapi_sdk.utils.fields",
+    "image_media_type_field": "tempest_fastapi_sdk.utils.fields",
     "get_client_ip": "tempest_fastapi_sdk.utils.client_ip",
     "get_client_ip_from_scope": "tempest_fastapi_sdk.utils.client_ip",
     "parse_client_ip": "tempest_fastapi_sdk.utils.client_ip",
@@ -707,6 +715,7 @@ __all__: list[str] = [
     "UF",
     "UPLOAD_READ_CHUNK_BYTES",
     "XLSX_MEDIA_TYPE",
+    "AllowedImageMediaTypes",
     "AttemptThrottle",
     "BulkEmailReport",
     "CEPField",
@@ -792,6 +801,7 @@ __all__: list[str] = [
     "get_state",
     "guess_media_type",
     "hash_opaque_token",
+    "image_media_type_field",
     "is_valid_cep",
     "is_valid_city",
     "is_valid_cnpj",
