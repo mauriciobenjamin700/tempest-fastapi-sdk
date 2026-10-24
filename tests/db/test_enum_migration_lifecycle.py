@@ -140,6 +140,11 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def _revision(root: Path, url: str, message: str) -> str:
     """Autogenerate a revision and return its source.
 
+    The file is matched on ``*_<message>.py``, the name Alembic gives it
+    (``<revision id>_<slug>.py``). A ``*<message>*`` pattern also matched
+    the other revision whenever its random hex id contained the message:
+    ``add`` is three hex digits, so a run now and then found two files.
+
     Args:
         root (Path): The project root.
         url (str): The database URL.
@@ -149,7 +154,7 @@ def _revision(root: Path, url: str, message: str) -> str:
         str: The source of the revision file just written.
     """
     _ok(_alembic(root, url, "revision", "--autogenerate", "-m", message))
-    (revision,) = (root / "alembic" / "versions").glob(f"*{message}*.py")
+    (revision,) = (root / "alembic" / "versions").glob(f"*_{message}.py")
     return revision.read_text(encoding="utf-8")
 
 
