@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tempest lint-layers` ganha `DI001` (`AsyncSession` no `__init__` de
+  service ou controller), `DI002` (service recebendo `*Service`, controller
+  recebendo `*Controller`) e `DI003` (`from_session` em qualquer lugar), como
+  **aviso** (#616).
+
+### Changed
+
+- A receita de agentes com banco monta o service numa função
+  `build_catalog_service(session)` em vez do classmethod `from_session`, e
+  deixa de recomendar `from_session` como convenção: o composition root com
+  funções `build_*` é a forma que o `DI003` cobra.
+
+### Added
+
 - `tempest lint-layers` ganha três regras, como **aviso** (#616): `LAY001`
   (segunda classe ou função de módulo em `controllers/`, `repositories/` ou
   `models/`; `services/` continua no `SVC002`), `LAY002` (módulo na raiz da

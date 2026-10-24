@@ -72,6 +72,18 @@ The rules:
   orchestration between two repositories belongs to a service. A name the
   module only uses as a base class (a project base repository) is left
   alone.
+* ``DI001`` (warning) — the ``__init__`` of a class in ``services/`` or
+  ``controllers/`` takes a parameter annotated with ``AsyncSession``. The
+  session reaches the repository; the service receives the repository.
+* ``DI002`` (warning) — the ``__init__`` of a class in ``services/``
+  takes a ``*Service`` parameter, or one in ``controllers/`` takes a
+  ``*Controller``. Combining two services is a controller's job; a real
+  case (two services sharing one transaction) is a declared exception.
+* ``DI003`` (warning) — a function or method named ``from_session``
+  anywhere in the source root. A class that assembles itself hides its
+  graph; assembly lives in the request providers
+  (``api/dependencies/``) and, outside a request, in one composition
+  root of ``build_*`` functions.
 
 What the router rules cannot see, because they read syntax and never
 import the project: a route with no return annotation and no
@@ -237,6 +249,15 @@ LAYER_DIRS: tuple[str, ...] = ("controllers", "services", "repositories", "model
 Read by ``LAY001`` and ``LAY002``.
 """
 
+CONTROLLERS_DIR: str = "controllers"
+"""Directory name whose classes ``DI001`` and ``DI002`` read with services."""
+
+SESSION_TYPE: str = "AsyncSession"
+"""Annotation name ``DI001`` reports in a service or controller ``__init__``."""
+
+SELF_ASSEMBLY_METHOD: str = "from_session"
+"""Function name ``DI003`` reports."""
+
 REPOSITORY_SUFFIX: str = "Repository"
 """Name suffix ``REPO002`` treats as a repository class."""
 
@@ -280,6 +301,9 @@ RULES: dict[str, LayerRule] = {
         LayerRule("LAY001", "warning", "second class or a function in a layer module"),
         LayerRule("LAY002", "warning", "layer module outside a context package"),
         LayerRule("REPO002", "warning", "repository importing another repository"),
+        LayerRule("DI001", "warning", "AsyncSession in a service or controller"),
+        LayerRule("DI002", "warning", "collaborator of the same layer injected"),
+        LayerRule("DI003", "warning", "from_session self-assembly"),
         LayerRule("EXC001", "error", "declared exception the checker cannot use"),
         LayerRule("EXC002", "warning", "declared exception that matches no finding"),
     )
@@ -1362,6 +1386,133 @@ def _check_repository_imports(modules: list[_ParsedModule]) -> list[LayerFinding
     return findings
 
 
+def _init_parameters(node: ast.ClassDef) -> list[ast.arg]:
+    """Return the annotated parameters of a class ``__init__``, ``self`` aside.
+
+    Args:
+        node (ast.ClassDef): The class.
+
+    Returns:
+        list[ast.arg]: Every parameter with an annotation; empty when the
+        class declares no ``__init__``.
+    """
+    for statement in node.body:
+        if isinstance(statement, ast.FunctionDef) and statement.name == "__init__":
+            arguments = statement.args
+            positional = [*arguments.posonlyargs, *arguments.args][1:]
+            return [
+                argument
+                for argument in [*positional, *arguments.kwonlyargs]
+                if argument.annotation is not None
+            ]
+    return []
+
+
+def _check_injection(
+    service_modules: list[_ParsedModule], controller_modules: list[_ParsedModule]
+) -> list[LayerFinding]:
+    """Apply ``DI001`` and ``DI002`` to services and controllers.
+
+    Args:
+        service_modules (list[_ParsedModule]): Every module in
+            ``services/``.
+        controller_modules (list[_ParsedModule]): Every module in
+            ``controllers/``.
+
+    Returns:
+        list[LayerFinding]: The violations, in file and line order.
+    """
+    findings: list[LayerFinding] = []
+    for modules, suffix in (
+        (service_modules, "Service"),
+        (controller_modules, "Controller"),
+    ):
+        for parsed in modules:
+            for node in parsed.tree.body:
+                if not isinstance(node, ast.ClassDef):
+                    continue
+                for argument in _init_parameters(node):
+                    names = set(_annotation_names(argument.annotation))
+                    subject = f"{node.name}.{argument.arg}"
+                    if SESSION_TYPE in names:
+                        findings.append(
+                            LayerFinding(
+                                path=parsed.path,
+                                line=argument.lineno,
+                                code="DI001",
+                                subject=subject,
+                                message=(
+                                    f"`{node.name}.__init__` takes the session "
+                                    f"(`{argument.arg}`); take the repository "
+                                    f"instead and let the provider in "
+                                    f"api/dependencies/ build it from the session."
+                                ),
+                            )
+                        )
+                    peers = sorted(
+                        name
+                        for name in names
+                        if name.endswith(suffix) and name[:1].isupper()
+                    )
+                    for peer in peers:
+                        findings.append(
+                            LayerFinding(
+                                path=parsed.path,
+                                line=argument.lineno,
+                                code="DI002",
+                                subject=subject,
+                                message=(
+                                    f"`{node.name}.__init__` takes `{peer}` "
+                                    f"(`{argument.arg}`), a {suffix.lower()} of "
+                                    f"the same layer; combine the two one layer "
+                                    f"up, or declare the exception with its "
+                                    f"reason."
+                                ),
+                            )
+                        )
+    return findings
+
+
+def _check_self_assembly(modules: list[_ParsedModule]) -> list[LayerFinding]:
+    """Apply ``DI003`` to every module of the source root.
+
+    Args:
+        modules (list[_ParsedModule]): Every module under the scan roots.
+
+    Returns:
+        list[LayerFinding]: The violations, in file and line order.
+    """
+    findings: list[LayerFinding] = []
+    for parsed in modules:
+        owners: dict[ast.AST, str] = {
+            child: node.name
+            for node in ast.walk(parsed.tree)
+            if isinstance(node, ast.ClassDef)
+            for child in node.body
+        }
+        for node in ast.walk(parsed.tree):
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            if node.name != SELF_ASSEMBLY_METHOD:
+                continue
+            owner = owners.get(node)
+            findings.append(
+                LayerFinding(
+                    path=parsed.path,
+                    line=node.lineno,
+                    code="DI003",
+                    subject=f"{owner}.{node.name}" if owner else node.name,
+                    message=(
+                        f"`{SELF_ASSEMBLY_METHOD}` assembles the graph inside "
+                        f"the class; build it in a provider of api/dependencies/ "
+                        f"for a request, or in a `build_*` function of the "
+                        f"composition root outside one."
+                    ),
+                )
+            )
+    return findings
+
+
 def find_exceptions_file(target: Path) -> Path | None:
     """Locate the project's :data:`EXCEPTIONS_PATH` for a check target.
 
@@ -1630,6 +1781,11 @@ def lint_layers(
     router_modules = [
         parsed for path in _python_files(routers) if (parsed := _parse(path))
     ]
+    controller_modules = [
+        parsed
+        for path in _python_files(layers[CONTROLLERS_DIR])
+        if (parsed := _parse(path))
+    ]
     project_models = {
         node.name
         for path in _python_files(models)
@@ -1653,6 +1809,8 @@ def lint_layers(
             *_check_router_returns(router_modules, project_models),
             *_check_layer_shape(layers),
             *_check_repository_imports(repository_modules),
+            *_check_injection(service_modules, controller_modules),
+            *_check_self_assembly(source_modules),
         )
         if finding.code in selected
     ]
@@ -1752,6 +1910,7 @@ def run_lint_layers(
 __all__: list[str] = [
     "BASE_REPOSITORY_METHODS",
     "CONSTRUCTED_SUFFIXES",
+    "CONTROLLERS_DIR",
     "ENUM_NAME_SUFFIX",
     "EXCEPTIONS_NAME",
     "EXCEPTIONS_PATH",
@@ -1765,7 +1924,9 @@ __all__: list[str] = [
     "ROUTE_DECORATORS",
     "RULES",
     "SCHEMAS_SEGMENT",
+    "SELF_ASSEMBLY_METHOD",
     "SERVICES_DIR",
+    "SESSION_TYPE",
     "SKIPPED_DIRS",
     "SOURCE_ROOTS",
     "STRICT_CONFIG_KEY",

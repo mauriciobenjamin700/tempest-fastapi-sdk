@@ -2222,6 +2222,63 @@ src/db/repositories/orders/order.py:1: REPO002 (warning) imports `CustomerReposi
     `LAY002`. The scaffold moves to context packages in the next part of
     #616.
 
+#### What services and controllers receive (warning)
+
+| Code | Where | What it reports |
+| --- | --- | --- |
+| `DI001` | `services/`, `controllers/` | an `__init__` parameter annotated with `AsyncSession` (at any depth: a union with `None`, a string annotation). The session reaches the repository; the service receives the repository |
+| `DI002` | `services/`, `controllers/` | a service `__init__` taking a `*Service`, or a controller one taking a `*Controller`. Combining two services is the controller's job |
+| `DI003` | the whole source | a function or method named `from_session`. Assembly lives in the provider in `api/dependencies/` (inside a request) or in a `build_*` function of the composition root (outside one) |
+
+This service has all three shapes (`tempest lint-layers --rule DI001 --rule
+DI002 --rule DI003`, real output):
+
+```python
+# src/services/wallet/settlement.py
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.services.wallet.wallet import WalletService
+
+
+class SettlementService:
+    """Liquida o saldo retido."""
+
+    def __init__(self, session: AsyncSession, wallet_service: WalletService) -> None:
+        """Guarda a sessão e o service da carteira."""
+        self.session = session
+        self.wallet_service = wallet_service
+
+    @classmethod
+    def from_session(cls, session: AsyncSession) -> "SettlementService":
+        """Monta o service sobre uma sessão."""
+        return cls(session, WalletService(session))
+```
+
+```text
+src/services/wallet/settlement.py:9: DI001 (warning) `SettlementService.__init__` takes the session (`session`); take the repository instead and let the provider in api/dependencies/ build it from the session.
+src/services/wallet/settlement.py:9: DI002 (warning) `SettlementService.__init__` takes `WalletService` (`wallet_service`), a service of the same layer; combine the two one layer up, or declare the exception with its reason.
+src/services/wallet/settlement.py:15: DI003 (warning) `from_session` assembles the graph inside the class; build it in a provider of api/dependencies/ for a request, or in a `build_*` function of the composition root outside one.
+3 layer finding(s): 0 error(s), 3 warning(s).
+```
+
+When two services really must go together — in the transport service, the
+settlement and the wallet credit had to land in the same transaction —, the
+way out is a declared exception, aimed at that one parameter:
+
+```python
+ARCHITECTURE_EXCEPTIONS: dict[str, str] = {
+    "DI002 src/services/wallet/settlement.py::SettlementService.wallet_service": (
+        "settlement and credit land in the same transaction"
+    ),
+}
+```
+
+!!! tip "Assembly outside a request"
+    Tasks, consumers, agents and seeds have no `Depends`. Instead of every
+    class getting a `from_session`, gather the `build_*` functions in a
+    composition root and reuse it in all of those places and in the test
+    suite. The [agents with a database](agents-db.md) recipe shows the shape.
+
 #### Warning, error and declared exception
 
 Every rule has a severity. An **error** fails the step (exit code `1`); a

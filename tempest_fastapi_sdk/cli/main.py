@@ -878,7 +878,10 @@ def lint_layers_cmd(
     Warnings (#616): LAY001, a second class or a module-level function in
     a controllers/, repositories/ or models/ module; LAY002, a module at
     the root of a layer instead of in a context package; REPO002, a
-    repository importing another repository.
+    repository importing another repository. DI001, a service or
+    controller ``__init__`` taking ``AsyncSession``; DI002, a service
+    taking a ``*Service`` or a controller taking a ``*Controller``;
+    DI003, a ``from_session`` anywhere.
 
     A warning prints ``(warning)`` after its code and fails only a strict
     run. An exception kept on purpose is an entry of the
