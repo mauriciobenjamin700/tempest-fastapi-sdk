@@ -298,6 +298,31 @@ engine: AsyncEngine = create_test_engine(foreign_keys=False)
     `foreign_keys` only applies to SQLite. With another backend's URL the
     engine gets no listener at all — PostgreSQL always checks the key.
 
+### Every schema field documented — `assert_schema_metadata`
+
+`assert_schema_metadata(module)` fails listing each exported field without
+`title`, `description` and `examples` (a field holding another schema needs
+only the first two). The `tempest new` project already ships the test:
+
+```python
+# tests/test_schemas.py
+import src.schemas
+from tempest_fastapi_sdk.testing import assert_schema_metadata
+
+
+def test_exported_schemas_carry_metadata() -> None:
+    """Cenário: the schemas ``src.schemas`` exports.
+
+    Esperado: every field carries ``title``, ``description`` and ``examples``.
+    """
+    assert_schema_metadata(src.schemas)
+```
+
+`schema_metadata_findings(module)` returns the findings without raising, and
+`tempest lint-schemas` prints the same list on the command line — what
+counts as a leaf field, inheritance and the real output are in the
+[CLI recipe](cli.md#schema-metadata-tempest-lint-schemas).
+
 ## Model factories — `ModelFactory` + `seq`
 
 Constructing instances with every required field in each test is
