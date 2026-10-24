@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tempest lint-layers` ganha severidade, seleção de regra e exceções
+  declaradas (#616, primeira parte). Toda regra tem severidade em
+  `layer_lint.RULES`: erro derruba o passo, aviso sai com `(warning)` e não
+  derruba — regra nova entra como aviso numa release e vira erro na
+  seguinte. `--rule <CÓDIGO>` (repetível) reporta só aquelas regras;
+  `--strict` (ou `layers_strict = true` em `[tool.tempest]`, que o
+  `tempest check` lê) faz aviso derrubar também. Exceção que o projeto
+  assume fica no dict `ARCHITECTURE_EXCEPTIONS` de
+  `tests/architecture_exceptions.py` (`"<CÓDIGO> <caminho>[::<alvo>]":
+  "<motivo>"`), lido por `ast`; `EXC001` (erro) acusa entrada inutilizável
+  e `EXC002` (aviso), entrada que não casa com nenhuma violação. As regras
+  existentes continuam erro, e a saída delas não muda.
+
+### Added
+
 - `image_media_type_field(*allowed, title=..., description=..., examples=...)`
   restringe um campo `ImageMediaType` aos tipos listados e publica só esses
   no JSON Schema (`enum`), com descrição e exemplo derivados da lista. A

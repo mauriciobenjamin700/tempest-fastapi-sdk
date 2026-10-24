@@ -73,16 +73,36 @@ SDK's own documentation.
 The opt-out is a comment, not a class attribute, because it is an
 instruction to this checker and nothing at runtime reads it; the same
 reason ``# noqa`` and ``# type: ignore`` are comments.
+
+Every rule has a severity (:data:`RULES`). An ``error`` fails the step; a
+``warning`` is printed with ``(warning)`` after its code and does not,
+unless the run is strict (``tempest lint-layers --strict`` or
+``layers_strict = true`` under ``[tool.tempest]``). A rule enters as a
+warning in one release and becomes an error in the next, so a project can
+migrate one code at a time with ``tempest lint-layers --rule <CODE>``.
+
+An exception a project keeps on purpose is declared in one place, by
+:data:`EXCEPTIONS_PATH` (``tests/architecture_exceptions.py``): a module
+level dict named :data:`EXCEPTIONS_NAME` whose keys are
+``"<CODE> <path>"`` or ``"<CODE> <path>::<subject>"`` and whose values are
+the reason, reviewed in the diff like code. The file is read with
+:mod:`ast` as well. ``EXC001`` reports an entry the checker cannot use
+(malformed key, unknown code, empty reason) and is always an error;
+``EXC002`` warns about an entry that matches no finding, so an exception
+does not outlive the code it excused.
 """
 
 from __future__ import annotations
 
 import ast
 import sys
-from collections.abc import Iterable, Iterator
+import tomllib
+from collections.abc import Collection, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TextIO
+from typing import Literal, TextIO
+
+from tempest_fastapi_sdk.cli.config import load_tempest_table
 
 NO_BASE_SERVICE_MARKER: str = "# tempest: no-base-service"
 """Comment on a ``class`` line that exempts a service from ``SVC001``.
@@ -203,6 +223,57 @@ SKIPPED_DIRS: frozenset[str] = frozenset(
 )
 """Directory names never descended into, besides any starting with ``.``."""
 
+Severity = Literal["error", "warning"]
+"""How a finding counts: an ``error`` fails the run, a ``warning`` does not."""
+
+
+@dataclass(frozen=True)
+class LayerRule:
+    """One rule the checker knows, with the severity it reports at.
+
+    Attributes:
+        code (str): The rule code (``SVC001``, ``EXC002``, ...).
+        severity (Severity): ``error`` or ``warning``.
+        summary (str): One line on what the rule reports.
+    """
+
+    code: str
+    severity: Severity
+    summary: str
+
+
+RULES: dict[str, LayerRule] = {
+    rule.code: rule
+    for rule in (
+        LayerRule("SVC001", "error", "public class in services/ without BaseService"),
+        LayerRule("SVC002", "error", "second public class or a function in services/"),
+        LayerRule("SVC003", "error", "service __init__ only storing the repository"),
+        LayerRule("REPO001", "error", "repository method that only wraps the base"),
+        LayerRule("ENUM001", "error", "BaseStrEnum subclass not named *Enum"),
+        LayerRule("RTR001", "error", "controller or service built inside routers/"),
+        LayerRule("RTR002", "error", "route that returns an ORM model"),
+        LayerRule("EXC001", "error", "declared exception the checker cannot use"),
+        LayerRule("EXC002", "warning", "declared exception that matches no finding"),
+    )
+}
+"""Every rule code, with its severity. ``--rule`` only accepts these."""
+
+EXCEPTIONS_PATH: str = "tests/architecture_exceptions.py"
+"""Where a project declares its exceptions, relative to the project root.
+
+Looked up under the check target and, when the target is the source root
+(``tempest lint-layers src``), under its parent.
+"""
+
+EXCEPTIONS_NAME: str = "ARCHITECTURE_EXCEPTIONS"
+"""Name of the module-level dict in :data:`EXCEPTIONS_PATH`."""
+
+SUBJECT_SEPARATOR: str = "::"
+"""Separates the path from the subject in an exception key."""
+
+STRICT_CONFIG_KEY: str = "layers_strict"
+"""``[tool.tempest]`` key that makes warnings fail ``tempest check``."""
+
 
 @dataclass(frozen=True)
 class LayerFinding:
@@ -213,12 +284,26 @@ class LayerFinding:
         line (int): The 1-based line of the offending definition.
         code (str): The rule code (``SVC001``, ``REPO001``, ...).
         message (str): What is wrong and what to change.
+        subject (str | None): The name the finding is about (a class,
+            ``Class.method``, a function), which an exception key can
+            narrow to after ``::``. ``None`` when there is none.
     """
 
     path: Path
     line: int
     code: str
     message: str
+    subject: str | None = None
+
+    @property
+    def severity(self) -> Severity:
+        """Return the severity :data:`RULES` gives this finding's code.
+
+        Returns:
+            Severity: ``error`` for a code :data:`RULES` does not list.
+        """
+        rule = RULES.get(self.code)
+        return rule.severity if rule is not None else "error"
 
     def render(self, relative_to: Path | None = None) -> str:
         """Format the finding as ``path:line: CODE message``.
@@ -237,7 +322,48 @@ class LayerFinding:
                 shown = self.path.resolve().relative_to(relative_to.resolve())
             except ValueError:
                 shown = self.path
-        return f"{shown}:{self.line}: {self.code} {self.message}"
+        tag = " (warning)" if self.severity == "warning" else ""
+        return f"{shown}:{self.line}: {self.code}{tag} {self.message}"
+
+
+@dataclass(frozen=True)
+class DeclaredException:
+    """One entry of the project's :data:`EXCEPTIONS_NAME` dict.
+
+    Attributes:
+        key (str): The key as written.
+        code (str): The rule code it excuses.
+        path (str): The file, POSIX, relative to the project root.
+        subject (str | None): The finding subject it narrows to, or
+            ``None`` for every finding of ``code`` in ``path``.
+        reason (str): Why the exception stands.
+        line (int): The key's line in the exceptions file.
+    """
+
+    key: str
+    code: str
+    path: str
+    subject: str | None
+    reason: str
+    line: int
+
+    def matches(self, finding: LayerFinding, relative: str) -> bool:
+        """Tell whether this entry excuses a finding.
+
+        Args:
+            finding (LayerFinding): The finding.
+            relative (str): The finding's path relative to the project
+                root, POSIX.
+
+        Returns:
+            bool: True when code and path match and the subject, if the
+            entry names one, is the finding's.
+        """
+        return (
+            finding.code == self.code
+            and relative == self.path
+            and (self.subject is None or self.subject == finding.subject)
+        )
 
 
 @dataclass(frozen=True)
@@ -635,6 +761,7 @@ def _check_services(modules: list[_ParsedModule]) -> list[LayerFinding]:
                         path=parsed.path,
                         line=node.lineno,
                         code="SVC001",
+                        subject=node.name,
                         message=(
                             f"`{node.name}` does not inherit BaseService; subclass "
                             f"`BaseService[Repository, ResponseSchema]` and drop "
@@ -652,6 +779,7 @@ def _check_services(modules: list[_ParsedModule]) -> list[LayerFinding]:
                         path=parsed.path,
                         line=init.lineno,
                         code="SVC003",
+                        subject=f"{node.name}.__init__",
                         message=(
                             f"`{node.name}.__init__` only stores the repository, "
                             f"which BaseService already does; delete it."
@@ -664,6 +792,7 @@ def _check_services(modules: list[_ParsedModule]) -> list[LayerFinding]:
                     path=parsed.path,
                     line=extra.lineno,
                     code="SVC002",
+                    subject=extra.name,
                     message=(
                         f"`{extra.name}` shares this module with "
                         f"`{classes[0].name}`; one public class per module in "
@@ -681,6 +810,7 @@ def _check_services(modules: list[_ParsedModule]) -> list[LayerFinding]:
                     path=parsed.path,
                     line=statement.lineno,
                     code="SVC002",
+                    subject=statement.name,
                     message=(
                         f"module-level function `{statement.name}` in services/; "
                         f"move it to utils/, or make it a method of the service "
@@ -752,6 +882,7 @@ def _check_repositories(modules: list[_ParsedModule]) -> list[LayerFinding]:
                         path=parsed.path,
                         line=statement.lineno,
                         code="REPO001",
+                        subject=f"{node.name}.{statement.name}",
                         message=(
                             f"`{node.name}.{statement.name}` only forwards to "
                             f"BaseRepository.{target}; delete it and call "
@@ -812,6 +943,7 @@ def _check_enums(modules: list[_ParsedModule]) -> list[LayerFinding]:
                 path=parsed.path,
                 line=node.lineno,
                 code="ENUM001",
+                subject=node.name,
                 message=(
                     f"`{node.name}` inherits BaseStrEnum; rename it to "
                     f"`{expected}`. The database type name does not change "
@@ -896,6 +1028,7 @@ def _check_router_constructions(modules: list[_ParsedModule]) -> list[LayerFindi
                     path=parsed.path,
                     line=node.lineno,
                     code="RTR001",
+                    subject=name,
                     message=(
                         f"`{name}(...)` is built inside a router; move the "
                         f"construction to a provider in "
@@ -1050,6 +1183,7 @@ def _check_router_returns(
                             path=parsed.path,
                             line=function.lineno,
                             code="RTR002",
+                            subject=function.name,
                             message=(
                                 f"route `{function.name}` returns the ORM model "
                                 f"`{name}` ({where}); return the response schema "
@@ -1061,17 +1195,249 @@ def _check_router_returns(
     return findings
 
 
-def lint_layers(target: Path) -> list[LayerFinding]:
-    """Run every layer rule over a project.
+def find_exceptions_file(target: Path) -> Path | None:
+    """Locate the project's :data:`EXCEPTIONS_PATH` for a check target.
+
+    Args:
+        target (Path): The path handed to ``tempest lint-layers``.
+
+    Returns:
+        Path | None: ``target/tests/architecture_exceptions.py`` or, for a
+        source-root target, the one under its parent; ``None`` when
+        neither exists.
+    """
+    for base in (target, target.parent):
+        candidate = base / EXCEPTIONS_PATH
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _exceptions_dict(module: ast.Module) -> ast.Dict | None:
+    """Return the dict literal assigned to :data:`EXCEPTIONS_NAME`.
+
+    Args:
+        module (ast.Module): The parsed exceptions file.
+
+    Returns:
+        ast.Dict | None: The literal of the last module-level assignment,
+        annotated or not; ``None`` when the name is never bound to one.
+    """
+    found: ast.Dict | None = None
+    for statement in module.body:
+        if isinstance(statement, ast.Assign):
+            targets: list[ast.expr] = statement.targets
+            value: ast.expr | None = statement.value
+        elif isinstance(statement, ast.AnnAssign):
+            targets, value = [statement.target], statement.value
+        else:
+            continue
+        if any(
+            isinstance(target, ast.Name) and target.id == EXCEPTIONS_NAME
+            for target in targets
+        ):
+            found = value if isinstance(value, ast.Dict) else None
+    return found
+
+
+def _invalid_entry(path: Path, line: int, message: str) -> LayerFinding:
+    """Build the ``EXC001`` finding for an entry the checker cannot use.
+
+    Args:
+        path (Path): The exceptions file.
+        line (int): The offending line.
+        message (str): What is wrong and what to change.
+
+    Returns:
+        LayerFinding: The finding.
+    """
+    return LayerFinding(path=path, line=line, code="EXC001", message=message)
+
+
+def _parse_entry(
+    path: Path, key: ast.expr | None, value: ast.expr
+) -> DeclaredException | LayerFinding:
+    """Turn one dict entry into a :class:`DeclaredException`.
+
+    Args:
+        path (Path): The exceptions file.
+        key (ast.expr | None): The entry key (``None`` for ``**spread``).
+        value (ast.expr): The entry value.
+
+    Returns:
+        DeclaredException | LayerFinding: The entry, or the ``EXC001``
+        finding saying why it cannot be used.
+    """
+    if not isinstance(key, ast.Constant) or not isinstance(key.value, str):
+        line = value.lineno if key is None else key.lineno
+        return _invalid_entry(
+            path, line, f"every key of {EXCEPTIONS_NAME} is a string literal."
+        )
+    raw = key.value
+    code, _, target = raw.partition(" ")
+    target = target.strip()
+    file, _, subject = target.partition(SUBJECT_SEPARATOR)
+    if not file:
+        return _invalid_entry(
+            path,
+            key.lineno,
+            f"`{raw}` is not `<CODE> <path>` or `<CODE> <path>::<subject>`.",
+        )
+    if code not in RULES or code.startswith("EXC"):
+        known = ", ".join(name for name in RULES if not name.startswith("EXC"))
+        return _invalid_entry(
+            path, key.lineno, f"`{raw}`: unknown rule code `{code}`; known: {known}."
+        )
+    if (
+        not isinstance(value, ast.Constant)
+        or not isinstance(value.value, str)
+        or not value.value.strip()
+    ):
+        return _invalid_entry(
+            path,
+            key.lineno,
+            f"`{raw}` needs a reason: a non-empty string literal saying why the "
+            f"exception stands.",
+        )
+    return DeclaredException(
+        key=raw,
+        code=code,
+        path=file.strip(),
+        subject=subject.strip() or None,
+        reason=value.value.strip(),
+        line=key.lineno,
+    )
+
+
+def read_exceptions(
+    path: Path,
+) -> tuple[list[DeclaredException], list[LayerFinding]]:
+    """Read the declared exceptions of a project without importing it.
+
+    Args:
+        path (Path): The exceptions file (:func:`find_exceptions_file`).
+
+    Returns:
+        tuple[list[DeclaredException], list[LayerFinding]]: The usable
+        entries, and one ``EXC001`` finding per entry (or file) that is
+        not usable. A key written twice keeps the first entry.
+    """
+    parsed = _parse(path)
+    if parsed is None:
+        return [], [_invalid_entry(path, 1, "the exceptions file does not parse.")]
+    literal = _exceptions_dict(parsed.tree)
+    if literal is None:
+        return [], [
+            _invalid_entry(
+                path,
+                1,
+                f"no `{EXCEPTIONS_NAME}: dict[str, str] = {{...}}` dict literal "
+                f"at module level.",
+            )
+        ]
+    entries: list[DeclaredException] = []
+    problems: list[LayerFinding] = []
+    seen: set[str] = set()
+    for key, value in zip(literal.keys, literal.values, strict=True):
+        entry = _parse_entry(path, key, value)
+        if isinstance(entry, LayerFinding):
+            problems.append(entry)
+        elif entry.key in seen:
+            problems.append(
+                _invalid_entry(path, entry.line, f"`{entry.key}` is declared twice.")
+            )
+        else:
+            seen.add(entry.key)
+            entries.append(entry)
+    return entries, problems
+
+
+def _relative(path: Path, root: Path) -> str | None:
+    """Return a finding path relative to the project root, POSIX.
+
+    Args:
+        path (Path): The finding's path.
+        root (Path): The project root.
+
+    Returns:
+        str | None: The relative path, or ``None`` outside ``root``.
+    """
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return None
+
+
+def _apply_exceptions(
+    findings: list[LayerFinding], exceptions_file: Path, selected: Collection[str]
+) -> list[LayerFinding]:
+    """Drop the findings a declared exception excuses.
+
+    Args:
+        findings (list[LayerFinding]): The findings of the selected rules.
+        exceptions_file (Path): The project's exceptions file.
+        selected (Collection[str]): The rule codes this run reports; an
+            entry for any other code is neither applied nor reported stale.
+
+    Returns:
+        list[LayerFinding]: The findings no entry excuses, plus ``EXC001``
+        for each unusable entry and ``EXC002`` for each selected entry
+        that excused nothing.
+    """
+    root = exceptions_file.parent.parent
+    entries, problems = read_exceptions(exceptions_file)
+    entries = [entry for entry in entries if entry.code in selected]
+    used: set[str] = set()
+    kept: list[LayerFinding] = []
+    for finding in findings:
+        relative = _relative(finding.path, root)
+        match = next(
+            (
+                entry
+                for entry in entries
+                if relative is not None and entry.matches(finding, relative)
+            ),
+            None,
+        )
+        if match is None:
+            kept.append(finding)
+        else:
+            used.add(match.key)
+    stale = [
+        LayerFinding(
+            path=exceptions_file,
+            line=entry.line,
+            code="EXC002",
+            subject=entry.key,
+            message=(
+                f"`{entry.key}` matches no finding; the code it excused is "
+                f"gone or moved — delete the entry, or fix its path."
+            ),
+        )
+        for entry in entries
+        if entry.key not in used
+    ]
+    return [*kept, *problems, *stale]
+
+
+def lint_layers(
+    target: Path, *, rules: Collection[str] | None = None
+) -> list[LayerFinding]:
+    """Run the layer rules over a project.
 
     Args:
         target (Path): The project root (or its ``src`` / ``app``
             directory). Layer directories are found under
             :func:`scan_roots`.
+        rules (Collection[str] | None): Rule codes to report. ``None``
+            reports every rule. ``EXC001`` is reported whatever the
+            selection, since an unusable exceptions file is never silent;
+            ``EXC002`` is reported for the entries of the selected codes.
 
     Returns:
-        list[LayerFinding]: Every violation, sorted by file and line.
-        Empty for a clean project and for one with no ``services/``,
+        list[LayerFinding]: Every violation not excused in
+        :data:`EXCEPTIONS_PATH`, sorted by file and line. Empty for a
+        clean project and for one with no ``services/``,
         ``repositories/`` or ``routers/`` directory and no
         ``BaseStrEnum`` subclass.
     """
@@ -1106,58 +1472,138 @@ def lint_layers(target: Path) -> list[LayerFinding]:
         for path in _source_files(root)
         if (parsed := _parse(path))
     ]
+    selected = set(RULES) if rules is None else {*rules, "EXC001", "EXC002"}
     findings = [
-        *_check_services(service_modules),
-        *_check_repositories(repository_modules),
-        *_check_enums(source_modules),
-        *_check_router_constructions(router_modules),
-        *_check_router_returns(router_modules, project_models),
+        finding
+        for finding in (
+            *_check_services(service_modules),
+            *_check_repositories(repository_modules),
+            *_check_enums(source_modules),
+            *_check_router_constructions(router_modules),
+            *_check_router_returns(router_modules, project_models),
+        )
+        if finding.code in selected
     ]
+    exceptions_file = find_exceptions_file(target)
+    if exceptions_file is not None:
+        findings = [
+            finding
+            for finding in _apply_exceptions(findings, exceptions_file, selected)
+            if finding.code in selected
+        ]
     return sorted(findings, key=lambda item: (str(item.path), item.line, item.code))
 
 
-def run_lint_layers(target: str, *, stream: TextIO | None = None) -> int:
+def _configured_strict(target: Path) -> bool:
+    """Read :data:`STRICT_CONFIG_KEY` from the target's ``[tool.tempest]``.
+
+    Args:
+        target (Path): The check target; the nearest ``pyproject.toml``
+            from it (or from its directory, for a file) is read.
+
+    Returns:
+        bool: The configured value, ``False`` when absent.
+
+    Raises:
+        ValueError: When the key holds anything but a boolean.
+    """
+    start = target if target.is_dir() else target.parent
+    pyproject, table = load_tempest_table(start)
+    value = table.get(STRICT_CONFIG_KEY, False)
+    if not isinstance(value, bool):
+        raise ValueError(
+            f"{pyproject}: [tool.tempest] {STRICT_CONFIG_KEY} must be true or "
+            f"false, got {value!r}."
+        )
+    return value
+
+
+def run_lint_layers(
+    target: str,
+    *,
+    rules: Collection[str] | None = None,
+    strict: bool | None = None,
+    stream: TextIO | None = None,
+) -> int:
     """Print the layer findings for ``target`` and return an exit code.
 
     This is the callable ``tempest check`` runs as its ``lint-layers``
-    step and ``tempest lint-layers`` runs on its own.
+    step (with the defaults) and ``tempest lint-layers`` runs on its own.
 
     Args:
         target (str): The path to check, ``.`` for the current project.
+        rules (Collection[str] | None): Rule codes to report, any case.
+            ``None`` reports every rule.
+        strict (bool | None): Whether a warning fails the run. ``None``
+            reads ``layers_strict`` from ``[tool.tempest]``.
         stream (TextIO | None): Where the report goes. ``None`` means
             standard output.
 
     Returns:
-        int: ``1`` when any rule is violated, ``0`` otherwise.
+        int: ``1`` when an error (or, strict, any finding) is reported,
+        ``2`` for an unknown rule code or an invalid ``layers_strict``,
+        ``0`` otherwise.
     """
     output = stream or sys.stdout
-    findings = lint_layers(Path(target))
+    path = Path(target)
+    selected = None if rules is None else {code.upper() for code in rules}
+    unknown = sorted((selected or set()) - set(RULES))
+    if unknown:
+        output.write(
+            f"unknown rule code(s): {', '.join(unknown)}; known: {', '.join(RULES)}.\n"
+        )
+        return 2
+    if strict is None:
+        try:
+            strict = _configured_strict(path)
+        except (ValueError, tomllib.TOMLDecodeError) as exc:
+            output.write(f"{exc}\n")
+            return 2
+    findings = lint_layers(path, rules=selected)
     for finding in findings:
         output.write(finding.render(relative_to=Path.cwd()) + "\n")
-    if findings:
+    if not findings:
+        output.write("Layer rules: no findings.\n")
+        return 0
+    warnings = sum(1 for finding in findings if finding.severity == "warning")
+    errors = len(findings) - warnings
+    if warnings:
+        output.write(
+            f"{len(findings)} layer finding(s): {errors} error(s), "
+            f"{warnings} warning(s).\n"
+        )
+    else:
         output.write(f"{len(findings)} layer finding(s).\n")
-        return 1
-    output.write("Layer rules: no findings.\n")
-    return 0
+    return 1 if errors or strict else 0
 
 
 __all__: list[str] = [
     "BASE_REPOSITORY_METHODS",
     "CONSTRUCTED_SUFFIXES",
     "ENUM_NAME_SUFFIX",
+    "EXCEPTIONS_NAME",
+    "EXCEPTIONS_PATH",
     "MODELS_DIR",
     "NO_BASE_SERVICE_MARKER",
     "REPOSITORIES_DIR",
     "ROUTERS_DIR",
     "ROUTER_BUILDS_MARKER",
     "ROUTE_DECORATORS",
+    "RULES",
     "SCHEMAS_SEGMENT",
     "SERVICES_DIR",
     "SKIPPED_DIRS",
     "SOURCE_ROOTS",
+    "STRICT_CONFIG_KEY",
     "STR_ENUM_BASE",
+    "SUBJECT_SEPARATOR",
+    "DeclaredException",
     "LayerFinding",
+    "LayerRule",
+    "Severity",
+    "find_exceptions_file",
     "lint_layers",
+    "read_exceptions",
     "run_lint_layers",
     "scan_roots",
 ]

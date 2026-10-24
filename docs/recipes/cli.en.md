@@ -2195,6 +2195,76 @@ happens to share a model's name stays clean.
     declares `tempest-cli>=0.5.1`, so it comes with it. `tempest-cli check` alone, without the SDK,
     does not know these rules: they belong to the SDK.
 
+#### Warning, error and declared exception
+
+Every rule has a severity. An **error** fails the step (exit code `1`); a
+**warning** prints `(warning)` after its code and does not. A new rule
+enters as a warning in one release and becomes an error in the next — so
+an existing service has a whole release to migrate. To migrate one rule at
+a time, select it with `--rule` (repeatable, lower case accepted):
+
+```bash
+tempest lint-layers --rule SVC002              # one rule only
+tempest lint-layers --rule SVC002 --rule RTR001
+tempest lint-layers --strict                   # warnings fail too
+```
+
+`tempest check` runs the step without `--rule`. For the gate to fail on
+warnings too, turn it on in `pyproject.toml` — the command line's
+`--strict`/`--no-strict` wins over the config:
+
+```toml
+[tool.tempest]
+layers_strict = true
+```
+
+**An exception the project keeps lives in one place**, with a reason,
+reviewed in the diff like code: the `ARCHITECTURE_EXCEPTIONS` dict in
+`tests/architecture_exceptions.py`. The key is `"<CODE> <path>"` (every
+finding of that code in the file) or `"<CODE> <path>::<subject>"` (only the
+one about that name — the class, `Class.method` or the function). The path
+is relative to the project root. The file is read with `ast` too, never
+imported:
+
+```python
+"""Architecture exceptions the project keeps, each with its reason."""
+
+ARCHITECTURE_EXCEPTIONS: dict[str, str] = {
+    "SVC001 src/services/catalogue.py::CatalogueService": (
+        "static catalogue, no repository to hand to BaseService"
+    ),
+    "REPO001 src/db/repositories/legacy.py": "wrapper kept until 2.0",
+}
+```
+
+With that file, a `src/services/catalogue.py` defining `CatalogueService`
+(no `BaseService`) and a module-level function `load_items`, and no
+`legacy.py`, `tempest lint-layers` prints (real output, exit code `1`
+because of the `SVC002`):
+
+```text
+src/services/catalogue.py:5: SVC002 module-level function `load_items` in services/; move it to utils/, or make it a method of the service that uses it.
+tests/architecture_exceptions.py:7: EXC002 (warning) `REPO001 src/db/repositories/legacy.py` matches no finding; the code it excused is gone or moved — delete the entry, or fix its path.
+2 layer finding(s): 1 error(s), 1 warning(s).
+```
+
+`CatalogueService`'s `SVC001` is gone, because the exception covers it. The
+`REPO001` entry matches nothing and becomes the `EXC002` warning: an
+exception does not outlive the code it excused.
+
+| Code | Severity | What it reports |
+| --- | --- | --- |
+| `EXC001` | error, always (even under `--rule`) | an entry the checker cannot use: key out of shape, unknown code, empty or non-literal reason, repeated key, file without the dict |
+| `EXC002` | warning | an entry that excuses no finding — the code changed or the path is wrong |
+
+`--rule` with an unknown code exits `2` and lists the valid codes.
+
+!!! tip "Marker or declared exception?"
+    The `# tempest: no-base-service` and `# tempest: router-builds` markers
+    still work. A declared exception covers any rule, including the ones
+    with no marker, and gathers in one file what used to be scattered —
+    review reads every reason at once.
+
 ---
 
 ## Recap
