@@ -2046,6 +2046,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `DummyResultBackend` in place, so reading a result through the facade was
   impossible) and needs the new **`[tasks-redis]`** extra — `taskiq-redis`
   was declared in no extra at all.
+  **`enqueue_by_name` (unreleased):** send by registered name without
+  importing the task; the worker-side `make_registered_labels_middleware`
+  (installed first by every `TaskQueue`) restores the task's labels, so a
+  `RetryPolicy` still applies — live test over Redis with two processes
+  (`tests/tasks/test_enqueue_by_name_live.py`).
   **Jobs (v0.228.0):** `BaseJobModel` + `JobStore[JobT]` — a row per unit
   of long work so the interface can say queued / running / done / failed,
   with `enqueue`, a conditional-`UPDATE` `claim` (loser gets `None`),

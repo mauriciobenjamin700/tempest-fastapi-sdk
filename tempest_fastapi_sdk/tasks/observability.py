@@ -290,10 +290,42 @@ def make_dead_letter_middleware(
     return _DeadLetterMiddleware()
 
 
+def make_registered_labels_middleware() -> TaskiqMiddleware:
+    """Build the worker middleware that restores a task's registered labels.
+
+    A call sent by name (:meth:`TaskQueue.enqueue_by_name`) comes from a
+    process that never imported the task, so the message carries none of
+    the labels the task was registered with — ``retry_on_error`` /
+    ``max_retries`` from a :class:`RetryPolicy`, ``timeout``,
+    ``ack_type``. TaskIQ's worker reads only the message labels, so
+    without this the retry policy silently stops applying. Before any
+    other middleware runs, it merges the labels of the task as the worker
+    registered it under the message's own, which still win.
+
+    Returns:
+        TaskiqMiddleware: The middleware instance (needs the ``[tasks]``
+        extra).
+    """
+    _require_taskiq()
+    from taskiq import TaskiqMiddleware
+
+    class _RegisteredLabelsMiddleware(TaskiqMiddleware):
+        """Fills in the labels a by-name message was sent without."""
+
+        def pre_execute(self, message: TaskiqMessage) -> TaskiqMessage:
+            task = self.broker.find_task(message.task_name)
+            if task is not None:
+                message.labels = {**task.labels, **message.labels}
+            return message
+
+    return _RegisteredLabelsMiddleware()
+
+
 __all__: list[str] = [
     "DeadLetter",
     "DeadLetterSink",
     "RetryPolicy",
     "TaskMetrics",
     "make_dead_letter_middleware",
+    "make_registered_labels_middleware",
 ]

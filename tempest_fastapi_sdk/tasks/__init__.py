@@ -176,6 +176,9 @@ from tempest_fastapi_sdk.tasks.observability import (
 from tempest_fastapi_sdk.tasks.observability import (
     make_dead_letter_middleware as make_dead_letter_middleware,
 )
+from tempest_fastapi_sdk.tasks.observability import (
+    make_registered_labels_middleware as make_registered_labels_middleware,
+)
 from tempest_fastapi_sdk.tasks.oop import TaskBinding as TaskBinding
 from tempest_fastapi_sdk.tasks.oop import TaskDef as TaskDef
 from tempest_fastapi_sdk.tasks.oop import task_method as task_method
@@ -277,6 +280,7 @@ __all__: list[str] = [
     "make_dead_letter_model",
     "make_job_admin_model",
     "make_job_model",
+    "make_registered_labels_middleware",
     "make_requeue_action",
     "monthly",
     "normalize_cron_offset",

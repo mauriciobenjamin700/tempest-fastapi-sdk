@@ -51,7 +51,10 @@ from tempest_fastapi_sdk.tasks.lock import (
     RedisSchedulerLock,
     SchedulerLock,
 )
-from tempest_fastapi_sdk.tasks.observability import make_dead_letter_middleware
+from tempest_fastapi_sdk.tasks.observability import (
+    make_dead_letter_middleware,
+    make_registered_labels_middleware,
+)
 
 DEFAULT_RESULT_TTL_SECONDS: Final[int] = 86_400
 """How long a stored task result lives, in seconds.
@@ -484,6 +487,9 @@ class TaskQueue:
         self._lock_url: str | None = lock_url
         self._heartbeat_enabled: bool = False
         self.worker_heartbeat: HeartbeatLoop | None = None
+        labels_middleware = make_registered_labels_middleware()
+        labels_middleware.set_broker(broker)
+        broker.middlewares.insert(0, labels_middleware)
         if resources:
             self.use(*resources)
 
@@ -954,6 +960,53 @@ class TaskQueue:
         if func is not None:
             return wrap(func)
         return wrap
+
+    async def enqueue_by_name(
+        self, name: str, *args: Any, **kwargs: Any
+    ) -> AsyncTaskiqTask[Any]:
+        """Send a call to the task registered under ``name``, without importing it.
+
+        The API process enqueues work the worker owns: importing the task
+        module there would pull the task's whole dependency graph (and its
+        import-time side effects) into every request process, and couple
+        the two. Sending by name keeps the API to a string — a
+        ``*_TASK_NAME`` constant next to the task — and the worker
+        resolves it.
+
+        Every :class:`TaskQueue` installs, first in its broker, the
+        middleware from
+        :func:`~tempest_fastapi_sdk.tasks.observability.make_registered_labels_middleware`,
+        so the labels the task was registered with (retry policy,
+        ``timeout``, ``ack_type``) still apply to a call sent this way.
+        Nothing checks ``name`` on the sending side, because that process
+        does not know the tasks: over Redis or RabbitMQ an unknown name is
+        logged by the worker as ``task "..." is not found`` and dropped.
+        The in-memory broker is its own worker, so there it raises
+        ``taskiq.exceptions.SendTaskError`` right away.
+
+        Args:
+            name (str): The registered task name — the ``name=`` given to
+                :meth:`task` / :meth:`cron` / :meth:`interval`, or TaskIQ's
+                ``module:function`` default.
+            *args (Any): Positional arguments for the task.
+            **kwargs (Any): Keyword arguments for the task.
+
+        Returns:
+            AsyncTaskiqTask[Any]: The TaskIQ task handle; untyped, since the
+            sender never sees the task's signature.
+
+        Raises:
+            taskiq.exceptions.SendTaskError: When the broker refuses the
+                message — with the in-memory broker, for a name no task is
+                registered under.
+        """
+        from taskiq.kicker import AsyncKicker
+
+        kicker: AsyncKicker[Any, Any] = AsyncKicker(
+            task_name=name, broker=self.broker, labels={}
+        )
+        handle: AsyncTaskiqTask[Any] = await kicker.kiq(*args, **kwargs)
+        return handle
 
     def register(self, definition: Any) -> Any:
         """Register a class-based :class:`~tempest_fastapi_sdk.tasks.TaskDef`.
