@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `TaskQueue.enqueue_by_name(name, *args, **kwargs)` manda uma chamada pelo
+  nome registrado, sem importar a tarefa no processo que envia. Todo
+  `TaskQueue` instala, primeiro no broker, o middleware de
+  `make_registered_labels_middleware()`, que repõe no worker os labels com que
+  a tarefa foi registrada (retry, `timeout`, `ack_type`); sem ele, a política
+  de retry não se aplicava a uma chamada mandada pelo nome. Medido com Redis
+  real e dois processos: 2 tentativas com o middleware, 1 sem.
+
 ## [0.327.0] — 2026-10-24
 
 ### Added

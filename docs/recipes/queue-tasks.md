@@ -742,6 +742,65 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
 !!! note "Testes sem broker"
     `TaskQueue.memory()` usa o broker in-memory do TaskIQ: `enqueue()` roda a tarefa **na hora, no mesmo processo**. Zero worker, zero conexão. `run()` funciona sempre, mesmo sem `connect()`.
 
+### Enfileirar pelo nome — `enqueue_by_name`
+
+`send_welcome.enqueue(...)` exige importar o módulo da tarefa no processo da
+API — e com ele tudo o que a tarefa importa (mailer, cliente HTTP, modelo
+pesado). Quando a API só precisa **mandar** o trabalho, mande pelo nome: a API
+fica com uma string, e o worker resolve.
+
+```python
+# src/tasks/welcome.py — importado só pelo worker
+from tempest_fastapi_sdk.tasks import RetryPolicy, TaskQueue
+
+from src.core.settings import settings
+
+tq: TaskQueue = TaskQueue.from_settings(settings)
+
+WELCOME_TASK_NAME: str = "users:send_welcome"
+"""Nome estável da tarefa; a API enfileira por ele."""
+
+
+@tq.task(name=WELCOME_TASK_NAME, retry=RetryPolicy(max_retries=3))
+async def send_welcome(to: str, name: str) -> None:
+    """Roda num worker, fora do request."""
+```
+
+```python
+# src/api/routers/users.py — a API nunca importa src.tasks.welcome
+from fastapi import APIRouter
+
+from tempest_fastapi_sdk.tasks import TaskQueue
+
+from src.core.settings import settings
+
+tq: TaskQueue = TaskQueue.from_settings(settings)
+router: APIRouter = APIRouter(prefix="/users")
+
+
+@router.post("/{email}/welcome", status_code=202)
+async def welcome(email: str) -> None:
+    """Pede o e-mail de boas-vindas e responde sem esperar."""
+    await tq.enqueue_by_name("users:send_welcome", to=email, name="Ana")
+```
+
+**A política de retry continua valendo.** O worker do TaskIQ lê só os labels
+que vêm na mensagem, e quem manda pelo nome não conhece a tarefa — então a
+mensagem chega sem `retry_on_error`, `max_retries`, `timeout`. Todo
+`TaskQueue` instala, primeiro no broker, um middleware que repõe no worker os
+labels com que a tarefa foi registrada (os da mensagem ainda vencem). Medido
+com Redis real, worker `taskiq` num processo e o envio em outro que não
+importou a tarefa: uma tarefa com `RetryPolicy(max_retries=2)` que falha na
+primeira tentativa roda **2** vezes; com o middleware removido, roda **1**.
+
+!!! warning "Nome que não existe"
+    Quem manda não confere o nome — o processo da API não conhece as
+    tarefas. No Redis ou no RabbitMQ, o worker registra
+    `task "<nome>" is not found` e descarta a mensagem. No
+    `TaskQueue.memory()`, que é o próprio worker, o envio levanta
+    `SendTaskError` na hora. Guarde o nome numa constante ao lado da tarefa
+    (`*_TASK_NAME`) e use a mesma string na API.
+
 ### Recursos do worker — `on_startup` / `on_shutdown`
 
 O `lifespan` do FastAPI **não roda no worker**. Sem ele, o processo do

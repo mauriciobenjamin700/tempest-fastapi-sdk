@@ -742,6 +742,66 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
 !!! note "Tests without a broker"
     `TaskQueue.memory()` uses TaskIQ's in-memory broker: `enqueue()` runs the task **immediately, in-process**. No worker, no connection. `run()` always works, even without `connect()`.
 
+### Enqueue by name — `enqueue_by_name`
+
+`send_welcome.enqueue(...)` requires importing the task module in the API
+process — and with it everything the task imports (mailer, HTTP client, a
+heavy model). When the API only needs to **send** the work, send it by name:
+the API keeps a string, and the worker resolves it.
+
+```python
+# src/tasks/welcome.py — imported by the worker only
+from tempest_fastapi_sdk.tasks import RetryPolicy, TaskQueue
+
+from src.core.settings import settings
+
+tq: TaskQueue = TaskQueue.from_settings(settings)
+
+WELCOME_TASK_NAME: str = "users:send_welcome"
+"""Stable task name; the API enqueues by it."""
+
+
+@tq.task(name=WELCOME_TASK_NAME, retry=RetryPolicy(max_retries=3))
+async def send_welcome(to: str, name: str) -> None:
+    """Runs in a worker, outside the request."""
+```
+
+```python
+# src/api/routers/users.py — the API never imports src.tasks.welcome
+from fastapi import APIRouter
+
+from tempest_fastapi_sdk.tasks import TaskQueue
+
+from src.core.settings import settings
+
+tq: TaskQueue = TaskQueue.from_settings(settings)
+router: APIRouter = APIRouter(prefix="/users")
+
+
+@router.post("/{email}/welcome", status_code=202)
+async def welcome(email: str) -> None:
+    """Ask for the welcome e-mail and answer without waiting."""
+    await tq.enqueue_by_name("users:send_welcome", to=email, name="Ana")
+```
+
+**The retry policy still applies.** TaskIQ's worker reads only the labels
+the message carries, and a sender working by name does not know the task —
+so the message arrives without `retry_on_error`, `max_retries`, `timeout`.
+Every `TaskQueue` installs, first in its broker, a middleware that restores
+on the worker the labels the task was registered with (the message's own
+still win). Measured with a real Redis, a `taskiq` worker in one process and
+the send from another that never imported the task: a task with
+`RetryPolicy(max_retries=2)` that fails its first attempt runs **2** times;
+with the middleware removed, **1**.
+
+!!! warning "A name that does not exist"
+    The sender does not check the name — the API process does not know the
+    tasks. Over Redis or RabbitMQ the worker logs
+    `task "<name>" is not found` and drops the message. With
+    `TaskQueue.memory()`, which is its own worker, the send raises
+    `SendTaskError` right away. Keep the name in a constant next to the task
+    (`*_TASK_NAME`) and use the same string in the API.
+
 ### Worker resources — `on_startup` / `on_shutdown`
 
 FastAPI's `lifespan` **does not run in the worker**. Without it the
