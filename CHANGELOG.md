@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tempest lint-layers` ganha `RTR003` (mais de um `APIRouter` num módulo de
+  `routers/`) e `RTR004` (`prefix` `/api` em `APIRouter`/`include_router`
+  fora de `build_api_router`), como **aviso** (#616). O `create_app` do
+  `tempest new` atual sai como `RTR004` até o scaffold mudar.
+
+### Added
+
 - `tempest lint-layers` ganha `IMP001` (`__init__.py` importando vizinho com
   import absoluto) e `IMP002` (import pelo submódulo de um nome que um pacote
   acima reexporta, resolvido por `ast` e de forma transitiva, inclusive

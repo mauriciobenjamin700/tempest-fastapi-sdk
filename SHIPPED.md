@@ -3497,6 +3497,13 @@ que não contém o módulo importador). Teste:
 `tests/cli/test_layer_lint_imports.py`. Dívida do scaffold em
 `SCAFFOLD_LAYOUT_DEBT` (contagem por código).
 
+## Routers no `lint-layers` (#616, parte 6)
+
+Avisos `RTR003` (segundo `APIRouter` num módulo de `routers/`, subject o nome
+atribuído) e `RTR004` (`prefix` `/api` ou abaixo em `APIRouter`/
+`include_router` fora de `build_api_router`, em todo o código; subject a
+função que envolve). Teste: `tests/cli/test_layer_lint_routers.py`.
+
 ## Sufixo `Enum` no `tempest check` (#518)
 
 `ENUM001` em `tempest_fastapi_sdk/cli/layer_lint.py`: classe pública que

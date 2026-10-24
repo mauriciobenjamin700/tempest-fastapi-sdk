@@ -885,7 +885,8 @@ def lint_layers_cmd(
     another; STR002, a module-level ``_name`` function — both in the
     source and in ``tests/``. IMP001, an absolute import of a neighbour in
     ``__init__.py``; IMP002, a submodule import of a name a package above
-    re-exports.
+    re-exports. RTR003, a second ``APIRouter`` in a routers/ module;
+    RTR004, a ``/api`` prefix outside ``build_api_router``.
 
     A warning prints ``(warning)`` after its code and fails only a strict
     run. An exception kept on purpose is an entry of the
