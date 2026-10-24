@@ -106,6 +106,14 @@ The rules:
   so a module never imports its own package's ``__init__``; an import
   that would close a cycle anyway is a declared exception.
 
+* ``RTR003`` (warning) — a module in ``routers/`` that builds more than
+  one ``APIRouter``; one finding per router after the first. One router
+  per file keeps a domain's routes where its name says.
+* ``RTR004`` (warning) — a ``prefix`` of ``/api`` (or under it) passed to
+  ``APIRouter(...)`` or ``include_router(...)`` anywhere but inside a
+  ``build_api_router`` function (``routers/api.py``). The ``/api`` prefix
+  is set once; a domain router declares only its own prefix.
+
 ``tests/`` is the project's suite: ``<target>/tests``, or the one beside
 a source-root target (``tempest lint-layers src`` reads ``./tests``).
 
@@ -282,6 +290,15 @@ SESSION_TYPE: str = "AsyncSession"
 SELF_ASSEMBLY_METHOD: str = "from_session"
 """Function name ``DI003`` reports."""
 
+ROUTER_CLASS: str = "APIRouter"
+"""Callee name ``RTR003`` counts and ``RTR004`` reads the prefix of."""
+
+API_PREFIX: str = "/api"
+"""The prefix only :data:`API_ROUTER_BUILDER` may set (``RTR004``)."""
+
+API_ROUTER_BUILDER: str = "build_api_router"
+"""The function that mounts every domain router under :data:`API_PREFIX`."""
+
 TESTS_DIR: str = "tests"
 """The suite directory, beside the source root, that ``STR*`` also reads."""
 
@@ -335,6 +352,8 @@ RULES: dict[str, LayerRule] = {
         LayerRule("STR002", "warning", "private module-level function"),
         LayerRule("IMP001", "warning", "absolute import of a neighbour in __init__"),
         LayerRule("IMP002", "warning", "submodule import of a re-exported name"),
+        LayerRule("RTR003", "warning", "more than one APIRouter in a module"),
+        LayerRule("RTR004", "warning", "/api prefix outside build_api_router"),
         LayerRule("EXC001", "error", "declared exception the checker cannot use"),
         LayerRule("EXC002", "warning", "declared exception that matches no finding"),
     )
@@ -1596,6 +1615,150 @@ def _nested_functions(
             yield from _nested_functions(child, owner, inside_function)
 
 
+def _calls_with_function(
+    node: ast.AST, function: str | None = None
+) -> Iterator[tuple[ast.Call, str | None]]:
+    """Yield every call under ``node`` with the function it sits in.
+
+    Args:
+        node (ast.AST): The node to descend from.
+        function (str | None): The innermost enclosing function name.
+
+    Yields:
+        tuple[ast.Call, str | None]: The call and its enclosing function
+        name, ``None`` at module or class level.
+    """
+    for child in ast.iter_child_nodes(node):
+        inner = (
+            child.name
+            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef)
+            else function
+        )
+        if isinstance(child, ast.Call):
+            yield child, function
+        yield from _calls_with_function(child, inner)
+
+
+def _assigned_names(module: ast.Module) -> dict[ast.AST, str]:
+    """Map each value assigned to a plain name to that name.
+
+    Args:
+        module (ast.Module): The parsed module.
+
+    Returns:
+        dict[ast.AST, str]: Value node to target name, for ``x = ...`` and
+        ``x: T = ...``.
+    """
+    names: dict[ast.AST, str] = {}
+    for node in ast.walk(module):
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if isinstance(target, ast.Name):
+                names[node.value] = target.id
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and node.value is not None
+            and isinstance(node.target, ast.Name)
+        ):
+            names[node.value] = node.target.id
+    return names
+
+
+def _check_router_count(modules: list[_ParsedModule]) -> list[LayerFinding]:
+    """Apply ``RTR003`` to the ``routers/`` modules.
+
+    Args:
+        modules (list[_ParsedModule]): Every module in ``routers/``.
+
+    Returns:
+        list[LayerFinding]: The violations, in file and line order.
+    """
+    findings: list[LayerFinding] = []
+    for parsed in modules:
+        names = _assigned_names(parsed.tree)
+        routers = sorted(
+            (
+                node
+                for node, _function in _calls_with_function(parsed.tree)
+                if _call_name(node) == ROUTER_CLASS
+            ),
+            key=lambda node: (node.lineno, node.col_offset),
+        )
+        for extra in routers[1:]:
+            name = names.get(extra)
+            findings.append(
+                LayerFinding(
+                    path=parsed.path,
+                    line=extra.lineno,
+                    code="RTR003",
+                    subject=name,
+                    message=(
+                        f"a second {ROUTER_CLASS} in this module"
+                        f"{f' (`{name}`)' if name else ''}; one router per file "
+                        f"in routers/ — move it to its own module."
+                    ),
+                )
+            )
+    return findings
+
+
+def _api_prefix(call: ast.Call) -> str | None:
+    """Return the ``prefix=`` of a call when it is :data:`API_PREFIX` or below.
+
+    Args:
+        call (ast.Call): The call.
+
+    Returns:
+        str | None: The literal prefix, or ``None`` for any other value.
+    """
+    for keyword in call.keywords:
+        if keyword.arg != "prefix":
+            continue
+        value = keyword.value
+        if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
+            return None
+        prefix = value.value.rstrip("/")
+        if prefix == API_PREFIX or prefix.startswith(f"{API_PREFIX}/"):
+            return value.value
+    return None
+
+
+def _check_api_prefix(modules: list[_ParsedModule]) -> list[LayerFinding]:
+    """Apply ``RTR004`` to every module of the source root.
+
+    Args:
+        modules (list[_ParsedModule]): Every module under the scan roots.
+
+    Returns:
+        list[LayerFinding]: The violations, in file and line order.
+    """
+    findings: list[LayerFinding] = []
+    for parsed in modules:
+        for call, function in _calls_with_function(parsed.tree):
+            if _call_name(call) not in {ROUTER_CLASS, "include_router"}:
+                continue
+            if function == API_ROUTER_BUILDER:
+                continue
+            prefix = _api_prefix(call)
+            if prefix is None:
+                continue
+            findings.append(
+                LayerFinding(
+                    path=parsed.path,
+                    line=call.lineno,
+                    code="RTR004",
+                    subject=function,
+                    message=(
+                        f"prefix `{prefix}` set outside {API_ROUTER_BUILDER}(); "
+                        f"mount the domain routers under `{API_PREFIX}` once, in "
+                        f"routers/api.py, and give each router only its own "
+                        f"prefix."
+                    ),
+                )
+            )
+    return findings
+
+
 def _dotted_name(path: Path, root: Path) -> str | None:
     """Return the import path of a module relative to the project root.
 
@@ -2112,6 +2275,8 @@ def lint_layers(
             *_check_self_assembly(source_modules),
             *_check_structure([*source_modules, *test_modules]),
             *_check_imports([*source_modules, *test_modules], project_root(target)),
+            *_check_router_count(router_modules),
+            *_check_api_prefix(source_modules),
         )
         if finding.code in selected
     ]
@@ -2209,6 +2374,8 @@ def run_lint_layers(
 
 
 __all__: list[str] = [
+    "API_PREFIX",
+    "API_ROUTER_BUILDER",
     "BASE_REPOSITORY_METHODS",
     "CONSTRUCTED_SUFFIXES",
     "CONTROLLERS_DIR",
@@ -2222,6 +2389,7 @@ __all__: list[str] = [
     "REPOSITORY_SUFFIX",
     "ROUTERS_DIR",
     "ROUTER_BUILDS_MARKER",
+    "ROUTER_CLASS",
     "ROUTE_DECORATORS",
     "RULES",
     "SCHEMAS_SEGMENT",

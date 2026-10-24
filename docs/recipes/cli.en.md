@@ -2374,6 +2374,55 @@ src/services/__init__.py:1: IMP001 (warning) `src.services.orders` is a module o
     That is a case for a declared exception
     (`"IMP002 <path>::<name>": "<reason>"`), not for rewriting the import.
 
+#### Router: one per file, `/api` once (warning)
+
+| Code | Where | What it reports |
+| --- | --- | --- |
+| `RTR003` | `routers/` | more than one `APIRouter(...)` in the module — one finding per router after the first |
+| `RTR004` | the whole source | a `prefix` equal to `/api` (or under it) in `APIRouter(...)` or `include_router(...)` outside a `build_api_router` function |
+
+In the transport service, `/api` was repeated in 22 `include_router` calls.
+An orders module with two routers and `/api` baked in prints (real output):
+
+```python
+# src/api/routers/orders.py
+from fastapi import APIRouter
+
+router: APIRouter = APIRouter(prefix="/api/orders", tags=["orders"])
+admin_router: APIRouter = APIRouter(prefix="/api/admin/orders", tags=["admin"])
+```
+
+```text
+src/api/routers/orders.py:3: RTR004 (warning) prefix `/api/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
+src/api/routers/orders.py:4: RTR003 (warning) a second APIRouter in this module (`admin_router`); one router per file in routers/ — move it to its own module.
+src/api/routers/orders.py:4: RTR004 (warning) prefix `/api/admin/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
+3 layer finding(s): 0 error(s), 3 warning(s).
+```
+
+The shape both rules ask for: each domain in its own file, with only its own
+prefix (`/orders`, `/admin/orders`), and `/api` set once:
+
+```python
+# src/api/routers/api.py
+from fastapi import APIRouter
+
+from src.api.routers.admin_orders import router as admin_orders_router
+from src.api.routers.orders import router as orders_router
+
+
+def build_api_router() -> APIRouter:
+    """Build the API router: every domain sits under ``/api``."""
+    api: APIRouter = APIRouter(prefix="/api")
+    api.include_router(orders_router)
+    api.include_router(admin_orders_router)
+    return api
+```
+
+!!! note "`tempest new` still sets `/api` in `create_app`"
+    The scaffold's `src/api/app.py` calls `app.include_router(api_router,
+    prefix="/api")` and prints as `RTR004` until the scaffold gets
+    `routers/api.py`.
+
 #### Warning, error and declared exception
 
 Every rule has a severity. An **error** fails the step (exit code `1`); a

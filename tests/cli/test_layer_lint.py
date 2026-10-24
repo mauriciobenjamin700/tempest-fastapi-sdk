@@ -50,7 +50,12 @@ Their fixtures keep the flat ``services/news.py`` shape the issue that
 introduced each rule describes, which ``LAY002`` would also report.
 """
 
-SCAFFOLD_LAYOUT_DEBT: dict[str, int] = {"IMP001": 19, "IMP002": 8, "LAY002": 2}
+SCAFFOLD_LAYOUT_DEBT: dict[str, int] = {
+    "IMP001": 19,
+    "IMP002": 8,
+    "LAY002": 2,
+    "RTR004": 1,
+}
 """Warnings ``tempest new`` still produces, counted per code.
 
 The scaffold moves to the #616 layout (context packages, relative
