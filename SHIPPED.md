@@ -1971,6 +1971,8 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   libheif; `mif1`/`msf1` only with an HEVC compatible brand, so AVIF stays
   out) and `ImageMediaType` is the field type for a declared image
   `Content-Type` (aliases, any case, `.extension`, `.matches(data)`).
+  **(unreleased, #615)** `image_media_type_field(*allowed)` narrows it to a
+  subset, in validation and in the published `enum`.
 - **MinIO / S3** — `AsyncMinIOClient` via `[minio]` extra
   (bucket lifecycle, object I/O, streaming download, presigned
   URLs). **(v0.302.0, #361)** `download_response(key, request=...)`

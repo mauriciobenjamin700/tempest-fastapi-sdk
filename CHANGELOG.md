@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `image_media_type_field(*allowed, title=..., description=..., examples=...)`
+  restringe um campo `ImageMediaType` aos tipos listados e publica só esses
+  no JSON Schema (`enum`), com descrição e exemplo derivados da lista. A
+  normalização do enum roda antes; tipo conhecido fora da lista é
+  `value_error` (`422` numa rota) com os permitidos na mensagem. A restrição
+  é `AllowedImageMediaTypes`, exportada também (#615).
+- `CursorPaginationFilterSchema.ascending` ganha `examples=[False, True]`,
+  como o `BasePaginationFilterSchema` já tinha (#615).
+
 ## [0.326.0] — 2026-10-23
 
 ### Changed

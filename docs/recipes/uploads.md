@@ -273,6 +273,72 @@ enum
 - `.extension` dá a extensão do arquivo (`"jpg"`, `"png"`, `"gif"`, `"bmp"`,
   `"webp"`, `"heic"`).
 
+### Aceitar só alguns tipos — `image_media_type_field`
+
+Foto de câmera não chega como GIF nem BMP, e aceitar os seis tipos deixa
+passar o que o resto do serviço não sabe tratar. Escrever um
+`field_validator` para isso traz a allowlist de volta — e o `openapi.json`
+continua anunciando os seis. O `image_media_type_field` restringe o campo e
+o schema juntos:
+
+```python
+from typing import Annotated
+
+from pydantic import BaseModel, ValidationError
+
+from tempest_fastapi_sdk import ImageMediaType, image_media_type_field
+
+
+class EvidencePhotoSchema(BaseModel):
+    """Foto de câmera: GIF e BMP ficam de fora."""
+
+    content_type: Annotated[
+        ImageMediaType,
+        image_media_type_field(
+            ImageMediaType.JPEG,
+            ImageMediaType.PNG,
+            ImageMediaType.WEBP,
+            ImageMediaType.HEIC,
+            title="Tipo da foto",
+        ),
+    ]
+
+
+photo: EvidencePhotoSchema = EvidencePhotoSchema.model_validate(
+    {"content_type": "IMAGE/PNG"},
+)
+print(photo.content_type)
+
+try:
+    EvidencePhotoSchema.model_validate({"content_type": "image/gif"})
+except ValidationError as exc:
+    print(exc.errors()[0]["type"], "|", exc.errors()[0]["msg"])
+
+field: dict[str, object] = EvidencePhotoSchema.model_json_schema()["properties"][
+    "content_type"
+]
+print(field["enum"])
+print(field["examples"])
+```
+
+Saída:
+
+```text
+image/png
+value_error | Value error, image type must be one of: image/jpeg, image/png, image/webp, image/heic
+['image/jpeg', 'image/png', 'image/webp', 'image/heic']
+['image/jpeg']
+```
+
+- A normalização do enum roda **antes** da restrição: `IMAGE/PNG` e
+  `image/x-png` continuam virando `ImageMediaType.PNG`.
+- Tipo conhecido mas fora da lista é `value_error` (numa rota, `422`) com os
+  permitidos na mensagem; tipo desconhecido continua sendo o erro `enum`.
+- O JSON Schema lista **só** os permitidos. `description` e `examples` saem
+  da lista quando você não passa os seus (o exemplo é o primeiro permitido).
+- Sem argumentos, `image_media_type_field()` aceita os seis e só preenche
+  título, descrição e exemplo.
+
 ### Conferir os bytes contra o tipo declarado
 
 O tipo declarado é do cliente. `.matches(data)` pergunta ao `sniff_mime` o que
