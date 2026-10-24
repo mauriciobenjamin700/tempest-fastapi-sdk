@@ -2310,6 +2310,61 @@ tests/test_app.py:1: STR002 (warning) module-level `_make_payload` is a helper w
 2 layer finding(s): 0 error(s), 2 warning(s).
 ```
 
+#### Import entre pacotes do projeto (aviso)
+
+| Código | O que acusa |
+| --- | --- |
+| `IMP001` | `__init__.py` importando módulo do próprio pacote com import absoluto. Vizinho se importa relativo: `from .orders import OrderService` |
+| `IMP002` | fora de `__init__.py`, import de um nome pelo submódulo onde ele mora quando um pacote acima já o reexporta. O reexport é resolvido de forma transitiva, inclusive por `from .x import *`, e a sugestão é o pacote mais alto que reexporta o nome **sem conter** o módulo que importa — um service nunca é mandado importar o `__init__` da própria camada |
+
+Os dois leem o código e a suíte. Com estes quatro arquivos (saída real):
+
+```python
+# src/services/__init__.py
+from src.services.orders import OrderService as OrderService
+
+__all__: list[str] = ["OrderService"]
+```
+
+```python
+# src/services/orders/__init__.py
+from .order import OrderService as OrderService
+
+__all__: list[str] = ["OrderService"]
+```
+
+```python
+# src/services/orders/order.py
+class OrderService:
+    """Pedidos."""
+```
+
+```python
+# src/controllers/orders/order.py
+from src.services.orders.order import OrderService
+
+
+class OrderController:
+    """Orquestra pedidos."""
+
+    def __init__(self, service: OrderService) -> None:
+        """Guarda o service."""
+        self.service = service
+```
+
+```text
+src/controllers/orders/order.py:1: IMP002 (warning) `OrderService` is re-exported by `src.services`; import it from there: `from src.services import OrderService`.
+src/services/__init__.py:1: IMP001 (warning) `src.services.orders` is a module of this package; import it relatively in __init__.py: `from .orders import ...`.
+2 layer finding(s): 0 error(s), 2 warning(s).
+```
+
+!!! warning "Quando o pacote fecharia ciclo"
+    Às vezes o import pelo pacote da camada fecha um ciclo: no transport,
+    task e script importavam `api.dependencies.resources` direto, porque
+    importar o pacote `api.dependencies` fecharia ciclo com `src.tasks`. Esse é o caso da exceção
+    declarada (`"IMP002 <caminho>::<nome>": "<motivo>"`), não de reescrever o
+    import.
+
 #### Aviso, erro e exceção declarada
 
 Toda regra tem uma severidade. **Erro** derruba o passo (exit code `1`);

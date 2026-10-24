@@ -2318,6 +2318,62 @@ tests/test_app.py:1: STR002 (warning) module-level `_make_payload` is a helper w
 2 layer finding(s): 0 error(s), 2 warning(s).
 ```
 
+#### Imports between project packages (warning)
+
+| Code | What it reports |
+| --- | --- |
+| `IMP001` | an `__init__.py` importing a module of its own package with an absolute import. A neighbour is imported relatively: `from .orders import OrderService` |
+| `IMP002` | outside an `__init__.py`, an import of a name from the submodule it lives in when a package above already re-exports it. The re-export is resolved transitively, through `from .x import *` too, and the suggestion is the top-most package that re-exports the name **without containing** the importing module — a service is never told to import its own layer's `__init__` |
+
+Both read the source and the suite. With these four files (real output):
+
+```python
+# src/services/__init__.py
+from src.services.orders import OrderService as OrderService
+
+__all__: list[str] = ["OrderService"]
+```
+
+```python
+# src/services/orders/__init__.py
+from .order import OrderService as OrderService
+
+__all__: list[str] = ["OrderService"]
+```
+
+```python
+# src/services/orders/order.py
+class OrderService:
+    """Orders."""
+```
+
+```python
+# src/controllers/orders/order.py
+from src.services.orders.order import OrderService
+
+
+class OrderController:
+    """Orchestrates orders."""
+
+    def __init__(self, service: OrderService) -> None:
+        """Keep the service."""
+        self.service = service
+```
+
+```text
+src/controllers/orders/order.py:1: IMP002 (warning) `OrderService` is re-exported by `src.services`; import it from there: `from src.services import OrderService`.
+src/services/__init__.py:1: IMP001 (warning) `src.services.orders` is a module of this package; import it relatively in __init__.py: `from .orders import ...`.
+2 layer finding(s): 0 error(s), 2 warning(s).
+```
+
+!!! warning "When the package would close a cycle"
+    Sometimes importing through the layer package closes a cycle: in the
+    transport service, tasks and scripts imported `api.dependencies.resources`
+    directly, because importing the `api.dependencies` package would close
+    a cycle with `src.tasks`.
+    That is a case for a declared exception
+    (`"IMP002 <path>::<name>": "<reason>"`), not for rewriting the import.
+
 #### Warning, error and declared exception
 
 Every rule has a severity. An **error** fails the step (exit code `1`); a

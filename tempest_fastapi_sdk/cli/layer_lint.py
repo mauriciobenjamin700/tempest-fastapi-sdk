@@ -93,6 +93,19 @@ The rules:
   home: a method of the class that uses it, a public function in
   ``utils/``, or, in the suite, a fixture.
 
+* ``IMP001`` (warning) — an ``__init__.py`` that imports a module of its
+  own package with an absolute import (``from src.services.order import
+  OrderService`` inside ``src/services/__init__.py``). The package names
+  its neighbours relatively: ``from .order import OrderService``.
+* ``IMP002`` (warning) — outside an ``__init__.py``, an absolute import
+  of a name from a submodule when an ancestor package already re-exports
+  it (``from src.services.order.service import OrderService`` when
+  ``src.services`` binds ``OrderService``). Re-exports are resolved
+  through ``from .x import *`` too. The suggested package is the top-most
+  ancestor that binds the name and does not contain the importing module,
+  so a module never imports its own package's ``__init__``; an import
+  that would close a cycle anyway is a declared exception.
+
 ``tests/`` is the project's suite: ``<target>/tests``, or the one beside
 a source-root target (``tempest lint-layers src`` reads ``./tests``).
 
@@ -320,6 +333,8 @@ RULES: dict[str, LayerRule] = {
         LayerRule("DI003", "warning", "from_session self-assembly"),
         LayerRule("STR001", "warning", "function defined inside a function"),
         LayerRule("STR002", "warning", "private module-level function"),
+        LayerRule("IMP001", "warning", "absolute import of a neighbour in __init__"),
+        LayerRule("IMP002", "warning", "submodule import of a re-exported name"),
         LayerRule("EXC001", "error", "declared exception the checker cannot use"),
         LayerRule("EXC002", "warning", "declared exception that matches no finding"),
     )
@@ -1581,6 +1596,184 @@ def _nested_functions(
             yield from _nested_functions(child, owner, inside_function)
 
 
+def _dotted_name(path: Path, root: Path) -> str | None:
+    """Return the import path of a module relative to the project root.
+
+    Args:
+        path (Path): The module file.
+        root (Path): The project root.
+
+    Returns:
+        str | None: ``src.services.order`` for
+        ``src/services/order/__init__.py`` or ``src/services/order.py``;
+        ``None`` outside ``root``.
+    """
+    relative = _relative(path, root)
+    if relative is None:
+        return None
+    parts = list(Path(relative).with_suffix("").parts)
+    if parts and parts[-1] == "__init__":
+        parts.pop()
+    return ".".join(parts) or None
+
+
+def _absolute_module(dotted: str, is_package: bool, node: ast.ImportFrom) -> str | None:
+    """Resolve the module an ``import from`` names, relative or not.
+
+    Args:
+        dotted (str): The importing module's import path.
+        is_package (bool): Whether the importing module is an
+            ``__init__.py``.
+        node (ast.ImportFrom): The import.
+
+    Returns:
+        str | None: The absolute import path, or ``None`` when a relative
+        import climbs above the project root.
+    """
+    if node.level == 0:
+        return node.module
+    base = dotted.split(".")
+    if not is_package:
+        base = base[:-1]
+    climb = node.level - 1
+    if climb > len(base):
+        return None
+    base = base[: len(base) - climb]
+    return ".".join([*base, *(node.module.split(".") if node.module else [])])
+
+
+@dataclass
+class _ExportIndex:
+    """The names each project module binds at top level, resolved lazily.
+
+    Attributes:
+        modules (dict[str, _ParsedModule]): Import path to parsed module.
+        memo (dict[str, set[str]]): Names already resolved per module.
+    """
+
+    modules: dict[str, _ParsedModule]
+    memo: dict[str, set[str]]
+
+    def exports(self, dotted: str, active: frozenset[str] = frozenset()) -> set[str]:
+        """Return the names a module binds, following ``import *``.
+
+        Args:
+            dotted (str): The module's import path.
+            active (frozenset[str]): Modules being resolved up the stack,
+                so a star-import cycle ends instead of recursing.
+
+        Returns:
+            set[str]: Every top-level name, imported or defined; empty for
+            a module outside the project.
+        """
+        if dotted in self.memo:
+            return self.memo[dotted]
+        parsed = self.modules.get(dotted)
+        if parsed is None or dotted in active:
+            return set()
+        is_package = parsed.path.name == "__init__.py"
+        names: set[str] = set()
+        for statement in parsed.tree.body:
+            if isinstance(statement, ast.ImportFrom):
+                for alias in statement.names:
+                    if alias.name != "*":
+                        names.add(alias.asname or alias.name)
+                        continue
+                    source = _absolute_module(dotted, is_package, statement)
+                    if source is not None:
+                        names.update(
+                            name
+                            for name in self.exports(source, active | {dotted})
+                            if not name.startswith("_")
+                        )
+            elif isinstance(statement, ast.Import):
+                names.update(
+                    alias.asname or alias.name.split(".")[0]
+                    for alias in statement.names
+                )
+            elif isinstance(
+                statement, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
+            ):
+                names.add(statement.name)
+            elif isinstance(statement, ast.Assign | ast.AnnAssign):
+                targets = (
+                    statement.targets
+                    if isinstance(statement, ast.Assign)
+                    else [statement.target]
+                )
+                names.update(
+                    target.id for target in targets if isinstance(target, ast.Name)
+                )
+        self.memo[dotted] = names
+        return names
+
+
+def _check_imports(modules: list[_ParsedModule], root: Path) -> list[LayerFinding]:
+    """Apply ``IMP001`` and ``IMP002`` to source and test modules.
+
+    Args:
+        modules (list[_ParsedModule]): Every module under the scan roots
+            and the project's ``tests/``.
+        root (Path): The project root import paths are relative to.
+
+    Returns:
+        list[LayerFinding]: The violations, in file and line order.
+    """
+    named = {
+        dotted: parsed
+        for parsed in modules
+        if (dotted := _dotted_name(parsed.path, root)) is not None
+    }
+    index = _ExportIndex(modules=named, memo={})
+    findings: list[LayerFinding] = []
+    for dotted, parsed in named.items():
+        is_package = parsed.path.name == "__init__.py"
+        for node in parsed.tree.body:
+            if not isinstance(node, ast.ImportFrom) or node.level or not node.module:
+                continue
+            module = node.module
+            if is_package and module.startswith(f"{dotted}."):
+                rest = module[len(dotted) + 1 :]
+                findings.append(
+                    LayerFinding(
+                        path=parsed.path,
+                        line=node.lineno,
+                        code="IMP001",
+                        subject=module,
+                        message=(
+                            f"`{module}` is a module of this package; import it "
+                            f"relatively in __init__.py: `from .{rest} import ...`."
+                        ),
+                    )
+                )
+                continue
+            if is_package or module not in named:
+                continue
+            parts = module.split(".")
+            for alias in node.names:
+                for size in range(2, len(parts)):
+                    package = ".".join(parts[:size])
+                    if dotted == package or dotted.startswith(f"{package}."):
+                        continue
+                    if alias.name not in index.exports(package):
+                        continue
+                    findings.append(
+                        LayerFinding(
+                            path=parsed.path,
+                            line=node.lineno,
+                            code="IMP002",
+                            subject=alias.name,
+                            message=(
+                                f"`{alias.name}` is re-exported by `{package}`; "
+                                f"import it from there: `from {package} import "
+                                f"{alias.name}`."
+                            ),
+                        )
+                    )
+                    break
+    return findings
+
+
 def _check_structure(modules: list[_ParsedModule]) -> list[LayerFinding]:
     """Apply ``STR001`` and ``STR002`` to source and test modules.
 
@@ -1918,6 +2111,7 @@ def lint_layers(
             *_check_injection(service_modules, controller_modules),
             *_check_self_assembly(source_modules),
             *_check_structure([*source_modules, *test_modules]),
+            *_check_imports([*source_modules, *test_modules], project_root(target)),
         )
         if finding.code in selected
     ]

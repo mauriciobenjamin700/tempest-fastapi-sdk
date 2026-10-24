@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tempest lint-layers` ganha `IMP001` (`__init__.py` importando vizinho com
+  import absoluto) e `IMP002` (import pelo submódulo de um nome que um pacote
+  acima reexporta, resolvido por `ast` e de forma transitiva, inclusive
+  `import *`), como **aviso** (#616). O `tempest new` atual gera 19 `IMP001` e
+  8 `IMP002`, que somem quando o scaffold mudar.
+
+### Added
+
 - `tempest lint-layers` ganha `STR001` (função definida dentro de função) e
   `STR002` (função de módulo `_nome`), como **aviso**, lendo o código e o
   `tests/` do projeto (#616).
