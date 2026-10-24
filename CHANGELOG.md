@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.327.0] — 2026-10-24
+
 ### Added
 
 - `image_media_type_field(*allowed, title=..., description=..., examples=...)`
@@ -36,8 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `models/`; `services/` continua no `SVC002`), `LAY002` (módulo na raiz da
   camada em vez de `<camada>/<contexto>/`) e `REPO002` (repository
   importando outro `*Repository`; base de classe passa). O `tempest new`
-  ainda gera `controllers/service_info.py` e `db/models/user.py` na raiz da
-  camada, que saem como `LAY002` até o scaffold mudar.
+  ainda gera `controllers/service_info.py` (e, com o extra `auth`,
+  `db/models/user.py`) na raiz da camada, que saem como `LAY002` até o
+  scaffold mudar.
 
 - `tempest lint-layers` ganha `DI001` (`AsyncSession` no `__init__` de
   service ou controller), `DI002` (service recebendo `*Service`, controller
@@ -51,8 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tempest lint-layers` ganha `IMP001` (`__init__.py` importando vizinho com
   import absoluto) e `IMP002` (import pelo submódulo de um nome que um pacote
   acima reexporta, resolvido por `ast` e de forma transitiva, inclusive
-  `import *`), como **aviso** (#616). O `tempest new` atual gera 19 `IMP001` e
-  8 `IMP002`, que somem quando o scaffold mudar.
+  `import *`), como **aviso** (#616). O `tempest new` atual gera 8 `IMP002` e
+  de 11 `IMP001` (sem extras) a 19 (`--extras auth,queue,tasks,ssr`), que
+  somem quando o scaffold mudar.
 
 - `tempest lint-layers` ganha `RTR003` (mais de um `APIRouter` num módulo de
   `routers/`) e `RTR004` (`prefix` `/api` em `APIRouter`/`include_router`

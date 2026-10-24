@@ -2217,10 +2217,11 @@ src/db/repositories/orders/order.py:1: REPO002 (warning) imports `CustomerReposi
 ```
 
 !!! note "`tempest new` still writes modules at the layer root"
-    The current scaffold writes `controllers/service_info.py` and
-    `db/models/user.py` straight into the layer, and each prints as
-    `LAY002`. The scaffold moves to context packages in the next part of
-    #616.
+    The current scaffold writes `controllers/service_info.py` straight into
+    the layer, and it prints as `LAY002`; with the `auth` extra,
+    `db/models/user.py` does too (measured with no extras, with `sqlite`
+    and with `auth,queue,tasks,ssr`). The scaffold moves to context
+    packages in the next part of #616.
 
 #### What services and controllers receive (warning)
 
@@ -2325,7 +2326,8 @@ tests/test_app.py:1: STR002 (warning) module-level `_make_payload` is a helper w
 | `IMP001` | an `__init__.py` importing a module of its own package with an absolute import. A neighbour is imported relatively: `from .orders import OrderService` |
 | `IMP002` | outside an `__init__.py`, an import of a name from the submodule it lives in when a package above already re-exports it. The re-export is resolved transitively, through `from .x import *` too, and the suggestion is the top-most package that re-exports the name **without containing** the importing module — a service is never told to import its own layer's `__init__` |
 
-Both read the source and the suite. With these four files (real output):
+Both read the source and the suite. With these four files
+(`tempest lint-layers --rule IMP001 --rule IMP002`, real output):
 
 ```python
 # src/services/__init__.py
@@ -2513,21 +2515,21 @@ imported:
 """Architecture exceptions the project keeps, each with its reason."""
 
 ARCHITECTURE_EXCEPTIONS: dict[str, str] = {
-    "SVC001 src/services/catalogue.py::CatalogueService": (
+    "SVC001 src/services/catalogue/catalogue.py::CatalogueService": (
         "static catalogue, no repository to hand to BaseService"
     ),
-    "REPO001 src/db/repositories/legacy.py": "wrapper kept until 2.0",
+    "REPO001 src/db/repositories/legacy/legacy.py": "wrapper kept until 2.0",
 }
 ```
 
-With that file, a `src/services/catalogue.py` defining `CatalogueService`
+With that file, a `src/services/catalogue/catalogue.py` defining `CatalogueService`
 (no `BaseService`) and a module-level function `load_items`, and no
 `legacy.py`, `tempest lint-layers` prints (real output, exit code `1`
 because of the `SVC002`):
 
 ```text
-src/services/catalogue.py:5: SVC002 module-level function `load_items` in services/; move it to utils/, or make it a method of the service that uses it.
-tests/architecture_exceptions.py:7: EXC002 (warning) `REPO001 src/db/repositories/legacy.py` matches no finding; the code it excused is gone or moved — delete the entry, or fix its path.
+src/services/catalogue/catalogue.py:5: SVC002 module-level function `load_items` in services/; move it to utils/, or make it a method of the service that uses it.
+tests/architecture_exceptions.py:7: EXC002 (warning) `REPO001 src/db/repositories/legacy/legacy.py` matches no finding; the code it excused is gone or moved — delete the entry, or fix its path.
 2 layer finding(s): 1 error(s), 1 warning(s).
 ```
 
