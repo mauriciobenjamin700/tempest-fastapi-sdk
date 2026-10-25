@@ -7,32 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- `tempest check --rule <CÓDIGO>` e `tempest check --strict` / `--no-strict`
-  (#616): o extra `[cli]` passa a exigir `tempest-cli>=0.7.0`, cujo `check`
-  entrega essas opções ao passo `lint-layers` (`run_lint_layers_with_options`).
-  Medido num projeto do `tempest new` com um `STR002`: `--rule STR002` sai
-  `0`, com `--strict` sai `1`, e código desconhecido sai `2`.
-
-### Changed
-
-- Com o piso `tempest-cli>=0.7.0`, `tempest test` e `tempest check` rodam a
-  suíte em paralelo **por padrão** (o comportamento do `tempest-cli` 0.6.0):
-  `--serial` desliga, e sem o pytest-xdist eles avisam e rodam em série. O
-  `tempest new` passa a declarar `pytest-xdist` no grupo `dev` e a gerar
-  `tests/conftest.py`, que dá a cada worker um SQLite próprio num diretório
-  temporário.
-
-### Fixed
-
-- A suíte de um projeto do `tempest new` falhava em paralelo: cada worker
-  migrava o mesmo arquivo SQLite no lifespan (`table alembic_version already
-  exists`). O `conftest.py` gerado resolve; `pytest -n 2` sobre os testes do
-  scaffold passa, fixado em teste.
-- O `tests/test_schemas.py` que o `tempest new` gera (desde a #630) tinha os
-  imports fora da ordem que o ruff do próprio projeto exige (`I001`). Um teste
-  novo roda `ruff check`, `ruff format --check` e `mypy` sobre projetos gerados.
+## [0.329.0] — 2026-10-25
 
 ### Added
 
@@ -44,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   importando `src.schemas` (ou `app.schemas`): exit `1` com achado, `2` se o
   pacote não importa. O `tempest new` passa a gerar `tests/test_schemas.py`
   chamando o assert, e os schemas da receita do `CLAUDE.md` já trazem os três.
+
+- `tempest check --rule <CÓDIGO>` e `tempest check --strict` / `--no-strict`
+  (#616): o extra `[cli]` passa a exigir `tempest-cli>=0.7.0`, cujo `check`
+  entrega essas opções ao passo `lint-layers` (`run_lint_layers_with_options`).
+  Medido num projeto do `tempest new` com um `STR002`: `--rule STR002` sai
+  `0`, com `--strict` sai `1`, e código desconhecido sai `2`.
 
 ### Changed
 
@@ -71,6 +52,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   root, a receita com teste no formato `Cenário:`/`Esperado:`, a tabela de
   todos os códigos do `tempest check` com severidade e o arquivo de exceções
   declaradas.
+
+- Com o piso `tempest-cli>=0.7.0`, `tempest test` e `tempest check` rodam a
+  suíte em paralelo **por padrão** (o comportamento do `tempest-cli` 0.6.0):
+  `--serial` desliga, e sem o pytest-xdist eles avisam e rodam em série. O
+  `tempest new` passa a declarar `pytest-xdist` no grupo `dev` e a gerar
+  `tests/conftest.py`, que dá a cada worker um SQLite próprio num diretório
+  temporário.
+
+### Fixed
+
+- A suíte de um projeto do `tempest new` falhava em paralelo: cada worker
+  migrava o mesmo arquivo SQLite no lifespan (`table alembic_version already
+  exists`). O `conftest.py` gerado resolve; `pytest -n 2` sobre os testes do
+  scaffold passa, fixado em teste.
+- O `tests/test_schemas.py` que o `tempest new` gera (desde a #630) tinha os
+  imports fora da ordem que o ruff do próprio projeto exige (`I001`). Um teste
+  novo roda `ruff check`, `ruff format --check` e `mypy` sobre projetos gerados.
 
 ## [0.328.0] — 2026-10-24
 

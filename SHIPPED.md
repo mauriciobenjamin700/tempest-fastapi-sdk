@@ -3051,10 +3051,12 @@ medido com `curl`, pelos dois caminhos (JSON e link `GET`), e num teste com
   `pytest-xdist>=3.8.0`, sem teto próprio; herda `pytest<10` do
   `pytest-asyncio` 1.4.0 e `pluggy<2` do `pytest`. Fora do `[all]`.
 - **`tempest test --fast` / `tempest check --fast`** — a flag é do
-  `tempest-cli` 0.4.0; o piso do SDK hoje é `>=0.5.1`. Roda `pytest -n <workers> -p no:cacheprovider`,
+  `tempest-cli` 0.4.0 (o piso do SDK na v0.302.0 era `>=0.5.1`). Roda `pytest -n <workers> -p no:cacheprovider`,
   `-w N` escolhe os workers (`auto` por padrão), e sem pytest-xdist no
-  ambiente do pytest sai `127` com a instrução de instalação. Receita:
-  `docs/recipes/testing.md#a-suite-em-paralelo-tempest-test-fast`.
+  ambiente do pytest sai `127` com a instrução de instalação. **Desde a
+  v0.329.0** (piso `tempest-cli>=0.7.0`) o paralelo é o padrão e `--serial`
+  desliga — ver a entrada do `tempest check --rule`. Receita:
+  `docs/recipes/testing.md#a-suite-em-paralelo-o-padrao-do-tempest-test`.
 
 ## Webhook de entrada e de status do zap-api (v0.302.0)
 
