@@ -332,11 +332,20 @@ never pruned**.
 
 ### Registration is idempotent by token
 
-Registering the same token twice updates the row and refreshes
-`last_seen_at` instead of duplicating. And when the device changes hands
-(sign out, sign in on the same handset), the row **moves to the new
-user** — without that, the next notification would reach the previous
-account.
+Registering the same token twice, from the same account, updates the row
+and refreshes `last_seen_at` instead of duplicating.
+
+A token already registered by **another account** does not change owner:
+the row stays untouched and the answer is the same as for a new
+registration (`201`, `{"status": "registered"}`), so the route is no oracle
+for "this token belongs to someone". Before v0.330.0, whoever knew the token
+took the device from the other account. On a shared handset the app calls
+`POST /unregister` on sign-out, before the next account registers; without
+it, the device stays with the previous account.
+
+When moving a device between accounts is a real case, turn it on
+explicitly: `DeviceService.register(..., transfer_ownership=True)`, or
+`make_push_router(..., transfer_ownership=True)`.
 
 ### Configuration
 

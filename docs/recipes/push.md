@@ -328,10 +328,20 @@ mudança não deve notificar a si mesmo. Aparelho excluído não é contatado
 
 ### Registro é idempotente por token
 
-Registrar duas vezes o mesmo token atualiza a linha e renova
-`last_seen_at`, em vez de duplicar. E se o aparelho trocar de dono
-(logout + login no mesmo celular), a linha **muda de usuário** — sem
-isso, a próxima notificação iria para a conta anterior.
+Registrar duas vezes o mesmo token, pela mesma conta, atualiza a linha e
+renova `last_seen_at`, em vez de duplicar.
+
+Token já registrado por **outra conta** não muda de dono: a linha fica
+intacta e a resposta é a mesma de um registro novo (`201`,
+`{"status": "registered"}`), para a rota não virar oráculo de "este token é
+de alguém". Antes da v0.330.0, quem conhecesse o token tomava o aparelho de
+outra conta. No celular compartilhado, o app chama `POST /unregister` no
+logout, antes do próximo login registrar; sem isso, o aparelho continua com
+a conta anterior.
+
+Quando mover o aparelho entre contas for um caso real, ligue
+explicitamente: `DeviceService.register(..., transfer_ownership=True)`, ou
+`make_push_router(..., transfer_ownership=True)`.
 
 ### Configuração
 

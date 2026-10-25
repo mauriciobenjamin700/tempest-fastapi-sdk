@@ -181,7 +181,7 @@ O serviço expõe:
 
 | Método | O que faz |
 | --- | --- |
-| `subscribe(user_id, subscription, *, user_agent=None)` | Salva a inscrição, **idempotente por `endpoint`** — re-subscribe atualiza, não duplica. |
+| `subscribe(user_id, subscription, *, user_agent=None, transfer_ownership=False)` | Salva a inscrição, **idempotente por `endpoint`** — re-subscribe da mesma conta atualiza as chaves, não duplica. Endpoint de **outra conta** fica com o dono e a linha volta intacta; a rota responde igual a uma inscrição nova, para não revelar a quem o endpoint pertence (antes da v0.330.0, quem conhecesse o endpoint tomava a inscrição). Mover entre contas só com `transfer_ownership=True` (também em `make_web_push_router`). Dois logins no mesmo navegador dividem a mesma `PushSubscription`: o cliente chama `POST /unsubscribe` no logout. |
 | `unsubscribe(endpoint, *, user_id=None)` | Remove a inscrição (no-op se não existe). Com `user_id`, só apaga se a inscrição for desse usuário — a de outra conta fica intacta e a resposta é `False`, a mesma de "não existe". Todo caminho que parte de uma requisição passa o `user_id`. |
 | `list_for_user(user_id)` | Lista os devices do usuário. |
 | `prune(endpoints)` | Apaga as inscrições desses endpoints — a lista que `send_many` devolve. Devolve quantas linhas saíram; endpoint que não existe é ignorado. |

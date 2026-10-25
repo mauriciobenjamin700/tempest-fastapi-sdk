@@ -92,22 +92,35 @@ class DeviceService(Generic[DeviceModelT]):
         self,
         user_id: UUID,
         registration: DeviceRegistrationSchema,
+        *,
+        transfer_ownership: bool = False,
     ) -> DeviceModelT:
         """Persist a device, idempotently keyed by ``token``.
 
-        A device that re-registers — or one that moves to another user
-        after a sign-out / sign-in on the same handset — updates the
-        existing row instead of creating a duplicate, and refreshes
-        ``last_seen_at``. That reassignment is the reason the update path
-        writes ``user_id`` too: leaving it would deliver the next
-        notification to the previous account.
+        The same owner re-registering updates the existing row instead of
+        creating a duplicate, and refreshes ``last_seen_at``.
+
+        A token already registered to **another** account is left
+        untouched (#632): knowing a token must not be enough to take a
+        device from its owner. The row comes back unchanged and the
+        routers answer exactly as for a new registration, so the call
+        cannot tell whether the token belongs to someone else — the same
+        rule :meth:`unregister` follows. A handset that changes hands is
+        handled by the client: it unregisters on sign-out, before the next
+        account registers; otherwise the previous account keeps the
+        device.
 
         Args:
             user_id (UUID): The user that owns the device.
             registration (DeviceRegistrationSchema): What the client sent.
+            transfer_ownership (bool): Move a token registered to another
+                account to ``user_id``. Off by default and never turned on
+                by :func:`make_push_router` unless asked.
 
         Returns:
-            DeviceModelT: The persisted (created or updated) row.
+            DeviceModelT: The persisted row — created, updated, or, for a
+            token of another account, the stored row unchanged. Never echo
+            it to the requester.
         """
         platform = (
             registration.platform.value
@@ -116,6 +129,8 @@ class DeviceService(Generic[DeviceModelT]):
         )
         existing = await self.repository.get_or_none({"token": registration.token})
         if existing is not None:
+            if existing.user_id != user_id and not transfer_ownership:
+                return existing
             existing.user_id = user_id
             existing.platform = platform
             existing.p256dh = registration.p256dh

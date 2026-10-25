@@ -31,6 +31,7 @@ def make_push_router(
     prefix: str = "/api/push",
     tags: list[str] | None = None,
     vapid_public_key: str | Callable[[], str] | None = None,
+    transfer_ownership: bool = False,
 ) -> APIRouter:
     """Build a router with ``POST /register`` and ``POST /unregister``.
 
@@ -61,6 +62,12 @@ def make_push_router(
             frontend build. Accepts a string or a zero-arg callable
             (resolved per request). ``None`` omits the route — the right
             choice for a mobile-only service.
+        transfer_ownership (bool): Let ``POST {prefix}/register`` move a
+            a token registered to another account to the caller. Off by
+            default (#632): the stored row is left untouched and the
+            caller gets the same answer as a new registration. Turn on only
+            where moving devices between accounts is a real case; the
+            service override must then accept ``transfer_ownership=``.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -105,7 +112,10 @@ def make_push_router(
         Returns:
             dict[str, str]: ``{"status": "registered"}``.
         """
-        await service.register(user_id, registration)
+        if transfer_ownership:
+            await service.register(user_id, registration, transfer_ownership=True)
+        else:
+            await service.register(user_id, registration)
         return {"status": "registered"}
 
     @router.post("/unregister", status_code=status.HTTP_200_OK)

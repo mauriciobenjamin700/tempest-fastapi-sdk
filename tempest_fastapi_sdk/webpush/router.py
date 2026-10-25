@@ -33,6 +33,7 @@ def make_web_push_router(
     tags: list[str] | None = None,
     store_user_agent: bool = True,
     vapid_public_key: str | Callable[[], str] | None = None,
+    transfer_ownership: bool = False,
 ) -> APIRouter:
     """Build a router with ``POST /subscribe`` and ``POST /unsubscribe``.
 
@@ -69,6 +70,12 @@ def make_web_push_router(
             key being baked into the frontend build. Accepts a string or a
             zero-arg callable (resolved per request). ``None`` (default)
             omits the route.
+        transfer_ownership (bool): Let ``POST {prefix}/subscribe`` move a
+            an endpoint registered to another account to the caller. Off by
+            default (#632): the stored row is left untouched and the
+            caller gets the same answer as a new subscription. Turn on only
+            where moving devices between accounts is a real case; the
+            service override must then accept ``transfer_ownership=``.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -118,7 +125,15 @@ def make_web_push_router(
             dict[str, str]: ``{"status": "subscribed"}``.
         """
         user_agent = request.headers.get("user-agent") if store_user_agent else None
-        await service.subscribe(user_id, subscription, user_agent=user_agent)
+        if transfer_ownership:
+            await service.subscribe(
+                user_id,
+                subscription,
+                user_agent=user_agent,
+                transfer_ownership=True,
+            )
+        else:
+            await service.subscribe(user_id, subscription, user_agent=user_agent)
         return {"status": "subscribed"}
 
     @router.post("/unsubscribe", status_code=status.HTTP_200_OK)

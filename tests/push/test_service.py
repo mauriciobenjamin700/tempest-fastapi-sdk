@@ -174,15 +174,28 @@ class TestRegister:
         assert first.id == second.id
         assert len(await service.list_for_user(user_id)) == 1
 
-    async def test_reassigns_a_handset_to_the_new_user(
-        self, session: AsyncSession
-    ) -> None:
-        """Signing in as someone else moves the device, so notifications follow."""
+    async def test_keeps_a_handset_with_its_owner(self, session: AsyncSession) -> None:
+        """Another account sending the token leaves the row with its owner (#632)."""
         service = _service(session)
         user_a, user_b = await seed_users(session, _DeviceUser, 2)
 
         await service.register(user_a, _mobile("handset", PushPlatform.IOS))
-        await service.register(user_b, _mobile("handset", PushPlatform.IOS))
+        returned = await service.register(user_b, _mobile("handset", PushPlatform.IOS))
+
+        assert returned.user_id == user_a
+        assert len(await service.list_for_user(user_a)) == 1
+        assert await service.list_for_user(user_b) == []
+
+    async def test_transfer_ownership_moves_the_handset(
+        self, session: AsyncSession
+    ) -> None:
+        service = _service(session)
+        user_a, user_b = await seed_users(session, _DeviceUser, 2)
+
+        await service.register(user_a, _mobile("handset", PushPlatform.IOS))
+        await service.register(
+            user_b, _mobile("handset", PushPlatform.IOS), transfer_ownership=True
+        )
 
         assert await service.list_for_user(user_a) == []
         assert len(await service.list_for_user(user_b)) == 1

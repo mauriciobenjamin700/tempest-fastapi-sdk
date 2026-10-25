@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `WebPushSubscriptionService.subscribe` e `DeviceService.register` não
+  mudam mais o dono de uma inscrição (#632). Antes, quem conhecesse o
+  `endpoint` (Web Push) ou o `token` (push mobile) de outra conta e chamasse
+  `POST /subscribe` / `POST /register` virava dono da linha — e, no Web Push,
+  trocava as chaves, passando a receber as notificações da vítima cifradas
+  para si. Agora a linha de outra conta fica intacta e a rota responde igual
+  a uma inscrição nova (`201`, mesmo corpo), sem revelar a quem o
+  dispositivo pertence; a mesma conta reinscrevendo continua atualizando.
+  Mover entre contas virou opt-in: `transfer_ownership=True` no service ou
+  em `make_web_push_router` / `make_push_router`.
+
 ## [0.329.0] — 2026-10-25
 
 ### Added

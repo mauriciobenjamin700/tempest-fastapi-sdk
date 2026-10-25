@@ -82,26 +82,45 @@ class WebPushSubscriptionService(Generic[SubscriptionModelT]):
         subscription: WebPushSubscriptionSchema,
         *,
         user_agent: str | None = None,
+        transfer_ownership: bool = False,
     ) -> SubscriptionModelT:
         """Persist a subscription, idempotently keyed by ``endpoint``.
 
-        A device that re-subscribes (or a subscription that moves to a
-        new user) updates the existing row instead of creating a
-        duplicate — the unique ``endpoint`` is the device identity.
+        The unique ``endpoint`` is the device identity. The same owner
+        re-subscribing updates the keys, ``expiration_time`` and
+        ``user_agent`` of the existing row instead of creating a duplicate.
+
+        An endpoint already registered to **another** account is left
+        untouched (#632): knowing an endpoint and supplying keys must not
+        be enough to take a device from its owner, who would stop
+        receiving their own notifications while they are encrypted for
+        the caller. The row comes back unchanged and the routers answer
+        exactly as for a new subscription, so the call cannot tell
+        whether the endpoint belongs to someone else — the same rule
+        :meth:`unsubscribe` follows. Two accounts on one browser share one
+        ``PushSubscription``: the client unsubscribes on sign-out, before
+        the next account subscribes.
 
         Args:
             user_id (UUID): The user that owns the device.
             subscription (WebPushSubscriptionSchema): The browser
                 ``PushSubscription.toJSON()`` payload.
             user_agent (str | None): Optional device label to store.
+            transfer_ownership (bool): Move an endpoint registered to
+                another account to ``user_id``. Off by default and never
+                turned on by :func:`make_web_push_router` unless asked.
 
         Returns:
-            SubscriptionModelT: The persisted (created or updated) row.
+            SubscriptionModelT: The persisted row — created, updated, or,
+            for an endpoint of another account, the stored row unchanged.
+            Never echo it to the requester.
         """
         existing = await self.repository.get_or_none(
             {"endpoint": subscription.endpoint},
         )
         if existing is not None:
+            if existing.user_id != user_id and not transfer_ownership:
+                return existing
             existing.user_id = user_id
             existing.p256dh = subscription.keys.p256dh
             existing.auth = subscription.keys.auth

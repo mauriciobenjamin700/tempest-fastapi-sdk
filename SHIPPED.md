@@ -2024,7 +2024,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (`subscribe`/`unsubscribe`/`list_for_user`/`notify_user` with
   auto-prune of gone endpoints) + `make_web_push_router` (opt-in
   `/subscribe` + `/unsubscribe`, aligned with `tempest-react-sdk`);
-  webhook signatures.
+  webhook signatures. **(unreleased, #632)** `subscribe` / `register` (and
+  `DeviceService` for mobile) never move a device of another account: the
+  row is left as it is and the route answers as for a new subscription;
+  `transfer_ownership=True` (service and both router factories) is the
+  opt-in. Tests: `tests/webpush/test_router_ownership.py`,
+  `tests/push/test_router_ownership.py`.
 - **Cache** — Redis manager + `@cached`.
 - **Queue / tasks** — typed facades hiding FastStream + TaskIQ:
   `MessageBroker` (`.rabbitmq`/`.redis`/`.kafka`/`.nats`, `@mq.on(channel)`

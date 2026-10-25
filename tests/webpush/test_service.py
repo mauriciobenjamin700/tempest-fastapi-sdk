@@ -91,11 +91,27 @@ class TestSubscribe:
         assert first.id == second.id
         assert len(await service.list_for_user(user_id)) == 1
 
-    async def test_reassigns_endpoint_to_new_user(self, session: AsyncSession) -> None:
+    async def test_keeps_an_endpoint_with_its_owner(
+        self, session: AsyncSession
+    ) -> None:
+        """Another account sending the endpoint leaves the row with its owner (#632)."""
         service = _service(session)
         user_a, user_b = await seed_users(session, _PushUser, 2)
         await service.subscribe(user_a, _sub("https://push.example/move"))
-        await service.subscribe(user_b, _sub("https://push.example/move"))
+        returned = await service.subscribe(user_b, _sub("https://push.example/move"))
+        assert returned.user_id == user_a
+        assert len(await service.list_for_user(user_a)) == 1
+        assert await service.list_for_user(user_b) == []
+
+    async def test_transfer_ownership_moves_the_endpoint(
+        self, session: AsyncSession
+    ) -> None:
+        service = _service(session)
+        user_a, user_b = await seed_users(session, _PushUser, 2)
+        await service.subscribe(user_a, _sub("https://push.example/move"))
+        await service.subscribe(
+            user_b, _sub("https://push.example/move"), transfer_ownership=True
+        )
         assert await service.list_for_user(user_a) == []
         assert len(await service.list_for_user(user_b)) == 1
 
