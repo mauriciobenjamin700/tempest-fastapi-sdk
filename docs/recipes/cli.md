@@ -2263,7 +2263,10 @@ src/services/wallet/settlement.py:15: DI003 (warning) `from_session` assembles t
 
 Quando dois services precisam mesmo andar juntos — no transport, a
 liquidação e o crédito na carteira tinham de cair na mesma transação —, o
-caminho é a exceção declarada, mirando só aquele parâmetro:
+caminho é a exceção declarada, mirando só aquele parâmetro (para a carteira
+do SDK, desde a v0.330.0 o service recebe o
+[`WalletLedger`](wallet.md#o-ledger-nao-o-service-walletledger) e a exceção
+deixa de ser necessária):
 
 ```python
 ARCHITECTURE_EXCEPTIONS: dict[str, str] = {

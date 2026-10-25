@@ -2272,7 +2272,10 @@ src/services/wallet/settlement.py:15: DI003 (warning) `from_session` assembles t
 
 When two services really must go together — in the transport service, the
 settlement and the wallet credit had to land in the same transaction —, the
-way out is a declared exception, aimed at that one parameter:
+way out is a declared exception, aimed at that one parameter (for the
+SDK's wallet, since v0.330.0 the service receives the
+[`WalletLedger`](wallet.md#the-ledger-not-the-service-walletledger) and the
+exception is no longer needed):
 
 ```python
 ARCHITECTURE_EXCEPTIONS: dict[str, str] = {

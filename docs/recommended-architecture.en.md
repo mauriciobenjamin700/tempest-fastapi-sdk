@@ -223,7 +223,10 @@ graph is written once.
 The real case where two services must go together exists — in the transport
 service, the settlement and the wallet credit land in the same transaction.
 It becomes a [declared exception](#declared-exception), aimed at that one
-parameter.
+parameter. For the SDK's wallet, since v0.330.0 not even that: the balance
+write is the
+[`WalletLedger`](recipes/wallet.md#the-ledger-not-the-service-walletledger),
+a data layer the service receives the way it receives a repository.
 
 ## 4. A repository does not import a repository
 

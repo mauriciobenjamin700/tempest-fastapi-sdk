@@ -20,6 +20,7 @@ here once:
 * money is never a ``float``.
 """
 
+from tempest_fastapi_sdk.wallet.ledger import WalletLedger as WalletLedger
 from tempest_fastapi_sdk.wallet.models import (
     BaseWalletEntryModel as BaseWalletEntryModel,
 )
@@ -78,6 +79,7 @@ __all__: list[str] = [
     "WalletBalanceSchema",
     "WalletEntryKind",
     "WalletEntrySchema",
+    "WalletLedger",
     "WalletService",
     "WithdrawRequestSchema",
     "WithdrawalSchema",

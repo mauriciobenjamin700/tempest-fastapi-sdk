@@ -1,11 +1,12 @@
-"""Business logic for wallet balances, the ledger and Pix withdrawals.
+"""Wallet orchestration: the Pix withdrawal, over a :class:`WalletLedger`.
 
-:class:`WalletService` is the only thing that should change a wallet
-balance. Every change is a single SQL ``UPDATE ... SET balance = balance
-+ :delta`` — never a read in Python followed by a write — and lands in
-the same transaction as its ledger line. That is what keeps two requests
-crediting the same wallet at once from losing one of the credits, and two
-withdrawals from paying the same balance twice.
+The balance moves themselves — one ``UPDATE ... SET balance = balance +
+:delta`` and its ledger line per call — live in
+:class:`~tempest_fastapi_sdk.wallet.WalletLedger`, the data layer.
+:class:`WalletService` adds what talks to a third party (``withdraw``:
+debit, ``PayoutProvider``, give the money back on refusal) and keeps the
+ledger's operations as delegations, so code written against the service
+keeps working (#617).
 """
 
 from __future__ import annotations
@@ -15,11 +16,10 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
-from tempest_fastapi_sdk.db.expressions import F
 from tempest_fastapi_sdk.exceptions.wallet import (
     InsufficientBalanceException,
     PayoutRejectedException,
@@ -31,6 +31,7 @@ from tempest_fastapi_sdk.integrations.payment.base import (
 )
 from tempest_fastapi_sdk.utils.datetime import utcnow
 from tempest_fastapi_sdk.utils.regex import PixKeyType
+from tempest_fastapi_sdk.wallet.ledger import WalletLedger
 from tempest_fastapi_sdk.wallet.schemas import (
     WalletBalanceSchema,
     WalletEntryKind,
@@ -86,73 +87,83 @@ async def claim_once(
 
 
 class WalletService:
-    """Credit, debit, withdraw and read wallets backed by a ledger.
+    """Withdraw wallets to Pix, and every ledger operation by delegation.
 
-    Both repositories must share one session: a balance update and its
-    ledger line commit together or not at all.
+    The writes and reads belong to :attr:`ledger`, a
+    :class:`~tempest_fastapi_sdk.wallet.WalletLedger`. A service of the
+    project that has to credit or debit inside its own transaction receives
+    the ledger, not this class — a service never receives another service.
+    This class is what the wallet router and a withdrawal use.
 
     Attributes:
-        balances (BaseRepository[Any]): Repository of the model that holds
-            the balance (usually the application's user model).
-        entries (BaseRepository[Any]): Repository of the concrete
-            :class:`~tempest_fastapi_sdk.wallet.BaseWalletEntryModel`.
-        balance_attribute (str): Name of the balance column on
-            ``balances.model``.
+        ledger (WalletLedger): The data layer the moves go through.
     """
 
     def __init__(
         self,
         *,
-        balances: BaseRepository[Any],
-        entries: BaseRepository[Any],
+        ledger: WalletLedger | None = None,
+        balances: BaseRepository[Any] | None = None,
+        entries: BaseRepository[Any] | None = None,
         balance_attribute: str = "wallet_cents",
     ) -> None:
-        """Initialize the service.
+        """Initialize the service over a ledger, or build one.
 
         Args:
-            balances (BaseRepository[Any]): Repository of the balance
-                owner model.
-            entries (BaseRepository[Any]): Repository of the ledger model.
-            balance_attribute (str): The balance column's attribute name.
-                ``"wallet_cents"`` matches
-                :class:`~tempest_fastapi_sdk.wallet.WalletBalanceMixin`; an
-                existing model passes its own (``"wallet"``).
+            ledger (WalletLedger | None): The ledger to delegate to. Pass
+                it, or ``balances`` and ``entries`` — the form every
+                service before #617 used, which builds the ledger here.
+            balances (BaseRepository[Any] | None): Repository of the
+                balance owner model, when no ``ledger`` is given.
+            entries (BaseRepository[Any] | None): Repository of the ledger
+                model, when no ``ledger`` is given.
+            balance_attribute (str): The balance column's attribute name,
+                used only when building the ledger here.
 
         Raises:
-            ValueError: If the repositories do not share a session, or the
-                balance model has no ``balance_attribute``.
+            ValueError: If both a ``ledger`` and repositories are given,
+                if neither is, or if the ledger refuses the repositories
+                (no shared session, no ``balance_attribute``).
         """
-        if balances.session is not entries.session:
-            raise ValueError("balances and entries must share one session")
-        if not hasattr(balances.model, balance_attribute):
-            raise ValueError(
-                f"{balances.model.__name__} has no attribute {balance_attribute!r}"
-            )
-        self.balances: BaseRepository[Any] = balances
-        self.entries: BaseRepository[Any] = entries
-        self.balance_attribute: str = balance_attribute
-
-    @property
-    def _session(self) -> AsyncSession:
-        """The session both repositories share.
-
-        Returns:
-            AsyncSession: The session.
-        """
-        session: AsyncSession = self.entries.session
-        return session
-
-    @property
-    def _balance_column(self) -> InstrumentedAttribute[Any]:
-        """The mapped balance column on the balance owner model.
-
-        Returns:
-            InstrumentedAttribute[Any]: The column attribute.
-        """
-        column: InstrumentedAttribute[Any] = getattr(
-            self.balances.model, self.balance_attribute
+        if ledger is not None:
+            if balances is not None or entries is not None:
+                raise ValueError("pass a ledger or balances and entries, not both")
+            self.ledger: WalletLedger = ledger
+            return
+        if balances is None or entries is None:
+            raise ValueError("pass a ledger, or both balances and entries")
+        self.ledger = WalletLedger(
+            balances=balances,
+            entries=entries,
+            balance_attribute=balance_attribute,
         )
-        return column
+
+    @property
+    def balances(self) -> BaseRepository[Any]:
+        """The ledger's balance repository, as before #617.
+
+        Returns:
+            BaseRepository[Any]: Repository of the balance owner model.
+        """
+        return self.ledger.balances
+
+    @property
+    def entries(self) -> BaseRepository[Any]:
+        """The ledger's entry repository, as before #617.
+
+        Returns:
+            BaseRepository[Any]: Repository of the ledger model.
+        """
+        return self.ledger.entries
+
+    @property
+    def balance_attribute(self) -> str:
+        """The balance column's attribute name, as before #617.
+
+        Returns:
+            str: The attribute name.
+        """
+        return self.ledger.balance_attribute
 
     async def credit(
         self,
@@ -165,7 +176,7 @@ class WalletService:
         reference_id: str | None = None,
         hold: timedelta = timedelta(0),
     ) -> WalletEntrySchema:
-        """Add ``amount_cents`` to a wallet and write the ledger line.
+        """Delegate to :meth:`WalletLedger.credit`.
 
         Args:
             user_id (UUID): The wallet owner.
@@ -175,35 +186,19 @@ class WalletService:
             reference_type (str | None): What the credit refers to.
             reference_id (str | None): Id of that reference.
             hold (timedelta): How long before the credit is withdrawable.
-                ``timedelta(0)`` releases it at once.
 
         Returns:
             WalletEntrySchema: The ledger line.
-
-        Raises:
-            ValueError: If ``amount_cents`` is not positive or ``hold`` is
-                negative.
-            LookupError: If no balance row has ``user_id``.
         """
-        if amount_cents <= 0:
-            raise ValueError("amount_cents must be positive")
-        if hold < timedelta(0):
-            raise ValueError("hold must not be negative")
-        async with self.entries.transaction():
-            balance_after = await self._apply(user_id, amount_cents)
-            if balance_after is None:
-                raise LookupError(f"no wallet for user {user_id}")
-            now = utcnow()
-            return await self._write_entry(
-                user_id=user_id,
-                kind=kind,
-                amount_cents=amount_cents,
-                balance_after_cents=balance_after,
-                available_at=now + hold,
-                description=description,
-                reference_type=reference_type,
-                reference_id=reference_id,
-            )
+        return await self.ledger.credit(
+            user_id,
+            amount_cents,
+            kind=kind,
+            description=description,
+            reference_type=reference_type,
+            reference_id=reference_id,
+            hold=hold,
+        )
 
     async def debit_available(
         self,
@@ -215,14 +210,7 @@ class WalletService:
         reference_type: str | None = None,
         reference_id: str | None = None,
     ) -> WalletEntrySchema:
-        """Take ``amount_cents`` out of the withdrawable part of a wallet.
-
-        The hold is enforced **inside** the ``UPDATE``: the statement only
-        matches when ``balance - amount`` stays at or above the sum of
-        credits not yet released. Computing "available" first and then
-        debiting with a plain ``balance >= amount`` guard lets two
-        concurrent withdrawals both pass and drain held money — the gap
-        this closes.
+        """Delegate to :meth:`WalletLedger.debit_available`.
 
         Args:
             user_id (UUID): The wallet owner.
@@ -234,33 +222,15 @@ class WalletService:
 
         Returns:
             WalletEntrySchema: The ledger line, with a negative amount.
-
-        Raises:
-            ValueError: If ``amount_cents`` is not positive.
-            InsufficientBalanceException: If the available balance is
-                smaller than ``amount_cents``.
         """
-        if amount_cents <= 0:
-            raise ValueError("amount_cents must be positive")
-        async with self.entries.transaction():
-            now = utcnow()
-            balance_after = await self._apply(
-                user_id,
-                -amount_cents,
-                floor=self._held_cents_query(user_id, now).scalar_subquery(),
-            )
-            if balance_after is None:
-                raise InsufficientBalanceException()
-            return await self._write_entry(
-                user_id=user_id,
-                kind=kind,
-                amount_cents=-amount_cents,
-                balance_after_cents=balance_after,
-                available_at=now,
-                description=description,
-                reference_type=reference_type,
-                reference_id=reference_id,
-            )
+        return await self.ledger.debit_available(
+            user_id,
+            amount_cents,
+            kind=kind,
+            description=description,
+            reference_type=reference_type,
+            reference_id=reference_id,
+        )
 
     async def reverse(
         self,
@@ -271,11 +241,7 @@ class WalletService:
         reference_type: str | None = None,
         reference_id: str | None = None,
     ) -> WalletEntrySchema | None:
-        """Take back a credit, held or not, if the balance still covers it.
-
-        For a refund to the payer after the payee was credited. Unlike
-        :meth:`debit_available`, money on hold counts: it is exactly the
-        money a reversal is supposed to reach first.
+        """Delegate to :meth:`WalletLedger.reverse`.
 
         Args:
             user_id (UUID): The wallet owner.
@@ -286,29 +252,15 @@ class WalletService:
 
         Returns:
             WalletEntrySchema | None: The ``REVERSAL`` line, or ``None``
-            when the balance no longer covers the amount (the payee already
-            withdrew it). ``None`` is a loss for the platform and should be
-            escalated by the caller; nothing was changed.
-
-        Raises:
-            ValueError: If ``amount_cents`` is not positive.
+            when the balance no longer covers the amount.
         """
-        if amount_cents <= 0:
-            raise ValueError("amount_cents must be positive")
-        async with self.entries.transaction():
-            balance_after = await self._apply(user_id, -amount_cents, floor=0)
-            if balance_after is None:
-                return None
-            return await self._write_entry(
-                user_id=user_id,
-                kind=WalletEntryKind.REVERSAL.value,
-                amount_cents=-amount_cents,
-                balance_after_cents=balance_after,
-                available_at=utcnow(),
-                description=description,
-                reference_type=reference_type,
-                reference_id=reference_id,
-            )
+        return await self.ledger.reverse(
+            user_id,
+            amount_cents,
+            description=description,
+            reference_type=reference_type,
+            reference_id=reference_id,
+        )
 
     async def withdraw(
         self,
@@ -412,43 +364,16 @@ class WalletService:
         *,
         now: datetime | None = None,
     ) -> WalletBalanceSchema:
-        """Split a wallet into held and available.
+        """Delegate to :meth:`WalletLedger.balance`.
 
         Args:
             user_id (UUID): The wallet owner.
-            now (datetime | None): The instant to evaluate holds at;
-                defaults to the current UTC time.
+            now (datetime | None): The instant to evaluate holds at.
 
         Returns:
-            WalletBalanceSchema: Total, held (capped at the total),
-            available, and the next release.
-
-        Raises:
-            LookupError: If no balance row has ``user_id``.
+            WalletBalanceSchema: Total, held, available and next release.
         """
-        moment = now or utcnow()
-        total = await self._session.scalar(
-            select(self._balance_column).where(self.balances.model.id == user_id)
-        )
-        if total is None:
-            raise LookupError(f"no wallet for user {user_id}")
-        held = await self._session.scalar(self._held_cents_query(user_id, moment))
-        entry_model = self.entries.model
-        next_release = await self._session.scalar(
-            select(func.min(entry_model.available_at)).where(
-                entry_model.user_id == user_id,
-                entry_model.amount_cents > 0,
-                entry_model.available_at > moment,
-            )
-        )
-        held_cents = min(int(held or 0), int(total))
-        return WalletBalanceSchema(
-            user_id=user_id,
-            total_cents=int(total),
-            held_cents=held_cents,
-            available_cents=int(total) - held_cents,
-            next_release_at=next_release,
-        )
+        return await self.ledger.balance(user_id, now=now)
 
     async def statement(
         self,
@@ -457,7 +382,7 @@ class WalletService:
         page: int = 1,
         page_size: int = 20,
     ) -> dict[str, Any]:
-        """Return a page of a wallet's ledger, newest first.
+        """Delegate to :meth:`WalletLedger.statement`.
 
         Args:
             user_id (UUID): The wallet owner.
@@ -465,84 +390,9 @@ class WalletService:
             page_size (int): Lines per page.
 
         Returns:
-            dict[str, Any]: ``items`` (:class:`WalletEntrySchema`),
-            ``total``, ``page``, ``page_size`` and ``pages``.
+            dict[str, Any]: A page of :class:`WalletEntrySchema` lines.
         """
-        result = await self.entries.paginate(
-            filters={"user_id": user_id},
-            order_by="created_at",
-            page=page,
-            page_size=page_size,
-            ascending=False,
-        )
-        items = [WalletEntrySchema.model_validate(row) for row in result["items"]]
-        return {**result, "items": items}
-
-    def _held_cents_query(self, user_id: UUID, now: datetime) -> Select[Any]:
-        """Select the credits of ``user_id`` not yet released at ``now``.
-
-        Args:
-            user_id (UUID): The wallet owner.
-            now (datetime): The instant to evaluate holds at.
-
-        Returns:
-            Select[Any]: One row, one column: cents held (``0`` when
-            nothing is). Execute it, or turn it into a scalar subquery to
-            use inside another statement.
-        """
-        entry_model = self.entries.model
-        return select(func.coalesce(func.sum(entry_model.amount_cents), 0)).where(
-            entry_model.user_id == user_id,
-            entry_model.amount_cents > 0,
-            entry_model.available_at > now,
-        )
-
-    async def _apply(
-        self,
-        user_id: UUID,
-        delta_cents: int,
-        *,
-        floor: Any = None,
-    ) -> int | None:
-        """Move a balance by ``delta_cents`` in one ``UPDATE ... RETURNING``.
-
-        Delegates to :meth:`BaseRepository.update_returning`, so the new
-        balance is computed by the database (``F(column) + delta``) and the
-        floor is part of the same statement's ``WHERE``.
-
-        Args:
-            user_id (UUID): The wallet owner.
-            delta_cents (int): Signed change.
-            floor (Any): When given, the update only matches if the new
-                balance stays at or above it — an int, or a scalar
-                subquery such as :meth:`_held_cents_query`.
-
-        Returns:
-            int | None: The new balance, or ``None`` when no row matched
-            (unknown user, or the floor would be crossed).
-        """
-        rows = await self.balances.update_returning(
-            {"id": user_id},
-            {self.balance_attribute: F(self.balance_attribute) + delta_cents},
-            returning=[self.balance_attribute],
-            where=(
-                None if floor is None else self._balance_column + delta_cents >= floor
-            ),
-        )
-        return int(rows[0][self.balance_attribute]) if rows else None
-
-    async def _write_entry(self, **values: Any) -> WalletEntrySchema:
-        """Insert a ledger line inside the caller's transaction block.
-
-        Args:
-            **values (Any): Column values of the ledger model, forwarded to
-                its constructor.
-
-        Returns:
-            WalletEntrySchema: The persisted line.
-        """
-        row = await self.entries.add(self.entries.model(**values))
-        return WalletEntrySchema.model_validate(row)
+        return await self.ledger.statement(user_id, page=page, page_size=page_size)
 
 
 __all__: list[str] = [

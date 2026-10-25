@@ -49,6 +49,7 @@ from tempest_fastapi_sdk import BaseModel, BaseRepository, enable_sqlite_savepoi
 from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.wallet import (
     WalletBalanceMixin,
+    WalletLedger,
     WalletService,
     make_wallet_entry_model,
 )
@@ -85,6 +86,21 @@ TABLES = [
     GuardOrder.__table__,
     GuardWalletEntry.__table__,
 ]
+
+
+def make_ledger(session: AsyncSession) -> WalletLedger:
+    """Build a wallet ledger over one session.
+
+    Args:
+        session (AsyncSession): The session both repositories share.
+
+    Returns:
+        WalletLedger: The ledger.
+    """
+    return WalletLedger(
+        balances=BaseRepository(session, model=GuardWalletUser),
+        entries=BaseRepository(session, model=GuardWalletEntry),
+    )
 
 
 def make_service(session: AsyncSession) -> WalletService:

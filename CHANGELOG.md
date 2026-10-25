@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `WalletLedger` (`tempest_fastapi_sdk.wallet`), a camada de dados da carteira
+  (#617): `credit`, `debit_available`, `reverse`, `balance` e `statement`, os
+  movimentos atômicos (`UPDATE ... RETURNING` + linha de extrato) que viviam no
+  `WalletService`. Um service do projeto que precisa mexer em saldo na própria
+  transação recebe o ledger como recebe um repository, em vez de receber o
+  `WalletService` (service dentro de service, `DI002`). Dentro de um bloco
+  `transaction()` do chamador o movimento entra no bloco e não comita sozinho:
+  crédito e escritas do chamador gravam ou voltam juntos (testado em SQLite e
+  PostgreSQL).
+
+### Changed
+
+- `WalletService` passa a delegar ao `WalletLedger` e fica com o que fala com
+  terceiro (`withdraw`). Aceita `WalletService(ledger=...)` ou, como antes,
+  `WalletService(balances=..., entries=..., balance_attribute=...)`, que monta
+  o ledger por dentro; `balances`, `entries`, `balance_attribute` e os métodos
+  de crédito e leitura continuam expostos. Sem mudança de schema, de migration
+  nem do saque; o `make_wallet_router` não muda.
+
 ### Security
 
 - `WebPushSubscriptionService.subscribe` e `DeviceService.register` não
