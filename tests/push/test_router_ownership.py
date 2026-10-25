@@ -205,3 +205,119 @@ class TestServiceScoping:
             assert await service.unregister("t", user_id=MALLORY) is False
             assert await service.unregister("t", user_id=ALICE) is True
         await engine.dispose()
+
+
+async def _devices(
+    sessionmaker: async_sessionmaker[AsyncSession],
+) -> list[tuple[UUID, str | None]]:
+    """Return ``(owner, app_version)`` of every stored device.
+
+    Args:
+        sessionmaker (async_sessionmaker[AsyncSession]): The test database.
+
+    Returns:
+        list[tuple[UUID, str | None]]: One pair per row.
+    """
+    async with sessionmaker() as session:
+        result = await session.execute(
+            select(_OwnershipDevice.user_id, _OwnershipDevice.app_version)
+        )
+        return [(row[0], row[1]) for row in result.all()]
+
+
+class TestRegisterOwnership:
+    """``POST /register`` never moves a token to another account (#632)."""
+
+    async def test_another_user_cannot_take_the_device(
+        self, harness: tuple[AsyncClient, async_sessionmaker[AsyncSession]]
+    ) -> None:
+        """Mallory registers Alice's token.
+
+        Alice keeps the row untouched, and Mallory gets the same 201 and
+        body a new registration gets.
+        """
+        client, sessionmaker = harness
+        alice = await client.post(
+            "/api/push/register",
+            json={**_ALICE_BODY, "app_version": "1.0"},
+            headers={"x-user": str(ALICE)},
+        )
+        mallory = await client.post(
+            "/api/push/register",
+            json={**_ALICE_BODY, "app_version": "9.9"},
+            headers={"x-user": str(MALLORY)},
+        )
+
+        assert (mallory.status_code, mallory.json()) == (
+            alice.status_code,
+            alice.json(),
+        )
+        assert await _devices(sessionmaker) == [(ALICE, "1.0")]
+
+    async def test_the_owner_refreshes_the_device(
+        self, harness: tuple[AsyncClient, async_sessionmaker[AsyncSession]]
+    ) -> None:
+        client, sessionmaker = harness
+        for version in ("1.0", "1.1"):
+            response = await client.post(
+                "/api/push/register",
+                json={**_ALICE_BODY, "app_version": version},
+                headers={"x-user": str(ALICE)},
+            )
+            assert response.status_code == 201
+        assert await _devices(sessionmaker) == [(ALICE, "1.1")]
+
+
+@pytest.fixture
+async def transfer_harness() -> AsyncIterator[
+    tuple[AsyncClient, async_sessionmaker[AsyncSession]]
+]:
+    """Yield a client over a push router built with ``transfer_ownership=True``.
+
+    Yields:
+        tuple[AsyncClient, async_sessionmaker[AsyncSession]]: The client and
+        a sessionmaker to inspect the table with.
+    """
+    service_class = DeviceService
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(BaseModel.metadata.create_all)
+    sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
+
+    async def session_factory() -> AsyncIterator[AsyncSession]:
+        async with sessionmaker() as session:
+            yield session
+
+    def service_factory(session: AsyncSession) -> DeviceService[Any]:
+        repository: BaseRepository[Any] = BaseRepository(
+            session, model=_OwnershipDevice
+        )
+        return service_class(repository, [_NullTransport()])
+
+    app = FastAPI()
+    app.include_router(
+        make_push_router(
+            service_factory=service_factory,
+            session_factory=session_factory,
+            current_user_id=_current_user_id,
+            transfer_ownership=True,
+        )
+    )
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client, sessionmaker
+    await engine.dispose()
+
+
+class TestTransferOwnershipOptIn:
+    async def test_the_opt_in_router_moves_the_device(
+        self, transfer_harness: tuple[AsyncClient, async_sessionmaker[AsyncSession]]
+    ) -> None:
+        """With ``transfer_ownership=True`` the last caller becomes the owner."""
+        client, sessionmaker = transfer_harness
+        for user in (ALICE, MALLORY):
+            response = await client.post(
+                "/api/push/register", json=_ALICE_BODY, headers={"x-user": str(user)}
+            )
+            assert response.status_code == 201
+        assert await _owners(sessionmaker) == [MALLORY]

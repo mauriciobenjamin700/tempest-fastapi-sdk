@@ -176,3 +176,124 @@ class TestUnsubscribeOwnership:
         assert first.status_code == 200
         assert second.status_code == 200
         assert await _owners(sessionmaker) == []
+
+
+async def _keys(
+    sessionmaker: async_sessionmaker[AsyncSession],
+) -> list[tuple[UUID, str]]:
+    """Return ``(owner, p256dh)`` of every stored subscription.
+
+    Args:
+        sessionmaker (async_sessionmaker[AsyncSession]): The test database.
+
+    Returns:
+        list[tuple[UUID, str]]: One pair per row.
+    """
+    async with sessionmaker() as session:
+        result = await session.execute(
+            select(_OwnershipSubscription.user_id, _OwnershipSubscription.p256dh)
+        )
+        return [(row[0], row[1]) for row in result.all()]
+
+
+class TestSubscribeOwnership:
+    """``POST /subscribe`` never moves an endpoint to another account (#632)."""
+
+    async def test_another_user_cannot_take_the_subscription(
+        self, harness: tuple[AsyncClient, async_sessionmaker[AsyncSession]]
+    ) -> None:
+        """Mallory sends Alice's endpoint with her own keys.
+
+        Alice keeps the row and her keys, and Mallory gets the same 201 and
+        body a new subscription gets, so the endpoint's owner is not
+        revealed.
+        """
+        client, sessionmaker = harness
+        alice = await client.post(
+            "/api/push/subscribe", json=_ALICE_BODY, headers={"x-user": str(ALICE)}
+        )
+        stolen = {**_ALICE_BODY, "keys": {"p256dh": "mallory", "auth": "mallory"}}
+        mallory = await client.post(
+            "/api/push/subscribe", json=stolen, headers={"x-user": str(MALLORY)}
+        )
+
+        assert (mallory.status_code, mallory.json()) == (
+            alice.status_code,
+            alice.json(),
+        )
+        assert await _keys(sessionmaker) == [(ALICE, "p256dh-key")]
+
+    async def test_the_owner_refreshes_the_keys(
+        self, harness: tuple[AsyncClient, async_sessionmaker[AsyncSession]]
+    ) -> None:
+        client, sessionmaker = harness
+        await client.post(
+            "/api/push/subscribe", json=_ALICE_BODY, headers={"x-user": str(ALICE)}
+        )
+        renewed = {**_ALICE_BODY, "keys": {"p256dh": "rotated", "auth": "rotated"}}
+        response = await client.post(
+            "/api/push/subscribe", json=renewed, headers={"x-user": str(ALICE)}
+        )
+
+        assert response.status_code == 201
+        assert await _keys(sessionmaker) == [(ALICE, "rotated")]
+
+
+SERVICE_CLASS = WebPushSubscriptionService
+"""The stock service the opt-in router below runs."""
+
+
+@pytest.fixture
+async def transfer_harness() -> AsyncIterator[
+    tuple[AsyncClient, async_sessionmaker[AsyncSession]]
+]:
+    """Yield a client over a Web Push router built with ``transfer_ownership=True``.
+
+    Yields:
+        tuple[AsyncClient, async_sessionmaker[AsyncSession]]: The client and
+        a sessionmaker to inspect the table with.
+    """
+    service_class = SERVICE_CLASS
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(BaseModel.metadata.create_all)
+    sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
+
+    async def session_factory() -> AsyncIterator[AsyncSession]:
+        async with sessionmaker() as session:
+            yield session
+
+    def service_factory(session: AsyncSession) -> WebPushSubscriptionService[Any]:
+        repository: BaseRepository[Any] = BaseRepository(
+            session, model=_OwnershipSubscription
+        )
+        dispatcher = WebPushDispatcher("dummy", vapid_subject="mailto:x@y.z")
+        return service_class(repository, dispatcher)
+
+    app = FastAPI()
+    app.include_router(
+        make_web_push_router(
+            service_factory=service_factory,
+            session_factory=session_factory,
+            current_user_id=_current_user_id,
+            transfer_ownership=True,
+        )
+    )
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client, sessionmaker
+    await engine.dispose()
+
+
+class TestTransferOwnershipOptIn:
+    async def test_the_opt_in_router_moves_the_device(
+        self, transfer_harness: tuple[AsyncClient, async_sessionmaker[AsyncSession]]
+    ) -> None:
+        """With ``transfer_ownership=True`` the last caller becomes the owner."""
+        client, sessionmaker = transfer_harness
+        for user in (ALICE, MALLORY):
+            response = await client.post(
+                "/api/push/subscribe", json=_ALICE_BODY, headers={"x-user": str(user)}
+            )
+            assert response.status_code == 201
+        assert await _owners(sessionmaker) == [MALLORY]

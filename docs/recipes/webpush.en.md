@@ -181,7 +181,7 @@ The service exposes:
 
 | Method | What it does |
 | --- | --- |
-| `subscribe(user_id, subscription, *, user_agent=None)` | Persist the subscription, **idempotent by `endpoint`** — re-subscribe updates, never duplicates. |
+| `subscribe(user_id, subscription, *, user_agent=None, transfer_ownership=False)` | Persist the subscription, **idempotent by `endpoint`** — a re-subscribe from the same account updates the keys, never duplicates. An endpoint of **another account** stays with its owner and the row comes back unchanged; the route answers as for a new subscription, so it does not reveal whose endpoint it is (before v0.330.0, whoever knew the endpoint took the subscription). Moving between accounts only with `transfer_ownership=True` (also on `make_web_push_router`). Two sign-ins on one browser share one `PushSubscription`: the client calls `POST /unsubscribe` on sign-out. |
 | `unsubscribe(endpoint, *, user_id=None)` | Remove the subscription (no-op when absent). With `user_id` it only deletes a subscription owned by that user — another account's stays put and the answer is `False`, the same as "absent". Every request-driven path passes `user_id`. |
 | `list_for_user(user_id)` | List the user's devices. |
 | `prune(endpoints)` | Delete the subscriptions for those endpoints — the list `send_many` returns. Returns how many rows were removed; an unknown endpoint is skipped. |
