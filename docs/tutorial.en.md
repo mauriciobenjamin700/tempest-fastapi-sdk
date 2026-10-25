@@ -16,19 +16,19 @@ This tutorial walks through wiring the **Users** feature using every SDK convent
     This tutorial shows how to **build** signup/login with `BaseRepository` + `BaseService` + `BaseController` — the foundation for any feature. For the **complete auth flow** (signup + email activation + JWT login + password reset), the SDK ships `UserAuthService` + `make_auth_router` since v0.31.0; jump to the **[Auth flow »](recipes/auth-flow.en.md)** recipe when you want the shortcut instead of implementing it manually.
 
 !!! info "Following along"
-    Full-file snippets — the ones that open with a bare file-path comment (e.g. `# src/db/models/user.py`) — are **standalone**: paste each into the path shown. Blocks marked `(continued)` or with a `# ... above ...` comment **append** to the file shown just above; they are not a new file. The full project tree is the [mandatory project layout from Architecture →](architecture.md#mandatory-project-layout).
+    Full-file snippets — the ones that open with a bare file-path comment (e.g. `# src/db/models/users/user.py`) — are **standalone**: paste each into the path shown. Blocks marked `(continued)` or with a `# ... above ...` comment **append** to the file shown just above; they are not a new file. The full project tree is the [mandatory project layout from Architecture →](architecture.md#mandatory-project-layout), and why each shape is the way it is lives in [Recommended architecture →](recommended-architecture.md).
 
 We'll build a complete `Users` feature from scratch, end to end. Every file below is something you write in your project; SDK primitives are imported.
 
 ### 1. Project layout
 
-The canonical layout every Python service shipped against this SDK should adopt — `main.py` is a one-liner, `src/server.py` exposes both `run()` and the importable `app` (or re-exports it from `src/api/app.py`), `api/dependencies/` is **always a package** (auth + factory providers), `controllers/` is mandatory even when it's only a thin pass-through, and `repositories/` lives **under** `db/`.
+The canonical layout every Python service shipped against this SDK should adopt — `main.py` is a one-liner, `src/server.py` exposes both `run()` and the importable `app` (or re-exports it from `src/api/app.py`), `api/dependencies/` is **always a package** (auth + factory providers), `controllers/` is mandatory even when it's only a thin pass-through, `repositories/` lives **under** `db/`, and every layer holding classes keeps its modules in a **context package** — here, `users/` —, one class per module.
 
 ```text
 my-service/
 ├── main.py                       # one-liner: from src.server import run; run()
 └── src/
-    ├── __init__.py               # re-exports `run` from src.server
+    ├── __init__.py               # re-exports `run` from .server
     ├── server.py                 # programmatic uvicorn.run(...) + module-level `app`
     ├── core/
     │   ├── __init__.py
@@ -37,34 +37,47 @@ my-service/
     ├── db/
     │   ├── __init__.py           # re-exports BaseModel + every model
     │   ├── models/
-    │   │   ├── __init__.py
-    │   │   └── user.py           # UserModel(BaseModel)
+    │   │   ├── __init__.py       # from .users import UserModel as UserModel
+    │   │   └── users/
+    │   │       ├── __init__.py
+    │   │       └── user.py       # UserModel(BaseModel)
     │   └── repositories/
     │       ├── __init__.py
-    │       └── user.py           # UserRepository(BaseRepository[UserModel])
+    │       └── users/
+    │           ├── __init__.py
+    │           └── user.py       # UserRepository(BaseRepository[UserModel])
     ├── schemas/
     │   ├── __init__.py
     │   └── user.py               # UserCreate/Update/Response/Filter
     ├── services/
     │   ├── __init__.py
-    │   └── user.py               # UserService — business logic
+    │   └── users/
+    │       ├── __init__.py
+    │       └── user.py           # UserService — business logic
     ├── controllers/
     │   ├── __init__.py
-    │   └── user.py               # UserController — orchestration (thin pass-through OK)
+    │   └── users/
+    │       ├── __init__.py
+    │       └── user.py           # UserController — orchestration (thin pass-through OK)
+    ├── scripts/
+    │   ├── __init__.py
+    │   └── composition.py        # build_user_controller — the graph assembled in one place
     └── api/
         ├── __init__.py
-        ├── app.py                # create_app() — middleware, CORS, exception handlers, routers
+        ├── app.py                # create_app() — middleware, CORS, exception handlers, build_api_router()
         ├── routers/
         │   ├── __init__.py
-        │   └── users.py
+        │   ├── api.py            # build_api_router(): the only place with /api
+        │   └── users.py          # one router per file, with only its own prefix
         └── dependencies/         # ALWAYS a package, never a flat module
             ├── __init__.py
             ├── auth.py           # X-Token / current_user / require_role dependencies
             ├── resources.py      # infra singletons (db/storage/mail) + get_db/get_session
-            └── controllers.py    # get_<X>_controller / get_<X>_service factories
+            └── controllers.py    # get_<X>_controller providers, which call the composition root
 ```
 
-Each `__init__.py` re-exports every public symbol from its directory so consumers always do `from src.schemas import UserCreateSchema` (not `from src.schemas.user import UserCreateSchema`). This keeps refactors painless — move files around without breaking imports.
+
+Each `__init__.py` re-exports its neighbours with a **relative** import (`from .user import UserModel as UserModel`), and the rest of the code imports through the **layer package**: `from src.schemas import UserCreateSchema`, never `from src.schemas.user import UserCreateSchema`. This keeps refactors painless — move files around without breaking imports. `tempest lint-layers` checks both (`IMP001`, `IMP002`) and the layers' shape (`LAY001`, `LAY002`).
 
 If your service has no controllers/services/repositories yet, **still ship empty packages with the right names** — uniformity matters more than skipping a directory. Drop `db/`, `utils/`, `queue/` or `tasks/` only when the service genuinely doesn't need persistence/utilities/messaging.
 
@@ -178,7 +191,7 @@ from tempest_fastapi_sdk import (
 )
 
 from src.api.dependencies.resources import db
-from src.api.routers import users
+from src.api.routers import build_api_router
 
 
 @asynccontextmanager
@@ -201,8 +214,8 @@ def create_app() -> FastAPI:
     # Meta endpoints sit at the root prefix.
     app.include_router(make_health_router(db=db, version="0.1.0"))
 
-    # Business endpoints sit under /api/<domain>.
-    app.include_router(users.router, prefix="/api")
+    # Business endpoints sit under /api/<domain>, mounted once by build_api_router().
+    app.include_router(build_api_router())
     return app
 
 
@@ -229,7 +242,7 @@ __all__: list[str] = ["app", "run"]
 
 ```python
 # src/__init__.py
-from src.server import run
+from .server import run as run
 
 __all__: list[str] = ["run"]
 ```
@@ -247,7 +260,7 @@ Bind defaults: `127.0.0.1` for internal services (the SDK's `ServerSettings.SERV
 ### 3. ORM model
 
 ```python
-# src/db/models/user.py
+# src/db/models/users/user.py
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -275,19 +288,27 @@ class UserModel(BaseModel):
     password_hash: Mapped[str] = mapped_column(String(128), nullable=False)
 ```
 
-Re-export it:
+Re-export it, from the context package up, always relatively:
+
+```python
+# src/db/models/users/__init__.py
+from .user import UserModel as UserModel
+
+__all__: list[str] = ["UserModel"]
+```
 
 ```python
 # src/db/models/__init__.py
-from src.db.models.user import UserModel
+from .users import UserModel as UserModel
 
 __all__: list[str] = ["UserModel"]
 ```
 
 ```python
 # src/db/__init__.py
-from src.db.models import UserModel
-from tempest_fastapi_sdk import BaseModel
+from tempest_fastapi_sdk import BaseModel as BaseModel
+
+from .models import UserModel as UserModel
 
 __all__: list[str] = ["BaseModel", "UserModel"]
 ```
@@ -299,7 +320,7 @@ __all__: list[str] = ["BaseModel", "UserModel"]
 !!! info "Installation"
     The schemas below use `EmailStr`, which needs the `email-validator` package — pull it in with the `[email]` extra (`uv add "tempest-fastapi-sdk[email]"`) or via `pydantic[email]`. Further down the service uses `PasswordUtils` (bcrypt hashing), which needs the `[auth]` extra — `uv add "tempest-fastapi-sdk[auth]"`.
 
-The recommended naming pattern: one `*Create`, `*Update`, `*Response` and `*Filter` schema per resource.
+The recommended naming pattern: one `*Create`, `*Update`, `*Response` and `*Filter` schema per resource. Every field carries `title`, `description` and `examples` — it is what the `openapi.json` shows the client, and what `assert_schema_metadata` (and `tempest lint-schemas`) enforces.
 
 ```python
 # src/schemas/user.py
@@ -315,16 +336,44 @@ from tempest_fastapi_sdk import (
 class UserCreateSchema(BaseSchema):
     """Payload for POST /users."""
 
-    name: str = Field(min_length=1, max_length=64)
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    name: str = Field(
+        min_length=1,
+        max_length=64,
+        title="Name",
+        description="Display name.",
+        examples=["Ana"],
+    )
+    email: EmailStr = Field(
+        title="E-mail",
+        description="Login e-mail; unique.",
+        examples=["ana@example.com"],
+    )
+    password: str = Field(
+        min_length=8,
+        max_length=128,
+        title="Password",
+        description="Plain password, hashed before storage.",
+        examples=["s3cret-pass"],
+    )
 
 
 class UserUpdateSchema(BaseSchema):
     """Partial payload for PATCH /users/{id}. Every field optional."""
 
-    name: str | None = Field(default=None, min_length=1, max_length=64)
-    email: EmailStr | None = None
+    name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        title="Name",
+        description="New display name.",
+        examples=["Ana Maria"],
+    )
+    email: EmailStr | None = Field(
+        default=None,
+        title="E-mail",
+        description="New login e-mail.",
+        examples=["ana.maria@example.com"],
+    )
 
 
 class UserResponseSchema(BaseResponseSchema):
@@ -334,29 +383,42 @@ class UserResponseSchema(BaseResponseSchema):
     (timestamps already normalized to UTC by the field validator).
     """
 
-    name: str
-    email: EmailStr
+    name: str = Field(title="Name", description="Display name.", examples=["Ana"])
+    email: EmailStr = Field(
+        title="E-mail",
+        description="Login e-mail.",
+        examples=["ana@example.com"],
+    )
 
 
 class UserFilterSchema(BasePaginationFilterSchema):
     """Query-string filters for GET /users.
 
     Inherits page/page_size/order_by/ascending/is_active from
-    BasePaginationFilterSchema. Add domain-level filters below.
+    BasePaginationFilterSchema. ``name`` is an ILIKE %name% search,
+    ``email`` an exact match.
     """
 
-    name: str | None = None              # ILIKE %name% search
-    email: EmailStr | None = None        # exact-match filter
+    name: str | None = Field(
+        default=None,
+        title="Name",
+        description="Part of the name to search for.",
+        examples=["an"],
+    )
+    email: EmailStr | None = Field(
+        default=None,
+        title="E-mail",
+        description="Exact e-mail to match.",
+        examples=["ana@example.com"],
+    )
 ```
 
 ```python
 # src/schemas/__init__.py
-from src.schemas.user import (
-    UserCreateSchema,
-    UserFilterSchema,
-    UserResponseSchema,
-    UserUpdateSchema,
-)
+from .user import UserCreateSchema as UserCreateSchema
+from .user import UserFilterSchema as UserFilterSchema
+from .user import UserResponseSchema as UserResponseSchema
+from .user import UserUpdateSchema as UserUpdateSchema
 
 __all__: list[str] = [
     "UserCreateSchema",
@@ -454,7 +516,7 @@ asyncio.run(main())
 Subclass when you want to bake in domain-specific messages, swap the not-found exception, override the mapper methods or add custom queries. The constructor signature (not class attributes) is the contract:
 
 ```python
-# src/db/repositories/user.py
+# src/db/repositories/users/user.py
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import BaseRepository
@@ -484,10 +546,12 @@ class UserRepository(BaseRepository[UserModel]):
         return self.map_to_schema(instance)
 ```
 
+Re-export it like the model — `src/db/repositories/users/__init__.py` with `from .user import UserRepository as UserRepository`, and `src/db/repositories/__init__.py` with `from .users import UserRepository as UserRepository`.
+
 The base repo gives you 20+ methods for free — see the [reference table](../../reference/#tempest_fastapi_sdk.db.repository.BaseRepository). Add custom queries on top of the same `UserRepository`:
 
 ```python
-# src/db/repositories/user.py  (continued)
+# src/db/repositories/users/user.py  (continued)
 
 from tempest_fastapi_sdk import BaseRepository
 
@@ -513,7 +577,7 @@ The service is where business rules live. It calls one or more repositories and 
 Inherit from `BaseService[RepositoryT, ResponseT]`. Doing so gives you `get_by_id`, `get_or_none`, `list`, `paginate`, `count`, `exists` and `delete` for free — every one is already wired to `repository.map_to_response` (sync or async). Override only the methods that need domain logic; add new ones for use cases the base doesn't cover (signup, password reset, etc.):
 
 ```python
-# src/services/user.py
+# src/services/users/user.py
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -584,6 +648,8 @@ class UserService(BaseService[UserRepository, UserResponseSchema]):
         await self.repository.soft_delete(user_id)
 ```
 
+The service receives the repository and the `PasswordUtils`, never the `AsyncSession` nor another service — the composition root of step 9 assembles the graph. Re-export it through `src/services/users/__init__.py` and `src/services/__init__.py`, as in the layers above (and step 8's controller through `src/controllers/users/__init__.py` and `src/controllers/__init__.py`).
+
 The methods you do **not** write — `get_by_id(user_id)`, `get_or_none(filters)`, `list(filters=None, order_by=None, ascending=True)`, `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)`, `count(filters)`, `exists(filters)`, `delete(user_id)` — already exist on the base, already await an async `map_to_response`, and already return the typed `UserResponseSchema` declared in the generic parameter.
 
 When the use case needs a custom pipeline (joins, projections, transactional fan-out), override the inherited method. The signature stays the same so the controller doesn't notice:
@@ -618,13 +684,13 @@ Even when there's no orchestration to do, `controllers/` exists as a **thin pass
 Inherit from `BaseController[ServiceT, ResponseT]`. The base forwards `get_by_id`, `list`, `paginate`, `count` and `delete` to the service for you — you only declare methods that add cross-service coordination or that don't exist on the service (custom use cases like `signup`):
 
 ```python
-# src/controllers/user.py
+# src/controllers/users/user.py
 from uuid import UUID
 
 from tempest_fastapi_sdk import BaseController
 
 from src.schemas import UserCreateSchema, UserResponseSchema, UserUpdateSchema
-from src.services.user import UserService
+from src.services import UserService
 
 
 class UserController(BaseController[UserService, UserResponseSchema]):
@@ -678,46 +744,74 @@ class UserController(BaseController[UserService, UserResponseSchema]):
 
 The router signature never changes — only the controller's body grows.
 
-### 9. Dependency providers
+### 9. Composition root and dependency providers
 
-`api/dependencies/` is **always a package**. `auth.py` hosts the shared-secret / current-user dependencies; `resources.py` hosts the infra singletons (`db`, and — opt-in — storage/mail) with the `get_db` / `get_session` providers; `controllers.py` (or `services.py` when there is no controller layer yet) hosts the factory providers the routers depend on. Never construct controllers, services, or infra resources inline inside the router file (or in `app.py`).
+The `repository → service → controller` graph is assembled **in one place**, the composition root, with one `build_*` function per entry point. The request provider calls that function with what `Depends` resolved; a task, a script or a test call the same function. No class knows how to build itself — there is no `from_session`.
+
+```python
+# src/scripts/composition.py
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import PasswordUtils
+
+from src.controllers import UserController
+from src.db.repositories import UserRepository
+from src.services import UserService
+
+PASSWORDS: PasswordUtils = PasswordUtils()
+"""Stateless bcrypt helper, built once per process."""
+
+
+def build_user_controller(session: AsyncSession) -> UserController:
+    """Wire repository → service → controller over one session.
+
+    Args:
+        session (AsyncSession): The session the repository reads through.
+
+    Returns:
+        UserController: The controller, fully wired.
+    """
+    repository = UserRepository(session)
+    service = UserService(repository=repository, passwords=PASSWORDS)
+    return UserController(service=service)
+```
+
+```python
+# src/scripts/__init__.py
+from .composition import build_user_controller as build_user_controller
+
+__all__: list[str] = ["build_user_controller"]
+```
+
+`api/dependencies/` is **always a package**. `auth.py` hosts the shared-secret / current-user dependencies; `resources.py` hosts the infra singletons (`db`, and — opt-in — storage/mail) with the `get_db` / `get_session` providers; `controllers.py` hosts the providers the routers depend on. Never construct controllers, services, or infra resources inline inside the router file (or in `app.py`).
 
 ```python
 # src/api/dependencies/controllers.py
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tempest_fastapi_sdk import PasswordUtils
-
 from src.api.dependencies.resources import get_session
-from src.controllers.user import UserController
-from src.db.repositories import UserRepository
-from src.services.user import UserService
-
-
-# Stateless utilities — instantiate once per process.
-_passwords: PasswordUtils = PasswordUtils()
+from src.controllers import UserController
+from src.scripts import build_user_controller
 
 
 def get_user_controller(
     session: AsyncSession = Depends(get_session),
 ) -> UserController:
-    """Wire repository → service → controller for a single request."""
-    repository = UserRepository(session)
-    service = UserService(repository=repository, passwords=_passwords)
-    return UserController(service=service)
+    """Build the user controller for a single request."""
+    return build_user_controller(session)
 ```
 
 ```python
 # src/api/dependencies/__init__.py
-from src.api.dependencies.controllers import get_user_controller
+from .controllers import get_user_controller as get_user_controller
 
 __all__: list[str] = ["get_user_controller"]
 ```
 
 ### 10. Router
 
-Routers receive controllers via FastAPI `Depends` — no inline construction, no business logic, no DB calls. Business endpoints sit under `/api/<domain>` (the prefix is added at the include site in `src/api/app.py`); meta endpoints (`/health`, `/tool-spec`) stay at the root prefix.
+Routers receive controllers via FastAPI `Depends` — no inline construction, no business logic, no DB calls. One router per file, declaring only its own prefix (`/users`); `/api` is set once, in `build_api_router`. Meta endpoints (`/health`, `/tool-spec`) stay at the root prefix.
 
 ```python
 # src/api/routers/users.py
@@ -728,7 +822,7 @@ from fastapi import APIRouter, Depends, status
 from tempest_fastapi_sdk import BasePaginationSchema
 
 from src.api.dependencies import get_user_controller
-from src.controllers.user import UserController
+from src.controllers import UserController
 from src.schemas import (
     UserCreateSchema,
     UserFilterSchema,
@@ -792,6 +886,36 @@ async def list_users(
     return BasePaginationSchema[UserResponseSchema](**result)
 ```
 
+Mount it in `build_api_router`, the only place `/api` appears:
+
+```python
+# src/api/routers/api.py
+from fastapi import APIRouter
+
+from .users import router as users_router
+
+API_PREFIX: str = "/api"
+"""Prefix every business route lives under."""
+
+
+def build_api_router() -> APIRouter:
+    """Assemble the router ``create_app`` includes.
+
+    Returns:
+        APIRouter: ``/api`` with every domain router included.
+    """
+    api: APIRouter = APIRouter(prefix=API_PREFIX)
+    api.include_router(users_router)
+    return api
+```
+
+```python
+# src/api/routers/__init__.py
+from .api import build_api_router as build_api_router
+
+__all__: list[str] = ["build_api_router"]
+```
+
 ### 11. Pagination
 
 The pagination contract is enforced end-to-end by SDK primitives:
@@ -831,7 +955,9 @@ You wired the **Users** feature end to end, one layer at a time, each backed by 
 - **Repository** — `UserRepository(BaseRepository[UserModel])` — 20+ inherited methods + custom queries.
 - **Service** — `UserService(BaseService[...])` — business rules (email uniqueness, password hashing) over the inherited read-path.
 - **Controller** — `UserController(BaseController[...])` — orchestration (thin pass-through today, coordination tomorrow).
-- **Router** — endpoints with `UserController` injected via `Depends`, mounted under `/api/users`.
+- **Composition root** — `build_user_controller` assembles the graph once; the request provider, a task and a test call the same function.
+- **Router** — endpoints with `UserController` injected via `Depends`, one router per file, mounted under `/api/users` by `build_api_router`.
+- **Layout** — each layer in a context package (`users/`), relative `__init__`, imports through the layer package; `tempest lint-layers` checks the shape, and [Recommended architecture](recommended-architecture.md) explains why each rule exists.
 - **Pagination** — `BasePaginationFilterSchema` → `paginate(...)` → `BasePaginationSchema[UserResponseSchema]` end to end.
 
 ### Next steps
