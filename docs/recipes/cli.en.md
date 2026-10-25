@@ -196,6 +196,7 @@ my_service/
 │   ├── ui/                  # only with the [ssr] extra — pages/layout/components/styles
 │   └── utils/
 └── tests/
+    ├── conftest.py          # one SQLite per pytest-xdist worker
     ├── test_smoke.py        # asserts /api/ and /health/liveness boot
     └── test_schemas.py      # every exported schema field documented (assert_schema_metadata)
 ```
@@ -1946,19 +1947,20 @@ tempest fix --unsafe                            # also apply ruff's --unsafe-fix
 tempest format                                  # ruff format .          (writes)
 tempest fmt-check                               # ruff format --check .   (read-only)
 tempest type                                    # mypy .
-tempest test                                    # pytest
-tempest test tests/api/                         # pytest with a path filter
-tempest test --fast                             # pytest -n auto -p no:cacheprovider  (pytest-xdist)
-tempest test --fast -w 4                        # four workers
+tempest test                                    # pytest -n auto -p no:cacheprovider  (parallel, the default)
+tempest test tests/api/                         # with a path filter
+tempest test -w 4                               # four workers
+tempest test --serial                           # serially (--lf / --ff, a debugger)
 tempest check                                   # lint + fmt-check + type + lint-layers + test, stops at first failure
-tempest check --fast                            # the same gate, with the test step in parallel
+tempest check --rule IMP002 --strict            # the same gate, lint-layers on that rule only and warnings failing
 ```
 
-`--fast` (from `tempest-cli` 0.4.0 on) runs the suite in parallel with the
-pytest-xdist of the `[tests]` extra; without it installed in pytest's
-environment, the exit code is `127` with the install instruction. When to use
-it, and what to do with a test that fails only in parallel, is in the
-[testing recipe](testing.md#the-suite-in-parallel-tempest-test-fast).
+`test` and `check` run the suite in parallel by default since `tempest-cli`
+0.6.0 (the `[cli]` extra declares `tempest-cli>=0.7.0`); without pytest-xdist
+in pytest's environment, they print a notice and run serially. When to use
+it, one database per worker and what to do with a test that fails only in
+parallel are in the
+[testing recipe](testing.md#the-suite-in-parallel-the-tempest-test-default).
 
 `tempest fix` is the one-shot "organize the project" pass — sorts and dedupes imports, drops unused imports, normalizes string quotes, removes trailing whitespace, then runs `ruff format` to align indentation, line length, blank lines and trailing newlines. Run it before pushing when CI keeps catching style nits.
 
@@ -2191,11 +2193,13 @@ happens to share a model's name stays clean.
     choosing between the two places is review — the criterion is in
     [Architecture › Guards](../architecture.md#guards-route-dependency-or-requires-on-the-method).
 
-!!! note "Requires `tempest-cli>=0.5.0`"
+!!! note "Requires `tempest-cli>=0.7.0`"
     The step reaches `tempest check` through `register_commands`'
-    `extra_steps`, which arrived in `tempest-cli` 0.5.0; the `[cli]` extra
-    declares `tempest-cli>=0.5.1`, so it comes with it. `tempest-cli check` alone, without the SDK,
-    does not know these rules: they belong to the SDK.
+    `extra_steps` (`tempest-cli` 0.5.0), and `check`'s `--rule` / `--strict`
+    reach it through `run_with_options` (`tempest-cli` 0.7.0); the `[cli]`
+    extra declares `tempest-cli>=0.7.0`, so it comes with it.
+    `tempest-cli check` alone, without the SDK, does not know these rules:
+    they belong to the SDK, and there `--rule` exits `2`.
 
 #### Layer in a context package (warning)
 
@@ -2542,6 +2546,10 @@ exception does not outlive the code it excused.
 | `EXC002` | warning | an entry that excuses no finding — the code changed or the path is wrong |
 
 `--rule` with an unknown code exits `2` and lists the valid codes.
+`tempest check` takes the same two options and hands them to the
+`lint-layers` step — `tempest check --rule STR002 --strict` runs the whole
+gate with the step filtered and warnings failing (exit code `1` with a
+`STR002`, `0` without `--strict`; measured on a `tempest new` project).
 
 !!! tip "Marker or declared exception?"
     The `# tempest: no-base-service` and `# tempest: router-builds` markers

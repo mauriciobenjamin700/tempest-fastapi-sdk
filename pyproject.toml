@@ -52,7 +52,7 @@ cli-ops = [
     "click>=8.5.0",
 ]
 cli = [
-    "tempest-cli>=0.5.1",
+    "tempest-cli>=0.7.0",
     "typer>=0.27.2",
     "click>=8.5.0",
 ]
@@ -350,7 +350,7 @@ all = [
     "chromadb>=1.5.9",
     "pyyaml>=6.0.3",
     "onnx>=1.22.0",
-    "tempest-cli>=0.5.1",
+    "tempest-cli>=0.7.0",
     "typer>=0.27.2",
     "click>=8.5.0",
 ]

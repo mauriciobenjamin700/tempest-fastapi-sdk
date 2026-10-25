@@ -35,7 +35,10 @@ from tempest_fastapi_sdk.cli.doctor import doctor_command
 from tempest_fastapi_sdk.cli.email import email_app
 from tempest_fastapi_sdk.cli.flags import flags_app
 from tempest_fastapi_sdk.cli.integrations import integrations_app
-from tempest_fastapi_sdk.cli.layer_lint import run_lint_layers
+from tempest_fastapi_sdk.cli.layer_lint import (
+    run_lint_layers,
+    run_lint_layers_with_options,
+)
 from tempest_fastapi_sdk.cli.model import model_app
 from tempest_fastapi_sdk.cli.openapi_export import openapi_export_command
 from tempest_fastapi_sdk.cli.pdf import pdf_app
@@ -291,7 +294,11 @@ def register_quality_gate(target: typer.Typer) -> CheckStep | None:
                 },
             )(_gate_placeholder)
         return None
-    step = CheckStep(name="lint-layers", run=run_lint_layers)
+    step = CheckStep(
+        name="lint-layers",
+        run=run_lint_layers,
+        run_with_options=run_lint_layers_with_options,
+    )
     register_commands(target, extra_steps=(step,))
     return step
 

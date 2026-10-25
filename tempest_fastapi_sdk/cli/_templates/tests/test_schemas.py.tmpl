@@ -1,7 +1,8 @@
 """Every exported schema field documents itself in the OpenAPI document."""
 
-import src.schemas
 from tempest_fastapi_sdk.testing import assert_schema_metadata
+
+import src.schemas
 
 
 def test_exported_schemas_carry_metadata() -> None:

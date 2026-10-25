@@ -3453,6 +3453,15 @@ módulo e em `docs/recipes/cli.md`. Teste:
 `::TestRouterReturnsModel` e o router do `CLAUDE.md` reescrito para montar o
 controller (`TestScaffold`).
 
+## `tempest check --rule` (#616)
+
+`[cli]` exige `tempest-cli>=0.7.0`: o `check` aceita `--rule`/`--strict` e os
+entrega ao `lint-layers` por `CheckStep.run_with_options`
+(`run_lint_layers_with_options`). Paralelo é o padrão do `test`/`check`; o
+scaffold gera `tests/conftest.py` (SQLite por worker) e declara
+`pytest-xdist`. `tests/cli/test_scaffold_quality.py` roda ruff, format e mypy
+sobre projetos gerados.
+
 ## Metadado de schema (#616)
 
 `testing.assert_schema_metadata` / `schema_metadata_findings`: campo folha com

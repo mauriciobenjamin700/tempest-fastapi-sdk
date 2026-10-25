@@ -856,11 +856,12 @@ uv run python main.py       # start the service on __HOST__:__PORT__
 tempest check               # lint + format check + mypy + layer rules + pytest
 tempest lint-layers         # only the layer rules, errors and warnings
 tempest lint-layers --rule IMP002   # one rule, while migrating
+tempest check --rule IMP002 --strict  # the gate, failing on that rule's warnings
 tempest lint-schemas        # schema fields without title/description/examples
 tempest lint                # ruff check
 tempest fmt                 # ruff format
 tempest type                # mypy
-tempest test                # pytest
+tempest test                # pytest, in parallel (--serial to turn it off)
 
 tempest db revision -m "add products"   # autogenerate a migration
 tempest db upgrade                      # apply migrations (startup does it too)

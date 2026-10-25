@@ -295,3 +295,61 @@ class TestRunner:
         lenient = runner.invoke(cli_app, ["lint-layers"])
         strict = runner.invoke(cli_app, ["lint-layers", "--strict"])
         assert (lenient.exit_code, strict.exit_code) == (0, 1)
+
+
+class TestCheckOptions:
+    """``tempest check --rule`` / ``--strict`` reach the step (tempest-cli 0.7)."""
+
+    def test_the_adapter_filters_and_applies_strict(self, project: Path) -> None:
+        """Cenário: o passo chamado com ``StepOptions`` de ``SVC002``.
+
+        Esperado: só o ``SVC002`` sai, e as opções em branco reportam tudo.
+        """
+        from tempest_cli import StepOptions
+
+        from tempest_fastapi_sdk.cli.layer_lint import run_lint_layers_with_options
+
+        assert (
+            run_lint_layers_with_options(str(project), StepOptions(rules=("SVC002",)))
+            == 1
+        )
+        assert run_lint_layers_with_options(str(project), StepOptions()) == 1
+        _write(project, "src/services/news/news.py", "")
+        _exceptions(project, '"REPO001 src/db/repositories/gone.py": "removed",')
+        lenient = run_lint_layers_with_options(str(project), StepOptions())
+        strict = run_lint_layers_with_options(str(project), StepOptions(strict=True))
+        assert (lenient, strict) == (0, 1)
+
+    def test_check_hands_the_options_to_the_layer_step(
+        self, project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cenário: ``tempest check --rule svc002 --strict`` sobre o projeto.
+
+        Esperado: o gate entrega ``StepOptions`` ao passo ``lint-layers``, que
+        reporta só o ``SVC002`` e falha.
+        """
+        import tempest_cli.lint
+        from tempest_cli import CheckStep, StepOptions
+
+        seen: dict[str, object] = {}
+
+        def run_only_extra_steps(target: str, **options: object) -> int:
+            steps = options["extra_steps"]
+            step_options = options["step_options"]
+            assert isinstance(step_options, StepOptions)
+            seen["options"] = step_options
+            assert isinstance(steps, list | tuple)
+            codes = []
+            for step in steps:
+                assert isinstance(step, CheckStep)
+                assert step.run_with_options is not None
+                codes.append(step.run_with_options(target, step_options))
+            return max(codes)
+
+        monkeypatch.setattr(tempest_cli.lint, "run_full_check", run_only_extra_steps)
+        monkeypatch.chdir(project)
+        result = runner.invoke(cli_app, ["check", ".", "--rule", "svc002", "--strict"])
+        assert result.exit_code == 1, result.output
+        assert seen["options"] == StepOptions(rules=("svc002",), strict=True)
+        assert "SVC002" in result.output
+        assert "SVC001" not in result.output

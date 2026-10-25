@@ -69,7 +69,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[ssr]` | `tempestweb` | SSR com HTMX: `build_web_app`, `make_htmx_router`, `Page`, helper `htmx` |
 | `[tasks]` | `taskiq`, `taskiq-aio-pika` | `AsyncTaskBrokerManager`, `AsyncTaskScheduler` |
 | `[tasks-redis]` | `taskiq`, `taskiq-redis` | `TaskQueue.redis` / `TaskQueue.from_settings` sobre Redis Streams, result backend e o lease do scheduler |
-| `[tests]` | `pytest`, `pytest-asyncio`, `pytest-xdist` | a suíte do serviço e o `tempest test --fast` (suíte em paralelo, a partir do `tempest-cli` 0.4.0). Sem teto próprio; herda `pytest<10` do `pytest-asyncio` e `pluggy<2` do `pytest`. Ferramenta de teste, não helper — fica **fora do `[all]`**. [Receita](recipes/testing.md#a-suite-em-paralelo-tempest-test-fast) |
+| `[tests]` | `pytest`, `pytest-asyncio`, `pytest-xdist` | a suíte do serviço e o `tempest test` em paralelo (o padrão desde o `tempest-cli` 0.6.0). Sem teto próprio; herda `pytest<10` do `pytest-asyncio` e `pluggy<2` do `pytest`. Ferramenta de teste, não helper — fica **fora do `[all]`**. [Receita](recipes/testing.md#a-suite-em-paralelo-o-padrao-do-tempest-test) |
 | `[upload]` | `aiofiles`, `python-multipart` | `UploadUtils`, `DownloadUtils`, `LocalUploadStorage` |
 | `[vision]` | `ort-vision-sdk` | helpers de visão (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[webauthn]` | `fido2` | passkeys / chaves de segurança: `WebAuthnService`, `make_web_authn_credential_model`, rotas `/auth/webauthn/*` — login sem senha, resistente a phishing |

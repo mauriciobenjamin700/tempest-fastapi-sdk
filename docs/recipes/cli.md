@@ -194,6 +194,7 @@ my_service/
 │   ├── ui/                  # só com o extra [ssr] — pages/layout/components/styles
 │   └── utils/
 └── tests/
+    ├── conftest.py          # um SQLite por worker do pytest-xdist
     ├── test_smoke.py        # garante que /api/ e /health/liveness sobem
     └── test_schemas.py      # todo campo de schema exportado documentado (assert_schema_metadata)
 ```
@@ -1941,19 +1942,19 @@ tempest fix --unsafe                            # também aplica os --unsafe-fix
 tempest format                                  # ruff format .          (escreve)
 tempest fmt-check                               # ruff format --check .   (somente leitura)
 tempest type                                    # mypy .
-tempest test                                    # pytest
-tempest test tests/api/                         # pytest com filtro de caminho
-tempest test --fast                             # pytest -n auto -p no:cacheprovider  (pytest-xdist)
-tempest test --fast -w 4                        # quatro workers
+tempest test                                    # pytest -n auto -p no:cacheprovider  (paralelo, o padrão)
+tempest test tests/api/                         # com filtro de caminho
+tempest test -w 4                               # quatro workers
+tempest test --serial                           # em série (--lf / --ff, depurador)
 tempest check                                   # lint + fmt-check + type + lint-layers + test, para no primeiro erro
-tempest check --fast                            # o mesmo gate, com o passo de teste em paralelo
+tempest check --rule IMP002 --strict            # o mesmo gate, com o lint-layers só nessa regra e aviso derrubando
 ```
 
-`--fast` (a partir do `tempest-cli` 0.4.0) roda a suíte em paralelo com o
-pytest-xdist do extra `[tests]`; sem ele instalado no ambiente do pytest, a
-saída é `127` com a instrução de instalação. Quando usar, e o que fazer com
-teste que só falha em paralelo, está na
-[receita de testes](testing.md#a-suite-em-paralelo-tempest-test-fast).
+`test` e `check` rodam a suíte em paralelo por padrão desde o `tempest-cli`
+0.6.0 (o extra `[cli]` declara `tempest-cli>=0.7.0`); sem o pytest-xdist no
+ambiente do pytest, avisam e rodam em série. Quando usar, o banco por worker
+e o que fazer com teste que só falha em paralelo estão na
+[receita de testes](testing.md#a-suite-em-paralelo-o-padrao-do-tempest-test).
 
 `tempest fix` é a passada única de "organize o projeto" — ordena e remove imports duplicados, descarta imports não usados, normaliza aspas de strings, remove espaços em branco no fim das linhas e então roda `ruff format` para alinhar indentação, comprimento de linha, linhas em branco e a quebra de linha final. Rode-o antes do push quando o CI fica pegando detalhes de estilo.
 
@@ -2184,11 +2185,13 @@ tem o mesmo nome de um model continua limpo.
     dois lugares é revisão — o critério está em
     [Arquitetura › Guards](../architecture.md#guards-dependencia-no-router-ou-requires-no-metodo).
 
-!!! note "Requer `tempest-cli>=0.5.0`"
+!!! note "Requer `tempest-cli>=0.7.0`"
     O passo entra no `tempest check` pelo `extra_steps` do
-    `register_commands`, que chegou no `tempest-cli` 0.5.0; o extra `[cli]`
-    declara `tempest-cli>=0.5.1`, então ele já vem. O `tempest-cli check` sozinho, sem o SDK, não
-    conhece estas regras: elas são do SDK.
+    `register_commands` (`tempest-cli` 0.5.0), e o `--rule` / `--strict` do
+    `check` chega a ele pelo `run_with_options` (`tempest-cli` 0.7.0); o
+    extra `[cli]` declara `tempest-cli>=0.7.0`, então ele já vem. O
+    `tempest-cli check` sozinho, sem o SDK, não conhece estas regras: elas são
+    do SDK, e ali o `--rule` sai com exit code `2`.
 
 #### Camada em pacote de contexto (aviso)
 
@@ -2533,7 +2536,10 @@ sobrevive ao código que ela desculpava.
 | `EXC002` | aviso | entrada que não desculpa nenhuma violação — o código mudou ou o caminho está errado |
 
 `--rule` com código desconhecido sai com exit code `2` e a lista dos
-códigos válidos.
+códigos válidos. O `tempest check` aceita as mesmas duas opções e as entrega
+ao passo `lint-layers` — `tempest check --rule STR002 --strict` roda o gate
+inteiro com o passo filtrado e o aviso derrubando (exit code `1` com um
+`STR002`, `0` sem `--strict`; medido num projeto do `tempest new`).
 
 !!! tip "Marcador ou exceção declarada?"
     Os marcadores `# tempest: no-base-service` e
