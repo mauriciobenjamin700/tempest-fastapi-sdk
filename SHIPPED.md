@@ -107,8 +107,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `[firebase]` extra and the service account `FirebaseAuth` loaded
   (`FCMTransport(auth=...)` via the new `FirebaseAuth.app`).
   `BaseDeviceTokenModel` holds browsers and phones in one table;
-  `DeviceService` registers idempotently by token (a handset that changes
-  hands moves to the new user), fans out concurrently, and prunes on one rule
+  `DeviceService` registers idempotently by token (since #632 a token of
+  another account stays with its owner; `transfer_ownership=True` moves it),
+  fans out concurrently, and prunes on one rule
   with two vocabularies — 404/410 on the web, `UnregisteredError` /
   `SenderIdMismatchError` on FCM. `PushFanoutResult` separates `delivered` /
   `pruned` / `failed` / `skipped`, and `skipped` never deletes: a web-only

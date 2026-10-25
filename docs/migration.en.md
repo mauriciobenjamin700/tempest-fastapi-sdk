@@ -2,6 +2,26 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.330.0 — a push subscription no longer changes owner
+
+`POST /subscribe` (Web Push) and `POST /register` (mobile push) no longer
+transfer to the caller an `endpoint`/`token` already registered by another
+account (#632): the row stays with its owner and the route answers as for a
+new subscription. Before, another account signing in on the same browser or
+device moved the subscription on its own.
+
+### What to do
+
+1. In the client, call `POST /unsubscribe` (Web Push) or `POST /unregister`
+   (mobile) on **sign-out**, before another account uses the same device.
+2. If moving devices between accounts is a real case for your service, turn
+   it on explicitly: `make_web_push_router(..., transfer_ownership=True)` /
+   `make_push_router(..., transfer_ownership=True)`, or
+   `subscribe(..., transfer_ownership=True)` /
+   `register(..., transfer_ownership=True)` on the service.
+3. A `subscribe`/`register` override does not need to change: the router
+   passes `transfer_ownership` only when the option is on.
+
 ## 0.327.0 — the #616 architecture rules, as warnings
 
 Nothing changes in the code you already have: the new `tempest check` rules

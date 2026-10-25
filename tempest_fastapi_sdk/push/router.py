@@ -62,7 +62,7 @@ def make_push_router(
             frontend build. Accepts a string or a zero-arg callable
             (resolved per request). ``None`` omits the route — the right
             choice for a mobile-only service.
-        transfer_ownership (bool): Let ``POST {prefix}/register`` move a
+        transfer_ownership (bool): Let ``POST {prefix}/register`` move
             a token registered to another account to the caller. Off by
             default (#632): the stored row is left untouched and the
             caller gets the same answer as a new registration. Turn on only

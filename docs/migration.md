@@ -2,6 +2,26 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.330.0 — inscrição de push não muda mais de dono
+
+`POST /subscribe` (Web Push) e `POST /register` (push mobile) não
+transferem mais para quem chamou um `endpoint`/`token` já registrado por
+outra conta (#632): a linha fica com o dono e a rota responde igual a uma
+inscrição nova. Antes, o login de outra conta no mesmo navegador ou aparelho
+movia a inscrição sozinho.
+
+### O que fazer
+
+1. No cliente, chame `POST /unsubscribe` (Web Push) ou `POST /unregister`
+   (mobile) no **logout**, antes de outra conta entrar no mesmo dispositivo.
+2. Se mover dispositivos entre contas é um caso real do seu serviço, ligue
+   explicitamente: `make_web_push_router(..., transfer_ownership=True)` /
+   `make_push_router(..., transfer_ownership=True)`, ou
+   `subscribe(..., transfer_ownership=True)` /
+   `register(..., transfer_ownership=True)` no service.
+3. Override de `subscribe`/`register` não precisa mudar: o router só passa
+   `transfer_ownership` quando a opção está ligada.
+
 ## 0.327.0 — regras de arquitetura da #616, como aviso
 
 Nada muda no código que você já tem: as regras novas do `tempest check`

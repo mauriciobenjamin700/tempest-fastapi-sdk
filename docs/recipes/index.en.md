@@ -572,7 +572,7 @@ come back here to plug in each capability as you need it.
 | **[Utilities »](utilities.md)** | `utcnow`/`to_utc`, `modify_dict`, `get_client_ip`, opaque tokens (`generate_opaque_token`) |
 | **[Validated fields (ready-made types) »](fields.md)** | Annotated Pydantic types — `PositiveIntField` / `CentsField` / `PriceField` / `SlugField` / `HexColorField` / `CPFField` / `UFField` |
 | **[Versioned artifacts (models) »](artifact-registry.md)** | `ArtifactRegistry`, `ArtifactVersionMixin`, `build_manifest_entries`, `file_digest` — swap the active version without a redeploy |
-| **[Wallet and Pix payouts »](wallet.md)** | `WalletService` (credit, debit and withdrawal in a single `UPDATE`, hold inside the debit), `WalletBalanceMixin`, `BaseWalletEntryModel`, `claim_once`, `split_net` / `openpix_fee_cents` in basis points, `OpenPixPayoutProvider`, `make_wallet_router` |
+| **[Wallet and Pix payouts »](wallet.md)** | `WalletLedger` (credit, debit and reversal in a single `UPDATE`, hold inside the debit, in the caller's transaction), `WalletService` (Pix withdrawal), `WalletBalanceMixin`, `BaseWalletEntryModel`, `claim_once`, `split_net` / `openpix_fee_cents` in basis points, `OpenPixPayoutProvider`, `make_wallet_router` |
 | **[Web Push »](webpush.md)** | `WebPushDispatcher`, VAPID schemas, broadcast with pruning |
 | **[WebAuthn / passkeys »](webauthn.md)** | `WebAuthnService`, `make_web_authn_credential_model`, registration + passwordless login, memory/Redis challenge store |
 | **[WebSocket client (AsyncAPI) »](asyncapi-client.md)** | `tempest asyncapi-client` — a typed socket client from an AsyncAPI 3 document |

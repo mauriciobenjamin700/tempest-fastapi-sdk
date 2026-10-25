@@ -70,7 +70,7 @@ def make_web_push_router(
             key being baked into the frontend build. Accepts a string or a
             zero-arg callable (resolved per request). ``None`` (default)
             omits the route.
-        transfer_ownership (bool): Let ``POST {prefix}/subscribe`` move a
+        transfer_ownership (bool): Let ``POST {prefix}/subscribe`` move
             an endpoint registered to another account to the caller. Off by
             default (#632): the stored row is left untouched and the
             caller gets the same answer as a new subscription. Turn on only
