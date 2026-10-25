@@ -6203,7 +6203,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.329.0"
+version = "0.330.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
