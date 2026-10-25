@@ -1,4 +1,4 @@
-"""Every balance move of ``WalletService`` decides with one ``UPDATE ... WHERE``.
+"""Every balance move of the wallet decides with one ``UPDATE ... WHERE``.
 
 The concurrency guard proves the shipped methods hold under a race. This
 one pins the property that makes them hold, so a later edit cannot trade
@@ -16,10 +16,12 @@ Transaction control (``BEGIN``, ``SAVEPOINT``, ``RELEASE``, ``ROLLBACK``,
 ``COMMIT``) is not a decision and is ignored; reads after the ``INSERT``
 (the repository refreshing the row it just wrote) are allowed.
 
-A public method added to the service without being listed in
-:data:`BALANCE_MOVES`, :data:`READS` or :data:`COMPOSED` fails
+A public method added to :class:`WalletLedger` without being listed in
+:data:`BALANCE_MOVES` or :data:`READS`, or to :class:`WalletService`
+without being listed there or in :data:`COMPOSED`, fails
 :func:`test_every_method_is_classified`, so a new write cannot skip the
-check by not being named.
+check by not being named. The moves are measured on both classes: the
+ledger is where they live since #617, and the service delegates to it.
 
 Ported from PR #410, which pinned the same rule on its
 ``WalletRepository``; here it is pinned on the ``WalletService`` that
@@ -40,11 +42,12 @@ from sqlalchemy import event, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from tempest_fastapi_sdk import BaseRepository
-from tempest_fastapi_sdk.wallet import WalletService, claim_once
+from tempest_fastapi_sdk.wallet import WalletLedger, WalletService, claim_once
 from tests.wallet.support import (
     GuardOrder,
     GuardWalletEntry,
     GuardWalletUser,
+    make_ledger,
     make_service,
     seed_order,
     seed_user,
@@ -77,15 +80,18 @@ COMPOSED: frozenset[str] = frozenset({"withdraw"})
 """
 
 
-def _own_public_methods() -> set[str]:
-    """Return the public coroutine methods ``WalletService`` defines.
+def _own_public_methods(cls: type[object]) -> set[str]:
+    """Return the public coroutine methods a class defines.
+
+    Args:
+        cls (type[object]): :class:`WalletLedger` or :class:`WalletService`.
 
     Returns:
         set[str]: Method names defined on the class.
     """
     return {
         name
-        for name, member in vars(WalletService).items()
+        for name, member in vars(cls).items()
         if not name.startswith("_") and inspect.iscoroutinefunction(member)
     }
 
@@ -195,12 +201,12 @@ def single_update_violations(statements: list[str]) -> list[str]:
 
 
 def _moves(
-    service: WalletService, user_id: UUID
+    service: WalletLedger | WalletService, user_id: UUID
 ) -> dict[str, Callable[[], Awaitable[object]]]:
     """Build one call per balance move.
 
     Args:
-        service (WalletService): The service under test.
+        service (WalletLedger | WalletService): The class under test.
         user_id (UUID): A seeded wallet owner with 1000 cents.
 
     Returns:
@@ -214,18 +220,23 @@ def _moves(
 
 
 def test_every_method_is_classified() -> None:
-    assert _own_public_methods() == BALANCE_MOVES | READS | COMPOSED
+    assert _own_public_methods(WalletLedger) == BALANCE_MOVES | READS
+    assert _own_public_methods(WalletService) == BALANCE_MOVES | READS | COMPOSED
 
 
 @pytest.mark.parametrize("method", sorted(BALANCE_MOVES))
+@pytest.mark.parametrize(
+    "build", [make_ledger, make_service], ids=["ledger", "service"]
+)
 async def test_balance_move_decides_with_one_update(
     engine: AsyncEngine,
     maker: async_sessionmaker[AsyncSession],
     method: str,
+    build: Callable[[AsyncSession], WalletLedger | WalletService],
 ) -> None:
     user_id = await seed_user(maker, 1_000)
     async with maker() as session:
-        call = _moves(make_service(session), user_id)[method]
+        call = _moves(build(session), user_id)[method]
         with _captured(engine) as statements:
             await call()
     assert balance_move_violations(statements) == []

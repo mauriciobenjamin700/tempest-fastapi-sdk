@@ -382,7 +382,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import BaseModel
 from tempest_fastapi_sdk.db.transaction import transaction
-from tempest_fastapi_sdk.wallet import WalletService, claim_once
+from tempest_fastapi_sdk.wallet import WalletLedger, claim_once
 
 
 class OrderModel(BaseModel):
@@ -394,12 +394,12 @@ class OrderModel(BaseModel):
 
 
 async def settle(
-    session: AsyncSession, wallet: WalletService, order: OrderModel
+    session: AsyncSession, ledger: WalletLedger, order: OrderModel
 ) -> bool:
     async with transaction(session):
         if not await claim_once(session, OrderModel, order.id, "credited_at"):
             return False
-        await wallet.credit(
+        await ledger.credit(
             order.seller_id,
             order.amount_cents,
             kind="SALE",
@@ -412,6 +412,59 @@ async def settle(
 The second call gets `False` and does not credit again. `claim_once()` does
 not commit: it joins the same block as the credit, so a failure in the
 credit rolls the claim back too.
+
+### The ledger, not the service — `WalletLedger`
+
+Note that `settle` receives a `WalletLedger`, not the `WalletService`. The
+ledger is the wallet's data layer: `credit`, `debit_available`, `reverse`,
+`balance` and `statement`, each move one `UPDATE ... RETURNING` plus the
+statement line. Inside a caller's `transaction()` block it **joins the
+block** and does not commit on its own: the credit and the caller's writes
+land together, or roll back together when something raises (both cases are
+in `tests/wallet/test_ledger.py`, on SQLite and PostgreSQL).
+
+That is why your project's service that has to move a balance in its own
+transaction — settling an order, paying out at the end of a trip — receives
+the **ledger**, the way it receives any repository:
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import BaseRepository
+from tempest_fastapi_sdk.wallet import WalletLedger
+
+from src.db.models import UserModel, WalletEntryModel
+
+
+def build_wallet_ledger(session: AsyncSession) -> WalletLedger:
+    """Assemble the wallet ledger over the request session.
+
+    Args:
+        session (AsyncSession): The session both repositories share.
+
+    Returns:
+        WalletLedger: The ledger.
+    """
+    return WalletLedger(
+        balances=BaseRepository(session, model=UserModel),
+        entries=BaseRepository(session, model=WalletEntryModel),
+    )
+```
+
+`WalletService` is still what `make_wallet_router` and the **withdrawal**
+use: `withdraw` debits, calls the `PayoutProvider` and gives the money back
+on refusal. It takes the ledger ready (`WalletService(ledger=...)`) or the
+two repositories, as always (it builds the ledger inside), and still exposes
+`credit`, `balance` and the rest by delegation.
+
+| Use | When |
+| --- | --- |
+| `WalletLedger` | a project service credits, debits or reverses inside its own transaction |
+| `WalletService` | the Pix withdrawal (`withdraw`) and the wallet router |
+
+A service receiving the `WalletService` is a service inside a service —
+`tempest lint-layers` reports it as `DI002`. Receiving the ledger needs no
+exception.
 
 ## The router
 
@@ -562,6 +615,8 @@ up to the balance.
   and withdrawals do not pay twice, measured with 50 concurrent tasks on
   Postgres.
 - The hold is part of the debit, not of an earlier read.
+- A project service that moves a balance in its own transaction receives
+  the `WalletLedger`; `WalletService` is the withdrawal and the router.
 - A withdrawal debits first, gives back only on a definitive refusal and
   keeps the debit when the outcome is unknown.
 - `split_net` in basis points never loses or invents a cent.

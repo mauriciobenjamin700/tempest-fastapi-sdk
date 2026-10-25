@@ -222,6 +222,9 @@ grafo é escrito uma vez.
 O caso real em que dois services precisam andar juntos existe — no
 transport, a liquidação e o crédito na carteira caem na mesma transação. Ele
 vira [exceção declarada](#excecao-declarada), mirando só aquele parâmetro.
+Para a carteira do SDK, desde a v0.330.0 nem isso: a escrita de saldo é o
+[`WalletLedger`](recipes/wallet.md#o-ledger-nao-o-service-walletledger), uma
+camada de dados que o service recebe como recebe um repository.
 
 ## 4. Repository não importa repository
 

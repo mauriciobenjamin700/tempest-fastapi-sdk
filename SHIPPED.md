@@ -1961,6 +1961,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   refuses an `HTTPClient` that retries), `FakePayoutProvider`,
   `make_wallet_router`. Concurrency measured against Postgres
   (`tests/wallet/test_wallet_live.py`, docker). Submodule import.
+  **(unreleased, #617)** The moves and reads live in `WalletLedger` (data
+  layer, received like a repository; joins the caller's `transaction()`
+  block); `WalletService` keeps `withdraw` and delegates the rest, taking
+  `ledger=` or the old `balances`/`entries`. The update-shape and
+  concurrency guards run on the ledger; `tests/wallet/test_ledger.py`
+  pins the shared commit and rollback.
 - **Upload** — `UploadUtils` with pluggable backends
   (`LocalUploadStorage`, `MinIOUploadStorage`, opt-in injected via
   `backend=`), download helpers, presigned URLs, plus `FileStoreUtils`

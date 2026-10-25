@@ -45,7 +45,7 @@ from tests.wallet.support import (
     GuardOrder,
     GuardWalletEntry,
     GuardWalletUser,
-    make_service,
+    make_ledger,
     seed_order,
     seed_user,
 )
@@ -161,7 +161,7 @@ def _credit(
     *,
     hold: timedelta = timedelta(0),
 ) -> Step:
-    """Build a request that credits through the service.
+    """Build a request that credits through the ledger.
 
     Args:
         user_id (UUID): The wallet owner.
@@ -173,7 +173,7 @@ def _credit(
     """
 
     async def step(session: AsyncSession) -> object:
-        return await make_service(session).credit(
+        return await make_ledger(session).credit(
             user_id,
             amount,
             kind="SALE",
@@ -200,7 +200,7 @@ def _settle(user_id: UUID, order_id: UUID, amount: int) -> Step:
     async def step(session: AsyncSession) -> object:
         if not await claim_once(session, GuardOrder, order_id, "credited_at"):
             return None
-        return await make_service(session).credit(
+        return await make_ledger(session).credit(
             user_id,
             amount,
             kind="SALE",
@@ -212,7 +212,7 @@ def _settle(user_id: UUID, order_id: UUID, amount: int) -> Step:
 
 
 def _debit(user_id: UUID, amount: int) -> Step:
-    """Build a request that debits the available balance through the service.
+    """Build a request that debits the available balance through the ledger.
 
     Args:
         user_id (UUID): The wallet owner.
@@ -223,7 +223,7 @@ def _debit(user_id: UUID, amount: int) -> Step:
     """
 
     async def step(session: AsyncSession) -> object:
-        return await make_service(session).debit_available(
+        return await make_ledger(session).debit_available(
             user_id,
             amount,
             kind="FEE",
@@ -326,7 +326,7 @@ class TestWalletRaces:
         for _ in range(TRIALS):
             user_id = await seed_user(maker, 500)
             async with maker() as session:
-                await make_service(session).credit(
+                await make_ledger(session).credit(
                     user_id,
                     500,
                     kind="SALE",

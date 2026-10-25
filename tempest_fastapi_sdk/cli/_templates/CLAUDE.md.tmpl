@@ -587,7 +587,10 @@ ARCHITECTURE_EXCEPTIONS: dict[str, str] = {
 
 The key is `"<CODE> <path>"` or `"<CODE> <path>::<subject>"`; an entry
 that no longer matches anything is reported (`EXC002`), so an exception
-does not outlive the code it excused. Two markers still work on their
+does not outlive the code it excused. (For the SDK wallet the example above
+is no longer needed: a service that credits inside its own transaction
+receives a `WalletLedger`, a data layer, instead of the `WalletService`.)
+Two markers still work on their
 line: `# tempest: no-base-service` (`SVC001`) and
 `# tempest: router-builds` (`RTR001`).
 
