@@ -1,0 +1,31 @@
+"""Suite configuration: one SQLite database per pytest-xdist worker.
+
+``tempest test`` and ``tempest check`` run the suite in parallel. Every
+test that builds the app runs its lifespan, which migrates the database
+named by ``DATABASE_URL`` — and two workers migrating the same file at
+once fail with ``table alembic_version already exists``. Each worker gets
+its own file in a temporary directory instead, which also keeps the
+suite off the ``app.db`` in the project directory.
+"""
+
+from __future__ import annotations
+
+import os
+import tempfile
+from pathlib import Path
+
+import pytest
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Point ``DATABASE_URL`` at a fresh SQLite file for this worker.
+
+    Runs before any test module imports ``src``, so the settings read the
+    value set here.
+
+    Args:
+        config (pytest.Config): The pytest configuration, unused.
+    """
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
+    directory = Path(tempfile.mkdtemp(prefix=f"tests-{worker}-"))
+    os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{directory / 'test.db'}"

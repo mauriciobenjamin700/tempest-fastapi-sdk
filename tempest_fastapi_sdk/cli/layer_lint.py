@@ -178,9 +178,12 @@ import tomllib
 from collections.abc import Collection, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TextIO
+from typing import TYPE_CHECKING, Literal, TextIO
 
 from tempest_fastapi_sdk.cli.config import load_tempest_table
+
+if TYPE_CHECKING:
+    from tempest_cli import StepOptions
 
 NO_BASE_SERVICE_MARKER: str = "# tempest: no-base-service"
 """Comment on a ``class`` line that exempts a service from ``SVC001``.
@@ -2703,6 +2706,26 @@ def run_lint_layers(
     return 1 if errors or strict else 0
 
 
+def run_lint_layers_with_options(target: str, options: StepOptions) -> int:
+    """Run the layer rules with what ``tempest check`` parsed.
+
+    The ``lint-layers`` step of ``tempest check`` declares this as its
+    ``run_with_options``, so ``tempest check --rule <CODE>`` and
+    ``--strict`` / ``--no-strict`` reach :func:`run_lint_layers` the way
+    they do from ``tempest lint-layers``. With no option typed, the rules
+    are all reported and strictness comes from ``[tool.tempest]``.
+
+    Args:
+        target (str): The ``check`` target.
+        options (StepOptions): ``--rule`` codes (empty for all) and the
+            ``--strict`` choice (``None`` when not typed).
+
+    Returns:
+        int: The exit code of :func:`run_lint_layers`.
+    """
+    return run_lint_layers(target, rules=options.rules or None, strict=options.strict)
+
+
 __all__: list[str] = [
     "API_PREFIX",
     "API_ROUTER_BUILDER",
@@ -2747,5 +2770,6 @@ __all__: list[str] = [
     "project_root",
     "read_exceptions",
     "run_lint_layers",
+    "run_lint_layers_with_options",
     "scan_roots",
 ]

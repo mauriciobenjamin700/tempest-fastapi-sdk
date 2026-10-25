@@ -161,7 +161,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[otel]` | `opentelemetry-sdk` + OTLP/gRPC exporter + FastAPI/SQLAlchemy/httpx instrumentors | `setup_tracing` — distributed tracing |
 | `[sqlite]` | `aiosqlite` | SQLite async driver for `sqlite+aiosqlite://` URLs (dev default) |
 | `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
-| `[tests]` | `pytest`, `pytest-asyncio`, `pytest-xdist` | A service's suite plus `tempest test --fast` / `tempest check --fast` (the suite in parallel with pytest-xdist; the flag ships in `tempest-cli` 0.4.0). No bound of its own; inherits `pytest<10` from `pytest-asyncio` 1.4.0 and `pluggy<2` from `pytest`. Test tooling, so it stays out of `[all]` — add it to the dev group: `uv add --dev "tempest-fastapi-sdk[tests]"` |
+| `[tests]` | `pytest`, `pytest-asyncio`, `pytest-xdist` | A service's suite, which `tempest test` / `tempest check` run in parallel with pytest-xdist by default (since `tempest-cli` 0.6.0). No bound of its own; inherits `pytest<10` from `pytest-asyncio` 1.4.0 and `pluggy<2` from `pytest`. Test tooling, so it stays out of `[all]` — add it to the dev group: `uv add --dev "tempest-fastapi-sdk[tests]"` |
 | `[all]` | everything above **except** the 15 heavy-stack or native-binary extras (`[genai]`, `[genai-audio]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]`) and `[tests]` | the application helpers — install those 15 separately (and `[tests]`, a test tool, in the dev group) |
 
 ```bash

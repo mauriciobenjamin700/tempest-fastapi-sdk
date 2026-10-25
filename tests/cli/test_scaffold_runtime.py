@@ -605,3 +605,39 @@ def test_generated_pytest_config_imports_src_from_a_nested_test_dir(
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "1 passed" in completed.stdout
+
+
+def test_generated_suite_runs_in_parallel(scaffolded: Path) -> None:
+    """The scaffold's own suite passes under ``pytest -n 2``.
+
+    ``tempest test`` runs the suite in parallel by default (tempest-cli
+    0.6). Each test that builds the app migrates the database in its
+    lifespan, and two workers migrating one SQLite file failed with
+    ``table alembic_version already exists``; the generated
+    ``tests/conftest.py`` gives each worker its own file.
+    """
+    pytest_script = Path(sys.executable).with_name("pytest")
+    completed = subprocess.run(
+        [
+            str(pytest_script),
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "-n",
+            "2",
+            "tests/test_smoke.py",
+            "tests/test_schemas.py",
+        ],
+        cwd=scaffolded,
+        capture_output=True,
+        text=True,
+        timeout=300,
+        env={
+            key: value
+            for key, value in os.environ.items()
+            if key not in {"PYTHONPATH", "DATABASE_URL"}
+        },
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "4 passed" in completed.stdout
+    assert not (scaffolded / "app.db").exists()

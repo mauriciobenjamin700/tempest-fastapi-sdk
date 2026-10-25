@@ -368,15 +368,16 @@ ficam visíveis na transação do teste e o rollback fica com a fixture.
 
 Passe `metadata=` quando o projeto mistura a `BaseModel.metadata` do SDK com uma segunda metadata isolada (raro — mantenha um `BaseModel` por serviço sempre que possível).
 
-## A suíte em paralelo — `tempest test --fast`
+## A suíte em paralelo — o padrão do `tempest test`
 
 Com um banco descartável por teste, os testes já não dividem estado. Rodar
 em série, então, é pagar o tempo de um núcleo com a máquina inteira parada.
-O `--fast` espalha a suíte pelos núcleos com o
-[pytest-xdist](https://pytest-xdist.readthedocs.io/).
+Por isso `tempest test` e `tempest check` espalham a suíte pelos núcleos com o
+[pytest-xdist](https://pytest-xdist.readthedocs.io/) **por padrão**.
 
 Primeiro, o que a suíte precisa — o extra `[tests]` traz `pytest`,
-`pytest-asyncio` e `pytest-xdist`:
+`pytest-asyncio` e `pytest-xdist` (o projeto do `tempest new` já declara o
+`pytest-xdist` no grupo `dev`):
 
 ```bash
 uv add --dev "tempest-fastapi-sdk[tests]"
@@ -385,35 +386,51 @@ uv add --dev "tempest-fastapi-sdk[tests]"
 Depois, a suíte:
 
 ```bash
-tempest test --fast              # -n auto: um worker por núcleo
-tempest test --fast -w 4         # quatro workers
-tempest test tests/api --fast    # o alvo continua sendo repassado
-tempest check --fast             # o gate completo, com o passo de teste em paralelo
+tempest test                     # -n auto: um worker por núcleo
+tempest test -w 4                # quatro workers
+tempest test tests/api           # o alvo continua sendo repassado
+tempest test --serial            # em série: para --lf / --ff ou depurador
+tempest check                    # o gate completo, com o passo de teste em paralelo
 ```
 
 Por baixo, vira `pytest -n <workers> -p no:cacheprovider [alvo]`, e o
 código de saída do pytest volta sem tradução. O cache do pytest fica
 desligado porque vários workers escrevendo `.pytest_cache` ao mesmo tempo é
 corrida à toa — e é esse cache que o `--lf` / `--ff` leem, então esses dois
-continuam sendo coisa de execução serial.
+pedem `--serial`. `--workers` com `--serial` é erro de uso (saída `2`).
 
-!!! info "O `--fast` vem do `tempest-cli` 0.4.0"
+!!! info "Paralelo por padrão desde o `tempest-cli` 0.6.0"
     Os comandos `test` e `check` são do
     [`tempest-cli`](https://pypi.org/project/tempest-cli/), que o SDK monta
-    na CLI dele. O extra `[cli]` do SDK declara `tempest-cli>=0.5.1`, então a
-    flag já vem com ele. Com o `tempest-cli` 0.3.0 fixado à parte no seu projeto,
-    `tempest test --fast` sai com `No such option: --fast` (saída 2).
+    na CLI dele, e o extra `[cli]` declara `tempest-cli>=0.7.0`. Até o 0.5,
+    o paralelo pedia `--fast`; a flag continua aceita e passou a significar
+    "exija o pytest-xdist".
+
+!!! warning "Banco por worker"
+    Cada teste que monta o app roda o lifespan, que migra o banco do
+    `DATABASE_URL`. Dois workers migrando o **mesmo** arquivo SQLite falharam
+    com `table alembic_version already exists`. O `tests/conftest.py` que o
+    `tempest new` gera aponta o `DATABASE_URL` de cada worker para um arquivo
+    próprio, num diretório temporário — e, de quebra, a suíte não toca o
+    `app.db` do projeto.
 
 ### Sem o pytest-xdist
 
-Antes de rodar qualquer coisa, o `--fast` pergunta ao **mesmo
-interpretador que vai rodar o pytest** se ele importa o `xdist`. Faltando,
-a mensagem nomeia o pacote e o extra, e a saída é `127`, sem traceback —
-em vez do `unrecognized arguments: -n` que o pytest daria sozinho:
+O padrão pergunta ao **mesmo interpretador que vai rodar o pytest** se ele
+importa o `xdist`. Faltando, avisa numa linha e roda em série (saída
+medida):
+
+```console
+$ tempest test
+note: pytest-xdist is not installed in the environment pytest runs in (.venv/bin/pytest), so the suite runs serially. Install it with 'uv add --dev pytest-xdist' — or a bundle that carries it, 'uv add --dev "tempest-cli[tools]"' or 'uv add --dev "tempest-fastapi-sdk[tests]"' — to run it in parallel.
+```
+
+O `--fast` explícito exige o plugin: sem ele, a mensagem nomeia o pacote e
+a saída é `127`, sem rodar nada:
 
 ```console
 $ tempest test --fast
-error: --fast needs pytest-xdist, which is not installed in the environment pytest runs in (.venv/bin/pytest). Install it with 'uv add --dev pytest-xdist' — or a bundle that carries it, 'uv add --dev "tempest-cli[tools]"' or 'uv add --dev "tempest-fastapi-sdk[tests]"' — and retry, or drop --fast to run the suite serially.
+error: --fast needs pytest-xdist, which is not installed in the environment pytest runs in (.venv/bin/pytest). Install it with 'uv add --dev pytest-xdist' — or a bundle that carries it, 'uv add --dev "tempest-cli[tools]"' or 'uv add --dev "tempest-fastapi-sdk[tests]"' — and retry, or pass --serial to run the suite serially.
 ```
 
 ### Quando usar
@@ -460,7 +477,7 @@ tempest test "tests/test_scheduler.py::test_lease_expires"
     - A fixture `db` cria um SQLite em memória por teste com `create_tables()` / `drop_tables()` — **sem argumentos**, elas usam `BaseModel.metadata` internamente.
     - `dependency_overrides` troca o banco de produção pelo de teste no `client`.
     - Os helpers de `tempest_fastapi_sdk.testing` (`make_test_database` / `make_test_session`) dão fixtures prontas quando você não precisa de um `AsyncDatabaseManager` completo.
-    - `tempest test --fast` roda a suíte em paralelo com o extra `[tests]`; teste que só falha ali se confere rodando-o sozinho.
+    - `tempest test` roda a suíte em paralelo por padrão (`--serial` para desligar), com um banco por worker; teste que só falha ali se confere rodando-o sozinho.
 
 **Próximo passo:** veja a [receita de banco de dados](database.md) para os padrões de `BaseRepository` e migrations que esses testes exercitam.
 
@@ -481,6 +498,6 @@ tempest test "tests/test_scheduler.py::test_lease_expires"
 - Teste de endpoint sobe o app com `AsyncClient` e substitui dependência por
   `dependency_overrides` — o mesmo lugar onde entra um
   [fake »](fakes.md) em vez do provedor real.
-- `tempest test --fast` (e `tempest check --fast`) espalha a suíte pelos
-  núcleos com o pytest-xdist do extra `[tests]`; teste que só falha em
+- `tempest test` (e `tempest check`) espalha a suíte pelos núcleos com o
+  pytest-xdist do extra `[tests]`, por padrão; teste que só falha em
   paralelo é problema de isolamento até rodar sozinho e falhar também.
