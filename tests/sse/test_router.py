@@ -233,6 +233,18 @@ class TestTicketFlow:
         assert response.text == f"data: {stack.user_id}\n\n"
         assert stack.broker.opened == [stack.user_id]
 
+    async def test_a_ticket_opens_the_stream_more_than_once(
+        self, stack: _Stack
+    ) -> None:
+        """Not single-use: within its lifetime it opens the stream again."""
+        async with _client(stack.service.sse_router(stack.broker)) as client:
+            ticket = await _ticket(client, stack.access)
+            first = await client.get("/sse/stream", params={"ticket": ticket})
+            second = await client.get("/sse/stream", params={"ticket": ticket})
+
+        assert (first.status_code, second.status_code) == (200, 200)
+        assert stack.broker.opened == [stack.user_id, stack.user_id]
+
     async def test_ticket_claims(self, stack: _Stack) -> None:
         """``typ="stream"``, the channel in ``ch``, a 60 s lifetime."""
         async with _client(stack.service.sse_router(stack.broker)) as client:

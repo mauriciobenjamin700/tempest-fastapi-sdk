@@ -1459,7 +1459,8 @@ site: AdminSite = AdminSite(title="Servus Admin", brand="Servus", theme=theme)
     cards, text, table rows, inputs, borders) to a dark palette. The header
     and sidebar go dark with them while `header_bg` is the light default;
     a `header_bg` of yours is kept. `accent` and the other colors still
-    apply. An explicit `page_bg` wins over dark mode.
+    apply. An explicit `page_bg` wins over the content's dark mode (the
+    surfaces stay light), but the default chrome still goes dark.
 
 !!! info "Header text picked from the background"
     The header and sidebar are light by default. Give them a dark hex

@@ -2,6 +2,39 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.331.0 — visual novo do admin, upload com teto no storage
+
+O `admin.css` foi reescrito sobre tokens e o `AdminTheme` mudou dois
+defaults: `header_bg` passa de `"#0f172a"` para `"#ffffff"` e `radius` de
+`"6px"` para `"8px"`. As classes `tempest-admin-*` continuam.
+
+O protocolo `SubjectStorageClient` ganhou `presigned_post_policy`, e
+`presigned_get_url` ganhou `filename`, `media_type` e `as_attachment`.
+
+A busca da lista do admin (`?q=`) passa a procurar por trecho em qualquer
+`search_fields`; antes comparava por igualdade em todos.
+
+### O que fazer
+
+1. Quem passa `custom_css_url` sobrescrevendo cores fixas do header escuro:
+   revise a folha contra o header claro.
+2. Para manter o header escuro, passe `AdminTheme(header_bg="#0f172a")`: o
+   texto do chrome passa a claro sozinho pela luminância. Se o palpite errar,
+   fixe com `header_fg=`.
+3. Atrás de um proxy que termina o TLS, aproveite o upgrade para declarar
+   `SERVER_PUBLIC_SCHEME=https` e registrar o `PublicSchemeMiddleware`
+   ([Segurança](recipes/security.md#scheme-publico-atras-de-proxy-server_public_scheme)):
+   sem isso o login do admin aparece como não seguro.
+4. Um cliente de storage seu que implemente `SubjectStorageClient` precisa
+   de `presigned_post_policy` e dos três parâmetros novos de
+   `presigned_get_url` para continuar passando no type-checker.
+   `AsyncMinIOClient`, `LocalObjectStorageClient` e `FakeObjectStorageClient`
+   já cumprem.
+5. Serviço que gera cliente a partir do OpenAPI e usa
+   `image_media_type_field`: chame `prune_orphan_enum_schemas(app)` no
+   `create_app` para tirar o `ImageMediaType` órfão
+   ([Uploads](recipes/uploads.md)).
+
 ## 0.330.0 — inscrição de push não muda mais de dono
 
 `POST /subscribe` (Web Push) e `POST /register` (push mobile) não

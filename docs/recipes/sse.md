@@ -825,7 +825,8 @@ async function openEvents(accessToken) {
     copiado de um log abre **aquele** stream por um minuto e não chama mais
     nada — nem compra outro ticket. Não é de uso único: dentro desse minuto
     ele abre o stream quantas vezes for apresentado. Medido em `tests/sse/test_router.py`
-    (`TestTicketIsNotASession`, `TestTicketIssuance`).
+    (`TestTicketIsNotASession`, `TestTicketIssuance`,
+    `test_a_ticket_opens_the_stream_more_than_once`).
 
     O canal vem **de dentro** do ticket assinado: o cliente não escolhe em
     que canal entra, e a rota de stream não abre sessão de banco.
@@ -834,9 +835,9 @@ async function openEvents(accessToken) {
     O ticket só é conferido quando o stream **abre**: um stream aberto não
     cai quando o ticket expira (medido: ticket de 1 s, evento publicado 2 s
     depois chega). Já a reconexão automática do `EventSource` reusa a mesma
-    URL, e depois de 60 s recebe `401`. A especificação HTML manda o
-    navegador *fail the connection* — sem nova tentativa — quando a resposta
-    não é `200`, por isso o `onerror` acima fecha, pede um ticket novo e
+    URL, e depois de 60 s recebe `401` (medido no servidor). Pela
+    especificação HTML — não medido em browser —, o navegador faz *fail the
+    connection*, sem nova tentativa, quando a resposta não é `200`; por isso o `onerror` acima fecha, pede um ticket novo e
     reabre.
 
 !!! check "Conta desativada para na hora"

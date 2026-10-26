@@ -1438,7 +1438,9 @@ site: AdminSite = AdminSite(title="Servus Admin", brand="Servus", theme=theme)
     cards, texto, linhas da tabela, inputs, bordas) para uma paleta escura.
     O header e a sidebar escurecem junto enquanto `header_bg` for o padrão
     claro; um `header_bg` seu é mantido. `accent` e as outras cores
-    continuam valendo. Um `page_bg` explícito vence o modo escuro.
+    continuam valendo. Um `page_bg` explícito vence o modo escuro do
+    conteúdo (as superfícies ficam claras), mas o chrome padrão escurece
+    mesmo assim.
 
 !!! info "Texto do header escolhido pelo fundo"
     O header e a sidebar são claros por padrão. Com um `header_bg` (ou

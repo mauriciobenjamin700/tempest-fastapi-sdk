@@ -2,6 +2,38 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.331.0 — new admin look, capped storage uploads
+
+`admin.css` was rewritten on tokens and `AdminTheme` changed two defaults:
+`header_bg` goes from `"#0f172a"` to `"#ffffff"` and `radius` from `"6px"`
+to `"8px"`. The `tempest-admin-*` classes stay.
+
+The `SubjectStorageClient` protocol gained `presigned_post_policy`, and
+`presigned_get_url` gained `filename`, `media_type` and `as_attachment`.
+
+The admin list search (`?q=`) now matches a substring in any of the
+`search_fields`; it used to compare by equality in all of them.
+
+### What to do
+
+1. If you pass `custom_css_url` overriding fixed colors of the dark header:
+   review the sheet against the light header.
+2. To keep a dark header, pass `AdminTheme(header_bg="#0f172a")`: the chrome
+   text turns light on its own from the luminance. If the guess is wrong,
+   pin it with `header_fg=`.
+3. Behind a proxy that terminates TLS, use the upgrade to declare
+   `SERVER_PUBLIC_SCHEME=https` and register the `PublicSchemeMiddleware`
+   ([Security](recipes/security.md#public-scheme-behind-a-proxy-server_public_scheme)):
+   without it the admin login shows as not secure.
+4. A storage client of yours implementing `SubjectStorageClient` needs
+   `presigned_post_policy` and the three new `presigned_get_url` parameters
+   to keep passing the type-checker. `AsyncMinIOClient`,
+   `LocalObjectStorageClient` and `FakeObjectStorageClient` already comply.
+5. A service that generates a client from the OpenAPI and uses
+   `image_media_type_field`: call `prune_orphan_enum_schemas(app)` in
+   `create_app` to drop the orphan `ImageMediaType`
+   ([Uploads](recipes/uploads.md)).
+
 ## 0.330.0 — a push subscription no longer changes owner
 
 `POST /subscribe` (Web Push) and `POST /register` (mobile push) no longer

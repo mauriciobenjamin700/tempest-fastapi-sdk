@@ -832,7 +832,7 @@ async function openEvents(accessToken) {
     isn't single-use: within that minute it opens the stream as many times
     as it's presented.
     Measured in `tests/sse/test_router.py` (`TestTicketIsNotASession`,
-    `TestTicketIssuance`).
+    `TestTicketIssuance`, `test_a_ticket_opens_the_stream_more_than_once`).
 
     The channel comes **from inside** the signed ticket: the client doesn't
     pick which channel it joins, and the stream route opens no database
@@ -842,9 +842,9 @@ async function openEvents(accessToken) {
     The ticket is checked when the stream **opens**: an open stream isn't
     cut when the ticket expires (measured: 1 s ticket, an event published
     2 s later arrives). But the `EventSource` automatic reconnect reuses the
-    same URL, and after 60 s gets a `401`. The HTML spec tells the browser to
-    *fail the connection* — no retry — when the response isn't `200`, which
-    is why the `onerror` above closes, asks for a new ticket and reopens.
+    same URL, and after 60 s gets a `401` (measured on the server). Per the
+    HTML spec — not measured in a browser — the browser *fails the
+    connection*, no retry, when the response isn't `200`, which is why the `onerror` above closes, asks for a new ticket and reopens.
 
 !!! check "A deactivated account stops at once"
     `POST /ticket` goes through the same active-account check as

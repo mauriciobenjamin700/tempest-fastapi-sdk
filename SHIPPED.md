@@ -3790,16 +3790,16 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   Receita: `docs/recipes/auth-pages.md`. Testes:
   `tests/auth/test_auth_pages.py`.
 - **Helpers de login do admin aceitam `httpx2`/`TestClient` no strict,
-  Unreleased (#610)** — `admin_login` / `admin_login_sync` tipados por
+  v0.329.0 (#610)** — `admin_login` / `admin_login_sync` tipados por
   `AsyncFormClient` / `SyncFormClient` / `FormResponse` (`Protocol`s públicos
   em `tempest_fastapi_sdk.testing`), genéricos na resposta. Teste:
   `tests/testing/test_admin_login_typing.py` (mypy `--strict` sobre o uso de
   cada cliente).
-- **Import preguiçoso da raiz, Unreleased (#611)** — `__init__` da raiz e de
+- **Import preguiçoso da raiz, v0.329.0 (#611)** — `__init__` da raiz e de
   `utils` em PEP 562 (`_LAZY_ATTRIBUTES` + `__getattr__` escondido do checker
   + imports em `TYPE_CHECKING`); `tempest --help` 0,94 s → 0,14 s. Guard:
   `tests/test_lazy_init_guard.py`.
-- **Storage em disco local, Unreleased** — `LocalObjectStorageClient`
+- **Storage em disco local, v0.328.0** — `LocalObjectStorageClient`
   (`storage/local_client.py`, sem extra) implementa o `SubjectStorageClient`
   inteiro sobre um diretório: `objects/<bucket>/<key>`, metadado (content type,
   metadata, ETag MD5) em `meta/<bucket>/<key>.meta.json`, escrita em `tmp/` +
@@ -3817,7 +3817,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `docs/recipes/local-storage.md`. Testes:
   `tests/storage/test_local_client.py`, `tests/storage/test_local_router.py`,
   `tests/settings/test_storage_settings.py::TestLocalBackend`.
-- **Visual novo do admin, Unreleased** — `admin.css` reescrito sobre tokens
+- **Visual novo do admin, v0.331.0 (2026-10-26)** — `admin.css` reescrito sobre tokens
   (`--tempest-surface`, `--tempest-border`, `--tempest-*-soft` derivados por
   `color-mix()`): chrome claro com a marca à esquerda, sidebar com item ativo
   suave, cards de métrica, tabela com rolagem horizontal própria, form em
@@ -3832,7 +3832,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   para o browser não servir a folha antiga depois de um upgrade. Validado em
   browser real (1440 e 390, burger, criação, busca, lens, dark mode). Testes:
   `tests/admin/test_display.py`.
-- **Scheme público atrás de proxy, Unreleased** — `ServerSettings` ganha
+- **Scheme público atrás de proxy, v0.331.0 (2026-10-26)** — `ServerSettings` ganha
   `SERVER_PUBLIC_SCHEME` e `api/middlewares/public_scheme.py` o
   `PublicSchemeMiddleware`, que carimba `scope["scheme"]` (`ws`/`wss` no
   websocket, `lifespan` intocado). Declarado em vez de lido de
@@ -3845,7 +3845,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   Testes: `tests/api/test_public_scheme_middleware.py`,
   `tests/admin/test_login_scheme_warning.py`,
   `tests/settings/test_public_scheme.py`.
-- **Upload com teto e download com tipo assinado no storage, Unreleased
+- **Upload com teto e download com tipo assinado no storage, v0.331.0 (2026-10-26)
   (#637)** — `presigned_post_policy` no `AsyncMinIOClient` (policy S3 com
   `eq key`, `eq Content-Type` e `content-length-range`; assinatura local, sem
   rede, com o `DeprecationWarning` do `datetime.utcnow()` do minio 7.2.20
@@ -3858,7 +3858,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `image_media_type_field`); o scaffold chama. Testes:
   `tests/storage/test_presign.py`, `tests/storage/test_local_presign.py`,
   `tests/storage/test_presign_live.py` (docker), `tests/api/test_openapi_pruning.py`.
-- **Busca do admin por trecho, Unreleased (#635)** — `?q=` da lista e do
+- **Busca do admin por trecho, v0.331.0 (2026-10-26) (#635)** — `?q=` da lista e do
   export passa por `like_search_condition` (ILIKE escapado por palavra, OR
   entre `search_fields`, todas as palavras) via `where=` do `paginate`, em vez
   de `filters[field] = q` (igualdade com AND). Teste:
