@@ -34,6 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ServerSettings.SERVER_PUBLIC_SCHEME` (`""`, `"http"`, `"https"`) e
+  `PublicSchemeMiddleware`: atrás de um proxy que termina o TLS, toda URL
+  absoluta saía `http://` — o `action` do formulário de login do admin
+  incluído, e o browser marcava o campo de senha como não seguro. Com
+  `SERVER_PUBLIC_SCHEME=https` o middleware carimba o scheme em toda request
+  (`wss` no websocket). O `tempest new` já registra o middleware.
+- O `GET /admin/login` com `cookie_secure=True` que chega como `http` num host
+  público loga um `WARNING` apontando `SERVER_PUBLIC_SCHEME=https`.
 - `AdminTheme(header_fg=...)` fixa a cor do texto do header e da sidebar
   quando o palpite pela luminância erra.
 

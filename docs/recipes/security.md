@@ -503,6 +503,68 @@ direto.
     `proxy_set_header X-Real-IP $remote_addr`) ou use o header verificado da
     CDN (`cf-connecting-ip`, `true-client-ip`).
 
+## Scheme público atrás de proxy (`SERVER_PUBLIC_SCHEME`)
+
+Com um proxy terminando o TLS na frente (nginx, Caddy, o balanceador da
+plataforma), o browser fala `https` com o proxy e o proxy fala `http` com a
+app. O Starlette monta toda URL absoluta — `request.url_for`, e por ele o
+`action` de cada formulário do painel admin — a partir do scheme da conexão,
+então a página HTTPS sai com `<form action="http://...">`. O browser marca o
+formulário de senha como **não seguro**, e os cookies `Secure` do admin não
+voltam no envio.
+
+O `ServerSettings` declara o scheme uma vez, e o `PublicSchemeMiddleware` o
+carimba em toda request:
+
+```bash
+# .env
+SERVER_PUBLIC_SCHEME=https
+```
+
+```python
+from fastapi import FastAPI, Request
+from tempest_fastapi_sdk import BaseAppSettings, PublicSchemeMiddleware, ServerSettings
+
+
+class Settings(ServerSettings, BaseAppSettings):
+    """Settings do serviço."""
+
+
+settings = Settings()
+
+app = FastAPI()
+app.add_middleware(PublicSchemeMiddleware, scheme=settings.SERVER_PUBLIC_SCHEME)
+
+
+@app.get("/whereami", name="whereami")
+async def whereami(request: Request) -> dict[str, str]:
+    """Devolve a URL que o app monta para esta rota."""
+    return {"url": str(request.url_for("whereami"))}
+```
+
+Com `SERVER_PUBLIC_SCHEME=https`, uma request que chega do proxy como
+`http://api.example.com/whereami` responde
+`{"url": "https://api.example.com/whereami"}`. Vazio (o default) deixa o
+scheme da conexão — o certo no dev local, sem proxy. Websocket recebe `wss`.
+
+Adicione o middleware **por último** no `create_app`: o último
+`add_middleware` é a camada mais externa, e toda camada abaixo dele passa a
+montar URL no scheme público. Projeto criado pelo `tempest new` já vem assim.
+
+!!! warning "Por que não `--forwarded-allow-ips`?"
+    O uvicorn lê `X-Forwarded-Proto` dos IPs listados em
+    `FORWARDED_ALLOW_IPS`, e junto passa a confiar no `X-Forwarded-For`.
+    Com a porta da app publicada (`ports:` no compose), uma request que pula
+    o proxy chega do gateway do Docker — confiar nessa sub-rede deixa qualquer
+    cliente forjar os headers encaminhados, inclusive o IP que o rate limit
+    usa como chave. Declarado na configuração, o scheme não depende de nada
+    que o cliente mande.
+
+O painel admin avisa quando falta isso: com `cookie_secure=True`, o
+`GET /admin/login` que chega como `http` num host público (fora de
+`localhost`, `127.0.0.1` e `::1`) loga um `WARNING` em
+`tempest_fastapi_sdk.admin.router` citando `SERVER_PUBLIC_SCHEME=https`.
+
 ## Ban de scanner (`HoneypotBanMiddleware`)
 
 Toda API pública recebe um fluxo constante de scanner automatizado pedindo
@@ -634,3 +696,6 @@ middleware.
   seguros, e `get_client_ip` resolve o IP real atrás de proxy.
 - `TRUSTED_IP_HEADER` no `ServerSettings` leva o mesmo header a
   `get_client_ip` e aos três middlewares, e recusa `X-Forwarded-For`.
+- `SERVER_PUBLIC_SCHEME=https` com o `PublicSchemeMiddleware` faz toda URL
+  absoluta sair em `https://` atrás de um proxy que termina o TLS — o
+  formulário de login do admin incluído.

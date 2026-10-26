@@ -1046,6 +1046,14 @@ and export; "All" clears it.
     this flag to `DEBUG` — turning debug on in production is worse than the
     original problem.
 
+!!! warning "Browser says the login form is not secure? It's the scheme behind the proxy"
+    With HTTPS in front and the proxy speaking HTTP to the app, the form's
+    `action` comes out as `http://...` and the browser flags the password
+    field as not secure. Set `SERVER_PUBLIC_SCHEME=https` and add
+    `PublicSchemeMiddleware` — recipe in
+    [Security](security.md#public-scheme-behind-a-proxy-server_public_scheme).
+    Until then, `GET /admin/login` logs a `WARNING` saying so.
+
 ##### Signing in from a test
 
 Since `POST /admin/login` requires the form's token, a test that posts the credentials alone gets `403`. `tempest_fastapi_sdk.testing` does what a browser does — loads the form, reads the hidden field (the cookie lands in the client's jar) and submits it:

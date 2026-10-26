@@ -104,6 +104,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+LOOPBACK_HOSTNAMES: frozenset[str] = frozenset({"localhost", "127.0.0.1", "::1"})
+"""Hosts a browser treats as a secure context even over ``http://``.
+
+The login page skips the plain-scheme warning on them: a ``Secure``
+cookie works on ``http://localhost``, so local development is not the
+proxy misconfiguration the warning names.
+"""
+
 ADMIN_MFA_THROTTLE_MAX_ATTEMPTS: int = 5
 """Wrong codes one admin principal may submit to ``/mfa`` per window.
 
@@ -904,7 +912,26 @@ def make_admin_router(
 
         Returns:
             HTMLResponse: The rendered login template.
+
+        With ``Secure`` cookies, a request that arrives as ``http`` on a
+        public host is a TLS-terminating proxy the app does not know
+        about: the form posts to ``http://``, the browser flags the
+        password field as not secure, and the ``Secure`` cookies never
+        come back. The page still renders; a warning names the setting
+        that fixes it, since nothing else in the response says why.
         """
+        if (
+            cookie_secure
+            and request.url.scheme == "http"
+            and request.url.hostname not in LOOPBACK_HOSTNAMES
+        ):
+            logger.warning(
+                "Admin login page served over http on %s with Secure cookies:"
+                " the form posts to http:// and the browser flags it as not"
+                " secure. Behind a TLS-terminating proxy, set"
+                " SERVER_PUBLIC_SCHEME=https and add PublicSchemeMiddleware.",
+                request.url.hostname,
+            )
         if store.load(request) is not None:
             return _render_login(request, {"user": None})
         return _render_login(

@@ -64,6 +64,9 @@ from tempest_fastapi_sdk.api.middlewares.idempotency import (
 from tempest_fastapi_sdk.api.middlewares.idempotency import (
     RedisIdempotencyStore as RedisIdempotencyStore,
 )
+from tempest_fastapi_sdk.api.middlewares.public_scheme import (
+    PublicSchemeMiddleware as PublicSchemeMiddleware,
+)
 from tempest_fastapi_sdk.api.middlewares.quota import (
     MemoryQuotaStore as MemoryQuotaStore,
 )
@@ -166,6 +169,7 @@ __all__: list[str] = [
     "MemoryRateLimitStore",
     "MemoryResponseCacheStore",
     "PlanRateLimitPolicy",
+    "PublicSchemeMiddleware",
     "QuotaResult",
     "QuotaStore",
     "RateLimitMiddleware",

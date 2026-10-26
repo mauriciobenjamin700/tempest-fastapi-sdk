@@ -232,6 +232,9 @@ if TYPE_CHECKING:
         PrometheusMiddleware as PrometheusMiddleware,
     )
     from tempest_fastapi_sdk.api import (
+        PublicSchemeMiddleware as PublicSchemeMiddleware,
+    )
+    from tempest_fastapi_sdk.api import (
         QuotaResult as QuotaResult,
     )
     from tempest_fastapi_sdk.api import (
@@ -2323,6 +2326,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "OIDCTokenVerifier": "tempest_fastapi_sdk.api",
     "PlanRateLimitPolicy": "tempest_fastapi_sdk.api",
     "PrometheusMiddleware": "tempest_fastapi_sdk.api",
+    "PublicSchemeMiddleware": "tempest_fastapi_sdk.api",
     "QuotaResult": "tempest_fastapi_sdk.api",
     "QuotaStore": "tempest_fastapi_sdk.api",
     "RaisesSpec": "tempest_fastapi_sdk.api",
@@ -3428,6 +3432,7 @@ __all__: list[str] = [
     "PositiveIntField",
     "PriceField",
     "PrometheusMiddleware",
+    "PublicSchemeMiddleware",
     "PushDevice",
     "PushDeviceGoneError",
     "PushDispatcher",
