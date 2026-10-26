@@ -2736,7 +2736,7 @@ get_current_user_or_none = auth_service.current_user_dependency(soft=True)
     The dependency tries **header → cookie → query string** and stops at the first hit, so the single line above serves both bearer clients and cookie clients.
 
     - **Cookie — automatic.** With `AUTH_TOKEN_DELIVERY` set to `"cookie"` or `"both"`, `cookie_name` is **auto-derived** from `AUTH_ACCESS_COOKIE_NAME` — the same cookie the bundled `/auth/login` set. Zero extra wiring: a route guarded by this dependency already accepts that cookie. A bearer-only delivery mode leaves it `None` (header only). Pass `cookie_name="..."` to force a name.
-    - **Query string — opt-in.** Never auto-derived. It exists for clients that can send neither a header **nor** a cookie — the classic case being the browser `EventSource` (SSE) cross-origin:
+    - **Query string — opt-in.** Never auto-derived. It exists for clients that can send neither a header **nor** a cookie. For **SSE**, don't turn this on by hand: `auth_service.sse_router(broker)` trades the session for a stream ticket that is valid on no other route. Raw `query_param` is for the rest:
 
     ```python
     # src/api/dependencies/auth.py
@@ -2748,7 +2748,7 @@ get_current_user_or_none = auth_service.current_user_dependency(soft=True)
     )
     ```
 
-    Full SSE walkthrough in the [SSE recipe »](sse.md#authentication-cookie-or-query-string).
+    Full SSE walkthrough in the [SSE recipe »](sse.md#authentication).
 
 !!! warning "A token in the URL leaks"
     Query strings land in access logs, browser history and the `Referer` header. Enable `query_param` only over TLS, only with a **short-lived access token** (never a refresh token), and scrub the value from your log format. When the client shares the API's origin, prefer a session cookie (`withCredentials`).

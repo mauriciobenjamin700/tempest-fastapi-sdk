@@ -29,6 +29,12 @@ REFRESH_TOKEN_TYPE: str = "refresh"
 MFA_TOKEN_TYPE: str = "mfa"
 """``typ`` of the token bridging step one and step two of an MFA login."""
 
+STREAM_TOKEN_TYPE: str = "stream"
+"""``typ`` of a short-lived SSE ticket: it opens one event stream and
+authorizes nothing else, so the URL it travels in can leak without
+leaking a session. Minted by the ``POST <prefix>/ticket`` route of
+:func:`~tempest_fastapi_sdk.make_sse_router`."""
+
 
 def token_type_allowed(
     payload: Mapping[str, Any],
@@ -167,6 +173,7 @@ __all__: list[str] = [
     "MFA_TOKEN_TYPE",
     "PASSWORD_AMR",
     "REFRESH_TOKEN_TYPE",
+    "STREAM_TOKEN_TYPE",
     "token_amr",
     "token_type_allowed",
 ]

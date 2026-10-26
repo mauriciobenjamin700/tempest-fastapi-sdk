@@ -34,6 +34,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `UserAuthService.sse_router(broker)` e `make_sse_router`: stream SSE
+  autenticado pronto. O `EventSource` do browser não manda header, então o
+  stream guardado por `current_user_dependency()` respondia `401` a todo
+  cliente de browser logo depois de um login que deu certo — e a saída
+  documentada, `query_param="access_token"`, punha na URL um token que vale
+  para a API inteira. O router monta `POST <prefix>/ticket` (sessão por
+  header ou cookie, conta ativa) e `GET <prefix>/stream?ticket=`. O ticket é
+  um JWT `typ="stream"` de 60 s com o canal no claim `ch`; nenhuma dependency
+  bearer do SDK aceita esse `typ`. O stream também aceita
+  `Authorization: Bearer` e o cookie do login; `?access_token=` só com
+  `allow_access_token_query=True`, para migrar cliente existente. Novos:
+  `STREAM_TOKEN_TYPE`, `SSETicketResponseSchema`, `DEFAULT_SSE_TICKET_TTL`,
+  `SSE_CHANNEL_CLAIM`, `SSE_TICKET_ERROR`.
+- O stream não segura sessão de banco: guardado por
+  `current_user_dependency(session_dependency=...)`, cada cliente conectado
+  mantinha uma sessão aberta até o disconnect (medido no fastapi 0.141.1),
+  porque a sessão da request só fecha quando a resposta termina. O router
+  carrega o usuário numa sessão própria, fechada antes do stream, e o
+  caminho do ticket não abre sessão.
 - `ServerSettings.SERVER_PUBLIC_SCHEME` (`""`, `"http"`, `"https"`) e
   `PublicSchemeMiddleware`: atrás de um proxy que termina o TLS, toda URL
   absoluta saía `http://` — o `action` do formulário de login do admin

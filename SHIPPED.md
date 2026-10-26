@@ -601,7 +601,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (per-channel fan-out; `SSEBroker.response(channel)` bundles
   register + response + unregister-on-disconnect; in-memory
   single-process, or multi-worker via an injected Redis pub/sub bridge
-  — same call site).
+  — same call site). Authenticated stream for the browser `EventSource`:
+  `UserAuthService.sse_router(broker)` / `make_sse_router` mount
+  `POST <prefix>/ticket` + `GET <prefix>/stream?ticket=` — a 60 s
+  `typ="stream"` JWT carrying the channel, refused by every bearer guard;
+  header and login cookie also open the stream, `?access_token=` only behind
+  `allow_access_token_query=True`; no DB session held while streaming.
 - **Throttle** — `AttemptThrottle` (any `ThrottleBackend`, e.g.
   `redis.asyncio.Redis`) and, since v0.306.0, the bundled
   `InMemoryThrottleBackend` (process-local, `clock=` injectable for
