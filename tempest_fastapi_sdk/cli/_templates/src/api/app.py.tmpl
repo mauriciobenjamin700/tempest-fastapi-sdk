@@ -13,6 +13,7 @@ from tempest_fastapi_sdk import (
     AdminSite,
 @@endif@@
     AlembicHelper,
+    PublicSchemeMiddleware,
     RequestIDMiddleware,
 @@if admin@@
     UserModelAuthBackend,
@@ -74,6 +75,10 @@ def create_app() -> FastAPI:
     ``make_logs_router`` refuses an empty secret, and the generated
     ``.env.example`` ships ``TOKEN_SECRET=`` empty. Fill it with
     ``uv run tempest secrets init`` to get the endpoint.
+
+    ``PublicSchemeMiddleware`` is added last so it runs first: every
+    layer below builds URLs in ``SERVER_PUBLIC_SCHEME``. Empty (the
+    default) keeps the connection's scheme.
 @@if admin@@
 
     The admin panel needs the ``[admin]`` extra and a ``UserModel`` row
@@ -93,6 +98,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(RequestIDMiddleware)
     apply_cors(app, settings)
+    app.add_middleware(PublicSchemeMiddleware, scheme=settings.SERVER_PUBLIC_SCHEME)
     register_exception_handlers(app)
 
     app.include_router(

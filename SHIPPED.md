@@ -3827,3 +3827,16 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   para o browser não servir a folha antiga depois de um upgrade. Validado em
   browser real (1440 e 390, burger, criação, busca, lens, dark mode). Testes:
   `tests/admin/test_display.py`.
+- **Scheme público atrás de proxy, Unreleased** — `ServerSettings` ganha
+  `SERVER_PUBLIC_SCHEME` e `api/middlewares/public_scheme.py` o
+  `PublicSchemeMiddleware`, que carimba `scope["scheme"]` (`ws`/`wss` no
+  websocket, `lifespan` intocado). Declarado em vez de lido de
+  `X-Forwarded-Proto` porque porta publicada deixa forjar header encaminhado.
+  Veio do `alofans-api` (commit `a3f4cb9e`), onde cada serviço tinha a sua
+  cópia; o `transport-backend` não tinha e o login do admin aparecia como não
+  seguro em produção. O `make_admin_router` loga `WARNING` no login servido
+  como `http` em host público com `cookie_secure=True`, e o template do
+  `tempest new` registra o middleware. Receita: `docs/recipes/security.md`.
+  Testes: `tests/api/test_public_scheme_middleware.py`,
+  `tests/admin/test_login_scheme_warning.py`,
+  `tests/settings/test_public_scheme.py`.

@@ -315,6 +315,12 @@ class ServerSettings(BaseAppSettings):
             ``AccessLogMiddleware`` and ``HoneypotBanMiddleware``, and as
             ``trusted_header=`` to ``get_client_ip``. ``X-Forwarded-For``
             and ``Forwarded`` are refused. Default: ``None``.
+        SERVER_PUBLIC_SCHEME (Literal["http", "https", ""]): The scheme the
+            browser uses to reach the service. Pass it as ``scheme=`` to
+            ``PublicSchemeMiddleware`` so every absolute URL the server
+            builds — the admin login form's ``action`` included — comes
+            out in that scheme behind a TLS-terminating proxy. ``""``
+            keeps the connection's scheme. Default: ``""``.
 
     In ``ENV=production`` (see :class:`EnvironmentSettings`)
     ``SERVER_DEBUG`` and ``SERVER_RELOAD`` must be off.
@@ -366,6 +372,21 @@ class ServerSettings(BaseAppSettings):
             "append to them, so their content is client-controlled."
         ),
         examples=[None, "x-real-ip", "cf-connecting-ip"],
+    )
+    SERVER_PUBLIC_SCHEME: Literal["http", "https", ""] = Field(
+        default="",
+        title="Public scheme",
+        description=(
+            "Scheme the browser uses to reach this service. Behind a proxy "
+            "that terminates TLS the app sees ``http``, so every absolute "
+            "URL it builds (``request.url_for``, the admin login form's "
+            "``action``) comes out as ``http://`` and the browser flags "
+            "the password form as not secure. Declared rather than read "
+            "from ``X-Forwarded-Proto`` because a published port lets a "
+            "request skip the proxy and forge forwarded headers. ``''`` "
+            "keeps the connection's scheme (local development)."
+        ),
+        examples=["", "https"],
     )
 
     @field_validator("TRUSTED_IP_HEADER")

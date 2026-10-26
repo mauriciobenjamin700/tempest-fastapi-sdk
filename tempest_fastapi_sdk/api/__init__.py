@@ -157,6 +157,9 @@ from tempest_fastapi_sdk.api.middlewares import (
     PlanRateLimitPolicy as PlanRateLimitPolicy,
 )
 from tempest_fastapi_sdk.api.middlewares import (
+    PublicSchemeMiddleware as PublicSchemeMiddleware,
+)
+from tempest_fastapi_sdk.api.middlewares import (
     QuotaResult as QuotaResult,
 )
 from tempest_fastapi_sdk.api.middlewares import (
@@ -421,6 +424,7 @@ __all__: list[str] = [
     "OIDCTokenVerifier",
     "PlanRateLimitPolicy",
     "PrometheusMiddleware",
+    "PublicSchemeMiddleware",
     "QuotaResult",
     "QuotaStore",
     "RSAWebhookSignatureVerifier",

@@ -1025,6 +1025,14 @@ volta ao padrão.
     `cookie_secure=False`, ciente de que a sessão vai sem `Secure`. Não amarre
     esse flag ao `DEBUG` — ligar debug em produção é pior que o problema original.
 
+!!! warning "O browser diz que o formulário de login não é seguro? É o scheme atrás do proxy"
+    Com HTTPS na frente e o proxy falando HTTP com a app, o `action` do
+    formulário sai `http://...` e o browser marca o campo de senha como não
+    seguro. Declare `SERVER_PUBLIC_SCHEME=https` e adicione o
+    `PublicSchemeMiddleware` — receita em
+    [Segurança](security.md#scheme-publico-atras-de-proxy-server_public_scheme).
+    Enquanto falta, o `GET /admin/login` loga um `WARNING` dizendo isso.
+
 ##### Logar em teste
 
 Como o `POST /admin/login` exige o token do formulário, teste que posta só as credenciais leva `403`. `tempest_fastapi_sdk.testing` faz o que o navegador faz — abre o formulário, lê o hidden (o cookie fica no jar do cliente) e envia:
