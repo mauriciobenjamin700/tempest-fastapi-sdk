@@ -220,8 +220,12 @@ class AdminModel(Generic[ModelT]):
         list_filter (Sequence[FieldRef]): Fields surfaced as filter
             dropdowns; matched via the repository's standard filter
             pipeline.
-        search_fields (Sequence[FieldRef]): String columns searched with
-            ``ILIKE %value%`` via the repository's ``name`` convention.
+        search_fields (Sequence[FieldRef]): Text columns the list's search
+            box (``?q=``) and the export look in. Each word of the term is
+            an escaped, case-insensitive ``ILIKE %word%`` ORed across these
+            columns, and every word must match in some column; ``%`` and
+            ``_`` are literal. The first entry also labels the row in FK
+            selects and autocomplete.
         readonly_fields (Sequence[FieldRef]): Fields locked in the detail
             view.
         ordering (OrderRef | None): Default ordering. Accepts a column

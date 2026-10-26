@@ -83,6 +83,7 @@ from tempest_fastapi_sdk.api.routers.logs import (
 )
 from tempest_fastapi_sdk.db.expressions import escape_like
 from tempest_fastapi_sdk.db.repository import BaseRepository
+from tempest_fastapi_sdk.db.search import like_search_condition
 from tempest_fastapi_sdk.exceptions import AppException
 from tempest_fastapi_sdk.ssr.assets import make_htmx_router
 from tempest_fastapi_sdk.tasks.jobs import (
@@ -97,6 +98,7 @@ from tempest_fastapi_sdk.utils.throttle import (
 )
 
 if TYPE_CHECKING:
+    from sqlalchemy import ColumnElement
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
@@ -1578,6 +1580,7 @@ def make_admin_router(
             page_size=size,
             order_by=order_key,
             ascending=ascending,
+            where=_search_where(admin, q),
         )
 
         columns = admin.resolved_list_display()
@@ -1702,6 +1705,7 @@ def make_admin_router(
             page_size=export_max_rows,
             order_by=order_key,
             ascending=ascending,
+            where=_search_where(admin, q),
         )
         columns = admin.resolved_list_display()
         items = result["items"]
@@ -3046,6 +3050,31 @@ def _localized(value: Any, timezone: tzinfo | None) -> Any:
     return to_display_timezone(value, timezone)
 
 
+def _search_where(admin: Any, q: str) -> ColumnElement[bool] | None:
+    """Build the list search: every word, in any of the ``search_fields``.
+
+    The term used to become ``filters[field] = q`` for each search field —
+    exact equality, and ANDed across fields — so a partial email found
+    nothing and two search fields had to all equal the whole term (#635).
+    It is now
+    :func:`~tempest_fastapi_sdk.db.search.like_search_condition`: each
+    word is an escaped ``ILIKE %word%`` ORed across the fields, and every
+    word must match somewhere. ``%`` and ``_`` in the term are literal.
+    The autocomplete endpoint already searched this way.
+
+    Args:
+        admin (Any): The admin configuration.
+        q (str): The search box.
+
+    Returns:
+        ColumnElement[bool] | None: The condition, or ``None`` when the
+        term is blank or the admin has no ``search_fields``.
+    """
+    if not admin.search_fields:
+        return None
+    return like_search_condition(admin.model, q, admin.search_fields)
+
+
 def _resolve_filters_and_order(
     admin: Any,
     request: Request,
@@ -3056,12 +3085,14 @@ def _resolve_filters_and_order(
     """Build the repository filters + ordering from the request.
 
     Shared by the list view and the export endpoint so both honor the
-    same search / filter / sort semantics.
+    same filter / sort semantics. The free-text search is not a filter:
+    :func:`_search_where` builds it as a ``WHERE`` of its own.
 
     Args:
         admin (Any): The admin configuration.
         request (Request): The inbound request (for filter query params).
-        q (str): Free-text search term.
+        q (str): Free-text search term; unused here, kept so both call
+            sites read the same request in one call.
         sort (str): Requested sort column (validated against the
             sortable columns; ignored otherwise).
         direction (str): ``"asc"`` or ``"desc"``.
@@ -3095,10 +3126,6 @@ def _resolve_filters_and_order(
             filters[field] = (
                 _identity_value(value) if kind == "fk" else _coerce_filter_value(value)
             )
-    if q:
-        for field in admin.search_fields:
-            filters[field] = q
-
     sortable = _sortable_columns(admin)
     if sort and sort in sortable:
         ascending = direction != "desc"

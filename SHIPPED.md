@@ -3858,3 +3858,8 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `image_media_type_field`); o scaffold chama. Testes:
   `tests/storage/test_presign.py`, `tests/storage/test_local_presign.py`,
   `tests/storage/test_presign_live.py` (docker), `tests/api/test_openapi_pruning.py`.
+- **Busca do admin por trecho, Unreleased (#635)** — `?q=` da lista e do
+  export passa por `like_search_condition` (ILIKE escapado por palavra, OR
+  entre `search_fields`, todas as palavras) via `where=` do `paginate`, em vez
+  de `filters[field] = q` (igualdade com AND). Teste:
+  `tests/admin/test_search.py` (8 dos 10 casos falham no código antigo).
