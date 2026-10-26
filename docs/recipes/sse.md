@@ -38,8 +38,9 @@ quando quiser controlar o gerador na mão.
     - **Lifecycle sem boilerplate** — `sse_response(..., on_disconnect=)`,
       `EventStream.response(...)` e `SSEBroker.response(channel)` fecham o
       produtor / desregistram o canal sozinhos quando o cliente cai.
-    - **Auth por query string** pra clientes cookieless (`EventSource`).
-      Veja [Autenticação](#autenticacao-cookie-ou-query-string).
+    - **Auth pra `EventSource`** — o `EventSource` não manda header; o
+      `sse_router` resolve com um ticket de stream. Veja
+      [Autenticação](#autenticacao).
 
 ## Um endpoint SSE
 
@@ -751,112 +752,231 @@ asyncio.run(main())
     RabbitMQ quando ele **já é** sua infra; senão, o Redis (`[cache]`) é menos
     peça móvel.
 
-## Autenticação (cookie ou query string)
+## Autenticação
 
 Aqui mora a pegadinha do SSE: o `EventSource` nativo do navegador **não
 deixa** você mandar header. Nada de `Authorization: Bearer` no handshake.
-Então existem dois caminhos pra autenticar o stream.
+Uma rota de stream guardada pelo `current_user_dependency()` de sempre
+responde `401` para **todo** cliente de browser, mesmo logo depois de um
+login que deu certo.
 
-### Caminho preferido: cookie de sessão
+A saída antiga era pôr o access token na URL (`?access_token=...`). Funciona,
+mas o access token vale para a **API inteira**, e URL vai parar em log de
+acesso, histórico e header `Referer`. O SDK entrega o caminho certo pronto:
+um **ticket de stream**.
 
-Se o front está **na mesma origem** da API, use um cookie `HttpOnly`. O
-navegador o manda sozinho quando você abre com `withCredentials`:
-
-```javascript
-const es = new EventSource("/api/feed", { withCredentials: true });
-```
-
-No backend, guarde o stream com o `current_user_dependency()` do seu
-`UserAuthService` — o mesmo service que o `make_auth_router` usa (veja o
-[recipe de Auth flow](auth-flow.md)). Com `AUTH_TOKEN_DELIVERY` em
-`"cookie"`/`"both"`, ele **auto-deriva** o `cookie_name` do login (o header
-ainda vence quando presente), então não precisa fiar nada:
+### O router pronto: `auth_service.sse_router(...)`
 
 ```python
-# src/api/dependencies/auth.py
-from src.services import auth_service   # sua instância de UserAuthService
-
-current_user = auth_service.current_user_dependency()
-```
-
-!!! check "Por que cookie é melhor"
-    O token some da URL: não vaza em log de acesso, histórico do
-    navegador nem header `Referer`. `HttpOnly` ainda tira o token do
-    alcance de JavaScript (defesa contra XSS). Prefira esse caminho
-    **sempre** que a origem for compartilhada.
-
-### Alternativa cookieless: token na query string
-
-Sem cookie de sessão (front em **outra origem**, app mobile abrindo um
-`EventSource` cru, ambiente onde `withCredentials` não rola), passe o
-**access token** na query string. A partir da v0.135 o
-`current_user_dependency` aceita isso via `query_param`:
-
-```python
-# src/api/dependencies/auth.py
-from src.services import auth_service   # sua instância de UserAuthService
-
-# Ordem de busca: header -> cookie -> query string.
-current_user = auth_service.current_user_dependency(query_param="access_token")
-```
-
-```python
-# src/api/routers/feed.py
-
-from uuid import UUID
-
-from fastapi import APIRouter, Depends
-from starlette.responses import StreamingResponse
+# src/api/app.py
+from fastapi import FastAPI
 
 from tempest_fastapi_sdk import SSEBroker
 
-from src.api.dependencies.auth import current_user
-from src.db.models import UserModel
-
-
-def get_broker() -> SSEBroker:
-    """Return the process-wide broker built at startup."""
-    return broker
-
+from src.services import auth_service   # sua instância de UserAuthService
 
 broker = SSEBroker()
 
 
-router = APIRouter()
-
-
-@router.get("/feed")
-async def feed(
-    user: UserModel = Depends(current_user),      # resolve o JWT da query string
-    broker: SSEBroker = Depends(get_broker),
-) -> StreamingResponse:
-    """Stream autenticado sem cookie — token vem na URL."""
-    return broker.response(str(user.id))
+def create_app() -> FastAPI:
+    """Monta a app com o stream autenticado em /api/sse."""
+    app = FastAPI()
+    app.include_router(auth_service.sse_router(broker), prefix="/api")
+    return app
 ```
 
-No front:
+Isso monta duas rotas:
+
+| Rota | Autentica com | Responde |
+| --- | --- | --- |
+| `POST /api/sse/ticket` | `Authorization: Bearer` ou o cookie do login | `{"ticket": "...", "expires_in": 60}` |
+| `GET /api/sse/stream?ticket=...` | o ticket | o stream SSE no canal `str(user.id)` |
+
+O seu código publica no canal do usuário como sempre —
+`await broker.publish(str(user.id), {...}, event="notice")` — e o evento chega
+no stream que aquele usuário abriu.
+
+No front, peça o ticket com o seu cliente HTTP normal e abra o
+`EventSource` com ele:
 
 ```javascript
-// O access token curto entra na URL — nunca o refresh token.
-const es = new EventSource(`/api/feed?access_token=${accessToken}`);
+async function openEvents(accessToken) {
+  const response = await fetch("/api/sse/ticket", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const { ticket } = await response.json();
+  const events = new EventSource(
+    `/api/sse/stream?ticket=${encodeURIComponent(ticket)}`,
+  );
+  events.onerror = () => {
+    events.close();
+    setTimeout(() => openEvents(accessToken), 1000);
+  };
+  return events;
+}
 ```
 
-!!! danger "Query string vaza — trate o token como descartável"
-    Um token na URL aparece em **log de acesso**, **histórico** e no
-    header **`Referer`**. Regras inegociáveis:
+!!! info "Por que um ticket e não o access token"
+    O ticket é um JWT com `typ="stream"`, assinado com o mesmo segredo do
+    access token, que carrega o canal no claim `ch` e vive **60 segundos**.
+    Toda dependency bearer do SDK (`current_user_dependency`,
+    `make_bearer_token_dependency`) recusa esse `typ`, então um ticket
+    copiado de um log abre **aquele** stream por um minuto e não chama mais
+    nada — nem compra outro ticket. Não é de uso único: dentro desse minuto
+    ele abre o stream quantas vezes for apresentado. Medido em `tests/sse/test_router.py`
+    (`TestTicketIsNotASession`, `TestTicketIssuance`).
 
-    - Só **access token de vida curta** (minutos). **Nunca** o refresh
-      token.
-    - Sempre sobre **TLS** (HTTPS).
-    - Remova o valor do formato de log do seu proxy/servidor.
-    - Renove via um endpoint normal (com header/cookie), não pela query.
+    O canal vem **de dentro** do ticket assinado: o cliente não escolhe em
+    que canal entra, e a rota de stream não abre sessão de banco.
 
-!!! info "Sob o capô: `make_jwt_user_dependency` / `make_bearer_token_dependency`"
-    O `current_user_dependency` embrulha o `make_jwt_user_dependency` (repassando
-    `cookie_name`/`query_param`). Se você **não** tem um `UserAuthService`, chame
-    o factory direto — `make_jwt_user_dependency(jwt, load_user, query_param="access_token")` —
-    ou o `make_bearer_token_dependency(jwt, query_param="access_token")` quando só
-    quer as claims decodificadas. Mesma ordem header → cookie → query.
+!!! warning "Reconexão precisa de ticket novo"
+    O ticket só é conferido quando o stream **abre**: um stream aberto não
+    cai quando o ticket expira (medido: ticket de 1 s, evento publicado 2 s
+    depois chega). Já a reconexão automática do `EventSource` reusa a mesma
+    URL, e depois de 60 s recebe `401`. A especificação HTML manda o
+    navegador *fail the connection* — sem nova tentativa — quando a resposta
+    não é `200`, por isso o `onerror` acima fecha, pede um ticket novo e
+    reabre.
+
+!!! check "Conta desativada para na hora"
+    O `POST /ticket` passa pela mesma checagem de conta ativa do
+    `current_user_dependency`: conta desativada recebe `403`
+    `ACCOUNT_INACTIVE` e não consegue ticket novo. O stream que ela já tinha
+    aberto segue até a próxima reconexão.
+
+### Cliente que manda header
+
+Cliente que **consegue** mandar header (app mobile, `fetch` com leitura de
+stream) não precisa do ticket: o `GET /stream` também aceita
+`Authorization: Bearer <access token>`, e o cookie do login quando
+`AUTH_TOKEN_DELIVERY` é `"cookie"` ou `"both"`. Header e cookie não vazam
+na URL, então ficam ligados sempre.
+
+### Migrando um cliente que já manda `?access_token=`
+
+Se você já tem um front em produção abrindo
+`/stream?access_token=...`, ligue a compatibilidade enquanto ele migra:
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import SSEBroker
+
+from src.services import auth_service   # sua instância de UserAuthService
+
+broker = SSEBroker()
+
+
+def create_app() -> FastAPI:
+    """Aceita o cliente antigo enquanto o front passa para o ticket."""
+    app = FastAPI()
+    app.include_router(
+        auth_service.sse_router(broker, allow_access_token_query=True),
+        prefix="/api",
+    )
+    return app
+```
+
+O caminho antigo continua conferindo assinatura, `typ="access"` e conta
+ativa — o refresh token não entra. Mas é o access token na URL, valendo para
+a API inteira até expirar: **desligue** quando nenhum cliente mandar mais.
+
+!!! tip "Nenhuma sessão de banco fica presa no stream"
+    Uma sessão por request fecha quando a resposta termina, e uma resposta
+    SSE só termina quando o cliente sai. Guardar o stream com
+    `current_user_dependency(session_dependency=...)` deixava **uma sessão
+    aberta por cliente conectado**, até o disconnect (medido no fastapi
+    0.141.1). O
+    `sse_router` carrega o usuário numa sessão própria que fecha antes do
+    stream começar, e o caminho do ticket nem abre sessão. Medido em
+    `TestStreamHoldsNoSession`.
+
+### Canal, prefixo e validade
+
+```python
+# src/api/app.py
+from datetime import timedelta
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import SSEBroker
+
+from src.db.models import UserModel
+from src.services import auth_service   # sua instância de UserAuthService
+
+broker = SSEBroker()
+
+
+def tenant_channel(user: UserModel) -> str:
+    """Um stream por empresa, não por usuário."""
+    return f"tenant:{user.tenant_id}"
+
+
+def create_app() -> FastAPI:
+    """Stream por tenant em /api/events, com ticket de 30 s."""
+    app = FastAPI()
+    app.include_router(
+        auth_service.sse_router(
+            broker,
+            channel_for=tenant_channel,
+            prefix="/events",
+            ticket_ttl=timedelta(seconds=30),
+        ),
+        prefix="/api",
+    )
+    return app
+```
+
+- `channel_for` — usuário → canal. Default `str(user.id)`.
+- `prefix` / `tag` — onde as rotas montam e a tag no OpenAPI. Default
+  `"/sse"` / `"SSE"`.
+- `ticket_ttl` — validade do ticket. Default `DEFAULT_SSE_TICKET_TTL`
+  (60 s); menos de 1 s levanta `ValueError`.
+- `ticket_param` — nome do parâmetro de query. Default `"ticket"`.
+- `session_dependency`, `strict`, `legacy_claims` — os mesmos do
+  `current_user_dependency`, aplicados ao `POST /ticket`.
+
+O broker pode ser uma factory (`lambda request: request.app.state.broker`)
+quando ele nasce no `create_app`.
+
+### Sem `UserAuthService`: `make_sse_router`
+
+O `sse_router` é o `make_sse_router` com as peças do service já ligadas.
+Com outra auth, passe as peças você mesmo:
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import SSEBroker, make_sse_router
+
+from src.api.dependencies.auth import get_current_user, jwt
+
+broker = SSEBroker()
+
+
+def create_app() -> FastAPI:
+    """Stream autenticado só por ticket."""
+    app = FastAPI()
+    app.include_router(
+        make_sse_router(broker, tokens=jwt, current_user=get_current_user),
+        prefix="/api",
+    )
+    return app
+```
+
+`tokens` é o `JWTUtils` que assina o seu access token, e `current_user` a
+dependency que guarda o `POST /ticket`. Sem `fallback_user`, **só** o ticket
+abre o stream; passe uma dependency *soft* (que devolve `None` em vez de
+levantar) para aceitar também header ou cookie.
+
+!!! info "Sob o capô: `query_param`"
+    O `current_user_dependency`, o `make_jwt_user_dependency` e o
+    `make_bearer_token_dependency` continuam aceitando `query_param=` (busca
+    header → cookie → query string). É a peça que o
+    `allow_access_token_query` usa. Para SSE, prefira o `sse_router`.
 
 ## Alinhado com o tempest-react-sdk
 
@@ -900,5 +1020,5 @@ Pontos de alinhamento:
 - Heartbeat: `heartbeat_seconds` decide **quando**, `heartbeat_event` decide **o quê**. Default é comentário (invisível ao EventSource); passe um `ServerSentEvent` (ou callable, resolvido por batimento) pra um `ping` que o cliente escuta; `None` em `heartbeat_seconds` desliga.
 - Broadcast = `SSEBroker`; `broker.response(channel)` faz register + response + unregister; publique de controllers/tasks/filas com `broker.publish(channel, ...)`; multi-worker = passe um client Redis + suba `broker.run()` no lifespan.
 - Aviso global = `broker.broadcast(...)`: um evento para todos os canais, inclusive nos outros workers (canal reservado `__broadcast__`, já alcançado pelo `PSUBSCRIBE` existente). `local_channels()` lista os canais vivos deste worker.
-- Auth: **cookie** (`cookie_name` + `withCredentials`) na mesma origem; **query string** (`query_param`, só access token curto sobre TLS) pra clientes cookieless.
+- Auth: `auth_service.sse_router(broker)` — `POST /sse/ticket` com a sessão, `GET /sse/stream?ticket=` com o ticket (`typ="stream"`, 60 s, não vale em nenhuma outra rota). Header e cookie também abrem o stream; `?access_token=` só com `allow_access_token_query=True`, para migrar.
 - `tempest-react-sdk` `createEventStream`/`useEventStream` consome com reconnect; `namedEvents` ↔ `publish(event=)`.

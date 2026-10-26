@@ -109,6 +109,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Coroutine, Mapping, Sequence
     from typing import Any, NoReturn
 
+    from fastapi import APIRouter, Request
     from sqlalchemy import CursorResult
 
     from tempest_fastapi_sdk.api.oauth import OAuthUser
@@ -124,6 +125,7 @@ if TYPE_CHECKING:
         BaseUserRefreshTokenModel,
     )
     from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
+    from tempest_fastapi_sdk.sse.broker import SSEBroker
     from tempest_fastapi_sdk.utils.email import EmailUtils
     from tempest_fastapi_sdk.utils.throttle import AttemptThrottle
 
@@ -2460,12 +2462,9 @@ class UserAuthService:
             make_jwt_user_dependency,
         )
 
-        resolved_cookie_name = cookie_name
-        if resolved_cookie_name is None and self.auth_settings.AUTH_TOKEN_DELIVERY in (
-            "cookie",
-            "both",
-        ):
-            resolved_cookie_name = self.auth_settings.AUTH_ACCESS_COOKIE_NAME
+        resolved_cookie_name = (
+            cookie_name if cookie_name is not None else self._access_cookie_name()
+        )
 
         async def load_active_user(
             subject: str | UUID,
@@ -2505,6 +2504,161 @@ class UserAuthService:
             strict=strict,
             legacy_claims=legacy_claims,
             session_dependency=session_dependency or self.db.session_dependency,
+        )
+
+    def _access_cookie_name(self) -> str | None:
+        """Return the access cookie a login set, under a cookie delivery.
+
+        Returns:
+            str | None: ``AUTH_ACCESS_COOKIE_NAME`` when
+            ``AUTH_TOKEN_DELIVERY`` is ``"cookie"`` or ``"both"``, else
+            ``None`` (bearer only).
+        """
+        if self.auth_settings.AUTH_TOKEN_DELIVERY in ("cookie", "both"):
+            return self.auth_settings.AUTH_ACCESS_COOKIE_NAME
+        return None
+
+    def sse_router(
+        self,
+        broker: SSEBroker | Callable[[Request], SSEBroker],
+        *,
+        session_dependency: Callable[..., Any] | None = None,
+        strict: bool = False,
+        legacy_claims: Collection[str] = (),
+        allow_access_token_query: bool = False,
+        access_token_param: str = "access_token",
+        channel_for: Callable[[Any], str] | None = None,
+        prefix: str = "/sse",
+        tag: str = "SSE",
+        ticket_ttl: timedelta | None = None,
+        ticket_param: str = "ticket",
+    ) -> APIRouter:
+        """Build the authenticated SSE router for this service's users.
+
+        Wires :func:`~tempest_fastapi_sdk.make_sse_router` to the service:
+        ``POST <prefix>/ticket`` is guarded by
+        :meth:`current_user_dependency` (header or the login cookie, active
+        account), the ticket is signed with this service's ``jwt``, and
+        ``GET <prefix>/stream`` also accepts ``Authorization: Bearer`` for a
+        client that can send it.
+
+        The browser opens the stream in two steps::
+
+            const { ticket } = await api.post("/sse/ticket");
+            const events = new EventSource(`/sse/stream?ticket=${ticket}`);
+
+        ``allow_access_token_query=True`` additionally accepts the access
+        token itself as ``?access_token=`` on the stream — the shape a
+        client written against ``current_user_dependency(query_param=...)``
+        already sends. It exists so that client keeps working while it
+        moves to the ticket; the access token in the URL authorizes every
+        route until it expires, so turn it off once nothing sends it.
+
+        Args:
+            broker (SSEBroker | Callable[[Request], SSEBroker]): The
+                broker, or a factory called with each request.
+            session_dependency (Callable[..., Any] | None): The
+                request-scoped session provider shared with repositories;
+                see :meth:`current_user_dependency`.
+            strict (bool): Refuse access tokens without a type marker; see
+                :meth:`current_user_dependency`.
+            legacy_claims (Collection[str]): Extra claims naming a legacy
+                token's type; see :meth:`current_user_dependency`.
+            allow_access_token_query (bool): Also open the stream with the
+                access token in ``?<access_token_param>=``. ``False``
+                (default) refuses it.
+            access_token_param (str): Query parameter read when
+                ``allow_access_token_query`` is set. Defaults to
+                ``"access_token"``.
+            channel_for (Callable[[Any], str] | None): Maps the user to its
+                broker channel. ``None`` (default) uses ``str(user.id)``.
+            prefix (str): URL prefix. Defaults to ``"/sse"``.
+            tag (str): OpenAPI tag. Defaults to ``"SSE"``.
+            ticket_ttl (timedelta | None): Ticket lifetime. ``None``
+                (default) uses
+                :data:`~tempest_fastapi_sdk.DEFAULT_SSE_TICKET_TTL`.
+            ticket_param (str): Query parameter of the ticket. Defaults to
+                ``"ticket"``.
+
+        Returns:
+            APIRouter: The router, ready for ``app.include_router``.
+
+        Raises:
+            RuntimeError: When the service was created without ``db=``.
+            ValueError: When ``allow_access_token_query`` is set and
+                ``access_token_param`` equals ``ticket_param``, or
+                ``ticket_ttl`` is shorter than one second.
+        """
+        from tempest_fastapi_sdk.api.dependencies.auth import (
+            make_jwt_user_dependency,
+        )
+        from tempest_fastapi_sdk.sse.router import make_sse_router
+
+        db = self.db
+        if db is None:
+            raise RuntimeError(
+                "UserAuthService was created without `db=`; pass an "
+                "AsyncDatabaseManager to use sse_router."
+            )
+        if allow_access_token_query and access_token_param == ticket_param:
+            raise ValueError(
+                "access_token_param and ticket_param must differ: the stream "
+                "reads the ticket first, so the access token would never be "
+                "tried."
+            )
+        current_user = self.current_user_dependency(
+            session_dependency=session_dependency,
+            strict=strict,
+            legacy_claims=legacy_claims,
+        )
+
+        async def load_streaming_user(subject: str | UUID) -> BaseUserModel | None:
+            """Load the active user in a session that closes before the stream.
+
+            A request-scoped session lives until the response ends, and an
+            SSE response ends when the client leaves — so sharing it would
+            hold a database connection for as long as each stream stays
+            open. The user is read here, the session closes, and the
+            stream runs on the detached row (``expire_on_commit=False``).
+
+            Args:
+                subject (str | UUID): The token's ``sub`` claim.
+
+            A subject that resolves to no user — an account deleted after
+            the token was issued — is ``None`` too, so the stream answers
+            the same ``401`` as any unusable credential instead of a
+            ``404`` that tells a token holder which ids exist.
+
+            Returns:
+                BaseUserModel | None: The user, or ``None`` when inactive or
+                gone.
+            """
+            try:
+                async with db.get_session_context() as session:
+                    user = await self.get_user(subject, session)
+            except NotFoundException:
+                return None
+            return user if user.is_active else None
+
+        fallback_user = make_jwt_user_dependency(
+            self.jwt,
+            load_streaming_user,
+            soft=True,
+            cookie_name=self._access_cookie_name(),
+            query_param=access_token_param if allow_access_token_query else None,
+            strict=strict,
+            legacy_claims=legacy_claims,
+        )
+        return make_sse_router(
+            broker,
+            tokens=self.jwt,
+            current_user=current_user,
+            fallback_user=fallback_user,
+            channel_for=channel_for,
+            prefix=prefix,
+            tag=tag,
+            ticket_ttl=ticket_ttl,
+            ticket_param=ticket_param,
         )
 
     def inactive_account_error(self) -> ForbiddenException:

@@ -1695,6 +1695,15 @@ if TYPE_CHECKING:
         read_project_version as read_project_version,
     )
     from tempest_fastapi_sdk.sse import (
+        DEFAULT_SSE_TICKET_TTL as DEFAULT_SSE_TICKET_TTL,
+    )
+    from tempest_fastapi_sdk.sse import (
+        SSE_CHANNEL_CLAIM as SSE_CHANNEL_CLAIM,
+    )
+    from tempest_fastapi_sdk.sse import (
+        SSE_TICKET_ERROR as SSE_TICKET_ERROR,
+    )
+    from tempest_fastapi_sdk.sse import (
         EventStream as EventStream,
     )
     from tempest_fastapi_sdk.sse import (
@@ -1708,6 +1717,12 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.sse import (
         SSEData as SSEData,
+    )
+    from tempest_fastapi_sdk.sse import (
+        SSETicketResponseSchema as SSETicketResponseSchema,
+    )
+    from tempest_fastapi_sdk.sse import (
+        make_sse_router as make_sse_router,
     )
     from tempest_fastapi_sdk.sse import (
         sse_response as sse_response,
@@ -1822,6 +1837,9 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.utils import (
         SNIFFABLE_MIMETYPES as SNIFFABLE_MIMETYPES,
+    )
+    from tempest_fastapi_sdk.utils import (
+        STREAM_TOKEN_TYPE as STREAM_TOKEN_TYPE,
     )
     from tempest_fastapi_sdk.utils import (
         UF as UF,
@@ -2793,6 +2811,11 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "OverflowPolicy": "tempest_fastapi_sdk.sse",
     "ServerSentEvent": "tempest_fastapi_sdk.sse",
     "SSEBroker": "tempest_fastapi_sdk.sse",
+    "DEFAULT_SSE_TICKET_TTL": "tempest_fastapi_sdk.sse",
+    "SSE_CHANNEL_CLAIM": "tempest_fastapi_sdk.sse",
+    "SSE_TICKET_ERROR": "tempest_fastapi_sdk.sse",
+    "SSETicketResponseSchema": "tempest_fastapi_sdk.sse",
+    "make_sse_router": "tempest_fastapi_sdk.sse",
     "SSEData": "tempest_fastapi_sdk.sse",
     "sse_response": "tempest_fastapi_sdk.sse",
     "AsyncMinIOClient": "tempest_fastapi_sdk.storage",
@@ -2829,6 +2852,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "PHONE_BR_PATTERN": "tempest_fastapi_sdk.utils",
     "PPTX_MEDIA_TYPE": "tempest_fastapi_sdk.utils",
     "REFRESH_TOKEN_TYPE": "tempest_fastapi_sdk.utils",
+    "STREAM_TOKEN_TYPE": "tempest_fastapi_sdk.utils",
     "REQUEST_ID_HEADER": "tempest_fastapi_sdk.utils",
     "SNIFFABLE_MIMETYPES": "tempest_fastapi_sdk.utils",
     "UF": "tempest_fastapi_sdk.utils",
@@ -3092,6 +3116,7 @@ __all__: list[str] = [
     "DEFAULT_REVISION_HOOKS",
     "DEFAULT_SPA_CONTENT_SECURITY_POLICY",
     "DEFAULT_SPA_SECURITY_HEADERS",
+    "DEFAULT_SSE_TICKET_TTL",
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "DEFAULT_SYNC_WATERMARK_LAG",
     "DEFAULT_WEBHOOK_BACKOFF_SECONDS",
@@ -3130,8 +3155,11 @@ __all__: list[str] = [
     "SIGNUP_PROTECTED_FIELDS",
     "SIGNUP_THROTTLED_MESSAGE",
     "SNIFFABLE_MIMETYPES",
+    "SSE_CHANNEL_CLAIM",
+    "SSE_TICKET_ERROR",
     "STALE_WEBHOOK_ERROR",
     "STATIC_CREDENTIAL_NAMESPACE",
+    "STREAM_TOKEN_TYPE",
     "SUPPORTED_LOCALES",
     "UF",
     "UPLOAD_READ_CHUNK_BYTES",
@@ -3484,6 +3512,7 @@ __all__: list[str] = [
     "RevenueCatSettings",
     "SSEBroker",
     "SSEData",
+    "SSETicketResponseSchema",
     "SameSite",
     "SchemaSyncOutcome",
     "ServerErrorCallback",
@@ -3697,6 +3726,7 @@ __all__: list[str] = [
     "make_session_user_dependency",
     "make_signed_path_dependency",
     "make_spa_router",
+    "make_sse_router",
     "make_token_dependency",
     "make_tool_spec_router",
     "make_unhandled_exception_handler",

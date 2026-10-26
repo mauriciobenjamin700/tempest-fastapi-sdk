@@ -440,6 +440,9 @@ if TYPE_CHECKING:
         REFRESH_TOKEN_TYPE as REFRESH_TOKEN_TYPE,
     )
     from tempest_fastapi_sdk.utils.token_types import (
+        STREAM_TOKEN_TYPE as STREAM_TOKEN_TYPE,
+    )
+    from tempest_fastapi_sdk.utils.token_types import (
         token_amr as token_amr,
     )
     from tempest_fastapi_sdk.utils.token_types import (
@@ -620,6 +623,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "MFA_TOKEN_TYPE": "tempest_fastapi_sdk.utils.token_types",
     "PASSWORD_AMR": "tempest_fastapi_sdk.utils.token_types",
     "REFRESH_TOKEN_TYPE": "tempest_fastapi_sdk.utils.token_types",
+    "STREAM_TOKEN_TYPE": "tempest_fastapi_sdk.utils.token_types",
     "token_amr": "tempest_fastapi_sdk.utils.token_types",
     "token_type_allowed": "tempest_fastapi_sdk.utils.token_types",
     "TOTPHelper": "tempest_fastapi_sdk.utils.totp",
@@ -712,6 +716,7 @@ __all__: list[str] = [
     "SIGNED_URL_EXPIRES_PARAM",
     "SIGNED_URL_SIGNATURE_PARAM",
     "SNIFFABLE_MIMETYPES",
+    "STREAM_TOKEN_TYPE",
     "UF",
     "UPLOAD_READ_CHUNK_BYTES",
     "XLSX_MEDIA_TYPE",
