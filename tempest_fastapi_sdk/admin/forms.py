@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import JSON
 from sqlalchemy import inspect as sa_inspect
 
+from tempest_fastapi_sdk.admin.display import humanize_field
 from tempest_fastapi_sdk.utils.password import PasswordUtils, check_password_policy
 
 _DEFAULT_PASSWORD_COLUMN: str = "hashed_password"
@@ -81,18 +82,6 @@ class FormField:
     display_label: str = ""
 
 
-def _label(name: str) -> str:
-    """Humanize a column key into a form label.
-
-    Args:
-        name (str): The column key.
-
-    Returns:
-        str: Title-cased label.
-    """
-    return name.replace("_", " ").strip().title()
-
-
 def _password_label(name: str) -> str:
     """Label a password box by what the operator types, not by the column.
 
@@ -107,7 +96,7 @@ def _password_label(name: str) -> str:
     Returns:
         str: The label to render.
     """
-    return _label(name.removeprefix("hashed_"))
+    return humanize_field(name.removeprefix("hashed_"))
 
 
 def _python_type(column: Column[Any]) -> type:
@@ -153,7 +142,7 @@ def _widget_for(
         return (
             "select",
             None,
-            [(str(member.value), _label(member.name)) for member in py],
+            [(str(member.value), humanize_field(member.name)) for member in py],
         )
     if py is int:
         return ("number", "1", [])
@@ -357,7 +346,7 @@ def build_form_fields(
         if column is None:
             continue
         py = _python_type(column)
-        label = _label(name)
+        label = humanize_field(name)
         widget, step, options = _widget_for(column, py)
         is_autocomplete = name in admin.autocomplete_fields
         if is_autocomplete:
@@ -507,12 +496,12 @@ def parse_submission(
             try:
                 data[name] = _json.loads(str(raw))
             except (ValueError, TypeError):
-                errors[name] = f"Invalid JSON for {_label(name)}."
+                errors[name] = f"Invalid JSON for {humanize_field(name)}."
             continue
         try:
             coerced = _coerce_scalar(py, str(raw))
         except (ValueError, TypeError, KeyError):
-            errors[name] = f"Invalid value for {_label(name)}."
+            errors[name] = f"Invalid value for {humanize_field(name)}."
             continue
         if (
             widget == "datetime"

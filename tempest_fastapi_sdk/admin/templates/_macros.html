@@ -1,0 +1,11 @@
+{% macro cell(value, full=false) -%}
+{%- set view = value | cell -%}
+{%- if view.kind == 'none' -%}<span class="tempest-admin-value tempest-admin-value--none">{{ view.text }}</span>
+{%- elif view.kind == 'bool' -%}<span class="tempest-admin-badge tempest-admin-badge--{{ view.state }}">{{ view.text }}</span>
+{%- elif view.kind == 'enum' -%}<span class="tempest-admin-badge">{{ view.text }}</span>
+{%- elif view.kind == 'uuid' -%}<code class="tempest-admin-value tempest-admin-value--uuid" title="{{ view.title }}">{{ view.title if full else view.text }}</code>
+{%- elif view.kind == 'datetime' -%}<time class="tempest-admin-value tempest-admin-value--datetime"{% if view.title %} datetime="{{ view.title }}" title="{{ view.title }}"{% endif %}>{{ view.text }}{% if view.suffix %} <small class="tempest-admin-value__tz">{{ view.suffix }}</small>{% endif %}</time>
+{%- elif view.kind == 'number' -%}<span class="tempest-admin-value tempest-admin-value--number">{{ view.text }}</span>
+{%- else -%}{{ view.text }}
+{%- endif -%}
+{%- endmacro %}

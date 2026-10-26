@@ -3,8 +3,10 @@
 {% block content %}
 <section class="tempest-admin-form">
   <header class="tempest-admin-detail__header">
-    <h1>{% if mode == 'create' %}New {{ admin.get_verbose_name() }}{% else %}Edit {{ admin.get_verbose_name() }}{% endif %}</h1>
-    <a href="{{ back_url }}">← Back</a>
+    <div class="tempest-admin-page-title">
+      <a class="tempest-admin-crumb" href="{{ back_url }}">← Back</a>
+      <h1>{% if mode == 'create' %}New {{ admin.get_verbose_name() }}{% else %}Edit {{ admin.get_verbose_name() }}{% endif %}</h1>
+    </div>
   </header>
   {% if form_error %}
   <p class="tempest-admin-form__error">{{ form_error }}</p>
@@ -12,15 +14,15 @@
   <form method="post" action="{{ action_url }}" class="tempest-admin-form__form"{% if admin.upload_fields %} enctype="multipart/form-data"{% endif %}>
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     {% for f in form_fields %}
-    <div class="tempest-admin-form__field{% if f.error %} tempest-admin-form__field--error{% endif %}">
+    <div class="tempest-admin-form__field tempest-admin-form__field--{{ f.widget }}{% if f.error %} tempest-admin-form__field--error{% endif %}">
       {% if f.widget == 'checkbox' %}
-      <label class="tempest-admin-form__check">
+      <label class="tempest-admin-form__check tempest-admin-switch">
         <input type="checkbox" name="{{ f.name }}" value="true" {% if f.checked %}checked{% endif %}>
         <span>{{ f.label }}</span>
       </label>
       {% else %}
       <label>
-        <span>{{ f.label }}{% if f.required %} *{% endif %}</span>
+        <span class="tempest-admin-form__label">{{ f.label }}{% if f.required %} <abbr class="tempest-admin-form__req" title="required">*</abbr>{% endif %}</span>
         {% if f.widget == 'textarea' %}
         <textarea name="{{ f.name }}" rows="4" {% if f.required %}required{% endif %}>{{ f.value }}</textarea>
         {% elif f.widget == 'json' %}
@@ -70,8 +72,8 @@
     </div>
     {% endfor %}
     <div class="tempest-admin-form__actions">
-      <button type="submit">{% if mode == 'create' %}Create{% else %}Save{% endif %}</button>
-      <a href="{{ back_url }}" class="tempest-admin-form__cancel">Cancel</a>
+      <a href="{{ back_url }}" class="tempest-admin-btn tempest-admin-btn--ghost tempest-admin-form__cancel">Cancel</a>
+      <button type="submit" class="tempest-admin-btn">{% if mode == 'create' %}Create{% else %}Save{% endif %}</button>
     </div>
   </form>
 </section>

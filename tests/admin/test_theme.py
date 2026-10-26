@@ -22,7 +22,7 @@ class TestAdminThemeUnit:
     def test_default_is_a_noop_block(self) -> None:
         css = AdminTheme().to_css()
         assert "--tempest-accent: #2563eb;" in css
-        assert "--tempest-bg: #0f172a;" in css
+        assert "--tempest-bg: #ffffff;" in css
         # No font / dark-mode rules unless asked for.
         assert "font-family" not in css
         assert "--tempest-page-bg" not in css

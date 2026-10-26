@@ -287,7 +287,7 @@ async def test_list_sort_by_name_desc_orders_rows(
     # Descending: widget-2 must appear before widget-0 in the markup.
     assert response.text.index("widget-2") < response.text.index("widget-0")
     # Active descending arrow rendered.
-    assert "▼" in response.text
+    assert "↓" in response.text
 
 
 @pytest.mark.asyncio

@@ -2,8 +2,16 @@
 {% block title %}Sign in · {{ site.title }}{% endblock %}
 {% block content %}
 <section class="tempest-admin-login">
+  <div class="tempest-admin-login__brand">
+    {% if site.theme.logo_url %}
+    <img src="{{ site.theme.logo_url }}" alt="{{ site.theme.logo_alt }}" class="tempest-admin-login__logo">
+    {% else %}
+    <span class="tempest-admin-mark tempest-admin-mark--lg" aria-hidden="true">{{ site.brand_text[:1] }}</span>
+    <span>{{ site.brand_text }}</span>
+    {% endif %}
+  </div>
   <h1>Sign in</h1>
-  <p>{{ site.index_subtitle }}</p>
+  <p class="tempest-admin-login__subtitle">{{ site.index_subtitle }}</p>
   {% if error %}
   <p class="tempest-admin-login__error" role="alert">{{ error }}</p>
   {% endif %}
@@ -17,7 +25,7 @@
       <span>Password</span>
       <input type="password" name="password" autocomplete="current-password" required>
     </label>
-    <button type="submit">Sign in</button>
+    <button type="submit" class="tempest-admin-btn tempest-admin-btn--block">Sign in</button>
   </form>
 </section>
 {% endblock %}

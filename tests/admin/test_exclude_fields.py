@@ -334,7 +334,7 @@ class TestSurfaces:
             page = await client.get(f"/admin/m/{DEVICES}/{panel.device_id}")
 
         assert page.status_code == 200
-        assert "platform" in page.text
+        assert "Platform" in page.text
         _assert_hidden(page.text)
 
     async def test_edit_form(self, panel: Panel) -> None:

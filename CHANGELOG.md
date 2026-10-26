@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- O painel admin ganhou um visual novo (`admin.css` reescrito sobre tokens):
+  header e sidebar claros com a marca à esquerda, cards de métrica com
+  hierarquia, tabela compacta com rolagem horizontal própria, badges para
+  booleanos, form em grid com checkbox em switch, login centralizado com a
+  marca. As classes `tempest-admin-*` existentes continuam; um
+  `custom_css_url` que sobrescrevia cores fixas do header escuro precisa ser
+  revisto.
+- `AdminTheme`: `header_bg` passa de `"#0f172a"` para `"#ffffff"` e `radius`
+  de `"6px"` para `"8px"`. Com um `header_bg`/`sidebar_bg` hex escuro, o
+  texto do chrome passa a claro sozinho (luminância WCAG); cor que não é hex
+  é tratada como escura. `dark_mode=True` agora escurece também os cards e o
+  chrome, enquanto `header_bg` for o padrão.
+- Lista, detalhe e histórico mostram o nome da coluna humanizado
+  (`customer_email` → `Customer email`, `category_id` → `Category`, `id` →
+  `ID`) e formatam o valor: booleano em badge `Yes`/`No`, UUID nos 8 primeiros
+  caracteres com o valor inteiro no `title` (o detalhe mostra inteiro),
+  datetime ao minuto com o offset compacto (`UTC`, `-03:00`) e o instante
+  completo no `title`, `Enum` pelo nome. Export e o `value` do form não mudam.
+- Os rótulos do form seguem a mesma regra (`Price Cents` → `Price cents`,
+  `Category Id` → `Category`).
+- O plural padrão do `verbose_name` segue o inglês regular: `Category` →
+  `Categories`, `Address` → `Addresses` (antes, sempre `+ "s"`).
+
+### Added
+
+- `AdminTheme(header_fg=...)` fixa a cor do texto do header e da sidebar
+  quando o palpite pela luminância erra.
+
+### Fixed
+
+- O `admin.css` é servido com `?v=<sha256[:12]>` do arquivo: depois de um
+  upgrade, o browser que tinha a folha antiga em cache desenhava o markup novo
+  com as regras velhas.
+- Cards do dashboard imprimiam `17.0` para contagens vindas de
+  `MetricPartition`/`MetricTrend` em float; inteiro sai sem `.0`.
+- Com `dark_mode=True`, cards, tabelas e dropdowns ficavam brancos
+  (`--tempest-surface` não era sobrescrito).
+
 ## [0.330.0] — 2026-10-25
 
 ### Added

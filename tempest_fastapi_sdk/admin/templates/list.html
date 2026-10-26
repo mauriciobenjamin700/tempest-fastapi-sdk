@@ -1,10 +1,19 @@
 {% extends "base.html" %}
+{% from "_macros.html" import cell %}
 {% block title %}{{ admin.get_verbose_name_plural() }} · {{ site.title }}{% endblock %}
 {% block content %}
 <section class="tempest-admin-list">
   <header class="tempest-admin-list__header">
-    <h1>{{ admin.get_verbose_name_plural() }}</h1>
-    <p>{{ pagination.total }} record{{ pagination.total|pluralize }}.</p>
+    <div class="tempest-admin-page-title">
+      <h1>{{ admin.get_verbose_name_plural() }}</h1>
+      <span class="tempest-admin-count">{{ pagination.total }} record{{ pagination.total|pluralize }}</span>
+    </div>
+    <div class="tempest-admin-list__actions">
+      <a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='csv') }}{% if export_query %}?{{ export_query }}{% endif %}">Export CSV</a>
+      <a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='json') }}{% if export_query %}?{{ export_query }}{% endif %}">Export JSON</a>
+      {% if admin.can_import and admin.can_create %}<a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_import', slug=admin.get_slug()) }}">Import CSV</a>{% endif %}
+      {% if can_create %}<a class="tempest-admin-btn tempest-admin-list__new" href="{{ new_url }}">+ New {{ admin.get_verbose_name() }}</a>{% endif %}
+    </div>
   </header>
   {% if flash %}
   <div class="tempest-admin-flash tempest-admin-flash--{{ flash_cat }}" role="status">{{ flash }}</div>
@@ -37,15 +46,9 @@
       </label>
       {% endfor %}
       {% if admin.search_fields or admin.list_filter %}
-      <button type="submit">Apply</button>
+      <button type="submit" class="tempest-admin-btn tempest-admin-btn--secondary">Apply</button>
       {% endif %}
     </form>
-    <div class="tempest-admin-list__actions">
-      {% if can_create %}<a class="tempest-admin-list__new" href="{{ new_url }}">+ New</a>{% endif %}
-      {% if admin.can_import and admin.can_create %}<a href="{{ url_for('admin_import', slug=admin.get_slug()) }}">Import CSV</a>{% endif %}
-      <a href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='csv') }}{% if export_query %}?{{ export_query }}{% endif %}">Export CSV</a>
-      <a href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='json') }}{% if export_query %}?{{ export_query }}{% endif %}">Export JSON</a>
-    </div>
   </div>
   {% if lens_tabs %}
   <nav class="tempest-admin-lenses" aria-label="Lenses">
@@ -64,7 +67,7 @@
         <option value="{{ value }}">{{ label }}</option>
         {% endfor %}
       </select>
-      <button type="submit">Apply to selected</button>
+      <button type="submit" class="tempest-admin-btn tempest-admin-btn--secondary">Apply to selected</button>
     </div>
   {% endif %}
     <div class="tempest-admin-table-wrap">
@@ -77,26 +80,27 @@
               {% if column in sort_state %}
               {% set state = sort_state[column] %}
               <a class="tempest-sort {% if state.active %}tempest-sort--active{% endif %}" href="{{ state.url }}">
-                <span>{{ column }}</span>
-                <span class="tempest-sort__arrow" aria-hidden="true">{% if state.active %}{% if state.ascending %}▲{% else %}▼{% endif %}{% else %}↕{% endif %}</span>
+                <span>{{ column | field_label }}</span>
+                {% if state.active %}<span class="tempest-sort__arrow" aria-hidden="true">{% if state.ascending %}↑{% else %}↓{% endif %}</span>{% endif %}
               </a>
-              {% else %}{{ column }}{% endif %}
+              {% else %}{{ column | field_label }}{% endif %}
             </th>
             {% endfor %}
-            <th>Actions</th>
+            <th class="tempest-admin-list__rowaction"><span class="tempest-admin-sr">Actions</span></th>
           </tr>
         </thead>
         <tbody>
           {% for row in rows %}
           <tr>
             {% if bulk_actions %}<td class="tempest-admin-list__check"><input type="checkbox" name="ids" value="{{ row.pk }}" data-row-check aria-label="Select row"></td>{% endif %}
-            {% for column in columns %}<td>{{ row.values[column] }}</td>{% endfor %}
-            <td>
-              <a href="{{ url_for('admin_detail', slug=admin.get_slug(), identity=row.identity) }}">View</a>
+            {% set detail_url = url_for('admin_detail', slug=admin.get_slug(), identity=row.identity) %}
+            {% for column in columns %}<td>{% if loop.first %}<a class="tempest-admin-list__primary" href="{{ detail_url }}">{{ cell(row.values[column]) }}</a>{% else %}{{ cell(row.values[column]) }}{% endif %}</td>{% endfor %}
+            <td class="tempest-admin-list__rowaction">
+              <a href="{{ detail_url }}">View</a>
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="{{ ncols }}">No records.</td></tr>
+          <tr><td colspan="{{ ncols }}" class="tempest-admin-empty">No records.</td></tr>
           {% endfor %}
         </tbody>
       </table>
