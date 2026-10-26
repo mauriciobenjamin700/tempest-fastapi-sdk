@@ -92,6 +92,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A busca da lista do admin (`?q=`) e o export comparavam o termo por
+  **igualdade** em cada `search_fields` e exigiam que **todos** fossem iguais
+  ao termo inteiro — `cliente1` não achava `cliente1@mail.com`, e um segundo
+  campo de busca fazia toda busca voltar vazia (#635). Agora cada palavra é
+  um `ILIKE %palavra%` escapado, em OR entre os campos, e toda palavra
+  precisa casar em algum (`like_search_condition`, o mesmo do autocomplete);
+  `%` e `_` são literais.
 - O `admin.css` é servido com `?v=<sha256[:12]>` do arquivo: depois de um
   upgrade, o browser que tinha a folha antiga em cache desenhava o markup novo
   com as regras velhas.
