@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import logging
@@ -39,6 +40,12 @@ from tempest_fastapi_sdk.admin.config import AdminModel, Inline
 from tempest_fastapi_sdk.admin.dashboard import (
     MetricPartition,
     MetricTrend,
+)
+from tempest_fastapi_sdk.admin.display import (
+    cell_view,
+    format_number,
+    humanize_field,
+    short_identity,
 )
 from tempest_fastapi_sdk.admin.forms import (
     FormField,
@@ -136,6 +143,25 @@ cross-site case never sees the page.
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _STATIC_DIR = Path(__file__).parent / "static"
+STYLESHEET_VERSION_LENGTH: int = 12
+"""Hex characters of the stylesheet digest appended as ``?v=``."""
+
+
+def _stylesheet_version() -> str:
+    """Fingerprint the bundled ``admin.css`` for its URL.
+
+    The stylesheet is served at a fixed path, so a browser that cached it
+    kept the old rules after an SDK upgrade and drew the new markup with
+    them. ``base.html`` appends this digest as ``?v=``; it changes exactly
+    when the file does.
+
+    Returns:
+        str: The first :data:`STYLESHEET_VERSION_LENGTH` hex characters of
+        the file's SHA-256.
+    """
+    digest = hashlib.sha256((_STATIC_DIR / "admin.css").read_bytes()).hexdigest()
+    return digest[:STYLESHEET_VERSION_LENGTH]
+
 
 _SCRIPTS_SUBPATH = "/_ssr"
 """Sub-path, under the admin prefix, where the bundled HTMX is served.
@@ -365,7 +391,12 @@ def make_admin_router(
     )
     login_csrf = AdminLoginCSRF(secret_key, secure=cookie_secure, path=prefix)
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+    stylesheet_version = _stylesheet_version()
     templates.env.filters["pluralize"] = _pluralize
+    templates.env.filters["cell"] = cell_view
+    templates.env.filters["field_label"] = humanize_field
+    templates.env.filters["number"] = format_number
+    templates.env.filters["short_identity"] = short_identity
     resolved_mfa_throttle: AttemptThrottle = mfa_throttle or AttemptThrottle(
         InMemoryThrottleBackend(),
         max_attempts=ADMIN_MFA_THROTTLE_MAX_ATTEMPTS,
@@ -535,6 +566,7 @@ def make_admin_router(
         context.setdefault("site", site)
         context.setdefault("messages", [])
         context.setdefault("static_url", f"{prefix}/static")
+        context.setdefault("stylesheet_version", stylesheet_version)
         context.setdefault("htmx_url", f"{prefix}{_SCRIPTS_SUBPATH}/htmx.js")
         context.setdefault(
             "nav_models",

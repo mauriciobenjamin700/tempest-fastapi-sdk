@@ -1,25 +1,28 @@
 {% extends "base.html" %}
-{% block title %}{{ admin.get_verbose_name() }} · {{ identity }}{% endblock %}
+{% from "_macros.html" import cell %}
+{% block title %}{{ admin.get_verbose_name() }} · {{ identity | short_identity }}{% endblock %}
 {% block content %}
 <section class="tempest-admin-detail">
   <header class="tempest-admin-detail__header">
-    <h1>{{ admin.get_verbose_name() }} · {{ identity }}</h1>
+    <div class="tempest-admin-page-title">
+      <a class="tempest-admin-crumb" href="{{ url_for('admin_list', slug=admin.get_slug()) }}">← {{ admin.get_verbose_name_plural() }}</a>
+      <h1>{{ admin.get_verbose_name() }} <code class="tempest-admin-value--uuid" title="{{ identity }}">{{ identity | short_identity }}</code></h1>
+    </div>
     <div class="tempest-admin-detail__actions">
-      <a href="{{ url_for('admin_list', slug=admin.get_slug()) }}">← Back to list</a>
       {% if can_edit %}<a class="tempest-admin-btn" href="{{ edit_url }}">Edit</a>{% endif %}
       {% if can_delete %}
       <form method="post" action="{{ delete_url }}" class="tempest-admin-detail__delete" onsubmit="return confirm('Delete this record? This cannot be undone.');">
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-        <button type="submit" class="tempest-admin-btn--danger">Delete</button>
+        <button type="submit" class="tempest-admin-btn tempest-admin-btn--danger">Delete</button>
       </form>
       {% endif %}
     </div>
   </header>
   <dl class="tempest-admin-detail__fields">
     {% for column, value in fields %}
-    <dt>{{ column }}</dt>
+    <dt>{{ column | field_label }}</dt>
     <dd>
-      {% if value is none %}<em>—</em>{% elif column in json_columns %}<pre class="tempest-admin-detail__json">{{ value }}</pre>{% else %}{{ value }}{% endif %}
+      {% if value is not none and column in json_columns %}<pre class="tempest-admin-detail__json">{{ value }}</pre>{% else %}{{ cell(value, full=true) }}{% endif %}
     </dd>
     {% endfor %}
   </dl>
@@ -84,13 +87,13 @@
     <div class="tempest-admin-inline__scroll">
       <table class="tempest-admin-inline__table">
         <thead>
-          <tr>{% for col in inline.columns %}<th>{{ col }}</th>{% endfor %}<th></th></tr>
+          <tr>{% for col in inline.columns %}<th>{{ col | field_label }}</th>{% endfor %}<th></th></tr>
         </thead>
         <tbody>
           {% for row in inline.rows %}
           <tr>
             {% for col, value in row.cells %}
-            <td>{% if value is none %}<em>—</em>{% else %}{{ value }}{% endif %}</td>
+            <td>{{ cell(value) }}</td>
             {% endfor %}
             <td>{% if row.url %}<a href="{{ row.url }}">View</a>{% endif %}</td>
           </tr>
@@ -107,16 +110,16 @@
   {% if audit %}
   <h2 class="tempest-admin-detail__audit-title">Audit</h2>
   <dl class="tempest-admin-detail__fields tempest-admin-detail__audit">
-    <dt>created at</dt>
-    <dd>{% if audit.created_at %}{{ audit.created_at }}{% else %}<em>—</em>{% endif %}</dd>
+    <dt>Created at</dt>
+    <dd>{{ cell(audit.created_at) }}</dd>
     {% if audit.has_actors %}
-    <dt>created by</dt>
+    <dt>Created by</dt>
     <dd>{% if audit.created_by %}{{ audit.created_by }}{% else %}<em>—</em>{% endif %}</dd>
     {% endif %}
-    <dt>updated at</dt>
-    <dd>{% if audit.updated_at %}{{ audit.updated_at }}{% else %}<em>—</em>{% endif %}</dd>
+    <dt>Updated at</dt>
+    <dd>{{ cell(audit.updated_at) }}</dd>
     {% if audit.has_actors %}
-    <dt>updated by</dt>
+    <dt>Updated by</dt>
     <dd>{% if audit.updated_by %}{{ audit.updated_by }}{% else %}<em>—</em>{% endif %}</dd>
     {% endif %}
   </dl>
@@ -130,7 +133,7 @@
       <div class="tempest-admin-history__head">
         <span class="tempest-admin-history__action">{{ entry.action }}</span>
         <span class="tempest-admin-history__meta">
-          {{ entry.at }}{% if entry.actor %} · {{ entry.actor }}{% endif %}
+          {{ cell(entry.at) }}{% if entry.actor %} · {{ entry.actor }}{% endif %}
         </span>
       </div>
       {% if entry.changes %}
@@ -139,7 +142,7 @@
         <tbody>
           {% for change in entry.changes %}
           <tr>
-            <td>{{ change.field }}</td>
+            <td>{{ change.field | field_label }}</td>
             <td>{% if change.before is none %}<em>—</em>{% else %}{{ change.before }}{% endif %}</td>
             <td>{% if change.after is none %}<em>—</em>{% else %}{{ change.after }}{% endif %}</td>
           </tr>

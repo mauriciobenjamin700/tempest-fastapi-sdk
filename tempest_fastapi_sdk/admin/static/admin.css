@@ -1,38 +1,65 @@
+/* Design tokens. AdminTheme overrides the accent, chrome, radius, font and
+   page background through an inline <style> after this file; dark mode
+   overrides the surface tokens. Derived tones use color-mix() so a themed
+   accent or danger color carries into its soft variants. */
 :root {
-  --tempest-bg: #0f172a;
-  --tempest-bg-soft: #1e293b;
+  --tempest-bg: #ffffff;
+  --tempest-bg-soft: #ffffff;
+  --tempest-chrome-fg: #0f172a;
+  --tempest-chrome-fg-soft: #475569;
+  --tempest-sidebar-fg: #0f172a;
+  --tempest-sidebar-fg-soft: #475569;
   --tempest-bg-row: #f8fafc;
   --tempest-bg-row-alt: #f1f5f9;
   --tempest-fg: #0f172a;
-  --tempest-fg-soft: #475569;
+  --tempest-fg-soft: #64748b;
   --tempest-accent: #2563eb;
   --tempest-accent-hover: #1d4ed8;
-  --tempest-accent-soft: rgba(37, 99, 235, 0.1);
+  --tempest-accent-soft: color-mix(in srgb, var(--tempest-accent) 12%, transparent);
   --tempest-danger: #b91c1c;
-  /* Light surface + hairline used by cards / tables / dropdowns on the
-     (light) content area — distinct from the dark sidebar bg vars above.
-     Overridable by AdminTheme for dark mode. */
+  --tempest-danger-soft: color-mix(in srgb, var(--tempest-danger) 10%, transparent);
+  --tempest-success: #15803d;
+  --tempest-success-soft: color-mix(in srgb, var(--tempest-success) 12%, transparent);
+  --tempest-warning: #b45309;
   --tempest-surface: #ffffff;
-  --tempest-border: #e2e8f0;
-  --tempest-radius: 6px;
-  --tempest-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  --tempest-surface-muted: #f8fafc;
+  --tempest-border: #e5e7eb;
+  --tempest-border-strong: #d1d5db;
+  --tempest-radius: 8px;
+  --tempest-radius-lg: calc(var(--tempest-radius) + 4px);
+  --tempest-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --tempest-shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
+  --tempest-header-h: 56px;
+  --tempest-sidebar-w: 240px;
+  --tempest-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
-  font-family: var(--tempest-font, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+  font-family: var(--tempest-font, Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
   font-size: 14px;
+  line-height: 1.5;
   color: var(--tempest-fg);
-  background: var(--tempest-page-bg, #f8fafc);
-  /* Sticky-footer column so the layout (and its sidebar) fills the
-     viewport even when the page content is short. */
+  background: var(--tempest-page-bg, #f6f7f9);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.01em;
+  line-height: 1.25;
 }
 
 a {
@@ -42,173 +69,265 @@ a {
 
 a:hover {
   color: var(--tempest-accent-hover);
-  text-decoration: underline;
 }
 
-button {
-  border: 0;
+code,
+pre {
+  font-family: var(--tempest-mono);
+}
+
+:focus-visible {
+  outline: 2px solid var(--tempest-accent);
+  outline-offset: 2px;
+}
+
+/* ---- Buttons ---- */
+button,
+.tempest-admin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 36px;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--tempest-accent);
+  border-radius: var(--tempest-radius);
   background: var(--tempest-accent);
   color: #fff;
-  padding: 0.5rem 1rem;
-  border-radius: var(--tempest-radius);
-  cursor: pointer;
   font: inherit;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
-button:hover {
+button:hover,
+.tempest-admin-btn:hover {
   background: var(--tempest-accent-hover);
+  border-color: var(--tempest-accent-hover);
+  color: #fff;
+  text-decoration: none;
 }
 
+.tempest-admin-btn--ghost,
+.tempest-admin-btn--secondary {
+  background: var(--tempest-surface);
+  border-color: var(--tempest-border-strong);
+  color: var(--tempest-fg);
+  box-shadow: var(--tempest-shadow);
+}
+
+.tempest-admin-btn--ghost:hover,
+.tempest-admin-btn--secondary:hover {
+  background: var(--tempest-surface-muted);
+  border-color: var(--tempest-border-strong);
+  color: var(--tempest-fg);
+}
+
+.tempest-admin-btn--danger {
+  background: var(--tempest-danger);
+  border-color: var(--tempest-danger);
+  color: #fff;
+}
+
+.tempest-admin-btn--danger:hover {
+  background: color-mix(in srgb, var(--tempest-danger) 85%, #000);
+  border-color: color-mix(in srgb, var(--tempest-danger) 85%, #000);
+}
+
+.tempest-admin-btn--sm {
+  min-height: 30px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.8125rem;
+}
+
+.tempest-admin-btn--block {
+  width: 100%;
+}
+
+/* ---- Inputs ---- */
 input,
 select,
 textarea {
   font: inherit;
-  padding: 0.45rem 0.6rem;
+  color: var(--tempest-fg);
+  min-height: 36px;
+  padding: 0.4rem 0.7rem;
   border-radius: var(--tempest-radius);
-  border: 1px solid #cbd5e1;
-  background: #fff;
+  border: 1px solid var(--tempest-border-strong);
+  background: var(--tempest-surface);
+  box-shadow: var(--tempest-shadow);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--tempest-accent);
+  box-shadow: 0 0 0 3px var(--tempest-accent-soft);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  min-height: 0;
+  box-shadow: none;
+  accent-color: var(--tempest-accent);
+  width: 1rem;
+  height: 1rem;
+}
+
+input[type="file"] {
+  padding: 0.3rem;
+}
+
+/* ---- Header ---- */
 .tempest-admin-header {
-  position: relative;
-  z-index: 20;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  height: var(--tempest-header-h);
   background: var(--tempest-bg);
-  color: #f8fafc;
-  padding: 0.75rem 1.5rem;
+  color: var(--tempest-chrome-fg);
+  border-bottom: 1px solid var(--tempest-border);
+  padding: 0 1.25rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: var(--tempest-shadow);
-}
-
-/* Centered brand — pinned to the middle of the header (i.e. the screen)
-   regardless of the left (burger) / right (nav) cluster widths. */
-.tempest-admin-header__brand {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  text-align: center;
-  pointer-events: none;
-}
-
-.tempest-admin-header__brand a {
-  color: #fff;
-  font-weight: 600;
-  font-size: 1.1rem;
-  pointer-events: auto;
-  display: inline-flex;
-  align-items: center;
-}
-
-/* Logo image (shown instead of the brand text when theme.logo_url is
-   set). Capped to the header height so any aspect ratio fits cleanly. */
-.tempest-admin-header__logo {
-  display: block;
-  max-height: 32px;
-  width: auto;
-}
-
-.tempest-admin-header__nav {
-  display: flex;
-  align-items: center;
   gap: 1rem;
-  color: #cbd5e1;
-}
-
-.tempest-admin-header__nav a {
-  color: #cbd5e1;
-}
-
-.tempest-admin-header__user {
-  font-weight: 500;
-  color: #f1f5f9;
-}
-
-.tempest-admin-header__logout {
-  margin: 0;
-}
-
-.tempest-admin-header__logout button {
-  background: transparent;
-  color: #f1f5f9;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid #475569;
-}
-
-.tempest-admin-header__logout button:hover {
-  background: rgba(255, 255, 255, 0.08);
 }
 
 .tempest-admin-header__left {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  min-width: 0;
 }
 
-/* ---- Layout: persistent sidebar + content ---- */
-.tempest-admin-layout {
-  display: flex;
-  align-items: stretch;
-  flex: 1;            /* fill the viewport so the sidebar is full-height */
+.tempest-admin-header__brand a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--tempest-chrome-fg);
+  font-weight: 600;
+  font-size: 0.975rem;
+  white-space: nowrap;
 }
 
-.tempest-admin-sidebar {
-  flex: 0 0 220px;
-  width: 220px;
-  background: var(--tempest-bg-soft);
-  color: #e2e8f0;
-  padding: 1rem 0.75rem;
+.tempest-admin-header__brand a:hover {
+  color: var(--tempest-chrome-fg);
 }
 
-.tempest-admin-sidebar__nav {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  position: sticky;
-  top: 1rem;
-}
-
-.tempest-admin-sidebar__heading {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #94a3b8;
-  margin: 1rem 0.75rem 0.35rem;
-}
-
-.tempest-admin-sidebar__link {
+.tempest-admin-header__logo {
   display: block;
-  padding: 0.5rem 0.75rem;
-  border-radius: var(--tempest-radius);
-  color: #cbd5e1;
+  max-height: 32px;
+  width: auto;
 }
 
-.tempest-admin-sidebar__link:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
-  text-decoration: none;
-}
-
-.tempest-admin-sidebar__link--active,
-.tempest-admin-sidebar__link--active:hover {
+.tempest-admin-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
   background: var(--tempest-accent);
   color: #fff;
+  font-weight: 700;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  flex: none;
 }
 
-/* Burger toggle (CSS-only, via the hidden checkbox) — mobile only. */
+.tempest-admin-mark--lg {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 1.125rem;
+}
+
+.tempest-admin-header__nav {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--tempest-chrome-fg-soft);
+  font-size: 0.875rem;
+}
+
+.tempest-admin-header__nav a {
+  color: var(--tempest-chrome-fg-soft);
+}
+
+.tempest-admin-header__nav a:hover {
+  color: var(--tempest-chrome-fg);
+}
+
+.tempest-admin-header__user {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--tempest-chrome-fg);
+  font-weight: 500;
+  min-width: 0;
+}
+
+.tempest-admin-header__username {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 16rem;
+}
+
+.tempest-admin-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--tempest-accent-soft);
+  color: var(--tempest-accent);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  flex: none;
+}
+
+.tempest-admin-header__logout {
+  margin: 0;
+}
+
+.tempest-admin-header__logout .tempest-admin-btn--ghost {
+  background: transparent;
+  color: var(--tempest-chrome-fg);
+  border-color: color-mix(in srgb, var(--tempest-chrome-fg) 22%, transparent);
+  box-shadow: none;
+}
+
+.tempest-admin-header__logout .tempest-admin-btn--ghost:hover {
+  background: color-mix(in srgb, var(--tempest-chrome-fg) 8%, transparent);
+}
+
+/* Burger toggle (CSS-only, via the hidden checkbox) — tablet and mobile. */
 .tempest-admin-burger {
   display: none;
   flex-direction: column;
+  justify-content: center;
   gap: 4px;
+  width: 36px;
+  height: 36px;
+  padding: 0 8px;
+  border-radius: var(--tempest-radius);
   cursor: pointer;
-  padding: 0.3rem;
+}
+
+.tempest-admin-burger:hover {
+  background: color-mix(in srgb, var(--tempest-chrome-fg) 8%, transparent);
 }
 
 .tempest-admin-burger span {
   display: block;
-  width: 22px;
   height: 2px;
-  background: #f8fafc;
+  background: var(--tempest-chrome-fg);
   border-radius: 2px;
 }
 
@@ -216,14 +335,170 @@ textarea {
   display: none;
 }
 
+/* ---- Layout: sidebar + content ---- */
+.tempest-admin-layout {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+}
+
+.tempest-admin-sidebar {
+  flex: 0 0 var(--tempest-sidebar-w);
+  width: var(--tempest-sidebar-w);
+  background: var(--tempest-bg-soft);
+  color: var(--tempest-sidebar-fg-soft);
+  border-right: 1px solid var(--tempest-border);
+  padding: 1rem 0.75rem;
+}
+
+.tempest-admin-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tempest-admin-sidebar__heading {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tempest-sidebar-fg-soft);
+  opacity: 0.75;
+  margin: 1.25rem 0.75rem 0.4rem;
+}
+
+.tempest-admin-sidebar__link {
+  display: block;
+  padding: 0.45rem 0.75rem;
+  border-radius: var(--tempest-radius);
+  color: var(--tempest-sidebar-fg-soft);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tempest-admin-sidebar__link:hover {
+  background: color-mix(in srgb, var(--tempest-sidebar-fg) 7%, transparent);
+  color: var(--tempest-sidebar-fg);
+}
+
+.tempest-admin-sidebar__link--active,
+.tempest-admin-sidebar__link--active:hover {
+  background: var(--tempest-accent-soft);
+  color: var(--tempest-accent);
+  font-weight: 600;
+}
+
 .tempest-admin-main {
   flex: 1 1 auto;
   min-width: 0;
-  max-width: 1080px;
-  margin: 2rem auto;
-  padding: 0 1.5rem;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem 2.5rem 1.5rem;
+  display: flex;
+  flex-direction: column;
 }
 
+.tempest-admin-main > section {
+  flex: 1 0 auto;
+}
+
+.tempest-admin-footer {
+  margin-top: 3rem;
+  padding: 1rem 0 0;
+  border-top: 1px solid var(--tempest-border);
+  color: var(--tempest-fg-soft);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+.tempest-admin-sr {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---- Page headers ---- */
+.tempest-admin-page-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.tempest-admin-page-title h1,
+.tempest-admin-dashboard__header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.tempest-admin-page-title h1 code {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.tempest-admin-crumb {
+  color: var(--tempest-fg-soft);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.tempest-admin-crumb:hover {
+  color: var(--tempest-fg);
+}
+
+.tempest-admin-count {
+  color: var(--tempest-fg-soft);
+  font-size: 0.875rem;
+}
+
+.tempest-admin-list__header,
+.tempest-admin-detail__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.tempest-admin-list__header > h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.tempest-admin-list__header > p {
+  margin: 0;
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-list__actions,
+.tempest-admin-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.tempest-admin-detail__delete {
+  margin: 0;
+}
+
+/* ---- Messages ---- */
 .tempest-admin-messages {
   list-style: none;
   padding: 0;
@@ -236,26 +511,70 @@ textarea {
 .tempest-admin-messages__item {
   padding: 0.75rem 1rem;
   border-radius: var(--tempest-radius);
-  border-left: 4px solid var(--tempest-accent);
-  background: #eff6ff;
+  border: 1px solid color-mix(in srgb, var(--tempest-accent) 25%, transparent);
+  background: var(--tempest-accent-soft);
 }
 
 .tempest-admin-messages__item--error {
-  border-left-color: var(--tempest-danger);
-  background: #fef2f2;
+  border-color: color-mix(in srgb, var(--tempest-danger) 25%, transparent);
+  background: var(--tempest-danger-soft);
+  color: var(--tempest-danger);
+}
+
+/* ---- Login / MFA ---- */
+.tempest-admin--guest .tempest-admin-header {
+  display: none;
+}
+
+.tempest-admin--guest .tempest-admin-main {
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 2rem 1rem;
+}
+
+.tempest-admin--guest .tempest-admin-main > section {
+  flex: 0 0 auto;
+}
+
+.tempest-admin--guest .tempest-admin-footer {
+  border-top: 0;
+  margin-top: 1.5rem;
 }
 
 .tempest-admin-login {
-  max-width: 360px;
-  margin: 4rem auto;
-  background: #fff;
-  border-radius: var(--tempest-radius);
+  width: 100%;
+  max-width: 400px;
+  background: var(--tempest-surface);
+  border: 1px solid var(--tempest-border);
+  border-radius: calc(var(--tempest-radius) + 8px);
   padding: 2rem;
-  box-shadow: var(--tempest-shadow);
+  box-shadow: var(--tempest-shadow-lg);
+}
+
+.tempest-admin-login__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 600;
+  font-size: 1.05rem;
+  margin-bottom: 1.75rem;
+}
+
+.tempest-admin-login__logo {
+  max-height: 40px;
+  width: auto;
 }
 
 .tempest-admin-login h1 {
-  margin-top: 0;
+  margin: 0 0 0.35rem;
+  font-size: 1.375rem;
+  font-weight: 600;
+}
+
+.tempest-admin-login > p {
+  margin: 0 0 1.5rem;
+  color: var(--tempest-fg-soft);
 }
 
 .tempest-admin-login__form {
@@ -267,103 +586,359 @@ textarea {
 .tempest-admin-login__form label {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.35rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.tempest-admin-login__form input {
+  width: 100%;
+  min-height: 40px;
+}
+
+.tempest-admin-login__form button {
+  min-height: 40px;
+  margin-top: 0.5rem;
 }
 
 .tempest-admin-login__error {
-  background: #fef2f2;
+  background: var(--tempest-danger-soft);
   color: var(--tempest-danger);
-  padding: 0.75rem 1rem;
+  padding: 0.65rem 0.9rem;
   border-radius: var(--tempest-radius);
+  margin: 0 0 1rem;
+}
+
+/* ---- Tables ---- */
+.tempest-admin-table-wrap {
+  position: relative;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--tempest-surface);
+  border: 1px solid var(--tempest-border);
+  border-radius: var(--tempest-radius-lg);
+  box-shadow: var(--tempest-shadow);
 }
 
 .tempest-admin-dashboard__table,
 .tempest-admin-list__table {
   width: 100%;
   border-collapse: collapse;
-  background: #fff;
-  border-radius: var(--tempest-radius);
+  background: var(--tempest-surface);
+  border-radius: var(--tempest-radius-lg);
   overflow: hidden;
-  box-shadow: var(--tempest-shadow);
+}
+
+.tempest-admin-table-wrap .tempest-admin-list__table,
+.tempest-admin-table-wrap .tempest-admin-dashboard__table {
+  border-radius: 0;
+  overflow: visible;
 }
 
 .tempest-admin-dashboard__table th,
-.tempest-admin-dashboard__table td,
-.tempest-admin-list__table th,
-.tempest-admin-list__table td {
-  padding: 0.75rem 1rem;
+.tempest-admin-list__table th {
+  padding: 0.6rem 1rem;
   text-align: left;
-  border-bottom: 1px solid #e2e8f0;
-  vertical-align: top;
+  background: var(--tempest-surface-muted);
+  border-bottom: 1px solid var(--tempest-border);
+  color: var(--tempest-fg-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
-.tempest-admin-list__table tr:nth-child(even) td {
-  background: var(--tempest-bg-row-alt);
+.tempest-admin-dashboard__table td,
+.tempest-admin-list__table td {
+  padding: 0.65rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--tempest-border);
+  vertical-align: middle;
+  white-space: nowrap;
+  max-width: 28rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
 
-.tempest-admin-list__header {
+.tempest-admin-list__table tbody tr:last-child td,
+.tempest-admin-dashboard__table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.tempest-admin-list__table tbody tr:hover td {
+  background: var(--tempest-surface-muted);
+}
+
+.tempest-admin-list__primary {
+  color: var(--tempest-fg);
+  font-weight: 500;
+}
+
+.tempest-admin-list__primary:hover {
+  color: var(--tempest-accent);
+}
+
+.tempest-admin-list__rowaction {
+  width: 1%;
+  text-align: right !important;
+}
+
+.tempest-admin-list__rowaction a {
+  font-weight: 500;
+}
+
+.tempest-admin-list__check {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.tempest-admin-list__check input {
+  width: 1rem;
+}
+
+.tempest-admin-empty {
+  padding: 3rem 1rem !important;
+  text-align: center !important;
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-list__table th a.tempest-sort {
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+
+.tempest-admin-list__table th a.tempest-sort:hover {
+  color: var(--tempest-fg);
+}
+
+.tempest-sort__arrow {
+  font-size: 0.85em;
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-sort--active,
+.tempest-sort--active .tempest-sort__arrow {
+  color: var(--tempest-accent) !important;
+}
+
+/* ---- Cell values ---- */
+.tempest-admin-value--none {
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-value--uuid {
+  font-family: var(--tempest-mono);
+  font-size: 0.8125rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 6px;
+  background: var(--tempest-surface-muted);
+  border: 1px solid var(--tempest-border);
+  color: var(--tempest-fg);
+  overflow-wrap: anywhere;
+}
+
+.tempest-admin-value__tz {
+  color: var(--tempest-fg-soft);
+  font-size: 0.75em;
+}
+
+.tempest-admin-value--datetime,
+.tempest-admin-value--number {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tempest-admin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.5;
+  background: var(--tempest-surface-muted);
+  border: 1px solid var(--tempest-border);
+  color: var(--tempest-fg);
+  white-space: nowrap;
+}
+
+.tempest-admin-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.6;
+}
+
+.tempest-admin-badge--yes {
+  background: var(--tempest-success-soft);
+  border-color: transparent;
+  color: var(--tempest-success);
+}
+
+.tempest-admin-badge--no {
+  color: var(--tempest-fg-soft);
+}
+
+/* ---- List toolbar, lenses, bulk bar, pagination ---- */
+.tempest-admin-list__toolbar {
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: flex-end;
   justify-content: space-between;
-  align-items: baseline;
   margin-bottom: 1rem;
+}
+
+.tempest-admin-list__toolbar:empty {
+  display: none;
 }
 
 .tempest-admin-list__filters {
   display: flex;
-  gap: 0.75rem;
-  align-items: end;
-  margin-bottom: 1rem;
+  gap: 0.6rem;
+  align-items: flex-end;
   flex-wrap: wrap;
+  margin: 0;
+}
+
+.tempest-admin-list__filters input[type="search"] {
+  min-width: 18rem;
 }
 
 .tempest-admin-list__filters label {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-list__daterange {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.tempest-admin-lenses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0 0 1rem;
+  border-bottom: 1px solid var(--tempest-border);
+}
+
+.tempest-admin-lens {
+  padding: 0.5rem 0.85rem;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--tempest-fg-soft);
+  font-weight: 500;
+}
+
+.tempest-admin-lens:hover {
+  color: var(--tempest-fg);
+}
+
+.tempest-admin-lens--active,
+.tempest-admin-lens--active:hover {
+  color: var(--tempest-accent);
+  border-bottom-color: var(--tempest-accent);
+}
+
+.tempest-admin-bulk {
+  margin: 0;
+}
+
+.tempest-admin-bulk__bar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
 }
 
 .tempest-admin-list__pagination {
   display: flex;
-  gap: 1rem;
+  gap: 0.75rem;
   align-items: center;
-  justify-content: center;
-  margin-top: 1.5rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
   color: var(--tempest-fg-soft);
+  font-size: 0.875rem;
 }
 
+.tempest-admin-list__pagination a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--tempest-border-strong);
+  border-radius: var(--tempest-radius);
+  background: var(--tempest-surface);
+  color: var(--tempest-fg);
+  font-weight: 500;
+}
+
+.tempest-admin-list__pagination a:hover {
+  background: var(--tempest-surface-muted);
+}
+
+/* ---- Detail ---- */
 .tempest-admin-detail__fields {
   display: grid;
-  grid-template-columns: 200px 1fr;
-  gap: 0.5rem 1.5rem;
-  background: #fff;
-  border-radius: var(--tempest-radius);
-  padding: 1.5rem;
+  grid-template-columns: minmax(10rem, 14rem) 1fr;
+  margin: 0;
+  background: var(--tempest-surface);
+  border: 1px solid var(--tempest-border);
+  border-radius: var(--tempest-radius-lg);
   box-shadow: var(--tempest-shadow);
+  overflow: hidden;
+}
+
+.tempest-admin-detail__fields dt,
+.tempest-admin-detail__fields dd {
+  margin: 0;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--tempest-border);
+}
+
+.tempest-admin-detail__fields dt:nth-last-of-type(1),
+.tempest-admin-detail__fields dd:nth-last-of-type(1) {
+  border-bottom: 0;
 }
 
 .tempest-admin-detail__fields dt {
-  font-weight: 600;
+  font-weight: 500;
+  font-size: 0.8125rem;
   color: var(--tempest-fg-soft);
+  background: var(--tempest-surface-muted);
 }
 
 .tempest-admin-detail__fields dd {
-  margin: 0;
   word-break: break-word;
+  font-variant-numeric: tabular-nums;
 }
 
 .tempest-admin-detail__audit-title {
   font-size: 1rem;
-  margin: 1.5rem 0 0.5rem;
-  color: var(--tempest-fg-soft);
+  font-weight: 600;
+  margin: 2rem 0 0.75rem;
 }
 
 .tempest-admin-detail__json {
   margin: 0;
-  padding: 0.5rem 0.75rem;
-  background: var(--tempest-bg-row);
+  padding: 0.6rem 0.8rem;
+  background: var(--tempest-surface-muted);
   border: 1px solid var(--tempest-border);
   border-radius: var(--tempest-radius);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.8rem;
   overflow-x: auto;
 }
@@ -371,23 +946,25 @@ textarea {
 .tempest-admin-history {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 0 0 0.25rem;
   border-left: 2px solid var(--tempest-border);
 }
 
 .tempest-admin-history__item {
   position: relative;
-  padding: 0.5rem 0 1rem 1rem;
+  padding: 0.5rem 0 1rem 1.1rem;
 }
 
 .tempest-admin-history__item::before {
   content: "";
   position: absolute;
-  left: -0.4rem;
-  top: 0.9rem;
+  left: -0.45rem;
+  top: 0.85rem;
   width: 0.6rem;
   height: 0.6rem;
   border-radius: 50%;
+  border: 2px solid var(--tempest-page-bg, #f6f7f9);
+  box-sizing: content-box;
   background: var(--tempest-fg-soft);
 }
 
@@ -405,8 +982,8 @@ textarea {
 .tempest-admin-history__action {
   font-weight: 600;
   text-transform: uppercase;
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
 }
 
 .tempest-admin-history__meta {
@@ -419,12 +996,15 @@ textarea {
   border-collapse: collapse;
   margin-top: 0.5rem;
   font-size: 0.85rem;
+  background: var(--tempest-surface);
+  border: 1px solid var(--tempest-border);
+  border-radius: var(--tempest-radius);
 }
 
 .tempest-admin-history__changes th,
 .tempest-admin-history__changes td {
   text-align: left;
-  padding: 0.25rem 0.5rem;
+  padding: 0.35rem 0.6rem;
   border-bottom: 1px solid var(--tempest-border);
   vertical-align: top;
   word-break: break-word;
@@ -433,12 +1013,79 @@ textarea {
 .tempest-admin-history__changes th {
   color: var(--tempest-fg-soft);
   font-weight: 600;
+  font-size: 0.75rem;
 }
 
 .tempest-admin-history__empty {
   color: var(--tempest-fg-soft);
 }
 
+/* ---- Inlines (related rows on the detail page) ---- */
+.tempest-admin-inline {
+  margin-top: 2rem;
+}
+
+.tempest-admin-inline__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.tempest-admin-inline__header h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.tempest-admin-inline__count {
+  font-weight: 400;
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-inline__scroll {
+  overflow-x: auto;
+  background: var(--tempest-surface);
+  border: 1px solid var(--tempest-border);
+  border-radius: var(--tempest-radius-lg);
+}
+
+.tempest-admin-inline__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.tempest-admin-inline__table th,
+.tempest-admin-inline__table td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--tempest-border);
+  white-space: nowrap;
+}
+
+.tempest-admin-inline__table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.tempest-admin-inline__table th {
+  color: var(--tempest-fg-soft);
+  font-weight: 600;
+  font-size: 0.75rem;
+  background: var(--tempest-surface-muted);
+}
+
+.tempest-admin-inline__form .tempest-admin-form__actions {
+  margin-top: 0.75rem;
+}
+
+.tempest-admin-inline__empty,
+.tempest-admin-inline__more {
+  color: var(--tempest-fg-soft);
+}
+
+/* ---- Autocomplete ---- */
 .tempest-admin-ac {
   position: relative;
 }
@@ -450,12 +1097,13 @@ textarea {
 .tempest-admin-ac__results {
   list-style: none;
   margin: 0.25rem 0 0;
-  padding: 0;
+  padding: 0.25rem;
   border: 1px solid var(--tempest-border);
-  border-radius: var(--tempest-radius, 6px);
+  border-radius: var(--tempest-radius);
   max-height: 12rem;
   overflow-y: auto;
   background: var(--tempest-surface);
+  box-shadow: var(--tempest-shadow-lg);
 }
 
 .tempest-admin-ac__results:empty {
@@ -465,18 +1113,22 @@ textarea {
 .tempest-admin-ac__option {
   display: block;
   width: 100%;
+  min-height: 0;
   text-align: left;
   padding: 0.4rem 0.6rem;
   background: none;
   border: 0;
+  border-radius: calc(var(--tempest-radius) - 2px);
   cursor: pointer;
   color: inherit;
   font: inherit;
+  font-weight: 400;
 }
 
 .tempest-admin-ac__option:hover,
 .tempest-admin-ac__option:focus {
-  background: var(--tempest-accent-soft, rgba(0, 0, 0, 0.06));
+  background: var(--tempest-accent-soft);
+  color: inherit;
 }
 
 .tempest-admin-ac__empty {
@@ -484,95 +1136,75 @@ textarea {
   color: var(--tempest-fg-soft);
 }
 
-.tempest-admin-inline {
-  margin-top: 2rem;
+/* ---- Dashboard ---- */
+.tempest-admin-dashboard__header {
+  margin-bottom: 1.5rem;
 }
 
-.tempest-admin-inline__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.5rem;
-}
-
-.tempest-admin-inline__header h2 {
-  font-size: 1rem;
-  margin: 0;
+.tempest-admin-dashboard__header p {
+  margin: 0.25rem 0 0;
   color: var(--tempest-fg-soft);
 }
 
-.tempest-admin-inline__count {
-  font-weight: 400;
-}
-
-.tempest-admin-inline__scroll {
-  overflow-x: auto;
-}
-
-.tempest-admin-inline__table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-}
-
-.tempest-admin-inline__table th,
-.tempest-admin-inline__table td {
-  text-align: left;
-  padding: 0.4rem 0.6rem;
-  border-bottom: 1px solid var(--tempest-border);
-  white-space: nowrap;
-}
-
-.tempest-admin-inline__table th {
-  color: var(--tempest-fg-soft);
-  font-weight: 600;
-}
-
-.tempest-admin-inline__empty,
-.tempest-admin-inline__more {
-  color: var(--tempest-fg-soft);
-}
-
+.tempest-admin-stats,
 .tempest-admin-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
   gap: 1rem;
-  margin: 1rem 0 2rem;
+  margin: 0 0 1.5rem;
 }
 
+.tempest-admin-stat,
 .tempest-admin-card {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  padding: 1rem 1.1rem;
-  border: 1px solid var(--tempest-border);
-  border-radius: var(--tempest-radius, 8px);
+  gap: 0.4rem;
+  padding: 1.15rem 1.25rem;
   background: var(--tempest-surface);
+  border: 1px solid var(--tempest-border);
+  border-radius: var(--tempest-radius-lg);
+  box-shadow: var(--tempest-shadow);
 }
 
+.tempest-admin-stat__label,
 .tempest-admin-card__label {
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
   color: var(--tempest-fg-soft);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
+.tempest-admin-stat__value,
 .tempest-admin-card__value {
-  font-size: 1.7rem;
-  font-weight: 700;
-  line-height: 1.1;
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .tempest-admin-card__value small {
-  font-size: 0.9rem;
-  font-weight: 400;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-stat__sub,
+.tempest-admin-card__help {
+  font-size: 0.8125rem;
   color: var(--tempest-fg-soft);
 }
 
 .tempest-admin-card__trend {
-  font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  align-self: flex-start;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .tempest-admin-card__trend small {
@@ -580,9 +1212,20 @@ textarea {
   color: var(--tempest-fg-soft);
 }
 
-.tempest-admin-card__trend--up { color: #16a34a; }
-.tempest-admin-card__trend--down { color: #dc2626; }
-.tempest-admin-card__trend--flat { color: var(--tempest-fg-soft); }
+.tempest-admin-card__trend--up {
+  color: var(--tempest-success);
+  background: var(--tempest-success-soft);
+}
+
+.tempest-admin-card__trend--down {
+  color: var(--tempest-danger);
+  background: var(--tempest-danger-soft);
+}
+
+.tempest-admin-card__trend--flat {
+  color: var(--tempest-fg-soft);
+  background: var(--tempest-surface-muted);
+}
 
 .tempest-admin-card__parts {
   list-style: none;
@@ -590,15 +1233,15 @@ textarea {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.45rem;
 }
 
 .tempest-admin-card__parts li {
   display: grid;
-  grid-template-columns: 6rem 1fr auto;
+  grid-template-columns: 6.5rem 1fr 2.5rem;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
+  gap: 0.6rem;
+  font-size: 0.8125rem;
 }
 
 .tempest-admin-card__part-label {
@@ -612,32 +1255,85 @@ textarea {
   display: block;
   height: 0.5rem;
   border-radius: 999px;
-  background: var(--tempest-border);
+  background: var(--tempest-surface-muted);
+  border: 1px solid var(--tempest-border);
   overflow: hidden;
 }
 
 .tempest-admin-card__part-bar span {
   display: block;
   height: 100%;
-  background: var(--tempest-accent, #2563eb);
+  border-radius: 999px;
+  background: var(--tempest-accent);
 }
 
-.tempest-admin-card__help {
-  font-size: 0.8rem;
-  color: var(--tempest-fg-soft);
+.tempest-admin-card__part-value {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
+.tempest-admin-models {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 1rem;
+}
+
+.tempest-admin-model-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.15rem 1.25rem;
+  background: var(--tempest-surface);
+  border: 1px solid var(--tempest-border);
+  border-radius: var(--tempest-radius-lg);
+  box-shadow: var(--tempest-shadow);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tempest-admin-model-card:hover {
+  border-color: color-mix(in srgb, var(--tempest-accent) 40%, var(--tempest-border));
+  box-shadow: var(--tempest-shadow-lg);
+}
+
+.tempest-admin-model-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.tempest-admin-model-card__head h2 {
+  margin: 0;
+  font-size: 0.975rem;
+  font-weight: 600;
+}
+
+.tempest-admin-model-card__count {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--tempest-fg);
+}
+
+.tempest-admin-model-card__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ---- CSV import ---- */
 .tempest-admin-import__result {
   margin: 1rem 0;
 }
 
 .tempest-admin-import__ok {
-  color: #16a34a;
+  color: var(--tempest-success);
   font-weight: 600;
 }
 
 .tempest-admin-import__failed {
-  color: #d97706;
+  color: var(--tempest-warning);
   font-weight: 600;
 }
 
@@ -660,270 +1356,16 @@ textarea {
   margin: 1rem 0 0.5rem;
 }
 
-.tempest-admin-lenses {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0.5rem 0 1rem;
-  border-bottom: 1px solid var(--tempest-border);
-  padding-bottom: 0.5rem;
-}
-
-.tempest-admin-lens {
-  padding: 0.3rem 0.7rem;
-  border-radius: 999px;
-  border: 1px solid var(--tempest-border);
-  color: var(--tempest-fg-soft);
-  text-decoration: none;
-  font-size: 0.85rem;
-}
-
-.tempest-admin-lens:hover {
-  color: inherit;
-}
-
-.tempest-admin-lens--active {
-  background: var(--tempest-accent, #2563eb);
-  border-color: var(--tempest-accent, #2563eb);
-  color: #fff;
-}
-
-.tempest-admin-footer {
-  position: relative;
-  z-index: 20;
-  text-align: center;
-  padding: 2rem 0;
-  color: var(--tempest-fg-soft);
-}
-
-/* List toolbar: search/filters on the left, actions (export) on the right. */
-.tempest-admin-list__toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem 1rem;
-  align-items: flex-end;
-  justify-content: space-between;
-  margin-bottom: 1rem;
-}
-
-.tempest-admin-list__actions {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.tempest-admin-list__actions a {
-  display: inline-block;
-  padding: 0.45rem 0.8rem;
-  border: 1px solid var(--tempest-accent);
-  border-radius: var(--tempest-radius);
-  background: #fff;
-  white-space: nowrap;
-}
-
-.tempest-admin-list__actions a:hover {
-  background: #eff6ff;
-  text-decoration: none;
-}
-
-/* Dashboard: system-metric stat cards + model cards. */
-.tempest-admin-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 1rem;
-  margin: 1.5rem 0;
-}
-
-.tempest-admin-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  background: #fff;
-  border-radius: var(--tempest-radius);
-  padding: 1rem 1.25rem;
-  box-shadow: var(--tempest-shadow);
-}
-
-.tempest-admin-stat__label {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--tempest-fg-soft);
-}
-
-.tempest-admin-stat__value {
-  font-size: 1.6rem;
-  font-weight: 700;
-}
-
-.tempest-admin-stat__sub {
-  font-size: 0.8rem;
-  color: var(--tempest-fg-soft);
-}
-
-.tempest-admin-models {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
-.tempest-admin-model-card {
-  background: #fff;
-  border-radius: var(--tempest-radius);
-  padding: 1rem 1.25rem;
-  box-shadow: var(--tempest-shadow);
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.tempest-admin-model-card__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.tempest-admin-model-card__head h2 {
-  margin: 0;
-  font-size: 1.05rem;
-}
-
-.tempest-admin-model-card__count {
-  font-weight: 700;
-  color: var(--tempest-accent);
-}
-
-.tempest-admin-model-card__actions {
-  display: flex;
-  gap: 1rem;
-}
-
-/* Bulk-action bar above the list table. */
-.tempest-admin-bulk {
-  margin: 0;
-}
-
-.tempest-admin-bulk__bar {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  margin-bottom: 0.75rem;
-}
-
-.tempest-admin-list__check {
-  width: 1%;
-  white-space: nowrap;
-  text-align: center;
-}
-
-.tempest-admin-list__check input {
-  width: auto;
-}
-
-/* Horizontal-scroll wrapper so wide tables never break the layout. */
-.tempest-admin-table-wrap {
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  border-radius: var(--tempest-radius);
-  box-shadow: var(--tempest-shadow);
-}
-
-.tempest-admin-table-wrap .tempest-admin-list__table,
-.tempest-admin-table-wrap .tempest-admin-dashboard__table {
-  box-shadow: none;
-}
-
-/* Sortable column headers. */
-.tempest-admin-list__table th a.tempest-sort {
-  color: inherit;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  white-space: nowrap;
-}
-
-.tempest-admin-list__table th a.tempest-sort:hover {
-  color: var(--tempest-accent);
-  text-decoration: none;
-}
-
-.tempest-sort__arrow {
-  font-size: 0.75em;
-  color: var(--tempest-fg-soft);
-}
-
-.tempest-sort--active .tempest-sort__arrow {
-  color: var(--tempest-accent);
-}
-
-/* Detail header actions (back / edit / delete). */
-.tempest-admin-detail__header {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1rem;
-}
-
-.tempest-admin-detail__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.tempest-admin-detail__delete {
-  margin: 0;
-}
-
-.tempest-admin-btn {
-  display: inline-block;
-  padding: 0.45rem 0.8rem;
-  border: 1px solid var(--tempest-accent);
-  border-radius: var(--tempest-radius);
-  background: #fff;
-}
-
-.tempest-admin-btn:hover {
-  background: #eff6ff;
-  text-decoration: none;
-}
-
-.tempest-admin-btn--danger {
-  background: var(--tempest-danger);
-}
-
-.tempest-admin-btn--danger:hover {
-  background: #991b1b;
-}
-
-/* Scoped under __actions so it beats `.tempest-admin-list__actions a`
-   (otherwise the white action-link background won + white text = invisible). */
-.tempest-admin-list__actions a.tempest-admin-list__new,
-a.tempest-admin-list__new {
-  background: var(--tempest-accent);
-  color: #fff;
-  border-color: var(--tempest-accent);
-}
-
-.tempest-admin-list__actions a.tempest-admin-list__new:hover,
-a.tempest-admin-list__new:hover {
-  background: var(--tempest-accent-hover);
-  color: #fff;
-}
-
-/* Create / edit form. */
+/* ---- Create / edit form ---- */
 .tempest-admin-form__form {
   display: grid;
-  gap: 1rem;
-  max-width: 640px;
-  background: #fff;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.1rem 1.25rem;
+  max-width: 820px;
+  background: var(--tempest-surface);
+  border: 1px solid var(--tempest-border);
   padding: 1.5rem;
-  border-radius: var(--tempest-radius);
+  border-radius: var(--tempest-radius-lg);
   box-shadow: var(--tempest-shadow);
 }
 
@@ -931,17 +1373,34 @@ a.tempest-admin-list__new:hover {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+  min-width: 0;
+}
+
+.tempest-admin-form__field--textarea,
+.tempest-admin-form__field--json,
+.tempest-admin-form__field--file,
+.tempest-admin-form__field--checkbox,
+.tempest-admin-form__actions {
+  grid-column: 1 / -1;
 }
 
 .tempest-admin-form__field > label {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.35rem;
 }
 
-.tempest-admin-form__field > label > span {
-  font-weight: 600;
-  color: var(--tempest-fg-soft);
+.tempest-admin-form__field > label > span,
+.tempest-admin-form__label {
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: var(--tempest-fg);
+}
+
+.tempest-admin-form__req {
+  color: var(--tempest-danger);
+  text-decoration: none;
+  margin-left: 0.1rem;
 }
 
 .tempest-admin-form__field input,
@@ -950,8 +1409,13 @@ a.tempest-admin-list__new:hover {
   width: 100%;
 }
 
+.tempest-admin-form__hint {
+  color: var(--tempest-fg-soft);
+  font-size: 0.8125rem;
+}
+
 .tempest-admin-form__json {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--tempest-mono);
   font-size: 0.85rem;
   white-space: pre;
   overflow-wrap: normal;
@@ -961,11 +1425,57 @@ a.tempest-admin-list__new:hover {
 .tempest-admin-form__check {
   flex-direction: row !important;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
+  cursor: pointer;
 }
 
-.tempest-admin-form__check input {
+.tempest-admin-form__check > span {
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: var(--tempest-fg) !important;
+}
+
+.tempest-admin-form__field .tempest-admin-form__check input {
   width: auto;
+}
+
+/* A form checkbox draws as a switch; it stays a real checkbox, so keyboard
+   and form submission are unchanged. */
+.tempest-admin-switch input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  width: 36px !important;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border-radius: 999px;
+  border: 0;
+  background: var(--tempest-border-strong);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.tempest-admin-switch input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.3);
+  transition: transform 0.15s ease;
+}
+
+.tempest-admin-switch input[type="checkbox"]:checked {
+  background: var(--tempest-accent);
+}
+
+.tempest-admin-switch input[type="checkbox"]:checked::before {
+  transform: translateX(16px);
 }
 
 .tempest-admin-form__field--error input,
@@ -976,63 +1486,71 @@ a.tempest-admin-list__new:hover {
 
 .tempest-admin-form__field-error {
   color: var(--tempest-danger);
+  font-size: 0.8125rem;
 }
 
 .tempest-admin-form__error {
-  background: #fef2f2;
+  background: var(--tempest-danger-soft);
   color: var(--tempest-danger);
   padding: 0.75rem 1rem;
   border-radius: var(--tempest-radius);
-  margin-bottom: 1rem;
+  margin: 0 0 1rem;
 }
 
 .tempest-admin-form__actions {
   display: flex;
-  gap: 1rem;
+  gap: 0.6rem;
   align-items: center;
+  justify-content: flex-end;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--tempest-border);
 }
 
 /* ---- Responsive ---- */
-
-/* Tablet and below. */
 @media (max-width: 1023px) {
   .tempest-admin-main {
-    margin: 1.25rem auto;
-    padding: 0 1rem;
+    padding: 1.5rem 1.25rem 1rem;
   }
 }
 
-/* Mobile (<= 430px and small phones). */
+@media (max-width: 768px) {
+  .tempest-admin-form__form {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 600px) {
   .tempest-admin-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-  }
-
-  .tempest-admin-header__nav {
-    width: 100%;
-    flex-wrap: wrap;
-    gap: 0.5rem 0.75rem;
-  }
-
-  .tempest-admin-main {
-    margin: 1rem auto;
     padding: 0 0.75rem;
   }
 
-  .tempest-admin-list__header {
-    flex-direction: column;
-    gap: 0.25rem;
-    align-items: flex-start;
+  .tempest-admin-header__nav {
+    gap: 0.5rem;
   }
 
-  .tempest-admin-list__toolbar {
+  .tempest-admin-header__username,
+  .tempest-admin-header__nav > a {
+    display: none;
+  }
+
+  .tempest-admin-main {
+    padding: 1rem 0.75rem;
+  }
+
+  .tempest-admin-page-title h1,
+  .tempest-admin-list__header > h1,
+  .tempest-admin-dashboard__header h1 {
+    font-size: 1.25rem;
+  }
+
+  .tempest-admin-list__header,
+  .tempest-admin-detail__header {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.75rem;
   }
 
+  .tempest-admin-list__toolbar,
   .tempest-admin-list__filters {
     flex-direction: column;
     align-items: stretch;
@@ -1042,22 +1560,59 @@ a.tempest-admin-list__new:hover {
   .tempest-admin-list__filters select,
   .tempest-admin-list__filters button {
     width: 100%;
+    min-width: 0;
   }
 
-  .tempest-admin-list__actions {
-    justify-content: stretch;
+  .tempest-admin-list__actions .tempest-admin-btn,
+  .tempest-admin-detail__actions .tempest-admin-btn,
+  .tempest-admin-detail__actions form {
+    flex: 1 1 auto;
   }
 
-  .tempest-admin-list__actions a {
-    flex: 1;
-    text-align: center;
+  .tempest-admin-detail__actions form button {
+    width: 100%;
   }
 
-  /* Stack the detail grid into single-column rows. */
   .tempest-admin-detail__fields {
     grid-template-columns: 1fr;
-    gap: 0.15rem 0;
+  }
+
+  .tempest-admin-detail__fields dt {
+    border-bottom: 0;
+    padding-bottom: 0.15rem;
+    background: transparent;
+  }
+
+  .tempest-admin-detail__fields dd {
+    padding-top: 0;
+  }
+
+  .tempest-admin-login {
+    padding: 1.5rem;
+  }
+
+  .tempest-admin-form__form {
     padding: 1rem;
+  }
+
+  .tempest-admin-form__actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .tempest-admin-form__actions button,
+  .tempest-admin-form__actions .tempest-admin-btn {
+    width: 100%;
+  }
+
+  .tempest-admin-bulk__bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tempest-admin-bulk__bar select,
+  .tempest-admin-bulk__bar button {
+    width: 100%;
   }
 
   /* The logs table becomes stacked cards. Horizontal scroll is fine for a
@@ -1086,7 +1641,7 @@ a.tempest-admin-list__new:hover {
 
   .tempest-admin-logs__table tr {
     padding: 0.85rem 0.9rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--tempest-border);
   }
 
   .tempest-admin-logs__table tr:last-child {
@@ -1120,45 +1675,6 @@ a.tempest-admin-list__new:hover {
   .tempest-admin-logs__logger {
     white-space: normal;
     overflow-wrap: anywhere;
-  }
-
-  .tempest-admin-detail__fields dt {
-    margin-top: 0.75rem;
-  }
-
-  .tempest-admin-detail__fields dd {
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid #e2e8f0;
-  }
-
-  .tempest-admin-login {
-    margin: 1.5rem auto;
-    padding: 1.5rem;
-  }
-
-  .tempest-admin-form__form {
-    padding: 1rem;
-  }
-
-  .tempest-admin-form__actions {
-    flex-direction: column-reverse;
-    align-items: stretch;
-  }
-
-  .tempest-admin-form__actions button,
-  .tempest-admin-form__actions .tempest-admin-form__cancel {
-    width: 100%;
-    text-align: center;
-  }
-
-  .tempest-admin-bulk__bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .tempest-admin-bulk__bar select,
-  .tempest-admin-bulk__bar button {
-    width: 100%;
   }
 }
 
@@ -1217,7 +1733,8 @@ a.tempest-admin-list__new:hover {
 
 .tempest-admin-logs__empty {
   color: var(--tempest-fg-soft);
-  background: #fff;
+  background: var(--tempest-surface);
+  border: 1px solid var(--tempest-border);
   padding: 1.5rem;
   border-radius: var(--tempest-radius);
   box-shadow: var(--tempest-shadow);
@@ -1233,16 +1750,17 @@ a.tempest-admin-list__new:hover {
   display: inline-block;
   padding: 0.35rem 0.75rem;
   border-radius: var(--tempest-radius);
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  color: #334155;
+  border: 1px solid var(--tempest-border-strong);
+  background: var(--tempest-surface);
+  color: var(--tempest-fg);
   font-size: 0.82rem;
   font-weight: 600;
   text-decoration: none;
 }
 
 .tempest-admin-logs__export:hover {
-  background: #f1f5f9;
+  background: var(--tempest-surface-muted);
+  text-decoration: none;
 }
 
 .tempest-admin-logs__meta {
@@ -1363,12 +1881,12 @@ a.tempest-admin-list__new:hover {
     left: 0;
     bottom: 0;
     z-index: 50;
-    width: 240px;
-    flex-basis: 240px;
+    width: 272px;
+    flex-basis: 272px;
     transform: translateX(-100%);
     transition: transform 0.2s ease;
     overflow-y: auto;
-    box-shadow: 0 0 24px rgba(15, 23, 42, 0.35);
+    box-shadow: var(--tempest-shadow-lg);
   }
 
   .tempest-admin-navtoggle:checked ~ .tempest-admin-layout .tempest-admin-sidebar {
@@ -1384,23 +1902,13 @@ a.tempest-admin-list__new:hover {
   }
 }
 
-/* ---- Desktop: sidebar overlays the header + footer ---- */
+/* ---- Desktop: sidebar pinned under the header ---- */
 @media (min-width: 769px) {
   .tempest-admin-sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    z-index: 100;        /* above header/footer (z-index: 20) */
+    position: sticky;
+    top: var(--tempest-header-h);
+    height: calc(100vh - var(--tempest-header-h));
     overflow-y: auto;
-    /* Clear the header bar so the first nav link sits below it. */
-    padding-top: 3.75rem;
-  }
-
-  /* The fixed sidebar leaves the flex flow, so reserve its gutter on
-     the layout row to keep the main content from sliding underneath. */
-  .tempest-admin-layout {
-    padding-left: 220px;
   }
 }
 
@@ -1409,8 +1917,9 @@ a.tempest-admin-list__new:hover {
   margin: 0 0 1rem;
   padding: 0.7rem 1rem;
   border-radius: var(--tempest-radius);
+  border: 1px solid var(--tempest-border);
   border-left: 4px solid var(--tempest-accent);
-  background: var(--tempest-bg);
+  background: var(--tempest-surface);
   color: var(--tempest-fg);
 }
 
@@ -1595,7 +2104,7 @@ a.tempest-admin-list__new:hover {
   padding: 0.75rem 1rem;
   border-radius: var(--tempest-radius);
   border-left: 4px solid var(--tempest-danger);
-  background: #fef2f2;
+  background: var(--tempest-danger-soft);
   color: var(--tempest-danger);
 }
 
@@ -1658,7 +2167,7 @@ a.tempest-admin-list__new:hover {
   padding: 0.75rem 1rem;
   border-radius: var(--tempest-radius);
   border-left: 4px solid var(--tempest-danger);
-  background: #fef2f2;
+  background: var(--tempest-danger-soft);
   color: var(--tempest-danger);
   overflow-wrap: anywhere;
 }

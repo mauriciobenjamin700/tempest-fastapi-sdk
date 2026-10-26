@@ -396,5 +396,5 @@ class TestConsoleRendersThePrincipalItLoaded:
     async def test_the_header_names_the_signed_in_admin(self, panel: Panel) -> None:
         page = panel.client.get("/admin/sql")
         assert page.status_code == 200
-        assert 'class="tempest-admin-header__user">root@example.com<' in page.text
+        assert 'class="tempest-admin-header__username">root@example.com<' in page.text
         assert "tempest-admin-header__logout" in page.text

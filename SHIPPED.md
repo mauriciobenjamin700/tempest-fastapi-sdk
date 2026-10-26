@@ -3812,3 +3812,18 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `docs/recipes/local-storage.md`. Testes:
   `tests/storage/test_local_client.py`, `tests/storage/test_local_router.py`,
   `tests/settings/test_storage_settings.py::TestLocalBackend`.
+- **Visual novo do admin, Unreleased** — `admin.css` reescrito sobre tokens
+  (`--tempest-surface`, `--tempest-border`, `--tempest-*-soft` derivados por
+  `color-mix()`): chrome claro com a marca à esquerda, sidebar com item ativo
+  suave, cards de métrica, tabela com rolagem horizontal própria, form em
+  grid de duas colunas com checkbox em switch, login centralizado. O
+  `AdminTheme` passa a `header_bg="#ffffff"` e `radius="8px"`, ganha
+  `header_fg` e escolhe o texto do header/sidebar pela luminância do fundo; o
+  `dark_mode` cobre os cards e escurece o chrome padrão. `admin/display.py`
+  formata célula e rótulo (`humanize_field`, `cell_view`: booleano em badge,
+  UUID curto com o valor inteiro no `title`, datetime ao minuto com offset
+  compacto, inteiro sem `.0`), e o plural do `verbose_name` segue o inglês
+  regular (`Categories`). O link do CSS leva `?v=<sha256[:12]>` do arquivo,
+  para o browser não servir a folha antiga depois de um upgrade. Validado em
+  browser real (1440 e 390, burger, criação, busca, lens, dark mode). Testes:
+  `tests/admin/test_display.py`.

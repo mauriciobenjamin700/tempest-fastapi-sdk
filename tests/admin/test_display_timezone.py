@@ -322,7 +322,11 @@ class TestTheRenderedPanel:
             response = await client.get("/admin/m/admin_tz_run/")
 
         assert response.status_code == 200
-        assert "2026-06-15 20:00:00-03:00" in response.text
+        assert (
+            '>2026-06-15 20:00 <small class="tempest-admin-value__tz">'
+            "-03:00</small></time>" in response.text
+        )
+        assert 'title="2026-06-15T20:00:00-03:00"' in response.text
 
     @pytest.mark.asyncio
     async def test_the_edit_form_prefills_the_local_hour(

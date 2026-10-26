@@ -1,8 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="tempest-admin-dashboard">
-  <h1>{{ site.title }}</h1>
-  <p>{{ site.index_subtitle }}</p>
+  <header class="tempest-admin-dashboard__header">
+    <h1>{{ site.title }}</h1>
+    <p>{{ site.index_subtitle }}</p>
+  </header>
 
   {% if metrics %}
   <div class="tempest-admin-stats" aria-label="System metrics">
@@ -30,13 +32,13 @@
     <article class="tempest-admin-card tempest-admin-card--{{ card.kind }}">
       <span class="tempest-admin-card__label">{{ card.label }}</span>
       {% if card.kind == 'value' %}
-      <span class="tempest-admin-card__value">{{ card.value }}{% if card.unit %} <small>{{ card.unit }}</small>{% endif %}</span>
+      <span class="tempest-admin-card__value">{{ card.value | number }}{% if card.unit %} <small>{{ card.unit }}</small>{% endif %}</span>
       {% elif card.kind == 'trend' %}
-      <span class="tempest-admin-card__value">{{ card.value }}{% if card.unit %} <small>{{ card.unit }}</small>{% endif %}</span>
+      <span class="tempest-admin-card__value">{{ card.value | number }}{% if card.unit %} <small>{{ card.unit }}</small>{% endif %}</span>
       <span class="tempest-admin-card__trend tempest-admin-card__trend--{{ card.direction }}">
-        {% if card.direction == 'up' %}▲{% elif card.direction == 'down' %}▼{% else %}▬{% endif %}
+        {% if card.direction == 'up' %}↑{% elif card.direction == 'down' %}↓{% else %}→{% endif %}
         {% if card.pct is not none %}{{ '%+.1f' | format(card.pct) }}%{% else %}—{% endif %}
-        <small>vs prev {{ card.previous if card.previous is defined else '' }}</small>
+        <small>vs {{ (card.previous | number) if card.previous is defined else '' }} before</small>
       </span>
       {% else %}
       <ul class="tempest-admin-card__parts">
@@ -44,7 +46,7 @@
         <li>
           <span class="tempest-admin-card__part-label">{{ seg.label }}</span>
           <span class="tempest-admin-card__part-bar"><span style="width: {{ '%.0f' | format(seg.pct) }}%"></span></span>
-          <span class="tempest-admin-card__part-value">{{ seg.value }}</span>
+          <span class="tempest-admin-card__part-value">{{ seg.value | number }}</span>
         </li>
         {% endfor %}
       </ul>
@@ -61,11 +63,11 @@
     <article class="tempest-admin-model-card">
       <header class="tempest-admin-model-card__head">
         <h2>{{ entry.admin.get_verbose_name_plural() }}</h2>
-        {% if entry.count is not none %}<span class="tempest-admin-model-card__count">{{ entry.count }}</span>{% endif %}
+        {% if entry.count is not none %}<span class="tempest-admin-model-card__count">{{ entry.count | number }}</span>{% endif %}
       </header>
       <div class="tempest-admin-model-card__actions">
-        <a href="{{ entry.url }}">Browse</a>
-        {% if entry.new_url %}<a href="{{ entry.new_url }}">+ New</a>{% endif %}
+        <a class="tempest-admin-btn tempest-admin-btn--ghost tempest-admin-btn--sm" href="{{ entry.url }}">Browse</a>
+        {% if entry.new_url %}<a class="tempest-admin-btn tempest-admin-btn--ghost tempest-admin-btn--sm" href="{{ entry.new_url }}">+ New</a>{% endif %}
       </div>
     </article>
     {% endfor %}

@@ -237,7 +237,7 @@ class AdminModel(Generic[ModelT]):
         verbose_name (str | None): Singular display name; defaults to the
             model name humanized.
         verbose_name_plural (str | None): Plural display name; defaults to
-            ``verbose_name + "s"``.
+            ``verbose_name`` pluralized (``Category`` -> ``Categories``).
         can_create (bool): Whether the admin exposes the create form +
             POST endpoint. Default ``True``.
         can_edit (bool): Whether the admin exposes the edit form + POST
@@ -614,7 +614,7 @@ class AdminModel(Generic[ModelT]):
         """
         if self.verbose_name_plural:
             return self.verbose_name_plural
-        return f"{self.get_verbose_name()}s"
+        return _pluralize_name(self.get_verbose_name())
 
     def get_slug(self) -> str:
         """Return the URL slug under which the model is exposed.
@@ -823,6 +823,28 @@ def _humanize(value: str) -> str:
         out.append(char)
         last = char
     return "".join(out).strip().title()
+
+
+def _pluralize_name(name: str) -> str:
+    """Pluralize the last word of an English display name.
+
+    Covers the regular forms a model name takes: ``Category`` ->
+    ``Categories`` (consonant + ``y``), ``Address`` / ``Box`` / ``Batch``
+    -> ``-es``, anything else ``-s``. An irregular plural is what
+    ``verbose_name_plural`` is for.
+
+    Args:
+        name (str): The singular display name.
+
+    Returns:
+        str: The plural.
+    """
+    lower = name.lower()
+    if len(lower) > 1 and lower.endswith("y") and lower[-2] not in "aeiou":
+        return f"{name[:-1]}ies"
+    if lower.endswith(("s", "x", "z", "ch", "sh")):
+        return f"{name}es"
+    return f"{name}s"
 
 
 __all__: list[str] = [

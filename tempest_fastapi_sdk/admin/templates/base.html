@@ -7,14 +7,14 @@
   {% if site.theme.favicon_url %}
   <link rel="icon" href="{{ site.theme.favicon_url }}">
   {% endif %}
-  <link rel="stylesheet" href="{{ static_url }}/admin.css">
+  <link rel="stylesheet" href="{{ static_url }}/admin.css?v={{ stylesheet_version }}">
   <style>{{ site.theme.to_css() }}</style>
   {% if site.theme.custom_css_url %}
   <link rel="stylesheet" href="{{ site.theme.custom_css_url }}">
   {% endif %}
   <script src="{{ htmx_url }}" defer></script>
 </head>
-<body>
+<body class="{% if user %}tempest-admin--app{% else %}tempest-admin--guest{% endif %}">
   {% if user %}
   <input type="checkbox" id="tempest-nav-toggle" class="tempest-admin-navtoggle" hidden>
   {% endif %}
@@ -31,18 +31,22 @@
           <img src="{{ site.theme.logo_url }}" alt="{{ site.theme.logo_alt }}"
                class="tempest-admin-header__logo">
           {% else %}
-          {{ site.brand_text }}
+          <span class="tempest-admin-mark" aria-hidden="true">{{ site.brand_text[:1] }}</span>
+          <span class="tempest-admin-header__brandtext">{{ site.brand_text }}</span>
           {% endif %}
         </a>
       </div>
     </div>
     {% if user %}
     <nav class="tempest-admin-header__nav">
-      <span class="tempest-admin-header__user">{{ user_display }}</span>
+      <span class="tempest-admin-header__user">
+        <span class="tempest-admin-avatar" aria-hidden="true">{{ (user_display or '?')[:1] | upper }}</span>
+        <span class="tempest-admin-header__username">{{ user_display }}</span>
+      </span>
       {% if site.site_url %}<a href="{{ site.site_url }}">View site</a>{% endif %}
       <form method="post" action="{{ url_for('admin_logout') }}" class="tempest-admin-header__logout">
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-        <button type="submit">Logout</button>
+        <button type="submit" class="tempest-admin-btn tempest-admin-btn--ghost tempest-admin-btn--sm">Logout</button>
       </form>
     </nav>
     {% endif %}
@@ -101,10 +105,10 @@
       </ul>
       {% endif %}
       {% block content %}{% endblock %}
+      <footer class="tempest-admin-footer">
+        <small>{{ site.theme.footer_text }}</small>
+      </footer>
     </main>
   </div>
-  <footer class="tempest-admin-footer">
-    <small>{{ site.theme.footer_text }}</small>
-  </footer>
 </body>
 </html>
