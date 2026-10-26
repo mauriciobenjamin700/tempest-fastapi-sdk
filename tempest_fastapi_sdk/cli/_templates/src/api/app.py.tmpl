@@ -25,6 +25,7 @@ from tempest_fastapi_sdk import (
 @@endif@@
     make_health_router,
     make_logs_router,
+    prune_orphan_enum_schemas,
     register_exception_handlers,
 )
 
@@ -79,6 +80,10 @@ def create_app() -> FastAPI:
     ``PublicSchemeMiddleware`` is added last so it runs first: every
     layer below builds URLs in ``SERVER_PUBLIC_SCHEME``. Empty (the
     default) keeps the connection's scheme.
+
+    ``prune_orphan_enum_schemas`` drops the enum components FastAPI
+    publishes for a field whose schema inlines a narrower enum (such as
+    ``image_media_type_field``), so a generated client has no dead type.
 @@if admin@@
 
     The admin panel needs the ``[admin]`` extra and a ``UserModel`` row
@@ -100,6 +105,7 @@ def create_app() -> FastAPI:
     apply_cors(app, settings)
     app.add_middleware(PublicSchemeMiddleware, scheme=settings.SERVER_PUBLIC_SCHEME)
     register_exception_handlers(app)
+    prune_orphan_enum_schemas(app)
 
     app.include_router(
         make_health_router(db=db, version=settings.VERSION),

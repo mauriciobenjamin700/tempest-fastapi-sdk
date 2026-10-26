@@ -109,6 +109,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.error_docs.TempestAPIRouter
 ::: tempest_fastapi_sdk.api.error_docs.RaisesSpec
 ::: tempest_fastapi_sdk.api.error_docs.declared_raises
+::: tempest_fastapi_sdk.api.openapi_pruning.prune_orphan_enum_schemas
+::: tempest_fastapi_sdk.api.openapi_pruning.drop_orphan_enum_schemas
 ::: tempest_fastapi_sdk.api.dependencies.signed_url.make_signed_path_dependency
 ::: tempest_fastapi_sdk.api.dependencies.auth.make_mfa_required_dependency
 
@@ -509,6 +511,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.oauth.OAuthAccountInactiveException
 ::: tempest_fastapi_sdk.exceptions.oauth.OAuthAccountNotLinkedException
 ::: tempest_fastapi_sdk.exceptions.upload.FileTooLargeException
+::: tempest_fastapi_sdk.exceptions.upload.FileTooSmallException
 ::: tempest_fastapi_sdk.exceptions.upload.InvalidFileTypeException
 ::: tempest_fastapi_sdk.exceptions.wallet.InsufficientBalanceException
 ::: tempest_fastapi_sdk.exceptions.wallet.PayoutRejectedException
@@ -1189,6 +1192,8 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.storage.minio_client.ObjectStat
 ::: tempest_fastapi_sdk.storage.minio_client.ObjectDeleteError
 ::: tempest_fastapi_sdk.storage.local_client.LocalObjectStorageClient
+::: tempest_fastapi_sdk.storage.local_client.bound_purpose
+::: tempest_fastapi_sdk.storage.presign.PresignedPost
 ::: tempest_fastapi_sdk.storage.local_client.LocalObjectNotFoundError
 ::: tempest_fastapi_sdk.storage.local_router.make_local_storage_router
 

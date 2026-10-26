@@ -7,31 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- O painel admin ganhou um visual novo (`admin.css` reescrito sobre tokens):
-  header e sidebar claros com a marca à esquerda, cards de métrica com
-  hierarquia, tabela compacta com rolagem horizontal própria, badges para
-  booleanos, form em grid com checkbox em switch, login centralizado com a
-  marca. As classes `tempest-admin-*` existentes continuam; um
-  `custom_css_url` que sobrescrevia cores fixas do header escuro precisa ser
-  revisto.
-- `AdminTheme`: `header_bg` passa de `"#0f172a"` para `"#ffffff"` e `radius`
-  de `"6px"` para `"8px"`. Com um `header_bg`/`sidebar_bg` hex escuro, o
-  texto do chrome passa a claro sozinho (luminância WCAG); cor que não é hex
-  é tratada como escura. `dark_mode=True` agora escurece também os cards e o
-  chrome, enquanto `header_bg` for o padrão.
-- Lista, detalhe e histórico mostram o nome da coluna humanizado
-  (`customer_email` → `Customer email`, `category_id` → `Category`, `id` →
-  `ID`) e formatam o valor: booleano em badge `Yes`/`No`, UUID nos 8 primeiros
-  caracteres com o valor inteiro no `title` (o detalhe mostra inteiro),
-  datetime ao minuto com o offset compacto (`UTC`, `-03:00`) e o instante
-  completo no `title`, `Enum` pelo nome. Export e o `value` do form não mudam.
-- Os rótulos do form seguem a mesma regra (`Price Cents` → `Price cents`,
-  `Category Id` → `Category`).
-- O plural padrão do `verbose_name` segue o inglês regular: `Category` →
-  `Categories`, `Address` → `Addresses` (antes, sempre `+ "s"`).
-
 ### Added
 
 - `UserAuthService.sse_router(broker)` e `make_sse_router`: stream SSE
@@ -63,6 +38,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   público loga um `WARNING` apontando `SERVER_PUBLIC_SCHEME=https`.
 - `AdminTheme(header_fg=...)` fixa a cor do texto do header e da sidebar
   quando o palpite pela luminância erra.
+- `AsyncMinIOClient.presigned_post_policy(key, *, max_bytes, content_type=None,
+  min_bytes=0, bucket=None, expires=15min)` devolve um `PresignedPost` (URL +
+  campos do formulário) cuja policy S3 assina a chave, o `Content-Type` e
+  `content-length-range` (#637). Medido em MinIO: 1 byte acima do teto é
+  `400 EntityTooLarge`, abaixo do mínimo `400 EntityTooSmall`, outro tipo ou
+  outra chave `403 AccessDenied`, e nada é gravado na recusa. O
+  `LocalObjectStorageClient` ganhou a mesma chamada, servida pela nova rota
+  `POST` do `make_local_storage_router` (`413 FILE_TOO_LARGE` /
+  `400 FILE_TOO_SMALL` / `403 SIGNED_URL_INVALID`; precisa do extra
+  `[upload]`, checado ao assinar), e o `SubjectObjectStorage` ganhou
+  `presign_post`.
+- `presigned_get_url` (S3 e local) e `SubjectObjectStorage.presign` aceitam
+  `filename`, `media_type` e `as_attachment`, assinados no link — no S3 como
+  os overrides `response-*`, no local amarrados ao propósito da assinatura
+  (`bound_purpose`). Editar um deles na URL dá `403`; sem eles o link é o de
+  antes.
+- `prune_orphan_enum_schemas(app)` tira do OpenAPI os componentes de enum que
+  nenhum `$ref` usa. O FastAPI publica um para todo campo anotado com `Enum`,
+  então um `image_media_type_field` deixava o `ImageMediaType` completo
+  órfão no documento (#637). O `create_app` do `tempest new` já chama.
+- `FileTooSmallException` (`400 FILE_TOO_SMALL`), com mensagem nas duas
+  línguas.
+
+### Changed
+
+- O painel admin ganhou um visual novo (`admin.css` reescrito sobre tokens):
+  header e sidebar claros com a marca à esquerda, cards de métrica com
+  hierarquia, tabela compacta com rolagem horizontal própria, badges para
+  booleanos, form em grid com checkbox em switch, login centralizado com a
+  marca. As classes `tempest-admin-*` existentes continuam; um
+  `custom_css_url` que sobrescrevia cores fixas do header escuro precisa ser
+  revisto.
+- `AdminTheme`: `header_bg` passa de `"#0f172a"` para `"#ffffff"` e `radius`
+  de `"6px"` para `"8px"`. Com um `header_bg`/`sidebar_bg` hex escuro, o
+  texto do chrome passa a claro sozinho (luminância WCAG); cor que não é hex
+  é tratada como escura. `dark_mode=True` agora escurece também os cards e o
+  chrome, enquanto `header_bg` for o padrão.
+- Lista, detalhe e histórico mostram o nome da coluna humanizado
+  (`customer_email` → `Customer email`, `category_id` → `Category`, `id` →
+  `ID`) e formatam o valor: booleano em badge `Yes`/`No`, UUID nos 8 primeiros
+  caracteres com o valor inteiro no `title` (o detalhe mostra inteiro),
+  datetime ao minuto com o offset compacto (`UTC`, `-03:00`) e o instante
+  completo no `title`, `Enum` pelo nome. Export e o `value` do form não mudam.
+- Os rótulos do form seguem a mesma regra (`Price Cents` → `Price cents`,
+  `Category Id` → `Category`).
+- O plural padrão do `verbose_name` segue o inglês regular: `Category` →
+  `Categories`, `Address` → `Addresses` (antes, sempre `+ "s"`).
+- O protocolo `SubjectStorageClient` ganhou `presigned_post_policy` e os
+  parâmetros novos de `presigned_get_url`. `AsyncMinIOClient`,
+  `LocalObjectStorageClient` e `FakeObjectStorageClient` cumprem; um cliente
+  próprio que implemente o protocolo precisa dos dois.
 
 ### Fixed
 

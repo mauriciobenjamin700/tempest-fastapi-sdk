@@ -3845,3 +3845,16 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   Testes: `tests/api/test_public_scheme_middleware.py`,
   `tests/admin/test_login_scheme_warning.py`,
   `tests/settings/test_public_scheme.py`.
+- **Upload com teto e download com tipo assinado no storage, Unreleased
+  (#637)** — `presigned_post_policy` no `AsyncMinIOClient` (policy S3 com
+  `eq key`, `eq Content-Type` e `content-length-range`; assinatura local, sem
+  rede, com o `DeprecationWarning` do `datetime.utcnow()` do minio 7.2.20
+  silenciado no ponto da chamada) e no `LocalObjectStorageClient` (rota
+  `POST` multipart no `make_local_storage_router`, limites amarrados à
+  assinatura por `bound_purpose`); `SubjectObjectStorage.presign_post`;
+  `filename`/`media_type`/`as_attachment` assinados no `presigned_get_url` dos
+  dois backends e no `presign`. `prune_orphan_enum_schemas` remove do OpenAPI
+  o enum que o FastAPI publica sem `$ref` (o `ImageMediaType` do
+  `image_media_type_field`); o scaffold chama. Testes:
+  `tests/storage/test_presign.py`, `tests/storage/test_local_presign.py`,
+  `tests/storage/test_presign_live.py` (docker), `tests/api/test_openapi_pruning.py`.

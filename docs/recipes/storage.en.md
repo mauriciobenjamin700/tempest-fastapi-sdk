@@ -623,6 +623,83 @@ const { key, url } = await fetch("/uploads/presign", { method: "POST" }).then(r 
 await fetch(url, { method: "PUT", body: file });
 ```
 
+!!! warning "A signed `PUT` does not cap the size"
+    Nothing about the body goes into a `PUT` signature: the client sends as
+    many bytes as it likes and the service only learns the size after the
+    upload. For a cap the store itself enforces, use `presigned_post_policy`
+    (below).
+
+### Direct upload with a cap — `presigned_post_policy`
+
+An S3 form `POST` carries a signed *policy*. The key, the `Content-Type` and
+the `content-length-range` condition go in it, and the **store** refuses
+whatever falls outside, before storing anything:
+
+```python
+from uuid import uuid4
+
+from fastapi import APIRouter
+
+from src.api.app import storage
+from tempest_fastapi_sdk import BaseSchema
+
+router = APIRouter()
+
+MAX_PHOTO_BYTES: int = 5 * 1024 * 1024
+
+
+class PresignedFormResponse(BaseSchema):
+    key: str
+    url: str
+    fields: dict[str, str]
+
+
+@router.post("/uploads/photo")
+async def presign_photo() -> PresignedFormResponse:
+    """Return a form the store accepts only up to 5 MiB, as JPEG."""
+    key = f"uploads/{uuid4().hex}.jpg"
+    post = await storage.presigned_post_policy(
+        key,
+        max_bytes=MAX_PHOTO_BYTES,
+        content_type="image/jpeg",
+    )
+    return PresignedFormResponse(key=key, url=post.url, fields=post.fields)
+```
+
+JS client — the fields first, the file **last** (S3 ignores whatever comes
+after it):
+
+```javascript
+const { url, fields } = await fetch("/uploads/photo", { method: "POST" }).then(r => r.json());
+const form = new FormData();
+Object.entries(fields).forEach(([name, value]) => form.append(name, value));
+form.append("file", file);
+await fetch(url, { method: "POST", body: form });
+```
+
+Measured against MinIO `RELEASE.2025-04-22T22-12-26Z`
+(`tests/storage/test_presign_live.py`):
+
+| Upload | Store answer |
+| --- | --- |
+| within the cap | `204` |
+| 1 byte over `max_bytes` | `400 EntityTooLarge` |
+| under `min_bytes` | `400 EntityTooSmall` |
+| another `Content-Type` or another `key` | `403 AccessDenied` |
+
+Nothing is stored on a refusal.
+
+!!! tip "Same shape on the local backend"
+    `LocalObjectStorageClient.presigned_post_policy` returns the same
+    `PresignedPost`, and the `make_local_storage_router` route enforces the
+    same limits (`413`/`400`/`403`). The JavaScript above does not change
+    when the service switches backend — see [Local storage](local-storage.md).
+
+!!! info "The declared type is not the content"
+    The `Content-Type` condition pins the **declared** type in the form,
+    not the bytes. Before trusting the file, read its head on the server
+    (`stream_object`) and check the format's signature.
+
 ### Presigned URL — temporary download
 
 To serve private files without routing bytes through the API:
@@ -643,6 +720,34 @@ async def get_download_url(key: str) -> dict[str, str]:
     url = await storage.presigned_get_url(key, expires=timedelta(hours=1))
     return {"url": url}
 ```
+
+#### With the type the server checked
+
+`filename`, `media_type` and `as_attachment` go into the URL as S3
+`response-*` overrides, **signed**: the store answers with them, and editing
+any of them in the URL gives `403`. That serves the file with the type the
+server checked, not the one the client declared on upload:
+
+```python
+from datetime import timedelta
+
+from src.api.app import storage
+
+
+async def photo_url(key: str) -> str:
+    """Link that opens inline in an <img>, as JPEG, for 10 minutes."""
+    return await storage.presigned_get_url(
+        key,
+        expires=timedelta(minutes=10),
+        media_type="image/jpeg",
+        as_attachment=False,
+    )
+```
+
+`as_attachment=False` becomes `inline` only for a type safe to display
+(`INLINE_SAFE_MEDIA_TYPES`); `text/html` and `image/svg+xml` stay
+`attachment`. `media_type` takes a bare `type/subtype`, no parameters. With
+none of the three, the link answers with what was stored, as before.
 
 ### Separate public endpoint for presigned URLs *(v0.88.0+)*
 

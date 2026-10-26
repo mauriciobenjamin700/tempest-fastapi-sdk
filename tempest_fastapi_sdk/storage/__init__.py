@@ -35,6 +35,9 @@ from tempest_fastapi_sdk.storage.local_client import (
     LOCAL_STORAGE_GET_PURPOSE as LOCAL_STORAGE_GET_PURPOSE,
 )
 from tempest_fastapi_sdk.storage.local_client import (
+    LOCAL_STORAGE_POST_PURPOSE as LOCAL_STORAGE_POST_PURPOSE,
+)
+from tempest_fastapi_sdk.storage.local_client import (
     LOCAL_STORAGE_PUT_PURPOSE as LOCAL_STORAGE_PUT_PURPOSE,
 )
 from tempest_fastapi_sdk.storage.local_client import (
@@ -58,6 +61,12 @@ from tempest_fastapi_sdk.storage.minio_client import (
 from tempest_fastapi_sdk.storage.minio_client import (
     PutObjectItem as PutObjectItem,
 )
+from tempest_fastapi_sdk.storage.presign import (
+    POST_FILE_FIELD as POST_FILE_FIELD,
+)
+from tempest_fastapi_sdk.storage.presign import (
+    PresignedPost as PresignedPost,
+)
 
 __all__: list[str] = [
     "DEFAULT_LOCAL_MAX_UPLOAD_BYTES",
@@ -66,13 +75,16 @@ __all__: list[str] = [
     "LOCAL_PRESIGN_MAX_EXPIRES",
     "LOCAL_STORAGE_CHUNK_SIZE",
     "LOCAL_STORAGE_GET_PURPOSE",
+    "LOCAL_STORAGE_POST_PURPOSE",
     "LOCAL_STORAGE_PUT_PURPOSE",
+    "POST_FILE_FIELD",
     "AsyncMinIOClient",
     "DownloadableStore",
     "LocalObjectNotFoundError",
     "LocalObjectStorageClient",
     "ObjectDeleteError",
     "ObjectStat",
+    "PresignedPost",
     "PutObjectItem",
     "make_local_storage_router",
     "object_download_response",

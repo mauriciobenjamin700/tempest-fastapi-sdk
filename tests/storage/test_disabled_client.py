@@ -60,6 +60,7 @@ OPERATIONS: dict[str, Operation] = {
     "copy_object": lambda c: c.copy_object("a.txt", "b.txt"),
     "presigned_get_url": lambda c: c.presigned_get_url("a.txt"),
     "presigned_put_url": lambda c: c.presigned_put_url("a.txt"),
+    "presigned_post_policy": lambda c: c.presigned_post_policy("a.txt", max_bytes=10),
     "presigned_get_urls": lambda c: c.presigned_get_urls(
         ["a.txt"], expires=timedelta(minutes=1)
     ),

@@ -613,6 +613,82 @@ const { key, url } = await fetch("/uploads/presign", { method: "POST" }).then(r 
 await fetch(url, { method: "PUT", body: file });
 ```
 
+!!! warning "O `PUT` assinado não limita tamanho"
+    Nada do corpo entra na assinatura de um `PUT`: o cliente manda quantos
+    bytes quiser e o serviço só descobre o tamanho depois do upload. Para
+    um teto que o próprio S3 aplica, use `presigned_post_policy` (abaixo).
+
+### Upload direto com teto — `presigned_post_policy`
+
+O `POST` de formulário do S3 carrega uma *policy* assinada. Nela vão a
+chave, o `Content-Type` e a condição `content-length-range`, e é o **store**
+que recusa o que passar disso, antes de gravar:
+
+```python
+from uuid import uuid4
+
+from fastapi import APIRouter
+
+from src.api.app import storage
+from tempest_fastapi_sdk import BaseSchema
+
+router = APIRouter()
+
+MAX_PHOTO_BYTES: int = 5 * 1024 * 1024
+
+
+class PresignedFormResponse(BaseSchema):
+    key: str
+    url: str
+    fields: dict[str, str]
+
+
+@router.post("/uploads/photo")
+async def presign_photo() -> PresignedFormResponse:
+    """Devolve um formulário que o store aceita só até 5 MiB, em JPEG."""
+    key = f"uploads/{uuid4().hex}.jpg"
+    post = await storage.presigned_post_policy(
+        key,
+        max_bytes=MAX_PHOTO_BYTES,
+        content_type="image/jpeg",
+    )
+    return PresignedFormResponse(key=key, url=post.url, fields=post.fields)
+```
+
+Cliente JS — os campos primeiro, o arquivo **por último** (o S3 ignora o
+que vem depois dele):
+
+```javascript
+const { url, fields } = await fetch("/uploads/photo", { method: "POST" }).then(r => r.json());
+const form = new FormData();
+Object.entries(fields).forEach(([name, value]) => form.append(name, value));
+form.append("file", file);
+await fetch(url, { method: "POST", body: form });
+```
+
+Medido contra MinIO `RELEASE.2025-04-22T22-12-26Z`
+(`tests/storage/test_presign_live.py`):
+
+| Upload | Resposta do store |
+| --- | --- |
+| dentro do teto | `204` |
+| 1 byte acima de `max_bytes` | `400 EntityTooLarge` |
+| abaixo de `min_bytes` | `400 EntityTooSmall` |
+| outro `Content-Type` ou outra `key` | `403 AccessDenied` |
+
+Nas recusas nada é gravado.
+
+!!! tip "Mesmo formato no backend local"
+    `LocalObjectStorageClient.presigned_post_policy` devolve o mesmo
+    `PresignedPost`, e a rota do `make_local_storage_router` aplica os
+    mesmos limites (`413`/`400`/`403`). O JavaScript acima não muda quando
+    o serviço troca de backend — veja [Storage local](local-storage.md).
+
+!!! info "O tipo declarado não é o conteúdo"
+    A condição de `Content-Type` prende o tipo **declarado** no formulário,
+    não os bytes. Antes de confiar no arquivo, leia o começo dele no
+    servidor (`stream_object`) e confira a assinatura do formato.
+
 ### Presigned URL — download temporário
 
 Para servir arquivos privados sem rotear bytes pela API:
@@ -633,6 +709,34 @@ async def get_download_url(key: str) -> dict[str, str]:
     url = await storage.presigned_get_url(key, expires=timedelta(hours=1))
     return {"url": url}
 ```
+
+#### Com o tipo que o servidor conferiu
+
+`filename`, `media_type` e `as_attachment` entram na URL como os overrides
+`response-*` do S3, **assinados**: o store responde com eles, e editar
+qualquer um na URL dá `403`. É o que serve o arquivo com o tipo que o
+servidor conferiu, não com o que o cliente declarou no upload:
+
+```python
+from datetime import timedelta
+
+from src.api.app import storage
+
+
+async def photo_url(key: str) -> str:
+    """Link que abre inline numa <img>, como JPEG, por 10 minutos."""
+    return await storage.presigned_get_url(
+        key,
+        expires=timedelta(minutes=10),
+        media_type="image/jpeg",
+        as_attachment=False,
+    )
+```
+
+`as_attachment=False` só vira `inline` para tipo seguro de exibir
+(`INLINE_SAFE_MEDIA_TYPES`); `text/html` e `image/svg+xml` continuam
+`attachment`. `media_type` aceita só `tipo/subtipo`, sem parâmetro. Sem
+nenhum dos três, o link responde com o que foi gravado, como antes.
 
 ### Endpoint público separado para presigned URLs *(v0.88.0+)*
 

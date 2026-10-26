@@ -21,6 +21,7 @@ use object storage are not forced to install the extra.
 from __future__ import annotations
 
 import asyncio
+import warnings
 from collections.abc import AsyncIterator, Awaitable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -36,6 +37,8 @@ if TYPE_CHECKING:
     from minio.datatypes import Object as _MinioObject
     from starlette.requests import Request
     from starlette.responses import Response, StreamingResponse
+
+    from tempest_fastapi_sdk.storage.presign import PresignedPost
 
 _T = TypeVar("_T")
 
@@ -1181,25 +1184,63 @@ class AsyncMinIOClient:
         *,
         bucket: str | None = None,
         expires: timedelta = timedelta(hours=1),
+        filename: str | None = None,
+        media_type: str | None = None,
+        as_attachment: bool | None = None,
     ) -> str:
         """Generate a temporary download URL.
+
+        With ``filename``, ``media_type`` or ``as_attachment`` the headers
+        the store answers with are signed into the URL as S3 ``response-*``
+        overrides, the same ones :meth:`download_response` signs — so the
+        link serves the type the server checked, not the one the uploader
+        declared. Changing them in the URL breaks the signature. With none
+        of them the store answers with what it stored.
 
         Args:
             key (str): Object key.
             bucket (str | None): Override source bucket.
             expires (timedelta): URL lifetime. Maximum is 7 days
                 (S3 hard limit).
+            filename (str | None): Name presented to the client; signs a
+                ``Content-Disposition``.
+            media_type (str | None): ``Content-Type`` the store answers
+                with, a bare ``type/subtype``.
+            as_attachment (bool | None): ``True`` forces a download;
+                ``False`` asks for ``inline``, granted only when
+                ``media_type`` is inline-safe. ``None`` with a ``filename``
+                means ``True``.
 
         Returns:
             str: Pre-signed HTTPS URL that anyone with the link
             can ``GET`` until expiry.
+
+        Raises:
+            ValueError: When ``media_type`` is not a bare ``type/subtype``.
         """
+        from tempest_fastapi_sdk.storage.presign import download_overrides
+
         target = self._bucket(bucket)
+        overrides = download_overrides(
+            key,
+            filename=filename,
+            media_type=media_type,
+            as_attachment=as_attachment,
+        )
+        if not overrides:
+            return await asyncio.to_thread(
+                self._presign_client.presigned_get_object,
+                target,
+                key,
+                expires,
+            )
+        response_headers: dict[str, str | list[str] | tuple[str]] = dict(overrides)
         return await asyncio.to_thread(
             self._presign_client.presigned_get_object,
             target,
             key,
             expires,
+            response_headers=response_headers,
         )
 
     async def presigned_put_url(
@@ -1230,6 +1271,93 @@ class AsyncMinIOClient:
             target,
             key,
             expires,
+        )
+
+    async def presigned_post_policy(
+        self,
+        key: str,
+        *,
+        max_bytes: int,
+        content_type: str | None = None,
+        min_bytes: int = 0,
+        bucket: str | None = None,
+        expires: timedelta = timedelta(minutes=15),
+    ) -> PresignedPost:
+        """Generate a form upload the store caps at ``max_bytes``.
+
+        A presigned ``PUT`` signs nothing about the body, so the service
+        only learns the size after the bytes landed. An S3 ``POST`` policy
+        carries a ``content-length-range`` condition, and the store refuses
+        the upload itself (``400 EntityTooLarge`` / ``EntityTooSmall``) —
+        the same cap the local backend's route applies. The key, and the
+        ``Content-Type`` when given, are ``eq`` conditions too: the form
+        cannot be reused for another object or another type.
+
+        The URL is path-style (``<scheme>://<host>/<bucket>``) on the
+        signing host — ``public_endpoint`` when set.
+
+        Signing is local: with ``region`` set (it always is here) the
+        client never asks the store for the bucket's region, so it runs in
+        the event loop. ``minio`` 7.2.20 calls ``datetime.utcnow()`` while
+        signing; that ``DeprecationWarning`` is silenced around the call,
+        because a service running ``filterwarnings = ["error"]`` would
+        otherwise fail every upload it tries to sign.
+
+        Args:
+            key (str): Destination object key.
+            max_bytes (int): Largest accepted file, in bytes.
+            content_type (str | None): The only ``Content-Type`` accepted;
+                sent in the form fields. ``None`` leaves it free.
+            min_bytes (int): Smallest accepted file. Default ``0``.
+            bucket (str | None): Override target bucket.
+            expires (timedelta): Policy lifetime. Maximum is 7 days.
+
+        Returns:
+            PresignedPost: The URL, the form fields to send before the file,
+            and the cap.
+
+        Raises:
+            ValueError: When the size range is empty or inverted, or
+                ``content_type`` is not a bare ``type/subtype``.
+            IntegrationDisabledException: When the client was built with
+                ``enabled=False``.
+        """
+        signer = self._presign_client
+        from minio.datatypes import PostPolicy
+
+        from tempest_fastapi_sdk.storage.presign import (
+            MEDIA_TYPE_PATTERN,
+            PresignedPost,
+            check_post_limits,
+        )
+        from tempest_fastapi_sdk.utils.datetime import utcnow
+
+        check_post_limits(min_bytes=min_bytes, max_bytes=max_bytes)
+        if content_type is not None and not MEDIA_TYPE_PATTERN.fullmatch(content_type):
+            raise ValueError(f"content_type must be type/subtype, got {content_type!r}")
+        target = self._bucket(bucket)
+        policy = PostPolicy(target, utcnow() + expires)
+        policy.add_equals_condition("key", key)
+        if content_type is not None:
+            policy.add_equals_condition("Content-Type", content_type)
+        policy.add_content_length_range_condition(min_bytes, max_bytes)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r"datetime\.datetime\.utcnow\(\) is deprecated",
+                category=DeprecationWarning,
+            )
+            signed = signer.presigned_post_policy(policy)
+        fields: dict[str, str] = {"key": key}
+        if content_type is not None:
+            fields["Content-Type"] = content_type
+        fields.update(signed)
+        host = self.public_endpoint or self.endpoint
+        scheme = "https" if self.public_secure else "http"
+        return PresignedPost(
+            url=f"{scheme}://{host}/{target}",
+            max_bytes=max_bytes,
+            fields=fields,
         )
 
     async def _gather_bounded(

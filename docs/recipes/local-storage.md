@@ -156,6 +156,81 @@ cortado ao passar do limite.
     é. Confira tamanho e tipo com `stat_object` (e os primeiros bytes com
     `stream_object`) antes de confiar no objeto.
 
+## Upload com teto e download com tipo assinado
+
+Os dois recursos do S3 que o `PUT` e o `GET` simples não têm existem aqui
+com a mesma chamada, então o serviço troca de backend sem mexer no cliente
+do app.
+
+`presigned_post_policy` devolve um `PresignedPost` (URL + campos do
+formulário). A rota `POST /api/storage/{bucket}/{key}` lê o
+`multipart/form-data` e aplica os limites assinados antes de gravar:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    LocalObjectStorageClient,
+    make_local_storage_router,
+    register_exception_handlers,
+)
+
+storage = LocalObjectStorageClient(
+    "var/storage",
+    public_url="http://127.0.0.1:8000",
+    signing_secret="troque-por-um-segredo-longo",
+    route_prefix="/api/storage",
+    max_upload_bytes=5 * 1024 * 1024,
+)
+
+app = FastAPI()
+register_exception_handlers(app)
+app.include_router(make_local_storage_router(storage))
+
+
+@app.post("/api/photos/{name}/form")
+async def upload_form(name: str) -> dict[str, object]:
+    """Formulário que aceita só JPEG de até 2 MiB."""
+    post = await storage.presigned_post_policy(
+        f"photos/{name}",
+        max_bytes=2 * 1024 * 1024,
+        content_type="image/jpeg",
+    )
+    return {"url": post.url, "fields": post.fields}
+
+
+@app.get("/api/photos/{name}/inline")
+async def inline_link(name: str) -> dict[str, str]:
+    """Link que abre a foto inline, como JPEG."""
+    url = await storage.presigned_get_url(
+        f"photos/{name}",
+        media_type="image/jpeg",
+        as_attachment=False,
+    )
+    return {"url": url}
+```
+
+| Situação no `POST` | Resposta |
+| --- | --- |
+| arquivo dentro de `[min_bytes, max_bytes]` | `204`, com o `ETag` |
+| acima de `max_bytes` | `413 FILE_TOO_LARGE`, nada gravado |
+| abaixo de `min_bytes` | `400 FILE_TOO_SMALL`, nada gravado |
+| campo `Content-Type` ou `key` diferente do assinado | `403 SIGNED_URL_INVALID` |
+| `max_bytes` (ou outro limite) editado na URL | `403 SIGNED_URL_INVALID` |
+
+Os limites e os overrides do `GET` viajam na query, e o SDK os amarra à
+assinatura (`bound_purpose`): mudar um deles verifica como outro propósito e
+falha. Um link assinado sem nenhum deles continua valendo como antes.
+
+!!! note "Precisa do extra `[upload]`"
+    Ler o formulário exige `python-multipart`. A checagem acontece no
+    `presigned_post_policy`, então o extra faltando quebra onde o link é
+    emitido, não no upload do usuário.
+
+!!! info "`max_bytes` até `max_upload_bytes`"
+    O teto do formulário não passa do teto do store: pedir mais levanta
+    `ValueError` ao assinar.
+
 ## Escolhendo o backend pelas settings
 
 `StorageSettings` escolhe entre S3 e disco com `STORAGE_BACKEND`, e

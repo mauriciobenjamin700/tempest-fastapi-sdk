@@ -160,6 +160,80 @@ arrives and cut when it passes the limit.
     it is. Check size and type with `stat_object` (and the first bytes with
     `stream_object`) before trusting the object.
 
+## Capped upload and download with a signed type
+
+The two S3 features the plain `PUT` and `GET` lack exist here under the same
+call, so the service switches backend without touching the app's client.
+
+`presigned_post_policy` returns a `PresignedPost` (URL + form fields). The
+`POST /api/storage/{bucket}/{key}` route reads the `multipart/form-data` and
+applies the signed limits before storing:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    LocalObjectStorageClient,
+    make_local_storage_router,
+    register_exception_handlers,
+)
+
+storage = LocalObjectStorageClient(
+    "var/storage",
+    public_url="http://127.0.0.1:8000",
+    signing_secret="replace-with-a-long-secret",
+    route_prefix="/api/storage",
+    max_upload_bytes=5 * 1024 * 1024,
+)
+
+app = FastAPI()
+register_exception_handlers(app)
+app.include_router(make_local_storage_router(storage))
+
+
+@app.post("/api/photos/{name}/form")
+async def upload_form(name: str) -> dict[str, object]:
+    """Form that accepts only JPEG up to 2 MiB."""
+    post = await storage.presigned_post_policy(
+        f"photos/{name}",
+        max_bytes=2 * 1024 * 1024,
+        content_type="image/jpeg",
+    )
+    return {"url": post.url, "fields": post.fields}
+
+
+@app.get("/api/photos/{name}/inline")
+async def inline_link(name: str) -> dict[str, str]:
+    """Link that opens the photo inline, as JPEG."""
+    url = await storage.presigned_get_url(
+        f"photos/{name}",
+        media_type="image/jpeg",
+        as_attachment=False,
+    )
+    return {"url": url}
+```
+
+| `POST` case | Answer |
+| --- | --- |
+| file within `[min_bytes, max_bytes]` | `204`, with the `ETag` |
+| over `max_bytes` | `413 FILE_TOO_LARGE`, nothing stored |
+| under `min_bytes` | `400 FILE_TOO_SMALL`, nothing stored |
+| `Content-Type` or `key` field other than the signed one | `403 SIGNED_URL_INVALID` |
+| `max_bytes` (or another limit) edited in the URL | `403 SIGNED_URL_INVALID` |
+
+The limits and the `GET` overrides travel in the query, and the SDK binds
+them to the signature (`bound_purpose`): changing one verifies as another
+purpose and fails. A link signed with none of them still works as before.
+
+!!! note "Needs the `[upload]` extra"
+    Reading the form takes `python-multipart`. The check runs in
+    `presigned_post_policy`, so a missing extra breaks where the link is
+    issued, not on the user's upload.
+
+!!! info "`max_bytes` up to `max_upload_bytes`"
+    The form's cap cannot exceed the store's: asking for more raises
+    `ValueError` when signing.
+
 ## Picking the backend from settings
 
 `StorageSettings` picks between S3 and disk with `STORAGE_BACKEND`, and
