@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, BinaryIO, Protocol
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.storage.minio_client import ObjectDeleteError, ObjectStat
+    from tempest_fastapi_sdk.storage.presign import PresignedPost
 
 
 class SubjectStorageClient(Protocol):
@@ -62,6 +63,9 @@ class SubjectStorageClient(Protocol):
         *,
         bucket: str | None = None,
         expires: timedelta = timedelta(hours=1),
+        filename: str | None = None,
+        media_type: str | None = None,
+        as_attachment: bool | None = None,
     ) -> str:
         """Generate a temporary download URL.
 
@@ -69,6 +73,10 @@ class SubjectStorageClient(Protocol):
             key (str): Object key.
             bucket (str | None): Override source bucket.
             expires (timedelta): URL lifetime.
+            filename (str | None): Name presented to the client, signed in.
+            media_type (str | None): ``Content-Type`` the link answers with,
+                signed in.
+            as_attachment (bool | None): Download or ``inline``, signed in.
 
         Returns:
             str: The presigned URL.
@@ -91,6 +99,31 @@ class SubjectStorageClient(Protocol):
 
         Returns:
             str: The presigned URL accepting a ``PUT``.
+        """
+        ...
+
+    async def presigned_post_policy(
+        self,
+        key: str,
+        *,
+        max_bytes: int,
+        content_type: str | None = None,
+        min_bytes: int = 0,
+        bucket: str | None = None,
+        expires: timedelta = timedelta(minutes=15),
+    ) -> PresignedPost:
+        """Generate a form upload capped at ``max_bytes``.
+
+        Args:
+            key (str): Destination object key.
+            max_bytes (int): Largest accepted file.
+            content_type (str | None): The only ``Content-Type`` accepted.
+            min_bytes (int): Smallest accepted file.
+            bucket (str | None): Override target bucket.
+            expires (timedelta): Lifetime.
+
+        Returns:
+            PresignedPost: URL, form fields and cap.
         """
         ...
 
@@ -370,24 +403,42 @@ class SubjectObjectStorage:
         name: str,
         *,
         expires: timedelta = timedelta(hours=1),
+        filename: str | None = None,
+        media_type: str | None = None,
+        as_attachment: bool | None = None,
     ) -> str:
         """Generate a temporary download URL for one subject's object.
+
+        Pass ``media_type`` with the type the server checked — from
+        :meth:`stat` and the bytes, not the uploader's declaration — and the
+        link answers with it: S3 signs it as a ``response-content-type``
+        override, the local backend binds it into its signature.
 
         Args:
             subject_id (object): The subject id.
             name (str): Object name relative to the subject's prefix.
             expires (timedelta): URL lifetime; at most 7 days.
+            filename (str | None): Name presented to the client.
+            media_type (str | None): ``Content-Type`` the link answers
+                with, a bare ``type/subtype``.
+            as_attachment (bool | None): ``True`` forces a download;
+                ``False`` asks for ``inline``, granted only to inline-safe
+                types.
 
         Returns:
             str: Presigned GET URL.
 
         Raises:
-            ValueError: When the subject id or name is invalid.
+            ValueError: When the subject id or name is invalid, or
+                ``media_type`` is not a bare ``type/subtype``.
         """
         return await self.client.presigned_get_url(
             self.key(subject_id, name),
             bucket=self.bucket,
             expires=expires,
+            filename=filename,
+            media_type=media_type,
+            as_attachment=as_attachment,
         )
 
     async def presign_put(
@@ -405,7 +456,8 @@ class SubjectObjectStorage:
         when it signs, never by the uploader. Nothing about the payload is
         signed — size and content type are whatever the client sends — so
         verify the object with :meth:`stat` and :meth:`read` before trusting
-        it.
+        it, or issue :meth:`presign_post`, whose size and type the store
+        enforces.
 
         Args:
             subject_id (object): The subject id.
@@ -424,6 +476,53 @@ class SubjectObjectStorage:
         """
         return await self.client.presigned_put_url(
             self.key(subject_id, name),
+            bucket=self.bucket,
+            expires=expires,
+        )
+
+    async def presign_post(
+        self,
+        subject_id: object,
+        name: str,
+        *,
+        max_bytes: int,
+        content_type: str | None = None,
+        min_bytes: int = 0,
+        expires: timedelta = timedelta(minutes=15),
+    ) -> PresignedPost:
+        """Generate a form upload for one subject's object, capped in size.
+
+        The store refuses a file outside ``[min_bytes, max_bytes]``, another
+        key and, when ``content_type`` is given, another type — S3 through
+        the ``POST`` policy conditions, the local backend through its
+        route. The cap is enforced before the bytes are stored, which
+        :meth:`presign_put` cannot do. Still read the object before
+        trusting its content: the declared type is not the bytes.
+
+        Args:
+            subject_id (object): The subject id.
+            name (str): Object name relative to the subject's prefix.
+            max_bytes (int): Largest accepted file.
+            content_type (str | None): The only ``Content-Type`` accepted.
+                ``None`` leaves it free.
+            min_bytes (int): Smallest accepted file. Default ``0``.
+            expires (timedelta): Lifetime; at most 7 days.
+
+        Returns:
+            PresignedPost: The URL, the form fields to send before the file,
+            and the cap.
+
+        Raises:
+            ValueError: When the subject id or name is invalid, or the
+                limits or ``content_type`` are invalid.
+            IntegrationDisabledException: When the client was built with
+                ``enabled=False``.
+        """
+        return await self.client.presigned_post_policy(
+            self.key(subject_id, name),
+            max_bytes=max_bytes,
+            content_type=content_type,
+            min_bytes=min_bytes,
             bucket=self.bucket,
             expires=expires,
         )

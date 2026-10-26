@@ -50,6 +50,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any, BinaryIO
+from urllib.parse import urlencode
 
 from tempest_fastapi_sdk.exceptions.integration import IntegrationDisabledException
 from tempest_fastapi_sdk.settings.mixins import (
@@ -57,6 +58,11 @@ from tempest_fastapi_sdk.settings.mixins import (
     DEFAULT_LOCAL_STORAGE_ROUTE_PREFIX,
 )
 from tempest_fastapi_sdk.storage.minio_client import ObjectDeleteError, ObjectStat
+from tempest_fastapi_sdk.storage.presign import (
+    MEDIA_TYPE_PATTERN,
+    PresignedPost,
+    check_post_limits,
+)
 from tempest_fastapi_sdk.utils.signed_url import sign_path
 
 if TYPE_CHECKING:
@@ -68,6 +74,40 @@ LOCAL_STORAGE_GET_PURPOSE: str = "tempest-local-storage-get"
 
 LOCAL_STORAGE_PUT_PURPOSE: str = "tempest-local-storage-put"
 """Signing purpose of upload links; a ``GET`` link never verifies for it."""
+
+LOCAL_STORAGE_POST_PURPOSE: str = "tempest-local-storage-post"
+"""Signing purpose of size-capped form uploads (:meth:`presigned_post_policy`)."""
+
+LOCAL_GET_LINK_PARAMS: tuple[str, ...] = ("filename", "media_type", "disposition")
+"""Query parameters a download link may carry, bound into its signature."""
+
+LOCAL_POST_LINK_PARAMS: tuple[str, ...] = ("max_bytes", "min_bytes", "content_type")
+"""Query parameters a form-upload link carries, bound into its signature."""
+
+
+def bound_purpose(purpose: str, params: dict[str, str]) -> str:
+    """Bind a link's extra query parameters into its signing purpose.
+
+    :func:`~tempest_fastapi_sdk.utils.signed_url.sign_path` covers the path
+    and the expiry only. The download overrides and the upload limits ride
+    in the query, so they are folded into the purpose instead: the route
+    rebuilds the purpose from the parameters it received, and any change to
+    them — a bigger ``max_bytes``, another ``media_type`` — verifies as a
+    different purpose and fails. With no parameters the purpose is
+    unchanged, so a plain link signed before these existed still verifies.
+
+    Args:
+        purpose (str): The base purpose.
+        params (dict[str, str]): The parameters the link carries.
+
+    Returns:
+        str: ``purpose`` alone, or followed by NUL and the parameters,
+        sorted and URL-encoded.
+    """
+    if not params:
+        return purpose
+    return f"{purpose}\x00{urlencode(sorted(params.items()))}"
+
 
 LOCAL_STORAGE_CHUNK_SIZE: int = 64 * 1024
 """Chunk size of reads and stream copies, the ``AsyncMinIOClient`` default."""
@@ -585,6 +625,7 @@ class LocalObjectStorageClient:
         bucket: str | None,
         expires: timedelta,
         purpose: str,
+        params: dict[str, str] | None = None,
     ) -> str:
         """Sign the route path of one object for ``purpose``.
 
@@ -592,8 +633,11 @@ class LocalObjectStorageClient:
             key (str): Object key.
             bucket (str | None): Bucket; ``None`` for the default.
             expires (timedelta): Link lifetime.
-            purpose (str): :data:`LOCAL_STORAGE_GET_PURPOSE` or
-                :data:`LOCAL_STORAGE_PUT_PURPOSE`.
+            purpose (str): :data:`LOCAL_STORAGE_GET_PURPOSE`,
+                :data:`LOCAL_STORAGE_PUT_PURPOSE` or
+                :data:`LOCAL_STORAGE_POST_PURPOSE`.
+            params (dict[str, str] | None): Extra query parameters, bound
+                into the signature through :func:`bound_purpose`.
 
         Returns:
             str: The absolute signed URL.
@@ -606,12 +650,15 @@ class LocalObjectStorageClient:
             raise ValueError("expires must be at most 7 days")
         self.object_path(key, bucket=bucket)
         path = f"{self.route_prefix}/{self._bucket(bucket)}/{key}"
+        extra = params or {}
         signed = sign_path(
             path,
             secret=self._secret,
             expires_in=expires,
-            purpose=purpose,
+            purpose=bound_purpose(purpose, extra),
         )
+        if extra:
+            signed = f"{signed}&{urlencode(extra)}"
         return f"{self.public_url}{signed}"
 
     async def presigned_get_url(
@@ -620,16 +667,31 @@ class LocalObjectStorageClient:
         *,
         bucket: str | None = None,
         expires: timedelta = timedelta(hours=1),
+        filename: str | None = None,
+        media_type: str | None = None,
+        as_attachment: bool | None = None,
     ) -> str:
         """Build a temporary download link served by the app.
 
         The object does not need to exist yet; the route answers ``404``
         if it still does not when the link is opened.
 
+        ``filename``, ``media_type`` and ``as_attachment`` travel in the
+        query and are bound into the signature (:func:`bound_purpose`), the
+        way S3 signs its ``response-*`` overrides: the route answers with
+        them, and editing one breaks the link. Unset, the route serves the
+        stored type with its own ``as_attachment`` default.
+
         Args:
             key (str): Object key.
             bucket (str | None): Source bucket.
             expires (timedelta): Link lifetime; at most 7 days.
+            filename (str | None): Name presented to the client.
+            media_type (str | None): ``Content-Type`` the route answers
+                with, a bare ``type/subtype``.
+            as_attachment (bool | None): ``True`` forces a download;
+                ``False`` asks for ``inline``, granted only to inline-safe
+                types. ``None`` keeps the router's default.
 
         Returns:
             str: ``<public_url><route_prefix>/<bucket>/<key>``, with the
@@ -641,8 +703,21 @@ class LocalObjectStorageClient:
             IntegrationDisabledException: When built with ``enabled=False``.
         """
         self._check_enabled()
+        params: dict[str, str] = {}
+        if filename is not None:
+            params["filename"] = filename
+        if media_type is not None:
+            if not MEDIA_TYPE_PATTERN.fullmatch(media_type):
+                raise ValueError(f"media_type must be type/subtype, got {media_type!r}")
+            params["media_type"] = media_type
+        if as_attachment is not None:
+            params["disposition"] = "attachment" if as_attachment else "inline"
         return self._signed_url(
-            key, bucket=bucket, expires=expires, purpose=LOCAL_STORAGE_GET_PURPOSE
+            key,
+            bucket=bucket,
+            expires=expires,
+            purpose=LOCAL_STORAGE_GET_PURPOSE,
+            params=params,
         )
 
     async def presigned_put_url(
@@ -676,6 +751,138 @@ class LocalObjectStorageClient:
         return self._signed_url(
             key, bucket=bucket, expires=expires, purpose=LOCAL_STORAGE_PUT_PURPOSE
         )
+
+    async def presigned_post_policy(
+        self,
+        key: str,
+        *,
+        max_bytes: int,
+        content_type: str | None = None,
+        min_bytes: int = 0,
+        bucket: str | None = None,
+        expires: timedelta = timedelta(minutes=15),
+    ) -> PresignedPost:
+        """Build a form upload the route caps at ``max_bytes``.
+
+        The same call, and the same :class:`PresignedPost`, as
+        :meth:`AsyncMinIOClient.presigned_post_policy
+        <tempest_fastapi_sdk.storage.AsyncMinIOClient.presigned_post_policy>`:
+        the browser posts ``multipart/form-data`` with the fields and then
+        the file, and the code that sends it does not know which backend
+        signed. The limits ride in the URL, bound into the signature; the
+        route refuses a file outside them (``413 FILE_TOO_LARGE`` /
+        ``400 FILE_TOO_SMALL``), a different ``Content-Type`` field or a
+        different ``key`` field (``403``), and stores nothing.
+
+        Reading the form needs ``python-multipart`` (the ``[upload]``
+        extra); it is checked here, so a missing extra fails where the link
+        is issued instead of on the uploader's request.
+
+        Args:
+            key (str): Destination object key.
+            max_bytes (int): Largest accepted file; at most
+                :attr:`max_upload_bytes`.
+            content_type (str | None): The only ``Content-Type`` accepted.
+                ``None`` leaves it free.
+            min_bytes (int): Smallest accepted file. Default ``0``.
+            bucket (str | None): Target bucket.
+            expires (timedelta): Link lifetime; at most 7 days.
+
+        Returns:
+            PresignedPost: The URL, the form fields and the cap.
+
+        Raises:
+            ValueError: When the size range is empty, inverted or above
+                :attr:`max_upload_bytes`, the key is invalid, or
+                ``content_type`` is not a bare ``type/subtype``.
+            ImportError: When ``python-multipart`` is not installed.
+            IntegrationDisabledException: When built with ``enabled=False``.
+        """
+        self._check_enabled()
+        check_post_limits(min_bytes=min_bytes, max_bytes=max_bytes)
+        if max_bytes > self.max_upload_bytes:
+            raise ValueError(
+                f"max_bytes must be at most max_upload_bytes ({self.max_upload_bytes})"
+            )
+        if content_type is not None and not MEDIA_TYPE_PATTERN.fullmatch(content_type):
+            raise ValueError(f"content_type must be type/subtype, got {content_type!r}")
+        try:
+            import python_multipart  # noqa: F401
+        except ImportError as exc:
+            raise ImportError(
+                "Form uploads to the local store need python-multipart. "
+                "Install with: pip install tempest-fastapi-sdk[upload]"
+            ) from exc
+        params: dict[str, str] = {
+            "max_bytes": str(max_bytes),
+            "min_bytes": str(min_bytes),
+        }
+        fields: dict[str, str] = {"key": key}
+        if content_type is not None:
+            params["content_type"] = content_type
+            fields["Content-Type"] = content_type
+        url = self._signed_url(
+            key,
+            bucket=bucket,
+            expires=expires,
+            purpose=LOCAL_STORAGE_POST_PURPOSE,
+            params=params,
+        )
+        return PresignedPost(url=url, max_bytes=max_bytes, fields=fields)
+
+    def verify_link(
+        self,
+        request: Request,
+        *,
+        purpose: str,
+        names: tuple[str, ...] = (),
+    ) -> dict[str, str]:
+        """Verify a link whose extra query parameters are bound to it.
+
+        The check behind the routes of
+        :func:`~tempest_fastapi_sdk.storage.make_local_storage_router`: the
+        purpose is rebuilt with :func:`bound_purpose` from the parameters in
+        ``names`` that the request carries, so a link whose
+        limits or overrides were edited verifies as another purpose and
+        fails.
+
+        Args:
+            request (Request): The incoming request.
+            purpose (str): The route's base purpose.
+            names (tuple[str, ...]): The parameters this route binds —
+                :data:`LOCAL_GET_LINK_PARAMS` or :data:`LOCAL_POST_LINK_PARAMS`.
+
+        Returns:
+            dict[str, str]: The bound parameters the link carried.
+
+        Raises:
+            InvalidSignedURLException: ``403`` when the signature is
+                missing, malformed or does not match.
+            ExpiredSignedURLException: ``403`` when the link expired.
+        """
+        from tempest_fastapi_sdk.exceptions.signed_url import (
+            InvalidSignedURLException,
+        )
+        from tempest_fastapi_sdk.utils.signed_url import (
+            SIGNED_URL_EXPIRES_PARAM,
+            SIGNED_URL_SIGNATURE_PARAM,
+            verify_path,
+        )
+
+        query = request.query_params
+        expires = query.get(SIGNED_URL_EXPIRES_PARAM, "")
+        signature = query.get(SIGNED_URL_SIGNATURE_PARAM, "")
+        if not (expires.isascii() and expires.isdigit()) or not signature:
+            raise InvalidSignedURLException()
+        params = {name: query[name] for name in names if name in query}
+        verify_path(
+            request.scope["path"],
+            expires=int(expires),
+            signature=signature,
+            secret=self._secret,
+            purpose=bound_purpose(purpose, params),
+        )
+        return params
 
     def signature_dependency(
         self,
@@ -1105,11 +1312,15 @@ class LocalObjectStorageClient:
 __all__: list[str] = [
     "DEFAULT_LOCAL_MAX_UPLOAD_BYTES",
     "DEFAULT_LOCAL_STORAGE_ROUTE_PREFIX",
+    "LOCAL_GET_LINK_PARAMS",
     "LOCAL_META_SUFFIX",
+    "LOCAL_POST_LINK_PARAMS",
     "LOCAL_PRESIGN_MAX_EXPIRES",
     "LOCAL_STORAGE_CHUNK_SIZE",
     "LOCAL_STORAGE_GET_PURPOSE",
+    "LOCAL_STORAGE_POST_PURPOSE",
     "LOCAL_STORAGE_PUT_PURPOSE",
     "LocalObjectNotFoundError",
     "LocalObjectStorageClient",
+    "bound_purpose",
 ]

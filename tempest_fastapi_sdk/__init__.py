@@ -433,6 +433,9 @@ if TYPE_CHECKING:
         plan_by_jwt_claim as plan_by_jwt_claim,
     )
     from tempest_fastapi_sdk.api import (
+        prune_orphan_enum_schemas as prune_orphan_enum_schemas,
+    )
+    from tempest_fastapi_sdk.api import (
         raises as raises,
     )
     from tempest_fastapi_sdk.api import (
@@ -1302,6 +1305,9 @@ if TYPE_CHECKING:
         FileTooLargeException as FileTooLargeException,
     )
     from tempest_fastapi_sdk.exceptions import (
+        FileTooSmallException as FileTooSmallException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
         ForbiddenException as ForbiddenException,
     )
     from tempest_fastapi_sdk.exceptions import (
@@ -1741,6 +1747,9 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.storage import (
         ObjectStat as ObjectStat,
+    )
+    from tempest_fastapi_sdk.storage import (
+        PresignedPost as PresignedPost,
     )
     from tempest_fastapi_sdk.storage import (
         PutObjectItem as PutObjectItem,
@@ -2379,6 +2388,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "clear_log_files": "tempest_fastapi_sdk.api",
     "declared_raises": "tempest_fastapi_sdk.api",
     "describe_validation_envelope": "tempest_fastapi_sdk.api",
+    "prune_orphan_enum_schemas": "tempest_fastapi_sdk.api",
     "error_responses": "tempest_fastapi_sdk.api",
     "generate_csrf_token": "tempest_fastapi_sdk.api",
     "generate_oauth_state": "tempest_fastapi_sdk.api",
@@ -2690,6 +2700,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "ExpiredSignedURLException": "tempest_fastapi_sdk.exceptions",
     "ExpiredTokenException": "tempest_fastapi_sdk.exceptions",
     "FileTooLargeException": "tempest_fastapi_sdk.exceptions",
+    "FileTooSmallException": "tempest_fastapi_sdk.exceptions",
     "ForbiddenException": "tempest_fastapi_sdk.exceptions",
     "InheritedErrorCodeWarning": "tempest_fastapi_sdk.exceptions",
     "IntegrationDisabledException": "tempest_fastapi_sdk.exceptions",
@@ -2824,6 +2835,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "PutObjectItem": "tempest_fastapi_sdk.storage",
     "LocalObjectNotFoundError": "tempest_fastapi_sdk.storage",
     "LocalObjectStorageClient": "tempest_fastapi_sdk.storage",
+    "PresignedPost": "tempest_fastapi_sdk.storage",
     "make_local_storage_router": "tempest_fastapi_sdk.storage",
     "ACCESS_TOKEN_TYPE": "tempest_fastapi_sdk.utils",
     "AMR_CLAIM": "tempest_fastapi_sdk.utils",
@@ -3302,6 +3314,7 @@ __all__: list[str] = [
     "FieldRef",
     "FileStoreUtils",
     "FileTooLargeException",
+    "FileTooSmallException",
     "FirebaseAuth",
     "FirebaseCredentialError",
     "FirebaseIdentity",
@@ -3458,6 +3471,7 @@ __all__: list[str] = [
     "PortField",
     "PositiveFloatField",
     "PositiveIntField",
+    "PresignedPost",
     "PriceField",
     "PrometheusMiddleware",
     "PublicSchemeMiddleware",
@@ -3767,6 +3781,7 @@ __all__: list[str] = [
     "permission",
     "plan_by_header",
     "plan_by_jwt_claim",
+    "prune_orphan_enum_schemas",
     "quantize_money",
     "raises",
     "read_log_entries",

@@ -14,8 +14,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import BinaryIO
+from urllib.parse import urlencode
 
 from tempest_fastapi_sdk.storage.minio_client import ObjectDeleteError, ObjectStat
+from tempest_fastapi_sdk.storage.presign import (
+    PresignedPost,
+    check_post_limits,
+    download_overrides,
+)
 from tempest_fastapi_sdk.testing.fakes._control import _Steerable
 
 DEFAULT_FAKE_BUCKET: str = "fake-bucket"
@@ -188,25 +194,86 @@ class FakeObjectStorageClient(_Steerable):
         *,
         bucket: str | None = None,
         expires: timedelta = timedelta(hours=1),
+        filename: str | None = None,
+        media_type: str | None = None,
+        as_attachment: bool | None = None,
     ) -> str:
         """Build a fake download URL.
+
+        The overrides are echoed in the query as the S3 ``response-*``
+        parameters, so a test can assert what the real link would sign.
 
         Args:
             key (str): Object key.
             bucket (str | None): Source bucket.
             expires (timedelta): URL lifetime, echoed in the URL.
+            filename (str | None): Name presented to the client.
+            media_type (str | None): ``Content-Type`` override.
+            as_attachment (bool | None): Download or ``inline``.
 
         Returns:
-            str: ``https://fake-storage/<bucket>/<key>?expires=<seconds>``.
+            str: ``https://fake-storage/<bucket>/<key>?expires=<seconds>``,
+            plus the overrides.
 
         Raises:
             BaseException: Whatever :meth:`fail_next` queued.
+            ValueError: When ``media_type`` is not a bare ``type/subtype``.
         """
         self._record("presigned_get_url")
+        overrides = download_overrides(
+            key,
+            filename=filename,
+            media_type=media_type,
+            as_attachment=as_attachment,
+        )
         seconds = int(expires.total_seconds())
-        return (
-            f"https://fake-storage/{bucket or self.default_bucket}/{key}"
-            f"?expires={seconds}"
+        query = urlencode({"expires": seconds, **overrides})
+        return f"https://fake-storage/{bucket or self.default_bucket}/{key}?{query}"
+
+    async def presigned_post_policy(
+        self,
+        key: str,
+        *,
+        max_bytes: int,
+        content_type: str | None = None,
+        min_bytes: int = 0,
+        bucket: str | None = None,
+        expires: timedelta = timedelta(minutes=15),
+    ) -> PresignedPost:
+        """Build a fake form upload.
+
+        Nothing listens on the URL, as with :meth:`presigned_put_url`; the
+        fields echo the limits a real policy would sign.
+
+        Args:
+            key (str): Destination object key.
+            max_bytes (int): Largest accepted file.
+            content_type (str | None): The only ``Content-Type`` accepted.
+            min_bytes (int): Smallest accepted file.
+            bucket (str | None): Target bucket.
+            expires (timedelta): Lifetime, echoed in the fields.
+
+        Returns:
+            PresignedPost: ``https://fake-storage/<bucket>`` with ``key``,
+            ``Content-Type`` when given, and the limits as fields.
+
+        Raises:
+            BaseException: Whatever :meth:`fail_next` queued.
+            ValueError: When the size range is empty or inverted.
+        """
+        self._record("presigned_post_policy")
+        check_post_limits(min_bytes=min_bytes, max_bytes=max_bytes)
+        fields: dict[str, str] = {
+            "key": key,
+            "x-fake-content-length-range": f"{min_bytes},{max_bytes}",
+            "x-fake-expires": str(int(expires.total_seconds())),
+        }
+        if content_type is not None:
+            fields["Content-Type"] = content_type
+        return PresignedPost(
+            url=f"https://fake-storage/{bucket or self.default_bucket}",
+            max_bytes=max_bytes,
+            fields=fields,
         )
 
     async def presigned_put_url(

@@ -115,6 +115,9 @@ from tempest_fastapi_sdk.exceptions.upload import (
     FileTooLargeException as FileTooLargeException,
 )
 from tempest_fastapi_sdk.exceptions.upload import (
+    FileTooSmallException as FileTooSmallException,
+)
+from tempest_fastapi_sdk.exceptions.upload import (
     InvalidFileTypeException as InvalidFileTypeException,
 )
 from tempest_fastapi_sdk.exceptions.validation import (
@@ -157,6 +160,7 @@ __all__: list[str] = [
     "ExpiredSignedURLException",
     "ExpiredTokenException",
     "FileTooLargeException",
+    "FileTooSmallException",
     "ForbiddenException",
     "InheritedErrorCodeWarning",
     "InsufficientBalanceException",

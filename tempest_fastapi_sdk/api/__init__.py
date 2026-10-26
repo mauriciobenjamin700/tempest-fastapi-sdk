@@ -270,6 +270,12 @@ from tempest_fastapi_sdk.api.oauth import (
 from tempest_fastapi_sdk.api.oidc_verifier import (
     OIDCTokenVerifier as OIDCTokenVerifier,
 )
+from tempest_fastapi_sdk.api.openapi_pruning import (
+    drop_orphan_enum_schemas as drop_orphan_enum_schemas,
+)
+from tempest_fastapi_sdk.api.openapi_pruning import (
+    prune_orphan_enum_schemas as prune_orphan_enum_schemas,
+)
 from tempest_fastapi_sdk.api.redaction import (
     ExceptionRedactor as ExceptionRedactor,
 )
@@ -459,6 +465,7 @@ __all__: list[str] = [
     "clear_log_files",
     "declared_raises",
     "describe_validation_envelope",
+    "drop_orphan_enum_schemas",
     "error_responses",
     "generate_csrf_token",
     "generate_oauth_state",
@@ -491,6 +498,7 @@ __all__: list[str] = [
     "make_validation_exception_handler",
     "plan_by_header",
     "plan_by_jwt_claim",
+    "prune_orphan_enum_schemas",
     "raises",
     "read_log_entries",
     "redact_database_errors",

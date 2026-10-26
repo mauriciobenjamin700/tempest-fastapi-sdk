@@ -593,6 +593,69 @@ None
     to keep passing the type-checker.
 
 
+### Cap enforced by the store itself — `presign_post`
+
+`presign_put` leaves every check for after the upload. With `presign_post`
+the store refuses, **before storing**, a file outside `[min_bytes,
+max_bytes]`, another key or (with `content_type`) another type — S3 through
+the *policy* conditions, the local backend through its route. The app sends
+the `fields` and the file last in a `multipart/form-data` to `post.url` (the
+JavaScript is in the [storage recipe](storage.md)).
+
+```python
+import asyncio
+from uuid import uuid4
+
+from tempest_fastapi_sdk import PresignedPost
+from tempest_fastapi_sdk.privacy import SubjectObjectStorage
+from tempest_fastapi_sdk.testing.fakes import FakeObjectStorageClient
+
+MAX_PHOTO_BYTES: int = 5 * 1024 * 1024
+
+client = FakeObjectStorageClient()
+storage = SubjectObjectStorage(client, prefix="users")
+
+
+async def start_upload(user_id: int) -> tuple[str, PresignedPost]:
+    """Sign a form the store accepts only up to 5 MiB, as JPEG."""
+    name = f"uploads/{uuid4().hex}.jpg"
+    post = await storage.presign_post(
+        user_id,
+        name,
+        max_bytes=MAX_PHOTO_BYTES,
+        content_type="image/jpeg",
+    )
+    return name, post
+
+
+async def main() -> None:
+    """Show what the app receives to build the form."""
+    name, post = await start_upload(42)
+    print(post.fields["key"] == storage.key(42, name))
+    print(post.fields["Content-Type"], post.max_bytes)
+
+
+asyncio.run(main())
+```
+
+```text
+True
+image/jpeg 5242880
+```
+
+The cap still does not say the bytes are a JPEG: the form's `Content-Type`
+is declared by the app. Read the head of the file with `read(...,
+max_bytes=...)` before accepting it, as in the example above. To serve the
+photo later, `presign(..., media_type="image/jpeg", as_attachment=False)`
+signs the checked type into the link.
+
+!!! warning "`SubjectStorageClient` change"
+    The protocol gained `presigned_post_policy`, and `presigned_get_url`
+    gained `filename`, `media_type` and `as_attachment`. `AsyncMinIOClient`,
+    `LocalObjectStorageClient` and `FakeObjectStorageClient` already comply;
+    a client of yours implementing the protocol needs both to keep passing
+    the type-checker.
+
 ## Putting both together in a service
 
 Delete the files **before** the root row. If the store fails, the subject's

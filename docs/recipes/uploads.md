@@ -339,6 +339,30 @@ value_error | Value error, image type must be one of: image/jpeg, image/png, ima
 - Sem argumentos, `image_media_type_field()` aceita os seis e só preenche
   título, descrição e exemplo.
 
+!!! warning "O OpenAPI ganha um `ImageMediaType` órfão — `prune_orphan_enum_schemas`"
+    O FastAPI publica um componente para **todo** campo anotado com um
+    `Enum`, mesmo quando o schema do campo traz o enum restrito inline. O
+    `components.schemas.ImageMediaType` sai com os seis membros e nenhum
+    `$ref` aponta para ele, e o gerador de cliente cria um enum morto. Uma
+    linha no `create_app` tira os enums que ninguém referencia (o `tempest
+    new` já gera com ela):
+
+    ```python
+    from fastapi import FastAPI
+
+    from tempest_fastapi_sdk import (
+        prune_orphan_enum_schemas,
+        register_exception_handlers,
+    )
+
+    app = FastAPI()
+    register_exception_handlers(app)
+    prune_orphan_enum_schemas(app)
+    ```
+
+    Só sai componente de enum sem nenhum `$ref` no documento; um enum usado
+    por outro campo fica, e schema de objeto nunca é tocado.
+
 ### Conferir os bytes contra o tipo declarado
 
 O tipo declarado é do cliente. `.matches(data)` pergunta ao `sniff_mime` o que
