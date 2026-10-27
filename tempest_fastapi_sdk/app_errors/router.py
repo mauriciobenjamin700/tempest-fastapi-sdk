@@ -15,6 +15,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 
 from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.app_errors.schemas import (
     AppErrorFilterSchema,
     AppErrorReportSchema,
@@ -33,6 +34,7 @@ def make_app_error_router(
     admin_dependency: Callable[..., Any] | None = None,
     prefix: str = "/api/app-errors",
     tags: list[str | Enum] | None = None,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build the app-error router.
 
@@ -58,6 +60,11 @@ def make_app_error_router(
         prefix (str): Path prefix for both routes.
         tags (list[str | Enum] | None): OpenAPI tags, in the shape
             ``APIRouter`` accepts.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: The router, ready to include.
@@ -78,14 +85,16 @@ def make_app_error_router(
         :class:`~tempest_fastapi_sdk.api.middlewares.rate_limit.FailOpenRateLimitStore`
         for this prefix.
     """
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(prefix=prefix, tags=tags or ["app-errors"])
     session_provider = session_provider_for(session_factory)
 
     @router.post(
         "",
+        description=route_docs.description("app_errors.report_app_error"),
         status_code=status.HTTP_201_CREATED,
         response_model=AppErrorResponseSchema,
-        summary="Record an error reported by the client application",
+        summary=route_docs.summary("app_errors.report_app_error"),
     )
     async def report_app_error(
         data: AppErrorReportSchema,
@@ -118,15 +127,23 @@ def make_app_error_router(
 
         @router.get(
             "",
+            description=route_docs.description("app_errors.list_app_errors"),
             response_model=BasePaginationSchema[AppErrorResponseSchema],
-            summary="List reported errors for investigation",
+            summary=route_docs.summary("app_errors.list_app_errors"),
             dependencies=[Depends(admin_dependency)],
         )
         async def list_app_errors(
             filters: AppErrorFilterSchema = Depends(),
-            page: int = Query(default=1, ge=1, description="Página, 1-indexed."),
+            page: int = Query(
+                default=1,
+                ge=1,
+                description=route_docs.text("app_errors.list_app_errors.page"),
+            ),
             page_size: int = Query(
-                default=20, ge=1, le=200, description="Itens por página."
+                default=20,
+                ge=1,
+                le=200,
+                description=route_docs.text("app_errors.list_app_errors.page_size"),
             ),
             session: Any = Depends(session_provider),
         ) -> BasePaginationSchema[AppErrorResponseSchema]:

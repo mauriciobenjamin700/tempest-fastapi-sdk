@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, Request, Response, status
 
 from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.sessions.dependencies import make_session_dependency
 from tempest_fastapi_sdk.sessions.schemas import (
     Session,
@@ -47,6 +48,7 @@ def make_session_router(
     session_factory: Callable[..., AsyncIterator[AsyncSession]],
     prefix: str = "/auth/session",
     tags: list[str] | None = None,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build the bundled session router.
 
@@ -60,6 +62,11 @@ def make_session_router(
         prefix (str): URL prefix. Defaults to ``"/auth/session"``.
         tags (list[str] | None): OpenAPI tags. Defaults to
             ``["session"]``.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -76,6 +83,7 @@ def make_session_router(
             "with SessionAuth.login_with_credentials() instead."
         )
     settings = service.settings
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(prefix=prefix, tags=list(tags or ["session"]))
 
     db_dep = Depends(session_provider_for(session_factory))
@@ -100,9 +108,10 @@ def make_session_router(
 
     @router.post(
         "/login",
+        description=route_docs.description("sessions.login"),
         response_model=SessionResponseSchema,
         status_code=status.HTTP_200_OK,
-        summary="Authenticate and start a session",
+        summary=route_docs.summary("sessions.login"),
     )
     async def login(
         payload: SessionLoginSchema,
@@ -142,8 +151,9 @@ def make_session_router(
 
     @router.post(
         "/logout",
+        description=route_docs.description("sessions.logout"),
         status_code=status.HTTP_204_NO_CONTENT,
-        summary="Revoke the current session",
+        summary=route_docs.summary("sessions.logout"),
     )
     async def logout(
         request: Request,
@@ -158,8 +168,9 @@ def make_session_router(
 
     @router.get(
         "/me",
+        description=route_docs.description("sessions.me"),
         response_model=Session,
-        summary="Return the live session for the current cookie",
+        summary=route_docs.summary("sessions.me"),
     )
     async def me(
         session: Session = current_session_required,
@@ -168,8 +179,9 @@ def make_session_router(
 
     @router.get(
         "/list",
+        description=route_docs.description("sessions.list_sessions"),
         response_model=list[SessionSummarySchema],
-        summary="List every session the current user owns",
+        summary=route_docs.summary("sessions.list_sessions"),
     )
     async def list_sessions(
         request: Request,
@@ -192,8 +204,9 @@ def make_session_router(
 
     @router.delete(
         "/{public_id}",
+        description=route_docs.description("sessions.revoke_one"),
         status_code=status.HTTP_204_NO_CONTENT,
-        summary="Revoke one specific session by its public id",
+        summary=route_docs.summary("sessions.revoke_one"),
     )
     async def revoke_one(
         public_id: str,

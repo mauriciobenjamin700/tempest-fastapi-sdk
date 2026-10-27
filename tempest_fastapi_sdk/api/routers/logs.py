@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, Query, params
 from starlette.concurrency import run_in_threadpool
 
 from tempest_fastapi_sdk.api.dependencies.auth import make_token_dependency
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.core.logging import (
     HTTP_500_LOG_FILE,
     LEVEL_LOG_FILES,
@@ -699,6 +700,7 @@ def make_logs_router(
     default_page_size: int = 20,
     max_page_size: int = 200,
     max_records_per_file: int = DEFAULT_MAX_RECORDS_PER_FILE,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build a router that serves the on-disk JSON logs, paginated.
 
@@ -771,6 +773,11 @@ def make_logs_router(
             :data:`DEFAULT_MAX_RECORDS_PER_FILE` — the bound is what keeps a
             large log directory from being read into memory whole. When it
             bites, a warning is logged naming the source.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: A router ready to ``include_router(...)`` on the app.
@@ -794,6 +801,7 @@ def make_logs_router(
             "dependencies=[...] with the service's own auth, or pass "
             "allow_unauthenticated=True for a local run nothing else reaches."
         )
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(prefix=prefix, tags=[tag])
     base_dir = Path(log_dir)
     gate: list[params.Depends] = []
@@ -803,35 +811,35 @@ def make_logs_router(
 
     @router.get(
         "",
-        summary="Read structured application logs",
+        description=route_docs.description("logs.read_logs"),
+        summary=route_docs.summary("logs.read_logs"),
         response_model=BasePaginationSchema[LogEntrySchema],
         dependencies=gate,
     )
     async def read_logs(
         source: LogSource = Query(
             default="all",
-            description=(
-                "Which log file(s) to read. 'all' merges every level; "
-                "'500' returns only isolated unhandled-500 records."
-            ),
+            description=route_docs.text("logs.read_logs.source"),
         ),
         q: str | None = Query(
             default=None,
-            description="Case-insensitive substring match on the message.",
+            description=route_docs.text("logs.read_logs.q"),
         ),
         start: datetime | None = Query(
             default=None,
-            description="Only records at or after this ISO-8601 instant.",
+            description=route_docs.text("logs.read_logs.start"),
         ),
         end: datetime | None = Query(
             default=None,
-            description="Only records at or before this ISO-8601 instant.",
+            description=route_docs.text("logs.read_logs.end"),
         ),
-        page: int = Query(default=1, ge=1, description="Page number (1-indexed)."),
+        page: int = Query(
+            default=1, ge=1, description=route_docs.text("logs.read_logs.page")
+        ),
         page_size: int = Query(
             default=default_page_size,
             ge=1,
-            description="Items per page.",
+            description=route_docs.text("logs.read_logs.page_size"),
         ),
     ) -> BasePaginationSchema[LogEntrySchema]:
         """Return a paginated, filtered page of log records (newest first).
@@ -883,26 +891,19 @@ def make_logs_router(
 
     @router.delete(
         "",
-        summary="Truncate structured application logs",
+        description=route_docs.description("logs.clear_logs"),
+        summary=route_docs.summary("logs.clear_logs"),
         response_model=LogFilesClearedSchema,
         dependencies=gate,
     )
     async def clear_logs(
         source: LogSource = Query(
             default="all",
-            description=(
-                "Which log file(s) to truncate. 'all' empties every "
-                "level **and** the isolated 500 stream; '500' empties "
-                "only the latter."
-            ),
+            description=route_docs.text("logs.clear_logs.source"),
         ),
         delete_backups: bool = Query(
             default=False,
-            description=(
-                "Also delete the rotated backups (info.log.1, "
-                "info.log.2026-10-20, ...). Off by default: deleting them "
-                "cannot be undone."
-            ),
+            description=route_docs.text("logs.clear_logs.delete_backups"),
         ),
     ) -> LogFilesClearedSchema:
         """Empty the log files a source selector points at.

@@ -1941,6 +1941,105 @@ in `{{ expires_at }}`.
 
 ---
 
+## Route documentation language (`/docs`) *(Unreleased, #643)*
+
+The email language does not change the `/docs` language. The `summary` and
+`description` that `make_auth_router` writes into the OpenAPI document — what
+shows up in Swagger, in ReDoc and in the comments of a generated client — are
+English by default. To have them in Brazilian Portuguese, one environment
+variable is enough:
+
+```env
+# .env
+API_DOCS_LOCALE=pt-BR   # default: en-US
+```
+
+The whole app, in one file, to check it:
+
+```python
+from collections.abc import AsyncIterator
+
+from fastapi import FastAPI
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import (
+    BaseUserModel,
+    UserAuthService,
+    make_auth_router,
+    make_user_token_model,
+)
+from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
+
+
+class UserModel(BaseUserModel):
+    """The product's account."""
+
+    __tablename__ = "users"
+
+
+UserTokenModel = make_user_token_model(
+    user_table="users",
+    tablename="user_tokens",
+    class_name="UserTokenModel",
+)
+
+service: UserAuthService = UserAuthService(
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=AuthSettings(),
+    jwt_settings=JWTSettings(),
+    email=None,
+)
+
+
+async def get_session() -> AsyncIterator[AsyncSession]:
+    """Request-scoped database session (use your service's own)."""
+    raise NotImplementedError
+    yield
+
+
+app: FastAPI = FastAPI()
+app.include_router(make_auth_router(service, session_factory=get_session))
+
+login: dict[str, str] = app.openapi()["paths"]["/auth/login"]["post"]
+print(login["summary"])
+```
+
+```console
+$ python app.py
+Log in with email + password → JWT pair
+$ API_DOCS_LOCALE=pt-BR python app.py
+Entrar com e-mail + senha → par JWT
+```
+
+Rather decide in code than in the environment? Every route factory accepts
+`docs_locale=`, and the argument wins over the variable — in the example
+above, `make_auth_router(service, session_factory=get_session, docs_locale="pt-BR")`
+prints the Portuguese summary with or without `API_DOCS_LOCALE`.
+
+!!! info "Only the prose changes — the contract stays"
+    Paths, `operationId`, parameter and field names, error codes and schema
+    `title`s are the same in both languages. A client generated from the
+    Portuguese document is the client generated from the English one; only
+    the comments differ.
+
+!!! tip "Case does not matter"
+    `pt-BR`, `pt_br` and `pt` become `pt-BR`; `en-US`, `EN-us` and `en`
+    become `en-US`. Unlike `AUTH_DEFAULT_LOCALE`, a language the catalog does
+    not carry (`es-ES`, `pt-PT`) does **not** fall back to the default: the
+    app refuses to start, naming `API_DOCS_LOCALE`. English documentation on
+    a deployment that asked for another language is the silent defect that
+    refusal prevents.
+
+**Which routers follow the variable today:** `make_auth_router` (every route
+that appears in the schema), `make_sse_router` (and
+`UserAuthService.sse_router`), `make_push_router`, `make_web_push_router`,
+`make_health_router`, `make_logs_router`, `make_tool_spec_router`,
+`make_app_error_router`, `make_session_router`, `make_pdf_router` and
+`make_voice_router`. The others (chat, genai, agents, modelops, reviews,
+vision, wallet, hostbridge) still document themselves in English. The
+variable lives on `ServerSettings`.
+
 ## Five operating modes
 
 | Mode | When to use | Flags | Where the link appears |

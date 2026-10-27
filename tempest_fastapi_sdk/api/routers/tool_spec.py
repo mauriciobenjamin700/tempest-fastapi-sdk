@@ -15,6 +15,8 @@ from typing import Any
 
 from fastapi import APIRouter
 
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
+
 SpecProvider = (
     dict[str, Any]
     | Callable[[], dict[str, Any]]
@@ -28,6 +30,7 @@ def make_tool_spec_router(
     path: str = "/tool-spec",
     tag: str = "meta",
     response_model: type[Any] | None = None,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build a router that exposes a tool-spec / capabilities manifest.
 
@@ -44,17 +47,28 @@ def make_tool_spec_router(
         response_model (type[Any] | None): Optional Pydantic model used
             as the response schema for OpenAPI. The provider must
             return a value compatible with the model.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: A FastAPI router with a single ``GET`` route.
     """
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(tags=[tag])
 
     if callable(spec):
         provider_callable: Callable[..., Any] = spec
         is_coro = inspect.iscoroutinefunction(provider_callable)
 
-        @router.get(path, response_model=response_model)
+        @router.get(
+            path,
+            summary=route_docs.summary("tool_spec.tool_spec"),
+            description=route_docs.description("tool_spec.tool_spec"),
+            response_model=response_model,
+        )
         async def tool_spec() -> Any:
             result = provider_callable()
             if is_coro or inspect.isawaitable(result):
@@ -63,7 +77,12 @@ def make_tool_spec_router(
     else:
         static_spec: dict[str, Any] = dict(spec)
 
-        @router.get(path, response_model=response_model)
+        @router.get(
+            path,
+            summary=route_docs.summary("tool_spec.tool_spec_static"),
+            description=route_docs.description("tool_spec.tool_spec_static"),
+            response_model=response_model,
+        )
         async def tool_spec_static() -> dict[str, Any]:
             return static_spec
 

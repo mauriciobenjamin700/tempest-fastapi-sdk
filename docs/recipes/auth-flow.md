@@ -1917,6 +1917,102 @@ em `{{ expires_at }}`.
 
 ---
 
+## Idioma da documentação das rotas (`/docs`) *(Unreleased, #643)*
+
+O idioma dos e-mails não muda o idioma do `/docs`. O `summary` e a
+`description` que o `make_auth_router` escreve no documento OpenAPI — o que
+aparece no Swagger, no ReDoc e nos comentários do cliente gerado — saem em
+inglês por padrão. Para tê-los em português, uma variável de ambiente basta:
+
+```env
+# .env
+API_DOCS_LOCALE=pt-BR   # padrão: en-US
+```
+
+O app inteiro, num arquivo, para conferir:
+
+```python
+from collections.abc import AsyncIterator
+
+from fastapi import FastAPI
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import (
+    BaseUserModel,
+    UserAuthService,
+    make_auth_router,
+    make_user_token_model,
+)
+from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
+
+
+class UserModel(BaseUserModel):
+    """Conta do produto."""
+
+    __tablename__ = "users"
+
+
+UserTokenModel = make_user_token_model(
+    user_table="users",
+    tablename="user_tokens",
+    class_name="UserTokenModel",
+)
+
+service: UserAuthService = UserAuthService(
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=AuthSettings(),
+    jwt_settings=JWTSettings(),
+    email=None,
+)
+
+
+async def get_session() -> AsyncIterator[AsyncSession]:
+    """Sessão de banco da request (troque pela do seu serviço)."""
+    raise NotImplementedError
+    yield
+
+
+app: FastAPI = FastAPI()
+app.include_router(make_auth_router(service, session_factory=get_session))
+
+login: dict[str, str] = app.openapi()["paths"]["/auth/login"]["post"]
+print(login["summary"])
+```
+
+```console
+$ python app.py
+Log in with email + password → JWT pair
+$ API_DOCS_LOCALE=pt-BR python app.py
+Entrar com e-mail + senha → par JWT
+```
+
+Quer decidir no código, e não no ambiente? Toda factory que gera rota aceita
+`docs_locale=`, e o argumento vence a variável — no exemplo acima,
+`make_auth_router(service, session_factory=get_session, docs_locale="pt-BR")`
+imprime o resumo em português com ou sem `API_DOCS_LOCALE`.
+
+!!! info "Só a prosa muda — o contrato fica"
+    Path, `operationId`, nome de parâmetro e de campo, código de erro e
+    `title` de schema são os mesmos nas duas línguas. Um cliente gerado do
+    documento em português é o mesmo cliente gerado do documento em inglês;
+    o que muda são os comentários.
+
+!!! tip "Não precisa acertar a caixa"
+    `pt-BR`, `pt_br` e `pt` viram `pt-BR`; `en-US`, `EN-us` e `en` viram
+    `en-US`. Diferente do `AUTH_DEFAULT_LOCALE`, uma língua que o catálogo
+    não tem (`es-ES`, `pt-PT`) **não** cai no padrão: o app recusa subir,
+    nomeando `API_DOCS_LOCALE`. Documentação em inglês num deploy que pediu
+    outra língua é o defeito silencioso que essa recusa evita.
+
+**Quais routers seguem a variável hoje:** `make_auth_router` (todas as rotas
+que aparecem no schema), `make_sse_router` (e o `UserAuthService.sse_router`),
+`make_push_router`, `make_web_push_router`, `make_health_router`,
+`make_logs_router`, `make_tool_spec_router`, `make_app_error_router`,
+`make_session_router`, `make_pdf_router` e `make_voice_router`. Os demais
+(chat, genai, agents, modelops, reviews, vision, wallet, hostbridge) ainda
+documentam em inglês. A variável mora no `ServerSettings`.
+
 ## Cinco modos de operação
 
 | Modo | Quando usar | Flags | Onde o link aparece |

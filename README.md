@@ -2458,7 +2458,7 @@ Each mixin owns its own env-var prefix — pick only the ones the service needs:
 | Mixin | Env vars |
 | --- | --- |
 | `EnvironmentSettings` | `ENV` (`development` / `test` / `production`) |
-| `ServerSettings` | `SERVER_HOST`, `SERVER_PORT`, `SERVER_RELOAD`, `SERVER_DEBUG`, `TRUSTED_IP_HEADER` |
+| `ServerSettings` | `SERVER_HOST`, `SERVER_PORT`, `SERVER_RELOAD`, `SERVER_DEBUG`, `TRUSTED_IP_HEADER`, `SERVER_PUBLIC_SCHEME`, `API_DOCS_LOCALE` |
 | `LogSettings` | `LOG_LEVEL`, `LOG_JSON`, `LOG_DIR` |
 | `DatabaseSettings` | `DATABASE_URL`, `DATABASE_ECHO`, `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW`, `DATABASE_POOL_RECYCLE` |
 | `RedisSettings` | `REDIS_URL`, `REDIS_DECODE_RESPONSES` |

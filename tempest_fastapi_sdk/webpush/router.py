@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.utils._signature import accepts_keyword
 from tempest_fastapi_sdk.webpush.schemas import WebPushSubscriptionSchema
 from tempest_fastapi_sdk.webpush.service import WebPushSubscriptionService
@@ -34,6 +35,7 @@ def make_web_push_router(
     store_user_agent: bool = True,
     vapid_public_key: str | Callable[[], str] | None = None,
     transfer_ownership: bool = False,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build a router with ``POST /subscribe`` and ``POST /unsubscribe``.
 
@@ -76,15 +78,26 @@ def make_web_push_router(
             caller gets the same answer as a new subscription. Turn on only
             where moving devices between accounts is a real case; the
             service override must then accept ``transfer_ownership=``.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
     """
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(prefix=prefix, tags=list(tags or ["push"]))
 
     if vapid_public_key is not None:
 
-        @router.get("/vapid-public-key", status_code=status.HTTP_200_OK)
+        @router.get(
+            "/vapid-public-key",
+            summary=route_docs.summary("webpush.get_vapid_public_key"),
+            description=route_docs.description("webpush.get_vapid_public_key"),
+            status_code=status.HTTP_200_OK,
+        )
         async def get_vapid_public_key() -> dict[str, str]:
             """Return the VAPID public key the browser subscribes with.
 
@@ -105,7 +118,12 @@ def make_web_push_router(
     ) -> WebPushSubscriptionService[Any]:
         return service_factory(session)
 
-    @router.post("/subscribe", status_code=status.HTTP_201_CREATED)
+    @router.post(
+        "/subscribe",
+        summary=route_docs.summary("webpush.subscribe"),
+        description=route_docs.description("webpush.subscribe"),
+        status_code=status.HTTP_201_CREATED,
+    )
     async def subscribe(
         subscription: WebPushSubscriptionSchema,
         request: Request,
@@ -136,7 +154,12 @@ def make_web_push_router(
             await service.subscribe(user_id, subscription, user_agent=user_agent)
         return {"status": "subscribed"}
 
-    @router.post("/unsubscribe", status_code=status.HTTP_200_OK)
+    @router.post(
+        "/unsubscribe",
+        summary=route_docs.summary("webpush.unsubscribe"),
+        description=route_docs.description("webpush.unsubscribe"),
+        status_code=status.HTTP_200_OK,
+    )
     async def unsubscribe(
         subscription: WebPushSubscriptionSchema,
         user_id: UUID = Depends(current_user_id),

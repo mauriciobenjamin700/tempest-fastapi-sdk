@@ -42,6 +42,11 @@ from urllib.parse import urlsplit
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
+from tempest_fastapi_sdk.core.docs_locale import (
+    DEFAULT_DOCS_LOCALE,
+    DocsLocale,
+    normalize_docs_locale,
+)
 from tempest_fastapi_sdk.core.logging import (
     DEFAULT_LOG_BACKUP_COUNT,
     DEFAULT_LOG_MAX_BYTES,
@@ -321,6 +326,13 @@ class ServerSettings(BaseAppSettings):
             builds — the admin login form's ``action`` included — comes
             out in that scheme behind a TLS-terminating proxy. ``""``
             keeps the connection's scheme. Default: ``""``.
+        API_DOCS_LOCALE (Literal["en-US", "pt-BR"]): The language the
+            SDK's bundled routers (``make_auth_router``,
+            ``make_sse_router``, ``make_health_router``, …) write their
+            OpenAPI ``summary`` and ``description`` in, when the factory
+            is not given ``docs_locale=``. Matched case-insensitively
+            (``pt_br``, ``pt`` resolve to ``pt-BR``); any other language
+            is refused. Default: ``"en-US"``.
 
     In ``ENV=production`` (see :class:`EnvironmentSettings`)
     ``SERVER_DEBUG`` and ``SERVER_RELOAD`` must be off.
@@ -388,6 +400,39 @@ class ServerSettings(BaseAppSettings):
         ),
         examples=["", "https"],
     )
+    API_DOCS_LOCALE: DocsLocale = Field(
+        default=DEFAULT_DOCS_LOCALE,
+        title="OpenAPI language of the bundled routers",
+        description=(
+            "Language of the ``summary`` and ``description`` the SDK's "
+            "bundled routers write into the OpenAPI document (``/docs``, "
+            "``/redoc``, generated clients). ``en-US`` (default) or "
+            "``pt-BR``; matched case-insensitively. Paths, field names, "
+            "error codes and schema titles are the same in both, so a "
+            "client generated from either document is the same client. "
+            "A factory's ``docs_locale=`` argument wins over this value."
+        ),
+        examples=["en-US", "pt-BR"],
+    )
+
+    @field_validator("API_DOCS_LOCALE", mode="before")
+    @classmethod
+    def _normalize_api_docs_locale(cls, value: Any) -> Any:
+        """Coerce ``API_DOCS_LOCALE`` into a supported canonical tag.
+
+        Args:
+            value (Any): The raw configured value.
+
+        Returns:
+            Any: ``"en-US"`` or ``"pt-BR"`` for a string; anything else
+            unchanged, for the ``Literal`` check to refuse.
+
+        Raises:
+            ValueError: When the string names no supported language.
+        """
+        if isinstance(value, str):
+            return normalize_docs_locale(value)
+        return value
 
     @field_validator("TRUSTED_IP_HEADER")
     @classmethod
