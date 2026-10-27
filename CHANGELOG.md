@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.332.0] — 2026-10-27
+
 ### Added
 
 - `API_DOCS_LOCALE` (`ServerSettings`, `en-US` por padrão ou `pt-BR`) e o
@@ -34,8 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`end`, `max_tokens`, `refusal`, `tool_use`, `other`) com o valor original
   em `provider_stop_reason`, e o erro de validação. Recusa, resposta cortada
   e JSON fora do schema voltam no objeto **com o uso** — a chamada foi
-  cobrada —, em vez de virar exceção sem custo; só erro de transporte/HTTP
-  levanta. O parse só acontece depois de uma parada natural. `effort` vai
+  cobrada —, em vez de virar exceção sem custo. Levantam só erro de
+  transporte/HTTP, `TypeError` por `output_config`/`response_format` passado
+  como keyword e `ValueError` por data URL de imagem que não é base64. O
+  parse só acontece depois de uma parada natural. `effort` vai
   como `output_config.effort` na Anthropic e como `reasoning_effort` no
   formato OpenAI (traduzido por `effort_values`, omitido com
   `effort_field=None`); `cache_system=True` marca o `system` com
@@ -58,7 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `HostedGenAISettings`: `GOOGLE_API_KEY`, `GOOGLE_BASE_URL`,
   `GOOGLE_MODEL`, `google_kwargs()` e `hosted_kwargs(model, *,
   provider=None)`, que devolve os argumentos de `hosted_generator` com a
-  chave do provedor resolvido.
+  chave do provedor resolvido. `deepseek_kwargs()` passa a levar
+  `effort_field=None`, como o `hosted_generator`: o DeepSeek não documenta
+  `reasoning_effort`.
 - `TokenUsage.cache_write_tokens`: a parte da entrada gravada no cache
   (`cache_creation_input_tokens` da Anthropic), somada no `+`.
 - `OpenAICompatGenerator(effort_field="reasoning_effort",

@@ -10,7 +10,7 @@ That is what the hosted backends are for:
 | Anthropic | `AnthropicGenerator` | yes | yes | yes (`json_schema`) | — |
 | OpenAI | `OpenAICompatGenerator` | yes | yes | yes (`json_schema`) | `OpenAICompatEmbedder` |
 | DeepSeek | `OpenAICompatGenerator` | yes | yes | yes (`json_object`) | — |
-| Google (Gemini) | `OpenAICompatGenerator` | yes | yes | yes (`json_schema`) | — |
+| Google (Gemini) | `OpenAICompatGenerator` | yes, through the compatible endpoint (untested) | yes, likewise | yes (`json_schema`) | — |
 
 The idea is a single one: they implement **the same protocols** as Ollama —
 `TextBackend` (`generate` / `chat` / `stream`), `StructuredTextBackend`
@@ -376,7 +376,8 @@ Piece by piece:
   `reasoning_effort` on the OpenAI format. Gemini documents `minimal`, `low`,
   `medium` and `high` (<https://ai.google.dev/gemini-api/docs/openai>), so
   `xhigh` and `max` become `high` (`GOOGLE_EFFORT_VALUES`). DeepSeek does not
-  document the field, and the backend does not send it.
+  document the field, and neither `hosted_generator` nor `deepseek_kwargs()`
+  sends it (`effort_field=None`).
 - **`cache_system=True`** marks the `system` turn with
   `cache_control: {"type": "ephemeral"}` on Anthropic. The OpenAI format has
   no per-message marker, and the argument is accepted and ignored.
@@ -387,7 +388,7 @@ The `StructuredCompletion` you get back:
 | --- | --- |
 | `output` | the validated instance, or `None` |
 | `text` | the reply as received |
-| `usage` | the provider's `TokenUsage`, **whatever the outcome** |
+| `usage` | the provider's `TokenUsage`, **whatever the outcome**; `None` when the response carries no `usage` |
 | `stop_reason` | `end`, `max_tokens`, `refusal`, `tool_use` or `other` |
 | `provider_stop_reason` | the original value (`end_turn`, `length`...) |
 | `error` | why `output` is `None` after a natural stop |
@@ -519,8 +520,10 @@ as Ollama's, and puts no upper bound in any consumer's lock.
   `deepseek_kwargs()` / `google_kwargs()` build the backend by splat.
 - `hosted_generator(**settings.hosted_kwargs(model))` picks the provider
   from the model id; `complete_structured` returns output, usage and stop
-  reason whatever the outcome, with images through `image_part`.
-- Tool calling, structured output and streaming work on all three;
-  embeddings only on OpenAI (`OpenAICompatEmbedder`).
+  reason whatever the outcome (usage, when the provider reports it), with
+  images through `image_part`.
+- Tool calling, structured output and streaming work on all four (on Gemini,
+  tool calling and streaming go through the compatible endpoint without a
+  test of their own); embeddings only on OpenAI (`OpenAICompatEmbedder`).
 - Failures become `HostedAuthenticationError`, `HostedRateLimitError` or
   `HostedServerError` — mid-stream included.

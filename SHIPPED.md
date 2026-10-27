@@ -855,7 +855,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   "OpenAI-compatible client deliberately skipped" acima foi revertido por
   esta entrega. Receita: `docs/recipes/genai-hosted.md`.
 - **Resultado estruturado completo e provedor pelo id do modelo
-  (Unreleased, extra `[genai-hosted]`)** — `complete_structured` nos dois
+  (v0.332.0 (2026-10-27), extra `[genai-hosted]`)** — `complete_structured` nos dois
   geradores hospedados devolve `StructuredCompletion` (saída, texto,
   `TokenUsage`, `stop_reason` normalizado e o original, erro de validação)
   sem levantar por recusa, `max_tokens` ou JSON inválido; `effort`,
