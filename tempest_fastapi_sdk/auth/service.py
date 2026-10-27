@@ -3363,6 +3363,53 @@ class UserAuthService:
 
         background.add_task(send_and_log, deliver, recipient=to, kind=kind)
 
+    def _render_email(
+        self,
+        template_name: str,
+        context: dict[str, Any],
+        *,
+        locale: str,
+    ) -> str:
+        """Render an auth email with the brand settings in its context.
+
+        The bundled templates extend ``_email_layout.html``, which reads
+        ``brand``: the header name or logo, the button color, the text
+        color that reads on it and a link color that reads on the white
+        card (:func:`~tempest_fastapi_sdk.utils.color.is_light` picks both:
+        a pale brand color would vanish as link text), and the footer line,
+        all from the ``AUTH_EMAIL_*`` settings. A
+        project template that shadows one of them gets the same ``brand``
+        and can ignore it.
+
+        Args:
+            template_name (str): The template file.
+            context (dict[str, Any]): The email's own variables.
+            locale (str): The language to render in.
+
+        Returns:
+            str: The HTML body.
+        """
+        from tempest_fastapi_sdk.utils.color import is_light
+
+        assert self.email is not None
+        settings = self.auth_settings
+        color = settings.AUTH_EMAIL_BRAND_COLOR
+        light = is_light(color)
+        brand = {
+            "name": settings.AUTH_EMAIL_BRAND_NAME,
+            "color": color,
+            "text_color": "#0f172a" if light else "#ffffff",
+            "link_color": "#1f2937" if light else color,
+            "logo_url": settings.AUTH_EMAIL_BRAND_LOGO_URL,
+            "footer": settings.AUTH_EMAIL_FOOTER_TEXT,
+        }
+        rendered: str = self.email.render_template(
+            template_name,
+            {**context, "brand": brand},
+            locale=locale,
+        )
+        return rendered
+
     async def _maybe_send_activation_email(
         self,
         user: BaseUserModel,
@@ -3385,7 +3432,7 @@ class UserAuthService:
         )
         if self.auth_settings.AUTH_STAMP_LOCALE_IN_LINK:
             url = stamp_locale(url, locale)
-        html = self.email.render_template(
+        html = self._render_email(
             self.auth_settings.AUTH_ACTIVATION_TEMPLATE,
             {
                 "user": user,
@@ -3422,7 +3469,7 @@ class UserAuthService:
         )
         if self.auth_settings.AUTH_STAMP_LOCALE_IN_LINK:
             url = stamp_locale(url, locale)
-        html = self.email.render_template(
+        html = self._render_email(
             self.auth_settings.AUTH_PASSWORD_RESET_TEMPLATE,
             {
                 "user": user,
@@ -3460,7 +3507,7 @@ class UserAuthService:
         )
         if self.auth_settings.AUTH_STAMP_LOCALE_IN_LINK:
             url = stamp_locale(url, locale)
-        html = self.email.render_template(
+        html = self._render_email(
             self.auth_settings.AUTH_EMAIL_CHANGE_TEMPLATE,
             {
                 "user": user,
@@ -3498,7 +3545,7 @@ class UserAuthService:
         )
         if self.auth_settings.AUTH_STAMP_LOCALE_IN_LINK:
             url = stamp_locale(url, locale)
-        html = self.email.render_template(
+        html = self._render_email(
             self.auth_settings.AUTH_EMAIL_VERIFICATION_TEMPLATE,
             {
                 "user": user,
@@ -3536,7 +3583,7 @@ class UserAuthService:
             user=user,
             default=self.auth_settings.AUTH_DEFAULT_LOCALE,
         )
-        html = self.email.render_template(
+        html = self._render_email(
             self.auth_settings.AUTH_EMAIL_CHANGED_NOTICE_TEMPLATE,
             {
                 "user": user,

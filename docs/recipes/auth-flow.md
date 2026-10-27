@@ -1497,6 +1497,10 @@ Validade dos tokens **de uso único** (ativação / reset) — distintos dos JWT
 | `AUTH_PASSWORD_RESET_URL_TEMPLATE` | `str` | `http://localhost:3000/reset-password?token={token}` | Idem, para reset. |
 | `AUTH_ACTIVATION_TEMPLATE` | `str` | `activation.html` | Nome do arquivo Jinja2 do **HTML do e-mail** de ativação, resolvido no `template_dir` do `EmailUtils`. |
 | `AUTH_PASSWORD_RESET_TEMPLATE` | `str` | `password_reset.html` | Idem, para reset. |
+| `AUTH_EMAIL_BRAND_NAME` | `str` | `""` | Nome no cabeçalho dos e-mails; vazio deixa o cabeçalho de fora. Veja [A marca nos e-mails](#a-marca-nos-e-mails). |
+| `AUTH_EMAIL_BRAND_COLOR` | `str` | `#2563eb` | Cor (`#rgb`/`#rrggbb`) do botão e dos destaques; o texto do botão escurece sozinho numa cor clara. |
+| `AUTH_EMAIL_BRAND_LOGO_URL` | `str` | `""` | URL absoluta `http(s)` do logo no cabeçalho, no lugar do nome. |
+| `AUTH_EMAIL_FOOTER_TEXT` | `str` | `""` | Linha extra no rodapé (razão social, endereço). |
 
 #### Para onde o `AUTH_ACTIVATION_URL_TEMPLATE` aponta
 
@@ -1789,6 +1793,50 @@ sequenceDiagram
 ```
 
 ---
+
+## A marca nos e-mails
+
+*(v0.332.0+)*
+
+Os cinco e-mails do fluxo (ativação, reset de senha, troca de e-mail,
+verificação e o aviso de e-mail alterado) estendem um layout comum, o
+`_email_layout.html`: cabeçalho com a marca, card, botão, link de reserva,
+nota de validade e rodapé. O layout é feito em tabela e com estilo inline,
+que é o que Gmail e Outlook respeitam, e traz `color-scheme` para os
+clientes com modo escuro.
+
+Quatro env vars do `AuthSettings` vestem o e-mail com a sua marca, sem
+copiar template:
+
+```bash
+# .env
+AUTH_EMAIL_BRAND_NAME=Acme
+AUTH_EMAIL_BRAND_COLOR=#7c3aed
+AUTH_EMAIL_BRAND_LOGO_URL=https://acme.com/logo.png
+AUTH_EMAIL_FOOTER_TEXT=Acme Ltda · São Paulo, SP
+```
+
+- **Sem nome nem logo**, o cabeçalho sai do e-mail; o default é o botão
+  azul (`#2563eb`) sem marca.
+- **A cor clara se ajusta.** O texto do botão e a cor do link são
+  escolhidos pela luminância da cor: com `#facc15` (amarelo), o botão ganha
+  texto escuro e o link vira cinza-escuro, porque amarelo sobre o card branco
+  não se lê.
+- **Valor inválido derruba o boot.** A cor só aceita `#rgb`/`#rrggbb` e o
+  logo só URL absoluta `http(s)` — os dois entram em atributo HTML, e um
+  e-mail não consegue carregar caminho relativo.
+
+!!! tip "Template próprio continua valendo"
+    Um `template_dir` com o mesmo nome de arquivo (`activation.html`, …)
+    vence o do SDK, como antes. O contexto ganhou `brand` (`name`, `color`,
+    `text_color`, `link_color`, `logo_url`, `footer`); o seu template pode
+    usar ou ignorar. Para manter o layout novo e trocar só o texto, estenda
+    o `_email_layout.html` e preencha os blocos `heading`, `content`, `note`
+    e `footer`, com `action_url`, `action_label` e `fallback_label` em
+    `{% set %}`.
+
+Validado em browser real nas duas línguas, em 800 e 375 px, em modo claro
+e escuro, com marca escura (`#7c3aed`), clara (`#facc15`) e sem marca.
 
 ## Idioma dos e-mails e páginas (i18n)
 

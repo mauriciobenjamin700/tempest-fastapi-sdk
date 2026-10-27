@@ -1422,6 +1422,8 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.upload.HEIF_STRUCTURAL_BRANDS
 ::: tempest_fastapi_sdk.utils.upload.read_upload_capped
 ::: tempest_fastapi_sdk.utils.upload.UPLOAD_READ_CHUNK_BYTES
+::: tempest_fastapi_sdk.utils.color.relative_luminance
+::: tempest_fastapi_sdk.utils.color.is_light
 ::: tempest_fastapi_sdk.utils.download.DownloadUtils
 ::: tempest_fastapi_sdk.utils.download.INLINE_SAFE_MEDIA_TYPES
 ::: tempest_fastapi_sdk.utils.media_types.guess_media_type

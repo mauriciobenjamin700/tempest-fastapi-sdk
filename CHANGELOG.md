@@ -75,6 +75,14 @@ a leitura da resposta documentada, não um provedor ao vivo.
   de SMTP vira log em `ERROR` (só o domínio do destinatário), não `503`, e
   não há rollback por falha de envio. Fora de uma requisição o envio
   continua aguardado.
+- `AUTH_EMAIL_BRAND_NAME`, `AUTH_EMAIL_BRAND_COLOR`,
+  `AUTH_EMAIL_BRAND_LOGO_URL` e `AUTH_EMAIL_FOOTER_TEXT` (`AuthSettings`)
+  vestem os e-mails com a marca do projeto. Numa cor clara, o texto do botão
+  e o link escurecem sozinhos (luminância WCAG). Cor que não é `#rgb`/
+  `#rrggbb` e logo que não é URL absoluta `http(s)` derrubam o boot. O
+  contexto do template ganha `brand`.
+- `tempest_fastapi_sdk.utils.relative_luminance` e `is_light`, que o
+  `AdminTheme` passou a usar no lugar da cópia própria.
 
 ### Changed
 
@@ -87,6 +95,12 @@ a leitura da resposta documentada, não um provedor ao vivo.
   `NACK_ON_ERROR` num spec com dead-letter levantam `ValueError`, porque
   nenhuma das três manda a falha para a DLQ. Consumidor sem dead-letter não
   muda.
+- Os cinco e-mails de auth (ativação, reset, troca e verificação de e-mail,
+  aviso de e-mail alterado) ganharam visual novo sobre um layout comum,
+  `auth/templates/_email_layout.html` (#645): tabela com estilo inline,
+  cabeçalho com a marca, botão, link de reserva, nota de validade, rodapé,
+  preheader e `color-scheme` para modo escuro. O texto de cada e-mail foi
+  mantido. Template próprio com o mesmo nome continua vencendo o do SDK.
 
 ## [0.331.0] — 2026-10-26
 

@@ -30,6 +30,10 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.utils.client_ip import (
         parse_client_ip as parse_client_ip,
     )
+    from tempest_fastapi_sdk.utils.color import is_light as is_light
+    from tempest_fastapi_sdk.utils.color import (
+        relative_luminance as relative_luminance,
+    )
     from tempest_fastapi_sdk.utils.currency import CENT as CENT
     from tempest_fastapi_sdk.utils.currency import HUNDRED as HUNDRED
     from tempest_fastapi_sdk.utils.currency import (
@@ -489,6 +493,8 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "utcnow": "tempest_fastapi_sdk.utils.datetime",
     "modify_dict": "tempest_fastapi_sdk.utils.dict",
     "INLINE_SAFE_MEDIA_TYPES": "tempest_fastapi_sdk.utils.download",
+    "is_light": "tempest_fastapi_sdk.utils.color",
+    "relative_luminance": "tempest_fastapi_sdk.utils.color",
     "DownloadUtils": "tempest_fastapi_sdk.utils.download",
     "build_content_disposition": "tempest_fastapi_sdk.utils.download",
     "BulkEmailReport": "tempest_fastapi_sdk.utils.email",
@@ -807,6 +813,7 @@ __all__: list[str] = [
     "guess_media_type",
     "hash_opaque_token",
     "image_media_type_field",
+    "is_light",
     "is_valid_cep",
     "is_valid_city",
     "is_valid_cnpj",
@@ -835,6 +842,7 @@ __all__: list[str] = [
     "quantize_money",
     "read_upload_capped",
     "region_choices",
+    "relative_luminance",
     "sign_path",
     "sniff_mime",
     "states_by_region",
