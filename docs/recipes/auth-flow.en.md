@@ -1496,6 +1496,7 @@ Decide **whether** and **how** the link reaches the user. They map directly to t
 |---------|------|---------|--------------|
 | `AUTH_AUTO_ACTIVATE` | `bool` | `false` | `true` = user is born active, skips activation, signup returns the JWT pair directly (Mode D). **Never in production.** |
 | `AUTH_RETURN_TOKEN_IN_RESPONSE` | `bool` | `false` | `true` = activation/reset link goes in the JSON body instead of the email (Mode C). |
+| `AUTH_SEND_EMAILS_IN_BACKGROUND` | `bool` | `false` | `true` = the auth routes' emails go out **after** the response (`BackgroundTasks`); an SMTP failure is logged, not a `503`. See [In the background](#in-the-background-auth_send_emails_in_background). |
 
 ### Group 4 — Account token TTL (`AuthSettings`)
 
@@ -2528,6 +2529,50 @@ those routes the `503` tells the caller nothing new.
 When you call `UserAuthService` outside `make_auth_router`, the rule is
 the one for any error after a flush: roll the session back before reusing
 it. The router does that on its own, because it never reaches the commit.
+
+### In the background (`AUTH_SEND_EMAILS_IN_BACKGROUND`)
+
+*(v0.332.0+)*
+
+By default the route waits for SMTP: a slow server makes signup and reset
+slow. With `AUTH_SEND_EMAILS_IN_BACKGROUND=true`, the `make_auth_router`
+routes hand the send to the request's `BackgroundTasks` — the response goes
+first and the email after. Measured in `tests/auth/test_email_background.py`,
+with a mailer taking 1 s per send served by real uvicorn: `POST /auth/signup`
+answered in over 1 s by default and in under 0.5 s in the background.
+
+```bash
+# .env
+AUTH_SEND_EMAILS_IN_BACKGROUND=true
+```
+
+What changes, and the price:
+
+- **The response time stops depending on the send.** A
+  `/password-reset/request` for a registered address no longer takes longer
+  than one for an unknown address, a difference you could measure from
+  outside.
+- **An SMTP failure does not answer `503`.** The response is gone; the
+  failure goes to `ERROR` on the `tempest_fastapi_sdk.auth.email_delivery`
+  logger, with the kind of email and only the recipient's **domain**.
+- **There is no rollback on a failed send.** The signup stays stored without
+  the activation email (the user asks for a resend), and on reset and
+  activation resend the new token has already replaced the pending one when
+  the send fails — the earlier link stops working and the new one never
+  arrived. Asking again fixes it.
+- **The email only goes out if the request succeeded.** `make_auth_router`
+  commits before answering, and an exception after scheduling swaps the
+  response for an error one, which does not carry the tasks: no link points
+  at a token that was not stored.
+
+Outside a request — `UserAuthService` called from a command, a task or a
+test — there is no `BackgroundTasks`, and the send is awaited as by default,
+with the same `EmailDeliveryException`.
+
+!!! tip "Shutdown"
+    Starlette runs a response's background tasks before the request ends, so
+    the server's graceful shutdown waits for them like any in-flight request.
+    A loose `asyncio.create_task` would not have that guarantee.
 
 ## Token delivery
 

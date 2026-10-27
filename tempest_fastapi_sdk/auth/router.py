@@ -576,9 +576,12 @@ def make_auth_router(
     from fastapi import Depends
 
     route_docs: RouteDocs = RouteDocs(docs_locale)
+    from tempest_fastapi_sdk.auth.email_delivery import bind_background_tasks
+
     router = APIRouter(
         prefix=prefix,
         tags=list(tags or ["auth"]),
+        dependencies=[Depends(bind_background_tasks)],
     )
 
     session_provider = session_provider_for(session_factory)
