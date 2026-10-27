@@ -56,6 +56,7 @@ DARK_TEXT: tuple[str, str] = ("#0f172a", "#475569")
 LIGHT_TEXT: tuple[str, str] = ("#f8fafc", "#cbd5e1")
 """Text and muted text on a dark chrome background."""
 
+
 def _text_on(background: str) -> tuple[str, str]:
     """Pick text colors that read on ``background``.
 

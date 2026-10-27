@@ -39,6 +39,7 @@ PAYLOAD_PATTERNS: tuple[str, ...] = (
     "tempest_fastapi_sdk/auth/templates/pt-BR/*.html",
     "tempest_fastapi_sdk/auth/templates/en-US/*.html",
     "tempest_fastapi_sdk/auth/templates/_auth_layout.html",
+    "tempest_fastapi_sdk/auth/templates/_email_layout.html",
     "tempest_fastapi_sdk/cli/_templates/*",
     "tempest_fastapi_sdk/cli/_templates/src/*",
     "tempest_fastapi_sdk/cli/_templates/src/*/*",
