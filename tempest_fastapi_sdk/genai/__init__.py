@@ -8,6 +8,9 @@ only needed to probe real GPUs and (later) run inference.
 
 from tempest_fastapi_sdk.genai.admin import make_model_cards as make_model_cards
 from tempest_fastapi_sdk.genai.anthropic import (
+    ANTHROPIC_STOP_REASONS as ANTHROPIC_STOP_REASONS,
+)
+from tempest_fastapi_sdk.genai.anthropic import (
     ANTHROPIC_VERSION as ANTHROPIC_VERSION,
 )
 from tempest_fastapi_sdk.genai.anthropic import (
@@ -22,6 +25,9 @@ from tempest_fastapi_sdk.genai.anthropic import (
 from tempest_fastapi_sdk.genai.anthropic import (
     AnthropicGenerator as AnthropicGenerator,
 )
+from tempest_fastapi_sdk.genai.anthropic import (
+    to_anthropic_image as to_anthropic_image,
+)
 from tempest_fastapi_sdk.genai.batching import BatchScheduler as BatchScheduler
 from tempest_fastapi_sdk.genai.catalog import EmbeddingModel as EmbeddingModel
 from tempest_fastapi_sdk.genai.catalog import ImageModel as ImageModel
@@ -30,6 +36,18 @@ from tempest_fastapi_sdk.genai.catalog import SpeechToTextModel as SpeechToTextM
 from tempest_fastapi_sdk.genai.catalog import TextModel as TextModel
 from tempest_fastapi_sdk.genai.catalog import TextToSpeechModel as TextToSpeechModel
 from tempest_fastapi_sdk.genai.catalog import VisionModel as VisionModel
+from tempest_fastapi_sdk.genai.completion import Effort as Effort
+from tempest_fastapi_sdk.genai.completion import StopReason as StopReason
+from tempest_fastapi_sdk.genai.completion import (
+    StructuredCompletion as StructuredCompletion,
+)
+from tempest_fastapi_sdk.genai.completion import (
+    StructuredCompletionBackend as StructuredCompletionBackend,
+)
+from tempest_fastapi_sdk.genai.completion import (
+    build_structured_completion as build_structured_completion,
+)
+from tempest_fastapi_sdk.genai.completion import image_part as image_part
 from tempest_fastapi_sdk.genai.embeddings import (
     AsyncEmbeddingCache as AsyncEmbeddingCache,
 )
@@ -130,6 +148,9 @@ from tempest_fastapi_sdk.genai.openai_compat import (
     DEFAULT_OPENAI_URL as DEFAULT_OPENAI_URL,
 )
 from tempest_fastapi_sdk.genai.openai_compat import (
+    OPENAI_FINISH_REASONS as OPENAI_FINISH_REASONS,
+)
+from tempest_fastapi_sdk.genai.openai_compat import (
     OpenAICompatEmbedder as OpenAICompatEmbedder,
 )
 from tempest_fastapi_sdk.genai.openai_compat import (
@@ -145,6 +166,19 @@ from tempest_fastapi_sdk.genai.pipeline import Tool as Tool
 from tempest_fastapi_sdk.genai.pipeline import (
     make_ai_chat_router as make_ai_chat_router,
 )
+from tempest_fastapi_sdk.genai.providers import (
+    DEFAULT_GOOGLE_OPENAI_URL as DEFAULT_GOOGLE_OPENAI_URL,
+)
+from tempest_fastapi_sdk.genai.providers import (
+    GOOGLE_EFFORT_VALUES as GOOGLE_EFFORT_VALUES,
+)
+from tempest_fastapi_sdk.genai.providers import MODEL_PREFIXES as MODEL_PREFIXES
+from tempest_fastapi_sdk.genai.providers import (
+    OPENAI_MAX_TOKENS_FIELD as OPENAI_MAX_TOKENS_FIELD,
+)
+from tempest_fastapi_sdk.genai.providers import HostedProvider as HostedProvider
+from tempest_fastapi_sdk.genai.providers import hosted_generator as hosted_generator
+from tempest_fastapi_sdk.genai.providers import resolve_provider as resolve_provider
 from tempest_fastapi_sdk.genai.registry import ModelRegistry as ModelRegistry
 from tempest_fastapi_sdk.genai.router import make_genai_router as make_genai_router
 from tempest_fastapi_sdk.genai.schemas import (
@@ -237,14 +271,20 @@ from tempest_fastapi_sdk.genai.vision_text import (
 )
 
 __all__: list[str] = [
+    "ANTHROPIC_STOP_REASONS",
     "ANTHROPIC_VERSION",
     "DEFAULT_ANTHROPIC_MAX_TOKENS",
     "DEFAULT_ANTHROPIC_MODEL",
     "DEFAULT_ANTHROPIC_URL",
     "DEFAULT_DEEPSEEK_MODEL",
     "DEFAULT_DEEPSEEK_URL",
+    "DEFAULT_GOOGLE_OPENAI_URL",
     "DEFAULT_OLLAMA_URL",
     "DEFAULT_OPENAI_URL",
+    "GOOGLE_EFFORT_VALUES",
+    "MODEL_PREFIXES",
+    "OPENAI_FINISH_REASONS",
+    "OPENAI_MAX_TOKENS_FIELD",
     "AIChatPipeline",
     "AIChatResult",
     "AIUsageStore",
@@ -258,6 +298,7 @@ __all__: list[str] = [
     "CapacityReport",
     "ClassifierModerator",
     "DailyUsage",
+    "Effort",
     "Embedder",
     "EmbeddingCache",
     "EmbeddingModel",
@@ -271,6 +312,7 @@ __all__: list[str] = [
     "HardwareInfo",
     "HostedAPIError",
     "HostedAuthenticationError",
+    "HostedProvider",
     "HostedRateLimitError",
     "HostedServerError",
     "ImageGenerationConfig",
@@ -298,7 +340,10 @@ __all__: list[str] = [
     "RuleModerator",
     "ServiceUsage",
     "SpeechToTextModel",
+    "StopReason",
     "StreamModeration",
+    "StructuredCompletion",
+    "StructuredCompletionBackend",
     "StructuredFormatError",
     "StructuredOutputMode",
     "StructuredTextBackend",
@@ -314,6 +359,7 @@ __all__: list[str] = [
     "VisionTextGenerator",
     "auto_dtype_name",
     "build_prefix_allowed_tokens_fn",
+    "build_structured_completion",
     "bytes_per_param",
     "cache_size_bytes",
     "cached_generate",
@@ -329,6 +375,8 @@ __all__: list[str] = [
     "fetch_num_params",
     "genai_span",
     "generate_structured_list",
+    "hosted_generator",
+    "image_part",
     "is_deterministic",
     "list_cached_models",
     "make_ai_chat_router",
@@ -343,7 +391,9 @@ __all__: list[str] = [
     "recommend",
     "remove_cached_model",
     "resolve_device",
+    "resolve_provider",
     "resolve_revision",
     "runtime_report",
+    "to_anthropic_image",
     "truncate_messages",
 ]

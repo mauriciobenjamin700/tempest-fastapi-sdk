@@ -33,6 +33,7 @@ from tempest_fastapi_sdk.genai import (
 )
 from tempest_fastapi_sdk.genai.anthropic import (
     anthropic_usage,
+    to_anthropic_image,
     to_anthropic_messages,
     to_anthropic_tools,
 )
@@ -632,3 +633,71 @@ class TestErrors:
         gen._http().retry_policy.backoff_initial_seconds = 0.0
         assert await gen.generate("hi") == "recovered"
         assert len(rec.requests) == 2
+
+
+class TestImageTranslation:
+    def test_https_url_becomes_a_url_source(self) -> None:
+        block = to_anthropic_image(
+            {"type": "image_url", "image_url": {"url": "https://x.test/a.png"}},
+        )
+        assert block == {
+            "type": "image",
+            "source": {"type": "url", "url": "https://x.test/a.png"},
+        }
+
+    def test_bare_url_string_is_accepted(self) -> None:
+        block = to_anthropic_image(
+            {"type": "image_url", "image_url": "data:image/webp;base64,AAAA"},
+        )
+        assert block["source"] == {
+            "type": "base64",
+            "media_type": "image/webp",
+            "data": "AAAA",
+        }
+
+    def test_data_url_without_base64_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="base64"):
+            to_anthropic_image(
+                {"type": "image_url", "image_url": {"url": "data:image/png,raw"}},
+            )
+
+    def test_missing_url_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="url"):
+            to_anthropic_image({"type": "image_url", "image_url": {}})
+
+    def test_mixed_content_translates_only_the_image(self) -> None:
+        native = {
+            "type": "image",
+            "source": {"type": "url", "url": "https://x.test/b.png"},
+        }
+        _system, translated = to_anthropic_messages(
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        "first",
+                        {"type": "image_url", "image_url": {"url": "https://x.test/a"}},
+                        native,
+                        {"type": "text", "text": "last"},
+                    ],
+                },
+            ],
+        )
+        assert translated[0]["content"] == [
+            {"type": "text", "text": "first"},
+            {"type": "image", "source": {"type": "url", "url": "https://x.test/a"}},
+            native,
+            {"type": "text", "text": "last"},
+        ]
+
+    def test_native_blocks_alone_pass_through(self) -> None:
+        native = [
+            {
+                "type": "image",
+                "source": {"type": "url", "url": "https://x.test/b.png"},
+            },
+        ]
+        _system, translated = to_anthropic_messages(
+            [{"role": "user", "content": native}],
+        )
+        assert translated[0]["content"] is native

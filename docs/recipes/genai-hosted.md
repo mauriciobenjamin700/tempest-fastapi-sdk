@@ -1,4 +1,4 @@
-# IA generativa hospedada (Anthropic, OpenAI, DeepSeek)
+# IA generativa hospedada (Anthropic, OpenAI, DeepSeek, Google)
 
 A base de IA do SDK roda modelo local — `TextGenerator` (transformers) ou
 `OllamaGenerator` (daemon). Às vezes a conta que importa não é a de RAM, é a
@@ -10,6 +10,7 @@ máquina. Para isso existem os backends hospedados:
 | Anthropic | `AnthropicGenerator` | sim | sim | sim (`json_schema`) | — |
 | OpenAI | `OpenAICompatGenerator` | sim | sim | sim (`json_schema`) | `OpenAICompatEmbedder` |
 | DeepSeek | `OpenAICompatGenerator` | sim | sim | sim (`json_object`) | — |
+| Google (Gemini) | `OpenAICompatGenerator` | sim | sim | sim (`json_schema`) | — |
 
 A ideia é uma só: eles cumprem **os mesmos protocolos** que o Ollama — o
 `TextBackend` (`generate` / `chat` / `stream`), o `StructuredTextBackend`
@@ -48,6 +49,8 @@ ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=<id do modelo OpenAI>
 DEEPSEEK_API_KEY=sk-...
+GOOGLE_API_KEY=AIza...
+GOOGLE_MODEL=<id do modelo Gemini>
 ```
 
 Cada provedor tem `*_API_KEY`, `*_BASE_URL` e `*_MODEL`. Os defaults:
@@ -60,6 +63,8 @@ Cada provedor tem `*_API_KEY`, `*_BASE_URL` e `*_MODEL`. Os defaults:
 | `OPENAI_MODEL` | vazio — obrigatório |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` |
 | `DEEPSEEK_MODEL` | `deepseek-flash` |
+| `GOOGLE_BASE_URL` | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| `GOOGLE_MODEL` | vazio — obrigatório em `google_kwargs()` |
 
 !!! note "De onde vêm os defaults"
 
@@ -274,6 +279,140 @@ Cada provedor pede JSON de um jeito, e o backend cuida disso:
   vai num turno `system` no fim da conversa, que também cumpre a exigência
   da palavra "json" no prompt.
 
+## Resultado completo, imagem e provedor pelo id do modelo
+
+`chat_structured` responde uma pergunta só — "me dê a instância" — e levanta
+em qualquer outro desfecho. Quem paga cada chamada precisa de mais três
+respostas, **mesmo quando não há instância**: quanto a chamada custou, por que
+o modelo parou e o que ele escreveu. Uma recusa, uma resposta cortada em
+`max_tokens` ou um JSON fora do schema também foram cobrados.
+
+`complete_structured` devolve tudo isso num `StructuredCompletion`, e
+`hosted_generator` escolhe o provedor pelo id do modelo:
+
+```python
+import asyncio
+from pathlib import Path
+
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk import BaseAppSettings, HostedGenAISettings
+from tempest_fastapi_sdk.genai import (
+    StructuredCompletion,
+    StructuredCompletionBackend,
+    hosted_generator,
+    image_part,
+)
+
+
+class Settings(HostedGenAISettings, BaseAppSettings):
+    """Settings do serviço."""
+
+    AI_MODEL: str = "claude-haiku-5-5"
+
+
+class Transcricao(BaseModel):
+    """O texto lido da foto."""
+
+    legivel: bool
+    texto: str
+
+
+async def transcrever(
+    backend: StructuredCompletionBackend,
+    foto: bytes,
+) -> StructuredCompletion[Transcricao]:
+    """Lê o texto de uma foto de caderno."""
+    return await backend.complete_structured(
+        [
+            {"role": "system", "content": "Transcreva o texto da foto."},
+            {
+                "role": "user",
+                "content": [
+                    image_part(foto, "image/jpeg"),
+                    {"type": "text", "text": "Transcreva."},
+                ],
+            },
+        ],
+        Transcricao,
+        effort="low",
+        cache_system=True,
+        max_tokens=2048,
+    )
+
+
+async def main() -> None:
+    """Transcreve com o modelo configurado."""
+    settings = Settings()
+    backend = hosted_generator(**settings.hosted_kwargs(settings.AI_MODEL))
+    resultado = await transcrever(backend, Path("caderno.jpg").read_bytes())
+    if resultado.output is not None:
+        print(resultado.output.texto)
+    else:
+        print("sem resultado:", resultado.stop_reason, resultado.error)
+    print("tokens:", resultado.usage)
+
+
+asyncio.run(main())
+```
+
+Pedaço por pedaço:
+
+- **`hosted_generator(model, api_key=...)`** lê o provedor do prefixo do id
+  (`claude-` → Anthropic, `gpt-`/`o1`/`o3`/`o4`/`chatgpt-` → OpenAI,
+  `gemini-` → Google, `deepseek-` → DeepSeek; a tabela é `MODEL_PREFIXES`) e
+  monta o backend com o que cada provedor documenta: o campo do orçamento de
+  saída (`max_completion_tokens` na OpenAI), o modo JSON (`json_object` no
+  DeepSeek) e os valores de esforço. Id fora da tabela (fine-tune, servidor
+  próprio) levanta `ValueError`: passe `provider=` e, se for o caso,
+  `base_url=`.
+- **`settings.hosted_kwargs(model)`** devolve exatamente os argumentos de
+  `hosted_generator` — o modelo, e a chave e a URL **do provedor resolvido**.
+  Trocar de provedor vira trocar `AI_MODEL` no `.env` (e ter a chave daquele
+  provedor lá).
+- **`image_part(dados, media_type)`** monta a parte de imagem no formato
+  OpenAI, que é o formato de mensagem do SDK. O `AnthropicGenerator` a traduz
+  para o bloco `image` da Messages API; o `OpenAICompatGenerator` a repassa
+  como está.
+- **`effort`** vai como `output_config.effort` na Anthropic e como
+  `reasoning_effort` no formato OpenAI. O Gemini documenta `minimal`, `low`,
+  `medium` e `high` (<https://ai.google.dev/gemini-api/docs/openai>), então
+  `xhigh` e `max` viram `high` (`GOOGLE_EFFORT_VALUES`). O DeepSeek não
+  documenta o campo, e o backend não o envia.
+- **`cache_system=True`** marca o turno `system` com
+  `cache_control: {"type": "ephemeral"}` na Anthropic. No formato OpenAI não
+  há marcador por mensagem, e o parâmetro é aceito e ignorado.
+
+O `StructuredCompletion` que volta:
+
+| Campo | O que é |
+| --- | --- |
+| `output` | a instância validada, ou `None` |
+| `text` | a resposta como chegou |
+| `usage` | o `TokenUsage` informado pelo provedor, **em qualquer desfecho** |
+| `stop_reason` | `end`, `max_tokens`, `refusal`, `tool_use` ou `other` |
+| `provider_stop_reason` | o valor original (`end_turn`, `length`...) |
+| `error` | por que `output` é `None` depois de uma parada natural |
+
+!!! tip "Só a parada natural é parseada"
+
+    Uma resposta cortada em `max_tokens` pode validar por acaso quando os
+    últimos campos do schema têm default. Por isso o parse só acontece com
+    `stop_reason == "end"`; nos outros casos `output` é `None` e `error`
+    fica vazio — o `stop_reason` já diz o motivo.
+
+!!! note "Cache gravado e cache lido"
+
+    `TokenUsage.cache_write_tokens` é a parte da entrada gravada no cache
+    (`cache_creation_input_tokens` da Anthropic), que a Anthropic cobra acima
+    do preço base; `cache_hit_tokens` é a parte lida. As duas já estão
+    dentro de `input_tokens`. O formato OpenAI não informa gravação, e o
+    campo fica `0`.
+
+Os testes desta superfície rodam sobre `httpx.MockTransport`: eles fixam o
+request que cada backend monta e a leitura da resposta documentada, não o
+comportamento de um provedor ao vivo.
+
 ## Embeddings (OpenAI)
 
 `OpenAICompatEmbedder` cumpre o `SupportsEmbed`, então entra no `Retriever`
@@ -377,7 +516,10 @@ Ollama, e não leva nenhum teto para o lock de quem consome.
 - `AnthropicGenerator` e `OpenAICompatGenerator` cumprem os mesmos protocolos
   que o `OllamaGenerator`: troque a construção, mantenha o resto.
 - `HostedGenAISettings` + `anthropic_kwargs()` / `openai_kwargs()` /
-  `deepseek_kwargs()` montam o backend por splat.
+  `deepseek_kwargs()` / `google_kwargs()` montam o backend por splat.
+- `hosted_generator(**settings.hosted_kwargs(modelo))` escolhe o provedor
+  pelo id do modelo; `complete_structured` devolve saída, uso e motivo de
+  parada em qualquer desfecho, com imagem por `image_part`.
 - Tool calling, saída estruturada e stream funcionam nos três; embeddings só
   na OpenAI (`OpenAICompatEmbedder`).
 - Falhas viram `HostedAuthenticationError`, `HostedRateLimitError` ou

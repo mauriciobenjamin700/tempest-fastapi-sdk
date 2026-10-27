@@ -145,7 +145,7 @@ plugins:
               - Forms from Pydantic schemas: recipes/ui-forms.md
               - Geolocation (distance + time): recipes/geo.md
               - "Host control (files, commands, power)": recipes/hostbridge.md
-              - "Hosted generative AI (Anthropic, OpenAI, DeepSeek)": recipes/genai-hosted.md
+              - "Hosted generative AI (Anthropic, OpenAI, DeepSeek, Google)": recipes/genai-hosted.md
               - HTTP client (outbound): recipes/http-client.md
               - HTTP layer: recipes/http.md
               - Idempotency: recipes/idempotency.md
@@ -320,7 +320,7 @@ plugins:
             "Campos validados (tipos prontos)": "Validated fields (ready-made types)"
             "Management commands (tempest <cmd>)": "Management commands (tempest <cmd>)"
             "IA generativa self-hosted": "Self-hosted generative AI"
-            "IA generativa hospedada (Anthropic, OpenAI, DeepSeek)": "Hosted generative AI (Anthropic, OpenAI, DeepSeek)"
+            "IA generativa hospedada (Anthropic, OpenAI, DeepSeek, Google)": "Hosted generative AI (Anthropic, OpenAI, DeepSeek, Google)"
             "Escolhendo o modelo": "Choosing a model"
             "Observabilidade (tracing)": "Observability (tracing)"
             "Refresh tokens (rotação/revogação)": "Refresh tokens (rotation/revocation)"
@@ -469,7 +469,7 @@ nav:
       - "Guards de permissão (@requires)": recipes/permission-guards.md
       - Helpers brasileiros: recipes/br-helpers.md
       - "HTTP client (saída)": recipes/http-client.md
-      - "IA generativa hospedada (Anthropic, OpenAI, DeepSeek)": recipes/genai-hosted.md
+      - "IA generativa hospedada (Anthropic, OpenAI, DeepSeek, Google)": recipes/genai-hosted.md
       - "IA generativa self-hosted": recipes/genai.md
       - Idempotência: recipes/idempotency.md
       - "Jobs (trabalho longo com status)": recipes/jobs.md
