@@ -3896,13 +3896,13 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   webhooks de integração e os assets do SSR. Receita:
   `docs/recipes/auth-flow.md`. Testes: `tests/api/test_route_docs.py`,
   `tests/test_route_docs_coverage_guard.py`.
-- **E-mail de auth em background, opt-in, Unreleased (#644)** —
+- **E-mail de auth em background, opt-in, v0.332.0 (2026-10-27) (#644)** —
   `AUTH_SEND_EMAILS_IN_BACKGROUND`; `auth/email_delivery.py` liga o
   `BackgroundTasks` do request a uma `ContextVar` por dependência async do
   `make_auth_router`, e `UserAuthService._send_email` agenda nela (ou aguarda,
   fora de request). Default síncrono mantido por decisão do usuário. Teste:
   `tests/auth/test_email_background.py` (tempo medido com uvicorn real).
-- **E-mails de auth com visual novo e marca, Unreleased (#645)** —
+- **E-mails de auth com visual novo e marca, v0.332.0 (2026-10-27) (#645)** —
   `auth/templates/_email_layout.html` (tabela, estilo inline, preheader,
   `color-scheme`) estendido pelos 5 e-mails nas duas línguas;
   `UserAuthService._render_email` põe `brand` no contexto a partir de
