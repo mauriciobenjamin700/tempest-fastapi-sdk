@@ -92,6 +92,7 @@ class TestKwargs:
         assert gen.structured_output == "json_object"
         assert gen.base_url == DEFAULT_DEEPSEEK_URL
         assert gen.provider == "deepseek"
+        assert gen.effort_field is None
 
     def test_empty_key_fails_at_construction(self) -> None:
         with pytest.raises(ValueError, match="api_key"):

@@ -4379,7 +4379,10 @@ class HostedGenAISettings(BaseAppSettings):
 
         Returns:
             dict[str, Any]: ``model``, ``api_key``, ``base_url``,
-            ``provider="deepseek"`` and ``structured_output="json_object"``.
+            ``provider="deepseek"``, ``structured_output="json_object"`` and
+            ``effort_field=None`` (DeepSeek does not document
+            ``reasoning_effort``, so ``effort`` is not sent, as with
+            ``hosted_generator``).
         """
         return {
             "model": self.DEEPSEEK_MODEL,
@@ -4387,6 +4390,7 @@ class HostedGenAISettings(BaseAppSettings):
             "base_url": self.DEEPSEEK_BASE_URL,
             "provider": "deepseek",
             "structured_output": "json_object",
+            "effort_field": None,
         }
 
     def google_kwargs(self) -> dict[str, Any]:
