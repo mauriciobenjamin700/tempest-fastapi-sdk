@@ -294,6 +294,17 @@ Traduz para os argumentos que o AMQP espera:
 !!! danger "Sem `dead_letter`, falha é descarte silencioso"
     A política do consumidor é `REJECT_ON_ERROR`: handler que levanta faz `basic.reject` com `requeue=False`. Isso evita poison message em loop — mas **sem `x-dead-letter-exchange` o RabbitMQ joga a mensagem fora**. Sem erro, sem fila morta, sem métrica. É o motivo de `DeadLetterSpec` existir.
 
+!!! check "Sem `AckPolicy` no seu código"
+    O consumidor de um `QueueSpec` com dead-letter já sai com
+    `ack_policy=REJECT_ON_ERROR` fixado pelo `on()` (e pelo `register()` do
+    `Consumer`): não importe `faststream.AckPolicy` para isso. O valor é fixado
+    no próprio assinante, então nem um `ack_policy` no broker inteiro desvia a
+    falha da DLQ — medido em `tests/queue/test_fanout_live.py` com o broker em
+    `NACK_ON_ERROR`. Passar `ACK`, `ACK_FIRST` ou `NACK_ON_ERROR` num spec com
+    dead-letter levanta `ValueError`: nenhuma das três manda a falha para a DLQ
+    (as duas primeiras confirmam a mensagem, a última a reenfileira em laço).
+    `MANUAL` continua aceito.
+
 ### O exchange precisa existir
 
 O RabbitMQ aceita declarar uma fila apontando para um `x-dead-letter-exchange` que não existe — e aí descarta no roteamento, em silêncio. Exchange que existe **sem fila ligada** descarta igual: o roteamento não acha destino. Por isso o `connect()` declara os exchanges nomeados pelos `QueueSpec` registrados (como `topic` durável) e, quando o `DeadLetterSpec` nomeia uma `queue`, essa fila e o binding dela — tudo **antes** de os consumidores subirem:

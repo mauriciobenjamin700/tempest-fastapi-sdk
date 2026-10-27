@@ -295,6 +295,17 @@ It translates to the arguments AMQP expects:
 !!! danger "Without `dead_letter`, a failure is a silent discard"
     The consumer policy is `REJECT_ON_ERROR`: a handler that raises issues `basic.reject` with `requeue=False`. That avoids a poison-message loop — but **without `x-dead-letter-exchange` RabbitMQ throws the message away**. No error, no dead queue, no metric. That is why `DeadLetterSpec` exists.
 
+!!! check "No `AckPolicy` in your code"
+    A consumer of a `QueueSpec` with a dead letter already gets
+    `ack_policy=REJECT_ON_ERROR` pinned by `on()` (and by the `Consumer`'s
+    `register()`): do not import `faststream.AckPolicy` for it. The value is
+    set on the subscriber itself, so not even a broker-wide `ack_policy` steers
+    the failure away from the DLQ — measured in `tests/queue/test_fanout_live.py`
+    with the broker on `NACK_ON_ERROR`. Passing `ACK`, `ACK_FIRST` or
+    `NACK_ON_ERROR` on a spec with a dead letter raises `ValueError`: none of
+    them sends the failure to the DLQ (the first two ack the message, the last
+    one requeues it in a loop). `MANUAL` is still accepted.
+
 ### The exchange has to exist
 
 RabbitMQ happily declares a queue pointing at an `x-dead-letter-exchange` that does not exist — and then discards at routing time, silently. An exchange that exists **with no queue bound** discards just the same: routing finds no destination. So `connect()` declares the exchanges named by the registered `QueueSpec` (as durable `topic` exchanges) and, when the `DeadLetterSpec` names a `queue`, that queue and its binding — all **before** the consumers start:

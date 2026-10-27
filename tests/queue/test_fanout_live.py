@@ -259,6 +259,44 @@ class TestDeadLetters:
         assert received == ["t-1"]
         assert await _depth(inspector, f"rules-{names['id']}.task.completed.dlq") == 0
 
+    async def test_a_broker_wide_nack_still_dead_letters(
+        self,
+        amqp_url: str,
+        names: dict[str, str],
+        inspector: Any,
+    ) -> None:
+        """#642: a DLQ consumer is pinned to REJECT, not the broker NACK."""
+        from faststream import AckPolicy
+
+        events = ExchangeSpec(names["events"])
+        failing = QueueSpec.consumer(
+            f"focus-{names['id']}",
+            "task.completed",
+            exchange=events,
+            dead_letter_exchange=names["dlx"],
+        )
+        mq = MessageBroker.rabbitmq(
+            amqp_url, logger=None, ack_policy=AckPolicy.NACK_ON_ERROR
+        )
+        attempts: list[str] = []
+
+        @mq.on(failing)
+        async def broken(body: str) -> None:
+            attempts.append(body)
+            raise RuntimeError("handler bug")
+
+        async with mq.lifespan():
+            await mq.publish("task.completed", "t-1", exchange=events)
+
+            async def dead_lettered() -> bool:
+                return (
+                    await _depth(inspector, f"focus-{names['id']}.task.completed.dlq")
+                    == 1
+                )
+
+            await _until(dead_lettered, "the rejection in the dlq")
+        assert attempts == ["t-1"]
+
     async def test_dead_letter_topology_exists_before_the_first_delivery(
         self,
         amqp_url: str,
