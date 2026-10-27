@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, Request
 from starlette.responses import StreamingResponse
 
 from tempest_fastapi_sdk.api.dependencies.auth import _resolve_tokens
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.exceptions.unauthorized import UnauthorizedException
 from tempest_fastapi_sdk.sse.broker import SSEBroker
 from tempest_fastapi_sdk.sse.schemas import SSETicketResponseSchema
@@ -80,6 +81,7 @@ def make_sse_router(
     tag: str = "SSE",
     ticket_ttl: timedelta | None = None,
     ticket_param: str = "ticket",
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build the router that issues SSE tickets and serves the stream.
 
@@ -128,6 +130,11 @@ def make_sse_router(
             (default) uses :data:`DEFAULT_SSE_TICKET_TTL` (60 seconds).
         ticket_param (str): Query parameter the stream route reads the
             ticket from. Defaults to ``"ticket"``.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: The router, ready for ``app.include_router``.
@@ -154,17 +161,15 @@ def make_sse_router(
             return broker
         return broker(request)
 
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(prefix=prefix, tags=[tag])
 
     @router.post(
         "/ticket",
         response_model=SSETicketResponseSchema,
-        summary="Issue an SSE ticket",
-        description=(
-            "Trade the authenticated session for a short-lived ticket that "
-            f"opens `GET {prefix}/stream?{ticket_param}=...`. The ticket "
-            "authorizes that stream only; ask for a new one before every "
-            "reconnect."
+        summary=route_docs.summary("sse.issue_ticket"),
+        description=route_docs.description(
+            "sse.issue_ticket", prefix=prefix, ticket_param=ticket_param
         ),
     )
     async def issue_ticket(
@@ -189,10 +194,9 @@ def make_sse_router(
     @router.get(
         "/stream",
         response_class=StreamingResponse,
-        summary="Open the event stream",
-        description=(
-            f"Server-Sent Events. Authenticate with `?{ticket_param}=` from "
-            f"`POST {prefix}/ticket`."
+        summary=route_docs.summary("sse.stream"),
+        description=route_docs.description(
+            "sse.stream", prefix=prefix, ticket_param=ticket_param
         ),
     )
     async def stream(

@@ -21,6 +21,7 @@ from fastapi import APIRouter, File, Form, UploadFile, status
 from pydantic import Field
 
 from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.genai.audio.schemas import DiarizedTranscription
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 from tempest_fastapi_sdk.utils.upload import read_upload_capped
@@ -127,6 +128,7 @@ def make_voice_router(
     tags: list[str] | None = None,
     dependencies: Sequence[Any] | None = None,
     max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build the voice router, mounting only what was injected.
 
@@ -147,6 +149,11 @@ def make_voice_router(
         dependencies (Sequence[Any] | None): Applied to every route —
             where authentication and rate limiting go.
         max_upload_bytes (int): Largest accepted upload.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: Ready to mount.
@@ -166,6 +173,7 @@ def make_voice_router(
 
     from fastapi import Depends
 
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(
         prefix=prefix,
         tags=list(tags or ["voice"]),
@@ -180,23 +188,13 @@ def make_voice_router(
         @router.post(
             "/transcribe",
             response_model=DiarizedTranscription,
-            summary="Transcribe a conversation, split by speaker",
-            description=(
-                "Uploads a recording and returns the transcript with one "
-                "entry per speaker turn.\n\n"
-                "**Pass `num_speakers` whenever you know it** — on a "
-                "two-party call, an interview, a support conversation you "
-                "do. Clustering by threshold alone is the least reliable "
-                "part of the pipeline.\n\n"
-                "Turns carry `speaker`, a cluster index that is stable "
-                "inside this recording and meaningless across recordings. "
-                "A turn with `speaker = -1` is speech that fell outside "
-                "every detected turn: it is transcribed rather than "
-                "dropped, because losing words silently is worse."
-            ),
+            summary=route_docs.summary("voice.transcribe"),
+            description=route_docs.description("voice.transcribe"),
         )
         async def transcribe(
-            audio: UploadFile = File(description="The recording."),
+            audio: UploadFile = File(
+                description=route_docs.text("voice.transcribe.audio")
+            ),
             language: str | None = Form(default=None),
             num_speakers: int | None = Form(default=None),
             session: AsyncSession = session_dep,
@@ -231,24 +229,13 @@ def make_voice_router(
             "/profiles",
             response_model=EnrollmentResponseSchema,
             status_code=status.HTTP_201_CREATED,
-            summary="Enrol the caller's voice",
-            description=(
-                "Records a voiceprint for the **authenticated caller** — "
-                "the user id comes from the session, never from the "
-                "body.\n\n"
-                "`consent_reference` is required and identifies what the "
-                "person agreed to: a policy version, a signed document, a "
-                "ticket. A voiceprint is sensitive personal data and needs "
-                "specific, highlighted consent; a blank reference returns "
-                "**422**.\n\n"
-                "The audio is used to compute the vector and discarded. "
-                "Nothing stores the recording."
-            ),
+            summary=route_docs.summary("voice.enroll"),
+            description=route_docs.description("voice.enroll"),
         )
         async def enroll(
-            audio: UploadFile = File(description="At least 3 seconds of speech."),
+            audio: UploadFile = File(description=route_docs.text("voice.enroll.audio")),
             consent_reference: str = Form(
-                description="Evidence of the person's consent.",
+                description=route_docs.text("voice.enroll.consent_reference"),
             ),
             label: str | None = Form(default=None),
             session: AsyncSession = session_dep,
@@ -284,14 +271,8 @@ def make_voice_router(
         @router.get(
             "/profiles",
             response_model=list[VoiceProfileSchema],
-            summary="List the caller's enrolled voice profiles",
-            description=(
-                "What is enrolled, when, and under which consent. The "
-                "embedding itself is **not** returned: the person needs to "
-                "know a profile exists, not to receive a copy of their own "
-                "biometric template over HTTP.\n\n"
-                "Returns `200` with an empty list when there are none."
-            ),
+            summary=route_docs.summary("voice.list_profiles"),
+            description=route_docs.description("voice.list_profiles"),
         )
         async def list_profiles(
             session: AsyncSession = session_dep,
@@ -312,14 +293,8 @@ def make_voice_router(
         @router.delete(
             "/profiles",
             response_model=ErasureResponseSchema,
-            summary="Erase every voice profile the caller enrolled",
-            description=(
-                "Deletes the caller's biometric data. This is the request "
-                "the LGPD makes unconditional (Art. 18, VI), which is why "
-                "it is an endpoint rather than a support ticket.\n\n"
-                "Deleting when there is nothing to delete returns `200` "
-                "with `deleted: 0` — a successful outcome, not an error."
-            ),
+            summary=route_docs.summary("voice.erase"),
+            description=route_docs.description("voice.erase"),
         )
         async def erase(
             session: AsyncSession = session_dep,

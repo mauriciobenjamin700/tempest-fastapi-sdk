@@ -3884,3 +3884,15 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   ganho é a garantia, não o comportamento padrão. Testes:
   `tests/queue/test_dead_letter_ack_policy.py`,
   `tests/queue/test_fanout_live.py` (`test_a_broker_wide_nack_still_dead_letters`).
+- **Idioma da documentação das rotas, Unreleased (#643)** — `API_DOCS_LOCALE`
+  no `ServerSettings` (`en-US`/`pt-BR`, normalizado por
+  `normalize_docs_locale` em `core/docs_locale.py`, língua desconhecida
+  recusada) e `docs_locale=` nas factories. Catálogo em `api/route_docs/`
+  (`en_us/` e `pt_br/`, `auth.py` + `platform.py` cada), lido por
+  `RouteDocs.summary/description/text`; o inglês é o texto que estava inline,
+  movido sem mudar um byte. Cobre auth, SSE, push, web push, health, logs,
+  tool-spec, app errors, sessions, PDF e voz. Fora: chat, genai (inclusive o
+  pipeline), agents, modelops, reviews, vision, wallet, hostbridge, os
+  webhooks de integração e os assets do SSR. Receita:
+  `docs/recipes/auth-flow.md`. Testes: `tests/api/test_route_docs.py`,
+  `tests/test_route_docs_coverage_guard.py`.

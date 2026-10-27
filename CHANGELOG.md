@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `API_DOCS_LOCALE` (`ServerSettings`, `en-US` por padrão ou `pt-BR`) e o
+  parâmetro `docs_locale=` nas factories de rota: o `summary` e a
+  `description` das operações, e a `description` dos parâmetros e respostas
+  declarados nelas, saem no idioma escolhido no `/docs`, no ReDoc e no
+  cliente gerado (#643). Cobertos: `make_auth_router` (as 33 rotas que
+  aparecem no schema), `make_sse_router` (e `UserAuthService.sse_router`, que
+  segue a variável), `make_push_router`, `make_web_push_router`,
+  `make_health_router`, `make_logs_router`, `make_tool_spec_router`,
+  `make_app_error_router`, `make_session_router`, `make_pdf_router` e
+  `make_voice_router`. Path, `operationId`, nome de campo, código de erro e
+  `title` de schema não mudam com o idioma, então o cliente gerado é o mesmo.
+  O documento em inglês sem a variável é idêntico byte a byte ao da 0.331.0
+  nos 11 routers, medido com todo grupo opcional de rota ligado. Língua fora do catálogo (`es-ES`, `pt-PT`) é recusada no
+  boot em vez de cair no inglês. O texto vive em
+  `tempest_fastapi_sdk.api.route_docs` (`RouteDocs`, `RouteDoc`,
+  `resolve_docs_locale`) e o guard `tests/test_route_docs_coverage_guard.py`
+  exige toda chave nas duas línguas, sem órfã. Chat, genai, agents,
+  modelops, reviews, vision, wallet e hostbridge seguem só em inglês.
 - `complete_structured(messages, schema, *, effort=None, cache_system=False,
   max_tokens=None, config=None, **kwargs)` no `AnthropicGenerator` e no
   `OpenAICompatGenerator`, devolvendo `StructuredCompletion`: a instância

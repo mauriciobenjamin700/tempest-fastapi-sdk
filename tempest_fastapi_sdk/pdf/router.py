@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, Response, status
 from pydantic import Field
 
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.exceptions import ValidationException
 from tempest_fastapi_sdk.pdf.documents import BUNDLED_DOCUMENTS
 from tempest_fastapi_sdk.pdf.renderer import bundled_document_names, document_schema
@@ -119,6 +120,7 @@ def make_pdf_router(
     tags: list[str] | None = None,
     dependencies: Sequence[Any] | None = None,
     inline: bool = False,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build the router that renders the bundled documents.
 
@@ -132,10 +134,16 @@ def make_pdf_router(
             router adds none by itself.
         inline (bool): Serve with ``Content-Disposition: inline`` so the
             browser displays the document instead of downloading it.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
     """
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(
         prefix=prefix,
         tags=list(tags or ["pdf"]),
@@ -146,12 +154,8 @@ def make_pdf_router(
     @router.get(
         "/documents",
         response_model=list[DocumentListSchema],
-        summary="List the bundled documents and their payload schemas",
-        description=(
-            "Every document this service can render, with the full JSON "
-            "Schema of each payload — enough for a client to build the "
-            "form without reading the SDK source."
-        ),
+        summary=route_docs.summary("pdf.list_documents"),
+        description=route_docs.description("pdf.list_documents"),
     )
     async def list_documents() -> list[DocumentListSchema]:
         """Return the bundled documents with their schemas.
@@ -176,20 +180,11 @@ def make_pdf_router(
         responses={
             200: {
                 "content": {PDF_MEDIA_TYPE: {}},
-                "description": "The rendered document.",
+                "description": route_docs.text("pdf.render_document.200"),
             },
         },
-        summary="Render a bundled document to PDF",
-        description=(
-            "Validates ``payload`` against the selected document's schema "
-            "and returns the PDF bytes.\n\n"
-            "An unknown document name returns **404** naming the ones that "
-            "exist; a payload that fails validation returns **422** naming "
-            "the field. Rendering runs in a worker thread, so a slow "
-            "document does not stall the event loop — but it does occupy "
-            "one of the renderer's slots, which is why this route belongs "
-            "behind the service's rate limit."
-        ),
+        summary=route_docs.summary("pdf.render_document"),
+        description=route_docs.description("pdf.render_document"),
     )
     async def render_document(
         document: str,

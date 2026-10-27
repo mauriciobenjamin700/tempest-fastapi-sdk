@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
 
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ def make_health_router(
     version: str | None = None,
     expose_checks: bool = True,
     timeout: float | None = 3.0,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build the canonical ``/health`` router.
 
@@ -101,6 +103,11 @@ def make_health_router(
             orchestrator. ``None`` disables the bound. Cancellation
             only interrupts a check at an ``await``: a check that blocks
             the event loop with synchronous I/O cannot be timed out.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: A router ready to ``include_router(...)`` on the
@@ -111,23 +118,29 @@ def make_health_router(
     """
     if timeout is not None and timeout <= 0:
         raise ValueError(f"timeout must be positive or None, got {timeout!r}")
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(prefix=prefix, tags=[tag])
     all_checks: dict[str, HealthCheck] = {}
     if db is not None:
         all_checks["database"] = db.health_check
     all_checks.update(checks or {})
 
-    @router.get("/liveness", summary="Liveness probe")
+    @router.get(
+        "/liveness",
+        description=route_docs.description("health.liveness"),
+        summary=route_docs.summary("health.liveness"),
+    )
     async def liveness() -> dict[str, str]:
         """Return ``{"status": "ok"}`` if the process is alive."""
         return {"status": "ok"}
 
     @router.get(
         "/readiness",
-        summary="Readiness probe",
+        description=route_docs.description("health.readiness"),
+        summary=route_docs.summary("health.readiness"),
         responses={
             status.HTTP_503_SERVICE_UNAVAILABLE: {
-                "description": "At least one dependency is not ready.",
+                "description": route_docs.text("health.readiness.503"),
             },
         },
     )

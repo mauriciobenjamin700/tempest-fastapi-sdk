@@ -12,6 +12,18 @@ from tempest_fastapi_sdk.core.context import (
 from tempest_fastapi_sdk.core.context import (
     set_request_id as set_request_id,
 )
+from tempest_fastapi_sdk.core.docs_locale import (
+    DEFAULT_DOCS_LOCALE as DEFAULT_DOCS_LOCALE,
+)
+from tempest_fastapi_sdk.core.docs_locale import (
+    SUPPORTED_DOCS_LOCALES as SUPPORTED_DOCS_LOCALES,
+)
+from tempest_fastapi_sdk.core.docs_locale import (
+    DocsLocale as DocsLocale,
+)
+from tempest_fastapi_sdk.core.docs_locale import (
+    normalize_docs_locale as normalize_docs_locale,
+)
 from tempest_fastapi_sdk.core.enums import (
     BaseIntEnum as BaseIntEnum,
 )
@@ -87,6 +99,7 @@ from tempest_fastapi_sdk.core.typed import (
 
 __all__: list[str] = [
     "BEARER_PATTERN",
+    "DEFAULT_DOCS_LOCALE",
     "DEFAULT_LOG_BACKUP_COUNT",
     "DEFAULT_LOG_MAX_BYTES",
     "DEFAULT_REDACT_KEYS",
@@ -96,8 +109,10 @@ __all__: list[str] = [
     "JWT_PATTERN",
     "LOG_ROTATE_WHEN_CHOICES",
     "REDACTED",
+    "SUPPORTED_DOCS_LOCALES",
     "BaseIntEnum",
     "BaseStrEnum",
+    "DocsLocale",
     "JSONFormatter",
     "Locale",
     "RedactionFilter",
@@ -106,6 +121,7 @@ __all__: list[str] = [
     "configure_logging",
     "configure_root_once",
     "get_request_id",
+    "normalize_docs_locale",
     "normalize_locale_tag",
     "reinitialize_logging",
     "request_id_ctx",

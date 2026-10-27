@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.push.schemas import DeviceRegistrationSchema
 from tempest_fastapi_sdk.push.service import DeviceService
 from tempest_fastapi_sdk.utils._signature import accepts_keyword
@@ -32,6 +33,7 @@ def make_push_router(
     tags: list[str] | None = None,
     vapid_public_key: str | Callable[[], str] | None = None,
     transfer_ownership: bool = False,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build a router with ``POST /register`` and ``POST /unregister``.
 
@@ -68,15 +70,26 @@ def make_push_router(
             caller gets the same answer as a new registration. Turn on only
             where moving devices between accounts is a real case; the
             service override must then accept ``transfer_ownership=``.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
     """
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(prefix=prefix, tags=list(tags or ["push"]))
 
     if vapid_public_key is not None:
 
-        @router.get("/vapid-public-key", status_code=status.HTTP_200_OK)
+        @router.get(
+            "/vapid-public-key",
+            summary=route_docs.summary("push.get_vapid_public_key"),
+            description=route_docs.description("push.get_vapid_public_key"),
+            status_code=status.HTTP_200_OK,
+        )
         async def get_vapid_public_key() -> dict[str, str]:
             """Return the VAPID public key the browser subscribes with.
 
@@ -95,7 +108,12 @@ def make_push_router(
     def _service(session: AsyncSession = Depends(_session)) -> DeviceService[Any]:
         return service_factory(session)
 
-    @router.post("/register", status_code=status.HTTP_201_CREATED)
+    @router.post(
+        "/register",
+        summary=route_docs.summary("push.register"),
+        description=route_docs.description("push.register"),
+        status_code=status.HTTP_201_CREATED,
+    )
     async def register(
         registration: DeviceRegistrationSchema,
         user_id: UUID = Depends(current_user_id),
@@ -118,7 +136,12 @@ def make_push_router(
             await service.register(user_id, registration)
         return {"status": "registered"}
 
-    @router.post("/unregister", status_code=status.HTTP_200_OK)
+    @router.post(
+        "/unregister",
+        summary=route_docs.summary("push.unregister"),
+        description=route_docs.description("push.unregister"),
+        status_code=status.HTTP_200_OK,
+    )
     async def unregister(
         registration: DeviceRegistrationSchema,
         user_id: UUID = Depends(current_user_id),

@@ -113,6 +113,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.openapi_pruning.drop_orphan_enum_schemas
 ::: tempest_fastapi_sdk.api.dependencies.signed_url.make_signed_path_dependency
 ::: tempest_fastapi_sdk.api.dependencies.auth.make_mfa_required_dependency
+::: tempest_fastapi_sdk.api.route_docs.RouteDocs
+::: tempest_fastapi_sdk.api.route_docs.RouteDoc
+::: tempest_fastapi_sdk.api.route_docs.resolve_docs_locale
 
 ---
 
@@ -471,6 +474,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.core.typed.strict_types
 ::: tempest_fastapi_sdk.core.typed.typed
 ::: tempest_fastapi_sdk.core.typed.require_annotations
+::: tempest_fastapi_sdk.core.docs_locale.normalize_docs_locale
+::: tempest_fastapi_sdk.core.docs_locale.DocsLocale
 
 ---
 
