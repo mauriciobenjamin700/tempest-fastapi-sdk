@@ -3876,7 +3876,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   entre `search_fields`, todas as palavras) via `where=` do `paginate`, em vez
   de `filters[field] = q` (igualdade com AND). Teste:
   `tests/admin/test_search.py` (8 dos 10 casos falham no código antigo).
-- **DLQ sem `AckPolicy` no serviço, Unreleased (#642)** — `ack_policy`
+- **DLQ sem `AckPolicy` no serviço, v0.332.0 (2026-10-27) (#642)** — `ack_policy`
   nomeado em `MessageBroker.on`/`register`, `subscribe` e `Consumer`; spec com
   dead-letter fixa `REJECT_ON_ERROR` no assinante (vence o `ack_policy` do
   broker) e recusa `ACK`/`ACK_FIRST`/`NACK_ON_ERROR`. O default do FastStream
@@ -3884,7 +3884,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   ganho é a garantia, não o comportamento padrão. Testes:
   `tests/queue/test_dead_letter_ack_policy.py`,
   `tests/queue/test_fanout_live.py` (`test_a_broker_wide_nack_still_dead_letters`).
-- **Idioma da documentação das rotas, Unreleased (#643)** — `API_DOCS_LOCALE`
+- **Idioma da documentação das rotas, v0.332.0 (2026-10-27) (#643)** — `API_DOCS_LOCALE`
   no `ServerSettings` (`en-US`/`pt-BR`, normalizado por
   `normalize_docs_locale` em `core/docs_locale.py`, língua desconhecida
   recusada) e `docs_locale=` nas factories. Catálogo em `api/route_docs/`

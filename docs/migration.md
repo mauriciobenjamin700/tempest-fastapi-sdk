@@ -2,6 +2,22 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.332.0 — DLQ fixa a política de ack do consumidor
+
+Num `QueueSpec` com dead-letter, o `MessageBroker.on` / `register` e o
+`subscribe` / `Consumer` fixam `REJECT_ON_ERROR` no próprio assinante quando
+`ack_policy` fica `None` (#642). Passar `ACK`, `ACK_FIRST` ou `NACK_ON_ERROR`
+num spec com dead-letter agora levanta `ValueError` no registro: nenhuma das
+três manda a falha para a DLQ. Consumidor sem dead-letter não muda.
+
+### O que fazer
+
+1. Tire o `ack_policy=AckPolicy.REJECT_ON_ERROR` dos consumidores com DLQ, se
+   quiser: o default já é esse. Mantê-lo continua valendo.
+2. Consumidor com dead-letter que passava `ACK`, `ACK_FIRST` ou
+   `NACK_ON_ERROR` falha no boot: troque por `REJECT_ON_ERROR` (ou omita), ou
+   tire o dead-letter do spec se a falha não deve ir para a DLQ.
+
 ## 0.331.0 — visual novo do admin, upload com teto no storage
 
 O `admin.css` foi reescrito sobre tokens e o `AdminTheme` mudou dois

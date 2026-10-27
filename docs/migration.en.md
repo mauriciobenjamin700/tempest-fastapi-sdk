@@ -2,6 +2,23 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.332.0 — the DLQ pins the consumer's ack policy
+
+On a `QueueSpec` with a dead-letter, `MessageBroker.on` / `register` and
+`subscribe` / `Consumer` pin `REJECT_ON_ERROR` on the subscriber itself when
+`ack_policy` is `None` (#642). Passing `ACK`, `ACK_FIRST` or `NACK_ON_ERROR`
+on a dead-lettered spec now raises `ValueError` at registration: none of the
+three sends the failure to the DLQ. A consumer without a dead-letter is
+unchanged.
+
+### What to do
+
+1. Drop `ack_policy=AckPolicy.REJECT_ON_ERROR` from dead-lettered consumers
+   if you like: it is now the default. Keeping it still works.
+2. A dead-lettered consumer that passed `ACK`, `ACK_FIRST` or
+   `NACK_ON_ERROR` fails at boot: switch to `REJECT_ON_ERROR` (or omit it), or
+   drop the dead-letter from the spec if failures should not go to the DLQ.
+
 ## 0.331.0 — new admin look, capped storage uploads
 
 `admin.css` was rewritten on tokens and `AdminTheme` changed two defaults:
