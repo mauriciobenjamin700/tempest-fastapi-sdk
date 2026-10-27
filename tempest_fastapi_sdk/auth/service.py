@@ -3310,6 +3310,59 @@ class UserAuthService:
             return
         raise IntegrationDisabledException("email")
 
+    async def _send_email(
+        self,
+        kind: str,
+        to: str,
+        *,
+        subject: str,
+        body: str,
+        html: str,
+    ) -> None:
+        """Send one auth email now, or after the response when opted in.
+
+        With ``AUTH_SEND_EMAILS_IN_BACKGROUND`` on and a request served by
+        :func:`~tempest_fastapi_sdk.auth.make_auth_router` in progress, the
+        send goes to the request's ``BackgroundTasks``
+        (:mod:`tempest_fastapi_sdk.auth.email_delivery`): the response does
+        not wait for SMTP, and a failure is logged instead of answering
+        ``503 EMAIL_UNAVAILABLE``. Otherwise — the default, or a call from
+        outside a request — the send is awaited and a failure raises, as
+        before (#644).
+
+        Args:
+            kind (str): Which email, for the failure log.
+            to (str): The recipient.
+            subject (str): The subject line.
+            body (str): The plain-text body.
+            html (str): The rendered HTML body.
+
+        Raises:
+            EmailDeliveryException: When sent inline and the server
+                refuses the message (``503 EMAIL_UNAVAILABLE``).
+        """
+        from tempest_fastapi_sdk.auth.email_delivery import (
+            current_background_tasks,
+            send_and_log,
+        )
+
+        if self.email is None:
+            return
+        email = self.email
+        background = (
+            current_background_tasks()
+            if self.auth_settings.AUTH_SEND_EMAILS_IN_BACKGROUND
+            else None
+        )
+        if background is None:
+            await email.send(to, subject=subject, body=body, html=html)
+            return
+
+        async def deliver() -> None:
+            await email.send(to, subject=subject, body=body, html=html)
+
+        background.add_task(send_and_log, deliver, recipient=to, kind=kind)
+
     async def _maybe_send_activation_email(
         self,
         user: BaseUserModel,
@@ -3342,7 +3395,8 @@ class UserAuthService:
             },
             locale=locale,
         )
-        await self.email.send(
+        await self._send_email(
+            "activation",
             user.email,
             subject=auth_email_message(locale, "activation_subject"),
             body=auth_email_message(locale, "activation_body").format(url=url),
@@ -3378,7 +3432,8 @@ class UserAuthService:
             },
             locale=locale,
         )
-        await self.email.send(
+        await self._send_email(
+            "password_reset",
             user.email,
             subject=auth_email_message(locale, "password_reset_subject"),
             body=auth_email_message(locale, "password_reset_body").format(url=url),
@@ -3416,7 +3471,8 @@ class UserAuthService:
             },
             locale=locale,
         )
-        await self.email.send(
+        await self._send_email(
+            "email_change",
             new_email,
             subject=auth_email_message(locale, "email_change_subject"),
             body=auth_email_message(locale, "email_change_body").format(url=url),
@@ -3452,7 +3508,8 @@ class UserAuthService:
             },
             locale=locale,
         )
-        await self.email.send(
+        await self._send_email(
+            "email_verification",
             user.email,
             subject=auth_email_message(locale, "email_verification_subject"),
             body=auth_email_message(locale, "email_verification_body").format(url=url),
@@ -3488,7 +3545,8 @@ class UserAuthService:
             },
             locale=locale,
         )
-        await self.email.send(
+        await self._send_email(
+            "email_changed_notice",
             old_email,
             subject=auth_email_message(locale, "email_changed_notice_subject"),
             body=auth_email_message(locale, "email_changed_notice_body").format(

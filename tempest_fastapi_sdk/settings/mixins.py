@@ -2025,6 +2025,20 @@ class AuthSettings(BaseAppSettings):
         ),
         examples=[False, True],
     )
+    AUTH_SEND_EMAILS_IN_BACKGROUND: bool = Field(
+        default=False,
+        title="Send auth emails after the response",
+        description=(
+            "When ``True``, the emails the auth routes send (activation, "
+            "password reset, email change and verification) go to the "
+            "request's ``BackgroundTasks``: the response does not wait "
+            "for SMTP, its time no longer reveals whether an email was "
+            "sent, and an SMTP failure is logged instead of answering "
+            "``503 EMAIL_UNAVAILABLE``. ``False`` (default) awaits the "
+            "send inside the request, as before."
+        ),
+        examples=[False, True],
+    )
     AUTH_ACTIVATION_TTL_SECONDS: int = Field(
         default=86_400 * 7,
         ge=60,

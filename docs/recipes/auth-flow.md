@@ -1478,6 +1478,7 @@ Decidem **se** e **como** o link chega ao usuário. Mapeiam direto nos [cinco mo
 |---------|------|---------|-----------|
 | `AUTH_AUTO_ACTIVATE` | `bool` | `false` | `true` = user nasce ativo, pula activation, signup devolve JWT pair direto (Modo D). **Nunca em produção.** |
 | `AUTH_RETURN_TOKEN_IN_RESPONSE` | `bool` | `false` | `true` = link de ativação/reset vai no corpo JSON em vez do e-mail (Modo C). |
+| `AUTH_SEND_EMAILS_IN_BACKGROUND` | `bool` | `false` | `true` = os e-mails das rotas de auth saem **depois** da resposta (`BackgroundTasks`); falha de SMTP vira log, não `503`. Veja [Em background](#em-background-auth_send_emails_in_background). |
 
 ### Grupo 4 — TTL dos tokens de conta (`AuthSettings`)
 
@@ -2497,6 +2498,50 @@ Ao chamar o `UserAuthService` fora do `make_auth_router`, a regra é a de
 qualquer erro depois de um `flush`: faça `rollback` da sessão antes de
 reutilizá-la. O roteador faz isso sozinho, porque nunca chega ao
 `commit`.
+
+### Em background (`AUTH_SEND_EMAILS_IN_BACKGROUND`)
+
+*(v0.332.0+)*
+
+Por padrão a rota espera o SMTP: um servidor lento deixa o cadastro e o
+reset lentos. Com `AUTH_SEND_EMAILS_IN_BACKGROUND=true`, as rotas do
+`make_auth_router` entregam o envio ao `BackgroundTasks` da requisição — a
+resposta sai primeiro e o e-mail depois. Medido em
+`tests/auth/test_email_background.py`, com um mailer que leva 1 s por envio
+servido por uvicorn real: o `POST /auth/signup` respondeu em mais de 1 s no
+default e em menos de 0,5 s em background.
+
+```bash
+# .env
+AUTH_SEND_EMAILS_IN_BACKGROUND=true
+```
+
+O que muda, e o preço:
+
+- **O tempo da resposta para de depender do envio.** O
+  `/password-reset/request` de um endereço cadastrado deixa de demorar mais
+  que o de um desconhecido, uma diferença que dava para medir de fora.
+- **Falha de SMTP não responde `503`.** A resposta já foi; a falha sai em
+  `ERROR` no logger `tempest_fastapi_sdk.auth.email_delivery`, com o tipo do
+  e-mail e só o **domínio** do destinatário.
+- **Não há rollback por falha de envio.** O cadastro fica gravado sem o
+  e-mail de ativação (o usuário pede o reenvio), e no reset e no reenvio de
+  ativação o token novo já substituiu o pendente quando o envio falha — o
+  link anterior para de valer e o novo não chegou. Pedir de novo resolve.
+- **O e-mail só sai se a requisição deu certo.** O `make_auth_router`
+  comita antes de responder, e uma exceção depois de agendar troca a
+  resposta por uma de erro, que não leva as tarefas: nenhum link aponta
+  para um token que não foi gravado.
+
+Fora de uma requisição — o `UserAuthService` chamado de um comando, de uma
+task ou de um teste — não há `BackgroundTasks`, e o envio é aguardado como
+no default, com a mesma `EmailDeliveryException`.
+
+!!! tip "Desligamento"
+    O Starlette roda as tarefas de fundo de uma resposta antes de encerrar
+    a requisição, então o desligamento gracioso do servidor espera por elas
+    como espera qualquer requisição em andamento. Um `asyncio.create_task`
+    solto não teria essa garantia.
 
 ## Entrega de token
 

@@ -66,6 +66,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Os testes novos rodam sobre `httpx.MockTransport`: fixam o request montado e
 a leitura da resposta documentada, não um provedor ao vivo.
+- `AUTH_SEND_EMAILS_IN_BACKGROUND` (`AuthSettings`, default `false`): as
+  rotas do `make_auth_router` mandam os e-mails de ativação, reset, troca e
+  verificação pelo `BackgroundTasks` da requisição (#644). A resposta não
+  espera o SMTP — medido com mailer de 1 s sobre uvicorn real: signup em
+  mais de 1 s no default e em menos de 0,5 s em background —, e o tempo do
+  `/password-reset/request` deixa de revelar se o endereço tem conta. Falha
+  de SMTP vira log em `ERROR` (só o domínio do destinatário), não `503`, e
+  não há rollback por falha de envio. Fora de uma requisição o envio
+  continua aguardado.
 
 ### Changed
 
