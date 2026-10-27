@@ -1,19 +1,11 @@
-<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8" /></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; color: #1f2937; max-width: 480px; margin: 0 auto; padding: 24px;">
-  <h2 style="color: #111827;">Welcome{% if user.name %}, {{ user.name }}{% endif %}!</h2>
-  <p>Click the button below to activate your account:</p>
-  <p style="margin: 24px 0;">
-    <a href="{{ activation_url }}"
-       style="display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px;">
-      Activate account
-    </a>
-  </p>
-  <p style="color: #6b7280; font-size: 13px;">Or paste this link in your browser:<br />
-    <a href="{{ activation_url }}" style="color: #2563eb; word-break: break-all;">{{ activation_url }}</a>
-  </p>
-  <p style="color: #6b7280; font-size: 13px;">This link expires at <strong>{{ expires_at_str }}</strong>.
-    If you didn't request this email, ignore it — no account was created without your action.</p>
-</body>
-</html>
+{% extends "_email_layout.html" %}
+{% set action_url = activation_url %}
+{% set action_label = "Activate account" %}
+{% set fallback_label = "If the button doesn't work, copy and paste this link into your browser:" %}
+{% block lang %}en{% endblock %}
+{% block title %}Activate your account{% endblock %}
+{% block preheader %}Confirm your email to activate the account.{% endblock %}
+{% block heading %}Welcome{% if user.name %}, {{ user.name }}{% endif %}!{% endblock %}
+{% block content %}<p style="margin: 0;">One more step: confirm your email to activate the account.</p>{% endblock %}
+{% block note %}This link expires at <strong>{{ expires_at_str }}</strong>.{% endblock %}
+{% block footer %}If you didn't request this email, ignore it — no account was created without your action.{% endblock %}

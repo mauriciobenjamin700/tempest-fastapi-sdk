@@ -3902,3 +3902,12 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `make_auth_router`, e `UserAuthService._send_email` agenda nela (ou aguarda,
   fora de request). Default síncrono mantido por decisão do usuário. Teste:
   `tests/auth/test_email_background.py` (tempo medido com uvicorn real).
+- **E-mails de auth com visual novo e marca, Unreleased (#645)** —
+  `auth/templates/_email_layout.html` (tabela, estilo inline, preheader,
+  `color-scheme`) estendido pelos 5 e-mails nas duas línguas;
+  `UserAuthService._render_email` põe `brand` no contexto a partir de
+  `AUTH_EMAIL_BRAND_NAME`/`_COLOR`/`_LOGO_URL`/`AUTH_EMAIL_FOOTER_TEXT`;
+  `utils/color.py` (`relative_luminance`, `is_light`) compartilhado com o
+  `AdminTheme`. Validado em browser (800/375 px, claro/escuro, marca escura,
+  clara e ausente) — a cor clara expôs o link ilegível, que ganhou
+  `link_color`. Teste: `tests/auth/test_email_templates.py`.

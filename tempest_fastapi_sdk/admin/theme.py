@@ -36,6 +36,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, fields
 
+from tempest_fastapi_sdk.utils.color import is_light
+
 # Characters that would let a theme value break out of the injected
 # ``<style>`` block or an HTML attribute. Theme values are developer-set
 # (not end-user input), but rejecting these keeps a careless value from
@@ -54,35 +56,6 @@ DARK_TEXT: tuple[str, str] = ("#0f172a", "#475569")
 LIGHT_TEXT: tuple[str, str] = ("#f8fafc", "#cbd5e1")
 """Text and muted text on a dark chrome background."""
 
-LIGHT_BACKGROUND_THRESHOLD: float = 0.5
-"""Relative luminance above which a background takes dark text."""
-
-
-def _relative_luminance(color: str) -> float | None:
-    """Return the WCAG relative luminance of a hex color.
-
-    Args:
-        color (str): ``#rgb`` or ``#rrggbb``.
-
-    Returns:
-        float | None: ``0.0`` (black) to ``1.0`` (white), or ``None`` when
-        ``color`` is not a hex color (``"rebeccapurple"``, ``rgb(...)``).
-    """
-    raw = color.strip().removeprefix("#")
-    if not color.strip().startswith("#") or len(raw) not in (3, 6):
-        return None
-    if len(raw) == 3:
-        raw = "".join(c * 2 for c in raw)
-    try:
-        channels = [int(raw[i : i + 2], 16) / 255 for i in (0, 2, 4)]
-    except ValueError:
-        return None
-    linear = [
-        c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels
-    ]
-    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
-
-
 def _text_on(background: str) -> tuple[str, str]:
     """Pick text colors that read on ``background``.
 
@@ -93,10 +66,7 @@ def _text_on(background: str) -> tuple[str, str]:
         tuple[str, str]: Text and muted text. A color that is not hex is
         assumed dark, the case a named brand color usually is.
     """
-    luminance = _relative_luminance(background)
-    if luminance is not None and luminance > LIGHT_BACKGROUND_THRESHOLD:
-        return DARK_TEXT
-    return LIGHT_TEXT
+    return DARK_TEXT if is_light(background) else LIGHT_TEXT
 
 
 @dataclass(frozen=True)

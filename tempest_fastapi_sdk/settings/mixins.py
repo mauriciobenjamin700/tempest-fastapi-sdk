@@ -1890,6 +1890,15 @@ class AuthSettings(BaseAppSettings):
             filename. Default: ``"activation.html"``.
         AUTH_PASSWORD_RESET_TEMPLATE (str): Jinja2 password-reset email
             template filename. Default: ``"password_reset.html"``.
+        AUTH_EMAIL_BRAND_NAME (str): Name in the header of the bundled
+            emails. Empty (default) leaves the header out.
+        AUTH_EMAIL_BRAND_COLOR (str): Hex color of the email button and
+            accents. Default: ``"#2563eb"``.
+        AUTH_EMAIL_BRAND_LOGO_URL (str): Absolute ``http(s)`` URL of a logo
+            shown in the email header instead of the name. Empty
+            (default) shows the name.
+        AUTH_EMAIL_FOOTER_TEXT (str): Extra line in the email footer
+            (company, address). Empty by default.
         AUTH_PASSWORD_MIN_LENGTH (int): Minimum accepted password length.
             Default: ``12``.
         AUTH_PASSWORD_MAX_BYTES (int): Maximum accepted password length in
@@ -2086,6 +2095,44 @@ class AuthSettings(BaseAppSettings):
             "https://app.example.com/reset?token={token}",
         ],
     )
+    AUTH_EMAIL_BRAND_NAME: str = Field(
+        default="",
+        title="Email brand name",
+        description=(
+            "Name shown in the header of the bundled auth emails. Empty "
+            "(default) leaves the header out."
+        ),
+        examples=["", "Acme"],
+    )
+    AUTH_EMAIL_BRAND_COLOR: str = Field(
+        default="#2563eb",
+        title="Email brand color",
+        description=(
+            "Hex color (``#rgb`` / ``#rrggbb``) of the button and accents "
+            "of the bundled auth emails. The button text turns dark on a "
+            "light color on its own."
+        ),
+        examples=["#2563eb", "#7c3aed"],
+    )
+    AUTH_EMAIL_BRAND_LOGO_URL: str = Field(
+        default="",
+        title="Email brand logo URL",
+        description=(
+            "Absolute ``http(s)`` URL of the logo shown in the email header "
+            "instead of the name. An email client cannot reach a relative "
+            "path. Empty (default) shows the name."
+        ),
+        examples=["", "https://acme.com/logo.png"],
+    )
+    AUTH_EMAIL_FOOTER_TEXT: str = Field(
+        default="",
+        title="Email footer text",
+        description=(
+            "Extra line in the footer of the bundled auth emails "
+            "(company name, address). Empty by default."
+        ),
+        examples=["", "Acme Ltda · São Paulo, SP"],
+    )
     AUTH_ACTIVATION_TEMPLATE: str = Field(
         default="activation.html",
         title="Activation email template name",
@@ -2244,6 +2291,54 @@ class AuthSettings(BaseAppSettings):
             if entry is not None:
                 violations.append(entry)
         return violations
+
+    @field_validator("AUTH_EMAIL_BRAND_COLOR")
+    @classmethod
+    def _check_brand_color(cls, value: str) -> str:
+        """Refuse a brand color that is not a hex color.
+
+        The value lands inside the emails' ``style`` attributes, so only
+        ``#rgb`` / ``#rrggbb`` is accepted.
+
+        Args:
+            value (str): The configured color.
+
+        Returns:
+            str: The color, stripped.
+
+        Raises:
+            ValueError: When it is not ``#rgb`` / ``#rrggbb``.
+        """
+        from tempest_fastapi_sdk.utils.color import HEX_COLOR_PATTERN
+
+        color = value.strip()
+        if not HEX_COLOR_PATTERN.fullmatch(color):
+            raise ValueError(
+                f"AUTH_EMAIL_BRAND_COLOR must be #rgb or #rrggbb, got {value!r}"
+            )
+        return color
+
+    @field_validator("AUTH_EMAIL_BRAND_LOGO_URL")
+    @classmethod
+    def _check_brand_logo_url(cls, value: str) -> str:
+        """Refuse a logo URL an email client cannot load.
+
+        Args:
+            value (str): The configured URL.
+
+        Returns:
+            str: The URL, stripped; empty stays empty.
+
+        Raises:
+            ValueError: When it is set and not an absolute ``http(s)`` URL.
+        """
+        url = value.strip()
+        if url and not url.startswith(("https://", "http://")):
+            raise ValueError(
+                "AUTH_EMAIL_BRAND_LOGO_URL must be an absolute http(s) URL, "
+                f"got {value!r}"
+            )
+        return url
 
     @field_validator("AUTH_DEFAULT_LOCALE")
     @classmethod

@@ -1515,6 +1515,10 @@ Lifetime of the **single-use** tokens (activation / reset) — distinct from the
 | `AUTH_PASSWORD_RESET_URL_TEMPLATE` | `str` | `http://localhost:3000/reset-password?token={token}` | Same, for reset. |
 | `AUTH_ACTIVATION_TEMPLATE` | `str` | `activation.html` | Jinja2 filename of the activation **email HTML**, resolved against `EmailUtils.template_dir`. |
 | `AUTH_PASSWORD_RESET_TEMPLATE` | `str` | `password_reset.html` | Same, for reset. |
+| `AUTH_EMAIL_BRAND_NAME` | `str` | `""` | Name in the emails' header; empty leaves the header out. See [The brand in the emails](#the-brand-in-the-emails). |
+| `AUTH_EMAIL_BRAND_COLOR` | `str` | `#2563eb` | Color (`#rgb`/`#rrggbb`) of the button and accents; the button text darkens on its own on a light color. |
+| `AUTH_EMAIL_BRAND_LOGO_URL` | `str` | `""` | Absolute `http(s)` URL of the header logo, instead of the name. |
+| `AUTH_EMAIL_FOOTER_TEXT` | `str` | `""` | Extra footer line (company name, address). |
 
 #### Where `AUTH_ACTIVATION_URL_TEMPLATE` points
 
@@ -1810,6 +1814,51 @@ sequenceDiagram
 ```
 
 ---
+
+## The brand in the emails
+
+*(v0.332.0+)*
+
+The flow's five emails (activation, password reset, email change,
+verification and the email-changed notice) extend one layout,
+`_email_layout.html`: a brand header, a card, a button, a fallback link, an
+expiry note and a footer. It is built on tables with inline styles — what
+Gmail and Outlook honor — and carries `color-scheme` for clients with a
+dark mode.
+
+Four `AuthSettings` env vars dress the email in your brand, with no template
+copied:
+
+```bash
+# .env
+AUTH_EMAIL_BRAND_NAME=Acme
+AUTH_EMAIL_BRAND_COLOR=#7c3aed
+AUTH_EMAIL_BRAND_LOGO_URL=https://acme.com/logo.png
+AUTH_EMAIL_FOOTER_TEXT=Acme Inc · San Francisco, CA
+```
+
+- **With no name or logo**, the header is left out; the default is the blue
+  button (`#2563eb`) with no brand.
+- **A light color adjusts.** The button text and the link color are picked
+  from the color's luminance: with `#facc15` (yellow) the button gets dark
+  text and the link turns dark gray, because yellow on the white card does
+  not read.
+- **An invalid value fails the boot.** The color only takes `#rgb`/`#rrggbb`
+  and the logo only an absolute `http(s)` URL — both go into an HTML
+  attribute, and an email cannot load a relative path.
+
+!!! tip "Your own template still wins"
+    A `template_dir` with the same file name (`activation.html`, …) beats
+    the SDK's, as before. The context gained `brand` (`name`, `color`,
+    `text_color`, `link_color`, `logo_url`, `footer`); your template may use
+    it or ignore it. To keep the new layout and change only the text, extend
+    `_email_layout.html` and fill the `heading`, `content`, `note` and
+    `footer` blocks, with `action_url`, `action_label` and `fallback_label`
+    in `{% set %}`.
+
+Validated in a real browser in both languages, at 800 and 375 px, in light
+and dark mode, with a dark brand (`#7c3aed`), a light one (`#facc15`) and no
+brand.
 
 ## Email and page language (i18n)
 
