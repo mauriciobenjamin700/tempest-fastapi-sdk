@@ -41,6 +41,14 @@ if TYPE_CHECKING:
 HostedProvider = Literal["anthropic", "openai", "google", "deepseek"]
 """The hosted providers :func:`hosted_generator` knows how to build."""
 
+HOSTED_PROVIDERS: Final[tuple[HostedProvider, ...]] = (
+    "anthropic",
+    "openai",
+    "google",
+    "deepseek",
+)
+"""The values of :data:`HostedProvider`, for checking a provider at runtime."""
+
 DEFAULT_GOOGLE_OPENAI_URL: Final[str] = (
     "https://generativelanguage.googleapis.com/v1beta/openai"
 )
@@ -168,8 +176,9 @@ def hosted_generator(
         AnthropicGenerator | OpenAICompatGenerator: The generator.
 
     Raises:
-        ValueError: When the provider cannot be resolved, or ``api_key`` is
-            empty.
+        ValueError: When the provider cannot be resolved, ``provider`` is
+            not one of :data:`HOSTED_PROVIDERS` (a string from configuration
+            is not checked by the type), or ``api_key`` is empty.
 
     Example:
         >>> gen = hosted_generator("claude-haiku-5-5", api_key="sk-ant-...")
@@ -177,6 +186,11 @@ def hosted_generator(
         True
     """
     resolved = provider or resolve_provider(model)
+    if resolved not in HOSTED_PROVIDERS:
+        raise ValueError(
+            f"unknown provider {resolved!r}; expected one of "
+            f"{', '.join(HOSTED_PROVIDERS)}.",
+        )
     if resolved == ANTHROPIC_PROVIDER:
         return AnthropicGenerator(
             model,
@@ -230,6 +244,7 @@ def hosted_generator(
 __all__: list[str] = [
     "DEFAULT_GOOGLE_OPENAI_URL",
     "GOOGLE_EFFORT_VALUES",
+    "HOSTED_PROVIDERS",
     "MODEL_PREFIXES",
     "OPENAI_MAX_TOKENS_FIELD",
     "HostedProvider",

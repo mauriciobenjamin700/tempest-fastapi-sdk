@@ -34,7 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`MODEL_PREFIXES`), com a configuração de cada um — OpenAI com
   `max_completion_tokens` (`OPENAI_MAX_TOKENS_FIELD`), Gemini pelo endpoint
   compatível com OpenAI (`DEFAULT_GOOGLE_OPENAI_URL`, `GOOGLE_EFFORT_VALUES`)
-  e DeepSeek com `json_object` e sem `reasoning_effort`.
+  e DeepSeek com `json_object` e sem `reasoning_effort`. `provider=` fora
+  de `HOSTED_PROVIDERS` levanta `ValueError` em vez de cair no DeepSeek
+  (uma string lida de configuração não passa pela checagem do tipo).
 - `HostedGenAISettings`: `GOOGLE_API_KEY`, `GOOGLE_BASE_URL`,
   `GOOGLE_MODEL`, `google_kwargs()` e `hosted_kwargs(model, *,
   provider=None)`, que devolve os argumentos de `hosted_generator` com a

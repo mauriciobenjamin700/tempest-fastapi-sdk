@@ -132,6 +132,10 @@ class TestHostedGenerator:
         with pytest.raises(ValueError, match="provider="):
             hosted_generator("my-finetune", api_key="sk")
 
+    def test_unknown_explicit_provider_raises(self) -> None:
+        with pytest.raises(ValueError, match="unknown provider"):
+            hosted_generator("claude-haiku-5-5", api_key="sk", provider="xyz")  # type: ignore[arg-type]
+
     def test_empty_key_raises(self) -> None:
         with pytest.raises(ValueError, match="api_key"):
             hosted_generator("claude-haiku-5-5", api_key="")

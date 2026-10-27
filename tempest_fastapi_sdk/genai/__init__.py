@@ -172,6 +172,9 @@ from tempest_fastapi_sdk.genai.providers import (
 from tempest_fastapi_sdk.genai.providers import (
     GOOGLE_EFFORT_VALUES as GOOGLE_EFFORT_VALUES,
 )
+from tempest_fastapi_sdk.genai.providers import (
+    HOSTED_PROVIDERS as HOSTED_PROVIDERS,
+)
 from tempest_fastapi_sdk.genai.providers import MODEL_PREFIXES as MODEL_PREFIXES
 from tempest_fastapi_sdk.genai.providers import (
     OPENAI_MAX_TOKENS_FIELD as OPENAI_MAX_TOKENS_FIELD,
@@ -282,6 +285,7 @@ __all__: list[str] = [
     "DEFAULT_OLLAMA_URL",
     "DEFAULT_OPENAI_URL",
     "GOOGLE_EFFORT_VALUES",
+    "HOSTED_PROVIDERS",
     "MODEL_PREFIXES",
     "OPENAI_FINISH_REASONS",
     "OPENAI_MAX_TOKENS_FIELD",
