@@ -49,6 +49,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Os testes novos rodam sobre `httpx.MockTransport`: fixam o request montado e
 a leitura da resposta documentada, não um provedor ao vivo.
 
+### Changed
+
+- `MessageBroker.on`, `MessageBroker.register` e o `subscribe`/`Consumer`
+  ganharam `ack_policy` como parâmetro nomeado. Num `QueueSpec` com
+  dead-letter, `None` vira `REJECT_ON_ERROR` fixado no próprio assinante
+  (#642): o serviço não importa mais `faststream.AckPolicy` para a DLQ
+  valer, e um `ack_policy` no broker inteiro (ex.: `NACK_ON_ERROR`) não
+  desvia a falha da DLQ — medido contra RabbitMQ real. `ACK`, `ACK_FIRST` e
+  `NACK_ON_ERROR` num spec com dead-letter levantam `ValueError`, porque
+  nenhuma das três manda a falha para a DLQ. Consumidor sem dead-letter não
+  muda.
+
 ## [0.331.0] — 2026-10-26
 
 ### Added

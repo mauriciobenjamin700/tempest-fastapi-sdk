@@ -3876,3 +3876,11 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   entre `search_fields`, todas as palavras) via `where=` do `paginate`, em vez
   de `filters[field] = q` (igualdade com AND). Teste:
   `tests/admin/test_search.py` (8 dos 10 casos falham no código antigo).
+- **DLQ sem `AckPolicy` no serviço, Unreleased (#642)** — `ack_policy`
+  nomeado em `MessageBroker.on`/`register`, `subscribe` e `Consumer`; spec com
+  dead-letter fixa `REJECT_ON_ERROR` no assinante (vence o `ack_policy` do
+  broker) e recusa `ACK`/`ACK_FIRST`/`NACK_ON_ERROR`. O default do FastStream
+  0.7.5 já era `REJECT_ON_ERROR` (`rabbit/subscriber/config.py`), então o
+  ganho é a garantia, não o comportamento padrão. Testes:
+  `tests/queue/test_dead_letter_ack_policy.py`,
+  `tests/queue/test_fanout_live.py` (`test_a_broker_wide_nack_still_dead_letters`).

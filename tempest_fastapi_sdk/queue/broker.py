@@ -50,6 +50,7 @@ from tempest_fastapi_sdk.queue.topology import (
 from tempest_fastapi_sdk.queue.tracing import inject_context, make_tracing_middleware
 
 if TYPE_CHECKING:
+    from faststream import AckPolicy
     from faststream.broker.core.usecase import BrokerUsecase
 
     from tempest_fastapi_sdk.queue.consumer import Consumer
@@ -206,6 +207,70 @@ def _with_prefetch(
     rabbit = _require("faststream.rabbit", "queue")
     options[key] = rabbit.Channel(prefetch_count=int(prefetch))
     return options
+
+
+DEAD_LETTER_ACK_POLICIES: frozenset[str] = frozenset({"reject_on_error", "manual"})
+"""``AckPolicy`` values a consumer with a dead-letter queue may run under.
+
+RabbitMQ dead-letters a message on ``basic.reject``/``basic.nack`` with
+``requeue=False``. ``REJECT_ON_ERROR`` does exactly that when the handler
+raises; ``MANUAL`` leaves it to the handler. The other three never get a
+failed message there: ``ACK`` and ``ACK_FIRST`` acknowledge it, and
+``NACK_ON_ERROR`` requeues it, so it loops instead of dead-lettering.
+"""
+
+
+def _subscriber_ack_policy(
+    channel: str | QueueSpec,
+    ack_policy: AckPolicy | None,
+    transport: Transport,
+) -> AckPolicy | None:
+    """Pick the ack policy of a consumer, pinning it when it has a DLQ.
+
+    FastStream 0.7.5 already defaults a RabbitMQ subscriber to
+    ``REJECT_ON_ERROR`` (``faststream/rabbit/subscriber/config.py``), and
+    ``tests/queue/test_fanout_live.py`` measures a raising handler's
+    message landing in the dead-letter queue with no policy passed. The
+    default still lives in FastStream and yields to a broker-wide
+    ``ack_policy``, so a consumer whose spec declares a dead-letter
+    exchange gets ``REJECT_ON_ERROR`` set on the subscriber itself: the
+    queue the SDK declared keeps receiving whatever the broker is
+    configured with, and the service never imports ``faststream`` for it
+    (#642).
+
+    Args:
+        channel (str | QueueSpec): The channel being subscribed.
+        ack_policy (AckPolicy | None): What the caller asked for.
+        transport (Transport): The broker's transport.
+
+    Returns:
+        AckPolicy | None: The policy to hand FastStream, or ``None`` to
+        pass none.
+
+    Raises:
+        ValueError: When the spec has a dead-letter exchange and
+            ``ack_policy`` is one under which no failed message reaches it
+            (see :data:`DEAD_LETTER_ACK_POLICIES`).
+    """
+    has_dead_letter = (
+        isinstance(channel, QueueSpec)
+        and channel.dead_letter is not None
+        and transport is Transport.RABBITMQ
+    )
+    if not has_dead_letter:
+        return ack_policy
+    if ack_policy is None:
+        from faststream import AckPolicy
+
+        return AckPolicy.REJECT_ON_ERROR
+    if ack_policy.value not in DEAD_LETTER_ACK_POLICIES:
+        name = channel.name if isinstance(channel, QueueSpec) else channel
+        raise ValueError(
+            f"QueueSpec({name!r}) has a dead-letter exchange, but "
+            f"ack_policy={ack_policy.name} never sends a failed message "
+            "there; use REJECT_ON_ERROR (the default) or MANUAL.",
+        )
+    return ack_policy
 
 
 def _routing_key(channel: str | QueueSpec) -> str:
@@ -560,6 +625,7 @@ class MessageBroker:
         /,
         *,
         prefetch: int | None = None,
+        ack_policy: AckPolicy | None = None,
         **options: Any,
     ) -> Callable[[Handler], Handler]:
         """Register the decorated async function as a consumer of ``channel``.
@@ -584,12 +650,25 @@ class MessageBroker:
                 messages the broker pushes to **this consumer**,
                 overriding the connection-wide cap set on
                 :meth:`rabbitmq`. RabbitMQ only.
+            ack_policy (AckPolicy | None): FastStream's ack policy for this
+                consumer. ``None`` keeps FastStream's choice, except on a
+                spec with a dead-letter exchange, where it is pinned to
+                ``REJECT_ON_ERROR`` so a raising handler's message reaches
+                the dead-letter queue — no ``faststream`` import needed.
             **options (Any): Extra transport-specific subscriber options
                 forwarded to FastStream (e.g. ``exchange=`` on RabbitMQ).
 
         Returns:
             Callable[[Handler], Handler]: The subscriber decorator.
+
+        Raises:
+            ValueError: When the spec has a dead-letter exchange and
+                ``ack_policy`` is ``ACK``, ``ACK_FIRST`` or
+                ``NACK_ON_ERROR``, none of which ever dead-letters.
         """
+        resolved_policy = _subscriber_ack_policy(channel, ack_policy, self.transport)
+        if resolved_policy is not None:
+            options["ack_policy"] = resolved_policy
         _with_prefetch(options, prefetch, "channel")
         bound = self._bind(channel)
         self._subscriber_options(channel, options)
@@ -857,14 +936,25 @@ class MessageBroker:
         object and has no ``prefetch`` keyword, so forwarding it verbatim
         raises ``TypeError`` instead of capping anything.
 
+        A binding's ``ack_policy`` is resolved as :meth:`on` resolves it.
+
         Call it at import/startup time, before :meth:`connect`.
 
         Args:
             consumer (Consumer): The consumer instance to register.
+
+        Raises:
+            ValueError: When a spec with a dead-letter exchange is bound
+                under an ack policy that never dead-letters.
         """
         for sub in consumer.subscriptions():
             bound = self._bind(sub.channel)
             options = _with_prefetch(dict(sub.options), sub.prefetch, "channel")
+            resolved_policy = _subscriber_ack_policy(
+                sub.channel, sub.ack_policy, self.transport
+            )
+            if resolved_policy is not None:
+                options["ack_policy"] = resolved_policy
             self._subscriber_options(sub.channel, options)
             handler = (
                 _schema_entry(sub.handler, sub.schema)
@@ -1241,5 +1331,6 @@ class MessageBroker:
 
 
 __all__: list[str] = [
+    "DEAD_LETTER_ACK_POLICIES",
     "MessageBroker",
 ]
