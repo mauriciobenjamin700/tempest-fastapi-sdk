@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `complete_structured(messages, schema, *, effort=None, cache_system=False,
+  max_tokens=None, config=None, **kwargs)` no `AnthropicGenerator` e no
+  `OpenAICompatGenerator`, devolvendo `StructuredCompletion`: a instância
+  validada (ou `None`), o texto, o `TokenUsage`, o `stop_reason` normalizado
+  (`end`, `max_tokens`, `refusal`, `tool_use`, `other`) com o valor original
+  em `provider_stop_reason`, e o erro de validação. Recusa, resposta cortada
+  e JSON fora do schema voltam no objeto **com o uso** — a chamada foi
+  cobrada —, em vez de virar exceção sem custo; só erro de transporte/HTTP
+  levanta. O parse só acontece depois de uma parada natural. `effort` vai
+  como `output_config.effort` na Anthropic e como `reasoning_effort` no
+  formato OpenAI (traduzido por `effort_values`, omitido com
+  `effort_field=None`); `cache_system=True` marca o `system` com
+  `cache_control` na Anthropic. Novos: `Effort`, `StopReason`,
+  `StructuredCompletionBackend`, `build_structured_completion`,
+  `ANTHROPIC_STOP_REASONS`, `OPENAI_FINISH_REASONS`.
+- `image_part(data, media_type)` e a tradução de partes `image_url`
+  (formato OpenAI) para o bloco `image` da Messages API
+  (`to_anthropic_image`): base64 por `data:` URL, ou `url`. Antes, o
+  `AnthropicGenerator` repassava a parte `image_url` como estava, num
+  formato que a Messages API não define.
+- `hosted_generator(model, *, api_key, provider=None, base_url=None, ...)`
+  e `resolve_provider(model)`: o provedor sai do prefixo do id
+  (`MODEL_PREFIXES`), com a configuração de cada um — OpenAI com
+  `max_completion_tokens` (`OPENAI_MAX_TOKENS_FIELD`), Gemini pelo endpoint
+  compatível com OpenAI (`DEFAULT_GOOGLE_OPENAI_URL`, `GOOGLE_EFFORT_VALUES`)
+  e DeepSeek com `json_object` e sem `reasoning_effort`. `provider=` fora
+  de `HOSTED_PROVIDERS` levanta `ValueError` em vez de cair no DeepSeek
+  (uma string lida de configuração não passa pela checagem do tipo).
+- `HostedGenAISettings`: `GOOGLE_API_KEY`, `GOOGLE_BASE_URL`,
+  `GOOGLE_MODEL`, `google_kwargs()` e `hosted_kwargs(model, *,
+  provider=None)`, que devolve os argumentos de `hosted_generator` com a
+  chave do provedor resolvido.
+- `TokenUsage.cache_write_tokens`: a parte da entrada gravada no cache
+  (`cache_creation_input_tokens` da Anthropic), somada no `+`.
+- `OpenAICompatGenerator(effort_field="reasoning_effort",
+  effort_values=None)`.
+
+Os testes novos rodam sobre `httpx.MockTransport`: fixam o request montado e
+a leitura da resposta documentada, não um provedor ao vivo.
+
 ## [0.331.0] — 2026-10-26
 
 ### Added

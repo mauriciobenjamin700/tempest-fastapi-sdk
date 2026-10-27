@@ -55,11 +55,17 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator, Iterable, Mapping
 from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 
+from tempest_fastapi_sdk.genai.completion import (
+    Effort,
+    StopReason,
+    StructuredCompletion,
+    build_structured_completion,
+)
 from tempest_fastapi_sdk.genai.hosted import (
     HostedAPIError,
     hosted_error,
@@ -134,6 +140,22 @@ one of the three that has a wire equivalent.
 _RESERVED_BODY_KEYS: frozenset[str] = frozenset({"model", "messages", "stream"})
 """Body fields this class owns; a per-call keyword may not replace them."""
 
+OPENAI_FINISH_REASONS: dict[str, StopReason] = {
+    "stop": "end",
+    "length": "max_tokens",
+    "content_filter": "refusal",
+    "tool_calls": "tool_use",
+}
+"""``choices[].finish_reason`` values to the normalized :data:`StopReason`.
+
+The values documented for ``finish_reason`` in the official OpenAPI document
+(https://github.com/openai/openai-openapi, ``openapi.yaml``): ``stop`` for a
+natural stop or a stop sequence, ``length`` for the token budget,
+``content_filter`` for content omitted by a filter, ``tool_calls`` for a tool
+call. Anything else (the deprecated ``function_call``, a provider's own
+value) maps to ``other``.
+"""
+
 
 class OpenAICompatGenerator:
     """Text generation against any OpenAI-compatible ``/chat/completions``.
@@ -160,6 +182,8 @@ class OpenAICompatGenerator:
         provider: str = "openai-compatible",
         max_tokens_field: str = "max_tokens",
         structured_output: StructuredOutputMode = "json_schema",
+        effort_field: str | None = "reasoning_effort",
+        effort_values: Mapping[str, str] | None = None,
     ) -> None:
         """Configure the client. No network call happens here.
 
@@ -218,6 +242,18 @@ class OpenAICompatGenerator:
             structured_output (StructuredOutputMode): How
                 :meth:`chat_structured` asks for JSON — ``"json_schema"``
                 (OpenAI) or ``"json_object"`` (DeepSeek).
+            effort_field (str | None): Body field that the ``effort`` of
+                :meth:`complete_structured` goes to. ``"reasoning_effort"``
+                by default, the field the OpenAI spec defines; ``None`` drops
+                ``effort`` instead of sending it, for a provider that
+                documents no such field (DeepSeek's kwargs in
+                :func:`~tempest_fastapi_sdk.genai.hosted_generator`).
+            effort_values (Mapping[str, str] | None): Translation of
+                :data:`~tempest_fastapi_sdk.genai.Effort` values into the
+                provider's own, for a provider that documents a narrower
+                set (Gemini's ``GOOGLE_EFFORT_VALUES``). ``None`` sends the
+                value as given. A value missing from the mapping is sent as
+                given.
 
         Raises:
             ValueError: When ``api_key`` is empty.
@@ -238,6 +274,8 @@ class OpenAICompatGenerator:
         self.provider = provider
         self.max_tokens_field = max_tokens_field
         self.structured_output: StructuredOutputMode = structured_output
+        self.effort_field: str | None = effort_field
+        self.effort_values: dict[str, str] = dict(effort_values or {})
         self._client: HTTPClient | None = http_client
         self._owns_client: bool = http_client is None
         self._transport = transport
@@ -622,9 +660,39 @@ class OpenAICompatGenerator:
                 documents that JSON mode can return empty content).
             pydantic.ValidationError: When the JSON fails ``schema``.
         """
-        if "response_format" in kwargs:
+        body = self._structured_body(
+            "chat_structured", messages, schema, config, kwargs
+        )
+        payload = await self._post(body)
+        return parse_structured(self._content(payload), schema)
+
+    def _structured_body(
+        self,
+        method: str,
+        messages: list[dict[str, Any]],
+        schema: type[StructuredT],
+        config: GenerationConfig | None,
+        overrides: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Assemble the body of a schema-constrained call.
+
+        Args:
+            method (str): The public method's name, for the error message.
+            messages (list[dict[str, Any]]): The chat turns.
+            schema (type[StructuredT]): The Pydantic model to produce.
+            config (GenerationConfig | None): Typed parameters.
+            overrides (dict[str, Any]): Per-call parameters.
+
+        Returns:
+            dict[str, Any]: The JSON body, ``response_format`` included.
+
+        Raises:
+            TypeError: When ``response_format`` is in ``overrides`` — the
+                schema argument is what sets it.
+        """
+        if "response_format" in overrides:
             raise TypeError(
-                "chat_structured() sets response_format from the schema "
+                f"{method}() sets response_format from the schema "
                 "argument; passing it as a keyword would replace it.",
             )
         json_schema = schema.model_json_schema()
@@ -634,17 +702,90 @@ class OpenAICompatGenerator:
                 f"JSON schema, and nothing else:\n{json.dumps(json_schema)}"
             )
             turns = [*messages, {"role": "system", "content": instruction}]
-            body = self._body(turns, config, kwargs, stream=False)
+            body = self._body(turns, config, overrides, stream=False)
             body["response_format"] = {"type": "json_object"}
-        else:
-            body = self._body(messages, config, kwargs, stream=False)
-            name = _SCHEMA_NAME_INVALID.sub("_", schema.__name__)[:64] or "schema"
-            body["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {"name": name, "schema": json_schema},
-            }
+            return body
+        body = self._body(messages, config, overrides, stream=False)
+        name = _SCHEMA_NAME_INVALID.sub("_", schema.__name__)[:64] or "schema"
+        body["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": name, "schema": json_schema},
+        }
+        return body
+
+    async def complete_structured(
+        self,
+        messages: list[dict[str, Any]],
+        schema: type[StructuredT],
+        *,
+        effort: Effort | None = None,
+        cache_system: bool = False,
+        max_tokens: int | None = None,
+        config: GenerationConfig | None = None,
+        **kwargs: Any,
+    ) -> StructuredCompletion[StructuredT]:
+        """Generate a reply constrained to ``schema`` and report the outcome.
+
+        Builds the request as :meth:`chat_structured` does, and returns a
+        :class:`~tempest_fastapi_sdk.genai.StructuredCompletion` instead of
+        raising for an outcome the model produced: a refusal, a reply cut at
+        the budget or a reply that fails ``schema`` come back with the usage
+        the call was billed for.
+
+        ``finish_reason`` is normalized through :data:`OPENAI_FINISH_REASONS`;
+        a non-null ``message.refusal`` (the OpenAI spec's refusal message)
+        is a ``refusal`` whatever the ``finish_reason`` says.
+
+        Args:
+            messages (list[dict[str, Any]]): Chat turns; images as
+                :func:`~tempest_fastapi_sdk.genai.image_part` parts, which
+                go out unchanged.
+            schema (type[StructuredT]): The Pydantic model to produce.
+            effort (Effort | None): Reasoning effort, sent as
+                ``effort_field`` after the ``effort_values`` translation;
+                dropped when ``effort_field`` is ``None``. ``None`` sends
+                nothing.
+            cache_system (bool): Accepted for interchangeability with
+                :class:`~tempest_fastapi_sdk.genai.AnthropicGenerator` and
+                not sent: the OpenAI wire format has no per-message cache
+                marker, and what the provider caches is decided on its side.
+            max_tokens (int | None): Output budget, sent as
+                ``max_tokens_field``. ``None`` leaves the body without it
+                unless ``config`` sets ``max_new_tokens``.
+            config (GenerationConfig | None): Typed generation parameters.
+            **kwargs (Any): Per-call body fields, winning over ``config``.
+
+        Returns:
+            StructuredCompletion[StructuredT]: The outcome.
+
+        Raises:
+            TypeError: When ``response_format`` is passed as a keyword.
+            HostedAPIError: A typed subclass for an error status.
+        """
+        overrides = dict(kwargs)
+        if max_tokens is not None:
+            overrides["max_new_tokens"] = max_tokens
+        body = self._structured_body(
+            "complete_structured", messages, schema, config, overrides
+        )
+        if effort is not None and self.effort_field is not None:
+            body[self.effort_field] = self.effort_values.get(effort, effort)
         payload = await self._post(body)
-        return parse_structured(self._content(payload), schema)
+        choices = payload.get("choices") or []
+        choice: dict[str, Any] = choices[0] if choices else {}
+        message = choice.get("message") or {}
+        raw = choice.get("finish_reason")
+        provider_stop = str(raw) if raw is not None else None
+        stop: StopReason = OPENAI_FINISH_REASONS.get(provider_stop or "", "other")
+        if message.get("refusal"):
+            stop = "refusal"
+        return build_structured_completion(
+            self._content(payload),
+            schema,
+            usage=TokenUsage.from_payload(payload.get("usage")),
+            stop_reason=stop,
+            provider_stop_reason=provider_stop,
+        )
 
     async def aclose(self) -> None:
         """Close the HTTP client when this instance owns it.
@@ -865,6 +1006,7 @@ __all__: list[str] = [
     "DEFAULT_DEEPSEEK_MODEL",
     "DEFAULT_DEEPSEEK_URL",
     "DEFAULT_OPENAI_URL",
+    "OPENAI_FINISH_REASONS",
     "OpenAICompatEmbedder",
     "OpenAICompatGenerator",
     "StructuredOutputMode",

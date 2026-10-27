@@ -46,6 +46,12 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from tempest_fastapi_sdk.genai.completion import (
+    Effort,
+    StopReason,
+    StructuredCompletion,
+    build_structured_completion,
+)
 from tempest_fastapi_sdk.genai.hosted import (
     HostedAPIError,
     hosted_error,
@@ -123,6 +129,24 @@ _RESERVED_BODY_KEYS: frozenset[str] = frozenset(
 )
 """Body fields this class computes; a per-call keyword may not replace them."""
 
+ANTHROPIC_STOP_REASONS: dict[str, StopReason] = {
+    "end_turn": "end",
+    "stop_sequence": "end",
+    "max_tokens": "max_tokens",
+    "refusal": "refusal",
+    "tool_use": "tool_use",
+}
+"""Messages API ``stop_reason`` values to the normalized :data:`StopReason`.
+
+From the stop-reason table of https://platform.claude.com/docs/en/api/messages
+(``end_turn``, ``max_tokens``, ``stop_sequence``, ``tool_use``,
+``pause_turn``, ``refusal``). ``pause_turn`` and any value added later map to
+``other``.
+"""
+
+_DATA_URL_PREFIX: str = "data:"
+"""Prefix of an inline image URL, ``data:<media_type>;base64,<data>``."""
+
 
 def _arguments(raw: Any) -> dict[str, Any]:
     """Decode tool-call arguments into the dict ``tool_use.input`` takes.
@@ -169,6 +193,64 @@ def _content_text(content: Any) -> str:
     return str(content)
 
 
+def to_anthropic_image(part: dict[str, Any]) -> dict[str, Any]:
+    """Translate an OpenAI ``image_url`` content part into a Messages API block.
+
+    A ``data:<media_type>;base64,<data>`` URL becomes a ``base64`` image
+    source and any other URL a ``url`` source — the two source types of the
+    vision guide (https://platform.claude.com/docs/en/build-with-claude/vision).
+
+    Args:
+        part (dict[str, Any]): ``{"type": "image_url", "image_url": {"url":
+            ...}}``, or with ``image_url`` as the bare URL string.
+
+    Returns:
+        dict[str, Any]: ``{"type": "image", "source": {...}}``.
+
+    Raises:
+        ValueError: When the URL is empty, or a ``data:`` URL is not
+            base64-encoded.
+    """
+    raw = part.get("image_url")
+    url = str((raw.get("url") if isinstance(raw, dict) else raw) or "")
+    if not url:
+        raise ValueError("image_url part without a url")
+    if not url.startswith(_DATA_URL_PREFIX):
+        return {"type": "image", "source": {"type": "url", "url": url}}
+    header, _, data = url[len(_DATA_URL_PREFIX) :].partition(",")
+    media_type, _, encoding = header.partition(";")
+    if encoding != "base64" or not data:
+        raise ValueError("image data URL must be base64-encoded")
+    return {
+        "type": "image",
+        "source": {"type": "base64", "media_type": media_type, "data": data},
+    }
+
+
+def _translate_parts(content: list[Any]) -> list[dict[str, Any]]:
+    """Translate the parts of a list ``content`` into Messages API blocks.
+
+    ``image_url`` parts become ``image`` blocks; bare strings become ``text``
+    blocks; every other part (``text``, or a native Messages API block) is
+    passed through untouched.
+
+    Args:
+        content (list[Any]): The turn's content parts.
+
+    Returns:
+        list[dict[str, Any]]: The blocks.
+    """
+    blocks: list[dict[str, Any]] = []
+    for part in content:
+        if isinstance(part, str):
+            blocks.append({"type": "text", "text": part})
+        elif isinstance(part, dict) and part.get("type") == "image_url":
+            blocks.append(to_anthropic_image(part))
+        elif isinstance(part, dict):
+            blocks.append(part)
+    return blocks
+
+
 def to_anthropic_messages(
     messages: list[dict[str, Any]],
 ) -> tuple[str | None, list[dict[str, Any]]]:
@@ -183,8 +265,11 @@ def to_anthropic_messages(
       results are merged into **one** ``user`` turn — the tool-use guide asks
       for all results of a turn in a single message. A result without a
       ``tool_call_id`` answers the oldest unanswered call, in order.
-    * A turn whose ``content`` is already a list of Messages API blocks is
-      passed through untouched.
+    * A turn whose ``content`` is a list keeps it as blocks: OpenAI
+      ``image_url`` parts (as :func:`~tempest_fastapi_sdk.genai.image_part`
+      builds them) become ``image`` blocks through
+      :func:`to_anthropic_image`, and native Messages API blocks are passed
+      through untouched.
 
     Args:
         messages (list[dict[str, Any]]): The conversation, oldest first.
@@ -256,7 +341,12 @@ def to_anthropic_messages(
                 )
             out.append({"role": "assistant", "content": blocks})
             continue
-        if isinstance(content, list) and all(
+        if isinstance(content, list) and any(
+            isinstance(item, dict) and item.get("type") == "image_url"
+            for item in content
+        ):
+            out.append({"role": role, "content": _translate_parts(content)})
+        elif isinstance(content, list) and all(
             isinstance(item, dict) and "type" in item for item in content
         ):
             out.append({"role": role, "content": content})
@@ -305,9 +395,11 @@ def anthropic_usage(payload: Any) -> TokenUsage | None:
     also includes ``cache_creation_input_tokens`` and
     ``cache_read_input_tokens``
     (https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
-    So :attr:`TokenUsage.input_tokens` is the sum of the three, and
+    So :attr:`TokenUsage.input_tokens` is the sum of the three,
     :attr:`TokenUsage.cache_hit_tokens` is the cache read — the same meaning
-    those fields have for the OpenAI-compatible providers.
+    those fields have for the OpenAI-compatible providers — and
+    :attr:`TokenUsage.cache_write_tokens` is the cache write, which the
+    Messages API bills above the base input rate.
 
     Args:
         payload (Any): The ``usage`` object, or ``None``.
@@ -328,6 +420,7 @@ def anthropic_usage(payload: Any) -> TokenUsage | None:
         output_tokens=output_tokens,
         total_tokens=input_tokens + output_tokens,
         cache_hit_tokens=read,
+        cache_write_tokens=written,
     )
 
 
@@ -807,6 +900,87 @@ class AnthropicGenerator:
         payload, _usage = await self._send("chat", body)
         return parse_structured(self._text(payload), schema)
 
+    async def complete_structured(
+        self,
+        messages: list[dict[str, Any]],
+        schema: type[StructuredT],
+        *,
+        effort: Effort | None = None,
+        cache_system: bool = False,
+        max_tokens: int | None = None,
+        config: GenerationConfig | None = None,
+        **kwargs: Any,
+    ) -> StructuredCompletion[StructuredT]:
+        """Generate a reply constrained to ``schema`` and report the outcome.
+
+        Builds the request as :meth:`chat_structured` does
+        (``output_config.format``), and returns a
+        :class:`~tempest_fastapi_sdk.genai.StructuredCompletion` instead of
+        raising for an outcome the model produced: a refusal, a reply cut at
+        ``max_tokens`` or a reply that fails ``schema`` come back with the
+        usage the call was billed for. ``stop_reason`` is normalized through
+        :data:`ANTHROPIC_STOP_REASONS`, and the reply is parsed only after a
+        natural stop.
+
+        Args:
+            messages (list[dict[str, Any]]): Chat turns; images as
+                :func:`~tempest_fastapi_sdk.genai.image_part` parts.
+            schema (type[StructuredT]): The Pydantic model to produce.
+            effort (Effort | None): Sent as ``output_config.effort``.
+                ``None`` keeps whatever ``extra_body`` sets, or nothing.
+            cache_system (bool): Send the system prompt as one ``text``
+                block marked ``cache_control: {"type": "ephemeral"}``
+                (https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
+                Ignored when the conversation has no ``system`` turn.
+            max_tokens (int | None): ``max_tokens`` of this call, replacing
+                the instance default.
+            config (GenerationConfig | None): Typed generation parameters.
+            **kwargs (Any): Per-call body fields, winning over ``config``.
+
+        Returns:
+            StructuredCompletion[StructuredT]: The outcome.
+
+        Raises:
+            TypeError: When ``output_config`` is passed as a keyword.
+            HostedAPIError: A typed subclass for an error status.
+        """
+        if "output_config" in kwargs:
+            raise TypeError(
+                "complete_structured() sets output_config from the schema and "
+                "effort arguments; set other output_config fields through "
+                "extra_body.",
+            )
+        body = self._body(messages, config, kwargs, stream=False)
+        output_config = dict(body.get("output_config") or {})
+        output_config["format"] = {
+            "type": "json_schema",
+            "schema": strict_json_schema(schema.model_json_schema()),
+        }
+        if effort is not None:
+            output_config["effort"] = effort
+        body["output_config"] = output_config
+        if max_tokens is not None:
+            body["max_tokens"] = max_tokens
+        system = body.get("system")
+        if cache_system and isinstance(system, str):
+            body["system"] = [
+                {
+                    "type": "text",
+                    "text": system,
+                    "cache_control": {"type": "ephemeral"},
+                },
+            ]
+        payload, usage = await self._send("chat", body)
+        raw = payload.get("stop_reason")
+        provider_stop = str(raw) if raw is not None else None
+        return build_structured_completion(
+            self._text(payload),
+            schema,
+            usage=usage,
+            stop_reason=ANTHROPIC_STOP_REASONS.get(provider_stop or "", "other"),
+            provider_stop_reason=provider_stop,
+        )
+
     async def stream(
         self,
         prompt: str,
@@ -875,12 +1049,14 @@ class AnthropicGenerator:
 
 __all__: list[str] = [
     "ANTHROPIC_PROVIDER",
+    "ANTHROPIC_STOP_REASONS",
     "ANTHROPIC_VERSION",
     "DEFAULT_ANTHROPIC_MAX_TOKENS",
     "DEFAULT_ANTHROPIC_MODEL",
     "DEFAULT_ANTHROPIC_URL",
     "AnthropicGenerator",
     "anthropic_usage",
+    "to_anthropic_image",
     "to_anthropic_messages",
     "to_anthropic_tools",
 ]

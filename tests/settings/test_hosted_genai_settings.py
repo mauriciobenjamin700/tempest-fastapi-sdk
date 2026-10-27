@@ -17,9 +17,12 @@ from tempest_fastapi_sdk.genai import (
     DEFAULT_ANTHROPIC_URL,
     DEFAULT_DEEPSEEK_MODEL,
     DEFAULT_DEEPSEEK_URL,
+    DEFAULT_GOOGLE_OPENAI_URL,
     DEFAULT_OPENAI_URL,
+    GOOGLE_EFFORT_VALUES,
     AnthropicGenerator,
     OpenAICompatGenerator,
+    hosted_generator,
 )
 
 
@@ -93,3 +96,68 @@ class TestKwargs:
     def test_empty_key_fails_at_construction(self) -> None:
         with pytest.raises(ValueError, match="api_key"):
             AnthropicGenerator(**HostedGenAISettings().anthropic_kwargs())
+
+
+class TestGoogle:
+    def test_base_url_matches_the_generator_constant(self) -> None:
+        assert HostedGenAISettings().GOOGLE_BASE_URL == DEFAULT_GOOGLE_OPENAI_URL
+
+    def test_needs_a_model(self) -> None:
+        with pytest.raises(ValueError, match="GOOGLE_MODEL"):
+            HostedGenAISettings(GOOGLE_API_KEY="AIza").google_kwargs()
+
+    def test_splat_builds_the_backend(self) -> None:
+        settings = HostedGenAISettings(
+            GOOGLE_API_KEY="AIza",
+            GOOGLE_MODEL="gemini-3-flash",
+        )
+        gen = OpenAICompatGenerator(**settings.google_kwargs())
+        assert gen.provider == "google"
+        assert gen.base_url == DEFAULT_GOOGLE_OPENAI_URL
+        assert gen.effort_values == dict(GOOGLE_EFFORT_VALUES)
+
+
+class TestHostedKwargs:
+    @pytest.mark.parametrize(
+        ("model", "provider", "key"),
+        [
+            ("claude-haiku-5-5", "anthropic", "sk-ant"),
+            ("gpt-5", "openai", "sk-openai"),
+            ("gemini-3-flash", "google", "AIza"),
+            ("deepseek-flash", "deepseek", "sk-deepseek"),
+        ],
+    )
+    def test_picks_the_resolved_provider_key(
+        self,
+        model: str,
+        provider: str,
+        key: str,
+    ) -> None:
+        settings = HostedGenAISettings(
+            ANTHROPIC_API_KEY="sk-ant",
+            OPENAI_API_KEY="sk-openai",
+            GOOGLE_API_KEY="AIza",
+            DEEPSEEK_API_KEY="sk-deepseek",
+        )
+        kwargs = settings.hosted_kwargs(model)
+        assert kwargs["model"] == model
+        assert kwargs["provider"] == provider
+        assert kwargs["api_key"] == key
+        gen = hosted_generator(**kwargs)
+        assert gen.model == model
+
+    def test_explicit_provider_wins(self) -> None:
+        settings = HostedGenAISettings(OPENAI_API_KEY="sk-openai")
+        kwargs = settings.hosted_kwargs("my-finetune", provider="openai")
+        assert kwargs["api_key"] == "sk-openai"
+        assert kwargs["base_url"] == DEFAULT_OPENAI_URL
+
+    def test_empty_key_is_returned_and_the_constructor_raises(self) -> None:
+        kwargs = HostedGenAISettings().hosted_kwargs("claude-haiku-5-5")
+        assert kwargs["api_key"] == ""
+        with pytest.raises(ValueError, match="api_key"):
+            hosted_generator(**kwargs)
+
+    def test_unknown_provider_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="unknown hosted provider"):
+            HostedGenAISettings().hosted_kwargs("x", provider="mistral")

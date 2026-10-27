@@ -854,6 +854,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   Anthropic/DeepSeek fica fora: nenhum dos dois documenta endpoint. O
   "OpenAI-compatible client deliberately skipped" acima foi revertido por
   esta entrega. Receita: `docs/recipes/genai-hosted.md`.
+- **Resultado estruturado completo e provedor pelo id do modelo
+  (Unreleased, extra `[genai-hosted]`)** — `complete_structured` nos dois
+  geradores hospedados devolve `StructuredCompletion` (saída, texto,
+  `TokenUsage`, `stop_reason` normalizado e o original, erro de validação)
+  sem levantar por recusa, `max_tokens` ou JSON inválido; `effort`,
+  `cache_system`, `max_tokens` por chamada. `image_part` + tradução de
+  `image_url` para o bloco `image` da Messages API. `TokenUsage` ganha
+  `cache_write_tokens`. `hosted_generator` / `resolve_provider`
+  (`MODEL_PREFIXES`) montam Anthropic, OpenAI, Gemini (endpoint compatível
+  com OpenAI, `GOOGLE_EFFORT_VALUES`) ou DeepSeek pelo id;
+  `HostedGenAISettings` ganha `GOOGLE_*`, `google_kwargs()` e
+  `hosted_kwargs(model)`. Receita: seção "Resultado completo" de
+  `docs/recipes/genai-hosted.md`.
 - **Reconhecimento facial (v0.223.0, extra `[faces]`)** —
   `tempest_fastapi_sdk.faces`: `FaceRecognizer` (`detect` sem biometria /
   `recognize` / `embed_face` que recusa entrada ruim), `compare_faces`,

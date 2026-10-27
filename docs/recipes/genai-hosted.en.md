@@ -1,4 +1,4 @@
-# Hosted generative AI (Anthropic, OpenAI, DeepSeek)
+# Hosted generative AI (Anthropic, OpenAI, DeepSeek, Google)
 
 The SDK's AI base runs local models — `TextGenerator` (transformers) or
 `OllamaGenerator` (daemon). Sometimes the number that matters is not RAM but
@@ -10,6 +10,7 @@ That is what the hosted backends are for:
 | Anthropic | `AnthropicGenerator` | yes | yes | yes (`json_schema`) | — |
 | OpenAI | `OpenAICompatGenerator` | yes | yes | yes (`json_schema`) | `OpenAICompatEmbedder` |
 | DeepSeek | `OpenAICompatGenerator` | yes | yes | yes (`json_object`) | — |
+| Google (Gemini) | `OpenAICompatGenerator` | yes | yes | yes (`json_schema`) | — |
 
 The idea is a single one: they implement **the same protocols** as Ollama —
 `TextBackend` (`generate` / `chat` / `stream`), `StructuredTextBackend`
@@ -48,6 +49,8 @@ ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=<OpenAI model id>
 DEEPSEEK_API_KEY=sk-...
+GOOGLE_API_KEY=AIza...
+GOOGLE_MODEL=<Gemini model id>
 ```
 
 Each provider has `*_API_KEY`, `*_BASE_URL` and `*_MODEL`. The defaults:
@@ -60,6 +63,8 @@ Each provider has `*_API_KEY`, `*_BASE_URL` and `*_MODEL`. The defaults:
 | `OPENAI_MODEL` | empty — required |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` |
 | `DEEPSEEK_MODEL` | `deepseek-flash` |
+| `GOOGLE_BASE_URL` | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| `GOOGLE_MODEL` | empty — required by `google_kwargs()` |
 
 !!! note "Where the defaults come from"
 
@@ -273,6 +278,139 @@ Each provider asks for JSON differently, and the backend handles it:
   schema goes in a `system` turn at the end of the conversation, which also
   meets the requirement of the word "json" in the prompt.
 
+## Full outcome, images and the provider from the model id
+
+`chat_structured` answers one question — "give me the instance" — and raises
+on any other outcome. Whoever pays for each call needs three more answers,
+**even when there is no instance**: what the call cost, why the model stopped
+and what it wrote. A refusal, a reply cut at `max_tokens` or JSON that fails
+the schema were billed too.
+
+`complete_structured` returns all of it in a `StructuredCompletion`, and
+`hosted_generator` picks the provider from the model id:
+
+```python
+import asyncio
+from pathlib import Path
+
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk import BaseAppSettings, HostedGenAISettings
+from tempest_fastapi_sdk.genai import (
+    StructuredCompletion,
+    StructuredCompletionBackend,
+    hosted_generator,
+    image_part,
+)
+
+
+class Settings(HostedGenAISettings, BaseAppSettings):
+    """Service settings."""
+
+    AI_MODEL: str = "claude-haiku-5-5"
+
+
+class Transcript(BaseModel):
+    """The text read from the photo."""
+
+    readable: bool
+    text: str
+
+
+async def transcribe(
+    backend: StructuredCompletionBackend,
+    photo: bytes,
+) -> StructuredCompletion[Transcript]:
+    """Read the text of a notebook photo."""
+    return await backend.complete_structured(
+        [
+            {"role": "system", "content": "Transcribe the text in the photo."},
+            {
+                "role": "user",
+                "content": [
+                    image_part(photo, "image/jpeg"),
+                    {"type": "text", "text": "Transcribe it."},
+                ],
+            },
+        ],
+        Transcript,
+        effort="low",
+        cache_system=True,
+        max_tokens=2048,
+    )
+
+
+async def main() -> None:
+    """Transcribe with the configured model."""
+    settings = Settings()
+    backend = hosted_generator(**settings.hosted_kwargs(settings.AI_MODEL))
+    result = await transcribe(backend, Path("notebook.jpg").read_bytes())
+    if result.output is not None:
+        print(result.output.text)
+    else:
+        print("no result:", result.stop_reason, result.error)
+    print("tokens:", result.usage)
+
+
+asyncio.run(main())
+```
+
+Piece by piece:
+
+- **`hosted_generator(model, api_key=...)`** reads the provider off the id
+  prefix (`claude-` → Anthropic, `gpt-`/`o1`/`o3`/`o4`/`chatgpt-` → OpenAI,
+  `gemini-` → Google, `deepseek-` → DeepSeek; the table is `MODEL_PREFIXES`)
+  and builds the backend with what each provider documents: the field the
+  output budget goes to (`max_completion_tokens` on OpenAI), the JSON mode
+  (`json_object` on DeepSeek) and the effort values. An id outside the table
+  (a fine-tune, your own server) raises `ValueError`: pass `provider=` and,
+  if needed, `base_url=`.
+- **`settings.hosted_kwargs(model)`** returns exactly the arguments of
+  `hosted_generator` — the model, and the key and URL **of the resolved
+  provider**. Changing provider becomes changing `AI_MODEL` in `.env` (and
+  having that provider's key there).
+- **`image_part(data, media_type)`** builds the image part in the OpenAI
+  shape, which is the SDK's message shape. `AnthropicGenerator` translates it
+  to a Messages API `image` block; `OpenAICompatGenerator` forwards it as is.
+- **`effort`** goes out as `output_config.effort` on Anthropic and as
+  `reasoning_effort` on the OpenAI format. Gemini documents `minimal`, `low`,
+  `medium` and `high` (<https://ai.google.dev/gemini-api/docs/openai>), so
+  `xhigh` and `max` become `high` (`GOOGLE_EFFORT_VALUES`). DeepSeek does not
+  document the field, and the backend does not send it.
+- **`cache_system=True`** marks the `system` turn with
+  `cache_control: {"type": "ephemeral"}` on Anthropic. The OpenAI format has
+  no per-message marker, and the argument is accepted and ignored.
+
+The `StructuredCompletion` you get back:
+
+| Field | What it is |
+| --- | --- |
+| `output` | the validated instance, or `None` |
+| `text` | the reply as received |
+| `usage` | the provider's `TokenUsage`, **whatever the outcome** |
+| `stop_reason` | `end`, `max_tokens`, `refusal`, `tool_use` or `other` |
+| `provider_stop_reason` | the original value (`end_turn`, `length`...) |
+| `error` | why `output` is `None` after a natural stop |
+
+!!! tip "Only a natural stop is parsed"
+
+    A reply cut at `max_tokens` can validate by accident when the schema's
+    last fields have defaults. So parsing only happens with
+    `stop_reason == "end"`; otherwise `output` is `None` and `error` stays
+    empty — `stop_reason` already says why.
+
+!!! note "Cache written and cache read"
+
+    `TokenUsage.cache_write_tokens` is the slice of the input written to the
+    cache (Anthropic's `cache_creation_input_tokens`), which Anthropic bills
+    above the base rate; `cache_hit_tokens` is the slice read. Both are
+    already inside `input_tokens`. The OpenAI format reports no write, and
+    the field stays `0`.
+
+The tests for this surface run over `httpx.MockTransport`: they pin the
+request each backend builds and the reading of the documented response, not
+the behavior of a live provider.
+
 ## Embeddings (OpenAI)
 
 `OpenAICompatEmbedder` implements `SupportsEmbed`, so it goes into a
@@ -378,7 +516,10 @@ as Ollama's, and puts no upper bound in any consumer's lock.
 - `AnthropicGenerator` and `OpenAICompatGenerator` implement the same
   protocols as `OllamaGenerator`: change the construction, keep the rest.
 - `HostedGenAISettings` + `anthropic_kwargs()` / `openai_kwargs()` /
-  `deepseek_kwargs()` build the backend by splat.
+  `deepseek_kwargs()` / `google_kwargs()` build the backend by splat.
+- `hosted_generator(**settings.hosted_kwargs(model))` picks the provider
+  from the model id; `complete_structured` returns output, usage and stop
+  reason whatever the outcome, with images through `image_part`.
 - Tool calling, structured output and streaming work on all three;
   embeddings only on OpenAI (`OpenAICompatEmbedder`).
 - Failures become `HostedAuthenticationError`, `HostedRateLimitError` or

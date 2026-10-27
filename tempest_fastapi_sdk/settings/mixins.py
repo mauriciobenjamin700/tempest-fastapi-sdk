@@ -4056,6 +4056,12 @@ class HostedGenAISettings(BaseAppSettings):
         AnthropicGenerator(**settings.anthropic_kwargs())
         OpenAICompatGenerator(**settings.openai_kwargs())
         OpenAICompatGenerator(**settings.deepseek_kwargs())
+        OpenAICompatGenerator(**settings.google_kwargs())
+
+    And :meth:`hosted_kwargs` picks the provider from the model id, for a
+    service that should change provider by changing one model variable::
+
+        hosted_generator(**settings.hosted_kwargs("claude-haiku-5-5"))
 
     The mapping is also where the per-provider wire differences live: the
     OpenAI kwargs send ``max_new_tokens`` as ``max_completion_tokens`` (the
@@ -4085,6 +4091,12 @@ class HostedGenAISettings(BaseAppSettings):
         DEEPSEEK_BASE_URL (str): API root. Default:
             ``"https://api.deepseek.com"``.
         DEEPSEEK_MODEL (str): Model id. Default: ``"deepseek-flash"``.
+        GOOGLE_API_KEY (str): Gemini API key. Default: ``""``.
+        GOOGLE_BASE_URL (str): Gemini's OpenAI-compatible API root;
+            ``/chat/completions`` is appended. Default:
+            ``"https://generativelanguage.googleapis.com/v1beta/openai"``.
+        GOOGLE_MODEL (str): Model id. No default: Gemini model ids are not
+            hard-coded in this SDK. Default: ``""``.
     """
 
     ANTHROPIC_API_KEY: str = Field(
@@ -4144,6 +4156,33 @@ class HostedGenAISettings(BaseAppSettings):
         description="Model id passed to ``OpenAICompatGenerator``.",
         examples=["deepseek-flash", "deepseek-v4-pro"],
     )
+    GOOGLE_API_KEY: str = Field(
+        default="",
+        title="Gemini API key",
+        description=(
+            "Sent as ``Authorization: Bearer`` to the OpenAI-compatible endpoint."
+        ),
+        examples=["", "AIza..."],
+    )
+    GOOGLE_BASE_URL: str = Field(
+        default="https://generativelanguage.googleapis.com/v1beta/openai",
+        title="Gemini OpenAI-compatible API root",
+        description=(
+            "Requests go to ``{GOOGLE_BASE_URL}/chat/completions``. The same "
+            "value as ``genai.DEFAULT_GOOGLE_OPENAI_URL``, written out so "
+            "settings never import ``genai``."
+        ),
+        examples=["https://generativelanguage.googleapis.com/v1beta/openai"],
+    )
+    GOOGLE_MODEL: str = Field(
+        default="",
+        title="Gemini model",
+        description=(
+            "Model id passed to ``OpenAICompatGenerator``. Required by "
+            "``google_kwargs()``; there is no default."
+        ),
+        examples=[""],
+    )
 
     def anthropic_kwargs(self) -> dict[str, Any]:
         """Map these settings onto ``AnthropicGenerator``.
@@ -4194,6 +4233,81 @@ class HostedGenAISettings(BaseAppSettings):
             "base_url": self.DEEPSEEK_BASE_URL,
             "provider": "deepseek",
             "structured_output": "json_object",
+        }
+
+    def google_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto ``OpenAICompatGenerator`` for Gemini.
+
+        Returns:
+            dict[str, Any]: ``model``, ``api_key``, ``base_url``,
+            ``provider="google"``, ``structured_output="json_schema"`` and
+            ``effort_values=GOOGLE_EFFORT_VALUES``.
+
+        Raises:
+            ValueError: When ``GOOGLE_MODEL`` is empty.
+        """
+        from tempest_fastapi_sdk.genai.providers import GOOGLE_EFFORT_VALUES
+
+        if not self.GOOGLE_MODEL:
+            raise ValueError(
+                "GOOGLE_MODEL is empty; set it to the Gemini model id to call.",
+            )
+        return {
+            "model": self.GOOGLE_MODEL,
+            "api_key": self.GOOGLE_API_KEY,
+            "base_url": self.GOOGLE_BASE_URL,
+            "provider": "google",
+            "structured_output": "json_schema",
+            "effort_values": GOOGLE_EFFORT_VALUES,
+        }
+
+    def hosted_kwargs(
+        self,
+        model: str,
+        *,
+        provider: str | None = None,
+    ) -> dict[str, Any]:
+        """Map these settings onto ``hosted_generator`` for ``model``.
+
+        The provider comes from ``provider`` or, when ``None``, from the model
+        id (``genai.resolve_provider``); the key and the API root are that
+        provider's fields here. An empty key is returned as is — the
+        generator constructor raises on it, as with the other ``*_kwargs``.
+
+        Args:
+            model (str): The model id to call.
+            provider (str | None): The provider, when the model id does not
+                say it (``"anthropic"``, ``"openai"``, ``"google"``,
+                ``"deepseek"``).
+
+        Returns:
+            dict[str, Any]: ``model``, ``api_key``, ``base_url`` and
+            ``provider`` — the keyword arguments of ``hosted_generator``.
+
+        Raises:
+            ValueError: When the provider cannot be resolved from ``model``,
+                or ``provider`` names one this mixin has no fields for.
+        """
+        from tempest_fastapi_sdk.genai.providers import resolve_provider
+
+        resolved = provider or resolve_provider(model)
+        credentials: dict[str, tuple[str, str]] = {
+            "anthropic": (self.ANTHROPIC_API_KEY, self.ANTHROPIC_BASE_URL),
+            "openai": (self.OPENAI_API_KEY, self.OPENAI_BASE_URL),
+            "google": (self.GOOGLE_API_KEY, self.GOOGLE_BASE_URL),
+            "deepseek": (self.DEEPSEEK_API_KEY, self.DEEPSEEK_BASE_URL),
+        }
+        if resolved not in credentials:
+            raise ValueError(
+                f"unknown hosted provider {resolved!r}; expected one of "
+                f"{sorted(credentials)}.",
+            )
+        api_key, base_url = credentials[resolved]
+        return {
+            "model": model,
+            "api_key": api_key,
+            "base_url": base_url,
+            "provider": resolved,
         }
 
 

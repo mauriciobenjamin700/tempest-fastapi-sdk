@@ -64,12 +64,19 @@ class TokenUsage:
             ``input_tokens`` double-counts. ``0`` when the provider
             reported none, which is also what a provider that has no
             prompt cache reports.
+        cache_write_tokens (int): The **slice of** ``input_tokens`` the
+            provider wrote to its prompt cache on this call, billed at a
+            premium on providers that charge for the write (Anthropic's
+            ``cache_creation_input_tokens``). Like ``cache_hit_tokens`` it is
+            already counted in ``input_tokens``. ``0`` on the
+            OpenAI-compatible wire format, whose ``usage`` reports no write.
     """
 
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
     cache_hit_tokens: int = 0
+    cache_write_tokens: int = 0
 
     def __add__(self, other: TokenUsage) -> TokenUsage:
         """Add two usages, for a job made of several calls.
@@ -89,6 +96,7 @@ class TokenUsage:
             output_tokens=self.output_tokens + other.output_tokens,
             total_tokens=self.total_tokens + other.total_tokens,
             cache_hit_tokens=self.cache_hit_tokens + other.cache_hit_tokens,
+            cache_write_tokens=self.cache_write_tokens + other.cache_write_tokens,
         )
 
     @classmethod
