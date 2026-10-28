@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `docs_locale=` (e `API_DOCS_LOCALE`) nos routers que ficaram de fora da
+  0.332.0 (#643): `make_chat_router` (17 rotas), `make_genai_router` (9),
+  `make_ai_chat_router` (2), `make_agent_router` (4),
+  `make_hostbridge_router` (13, com o lado destrutivo), `make_prediction_router`
+  (4), `make_reviews_router` (4), `make_vision_router` (3),
+  `make_wallet_router` (3), `make_htmx_router` (`/htmx.js` e `/confirm.js`),
+  `make_web_app_router` (`/` e `/{resource}`), `make_zap_webhook_router` e
+  `make_revenuecat_webhook_router` — 65 operações. Com isso toda rota que o
+  SDK gera e que aparece no schema segue o idioma; o que fica de fora é o que
+  já está fora do schema (`include_in_schema=False`: painel admin, páginas de
+  auth, `/metrics`, storage local, CSS). Em inglês nada muda: o documento sem
+  a variável é idêntico byte a byte ao de antes nos 24 routers do catálogo,
+  medido com todo grupo opcional de rota ligado. O texto em português vive em
+  `api/route_docs/pt_br/ai.py` e `pt_br/apps.py`, e o
+  `tests/test_route_docs_coverage_guard.py` cobre os routers novos.
+
+### Fixed
+
+- `app.openapi()` (e portanto `/openapi.json` e `/docs`) levantava
+  `PydanticUserError` em todo app que montasse `make_agent_router`,
+  `make_ai_chat_router` ou `make_genai_router` com `text_generator`: a rota
+  SSE anotava `-> StreamingResponse` com a classe importada só sob
+  `TYPE_CHECKING`, e o FastAPI 0.141.1 não resolvia a forward reference. O
+  import passou a ser de runtime; teste em `tests/api/test_route_docs.py`
+  (`test_streaming_routers_render_their_document`).
+
 ## [0.332.0] — 2026-10-27
 
 ### Added

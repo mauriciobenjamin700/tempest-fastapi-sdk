@@ -2054,13 +2054,19 @@ imprime o resumo em português com ou sem `API_DOCS_LOCALE`.
     nomeando `API_DOCS_LOCALE`. Documentação em inglês num deploy que pediu
     outra língua é o defeito silencioso que essa recusa evita.
 
-**Quais routers seguem a variável hoje:** `make_auth_router` (todas as rotas
-que aparecem no schema), `make_sse_router` (e o `UserAuthService.sse_router`),
-`make_push_router`, `make_web_push_router`, `make_health_router`,
-`make_logs_router`, `make_tool_spec_router`, `make_app_error_router`,
-`make_session_router`, `make_pdf_router` e `make_voice_router`. Os demais
-(chat, genai, agents, modelops, reviews, vision, wallet, hostbridge) ainda
-documentam em inglês. A variável mora no `ServerSettings`.
+**Quais routers seguem a variável hoje:** todos os que o SDK gera e que
+aparecem no schema — `make_auth_router` (e o `UserAuthService.sse_router`),
+`make_sse_router`, `make_push_router`, `make_web_push_router`,
+`make_health_router`, `make_logs_router`, `make_tool_spec_router`,
+`make_app_error_router`, `make_session_router`, `make_pdf_router`,
+`make_voice_router`, `make_chat_router`, `make_genai_router`,
+`make_ai_chat_router`, `make_agent_router`, `make_prediction_router`,
+`make_reviews_router`, `make_vision_router`, `make_wallet_router`,
+`make_hostbridge_router`, `make_htmx_router`, `make_web_app_router`,
+`make_zap_webhook_router` e `make_revenuecat_webhook_router`. Rota fora do
+schema (`include_in_schema=False`, como o painel admin, as páginas de auth e o
+`/metrics`) não aparece no `/docs` e por isso não entra no catálogo.
+A variável mora no `ServerSettings`.
 
 ## Cinco modos de operação
 

@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.chat.schemas import (
     MESSAGES_PAGE_SIZE_MAX,
     ConversationCreateSchema,
@@ -105,6 +106,7 @@ def make_chat_router(
     max_page_size: int = MESSAGES_PAGE_SIZE_MAX,
     membership_recheck_seconds: float | None = MEMBERSHIP_RECHECK_SECONDS,
     stream_session_factory: Callable[[], AsyncIterator[AsyncSession]] | None = None,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build the chat router.
 
@@ -193,6 +195,11 @@ def make_chat_router(
             short-lived session of each membership re-check (for example
             ``db.session_dependency``). ``None`` reuses
             ``session_factory``, which then must take no parameters.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -217,6 +224,7 @@ def make_chat_router(
             "membership_recheck_seconds=None.",
         )
 
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(prefix=prefix, tags=list(tags or ["chat"]))
 
     _session = session_provider_for(session_factory)
@@ -333,6 +341,8 @@ def make_chat_router(
         "/conversations",
         response_model=ConversationResponseSchema,
         status_code=status.HTTP_201_CREATED,
+        summary=route_docs.summary("chat.start_conversation"),
+        description=route_docs.description("chat.start_conversation"),
     )
     async def start_conversation(
         body: ConversationCreateSchema,
@@ -357,7 +367,12 @@ def make_chat_router(
             description=body.description,
         )
 
-    @router.get("/conversations", response_model=list[ConversationResponseSchema])
+    @router.get(
+        "/conversations",
+        response_model=list[ConversationResponseSchema],
+        summary=route_docs.summary("chat.list_conversations"),
+        description=route_docs.description("chat.list_conversations"),
+    )
     async def list_conversations(
         include_archived: bool = False,
         user_id: UUID = Depends(current_user_id),
@@ -382,6 +397,8 @@ def make_chat_router(
     @router.get(
         "/conversations/{conversation_id}",
         response_model=ConversationResponseSchema,
+        summary=route_docs.summary("chat.get_conversation"),
+        description=route_docs.description("chat.get_conversation"),
     )
     async def get_conversation(
         conversation_id: UUID,
@@ -407,6 +424,8 @@ def make_chat_router(
     @router.patch(
         "/conversations/{conversation_id}",
         response_model=ConversationResponseSchema,
+        summary=route_docs.summary("chat.update_conversation"),
+        description=route_docs.description("chat.update_conversation"),
     )
     async def update_conversation(
         conversation_id: UUID,
@@ -438,6 +457,8 @@ def make_chat_router(
     @router.put(
         "/conversations/{conversation_id}/preferences",
         response_model=ParticipantResponseSchema,
+        summary=route_docs.summary("chat.set_preferences"),
+        description=route_docs.description("chat.set_preferences"),
     )
     async def set_preferences(
         conversation_id: UUID,
@@ -470,6 +491,8 @@ def make_chat_router(
     @router.post(
         "/conversations/{conversation_id}/participants",
         response_model=ConversationResponseSchema,
+        summary=route_docs.summary("chat.add_participants"),
+        description=route_docs.description("chat.add_participants"),
     )
     async def add_participants(
         conversation_id: UUID,
@@ -504,6 +527,8 @@ def make_chat_router(
     @router.delete(
         "/conversations/{conversation_id}/participants/{participant_id}",
         response_model=ConversationResponseSchema,
+        summary=route_docs.summary("chat.remove_participant"),
+        description=route_docs.description("chat.remove_participant"),
     )
     async def remove_participant(
         conversation_id: UUID,
@@ -534,6 +559,8 @@ def make_chat_router(
     @router.post(
         "/conversations/{conversation_id}/leave",
         response_model=ConversationResponseSchema,
+        summary=route_docs.summary("chat.leave_conversation"),
+        description=route_docs.description("chat.leave_conversation"),
     )
     async def leave_conversation(
         conversation_id: UUID,
@@ -558,6 +585,8 @@ def make_chat_router(
     @router.post(
         "/conversations/{conversation_id}/read",
         response_model=ParticipantResponseSchema,
+        summary=route_docs.summary("chat.mark_read"),
+        description=route_docs.description("chat.mark_read"),
     )
     async def mark_read(
         conversation_id: UUID,
@@ -589,6 +618,8 @@ def make_chat_router(
         "/conversations/{conversation_id}/messages",
         response_model=MessageResponseSchema,
         status_code=status.HTTP_201_CREATED,
+        summary=route_docs.summary("chat.post_message"),
+        description=route_docs.description("chat.post_message"),
     )
     async def post_message(
         conversation_id: UUID,
@@ -613,7 +644,11 @@ def make_chat_router(
         await _require_participant(service, conversation_id, user_id)
         return await service.post_message(conversation_id, user_id, body)
 
-    @router.get("/conversations/{conversation_id}/messages")
+    @router.get(
+        "/conversations/{conversation_id}/messages",
+        summary=route_docs.summary("chat.list_messages"),
+        description=route_docs.description("chat.list_messages"),
+    )
     async def list_messages(
         conversation_id: UUID,
         page: int = Query(default=1, ge=1),
@@ -651,6 +686,8 @@ def make_chat_router(
     @router.patch(
         "/messages/{message_id}",
         response_model=MessageResponseSchema,
+        summary=route_docs.summary("chat.edit_message"),
+        description=route_docs.description("chat.edit_message"),
     )
     async def edit_message(
         message_id: UUID,
@@ -677,6 +714,8 @@ def make_chat_router(
     @router.delete(
         "/messages/{message_id}",
         response_model=MessageResponseSchema,
+        summary=route_docs.summary("chat.revoke_message"),
+        description=route_docs.description("chat.revoke_message"),
     )
     async def revoke_message(
         message_id: UUID,
@@ -706,6 +745,8 @@ def make_chat_router(
     @router.put(
         "/messages/{message_id}/reaction",
         response_model=MessageResponseSchema,
+        summary=route_docs.summary("chat.react"),
+        description=route_docs.description("chat.react"),
     )
     async def react(
         message_id: UUID,
@@ -729,6 +770,8 @@ def make_chat_router(
     @router.delete(
         "/messages/{message_id}/reaction",
         response_model=MessageResponseSchema,
+        summary=route_docs.summary("chat.unreact"),
+        description=route_docs.description("chat.unreact"),
     )
     async def unreact(
         message_id: UUID,
@@ -750,6 +793,8 @@ def make_chat_router(
     @router.post(
         "/messages/{message_id}/forward",
         response_model=list[MessageResponseSchema],
+        summary=route_docs.summary("chat.forward_message"),
+        description=route_docs.description("chat.forward_message"),
     )
     async def forward_message(
         message_id: UUID,
@@ -774,7 +819,11 @@ def make_chat_router(
         """
         return await service.forward(message_id, user_id, body.conversation_ids)
 
-    @router.get("/conversations/{conversation_id}/stream")
+    @router.get(
+        "/conversations/{conversation_id}/stream",
+        summary=route_docs.summary("chat.stream_messages"),
+        description=route_docs.description("chat.stream_messages"),
+    )
     async def stream_messages(
         conversation_id: UUID,
         user_id: UUID = Depends(current_user_id),

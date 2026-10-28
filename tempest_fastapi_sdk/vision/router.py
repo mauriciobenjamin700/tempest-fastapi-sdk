@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, UploadFile
 
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.exceptions.validation import ValidationException
 from tempest_fastapi_sdk.utils.upload import read_upload_capped
 from tempest_fastapi_sdk.vision.mapping import (
@@ -120,6 +121,7 @@ def make_vision_router(
     tags: Sequence[str] | None = None,
     max_upload_bytes: int = DEFAULT_MAX_IMAGE_UPLOAD_BYTES,
     max_image_pixels: int | None = DEFAULT_MAX_IMAGE_PIXELS,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build a router exposing only the injected vision tasks.
 
@@ -146,6 +148,11 @@ def make_vision_router(
             Defaults to :data:`DEFAULT_MAX_IMAGE_PIXELS`. ``None`` skips the
             header check (and the Pillow import), leaving only Pillow's own
             decompression-bomb guard inside the decoder.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -170,6 +177,7 @@ def make_vision_router(
                 "or pass max_image_pixels=None.",
             ) from exc
     load_errors = _image_load_errors()
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(prefix=prefix, tags=list(tags or ["vision"]))
 
     async def _predict(task: Any, file: UploadFile) -> Any:
@@ -202,21 +210,36 @@ def make_vision_router(
 
     if classifier is not None:
 
-        @router.post("/classify", response_model=ClassificationSchema)
+        @router.post(
+            "/classify",
+            response_model=ClassificationSchema,
+            summary=route_docs.summary("vision.classify"),
+            description=route_docs.description("vision.classify"),
+        )
         async def classify(file: UploadFile) -> ClassificationSchema:
             """Classify an uploaded image."""
             return to_classification_schema(await _predict(classifier, file))
 
     if detector is not None:
 
-        @router.post("/detect", response_model=list[DetectionSchema])
+        @router.post(
+            "/detect",
+            response_model=list[DetectionSchema],
+            summary=route_docs.summary("vision.detect"),
+            description=route_docs.description("vision.detect"),
+        )
         async def detect(file: UploadFile) -> list[DetectionSchema]:
             """Detect objects in an uploaded image."""
             return to_detection_schemas(await _predict(detector, file))
 
     if segmenter is not None:
 
-        @router.post("/segment", response_model=list[SegmentationSchema])
+        @router.post(
+            "/segment",
+            response_model=list[SegmentationSchema],
+            summary=route_docs.summary("vision.segment"),
+            description=route_docs.description("vision.segment"),
+        )
         async def segment(file: UploadFile) -> list[SegmentationSchema]:
             """Segment instances in an uploaded image."""
             return to_segmentation_schemas(await _predict(segmenter, file))

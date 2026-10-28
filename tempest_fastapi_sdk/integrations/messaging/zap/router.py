@@ -64,6 +64,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.integrations.messaging.zap.webhooks import (
     ZapInboundMessage,
     ZapStatusCallback,
@@ -139,6 +140,7 @@ def make_zap_webhook_router(
     path: str = "/webhooks/zap",
     tags: list[str] | None = None,
     include_in_schema: bool = True,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build a router with the one ``POST`` the zap-api webhook needs.
 
@@ -172,6 +174,11 @@ def make_zap_webhook_router(
         include_in_schema (bool): Whether the route appears in the OpenAPI
             document. Turn it off to keep the webhook out of a public
             schema.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -199,12 +206,15 @@ def make_zap_webhook_router(
     _checked("on_inbound", on_inbound)
     _checked("on_status", on_status)
 
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(tags=list(tags or ["zap"]))
 
     @router.post(
         path,
         response_model=ZapWebhookAckSchema,
         include_in_schema=include_in_schema,
+        summary=route_docs.summary("zap.receive_zap"),
+        description=route_docs.description("zap.receive_zap"),
     )
     async def receive_zap(
         delivery: ZapWebhookDelivery = Depends(verify),

@@ -2081,14 +2081,20 @@ prints the Portuguese summary with or without `API_DOCS_LOCALE`.
     a deployment that asked for another language is the silent defect that
     refusal prevents.
 
-**Which routers follow the variable today:** `make_auth_router` (every route
-that appears in the schema), `make_sse_router` (and
-`UserAuthService.sse_router`), `make_push_router`, `make_web_push_router`,
-`make_health_router`, `make_logs_router`, `make_tool_spec_router`,
-`make_app_error_router`, `make_session_router`, `make_pdf_router` and
-`make_voice_router`. The others (chat, genai, agents, modelops, reviews,
-vision, wallet, hostbridge) still document themselves in English. The
-variable lives on `ServerSettings`.
+**Which routers follow the variable today:** every one the SDK builds that
+appears in the schema — `make_auth_router` (and
+`UserAuthService.sse_router`), `make_sse_router`, `make_push_router`,
+`make_web_push_router`, `make_health_router`, `make_logs_router`,
+`make_tool_spec_router`, `make_app_error_router`, `make_session_router`,
+`make_pdf_router`, `make_voice_router`, `make_chat_router`,
+`make_genai_router`, `make_ai_chat_router`, `make_agent_router`,
+`make_prediction_router`, `make_reviews_router`, `make_vision_router`,
+`make_wallet_router`, `make_hostbridge_router`, `make_htmx_router`,
+`make_web_app_router`, `make_zap_webhook_router` and
+`make_revenuecat_webhook_router`. A route kept out of the schema
+(`include_in_schema=False`, like the admin panel, the auth pages and
+`/metrics`) never shows in `/docs`, so it has no catalog entry.
+The variable lives on `ServerSettings`.
 
 ## Five operating modes
 

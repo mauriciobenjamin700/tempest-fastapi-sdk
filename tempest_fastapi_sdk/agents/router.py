@@ -34,16 +34,16 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from starlette.responses import StreamingResponse
 
 from tempest_fastapi_sdk.agents.agent import Agent
 from tempest_fastapi_sdk.agents.schemas import AgentRun
 from tempest_fastapi_sdk.agents.tools import AgentContext
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 from tempest_fastapi_sdk.sse import ServerSentEvent, sse_response
 
 if TYPE_CHECKING:
-    from starlette.responses import StreamingResponse
-
     from tempest_fastapi_sdk.agents.storage import InMemoryAgentRunSink
 
 OwnerDependency = Callable[..., str] | Callable[..., Awaitable[str]]
@@ -197,6 +197,7 @@ def make_agent_router(
     prefix: str = "/api/agent",
     tags: list[str] | None = None,
     owner: OwnerDependency | None = None,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build a router exposing one agent.
 
@@ -249,6 +250,11 @@ def make_agent_router(
             exactly like a run that does not exist. Without it every caller
             sees every kept run — only acceptable when a single principal
             can reach the router at all.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -256,11 +262,17 @@ def make_agent_router(
     Raises:
         TypeError: When ``agent`` is neither an ``Agent`` nor callable.
     """
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(prefix=prefix, tags=list(tags or ["agent"]))
     principal_of: Callable[..., Any] = owner if owner is not None else _anonymous
     agent_of: Callable[..., Any] = _agent_dependency(agent)
 
-    @router.post("/run", response_model=AgentRunResponseSchema)
+    @router.post(
+        "/run",
+        response_model=AgentRunResponseSchema,
+        summary=route_docs.summary("agent.run_agent"),
+        description=route_docs.description("agent.run_agent"),
+    )
     async def run_agent(
         body: AgentRunRequestSchema,
         principal: str | None = Depends(principal_of),
@@ -282,7 +294,11 @@ def make_agent_router(
         run = await serving.run(body.goal, context=AgentContext(owner=principal))
         return AgentRunResponseSchema.from_run(run)
 
-    @router.post("/run/stream")
+    @router.post(
+        "/run/stream",
+        summary=route_docs.summary("agent.stream_agent"),
+        description=route_docs.description("agent.stream_agent"),
+    )
     async def stream_agent(
         body: AgentRunRequestSchema,
         principal: str | None = Depends(principal_of),
@@ -344,7 +360,12 @@ def make_agent_router(
             """
             return owner is None or run.owner == principal
 
-        @router.get("/runs", response_model=list[AgentRunResponseSchema])
+        @router.get(
+            "/runs",
+            response_model=list[AgentRunResponseSchema],
+            summary=route_docs.summary("agent.list_runs"),
+            description=route_docs.description("agent.list_runs"),
+        )
         async def list_runs(
             principal: str | None = Depends(principal_of),
             limit: int = 20,
@@ -366,6 +387,8 @@ def make_agent_router(
         @router.get(
             "/runs/{run_id}/artifacts/{name:path}",
             response_class=Response,
+            summary=route_docs.summary("agent.get_artifact"),
+            description=route_docs.description("agent.get_artifact"),
         )
         async def get_artifact(
             run_id: str,

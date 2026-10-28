@@ -8,11 +8,14 @@ left out here is a route whose translation nothing measures.
 
 from __future__ import annotations
 
+import tempfile
 from collections.abc import AsyncIterator, Callable
+from functools import cache
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, Depends, FastAPI
 
 from tempest_fastapi_sdk import (
     AttemptThrottle,
@@ -37,10 +40,23 @@ from tempest_fastapi_sdk import (
     make_web_authn_credential_model,
     make_web_push_router,
 )
+from tempest_fastapi_sdk.agents import InMemoryAgentRunSink, make_agent_router
 from tempest_fastapi_sdk.app_errors import make_app_error_router
+from tempest_fastapi_sdk.chat import make_chat_router
+from tempest_fastapi_sdk.genai import make_ai_chat_router, make_genai_router
 from tempest_fastapi_sdk.genai.audio import make_voice_router
+from tempest_fastapi_sdk.hostbridge import make_hostbridge_router
+from tempest_fastapi_sdk.integrations.messaging.zap import make_zap_webhook_router
+from tempest_fastapi_sdk.integrations.subscriptions.revenuecat import (
+    make_revenuecat_webhook_router,
+)
+from tempest_fastapi_sdk.modelops import make_prediction_router
 from tempest_fastapi_sdk.pdf import PdfRenderer, make_pdf_router
+from tempest_fastapi_sdk.reviews import make_reviews_router
 from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
+from tempest_fastapi_sdk.ssr import make_htmx_router, make_web_app_router
+from tempest_fastapi_sdk.vision import make_vision_router
+from tempest_fastapi_sdk.wallet import make_wallet_router
 
 
 class _DocsUser(NameMixin, MFAMixin, BaseUserModel):
@@ -105,6 +121,22 @@ def _anything(*_args: Any, **_kwargs: Any) -> Any:
         Any: ``None``.
     """
     return None
+
+
+@cache
+def _wasm_build() -> Path:
+    """Write the smallest directory ``make_web_app_router`` accepts.
+
+    Created once per process: the router reads it only to check the
+    build mode, and these apps are rendered, never served.
+
+    Returns:
+        Path: A directory holding ``index.html`` and ``bootstrap.js``.
+    """
+    root = Path(tempfile.mkdtemp(prefix="route-docs-wasm-"))
+    (root / "index.html").write_text("<html></html>", encoding="utf-8")
+    (root / "bootstrap.js").write_text("", encoding="utf-8")
+    return root
 
 
 class _OAuthClient:
@@ -212,6 +244,73 @@ ROUTER_BUILDERS: dict[str, Callable[[dict[str, Any]], APIRouter]] = {
         current_user_id=_current_user,
         **kw,
     ),
+    "agent": lambda kw: make_agent_router(
+        _current_user,
+        run_store=InMemoryAgentRunSink(),
+        owner=_current_user,
+        **kw,
+    ),
+    "ai_chat": lambda kw: make_ai_chat_router(
+        SimpleNamespace(memory=None),  # type: ignore[arg-type]
+        current_user_id=_current_user,
+        **kw,
+    ),
+    "chat": lambda kw: make_chat_router(
+        service_factory=_anything,
+        session_factory=_session_factory,
+        current_user_id=_current_user,
+        **kw,
+    ),
+    "genai": lambda kw: make_genai_router(
+        text_generator=SimpleNamespace(),  # type: ignore[arg-type]
+        embedder=SimpleNamespace(),  # type: ignore[arg-type]
+        retriever=SimpleNamespace(),  # type: ignore[arg-type]
+        speech_to_text=SimpleNamespace(),  # type: ignore[arg-type]
+        text_to_speech=SimpleNamespace(),  # type: ignore[arg-type]
+        image_generator=SimpleNamespace(),  # type: ignore[arg-type]
+        models={},
+        **kw,
+    ),
+    "hostbridge": lambda kw: make_hostbridge_router(
+        SimpleNamespace(),  # type: ignore[arg-type]
+        dependencies=[Depends(_current_user)],
+        destructive=True,
+        **kw,
+    ),
+    "htmx": lambda kw: make_htmx_router(**kw),
+    "prediction": lambda kw: make_prediction_router(
+        SimpleNamespace(),  # type: ignore[arg-type]
+        source=SimpleNamespace(),  # type: ignore[arg-type]
+        monitor=SimpleNamespace(),  # type: ignore[arg-type]
+        **kw,
+    ),
+    "revenuecat": lambda kw: make_revenuecat_webhook_router(
+        inbox=SimpleNamespace(),  # type: ignore[arg-type]
+        secret="secret",
+        **kw,
+    ),
+    "reviews": lambda kw: make_reviews_router(
+        service_factory=_anything,
+        session_factory=_session_factory,
+        current_user_id=_current_user,
+        **kw,
+    ),
+    "vision": lambda kw: make_vision_router(
+        classifier=SimpleNamespace(),
+        detector=SimpleNamespace(),
+        segmenter=SimpleNamespace(),
+        **kw,
+    ),
+    "wallet": lambda kw: make_wallet_router(
+        service_factory=_anything,
+        session_factory=_session_factory,
+        current_user_id=_current_user,
+        payout_provider=_current_user,
+        pix_destination=_current_user,
+        **kw,
+    ),
+    "web_app": lambda kw: make_web_app_router(_wasm_build(), **kw),
+    "zap": lambda kw: make_zap_webhook_router(secret="secret", **kw),
 }
 """Router name mapped to a builder taking the locale keyword arguments."""
 

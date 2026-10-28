@@ -28,6 +28,8 @@ from importlib.resources import files
 from fastapi import APIRouter
 from fastapi.responses import Response
 
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
+
 _STATIC_PACKAGE = "tempest_fastapi_sdk.ssr._static"
 _HTMX_FILENAME = "htmx.min.js"
 _CONFIRM_FILENAME = "confirm.js"
@@ -64,7 +66,10 @@ def _read_htmx_bytes() -> bytes:
     return _read_static_bytes(_HTMX_FILENAME)
 
 
-def make_htmx_router(prefix: str = "/_ssr") -> APIRouter:
+def make_htmx_router(
+    prefix: str = "/_ssr",
+    docs_locale: str | None = None,
+) -> APIRouter:
     """Build a router that serves the bundled SSR scripts locally.
 
     The files are read once, at call time, so a real ``htmx.min.js``
@@ -76,6 +81,11 @@ def make_htmx_router(prefix: str = "/_ssr") -> APIRouter:
             the ``<script>`` paths that
             :func:`tempest_fastapi_sdk.ssr.html_response` emits. Change
             both together if you customize it.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         An :class:`~fastapi.APIRouter` exposing ``GET {prefix}/htmx.js``
@@ -83,11 +93,16 @@ def make_htmx_router(prefix: str = "/_ssr") -> APIRouter:
         ``data-confirm`` listener), both with an
         ``application/javascript`` media type.
     """
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(prefix=prefix)
     htmx_payload = _read_htmx_bytes()
     confirm_payload = _read_static_bytes(_CONFIRM_FILENAME)
 
-    @router.get("/htmx.js")
+    @router.get(
+        "/htmx.js",
+        summary=route_docs.summary("htmx.htmx_js"),
+        description=route_docs.description("htmx.htmx_js"),
+    )
     async def htmx_js() -> Response:
         """Serve the bundled HTMX JavaScript file.
 
@@ -96,7 +111,11 @@ def make_htmx_router(prefix: str = "/_ssr") -> APIRouter:
         """
         return Response(content=htmx_payload, media_type=_JS_MEDIA_TYPE)
 
-    @router.get("/confirm.js")
+    @router.get(
+        "/confirm.js",
+        summary=route_docs.summary("htmx.confirm_js"),
+        description=route_docs.description("htmx.confirm_js"),
+    )
     async def confirm_js() -> Response:
         """Serve the bundled ``data-confirm`` listener.
 
