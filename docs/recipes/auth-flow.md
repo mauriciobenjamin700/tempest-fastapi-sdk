@@ -2563,8 +2563,10 @@ reset lentos. Com `AUTH_SEND_EMAILS_IN_BACKGROUND=true`, as rotas do
 resposta sai primeiro e o e-mail depois. Medido em
 `tests/auth/test_email_background.py`, com um mailer que leva 2 s por envio
 servido por uvicorn real: o `POST /auth/signup` respondeu depois dos 2 s no
-default (2,2 s) e antes de o envio terminar em background (0,18 s com a
-máquina ociosa, 0,67 s sob a suíte em paralelo).
+default e antes de o envio terminar em background — é o que o teste afirma.
+Numa execução com `--durations` (que conta também a subida do servidor), o
+default levou 2,2 s e o background 0,18 s com a máquina ociosa; sob a suíte
+em paralelo o background chegou a 0,67 s.
 
 ```bash
 # .env

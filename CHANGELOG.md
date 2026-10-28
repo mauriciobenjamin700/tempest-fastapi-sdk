@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.333.0] — 2026-10-27
+
 ### Added
 
 - `docs_locale=` (e `API_DOCS_LOCALE`) nos routers que ficaram de fora da
@@ -20,8 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SDK gera e que aparece no schema segue o idioma; o que fica de fora é o que
   já está fora do schema (`include_in_schema=False`: painel admin, páginas de
   auth, `/metrics`, storage local, CSS). Em inglês nada muda: o documento sem
-  a variável é idêntico byte a byte ao de antes nos 24 routers do catálogo,
-  medido com todo grupo opcional de rota ligado. O texto em português vive em
+  a variável é idêntico byte a byte ao da 0.332.0 nos 21 routers do catálogo
+  que já renderizavam lá (os outros 3 levantavam, ver `Fixed`), comparado com
+  todo grupo opcional de rota ligado. O texto em português vive em
   `api/route_docs/pt_br/ai.py` e `pt_br/apps.py`, e o
   `tests/test_route_docs_coverage_guard.py` cobre os routers novos.
 

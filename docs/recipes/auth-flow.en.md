@@ -2594,8 +2594,11 @@ slow. With `AUTH_SEND_EMAILS_IN_BACKGROUND=true`, the `make_auth_router`
 routes hand the send to the request's `BackgroundTasks` — the response goes
 first and the email after. Measured in `tests/auth/test_email_background.py`,
 with a mailer taking 2 s per send served by real uvicorn: `POST /auth/signup`
-answered after the 2 s by default (2.2 s) and before the send finished in the
-background (0.18 s on an idle machine, 0.67 s under the parallel suite).
+answered after the 2 s by default and before the send finished in the
+background — which is what the test asserts. In one run with `--durations`
+(which also counts the server start-up), the default took 2.2 s and the
+background 0.18 s on an idle machine; under the parallel suite the background
+reached 0.67 s.
 
 ```bash
 # .env

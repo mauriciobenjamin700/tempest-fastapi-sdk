@@ -124,7 +124,9 @@ Desde o #650 isso vale para **todo teste**, com guard: o fixture `autouse`
 `_no_leaked_aiosqlite_threads` do `tests/conftest.py` reprova o teste que
 deixa thread do `aiosqlite` nova viva depois do teardown (lógica em
 `tests/_thread_guard.py`, com 1 s de tolerância para a thread que já está
-encerrando). Medido antes do fix: 61 dos 94 testes de `test_auth_pages`,
+encerrando). Medido antes do fix, com um plugin que conta as threads do
+`aiosqlite` vivas depois de cada teardown, rodado antes e depois: 61 dos 94
+testes de `test_auth_pages`,
 `test_refresh_db` e `test_activation_resend` deixavam engine sem `dispose()`,
 e o sintoma era um `RuntimeError: Event loop is closed` intermitente noutro
 teste, onde o `gc` resolvia rodar. Fixture de escopo de módulo ou sessão que
