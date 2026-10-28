@@ -20,7 +20,12 @@ import pytest
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from tempest_fastapi_sdk import (
     AttemptThrottle,
@@ -84,6 +89,27 @@ class Harness:
     factory: async_sessionmaker[AsyncSession]
 
 
+_OPEN_ENGINES: list[AsyncEngine] = []
+"""Engines built by the helpers below, disposed after each test."""
+
+
+@pytest.fixture(autouse=True)
+async def _dispose_open_engines() -> AsyncIterator[None]:
+    """Dispose every engine a helper opened during the test.
+
+    The helpers return the app, not the engine, so the test cannot close
+    it; left open, its ``aiosqlite`` worker threads outlive the event loop
+    and a later ``gc`` pass fails another test with ``Event loop is
+    closed`` (#650).
+
+    Yields:
+        None: Control to the test.
+    """
+    yield
+    while _OPEN_ENGINES:
+        await _OPEN_ENGINES.pop().dispose()
+
+
 async def _build(
     tmp_path: Path,
     *,
@@ -103,6 +129,7 @@ async def _build(
         Harness: The app and its parts.
     """
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'pages.db'}")
+    _OPEN_ENGINES.append(engine)
     async with engine.begin() as conn:
         await conn.run_sync(BaseModel.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)

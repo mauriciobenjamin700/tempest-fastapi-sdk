@@ -1966,7 +1966,7 @@ em `{{ expires_at }}`.
 
 ---
 
-## Idioma da documentação das rotas (`/docs`) *(Unreleased, #643)*
+## Idioma da documentação das rotas (`/docs`) *(v0.332.0+)*
 
 O idioma dos e-mails não muda o idioma do `/docs`. O `summary` e a
 `description` que o `make_auth_router` escreve no documento OpenAPI — o que
@@ -2561,9 +2561,10 @@ Por padrão a rota espera o SMTP: um servidor lento deixa o cadastro e o
 reset lentos. Com `AUTH_SEND_EMAILS_IN_BACKGROUND=true`, as rotas do
 `make_auth_router` entregam o envio ao `BackgroundTasks` da requisição — a
 resposta sai primeiro e o e-mail depois. Medido em
-`tests/auth/test_email_background.py`, com um mailer que leva 1 s por envio
-servido por uvicorn real: o `POST /auth/signup` respondeu em mais de 1 s no
-default e em menos de 0,5 s em background.
+`tests/auth/test_email_background.py`, com um mailer que leva 2 s por envio
+servido por uvicorn real: o `POST /auth/signup` respondeu depois dos 2 s no
+default (2,2 s) e antes de o envio terminar em background (0,18 s com a
+máquina ociosa, 0,67 s sob a suíte em paralelo).
 
 ```bash
 # .env

@@ -2,7 +2,7 @@
 
 import shutil
 import subprocess
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterator
 from pathlib import Path
 
 import pytest
@@ -10,8 +10,44 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
+from tests._thread_guard import aiosqlite_threads, leaked_since
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+@pytest.fixture(autouse=True)
+def _no_leaked_aiosqlite_threads(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Fail the test that leaves an ``aiosqlite`` worker thread running.
+
+    Requested first by every test, so it tears down last — after the
+    test's own fixtures had their chance to dispose their engines. See
+    :mod:`tests._thread_guard` for why a leak is a defect, not noise
+    (#650).
+
+    A test marked ``keeps_aiosqlite_threads`` is skipped: a module- or
+    session-scoped fixture keeps its connection open across tests on
+    purpose and checks for leaked threads at its own teardown (the
+    ``scaffolded`` fixture of ``tests/cli/test_scaffold_runtime.py``).
+
+    Args:
+        request (pytest.FixtureRequest): The requesting test.
+
+    Yields:
+        None: Control to the test.
+    """
+    if request.node.get_closest_marker("keeps_aiosqlite_threads"):
+        yield
+        return
+    before = aiosqlite_threads()
+    yield
+    leaked = leaked_since(before)
+    if leaked:
+        pytest.fail(
+            f"{len(leaked)} aiosqlite worker thread(s) still running after "
+            "teardown: dispose the AsyncEngine (await engine.dispose()) or "
+            "disconnect the AsyncDatabaseManager the test opened",
+            pytrace=False,
+        )
 
 
 def _newest_docs_input_mtime() -> float:

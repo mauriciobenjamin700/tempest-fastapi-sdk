@@ -700,6 +700,7 @@ markers = [
     "docs: asserts against the built MkDocs site; triggers one `mkdocs build`",
     "docker: starts a real container; opt-in, needs a running daemon (make test-docker)",
     "network: reaches a real third-party endpoint over the internet; opt-in (make test-network)",
+    "keeps_aiosqlite_threads: a module- or session-scoped fixture owns the aiosqlite connection and checks for leaked threads itself at its own teardown (tests/_thread_guard.py)",
 ]
 
 [tool.coverage.run]

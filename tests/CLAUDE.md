@@ -59,6 +59,7 @@ Todos rodam dentro do `make check`.
 | `test_supply_chain_guard` | todo `uv sync` dos workflows passa `--locked`; `pypa/gh-action-pypi-publish` e `astral-sh/setup-uv` por SHA de 40 hex com `# vX.Y.Z` ao lado; o release roda `uv lock --check` e `make audit` **antes** do `uv build`; o `audit.yml` tem `schedule:`; o `make audit` exporta do lock com `--locked --all-extras`; `hatchling` com piso e teto no `[build-system]` (#436) | step desligado por `if:` que nunca vale; a lista de `--ignore-vuln` do Makefile, cujo motivo de cada ID é julgamento, não checagem |
 | `test_release_flow_guard` | `make release` roda `make check` **antes** do `git tag` (a CI não testa desde 2026-10-09, então é o único gate antes de uma tag); nenhum workflow roda `pytest`; o `release-pypi.yml` ainda builda e publica | tag criada à mão com `git tag`, fora do `make release` |
 | `test_sdist_payload` | entrada com ponto na raiz do **sdist** é allowlist com motivo — o sdist leva o repo inteiro menos um `exclude`, então diretório que uma ferramenta deixa na raiz shippa até alguém notar (`.claude/` custou 12 938 bytes, `.playwright-mcp/` custou 2 623 bytes e shippou até a 0.284.0) | arquivo não-dotted na raiz |
+| `test_aiosqlite_thread_guard` | o fixture `autouse` `_no_leaked_aiosqlite_threads` (`tests/conftest.py`) reprova teste que deixa thread do `aiosqlite` viva depois do teardown (#650); prova que dispara com o engine sem `dispose()` que o `test_auth_pages` shippou | fixture de escopo de módulo/sessão marcado `keeps_aiosqlite_threads` (confere no próprio teardown); thread de outra biblioteca |
 | `test_wheel_payload` | payload não-`.py` da wheel é exatamente a allowlist | — |
 
 Marcadores de escape: `# docs-guard: skip` (fragmento não-parseável de
@@ -118,6 +119,18 @@ desconectava: o worker do `aiosqlite` sobrevivia ao módulo e à sessão, e
 quem finalizava a conexão depois era um passe de `gc` no meio de outro
 teardown. Hoje ele faz `disconnect()` antes de esquecer os módulos e falha
 se alguma thread iniciada pelo módulo ainda estiver viva.
+
+Desde o #650 isso vale para **todo teste**, com guard: o fixture `autouse`
+`_no_leaked_aiosqlite_threads` do `tests/conftest.py` reprova o teste que
+deixa thread do `aiosqlite` nova viva depois do teardown (lógica em
+`tests/_thread_guard.py`, com 1 s de tolerância para a thread que já está
+encerrando). Medido antes do fix: 61 dos 94 testes de `test_auth_pages`,
+`test_refresh_db` e `test_activation_resend` deixavam engine sem `dispose()`,
+e o sintoma era um `RuntimeError: Event loop is closed` intermitente noutro
+teste, onde o `gc` resolvia rodar. Fixture de escopo de módulo ou sessão que
+é dona da conexão e confere as threads no próprio teardown marca o módulo com
+`pytestmark = pytest.mark.keeps_aiosqlite_threads` — hoje só o
+`test_scaffold_runtime`.
 
 ## Matriz de versão de dependência: `uv run --with`, num subprocess
 
