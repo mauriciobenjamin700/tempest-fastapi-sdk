@@ -350,19 +350,25 @@ class TestReuseRevocationSurvivesTheUnwind:
     """
 
     @pytest.fixture
-    def factory(self, tmp_path: Any) -> Any:
-        """Build a session factory over a file-backed SQLite database.
+    async def factory(self, tmp_path: Any) -> AsyncIterator[Any]:
+        """Yield a session factory over a file-backed SQLite database.
+
+        The engine is disposed on teardown: its pooled ``aiosqlite``
+        connections each run a worker thread, and one left open outlives
+        the test's event loop until a later ``gc`` pass closes it inside
+        another test, as ``RuntimeError: Event loop is closed`` (#650).
 
         Args:
             tmp_path (Any): pytest's per-test temporary directory.
 
-        Returns:
+        Yields:
             Any: An ``async_sessionmaker`` whose sessions see each other's
             commits — which ``sqlite+aiosqlite:///:memory:`` does not give,
             since every connection there opens its own empty database.
         """
         engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'auth.db'}")
-        return async_sessionmaker(engine, expire_on_commit=False)
+        yield async_sessionmaker(engine, expire_on_commit=False)
+        await engine.dispose()
 
     async def _seed_replayed_family(self, factory: Any) -> tuple[Any, str, str]:
         """Create a user, rotate once, and return the replayable pair.

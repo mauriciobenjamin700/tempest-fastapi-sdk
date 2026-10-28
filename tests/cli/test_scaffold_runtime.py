@@ -36,6 +36,12 @@ from typer.testing import CliRunner
 import tempest_fastapi_sdk
 from tempest_fastapi_sdk.cli.main import app as cli_app
 
+pytestmark = pytest.mark.keeps_aiosqlite_threads
+"""The module-scoped ``scaffolded`` fixture owns the generated project's
+database for every test here and fails at its own teardown if a thread the
+module started outlives it; the per-test guard of ``tests/conftest.py``
+would flag the connection mid-module."""
+
 runner = CliRunner()
 
 TIMEOUT_TIMER_PREFIX = "pytest_timeout "

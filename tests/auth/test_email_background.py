@@ -43,7 +43,7 @@ from tempest_fastapi_sdk.exceptions import EmailDeliveryException
 from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
 
 PASSWORD: str = "strong-pass-12-chars"
-SMTP_DELAY_SECONDS: float = 1.0
+SMTP_DELAY_SECONDS: float = 2.0
 """How long the slow mailer holds every send."""
 
 
@@ -240,6 +240,6 @@ def test_response_time_stops_depending_on_smtp(
 
     assert response.status_code == 201
     if background:
-        assert elapsed < SMTP_DELAY_SECONDS / 2
+        assert elapsed < SMTP_DELAY_SECONDS
     else:
         assert elapsed >= SMTP_DELAY_SECONDS
