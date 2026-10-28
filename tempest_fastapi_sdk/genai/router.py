@@ -24,7 +24,9 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Response, UploadFile, status
 from pydantic import Field
+from starlette.responses import StreamingResponse
 
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.exceptions.validation import ValidationException
 from tempest_fastapi_sdk.genai.inventory import ModelRuntimeReport, runtime_report
 from tempest_fastapi_sdk.genai.schemas import (
@@ -37,8 +39,6 @@ from tempest_fastapi_sdk.sse import ServerSentEvent, sse_response
 from tempest_fastapi_sdk.utils.upload import read_upload_capped
 
 if TYPE_CHECKING:
-    from starlette.responses import StreamingResponse
-
     from tempest_fastapi_sdk.genai.audio import SpeechToText, TextToSpeech
     from tempest_fastapi_sdk.genai.image import ImageGenerator
     from tempest_fastapi_sdk.genai.rag import SupportsEmbed, SupportsRetrieve
@@ -194,6 +194,7 @@ def make_genai_router(
     prefix: str = "/api/genai",
     tags: list[str] | None = None,
     limits: GenAIRequestLimits | None = None,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build a router exposing whichever GenAI objects you inject.
 
@@ -244,6 +245,11 @@ def make_genai_router(
         tags (list[str] | None): OpenAPI tags. Defaults to ``["genai"]``.
         limits (GenAIRequestLimits | None): Per-request ceilings. ``None``
             uses ``GenAIRequestLimits()`` and its defaults.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -272,13 +278,19 @@ def make_genai_router(
             "text_to_speech / image_generator / models).",
         )
 
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(prefix=prefix, tags=list(tags or ["genai"]))
     bounds = limits if limits is not None else GenAIRequestLimits()
 
     if text_generator is not None:
         generator = text_generator
 
-        @router.post("/generate", response_model=GenerateResponseSchema)
+        @router.post(
+            "/generate",
+            response_model=GenerateResponseSchema,
+            summary=route_docs.summary("genai.generate"),
+            description=route_docs.description("genai.generate"),
+        )
         async def generate(body: GenerateRequestSchema) -> GenerateResponseSchema:
             """Generate a completion for the prompt.
 
@@ -293,7 +305,11 @@ def make_genai_router(
             text = await generator.generate(body.prompt, config=body.config)
             return GenerateResponseSchema(text=text)
 
-        @router.post("/generate/stream")
+        @router.post(
+            "/generate/stream",
+            summary=route_docs.summary("genai.generate_stream"),
+            description=route_docs.description("genai.generate_stream"),
+        )
         async def generate_stream(body: GenerateRequestSchema) -> StreamingResponse:
             """Stream a completion token by token over SSE.
 
@@ -314,7 +330,12 @@ def make_genai_router(
 
             return sse_response(_events())
 
-        @router.post("/chat", response_model=ChatResponseSchema)
+        @router.post(
+            "/chat",
+            response_model=ChatResponseSchema,
+            summary=route_docs.summary("genai.chat"),
+            description=route_docs.description("genai.chat"),
+        )
         async def chat(body: ChatRequestSchema) -> ChatResponseSchema:
             """Generate a reply for a chat message list.
 
@@ -333,7 +354,12 @@ def make_genai_router(
     if embedder is not None:
         embed_model = embedder
 
-        @router.post("/embed", response_model=EmbedResponseSchema)
+        @router.post(
+            "/embed",
+            response_model=EmbedResponseSchema,
+            summary=route_docs.summary("genai.embed"),
+            description=route_docs.description("genai.embed"),
+        )
         async def embed(body: EmbedRequestSchema) -> EmbedResponseSchema:
             """Embed one or many texts into vectors.
 
@@ -353,7 +379,12 @@ def make_genai_router(
     if retriever is not None:
         rag = retriever
 
-        @router.post("/rag", response_model=RagResponseSchema)
+        @router.post(
+            "/rag",
+            response_model=RagResponseSchema,
+            summary=route_docs.summary("genai.rag_context"),
+            description=route_docs.description("genai.rag_context"),
+        )
         async def rag_context(body: RagRequestSchema) -> RagResponseSchema:
             """Search the corpus and return a prompt-ready context block.
 
@@ -371,7 +402,11 @@ def make_genai_router(
     if speech_to_text is not None:
         stt = speech_to_text
 
-        @router.post("/transcribe")
+        @router.post(
+            "/transcribe",
+            summary=route_docs.summary("genai.transcribe"),
+            description=route_docs.description("genai.transcribe"),
+        )
         async def transcribe(
             file: UploadFile,
             language: str | None = None,
@@ -400,6 +435,8 @@ def make_genai_router(
             "/tts",
             status_code=status.HTTP_200_OK,
             response_class=Response,
+            summary=route_docs.summary("genai.synthesize"),
+            description=route_docs.description("genai.synthesize"),
         )
         async def synthesize(body: TTSRequestSchema) -> Response:
             """Synthesize speech and return the WAV bytes.
@@ -421,7 +458,12 @@ def make_genai_router(
     if models is not None:
         held = models
 
-        @router.get("/models", response_model=ModelRuntimeReport)
+        @router.get(
+            "/models",
+            response_model=ModelRuntimeReport,
+            summary=route_docs.summary("genai.list_models"),
+            description=route_docs.description("genai.list_models"),
+        )
         async def list_models(probe: bool = True) -> ModelRuntimeReport:
             """Report which models are resident in memory right now.
 
@@ -455,6 +497,8 @@ def make_genai_router(
             "/image",
             status_code=status.HTTP_200_OK,
             response_class=Response,
+            summary=route_docs.summary("genai.render_image"),
+            description=route_docs.description("genai.render_image"),
         )
         async def render_image(body: ImageRequestSchema) -> Response:
             """Render one image and return its bytes.

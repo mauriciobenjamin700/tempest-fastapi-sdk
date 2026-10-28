@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.reviews.schemas import (
     CommentCreateSchema,
     CommentResponseSchema,
@@ -33,6 +34,7 @@ def make_reviews_router(
     current_user_id: Callable[..., Any],
     prefix: str = "/api/reviews",
     tags: list[str] | None = None,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build the reviews router.
 
@@ -56,10 +58,16 @@ def make_reviews_router(
             the authenticated user's :class:`~uuid.UUID`.
         prefix (str): URL prefix. Defaults to ``"/api/reviews"``.
         tags (list[str] | None): OpenAPI tags. Defaults to ``["reviews"]``.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
     """
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(prefix=prefix, tags=list(tags or ["reviews"]))
 
     _session = session_provider_for(session_factory)
@@ -71,6 +79,8 @@ def make_reviews_router(
         "/{target_type}/{target_id}/comments",
         response_model=CommentResponseSchema,
         status_code=status.HTTP_201_CREATED,
+        summary=route_docs.summary("reviews.add_comment"),
+        description=route_docs.description("reviews.add_comment"),
     )
     async def add_comment(
         target_type: str,
@@ -99,7 +109,11 @@ def make_reviews_router(
             parent_id=body.parent_id,
         )
 
-    @router.get("/{target_type}/{target_id}/comments")
+    @router.get(
+        "/{target_type}/{target_id}/comments",
+        summary=route_docs.summary("reviews.list_comments"),
+        description=route_docs.description("reviews.list_comments"),
+    )
     async def list_comments(
         target_type: str,
         target_id: UUID,
@@ -129,6 +143,8 @@ def make_reviews_router(
     @router.post(
         "/{target_type}/{target_id}/rating",
         response_model=RatingResponseSchema,
+        summary=route_docs.summary("reviews.rate"),
+        description=route_docs.description("reviews.rate"),
     )
     async def rate(
         target_type: str,
@@ -154,6 +170,8 @@ def make_reviews_router(
     @router.get(
         "/{target_type}/{target_id}",
         response_model=RatingAggregateSchema,
+        summary=route_docs.summary("reviews.aggregate"),
+        description=route_docs.description("reviews.aggregate"),
     )
     async def aggregate(
         target_type: str,

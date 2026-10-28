@@ -42,7 +42,9 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends
 from pydantic import Field
+from starlette.responses import StreamingResponse
 
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.genai.rag.chroma import MemoryHit
 from tempest_fastapi_sdk.genai.rag.schemas import SearchResult
 from tempest_fastapi_sdk.genai.tokens import truncate_messages
@@ -50,8 +52,6 @@ from tempest_fastapi_sdk.schemas.base import BaseSchema
 from tempest_fastapi_sdk.sse import ServerSentEvent, sse_response
 
 if TYPE_CHECKING:
-    from starlette.responses import StreamingResponse
-
     from tempest_fastapi_sdk.genai.audio import TextToSpeech
     from tempest_fastapi_sdk.genai.moderation import ModerationBackend
     from tempest_fastapi_sdk.genai.rag import ChatMemory, WebSearch
@@ -749,6 +749,7 @@ def make_ai_chat_router(
     tags: list[str] | None = None,
     current_user_id: Callable[..., Any] | None = None,
     dependencies: Sequence[Any] | None = None,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Mount an :class:`AIChatPipeline` on HTTP endpoints.
 
@@ -778,6 +779,11 @@ def make_ai_chat_router(
             names them. Without it, turns run with no memory owner.
         dependencies (Sequence[Any] | None): Applied to every route —
             where authentication and rate limiting go.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -793,6 +799,7 @@ def make_ai_chat_router(
             "a caller recall somebody else's memory",
         )
 
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(
         prefix=prefix,
         tags=list(tags or ["ai-chat"]),
@@ -800,7 +807,12 @@ def make_ai_chat_router(
     )
     user_dep: Any = Depends(current_user_id or _anonymous_caller)
 
-    @router.post("/chat", response_model=AIChatResult)
+    @router.post(
+        "/chat",
+        response_model=AIChatResult,
+        summary=route_docs.summary("ai_chat.chat"),
+        description=route_docs.description("ai_chat.chat"),
+    )
     async def chat(
         body: AIChatRequestSchema,
         user_id: Any = user_dep,
@@ -824,7 +836,11 @@ def make_ai_chat_router(
             speak=body.speak,
         )
 
-    @router.post("/chat/stream")
+    @router.post(
+        "/chat/stream",
+        summary=route_docs.summary("ai_chat.chat_stream"),
+        description=route_docs.description("ai_chat.chat_stream"),
+    )
     async def chat_stream(
         body: AIChatRequestSchema,
         user_id: Any = user_dep,

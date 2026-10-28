@@ -52,6 +52,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ValidationError
 
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.api.webhooks import WebhookSignatureVerifier
 from tempest_fastapi_sdk.exceptions import UnauthorizedException, ValidationException
 from tempest_fastapi_sdk.integrations.subscriptions.revenuecat.events import (
@@ -384,6 +385,7 @@ def make_revenuecat_webhook_router(
     tags: list[str] | None = None,
     include_in_schema: bool = True,
     tolerance_seconds: int = DEFAULT_SIGNATURE_TOLERANCE_SECONDS,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Mount the whole RevenueCat webhook: authenticate, record, answer 200.
 
@@ -409,6 +411,11 @@ def make_revenuecat_webhook_router(
         tags (list[str] | None): OpenAPI tags.
         include_in_schema (bool): Whether the route appears in OpenAPI.
         tolerance_seconds (int): Signature timestamp window.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: Ready for ``app.include_router``.
@@ -421,13 +428,15 @@ def make_revenuecat_webhook_router(
         signing_secret=signing_secret,
         tolerance_seconds=tolerance_seconds,
     )
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(tags=list(tags) if tags is not None else [])
 
     @router.post(
         path,
         response_model=RevenueCatWebhookAck,
         include_in_schema=include_in_schema,
-        summary="Receive a RevenueCat webhook",
+        summary=route_docs.summary("revenuecat.receive_revenuecat_webhook"),
+        description=route_docs.description("revenuecat.receive_revenuecat_webhook"),
     )
     async def receive_revenuecat_webhook(
         delivery: RevenueCatWebhookDelivery = Depends(verify),

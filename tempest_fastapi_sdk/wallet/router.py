@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.integrations.payment.base import (
     PayoutProvider,
 )
@@ -47,6 +48,7 @@ def make_wallet_router(
     pix_destination: Callable[..., Any],
     prefix: str = "/api/wallet",
     tags: list[str] | None = None,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build the wallet router.
 
@@ -71,10 +73,16 @@ def make_wallet_router(
             profile. Raise from it when the user has no key registered.
         prefix (str): URL prefix. Defaults to ``"/api/wallet"``.
         tags (list[str] | None): OpenAPI tags. Defaults to ``["wallet"]``.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
     """
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(prefix=prefix, tags=list(tags or ["wallet"]))
 
     _session = session_provider_for(session_factory)
@@ -82,7 +90,12 @@ def make_wallet_router(
     def _service(session: AsyncSession = Depends(_session)) -> WalletService:
         return service_factory(session)
 
-    @router.get("/balance", response_model=WalletBalanceSchema)
+    @router.get(
+        "/balance",
+        response_model=WalletBalanceSchema,
+        summary=route_docs.summary("wallet.get_balance"),
+        description=route_docs.description("wallet.get_balance"),
+    )
     async def get_balance(
         user_id: UUID = Depends(current_user_id),
         service: WalletService = Depends(_service),
@@ -101,6 +114,8 @@ def make_wallet_router(
     @router.get(
         "/statement",
         response_model=BasePaginationSchema[WalletEntrySchema],
+        summary=route_docs.summary("wallet.get_statement"),
+        description=route_docs.description("wallet.get_statement"),
     )
     async def get_statement(
         page: int = 1,
@@ -121,7 +136,12 @@ def make_wallet_router(
         """
         return await service.statement(user_id, page=page, page_size=page_size)
 
-    @router.post("/withdraw", response_model=WithdrawalSchema)
+    @router.post(
+        "/withdraw",
+        response_model=WithdrawalSchema,
+        summary=route_docs.summary("wallet.withdraw"),
+        description=route_docs.description("wallet.withdraw"),
+    )
     async def withdraw(
         body: WithdrawRequestSchema,
         user_id: UUID = Depends(current_user_id),

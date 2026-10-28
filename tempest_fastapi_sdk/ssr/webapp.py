@@ -43,6 +43,8 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from starlette.datastructures import Headers
 from starlette.staticfiles import NotModifiedResponse
 
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
+
 if TYPE_CHECKING:
     from fastapi import FastAPI
     from tempest_core import Theme
@@ -377,6 +379,7 @@ def make_web_app_router(
     shell: ShellSource | None = None,
     immutable: Sequence[str] = (),
     immutable_manifest: str | None = _IMMUTABLE_MANIFEST,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Serve a static ``tempestweb`` (wasm) build as an ``APIRouter``.
 
@@ -433,6 +436,11 @@ def make_web_app_router(
             root, of the manifest whose patterns are added to
             ``immutable``. A missing file declares nothing; ``None`` skips
             the lookup entirely.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: A router serving the static build.
@@ -518,6 +526,7 @@ def make_web_app_router(
             headers=response_headers,
         )
 
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter()
     index_path = root / _INDEX
 
@@ -582,7 +591,14 @@ def make_web_app_router(
             return _shell_response(request)
         raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
 
-    router.add_api_route("/", index, methods=["GET"], name="tempestweb_index")
+    router.add_api_route(
+        "/",
+        index,
+        methods=["GET"],
+        name="tempestweb_index",
+        summary=route_docs.summary("web_app.index"),
+        description=route_docs.description("web_app.index"),
+    )
     router.add_api_route(
         "/",
         index,
@@ -595,6 +611,8 @@ def make_web_app_router(
         asset,
         methods=["GET"],
         name="tempestweb_asset",
+        summary=route_docs.summary("web_app.asset"),
+        description=route_docs.description("web_app.asset"),
     )
     router.add_api_route(
         "/{resource:path}",

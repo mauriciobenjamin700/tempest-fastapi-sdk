@@ -23,6 +23,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.params import Depends
 from pydantic import Field
 
+from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.artifacts.digest import _read_file_digest
 from tempest_fastapi_sdk.modelops.monitoring import MonitoringReport
 from tempest_fastapi_sdk.modelops.serving import OnnxPredictor, PredictorInfo
@@ -313,6 +314,7 @@ def make_prediction_router(
     dependencies: Sequence[Depends] | None = None,
     admin_dependencies: Sequence[Depends] | None = None,
     expose_model_path: bool = False,
+    docs_locale: str | None = None,
 ) -> APIRouter:
     """Build a router serving one predictor.
 
@@ -371,6 +373,11 @@ def make_prediction_router(
             ``/model`` and ``/model/sync``. Off by default, which reports the
             file name only: the absolute path describes the device's disk
             layout and tells a caller nothing it needs.
+        docs_locale (str | None): Language of the OpenAPI ``summary``
+            and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
+            ``None`` (default) reads ``API_DOCS_LOCALE`` through
+            :class:`~tempest_fastapi_sdk.settings.ServerSettings`,
+            whose default is ``"en-US"``.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -380,6 +387,7 @@ def make_prediction_router(
     """
     if max_rows is not None and max_rows < 1:
         raise ValueError(f"max_rows must be positive or None, got {max_rows}")
+    route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(
         prefix=prefix,
         tags=list(tags or ["prediction"]),
@@ -387,7 +395,12 @@ def make_prediction_router(
     )
     admin = list(admin_dependencies or [])
 
-    @router.post("/", response_model=PredictResponseSchema)
+    @router.post(
+        "/",
+        response_model=PredictResponseSchema,
+        summary=route_docs.summary("prediction.predict"),
+        description=route_docs.description("prediction.predict"),
+    )
     async def predict(body: PredictRequestSchema) -> PredictResponseSchema:
         """Predict for a batch of rows.
 
@@ -427,7 +440,13 @@ def make_prediction_router(
             model_version=source.current_version if source else None,
         )
 
-    @router.get("/model", response_model=PredictorInfo, dependencies=admin)
+    @router.get(
+        "/model",
+        response_model=PredictorInfo,
+        dependencies=admin,
+        summary=route_docs.summary("prediction.model_info"),
+        description=route_docs.description("prediction.model_info"),
+    )
     async def model_info() -> PredictorInfo:
         """Report what is loaded and how it is running.
 
@@ -444,6 +463,8 @@ def make_prediction_router(
             "/model/sync",
             response_model=PredictorInfo,
             dependencies=admin,
+            summary=route_docs.summary("prediction.sync_model"),
+            description=route_docs.description("prediction.sync_model"),
         )
         async def sync_model() -> PredictorInfo:
             """Reload from the registry if a newer version is current.
@@ -483,6 +504,8 @@ def make_prediction_router(
             "/monitor",
             response_model=MonitoringReport,
             dependencies=admin,
+            summary=route_docs.summary("prediction.monitor_report"),
+            description=route_docs.description("prediction.monitor_report"),
         )
         async def monitor_report() -> MonitoringReport:
             """Report latency, input drift and prediction distribution.

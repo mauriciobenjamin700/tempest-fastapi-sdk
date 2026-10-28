@@ -3911,3 +3911,16 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `AdminTheme`. Validado em browser (800/375 px, claro/escuro, marca escura,
   clara e ausente) — a cor clara expôs o link ilegível, que ganhou
   `link_color`. Teste: `tests/auth/test_email_templates.py`.
+- **Idioma da documentação das rotas nos routers restantes, Unreleased (#643
+  follow-up)** — `docs_locale=` em chat, genai, pipeline de AI chat, agents,
+  hostbridge, modelops (`make_prediction_router`), reviews, vision, wallet,
+  assets do SSR (`make_htmx_router`, `make_web_app_router`) e webhooks de
+  integração (zap, RevenueCat): 65 operações. Catálogo em
+  `api/route_docs/{en_us,pt_br}/ai.py` + `apps.py`; o inglês fica `None`
+  (nome da função + docstring, como antes), exceto o `summary` que o webhook
+  da RevenueCat já declarava. Documento inglês idêntico byte a byte nos 24
+  routers do catálogo. De quebra, `/openapi.json` voltou a renderizar com
+  agents/genai/ai-chat montados (`StreamingResponse` só sob
+  `TYPE_CHECKING`). Testes: `tests/api/test_route_docs.py`,
+  `tests/test_route_docs_coverage_guard.py`, apps em
+  `tests/api/route_docs_apps.py`.

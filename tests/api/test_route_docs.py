@@ -129,6 +129,40 @@ class TestTheLocaleReachesTheDocument:
         }
         assert params["page"] == "Número da página (começa em 1)."
 
+    def test_a_follow_up_router_in_portuguese(self) -> None:
+        """The routers added after #643 shipped follow the locale too."""
+        doc = build_app("chat", "pt-BR").openapi()
+        start = doc["paths"]["/api/chat/conversations"]["post"]
+        assert start["summary"] == "Iniciar uma conversa"
+        assert start["description"].startswith("Cria uma conversa")
+
+    def test_the_english_fallback_is_the_docstring(self) -> None:
+        """A route that never declared text keeps its docstring in English."""
+        doc = build_app("wallet").openapi()
+        balance = doc["paths"]["/api/wallet/balance"]["get"]
+        assert balance["summary"] == "Get Balance"
+        assert balance["description"].startswith(
+            "Return the caller's balance split into held and available."
+        )
+
+
+@pytest.mark.parametrize("name", ["agent", "ai_chat", "genai"])
+def test_streaming_routers_render_their_document(name: str) -> None:
+    """``/openapi.json`` renders for the routers with an SSE endpoint.
+
+    Their ``-> StreamingResponse`` annotation named a class imported only
+    under ``TYPE_CHECKING``; with ``from __future__ import annotations``
+    FastAPI saw an unresolved forward reference and ``app.openapi()``
+    raised ``PydanticUserError``, so ``/docs`` answered 500 for any app
+    that mounted one of them.
+
+    Args:
+        name (str): The router.
+    """
+    paths = build_app(name).openapi()["paths"]
+    stream = next(item for path, item in paths.items() if path.endswith("/stream"))
+    assert "200" in stream["post"]["responses"]
+
 
 @pytest.mark.parametrize("name", ROUTERS)
 class TestEveryCoveredRouter:
