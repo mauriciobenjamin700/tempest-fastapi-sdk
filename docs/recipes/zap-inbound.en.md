@@ -590,9 +590,12 @@ class ZapBotService:
         """Store the message and reply to the sender.
 
         The reply goes out on ``stored`` **and** on ``duplicate``: if the
-        send failed on the first delivery, the re-delivery completes it; if
-        it did not, the same ``idempotency_key`` makes the gateway return
-        the original row instead of sending twice.
+        send failed before the ``202`` (network, gateway down), the
+        re-delivery completes it; if the ``202`` arrived, the same
+        ``idempotency_key`` makes the gateway return the original row
+        instead of sending twice. When that row already failed in the
+        gateway's worker, ``send_text`` raises ``ZapSendFailedException``
+        and the route answers ``502``: the same key does not send again.
 
         Args:
             message (ZapInboundMessage): The already validated message.
@@ -853,8 +856,10 @@ down. A `202` that is already `failed` raises `ZapSendFailedException`
 !!! tip "Why `text` is `Text` and nullable"
     A media message without a caption arrives without `text`, and a WhatsApp
     message has no 255-character ceiling. `ZapInboundMessageMixin` declares
-    `text` as a nullable `Text`; a required `String(255)` column breaks in
-    both cases.
+    `text` as a nullable `Text`. A required `String(255)` column refuses the
+    captionless media on any database, and the long text on PostgreSQL —
+    SQLite ignores the declared length and stores it all, so an in-memory
+    test does not show it.
 
 ### Your service: the reply
 

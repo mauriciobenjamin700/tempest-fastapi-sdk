@@ -586,9 +586,12 @@ class ZapBotService:
         """Guarda a mensagem e responde a quem escreveu.
 
         A resposta sai em ``stored`` **e** em ``duplicate``: se o envio
-        falhou na primeira entrega, a reentrega o completa; se não falhou,
-        a mesma ``idempotency_key`` faz o gateway devolver a linha original
-        em vez de mandar duas vezes.
+        falhou antes do ``202`` (rede, gateway fora), a reentrega o
+        completa; se o ``202`` chegou, a mesma ``idempotency_key`` faz o
+        gateway devolver a linha original em vez de mandar duas vezes. Se
+        essa linha já falhou no worker do gateway, ``send_text`` levanta
+        ``ZapSendFailedException`` e a rota responde ``502``: a mesma
+        chave não manda de novo.
 
         Args:
             message (ZapInboundMessage): A mensagem já validada.
@@ -849,7 +852,9 @@ sem gravar nada.
 !!! tip "Por que `text` é `Text` e nulo"
     Mídia sem legenda chega sem `text`, e mensagem de WhatsApp não tem teto
     de 255 caracteres. O `ZapInboundMessageMixin` declara `text` como `Text`
-    nulável; uma coluna `String(255)` obrigatória quebra nos dois casos.
+    nulável. Uma coluna `String(255)` obrigatória recusa a mídia sem legenda
+    em qualquer banco, e o texto longo no PostgreSQL — o SQLite ignora o
+    tamanho declarado e guarda tudo, então o teste em memória não mostra.
 
 ### O seu serviço: a resposta
 

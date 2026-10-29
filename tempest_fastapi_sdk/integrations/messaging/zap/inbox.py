@@ -313,9 +313,10 @@ class ZapInbox(Generic[InboundT, DeliveryT]):
         :meth:`track` already created the row from a callback, the send
         attaches its key and never steps the status down.
 
-        A gateway running without persistence answers ``202`` with ``id``
-        and ``status`` null; the row is then keyed by ``idempotency_key``
-        and starts at ``queued``, and no callback will ever move it.
+        A gateway running without persistence sends inline and answers
+        ``202`` with ``id`` and ``status`` null; the row is then keyed by
+        ``idempotency_key`` and starts at ``sent``, because the message
+        already left, and no callback will ever move it.
 
         Args:
             to (str): The recipient, digits only (``chat_key``, not
@@ -329,7 +330,8 @@ class ZapInbox(Generic[InboundT, DeliveryT]):
 
         Raises:
             ZapSendFailedException: When the ``202`` already says
-                ``failed``. Nothing is recorded.
+                ``failed`` — a reused key whose send failed before. Nothing
+                is recorded.
             httpx.HTTPStatusError: For a non-2xx answer from the gateway.
         """
         accepted: AcceptedResponse = await self.client.send_text(
@@ -339,7 +341,7 @@ class ZapInbox(Generic[InboundT, DeliveryT]):
         if accepted.status == AcceptedResponseStatus.FAILED:
             raise ZapSendFailedException(idempotency_key)
         outbound_id: str = accepted.id or idempotency_key
-        status: str = accepted.status or AcceptedResponseStatus.QUEUED
+        status: str = accepted.status or AcceptedResponseStatus.SENT
         row: DeliveryT | None = await self.deliveries.get_or_none(
             {"idempotency_key": idempotency_key}
         )
