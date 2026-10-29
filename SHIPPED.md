@@ -3924,3 +3924,25 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `TYPE_CHECKING`). Testes: `tests/api/test_route_docs.py`,
   `tests/test_route_docs_coverage_guard.py`, apps em
   `tests/api/route_docs_apps.py`.
+
+## Inbox do zap-api: claim, status e envio (Unreleased)
+
+`integrations.messaging.zap.inbox`, escrito à mão. Fecha o "Fora de escopo"
+da v0.302.0 (persistência/idempotência do consumidor): o Passo 3 da receita
+`zap-inbound` era ~250 linhas que todo consumidor reescrevia, e o
+`punk-store` reescreveu com `exists` antes do insert, `String(255)`
+obrigatório em `text` e status sem `update`.
+
+- `ZapInboundMessageMixin` (`message_id` `UNIQUE`, `chat_key`, `push_name`,
+  `text` `Text` nulo, `media_type`) e `ZapDeliveryMixin` (`outbound_id`
+  `UNIQUE`, `chat_key`, `idempotency_key` `UNIQUE`, `status`, `error`).
+- `ZapInbox(messages, deliveries, client, *, accepted_servers=...)`:
+  `claim` (o `UNIQUE` é o claim, sem `exists`), `track` (upsert por
+  `outbound_id` com `is_forward_transition`, cria a linha do callback que
+  chega antes do envio) e `send_text` (uma linha por `idempotency_key`, sem
+  regredir o status que o `track` já gravou).
+- `ZapInboundOutcome`, `ZapStatusOutcome`; `ZapSendFailedException` (502,
+  `ZAP_SEND_FAILED`).
+- Testes: `tests/integrations/messaging/zap/test_inbox.py`.
+- Fora de escopo: decidir a resposta (regra do consumidor) e baixar mídia
+  (continua `client.get_message_media`).

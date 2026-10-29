@@ -101,6 +101,30 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.integrations.messaging.zap.client import *  # noqa: F403
+    from tempest_fastapi_sdk.integrations.messaging.zap.inbox import (
+        DEFAULT_ACCEPTED_SERVERS as DEFAULT_ACCEPTED_SERVERS,
+    )
+    from tempest_fastapi_sdk.integrations.messaging.zap.inbox import (
+        DeliveryT as DeliveryT,
+    )
+    from tempest_fastapi_sdk.integrations.messaging.zap.inbox import (
+        InboundT as InboundT,
+    )
+    from tempest_fastapi_sdk.integrations.messaging.zap.inbox import (
+        ZapDeliveryMixin as ZapDeliveryMixin,
+    )
+    from tempest_fastapi_sdk.integrations.messaging.zap.inbox import (
+        ZapInboundMessageMixin as ZapInboundMessageMixin,
+    )
+    from tempest_fastapi_sdk.integrations.messaging.zap.inbox import (
+        ZapInboundOutcome as ZapInboundOutcome,
+    )
+    from tempest_fastapi_sdk.integrations.messaging.zap.inbox import (
+        ZapInbox as ZapInbox,
+    )
+    from tempest_fastapi_sdk.integrations.messaging.zap.inbox import (
+        ZapStatusOutcome as ZapStatusOutcome,
+    )
     from tempest_fastapi_sdk.integrations.messaging.zap.router import (
         ZapInboundHandler as ZapInboundHandler,
     )
@@ -155,6 +179,14 @@ if TYPE_CHECKING:
     )
 
 _HAND_WRITTEN: dict[str, str] = {
+    "DEFAULT_ACCEPTED_SERVERS": "inbox",
+    "DeliveryT": "inbox",
+    "InboundT": "inbox",
+    "ZapDeliveryMixin": "inbox",
+    "ZapInbox": "inbox",
+    "ZapInboundMessageMixin": "inbox",
+    "ZapInboundOutcome": "inbox",
+    "ZapStatusOutcome": "inbox",
     "ZAP_INBOUND_EVENT": "webhooks",
     "ZAP_WEBHOOK_SIGNATURE_HEADER": "webhooks",
     "ZAP_WEBHOOK_SIGNATURE_PREFIX": "webhooks",
@@ -263,6 +295,7 @@ def __dir__() -> list[str]:
 
 
 __all__: list[str] = [
+    "DEFAULT_ACCEPTED_SERVERS",
     "DEFAULT_BASE_URL",
     "ZAP_INBOUND_EVENT",
     "ZAP_WEBHOOK_SIGNATURE_HEADER",
@@ -270,10 +303,12 @@ __all__: list[str] = [
     "AcceptedResponse",
     "AcceptedResponseStatus",
     "CheckNumberResponse",
+    "DeliveryT",
     "ErrorResponse",
     "HistoryMessage",
     "HistoryMessageDirection",
     "HistoryResponse",
+    "InboundT",
     "QrResponse",
     "ReactionRequest",
     "ReadRequest",
@@ -296,13 +331,18 @@ __all__: list[str] = [
     "UploadImageForm",
     "UploadVideoForm",
     "ZapClient",
+    "ZapDeliveryMixin",
     "ZapInboundHandler",
     "ZapInboundMediaType",
     "ZapInboundMessage",
+    "ZapInboundMessageMixin",
+    "ZapInboundOutcome",
+    "ZapInbox",
     "ZapJidServer",
     "ZapOutboundKind",
     "ZapStatusCallback",
     "ZapStatusHandler",
+    "ZapStatusOutcome",
     "ZapWebhookAckSchema",
     "ZapWebhookDelivery",
     "ZapWebhookEvent",

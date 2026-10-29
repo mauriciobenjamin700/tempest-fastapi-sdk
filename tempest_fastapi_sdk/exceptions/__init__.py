@@ -51,6 +51,9 @@ from tempest_fastapi_sdk.exceptions.integration import (
 from tempest_fastapi_sdk.exceptions.integration import (
     IntegrationDisabledException as IntegrationDisabledException,
 )
+from tempest_fastapi_sdk.exceptions.integration import (
+    ZapSendFailedException as ZapSendFailedException,
+)
 from tempest_fastapi_sdk.exceptions.jwt import (
     ExpiredTokenException as ExpiredTokenException,
 )
@@ -194,6 +197,7 @@ __all__: list[str] = [
     "UnknownFilterKeyException",
     "ValidationException",
     "ValidationValueError",
+    "ZapSendFailedException",
     "conflict_exception",
     "default_message_catalog",
     "not_found_exception",

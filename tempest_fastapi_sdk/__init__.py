@@ -1398,6 +1398,9 @@ if TYPE_CHECKING:
         ValidationValueError as ValidationValueError,
     )
     from tempest_fastapi_sdk.exceptions import (
+        ZapSendFailedException as ZapSendFailedException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
         conflict_exception as conflict_exception,
     )
     from tempest_fastapi_sdk.exceptions import (
@@ -2718,6 +2721,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "UnknownFilterKeyException": "tempest_fastapi_sdk.exceptions",
     "ValidationException": "tempest_fastapi_sdk.exceptions",
     "ValidationValueError": "tempest_fastapi_sdk.exceptions",
+    "ZapSendFailedException": "tempest_fastapi_sdk.exceptions",
     "conflict_exception": "tempest_fastapi_sdk.exceptions",
     "default_message_catalog": "tempest_fastapi_sdk.exceptions",
     "not_found_exception": "tempest_fastapi_sdk.exceptions",
@@ -3620,6 +3624,7 @@ __all__: list[str] = [
     "WebhookSender",
     "WebhookSignatureVerifier",
     "WhereClause",
+    "ZapSendFailedException",
     "__version__",
     "admin_action",
     "app_exception_handler",
