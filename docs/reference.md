@@ -501,6 +501,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.too_many_requests.TooManyRequestsException
 ::: tempest_fastapi_sdk.exceptions.integration.IntegrationDisabledException
 ::: tempest_fastapi_sdk.exceptions.integration.EmailDeliveryException
+::: tempest_fastapi_sdk.exceptions.integration.ZapSendFailedException
 ::: tempest_fastapi_sdk.exceptions.jwt.InvalidTokenException
 ::: tempest_fastapi_sdk.exceptions.jwt.ExpiredTokenException
 ::: tempest_fastapi_sdk.exceptions.signed_url.InvalidSignedURLException
@@ -825,6 +826,17 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.integrations.messaging.zap.router.ZapStatusHandler
 ::: tempest_fastapi_sdk.integrations.messaging.zap.router.ZapWebhookAckSchema
 ::: tempest_fastapi_sdk.integrations.messaging.zap.router.make_zap_webhook_router
+
+### `tempest_fastapi_sdk.integrations.messaging.zap.inbox`
+
+::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.ZapInboundMessageMixin
+::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.ZapDeliveryMixin
+::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.ZapInboundOutcome
+::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.ZapStatusOutcome
+::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.ZapInbox
+::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.DEFAULT_ACCEPTED_SERVERS
+::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.InboundT
+::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.DeliveryT
 
 ## Mercado Pago
 

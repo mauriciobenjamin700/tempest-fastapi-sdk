@@ -13,8 +13,9 @@ runs:
 2. **The enums** — dispatching on event, media and address type without
    comparing against a loose string.
 3. **The service layer** — `model` → `repository` → `service` →
-   `controller` → `router`, storing each message **once**, replying to the
-   sender and never regressing a status.
+   `controller` → `router` over the SDK's `ZapInbox`, which stores each
+   message **once**, never regresses a status and records each send once;
+   you only write the reply.
 4. **The test** — deliveries signed the way the gateway signs, with no
    gateway running.
 
@@ -475,225 +476,157 @@ anyway — `callback.kind == ZapOutboundKind.REACTION`.
 ## Step 3 — The service layer
 
 So far the rules live in the route. In a real service they go into layers,
-each with a single job:
+and most of them **come ready-made**: storing each message once, never
+regressing a status and recording each send once per key are the same for
+every consumer of the gateway, so the SDK ships them as `ZapInbox`. What is
+left for you is the rule that is yours alone — whom to answer, and with what.
 
 | Layer | Job here |
 | --- | --- |
-| **model** | the tables: incoming message (`UNIQUE` on `message_id`) and send status (`UNIQUE` on `outbound_id`) |
-| **repository** | the SDK's `BaseRepository` — `add`, `get_or_none`, `update` |
-| **service** | the rules: filter the sender, download media, store once, reply, apply status only forward |
-| **controller** | pick the service method by the body the delivery carries |
+| **model** | two tables, each with a mixin: `ZapInboundMessageMixin` (`UNIQUE` on `message_id`) and `ZapDeliveryMixin` (`UNIQUE` on `outbound_id`) |
+| **repository** | the SDK's `BaseRepository`, one per table |
+| **service** | `ZapInbox` does `claim`, `track` and `send_text`; your service decides the reply |
+| **controller** | pick the method by the body the delivery carries |
 | **router** | receive the `POST`, verify through the dependency and delegate — one line |
 
 The file below holds all of them, in order, so the example runs. The
 `fake_gateway` stands in for the gateway through an `httpx.MockTransport`:
-it accepts the `send-text` (answering `deduped=True` when the
-`idempotency-key` repeats, like the real gateway) and serves 2 KiB of media.
+it accepts the `send-text` with one outbox row per `idempotency-key`
+(answering `deduped=True` when the key repeats, like the real gateway).
 
-```python title="zap_service.py" hl_lines="64 76 138 157 162 179 284"
+```python title="zap_service.py"
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Depends, FastAPI, Request
-from sqlalchemy import String
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
     AsyncDatabaseManager,
     BaseModel,
     BaseRepository,
-    BaseStrEnum,
     HTTPClient,
 )
-from tempest_fastapi_sdk.exceptions import ConflictException
 from tempest_fastapi_sdk.integrations.messaging.zap import (
-    SendTextRequest,
     ZapClient,
+    ZapDeliveryMixin,
     ZapInboundMessage,
-    ZapJidServer,
-    ZapStatusCallback,
+    ZapInboundMessageMixin,
+    ZapInboundOutcome,
+    ZapInbox,
+    ZapStatusOutcome,
     ZapWebhookDelivery,
-    is_forward_transition,
     make_zap_webhook_dependency,
 )
 from tempest_fastapi_sdk.schemas import BaseSchema
 
-
-SENT_KEYS: set[str] = set()
+OUTBOX: dict[str, str] = {}
 
 
 def fake_gateway(request: httpx.Request) -> httpx.Response:
-    """Stand in for the gateway: accept the send and serve the media.
+    """Stand in for the gateway: one outbox row per ``idempotency-key``.
 
     Args:
         request (httpx.Request): The call the ``ZapClient`` made.
 
     Returns:
-        httpx.Response: What the gateway would answer — ``deduped=True``
-        when the ``idempotency-key`` was already used.
+        httpx.Response: The ``202`` the gateway would answer —
+        ``deduped=True`` when the key was already used.
     """
-    if request.url.path == "/message/send-text":
-        key: str = request.headers["idempotency-key"]
-        deduped: bool = key in SENT_KEYS
-        SENT_KEYS.add(key)
-        print(f"  gateway: send-text key={key} deduped={deduped}")
-        return httpx.Response(
-            202, json={"id": "out-1", "status": "queued", "deduped": deduped}
-        )
-    return httpx.Response(200, content=b"\x00" * 2048)
+    key: str = request.headers["idempotency-key"]
+    deduped: bool = key in OUTBOX
+    if not deduped:
+        OUTBOX[key] = f"out-{len(OUTBOX) + 1}"
+    print(f"  gateway: send-text key={key} id={OUTBOX[key]} deduped={deduped}")
+    return httpx.Response(
+        202, json={"id": OUTBOX[key], "status": "queued", "deduped": deduped}
+    )
 
 
 db: AsyncDatabaseManager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
 verify_zap = make_zap_webhook_dependency(secret="my-secret")
 
 
-class ZapMessageModel(BaseModel):
-    """An incoming message, stored exactly once."""
+class ZapMessageModel(BaseModel, ZapInboundMessageMixin):
+    """An incoming message, stored only once."""
 
     __tablename__ = "zap_messages"
 
-    message_id: Mapped[str] = mapped_column(String(128), unique=True)
-    chat_key: Mapped[str | None] = mapped_column(String(32), default=None)
-    text: Mapped[str | None] = mapped_column(default=None)
-    media_type: Mapped[str | None] = mapped_column(String(16), default=None)
-    media_size: Mapped[int | None] = mapped_column(default=None)
 
-
-class ZapDeliveryModel(BaseModel):
+class ZapDeliveryModel(BaseModel, ZapDeliveryMixin):
     """The last known status of a sent message."""
 
     __tablename__ = "zap_deliveries"
 
-    outbound_id: Mapped[str] = mapped_column(String(64), unique=True)
-    status: Mapped[str] = mapped_column(String(16))
 
-
-class ZapOutcomeEnum(BaseStrEnum):
-    """What the service did with a delivery — the route's answer."""
-
-    STORED = "stored"
-    DUPLICATE = "duplicate"
-    MEDIA_LOST = "media-lost"
-    SKIPPED = "skipped"
-    APPLIED = "applied"
-    STALE = "stale"
-    IGNORED = "ignored"
+Outcome = ZapInboundOutcome | ZapStatusOutcome | Literal["ignored"]
 
 
 class ZapWebhookResponseSchema(BaseSchema):
     """Body of the answer to the gateway.
 
     Attributes:
-        outcome (ZapOutcomeEnum): What happened to the delivery.
+        outcome (Outcome): What happened to the delivery.
     """
 
-    outcome: ZapOutcomeEnum
+    outcome: Outcome
 
 
-class ZapInboxService:
-    """WhatsApp business rules: store, reply and track sends."""
+class ZapBotService:
+    """The rule that is yours alone: whom to answer, and with what."""
 
-    def __init__(
-        self,
-        messages: BaseRepository[ZapMessageModel],
-        deliveries: BaseRepository[ZapDeliveryModel],
-        client: ZapClient,
-    ) -> None:
-        """Store the collaborators.
+    def __init__(self, inbox: ZapInbox[ZapMessageModel, ZapDeliveryModel]) -> None:
+        """Keep the inbox.
 
         Args:
-            messages (BaseRepository[ZapMessageModel]): Incoming messages.
-            deliveries (BaseRepository[ZapDeliveryModel]): Send statuses.
-            client (ZapClient): The gateway client.
+            inbox (ZapInbox[ZapMessageModel, ZapDeliveryModel]): Storage,
+                status and sending.
         """
-        self.messages: BaseRepository[ZapMessageModel] = messages
-        self.deliveries: BaseRepository[ZapDeliveryModel] = deliveries
-        self.client: ZapClient = client
+        self.inbox: ZapInbox[ZapMessageModel, ZapDeliveryModel] = inbox
 
-    async def receive(self, message: ZapInboundMessage) -> ZapOutcomeEnum:
-        """Store an incoming message and reply to the sender.
+    async def receive(self, message: ZapInboundMessage) -> ZapInboundOutcome:
+        """Store the message and reply to the sender.
 
-        The ``UNIQUE`` on ``message_id`` is the claim: the gateway's
-        redelivery hits it and becomes ``duplicate``. The reply goes out
-        on both paths, with an ``idempotency_key`` derived from
-        ``message_id``: if the send failed on the first delivery, the
-        redelivery completes it; if it did not, the gateway answers with
-        the original row (``deduped=True``) instead of sending twice.
+        The reply goes out on ``stored`` **and** on ``duplicate``: if the
+        send failed on the first delivery, the re-delivery completes it; if
+        it did not, the same ``idempotency_key`` makes the gateway return
+        the original row instead of sending twice.
 
         Args:
-            message (ZapInboundMessage): The validated message.
+            message (ZapInboundMessage): The already validated message.
 
         Returns:
-            ZapOutcomeEnum: What happened to it.
+            ZapInboundOutcome: What the inbox did with it.
         """
-        if message.from_server not in (ZapJidServer.USER, ZapJidServer.LID):
-            return ZapOutcomeEnum.SKIPPED
-        if message.media_type is not None and message.media_url is None:
-            return ZapOutcomeEnum.MEDIA_LOST
-        media_size: int | None = None
-        if message.media_type is not None:
-            media: bytes = await self.client.get_message_media(message.message_id)
-            media_size = len(media)
-        stored: bool = True
-        try:
-            await self.messages.add(
-                ZapMessageModel(
-                    message_id=message.message_id,
-                    chat_key=message.chat_key,
-                    text=message.text,
-                    media_type=message.media_type,
-                    media_size=media_size,
-                )
-            )
-        except ConflictException:
-            stored = False
-        if message.chat_key is not None:
-            await self.client.send_text(
-                body=SendTextRequest(to=message.chat_key, text="Got it, thanks!"),
+        outcome: ZapInboundOutcome = await self.inbox.claim(message)
+        replyable: bool = outcome in (
+            ZapInboundOutcome.STORED,
+            ZapInboundOutcome.DUPLICATE,
+        )
+        if replyable and message.chat_key is not None:
+            await self.inbox.send_text(
+                message.chat_key,
+                "Got it, thanks!",
                 idempotency_key=f"reply-{message.message_id}",
             )
-        return ZapOutcomeEnum.STORED if stored else ZapOutcomeEnum.DUPLICATE
-
-    async def track(self, callback: ZapStatusCallback) -> ZapOutcomeEnum:
-        """Apply a send status only when it advances the stored one.
-
-        Args:
-            callback (ZapStatusCallback): The validated status.
-
-        Returns:
-            ZapOutcomeEnum: ``applied`` or ``stale``.
-        """
-        row: ZapDeliveryModel | None = await self.deliveries.get_or_none(
-            filters={"outbound_id": callback.id}
-        )
-        current: str | None = row.status if row is not None else None
-        if not is_forward_transition(current, callback.status):
-            return ZapOutcomeEnum.STALE
-        if row is None:
-            await self.deliveries.add(
-                ZapDeliveryModel(outbound_id=callback.id, status=callback.status)
-            )
-        else:
-            row.status = callback.status
-            await self.deliveries.update(row)
-        return ZapOutcomeEnum.APPLIED
+        return outcome
 
 
 class ZapWebhookController:
-    """Route a gateway delivery to the right service method."""
+    """Connect the gateway's delivery to the right method."""
 
-    def __init__(self, service: ZapInboxService) -> None:
-        """Store the service.
+    def __init__(self, service: ZapBotService) -> None:
+        """Keep the service.
 
         Args:
-            service (ZapInboxService): The business rules.
+            service (ZapBotService): The business rules.
         """
-        self.service: ZapInboxService = service
+        self.service: ZapBotService = service
 
     async def handle(self, delivery: ZapWebhookDelivery) -> ZapWebhookResponseSchema:
-        """Dispatch on the body the delivery carries.
+        """Dispatch on the body the delivery carried.
 
         Args:
             delivery (ZapWebhookDelivery): The verified delivery.
@@ -701,12 +634,11 @@ class ZapWebhookController:
         Returns:
             ZapWebhookResponseSchema: What happened, always with ``200``.
         """
+        outcome: Outcome = "ignored"
         if delivery.inbound is not None:
-            outcome: ZapOutcomeEnum = await self.service.receive(delivery.inbound)
+            outcome = await self.service.receive(delivery.inbound)
         elif delivery.status is not None:
-            outcome = await self.service.track(delivery.status)
-        else:
-            outcome = ZapOutcomeEnum.IGNORED
+            outcome = await self.service.inbox.track(delivery.status)
         return ZapWebhookResponseSchema(outcome=outcome)
 
 
@@ -717,16 +649,16 @@ def get_zap_client(request: Request) -> ZapClient:
         request (Request): The current request.
 
     Returns:
-        ZapClient: The client the application shares.
+        ZapClient: The client shared by the application.
     """
     client: ZapClient = request.app.state.zap
     return client
 
 
-def get_zap_inbox_service(
+def get_zap_bot_service(
     session: AsyncSession = Depends(db.session_dependency),
     client: ZapClient = Depends(get_zap_client),
-) -> ZapInboxService:
+) -> ZapBotService:
     """Build the service over the request's session.
 
     Args:
@@ -734,25 +666,27 @@ def get_zap_inbox_service(
         client (ZapClient): The gateway client.
 
     Returns:
-        ZapInboxService: The service.
+        ZapBotService: The ready service.
     """
-    return ZapInboxService(
-        messages=BaseRepository(session, model=ZapMessageModel),
-        deliveries=BaseRepository(session, model=ZapDeliveryModel),
-        client=client,
+    return ZapBotService(
+        ZapInbox(
+            BaseRepository(session, model=ZapMessageModel),
+            BaseRepository(session, model=ZapDeliveryModel),
+            client,
+        )
     )
 
 
 def get_zap_webhook_controller(
-    service: ZapInboxService = Depends(get_zap_inbox_service),
+    service: ZapBotService = Depends(get_zap_bot_service),
 ) -> ZapWebhookController:
     """Build the controller over the service.
 
     Args:
-        service (ZapInboxService): The request's service.
+        service (ZapBotService): The request's service.
 
     Returns:
-        ZapWebhookController: The controller.
+        ZapWebhookController: The ready controller.
     """
     return ZapWebhookController(service)
 
@@ -839,11 +773,11 @@ with TestClient(app) as client:
 
 ```console
 $ python run_service.py
-  gateway: send-text key=reply-A1 deduped=False
+  gateway: send-text key=reply-A1 id=out-1 deduped=False
 text           200 {'outcome': 'stored'}
-  gateway: send-text key=reply-A1 deduped=True
+  gateway: send-text key=reply-A1 id=out-1 deduped=True
 same delivery  200 {'outcome': 'duplicate'}
-  gateway: send-text key=reply-A2 deduped=False
+  gateway: send-text key=reply-A2 id=out-2 deduped=False
 audio          200 {'outcome': 'stored'}
 lost audio     200 {'outcome': 'media-lost'}
 group          200 {'outcome': 'skipped'}
@@ -854,79 +788,104 @@ new event      200 {'outcome': 'ignored'}
 ```
 
 `run_service.py` reuses the `inbound`, `status` and `post` helpers from the
-step 4 test. The second delivery's `ConflictException` also shows up in the
-log, as a `WARNING` from `BaseRepository`
-(`IntegrityError on ZapMessageModel.add: unique violation; table=zap_messages;
-columns=message_id; ...`) — that is the claim working, not an error.
+step 4 test. The second delivery also shows up in the log, as a `WARNING`
+from `BaseRepository` (`IntegrityError on ZapMessageModel.add: unique
+violation; table=zap_messages; columns=message_id; ...`) — that is the claim
+working, not an error.
 
-Now each layer.
+Now each piece.
 
-### The service: all the rules in one place
+### What `ZapInbox` does for you
 
-**Idempotency by `messageId`.** Deliveries go through the gateway's
+**`claim`: idempotency by `messageId`.** Deliveries go through the gateway's
 `callback_deliveries` queue, with retries: the same message arrives more than
-once when your answer is lost, or when the gateway restarts in the middle of
-a `POST`. The `UNIQUE` on `message_id` is the claim — the second insert hits
-it, `BaseRepository.add` raises `ConflictException`, and the service returns
-`duplicate`. No in-memory `set`, no race between replicas. See
-[Idempotency](idempotency.md) for the same reasoning applied to your own
-routes.
+once when your answer is lost, or when the gateway restarts mid-`POST`. The
+`UNIQUE` on `message_id` is the claim — the insert of whoever arrives second
+hits it and `claim` returns `duplicate`. There is no `exists` before the
+insert: two replicas checking at the same time would both see "not there"
+and both store. A conflict whose `message_id` is **not** stored is not a
+duplicate (another constraint on your table refused the row) and is raised.
+See [Idempotency](idempotency.md) for the same reasoning on your own routes.
 
-**The reply goes out on both paths.** If the service replied only on
-`stored`, a send that failed after the insert would never be retried: the
-redelivery would land on `duplicate`. So the reply always goes out, with
-`idempotency_key=f"reply-{message_id}"` — on the redelivery the gateway
-answers with the original row and `deduped=True` instead of sending twice
-(the second `gateway:` line of the output above).
+**`claim`: only a person's conversation.** `accepted_servers` defaults to
+`ZapJidServer.USER` and `ZapJidServer.LID`; groups, broadcasts and channels
+come back `skipped` without being stored. Pass another `frozenset` to accept
+more.
+
+**`claim`: media only through the gateway.** The gateway downloads the media
+when the message arrives, and WhatsApp does not serve it again afterwards.
+`claim` downloads nothing: it stores the `media_type`, and whoever needs the
+bytes calls `client.get_message_media(message_id)`. When `media_type` is set
+and `media_url` is `None`, the download failed or went over
+`MEDIA_MAX_BYTES`: the row is stored and `claim` returns `media-lost`.
+
+**`track`: status out of order, and before the send.** Each delivery has its
+own retry and backoff, so a `sent` whose first `POST` failed can land after
+the `delivered`. And the gateway guards its **own** row against regression,
+but sends the callback anyway. `track` applies the status only when
+`is_forward_transition(current, new)` says it moves forward:
+
+- the ladder is `queued < sending < sent < delivered < read`;
+- repeating the current status, or stepping down the ladder, is not forward;
+- `failed` is terminal — nothing overwrites it —, and it only overwrites
+  `queued`, `sending` and `sent`, because `delivered` and `read` already prove
+  the message arrived; the callback's `error` goes to the `error` column.
+
+The row is keyed by the callback's `id` — the outbox row the send's `202`
+returned — and is **created** when it does not exist: the gateway can call
+back before the send was committed, and answering `404` would only spend its
+retries.
+
+**`send_text`: one record per key.** The send stores the delivery row with
+the `202`'s `id` and the `idempotency_key`. On a re-delivery, the same key
+makes the gateway answer `deduped=True`, and `send_text` finds the row by the
+key instead of creating another. If `track` already created the row from a
+callback, `send_text` only attaches the key — and never steps the status
+down. A `202` that is already `failed` raises `ZapSendFailedException`
+(`502`, `code="ZAP_SEND_FAILED"`) and records nothing.
+
+!!! note "The commit belongs to `BaseRepository`, not to the session"
+    `db.session_dependency` does **not** commit at the end of the request.
+    Every `ZapInbox` write goes through `BaseRepository.add` or `update`,
+    which commit. Changing a row's attribute without calling `update` looks
+    like it works in a test and stores nothing.
+
+!!! tip "Why `text` is `Text` and nullable"
+    A media message without a caption arrives without `text`, and a WhatsApp
+    message has no 255-character ceiling. `ZapInboundMessageMixin` declares
+    `text` as a nullable `Text`; a required `String(255)` column breaks in
+    both cases.
+
+### Your service: the reply
+
+`ZapBotService.receive` calls `claim` and replies on both paths, `stored`
+**and** `duplicate`. If it replied only on `stored`, a send that failed after
+the insert would never be redone: the re-delivery would land on `duplicate`.
+With `idempotency_key=f"reply-{message_id}"`, on the re-delivery the gateway
+returns the original row with `deduped=True` instead of sending twice (the
+second `gateway:` line of the output above).
 
 **`chatKey`, not `from`.** `from_` is the raw address, and the same person
 can arrive through a number and later through a LID — grouping by `from_`
 splits one conversation in two. `chat_key` is the number's digits, already
 resolved by the gateway from the LID; it is also the `to` that `send_text`
-accepts. It is `None` for a group, a broadcast, a channel and a LID the
-gateway could not map — then there is nobody to reply to, and the service
-only stores.
-
-**Media only through the gateway.** The gateway downloads the media when the
-message arrives, and WhatsApp does not serve it again later. `media_url`
-points at `GET /message/{messageId}/media` on the gateway, and
-`ZapClient.get_message_media(message_id)` reads those bytes with your
-`x-api-key`. When `media_type` is set and `media_url` is `None`, the download
-failed or exceeded `MEDIA_MAX_BYTES`: the media is lost, retrying does not
-help, and the service returns `media-lost`. The download comes **before** the
-insert: if it fails, the route answers an error, the gateway redelivers, and
-the message has not been claimed yet.
-
-**Out-of-order statuses.** Each delivery has its own retry and backoff, so a
-`sent` whose first `POST` failed can land after the `delivered`. And the
-gateway protects its **own** row against regression but sends the callback
-anyway: a late `delivered` after a `read` reaches you.
-`is_forward_transition(current, new)` tells whether the new status advances
-what you stored:
-
-- the ladder is `queued < sending < sent < delivered < read`;
-- repeating the current status, or stepping down the ladder, is not forward;
-- `failed` is terminal — nothing overwrites it;
-- `failed` overwrites only `queued`, `sending` and `sent`, because
-  `delivered` and `read` already prove the message arrived.
-
-`current` accepts `str` because that is what the column stores. Key on the
-callback's `id` — the outbox row the send's `202` answered.
+accepts. It is `None` for a LID the gateway could not map — `claim` stores
+it, but there is no one to reply to.
 
 ### The controller: pick the path, nothing else
 
 `ZapWebhookController.handle` looks at which body the delivery carries and
-calls `receive` or `track`. It opens no session, decides no rule, knows
-nothing about the gateway. If tomorrow the same event must trigger two
-things (store and notify another service), this is where both calls meet.
+calls `receive` or `inbox.track`. It opens no session, decides no rule, knows
+nothing about the gateway. If tomorrow the same event must trigger two things
+(store and notify another service), this is where both calls meet.
 
 ### The dependencies and the router
 
-`get_zap_inbox_service` builds the service over the request's session
+`get_zap_bot_service` builds the `ZapInbox` over the request's session
 (`db.session_dependency`) and over the `ZapClient` the `lifespan` opened and
 kept in `app.state`; `get_zap_webhook_controller` builds the controller over
-the service. The router receives both through `Depends` and is left with a
-single line, `return await controller.handle(delivery)`.
+the service. The router receives both through `Depends` and keeps a single
+line, `return await controller.handle(delivery)`.
 
 !!! note "Why the `ZapClient` is born in the `lifespan`"
     A closed `HTTPClient` does not reopen. Created at module level, it
@@ -945,15 +904,15 @@ src/
 ├── api/
 │   ├── dependencies/
 │   │   ├── controllers.py   # get_zap_webhook_controller
-│   │   └── services.py      # get_zap_client, get_zap_inbox_service
+│   │   └── services.py      # get_zap_client, get_zap_bot_service
 │   └── routers/
 │       └── webhooks.py      # router + receive_zap
 ├── controllers/
 │   └── zap_webhook.py       # ZapWebhookController
 ├── services/
-│   └── zap_inbox.py         # ZapInboxService
+│   └── zap_bot.py           # ZapBotService (over the SDK's ZapInbox)
 ├── schemas/
-│   └── zap.py               # ZapOutcomeEnum, ZapWebhookResponseSchema
+│   └── zap.py               # ZapWebhookResponseSchema
 └── db/
     └── models/
         └── zap.py           # ZapMessageModel, ZapDeliveryModel
@@ -1126,13 +1085,15 @@ test_zap_service.py::test_unknown_event_is_200 PASSED
   `ZapJidServer`, `ZapOutboundKind`, `AcceptedResponseStatus` — not loose
   strings; `is` on the envelope and on `from_server`, `==` on body fields.
 - Filter on `from_server`: groups, status stories and channels arrive too.
-- Idempotency through `UNIQUE` on `message_id` (inbound) and `id` (status);
-  the reply to the sender uses an `idempotency_key` derived from
-  `message_id`.
+- `ZapInbox` + `ZapInboundMessageMixin` / `ZapDeliveryMixin` bring
+  idempotency through `UNIQUE` on `message_id` (inbound) and `outbound_id`
+  (status and send); the reply to the sender uses an `idempotency_key`
+  derived from `message_id`.
 - Group and reply by `chat_key`; `None` is a group or a LID with no number.
 - Media only through `get_message_media`, and `media_url: None` with
   `media_type` means lost.
-- `is_forward_transition` before writing any status.
+- `ZapInbox.track` applies `is_forward_transition` before writing any
+  status, and creates the row of a callback that arrives before the send.
 - Router → controller → service → repository: the route keeps one line, and
   the rules are testable without HTTP.
 

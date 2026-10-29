@@ -74,7 +74,40 @@ class EmailDeliveryException(AppException):
     code: str = "EMAIL_UNAVAILABLE"
 
 
+class ZapSendFailedException(AppException):
+    """Raised when the zap-api gateway accepts a send already as ``failed``.
+
+    :meth:`~tempest_fastapi_sdk.integrations.messaging.zap.ZapInbox.send_text`
+    raises it when the ``202`` carries ``status="failed"``: the gateway took
+    the request and refused the message on the spot, so there is no
+    delivery to track. It is a ``502`` because the failure is the
+    downstream gateway's, not the caller's request.
+
+    ``details["idempotency_key"]`` names the send, so a retry can reuse the
+    key — the gateway answers the same failed row with ``deduped=True``
+    rather than trying again, so a real retry needs a fresh key.
+
+    Attributes:
+        idempotency_key (str): The key the refused send went out with.
+    """
+
+    status_code: int = 502
+    message: str = "The WhatsApp gateway refused the message"
+    code: str = "ZAP_SEND_FAILED"
+    details_example: ClassVar[dict[str, Any]] = {"idempotency_key": "reply-ABCD1234"}
+
+    def __init__(self, idempotency_key: str) -> None:
+        """Initialize the exception.
+
+        Args:
+            idempotency_key (str): The key the refused send went out with.
+        """
+        self.idempotency_key: str = idempotency_key
+        super().__init__(details={"idempotency_key": idempotency_key})
+
+
 __all__: list[str] = [
     "EmailDeliveryException",
     "IntegrationDisabledException",
+    "ZapSendFailedException",
 ]
