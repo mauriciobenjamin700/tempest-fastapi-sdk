@@ -28,6 +28,35 @@ from sqlalchemy.engine import make_url
 from tempest_fastapi_sdk.db.migrations import _strip_async_driver
 from tempest_fastapi_sdk.utils.datetime import utcnow
 
+BACKUP_DIR_MODE: int = 0o700
+"""Mode of a backup directory :meth:`DatabaseBackup.backup` creates."""
+
+BACKUP_FILE_MODE: int = 0o600
+"""Mode of every dump :meth:`DatabaseBackup.backup` writes.
+
+A dump is a full copy of the database — password hashes, TOTP seeds,
+refresh-token hashes — so it gets the same owner-only treatment the CLI
+gives ``.env``, whatever the process umask is.
+"""
+
+
+def _open_backup_file(dest: Path) -> None:
+    """Create ``dest`` empty and owner-only before anything is written.
+
+    The parent directory is created with :data:`BACKUP_DIR_MODE` when
+    missing (an existing directory keeps its mode). The file is created
+    with :data:`BACKUP_FILE_MODE`, and an existing file is truncated and
+    restricted, so the dump never exists, even for a moment, with the
+    umask's wider mode.
+
+    Args:
+        dest (Path): The backup file about to be written.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True, mode=BACKUP_DIR_MODE)
+    fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, BACKUP_FILE_MODE)
+    os.close(fd)
+    dest.chmod(BACKUP_FILE_MODE)
+
 
 class BackupToolMissingError(RuntimeError):
     """Raised when a required CLI tool (pg_dump/pg_restore/psql) is absent."""
@@ -272,7 +301,9 @@ class DatabaseBackup:
                 SQLite.
 
         Returns:
-            Path: The path the backup was written to.
+            Path: The path the backup was written to. The file is created
+            owner-only (:data:`BACKUP_FILE_MODE`), and a directory this
+            call creates for it is :data:`BACKUP_DIR_MODE`.
 
         Raises:
             UnsupportedBackupBackendError: For an unsupported dialect.
@@ -294,16 +325,23 @@ class DatabaseBackup:
             fmt = [] if plain else ["-Fc"]
             if self.docker_container is not None:
                 prefix, conn, env = self._docker_pg("pg_dump")
-                dest.parent.mkdir(parents=True, exist_ok=True)
+                _open_backup_file(dest)
                 _run_to_file([*prefix, *fmt, *conn], dest, env=env)
             else:
                 tool = _require_tool("pg_dump")
                 conn, env = self._pg_conn()
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                _run([tool, *fmt, "-f", str(dest), *conn], env=env)
+                _open_backup_file(dest)
+                try:
+                    _run([tool, *fmt, "-f", str(dest), *conn], env=env)
+                except RuntimeError:
+                    dest.unlink(missing_ok=True)
+                    raise
         elif self.backend == "sqlite":
             source = self._sqlite_path()
-            self._sqlite_copy(source, dest)
+            if not source.is_file():
+                raise RuntimeError(f"SQLite database file not found: {source}")
+            _open_backup_file(dest)
+            shutil.copyfile(source, dest)
         else:
             raise UnsupportedBackupBackendError(
                 f"backup is not supported for backend {self.backend!r}."

@@ -7,6 +7,7 @@ loading anything.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -168,20 +169,23 @@ class TestDescribeImageTool:
         assert vision.seen[0][1] == b"\x89PNG-fake"
 
     @pytest.mark.asyncio
-    async def test_accepts_a_path_instead(self) -> None:
+    async def test_accepts_a_path_under_the_root(self, tmp_path: Path) -> None:
+        image = tmp_path / "x.png"
+        image.write_bytes(b"\x89PNG-fake")
         vision = FakeVision()
-        tool = describe_image_tool(vision)
-        await tool.invoke({"path": "/tmp/x.png"}, AgentContext())
-        assert vision.seen[0][1] == "/tmp/x.png"
+        tool = describe_image_tool(vision, path_root=tmp_path)
+        await tool.invoke({"path": "x.png"}, AgentContext())
+        assert vision.seen[0][1] == str(image.resolve())
 
     @pytest.mark.asyncio
     async def test_custom_question_is_forwarded(self) -> None:
         vision = FakeVision()
         tool = describe_image_tool(vision)
-        await tool.invoke(
-            {"path": "/tmp/x.png", "question": "What colour?"},
-            AgentContext(),
+        context = AgentContext()
+        context.artifacts["x.png"] = AgentArtifact(
+            name="x.png", media_type="image/png", data=b"x"
         )
+        await tool.invoke({"artifact": "x.png", "question": "What colour?"}, context)
         assert vision.seen[0][0] == "What colour?"
 
     @pytest.mark.asyncio
@@ -205,10 +209,11 @@ class TestDescribeImageTool:
 
 class TestAudioTools:
     @pytest.mark.asyncio
-    async def test_transcribe_reports_the_language(self) -> None:
+    async def test_transcribe_reports_the_language(self, tmp_path: Path) -> None:
+        (tmp_path / "a.wav").write_bytes(b"RIFF")
         stt = FakeSTT()
-        tool = transcribe_audio_tool(stt)
-        result = await tool.invoke({"path": "/tmp/a.wav"}, AgentContext())
+        tool = transcribe_audio_tool(stt, path_root=tmp_path)
+        result = await tool.invoke({"path": "a.wav"}, AgentContext())
         assert result.text == "[pt] olá mundo"
 
     @pytest.mark.asyncio
@@ -225,10 +230,11 @@ class TestAudioTools:
         assert stt.seen[0][0] == b"RIFF"
 
     @pytest.mark.asyncio
-    async def test_language_hint_is_forwarded(self) -> None:
+    async def test_language_hint_is_forwarded(self, tmp_path: Path) -> None:
+        (tmp_path / "a.wav").write_bytes(b"RIFF")
         stt = FakeSTT()
-        tool = transcribe_audio_tool(stt)
-        await tool.invoke({"path": "/tmp/a.wav", "language": "pt"}, AgentContext())
+        tool = transcribe_audio_tool(stt, path_root=tmp_path)
+        await tool.invoke({"path": "a.wav", "language": "pt"}, AgentContext())
         assert stt.seen[0][1] == "pt"
 
     @pytest.mark.asyncio
@@ -368,3 +374,84 @@ class TestArtifactNamesDoNotCollide:
         )
         with pytest.raises(AgentToolError, match="already exists"):
             await tool.invoke({"prompt": "cat", "filename": "a.png"}, context)
+
+
+class TestPathConfinement:
+    """A model-written ``path`` is off by default and confined when on."""
+
+    @pytest.fixture
+    def layout(self, tmp_path: Path) -> tuple[Path, Path]:
+        """Build an allowed root next to a private directory.
+
+        Args:
+            tmp_path (Path): The test's scratch directory.
+
+        Returns:
+            tuple[Path, Path]: The allowed root and a private file outside it.
+        """
+        root = tmp_path / "allowed"
+        root.mkdir()
+        (root / "ok.png").write_bytes(b"ok")
+        (root / "folder").mkdir()
+        private = tmp_path / "victim" / "id.png"
+        private.parent.mkdir()
+        private.write_bytes(b"secret")
+        return root, private
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("factory", [describe_image_tool, transcribe_audio_tool])
+    async def test_path_is_disabled_by_default(
+        self, factory: Any, layout: tuple[Path, Path]
+    ) -> None:
+        _root, private = layout
+        model = FakeVision() if factory is describe_image_tool else FakeSTT()
+        tool = factory(model)
+        assert "path" not in tool.parameters["properties"]
+        assert "'path'" not in tool.description
+        with pytest.raises(AgentToolError, match="disabled"):
+            await tool.invoke({"path": str(private)}, AgentContext())
+        assert model.seen == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("factory", [describe_image_tool, transcribe_audio_tool])
+    async def test_root_advertises_path(
+        self, factory: Any, layout: tuple[Path, Path]
+    ) -> None:
+        root, _private = layout
+        model = FakeVision() if factory is describe_image_tool else FakeSTT()
+        tool = factory(model, path_root=root)
+        assert "path" in tool.parameters["properties"]
+        assert "'path'" in tool.description
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("factory", [describe_image_tool, transcribe_audio_tool])
+    async def test_escapes_and_misses_share_one_error(
+        self, factory: Any, layout: tuple[Path, Path]
+    ) -> None:
+        root, private = layout
+        (root / "link.png").symlink_to(private)
+        model = FakeVision() if factory is describe_image_tool else FakeSTT()
+        tool = factory(model, path_root=root)
+        messages: set[str] = set()
+        for path in [
+            str(private),
+            "../victim/id.png",
+            "folder/../../victim/id.png",
+            "link.png",
+            "missing.png",
+            "folder",
+            "/etc/passwd",
+            "http://127.0.0.1:9/internal/admin-only.wav",
+            "file:///etc/passwd",
+        ]:
+            with pytest.raises(AgentToolError) as info:
+                await tool.invoke({"path": path}, AgentContext())
+            messages.add(str(info.value))
+        assert len(messages) == 1
+        assert model.seen == []
+
+    @pytest.mark.asyncio
+    async def test_root_must_be_a_directory(self, layout: tuple[Path, Path]) -> None:
+        root, _private = layout
+        with pytest.raises(ValueError):
+            describe_image_tool(FakeVision(), path_root=root / "ok.png")

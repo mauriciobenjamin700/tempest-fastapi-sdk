@@ -9,6 +9,7 @@ import pytest
 
 pywebpush = pytest.importorskip("pywebpush")
 
+from tempest_fastapi_sdk.webpush import dispatcher as dispatcher_module  # noqa: E402
 from tempest_fastapi_sdk.webpush.dispatcher import (  # noqa: E402
     WebPushDispatcher,
     WebPushError,
@@ -19,6 +20,32 @@ from tempest_fastapi_sdk.webpush.schemas import (  # noqa: E402
     WebPushPayloadSchema,
     WebPushSubscriptionSchema,
 )
+
+
+@pytest.fixture(autouse=True)
+def _public_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resolve every push host to a public address without touching DNS.
+
+    The dispatcher now checks where an endpoint resolves before sending;
+    these tests stub ``pywebpush`` and are about status mapping, so the
+    lookup answers a fixed public IP instead of going to the network.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Swaps the default resolver.
+    """
+
+    async def resolver(host: str) -> list[str]:
+        """Answer a documentation-safe public address.
+
+        Args:
+            host (str): The hostname being resolved.
+
+        Returns:
+            list[str]: A single public IPv4 address.
+        """
+        return ["93.184.216.34"]
+
+    monkeypatch.setattr(dispatcher_module, "system_resolver", resolver)
 
 
 def _subscription(

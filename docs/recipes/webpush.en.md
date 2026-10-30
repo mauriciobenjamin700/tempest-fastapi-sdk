@@ -495,6 +495,43 @@ async def notify_order_paid(
         await service.unsubscribe(subscription.endpoint)
 ```
 
+### Where a dispatch goes
+
+The `endpoint` was chosen by the subscriber's browser, so
+`WebPushDispatcher` treats every dispatch as egress to an untrusted
+destination:
+
+- the endpoint host is resolved and **every** address in the answer must be
+  public — loopback, private networks, link-local (including
+  `169.254.169.254`), CGNAT and the like are refused with `WebPushError`,
+  before any request (the same rule as the RAG `ContentExtractor`);
+- the connection goes to the address that passed the check, with `Host`,
+  SNI and the certificate check on the original name — a different second
+  DNS answer never reaches the socket;
+- redirects are **not** followed: a `3xx` becomes a `WebPushError` whose
+  `status_code` is the redirect status;
+- every dispatch has a `timeout` (10 s by default,
+  to connect and for each read); a timeout or connection error becomes a
+  `WebPushError`.
+
+A refused endpoint is not in the list `send_many` returns for pruning: it is
+logged like any other failure.
+
+```python
+from tempest_fastapi_sdk import WebPushDispatcher
+
+dispatcher: WebPushDispatcher = WebPushDispatcher(
+    "<vapid-private-key>",
+    vapid_subject="mailto:ops@example.com",
+    timeout=5.0,
+)
+```
+
+!!! note "Self-hosted push service on the internal network"
+    `allow_private_networks=True` turns off only the public-address check —
+    redirects stay off and the `timeout` still applies. Use it only when
+    subscribers are trusted.
+
 ## Broadcast: one announcement for everyone
 
 Sending to the whole base is `notify_all()`, on the same service that

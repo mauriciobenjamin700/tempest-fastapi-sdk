@@ -180,6 +180,33 @@ class TestListing:
             "dir/sub/",
         ]
 
+    @pytest.mark.parametrize(
+        "prefix",
+        ["../", "../../", "../../../", "dir/../../", "./", "dir//", "dir/./"],
+    )
+    async def test_non_recursive_prefix_cannot_leave_the_bucket(
+        self, tmp_path: Path, prefix: str
+    ) -> None:
+        """A ``../`` prefix matches nothing, as it would on S3."""
+        store = tmp_path / "store"
+        client = make_client(store)
+        await client.put_object("dir/a", b"x")
+        await client.put_object("own.txt", b"x", bucket="otherbucket")
+        (tmp_path / "outside-dir").mkdir()
+        assert await client.list_objects(prefix, recursive=False) == []
+
+    async def test_non_recursive_prefix_cannot_follow_a_symlink_out(
+        self, tmp_path: Path
+    ) -> None:
+        store = tmp_path / "store"
+        client = make_client(store)
+        await client.put_object("dir/a", b"x")
+        outside = tmp_path / "outside-dir"
+        outside.mkdir()
+        (outside / "private.txt").write_bytes(b"secret")
+        (store / "objects" / "media" / "escape").symlink_to(outside)
+        assert await client.list_objects("escape/", recursive=False) == []
+
 
 class TestRemoval:
     async def test_missing_key_is_not_an_error(self, tmp_path: Path) -> None:

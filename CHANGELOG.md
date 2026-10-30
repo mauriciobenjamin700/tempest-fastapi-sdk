@@ -147,6 +147,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `method="OTHER"`, então o número de séries não cresce com valores escolhidos
   pelo cliente.
 
+### Security
+
+- `WebPushDispatcher` passa a tratar o `endpoint` da inscrição como destino
+  não confiável: o host precisa resolver só para endereços públicos (a mesma
+  regra do `ContentExtractor`, agora num helper compartilhado), a conexão vai
+  para o endereço validado com `Host`/SNI/certificado no nome original,
+  redirect não é seguido (`3xx` vira `WebPushError`) e todo envio tem
+  `timeout` (novo parâmetro, padrão 10 s); timeout e erro de conexão viram
+  `WebPushError`. **Mudança de comportamento:** endpoint que resolve para
+  rede interna deixa de ser entregue; `allow_private_networks=True` reabre
+  para push service próprio na rede interna. Novo `resolver=` para injetar a
+  resolução de nomes.
+- `describe_image_tool` e `transcribe_audio_tool` ganham `path_root=`
+  (keyword-only). **Mudança de comportamento:** sem ele, o argumento `path`
+  fica desligado (some do schema da ferramenta e é recusado) e só artefatos
+  da run são lidos; com ele, `path` precisa resolver, symlink incluído, para
+  um arquivo comum dentro do diretório, URL é recusada e toda recusa usa a
+  mesma mensagem. `description` passa a aceitar `None` (padrão), que gera o
+  texto conforme `path_root`.
+- `SpeechToText.transcribe` só abre arquivo local: string que não nomeia um
+  arquivo existente levanta `FileNotFoundError`, e o decodificador recebe um
+  objeto de arquivo, nunca a string.
+- `LocalObjectStorageClient.list_objects(recursive=False)` fica dentro do
+  bucket: prefixo cuja parte de diretório tem segmento vazio, `.` ou `..`,
+  ou que resolve para fora do bucket (symlink incluído), devolve `[]`, como
+  o S3.
+- `DatabaseBackup.backup` (e `tempest db backup`) grava o dump com modo
+  `0600` e cria a pasta de destino com `0700`, seja qual for o umask; um
+  `pg_dump` que falha não deixa arquivo para trás. O `.gitignore` e o
+  `.dockerignore` do `tempest new` passam a ignorar `backups/`, `*.dump` e
+  `*.sqlite`. Projetos já gerados precisam acrescentar essas linhas à mão.
+
 ## [0.334.0] — 2026-10-29
 
 ### Added

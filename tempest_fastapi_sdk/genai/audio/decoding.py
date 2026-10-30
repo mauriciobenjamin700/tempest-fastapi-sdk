@@ -27,7 +27,7 @@ SDK's exception handlers answer with ``422``.
 from __future__ import annotations
 
 import io
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, BinaryIO
 
 from tempest_fastapi_sdk.exceptions.validation import ValidationException
 
@@ -97,15 +97,18 @@ def load_audio(
             count is outside the accepted range (``details`` carry
             ``min_rate`` and ``max_rate``), or the decoded audio is longer
             than ``max_seconds`` (``details`` carry ``max_seconds``).
+        FileNotFoundError: When ``audio`` is not bytes and does not name an
+            existing regular file. Decoders only ever receive a file
+            object, so a URL or an FFmpeg protocol (``http://``,
+            ``concat:``) passed as a string is never fetched.
         ValueError: When the audio cannot be decoded.
     """
     import wave
 
     import numpy as np
 
-    handle: Any = io.BytesIO(audio) if isinstance(audio, bytes) else str(audio)
     try:
-        with wave.open(handle) as wav:
+        with _open_source(audio) as handle, wave.open(handle) as wav:
             channels = wav.getnchannels()
             rate = wav.getframerate()
             width = wav.getsampwidth()
@@ -143,6 +146,35 @@ def load_audio(
     if rate != target_rate:
         samples = _resample(samples, rate, target_rate)
     return samples
+
+
+def _open_source(audio: str | Path | bytes) -> BinaryIO:
+    """Open the recording as a binary file object for a decoder.
+
+    A string is never handed to a decoder: PyAV hands strings to FFmpeg,
+    which treats ``http://``, ``concat:`` and other protocol prefixes as
+    inputs to fetch. Only bytes or an existing regular file are accepted,
+    so whatever names the audio (a model's tool argument, a form field)
+    can at most point at a local file.
+
+    Args:
+        audio (str | Path | bytes): The recording or its local path.
+
+    Returns:
+        BinaryIO: A file object the caller closes.
+
+    Raises:
+        FileNotFoundError: When ``audio`` is not bytes and does not name an
+            existing regular file.
+    """
+    from pathlib import Path as LocalPath
+
+    if isinstance(audio, bytes):
+        return io.BytesIO(audio)
+    local = LocalPath(audio)
+    if not local.is_file():
+        raise FileNotFoundError(f"audio must be a local file, got {local.name!r}")
+    return local.open("rb")
 
 
 def _check_rate(rate: int) -> None:
@@ -255,7 +287,6 @@ def _decode_with_pyav(
             '"tempest-fastapi-sdk[genai-audio]"',
         )
     limit = None if max_seconds is None else int(max_seconds * target_rate)
-    source: Any = io.BytesIO(audio) if isinstance(audio, bytes) else str(audio)
     resampler: Any = av.audio.resampler.AudioResampler(
         format="s16",
         layout="mono",
@@ -282,7 +313,10 @@ def _decode_with_pyav(
             parts.append(array)
 
     try:
-        with av.open(source, mode="r", metadata_errors="ignore") as container:
+        with (
+            _open_source(audio) as source,
+            av.open(source, mode="r", metadata_errors="ignore") as container,
+        ):
             if not container.streams.audio:
                 raise ValueError("the input holds no audio stream")
             frames = iter(container.decode(audio=0))

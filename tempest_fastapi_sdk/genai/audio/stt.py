@@ -360,7 +360,8 @@ class SpeechToText:
         concurrency semaphore.
 
         Args:
-            audio (str | Path | bytes): Audio file path or raw bytes.
+            audio (str | Path | bytes): Path of a local audio file, or raw
+                bytes. URLs are not fetched.
             language (Language | str | None): Force the language — a
                 :class:`~tempest_fastapi_sdk.genai.audio.Language` member
                 (``Language.PT_BR``), a raw Whisper code (``"pt"``), or

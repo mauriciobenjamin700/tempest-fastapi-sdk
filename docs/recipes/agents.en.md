@@ -439,6 +439,28 @@ def build_multimodal_agent() -> Agent:
 | `web_search_tool` | `WebSearch` | Searches the web via SearXNG |
 | `save_artifact_tool` | — | Saves text as a deliverable file |
 
+!!! note "Reading files from disk is opt-in"
+    `describe_image_tool` and `transcribe_audio_tool` read only run
+    **artifacts** by default. The `path` argument is written by the model —
+    and the model writes whatever the run's caller asks for — so reading
+    from disk needs `path_root=`: a `path` is accepted only when it resolves
+    (symlinks included) to a regular file inside that directory, and a URL is
+    never accepted. Every refused `path` gets the same error, whether it
+    exists or not. Without `path_root` the argument is not even in the tool's
+    schema.
+
+    ```python
+    from pathlib import Path
+
+    from tempest_fastapi_sdk.agents import AgentTool, describe_image_tool
+    from tempest_fastapi_sdk.genai import VisionModel, VisionTextGenerator
+
+    tool: AgentTool = describe_image_tool(
+        VisionTextGenerator(VisionModel.QWEN2_VL_2B_INSTRUCT),
+        path_root=Path("/srv/app/public-images"),
+    )
+    ```
+
 !!! note "`default_steps` is not a detail"
     A turbo model wants ~4 diffusion steps and a full one ~30. If the LLM
     picks blind, a render takes ten times longer than it needs to. Pin your

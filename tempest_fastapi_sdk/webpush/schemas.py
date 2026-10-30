@@ -97,10 +97,12 @@ class WebPushSubscriptionSchema(BaseSchema):
     def _endpoint_must_be_https(cls, value: str) -> str:
         """Reject endpoints that aren't ``https://`` URLs.
 
-        The Web Push spec requires HTTPS, and accepting arbitrary
-        schemes (``file://``, ``http://localhost``, etc.) would turn
-        the server into an SSRF proxy when subscriptions come from
-        untrusted clients.
+        The Web Push spec requires HTTPS. This is only the shape check:
+        it does not decide whether the host is safe to contact, because
+        that needs a DNS lookup at send time. The destination policy
+        (public addresses only, no redirects, a timeout) is enforced by
+        :class:`~tempest_fastapi_sdk.webpush.WebPushDispatcher` on every
+        dispatch.
 
         Args:
             value (str): The candidate endpoint URL.

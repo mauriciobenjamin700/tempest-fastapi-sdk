@@ -6,6 +6,7 @@ import builtins
 import importlib.util
 import wave
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -218,6 +219,83 @@ class TestSpeechToText:
         stt._model = _FakeWhisperModel()
         result = await stt.transcribe("clip.wav")
         assert result.text == "olá"
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "http://127.0.0.1:9/internal/admin-only.wav",
+            "concat:/etc/hosts|/etc/hosts",
+            "subfile,,start,0,end,0,,:/etc/hosts",
+            "/nonexistent/clip.wav",
+        ],
+    )
+    async def test_non_file_string_never_reaches_the_decoder(self, source: str) -> None:
+        """A URL or FFmpeg protocol string is refused before the engine runs.
+
+        faster-whisper hands a string straight to ``av.open``, which resolves
+        FFmpeg protocols, so only a file object may reach it.
+        """
+        stt = SpeechToText(device="cpu")
+        stt._model = _FakeWhisperModel()
+        with pytest.raises(FileNotFoundError):
+            await stt.transcribe(source)
+        assert stt._model.calls == []
+
+    async def test_local_file_reaches_the_engine_as_decoded_samples(
+        self, clip_wav: Path
+    ) -> None:
+        """A real path is opened by the SDK; the engine gets samples, not a path."""
+        import numpy as np
+
+        seen: list[object] = []
+
+        class _Recording(_FakeWhisperModel):
+            def transcribe(
+                self, source: object, **kwargs: object
+            ) -> tuple[object, object]:
+                seen.append(source)
+                return super().transcribe(source, **kwargs)
+
+        stt = SpeechToText(device="cpu")
+        stt._model = _Recording()
+        result = await stt.transcribe(str(clip_wav))
+        assert result.text == "olá"
+        assert isinstance(seen[0], np.ndarray)
+
+    def test_pyav_only_ever_receives_a_file_object(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The shared decoder opens the path itself before calling ``av.open``.
+
+        FFmpeg resolves protocol prefixes in a string, so a string reaching
+        ``av.open`` is the defect this pins, whichever engine decodes.
+        """
+        from tempest_fastapi_sdk.genai.audio import decoding
+
+        clip = tmp_path / "clip.mp3"
+        clip.write_bytes(b"not-a-wav")
+        opened: list[object] = []
+
+        class _StopError(Exception):
+            pass
+
+        def _open(source: object, **_: object) -> object:
+            opened.append(source)
+            raise _StopError
+
+        fake_av = SimpleNamespace(
+            error=SimpleNamespace(FFmpegError=_StopError, InvalidDataError=_StopError),
+            audio=SimpleNamespace(
+                resampler=SimpleNamespace(AudioResampler=lambda **_: object()),
+            ),
+            open=_open,
+        )
+        monkeypatch.setattr(decoding, "_pyav", lambda: fake_av)
+        with pytest.raises((_StopError, ValueError)):
+            decoding.load_audio(str(clip), target_rate=16_000)
+        assert opened
+        assert not isinstance(opened[0], str)
+        assert getattr(opened[0], "read", None) is not None
 
     def test_bad_concurrency(self) -> None:
         with pytest.raises(ValueError):

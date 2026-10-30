@@ -22,6 +22,7 @@ distinguishes tools only by name and description.
 from __future__ import annotations
 
 import io
+from pathlib import Path
 from typing import Any
 
 from tempest_fastapi_sdk.agents.schemas import AgentArtifact, ToolResult
@@ -35,35 +36,114 @@ _IMAGE_MEDIA_TYPES: dict[str, str] = {
 }
 """Media type per encoding the image generator can emit."""
 
+_PATH_REFUSED: str = "'path' must name a file under the allowed directory"
+"""The one error every refused or unreadable ``path`` argument gets.
+
+A single message for "outside the root", "does not exist", "is a directory"
+and "looks like a URL" keeps the tool from answering which host paths exist.
+"""
+
+_PATH_DISABLED: str = "reading files by 'path' is disabled; pass an 'artifact'"
+"""Error for a ``path`` argument when the tool was built without a root."""
+
+
+def _resolve_root(path_root: str | Path | None) -> Path | None:
+    """Resolve the directory ``path`` arguments are confined to.
+
+    Args:
+        path_root (str | Path | None): The integrator's allowed directory,
+            or ``None`` to disable path input.
+
+    Returns:
+        Path | None: The strictly resolved directory, or ``None``.
+
+    Raises:
+        ValueError: When ``path_root`` is given but is not an existing
+            directory.
+    """
+    if path_root is None:
+        return None
+    root = Path(path_root).resolve(strict=True)
+    if not root.is_dir():
+        raise ValueError(f"path_root must be a directory: {root}")
+    return root
+
 
 def _artifact_or_path(
     arguments: dict[str, Any],
     context: AgentContext,
+    path_root: Path | None,
 ) -> Any:
-    """Resolve an image argument to something a model can consume.
+    """Resolve a media argument to something a model can consume.
 
-    Accepts either ``artifact`` (a name registered on the run) or ``path``
-    (a file on disk), because a model may want to look at something it just
-    made *or* at something that was already there.
+    Accepts ``artifact`` (a name registered on the run) and, when the tool
+    was built with a ``path_root``, ``path`` — a file under that directory.
+    The model writes ``path``, and the model writes what the run's caller
+    asks for, so a path is treated as untrusted: it is resolved strictly
+    (symlinks followed), must land on a regular file inside the root, and
+    anything that looks like a URL or a protocol prefix is refused.
 
     Args:
         arguments (dict[str, Any]): The tool call's arguments.
         context (AgentContext): The run context holding the artifacts.
+        path_root (Path | None): The resolved allowed directory, or ``None``
+            when path input is disabled.
 
     Returns:
-        Any: Raw ``bytes`` for an artifact, or the path string.
+        Any: Raw ``bytes`` for an artifact, or the absolute path string of
+        a file inside ``path_root``.
 
     Raises:
-        AgentToolError: When neither argument is present, or the named
-            artifact does not exist.
+        AgentToolError: When neither argument is present, the named
+            artifact does not exist, path input is disabled, or the path is
+            refused (one message for every refusal reason).
     """
     name = arguments.get("artifact")
     if name:
         return context.require_artifact(str(name)).data
     path = arguments.get("path")
     if path:
-        return str(path)
+        if path_root is None:
+            raise AgentToolError(_PATH_DISABLED)
+        raw = str(path)
+        if "://" in raw or "\0" in raw:
+            raise AgentToolError(_PATH_REFUSED)
+        try:
+            candidate = (path_root / raw).resolve(strict=True)
+        except (OSError, RuntimeError, ValueError):
+            raise AgentToolError(_PATH_REFUSED) from None
+        if not candidate.is_relative_to(path_root) or not candidate.is_file():
+            raise AgentToolError(_PATH_REFUSED)
+        return str(candidate)
+    if path_root is None:
+        raise AgentToolError("provide an 'artifact'")
     raise AgentToolError("provide either 'artifact' or 'path'")
+
+
+def _media_parameters(
+    artifact_help: str,
+    path_help: str,
+    extra: dict[str, Any],
+    path_root: Path | None,
+) -> dict[str, Any]:
+    """Build the JSON schema of a media tool, advertising ``path`` only when on.
+
+    Args:
+        artifact_help (str): Description of the ``artifact`` argument.
+        path_help (str): Description of the ``path`` argument.
+        extra (dict[str, Any]): The tool's other properties.
+        path_root (Path | None): The allowed directory, or ``None``.
+
+    Returns:
+        dict[str, Any]: The ``parameters`` schema.
+    """
+    properties: dict[str, Any] = {
+        "artifact": {"type": "string", "description": artifact_help},
+    }
+    if path_root is not None:
+        properties["path"] = {"type": "string", "description": path_help}
+    properties.update(extra)
+    return {"type": "object", "properties": properties}
 
 
 def generate_image_tool(
@@ -167,55 +247,67 @@ def describe_image_tool(
     vision_generator: Any,
     *,
     name: str = "describe_image",
-    description: str = (
-        "Look at an image and answer a question about it. "
-        "Pass either 'artifact' (a name from an earlier step) or 'path'."
-    ),
+    description: str | None = None,
+    path_root: str | Path | None = None,
 ) -> AgentTool:
     """Build a tool that reads an image with a vision-language model.
 
     This is the other half of :func:`generate_image_tool`: together they
     let an agent draw something and then judge what it drew.
 
+    By default the tool reads only run artifacts. Reading files from disk
+    is opt-in: pass ``path_root`` and the model may name a ``path``, which
+    must resolve (symlinks included) to a regular file inside that
+    directory.
+
     Args:
         vision_generator (Any): A
             :class:`~tempest_fastapi_sdk.genai.VisionTextGenerator`.
         name (str): The function name the model calls.
-        description (str): What the tool does, written for the model.
+        description (str | None): What the tool does, written for the
+            model. ``None`` picks a default that mentions ``path`` only when
+            ``path_root`` is set.
+        path_root (str | Path | None): Directory the ``path`` argument is
+            confined to. ``None`` (the default) disables ``path``.
 
     Returns:
         AgentTool: The image-understanding tool.
+
+    Raises:
+        ValueError: When ``path_root`` is not an existing directory.
+        FileNotFoundError: When ``path_root`` does not exist.
     """
+    root = _resolve_root(path_root)
+    if description is None:
+        description = "Look at an image and answer a question about it. " + (
+            "Pass either 'artifact' (a name from an earlier step) or 'path'."
+            if root is not None
+            else "Pass 'artifact' (a name from an earlier step)."
+        )
 
     async def handler(
         arguments: dict[str, Any],
         context: AgentContext,
     ) -> str:
         """Ask the vision model about the referenced image."""
-        source = _artifact_or_path(arguments, context)
+        source = _artifact_or_path(arguments, context, root)
         question = str(arguments.get("question") or "Describe this image.")
         return str(await vision_generator.generate(question, images=[source]))
 
     return AgentTool(
         name=name,
         description=description,
-        parameters={
-            "type": "object",
-            "properties": {
-                "artifact": {
-                    "type": "string",
-                    "description": "Name of an image produced earlier.",
-                },
-                "path": {
-                    "type": "string",
-                    "description": "Path to an image on disk.",
-                },
+        parameters=_media_parameters(
+            "Name of an image produced earlier.",
+            "Path to an image, relative to the allowed directory.",
+            {
                 "question": {
                     "type": "string",
                     "description": "What to ask about the image.",
                 },
             },
-        },
+            root,
+        ),
         handler=handler,
     )
 
@@ -224,29 +316,47 @@ def transcribe_audio_tool(
     speech_to_text: Any,
     *,
     name: str = "transcribe_audio",
-    description: str = (
-        "Transcribe speech from an audio file into text. "
-        "Pass either 'artifact' (a name from an earlier step) or 'path'."
-    ),
+    description: str | None = None,
+    path_root: str | Path | None = None,
 ) -> AgentTool:
     """Build a tool that turns audio into text.
+
+    By default the tool reads only run artifacts. Reading files from disk
+    is opt-in: pass ``path_root`` and the model may name a ``path``, which
+    must resolve (symlinks included) to a regular file inside that
+    directory. A URL is never accepted as ``path``.
 
     Args:
         speech_to_text (Any): A
             :class:`~tempest_fastapi_sdk.genai.audio.SpeechToText`.
         name (str): The function name the model calls.
-        description (str): What the tool does, written for the model.
+        description (str | None): What the tool does, written for the
+            model. ``None`` picks a default that mentions ``path`` only when
+            ``path_root`` is set.
+        path_root (str | Path | None): Directory the ``path`` argument is
+            confined to. ``None`` (the default) disables ``path``.
 
     Returns:
         AgentTool: The transcription tool.
+
+    Raises:
+        ValueError: When ``path_root`` is not an existing directory.
+        FileNotFoundError: When ``path_root`` does not exist.
     """
+    root = _resolve_root(path_root)
+    if description is None:
+        description = "Transcribe speech from an audio file into text. " + (
+            "Pass either 'artifact' (a name from an earlier step) or 'path'."
+            if root is not None
+            else "Pass 'artifact' (a name from an earlier step)."
+        )
 
     async def handler(
         arguments: dict[str, Any],
         context: AgentContext,
     ) -> str:
         """Transcribe the referenced audio, reporting the detected language."""
-        source = _artifact_or_path(arguments, context)
+        source = _artifact_or_path(arguments, context, root)
         language = arguments.get("language")
         result = await speech_to_text.transcribe(
             source,
@@ -259,23 +369,17 @@ def transcribe_audio_tool(
     return AgentTool(
         name=name,
         description=description,
-        parameters={
-            "type": "object",
-            "properties": {
-                "artifact": {
-                    "type": "string",
-                    "description": "Name of an audio clip from an earlier step.",
-                },
-                "path": {
-                    "type": "string",
-                    "description": "Path to an audio file on disk.",
-                },
+        parameters=_media_parameters(
+            "Name of an audio clip from an earlier step.",
+            "Path to an audio file, relative to the allowed directory.",
+            {
                 "language": {
                     "type": "string",
                     "description": "Language hint (e.g. 'pt'); omit to detect.",
                 },
             },
-        },
+            root,
+        ),
         handler=handler,
     )
 

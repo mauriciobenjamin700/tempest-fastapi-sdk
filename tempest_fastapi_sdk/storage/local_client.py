@@ -1099,7 +1099,11 @@ class LocalObjectStorageClient:
             recursive (bool): Descend into "subdirectories".
 
         Returns:
-            list[str]: The matching keys, sorted.
+            list[str]: The matching keys, sorted. A non-recursive prefix
+            whose directory part holds an empty, ``.``, ``..``, backslash or
+            NUL segment, or that resolves outside the bucket (a symlink
+            included), matches nothing — like a string prefix on S3, where
+            ``../`` is just characters no key starts with.
         """
         root = self.base_dir / _OBJECTS_DIR / self._bucket(bucket)
         if not root.is_dir():
@@ -1113,11 +1117,19 @@ class LocalObjectStorageClient:
                         found.append(key)
             return sorted(found)
         directory, _, _ = prefix.rpartition("/")
-        level = root / directory if directory else root
+        if directory and (
+            directory.startswith("/")
+            or not all(_segment_ok(part) for part in directory.split("/"))
+        ):
+            return []
+        resolved_root = root.resolve()
+        level = (resolved_root / directory).resolve() if directory else resolved_root
+        if level != resolved_root and resolved_root not in level.parents:
+            return []
         if not level.is_dir():
             return []
         for path in level.iterdir():
-            key = path.relative_to(root).as_posix()
+            key = path.relative_to(resolved_root).as_posix()
             if path.is_dir():
                 key += "/"
             if key.startswith(prefix):

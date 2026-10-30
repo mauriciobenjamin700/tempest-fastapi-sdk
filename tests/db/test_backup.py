@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import sqlite3
+import stat
 import subprocess
 import time
 from collections.abc import Iterator
@@ -107,6 +109,125 @@ class TestSqliteBackupRestore:
         helper = DatabaseBackup(f"sqlite+aiosqlite:///{tmp_path / 'app.db'}")
         with pytest.raises(FileNotFoundError):
             helper.restore(tmp_path / "nope.sqlite")
+
+
+TEMPLATES: Path = (
+    Path(__file__).resolve().parents[2] / "tempest_fastapi_sdk" / "cli" / "_templates"
+)
+"""Where the ``tempest new`` templates live."""
+
+
+@pytest.fixture
+def narrow_umask() -> Iterator[None]:
+    """Run with the common ``022`` umask, which leaves new files world-readable.
+
+    Yields:
+        None: Control to the test; the previous umask is restored after.
+    """
+    previous = os.umask(0o022)
+    try:
+        yield
+    finally:
+        os.umask(previous)
+
+
+@pytest.mark.usefixtures("narrow_umask")
+class TestBackupOutputIsPrivate:
+    """A dump is a full copy of the database; only its owner may read it."""
+
+    def test_default_sqlite_backup_is_owner_only(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / "app.db"
+        _make_sqlite_db(db, rows=1)
+        db.chmod(0o644)
+
+        written = DatabaseBackup(f"sqlite+aiosqlite:///{db}").backup()
+
+        assert stat.S_IMODE(written.stat().st_mode) == 0o600
+        assert stat.S_IMODE(written.parent.stat().st_mode) == 0o700
+        assert _count_rows(written) == 1
+
+    def test_existing_backup_file_is_restricted(self, tmp_path: Path) -> None:
+        db = tmp_path / "app.db"
+        _make_sqlite_db(db, rows=2)
+        out = tmp_path / "old.sqlite"
+        out.write_bytes(b"stale")
+        out.chmod(0o644)
+
+        DatabaseBackup(f"sqlite+aiosqlite:///{db}").backup(out)
+
+        assert stat.S_IMODE(out.stat().st_mode) == 0o600
+        assert _count_rows(out) == 2
+
+    def test_pg_dump_writes_into_an_owner_only_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        modes: list[int] = []
+
+        def fake_run(args: list[str], env: dict[str, str] | None = None) -> None:
+            dest = Path(args[args.index("-f") + 1])
+            modes.append(stat.S_IMODE(dest.stat().st_mode))
+            dest.write_text("dump")
+
+        monkeypatch.setattr(backup_mod, "_require_tool", lambda name: name)
+        monkeypatch.setattr(backup_mod, "_run", fake_run)
+        dest = tmp_path / "backups" / "shop.dump"
+
+        DatabaseBackup("postgresql+asyncpg://u:p@h:5432/shop").backup(dest)
+
+        assert modes == [0o600]
+        assert stat.S_IMODE(dest.stat().st_mode) == 0o600
+        assert stat.S_IMODE(dest.parent.stat().st_mode) == 0o700
+
+    def test_failed_pg_dump_leaves_no_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def failing_run(args: list[str], env: dict[str, str] | None = None) -> None:
+            raise RuntimeError("pg_dump failed (exit 1): boom")
+
+        monkeypatch.setattr(backup_mod, "_require_tool", lambda name: name)
+        monkeypatch.setattr(backup_mod, "_run", failing_run)
+        dest = tmp_path / "shop.dump"
+
+        with pytest.raises(RuntimeError, match="boom"):
+            DatabaseBackup("postgresql+asyncpg://u:p@h:5432/shop").backup(dest)
+        assert not dest.exists()
+
+
+class TestScaffoldIgnoresBackups:
+    """``tempest new`` keeps default backups out of git and the image."""
+
+    @pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
+    def test_gitignore_ignores_every_default_backup(self, tmp_path: Path) -> None:
+        (tmp_path / ".gitignore").write_text(
+            (TEMPLATES / "gitignore.tmpl").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        paths = [
+            "backups/app_20260101-000000.sqlite",
+            "backups/appdb_20260101-000000.dump",
+            "backups/appdb_20260101-000000.sql",
+            "app.sqlite",
+        ]
+        result = subprocess.run(
+            ["git", "-C", str(tmp_path), "check-ignore", "--no-index", *paths],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert sorted(result.stdout.split()) == sorted(paths)
+
+    def test_dockerignore_excludes_the_backup_directory(self) -> None:
+        lines = {
+            line.strip()
+            for line in (TEMPLATES / "dockerignore.tmpl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        }
+        assert {"backups/", "*.dump", "*.sqlite"} <= lines
 
 
 class TestPostgresCommandBuilding:

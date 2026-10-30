@@ -435,6 +435,27 @@ def build_multimodal_agent() -> Agent:
 | `web_search_tool` | `WebSearch` | Busca na web via SearXNG |
 | `save_artifact_tool` | — | Salva texto como arquivo entregável |
 
+!!! note "Ler arquivo do disco é opt-in"
+    `describe_image_tool` e `transcribe_audio_tool` leem, por padrão, só
+    **artefatos** da run. Quem escreve o argumento `path` é o modelo — e o
+    modelo escreve o que o chamador da run pedir —, então ler do disco exige
+    `path_root=`: o `path` só é aceito se resolver (symlink incluído) para um
+    arquivo comum dentro desse diretório, e URL nunca é aceita. Todo `path`
+    recusado recebe o mesmo erro, exista ou não. Sem `path_root`, o argumento
+    nem aparece no schema da ferramenta.
+
+    ```python
+    from pathlib import Path
+
+    from tempest_fastapi_sdk.agents import AgentTool, describe_image_tool
+    from tempest_fastapi_sdk.genai import VisionModel, VisionTextGenerator
+
+    tool: AgentTool = describe_image_tool(
+        VisionTextGenerator(VisionModel.QWEN2_VL_2B_INSTRUCT),
+        path_root=Path("/srv/app/public-images"),
+    )
+    ```
+
 !!! note "`default_steps` não é detalhe"
     Um modelo turbo quer ~4 passos de difusão e um completo quer ~30. Se o
     LLM escolher às cegas, uma renderização demora dez vezes mais que o
