@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Chat: quem entra num grupo sem `share_history` deixa de receber o corpo
+  de mensagens anteriores ao seu `history_from` por cópias derivadas. No
+  histórico, o `reply_to` de uma resposta que cita mensagem anterior chega com
+  `excerpt` vazio para esse leitor; no stream SSE do `make_chat_router`, cada
+  assinante recebe os frames ajustados ao próprio `history_from` (edição,
+  reação e revogação de mensagem anterior não chegam; a citação chega sem o
+  trecho). `ReplyPreviewSchema` ganha o campo `created_at`.
+- Chat: `ChatService.set_role` aplica hierarquia de papéis. **Mudança de
+  comportamento:** só o dono concede `OWNER` ou muda o papel de um admin ou do
+  dono; um admin continua podendo promover membro a admin. Antes um admin
+  podia rebaixar o dono e então removê-lo.
 - `TenantScopedRepository` passa a aplicar o escopo do tenant em todo caminho
   herdado do `BaseRepository`, não só nos métodos sobrescritos à mão. O
   predicado do tenant agora é somado com `AND` ao filtro do chamador em vez de

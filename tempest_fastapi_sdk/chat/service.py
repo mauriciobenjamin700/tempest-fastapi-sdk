@@ -1093,7 +1093,9 @@ class ChatService:
 
         When ``user_id`` is given, the page respects that participant's
         ``history_from`` — someone added to a group later does not
-        inherit the backlog unless the product says so.
+        inherit the backlog unless the product says so. That covers the
+        derived copies too: a reply on the page that quotes a message
+        older than ``history_from`` carries an empty excerpt.
 
         Args:
             conversation_id (UUID): The conversation to page.
@@ -1124,6 +1126,7 @@ class ChatService:
                 field="page_size",
             )
         filters: dict[str, Any] = {"conversation_id": conversation_id}
+        membership: Any | None = None
         if user_id is not None:
             membership = await self._membership(conversation_id, user_id)
             if membership is not None and membership.history_from is not None:
@@ -1138,6 +1141,7 @@ class ChatService:
         items = await self._message_responses(
             result["items"],
             with_receipts=with_receipts,
+            reader=membership,
         )
         return {**result, "items": items}
 
@@ -1146,6 +1150,7 @@ class ChatService:
         rows: Sequence[Any],
         *,
         with_receipts: bool = False,
+        reader: Any | None = None,
     ) -> list[MessageResponseSchema]:
         """Build the responses for a whole page in a fixed number of queries.
 
@@ -1159,6 +1164,9 @@ class ChatService:
             rows (Sequence[Any]): The message rows of one page, all from
                 the same conversation.
             with_receipts (bool): Attach delivery/read counts.
+            reader (Any | None): The reading participant's row, whose
+                ``history_from`` blanks the excerpt of a quoted parent
+                older than it; ``None`` applies no reader limit.
 
         Returns:
             list[MessageResponseSchema]: The responses, in input order.
@@ -1191,6 +1199,7 @@ class ChatService:
                 reactions=reactions.get(row.id, []),
                 parent=parents.get(row.reply_to_id),
                 members=members if with_receipts else None,
+                reader=reader,
             )
             for row in rows
         ]
@@ -1203,6 +1212,7 @@ class ChatService:
         reactions: list[Any],
         parent: Any | None,
         members: list[Any] | None,
+        reader: Any | None = None,
     ) -> MessageResponseSchema:
         """Assemble one response from rows already in memory.
 
@@ -1213,12 +1223,16 @@ class ChatService:
             parent (Any | None): The message it quotes, if any.
             members (list[Any] | None): Participant rows, when receipts
                 were asked for.
+            reader (Any | None): The reading participant's row, for the
+                reply excerpt; ``None`` applies no reader limit.
 
         Returns:
             MessageResponseSchema: The complete response.
         """
         message = MessageResponseSchema.model_validate(row)
-        message.reply_to = self._compose_reply_preview(row.reply_to_id, parent)
+        message.reply_to = self._compose_reply_preview(
+            row.reply_to_id, parent, reader=reader
+        )
         if self.attachments is not None:
             message.attachments = [
                 AttachmentResponseSchema.model_validate(item)
@@ -1276,17 +1290,24 @@ class ChatService:
         self,
         reply_to_id: UUID | None,
         parent: Any | None,
+        *,
+        reader: Any | None = None,
     ) -> ReplyPreviewSchema | None:
         """Build the stub a reply quotes, from a row already loaded.
 
         A revoked parent yields an empty excerpt with ``revoked=True``:
         deleting the quoted message has to delete the quote too, or the
-        text survives inside every reply to it.
+        text survives inside every reply to it. A parent older than the
+        reader's ``history_from`` yields an empty excerpt too: a member
+        who joined without the backlog must not read it through a reply
+        an older member wrote.
 
         Args:
             reply_to_id (UUID | None): The quoted message's id.
             parent (Any | None): That message's row, when it still
                 exists.
+            reader (Any | None): The reading participant's row; ``None``
+                applies no reader limit.
 
         Returns:
             ReplyPreviewSchema | None: The stub, or ``None``.
@@ -1294,12 +1315,15 @@ class ChatService:
         if reply_to_id is None or parent is None:
             return None
         revoked = parent.revoked_at is not None
+        history_from = None if reader is None else reader.history_from
+        hidden = history_from is not None and parent.created_at < history_from
         return ReplyPreviewSchema(
             id=parent.id,
             sender_id=parent.sender_id,
             kind=MessageKind(parent.kind),
-            excerpt="" if revoked else parent.body[:REPLY_EXCERPT_LENGTH],
+            excerpt="" if revoked or hidden else parent.body[:REPLY_EXCERPT_LENGTH],
             revoked=revoked,
+            created_at=parent.created_at,
         )
 
     def _compose_reactions(self, rows: list[Any]) -> list[ReactionSummarySchema]:
@@ -1524,6 +1548,12 @@ class ChatService:
     ) -> ParticipantResponseSchema:
         """Promote or demote a participant.
 
+        Roles form a hierarchy. An admin may promote a member to admin;
+        only the owner may grant ``OWNER``, change an owner's role or
+        change another admin's role. Without that rule an admin could
+        demote the owner, take ``OWNER`` for themselves and then remove
+        the creator, which :meth:`remove_participant` alone refuses.
+
         Args:
             conversation_id (UUID): The group.
             actor_id (UUID): Who is changing it; must be admin or owner.
@@ -1534,11 +1564,24 @@ class ChatService:
             ParticipantResponseSchema: The updated membership.
 
         Raises:
-            ForbiddenException: When the actor may not change roles.
+            ForbiddenException: When the actor may not change roles, or
+                is an admin trying to grant ``OWNER`` or to change the
+                role of an admin or the owner (themselves included).
         """
-        await self._require_admin(conversation_id, actor_id)
+        actor = await self._require_admin(conversation_id, actor_id)
         membership = await self._require_membership(conversation_id, user_id)
-        membership.role = ParticipantRole(role)
+        new_role = ParticipantRole(role)
+        actor_is_owner = ParticipantRole(actor.role) is ParticipantRole.OWNER
+        target_is_member = ParticipantRole(membership.role) is ParticipantRole.MEMBER
+        if not actor_is_owner and (
+            not target_is_member or new_role is ParticipantRole.OWNER
+        ):
+            raise ForbiddenException(
+                message="only the owner can grant ownership or change the "
+                "role of an admin or the owner",
+                details={"conversation_id": str(conversation_id)},
+            )
+        membership.role = new_role
         await self.participants.update(membership)
         await self._system_message(
             conversation_id,

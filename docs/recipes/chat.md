@@ -571,6 +571,12 @@ carimbado na entrada); passe `share_history=True` para entregar o
 histórico. Quem sai mantém a linha com `left_at` — senão mensagens
 antigas perdem o nome do remetente. O dono não pode ser removido.
 
+Os papéis seguem uma hierarquia no `set_role`: um admin promove um
+membro a admin, mas só o dono concede `OWNER` ou muda o papel de um
+admin ou do próprio dono. Um admin que tenta rebaixar o dono, ou se
+promover a dono, recebe `ForbiddenException` — senão rebaixar e depois
+remover contornaria a proteção do dono.
+
 !!! tip "`kind` é inferido quando você não diz"
     Sem `kind`, até duas pessoas vira `DIRECT` e mais que isso vira
     `GROUP` — que é o que quem nunca ouviu falar da distinção quer
@@ -682,6 +688,14 @@ oráculo de existência. Encaminhar é leitura da original: quem não a
 enxerga não a copia para outra conversa. E responder citando uma
 mensagem anterior ao seu `history_from` também é `404`, porque o stub da
 citação carregaria o trecho do backlog que você não recebeu.
+
+As cópias derivadas seguem a mesma regra para quem lê. Quando um membro
+antigo responde a uma mensagem anterior ao `history_from` de quem está
+lendo, o `reply_to` dessa resposta chega com `excerpt` vazio no histórico
+desse leitor (o `reply_to.created_at` diz quando a citada foi enviada).
+No stream SSE, cada assinante recebe os frames ajustados ao próprio
+`history_from`: edição, reação e revogação de mensagem anterior a ele não
+chegam, e a resposta que cita uma chega com o trecho vazio.
 
 ### Limites de entrada
 
