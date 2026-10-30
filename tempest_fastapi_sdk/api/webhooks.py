@@ -96,12 +96,21 @@ class WebhookSignatureVerifier:
             encoding (str): ``"hex"`` (default) or ``"base64"``.
             prefix (str): Optional fixed prefix on the header value
                 (e.g. ``"sha256="``). Stripped before comparison.
+
+        Raises:
+            ValueError: When ``secret`` is empty or only whitespace. An
+                HMAC under an empty key is a digest anyone can compute, so
+                a verifier built from an unset setting would accept every
+                forged delivery; refusing at construction surfaces the
+                missing configuration at boot instead.
         """
         if encoding not in {"hex", "base64"}:
             raise ValueError("encoding must be 'hex' or 'base64'")
         if algorithm not in hashlib.algorithms_guaranteed:
             raise ValueError(f"unsupported hashlib algorithm: {algorithm}")
         self.secret: bytes = secret.encode() if isinstance(secret, str) else secret
+        if not self.secret.strip():
+            raise ValueError("webhook signing secret must not be empty")
         self.algorithm: str = algorithm
         self.header_name: str = header_name
         self.encoding: str = encoding

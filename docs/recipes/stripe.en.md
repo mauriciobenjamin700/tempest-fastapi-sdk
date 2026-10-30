@@ -161,6 +161,12 @@ async def stripe_webhook(
 
 - An invalid, missing or out-of-window (5 minutes) signature is a **401**
   before your handler runs.
+- An empty (or blank) secret **fails the boot**:
+  `make_stripe_webhook_dependency("")` raises `ValueError` while the router
+  is built, and `verify_signature(..., "")` returns `False`. An HMAC under
+  an empty key is computable by anyone, so a `STRIPE_WEBHOOK_SECRET`
+  missing from the environment never becomes an endpoint that accepts
+  forged deliveries.
 - Secret rotation works: Stripe sends one `v1` per active secret and any
   match is accepted.
 - An unknown event type does **not** take the route down — `event` is
@@ -378,7 +384,9 @@ client = StripeClient(stripe_http_client(settings.STRIPE_API_KEY))
 ```
 
 The webhook secret is **per endpoint**, not per account: a service with a
-test and a live endpoint has two.
+test and a live endpoint has two. The example's `""` default only lets
+`Settings` load in tests: with it, building the webhook router raises
+`ValueError`.
 
 ## Testing
 

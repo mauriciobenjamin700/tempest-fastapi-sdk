@@ -69,11 +69,10 @@ async def on_startup() -> None:
 
 async def login(email: str, password: str) -> User:
     key = f"login:{email}"
-    await throttle.raise_if_blocked(key)  # 429 se já estourou
+    await throttle.reserve(key)  # gasta 1 tentativa antes de verificar; 429 se estourou
 
     user = await users_repo.get_or_none({"email": email})
     if user is None or not password_utils.verify(password, user.hashed_password):
-        await throttle.hit(key)  # +1 failure, aplica TTL
         raise UnauthorizedException(message="Invalid credentials.")
 
     await throttle.reset(key)  # zera contagem no sucesso
@@ -85,6 +84,9 @@ async def login(email: str, password: str) -> User:
 - `attempts: int` — falhas registradas na janela atual.
 - `blocked: bool` — `True` quando `attempts >= max_attempts`.
 - `retry_after_seconds: int` — segundos até a janela resetar (`0` quando não bloqueado).
+
+!!! warning "Reserve antes de verificar"
+    `raise_if_blocked` só **lê** o contador. Seguido de um `hit` depois da verificação, ele limita tentativas em sequência, mas não em paralelo: uma rajada de requisições simultâneas lê "não bloqueado" antes de qualquer `hit` cair, e todas verificam a senha. `reserve` incrementa (atomicamente, `INCR`) antes da checagem e recusa quem passa de `max_attempts`, então no máximo `max_attempts` verificações rodam por janela. Quando a tentativa não é falha, `reset` zera a chave ou `release` devolve só aquela vaga.
 
 Use os campos pra montar payloads de erro amigáveis. `raise_if_blocked` já cria a `TooManyRequestsException` com `Retry-After` no header — não precisa lê-los manualmente.
 
@@ -428,7 +430,7 @@ router = APIRouter()
 async def login(request: Request, payload: LoginIn) -> LoginOut:
     # Atrás de Nginx que sobrescreve X-Real-IP com o peer real:
     ip = get_client_ip(request, trusted_header="x-real-ip")
-    await throttle.raise_if_blocked(f"login:{ip}")
+    await throttle.reserve(f"login:{ip}")
     ...
 ```
 
@@ -602,8 +604,10 @@ limitar.
 
 `DEFAULT_HONEYPOT_PATTERNS` é o que este middleware realmente entrega: uma lista
 curada e versionada de assinaturas — dotfiles, recon de PHP, scanner de CMS,
-extensão de backup/dump e sonda de credencial —, casada contra o path **e** a
-query string, sem nada específico do serviço que a hospeda. É pura pesquisa, e
+extensão de backup/dump e sonda de credencial —, casada contra o **path**, sem
+nada específico do serviço que a hospeda. A query string, que carrega o que o
+usuário digita, é casada à parte por `DEFAULT_HONEYPOT_QUERY_PATTERNS`, que só
+reconhece a injeção de argumento do PHP-CGI (`?-d+...`). É pura pesquisa, e
 envelhece; vindo do SDK, você pega assinatura nova com um bump em vez de manter
 regex na mão.
 
@@ -638,6 +642,20 @@ app.add_middleware(
 `/.well-known/` **não** está na lista: ACME e `security.txt` moram lá e são
 legítimos, então as regras de dotfile nomeiam os diretórios em vez de casar
 `/.` genérico.
+
+Um único acerto vale ban de 24 horas para o IP inteiro (e todo mundo atrás do
+mesmo NAT), então a lista evita o que um cliente honesto pede:
+
+- palavra solta (`phpinfo`, `server-status`) só casa como segmento inteiro do
+  path — uma busca `?q=phpinfo` não bane;
+- extensão de backup/dump (`.zip`, `.sql`, `.bak`) e o `~` de backup de editor
+  só casam num arquivo na raiz ou sob `/backup/` — o download assinado
+  `/storage/<bucket>/<uuid>.zip` do `make_local_storage_router` passa;
+- `credentials` e `secrets` só casam na raiz — o
+  `/auth/webauthn/credentials` do router de auth passa.
+
+Até a 0.334.0 o `patterns=` era casado contra `path?query`. Padrão próprio que
+mira a query vai para `query_patterns=`.
 
 ### Falha aberta, por padrão
 

@@ -756,10 +756,13 @@ By default the key is the client IP. To limit **per principal** (authenticated u
 | `key_by_ip(trusted_header=...)` | `ip:<addr>` | Per IP (default). |
 | `key_by_jwt_subject(jwt)` | `user:<sub>` | Per authenticated user (`sub` claim). |
 | `key_by_jwt_claim(jwt, "tenant_id", scope="tenant")` | `tenant:<id>` | Per arbitrary token claim. |
-| `key_by_header("x-api-key", scope="apikey")` | `apikey:<value>` | Per header value. |
+| `key_by_header("x-api-key", scope="apikey", is_known=api_keys.__contains__)` | `apikey:<value>` | Per **verified** header value; an unknown value falls back to the IP. |
 
 !!! warning "The middleware runs before dependencies"
     `RateLimitMiddleware` runs **before** FastAPI `Depends` resolve — so the user authenticated by your auth dependency does not exist yet when the key is computed. That is why the `key_by_jwt_*` factories decode the bearer **from the raw request** (via `JWTUtils.decode_or_none`, no exception raised). Anonymous traffic falls back to the IP, so it stays limited.
+
+!!! note "`key_by_header` requires `is_known=`"
+    The header value is whatever the client sent, and the middleware reads it before any auth. Unverified, sending a made-up value per request would get a fresh budget each time. So `is_known=` is required: only a value it accepts (a lookup in the set of issued API keys, a checksum on the key format) gets its own bucket; anything else is treated as a missing header and falls back to the IP. The check is synchronous and runs on every request — keep it cheap.
 
 ```python
 # src/api/app.py
@@ -1422,7 +1425,7 @@ def create_app() -> FastAPI:
 
 Notice what the key does **not** contain: who asked. If two people's `GET /api/me` land on the same key, the first stored response is served to the second — and to any anonymous caller hitting the same path.
 
-So a request carrying `Authorization` or `Cookie` **bypasses the shared store**. It still gets an `ETag` and a `304` (both per-response, and safe); it just never enters a cache someone else can read.
+So a request carrying `Authorization`, `Cookie`, `X-Token` or `X-API-Key` **bypasses the shared store**. It still gets an `ETag` and a `304` (both per-response, and safe); it just never enters a cache someone else can read. If your auth reads another header, pass the list in `credential_headers=`. A route gated by `make_token_dependency` also answers `Cache-Control: no-store`, so it stays out of the store even with a `header_name=` the list does not know.
 
 ```python
 from typing import Any
@@ -1498,7 +1501,7 @@ async def github_event(body: bytes = Depends(github.dependency())) -> None:
     ...
 ```
 
-Supports `hex` (default) and `base64` encodings, any hashlib algorithm guaranteed across platforms, and an optional `prefix` (e.g. `"sha256="`) stripped before comparison. Use the imperative `verifier.verify(body, signature)` from queue handlers when validation happens outside the FastAPI pipeline.
+Supports `hex` (default) and `base64` encodings, any hashlib algorithm guaranteed across platforms, and an optional `prefix` (e.g. `"sha256="`) stripped before comparison. An empty or blank secret raises `ValueError` at construction: an HMAC under an empty key is computable by anyone, so a missing setting fails the boot instead of accepting every delivery. Use the imperative `verifier.verify(body, signature)` from queue handlers when validation happens outside the FastAPI pipeline.
 
 The signature covers **the body only**, so a captured delivery stays valid forever — anyone who observes one can resend it indefinitely. Pass `timestamp_header=` to also require a recent unix timestamp and reject anything outside the window:
 

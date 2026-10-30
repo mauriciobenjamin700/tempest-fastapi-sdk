@@ -20,8 +20,10 @@ stored. Vary the cache key on request headers with ``vary=`` (also emitted as a
 ``Vary`` response header). The store mirrors the idempotency store shape
 (memory + Redis, raw client), so it composes with the SDK's existing Redis.
 
-**Credentialed requests never share a cache entry.** A request carrying an
-``Authorization`` header or a ``Cookie`` bypasses the shared store entirely,
+**Credentialed requests never share a cache entry.** A request carrying any
+credential header (``Authorization``, ``Cookie``, ``X-Token``, ``X-API-Key``
+by default; ``credential_headers=`` changes the list) bypasses the shared
+store entirely,
 because its response is presumed to be about *that* caller — caching it under
 a key made of method + path would serve one user's data to the next. Those
 requests still get an ``ETag`` and a ``304``, which is per-response and safe.
@@ -44,15 +46,17 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
+from tempest_fastapi_sdk.api.middlewares._credentials import (
+    DEFAULT_CREDENTIAL_HEADERS,
+    credential_digest,
+    normalize_credential_headers,
+)
 from tempest_fastapi_sdk.api.middlewares._exempt import PathExemption
 from tempest_fastapi_sdk.api.middlewares._streaming import is_unbounded_stream
 from tempest_fastapi_sdk.api.middlewares.idempotency import CachedResponse
 from tempest_fastapi_sdk.utils._http_cache import etag_matches
 
 _ETAG_HEADER = "etag"
-
-_CREDENTIAL_HEADERS: tuple[str, ...] = ("authorization", "cookie")
-"""Request headers whose presence marks the response as caller-specific."""
 
 
 def _compute_etag(body: bytes) -> str:
@@ -289,6 +293,7 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
         exempt_prefixes: tuple[str, ...] = (),
         cacheable: Callable[[Request], bool] | None = None,
         cache_credentialed: bool = False,
+        credential_headers: tuple[str, ...] = DEFAULT_CREDENTIAL_HEADERS,
     ) -> None:
         """Configure the middleware.
 
@@ -320,18 +325,27 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
                 Matching is textual, so it also covers ``/api/sse-legacy``.
             cacheable (Callable[[Request], bool] | None): Optional predicate;
                 when it returns ``False`` the request bypasses caching.
-            cache_credentialed (bool): Whether a request carrying an
-                ``Authorization`` header or a ``Cookie`` may use the shared
-                store. ``False`` (default) makes such requests bypass it —
-                their response belongs to one caller, and the key does not
-                identify callers. ``True`` folds a digest of those headers
+            cache_credentialed (bool): Whether a request carrying any of
+                ``credential_headers`` may use the shared store. ``False``
+                (default) makes such requests bypass it — their response
+                belongs to one caller, and the key does not identify
+                callers. ``True`` folds a digest of those headers
                 into the key, so each set of credentials gets its own entry;
                 only turn it on once you have checked that the cached routes
                 do not embed a second identity (a tenant header, a
                 path-independent session).
+            credential_headers (tuple[str, ...]): Request headers whose
+                presence marks a request as credentialed. The default covers
+                ``Authorization``, ``Cookie``, ``X-Token`` (the header of
+                ``make_token_dependency``) and ``X-API-Key``. Add the header
+                your own auth reads when it is none of those: a request
+                authenticated through an unlisted header looks anonymous, and
+                its response would be stored under the shared key and served
+                to the next caller before the auth dependency runs.
 
         Raises:
-            ValueError: When ``ttl_seconds`` is not positive.
+            ValueError: When ``ttl_seconds`` is not positive, or when
+                ``credential_headers`` is empty.
         """
         super().__init__(app)
         if ttl_seconds <= 0:
@@ -352,9 +366,11 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
         )
         self._cacheable = cacheable
         self._cache_credentialed = cache_credentialed
+        self._credential_headers: tuple[str, ...] = normalize_credential_headers(
+            credential_headers
+        )
 
-    @staticmethod
-    def _credentials(request: Request) -> str | None:
+    def _credentials(self, request: Request) -> str | None:
         """Return a digest of the request's credential headers, if any.
 
         Args:
@@ -364,12 +380,7 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
             str | None: A short digest identifying the caller's credentials,
             or ``None`` when the request carries none.
         """
-        raw = "|".join(
-            f"{name}={request.headers.get(name, '')}" for name in _CREDENTIAL_HEADERS
-        )
-        if raw == "|".join(f"{name}=" for name in _CREDENTIAL_HEADERS):
-            return None
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        return credential_digest(request, self._credential_headers)
 
     def _build_key(self, request: Request, credentials: str | None) -> str:
         """Build the cache key from method, path, query, and varied headers.

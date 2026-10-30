@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+import pytest
+from fastapi import Depends, FastAPI
 from fastapi.responses import PlainTextResponse
 from httpx import ASGITransport, AsyncClient
 
@@ -12,6 +15,9 @@ from tempest_fastapi_sdk import (
     MemoryResponseCacheStore,
     ResponseCacheMiddleware,
     ResponseCacheStore,
+    make_logs_router,
+    make_token_dependency,
+    register_exception_handlers,
 )
 
 
@@ -255,3 +261,87 @@ class TestCredentialedRequests:
         ) as c:
             response = await c.get("/const")
         assert response.headers["cache-control"] == "public, max-age=120"
+
+
+class TestTokenGatedRoutes:
+    """A route gated by a non-``Authorization`` header must never be shared.
+
+    ``make_token_dependency`` reads ``X-Token``. A cache that only treats
+    ``Authorization`` / ``Cookie`` as credentials stores the gated response
+    under the anonymous key and serves it before the gate runs.
+    """
+
+    async def test_logs_router_is_not_served_to_an_anonymous_caller(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / "info.log").write_text(
+            json.dumps(
+                {
+                    "timestamp": "2026-01-01T00:00:00.000Z",
+                    "level": "INFO",
+                    "logger": "test",
+                    "message": "operator-only record",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        app = FastAPI()
+        register_exception_handlers(app)
+        app.add_middleware(
+            ResponseCacheMiddleware, store=MemoryResponseCacheStore(), ttl_seconds=60
+        )
+        app.include_router(make_logs_router(log_dir=tmp_path, token_secret="s3cret"))
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            authed = await c.get("/logs", headers={"X-Token": "s3cret"})
+            anonymous = await c.get("/logs")
+            wrong = await c.get("/logs", headers={"X-Token": "wrong"})
+        assert authed.status_code == 200
+        assert "operator-only record" in authed.text
+        assert anonymous.status_code == 401
+        assert wrong.status_code == 401
+        assert "operator-only record" not in anonymous.text + wrong.text
+
+    async def test_custom_token_header_is_kept_out_of_the_store(self) -> None:
+        """A header outside the default list is covered by ``no-store``."""
+        app = FastAPI()
+        register_exception_handlers(app)
+        app.add_middleware(
+            ResponseCacheMiddleware, store=MemoryResponseCacheStore(), ttl_seconds=60
+        )
+        gate = make_token_dependency("s3cret", header_name="X-Ops-Key")
+
+        @app.get("/ops", dependencies=[Depends(gate)])
+        async def ops() -> dict[str, str]:
+            return {"secret": "ops-data"}
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            authed = await c.get("/ops", headers={"X-Ops-Key": "s3cret"})
+            anonymous = await c.get("/ops")
+        assert authed.status_code == 200
+        assert authed.headers["cache-control"] == "no-store"
+        assert anonymous.status_code == 401
+
+    async def test_configured_credential_header_bypasses_the_store(self) -> None:
+        store = MemoryResponseCacheStore()
+        app, counter = _make_app(
+            store=store,
+            ttl_seconds=30,
+            credential_headers=("authorization", "x-tenant-key"),
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            first = await c.get("/data", headers={"X-Tenant-Key": "k"})
+            second = await c.get("/data")
+        assert counter["n"] == 2
+        assert "x-cache" not in first.headers
+        assert second.json() == {"call": 2}
+
+    def test_empty_credential_header_list_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="credential_headers"):
+            ResponseCacheMiddleware(FastAPI(), credential_headers=())

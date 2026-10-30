@@ -278,6 +278,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reativa a conta pelo link de ativação; banimento definitivo é o
   `refuses_email_link`.
 
+### Security
+
+- `WebhookSignatureVerifier` levanta `ValueError` quando o segredo é vazio
+  ou só espaços, e `make_stripe_webhook_dependency` faz o mesmo na montagem;
+  `stripe.verify_signature` devolve `False` para segredo vazio. Antes, um
+  `STRIPE_WEBHOOK_SECRET` não configurado (o default `""` da receita)
+  verificava contra uma chave vazia. **Mudança de comportamento:** serviço
+  que montava o verificador com segredo vazio passa a falhar no boot.
+- `ResponseCacheMiddleware` e `IdempotencyMiddleware` passam a tratar
+  `X-Token` e `X-API-Key` como credencial, além de `Authorization` e `Cookie`,
+  e aceitam `credential_headers=` para a lista. Antes, uma requisição
+  autenticada só por `X-Token` (o header do `make_token_dependency` e do
+  `make_logs_router`) era tratada como anônima e podia dividir entrada com
+  outros chamadores. `make_token_dependency` passa a responder
+  `Cache-Control: no-store` enquanto o segredo está configurado.
+- `IdempotencyMiddleware` guarda um digest de método, path, query e corpo em
+  cada entrada e responde `422` (`code="IDEMPOTENCY_KEY_REUSED"`) quando a
+  mesma chave chega com outra requisição, em vez de replicar a resposta.
+  `CachedResponse` ganha o campo `fingerprint` (default `""`).
+  **Mudança de comportamento:** requisição sem credencial não é mais
+  cacheada — passa direto ao handler — a menos que o middleware receba
+  `allow_anonymous=True`; entrada gravada por versão anterior (sem digest)
+  responde `422` em vez de ser replicada.
+- `HoneypotBanMiddleware` casa `DEFAULT_HONEYPOT_PATTERNS` só contra o path; a
+  query string é casada à parte por `DEFAULT_HONEYPOT_QUERY_PATTERNS` (novo) e
+  pelo novo `query_patterns=`. As regras de palavra solta (`phpinfo`,
+  `server-status`) ficam ancoradas a segmento do path, as de extensão de
+  backup/dump e `~` só valem na raiz ou sob `/backup/`, e `credentials` /
+  `secrets` só na raiz. Antes, um download assinado de `.zip`/`.sql` do
+  `make_local_storage_router`, o `/auth/webauthn/credentials` e buscas comuns
+  na query baniam o IP do cliente por 24 horas. **Mudança de
+  comportamento:** `patterns=` próprio deixa de ver a query.
+- `key_by_header` exige `is_known=` (verificador síncrono do valor do header):
+  só valor aceito ganha bucket próprio, e valor desconhecido cai no bucket do
+  IP como header ausente. Antes, qualquer valor enviado pelo cliente virava um
+  bucket novo no rate limit. **Mudança incompatível:** chamada sem `is_known=`
+  passa a levantar `TypeError`.
+- `AttemptThrottle.reserve` (incrementa antes de verificar e recusa acima de
+  `max_attempts`) e `AttemptThrottle.release` (devolve a vaga);
+  `InMemoryThrottleBackend` ganha `decr`. O orçamento por IP do login de
+  `make_auth_router`, `make_auth_pages_router` e do admin passa a ser
+  reservado antes da checagem de senha. Antes, requisições simultâneas do
+  mesmo IP liam "não bloqueado" juntas e todas verificavam a senha,
+  qualquer que fosse `max_attempts`. Login bem-sucedido continua sem gastar
+  o orçamento do IP. Receita e README ensinam `reserve` no lugar de
+  `raise_if_blocked` + `hit`.
+- `TaskQueue.redis`, `TaskQueue.from_settings` e o backend de resultado do
+  RabbitMQ gravam resultado e progresso com `JSONSerializer` em vez do
+  `PickleSerializer` default do `taskiq_redis`; `result_serializer="pickle"`
+  (novo, com `ResultSerializer` e `DEFAULT_RESULT_SERIALIZER`) é o opt-in
+  explícito. **Mudança de comportamento:** resultado gravado em pickle por
+  versão anterior não é lido até expirar, e resultado que não é
+  serializável em JSON não é gravado — medido com taskiq 0.12.4, o
+  `model_dump(mode="json")` que o TaskIQ aplica antes do serializer já
+  recusava esses valores também sob pickle.
+- `WebSocketHub.register` remove a conexão evictada (acima de
+  `max_per_user`) sob o lock e fecha o socket depois de soltá-lo, com limite
+  de 1 s. Antes, o fechamento esperava o handshake do cliente com o lock do
+  hub preso, e um cliente que não respondia segurava `send_to`, `broadcast`
+  e `register` de todos os usuários do processo.
+
 ## [0.334.0] — 2026-10-29
 
 ### Added

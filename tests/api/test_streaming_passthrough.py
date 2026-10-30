@@ -22,6 +22,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 from starlette.testclient import TestClient
+from starlette.types import Message
 
 from tempest_fastapi_sdk.api.middlewares._streaming import (
     is_unbounded_stream,
@@ -47,8 +48,19 @@ def _scope(path: str, method: str, headers: list[tuple[bytes, bytes]]) -> Reques
         headers (list[tuple[bytes, bytes]]): Raw header pairs.
 
     Returns:
-        Request: A request usable as ``dispatch``'s first argument.
+        Request: A request usable as ``dispatch``'s first argument. Its
+        receive channel yields one empty body, which is what the
+        idempotency middleware reads to fingerprint the request.
     """
+
+    async def _receive() -> Message:
+        """Deliver an empty request body.
+
+        Returns:
+            Message: The single ``http.request`` message.
+        """
+        return {"type": "http.request", "body": b"", "more_body": False}
+
     return Request(
         {
             "type": "http",
@@ -60,7 +72,8 @@ def _scope(path: str, method: str, headers: list[tuple[bytes, bytes]]) -> Reques
             "scheme": "http",
             "server": ("test", 80),
             "client": ("1.2.3.4", 1234),
-        }
+        },
+        _receive,
     )
 
 
@@ -252,6 +265,7 @@ class TestIdempotencyStreamPassthrough:
         middleware = IdempotencyMiddleware(
             app=None,  # type: ignore[arg-type]
             store=MemoryIdempotencyStore(),
+            allow_anonymous=True,
         )
         request = _scope(
             "/api/genai/generate/stream",
@@ -270,6 +284,7 @@ class TestIdempotencyStreamPassthrough:
         middleware = IdempotencyMiddleware(
             app=None,  # type: ignore[arg-type]
             store=store,
+            allow_anonymous=True,
         )
         request = _scope("/api/orders", "POST", [(b"idempotency-key", b"key-1")])
         first = await asyncio.wait_for(

@@ -594,6 +594,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.tasks.queue.TaskIQSettingsLike
 ::: tempest_fastapi_sdk.tasks.queue.LifecycleResource
 ::: tempest_fastapi_sdk.tasks.queue.LifecycleScope
+::: tempest_fastapi_sdk.tasks.queue.ResultSerializer
 ::: tempest_fastapi_sdk.tasks.queue.Hook
 ::: tempest_fastapi_sdk.tasks.jobs.TERMINAL_JOB_STATUSES
 ::: tempest_fastapi_sdk.tasks.jobs.STALE_JOB_ERROR
@@ -961,6 +962,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.api.middlewares.access_log.AccessLogMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.honeypot.HoneypotBanMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.honeypot.DEFAULT_HONEYPOT_PATTERNS
+::: tempest_fastapi_sdk.api.middlewares.honeypot.DEFAULT_HONEYPOT_QUERY_PATTERNS
 ::: tempest_fastapi_sdk.api.middlewares.honeypot.BanStore
 ::: tempest_fastapi_sdk.api.middlewares.honeypot.MemoryBanStore
 ::: tempest_fastapi_sdk.api.middlewares.honeypot.RedisBanStore

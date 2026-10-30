@@ -464,3 +464,87 @@ class TestThrottleCodes:
         signup = str(paths["/auth/signup"]["post"]["responses"]["429"])
         assert "LOGIN_THROTTLED" in login
         assert "SIGNUP_THROTTLED" in signup
+
+
+class _SlowFailingService:
+    """Stand-in for ``UserAuthService`` whose ``login`` yields, then refuses."""
+
+    def __init__(self) -> None:
+        """Start with no verification run."""
+        self.checks: int = 0
+
+    async def login(self, session: Any, *, email: str, password: str) -> Any:
+        """Count a password check and refuse it after yielding to the loop.
+
+        Args:
+            session (Any): Ignored.
+            email (str): Ignored.
+            password (str): Ignored.
+
+        Raises:
+            UnauthorizedException: Always.
+        """
+        import asyncio
+
+        from tempest_fastapi_sdk import UnauthorizedException
+
+        del session, email, password
+        self.checks += 1
+        await asyncio.sleep(0.01)
+        raise UnauthorizedException(message="bad credentials")
+
+
+async def test_concurrent_logins_cannot_overrun_the_ip_budget() -> None:
+    """A burst from one IP runs at most ``max_attempts`` password checks."""
+    import asyncio
+
+    from tempest_fastapi_sdk.auth._login_flow import throttled_login
+
+    service = _SlowFailingService()
+    ip_throttle = AttemptThrottle(
+        InMemoryThrottleBackend(), max_attempts=5, window_seconds=900
+    )
+    results = await asyncio.gather(
+        *(
+            throttled_login(
+                service,  # type: ignore[arg-type]
+                None,  # type: ignore[arg-type]
+                email=f"u{i}@x.io",
+                password=WRONG,
+                client_ip="1.2.3.4",
+                login_throttle=None,
+                login_ip_throttle=ip_throttle,
+                throttled_message="slow down",
+            )
+            for i in range(50)
+        ),
+        return_exceptions=True,
+    )
+    assert service.checks == 5
+    assert sum(isinstance(r, LoginThrottledException) for r in results) == 45
+
+
+async def test_successful_login_gives_the_ip_slot_back() -> None:
+    """Only failed credential checks spend the IP budget."""
+    from tempest_fastapi_sdk.auth._login_flow import throttled_login
+
+    class _Ok:
+        async def login(self, session: Any, *, email: str, password: str) -> Any:
+            del session, email, password
+            return object()
+
+    ip_throttle = AttemptThrottle(
+        InMemoryThrottleBackend(), max_attempts=1, window_seconds=900
+    )
+    for _ in range(3):
+        await throttled_login(
+            _Ok(),  # type: ignore[arg-type]
+            None,  # type: ignore[arg-type]
+            email="ana@example.com",
+            password=PASSWORD,
+            client_ip="1.2.3.4",
+            login_throttle=None,
+            login_ip_throttle=ip_throttle,
+            throttled_message="slow down",
+        )
+    assert (await ip_throttle.status("login-ip:1.2.3.4")).attempts == 0

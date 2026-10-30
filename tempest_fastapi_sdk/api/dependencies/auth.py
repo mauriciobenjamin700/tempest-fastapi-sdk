@@ -6,7 +6,7 @@ import hmac
 from collections.abc import Callable, Collection, Coroutine, Iterable
 from typing import TYPE_CHECKING, Any, cast
 
-from fastapi import Depends, Header, Request
+from fastapi import Depends, Header, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from tempest_fastapi_sdk.exceptions.forbidden import (
@@ -60,6 +60,13 @@ def make_token_dependency(
     local development; production deployments should always provide
     a non-empty value.
 
+    While the check is enforced, every response of a route behind it carries
+    ``Cache-Control: no-store``. A response cache in front of the app (the
+    SDK's ``ResponseCacheMiddleware`` or a proxy) answers before the route's
+    dependencies run, so a stored copy of a gated response would be served
+    without the token ever being checked; ``no-store`` keeps the response out
+    of every such cache, whatever header ``header_name`` names.
+
     Args:
         secret (str): The shared secret to compare against. Empty
             string disables enforcement.
@@ -75,9 +82,13 @@ def make_token_dependency(
     """
     alias = header_name
 
-    async def _require_token(token: str = Header(default="", alias=alias)) -> None:
+    async def _require_token(
+        response: Response,
+        token: str = Header(default="", alias=alias),
+    ) -> None:
         if not secret:
             return
+        response.headers["Cache-Control"] = "no-store"
         if not hmac.compare_digest(token, secret):
             raise UnauthorizedException(message=error_message)
 

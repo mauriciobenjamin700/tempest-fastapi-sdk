@@ -40,6 +40,7 @@ SAMPLES: Final[Mapping[str, Any]] = {
     "results": False,
     "result_ttl_seconds": 60,
     "result_prefix": "guard",
+    "result_serializer": "pickle",
     "resources": (),
 }
 """A value to try for each knob.

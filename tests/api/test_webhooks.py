@@ -54,6 +54,12 @@ class TestWebhookSignatureVerifier:
         with pytest.raises(ValueError):
             WebhookSignatureVerifier("s", algorithm="md7")
 
+    @pytest.mark.parametrize("secret", ["", "  ", b"", b" "])
+    def test_empty_secret_raises(self, secret: str | bytes) -> None:
+        """An empty key makes every HMAC computable, so it is refused."""
+        with pytest.raises(ValueError, match="must not be empty"):
+            WebhookSignatureVerifier(secret)
+
     @pytest.mark.asyncio
     async def test_dependency_passes_valid_payload(self) -> None:
         verifier = WebhookSignatureVerifier("topsecret")

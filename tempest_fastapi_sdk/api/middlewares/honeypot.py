@@ -37,9 +37,6 @@ from tempest_fastapi_sdk.utils.client_ip import get_client_ip_from_scope
 logger = logging.getLogger(__name__)
 
 _HONEYPOT_SOURCES: tuple[str, ...] = (
-    # Dotfiles and secret files. `.well-known` is deliberately absent:
-    # ACME and `security.txt` live there and are legitimate, so the
-    # dotfile rules name the directories rather than matching `/.` .
     r"(?:^|/)\.env(\b|[./~])",
     r"(?:^|/)\.git(?:/|$)",
     r"(?:^|/)\.svn(?:/|$)",
@@ -50,19 +47,10 @@ _HONEYPOT_SOURCES: tuple[str, ...] = (
     r"(?:^|/)\.htpasswd\b",
     r"(?:^|/)\.DS_Store\b",
     r"/\.(env|git|svn|aws|ssh|config)\b",
-    # PHP reconnaissance. `php\?-` is the CGI argument-injection probe
-    # (`/cgi-bin/php?-d+allow_url_include=1`), which is why the target
-    # matched includes the query string and not the path alone.
-    r"phpinfo",
-    r"php-?info",
-    r"php\?-",
-    r"php_info",
-    r"phpversion",
-    r"_profiler/phpinfo",
-    r"server-status",
-    r"server-info",
+    r"(?:^|/)php[-_]?info(?:\.php)?(?:/|$)",
+    r"(?:^|/)phpversion(?:\.php)?(?:/|$)",
+    r"(?:^|/)server-(?:status|info)(?:/|$)",
     r"(?:^|/)info\.php\b",
-    # CMS and admin-panel scanners.
     r"(?:^|/)wp-(?:admin|login|content|includes)(?:[/.]|$)",
     r"(?:^|/)xmlrpc\.php\b",
     r"(?:^|/)wlwmanifest\.xml\b",
@@ -75,26 +63,52 @@ _HONEYPOT_SOURCES: tuple[str, ...] = (
     r"(?:^|/)magento(?:/|$)",
     r"(?:^|/)prestashop(?:/|$)",
     r"(?:^|/)cgi-bin(?:/|$)",
-    # Backup and dump signatures.
-    r"\.(?:bak|backup|old|orig|swp|swo|save|dist|sample"
-    r"|sql|sql\.gz|tar(?:\.gz)?|zip|rar|7z)(?:\?|$|/)",
-    r"~$",
-    # Config and credential probes.
+    r"^/(?:backups?/)?[^/]+\.(?:bak|backup|old|orig|swp|swo|save|dist|sample"
+    r"|sql|sql\.gz|tar(?:\.gz)?|zip|rar|7z)$",
+    r"^/[^/]+~$",
     r"(?:^|/)config(?:\.json|\.yaml|\.yml|\.ini|\.php|\.bak)",
-    r"(?:^|/)credentials\b",
-    r"(?:^|/)secret(?:s)?(?:\.|/)",
-    # Endpoints only known scanners ask for.
+    r"^/credentials\b",
+    r"^/secrets?(?:\.|/)",
     r"(?:^|/)enhancecp\b",
     r"(?:^|/)psnlink\b",
     r"(?:^|/)exapi\b",
 )
-"""Raw sources behind :data:`DEFAULT_HONEYPOT_PATTERNS`.
+"""Raw sources behind :data:`DEFAULT_HONEYPOT_PATTERNS`, matched on the path.
 
 Ported from ``alofans-api``'s ``BadActorMiddleware._HONEYPOT_PATTERNS``,
-which has been running in production against live scanner traffic. Kept as
-strings so they can be recompiled under different flags under different
-flags and so a test can assert the exact set rather than a compiled object
-whose contents are invisible in a diff.
+which has been running in production against live scanner traffic, then
+narrowed so no honest request matches:
+
+* Groups, in order: dotfiles and secret files, PHP reconnaissance, CMS and
+  admin-panel scanners, backup and dump files, config and credential
+  probes, endpoints only known scanners ask for.
+* ``.well-known`` is deliberately absent: ACME and ``security.txt`` live
+  there, so the dotfile rules name the directories rather than matching
+  ``/.``.
+* Every rule is matched against the **path only**. The query string holds
+  user input (a search for ``phpinfo``), so it is matched separately, by
+  :data:`DEFAULT_HONEYPOT_QUERY_PATTERNS`.
+* Free-text words (``phpinfo``, ``server-status``) are anchored to a whole
+  path segment.
+* Backup and dump extensions (``.zip``, ``.sql``, ``.bak``) and the editor
+  backup ``~`` match only a file at the site root or under ``/backup/``:
+  the SDK's own storage router serves uploads such as
+  ``/storage/<bucket>/<uuid>.zip`` that an honest client downloads.
+* ``credentials`` and ``secrets`` match only at the root: the SDK's auth
+  router serves ``/auth/webauthn/credentials``.
+
+Kept as strings so a test can assert the exact set rather than a compiled
+object whose contents are invisible in a diff.
+"""
+
+
+_HONEYPOT_QUERY_SOURCES: tuple[str, ...] = (r"^(?:-|%2d|%ad)d(?:\+|%20)",)
+"""Raw sources behind :data:`DEFAULT_HONEYPOT_QUERY_PATTERNS`.
+
+The PHP-CGI argument-injection probe (``/cgi-bin/php?-d+allow_url_include=1``
+and its soft-hyphen variant ``?%ADd+...``) puts a command-line switch where an
+honest client puts ``key=value``. Anchored to the start of the query so a
+value that merely contains the text never matches.
 """
 
 
@@ -115,12 +129,21 @@ def _compile_patterns(
 
 
 DEFAULT_HONEYPOT_PATTERNS: tuple[re.Pattern[str], ...] = _compile_patterns()
-"""Curated scanner signatures, matched against path **and** query string.
+"""Curated scanner signatures, matched against the request **path**.
 
 A single hit is treated as proof of a scanner, so the set errs towards
 paths no deployed application serves. It is overridable precisely because
 the judgement is not universal — a service that legitimately serves
 ``/wp-admin`` exists somewhere, and it passes its own ``patterns``.
+"""
+
+DEFAULT_HONEYPOT_QUERY_PATTERNS: tuple[re.Pattern[str], ...] = _compile_patterns(
+    _HONEYPOT_QUERY_SOURCES
+)
+"""Curated scanner signatures, matched against the raw **query string**.
+
+Kept apart from :data:`DEFAULT_HONEYPOT_PATTERNS` because the query carries
+user input: only shapes no honest client produces belong here.
 """
 
 
@@ -322,7 +345,9 @@ class HoneypotBanMiddleware:
     Attributes:
         app (ASGIApp): The wrapped ASGI application.
         store (BanStore): Where bans are recorded and read.
-        patterns (tuple[re.Pattern[str], ...]): The signatures in force.
+        patterns (tuple[re.Pattern[str], ...]): The path signatures in force.
+        query_patterns (tuple[re.Pattern[str], ...]): The query-string
+            signatures in force.
         ban_seconds (int): How long a ban lasts.
     """
 
@@ -332,6 +357,7 @@ class HoneypotBanMiddleware:
         *,
         store: BanStore,
         patterns: tuple[re.Pattern[str], ...] = DEFAULT_HONEYPOT_PATTERNS,
+        query_patterns: tuple[re.Pattern[str], ...] = DEFAULT_HONEYPOT_QUERY_PATTERNS,
         ban_seconds: int = 86_400,
         trusted_ip_header: str | None = None,
         exempt_paths: tuple[str, ...] = (),
@@ -346,8 +372,13 @@ class HoneypotBanMiddleware:
                 a single worker or a test; :class:`RedisBanStore` for
                 anything with replicas.
             patterns (tuple[re.Pattern[str], ...]): Signatures matched
-                against the request target. Defaults to
-                :data:`DEFAULT_HONEYPOT_PATTERNS`.
+                against the request path. Defaults to
+                :data:`DEFAULT_HONEYPOT_PATTERNS`. Until 0.334.0 these were
+                matched against ``path?query``; a custom pattern that
+                targets the query moves to ``query_patterns``.
+            query_patterns (tuple[re.Pattern[str], ...]): Signatures matched
+                against the raw query string alone. Defaults to
+                :data:`DEFAULT_HONEYPOT_QUERY_PATTERNS`.
             ban_seconds (int): Ban duration. Defaults to 24 hours, long
                 enough to outlast a scan pass and short enough that a
                 recycled address is not punished for its predecessor.
@@ -371,6 +402,7 @@ class HoneypotBanMiddleware:
         self.app: ASGIApp = app
         self.store: BanStore = store
         self.patterns: tuple[re.Pattern[str], ...] = patterns
+        self.query_patterns: tuple[re.Pattern[str], ...] = query_patterns
         self.ban_seconds: int = ban_seconds
         self._trusted_ip_header: str | None = trusted_ip_header
         self._exempt: PathExemption = PathExemption(
@@ -381,14 +413,22 @@ class HoneypotBanMiddleware:
     def matches(self, target: str) -> bool:
         """Report whether ``target`` carries a scanner signature.
 
+        The path (everything before the first ``?``) is checked against
+        :attr:`patterns`, the query string against :attr:`query_patterns`.
+
         Args:
             target (str): The request path, with ``?query`` appended when
                 the request carried one.
 
         Returns:
-            bool: ``True`` when any configured pattern matches.
+            bool: ``True`` when any configured pattern matches its part.
         """
-        return any(pattern.search(target) for pattern in self.patterns)
+        path, _, query = target.partition("?")
+        if any(pattern.search(path) for pattern in self.patterns):
+            return True
+        return bool(query) and any(
+            pattern.search(query) for pattern in self.query_patterns
+        )
 
     async def _is_banned(self, ip: str) -> bool:
         """Ask the store whether ``ip`` is banned, failing open.
@@ -510,6 +550,7 @@ class HoneypotBanMiddleware:
 
 __all__: list[str] = [
     "DEFAULT_HONEYPOT_PATTERNS",
+    "DEFAULT_HONEYPOT_QUERY_PATTERNS",
     "BanStore",
     "HoneypotBanMiddleware",
     "MemoryBanStore",

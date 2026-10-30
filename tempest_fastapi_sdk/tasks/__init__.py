@@ -190,11 +190,15 @@ from tempest_fastapi_sdk.tasks.queue import (
     DEFAULT_RESULT_PREFIX as DEFAULT_RESULT_PREFIX,
 )
 from tempest_fastapi_sdk.tasks.queue import (
+    DEFAULT_RESULT_SERIALIZER as DEFAULT_RESULT_SERIALIZER,
+)
+from tempest_fastapi_sdk.tasks.queue import (
     DEFAULT_RESULT_TTL_SECONDS as DEFAULT_RESULT_TTL_SECONDS,
 )
 from tempest_fastapi_sdk.tasks.queue import Hook as Hook
 from tempest_fastapi_sdk.tasks.queue import LifecycleResource as LifecycleResource
 from tempest_fastapi_sdk.tasks.queue import LifecycleScope as LifecycleScope
+from tempest_fastapi_sdk.tasks.queue import ResultSerializer as ResultSerializer
 from tempest_fastapi_sdk.tasks.queue import Task as Task
 from tempest_fastapi_sdk.tasks.queue import (
     TaskIQSettingsLike as TaskIQSettingsLike,
@@ -218,6 +222,7 @@ __all__: list[str] = [
     "DEFAULT_LOCK_TTL_SECONDS",
     "DEFAULT_POLL_SECONDS",
     "DEFAULT_RESULT_PREFIX",
+    "DEFAULT_RESULT_SERIALIZER",
     "DEFAULT_RESULT_TTL_SECONDS",
     "HEARTBEAT_FILE_MODE",
     "HEARTBEAT_FUTURE_TOLERANCE_SECONDS",
@@ -255,6 +260,7 @@ __all__: list[str] = [
     "RedisLockClient",
     "RedisLockHandle",
     "RedisSchedulerLock",
+    "ResultSerializer",
     "RetryPolicy",
     "SchedulerLock",
     "StageColumns",

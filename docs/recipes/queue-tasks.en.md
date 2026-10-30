@@ -1594,6 +1594,35 @@ tq: TaskQueue = TaskQueue.from_settings(settings)
     `TASKIQ_RESULT_TTL_SECONDS=0`, or
     `TaskQueue.redis(url, result_ttl_seconds=0)`.
 
+!!! danger "Results are stored as JSON, not pickle — behaviour change"
+    On its own, `taskiq_redis` stores results and progress with
+    `PickleSerializer`, and reading a pickle runs whatever code the stored
+    bytes name: anyone able to write the `tempest:results:*` keys (another
+    service on the same Redis, a leaked credential) gets code execution in
+    the process that calls `get_result()` / `wait_result()`. So `TaskQueue`
+    uses `JSONSerializer` in `redis()`, `from_settings()` and the RabbitMQ
+    result backend.
+
+    The value you read back is the same under both: TaskIQ converts the
+    result with `model_dump(mode="json")` **before** serializing it, so
+    `datetime` and `UUID` already came back as `str`, `set`/`tuple` as
+    `list`, and an object pydantic cannot serialize already failed. A task
+    exception also comes back with its original class. What changes:
+
+    - a result written by an earlier version (pickle) is not readable by the
+      new one until it expires (`TASKIQ_RESULT_TTL_SECONDS`, 24 h by
+      default) — `get_result()` fails to decode it;
+    - a value that does not become JSON keeps failing when stored:
+      measured with taskiq 0.12.4 and taskiq-redis 1.2.3, an arbitrary
+      object raises `PydanticSerializationError` in `model_dump` under
+      **both** serializers, and non-UTF-8 `bytes` raise
+      `UnicodeDecodeError` under both. Whoever relied on pickle for another
+      value shape passes `result_serializer="pickle"`.
+
+    A service whose Redis only it can write, and which needs pickle, asks
+    for it explicitly: `TaskQueue.redis(url, result_serializer="pickle")` or
+    `TaskQueue.from_settings(settings, result_serializer="pickle")`.
+
 !!! tip "A cron-only service does not need to store results"
     `TASKIQ_STORE_RESULTS=False` leaves TaskIQ's `DummyResultBackend` in
     place, on both transports. That is the shape of a service that only

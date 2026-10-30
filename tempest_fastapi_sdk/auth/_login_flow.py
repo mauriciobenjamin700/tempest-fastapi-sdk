@@ -35,14 +35,17 @@ async def throttled_login(
 ) -> BaseUserModel:
     """Run :meth:`UserAuthService.login` behind the login throttles.
 
-    Order matters. The IP budget is read first, so a blocked source does
-    not spend the e-mail budget of the address it is trying. Then the
-    e-mail budget is **reserved** before the password is checked — the
-    reservation, not a later count, is what keeps a burst of concurrent
-    guesses from all passing a "not blocked yet" read together. Both are
-    spent identically for an e-mail without an account, so neither
-    ``429`` reveals which e-mails exist. A refused login counts against
-    the IP; a successful one clears the e-mail's key.
+    Order matters. The IP budget is **reserved** first, so a blocked source
+    does not spend the e-mail budget of the address it is trying. Then the
+    e-mail budget is reserved too, both before the password is checked —
+    the reservation, not a later count, is what keeps a burst of
+    concurrent guesses from all passing a "not blocked yet" read together.
+    Both are spent identically for an e-mail without an account, so
+    neither ``429`` reveals which e-mails exist. A refused login keeps its
+    IP slot spent; any other outcome (success, a spent e-mail budget, an
+    error that is not a wrong credential) gives the slot back, so only
+    failed credential checks count against the IP. A successful login also
+    clears the e-mail's key.
 
     Args:
         service (UserAuthService): The auth service.
@@ -64,25 +67,29 @@ async def throttled_login(
     """
     ip_key = f"login-ip:{client_ip}"
     if login_ip_throttle is not None:
-        await login_ip_throttle.raise_if_blocked(
+        await login_ip_throttle.reserve(
             ip_key,
             message=throttled_message,
             exception=LoginThrottledException,
         )
-    email_key = login_throttle_key(email)
-    if login_throttle is not None:
-        attempt = await login_throttle.hit(email_key)
-        if attempt.attempts > login_throttle.max_attempts:
-            raise LoginThrottledException(
-                message=throttled_message,
-                retry_after_seconds=attempt.retry_after_seconds,
-            )
+    failed = False
     try:
-        user = await service.login(session, email=email, password=password)
-    except UnauthorizedException:
-        if login_ip_throttle is not None:
-            await login_ip_throttle.hit(ip_key)
-        raise
+        email_key = login_throttle_key(email)
+        if login_throttle is not None:
+            attempt = await login_throttle.hit(email_key)
+            if attempt.attempts > login_throttle.max_attempts:
+                raise LoginThrottledException(
+                    message=throttled_message,
+                    retry_after_seconds=attempt.retry_after_seconds,
+                )
+        try:
+            user = await service.login(session, email=email, password=password)
+        except UnauthorizedException:
+            failed = True
+            raise
+    finally:
+        if login_ip_throttle is not None and not failed:
+            await login_ip_throttle.release(ip_key)
     if login_throttle is not None:
         await login_throttle.reset(email_key)
     return user

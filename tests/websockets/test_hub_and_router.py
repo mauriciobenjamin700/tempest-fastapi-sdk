@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -56,6 +57,55 @@ class _FakeWebSocket:
 
     async def close(self, code: int = 1000) -> None:
         self.closed_with = code
+
+
+class _SilentPeerWebSocket(_FakeWebSocket):
+    """A peer that never answers the close handshake."""
+
+    async def close(self, code: int = 1000) -> None:
+        self.closed_with = code
+        await asyncio.sleep(30)
+
+
+class TestEvictionDoesNotHoldTheHubLock:
+    """Closing an evicted peer must not stall other users' delivery."""
+
+    async def test_send_to_another_user_is_not_blocked_by_an_eviction(
+        self,
+    ) -> None:
+        hub = WebSocketHub(max_per_user=1)
+        attacker = uuid4()
+        victim = uuid4()
+        victim_ws = _FakeWebSocket()
+        await hub.register(victim, victim_ws)  # type: ignore[arg-type]
+        silent = _SilentPeerWebSocket()
+        await hub.register(attacker, silent)  # type: ignore[arg-type]
+
+        evicting = asyncio.create_task(
+            hub.register(attacker, _FakeWebSocket())  # type: ignore[arg-type]
+        )
+        await asyncio.sleep(0.05)
+        started = asyncio.get_running_loop().time()
+        delivered = await asyncio.wait_for(
+            hub.send_to(victim, WSEnvelope(type="ping", data={})), timeout=0.5
+        )
+        elapsed = asyncio.get_running_loop().time() - started
+        await evicting
+
+        assert delivered == 1
+        assert elapsed < 0.5
+        assert silent.closed_with == 4429
+        assert hub.connection_count() == 2
+
+    async def test_eviction_close_is_bounded(self) -> None:
+        hub = WebSocketHub(max_per_user=1)
+        user = uuid4()
+        await hub.register(user, _SilentPeerWebSocket())  # type: ignore[arg-type]
+        await asyncio.wait_for(
+            hub.register(user, _FakeWebSocket()),  # type: ignore[arg-type]
+            timeout=5,
+        )
+        assert hub.connection_count() == 1
 
 
 class TestWebSocketHub:

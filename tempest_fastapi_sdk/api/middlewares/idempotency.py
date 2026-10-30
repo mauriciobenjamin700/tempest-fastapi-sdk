@@ -35,16 +35,35 @@ cache key: two callers that pick the same string on the same endpoint —
 by collision or by one guessing the other's — would share an entry, and
 the replay hands back the stored **response**, body and headers included.
 The middleware therefore folds a digest of the request's credentials
-(``Authorization`` / ``Cookie``) into the key, so an entry is only ever
-replayed to the credentials that created it. ``principal_resolver=``
-overrides that with your own notion of identity (a tenant id, an API-key
-id) when credentials alone are too coarse or too fine.
+(``Authorization``, ``Cookie``, ``X-Token`` and ``X-API-Key`` by default;
+``credential_headers=`` changes the list) into the key, so an entry is only
+ever replayed to the credentials that created it. ``principal_resolver=``
+overrides that with your own notion of identity (an API-key id) when
+credentials alone are too coarse or too fine.
+
+A request with **no** credentials has no identity to scope by, so by
+default it is not cached at all: it passes straight to the handler, exactly
+as if it carried no ``Idempotency-Key``. Endpoints such as login carry the
+secret in the body and return a token pair, and a shared anonymous scope
+would replay one caller's tokens to anyone who repeats the key.
+``allow_anonymous=True`` restores a shared anonymous scope for services
+whose anonymous mutations are safe to replay across callers.
+
+Each entry is bound to the request
+----------------------------------
+
+The stored entry carries a digest of the method, path, query string and
+body. A later request under the same key whose digest differs is answered
+``422`` (``code="IDEMPOTENCY_KEY_REUSED"``) instead of being replayed, the
+behaviour Stripe documents: a key reused for a different request is a client
+bug, and silently returning the first request's response hides it.
 """
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 import time
 from collections.abc import Awaitable, Callable
@@ -53,9 +72,14 @@ from typing import Protocol, runtime_checkable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
+from tempest_fastapi_sdk.api.middlewares._credentials import (
+    DEFAULT_CREDENTIAL_HEADERS,
+    credential_digest,
+    normalize_credential_headers,
+)
 from tempest_fastapi_sdk.api.middlewares._streaming import is_unbounded_stream
 
 
@@ -100,19 +124,41 @@ class _RedisLike(Protocol):
         ...
 
 
-# Header name canonical to the industry — Stripe / AWS / GitHub all use it.
 IDEMPOTENCY_HEADER: str = "Idempotency-Key"
+"""Header name canonical to the industry: Stripe, AWS and GitHub all use it."""
 
-# Mutating verbs the middleware caches. Reads are naturally idempotent
-# and replaying them wastes the cache.
 _MUTATING_METHODS: frozenset[str] = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+"""Verbs the middleware caches; reads are idempotent and replaying them wastes
+the cache."""
 
-# Headers that identify the caller when no `principal_resolver` is given.
-_CREDENTIAL_HEADERS: tuple[str, ...] = ("authorization", "cookie")
-
-# Never replayed: a `Set-Cookie` minted for the original caller would be
-# re-issued to whoever replays the key, handing over that session.
 _UNREPLAYABLE_HEADERS: frozenset[str] = frozenset({"set-cookie"})
+"""Never replayed: a ``Set-Cookie`` minted for the original caller would be
+re-issued to whoever replays the key, handing over that session."""
+
+_KEY_REUSED_CODE: str = "IDEMPOTENCY_KEY_REUSED"
+"""``code`` of the ``422`` answered when a key is reused for another request."""
+
+
+def _request_fingerprint(method: str, path: str, query: str, body: bytes) -> str:
+    """Digest the parts of a request an idempotent replay must match.
+
+    Each part is length-prefixed so two different requests can never
+    concatenate into the same input.
+
+    Args:
+        method (str): The HTTP method.
+        path (str): The URL path.
+        query (str): The raw query string.
+        body (bytes): The raw request body.
+
+    Returns:
+        str: The sha256 hex digest.
+    """
+    digest = hashlib.sha256()
+    for part in (method.encode(), path.encode(), query.encode(), body):
+        digest.update(len(part).to_bytes(8, "big"))
+        digest.update(part)
+    return digest.hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,12 +172,16 @@ class CachedResponse:
             for ``Set-Cookie``).
         body (bytes): Raw response body bytes.
         media_type (str | None): Original ``Content-Type``.
+        fingerprint (str): Digest of the request that produced the response
+            (method, path, query and body). Empty for entries that are not
+            bound to a request, such as the response cache's.
     """
 
     status_code: int
     headers: list[tuple[str, str]]
     body: bytes
     media_type: str | None
+    fingerprint: str = ""
 
 
 @runtime_checkable
@@ -274,6 +324,7 @@ class RedisIdempotencyStore:
             headers=[tuple(h) for h in payload["headers"]],
             body=base64.b64decode(payload["body_b64"]),
             media_type=payload.get("media_type"),
+            fingerprint=str(payload.get("fingerprint", "")),
         )
 
     async def set(
@@ -298,6 +349,7 @@ class RedisIdempotencyStore:
                 "headers": list(response.headers),
                 "body_b64": base64.b64encode(response.body).decode("ascii"),
                 "media_type": response.media_type,
+                "fingerprint": response.fingerprint,
             }
         )
         await self.client.set(self._key(key), payload, ex=ttl_seconds)
@@ -309,7 +361,10 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
     Only mutating verbs (``POST`` / ``PUT`` / ``PATCH`` /
     ``DELETE``) are eligible. The key is scoped per
     ``(caller, method, path, key)`` so a key reused across different
-    endpoints — or by a different caller — doesn't collide.
+    endpoints — or by a different caller — doesn't collide, and a hit
+    replays only when the method, path, query and body match the request
+    that created the entry (``422`` otherwise). Requests without
+    credentials are not cached unless ``allow_anonymous=True``.
 
     Add to FastAPI like any other ASGI middleware:
 
@@ -334,6 +389,8 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         header_name: str = IDEMPOTENCY_HEADER,
         principal_resolver: Callable[[Request], str] | None = None,
         cache_server_errors: bool = False,
+        credential_headers: tuple[str, ...] = DEFAULT_CREDENTIAL_HEADERS,
+        allow_anonymous: bool = False,
     ) -> None:
         """Initialize the middleware.
 
@@ -349,17 +406,35 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
                 Defaults to the canonical ``Idempotency-Key``.
             principal_resolver (Callable[[Request], str] | None): Returns
                 the caller identity folded into the cache key. ``None``
-                (default) digests the ``Authorization`` / ``Cookie``
-                headers, which is right whenever those carry the identity.
-                Supply your own when identity lives elsewhere (an API-key
-                id, a tenant header) — returning a constant restores the
-                old cross-caller behavior and is unsafe on a multi-tenant
-                endpoint.
+                (default) digests the ``credential_headers``, which is right
+                whenever those carry the identity. Supply your own when
+                identity lives elsewhere, and derive it from a credential
+                the resolver **verifies** (a signed token's subject): the
+                middleware runs before any auth dependency, so a value read
+                from a plain client header (a tenant id) isolates nothing.
+                An empty string means anonymous. Returning a constant
+                restores cross-caller sharing and is unsafe on a
+                multi-tenant endpoint.
             cache_server_errors (bool): Whether a ``5xx`` is stored and
                 replayed. ``False`` (default) lets the client's retry
                 actually reach the handler — a transient failure cached
                 for ``ttl_seconds`` would otherwise pin that key to the
                 error for as long as the entry lives.
+            credential_headers (tuple[str, ...]): Request headers digested
+                into the caller identity when ``principal_resolver`` is
+                ``None``. The default covers ``Authorization``, ``Cookie``,
+                ``X-Token`` (the header of ``make_token_dependency``) and
+                ``X-API-Key``; add the header your own auth reads when it is
+                none of those.
+            allow_anonymous (bool): Whether requests without an identity
+                (no credential header, or a resolver returning ``""``) share
+                one cached scope. ``False`` (default) passes them to the
+                handler uncached: anonymous endpoints such as login carry the
+                credential in the body, and a shared scope would replay one
+                caller's response to another.
+
+        Raises:
+            ValueError: When ``credential_headers`` is empty.
         """
         super().__init__(app)
         self.store: IdempotencyStore = store
@@ -367,6 +442,10 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         self.header_name: str = header_name
         self.principal_resolver: Callable[[Request], str] | None = principal_resolver
         self.cache_server_errors: bool = cache_server_errors
+        self.credential_headers: tuple[str, ...] = normalize_credential_headers(
+            credential_headers
+        )
+        self.allow_anonymous: bool = allow_anonymous
         self._locks: dict[str, asyncio.Lock] = {}
         self._locks_guard: asyncio.Lock = asyncio.Lock()
 
@@ -378,20 +457,14 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
 
         Returns:
             str: A short, opaque identity token. Empty string for an
-            unauthenticated request, which is itself a scope (anonymous
-            callers share one, and see only anonymous responses).
+            unauthenticated request, which is cached only under
+            ``allow_anonymous=True`` (all anonymous callers then share one
+            scope).
         """
         if self.principal_resolver is not None:
             return self.principal_resolver(request)
-        raw = "|".join(
-            f"{name}={request.headers.get(name, '')}" for name in _CREDENTIAL_HEADERS
-        )
-        if raw == "|".join(f"{name}=" for name in _CREDENTIAL_HEADERS):
-            return ""
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
-
-    def _build_cache_key(self, request: Request, key: str) -> str:
-        return f"{self._principal(request)}:{request.method}:{request.url.path}:{key}"
+        digest = credential_digest(request, self.credential_headers)
+        return "" if digest is None else digest[:32]
 
     async def _lock_for(self, cache_key: str) -> asyncio.Lock:
         """Return the process-local lock guarding ``cache_key``.
@@ -453,11 +526,23 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         if not key:
             return await call_next(request)
 
-        cache_key = self._build_cache_key(request, key)
+        principal = self._principal(request)
+        if not principal and not self.allow_anonymous:
+            return await call_next(request)
+
+        cache_key = f"{principal}:{request.method}:{request.url.path}:{key}"
+        fingerprint = _request_fingerprint(
+            request.method,
+            request.url.path,
+            request.url.query,
+            await request.body(),
+        )
         lock = await self._lock_for(cache_key)
         try:
             async with lock:
-                return await self._dispatch_locked(request, call_next, cache_key)
+                return await self._dispatch_locked(
+                    request, call_next, cache_key, fingerprint
+                )
         finally:
             await self._release_lock(cache_key)
 
@@ -466,21 +551,40 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
         cache_key: str,
+        fingerprint: str,
     ) -> Response:
         """Serve the cached response for ``cache_key`` or produce and store it.
+
+        A hit whose stored fingerprint differs from ``fingerprint`` is not
+        replayed: it is answered ``422``. That includes entries written
+        before fingerprints existed, which carry an empty one.
 
         Args:
             request (Request): The inbound request.
             call_next (Callable[[Request], Awaitable[Response]]): The next
                 handler in the middleware chain.
             cache_key (str): The caller-scoped cache key.
+            fingerprint (str): Digest of this request, from
+                :func:`_request_fingerprint`.
 
         Returns:
-            Response: The replayed response on a hit, otherwise the
-                handler's own.
+            Response: The replayed response on a hit, a ``422`` when the key
+                was used for a different request, otherwise the handler's own.
         """
         cached = await self.store.get(cache_key)
         if cached is not None:
+            if not hmac.compare_digest(cached.fingerprint, fingerprint):
+                return JSONResponse(
+                    status_code=422,
+                    content={
+                        "detail": (
+                            f"{self.header_name} was already used for a "
+                            "different request"
+                        ),
+                        "code": _KEY_REUSED_CODE,
+                        "details": {},
+                    },
+                )
             return Response(
                 content=cached.body,
                 status_code=cached.status_code,
@@ -509,6 +613,7 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
             headers=replayable_headers,
             body=body,
             media_type=response.media_type,
+            fingerprint=fingerprint,
         )
         if self.cache_server_errors or response.status_code < 500:
             await self.store.set(

@@ -15,12 +15,19 @@ The backend is injected — anything implementing the async Redis verbs
 the backend raises and ``fail_open`` is ``True`` (default), the throttle
 degrades to "allow" rather than locking users out on a cache outage.
 
+Count **before** verifying. A read-then-count sequence
+(``raise_if_blocked`` → verify → ``hit``) lets a burst of concurrent
+requests all read "not blocked" before any of them is counted, so every one
+of them runs the check whatever ``max_attempts`` says. :meth:`AttemptThrottle.reserve`
+takes the slot atomically (``INCR``) and refuses once the budget is spent;
+:meth:`AttemptThrottle.release` gives the slot back when the attempt turns
+out not to be a failure.
+
 Example:
     throttle = AttemptThrottle(redis, max_attempts=5, window_seconds=900)
-    await throttle.raise_if_blocked(key)          # 429 if over budget
+    await throttle.reserve(key)                   # 429 once over budget
     if not await verify(code):
-        await throttle.hit(key)                   # count the failure
-        raise InvalidCodeError()
+        raise InvalidCodeError()                  # the slot stays spent
     await throttle.reset(key)                     # success clears it
 """
 
@@ -29,7 +36,7 @@ import math
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, cast
 
 from tempest_fastapi_sdk.exceptions.too_many_requests import (
     TooManyRequestsException,
@@ -234,6 +241,74 @@ class AttemptThrottle:
             if not self._fail_open:
                 raise
 
+    async def reserve(
+        self,
+        key: str,
+        *,
+        message: str | None = None,
+        exception: type[TooManyRequestsException] = TooManyRequestsException,
+    ) -> ThrottleStatus:
+        """Take one attempt from ``key``'s budget before verifying it.
+
+        The increment is the check: the backend's atomic ``INCR`` hands each
+        concurrent caller a distinct count, so at most ``max_attempts``
+        callers per window get past this line however many arrive at once.
+        Use it instead of :meth:`raise_if_blocked` followed by a later
+        :meth:`hit`, which only bounds *sequential* attempts.
+
+        The reserved slot stays spent when the attempt fails. When it turns
+        out not to be a failure (a successful login), either clear the key
+        with :meth:`reset` or give back just this slot with :meth:`release`.
+        A refused reservation is counted too, so a key that keeps trying
+        while blocked stays blocked until the window ends.
+
+        Args:
+            key (str): The domain key.
+            message (str | None): Optional override for the 429 message.
+            exception (type[TooManyRequestsException]): The class to raise.
+
+        Returns:
+            ThrottleStatus: The status after the reservation, when it fits
+            the budget. On a backend error with ``fail_open`` set, an empty,
+            unblocked status.
+
+        Raises:
+            TooManyRequestsException: When the reservation exceeds
+                ``max_attempts``; carries ``Retry-After``.
+        """
+        current = await self.hit(key)
+        if current.attempts > self.max_attempts:
+            raise exception(
+                message=message,
+                retry_after_seconds=current.retry_after_seconds,
+            )
+        return current
+
+    async def release(self, key: str) -> None:
+        """Give back one slot taken by :meth:`reserve`.
+
+        Decrements the counter when the backend offers ``decr`` (Redis and
+        :class:`InMemoryThrottleBackend` do). A counter that reaches zero, or
+        a key that expired in between, is deleted rather than left behind
+        without a TTL. A backend without ``decr`` keeps the slot spent,
+        which errs towards throttling.
+
+        Args:
+            key (str): The domain key.
+        """
+        decr = getattr(self._backend, "decr", None)
+        if decr is None:
+            return
+        try:
+            remaining = await cast("Callable[[str], Awaitable[int]]", decr)(
+                self._key(key)
+            )
+            if remaining <= 0:
+                await self._backend.delete(self._key(key))
+        except Exception:
+            if not self._fail_open:
+                raise
+
     async def raise_if_blocked(
         self,
         key: str,
@@ -250,6 +325,10 @@ class AttemptThrottle:
                 a subclass carrying its own ``code`` (``LOGIN_THROTTLED``)
                 keeps the status and the ``Retry-After`` and lets the client
                 tell this refusal from any other 429.
+
+        This only **reads** the counter. Paired with a :meth:`hit` after a
+        slow verification it does not bound concurrent attempts; use
+        :meth:`reserve` for that.
 
         Returns:
             ThrottleStatus: The (unblocked) status when within budget.
@@ -376,6 +455,24 @@ class InMemoryThrottleBackend:
         self._evict_expired()
         entry = self._live(name)
         count = (entry[0] if entry is not None else 0) + 1
+        self._counters[name] = (count, entry[1] if entry is not None else None)
+        return count
+
+    async def decr(self, name: str, /) -> int:
+        """Decrement ``name`` and return the new count, like Redis ``DECR``.
+
+        An absent or expired key starts from zero, so the result is ``-1``
+        with no TTL, exactly as Redis answers; :meth:`AttemptThrottle.release`
+        deletes such a key.
+
+        Args:
+            name (str): Identifier being throttled (an IP, a user, an email).
+
+        Returns:
+            int: The attempt count after the decrement.
+        """
+        entry = self._live(name)
+        count = (entry[0] if entry is not None else 0) - 1
         self._counters[name] = (count, entry[1] if entry is not None else None)
         return count
 

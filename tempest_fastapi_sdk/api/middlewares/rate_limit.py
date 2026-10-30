@@ -480,20 +480,31 @@ def key_by_ip(*, trusted_header: str | None = None) -> Callable[[Request], str]:
 def key_by_header(
     header_name: str,
     *,
+    is_known: Callable[[str], bool],
     scope: str = "key",
     fallback_to_ip: bool = True,
     trusted_ip_header: str | None = None,
 ) -> Callable[[Request], str]:
-    """Build a key function that buckets by a request header value.
+    """Build a key function that buckets by a **verified** header value.
 
-    Useful for per-API-key limits (e.g. ``header_name="x-api-key"``).
+    Useful for per-API-key limits (e.g. ``header_name="x-api-key"``). The
+    middleware computes the key before any auth dependency runs, so the
+    header value is still whatever the client sent. ``is_known`` is what
+    turns it into an identity: only a value it accepts gets its own bucket.
+    Any other value is treated like a missing header, so a client that sends
+    a fresh made-up value on every request stays in its IP bucket instead of
+    getting a fresh budget (and a fresh store entry) each time.
 
     Args:
         header_name (str): Header whose value is the bucket key.
+        is_known (Callable[[str], bool]): Synchronous check that the value
+            names a real principal (a lookup in the set of issued API keys,
+            a checksum on the key format). Runs on every request, so keep it
+            cheap; it receives the stripped header value.
         scope (str): Prefix for the key (keeps namespaces from
             colliding, e.g. ``"apikey:<value>"``).
-        fallback_to_ip (bool): When the header is absent, key by client
-            IP instead of collapsing every anonymous caller into one
+        fallback_to_ip (bool): When the header is absent or not known, key
+            by client IP instead of collapsing every such caller into one
             bucket.
         trusted_ip_header (str | None): Header to resolve the client IP
             from when falling back.
@@ -503,9 +514,9 @@ def key_by_header(
     """
 
     def _key(request: Request) -> str:
-        value = request.headers.get(header_name)
-        if value:
-            return f"{scope}:{value.strip()}"
+        value = (request.headers.get(header_name) or "").strip()
+        if value and is_known(value):
+            return f"{scope}:{value}"
         if fallback_to_ip:
             return f"ip:{get_client_ip(request, trusted_header=trusted_ip_header)}"
         return f"{scope}:anonymous"

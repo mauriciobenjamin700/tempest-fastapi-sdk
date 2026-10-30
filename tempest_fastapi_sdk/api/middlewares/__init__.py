@@ -35,6 +35,9 @@ from tempest_fastapi_sdk.api.middlewares.honeypot import (
     DEFAULT_HONEYPOT_PATTERNS as DEFAULT_HONEYPOT_PATTERNS,
 )
 from tempest_fastapi_sdk.api.middlewares.honeypot import (
+    DEFAULT_HONEYPOT_QUERY_PATTERNS as DEFAULT_HONEYPOT_QUERY_PATTERNS,
+)
+from tempest_fastapi_sdk.api.middlewares.honeypot import (
     BanStore as BanStore,
 )
 from tempest_fastapi_sdk.api.middlewares.honeypot import (
@@ -150,6 +153,7 @@ __all__: list[str] = [
     "CSRF_COOKIE_NAME",
     "CSRF_HEADER_NAME",
     "DEFAULT_HONEYPOT_PATTERNS",
+    "DEFAULT_HONEYPOT_QUERY_PATTERNS",
     "IDEMPOTENCY_HEADER",
     "AccessLogMiddleware",
     "BanStore",

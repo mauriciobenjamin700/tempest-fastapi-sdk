@@ -318,6 +318,11 @@ Close codes the router emits:
 | `4408` | No inbound frame within `WS_HEARTBEAT_TIMEOUT_SECONDS` |
 | `4429` | `WS_MAX_CONNECTIONS_PER_USER` exceeded — the **oldest** connection of the user is evicted |
 
+The evicted connection leaves the hub's indexes immediately; the `4429`
+close runs **outside** the hub lock and is abandoned after 1 s. A client
+that never answers the close handshake does not hold up other users'
+`send_to`, `broadcast` or `register` meanwhile.
+
 ### Heartbeat without the router
 
 The heartbeat does not require the rest of the router. `heartbeat` is an

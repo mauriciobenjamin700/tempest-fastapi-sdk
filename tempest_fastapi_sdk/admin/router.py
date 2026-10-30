@@ -1184,12 +1184,13 @@ def make_admin_router(
         refused with ``403`` and the form re-rendered with a fresh token.
 
         The two login budgets run in the order ``make_auth_router`` uses
-        for ``/auth/login``. The IP budget is read first, so a blocked
-        source does not spend the budget of the identifier it is
-        trying. The identifier budget is then **reserved** before the
-        password is checked — a burst of concurrent guesses cannot all
-        pass a "not blocked yet" read together. A refused login counts
-        against the IP; a successful one clears the identifier's key.
+        for ``/auth/login``. The IP budget is **reserved** first, so a
+        blocked source does not spend the budget of the identifier it is
+        trying. The identifier budget is then reserved too, both before
+        the password is checked — a burst of concurrent guesses cannot
+        all pass a "not blocked yet" read together. A refused login keeps
+        its IP slot spent; any other outcome gives it back. A successful
+        login clears the identifier's key.
 
         Returns:
             Response: Redirect to the dashboard on success; rendered
@@ -1207,28 +1208,32 @@ def make_admin_router(
             f"admin-login-ip:{get_client_ip(request, trusted_header=trusted_ip_header)}"
         )
         if resolved_login_ip_throttle is not None:
-            ip_status = await resolved_login_ip_throttle.status(ip_key)
-            if ip_status.blocked:
+            ip_status = await resolved_login_ip_throttle.hit(ip_key)
+            if ip_status.attempts > resolved_login_ip_throttle.max_attempts:
                 return _login_throttled(request, ip_status.retry_after_seconds)
-        identifier_key = login_throttle_key(identifier)
-        if resolved_login_throttle is not None:
-            attempt = await resolved_login_throttle.hit(identifier_key)
-            if attempt.attempts > resolved_login_throttle.max_attempts:
-                return _login_throttled(request, attempt.retry_after_seconds)
+        failed = False
         try:
-            principal = await auth_backend.authenticate(
-                db_session,
-                identifier=identifier,
-                password=password,
-            )
-        except AdminAuthError as exc:
-            if resolved_login_ip_throttle is not None:
-                await resolved_login_ip_throttle.hit(ip_key)
-            return _render_login(
-                request,
-                {"user": None, "error": exc.message},
-                status_code=exc.status_code,
-            )
+            identifier_key = login_throttle_key(identifier)
+            if resolved_login_throttle is not None:
+                attempt = await resolved_login_throttle.hit(identifier_key)
+                if attempt.attempts > resolved_login_throttle.max_attempts:
+                    return _login_throttled(request, attempt.retry_after_seconds)
+            try:
+                principal = await auth_backend.authenticate(
+                    db_session,
+                    identifier=identifier,
+                    password=password,
+                )
+            except AdminAuthError as exc:
+                failed = True
+                return _render_login(
+                    request,
+                    {"user": None, "error": exc.message},
+                    status_code=exc.status_code,
+                )
+        finally:
+            if resolved_login_ip_throttle is not None and not failed:
+                await resolved_login_ip_throttle.release(ip_key)
         if resolved_login_throttle is not None:
             await resolved_login_throttle.reset(identifier_key)
         pending = auth_backend.mfa_enabled(principal)

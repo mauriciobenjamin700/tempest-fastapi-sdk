@@ -70,11 +70,10 @@ async def on_startup() -> None:
 
 async def login(email: str, password: str) -> User:
     key = f"login:{email}"
-    await throttle.raise_if_blocked(key)  # 429 if already over budget
+    await throttle.reserve(key)  # spend 1 attempt before verifying; 429 if over budget
 
     user = await users_repo.get_or_none({"email": email})
     if user is None or not password_utils.verify(password, user.hashed_password):
-        await throttle.hit(key)  # +1 failure, apply TTL
         raise UnauthorizedException(message="Invalid credentials.")
 
     await throttle.reset(key)  # clear counter on success
@@ -86,6 +85,9 @@ async def login(email: str, password: str) -> User:
 - `attempts: int` — failures recorded in the current window.
 - `blocked: bool` — `True` when `attempts >= max_attempts`.
 - `retry_after_seconds: int` — seconds until the window resets (`0` when not blocked).
+
+!!! warning "Reserve before verifying"
+    `raise_if_blocked` only **reads** the counter. Followed by a `hit` after verification, it bounds sequential attempts but not concurrent ones: a burst of simultaneous requests all read "not blocked" before any `hit` lands, and every one of them checks the password. `reserve` increments (atomically, `INCR`) before the check and refuses whoever goes past `max_attempts`, so at most `max_attempts` verifications run per window. When the attempt is not a failure, `reset` clears the key or `release` gives back just that slot.
 
 Use the fields to build friendly error payloads. `raise_if_blocked` already crafts a `TooManyRequestsException` with the `Retry-After` header — you don't need to read them by hand.
 
@@ -432,7 +434,7 @@ router = APIRouter()
 async def login(request: Request, payload: LoginIn) -> LoginOut:
     # Behind Nginx that overwrites X-Real-IP with the actual peer:
     ip = get_client_ip(request, trusted_header="x-real-ip")
-    await throttle.raise_if_blocked(f"login:{ip}")
+    await throttle.reserve(f"login:{ip}")
     ...
 ```
 
@@ -607,8 +609,10 @@ rather than limiting.
 
 `DEFAULT_HONEYPOT_PATTERNS` is what this middleware really ships: a curated,
 versioned set of signatures — dotfiles, PHP recon, CMS scanners, backup/dump
-extensions and credential probes — matched against the path **and** the query
-string, none of it specific to whichever service hosts it. It is pure research
+extensions and credential probes — matched against the **path**, none of it
+specific to whichever service hosts it. The query string, which carries what the
+user types, is matched separately by `DEFAULT_HONEYPOT_QUERY_PATTERNS`, which
+only recognizes the PHP-CGI argument injection (`?-d+...`). It is pure research
 and it goes stale; coming from the SDK, you pick up new signatures with a bump
 instead of maintaining regexes by hand.
 
@@ -643,6 +647,20 @@ app.add_middleware(
 `/.well-known/` is **not** on the list: ACME and `security.txt` live there and
 are legitimate, so the dotfile rules name the directories rather than matching a
 generic `/.`.
+
+One hit earns a 24-hour ban for the whole IP (and everyone behind the same
+NAT), so the list stays clear of what an honest client requests:
+
+- a loose word (`phpinfo`, `server-status`) only matches as a whole path
+  segment — a search for `?q=phpinfo` does not ban;
+- backup/dump extensions (`.zip`, `.sql`, `.bak`) and the editor-backup `~`
+  only match a file at the root or under `/backup/` — the signed download
+  `/storage/<bucket>/<uuid>.zip` from `make_local_storage_router` passes;
+- `credentials` and `secrets` only match at the root — the auth router's
+  `/auth/webauthn/credentials` passes.
+
+Until 0.334.0 `patterns=` was matched against `path?query`. A custom pattern
+that targets the query moves to `query_patterns=`.
 
 ### It fails open, by default
 

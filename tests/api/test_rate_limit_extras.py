@@ -54,22 +54,81 @@ def test_key_by_ip_trusted_header() -> None:
     assert extractor(_request({"x-real-ip": "1.2.3.4"})) == "ip:1.2.3.4"
 
 
+KNOWN_KEYS: frozenset[str] = frozenset({"abc"})
+
+
 def test_key_by_header_uses_value() -> None:
-    """The header value becomes the key, namespaced by scope."""
-    extractor = key_by_header("x-api-key", scope="apikey")
+    """A known header value becomes the key, namespaced by scope."""
+    extractor = key_by_header(
+        "x-api-key", scope="apikey", is_known=KNOWN_KEYS.__contains__
+    )
     assert extractor(_request({"x-api-key": "abc"})) == "apikey:abc"
 
 
 def test_key_by_header_falls_back_to_ip() -> None:
     """A missing header falls back to the client IP."""
-    extractor = key_by_header("x-api-key", scope="apikey")
+    extractor = key_by_header(
+        "x-api-key", scope="apikey", is_known=KNOWN_KEYS.__contains__
+    )
     assert extractor(_request()) == "ip:9.9.9.9"
+
+
+def test_key_by_header_unknown_value_falls_back_to_ip() -> None:
+    """An unverified value gets no bucket of its own."""
+    extractor = key_by_header(
+        "x-api-key", scope="apikey", is_known=KNOWN_KEYS.__contains__
+    )
+    assert extractor(_request({"x-api-key": "junk-1"})) == "ip:9.9.9.9"
 
 
 def test_key_by_header_anonymous_without_fallback() -> None:
     """With fallback disabled, a missing header yields a shared bucket."""
-    extractor = key_by_header("x-api-key", scope="apikey", fallback_to_ip=False)
+    extractor = key_by_header(
+        "x-api-key",
+        scope="apikey",
+        fallback_to_ip=False,
+        is_known=KNOWN_KEYS.__contains__,
+    )
     assert extractor(_request()) == "apikey:anonymous"
+    assert extractor(_request({"x-api-key": "junk"})) == "apikey:anonymous"
+
+
+async def test_rotating_unknown_header_values_still_reach_429() -> None:
+    """Rotating made-up values neither escapes the limit nor grows the store."""
+    store = MemoryRateLimitStore()
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        store=store,
+        max_requests=3,
+        window_seconds=60,
+        key_func=key_by_header(
+            "x-api-key", scope="apikey", is_known=KNOWN_KEYS.__contains__
+        ),
+    )
+
+    @app.post("/auth/login")
+    async def login() -> dict[str, bool]:
+        return {"ok": True}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://t"
+    ) as client:
+        statuses = [
+            (
+                await client.post("/auth/login", headers={"x-api-key": f"junk-{i}"})
+            ).status_code
+            for i in range(20)
+        ]
+    assert statuses.count(200) == 3
+    assert statuses.count(429) == 17
+    assert len(store._buckets) == 1
+
+
+def test_key_by_header_requires_a_verifier() -> None:
+    """Building it without ``is_known`` is refused by the signature."""
+    with pytest.raises(TypeError, match="is_known"):
+        key_by_header("x-api-key")  # type: ignore[call-arg]
 
 
 def test_key_by_jwt_subject_uses_sub_claim() -> None:

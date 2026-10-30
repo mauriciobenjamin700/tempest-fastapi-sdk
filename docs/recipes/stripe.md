@@ -160,6 +160,11 @@ async def stripe_webhook(
 
 - Assinatura inválida, ausente ou fora da janela de 5 minutos → **401**,
   antes do seu handler.
+- Segredo vazio (ou só espaços) **derruba o boot**:
+  `make_stripe_webhook_dependency("")` levanta `ValueError` na montagem do
+  router, e `verify_signature(..., "")` devolve `False`. Um HMAC com chave
+  vazia é calculável por qualquer um, então um `STRIPE_WEBHOOK_SECRET`
+  esquecido no ambiente não vira um endpoint que aceita entrega forjada.
 - Rotação de segredo funciona: a Stripe manda um `v1` por segredo ativo e
   qualquer um que bata é aceito.
 - Tipo de evento desconhecido **não** derruba a rota — `event` fica
@@ -376,7 +381,9 @@ client = StripeClient(stripe_http_client(settings.STRIPE_API_KEY))
 ```
 
 O segredo do webhook é **por endpoint**, não por conta: um serviço com
-endpoint de teste e de produção tem dois.
+endpoint de teste e de produção tem dois. O default `""` do exemplo só
+serve para o `Settings` carregar em teste: com ele, montar o router do
+webhook levanta `ValueError`.
 
 ## Testando
 

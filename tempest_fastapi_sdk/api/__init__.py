@@ -103,6 +103,9 @@ from tempest_fastapi_sdk.api.middlewares import (
     DEFAULT_HONEYPOT_PATTERNS as DEFAULT_HONEYPOT_PATTERNS,
 )
 from tempest_fastapi_sdk.api.middlewares import (
+    DEFAULT_HONEYPOT_QUERY_PATTERNS as DEFAULT_HONEYPOT_QUERY_PATTERNS,
+)
+from tempest_fastapi_sdk.api.middlewares import (
     IDEMPOTENCY_HEADER as IDEMPOTENCY_HEADER,
 )
 from tempest_fastapi_sdk.api.middlewares import (
@@ -388,6 +391,7 @@ __all__: list[str] = [
     "DEFAULT_DOCUMENT_CACHE_CONTROL",
     "DEFAULT_EXCLUDED_PREFIXES",
     "DEFAULT_HONEYPOT_PATTERNS",
+    "DEFAULT_HONEYPOT_QUERY_PATTERNS",
     "DEFAULT_LATENCY_BUCKETS",
     "DEFAULT_MAX_RECORDS_PER_FILE",
     "DEFAULT_SPA_CONTENT_SECURITY_POLICY",

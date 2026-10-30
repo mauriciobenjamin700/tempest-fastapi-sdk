@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from fastapi import FastAPI, Response
+import pytest
+from fastapi import Depends, FastAPI, Response
 from fastapi.responses import JSONResponse
 from httpx import ASGITransport, AsyncClient
 
@@ -16,7 +17,10 @@ from tempest_fastapi_sdk import (
     IdempotencyStore,
     MemoryIdempotencyStore,
     RedisIdempotencyStore,
+    make_token_dependency,
+    register_exception_handlers,
 )
+from tempest_fastapi_sdk.api.middlewares.idempotency import _request_fingerprint
 
 
 class TestMemoryStore:
@@ -91,6 +95,7 @@ def _make_app(store: IdempotencyStore) -> FastAPI:
         IdempotencyMiddleware,
         store=store,
         ttl_seconds=60,
+        allow_anonymous=True,
     )
 
     counter = {"n": 0}
@@ -156,6 +161,7 @@ class TestIdempotencyMiddleware:
             IdempotencyMiddleware,
             store=MemoryIdempotencyStore(),
             ttl_seconds=60,
+            allow_anonymous=True,
         )
 
         @app.post("/a")
@@ -303,6 +309,7 @@ class TestUnreplayableContent:
             IdempotencyMiddleware,
             store=MemoryIdempotencyStore(),
             ttl_seconds=60,
+            allow_anonymous=True,
         )
         state = {"fail": True}
 
@@ -328,6 +335,7 @@ class TestUnreplayableContent:
             store=MemoryIdempotencyStore(),
             ttl_seconds=60,
             cache_server_errors=True,
+            allow_anonymous=True,
         )
         state = {"fail": True}
 
@@ -351,6 +359,7 @@ class TestUnreplayableContent:
             IdempotencyMiddleware,
             store=MemoryIdempotencyStore(),
             ttl_seconds=60,
+            allow_anonymous=True,
         )
         counter = {"n": 0}
 
@@ -374,6 +383,7 @@ class TestConcurrency:
             IdempotencyMiddleware,
             store=MemoryIdempotencyStore(),
             ttl_seconds=60,
+            allow_anonymous=True,
         )
         counter = {"n": 0}
 
@@ -399,6 +409,7 @@ class TestConcurrency:
             FastAPI(),
             store=MemoryIdempotencyStore(),
             ttl_seconds=60,
+            allow_anonymous=True,
         )
         lock = await middleware._lock_for("k1")
         assert middleware._locks == {"k1": lock}
@@ -410,8 +421,212 @@ class TestConcurrency:
             FastAPI(),
             store=MemoryIdempotencyStore(),
             ttl_seconds=60,
+            allow_anonymous=True,
         )
         lock = await middleware._lock_for("k1")
         async with lock:
             await middleware._release_lock("k1")
             assert middleware._locks == {"k1": lock}
+
+
+def _token_gated_app(**mw_kwargs: Any) -> tuple[FastAPI, dict[str, int]]:
+    """App whose ``POST /payout`` sits behind ``make_token_dependency``."""
+    app = FastAPI()
+    register_exception_handlers(app)
+    app.add_middleware(IdempotencyMiddleware, **mw_kwargs)
+    counter = {"n": 0}
+    gate = make_token_dependency("s3cret")
+
+    @app.post("/payout", dependencies=[Depends(gate)])
+    async def payout() -> dict[str, str]:
+        counter["n"] += 1
+        return {"receipt": "AUTHED-RECEIPT"}
+
+    return app, counter
+
+
+class TestTokenHeaderIsACredential:
+    """``X-Token`` scopes the entry like ``Authorization`` does."""
+
+    async def test_token_response_is_not_replayed_to_an_anonymous_caller(
+        self,
+    ) -> None:
+        app, counter = _token_gated_app(
+            store=MemoryIdempotencyStore(), allow_anonymous=True
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            authed = await c.post(
+                "/payout", headers={IDEMPOTENCY_HEADER: "K1", "X-Token": "s3cret"}
+            )
+            anonymous = await c.post("/payout", headers={IDEMPOTENCY_HEADER: "K1"})
+        assert authed.json() == {"receipt": "AUTHED-RECEIPT"}
+        assert anonymous.status_code == 401
+        assert counter["n"] == 1
+
+    async def test_anonymous_rejection_is_not_replayed_to_the_token_holder(
+        self,
+    ) -> None:
+        app, counter = _token_gated_app(
+            store=MemoryIdempotencyStore(), allow_anonymous=True
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            anonymous = await c.post("/payout", headers={IDEMPOTENCY_HEADER: "K2"})
+            authed = await c.post(
+                "/payout", headers={IDEMPOTENCY_HEADER: "K2", "X-Token": "s3cret"}
+            )
+        assert anonymous.status_code == 401
+        assert authed.status_code == 200
+        assert counter["n"] == 1
+
+    def test_empty_credential_header_list_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="credential_headers"):
+            IdempotencyMiddleware(
+                FastAPI(), store=MemoryIdempotencyStore(), credential_headers=()
+            )
+
+
+def _login_app(**mw_kwargs: Any) -> tuple[FastAPI, dict[str, int]]:
+    """App whose ``POST /auth/login`` returns tokens only for the right password."""
+    app = FastAPI()
+    app.add_middleware(IdempotencyMiddleware, **mw_kwargs)
+    counter = {"n": 0}
+
+    @app.post("/auth/login")
+    async def login(payload: dict[str, str]) -> Response:
+        counter["n"] += 1
+        if payload.get("password") != "right":
+            return JSONResponse({"detail": "bad credentials"}, status_code=401)
+        return JSONResponse({"access_token": f"ACCESS-FOR-{payload['email']}"})
+
+    return app, counter
+
+
+class TestAnonymousScope:
+    """Anonymous callers do not share entries unless explicitly allowed."""
+
+    async def test_anonymous_login_is_not_replayed_to_another_caller(self) -> None:
+        app, counter = _login_app(store=MemoryIdempotencyStore())
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            victim = await c.post(
+                "/auth/login",
+                headers={IDEMPOTENCY_HEADER: "login-7"},
+                json={"email": "alice@example.com", "password": "right"},
+            )
+            other = await c.post(
+                "/auth/login",
+                headers={IDEMPOTENCY_HEADER: "login-7"},
+                json={"email": "alice@example.com", "password": "WRONG"},
+            )
+        assert victim.json() == {"access_token": "ACCESS-FOR-alice@example.com"}
+        assert other.status_code == 401
+        assert "access_token" not in other.text
+        assert counter["n"] == 2
+
+    async def test_anonymous_requests_are_not_cached_by_default(self) -> None:
+        app, counter = _counting_app(store=MemoryIdempotencyStore())
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            first = await c.post("/charge", headers={IDEMPOTENCY_HEADER: "k1"})
+            second = await c.post("/charge", headers={IDEMPOTENCY_HEADER: "k1"})
+        assert first.json() == {"call": 1}
+        assert second.json() == {"call": 2}
+        assert counter["n"] == 2
+
+    async def test_empty_resolver_identity_is_anonymous(self) -> None:
+        app, counter = _counting_app(
+            store=MemoryIdempotencyStore(), principal_resolver=lambda request: ""
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            await c.post("/charge", headers={IDEMPOTENCY_HEADER: "k1"})
+            await c.post("/charge", headers={IDEMPOTENCY_HEADER: "k1"})
+        assert counter["n"] == 2
+
+
+class TestRequestFingerprint:
+    """A key replays only for the request that created it."""
+
+    async def test_same_key_with_another_body_is_rejected(self) -> None:
+        app, counter = _login_app(store=MemoryIdempotencyStore(), allow_anonymous=True)
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            await c.post(
+                "/auth/login",
+                headers={IDEMPOTENCY_HEADER: "login-7"},
+                json={"email": "alice@example.com", "password": "right"},
+            )
+            other = await c.post(
+                "/auth/login",
+                headers={IDEMPOTENCY_HEADER: "login-7"},
+                json={"email": "alice@example.com", "password": "WRONG"},
+            )
+        assert other.status_code == 422
+        assert other.json()["code"] == "IDEMPOTENCY_KEY_REUSED"
+        assert "access_token" not in other.text
+        assert counter["n"] == 1
+
+    async def test_same_key_with_another_query_is_rejected(self) -> None:
+        app = FastAPI()
+        app.add_middleware(IdempotencyMiddleware, store=MemoryIdempotencyStore())
+        counter = {"n": 0}
+
+        @app.post("/transfer")
+        async def transfer(to: str) -> dict[str, str]:
+            counter["n"] += 1
+            return {"sent_to": to}
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            headers = {IDEMPOTENCY_HEADER: "t1", "Authorization": "Bearer alice"}
+            first = await c.post("/transfer?to=bob", headers=headers)
+            retry = await c.post("/transfer?to=bob", headers=headers)
+            other = await c.post("/transfer?to=carol", headers=headers)
+        assert first.json() == retry.json() == {"sent_to": "bob"}
+        assert other.status_code == 422
+        assert counter["n"] == 1
+
+    async def test_entry_without_fingerprint_is_not_replayed(self) -> None:
+        """An entry stored before fingerprints existed fails closed."""
+        store = MemoryIdempotencyStore()
+        app, counter = _counting_app(store=store)
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            headers = {IDEMPOTENCY_HEADER: "k1", "Authorization": "Bearer alice"}
+            await c.post("/charge", headers=headers)
+            [(cache_key, (expires, cached))] = store._store.items()
+            store._store[cache_key] = (
+                expires,
+                CachedResponse(
+                    status_code=cached.status_code,
+                    headers=cached.headers,
+                    body=cached.body,
+                    media_type=cached.media_type,
+                ),
+            )
+            legacy = await c.post("/charge", headers=headers)
+        assert legacy.status_code == 422
+        assert counter["n"] == 1
+
+    async def test_redis_store_round_trips_the_fingerprint(self) -> None:
+        store = RedisIdempotencyStore(_FakeRedis())
+        cached = CachedResponse(
+            status_code=200, headers=[], body=b"{}", media_type=None, fingerprint="abc"
+        )
+        await store.set("k", cached, ttl_seconds=60)
+        assert await store.get("k") == cached
+
+    def test_fingerprint_separates_its_parts(self) -> None:
+        assert _request_fingerprint("POST", "/a", "b=1", b"") != _request_fingerprint(
+            "POST", "/a", "", b"b=1"
+        )
