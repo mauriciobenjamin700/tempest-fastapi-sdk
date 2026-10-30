@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.334.1] — 2026-10-29
+
 ### Fixed
 
 - A ordem das bases ensinada para os mixins tipados como `BaseModel`
