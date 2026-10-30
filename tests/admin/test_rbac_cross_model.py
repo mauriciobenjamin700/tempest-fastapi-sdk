@@ -454,6 +454,42 @@ class TestReferencedModelNeedsView:
         assert DEPT_NAME in allowed.text
 
 
+class TestSidebarFollowsView:
+    @pytest.mark.asyncio
+    async def test_form_pages_list_only_viewable_models(
+        self, app_x: tuple[FastAPI, Ids]
+    ) -> None:
+        """Every authenticated page filters the sidebar, forms included.
+
+        The create and edit forms used to render the registry-wide default,
+        naming models the principal is refused.
+        """
+        app, ids = app_x
+        dept_link = f'href="/admin/m/{XDept.__tablename__}/"'
+        emp_link = f'href="/admin/m/{XEmp.__tablename__}/"'
+        async with _client(app) as client:
+            await admin_login(client, "fk@x.com", "pw")
+            pages = [
+                await client.get(f"/admin/m/{XEmp.__tablename__}/new"),
+                await client.get(f"/admin/m/{XEmp.__tablename__}/{ids.emp_ada}/edit"),
+                await client.get(f"/admin/m/{XEmp.__tablename__}/"),
+            ]
+        for page in pages:
+            assert page.status_code == 200, page.url
+            assert emp_link in page.text, page.url
+            assert dept_link not in page.text, page.url
+
+    @pytest.mark.asyncio
+    async def test_super_sidebar_lists_every_model(
+        self, app_x: tuple[FastAPI, Ids]
+    ) -> None:
+        app, _ = app_x
+        async with _client(app) as client:
+            await admin_login(client, "super@x.com", "pw")
+            page = await client.get(f"/admin/m/{XEmp.__tablename__}/new")
+        assert f'href="/admin/m/{XDept.__tablename__}/"' in page.text
+
+
 class TestSurfaces:
     @pytest.mark.asyncio
     async def test_restricted_principal_is_refused_every_surface(

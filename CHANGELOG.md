@@ -154,32 +154,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pg_dump` que falha não deixa arquivo para trás. O `.gitignore` e o
   `.dockerignore` do `tempest new` passam a ignorar `backups/`, `*.dump` e
   `*.sqlite`. Projetos já gerados precisam acrescentar essas linhas à mão.
-- Admin: `access_policy` now covers what one model's page renders or writes
-  of another. An inline table needs `VIEW` on the child (a child with no
-  registered admin is asked about through a throwaway `AdminModel`); the
-  editable inline's add row needs the child's `can_create` and `CREATE`, and
-  its delete box `DELETE`, with the formset `POST` answering `403` before
-  writing; FK selects, FK list filters and autocomplete need `VIEW` on the
-  referenced admin.
-- Admin: new `surface_policy=` on `make_admin_router`, with `AdminSurface`
-  (`SQL`, `TASKS`, `LOGS`) and `AdminSurfacePolicy`, gates the SQL console,
-  the task panel and the logs page. **Behaviour change:** once an
-  `access_policy` is configured, those surfaces are denied to every principal
-  unless a `surface_policy` grants them. With neither policy nothing changes.
-- `BaseModel.__secret_columns__` (merged along the MRO by
-  `BaseModel.get_secret_columns()`) declares credential columns. The SDK
-  declares `MFAMixin.totp_secret`, the push subscription and device-token
-  `endpoint`/`token`, `p256dh` and `auth`, and the refresh-token and
-  recovery-code digests. The admin hides them from every read surface and
-  from the edit form without `exclude_fields` (a required one stays a blank
-  input on the create form, see `AdminModel.insertable_secret_names()`), and
-  the audit trail redacts them. **Behaviour change:** those columns no longer
-  appear in the admin, even when named in `list_display`.
-- Admin: an inline of a child model with no registered admin no longer
-  renders `hashed_password` or other hidden columns.
-- Admin: the CSV export prefixes a text cell starting with `=`, `+`, `-`,
-  `@`, tab or CR with `'`, so spreadsheets do not evaluate it as a formula.
-  The JSON export is unchanged.
+- Admin: o `access_policy` passa a cobrir o que a página de um model mostra
+  ou grava de outro. A tabela inline exige `VIEW` no filho (filho sem admin
+  registrado é consultado por um `AdminModel` descartável); a linha de
+  inclusão do inline editável exige `can_create` e `CREATE` no filho, e a
+  caixa de exclusão exige `DELETE`, com o `POST` do formset respondendo `403`
+  antes de gravar; select e filtro de FK e o autocomplete exigem `VIEW` no
+  admin referenciado. A sidebar de toda página autenticada, formulários de
+  criação e edição incluídos, lista só os models que o principal pode ver.
+- Admin: novo `surface_policy=` no `make_admin_router`, com `AdminSurface`
+  (`SQL`, `TASKS`, `LOGS`) e `AdminSurfacePolicy`, controla o console SQL, o
+  painel de tasks e a página de logs. **Mudança de comportamento:** com um
+  `access_policy` configurado, essas telas ficam negadas a todo principal até
+  um `surface_policy` liberá-las. Sem nenhuma das duas políticas, nada muda.
+- `BaseModel.__secret_columns__` (combinado ao longo do MRO por
+  `BaseModel.get_secret_columns()`) declara colunas de credencial. O SDK
+  declara `MFAMixin.totp_secret`, o `endpoint`/`token`, `p256dh` e `auth` da
+  inscrição de push e do device token, e os digests de refresh token e de
+  código de recuperação. O admin as esconde de toda tela de leitura e do
+  formulário de edição sem precisar de `exclude_fields` (a obrigatória vira
+  campo em branco no formulário de criação, ver
+  `AdminModel.insertable_secret_names()`), e a trilha de auditoria as
+  redige. **Mudança de comportamento:** essas colunas não aparecem mais no
+  admin, nem quando citadas em `list_display`.
+- Admin: o inline de um model filho sem admin registrado não mostra mais
+  `hashed_password` nem outras colunas escondidas.
+- Admin: a exportação CSV prefixa com `'` a célula de texto que começa com
+  `=`, `+`, `-`, `@`, tab ou CR, para a planilha não avaliá-la como fórmula.
+  A exportação JSON não muda.
 - **Login social só cria conta com e-mail verificado.** O callback de OAuth
   (`/auth/oauth/{provider}/callback` e `/auth/oauth/{provider}/token`) passa a
   exigir `email_verified is True` também para **criar** conta, não só para

@@ -648,6 +648,7 @@ def make_admin_router(
             if await _allows_surface(principal, mounted):
                 allowed.add(mounted)
         request.state.tempest_admin_surfaces = frozenset(allowed)
+        request.state.tempest_admin_nav = await _visible_nav(principal)
         if surface is not None and surface not in allowed:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "forbidden")
         return principal
@@ -703,9 +704,12 @@ def make_admin_router(
 
         Notes:
             The sidebar navigation is injected here rather than per view
-            because every authenticated page shares it. It is built from
-            the registry, with no database hit, so one source drives both
-            the dashboard cards and the persistent sidebar.
+            because every authenticated page shares it. The entries are
+            the models the principal may VIEW, computed once by
+            ``_resolve_principal`` and read from ``request.state``, so no
+            page can fall back to listing the whole registry; a page
+            rendered without a resolved principal (login) gets no
+            entries.
         """
         context.setdefault("site", site)
         context.setdefault("messages", [])
@@ -714,13 +718,7 @@ def make_admin_router(
         context.setdefault("htmx_url", f"{prefix}{_SCRIPTS_SUBPATH}/htmx.js")
         context.setdefault(
             "nav_models",
-            [
-                {
-                    "label": admin.get_verbose_name_plural(),
-                    "url": f"{prefix}/m/{admin.get_slug()}/",
-                }
-                for admin in site.iter_models()
-            ],
+            getattr(request.state, "tempest_admin_nav", []),
         )
         context.setdefault("nav_index_url", f"{prefix}/")
         allowed: frozenset[AdminSurface] = getattr(
@@ -1423,7 +1421,6 @@ def make_admin_router(
                 "session": session,
                 "user_display": auth_backend.display_name(principal),
                 "models_view": models_view,
-                "nav_models": await _visible_nav(principal),
                 "cards": cards,
                 "metrics": await _system_metrics() if show_metrics else None,
             },
@@ -1836,7 +1833,6 @@ def make_admin_router(
                 "bulk_actions": _bulk_actions(admin),
                 "bulk_url": f"{prefix}/m/{slug}/bulk",
                 "filters": await _filter_specs(admin, request, db_session, principal),
-                "nav_models": await _visible_nav(principal),
             },
         )
 
@@ -2428,7 +2424,6 @@ def make_admin_router(
                 "history": history,
                 "inlines": inlines,
                 "inline_error": inline_error,
-                "nav_models": await _visible_nav(principal),
                 "can_edit": admin.can_edit
                 and await _allows(principal, admin, AdminPermission.EDIT),
                 "can_delete": admin.can_delete
@@ -3015,7 +3010,6 @@ def make_admin_router(
                 "user": principal,
                 "session": session,
                 "user_display": auth_backend.display_name(principal),
-                "nav_models": await _visible_nav(principal),
                 "capabilities": sorted(str(item) for item in policy.capabilities),
                 "allowed_tables": sorted(policy.allowed_tables),
                 "denied_tables": sorted(policy.denied_tables),
@@ -3142,7 +3136,6 @@ def make_admin_router(
                     "user": principal,
                     "session": session,
                     "user_display": auth_backend.display_name(principal),
-                    "nav_models": await _visible_nav(principal),
                     "shows_runs": _panel.shows_runs,
                     "shows_schedule": _panel.shows_schedule,
                     "runs": runs,
@@ -3186,7 +3179,6 @@ def make_admin_router(
                 "user": principal,
                 "session": session,
                 "user_display": auth_backend.display_name(principal),
-                "nav_models": await _visible_nav(principal),
                 "tasks_url": f"{prefix}/tasks",
             }
             job = await _panel.run(job_id)
