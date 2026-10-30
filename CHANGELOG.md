@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `hostbridge.ps_single_quote` dobra também as aspas tipográficas U+2018,
+  U+2019, U+201A e U+201B, que o lexer do PowerShell lê como aspa simples do
+  mesmo jeito que `'` — antes só o apóstrofo ASCII era dobrado. Afeta o script
+  que `HostBridge.pick_file` gera para `title`, `filter` e `initial_dir`.
+
 ## [0.335.0] — 2026-10-30
 
 ### Security

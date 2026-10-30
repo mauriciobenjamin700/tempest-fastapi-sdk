@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
+from typing import Final
 
 from tempest_fastapi_sdk.hostbridge.config import HostBridgeConfig
 from tempest_fastapi_sdk.hostbridge.exceptions import (
@@ -169,6 +170,19 @@ async def run_cmd(
     )
 
 
+_PS_SINGLE_QUOTE_CHARS: Final[frozenset[str]] = frozenset(
+    {"\u0027", "\u2018", "\u2019", "\u201a", "\u201b"},
+)
+"""Every character PowerShell's lexer reads as a single quote.
+
+The PowerShell language specification lists the ASCII apostrophe and the
+four typographic quotes U+2018, U+2019, U+201A and U+201B as interchangeable
+single-quote characters: any of them opens or closes a single-quoted literal.
+Ported from PowerShell's ``CharExtensions.IsSingleQuote``; its own escaper,
+``CodeGeneration.EscapeSingleQuotedStringContent``, doubles every one of them.
+"""
+
+
 def ps_single_quote(value: str) -> str:
     """Quote a value as a PowerShell single-quoted literal.
 
@@ -177,13 +191,22 @@ def ps_single_quote(value: str) -> str:
     backtick escapes — which is what makes this a safe way to put a
     caller-supplied title or path into a generated script.
 
+    "Quote" means every character in ``_PS_SINGLE_QUOTE_CHARS``, not only
+    the ASCII apostrophe: the lexer ends a literal on a typographic quote
+    (U+2019) just as it does on ``'``, so each one is doubled the way
+    PowerShell's own escaper doubles it.
+
     Args:
         value (str): The raw value.
 
     Returns:
-        str: The value wrapped in single quotes, with inner quotes doubled.
+        str: The value wrapped in single quotes, with every inner
+        single-quote character doubled.
     """
-    return "'" + value.replace("'", "''") + "'"
+    escaped: str = "".join(
+        char * 2 if char in _PS_SINGLE_QUOTE_CHARS else char for char in value
+    )
+    return "'" + escaped + "'"
 
 
 __all__: list[str] = [
