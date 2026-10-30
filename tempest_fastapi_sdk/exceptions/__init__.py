@@ -133,6 +133,9 @@ from tempest_fastapi_sdk.exceptions.validation import (
     PageSizeTooLargeException as PageSizeTooLargeException,
 )
 from tempest_fastapi_sdk.exceptions.validation import (
+    PushEndpointNotPublicException as PushEndpointNotPublicException,
+)
+from tempest_fastapi_sdk.exceptions.validation import (
     UnknownFilterKeyException as UnknownFilterKeyException,
 )
 from tempest_fastapi_sdk.exceptions.validation import (
@@ -192,6 +195,7 @@ __all__: list[str] = [
     "PageSizeTooLargeException",
     "PayoutRejectedException",
     "PayoutUncertainException",
+    "PushEndpointNotPublicException",
     "TooManyRequestsException",
     "UnauthorizedException",
     "UnknownFilterKeyException",

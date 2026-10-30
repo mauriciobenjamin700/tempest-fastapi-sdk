@@ -31,7 +31,9 @@ from tempest_fastapi_sdk.push.schemas import (
     PushResult,
     mask_push_token,
 )
+from tempest_fastapi_sdk.push.transports.webpush import WebPushTransport
 from tempest_fastapi_sdk.utils.datetime import utcnow
+from tempest_fastapi_sdk.webpush.service import _refuse_undeliverable_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +112,14 @@ class DeviceService(Generic[DeviceModelT]):
         account registers; otherwise the previous account keeps the
         device.
 
+        A ``web`` registration is checked first by the dispatcher of the
+        :class:`~tempest_fastapi_sdk.push.WebPushTransport` that delivers
+        to it (:meth:`~tempest_fastapi_sdk.webpush.WebPushDispatcher.check_endpoint`):
+        an endpoint it would refuse raises
+        :class:`~tempest_fastapi_sdk.exceptions.PushEndpointNotPublicException`
+        and is not stored. A custom web transport is not consulted, and
+        mobile tokens, which are not URLs, are never checked.
+
         Args:
             user_id (UUID): The user that owns the device.
             registration (DeviceRegistrationSchema): What the client sent.
@@ -121,12 +131,23 @@ class DeviceService(Generic[DeviceModelT]):
             DeviceModelT: The persisted row — created, updated, or, for a
             token of another account, the stored row unchanged. Never echo
             it to the requester.
+
+        Raises:
+            PushEndpointNotPublicException: When the web endpoint would be
+                refused by the web transport's dispatcher (HTTP ``422``).
         """
         platform = (
             registration.platform.value
             if isinstance(registration.platform, PushPlatform)
             else str(registration.platform)
         )
+        web_transport = self.transport_for(PushPlatform.WEB.value)
+        if platform == PushPlatform.WEB.value and isinstance(
+            web_transport, WebPushTransport
+        ):
+            await _refuse_undeliverable_endpoint(
+                web_transport.dispatcher, registration.token
+            )
         existing = await self.repository.get_or_none({"token": registration.token})
         if existing is not None:
             if existing.user_id != user_id and not transfer_ownership:

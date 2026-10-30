@@ -2,6 +2,13 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## Next release — security fixes (real time)
+
+| Where | What changes | What to do |
+| --- | --- | --- |
+| `SSEBroker` with Redis | With the default `channel_prefix` `"sse"`, construction logs a `WARNING`: Redis pub/sub ignores the DB index, and another service on the same instance with the same prefix exchanges events with this one | Pass a service-specific `channel_prefix` (`"orders-api:sse"`) on every worker at once — workers with different prefixes do not see each other |
+| Web Push subscription (`WebPushSubscriptionService.subscribe`, `make_web_push_router`, `web` registration on `make_push_router`) | An endpoint that is or resolves to a non-public address answers `422 PUSH_ENDPOINT_NOT_PUBLIC` and is not stored; `send_many` returns for pruning a previously stored endpoint whose host is a non-public IP literal | Nothing, if the push service is public. Self-hosted push service on the internal network: `allow_private_networks=True` on the `WebPushDispatcher` opens subscription and delivery together |
+
 ## 0.335.0 — `BaseUserModel` gains the `email_verified_at` column
 
 `BaseUserModel` now maps `email_verified_at` (timezone-aware timestamp,

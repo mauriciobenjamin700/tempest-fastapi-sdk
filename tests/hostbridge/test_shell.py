@@ -134,6 +134,28 @@ class TestPsSingleQuote:
         """``$`` and backticks are literal inside single quotes."""
         assert ps_single_quote("$env:PATH`n") == "'$env:PATH`n'"
 
+    @pytest.mark.parametrize(
+        "quote",
+        ["\u0027", "\u2018", "\u2019", "\u201a", "\u201b"],
+        ids=["U+0027", "U+2018", "U+2019", "U+201A", "U+201B"],
+    )
+    def test_doubles_every_character_the_lexer_reads_as_a_quote(
+        self, quote: str
+    ) -> None:
+        """Typographic quotes close a PowerShell literal too, so each is doubled.
+
+        PowerShell's lexer treats U+2018, U+2019, U+201A and U+201B as
+        single-quote characters, and its own escaper doubles each of them
+        with itself. Left single, any of them would end the literal and
+        turn the rest of the value into script.
+        """
+        value: str = f"t{quote};Set-Content marker ok;#"
+        assert ps_single_quote(value) == f"'t{quote}{quote};Set-Content marker ok;#'"
+
+    def test_doubles_mixed_quotes_independently(self) -> None:
+        """Each quote character is doubled with itself, never normalised."""
+        assert ps_single_quote("a\u2019'\u2018b") == "'a\u2019\u2019''\u2018\u2018b'"
+
     def test_a_closing_attempt_stays_inside_the_literal(self) -> None:
         """An injected ``'; rm -rf /` ends up doubled, not terminating."""
         assert ps_single_quote("'; Remove-Item C:\\ -Recurse") == (

@@ -29,7 +29,7 @@ cache = AsyncRedisManager(settings.REDIS_URL)
 email = EmailUtils(**settings.email_kwargs())
 mq = MessageBroker.rabbitmq(settings.RABBITMQ_URL)      # eventos entre serviços
 tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)     # trabalho fora do request
-events = SSEBroker(redis=cache.client_proxy)                  # status em tempo real
+events = SSEBroker(redis=cache.client_proxy, channel_prefix="checkout:sse")  # status em tempo real
 ```
 
 Todos sobem/descem no lifespan (`connect`/`disconnect`) — veja o

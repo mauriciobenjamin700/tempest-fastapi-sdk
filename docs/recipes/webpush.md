@@ -501,8 +501,8 @@ confiável:
 
 - o host do endpoint é resolvido e **todo** endereço da resposta precisa ser
   público — loopback, rede privada, link-local (inclusive
-  `169.254.169.254`), CGNAT e afins são recusados com `WebPushError`, sem
-  request nenhum (a mesma regra do `ContentExtractor` do RAG);
+  `169.254.169.254`), CGNAT e afins são recusados com
+  `WebPushEndpointRefusedError` (um `WebPushError`), sem request nenhum (a mesma regra do `ContentExtractor` do RAG);
 - a conexão vai para o endereço que passou na checagem, com o `Host`, o SNI
   e a validação do certificado no nome original — uma segunda resposta de
   DNS diferente não chega ao socket;
@@ -512,8 +512,27 @@ confiável:
   conectar e para cada leitura); estouro e erro de conexão viram
   `WebPushError`.
 
-Endpoint recusado não entra na lista de podados do `send_many`: ele é
-registrado no log como qualquer outra falha.
+A mesma checagem roda **antes** de o endpoint ser gravado: o
+`WebPushSubscriptionService.subscribe` (e o `DeviceService.register` para
+device `web`) chama `dispatcher.check_endpoint(...)` no próprio dispatcher e
+levanta `PushEndpointNotPublicException` — `422 PUSH_ENDPOINT_NOT_PUBLIC` —
+para endpoint que o dispatcher recusaria, então ele nem chega à tabela. Isso
+cobre o seu router do passo 6 e o `make_web_push_router` pronto do mesmo
+jeito. Host que não resolve
+naquele momento é aceito — uma falha de DNS não pode recusar um navegador, e
+todo envio confere de novo.
+
+Se o `send_many` devolve um endpoint recusado para poda depende do que decidiu
+a recusa (`WebPushEndpointRefusedError.permanent`):
+
+- **a própria URL** — não é `https`, ou o host é um IP literal não público
+  (`https://10.0.0.1/...`): nenhuma tentativa futura funciona, então o
+  endpoint entra na lista devolvida e o `notify_user` / `notify_all` o
+  apagam;
+- **uma resposta de DNS** — um nome que resolveu para endereço interno:
+  resposta muda, e um resolver que aponte um push service real para um proxy
+  interno recusaria todas as inscrições de uma vez, então o endpoint só vai
+  para o log e fica, como qualquer falha transitória.
 
 ```python
 from tempest_fastapi_sdk import WebPushDispatcher
@@ -528,7 +547,9 @@ dispatcher: WebPushDispatcher = WebPushDispatcher(
 !!! note "Push service próprio na rede interna"
     `allow_private_networks=True` desliga só a checagem de endereço público
     — o redirect continua desligado e o `timeout` continua valendo. Use
-    apenas quando quem se inscreve é confiável.
+    apenas quando quem se inscreve é confiável. É uma chave só: a rota de
+    inscrição consulta o mesmo dispatcher, então o cadastro abre junto com o
+    envio.
 
 ## Broadcast: um aviso para todo mundo
 

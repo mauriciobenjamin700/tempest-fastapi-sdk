@@ -503,8 +503,8 @@ destination:
 
 - the endpoint host is resolved and **every** address in the answer must be
   public — loopback, private networks, link-local (including
-  `169.254.169.254`), CGNAT and the like are refused with `WebPushError`,
-  before any request (the same rule as the RAG `ContentExtractor`);
+  `169.254.169.254`), CGNAT and the like are refused with
+  `WebPushEndpointRefusedError` (a `WebPushError`), before any request (the same rule as the RAG `ContentExtractor`);
 - the connection goes to the address that passed the check, with `Host`,
   SNI and the certificate check on the original name — a different second
   DNS answer never reaches the socket;
@@ -514,8 +514,26 @@ destination:
   to connect and for each read); a timeout or connection error becomes a
   `WebPushError`.
 
-A refused endpoint is not in the list `send_many` returns for pruning: it is
-logged like any other failure.
+The same check runs **before** an endpoint is stored:
+`WebPushSubscriptionService.subscribe` (and `DeviceService.register` for a
+`web` device) calls `dispatcher.check_endpoint(...)` on its own dispatcher and
+raises `PushEndpointNotPublicException` — `422 PUSH_ENDPOINT_NOT_PUBLIC` — for
+an endpoint the dispatcher would refuse, so it never reaches the table. That
+covers your own router from step 6 and the ready-made `make_web_push_router`
+alike. A host
+that does not resolve at that moment is accepted — a DNS hiccup must not
+turn a browser away, and every send checks again.
+
+Whether `send_many` reports a refused endpoint for pruning depends on what
+decided the refusal (`WebPushEndpointRefusedError.permanent`):
+
+- **the URL itself** — not `https`, or a host that is a non-public IP literal
+  (`https://10.0.0.1/...`): no later attempt can succeed, so the endpoint is
+  in the returned list and `notify_user` / `notify_all` delete it;
+- **a DNS answer** — a name that resolved to an internal address: answers
+  change, and a resolver that maps a real push service to an internal proxy
+  would refuse every subscription at once, so the endpoint is only logged and
+  kept, like any other transient failure.
 
 ```python
 from tempest_fastapi_sdk import WebPushDispatcher
@@ -530,7 +548,8 @@ dispatcher: WebPushDispatcher = WebPushDispatcher(
 !!! note "Self-hosted push service on the internal network"
     `allow_private_networks=True` turns off only the public-address check —
     redirects stay off and the `timeout` still applies. Use it only when
-    subscribers are trusted.
+    subscribers are trusted. It is one switch: the subscribe route asks the
+    same dispatcher, so registration opens together with delivery.
 
 ## Broadcast: one announcement for everyone
 

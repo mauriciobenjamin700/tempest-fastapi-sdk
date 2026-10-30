@@ -23,7 +23,12 @@ from tempest_fastapi_sdk.db.repository import BaseRepository
 from tempest_fastapi_sdk.db.webpush_subscription_model import (
     BaseWebPushSubscriptionModel,
 )
-from tempest_fastapi_sdk.webpush.dispatcher import WebPushDispatcher
+from tempest_fastapi_sdk.exceptions.validation import PushEndpointNotPublicException
+from tempest_fastapi_sdk.webpush.dispatcher import (
+    WebPushDispatcher,
+    WebPushEndpointRefusedError,
+    WebPushError,
+)
 from tempest_fastapi_sdk.webpush.schemas import (
     WebPushKeysSchema,
     WebPushPayloadSchema,
@@ -37,6 +42,35 @@ _DEFAULT_BROADCAST_PAGE_SIZE: Final[int] = 500
 
 _DEFAULT_BROADCAST_CONCURRENCY: Final[int] = 32
 """Dispatches :meth:`WebPushSubscriptionService.notify_all` keeps in flight."""
+
+
+async def _refuse_undeliverable_endpoint(
+    dispatcher: WebPushDispatcher, endpoint: str
+) -> None:
+    """Refuse, before it is stored, an endpoint the dispatcher would refuse.
+
+    Runs :meth:`WebPushDispatcher.check_endpoint`, so registration and
+    delivery share one policy, one ``resolver`` and one
+    ``allow_private_networks`` switch. A host that does not resolve right
+    now is accepted: a DNS hiccup must not turn a real browser's
+    subscription away, and every send checks the endpoint again.
+
+    Args:
+        dispatcher (WebPushDispatcher): The dispatcher that will deliver to
+            the endpoint.
+        endpoint (str): The endpoint a client asked to register.
+
+    Raises:
+        PushEndpointNotPublicException: When the endpoint is not ``https``
+            or names or resolves to a non-public address (``422``).
+    """
+    try:
+        await dispatcher.check_endpoint(endpoint)
+    except WebPushEndpointRefusedError as exc:
+        raise PushEndpointNotPublicException() from exc
+    except WebPushError as exc:
+        logger.info("Accepting push endpoint whose host did not resolve: %s", exc)
+
 
 SubscriptionModelT = TypeVar(
     "SubscriptionModelT",
@@ -90,6 +124,15 @@ class WebPushSubscriptionService(Generic[SubscriptionModelT]):
         re-subscribing updates the keys, ``expiration_time`` and
         ``user_agent`` of the existing row instead of creating a duplicate.
 
+        The endpoint is checked first with
+        :meth:`WebPushDispatcher.check_endpoint` on :attr:`dispatcher`: one
+        that dispatcher would refuse to deliver to (not ``https``, or naming
+        or resolving to a loopback, private, link-local or otherwise
+        non-public address) raises :class:`PushEndpointNotPublicException`
+        and is not stored, so ``allow_private_networks`` and ``resolver`` on
+        the dispatcher govern registration and delivery alike. A host that
+        does not resolve at that moment is accepted; every send re-checks.
+
         An endpoint already registered to **another** account is left
         untouched (#632): knowing an endpoint and supplying keys must not
         be enough to take a device from its owner, who would stop
@@ -114,7 +157,12 @@ class WebPushSubscriptionService(Generic[SubscriptionModelT]):
             SubscriptionModelT: The persisted row — created, updated, or,
             for an endpoint of another account, the stored row unchanged.
             Never echo it to the requester.
+
+        Raises:
+            PushEndpointNotPublicException: When the dispatcher would refuse
+                the endpoint (HTTP ``422``).
         """
+        await _refuse_undeliverable_endpoint(self.dispatcher, subscription.endpoint)
         existing = await self.repository.get_or_none(
             {"endpoint": subscription.endpoint},
         )

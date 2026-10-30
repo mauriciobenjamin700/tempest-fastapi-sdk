@@ -48,6 +48,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ganha `expected_object=`. Mudança de comportamento: um `2xx` de outro tipo
   de objeto deixa de ser devolvido (#661).
 
+- `hostbridge.ps_single_quote` dobra também as aspas tipográficas U+2018,
+  U+2019, U+201A e U+201B, que o lexer do PowerShell lê como aspa simples do
+  mesmo jeito que `'` — antes só o apóstrofo ASCII era dobrado. Afeta o script
+  que `HostBridge.pick_file` gera para `title`, `filter` e `initial_dir`.
+- `SSEBroker.run()` isola cada mensagem do pub/sub: payload que não é o
+  envelope do `publish` (não é JSON, não é objeto, `event`/`id`/`retry` com tipo
+  errado) é registrado em `WARNING` — canal e tipo do erro, sem o conteúdo — e
+  pulado. Antes a exceção encerrava o loop e o worker parava de entregar
+  eventos sem aviso.
+- `SSEBroker` com cliente Redis e o `channel_prefix` default `"sse"` registra
+  um `WARNING` na construção: pub/sub do Redis ignora o índice de DB, então
+  serviços na mesma instância com o mesmo prefixo recebem os eventos uns dos
+  outros. O default continua `"sse"` por compatibilidade; a receita de SSE
+  passa a usar um prefixo próprio do serviço.
+- Web Push: `WebPushSubscriptionService.subscribe` (e, por ele, o
+  `POST /subscribe` do `make_web_push_router`) e o registro `web` do
+  `DeviceService.register` / `make_push_router` recusam com
+  `422 PUSH_ENDPOINT_NOT_PUBLIC` o endpoint que o dispatcher recusaria na
+  entrega — não `https`, ou com host que é ou resolve para endereço não
+  público. A checagem é o novo `WebPushDispatcher.check_endpoint`, com o
+  mesmo `resolver` e o mesmo `allow_private_networks` do envio; host que não
+  resolve no momento é aceito. Novos símbolos: `WebPushEndpointRefusedError`
+  (subclasse de `WebPushError`, com `permanent`) e
+  `PushEndpointNotPublicException`. Mudança de comportamento: o
+  `send_many` passa a devolver para poda o endpoint recusado de forma
+  permanente (não `https`, ou IP literal não público), e o
+  `WebPushTransport` o traduz em `PushDeviceGoneError`; recusa decidida por
+  resposta de DNS continua só no log (#660).
+
 ## [0.335.0] — 2026-10-30
 
 ### Security

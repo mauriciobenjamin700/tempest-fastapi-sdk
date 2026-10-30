@@ -23,6 +23,7 @@ from tempest_fastapi_sdk.push.schemas import (
 )
 from tempest_fastapi_sdk.webpush.dispatcher import (
     WebPushDispatcher,
+    WebPushEndpointRefusedError,
     WebPushError,
     WebPushGoneError,
 )
@@ -110,8 +111,10 @@ class WebPushTransport:
             payload (PushPayloadSchema): The notification to deliver.
 
         Raises:
-            PushDeviceGoneError: When the push service answers 404/410, so
-                the subscription should be deleted.
+            PushDeviceGoneError: When the push service answers 404/410, or
+                the egress check refuses the endpoint permanently (see
+                :attr:`~tempest_fastapi_sdk.webpush.WebPushEndpointRefusedError.permanent`),
+                so the subscription should be deleted.
             PushError: For any other delivery failure, including a web row
                 stored without its encryption keys.
         """
@@ -123,6 +126,16 @@ class WebPushTransport:
                 f"Subscription gone for {device.masked_token}",
                 masked_token=device.masked_token,
                 status_code=error.status_code,
+            ) from error
+        except WebPushEndpointRefusedError as error:
+            if error.permanent:
+                raise PushDeviceGoneError(
+                    f"Endpoint refused for {device.masked_token}",
+                    masked_token=device.masked_token,
+                ) from error
+            raise PushError(
+                f"Web Push delivery failed for {device.masked_token}",
+                masked_token=device.masked_token,
             ) from error
         except WebPushError as error:
             raise PushError(
