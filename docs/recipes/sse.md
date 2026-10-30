@@ -614,7 +614,7 @@ cache = AsyncRedisManager(**settings.redis_kwargs())
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Connect Redis, wire the cross-worker broker, run its fan-out loop."""
     await cache.connect()
-    broker = SSEBroker(redis=cache.client, channel_prefix="sse")
+    broker = SSEBroker(redis=cache.client, channel_prefix="orders-api:sse")
     app.state.broker = broker
     task = asyncio.create_task(broker.run())
     try:
@@ -638,6 +638,17 @@ O que cada parte faz:
   import do módulo.
 - `SSEBroker(redis=cache.client, ...)` — `cache.client` é o `redis.asyncio.Redis`
   cru por baixo; o broker usa ele pra `PUBLISH`/`PSUBSCRIBE`.
+- `channel_prefix="orders-api:sse"` — o namespace do serviço no Redis. Pub/sub
+  é **global na instância**: ignora o índice de DB (`SELECT`), então dois
+  serviços no mesmo Redis, mesmo em DBs diferentes, com o mesmo prefixo assinam
+  o mesmo padrão `<prefixo>:*` e recebem os `publish`/`broadcast` um do outro.
+  Dê a cada serviço um prefixo próprio, e que nenhum prefixo seguido de `:`
+  comece outro. Com Redis e o prefixo default `"sse"`, o broker registra um
+  `WARNING` no boot dizendo isso.
+- O `run()` aceita só o envelope que o `publish` escreve: mensagem que não
+  decodifica (não é JSON, não é objeto, campo com tipo errado) vira um
+  `WARNING` com o canal e o tipo do erro — sem o conteúdo — e é pulada. O loop
+  continua entregando o resto.
 - `app.state.broker = broker` — mesma fiação do **Passo 1**, então o `get_broker`
   dos endpoints continua idêntico.
 - `asyncio.create_task(broker.run())` — task de fundo que assina o Redis e

@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   U+2019, U+201A e U+201B, que o lexer do PowerShell lê como aspa simples do
   mesmo jeito que `'` — antes só o apóstrofo ASCII era dobrado. Afeta o script
   que `HostBridge.pick_file` gera para `title`, `filter` e `initial_dir`.
+- `SSEBroker.run()` isola cada mensagem do pub/sub: payload que não é o
+  envelope do `publish` (não é JSON, não é objeto, `event`/`id`/`retry` com tipo
+  errado) é registrado em `WARNING` — canal e tipo do erro, sem o conteúdo — e
+  pulado. Antes a exceção encerrava o loop e o worker parava de entregar
+  eventos sem aviso.
+- `SSEBroker` com cliente Redis e o `channel_prefix` default `"sse"` registra
+  um `WARNING` na construção: pub/sub do Redis ignora o índice de DB, então
+  serviços na mesma instância com o mesmo prefixo recebem os eventos uns dos
+  outros. O default continua `"sse"` por compatibilidade; a receita de SSE
+  passa a usar um prefixo próprio do serviço.
 
 ## [0.335.0] — 2026-10-30
 

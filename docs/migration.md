@@ -2,6 +2,12 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## Próxima versão — correções de segurança (tempo real)
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `SSEBroker` com Redis | Com o `channel_prefix` default `"sse"`, a construção registra um `WARNING`: o pub/sub do Redis ignora o índice de DB, e outro serviço na mesma instância com o mesmo prefixo troca eventos com este | Passe um `channel_prefix` próprio do serviço (`"orders-api:sse"`) em todo worker ao mesmo tempo — workers com prefixos diferentes não se enxergam |
+
 ## 0.335.0 — `BaseUserModel` ganha a coluna `email_verified_at`
 
 O `BaseUserModel` passou a mapear `email_verified_at` (timestamp com fuso,

@@ -21,6 +21,7 @@ scale by passing a Redis client — no code change.
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING, Any, Final
 
 from tempest_fastapi_sdk.sse.event_stream import (
@@ -36,6 +37,20 @@ if TYPE_CHECKING:
 
     from redis.asyncio import Redis
     from starlette.responses import StreamingResponse
+
+_LOGGER: logging.Logger = logging.getLogger(__name__)
+
+_DEFAULT_CHANNEL_PREFIX: Final[str] = "sse"
+"""The ``channel_prefix`` :class:`SSEBroker` uses when none is given.
+
+Fine for a single process, where the prefix is never sent anywhere. In Redis
+mode it is a namespace on a server-global bus: Redis pub/sub ignores the
+logical DB index (``SELECT``), so two services that share one instance — even
+on different DB numbers — and both keep this prefix subscribe to the same
+``sse:*`` pattern and receive each other's :meth:`SSEBroker.publish` and
+:meth:`SSEBroker.broadcast` events. :class:`SSEBroker` logs a warning when it
+is built with a Redis client and this prefix.
+"""
 
 BROADCAST_CHANNEL: Final[str] = "__broadcast__"
 """Channel name :meth:`SSEBroker.broadcast` reserves for itself.
@@ -81,7 +96,7 @@ class SSEBroker:
         self,
         *,
         redis: Redis | None = None,
-        channel_prefix: str = "sse",
+        channel_prefix: str = _DEFAULT_CHANNEL_PREFIX,
         heartbeat_seconds: float | None = 15.0,
         heartbeat_event: ServerSentEvent | Callable[[], ServerSentEvent] | None = None,
         max_queue: int = 1000,
@@ -92,7 +107,18 @@ class SSEBroker:
         Args:
             redis (Redis | None): Async Redis client (from the ``[cache]``
                 extra). ``None`` runs single-process (local fan-out only).
-            channel_prefix (str): Prefix for Redis channels.
+            channel_prefix (str): Prefix for Redis channels. In Redis mode
+                give every service its own value (for example
+                ``"orders-api:sse"``): Redis pub/sub is shared by every
+                client of the instance regardless of the DB index, so the
+                prefix is the only thing that keeps one service's events out
+                of another's streams. Pick values where no prefix plus ``":"``
+                starts another, since the subscription is the
+                ``"<prefix>:*"`` pattern. Defaults to
+                ``"sse"``, which is kept for
+                compatibility; with a Redis client it logs a warning naming
+                the risk rather than failing, so existing single-service
+                deployments keep working unchanged.
             heartbeat_seconds (float | None): Idle heartbeat for streams.
             heartbeat_event (ServerSentEvent | Callable[[], ServerSentEvent] | None):
                 Frame every stream emits on an idle beat, forwarded to
@@ -108,6 +134,15 @@ class SSEBroker:
         """
         self._redis: Redis | None = redis
         self.channel_prefix: str = channel_prefix
+        if redis is not None and channel_prefix == _DEFAULT_CHANNEL_PREFIX:
+            _LOGGER.warning(
+                "SSEBroker is using the shared default channel_prefix %r with "
+                "Redis. Redis pub/sub ignores the DB index, so any other "
+                "service on the same Redis instance with this prefix receives "
+                "these events and sends its own here. Pass an app-unique "
+                "channel_prefix.",
+                channel_prefix,
+            )
         self.heartbeat_seconds: float | None = heartbeat_seconds
         self.heartbeat_event: ServerSentEvent | Callable[[], ServerSentEvent] | None = (
             heartbeat_event
@@ -304,6 +339,14 @@ class SSEBroker:
         and cancel it (or call :meth:`aclose`) on shutdown. A no-op in
         single-process mode.
 
+        Each message is dispatched in isolation. The ``<prefix>:*`` pattern
+        receives whatever any client of the Redis instance publishes on a
+        matching channel, not only this broker's envelopes, so a frame that
+        fails to decode or to fan out is logged (channel and error type,
+        never the payload) and skipped. Letting it escape would end the
+        loop, and with it every later delivery to this worker's streams,
+        while the worker kept accepting connections.
+
         Raises:
             RuntimeError: If called without a Redis client.
         """
@@ -316,7 +359,14 @@ class SSEBroker:
             async for message in pubsub.listen():
                 if message.get("type") != "pmessage":
                     continue
-                await self._dispatch_raw(message["channel"], message["data"])
+                try:
+                    await self._dispatch_raw(message["channel"], message["data"])
+                except Exception as exc:
+                    _LOGGER.warning(
+                        "SSEBroker skipped an undeliverable pub/sub message on %r: %s",
+                        message.get("channel"),
+                        type(exc).__name__,
+                    )
         finally:
             await pubsub.aclose()
             self._pubsub = None
@@ -334,20 +384,44 @@ class SSEBroker:
     async def _dispatch_raw(self, channel_key: str | bytes, raw: str | bytes) -> None:
         """Decode a Redis pub/sub frame and fan it to local streams.
 
+        The envelope is checked against the shape :meth:`publish` writes —
+        a JSON object whose ``event`` and ``id`` are strings or ``None`` and
+        whose ``retry`` is an integer or ``None`` — before any stream sees
+        it.
+
         Args:
             channel_key (str | bytes): The Redis channel
                 (``<prefix>:<channel>``), as delivered by pub/sub.
             raw (str | bytes): The JSON envelope payload.
+
+        Raises:
+            ValueError: When ``raw`` is not JSON (``json.JSONDecodeError``),
+                or is JSON that is not a well-formed envelope.
+            UnicodeDecodeError: When ``raw`` or ``channel_key`` is not UTF-8.
         """
         key = channel_key.decode() if isinstance(channel_key, bytes) else channel_key
         body = raw.decode() if isinstance(raw, bytes) else raw
         channel = key.removeprefix(f"{self.channel_prefix}:")
-        payload: dict[str, Any] = json.loads(body)
+        payload: Any = json.loads(body)
+        if not isinstance(payload, dict):
+            raise ValueError("SSE envelope is not a JSON object.")
+        event: Any = payload.get("event")
+        event_id: Any = payload.get("id")
+        retry: Any = payload.get("retry")
+        if not (
+            (event is None or isinstance(event, str))
+            and (event_id is None or isinstance(event_id, str))
+            and (
+                retry is None
+                or (isinstance(retry, int) and not isinstance(retry, bool))
+            )
+        ):
+            raise ValueError("SSE envelope has a field of the wrong type.")
         frame = ServerSentEvent(
             data=payload.get("data", ""),
-            event=payload.get("event"),
-            id=payload.get("id"),
-            retry=payload.get("retry"),
+            event=event,
+            id=event_id,
+            retry=retry,
         )
         if channel == BROADCAST_CHANNEL:
             await self._emit_everywhere(frame)
