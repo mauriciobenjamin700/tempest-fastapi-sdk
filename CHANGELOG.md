@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `WebPushDispatcher` passa a tratar o `endpoint` da inscrição como destino
+  não confiável: o host precisa resolver só para endereços públicos (a mesma
+  regra do `ContentExtractor`, agora num helper compartilhado), a conexão vai
+  para o endereço validado com `Host`/SNI/certificado no nome original,
+  redirect não é seguido (`3xx` vira `WebPushError`) e todo envio tem
+  `timeout` (novo parâmetro, padrão 10 s); timeout e erro de conexão viram
+  `WebPushError`. **Mudança de comportamento:** endpoint que resolve para
+  rede interna deixa de ser entregue; `allow_private_networks=True` reabre
+  para push service próprio na rede interna. Novo `resolver=` para injetar a
+  resolução de nomes.
+
 ## [0.334.0] — 2026-10-29
 
 ### Added

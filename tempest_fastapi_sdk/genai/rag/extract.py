@@ -24,10 +24,15 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
-import socket
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from tempest_fastapi_sdk.utils._egress import Resolver as Resolver
+from tempest_fastapi_sdk.utils._egress import (
+    is_public_address as _is_public_address,
+)
+from tempest_fastapi_sdk.utils._egress import system_resolver as _system_resolver
 
 if TYPE_CHECKING:
     import httpx
@@ -54,9 +59,6 @@ to that server; the extractor then refuses to read the body and retries
 the hop. Each retry closes one such connection, so after this many the hop
 is reported as failed.
 """
-
-Resolver = Callable[[str], Awaitable[Sequence[str]]]
-"""Async callable mapping a hostname to the IP addresses it resolves to."""
 
 
 class _BlockedDestinationError(Exception):
@@ -99,42 +101,6 @@ def _require_trafilatura() -> object:
             "Install with: pip install tempest-fastapi-sdk[genai-rag]",
         ) from exc
     return trafilatura
-
-
-async def _system_resolver(host: str) -> list[str]:
-    """Resolve ``host`` through the event loop's ``getaddrinfo``.
-
-    Args:
-        host (str): The hostname to resolve.
-
-    Returns:
-        list[str]: Every address the system resolver returned.
-    """
-    loop = asyncio.get_running_loop()
-    infos = await loop.getaddrinfo(host, None, type=socket.SOCK_STREAM)
-    return [str(info[4][0]) for info in infos]
-
-
-def _is_public_address(address: str) -> bool:
-    """Return ``True`` when ``address`` is a globally routable unicast IP.
-
-    Refuses loopback, private (RFC 1918 / ULA), link-local (including the
-    ``169.254.169.254`` cloud metadata endpoint), shared (CGNAT), reserved,
-    unspecified and multicast addresses, for IPv4 and IPv6. IPv4-mapped
-    IPv6 (``::ffff:127.0.0.1``) is judged by the IPv4 address it wraps.
-
-    Args:
-        address (str): The textual IP address (an IPv6 zone id is ignored).
-
-    Returns:
-        bool: Whether the address may be fetched.
-    """
-    ip: ipaddress.IPv4Address | ipaddress.IPv6Address = ipaddress.ip_address(
-        address.split("%", 1)[0]
-    )
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
-    return ip.is_global and not ip.is_multicast
 
 
 class ContentExtractor:

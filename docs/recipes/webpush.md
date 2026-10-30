@@ -493,6 +493,43 @@ async def notify_order_paid(
         await service.unsubscribe(subscription.endpoint)
 ```
 
+### Para onde o envio vai
+
+O `endpoint` foi escolhido pelo navegador de quem se inscreveu, então o
+`WebPushDispatcher` trata cada envio como saída para um destino não
+confiável:
+
+- o host do endpoint é resolvido e **todo** endereço da resposta precisa ser
+  público — loopback, rede privada, link-local (inclusive
+  `169.254.169.254`), CGNAT e afins são recusados com `WebPushError`, sem
+  request nenhum (a mesma regra do `ContentExtractor` do RAG);
+- a conexão vai para o endereço que passou na checagem, com o `Host`, o SNI
+  e a validação do certificado no nome original — uma segunda resposta de
+  DNS diferente não chega ao socket;
+- redirect **não** é seguido: um `3xx` vira `WebPushError` com
+  `status_code` igual ao do redirect;
+- todo envio tem `timeout` (padrão de 10 s para
+  conectar e para cada leitura); estouro e erro de conexão viram
+  `WebPushError`.
+
+Endpoint recusado não entra na lista de podados do `send_many`: ele é
+registrado no log como qualquer outra falha.
+
+```python
+from tempest_fastapi_sdk import WebPushDispatcher
+
+dispatcher: WebPushDispatcher = WebPushDispatcher(
+    "<chave-privada-vapid>",
+    vapid_subject="mailto:ops@example.com",
+    timeout=5.0,
+)
+```
+
+!!! note "Push service próprio na rede interna"
+    `allow_private_networks=True` desliga só a checagem de endereço público
+    — o redirect continua desligado e o `timeout` continua valendo. Use
+    apenas quando quem se inscreve é confiável.
+
 ## Broadcast: um aviso para todo mundo
 
 Enviar para a base inteira é `notify_all()`, no mesmo serviço que já guarda

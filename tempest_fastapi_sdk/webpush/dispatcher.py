@@ -1,14 +1,28 @@
-"""VAPID-authenticated Web Push dispatcher built on ``pywebpush``."""
+"""VAPID-authenticated Web Push dispatcher built on ``pywebpush``.
+
+The endpoint a dispatch targets was chosen by a browser subscriber, so the
+request is treated as untrusted egress: the endpoint host must resolve only
+to public addresses (the same policy as
+:class:`~tempest_fastapi_sdk.genai.rag.ContentExtractor`), the connection
+goes to the address that passed the check rather than to a second lookup,
+redirects are never followed, and every request carries a timeout.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import json
 import logging
 from typing import Any, Final
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
+from tempest_fastapi_sdk.utils._egress import (
+    Resolver,
+    is_public_address,
+    system_resolver,
+)
 from tempest_fastapi_sdk.webpush.schemas import (
     WebPushPayloadSchema,
     WebPushSubscriptionSchema,
@@ -21,6 +35,9 @@ _GONE_STATUSES: Final[frozenset[int]] = frozenset({404, 410})
 
 _WNS_HOST_SUFFIX: Final[str] = "notify.windows.com"
 """Host suffix of WNS, Microsoft's push service — the one Edge subscribes to."""
+
+DEFAULT_WEBPUSH_TIMEOUT: Final[float] = 10.0
+"""Seconds a dispatch waits to connect and, separately, for each read."""
 
 
 def _is_gone(status: int | None, endpoint: str) -> bool:
@@ -136,6 +153,119 @@ def _require_pywebpush() -> Any:
     return pywebpush
 
 
+def _egress_session(host: str, address: str | None) -> Any:
+    """Build the ``requests`` session a single dispatch goes through.
+
+    The session never follows redirects: a push service answers the
+    ``POST`` itself, so a ``3xx`` is reported as a failed delivery instead
+    of being chased to wherever ``Location`` points. When ``address`` is
+    given the request URL carries that validated IP, while the ``Host``
+    header, the TLS SNI name and the certificate check keep ``host`` — so a
+    DNS answer that changes after the check never reaches the connection.
+
+    Args:
+        host (str): The endpoint hostname, used for ``Host``, SNI and the
+            certificate match.
+        address (str | None): The validated IP to connect to, or ``None``
+            to connect to the URL as given.
+
+    Returns:
+        Any: A ``requests.Session`` configured as described.
+    """
+    import requests
+    from requests.adapters import HTTPAdapter
+
+    class _PinnedAdapter(HTTPAdapter):
+        """Adapter that presents ``host`` for SNI and the certificate match."""
+
+        def init_poolmanager(
+            self,
+            connections: int,
+            maxsize: int,
+            block: bool = False,
+            **pool_kwargs: Any,
+        ) -> None:
+            """Create the pool manager with the original hostname pinned.
+
+            Args:
+                connections (int): Number of pools to cache.
+                maxsize (int): Connections kept per pool.
+                block (bool): Whether the pool blocks when exhausted.
+                **pool_kwargs (Any): Forwarded to the ``urllib3`` pool manager.
+            """
+            super().init_poolmanager(
+                connections,
+                maxsize,
+                block,
+                server_hostname=host,
+                assert_hostname=host,
+                **pool_kwargs,
+            )
+
+        def proxy_manager_for(self, proxy: str, **proxy_kwargs: Any) -> Any:
+            """Create a proxy manager with the original hostname pinned.
+
+            Args:
+                proxy (str): The proxy URL.
+                **proxy_kwargs (Any): Forwarded to ``requests``.
+
+            Returns:
+                Any: The ``urllib3`` proxy manager.
+            """
+            return super().proxy_manager_for(
+                proxy,
+                server_hostname=host,
+                assert_hostname=host,
+                **proxy_kwargs,
+            )
+
+    class _EgressSession(requests.Session):
+        """Session that refuses redirects and connects to the pinned IP."""
+
+        def request(  # type: ignore[override]
+            self,
+            method: str,
+            url: str,
+            *,
+            headers: dict[str, str] | None = None,
+            allow_redirects: bool = False,
+            **kwargs: Any,
+        ) -> Any:
+            """Send the request with redirects off and the IP pinned.
+
+            Args:
+                method (str): HTTP method.
+                url (str): The endpoint URL.
+                headers (dict[str, str] | None): Request headers; ``Host``
+                    is set to the original hostname when pinning.
+                allow_redirects (bool): Ignored — redirects are never
+                    followed.
+                **kwargs (Any): Forwarded to ``requests.Session.request``.
+
+            Returns:
+                Any: The ``requests.Response``.
+            """
+            merged: dict[str, str] = dict(headers or {})
+            if address is not None:
+                parts = urlsplit(url)
+                literal = f"[{address}]" if ":" in address else address
+                netloc = f"{literal}:{parts.port}" if parts.port else literal
+                merged["Host"] = parts.netloc.rpartition("@")[2]
+                url = urlunsplit(parts._replace(netloc=netloc))
+            return super().request(
+                method,
+                url,
+                headers=merged,
+                allow_redirects=False,
+                **kwargs,
+            )
+
+    session = _EgressSession()
+    if address is not None:
+        session.mount("https://", _PinnedAdapter())
+    return session
+
+
 class WebPushDispatcher:
     """Send VAPID-signed Web Push notifications to browser subscribers.
 
@@ -154,6 +284,11 @@ class WebPushDispatcher:
         ttl_seconds (int): Default time-to-live applied to each push
             (the push service buffers the payload for at most this
             long when the device is offline).
+        timeout (float): Seconds each dispatch waits to connect and for
+            each read before it fails with :class:`WebPushError`.
+        allow_private_networks (bool): Whether endpoints resolving to
+            loopback, private, link-local or otherwise non-public
+            addresses are dispatched to.
     """
 
     def __init__(
@@ -163,6 +298,9 @@ class WebPushDispatcher:
         vapid_subject: str,
         ttl_seconds: int = 60,
         extra_vapid_claims: dict[str, str] | None = None,
+        timeout: float = DEFAULT_WEBPUSH_TIMEOUT,
+        allow_private_networks: bool = False,
+        resolver: Resolver | None = None,
     ) -> None:
         """Initialize the dispatcher.
 
@@ -173,12 +311,81 @@ class WebPushDispatcher:
             ttl_seconds (int): Default TTL for delivered messages.
             extra_vapid_claims (dict[str, str] | None): Additional
                 claims merged into the JWT.
+            timeout (float): Connect and read timeout, in seconds, of
+                every dispatch.
+            allow_private_networks (bool): Skip the public-address check,
+                for a self-hosted push service on the internal network.
+                Redirects stay disabled and the timeout still applies.
+                Only turn this on when subscribers are trusted.
+            resolver (Resolver | None): Async hostname → addresses lookup
+                used by the public-address check; the first address it
+                returns is the one the dispatch connects to. ``None`` uses
+                the event loop's ``getaddrinfo``.
         """
         self.vapid_private_key: str = vapid_private_key
         self.vapid_claims: dict[str, str] = {"sub": vapid_subject}
         if extra_vapid_claims:
             self.vapid_claims.update(extra_vapid_claims)
         self.ttl_seconds: int = ttl_seconds
+        self.timeout: float = timeout
+        self.allow_private_networks: bool = allow_private_networks
+        self._resolver: Resolver = resolver or system_resolver
+
+    async def _pin_destination(self, endpoint: str) -> tuple[str, str | None]:
+        """Refuse a non-public endpoint and return where to connect.
+
+        Args:
+            endpoint (str): The subscription endpoint.
+
+        Returns:
+            tuple[str, str | None]: The endpoint hostname and the validated
+            IP the dispatch must connect to — ``None`` when the URL is sent
+            unchanged (private networks are allowed, or the host is already
+            an IP literal).
+
+        Raises:
+            WebPushError: When the endpoint is not ``https`` with a host,
+                cannot be resolved, or (unless private networks are
+                allowed) any resolved address is not public.
+        """
+        masked = _mask_endpoint(endpoint)
+        try:
+            parts = urlsplit(endpoint)
+            scheme: str = parts.scheme
+            host: str | None = parts.hostname
+        except ValueError:
+            scheme, host = "", None
+        if scheme != "https" or not host:
+            raise WebPushError(
+                f"Refused Web Push endpoint {masked}: not an https URL",
+                endpoint=endpoint,
+            )
+        if self.allow_private_networks:
+            return host, None
+        try:
+            literal: str | None = str(ipaddress.ip_address(host))
+        except ValueError:
+            literal = None
+        if literal is not None:
+            if not is_public_address(literal):
+                raise WebPushError(
+                    f"Refused Web Push endpoint {masked}: non-public address",
+                    endpoint=endpoint,
+                )
+            return host, None
+        try:
+            addresses = list(await self._resolver(host))
+        except OSError as exc:
+            raise WebPushError(
+                f"Could not resolve Web Push endpoint {masked}",
+                endpoint=endpoint,
+            ) from exc
+        if not addresses or not all(is_public_address(a) for a in addresses):
+            raise WebPushError(
+                f"Refused Web Push endpoint {masked}: non-public address",
+                endpoint=endpoint,
+            )
+        return host, str(addresses[0]).split("%", 1)[0]
 
     async def send(
         self,
@@ -205,9 +412,15 @@ class WebPushDispatcher:
                 subscription as dead — ``404``/``410`` anywhere, plus
                 ``400`` from WNS, which is how Edge's push service spells
                 it. See :func:`_is_gone`.
-            WebPushError: For any other delivery failure.
+            WebPushError: For any other delivery failure, including an
+                endpoint refused by the egress check (non-public address,
+                not ``https``), a redirect answer, a timeout and a
+                connection error.
         """
         pywebpush = _require_pywebpush()
+        import requests
+
+        host, address = await self._pin_destination(subscription.endpoint)
 
         if isinstance(payload, WebPushPayloadSchema):
             data: str | bytes = payload.to_json()
@@ -226,6 +439,7 @@ class WebPushDispatcher:
         effective_ttl = ttl_seconds if ttl_seconds is not None else self.ttl_seconds
 
         def _dispatch() -> None:
+            session = _egress_session(host, address)
             try:
                 pywebpush.webpush(
                     subscription_info=sub_info,
@@ -234,7 +448,16 @@ class WebPushDispatcher:
                     vapid_claims=dict(self.vapid_claims),
                     ttl=effective_ttl,
                     headers=headers,
+                    timeout=self.timeout,
+                    requests_session=session,
                 )
+            except requests.RequestException as exc:
+                raise WebPushError(
+                    f"Web Push delivery failed for "
+                    f"{_mask_endpoint(subscription.endpoint)} "
+                    f"({type(exc).__name__})",
+                    endpoint=subscription.endpoint,
+                ) from exc
             except pywebpush.WebPushException as exc:
                 status = exc.response.status_code if exc.response is not None else None
                 masked = _mask_endpoint(subscription.endpoint)
@@ -249,6 +472,8 @@ class WebPushDispatcher:
                     status_code=status,
                     endpoint=subscription.endpoint,
                 ) from exc
+            finally:
+                session.close()
 
         await asyncio.to_thread(_dispatch)
 
