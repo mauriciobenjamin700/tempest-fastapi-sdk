@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clientes gerados (OpenPix, Mercado Pago, zap-api): `_path_param` recusa
   `""`, `"."` e `".."` com `ValueError` antes de enviar a requisição, para
   que um identificador nunca enderece outro recurso.
+- `StripeResource.retrieve`, `update` e `delete` codificam o `resource_id`
+  num único segmento de path (`quote(..., safe="")`) e recusam `""`, `"."` e
+  `".."` com `ValueError`; antes o id era interpolado cru.
+- `RevenueCatClient.get_subscriber` (e o `FakeRevenueCatClient`) recusam
+  também `"."` e `".."`, além do id vazio.
 
 ## [0.334.0] — 2026-10-29
 

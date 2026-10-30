@@ -377,6 +377,11 @@ asyncio.run(main())
     `tempest integrations verify revenuecat` exits with code 2 without calling
     anything: verifying the key through that route would create a customer.
 
+The `app_user_id` reaches the path encoded as a single segment, and `""`,
+`"."` and `".."` raise `ValueError` before any request — the dot is not
+escaped, and up to v0.334.0 `".."` climbed one level up the path with the
+secret key. `FakeRevenueCatClient` refuses the same three.
+
 For tests, `FakeRevenueCatClient` answers what you seed and fails when told
 to:
 
