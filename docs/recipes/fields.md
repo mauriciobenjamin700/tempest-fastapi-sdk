@@ -181,6 +181,11 @@ is_valid_pix_key("529.982.247-25")       # -> True
     UUID → aleatória; senão, dígitos + **dígitos verificadores** decidem
     entre CPF e CNPJ (um CPF com DV errado é rejeitado). O telefone segue
     E.164 brasileiro (`+55` + DDD + número, 10–11 dígitos após o `+55`).
+    Chave com mais de **77 caracteres** depois do `strip` (o teto do BACEN
+    para e-mail, a mais longa das cinco) é recusada antes de qualquer regex
+    rodar, então o custo da validação não cresce com o tamanho do valor
+    enviado. O e-mail exige domínio com rótulos não vazios: `a@b..c`,
+    `a@.b` e `a@b.c.` são recusados.
 
 ## Exemplo completo (schema + rota + 422)
 

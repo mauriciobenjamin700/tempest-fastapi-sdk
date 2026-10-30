@@ -411,10 +411,25 @@ def normalize_mobile_phone_br(value: str) -> str:
     return f"{parsed.area_code}{parsed.number}"
 
 
+_PIX_KEY_MAX_LENGTH: Final[int] = 77
+"""Longest PIX key accepted, in characters, after trimming whitespace.
+
+BACEN caps an e-mail key at 77 characters, and it is the longest of the
+five kinds (a masked CNPJ is 18, an E.164 phone 14, a random key 36).
+Checked before any pattern runs, so validation cost stays bounded no
+matter how large the submitted value is.
+"""
+
 _PIX_EMAIL_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+    r"^[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+$",
 )
-"""Loose email shape for a PIX e-mail key (BACEN checks format, not MX)."""
+"""Loose email shape for a PIX e-mail key (BACEN checks format, not MX).
+
+The domain is dot-separated labels that cannot themselves hold a dot, so
+there is exactly one way to match any input and the engine never
+backtracks over the dots. It also refuses empty labels (``a@b..c``,
+``a@.b``), which no mailbox has.
+"""
 
 _PIX_PHONE_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^\+55\d{10,11}$",
@@ -457,10 +472,11 @@ def detect_pix_key_type(value: str) -> PixKeyType | None:
 
     Returns:
         PixKeyType | None: The detected type, or ``None`` when ``value``
-        is not a valid key of any type.
+        is not a valid key of any type, including any value longer than
+        77 characters once trimmed.
     """
     candidate = value.strip()
-    if not candidate:
+    if not candidate or len(candidate) > _PIX_KEY_MAX_LENGTH:
         return None
     if "@" in candidate:
         return PixKeyType.EMAIL if _PIX_EMAIL_PATTERN.match(candidate) else None

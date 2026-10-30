@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- `PixKeyField`, `detect_pix_key_type`, `is_valid_pix_key` e
+  `normalize_pix_key` recusam chave com mais de 77 caracteres (depois do
+  `strip`) antes de qualquer regex rodar, e o padrão de e-mail deixou de ter
+  classes sobrepostas, então a validação roda em tempo linear. Mudança de
+  comportamento: e-mail com rótulo de domínio vazio (`a@b..c`, `a@.b`,
+  `a@b.c.`) passa a ser recusado.
 - `PrometheusMiddleware` registra request sem rota casada com
   `path="<unmatched>"` (antes, o path cru) e método fora dos padrões HTTP com
   `method="OTHER"`, então o número de séries não cresce com valores escolhidos
