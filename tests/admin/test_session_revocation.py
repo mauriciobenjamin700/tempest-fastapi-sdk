@@ -241,7 +241,14 @@ class TestLogout:
 
         assert replayed.headers["location"] == "/admin/login"
 
-    async def test_shared_backend_carries_logout_across_replicas(self) -> None:
+    async def test_routers_sharing_a_backend_share_the_logout(self) -> None:
+        """A logout through one router is refused by another on the same backend.
+
+        Two routers in one process stand in for two replicas: what this
+        pins is that the revocation is read from the backend, not from
+        router-local state. Crossing a real process boundary is Redis's
+        property, which fakeredis cannot exercise.
+        """
         fake_aioredis = pytest.importorskip("fakeredis.aioredis")
         redis = fake_aioredis.FakeRedis()
         built = await _build(
