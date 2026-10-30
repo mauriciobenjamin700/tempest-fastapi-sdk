@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import secrets
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from tempest_fastapi_sdk.utils.datetime import utcnow
@@ -15,7 +17,27 @@ if TYPE_CHECKING:
     from starlette.requests import Request
     from starlette.responses import Response
 
+    from tempest_fastapi_sdk.utils.throttle import ThrottleBackend
+
 logger = logging.getLogger(__name__)
+
+ADMIN_SESSION_MAX_AGE_SECONDS: int = 60 * 60 * 8
+"""Default lifetime of an admin session cookie (8 hours)."""
+
+ADMIN_SESSION_REVOKED_PREFIX: str = "admin-session-revoked:"
+"""Key prefix under which :class:`AdminSessionRevocations` marks a session."""
+
+ADMIN_CREDENTIAL_DIGEST_SALT: bytes = b"tempest-admin-credential"
+"""HMAC salt for :func:`admin_credential_digest`, distinct from the cookie's."""
+
+
+def _new_session_id() -> str:
+    """Return a fresh random admin session id.
+
+    Returns:
+        str: A URL-safe random token.
+    """
+    return secrets.token_urlsafe(16)
 
 
 def _require_itsdangerous() -> Any:
@@ -51,12 +73,23 @@ class AdminSession:
             principal has MFA enabled but has not yet passed the TOTP
             challenge. A pending session grants NO access to admin
             pages — it only authorizes the ``/mfa`` challenge.
+        session_id (str): Random id of this session, the handle
+            :class:`AdminSessionRevocations` marks on logout. A fresh one
+            is drawn for every new session; a cookie issued before the
+            field existed decodes to ``""`` and cannot be revoked.
+        credential_digest (str): :func:`admin_credential_digest` of the
+            principal's credential fingerprint at sign-in. The router
+            compares it on every request, so a password (or MFA secret)
+            change ends every session issued before it. ``""`` when the
+            backend exposes no fingerprint.
     """
 
     principal_id: str
     issued_at: float
     csrf_token: str
     mfa_pending: bool = False
+    session_id: str = field(default_factory=_new_session_id)
+    credential_digest: str = ""
 
     def to_payload(self) -> dict[str, Any]:
         """Serialize the session for cookie storage.
@@ -69,6 +102,8 @@ class AdminSession:
             "iat": self.issued_at,
             "csrf": self.csrf_token,
             "mfap": self.mfa_pending,
+            "sid": self.session_id,
+            "cfp": self.credential_digest,
         }
 
     @classmethod
@@ -88,6 +123,8 @@ class AdminSession:
                 issued_at=float(payload["iat"]),
                 csrf_token=str(payload["csrf"]),
                 mfa_pending=bool(payload.get("mfap", False)),
+                session_id=str(payload.get("sid", "")),
+                credential_digest=str(payload.get("cfp", "")),
             )
         except (KeyError, TypeError, ValueError):
             return None
@@ -158,7 +195,7 @@ class SignedCookieSessionStore(SessionStore):
         secret_key: str,
         *,
         cookie_name: str = "tempest_admin",
-        max_age_seconds: int = 60 * 60 * 8,
+        max_age_seconds: int = ADMIN_SESSION_MAX_AGE_SECONDS,
         secure: bool = True,
         same_site: str = "lax",
         path: str = "/admin",
@@ -276,6 +313,93 @@ class SignedCookieSessionStore(SessionStore):
             csrf_token=csrf_token,
             mfa_pending=mfa_pending,
         )
+
+
+def admin_credential_digest(secret_key: str, fingerprint: str | None) -> str:
+    """Bind a principal's credential fingerprint to the admin secret.
+
+    The cookie carries this digest, never the fingerprint itself (for
+    :class:`~tempest_fastapi_sdk.admin.auth.UserModelAuthBackend` the
+    fingerprint contains the password hash). Keyed with ``secret_key``, so
+    a cookie holder cannot test guesses against it.
+
+    Args:
+        secret_key (str): The admin signing key.
+        fingerprint (str | None): What
+            :meth:`~tempest_fastapi_sdk.admin.auth.AdminAuthBackend.credential_fingerprint`
+            returned. ``None`` means the backend binds nothing.
+
+    Returns:
+        str: 32 hex characters, or ``""`` when ``fingerprint`` is ``None``.
+    """
+    if fingerprint is None:
+        return ""
+    return hmac.new(
+        secret_key.encode("utf-8"),
+        ADMIN_CREDENTIAL_DIGEST_SALT + b"\x00" + fingerprint.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:32]
+
+
+class AdminSessionRevocations:
+    """Server-side list of admin sessions ended by logout.
+
+    The default admin cookie is stateless: clearing it on logout only asks
+    the browser to forget it, and a copy taken earlier would keep working
+    until ``max_age``. ``POST /logout`` therefore marks the session's
+    :attr:`AdminSession.session_id` here, and every request checks the mark
+    before trusting the cookie. A mark lives as long as the cookie could,
+    then expires on its own.
+
+    Storage is any :class:`~tempest_fastapi_sdk.utils.throttle.ThrottleBackend`
+    — the same shape ``redis.asyncio.Redis`` and
+    :class:`~tempest_fastapi_sdk.utils.throttle.InMemoryThrottleBackend`
+    have. The in-memory one is per process: behind more than one worker or
+    replica, pass the Redis client so a logout served by one is seen by all.
+    """
+
+    def __init__(
+        self,
+        backend: ThrottleBackend,
+        *,
+        ttl_seconds: int = ADMIN_SESSION_MAX_AGE_SECONDS,
+    ) -> None:
+        """Initialize the list.
+
+        Args:
+            backend (ThrottleBackend): Key/value storage with ``incr``,
+                ``expire`` and ``get``.
+            ttl_seconds (int): How long a mark is kept; at least the
+                session lifetime.
+        """
+        self.backend: ThrottleBackend = backend
+        self.ttl_seconds: int = ttl_seconds
+
+    async def revoke(self, session: AdminSession) -> None:
+        """Mark ``session`` as ended. A session without an id is skipped.
+
+        Args:
+            session (AdminSession): The session being logged out.
+        """
+        if not session.session_id:
+            return
+        key = f"{ADMIN_SESSION_REVOKED_PREFIX}{session.session_id}"
+        await self.backend.incr(key)
+        await self.backend.expire(key, self.ttl_seconds)
+
+    async def is_revoked(self, session: AdminSession) -> bool:
+        """Whether ``session`` was ended by a logout.
+
+        Args:
+            session (AdminSession): The session the request carries.
+
+        Returns:
+            bool: ``True`` when a mark exists for its id.
+        """
+        if not session.session_id:
+            return False
+        key = f"{ADMIN_SESSION_REVOKED_PREFIX}{session.session_id}"
+        return await self.backend.get(key) is not None
 
 
 ADMIN_LOGIN_CSRF_COOKIE: str = "tempest_admin_login_csrf"
@@ -435,11 +559,16 @@ class AdminLoginCSRF:
 
 
 __all__: list[str] = [
+    "ADMIN_CREDENTIAL_DIGEST_SALT",
     "ADMIN_LOGIN_CSRF_COOKIE",
     "ADMIN_LOGIN_CSRF_MAX_AGE_SECONDS",
     "ADMIN_LOGIN_CSRF_SALT",
+    "ADMIN_SESSION_MAX_AGE_SECONDS",
+    "ADMIN_SESSION_REVOKED_PREFIX",
     "AdminLoginCSRF",
     "AdminSession",
+    "AdminSessionRevocations",
     "SessionStore",
     "SignedCookieSessionStore",
+    "admin_credential_digest",
 ]

@@ -36,9 +36,15 @@ from tempest_fastapi_sdk.admin.permissions import AdminPermission as AdminPermis
 from tempest_fastapi_sdk.admin.router import make_admin_router as make_admin_router
 from tempest_fastapi_sdk.admin.session import AdminLoginCSRF as AdminLoginCSRF
 from tempest_fastapi_sdk.admin.session import AdminSession as AdminSession
+from tempest_fastapi_sdk.admin.session import (
+    AdminSessionRevocations as AdminSessionRevocations,
+)
 from tempest_fastapi_sdk.admin.session import SessionStore as SessionStore
 from tempest_fastapi_sdk.admin.session import (
     SignedCookieSessionStore as SignedCookieSessionStore,
+)
+from tempest_fastapi_sdk.admin.session import (
+    admin_credential_digest as admin_credential_digest,
 )
 from tempest_fastapi_sdk.admin.site import AdminSite as AdminSite
 from tempest_fastapi_sdk.admin.sql_shell import SqlAudit as SqlAudit
@@ -67,6 +73,7 @@ __all__: list[str] = [
     "AdminModel",
     "AdminPermission",
     "AdminSession",
+    "AdminSessionRevocations",
     "AdminSite",
     "AdminTheme",
     "FieldRef",
@@ -93,6 +100,7 @@ __all__: list[str] = [
     "TaskTrigger",
     "UserModelAuthBackend",
     "admin_action",
+    "admin_credential_digest",
     "analyze_sql",
     "discover_models",
     "make_admin_router",

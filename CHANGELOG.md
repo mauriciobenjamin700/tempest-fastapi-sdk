@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Admin: o `POST /admin/logout` passa a encerrar a sessão no servidor. A
+  `AdminSession` ganha um `session_id` aleatório (`sid`), que o logout marca no
+  novo `AdminSessionRevocations` (sobre qualquer `ThrottleBackend`: memória por
+  padrão, Redis para várias réplicas, via
+  `make_admin_router(session_revocations=...)`); todo request recusa sessão
+  marcada. A sessão também fica presa à credencial: o cookie carrega um HMAC de
+  `AdminAuthBackend.credential_fingerprint` (novo hook, `None` por padrão;
+  `UserModelAuthBackend` cobre `hashed_password` e `totp_secret`), e trocar a
+  senha ou o segredo TOTP encerra as sessões emitidas antes. Mudança de
+  comportamento: cookies de admin emitidos antes desta versão são recusados uma
+  vez com o `UserModelAuthBackend`, e o operador precisa logar de novo. Novos
+  símbolos: `AdminSessionRevocations`, `admin_credential_digest`.
 - `SessionAuth.resolve` grava o refresh da sessão (`last_seen_at` e, com
   `SESSION_SLIDING`, o `expires_at`) pelo novo `SessionStore.touch`, que
   atualiza só uma sessão que ainda existe. Antes era um `set` incondicional, e

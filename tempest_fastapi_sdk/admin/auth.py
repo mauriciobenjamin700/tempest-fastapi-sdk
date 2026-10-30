@@ -142,6 +142,24 @@ class AdminAuthBackend(ABC, Generic[PrincipalT]):
         email = getattr(principal, "email", None)
         return str(email) if email else repr(principal)
 
+    def credential_fingerprint(self, principal: PrincipalT) -> str | None:
+        """Return a value that changes whenever the principal's credential does.
+
+        The admin router stores a keyed digest of it in the session cookie
+        at sign-in and compares it on every request, so changing the
+        password (or whatever the fingerprint covers) ends every session
+        issued before the change. Defaults to ``None``: the session is not
+        bound to any credential, which suits backends whose credential the
+        SDK cannot see (LDAP, OAuth). Override to opt in.
+
+        Args:
+            principal (PrincipalT): The authenticated principal.
+
+        Returns:
+            str | None: The fingerprint, or ``None`` to bind nothing.
+        """
+        return None
+
     def mfa_enabled(self, principal: PrincipalT) -> bool:
         """Whether ``principal`` must pass a TOTP challenge after login.
 
@@ -387,6 +405,24 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
             str: The UUID as ``str``.
         """
         return str(principal.id)
+
+    def credential_fingerprint(self, principal: BaseUserModel) -> str | None:
+        """Fingerprint the password hash and the TOTP secret.
+
+        A new password writes a new bcrypt hash (fresh salt included), and
+        re-enrolling MFA writes a new secret, so either change ends every
+        admin session issued before it. The value never leaves the server
+        as-is: the router stores only an HMAC of it keyed with the admin
+        ``secret_key``.
+
+        Args:
+            principal (BaseUserModel): The authenticated row.
+
+        Returns:
+            str | None: The fingerprint.
+        """
+        totp_secret = getattr(principal, "totp_secret", None) or ""
+        return f"{principal.hashed_password}\x00{totp_secret}"
 
     def mfa_enabled(self, principal: BaseUserModel) -> bool:
         """Whether the user has completed MFA enrollment.
