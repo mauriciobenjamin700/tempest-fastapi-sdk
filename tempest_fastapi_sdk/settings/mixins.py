@@ -2003,7 +2003,8 @@ class AuthSettings(BaseAppSettings):
             "When ``True``, signup immediately marks the user "
             "active and skips the activation email entirely. "
             "Useful for dev environments where users don't have "
-            "real inboxes. Never enable in production."
+            "real inboxes. Development only: ``ENV=production`` "
+            "refuses to build with it on."
         ),
         examples=[False, True],
     )
@@ -2284,13 +2285,22 @@ class AuthSettings(BaseAppSettings):
         ``AUTH_RETURN_TOKEN_IN_RESPONSE`` is refused regardless of
         ``EMAIL_ENABLED``: it hands the activation, reset, e-mail change
         and recovery links to whoever sent the request.
+        ``AUTH_AUTO_ACTIVATE`` is refused the same way: it activates
+        every signup without proof that the address belongs to whoever
+        signed up.
 
         Returns:
             list[str]: The parent's entries, one for
-            ``AUTH_RETURN_TOKEN_IN_RESPONSE`` when it is on, plus at most
+            ``AUTH_AUTO_ACTIVATE`` and one for
+            ``AUTH_RETURN_TOKEN_IN_RESPONSE`` when each is on, plus at most
             one per template.
         """
         violations: list[str] = super().production_violations()
+        if self.AUTH_AUTO_ACTIVATE:
+            violations.append(
+                "AUTH_AUTO_ACTIVATE: activates every signup without proof "
+                "that the e-mail address belongs to whoever signed up"
+            )
         if self.AUTH_RETURN_TOKEN_IN_RESPONSE:
             violations.append(
                 "AUTH_RETURN_TOKEN_IN_RESPONSE: hands the e-mailed links to "

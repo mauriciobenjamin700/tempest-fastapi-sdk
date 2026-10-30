@@ -1510,7 +1510,7 @@ Decide **whether** and **how** the link reaches the user. They map directly to t
 
 | Env var | Type | Default | What it does |
 |---------|------|---------|--------------|
-| `AUTH_AUTO_ACTIVATE` | `bool` | `false` | `true` = user is born active, skips activation, signup returns the JWT pair directly (Mode D). **Never in production.** |
+| `AUTH_AUTO_ACTIVATE` | `bool` | `false` | `true` = user is born active, skips activation, signup returns the JWT pair directly (Mode D). `ENV=production` refuses to boot with it on. |
 | `AUTH_RETURN_TOKEN_IN_RESPONSE` | `bool` | `false` | `true` = activation/reset link goes in the JSON body instead of the email (Mode C). |
 | `AUTH_SEND_EMAILS_IN_BACKGROUND` | `bool` | `false` | `true` = the auth routes' emails go out **after** the response (`BackgroundTasks`); an SMTP failure is logged, not a `503`. See [In the background](#in-the-background-auth_send_emails_in_background). |
 

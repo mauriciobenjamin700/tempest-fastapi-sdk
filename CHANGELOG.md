@@ -219,6 +219,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ativação, reset de senha, troca/verificação e recuperação de e-mail, antes
   de ler ou gravar qualquer coisa. Em desenvolvimento o comportamento não
   muda. **Mudança de comportamento** para quem rodava produção sem mailer.
+- `AuthSettings.production_violations()` passa a recusar também
+  `AUTH_AUTO_ACTIVATE=true`, que ativa todo cadastro sem prova de que o
+  e-mail é de quem se cadastrou. **Mudança de comportamento:** uma
+  configuração com `ENV=production` e `AUTH_AUTO_ACTIVATE=true` deixa de
+  subir (`ValidationError` na construção do settings). Fora de produção o
+  flag continua valendo para dev e CI.
 - `POST /auth/email-recovery/request` gasta os mesmos orçamentos de falha do
   login (por e-mail e, se configurado, por IP) e do `/auth/mfa/verify` (por
   conta). `request_email_recovery` ganha os keyword-only `login_throttle`,

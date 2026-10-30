@@ -1492,7 +1492,7 @@ Decidem **se** e **como** o link chega ao usuário. Mapeiam direto nos [cinco mo
 
 | Env var | Tipo | Default | O que faz |
 |---------|------|---------|-----------|
-| `AUTH_AUTO_ACTIVATE` | `bool` | `false` | `true` = user nasce ativo, pula activation, signup devolve JWT pair direto (Modo D). **Nunca em produção.** |
+| `AUTH_AUTO_ACTIVATE` | `bool` | `false` | `true` = user nasce ativo, pula activation, signup devolve JWT pair direto (Modo D). `ENV=production` recusa subir com ele ligado. |
 | `AUTH_RETURN_TOKEN_IN_RESPONSE` | `bool` | `false` | `true` = link de ativação/reset vai no corpo JSON em vez do e-mail (Modo C). |
 | `AUTH_SEND_EMAILS_IN_BACKGROUND` | `bool` | `false` | `true` = os e-mails das rotas de auth saem **depois** da resposta (`BackgroundTasks`); falha de SMTP vira log, não `503`. Veja [Em background](#em-background-auth_send_emails_in_background). |
 
