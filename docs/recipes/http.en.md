@@ -1422,7 +1422,7 @@ def create_app() -> FastAPI:
 
 Notice what the key does **not** contain: who asked. If two people's `GET /api/me` land on the same key, the first stored response is served to the second — and to any anonymous caller hitting the same path.
 
-So a request carrying `Authorization` or `Cookie` **bypasses the shared store**. It still gets an `ETag` and a `304` (both per-response, and safe); it just never enters a cache someone else can read.
+So a request carrying `Authorization`, `Cookie`, `X-Token` or `X-API-Key` **bypasses the shared store**. It still gets an `ETag` and a `304` (both per-response, and safe); it just never enters a cache someone else can read. If your auth reads another header, pass the list in `credential_headers=`. A route gated by `make_token_dependency` also answers `Cache-Control: no-store`, so it stays out of the store even with a `header_name=` the list does not know.
 
 ```python
 from typing import Any

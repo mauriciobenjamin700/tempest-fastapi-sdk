@@ -20,25 +20,45 @@ Só verbos mutantes (`POST` / `PUT` / `PATCH` / `DELETE`) são elegíveis — `G
 
 O valor do header é escolhido **pelo cliente**. Sozinho, ele não identifica ninguém: dois chamadores que escolhem a mesma string no mesmo endpoint dividiriam a entrada, e o replay entrega a **resposta** guardada — corpo e headers inclusos.
 
-Por isso o middleware dobra um digest das credenciais da requisição (`Authorization` / `Cookie`) na chave. Uma entrada só é replicada pra credencial que a criou.
+Por isso o middleware dobra um digest das credenciais da requisição na chave: `Authorization`, `Cookie`, `X-Token` (o header do `make_token_dependency`) e `X-API-Key`. Uma entrada só é replicada pra credencial que a criou. Se a sua auth lê outro header, passe-o em `credential_headers=` — um header fora da lista faz a requisição parecer anônima.
+
+### Requisição anônima não é cacheada
+
+Requisição **sem** credencial não tem identidade para escopar, então por padrão ela passa direto ao handler, como se não tivesse `Idempotency-Key`. Login, confirmação de reset de senha e troca de código OAuth carregam o segredo no corpo e devolvem token: um escopo anônimo compartilhado entregaria o par de tokens de um chamador a quem repetisse a chave. `allow_anonymous=True` restaura o escopo anônimo compartilhado para o serviço cujas mutações anônimas podem ser replicadas entre chamadores.
+
+### A chave fica presa à requisição
+
+A entrada guarda um digest de método, path, query e corpo. Repetir a chave com outra requisição — outro corpo, outra query — responde **422** com `code="IDEMPOTENCY_KEY_REUSED"`, em vez de replicar a resposta da primeira (o comportamento que a Stripe documenta). Entrada gravada por uma versão anterior, sem esse digest, também responde 422.
 
 ```python
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
-from tempest_fastapi_sdk import IdempotencyMiddleware, MemoryIdempotencyStore
+from tempest_fastapi_sdk import (
+    IdempotencyMiddleware,
+    JWTUtils,
+    MemoryIdempotencyStore,
+)
 
 app = FastAPI()
+tokens = JWTUtils("change-me")
+
+
+def principal(request: Request) -> str:
+    """Devolve o `sub` de um JWT verificado, ou vazio para anônimo."""
+    bearer = request.headers.get("authorization", "").removeprefix("Bearer ")
+    claims = tokens.decode_or_none(bearer.strip())
+    return "" if claims is None else str(claims.get("sub", ""))
 
 
 app.add_middleware(
     IdempotencyMiddleware,
     store=MemoryIdempotencyStore(),
     ttl_seconds=24 * 3600,
-    principal_resolver=lambda request: request.headers.get("x-tenant-id", ""),
+    principal_resolver=principal,
 )
 ```
 
-Use `principal_resolver=` quando a identidade vive em outro lugar — um id de API key, um header de tenant. Devolver uma constante ali restaura o comportamento antigo (uma entrada por chave, compartilhada entre chamadores) e é **inseguro** em endpoint multi-tenant.
+Use `principal_resolver=` quando a identidade vive em outro lugar, e derive-a de algo que o resolver **verifica** — o middleware roda antes de qualquer dependência de auth, então um header que o cliente escreve (um `x-tenant-id`) não isola ninguém. String vazia significa anônimo. Devolver uma constante ali restaura o compartilhamento entre chamadores e é **inseguro** em endpoint multi-tenant.
 
 !!! note "O que não é replicado"
     Um `Set-Cookie` da resposta original fica **fora** da cópia guardada — reemitir a sessão do primeiro chamador num replay entregaria a sessão dele. O chamador original recebe seu cookie normalmente; só o replay não.
@@ -179,6 +199,7 @@ assert isinstance(DynamoIdempotencyStore(), IdempotencyStore)
 - O header `Idempotency-Key` faz o servidor devolver a mesma resposta a qualquer retry **assim que a primeira requisição completa** — sem duplicar registro.
 - Só verbos mutantes (`POST` / `PUT` / `PATCH` / `DELETE`) com o header são elegíveis; o resto passa direto (opt-in por requisição).
 - Há lock de in-progress **por processo**: dentro de uma réplica, requisições concorrentes com a mesma chave são serializadas e a segunda replica a resposta da primeira. Entre réplicas não vale — mantenha timeouts do cliente generosos.
+- A chave é escopada pela credencial (`Authorization`, `Cookie`, `X-Token`, `X-API-Key`); requisição anônima não é cacheada sem `allow_anonymous=True`, e a mesma chave com outra requisição responde 422.
 - `MemoryIdempotencyStore` é process-local e volátil (dev / single-replica); `RedisIdempotencyStore` cobre multi-réplica e sobrevive a restart.
 - Implemente o protocolo `IdempotencyStore` para plugar qualquer backend (ex.: DynamoDB).
 

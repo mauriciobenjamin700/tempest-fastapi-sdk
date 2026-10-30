@@ -274,7 +274,9 @@ class TestEmptySecretFailsClosed:
         Args:
             secret (str): An empty or blank secret.
         """
-        assert verify_signature(BODY, self._empty_key_header(), secret, now=NOW) is False
+        header = self._empty_key_header()
+
+        assert verify_signature(BODY, header, secret, now=NOW) is False
 
     @pytest.mark.parametrize("secret", ["", "   "])
     def test_dependency_refuses_to_build(self, secret: str) -> None:

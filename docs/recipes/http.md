@@ -1413,7 +1413,7 @@ def create_app() -> FastAPI:
 
 Repare no que a chave **não** tem: quem pediu. Se `GET /api/me` de duas pessoas cai na mesma chave, a primeira resposta guardada é servida pra segunda — e pra qualquer anônimo que peça o mesmo path.
 
-Por isso uma requisição que carrega `Authorization` ou `Cookie` **passa por fora do store compartilhado**. Ela continua ganhando `ETag` e `304` (que são por resposta, e seguros); só não entra num cache que outra pessoa pode ler.
+Por isso uma requisição que carrega `Authorization`, `Cookie`, `X-Token` ou `X-API-Key` **passa por fora do store compartilhado**. Ela continua ganhando `ETag` e `304` (que são por resposta, e seguros); só não entra num cache que outra pessoa pode ler. Se a sua auth lê outro header, passe a lista em `credential_headers=`. Rota protegida por `make_token_dependency` também responde `Cache-Control: no-store`, então fica fora do store mesmo com um `header_name=` que a lista não conhece.
 
 ```python
 from typing import Any

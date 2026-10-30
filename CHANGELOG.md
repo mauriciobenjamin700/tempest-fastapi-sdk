@@ -15,6 +15,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `STRIPE_WEBHOOK_SECRET` não configurado (o default `""` da receita)
   verificava contra uma chave vazia. **Mudança de comportamento:** serviço
   que montava o verificador com segredo vazio passa a falhar no boot.
+- `ResponseCacheMiddleware` e `IdempotencyMiddleware` passam a tratar
+  `X-Token` e `X-API-Key` como credencial, além de `Authorization` e `Cookie`,
+  e aceitam `credential_headers=` para a lista. Antes, uma requisição
+  autenticada só por `X-Token` (o header do `make_token_dependency` e do
+  `make_logs_router`) era tratada como anônima e podia dividir entrada com
+  outros chamadores. `make_token_dependency` passa a responder
+  `Cache-Control: no-store` enquanto o segredo está configurado.
+- `IdempotencyMiddleware` guarda um digest de método, path, query e corpo em
+  cada entrada e responde `422` (`code="IDEMPOTENCY_KEY_REUSED"`) quando a
+  mesma chave chega com outra requisição, em vez de replicar a resposta.
+  `CachedResponse` ganha o campo `fingerprint` (default `""`).
+  **Mudança de comportamento:** requisição sem credencial não é mais
+  cacheada — passa direto ao handler — a menos que o middleware receba
+  `allow_anonymous=True`; entrada gravada por versão anterior (sem digest)
+  responde `422` em vez de ser replicada.
 
 ## [0.334.0] — 2026-10-29
 
