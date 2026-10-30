@@ -516,13 +516,16 @@ Saída (capturada rodando o exemplo, Python 3.11):
 
 - **Chave sensível** — todo campo de `extra=`, e toda chave de dict passado
   como argumento ou aninhado num valor, cujo nome contém um fragmento de
-  `DEFAULT_REDACT_KEYS` (`password`, `token`, `secret`, `authorization`,
-  `cookie`, `email`, `api_key`, ...) tem o valor trocado inteiro. O match é
+  `DEFAULT_REDACT_KEYS` (`password`, `token`, `secret`, `signature`,
+  `authorization`, `cookie`, `email`, `api_key`, ...) tem o valor trocado inteiro. O match é
   por **substring**, em minúsculas e com `-` virando `_`: `access_token`,
   `X-API-Key` e `Set-Cookie` casam.
 - **Padrão de texto** — mensagem, argumentos, traceback (`exc_text`),
-  `stack_info` e todo valor string passam por e-mail, `Bearer <credencial>`
-  e JWT, mais `chave=valor` / `chave: valor` quando a chave é sensível
+  `stack_info` e todo valor string passam por e-mail, `Bearer <credencial>`,
+  JWT e o segmento de token das rotas que o próprio SDK monta com credencial
+  na URL (`/activate/<token>`, `/password-reset/<token>`,
+  `/email-change/<token>`, `/email-verify/<token>` — fica
+  `/password-reset/[REDACTED]`), mais `chave=valor` / `chave: valor` quando a chave é sensível
   (`?token=abc` na query, `{'password': 'x'}` citado numa exceção).
 - **`extra_keys` / `extra_patterns`** acrescentam sem repetir os defaults;
   `keys` / `patterns` substituem. Padrão em string é compilado na
@@ -1029,8 +1032,21 @@ fechamento, como um request que demorou uma hora.
 
 Um endpoint depreciado que recebia um token equivalente a bearer como parâmetro
 de path chega ao middleware com o token na URL — recusar o request no handler
-**não** desfaz o log. `redact` é a costura para isso, aplicada ao path e à query
-separadamente:
+**não** desfaz o log.
+
+As URLs com credencial que o **próprio SDK** emite já saem escondidas por
+padrão, sem configuração: o segmento de token de `/activate/{token}`,
+`/password-reset/{token}`, `/email-change/{token}` e `/email-verify/{token}`
+(o link do e-mail com `AUTH_BACKEND_LINKS=True` só confere o token, sem
+consumi-lo, então ele continua resgatável depois da visita) e o valor de todo
+parâmetro `signature=` ou `*token=` da query, como o `signature` de uma URL
+assinada. A linha sai como `GET /auth/password-reset/[REDACTED] 200`. Quem faz
+isso é `redact_capability_url`, ligado por `redact_capability_urls=True` (o
+default); desligue só se todo mundo que lê o log também pode resgatar esses
+links.
+
+Para segredo seu na URL, `redact` é a costura, aplicada ao path e à query
+separadamente, **depois** da redação acima:
 
 ```python
 # src/api/app.py
@@ -1082,7 +1098,9 @@ atacante — e o log passaria a atribuir requests ao endereço que ele quis. Vej
     - `5xx` (renderizado ou escapado) sai em `ERROR`; o resto no `level`
       configurado.
     - `exempt_paths` casa por prefixo — é o que tira o SSE do log.
-    - `redact` reescreve path e query antes do registro existir.
+    - Token das rotas de capacidade do SDK e `signature=` / `*token=` da query
+      saem como `[REDACTED]` por padrão; `redact` reescreve o resto de path e
+      query antes do registro existir.
 
 ## Recap
 
@@ -1100,5 +1118,5 @@ atacante — e o log passaria a atribuir requests ao endereço que ele quis. Vej
 - Todo nível aceita `exc_info` (`bool` ou `"auto"`); campo estruturado que
   colide com atributo do `LogRecord` é recusado na chamada, com `TypeError`.
 - Com `redact=True` (ou uma `RedactionPolicy`), todo handler redige e-mail,
-  `Bearer`, JWT e chave sensível de mensagem, `extra=`, traceback e
+  `Bearer`, JWT, token das rotas de capacidade do SDK e chave sensível de mensagem, `extra=`, traceback e
   `stack_info` antes de o registro ser escrito.

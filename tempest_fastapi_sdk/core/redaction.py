@@ -32,6 +32,7 @@ DEFAULT_REDACT_KEYS: frozenset[str] = frozenset(
         "password",
         "private_key",
         "secret",
+        "signature",
         "token",
         "verification_code",
     }
@@ -70,10 +71,49 @@ The signature segment may be empty, which is what an ``alg: none`` token
 looks like.
 """
 
+CAPABILITY_PATH_SEGMENTS: tuple[str, ...] = (
+    "activate",
+    "email-change",
+    "email-verify",
+    "password-reset",
+)
+"""Path segments under which the SDK's own routes take a token in the URL.
+
+``make_auth_router`` mounts ``/activate/{token}``,
+``/password-reset/{token}``, ``/email-change/{token}`` and
+``/email-verify/{token}``, and ``make_auth_pages_router`` mounts
+``/activate/{token}``. The segment after each is a live, single-use
+credential: whoever reads it can redeem it.
+"""
+
+CAPABILITY_PATH_PATTERN: re.Pattern[str] = re.compile(
+    "(?:"
+    + "|".join(f"(?<=/{segment}/)" for segment in CAPABILITY_PATH_SEGMENTS)
+    + r")(?!(?:request|confirm)(?:[/?#\s]|$))[^/?#\s\"']+"
+)
+"""The token segment of a :data:`CAPABILITY_PATH_SEGMENTS` URL.
+
+Only the segment itself matches, so ``/auth/password-reset/<token>`` reads
+``/auth/password-reset/[REDACTED]`` and the route stays visible. The literal
+sibling routes (``/password-reset/request``, ``/email-change/confirm``) are
+not tokens and are left alone.
+"""
+
+CAPABILITY_QUERY_PATTERN: re.Pattern[str] = re.compile(
+    r"(?:^|(?<=[?&]))(?P<key>[\w.-]*(?:token|signature)=)[^&#]*",
+    re.IGNORECASE,
+)
+"""A ``signature=`` or ``*token=`` parameter of a query string.
+
+Covers the ``signature`` that :func:`~tempest_fastapi_sdk.sign_url` appends
+and the ``?token=`` the default activation and reset link templates carry.
+"""
+
 DEFAULT_REDACT_PATTERNS: tuple[re.Pattern[str], ...] = (
     JWT_PATTERN,
     BEARER_PATTERN,
     EMAIL_PATTERN,
+    CAPABILITY_PATH_PATTERN,
 )
 """The patterns redacted from free text by default, in application order."""
 
@@ -95,6 +135,33 @@ _PLAIN_TYPES: tuple[type, ...] = (bool, int, float, type(None))
 
 _EXCEPTION_FORMATTER: logging.Formatter = logging.Formatter()
 """Renders ``exc_info`` the way the stdlib formatter would."""
+
+
+def redact_capability_url(value: str, *, replacement: str = REDACTED) -> str:
+    """Hide the credentials the SDK itself puts in URLs.
+
+    Replaces the token segment of every :data:`CAPABILITY_PATH_SEGMENTS`
+    route and the value of every ``signature=`` / ``*token=`` query
+    parameter. Apply it separately to a path and to a query string, which
+    is what :class:`~tempest_fastapi_sdk.AccessLogMiddleware` does by
+    default.
+
+    Args:
+        value (str): A request path, or a raw query string (no leading
+            ``?`` needed).
+        replacement (str): What a hidden value is written as.
+
+    Returns:
+        str: ``value`` with those credentials replaced.
+
+    Examples:
+        >>> redact_capability_url("/auth/password-reset/abc123")
+        '/auth/password-reset/[REDACTED]'
+        >>> redact_capability_url("expires=60&signature=deadbeef")
+        'expires=60&signature=[REDACTED]'
+    """
+    value = CAPABILITY_PATH_PATTERN.sub(replacement, value)
+    return CAPABILITY_QUERY_PATTERN.sub(lambda match: match["key"] + replacement, value)
 
 
 def _build_key_value_pattern(replacement: str) -> re.Pattern[str]:
@@ -162,7 +229,8 @@ class RedactionPolicy:
     * **Text patterns** — every string (message, traceback, stack, string
       values) has each of :attr:`patterns` / :attr:`extra_patterns`
       replaced. The defaults cover e-mail addresses, ``Bearer`` credentials
-      and JWTs.
+      and JWTs, plus the token segment of the SDK's own capability routes
+      (:data:`CAPABILITY_PATH_PATTERN`).
 
     Use :attr:`extra_keys` / :attr:`extra_patterns` to add domain terms
     without restating the defaults; set :attr:`keys` / :attr:`patterns`
@@ -442,6 +510,9 @@ class RedactionFilter(logging.Filter):
 
 __all__: list[str] = [
     "BEARER_PATTERN",
+    "CAPABILITY_PATH_PATTERN",
+    "CAPABILITY_PATH_SEGMENTS",
+    "CAPABILITY_QUERY_PATTERN",
     "DEFAULT_REDACT_KEYS",
     "DEFAULT_REDACT_PATTERNS",
     "EMAIL_PATTERN",
@@ -449,4 +520,5 @@ __all__: list[str] = [
     "REDACTED",
     "RedactionFilter",
     "RedactionPolicy",
+    "redact_capability_url",
 ]

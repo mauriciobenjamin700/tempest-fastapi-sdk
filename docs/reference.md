@@ -1460,6 +1460,10 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.core.redaction.EMAIL_PATTERN
 ::: tempest_fastapi_sdk.core.redaction.BEARER_PATTERN
 ::: tempest_fastapi_sdk.core.redaction.JWT_PATTERN
+::: tempest_fastapi_sdk.core.redaction.CAPABILITY_PATH_PATTERN
+::: tempest_fastapi_sdk.core.redaction.CAPABILITY_PATH_SEGMENTS
+::: tempest_fastapi_sdk.core.redaction.CAPABILITY_QUERY_PATTERN
+::: tempest_fastapi_sdk.core.redaction.redact_capability_url
 ::: tempest_fastapi_sdk.utils.throttle.AttemptThrottle
 ::: tempest_fastapi_sdk.utils.throttle.InMemoryThrottleBackend
 ::: tempest_fastapi_sdk.utils.signed_url.sign_path

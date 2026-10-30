@@ -834,6 +834,15 @@ if TYPE_CHECKING:
         BEARER_PATTERN as BEARER_PATTERN,
     )
     from tempest_fastapi_sdk.core import (
+        CAPABILITY_PATH_PATTERN as CAPABILITY_PATH_PATTERN,
+    )
+    from tempest_fastapi_sdk.core import (
+        CAPABILITY_PATH_SEGMENTS as CAPABILITY_PATH_SEGMENTS,
+    )
+    from tempest_fastapi_sdk.core import (
+        CAPABILITY_QUERY_PATTERN as CAPABILITY_QUERY_PATTERN,
+    )
+    from tempest_fastapi_sdk.core import (
         DEFAULT_LOG_BACKUP_COUNT as DEFAULT_LOG_BACKUP_COUNT,
     )
     from tempest_fastapi_sdk.core import (
@@ -892,6 +901,9 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.core import (
         normalize_locale_tag as normalize_locale_tag,
+    )
+    from tempest_fastapi_sdk.core import (
+        redact_capability_url as redact_capability_url,
     )
     from tempest_fastapi_sdk.core import (
         reinitialize_logging as reinitialize_logging,
@@ -2549,6 +2561,10 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "BaseController": "tempest_fastapi_sdk.controllers",
     "Controller": "tempest_fastapi_sdk.controllers",
     "BEARER_PATTERN": "tempest_fastapi_sdk.core",
+    "CAPABILITY_PATH_PATTERN": "tempest_fastapi_sdk.core",
+    "CAPABILITY_PATH_SEGMENTS": "tempest_fastapi_sdk.core",
+    "CAPABILITY_QUERY_PATTERN": "tempest_fastapi_sdk.core",
+    "redact_capability_url": "tempest_fastapi_sdk.core",
     "DEFAULT_LOG_BACKUP_COUNT": "tempest_fastapi_sdk.core",
     "DEFAULT_LOG_MAX_BYTES": "tempest_fastapi_sdk.core",
     "DEFAULT_REDACT_KEYS": "tempest_fastapi_sdk.core",
@@ -3102,6 +3118,9 @@ __all__: list[str] = [
     "AUTH_DEFAULT_DISPLAY_NAME",
     "BASE_COLUMN_ORDER",
     "BEARER_PATTERN",
+    "CAPABILITY_PATH_PATTERN",
+    "CAPABILITY_PATH_SEGMENTS",
+    "CAPABILITY_QUERY_PATTERN",
     "CENT",
     "CEP",
     "CEP_PATTERN",
@@ -3792,6 +3811,7 @@ __all__: list[str] = [
     "read_log_entries",
     "read_project_version",
     "read_upload_capped",
+    "redact_capability_url",
     "redact_database_errors",
     "redact_snapshot",
     "redirect_to",

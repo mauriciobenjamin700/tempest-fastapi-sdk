@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- `AccessLogMiddleware` esconde por padrão as credenciais que o próprio SDK põe
+  em URL: o segmento de token de `/activate/{token}`,
+  `/password-reset/{token}`, `/email-change/{token}` e `/email-verify/{token}`,
+  e o valor de todo parâmetro `signature=` / `*token=` da query (novo
+  `redact_capability_urls=True`; o `redact` do consumidor roda depois). A
+  `RedactionPolicy` default ganha `signature` em `DEFAULT_REDACT_KEYS` e o
+  `CAPABILITY_PATH_PATTERN` em `DEFAULT_REDACT_PATTERNS`, então
+  `configure_logging(redact=True)` cobre os mesmos caminhos em mensagem e
+  `extra=`. Novos símbolos em `core.redaction`: `redact_capability_url`,
+  `CAPABILITY_PATH_PATTERN`, `CAPABILITY_PATH_SEGMENTS`,
+  `CAPABILITY_QUERY_PATTERN`. Mudança de comportamento: a linha de acesso
+  dessas rotas passa a mostrar `[REDACTED]` no lugar do token.
 - Admin: o `POST /admin/logout` passa a encerrar a sessão no servidor. A
   `AdminSession` ganha um `session_id` aleatório (`sid`), que o logout marca no
   novo `AdminSessionRevocations` (sobre qualquer `ThrottleBackend`: memória por

@@ -67,6 +67,15 @@ from tempest_fastapi_sdk.core.redaction import (
     BEARER_PATTERN as BEARER_PATTERN,
 )
 from tempest_fastapi_sdk.core.redaction import (
+    CAPABILITY_PATH_PATTERN as CAPABILITY_PATH_PATTERN,
+)
+from tempest_fastapi_sdk.core.redaction import (
+    CAPABILITY_PATH_SEGMENTS as CAPABILITY_PATH_SEGMENTS,
+)
+from tempest_fastapi_sdk.core.redaction import (
+    CAPABILITY_QUERY_PATTERN as CAPABILITY_QUERY_PATTERN,
+)
+from tempest_fastapi_sdk.core.redaction import (
     DEFAULT_REDACT_KEYS as DEFAULT_REDACT_KEYS,
 )
 from tempest_fastapi_sdk.core.redaction import (
@@ -87,6 +96,9 @@ from tempest_fastapi_sdk.core.redaction import (
 from tempest_fastapi_sdk.core.redaction import (
     RedactionPolicy as RedactionPolicy,
 )
+from tempest_fastapi_sdk.core.redaction import (
+    redact_capability_url as redact_capability_url,
+)
 from tempest_fastapi_sdk.core.typed import (
     require_annotations as require_annotations,
 )
@@ -99,6 +111,9 @@ from tempest_fastapi_sdk.core.typed import (
 
 __all__: list[str] = [
     "BEARER_PATTERN",
+    "CAPABILITY_PATH_PATTERN",
+    "CAPABILITY_PATH_SEGMENTS",
+    "CAPABILITY_QUERY_PATTERN",
     "DEFAULT_DOCS_LOCALE",
     "DEFAULT_LOG_BACKUP_COUNT",
     "DEFAULT_LOG_MAX_BYTES",
@@ -123,6 +138,7 @@ __all__: list[str] = [
     "get_request_id",
     "normalize_docs_locale",
     "normalize_locale_tag",
+    "redact_capability_url",
     "reinitialize_logging",
     "request_id_ctx",
     "require_annotations",
