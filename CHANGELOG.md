@@ -10,8 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - `CORSSettings.production_violations()` passa a recusar, com
-  `CORS_ALLOW_CREDENTIALS=true`, toda regra de origem que aceita origem não
-  listada: `"*"` em `CORS_ORIGINS` (agora com mensagem própria), `"null"` em
+  `CORS_ALLOW_CREDENTIALS=true`: `"*"` em `CORS_ORIGINS` (agora com mensagem própria), `"null"` em
   `CORS_ORIGINS` e um `CORS_ORIGIN_REGEX` que casa com uma origem reservada
   `.invalid` (`.*`, `https://.*`). Com credenciais ligadas, o
   `CORSMiddleware` do Starlette devolve a própria `Origin` do chamador com
@@ -46,8 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `StripeError`) quando ele difere ou falta. `StripeResource` ganha
   `object_type=` (default `None`, sem conferência) e `StripeClient.request`
   ganha `expected_object=`. Mudança de comportamento: um `2xx` de outro tipo
-  de objeto deixa de ser devolvido (#661).
-
+  de objeto deixa de ser devolvido.
 - `hostbridge.ps_single_quote` dobra também as aspas tipográficas U+2018,
   U+2019, U+201A e U+201B, que o lexer do PowerShell lê como aspa simples do
   mesmo jeito que `'` — antes só o apóstrofo ASCII era dobrado. Afeta o script
@@ -76,7 +74,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   permanente (não `https`, ou IP literal não público), e o
   `WebPushTransport` o traduz em `PushDeviceGoneError`; recusa decidida por
   resposta de DNS continua só no log (#660).
-
 - `tempest user set-password` passa a apagar as passkeys WebAuthn do usuário
   por padrão, na mesma transação do hash novo, como o `mfa-reset`: a troca
   feita pelo operador é recuperação de conta. Ganha
@@ -92,8 +89,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   novo campo opcional `code` em `PasswordChangeSchema`, a senha muda e a
   resposta é o desafio do login (`mfa_required`, `mfa_token`); com `code`
   válido (TOTP ou recovery code, gasto antes da troca sob o `mfa_throttle`),
-  par com `amr` de MFA; com `code` errado, `401` e nada muda. O `amr` do
-  access token atual nunca é copiado para o par. Mudança de contrato da rota.
+  par com `amr` de MFA; com `code` errado, `401` e nada muda. O segundo
+  fator do `amr` do access token atual nunca é copiado para o par. Mudança de contrato da rota.
 - `SIGNUP_PROTECTED_FIELDS` passa a incluir as colunas do `MFAMixin`
   (`totp_secret`, `totp_enabled_at`, `totp_last_step`), e o signup recusa
   também toda coluna que o user model declara em `__secret_columns__`. Novo

@@ -217,8 +217,9 @@ uv run tempest db upgrade
     - **`/auth/password-change`** — the user **remembers** their password
       and is **logged in**. They send the `access_token` in the
       `Authorization: Bearer …` header and re-confirm their
-      `current_password`. No email or reset token involved. Returns
-      **204** and the current tokens stay valid.
+      `current_password`. No email or reset token involved. Answers
+      **200**: every session is revoked and the caller gets a fresh pair
+      (or, on an MFA account without `code`, the login challenge).
 
 ### Closed system — no registration door *(v0.272.0+)*
 

@@ -7,7 +7,7 @@ Passo a passo das mudanças que quebram compatibilidade, agrupadas por release m
 | Onde | O que muda | O que fazer |
 | --- | --- | --- |
 | `SSEBroker` com Redis | Com o `channel_prefix` default `"sse"`, a construção registra um `WARNING`: o pub/sub do Redis ignora o índice de DB, e outro serviço na mesma instância com o mesmo prefixo troca eventos com este | Passe um `channel_prefix` próprio do serviço (`"orders-api:sse"`) em todo worker ao mesmo tempo — workers com prefixos diferentes não se enxergam |
-| Inscrição Web Push (`WebPushSubscriptionService.subscribe`, `make_web_push_router`, registro `web` do `make_push_router`) | Endpoint que é ou resolve para endereço não público responde `422 PUSH_ENDPOINT_NOT_PUBLIC` e não é gravado; o `send_many` devolve para poda o endpoint gravado antes com IP literal não público | Nada, se o push service é público. Push service próprio na rede interna: `allow_private_networks=True` no `WebPushDispatcher` abre inscrição e envio juntos |
+| Inscrição Web Push (`WebPushSubscriptionService.subscribe`, `make_web_push_router`, registro `web` do `make_push_router`) | Endpoint que é ou resolve para endereço não público responde `422 PUSH_ENDPOINT_NOT_PUBLIC` e não é gravado; o `send_many` devolve para poda o endpoint gravado antes que não é `https` ou é IP literal não público | Nada, se o push service é público. Push service próprio na rede interna: `allow_private_networks=True` no `WebPushDispatcher` abre inscrição e envio juntos |
 
 ## 0.336.0 — `password-change` devolve um par novo, `set-password` apaga passkeys
 
@@ -17,6 +17,16 @@ Passo a passo das mudanças que quebram compatibilidade, agrupadas por release m
 | `tempest user set-password` | Apaga as passkeys WebAuthn do usuário na mesma transação, quando acha a tabela (`--webauthn-credential-model`, default `src.db.models:UserWebAuthnCredentialModel`) | `--keep-passkeys` mantém o comportamento antigo; avise o usuário que ele cadastra a passkey de novo |
 | `signup(fields=...)` e `signup_schema` | `totp_secret`, `totp_enabled_at`, `totp_last_step` e toda coluna de `__secret_columns__` do user model são recusados (`ValueError` no service, descartados pela rota) | Nada para as colunas do MFA, que só o fluxo de inscrição grava. Se o seu cadastro grava uma coluna própria de `__secret_columns__`, mova a escrita para o `on_signup` |
 | `IntrospectionAuth` | Novo `audiences=`; sem ele, um `WARNING` por instância na construção | Passe `audiences=` com o client id do serviço no provedor. Veja [Amarrar o token a este serviço](recipes/introspection-auth.md#amarrar-o-token-a-este-servico-audiences) |
+
+## 0.336.0 — CORS, storage, busca textual e Stripe
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `CORSSettings` com `ENV=production` | Com `CORS_ALLOW_CREDENTIALS=true`, `"null"` em `CORS_ORIGINS` ou um `CORS_ORIGIN_REGEX` que casa com uma origem `.invalid` (`.*`, `https://.*`) impedem o boot, como `"*"` já impedia | Liste as origens do frontend em `CORS_ORIGINS`, ou ancore o regex no seu domínio |
+| `accel_redirect_response`, `serve_object(accel_redirect=True)` | `media_type` fora de `tipo/subtipo` (parâmetro, vírgula, CR/LF) levanta `ValueError`, como no `presigned_get_url`; `text/plain; charset=utf-8` deixa de ser aceito nesse caminho | Passe o tipo sem parâmetros (`text/plain`) |
+| Busca textual (`search`, `search_condition`, `full_text_search`) | `hashed_password` e as colunas de `__secret_columns__` respondem `422`; a mensagem passa a ser `... has no searchable column ...`, e `details["allowed"]` só aparece quando o repositório declara `searchable_columns` | Se a busca recebe o campo da requisição, declare `searchable_columns` no repositório |
+| `StripeClient` | `create`, `retrieve`, `update` e `delete` levantam `StripeObjectMismatchError` quando o `object` da resposta não é o do recurso | Trate a exceção onde hoje trata `StripeError` (é subclasse dela) |
+| `ps_single_quote` (hostbridge) | Dobra também as aspas tipográficas U+2018–U+201B | Nada |
 
 ## 0.335.0 — `BaseUserModel` ganha a coluna `email_verified_at`
 

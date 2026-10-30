@@ -178,8 +178,10 @@ _PS_SINGLE_QUOTE_CHARS: Final[frozenset[str]] = frozenset(
 The PowerShell language specification lists the ASCII apostrophe and the
 four typographic quotes U+2018, U+2019, U+201A and U+201B as interchangeable
 single-quote characters: any of them opens or closes a single-quoted literal.
-Ported from PowerShell's ``CharExtensions.IsSingleQuote``; its own escaper,
-``CodeGeneration.EscapeSingleQuotedStringContent``, doubles every one of them.
+Ported from PowerShell's ``CharExtensions.IsSingleQuote``
+(``src/System.Management.Automation/engine/parser/CharTraits.cs``); its own
+escaper, ``CodeGeneration.EscapeSingleQuotedStringContent``
+(``engine/lang/codegen.cs``), doubles every one of them.
 """
 
 
