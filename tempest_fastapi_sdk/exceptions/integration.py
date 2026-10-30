@@ -75,17 +75,19 @@ class EmailDeliveryException(AppException):
 
 
 class ZapSendFailedException(AppException):
-    """Raised when the zap-api gateway accepts a send already as ``failed``.
+    """Raised when the zap-api ``202`` answers a key whose send already failed.
 
     :meth:`~tempest_fastapi_sdk.integrations.messaging.zap.ZapInbox.send_text`
-    raises it when the ``202`` carries ``status="failed"``: the gateway took
-    the request and refused the message on the spot, so there is no
-    delivery to track. It is a ``502`` because the failure is the
-    downstream gateway's, not the caller's request.
+    raises it when the ``202`` carries ``status="failed"``. A fresh send never
+    answers that: the gateway enqueues every new row as ``queued``. It only
+    comes back as the ``deduped=True`` answer to a key whose outbox row the
+    gateway's worker already marked ``failed`` — read in the gateway's
+    ``outbound-submit.ts`` and outbox repository, not measured against a
+    running gateway. It is a ``502`` because the failure is the downstream
+    gateway's, not the caller's request.
 
-    ``details["idempotency_key"]`` names the send, so a retry can reuse the
-    key — the gateway answers the same failed row with ``deduped=True``
-    rather than trying again, so a real retry needs a fresh key.
+    ``details["idempotency_key"]`` names that send. Reusing the key returns
+    the same failed row again, so a real retry needs a fresh key.
 
     Attributes:
         idempotency_key (str): The key the refused send went out with.

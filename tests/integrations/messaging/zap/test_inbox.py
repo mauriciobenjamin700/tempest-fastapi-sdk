@@ -285,6 +285,108 @@ class TestTrack:
         assert (row.status, row.error) == ("delivered", None)
 
 
+class RacingRepository(BaseRepository[InboxDeliveryModel]):
+    """Repository that misses the row on the first lookups, as a race would.
+
+    Stands for the other replica that inserted the same row between this
+    one's ``get_or_none`` and its ``add``.
+    """
+
+    def __init__(self, session: AsyncSession, misses: int) -> None:
+        """Bind the session and how many lookups come back empty.
+
+        Args:
+            session (AsyncSession): The test session.
+            misses (int): Lookups answered ``None`` before the real ones.
+        """
+        super().__init__(session, model=InboxDeliveryModel)
+        self.misses: int = misses
+
+    async def get_or_none(
+        self,
+        filters: dict[str, Any],
+        for_update: bool = False,
+        with_: list[str] | None = None,
+        where: Any = None,
+    ) -> InboxDeliveryModel | None:
+        """Answer ``None`` for the first ``misses`` calls, then look up.
+
+        Args:
+            filters (dict[str, Any]): The lookup.
+            for_update (bool): Forwarded.
+            with_ (list[str] | None): Forwarded.
+            where (Any): Forwarded.
+
+        Returns:
+            InboxDeliveryModel | None: ``None`` while racing, then the row.
+        """
+        if self.misses > 0:
+            self.misses -= 1
+            return None
+        return await super().get_or_none(
+            filters, for_update=for_update, with_=with_, where=where
+        )
+
+
+async def racing_inbox(
+    session: AsyncSession, http: HTTPClient, misses: int
+) -> ZapInbox[InboxMessageModel, InboxDeliveryModel]:
+    """Build an inbox whose delivery lookups lose the race ``misses`` times.
+
+    Args:
+        session (AsyncSession): The test session.
+        http (HTTPClient): The transport to the fake gateway.
+        misses (int): Lookups answered ``None``.
+
+    Returns:
+        ZapInbox[InboxMessageModel, InboxDeliveryModel]: The inbox.
+    """
+    return ZapInbox(
+        BaseRepository(session, model=InboxMessageModel),
+        RacingRepository(session, misses),
+        ZapClient(http),
+    )
+
+
+class TestRace:
+    """The loser of an insert race re-reads the row instead of failing."""
+
+    async def test_track_loser_applies_the_ladder(
+        self, session: AsyncSession, gateway: FakeGateway
+    ) -> None:
+        """A callback that loses the insert still advances the stored row."""
+        async with HTTPClient(
+            base_url="http://zap", transport=httpx.MockTransport(gateway)
+        ) as http:
+            await (await racing_inbox(session, http, 0)).track(status("out-1", "sent"))
+            outcome = await (await racing_inbox(session, http, 1)).track(
+                status("out-1", "delivered")
+            )
+            row = await BaseRepository(session, model=InboxDeliveryModel).get(
+                {"outbound_id": "out-1"}
+            )
+        assert outcome is ZapStatusOutcome.APPLIED
+        assert row.status == "delivered"
+
+    async def test_send_loser_attaches_its_key(
+        self, session: AsyncSession, gateway: FakeGateway
+    ) -> None:
+        """A send that loses the insert to a callback attaches its key."""
+        async with HTTPClient(
+            base_url="http://zap", transport=httpx.MockTransport(gateway)
+        ) as http:
+            await (await racing_inbox(session, http, 0)).track(
+                status("out-1", "delivered")
+            )
+            await (await racing_inbox(session, http, 2)).send_text(
+                "5511999999999", "oi", idempotency_key="reply-A1"
+            )
+            repo = BaseRepository(session, model=InboxDeliveryModel)
+            row = await repo.get({"outbound_id": "out-1"})
+            count = await repo.count()
+        assert (row.status, row.idempotency_key, count) == ("delivered", "reply-A1", 1)
+
+
 class TestSendText:
     """A send is recorded once per idempotency key."""
 
@@ -339,6 +441,31 @@ class TestSendText:
         assert raised.value.status_code == 502
         assert raised.value.details == {"idempotency_key": "k1"}
         assert await inbox.deliveries.count() == 0
+
+    async def test_inline_send_starts_at_sent(self, session: AsyncSession) -> None:
+        """A ``202`` with null ``id``/``status`` keys by the key, at ``sent``."""
+
+        def inline(_: httpx.Request) -> httpx.Response:
+            """Answer as a gateway without persistence.
+
+            Returns:
+                httpx.Response: A ``202`` with ``id`` and ``status`` null.
+            """
+            return httpx.Response(
+                202, json={"id": None, "status": None, "deduped": False}
+            )
+
+        async with HTTPClient(
+            base_url="http://zap", transport=httpx.MockTransport(inline)
+        ) as http:
+            inbox: ZapInbox[InboxMessageModel, InboxDeliveryModel] = ZapInbox(
+                BaseRepository(session, model=InboxMessageModel),
+                BaseRepository(session, model=InboxDeliveryModel),
+                ZapClient(http),
+            )
+            await inbox.send_text("5511999999999", "oi", idempotency_key="k1")
+        row = await inbox.deliveries.get({"idempotency_key": "k1"})
+        assert (row.outbound_id, row.status) == ("k1", "sent")
 
     async def test_callback_before_send_is_not_stepped_down(
         self, inbox: ZapInbox[InboxMessageModel, InboxDeliveryModel]

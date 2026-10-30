@@ -18,14 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `send_text` grava uma linha de entrega por `idempotency_key` sem regredir o
   status. `ZapInboundOutcome` e `ZapStatusOutcome` dizem o que aconteceu.
 - `ZapSendFailedException` (`502`, `code="ZAP_SEND_FAILED"`), levantada quando
-  o `202` do gateway já vem `failed`; mensagem nas duas línguas do catálogo.
+  o `202` vem `failed` — a resposta `deduped` a uma chave cujo envio já falhou
+  no worker do gateway; mensagem nas duas línguas do catálogo.
 
 ### Changed
 
 - Receita `zap-inbound`: o Passo 3 compõe `ZapInbox` + mixins em vez de
   escrever claim, status e envio à mão; a coluna `text` passa a ser `Text`
-  nula (mídia sem legenda, texto acima de 255 caracteres) e a receita explica
-  que o commit é do `BaseRepository`, porque `session_dependency` não commita.
+  nula (mídia sem legenda; texto acima de 255 caracteres no PostgreSQL) e a
+  receita explica que o commit é do `BaseRepository`, porque
+  `session_dependency` não commita.
 
 ## [0.333.0] — 2026-10-27
 
