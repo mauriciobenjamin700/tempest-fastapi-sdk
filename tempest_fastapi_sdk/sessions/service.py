@@ -31,6 +31,7 @@ responsible for sending it as a cookie.
 
 from __future__ import annotations
 
+import warnings
 from datetime import timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -380,6 +381,17 @@ class SessionAuth:
         session — middleware / dependencies treat that as
         "unauthenticated".
 
+        The refresh (``last_seen_at`` and, under ``SESSION_SLIDING``, the
+        new ``expires_at``) is written through
+        :meth:`SessionStore.touch`, which updates the session only while
+        it still exists. A :meth:`revoke` or :meth:`revoke_all` that runs
+        between this method's read and its write therefore wins: the
+        write is dropped and the call returns ``None``. A store without
+        ``touch`` (written against the protocol before it existed) falls
+        back to :meth:`SessionStore.set` and emits a
+        :class:`DeprecationWarning`, because that fallback cannot make
+        revocation stick.
+
         Args:
             session_id_plaintext (str): Raw cookie value.
 
@@ -396,7 +408,20 @@ class SessionAuth:
             session.expires_at = now + timedelta(
                 seconds=self.settings.SESSION_TTL_SECONDS,
             )
-        await self.store.set(session)
+        touch = getattr(self.store, "touch", None)
+        if touch is None:
+            warnings.warn(
+                f"{type(self.store).__name__} has no touch(); SessionAuth.resolve "
+                "falls back to set(), which can re-create a session revoked "
+                "while the request was in flight. Implement "
+                "SessionStore.touch().",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            await self.store.set(session)
+            return session
+        if not await touch(session):
+            return None
         return session
 
     async def revoke(self, session_id_plaintext: str) -> None:

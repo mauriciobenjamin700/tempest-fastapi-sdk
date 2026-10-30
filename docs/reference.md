@@ -62,6 +62,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.router.make_admin_router
 ::: tempest_fastapi_sdk.admin.discovery.discover_models
 ::: tempest_fastapi_sdk.admin.session.AdminSession
+::: tempest_fastapi_sdk.admin.session.AdminSessionRevocations
+::: tempest_fastapi_sdk.admin.session.admin_credential_digest
 ::: tempest_fastapi_sdk.admin.session.SignedCookieSessionStore
 ::: tempest_fastapi_sdk.admin.session.AdminLoginCSRF
 
@@ -1458,6 +1460,10 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.core.redaction.EMAIL_PATTERN
 ::: tempest_fastapi_sdk.core.redaction.BEARER_PATTERN
 ::: tempest_fastapi_sdk.core.redaction.JWT_PATTERN
+::: tempest_fastapi_sdk.core.redaction.CAPABILITY_PATH_PATTERN
+::: tempest_fastapi_sdk.core.redaction.CAPABILITY_PATH_SEGMENTS
+::: tempest_fastapi_sdk.core.redaction.CAPABILITY_QUERY_PATTERN
+::: tempest_fastapi_sdk.core.redaction.redact_capability_url
 ::: tempest_fastapi_sdk.utils.throttle.AttemptThrottle
 ::: tempest_fastapi_sdk.utils.throttle.InMemoryThrottleBackend
 ::: tempest_fastapi_sdk.utils.signed_url.sign_path

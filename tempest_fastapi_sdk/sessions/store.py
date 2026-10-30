@@ -8,6 +8,8 @@ sessions. The protocol is intentionally narrow:
 * ``get(session_id_hash)`` → returns the live :class:`Session`,
   ``None`` if missing / expired.
 * ``set(session)`` → persists or replaces a session.
+* ``touch(session)`` → refreshes a session **only if it still
+  exists**; never re-creates one that was revoked meanwhile.
 * ``delete(session_id_hash)`` → removes one session
   (revocation / logout).
 * ``delete_by_user(user_id)`` → removes every session a user
@@ -54,6 +56,25 @@ class SessionStore(Protocol):
 
         Args:
             session (Session): The session to persist.
+        """
+        ...
+
+    async def touch(self, session: Session) -> bool:
+        """Overwrite ``session`` only when its key still exists.
+
+        The read-then-write refresh :meth:`SessionAuth.resolve` performs
+        on every request goes through this method, not :meth:`set`, so a
+        request that read the session before a concurrent
+        :meth:`delete` / :meth:`delete_by_user` cannot bring it back.
+        Implementations must make the existence check and the write one
+        atomic step, and must not add the session to the per-user index.
+
+        Args:
+            session (Session): The refreshed session.
+
+        Returns:
+            bool: ``True`` when the session was updated, ``False`` when it
+                no longer exists (revoked or expired).
         """
         ...
 
@@ -143,6 +164,23 @@ class MemorySessionStore:
             self._by_user.setdefault(session.user_id, set()).add(
                 session.session_id,
             )
+
+    async def touch(self, session: Session) -> bool:
+        """Overwrite ``session`` only when its id is still stored.
+
+        Args:
+            session (Session): The refreshed session.
+
+        Returns:
+            bool: ``True`` when the session was updated, ``False`` when it
+                was revoked or expired in the meantime.
+        """
+        async with self._lock:
+            existing = self._sessions.get(session.session_id)
+            if existing is None or existing.user_id != session.user_id:
+                return False
+            self._sessions[session.session_id] = session
+            return True
 
     async def delete(self, session_id_hash: str) -> None:
         """Remove a single session. Idempotent.
@@ -286,17 +324,7 @@ class RedisSessionStore:
         Args:
             session (Session): The session to persist.
         """
-        ttl_seconds = max(
-            1,
-            int(
-                (
-                    session.expires_at.replace(tzinfo=None)
-                    if session.expires_at.tzinfo is not None
-                    else session.expires_at
-                ).timestamp()
-                - utcnow().replace(tzinfo=None).timestamp()
-            ),
-        )
+        ttl_seconds = self._ttl_seconds(session)
         payload = session.model_dump(mode="json")
         await self.client.set(
             self._session_key(session.session_id),
@@ -305,6 +333,57 @@ class RedisSessionStore:
         )
         await self._sadd(self._user_key(session.user_id), session.session_id)
         await self.client.expire(self._user_key(session.user_id), ttl_seconds)
+
+    async def touch(self, session: Session) -> bool:
+        """Overwrite ``session`` only when its key still exists.
+
+        Notes:
+            The write is a single ``SET ... XX``, so the existence check
+            and the update are one atomic Redis command: a key removed
+            by :meth:`delete` or :meth:`delete_by_user` after the caller
+            read it stays removed. The session is never re-added to the
+            user index; that index's TTL is only bumped, and ``EXPIRE``
+            on a missing key is a no-op.
+
+        Args:
+            session (Session): The refreshed session.
+
+        Returns:
+            bool: ``True`` when the session was updated, ``False`` when the
+                key no longer exists (revoked or expired).
+        """
+        ttl_seconds = self._ttl_seconds(session)
+        payload = session.model_dump(mode="json")
+        written = await self.client.set(
+            self._session_key(session.session_id),
+            json.dumps(payload),
+            ex=ttl_seconds,
+            xx=True,
+        )
+        if not written:
+            return False
+        await self.client.expire(self._user_key(session.user_id), ttl_seconds)
+        return True
+
+    @staticmethod
+    def _ttl_seconds(session: Session) -> int:
+        """Return the whole seconds left until ``session`` expires (at least 1).
+
+        Args:
+            session (Session): The session whose TTL to compute.
+
+        Returns:
+            int: The Redis ``EX`` value for the session key.
+        """
+        expires = (
+            session.expires_at.replace(tzinfo=None)
+            if session.expires_at.tzinfo is not None
+            else session.expires_at
+        )
+        return max(
+            1,
+            int(expires.timestamp() - utcnow().replace(tzinfo=None).timestamp()),
+        )
 
     async def delete(self, session_id_hash: str) -> None:
         """Remove a single session. Idempotent.

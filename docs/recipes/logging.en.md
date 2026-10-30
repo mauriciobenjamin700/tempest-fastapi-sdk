@@ -518,13 +518,16 @@ belongs to your domain. What it does:
 
 - **Sensitive keys** — every `extra=` field, and every key of a dict passed
   as an argument or nested in a value, whose name contains a fragment of
-  `DEFAULT_REDACT_KEYS` (`password`, `token`, `secret`, `authorization`,
-  `cookie`, `email`, `api_key`, ...) has its whole value replaced. Matching
+  `DEFAULT_REDACT_KEYS` (`password`, `token`, `secret`, `signature`,
+  `authorization`, `cookie`, `email`, `api_key`, ...) has its whole value replaced. Matching
   is by **substring**, lower-cased with `-` turned into `_`: `access_token`,
   `X-API-Key` and `Set-Cookie` all match.
 - **Text patterns** — the message, arguments, traceback (`exc_text`),
   `stack_info` and every string value go through e-mail, `Bearer
-  <credential>` and JWT, plus `key=value` / `key: value` when the key is
+  <credential>`, JWT and the token segment of the routes the SDK itself
+  mounts with a credential in the URL (`/activate/<token>`,
+  `/password-reset/<token>`, `/email-change/<token>`, `/email-verify/<token>`
+  — it reads `/password-reset/[REDACTED]`), plus `key=value` / `key: value` when the key is
   sensitive (`?token=abc` in a query, `{'password': 'x'}` quoted in an
   exception).
 - **`extra_keys` / `extra_patterns`** add without restating the defaults;
@@ -1027,8 +1030,21 @@ logged, on close, as a request that took an hour.
 
 A deprecated endpoint that took a bearer-equivalent token as a path parameter
 reaches the middleware with the token in the URL — refusing the request in the
-handler does **not** un-log it. `redact` is the seam for that, applied to the
-path and the query separately:
+handler does **not** un-log it.
+
+The credential-bearing URLs the **SDK itself** issues are hidden by default,
+with no configuration: the token segment of `/activate/{token}`,
+`/password-reset/{token}`, `/email-change/{token}` and `/email-verify/{token}`
+(the e-mailed link under `AUTH_BACKEND_LINKS=True` only checks the token
+without consuming it, so it stays redeemable after the visit) and the value of
+every `signature=` or `*token=` query parameter, such as a signed URL's
+`signature`. The line reads `GET /auth/password-reset/[REDACTED] 200`. This is
+`redact_capability_url`, switched on by `redact_capability_urls=True` (the
+default); turn it off only if everyone who reads the log may also redeem those
+links.
+
+For a secret of your own in the URL, `redact` is the seam, applied to the path
+and the query separately, **after** the redaction above:
 
 ```python
 # src/api/app.py
@@ -1080,7 +1096,9 @@ would start attributing requests to whatever address they picked. See
     - `5xx` (rendered or escaped) is logged at `ERROR`; everything else at the
       configured `level`.
     - `exempt_paths` matches by prefix — that is what keeps SSE out of the log.
-    - `redact` rewrites path and query before the record exists.
+    - The SDK's capability-route tokens and `signature=` / `*token=` query
+      values come out as `[REDACTED]` by default; `redact` rewrites the rest of
+      path and query before the record exists.
 
 ## Recap
 
@@ -1099,5 +1117,5 @@ would start attributing requests to whatever address they picked. See
   collides with a `LogRecord` attribute is refused at the call, with
   `TypeError`.
 - With `redact=True` (or a `RedactionPolicy`), every handler redacts e-mails,
-  `Bearer`, JWTs and sensitive keys from the message, `extra=`, traceback and
+  `Bearer`, JWTs, the SDK's capability-route tokens and sensitive keys from the message, `extra=`, traceback and
   `stack_info` before the record is written.

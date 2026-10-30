@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import hmac
 import io
 import json
 import logging
@@ -60,10 +61,13 @@ from tempest_fastapi_sdk.admin.forms import (
 )
 from tempest_fastapi_sdk.admin.permissions import AdminAccessPolicy, AdminPermission
 from tempest_fastapi_sdk.admin.session import (
+    ADMIN_SESSION_MAX_AGE_SECONDS,
     AdminLoginCSRF,
     AdminSession,
+    AdminSessionRevocations,
     SessionStore,
     SignedCookieSessionStore,
+    admin_credential_digest,
 )
 from tempest_fastapi_sdk.admin.site import AdminSite
 from tempest_fastapi_sdk.admin.sql_shell import (
@@ -258,6 +262,7 @@ def make_admin_router(
     login_throttle: AttemptThrottle | Literal[False] | None = None,
     login_ip_throttle: AttemptThrottle | Literal[False] | None = None,
     trusted_ip_header: str | None = None,
+    session_revocations: AdminSessionRevocations | None = None,
 ) -> APIRouter:
     """Build the FastAPI router that mounts the admin site.
 
@@ -378,6 +383,17 @@ def make_admin_router(
             real client IP (e.g. ``"x-real-ip"``) for ``login_ip_throttle``.
             ``None`` uses the transport peer. See
             :func:`~tempest_fastapi_sdk.get_client_ip`.
+        session_revocations (AdminSessionRevocations | None): Where
+            ``POST {prefix}/logout`` marks the session it ends; every
+            request refuses a marked session, so a copy of the cookie
+            stops working at logout instead of at ``max_age``. ``None``
+            (default) keeps the marks on an
+            :class:`~tempest_fastapi_sdk.InMemoryThrottleBackend` for the
+            store's ``max_age_seconds`` — per process, so behind more than
+            one worker pass ``AdminSessionRevocations(redis_client)``.
+            Independently of this, the session is bound to
+            :meth:`AdminAuthBackend.credential_fingerprint`, so a password
+            change ends every session issued before it, on every replica.
 
     Returns:
         APIRouter: A router ready to attach via ``app.include_router``.
@@ -400,6 +416,14 @@ def make_admin_router(
         path=prefix,
     )
     login_csrf = AdminLoginCSRF(secret_key, secure=cookie_secure, path=prefix)
+    revocations: AdminSessionRevocations = session_revocations or (
+        AdminSessionRevocations(
+            InMemoryThrottleBackend(),
+            ttl_seconds=int(
+                getattr(store, "max_age_seconds", ADMIN_SESSION_MAX_AGE_SECONDS),
+            ),
+        )
+    )
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
     stylesheet_version = _stylesheet_version()
     templates.env.filters["pluralize"] = _pluralize
@@ -462,6 +486,51 @@ def make_admin_router(
 
     _db_session = db.session_dependency
 
+    async def _load_session(request: Request) -> AdminSession | None:
+        """Load the request's session, treating a logged-out one as absent.
+
+        Args:
+            request (Request): The inbound request.
+
+        Returns:
+            AdminSession | None: The session, or ``None`` when the cookie
+            is absent, invalid, or was ended by ``POST /logout``.
+        """
+        session = store.load(request)
+        if session is None or await revocations.is_revoked(session):
+            return None
+        return session
+
+    def _credential_digest(principal: Any) -> str:
+        """Return the digest of ``principal``'s credential to bind a session to.
+
+        Args:
+            principal (Any): The authenticated principal.
+
+        Returns:
+            str: :func:`admin_credential_digest` of the backend's
+            fingerprint, ``""`` when the backend binds nothing.
+        """
+        return admin_credential_digest(
+            secret_key, auth_backend.credential_fingerprint(principal)
+        )
+
+    def _credential_matches(admin_session: AdminSession, principal: Any) -> bool:
+        """Whether the session was issued for the principal's current credential.
+
+        Args:
+            admin_session (AdminSession): The session from the cookie.
+            principal (Any): The reloaded principal.
+
+        Returns:
+            bool: ``False`` once the credential changed after sign-in (or
+            for a cookie issued before sessions carried the digest, when
+            the backend binds one).
+        """
+        return hmac.compare_digest(
+            admin_session.credential_digest, _credential_digest(principal)
+        )
+
     async def _require_session(request: Request) -> AdminSession:
         """Return the active session or redirect to login.
 
@@ -472,9 +541,10 @@ def make_admin_router(
             AdminSession: The validated session payload.
 
         Raises:
-            HTTPException: ``303`` redirect to ``/login`` when absent.
+            HTTPException: ``303`` redirect to ``/login`` when absent or
+                logged out.
         """
-        session = store.load(request)
+        session = await _load_session(request)
         if session is None:
             raise HTTPException(
                 status_code=status.HTTP_303_SEE_OTHER,
@@ -505,12 +575,13 @@ def make_admin_router(
             Any: The reloaded principal.
 
         Raises:
-            HTTPException: ``303`` redirect when the principal is gone.
+            HTTPException: ``303`` redirect when the principal is gone or
+                its credential changed after the session was issued.
         """
         principal = await auth_backend.load_principal(
             db_session, admin_session.principal_id
         )
-        if principal is None:
+        if principal is None or not _credential_matches(admin_session, principal):
             raise HTTPException(
                 status_code=status.HTTP_303_SEE_OTHER,
                 detail="login required",
@@ -934,7 +1005,7 @@ def make_admin_router(
                 " SERVER_PUBLIC_SCHEME=https and add PublicSchemeMiddleware.",
                 request.url.hostname,
             )
-        if store.load(request) is not None:
+        if await _load_session(request) is not None:
             return _render_login(request, {"user": None})
         return _render_login(
             request,
@@ -1067,6 +1138,7 @@ def make_admin_router(
             issued_at=datetime.now(tz=UTC).timestamp(),
             csrf_token=secrets.token_urlsafe(32),
             mfa_pending=pending,
+            credential_digest=_credential_digest(principal),
         )
         response = RedirectResponse(
             url=f"{prefix}/mfa" if pending else f"{prefix}/",
@@ -1098,6 +1170,8 @@ def make_admin_router(
             session.csrf_token, csrf_token
         ):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "csrf token mismatch")
+        if session is not None:
+            await revocations.revoke(session)
         response = RedirectResponse(
             url=f"{prefix}/login",
             status_code=status.HTTP_303_SEE_OTHER,
@@ -1116,7 +1190,7 @@ def make_admin_router(
             Response: The challenge page, or a redirect to login (no
             session) / dashboard (already fully authenticated).
         """
-        session = store.load(request)
+        session = await _load_session(request)
         if session is None:
             return RedirectResponse(
                 f"{prefix}/login", status_code=status.HTTP_303_SEE_OTHER
@@ -1151,7 +1225,7 @@ def make_admin_router(
         Raises:
             HTTPException: ``403`` on CSRF mismatch.
         """
-        session = store.load(request)
+        session = await _load_session(request)
         if session is None or not session.mfa_pending:
             return RedirectResponse(
                 f"{prefix}/login", status_code=status.HTTP_303_SEE_OTHER
@@ -1159,7 +1233,7 @@ def make_admin_router(
         if not secrets.compare_digest(session.csrf_token, csrf_token):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "csrf token mismatch")
         principal = await auth_backend.load_principal(db_session, session.principal_id)
-        if principal is None:
+        if principal is None or not _credential_matches(session, principal):
             return RedirectResponse(
                 f"{prefix}/login", status_code=status.HTTP_303_SEE_OTHER
             )
@@ -1192,6 +1266,7 @@ def make_admin_router(
             issued_at=datetime.now(tz=UTC).timestamp(),
             csrf_token=secrets.token_urlsafe(32),
             mfa_pending=False,
+            credential_digest=_credential_digest(principal),
         )
         response = RedirectResponse(
             url=f"{prefix}/", status_code=status.HTTP_303_SEE_OTHER

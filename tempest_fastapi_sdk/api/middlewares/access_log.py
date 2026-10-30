@@ -23,8 +23,11 @@ This module is those three details, solved once:
 3. **The path may carry a secret.** A deprecated endpoint that takes a
    bearer-equivalent token as a path parameter still reaches this middleware
    with the token in the URL, and refusing the request downstream does not
-   un-log it. ``redact`` is the seam that rewrites path and query before the
-   record is built.
+   un-log it. The SDK's own capability URLs (``/auth/password-reset/{token}``
+   and its siblings, the ``signature`` of a signed URL) are hidden by
+   default with :func:`~tempest_fastapi_sdk.core.redaction.redact_capability_url`;
+   ``redact`` is the seam that rewrites anything else in path and query
+   before the record is built.
 4. **The correlation id has two homes, and which one is populated depends on
    where this middleware sits.** ``RequestIDMiddleware`` binds a context
    variable and clears it as it unwinds, so a middleware registered *outside*
@@ -46,6 +49,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from tempest_fastapi_sdk.api.middlewares._exempt import PathExemption
 from tempest_fastapi_sdk.core.context import get_request_id
+from tempest_fastapi_sdk.core.redaction import redact_capability_url
 from tempest_fastapi_sdk.utils.client_ip import get_client_ip_from_scope
 
 _SERVER_ERROR: int = 500
@@ -99,6 +103,7 @@ class AccessLogMiddleware:
         redact: Callable[[str], str] | None = None,
         trusted_ip_header: str | None = None,
         request_id_header: str = "X-Request-ID",
+        redact_capability_urls: bool = True,
     ) -> None:
         """Initialize.
 
@@ -126,9 +131,10 @@ class AccessLogMiddleware:
                 ``exempt_prefixes``.
             redact (Callable[[str], str] | None): Applied to the path and
                 to the query string, separately, before either reaches the
-                record. ``None`` redacts nothing. Use it whenever a secret
-                can appear in a URL — the middleware sees the request
-                before any handler can refuse it.
+                record, after the capability redaction below. ``None`` adds
+                nothing to it. Use it whenever a secret of your own can
+                appear in a URL — the middleware sees the request before any
+                handler can refuse it.
             trusted_ip_header (str | None): Single edge-set header naming
                 the client IP (e.g. ``"x-real-ip"``), passed through to
                 :func:`get_client_ip_from_scope`. ``None`` uses the
@@ -141,6 +147,16 @@ class AccessLogMiddleware:
                 read from when the context variable is empty. Must match
                 :class:`RequestIDMiddleware`'s ``header_name``; the default
                 is the same on both sides.
+            redact_capability_urls (bool): Hide the credentials the SDK
+                itself puts in URLs — the token segment of
+                ``/activate/{token}``, ``/password-reset/{token}``,
+                ``/email-change/{token}`` and ``/email-verify/{token}``,
+                and every ``signature=`` / ``*token=`` query value — with
+                :func:`~tempest_fastapi_sdk.core.redaction.redact_capability_url`.
+                Default ``True``: a reset token in the access log is a
+                takeover for anyone who can read the log. Set ``False``
+                only when nothing that reads the log may not also redeem
+                those links.
         """
         self.app: ASGIApp = app
         self.logger: logging.Logger = logging.getLogger(logger_name)
@@ -149,19 +165,23 @@ class AccessLogMiddleware:
             paths=exempt_paths, prefixes=exempt_prefixes
         )
         self._redact: Callable[[str], str] | None = redact
+        self._redact_capability_urls: bool = redact_capability_urls
         self._trusted_ip_header: str | None = trusted_ip_header
         self._request_id_header: bytes = request_id_header.lower().encode("latin-1")
 
     def _clean(self, value: str) -> str:
-        """Run ``value`` through the configured redactor.
+        """Run ``value`` through the capability redaction and ``redact``.
 
         Args:
             value (str): The raw path or query string.
 
         Returns:
-            str: The redacted value, or ``value`` unchanged when no
-            redactor was configured.
+            str: The value with the SDK's capability credentials hidden
+            (unless ``redact_capability_urls=False``) and then passed
+            through ``redact`` when one was configured.
         """
+        if self._redact_capability_urls:
+            value = redact_capability_url(value)
         return self._redact(value) if self._redact is not None else value
 
     def _emit(
