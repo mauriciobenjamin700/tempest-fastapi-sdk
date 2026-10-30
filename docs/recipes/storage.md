@@ -296,7 +296,10 @@ async def download_file(key: str, request: Request) -> Response:
     esse, não com o guardado) e só vira `inline` se estiver em
     `INLINE_SAFE_MEDIA_TYPES`. O `guess_media_type(key)` acima resolve pela
     extensão da chave: `aula.mp4` vai inline, `pagina.html` vira download.
-    O default do `accel_redirect_response` é `as_attachment=True`.
+    O default do `accel_redirect_response` é `as_attachment=True`. O
+    `media_type=` passa pela mesma checagem do `presigned_get_url`: só
+    `tipo/subtipo`, sem parâmetro, vírgula ou quebra de linha — fora disso
+    sobe `ValueError` antes de assinar qualquer coisa.
 
 Com `STORAGE_ACCEL_REDIRECT=false`, é o `download_response` da seção
 anterior. Com `true`, é o `accel_redirect_response`, e o `request` não é

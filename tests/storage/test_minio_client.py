@@ -917,6 +917,39 @@ class TestAccelRedirect:
         unsafe = fake_minio.presign_overrides[-1]
         assert unsafe["response-content-disposition"].startswith("attachment;")
 
+    @pytest.mark.parametrize(
+        "media_type",
+        [
+            "image/png;x=,text/html",
+            "image/png\r\nX-Injected: 1",
+            "text/plain; charset=utf-8",
+        ],
+    )
+    async def test_media_type_checked_like_presigned_get_url(
+        self, client: AsyncMinIOClient, fake_minio: _FakeMinio, media_type: str
+    ) -> None:
+        """The redirect signs only a bare ``type/subtype``, like the presigned link."""
+        with pytest.raises(ValueError, match="type/subtype"):
+            await client.presigned_get_url("a.png", media_type=media_type)
+        with pytest.raises(ValueError, match="type/subtype"):
+            await client.accel_redirect_response(
+                "a.png", media_type=media_type, as_attachment=False
+            )
+        assert fake_minio.presign_overrides == []
+
+    async def test_serve_object_redirect_refuses_smuggled_media_type(
+        self, fake_minio: _FakeMinio
+    ) -> None:
+        """``serve_object`` in redirect mode reaches the same check."""
+        client = AsyncMinIOClient(
+            endpoint="fake:9000", access_key="ak", secret_key="sk", accel_redirect=True
+        )
+        with pytest.raises(ValueError, match="type/subtype"):
+            await client.serve_object(
+                "a.png", media_type="image/png;x=,text/html", as_attachment=False
+            )
+        assert fake_minio.presign_overrides == []
+
     async def test_overrides_carry_type_cache_and_attachment(
         self, client: AsyncMinIOClient, fake_minio: _FakeMinio
     ) -> None:

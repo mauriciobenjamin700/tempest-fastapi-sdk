@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   desenvolvimento e teste continuam aceitando o par. Docstrings do
   `CORSSettings` e o `hint` do check `security.W003` deixam de afirmar que o
   navegador bloqueia `*` com credenciais.
+- `AsyncMinIOClient.accel_redirect_response` (e `serve_object` com
+  `accel_redirect=True`) monta os overrides `response-*` pelo mesmo
+  `download_overrides` do `presigned_get_url`: o `media_type=` precisa ser um
+  `tipo/subtipo` puro, e qualquer outro valor sobe `ValueError` antes de
+  assinar. Mudança de comportamento: um `media_type` com parâmetro (`;
+  charset=...`) passa a ser recusado nesse caminho, como já era no link
+  presignado. O `inline` (em todo helper de download) deixa de valer para um
+  tipo com vírgula ou quebra de linha, que o navegador pode ler como outro
+  tipo.
 
 ## [0.335.0] — 2026-10-30
 
