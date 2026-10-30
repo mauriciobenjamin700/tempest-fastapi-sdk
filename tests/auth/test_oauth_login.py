@@ -726,11 +726,11 @@ class TestCreationRequiresAVerifiedEmail:
 class TestLinkingRequiresAProvenLocalEmail:
     """An existing row absorbs an identity only if its owner proved the email.
 
-    The table has no verification timestamp; an active row is proof only
-    when activation needed the mailbox. Under the three configurations
-    below a registrant activates an address they cannot read, so a
-    stranger who pre-registers it must not inherit its owner's first
-    social login.
+    Linking requires ``email_verified_at``, which none of the three
+    configurations below stamps: in each a registrant activates an address
+    they cannot read, so a stranger who pre-registers it must not inherit
+    its owner's first social login. The operator-activated case and the
+    column's lifecycle live in ``tests/auth/test_email_verified_at.py``.
     """
 
     @pytest.mark.parametrize(

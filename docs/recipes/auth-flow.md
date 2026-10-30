@@ -420,8 +420,8 @@ catalog=default_message_catalog())` ele sai traduzido (`Conflito de recurso`),
 e `code`, `details` e `field` não mudam.
 
 !!! warning "Coluna protegida nunca vem do corpo"
-    `id`, `email`, `hashed_password`, `is_active` e `is_admin`
-    (`SIGNUP_PROTECTED_FIELDS`) são do SDK. Um `signup_schema` com um campo
+    `id`, `email`, `hashed_password`, `is_active`, `is_admin` e
+    `email_verified_at` (`SIGNUP_PROTECTED_FIELDS`) são do SDK. Um `signup_schema` com um campo
     `is_admin` não promove ninguém: a rota descarta esses nomes antes de
     gravar. Chamando o service direto, `signup(fields={"is_admin": True})`
     levanta `ValueError`.
@@ -890,9 +890,14 @@ curl 127.0.0.1:8000/api/profile \
   "updated_at": "2026-09-27T22:16:48.642307Z",
   "email": "ana@example.com",
   "is_admin": false,
-  "last_login_at": "2026-09-27T22:16:48.641560Z"
+  "last_login_at": "2026-09-27T22:16:48.641560Z",
+  "email_verified_at": null
 }
 ```
+
+`email_verified_at` sai `null` porque, neste setup sem mailer, o link de
+ativação voltou na resposta do cadastro: ativar por ele não prova que você lê a
+caixa de entrada. Veja [O que conta como e-mail verificado](#o-que-conta-como-e-mail-verificado).
 
 Sem o header, a mesma rota responde `401` com
 `{"detail": "Authorization token is missing or invalid"}`.
@@ -1279,7 +1284,9 @@ de segurança vai pro endereço antigo** — o padrão de bancos/Google, pra
 uma conta sequestrada ainda alertar o dono. A confirmação também **revoga
 as sessões** do usuário (refresh tokens e cookies das páginas), como a
 troca de senha — `confirm_email_change(..., revoke_sessions=False)` é a
-saída explícita no service.
+saída explícita no service. `email_verified_at` passa a valer para o endereço
+novo: carimbado quando o link só chegou por e-mail, limpo quando voltou na
+resposta.
 
 !!! check "Erros"
     - Senha atual errada → **401**.
@@ -1297,6 +1304,27 @@ curl -X POST localhost:8000/auth/email-verify/request \
   -H "Authorization: Bearer eyJhbGciOi…"
 # depois: POST /auth/email-verify/confirm  {"token": "…"}
 ```
+
+É também o caminho para uma conta ativada pelo admin, ou criada antes da
+coluna `email_verified_at`, provar o endereço.
+
+### O que conta como e-mail verificado
+
+O `BaseUserModel` guarda **quando** o dono da conta provou que lê o endereço
+atual em `email_verified_at` (`null` quando nunca provou), e o `GET /auth/me`
+devolve a coluna. `is_active` não serve para isso: uma conta fica ativa pelo
+admin, por `tempest user activate`, com `AUTH_AUTO_ACTIVATE=true` ou por um link
+que voltou na resposta — e nenhum desses caminhos passou pela caixa de entrada.
+
+O SDK carimba a coluna só ao confirmar um link de ativação ou de verificação
+que foi **enviado por e-mail para aquele endereço** (com
+`AUTH_RETURN_TOKEN_IN_RESPONSE=false`, `AUTH_AUTO_ACTIVATE=false` e
+`EmailUtils` ligado), ao confirmar uma troca de e-mail nas mesmas condições, e
+ao criar conta pelo [login social](oauth.md) com `email_verified is True`.
+Mudar o `email` por qualquer outro caminho do ORM (admin, script) limpa a
+coluna; um `UPDATE` em massa não passa pelo ORM e precisa limpá-la ele mesmo.
+Quem lê a coluna hoje é a ligação por e-mail do login social
+(`AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL`).
 
 ### Recuperação de e-mail
 
@@ -1587,7 +1615,7 @@ Tem uma seção inteira só pra isso, explicada bem devagar: [Idioma dos e-mails
 | `AUTH_OAUTH_ENABLED` | `bool` | `false` | `true` monta as cinco rotas `/auth/oauth/*` (`{provider}/login`, `{provider}/callback`, `{provider}/token`, `accounts` e `accounts/unlink`). Exige um client em `oauth_clients=`, um `oauth_account_model` no serviço e a coluna `name` no user model — cada um que faltar levanta `RuntimeError` na construção do router. |
 | `AUTH_OAUTH_STATE_COOKIE_NAME` | `str` | `oauth_state` | Cookie que carrega o `state` CSRF entre o redirect e o callback. Sempre `HttpOnly` e sempre `SameSite=Lax`. |
 | `AUTH_OAUTH_STATE_TTL_SECONDS` | `int` | `600` | Quanto tempo o usuário tem para concluir o consentimento no provedor. |
-| `AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL` | `bool` | `false` | `true` liga uma identidade nova a uma conta existente cujo e-mail bate — **só** quando `email_verified is True`. Desligado por padrão porque é o knob que transforma a palavra do provedor sobre um e-mail em controle de uma conta. |
+| `AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL` | `bool` | `false` | `true` liga uma identidade nova a uma conta existente cujo e-mail bate — **só** quando `email_verified is True` e a conta local tem `email_verified_at`. Desligado por padrão porque é o knob que transforma a palavra do provedor sobre um e-mail em controle de uma conta. |
 | `AUTH_OAUTH_ALLOW_ACCOUNT_CREATION` | `bool` ou vazio | vazio | Se o callback pode criar conta. Vazio herda `AUTH_SIGNUP_ENABLED`, então fechar o cadastro fecha essa porta junto. |
 | `OAUTH_REDIRECT_BASE_URL` | `str` | `""` | Origem pública do serviço. O redirect URI é derivado dela por `oauth_redirect_uri(provider)`. |
 | `OAUTH_GOOGLE_CLIENT_ID` / `OAUTH_GOOGLE_CLIENT_SECRET` | `str` | `""` | Credenciais do console do Google. `google_kwargs()` monta o client. |

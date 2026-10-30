@@ -23,7 +23,7 @@ uv add "tempest-fastapi-sdk[admin]"
 
 #### 1. Modelo de usuário
 
-Subclasse `BaseUserModel` para ganhar as quatro colunas que o backend de auth do admin espera (`email`, `hashed_password`, `is_admin`, `last_login_at`) em cima da linha padrão do `BaseModel`:
+Subclasse `BaseUserModel` para ganhar as quatro colunas que o backend de auth do admin espera (`email`, `hashed_password`, `is_admin`, `last_login_at`), mais o `email_verified_at` que o [fluxo de auth](auth-flow.md#o-que-conta-como-e-mail-verificado) preenche, em cima da linha padrão do `BaseModel`. Ativar uma conta pelo admin não preenche `email_verified_at`, e editar o `email` dela o limpa:
 
 ```python
 # src/db/models/user.py

@@ -436,9 +436,10 @@ would let whoever controls the provider identity hold an account under somebody
 else's email — and keep signing into it after the real owner recovered it by
 password reset.
 
-A created account is born **active**: the provider already did the verification,
-as its `email_verified` flag states, and re-verifying by email would ask the
-user to prove again what Google just proved. `AUTH_AUTO_ACTIVATE` is not
+A created account is born **active** and with `email_verified_at` set: the
+provider already did the verification, as its `email_verified` flag states, and
+re-verifying by email would ask the user to prove again what Google just
+proved. `AUTH_AUTO_ACTIVATE` is not
 consulted here — a service that wants human approval before the first login
 turns creation off and has an administrator create and link the row.
 
@@ -484,21 +485,42 @@ the provider explicitly states it verified the address
     verification you trust.
 
 The provider's word covers only its side. Linking also needs the **local**
-account to have proven the address, and the user table has no verification
-timestamp — only `is_active`. That is proof only when activation needed the
-mailbox, so the link is refused (**409**, `OAUTH_EMAIL_TAKEN`) under any
-configuration where a registrant activates without reading the email:
+account to have proven the address: the `email_verified_at` column of
+`BaseUserModel` must be set. Without it the link is refused (**409**,
+`OAUTH_EMAIL_TAKEN`). `is_active` is not enough, because an account becomes
+active through paths that never touched the mailbox.
 
-| Configuration | Why `is_active` proves nothing |
+The SDK sets the column only where it saw the proof itself:
+
+| Path | `email_verified_at` |
 | --- | --- |
-| `AUTH_AUTO_ACTIVATE=true` | The row is active at signup |
-| `AUTH_RETURN_TOKEN_IN_RESPONSE=true` | The activation link comes back in the signup response |
-| `UserAuthService(email=None)` | Same: with no mailer, the link is returned in the response |
+| Activation link (`/auth/activate/{token}`) mailed and confirmed | set |
+| Verification link (`/auth/email-verify/confirm`) mailed and confirmed | set |
+| Email change confirmed through the link mailed to the **new** address | set for the new address |
+| Account created by social login with `email_verified is True` | set |
+| Activation from the admin site or `tempest user activate` | **unchanged** |
+| `AUTH_AUTO_ACTIVATE=true` (the row is active at signup) | **unchanged** |
+| `AUTH_RETURN_TOKEN_IN_RESPONSE=true` or `UserAuthService(email=None)` (the link comes back in the response) | **unchanged**; an email change confirmed that way **clears** it |
+| Any ORM flush that changes `email` without writing the column (admin, script) | **cleared** |
+
+The activation and verification links remember the address they were mailed
+to, and only stamp the column if it is still the account's `email` at click
+time: a link returned in the response, or mailed before someone edited the
+address, activates the account without stamping anything.
 
 Without that rule, a stranger who registered `ana@example.com` first, with a
-password of their own, would inherit Ana's first Google login — and keep the
-password. With linking refused under those settings, Ana takes the address back
-through password reset, which needs the mailbox.
+password of their own, and got the account active without reading the email,
+would inherit Ana's first Google login — and keep the password. With linking
+refused, Ana takes the address back through password reset, which needs the
+mailbox.
+
+!!! warning "Existing accounts start at `NULL`"
+    The column is new, so every account created before it has an empty
+    `email_verified_at` and stops being linked by email until it verifies the
+    address (`POST /auth/email-verify/request`). If you **know** the active
+    accounts in your database were activated through the mailed link, the
+    [migration guide](../migration.md) shows how to fill the column — that is
+    your decision, not the SDK's.
 
 The safe path, with the knob off: the person signs in with their password and
 links the provider from inside their account.
@@ -949,8 +971,7 @@ Google for a `refresh_token`.
   opaque refresh, rotation, reuse detection and `/auth/logout`.
 - Account creation inherits `AUTH_SIGNUP_ENABLED` and requires
   `email_verified is True`; linking by email requires it too, is off by
-  default, and is refused where a local account can activate without its
-  mailbox.
+  default, and is refused when the local account has no `email_verified_at`.
 - A native client uses `POST /auth/oauth/{provider}/token` with the token in
   the body — and the token's audience is checked **before** any read,
   because `userinfo` says whose token it is, never who it was issued for.

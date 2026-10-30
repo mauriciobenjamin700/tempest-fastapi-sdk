@@ -3,8 +3,9 @@
 Subclass :class:`BaseUserModel` when an application wants the SDK's
 admin site (``tempest_fastapi_sdk.admin``) to manage authentication.
 The base model ships the columns the admin auth backend expects
-(``email``, ``hashed_password``, ``is_admin``, ``last_login_at``) on
-top of the standard four columns inherited from :class:`BaseModel`.
+(``email``, ``hashed_password``, ``is_admin``, ``last_login_at``) and the
+``email_verified_at`` proof the bundled auth flow keeps, on top of the
+standard four columns inherited from :class:`BaseModel`.
 Concrete subclasses can add domain-specific fields freely.
 """
 
@@ -13,8 +14,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Boolean, String, event, inspect
+from sqlalchemy.engine import Connection
+from sqlalchemy.orm import Mapped, Mapper, mapped_column
 
 from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.db.model import BaseModel
@@ -37,6 +39,9 @@ class BaseUserModel(BaseModel):
       users with ``is_admin=True`` may log in to ``/admin``.
     * ``last_login_at`` — populated by the admin login view on every
       successful authentication.
+    * ``email_verified_at`` — when the SDK last saw proof that the
+      account holder reads the mailbox behind ``email``; ``NULL`` when it
+      never did. See the attribute entry below for what counts as proof.
 
     The class is marked ``__abstract__`` so SQLAlchemy does not try
     to map it directly; concrete projects subclass it and either keep
@@ -61,6 +66,23 @@ class BaseUserModel(BaseModel):
         hashed_password (str): Bcrypt hash; never store plaintext.
         is_admin (bool): Whether the user can access the admin site.
         last_login_at (datetime | None): Last successful login timestamp.
+        email_verified_at (datetime | None): When ownership of the
+            current ``email`` was proven, or ``None`` when it never was.
+            :class:`~tempest_fastapi_sdk.UserAuthService` sets it only
+            where the SDK itself saw the proof: confirming an activation
+            or e-mail-verification link that was mailed to this very
+            address, confirming an e-mail change whose link was mailed to
+            the new address, and creating an account from a social login
+            whose provider reported ``email_verified is True``. Activating
+            through the admin site or ``tempest user activate``, and the
+            flows where the link comes back in the HTTP response
+            (``AUTH_AUTO_ACTIVATE``, ``AUTH_RETURN_TOKEN_IN_RESPONSE``, no
+            ``EmailUtils``), leave it alone. An ORM flush that changes
+            ``email`` without also writing this column resets it to
+            ``None``, because the proof belonged to the previous address;
+            a bulk ``UPDATE`` statement bypasses that and must clear it
+            itself. Linking a social identity by e-mail
+            (``AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL``) requires it.
     """
 
     __abstract__ = True
@@ -88,6 +110,12 @@ class BaseUserModel(BaseModel):
         nullable=True,
         default=None,
         doc="Timestamp of the user's most recent successful login.",
+    )
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        UtcDateTime,
+        nullable=True,
+        default=None,
+        doc="When ownership of the current email was proven (NULL: never).",
     )
 
     if TYPE_CHECKING:
@@ -135,6 +163,35 @@ class BaseUserModel(BaseModel):
             str: The normalized email.
         """
         return value.strip().lower()
+
+
+@event.listens_for(BaseUserModel, "before_update", propagate=True)
+def _forget_proof_of_previous_email(
+    mapper: Mapper[BaseUserModel],
+    connection: Connection,
+    target: BaseUserModel,
+) -> None:
+    """Reset ``email_verified_at`` when a flush moves the row's ``email``.
+
+    The timestamp proves ownership of one address; once ``email`` points
+    somewhere else it would vouch for a mailbox nobody read. A flush that
+    writes ``email_verified_at`` in the same unit of work (the confirmed
+    e-mail change does) keeps the value it was given, so the SDK's own
+    flows decide, and every other writer (the admin site, a script, the
+    consumer's own endpoint) loses the proof by default.
+
+    Args:
+        mapper (Mapper[BaseUserModel]): The mapper of the concrete user
+            class being flushed.
+        connection (Connection): The connection the flush runs on.
+        target (BaseUserModel): The row about to be updated.
+    """
+    state = inspect(target)
+    if not state.attrs.email.history.has_changes():
+        return
+    if state.attrs.email_verified_at.history.has_changes():
+        return
+    target.email_verified_at = None
 
 
 __all__: list[str] = [

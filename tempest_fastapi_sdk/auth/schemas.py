@@ -575,7 +575,7 @@ class AuthUserSchema(BaseResponseSchema):
     guarantees, so it is safe as the default response model for any
     project: ``id`` / ``is_active`` / ``created_at`` / ``updated_at``
     come from :class:`BaseResponseSchema`, and ``email`` / ``is_admin``
-    / ``last_login_at`` are added here.
+    / ``last_login_at`` / ``email_verified_at`` are added here.
 
     ``hashed_password`` is deliberately absent. FastAPI serializes the
     handler's return value **through** the response model, so a column
@@ -597,6 +597,8 @@ class AuthUserSchema(BaseResponseSchema):
         last_login_at (datetime | None): Timestamp of the most recent
             successful login; ``None`` for an account that never
             logged in.
+        email_verified_at (datetime | None): When ownership of the
+            current email was proven; ``None`` when it never was.
     """
 
     email: EmailStr = Field(
@@ -615,6 +617,15 @@ class AuthUserSchema(BaseResponseSchema):
         description=(
             "Timestamp of the most recent successful login. ``None`` "
             "for an account that has never logged in."
+        ),
+        examples=["2024-01-02T12:00:00Z", None],
+    )
+    email_verified_at: datetime | None = Field(
+        default=None,
+        title="Email Verified At",
+        description=(
+            "When ownership of the current email was proven. ``None`` "
+            "for an address that was never proven."
         ),
         examples=["2024-01-02T12:00:00Z", None],
     )
