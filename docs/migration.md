@@ -9,6 +9,15 @@ Passo a passo das mudanças que quebram compatibilidade, agrupadas por release m
 | `SSEBroker` com Redis | Com o `channel_prefix` default `"sse"`, a construção registra um `WARNING`: o pub/sub do Redis ignora o índice de DB, e outro serviço na mesma instância com o mesmo prefixo troca eventos com este | Passe um `channel_prefix` próprio do serviço (`"orders-api:sse"`) em todo worker ao mesmo tempo — workers com prefixos diferentes não se enxergam |
 | Inscrição Web Push (`WebPushSubscriptionService.subscribe`, `make_web_push_router`, registro `web` do `make_push_router`) | Endpoint que é ou resolve para endereço não público responde `422 PUSH_ENDPOINT_NOT_PUBLIC` e não é gravado; o `send_many` devolve para poda o endpoint gravado antes com IP literal não público | Nada, se o push service é público. Push service próprio na rede interna: `allow_private_networks=True` no `WebPushDispatcher` abre inscrição e envio juntos |
 
+## Não publicado — `password-change` devolve um par novo, `set-password` apaga passkeys
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `POST /auth/password-change` | Responde **200** com `LoginResponseSchema` em vez de `204` sem corpo, e o corpo aceita `code` opcional. Conta sem MFA: par novo, emitido depois da revogação de todas as sessões (em cookies para quem se autenticou pelo cookie de acesso). Conta com MFA sem `code`: a senha muda e a resposta é o desafio do login (`mfa_required: true`, `mfa_token`), sem par. Com `code` válido: par com `amr` de MFA; `code` errado: **401** e nada muda | Cliente bearer: guarde o par da resposta e descarte o antigo; numa conta com MFA, mande o `code` junto ou trate o `mfa_required` como no login. Cliente que tratava qualquer `2xx` como sucesso não quebra, mas continua deslogando no fim do TTL do access token se não guardar o par |
+| `tempest user set-password` | Apaga as passkeys WebAuthn do usuário na mesma transação, quando acha a tabela (`--webauthn-credential-model`, default `src.db.models:UserWebAuthnCredentialModel`) | `--keep-passkeys` mantém o comportamento antigo; avise o usuário que ele cadastra a passkey de novo |
+| `signup(fields=...)` e `signup_schema` | `totp_secret`, `totp_enabled_at`, `totp_last_step` e toda coluna de `__secret_columns__` do user model são recusados (`ValueError` no service, descartados pela rota) | Nada para as colunas do MFA, que só o fluxo de inscrição grava. Se o seu cadastro grava uma coluna própria de `__secret_columns__`, mova a escrita para o `on_signup` |
+| `IntrospectionAuth` | Novo `audiences=`; sem ele, um `WARNING` por instância na construção | Passe `audiences=` com o client id do serviço no provedor. Veja [Amarrar o token a este serviço](recipes/introspection-auth.md#amarrar-o-token-a-este-servico-audiences) |
+
 ## 0.335.0 — `BaseUserModel` ganha a coluna `email_verified_at`
 
 O `BaseUserModel` passou a mapear `email_verified_at` (timestamp com fuso,

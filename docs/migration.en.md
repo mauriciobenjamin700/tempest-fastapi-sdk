@@ -9,6 +9,15 @@ Breaking-change walkthroughs grouped by minor release. Stick to the version that
 | `SSEBroker` with Redis | With the default `channel_prefix` `"sse"`, construction logs a `WARNING`: Redis pub/sub ignores the DB index, and another service on the same instance with the same prefix exchanges events with this one | Pass a service-specific `channel_prefix` (`"orders-api:sse"`) on every worker at once — workers with different prefixes do not see each other |
 | Web Push subscription (`WebPushSubscriptionService.subscribe`, `make_web_push_router`, `web` registration on `make_push_router`) | An endpoint that is or resolves to a non-public address answers `422 PUSH_ENDPOINT_NOT_PUBLIC` and is not stored; `send_many` returns for pruning a previously stored endpoint whose host is a non-public IP literal | Nothing, if the push service is public. Self-hosted push service on the internal network: `allow_private_networks=True` on the `WebPushDispatcher` opens subscription and delivery together |
 
+## Unreleased — `password-change` returns a fresh pair, `set-password` deletes passkeys
+
+| Where | What changes | What to do |
+| --- | --- | --- |
+| `POST /auth/password-change` | Answers **200** with `LoginResponseSchema` instead of `204` with no body, and the body takes an optional `code`. Account without MFA: a fresh pair, issued after every session is revoked (in cookies for a caller that authenticated with the access cookie). Account with MFA and no `code`: the password changes and the response is the login challenge (`mfa_required: true`, `mfa_token`), with no pair. With a valid `code`: a pair with an MFA `amr`; a wrong `code`: **401** and nothing changes | Bearer client: store the response's pair and drop the old one; on an MFA account, send the `code` along or handle `mfa_required` as at login. A client that treated any `2xx` as success does not break, but still gets signed out when the access token's TTL ends unless it stores the pair |
+| `tempest user set-password` | Deletes the user's WebAuthn passkeys in the same transaction when it finds the table (`--webauthn-credential-model`, default `src.db.models:UserWebAuthnCredentialModel`) | `--keep-passkeys` keeps the old behaviour; tell the user they register their passkey again |
+| `signup(fields=...)` and `signup_schema` | `totp_secret`, `totp_enabled_at`, `totp_last_step` and every `__secret_columns__` column of the user model are refused (`ValueError` in the service, dropped by the route) | Nothing for the MFA columns, which only the enrollment flow writes. If your signup writes a `__secret_columns__` column of your own, move that write to `on_signup` |
+| `IntrospectionAuth` | New `audiences=`; without it, one `WARNING` per instance at construction | Pass `audiences=` with the service's client id at the provider. See [Bind the token to this service](recipes/introspection-auth.md#bind-the-token-to-this-service-audiences) |
+
 ## 0.335.0 — `BaseUserModel` gains the `email_verified_at` column
 
 `BaseUserModel` now maps `email_verified_at` (timezone-aware timestamp,

@@ -123,9 +123,9 @@ def _client(service: UserAuthService, sessions: RequestScopedSessions) -> AsyncC
 
 
 class TestPasswordChangePersists:
-    """``POST /auth/password-change`` must answer 204 and actually rotate."""
+    """``POST /auth/password-change`` must answer 200 and actually rotate."""
 
-    async def test_returns_204_instead_of_500(
+    async def test_returns_200_instead_of_500(
         self, sessions: RequestScopedSessions
     ) -> None:
         """The detached instance used to blow up on ``session.refresh``."""
@@ -142,7 +142,7 @@ class TestPasswordChangePersists:
                 headers={"Authorization": f"Bearer {access}"},
             )
 
-        assert response.status_code == 204, response.text
+        assert response.status_code == 200, response.text
 
     async def test_new_password_is_persisted(
         self, sessions: RequestScopedSessions
@@ -246,5 +246,5 @@ class TestUserIsAttached:
                 headers={"Authorization": f"Bearer {access}"},
             )
 
-        assert response.status_code == 204, response.text
+        assert response.status_code == 200, response.text
         assert sessions.opened - before == 1

@@ -988,6 +988,9 @@ tempest user set-password --email ana@example.com \
 # Replace the password and leave the sessions alive (explicit opt-out)
 tempest user set-password --email ana@example.com --keep-sessions
 
+# Replace the password and keep the passkeys (explicit opt-out)
+tempest user set-password --email ana@example.com --keep-passkeys
+
 # First privileged account born with MFA + audit event in the same transaction
 tempest user create --email staff@example.com --admin --require-mfa \
     --audit-model src.db.models:AuditLogModel --event staff.bootstrapped
@@ -1069,6 +1072,7 @@ tempest user set-password --email ana@example.com
 # Confirm:
 # Password updated for ana@example.com (id=6f0c...)
 # Revoked 2 active refresh token(s).
+# Deleted 1 passkey(s).
 ```
 
 !!! check "Changing the password revokes the sessions — by default"
@@ -1096,6 +1100,18 @@ tempest user set-password --email ana@example.com
     The count is of the sessions **this** run killed — an already
     revoked row is not counted again, so running it twice prints
     `Revoked 0 active refresh token(s).`
+
+!!! check "And it deletes the passkeys — by default too"
+    The operator's password change is account recovery, like
+    `mfa-reset`: a passkey signs in without the password, and one
+    registered by whoever held the account would survive the new hash. So
+    the command deletes **every** passkey of the user in the same
+    transaction (`UserAuthService.revoke_user_passkeys`), by the same rules
+    as the sessions: `--webauthn-credential-model` (default
+    `src.db.models:UserWebAuthnCredentialModel`; without a table, it says
+    on stderr that no passkey was deleted), `--keep-passkeys` as the
+    explicit opt-out, and both together refused with code 2. The owner
+    registers the passkey again afterwards.
 
 !!! tip "The same thing, from code"
     `await service.revoke_user_sessions(session, user_id=user.id)` is the

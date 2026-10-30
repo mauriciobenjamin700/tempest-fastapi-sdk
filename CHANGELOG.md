@@ -77,6 +77,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `WebPushTransport` o traduz em `PushDeviceGoneError`; recusa decidida por
   resposta de DNS continua só no log (#660).
 
+- `tempest user set-password` passa a apagar as passkeys WebAuthn do usuário
+  por padrão, na mesma transação do hash novo, como o `mfa-reset`: a troca
+  feita pelo operador é recuperação de conta. Ganha
+  `--webauthn-credential-model` (default
+  `src.db.models:UserWebAuthnCredentialModel`, usado quando existe) e
+  `--keep-passkeys` como saída explícita; as duas juntas saem com código 2, e
+  a saída diz quantas passkeys foram apagadas (#659). Mudança de
+  comportamento.
+- `POST /auth/password-change` responde **200** com `LoginResponseSchema` em
+  vez de `204`, sem nunca abrir sessão mais forte que o `/auth/login` para as
+  mesmas provas (#662). A troca continua revogando todas as sessões. Conta sem
+  MFA recebe um par novo (em cookies no modo cookie). Conta com MFA: sem o
+  novo campo opcional `code` em `PasswordChangeSchema`, a senha muda e a
+  resposta é o desafio do login (`mfa_required`, `mfa_token`); com `code`
+  válido (TOTP ou recovery code, gasto antes da troca sob o `mfa_throttle`),
+  par com `amr` de MFA; com `code` errado, `401` e nada muda. O `amr` do
+  access token atual nunca é copiado para o par. Mudança de contrato da rota.
+- `SIGNUP_PROTECTED_FIELDS` passa a incluir as colunas do `MFAMixin`
+  (`totp_secret`, `totp_enabled_at`, `totp_last_step`), e o signup recusa
+  também toda coluna que o user model declara em `__secret_columns__`. Novo
+  `UserAuthService.signup_protected_fields()` devolve o conjunto do model; o
+  `signup_schema` do `make_auth_router` descarta esses nomes antes de gravar
+  (#663).
+- `IntrospectionAuth` ganha `audiences=` (keyword-only): com ele, a resposta
+  do `userinfo` precisa nomear um dos valores em `aud` (string ou lista),
+  `azp` ou `client_id`, senão a requisição responde `401` e a resposta não
+  entra no cache. Sem ele o comportamento não muda, e a instância registra um
+  `WARNING` na construção apontando para a receita.
+
 ## [0.335.0] — 2026-10-30
 
 ### Security

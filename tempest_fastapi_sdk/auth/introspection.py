@@ -12,6 +12,8 @@ an issuer.
   introspection endpoint (``GET`` with ``Authorization: Bearer <token>``),
 * it caches successful lookups in-process for a short TTL so a burst of
   requests carrying the same token does not hammer the provider,
+* it can bind the bearer to this service with ``audiences=``: the
+  response's ``aud``, ``azp`` or ``client_id`` must name one of them,
 * it can gate access on an application-membership claim
   (``access_apps`` by default), and
 * it extracts the user id from the subject claim (``sub`` by default).
@@ -38,8 +40,9 @@ as FastAPI dependencies::
 
 from __future__ import annotations
 
+import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Mapping
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -53,6 +56,18 @@ from tempest_fastapi_sdk.exceptions import (
 )
 
 _bearer_scheme = HTTPBearer(auto_error=False)
+
+_LOGGER: logging.Logger = logging.getLogger(__name__)
+"""Where an instance built without ``audiences=`` says so."""
+
+_AUDIENCE_CLAIMS: tuple[str, ...] = ("aud", "azp", "client_id")
+"""Response claims :class:`IntrospectionAuth` compares with ``audiences``.
+
+``aud`` (a string or a list) and ``azp`` are the OpenID Connect spellings;
+``client_id`` is RFC 7662 introspection's. They are the same three the OAuth
+clients' ``verify_token_audience`` reads, so the two checks refuse under one
+rule.
+"""
 
 
 class IntrospectionAuth:
@@ -73,6 +88,8 @@ class IntrospectionAuth:
             the subject may access.
         subject_claim (str): Name of the claim holding the subject
             identifier (parsed as a :class:`~uuid.UUID`).
+        audiences (frozenset[str]): The client ids / audiences this service
+            answers to. Empty means the bearer is not bound to the service.
     """
 
     def __init__(
@@ -85,8 +102,18 @@ class IntrospectionAuth:
         subject_claim: str = "sub",
         timeout: float = 10.0,
         http_client: httpx.AsyncClient | None = None,
+        audiences: Collection[str] = (),
     ) -> None:
         """Initialize the introspection authenticator.
+
+        A ``200`` from the userinfo endpoint proves the token is valid at
+        the identity provider, not that it was issued to **this** service:
+        a provider that answers for tokens of every client it serves would
+        let a token the user granted to another application authenticate
+        here. ``audiences`` closes that: given, the response must name one
+        of them in ``aud`` (a string or a list), ``azp`` or ``client_id``,
+        or the request answers ``401``. Left empty, behaviour is unchanged
+        and a warning is logged here, once per instance.
 
         Args:
             userinfo_url (str | Callable[[], str]): The upstream userinfo /
@@ -109,6 +136,10 @@ class IntrospectionAuth:
                 client to use instead of the lazily-created shared one. When
                 provided, the instance does not own its lifecycle. Defaults
                 to ``None``.
+            audiences (Collection[str]): The client ids / audiences this
+                service answers to. A bare string counts as one audience;
+                empty strings are ignored. Defaults to ``()`` — no binding,
+                with a warning logged.
         """
         self._userinfo_url: str | Callable[[], str] = userinfo_url
         self.cache_ttl_seconds: int = cache_ttl_seconds
@@ -119,6 +150,17 @@ class IntrospectionAuth:
         self._http_client: httpx.AsyncClient | None = http_client
         self._owns_client: bool = http_client is None
         self._cache: dict[str, tuple[dict[str, Any], float]] = {}
+        accepted = (audiences,) if isinstance(audiences, str) else audiences
+        self.audiences: frozenset[str] = frozenset(value for value in accepted if value)
+        if not self.audiences:
+            _LOGGER.warning(
+                "IntrospectionAuth built without audiences=: any token the "
+                "upstream userinfo endpoint accepts authenticates here, "
+                "including one issued to another client of the same identity "
+                "provider. Pass audiences= with this service's client id; see "
+                "https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/"
+                "en/recipes/introspection-auth/"
+            )
 
     def _resolve_userinfo_url(self) -> str:
         """Resolve the configured userinfo URL for the current call.
@@ -174,12 +216,37 @@ class IntrospectionAuth:
             return
         self._cache[token] = (claims, time.monotonic() + self.cache_ttl_seconds)
 
+    def _check_audience(self, claims: Mapping[str, Any]) -> None:
+        """Refuse a response that names none of :attr:`audiences`.
+
+        Args:
+            claims (Mapping[str, Any]): The upstream response.
+
+        Raises:
+            UnauthorizedException: When :attr:`audiences` is set and none
+                of ``aud``, ``azp`` and ``client_id`` in ``claims`` is one of them —
+                a missing claim included.
+        """
+        if not self.audiences:
+            return
+        named: set[str] = set()
+        for key in _AUDIENCE_CLAIMS:
+            value = claims.get(key)
+            if isinstance(value, str):
+                named.add(value)
+            elif isinstance(value, list | tuple):
+                named.update(item for item in value if isinstance(item, str))
+        if not named & self.audiences:
+            raise UnauthorizedException(message="Token was not issued to this service")
+
     async def fetch_userinfo(self, token: str) -> dict[str, Any]:
         """Fetch and cache the userinfo claims for a bearer token.
 
         On a cache hit within the TTL the upstream is not contacted. On a
         cache miss the configured userinfo URL is called with the token as a
-        bearer credential; a ``200`` response is cached and returned.
+        bearer credential; a ``200`` response whose audience passes
+        :attr:`audiences` is cached and returned. A response that fails the
+        audience check is never cached.
 
         Args:
             token (str): The raw opaque bearer token to validate.
@@ -191,8 +258,9 @@ class IntrospectionAuth:
         Raises:
             UnauthorizedException: When the upstream is unreachable
                 (:class:`httpx.HTTPError`), returns ``401`` / ``403`` (the
-                token is also evicted from the cache), or returns any other
-                non-``200`` status.
+                token is also evicted from the cache), returns any other
+                non-``200`` status, or — with :attr:`audiences` set —
+                answers for a token issued to another client.
         """
         cached = self._cache_get(token)
         if cached is not None:
@@ -217,6 +285,7 @@ class IntrospectionAuth:
             raise UnauthorizedException(message="Invalid or expired token")
 
         claims: dict[str, Any] = response.json()
+        self._check_audience(claims)
         self._cache_set(token, claims)
         return claims
 
@@ -238,8 +307,9 @@ class IntrospectionAuth:
             endpoint.
 
         Raises:
-            UnauthorizedException: When no credentials were supplied or the
-                token could not be validated upstream.
+            UnauthorizedException: When no credentials were supplied, the
+                token could not be validated upstream, or it was issued to
+                a client outside :attr:`audiences`.
             ForbiddenException: When ``required_app`` is configured and is
                 absent from the caller's ``app_claim`` list.
         """
