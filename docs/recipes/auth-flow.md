@@ -193,7 +193,7 @@ uv run tempest db upgrade
 | GET | `/auth/me` *(v0.198.0+)* | — → `AuthUserSchema` | **Autenticado.** Devolve a conta dona do bearer token. Nunca serializa o hash da senha: o handler entrega o modelo inteiro e o `response_model` filtra. Troque o schema por um seu com `me_response_model=` pra expor colunas próprias. |
 | POST | `/auth/password-reset/request` | `PasswordResetRequestSchema` → `PasswordResetResponseSchema` | Sempre HTTP 202 + corpo genérico. Link via e-mail (A/B) ou no body (C). |
 | POST | `/auth/password-reset/confirm` | `PasswordResetConfirmSchema` → `LoginResponseSchema` | Consome token + grava nova senha + revoga as sessões + emite JWT pair. Com MFA inscrito na conta, responde o desafio (`mfa_required=true` + `mfa_token`) em vez do par — conclua em `/auth/mfa/verify`. |
-| POST | `/auth/password-change` | `PasswordChangeSchema` → `LoginResponseSchema` | **Autenticado** (bearer token). Troca a própria senha: confirma a senha atual + grava a nova. Sem token de e-mail. |
+| POST | `/auth/password-change` | `PasswordChangeSchema` → `LoginResponseSchema` | **Autenticado** (bearer token). Troca a própria senha: confirma a senha atual (e o `code` numa conta com MFA) + grava a nova. Sem token de e-mail. |
 | POST | `/auth/email-change/request` *(v0.92.0+)* | `EmailChangeRequestSchema` → `EmailChangeResponseSchema` | **Autenticado.** Confirma a senha atual + envia link de confirmação pro **novo** e-mail. Sempre 202. |
 | POST | `/auth/email-change/confirm` *(v0.92.0+)* | `EmailChangeConfirmSchema` → `EmailChangeResponseSchema` | Consome o token + aplica o novo e-mail + (opcional) avisa o e-mail antigo. |
 | POST | `/auth/email-verify/request` *(v0.92.0+)* | — → `EmailChangeResponseSchema` | **Autenticado.** Reenvia link de verificação pro e-mail **atual**. |
@@ -1274,10 +1274,31 @@ sobra:
 }
 ```
 
-Guarde os dois e descarte os antigos. O par repete o `amr` do access token
-que autenticou a requisição, então uma sessão que passou pelo MFA continua
-MFA. Quem se autenticou pelo cookie de acesso recebe o par em cookies, e o
-corpo traz só o `user_id`. `current_password` errada → **401**, sem par. Chamando o service direto,
+Guarde os dois e descarte os antigos. Quem se autenticou pelo cookie de
+acesso recebe o par em cookies, e o corpo traz só o `user_id`.
+`current_password` errada → **401**, sem par.
+
+A regra é: a rota **nunca** devolve uma sessão mais forte do que o
+`/auth/login` devolveria para as mesmas provas. A senha atual prova só o
+primeiro fator, então numa conta **com MFA**:
+
+| Corpo | O que acontece |
+| --- | --- |
+| sem `code` | A senha muda e as sessões caem; a resposta é o desafio do login (`mfa_required: true`, `mfa_token`), sem par. Complete em `POST /auth/mfa/verify` como depois do login |
+| `code` válido (TOTP ou recovery code) | O código é gasto antes da troca (o mesmo passo TOTP não vale duas vezes); a senha muda e vem um par com `amr == ["pwd", "otp"]` |
+| `code` errado | **401**: nada muda, nem a senha nem as sessões |
+
+```bash
+curl -X POST localhost:8000/auth/password-change \
+  -H "Authorization: Bearer eyJhbGciOi…" \
+  -H "Content-Type: application/json" \
+  -d '{"current_password": "senha-atual", "new_password": "nova-senha-forte-12", "code": "123456"}'
+```
+
+O `amr` do access token atual **não** é copiado para o par novo: numa conta
+sem MFA o par sai com `["pwd"]` (ou os métodos do token que não são segundo
+fator), e o segundo fator só aparece quando um `code` foi provado nesta
+requisição. Chamando o service direto,
 `change_password(..., revoke_sessions=False)` é a saída explícita. As
 passkeys ficam: quem chama acabou de provar a senha atual, então não é
 recuperação de conta.

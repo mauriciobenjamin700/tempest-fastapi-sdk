@@ -319,8 +319,9 @@ class LoginResponseSchema(BaseSchema):
 
     The bundled router reuses this shape for ``POST /auth/login``,
     ``POST /auth/password-reset/confirm``, ``POST /auth/mfa/confirm`` and
-    ``POST /auth/password-change``, since every one of them ends with an
-    authenticated session.
+    ``POST /auth/password-change``, since each of them ends with an
+    authenticated session or, for an account with MFA enrolled, with the
+    challenge ``/auth/mfa/verify`` completes.
 
     Attributes:
         user_id (UUID): UUID of the authenticated user.
@@ -547,6 +548,11 @@ class PasswordChangeSchema(BaseSchema):
             and complexity come from ``AUTH_PASSWORD_MIN_LENGTH`` /
             ``AUTH_PASSWORD_REQUIRE_COMPLEXITY`` and are applied by the
             service.
+        code (str | None): A TOTP code or a recovery code. Only an account
+            with MFA enrolled reads it: with a valid code the response
+            carries a new pair; without one the password still changes and
+            the response is the ``/login`` MFA challenge. Ignored for an
+            account without MFA.
     """
 
     current_password: str = Field(
@@ -565,6 +571,18 @@ class PasswordChangeSchema(BaseSchema):
             "``AUTH_PASSWORD_REQUIRE_COMPLEXITY``, applied server-side."
         ),
         examples=["new-correct-horse-battery"],
+    )
+    code: str | None = Field(
+        default=None,
+        min_length=1,
+        title="Second-factor code",
+        description=(
+            "TOTP or recovery code. Read only for an account with MFA "
+            "enrolled: a valid code returns a new token pair; without it the "
+            "password still changes and the response is the MFA challenge "
+            "``/auth/login`` returns."
+        ),
+        examples=["123456"],
     )
 
 

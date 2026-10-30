@@ -218,7 +218,7 @@ class TestPasswordChangeReissuesThePair:
         assert new.status_code == 200, new.text
         assert me.status_code == 200, me.text
 
-    async def test_the_pair_repeats_the_amr_of_the_caller(
+    async def test_a_factor_in_the_token_is_not_copied(
         self, session: AsyncSession
     ) -> None:
         service = _service()
@@ -233,7 +233,7 @@ class TestPasswordChangeReissuesThePair:
             )
         claims = service.jwt.decode(changed.json()["access_token"])
         assert changed.status_code == 200, changed.text
-        assert tuple(claims["amr"]) == MFA_AMR
+        assert tuple(claims["amr"]) == PASSWORD_AMR
 
     async def test_a_password_session_stays_a_password_session(
         self, session: AsyncSession

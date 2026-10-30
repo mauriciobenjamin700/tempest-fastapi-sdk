@@ -17,12 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--keep-passkeys` como saída explícita; as duas juntas saem com código 2, e
   a saída diz quantas passkeys foram apagadas (#659). Mudança de
   comportamento.
-- `POST /auth/password-change` responde **200** com um par de tokens novo
-  (`LoginResponseSchema`) em vez de `204`: a troca revoga todas as sessões,
-  inclusive a de quem chamou, e o par é emitido depois da revogação,
-  repetindo o `amr` do access token que autenticou a requisição. Quem se
-  autenticou pelo cookie de acesso recebe o par em cookies (#662). Mudança de
-  contrato da rota.
+- `POST /auth/password-change` responde **200** com `LoginResponseSchema` em
+  vez de `204`, sem nunca abrir sessão mais forte que o `/auth/login` para as
+  mesmas provas (#662). A troca continua revogando todas as sessões. Conta sem
+  MFA recebe um par novo (em cookies no modo cookie). Conta com MFA: sem o
+  novo campo opcional `code` em `PasswordChangeSchema`, a senha muda e a
+  resposta é o desafio do login (`mfa_required`, `mfa_token`); com `code`
+  válido (TOTP ou recovery code, gasto antes da troca sob o `mfa_throttle`),
+  par com `amr` de MFA; com `code` errado, `401` e nada muda. O `amr` do
+  access token atual nunca é copiado para o par. Mudança de contrato da rota.
 - `SIGNUP_PROTECTED_FIELDS` passa a incluir as colunas do `MFAMixin`
   (`totp_secret`, `totp_enabled_at`, `totp_last_step`), e o signup recusa
   também toda coluna que o user model declara em `__secret_columns__`. Novo

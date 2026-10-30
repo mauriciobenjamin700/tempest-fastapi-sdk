@@ -142,6 +142,7 @@ from tempest_fastapi_sdk.utils.token_types import (
     AMR_EXTERNAL,
     AMR_HARDWARE_KEY,
     MFA_AMR,
+    MFA_AMR_METHODS,
     PASSWORD_AMR,
     token_amr,
 )
@@ -1215,19 +1216,35 @@ def make_auth_router(
         user: BaseUserModel = Depends(current_user_dep),
         claims: dict[str, Any] = Depends(current_claims_dep),
     ) -> LoginResponseSchema:
-        """Change the caller's password and hand back a fresh session.
+        """Change the caller's password and hand back what ``/login`` would.
 
         :meth:`~tempest_fastapi_sdk.UserAuthService.change_password` revokes
         every session of the user, the caller's own refresh token included,
-        so the route issues a new pair in the same transaction — after the
-        revocation, so the new refresh token is the only one left. The pair
-        repeats the ``amr`` of the access token that authenticated the
-        request (an MFA session stays an MFA session); a token without the
-        claim gets :data:`~tempest_fastapi_sdk.PASSWORD_AMR`, since the
-        request itself proved the password.
+        so the route answers with the session the same proofs would open at
+        ``/login`` — never a fuller one:
+
+        * **Account without MFA** — a new pair, issued after the revocation
+          so its refresh token is the only one left. It repeats the ``amr``
+          of the access token that authenticated the request minus any
+          second-factor method (:data:`~tempest_fastapi_sdk.MFA_AMR_METHODS`),
+          or :data:`~tempest_fastapi_sdk.PASSWORD_AMR` when nothing is left.
+        * **Account with MFA, no ``code``** — the password is changed and
+          the sessions revoked, then the response is the ``/login`` challenge
+          (``mfa_required=true`` plus an ``mfa_token`` for
+          ``/auth/mfa/verify``); no pair is issued.
+        * **Account with MFA and a ``code``** — the password and the factor
+          are checked first (:meth:`UserAuthService.reauthenticate`, which
+          spends the TOTP step or the recovery code under the ``mfa_throttle``
+          budget); a wrong code answers ``401`` and changes nothing. Then
+          the password changes and a pair stamped
+          :data:`~tempest_fastapi_sdk.MFA_AMR` is issued.
+
+        The ``amr`` of the current access token never carries a second
+        factor into the new pair: only a code proved in this request does.
 
         Args:
-            payload (PasswordChangeSchema): Current and new password.
+            payload (PasswordChangeSchema): Current and new password, and
+                the optional second-factor ``code``.
             request (Request): Tells a bearer caller from a cookie one.
             response (Response): Receives the cookies in cookie mode.
             session (AsyncSession): The request-scoped DB session.
@@ -1236,21 +1253,51 @@ def make_auth_router(
                 token, read for its ``amr``.
 
         Returns:
-            LoginResponseSchema: The new pair in the body for a bearer
-            caller; ``user_id`` only (tokens in cookies) for a caller that
-            authenticated with the access cookie.
+            LoginResponseSchema: The MFA challenge, the new pair in the body
+            for a bearer caller, or ``user_id`` only (tokens in cookies) for
+            a caller that authenticated with the access cookie.
         """
+        if service.is_mfa_enrolled(user) and payload.code is None:
+            user = await service.change_password(
+                session,
+                user=user,
+                current_password=payload.current_password,
+                new_password=payload.new_password,
+            )
+            mfa_token = service.issue_mfa_token(user)
+            await session.commit()
+            return LoginResponseSchema(
+                user_id=user.id,
+                access_token=None,
+                refresh_token=None,
+                mfa_required=True,
+                mfa_token=mfa_token,
+            )
+        amr: tuple[str, ...]
+        if service.is_mfa_enrolled(user):
+            user = await service.reauthenticate(
+                session,
+                user=user,
+                current_password=payload.current_password,
+                code=payload.code,
+                recovery_code_model=recovery_code_model,
+                throttle=resolved_mfa_throttle,
+            )
+            amr = MFA_AMR
+        else:
+            kept = tuple(
+                method
+                for method in token_amr(claims) or ()
+                if method not in MFA_AMR_METHODS
+            )
+            amr = kept or PASSWORD_AMR
         user = await service.change_password(
             session,
             user=user,
             current_password=payload.current_password,
             new_password=payload.new_password,
         )
-        access, refresh = await _issue_pair(
-            session,
-            user,
-            token_amr(claims) or PASSWORD_AMR,
-        )
+        access, refresh = await _issue_pair(session, user, amr)
         await session.commit()
         bearer_caller = (
             request.headers.get("authorization", "").lower().startswith("bearer ")
