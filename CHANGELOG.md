@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.335.0] — 2026-10-30
+
 ### Security
 
 - `AccessLogMiddleware` esconde por padrão as credenciais que o próprio SDK põe

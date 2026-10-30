@@ -62,7 +62,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   rather than extending it. Passkey login deliberately skips the MFA
   challenge, so registering a passkey requires the password plus, on an MFA
   account, the second factor (`WebAuthnRegisterBeginSchema`,
-  `UserAuthService.reauthenticate`, Unreleased). Tests drive real crypto through a software authenticator
+  `UserAuthService.reauthenticate`, v0.335.0). Tests drive real crypto through a software authenticator
   (`tests/auth/webauthn_authenticator.py`) — a mocked verifier would assert
   away exactly the properties worth testing. Recipe:
   `docs/recipes/webauthn.md`. **Token-type checks for foreign tokens
@@ -1650,7 +1650,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   declara `AdminAuthBackend[BaseUserModel]`. Runtime intocado; `mypy --strict`
   passa a exigir o parâmetro em subclasse de consumidor
   (`disallow_any_generics`), o que o guia de migração cobre com a linha exata.
-- **`make_jwt_bearer_resolver` (Unreleased)** — o resolver de JWT para
+- **Release de segurança da auditoria (v0.335.0)** — 45 achados confirmados
+  da auditoria completa de 2026-10-29 (artefatos fora do repo, em
+  `~/security-audit-skill/tempest-fastapi-sdk/run-1`), mais três itens que o
+  dono pediu na mesma release, em 14 advisories GHSA. Superfície nova:
+  `surface_policy`/`AdminSurface` e `BaseModel.__secret_columns__` no admin,
+  `AdminSessionRevocations`, `SessionStore.touch`, `redact_capability_urls`,
+  `AttemptThrottle.reserve`/`release`, `credential_headers=` e
+  `allow_anonymous=` no cache e na idempotência, `result_serializer=` no
+  `TaskQueue`, decodificador de áudio limitado (`max_audio_seconds`),
+  `path_root=` nas ferramentas de mídia do agente, `revoke_passkeys=` na
+  recuperação de conta e a coluna `BaseUserModel.email_verified_at`. O que
+  mudou de default está em `docs/migration.md` (seção 0.335.0).
+- **`make_jwt_bearer_resolver` (v0.335.0)** — o resolver de JWT para
   `make_websocket_router`: decodifica com o `JWTUtils` da aplicação e só
   admite access token (`token_type_allowed(..., strict=True)` por padrão), então
   refresh, MFA pendente e ticket de stream fecham o handshake com `4401`. A

@@ -2,7 +2,7 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
-## Não publicado — `BaseUserModel` ganha a coluna `email_verified_at`
+## 0.335.0 — `BaseUserModel` ganha a coluna `email_verified_at`
 
 O `BaseUserModel` passou a mapear `email_verified_at` (timestamp com fuso,
 nullable): **quando** o dono da conta provou que lê o endereço atual. Como a
@@ -84,7 +84,7 @@ def upgrade() -> None:
 Sem esse passo, a conta que quiser ligar o login social por e-mail verifica o
 endereço uma vez, e a ligação volta a funcionar.
 
-## Não publicado — correções de segurança que mudam comportamento
+## 0.335.0 — correções de segurança que mudam comportamento
 
 Esta release fecha vulnerabilidades, e várias correções trocam um default
 inseguro por um seguro. A tabela diz o que muda para quem já usa o SDK e o que

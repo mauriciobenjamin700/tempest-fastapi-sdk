@@ -2,7 +2,7 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
-## Unreleased — `BaseUserModel` gains the `email_verified_at` column
+## 0.335.0 — `BaseUserModel` gains the `email_verified_at` column
 
 `BaseUserModel` now maps `email_verified_at` (timezone-aware timestamp,
 nullable): **when** the account holder proved they read the current address.
@@ -86,7 +86,7 @@ def upgrade() -> None:
 Without this step, an account that wants to link social login by email
 verifies its address once, and linking works again.
 
-## Unreleased — security fixes that change behaviour
+## 0.335.0 — security fixes that change behaviour
 
 This release closes vulnerabilities, and several fixes swap an unsafe default
 for a safe one. The table says what changes for existing users of the SDK and
