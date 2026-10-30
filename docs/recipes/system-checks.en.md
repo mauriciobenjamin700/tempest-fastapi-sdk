@@ -210,7 +210,7 @@ rules in its `production_violations()` method:
 | `ServerSettings` | `SERVER_DEBUG=true`, `SERVER_RELOAD=true` |
 | `DatabaseSettings` | a `DATABASE_URL` with a `sqlite` dialect |
 | `JWTSettings` | `JWT_SECRET` equal to the default the mixin declares |
-| `CORSSettings` | `"*"` in `CORS_ORIGINS` |
+| `CORSSettings` | `"*"` in `CORS_ORIGINS`; with `CORS_ALLOW_CREDENTIALS=true`, also `"null"` in `CORS_ORIGINS` and a `CORS_ORIGIN_REGEX` that accepts any origin (`.*`, `https://.*`) — Starlette echoes the caller's own `Origin` with `Access-Control-Allow-Credentials: true` |
 | `TokenSettings` | an empty `TOKEN_SECRET` (turns `X-Token` off) |
 | `TaskIQSettings` | an empty `TASKIQ_BROKER_URL` (falls back to the in-memory broker) |
 | `StorageSettings` | the default `minioadmin` keys, `STORAGE_SECURE=false` (except a private bucket behind an HTTPS public endpoint — see [Storage](storage.md#private-bucket-behind-https)), an explicit `STORAGE_PUBLIC_SECURE=false` |

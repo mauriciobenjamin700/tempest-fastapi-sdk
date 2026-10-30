@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `CORSSettings.production_violations()` passa a recusar, com
+  `CORS_ALLOW_CREDENTIALS=true`, toda regra de origem que aceita origem não
+  listada: `"*"` em `CORS_ORIGINS` (agora com mensagem própria), `"null"` em
+  `CORS_ORIGINS` e um `CORS_ORIGIN_REGEX` que casa com uma origem reservada
+  `.invalid` (`.*`, `https://.*`). Com credenciais ligadas, o
+  `CORSMiddleware` do Starlette devolve a própria `Origin` do chamador com
+  `Access-Control-Allow-Credentials: true`. Vale só sob `ENV=production`;
+  desenvolvimento e teste continuam aceitando o par. Docstrings do
+  `CORSSettings` e o `hint` do check `security.W003` deixam de afirmar que o
+  navegador bloqueia `*` com credenciais.
+
 ## [0.335.0] — 2026-10-30
 
 ### Security
