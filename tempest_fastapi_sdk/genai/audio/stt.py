@@ -340,7 +340,8 @@ class SpeechToText:
         concurrency semaphore.
 
         Args:
-            audio (str | Path | bytes): Audio file path or raw bytes.
+            audio (str | Path | bytes): Path of a local audio file, or raw
+                bytes. URLs are not fetched.
             language (Language | str | None): Force the language — a
                 :class:`~tempest_fastapi_sdk.genai.audio.Language` member
                 (``Language.PT_BR``), a raw Whisper code (``"pt"``), or
@@ -411,7 +412,8 @@ class SpeechToText:
         """Run the loaded engine and collect its segments.
 
         Args:
-            audio (str | Path | bytes): Audio file path or raw bytes.
+            audio (str | Path | bytes): Path of a local audio file, or raw
+                bytes. URLs are not fetched.
             language (str | None): Whisper language code, or ``None``.
             with_segments (bool): Include per-span timestamps.
             beam_size (int): Beam width.
@@ -421,35 +423,52 @@ class SpeechToText:
 
         Returns:
             Transcription: The assembled transcript.
+
+        Raises:
+            FileNotFoundError: When ``audio`` is not bytes and does not name
+                an existing regular file. The decoder only ever receives a
+                file object, never a string, so a URL or an FFmpeg protocol
+                (``http://``, ``concat:``) is never fetched.
         """
         import io
+        from contextlib import ExitStack
+        from pathlib import Path as LocalPath
 
-        source: Any = io.BytesIO(audio) if isinstance(audio, bytes) else str(audio)
-        engine = self._pipeline if self._pipeline is not None else self._model
-        options: dict[str, Any] = {
-            "language": language,
-            "beam_size": beam_size,
-            "vad_filter": vad_filter,
-            "condition_on_previous_text": self.condition_on_previous_text,
-        }
-        if self._pipeline is not None:
-            options["batch_size"] = self.batch_size
-        segments_iter, info = engine.transcribe(source, **options)
-        duration = float(getattr(info, "duration", 0.0) or 0.0)
-        segments: list[TranscriptionSegment] = []
-        texts: list[str] = []
-        for segment in segments_iter:
-            texts.append(segment.text)
-            if with_segments:
-                segments.append(
-                    TranscriptionSegment(
-                        start=float(segment.start),
-                        end=float(segment.end),
-                        text=segment.text,
-                    ),
-                )
-            if on_progress is not None:
-                on_progress(float(segment.end), duration)
+        with ExitStack() as stack:
+            if isinstance(audio, bytes):
+                source: Any = io.BytesIO(audio)
+            else:
+                local = LocalPath(audio)
+                if not local.is_file():
+                    raise FileNotFoundError(
+                        f"audio must be a local file, got {local.name!r}",
+                    )
+                source = stack.enter_context(local.open("rb"))
+            engine = self._pipeline if self._pipeline is not None else self._model
+            options: dict[str, Any] = {
+                "language": language,
+                "beam_size": beam_size,
+                "vad_filter": vad_filter,
+                "condition_on_previous_text": self.condition_on_previous_text,
+            }
+            if self._pipeline is not None:
+                options["batch_size"] = self.batch_size
+            segments_iter, info = engine.transcribe(source, **options)
+            duration = float(getattr(info, "duration", 0.0) or 0.0)
+            segments: list[TranscriptionSegment] = []
+            texts: list[str] = []
+            for segment in segments_iter:
+                texts.append(segment.text)
+                if with_segments:
+                    segments.append(
+                        TranscriptionSegment(
+                            start=float(segment.start),
+                            end=float(segment.end),
+                            text=segment.text,
+                        ),
+                    )
+                if on_progress is not None:
+                    on_progress(float(segment.end), duration)
         return Transcription(
             text="".join(texts).strip(),
             language=getattr(info, "language", "") or "",

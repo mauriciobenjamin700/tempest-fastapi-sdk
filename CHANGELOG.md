@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rede interna deixa de ser entregue; `allow_private_networks=True` reabre
   para push service próprio na rede interna. Novo `resolver=` para injetar a
   resolução de nomes.
+- `describe_image_tool` e `transcribe_audio_tool` ganham `path_root=`
+  (keyword-only). **Mudança de comportamento:** sem ele, o argumento `path`
+  fica desligado (some do schema da ferramenta e é recusado) e só artefatos
+  da run são lidos; com ele, `path` precisa resolver, symlink incluído, para
+  um arquivo comum dentro do diretório, URL é recusada e toda recusa usa a
+  mesma mensagem. `description` passa a aceitar `None` (padrão), que gera o
+  texto conforme `path_root`.
+- `SpeechToText.transcribe` só abre arquivo local: string que não nomeia um
+  arquivo existente levanta `FileNotFoundError`, e o decodificador recebe um
+  objeto de arquivo, nunca a string.
 
 ## [0.334.0] — 2026-10-29
 

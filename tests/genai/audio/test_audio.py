@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 import importlib.util
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -124,7 +125,7 @@ class TestSpeechToText:
     async def test_transcribe_forwards_knobs_and_language_probability(self) -> None:
         stt = SpeechToText(device="cpu", beam_size=8, vad_filter=False)
         stt._model = _FakeWhisperModel()  # pre-loaded -> load() short-circuits
-        result = await stt.transcribe("clip.wav", language="pt")
+        result = await stt.transcribe(b"clip", language="pt")
         assert stt._model.calls[0] == {
             "language": "pt",
             "beam_size": 8,
@@ -140,7 +141,7 @@ class TestSpeechToText:
     async def test_transcribe_per_call_overrides_win(self) -> None:
         stt = SpeechToText(device="cpu", beam_size=5, vad_filter=True)
         stt._model = _FakeWhisperModel()
-        await stt.transcribe("clip.wav", beam_size=1, vad_filter=False)
+        await stt.transcribe(b"clip", beam_size=1, vad_filter=False)
         assert stt._model.calls[0]["beam_size"] == 1
         assert stt._model.calls[0]["vad_filter"] is False
 
@@ -148,7 +149,7 @@ class TestSpeechToText:
         """Turning it off reaches faster-whisper, it is not just stored."""
         stt = SpeechToText(device="cpu", condition_on_previous_text=False)
         stt._model = _FakeWhisperModel()
-        await stt.transcribe("clip.wav")
+        await stt.transcribe(b"clip")
         assert stt._model.calls[0]["condition_on_previous_text"] is False
 
     async def test_batch_size_reaches_the_batched_pipeline(self) -> None:
@@ -163,7 +164,7 @@ class TestSpeechToText:
         stt._model = _FakeWhisperModel()
         stt._pipeline = pipeline
 
-        await stt.transcribe("clip.wav")
+        await stt.transcribe(b"clip")
 
         assert pipeline.calls[0]["batch_size"] == 4
         assert stt._model.calls == []
@@ -188,7 +189,7 @@ class TestSpeechToText:
         stt._model = _FakeWhisperModel()
         seen: list[tuple[float, float]] = []
 
-        await stt.transcribe("clip.wav", on_progress=lambda a, b: seen.append((a, b)))
+        await stt.transcribe(b"clip", on_progress=lambda a, b: seen.append((a, b)))
 
         assert seen == [(1.0, 3.5)]
 
@@ -196,8 +197,51 @@ class TestSpeechToText:
         """The callback is optional; omitting it changes nothing."""
         stt = SpeechToText(device="cpu")
         stt._model = _FakeWhisperModel()
-        result = await stt.transcribe("clip.wav")
+        result = await stt.transcribe(b"clip")
         assert result.text == "olá"
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "http://127.0.0.1:9/internal/admin-only.wav",
+            "concat:/etc/hosts|/etc/hosts",
+            "subfile,,start,0,end,0,,:/etc/hosts",
+            "/nonexistent/clip.wav",
+        ],
+    )
+    async def test_non_file_string_never_reaches_the_decoder(self, source: str) -> None:
+        """A URL or FFmpeg protocol string is refused before the engine runs.
+
+        faster-whisper hands a string straight to ``av.open``, which resolves
+        FFmpeg protocols, so only a file object may reach it.
+        """
+        stt = SpeechToText(device="cpu")
+        stt._model = _FakeWhisperModel()
+        with pytest.raises(FileNotFoundError):
+            await stt.transcribe(source)
+        assert stt._model.calls == []
+
+    async def test_local_file_reaches_the_decoder_as_a_file_object(
+        self, tmp_path: Path
+    ) -> None:
+        """A real path is opened by the SDK; the decoder gets the stream."""
+        clip = tmp_path / "clip.wav"
+        clip.write_bytes(b"RIFF")
+        seen: list[object] = []
+
+        class _Recording(_FakeWhisperModel):
+            def transcribe(
+                self, source: object, **kwargs: object
+            ) -> tuple[object, object]:
+                seen.append(source)
+                return super().transcribe(source, **kwargs)
+
+        stt = SpeechToText(device="cpu")
+        stt._model = _Recording()
+        result = await stt.transcribe(str(clip))
+        assert result.text == "olá"
+        assert not isinstance(seen[0], str)
+        assert getattr(seen[0], "read", None) is not None
 
     def test_bad_concurrency(self) -> None:
         with pytest.raises(ValueError):

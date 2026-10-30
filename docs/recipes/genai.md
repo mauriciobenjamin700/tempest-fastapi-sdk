@@ -1661,7 +1661,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-Aceita caminho ou `bytes`. `device`/`compute_type` resolvem sozinhos
+Aceita caminho de arquivo local ou `bytes` — string que não é arquivo existente (URL, protocolo do FFmpeg como `concat:`) levanta `FileNotFoundError`, sem ir à rede. `device`/`compute_type` resolvem sozinhos
 (`float16` na GPU, `int8` na CPU).
 
 #### Transcrever mais rápido em CPU
