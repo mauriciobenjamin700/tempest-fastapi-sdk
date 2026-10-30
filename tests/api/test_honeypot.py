@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -15,6 +16,10 @@ from tempest_fastapi_sdk import (
     HoneypotBanMiddleware,
     MemoryBanStore,
     RedisBanStore,
+)
+from tempest_fastapi_sdk.storage import (
+    LocalObjectStorageClient,
+    make_local_storage_router,
 )
 
 
@@ -103,6 +108,10 @@ class TestHoneypotMatching:
             "/dump.tar.gz",
             "/index.php.bak",
             "/app.py~",
+            "/phpinfo.php",
+            "/_profiler/phpinfo",
+            "/index.php?%ADd+allow_url_include%3d1",
+            "/credentials",
         ],
     )
     def test_scanner_signature_matches(self, target: str) -> None:
@@ -126,6 +135,15 @@ class TestHoneypotMatching:
             "/openapi.json",
             "/static/app.css",
             "/api/events/2026-08-30",
+            "/storage/uploads/report.zip?expires=1&signature=abc",
+            "/storage/uploads/export.sql?expires=1&signature=abc",
+            "/api/search?q=phpinfo",
+            "/api/search?q=server-status",
+            "/api/search?q=photos.zip",
+            "/api/search?q=abc~",
+            "/api/search?q=-d+flag",
+            "/auth/webauthn/credentials",
+            "/api/files/notes.txt~",
         ],
     )
     def test_honest_target_does_not_match(self, target: str) -> None:
@@ -302,3 +320,29 @@ def await_sync(awaitable: object) -> bool:
 
     coro = typing.cast(typing.Coroutine[object, object, bool], awaitable)
     return asyncio.run(coro)
+
+
+class TestSdkStorageDownloads:
+    """A signed download from the SDK's own storage router never bans."""
+
+    async def test_signed_archive_downloads_are_served(self, tmp_path: Path) -> None:
+        storage = LocalObjectStorageClient(
+            tmp_path,
+            public_url="http://testserver",
+            signing_secret="storage-secret",
+        )
+        await storage.put_object("report.zip", b"zip-bytes")
+        await storage.put_object("export.sql", b"sql-bytes")
+        zip_url = await storage.presigned_get_url("report.zip")
+        sql_url = await storage.presigned_get_url("export.sql")
+
+        app = build_app(MemoryBanStore())
+        app.include_router(make_local_storage_router(storage))
+        with TestClient(app) as client:
+            zip_response = client.get(zip_url)
+            sql_response = client.get(sql_url)
+            after = client.get("/api/users")
+        assert zip_response.status_code == 200
+        assert zip_response.content == b"zip-bytes"
+        assert sql_response.status_code == 200
+        assert after.status_code == 200

@@ -30,6 +30,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cacheada — passa direto ao handler — a menos que o middleware receba
   `allow_anonymous=True`; entrada gravada por versão anterior (sem digest)
   responde `422` em vez de ser replicada.
+- `HoneypotBanMiddleware` casa `DEFAULT_HONEYPOT_PATTERNS` só contra o path; a
+  query string é casada à parte por `DEFAULT_HONEYPOT_QUERY_PATTERNS` (novo) e
+  pelo novo `query_patterns=`. As regras de palavra solta (`phpinfo`,
+  `server-status`) ficam ancoradas a segmento do path, as de extensão de
+  backup/dump e `~` só valem na raiz ou sob `/backup/`, e `credentials` /
+  `secrets` só na raiz. Antes, um download assinado de `.zip`/`.sql` do
+  `make_local_storage_router`, o `/auth/webauthn/credentials` e buscas comuns
+  na query baniam o IP do cliente por 24 horas. **Mudança de
+  comportamento:** `patterns=` próprio deixa de ver a query.
+- `key_by_header` exige `is_known=` (verificador síncrono do valor do header):
+  só valor aceito ganha bucket próprio, e valor desconhecido cai no bucket do
+  IP como header ausente. Antes, qualquer valor enviado pelo cliente virava um
+  bucket novo no rate limit. **Mudança incompatível:** chamada sem `is_known=`
+  passa a levantar `TypeError`.
 
 ## [0.334.0] — 2026-10-29
 

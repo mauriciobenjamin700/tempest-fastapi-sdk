@@ -752,10 +752,13 @@ Por padrão a chave é o IP do cliente. Para limitar **por principal** (usuário
 | `key_by_ip(trusted_header=...)` | `ip:<addr>` | Por IP (default). |
 | `key_by_jwt_subject(jwt)` | `user:<sub>` | Por usuário autenticado (claim `sub`). |
 | `key_by_jwt_claim(jwt, "tenant_id", scope="tenant")` | `tenant:<id>` | Por claim arbitrária do token. |
-| `key_by_header("x-api-key", scope="apikey")` | `apikey:<valor>` | Por valor de header. |
+| `key_by_header("x-api-key", scope="apikey", is_known=api_keys.__contains__)` | `apikey:<valor>` | Por valor de header **verificado**; valor desconhecido cai no IP. |
 
 !!! warning "O middleware roda antes das dependencies"
     O `RateLimitMiddleware` executa **antes** das `Depends` do FastAPI resolverem — então o usuário autenticado pela sua dependency de auth ainda não existe quando a chave é calculada. Por isso as factories `key_by_jwt_*` decodificam o bearer **do request cru** (via `JWTUtils.decode_or_none`, sem levantar exceção). Tráfego anônimo cai de volta no IP, então continua limitado.
+
+!!! note "`key_by_header` exige `is_known=`"
+    O valor do header é o que o cliente mandou, e o middleware o lê antes de qualquer auth. Sem verificação, mandar um valor inventado por requisição daria um orçamento novo a cada uma. Por isso `is_known=` é obrigatório: só o valor que ele aceita (uma consulta ao conjunto de API keys emitidas, um checksum no formato da chave) ganha bucket próprio; o resto é tratado como header ausente e cai no IP. A checagem é síncrona e roda em toda requisição — mantenha-a barata.
 
 ```python
 # src/api/app.py

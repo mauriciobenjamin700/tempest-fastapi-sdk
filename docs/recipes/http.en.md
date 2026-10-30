@@ -756,10 +756,13 @@ By default the key is the client IP. To limit **per principal** (authenticated u
 | `key_by_ip(trusted_header=...)` | `ip:<addr>` | Per IP (default). |
 | `key_by_jwt_subject(jwt)` | `user:<sub>` | Per authenticated user (`sub` claim). |
 | `key_by_jwt_claim(jwt, "tenant_id", scope="tenant")` | `tenant:<id>` | Per arbitrary token claim. |
-| `key_by_header("x-api-key", scope="apikey")` | `apikey:<value>` | Per header value. |
+| `key_by_header("x-api-key", scope="apikey", is_known=api_keys.__contains__)` | `apikey:<value>` | Per **verified** header value; an unknown value falls back to the IP. |
 
 !!! warning "The middleware runs before dependencies"
     `RateLimitMiddleware` runs **before** FastAPI `Depends` resolve — so the user authenticated by your auth dependency does not exist yet when the key is computed. That is why the `key_by_jwt_*` factories decode the bearer **from the raw request** (via `JWTUtils.decode_or_none`, no exception raised). Anonymous traffic falls back to the IP, so it stays limited.
+
+!!! note "`key_by_header` requires `is_known=`"
+    The header value is whatever the client sent, and the middleware reads it before any auth. Unverified, sending a made-up value per request would get a fresh budget each time. So `is_known=` is required: only a value it accepts (a lookup in the set of issued API keys, a checksum on the key format) gets its own bucket; anything else is treated as a missing header and falls back to the IP. The check is synchronous and runs on every request — keep it cheap.
 
 ```python
 # src/api/app.py

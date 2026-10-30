@@ -3562,7 +3562,7 @@ anonymous traffic:
 | `key_by_ip(trusted_header=...)` | `ip:<addr>` | Per IP (default). |
 | `key_by_jwt_subject(jwt)` | `user:<sub>` | Per authenticated user. |
 | `key_by_jwt_claim(jwt, "tenant_id", scope="tenant")` | `tenant:<id>` | Per token claim. |
-| `key_by_header("x-api-key", scope="apikey")` | `apikey:<value>` | Per header value. |
+| `key_by_header("x-api-key", scope="apikey", is_known=api_keys.__contains__)` | `apikey:<value>` | Per **verified** header value; an unknown value falls back to the IP. |
 
 **Share state across replicas.** The default `MemoryRateLimitStore`
 counts in-process (single worker). Pass `RedisRateLimitStore(redis)` for

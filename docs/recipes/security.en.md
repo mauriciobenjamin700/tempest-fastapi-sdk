@@ -607,8 +607,10 @@ rather than limiting.
 
 `DEFAULT_HONEYPOT_PATTERNS` is what this middleware really ships: a curated,
 versioned set of signatures — dotfiles, PHP recon, CMS scanners, backup/dump
-extensions and credential probes — matched against the path **and** the query
-string, none of it specific to whichever service hosts it. It is pure research
+extensions and credential probes — matched against the **path**, none of it
+specific to whichever service hosts it. The query string, which carries what the
+user types, is matched separately by `DEFAULT_HONEYPOT_QUERY_PATTERNS`, which
+only recognizes the PHP-CGI argument injection (`?-d+...`). It is pure research
 and it goes stale; coming from the SDK, you pick up new signatures with a bump
 instead of maintaining regexes by hand.
 
@@ -643,6 +645,20 @@ app.add_middleware(
 `/.well-known/` is **not** on the list: ACME and `security.txt` live there and
 are legitimate, so the dotfile rules name the directories rather than matching a
 generic `/.`.
+
+One hit earns a 24-hour ban for the whole IP (and everyone behind the same
+NAT), so the list stays clear of what an honest client requests:
+
+- a loose word (`phpinfo`, `server-status`) only matches as a whole path
+  segment — a search for `?q=phpinfo` does not ban;
+- backup/dump extensions (`.zip`, `.sql`, `.bak`) and the editor-backup `~`
+  only match a file at the root or under `/backup/` — the signed download
+  `/storage/<bucket>/<uuid>.zip` from `make_local_storage_router` passes;
+- `credentials` and `secrets` only match at the root — the auth router's
+  `/auth/webauthn/credentials` passes.
+
+Until 0.334.0 `patterns=` was matched against `path?query`. A custom pattern
+that targets the query moves to `query_patterns=`.
 
 ### It fails open, by default
 

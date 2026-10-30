@@ -106,6 +106,9 @@ if TYPE_CHECKING:
         DEFAULT_HONEYPOT_PATTERNS as DEFAULT_HONEYPOT_PATTERNS,
     )
     from tempest_fastapi_sdk.api import (
+        DEFAULT_HONEYPOT_QUERY_PATTERNS as DEFAULT_HONEYPOT_QUERY_PATTERNS,
+    )
+    from tempest_fastapi_sdk.api import (
         DEFAULT_LATENCY_BUCKETS as DEFAULT_LATENCY_BUCKETS,
     )
     from tempest_fastapi_sdk.api import (
@@ -2316,6 +2319,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "DEFAULT_DOCUMENT_CACHE_CONTROL": "tempest_fastapi_sdk.api",
     "DEFAULT_EXCLUDED_PREFIXES": "tempest_fastapi_sdk.api",
     "DEFAULT_HONEYPOT_PATTERNS": "tempest_fastapi_sdk.api",
+    "DEFAULT_HONEYPOT_QUERY_PATTERNS": "tempest_fastapi_sdk.api",
     "DEFAULT_LATENCY_BUCKETS": "tempest_fastapi_sdk.api",
     "DEFAULT_MAX_RECORDS_PER_FILE": "tempest_fastapi_sdk.api",
     "DEFAULT_SPA_CONTENT_SECURITY_POLICY": "tempest_fastapi_sdk.api",
@@ -3120,6 +3124,7 @@ __all__: list[str] = [
     "DEFAULT_FIREBASE_APP_NAME",
     "DEFAULT_GENERATED_PASSWORD_LENGTH",
     "DEFAULT_HONEYPOT_PATTERNS",
+    "DEFAULT_HONEYPOT_QUERY_PATTERNS",
     "DEFAULT_LATENCY_BUCKETS",
     "DEFAULT_LOCALE",
     "DEFAULT_LOG_BACKUP_COUNT",

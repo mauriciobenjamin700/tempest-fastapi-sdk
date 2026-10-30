@@ -957,6 +957,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.api.middlewares.access_log.AccessLogMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.honeypot.HoneypotBanMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.honeypot.DEFAULT_HONEYPOT_PATTERNS
+::: tempest_fastapi_sdk.api.middlewares.honeypot.DEFAULT_HONEYPOT_QUERY_PATTERNS
 ::: tempest_fastapi_sdk.api.middlewares.honeypot.BanStore
 ::: tempest_fastapi_sdk.api.middlewares.honeypot.MemoryBanStore
 ::: tempest_fastapi_sdk.api.middlewares.honeypot.RedisBanStore

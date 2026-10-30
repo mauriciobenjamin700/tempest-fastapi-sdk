@@ -602,8 +602,10 @@ limitar.
 
 `DEFAULT_HONEYPOT_PATTERNS` é o que este middleware realmente entrega: uma lista
 curada e versionada de assinaturas — dotfiles, recon de PHP, scanner de CMS,
-extensão de backup/dump e sonda de credencial —, casada contra o path **e** a
-query string, sem nada específico do serviço que a hospeda. É pura pesquisa, e
+extensão de backup/dump e sonda de credencial —, casada contra o **path**, sem
+nada específico do serviço que a hospeda. A query string, que carrega o que o
+usuário digita, é casada à parte por `DEFAULT_HONEYPOT_QUERY_PATTERNS`, que só
+reconhece a injeção de argumento do PHP-CGI (`?-d+...`). É pura pesquisa, e
 envelhece; vindo do SDK, você pega assinatura nova com um bump em vez de manter
 regex na mão.
 
@@ -638,6 +640,20 @@ app.add_middleware(
 `/.well-known/` **não** está na lista: ACME e `security.txt` moram lá e são
 legítimos, então as regras de dotfile nomeiam os diretórios em vez de casar
 `/.` genérico.
+
+Um único acerto vale ban de 24 horas para o IP inteiro (e todo mundo atrás do
+mesmo NAT), então a lista evita o que um cliente honesto pede:
+
+- palavra solta (`phpinfo`, `server-status`) só casa como segmento inteiro do
+  path — uma busca `?q=phpinfo` não bane;
+- extensão de backup/dump (`.zip`, `.sql`, `.bak`) e o `~` de backup de editor
+  só casam num arquivo na raiz ou sob `/backup/` — o download assinado
+  `/storage/<bucket>/<uuid>.zip` do `make_local_storage_router` passa;
+- `credentials` e `secrets` só casam na raiz — o
+  `/auth/webauthn/credentials` do router de auth passa.
+
+Até a 0.334.0 o `patterns=` era casado contra `path?query`. Padrão próprio que
+mira a query vai para `query_patterns=`.
 
 ### Falha aberta, por padrão
 
