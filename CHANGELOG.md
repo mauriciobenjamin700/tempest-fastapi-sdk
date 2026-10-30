@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `TenantScopedRepository` passa a aplicar o escopo do tenant em todo caminho
+  herdado do `BaseRepository`, não só nos métodos sobrescritos à mão. O
+  predicado do tenant agora é somado com `AND` ao filtro do chamador em vez de
+  ser mesclado no dict, então um filtro na coluna de tenant só estreita o
+  resultado. `search` e `full_text_search` sem `filters` ficam escopados;
+  `bulk_create_values` e `bulk_upsert` carimbam o tenant em cada linha; o
+  `DO UPDATE` do `bulk_upsert` só alcança linhas do próprio tenant;
+  `save_with_outbox` e `add_audited` carimbam a instância como o `add`.
+  **Mudança de comportamento:** `bulk_update` / `update_returning` levantam
+  `ValueError` quando `values` muda a coluna de tenant para outro tenant, e
+  `update`, `update_many`, `update_audited` e `delete_audited` recusam instância
+  de outro tenant (exceção de não encontrado do repositório) ou cujo tenant foi
+  trocado (`ValueError`). O `BaseRepository` ganha os hooks privados que fazem
+  isso num lugar só (`_prepare_insert`, `_prepare_insert_rows`,
+  `_upsert_conflict_where`, `_check_instance_write`), sem efeito na classe base.
+
 ## [0.334.0] — 2026-10-29
 
 ### Added

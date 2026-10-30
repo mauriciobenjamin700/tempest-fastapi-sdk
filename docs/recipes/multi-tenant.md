@@ -104,6 +104,27 @@ async def fetch(repo: TenantScopedRepository[OrderModel], order_id: UUID) -> Ord
 `delete_many({})` apaga só as linhas **deste** tenant, nunca a tabela
 inteira — o predicado de tenant é sempre adicionado.
 
+### Toda leitura e toda escrita, inclusive busca e operação em lote
+
+O escopo não depende de qual método você chama:
+
+- **Busca** — `search` e `full_text_search` só com o termo (o caso da
+  caixa de busca) devolvem apenas linhas deste tenant.
+- **Filtro na coluna de tenant só estreita.** O predicado do tenant é
+  somado com `AND` ao seu filtro, nunca substituído por ele:
+  `repo.list({"tenant_id": outro})` devolve `[]`.
+- **Insert em lote** — `bulk_create_values` e `bulk_upsert` carimbam o
+  `tenant_id` em cada linha, sobrescrevendo o valor que viesse no dict,
+  como o `add` faz com a instância.
+- **Upsert** — `bulk_upsert(..., on_conflict="update")` só reescreve a
+  linha em conflito quando ela já é deste tenant. Conflito com linha de
+  outro tenant (mesmo `id`, por exemplo) não atualiza nada.
+- **Update** — `bulk_update` / `update_returning` recusam com
+  `ValueError` um `values` que mude o `tenant_id` para outro tenant.
+  `update`, `update_many`, `update_audited` e `delete_audited` recusam
+  instância de outro tenant (a exceção de não encontrado do repositório)
+  e instância cujo `tenant_id` foi trocado (`ValueError`).
+
 !!! warning "Queries cruas são responsabilidade sua"
     Uma subclasse que monta o próprio `select(...)` sem passar por
     `_apply_filters` — ou um `query=` pré-montado passado pro `paginate` —
@@ -117,4 +138,6 @@ inteira — o predicado de tenant é sempre adicionado.
   filtro em toda leitura e carimba toda escrita.
 - `get_by_id` / `delete` / `delete_batch` / `delete_many` são escopados —
   acesso cruzado entre tenants é impossível pelos métodos do repositório.
+- Busca, insert em lote, upsert e update também: filtro na coluna de
+  tenant só estreita, e escrita nunca move linha para outro tenant.
 - Construtor valida a existência da coluna de tenant no boot.
